@@ -85,59 +85,6 @@ absl::StatusOr<std::unique_ptr<Thunk>> BuildCustomKernelThunkForFusion(
       &fusion, std::move(custom_kernel), std::move(kernel_arguments.args()));
 }
 
-absl::StatusOr<BufferAllocation::Slice> GetSliceWithUpdatedOffsetAndSize(
-    const BufferAssignment& buffer_assignment, const HloFusionAdaptor& fusion,
-    const HloInstruction& fusion_instr, const HloInstruction& start,
-    const ShapeIndex& index) {
-  if (const auto* param = DynCast<HloParameterInstruction>(&start)) {
-    return GetAllocationSlice(buffer_assignment,
-                              fusion_instr.operand(param->parameter_number()),
-                              index);
-  }
-
-  auto slice_adaptor =
-      HloFindIf({HloInstructionAdaptor(start)}, fusion,
-                [](auto node) { return node.opcode() == HloOpcode::kSlice; });
-  if (!slice_adaptor.has_value()) {
-    return absl::InternalError(
-        "AddressComputationFusion expects at least one sliced operand");
-  }
-
-  const auto& slice_instr =
-      *static_cast<const HloSliceInstruction*>(&slice_adaptor->instruction());
-
-  if (!IsContiguousSlice(slice_instr)) {
-    return absl::InternalError(
-        "AddressComputationFusion only handles contiguous slices currently");
-  }
-
-  const Shape& src_shape = slice_instr.operand(0)->shape();
-  const Shape& dst_shape = slice_instr.shape();
-  int64_t size = ShapeUtil::ByteSizeOf(dst_shape);
-
-  const auto* param = Cast<HloParameterInstruction>(slice_instr.operand(0));
-  TF_ASSIGN_OR_RETURN(
-      BufferAllocation::Slice orig_slice,
-      GetAllocationSlice(buffer_assignment,
-                         fusion_instr.operand(param->parameter_number()),
-                         index));
-
-  // Given this slice
-  // f16[1,4,8]{2,1,0} slice(f16[2,8,8]{2,1,0}),
-  //                         slice={[1:2], [4:8], [0:8]}
-  //
-  // The offset of the slice should be:
-  //    slice_starts(0) * 8 * 8 * sizeof(f16) +
-  //    slice_starts(1) * 8 * sizeof(f16)
-  int64_t offset = orig_slice.offset();
-  for (auto [start, stride] : llvm::zip(slice_instr.slice_starts(),
-                                        *ShapeUtil::ByteStrides(src_shape))) {
-    offset += start * stride;
-  }
-
-  return BufferAllocation::Slice(orig_slice.allocation(), offset, size);
-}
-
 absl::StatusOr<BufferAllocation::Slice> GetOperandSlice(
     const BufferAssignment& buffer_assignment, const HloFusionAdaptor& adaptor,
     const HloInstruction& fusion_instr, const HloInstruction& start_instr,
@@ -343,7 +290,7 @@ absl::StatusOr<FusionEmissionResult> EmitGemm(
         return slice_instr == nullptr;
       })) {
     return absl::InternalError(
-        "DynamicAddressComputationFusion expects at least one sliced "
+        "AddressComputationFusion expects at least one sliced "
         "operand/result");
   }
 
@@ -441,21 +388,31 @@ absl::StatusOr<FusionEmissionResult> EmitCustomCall(
 
   using Slices = std::vector<std::optional<CustomCallThunk::Slice>>;
 
+  int64_t num_args = ShapeUtil::GetLeafCount(custom_call.shape());
+  absl::c_for_each(custom_call.operands(), [&](auto* operand) {
+    num_args += ShapeUtil::GetLeafCount(operand->shape());
+  });
+
+  std::vector<HloInstruction*> slice_instrs(num_args, nullptr);
+
   Slices operands;
-  // TODO(vuson): add test with custom call with token-typed operands
+  unsigned arg_idx = 0;
+  // TODO(vuson): add test for custom call with token-typed operands
   for (auto* operand : custom_call.operands()) {
     TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
         operand->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
           if (subshape.IsToken()) {
+            arg_idx++;
             operands.push_back(std::nullopt);
             return absl::OkStatus();
           }
           if (!subshape.IsArray()) {
             return absl::OkStatus();
           }
-          TF_ASSIGN_OR_RETURN(auto slice, GetSliceWithUpdatedOffsetAndSize(
-                                              buffer_assignment, adaptor,
-                                              fusion, *operand, index));
+          TF_ASSIGN_OR_RETURN(
+              auto slice,
+              GetOperandSlice(buffer_assignment, adaptor, fusion, *operand,
+                              slice_instrs, /*shape_idx=*/index, arg_idx++));
           operands.push_back(CustomCallThunk::Slice{slice, subshape});
           return absl::OkStatus();
         }));
@@ -463,8 +420,9 @@ absl::StatusOr<FusionEmissionResult> EmitCustomCall(
 
   Slices results;
   TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
-      fusion.shape(), [&](const Shape& subshape, const ShapeIndex& index) {
+      custom_call.shape(), [&](const Shape& subshape, const ShapeIndex& index) {
         if (subshape.IsToken()) {
+          arg_idx++;
           results.push_back(std::nullopt);
           return absl::OkStatus();
         }
@@ -472,10 +430,20 @@ absl::StatusOr<FusionEmissionResult> EmitCustomCall(
           return absl::OkStatus();
         }
         TF_ASSIGN_OR_RETURN(
-            auto slice, GetAllocationSlice(buffer_assignment, &fusion, index));
+            auto slice,
+            GetResultSlice(buffer_assignment, adaptor, fusion, custom_call,
+                           slice_instrs, /*shape_idx=*/index, arg_idx++));
         results.push_back(CustomCallThunk::Slice{slice, subshape});
         return absl::OkStatus();
       }));
+
+  if (absl::c_all_of(slice_instrs, [&](auto slice_instr) {
+        return slice_instr == nullptr;
+      })) {
+    return absl::InternalError(
+        "AddressComputationFusion expects at least one sliced "
+        "operand/result");
+  }
 
   // For legacy custom calls we convert all API versions into the latest
   // status-returning one and pass backend config as an opaque string.
