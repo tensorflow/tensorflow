@@ -346,7 +346,7 @@ class Variant {
     const void* RawPtr() const final { return &value; }
 
     std::unique_ptr<ValueInterface> Clone() const final {
-      return absl::make_unique<Value>(InPlace(), value);
+      return std::make_unique<Value>(InPlace(), value);
     }
 
     void MoveAssign(ValueInterface* memory) final {
@@ -512,7 +512,7 @@ class Variant {
           InlineValue(InlineValue::Tag<VT>{}, std::forward<T>(value));
     } else {
       new (&heap_value_) HeapValue(
-          absl::make_unique<Value<VT>>(InPlace(), std::forward<T>(value)));
+          std::make_unique<Value<VT>>(InPlace(), std::forward<T>(value)));
     }
   }
 };
