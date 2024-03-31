@@ -67,7 +67,24 @@ and the following optional parameters:
     thus it is preferred to set `max_profiling_buffer_entries` to a large-enough
     value.
 
+*  `op_profiling_output_mode`: `str` (default="stdout") \
+    The output mode for the profiling information generated. Requires
+    `enable_op_profiling` to be `true`. Takes one of the following 3 values:
+     - `stdout` : Print profiling information to STDOUT.
+     - `csv` : Print the profiling information in a CSV format.
+     - `proto` : Print the profiling information in a proto format as specified
+     in `tensorflow/lite/profiling/proto/profiling_info.proto`.
+*  `op_profiling_output_file`: `str` (default="") \
+    File path to export profile data to. The results are printed to
+    `stdout` if option is not set. Requires `enable_op_profiling` to be `true`
+    and the path to include the name of the output file; otherwise results are
+    printed to `stdout`.
+
 *   `profiling_output_csv_file`: `str` (default="") \
+
+    WARNING: Deprecated, prefer using `op_profiling_output_mode` and
+    `op_profiling_output_file` instead.
+
     File path to export profile data to as CSV. The results are printed to
     `stdout` if option is not set. Requires `enable_op_profiling` to be `true`
     and the path to include the name of the output CSV; otherwise results are
