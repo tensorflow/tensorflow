@@ -21,7 +21,7 @@ tf_gen_op_wrapper_py(
         "//tensorflow/python/util:tf_export",
     ],
     py_lib_rule = py_strict_library,
-    visibility = ["//tensorflow/python/kernel_tests/linalg/sparse:__pkg__"],
+    visibility = ["//visibility:private"],
     deps = ["//tensorflow/core:sparse_csr_matrix_ops_op_lib"],
 )
 
