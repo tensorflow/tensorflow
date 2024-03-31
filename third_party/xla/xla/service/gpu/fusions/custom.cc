@@ -207,8 +207,26 @@ absl::StatusOr<BufferAllocation::Slice> GetResultSlice(
     const HloInstruction& fusion_instr, const HloInstruction& start_instr,
     std::vector<HloInstruction*>& slice_instrs, const ShapeIndex& shape_idx,
     unsigned arg_idx) {
+  auto* start = const_cast<HloInstruction*>(&start_instr);
+  // Walk through ShapeIndex to find the real "user" (i.e. not get-tuple-element
+  // user). Otherwise one sliced element will mark all buffers of all other
+  // elements "sliced" too.
+  if (start->shape().IsTuple()) {
+    for (auto idx : shape_idx) {
+      std::vector<HloGetTupleElementInstruction*> gte_users(
+          start->shape().tuple_shapes_size(), nullptr);
+      for (auto* user : start->users())
+        if (auto* gte = DynCast<HloGetTupleElementInstruction>(user))
+          gte_users[gte->tuple_index()] = gte;
+
+      start = static_cast<HloInstruction*>(gte_users[idx]);
+      if (start == nullptr)
+        return GetAllocationSlice(buffer_assignment, &fusion_instr, shape_idx);
+    }
+  }
+
   auto slice_adaptor = HloFindIf(
-      {HloInstructionAdaptor(start_instr)}, adaptor,
+      {HloInstructionAdaptor(*start)}, adaptor,
       [](auto node) { return node.opcode() == HloOpcode::kDynamicUpdateSlice; },
       /*visit_operands=*/false);
   if (slice_adaptor.has_value()) {
