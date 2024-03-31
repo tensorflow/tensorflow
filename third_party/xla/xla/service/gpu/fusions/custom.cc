@@ -207,8 +207,26 @@ absl::StatusOr<BufferAllocation::Slice> GetResultSlice(
     const HloInstruction& fusion_instr, const HloInstruction& start_instr,
     std::vector<HloInstruction*>& slice_instrs, const ShapeIndex& shape_idx,
     unsigned arg_idx) {
+  auto* start = const_cast<HloInstruction*>(&start_instr);
+  // Walk through ShapeIndex to find the real "user" (i.e. not get-tuple-element
+  // user). Otherwise one sliced element will mark all buffers of all other
+  // elements "sliced" too.
+  if (start->shape().IsTuple()) {
+    for (auto idx : shape_idx) {
+      std::vector<HloGetTupleElementInstruction*> gte_users(
+          start->shape().tuple_shapes_size(), nullptr);
+      for (auto* user : start->users())
+        if (auto* gte = DynCast<HloGetTupleElementInstruction>(user))
+          gte_users[gte->tuple_index()] = gte;
+
+      start = static_cast<HloInstruction*>(gte_users[idx]);
+      if (start == nullptr)
+        return GetAllocationSlice(buffer_assignment, &fusion_instr, shape_idx);
+    }
+  }
+
   auto slice_adaptor = HloFindIf(
-      {HloInstructionAdaptor(start_instr)}, adaptor,
+      {HloInstructionAdaptor(*start)}, adaptor,
       [](auto node) { return node.opcode() == HloOpcode::kDynamicUpdateSlice; },
       /*visit_operands=*/false);
   if (slice_adaptor.has_value()) {
@@ -706,28 +724,6 @@ absl::StatusOr<FusionEmissionResult> CustomFusion::Emit(
   FusionEmissionResult result;
   result.thunks.push_back(std::move(thunk));
   return result;
-}
-
-absl::StatusOr<FusionEmissionResult> AddressComputationFusion::Emit(
-    IrEmitterContext& ir_emitter_context,
-    const HloFusionInstruction& fusion) const {
-  const HloFusionAdaptor& adaptor = analysis_.fusion();
-  auto maybe_custom_call_adaptor = HloFindIf(
-      adaptor.GetRoots(), adaptor,
-      [](auto node) { return node.opcode() == HloOpcode::kCustomCall; });
-  if (maybe_custom_call_adaptor == std::nullopt) {
-    return absl::InternalError(
-        "AddressComputationFusion requires a CustomCall hero");
-  }
-
-  const auto& custom_call = *static_cast<const HloCustomCallInstruction*>(
-      &maybe_custom_call_adaptor->instruction());
-  // TODO(vuson): these Emit* are mostly duplicated from ir_emitter_unnested
-  if (IsLegacyCublasMatmul(custom_call)) {
-    return EmitGemm(ir_emitter_context, adaptor, fusion, custom_call);
-  }
-
-  return EmitCustomCall(ir_emitter_context, adaptor, fusion, custom_call);
 }
 
 absl::StatusOr<FusionEmissionResult> DynamicAddressComputationFusion::Emit(
