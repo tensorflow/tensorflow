@@ -1089,7 +1089,7 @@ void Callback_Memcpy(se::gpu::GpuStreamHandle stream, void** buffers,
                      const char* /*opaque*/, size_t /*opaque_len*/) {
   void* src = buffers[0];
   void* dst = buffers[1];
-  auto err = gpuMemcpyAsync(dst, src, /*count=*/sizeof(float) * 128,
+  auto err = gpuMemcpyAsync(dst, src, /*count=*/sizeof(float) * 3 * 128,
                             gpuMemcpyDeviceToDevice, stream);
   ASSERT_EQ(err, gpuSuccess);
 }
@@ -1100,9 +1100,9 @@ TEST_F(AddressComputationFusionTest, CustomCallLegacyAPI) {
   XlaBuilder b(TestName());
   CustomCall(&b, "Callback_Memcpy",
              /*operands=*/
-             {Slice(Broadcast(ConstantR0WithType(&b, F32, 42.0), {256}), {0},
-                    {128}, {1})},
-             ShapeUtil::MakeShape(F32, {128}), /*opaque=*/"");
+             {Slice(Broadcast(ConstantR0WithType(&b, F32, 42.0), {512}), {128},
+                    {4 * 128}, {1})},
+             ShapeUtil::MakeShape(F32, {3 * 128}), /*opaque=*/"");
   ErrorSpec error_spec{/*aabs=*/1e-3, /*arel=*/1e-3};
 
   TF_ASSERT_OK_AND_ASSIGN(auto computation, b.Build());
@@ -2570,20 +2570,25 @@ static absl::Status SubBuffers2(se::Stream* stream, ffi::BufferBase src0,
                                 ffi::BufferBase src1, ffi::BufferBase src2,
                                 ffi::BufferBase src3, ffi::BufferBase src4,
                                 ffi::BufferBase src5, ffi::BufferBase src6,
-                                ffi::BufferBase src7, ffi::BufferBase dst0,
-                                ffi::BufferBase dst1, ffi::BufferBase dst2,
-                                ffi::BufferBase dst3, ffi::BufferBase dst4) {
+                                ffi::BufferBase dst0, ffi::BufferBase dst1,
+                                ffi::BufferBase dst2, ffi::BufferBase dst3,
+                                ffi::BufferBase dst4, ffi::BufferBase dst5,
+                                ffi::BufferBase dst6) {
   //  src0:  param 0 at tuple index {0}, shape f32[128]
   //  src1:  param 0 at tuple index {1}, shape f32[256]
   //  src2:  param 1 at tuple index {0}, shape f32[1024]
   //  src3:  param 1 at tuple index {1}, shape f32[8]
   //  src4:  param 2, shape f32[4,8]
+  //  src5:  param 3 at tuple index {0, 0}, shape f32[3,128]
+  //  src6:  param 3 at tuple index {0, 1}, shape f32[5,128]
   //
   //  dst0:  result at tuple index {0}, shape f32[8]
   //  dst1:  result at tuple index {1, 0}, shape f32[128]
   //  dst2:  result at tuple index {1, 1}, shape f32[256]
   //  dst3:  result at tuple index {2}, shape f32[1024]
   //  dst4:  result at tuple index {3}, shape f32[4,8]
+  //  dst5:  result at tuple index {4, 0}, shape f32[5,128]
+  //  dst6:  result at tuple index {4, 1}, shape f32[3,128]
 
   TF_RETURN_IF_ERROR(
       stream->MemcpyD2D(&dst0.data, src3.data, 8 * sizeof(float)));
@@ -2595,6 +2600,10 @@ static absl::Status SubBuffers2(se::Stream* stream, ffi::BufferBase src0,
       stream->MemcpyD2D(&dst3.data, src2.data, 1024 * sizeof(float)));
   TF_RETURN_IF_ERROR(
       stream->MemcpyD2D(&dst4.data, src4.data, 4 * 8 * sizeof(float)));
+  TF_RETURN_IF_ERROR(
+      stream->MemcpyD2D(&dst5.data, src6.data, 5 * 128 * sizeof(float)));
+  TF_RETURN_IF_ERROR(
+      stream->MemcpyD2D(&dst6.data, src5.data, 3 * 128 * sizeof(float)));
   return absl::OkStatus();
 }
 
@@ -2608,20 +2617,64 @@ XLA_FFI_DEFINE_HANDLER(kSubBuffers2, SubBuffers2,
                            .Arg<ffi::BufferBase>()  // src4
                            .Arg<ffi::BufferBase>()  // src5
                            .Arg<ffi::BufferBase>()  // src6
-                           .Arg<ffi::BufferBase>()  // src7
                            .Arg<ffi::BufferBase>()  // dst0
                            .Arg<ffi::BufferBase>()  // dst1
                            .Arg<ffi::BufferBase>()  // dst2
                            .Arg<ffi::BufferBase>()  // dst3
                            .Arg<ffi::BufferBase>()  // dst4
+                           .Arg<ffi::BufferBase>()  // dst5
+                           .Arg<ffi::BufferBase>()  // dst6
 );
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$subbuffers2",
                          PLATFORM, kSubBuffers2);
 
-TEST_F(AddressComputationFusionTest, Test) {
+TEST_F(AddressComputationFusionTest, CustomCallDUS) {
   XlaBuilder b(TestName());
-  CustomCall(
-      &b, "Callback_Void", /*operands=*/
+  auto custom_call =
+      CustomCall(&b, "Callback_Memcpy",
+                 /*operands=*/
+                 {Slice(Broadcast(ConstantR0WithType(&b, F32, 42.0), {10, 128}),
+                        {2, 0}, {5, 128}, {1, 1})},
+                 ShapeUtil::MakeShape(F32, {3, 128}), /*opaque=*/"");
+
+  DynamicUpdateSlice(
+      Broadcast(ConstantR0WithType(&b, F32, 92.0), {10, 128}), custom_call,
+      {ConstantR0WithType(&b, S32, 4), ConstantR0WithType(&b, S32, 0)});
+
+  ErrorSpec error_spec{/*aabs=*/1e-3, /*arel=*/1e-3};
+
+  TF_ASSERT_OK_AND_ASSIGN(auto computation, b.Build());
+  xla::HloModuleConfig hlo_config(
+      xla::ProgramShape(computation.proto().host_program_shape()),
+      /*ignore_layouts=*/false);
+  DebugOptions debug_options = GetDebugOptionsForTest();
+  debug_options.set_xla_gpu_enable_address_computation_fusion(false);
+  hlo_config.set_debug_options(debug_options);
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_ref, xla::HloModule::CreateFromProto(
+                                            computation.proto(), hlo_config));
+
+  debug_options.set_xla_gpu_enable_address_computation_fusion(true);
+  hlo_config.set_debug_options(debug_options);
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_opt, xla::HloModule::CreateFromProto(
+                                            computation.proto(), hlo_config));
+
+  AddressComputationFusionRewriter pass(PLATFORM);
+  TF_ASSERT_OK_AND_ASSIGN(auto changed, this->RunHloPass(&pass, hlo_opt.get()));
+  EXPECT_TRUE(changed);
+
+  EXPECT_TRUE(RunAndCompareTwoModules(std::move(hlo_ref), std::move(hlo_opt),
+                                      error_spec,
+                                      /*run_hlo_passes=*/false));
+}
+
+TEST_F(AddressComputationFusionTest, CustomCallDUSTuple) {
+  XlaBuilder b(TestName());
+  auto big_buffer1 =
+      Parameter(&b, 0, ShapeUtil::MakeShape(F32, {10, 128}), "p0");
+  auto big_buffer2 =
+      Parameter(&b, 1, ShapeUtil::MakeShape(F32, {10, 256}), "p1");
+  auto custom_call = CustomCall(
+      &b, "__xla_test$$subbuffers2", /*operands=*/
       {
           Tuple(&b,
                 {
@@ -2630,24 +2683,60 @@ TEST_F(AddressComputationFusionTest, Test) {
                 }),
           Tuple(&b,
                 {
-                    Slice(Broadcast(ConstantR0WithType(&b, F32, 3), {1024}),
-                          {512}, {512 + 256}, {1}),
+                    Broadcast(ConstantR0WithType(&b, F32, 3), {1024}),
                     Broadcast(ConstantR0WithType(&b, F32, 4), {8}),
                 }),
           Slice(Broadcast(ConstantR0WithType(&b, F32, 5), {8, 8}), {0, 0},
                 {4, 8}, {1, 1}),
-          Tuple(&b,
-                {
-                    Tuple(&b,
-                          {
-                              Broadcast(ConstantR0WithType(&b, F32, 6), {32}),
-                              Broadcast(ConstantR0WithType(&b, F32, 7), {64}),
-                          }),
-                }),
+          Tuple(
+              &b,
+              {
+                  Tuple(
+                      &b,
+                      {
+                          Broadcast(ConstantR0WithType(&b, F32, 6), {3, 128}),
+                          DynamicSlice(Broadcast(ConstantR0WithType(&b, F32, 7),
+                                                 {8, 128}),
+                                       {ConstantR0WithType(&b, S32, 2),
+                                        ConstantR0WithType(&b, S32, 0)},
+                                       {5, 128}),
+                      }),
+              }),
       },
-      ShapeUtil::MakeNil(),
-      //  ShapeUtil::MakeShape(F32, {128}),
-      /*opaque=*/"");
+      ShapeUtil::MakeTupleShape({
+          ShapeUtil::MakeShape(F32, {8}),
+          ShapeUtil::MakeTupleShape({
+              ShapeUtil::MakeShape(F32, {128}),
+              ShapeUtil::MakeShape(F32, {256}),
+          }),
+          ShapeUtil::MakeShape(F32, {1024}),
+          ShapeUtil::MakeShape(F32, {4, 8}),
+          ShapeUtil::MakeTupleShape({
+              ShapeUtil::MakeShape(F32, {5, 128}),
+              ShapeUtil::MakeShape(F32, {3, 128}),
+          }),
+      }),
+      /*opaque=*/"",
+      /*has_side_effect=*/false,
+      /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
+      /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
+      /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
+  auto tuple_gte = GetTupleElement(custom_call, 4);
+  auto dus1 = DynamicUpdateSlice(
+      big_buffer1, GetTupleElement(tuple_gte, 0),
+      {ConstantR0WithType(&b, S32, 2), ConstantR0WithType(&b, S32, 0)});
+  auto dus2 = DynamicUpdateSlice(
+      big_buffer1, GetTupleElement(tuple_gte, 1),
+      {ConstantR0WithType(&b, S32, 7), ConstantR0WithType(&b, S32, 0)});
+  auto dus3 = DynamicUpdateSlice(
+      big_buffer2,
+      xla::internal::XlaBuilderFriend::BuildBitcast(
+          &b, GetTupleElement(custom_call, 2),
+          ShapeUtil::MakeShape(F32, {4, 256})),
+      {Parameter(&b, 2, ShapeUtil::MakeShape(S32, {}), "start0"),
+       Parameter(&b, 3, ShapeUtil::MakeShape(S32, {}), "start1")});
+  Tuple(&b, {dus1, dus2, dus3});
+
   ErrorSpec error_spec{/*aabs=*/1e-3, /*arel=*/1e-3};
 
   TF_ASSERT_OK_AND_ASSIGN(auto computation, b.Build());
