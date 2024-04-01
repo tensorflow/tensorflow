@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/tf_stablehlo_pass.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/config.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/static_range_ptq.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/weight_only_ptq.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/passes.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/python/py_function_lib.h"
@@ -43,6 +44,7 @@ namespace tensorflow {
 namespace {
 
 using ::mlir::quant::stablehlo::StaticRangePtqComponent;
+using ::mlir::quant::stablehlo::WeightOnlyPtqComponent;
 using ::stablehlo::quantization::PopulateDefaults;
 using ::stablehlo::quantization::QuantizationConfig;
 using ::tensorflow::SignatureDef;
@@ -131,13 +133,25 @@ absl::StatusOr<mlir::ModuleOp> RunQuantization(
     return absl::InternalError("Failed to run legalize TF to StableHLO.");
   }
 
-  StaticRangePtqComponent static_range_ptq_component(
-      module_op.getContext(), quantization_py_function_lib, saved_model_dir,
-      /*signature_keys=*/exported_names, saved_model_tags, signature_def_map,
-      GetFunctionAliases(*saved_model_bundle));
+  absl::StatusOr<mlir::ModuleOp> quantized_module_op;
+  if (quantization_config.has_static_range_ptq_preset()) {
+    StaticRangePtqComponent static_range_ptq_component(
+        module_op.getContext(), quantization_py_function_lib, saved_model_dir,
+        /*signature_keys=*/exported_names, saved_model_tags, signature_def_map,
+        GetFunctionAliases(*saved_model_bundle));
 
-  absl::StatusOr<mlir::ModuleOp> quantized_module_op =
-      static_range_ptq_component.Run(module_op, updated_config);
+    quantized_module_op =
+        static_range_ptq_component.Run(module_op, updated_config);
+  } else if (quantization_config.has_weight_only_preset()) {
+    WeightOnlyPtqComponent weight_only_ptq_component(module_op.getContext());
+    quantized_module_op =
+        weight_only_ptq_component.Run(module_op, updated_config);
+  } else {
+    return absl::InvalidArgumentError(
+        "Quantization config must have either static_range_ptq_preset or "
+        "weight_only_ptq_preset.");
+  }
+
   if (!quantized_module_op.ok()) {
     return absl::InternalError("Failed to run quantization. Status msg: " +
                                quantized_module_op.status().ToString());

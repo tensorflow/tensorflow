@@ -8,6 +8,7 @@ load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
 package_group(
     name = "internal_visibility_allowlist_package",
     packages = [
+        "//learning/brain/mlir/quantization/stablehlo/python/integration_test/...",
         "//tensorflow/compiler/mlir/lite/...",
         "//tensorflow/compiler/mlir/quantization/...",
         "//tensorflow/compiler/mlir/tf2xla/transforms/...",
@@ -745,7 +746,9 @@ tf_proto_library(
 # py_proto_library(
 #     name = "quantization_config_py_pb2",
 #     api_version = 2,
-#     visibility = [":internal_visibility_allowlist_package"],
+#     visibility = [
+#         ":internal_visibility_allowlist_package",
+#     ],
 #     deps = [":quantization_config_proto"],
 # )
 # copybara:uncomment_end
