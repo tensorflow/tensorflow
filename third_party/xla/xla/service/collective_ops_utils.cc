@@ -578,6 +578,7 @@ bool ReplicaGroupsEqual(absl::Span<const ReplicaGroup> first,
 bool IsCollective(const HloInstruction* instruction) {
   switch (instruction->opcode()) {
     case HloOpcode::kAllReduce:
+    case HloOpcode::kReduceScatter:
     case HloOpcode::kAllReduceStart:
     case HloOpcode::kAllReduceDone:
     case HloOpcode::kAllGather:
