@@ -419,9 +419,12 @@ absl::StatusOr<bool> ProcessAnnotationForCopyMovement(
       }
     }
   }
+
   auto update_shape_layout =
       [&](const std::pair<HloInstruction*, int>& instruction,
           HloInstruction* copy_to_move) {
+        VLOG(5) << "Update shape layout: " << instruction.first->ToString()
+                << " " << instruction.second;
         // Update shape. Tuple shape vs array shape.
         if (instruction.second != -1) {
           *instruction.first->mutable_shape()
@@ -431,7 +434,24 @@ absl::StatusOr<bool> ProcessAnnotationForCopyMovement(
           *instruction.first->mutable_shape()->mutable_layout() =
               copy_to_move->operand(0)->shape().layout();
         }
+
+        if (instruction.first->opcode() == HloOpcode::kWhile) {
+          // Fix up while body's root instruction shape and condition's
+          // parameter shape for while loops.
+          Shape new_shape = copy_to_move->operand(0)->shape();
+          *instruction.first->while_body()
+               ->root_instruction()
+               ->mutable_shape()
+               ->mutable_tuple_shapes(instruction.second)
+               ->mutable_layout() = new_shape.layout();
+          *instruction.first->while_condition()
+               ->parameter_instruction(0)
+               ->mutable_shape()
+               ->mutable_tuple_shapes(instruction.second)
+               ->mutable_layout() = new_shape.layout();
+        }
       };
+
   // Process all copies one at a time from the last to the first and push it to
   // its specific user.
   while (!copies_to_move.empty()) {
@@ -440,8 +460,8 @@ absl::StatusOr<bool> ProcessAnnotationForCopyMovement(
     stack.clear();
     stack.push_back(copy_to_move);
     while (!stack.empty()) {
-      VLOG(5) << "Current value before down: "
-              << stack.back().first->ToString();
+      VLOG(5) << "Current value before down: " << stack.back().first->ToString()
+              << " " << stack.back().second;
       auto current_value_down =
           WalkDownMemoryOffload(stack.back(), *call_graph);
       if (!current_value_down.ok()) {
@@ -458,8 +478,25 @@ absl::StatusOr<bool> ProcessAnnotationForCopyMovement(
                 "Expected to be called only by one caller");
           }
           auto* caller = callers[0];
-          update_shape_layout(std::make_pair(caller, instruction.second),
-                              copy_to_move.first);
+          if (caller->opcode() == HloOpcode::kWhile) {
+            update_shape_layout(std::make_pair(caller, instruction.second),
+                                copy_to_move.first);
+
+            HloInstruction* root_instruction =
+                caller->while_body()->root_instruction();
+            // Fix while loop's result tuple to not use move-to-device since
+            // at loop entry it's still on host.
+            if (root_instruction->operand(instruction.second)
+                    ->IsCustomCall(host_memory_offload_annotations::
+                                       kMoveToDeviceCustomCallTarget)) {
+              root_instruction
+                  ->ReplaceOperandWith(
+                      instruction.second,
+                      root_instruction->mutable_operand(instruction.second)
+                          ->mutable_operand(0))
+                  .IgnoreError();
+            }
+          }
         }
       }
       stack.pop_back();

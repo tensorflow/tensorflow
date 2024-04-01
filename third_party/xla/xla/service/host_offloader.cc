@@ -22,9 +22,9 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
@@ -40,7 +40,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status.h"
-#include "xla/statusor.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
@@ -584,8 +583,31 @@ absl::StatusOr<bool> HostOffloader::TryParameterStreaming(
   HloInstruction* copy_to_device =
       custom_call->parent()->AddInstruction(HloInstruction::CreateUnary(
           copy_shape, HloOpcode::kCopy, operand_of_load_annotation));
-  TF_RETURN_IF_ERROR(
-      operand_of_load_annotation->ReplaceAllUsesWith(copy_to_device));
+
+  auto users = operand_of_load_annotation->users();
+  for (HloInstruction* use : users) {
+    if (use == copy_to_device) {
+      continue;
+    }
+    auto callers = call_graph_->GetComputationCallers(copy_to_device->parent());
+    if (callers.size() > 1) {
+      return absl::InvalidArgumentError(
+          "Expected to be called only by one caller");
+    } else if (callers.size() == 1) {
+      auto* caller = callers[0];
+      if (caller->opcode() == HloOpcode::kWhile &&
+          use->opcode() == HloOpcode::kTuple && use->IsRoot()) {
+        // Do not replace the while loop parameter with the moved data. Because
+        // of the nature of while loops, since the data started on the host, it
+        // must end on the host. Only the while loop body's root should not use
+        // copy_to_device since it's on host at the loop entry.
+        continue;
+      }
+    }
+
+    TF_RETURN_IF_ERROR(
+        operand_of_load_annotation->ReplaceUseWith(use, copy_to_device));
+  }
 
   AddAllPositionsToBeMovedToHostMemory(unique_buffer);
   return true;
@@ -632,6 +654,8 @@ absl::StatusOr<bool> HostOffloader::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
+
+  call_graph_ = CallGraph::Build(module);
 
   // Run HloAliasAnalysis on module.
   TF_ASSIGN_OR_RETURN(alias_analysis_, HloAliasAnalysis::Run(module));

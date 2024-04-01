@@ -62,6 +62,7 @@ class HostOffloader : public HloModulePass {
   absl::flat_hash_set<HloInstruction*> annotations_for_copy_to_host_to_insert_;
   absl::flat_hash_set<HloInstruction*>
       annotations_for_copy_to_device_to_insert_;
+  std::unique_ptr<CallGraph> call_graph_;
 
   // Positions of all HloValues of the given HloBuffer will be added to
   // positions_to_move_to_host_memory_.
