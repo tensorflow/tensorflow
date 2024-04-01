@@ -56,7 +56,7 @@ class MHLO_ShapedInterfaceOp<string mnemonic, list<Trait> traits> :
 //===----------------------------------------------------------------------===//
 
 def MHLO_ConstantOp : MHLO_Op<"constant",
-    [ConstantLike, Pure, DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+    [ConstantLike,  DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "Constant operation";
   let description = [{
     Produces an `output` tensor from a constant `value`.
@@ -92,7 +92,7 @@ def MHLO_ConstantOp : MHLO_Op<"constant",
   }];
 }
 
-def MHLO_IotaOp : MHLO_Op<"iota", [Pure]> {
+def MHLO_IotaOp : MHLO_Op<"iota", []> {
   let summary = "Iota operation";
   let description = [{
     Fills an `output` tensor with values in increasing order starting from zero
@@ -117,7 +117,7 @@ def MHLO_IotaOp : MHLO_Op<"iota", [Pure]> {
   let hasVerifier = 1;
 }
 
-def MHLO_DynamicIotaOp: MHLO_ShapedInterfaceOp<"dynamic_iota", [Pure]> {
+def MHLO_DynamicIotaOp: MHLO_ShapedInterfaceOp<"dynamic_iota", []> {
   let summary = "DynamicIota operation";
   let description = [{
     This operation is a work in progress, so it is not yet included in
@@ -142,7 +142,7 @@ def MHLO_DynamicIotaOp: MHLO_ShapedInterfaceOp<"dynamic_iota", [Pure]> {
 }
 
 
-def MHLO_CreateTokenOp : MHLO_Op<"create_token", [Pure,
+def MHLO_CreateTokenOp : MHLO_Op<"create_token", [
     DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "CreateToken operation";
   let description = [{
@@ -194,7 +194,7 @@ class MHLO_UnaryElementwiseOp<string mnemonic, list<Trait> traits,
 
 // Abs supports complex to real, so element type is not guaranteed to match.
 def MHLO_AbsOp: MHLO_UnaryElementwiseOp<"abs",
-    [Pure, DeclareOpInterfaceMethods<InferTypeOpInterface>],
+    [ DeclareOpInterfaceMethods<InferTypeOpInterface>],
      RankedTensorOf<[MHLO_SInt, MHLO_Float, MHLO_Complex, MHLO_QuantizedInt]>,
      RankedTensorOf<[MHLO_SInt, MHLO_Float, MHLO_QuantizedInt]>> {
   let summary = "Abs operation";
@@ -214,7 +214,7 @@ def MHLO_AbsOp: MHLO_UnaryElementwiseOp<"abs",
 }
 
 def MHLO_CbrtOp: MHLO_UnaryElementwiseOp<"cbrt",
-    [Pure, HLO_CompatibleOperandsAndResultType], MHLO_FpComplexOrQuantizedIntTensor> {
+    [ HLO_CompatibleOperandsAndResultType], MHLO_FpComplexOrQuantizedIntTensor> {
   let summary = "Cbrt operation";
   let description = [{
     Performs element-wise cubic root operation on `operand` tensor and produces
@@ -230,7 +230,7 @@ def MHLO_CbrtOp: MHLO_UnaryElementwiseOp<"cbrt",
   }];
 }
 def MHLO_CeilOp: MHLO_UnaryElementwiseOp<"ceil",
-    [Pure, HLO_CompatibleOperandsAndResultType], MHLO_FpTensor> {
+    [ HLO_CompatibleOperandsAndResultType], MHLO_FpTensor> {
   let summary = "Ceil operation";
   let description = [{
     Performs element-wise ceil of `operand` tensor and produces a `result` tensor.
@@ -245,7 +245,7 @@ def MHLO_CeilOp: MHLO_UnaryElementwiseOp<"ceil",
   }];
 }
 def MHLO_ConvertOp : MHLO_UnaryElementwiseOp<"convert",
-    [Pure, SameOperandsAndResultShape], MHLO_Tensor> {
+    [ SameOperandsAndResultShape], MHLO_Tensor> {
   let summary = "Convert operation";
   let description = [{
     Performs an element-wise conversion from one element type to another on
@@ -270,7 +270,7 @@ def MHLO_ConvertOp : MHLO_UnaryElementwiseOp<"convert",
 }
 
 def MHLO_ClzOp: MHLO_UnaryElementwiseOp<"count_leading_zeros",
-    [Pure, HLO_CompatibleOperandsAndResultType], MHLO_IntTensor> {
+    [ HLO_CompatibleOperandsAndResultType], MHLO_IntTensor> {
   let summary = "Clz operation";
   let description = [{
     Performs element-wise count of the number of leading zero bits in the
@@ -287,7 +287,7 @@ def MHLO_ClzOp: MHLO_UnaryElementwiseOp<"count_leading_zeros",
 }
 
 def MHLO_CosineOp: MHLO_UnaryElementwiseOp<"cosine",
-    [Pure, HLO_CompatibleOperandsAndResultType], MHLO_FpComplexOrQuantizedIntTensor> {
+    [ HLO_CompatibleOperandsAndResultType], MHLO_FpComplexOrQuantizedIntTensor> {
   let summary = "Cosine operation";
   let description = [{
     Performs element-wise cosine operation on `operand` tensor and produces a
@@ -307,7 +307,7 @@ def MHLO_CosineOp: MHLO_UnaryElementwiseOp<"cosine",
 }
 
 def MHLO_ErfOp: MHLO_UnaryElementwiseOp<"erf",
-    [Pure, HLO_CompatibleOperandsAndResultType], MHLO_FpTensor> {
+    [ HLO_CompatibleOperandsAndResultType], MHLO_FpTensor> {
   let summary = "Erf operation";
   let description = [{
     Performs element-wise erf operation on `operand` tensor and produces a
@@ -324,7 +324,7 @@ def MHLO_ErfOp: MHLO_UnaryElementwiseOp<"erf",
   let hasFolder = 1;
 }
 def MHLO_ExpOp: MHLO_UnaryElementwiseOp<"exponential",
-    [Pure, HLO_CompatibleOperandsAndResultType], MHLO_FpComplexOrQuantizedIntTensor> {
+    [ HLO_CompatibleOperandsAndResultType], MHLO_FpComplexOrQuantizedIntTensor> {
   let summary = "Exp operation";
   let description = [{
     Performs element-wise exponential operation on `operand` tensor and produces
@@ -341,7 +341,7 @@ def MHLO_ExpOp: MHLO_UnaryElementwiseOp<"exponential",
   let hasFolder = 1;
 }
 def MHLO_Expm1Op: MHLO_UnaryElementwiseOp<"exponential_minus_one",
-    [Pure, HLO_CompatibleOperandsAndResultType], MHLO_FpComplexOrQuantizedIntTensor> {
+    [ HLO_CompatibleOperandsAndResultType], MHLO_FpComplexOrQuantizedIntTensor> {
   let summary = "Expm1 operation";
   let description = [{
     Performs element-wise exponential minus one operation on `operand` tensor
@@ -357,7 +357,7 @@ def MHLO_Expm1Op: MHLO_UnaryElementwiseOp<"exponential_minus_one",
   }];
 }
 def MHLO_FloorOp: MHLO_UnaryElementwiseOp<"floor",
-    [Pure, HLO_CompatibleOperandsAndResultType], MHLO_FpTensor> {
+    [ HLO_CompatibleOperandsAndResultType], MHLO_FpTensor> {
   let summary = "Floor operation";
   let description = [{
     Performs element-wise floor of `operand` tensor and produces a `result`
@@ -373,7 +373,7 @@ def MHLO_FloorOp: MHLO_UnaryElementwiseOp<"floor",
   }];
 }
 def MHLO_ImagOp: MHLO_UnaryElementwiseOp<"imag",
-    [Pure, DeclareOpInterfaceMethods<InferTypeOpInterface>],
+    [ DeclareOpInterfaceMethods<InferTypeOpInterface>],
     MHLO_FpOrComplexTensor, MHLO_FpTensor> {
   let summary = "Imag operation";
   let description = [{
@@ -393,7 +393,7 @@ def MHLO_ImagOp: MHLO_UnaryElementwiseOp<"imag",
 
 }
 
-def MHLO_IsFiniteOp: MHLO_UnaryElementwiseOp<"is_finite", [Pure,
+def MHLO_IsFiniteOp: MHLO_UnaryElementwiseOp<"is_finite", [
     DeclareOpInterfaceMethods<InferTypeOpInterface>], MHLO_Tensor> {
   let summary = "IsFinite operation";
   let description = [{
@@ -417,7 +417,7 @@ def MHLO_IsFiniteOp: MHLO_UnaryElementwiseOp<"is_finite", [Pure,
 }
 
 def MHLO_LogOp: MHLO_UnaryElementwiseOp<"log",
-    [Pure, HLO_CompatibleOperandsAndResultType], MHLO_FpComplexOrQuantizedIntTensor> {
+    [ HLO_CompatibleOperandsAndResultType], MHLO_FpComplexOrQuantizedIntTensor> {
   let summary = "Log operation";
   let description = [{
     Performs element-wise logarithm operation on `operand` tensor and produces a
@@ -434,7 +434,7 @@ def MHLO_LogOp: MHLO_UnaryElementwiseOp<"log",
   let hasFolder = 1;
 }
 def MHLO_Log1pOp: MHLO_UnaryElementwiseOp<"log_plus_one",
-    [Pure, HLO_CompatibleOperandsAndResultType], MHLO_FpComplexOrQuantizedIntTensor> {
+    [ HLO_CompatibleOperandsAndResultType], MHLO_FpComplexOrQuantizedIntTensor> {
   let summary = "Log1p operation";
   let description = [{
     Performs element-wise logarithm plus one operation on `operand` tensor and
@@ -450,7 +450,7 @@ def MHLO_Log1pOp: MHLO_UnaryElementwiseOp<"log_plus_one",
   }];
 }
 def MHLO_LogisticOp: MHLO_UnaryElementwiseOp<"logistic",
-    [Pure, HLO_CompatibleOperandsAndResultType], MHLO_FpComplexOrQuantizedIntTensor> {
+    [ HLO_CompatibleOperandsAndResultType], MHLO_FpComplexOrQuantizedIntTensor> {
   let summary = "Logistic operation";
   let description = [{
     Performs element-wise logistic operation on `operand` tensor and produces a
@@ -467,7 +467,7 @@ def MHLO_LogisticOp: MHLO_UnaryElementwiseOp<"logistic",
   let hasFolder = 1;
 }
 def MHLO_NotOp: MHLO_UnaryElementwiseOp<"not",
-    [Pure, HLO_CompatibleOperandsAndResultType], MHLO_PredOrIntTensor> {
+    [ HLO_CompatibleOperandsAndResultType], MHLO_PredOrIntTensor> {
   let summary = "Not operation";
   let description = [{
     Performs element-wise NOT of tensor `operand` of type integer and produces
@@ -485,7 +485,7 @@ def MHLO_NotOp: MHLO_UnaryElementwiseOp<"not",
 }
 
 def MHLO_NegOp: MHLO_UnaryElementwiseOp<"negate",
-    [Pure, HLO_CompatibleOperandsAndResultType], MHLO_IntFpOrComplexOrQuantizedIntTensor> {
+    [ HLO_CompatibleOperandsAndResultType], MHLO_IntFpOrComplexOrQuantizedIntTensor> {
   let summary = "Neg operation";
   let description = [{
     Performs element-wise negation of `operand` tensor and produces a `result`
@@ -503,7 +503,7 @@ def MHLO_NegOp: MHLO_UnaryElementwiseOp<"negate",
 }
 
 def MHLO_PopulationCountOp: MHLO_UnaryElementwiseOp<"popcnt",
-    [Pure, HLO_CompatibleOperandsAndResultType], MHLO_IntTensor> {
+    [ HLO_CompatibleOperandsAndResultType], MHLO_IntTensor> {
   let summary = "PopulationCount operation";
   let description = [{
     Performs element-wise count of the number of bits set in the `operand`
@@ -519,7 +519,7 @@ def MHLO_PopulationCountOp: MHLO_UnaryElementwiseOp<"popcnt",
   }];
 }
 def MHLO_RealOp: MHLO_UnaryElementwiseOp<"real",
-    [Pure, DeclareOpInterfaceMethods<InferTypeOpInterface>],
+    [ DeclareOpInterfaceMethods<InferTypeOpInterface>],
     MHLO_FpOrComplexTensor, MHLO_FpTensor> {
   let summary = "Real operation";
   let description = [{
@@ -538,7 +538,7 @@ def MHLO_RealOp: MHLO_UnaryElementwiseOp<"real",
 }
 
 def MHLO_RoundOp: MHLO_UnaryElementwiseOp<"round_nearest_afz",
-    [Pure, HLO_CompatibleOperandsAndResultType], MHLO_FpTensor> {
+    [ HLO_CompatibleOperandsAndResultType], MHLO_FpTensor> {
   let summary = "Round operation";
   let description = [{
     Performs element-wise rounding towards the nearest integer, breaking ties
@@ -556,7 +556,7 @@ def MHLO_RoundOp: MHLO_UnaryElementwiseOp<"round_nearest_afz",
 }
 
 def MHLO_RoundNearestEvenOp: MHLO_UnaryElementwiseOp<"round_nearest_even",
-    [Pure, HLO_CompatibleOperandsAndResultType], MHLO_FpTensor> {
+    [ HLO_CompatibleOperandsAndResultType], MHLO_FpTensor> {
   let summary = "RoundNearestEven operation";
   let description = [{
     Performs element-wise rounding towards the nearest integer, breaking ties
@@ -575,7 +575,7 @@ def MHLO_RoundNearestEvenOp: MHLO_UnaryElementwiseOp<"round_nearest_even",
 }
 
 def MHLO_RsqrtOp: MHLO_UnaryElementwiseOp<"rsqrt",
-    [Pure, HLO_CompatibleOperandsAndResultType], MHLO_FpComplexOrQuantizedIntTensor> {
+    [ HLO_CompatibleOperandsAndResultType], MHLO_FpComplexOrQuantizedIntTensor> {
   let summary = "Rsqrt operation";
   let description = [{
     Performs element-wise reciprocal square root operation on `operand` tensor
@@ -594,7 +594,7 @@ def MHLO_RsqrtOp: MHLO_UnaryElementwiseOp<"rsqrt",
 }
 
 def MHLO_SignOp: MHLO_UnaryElementwiseOp<"sign",
-    [Pure, HLO_CompatibleOperandsAndResultType],
+    [ HLO_CompatibleOperandsAndResultType],
     RankedTensorOf<[MHLO_SInt, MHLO_Float, MHLO_Complex, HLO_QuantizedInt]>> {
   let summary = "Sign operation";
   let description = [{
@@ -613,7 +613,7 @@ def MHLO_SignOp: MHLO_UnaryElementwiseOp<"sign",
 }
 
 def MHLO_SineOp: MHLO_UnaryElementwiseOp<"sine",
-    [Pure, HLO_CompatibleOperandsAndResultType], MHLO_FpComplexOrQuantizedIntTensor> {
+    [ HLO_CompatibleOperandsAndResultType], MHLO_FpComplexOrQuantizedIntTensor> {
   let summary = "Sine operation";
   let description = [{
     Performs element-wise sine operation on `operand` tensor and produces a
@@ -632,7 +632,7 @@ def MHLO_SineOp: MHLO_UnaryElementwiseOp<"sine",
 }
 
 def MHLO_TanOp: MHLO_UnaryElementwiseOp<"tan",
-    [Pure, HLO_CompatibleOperandsAndResultType], MHLO_FpOrComplexTensor> {
+    [ HLO_CompatibleOperandsAndResultType], MHLO_FpOrComplexTensor> {
   let summary = "Tan operation";
   let description = [{
     This operation is a work in progress, so it is not yet included in
@@ -650,7 +650,7 @@ def MHLO_TanOp: MHLO_UnaryElementwiseOp<"tan",
 }
 
 def MHLO_SqrtOp: MHLO_UnaryElementwiseOp<"sqrt",
-    [Pure, HLO_CompatibleOperandsAndResultType], MHLO_FpComplexOrQuantizedIntTensor> {
+    [ HLO_CompatibleOperandsAndResultType], MHLO_FpComplexOrQuantizedIntTensor> {
   let summary = "Sqrt operation";
   let description = [{
     Performs element-wise square root operation on `operand` tensor and produces
@@ -668,7 +668,7 @@ def MHLO_SqrtOp: MHLO_UnaryElementwiseOp<"sqrt",
 }
 
 def MHLO_TanhOp: MHLO_UnaryElementwiseOp<"tanh",
-    [Pure, HLO_CompatibleOperandsAndResultType],
+    [ HLO_CompatibleOperandsAndResultType],
     MHLO_FpComplexOrQuantizedIntTensor> {
   let summary = "Tanh operation";
   let description = [{
@@ -721,7 +721,7 @@ class MHLO_BinaryElementwiseOp<string mnemonic, list<Trait> traits,
 }
 
 def MHLO_AddOp : MHLO_BinaryElementwiseOp<"add",
-      [Commutative, Pure, HLO_CompatibleOperandsAndResultType]> {
+      [Commutative,  HLO_CompatibleOperandsAndResultType]> {
   let summary = "Add operation";
   let description = [{
     Performs element-wise addition of two tensors `lhs` and `rhs` and produces a
@@ -739,7 +739,7 @@ def MHLO_AddOp : MHLO_BinaryElementwiseOp<"add",
 }
 
 def MHLO_Atan2Op : MHLO_BinaryElementwiseOp<"atan2",
-      [Pure, HLO_CompatibleOperandsAndResultType], MHLO_FpComplexOrQuantizedIntTensor> {
+      [ HLO_CompatibleOperandsAndResultType], MHLO_FpComplexOrQuantizedIntTensor> {
   let summary = "Atan2 operation";
   let description = [{
     Performs element-wise atan2 operation on `lhs` and `rhs` tensor and produces
@@ -755,7 +755,7 @@ def MHLO_Atan2Op : MHLO_BinaryElementwiseOp<"atan2",
   }];
 }
 
-def MHLO_ComplexOp: MHLO_BinaryElementwiseOp<"complex", [Pure,
+def MHLO_ComplexOp: MHLO_BinaryElementwiseOp<"complex", [
     SameOperandsElementType, SameOperandsAndResultShape,
     DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "Complex operation";
@@ -784,7 +784,7 @@ def MHLO_ComplexOp: MHLO_BinaryElementwiseOp<"complex", [Pure,
 }
 
 def MHLO_DivOp : MHLO_BinaryElementwiseOp<"divide",
-      [Pure, HLO_CompatibleOperandsAndResultType], MHLO_IntFpOrComplexOrQuantizedIntTensor> {
+      [ HLO_CompatibleOperandsAndResultType], MHLO_IntFpOrComplexOrQuantizedIntTensor> {
   let summary = "Div operation";
   let description = [{
     Performs element-wise division of dividend `lhs` and divisor `rhs` tensors
@@ -802,7 +802,7 @@ def MHLO_DivOp : MHLO_BinaryElementwiseOp<"divide",
 }
 
 def MHLO_MaxOp : MHLO_BinaryElementwiseOp<"maximum",
-      [Commutative, Pure, HLO_CompatibleOperandsAndResultType]> {
+      [Commutative,  HLO_CompatibleOperandsAndResultType]> {
   let summary = "Max operation";
   let description = [{
     Performs element-wise max operation on tensors `lhs` and `rhs` and produces
@@ -820,7 +820,7 @@ def MHLO_MaxOp : MHLO_BinaryElementwiseOp<"maximum",
 }
 
 def MHLO_MinOp : MHLO_BinaryElementwiseOp<"minimum",
-      [Commutative, Pure, HLO_CompatibleOperandsAndResultType]> {
+      [Commutative,  HLO_CompatibleOperandsAndResultType]> {
   let summary = "Min operation";
   let description = [{
     Performs element-wise min operation on tensors `lhs` and `rhs` and produces a
@@ -838,7 +838,7 @@ def MHLO_MinOp : MHLO_BinaryElementwiseOp<"minimum",
 }
 
 def MHLO_MulOp : MHLO_BinaryElementwiseOp<"multiply",
-      [Commutative, Pure, HLO_CompatibleOperandsAndResultType]> {
+      [Commutative,  HLO_CompatibleOperandsAndResultType]> {
   let summary = "Mul operation";
   let description = [{
     Performs element-wise product of two tensors `lhs` and `rhs` and produces a
@@ -856,7 +856,7 @@ def MHLO_MulOp : MHLO_BinaryElementwiseOp<"multiply",
 }
 
 def MHLO_PowOp : MHLO_BinaryElementwiseOp<"power",
-      [Pure, HLO_CompatibleOperandsAndResultType], MHLO_IntFpOrComplexOrQuantizedIntTensor> {
+      [ HLO_CompatibleOperandsAndResultType], MHLO_IntFpOrComplexOrQuantizedIntTensor> {
   let summary = "Pow operation";
   let description = [{
     Performs element-wise exponentiation of `lhs` tensor by `rhs` tensor and
@@ -872,7 +872,7 @@ def MHLO_PowOp : MHLO_BinaryElementwiseOp<"power",
   }];
 }
 def MHLO_RemOp : MHLO_BinaryElementwiseOp<"remainder",
-      [Pure, HLO_CompatibleOperandsAndResultType], MHLO_IntFpOrComplexOrQuantizedIntTensor> {
+      [ HLO_CompatibleOperandsAndResultType], MHLO_IntFpOrComplexOrQuantizedIntTensor> {
   let summary = "Rem operation";
   let description = [{
     Performs element-wise remainder of dividend `lhs` and divisor `rhs` tensors
@@ -890,7 +890,7 @@ def MHLO_RemOp : MHLO_BinaryElementwiseOp<"remainder",
 }
 
 def MHLO_ShiftLeftOp : MHLO_BinaryElementwiseOp<"shift_left",
-      [Pure, HLO_CompatibleOperandsAndResultType], MHLO_IntTensor> {
+      [ HLO_CompatibleOperandsAndResultType], MHLO_IntTensor> {
   let summary = "ShiftLeft operation";
   let description = [{
     Performs element-wise left-shift operation on the `lhs` tensor by `rhs`
@@ -907,7 +907,7 @@ def MHLO_ShiftLeftOp : MHLO_BinaryElementwiseOp<"shift_left",
 }
 
 def MHLO_ShiftRightArithmeticOp : MHLO_BinaryElementwiseOp<"shift_right_arithmetic",
-      [Pure, HLO_CompatibleOperandsAndResultType], MHLO_IntTensor> {
+      [ HLO_CompatibleOperandsAndResultType], MHLO_IntTensor> {
   let summary = "ShiftRightArithmetic operation";
   let description = [{
     Performs element-wise arithmetic right-shift operation on the `lhs` tensor
@@ -924,7 +924,7 @@ def MHLO_ShiftRightArithmeticOp : MHLO_BinaryElementwiseOp<"shift_right_arithmet
 }
 
 def MHLO_ShiftRightLogicalOp : MHLO_BinaryElementwiseOp<"shift_right_logical",
-      [Pure, HLO_CompatibleOperandsAndResultType], MHLO_IntTensor> {
+      [ HLO_CompatibleOperandsAndResultType], MHLO_IntTensor> {
   let summary = "ShiftRightLogical operation";
   let description = [{
     Performs element-wise logical right-shift operation on the `lhs` tensor by
@@ -941,7 +941,7 @@ def MHLO_ShiftRightLogicalOp : MHLO_BinaryElementwiseOp<"shift_right_logical",
 }
 
 def MHLO_SubtractOp : MHLO_BinaryElementwiseOp<"subtract",
-      [Pure, HLO_CompatibleOperandsAndResultType], MHLO_IntFpOrComplexOrQuantizedIntTensor> {
+      [ HLO_CompatibleOperandsAndResultType], MHLO_IntFpOrComplexOrQuantizedIntTensor> {
   let summary = "Subtract operation";
   let description = [{
     Performs element-wise subtraction of two tensors `lhs` and `rhs` and
@@ -960,7 +960,7 @@ def MHLO_SubtractOp : MHLO_BinaryElementwiseOp<"subtract",
 }
 
 def MHLO_StochasticConvertOp : MHLO_Op<"stochastic_convert",
-      [Pure, Elementwise, AllShapesMatch<["operand", "random", "result"]>]> {
+      [ Elementwise, AllShapesMatch<["operand", "random", "result"]>]> {
   let summary = "StochasticConvert operation";
   let description = [{
     This operation is a work in progress, so it is not yet included in
@@ -984,7 +984,7 @@ def MHLO_StochasticConvertOp : MHLO_Op<"stochastic_convert",
 // See https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations
 class MHLO_BinaryBiwiseOrLogicalElementwiseOp<string mnemonic> :
         MHLO_BinaryElementwiseOp<mnemonic,
-          [Commutative, Pure, HLO_CompatibleOperandsAndResultType]> {
+          [Commutative,  HLO_CompatibleOperandsAndResultType]> {
   let arguments = (ins
     MHLO_PredOrIntTensor:$lhs,
     MHLO_PredOrIntTensor:$rhs
@@ -1166,7 +1166,7 @@ def MHLO_RecvOp : MHLO_Op<"recv", []> {
 // MHLO parallelism related op definitions.
 //===----------------------------------------------------------------------===//
 
-def MHLO_ReplicaIdOp : MHLO_Op<"replica_id", [Pure,
+def MHLO_ReplicaIdOp : MHLO_Op<"replica_id", [
     DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "ReplicaId operation";
   let description = [{
@@ -1189,7 +1189,7 @@ def MHLO_ReplicaIdOp : MHLO_Op<"replica_id", [Pure,
 // MHLO control flow op definitions.
 //===----------------------------------------------------------------------===//
 
-def MHLO_AddDependencyOp : MHLO_Op<"add_dependency", [Pure,
+def MHLO_AddDependencyOp : MHLO_Op<"add_dependency", [
     DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "AddDependency operation";
   let description = [{
@@ -1215,7 +1215,7 @@ def MHLO_AddDependencyOp : MHLO_Op<"add_dependency", [Pure,
 }
 
 
-def MHLO_AfterAllOp : MHLO_Op<"after_all", [Pure,
+def MHLO_AfterAllOp : MHLO_Op<"after_all", [
     DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "AfterAll operation";
   let description = [{
@@ -1611,7 +1611,7 @@ def MHLO_ReduceScatterOp : MHLO_Op<"reduce_scatter", []> {
 }
 
 def MHLO_AllToAllOp : MHLO_Op<"all_to_all",
-    [Pure, SameOperandsElementType, SameOperandsShape, SameVariadicOperandSize,
+    [ SameOperandsElementType, SameOperandsShape, SameVariadicOperandSize,
      InferTensorType]> {
   let summary = "AllToAll operation";
   let description = [{
@@ -1720,7 +1720,7 @@ def MHLO_ReduceOp: MHLO_ShapedInterfaceOp<"reduce", [
 //===----------------------------------------------------------------------===//
 // MHLO tuple op definitions.
 //===----------------------------------------------------------------------===//
-def MHLO_GetTupleElementOp: MHLO_Op<"get_tuple_element", [Pure,
+def MHLO_GetTupleElementOp: MHLO_Op<"get_tuple_element", [
      DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "GetTupleElement operation";
   let description = [{
@@ -1749,7 +1749,7 @@ def MHLO_GetTupleElementOp: MHLO_Op<"get_tuple_element", [Pure,
   }];
 }
 
-def MHLO_TupleOp : MHLO_Op<"tuple", [Pure,
+def MHLO_TupleOp : MHLO_Op<"tuple", [
      DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "Tuple operation";
   let description = [{
@@ -1773,7 +1773,7 @@ def MHLO_TupleOp : MHLO_Op<"tuple", [Pure,
   }];
 }
 
-def MHLO_CompareOp: MHLO_Op<"compare", [Pure, SameOperandsElementType,
+def MHLO_CompareOp: MHLO_Op<"compare", [ SameOperandsElementType,
     SameOperandsAndResultShape, Elementwise, InferTensorTypeWithReify]> {
   let summary = "Compare operation";
   let description = [{
@@ -1819,7 +1819,7 @@ def MHLO_CompareOp: MHLO_Op<"compare", [Pure, SameOperandsElementType,
 
 def MHLO_SliceOp: MHLO_Op<
       "slice",
-      [Pure, SameOperandsAndResultElementType,
+      [ SameOperandsAndResultElementType,
        AllTypesMatch<["start_indices", "limit_indices", "strides"]>,
        DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "Slice operation";
@@ -1853,7 +1853,7 @@ def MHLO_SliceOp: MHLO_Op<
 }
 
 def MHLO_DynamicSliceOp: MHLO_Op<"dynamic_slice",
-      [Pure, AllElementTypesMatch<["operand", "result"]>,
+      [ AllElementTypesMatch<["operand", "result"]>,
        InferTensorType]> {
   let summary = "DynamicSlice operation";
   let description = [{
@@ -1880,7 +1880,7 @@ def MHLO_DynamicSliceOp: MHLO_Op<"dynamic_slice",
 }
 
 def MHLO_DynamicUpdateSliceOp: MHLO_Op<"dynamic_update_slice",
-      [Pure, AllElementTypesMatch<["operand", "update", "result"]>,
+      [ AllElementTypesMatch<["operand", "update", "result"]>,
        InferTensorType]> {
   let summary = "DynamicUpdateSlice operation";
   let description = [{
@@ -1913,7 +1913,7 @@ def MHLO_DynamicUpdateSliceOp: MHLO_Op<"dynamic_update_slice",
 // MHLO Other op definitions.
 //===----------------------------------------------------------------------===//
 
-def MHLO_DomainOp : MHLO_Op<"domain", [HLO_CompatibleOperandsAndResultType, InferTypeOpInterface, Pure]> {
+def MHLO_DomainOp : MHLO_Op<"domain", [HLO_CompatibleOperandsAndResultType, InferTypeOpInterface, ]> {
   let summary = "Domain operation";
   let description = [{
     This operation is private to the XLA compiler, so it is does not yet have
@@ -1941,7 +1941,7 @@ def MHLO_DomainOp : MHLO_Op<"domain", [HLO_CompatibleOperandsAndResultType, Infe
   let hasCustomHLOConverter = 1;
 }
 
-def MHLO_BatchNormGradOp : MHLO_Op<"batch_norm_grad", [Pure,
+def MHLO_BatchNormGradOp : MHLO_Op<"batch_norm_grad", [
     AllElementTypesMatch<["operand", "grad_operand", "grad_scale", "grad_offset"]>,
     InferTensorType]> {
   let summary = "BatchNormGrad operation";
@@ -1983,7 +1983,7 @@ def MHLO_BatchNormGradOp : MHLO_Op<"batch_norm_grad", [Pure,
 }
 
 def MHLO_BatchNormInferenceOp : MHLO_Op<"batch_norm_inference",
-    [Pure, AllElementTypesMatch<["operand", "result"]>, InferTensorType]> {
+    [ AllElementTypesMatch<["operand", "result"]>, InferTensorType]> {
   let summary = "BatchNormInference operation";
   let description = [{
     Normalizes the `operand` tensor across all dimensions except for the
@@ -2015,7 +2015,7 @@ def MHLO_BatchNormInferenceOp : MHLO_Op<"batch_norm_inference",
 }
 
 def MHLO_BatchNormTrainingOp : MHLO_Op<"batch_norm_training",
-    [Pure, AllElementTypesMatch<["operand", "output", "batch_mean", "batch_var"]>,
+    [ AllElementTypesMatch<["operand", "output", "batch_mean", "batch_var"]>,
     InferTensorType]> {
   let summary = "BatchNormTraining operation";
   let description = [{
@@ -2052,7 +2052,7 @@ def MHLO_BatchNormTrainingOp : MHLO_Op<"batch_norm_training",
 }
 
 def MHLO_BitcastConvertOp : MHLO_ShapedInterfaceOp<"bitcast_convert",
-    [Pure]> {
+    []> {
   let summary = "BitcastConvert operation";
   let description = [{
     Performs a bitcast operation on `operand` tensor and produces a `result`
@@ -2077,7 +2077,7 @@ def MHLO_BitcastConvertOp : MHLO_ShapedInterfaceOp<"bitcast_convert",
 }
 
 def MHLO_BroadcastOp : MHLO_ShapedInterfaceOp<"broadcast",
-    [Pure, SameOperandsAndResultElementType, InferTensorType]> {
+    [ SameOperandsAndResultElementType, InferTensorType]> {
   let summary = "Broadcast operation";
   let description = [{
     This operation is on its way out of StableHLO, so it is not included in
@@ -2102,7 +2102,7 @@ def MHLO_BroadcastOp : MHLO_ShapedInterfaceOp<"broadcast",
 }
 
 def MHLO_BroadcastInDimOp : MHLO_Op<"broadcast_in_dim",
-      [Pure, HLO_CompatibleOperandsAndResultElementType]> {
+      [ HLO_CompatibleOperandsAndResultElementType]> {
   let summary = "BroadcastInDim operation";
   let description = [{
     Expands the dimensions and/or rank of an input tensor by duplicating the
@@ -2131,7 +2131,7 @@ def MHLO_BroadcastInDimOp : MHLO_Op<"broadcast_in_dim",
 }
 
 def MHLO_DynamicBroadcastInDimOp : MHLO_ShapedInterfaceOp<
-    "dynamic_broadcast_in_dim", [Pure]> {
+    "dynamic_broadcast_in_dim", []> {
   let summary = "DynamicBroadcastInDim operation";
   let description = [{
     This operation is a work in progress, so it is not yet included in
@@ -2178,7 +2178,7 @@ def MHLO_DynamicBroadcastInDimOp : MHLO_ShapedInterfaceOp<
 // directly.
 
 def MHLO_CholeskyOp : MHLO_Op<"cholesky",
-      [Pure, SameOperandsAndResultElementType, InferTensorType]> {
+      [ SameOperandsAndResultElementType, InferTensorType]> {
   let summary = "Cholesky operation";
   let description = [{
     Computes the Cholesky decomposition of a batch of matrices.
@@ -2199,7 +2199,7 @@ def MHLO_CholeskyOp : MHLO_Op<"cholesky",
   let results = (outs MHLO_FpOrComplexTensor);
 }
 
-def MHLO_ClampOp : MHLO_ShapedInterfaceOp<"clamp", [Pure,
+def MHLO_ClampOp : MHLO_ShapedInterfaceOp<"clamp", [
   SameOperandsAndResultElementType, HLO_BroadcastingElementwise,
   InferTensorType]> {
   let summary = "Clamp operation";
@@ -2232,7 +2232,7 @@ def MHLO_ClampOp : MHLO_ShapedInterfaceOp<"clamp", [Pure,
 }
 
 def MHLO_ConcatenateOp : MHLO_ShapedInterfaceOp<"concatenate",
-    [Pure, SameOperandsAndResultElementType,
+    [ SameOperandsAndResultElementType,
      DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "Concatenate operation";
   let description = [{
@@ -2297,7 +2297,7 @@ def MHLO_CollectiveBroadcastOp: MHLO_Op<"collective_broadcast",
 }
 
 def MHLO_CollectivePermuteOp: MHLO_Op<"collective_permute",
-    [Pure, HLO_CompatibleOperandsAndResultType]> {
+    [ HLO_CompatibleOperandsAndResultType]> {
   let summary = "CollectivePermute operation";
   let description = [{
     Within each process group in the process grid, sends the value of the
@@ -2370,7 +2370,7 @@ def MHLO_CompositeOp : MHLO_Op<"composite", [DeclareOpInterfaceMethods<SymbolUse
   let assemblyFormat = "$name $inputs attr-dict `:` functional-type(operands, results)";
 }
 
-def MHLO_ConvolutionOp : MHLO_Op<"convolution", [Pure]> {
+def MHLO_ConvolutionOp : MHLO_Op<"convolution", []> {
   let summary = "Convolution operation";
   let description = [{
     Computes dot products between windows of `lhs` and slices of `rhs` and
@@ -2424,7 +2424,7 @@ def MHLO_ConvolutionOp : MHLO_Op<"convolution", [Pure]> {
 }
 
 def MHLO_CopyOp: MHLO_Op<"copy",
-      [Pure, Elementwise, HLO_CompatibleOperandsAndResultType]> {
+      [ Elementwise, HLO_CompatibleOperandsAndResultType]> {
   let summary = "Copy operation";
   let description = [{
     This operation is private to the XLA compiler, so it is does not yet have
@@ -2453,7 +2453,7 @@ def MHLO_CopyOp: MHLO_Op<"copy",
 }
 
 def MHLO_CrossReplicaSumOp : MHLO_Op<"cross-replica-sum",
-    [Pure, HLO_CompatibleOperandsAndResultType]> {
+    [ HLO_CompatibleOperandsAndResultType]> {
   let summary = "CrossReplicaSum operation";
   let description = [{
     This operation is on its way out of StableHLO, so it is not included in
@@ -2570,7 +2570,7 @@ def MHLO_CustomCallOp: MHLO_Op<"custom_call",
   }];
 }
 
-def MHLO_DotOp: MHLO_Op<"dot", [Pure]> {
+def MHLO_DotOp: MHLO_Op<"dot", []> {
   let summary = "Dot operation";
   let description = [{
     This operation is on its way out of StableHLO, so it is not included in
@@ -2596,7 +2596,7 @@ def MHLO_DotOp: MHLO_Op<"dot", [Pure]> {
   let hasVerifier = 1;
 }
 
-def MHLO_DotGeneralOp: MHLO_ShapedInterfaceOp<"dot_general", [Pure]> {
+def MHLO_DotGeneralOp: MHLO_ShapedInterfaceOp<"dot_general", []> {
   let summary = "DotGeneral operation";
   let description = [{
     Computes dot products between slices of `lhs` and slices of `rhs` and
@@ -2632,7 +2632,7 @@ def MHLO_DotGeneralOp: MHLO_ShapedInterfaceOp<"dot_general", [Pure]> {
   let hasVerifier = 1;
 }
 
-def MHLO_SparseDotOp: MHLO_Op<"sparse_dot", [Pure]> {
+def MHLO_SparseDotOp: MHLO_Op<"sparse_dot", []> {
   let summary = "Sparse dot operation";
   let description = [{
     Similar to `dot_general` operation, with one or both of the operands being
@@ -2655,7 +2655,7 @@ def MHLO_SparseDotOp: MHLO_Op<"sparse_dot", [Pure]> {
   let hasVerifier = 1;
 }
 
-def MHLO_EinsumOp: MHLO_Op<"einsum", [Pure]> {
+def MHLO_EinsumOp: MHLO_Op<"einsum", []> {
   let summary = "Einsum operation";
   let description = [{
     This operation is on its way out of StableHLO, so it is not included in
@@ -2684,7 +2684,7 @@ def MHLO_EinsumOp: MHLO_Op<"einsum", [Pure]> {
   // side HLO ops.
 }
 
-def MHLO_UnaryEinsumOp: MHLO_Op<"unary_einsum", [Pure]> {
+def MHLO_UnaryEinsumOp: MHLO_Op<"unary_einsum", []> {
   let summary = "UnaryEinsum operation";
   let description = [{
     This operation is on its way out of StableHLO, so it is not included in
@@ -2715,7 +2715,7 @@ def MHLO_UnaryEinsumOp: MHLO_Op<"unary_einsum", [Pure]> {
   let hasCustomHLOConverter = 1;
 }
 
-def MHLO_FftOp: MHLO_Op<"fft", [InferTensorType, Pure]> {
+def MHLO_FftOp: MHLO_Op<"fft", [InferTensorType, ]> {
   let summary = "Fft operation";
   let description = [{
     Performs the forward and inverse Fourier transforms for real and complex
@@ -2738,7 +2738,7 @@ def MHLO_FftOp: MHLO_Op<"fft", [InferTensorType, Pure]> {
   let results = (outs MHLO_Tensor);
 }
 
-def MHLO_GatherOp: MHLO_Op<"gather", [InferTensorTypeWithReify, Pure]> {
+def MHLO_GatherOp: MHLO_Op<"gather", [InferTensorTypeWithReify, ]> {
   let summary = "Gather operation";
   let description = [{
     Gathers slices from `operand` tensor from offsets specified in
@@ -2775,7 +2775,7 @@ def MHLO_GatherOp: MHLO_Op<"gather", [InferTensorTypeWithReify, Pure]> {
 }
 
 def MHLO_GetDimensionSizeOp: MHLO_Op<"get_dimension_size",
-      [Pure, InferTensorType]> {
+      [ InferTensorType]> {
   let summary = "GetDimensionSize operation";
   let description = [{
     Produces the size of the given `dimension` of the `operand`.
@@ -2833,7 +2833,7 @@ def MHLO_MapOp: MHLO_ShapedInterfaceOp<"map",
 }
 
 def MHLO_ReshapeOp: MHLO_Op<"reshape",
-      [Pure, HLO_CompatibleOperandsAndResultElementType]> {
+      [ HLO_CompatibleOperandsAndResultElementType]> {
   let summary = "Reshape operation";
   let description = [{
     Performs reshape of `operand` tensor to a `result` tensor.
@@ -2859,7 +2859,7 @@ def MHLO_ReshapeOp: MHLO_Op<"reshape",
   let assemblyFormat = "operands attr-dict `:` functional-type(operands, results)";
 }
 
-def MHLO_DynamicReshapeOp: MHLO_ShapedInterfaceOp<"dynamic_reshape", [Pure]> {
+def MHLO_DynamicReshapeOp: MHLO_ShapedInterfaceOp<"dynamic_reshape", []> {
   let summary = "DynamicReshape operation";
   let description = [{
     This operation is a work in progress, so it is not yet included in
@@ -2935,7 +2935,7 @@ def MHLO_ScatterOp: MHLO_Op<"scatter",
   let hasCanonicalizer = 1;
 }
 
-def MHLO_SelectOp: MHLO_Op<"select", [Pure, HLO_BroadcastingElementwise,
+def MHLO_SelectOp: MHLO_Op<"select", [ HLO_BroadcastingElementwise,
     InferTensorTypeWithReify]> {
   let summary = "Select operation";
   let description = [{
@@ -3014,7 +3014,7 @@ def MHLO_SelectAndScatterOp: MHLO_Op<"select_and_scatter",
   let hasCustomHLOConverter = 1;
 }
 
-def MHLO_SetDimensionSizeOp: MHLO_Op<"set_dimension_size", [Pure,
+def MHLO_SetDimensionSizeOp: MHLO_Op<"set_dimension_size", [
       InferTensorType]> {
   let summary = "SetDimensionSize operation";
   let description = [{
@@ -3120,7 +3120,7 @@ def MHLO_TopKOp : MHLO_Op<"topk", [RecursiveMemoryEffects, InferTensorType]> {
 }
 
 def MHLO_ReverseOp: MHLO_Op<"reverse",
-      [Pure, HLO_CompatibleOperandsAndResultType]> {
+      [ HLO_CompatibleOperandsAndResultType]> {
   let summary = "Reverse operation";
   let description = [{
     Reverses the order of elements in the `operand` along the specified
@@ -3168,7 +3168,7 @@ def MHLO_PartitionIdOp : MHLO_Op<"partition_id", [
 }
 
 def MHLO_PadOp: MHLO_ShapedInterfaceOp<"pad",
-      [Pure, SameOperandsAndResultElementType,
+      [ SameOperandsAndResultElementType,
       DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "Pad operation";
   let description = [{
@@ -3225,7 +3225,7 @@ def MHLO_TraceOp: MHLO_Op<"trace", []> {
 }
 
 def MHLO_TransposeOp: MHLO_ShapedInterfaceOp<"transpose",
-      [Pure, HLO_CompatibleOperandsAndResultElementType,
+      [ HLO_CompatibleOperandsAndResultElementType,
       DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "Transpose operation";
   let description = [{
@@ -3251,7 +3251,7 @@ def MHLO_TransposeOp: MHLO_ShapedInterfaceOp<"transpose",
 }
 
 def MHLO_TriangularSolveOp: MHLO_Op<"triangular_solve",
-    [Pure, SameOperandsAndResultElementType, InferTensorType]> {
+    [ SameOperandsAndResultElementType, InferTensorType]> {
   let summary = "TriangularSolve operation";
   let description = [{
     Solves batches of systems of linear equations with lower or upper triangular
@@ -3373,7 +3373,7 @@ def MHLO_ReduceWindowOp: MHLO_Op<"reduce_window", [
   }];
 }
 
-def MHLO_ReturnOp : MHLO_Op<"return", [Pure, Terminator]> {
+def MHLO_ReturnOp : MHLO_Op<"return", [ Terminator]> {
   let summary = "Return operation";
   let summary = [{
     This operation is a work in progress, so it is not yet included in
@@ -3406,7 +3406,7 @@ def MHLO_ReturnOp : MHLO_Op<"return", [Pure, Terminator]> {
   let assemblyFormat = "$results attr-dict (`:` type($results)^)?";
 }
 
-def MHLO_TorchIndexSelectOp : MHLO_Op<"torch_index_select", [Pure]> {
+def MHLO_TorchIndexSelectOp : MHLO_Op<"torch_index_select", []> {
   let summary = "TorchIndexSelect operation";
   let description = [{
     This operation is on its way out of StableHLO, so it is not included in
@@ -3443,7 +3443,7 @@ def MHLO_TorchIndexSelectOp : MHLO_Op<"torch_index_select", [Pure]> {
 }
 
 def MHLO_OptimizationBarrierOp : MHLO_Op<"optimization_barrier",
-      [Pure, HLO_PairwiseSameOperandAndResultType,
+      [ HLO_PairwiseSameOperandAndResultType,
       DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "OptimizationBarrier operation";
   let description = [{
@@ -3509,7 +3509,7 @@ def MHLO_RngOp : MHLO_Op<"rng", [InferTensorTypeWithReify, AllElementTypesMatch<
   let hasCustomHLOConverter = 1;
 }
 
-def MHLO_RngBitGeneratorOp : MHLO_Op<"rng_bit_generator", [Pure]> {
+def MHLO_RngBitGeneratorOp : MHLO_Op<"rng_bit_generator", []> {
   let summary = "RngBitGenerator operation";
   let description = [{
     Returns an `output` filled with uniform random data and an updated output
@@ -3569,7 +3569,7 @@ def MHLO_XlaRngGetAndUpdateStateOp: MHLO_Op<"xla.rng_get_and_update_state", [Dec
 
 // TODO(b/230662142): Implement unknown scales/zero_point cases.
 def MHLO_UniformQuantizeOp : MHLO_UnaryElementwiseOp<"uniform_quantize",
-      [Pure], RankedTensorOf<[MHLO_Float, MHLO_QuantizedInt]>,
+      [], RankedTensorOf<[MHLO_Float, MHLO_QuantizedInt]>,
       MHLO_QuantizedIntTensor> {
   let summary = "UniformQuantize operation";
   let description = [{
@@ -3592,7 +3592,7 @@ def MHLO_UniformQuantizeOp : MHLO_UnaryElementwiseOp<"uniform_quantize",
 }
 
 def MHLO_UniformDequantizeOp : MHLO_UnaryElementwiseOp<"uniform_dequantize",
-      [InferTensorType, Pure], MHLO_QuantizedIntTensor, MHLO_FpTensor> {
+      [InferTensorType, ], MHLO_QuantizedIntTensor, MHLO_FpTensor> {
   let summary = "UniformDequantize operation";
   let description = [{
     Performs element-wise conversion of quantized tensor `operand` to a
@@ -3646,7 +3646,7 @@ def MHLO_FusionOp : MHLO_Op<"fusion", []> {
 }
 
 // This is an op for purposes internal to XLA/GPU.
-def MHLO_BitcastOp : MHLO_Op<"bitcast", [Pure]> {
+def MHLO_BitcastOp : MHLO_Op<"bitcast", []> {
   let summary = "Bitcast operation";
   let description = [{
     This operation is private to the XLA compiler, so it is does not yet have
@@ -3674,7 +3674,7 @@ def MHLO_BitcastOp : MHLO_Op<"bitcast", [Pure]> {
 }
 
 def MHLO_ReducePrecisionOp : MHLO_Op<"reduce_precision",
-      [HLO_CompatibleOperandsAndResultType, Pure, Elementwise]> {
+      [HLO_CompatibleOperandsAndResultType,  Elementwise]> {
   let summary = "ReducePrecision operation";
   let description = [{
     Performs element-wise conversion of `operand` to another floating-point type
@@ -3705,7 +3705,7 @@ def MHLO_ReducePrecisionOp : MHLO_Op<"reduce_precision",
 
 def MHLO_RealDynamicSliceOp: MHLO_ShapedInterfaceOp<
       "real_dynamic_slice",
-      [Pure, AllElementTypesMatch<["operand", "result"]>,
+      [ AllElementTypesMatch<["operand", "result"]>,
        AllTypesMatch<["start_indices", "limit_indices", "strides"]>]> {
   let summary = "RealDynamicSlice operation";
   let description = [{
@@ -3738,7 +3738,7 @@ def MHLO_RealDynamicSliceOp: MHLO_ShapedInterfaceOp<
 }
 
 def MHLO_DynamicPadOp: MHLO_ShapedInterfaceOp<"dynamic_pad",
-      [Pure, AllElementTypesMatch<["operand", "padding_value", "result"]>,
+      [ AllElementTypesMatch<["operand", "padding_value", "result"]>,
       AllTypesMatch<["edge_padding_low", "edge_padding_high", "interior_padding"]>]> {
   let summary = "DynamicPad operation";
   let description = [{
@@ -3777,7 +3777,7 @@ def MHLO_DynamicPadOp: MHLO_ShapedInterfaceOp<"dynamic_pad",
 }
 
 def MHLO_DynamicGatherOp: MHLO_Op<"dynamic_gather",
-                                [InferTensorTypeWithReify, Pure]> {
+                                [InferTensorTypeWithReify, ]> {
   let summary = "DynamicGather operation";
   let description = [{
     This operation is a work in progress, so it is not yet included in
@@ -3813,7 +3813,7 @@ def MHLO_DynamicGatherOp: MHLO_Op<"dynamic_gather",
   let hasCanonicalizer = 1;
 }
 
-def MHLO_DynamicConvOp : MHLO_Op<"dynamic_conv", [Pure]> {
+def MHLO_DynamicConvOp : MHLO_Op<"dynamic_conv", []> {
   let summary = "DynamicConv operation";
   let description = [{
     This operation is a work in progress, so it is not yet included in
@@ -3850,7 +3850,7 @@ def MHLO_DynamicConvOp : MHLO_Op<"dynamic_conv", [Pure]> {
 }
 
 def MHLO_ComputeReshapeShapeOp :
-    MHLO_Op<"compute_reshape_shape", [Pure]> {
+    MHLO_Op<"compute_reshape_shape", []> {
   let summary = "ComputeReshapeShape operation";
   let description = [{
     This operation is a work in progress, so it is not yet included in
@@ -3882,7 +3882,7 @@ def MHLO_ComputeReshapeShapeOp :
 }
 
 def MHLO_CstrReshapableOp :
-    MHLO_Op<"cstr_reshapable", [Pure]> {
+    MHLO_Op<"cstr_reshapable", []> {
   let summary = "CstrReshapable operation";
   let description = [{
     This operation is a work in progress, so it is not yet included in
