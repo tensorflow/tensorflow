@@ -17,8 +17,8 @@ limitations under the License.
 
 #include <optional>
 
-#include "xla/service/hlo_pass_fix.h"
-#include "xla/service/hlo_pass_pipeline.h"
+#include <gtest/gtest.h>
+#include "absl/strings/string_view.h"
 #include "xla/tests/hlo_test_base.h"
 
 namespace xla {

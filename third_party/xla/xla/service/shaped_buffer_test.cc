@@ -18,11 +18,19 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/log/log.h"
+#include "absl/status/statusor.h"
 #include "xla/service/platform_util.h"
+#include "xla/shape.h"
+#include "xla/shape_tree.h"
 #include "xla/shape_util.h"
+#include "xla/status.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/test.h"
+#include "xla/xla_data.pb.h"
+#include "tsl/platform/statusor.h"
 #include "tsl/platform/test_benchmark.h"
 
 namespace xla {
