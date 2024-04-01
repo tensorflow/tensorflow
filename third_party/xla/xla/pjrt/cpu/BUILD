@@ -1,4 +1,4 @@
-load("@local_tsl//tsl:tsl.bzl", "if_oss")
+load("@local_tsl//tsl:tsl.bzl", "if_oss", "internal_visibility")
 load("@local_tsl//tsl/platform:build_config.bzl", "tf_proto_library")
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load("//xla:xla.bzl", "xla_cc_test")
@@ -130,9 +130,7 @@ cc_library(
     name = "cpu_client",
     srcs = ["cpu_client.cc"],
     hdrs = ["cpu_client.h"],
-    visibility = [
-        "//xla:friends",
-    ],
+    visibility = internal_visibility(["//xla:friends"]),
     deps = [
         ":abstract_tfrt_cpu_buffer",
         ":cpu_topology",
