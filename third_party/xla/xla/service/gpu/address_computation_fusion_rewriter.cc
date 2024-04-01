@@ -405,125 +405,110 @@ absl::StatusOr<HloInstruction*> CreateFusionInstruction(
 absl::StatusOr<bool> AddressComputationFusionRewriter::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  auto process_slices = [&](bool dynamic) -> absl::StatusOr<bool> {
-    absl::flat_hash_map<HloInstruction*,
-                        std::pair<UseDefDataflowPaths, DefUseDataflowPaths>>
-        matches;
+  absl::flat_hash_map<HloInstruction*,
+                      std::pair<UseDefDataflowPaths, DefUseDataflowPaths>>
+      matches;
 
-    // Collect all potential custom call matches in the non-fusion computations.
-    for (HloComputation* computation : module->computations()) {
-      if (computation->IsFusionComputation()) continue;
-      for (HloInstruction* instr : computation->instructions()) {
-        if (IsLegacyCublasMatmul(*instr) ||
-            (IsCustomCall(instr, platform_name_))) {
-          UseDefDataflowPaths sliced_operand_paths =
-              GetSlicedOperandPaths(instr);
-          bool has_sliced_operand_paths = sliced_operand_paths.size() > 1;
+  // Collect all potential custom call matches in the non-fusion computations.
+  for (HloComputation* computation : module->computations()) {
+    if (computation->IsFusionComputation()) continue;
+    for (HloInstruction* instr : computation->instructions()) {
+      if (IsLegacyCublasMatmul(*instr) ||
+          (IsCustomCall(instr, platform_name_))) {
+        UseDefDataflowPaths sliced_operand_paths = GetSlicedOperandPaths(instr);
+        bool has_sliced_operand_paths = sliced_operand_paths.size() > 1;
 
-          DefUseDataflowPaths sliced_user_paths = GetSlicedUserPaths(instr);
-          bool has_sliced_user_paths =
-              absl::c_any_of(sliced_user_paths, [&](auto& sliced_user_path) {
-                return !sliced_user_path.empty();
-              });
+        DefUseDataflowPaths sliced_user_paths = GetSlicedUserPaths(instr);
+        bool has_sliced_user_paths = absl::c_any_of(
+            sliced_user_paths,
+            [&](auto& sliced_user_path) { return !sliced_user_path.empty(); });
 
-          if (absl::c_any_of(sliced_user_paths, [&](auto& sliced_user_path) {
-                return DynCast<HloDynamicUpdateSliceInstruction>(
-                           sliced_user_path.back()) == nullptr;
-              })) {
-            return absl::InternalError(
-                "Expect sliced user path to end with a DUS.");
-          }
+        if (absl::c_any_of(sliced_user_paths, [&](auto& sliced_user_path) {
+              return DynCast<HloDynamicUpdateSliceInstruction>(
+                         sliced_user_path.back()) == nullptr;
+            })) {
+          return absl::InternalError(
+              "Expect sliced user path to end with a DUS.");
+        }
 
-          if (has_sliced_operand_paths || has_sliced_user_paths) {
-            matches[instr] = std::make_pair(std::move(sliced_operand_paths),
-                                            std::move(sliced_user_paths));
-          }
+        if (has_sliced_operand_paths || has_sliced_user_paths) {
+          matches[instr] = std::make_pair(std::move(sliced_operand_paths),
+                                          std::move(sliced_user_paths));
         }
       }
     }
+  }
 
-    if (matches.empty()) return false;
+  if (matches.empty()) return false;
 
-    for (auto& [hero, paths] : matches) {
-      auto& [sliced_operand_paths, sliced_user_paths] = paths;
-      std::vector<HloInstruction*> matched_instrs;
-      absl::c_copy(sliced_operand_paths, std::back_inserter(matched_instrs));
+  for (auto& [hero, paths] : matches) {
+    auto& [sliced_operand_paths, sliced_user_paths] = paths;
+    std::vector<HloInstruction*> matched_instrs;
+    absl::c_copy(sliced_operand_paths, std::back_inserter(matched_instrs));
 
-      std::vector<DataflowPathView> sliced_user_paths_view;
+    std::vector<DataflowPathView> sliced_user_paths_view;
+    for (auto& sliced_user_path : sliced_user_paths) {
+      absl::c_copy(sliced_user_path, std::back_inserter(matched_instrs));
+      DataflowPathView sliced_user_path_view{&sliced_user_path.front(),
+                                             sliced_user_path.size()};
+      sliced_user_paths_view.push_back(std::move(sliced_user_path_view));
+    }
+
+    auto captures = GetPatternCaptures(matched_instrs);
+
+    TF_ASSIGN_OR_RETURN(
+        HloComputation * fusion_body,
+        CreateFusionBody(module, sliced_operand_paths,
+                         DataflowPathsView(sliced_user_paths_view), captures));
+
+    bool has_dynamic_slices = absl::c_any_of(matched_instrs, [&](auto* instr) {
+      return DynCast<HloDynamicIndexInstruction>(instr) != nullptr;
+    });
+    TF_ASSIGN_OR_RETURN(
+        HloInstruction * fusion,
+        CreateFusionInstruction(module, hero, captures, fusion_body,
+                                has_dynamic_slices));
+
+    HloComputation* parent = hero->parent();
+    if (fusion->shape().IsTuple()) {
+      TF_RETURN_IF_ERROR(parent->ReplaceInstructionWithDifferentShape(
+          const_cast<HloInstruction*>(hero), fusion));
       for (auto& sliced_user_path : sliced_user_paths) {
-        absl::c_copy(sliced_user_path, std::back_inserter(matched_instrs));
-        DataflowPathView sliced_user_path_view{&sliced_user_path.front(),
-                                               sliced_user_path.size()};
-        sliced_user_paths_view.push_back(std::move(sliced_user_path_view));
+        auto old_gte =
+            Cast<HloGetTupleElementInstruction>(sliced_user_path.front());
+        HloInstruction* gte =
+            parent->AddInstruction(HloInstruction::CreateGetTupleElement(
+                fusion, old_gte->tuple_index()));
+        TF_RETURN_IF_ERROR(
+            parent->ReplaceInstruction(sliced_user_path.back(), gte));
       }
-
-      auto captures = GetPatternCaptures(matched_instrs);
-
-      TF_ASSIGN_OR_RETURN(
-          HloComputation * fusion_body,
-          CreateFusionBody(module, sliced_operand_paths,
-                           DataflowPathsView(sliced_user_paths_view),
-                           captures));
-
-      bool has_dynamic_slices =
-          absl::c_any_of(matched_instrs, [&](auto* instr) {
-            return DynCast<HloDynamicIndexInstruction>(instr) != nullptr;
-          });
-      TF_ASSIGN_OR_RETURN(
-          HloInstruction * fusion,
-          CreateFusionInstruction(module, hero, captures, fusion_body,
-                                  has_dynamic_slices));
-
-      HloComputation* parent = hero->parent();
-      if (fusion->shape().IsTuple()) {
-        TF_RETURN_IF_ERROR(parent->ReplaceInstructionWithDifferentShape(
-            const_cast<HloInstruction*>(hero), fusion));
-        for (auto& sliced_user_path : sliced_user_paths) {
-          auto old_gte =
-              Cast<HloGetTupleElementInstruction>(sliced_user_path.front());
-          HloInstruction* gte =
-              parent->AddInstruction(HloInstruction::CreateGetTupleElement(
-                  fusion, old_gte->tuple_index()));
-          TF_RETURN_IF_ERROR(
-              parent->ReplaceInstruction(sliced_user_path.back(), gte));
+    } else {
+      auto* instr_to_be_replaced = const_cast<HloInstruction*>(hero);
+      if (sliced_user_paths.empty()) {
+        // The only case where a tuple-shaped original hero op is fused into a
+        // non-tuple-shaped fusion is there's only one element of the original
+        // tuple being used. In that case, we need to replace that single
+        // get-tuple-element (instead of the hero op) with the fusion
+        // instruction.
+        if (hero->shape().IsTuple()) {
+          if (hero->user_count() != 1 ||
+              !DynCast<HloGetTupleElementInstruction>(hero->users().front())) {
+            return absl::InternalError(
+                "Expect a single get-tuple-element user of the original "
+                "tuple-shaped hero op when address computation fusion does "
+                "not return a tuple");
+          }
+          instr_to_be_replaced = hero->users().front();
         }
       } else {
-        auto* instr_to_be_replaced = const_cast<HloInstruction*>(hero);
-        if (sliced_user_paths.empty()) {
-          // The only case where a tuple-shaped original hero op is fused into a
-          // non-tuple-shaped fusion is there's only one element of the original
-          // tuple being used. In that case, we need to replace that single
-          // get-tuple-element (instead of the hero op) with the fusion
-          // instruction.
-          if (hero->shape().IsTuple()) {
-            if (hero->user_count() != 1 ||
-                !DynCast<HloGetTupleElementInstruction>(
-                    hero->users().front())) {
-              return absl::InternalError(
-                  "Expect a single get-tuple-element user of the original "
-                  "tuple-shaped hero op when address computation fusion does "
-                  "not return a tuple");
-            }
-            instr_to_be_replaced = hero->users().front();
-          }
-        } else {
-          instr_to_be_replaced = sliced_user_paths.front().back();
-        }
-        TF_RETURN_IF_ERROR(
-            parent->ReplaceInstruction(instr_to_be_replaced, fusion));
+        instr_to_be_replaced = sliced_user_paths.front().back();
       }
+      TF_RETURN_IF_ERROR(
+          parent->ReplaceInstruction(instr_to_be_replaced, fusion));
     }
+  }
 
-    return true;
-  };
-
-  // TODO(vuson): unify dynamic_address_computation and address_computation
-  TF_ASSIGN_OR_RETURN(bool processed_pattern_with_static_slices,
-                      process_slices(false));
-  TF_ASSIGN_OR_RETURN(bool processed_pattern_with_dynamic_slices,
-                      process_slices(true));
-  return processed_pattern_with_static_slices ||
-         processed_pattern_with_dynamic_slices;
+  return true;
 }
 
 }  // namespace gpu
