@@ -609,33 +609,35 @@ mlir::LogicalResult ValidateAndGetTiledExecuteOutputShape(
     const mlir::TensorType cluster_func_output_type,
     const xla::OpSharding& output_sharding,
     mlir::Type* tiled_logical_computation_type) {
-  auto new_output_shape =
-      llvm::to_vector<4>(cluster_func_output_type.getShape());
-  for (const auto& dimension_and_output_splits :
-       llvm::enumerate(output_sharding.tile_assignment_dimensions())) {
-    const auto dimension_index = dimension_and_output_splits.index();
-    const auto output_splits = dimension_and_output_splits.value();
-    const auto output_shape = cluster_func_output_type.getShape();
+  const auto output_shape = cluster_func_output_type.getShape();
+  auto new_output_shape = llvm::to_vector<4>(output_shape);
+  auto dimension_to_splits_map =
+      GetDimensionIndicesAndNumSplitsFromSharding(output_sharding);
+  if (!dimension_to_splits_map.ok()) {
+    LOG(ERROR) << dimension_to_splits_map.status();
+    return mlir::failure();
+  }
 
-    if (output_shape[dimension_index] == mlir::ShapedType::kDynamic) {
+  for (const auto& dimension_and_output_splits : *dimension_to_splits_map) {
+    const auto dimension = dimension_and_output_splits.first;
+    const auto output_splits = dimension_and_output_splits.second;
+
+    if (output_shape[dimension] == mlir::ShapedType::kDynamic) {
       *tiled_logical_computation_type = cluster_func_output_type;
       break;
     }
 
-    auto output_shape_at_dim =
-        cluster_func_output_type.getShape()[dimension_index];
-    if (output_shape_at_dim % output_splits != 0) {
+    if (output_shape[dimension] % output_splits != 0) {
       mlir::emitError(
           location,
           llvm::formatv("incorrect output sharding received. "
                         "{0}-th dimension of the output must be "
                         "evenly divisible by {1}, got dimension "
                         "shape {2}",
-                        dimension_index, output_splits, output_shape_at_dim));
+                        dimension, output_splits, output_shape[dimension]));
     }
 
-    new_output_shape[dimension_index] =
-        output_shape[dimension_index] / output_splits;
+    new_output_shape[dimension] = output_shape[dimension] / output_splits;
   }
 
   *tiled_logical_computation_type = mlir::RankedTensorType::get(
