@@ -246,25 +246,33 @@ TEST_F(PersistedAutotuningTest, WriteResultsOnEachCompilation) {
   }
 }
 
-int64_t CountCopies(const HloComputation& computation) {
+int64_t CountOpcodes(const HloComputation& computation, HloOpcode opcode) {
   int64_t count = 0;
   for (const auto& instruction : computation.instructions()) {
-    if (instruction->opcode() == HloOpcode::kCopy) {
+    if (instruction->opcode() == opcode) {
       count++;
     }
   }
   return count;
 }
 
-int64_t CountCopies(const HloModule& module) {
+int64_t CountOpcodes(const HloModule& module, HloOpcode opcode) {
   int64_t count = 0;
   for (const auto& computation : module.computations()) {
-    count += CountCopies(*computation);
+    count += CountOpcodes(*computation, opcode);
   }
   return count;
 }
 
-TEST_F(GpuCompilerTest, RemovesUnnecessaryCopyAfterScheduling) {
+int64_t CountCopies(const HloModule& module) {
+  return CountOpcodes(module, HloOpcode::kCopy);
+}
+
+int64_t CountTuples(const HloModule& module) {
+  return CountOpcodes(module, HloOpcode::kTuple);
+}
+
+TEST_F(GpuCompilerTest, RemovesUnnecessaryCopyAndTupleAfterScheduling) {
   const absl::string_view hlo_string = R"(
 HloModule all_gather_overlapping
 condition {
@@ -308,17 +316,20 @@ ENTRY main {
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           GetOptimizedModule(hlo_string));
-
   EXPECT_EQ(CountCopies(*module), 5);
+  EXPECT_EQ(CountTuples(*module), 4);
 
   const HloInstruction* root = module->entry_computation()->root_instruction();
   const HloInstruction* while_op = root->operand(0)->operand(0);
   EXPECT_EQ(while_op->while_body()->root_instruction()->operand(1)->opcode(),
             HloOpcode::kCopy);
-
   TF_ASSERT_OK(Schedule(module.get()));
   EXPECT_EQ(CountCopies(*module), 4);
-  module->entry_computation()->root_instruction();
+  // Check that the tuple instruction inserted by copy-insertion is removed by
+  // tuple-simplifier.
+  EXPECT_EQ(CountTuples(*module), 4);
+
+  root = module->entry_computation()->root_instruction();
   while_op = root->operand(0)->operand(0);
   // Make sure that the copy of AllGatherDone has been removed.
   EXPECT_EQ(while_op->while_body()->root_instruction()->operand(1)->opcode(),

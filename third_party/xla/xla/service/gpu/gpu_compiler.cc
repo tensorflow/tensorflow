@@ -1657,6 +1657,7 @@ absl::Status RunPostSchedulingCopyInsertion(
   TF_RETURN_IF_ERROR(
       copy_insertion.CopyInsertion::AddSpecialCaseCopies(module));
 
+  TF_RETURN_IF_ERROR(TupleSimplifier().Run(module).status());
   TF_RETURN_IF_ERROR(HloDCE().Run(module).status());
 
   // The passes above can add and remove copies, update the schedule to
