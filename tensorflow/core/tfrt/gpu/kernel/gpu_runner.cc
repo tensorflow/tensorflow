@@ -351,9 +351,9 @@ GpuRunner::Run(const GpuRunInputs& run_inputs) {
   TF_ASSIGN_OR_RETURN(uint64_t fingerprint,
                       GenerateFingerprint(run_inputs.func_name,
                                           run_inputs.fallback_request_state));
-  tsl::DeviceReservation device_reservation =
+  std::unique_ptr<tsl::DeviceReservation> device_reservation =
       serving_device_selector_->ReserveDevice(absl::StrCat(fingerprint));
-  const int device_idx = device_reservation.device_index();
+  const int device_idx = device_reservation->device_index();
 
   // Compile the program.
   const XlaCompiler::CompilationResult* compilation_result;

@@ -56,15 +56,15 @@ TEST(GpuServingDeviceSelector, Basic) {
                                     std::make_unique<tsl::RoundRobinPolicy>());
 
   const std::string program_fingerprint = "TensorFlow";
-  tsl::DeviceReservation reservation =
+  std::unique_ptr<tsl::DeviceReservation> reservation =
       selector.ReserveDevice(program_fingerprint);
-  EXPECT_EQ(reservation.device_index(), 0);
+  EXPECT_EQ(reservation->device_index(), 0);
 
   reservation = selector.ReserveDevice(program_fingerprint);
-  EXPECT_EQ(reservation.device_index(), 1);
+  EXPECT_EQ(reservation->device_index(), 1);
 
   reservation = selector.ReserveDevice(program_fingerprint);
-  EXPECT_EQ(reservation.device_index(), 0);
+  EXPECT_EQ(reservation->device_index(), 0);
 }
 
 TEST(GpuServingDeviceSelector, DefaultPolicyOnlyEnqueueCall) {

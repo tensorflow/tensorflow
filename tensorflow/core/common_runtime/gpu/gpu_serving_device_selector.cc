@@ -49,7 +49,7 @@ GpuServingDeviceSelector::GpuServingDeviceSelector(
       device_selector_policy_(std::move(device_selector_policy)),
       req_id_counter_(0) {}
 
-tsl::DeviceReservation GpuServingDeviceSelector::ReserveDevice(
+std::unique_ptr<tsl::DeviceReservation> GpuServingDeviceSelector::ReserveDevice(
     absl::string_view program_fingerprint) {
   absl::MutexLock lock(&mu_);
   DeviceStates device_states;
@@ -64,7 +64,7 @@ tsl::DeviceReservation GpuServingDeviceSelector::ReserveDevice(
       program_fingerprint, /*priority=*/0, req_id_counter_++,
       /*priority_queue_count=*/1, /*prefetch_results=*/0, NowNs());
 
-  return tsl::DeviceReservation(device_index, this);
+  return std::make_unique<tsl::DeviceReservation>(device_index, this);
 }
 
 void GpuServingDeviceSelector::FreeDeviceReservation(

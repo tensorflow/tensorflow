@@ -149,7 +149,7 @@ class ServingDeviceSelector {
   // Reserves a device according to a given selection policy. The reserved
   // device will be freed when the lifetime of the returned `DeviceReservation`
   // object ends.
-  virtual DeviceReservation ReserveDevice(
+  virtual std::unique_ptr<DeviceReservation> ReserveDevice(
       absl::string_view program_fingerprint) = 0;
 
   // Enqueues a program on the given device. Used only for load tracking

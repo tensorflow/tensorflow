@@ -57,7 +57,7 @@ class GpuServingDeviceSelector : public tsl::ServingDeviceSelector {
       int num_devices,
       std::unique_ptr<ServingDeviceSelector::Policy> device_selector_policy);
 
-  tsl::DeviceReservation ReserveDevice(
+  std::unique_ptr<tsl::DeviceReservation> ReserveDevice(
       absl::string_view program_fingerprint) override;
 
   // Enqueues the program on the stream of index `index_on_host`.
