@@ -47,7 +47,7 @@ void DequantizeOpQuantizePerTensor(F&& func, const Tensor& lhs,
   const StorageT* lhs_data = lhs.GetDataAs<storage_type>();
   const StorageT* rhs_data = rhs.GetDataAs<storage_type>();
   StorageT* output_data = output.GetDataAs<storage_type>();
-  const ExpressedT inv_scale = static_cast<ExpressedT>(1 / output_scale);
+  const ExpressedT inv_scale = static_cast<ExpressedT>(1) / output_scale;
   for (DimensionSize i = 0; i < num_elements;
        ++i, ++lhs_data, ++rhs_data, ++output_data) {
     const ExpressedT dequantized_lhs =
