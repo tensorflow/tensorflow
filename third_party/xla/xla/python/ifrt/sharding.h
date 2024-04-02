@@ -31,7 +31,7 @@ limitations under the License.
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/shape.h"
-#include "xla/statusor.h"
+#include "xla/python/ifrt/sharding.pb.h"
 
 namespace xla {
 namespace ifrt {
@@ -86,6 +86,9 @@ class Sharding : public llvm::RTTIExtends<Sharding, Serializable> {
 };
 
 std::ostream& operator<<(std::ostream& os, const Sharding& sharding);
+
+// TODO(hyeontaek): Move the subclasses of `Sharding` to a seperate file,
+// making this sharding.{h,cc} only define interface and common functions.
 
 // Single-device sharding.
 //

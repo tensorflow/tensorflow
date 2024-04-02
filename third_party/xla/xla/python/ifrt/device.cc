@@ -16,10 +16,15 @@ limitations under the License.
 #include "xla/python/ifrt/device.h"
 
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
-#include "xla/python/ifrt/types.pb.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
+#include "xla/python/ifrt/device.pb.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {
@@ -50,6 +55,16 @@ DeviceListProto DeviceList::ToProto() const {
     proto.mutable_device_ids()->AddAlreadyReserved(device->id());
   }
   return proto;
+}
+
+std::string DeviceList::DebugString() const {
+  return absl::StrCat("[",
+                      absl::StrJoin(devices(), ",",
+                                    [](std::string* out, Device* device) {
+                                      absl::StrAppend(out,
+                                                      device->DebugString());
+                                    }),
+                      "]");
 }
 
 std::vector<int> GetDeviceIds(DeviceList device_list) {

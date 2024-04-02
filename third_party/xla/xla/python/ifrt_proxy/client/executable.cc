@@ -47,6 +47,7 @@
 #include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/host_callback.h"
 #include "xla/python/ifrt/shape.h"
+#include "xla/python/ifrt/sharding_serdes.h"
 #include "xla/python/ifrt_proxy/client/array.h"
 #include "xla/python/ifrt_proxy/client/host_buffer.h"
 #include "xla/python/ifrt_proxy/client/rpc_helper.h"
@@ -449,8 +450,8 @@ LoadedExecutable::Execute(absl::Span<tsl::RCReference<xla::ifrt::Array>> args,
   };
   const auto lookup_device = absl::bind_front(&Client::LookupDevice, client());
   for (const auto& output : response->outputs()) {
-    DType dtype = FromDTypeProto(output.dtype());
-    Shape shape = FromShapeProto(output.shape());
+    TF_ASSIGN_OR_RETURN(DType dtype, DType::FromProto(output.dtype()));
+    TF_ASSIGN_OR_RETURN(Shape shape, Shape::FromProto(output.shape()));
     TF_ASSIGN_OR_RETURN(auto sharding,
                         FromShardingProto(lookup_device, output.sharding()));
     result.outputs.push_back(tsl::MakeRef<Array>(

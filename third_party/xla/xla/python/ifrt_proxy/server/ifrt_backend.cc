@@ -44,12 +44,15 @@
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/host_callback.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/shape.h"
+#include "xla/python/ifrt/sharding.h"
+#include "xla/python/ifrt/sharding_serdes.h"
 #include "xla/python/ifrt_proxy/common/array_util.h"
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
 #include "xla/python/ifrt_proxy/common/proto_util.h"
@@ -365,8 +368,10 @@ BackendInterface::Response IfrtBackend::HandleMakeArrayFromHostBufferRequest(
     if (!make_array_request->has_byte_strides()) return std::nullopt;
     return FromByteStridesProto(make_array_request->byte_strides());
   }();
-  const auto shape = FromShapeProto(make_array_request->shape());
-  const auto dtype = FromDTypeProto(make_array_request->dtype());
+  TF_ASSIGN_OR_RETURN(const auto shape,
+                      Shape::FromProto(make_array_request->shape()));
+  TF_ASSIGN_OR_RETURN(const auto dtype,
+                      DType::FromProto(make_array_request->dtype()));
 
   const uint64_t host_buffer_handle = make_array_request->host_buffer_handle();
   absl::Cleanup cleanup = [&] {
@@ -421,7 +426,7 @@ IfrtBackend::HandleAssembleArrayFromSingleDeviceArraysRequest(
     }
   }
 
-  Shape shape = FromShapeProto(assemble_request.shape());
+  TF_ASSIGN_OR_RETURN(Shape shape, Shape::FromProto(assemble_request.shape()));
   TF_ASSIGN_OR_RETURN(
       auto sharding,
       FromShardingProto(absl::bind_front(&Client::LookupDevice, client_.get()),
@@ -581,7 +586,7 @@ BackendInterface::Response IfrtBackend::HandleReshardRequest(
   const auto& reshard_request = request->reshard_request();
   TF_ASSIGN_OR_RETURN(auto array, GetArray(reshard_request.array_handle()));
   TF_ASSIGN_OR_RETURN(
-      auto sharding,
+      std::shared_ptr<const Sharding> sharding,
       FromShardingProto(absl::bind_front(&Client::LookupDevice, client_.get()),
                         reshard_request.sharding()));
   TF_ASSIGN_OR_RETURN(auto semantics, FromArrayCopySemanticsProto(
@@ -934,8 +939,8 @@ BackendInterface::Response IfrtBackend::HandleLoadedExecutableExecuteRequest(
 
       LoadedExecutableExecuteResponse::Output* output =
           execute_response->add_outputs();
-      output->set_dtype(ToDTypeProto(array->dtype()));
-      *output->mutable_shape() = ToShapeProto(array->shape());
+      *output->mutable_dtype() = array->dtype().ToProto();
+      *output->mutable_shape() = array->shape().ToProto();
       TF_ASSIGN_OR_RETURN(*output->mutable_sharding(),
                           ToShardingProto(array->sharding()));
       output->set_array_handle(output_handles[i]);

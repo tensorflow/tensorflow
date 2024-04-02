@@ -18,17 +18,12 @@
 #define XLA_PYTHON_IFRT_PROXY_COMMON_TYPES_H_
 
 #include <cstdint>
-#include <memory>
 #include <vector>
 
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/python/ifrt/array.h"
-#include "xla/python/ifrt/device.h"
-#include "xla/python/ifrt/dtype.h"
-#include "xla/python/ifrt/shape.h"
-#include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
 #include "xla/python/ifrt_proxy/common/types.pb.h"
 
@@ -44,17 +39,6 @@ struct ArrayHandle {
     absl::Format(&sink, "arr_%v", h.handle);
   }
 };
-
-DType FromDTypeProto(proto::DType dtype_proto);
-proto::DType ToDTypeProto(DType dtype);
-
-Shape FromShapeProto(const proto::Shape& shape_proto);
-proto::Shape ToShapeProto(const Shape& shape);
-
-absl::StatusOr<std::shared_ptr<const Sharding>> FromShardingProto(
-    DeviceList::LookupDeviceFunc lookup_device,
-    const proto::Sharding& sharding_proto);
-absl::StatusOr<proto::Sharding> ToShardingProto(const Sharding& sharding);
 
 absl::StatusOr<ArrayCopySemantics> FromArrayCopySemanticsProto(
     proto::ArrayCopySemantics s);

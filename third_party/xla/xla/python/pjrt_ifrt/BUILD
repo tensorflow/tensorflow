@@ -120,7 +120,7 @@ tf_proto_library(
     srcs = ["xla_sharding.proto"],
     protodeps = [
         "//xla:xla_data_proto",
-        "//xla/python/ifrt:types_proto",
+        "//xla/python/ifrt:device_proto",
     ],
 )
 

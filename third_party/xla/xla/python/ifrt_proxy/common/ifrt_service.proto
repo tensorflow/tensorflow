@@ -18,7 +18,10 @@ package xla.ifrt.proxy;
 
 import "google/protobuf/any.proto";
 import "xla/pjrt/execute_options.proto";
+import "xla/python/ifrt/dtype.proto";
 import "xla/python/ifrt/serdes.proto";
+import "xla/python/ifrt/shape.proto";
+import "xla/python/ifrt/sharding.proto";
 import "xla/python/ifrt_proxy/common/types.proto";
 import "xla/xla_data.proto";
 import "tsl/protobuf/status.proto";
@@ -242,9 +245,9 @@ message CheckFutureResponse {}
 // Makes an IFRT Array from the contents of a HostBuffer.
 // Equivalent to `ifrt::Client::MakeArrayFromHostBuffer`.
 message MakeArrayFromHostBufferRequest {
-  proto.DType dtype = 1;
-  proto.Shape shape = 2;
-  proto.Sharding sharding = 3;
+  DTypeProto dtype = 1;
+  ShapeProto shape = 2;
+  ShardingProto sharding = 3;
   fixed64 host_buffer_handle = 4;
   optional proto.ByteStrides byte_strides = 5;
 }
@@ -255,8 +258,8 @@ message MakeArrayFromHostBufferResponse {
 // Makes an IFRT Array from a set of single-device Arrays.
 // Equivalent to ifrt::Client::AssembleArrayFromSingleDeviceArrays.
 message AssembleArrayFromSingleDeviceArraysRequest {
-  proto.Shape shape = 1;
-  proto.Sharding sharding = 2;
+  ShapeProto shape = 1;
+  ShardingProto sharding = 2;
   repeated fixed64 single_device_array_handles = 3;
   proto.ArrayCopySemantics copy_semantics = 4;
 }
@@ -285,7 +288,7 @@ message DisassembleIntoSingleDeviceArraysResponse {
 
 message ReshardRequest {
   fixed64 array_handle = 1;
-  proto.Sharding sharding = 2;
+  ShardingProto sharding = 2;
   proto.ArrayCopySemantics copy_semantics = 3;
 }
 message ReshardResponse {
@@ -416,9 +419,9 @@ message LoadedExecutableExecuteResponse {
   fixed64 status_handle = 1;
 
   message Output {
-    proto.DType dtype = 1;
-    proto.Shape shape = 2;
-    proto.Sharding sharding = 3;
+    DTypeProto dtype = 1;
+    ShapeProto shape = 2;
+    ShardingProto sharding = 3;
     fixed64 array_handle = 4;
   }
 

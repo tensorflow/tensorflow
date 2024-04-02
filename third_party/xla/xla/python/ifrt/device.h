@@ -17,15 +17,17 @@ limitations under the License.
 #define XLA_PYTHON_IFRT_DEVICE_H_
 
 #include <memory>
+#include <string>
 #include <type_traits>
 #include <variant>
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/pjrt/pjrt_client.h"
-#include "xla/python/ifrt/types.pb.h"
+#include "xla/python/ifrt/device.pb.h"
 
 namespace xla {
 namespace ifrt {
@@ -88,6 +90,8 @@ class DeviceList {
   auto cbegin() const { return state().devices.cbegin(); }
   auto end() const { return state().devices.end(); }
   auto cend() const { return state().devices.cend(); }
+
+  std::string DebugString() const;
 
  private:
   // Internal state that may be shared across `DeviceList` instances.
