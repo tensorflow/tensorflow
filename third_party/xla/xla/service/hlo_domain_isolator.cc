@@ -29,8 +29,8 @@ namespace xla {
 namespace {
 
 // Add domains which are used as users of a specific instruction.
-StatusOr<int64_t> AddExitDomains(HloInstruction* instruction,
-                                 HloDomainIsolator::DomainCreator* creator) {
+absl::StatusOr<int64_t> AddExitDomains(
+    HloInstruction* instruction, HloDomainIsolator::DomainCreator* creator) {
   int64_t added_domains = 0;
   if (instruction->opcode() == HloOpcode::kDomain) {
     return added_domains;
@@ -55,7 +55,7 @@ StatusOr<int64_t> AddExitDomains(HloInstruction* instruction,
   return added_domains;
 }
 
-StatusOr<bool> RunInternal(
+absl::StatusOr<bool> RunInternal(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads,
     HloDomainIsolator::DomainCreator* creator) {
@@ -98,7 +98,8 @@ StatusOr<bool> RunInternal(
 HloDomainIsolator::HloDomainIsolator(DomainCreatorFactory creator_factory)
     : creator_factory_(std::move(creator_factory)) {}
 
-StatusOr<bool> HloDomainIsolator::UpdateDomains(HloInstruction* instruction) {
+absl::StatusOr<bool> HloDomainIsolator::UpdateDomains(
+    HloInstruction* instruction) {
   DomainCreator creator = creator_factory_();
   bool changed = false;
   // Update exit domains.
@@ -122,7 +123,7 @@ StatusOr<bool> HloDomainIsolator::UpdateDomains(HloInstruction* instruction) {
   return changed;
 }
 
-StatusOr<bool> HloDomainIsolator::Run(
+absl::StatusOr<bool> HloDomainIsolator::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   DomainCreator creator = creator_factory_();

@@ -2,6 +2,8 @@
 #   ROCm-platform specific StreamExecutor support code.
 # buildifier: disable=out-of-order-load
 
+# buildifier: disable=out-of-order-load
+
 load(
     "//xla/stream_executor:build_defs.bzl",
     "stream_executor_friends",

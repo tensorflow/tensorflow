@@ -33,7 +33,7 @@ namespace xla {
 // If execution_options does not set num_replicas, default_num_replicas is used.
 // num_threads is optional; if not given, intra_op_parallelism_threads not set.
 // aot_options is optional; if not given a default is used.
-StatusOr<std::unique_ptr<HloModuleConfig>> CreateModuleConfig(
+absl::StatusOr<std::unique_ptr<HloModuleConfig>> CreateModuleConfig(
     const ProgramShape& program_shape,
     absl::Span<const Shape* const> argument_shapes,
     const ExecutionOptions* execution_options, int default_num_replicas,

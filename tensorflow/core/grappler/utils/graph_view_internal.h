@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_GRAPPLER_UTILS_GRAPH_VIEW_INTERNAL_H_
 #define TENSORFLOW_CORE_GRAPPLER_UTILS_GRAPH_VIEW_INTERNAL_H_
 
+#include <optional>
+
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/hash/hash.h"
@@ -395,7 +397,7 @@ struct NodeViewDiff {
   absl::flat_hash_set<string> attrs_to_remove;
   // AttrValueMap constructor and destructor are very expensive, we will
   // initialize it lazily only if needed.
-  absl::optional<AttrValueMap> processed_attrs;
+  std::optional<AttrValueMap> processed_attrs;
 };
 
 // Updates node name. If `name` is the same as the name in the original node,

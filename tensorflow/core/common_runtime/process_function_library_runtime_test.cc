@@ -73,12 +73,12 @@ class TestClusterFLR : public DistributedFunctionLibraryRuntime {
 
   void Run(const FunctionLibraryRuntime::Options& opts,
            FunctionLibraryRuntime::LocalHandle handle,
-           gtl::ArraySlice<Tensor> args, std::vector<Tensor>* rets,
+           absl::Span<const Tensor> args, std::vector<Tensor>* rets,
            FunctionLibraryRuntime::DoneCallback done) override {}
 
   void Run(const FunctionLibraryRuntime::Options& opts,
            FunctionLibraryRuntime::LocalHandle handle,
-           gtl::ArraySlice<FunctionArg> args, std::vector<FunctionRet>* rets,
+           absl::Span<const FunctionArg> args, std::vector<FunctionRet>* rets,
            FunctionLibraryRuntime::DoneCallback done) override {}
 
   void CleanUp(uint64 step_id, FunctionLibraryRuntime::LocalHandle handle,
@@ -1136,7 +1136,7 @@ TEST_F(ProcessFunctionLibraryRuntimeTest, MultiDevice_StateHandle) {
       // Attrs
       {},
       // Nodes
-      {FunctionDefHelper::Const<int32>("shape", gtl::ArraySlice<int32>({1})),
+      {FunctionDefHelper::Const<int32>("shape", absl::Span<const int32>({1})),
        FunctionDefHelper::Const<int32>("minval", 0),
        {{"maxval"}, "ReadVariableOp", {"x"}, {{"dtype", T}}, {}},
        // A stateful node.

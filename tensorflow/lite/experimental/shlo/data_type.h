@@ -138,6 +138,37 @@ constexpr int64_t SizeOf(DataType data_type) {
   }
 }
 
+// Gets a string representation of the given DataType.
+constexpr const char* ToString(DataType t) {
+  switch (t) {
+    case DataType::kI1:
+      return "I1";
+      break;
+    case DataType::kSI4:
+      return "SI4";
+      break;
+    case DataType::kSI8:
+      return "SI8";
+      break;
+    case DataType::kSI16:
+      return "SI16";
+      break;
+    case DataType::kSI32:
+      return "SI32";
+      break;
+    case DataType::kBF16:
+      return "BF16";
+      break;
+    case DataType::kF16:
+      return "F16";
+      break;
+    case DataType::kF32:
+      return "F32";
+      break;
+  }
+  return "Unknown data type";
+}
+
 }  // namespace shlo_ref
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_SHLO_DATA_TYPE_H_

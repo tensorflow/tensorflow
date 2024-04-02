@@ -17,6 +17,8 @@ limitations under the License.
 #define TENSORFLOW_LITE_EXPERIMENTAL_SHLO_QUANTIZED_TENSOR_ELEMENT_TYPE_H_
 
 #include <optional>
+#include <sstream>
+#include <string>
 #include <type_traits>
 #include <utility>
 #include <variant>
@@ -162,6 +164,20 @@ class QuantizedTensorElementType {
                SmallInlinedVector<Storage<DataType::kSI32>::Type>>
       zero_points_;
 };
+
+// Gets a string representation of the given DataType.
+inline std::string ToString(const QuantizedTensorElementType& t) {
+  std::stringstream sstr;
+  if (t.IsPerTensorQuantized()) {
+    sstr << "QuantizedPerTensor[" << ToString(t.StorageType()) << ", "
+         << ToString(t.ExpressedType()) << "]";
+  } else {
+    sstr << "QuantizedPerAxis[" << ToString(t.StorageType()) << ", "
+         << ToString(t.ExpressedType()) << ", " << t.QuantizedDimension()
+         << "]";
+  }
+  return sstr.str();
+}
 
 }  // namespace shlo_ref
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_SHLO_QUANTIZED_TENSOR_ELEMENT_TYPE_H_

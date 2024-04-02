@@ -99,8 +99,8 @@ class PartitioningUtilsTest : public ::testing::Test {
   // where each node has type `dtype` and arg/ret nodes have
   // indices `arg_index` and `ret_index`.
   void SubGraph(Graph* subgraph, DataType dtype,
-                gtl::ArraySlice<int> arg_indices,
-                gtl::ArraySlice<int> ret_indices) {
+                absl::Span<const int> arg_indices,
+                absl::Span<const int> ret_indices) {
     Scope s = Scope::NewRootScope();
     Scope s1 = s.WithDevice("/job:a/replica:0/task:0/device:CPU:0");
     CHECK_EQ(arg_indices.size(), ret_indices.size());
