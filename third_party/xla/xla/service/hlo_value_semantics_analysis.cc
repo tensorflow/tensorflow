@@ -488,6 +488,13 @@ absl::Status EinsumDepthAnalysis::HandleCalledComputation(
 }
 
 absl::Status EinsumDepthAnalysis::HandleAfterAll(HloInstruction* after_all) {
+  auto depth_iter = GetDepthTreeOrDie(after_all);
+  const ShapeTree<int>& depth_tree = depth_iter->second;
+  int max_depth = GetMaxDepth(depth_tree);
+  for (HloInstruction* operand_token : after_all->mutable_operands()) {
+    CHECK(operand_token->shape().IsToken());
+    TF_RETURN_IF_ERROR(SetInstructionDepth(operand_token, max_depth));
+  }
   return OkStatus();
 }
 
@@ -1485,6 +1492,13 @@ HloValueSemanticsPropagation::MergeSemanticsForAnInstruction(
           HloValueSemantics semantics,
           ComputeSemanticsFromWeightGradientAndOther(
               operand_list[*index], operand_list[1 - *index], instruction));
+      replace_operands_semantics_with(semantics);
+      continue;
+    }
+    if (operand_list[0].label() == HloValueSemanticLabel::kTupleOrToken &&
+        operand_list[1].label() == HloValueSemanticLabel::kTupleOrToken) {
+      HloValueSemantics semantics =
+          CopySemanticsWithNewOrigin(operand_list[0], instruction);
       replace_operands_semantics_with(semantics);
       continue;
     }
