@@ -500,6 +500,7 @@ cc_library(
         "@llvm-project//mlir:ShapeToStandard",
         "@llvm-project//mlir:ShapeTransforms",
         "@llvm-project//mlir:SparseTensorTransforms",
+        "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TensorToLinalg",
         "@llvm-project//mlir:TensorTransforms",
         "@llvm-project//mlir:Transforms",
