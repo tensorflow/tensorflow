@@ -980,12 +980,7 @@ absl::Status CreateTritonPipeline(
   }
 
   pm.addPass(mt::gpu::createOptimizeDotOperandsPass());
-  // We need to disable this pass because it undoes the hoisting of dot_operand
-  // layout conversion done in
-  // triton/lib/Dialect/TritonGPU/Transforms/OptimizeDotOperands.cpp in
-  // HoistLayoutConversion pattern.
-  // Bug: b/331360119
-  // pm.addPass(mt::gpu::createRemoveLayoutConversionsPass());
+  pm.addPass(mt::gpu::createRemoveLayoutConversionsPass());
   pm.addPass(mt::gpu::createReduceDataDuplicationPass());
   pm.addPass(mt::gpu::createReorderInstructionsPass());
   pm.addPass(mlir::createCSEPass());
@@ -2764,6 +2759,7 @@ absl::StatusOr<TritonWrapperResult> TritonWrapper(
   if (debug_options.xla_gpu_enable_triton_hopper()) {
     // Set environment variables for consumption by Triton.
     tsl::setenv("ENABLE_MMA_V3", "true", true /*overwrite*/);
+    tsl::setenv("ENABLE_PIPELINING", "true", true /*overwrite*/);
   }
 
   TF_ASSIGN_OR_RETURN(
