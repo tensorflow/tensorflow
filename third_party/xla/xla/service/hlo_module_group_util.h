@@ -103,7 +103,7 @@ class HloModuleGroupUtil {
   // they can handle instructions across multiple computations.
   //
   // Creates the reachability map for the instructions in the computations.
-  StatusOr<std::unique_ptr<HloReachabilityMap>> ComputeReachability(
+  absl::StatusOr<std::unique_ptr<HloReachabilityMap>> ComputeReachability(
       absl::Span<HloComputation* const> computations);
 
   // Updates the reachability of the given instruction, taking the global

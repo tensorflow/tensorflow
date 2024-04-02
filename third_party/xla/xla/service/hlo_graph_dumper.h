@@ -88,7 +88,8 @@ absl::StatusOr<std::string> RenderGraph(
     std::optional<absl::flat_hash_map<const HloInstruction*, ColorStats>>
         color_map = std::nullopt);
 
-StatusOr<std::string> RenderAllComputationsToHtml(const HloModule& module);
+absl::StatusOr<std::string> RenderAllComputationsToHtml(
+    const HloModule& module);
 
 // Like RenderGraph, but renders only nodes "near" the given node in the graph.
 //
@@ -98,7 +99,7 @@ StatusOr<std::string> RenderAllComputationsToHtml(const HloModule& module);
 //
 // The optional boundary specifies a set of boundary nodes, beyond which nodes
 // will be omitted even if they are within the radius.
-StatusOr<std::string> RenderNeighborhoodAround(
+absl::StatusOr<std::string> RenderNeighborhoodAround(
     const HloInstruction& node, int radius, RenderedGraphFormat format,
     HloRenderOptions hlo_render_options = {},
     const absl::flat_hash_set<const HloInstruction*>& boundary = {},
@@ -108,7 +109,7 @@ StatusOr<std::string> RenderNeighborhoodAround(
 // Renders nodes on any of the paths from `from` to `to`.  If there are more
 // than max_nodes on all paths, restricts to the max_nodes nodes on the shortest
 // paths.
-StatusOr<std::string> RenderAllPathsFromTo(
+absl::StatusOr<std::string> RenderAllPathsFromTo(
     const HloInstruction& from, const HloInstruction& to, int64_t max_nodes,
     RenderedGraphFormat format, HloRenderOptions hlo_render_options = {});
 
@@ -132,11 +133,12 @@ void RegisterFusionState(const HloComputation& computation,
 // There can only be one active renderer, and the last call to this function
 // wins.
 void RegisterGraphToURLRenderer(
-    std::function<StatusOr<std::string>(absl::string_view dot)> renderer);
+    std::function<absl::StatusOr<std::string>(absl::string_view dot)> renderer);
 
 // Generates a fusion explorer for the given computation using the data in
 // fusion_visualizer_state.
-StatusOr<std::string> WrapFusionExplorer(const HloComputation& computation);
+absl::StatusOr<std::string> WrapFusionExplorer(
+    const HloComputation& computation);
 
 }  // namespace xla
 
