@@ -54,13 +54,6 @@ using ::testing::Not;
 using ::testing::TempDir;
 
 class GpuCompilerTest : public HloTestBase {
- public:
-  absl::StatusOr<std::unique_ptr<BufferAssignment>> AssignBuffers(
-      HloModule* module) {
-    auto compiler = backend().compiler();
-    return compiler->AssignBuffers(module, backend().default_stream_executor());
-  }
-
  protected:
   absl::StatusOr<bool> RunHloRematerialization(int64_t memory_limit_bytes,
                                                HloModule* module,

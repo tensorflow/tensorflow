@@ -1673,36 +1673,6 @@ absl::Status RunPostSchedulingCopyInsertion(
 }
 }  // namespace
 
-absl::StatusOr<std::unique_ptr<BufferAssignment>> GpuCompiler::AssignBuffers(
-    HloModule* hlo_module, const se::StreamExecutor* stream_exec) {
-  const se::DeviceDescription& gpu_device_info =
-      stream_exec->GetDeviceDescription();
-  TF_RETURN_IF_ERROR(
-      ScheduleGpuModule(hlo_module, pointer_size_, gpu_device_info).status());
-
-  TF_RETURN_IF_ERROR(
-      RunPostSchedulingCopyInsertion(hlo_module, GetCanShareBuffer()));
-
-  auto buffer_size_bytes_function =
-      [this](const BufferValue& buffer_value) -> int64_t {
-    return GetSizeOfShape(buffer_value.shape(), pointer_size_);
-  };
-
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<BufferAssignment> assignment,
-      BufferAssigner::Run(
-          hlo_module,
-          std::make_unique<SequentialHloOrdering>(hlo_module->schedule()),
-          buffer_size_bytes_function,
-          /*color_alignment=*/
-          [](LogicalBuffer::Color) { return kXlaAllocatedBufferAlignBytes; },
-          /*allocate_buffers_for_constants=*/true,
-          /*colorer=*/BufferAssigner::DefaultColorer(),
-          /*must_not_live_out=*/{}, GetCanShareBuffer()));
-
-  return std::move(assignment);
-}
-
 using OutputInfoMap =
     absl::flat_hash_map<ShapeIndex, GpuExecutable::OutputInfo>;
 

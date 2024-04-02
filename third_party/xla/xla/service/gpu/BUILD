@@ -3792,10 +3792,11 @@ cc_library(
 
 xla_test(
     name = "gpu_compiler_test",
-    srcs = ["gpu_compiler_test.cc"],
+    srcs = if_gpu_is_configured(["gpu_compiler_test.cc"]),
     backends = ["gpu"],
     deps = [
-        ":horizontal_loop_fusion",
+        ":gpu_compiler",
+        ":gpu_hlo_schedule",
         ":metrics",
         "//xla:autotune_results_proto_cc",
         "//xla:error_spec",
@@ -3808,10 +3809,8 @@ xla_test(
         "//xla/service:xla_debug_info_manager",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
-        "@com_google_absl//absl/base:log_severity",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/log:scoped_mock_log",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
@@ -4015,6 +4014,8 @@ xla_test(
         "nomsan",  # Pulls in precompiled NVIDIA libraries which cause false positives in msan.
     ],
     deps = [
+        ":gpu_constants",
+        ":gpu_hlo_schedule",
         ":nvptx_compiler_impl",
         "//xla:util",
         "//xla:xla_proto_cc",
