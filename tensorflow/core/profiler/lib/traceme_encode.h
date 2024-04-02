@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <initializer_list>
 #include <string>
+#include <utility>
 
 #include "absl/base/macros.h"
 #include "absl/strings/match.h"
@@ -42,7 +43,7 @@ using TraceMeArg ABSL_DEPRECATE_AND_INLINE() =
 ABSL_DEPRECATE_AND_INLINE()
 inline std::string TraceMeEncode(std::string name,
                                  std::initializer_list<TraceMeArg> args) {
-  return tsl::profiler::TraceMeEncode(name, args);
+  return tsl::profiler::TraceMeEncode(std::move(name), args);
 }
 
 ABSL_DEPRECATE_AND_INLINE()
