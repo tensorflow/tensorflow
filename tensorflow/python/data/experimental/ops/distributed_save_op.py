@@ -35,8 +35,9 @@ def distributed_save(
 
   Args:
     dataset: The `tf.data.Dataset` to save.
-    path: The directory path to save the dataset. Requires that the directory
-      do not exist and will create the directory.
+    path: The directory path to save the dataset. Requires that:
+      - The directory does not exist and will create the directory.
+      - The file system supports atomic move (rename).
     dispatcher_address: The address of the tf.data service dispatcher used to
       save `dataset`.
     compression: (Optional.) Whether and how to compress the `dataset` snapshot.
@@ -50,6 +51,8 @@ def distributed_save(
   Raises:
     ValueError: If `dispatcher_address` is invalid.
     tf.errors.AlreadyExistsError: If the snapshot already exists.
+    tf.errors.FailedPreconditionError: If the file system does not support
+      atomic move (rename).
   """
   if not isinstance(dispatcher_address, str):
     raise ValueError("`dispatcher_address` must be a string, but is a "
