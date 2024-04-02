@@ -19,28 +19,28 @@ limitations under the License.
 
 namespace tsl {
 
-Status ByteSwapArray(char* array, size_t bytes_per_elem, int array_len) {
+absl::Status ByteSwapArray(char* array, size_t bytes_per_elem, int array_len) {
   if (bytes_per_elem == 1) {
     // No-op
-    return OkStatus();
+    return absl::OkStatus();
   } else if (bytes_per_elem == 2) {
     auto array_16 = reinterpret_cast<uint16_t*>(array);
     for (int i = 0; i < array_len; i++) {
       array_16[i] = BYTE_SWAP_16(array_16[i]);
     }
-    return OkStatus();
+    return absl::OkStatus();
   } else if (bytes_per_elem == 4) {
     auto array_32 = reinterpret_cast<uint32_t*>(array);
     for (int i = 0; i < array_len; i++) {
       array_32[i] = BYTE_SWAP_32(array_32[i]);
     }
-    return OkStatus();
+    return absl::OkStatus();
   } else if (bytes_per_elem == 8) {
     auto array_64 = reinterpret_cast<uint64_t*>(array);
     for (int i = 0; i < array_len; i++) {
       array_64[i] = BYTE_SWAP_64(array_64[i]);
     }
-    return OkStatus();
+    return absl::OkStatus();
   } else {
     return errors::Unimplemented("Byte-swapping of ", bytes_per_elem,
                                  "-byte values not supported.");

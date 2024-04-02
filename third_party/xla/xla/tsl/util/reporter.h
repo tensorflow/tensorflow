@@ -37,13 +37,13 @@ class TestReportFile {
 
   // Initialize the TestReportFile.  If the reporting env flag is set,
   // try to create the reporting file.  Fails if the file already exists.
-  Status Initialize();
+  absl::Status Initialize();
 
   // Append the report file w/ 'content'.
-  Status Append(const string& content);
+  absl::Status Append(const string& content);
 
   // Close the report file.
-  Status Close();
+  absl::Status Close();
 
   bool IsClosed() const { return closed_; }
 
@@ -91,29 +91,29 @@ class TestReporter {
 
   // Initialize the TestReporter.  If the reporting env flag is set,
   // try to create the reporting file.  Fails if the file already exists.
-  Status Initialize();
+  absl::Status Initialize();
 
   // Finalize the report.  If the reporting env flag is set,
   // flush the reporting file and close it.
   // Once Close is called, no other methods should be called other
   // than Close and the destructor.
-  Status Close();
+  absl::Status Close();
 
   // Set the report to be a Benchmark and log the given parameters.
   // Only does something if the reporting env flag is set.
   // Does not guarantee the report is written.  Use Close() to
   // enforce I/O operations.
-  Status Benchmark(int64_t iters, double cpu_time, double wall_time,
-                   double throughput);
+  absl::Status Benchmark(int64_t iters, double cpu_time, double wall_time,
+                         double throughput);
 
   // Set property on Benchmark to the given value.
-  Status SetProperty(const string& name, double value);
+  absl::Status SetProperty(const string& name, double value);
 
   // Set property on Benchmark to the given value.
-  Status SetProperty(const string& name, const string& value);
+  absl::Status SetProperty(const string& name, const string& value);
 
   // Add the given value to the metrics on the Benchmark.
-  Status AddMetric(const string& name, double value);
+  absl::Status AddMetric(const string& name, double value);
 
   // TODO(b/32704451): Don't just ignore the ::tensorflow::Status object!
   ~TestReporter() { Close().IgnoreError(); }  // Autoclose in destructor.
