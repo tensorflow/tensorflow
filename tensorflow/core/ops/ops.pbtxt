@@ -4090,6 +4090,19 @@ op {
     }
   }
   attr {
+    name: "mixed_priority_policy"
+    type: "string"
+    default_value {
+      s: "low_priority_padding_with_max_batch_size"
+    }
+    allowed_values {
+      list {
+        s: "low_priority_padding_with_max_batch_size"
+        s: "low_priority_padding_with_next_allowed_batch_size"
+      }
+    }
+  }
+  attr {
     name: "Tin"
     type: "list(type)"
     has_minimum: true
