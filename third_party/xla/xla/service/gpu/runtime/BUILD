@@ -1,5 +1,6 @@
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
-load("@local_tsl//tsl:tsl.bzl", "nvtx_headers")
+load("@local_tsl//tsl:tsl.bzl", "if_nccl", "nvtx_headers")
+load("@local_tsl//tsl:tsl.default.bzl", "get_compatible_with_portable")
 load("@local_tsl//tsl/platform/default:cuda_build_defs.bzl", "if_cuda_is_configured")
 load("//xla/service/gpu:build_defs.bzl", "get_cub_sort_kernel_types")
 load("//xla/stream_executor:build_defs.bzl", "if_gpu_is_configured")
@@ -74,6 +75,7 @@ cc_library(
         ":custom_call_thunk",
         ":nccl_all_gather_thunk",
         ":nccl_all_reduce_thunk",
+        ":nccl_api",
         ":nccl_collective_broadcast_thunk",
         ":nccl_collective_thunk",
         "//xla:executable_run_options",
@@ -94,7 +96,6 @@ cc_library(
         "//xla/service/gpu:buffer_allocations",
         "//xla/service/gpu:launch_dimensions",
         "//xla/service/gpu:matmul_utils",
-        "//xla/service/gpu:nccl_api",
         "//xla/service/gpu:nccl_clique_key",
         "//xla/service/gpu:stream_executor_util",
         "//xla/service/gpu/kernels:custom_kernel",
@@ -181,6 +182,78 @@ xla_test(
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_benchmark",
         "@local_tsl//tsl/platform:test_main",
+    ],
+)
+
+#===-------------------------------------------------------------------------------------------===//
+# NCCL integration
+#===-------------------------------------------------------------------------------------------===//
+
+# A lot of build complexity below is because NCCL dependency might not always be available and we
+# have `if_nccl` and `if_gpu_configured` that do not compose. NCCL header included directly in
+# :nccl_api target and all other targets should use this header to launch collective operations.
+# This allows to minimize the spreading of #ifdef all over the XLA code base.
+alias(
+    name = "nccl_api",
+    actual = if_nccl(":_nccl_api_impl", ":_nccl_api_stub"),
+)
+
+cc_library(
+    name = "_nccl_api_impl",
+    srcs = if_gpu_is_configured(
+        ["nccl_api.cc"],
+        ["nccl_api_stub.cc"],
+    ),
+    hdrs = ["nccl_api.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "//xla/service:collective_ops_utils",
+        "//xla/service/gpu:nccl_clique_key",
+        "//xla/stream_executor",
+        "//xla/stream_executor/gpu:gpu_activation",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:btree",
+        "@com_google_absl//absl/hash",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/concurrency:ref_count",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:statusor",
+    ] + if_cuda_is_configured([
+        "@local_config_nccl//:nccl",
+        "//xla/stream_executor/cuda:cuda_driver",
+        "//xla/stream_executor/cuda:cuda_executor",
+    ]) + if_rocm_is_configured([
+        "@local_config_rocm//rocm:rccl",
+        "//xla/stream_executor/rocm:rocm_driver",
+        "//xla/stream_executor/rocm:rocm_executor",
+    ]) + if_gpu_is_configured([
+        "//xla/stream_executor/gpu:gpu_stream",
+    ]),
+)
+
+cc_library(
+    name = "_nccl_api_stub",
+    srcs = ["nccl_api_stub.cc"],
+    hdrs = ["nccl_api.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "//xla/service:collective_ops_utils",
+        "//xla/service/gpu:nccl_clique_key",
+        "//xla/stream_executor",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/concurrency:ref_count",
+        "@local_tsl//tsl/platform:logging",
     ],
 )
 
@@ -625,12 +698,12 @@ cc_library(
     srcs = ["nccl_all_gather_thunk.cc"],
     hdrs = ["nccl_all_gather_thunk.h"],
     deps = [
+        ":nccl_api",
         ":nccl_collective_thunk",
         "//xla:shape_util",
         "//xla/hlo/ir:hlo",
         "//xla/service:collective_ops_utils",
         "//xla/service/gpu:backend_configs_cc",
-        "//xla/service/gpu:nccl_api",
         "//xla/service/gpu/runtime:thunk",
         "//xla/stream_executor",
         "@com_google_absl//absl/status",
@@ -647,13 +720,13 @@ cc_library(
     srcs = ["nccl_all_reduce_thunk.cc"],
     hdrs = ["nccl_all_reduce_thunk.h"],
     deps = [
+        ":nccl_api",
         ":nccl_collective_thunk",
         "//xla:status_macros",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/service:collective_ops_utils",
         "//xla/service/gpu:backend_configs_cc",
-        "//xla/service/gpu:nccl_api",
         "//xla/service/gpu/runtime:thunk",
         "//xla/stream_executor",
         "@com_google_absl//absl/status",
@@ -671,13 +744,13 @@ cc_library(
     srcs = ["nccl_all_to_all_thunk.cc"],
     hdrs = ["nccl_all_to_all_thunk.h"],
     deps = [
+        ":nccl_api",
         ":nccl_collective_thunk",
         "//xla:shape_util",
         "//xla:status_macros",
         "//xla/hlo/ir:hlo",
         "//xla/service:collective_ops_utils",
         "//xla/service/gpu:ir_emission_utils",
-        "//xla/service/gpu:nccl_api",
         "//xla/service/gpu/runtime:thunk",
         "//xla/stream_executor",
         "@com_google_absl//absl/status",
@@ -694,12 +767,12 @@ cc_library(
     srcs = ["nccl_collective_broadcast_thunk.cc"],
     hdrs = ["nccl_collective_broadcast_thunk.h"],
     deps = [
+        ":nccl_api",
         ":nccl_collective_thunk",
         "//xla:status",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/service:collective_ops_utils",
-        "//xla/service/gpu:nccl_api",
         "//xla/service/gpu/runtime:thunk",
         "//xla/stream_executor",
         "@com_google_absl//absl/types:span",
@@ -713,6 +786,7 @@ cc_library(
     srcs = ["nccl_collective_permute_thunk.cc"],
     hdrs = ["nccl_collective_permute_thunk.h"],
     deps = [
+        ":nccl_api",
         ":nccl_collective_thunk",
         ":nccl_p2p_thunk_common",
         "//xla:status_macros",
@@ -722,7 +796,6 @@ cc_library(
         "//xla/service:global_device_id",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:ir_emission_utils",
-        "//xla/service/gpu:nccl_api",
         "//xla/service/gpu/runtime:thunk",
         "//xla/stream_executor",
         "//xla/translate/mhlo_to_hlo:attribute_exporter",
@@ -744,6 +817,7 @@ cc_library(
         "TENSORFLOW=1",
     ]),
     deps = [
+        ":nccl_api",
         "//xla:debug_options_flags",
         "//xla:shape_util",
         "//xla:status",
@@ -757,7 +831,6 @@ cc_library(
         "//xla/service:rendezvous",
         "//xla/service/gpu:buffer_allocations",
         "//xla/service/gpu:ir_emission_utils",
-        "//xla/service/gpu:nccl_api",
         "//xla/service/gpu:nccl_clique",
         "//xla/service/gpu:nccl_clique_key",
         "//xla/service/gpu/runtime:thunk",
@@ -821,6 +894,7 @@ cc_library(
     srcs = ["nccl_recv_thunk.cc"],
     hdrs = ["nccl_recv_thunk.h"],
     deps = [
+        ":nccl_api",
         ":nccl_collective_thunk",
         ":nccl_p2p_thunk_common",
         "//xla:status_macros",
@@ -828,7 +902,6 @@ cc_library(
         "//xla/service:collective_ops_utils",
         "//xla/service:computation_placer",
         "//xla/service:global_device_id",
-        "//xla/service/gpu:nccl_api",
         "//xla/service/gpu:nccl_clique_key",
         "//xla/service/gpu/runtime:thunk",
         "//xla/stream_executor",
@@ -846,6 +919,7 @@ cc_library(
     srcs = ["nccl_send_thunk.cc"],
     hdrs = ["nccl_send_thunk.h"],
     deps = [
+        ":nccl_api",
         ":nccl_collective_thunk",
         ":nccl_p2p_thunk_common",
         "//xla:status_macros",
@@ -853,7 +927,6 @@ cc_library(
         "//xla/service:collective_ops_utils",
         "//xla/service:computation_placer",
         "//xla/service:global_device_id",
-        "//xla/service/gpu:nccl_api",
         "//xla/service/gpu:nccl_clique_key",
         "//xla/service/gpu/runtime:thunk",
         "//xla/stream_executor",
@@ -961,6 +1034,7 @@ cc_library(
     srcs = ["thunk.cc"],
     hdrs = ["thunk.h"],
     deps = [
+        ":nccl_api",
         "//xla:executable_run_options",
         "//xla/hlo/ir:hlo",
         "//xla/service:buffer_assignment",
@@ -969,7 +1043,6 @@ cc_library(
         "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:buffer_allocations",
         "//xla/service/gpu:gpu_executable_run_options",
-        "//xla/service/gpu:nccl_api",
         "//xla/service/gpu:nccl_clique",
         "//xla/service/gpu:nccl_clique_key",
         "//xla/stream_executor",
