@@ -125,32 +125,7 @@ class AutoMixedPrecisionListsFp16 : public AutoMixedPrecisionLists {
 
   gtl::FlatSet<string> AllowList() override {
     auto list = gtl::FlatSet<string>{
-<<<<<<< HEAD
-        "BlockLSTM",
-        "BlockLSTMV2",
-        "BlockLSTMGrad",
-        "BlockLSTMGradV2",
-        "Conv2D",
-        "Conv2DBackpropFilter",
-        "Conv2DBackpropInput",
-        "CudnnRNN",
-        "CudnnRNNBackprop",
-        "CudnnRNNBackpropV2",
-        "CudnnRNNBackpropV3",
-        "CudnnRNNV2",
-        "CudnnRNNV3",
-        "Einsum",
-        "Dropout",
-        "DropoutGrad",
-        "FusedConv2DBiasActivation",
-        "FusedSparseConvGpuV2",
-        "GRUBlockCell",
-        "GRUBlockCellGrad",
-        "LSTMBlockCell",
-        "LSTMBlockCellGrad",
-=======
         "Conv2D", "Conv2DBackpropFilter", "Conv2DBackpropInput", "Einsum",
->>>>>>> upstream/master
         "MatMul",
     };
     if (use_cuda_) {
@@ -195,14 +170,10 @@ class AutoMixedPrecisionListsFp16 : public AutoMixedPrecisionLists {
       list.insert("Conv3DBackpropInput");
       list.insert("Conv3DBackpropInputV2");
     }
-<<<<<<< HEAD
 #if TENSORFLOW_USE_ROCM
       list.insert("_ROCmFusedConvolutionBiasActivation");
 #endif
     if (cudnn_version_ >= 8000) {
-=======
-    if ((use_cuda_ && cudnn_version_ >= 8000) || use_onednn_) {
->>>>>>> upstream/master
       list.insert("DepthwiseConv2dNative");
       list.insert("DepthwiseConv2dNativeBackpropFilter");
       list.insert("DepthwiseConv2dNativeBackpropInput");
@@ -265,7 +236,6 @@ class AutoMixedPrecisionListsFp16 : public AutoMixedPrecisionLists {
         "Tanh",
         "TanhGrad",
     };
-<<<<<<< HEAD
 #if TENSORFLOW_USE_ROCM
       list.insert("_FusedMulAdd");
       list.insert("_FusedMulAdd2");
@@ -279,13 +249,6 @@ class AutoMixedPrecisionListsFp16 : public AutoMixedPrecisionLists {
       list.insert("_ROCmFusedBatchNormActivationBackward");
       list.insert("_ROCmFusedConvolutionBiasBatchNormActivation");
 #endif
-=======
-    if (use_onednn_) {
-      list.insert("Rsqrt");
-      list.insert("Square");
-      list.insert("SquaredDifference");
-    }
->>>>>>> upstream/master
     UpdateList("INFERLIST", &list);
     // For backwards compatibility, keeping the original env variable here.
     // TODO(reedwm): This should be removed if we don't have active users.

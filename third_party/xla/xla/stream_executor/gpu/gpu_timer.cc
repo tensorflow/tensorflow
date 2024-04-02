@@ -51,22 +51,6 @@ absl::Duration RandomDuration() {
   return absl::Microseconds(distribution(rng));
 }
 
-<<<<<<< HEAD
-bool ShouldLaunchDelayKernel() {
-#if GOOGLE_CUDA
-  // Only launch the delay kernel if CUDA_LAUNCH_BLOCKING is not set to 1.
-  static bool value = [] {
-    const char* blocking = std::getenv("CUDA_LAUNCH_BLOCKING");
-    return !blocking || std::string_view{blocking} != "1";
-  }();
-  return value;
-#elif TENSORFLOW_USE_ROCM
-  return false;
-#endif
-}
-
-=======
->>>>>>> upstream/master
 }  // namespace
 
 /*deprecated*/ /*static*/ absl::StatusOr<GpuTimer> GpuTimer::Create(
@@ -101,80 +85,10 @@ GpuTimer::CreateIfNeeded(GpuStream* stream, bool is_needed) {
   return GpuTimer::Create(AsGpuStream(stream));
 }
 
-<<<<<<< HEAD
-DeviceMemory<GpuSemaphoreState> GpuTimer::GpuSemaphore::device() {
-  // This assumes unified addressing, as we do not explicitly translate the
-  // host pointer into a device pointer.
-  return DeviceMemory<GpuSemaphoreState>::MakeFromByteSize(
-      ptr_->opaque(), sizeof(GpuSemaphoreState));
-}
-
-/*static*/ absl::StatusOr<GpuTimer> GpuTimer::Create(Stream* real_stream) {
-  StreamExecutor* executor = real_stream->parent();
-  GpuStream* stream = AsGpuStream(real_stream);
-  GpuExecutor* parent = stream->parent();
-  GpuContext* context = parent->gpu_context();
-  GpuEventHandle start_event;
-  TF_RETURN_IF_ERROR(GpuDriver::InitEvent(context, &start_event,
-                                          GpuDriver::EventFlags::kDefault));
-  GpuEventHandle stop_event;
-  TF_RETURN_IF_ERROR(GpuDriver::InitEvent(context, &stop_event,
-                                          GpuDriver::EventFlags::kDefault));
-  CHECK(start_event != nullptr && stop_event != nullptr);
-  GpuSemaphore semaphore{};
-  if (ShouldLaunchDelayKernel()) {
-    // Check the assumption that this device supports unified addressing,
-    // otherwise skip the delay kernel
-#if GOOGLE_CUDA
-    auto attr = CU_DEVICE_ATTRIBUTE_UNIFIED_ADDRESSING;
-#elif TENSORFLOW_USE_ROCM
-    auto attr = hipDeviceAttributeUnifiedAddressing;
-#endif
-    TF_ASSIGN_OR_RETURN(int status, GpuDriver::GetDeviceAttribute(
-                                        attr, parent->device()));
-    if (!status) {
-      LOG(WARNING) << "Skipping the delay kernel because the device does not "
-                      "support unified addressing";
-    } else {
-      // Allocate a semaphore value that will be used to signal to the delay
-      // kernel that it may exit.
-      TF_ASSIGN_OR_RETURN(semaphore, GpuSemaphore::Create(executor));
-      *semaphore = GpuSemaphoreState::Hold;
-      // In principle the kernel could be loaded lazily and shared across
-      // multiple GpuTimer objects.
-      TF_ASSIGN_OR_RETURN(
-          auto kernel,
-          (TypedKernel<DeviceMemory<GpuSemaphoreState>,
-                       GpuSemaphoreState>::Create(executor, "DelayKernel",
-                                                  delay_kernel::kernel())));
-      // Launch a delay kernel into this stream, which will spin until
-      // GetElapsedDuration() is called, the timer is destroyed, or the timeout
-      // in the kernel is reached.
-      TF_RETURN_IF_ERROR(real_stream->ThenLaunch(
-          ThreadDim(1, 1, 1), BlockDim(1, 1, 1), kernel, semaphore.device(),
-          GpuSemaphoreState::Release));
-    }
-  }
-  // The start event goes after the delay kernel in the stream
-  TF_RETURN_IF_ERROR(GpuDriver::RecordEvent(parent->gpu_context(), start_event,
-                                            stream->gpu_stream()));
-  return absl::StatusOr<GpuTimer>{absl::in_place, parent, start_event,
-                                  stop_event,     stream, std::move(semaphore)};
-}
-
-/*static*/ absl::StatusOr<std::optional<GpuTimer>> GpuTimer::CreateIfNeeded(
-    Stream* stream, bool is_needed) {
-  if (is_needed) {
-    TF_ASSIGN_OR_RETURN(GpuTimer t, GpuTimer::Create(stream));
-    return {std::make_optional(std::move(t))};
-  }
-  return std::nullopt;
-=======
 [[deprecated("So it can quietly call a deprecated method")]] /*static*/ absl::
     StatusOr<std::optional<GpuTimer>>
     GpuTimer::CreateIfNeeded(Stream* stream, bool is_needed) {
   return GpuTimer::CreateIfNeeded(AsGpuStream(stream), is_needed);
->>>>>>> upstream/master
 }
 
 /*static*/ void GpuTimer::ReturnRandomDurationsForTesting() {
