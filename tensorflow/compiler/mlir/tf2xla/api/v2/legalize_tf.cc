@@ -198,6 +198,10 @@ tsl::StatusOr<tensorflow::XlaCompilationResult> LegalizeMlirToHlo(
       compilation_result.get());
 
   if (mlir_bridge_status.ok()) {
+    tsl::error_logging::Log(kBridgeComponent,
+                            "TFXLA_API_V2_COMBINED_BRIDGE_BUT_MLIR_PASSED",
+                            combined_bridge_status.status().ToString())
+        .IgnoreError();
     VLOG(1) << "Successfully compiled MLIR computation to XLA HLO using MLIR "
                "tf2xla Bridge";
     IncrementTfMlirBridgeSecondPhaseCounter(
