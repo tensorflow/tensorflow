@@ -57,6 +57,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 #include "tensorflow/core/tfrt/fallback/fallback_state.h"
+#include "tensorflow/core/tfrt/mlrt/bytecode/bytecode.h"
 #include "tensorflow/core/tfrt/saved_model/saved_model_import_input.h"
 #include "tensorflow/core/tfrt/saved_model/utils/serialize_utils.h"
 #include "tsl/platform/env.h"
@@ -302,6 +303,11 @@ std::string GetBefFilePath(std::string aot_package_directory) {
                            std::string(kBefBufferFileName));
 }
 
+std::string GetMlrtByteCodeFilePath(const std::string& aot_package_directory) {
+  return tsl::io::JoinPath(aot_package_directory,
+                           std::string(kMlrtBufferFileName));
+}
+
 std::string GetMlirFilePath(const std::string& aot_package_directory) {
   return tsl::io::JoinPath(aot_package_directory, kMlirModuleFilename);
 }
@@ -326,7 +332,28 @@ absl::StatusOr<tfrt::BefBuffer> LoadBefAndMlir(
   return bef;
 }
 
-absl::Status DeserializeAotMlirModule(
+absl::StatusOr<mlrt::bc::Buffer> LoadMlrtAndMlir(
+    const TfrtCompileOptions& options, mlir::ModuleOp mlir_module,
+    const std::string& saved_model_dir,
+    tfrt_stub::FallbackState* fallback_state) {
+  const std::string aot_package_directory = GetAotPackagePath(saved_model_dir);
+  const std::string mlrt_file_path =
+      tfrt_stub::GetMlrtByteCodeFilePath(aot_package_directory);
+  TF_ASSIGN_OR_RETURN(mlrt::bc::Buffer mlrt_bytecode,
+                      DeserializeMlrtBytecodeBuffer(mlrt_file_path));
+
+  if (mlrt_bytecode.empty()) {
+    return absl::InternalError("MLRT Bytecode is empty.");
+  }
+
+  if (options.device_target == TfrtDeviceInfraTarget::kGpu) {
+    TF_RETURN_IF_ERROR(AddXlaFunctions(fallback_state, mlir_module));
+  }
+
+  return mlrt_bytecode;
+}
+
+absl::Status DeserializeAoTMlirModule(
     absl::string_view saved_model_dir, mlir::MLIRContext* context,
     mlir::OwningOpRef<mlir::ModuleOp>* mlir_module) {
   const std::string aot_package_directory = GetAotPackagePath(saved_model_dir);
