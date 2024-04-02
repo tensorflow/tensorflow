@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "llvm/Support/Casting.h"
@@ -45,6 +46,7 @@ limitations under the License.
 #include "third_party/nanobind/include/nanobind/stl/shared_ptr.h"  // IWYU pragma: keep
 #include "third_party/nanobind/include/nanobind/stl/string.h"  // IWYU pragma: keep
 #include "third_party/nanobind/include/nanobind/stl/string_view.h"  // IWYU pragma: keep
+#include "third_party/nanobind/include/nanobind/stl/unique_ptr.h"  // IWYU pragma: keep
 #include "third_party/nanobind/include/nanobind/stl/variant.h"  // IWYU pragma: keep
 #include "third_party/nanobind/include/nanobind/stl/vector.h"  // IWYU pragma: keep
 #include "xla/literal.h"
@@ -428,15 +430,19 @@ MakeIfrtDeserializeExecutableOptions(std::optional<CompileOptions> options,
 
 }  // namespace
 
-/* static */ absl::StatusOr<nb_class_ptr<PyLoadedExecutable>> PyClient::Compile(
-    nb_class_ptr<PyClient> client, std::string mlir_module,
-    CompileOptions options, std::vector<nb::capsule> host_callbacks) {
-  // Pass allocated device memory size to compile options for pjrt compatible
-  // backends.
+/* static */ absl::StatusOr<nb_class_ptr<PyLoadedExecutable>>
+PyClient::CompileIfrtProgram(
+    nb_class_ptr<PyClient> client, std::unique_ptr<ifrt::Program> ifrt_program,
+    std::unique_ptr<ifrt::CompileOptions> ifrt_options) {
   auto* pjrt_compatible_client =
       llvm::dyn_cast_or_null<ifrt::PjRtCompatibleClient>(
           client->ifrt_client_.get());
-  if (pjrt_compatible_client != nullptr) {
+  auto* ifrt_xla_options =
+      llvm::dyn_cast_or_null<ifrt::XlaCompileOptions>(ifrt_options.get());
+  // For XLA programs, pass allocated device memory size to compile options for
+  // pjrt compatible backends.
+  if (pjrt_compatible_client != nullptr && ifrt_xla_options != nullptr) {
+    xla::CompileOptions& options = ifrt_xla_options->compile_options;
     auto addressable_devices =
         pjrt_compatible_client->pjrt_client()->addressable_devices();
     if (!addressable_devices.empty()) {
@@ -455,24 +461,28 @@ MakeIfrtDeserializeExecutableOptions(std::optional<CompileOptions> options,
 
   std::unique_ptr<ifrt::LoadedExecutable> ifrt_loaded_executable;
   std::optional<std::string> fingerprint;
-  auto ifrt_compile_options =
-      MakeIfrtCompileOptions(std::move(options), std::move(host_callbacks));
   {
     nb::gil_scoped_release gil_release;
-    mlir::MLIRContext context;
-    TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
-                        ParseMlirModuleString(mlir_module, context));
-    TF_ASSIGN_OR_RETURN(
-        ifrt_loaded_executable,
-        client->ifrt_client_->GetDefaultCompiler()->Compile(
-            std::make_unique<xla::ifrt::XlaProgram>(module.get()),
-            std::move(ifrt_compile_options)));
+    TF_ASSIGN_OR_RETURN(ifrt_loaded_executable,
+                        client->ifrt_client_->GetDefaultCompiler()->Compile(
+                            std::move(ifrt_program), std::move(ifrt_options)));
     TF_ASSIGN_OR_RETURN(fingerprint, ifrt_loaded_executable->Fingerprint());
   }
   auto traceback = Traceback::Get();
   return make_nb_class<PyLoadedExecutable>(
       std::move(client), std::move(ifrt_loaded_executable),
       std::move(traceback), std::move(fingerprint));
+}
+
+/* static */ absl::StatusOr<nb_class_ptr<PyLoadedExecutable>> PyClient::Compile(
+    nb_class_ptr<PyClient> client, std::string mlir_module,
+    CompileOptions options, std::vector<nb::capsule> host_callbacks) {
+  mlir::MLIRContext context;
+  TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
+                      ParseMlirModuleString(mlir_module, context));
+  return CompileIfrtProgram(
+      client, std::make_unique<xla::ifrt::XlaProgram>(module.get()),
+      MakeIfrtCompileOptions(std::move(options), std::move(host_callbacks)));
 }
 
 absl::StatusOr<nb::bytes> PyClient::SerializeExecutable(
@@ -762,6 +772,8 @@ PyType_Slot PyClient::slots_[] = {
           },
           nb::arg("computation"), nb::arg("compile_options") = CompileOptions(),
           nb::arg("host_callbacks") = std::vector<nb::capsule>())
+      .def("compile_ifrt_program",
+           xla::ValueOrThrowWrapper(PyClient::CompileIfrtProgram))
       .def("serialize_executable",
            xla::ValueOrThrowWrapper(&PyClient::SerializeExecutable))
       .def(

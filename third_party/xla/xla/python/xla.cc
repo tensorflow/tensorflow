@@ -55,6 +55,7 @@ limitations under the License.
 #include "xla/pjrt/status_casters.h"
 #include "xla/python/ifrt_proxy/client/py_module.h"
 #include "xla/python/py_client.h"
+#include "xla/python/py_program.h"
 #include "xla/service/cpu/collectives_interface.h"
 #include "xla/tsl/python/lib/core/numpy.h"  //NOLINT
 #ifdef XLA_PYTHON_ENABLE_GPU
@@ -609,6 +610,7 @@ NB_MODULE(xla_extension, m_nb) {
   m_nb.def("cuda_array_interface_to_buffer",
            xla::ValueOrThrowWrapper(CudaArrayInterfaceToBuffer));
 
+  BuildIfrtProgramsSubmodule(m_nb);
   BuildProfilerSubmodule(m_nb);
   BuildOpsSubmodule(m_nb);
   BuildOutfeedReceiverSubmodule(m_nb);

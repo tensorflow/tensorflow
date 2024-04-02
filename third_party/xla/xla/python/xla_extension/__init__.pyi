@@ -37,6 +37,7 @@ from typing import (
 
 import numpy as np
 
+from . import ifrt_programs
 from . import ifrt_proxy
 from . import jax_jit
 from . import mlir
@@ -508,6 +509,11 @@ class Client:
       computation: Union[str, bytes],
       compile_options: CompileOptions = ...,
       host_callbacks: Sequence[Any] = ...,
+  ) -> LoadedExecutable: ...
+  def compile_ifrt_program(
+      self,
+      program: ifrt_programs.Program,
+      program_options: ifrt_programs.CompileOptions,
   ) -> LoadedExecutable: ...
   def serialize_executable(self, executable: LoadedExecutable) -> bytes: ...
   def deserialize_executable(

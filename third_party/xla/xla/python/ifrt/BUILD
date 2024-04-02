@@ -454,3 +454,44 @@ tf_proto_library(
         ":shape_proto",
     ],
 )
+
+cc_library(
+    name = "plugin_program",
+    srcs = ["plugin_program.cc"],
+    hdrs = ["plugin_program.h"],
+    deps = [
+        ":ifrt",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_library(
+    name = "plugin_program_serdes",
+    srcs = ["plugin_program_serdes.cc"],
+    deps = [
+        ":plugin_program",
+        ":serdes",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@llvm-project//llvm:Support",
+    ],
+    alwayslink = True,
+)
+
+xla_cc_test(
+    name = "plugin_program_serdes_test",
+    srcs = ["plugin_program_serdes_test.cc"],
+    deps = [
+        ":plugin_program",
+        ":plugin_program_serdes",
+        ":serdes",
+        ":serdes_proto_cc",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Support",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/protobuf:error_codes_proto_impl_cc",
+        "@local_tsl//tsl/protobuf:status_proto_cc",
+    ],
+)

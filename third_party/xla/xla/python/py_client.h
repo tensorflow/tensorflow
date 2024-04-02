@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/python/ifrt/client.h"
+#include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/nb_class_ptr.h"
 #include "xla/python/pjrt_ifrt/pjrt_client.h"
@@ -148,6 +149,11 @@ class PyClient {
       nb_class_ptr<PyClient> client, nanobind::handle argument,
       PjRtDevice* device, bool force_copy,
       ifrt::Client::HostBufferSemantics host_buffer_semantics);
+
+  static absl::StatusOr<nb_class_ptr<PyLoadedExecutable>> CompileIfrtProgram(
+      nb_class_ptr<PyClient> client,
+      std::unique_ptr<ifrt::Program> ifrt_program,
+      std::unique_ptr<ifrt::CompileOptions> ifrt_options);
 
   static absl::StatusOr<nb_class_ptr<PyLoadedExecutable>> Compile(
       nb_class_ptr<PyClient> client, std::string mlir_module,
