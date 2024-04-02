@@ -117,7 +117,7 @@ HloInstruction* WhileLoopFusibleSinking::CreateSinkableFusion(
   return fusion;
 }
 
-StatusOr<bool> WhileLoopFusibleSinking::TrySinkingFusiblesIntoWhileLoop(
+absl::StatusOr<bool> WhileLoopFusibleSinking::TrySinkingFusiblesIntoWhileLoop(
     HloInstruction* while_instr) {
   HloComputation* while_cond = while_instr->while_condition();
   HloComputation* while_body = while_instr->while_body();
@@ -235,7 +235,7 @@ StatusOr<bool> WhileLoopFusibleSinking::TrySinkingFusiblesIntoWhileLoop(
   return changed;
 }
 
-StatusOr<bool> WhileLoopFusibleSinking::Run(
+absl::StatusOr<bool> WhileLoopFusibleSinking::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   call_counts_.clear();

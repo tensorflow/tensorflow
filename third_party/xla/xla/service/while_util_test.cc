@@ -35,7 +35,7 @@ namespace op = ::xla::testing::opcode_matchers;
 
 class WhileUtilTest : public HloTestBase {
  protected:
-  StatusOr<std::unique_ptr<VerifiedHloModule>> GetParsedModule(
+  absl::StatusOr<std::unique_ptr<VerifiedHloModule>> GetParsedModule(
       HloComputation** entry_computation, HloInstruction** param0,
       HloInstruction** param1, HloInstruction** param2) {
     const char* const hlo_string = R"(

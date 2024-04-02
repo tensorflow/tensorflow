@@ -33,7 +33,7 @@ class StableSortExpander : public OpExpanderPass {
 
  private:
   bool InstructionMatchesPattern(HloInstruction* instruction) override;
-  StatusOr<HloInstruction*> ExpandInstruction(
+  absl::StatusOr<HloInstruction*> ExpandInstruction(
       HloInstruction* instruction) override;
 };
 
