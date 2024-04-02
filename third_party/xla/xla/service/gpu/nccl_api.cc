@@ -376,17 +376,20 @@ DefaultNcclApi::CommInitRanks(int32_t nranks, const NcclCliqueId& clique_id,
   VLOG(1) << "Initialize NCCL communicator for " << ranks.size()
           << " devices; hash(id)=" << absl::HashOf(clique_id);
 
-#if !defined(TENSORFLOW_USE_ROCM) || \
-    (defined(TENSORFLOW_USE_ROCM) && TF_ROCM_VERSION > 50700)
   ncclConfig_t comm_config = NCCL_CONFIG_INITIALIZER;
+#if !defined(TENSORFLOW_USE_ROCM) || TF_ROCM_VERSION > 50700
   comm_config.splitShare = config.split_share;
+#endif
   if (config.max_nchannels > 0) {
     comm_config.maxCTAs = config.max_nchannels;
     VLOG(1) << "Maximum number of channels for hash(id)="
             << absl::HashOf(clique_id) << " is set to: " << comm_config.maxCTAs;
   }
 
+  std::vector<ncclComm_t> comm_handles;
   std::vector<OwnedNcclComm> comms;
+
+  comm_handles.resize(ranks.size(), nullptr);
   comms.reserve(ranks.size());
 
   TF_RETURN_IF_ERROR(GroupStart());
@@ -396,21 +399,17 @@ DefaultNcclApi::CommInitRanks(int32_t nranks, const NcclCliqueId& clique_id,
 
     se::gpu::ScopedActivateExecutorContext activate_context(ranks[i].device);
 
-    ncclComm_t comm_handle = nullptr;
-    XLA_NCCL_RETURN_IF_ERROR(
-        ncclCommInitRankConfig(&comm_handle, nranks, AsNcclUniqueId(clique_id),
-                               ranks[i].rank, &comm_config));
-
-    comms.emplace_back(Cast(comm_handle), NcclCommDeleter{this});
+    XLA_NCCL_RETURN_IF_ERROR(ncclCommInitRankConfig(
+        &comm_handles[i], nranks, AsNcclUniqueId(clique_id), ranks[i].rank,
+        &comm_config));
   }
   TF_RETURN_IF_ERROR(GroupEnd());
 
+  for (ncclComm_t comm_handle : comm_handles) {
+    comms.emplace_back(Cast(comm_handle), NcclCommDeleter{this});
+  }
+
   return comms;
-#else
-  return absl::UnimplementedError(absl::StrFormat(
-      "%s:%d: NCCL operation ncclCommInitRankConfig not implemented", __FILE__,
-      __LINE__));
-#endif
 }
 
 absl::StatusOr<std::vector<NcclApi::OwnedNcclComm>> DefaultNcclApi::CommSplit(
