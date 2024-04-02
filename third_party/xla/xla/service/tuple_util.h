@@ -60,7 +60,7 @@ class TupleUtil {
   // new_instruction. If the replacement instruction has a different shape than
   // the old one, we insert a bitcast if insert_bitcast_if_different_shape is
   // set to true.
-  static StatusOr<HloInstruction*> ReplaceTupleWith(
+  static absl::StatusOr<HloInstruction*> ReplaceTupleWith(
       HloInstruction* new_instruction, HloInstruction* tuple,
       ShapeIndex shape_index, bool insert_bitcast_if_different_shape = true);
 

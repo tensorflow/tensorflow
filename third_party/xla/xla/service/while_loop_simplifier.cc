@@ -63,7 +63,7 @@ using std::optional;
 // if:
 //   1) x is a constant and x >= k + c.
 //   2) x is a constant x <= c.
-static StatusOr<bool> TryRemoveTrivialCompare(HloInstruction* while_op) {
+static absl::StatusOr<bool> TryRemoveTrivialCompare(HloInstruction* while_op) {
   std::optional<int64_t> indvar_index = GetLoopInductionVarTupleIdx(while_op);
   if (indvar_index.has_value()) {
     if (while_op->operand(0)->operand(*indvar_index)->IsConstant()) {
@@ -135,7 +135,7 @@ void CopyFrontendAttributes(HloInstruction* old_while_op,
 // while loop init, body, and condition. The final shape returned is still the
 // same as before. If set index_for_replaced will replace any use of the removed
 // indices in the final shape with a copy of the removed index.
-static StatusOr<HloInstruction*> RemoveDeadTupleIndices(
+static absl::StatusOr<HloInstruction*> RemoveDeadTupleIndices(
     HloInstruction* while_op, absl::flat_hash_set<int64_t>& used_tuple_indices,
     int64_t index_for_replaced = -1) {
   // Build up maps from the old/new to the new/old tuple indices.
@@ -312,7 +312,7 @@ static StatusOr<HloInstruction*> RemoveDeadTupleIndices(
 // that tuple that is not used by the loop condition and is not used by the loop
 // body except to pass it to the next iteration of the loop, then we can remove
 // that element from the loop's tuples.
-static StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
+static absl::StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
   CHECK_EQ(while_op->opcode(), HloOpcode::kWhile);
 
   // Don't try this transformation if the while loop isn't removable, since if
@@ -557,7 +557,7 @@ static StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
 // This is a helper function for TryRemoveRepeatedWhileTupleIndices. It removes
 // duplicates by replacing them with tuple_index, followed by a call to
 // RemoveDeadTupleIndices.
-static StatusOr<HloInstruction*> TryRemoveRepeatedWhileTupleIndicesHelper(
+static absl::StatusOr<HloInstruction*> TryRemoveRepeatedWhileTupleIndicesHelper(
     HloInstruction* while_op, const int64_t tuple_index, bool replace_with_init,
     absl::flat_hash_set<int64_t>& duplicates) {
   HloComputation* while_cond = while_op->while_condition();
@@ -617,7 +617,7 @@ static bool IsDynamicUpdateSliceWhileInsertion(
 
 // If the while loop init passes the same values to several tuple indices, and
 // if the body keeps on passing them through, we can remove the duplicates.
-static StatusOr<bool> TryRemoveRepeatedWhileTupleIndices(
+static absl::StatusOr<bool> TryRemoveRepeatedWhileTupleIndices(
     HloInstruction* while_op) {
   CHECK_EQ(while_op->opcode(), HloOpcode::kWhile);
 
@@ -765,7 +765,7 @@ static StatusOr<bool> TryRemoveRepeatedWhileTupleIndices(
 
 // Removes each loop parameter (i.e. member of the while loop tuple) that is a
 // constant and is the same in the while loop body and the while loop init.
-static StatusOr<bool> TryRemoveConstantParams(HloInstruction* while_op) {
+static absl::StatusOr<bool> TryRemoveConstantParams(HloInstruction* while_op) {
   HloModule* module = while_op->GetModule();
   HloComputation* computation = while_op->parent();
   auto* while_init = while_op->mutable_operand(0);
@@ -913,7 +913,7 @@ static StatusOr<bool> TryRemoveConstantParams(HloInstruction* while_op) {
 //    loop itself removed.
 //
 // Returns true if it made a change to the graph.
-static StatusOr<bool> TryRemoveWhileLoop(HloInstruction* while_op) {
+static absl::StatusOr<bool> TryRemoveWhileLoop(HloInstruction* while_op) {
   // Cowardly refuse to remove loops that are not removable.  In practice, this
   // means that we can't remove loops that have control predecessors/successors.
   if (!while_op->parent()->IsSafelyRemovable(while_op)) {
@@ -998,7 +998,7 @@ static StatusOr<bool> TryRemoveWhileLoop(HloInstruction* while_op) {
   return false;
 }
 
-static StatusOr<bool> TryPropagateConstant(HloInstruction* while_op) {
+static absl::StatusOr<bool> TryPropagateConstant(HloInstruction* while_op) {
   auto while_init = while_op->operand(0);
   if (while_init->opcode() != HloOpcode::kTuple) {
     return false;
@@ -1037,7 +1037,8 @@ static StatusOr<bool> TryPropagateConstant(HloInstruction* while_op) {
 
   // Replace the use of each constant tuple element in the loop_condition and
   // loop_body with the corresponding constant value.
-  auto propagate_constant = [&](HloComputation* computation) -> StatusOr<bool> {
+  auto propagate_constant =
+      [&](HloComputation* computation) -> absl::StatusOr<bool> {
     HloInstruction* param = computation->parameter_instruction(0);
     bool changed = false;
     for (auto instr : param->users()) {
@@ -1134,7 +1135,7 @@ static std::vector<HloInstruction*> GetFlatTupleElems(
   return elems;
 }
 
-static StatusOr<bool> TryFlattenNestedTuples(HloInstruction* while_op) {
+static absl::StatusOr<bool> TryFlattenNestedTuples(HloInstruction* while_op) {
   HloModule* module = while_op->GetModule();
   HloComputation* computation = while_op->parent();
   auto* while_init = while_op->mutable_operand(0);
@@ -1264,7 +1265,7 @@ static StatusOr<bool> TryFlattenNestedTuples(HloInstruction* while_op) {
 // need to be wrapped in a tuple that changes its shape.  We return the loop
 // itself so that you can call TryMergeInductionVariables in a loop, once for
 // each integral type elem_ty.
-static StatusOr<HloInstruction*> TryMergeInductionVariables(
+static absl::StatusOr<HloInstruction*> TryMergeInductionVariables(
     HloInstruction* while_op, PrimitiveType elem_ty) {
   CHECK(primitive_util::IsIntegralType(elem_ty)) << PrimitiveType_Name(elem_ty);
   HloModule* module = while_op->GetModule();
@@ -1479,7 +1480,7 @@ static StatusOr<HloInstruction*> TryMergeInductionVariables(
   return new_while;
 }
 
-StatusOr<bool> WhileLoopSimplifier::Run(
+absl::StatusOr<bool> WhileLoopSimplifier::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   XLA_VLOG_LINES(3,

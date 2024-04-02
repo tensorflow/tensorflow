@@ -53,7 +53,7 @@ TransferManager::GetPlatformTransferManagers() {
   return r;
 }
 
-StatusOr<Literal> TransferManager::TransferLiteralFromDevice(
+absl::StatusOr<Literal> TransferManager::TransferLiteralFromDevice(
     se::Stream* stream, const ShapedBuffer& device_buffer,
     const TransferMetadata* transfer_metadata) {
   Literal literal(device_buffer.on_host_shape());
@@ -98,7 +98,7 @@ Status TransferManager::TransferLiteralToDevice(
   return substream->BlockHostUntilDone();
 }
 
-StatusOr<Literal> TransferManager::TransferArrayFromDevice(
+absl::StatusOr<Literal> TransferManager::TransferArrayFromDevice(
     se::Stream* stream, const Shape& shape, const se::DeviceMemoryBase& source,
     const TransferMetadata* transfer_metadata) {
   TF_RET_CHECK(shape.IsArray());
@@ -201,7 +201,7 @@ Status TransferManager::ReadDynamicShapes(se::Stream* stream,
   (*managers)[platform_id].creation_function = creation_function;
 }
 
-/* static */ StatusOr<TransferManager*> TransferManager::GetForPlatform(
+/* static */ absl::StatusOr<TransferManager*> TransferManager::GetForPlatform(
     const se::Platform* platform) {
   absl::MutexLock lock(&TransferManager::platform_transfer_manager_mutex_);
   auto* managers = GetPlatformTransferManagers();
@@ -296,7 +296,7 @@ Status TransferManager::WriteRootTupleIndexTable(
                                     &device_memory);
 }
 
-StatusOr<ScopedShapedBuffer> TransferManager::AllocateScopedShapedBuffer(
+absl::StatusOr<ScopedShapedBuffer> TransferManager::AllocateScopedShapedBuffer(
     const Shape& on_host_shape, se::DeviceMemoryAllocator* allocator,
     int device_ordinal, DeviceShapeRepresentationFn shape_representation_fn) {
   if (!LayoutUtil::HasLayout(on_host_shape)) {
@@ -331,7 +331,7 @@ StatusOr<ScopedShapedBuffer> TransferManager::AllocateScopedShapedBuffer(
   return std::move(shaped_buffer);
 }
 
-StatusOr<Shape> TransferManager::ChooseCompactLayoutForShape(
+absl::StatusOr<Shape> TransferManager::ChooseCompactLayoutForShape(
     const Shape& host_shape) const {
   return LayoutUtil::GetWithDefaultLayout(host_shape);
 }

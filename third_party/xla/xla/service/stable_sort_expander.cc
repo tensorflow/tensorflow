@@ -34,7 +34,7 @@ namespace xla {
 // If no matching iota operand is found, a iota operand is added to Sort. The
 // comparison computation is adjusted to break ties using the values from the
 // iota operand.
-StatusOr<HloInstruction*> StableSortExpander::ExpandInstruction(
+absl::StatusOr<HloInstruction*> StableSortExpander::ExpandInstruction(
     HloInstruction* instruction) {
   auto* sort = Cast<HloSortInstruction>(instruction);
   HloComputation* computation = sort->parent();
