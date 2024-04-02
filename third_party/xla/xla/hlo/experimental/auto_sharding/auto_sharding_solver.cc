@@ -69,6 +69,9 @@ constexpr double kMaxCostEpsilon = 1.0001;
 // same amount.
 constexpr double kMemoryMultiplier = 1e-6;
 
+// Always include memory constraints with this number of terms or fewer.
+constexpr int64_t kMemoryCardinalityThreshold = 1000;
+
 bool AutoShardingSolverOutput::operator==(
     const AutoShardingSolverOutput& other) const {
   return s_val == other.s_val && e_val == other.e_val && cost == other.cost &&
@@ -712,6 +715,9 @@ LivenessIdx FindPeakLiveness(const AutoShardingSolverRequest& request,
   LivenessIdx peak_time_idx = -1;
   double peak_overbudget = 0.0;
   for (LivenessIdx time_idx = 0; time_idx < request.live_size(); ++time_idx) {
+    if (request.live(time_idx).nodes_size() <= kMemoryCardinalityThreshold) {
+      continue;  // We always enforce these, no need to consider them again.
+    }
     double memory_usage = 0.0;
     for (NodeIdx node_idx : request.live(time_idx).nodes()) {
       const NodeStrategyIdx j = chosen_node_strategy[node_idx];
@@ -776,12 +782,20 @@ AutoShardingSolverResult SolveAndExtractSolution(
     MPSolver& solver) {
   absl::Time start_time = absl::Now();
   absl::flat_hash_set<LivenessIdx> peak_times;
-  // Add in any peak times that were encountered in previous iterations.
-  if (request.memory_budget() > 0 && !request.deterministic_mode()) {
-    for (const LivenessIdx peak_time_idx : request.peak_times()) {
-      peak_times.insert(peak_time_idx);
-      ImposeMemoryConstraint(request, s, e, overbudget_var, solver,
-                             peak_time_idx);
+  if (request.memory_budget() > 0) {
+    // Always enforce constraints that have a relatively small number of terms.
+    for (LivenessIdx time_idx = 0; time_idx < request.live_size(); ++time_idx) {
+      if (request.live(time_idx).nodes_size() <= kMemoryCardinalityThreshold) {
+        ImposeMemoryConstraint(request, s, e, overbudget_var, solver, time_idx);
+      }
+    }
+    // Also add in any peak times that were encountered in previous iterations.
+    if (!request.deterministic_mode()) {
+      for (const LivenessIdx peak_time_idx : request.peak_times()) {
+        peak_times.insert(peak_time_idx);
+        ImposeMemoryConstraint(request, s, e, overbudget_var, solver,
+                               peak_time_idx);
+      }
     }
   }
   auto status = solver.Solve();

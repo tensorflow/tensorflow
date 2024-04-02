@@ -104,10 +104,10 @@ int64_t ShapeSizeCompactRaw(const xla::Shape& shape) {
 
 // Given a tuple, fix all non-leaf nodes (tuples) such that the tuple tables
 // point to the correct leaf nodes.
-xla::Status FixTupleTableAsync(se::Stream* stream,
-                               const xla::Shape& tuple_shape,
-                               xla::ExecutionInput* mem,
-                               xla::TransferManager* transfer_manager) {
+absl::Status FixTupleTableAsync(se::Stream* stream,
+                                const xla::Shape& tuple_shape,
+                                xla::ExecutionInput* mem,
+                                xla::TransferManager* transfer_manager) {
   return xla::ShapeUtil::ForEachSubshapeWithStatus(
       tuple_shape,
       [&](const xla::Shape& element_shape,
@@ -159,7 +159,7 @@ bool DynamicShapeIsCompatible(const xla::Shape& dynamic_shape,
 //
 // Metadata contains the sizes of shape without padding, eventually
 // representing the size of valid data.
-xla::Status UpdateDynamicInputs(
+absl::Status UpdateDynamicInputs(
     se::Stream* stream, se::DeviceMemoryAllocator* allocator,
     std::vector<xla::ExecutionInput>* runtime_inputs,
     const std::vector<xla::Shape>& compile_time_shapes) {
@@ -405,7 +405,7 @@ OcParamsPtr CreateOcParams(const std::string& rendezvous_key_base,
 
 }  // namespace
 
-xla::StatusOr<xla::ExecutionOutput> TPUExecute(
+absl::StatusOr<xla::ExecutionOutput> TPUExecute(
     const TPUExecutableInfoProto& executable,
     const TPUHostTransferInfoProto& host_transfers,
     const xla::HloProto& hlo_metadata,
@@ -527,7 +527,7 @@ xla::StatusOr<xla::ExecutionOutput> TPUExecute(
         "RPC cancelled, not running TPU program on device ", device_ordinal));
   }
 
-  xla::StatusOr<xla::ExecutionOutput> output =
+  absl::StatusOr<xla::ExecutionOutput> output =
       tpu_executable->ExecuteAsyncOnStream(&service_run_options,
                                            std::move(arguments),
                                            /*hlo_execution_profile=*/nullptr);

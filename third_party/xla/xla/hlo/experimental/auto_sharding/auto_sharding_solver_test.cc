@@ -245,9 +245,8 @@ TEST(CallORToolsSolverTest, SolvesOverbudget) {
   const std::vector<NodeStrategyIdx> s_val = {0, 0, 0, 0, 0};
   const std::vector<EdgeStrategyIdx> e_val = {0, 0};
   const double objective_value = 9007650.0;
-  const absl::flat_hash_set<LivenessIdx> peak_times = {3};
   const AutoShardingSolverOutput expected_output =
-          {s_val, e_val, objective_value, peak_times};
+          {s_val, e_val, objective_value};
   const AutoShardingSolverResult expected_result = {expected_output, false};
   EXPECT_EQ(result, expected_result);
 }
@@ -370,9 +369,8 @@ TEST(CallORToolsSolverTest, HandlesMemoryEdgeCosts) {
   const std::vector<NodeStrategyIdx> s_val = {0, 0, 1, 1, 0};
   const std::vector<EdgeStrategyIdx> e_val = {1, 1};
   const double objective_value = 7872.0;
-  const absl::flat_hash_set<LivenessIdx> peak_times = {2};
   const AutoShardingSolverOutput expected_output =
-          {s_val, e_val, objective_value, peak_times};
+          {s_val, e_val, objective_value};
   const AutoShardingSolverResult expected_result = {expected_output, false};
   EXPECT_EQ(result, expected_result);
 }

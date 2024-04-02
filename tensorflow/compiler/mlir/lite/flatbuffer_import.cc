@@ -101,6 +101,8 @@ limitations under the License.
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 
+using absl::Status;
+using absl::StatusOr;
 using llvm::ArrayRef;
 using mlir::Builder;
 using mlir::DenseElementsAttr;
@@ -115,8 +117,6 @@ using mlir::Value;
 using mlir::func::FuncOp;
 using tflite::OperatorT;
 using tflite::TensorT;
-using xla::Status;
-using xla::StatusOr;
 
 namespace errors = tensorflow::errors;
 namespace tfl = mlir::TFL;
