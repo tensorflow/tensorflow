@@ -1801,102 +1801,71 @@ absl::Status HloValueSemanticsPropagation::HandleDynamicUpdateSlice(
 
 absl::Status HloValueSemanticsPropagation::HandleCopyStart(
     HloInstruction* copy_start) {
-  RETURN_IF_ALREADY_PROPAGATED(copy_start);
-  ShapeTree<const HloValueSemantics*> semantics_shape_tree(copy_start->shape());
-  const ShapeTree<const HloValueSemantics*>& operand_semantics_shape_tree =
-      analysis_->GetInstructionSemantics(copy_start->operand(0));
-  analysis_->DeepCopyHloValueSemantics(semantics_shape_tree,
-                                       operand_semantics_shape_tree, {}, {0});
-  analysis_->DeepCopyHloValueSemantics(semantics_shape_tree,
-                                       operand_semantics_shape_tree, {}, {1});
-  semantics_shape_tree.ForEachMutableElement(
-      [this, copy_start](const ShapeIndex& shape_index,
-                         const HloValueSemantics** semantics) {
-        if (shape_index.empty()) {
-          *semantics = analysis_->NewHloValueSemantics(
-              HloValueSemanticLabel::kTupleOrToken, {copy_start, shape_index});
-        }
-        if (shape_index == ShapeIndex{2}) {
-          *semantics = analysis_->NewHloValueSemantics(
-              HloValueSemanticLabel::kRandom, {copy_start, shape_index});
-        }
-        if (shape_index == ShapeIndex{3}) {
-          *semantics = analysis_->NewHloValueSemantics(
-              HloValueSemanticLabel::kRandom, {copy_start, shape_index});
-        }
-      });
-  analysis_->SetHloValueSemantics(copy_start, semantics_shape_tree);
-  return OkStatus();
+  return HandleCollectiveOrCopyStart(copy_start);
 }
 
 absl::Status HloValueSemanticsPropagation::HandleCopyDone(
     HloInstruction* copy_done) {
-  RETURN_IF_ALREADY_PROPAGATED(copy_done);
-  const ShapeTree<const HloValueSemantics*>& operand_semantics_shape_tree =
-      analysis_->GetInstructionSemantics(copy_done->operand(0));
-  analysis_->DeepCopyHloValueSemantics(copy_done, operand_semantics_shape_tree,
-                                       {0});
-  return OkStatus();
+  return HandleCollectiveOrCopyDone(copy_done);
 }
 
-absl::Status HloValueSemanticsPropagation::HandleCollectiveStart(
-    HloInstruction* collective_start) {
-  RETURN_IF_ALREADY_PROPAGATED(collective_start);
-  ShapeTree<const HloValueSemantics*> semantics_shape_tree(
-      collective_start->shape());
+absl::Status HloValueSemanticsPropagation::HandleCollectiveOrCopyStart(
+    HloInstruction* op_start) {
+  RETURN_IF_ALREADY_PROPAGATED(op_start);
+  ShapeTree<const HloValueSemantics*> semantics_shape_tree(op_start->shape());
   const ShapeTree<const HloValueSemantics*>& operand_semantics_shape_tree =
-      analysis_->GetInstructionSemantics(collective_start->operand(0));
+      analysis_->GetInstructionSemantics(op_start->operand(0));
   analysis_->DeepCopyHloValueSemantics(semantics_shape_tree,
                                        operand_semantics_shape_tree, {}, {0});
   analysis_->DeepCopyHloValueSemantics(semantics_shape_tree,
                                        operand_semantics_shape_tree, {}, {1});
   semantics_shape_tree.ForEachMutableElement(
-      [this, collective_start](const ShapeIndex& shape_index,
-                               const HloValueSemantics** semantics) {
+      [this, op_start](const ShapeIndex& shape_index,
+                       const HloValueSemantics** semantics) {
         if (shape_index.empty()) {
           *semantics = analysis_->NewHloValueSemantics(
-              HloValueSemanticLabel::kTupleOrToken, {collective_start, {}});
+              HloValueSemanticLabel::kTupleOrToken, {op_start, {}});
         }
         if (shape_index == ShapeIndex{2}) {
           *semantics = analysis_->NewHloValueSemantics(
-              HloValueSemanticLabel::kRandom, {collective_start, shape_index});
+              HloValueSemanticLabel::kRandom, {op_start, shape_index});
         }
         if (shape_index == ShapeIndex{3}) {
           *semantics = analysis_->NewHloValueSemantics(
-              HloValueSemanticLabel::kRandom, {collective_start, shape_index});
+              HloValueSemanticLabel::kRandom, {op_start, shape_index});
         }
       });
-  analysis_->SetHloValueSemantics(collective_start, semantics_shape_tree);
+  analysis_->SetHloValueSemantics(op_start, semantics_shape_tree);
   return OkStatus();
 }
 
-absl::Status HloValueSemanticsPropagation::HandleCollectiveDone(
-    HloInstruction* collective_done) {
-  RETURN_IF_ALREADY_PROPAGATED(collective_done);
+absl::Status HloValueSemanticsPropagation::HandleCollectiveOrCopyDone(
+    HloInstruction* op_done) {
+  RETURN_IF_ALREADY_PROPAGATED(op_done);
   const ShapeTree<const HloValueSemantics*>& operand_semantics_shape_tree =
-      analysis_->GetInstructionSemantics(collective_done->operand(0));
-  analysis_->DeepCopyHloValueSemantics(collective_done,
-                                       operand_semantics_shape_tree, {1});
+      analysis_->GetInstructionSemantics(op_done->operand(0));
+  analysis_->DeepCopyHloValueSemantics(op_done, operand_semantics_shape_tree,
+                                       {1});
   return OkStatus();
 }
 
 absl::Status HloValueSemanticsPropagation::HandleAllGatherStart(
     HloInstruction* all_gather_start) {
-  return HandleCollectiveStart(all_gather_start);
+  return HandleCollectiveOrCopyStart(all_gather_start);
 }
 
 absl::Status HloValueSemanticsPropagation::HandleAllGatherDone(
     HloInstruction* all_gather_done) {
-  return HandleCollectiveDone(all_gather_done);
+  return HandleCollectiveOrCopyDone(all_gather_done);
 }
 
 absl::Status HloValueSemanticsPropagation::HandleCollectivePermuteStart(
     HloInstruction* collective_permute_start) {
-  return HandleCollectiveStart(collective_permute_start);
+  return HandleCollectiveOrCopyStart(collective_permute_start);
 }
 absl::Status HloValueSemanticsPropagation::HandleCollectivePermuteDone(
     HloInstruction* collective_permute_done) {
-  return HandleCollectiveDone(collective_permute_done);
+  return HandleCollectiveOrCopyDone(collective_permute_done);
 }
 absl::Status HloValueSemanticsPropagation::HandleGather(
     HloInstruction* gather) {
