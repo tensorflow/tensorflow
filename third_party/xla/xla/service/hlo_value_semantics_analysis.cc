@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/memory/memory.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
@@ -697,7 +698,12 @@ absl::Status EinsumHeightAnalysis::HandleCalledComputation(
     const HloComputation& computation,
     absl::Span<HloInstruction* const> operands) {
   if (!operands.empty()) {
-    CHECK(computation.num_parameters() == operands.size());
+    if (computation.num_parameters() != operands.size()) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          operands.size(), " operands were passed for the computation ",
+          computation.name(), " with ", computation.num_parameters(),
+          " parameters."));
+    }
     for (int parameter_index = 0;
          parameter_index < computation.num_parameters(); ++parameter_index) {
       HloInstruction* parameter =
@@ -802,9 +808,15 @@ absl::Status EinsumHeightAnalysis::HandleConditional(
   RETURN_IF_HEIGHT_EXISTS(conditional);
   auto conditional_height_iter = GetOrCreateHeightTree(conditional);
   ShapeTree<int>& height_tree = conditional_height_iter->second;
-  for (HloComputation* computation : conditional->branch_computations()) {
-    TF_RETURN_IF_ERROR(
-        HandleCalledComputation(*computation, conditional->mutable_operands()));
+  for (size_t i = 0; i < conditional->branch_count(); ++i) {
+    HloComputation* computation = conditional->branch_computation(i);
+    // An N-way conditional op has N + 1 operands where the first one is the
+    // branch index determining what branch to take, and the remaining N
+    // operands correspond to arguments to be passed to each of the N branch
+    // computations, if they are executed. So the (i + 1)th operand corresponds
+    // to the ith branch computation.
+    TF_RETURN_IF_ERROR(HandleCalledComputation(
+        *computation, {conditional->mutable_operands()[i + 1]}));
     auto branch_root_height_iter =
         GetHeightTreeOrDie(computation->root_instruction());
     SetHeight(height_tree, branch_root_height_iter->second);
