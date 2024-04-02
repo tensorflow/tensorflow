@@ -47,7 +47,7 @@ absl::StatusOr<nb_dtype> PrimitiveTypeToNbDtype(PrimitiveType type);
 // Converts an IFRT dtype to a NumPy dtype.
 absl::StatusOr<nb_dtype> IfrtDtypeToNbDtype(ifrt::DType dtype);
 
-StatusOr<ifrt::DType> DtypeToIfRtDType(nb_dtype dtype);
+absl::StatusOr<ifrt::DType> DtypeToIfRtDType(nb_dtype dtype);
 
 // Returns a Python buffer protocol (PEP 3118) format descriptor string for
 // `type`. Return nullptr if there is no suitable choice of format string.
