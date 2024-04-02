@@ -326,6 +326,7 @@ class HloProtoBufferWrapper {
       // to obtain the buffer allocation index ourselves.
       if (heap_simulator_traces[i].events().empty()) continue;
       int logical_buffer_id = heap_simulator_traces[i].events(0).buffer_id();
+      if (!id_to_logical_buffer_.contains(logical_buffer_id)) continue;
       auto* logical_buffer = id_to_logical_buffer_[logical_buffer_id].get();
       auto buffer_allocation_index = logical_buffer->buffer_allocation.index();
       id_to_buffer_allocation_[buffer_allocation_index]
