@@ -177,9 +177,6 @@ FailureOr<std::string> QuantizationMethodToTextProto(const Method& method) {
 // TODO: b/307620778 - Support more advanced selective quantization methods.
 LogicalResult ApplyQuantizationSpec(const QuantizationSpec& spec,
                                     ModuleOp module_op) {
-  func::FuncOp main_func = FindMainFuncOp(module_op);
-  if (!main_func) return failure();
-
   const Method& quantization_method = spec.method();
 
   FailureOr<std::string> quantization_method_txtpb =
@@ -187,14 +184,18 @@ LogicalResult ApplyQuantizationSpec(const QuantizationSpec& spec,
   if (failed(quantization_method_txtpb)) return failure();
 
   const FunctionNameMatcher matcher(spec.matcher().function_name());
-  for (auto xla_call_module_op : main_func.getOps<TF::XlaCallModuleOp>()) {
-    if (!matcher.Match(xla_call_module_op)) continue;
+  // Iterate over all XlaCallModuleOp in all FuncOps.
+  for (auto func : module_op.getOps<func::FuncOp>()) {
+    for (auto xla_call_module_op : func.getOps<TF::XlaCallModuleOp>()) {
+      if (!matcher.Match(xla_call_module_op)) continue;
 
-    // Set the text representation of `Method` to matched `TF::XlaCallModuleOp`.
-    xla_call_module_op->setAttr(
-        kQuantizationMethodAttr,
-        StringAttr::get(module_op.getContext(),
-                        std::move(*quantization_method_txtpb)));
+      // Set the text representation of `Method` to matched
+      // `TF::XlaCallModuleOp`.
+      xla_call_module_op->setAttr(
+          kQuantizationMethodAttr,
+          StringAttr::get(module_op.getContext(),
+                          std::move(*quantization_method_txtpb)));
+    }
   }
   return success();
 }

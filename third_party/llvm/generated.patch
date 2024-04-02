@@ -1,1 +1,36 @@
 Auto generated patch. Do not edit or delete it, even if empty.
+diff -ruN --strip-trailing-cr a/mlir/include/mlir/IR/OwningOpRef.h b/mlir/include/mlir/IR/OwningOpRef.h
+--- a/mlir/include/mlir/IR/OwningOpRef.h
++++ b/mlir/include/mlir/IR/OwningOpRef.h
+@@ -13,6 +13,7 @@
+ #ifndef MLIR_IR_OWNINGOPREF_H
+ #define MLIR_IR_OWNINGOPREF_H
+ 
++#include <type_traits>
+ #include <utility>
+ 
+ namespace mlir {
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/libc_build_rules.bzl b/utils/bazel/llvm-project-overlay/libc/libc_build_rules.bzl
+--- a/utils/bazel/llvm-project-overlay/libc/libc_build_rules.bzl
++++ b/utils/bazel/llvm-project-overlay/libc/libc_build_rules.bzl
+@@ -78,6 +78,7 @@
+                      its deps.
+       **kwargs: Other attributes relevant for a cc_library. For example, deps.
+     """
++
+     # We use the explicit equals pattern here because append and += mutate the
+     # original list, where this creates a new list and stores it in deps.
+     copts = copts or []
+@@ -89,10 +90,11 @@
+         "-fno-omit-frame-pointer",
+         "-fstack-protector-strong",
+     ]
++
+     # x86 targets have -mno-omit-leaf-frame-pointer.
+     platform_copts = selects.with_or({
+         PLATFORM_CPU_X86_64: ["-mno-omit-leaf-frame-pointer"],
+-        "//conditions:default": []
++        "//conditions:default": [],
+     })
+     copts = copts + platform_copts
+ 

@@ -21,12 +21,17 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "llvm/Support/Casting.h"
+#include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
-#include "xla/python/ifrt/sharding.pb.h"
+#include "xla/python/ifrt/sharding_serdes.pb.h"
+#include "xla/util.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -35,6 +40,9 @@ namespace ifrt {
 char DeserializeShardingOptions::ID = 0;
 
 namespace {
+
+// TODO(hyeontaek): Move SerDes for the subclasses of `Sharding` to a separate
+// file, making this sharding_serdes.{h,cc} only define common functions.
 
 // Serialization/deserialization for `SingleDeviceSharding`.
 class SingleDeviceShardingSerDes
@@ -294,6 +302,26 @@ GetDeserializeShardingOptions(std::unique_ptr<DeserializeOptions> options) {
   }
   return std::unique_ptr<DeserializeShardingOptions>(
       static_cast<DeserializeShardingOptions*>(options.release()));
+}
+
+// TODO(hyeontaek): Move this common logic into Sharding::FromProto() and
+// Sharding::ToProto().
+
+absl::StatusOr<std::unique_ptr<Sharding>> FromShardingProto(
+    DeviceList::LookupDeviceFunc lookup_device,
+    const ShardingProto& sharding_proto) {
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<Serializable> sharding,
+                      Deserialize(sharding_proto.serialized_sharding(),
+                                  std::make_unique<DeserializeShardingOptions>(
+                                      std::move(lookup_device))));
+  return std::unique_ptr<Sharding>(llvm::cast<Sharding>(sharding.release()));
+}
+
+absl::StatusOr<ShardingProto> ToShardingProto(const Sharding& sharding) {
+  ShardingProto sharding_proto;
+  TF_ASSIGN_OR_RETURN(*sharding_proto.mutable_serialized_sharding(),
+                      Serialize(const_cast<Sharding&>(sharding)));
+  return sharding_proto;
 }
 
 }  // namespace ifrt

@@ -1,4 +1,4 @@
-/* Copyright 2023 The OpenXLA Authors.
+/* Copyright 2024 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,13 +16,6 @@ limitations under the License.
 syntax = "proto3";
 
 package xla.ifrt;
-
-// Wire format for `DeviceList`.
-message DeviceListProto {
-  // Serialization and deserialization are expected to ensure that device ids
-  // are stable across proto construction and consumption.
-  repeated int32 device_ids = 1;
-}
 
 // Wire format for `Shape`. Currently support static shapes with all dimension
 // sizes greater than or equal to 0.

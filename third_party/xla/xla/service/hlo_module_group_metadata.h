@@ -125,8 +125,12 @@ class HloModuleGroupMetadata {
   // comment above on companion instructions.
   bool IsCompanionInstruction(HloInstruction* hlo) const;
 
+  // Returns true if the instruction is either a cross-module all-reduce
+  // instruction in a non-spmd module.
+  bool IsNonSpmdCrossModuleAllReduce(HloInstruction* hlo) const;
+
   // Returns true if the instruction is either a channel instruction, a
-  // cross-module all-reduce instruction, or a companion instruction.
+  // cross-module non-spmd all-reduce instruction, or a companion instruction.
   bool InstructionCommunicates(HloInstruction* hlo) const;
 
   // Returns the Channel instance for the given channel id.
