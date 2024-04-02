@@ -359,6 +359,26 @@ struct SupportedOpDataType {
   static constexpr DataType kStorageType = DataType::kF32;
 };
 
+// Customization point for generic tests that need to create a supported output
+// tensor for an op but that don't care what that type is.
+//
+// Specialize this in the test file if `SupportedOpDataType<Op>::kStorageType`
+// isn't supported by the op under test.
+template <class Op>
+struct SupportedOpOutputDataType {
+  static constexpr DataType kStorageType =
+      SupportedOpDataType<Op>::kStorageType;
+};
+
+// Customization point for generic tests that need a valid attribute
+// configuration to create an op but that don't care what that configuration is.
+//
+// Specialize this in the test file if F32 isn't supported by the op under test.
+template <class Op>
+struct SupportedOpAttributes {
+  static typename Op::Attributes Get() { return {}; };
+};
+
 // Builds a TensorType object and returns it in a variant that can be passed to
 // a tensor.
 template <DataType storage_type>
