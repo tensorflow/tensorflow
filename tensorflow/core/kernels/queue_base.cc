@@ -78,7 +78,7 @@ Status QueueBase::ValidateTupleCommon(const Tuple& tuple) const {
 }
 
 // static
-string QueueBase::ShapeListString(const gtl::ArraySlice<TensorShape>& shapes) {
+string QueueBase::ShapeListString(const absl::Span<const TensorShape>& shapes) {
   string result = "[";
   bool first = true;
   for (const TensorShape& shape : shapes) {

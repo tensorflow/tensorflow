@@ -217,7 +217,7 @@ class ReverseOp : public OpKernel {
 
 template <typename Device, typename T, int NDIMS>
 void HandleReverseV2Case(OpKernelContext* context,
-                         const gtl::ArraySlice<bool> axes, Tensor* result) {
+                         const absl::Span<const bool> axes, Tensor* result) {
   const Tensor& input = context->input(0);
 
   // Use optimized reverse if possible.
