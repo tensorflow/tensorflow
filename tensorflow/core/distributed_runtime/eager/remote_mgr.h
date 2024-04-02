@@ -43,7 +43,7 @@ class RemoteMgr {
   bool IsMaster() { return is_master_; }
 
   void AddOperationOutputs(
-      const gtl::ArraySlice<tensorflow::TensorHandle*> handles,
+      const absl::Span<tensorflow::TensorHandle* const> handles,
       int64_t operation_id);
 
   void AddOperationOutput(tensorflow::TensorHandle* handles,
