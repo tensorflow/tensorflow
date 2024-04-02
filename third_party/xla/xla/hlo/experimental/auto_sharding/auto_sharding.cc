@@ -4142,6 +4142,10 @@ absl::StatusOr<bool> AutoSharding::Run(
 
         *module->mutable_config().mutable_entry_computation_layout() =
             modules[min_mesh_shape_index]->entry_computation_layout();
+        module->input_output_alias_config() =
+            modules[min_mesh_shape_index]->input_output_alias_config();
+        module->buffer_donor_config() =
+            modules[min_mesh_shape_index]->buffer_donor_config();
 
         module_is_changed = true;
       } else if (changed[min_mesh_shape_index].value() ==
