@@ -690,6 +690,7 @@ tf_py_strict_test(
         "//tensorflow/python/data/experimental/ops:global_shuffle_op",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:options",
+        "//tensorflow/python/data/ops:test_mode",
         "//tensorflow/python/framework:combinations",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/platform:client_testlib",
