@@ -556,6 +556,7 @@ cc_library(
         "//xla/service:custom_call_target_registry",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:ExecutionEngine",
         "@llvm-project//llvm:MC",  # fixdeps: keep

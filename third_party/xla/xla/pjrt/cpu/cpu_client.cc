@@ -82,6 +82,7 @@ limitations under the License.
 #include "xla/service/cpu/cpu_executable.h"
 #include "xla/service/cpu/cpu_executable_run_options.h"
 #include "xla/service/cpu/cpu_xfeed.h"
+#include "xla/service/cpu/simple_orc_jit.h"
 #include "xla/service/custom_call_status.h"
 #include "xla/service/dump.h"
 #include "xla/service/executable.h"
@@ -271,7 +272,8 @@ absl::string_view TfrtCpuDeviceDescription::ToString() const {
 /*static*/ TfrtCpuTopologyDescription TfrtCpuTopologyDescription::Create(
     PjRtPlatformId platform_id, absl::string_view platform_name,
     absl::string_view platform_version,
-    absl::Span<const std::unique_ptr<TfrtCpuDevice>> devices) {
+    absl::Span<const std::unique_ptr<TfrtCpuDevice>> devices,
+    absl::Span<const std::string> machine_attributes) {
   std::vector<CpuTopology::CpuDevice> cpu_devices;
   cpu_devices.reserve(devices.size());
   for (auto& device : devices) {
@@ -279,7 +281,8 @@ absl::string_view TfrtCpuDeviceDescription::ToString() const {
         {device->id(), device->process_index(), device->local_hardware_id()});
   }
   return TfrtCpuTopologyDescription(platform_id, platform_name,
-                                    platform_version, cpu_devices);
+                                    platform_version, cpu_devices,
+                                    machine_attributes);
 }
 
 absl::StatusOr<std::string> TfrtCpuTopologyDescription::Serialize() const {
@@ -392,7 +395,8 @@ TfrtCpuClient::TfrtCpuClient(
       transpose_cache_(1024),
       collectives_(std::move(collectives)),
       topology_(TfrtCpuTopologyDescription::Create(
-          platform_id(), platform_name(), platform_version(), owned_devices_)) {
+          platform_id(), platform_name(), platform_version(), owned_devices_,
+          cpu::DetectMachineAttributes())) {
   for (const std::unique_ptr<TfrtCpuDevice>& device : owned_devices_) {
     devices_.push_back(device.get());
     CHECK(id_to_device_.insert({device->id(), device.get()}).second)
