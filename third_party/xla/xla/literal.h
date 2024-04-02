@@ -374,45 +374,42 @@ class LiteralBase {
   static H Hash(H state, const LiteralBase& literal) {
     state =
         Shape::Hash<H, kIsLayoutSensitive>(std::move(state), literal.shape());
+    const auto hash_func = [&](auto primitive_type_constant) {
+      using NativeT = primitive_util::NativeTypeOf<primitive_type_constant>;
 
-    ShapeUtil::ForEachSubshape(
-        literal.shape(), [&](const Shape& subshape, const ShapeIndex& index) {
-          if (!subshape.IsArray()) {
-            return;
-          }
+      const auto for_each_subshape = [&](const Shape& subshape,
+                                         const ShapeIndex& index) {
+        if (!subshape.IsArray()) return;
 
-          CHECK(LayoutUtil::IsDenseArray(subshape));
-          const auto hash_func = [&](auto primitive_type_constant) {
-            using NativeT =
-                primitive_util::NativeTypeOf<primitive_type_constant>;
-            // If we can hash NativeT, then do so. Otherwise, hash raw buffer
-            // data taking care to avoid invalid parts of 4-bit type data.
-            if constexpr (IsAbslHashable<NativeT>()) {
-              state = H::combine(std::move(state),
-                                 literal.piece(index).data<NativeT>());
-            } else {
-              const int64_t num_bytes =
-                  std::min(kByteLimit, literal.size_bytes(index));
-              const char* buffer =
-                  static_cast<const char*>(literal.untyped_data(index));
-              if (primitive_util::Is4BitType(subshape.element_type())) {
-                // Note: in this case, we could potentially read 8 bytes at a
-                // time, mask out the upper 4 bits of each byte, and then hash 8
-                // bytes, but it adds complexity and needs special handling for
-                // the non-divisible-by-8 leftover bytes.
-                for (int64_t i = 0; i < num_bytes; ++i) {
-                  state =
-                      H::combine(std::move(state), buffer[i] & uint8_t{0xf});
-                }
-              } else {
-                auto data = absl::MakeConstSpan(buffer, num_bytes);
-                state = H::combine(std::move(state), data);
-              }
+        CHECK(LayoutUtil::IsDenseArray(subshape));
+        // If we can hash NativeT, then do so. Otherwise, hash raw buffer
+        // data taking care to avoid invalid parts of 4-bit type data.
+        if constexpr (IsAbslHashable<NativeT>()) {
+          state = H::combine(std::move(state),
+                             literal.piece(index).data<NativeT>());
+        } else {
+          const int64_t num_bytes =
+              std::min(kByteLimit, literal.size_bytes(index));
+          const char* buffer =
+              static_cast<const char*>(literal.untyped_data(index));
+          if (primitive_util::Is4BitType(subshape.element_type())) {
+            // Note: in this case, we could potentially read 8 bytes at a
+            // time, mask out the upper 4 bits of each byte, and then hash 8
+            // bytes, but it adds complexity and needs special handling for
+            // the non-divisible-by-8 leftover bytes.
+            for (int64_t i = 0; i < num_bytes; ++i) {
+              state = H::combine(std::move(state), buffer[i] & uint8_t{0xf});
             }
-          };
-          primitive_util::ArrayTypeSwitch<void>(hash_func,
-                                                subshape.element_type());
-        });
+          } else {
+            auto data = absl::MakeConstSpan(buffer, num_bytes);
+            state = H::combine(std::move(state), data);
+          }
+        }
+      };
+      ShapeUtil::ForEachSubshape(literal.shape(), for_each_subshape);
+    };
+    primitive_util::ArrayTypeSwitch<void>(hash_func,
+                                          literal.shape().element_type());
 
     return std::move(state);
   }
