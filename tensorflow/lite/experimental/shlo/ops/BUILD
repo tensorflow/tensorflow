@@ -129,6 +129,7 @@ cc_library(
     testonly = True,
     hdrs = ["test_util.h"],
     deps = [
+        ":util",
         "//tensorflow/lite/experimental/shlo:data_type",
         "//tensorflow/lite/experimental/shlo:quantized_tensor_element_type",
         "//tensorflow/lite/experimental/shlo:shape",

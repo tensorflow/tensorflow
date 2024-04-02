@@ -14,6 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/experimental/shlo/ops/util.h"
 
+#include <string>
+#include <variant>
+
 #include "absl/status/status.h"
 #include "tensorflow/lite/experimental/shlo/data_type.h"
 #include "tensorflow/lite/experimental/shlo/shape.h"
@@ -79,9 +82,16 @@ absl::Status CheckSameBaselineType(CheckCtx ctx, const Tensor& tensor1,
                                    const Tensor& tensor2) {
   if (BaselineType(tensor1.element_type()) !=
       BaselineType(tensor2.element_type())) {
+    std::string tensor1_type_repr =
+        std::visit([](auto v) -> std::string { return ToString(v); },
+                   tensor1.element_type());
+    std::string tensor2_type_repr =
+        std::visit([](auto v) -> std::string { return ToString(v); },
+                   tensor2.element_type());
     return absl::FailedPreconditionError(
         "stablehlo." + ctx.op_name +
-        ": baseline type constraint is not satisfied.");
+        ": baseline type constraint is not satisfied " + tensor1_type_repr +
+        " and " + tensor2_type_repr + ".");
   }
   return absl::OkStatus();
 }
