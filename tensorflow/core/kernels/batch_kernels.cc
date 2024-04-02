@@ -22,6 +22,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
@@ -36,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/batching_util/adaptive_shared_batch_scheduler.h"
 #include "tensorflow/core/kernels/batching_util/batch_resource_base.h"
+#include "tensorflow/core/kernels/batching_util/batch_scheduler.h"
 #include "tensorflow/core/kernels/batching_util/bounded_executor.h"
 #include "tensorflow/core/kernels/batching_util/concat_split_util.h"
 #include "tensorflow/core/kernels/batching_util/periodic_function.h"
@@ -49,6 +51,8 @@ limitations under the License.
 #include "tensorflow/core/platform/numbers.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/threadpool.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace {
@@ -295,6 +299,8 @@ BatchFunctionKernel::BatchFunctionKernel(OpKernelConstruction* c)
                                &low_priority_allowed_batch_sizes_));
   OP_REQUIRES_OK(c, c->GetAttr("low_priority_max_enqueued_batches",
                                &low_priority_max_enqueued_batches_));
+  OP_REQUIRES_OK(c,
+                 c->GetAttr("mixed_priority_policy", &mixed_priority_policy_));
 
   OP_REQUIRES_OK(c, c->GetAttr("f", &func_));
 
@@ -416,6 +422,16 @@ void BatchFunctionKernel::ComputeAsync(OpKernelContext* c, DoneCallback done) {
   } else {
     creator = [this,
                session_metadata = c->session_metadata()](BatchResource** r) {
+      // TODO(b/316379576): Remove this check when batching policy is used.
+      TF_ASSIGN_OR_RETURN(
+          serving::MixedPriorityBatchingPolicy batching_policy,
+          serving::GetMixedPriorityBatchingPolicy(mixed_priority_policy_));
+      if (batching_policy != serving::MixedPriorityBatchingPolicy::
+                                 kLowPriorityPaddingWithMaxBatchSize)
+        return absl::InvalidArgumentError(
+            "mixed_priority_policy must be "
+            "low_priority_padding_with_max_batch_size");
+
       std::unique_ptr<BatchResource> new_resource;
       TF_RETURN_IF_ERROR(BatchResource::Create(
           /*has_process_batch_function=*/true, num_batch_threads_,

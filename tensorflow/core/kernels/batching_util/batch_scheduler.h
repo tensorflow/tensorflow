@@ -38,6 +38,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
@@ -50,6 +52,19 @@ limitations under the License.
 
 namespace tensorflow {
 namespace serving {
+
+const absl::string_view kLowPriorityPaddingWithMaxBatchSizeAttrValue =
+    "low_priority_padding_with_max_batch_size";
+const absl::string_view kLowPriorityPaddingWithNextAllowedBatchSizeAttrValue =
+    "low_priority_padding_with_next_allowed_batch_size";
+
+enum class MixedPriorityBatchingPolicy {
+  kLowPriorityPaddingWithMaxBatchSize,
+  kLowPriorityPaddingWithNextAllowedBatchSize
+};
+
+absl::StatusOr<MixedPriorityBatchingPolicy> GetMixedPriorityBatchingPolicy(
+    absl::string_view attr_value);
 
 // The abstract superclass for a unit of work to be done as part of a batch.
 //

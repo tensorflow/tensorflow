@@ -20,9 +20,11 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/strings/match.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/framework/device_factory.h"
 #include "tensorflow/core/framework/function.h"
@@ -31,10 +33,12 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/kernels/batch_kernel_test_util.h"
+#include "tensorflow/core/kernels/batching_util/batch_scheduler.h"
 #include "tensorflow/core/kernels/batching_util/warmup.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/status_matchers.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/public/version.h"
@@ -90,6 +94,7 @@ class BatchFunctionTestState : public SharedBatchFunctionTestState {
   // Init test fixture with a batch kernel instance. The caller guarantees that
   // the device pointer is valid throughout the life of this class.
   absl::Status Init(Device *device, bool enable_low_priority_queue,
+                    absl::string_view mixed_priority_policy,
                     int64_t expected_batch_size) {
     // Override the per-test/per-op device with a given device so that it can
     // be shared between ops.
@@ -134,6 +139,7 @@ class BatchFunctionTestState : public SharedBatchFunctionTestState {
                                                            : std::vector<int>())
                            .Attr("low_priority_max_enqueued_batches",
                                  enable_low_priority_queue ? 2 : 0)
+                           .Attr("mixed_priority_policy", mixed_priority_policy)
                            .Attr("Tin", {DataType::DT_INT64})
                            .Input(inputs)
                            .Attr("Tcaptured", std::vector<DataType>{})
@@ -176,9 +182,10 @@ TEST_P(BatchFunctionTest, BatchingWorksWithoutCriticality) {
 
         BatchFunctionTestState test_state;
         test_state.set_session_metadata(session_metadata);
-        TF_ASSERT_OK(test_state.Init(cpu_device_.get(),
-                                     enable_low_priority_queue,
-                                     /*expected_batch_size=*/4));
+        TF_ASSERT_OK(test_state.Init(
+            cpu_device_.get(), enable_low_priority_queue,
+            serving::kLowPriorityPaddingWithMaxBatchSizeAttrValue,
+            /*expected_batch_size=*/4));
         test_state.AddInputFromList<int64_t>(TensorShape({1, 2}), {123, 456});
         TF_EXPECT_OK(test_state.RunOpKernel());
 
@@ -211,9 +218,10 @@ TEST_P(BatchFunctionTest, PaddingWorksWithoutCriticality) {
 
         BatchFunctionTestState test_state;
         test_state.set_session_metadata(session_metadata);
-        TF_ASSERT_OK(test_state.Init(cpu_device_.get(),
-                                     enable_low_priority_queue,
-                                     /*expected_batch_size=*/4));
+        TF_ASSERT_OK(test_state.Init(
+            cpu_device_.get(), enable_low_priority_queue,
+            serving::kLowPriorityPaddingWithMaxBatchSizeAttrValue,
+            /*expected_batch_size=*/4));
         test_state.AddInputFromList<int64_t>(TensorShape({1, 2}), {123, 456});
         TF_EXPECT_OK(test_state.RunOpKernel());
 
@@ -249,9 +257,10 @@ TEST_P(BatchFunctionTest, LowPriorityTaskPaddingHighPriorityBatch) {
 
         BatchFunctionTestState test_state;
         test_state.set_session_metadata(session_metadata);
-        TF_ASSERT_OK(test_state.Init(cpu_device_.get(),
-                                     enable_low_priority_queue,
-                                     /*expected_batch_size=*/4));
+        TF_ASSERT_OK(test_state.Init(
+            cpu_device_.get(), enable_low_priority_queue,
+            serving::kLowPriorityPaddingWithMaxBatchSizeAttrValue,
+            /*expected_batch_size=*/4));
         test_state.AddInputFromList<int64_t>(TensorShape({1, 2}), {123, 456});
         TF_EXPECT_OK(test_state.RunOpKernel());
 
@@ -271,9 +280,10 @@ TEST_P(BatchFunctionTest, LowPriorityTaskPaddingHighPriorityBatch) {
 
         BatchFunctionTestState test_state;
         test_state.set_session_metadata(session_metadata);
-        TF_ASSERT_OK(test_state.Init(cpu_device_.get(),
-                                     enable_low_priority_queue,
-                                     /*expected_batch_size=*/4));
+        TF_ASSERT_OK(test_state.Init(
+            cpu_device_.get(), enable_low_priority_queue,
+            serving::kLowPriorityPaddingWithMaxBatchSizeAttrValue,
+            /*expected_batch_size=*/4));
         test_state.AddInputFromList<int64_t>(TensorShape({1, 2}), {234, 567});
         TF_EXPECT_OK(test_state.RunOpKernel());
 
@@ -308,8 +318,10 @@ TEST_P(BatchFunctionTest,
 
       BatchFunctionTestState test_state;
       test_state.set_session_metadata(session_metadata);
-      TF_ASSERT_OK(test_state.Init(cpu_device_.get(), enable_low_priority_queue,
-                                   /*expected_batch_size=*/4));
+      TF_ASSERT_OK(
+          test_state.Init(cpu_device_.get(), enable_low_priority_queue,
+                          serving::kLowPriorityPaddingWithMaxBatchSizeAttrValue,
+                          /*expected_batch_size=*/4));
       test_state.AddInputFromList<int64_t>(TensorShape({1, 2}), {123, 456});
       TF_EXPECT_OK(test_state.RunOpKernel());
 
@@ -327,8 +339,10 @@ TEST_P(BatchFunctionTest,
 
       BatchFunctionTestState test_state;
       test_state.set_session_metadata(session_metadata);
-      TF_ASSERT_OK(test_state.Init(cpu_device_.get(), enable_low_priority_queue,
-                                   /*expected_batch_size=*/4));
+      TF_ASSERT_OK(
+          test_state.Init(cpu_device_.get(), enable_low_priority_queue,
+                          serving::kLowPriorityPaddingWithMaxBatchSizeAttrValue,
+                          /*expected_batch_size=*/4));
       test_state.AddInputFromList<int64_t>(TensorShape({1, 2}), {234, 567});
       TF_EXPECT_OK(test_state.RunOpKernel());
 
@@ -366,9 +380,11 @@ TEST_F(BatchFunctionTest, LowPriorityOnlyBatchAtMaxLowPriorityBatchSize) {
 
         BatchFunctionTestState test_state;
         test_state.set_session_metadata(session_metadata);
-        TF_ASSERT_OK(test_state.Init(cpu_device_.get(),
-                                     /*enable_low_priority_queue=*/true,
-                                     /*expected_batch_size=*/8));
+        TF_ASSERT_OK(test_state.Init(
+            cpu_device_.get(),
+            /*enable_low_priority_queue=*/true,
+            serving::kLowPriorityPaddingWithMaxBatchSizeAttrValue,
+            /*expected_batch_size=*/8));
         test_state.AddInputFromList<int64_t>(TensorShape({1, 2}), {234, 567});
         TF_EXPECT_OK(test_state.RunOpKernel());
 
@@ -402,9 +418,11 @@ TEST_F(BatchFunctionTest, LowPriorityBatchPaddedToLowPriorityAllowedBatchSize) {
 
         BatchFunctionTestState test_state;
         test_state.set_session_metadata(session_metadata);
-        TF_ASSERT_OK(test_state.Init(cpu_device_.get(),
-                                     /*enable_low_priority_queue=*/true,
-                                     /*expected_batch_size=*/8));
+        TF_ASSERT_OK(test_state.Init(
+            cpu_device_.get(),
+            /*enable_low_priority_queue=*/true,
+            serving::kLowPriorityPaddingWithMaxBatchSizeAttrValue,
+            /*expected_batch_size=*/8));
         test_state.AddInputFromList<int64_t>(TensorShape({1, 2}), {234, 567});
         TF_EXPECT_OK(test_state.RunOpKernel());
 
@@ -419,6 +437,27 @@ TEST_F(BatchFunctionTest, LowPriorityBatchPaddedToLowPriorityAllowedBatchSize) {
   }
 }
 #endif
+
+TEST_F(BatchFunctionTest, NonDefaultBatchingPolicyNotAllowed) {
+  SessionMetadata session_metadata;
+  session_metadata.set_name("test_model");
+  session_metadata.set_version(123);
+
+  BatchFunctionTestState test_state;
+  test_state.set_session_metadata(session_metadata);
+  TF_ASSERT_OK(test_state.Init(
+      cpu_device_.get(),
+      /*enable_low_priority_queue=*/true,
+      serving::kLowPriorityPaddingWithNextAllowedBatchSizeAttrValue,
+      /*expected_batch_size=*/1));
+  test_state.AddInputFromList<int64_t>(TensorShape({1, 2}), {234, 567});
+  EXPECT_THAT(
+      test_state.RunOpKernel(),
+      testing::StatusIs(
+          absl::StatusCode::kInvalidArgument,
+          ::testing::HasSubstr("mixed_priority_policy must be "
+                               "low_priority_padding_with_max_batch_size")));
+}
 
 class BatchFunctionKernelParallelWarmupTestState
     : public SharedBatchFunctionTestState {

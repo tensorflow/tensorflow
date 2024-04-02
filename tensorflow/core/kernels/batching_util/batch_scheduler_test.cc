@@ -19,11 +19,15 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <string>
+#include <tuple>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/status_matchers.h"
 #include "tensorflow/core/platform/test.h"
 #include "tsl/platform/criticality.h"
 
@@ -34,6 +38,37 @@ namespace {
 using ::testing::ElementsAre;
 using ::testing::Eq;
 using ::testing::Property;
+
+TEST(MixedPriorityBatchingPolicyTest, InvalidAttrValueError) {
+  EXPECT_THAT(
+      GetMixedPriorityBatchingPolicy("invalid_attr_value"),
+      testing::StatusIs(
+          absl::StatusCode::kInvalidArgument,
+          ::testing::HasSubstr(
+              "Unknown mixed priority batching policy: invalid_attr_value")));
+}
+
+using MixedPriorityBatchingPolicyParameterizedTest = ::testing::TestWithParam<
+    std::tuple<std::string, MixedPriorityBatchingPolicy>>;
+
+TEST_P(MixedPriorityBatchingPolicyParameterizedTest,
+       GetMixedPriorityBatchingPolicySuccess) {
+  auto [attr_name, policy] = GetParam();
+  EXPECT_THAT(GetMixedPriorityBatchingPolicy(attr_name),
+              testing::IsOkAndHolds(Eq(policy)));
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    Parameter, MixedPriorityBatchingPolicyParameterizedTest,
+    ::testing::Values(
+        std::make_tuple(
+            /*attr_name=*/kLowPriorityPaddingWithMaxBatchSizeAttrValue,
+            /*policy=*/MixedPriorityBatchingPolicy::
+                kLowPriorityPaddingWithMaxBatchSize),
+        std::make_tuple(
+            /*attr_name=*/kLowPriorityPaddingWithNextAllowedBatchSizeAttrValue,
+            /*policy=*/MixedPriorityBatchingPolicy::
+                kLowPriorityPaddingWithNextAllowedBatchSize)));
 
 class FakeTask : public BatchTask {
  public:

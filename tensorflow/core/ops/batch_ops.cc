@@ -51,6 +51,22 @@ REGISTER_OP("BatchFunction")
     .Attr("low_priority_batch_timeout_micros: int = 0")
     .Attr("low_priority_allowed_batch_sizes: list(int) = []")
     .Attr("low_priority_max_enqueued_batches: int = 0")
+    // Policy that determines the mixed priority batching behavior when low
+    // priority batch parameters are present.
+    //
+    // low_priority_padding_with_next_allowed_batch_size: If high priority
+    // batches time out without reaching the max batch size, low priority inputs
+    // pad the high priority batches up to the next allowed batch size. A low
+    // priority only batch gets schedule only when the low priority input times
+    // out or reaches the max batch size while there is no high priority input
+    // waiting to be processed.
+    // low_priority_padding_with_max_batch_size: Same as above but pad up to the
+    // max batch size.
+    .Attr(
+        "mixed_priority_policy: "
+        "{'low_priority_padding_with_max_batch_size', "
+        "'low_priority_padding_with_next_allowed_batch_size'} = "
+        "'low_priority_padding_with_max_batch_size'")
     .Attr("Tin: list(type)")
     .Attr("Tcaptured: list(type) >= 0")
     .Attr("Tout: list(type)")
