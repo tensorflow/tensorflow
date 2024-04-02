@@ -119,9 +119,12 @@ struct ArgDecoding<BufferBase> {
 
     auto* buf = reinterpret_cast<XLA_FFI_Buffer*>(arg);
 
+    size_t size_bytes = primitive_util::ByteWidth(PrimitiveType(buf->dtype));
+    for (int64_t i = 0; i < buf->rank; ++i) size_bytes *= buf->dims[i];
+
     BufferBase buffer;
     buffer.dtype = PrimitiveType(buf->dtype);
-    buffer.data = se::DeviceMemoryBase(buf->data);
+    buffer.data = se::DeviceMemoryBase(buf->data, size_bytes);
     buffer.dimensions = absl::MakeConstSpan(buf->dims, buf->rank);
     return buffer;
   }
