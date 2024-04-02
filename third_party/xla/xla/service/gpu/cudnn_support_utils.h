@@ -70,6 +70,12 @@ CudnnInferTransposeForFilterReordering(
 absl::StatusOr<CudnnReorderTransposeConfig>
 CudnnInferTransposeForBiasReordering(const Shape& shape);
 
+inline constexpr absl::string_view kWorkspaceAllocationCustomCallTarget =
+    "__nop";
+
+// Detects `ROOT tuple(..., custom-call())` used to allocate workspace buffers.
+bool IsWorkspaceAllocationRoot(const HloInstruction& root);
+
 }  // namespace gpu
 }  // namespace xla
 
