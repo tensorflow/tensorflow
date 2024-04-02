@@ -687,15 +687,6 @@ Status Exporter::ConvertLibFunction(
   TF_RETURN_IF_ERROR(
       GraphToFunctionDef(*sub_graph, function_name, control_ret, &func_def));
 
-  // The node defs in FunctionDef might contain debug info which was added
-  // by the GraphToFunctionDef method. We should remove it if we don't want
-  // to export them to avoid failing the roundtrip test.
-  if (!configs.export_debug_info) {
-    for (auto& node_def : *func_def.mutable_node_def()) {
-      node_def.clear_experimental_debug_info();
-    }
-  }
-
   // Checks for gradient attribute. If present converts the gradient function
   // and populates the GradientDef.
   auto grad_string = mlir::TF::TensorFlowDialect::GetGradientAttrName();
@@ -831,17 +822,6 @@ StatusOr<std::unique_ptr<GraphDef>> ConvertMlirToGraphdef(
 
   auto graphdef = std::make_unique<GraphDef>();
   graph->ToGraphDef(graphdef.get());
-  if (!configs.export_library) graphdef->clear_library();
-  if (!configs.export_shapes) {
-    for (auto& node_def : *graphdef->mutable_node()) {
-      node_def.mutable_attr()->erase("shape");
-    }
-  }
-  if (!configs.export_debug_info) {
-    for (auto& node_def : *graphdef->mutable_node()) {
-      node_def.clear_experimental_debug_info();
-    }
-  }
   return graphdef;
 }
 
