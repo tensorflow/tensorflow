@@ -24,8 +24,6 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
-#include "xla/python/ifrt/array.h"
-#include "tsl/concurrency/ref_count.h"
 #include "tsl/platform/statusor.h"
 
 namespace tensorflow {
@@ -36,7 +34,7 @@ absl::Status IfrtLoadedVariableRegistry::TryRegisterLoadedVariable(
     LoadedVariableConstructor&& loaded_variable_constructor) {
   absl::MutexLock lock(&mutex_);
   auto& variable = loaded_variable_map_[name];
-  if (variable != nullptr) {
+  if (variable.array.IsValid()) {
     // Already registered. This is rare.
     VLOG(1) << "Variable '" << name << "' already registered.";
     return absl::OkStatus();
@@ -45,7 +43,7 @@ absl::Status IfrtLoadedVariableRegistry::TryRegisterLoadedVariable(
   return absl::OkStatus();
 }
 
-absl::StatusOr<tsl::RCReference<xla::ifrt::Array>>
+absl::StatusOr<IfrtLoadedVariableRegistry::LoadedVariable>
 IfrtLoadedVariableRegistry::GetLoadedVariable(absl::string_view name) const {
   absl::MutexLock lock(&mutex_);
   auto it = loaded_variable_map_.find(name);

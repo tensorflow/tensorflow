@@ -44,6 +44,7 @@
 #include "xla/pjrt/host_callback.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_device_description.h"
+#include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/device.h"
@@ -890,8 +891,8 @@ TEST_F(IfrtBackendHandlerTest, CompileSuccess) {
       addressable_device_logical_ids;
   std::vector<xla::ifrt::Device*> addressable_devices;
   for (int i = 0; i < 4; ++i) {
-    addressable_device_logical_ids.push_back(
-        {.replica = i / 2, .partition = i % 2});
+    xla::ifrt::LoadedExecutable::LogicalDeviceIds id{i / 2, i % 2};
+    addressable_device_logical_ids.push_back(id);
     addressable_devices.push_back(&devices[i]);
   }
 
@@ -962,15 +963,19 @@ TEST_F(IfrtBackendHandlerTest, LoadedExecutableMetadata) {
     EXPECT_CALL(*executable, GetOutputShardings())
         .WillOnce(Return(std::vector<OpSharding>{op_sharding1}));
 
+    std::vector<std::unique_ptr<Layout>> parameter_layouts;
+    parameter_layouts.push_back(std::make_unique<xla::PjRtXlaLayout>(
+        xla::LayoutUtil::MakeDescendingLayout(/*rank=*/1)));
+    parameter_layouts.push_back(std::make_unique<xla::PjRtXlaLayout>(
+        xla::LayoutUtil::MakeDescendingLayout(/*rank=*/2)));
     EXPECT_CALL(*executable, GetParameterLayouts())
-        .WillOnce(Return(std::vector<xla::Layout>{
-            xla::LayoutUtil::MakeDescendingLayout(/*rank=*/1),
-            xla::LayoutUtil::MakeDescendingLayout(/*rank=*/2),
-        }));
+        .WillOnce(Return(std::move(parameter_layouts)));
+
+    std::vector<std::unique_ptr<Layout>> output_layouts;
+    output_layouts.push_back(std::make_unique<xla::PjRtXlaLayout>(
+        xla::LayoutUtil::MakeDescendingLayout(/*rank=*/2)));
     EXPECT_CALL(*executable, GetOutputLayouts())
-        .WillOnce(Return(std::vector<xla::Layout>{
-            xla::LayoutUtil::MakeDescendingLayout(/*rank=*/2),
-        }));
+        .WillOnce(Return(std::move(output_layouts)));
     EXPECT_CALL(*executable, GetOutputMemoryKinds())
         .WillOnce(Return(std::vector<std::vector<absl::string_view>>{{"foo"}}));
 

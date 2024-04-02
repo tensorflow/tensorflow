@@ -39,7 +39,7 @@ class nb_class_ptr : public nanobind::object {
 
   T* operator->() const { return nanobind::inst_ptr<T>(ptr()); }
   T& operator*() const { return *nanobind::inst_ptr<T>(ptr()); }
-  T* get() const { return nanobind::inst_ptr<T>(ptr()); }
+  T* get() const { return ptr() ? nanobind::inst_ptr<T>(ptr()) : nullptr; }
 };
 
 // This function is analogous to std::make_unique<T>(...), but instead it

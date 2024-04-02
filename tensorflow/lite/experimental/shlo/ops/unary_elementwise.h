@@ -34,7 +34,7 @@ namespace shlo_ref {
 namespace detail {
 
 template <typename StorageT, typename ExpressedT, typename F>
-void DequantizeOpQuantizePerChannelImpl(
+void DequantizeOpQuantizePerAxisImpl(
     F& op, const Shape& shape, const Axis quantization_dimension,
     const StorageT quantization_min, const StorageT quantization_max,
     const absl::Span<const StorageT> input_zero_points,
@@ -65,7 +65,7 @@ void DequantizeOpQuantizePerChannelImpl(
       if (depth == quantization_dimension) {
         quantization_index = i;
       }
-      DequantizeOpQuantizePerChannelImpl(
+      DequantizeOpQuantizePerAxisImpl(
           op, shape, quantization_dimension, quantization_min, quantization_max,
           input_zero_points, input_scales, output_zero_points, output_scales,
           strides, input_data, output_data, depth + 1, quantization_index);
@@ -76,8 +76,8 @@ void DequantizeOpQuantizePerChannelImpl(
 }
 
 template <DataType storage_type, DataType expressed_type, typename F>
-void DequantizeOpQuantizePerChannel(F&& func, const Tensor& input,
-                                    Tensor& output) {
+void DequantizeOpQuantizePerAxis(F&& func, const Tensor& input,
+                                 Tensor& output) {
   using StorageT = StorageType<storage_type>;
   using ExpressedT = StorageType<expressed_type>;
   const Shape& shape = input.shape();
@@ -94,7 +94,7 @@ void DequantizeOpQuantizePerChannel(F&& func, const Tensor& input,
   const Strides& strides = ComputeStrides(shape);
   const StorageT* input_data = input.GetDataAs<storage_type>();
   StorageT* output_data = output.GetDataAs<storage_type>();
-  DequantizeOpQuantizePerChannelImpl(
+  DequantizeOpQuantizePerAxisImpl(
       func, shape, quantization_dimension, Storage<storage_type>::kMinValue,
       Storage<storage_type>::kMaxValue, input_zero_points, input_scales,
       output_zero_points, output_scales, strides, input_data, output_data,
@@ -169,7 +169,7 @@ template <class F>
 absl::Status Evaluate(UnaryElementwiseOp<F>& op, const Tensor& input,
                       Tensor& output) {
   if (input.IsPerAxisQuantized()) {
-    DISPATCH_QUANTIZED(detail::DequantizeOpQuantizePerChannel,
+    DISPATCH_QUANTIZED(detail::DequantizeOpQuantizePerAxis,
                        input.quantized_tensor_element_type().StorageType(),
                        input.quantized_tensor_element_type().ExpressedType(),
                        op.func, input, output);

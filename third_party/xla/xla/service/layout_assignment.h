@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_LAYOUT_ASSIGNMENT_H_
 #define XLA_SERVICE_LAYOUT_ASSIGNMENT_H_
 
+#include <cstdint>
 #include <iosfwd>
 #include <map>
 #include <memory>
@@ -28,19 +29,26 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/container/node_hash_map.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/layout.h"
 #include "xla/layout_util.h"
+#include "xla/map_util.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/computation_layout.h"
 #include "xla/service/hlo_pass_interface.h"
 #include "xla/service/logical_buffer.h"
 #include "xla/service/tuple_points_to_analysis.h"
+#include "xla/shape.h"
 #include "xla/shape_layout.h"
 #include "xla/shape_util.h"
+#include "xla/status.h"
 #include "xla/statusor.h"
 #include "xla/types.h"
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/status.h"
 
@@ -117,7 +125,7 @@ class OperandLayoutConstraint : public LayoutConstraint {
 
   const ShapeLayout& shape_layout() const { return shape_layout_[0]; }
   const HloInstruction* instruction() const { return instruction_; }
-  const int64_t operand_no() const { return operand_no_; }
+  int64_t operand_no() const { return operand_no_; }
   const HloInstruction* operand() const {
     return instruction_->operand(operand_no_);
   }
@@ -196,7 +204,7 @@ class ComputationLayoutConstraint : public LayoutConstraint {
 class ChannelLayoutConstraints {
  public:
   // Construct an empty constraint set.
-  ChannelLayoutConstraints() {}
+  ChannelLayoutConstraints() = default;
 
   // Returns true if channel_id has a layout constraint.
   bool IsChannelConstrained(int64_t channel_id) const {
@@ -515,6 +523,31 @@ class LayoutAssignment : public HloModulePass {
   // in subclasses.
   virtual bool InstructionCanChangeLayoutInstance(
       const HloInstruction* instruction);
+
+  // The shapes in caller can be different from the shapes in callee. For
+  // example, a shape (1024, 128) of an array can be distributed to four threads
+  // so the shape for each thread is (256, 128). When verifying the callee's
+  // shapes based on the caller, we should use this function to compute the
+  // expected shape. The param_id should be the parameter id of the shape or -1
+  // for the result output or unknown.
+  virtual Shape ShardedShape(const HloInstruction* call, const Shape& shape,
+                             int param_id) {
+    return shape;
+  }
+  // When verifying the caller's shapes based on the callee, we should use this
+  // function to compute the expected shape.
+  // The param_id should be the parameter id of the shape or -1 for the result
+  // output or unknown.
+  virtual Shape UnShardedShape(const HloInstruction* call, const Shape& shape,
+                               int param_id) {
+    return shape;
+  }
+
+  // The operands of a call must match the layouts of parameters in the
+  // ComputationLayout, and the call instruction itself must match the result
+  // layout in the ComputationLayout.
+  Status CheckCallLayout(HloInstruction* call,
+                         const ComputationLayout& computation_layout);
 
  private:
   // Initializes the layout assignment object for a new Run() call.

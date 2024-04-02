@@ -1,7 +1,7 @@
-load("//xla:xla.bzl", "xla_cc_test")
 load("@local_tsl//tsl:tsl.bzl", "internal_visibility")
 load("@local_tsl//tsl:tsl.default.bzl", "get_compatible_with_portable")
 load("@local_tsl//tsl/platform:build_config.bzl", "tf_proto_library")
+load("//xla:xla.bzl", "xla_cc_test")
 
 package_group(
     name = "friends",
@@ -77,6 +77,7 @@ cc_library(
         "//xla:util",
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt:pjrt_common",
+        "//xla/pjrt:pjrt_layout",
         "//xla/python/ifrt/ir",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",

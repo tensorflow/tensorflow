@@ -19,26 +19,43 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/base/macros.h"
 #include "tensorflow/core/profiler/lib/profiler_interface.h"
 #include "tsl/profiler/lib/profiler_factory.h"
 #include "tsl/profiler/protobuf/profiler_options.pb.h"
+
+// TODO: b/323943471 - This macro should eventually be provided by Abseil.
+#ifndef ABSL_DEPRECATE_AND_INLINE
+#define ABSL_DEPRECATE_AND_INLINE()
+#endif
 
 namespace tensorflow {
 namespace profiler {
 
 // A ProfilerFactory returns an instance of ProfilerInterface if ProfileOptions
 // require it. Otherwise, it might return nullptr.
-using tsl::profiler::ProfilerFactory;  // NOLINT
+using ProfilerFactor ABSL_DEPRECATE_AND_INLINE() =
+    tsl::profiler::ProfilerFactory;  // NOLINT
 
 // Registers a profiler factory. Should be invoked at most once per factory.
-using tsl::profiler::RegisterProfilerFactory;  // NOLINT
+ABSL_DEPRECATE_AND_INLINE()
+inline void RegisterProfilerFactory(ProfilerFactor factory) {
+  tsl::profiler::RegisterProfilerFactory(factory);
+}
 
 // Invokes all registered profiler factories with the given options, and
 // returns the instantiated (non-null) profiler interfaces.
-using tsl::profiler::CreateProfilers;  // NOLINT
+ABSL_DEPRECATE_AND_INLINE()
+inline std::vector<std::unique_ptr<profiler::ProfilerInterface>>
+CreateProfilers(const tensorflow::ProfileOptions& options) {
+  return tsl::profiler::CreateProfilers(options);
+}
 
 // For testing only.
-using tsl::profiler::ClearRegisteredProfilersForTest;  // NOLINT
+ABSL_DEPRECATE_AND_INLINE()
+inline void ClearRegisteredProfilersForTest() {
+  tsl::profiler::ClearRegisteredProfilersForTest();
+}
 
 }  // namespace profiler
 }  // namespace tensorflow

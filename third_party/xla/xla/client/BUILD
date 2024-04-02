@@ -1,9 +1,9 @@
 # Description:
 #   XLA client libraries.
 
-load("//xla:xla.bzl", "xla_cc_test")
 load("@local_tsl//tsl:tsl.default.bzl", "filegroup")
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
+load("//xla:xla.bzl", "xla_cc_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -293,8 +293,10 @@ xla_cc_test(
         ":value_inference",
         ":xla_builder",
         ":xla_computation",
+        "//xla:comparison_util",
         "//xla:debug_options_flags",
         "//xla:shape_util",
+        "//xla:status",
         "//xla:statusor",
         "//xla:test",
         "//xla:test_helpers",
@@ -305,6 +307,8 @@ xla_cc_test(
         "//xla/service:pattern_matcher",
         "//xla/service:pattern_matcher_gmock",
         "//xla/tests:xla_internal_test_main",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",

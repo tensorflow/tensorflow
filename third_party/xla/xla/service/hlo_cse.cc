@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -60,7 +61,8 @@ struct ConstantKey {
 // While we're here, also combine identical iota instructions, since they need
 // similar treatment.
 template <bool kIsLayoutSensitive>
-StatusOr<bool> CombineConstants(HloComputation* computation) {
+absl::StatusOr<bool> CombineConstants(HloComputation* computation,
+                                      bool only_scalars) {
   // Populating the domain map is somewhat expensive -- only do it if there are
   // kDomain ops in the computation.  If there are no kDomain ops, the domain
   // map is trivial, every op gets mapped to the same domain.
@@ -84,6 +86,10 @@ StatusOr<bool> CombineConstants(HloComputation* computation) {
     // Advance list iterator before loop body because iterator may be
     // invalidated due to deletion.
     ++inst_it;
+
+    if (only_scalars && !ShapeUtil::IsScalar(instruction->shape())) {
+      continue;
+    }
 
     HloInstruction* match = nullptr;
     if (auto* constant_inst = DynCast<HloConstantInstruction>(instruction)) {
@@ -249,10 +255,11 @@ StatusOr<bool> HloCSE::Run(
       continue;
     }
 
-    TF_ASSIGN_OR_RETURN(bool combined,
-                        is_layout_sensitive_
-                            ? CombineConstants<true>(computation)
-                            : CombineConstants<false>(computation));
+    TF_ASSIGN_OR_RETURN(
+        bool combined,
+        is_layout_sensitive_
+            ? CombineConstants<true>(computation, only_scalars_)
+            : CombineConstants<false>(computation, only_scalars_));
     changed |= combined;
 
     // HLO instructions are grouped into equivalency classes by using the
@@ -274,6 +281,10 @@ StatusOr<bool> HloCSE::Run(
         continue;
       }
 
+      if (only_scalars_ && !ShapeUtil::IsScalar(instruction->shape())) {
+        continue;
+      }
+
       auto pair = representatives.insert(CseKey{instruction});
       if (!pair.second) {
         HloInstruction* equivalent_instruction = pair.first->hlo;
@@ -282,6 +293,8 @@ StatusOr<bool> HloCSE::Run(
         TF_RETURN_IF_ERROR(computation->RemoveInstructionAndUnusedOperands(
             instruction, /*cleanup=*/std::nullopt,
             ignore_control_dependencies_));
+        VLOG(4) << "Replaced " << instruction->name() << " with "
+                << equivalent_instruction->name();
         changed = true;
         continue;
       }

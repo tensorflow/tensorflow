@@ -51,7 +51,7 @@ struct TestParam {
 template <class T>
 struct UnaryElementWiseTest : ::testing::Test {};
 
-TYPED_TEST_SUITE(UnaryElementWiseTest, NonQuantizedTestTypes);
+TYPED_TEST_SUITE(UnaryElementWiseTest, ArithmeticTestTypes);
 
 TYPED_TEST(UnaryElementWiseTest, NonQuantizedWithAbs) {
   using StorageT = typename TypeParam::StorageT;

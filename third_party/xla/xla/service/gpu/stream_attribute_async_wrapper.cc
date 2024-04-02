@@ -15,14 +15,13 @@ limitations under the License.
 
 #include "xla/service/gpu/stream_attribute_async_wrapper.h"
 
-
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/service/gpu/thunk.h"
+#include "xla/service/gpu/runtime/thunk.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/logging.h"
@@ -43,6 +42,12 @@ static absl::StatusOr<bool> AsynchronizeInstruction(HloInstruction* instr) {
       computation->CreateAsyncInstructions(
           instr, {}, StreamAttributeAsyncWrapper::kParallelExecutionThread,
           /*replace=*/true));
+  TF_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
+                      done->backend_config<GpuBackendConfig>());
+  // Set the false delay of done op to be false so it can be scheduled
+  // far apart from start.
+  gpu_config.set_force_earliest_schedule(false);
+  TF_RETURN_IF_ERROR(done->set_backend_config(gpu_config));
   VLOG(5) << "Created async instruction: " << done->ToString();
   return true;
 }

@@ -63,15 +63,24 @@ def quantize_saved_model(
   if not (
       config.HasField('static_range_ptq_preset')
       and len(config.static_range_ptq_preset.representative_datasets) == 1
-  ):
+  ) and not config.HasField('weight_only_preset'):
     raise ValueError(
         '`quantize_saved_model` currently only supports static-range PTQ with a'
-        ' single signature.'
+        ' single signature or weight-only quantization.'
     )
 
+  # Updates user-provided `QuantizationConfig`s for the internal quantization
+  # pipeline to work with.
+  print('=== User-provided QuantizationConfig ===')
+  print(config)
   config = qc.QuantizationConfig.FromString(
       pywrap_quantization.populate_default_configs(config.SerializeToString())
   )
+  config = qc.QuantizationConfig.FromString(
+      pywrap_quantization.expand_preset_configs(config.SerializeToString())
+  )
+  print('=== Updated QuantizationConfig ===')
+  print(config)
 
   signature_def_map = save_model.get_signatures_from_saved_model(
       src_saved_model_path,
@@ -80,11 +89,21 @@ def quantize_saved_model(
   )
 
   signature_def_map_serialized = _serialize_signature_def_map(signature_def_map)
-  pywrap_quantization.static_range_ptq(
-      src_saved_model_path,
-      dst_saved_model_path,
-      quantization_config_serialized=config.SerializeToString(),
-      signature_keys=list(signature_def_map.keys()),
-      signature_def_map_serialized=signature_def_map_serialized,
-      py_function_library=py_function_lib.PyFunctionLibrary(),
-  )
+  if config.HasField('static_range_ptq_preset'):
+    pywrap_quantization.static_range_ptq(
+        src_saved_model_path,
+        dst_saved_model_path,
+        quantization_config_serialized=config.SerializeToString(),
+        signature_keys=list(signature_def_map.keys()),
+        signature_def_map_serialized=signature_def_map_serialized,
+        py_function_library=py_function_lib.PyFunctionLibrary(),
+    )
+  elif config.HasField('weight_only_preset'):
+    pywrap_quantization.weight_only_ptq(
+        src_saved_model_path,
+        dst_saved_model_path,
+        quantization_config_serialized=config.SerializeToString(),
+        signature_keys=list(signature_def_map.keys()),
+        signature_def_map_serialized=signature_def_map_serialized,
+        py_function_library=py_function_lib.PyFunctionLibrary(),
+    )

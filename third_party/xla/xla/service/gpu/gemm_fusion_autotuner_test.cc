@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/service/gpu/autotuner_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gemm_fusion.h"
+#include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_pass_pipeline.h"
@@ -229,27 +230,6 @@ class GemmFusionAutotunerTestWithMorePreciseReduction
   }
 };
 
-TEST_F(GemmFusionAutotunerTest, VoltaUsesNoMoreThanTwoStages) {
-  std::unique_ptr<VerifiedHloModule> module = ParseAndReturnVerifiedModule(R"(
-ENTRY e {
-  p0 = f32[1024,1024] parameter(0)
-  p1 = f32[1024,1024] parameter(1)
-  ROOT r = f32[1024,1024] dot(p0, p1),
-    lhs_contracting_dims={1}, rhs_contracting_dims={0}
-})")
-                                                  .value();
-  const se::CudaComputeCapability compute_capability{
-      se::CudaComputeCapability::VOLTA, /*minor=*/0};
-  const std::vector<TritonGemmConfig> configs =
-      GetPossibleMatmulAutotuneConfigs(
-          *Cast<HloDotInstruction>(
-              module->entry_computation()->root_instruction()),
-          compute_capability, GetDebugOptionsForTest());
-  EXPECT_FALSE(std::any_of(
-      configs.begin(), configs.end(),
-      [](const TritonGemmConfig& config) { return config.num_stages > 2; }));
-}
-
 TEST_F(GemmFusionAutotunerTest, AmpereUsesMoreThanTwoStages) {
   std::unique_ptr<VerifiedHloModule> module = ParseAndReturnVerifiedModule(R"(
 ENTRY e {
@@ -261,11 +241,12 @@ ENTRY e {
                                                   .value();
   const se::CudaComputeCapability compute_capability{
       se::CudaComputeCapability::AMPERE, /*minor=*/0};
-  const std::vector<TritonGemmConfig> configs =
+  TF_ASSERT_OK_AND_ASSIGN(
+      const std::vector<TritonGemmConfig> configs,
       GetPossibleMatmulAutotuneConfigs(
           *Cast<HloDotInstruction>(
               module->entry_computation()->root_instruction()),
-          compute_capability, GetDebugOptionsForTest());
+          compute_capability, GetDebugOptionsForTest()));
   EXPECT_TRUE(std::any_of(
       configs.begin(), configs.end(),
       [](const TritonGemmConfig& config) { return config.num_stages > 2; }));
@@ -282,11 +263,12 @@ ENTRY e {
                                                   .value();
   const se::CudaComputeCapability compute_capability{
       se::CudaComputeCapability::AMPERE, /*minor=*/0};
-  const std::vector<TritonGemmConfig> configs =
+  TF_ASSERT_OK_AND_ASSIGN(
+      const std::vector<TritonGemmConfig> configs,
       GetPossibleMatmulAutotuneConfigs(
           *Cast<HloDotInstruction>(
               module->entry_computation()->root_instruction()),
-          compute_capability, GetDebugOptionsForTest());
+          compute_capability, GetDebugOptionsForTest()));
   EXPECT_TRUE(std::any_of(
       configs.begin(), configs.end(),
       [](const TritonGemmConfig& config) { return config.split_k >= 16; }));
@@ -303,11 +285,12 @@ ENTRY e {
                                                   .value();
   const se::CudaComputeCapability compute_capability{
       se::CudaComputeCapability::AMPERE, /*minor=*/0};
-  const std::vector<TritonGemmConfig> configs =
+  TF_ASSERT_OK_AND_ASSIGN(
+      const std::vector<TritonGemmConfig> configs,
       GetPossibleMatmulAutotuneConfigs(
           *Cast<HloDotInstruction>(
               module->entry_computation()->root_instruction()),
-          compute_capability, GetDebugOptionsForTest());
+          compute_capability, GetDebugOptionsForTest()));
   EXPECT_FALSE(std::any_of(
       configs.begin(), configs.end(),
       [](const TritonGemmConfig& config) { return config.split_k > 1; }));
@@ -361,10 +344,6 @@ ENTRY e {
 }
 
 TEST_F(GemmFusionAutotunerTest, SelectsSplitK) {
-  if (!GetCudaComputeCapability().IsAtLeast(
-          se::CudaComputeCapability::AMPERE)) {
-    GTEST_SKIP() << "No BF16 before Ampere.";
-  }
   // Shapes with K >> M, N have to force split-K configurations.
   const std::string kHloText = R"(
 HloModule t
@@ -390,10 +369,6 @@ ENTRY e {
 }
 
 TEST_F(GemmFusionAutotunerTestWithMorePreciseReduction, SelectsSplitK) {
-  if (!GetCudaComputeCapability().IsAtLeast(
-          se::CudaComputeCapability::AMPERE)) {
-    GTEST_SKIP() << "No BF16 before Ampere.";
-  }
   // Shapes with K >> M, N have to force split-K configurations.
   constexpr absl::string_view kHloText = R"(
 HloModule t
@@ -463,10 +438,6 @@ ENTRY %e {
     backend_config={"fusion_backend_config":{"kind":"__triton_gemm","triton_gemm_config":{"block_m":"256","block_n":"256","block_k":"16","split_k":"1","num_stages":"1","num_warps":"16","num_ctas":"1"}}}
 })";
 
-  if (!GetCudaComputeCapability().IsAtLeast(
-          se::CudaComputeCapability::AMPERE)) {
-    GTEST_SKIP() << "Not enough shared memory to run big tiles before Ampere.";
-  }
   auto module = ParseAndReturnVerifiedModule(kHloText).value();
   EXPECT_THAT(
       backend().compiler()->RunBackend(std::move(module),
@@ -502,10 +473,6 @@ ENTRY %e {
     backend_config={"fusion_backend_config":{"kind":"__triton_gemm","triton_gemm_config":{"block_m":"256","block_n":"256","block_k":"16","split_k":"1","num_stages":"1","num_warps":"16","num_ctas":"1"}}}
 })";
 
-  if (!GetCudaComputeCapability().IsAtLeast(
-          se::CudaComputeCapability::AMPERE)) {
-    GTEST_SKIP() << "Not enough shared memory to run big tiles before Ampere.";
-  }
   auto module = ParseAndReturnVerifiedModule(kHloText).value();
   HloModuleConfig config = module->config();
   DebugOptions debug_options = config.debug_options();
@@ -589,10 +556,6 @@ ENTRY e {
 }
 
 TEST_F(GemmFusionAutotunerTest, AutotuneCuDnnFusion) {
-  if (!GetCudaComputeCapability().IsAtLeast(
-          se::CudaComputeCapability::AMPERE)) {
-    GTEST_SKIP() << "cuDNN fusion autotuning is not tested before Ampere.";
-  }
   const std::string kHlo = R"(
 fusion1 {
   p0 = f32[3,28,32] parameter(0)
@@ -694,7 +657,7 @@ ENTRY e {
         RunFileCheck(
             module->ToString(HloPrintOptions{}.set_print_operand_shape(false)),
             R"(
-// CHECK: backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],"fusion_backend_config":{"kind":"__triton_gemm","triton_gemm_config":{"block_m":"32","block_n":"32","block_k":"32","split_k":"1","num_stages":"1","num_warps":"4","num_ctas":"1"}}}
+// CHECK: backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],"fusion_backend_config":{"kind":"__triton_gemm","triton_gemm_config":{"block_m":"16","block_n":"16","block_k":"16","split_k":"1","num_stages":"1","num_warps":"4","num_ctas":"1"}},"force_earliest_schedule":false}
             )"));
     EXPECT_TRUE(filecheck_matches);
   } else {
@@ -760,15 +723,49 @@ ENTRY e {
                                                   .value();
   const se::CudaComputeCapability compute_capability{
       se::CudaComputeCapability::AMPERE, /*minor=*/0};
-  const std::vector<TritonGemmConfig> configs =
+  TF_ASSERT_OK_AND_ASSIGN(
+      const std::vector<TritonGemmConfig> configs,
       GetPossibleMatmulAutotuneConfigs(
           *Cast<HloDotInstruction>(
               module->entry_computation()->root_instruction()),
-          compute_capability, GetDebugOptionsForTest());
+          compute_capability, GetDebugOptionsForTest()));
   EXPECT_TRUE(std::all_of(
       configs.begin(), configs.end(),
       [](const TritonGemmConfig& config) { return config.split_k == 1; }));
 }
+
+class GemmFusionAutotunerConfigTest
+    : public StatelessAutotunerTest,
+      public ::testing::WithParamInterface<bool> {};
+
+TEST_P(GemmFusionAutotunerConfigTest, SparseDotDiscardsUnsupportedTiles) {
+  const std::string kHloText = R"(
+HloModule test
+ENTRY wais {
+  lhs = f16[5,1600] parameter(0)
+  rhs = f16[3200,10] parameter(1)
+  meta = u16[5,200] parameter(2)
+  ROOT dot = f32[5,10] dot(lhs, rhs, meta),
+      lhs_contracting_dims={1}, rhs_contracting_dims={0}, sparsity=L.1@2:4
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+  auto dot =
+      Cast<HloDotInstruction>(module->entry_computation()->root_instruction());
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto configs,
+      GetPossibleMatmulAutotuneConfigs(
+          *dot, se::CudaComputeCapability{8, 0}, GetDebugOptionsForTest(),
+          /*exhaustive_tiling_search=*/GetParam()));
+  for (const auto& config : configs) {
+    int metadata_size = config.block_m * config.block_k / 16;
+    EXPECT_LE(config.num_warps * WarpSize(), metadata_size);
+    EXPECT_GT(config.block_k, 16);  // kMinTileSize
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(GemmFusionAutotunerConfigSweep,
+                         GemmFusionAutotunerConfigTest, ::testing::Bool());
 
 }  // namespace
 }  // namespace gpu

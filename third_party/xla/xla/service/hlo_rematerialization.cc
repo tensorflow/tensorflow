@@ -2162,6 +2162,10 @@ absl::StatusOr<int64_t> RematerializeInstructions(
       VLOG(2) << "The old instruction " << best->name()
               << " is an async op. Removing to maintain one start to one done "
                  "invariant to keep the HLO valid.";
+      // We need to remove all control dependencies from best before removing it
+      // from the computation.  Its control dependencies were previously copied
+      // to the remat instruction.
+      TF_RETURN_IF_ERROR(best->DropAllControlDeps());
       TF_RETURN_IF_ERROR(computation->RemoveInstruction(best));
     }
   }

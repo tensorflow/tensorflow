@@ -34,6 +34,8 @@ namespace errors = tensorflow::errors;
 tflite::TensorType ConvertTypeToTensorType(mlir::Type type) {
   if (type.isF16()) {
     return tflite::TensorType_FLOAT16;
+  } else if (type.isBF16()) {
+    return tflite::TensorType_BFLOAT16;
   } else if (type.isF32()) {
     return tflite::TensorType_FLOAT32;
   } else if (type.isF64()) {
@@ -81,6 +83,8 @@ mlir::Type ConvertElementType(tflite::TensorType type, mlir::Builder builder) {
   switch (type) {
     case tflite::TensorType_FLOAT16:
       return builder.getF16Type();
+    case tflite::TensorType_BFLOAT16:
+      return builder.getBF16Type();
     case tflite::TensorType_FLOAT32:
       return builder.getF32Type();
     case tflite::TensorType_FLOAT64:
@@ -128,6 +132,8 @@ tensorflow::DataType TflTypeToTfType(tflite::TensorType type) {
       return tensorflow::DT_COMPLEX128;
     case tflite::TensorType_FLOAT16:
       return tensorflow::DT_HALF;
+    case tflite::TensorType_BFLOAT16:
+      return tensorflow::DT_BFLOAT16;
     case tflite::TensorType_FLOAT32:
       return tensorflow::DT_FLOAT;
     case tflite::TensorType_FLOAT64:
@@ -170,6 +176,8 @@ absl::StatusOr<tflite::TensorType> TfTypeToTflType(tensorflow::DataType type) {
       return tflite::TensorType_COMPLEX128;
     case tensorflow::DT_HALF:
       return tflite::TensorType_FLOAT16;
+    case tensorflow::DT_BFLOAT16:
+      return tflite::TensorType_BFLOAT16;
     case tensorflow::DT_FLOAT:
       return tflite::TensorType_FLOAT32;
     case tensorflow::DT_DOUBLE:

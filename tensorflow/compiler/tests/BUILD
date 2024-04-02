@@ -1,7 +1,7 @@
 load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
-load("//tensorflow/compiler/tests:build_defs.bzl", "generate_backend_suites", "tf_xla_py_strict_test")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "tf_cuda_cc_test")
 load("//tensorflow/compiler/aot:tfcompile.bzl", "tf_library")
+load("//tensorflow/compiler/tests:build_defs.bzl", "generate_backend_suites", "tf_xla_py_strict_test")
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
@@ -260,6 +260,7 @@ tf_xla_py_strict_test(
         "cpu",
         "gpu",
         "gpu_a100",
+        "gpu_h100",
     ],
     python_version = "PY3",
     shard_count = 2,
@@ -679,6 +680,7 @@ tf_xla_py_strict_test(
         "cpu",
         "gpu",
         "gpu_a100",
+        "gpu_h100",
     ],
     python_version = "PY3",
     tags = [
@@ -925,6 +927,7 @@ tf_xla_py_strict_test(
         "cpu",
         "gpu",
         "gpu_a100",
+        "gpu_h100",
     ],
     python_version = "PY3",
     shard_count = 10,
@@ -1517,6 +1520,7 @@ tf_xla_py_strict_test(
     disabled_backends = [
         "gpu",
         "gpu_a100",
+        "gpu_h100",
     ],
     enable_mlir_bridge = True,
     python_version = "PY3",
@@ -1554,6 +1558,7 @@ tf_xla_py_strict_test(
     disabled_backends = [
         "gpu",
         "gpu_a100",
+        "gpu_h100",
     ],
     enable_mlir_bridge = True,
     python_version = "PY3",
@@ -1591,6 +1596,7 @@ tf_xla_py_strict_test(
     disabled_backends = [
         "gpu",
         "gpu_a100",
+        "gpu_h100",
     ],
     # TODO(b/232442915): Enable MLIR.
     enable_mlir_bridge = False,
@@ -2343,6 +2349,7 @@ tf_xla_py_strict_test(
     disabled_backends = [
         "gpu",
         "gpu_a100",
+        "gpu_h100",
     ],
     enable_mlir_bridge = True,
     python_version = "PY3",
@@ -2378,6 +2385,7 @@ tf_xla_py_strict_test(
     disabled_backends = [
         "gpu",
         "gpu_a100",
+        "gpu_h100",
     ],
     enable_mlir_bridge = False,
     python_version = "PY3",
@@ -2605,6 +2613,7 @@ tf_xla_py_strict_test(
         "cpu",
         "gpu",
         "gpu_a100",
+        "gpu_h100",
     ],
     tags = [
         "no_pip",
@@ -2633,6 +2642,7 @@ tf_xla_py_strict_test(
         "cpu_ondemand",
         "gpu",
         "gpu_a100",
+        "gpu_h100",
     ],
     enable_mlir_bridge = False,
     main = "where_op_test.py",
@@ -2719,6 +2729,7 @@ tf_xla_py_strict_test(
         "cpu_ondemand",
         "gpu",
         "gpu_a100",
+        "gpu_h100",
     ],
     enable_mlir_bridge = False,
     python_version = "PY3",
@@ -2883,6 +2894,7 @@ tf_xla_py_strict_test(
         "cpu",
         "gpu",
         "gpu_a100",
+        "gpu_h100",
     ],
     python_version = "PY3",
     tags = [

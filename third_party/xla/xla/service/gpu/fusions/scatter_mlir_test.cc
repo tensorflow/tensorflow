@@ -28,7 +28,7 @@ namespace {
 
 using MlirScatterFusionTest = MlirEmitterTestBase<MlirScatterFusion>;
 
-TEST_F(MlirScatterFusionTest, ThreadId_IndexingUnrolled) {
+TEST_F(MlirScatterFusionTest, ThreadIdIndexing) {
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
     HloModule module
 

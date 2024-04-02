@@ -37,6 +37,7 @@ from typing import (
 
 import numpy as np
 
+from . import ifrt_proxy
 from . import jax_jit
 from . import mlir
 from . import ops
@@ -266,6 +267,7 @@ def register_custom_call_partitioner(
     partition: Callable,
     infer_sharding_from_operands: Callable,
     can_side_effecting_have_replicated_sharding: bool,
+    c_api: Optional[Any],
 ) -> None: ...
 def encode_inspect_sharding_callback(handler: Any) -> bytes: ...
 

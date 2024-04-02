@@ -1,6 +1,6 @@
+load("@local_xla//xla/stream_executor:build_defs.bzl", "if_cuda_or_rocm")
 load("//tensorflow:tensorflow.bzl", "if_libtpu", "if_with_tpu_support", "tf_cc_test", "tf_copts", "tf_cuda_cc_test", "tf_cuda_only_cc_test")
 load("//tensorflow:tensorflow.default.bzl", "cc_header_only_library", "filegroup", "tf_custom_op_py_strict_library")
-load("@local_xla//xla/stream_executor:build_defs.bzl", "if_cuda_or_rocm")
 load("//tensorflow/core/platform:build_config.bzl", "tf_additional_all_protos", "tf_proto_library")
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
@@ -520,10 +520,7 @@ cc_library(
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-        "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
-        "@local_xla//xla:status_macros",
         "@local_xla//xla/pjrt:pjrt_client",
     ],
 )
@@ -585,6 +582,7 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/common_runtime:dma_helper",
+        "//tensorflow/core/common_runtime/gpu:gpu_serving_device_selector",
         "//tensorflow/core/tfrt/common:async_value_tensor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/cleanup",
@@ -592,6 +590,7 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/framework:device_id_utils",
+        "@local_tsl//tsl/framework:serving_device_selector_policies",
         "@local_xla//xla:shape_util",
         "@local_xla//xla:status_macros",
         "@local_xla//xla/client:local_client",

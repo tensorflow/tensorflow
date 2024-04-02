@@ -3352,7 +3352,6 @@ def tf_python_pybind_extension_opensource(
     """
     extended_deps = deps + if_mkl_ml(["@local_xla//xla/tsl/mkl:intel_binary_blob"])
     extended_deps += [] if dynamic_deps else if_windows([], ["//tensorflow:libtensorflow_framework_import_lib"]) + tf_binary_pybind_deps()
-    extended_deps += ["@local_xla//xla:bazel_issue_21519"]  # buildifier: disable=list-append
     pybind_extension_opensource(
         name,
         srcs,

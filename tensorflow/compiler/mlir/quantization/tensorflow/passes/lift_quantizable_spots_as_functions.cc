@@ -54,6 +54,7 @@ namespace {
 
 using QuantizationUnit =
     ::tensorflow::quantization::UnitWiseQuantizationSpec::QuantizationUnit;
+using ::tensorflow::quantization::OpSet;
 using ::tensorflow::quantization::QuantizationComponentSpec;
 using ::tensorflow::quantization::QuantizationMethod;
 using ::tensorflow::quantization::QuantizationOptions;

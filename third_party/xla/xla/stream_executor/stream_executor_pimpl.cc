@@ -54,12 +54,12 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor_internal.h"
+#include "xla/tsl/util/env_var.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/numbers.h"
 #include "tsl/platform/stacktrace.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
-#include "tsl/util/env_var.h"
 
 namespace stream_executor {
 namespace {

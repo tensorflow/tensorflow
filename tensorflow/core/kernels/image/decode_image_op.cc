@@ -24,6 +24,7 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include "absl/strings/match.h"
+#include "xla/tsl/util/byte_swap_array.h"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
@@ -42,7 +43,6 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/tstring.h"
-#include "tsl/util/byte_swap_array.h"
 
 namespace tensorflow {
 namespace {

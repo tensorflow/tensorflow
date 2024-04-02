@@ -35,11 +35,12 @@ class VerifiedHloModule : public HloModule {
   VerifiedHloModule(const std::string& name, const HloModuleConfig& config,
                     bool verifier_layout_sensitive,
                     bool allow_mixed_precision_in_hlo_verifier,
-                    std::function<int64_t(const Shape&)> shape_size_function)
+                    std::function<int64_t(const Shape&)> shape_size_function,
+                    HloPredicate instruction_can_change_layout_func = {})
       : HloModule(name, config),
-        verifier_(
-            verifier_layout_sensitive, allow_mixed_precision_in_hlo_verifier,
-            /*instruction_can_change_layout_func=*/{}, shape_size_function) {}
+        verifier_(verifier_layout_sensitive,
+                  allow_mixed_precision_in_hlo_verifier,
+                  instruction_can_change_layout_func, shape_size_function) {}
 
   ~VerifiedHloModule() override { VerifyOrAddFailure("in destructor"); }
 

@@ -569,6 +569,7 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   // reachable from the nodes of `graph` or `func`.
   FunctionLibraryDefinition ReachableDefinitions(const GraphDef& graph) const;
   FunctionLibraryDefinition ReachableDefinitions(const FunctionDef& func) const;
+  FunctionLibraryDefinition ReachableDefinitions(const Graph& graph) const;
   absl::StatusOr<FunctionLibraryDefinition> ReachableDefinitions(
       const std::string& function_name) const;
 

@@ -31,7 +31,7 @@ void TSL_DeleteStatus(TSL_Status* s) { delete s; }
 
 void TSL_SetStatus(TSL_Status* s, TSL_Code code, const char* msg) {
   if (code == TSL_OK) {
-    s->status = ::tsl::OkStatus();
+    s->status = absl::OkStatus();
     return;
   }
   s->status =

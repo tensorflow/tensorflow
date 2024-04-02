@@ -274,7 +274,8 @@ class MemorySpaceAssignmentTestBase : public HloTestBase {
     return std::move(status_or.value());
   }
 
-  StatusOr<std::unique_ptr<PresetAssignments>> AssignMemorySpaceAndReturnStatus(
+  absl::StatusOr<std::unique_ptr<PresetAssignments>>
+  AssignMemorySpaceAndReturnStatus(
       HloModule* module, std::optional<Options> options_override,
       std::optional<MsaBufferIntervalCompare> buffer_interval_compare,
       PrefetchIntervalPicker* prefetch_interval_picker) {
@@ -6696,7 +6697,8 @@ class FakeMemorySpaceAssignmentRepacker : public MemorySpaceAssignmentRepacker {
         check_fun_(check_fun),
         always_return_modified_(always_return_modified) {}
 
-  StatusOr<bool> Repack(absl::Span<AllocationBlock*> allocations) override {
+  absl::StatusOr<bool> Repack(
+      absl::Span<AllocationBlock*> allocations) override {
     bool modified = false;
     for (AllocationBlock* block : allocations) {
       absl::flat_hash_set<int64_t> colocations;
@@ -7882,6 +7884,66 @@ ENTRY main {
   EXPECT_THAT(
       ShapeUtil::GetSubshape(fusion2->shape(), {0}).layout().memory_space(),
       kAlternateMemorySpace);
+}
+
+// This test seeks to test that MSA will schedule async copy operations with
+// schedule_after=-1 at the very beginning of the program.
+//
+// The machinery for this is a little opaque from the public API, so we attempt
+// to get MSA to self-assign an async copies with schedule_after=-1 by
+// exploiting how the hidden algorithm works. This is brittle and subject to
+// inadvertent breakage in the future.
+TEST_P(MemorySpaceAssignmentTest, HoistCopyStart) {
+  absl::string_view hlo_string = R"(
+  HloModule cross_program_prefetch, is_scheduled=true
+
+  ENTRY cross_program_prefetch {
+    p0 = (f32[8,8]{1,0}, f32[8,2]{1,0}) parameter(0)
+    get-tuple-element.0 = f32[8,8]{1,0} get-tuple-element(p0), index=0
+    add.0 = f32[8,8]{1,0} add(get-tuple-element.0, get-tuple-element.0)
+    get-tuple-element.1 = f32[8,2]{1,0} get-tuple-element(p0), index=1
+    dot.0 = f32[8,2]{1,0} dot(add.0, get-tuple-element.1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    negate.1 = f32[8,2]{1,0} negate(dot.0)
+    negate.2 = f32[8,2]{1,0} negate(negate.1)
+    negate.3 = f32[8,2]{1,0} negate(negate.2)
+    negate.4 = f32[8,2]{1,0} negate(negate.3)
+    negate.5 = f32[8,2]{1,0} negate(negate.4)
+    negate.6 = f32[8,2]{1,0} negate(negate.5)
+    negate.7 = f32[8,2]{1,0} negate(negate.6)
+    negate.8 = f32[8,2]{1,0} negate(negate.7)
+    ROOT dot.1 = f32[2,2]{1,0} dot(negate.8, get-tuple-element.1), lhs_contracting_dims={0}, rhs_contracting_dims={0}
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  Options options = DefaultMemorySpaceOptions();
+  options.enable_cross_program_prefetch = true;
+  AssignMemorySpace(module.get(), options);
+
+  // Ensure that get-tuple-element.1 is chosen for cross-program prefetch.
+  auto cross_program_prefetches = module->CrossProgramPrefetches();
+  ASSERT_EQ(cross_program_prefetches.size(), 1);
+  ASSERT_EQ(cross_program_prefetches[0].parameter, 0);
+  ASSERT_EQ(cross_program_prefetches[0].index, ShapeIndex({1}));
+
+  // Check that the async copy-start for get-tuple-element.1 is hoisted
+  // after MSA (get-tuple-element.1 was initially the third operation of the
+  // original schedule).
+  //
+  // We expect the only instructions before it are declaring parameter(0) and
+  // get-tuple-element.1.
+  for (auto* instruction : module->schedule()
+                               .sequence(module->entry_computation())
+                               .instructions()) {
+    auto p0 = op::Parameter(0);
+    auto get_tuple_element_1 = op::GetTupleElement(p0, 1);
+    auto copy_start = op::CopyStart(get_tuple_element_1);
+    EXPECT_THAT(instruction, AnyOf(p0, get_tuple_element_1, copy_start));
+    if (::testing::Matches(copy_start)(instruction)) {
+      EXPECT_TRUE(instruction->cross_program_prefetch_index().has_value());
+      break;
+    }
+  }
 }
 
 INSTANTIATE_TEST_SUITE_P(MemorySpaceAssignmentInstantiation,
@@ -9833,13 +9895,13 @@ class SlicedPrefetchTest : public MemorySpaceAssignmentTestBase {
     SliceProposer() = default;
     virtual ~SliceProposer() = default;
 
-    virtual StatusOr<SliceProposalCollection> ProposeSlices(
+    virtual absl::StatusOr<SliceProposalCollection> ProposeSlices(
         const Shape& shape, const SlicedPrefetchOptions& options) = 0;
   };
 
   class MockSliceProposer : public SliceProposer {
    public:
-    MOCK_METHOD(StatusOr<SliceProposalCollection>, ProposeSlices,
+    MOCK_METHOD(absl::StatusOr<SliceProposalCollection>, ProposeSlices,
                 (const Shape& shape, const SlicedPrefetchOptions& options),
                 (override));
   };
@@ -10197,7 +10259,7 @@ class SlicedPrefetchTest : public MemorySpaceAssignmentTestBase {
   }
 
   // Returns the index of the first instruction with the given name.
-  static StatusOr<int> FindScheduleIndexOfInstruction(
+  static absl::StatusOr<int> FindScheduleIndexOfInstruction(
       const std::vector<HloInstruction*>& schedule, std::string_view name,
       InstructionClass c) {
     for (int i = 0; i < schedule.size(); ++i) {
@@ -10223,7 +10285,7 @@ class SlicedPrefetchTest : public MemorySpaceAssignmentTestBase {
     return nullptr;
   }
 
-  static StatusOr<std::vector<int>> GetSliceStartIndicies(
+  static absl::StatusOr<std::vector<int>> GetSliceStartIndicies(
       const std::vector<HloInstruction*>& schedule,
       const HloInstruction* concat_bitcast) {
     std::vector<int> indicies;
@@ -10923,7 +10985,7 @@ ENTRY main {
   EXPECT_CALL(slice_proposer_,
               ProposeSlices(f32_8_8_, EqualsSlicedPrefetchOptions(
                                           options_.sliced_prefetch_options)))
-      .WillRepeatedly(Return(StatusOr<SliceProposalCollection>(
+      .WillRepeatedly(Return(absl::StatusOr<SliceProposalCollection>(
           FailedPrecondition("%s", "Cannot slice."))));
 
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
@@ -11116,7 +11178,7 @@ class MockRepacker : public MemorySpaceAssignmentRepacker {
   MockRepacker()
       : MemorySpaceAssignmentRepacker(std::numeric_limits<int64_t>::max(), 1) {}
 
-  MOCK_METHOD(StatusOr<bool>, Repack, (absl::Span<AllocationBlock*>),
+  MOCK_METHOD(absl::StatusOr<bool>, Repack, (absl::Span<AllocationBlock*>),
               (override));
 };
 
@@ -11240,7 +11302,7 @@ ENTRY main {
   absl::flat_hash_map<std::pair<int64_t, int64_t>, int64_t> repack_map;
   EXPECT_CALL(repacker, Repack(_))
       .WillRepeatedly([](absl::Span<AllocationBlock*> allocations)
-                          -> StatusOr<bool> {
+                          -> absl::StatusOr<bool> {
         bool found_p2 = false;
         bool found_p3 = false;
         for (AllocationBlock* block : allocations) {
@@ -11461,7 +11523,7 @@ ENTRY main {
   // Define a lambda for running MSA on the specified HLO, with the
   // configuration above.
   auto run_msa =
-      [&](std::string_view hlo_text) -> StatusOr<ModuleAndAssignments> {
+      [&](std::string_view hlo_text) -> absl::StatusOr<ModuleAndAssignments> {
     ModuleAndAssignments module_and_assignments;
     TF_ASSIGN_OR_RETURN(module_and_assignments.module,
                         ParseAndReturnVerifiedModule(hlo_text));

@@ -85,7 +85,7 @@ message Variant {
   }
 
   oneof value {
-    string string_value = 1;
+    bytes string_value = 1;
     sfixed64 int64_value = 2;
     Int64List int64_list = 3;
     float float_value = 4;

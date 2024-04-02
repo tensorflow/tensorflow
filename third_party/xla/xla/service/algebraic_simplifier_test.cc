@@ -3100,7 +3100,6 @@ TEST_F(AlgebraicSimplifierTest, DoNotRemoveUnaryConcatenateWithCtrlDep) {
 
   EXPECT_THAT(computation->root_instruction(),
               GmockMatch(m::Concatenate(m::Parameter(0))));
-  LOG(ERROR) << "module: " << m->ToString();
 
   AlgebraicSimplifier simplifier(default_options_);
   ASSERT_FALSE(simplifier.Run(m.get()).value());
@@ -5663,7 +5662,7 @@ TEST_F(AlgebraicSimplifierTest, TransposeReshapeToConcatSlice) {
 HloModule TransposeReshapeDepthToSpace
 
 ENTRY entry {
-  %param = f32[8,14,14,128]{0,1,2,3} parameter(0)
+  %param = f32[8,14,14,128] parameter(0)
   %reshape.1 = f32[8,14,14,2,64] reshape(%param)
   %transpose = transpose(%reshape.1), dimensions={0,1,3,2,4}
   ROOT %reshape.2 = f32[8,28,14,64] reshape(%transpose)
@@ -5690,7 +5689,7 @@ TEST_F(AlgebraicSimplifierTest, TransposeReshapeTooLarge) {
 HloModule TransposeReshapeDepthToSpaceBig
 
 ENTRY entry {
-  %param = f32[8,14,14,128]{0,1,2,3} parameter(0)
+  %param = f32[8,14,14,128] parameter(0)
   %reshape.1 = f32[8,14,14,8,16] reshape(%param)
   %transpose = transpose(%reshape.1), dimensions={0,1,3,2,4}
   ROOT %reshape.2 = f32[8,112,14,16] reshape(%transpose)
@@ -5710,7 +5709,7 @@ TEST_F(AlgebraicSimplifierTest, TransposeReshapeNotDepthToSpace) {
 HloModule TransposeReshapeDepthToSpace
 
 ENTRY entry {
-  %param = f32[8,14,14,128]{0,1,2,3} parameter(0)
+  %param = f32[8,14,14,128] parameter(0)
   %reshape.1 = f32[8,14,14,2,64] reshape(%param)
   %transpose = transpose(%reshape.1), dimensions={0,3,1,2,4}
   ROOT %reshape.2 = f32[8,28,14,64] reshape(%transpose)
@@ -6434,6 +6433,11 @@ TEST_F(AlgebraicSimplifierTest, TransposeOfNonCanonicalBatchDotCantSimplify) {
 }
 
 TEST_F(AlgebraicSimplifierTest, DynamicSliceOfTranspose) {
+  // This test is without layouts so we have to set the verifier to be layout
+  // insensitive.
+  verifier_layout_sensitive_ = false;
+  instruction_can_change_layout_func_ = {};
+
   const char* hlo_string = R"(
     HloModule module
 
@@ -7959,6 +7963,7 @@ TEST_F(AlgebraicSimplifierTest, DividedByConstantInstructionWithoutLayout) {
   // This test is without layouts so we have to set the verifier to be layout
   // insensitive.
   verifier_layout_sensitive_ = false;
+  instruction_can_change_layout_func_ = {};
 
   Shape shape = ShapeUtil::MakeShape(F32, {});
   shape.clear_layout();

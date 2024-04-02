@@ -1,5 +1,6 @@
 # Description:
 #   ROCm-platform specific StreamExecutor support code.
+# buildifier: disable=out-of-order-load
 
 load(
     "//xla/stream_executor:build_defs.bzl",
@@ -228,7 +229,7 @@ cc_library(
         "//xla/stream_executor/platform",
         "//xla/stream_executor/platform:dso_loader",
         "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/util:determinism_for_kernels",
+        "//xla/tsl/util:determinism_for_kernels",
     ]),
     alwayslink = True,
 )
@@ -347,8 +348,8 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@local_config_rocm//rocm:rocm_headers",
         "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/util:env_var",
-        "@local_tsl//tsl/util:determinism_for_kernels",
+        "//xla/tsl/util:env_var",
+        "//xla/tsl/util:determinism_for_kernels",
     ]),
     alwayslink = True,
 )

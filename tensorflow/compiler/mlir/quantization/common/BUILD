@@ -41,6 +41,7 @@ cc_library(
         "//tensorflow/core:framework_lite",
         "//tensorflow/core/ir/types:Dialect",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -48,6 +49,7 @@ cc_library(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
+        "@local_tsl//tsl/platform:protobuf",
     ],
 )
 
@@ -60,6 +62,7 @@ tf_cc_test(
         ":test_base",
         "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
         "//tensorflow/compiler/mlir/tensorflow",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
@@ -68,6 +71,7 @@ tf_cc_test(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
+        "@local_tsl//tsl/platform:protobuf",
         "@local_tsl//tsl/platform:status_matchers",
         "@stablehlo//:stablehlo_ops",
     ],
@@ -109,6 +113,7 @@ cc_library(
     hdrs = ["test_base.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
+        ":func",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
         "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
         "//tensorflow/compiler/mlir/quantization/stablehlo/cc:context",
@@ -122,6 +127,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:Support",
         "@stablehlo//:stablehlo_ops",
     ],
 )

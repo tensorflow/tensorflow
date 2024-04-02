@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_QUANTIZATION_COMMON_ATTRS_AND_CONSTRAINTS_H_
 #define TENSORFLOW_COMPILER_MLIR_QUANTIZATION_COMMON_ATTRS_AND_CONSTRAINTS_H_
 
+#include <array>
 #include <cstdint>
 #include <optional>
 #include <type_traits>
@@ -40,10 +41,19 @@ namespace mlir::quant {
 
 constexpr char kAttrMapAttribute[] = "attr_map";
 
-// TODO: b/238829558 - Populate quantization config based on the
-// QuantizationOptions proto.
-// TODO: b/263449239 - Put the OpSet aliases separately within each file
-using OpSet = tensorflow::quantization::OpSet;
+// Permutation from the NHWC tensor format to NCHW. This is an inverse
+// permutation of `kNchwToNhwcPermutation`.
+inline constexpr std::array<int64_t, 4> kNhwcToNchwPermutation = {0, 3, 1, 2};
+
+// Permutation from the NCHW tensor format to NHWC. This is an inverse
+// permutation of `kNchwToNhwcPermutation`.
+inline constexpr std::array<int64_t, 4> kNchwToNhwcPermutation = {0, 2, 3, 1};
+
+// Permutation from the OIHW (== (output features, input features, height,
+// width)) tensor format to HWIO. This is commonly used to transpose convolution
+// weights represented as OIHW format to HWIO, which is more desirable for
+// certain downstream optimization passes (e.g. XLA).
+inline constexpr std::array<int64_t, 4> kOihwToHwioPermutation = {2, 3, 1, 0};
 
 // Returns true if the value has static shape.
 bool HasStaticShape(Value value);

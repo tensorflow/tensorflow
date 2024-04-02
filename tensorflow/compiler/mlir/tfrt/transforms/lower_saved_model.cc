@@ -115,6 +115,10 @@ bool CanHoist(const llvm::DenseSet<mlir::TF::ResourceHandle> &read_only_vars,
   // return ops should not be hoisted.
   if (op->mightHaveTrait<mlir::OpTrait::IsTerminator>()) return false;
 
+  // Fixes a corner case where hoisting the tf.BatchFunction leads to
+  // a compilation error; such a case may occur in unit tests.
+  if (llvm::isa<mlir::TF::BatchFunctionOp>(op)) return false;
+
   // Non-side-effecting ops can be hoisted.
   if (mlir::isMemoryEffectFree(op)) return true;
 
@@ -402,7 +406,7 @@ void LowerTFSavedModelPass::HoistInvariantOps(mlir::ModuleOp module) {
     } else if (auto func = llvm::dyn_cast<mlir::func::FuncOp>(op)) {
       if (!IsSessionInitializer(func)) return;
       FindCalleesRecursive(symbol_table, func, init_callees);
-    } else if (op->getName().getStringRef().str() == "tf.XlaLaunch") {
+    } else if (llvm::isa<mlir::TF::XlaLaunchOp>(op)) {
       // TODO(b/275095412): Clean up MLIR XLA functions after they are written
       // back to function library, so that we don't need to do special handling
       // for those functions here.

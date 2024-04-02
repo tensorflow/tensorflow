@@ -823,6 +823,37 @@ TEST(HloShardingUtilTest, IsSortOperandShardingMovableSortDimUnsharded) {
   iota.set_sharding(HloSharding::IotaTile({1, 2}));
   EXPECT_FALSE(IsSortOperandShardingMovable(&iota, 0));
 }
+
+TEST(HloShardingUtilTest, TileShape) {
+  HloSharding sharding = HloSharding::Tile(TileAssignment({4, 1}));
+  Shape shape_0 = ShapeUtil::MakeShape(F32, {80, 128});
+  auto tile_shape_0 = hlo_sharding_util::TileShape(sharding, shape_0);
+  auto expected_shape_0 = ShapeUtil::MakeShape(F32, {20, 128});
+  EXPECT_EQ(tile_shape_0, expected_shape_0);
+  Shape shape_1 = ShapeUtil::MakeShape(F32, {40, 128});
+  auto tile_shape_1 = hlo_sharding_util::TileShape(sharding, shape_1);
+  auto expected_shape_1 = ShapeUtil::MakeShape(F32, {10, 128});
+  EXPECT_EQ(tile_shape_1, expected_shape_1);
+  const Shape tuple = ShapeUtil::MakeTupleShape({tile_shape_0, tile_shape_1});
+  EXPECT_EQ(hlo_sharding_util::TileShape(sharding, tuple),
+            ShapeUtil::MakeTupleShape({expected_shape_0, expected_shape_1}));
+}
+
+TEST(HloShardingUtilTest, UntileShape) {
+  HloSharding sharding = HloSharding::Tile(TileAssignment({4, 1}));
+  Shape shape_0 = ShapeUtil::MakeShape(F32, {80, 128});
+  auto tile_shape_0 = hlo_sharding_util::UntileShape(sharding, shape_0);
+  auto expected_shape_0 = ShapeUtil::MakeShape(F32, {320, 128});
+  EXPECT_EQ(tile_shape_0, expected_shape_0);
+  Shape shape_1 = ShapeUtil::MakeShape(F32, {40, 128});
+  auto tile_shape_1 = hlo_sharding_util::UntileShape(sharding, shape_1);
+  auto expected_shape_1 = ShapeUtil::MakeShape(F32, {160, 128});
+  EXPECT_EQ(tile_shape_1, expected_shape_1);
+  const Shape tuple = ShapeUtil::MakeTupleShape({tile_shape_0, tile_shape_1});
+  EXPECT_EQ(hlo_sharding_util::UntileShape(sharding, tuple),
+            ShapeUtil::MakeTupleShape({expected_shape_0, expected_shape_1}));
+}
+
 }  // namespace
 }  // namespace hlo_sharding_util
 }  // namespace xla

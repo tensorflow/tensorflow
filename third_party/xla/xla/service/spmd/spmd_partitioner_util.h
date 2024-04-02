@@ -901,6 +901,7 @@ absl::StatusOr<std::pair<int64_t, int64_t>> EvaluatePartitionCost(
   HloDCE hlo_dce;
   TF_ASSIGN_OR_RETURN(
       auto _, hlo_dce.Run(&fake_module, partitioner->execution_threads()));
+  (void)_;  // Suppress unused variable warning in OSS
   VLOG(5) << "Dry-run partitioning for op: " << original_hlo->ToString() << "\n"
           << fake_module.ToString();
 

@@ -1875,6 +1875,18 @@ func.func @matmul_batchv3_unknown_dim(%arg0: tensor<?x10x15xf32>, %arg1: tensor<
 // CHECK: "tfl.batch_matmul"(%arg0, %arg1) {adj_x = false, adj_y = false} : (tensor<?x10x15xf32>, tensor<15x17xf32>) -> tensor<?x10x17xf32>
 }
 
+func.func @matmul_batchv3_unknown_dim_bf16(%arg0: tensor<?x4x5xbf16>, %arg1: tensor<5x6xf32>) -> tensor<?x4x6xbf16> {
+  %0 = "tf.Cast"(%arg0) : (tensor<?x4x5xbf16>) -> tensor<?x4x5xf32>
+  %1 = "tf.BatchMatMulV3"(%0, %arg1) {Ta = "tfdtype$DT_FLOAT", Tb = "tfdtype$DT_FLOAT", device = "/device:CPU:0", name = "MatMul", adj_x = false, adj_y = false} :
+(tensor<?x4x5xf32>, tensor<5x6xf32>) -> tensor<?x4x6xf32>
+  %2 = "tf.Cast"(%1) : (tensor<?x4x6xf32>) -> tensor<?x4x6xbf16>
+  func.return %2 : tensor<?x4x6xbf16>
+// CHECK-LABEL: matmul_batchv3_unknown_dim_bf16
+// CHECK: [[CST:%.*]] = "tfl.cast"(%arg0) : (tensor<?x4x5xbf16>) -> tensor<?x4x5xf32>
+// CHECK: [[BMM:%.*]] = "tfl.batch_matmul"([[CST]], %arg1) {adj_x = false, adj_y = false} : (tensor<?x4x5xf32>, tensor<5x6xf32>) -> tensor<?x4x6xf32>
+// CHECK: "tfl.cast"([[BMM]]) : (tensor<?x4x6xf32>) -> tensor<?x4x6xbf16>
+}
+
 // -----
 
 func.func @select_v2_with_6d_broadcasting(%arg0: tensor<1x1x1x1x3x1xi1>, %arg1 : tensor<1x1x1x1x1x4xf32>, %arg2 : tensor<1x1x1x2x1x1xf32>) -> tensor<1x1x1x2x3x4xf32> {

@@ -61,6 +61,7 @@ limitations under the License.
 #include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
+#include "tensorflow/core/lib/monitoring/gauge.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/status.h"
@@ -131,6 +132,12 @@ StepId GetNextStepId() {
   static StepIdGenerator gen;
   return gen.GetNextStepId();
 }
+
+auto* graph_executor_mode = monitoring::Gauge<std::string, 2>::New(
+    "/tfrt/graph_executor/mode",
+    "Record the total number of imported savedmodel using different graph "
+    "executor modes (BEF vs MLRT interpreter)",
+    "model_name", "model_version");
 
 }  // namespace
 
@@ -496,14 +503,16 @@ absl::StatusOr<std::unique_ptr<GraphExecutor>> GraphExecutor::Create(
     // Overrides cost_analysis_options.
     options.cost_analysis_options.version = Options::CostAnalysisOptions::kOnce;
   }
-
   TfrtGraphExecutionState::Options graph_execution_state_options;
   graph_execution_state_options.run_placer_grappler_on_functions =
       options.run_placer_grappler_on_functions;
 
   options.compile_options.fuse_get_resource_ops_in_hoisting =
       !options.enable_mlrt;
-
+  graph_executor_mode
+      ->GetCell(options.model_metadata.name(),
+                absl::StrCat(options.model_metadata.version()))
+      ->Set(options.enable_mlrt ? "mlrt" : "bef");
   TF_ASSIGN_OR_RETURN(
       auto graph_execution_state,
       TfrtGraphExecutionState::Create(graph_execution_state_options,

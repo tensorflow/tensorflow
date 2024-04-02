@@ -2,18 +2,18 @@
 #   OpKernels for RNN ops.
 
 load(
-    "//tensorflow:tensorflow.bzl",
-    "tf_gpu_library",
+    "@local_config_rocm//rocm:build_defs.bzl",
+    "if_rocm_is_configured",
 )
-load("//tensorflow:tensorflow.default.bzl", "tf_kernel_library")
 load(
     "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
 load(
-    "@local_config_rocm//rocm:build_defs.bzl",
-    "if_rocm_is_configured",
+    "//tensorflow:tensorflow.bzl",
+    "tf_gpu_library",
 )
+load("//tensorflow:tensorflow.default.bzl", "tf_kernel_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],

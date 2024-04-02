@@ -711,12 +711,17 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   // Convert BF16 and F8 operations to F32 and F16 respectively so that the CPU
   // backend can support BF16/F8 operations without directly implementing a
   // BF16/F8 lowering for most ops.
-#if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
-  CpuFloatSupport bf16_support(BF16);
-#else
   FloatSupport bf16_support(BF16);
-#endif
+#if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
+  CpuFloatSupport onednn_bf16_support(BF16);
+  if (!is_aot_compile) {
+    pipeline.AddPass<FloatNormalization>(&onednn_bf16_support);
+  } else {
+    pipeline.AddPass<FloatNormalization>(&bf16_support);
+  }
+#else
   pipeline.AddPass<FloatNormalization>(&bf16_support);
+#endif
   FloatSupport f8e5m2_support(F8E5M2, F16);
   pipeline.AddPass<FloatNormalization>(&f8e5m2_support);
   FloatSupport f8e4m3fn_support(F8E4M3FN, F16);
@@ -905,14 +910,20 @@ Status CpuCompiler::RunHloPassesAfterLayoutAssn(
 #if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
   // AOT compiled code runs in single thread.
   if (!is_aot_compile) {
+    auto debug_options = module->config().debug_options();
     // Run SimplifyFPConversions pass to simplify the BF16 pattern and make it
     // easier to match.
-    pipeline.AddPass<SimplifyFPConversions>();
+    // Remove `f32 -> bf16 -> f32` casts inserted by bf16 normalization.
+    if (debug_options.xla_allow_excess_precision()) {
+      pipeline.AddPass<SimplifyFPConversions>();
+    }
     pipeline.AddPass<OneDnnMatMulRewriter>(max_parallelism,
                                            compile_options.thread_pool);
     // Run SimplifyFPConversions pass again to remove redundant Convert ops
     // that may exist as a result of running OneDnnMatMulRewriter pass.
-    pipeline.AddPass<SimplifyFPConversions>();
+    if (debug_options.xla_allow_excess_precision()) {
+      pipeline.AddPass<SimplifyFPConversions>();
+    }
   }
 #endif  // INTEL_MKL && ENABLE_ONEDNN_V3
 

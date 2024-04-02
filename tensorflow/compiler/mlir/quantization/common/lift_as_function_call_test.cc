@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -30,11 +31,13 @@ limitations under the License.
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/quantization/common/func.h"
 #include "tensorflow/compiler/mlir/quantization/common/test_base.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tsl/platform/protobuf.h"  // IWYU pragma: keep
 #include "tsl/platform/status_matchers.h"
 
 namespace mlir::quant {
@@ -43,10 +46,11 @@ namespace {
 using ::stablehlo::quantization::Method;
 using ::testing::HasSubstr;
 using ::testing::NotNull;
+using ::tsl::protobuf::util::MessageDifferencer;
 using ::tsl::testing::IsOk;
 using ::tsl::testing::StatusIs;
 
-using LiftAsFunctionCallTest = ::mlir::quant::QuantizationTestBase;
+using LiftAsFunctionCallTest = QuantizationTestBase;
 
 constexpr absl::string_view kModuleLifted = R"mlir(
   module {
@@ -65,10 +69,9 @@ TEST_F(LiftAsFunctionCallTest, LiftedFunctionSucceeds) {
       module_op->lookupSymbol<func::FuncOp>("composite_dot_general_fn_1");
   ASSERT_THAT(composite_dot_general_fn, NotNull());
 
-  Operation* dot_general_op =
-      FindOperationOfType<mlir::stablehlo::DotGeneralOp>(
-          composite_dot_general_fn);
-  EXPECT_TRUE(IsInLiftedFunc(*dot_general_op));
+  auto dot_general_op = FindOperationOfType<mlir::stablehlo::DotGeneralOp>(
+      composite_dot_general_fn);
+  EXPECT_TRUE(IsInLiftedFunc(dot_general_op));
 }
 
 constexpr absl::string_view kModuleStableHlo = R"mlir(
@@ -87,7 +90,7 @@ TEST_F(LiftAsFunctionCallTest, FunctionLiftedAsXlaCallModuleOp) {
   func::FuncOp main_fn = FindMainFuncOp(*module_op);
   ASSERT_THAT(main_fn, NotNull());
 
-  Operation* dot_general_op =
+  auto dot_general_op =
       FindOperationOfType<mlir::stablehlo::DotGeneralOp>(main_fn);
 
   const SmallVector<NamedAttribute>& attributes = {
@@ -97,19 +100,20 @@ TEST_F(LiftAsFunctionCallTest, FunctionLiftedAsXlaCallModuleOp) {
               1, mlir::stablehlo::PrecisionAttr::get(
                      ctx_.get(), mlir::stablehlo::Precision::DEFAULT)))),
   };
+  const SmallVector<Value> operands(dot_general_op->getOperands());
+  const SmallVector<Value> results(dot_general_op->getResults());
   Operation* lifted_op =
       LiftAsFunctionCall(builder_, dot_general_op->getLoc(),
                          FunctionCallOpType::TFXlaCallModuleOp,
-                         "composite_dot_general_fn",
-                         dot_general_op->getOperands(),
-                         dot_general_op->getResults(), attributes)[0]
+                         "composite_dot_general_fn", operands, results,
+                         attributes)[0]
           .getDefiningOp();
   const auto entry_function_symbol_ref =
       lifted_op->getAttrOfType<FlatSymbolRefAttr>("_entry_function");
   SymbolTable symbol_table(*module_op);
   auto entry_func = dyn_cast_or_null<func::FuncOp>(
       symbol_table.lookup(entry_function_symbol_ref.getValue()));
-  Operation* lifted_dot_general_op =
+  auto lifted_dot_general_op =
       FindOperationOfType<mlir::stablehlo::DotGeneralOp>(entry_func);
 
   EXPECT_TRUE(isa<TF::XlaCallModuleOp>(lifted_op));
@@ -129,13 +133,14 @@ TEST_F(LiftAsFunctionCallTest, FunctionNoAttrLiftedAsXlaCallModuleOp) {
   func::FuncOp main_fn = FindMainFuncOp(*module_op);
   ASSERT_THAT(main_fn, NotNull());
 
-  Operation* dot_general_op =
+  auto dot_general_op =
       FindOperationOfType<mlir::stablehlo::DotGeneralOp>(main_fn);
+  const SmallVector<Value> operands(dot_general_op->getOperands());
+  const SmallVector<Value> results(dot_general_op->getResults());
   Operation* lifted_op =
-      LiftAsFunctionCall(
-          builder_, dot_general_op->getLoc(),
-          FunctionCallOpType::TFXlaCallModuleOp, "composite_dot_general_fn",
-          dot_general_op->getOperands(), dot_general_op->getResults())[0]
+      LiftAsFunctionCall(builder_, dot_general_op->getLoc(),
+                         FunctionCallOpType::TFXlaCallModuleOp,
+                         "composite_dot_general_fn", operands, results)[0]
           .getDefiningOp();
   EXPECT_TRUE(isa<TF::XlaCallModuleOp>(lifted_op));
   EXPECT_EQ(lifted_op->getAttr("_original_entry_function").cast<StringAttr>(),
@@ -240,6 +245,110 @@ TEST_F(LiftAsFunctionCallTest,
   EXPECT_THAT(method,
               StatusIs(absl::StatusCode::kInternal,
                        HasSubstr("Failed to parse Method from textproto")));
+}
+
+constexpr absl::string_view kFunctionWithRegion =
+    R"mlir(
+  func.func @main(%arg0: tensor<i1>, %arg1: tensor<f32>, %arg2: tensor<f32>) -> tensor<f32> {
+    %if = "stablehlo.if"(%arg0) ({
+      %0 = stablehlo.add %arg1, %arg1 : tensor<f32>
+      stablehlo.return %0 : tensor<f32>
+    }, {
+      %1 = stablehlo.add %arg2, %arg2 : tensor<f32>
+      stablehlo.return %1 : tensor<f32>
+    }) : (tensor<i1>) -> (tensor<f32>)
+    %subtract = stablehlo.subtract %if, %if : tensor<f32>
+    return %subtract : tensor<f32>
+  }
+)mlir";
+
+TEST_F(LiftAsFunctionCallTest, IsInRegionSucceedsWhenOpInsideRegion) {
+  const OwningOpRef<ModuleOp> module_op =
+      ParseModuleOpString(kFunctionWithRegion);
+  ASSERT_TRUE(module_op);
+
+  func::FuncOp main_fn = FindMainFuncOp(*module_op);
+  ASSERT_THAT(main_fn, NotNull());
+
+  auto if_op = FindOperationOfType<mlir::stablehlo::IfOp>(main_fn);
+  Block& block = if_op->getRegion(0).front();
+  Operation& add_op = *absl::c_find_if(block, [](Operation& entry) {
+    return dyn_cast_or_null<::mlir::stablehlo::AddOp>(&entry);
+  });
+  EXPECT_TRUE(IsInStableHloOpRegion(&add_op));
+}
+
+TEST_F(LiftAsFunctionCallTest, IsInRegionFailsWhenOpNotInsideRegion) {
+  const OwningOpRef<ModuleOp> module_op =
+      ParseModuleOpString(kFunctionWithRegion);
+  ASSERT_TRUE(module_op);
+
+  func::FuncOp main_fn = FindMainFuncOp(*module_op);
+  ASSERT_THAT(main_fn, NotNull());
+
+  auto subtract_op = FindOperationOfType<mlir::stablehlo::SubtractOp>(main_fn);
+  EXPECT_FALSE(IsInStableHloOpRegion(subtract_op));
+}
+
+TEST_F(LiftAsFunctionCallTest,
+       GetQuantizationMethodOrDefaultReturnsCorrectMethod) {
+  // Function containing a simple `TF::XlaCallModuleOp` with a valid string
+  // attribute `_quantization_method` set to `"no_quantization { }"`.
+  constexpr absl::string_view kXlaCallModuleOpWithQuantizationMethodAttr =
+      R"mlir(
+    func.func @main(%arg0: tensor<1x1x3xf32>, %arg1: tensor<3x4xf32>) -> tensor<1x1x4xf32> {
+      %0 = "tf.XlaCallModule"(%arg0, %arg1) <{Sout = [#tf_type.shape<1x1x4>], dim_args_spec = [], disabled_checks = [], function_list = [], has_token_input_output = false, module = "", platforms = ["CPU"], version = 9 : i64}>
+          {
+            _entry_function = @composite_dot_general_fn_1,
+            _quantization_method = "no_quantization { }",
+            _stablehlo_module_attrs = {jax.uses_shape_polymorphism = true}
+          } : (tensor<1x1x3xf32>, tensor<3x4xf32>) -> tensor<1x1x4xf32>
+      return %0 : tensor<1x1x4xf32>
+    }
+  )mlir";
+
+  const OwningOpRef<ModuleOp> module_op =
+      ParseModuleOpString(kXlaCallModuleOpWithQuantizationMethodAttr);
+  ASSERT_TRUE(module_op);
+
+  FailureOr<TF::XlaCallModuleOp> xla_call_module_op =
+      FindFirstOpFromMainFunc<TF::XlaCallModuleOp>(*module_op);
+  ASSERT_TRUE(succeeded(xla_call_module_op));
+
+  // Test that `GetQuantizationMethodOrDefault` returns a valid `Method`
+  // corresponding to `"no_quantization {}"`.
+  const Method method = GetQuantizationMethodOrDefault(*xla_call_module_op);
+  EXPECT_TRUE(method.has_no_quantization());
+}
+
+TEST_F(
+    LiftAsFunctionCallTest,
+    GetQuantizationMethodOrDefaultReturnsDefaultWhenNoQuantizationMethodAttr) {
+  // Function containing a simple `TF::XlaCallModuleOp` that is missing the
+  // "_quantization_method" attribute.
+  constexpr absl::string_view kXlaCallModuleOpWithoutQuantizationMethodAttr =
+      R"mlir(
+    func.func @main(%arg0: tensor<1x1x3xf32>, %arg1: tensor<3x4xf32>) -> tensor<1x1x4xf32> {
+      %0 = "tf.XlaCallModule"(%arg0, %arg1) <{Sout = [#tf_type.shape<1x1x4>], dim_args_spec = [], disabled_checks = [], function_list = [], has_token_input_output = false, module = "", platforms = ["CPU"], version = 9 : i64}>
+          {
+            _entry_function = @composite_dot_general_fn_1,
+            _stablehlo_module_attrs = {jax.uses_shape_polymorphism = true}
+          } : (tensor<1x1x3xf32>, tensor<3x4xf32>) -> tensor<1x1x4xf32>
+      return %0 : tensor<1x1x4xf32>
+    }
+  )mlir";
+
+  const OwningOpRef<ModuleOp> module_op =
+      ParseModuleOpString(kXlaCallModuleOpWithoutQuantizationMethodAttr);
+  ASSERT_TRUE(module_op);
+
+  FailureOr<TF::XlaCallModuleOp> xla_call_module_op =
+      FindFirstOpFromMainFunc<TF::XlaCallModuleOp>(*module_op);
+  ASSERT_TRUE(succeeded(xla_call_module_op));
+
+  // Test that `GetQuantizationMethodOrDefault` returns the default instance.
+  const Method method = GetQuantizationMethodOrDefault(*xla_call_module_op);
+  EXPECT_TRUE(MessageDifferencer::Equals(method, Method::default_instance()));
 }
 
 }  // namespace

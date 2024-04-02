@@ -63,6 +63,11 @@
 
 # Placeholder: load py_proto_library
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
+load("@local_config_tensorrt//:build_defs.bzl", "if_tensorrt")
+load(
+    "@local_xla//xla/tsl/mkl:build_defs.bzl",
+    "if_mkl",
+)
 load(
     "//tensorflow:tensorflow.bzl",
     "if_android",
@@ -83,10 +88,6 @@ load(
     "transitive_hdrs",
 )
 load("//tensorflow:tensorflow.default.bzl", "cc_header_only_library", "filegroup", "get_compatible_with_portable", "tensorflow_opensource_extra_deps", "tf_monitoring_framework_deps", "tf_selective_registration_deps")
-load(
-    "@local_xla//xla/tsl/mkl:build_defs.bzl",
-    "if_mkl",
-)
 
 # For platform specific build config
 load(
@@ -117,7 +118,6 @@ load(
     "//tensorflow/core/platform:rules_cc.bzl",
     "cc_library",
 )
-load("@local_config_tensorrt//:build_defs.bzl", "if_tensorrt")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -1035,7 +1035,6 @@ cc_library(
         "//tensorflow/core:mobile_additional_lib_deps",
         "//tensorflow/core/platform:resource",
         "//tensorflow/core/util:stats_calculator_portable",
-        "@local_xla//xla:bazel_issue_21519",
     ] + tf_portable_proto_lib() + tf_portable_deps_no_runtime(),
     alwayslink = 1,
 )
@@ -1717,8 +1716,8 @@ tf_cuda_library(
         "@local_tsl//tsl/framework:cancellation",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:stringpiece",
-        "@local_tsl//tsl/util:command_line_flags",
-        "@local_tsl//tsl/util:device_name_utils",
+        "@local_xla//xla/tsl/util:command_line_flags",
+        "@local_xla//xla/tsl/util:device_name_utils",
     ] + if_cuda([
         "@local_config_cuda//cuda:cudnn_header",
     ]) + if_static(

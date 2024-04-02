@@ -187,13 +187,31 @@ module attributes {tf_saved_model.semantics} {
 
 // -----
 
-// Tests that basic convolution is properly quantized.
+// Tests that basic convolution is properly quantized. It is per-channel
+// quantized unless `enable-per-channel-quantized-weight=false`, according to
+// `_quantization_method` with an `input_quantized_types` and explicit
+// `dimension_specs`.
 
 module attributes {tf_saved_model.semantics} {
   func.func private @quantize_conv_fn(%arg0: tensor<1x3x4x3xf32>) -> tensor<1x3x4x2xf32> attributes {tf._original_func_name = "main_0"} {
     %cst = "tf.Const"() {value = dense<3.00000000e-1> : tensor<2x3x3x2xf32>} : () -> tensor<2x3x3x2xf32>
     %0 = "quantfork.stats"(%arg0) {layerStats = dense<[6.00000000e-6, 9.00000000e-1]> : tensor<2xf32>} : (tensor<1x3x4x3xf32>) -> tensor<1x3x4x3xf32>
-    %1 = "tf.XlaCallModule"(%0, %cst) {Sout = [#tf_type.shape<1x3x4x2>], dim_args_spec = [], disabled_checks = [], has_token_input_output = false, module = "", platforms = [], version = 5 : i64, _entry_function = @composite_conv_fn, _original_entry_function = "composite_conv_fn", _stablehlo_module_attrs = {}, _tfl_quant_trait = "fully_quantizable", device = ""} : (tensor<1x3x4x3xf32>, tensor<2x3x3x2xf32>) -> tensor<1x3x4x2xf32>
+    %1 = "tf.XlaCallModule"(%0, %cst) {
+        Sout = [#tf_type.shape<1x3x4x2>],
+        dim_args_spec = [],
+        disabled_checks = [],
+        has_token_input_output = false,
+        module = "",
+        platforms = [],
+        version = 5 : i64,
+        _entry_function = @composite_conv_fn,
+        _original_entry_function = "composite_conv_fn",
+        // Per-channel quantization at dimension 3 for input index 1.
+        _quantization_method = "static_range_ptq {input_quantized_types {key: 1, value {dimension_specs {dimension: 3}}}}",
+        _stablehlo_module_attrs = {},
+        _tfl_quant_trait = "fully_quantizable",
+        device = ""
+      } : (tensor<1x3x4x3xf32>, tensor<2x3x3x2xf32>) -> tensor<1x3x4x2xf32>
     %2 = "quantfork.stats"(%1) {layerStats = dense<[5.00000000e-6, 7.00000000e-1]> : tensor<2xf32>} : (tensor<1x3x4x2xf32>) -> tensor<1x3x4x2xf32>
     return %2 : tensor<1x3x4x2xf32>
   }
@@ -235,6 +253,58 @@ module attributes {tf_saved_model.semantics} {
 
 // -----
 
+// Tests that basic convolution is properly quantized. In this example, the
+// convolution is always per-tensor quantized (even if
+// enable-per-channel-quantized-weights=true), according to
+// `_quantization_method`.
+
+// CHECK-LABEL: quantize_conv_fn_per_tensor
+func.func @quantize_conv_fn_per_tensor(%arg0: tensor<1x3x4x3xf32>) -> tensor<1x3x4x2xf32> {
+  %cst = "tf.Const"() {value = dense<3.00000000e-1> : tensor<2x3x3x2xf32>} : () -> tensor<2x3x3x2xf32>
+  %0 = "quantfork.stats"(%arg0) {layerStats = dense<[6.00000000e-6, 9.00000000e-1]> : tensor<2xf32>} : (tensor<1x3x4x3xf32>) -> tensor<1x3x4x3xf32>
+  %1 = "tf.XlaCallModule"(%0, %cst) {
+      Sout = [#tf_type.shape<1x3x4x2>],
+      dim_args_spec = [],
+      disabled_checks = [],
+      has_token_input_output = false,
+      module = "",
+      platforms = [],
+      version = 5 : i64,
+      _entry_function = @composite_conv_fn,
+      _original_entry_function = "composite_conv_fn",
+      _quantization_method = "static_range_ptq {}",
+      _stablehlo_module_attrs = {},
+      _tfl_quant_trait = "fully_quantizable",
+      device = ""
+    } : (tensor<1x3x4x3xf32>, tensor<2x3x3x2xf32>) -> tensor<1x3x4x2xf32>
+  %2 = "quantfork.stats"(%1) {layerStats = dense<[5.00000000e-6, 7.00000000e-1]> : tensor<2xf32>} : (tensor<1x3x4x2xf32>) -> tensor<1x3x4x2xf32>
+  return %2 : tensor<1x3x4x2xf32>
+}
+// Check that the quantized XlaCallModule has been replaced by a CallOp, which
+// calls the quantized entry function.
+
+// CHECK-SAME: (%[[ARG_0:.+]]: tensor<1x3x4x3xf32>) -> tensor<1x3x4x2xf32>
+// CHECK-DAG: %[[CONST_0:.+]] = stablehlo.constant() {value = dense<{{.*}}> : tensor<2x3x3x2xi8>} : () -> tensor<2x3x3x2x!quant.uniform<i8:f32, {{.*}}>
+// CHECK: %[[UNIFORM_QUANTIZE_0:.+]] = stablehlo.uniform_quantize %[[ARG_0]] : (tensor<1x3x4x3xf32>) -> tensor<1x3x4x3x!quant.uniform<i8:f32, {{.*}}>>
+// CHECK: %[[CALL_0:.+]] = call @quantized_conv_fn(%[[UNIFORM_QUANTIZE_0]], %[[CONST_0]]) : (tensor<1x3x4x3x!quant.uniform<i8:f32, {{.*}}>>, tensor<2x3x3x2x!quant.uniform<i8:f32, {{.*}}>) -> tensor<1x3x4x2x!quant.uniform<i8:f32, {{.*}}>>
+// CHECK: %[[UNIFORM_DEQUANTIZE_0:.+]] = stablehlo.uniform_dequantize %[[CALL_0]] : (tensor<1x3x4x2x!quant.uniform<i8:f32, {{.*}}>) -> tensor<1x3x4x2xf32>
+// CHECK: return %[[UNIFORM_DEQUANTIZE_0]] : tensor<1x3x4x2xf32>
+
+func.func private @composite_conv_fn(%arg0: tensor<1x3x4x3xf32>, %arg1: tensor<2x3x3x2xf32>) -> tensor<1x3x4x2xf32> attributes {_from_xla_call_module} {
+  %0 = stablehlo.convolution(%arg0, %arg1) dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f], window = {pad = [[0, 1], [1, 1]]} {batch_group_count = 1 : i64, feature_group_count = 1 : i64} : (tensor<1x3x4x3xf32>, tensor<2x3x3x2xf32>) -> tensor<1x3x4x2xf32>
+  return %0 : tensor<1x3x4x2xf32>
+}
+// Checks that the entry function is quantized for convolution. Quantized
+// convolution outputs an i32 quantized tensor, followed by requantization to
+// i8 quantized tensor.
+
+// CHECK: func.func private @quantized_conv_fn(%[[ARG_1:.+]]: tensor<1x3x4x3x!quant.uniform<i8:f32, {{.*}}>>, %[[ARG_2:.+]]: tensor<2x3x3x2x!quant.uniform<i8:f32, {{.*}}>>) -> tensor<1x3x4x2x!quant.uniform<i8:f32, {{.*}}>> attributes {_from_xla_call_module}
+// CHECK: %[[CONVOLUTION_0:.+]] = stablehlo.convolution(%[[ARG_1]], %[[ARG_2]]) {{.*}} : (tensor<1x3x4x3x!quant.uniform<i8:f32, {{.*}}>>, tensor<2x3x3x2x!quant.uniform<i8:f32, {{.*}}>>) -> tensor<1x3x4x2x!quant.uniform<i32:f32, {{.*}}>>
+// CHECK: %[[UNIFORM_QUANTIZE_1:.+]] = stablehlo.uniform_quantize %[[CONVOLUTION_0]] : (tensor<1x3x4x2x!quant.uniform<i32:f32, {{.*}}>>) -> tensor<1x3x4x2x!quant.uniform<i8:f32, {{.*}}>>
+// CHECK: return %[[UNIFORM_QUANTIZE_1]] : tensor<1x3x4x2x!quant.uniform<i8:f32, {{.*}}>>
+
+// -----
+
 // Tests that fused pattern for convolution + bias is properly quantized.
 
 // Checks that fused functions with 1D bias is properly quantized.
@@ -246,7 +316,22 @@ module attributes {tf_saved_model.semantics} {
     %cst = "tf.Const"() {value = dense<3.00000000e-1> : tensor<2x3x3x2xf32>} : () -> tensor<2x3x3x2xf32>
     %cst_0 = "tf.Const"() {value = dense<4.00000000e-1> : tensor<2xf32>} : () -> tensor<2xf32>
     %0 = "quantfork.stats"(%arg0) {layerStats = dense<[6.00000000e-6, 9.00000000e-1]> : tensor<2xf32>} : (tensor<1x3x4x3xf32>) -> tensor<1x3x4x3xf32>
-    %1 = "tf.XlaCallModule"(%0, %cst, %cst_0) {Sout = [#tf_type.shape<1x3x4x2>], _entry_function = @composite_conv_with_bias_1d_fn, _original_entry_function = "composite_conv_with_bias_1d_fn", _stablehlo_module_attrs = {}, _tfl_quant_trait = "fully_quantizable", device = "", dim_args_spec = [], disabled_checks = [], has_token_input_output = false, module = "", platforms = [], version = 5 : i64} : (tensor<1x3x4x3xf32>, tensor<2x3x3x2xf32>, tensor<2xf32>) -> tensor<1x3x4x2xf32>
+    %1 = "tf.XlaCallModule"(%0, %cst, %cst_0) {
+        Sout = [#tf_type.shape<1x3x4x2>],
+        _entry_function = @composite_conv_with_bias_1d_fn,
+        _original_entry_function = "composite_conv_with_bias_1d_fn",
+        _stablehlo_module_attrs = {},
+        // Per-channel quantization at dimension 3 for input index 1.
+        _quantization_method = "static_range_ptq {input_quantized_types {key: 1, value {dimension_specs {dimension: 3}}}}",
+        _tfl_quant_trait = "fully_quantizable",
+        device = "",
+        dim_args_spec = [],
+        disabled_checks = [],
+        has_token_input_output = false,
+        module = "",
+        platforms = [],
+        version = 5 : i64
+      } : (tensor<1x3x4x3xf32>, tensor<2x3x3x2xf32>, tensor<2xf32>) -> tensor<1x3x4x2xf32>
     %2 = "quantfork.stats"(%1) {layerStats = dense<[5.00000000e-6, 7.00000000e-1]> : tensor<2xf32>} : (tensor<1x3x4x2xf32>) -> tensor<1x3x4x2xf32>
     return %2 : tensor<1x3x4x2xf32>
   }
@@ -298,7 +383,22 @@ module attributes {tf_saved_model.semantics} {
     %cst = "tf.Const"() {value = dense<3.00000000e-1> : tensor<2x3x3x2xf32>} : () -> tensor<2x3x3x2xf32>
     %cst_0 = "tf.Const"() {value = dense<4.00000000e-1> : tensor<1x1x1x2xf32>} : () -> tensor<1x1x1x2xf32>
     %0 = "quantfork.stats"(%arg0) {layerStats = dense<[6.00000000e-6, 9.00000000e-1]> : tensor<2xf32>} : (tensor<1x3x4x3xf32>) -> tensor<1x3x4x3xf32>
-    %1 = "tf.XlaCallModule"(%0, %cst, %cst_0) {Sout = [#tf_type.shape<1x3x4x2>], _entry_function = @composite_conv_with_bias_fn, _original_entry_function = "composite_conv_with_bias_fn", _stablehlo_module_attrs = {}, _tfl_quant_trait = "fully_quantizable", device = "", dim_args_spec = [], disabled_checks = [], has_token_input_output = false, module = "", platforms = [], version = 5 : i64} : (tensor<1x3x4x3xf32>, tensor<2x3x3x2xf32>, tensor<1x1x1x2xf32>) -> tensor<1x3x4x2xf32>
+    %1 = "tf.XlaCallModule"(%0, %cst, %cst_0) {
+        Sout = [#tf_type.shape<1x3x4x2>],
+        _entry_function = @composite_conv_with_bias_fn,
+        _original_entry_function = "composite_conv_with_bias_fn",
+        _stablehlo_module_attrs = {},
+        // Per-channel quantization at dimension 3 for input index 1.
+        _quantization_method = "static_range_ptq {input_quantized_types {key: 1, value {dimension_specs {dimension: 3}}}}",
+        _tfl_quant_trait = "fully_quantizable",
+        device = "",
+        dim_args_spec = [],
+        disabled_checks = [],
+        has_token_input_output = false,
+        module = "",
+        platforms = [],
+        version = 5 : i64
+      } : (tensor<1x3x4x3xf32>, tensor<2x3x3x2xf32>, tensor<1x1x1x2xf32>) -> tensor<1x3x4x2xf32>
     %2 = "quantfork.stats"(%1) {layerStats = dense<[5.00000000e-6, 7.00000000e-1]> : tensor<2xf32>} : (tensor<1x3x4x2xf32>) -> tensor<1x3x4x2xf32>
     return %2 : tensor<1x3x4x2xf32>
   }
@@ -349,7 +449,22 @@ module attributes {tf_saved_model.semantics} {
     %cst = "tf.Const"() {value = dense<3.00000000e-1> : tensor<2x3x3x2xf32>} : () -> tensor<2x3x3x2xf32>
     %cst_0 = "tf.Const"() {value = dense<4.00000000e-1> : tensor<1x1x1x2xf32>} : () -> tensor<1x1x1x2xf32>
     %0 = "quantfork.stats"(%arg0) {layerStats = dense<[6.00000000e-6, 9.00000000e-1]> : tensor<2xf32>} : (tensor<?x3x4x3xf32>) -> tensor<?x3x4x3xf32>
-    %1 = "tf.XlaCallModule"(%0, %cst, %cst_0) {Sout = [#tf_type.shape<1x3x4x2>], _entry_function = @composite_conv_with_bias_dynamic_fn, _original_entry_function = "composite_conv_with_bias_dynamic_fn", _stablehlo_module_attrs = {}, _tfl_quant_trait = "fully_quantizable",   device = "", dim_args_spec = [], disabled_checks = [], has_token_input_output = false, module = "", platforms = [], version = 5 : i64} : (tensor<?x3x4x3xf32>, tensor<2x3x3x2xf32>, tensor<1x1x1x2xf32>) -> tensor<?x3x4x2xf32>
+    %1 = "tf.XlaCallModule"(%0, %cst, %cst_0) {
+        Sout = [#tf_type.shape<1x3x4x2>],
+        _entry_function = @composite_conv_with_bias_dynamic_fn,
+        _original_entry_function = "composite_conv_with_bias_dynamic_fn",
+        _stablehlo_module_attrs = {},
+        // Per-channel quantization at dimension 3 for input index 1.
+        _quantization_method = "static_range_ptq {input_quantized_types {key: 1, value {dimension_specs {dimension: 3}}}}",
+        _tfl_quant_trait = "fully_quantizable",
+        device = "",
+        dim_args_spec = [],
+        disabled_checks = [],
+        has_token_input_output = false,
+        module = "",
+        platforms = [],
+        version = 5 : i64
+      } : (tensor<?x3x4x3xf32>, tensor<2x3x3x2xf32>, tensor<1x1x1x2xf32>) -> tensor<?x3x4x2xf32>
     %2 = "quantfork.stats"(%1) {layerStats = dense<[5.00000000e-6, 7.00000000e-1]> : tensor<2xf32>} : (tensor<?x3x4x2xf32>) -> tensor<?x3x4x2xf32>
     return %2 : tensor<?x3x4x2xf32>
   }
@@ -426,7 +541,22 @@ module attributes {tf_saved_model.semantics} {
     %cst = "tf.Const"() {value = dense<3.00000000e-1> : tensor<2x3x3x2xf32>} : () -> tensor<2x3x3x2xf32>
     %cst_0 = "tf.Const"() {value = dense<4.00000000e-1> : tensor<1x1x1x2xf32>} : () -> tensor<1x1x1x2xf32>
     %0 = "quantfork.stats"(%arg0) {layerStats = dense<[6.00000000e-6, 9.00000000e-1]> : tensor<2xf32>} : (tensor<?x3x4x3xf32>) -> tensor<?x3x4x3xf32>
-    %1 = "tf.XlaCallModule"(%0, %cst, %cst_0) {Sout = [#tf_type.shape<1x3x4x2>], _entry_function = @composite_conv_with_bias_and_relu_dynamic_fn, _original_entry_function = "composite_conv_with_bias_and_relu_dynamic_fn", _stablehlo_module_attrs = {}, _tfl_quant_trait = "fully_quantizable",   device = "", dim_args_spec = [], disabled_checks = [], has_token_input_output = false, module = "", platforms = [], version = 5 : i64} : (tensor<?x3x4x3xf32>, tensor<2x3x3x2xf32>, tensor<1x1x1x2xf32>) -> tensor<?x3x4x2xf32>
+    %1 = "tf.XlaCallModule"(%0, %cst, %cst_0) {
+        Sout = [#tf_type.shape<1x3x4x2>],
+        _entry_function = @composite_conv_with_bias_and_relu_dynamic_fn,
+        _original_entry_function = "composite_conv_with_bias_and_relu_dynamic_fn",
+        _stablehlo_module_attrs = {},
+        // Per-channel quantization at dimension 3 for input index 1.
+        _quantization_method = "static_range_ptq {input_quantized_types {key: 1, value {dimension_specs {dimension: 3}}}}",
+        _tfl_quant_trait = "fully_quantizable",
+        device = "",
+        dim_args_spec = [],
+        disabled_checks = [],
+        has_token_input_output = false,
+        module = "",
+        platforms = [],
+        version = 5 : i64
+      } : (tensor<?x3x4x3xf32>, tensor<2x3x3x2xf32>, tensor<1x1x1x2xf32>) -> tensor<?x3x4x2xf32>
     %2 = "quantfork.stats"(%1) {layerStats = dense<[0.00000000e-6, 8.00000000e-1]> : tensor<2xf32>} : (tensor<?x3x4x2xf32>) -> tensor<?x3x4x2xf32>
     return %2 : tensor<?x3x4x2xf32>
   }
@@ -506,7 +636,22 @@ module attributes {tf_saved_model.semantics} {
     %cst = "tf.Const"() {value = dense<3.00000000e-1> : tensor<2x3x3x2xf32>} : () -> tensor<2x3x3x2xf32>
     %cst_0 = "tf.Const"() {value = dense<4.00000000e-1> : tensor<1x1x1x2xf32>} : () -> tensor<1x1x1x2xf32>
     %0 = "quantfork.stats"(%arg0) {layerStats = dense<[6.00000000e-6, 9.00000000e-1]> : tensor<2xf32>} : (tensor<?x3x4x3xf32>) -> tensor<?x3x4x3xf32>
-    %1 = "tf.XlaCallModule"(%0, %cst, %cst_0) {Sout = [#tf_type.shape<1x3x4x2>], _entry_function = @composite_conv_with_bias_and_relu6_dynamic_fn, _original_entry_function = "composite_conv_with_bias_and_relu6_dynamic_fn", _stablehlo_module_attrs = {}, _tfl_quant_trait = "fully_quantizable",   device = "", dim_args_spec = [], disabled_checks = [], has_token_input_output = false, module = "", platforms = [], version = 5 : i64} : (tensor<?x3x4x3xf32>, tensor<2x3x3x2xf32>, tensor<1x1x1x2xf32>) -> tensor<?x3x4x2xf32>
+    %1 = "tf.XlaCallModule"(%0, %cst, %cst_0) {
+        Sout = [#tf_type.shape<1x3x4x2>],
+        _entry_function = @composite_conv_with_bias_and_relu6_dynamic_fn,
+        _original_entry_function = "composite_conv_with_bias_and_relu6_dynamic_fn",
+        _stablehlo_module_attrs = {},
+        // Per-channel quantization at dimension 3 for input index 1.
+        _quantization_method = "static_range_ptq {input_quantized_types {key: 1, value {dimension_specs {dimension: 3}}}}",
+        _tfl_quant_trait = "fully_quantizable",
+        device = "",
+        dim_args_spec = [],
+        disabled_checks = [],
+        has_token_input_output = false,
+        module = "",
+        platforms = [],
+        version = 5 : i64
+      } : (tensor<?x3x4x3xf32>, tensor<2x3x3x2xf32>, tensor<1x1x1x2xf32>) -> tensor<?x3x4x2xf32>
     %2 = "quantfork.stats"(%1) {layerStats = dense<[5.00000000e-6, 6.00000000e-1]> : tensor<2xf32>} : (tensor<?x3x4x2xf32>) -> tensor<?x3x4x2xf32>
     return %2 : tensor<?x3x4x2xf32>
   }
@@ -598,7 +743,7 @@ module attributes {tf_saved_model.semantics} {
 
 // -----
 
-// Tests that basic gather is properly quantized.
+// Tests that basic `stablehlo.gather` is properly quantized.
 
 module attributes {tf_saved_model.semantics} {
 // CHECK: func.func private @quantize_gather_fn(%[[ARG:.+]]: tensor<3x4x2xf32>) -> tensor<2x3x2x2xf32> attributes {tf._original_func_name = "main_0"}
@@ -631,6 +776,5 @@ module attributes {tf_saved_model.semantics} {
     return %0 : tensor<2x3x2x2xf32>
   }
 // CHECK: %[[GATHER:.+]] = "stablehlo.gather"(%[[ARG_0]], %[[ARG_1]]) {{.*}} : (tensor<3x4x2x!quant.uniform<i8:f32, {{.*}}>>, tensor<2x3x2xi32>) -> tensor<2x3x2x2x!quant.uniform<i8:f32, {{.*}}>>
-// CHECK: %[[UNIFORM_QUANTIZE:.+]] = stablehlo.uniform_quantize %[[GATHER]] : tensor<2x3x2x2x!quant.uniform<i8:f32, {{.*}}>>
-// CHECK: return %[[UNIFORM_QUANTIZE]] : tensor<2x3x2x2x!quant.uniform<i8:f32, {{.*}}>>
+// CHECK: return %[[GATHER]] : tensor<2x3x2x2x!quant.uniform<i8:f32, {{.*}}>>
 }

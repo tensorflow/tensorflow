@@ -61,6 +61,7 @@ limitations under the License.
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace {
@@ -395,12 +396,12 @@ Status ConvertAttributes(
     if (auto symbol_ref = attr.dyn_cast<mlir::SymbolRefAttr>()) {
       TF_RETURN_IF_ERROR(
           ConvertAttribute(symbol_ref.cast<mlir::FlatSymbolRefAttr>(), &value));
-      func_call_attrs[string(name)] = value;
+      func_call_attrs[string(name)] = std::move(value);
       continue;
     }
     if (auto func_attr = attr.dyn_cast<mlir::TF::FuncAttr>()) {
       TF_RETURN_IF_ERROR(ConvertAttribute(func_attr, remove_ref_type, &value));
-      func_call_attrs[string(name)] = value;
+      func_call_attrs[string(name)] = std::move(value);
       continue;
     }
     if (attr.isa<mlir::AffineMapAttr>()) {
@@ -434,13 +435,14 @@ Status ConvertAttributes(
     TF_RET_CHECK(name_tokens.size() <= 2);
     auto it = func_call_attrs.find(name_tokens[0]);
     if (it == func_call_attrs.end()) {
-      (*values)[string(name)] = value;
+      (*values)[string(name)] = std::move(value);
     } else {
-      (*it->second.mutable_func()->mutable_attr())[name_tokens[1]] = value;
+      (*it->second.mutable_func()->mutable_attr())[name_tokens[1]] =
+          std::move(value);
     }
   }
-  for (const auto& it : func_call_attrs) {
-    (*values)[it.first] = it.second;
+  for (auto& it : func_call_attrs) {
+    (*values)[it.first] = std::move(it.second);
   }
   return OkStatus();
 }

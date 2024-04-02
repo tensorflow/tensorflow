@@ -123,6 +123,7 @@ class GpuCompiler : public LLVMCompiler {
   struct BackendCompileResult {
     std::string asm_text;
     std::vector<uint8_t> binary;
+    Thunk::BinaryMap dnn_compiled_graphs;
   };
 
   // During compilation with device, stream_exec != null and autotune_results
@@ -162,6 +163,13 @@ class GpuCompiler : public LLVMCompiler {
   // Add passes that convert HLO operations to custom kernels.
   virtual absl::Status AddCustomKernelReplacementPasses(
       HloPassPipeline* pipeline, const DebugOptions& debug_options) {
+    return absl::OkStatus();
+  }
+
+  // Runs CUDNN fusion compiler pass.
+  virtual absl::Status RunCudnnFusionCompilerPass(
+      HloModule* module, se::StreamExecutor* stream_exec,
+      Thunk::BinaryMap* dnn_compiled_graphs) {
     return absl::OkStatus();
   }
 

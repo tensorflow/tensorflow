@@ -19,7 +19,10 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "xla/client/local_client.h"
+#include "xla/pjrt/local_device_state.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/stream_executor/integrations/tf_allocator_adapter.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/status.h"
 
@@ -27,6 +30,16 @@ namespace tensorflow {
 
 const char kPjRtStateResourceName[] = "pjrt_state";
 using PjRtClientsMap = std::map<DeviceType, std::unique_ptr<xla::PjRtClient>>;
+
+// Information needed to create a PjRt GPU Client which is used when creating
+// a client after after information about remote devices is available.
+struct PjRtGpuClientCreationInfo {
+  std::set<int> allowed_devices;
+  std::unique_ptr<se::MultiDeviceAdapter> allocator;
+  std::unique_ptr<tsl::Allocator> host_memory_allocator;
+  std::map<int, std::unique_ptr<xla::LocalDeviceState>> local_device_states;
+  xla::LocalClient* local_client;
+};
 
 // The class for the state related to PjRt. It contains a map from `DeviceType`
 // to `PjRtClient`. It will be stored in the global `ResourceManager`.
@@ -43,6 +56,15 @@ class PjRtState : public ResourceBase {
   Status MovePjRtClientToUnused(const DeviceType& device_type);
   string DebugString() const override;
 
+  // Saves information needed to create a PJRT client (to enable creating a
+  // client with remote devices).
+  absl::Status SetPjRtGpuClientCreationInfo(
+      std::unique_ptr<PjRtGpuClientCreationInfo> info);
+
+  // Retrieves information needed to create a PJRT client (for creating a
+  // client with remote devices).
+  PjRtGpuClientCreationInfo* GetPjRtGpuClientCreationInfo();
+
  private:
   explicit PjRtState() {}
   absl::Mutex mu_;
@@ -50,6 +72,9 @@ class PjRtState : public ResourceBase {
   // Store the PJRT clients that are no longer used to guarantee that PJRT
   // clients outlive PJRT buffers.
   std::vector<std::unique_ptr<xla::PjRtClient>> unused_ ABSL_GUARDED_BY(mu_);
+
+  std::unique_ptr<PjRtGpuClientCreationInfo> pjrt_gpu_client_creation_info_
+      ABSL_GUARDED_BY(mu_);
 };
 
 }  // namespace tensorflow

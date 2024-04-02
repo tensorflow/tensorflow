@@ -1,10 +1,10 @@
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
-load("//xla:xla.bzl", "xla_cc_test")
-load("//xla/stream_executor:build_defs.bzl", "if_cuda_or_rocm", "if_gpu_is_configured")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 load("@local_tsl//tsl:tsl.bzl", "internal_visibility")
 load("@local_tsl//tsl/platform:build_config.bzl", "tf_proto_library")
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
+load("//xla:xla.bzl", "xla_cc_test")
+load("//xla/stream_executor:build_defs.bzl", "if_cuda_or_rocm", "if_gpu_is_configured")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -26,10 +26,10 @@ cc_library(
         "//xla/service:platform_util",
         "//xla/stream_executor",
         "//xla/stream_executor/integrations:device_mem_allocator",
+        "//xla/tsl/util:env_var",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/framework:bfc_allocator",
         "@local_tsl//tsl/framework:device_id_impl",
-        "@local_tsl//tsl/util:env_var",
     ],
 )
 
@@ -86,6 +86,7 @@ cc_library(
         "//xla/stream_executor:platform",
         "//xla/stream_executor/integrations:device_mem_allocator",
         "//xla/stream_executor/integrations:tf_allocator_adapter",
+        "//xla/tsl/util:env_var",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
@@ -111,7 +112,6 @@ cc_library(
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/profiler/lib:connected_traceme",
         "@local_tsl//tsl/profiler/lib:traceme",
-        "@local_tsl//tsl/util:env_var",
     ] + if_cuda_or_rocm([
         ":nccl_id_store",
         "//xla/service/gpu:gpu_compiler",
@@ -139,6 +139,7 @@ xla_cc_test(
         "//xla:literal_util",
         "//xla:statusor",
         "//xla:test",
+        "//xla/pjrt:pjrt_future",
         "//xla/pjrt:utils",
         "//xla/pjrt/distributed:in_memory_key_value_store",
         "//xla/service:gpu_plugin",

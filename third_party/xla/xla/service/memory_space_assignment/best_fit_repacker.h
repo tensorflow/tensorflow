@@ -62,7 +62,8 @@ class MemorySpaceAssignmentBestFitRepacker
         slice_time_permutation_iterator_type_(
             slice_time_permutation_iterator_type) {}
 
-  StatusOr<bool> Repack(absl::Span<AllocationBlock*> allocations) override;
+  absl::StatusOr<bool> Repack(
+      absl::Span<AllocationBlock*> allocations) override;
 
  private:
   BestFitRepackOptions options_;

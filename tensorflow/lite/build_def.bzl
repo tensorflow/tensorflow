@@ -170,10 +170,7 @@ def tflite_linkopts_no_undefined():
             # since undefined symbols in shared libraries (references to symbols
             # that will be defined in the main executable) are normal and
             # expected in those cases.
-            "//tools/cpp:asan_build": [],
-            "//tools/cpp:hwasan_build": [],
-            "//tools/cpp:msan_build": [],
-            "//tools/cpp:tsan_build": [],
+            "//tools/cpp:sanitizer_build": [],
             "//tensorflow:ios": [
                 "-Wl,-undefined,error",
             ],

@@ -16,7 +16,9 @@ limitations under the License.
 #include "tensorflow/core/kernels/batching_util/batch_scheduler.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <memory>
+#include <optional>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -64,7 +66,7 @@ TEST(TaskQueueTest, EmptyTaskQueue) {
 TEST(TaskQueueTest, AddTaskToTaskQueue) {
   TaskQueue<FakeTask> task_queue;
 
-  task_queue.AddTask(std::make_unique<FakeTask>(1));
+  task_queue.AddTask(std::make_unique<FakeTask>(1), 1);
   EXPECT_FALSE(task_queue.empty());
   EXPECT_EQ(1, task_queue.num_tasks());
   EXPECT_EQ(1, task_queue.size());
@@ -73,17 +75,17 @@ TEST(TaskQueueTest, AddTaskToTaskQueue) {
 TEST(TaskQueueTest, AddTasksToTaskQueue) {
   TaskQueue<FakeTask> task_queue;
 
-  task_queue.AddTask(std::make_unique<FakeTask>(1));
+  task_queue.AddTask(std::make_unique<FakeTask>(1), 1);
   EXPECT_FALSE(task_queue.empty());
   EXPECT_EQ(1, task_queue.num_tasks());
   EXPECT_EQ(1, task_queue.size());
 
-  task_queue.AddTask(std::make_unique<FakeTask>(2));
+  task_queue.AddTask(std::make_unique<FakeTask>(2), 2);
   EXPECT_FALSE(task_queue.empty());
   EXPECT_EQ(2, task_queue.num_tasks());
   EXPECT_EQ(3, task_queue.size());
 
-  task_queue.AddTask(std::make_unique<FakeTask>(3));
+  task_queue.AddTask(std::make_unique<FakeTask>(3), 3);
   EXPECT_FALSE(task_queue.empty());
   EXPECT_EQ(3, task_queue.num_tasks());
   EXPECT_EQ(6, task_queue.size());
@@ -92,7 +94,7 @@ TEST(TaskQueueTest, AddTasksToTaskQueue) {
 TEST(TaskQueueTest, RemoveTaskFromTaskQueueWithSingleTask) {
   TaskQueue<FakeTask> task_queue;
 
-  task_queue.AddTask(std::make_unique<FakeTask>(1));
+  task_queue.AddTask(std::make_unique<FakeTask>(1), 1);
   EXPECT_FALSE(task_queue.empty());
   EXPECT_EQ(1, task_queue.num_tasks());
   EXPECT_EQ(1, task_queue.size());
@@ -107,12 +109,12 @@ TEST(TaskQueueTest, RemoveTaskFromTaskQueueWithSingleTask) {
 TEST(TaskQueueTest, RemoveTaskFromTaskQueueWithMultipleTasks) {
   TaskQueue<FakeTask> task_queue;
 
-  task_queue.AddTask(std::make_unique<FakeTask>(2));
+  task_queue.AddTask(std::make_unique<FakeTask>(2), 1);
   EXPECT_FALSE(task_queue.empty());
   EXPECT_EQ(1, task_queue.num_tasks());
   EXPECT_EQ(2, task_queue.size());
 
-  task_queue.AddTask(std::make_unique<FakeTask>(1));
+  task_queue.AddTask(std::make_unique<FakeTask>(1), 2);
   EXPECT_FALSE(task_queue.empty());
   EXPECT_EQ(2, task_queue.num_tasks());
   EXPECT_EQ(3, task_queue.size());
@@ -127,17 +129,17 @@ TEST(TaskQueueTest, RemoveTaskFromTaskQueueWithMultipleTasks) {
 TEST(TaskQueueTest, RemoveTasksFromTaskQueue) {
   TaskQueue<FakeTask> task_queue;
 
-  task_queue.AddTask(std::make_unique<FakeTask>(1));
+  task_queue.AddTask(std::make_unique<FakeTask>(1), 1);
   EXPECT_FALSE(task_queue.empty());
   EXPECT_EQ(1, task_queue.num_tasks());
   EXPECT_EQ(1, task_queue.size());
 
-  task_queue.AddTask(std::make_unique<FakeTask>(2));
+  task_queue.AddTask(std::make_unique<FakeTask>(2), 2);
   EXPECT_FALSE(task_queue.empty());
   EXPECT_EQ(2, task_queue.num_tasks());
   EXPECT_EQ(3, task_queue.size());
 
-  task_queue.AddTask(std::make_unique<FakeTask>(3));
+  task_queue.AddTask(std::make_unique<FakeTask>(3), 3);
   EXPECT_FALSE(task_queue.empty());
   EXPECT_EQ(3, task_queue.num_tasks());
   EXPECT_EQ(6, task_queue.size());
@@ -155,17 +157,17 @@ TEST(TaskQueueTest, RemoveTasksFromTaskQueue) {
 TEST(TaskQueueTest, RemoveTasksFewerThanArgFromTaskQueue) {
   TaskQueue<FakeTask> task_queue;
 
-  task_queue.AddTask(std::make_unique<FakeTask>(1));
+  task_queue.AddTask(std::make_unique<FakeTask>(1), 1);
   EXPECT_FALSE(task_queue.empty());
   EXPECT_EQ(1, task_queue.num_tasks());
   EXPECT_EQ(1, task_queue.size());
 
-  task_queue.AddTask(std::make_unique<FakeTask>(2));
+  task_queue.AddTask(std::make_unique<FakeTask>(2), 2);
   EXPECT_FALSE(task_queue.empty());
   EXPECT_EQ(2, task_queue.num_tasks());
   EXPECT_EQ(3, task_queue.size());
 
-  task_queue.AddTask(std::make_unique<FakeTask>(3));
+  task_queue.AddTask(std::make_unique<FakeTask>(3), 3);
   EXPECT_FALSE(task_queue.empty());
   EXPECT_EQ(3, task_queue.num_tasks());
   EXPECT_EQ(6, task_queue.size());
@@ -183,17 +185,17 @@ TEST(TaskQueueTest, RemoveTasksFewerThanArgFromTaskQueue) {
 TEST(TaskQueueTest, RemoveAllTasksWhenArgGreaterThanTaskSize) {
   TaskQueue<FakeTask> task_queue;
 
-  task_queue.AddTask(std::make_unique<FakeTask>(1));
+  task_queue.AddTask(std::make_unique<FakeTask>(1), 1);
   EXPECT_FALSE(task_queue.empty());
   EXPECT_EQ(1, task_queue.num_tasks());
   EXPECT_EQ(1, task_queue.size());
 
-  task_queue.AddTask(std::make_unique<FakeTask>(2));
+  task_queue.AddTask(std::make_unique<FakeTask>(2), 2);
   EXPECT_FALSE(task_queue.empty());
   EXPECT_EQ(2, task_queue.num_tasks());
   EXPECT_EQ(3, task_queue.size());
 
-  task_queue.AddTask(std::make_unique<FakeTask>(3));
+  task_queue.AddTask(std::make_unique<FakeTask>(3), 3);
   EXPECT_FALSE(task_queue.empty());
   EXPECT_EQ(3, task_queue.num_tasks());
   EXPECT_EQ(6, task_queue.size());
@@ -206,6 +208,42 @@ TEST(TaskQueueTest, RemoveAllTasksWhenArgGreaterThanTaskSize) {
   EXPECT_TRUE(task_queue.empty());
   EXPECT_EQ(0, task_queue.num_tasks());
   EXPECT_EQ(0, task_queue.size());
+}
+
+TEST(TaskQueueTest, EarliestStartTimeWithEmptyQueue) {
+  TaskQueue<FakeTask> task_queue;
+  EXPECT_FALSE(task_queue.EarliestTaskStartTime().has_value());
+}
+
+TEST(TaskQueueTest, EarliestStartTimeWithMultipleTasksInQueue) {
+  TaskQueue<FakeTask> task_queue;
+
+  task_queue.AddTask(std::make_unique<FakeTask>(1), 1);
+  task_queue.AddTask(std::make_unique<FakeTask>(2), 2);
+
+  std::optional<uint64_t> result = task_queue.EarliestTaskStartTime();
+  EXPECT_TRUE(result.has_value());
+  EXPECT_EQ(*result, 1);
+}
+
+TEST(TaskQueueTest, EarliestStartTimeAfterTaskRemoval) {
+  TaskQueue<FakeTask> task_queue;
+
+  task_queue.AddTask(std::make_unique<FakeTask>(1), 1);
+  task_queue.AddTask(std::make_unique<FakeTask>(2), 2);
+  task_queue.AddTask(std::make_unique<FakeTask>(3), 3);
+
+  std::optional<uint64_t> result = task_queue.EarliestTaskStartTime();
+  EXPECT_TRUE(result.has_value());
+  EXPECT_EQ(*result, 1);
+
+  EXPECT_THAT(task_queue.RemoveTask(3),
+              ElementsAre(Pointee(Property(&FakeTask::size, Eq(1))),
+                          Pointee(Property(&FakeTask::size, Eq(2)))));
+
+  result = task_queue.EarliestTaskStartTime();
+  EXPECT_TRUE(result.has_value());
+  EXPECT_EQ(*result, 3);
 }
 
 TEST(BatchTest, Basic) {

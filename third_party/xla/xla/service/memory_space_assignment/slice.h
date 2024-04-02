@@ -95,8 +95,9 @@ struct SliceProposal {
 // A SliceProposalCollection is generated from a SliceProposalFunction and is
 // used when we want to slice a prefetch.
 using SliceProposalCollection = std::vector<SliceProposal>;
-using SliceProposalFunction = std::function<StatusOr<SliceProposalCollection>(
-    const Shape& shape, const SlicedPrefetchOptions& options)>;
+using SliceProposalFunction =
+    std::function<absl::StatusOr<SliceProposalCollection>(
+        const Shape& shape, const SlicedPrefetchOptions& options)>;
 
 // A SliceDecision is a SliceProposal that we've determined where and when to
 // allocate.

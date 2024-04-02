@@ -78,13 +78,13 @@ void CoordinationServiceRpcHandler::HeartbeatAsync(
   const CoordinatedTask& task = request->source_task();
   const uint64_t incarnation = request->incarnation();
   const uint64_t leader_incarnation = service_->GetServiceIncarnation();
-  Status s = service_->RecordHeartbeat(task, incarnation);
+  absl::Status s = service_->RecordHeartbeat(task, incarnation);
   if (!s.ok()) {
     done(s);
     return;
   }
   response->set_leader_incarnation(leader_incarnation);
-  done(OkStatus());
+  done(absl::OkStatus());
 }
 
 void CoordinationServiceRpcHandler::WaitForAllTasksAsync(
@@ -98,7 +98,7 @@ void CoordinationServiceRpcHandler::WaitForAllTasksAsync(
   }
   service_->WaitForAllTasks(
       request->source_task(), request->device_info(),
-      [response, service = service_, done = std::move(done)](Status s) {
+      [response, service = service_, done = std::move(done)](absl::Status s) {
         if (s.ok()) {
           *response->mutable_device_info() = service->ListClusterDevices();
         }
@@ -116,7 +116,7 @@ void CoordinationServiceRpcHandler::ShutdownTaskAsync(
     return;
   }
   service_->ShutdownTaskAsync(request->source_task(),
-                              [done](Status s) { done(s); });
+                              [done](absl::Status s) { done(s); });
 }
 
 void CoordinationServiceRpcHandler::ResetTaskAsync(
@@ -141,14 +141,15 @@ void CoordinationServiceRpcHandler::ReportErrorToTaskAsync(
     return;
   }
   const CoordinationServiceError& error_payload = request->error_payload();
-  Status error(static_cast<absl::StatusCode>(request->error_code()),
-               strings::StrCat("Error reported from /job:",
-                               error_payload.source_task().job_name(),
-                               "/task:", error_payload.source_task().task_id(),
-                               ": ", request->error_message()));
+  absl::Status error(
+      static_cast<absl::StatusCode>(request->error_code()),
+      strings::StrCat(
+          "Error reported from /job:", error_payload.source_task().job_name(),
+          "/task:", error_payload.source_task().task_id(), ": ",
+          request->error_message()));
   error = MakeCoordinationError(error, error_payload);
   agent_->SetError(error);
-  done(OkStatus());
+  done(absl::OkStatus());
 }
 
 void CoordinationServiceRpcHandler::ReportErrorToServiceAsync(
@@ -163,8 +164,8 @@ void CoordinationServiceRpcHandler::ReportErrorToServiceAsync(
   done(service_->ReportTaskError(
       request->error_origin(),
       MakeCoordinationError(
-          Status{static_cast<absl::StatusCode>(request->error_code()),
-                 request->error_message()},
+          absl::Status{static_cast<absl::StatusCode>(request->error_code()),
+                       request->error_message()},
           request->error_origin(),
           /*is_reported_error=*/true)));
 }
@@ -182,7 +183,7 @@ void CoordinationServiceRpcHandler::GetTaskStateAsync(
       {request->source_task().begin(), request->source_task().end()});
   absl::c_move(result,
                RepeatedFieldBackInserter(response->mutable_task_state()));
-  done(OkStatus());
+  done(absl::OkStatus());
 }
 
 void CoordinationServiceRpcHandler::InsertKeyValueAsync(
@@ -233,7 +234,7 @@ void CoordinationServiceRpcHandler::TryGetKeyValueAsync(
   }
   response->mutable_kv()->set_key(request->key());
   response->mutable_kv()->set_value(result.value());
-  done(OkStatus());
+  done(absl::OkStatus());
 }
 
 void CoordinationServiceRpcHandler::GetKeyValueDirAsync(
@@ -249,7 +250,7 @@ void CoordinationServiceRpcHandler::GetKeyValueDirAsync(
       service_->GetKeyValueDir(request->directory_key());
   *response->mutable_kv() = {std::make_move_iterator(results.begin()),
                              std::make_move_iterator(results.end())};
-  done(OkStatus());
+  done(absl::OkStatus());
 }
 
 void CoordinationServiceRpcHandler::DeleteKeyValueAsync(
@@ -279,7 +280,7 @@ void CoordinationServiceRpcHandler::BarrierAsync(const BarrierRequest* request,
       request->barrier_id(),
       absl::Milliseconds(request->barrier_timeout_in_ms()),
       request->source_task(), tasks,
-      [done = std::move(done)](const Status& status) { done(status); });
+      [done = std::move(done)](const absl::Status& status) { done(status); });
 }
 
 void CoordinationServiceRpcHandler::CancelBarrierAsync(

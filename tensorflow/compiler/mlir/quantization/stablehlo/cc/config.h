@@ -24,6 +24,23 @@ namespace stablehlo::quantization {
 QuantizationConfig PopulateDefaults(
     const QuantizationConfig& user_provided_config);
 
+// Returns a copy of `QuantizationConfig` where presets are expanded and
+// transformed into other fields in `QuantizationConfig`.
+//
+// The expansion rules are as follows:
+// * StaticRangePtqPreset
+//   - The preset's `representative_datasets` field will be transferred to
+//   `QuantizationConfig.calibration_options.representative_datasets`, unless
+//   the user explicitly provided representative dataset configs to
+//   `calibration_options`. In that case, the explicit configs take precedence
+//   and the preset's configs are ignored.
+//   - For `QuantizationSpecs`, the expanded `QuantizationSpec`s will be
+//   populated first and user-provided `QuantizationSpec`s, if any, will be
+//   appended. This expresses the fact that user-provided specs take precedence.
+// * Preset unspecified
+//   - No-op.
+QuantizationConfig ExpandPresets(const QuantizationConfig& config);
+
 }  // namespace stablehlo::quantization
 
 #endif  // TENSORFLOW_COMPILER_MLIR_QUANTIZATION_STABLEHLO_CC_CONFIG_H_

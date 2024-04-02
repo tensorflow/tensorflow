@@ -1,4 +1,4 @@
-/* Copyright 2021 The OpenXLA Authors.
+/* Copyright 2024 The OpenXLA Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -24,7 +24,9 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "xla/backends/profiler/gpu/rocm_collector.h"
 #include "xla/backends/profiler/gpu/rocm_tracer.h"
+#include "xla/tsl/util/env_var.h"
 #include "tsl/platform/abi.h"
 #include "tsl/platform/env_time.h"
 #include "tsl/platform/errors.h"
@@ -38,16 +40,15 @@ limitations under the License.
 #include "tsl/profiler/utils/xplane_builder.h"
 #include "tsl/profiler/utils/xplane_schema.h"
 #include "tsl/profiler/utils/xplane_utils.h"
-#include "tsl/util/env_var.h"
 
 namespace xla {
 namespace profiler {
 
-using absl::OkStatus;
-using absl::Status;
 using tensorflow::ProfileOptions;
 using tsl::mutex;
 using tsl::mutex_lock;
+using tsl::OkStatus;
+using tsl::Status;
 using tsl::profiler::Annotation;
 using tsl::profiler::AnnotationStack;
 using tsl::profiler::FindOrAddMutablePlaneWithName;
@@ -65,6 +66,7 @@ using tsl::profiler::XLineBuilder;
 using tsl::profiler::XPlaneBuilder;
 using tsl::profiler::XSpace;
 
+<<<<<<< HEAD
 namespace {
 // Set the all XLines of specified XPlane to starting walltime.
 // Events time in both host and device planes are CUTPI timestamps.
@@ -771,6 +773,8 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
       per_device_collector_;
 };
 
+=======
+>>>>>>> upstream/master
 // GpuTracer for ROCm GPU.
 class GpuTracer : public profiler::ProfilerInterface {
  public:
@@ -802,7 +806,7 @@ class GpuTracer : public profiler::ProfilerInterface {
   State profiling_state_ = State::kNotStarted;
 
   RocmTracer* rocm_tracer_;
-  std::unique_ptr<RocmTraceCollectorImpl> rocm_trace_collector_;
+  std::unique_ptr<RocmTraceCollector> rocm_trace_collector_;
 };
 
 RocmTracerOptions GpuTracer::GetRocmTracerOptions() {
@@ -900,8 +904,12 @@ Status GpuTracer::DoStart() {
       GetRocmTraceCollectorOptions(rocm_tracer_->NumGpus());
   uint64_t start_gputime_ns = RocmTracer::GetTimestamp();
   uint64_t start_walltime_ns = tsl::EnvTime::NowNanos();
-  rocm_trace_collector_ = std::make_unique<RocmTraceCollectorImpl>(
+  rocm_trace_collector_ = CreateRocmCollector(
       trace_collector_options, start_walltime_ns, start_gputime_ns);
+  // rocm_trace_collector_ =
+  // std::make_unique<RocmTraceCollectorImpl>(trace_collector_options,
+  // start_walltime_ns,
+  //                                                  start_gputime_ns);
 
   RocmTracerOptions tracer_options = GetRocmTracerOptions();
   rocm_tracer_->Enable(tracer_options, rocm_trace_collector_.get());

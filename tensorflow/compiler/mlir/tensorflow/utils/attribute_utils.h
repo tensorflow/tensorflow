@@ -121,6 +121,18 @@ inline constexpr llvm::StringRef kDynamicArgIndexAttr = "_dynamic_arg_index";
 inline constexpr llvm::StringRef kParallelExecAnnotation =
     "_parallel_execution_ids";
 
+// Logging
+
+// Name of component for error logging. This name is fixed and required to
+// enable logging.
+inline const char kBridgeComponent[] = "TFXLABridge";
+inline const char kMlirPh1BridgeCounterReplicated[] = "replicated";
+inline const char kMlirPh1BridgeCounterNonReplicated[] = "nonreplicated";
+inline const char kMlirPh1BridgeCounterV1[] = "v1";
+inline const char kMlirPh1BridgeCounterV2[] = "v2";
+inline const char kMlirPh1BridgeCounterTpu[] = "tpu";
+inline const char kMlirPh1BridgeCounterNonTpu[] = "cpu/gpu";
+
 // Copies attributes that satisfy the given predicate from `from` to `to`.
 template <typename Predicate>
 void CopyAttributes(Operation *from, Operation *to, Predicate P) {

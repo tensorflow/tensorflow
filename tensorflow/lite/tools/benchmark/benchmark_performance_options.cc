@@ -149,7 +149,7 @@ BenchmarkParams BenchmarkPerformanceOptions::DefaultParams() {
                   BenchmarkParam::Create<float>(-1.0f));
   params.AddParam("random_shuffle_benchmark_runs",
                   BenchmarkParam::Create<bool>(true));
-  params.AddParam("gpu_invoke_loop_times", BenchmarkParam::Create<int32_t>(-1));
+  params.AddParam("gpu_invoke_loop_times", BenchmarkParam::Create<int32_t>(1));
   return params;
 }
 
@@ -250,7 +250,7 @@ void BenchmarkPerformanceOptions::ResetPerformanceOptions() {
   single_option_run_params_->Set<int32_t>("num_threads", 1);
   single_option_run_params_->Set<bool>("use_gpu", false);
 #ifdef TFLITE_GPU_ENABLE_INVOKE_LOOP
-  single_option_run_params_->Set<int32_t>("gpu_invoke_loop_times", -1);
+  single_option_run_params_->Set<int32_t>("gpu_invoke_loop_times", 1);
   single_option_run_params_->Set<bool>("require_full_delegation", false);
 #endif
 #if defined(__ANDROID__)

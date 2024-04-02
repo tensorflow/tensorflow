@@ -181,7 +181,7 @@ tf_cc_test(
         "//tensorflow/core/platform:str_util",
         "@com_google_absl//absl/container:flat_hash_set",
         "@local_tsl//tsl/platform:status_matchers",
-        "@local_tsl//tsl/util:determinism_test_util",
+        "@local_xla//xla/tsl/util:determinism_test_util",
     ],
 )
 

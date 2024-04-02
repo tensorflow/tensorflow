@@ -38,6 +38,8 @@ namespace xla {
 namespace ifrt {
 namespace proxy {
 
+class Client;
+
 class DeviceDescription final : public xla::PjRtDeviceDescription {
  public:
   DeviceDescription(

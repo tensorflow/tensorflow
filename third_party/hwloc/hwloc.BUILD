@@ -1,5 +1,8 @@
 # hwloc: Portable Hardware Locality Library
 
+load("@bazel_skylib//rules:expand_template.bzl", "expand_template")
+load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
+
 package(
     default_visibility = ["//visibility:public"],
 )
@@ -7,9 +10,6 @@ package(
 licenses(["notice"])
 
 exports_files(["COPYING"])
-
-load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
-load("@bazel_skylib//rules:expand_template.bzl", "expand_template")
 
 COMMON_INCLUDE_COPTS = [
     "-I.",

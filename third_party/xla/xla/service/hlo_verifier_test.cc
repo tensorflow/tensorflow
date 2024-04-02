@@ -2043,6 +2043,95 @@ TEST_F(HloVerifierTest, ChannelVerifier) {
               HasSubstr("used for different types of channel instructions"));
 }
 
+TEST_F(HloVerifierTest, ChannelVerifierPipelinedMissingDones) {
+  const char* const kModuleStr = R"(
+  HloModule test
+  cond {
+    param = (u32[], (u32[2], u32[], token[]), (u32[2], u32[], token[])) parameter(0)
+    count = get-tuple-element(%param), index=0
+    ub = u32[] constant(1)
+    ROOT result = pred[] compare(count, ub), direction=LT
+  }
+
+  body {
+    param = (u32[], (u32[2], u32[], token[]), (u32[2], u32[], token[])) parameter(0)
+    count = get-tuple-element(%param), index=0
+
+    recv.0 = (u32[2], u32[], token[]) get-tuple-element(param), index=1
+    recv-done.0 = (u32[2], token[]) recv-done(recv.0), channel_id=1,
+      frontend_attributes={
+        _xla_send_recv_pipeline="0"
+      }
+    recv-data.0 = u32[2] get-tuple-element(recv-done.0), index=0
+
+    c1 = u32[] constant(1)
+    new_count = u32[] add(count, c1)
+
+    send.0 = (u32[2], u32[], token[]) get-tuple-element(param), index=2
+    send-done.0 = (u32[2], token[]) recv-done(send.0), channel_id=1,
+      frontend_attributes={
+        _xla_send_recv_pipeline="0"
+      }
+
+    after-all.0.n = token[] after-all()
+    recv.0.n = (u32[2], u32[], token[]) recv(after-all.0.n), channel_id=1,
+      frontend_attributes={
+        _xla_send_recv_source_target_pairs="{{1,0}}",
+        _xla_send_recv_pipeline="0"
+      }
+
+
+    after-all.1.n = token[] after-all()
+    send.0.n = (u32[2], u32[], token[]) send(recv-data.0, after-all.1.n),
+      channel_id=1,
+      frontend_attributes={
+        _xla_send_recv_source_target_pairs="{{1,0}}",
+        _xla_send_recv_pipeline="0"
+      }
+
+    ROOT result = (u32[], (u32[2], u32[], token[]), (u32[2], u32[], token[]))
+      tuple(new_count, recv.0.n, send.0.n)
+  }
+
+  ENTRY test_computation {
+    c0 = u32[] constant(0)
+    init = u32[2] broadcast(c0), dimensions={}
+    after-all.0.p = token[] after-all()
+    recv.0.p = (u32[2], u32[], token[]) recv(after-all.0.p), channel_id=1,
+      frontend_attributes={
+        _xla_send_recv_source_target_pairs="{{1,0}}",
+        _xla_send_recv_pipeline="0"
+      }
+
+    after-all.1.p = token[] after-all()
+    send.0.p = (u32[2], u32[], token[]) send(init, after-all.1.p),
+      channel_id=1,
+      frontend_attributes={
+        _xla_send_recv_source_target_pairs="{{1,0}}",
+        _xla_send_recv_pipeline="0"
+      }
+
+    while_init = (u32[], (u32[2], u32[], token[]), (u32[2], u32[], token[]))
+      tuple(c0, recv.0.p, send.0.p)
+    while_result = (u32[], (u32[2], u32[], token[]), (u32[2], u32[], token[]))
+      while(while_init), body=body, condition=cond
+
+    recv.0.q = (u32[2], u32[], token[]) get-tuple-element(while_result), index=1
+    recv-done.0.q = (u32[2], token[]) recv-done(recv.0.q), channel_id=1,
+      frontend_attributes={
+        _xla_send_recv_pipeline="0"
+      }
+
+    ROOT recv-data.0.q = u32[2] get-tuple-element(recv-done.0.q), index=0
+      })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(kModuleStr));
+  EXPECT_THAT(
+      verifier().Run(module.get()).status().message(),
+      HasSubstr("is pipelined. Not all Send/Recv related instructions are used"
+                " the same number of times"));
+}
+
 TEST_F(HloVerifierTest, CollectiveChannelVerifier) {
   const char* const kModuleStr = R"(
   HloModule test
@@ -2874,5 +2963,66 @@ TEST_F(HloVerifierTest, SparseDotMetadataShape) {
   EXPECT_THAT(status.message(), HasSubstr("Expected sparse dot metadata"));
 }
 
+TEST_F(HloVerifierTestLayoutSensitive,
+       HostOffloadingDUSAndDSAreVerifiedWhenChangingLayout) {
+  const char* const hlo_string = R"(
+  HloModule m
+
+  ENTRY main {
+    constant_f32_0 = f32[] constant(0)
+    custom-call = f32[2,2048,2048]{2,1,0:S(5)} custom-call(), custom_call_target="AllocateBuffer"
+    data_param = f32[1,2048,2048]{2,1,0} parameter(0)
+    index_param = s32[] parameter(1)
+    constant_s32_0 = s32[] constant(0)
+    dynamic_update_slice = f32[2,2048,2048]{2,1,0:S(5)} dynamic-update-slice(custom-call, data_param, index_param, constant_s32_0, constant_s32_0)
+    ROOT dynamic_slice = f32[1,2048,2048]{2,1,0} dynamic-slice(f32[2,2048,2048]{2,1,0:S(5)} dynamic_update_slice, index_param, constant_s32_0, constant_s32_0), dynamic_slice_sizes={1,2048,2048}
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_TRUE(status.ok());
+}
+
+TEST_F(HloVerifierTestLayoutSensitive,
+       HostOffloadingCopyIsVerifiedWhenChangingLayout) {
+  const char* const hlo_string = R"(
+  HloModule m
+
+  ENTRY main {
+    data_param = f32[2048]{0} parameter(0)
+    copy_0 = f32[2048]{0:S(5)} copy(f32[2048]{0} data_param)
+    ROOT copy_1 = f32[2048]{0} copy(f32[2048]{0:S(5)} copy_0)
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_TRUE(status.ok());
+}
+
+TEST_F(HloVerifierTestLayoutSensitive,
+       HostOffloadingDSCannotChangeLayoutFromDeviceToHost) {
+  const char* const hlo_string = R"(
+  HloModule m
+
+  ENTRY main {
+    constant_f32_0 = f32[] constant(0)
+    custom-call = f32[2,2048,2048]{2,1,0} custom-call(), custom_call_target="AllocateBuffer"
+    data_param = f32[1,2048,2048]{2,1,0} parameter(0)
+    index_param = s32[] parameter(1)
+    constant_s32_0 = s32[] constant(0)
+    dynamic_update_slice = f32[2,2048,2048]{2,1,0} dynamic-update-slice(custom-call, data_param, index_param, constant_s32_0, constant_s32_0)
+    ROOT dynamic_slice = f32[1,2048,2048]{2,1,0:S(5)} dynamic-slice(f32[2,2048,2048]{2,1,0} dynamic_update_slice, index_param, constant_s32_0, constant_s32_0), dynamic_slice_sizes={1,2048,2048}
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.message(),
+              HasSubstr("DynamicSlice instruction shouldn't change layout "
+                        "memory space from device to host"));
+}
 }  // namespace
 }  // namespace xla

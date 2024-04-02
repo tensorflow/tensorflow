@@ -106,8 +106,14 @@ ENTRY test_main {
       module->entry_computation()->root_instruction()->mutable_operand(0);
   HloComputation* ag_loop_body = ag_loop->while_body();
   HloInstruction* inst = FindInstructionByName(ag_loop_body, "dot.2");
-  EXPECT_TRUE(inst->backend_config<GpuBackendConfig>()->operation_queue_id() >
-              0);
+  EXPECT_GT(inst->backend_config<GpuBackendConfig>()->operation_queue_id(), 0);
+  EXPECT_TRUE(
+      inst->backend_config<GpuBackendConfig>()->force_earliest_schedule());
+
+  HloInstruction* cp1 =
+      FindInstructionByName(ag_loop_body, "collective-permute");
+  EXPECT_TRUE(
+      cp1->backend_config<GpuBackendConfig>()->force_earliest_schedule());
 }
 
 TEST_F(GpuWindowedEinsumHanlderTest, RsLoopsHaveStreamIds) {
@@ -180,6 +186,11 @@ ENTRY main.9_spmd {
   HloInstruction* inst = FindInstructionByName(rs_loop_body, "dot.7");
   EXPECT_TRUE(inst->backend_config<GpuBackendConfig>()->operation_queue_id() >
               0);
+
+  HloInstruction* cp1 =
+      FindInstructionByName(rs_loop_body, "collective-permute.1");
+  EXPECT_TRUE(
+      cp1->backend_config<GpuBackendConfig>()->force_earliest_schedule());
 }
 
 }  // namespace

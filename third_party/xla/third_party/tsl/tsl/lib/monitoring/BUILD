@@ -1,9 +1,9 @@
-load("//tsl:tsl.bzl", "internal_visibility")
-load("//tsl:tsl.default.bzl", "filegroup")
 load(
     "@local_tsl//tsl/platform:rules_cc.bzl",
     "cc_library",
 )
+load("//tsl:tsl.bzl", "internal_visibility")
+load("//tsl:tsl.default.bzl", "filegroup")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],

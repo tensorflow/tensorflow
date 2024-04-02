@@ -77,16 +77,28 @@ tf_cc_test(
     srcs = ["compile_mlir_util_test.cc"],
     deps = [
         ":compile_mlir_util_no_tf_dialect_passes",
+        "//tensorflow/compiler/jit:xla_compile_util",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:serialize_mlir_module_utils",
+        "//tensorflow/compiler/mlir/utils:array_container_utils",
+        "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla:xla_helpers",
+        "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
+        "//tensorflow/core:portable_gif_internal",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/lib/monitoring:cell_reader",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
+        "@local_tsl//tsl/lib/core:status_test_util",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_xla//xla/client:xla_builder",
     ],
 )
 
@@ -182,6 +194,7 @@ cc_library(
     ],
     deps = [
         ":tf_dialect_to_executor",
+        "//tensorflow/compiler/mlir/tensorflow:attribute_utils",
         "//tensorflow/compiler/mlir/tensorflow:bridge_logger",
         "//tensorflow/compiler/mlir/tensorflow:dump_mlir_util",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
@@ -220,6 +233,7 @@ tf_cc_test(
     deps = [
         ":cluster_tf",
         "//tensorflow/compiler/mlir:register_common_dialects",
+        "//tensorflow/compiler/mlir/tensorflow:attribute_utils",
         "//tensorflow/compiler/mlir/tensorflow:tf_dialect_lib",
         "//tensorflow/core/lib/monitoring:cell_reader",
         "//tensorflow/core/platform:resource_loader",
@@ -229,7 +243,6 @@ tf_cc_test(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
         "@local_tsl//tsl/lib/core:status_test_util",
-        "@local_tsl//tsl/lib/monitoring:test_utils",
         "@local_tsl//tsl/platform:status",
     ],
 )

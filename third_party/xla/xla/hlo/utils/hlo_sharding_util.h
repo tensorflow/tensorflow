@@ -479,6 +479,13 @@ Shape UntileShape(const HloSharding& sharding, const Shape& shape);
 // REQUIRES: !sharding.IsTuple()
 Shape UntileLeafShape(const HloSharding& sharding, const Shape& shape);
 
+// Returns the tiled shape.
+Shape TileShape(const HloSharding& sharding, const Shape& shape);
+
+// Returns the tiled shape.
+// REQUIRES: !sharding.IsTuple()
+Shape TileLeafShape(const HloSharding& sharding, const Shape& shape);
+
 }  // namespace hlo_sharding_util
 }  // namespace xla
 

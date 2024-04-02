@@ -17,14 +17,13 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_QUANTIZATION_COMMON_QUANTIZATION_LIB_QUANTIZATION_DRIVER_H_
 
 #include <memory>
-#include <unordered_map>
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
@@ -40,20 +39,16 @@ limitations under the License.
 namespace mlir {
 namespace quant {
 
-static bool HasQuantParams(QuantParams p) {
-  return p == quant::QuantizedType();
-}
-
 // The state for each op result during the quantization parameters propagation.
 struct QuantState {
   // Quantization parameters propagated to an op result.
-  QuantParams params;
+  QuantizedType params;
   // A flag indicates this state (the params) shouldn't be changed after it is
   // initialized. This flag will be set to true if the quantization parameters
   // are from the quantization-aware training.
   const bool immutable;
 
-  bool IsEmpty() { return HasQuantParams(params); }
+  bool IsEmpty() const { return params == nullptr; }
 };
 
 // The state for rescaling the propagated quantization parameters. This can be
@@ -70,7 +65,7 @@ struct RequantizeState {
   } pos = NO_REQUANTIZE;
 
   // Quantization parameters will be used to add the requantize ops.
-  QuantParams params;
+  QuantizedType params;
 
   // Avoid clobbering all uses of the value, limit to just these ops.
   SmallVector<std::pair<Operation*, int>> users;
@@ -99,15 +94,25 @@ using RequantizeStates = SmallVector<RequantizeState>;
 //
 class QuantizationDriver {
  public:
-  explicit QuantizationDriver(func::FuncOp fn, bool is_signed, int bit_width,
-                              bool disable_per_channel,
+  // Type alias of int used to access `states_`.
+  using QuantStateIndex = int;
+
+  // (op, operand index) pair.
+  using OpWithOperandIndex = std::pair<Operation*, int>;
+
+  // (op, result index) pair.
+  using OpWithResultIndex = std::pair<Operation*, int>;
+
+  explicit QuantizationDriver(func::FuncOp func_op, const bool is_signed,
+                              const int bit_width,
+                              const bool disable_per_channel,
                               OpQuantSpecGetter op_quant_spec_getter,
                               OpQuantScaleSpecGetter op_quant_scale_spec_getter,
-                              bool infer_tensor_range,
-                              bool legacy_float_scale = false,
-                              bool is_qdq_conversion = false)
-      : fn_(fn),
-        builder_(fn.getBody()),
+                              const bool infer_tensor_range,
+                              const bool legacy_float_scale = false,
+                              const bool is_qdq_conversion = false)
+      : fn_(func_op),
+        builder_(func_op.getBody()),
         is_signed_(is_signed),
         bit_width_(bit_width),
         disable_per_channel_(disable_per_channel),
@@ -130,18 +135,25 @@ class QuantizationDriver {
   // result.
   void Finalize();
 
-  llvm::SmallVector<BlockArgument, 4> GetArgs() { return args_; }
+  SmallVector<BlockArgument, 4> GetArgs() { return args_; }
+
+  llvm::DenseMap<std::pair<mlir::Operation*, int>, int> GetResultStates() {
+    return result_states_;
+  }
+
+  DenseMap<OpWithResultIndex, QuantStateIndex> result_states_;
 
   // Returns the state of the block argument.
   QuantState& GetArgQuantState(BlockArgument arg) {
     return states_[arg_states_[arg]];
   }
 
- private:
-  // This is used to identify an operand or result of an op. The second element
-  // of this pair is the index of the operand or result.
-  using OpValue = std::pair<mlir::Operation*, int>;
+  // Returns the state of the index-th result of the op.
+  QuantState& GetResultQuantState(Operation* op, const int index) {
+    return states_[result_states_[{op, index}]];
+  }
 
+ private:
   // Duplicates the constant op if it has multiple uses, and replaces
   // target_op->operand[operand_index] with the newly created op. This also
   // replaces corresponsing quantization states.
@@ -153,13 +165,13 @@ class QuantizationDriver {
   // prevent overflow of quantized bias values. This also changes quantization
   // state of other inputs when needed.
   bool SetBiasParamsWithAdjustments(Operation* op, int bias_index,
-                                    const std::vector<int>& input_indices,
-                                    QuantParams params);
+                                    ArrayRef<int> input_indices,
+                                    QuantizedType params);
 
   // Checks preconditions to adjust bias scale.
   bool ShouldCheckBiasScale(Operation* op, int bias_index,
-                            const std::vector<int>& input_indices,
-                            QuantParams params, int& input_index,
+                            ArrayRef<int> input_indices,
+                            QuantizedType quantized_type, int& input_index,
                             int& filter_index);
 
   // Preprocesses the constants by doing the following:
@@ -187,84 +199,87 @@ class QuantizationDriver {
   bool IsQuantized(Operation* op);
 
   // Adds all the users of index-th result of op to the work list.
-  void AddUserToList(Operation* op, int index) {
+  void AddUserToList(Operation* op, const int index) {
     for (Operation* user : op->getResult(index).getUsers()) {
       work_list_.push_back(user);
     }
   }
 
   // Adds the defining op of index-th operand of op to the work list.
-  void AddOperandToList(Operation* op, int index) {
-    if (Operation* inst = op->getOperand(index).getDefiningOp()) {
-      work_list_.push_back(inst);
+  void AddOperandToList(Operation* op, const int index) {
+    if (Operation* operand_op = op->getOperand(index).getDefiningOp();
+        operand_op != nullptr) {
+      work_list_.push_back(operand_op);
     }
   }
 
   // Returns the quantization params for the bias input from the non-bias
   // operands which have their indexes in the `non_biases` vector. The returned
   // parameters are calculated by `func`.
-  QuantParams GetBiasParams(Operation* op, int bias_index,
-                            const std::vector<int>& non_biases,
-                            AccumulatorScaleFunc func);
+  QuantizedType GetBiasParams(Operation* op, int bias_index,
+                              ArrayRef<int> non_bias_operand_indices,
+                              AccumulatorScaleFunc func);
 
-  // Sets the quantization parameters of the result to a fixed value. If any
-  // quantization parameters have been propagated, a `requantize` will happen on
-  // the input of propagated quantization.
-  bool SetResultParams(Operation* op, int index, QuantParams params);
+  // Sets the quantization parameters of the result to `quantized_type`. If
+  // any quantization parameters have been propagated, a requantize will
+  // happen on the input of propagated quantization. Returns `true` if internal
+  // state has been modified.
+  bool SetResultParams(Operation* op, int result_index,
+                       QuantizedType quantized_type);
 
-  // Sets the quantization parameters of the operand to a fixed value. If any
+  // Sets the quantization parameters of the operand to `quantized_type`. If any
   // quantization parameters have been propagated, a `requantize` will happen on
   // the output of propagated quantization. When `override` is set, quantization
-  // state of the value is replaced instead of adding requantization.
-  bool SetOperandParams(Operation* op, int index, QuantParams params,
-                        bool override = false);
+  // state of the value is replaced instead of adding requantization. Returns
+  // `true` if internal state has been modified.
+  bool SetOperandParams(Operation* op, int operand_index,
+                        QuantizedType quantized_type, bool override = false);
 
   // Sets the quantization parameters of the constant result according to its
   // content.
   bool SetConstantResultParams(Operation* op);
 
-  // Inserts the Quantize and Dequantize ops for quantizing the index-th result
-  // of the op.
-  void QuantizeOpResult(Operation* op, int index, QuantParams params);
+  // Inserts the Quantize and Dequantize ops after `op`'s `index`-th result. The
+  // quantized element type for the result is `quantized_type`.
+  void QuantizeOpResult(Operation* op, int result_index,
+                        QuantizedType quantized_type);
 
-  void QuantizeArg(BlockArgument arg, QuantParams params);
+  // Inserts the Quantize and Dequantize ops after `arg`. The quantized element
+  // type for `arg` is `quantized_type`.
+  void QuantizeArg(BlockArgument arg, QuantizedType quantized_type);
 
-  // Inserts the Quantize and Dequantize ops to quantize the value and returns
-  // the Quantize op.
-  void QuantizeValue(Value value, QuantParams params, Location loc);
+  // Inserts the Quantize and Dequantize ops (i.e. QDQ) after `value`. The
+  // quantized element type for `value` is `quantized_type`.
+  void QuantizeValue(Value value, QuantizedType quantized_type, Location loc);
 
   // Inserts the Quantize ops for requantizing the index-th result of the op.
-  void RequantizeOpResult(Operation* op, int index, RequantizeStates* states);
+  void RequantizeOpResult(Operation* op, int result_index,
+                          RequantizeStates& states);
 
   // Inserts the Quantize ops for requantizing a block argument.
-  void RequantizeArg(BlockArgument arg, RequantizeStates* states);
+  void RequantizeArg(BlockArgument arg, RequantizeStates& states);
 
   // Inserts the Quantize and Dequantize ops to quantize the value and returns
   // the Quantize op.
-  void RequantizeValue(Value value, RequantizeStates* states, Location loc);
+  void RequantizeValue(Value value, RequantizeStates& states, Location loc);
 
   // Returns the quantization parameter satisfies the same scale
   // constraints for the op. Returns an empty option if this quantization
   // parameter doesn't exist.
-  QuantParams GetQuantParamsForSameScaleConstraint(Operation* op);
+  QuantizedType GetQuantParamsForSameScaleConstraint(Operation* op);
 
   // Returns the state of the index-th operand of the op.
-  QuantState& GetOperandQuantState(Operation* op, int index) {
+  QuantState& GetOperandQuantState(Operation* op, const int index) {
     return states_[operand_states_[{op, index}]];
   }
 
-  // Returns the state of the index-th result of the op.
-  QuantState& GetResultQuantState(Operation* op, int index) {
-    return states_[result_states_[{op, index}]];
-  }
-
   // Returns the states of the index-th operand of the op.
-  RequantizeStates& GetOperandRequantizeStates(Operation* op, int index) {
+  RequantizeStates& GetOperandRequantizeStates(Operation* op, const int index) {
     return rescale_states_[operand_states_[{op, index}]];
   }
 
   // Returns the states of the index-th result of the op.
-  RequantizeStates& GetResultRequantizeStates(Operation* op, int index) {
+  RequantizeStates& GetResultRequantizeStates(Operation* op, const int index) {
     return rescale_states_[result_states_[{op, index}]];
   }
 
@@ -277,10 +292,6 @@ class QuantizationDriver {
   // result without creating new entry in the state vector. Otherwise, allocate
   // a new entry in the state vector.
   void InitializeArgState(BlockArgument arg, Value arg_value);
-
-  // Sets the state of index-th operand / result of op.
-  void InitializeStateForValue(Operation* op, int index, Value value,
-                               bool as_result);
 
   // Sets the state of the index-th operand of the op. If this operand is
   // cached, uses the cached result without creating new entry in the state
@@ -301,12 +312,13 @@ class QuantizationDriver {
   // We should distinguish weights and bias constants. Biases are specified by
   // the quantization spec or are the operands of ops with same scale spec. The
   // rest are weights.
-  llvm::DenseSet<Operation*> weights_;
+  DenseSet<Operation*> weights_;
 
   // The weights require narrow_range quantization. This map collects all the
-  // weight operands defined by the op quant spec. If the value of the entry is
-  // positive, per-channel quantization is required.
-  llvm::DenseMap<Operation*, int> optimized_weights_;
+  // weight operands defined by the op quant spec. The value of each entry is
+  // the quantization dimension. If it is positive, per-channel quantization is
+  // required.
+  DenseMap<Operation*, int> optimized_weights_;
 
   // All the ops needs to propagate the quantization parameters to.
   std::vector<Operation*> work_list_;
@@ -319,18 +331,17 @@ class QuantizationDriver {
   // The map contains all the quantization parameters which are required to
   // satisfy the same operands and results constraint. The keys of this map are
   // the values from `operand_states_` and `result_state_`.
-  std::unordered_map<int, RequantizeStates> rescale_states_;
+  absl::flat_hash_map<QuantStateIndex, RequantizeStates> rescale_states_;
 
   // Maps of indexes to the propagation state vector from the ops operands,
   // results and arguments.
-  llvm::DenseMap<OpValue, int> operand_states_;
-  llvm::DenseMap<OpValue, int> result_states_;
-  llvm::DenseMap<BlockArgument, int> arg_states_;
-  llvm::DenseMap<Value, int> value_to_state_;
+  DenseMap<OpWithOperandIndex, QuantStateIndex> operand_states_;
+  DenseMap<BlockArgument, QuantStateIndex> arg_states_;
+  DenseMap<Value, QuantStateIndex> value_to_state_;
 
   // This vector is to preserve the arguments order, so the newly inserted
   // quantized ops for the arguments are deterministically ordered.
-  llvm::SmallVector<BlockArgument, 4> args_;
+  SmallVector<BlockArgument, 4> args_;
 
   OpQuantSpecGetter op_quant_spec_getter_;
   OpQuantScaleSpecGetter op_quant_scale_spec_getter_;
@@ -357,7 +368,7 @@ class QuantizationDriver {
 // Setting `infer_tensor_range` to true, to infer quantization parameters from
 // the activation ops and weight constants. This is only used for post-training
 // quantization.
-void ApplyQuantizationParamsPropagation(mlir::func::FuncOp func, bool is_signed,
+void ApplyQuantizationParamsPropagation(func::FuncOp func, bool is_signed,
                                         int bit_width, bool disable_per_channel,
                                         OpQuantSpecGetter op_quant_spec_getter,
                                         bool infer_tensor_ranges,
@@ -365,8 +376,8 @@ void ApplyQuantizationParamsPropagation(mlir::func::FuncOp func, bool is_signed,
                                         bool is_qdq_conversion);
 
 void ApplyQuantizationParamsPropagation(
-    mlir::func::FuncOp func, bool is_signed, int bit_width,
-    bool disable_per_channel, OpQuantSpecGetter op_quant_spec_getter,
+    func::FuncOp func, bool is_signed, int bit_width, bool disable_per_channel,
+    OpQuantSpecGetter op_quant_spec_getter,
     OpQuantScaleSpecGetter op_quant_scale_spec_getter, bool infer_tensor_ranges,
     bool legacy_float_scale, bool is_qdq_conversion);
 

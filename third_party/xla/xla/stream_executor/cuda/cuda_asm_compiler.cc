@@ -21,7 +21,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/base/call_once.h"
 #include "absl/base/optimization.h"
 #include "absl/cleanup/cleanup.h"
 #include "absl/log/log.h"
@@ -31,6 +30,8 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/gpu/asm_compiler.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
@@ -56,18 +57,32 @@ namespace stream_executor {
     }                                                                         \
   } while (false)
 
+static absl::StatusOr<std::string> FindNvlinkExecutable(
+    std::string_view preferred_cuda_dir) {
+  static constexpr ToolVersion kMinimumNvlinkVersion{11, 8, 0};
+  static constexpr absl::Span<const ToolVersion> kNoExcludedVersions{};
+  static constexpr std::string_view kNvLinkBinaryName = "nvlink";
+
+  return FindCudaExecutable(kNvLinkBinaryName, preferred_cuda_dir,
+                            kMinimumNvlinkVersion, kNoExcludedVersions);
+}
+
+absl::StatusOr<ToolVersion> GetNvLinkVersion(
+    std::string_view preferred_cuda_dir) {
+  // Make sure nvlink exists and is executable.
+  TF_ASSIGN_OR_RETURN(std::string bin_path,
+                      FindNvlinkExecutable(preferred_cuda_dir));
+
+  return GetToolVersion(bin_path);
+}
+
 absl::StatusOr<std::vector<uint8_t>> LinkUsingNvlink(
     absl::string_view preferred_cuda_dir, gpu::GpuContext* context,
     std::vector<CubinOrPTXImage> images) {
-  {
-    static absl::once_flag log_once;
-    absl::call_once(log_once,
-                    [] { LOG(INFO) << "Using nvlink for parallel linking"; });
-  }
+  LOG_FIRST_N(INFO, 1) << "Using nvlink for parallel linking";
 
-  TF_ASSIGN_OR_RETURN(
-      std::string bin_path,
-      FindCudaExecutable("nvlink", std::string(preferred_cuda_dir)));
+  TF_ASSIGN_OR_RETURN(std::string bin_path,
+                      FindNvlinkExecutable(preferred_cuda_dir));
 
   if (images.empty()) {
     return std::vector<uint8>();

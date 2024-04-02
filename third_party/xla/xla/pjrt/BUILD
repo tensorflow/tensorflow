@@ -1,11 +1,12 @@
-# Placeholder: load py_proto_library
-load("//xla:xla.bzl", "xla_cc_test")
 load("@local_tsl//tsl:tsl.bzl", "internal_visibility")
 load(
     "@local_tsl//tsl/platform:build_config.bzl",
     "tf_proto_library",
 )
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
+
+# Placeholder: load py_proto_library
+load("//xla:xla.bzl", "xla_cc_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -236,6 +237,7 @@ cc_library(
         ":executable_metadata_proto_cc",
         ":execute_options_proto_cc",
         ":pjrt_common",
+        ":pjrt_layout",
         "//xla:shape_layout",
         "//xla:shape_util",
         "//xla:status",
@@ -439,6 +441,7 @@ cc_library(
     visibility = internal_visibility(["//xla:friends"]),
     deps = [
         ":event_pool",
+        ":host_callback",
         ":local_device_state",
         ":metrics",
         ":mlir_to_hlo",
@@ -567,6 +570,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:BytecodeWriter",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:FuncExtensions",
         "@llvm-project//mlir:IR",

@@ -18,7 +18,11 @@ limitations under the License.
 
 #include "xla/python/pytree.h"
 
+#include <Python.h>
+
 #include <algorithm>
+#include <cstddef>
+#include <cstdint>
 #include <iterator>
 #include <limits>
 #include <memory>
@@ -91,6 +95,28 @@ void PyTreeRegistry::Register(nb::object type, nb::callable to_iterable,
         absl::StrFormat("Duplicate custom PyTreeDef type registration for %s.",
                         nb::cast<std::string_view>(nb::repr(type))));
   }
+}
+
+std::pair<nanobind::iterable, nanobind::object>
+PyTreeRegistry::Registration::ToIterable(nanobind::handle o) const {
+  nb::object out = to_iterable(o);
+  nb::tuple leaves_and_aux_data;
+  if (!nb::try_cast<nb::tuple>(out, leaves_and_aux_data) ||
+      leaves_and_aux_data.size() != 2) {
+    throw std::invalid_argument(absl::StrCat(
+        "The to_iterable function for a custom PyTree node should return "
+        "a (children, aux_data) tuple, got ",
+        nb::cast<std::string_view>(nb::repr(out))));
+  }
+  nb::iterable leaves;
+  if (!nb::try_cast<nb::iterable>(leaves_and_aux_data[0], leaves)) {
+    throw std::invalid_argument(absl::StrCat(
+        "The to_iterable function for a custom PyTree node should return "
+        "a (children, aux_data) tuple where 'children' is iterable, "
+        "got ",
+        nb::cast<std::string_view>(nb::repr(out))));
+  }
+  return std::make_pair(std::move(leaves), nb::object(leaves_and_aux_data[1]));
 }
 
 // Computes the node kind of a given Python object.
@@ -192,6 +218,45 @@ bool PyTreeDef::operator==(const PyTreeDef& other) const {
   return true;
 }
 
+nb::object PyTreeRegistry::FlattenOneLevel(nb::handle x) const {
+  PyTreeRegistry::Registration const* custom;
+  PyTreeKind kind = KindOfObject(x, &custom);
+  switch (kind) {
+    case PyTreeKind::kNone:
+      return nb::make_tuple(nb::make_tuple(), nb::none());
+    case PyTreeKind::kTuple:
+    case PyTreeKind::kList:
+      return nb::make_tuple(nb::borrow(x), nb::none());
+    case PyTreeKind::kDict: {
+      nb::dict dict = nb::borrow<nb::dict>(x);
+      std::vector<nb::object> sorted_keys = GetSortedPyDictKeys(dict.ptr());
+      nb::tuple keys = nb::steal<nb::tuple>(PyTuple_New(sorted_keys.size()));
+      nb::tuple values = nb::steal<nb::tuple>(PyTuple_New(sorted_keys.size()));
+      for (size_t i = 0; i < sorted_keys.size(); ++i) {
+        PyTuple_SET_ITEM(values.ptr(), i,
+                         nb::object(dict[sorted_keys[i]]).release().ptr());
+        PyTuple_SET_ITEM(keys.ptr(), i, sorted_keys[i].release().ptr());
+      }
+      return nb::make_tuple(std::move(values), std::move(keys));
+    }
+    case PyTreeKind::kNamedTuple: {
+      nb::tuple in = nb::borrow<nb::tuple>(x);
+      nb::list out;
+      for (size_t i = 0; i < in.size(); ++i) {
+        out.append(in[i]);
+      }
+      return nb::make_tuple(std::move(out), x.type());
+    }
+    case PyTreeKind::kCustom: {
+      auto [leaves, aux_data] = custom->ToIterable(x);
+      return nb::make_tuple(std::move(leaves), std::move(aux_data));
+    }
+    default:
+      DCHECK(kind == PyTreeKind::kLeaf);
+      return nb::none();
+  }
+}
+
 template <typename T>
 void PyTreeDef::FlattenImpl(nb::handle handle, T& leaves,
                             const std::optional<nb::callable>& leaf_predicate) {
@@ -257,14 +322,10 @@ void PyTreeDef::FlattenImpl(nb::handle handle, T& leaves,
         break;
       }
       case PyTreeKind::kCustom: {
-        nb::tuple out = nb::cast<nb::tuple>(node.custom->to_iterable(handle));
-        if (out.size() != 2) {
-          throw xla::XlaRuntimeError(
-              "PyTree custom to_iterable function should return a pair");
-        }
-        node.node_data = out[1];
+        auto [leaves, aux_data] = node.custom->ToIterable(handle);
+        node.node_data = std::move(aux_data);
         node.arity = 0;
-        for (nb::handle entry : nb::cast<nb::iterable>(out[0])) {
+        for (nb::handle entry : leaves) {
           ++node.arity;
           recurse(entry);
         }
@@ -558,20 +619,16 @@ nb::list PyTreeDef::FlattenUpTo(nb::handle xs) const {
               nb::cast<std::string_view>(nb::repr(node.custom->type)),
               nb::cast<std::string_view>(nb::repr(object))));
         }
-        nb::tuple out = nb::cast<nb::tuple>(node.custom->to_iterable(object));
-        if (out.size() != 2) {
-          throw xla::XlaRuntimeError(
-              "PyTree custom to_iterable function should return a pair");
-        }
-        if (node.node_data.not_equal(out[1])) {
+        auto [leaves, aux_data] = node.custom->ToIterable(object);
+        if (node.node_data.not_equal(aux_data)) {
           throw std::invalid_argument(absl::StrFormat(
               "Mismatch custom node data: %s != %s; value: %s.",
               nb::cast<std::string_view>(nb::repr(node.node_data)),
-              nb::cast<std::string_view>(nb::repr(out[1])),
+              nb::cast<std::string_view>(nb::repr(aux_data)),
               nb::cast<std::string_view>(nb::repr(object))));
         }
         int arity = 0;
-        for (nb::handle entry : nb::cast<nb::iterable>(out[0])) {
+        for (nb::handle entry : leaves) {
           ++arity;
           agenda.push_back(nb::borrow<nb::object>(entry));
         }
@@ -1104,6 +1161,8 @@ void BuildPytreeSubmodule(nb::module_& m) {
         return nb::make_tuple(std::move(leaves), std::move(def));
       },
       nb::arg("tree").none(), nb::arg("leaf_predicate").none() = std::nullopt);
+  registry.def("flatten_one_level", &PyTreeRegistry::FlattenOneLevel,
+               nb::arg("tree").none());
   registry.def("register_node", &PyTreeRegistry::Register);
   registry.def("__reduce__",
                [](nb::object self) { return self.attr("__name__"); });

@@ -83,12 +83,6 @@ class GenericTransferManager : public TransferManager {
   Shape HostShapeToDeviceShape(const Shape& host_shape) const override;
 
  private:
-  // Returns whether subbyte types (types less than 1 byte, e.g. U4) should
-  // have multiple values packed into a single byte on the device. Subbyte
-  // bytes are never packed on the host. By default, returns false, so a byte
-  // can only hold one value, but subclasses can override this.
-  virtual bool PackSubbyteTypes() const { return false; }
-
   // Transfer a memory block of the given size from the device source into the
   // 'destination' buffer.
   //

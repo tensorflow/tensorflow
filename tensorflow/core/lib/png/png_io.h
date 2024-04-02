@@ -43,7 +43,7 @@ limitations under the License.
 namespace tensorflow {
 namespace png {
 
-// Handy container for decoding informations and struct pointers
+// Handy container for decoding information and struct pointers
 struct DecodeContext {
   const uint8* data;
   int data_left;

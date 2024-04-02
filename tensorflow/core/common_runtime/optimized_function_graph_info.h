@@ -80,7 +80,7 @@ struct OptimizedFunctionGraphInfo {
 
   // Converts from the proto to struct OptimizedFunctionGraphInfo. Returns error
   // if the conversion fails.
-  static StatusOr<OptimizedFunctionGraphInfo> FromProto(
+  static absl::StatusOr<OptimizedFunctionGraphInfo> FromProto(
       OptimizedFunctionGraph&& proto);
 };
 

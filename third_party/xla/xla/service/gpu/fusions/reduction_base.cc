@@ -332,12 +332,12 @@ std::optional<IndexingMap> ReductionInfo::ComputeThreadIdToOutputIndexing(
 
   auto physical_shape = ShapeUtil::DeleteDimensions(hero->dimensions(),
                                                     hero->operand(0)->shape());
-  std::vector<Interval> dimension_ranges{
-      {0, tiling_.GetNumThreadsPerBlock() - 1},
+  std::vector<DimVar> dimension_ranges{
+      {{0, tiling_.GetNumThreadsPerBlock() - 1}},
       {},
       {},
-      {0, tiling_.GetNumBlocks() - 1},
-      {0, static_cast<int64_t>(groups_.grouped_roots.size() - 1)},
+      {{0, tiling_.GetNumBlocks() - 1}},
+      {{0, static_cast<int64_t>(groups_.grouped_roots.size() - 1)}},
       {},
   };
 
@@ -355,7 +355,7 @@ std::optional<IndexingMap> ReductionInfo::ComputeThreadIdToOutputIndexing(
           mlir::AffineMap::get(
               6, 0, block_offsets.getResult(kRowKept) + thread_ids[kRowKept],
               ctx),
-          dimension_ranges, {});
+          dimension_ranges, /*range_vars=*/{}, /*rt_vars=*/{});
       int rows_per_warp = GetRowsPerWarp();
       if (rows_per_warp > 1) {
         linear_index.AddConstraint(
@@ -376,7 +376,7 @@ std::optional<IndexingMap> ReductionInfo::ComputeThreadIdToOutputIndexing(
             {block_offsets.getResult(kColMajorKept),
              block_offsets.getResult(kColMinorKept) + thread_ids[kColReduced]},
             ctx),
-        dimension_ranges, {});
+        dimension_ranges, /*range_vars=*/{}, /*rt_vars=*/{});
 
     projected_index.AddConstraint(
         mlir::getAffineDimExpr(

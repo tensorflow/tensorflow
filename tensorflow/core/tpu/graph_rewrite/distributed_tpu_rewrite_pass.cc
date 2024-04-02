@@ -650,28 +650,6 @@ Status GetStepMarkerLocation(const Node& replicate_node,
   return absl::OkStatus();
 }
 
-// Extracts a map of dimension and number of splits for tiled input from xla
-// sharding attribute.
-Status GetDimensionIndicesAndNumSplitsFromSharding(
-    const xla::OpSharding& sharding, std::map<int, int>* split_dimension_map) {
-  int64_t tensor_tile_rank = sharding.tile_assignment_dimensions_size();
-  if (sharding.replicate_on_last_tile_dim()) {
-    tensor_tile_rank--;
-  }
-  for (int dim_index = 0; dim_index < tensor_tile_rank; dim_index++) {
-    if (sharding.tile_assignment_dimensions(dim_index) > 1) {
-      split_dimension_map->emplace(
-          dim_index, sharding.tile_assignment_dimensions(dim_index));
-    }
-  }
-
-  if (split_dimension_map->empty()) {
-    return absl::InvalidArgumentError(absl::StrCat(
-        "Arg has unnecessary tiled sharding: ", sharding.DebugString()));
-  }
-  return absl::OkStatus();
-}
-
 // Updates contents of the function with `function_name` in function library
 // definition `flib_def` to `new_graph`. This is required when graph
 // transformation happens inside a function call body.
@@ -861,9 +839,8 @@ StatusOr<ShardedInputInfo> CreateOrGetSplitNodesForInputSharding(
   }
   // Maps input dimension and number of splits with which the
   // dimension sharded.
-  std::map<int, int> split_dimension_map;
-  TF_RETURN_IF_ERROR(GetDimensionIndicesAndNumSplitsFromSharding(
-      sharding, &split_dimension_map));
+  TF_ASSIGN_OR_RETURN(auto split_dimension_map,
+                      GetDimensionIndicesAndNumSplitsFromSharding(sharding));
   TF_RET_CHECK(!split_dimension_map.empty())
       << "Unnecessary sharding attribute found.";
 
@@ -1280,9 +1257,8 @@ StatusOr<Node*> CreateConcatNodesForRetval(
     const PartialTensorShape& inferred_shape, int replica_id,
     const std::vector<NodeOut>& orig_inputs, Graph* graph,
     absl::string_view device) {
-  std::map<int, int> split_dimension_map;
-  TF_RETURN_IF_ERROR(GetDimensionIndicesAndNumSplitsFromSharding(
-      sharding, &split_dimension_map));
+  TF_ASSIGN_OR_RETURN(auto split_dimension_map,
+                      GetDimensionIndicesAndNumSplitsFromSharding(sharding));
   std::vector<NodeOut> inputs_to_sharded_retval = orig_inputs;
   bool has_paddings = false;
 

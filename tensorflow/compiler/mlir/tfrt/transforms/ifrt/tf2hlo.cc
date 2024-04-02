@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v2/legalize_tf.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/ifrt_constants.h"
+#include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/ifrt_types.h"
 #include "tensorflow/compiler/tf2xla/layout_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
@@ -127,6 +128,7 @@ absl::StatusOr<tensorflow::tpu::TPUCompileMetadataProto> GetCompileMetadata(
 
   // Create a default device assignment if one is not given by the model.
   if (!metadata.has_device_assignment()) {
+    // TODO(b/316068010): integrate core selection.
     TF_ASSIGN_OR_RETURN(
         auto device_assignment,
         ifrt_client.GetDefaultDeviceAssignment(

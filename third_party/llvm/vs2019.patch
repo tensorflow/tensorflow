@@ -1,0 +1,394 @@
+diff --git a/llvm/include/llvm/Support/FormatAdapters.h b/llvm/include/llvm/Support/FormatAdapters.h
+index 495205d11748..4131e956873e 100644
+--- a/llvm/include/llvm/Support/FormatAdapters.h
++++ b/llvm/include/llvm/Support/FormatAdapters.h
+@@ -16,13 +16,15 @@
+ #include "llvm/Support/raw_ostream.h"
+ 
+ namespace llvm {
+-template <typename T> class FormatAdapter : public detail::format_adapter {
++template <typename T>
++class FormatAdapter : public support::detail::format_adapter {
+ protected:
+   explicit FormatAdapter(T &&Item) : Item(std::forward<T>(Item)) {}
+ 
+   T Item;
+ };
+ 
++namespace support {
+ namespace detail {
+ template <typename T> class AlignAdapter final : public FormatAdapter<T> {
+   AlignStyle Where;
+@@ -80,29 +82,31 @@ public:
+     Stream << Item;
+   }
+ };
+-}
++} // namespace detail
++} // namespace support
+ 
+ template <typename T>
+-detail::AlignAdapter<T> fmt_align(T &&Item, AlignStyle Where, size_t Amount,
+-                                  char Fill = ' ') {
+-  return detail::AlignAdapter<T>(std::forward<T>(Item), Where, Amount, Fill);
++support::detail::AlignAdapter<T> fmt_align(T &&Item, AlignStyle Where,
++                                           size_t Amount, char Fill = ' ') {
++  return support::detail::AlignAdapter<T>(std::forward<T>(Item), Where, Amount,
++                                          Fill);
+ }
+ 
+ template <typename T>
+-detail::PadAdapter<T> fmt_pad(T &&Item, size_t Left, size_t Right) {
+-  return detail::PadAdapter<T>(std::forward<T>(Item), Left, Right);
++support::detail::PadAdapter<T> fmt_pad(T &&Item, size_t Left, size_t Right) {
++  return support::detail::PadAdapter<T>(std::forward<T>(Item), Left, Right);
+ }
+ 
+ template <typename T>
+-detail::RepeatAdapter<T> fmt_repeat(T &&Item, size_t Count) {
+-  return detail::RepeatAdapter<T>(std::forward<T>(Item), Count);
++support::detail::RepeatAdapter<T> fmt_repeat(T &&Item, size_t Count) {
++  return support::detail::RepeatAdapter<T>(std::forward<T>(Item), Count);
+ }
+ 
+ // llvm::Error values must be consumed before being destroyed.
+ // Wrapping an error in fmt_consume explicitly indicates that the formatv_object
+ // should take ownership and consume it.
+-inline detail::ErrorAdapter fmt_consume(Error &&Item) {
+-  return detail::ErrorAdapter(std::move(Item));
++inline support::detail::ErrorAdapter fmt_consume(Error &&Item) {
++  return support::detail::ErrorAdapter(std::move(Item));
+ }
+ }
+ 
+diff --git a/llvm/include/llvm/Support/FormatCommon.h b/llvm/include/llvm/Support/FormatCommon.h
+index 24a40c325e13..326e00936aa7 100644
+--- a/llvm/include/llvm/Support/FormatCommon.h
++++ b/llvm/include/llvm/Support/FormatCommon.h
+@@ -17,13 +17,13 @@ namespace llvm {
+ enum class AlignStyle { Left, Center, Right };
+ 
+ struct FmtAlign {
+-  detail::format_adapter &Adapter;
++  support::detail::format_adapter &Adapter;
+   AlignStyle Where;
+   size_t Amount;
+   char Fill;
+ 
+-  FmtAlign(detail::format_adapter &Adapter, AlignStyle Where, size_t Amount,
+-           char Fill = ' ')
++  FmtAlign(support::detail::format_adapter &Adapter, AlignStyle Where,
++           size_t Amount, char Fill = ' ')
+       : Adapter(Adapter), Where(Where), Amount(Amount), Fill(Fill) {}
+ 
+   void format(raw_ostream &S, StringRef Options) {
+diff --git a/llvm/include/llvm/Support/FormatProviders.h b/llvm/include/llvm/Support/FormatProviders.h
+index aa0773847161..bf489e2bfa07 100644
+--- a/llvm/include/llvm/Support/FormatProviders.h
++++ b/llvm/include/llvm/Support/FormatProviders.h
+@@ -25,6 +25,7 @@
+ #include <type_traits>
+ 
+ namespace llvm {
++namespace support {
+ namespace detail {
+ template <typename T>
+ struct use_integral_formatter
+@@ -98,7 +99,8 @@ protected:
+     return Default;
+   }
+ };
+-}
++} // namespace detail
++} // namespace support
+ 
+ /// Implementation of format_provider<T> for integral arithmetic types.
+ ///
+@@ -125,8 +127,8 @@ protected:
+ 
+ template <typename T>
+ struct format_provider<
+-    T, std::enable_if_t<detail::use_integral_formatter<T>::value>>
+-    : public detail::HelperFunctions {
++    T, std::enable_if_t<support::detail::use_integral_formatter<T>::value>>
++    : public support::detail::HelperFunctions {
+ private:
+ public:
+   static void format(const T &V, llvm::raw_ostream &Stream, StringRef Style) {
+@@ -174,8 +176,8 @@ public:
+ /// cases indicates the minimum number of nibbles to print.
+ template <typename T>
+ struct format_provider<
+-    T, std::enable_if_t<detail::use_pointer_formatter<T>::value>>
+-    : public detail::HelperFunctions {
++    T, std::enable_if_t<support::detail::use_pointer_formatter<T>::value>>
++    : public support::detail::HelperFunctions {
+ private:
+ public:
+   static void format(const T &V, llvm::raw_ostream &Stream, StringRef Style) {
+@@ -199,7 +201,7 @@ public:
+ 
+ template <typename T>
+ struct format_provider<
+-    T, std::enable_if_t<detail::use_string_formatter<T>::value>> {
++    T, std::enable_if_t<support::detail::use_string_formatter<T>::value>> {
+   static void format(const T &V, llvm::raw_ostream &Stream, StringRef Style) {
+     size_t N = StringRef::npos;
+     if (!Style.empty() && Style.getAsInteger(10, N)) {
+@@ -231,8 +233,8 @@ template <> struct format_provider<Twine> {
+ /// character.  Otherwise, it is treated as an integer options string.
+ ///
+ template <typename T>
+-struct format_provider<T,
+-                       std::enable_if_t<detail::use_char_formatter<T>::value>> {
++struct format_provider<
++    T, std::enable_if_t<support::detail::use_char_formatter<T>::value>> {
+   static void format(const char &V, llvm::raw_ostream &Stream,
+                      StringRef Style) {
+     if (Style.empty())
+@@ -297,9 +299,9 @@ template <> struct format_provider<bool> {
+ /// else.
+ 
+ template <typename T>
+-struct format_provider<T,
+-                       std::enable_if_t<detail::use_double_formatter<T>::value>>
+-    : public detail::HelperFunctions {
++struct format_provider<
++    T, std::enable_if_t<support::detail::use_double_formatter<T>::value>>
++    : public support::detail::HelperFunctions {
+   static void format(const T &V, llvm::raw_ostream &Stream, StringRef Style) {
+     FloatStyle S;
+     if (Style.consume_front("P") || Style.consume_front("p"))
+@@ -321,6 +323,7 @@ struct format_provider<T,
+   }
+ };
+ 
++namespace support {
+ namespace detail {
+ template <typename IterT>
+ using IterValue = typename std::iterator_traits<IterT>::value_type;
+@@ -328,8 +331,10 @@ using IterValue = typename std::iterator_traits<IterT>::value_type;
+ template <typename IterT>
+ struct range_item_has_provider
+     : public std::integral_constant<
+-          bool, !uses_missing_provider<IterValue<IterT>>::value> {};
+-}
++          bool,
++          !support::detail::uses_missing_provider<IterValue<IterT>>::value> {};
++} // namespace detail
++} // namespace support
+ 
+ /// Implementation of format_provider<T> for ranges.
+ ///
+@@ -393,7 +398,7 @@ template <typename IterT> class format_provider<llvm::iterator_range<IterT>> {
+   }
+ 
+ public:
+-  static_assert(detail::range_item_has_provider<IterT>::value,
++  static_assert(support::detail::range_item_has_provider<IterT>::value,
+                 "Range value_type does not have a format provider!");
+   static void format(const llvm::iterator_range<IterT> &V,
+                      llvm::raw_ostream &Stream, StringRef Style) {
+@@ -403,18 +408,18 @@ public:
+     auto Begin = V.begin();
+     auto End = V.end();
+     if (Begin != End) {
+-      auto Adapter = detail::build_format_adapter(*Begin);
++      auto Adapter = support::detail::build_format_adapter(*Begin);
+       Adapter.format(Stream, ArgStyle);
+       ++Begin;
+     }
+     while (Begin != End) {
+       Stream << Sep;
+-      auto Adapter = detail::build_format_adapter(*Begin);
++      auto Adapter = support::detail::build_format_adapter(*Begin);
+       Adapter.format(Stream, ArgStyle);
+       ++Begin;
+     }
+   }
+ };
+-}
++} // namespace llvm
+ 
+ #endif
+diff --git a/llvm/include/llvm/Support/FormatVariadic.h b/llvm/include/llvm/Support/FormatVariadic.h
+index ddd80d89f1cd..595f2cf559a4 100644
+--- a/llvm/include/llvm/Support/FormatVariadic.h
++++ b/llvm/include/llvm/Support/FormatVariadic.h
+@@ -66,7 +66,7 @@ struct ReplacementItem {
+ class formatv_object_base {
+ protected:
+   StringRef Fmt;
+-  ArrayRef<detail::format_adapter *> Adapters;
++  ArrayRef<support::detail::format_adapter *> Adapters;
+ 
+   static bool consumeFieldLayout(StringRef &Spec, AlignStyle &Where,
+                                  size_t &Align, char &Pad);
+@@ -75,7 +75,7 @@ protected:
+   splitLiteralAndReplacement(StringRef Fmt);
+ 
+   formatv_object_base(StringRef Fmt,
+-                      ArrayRef<detail::format_adapter *> Adapters)
++                      ArrayRef<support::detail::format_adapter *> Adapters)
+       : Fmt(Fmt), Adapters(Adapters) {}
+ 
+   formatv_object_base(formatv_object_base const &rhs) = delete;
+@@ -130,7 +130,7 @@ template <typename Tuple> class formatv_object : public formatv_object_base {
+   // of the parameters, we have to own the storage for the parameters here, and
+   // have the base class store type-erased pointers into this tuple.
+   Tuple Parameters;
+-  std::array<detail::format_adapter *, std::tuple_size<Tuple>::value>
++  std::array<support::detail::format_adapter *, std::tuple_size<Tuple>::value>
+       ParameterPointers;
+ 
+   // The parameters are stored in a std::tuple, which does not provide runtime
+@@ -142,8 +142,8 @@ template <typename Tuple> class formatv_object : public formatv_object_base {
+   // std::array<Base*>.
+   struct create_adapters {
+     template <typename... Ts>
+-    std::array<detail::format_adapter *, std::tuple_size<Tuple>::value>
+-    operator()(Ts &... Items) {
++    std::array<support::detail::format_adapter *, std::tuple_size<Tuple>::value>
++    operator()(Ts &...Items) {
+       return {{&Items...}};
+     }
+   };
+@@ -248,13 +248,14 @@ public:
+ // the details of what that is are undefined.
+ //
+ template <typename... Ts>
+-inline auto formatv(const char *Fmt, Ts &&... Vals) -> formatv_object<decltype(
+-    std::make_tuple(detail::build_format_adapter(std::forward<Ts>(Vals))...))> {
+-  using ParamTuple = decltype(
+-      std::make_tuple(detail::build_format_adapter(std::forward<Ts>(Vals))...));
++inline auto formatv(const char *Fmt, Ts &&...Vals)
++    -> formatv_object<decltype(std::make_tuple(
++        support::detail::build_format_adapter(std::forward<Ts>(Vals))...))> {
++  using ParamTuple = decltype(std::make_tuple(
++      support::detail::build_format_adapter(std::forward<Ts>(Vals))...));
+   return formatv_object<ParamTuple>(
+-      Fmt,
+-      std::make_tuple(detail::build_format_adapter(std::forward<Ts>(Vals))...));
++      Fmt, std::make_tuple(support::detail::build_format_adapter(
++               std::forward<Ts>(Vals))...));
+ }
+ 
+ } // end namespace llvm
+diff --git a/llvm/include/llvm/Support/FormatVariadicDetails.h b/llvm/include/llvm/Support/FormatVariadicDetails.h
+index 068c327df396..a221fcadbd3c 100644
+--- a/llvm/include/llvm/Support/FormatVariadicDetails.h
++++ b/llvm/include/llvm/Support/FormatVariadicDetails.h
+@@ -19,6 +19,7 @@ namespace llvm {
+ template <typename T, typename Enable = void> struct format_provider {};
+ class Error;
+ 
++namespace support {
+ namespace detail {
+ class format_adapter {
+   virtual void anchor();
+@@ -156,7 +157,8 @@ std::enable_if_t<uses_missing_provider<T>::value, missing_format_adapter<T>>
+ build_format_adapter(T &&) {
+   return missing_format_adapter<T>();
+ }
+-}
+-}
++} // namespace detail
++} // namespace support
++} // namespace llvm
+ 
+ #endif
+diff --git a/llvm/lib/Support/FormatVariadic.cpp b/llvm/lib/Support/FormatVariadic.cpp
+index 91b4c38ade4f..3c07a80a00ae 100644
+--- a/llvm/lib/Support/FormatVariadic.cpp
++++ b/llvm/lib/Support/FormatVariadic.cpp
+@@ -152,4 +152,4 @@ formatv_object_base::parseFormatString(StringRef Fmt) {
+   return Replacements;
+ }
+ 
+-void detail::format_adapter::anchor() { }
++void support::detail::format_adapter::anchor() {}
+
+diff --git a/llvm/unittests/Support/FormatVariadicTest.cpp b/llvm/unittests/Support/FormatVariadicTest.cpp
+index 58c89aad7a85..a78b25c53d7e 100644
+--- a/llvm/unittests/Support/FormatVariadicTest.cpp
++++ b/llvm/unittests/Support/FormatVariadicTest.cpp
+@@ -20,8 +20,8 @@ struct Format : public FormatAdapter<int> {
+   void format(raw_ostream &OS, StringRef Opt) override { OS << "Format"; }
+ };
+ 
+-using detail::uses_format_member;
+-using detail::uses_missing_provider;
++using support::detail::uses_format_member;
++using support::detail::uses_missing_provider;
+ 
+ static_assert(uses_format_member<Format>::value, "");
+ static_assert(uses_format_member<Format &>::value, "");
+diff --git a/mlir/include/mlir/TableGen/Format.h b/mlir/include/mlir/TableGen/Format.h
+index 79d3d26a9d68..e92f6c64eab5 100644
+--- a/mlir/include/mlir/TableGen/Format.h
++++ b/mlir/include/mlir/TableGen/Format.h
+@@ -133,14 +133,15 @@ protected:
+   // std::vector<Base*>.
+   struct CreateAdapters {
+     template <typename... Ts>
+-    std::vector<llvm::detail::format_adapter *> operator()(Ts &...items) {
+-      return std::vector<llvm::detail::format_adapter *>{&items...};
++    std::vector<llvm::support::detail::format_adapter *>
++    operator()(Ts &...items) {
++      return std::vector<llvm::support::detail::format_adapter *>{&items...};
+     }
+   };
+ 
+   StringRef fmt;
+   const FmtContext *context;
+-  std::vector<llvm::detail::format_adapter *> adapters;
++  std::vector<llvm::support::detail::format_adapter *> adapters;
+   std::vector<FmtReplacement> replacements;
+ 
+ public:
+@@ -205,8 +206,8 @@ public:
+ 
+ class FmtStrVecObject : public FmtObjectBase {
+ public:
+-  using StrFormatAdapter =
+-      decltype(llvm::detail::build_format_adapter(std::declval<std::string>()));
++  using StrFormatAdapter = decltype(llvm::support::detail::build_format_adapter(
++      std::declval<std::string>()));
+ 
+   FmtStrVecObject(StringRef fmt, const FmtContext *ctx,
+                   ArrayRef<std::string> params);
+@@ -259,14 +260,15 @@ private:
+ ///    in C++ code generation.
+ template <typename... Ts>
+ inline auto tgfmt(StringRef fmt, const FmtContext *ctx, Ts &&...vals)
+-    -> FmtObject<decltype(std::make_tuple(
+-        llvm::detail::build_format_adapter(std::forward<Ts>(vals))...))> {
++    -> FmtObject<
++        decltype(std::make_tuple(llvm::support::detail::build_format_adapter(
++            std::forward<Ts>(vals))...))> {
+   using ParamTuple = decltype(std::make_tuple(
+-      llvm::detail::build_format_adapter(std::forward<Ts>(vals))...));
++      llvm::support::detail::build_format_adapter(std::forward<Ts>(vals))...));
+   return FmtObject<ParamTuple>(
+       fmt, ctx,
+-      std::make_tuple(
+-          llvm::detail::build_format_adapter(std::forward<Ts>(vals))...));
++      std::make_tuple(llvm::support::detail::build_format_adapter(
++          std::forward<Ts>(vals))...));
+ }
+ 
+ inline FmtStrVecObject tgfmt(StringRef fmt, const FmtContext *ctx,
+diff --git a/mlir/lib/TableGen/Format.cpp b/mlir/lib/TableGen/Format.cpp
+index 03f888b139f8..65f4ad56dd15 100644
+--- a/mlir/lib/TableGen/Format.cpp
++++ b/mlir/lib/TableGen/Format.cpp
+@@ -203,7 +203,8 @@ FmtStrVecObject::FmtStrVecObject(StringRef fmt, const FmtContext *ctx,
+     : FmtObjectBase(fmt, ctx, params.size()) {
+   parameters.reserve(params.size());
+   for (std::string p : params)
+-    parameters.push_back(llvm::detail::build_format_adapter(std::move(p)));
++    parameters.push_back(
++        llvm::support::detail::build_format_adapter(std::move(p)));
+ 
+   adapters.reserve(parameters.size());
+   for (auto &p : parameters)

@@ -1,3 +1,5 @@
+# buildifier: disable=load-on-top
+
 workspace(name = "org_tensorflow")
 
 # We must initialize hermetic python first.
@@ -23,7 +25,7 @@ load("@rules_python//python:repositories.bzl", "py_repositories")
 
 py_repositories()
 
-load("@rules_python//python:repositories.bzl", "python_register_toolchains")
+load("@rules_python//python:repositories.bzl", "python_register_toolchains")  # buildifier: disable=same-origin-load
 load(
     "//tensorflow/tools/toolchains/python:python_repo.bzl",
     "python_repository",

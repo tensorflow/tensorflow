@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -280,10 +281,14 @@ TEST(UtilsTest, IsUnusedAttributeOk) {
 TEST(UtilsTest, FillAttrValueMapOk) {
   tfrt::OpAttrs attrs;
   attrs.SetArray("shape", tfrt::ArrayRef<int64_t>{2, 2});
-  attrs.SetArray("values", tfrt::ArrayRef<int64_t>{2});
+  attrs.SetArray("values", tfrt::ArrayRef<float>{2});
+  attrs.SetArray("flags", tfrt::ArrayRef<bool>{false, true});
+
   attrs.Set<bool>("transpose_a", false);
   attrs.Set<bool>("transpose_b", true);
-  attrs.Set<int64_t>("result_segment_sizes", 1);
+  attrs.Set<int64_t>("result_segment_sizes", 2);  // unused
+  attrs.Set<float>("foo", 2);
+  attrs.Set<int64_t>("bar", 2);
 
   AttrValueMap map;
   auto host_context = CreateTestHostContext();
@@ -292,12 +297,16 @@ TEST(UtilsTest, FillAttrValueMapOk) {
   ASSERT_FALSE(llvm::errorToBool(
       FillAttrValueMap(attrs.freeze(), host_context.get(), &map)));
 
-  EXPECT_THAT(map,
-              UnorderedElementsAre(
-                  Pair(Eq("shape"), EqualsProto(R"pb(list { i: 2 i: 2 })pb")),
-                  Pair(Eq("values"), EqualsProto(R"pb(list { i: 2 })pb")),
-                  Pair(Eq("transpose_a"), EqualsProto(R"pb(b: false)pb")),
-                  Pair(Eq("transpose_b"), EqualsProto(R"pb(b: true)pb"))));
+  EXPECT_THAT(
+      map,
+      UnorderedElementsAre(
+          Pair(Eq("shape"), EqualsProto(R"pb(list { i: 2 i: 2 })pb")),
+          Pair(Eq("values"), EqualsProto(R"pb(list { f: 2 })pb")),
+          Pair(Eq("flags"), EqualsProto(R"pb(list { b: false b: true })pb")),
+          Pair(Eq("transpose_a"), EqualsProto(R"pb(b: false)pb")),
+          Pair(Eq("transpose_b"), EqualsProto(R"pb(b: true)pb")),
+          Pair(Eq("foo"), EqualsProto(R"pb(f: 2)pb")),
+          Pair(Eq("bar"), EqualsProto(R"pb(i: 2)pb"))));
 }
 
 }  // namespace

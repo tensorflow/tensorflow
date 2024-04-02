@@ -51,6 +51,7 @@ absl::Duration RandomDuration() {
   return absl::Microseconds(distribution(rng));
 }
 
+<<<<<<< HEAD
 bool ShouldLaunchDelayKernel() {
 #if GOOGLE_CUDA
   // Only launch the delay kernel if CUDA_LAUNCH_BLOCKING is not set to 1.
@@ -64,12 +65,12 @@ bool ShouldLaunchDelayKernel() {
 #endif
 }
 
+=======
+>>>>>>> upstream/master
 }  // namespace
 
 /*deprecated*/ /*static*/ absl::StatusOr<GpuTimer> GpuTimer::Create(
     GpuStream* stream) {
-  // This deprecated factory does not launch the delay kernel and may lead to
-  // reduced measurement accuracy.
   GpuExecutor* parent = stream->parent();
   GpuContext* context = parent->gpu_context();
   GpuEventHandle start_event;
@@ -87,8 +88,6 @@ bool ShouldLaunchDelayKernel() {
 
 /*deprecated*/ /*static*/ absl::StatusOr<std::optional<GpuTimer>>
 GpuTimer::CreateIfNeeded(GpuStream* stream, bool is_needed) {
-  // This deprecated factory does not launch the delay kernel and may lead to
-  // reduced measurement accuracy.
   if (is_needed) {
     TF_ASSIGN_OR_RETURN(GpuTimer t, GpuTimer::Create(stream));
     return {std::make_optional(std::move(t))};
@@ -96,15 +95,13 @@ GpuTimer::CreateIfNeeded(GpuStream* stream, bool is_needed) {
   return std::nullopt;
 }
 
-/*static*/ absl::StatusOr<GpuTimer::GpuSemaphore>
-GpuTimer::GpuSemaphore::Create(StreamExecutor* executor) {
-  // Allocate the value in pinned host memory that can be read from both
-  // host and device.
-  TF_ASSIGN_OR_RETURN(auto alloc,
-                      executor->HostMemoryAllocate(sizeof(GpuSemaphoreState)));
-  return GpuSemaphore{std::move(alloc)};
+[[deprecated("So it can quietly call a deprecated method")]] /*static*/ absl::
+    StatusOr<GpuTimer>
+    GpuTimer::Create(Stream* stream) {
+  return GpuTimer::Create(AsGpuStream(stream));
 }
 
+<<<<<<< HEAD
 DeviceMemory<GpuSemaphoreState> GpuTimer::GpuSemaphore::device() {
   // This assumes unified addressing, as we do not explicitly translate the
   // host pointer into a device pointer.
@@ -172,6 +169,12 @@ DeviceMemory<GpuSemaphoreState> GpuTimer::GpuSemaphore::device() {
     return {std::make_optional(std::move(t))};
   }
   return std::nullopt;
+=======
+[[deprecated("So it can quietly call a deprecated method")]] /*static*/ absl::
+    StatusOr<std::optional<GpuTimer>>
+    GpuTimer::CreateIfNeeded(Stream* stream, bool is_needed) {
+  return GpuTimer::CreateIfNeeded(AsGpuStream(stream), is_needed);
+>>>>>>> upstream/master
 }
 
 /*static*/ void GpuTimer::ReturnRandomDurationsForTesting() {
@@ -180,17 +183,6 @@ DeviceMemory<GpuSemaphoreState> GpuTimer::GpuSemaphore::device() {
 
 GpuTimer::~GpuTimer() {
   GpuContext* context = parent_->gpu_context();
-  if (semaphore_ && !is_stopped_) {
-    // Signal the delay kernel that it can exit
-    *semaphore_ = GpuSemaphoreState::Release;
-    // Wait for the delay kernel to exit before destroying the value that it is
-    // watching.
-    absl::Status status =
-        GpuDriver::SynchronizeStream(context, stream_->gpu_stream());
-    if (!status.ok()) {
-      LOG(ERROR) << status;
-    }
-  }
   if (start_event_ != nullptr) {
     absl::Status status = GpuDriver::DestroyEvent(context, &start_event_);
     if (!status.ok()) {
@@ -211,18 +203,6 @@ absl::StatusOr<absl::Duration> GpuTimer::GetElapsedDuration() {
   }
   TF_RETURN_IF_ERROR(GpuDriver::RecordEvent(parent_->gpu_context(), stop_event_,
                                             stream_->gpu_stream()));
-  // If we launched the delay kernel then check if it already timed out.
-  if (semaphore_) {
-    if (*semaphore_ == GpuSemaphoreState::TimedOut) {
-      // The delay kernel did not achieve the intended result.
-      LOG(ERROR) << "Delay kernel timed out: measured time has sub-optimal "
-                    "accuracy. There may be a missing warmup execution, please "
-                    "investigate in Nsight Systems.";
-    } else {
-      // Signal that the kernel can exit
-      *semaphore_ = GpuSemaphoreState::Release;
-    }
-  }
   float elapsed_milliseconds = NAN;
   if (!GpuDriver::GetEventElapsedTime(parent_->gpu_context(),
                                       &elapsed_milliseconds, start_event_,

@@ -47,6 +47,7 @@ namespace {
 
 constexpr int32_t kIndexShuffleRounds = 8;
 
+constexpr const char kDatasetType[] = "GlobalShuffle";
 constexpr const char kElementCount[] = "element_count";
 constexpr const char kGlobalShuffleDataset[] = "GlobalShuffleDataset";
 constexpr const char kReshuffleEachIteration[] = "reshuffle_each_iteration";
@@ -105,7 +106,7 @@ class GlobalShuffleDatasetOp::Dataset : public DatasetBase {
   }
 
   std::string DebugString() const override {
-    return name_utils::DatasetDebugString(kGlobalShuffleDataset);
+    return name_utils::DatasetDebugString(kDatasetType);
   }
 
   int64_t CardinalityInternal(CardinalityOptions options) const override {
@@ -340,8 +341,7 @@ std::unique_ptr<IteratorBase>
 GlobalShuffleDatasetOp::Dataset::MakeIteratorInternal(
     const std::string& prefix) const {
   return std::make_unique<GlobalShuffleDatasetOp::Dataset::Iterator>(
-      Iterator::Params{
-          this, name_utils::IteratorPrefix(kGlobalShuffleDataset, prefix)},
+      Iterator::Params{this, name_utils::IteratorPrefix(kDatasetType, prefix)},
       seed_generator_->get());
 }
 

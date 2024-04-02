@@ -39,21 +39,20 @@ TfLiteStatus DummyPrepare(TfLiteOpaqueContext* context,
   return kTfLiteOk;
 }
 
-TfLiteRegistrationExternal* GetDummyRegistration() {
-  static TfLiteRegistrationExternal* registration = []() {
-    auto* r =
-        TfLiteRegistrationExternalCreate(kTfLiteBuiltinCustom, "dummy", 1);
-    TfLiteRegistrationExternalSetPrepare(r, DummyPrepare);
-    TfLiteRegistrationExternalSetInvoke(r, DummyInvoke);
+TfLiteOperator* GetDummyRegistration() {
+  static TfLiteOperator* registration = []() {
+    auto* r = TfLiteOperatorCreate(kTfLiteBuiltinCustom, "dummy", 1);
+    TfLiteOperatorSetPrepare(r, DummyPrepare);
+    TfLiteOperatorSetInvoke(r, DummyInvoke);
     return r;
   }();
   return registration;
 }
 
-TfLiteRegistrationExternal* GetAdditionOpRegistration() {
-  static TfLiteRegistrationExternal* registration = []() {
-    auto* r = TfLiteRegistrationExternalCreate(kTfLiteBuiltinAdd, nullptr, 1);
-    TfLiteRegistrationExternalSetInvoke(r, DummyInvoke);
+TfLiteOperator* GetAdditionOpRegistration() {
+  static TfLiteOperator* registration = []() {
+    auto* r = TfLiteOperatorCreate(kTfLiteBuiltinAdd, nullptr, 1);
+    TfLiteOperatorSetInvoke(r, DummyInvoke);
     return r;
   }();
   return registration;
@@ -69,11 +68,10 @@ TEST_F(MutableOpResolverTest, FindOp) {
       resolver.FindOp(BuiltinOperator_ADD, 1);
   ASSERT_NE(found_registration, nullptr);
   EXPECT_TRUE(found_registration->registration_external->invoke == DummyInvoke);
-  EXPECT_EQ(TfLiteRegistrationExternalGetBuiltInCode(
-                found_registration->registration_external),
-            kTfLiteBuiltinAdd);
-  EXPECT_EQ(TfLiteRegistrationExternalGetVersion(
-                found_registration->registration_external),
+  EXPECT_EQ(
+      TfLiteOperatorGetBuiltInCode(found_registration->registration_external),
+      kTfLiteBuiltinAdd);
+  EXPECT_EQ(TfLiteOperatorGetVersion(found_registration->registration_external),
             1);
   EXPECT_EQ(found_registration->builtin_code, BuiltinOperator_ADD);
   EXPECT_EQ(found_registration->version, 1);

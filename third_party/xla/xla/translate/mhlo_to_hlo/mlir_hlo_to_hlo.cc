@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/translate/mhlo_to_hlo/mlir_hlo_to_hlo.h"
 
 #include <algorithm>
+#include <cassert>
 #include <cstddef>
 #include <iterator>
 #include <memory>
@@ -184,8 +185,8 @@ xla::Array<T> ArrayFromDenseElementsAttr(mlir::DenseElementsAttr dense_attr) {
   return array;
 }
 
-StatusOr<xla::Literal> CreateArrayLiteralFromAttr(mlir::ElementsAttr attr,
-                                                  xla::Layout layout) {
+absl::StatusOr<xla::Literal> CreateArrayLiteralFromAttr(mlir::ElementsAttr attr,
+                                                        xla::Layout layout) {
   auto dense_attr = attr.dyn_cast<mlir::DenseElementsAttr>();
   if (!dense_attr)
     return tsl::errors::Unimplemented("Only dense elements attr are supported");
@@ -193,7 +194,7 @@ StatusOr<xla::Literal> CreateArrayLiteralFromAttr(mlir::ElementsAttr attr,
   xla::Shape shape = xla::TypeToShape(dense_attr.getType());
 
   return xla::primitive_util::PrimitiveTypeSwitch<StatusOr<xla::Literal>>(
-      [&](auto primitive_type_constant) -> StatusOr<xla::Literal> {
+      [&](auto primitive_type_constant) -> absl::StatusOr<xla::Literal> {
         if constexpr (xla::primitive_util::IsArrayType(
                           primitive_type_constant)) {
           using cpp_type =
@@ -832,6 +833,25 @@ bool SimplyReturnedOp(mlir::Operation* op) {
   return false;
 }
 
+void BuildGetTupleElementsForTupleResults(mlir::Operation* op, xla::XlaOp tuple,
+                                          OpLoweringContext ctx) {
+  const std::optional<xla::OpSharding>& tuple_sharding =
+      ctx.builder->sharding();
+  if (tuple_sharding.has_value()) {
+    assert(op->getNumResults() == tuple_sharding->tuple_shardings_size());
+    for (auto [index, result] : llvm::enumerate(op->getResults())) {
+      xla::XlaScopedShardingAssignment scoped_sharding(
+          ctx.builder, tuple_sharding->tuple_shardings(index));
+      (*ctx.values)[result] = xla::GetTupleElement(tuple, index);
+    }
+  } else {
+    xla::XlaScopedShardingAssignment scoped_sharding(ctx.builder, std::nullopt);
+    for (auto [index, result] : llvm::enumerate(op->getResults())) {
+      (*ctx.values)[result] = xla::GetTupleElement(tuple, index);
+    }
+  }
+}
+
 }  // namespace
 
 namespace mlir {
@@ -995,9 +1015,7 @@ LogicalResult ExportXlaOp(AllGatherOp op, OpLoweringContext ctx) {
         Convert_replica_groups(op.getReplicaGroups()),
         Convert_channel_handle(op.getChannelHandle()), layout,
         Convert_use_global_device_ids(op.getUseGlobalDeviceIds()));
-    for (auto [index, result] : llvm::enumerate(op.getResults())) {
-      value_map[result] = xla::GetTupleElement(tuple, index);
-    }
+    BuildGetTupleElementsForTupleResults(op, tuple, ctx);
   } else {
     value_map[op->getResults()[0]] = xla::AllGather(
         operands[0], all_gather_dim, shard_count,
@@ -1030,9 +1048,7 @@ LogicalResult ExportXlaOp(AllReduceOp op, OpLoweringContext ctx) {
         operands, computation, Convert_replica_groups(op.getReplicaGroups()),
         Convert_channel_handle(op.getChannelHandle()), shape_with_layout,
         Convert_use_global_device_ids(op.getUseGlobalDeviceIds()));
-    for (auto [index, result] : llvm::enumerate(op.getResults())) {
-      value_map[result] = xla::GetTupleElement(tuple, index);
-    }
+    BuildGetTupleElementsForTupleResults(op, tuple, ctx);
   } else {
     value_map[op->getResults()[0]] = xla::AllReduce(
         operands[0], computation, Convert_replica_groups(op.getReplicaGroups()),
@@ -1061,9 +1077,7 @@ LogicalResult ExportXlaOp(AllToAllOp op, OpLoweringContext ctx) {
     auto tuple = xla::AllToAllTuple(
         operands, Convert_replica_groups(op.getReplicaGroups()), layout,
         Convert_channel_handle(op.getChannelHandle()));
-    for (auto [index, result] : llvm::enumerate(op.getResults())) {
-      value_map[result] = xla::GetTupleElement(tuple, index);
-    }
+    BuildGetTupleElementsForTupleResults(op, tuple, ctx);
   } else {
     // ArrayAllToAll always has exactly one operand (checked in the verifier).
     value_map[op->getResults()[0]] = xla::AllToAll(
@@ -1361,11 +1375,7 @@ LogicalResult ExportXlaOp(AsyncDoneOp op, OpLoweringContext ctx) {
     if (op.getNumResults() == 1) {
       value_map[op.getResult(0)] = xla_recv;
     } else {
-      xla::XlaScopedShardingAssignment scoped_sharding(ctx.builder,
-                                                       std::nullopt);
-      for (const auto& item : llvm::enumerate(op.getResults())) {
-        value_map[item.value()] = xla::GetTupleElement(xla_recv, item.index());
-      }
+      BuildGetTupleElementsForTupleResults(op, xla_recv, ctx);
     }
     return success();
   }
@@ -1384,9 +1394,7 @@ LogicalResult ExportXlaOp(AsyncDoneOp op, OpLoweringContext ctx) {
   if (op.getNumResults() == 1) {
     value_map[op.getResult(0)] = exportedOp;
   } else {
-    for (const auto& item : llvm::enumerate(op.getResults())) {
-      value_map[item.value()] = xla::GetTupleElement(exportedOp, item.index());
-    }
+    BuildGetTupleElementsForTupleResults(op, exportedOp, ctx);
   }
   return success();
 }
@@ -1600,9 +1608,7 @@ LogicalResult ExportXlaOp(IfOp op, OpLoweringContext ctx) {
   if (op.getNumResults() == 1) {
     value_map[op.getResult(0)] = ifop;
   } else {
-    for (const auto& item : llvm::enumerate(op.getResults())) {
-      value_map[item.value()] = xla::GetTupleElement(ifop, item.index());
-    }
+    BuildGetTupleElementsForTupleResults(op, ifop, ctx);
   }
 
   return success();
@@ -1657,9 +1663,7 @@ LogicalResult ExportXlaOp(CaseOp op, OpLoweringContext ctx) {
   if (op.getNumResults() == 1) {
     value_map[op.getResult(0)] = caseop;
   } else {
-    for (const auto& item : llvm::enumerate(op.getResults())) {
-      value_map[item.value()] = xla::GetTupleElement(caseop, item.index());
-    }
+    BuildGetTupleElementsForTupleResults(op, caseop, ctx);
   }
   return success();
 }
@@ -2013,9 +2017,7 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
                               reduction_dim, comparator, recall_target,
                               aggregate_to_topk, reduction_input_size_override);
     }
-    for (const auto& item : llvm::enumerate(op.getResults())) {
-      value_map[item.value()] = xla::GetTupleElement(cc_op, item.index());
-    }
+    BuildGetTupleElementsForTupleResults(op, cc_op, ctx);
     return success();
   }
 
@@ -2056,7 +2058,7 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
     }
   }
 
-  StatusOr<xla::Literal> literal;
+  absl::StatusOr<xla::Literal> literal;
   const xla::Literal* literal_ptr = nullptr;
   auto literal_attr = op->getAttrOfType<DenseElementsAttr>(kLiteralAttr);
   if (literal_attr) {
@@ -2115,9 +2117,7 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
   if (op->getNumResults() == 1) {
     value_map[op.getResult(0)] = custom_call;
   } else {
-    for (auto [index, result] : llvm::enumerate(op.getResults())) {
-      value_map[result] = xla::GetTupleElement(custom_call, index);
-    }
+    BuildGetTupleElementsForTupleResults(op, custom_call, ctx);
   }
 
   return success();
@@ -2312,9 +2312,7 @@ LogicalResult ExportXlaOp(ReduceOp op, OpLoweringContext ctx) {
   if (op.getNumResults() == 1) {
     value_map[op.getResult(0)] = result;
   } else {
-    for (const auto& item : llvm::enumerate(op.getResults())) {
-      value_map[item.value()] = xla::GetTupleElement(result, item.index());
-    }
+    BuildGetTupleElementsForTupleResults(op, result, ctx);
   }
   return success();
 }
@@ -2342,9 +2340,7 @@ LogicalResult ExportXlaOp(ReduceWindowOp op, OpLoweringContext ctx) {
   if (op.getNumResults() == 1) {
     value_map[op.getResult(0)] = result;
   } else {
-    for (const auto& item : llvm::enumerate(op.getResults())) {
-      value_map[item.value()] = xla::GetTupleElement(result, item.index());
-    }
+    BuildGetTupleElementsForTupleResults(op, result, ctx);
   }
   return success();
 }
@@ -2374,9 +2370,7 @@ LogicalResult ExportXlaOp(RngBitGeneratorOp op, OpLoweringContext ctx) {
       static_cast<xla::RandomAlgorithm>(op.getRngAlgorithm()),
       Unwrap(xla_arg_1), xla::TypeToShape(results[1].getType()));
 
-  for (const auto& item : llvm::enumerate(results))
-    value_map[item.value()] = xla::GetTupleElement(xla_result, item.index());
-
+  BuildGetTupleElementsForTupleResults(op, xla_result, ctx);
   return mlir::success();
 }
 
@@ -2391,7 +2385,6 @@ LogicalResult ExportXlaOp(XlaRngGetAndUpdateStateOp op, OpLoweringContext ctx) {
 
 LogicalResult ExportXlaOp(BatchNormGradOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
-  auto results = op.getResults();
 
   xla::XlaOp operand, scale, mean, variance, grad_output;
   if (failed(GetXlaOp(op.getOperand(), value_map, &operand, op)))
@@ -2407,15 +2400,13 @@ LogicalResult ExportXlaOp(BatchNormGradOp op, OpLoweringContext ctx) {
       xla::BatchNormGrad(operand, scale, mean, variance, grad_output,
                          ConvertAPFloat(op.getEpsilon()), op.getFeatureIndex());
 
-  for (const auto& item : llvm::enumerate(results))
-    value_map[item.value()] = xla::GetTupleElement(xla_result, item.index());
+  BuildGetTupleElementsForTupleResults(op, xla_result, ctx);
 
   return mlir::success();
 }
 
 LogicalResult ExportXlaOp(BatchNormTrainingOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
-  auto results = op.getResults();
 
   xla::XlaOp operand, scale, offset;
   if (failed(GetXlaOp(op.getOperand(), value_map, &operand, op)))
@@ -2428,8 +2419,7 @@ LogicalResult ExportXlaOp(BatchNormTrainingOp op, OpLoweringContext ctx) {
                                            ConvertAPFloat(op.getEpsilon()),
                                            op.getFeatureIndex());
 
-  for (const auto& item : llvm::enumerate(results))
-    value_map[item.value()] = xla::GetTupleElement(xla_result, item.index());
+  BuildGetTupleElementsForTupleResults(op, xla_result, ctx);
 
   return mlir::success();
 }
@@ -2478,9 +2468,7 @@ LogicalResult ExportXlaOp(ScatterOp op, OpLoweringContext ctx) {
   }
 
   // mhlo.ScatterOp supports multiple returns, untuple all the results of XLA's.
-  for (const auto& it : llvm::enumerate(op.getResults())) {
-    value_map[it.value()] = xla::GetTupleElement(scatter_op, it.index());
-  }
+  BuildGetTupleElementsForTupleResults(op, scatter_op, ctx);
 
   return success();
 }
@@ -2607,9 +2595,7 @@ LogicalResult ExportXlaOp(SortOp op, OpLoweringContext ctx) {
   }
 
   // MLIR's sort supports multiple returns, untuple all the results of XLA's.
-  for (const auto& it : llvm::enumerate(op.getResults())) {
-    value_map[it.value()] = xla::GetTupleElement(sorted, it.index());
-  }
+  BuildGetTupleElementsForTupleResults(op, sorted, ctx);
   return success();
 }
 
@@ -2672,9 +2658,7 @@ LogicalResult ExportXlaOp(WhileOp op, OpLoweringContext ctx) {
   }
 
   // mhlo.WhileOp supports multiple returns, untuple all the results of XLA's.
-  for (const auto& it : llvm::enumerate(op.getResults())) {
-    value_map[it.value()] = xla::GetTupleElement(whileop, it.index());
-  }
+  BuildGetTupleElementsForTupleResults(op, whileop, ctx);
 
   return success();
 }
@@ -2693,10 +2677,7 @@ LogicalResult ExportXlaOp(OptimizationBarrierOp op, OpLoweringContext ctx) {
         xla::OptimizationBarrier(operands[0]);
   } else {
     auto result = xla::OptimizationBarrier(Tuple(ctx.builder, operands));
-
-    for (const auto& it : llvm::enumerate(op.getResults())) {
-      value_map[it.value()] = xla::GetTupleElement(result, it.index());
-    }
+    BuildGetTupleElementsForTupleResults(op, result, ctx);
   }
 
   return success();
@@ -2729,9 +2710,7 @@ LogicalResult ExportXlaOp(FusionOp op, OpLoweringContext ctx) {
   if (op.getNumResults() == 1) {
     values[op.getResult(0)] = fusion;
   } else {
-    for (const auto& item : llvm::enumerate(op.getResults())) {
-      values[item.value()] = xla::GetTupleElement(fusion, item.index());
-    }
+    BuildGetTupleElementsForTupleResults(op, fusion, ctx);
   }
   return success();
 }
@@ -2790,9 +2769,7 @@ LogicalResult ExportXlaOp(TopKOp op, OpLoweringContext ctx) {
   auto topk = xla::TopK(operand, op.getK(), op.getLargest());
 
   // Untuple the two results of XLA's topk.
-  for (const auto& [index, value] : llvm::enumerate(op.getResults())) {
-    value_map[value] = xla::GetTupleElement(topk, index);
-  }
+  BuildGetTupleElementsForTupleResults(op, topk, ctx);
   return success();
 }
 
@@ -3164,7 +3141,7 @@ LogicalResult ConvertToHloModule::Lower(
         if (!is_entry_function || !has_ret_shardings) continue;
 
         xla::Shape return_shape = xla::TypeToShape(ret.get().getType());
-        StatusOr<xla::XlaOp> reshape =
+        absl::StatusOr<xla::XlaOp> reshape =
             ReshapeWithCorrectRepresentationAndSharding(
                 builder, returns[index], return_shape,
                 options_.layout_preference_fn, options_.shape_representation_fn,

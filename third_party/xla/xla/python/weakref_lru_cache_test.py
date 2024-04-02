@@ -126,8 +126,8 @@ class WeakrefLRUCacheTest(absltest.TestCase):
 
     cache = xla_client.weakref_lru_cache(lambda: None, lambda x, y: y, 2048)
     wrkey = WRKey()
-    for _ in range(3):
-      with self.assertRaises(ValueError):
+    with self.assertRaises(ValueError):
+      for _ in range(100):
         cache(wrkey, CrashingKey())
 
 

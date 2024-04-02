@@ -70,17 +70,22 @@ Status ValidateInputs(const Tensor& indices_or_row_splits, const Tensor& values,
           "Weights input should have dimension 0 or 1. But got dimension ",
           weights.dims(), "."));
   }
-  if (indices_or_row_splits.NumElements() == 0) {
-    // Dense tensor.
-    if (values.NumElements() != sample_count) {
+  // The indices_or_row_splits input for dense tensor is strictly 0 element
+  // with dimension 1.
+  if (indices_or_row_splits.NumElements() == 0 &&
+      indices_or_row_splits.dims() == 1) {
+    // Dense tensor with 0 element is also valid.
+    if (values.NumElements() != 0 && values.NumElements() != sample_count) {
       return absl::InvalidArgumentError(absl::StrCat(
           "Dense tensor input should have values elements number the same as "
           "the sample count. But got ",
           values.NumElements(), " elements for values and sample count as ",
           sample_count, "."));
     }
+    // 0 element indices with dimension as 2 is also valid for empty sparse
+    // tensor.
   } else if (indices_or_row_splits.dims() == 2 &&
-             indices_or_row_splits.NumElements() > 0) {
+             indices_or_row_splits.NumElements() >= 0) {
     // TODO(pineapplejuice233): Add checking logic for sparse tensor input.
   } else if (indices_or_row_splits.dims() == 1 &&
              indices_or_row_splits.NumElements() > 0) {

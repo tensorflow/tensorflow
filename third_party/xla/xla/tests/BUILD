@@ -1,12 +1,6 @@
 # Description:
 #   Base testing infrastructure for XLA.
 
-load("//xla/tests:build_defs.bzl", "generate_backend_suites", "generate_backend_test_macros", "xla_test", "xla_test_library")
-load("//xla:xla.bzl", "xla_cc_binary", "xla_cc_test")
-load(
-    "//xla/stream_executor:build_defs.bzl",
-    "if_gpu_is_configured",
-)
 load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm_is_configured",
@@ -22,6 +16,12 @@ load(
     "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
+load("//xla:xla.bzl", "xla_cc_binary", "xla_cc_test")
+load(
+    "//xla/stream_executor:build_defs.bzl",
+    "if_gpu_is_configured",
+)
+load("//xla/tests:build_defs.bzl", "generate_backend_suites", "generate_backend_test_macros", "xla_test", "xla_test_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -1741,6 +1741,7 @@ xla_test(
         ":test_macros_header",
         ":test_utils",
         ":xla_internal_test_main",  # fixdeps: keep
+        "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
@@ -1752,6 +1753,8 @@ xla_test(
         "//xla/service:custom_call_target_registry",
         "@com_google_absl//absl/base:dynamic_annotations",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
     ],
 )
@@ -2176,29 +2179,6 @@ xla_test(
         "//xla:shape_util",
         "//xla:test",
         "//xla:test_helpers",
-    ],
-)
-
-xla_test(
-    name = "compilation_cache_test",
-    srcs = ["compilation_cache_test.cc"],
-    deps = [
-        ":client_library_test_base",
-        ":literal_test_util",
-        ":test_macros_header",
-        ":test_utils",
-        ":xla_internal_test_main",
-        "//xla:literal",
-        "//xla:shape_util",
-        "//xla:statusor",
-        "//xla:xla_data_proto_cc",
-        "//xla:xla_proto_cc",
-        "//xla/client:global_data",
-        "//xla/client:local_client",
-        "//xla/client:xla_builder",
-        "//xla/client:xla_computation",
-        "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:test",
     ],
 )
 
@@ -2871,6 +2851,7 @@ xla_test(
         "//xla:shape_util",
         "//xla:test",
         "//xla:test_helpers",
+        "//xla/hlo/utils:hlo_matchers",
         "//xla/service/cpu:onednn_util",
         "@local_tsl//tsl/platform:platform_port",
     ],
@@ -2901,6 +2882,7 @@ xla_test(
         "cpu",
     ],
     copts = tsl_copts(),
+    shard_count = 4,
     deps = [
         ":hlo_test_base",
         ":test_macros_header",
@@ -2909,6 +2891,8 @@ xla_test(
         "//xla:shape_util",
         "//xla:test",
         "//xla:test_helpers",
+        "//xla/service/cpu:onednn_util",
+        "@local_tsl//tsl/platform:platform_port",
     ],
 )
 

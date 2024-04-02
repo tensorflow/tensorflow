@@ -16,99 +16,48 @@ limitations under the License.
 #ifndef XLA_PYTHON_PY_CLIENT_H_
 #define XLA_PYTHON_PY_CLIENT_H_
 
+#include <Python.h>
+
 #include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/types/span.h"
+#include "llvm/Support/Casting.h"
 #include "third_party/nanobind/include/nanobind/nanobind.h"
-#include "pybind11/pybind11.h"  // from @pybind11
 #include "xla/client/xla_builder.h"
 #include "xla/pjrt/exceptions.h"
 #include "xla/pjrt/pjrt_client.h"
-#include "xla/pjrt/pjrt_common.h"
+#include "xla/pjrt/pjrt_executable.h"
 #include "xla/python/ifrt/client.h"
+#include "xla/python/ifrt/device.h"
+#include "xla/python/nb_class_ptr.h"
 #include "xla/python/pjrt_ifrt/pjrt_client.h"
-#include "xla/statusor.h"
-#include "xla/types.h"
+#include "xla/shape.h"
 
 namespace xla {
 
 class PyClient;
 class PyLoadedExecutable;
 class PyArray;
+class PyDevice;
+class PyMemorySpace;
 struct PyArray_Storage;
-
-// Custom holder types.
-//
-// We must keep the PyClient object alive as long as any of the runtime
-// objects are alive. Since we don't have a lot of control over Python
-// destructor ordering, we keep the PyClient object as a std::shared_ptr<>,
-// and ensure that each Python runtime object holds a reference to the
-// PyClient. An alternative design would be to keep a single global
-// singleton PyClient, although this seems less flexible, especially for
-// writing tests.
-//
-// To maintain PyClient references, we define pybind11 holder classes that
-// are custom smart pointers that also keep a reference to a PyClient.
-// pybind11 has a `keep_alive` feature that has a similar goal, but it doesn't
-// seem sufficiently flexible to describe ownership relationships in cases where
-// the ownership doesn't pertain to a direct argument or return value of a
-// function. Another alternative to the holder classes would be to create proxy
-// objects that contain both a reference and a runtime class; holder classes
-// seem less tedious to define.
-
-// A pair of a PyClient reference and an unowned pointer to T.
-template <typename T>
-class ClientAndPtr {
- public:
-  ClientAndPtr() = default;
-  // pybind11 requires that we define a constructor that takes a raw pointer,
-  // but it should be unreachable.
-  explicit ClientAndPtr(T*) {
-    LOG(FATAL) << "ClientAndPtr should constructed via WrapWithClient.";
-  }
-
-  ClientAndPtr(const ClientAndPtr&) = default;
-  ClientAndPtr(ClientAndPtr&&) = default;
-  ClientAndPtr& operator=(const ClientAndPtr&) = default;
-  ClientAndPtr& operator=(ClientAndPtr&&) = default;
-
-  PyClient* get_client() const { return client_; }
-
-  std::shared_ptr<PyClient> client() const {
-    return std::shared_ptr<PyClient>(contents_, client_);
-  }
-
-  T* get() const { return contents_.get(); }
-  T* operator->() const { return contents_.get(); }
-  T& operator*() const { return *contents_; }
-
- private:
-  template <typename U>
-  friend ClientAndPtr<U> WrapWithClient(std::shared_ptr<PyClient> client,
-                                        U* contents);
-  std::shared_ptr<T> contents_;
-  PyClient* client_;
-};
-
-// By defining a templated helper function, we can use return type deduction
-// and avoid specifying types at the caller.
-template <typename T>
-ClientAndPtr<T> WrapWithClient(std::shared_ptr<PyClient> client, T* contents) {
-  ClientAndPtr<T> result;
-  result.client_ = client.get();
-  result.contents_ = std::shared_ptr<T>(std::move(client), contents);
-  return result;
-}
 
 // Python wrapper around PjRtClient.
 // We use a wrapper class to add Python-specific functionality.
-class PyClient : public std::enable_shared_from_this<PyClient> {
+class PyClient {
  public:
+  static nb_class_ptr<PyClient> Make(std::shared_ptr<ifrt::Client> ifrt_client);
+
+  // Do not call the constructor directly. Use `PyClient::Make` instead.
   explicit PyClient(std::shared_ptr<ifrt::Client> ifrt_client);
   virtual ~PyClient();
 
@@ -140,7 +89,7 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
     return shared_ptr_pjrt_client();
   }
 
-  absl::string_view platform_name() const {
+  std::string_view platform_name() const {
     // TODO(phawkins): this is a temporary backwards compatibility shim. We
     // changed the name PJRT reports for GPU platforms to "cuda" or "rocm", but
     // we haven't yet updated JAX clients that expect "gpu". Migrate users and
@@ -152,12 +101,10 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
       return ifrt_client_->platform_name();
     }
   }
-  absl::string_view platform_version() const {
+  std::string_view platform_version() const {
     return ifrt_client_->platform_version();
   }
-  absl::string_view runtime_type() const {
-    return ifrt_client_->runtime_type();
-  }
+  std::string_view runtime_type() const { return ifrt_client_->runtime_type(); }
 
   // Returns implementation-specific attributes about this client, e.g. the PJRT
   // C API version if applicable.
@@ -172,43 +119,48 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
   int device_count() const { return ifrt_client_->device_count(); }
   int process_index() const { return ifrt_client_->process_index(); }
 
-  std::vector<ClientAndPtr<PjRtDevice>> Devices();
-  std::vector<ClientAndPtr<PjRtDevice>> LocalDevices();
-  StatusOr<ClientAndPtr<PjRtDevice>> DeviceFromLocalHardwareId(
+  std::vector<nb_class_ptr<PyDevice>> Devices();
+  std::vector<nb_class_ptr<PyDevice>> LocalDevices();
+  absl::StatusOr<nb_class_ptr<PyDevice>> DeviceFromLocalHardwareId(
       int local_hardware_id);
+
+  // Returns the PyDevice associated with the given PjRtDevice.
+  nb_class_ptr<PyDevice> GetPyDevice(PjRtDevice* device);
+
+  // Returns the PyMemorySpace associated with the given PjRtMemorySpace.
+  nb_class_ptr<PyMemorySpace> GetPyMemorySpace(PjRtMemorySpace* memory_space);
 
   // Returns a vector of live PyArray objects. PyArray objects may share
   // PjRtBuffers, so there may be duplicates of the same underlying device
   // buffer.
-  std::vector<pybind11::object> LiveBuffersOnDevice(PjRtDevice* device);
+  std::vector<nanobind::object> LiveBuffersOnDevice(PjRtDevice* device);
 
-  // Returns a vector of live PyLoadedExecutable objects.
-  // note: must return std::shared_ptr instead of raw ptrs
-  // https://pybind11.readthedocs.io/en/stable/advanced/smart_ptrs.html#std-shared-ptr
-  std::vector<std::shared_ptr<PyLoadedExecutable>> LiveExecutables();
+  nanobind::list LiveExecutables();
 
   // TODO(zhangqiaorjc): Remove when we have transparent defragmentation.
-  Status Defragment();
+  absl::Status Defragment();
 
-  StatusOr<std::vector<std::pair<pybind11::bytes, pybind11::object>>>
-  MakeCrossHostReceiveBuffers(absl::Span<const Shape> shapes,
-                              PjRtDevice* device);
+  static absl::StatusOr<nanobind::list> MakeCrossHostReceiveBuffers(
+      nb_class_ptr<PyClient> client, absl::Span<const Shape> shapes,
+      PjRtDevice* device);
 
-  StatusOr<pybind11::object> BufferFromPyval(
-      pybind11::handle argument, PjRtDevice* device, bool force_copy,
+  static absl::StatusOr<nanobind::object> BufferFromPyval(
+      nb_class_ptr<PyClient> client, nanobind::handle argument,
+      PjRtDevice* device, bool force_copy,
       ifrt::Client::HostBufferSemantics host_buffer_semantics);
 
-  StatusOr<std::shared_ptr<PyLoadedExecutable>> Compile(
-      std::string mlir_module, CompileOptions options,
-      std::vector<pybind11::capsule> host_callbacks);
+  static absl::StatusOr<nb_class_ptr<PyLoadedExecutable>> Compile(
+      nb_class_ptr<PyClient> client, std::string mlir_module,
+      CompileOptions options, std::vector<nanobind::capsule> host_callbacks);
 
-  StatusOr<pybind11::bytes> SerializeExecutable(
+  absl::StatusOr<nanobind::bytes> SerializeExecutable(
       const PyLoadedExecutable& executable) const;
-  StatusOr<std::shared_ptr<PyLoadedExecutable>> DeserializeExecutable(
-      const std::string& serialized, std::optional<CompileOptions> options,
-      std::vector<pybind11::capsule> host_callbacks);
+  static absl::StatusOr<nb_class_ptr<PyLoadedExecutable>> DeserializeExecutable(
+      nb_class_ptr<PyClient> client, nanobind::bytes serialized,
+      std::optional<CompileOptions> options,
+      std::vector<nanobind::capsule> host_callbacks);
 
-  StatusOr<pybind11::bytes> HeapProfile();
+  absl::StatusOr<nanobind::bytes> HeapProfile();
 
   // `GetEmitPythonCallbackDescriptor` takes in an input Python callable that
   // takes in arguments of shapes `operand_shapes` and returns values of shapes
@@ -224,19 +176,19 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
   // either arrays or None values.
   // TODO(phawkins): pass operand_shapes and result_shapes as
   // absl::Span<Shape const> when nanobind transition is complete.
-  StatusOr<std::pair<uint64_t, pybind11::object>>
-  GetEmitPythonCallbackDescriptor(pybind11::function callable,
-                                  pybind11::object operand_shapes,
-                                  pybind11::object result_shapes);
+  absl::StatusOr<std::pair<uint64_t, nanobind::object>>
+  GetEmitPythonCallbackDescriptor(nanobind::callable callable,
+                                  nanobind::object operand_shapes,
+                                  nanobind::object result_shapes);
   // Deprecated; please switch to emitting a `CustomCallOp` directly.
-  StatusOr<XlaOp> EmitPythonCallbackFromDescriptor(
+  absl::StatusOr<XlaOp> EmitPythonCallbackFromDescriptor(
       XlaBuilder& builder, uint64_t descriptor,
       absl::Span<XlaOp const> operands, absl::Span<Shape const> result_shapes,
       std::optional<std::vector<Shape>> operand_layouts, bool has_side_effect);
   // Deprecated; please switch to using `GetEmitPythonCallbackDescriptor`
   // and then emitting a `CustomCall` op instead.
-  StatusOr<std::pair<XlaOp, pybind11::object>> EmitPythonCallback(
-      pybind11::function callable, XlaBuilder& builder,
+  absl::StatusOr<std::pair<XlaOp, nanobind::object>> EmitPythonCallback(
+      nanobind::callable callable, XlaBuilder& builder,
       absl::Span<XlaOp const> operands, absl::Span<Shape const> result_shapes,
       std::optional<std::vector<Shape>> operand_layouts, bool has_side_effect);
 
@@ -255,19 +207,28 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
   // The callable receives as arguments NumPy arrays for arguments with array
   // types, and None for Token argument. The callable must return a tuple of
   // either arrays or None values.
-  StatusOr<pybind11::object> MakePythonCallbackUsingHostSendAndRecv(
-      pybind11::function callable, absl::Span<Shape const> operand_shapes,
+  absl::StatusOr<nanobind::object> MakePythonCallbackUsingHostSendAndRecv(
+      nanobind::callable callable, absl::Span<Shape const> operand_shapes,
       absl::Span<Shape const> result_shapes,
       absl::Span<uint16_t const> send_channel_ids,
       absl::Span<uint16_t const> recv_channel_ids,
-      pybind11::function serializer);
+      nanobind::callable serializer);
 
   std::vector<nanobind::object> LiveArrays() const;
+
+  static void RegisterPythonTypes(nanobind::module_& m);
+
+ protected:
+  static void Initialize(nb_class_ptr<PyClient> client);
 
  private:
   friend class PyLoadedExecutable;
   friend class PyArray;
   friend struct PyArray_Storage;
+
+  static int tp_traverse(PyObject* self, visitproc visit, void* arg);
+  static int tp_clear(PyObject* self);
+  static PyType_Slot slots_[];
 
   std::shared_ptr<ifrt::Client> ifrt_client_;
   absl::flat_hash_map<std::string, xla::ifrt::Client::ClientAttribute>
@@ -278,10 +239,12 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
 
   PyLoadedExecutable* executables_ = nullptr;
   PyArray_Storage* arrays_ = nullptr;
+
+  absl::flat_hash_map<ifrt::Device*, nb_class_ptr<PyDevice>> devices_;
+  absl::flat_hash_map<PjRtMemorySpace*, nb_class_ptr<PyMemorySpace>>
+      memory_spaces_;
 };
 
 }  // namespace xla
-
-PYBIND11_DECLARE_HOLDER_TYPE(T, xla::ClientAndPtr<T>);
 
 #endif  // XLA_PYTHON_PY_CLIENT_H_

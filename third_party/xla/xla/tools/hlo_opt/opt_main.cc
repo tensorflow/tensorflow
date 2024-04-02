@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/tools/hlo_module_loader.h"
 #include "xla/tools/hlo_opt/opt_lib.h"
 #include "xla/tools/run_hlo_module.h"
+#include "xla/tsl/util/command_line_flags.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/init_main.h"
@@ -48,7 +49,6 @@ limitations under the License.
 #include "tsl/platform/path.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
-#include "tsl/util/command_line_flags.h"
 
 namespace {
 const char* const kUsage = R"(
@@ -209,7 +209,8 @@ int main(int argc, char** argv) {
                 "\t\t\t * llvm : LLVM IR\n"
                 "\t\t\t * ptx : PTX dump\n"
                 "\t\t\t * buffer-assignment: Buffer Assignment\n"
-                "\t\t\t * hlo-backend: HLO after backend passes\n"),
+                "\t\t\t * hlo-backend: HLO after backend passes\n"
+                "\t\t\t * html: HTML dump\n"),
       tsl::Flag("list-stages", &opts.list_stages,
                 "Print all supported stages for a given platform and exit"),
       tsl::Flag("split-input-file", &opts.split_input_file,

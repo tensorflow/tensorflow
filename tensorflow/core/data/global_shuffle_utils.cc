@@ -60,7 +60,8 @@ absl::Status GlobalShuffleIterator::GetNext(IteratorContext* ctx,
 
   absl::MutexLock l(&mu_);
   int64_t output_index = ctx->index_mapper()(element_count_++);
-  absl::Status status = dataset_->Get(output_index, out_tensors);
+  absl::Status status =
+      dataset_->Get(AnyContext(ctx), output_index, out_tensors);
   if (absl::IsOutOfRange(status)) {
     *end_of_sequence = true;
     return absl::OkStatus();

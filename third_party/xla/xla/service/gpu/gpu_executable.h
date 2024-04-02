@@ -40,7 +40,7 @@ limitations under the License.
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/runtime/annotation.h"
-#include "xla/service/gpu/thunk.h"
+#include "xla/service/gpu/runtime/thunk.h"
 #include "xla/service/hlo_execution_profile.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/service_executable_run_options.h"
@@ -88,6 +88,7 @@ class GpuExecutable : public Executable {
   struct Params {
     std::string asm_text;
     std::vector<uint8_t> binary;
+    Thunk::BinaryMap dnn_compiled_graphs;
     se::GpuComputeCapability gpu_version;
     OwnedThunkSequence executable;
     std::vector<ConstantInfo> constants;
@@ -137,6 +138,10 @@ class GpuExecutable : public Executable {
   // binary() are empty, that means the HLO required no custom kernels to be
   // compiled.
   const std::vector<uint8_t>& binary() const { return binary_; }
+
+  const Thunk::BinaryMap& dnn_compiled_graphs() const {
+    return dnn_compiled_graphs_;
+  }
 
   // ExecuteAsyncOnStream will fail if the compute capability of the stream
   // doesn't match the compute capability passed to this object's constructor.
@@ -240,6 +245,8 @@ class GpuExecutable : public Executable {
   //
   // May be empty, in which case we leave compilation up to the GPU driver.
   std::vector<uint8_t> binary_;
+
+  Thunk::BinaryMap dnn_compiled_graphs_;
 
   // The GPU version for compute compatibility check.
   se::GpuComputeCapability gpu_version_;

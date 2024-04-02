@@ -81,6 +81,15 @@ struct HloUse {
   // The shape index within the operand in which the value appears.
   ShapeIndex operand_index;
 
+  HloUse() = default;
+  HloUse(HloInstruction* instruction, int64_t operand_number)
+      : instruction(instruction), operand_number(operand_number) {}
+  HloUse(HloInstruction* instruction, int64_t operand_number,
+         ShapeIndex operand_index)
+      : instruction(instruction),
+        operand_number(operand_number),
+        operand_index(std::move(operand_index)) {}
+
   std::string ToString() const;
 
   bool operator==(const HloUse& other) const {

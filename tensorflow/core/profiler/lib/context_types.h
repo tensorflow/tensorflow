@@ -15,14 +15,31 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_LIB_CONTEXT_TYPES_H_
 #define TENSORFLOW_CORE_PROFILER_LIB_CONTEXT_TYPES_H_
 
+#include <cstdint>
+
+#include "absl/base/macros.h"
 #include "tsl/profiler/lib/context_types.h"
+
+// TODO: b/323943471 - This macro should eventually be provided by Abseil.
+#ifndef ABSL_DEPRECATE_AND_INLINE
+#define ABSL_DEPRECATE_AND_INLINE()
+#endif
 
 namespace tensorflow {
 namespace profiler {
 
-using tsl::profiler::ContextType;           // NOLINT
-using tsl::profiler::GetContextTypeString;  // NOLINT
-using tsl::profiler::GetSafeContextType;    // NOLINT
+using ContextType ABSL_DEPRECATE_AND_INLINE() =
+    tsl::profiler::ContextType;  // NOLINT
+
+ABSL_DEPRECATE_AND_INLINE()
+inline const char* GetContextTypeString(ContextType context_type) {
+  return tsl::profiler::GetContextTypeString(context_type);
+}
+
+ABSL_DEPRECATE_AND_INLINE()
+inline ContextType GetSafeContextType(uint32_t context_type) {
+  return tsl::profiler::GetSafeContextType(context_type);
+}
 
 }  // namespace profiler
 }  // namespace tensorflow

@@ -188,7 +188,7 @@ void TransposeOp::Compute(OpKernelContext* ctx) {
 }
 
 Status TransposeCpuOp::DoTranspose(OpKernelContext* ctx, const Tensor& in,
-                                   gtl::ArraySlice<int32> perm, Tensor* out) {
+                                   absl::Span<const int32> perm, Tensor* out) {
   typedef Eigen::ThreadPoolDevice CPUDevice;
   return ::tensorflow::DoTranspose(ctx->eigen_device<CPUDevice>(), in, perm,
                                    out);
@@ -196,7 +196,7 @@ Status TransposeCpuOp::DoTranspose(OpKernelContext* ctx, const Tensor& in,
 
 Status ConjugateTransposeCpuOp::DoTranspose(OpKernelContext* ctx,
                                             const Tensor& in,
-                                            gtl::ArraySlice<int32> perm,
+                                            absl::Span<const int32> perm,
                                             Tensor* out) {
   typedef Eigen::ThreadPoolDevice CPUDevice;
   return ::tensorflow::DoConjugateTranspose(ctx->eigen_device<CPUDevice>(), in,
