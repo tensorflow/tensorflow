@@ -1702,10 +1702,15 @@ xla_test(
     srcs = ["token_hlo_test.cc"],
     deps = [
         ":hlo_test_base",
+        ":literal_test_util",
         ":test_macros_header",
         ":test_utils",
         ":xla_internal_test_main",
-        "//xla/service:hlo_verifier",
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:hlo_runner",
+        "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
     ],
 )
