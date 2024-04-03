@@ -412,7 +412,7 @@ tf_cc_test(
         "@local_xla//xla/mlir_hlo",
         "@local_xla//xla/pjrt:pjrt_client",
         "@local_xla//xla/pjrt:pjrt_executable",
-        "@local_xla//xla/pjrt:tfrt_cpu_pjrt_client",
+        "@local_xla//xla/pjrt/cpu:cpu_client",
         "@local_xla//xla/tests:literal_test_util",
         "@stablehlo//:chlo_ops",
     ],
