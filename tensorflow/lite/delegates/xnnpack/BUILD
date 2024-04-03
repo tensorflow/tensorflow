@@ -1799,6 +1799,23 @@ cc_test(
 )
 
 cc_test(
+    name = "rsqrt_test",
+    srcs = ["rsqrt_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":test_main",
+        ":unary_elementwise_tester",
+        ":xnnpack_delegate_test_mode",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
     name = "signed_dequantize_test",
     srcs = ["signed_dequantize_test.cc"],
     linkopts = select({
