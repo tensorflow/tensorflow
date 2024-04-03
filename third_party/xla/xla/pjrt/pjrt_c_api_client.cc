@@ -131,6 +131,7 @@ PjRtCApiClient::PjRtCApiClient(
       platform_name_(::pjrt::GetPlatformName(c_client, c_api)),
       platform_id_(tsl::Fingerprint64(platform_name_)) {
   InitDevicesAndMemorySpaces();
+  InitAttributes();
   LOG(INFO) << "PjRtCApiClient created.";
 }
 
@@ -252,6 +253,15 @@ void PjRtCApiClient::InitDevicesAndMemorySpaces() {
   }
 }
 
+void PjRtCApiClient::InitAttributes() {
+  PJRT_Plugin_Attributes_Args args;
+  args.struct_size = PJRT_Plugin_Attributes_Args_STRUCT_SIZE;
+  args.extension_start = nullptr;
+  pjrt::LogFatalIfPjrtError(c_api_->PJRT_Plugin_Attributes(&args), c_api_);
+  attributes_ =
+      pjrt::ConvertFromPjRtNamedValueList(args.attributes, args.num_attributes);
+}
+
 int PjRtCApiClient::device_count() const { return devices_.size(); }
 
 int PjRtCApiClient::addressable_device_count() const {
@@ -279,6 +289,12 @@ int PjRtCApiClient::process_index() const {
 
 absl::string_view PjRtCApiClient::platform_version() const {
   return platform_version_;
+}
+
+std::optional<PjRtPluginAttributes> PjRtCApiClient::plugin_attributes() const {
+  return PjRtPluginAttributes{c_api_->pjrt_api_version.major_version,
+                              c_api_->pjrt_api_version.minor_version,
+                              attributes_};
 }
 
 static DeviceAssignment CalculateDefaultAssignment(

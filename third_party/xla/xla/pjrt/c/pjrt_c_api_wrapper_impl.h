@@ -211,7 +211,8 @@ void PJRT_Error_Destroy(PJRT_Error_Destroy_Args* args);
 void PJRT_Error_Message(PJRT_Error_Message_Args* args);
 PJRT_Error* PJRT_Error_GetCode(PJRT_Error_GetCode_Args* args);
 
-PJRT_Error* PJRT_Plugin_Attributes(PJRT_Plugin_Attributes_Args* args);
+PJRT_Error* PJRT_Plugin_Attributes_Empty(PJRT_Plugin_Attributes_Args* args);
+PJRT_Error* PJRT_Plugin_Attributes_Xla(PJRT_Plugin_Attributes_Args* args);
 
 PJRT_Error* PJRT_Event_Destroy(PJRT_Event_Destroy_Args* args);
 PJRT_Error* PJRT_Event_IsReady(PJRT_Event_IsReady_Args* args);
@@ -431,7 +432,9 @@ PJRT_Error* PJRT_Plugin_Initialize_NoOp(PJRT_Plugin_Initialize_Args* args);
 PJRT_Api CreatePjrtApi(PJRT_Client_Create* create_fn,
                        PJRT_TopologyDescription_Create* topology_create_fn,
                        PJRT_Plugin_Initialize* plugin_initialize_fn,
-                       PJRT_Extension_Base* extension_start = nullptr);
+                       PJRT_Extension_Base* extension_start = nullptr,
+                       PJRT_Plugin_Attributes* plugin_attributes_fn =
+                           pjrt::PJRT_Plugin_Attributes_Empty);
 
 }  // namespace pjrt
 
