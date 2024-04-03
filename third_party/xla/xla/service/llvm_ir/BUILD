@@ -50,11 +50,9 @@ xla_cc_test(
     name = "alias_analysis_test",
     srcs = ["alias_analysis_test.cc"],
     deps = [
-        ":alias_analysis",
         "//xla/service:custom_call_status_public_headers",
         "//xla/service:custom_call_target_registry",
         "//xla/service/cpu/tests:cpu_codegen_test",
-        "//xla/tests:filecheck",
         "@local_tsl//tsl/platform:test",
     ],
 )
