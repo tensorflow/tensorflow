@@ -2399,7 +2399,8 @@ absl::Status IrEmitterUnnested::EmitInfeed(const HloInfeedInstruction* instr) {
   // We only need the result data to construct the infeed thunk.
   std::vector<ShapedSlice> shaped_slices;
   TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
-      instr->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
+      instr->shape(),
+      [&](const Shape& subshape, const ShapeIndex& index) -> absl::Status {
         if (subshape.IsTuple() || subshape.IsToken()) return absl::OkStatus();
         if (subshape.IsArray()) {
           TF_ASSIGN_OR_RETURN(BufferAllocation::Slice data,
@@ -2425,7 +2426,8 @@ absl::Status IrEmitterUnnested::EmitOutfeed(
   const HloInstruction* source = instr->operand(0);
   std::vector<ShapedSlice> shaped_slices;
   TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
-      source->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
+      source->shape(),
+      [&](const Shape& subshape, const ShapeIndex& index) -> absl::Status {
         if (subshape.IsTuple()) return absl::OkStatus();
         if (subshape.IsArray()) {
           TF_ASSIGN_OR_RETURN(BufferAllocation::Slice data,

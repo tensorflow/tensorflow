@@ -1751,7 +1751,8 @@ Status CheckMixedPrecisionOperands(const HloInstruction* instruction) {
       for (auto operand : instruction->operands()) {
         TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
             operand->shape(),
-            [&](const Shape& subshape, const ShapeIndex& index) {
+            [&](const Shape& subshape,
+                const ShapeIndex& index) -> absl::Status {
               if (!ShapeUtil::ElementIsFloating(subshape)) {
                 return OkStatus();
               }

@@ -6098,7 +6098,7 @@ Status MemorySpaceAssignment::VerifyAndExportHeapSimulatorTrace() {
 
   auto add_allocation_and_verify = [&](int64_t start_time, int64_t end_time,
                                        const HeapSimulator::Chunk& chunk,
-                                       const HloValue* value) {
+                                       const HloValue* value) -> absl::Status {
     events[std::make_tuple(start_time, /*is_free=*/false, value->id())] =
         std::make_tuple(value, chunk, HeapSimulatorTrace::Event::ALLOC);
     events[std::make_tuple(end_time, /*is_free=*/true, value->id())] =

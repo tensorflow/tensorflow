@@ -1055,7 +1055,8 @@ Status CheckParameterLayout(HloInstruction* parameter,
       computation_layout.parameter_layout(parameter->parameter_number());
   return ShapeUtil::ForEachSubshapeWithStatus(
       parameter_layout.shape(),
-      [&](const Shape& subshape, const ShapeIndex& shape_index) {
+      [&](const Shape& subshape,
+          const ShapeIndex& shape_index) -> absl::Status {
         if (!ShapeUtil::IsLeafIndex(parameter_layout.shape(), shape_index) ||
             !subshape.has_layout()) {
           return OkStatus();
@@ -2540,7 +2541,8 @@ Status LayoutAssignment::PropagateComputationLayouts(
     bool needs_assign = false;
     TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
         param_layout->shape(),
-        [&](const Shape& subshape, const ShapeIndex& shape_index) {
+        [&](const Shape& subshape,
+            const ShapeIndex& shape_index) -> absl::Status {
           if (!ShapeUtil::IsLeafIndex(param_layout->shape(), shape_index)) {
             return OkStatus();
           }

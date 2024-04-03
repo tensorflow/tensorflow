@@ -185,7 +185,7 @@ bool IsSubTilingOrEqualSharding(const Shape& potential_sharded_shape,
   // Compare the start offsets and the end offset of the tiles for each device.
   auto& potential_ta = potential_subsharding.tile_assignment().array();
   absl::Status ok_if_no_violation = potential_ta.EachStatus(
-      [&](absl::Span<const int64_t> indices, int64_t device) {
+      [&](absl::Span<const int64_t> indices, int64_t device) -> absl::Status {
         auto sharding_offset = get_sharding_offsets(device);
         for (int j = 0; j < tiled_data_rank; ++j) {
           const int32_t subsharding_offset_j =
