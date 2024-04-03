@@ -55,7 +55,7 @@ limitations under the License.
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
-#include "tsl/util/env_var.h"
+#include "xla/tsl/util/env_var.h"
 
 namespace xla {
 namespace gpu {

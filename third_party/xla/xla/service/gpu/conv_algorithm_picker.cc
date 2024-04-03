@@ -71,7 +71,7 @@ limitations under the License.
 #include "tsl/platform/logging.h"
 #include "tsl/platform/numbers.h"
 #include "tsl/platform/statusor.h"
-#include "tsl/util/env_var.h"
+#include "xla/tsl/util/env_var.h"
 
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
 #include "third_party/gpus/cudnn/cudnn.h"  // IWYU pragma: keep
