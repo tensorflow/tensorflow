@@ -758,6 +758,320 @@ TEST_F(ElementalHloToMlirTest, DotWithBatchAnd2ContractingDims) {
   )"));
 }
 
+TEST_F(ElementalHloToMlirTest, ConvolutionSimple) {
+  TF_EXPECT_OK(Run(R"(
+    ENTRY main {
+      p0 = f32[2,8,12,4] parameter(0)
+      p1 = f32[4,3,5,16] parameter(1)
+      ROOT conv = f32[2,6,8,16] convolution(p0, p1), window={size=3x5 pad=0_0x0_0}, dim_labels=b01f_i01o->b01f
+    })",
+                   R"(
+    // CHECK:      @main_conv(
+    // CHECK-SAME: %[[LHS:.+]]: tensor<2x8x12x4xf32>, %[[RHS:.*]]: tensor<4x3x5x16xf32>,
+    // CHECK-SAME: %[[B:.+]]: index {xla.range = [0 : index, 1 : index]},
+    // CHECK-SAME: %[[W:.+]]: index {xla.range = [0 : index, 5 : index]},
+    // CHECK-SAME: %[[H:.+]]: index {xla.range = [0 : index, 7 : index]},
+    // CHECK-SAME: %[[O:.+]]: index {xla.range = [0 : index, 15 : index]})
+    // CHECK-SAME: -> f32
+    // CHECK-DAG:  %[[INIT:.+]] = arith.constant 0.000000e+00 : f32
+    // CHECK-DAG:  %[[C0:.+]] = arith.constant 0 : index
+    // CHECK-DAG:  %[[C1:.+]] = arith.constant 1 : index
+    // CHECK-DAG:  %[[C3:.+]] = arith.constant 3 : index
+    // CHECK-DAG:  %[[C4:.+]] = arith.constant 4 : index
+    // CHECK-DAG:  %[[C5:.+]] = arith.constant 5 : index
+    // CHECK:      %[[R0:.+]] = scf.for %[[X:.+]] = %[[C0]] to %[[C3]] step %[[C1]] iter_args(%[[A0:.+]] = %[[INIT]]) -> (f32) {
+    // CHECK-NEXT: %[[R1:.+]] = scf.for %[[Y:.+]] = %[[C0]] to %[[C5]] step %[[C1]] iter_args(%[[A1:.+]] = %[[A0]]) -> (f32) {
+    // CHECK-NEXT: %[[R2:.+]] = scf.for %[[I:.+]] = %[[C0]] to %[[C4]] step %[[C1]] iter_args(%[[ACC:.+]] = %[[A1]]) -> (f32) {
+    // CHECK:      %[[R3:.+]] = scf.if {{.+}} -> (f32) {
+    // CHECK-DAG:    %[[XX:.+]] = affine.apply affine_map<()[s0, s1] -> (s0 + s1)>()[%[[X]], %[[W]]]
+    // CHECK-DAG:    %[[YY:.+]] = affine.apply affine_map<()[s0, s1] -> (s0 + s1)>()[%[[Y]], %[[H]]]
+    // CHECK-DAG:    %[[VL:.+]] = tensor.extract %[[LHS]][%[[B]], %[[XX]], %[[YY]], %[[I]]] : tensor<2x8x12x4xf32>
+    // CHECK-DAG:    %[[VR:.+]] = tensor.extract %[[RHS]][%[[I]], %[[X]], %[[Y]], %[[O]]] : tensor<4x3x5x16xf32>
+    // CHECK:        %[[MUL:.+]] = arith.mulf %[[VL]], %[[VR]] : f32
+    // CHECK-NEXT:   %[[ADD:.+]] = arith.addf %[[ACC]], %[[MUL]] : f32
+    // CHECK-NEXT:   scf.yield %[[ADD]] : f32
+    // CHECK-NEXT: } else {
+    // CHECK-NEXT:   scf.yield %[[ACC]] : f32
+    // CHECK-NEXT: }
+    // CHECK-NEXT: scf.yield %[[R3]] : f32
+    // CHECK:      scf.yield %[[R2]] : f32
+    // CHECK:      scf.yield %[[R1]] : f32
+    // CHECK:      return %[[R0]] : f32
+  )"));
+}
+
+TEST_F(ElementalHloToMlirTest, ConvolutionWithWindowStrides) {
+  TF_EXPECT_OK(Run(R"(
+    ENTRY main {
+      p0 = f32[2,8,12,4] parameter(0)
+      p1 = f32[4,3,5,16] parameter(1)
+      ROOT conv = f32[2,3,4,16] convolution(p0, p1), window={size=3x5 stride=2x2 pad=0_0x0_0}, dim_labels=b01f_i01o->b01f
+    })",
+                   R"(
+    // CHECK:      @main_conv(
+    // CHECK-SAME: %[[LHS:.+]]: tensor<2x8x12x4xf32>, %[[RHS:.*]]: tensor<4x3x5x16xf32>,
+    // CHECK-SAME: %[[B:.+]]: index {xla.range = [0 : index, 1 : index]},
+    // CHECK-SAME: %[[W:.+]]: index {xla.range = [0 : index, 2 : index]},
+    // CHECK-SAME: %[[H:.+]]: index {xla.range = [0 : index, 3 : index]},
+    // CHECK-SAME: %[[O:.+]]: index {xla.range = [0 : index, 15 : index]})
+    // CHECK-SAME: -> f32
+    // CHECK-DAG:  %[[INIT:.+]] = arith.constant 0.000000e+00 : f32
+    // CHECK-DAG:  %[[C0:.+]] = arith.constant 0 : index
+    // CHECK-DAG:  %[[C1:.+]] = arith.constant 1 : index
+    // CHECK-DAG:  %[[C3:.+]] = arith.constant 3 : index
+    // CHECK-DAG:  %[[C4:.+]] = arith.constant 4 : index
+    // CHECK-DAG:  %[[C5:.+]] = arith.constant 5 : index
+    // CHECK:      %[[R0:.+]] = scf.for %[[X:.+]] = %[[C0]] to %[[C3]] step %[[C1]] iter_args(%[[A0:.+]] = %[[INIT]]) -> (f32) {
+    // CHECK-NEXT: %[[R1:.+]] = scf.for %[[Y:.+]] = %[[C0]] to %[[C5]] step %[[C1]] iter_args(%[[A1:.+]] = %[[A0]]) -> (f32) {
+    // CHECK-NEXT: %[[R2:.+]] = scf.for %[[I:.+]] = %[[C0]] to %[[C4]] step %[[C1]] iter_args(%[[ACC:.+]] = %[[A1]]) -> (f32) {
+    // CHECK:      %[[R3:.+]] = scf.if {{.+}} -> (f32) {
+    // CHECK-DAG:    %[[XX:.+]] = affine.apply affine_map<()[s0, s1] -> (s0 + s1 * 2)>()[%[[X]], %[[W]]]
+    // CHECK-DAG:    %[[YY:.+]] = affine.apply affine_map<()[s0, s1] -> (s0 + s1 * 2)>()[%[[Y]], %[[H]]]
+    // CHECK-DAG:    %[[VL:.+]] = tensor.extract %[[LHS]][%[[B]], %[[XX]], %[[YY]], %[[I]]] : tensor<2x8x12x4xf32>
+    // CHECK-DAG:    %[[VR:.+]] = tensor.extract %[[RHS]][%[[I]], %[[X]], %[[Y]], %[[O]]] : tensor<4x3x5x16xf32>
+    // CHECK:        %[[MUL:.+]] = arith.mulf %[[VL]], %[[VR]] : f32
+    // CHECK-NEXT:   %[[ADD:.+]] = arith.addf %[[ACC]], %[[MUL]] : f32
+    // CHECK-NEXT:   scf.yield %[[ADD]] : f32
+    // CHECK-NEXT: } else {
+    // CHECK-NEXT:   scf.yield %[[ACC]] : f32
+    // CHECK-NEXT: }
+    // CHECK-NEXT: scf.yield %[[R3]] : f32
+    // CHECK:      scf.yield %[[R2]] : f32
+    // CHECK:      scf.yield %[[R1]] : f32
+    // CHECK:      return %[[R0]] : f32
+  )"));
+}
+
+TEST_F(ElementalHloToMlirTest, ConvolutionWithPadding) {
+  TF_EXPECT_OK(Run(R"(
+    ENTRY main {
+      p0 = f32[2,8,12,4] parameter(0)
+      p1 = f32[4,3,5,16] parameter(1)
+      ROOT conv = f32[2,8,12,16] convolution(p0, p1), window={size=3x5 pad=1_1x2_2}, dim_labels=b01f_i01o->b01f
+    })",
+                   R"(
+    // CHECK:      @main_conv(
+    // CHECK-SAME: %[[LHS:.+]]: tensor<2x8x12x4xf32>, %[[RHS:.*]]: tensor<4x3x5x16xf32>,
+    // CHECK-SAME: %[[B:.+]]: index {xla.range = [0 : index, 1 : index]},
+    // CHECK-SAME: %[[W:.+]]: index {xla.range = [0 : index, 7 : index]},
+    // CHECK-SAME: %[[H:.+]]: index {xla.range = [0 : index, 11 : index]},
+    // CHECK-SAME: %[[O:.+]]: index {xla.range = [0 : index, 15 : index]})
+    // CHECK-SAME: -> f32
+    // CHECK-DAG:  %[[INIT:.+]] = arith.constant 0.000000e+00 : f32
+    // CHECK-DAG:  %[[C0:.+]] = arith.constant 0 : index
+    // CHECK-DAG:  %[[C1:.+]] = arith.constant 1 : index
+    // CHECK-DAG:  %[[C2:.+]] = arith.constant 2 : index
+    // CHECK-DAG:  %[[C3:.+]] = arith.constant 3 : index
+    // CHECK-DAG:  %[[C4:.+]] = arith.constant 4 : index
+    // CHECK-DAG:  %[[C5:.+]] = arith.constant 5 : index
+    // CHECK-DAG:  %[[C8:.+]] = arith.constant 8 : index
+    // CHECK-DAG:  %[[C13:.+]] = arith.constant 13 : index
+    // CHECK:      %[[R0:.+]] = scf.for %[[X:.+]] = %[[C0]] to %[[C3]] step %[[C1]] iter_args(%[[A0:.+]] = %[[INIT]]) -> (f32) {
+    // CHECK-NEXT: %[[R1:.+]] = scf.for %[[Y:.+]] = %[[C0]] to %[[C5]] step %[[C1]] iter_args(%[[A1:.+]] = %[[A0]]) -> (f32) {
+    // CHECK-NEXT: %[[R2:.+]] = scf.for %[[I:.+]] = %[[C0]] to %[[C4]] step %[[C1]] iter_args(%[[ACC:.+]] = %[[A1]]) -> (f32) {
+    // CHECK-DAG:  %[[TESTX:.+]] = affine.apply affine_map<()[s0, s1] -> (s0 + s1)>()[%[[X]], %[[W]]]
+    // CHECK-DAG:  %[[TXGE:.+]] = arith.cmpi sge, %[[TESTX]], %[[C1]] : index
+    // CHECK-DAG:  %[[TXLE:.+]] = arith.cmpi sle, %[[TESTX]], %[[C8]] : index
+    // CHECK-DAG:  %[[TX:.+]] = arith.andi %[[TXGE]], %[[TXLE]] : i1
+    // CHECK-DAG:  %[[TESTY:.+]] = affine.apply affine_map<()[s0, s1] -> (s0 + s1)>()[%[[Y]], %[[H]]]
+    // CHECK-DAG:  %[[TYGE:.+]] = arith.cmpi sge, %[[TESTY]], %[[C2]] : index
+    // CHECK-DAG:  %[[TYLE:.+]] = arith.cmpi sle, %[[TESTY]], %[[C13]] : index
+    // CHECK-DAG:  %[[TY:.+]] = arith.andi %[[TYGE]], %[[TYLE]] : i1
+    // CHECK:      %[[R3:.+]] = scf.if {{.+}} -> (f32) {
+    // CHECK-DAG:    %[[XX:.+]] = affine.apply affine_map<()[s0, s1] -> (s0 + s1 - 1)>()[%[[X]], %[[W]]]
+    // CHECK-DAG:    %[[YY:.+]] = affine.apply affine_map<()[s0, s1] -> (s0 + s1 - 2)>()[%[[Y]], %[[H]]]
+    // CHECK-DAG:    %[[VL:.+]] = tensor.extract %[[LHS]][%[[B]], %[[XX]], %[[YY]], %[[I]]] : tensor<2x8x12x4xf32>
+    // CHECK-DAG:    %[[VR:.+]] = tensor.extract %[[RHS]][%[[I]], %[[X]], %[[Y]], %[[O]]] : tensor<4x3x5x16xf32>
+    // CHECK:        %[[MUL:.+]] = arith.mulf %[[VL]], %[[VR]] : f32
+    // CHECK-NEXT:   %[[ADD:.+]] = arith.addf %[[ACC]], %[[MUL]] : f32
+    // CHECK-NEXT:   scf.yield %[[ADD]] : f32
+    // CHECK-NEXT: } else {
+    // CHECK-NEXT:   scf.yield %[[ACC]] : f32
+    // CHECK-NEXT: }
+    // CHECK-NEXT: scf.yield %[[R3]] : f32
+    // CHECK:      scf.yield %[[R2]] : f32
+    // CHECK:      scf.yield %[[R1]] : f32
+    // CHECK:      return %[[R0]] : f32
+  )"));
+}
+
+TEST_F(ElementalHloToMlirTest, ConvolutionWithLhsDilation) {
+  TF_EXPECT_OK(Run(R"(
+    ENTRY main {
+      p0 = f32[2,8,12,4] parameter(0)
+      p1 = f32[4,3,5,16] parameter(1)
+      ROOT conv = f32[2,13,19,16] convolution(p0, p1), window={size=3x5 pad=0_0x0_0 lhs_dilate=2x2}, dim_labels=b01f_i01o->b01f
+    })",
+                   R"(
+    // CHECK:      @main_conv(
+    // CHECK-SAME: %[[LHS:.+]]: tensor<2x8x12x4xf32>, %[[RHS:.*]]: tensor<4x3x5x16xf32>,
+    // CHECK-SAME: %[[B:.+]]: index {xla.range = [0 : index, 1 : index]},
+    // CHECK-SAME: %[[W:.+]]: index {xla.range = [0 : index, 12 : index]},
+    // CHECK-SAME: %[[H:.+]]: index {xla.range = [0 : index, 18 : index]},
+    // CHECK-SAME: %[[O:.+]]: index {xla.range = [0 : index, 15 : index]})
+    // CHECK-SAME: -> f32
+    // CHECK-DAG:  %[[INIT:.+]] = arith.constant 0.000000e+00 : f32
+    // CHECK-DAG:  %[[C0:.+]] = arith.constant 0 : index
+    // CHECK-DAG:  %[[C1:.+]] = arith.constant 1 : index
+    // CHECK-DAG:  %[[C3:.+]] = arith.constant 3 : index
+    // CHECK-DAG:  %[[C4:.+]] = arith.constant 4 : index
+    // CHECK-DAG:  %[[C5:.+]] = arith.constant 5 : index
+    // CHECK:      %[[R0:.+]] = scf.for %[[X:.+]] = %[[C0]] to %[[C3]] step %[[C1]] iter_args(%[[A0:.+]] = %[[INIT]]) -> (f32) {
+    // CHECK-NEXT: %[[R1:.+]] = scf.for %[[Y:.+]] = %[[C0]] to %[[C5]] step %[[C1]] iter_args(%[[A1:.+]] = %[[A0]]) -> (f32) {
+    // CHECK-NEXT: %[[R2:.+]] = scf.for %[[I:.+]] = %[[C0]] to %[[C4]] step %[[C1]] iter_args(%[[ACC:.+]] = %[[A1]]) -> (f32) {
+    // CHECK-DAG:  %[[TESTX:.+]] = affine.apply affine_map<()[s0, s1] -> ((s0 + s1) mod 2)>()[%[[X]], %[[W]]]
+    // CHECK-DAG:  %[[TX:.+]] = arith.cmpi eq, %[[TESTX]], %[[C0]] : index
+    // CHECK-DAG:  %[[TESTY:.+]] = affine.apply affine_map<()[s0, s1] -> ((s0 + s1) mod 2)>()[%[[Y]], %[[H]]]
+    // CHECK-DAG:  %[[TY:.+]] = arith.cmpi eq, %[[TESTY]], %[[C0]] : index
+    // CHECK:      %[[R3:.+]] = scf.if {{.+}} -> (f32) {
+    // CHECK-DAG:    %[[XX:.+]] = affine.apply affine_map<()[s0, s1] -> ((s0 + s1) floordiv 2)>()[%[[X]], %[[W]]]
+    // CHECK-DAG:    %[[YY:.+]] = affine.apply affine_map<()[s0, s1] -> ((s0 + s1) floordiv 2)>()[%[[Y]], %[[H]]]
+    // CHECK-DAG:    %[[VL:.+]] = tensor.extract %[[LHS]][%[[B]], %[[XX]], %[[YY]], %[[I]]] : tensor<2x8x12x4xf32>
+    // CHECK-DAG:    %[[VR:.+]] = tensor.extract %[[RHS]][%[[I]], %[[X]], %[[Y]], %[[O]]] : tensor<4x3x5x16xf32>
+    // CHECK:        %[[MUL:.+]] = arith.mulf %[[VL]], %[[VR]] : f32
+    // CHECK-NEXT:   %[[ADD:.+]] = arith.addf %[[ACC]], %[[MUL]] : f32
+    // CHECK-NEXT:   scf.yield %[[ADD]] : f32
+    // CHECK-NEXT: } else {
+    // CHECK-NEXT:   scf.yield %[[ACC]] : f32
+    // CHECK-NEXT: }
+    // CHECK-NEXT: scf.yield %[[R3]] : f32
+    // CHECK:      scf.yield %[[R2]] : f32
+    // CHECK:      scf.yield %[[R1]] : f32
+    // CHECK:      return %[[R0]] : f32
+  )"));
+}
+
+TEST_F(ElementalHloToMlirTest, ConvolutionWithRhsDilation) {
+  TF_EXPECT_OK(Run(R"(
+    ENTRY main {
+      p0 = f32[2,8,12,4] parameter(0)
+      p1 = f32[4,3,5,16] parameter(1)
+      ROOT conv = f32[2,4,4,16] convolution(p0, p1), window={size=3x5 pad=0_0x0_0 rhs_dilate=2x2}, dim_labels=b01f_i01o->b01f
+    })",
+                   R"(
+    // CHECK:      @main_conv(
+    // CHECK-SAME: %[[LHS:.+]]: tensor<2x8x12x4xf32>, %[[RHS:.*]]: tensor<4x3x5x16xf32>,
+    // CHECK-SAME: %[[B:.+]]: index {xla.range = [0 : index, 1 : index]},
+    // CHECK-SAME: %[[W:[^ ]+]]: index {xla.range = [0 : index, 3 : index]},
+    // CHECK-SAME: %[[H:.+]]: index {xla.range = [0 : index, 3 : index]},
+    // CHECK-SAME: %[[O:.+]]: index {xla.range = [0 : index, 15 : index]})
+    // CHECK-SAME: -> f32
+    // CHECK-DAG:  %[[INIT:.+]] = arith.constant 0.000000e+00 : f32
+    // CHECK-DAG:  %[[C0:.+]] = arith.constant 0 : index
+    // CHECK-DAG:  %[[C1:.+]] = arith.constant 1 : index
+    // CHECK-DAG:  %[[C3:.+]] = arith.constant 3 : index
+    // CHECK-DAG:  %[[C4:.+]] = arith.constant 4 : index
+    // CHECK-DAG:  %[[C5:.+]] = arith.constant 5 : index
+    // CHECK:      %[[R0:.+]] = scf.for %[[X:.+]] = %[[C0]] to %[[C3]] step %[[C1]] iter_args(%[[A0:.+]] = %[[INIT]]) -> (f32) {
+    // CHECK-NEXT: %[[R1:.+]] = scf.for %[[Y:.+]] = %[[C0]] to %[[C5]] step %[[C1]] iter_args(%[[A1:.+]] = %[[A0]]) -> (f32) {
+    // CHECK-NEXT: %[[R2:.+]] = scf.for %[[I:.+]] = %[[C0]] to %[[C4]] step %[[C1]] iter_args(%[[ACC:.+]] = %[[A1]]) -> (f32) {
+    // CHECK:      %[[R3:.+]] = scf.if {{.+}} -> (f32) {
+    // CHECK-DAG:    %[[XX:.+]] = affine.apply affine_map<()[s0, s1] -> (s0 * 2 + s1)>()[%[[X]], %[[W]]]
+    // CHECK-DAG:    %[[YY:.+]] = affine.apply affine_map<()[s0, s1] -> (s0 * 2 + s1)>()[%[[Y]], %[[H]]]
+    // CHECK-DAG:    %[[VL:.+]] = tensor.extract %[[LHS]][%[[B]], %[[XX]], %[[YY]], %[[I]]] : tensor<2x8x12x4xf32>
+    // CHECK-DAG:    %[[VR:.+]] = tensor.extract %[[RHS]][%[[I]], %[[X]], %[[Y]], %[[O]]] : tensor<4x3x5x16xf32>
+    // CHECK:        %[[MUL:.+]] = arith.mulf %[[VL]], %[[VR]] : f32
+    // CHECK-NEXT:   %[[ADD:.+]] = arith.addf %[[ACC]], %[[MUL]] : f32
+    // CHECK-NEXT:   scf.yield %[[ADD]] : f32
+    // CHECK-NEXT: } else {
+    // CHECK-NEXT:   scf.yield %[[ACC]] : f32
+    // CHECK-NEXT: }
+    // CHECK-NEXT: scf.yield %[[R3]] : f32
+    // CHECK:      scf.yield %[[R2]] : f32
+    // CHECK:      scf.yield %[[R1]] : f32
+    // CHECK:      return %[[R0]] : f32
+  )"));
+}
+
+TEST_F(ElementalHloToMlirTest, ConvolutionWithFeatureGroupCount) {
+  TF_EXPECT_OK(Run(R"(
+    ENTRY main {
+      p0 = f32[2,8,12,4] parameter(0)
+      p1 = f32[2,3,5,16] parameter(1)
+      ROOT conv = f32[2,6,8,16] convolution(p0, p1), window={size=3x5 pad=0_0x0_0}, dim_labels=b01f_i01o->b01f, feature_group_count=2
+    })",
+                   R"(
+    // CHECK:      @main_conv(
+    // CHECK-SAME: %[[LHS:.+]]: tensor<2x8x12x4xf32>, %[[RHS:.*]]: tensor<2x3x5x16xf32>,
+    // CHECK-SAME: %[[B:.+]]: index {xla.range = [0 : index, 1 : index]},
+    // CHECK-SAME: %[[W:.+]]: index {xla.range = [0 : index, 5 : index]},
+    // CHECK-SAME: %[[H:.+]]: index {xla.range = [0 : index, 7 : index]},
+    // CHECK-SAME: %[[O:.+]]: index {xla.range = [0 : index, 15 : index]})
+    // CHECK-SAME: -> f32
+    // CHECK-DAG:  %[[INIT:.+]] = arith.constant 0.000000e+00 : f32
+    // CHECK-DAG:  %[[C0:.+]] = arith.constant 0 : index
+    // CHECK-DAG:  %[[C1:.+]] = arith.constant 1 : index
+    // CHECK-DAG:  %[[C2:.+]] = arith.constant 2 : index
+    // CHECK-DAG:  %[[C3:.+]] = arith.constant 3 : index
+    // CHECK-DAG:  %[[C5:.+]] = arith.constant 5 : index
+    // CHECK:      %[[R0:.+]] = scf.for %[[X:.+]] = %[[C0]] to %[[C3]] step %[[C1]] iter_args(%[[A0:.+]] = %[[INIT]]) -> (f32) {
+    // CHECK-NEXT: %[[R1:.+]] = scf.for %[[Y:.+]] = %[[C0]] to %[[C5]] step %[[C1]] iter_args(%[[A1:.+]] = %[[A0]]) -> (f32) {
+    // CHECK-NEXT: %[[R2:.+]] = scf.for %[[I:.+]] = %[[C0]] to %[[C2]] step %[[C1]] iter_args(%[[ACC:.+]] = %[[A1]]) -> (f32) {
+    // CHECK:      %[[R3:.+]] = scf.if {{.+}} -> (f32) {
+    // CHECK-DAG:    %[[XX:.+]] = affine.apply affine_map<()[s0, s1] -> (s0 + s1)>()[%[[X]], %[[W]]]
+    // CHECK-DAG:    %[[YY:.+]] = affine.apply affine_map<()[s0, s1] -> (s0 + s1)>()[%[[Y]], %[[H]]]
+    // CHECK-DAG:    %[[II:.+]] = affine.apply affine_map<()[s0, s1] -> (s0 + (s1 floordiv 8) * 2)>()[%[[I]], %[[O]]]
+    // CHECK-DAG:    %[[VL:.+]] = tensor.extract %[[LHS]][%[[B]], %[[XX]], %[[YY]], %[[II]]] : tensor<2x8x12x4xf32>
+    // CHECK-DAG:    %[[VR:.+]] = tensor.extract %[[RHS]][%[[I]], %[[X]], %[[Y]], %[[O]]] : tensor<2x3x5x16xf32>
+    // CHECK:        %[[MUL:.+]] = arith.mulf %[[VL]], %[[VR]] : f32
+    // CHECK-NEXT:   %[[ADD:.+]] = arith.addf %[[ACC]], %[[MUL]] : f32
+    // CHECK-NEXT:   scf.yield %[[ADD]] : f32
+    // CHECK-NEXT: } else {
+    // CHECK-NEXT:   scf.yield %[[ACC]] : f32
+    // CHECK-NEXT: }
+    // CHECK-NEXT: scf.yield %[[R3]] : f32
+    // CHECK:      scf.yield %[[R2]] : f32
+    // CHECK:      scf.yield %[[R1]] : f32
+    // CHECK:      return %[[R0]] : f32
+  )"));
+}
+
+TEST_F(ElementalHloToMlirTest, ConvolutionWithBatchGroupCount) {
+  TF_EXPECT_OK(Run(R"(
+    ENTRY main {
+      p0 = f32[2,8,12,4] parameter(0)
+      p1 = f32[4,3,5,16] parameter(1)
+      ROOT conv = f32[1,6,8,16] convolution(p0, p1), window={size=3x5 pad=0_0x0_0}, dim_labels=b01f_i01o->b01f, batch_group_count=2
+    })",
+                   R"(
+    // CHECK:      @main_conv(
+    // CHECK-SAME: %[[LHS:.+]]: tensor<2x8x12x4xf32>, %[[RHS:.*]]: tensor<4x3x5x16xf32>,
+    // CHECK-SAME: %[[B:.+]]: index {xla.range = [0 : index, 0 : index]},
+    // CHECK-SAME: %[[W:.+]]: index {xla.range = [0 : index, 5 : index]},
+    // CHECK-SAME: %[[H:.+]]: index {xla.range = [0 : index, 7 : index]},
+    // CHECK-SAME: %[[O:.+]]: index {xla.range = [0 : index, 15 : index]})
+    // CHECK-SAME: -> f32
+    // CHECK-DAG:  %[[INIT:.+]] = arith.constant 0.000000e+00 : f32
+    // CHECK-DAG:  %[[C0:.+]] = arith.constant 0 : index
+    // CHECK-DAG:  %[[C1:.+]] = arith.constant 1 : index
+    // CHECK-DAG:  %[[C2:.+]] = arith.constant 2 : index
+    // CHECK-DAG:  %[[C3:.+]] = arith.constant 3 : index
+    // CHECK-DAG:  %[[C4:.+]] = arith.constant 4 : index
+    // CHECK-DAG:  %[[C5:.+]] = arith.constant 5 : index
+    // CHECK:      %[[R0:.+]] = scf.for %[[X:.+]] = %[[C0]] to %[[C3]] step %[[C1]] iter_args(%[[A0:.+]] = %[[INIT]]) -> (f32) {
+    // CHECK-NEXT: %[[R1:.+]] = scf.for %[[Y:.+]] = %[[C0]] to %[[C5]] step %[[C1]] iter_args(%[[A1:.+]] = %[[A0]]) -> (f32) {
+    // CHECK-NEXT: %[[R2:.+]] = scf.for %[[I:.+]] = %[[C0]] to %[[C4]] step %[[C1]] iter_args(%[[A2:.+]] = %[[A1]]) -> (f32) {
+    // CHECK-NEXT: %[[R3:.+]] = scf.for %[[G:.+]] = %[[C0]] to %[[C2]] step %[[C1]] iter_args(%[[ACC:.+]] = %[[A2]]) -> (f32) {
+    // CHECK:      %[[R4:.+]] = scf.if {{.+}} -> (f32) {
+    // CHECK-DAG:    %[[BB:.+]] = affine.apply affine_map<()[s0, s1] -> (s0 + s1)>()[%[[G]], %[[B]]]
+    // CHECK-DAG:    %[[XX:.+]] = affine.apply affine_map<()[s0, s1] -> (s0 + s1)>()[%[[X]], %[[W]]]
+    // CHECK-DAG:    %[[YY:.+]] = affine.apply affine_map<()[s0, s1] -> (s0 + s1)>()[%[[Y]], %[[H]]]
+    // CHECK-DAG:    %[[VL:.+]] = tensor.extract %[[LHS]][%[[BB]], %[[XX]], %[[YY]], %[[I]]] : tensor<2x8x12x4xf32>
+    // CHECK-DAG:    %[[VR:.+]] = tensor.extract %[[RHS]][%[[I]], %[[X]], %[[Y]], %[[O]]] : tensor<4x3x5x16xf32>
+    // CHECK:        %[[MUL:.+]] = arith.mulf %[[VL]], %[[VR]] : f32
+    // CHECK-NEXT:   %[[ADD:.+]] = arith.addf %[[ACC]], %[[MUL]] : f32
+    // CHECK-NEXT:   scf.yield %[[ADD]] : f32
+    // CHECK-NEXT: } else {
+    // CHECK-NEXT:   scf.yield %[[ACC]] : f32
+    // CHECK-NEXT: }
+    // CHECK-NEXT: scf.yield %[[R4]] : f32
+    // CHECK:      scf.yield %[[R3]] : f32
+    // CHECK:      scf.yield %[[R2]] : f32
+    // CHECK:      scf.yield %[[R1]] : f32
+    // CHECK:      return %[[R0]] : f32
+  )"));
+}
+
 TEST_F(ElementalHloToMlirTest, Transpose) {
   TF_EXPECT_OK(Run(R"(
     ENTRY main {
