@@ -165,19 +165,15 @@ class MultinomialOp : public OpKernel {
                 errors::InvalidArgument(
                     "num_samples should be non-negative, got ", num_samples));
 
-    const int64_t dim_batch_size = logits_t.dim_size(0);
+    const int batch_size = static_cast<int>(logits_t.dim_size(0));
+    const int num_classes = static_cast<int>(logits_t.dim_size(1));
 
-    OP_REQUIRES(ctx, static_cast<int>(dim_batch_size) == dim_batch_size,
-                errors::InvalidArgument(
-                    "batch_size cannot exceed max int"));
+    OP_REQUIRES(ctx, batch_size == logits_t.dim_size(0),
+                errors::InvalidArgument("batch_size cannot exceed max int"));
 
-    const int64_t dim_num_classes = logits_t.dim_size(1);
-    OP_REQUIRES(ctx, static_cast<int>(dim_num_classes) == dim_num_classes,
-                errors::InvalidArgument(
-                    "num_classes cannot exceed max int"));
+    OP_REQUIRES(ctx, num_classes == logits_t.dim_size(1),
+                errors::InvalidArgument("num_classes cannot exceed max int"));
 
-    const int batch_size = static_cast<int>(dim_batch_size);
-    const int num_classes = static_cast<int>(dim_num_classes);
     OP_REQUIRES(ctx, num_classes > 0,
                 errors::InvalidArgument("num_classes should be positive, got ",
                                         num_classes));
