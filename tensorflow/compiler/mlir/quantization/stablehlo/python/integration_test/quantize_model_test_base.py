@@ -31,6 +31,7 @@ from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import load
 from tensorflow.python.saved_model import save as saved_model_save
@@ -304,6 +305,39 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
         ),
     )
     return model
+
+  def _create_gather_model(self, input_type, use_variable) -> module.Module:
+    class GatherModel(module.Module):
+      """A simple model with a single gather."""
+
+      def __init__(self, use_variable):
+        """Initializes a GatherModel.
+
+        Args:
+          use_variable: If True, creates a variable for weight.
+        """
+        super().__init__()
+        w_val = np.random.randn(128, 32).astype('f4')
+        if use_variable:
+          self.w = variables.Variable(w_val)
+        else:
+          self.w = w_val
+
+      @def_function.function(
+          input_signature=[
+              tensor_spec.TensorSpec(
+                  shape=[6], dtype=input_type, name='input_tensor'
+              )
+          ]
+      )
+      def __call__(
+          self, input_tensor: core.Tensor
+      ) -> Mapping[str, core.Tensor]:
+        """Performs a gather operation."""
+        out = array_ops.gather_v2(self.w, input_tensor)
+        return {'output': out}
+
+    return GatherModel(use_variable)
 
   # Prepares sample einsum input data shapes.
   # This function returns:

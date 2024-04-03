@@ -528,6 +528,66 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         0.65,
     )
 
+  @parameterized.named_parameters(
+      ('use_constant_with_int32_input', np.int32, False),
+      ('use_variable_with_int32_input', np.int32, True),
+      ('use_constant_with_int64_input', np.int64, False),
+      ('use_variable_with_int64_input', np.int64, True),
+  )
+  @test_util.run_v2_only
+  def test_gather_model(self, input_type, use_variable):
+    model = self._create_gather_model(input_type, use_variable)
+
+    save.save(model, self._input_saved_model_path)
+
+    rng = np.random.default_rng(seed=42)
+    static_input_shape = [6]
+
+    def data_gen() -> repr_dataset.RepresentativeDataset:
+      for _ in range(100):
+        yield {
+            'input_tensor': rng.uniform(
+                low=0.0, high=10, size=static_input_shape
+            ).astype(input_type)
+        }
+
+    dataset_path = self.create_tempfile('tfrecord').full_path
+    path_map = {'serving_default': dataset_path}
+    repr_dataset.TfRecordRepresentativeDatasetSaver(path_map).save(
+        {'serving_default': data_gen()}
+    )
+
+    config = qc.QuantizationConfig(
+        static_range_ptq_preset=qc.StaticRangePtqPreset(
+            representative_datasets=[
+                qc.RepresentativeDatasetConfig(
+                    tf_record=qc.TfRecordFile(path=dataset_path)
+                )
+            ]
+        ),
+        tf_saved_model=qc.TfSavedModelConfig(tags=[tag_constants.SERVING]),
+    )
+    quantization.quantize_saved_model(
+        self._input_saved_model_path,
+        self._output_saved_model_path,
+        config,
+    )
+
+    root = load.load(self._output_saved_model_path)
+    self.assertCountEqual(root.signatures.keys(), {'serving_default'})
+    module_str = self._extract_first_xla_call_module_op(
+        self._output_saved_model_path
+    )
+    self.assertTrue(re.search('stablehlo.gather.*xi8>', module_str))
+
+    # Due to other meta data, the compression is not exactly 1/4.
+    self.assertLess(
+        testing.get_size_ratio(
+            self._output_saved_model_path, self._input_saved_model_path
+        ),
+        1 / 3,
+    )
+
   def test_when_preset_not_srq_raises_error(self):
     self._create_matmul_model(
         input_shape=(1, 1024),
