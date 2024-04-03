@@ -6,6 +6,7 @@ load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
 load(
     "@local_tsl//tsl:tsl.bzl",
     "if_cuda_or_rocm",
+    "if_google",
     "tsl_gpu_library",
 )
 load("@local_tsl//tsl:tsl.default.bzl", "filegroup")
@@ -752,10 +753,7 @@ xla_test(
     name = "xla_compile_lib_test",
     srcs = ["xla_compile_lib_test.cc"],
     backend_tags = {
-        "gpu": [
-            "requires-gpu-nvidia",
-            "config-cuda-only",
-        ],
+        "gpu": ["requires-gpu-nvidia"] + if_google(["config-cuda-only"]),
     },
     backends = [
         "cpu",

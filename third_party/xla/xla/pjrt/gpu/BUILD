@@ -278,11 +278,10 @@ xla_cc_test(
     name = "se_gpu_pjrt_compiler_test",
     srcs = if_gpu_is_configured(["se_gpu_pjrt_compiler_test.cc"]),
     tags = [
-        "config-cuda-only",
         "gpu",
         "no_oss",
         "requires-gpu-nvidia",
-    ],
+    ] + if_google(["config-cuda-only"]),
     deps = [
         ":se_gpu_pjrt_client",
         ":se_gpu_pjrt_compiler",

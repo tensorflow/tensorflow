@@ -1,5 +1,5 @@
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
-load("@local_tsl//tsl:tsl.bzl", "if_nccl", "nvtx_headers")
+load("@local_tsl//tsl:tsl.bzl", "if_google", "if_nccl", "nvtx_headers")
 load("@local_tsl//tsl:tsl.default.bzl", "get_compatible_with_portable")
 load("@local_tsl//tsl/platform/default:cuda_build_defs.bzl", "if_cuda_is_configured")
 load("//xla/service/gpu:build_defs.bzl", "get_cub_sort_kernel_types")
@@ -292,8 +292,8 @@ xla_test(
     name = "address_computation_thunk_test",
     srcs = if_gpu_is_configured(["address_computation_thunk_test.cc"]),
     backend_tags = {
-        "gpu_a100": ["config-cuda-only"],
-        "gpu_v100": ["config-cuda-only"],
+        "gpu_a100": if_google(["config-cuda-only"]),
+        "gpu_v100": if_google(["config-cuda-only"]),
     },
     backends = [
         "gpu_a100",
@@ -392,8 +392,8 @@ xla_test(
     name = "command_buffer_thunk_test",
     srcs = if_gpu_is_configured(["command_buffer_thunk_test.cc"]),
     backend_tags = {
-        "gpu_a100": ["config-cuda-only"],
-        "gpu_v100": ["config-cuda-only"],
+        "gpu_a100": if_google(["config-cuda-only"]),
+        "gpu_v100": if_google(["config-cuda-only"]),
     },
     backends = [
         "gpu_a100",

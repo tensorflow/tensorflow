@@ -4,6 +4,7 @@ load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 load(
     "@local_tsl//tsl:tsl.bzl",
     "if_cuda_or_rocm",
+    "if_google",
     "internal_visibility",
 )
 load("@local_tsl//tsl:tsl.default.bzl", "tsl_pybind_extension")
@@ -132,10 +133,9 @@ py_strict_test(
     python_version = "PY3",
     srcs_version = "PY3",
     tags = [
-        "config-cuda-only",
         "no_oss",
         "requires-gpu-nvidia",
-    ],  # TODO(phawkins): This test passes, but requires --config=monolithic.
+    ] + if_google(["config-cuda-only"]),  # TODO(phawkins): This test passes, but requires --config=monolithic.
     deps = [
         ":xla_client",
         ":xla_extension",

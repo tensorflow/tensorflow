@@ -1508,10 +1508,7 @@ xla_test(
     name = "compiler_test",
     srcs = ["compiler_test.cc"],
     backend_tags = {
-        "gpu": [
-            "requires-gpu-nvidia",
-            "config-cuda-only",
-        ],
+        "gpu": if_google(["requires-gpu-nvidia"]),
     },
     backends = [
         "gpu",
