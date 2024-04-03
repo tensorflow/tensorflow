@@ -2394,9 +2394,12 @@ ShapeInference::InferScalarBroadcastShape(absl::Span<const Shape> shapes) {
     TF_RETURN_IF_ERROR(ExpectArray(*operand_shape, "operand of all-gather"));
 
     Shape output_shape = *operand_shape;
-    output_shape.set_dimensions(
-        all_gather_dimension,
-        shard_count * output_shape.dimensions(all_gather_dimension));
+    int64_t output_shape_dimension =
+        output_shape.dimensions(all_gather_dimension);
+    output_shape.set_dimensions(all_gather_dimension,
+                                IsUnboundedDynamicSize(output_shape_dimension)
+                                    ? Shape::kUnboundedSize
+                                    : shard_count * output_shape_dimension);
     output_shapes.push_back(output_shape);
   }
   if (output_shapes.size() == 1) {
