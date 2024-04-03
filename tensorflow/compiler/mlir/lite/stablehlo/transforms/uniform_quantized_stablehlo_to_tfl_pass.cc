@@ -61,6 +61,7 @@ using ::mlir::quant::CreateI32F32UniformQuantizedPerAxisType;
 using ::mlir::quant::CreateI32F32UniformQuantizedType;
 using ::mlir::quant::CreateI8F32UniformQuantizedPerAxisType;
 using ::mlir::quant::CreateI8F32UniformQuantizedType;
+using ::mlir::quant::FindOperandOfType;
 using ::mlir::quant::FindUserOfType;
 using ::mlir::quant::GetElementType;
 using ::mlir::quant::IsI32F32UniformQuantizedPerAxisType;
@@ -105,6 +106,18 @@ SmallVector<double> GetBiasScales(const double input_scale,
 // and filter are per-tensor quantized.
 double GetBiasScale(const double input_scale, const double filter_scale) {
   return filter_scale * input_scale;
+}
+
+Operation* GetBiasConstOp(Operation* op) {
+  Operation* bias_const_op;
+  if (Operation* broadcast_in_dim_op =
+          FindOperandOfType<stablehlo::BroadcastInDimOp>(op);
+      broadcast_in_dim_op != nullptr) {
+    bias_const_op = broadcast_in_dim_op->getOperand(0).getDefiningOp();
+  } else {
+    bias_const_op = FindOperandOfType<stablehlo::ConstantOp>(op);
+  }
+  return isa<stablehlo::ConstantOp>(bias_const_op) ? bias_const_op : op;
 }
 
 // Creates a new `tfl.qconst` op for the quantized filter. Transposes the
@@ -902,22 +915,14 @@ class RewriteQuantizedConvolutionOp
       return failure();
     }
 
-    // TODO: b/309896242 - Lift the assumptions on adjacent ops below
-    // as we cover more dynamic fused pattern legalization.
     if (fuse_bias_constant) {
       Operation* add_op = FindUserOfType<stablehlo::AddOp>(op);
       if (add_op == nullptr) {
         LLVM_DEBUG(llvm::dbgs() << "Failed to find AddOp for bias fusion.\n");
         return failure();
       }
-      Operation* broadcast_in_dim_op = add_op->getOperand(1).getDefiningOp();
-      if (!isa<stablehlo::BroadcastInDimOp>(broadcast_in_dim_op)) {
-        LLVM_DEBUG(llvm::dbgs() << "Failed to find broadcasted bias.\n");
-        return failure();
-      }
-      Operation* bias_const_op =
-          broadcast_in_dim_op->getOperand(0).getDefiningOp();
-      if (!isa<stablehlo::ConstantOp>(bias_const_op)) {
+      Operation* bias_const_op = GetBiasConstOp(add_op);
+      if (bias_const_op == nullptr) {
         LLVM_DEBUG(llvm::dbgs() << "Failed to find bias constant.\n");
         return failure();
       }
@@ -1413,11 +1418,7 @@ class RewriteQuantizedConvolutionOp
     TFL::QConstOp bias;
     if (fuse_bias_constant && has_i32_output) {
       Operation* add_op = FindUserOfType<stablehlo::AddOp>(op);
-      // TODO: b/309896242 - Lift the assumptions on adjacent ops below
-      // as we cover more dynamic fused pattern legalization.
-      Operation* broadcast_in_dim_op = add_op->getOperand(1).getDefiningOp();
-      Operation* bias_const_op =
-          broadcast_in_dim_op->getOperand(0).getDefiningOp();
+      Operation* bias_const_op = GetBiasConstOp(add_op);
       const ElementsAttr bias_constant_value =
           cast<stablehlo::ConstantOp>(bias_const_op).getValue();
       bias = rewriter.create<TFL::QConstOp>(op.getLoc(),

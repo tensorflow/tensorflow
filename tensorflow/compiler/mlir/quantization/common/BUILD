@@ -57,6 +57,7 @@ tf_cc_test(
     name = "lift_as_function_call_test",
     srcs = ["lift_as_function_call_test.cc"],
     deps = [
+        ":attrs_and_constraints",
         ":func",
         ":lift_as_function_call",
         ":test_base",
