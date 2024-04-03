@@ -474,7 +474,7 @@ class Layout {
 
   // The number of bits used to store an individual array element.
   // When the value is 0, default to ShapeUtil::ByteSizeOfPrimitiveType.
-  uint16_t element_size_in_bits_ = 0;
+  int64_t element_size_in_bits_ = 0;
 
   // A map from physical dimension numbers to logical dimension numbers.
   // The first element is the most minor physical dimension (fastest varying

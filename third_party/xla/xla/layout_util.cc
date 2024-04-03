@@ -414,6 +414,11 @@ Layout CreateDefaultLayoutForRank(int64_t rank) {
     }
   }
 
+  if (layout.element_size_in_bits() < 0) {
+    return InvalidArgument("layout element_size_in_bits field is negative: %d",
+                           layout.element_size_in_bits());
+  }
+
   return OkStatus();
 }
 
