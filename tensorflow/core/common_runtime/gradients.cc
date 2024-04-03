@@ -99,7 +99,7 @@ static Node* AddZerosLike(Graph* g, NodeOut input) {
   }
 }
 
-static Node* AddSymGrad(Graph* g, Node* n, gtl::ArraySlice<NodeOut> grads) {
+static Node* AddSymGrad(Graph* g, Node* n, absl::Span<const NodeOut> grads) {
   const int num_x = n->num_inputs();
   const int num_y = n->num_outputs();
   CHECK_EQ(num_y, grads.size());
@@ -151,18 +151,18 @@ static Node* AddSymGrad(Graph* g, Node* n, gtl::ArraySlice<NodeOut> grads) {
 
 class SymbolicGradientBuilder {
  public:
-  SymbolicGradientBuilder(gtl::ArraySlice<NodeOut> y_node_outputs,
-                          gtl::ArraySlice<NodeOut> x_node_outputs,
-                          gtl::ArraySlice<NodeOut> y_grad_node_outputs,
+  SymbolicGradientBuilder(absl::Span<const NodeOut> y_node_outputs,
+                          absl::Span<const NodeOut> x_node_outputs,
+                          absl::Span<const NodeOut> y_grad_node_outputs,
                           std::vector<NodeOut>* x_grad_node_outputs,
                           Graph* graph);
 
   Status Compute();
 
  private:
-  gtl::ArraySlice<NodeOut> y_node_outputs_;
-  gtl::ArraySlice<NodeOut> x_node_outputs_;
-  gtl::ArraySlice<NodeOut> y_grad_node_outputs_;
+  absl::Span<const NodeOut> y_node_outputs_;
+  absl::Span<const NodeOut> x_node_outputs_;
+  absl::Span<const NodeOut> y_grad_node_outputs_;
   std::vector<NodeOut>* x_grad_node_outputs_;
   Graph* graph_;  // Not owned.
 
@@ -209,9 +209,9 @@ class SymbolicGradientBuilder {
 };
 
 SymbolicGradientBuilder::SymbolicGradientBuilder(
-    gtl::ArraySlice<NodeOut> y_node_outputs,
-    gtl::ArraySlice<NodeOut> x_node_outputs,
-    gtl::ArraySlice<NodeOut> y_grad_node_outputs,
+    absl::Span<const NodeOut> y_node_outputs,
+    absl::Span<const NodeOut> x_node_outputs,
+    absl::Span<const NodeOut> y_grad_node_outputs,
     std::vector<NodeOut>* x_grad_node_outputs, Graph* graph)
     : y_node_outputs_(y_node_outputs),
       x_node_outputs_(x_node_outputs),
@@ -405,9 +405,9 @@ Status SymbolicGradientBuilder::Compute() {
   return absl::OkStatus();
 }
 
-Status AddSymbolicGradients(gtl::ArraySlice<NodeOut> y_node_outputs,
-                            gtl::ArraySlice<NodeOut> x_node_outputs,
-                            gtl::ArraySlice<NodeOut> y_grad_node_outputs,
+Status AddSymbolicGradients(absl::Span<const NodeOut> y_node_outputs,
+                            absl::Span<const NodeOut> x_node_outputs,
+                            absl::Span<const NodeOut> y_grad_node_outputs,
                             std::vector<NodeOut>* x_grad_node_outputs,
                             Graph* graph) {
   SymbolicGradientBuilder builder(y_node_outputs, x_node_outputs,
