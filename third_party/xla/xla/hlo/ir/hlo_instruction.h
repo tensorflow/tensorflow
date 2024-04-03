@@ -1812,6 +1812,7 @@ class HloInstruction {
   // instruction.
   bool IsFused() const;
 
+  bool IsFusion() const;
   bool IsLoopFusion() const;
   bool IsInputFusion() const;
   bool IsOutputFusion() const;

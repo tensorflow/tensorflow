@@ -464,7 +464,7 @@ Status HloComputation::RemoveInstructionImpl(HloInstruction* instruction,
   // These require non-trivial cleanup for their called computations,
   // which is invoked in the ops destructor.
   if (!to_be_deleted_.back()->IsAsynchronous() &&
-      !to_be_deleted_.back()->IsFused()) {
+      !to_be_deleted_.back()->IsFusion()) {
     to_be_deleted_.back()->ClearCalledComputations();
   }
   to_be_deleted_.back()->MarkAsDead();

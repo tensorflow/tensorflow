@@ -3933,6 +3933,8 @@ bool HloInstruction::IsCustomCall(
          absl::c_linear_search(targets, custom_call_target());
 }
 
+bool HloInstruction::IsFusion() const { return opcode() == HloOpcode::kFusion; }
+
 bool HloInstruction::IsInputFusion() const {
   return opcode() == HloOpcode::kFusion && fusion_kind() == FusionKind::kInput;
 }
