@@ -64,7 +64,7 @@ Shape ResolveShapeIndex(const xla::ShapeProto& shape_proto,
   // Choosing the last subshape to maintain historical behavior.
   int64_t i = shape_index.back();
   if (i >= shape_proto.tuple_shapes_size()) {
-    LOG(DFATAL) << "shape_index out of tuple_shapes range.";
+    LOG(WARNING) << "shape_index out of tuple_shapes range.";
     return Shape(shape_proto);
   }
   return Shape(shape_proto.tuple_shapes(i));

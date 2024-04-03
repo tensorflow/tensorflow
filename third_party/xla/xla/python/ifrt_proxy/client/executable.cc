@@ -57,10 +57,12 @@
 #include "xla/shape_util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/concurrency/ref_count.h"
+#include "tsl/platform/cpu_info.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/status_to_from_proto.h"
 #include "tsl/platform/statusor.h"
+#include "tsl/platform/threadpool.h"
 
 namespace xla {
 namespace ifrt {
@@ -499,6 +501,17 @@ absl::Span<xla::ifrt::Device* const> LoadedExecutable::addressable_devices()
   return addressable_devices_;
 }
 
+namespace {
+
+static tsl::ThreadOptions GetThreadOptions() {
+  tsl::ThreadOptions thread_options;
+  // Ensure the threads' stack is large enough for arbitrary Python code.
+  thread_options.stack_size = 2 * 1024 * 1024;  // 2 MiB
+  return thread_options;
+}
+
+}  // namespace
+
 void LoadedExecutable::PollLoadedHostCallback(
     uint64_t handle,
     tsl::RCReference<xla::ifrt::LoadedHostCallback> loaded_host_callback) {
@@ -554,7 +567,11 @@ void LoadedExecutable::PollLoadedHostCallback(
           });
     }
   };
-  tsl::Env::Default()->SchedClosure(std::move(f));
+
+  static auto* global_pool = new tsl::thread::ThreadPool(
+      tsl::Env::Default(), GetThreadOptions(), "XLAIFRTProxy",
+      std::min(16, tsl::port::MaxParallelism()));
+  global_pool->Schedule(std::move(f));
 }
 
 char LoadedExecutable::ID = 0;  // NOLINT
