@@ -107,4 +107,16 @@ them. The duplicated callee `FuncOp` will not be removed.
   let constructor = "CreateIfrtDuplicatedCalleeEliminationPass()";
 }
 
+def IfrtVerifyShardingSpecifiedPass :
+    Pass<"ifrt-verify-sharding-specified", "mlir::ModuleOp"> {
+  let summary = "Verify that all `!ifrt.array` have sharding specified.";
+  let description = [{
+Verify that each `!ifrt.array` has sharding attribute that is not of type
+`!ifrt.sharding_unspecified`.
+  }];
+
+  let constructor = "CreateIfrtVerifyShardingSpecifiedPass()";
+}
+
+
 #endif  // XLA_PYTHON_IFRT_IR_TRANSFORMS_PASSES_TD_
