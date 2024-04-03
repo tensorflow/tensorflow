@@ -598,7 +598,12 @@ cc_library(
     srcs = ["hlo_control_flow_flattening.cc"],
     hdrs = ["hlo_control_flow_flattening.h"],
     deps = [
+        "//xla:comparison_util",
+        "//xla:literal",
         "//xla:literal_util",
+        "//xla:shape_util",
+        "//xla:status",
+        "//xla:util",
         "//xla/hlo/ir:hlo",
         "//xla/service:call_graph",
         "//xla/service:collective_ops_utils",
@@ -606,7 +611,12 @@ cc_library(
         "//xla/service:hlo_pass",
         "//xla/service:tuple_util",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
