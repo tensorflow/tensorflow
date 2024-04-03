@@ -2148,7 +2148,7 @@ Status AlgebraicSimplifierVisitor::HandleDivide(HloInstruction* divide) {
                     divide->shape(), HloOpcode::kMultiply, a, new_power));
   }
 
-  // A/sqrt(B) => A*rsqrt(X).
+  // A/sqrt(B) => A*rsqrt(B).
   if (Match(divide, m::Divide(m::Op(&a), m::Sqrt(m::Op(&b)).WithOneUse()))) {
     auto* rsqrt = divide->mutable_operand(1)->AddInstruction(
         HloInstruction::CreateUnary(divide->shape(), HloOpcode::kRsqrt, b));
@@ -4659,9 +4659,8 @@ Status AlgebraicSimplifierVisitor::HandleBroadcast(HloInstruction* broadcast) {
     return OkStatus();
   }
   if (ShapeUtil::HasDegenerateDimensions(operand->shape())) {
-    auto new_operand =
-        operand->parent()->AddInstruction(HloInstruction::CreateReshape(
-            ShapeUtil::DropDegenerateDimensions(operand->shape()), operand));
+    auto new_operand = operand->AddInstruction(HloInstruction::CreateReshape(
+        ShapeUtil::DropDegenerateDimensions(operand->shape()), operand));
     std::vector<int64_t> new_dims;
     new_dims.reserve(new_operand->shape().rank());
     for (int64_t i = 0; i < operand->shape().rank(); ++i) {
