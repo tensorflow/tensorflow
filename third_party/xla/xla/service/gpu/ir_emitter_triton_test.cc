@@ -2011,6 +2011,31 @@ ENTRY e {
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1e-6, /*arel=*/1e-6}));
 }
 
+TEST_F(TritonGemmTestAny,
+       DoNotFuseConcatenationOfSplitNonContractingDimension) {
+  const std::string hlo_text = R"(
+HloModule m
+
+ENTRY e {
+  x = bf16[2,128,10] parameter(0)
+  y = bf16[2,256,10] parameter(1)
+  concat = bf16[2,384,10] concatenate(x, y), dimensions={1}
+  z = bf16[10,20] parameter(2)
+  ROOT d = bf16[2,384,20] dot(concat, z), lhs_contracting_dims={2}, rhs_contracting_dims={0}
+})";
+
+  MatchOptimizedHlo(hlo_text, R"(
+; CHECK:      ENTRY
+; CHECK:      concatenate
+; CHECK:        ROOT
+; CHECK-SAME:     fusion
+; CHECK-SAME:       kind=kCustom
+; CHECK-SAME:       "block_m"
+)");
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+}
+
 class TritonGemmLevel2Test : public TritonGemmTest {
  public:
   DebugOptions GetDebugOptionsForTest() override {
