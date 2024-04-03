@@ -23,6 +23,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "xla/service/gpu/model/symbolic_tiled_hlo_instruction.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/verified_hlo_module.h"
 #include "tsl/platform/statusor.h"
@@ -63,10 +64,10 @@ ENTRY main {
 
   analysis.SetTileSizes(/*sizes=*/{1, 10});
 
-  const TiledHloInstruction* root = analysis.GetRoot();
+  const SymbolicTiledHloInstruction* root = analysis.GetRoot();
 
-  auto p0_from_subtract0 = root->operands[0];
-  auto p0_from_subtract1 = root->operands[1]->operands[0]->operands[0];
+  auto p0_from_subtract0 = root->operand(0);
+  auto p0_from_subtract1 = root->operand(1)->operand(0)->operand(0);
 
   EXPECT_THAT(analysis.TileOffsets(*p0_from_subtract0), ElementsAre(0, 0));
   EXPECT_THAT(analysis.TileSizes(*p0_from_subtract0), ElementsAre(1, 10));
@@ -96,10 +97,10 @@ ENTRY main {
   SymbolicTileAnalysis analysis =
       std::get<SymbolicTileAnalysis>(std::move(analysis_or_error));
 
-  const TiledHloInstruction* root = analysis.GetRoot();
+  const SymbolicTiledHloInstruction* root = analysis.GetRoot();
 
-  auto p0_from_subtract0 = root->operands[0]->operands[0];
-  auto p0_from_subtract1 = root->operands[1]->operands[0];
+  auto p0_from_subtract0 = root->operand(0)->operand(0);
+  auto p0_from_subtract1 = root->operand(1)->operand(0);
 
   EXPECT_EQ(p0_from_subtract0, p0_from_subtract1);
 }

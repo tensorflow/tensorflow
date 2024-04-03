@@ -116,6 +116,7 @@ limitations under the License.
 #include "xla/service/gpu/model/indexing_analysis.h"
 #include "xla/service/gpu/model/indexing_map.h"
 #include "xla/service/gpu/model/symbolic_tile_analysis.h"
+#include "xla/service/gpu/model/symbolic_tiled_hlo_instruction.h"
 #include "xla/service/gpu/target_util.h"
 #include "xla/service/gpu/triton_fusion_analysis.h"
 #include "xla/service/gpu/triton_tiling_propagation.h"
@@ -738,16 +739,16 @@ absl::StatusOr<Value> EmitNestedFusion(
 // TODO(b/331332678): Add unit tests to target this function specifically.
 Value EmitTiledBroadcast(
     ImplicitLocOpBuilder& b, const SymbolicTileAnalysis& analysis,
-    const TiledHloInstruction& tiled_broadcast,
-    absl::flat_hash_map<const TiledHloInstruction*, Value>& values) {
-  auto input_tile_shape = analysis.TileSizes(*tiled_broadcast.operands[0]);
+    const SymbolicTiledHloInstruction& tiled_broadcast,
+    absl::flat_hash_map<const SymbolicTiledHloInstruction*, Value>& values) {
+  auto input_tile_shape = analysis.TileSizes(*tiled_broadcast.operand(0));
   auto output_tile_shape = analysis.TileSizes(tiled_broadcast);
 
-  Value expanded_input = values[tiled_broadcast.operands[0]];
+  Value expanded_input = values[tiled_broadcast.operand(0)];
 
   // Returns true if `dim_id` is broadcasted.
   auto is_broadcasted_dim = [&](int64_t dim_id) {
-    return !llvm::is_contained(tiled_broadcast.hlo->dimensions(), dim_id);
+    return !llvm::is_contained(tiled_broadcast.hlo()->dimensions(), dim_id);
   };
 
   // The loop below iterates over output dimensions and tracks matching dims in
@@ -798,11 +799,12 @@ Value EmitTiledBroadcast(
 absl::StatusOr<Value> EmitTiledHloInstruction(
     ImplicitLocOpBuilder& b, absl::string_view libdevice_path,
     const se::DeviceDescription& device_info,
-    const SymbolicTileAnalysis& analysis, const TiledHloInstruction& tiled_hlo,
-    std::function<absl::StatusOr<Value>(const TiledHloInstruction&)>
+    const SymbolicTileAnalysis& analysis,
+    const SymbolicTiledHloInstruction& tiled_hlo,
+    std::function<absl::StatusOr<Value>(const SymbolicTiledHloInstruction&)>
         emit_param_load_fn,
-    absl::flat_hash_map<const TiledHloInstruction*, Value>& values) {
-  const HloInstruction* hlo = tiled_hlo.hlo;
+    absl::flat_hash_map<const SymbolicTiledHloInstruction*, Value>& values) {
+  const HloInstruction* hlo = tiled_hlo.hlo();
 
   if (hlo->opcode() == HloOpcode::kParameter) {
     return emit_param_load_fn(tiled_hlo);
@@ -820,14 +822,14 @@ absl::StatusOr<Value> EmitTiledHloInstruction(
 
   if (hlo->opcode() == HloOpcode::kReduce) {
     return EmitReduce(b, libdevice_path, device_info, *hlo,
-                      values[tiled_hlo.operands[0]]);
+                      values[tiled_hlo.operand(0)]);
   }
 
   if (hlo->IsElementwise()) {
     std::vector<Value> operands;
     operands.reserve(hlo->operands().size());
 
-    for (const TiledHloInstruction* operand : tiled_hlo.operands) {
+    for (const SymbolicTiledHloInstruction* operand : tiled_hlo.operands()) {
       operands.push_back(values[operand]);
     }
     return EmitElementwise(b, libdevice_path, device_info, *hlo, operands);
@@ -838,7 +840,7 @@ absl::StatusOr<Value> EmitTiledHloInstruction(
     // All these are currently supported only as operations on indices
     // which are pushed to loads and stores. No operations on tiles are
     // performed here.
-    return values[tiled_hlo.operands[0]];
+    return values[tiled_hlo.operand(0)];
   }
 
   return absl::UnimplementedError(
@@ -851,18 +853,18 @@ absl::StatusOr<Value> EmitTiledScope(
     ImplicitLocOpBuilder& b, absl::string_view libdevice_path,
     const se::DeviceDescription& device_info,
     const SymbolicTileAnalysis& analysis,
-    std::function<absl::StatusOr<Value>(const TiledHloInstruction&)>
+    std::function<absl::StatusOr<Value>(const SymbolicTiledHloInstruction&)>
         emit_param_load_fn,
-    absl::flat_hash_map<const TiledHloInstruction*, Value>& values) {
+    absl::flat_hash_map<const SymbolicTiledHloInstruction*, Value>& values) {
   for (const auto& tiled_hlo : analysis.GetTiledHloInstructions()) {
     TF_ASSIGN_OR_RETURN(
         Value result,
         EmitTiledHloInstruction(b, libdevice_path, device_info, analysis,
                                 *tiled_hlo, emit_param_load_fn, values));
     TF_RET_CHECK(values.insert({tiled_hlo.get(), result}).second)
-        << tiled_hlo->hlo->ToString();
+        << tiled_hlo->hlo()->ToString();
     VLOG(8) << "Emitted "
-            << tiled_hlo->hlo->ToString(HloPrintOptions::ShortParsable());
+            << tiled_hlo->hlo()->ToString(HloPrintOptions::ShortParsable());
   }
   return values[analysis.GetRoot()];
 }
@@ -2423,7 +2425,8 @@ absl::Status EmitTiledSoftMax(mlir::OpBuilder builder,
   }
 
   // Emits load instructions
-  auto emit_param_load = [&](const TiledHloInstruction& tiled_hlo_instruction)
+  auto emit_param_load =
+      [&](const SymbolicTiledHloInstruction& tiled_hlo_instruction)
       -> absl::StatusOr<Value> {
     std::vector<Value> tile_sizes, tile_strides, tile_offsets;
     for (auto [size, stride, offset] :
@@ -2437,18 +2440,20 @@ absl::Status EmitTiledSoftMax(mlir::OpBuilder builder,
       tile_offsets.push_back(CreateConst(b, b.getI32Type(), offset));
     }
 
-    IndexingMap program_id_to_input_tile_indexing = ComposeIndexingMaps(
-        program_id_to_output_tile_indexing, tiled_hlo_instruction.indexing_map);
+    IndexingMap program_id_to_input_tile_indexing =
+        ComposeIndexingMaps(program_id_to_output_tile_indexing,
+                            tiled_hlo_instruction.indexing_map());
     program_id_to_input_tile_indexing.Simplify(GetIndexingMapForInstruction);
 
     // Manually compute pointer offset to avoid materialized fully parallel
     // dimensions in the tile. Current codegen tried to avoid size-1 dims.
     TF_ASSIGN_OR_RETURN(
         Value ptr_offset,
-        ComputeBasePtrOffset(b, pid, tiled_hlo_instruction.hlo->shape(),
+        ComputeBasePtrOffset(b, pid, tiled_hlo_instruction.hlo()->shape(),
                              program_id_to_input_tile_indexing));
 
-    auto fn_arg = fn.getArgument(tiled_hlo_instruction.hlo->parameter_number());
+    auto fn_arg =
+        fn.getArgument(tiled_hlo_instruction.hlo()->parameter_number());
     auto tile_ptr = AddPtr(b, fn_arg, ptr_offset);
 
     if (tile_sizes.empty()) {
@@ -2466,7 +2471,7 @@ absl::Status EmitTiledSoftMax(mlir::OpBuilder builder,
     return EmitParameterLoad(b, emitted_tensor, boundary_checks);
   };
 
-  absl::flat_hash_map<const TiledHloInstruction*, Value> values_out;
+  absl::flat_hash_map<const SymbolicTiledHloInstruction*, Value> values_out;
   TF_ASSIGN_OR_RETURN(Value result,
                       EmitTiledScope(b, libdevice_path, device_info, *analysis,
                                      emit_param_load, values_out));
