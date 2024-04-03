@@ -201,7 +201,8 @@ Status ColocatePredecessorTreesPass::Run(
   return absl::OkStatus();
 }
 
-REGISTER_OPTIMIZATION(OptimizationPassRegistry::PRE_PLACEMENT, 50,
-                      ColocatePredecessorTreesPass);
+// TODO(b/331245915): Fix the regression issue then register the pass again.
+// REGISTER_OPTIMIZATION(OptimizationPassRegistry::PRE_PLACEMENT, 50,
+//                       ColocatePredecessorTreesPass);
 
 }  // namespace tensorflow
