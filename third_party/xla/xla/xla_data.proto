@@ -470,6 +470,10 @@ message ExecutionProfile {
   // Whether this profile was drawn from a cache of profiles instead of from
   // execution on the hardware.
   bool profile_cache_hit = 7;
+
+  // Whether a warm-up run of the computation was executed before the
+  // measured execution.
+  bool warmup_run_executed = 8;
 }
 
 // Handle given to a user that represents an execution that the user launched

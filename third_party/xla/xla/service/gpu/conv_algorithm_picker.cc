@@ -624,8 +624,11 @@ absl::StatusOr<AutotuneResult> GpuConvAlgorithmPicker::AutotuneOneConvRunner(
   // Dry-run to warmup the plan.
   launch_status = RunGpuConv(config, operand_buffers, result_buffers,
                              scratch_memory, stream, options);
-  // It is intentional that the warm-up run does not have a profile result.
+  // Flag that a warm-up run has been executed; this allows the GpuTimer for
+  // the main measurement to safely use the delay kernel pattern, even if lazy
+  // module loading is enabled.
   options.profile_result = &profile_result;
+  profile_result.set_warmup_run_executed(true);
   constexpr int kMaxIter = 10;
   // Iterate until the new measurement is within kThreshold of the current
   // minimum.
