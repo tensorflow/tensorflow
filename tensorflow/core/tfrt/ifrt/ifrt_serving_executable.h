@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TFRT_IFRT_IFRT_SERVING_EXECUTABLE_H_
 #define TENSORFLOW_CORE_TFRT_IFRT_IFRT_SERVING_EXECUTABLE_H_
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
@@ -46,6 +47,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_loaded_variable_registry.h"
+#include "tensorflow/core/tfrt/ifrt/ifrt_serving_core_selector.h"
 #include "tensorflow/core/tfrt/ifrt/tf_host_callback.h"
 #include "tsl/concurrency/ref_count.h"
 #include "tsl/platform/threadpool.h"
@@ -56,17 +58,21 @@ namespace ifrt_serving {
 class IfrtServingExecutable {
  public:
   IfrtServingExecutable(
-      absl::string_view model_name, absl::string_view signature_name,
+      int64_t program_id, absl::string_view model_name,
+      absl::string_view signature_name,
       mlir::OwningOpRef<mlir::ModuleOp> module,
       std::shared_ptr<xla::ifrt::Client> client,
+      IfrtServingCoreSelector* serving_device_selector,
       const tsl::thread::ThreadPool* thread_pool,
-      const IfrtLoadedVariableRegistry* ifrt_loaded_variable_registry,
+      IfrtLoadedVariableRegistry* ifrt_loaded_variable_registry,
       tensorflow::StaticDeviceMgr* device_mgr,
       tensorflow::XlaHelpers::ShapeRepresentationFn shape_representation_fn)
-      : model_name_(std::string(model_name)),
+      : program_id_(program_id),
+        model_name_(std::string(model_name)),
         signature_name_(std::string(signature_name)),
         module_(std::move(module)),
         ifrt_client_(std::move(client)),
+        serving_device_selector_(serving_device_selector),
         thread_pool_(*thread_pool),
         ifrt_loaded_variable_registry_(*ifrt_loaded_variable_registry),
         device_mgr_(device_mgr),
@@ -95,6 +101,9 @@ class IfrtServingExecutable {
  private:
   // In memory cache key.
   struct Key {
+    // We currently don't support per core key for SPMD cases. So in SPMD, we
+    // use -1 as device index just for lookup purpose.
+    int device_index;
     std::vector<tensorflow::TensorShape> input_shapes;
     template <typename H>
     friend H AbslHashValue(H h, const Key& key) {
@@ -103,11 +112,28 @@ class IfrtServingExecutable {
           h = H::combine(std::move(h), size);
         }
       }
+      h = H::combine(std::move(h), key.device_index);
       return h;
     }
 
     friend bool operator==(const Key& x, const Key& y) {
-      return x.input_shapes == y.input_shapes;
+      return x.device_index == y.device_index &&
+             x.input_shapes == y.input_shapes;
+    }
+  };
+
+  struct VariableKey {
+    int device_index;
+    std::string variable_name;
+    template <typename H>
+    friend H AbslHashValue(H h, const VariableKey& key) {
+      h = H::combine(std::move(h), key.device_index, key.variable_name);
+      return h;
+    }
+
+    friend bool operator==(const VariableKey& x, const VariableKey& y) {
+      return x.device_index == y.device_index &&
+             x.variable_name == y.variable_name;
     }
   };
 
@@ -119,6 +145,8 @@ class IfrtServingExecutable {
     std::vector<std::shared_ptr<TfHostCallback>> host_callbacks;
   };
 
+  int64_t program_id_;
+
   std::string model_name_;
   std::string signature_name_;
 
@@ -126,9 +154,10 @@ class IfrtServingExecutable {
   mlir::OwningOpRef<mlir::ModuleOp> module_;
 
   std::shared_ptr<xla::ifrt::Client> ifrt_client_;
+  IfrtServingCoreSelector* serving_device_selector_;
   const tsl::thread::ThreadPool& thread_pool_;
 
-  const IfrtLoadedVariableRegistry& ifrt_loaded_variable_registry_;
+  IfrtLoadedVariableRegistry& ifrt_loaded_variable_registry_;
   tensorflow::StaticDeviceMgr* device_mgr_;  // Not owned. For host callback.
   tensorflow::XlaHelpers::ShapeRepresentationFn shape_representation_fn_;
 
@@ -143,9 +172,12 @@ class IfrtServingExecutable {
       const xla::OpSharding& sharding);
 
   xla::ifrt::Future<absl::StatusOr<CachedExecutableBundle>>
-  LookUpOrCreateExecutable(absl::Span<const DtypeAndShape> dtypes_and_shapes);
+  LookUpOrCreateExecutable(
+      const tensorflow::tpu::TPUCompileMetadataProto& compile_metadata,
+      absl::Span<const DtypeAndShape> dtypes_and_shapes);
   absl::StatusOr<IfrtServingExecutable::CachedExecutableBundle>
   CreateExecutableSynchronously(
+      const tensorflow::tpu::TPUCompileMetadataProto& compile_metadata,
       absl::Span<const DtypeAndShape> dtypes_and_shapes);
 
   absl::StatusOr<std::unique_ptr<xla::ifrt::Sharding>> CreateSharding(

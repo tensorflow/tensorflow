@@ -34,8 +34,10 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/tfrt/graph_executor/graph_execution_options.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_model_context.h"
+#include "tensorflow/core/tfrt/ifrt/ifrt_serving_core_selector.h"
 #include "tensorflow/core/tfrt/runtime/runtime.h"
 #include "tensorflow/core/tfrt/saved_model/saved_model_testutil.h"
+#include "tsl/framework/test_util/mock_serving_device_selector.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/statusor.h"
@@ -76,6 +78,8 @@ TEST(IfrtBackendCompilerTest, Basic) {
   // Create contexts required for the compiler execution.
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::ifrt::Client> client,
                           xla::ifrt::test_util::GetClient());
+  tsl::test_util::MockServingDeviceSelector serving_device_selector;
+  ifrt_serving::IfrtServingCoreSelector core_selector(&serving_device_selector);
 
   std::unique_ptr<tensorflow::tfrt_stub::Runtime> runtime =
       tensorflow::tfrt_stub::DefaultTfrtRuntime(/*num_threads=*/1);
@@ -86,7 +90,7 @@ TEST(IfrtBackendCompilerTest, Basic) {
       &graph_execution_options, /*export_dir=*/"", &resource_context);
 
   runtime_context.resource_context().CreateResource<IfrtModelContext>(
-      "IfrtModelContext", client, &GetThreadPool());
+      "IfrtModelContext", client, &core_selector, &GetThreadPool());
 
   IfrtBackendCompiler compiler;
   TF_ASSERT_OK(compiler.CompileTensorflow(runtime_context, mlir_module.get()));

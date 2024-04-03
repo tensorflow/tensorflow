@@ -43,6 +43,7 @@ limitations under the License.
 #include "tensorflow/core/tfrt/fallback/op_kernel_runner.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_config.pb.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_model_context.h"
+#include "tensorflow/core/tfrt/ifrt/ifrt_serving_core_selector.h"
 #include "tensorflow/core/tfrt/mlrt/bytecode/bytecode.h"
 #include "tensorflow/core/tfrt/mlrt/bytecode/executable.h"
 #include "tensorflow/core/tfrt/mlrt/interpreter/builtin_kernels.h"
@@ -53,6 +54,7 @@ limitations under the License.
 #include "tensorflow/core/tfrt/mlrt/kernel/context.h"
 #include "tensorflow/core/tfrt/mlrt/kernel/kernel.h"
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
+#include "tsl/framework/test_util/mock_serving_device_selector.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/status.h"
@@ -367,8 +369,11 @@ TEST(KernelTest, IfrtLoadVariableOp) {
 
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::ifrt::Client> client,
                           xla::ifrt::test_util::GetClient());
+
+  tsl::test_util::MockServingDeviceSelector serving_device_selector;
+  ifrt_serving::IfrtServingCoreSelector core_selector(&serving_device_selector);
   resource_context.CreateResource<tensorflow::ifrt_serving::IfrtModelContext>(
-      "IfrtModelContext", client, &GetThreadPool());
+      "IfrtModelContext", client, &core_selector, &GetThreadPool());
 
   auto tf_context =
       std::make_unique<Context>(&fallback_request_state, &resource_context);
@@ -466,8 +471,10 @@ TEST(KernelTest, DuplicateIfrtLoadVariableOpShallSucceed) {
 
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::ifrt::Client> client,
                           xla::ifrt::test_util::GetClient());
+  tsl::test_util::MockServingDeviceSelector serving_device_selector;
+  ifrt_serving::IfrtServingCoreSelector core_selector(&serving_device_selector);
   resource_context.CreateResource<tensorflow::ifrt_serving::IfrtModelContext>(
-      "IfrtModelContext", client, &GetThreadPool());
+      "IfrtModelContext", client, &core_selector, &GetThreadPool());
 
   auto tf_context =
       std::make_unique<Context>(&fallback_request_state, &resource_context);
@@ -570,8 +577,10 @@ TEST(KernelTest, IfrtRestoreVariableOp) {
 
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::ifrt::Client> client,
                           xla::ifrt::test_util::GetClient());
+  tsl::test_util::MockServingDeviceSelector serving_device_selector;
+  ifrt_serving::IfrtServingCoreSelector core_selector(&serving_device_selector);
   resource_context.CreateResource<tensorflow::ifrt_serving::IfrtModelContext>(
-      "IfrtModelContext", client, &GetThreadPool());
+      "IfrtModelContext", client, &core_selector, &GetThreadPool());
 
   auto tf_context =
       std::make_unique<Context>(&fallback_request_state, &resource_context);

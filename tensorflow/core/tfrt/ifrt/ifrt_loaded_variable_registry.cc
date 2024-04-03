@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/tfrt/ifrt/ifrt_loaded_variable_registry.h"
 
+#include <optional>
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
@@ -31,9 +32,15 @@ namespace ifrt_serving {
 
 absl::Status IfrtLoadedVariableRegistry::TryRegisterLoadedVariable(
     absl::string_view name,
+    const tensorflow::ifrt_serving::VariableDeviceShardingConfigProto&
+        sharding_config,
     LoadedVariableConstructor&& loaded_variable_constructor) {
+  // For SPMD, use -1 as device_index.
+  int device_index = sharding_config.device_ids().size() == 1
+                         ? sharding_config.device_ids(0)
+                         : kSDeviceIndexNoCoreSelection;
   absl::MutexLock lock(&mutex_);
-  auto& variable = loaded_variable_map_[name];
+  auto& variable = loaded_variable_map_[name][device_index];
   if (variable.array.IsValid()) {
     // Already registered. This is rare.
     VLOG(1) << "Variable '" << name << "' already registered.";
@@ -44,14 +51,25 @@ absl::Status IfrtLoadedVariableRegistry::TryRegisterLoadedVariable(
 }
 
 absl::StatusOr<IfrtLoadedVariableRegistry::LoadedVariable>
-IfrtLoadedVariableRegistry::GetLoadedVariable(absl::string_view name) const {
+IfrtLoadedVariableRegistry::GetLoadedVariable(
+    absl::string_view name, std::optional<int> device_index) const {
   absl::MutexLock lock(&mutex_);
   auto it = loaded_variable_map_.find(name);
-  if (it == loaded_variable_map_.end()) {
+  if (it == loaded_variable_map_.end() || it->second.empty()) {
     return absl::NotFoundError(
         absl::StrCat("Variable '", name, "' not found."));
   }
-  return it->second;
+  // If device index isn't specified, returns a loaded variable in a random
+  // device.
+  if (!device_index.has_value()) {
+    return it->second.begin()->second;
+  }
+  auto sec_it = it->second.find(*device_index);
+  if (sec_it == it->second.end()) {
+    return absl::NotFoundError(absl::StrCat(
+        "Variable '", name, "' not found on device index ", *device_index));
+  }
+  return sec_it->second;
 }
 
 }  // namespace ifrt_serving

@@ -32,11 +32,13 @@ limitations under the License.
 #include "mlir/InitAllDialects.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
+#include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/ifrt_types.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/test_util.h"
 #include "tensorflow/core/platform/resource_loader.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/protobuf.h"
 #include "tsl/platform/statusor.h"
@@ -93,10 +95,31 @@ TEST(Tf2HloTest, Empty) {
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::ifrt::Client> client,
                           xla::ifrt::test_util::GetClient());
 
-  auto result = CompileTfToHlo(mlir_module.get(), {}, "main", *client,
+  std::vector<DtypeAndShape> dtype_and_shapes;
+  TF_ASSERT_OK_AND_ASSIGN(
+      tensorflow::tpu::TPUCompileMetadataProto compile_metadata,
+      GetCompileMetadata(mlir_module.get(), dtype_and_shapes, *client));
+
+  auto result = CompileTfToHlo(compile_metadata, mlir_module.get(),
+                               dtype_and_shapes, "main", *client,
                                tensorflow::IdentityShapeRepresentationFn());
 
+  tensorflow::tpu::TPUCompileMetadataProto expected_compile_metadata;
+  ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
+      R"pb(
+        num_replicas: 1
+        num_cores_per_replica: 1
+        device_assignment {
+          replica_count: 1
+          computation_count: 1
+          computation_devices { replica_device_ids: 0 }
+        }
+      )pb",
+      &expected_compile_metadata));
+
   TF_ASSERT_OK(result.status());
+
+  EXPECT_THAT(compile_metadata, EqualsProto(expected_compile_metadata));
 }
 
 // Multiple input and multiple out.
@@ -125,11 +148,46 @@ TEST(Tf2HloTest, Tuple) {
   std::vector<DtypeAndShape> dtype_and_shapes;
   dtype_and_shapes.push_back(DtypeAndShape{DT_FLOAT, {1, 3}});
   dtype_and_shapes.push_back(DtypeAndShape{DT_FLOAT, {3, 1}});
-  auto result =
-      CompileTfToHlo(mlir_module.get(), dtype_and_shapes, "main", *client,
-                     tensorflow::IdentityShapeRepresentationFn());
+  TF_ASSERT_OK_AND_ASSIGN(
+      tensorflow::tpu::TPUCompileMetadataProto compile_metadata,
+      GetCompileMetadata(mlir_module.get(), dtype_and_shapes, *client));
+  auto result = CompileTfToHlo(compile_metadata, mlir_module.get(),
+                               dtype_and_shapes, "main", *client,
+                               tensorflow::IdentityShapeRepresentationFn());
+
+  tensorflow::tpu::TPUCompileMetadataProto expected_compile_metadata;
+  ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
+      R"pb(
+        args {
+          dtype: DT_FLOAT
+          shape {
+            dim { size: 1 }
+            dim { size: 3 }
+          }
+          kind: PARAMETER
+        }
+        args {
+          dtype: DT_FLOAT
+          shape {
+            dim { size: 3 }
+            dim { size: 1 }
+          }
+          kind: PARAMETER
+        }
+        retvals {}
+        retvals {}
+        num_replicas: 1
+        num_cores_per_replica: 1
+        device_assignment {
+          replica_count: 1
+          computation_count: 1
+          computation_devices { replica_device_ids: 0 }
+        }
+      )pb",
+      &expected_compile_metadata));
 
   TF_ASSERT_OK(result.status());
+  EXPECT_THAT(compile_metadata, EqualsProto(expected_compile_metadata));
 }
 
 // Spmd and device assignment is given
@@ -157,11 +215,13 @@ TEST(Tf2HloTest, Spmd) {
 
   std::vector<DtypeAndShape> dtype_and_shapes;
   dtype_and_shapes.push_back(DtypeAndShape{DT_FLOAT, {4, 64}});
-  auto result =
-      CompileTfToHlo(mlir_module.get(), dtype_and_shapes, "main", *client,
-                     tensorflow::IdentityShapeRepresentationFn());
+  TF_ASSERT_OK_AND_ASSIGN(
+      tensorflow::tpu::TPUCompileMetadataProto compile_metadata,
+      GetCompileMetadata(mlir_module.get(), dtype_and_shapes, *client));
+  auto result = CompileTfToHlo(compile_metadata, mlir_module.get(),
+                               dtype_and_shapes, "main", *client,
+                               tensorflow::IdentityShapeRepresentationFn());
 
-  LOG(INFO) << result->compile_metadata;
   TF_ASSERT_OK(result.status());
 
   tensorflow::tpu::TPUCompileMetadataProto expected_compile_metadata;
@@ -197,7 +257,7 @@ TEST(Tf2HloTest, Spmd) {
       )pb",
       &expected_compile_metadata));
 
-  EXPECT_THAT(result->compile_metadata, EqualsProto(expected_compile_metadata));
+  EXPECT_THAT(compile_metadata, EqualsProto(expected_compile_metadata));
 }
 
 // Spmd and use default device assignment b/c no device assignment is given
@@ -227,11 +287,13 @@ TEST(Tf2HloTest, UsingDefaultDeviceAssignment) {
   dtype_and_shapes.push_back(DtypeAndShape{DT_FLOAT, {4, 64}});
   dtype_and_shapes.push_back(DtypeAndShape{DT_FLOAT, {64, 10}});
   dtype_and_shapes.push_back(DtypeAndShape{DT_FLOAT, {1, 4}});
-  auto result =
-      CompileTfToHlo(mlir_module.get(), dtype_and_shapes, "main", *client,
-                     tensorflow::IdentityShapeRepresentationFn());
+  TF_ASSERT_OK_AND_ASSIGN(
+      tensorflow::tpu::TPUCompileMetadataProto compile_metadata,
+      GetCompileMetadata(mlir_module.get(), dtype_and_shapes, *client));
+  auto result = CompileTfToHlo(compile_metadata, mlir_module.get(),
+                               dtype_and_shapes, "main", *client,
+                               tensorflow::IdentityShapeRepresentationFn());
 
-  LOG(INFO) << result->compile_metadata;
   TF_ASSERT_OK(result.status());
 
   tensorflow::tpu::TPUCompileMetadataProto expected_compile_metadata;
@@ -292,7 +354,7 @@ TEST(Tf2HloTest, UsingDefaultDeviceAssignment) {
       )pb",
       &expected_compile_metadata));
 
-  EXPECT_THAT(result->compile_metadata, EqualsProto(expected_compile_metadata));
+  EXPECT_THAT(compile_metadata, EqualsProto(expected_compile_metadata));
 }
 
 // Multiple input and multiple out.
@@ -322,10 +384,39 @@ TEST(Tf2HloTest, XlaCallHostCallback) {
   std::vector<DtypeAndShape> dtype_and_shapes;
   dtype_and_shapes.push_back(DtypeAndShape{DT_INT32, {1}});
   dtype_and_shapes.push_back(DtypeAndShape{DT_INT32, {1}});
+  TF_ASSERT_OK_AND_ASSIGN(
+      tensorflow::tpu::TPUCompileMetadataProto compile_metadata,
+      GetCompileMetadata(mlir_module.get(), dtype_and_shapes, *client));
+  auto result = CompileTfToHlo(compile_metadata, mlir_module.get(),
+                               dtype_and_shapes, "main", *client,
+                               tensorflow::IdentityShapeRepresentationFn());
 
-  auto result =
-      CompileTfToHlo(mlir_module.get(), dtype_and_shapes, "main", *client,
-                     tensorflow::IdentityShapeRepresentationFn());
+  tensorflow::tpu::TPUCompileMetadataProto expected_compile_metadata;
+  ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
+      R"pb(
+        args {
+          dtype: DT_INT32
+          shape { dim { size: 1 } }
+          kind: PARAMETER
+          sharding {}
+        }
+        args {
+          dtype: DT_INT32
+          shape { dim { size: 1 } }
+          kind: PARAMETER
+          sharding {}
+        }
+        num_replicas: 1
+        num_cores_per_replica: 1
+        device_assignment {
+          replica_count: 1
+          computation_count: 1
+          computation_devices { replica_device_ids: 0 }
+        }
+        use_spmd_for_xla_partitioning: true
+        compile_options {}
+      )pb",
+      &expected_compile_metadata));
 
   TF_ASSERT_OK(result.status());
 
@@ -334,6 +425,7 @@ TEST(Tf2HloTest, XlaCallHostCallback) {
       (*result).host_compute_metadata.device_to_host().begin()->metadata_size(),
       2);
   ASSERT_EQ((*result).host_compute_metadata.host_to_device().size(), 0);
+  EXPECT_THAT(compile_metadata, EqualsProto(expected_compile_metadata));
 }
 
 }  // namespace

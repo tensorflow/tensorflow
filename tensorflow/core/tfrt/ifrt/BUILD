@@ -25,11 +25,23 @@ tf_proto_library(
 )
 
 cc_library(
+    name = "ifrt_serving_core_selector",
+    srcs = ["ifrt_serving_core_selector.cc"],
+    hdrs = ["ifrt_serving_core_selector.h"],
+    deps = [
+        "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/framework:serving_device_selector",
+    ],
+)
+
+cc_library(
     name = "ifrt_serving_executable",
     srcs = ["ifrt_serving_executable.cc"],
     hdrs = ["ifrt_serving_executable.h"],
     deps = [
+        ":ifrt_config_proto_cc",
         ":ifrt_loaded_variable_registry",
+        ":ifrt_serving_core_selector",
         ":ifrt_tensor_utils",
         ":sharding_utils",
         ":tf_host_callback",
@@ -43,8 +55,6 @@ cc_library(
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/common_runtime/eager:context",
-        "//tensorflow/core/common_runtime/eager:tensor_handle",
         "//tensorflow/core/protobuf/tpu:compile_metadata_proto_cc",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -57,6 +67,7 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@llvm-project//mlir:IR",
         "@local_tsl//tsl/concurrency:ref_count",
+        "@local_tsl//tsl/framework:serving_device_selector",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:statusor",
@@ -112,6 +123,7 @@ cc_library(
     srcs = ["ifrt_loaded_variable_registry.cc"],
     hdrs = ["ifrt_loaded_variable_registry.h"],
     deps = [
+        ":ifrt_config_proto_cc",
         "//tensorflow/compiler/mlir/tfrt/transforms/ifrt:ifrt_types",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/functional:any_invocable",
@@ -121,7 +133,6 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@local_tsl//tsl/concurrency:ref_count",
-        "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:statusor",
         "@local_xla//xla/python/ifrt",
     ],
@@ -135,6 +146,7 @@ cc_library(
         ":ifrt_executable_registry",
         ":ifrt_loaded_variable_registry",
         ":ifrt_restore_tensor_registry",
+        ":ifrt_serving_core_selector",
         "//tensorflow/compiler/tf2xla:xla_helpers",
         "//tensorflow/core:core_cpu_base",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -143,6 +155,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@local_tsl//tsl/concurrency:ref_count",
+        "@local_tsl//tsl/framework:serving_device_selector",
         "@local_tsl//tsl/platform:env",
         "@local_xla//xla/python/ifrt",
         "@tf_runtime//:hostcontext",
@@ -307,6 +320,7 @@ tf_cc_test(
     tags = ["no_oss"],
     deps = [
         ":ifrt_loaded_variable_registry",
+        ":ifrt_serving_core_selector",
         ":ifrt_serving_executable",
         ":sharding_utils",
         ":tf_host_callback",
@@ -323,6 +337,7 @@ tf_cc_test(
         "//tensorflow/core/framework:tensor_testutil",
         "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/platform:resource_loader",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
@@ -331,6 +346,8 @@ tf_cc_test(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
         "@local_tsl//tsl/concurrency:ref_count",
+        "@local_tsl//tsl/framework:serving_device_selector",
+        "@local_tsl//tsl/framework/test_util:mock_serving_device_selector",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:tstring",

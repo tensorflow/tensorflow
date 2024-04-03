@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TFRT_IFRT_IFRT_LOADED_VARIABLE_REGISTRY_H_
 #define TENSORFLOW_CORE_TFRT_IFRT_IFRT_LOADED_VARIABLE_REGISTRY_H_
 
+#include <optional>
+
 #include "absl/container/flat_hash_map.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
@@ -25,10 +27,14 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/ifrt_types.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/future.h"
+#include "tensorflow/core/tfrt/ifrt/ifrt_config.pb.h"
 #include "tsl/concurrency/ref_count.h"
 
 namespace tensorflow {
 namespace ifrt_serving {
+
+// A placeholder device index used when there is no core selection.
+inline constexpr int kSDeviceIndexNoCoreSelection = -1;
 
 // This class is thread safe.
 class IfrtLoadedVariableRegistry {
@@ -36,7 +42,9 @@ class IfrtLoadedVariableRegistry {
   struct LoadedVariable {
     DtypeAndShape dtype_and_shape;
     xla::ifrt::Future<absl::StatusOr<tsl::RCReference<xla::ifrt::Array>>> array;
+    tensorflow::ifrt_serving::VariableDeviceShardingConfigProto sharding_config;
   };
+
   using LoadedVariableConstructor =
       absl::AnyInvocable<absl::StatusOr<LoadedVariable>() const>;
 
@@ -47,16 +55,25 @@ class IfrtLoadedVariableRegistry {
   // loaded_variable_constructor is invoked in the caller thread.
   absl::Status TryRegisterLoadedVariable(
       absl::string_view name,
+      const tensorflow::ifrt_serving::VariableDeviceShardingConfigProto&
+          sharding_config,
       LoadedVariableConstructor&& loaded_variable_constructor)
       ABSL_LOCKS_EXCLUDED(mutex_);
 
-  absl::StatusOr<LoadedVariable> GetLoadedVariable(absl::string_view name) const
+  // Looks for loaded variable per input name and optional device. If device
+  // isn't specified, a random loaded variable with the given name will be
+  // returned. Otherwise, a loaded variable on specific device will be returned.
+  // For variables on SPMD, we currently don't support key by per device index
+  // and we use -1 as a common index.
+  absl::StatusOr<LoadedVariable> GetLoadedVariable(
+      absl::string_view name,
+      std::optional<int> device_index = std::nullopt) const
       ABSL_LOCKS_EXCLUDED(mutex_);
 
  private:
   mutable absl::Mutex mutex_;
-  absl::flat_hash_map<std::string, LoadedVariable> loaded_variable_map_
-      ABSL_GUARDED_BY(mutex_);
+  absl::flat_hash_map<std::string, absl::flat_hash_map<int, LoadedVariable>>
+      loaded_variable_map_ ABSL_GUARDED_BY(mutex_);
 };
 
 }  // namespace ifrt_serving

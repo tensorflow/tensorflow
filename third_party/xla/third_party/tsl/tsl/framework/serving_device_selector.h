@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <deque>
+#include <memory>
 #include <optional>
 
 #include "absl/container/fixed_array.h"
@@ -150,15 +151,17 @@ class ServingDeviceSelector {
   // device will be freed when the lifetime of the returned `DeviceReservation`
   // object ends.
   virtual DeviceReservation ReserveDevice(
-      absl::string_view program_fingerprint) = 0;
+      absl::string_view program_fingerprint) {
+    return DeviceReservation(0, this);
+  }
 
   // Enqueues a program on the given device. Used only for load tracking
   // purposes when the device selection feature is unused.
-  virtual void Enqueue(int32_t device_index, absl::string_view fingerprint) = 0;
+  virtual void Enqueue(int32_t device_index, absl::string_view fingerprint) {}
 
   // Marks the completion of a program on the given device. Used only for load
   // tracking purposes when the device selection feature is unused.
-  virtual void Completed(int32_t device_index, bool had_error) = 0;
+  virtual void Completed(int32_t device_index, bool had_error) {}
 
  protected:
   // A helper function for Enqueue. The EnqueueHelper does the following things.
@@ -193,7 +196,7 @@ class ServingDeviceSelector {
   friend DeviceReservation;
 
   // Frees the given device reservation.
-  virtual void FreeDeviceReservation(const DeviceReservation& reservation) = 0;
+  virtual void FreeDeviceReservation(const DeviceReservation& reservation) {}
 };
 
 }  // namespace tsl

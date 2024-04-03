@@ -64,13 +64,24 @@ limitations under the License.
 
 namespace tensorflow {
 namespace ifrt_serving {
-namespace {
+
 static constexpr absl::string_view kEntryFuncName = "main";
 
 absl::StatusOr<tensorflow::tpu::TPUCompileMetadataProto> GetCompileMetadata(
-    mlir::func::FuncOp op, absl::Span<const DtypeAndShape> inputs,
+    mlir::ModuleOp module, absl::Span<const DtypeAndShape> inputs,
     const xla::ifrt::Client& ifrt_client) {
   tensorflow::tpu::TPUCompileMetadataProto metadata;
+
+  auto op = module.lookupSymbol<mlir::func::FuncOp>(kEntryFuncName);
+  if (!op) {
+    return absl::InternalError("Could not find entry function in MLIR Module.");
+  }
+
+  if (inputs.size() != op.getNumArguments()) {
+    return absl::InternalError(
+        absl::StrCat("Entry function arguments mismatched! Expected ",
+                     op.getNumArguments(), " got", inputs.size()));
+  }
 
   auto metadata_text_attr =
       op->getAttrOfType<mlir::StringAttr>(kMetadataTextAttrName);
@@ -142,9 +153,9 @@ absl::StatusOr<tensorflow::tpu::TPUCompileMetadataProto> GetCompileMetadata(
 
   return metadata;
 }
-}  // namespace
 
 absl::StatusOr<Tf2HloResult> CompileTfToHlo(
+    const tensorflow::tpu::TPUCompileMetadataProto& compile_metadata,
     mlir::ModuleOp module, absl::Span<const DtypeAndShape> inputs,
     absl::string_view entry_function_name, const xla::ifrt::Client& ifrt_client,
     tensorflow::XlaHelpers::ShapeRepresentationFn shape_representation_fn) {
@@ -164,22 +175,6 @@ absl::StatusOr<Tf2HloResult> CompileTfToHlo(
       stream_executor::PlatformManager::PlatformWithName("Host"));
   TF_ASSIGN_OR_RETURN(
       auto* client, xla::ClientLibrary::GetOrCreateCompileOnlyClient(platform));
-
-  auto entry_fn = module.lookupSymbol<mlir::func::FuncOp>(kEntryFuncName);
-  if (!entry_fn) {
-    return absl::InternalError("Could not find entry function in MLIR Module.");
-  }
-
-  if (inputs.size() != entry_fn.getNumArguments()) {
-    return absl::InternalError(
-        absl::StrCat("Entry function arguments mismatched! Expected ",
-                     entry_fn.getNumArguments(), " got", inputs.size()));
-  }
-
-  TF_ASSIGN_OR_RETURN(tensorflow::tpu::TPUCompileMetadataProto compile_metadata,
-                      GetCompileMetadata(entry_fn, inputs, ifrt_client));
-
-  VLOG(1) << "Compilation metadata: " << compile_metadata;
 
   std::vector<TensorShape> arg_shapes;
   for (const auto& input : inputs) {

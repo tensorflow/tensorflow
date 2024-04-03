@@ -64,15 +64,9 @@ namespace {
 absl::StatusOr<tsl::RCReference<xla::ifrt::Array>> LoadIfrtVariable(
     tensorflow::ifrt_serving::IfrtModelContext& ifrt_model_context,
     const tensorflow::Tensor& variable,
-    absl::string_view sharding_config_proto_text, absl::string_view name) {
-  tensorflow::ifrt_serving::VariableDeviceShardingConfigProto sharding_config;
-
-  if (!tensorflow::protobuf::TextFormat::ParseFromString(
-          sharding_config_proto_text, &sharding_config)) {
-    return absl::InvalidArgumentError(absl::StrCat(
-        "Attribute: ", sharding_config_proto_text, " cannot be parsed"));
-  }
-
+    const tensorflow::ifrt_serving::VariableDeviceShardingConfigProto&
+        sharding_config,
+    absl::string_view name) {
   std::vector<int> device_ids{sharding_config.device_ids().begin(),
                               sharding_config.device_ids().end()};
   TF_ASSIGN_OR_RETURN(xla::HloSharding hlo_sharding,
@@ -327,23 +321,29 @@ absl::Status MlrtIfrtLoadVariableKernel::InvokeHelper() {
 
   TF_ASSIGN_OR_RETURN(ifrt_serving::DtypeAndShape dtype_and_shape,
                       GetDtypeAndShape(variable()));
+  tensorflow::ifrt_serving::VariableDeviceShardingConfigProto sharding_config;
+  if (!tensorflow::protobuf::TextFormat::ParseFromString(
+          sharding_config_proto_text(), &sharding_config)) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Attribute: ", sharding_config_proto_text(), " cannot be parsed"));
+  }
 
   TF_RETURN_IF_ERROR(
       (*ifrt_model_context)
           ->GetLoadedVariableRegistry()
           .TryRegisterLoadedVariable(
-              runtime_name,
+              runtime_name, sharding_config,
               [&]() -> absl::StatusOr<ifrt_serving::IfrtLoadedVariableRegistry::
                                           LoadedVariable> {
                 return ifrt_serving::IfrtLoadedVariableRegistry::LoadedVariable(
                     {.dtype_and_shape = dtype_and_shape,
-                     .array = loaded_variable_future});
+                     .array = loaded_variable_future,
+                     .sharding_config = sharding_config});
               }));
 
   restored_tensor_future.OnReady(
       [ifrt_model_context = *ifrt_model_context,
-       sharding_config = std::string(sharding_config_proto_text()),
-       runtime_name = runtime_name,
+       sharding_config = sharding_config, runtime_name = runtime_name,
        loaded_variable_promise = std::move(loaded_variable_promise)](
           absl::StatusOr<tensorflow::Tensor> restored_tensor) mutable {
         if (!restored_tensor.ok()) {
