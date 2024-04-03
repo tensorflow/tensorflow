@@ -220,7 +220,7 @@ Status AppendStatus(Status prior, absl::string_view context);
   Status error_type(const absl::FormatSpec<Args...>& format,        \
                     const Args&... args) {                          \
     return WithLogBacktrace(                                        \
-        tsl::errors::error_type(absl::StrFormat(format, args...))); \
+        absl::error_type##Error(absl::StrFormat(format, args...))); \
   }
 
 DEFINE_XLA_ERROR_WITH_STRFORMAT_WITH_BACKTRACE(InvalidArgument);
@@ -245,12 +245,12 @@ DEFINE_XLA_ERROR_WITH_STRFORMAT_WITH_BACKTRACE(FailedPrecondition);
 //                     absl::SourceLocation loc =
 //                     absl::SourceLocation::current())
 //       : status(WithLogBacktrace(
-//             tsl::errors::ResourceExhausted(absl::StrFormat(format, args...))
+//             absl::ResourceExhaustedError(absl::StrFormat(format, args...))
 //                 .WithSourceLocation(loc))) {}
 // #else
 //   ResourceExhaustedStrCat(Args&&... concat)
 //       : status(WithLogBacktrace(
-//             tsl::errors::ResourceExhausted(absl::StrFormat(format, args...)))
+//             absl::ResourceExhaustedError(absl::StrFormat(format, args...)))
 //             {}
 // #endif
 //
@@ -280,7 +280,7 @@ DEFINE_XLA_ERROR_WITH_STRFORMAT_WITH_BACKTRACE(FailedPrecondition);
   error_type(const absl::FormatSpec<Args...>& format, Args&&... args,    \
              absl::SourceLocation loc = absl::SourceLocation::current()) \
       : status(WithLogBacktrace(                                         \
-            tsl::errors::error_type(absl::StrFormat(format, args...))    \
+            absl::error_type##Error(absl::StrFormat(format, args...))    \
                 .WithSourceLocation(loc))) {}                            \
   XLA_ERROR_WITH_STRFORMAT_AND_BACKTRACE_SUFFIX(error_type)
 #else
@@ -289,7 +289,7 @@ DEFINE_XLA_ERROR_WITH_STRFORMAT_WITH_BACKTRACE(FailedPrecondition);
   Status error_type(const absl::FormatSpec<Args...>& format,        \
                     const Args&... args) {                          \
     return WithLogBacktrace(                                        \
-        tsl::errors::error_type(absl::StrFormat(format, args...))); \
+        absl::error_type##Error(absl::StrFormat(format, args...))); \
   }
 #endif
 
@@ -316,14 +316,16 @@ XLA_ERROR_WITH_STRFORMAT_AND_BACKTRACE(Unknown);
 // #if defined(PLATFORM_GOOGLE)
 //   // NOLINTNEXTLINE(google-explicit-constructor)
 //   ResourceExhaustedStrCat(Args&&... concat, absl::SourceLocation loc =
-//                                                 absl::SourceLocation::current())
+//                                             absl::SourceLocation::current())
 //       : status(WithLogBacktrace(
-//             tsl::errors::ResourceExhausted(std::forward<Args>(concat)...)
+//             absl::ResourceExhaustedError(absl::StrCat(
+//                                          std::forward<Args>(concat)...))
 //                 .WithSourceLocation(loc))) {}
 // #else
 //   ResourceExhaustedStrCat(Args&&... concat)
 //       : status(WithLogBacktrace(
-//             tsl::errors::ResourceExhausted(std::forward<Args>(concat)...)))
+//             absl::ResourceExhaustedError(absl::StrCat(
+//                                          std::forward<Args>(concat)...))))
 //             {}
 // #endif
 //
@@ -347,20 +349,21 @@ XLA_ERROR_WITH_STRFORMAT_AND_BACKTRACE(Unknown);
   error_type##StrCat(Args&&...)->error_type##StrCat<Args...>;
 
 #if defined(PLATFORM_GOOGLE)
-#define XLA_ERROR_WITH_STRCAT_AND_BACKTRACE(error_type)                     \
-  XLA_ERROR_WITH_STRCAT_AND_BACKTRACE_PREFIX(error_type)                    \
-  error_type##StrCat(Args&&... concat, absl::SourceLocation loc =           \
-                                           absl::SourceLocation::current()) \
-      : status(WithLogBacktrace(                                            \
-            tsl::errors::error_type(std::forward<Args>(concat)...)          \
-                .WithSourceLocation(loc))) {}                               \
+#define XLA_ERROR_WITH_STRCAT_AND_BACKTRACE(error_type)                       \
+  XLA_ERROR_WITH_STRCAT_AND_BACKTRACE_PREFIX(error_type)                      \
+  error_type##StrCat(Args&&... concat, absl::SourceLocation loc =             \
+                                           absl::SourceLocation::current())   \
+      : status(                                                               \
+            WithLogBacktrace(absl::error_type##Error(                         \
+                                 absl::StrCat(std::forward<Args>(concat)...)) \
+                                 .WithSourceLocation(loc))) {}                \
   XLA_ERROR_WITH_STRCAT_AND_BACKTRACE_SUFFIX(error_type)
 #else
-#define XLA_ERROR_WITH_STRCAT_AND_BACKTRACE(error_type)                 \
-  XLA_ERROR_WITH_STRCAT_AND_BACKTRACE_PREFIX(error_type)                \
-  error_type##StrCat(Args&&... concat)                                  \
-      : status(WithLogBacktrace(                                        \
-            tsl::errors::error_type(std::forward<Args>(concat)...))) {} \
+#define XLA_ERROR_WITH_STRCAT_AND_BACKTRACE(error_type)       \
+  XLA_ERROR_WITH_STRCAT_AND_BACKTRACE_PREFIX(error_type)      \
+  error_type##StrCat(Args&&... concat)                        \
+      : status(WithLogBacktrace(absl::error_type##Error(      \
+            absl::StrCat(std::forward<Args>(concat)...)))) {} \
   XLA_ERROR_WITH_STRCAT_AND_BACKTRACE_SUFFIX(error_type)
 #endif
 
