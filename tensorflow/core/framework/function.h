@@ -990,6 +990,7 @@ class FunctionLibraryRuntime : public core::WeakRefCounted {
   // default function library, and looks up `function_name` in that library.
   // It does not support overriding the function library.
   virtual bool IsStateful(const std::string& function_name) const = 0;
+  virtual bool IsShareable(const std::string& function_name) const = 0;
 
   // Returns the device on which the function executes.
   virtual Device* device() = 0;

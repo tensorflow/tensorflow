@@ -174,6 +174,12 @@ message OpDef {
   // If True, the op is allowed to return errors for network disconnection and
   // trigger TF network failure handling logics.
   bool is_distributed_communication = 21;
+
+  // Indicates whether the op implementation allows the kernel instance to be
+  // shared between multiple graphs on the same device.
+  // This setting may be useful for large ops that are stateless, but
+  // nevertheless have a large memory footprint (e.g "Const").
+  bool allows_shared_kernel = 22;
 }
 // LINT.ThenChange(
 //     https://www.tensorflow.org/code/tensorflow/core/framework/op_def_util.cc)
