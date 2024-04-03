@@ -22,24 +22,58 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import gen_experimental_dataset_ops
 # TODO(b/238903802): Use TypeSpec serialization methods directly.
 from tensorflow.python.saved_model import nested_structure_coder
+from tensorflow.python.util.tf_export import tf_export
 
 
-# TODO(b/250921378): Add example to docstring and export to TF API.
+@tf_export("data.experimental.distributed_save")
 def distributed_save(
     dataset: dataset_ops.Dataset,
     path: str,
-    dispatcher_address: str,
+    data_service_address: str,
     compression: str = "AUTO",
 ) -> Optional[ops.OperationType]:
-  """Initiates the process of distributedly saving a dataset to disk.
+  """Initiates the process of saving a dataset to disk using tf.data service.
+
+  The op uses tf.data service
+  (https://www.tensorflow.org/api_docs/python/tf/data/experimental/service) to
+  write a dataset snapshot. Returns immediately after submitting the request.
+  Does not wait for the snapshot to be finished. To load the snapshot, users may
+  optionally pass `wait=True` to `tf.data.Dataset.load` so it can read snapshots
+  as they are being written.
+
+  Example usage:
+
+  >>> import os
+  >>> import tempfile
+
+  >>> # Runs tf.data service.
+  >>> tempdir = tempfile.gettempdir()
+  >>> dispatcher = tf.data.experimental.service.DispatchServer(
+  ...     tf.data.experimental.service.DispatcherConfig(
+  ...         fault_tolerant_mode=True,
+  ...         work_dir=os.path.join(tempdir, "work_dir")))
+  >>> dispatcher_address = dispatcher.target.split("://")[1]
+  >>> worker = tf.data.experimental.service.WorkerServer(
+  ...     tf.data.experimental.service.WorkerConfig(
+  ...         dispatcher_address=dispatcher_address))
+
+  >>> # Writes dataset snapshot.
+  >>> path = os.path.join(tempdir, "dataset_snapshot")
+  >>> dataset = tf.data.Dataset.range(1)
+  >>> tf.data.experimental.distributed_save(dataset, path, dispatcher_address)
+
+  >>> # Loads a dataset snapshot.
+  >>> loaded_dataset = tf.data.Dataset.load(path, wait=True)
+  >>> for elem in loaded_dataset:
+  ...   print(elem)
+  tf.Tensor(0, shape=(), dtype=int64)
 
   Args:
     dataset: The `tf.data.Dataset` to save.
     path: The directory path to save the dataset. Requires that:
       - The directory does not exist and will create the directory.
       - The file system supports atomic move (rename).
-    dispatcher_address: The address of the tf.data service dispatcher used to
-      save `dataset`.
+    data_service_address: tf.data service dispatcher address.
     compression: (Optional.) Whether and how to compress the `dataset` snapshot.
       If `"AUTO"`, the tf.data runtime decides which algorithm to use. If
       `"GZIP"` or `"SNAPPY"`, that specific algorithm is used.  If `None`, the
@@ -50,15 +84,18 @@ def distributed_save(
 
   Raises:
     ValueError: If `dispatcher_address` is invalid.
-    tf.errors.AlreadyExistsError: If the snapshot already exists.
+    tf.errors.AlreadyExistsError: If the snapshot has already started or has
+      finished.
     tf.errors.FailedPreconditionError: If the file system does not support
       atomic move (rename).
+    tf.errors.InvalidArgumentError: If tf.data service is not running in the
+      fault tolerant mode.
   """
-  if not isinstance(dispatcher_address, str):
-    raise ValueError("`dispatcher_address` must be a string, but is a "
-                     f"{type(dispatcher_address)} ({dispatcher_address}")
-  if not dispatcher_address:
-    raise ValueError("`dispatcher_address` must not be empty")
+  if not isinstance(data_service_address, str):
+    raise ValueError("`data_service_address` must be a string, but is a "
+                     f"{type(data_service_address)} ({data_service_address}")
+  if not data_service_address:
+    raise ValueError("`data_service_address` must not be empty")
 
   metadata = snapshot_pb2.DistributedSnapshotMetadata(
       element_spec=nested_structure_coder.encode_structure(
@@ -68,5 +105,5 @@ def distributed_save(
   return gen_experimental_dataset_ops.distributed_save(
       dataset._variant_tensor,  # pylint: disable=protected-access
       directory=path,
-      address=dispatcher_address,
+      address=data_service_address,
       metadata=metadata.SerializeToString())

@@ -59,6 +59,15 @@
     built with support for a given CPU target. This can be useful for skipping
     target-specific tests if a target is not supported.
 
+*   `tf.data`
+    * Support `data.experimental.distribued_save`. `distribued_save` uses
+      tf.data service
+      (https://www.tensorflow.org/api_docs/python/tf/data/experimental/service)
+      to write distributed dataset snapshots. The call is non-blocking and
+      returns without waiting for the snapshot to finish. Setting `wait=True` to
+      `tf.data.Dataset.load` allows the snapshots to be read while they are
+      being written.
+
 ### Bug Fixes and Other Changes
 
 * <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
@@ -78,6 +87,13 @@
     * The Python TF Lite Interpreter bindings now have an option
       `experimental_default_delegate_latest_features` to enable all default
       delegate features.
+
+* `tf.data`
+    * Add `wait` to `tf.data.Dataset.load`. If `True`, for snapshots written
+      with `distributed_save`, it reads the snapshot while it is being written.
+      For snapshots written with regular `save`, it waits for the snapshot until
+      it's finished. The default is `False` for backward compatibility. Users of
+      `distributed_save` are recommended to set it to `True`.
 
 ## Thanks to our Contributors
 

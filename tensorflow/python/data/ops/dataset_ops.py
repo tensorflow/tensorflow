@@ -1767,7 +1767,7 @@ class DatasetV2(
 
   @staticmethod
   def load(
-      path, element_spec=None, compression=None, reader_func=None
+      path, element_spec=None, compression=None, reader_func=None, wait=False,
   ) -> "DatasetV2":
     """Loads a previously saved dataset.
 
@@ -1815,6 +1815,11 @@ class DatasetV2(
       reader_func: Optional. A function to control how to read data from shards.
         If present, the function will be traced and executed as graph
         computation.
+      wait: If `True`, for snapshots written with `distributed_save`, it reads
+        the snapshot while it is being written. For snapshots written with
+        regular `save`, it waits for the snapshot until it's finished. The
+        default is `False` for backward compatibility. Users of
+        `distributed_save` are recommended to set it to `True`.
 
     Returns:
       A `tf.data.Dataset` instance.
@@ -1823,7 +1828,7 @@ class DatasetV2(
       FileNotFoundError: If `element_spec` is not specified and the saved nested
         structure of `tf.TypeSpec` can not be located with the saved dataset.
       ValueError: If `element_spec` is not specified and the method is executed
-        in graph mode.
+        in graph mode, or using `wait=True` to read a non-distributed snapshot.
     """
     # Loaded lazily due to a circular dependency (dataset_ops -> load_op ->
     # dataset_ops).
@@ -1833,7 +1838,8 @@ class DatasetV2(
         path=path,
         element_spec=element_spec,
         compression=compression,
-        reader_func=reader_func)
+        reader_func=reader_func,
+        wait=wait)
     # pylint: enable=g-import-not-at-top,protected-access
 
   def batch(

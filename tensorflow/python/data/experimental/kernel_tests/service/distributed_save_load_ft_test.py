@@ -24,7 +24,6 @@ from tensorflow.python.data.experimental.ops import data_service_ops
 from tensorflow.python.data.experimental.ops import distributed_save_op
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.data.ops import load_op
 from tensorflow.python.framework import combinations
 from tensorflow.python.platform import test
 
@@ -60,7 +59,7 @@ class DistributedSaveLoadFtTest(
         distributed_save_op.distributed_save(
             dataset, snapshot_dir.full_path, cluster.dispatcher_address()))
 
-    dataset = load_op._load_with_retry(snapshot_dir.full_path)
+    dataset = dataset_ops.Dataset.load(snapshot_dir.full_path, wait=True)
     if load_repetitions > 1:
       dataset = dataset.repeat(load_repetitions)
     dataset = dataset.apply(
@@ -115,7 +114,7 @@ class DistributedSaveLoadFtTest(
         distributed_save_op.distributed_save(
             dataset, snapshot_dir.full_path, cluster.dispatcher_address()))
 
-    dataset = load_op._load_with_retry(snapshot_dir.full_path)
+    dataset = dataset_ops.Dataset.load(snapshot_dir.full_path, wait=True)
     if load_repetitions > 1:
       dataset = dataset.repeat(load_repetitions)
     dataset = dataset.apply(
@@ -160,7 +159,7 @@ class DistributedSaveLoadFtTest(
         distributed_save_op.distributed_save(
             dataset, snapshot_dir.full_path, cluster.dispatcher_address()))
 
-    dataset = load_op._load_with_retry(snapshot_dir.full_path)
+    dataset = dataset_ops.Dataset.load(snapshot_dir.full_path, wait=True)
     dataset = dataset.repeat(load_repetitions)
     dataset = dataset.apply(
         data_service_ops.distribute(
@@ -206,7 +205,7 @@ class DistributedSaveLoadFtTest(
         distributed_save_op.distributed_save(
             dataset, snapshot_dir.full_path, cluster.dispatcher_address()))
 
-    dataset = load_op._load_with_retry(snapshot_dir.full_path)
+    dataset = dataset_ops.Dataset.load(snapshot_dir.full_path, wait=True)
     dataset = dataset.repeat(load_repetitions)
     dataset = dataset.apply(
         data_service_ops.distribute(
