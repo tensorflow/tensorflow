@@ -504,7 +504,7 @@ HloModuleProto HloModule::ToProto() const {
   return proto;
 }
 
-StatusOr<HloModuleProtoWithConfig> HloModule::ToProtoWithConfig() const {
+absl::StatusOr<HloModuleProtoWithConfig> HloModule::ToProtoWithConfig() const {
   HloModuleProtoWithConfig result;
   TF_ASSIGN_OR_RETURN(*result.mutable_config(), config_.get().ToProto());
   *result.mutable_hlo_module() = ToProto();
@@ -540,7 +540,7 @@ Status HloModule::CheckUniqueNamesAndIdsForComputationsAndInstructions() const {
 }
 
 /* static */
-StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
+absl::StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
     const HloModuleProto& proto, const HloModuleConfig& module_config,
     bool prohibit_empty_literal) {
   VLOG(2) << "CreateFromProto()";
@@ -684,7 +684,7 @@ StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
 }
 
 /* static */
-StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromShape(
+absl::StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromShape(
     const ProgramShape& program_shape, const DebugOptions& debug_options,
     const ExecutionOptions* execution_options) {
   HloModuleConfig module_config(ProgramShape{program_shape});
@@ -756,7 +756,7 @@ StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromShape(
 }
 
 /* static */
-StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromProto(
+absl::StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromProto(
     const HloModuleProto& module, const DebugOptions& debug_options,
     const ExecutionOptions* execution_options) {
   if (!module.has_host_program_shape()) {
@@ -779,7 +779,7 @@ StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromProto(
   return config;
 }
 
-StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProtoWithConfig(
+absl::StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProtoWithConfig(
     const HloModuleProtoWithConfig& proto, bool prohibit_empty_literal) {
   auto hlo_module_proto = proto.hlo_module();
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModuleConfig> config_ptr,

@@ -917,7 +917,7 @@ HloComputationProto HloComputation::ToProto() const {
   return proto;
 }
 
-/* static */ StatusOr<std::unique_ptr<HloComputation>>
+/* static */ absl::StatusOr<std::unique_ptr<HloComputation>>
 HloComputation::CreateFromProto(
     const HloComputationProto& proto,
     const absl::flat_hash_map<int64_t, HloComputation*>& computation_map,
@@ -1026,7 +1026,7 @@ HloInstruction* HloComputation::CreateCallInstruction(
   return call_instruction;
 }
 
-StatusOr<HloInstruction*> HloComputation::CreateAsyncInstructions(
+absl::StatusOr<HloInstruction*> HloComputation::CreateAsyncInstructions(
     HloInstruction* instruction, absl::Span<const Shape> context_shapes,
     absl::string_view async_execution_thread, bool replace,
     bool override_names) {
@@ -1103,7 +1103,7 @@ StatusOr<HloInstruction*> HloComputation::CreateAsyncInstructions(
   return async_done;
 }
 
-StatusOr<HloInstruction*> HloComputation::DeepCopyHelper(
+absl::StatusOr<HloInstruction*> HloComputation::DeepCopyHelper(
     HloInstruction* instruction, ShapeIndex* index,
     absl::FunctionRef<HloInstruction*(HloInstruction* leaf,
                                       const ShapeIndex& leaf_index,
@@ -1137,7 +1137,7 @@ StatusOr<HloInstruction*> HloComputation::DeepCopyHelper(
   return copy_leaf(instruction, *index, this);
 }
 
-StatusOr<HloInstruction*> HloComputation::DeepCopyInstruction(
+absl::StatusOr<HloInstruction*> HloComputation::DeepCopyInstruction(
     HloInstruction* instruction, const ShapeTree<bool>* indices_to_copy,
     ShapeTree<HloInstruction*>* copies_added) {
   if (instruction->parent() != this) {
@@ -1173,7 +1173,8 @@ StatusOr<HloInstruction*> HloComputation::DeepCopyInstruction(
   return DeepCopyHelper(instruction, &index, copy_leaf);
 }
 
-StatusOr<HloInstruction*> HloComputation::DeepCopyInstructionWithCustomCopier(
+absl::StatusOr<HloInstruction*>
+HloComputation::DeepCopyInstructionWithCustomCopier(
     HloInstruction* instruction,
     absl::FunctionRef<HloInstruction*(HloInstruction* leaf,
                                       const ShapeIndex& leaf_index,
@@ -1276,7 +1277,7 @@ Status HloComputation::ReplaceWithNewEntryComputationParameter(
                                                  std::move(new_instruction)));
 }
 
-StatusOr<bool> HloComputation::ReplaceInstruction(
+absl::StatusOr<bool> HloComputation::ReplaceInstruction(
     HloInstruction* old_instruction, HloInstruction* new_instruction,
     bool preserve_sharding, bool relay_control_dependency) {
   TF_RET_CHECK(
@@ -1297,7 +1298,7 @@ Status HloComputation::ReplaceInstruction(HloInstruction* old_instruction,
   return OkStatus();
 }
 
-StatusOr<bool> HloComputation::ReplaceInstructionWithDifferentShape(
+absl::StatusOr<bool> HloComputation::ReplaceInstructionWithDifferentShape(
     HloInstruction* old_instruction, HloInstruction* new_instruction,
     bool preserve_sharding, bool relay_control_dependency,
     bool remove_unused_operands) {
