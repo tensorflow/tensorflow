@@ -32,10 +32,12 @@ limitations under the License.
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/IR/ValueRange.h"  // from @llvm-project
 #include "mlir/Interfaces/CallInterfaces.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "xla/python/ifrt/ir/constants.h"
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
+#include "xla/python/ifrt/ir/ifrt_interfaces.h"
 
 // Generated definitions.
 #define GET_OP_CLASSES
@@ -61,18 +63,16 @@ mlir::FailureOr<mlir::RankedTensorType> GetGlobalShape(mlir::Value value) {
 }
 
 mlir::FailureOr<mlir::RankedTensorType> GetGlobalShapeFromLocal(
-    mlir::Type type, ShardingParam shard_param) {
+    mlir::Type type, IfrtShardingAttrInterface sharding_attr) {
   if (auto local_ranked_tensor = type.dyn_cast<mlir::RankedTensorType>()) {
-    llvm::SmallVector<int64_t> global_shape;
-    auto local_shape = local_ranked_tensor.getShape();
-    if (local_shape.size() != shard_param.dim_shards().size()) {
+    auto global_shape =
+        sharding_attr.GlobalShapeFromLocalShape(local_ranked_tensor.getShape());
+    if (global_shape.ok()) {
+      return mlir::RankedTensorType::get(global_shape.value(),
+                                         local_ranked_tensor.getElementType());
+    } else {
       return mlir::failure();
     }
-    for (auto [idx, dim_shard] : llvm::enumerate(shard_param.dim_shards())) {
-      global_shape.push_back(dim_shard * local_shape[idx]);
-    }
-    return mlir::RankedTensorType::get(global_shape,
-                                       local_ranked_tensor.getElementType());
   } else {
     // IFRT arrays cannot be in the local view.
     return mlir::failure();
@@ -122,7 +122,7 @@ mlir::LogicalResult VerifyGlobalLocalShapesEquivalent(
   // Convert from local shape to global shape using the sharding provided
   // by the CallOp func signature.
   mlir::FailureOr<mlir::RankedTensorType> callee_shape =
-      GetGlobalShapeFromLocal(callee_type, array.getSharding());
+      GetGlobalShapeFromLocal(callee_type, array.getShardingAttr());
   if (mlir::failed(callee_shape)) {
     return op->emitOpError() << "fails to get global shape from "
                              << callee_mnemonic << ": " << callee_type;

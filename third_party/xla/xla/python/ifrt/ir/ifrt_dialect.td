@@ -19,6 +19,11 @@ limitations under the License.
 include "mlir/IR/AttrTypeBase.td"
 include "mlir/IR/BuiltinTypes.td"
 include "mlir/IR/DialectBase.td"
+include "xla/python/ifrt/ir/ifrt_interfaces.td"
+
+//===---------------------------------------------------------------------------
+// Dialect
+//===---------------------------------------------------------------------------
 
 def Ifrt_Dialect : Dialect {
   let name = "ifrt";
@@ -31,10 +36,9 @@ def Ifrt_Dialect : Dialect {
   let usePropertiesForAttributes = 0;
 }
 
-def Ifrt_ShardingParameter :
-    AttrOrTypeParameter<"::xla::ifrt::ShardingParam", ""> {
-  let parser = "::xla::ifrt::ShardingParam::Parse($_parser)";
-}
+//===---------------------------------------------------------------------------
+// Attributes
+//===---------------------------------------------------------------------------
 
 def Ifrt_DevicesAttr : AttrDef<Ifrt_Dialect, "IfrtDevices"> {
   let mnemonic = "devices";
@@ -60,8 +64,15 @@ def Ifrt_DevicesAttr : AttrDef<Ifrt_Dialect, "IfrtDevices"> {
   }];
 }
 
-def Ifrt_ShardingAttr : AttrDef<Ifrt_Dialect, "IfrtSharding"> {
-  let mnemonic = "sharding";
+def Ifrt_ShardingParameter :
+    AttrOrTypeParameter<"::xla::ifrt::ShardingParam", ""> {
+  let parser = "::xla::ifrt::ShardingParam::Parse($_parser)";
+}
+
+def Ifrt_ShardingParamAttr : AttrDef<Ifrt_Dialect, "IfrtShardingParam", [
+    DeclareAttrInterfaceMethods<Ifrt_ShardingAttrInterface>
+]> {
+  let mnemonic = "sharding_param";
   let summary = "ShardingParam as an attribute.";
 
   let parameters = (ins Ifrt_ShardingParameter:$sharding);
@@ -70,26 +81,60 @@ def Ifrt_ShardingAttr : AttrDef<Ifrt_Dialect, "IfrtSharding"> {
   let genVerifyDecl = 1;
 }
 
+def Ifrt_UnspecifiedShardingAttr : AttrDef<Ifrt_Dialect,
+    "IfrtUnspecifiedSharding", [
+      DeclareAttrInterfaceMethods<Ifrt_ShardingAttrInterface>
+]> {
+  let mnemonic = "sharding_unspecified";
+  let summary = "Attribute to be used when sharding is unspecified.";
+
+  let parameters = (ins);
+  let assemblyFormat = "";
+
+  let genVerifyDecl = 1;
+}
+
+//===---------------------------------------------------------------------------
+// Types
+//===---------------------------------------------------------------------------
+
 def Ifrt_ArrayType : TypeDef<Ifrt_Dialect, "IfrtArray"> {
   let mnemonic = "array";
   let summary = "An Ifrt array sharded on a set of devices.";
 
   let parameters = (ins
     Builtin_RankedTensor:$shape,
-    Ifrt_ShardingParameter:$sharding,
+    "::xla::ifrt::IfrtShardingAttrInterface":$sharding_attr,
     Ifrt_DevicesAttr:$devices_attr);
 
   let builders = [
     TypeBuilder<(ins
       "::mlir::RankedTensorType":$shape,
+      "::xla::ifrt::IfrtShardingAttrInterface":$sharding_attr,
+      "::llvm::ArrayRef<int>":$devices), [{
+        return Base::get(
+          $_ctxt, shape, sharding_attr,
+          ::xla::ifrt::IfrtDevicesAttr::get($_ctxt, devices));
+      }]>,
+    TypeBuilder<(ins
+      "::mlir::RankedTensorType":$shape,
+      "::llvm::ArrayRef<int>":$devices), [{
+        return Base::get(
+          $_ctxt, shape, ::xla::ifrt::IfrtUnspecifiedShardingAttr::get($_ctxt),
+          ::xla::ifrt::IfrtDevicesAttr::get($_ctxt, devices));
+      }]>,
+    TypeBuilder<(ins
+      "::mlir::RankedTensorType":$shape,
       "::xla::ifrt::ShardingParam":$sharding,
       "::llvm::ArrayRef<int>":$devices), [{
-        return Base::get($_ctxt, shape, sharding,
-                         ::xla::ifrt::IfrtDevicesAttr::get($_ctxt, devices));
+        return Base::get(
+          $_ctxt, shape,
+          ::xla::ifrt::IfrtShardingParamAttr::get($_ctxt, sharding),
+          ::xla::ifrt::IfrtDevicesAttr::get($_ctxt, devices));
       }]>
   ];
 
-  let assemblyFormat = "`<` $shape`,` $sharding`,` $devices_attr`>`";
+  let assemblyFormat = "`<` $shape`,` $sharding_attr`,` $devices_attr`>`";
 
   let genVerifyDecl = 1;
 
