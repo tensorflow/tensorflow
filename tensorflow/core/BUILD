@@ -662,9 +662,7 @@ cc_library(
 
 cc_library(
     name = "dynamic_kernels_impl",
-    visibility = [
-        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
-    ],
+    visibility = ["//visibility:private"],
     deps = [
         "//tensorflow/core/kernels:sobol_op",
     ],
