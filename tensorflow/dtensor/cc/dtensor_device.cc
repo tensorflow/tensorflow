@@ -54,6 +54,7 @@ limitations under the License.
 #include "xla/stream_executor/tpu/c_api_decl.h"
 #include "xla/stream_executor/tpu/tpu_platform_interface.h"
 #include "xla/stream_executor/tpu/tpu_topology.h"
+#include "xla/tsl/util/env_var.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/common_runtime/eager/eager_operation.h"
@@ -93,7 +94,6 @@ limitations under the License.
 #include "tensorflow/dtensor/proto/layout.pb.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
-#include "tsl/util/env_var.h"
 
 using tensorflow::EagerExecutor;
 
@@ -249,7 +249,7 @@ class DTensorDevice {
     }
     Mesh::tpu_core_ids()[mesh_name].assign(tpu_core_ids.begin(),
                                            tpu_core_ids.end());
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   void ClearTPUCoreIDs() { Mesh::tpu_core_ids().clear(); }
@@ -1582,7 +1582,7 @@ Status AddExecutionFunctionDefsToFunctionDefLibrary(
             to_run, stack_traces));
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 StatusOr<DTensorDevice::DTensorOperationLoweringContext>

@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TFRT_IFRT_SHARDING_UTILS_H_
 #define TENSORFLOW_CORE_TFRT_IFRT_SHARDING_UTILS_H_
 
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "xla/executable_run_options.h"
 #include "xla/hlo/ir/hlo_sharding.h"
@@ -27,17 +26,25 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tsl/concurrency/ref_count.h"
+#include "tsl/platform/threadpool.h"
 
 namespace tensorflow {
 namespace ifrt_serving {
 
-// Sharded the given `data` by the `sharding` specification.
-// It currently supports even sharding, replication and partial replication.
-StatusOr<tsl::RCReference<xla::ifrt::Array>> MakeAssembledArrayFromHostBuffer(
+// Create a tensor from the given host tensor based on given device ids and
+// sharding information.
+absl::StatusOr<tsl::RCReference<xla::ifrt::Array>> MakeArrayFromTensor(
     xla::ifrt::Client& ifrt_client, const tensorflow::Tensor& input_tensor,
-    const xla::HloSharding& hlo_sharding,
+    absl::Span<const int> device_ids, const xla::HloSharding& hlo_sharding,
+    const tsl::thread::ThreadPool& thread_pool);
+
+// A variant of the above api. The difference is that the user passes in
+// device_list directly instead of a list of device_ids.
+absl::StatusOr<tsl::RCReference<xla::ifrt::Array>> MakeArrayFromTensor(
+    xla::ifrt::Client& ifrt_client, const tensorflow::Tensor& input_tensor,
     const xla::ifrt::DeviceList& device_list,
-    const Eigen::ThreadPoolDevice& thread_pool_device);
+    const xla::HloSharding& hlo_sharding,
+    const tsl::thread::ThreadPool& thread_pool);
 
 // Reshard an disassembled array list back to one single tensor
 // based on given sharding spec.
@@ -51,11 +58,10 @@ StatusOr<tsl::RCReference<xla::ifrt::Array>> MakeAssembledArrayFromHostBuffer(
 // in the `input_array`.
 //
 absl::StatusOr<tensorflow::Tensor> MakeTensorFromArray(
-    xla::ifrt::Client& ifrt_client,
-    tsl::RCReference<xla::ifrt::Array> input_array,
+    xla::ifrt::Client& ifrt_client, xla::ifrt::Array& input_array,
     const xla::HloSharding& hlo_sharding,
     const xla::ifrt::DeviceList& device_list,
-    const Eigen::ThreadPoolDevice& thread_pool_device);
+    const tsl::thread::ThreadPool& thread_pool);
 
 }  // namespace ifrt_serving
 }  // namespace tensorflow

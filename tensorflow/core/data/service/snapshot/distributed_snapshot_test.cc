@@ -42,7 +42,6 @@ namespace data {
 namespace {
 
 using testing::CreateDummyDistributedSnapshotMetadata;
-using ::testing::ElementsAre;
 using ::testing::IsEmpty;
 using testing::LocalTempFilename;
 using testing::RangeDataset;
@@ -106,16 +105,9 @@ TEST_P(DistributedSnapshotTest, WriteSnapshot) {
   TF_ASSERT_OK(
       data_service.dispatcher().Snapshot(dataset, snapshot_path, metadata));
   TF_ASSERT_OK(WaitForSnapshotComplete(snapshot_path));
-  if (NumWorkers() == 1) {
-    EXPECT_THAT(testing::ReadSnapshot<int64_t>(snapshot_path,
-                                               tsl::io::compression::kNone),
-                IsOkAndHolds(ElementsAre(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)));
-  } else {  // More than 1 workers: The element order is non-deterministic.
-    EXPECT_THAT(
-        testing::ReadSnapshot<int64_t>(snapshot_path,
-                                       tsl::io::compression::kNone),
-        IsOkAndHolds(UnorderedElementsAre(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)));
-  }
+  EXPECT_THAT(testing::ReadSnapshot<int64_t>(snapshot_path,
+                                             tsl::io::compression::kNone),
+              IsOkAndHolds(UnorderedElementsAre(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)));
 }
 
 TEST_P(DistributedSnapshotTest, WriteMultipleSnapshots) {

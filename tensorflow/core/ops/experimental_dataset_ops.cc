@@ -502,6 +502,27 @@ REGISTER_OP("ExperimentalGroupByWindowDataset")
                                                            "output_types"))
     .SetShapeFn(shape_inference::ScalarShape);
 
+REGISTER_OP("GlobalShuffleDataset")
+    .Input("input_dataset: variant")
+    .Input("seed: int64")
+    .Input("seed2: int64")
+    .Input("seed_generator: resource")
+    .Output("handle: variant")
+    .Attr("reshuffle_each_iteration: bool = true")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .Attr("metadata: string = ''")
+    .SetTypeConstructor(full_type::VariadicTensorContainer(TFT_DATASET,
+                                                           "output_types"))
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      shape_inference::ShapeHandle unused;
+      // seed, seed2, and seed_generator should be scalars.
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));
+      return shape_inference::ScalarShape(c);
+    });
+
 REGISTER_OP("IgnoreErrorsDataset")
     .Input("input_dataset: variant")
     .Output("handle: variant")
@@ -1167,7 +1188,7 @@ REGISTER_OP("SaveDataset")
       shape_inference::ShapeHandle unused;
       // `path` should be a scalar.
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("SaveDatasetV2")
@@ -1443,7 +1464,7 @@ REGISTER_OP("DummyIterationCounter")
     .Output("handle: resource")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       c->set_output(0, c->Scalar());
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("DataServiceDataset")
@@ -1577,7 +1598,7 @@ REGISTER_OP("InitializeTableFromDataset")
       shape_inference::ShapeHandle handle;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &handle));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &handle));
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 // - `output_types` is the types of tensors in a single dataset element.
@@ -1597,6 +1618,11 @@ REGISTER_OP("ListDataset")
     .SetDoNotOptimize()
     .SetTypeConstructor(full_type::VariadicTensorContainer(TFT_DATASET,
                                                            "output_types"))
+    .SetShapeFn(shape_inference::ScalarShape);
+
+REGISTER_OP("IteratorGetModelProto")
+    .Input("iterator: resource")
+    .Output("model_proto: string")
     .SetShapeFn(shape_inference::ScalarShape);
 
 }  // namespace tensorflow

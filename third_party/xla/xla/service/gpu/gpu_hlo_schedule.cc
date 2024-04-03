@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,6 +21,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -35,6 +36,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -43,6 +45,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/buffer_value.h"
+#include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/gpu_schedule_postprocessing.h"
@@ -62,18 +65,12 @@ limitations under the License.
 #include "tsl/platform/errors.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/protobuf.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
 
 namespace {
-
-bool IsSyncCollective(const HloInstruction& instr) {
-  auto backend_config = instr.backend_config<GpuBackendConfig>()
-                            .value()
-                            .collective_backend_config();
-  return backend_config.is_sync();
-}
 
 bool IsNopInstruction(const HloInstruction& hlo) {
   HloOpcode op = hlo.opcode();
@@ -86,7 +83,7 @@ bool ShouldScheduleAsEarlyAsPossible(const HloInstruction& instr) {
   switch (instr.opcode()) {
     case HloOpcode::kAllReduceStart:
     case HloOpcode::kCollectivePermuteStart:
-      return !IsSyncCollective(instr);
+      return !IsSyncCollective(&instr);
     case HloOpcode::kCustomCall:
       return static_cast<const HloCustomCallInstruction&>(instr)
                  .custom_call_schedule() ==
@@ -142,21 +139,24 @@ HloInstructionSequence PostprocessorToScheduleAsEarlyOrLateAsPossible(
       earliest_scheduled.push_back(instr);
       scheduled.insert(instr);
     };
+
     for (HloInstruction* instr : input.instructions()) {
-      if (is_scheduled(instr)) {
-        continue;
-      }
+      if (is_scheduled(instr)) continue;
 
       add_to_schedule(instr);
 
       // Schedule any successor that should be scheduled as early as possible if
       // all of its producers and control_predecessors have been scheduled.
       for (HloInstruction* user : instr->users()) {
+        if (is_scheduled(user)) continue;
+
         if (ShouldScheduleSuccessor(*user, is_scheduled)) {
           add_to_schedule(user);
         }
       }
       for (HloInstruction* successor : instr->control_successors()) {
+        if (is_scheduled(successor)) continue;
+
         if (ShouldScheduleSuccessor(*successor, is_scheduled)) {
           add_to_schedule(successor);
         }
@@ -176,20 +176,22 @@ HloInstructionSequence PostprocessorToScheduleAsEarlyOrLateAsPossible(
     };
     for (auto it = earliest_scheduled.rbegin(); it != earliest_scheduled.rend();
          it++) {
-      if (is_scheduled(*it)) {
-        continue;
-      }
+      if (is_scheduled(*it)) continue;
 
       add_to_schedule(*it);
 
       // Schedule any predecessor that should be scheduled as late as possible
       // if all of its users and control_successors have been scheduled.
       for (HloInstruction* operand : (*it)->operands()) {
+        if (is_scheduled(operand)) continue;
+
         if (ShouldSchedulePredecessor(*operand, is_scheduled)) {
           add_to_schedule(operand);
         }
       }
       for (HloInstruction* predecessor : (*it)->control_predecessors()) {
+        if (is_scheduled(predecessor)) continue;
+
         if (ShouldSchedulePredecessor(*predecessor, is_scheduled)) {
           add_to_schedule(predecessor);
         }
@@ -200,6 +202,12 @@ HloInstructionSequence PostprocessorToScheduleAsEarlyOrLateAsPossible(
   HloInstructionSequence result;
   absl::c_for_each(latest_scheduled,
                    [&](HloInstruction* i) { result.push_back(i); });
+
+  // Schedule post-processing can't introduce new instructions.
+  CHECK(input.instructions().size() == result.size())
+      << "schedule as early or late post-processing changed schedule size from "
+      << input.instructions().size() << " to " << result.size();
+
   return result;
 }
 
@@ -208,25 +216,35 @@ HloInstructionSequence PostprocessorToScheduleAsEarlyOrLateAsPossible(
 HloInstructionSequence PostprocessorToScheduleSyncCollectives(
     const HloInstructionSequence& input) {
   HloInstructionSequence result;
-  auto is_synchronous_op = [](const HloInstruction* instr) {
-    return hlo_query::IsAsyncCollectiveStartOp(instr->opcode(),
+
+  // Returns true if `inst` is a synchronous version of async collective start
+  // operation (marked with `is_sync` attribute).
+  auto is_sync_start = [](const HloInstruction* instr) {
+    return hlo_query::IsAsyncCollectiveStartOp(instr,
                                                /*include_send_recv=*/true) &&
-           IsSyncCollective(*instr);
+           IsSyncCollective(instr);
   };
+
   for (HloInstruction* instr : input.instructions()) {
-    if (is_synchronous_op(instr)) {
-      continue;
-    }
-    if (hlo_query::IsAsyncCollectiveDoneOp(instr->opcode(),
-                                           /*include_send_recv=*/true)) {
-      // Place the start op just before the done op if its synchronous.
+    // Skip synchronous start instruction as it will be scheduled later when
+    // we'll process corresponding done instruction.
+    if (is_sync_start(instr)) continue;
+
+    // Find a start instruction corresponding to done and schedule it right
+    // before a done if it's a synchronous version.
+    if (hlo_query::IsAsyncCollectiveDoneOp(instr, true)) {
       HloInstruction* start = instr->mutable_operand(0);
-      if (is_synchronous_op(start)) {
-        result.push_back(start);
-      }
+      if (is_sync_start(start)) result.push_back(start);
     }
+
     result.push_back(instr);
   }
+
+  // Schedule post-processing can't introduce new instructions.
+  CHECK(input.instructions().size() == result.size())
+      << "sync collectives post-processing changed schedule size from "
+      << input.instructions().size() << " to " << result.size();
+
   return result;
 }
 
@@ -261,6 +279,7 @@ CanonicalAsyncOp GpuGetCanonicalAsyncOp(const HloInstruction& hlo) {
 SchedulerConfig GetSchedulerConfig(int64_t memory_limit) {
   SchedulerConfig config;
   config.all_reduce_overlap_limit = 1;
+  config.collective_broadcast_overlap_limit = 1;
   config.collective_permute_overlap_limit = 1;
   config.use_real_cost_model = false;
   config.aggressive_scheduling_policies = true;
@@ -274,13 +293,47 @@ SchedulerConfig GetSchedulerConfig(int64_t memory_limit) {
 // We use two different set of resources to model the scheduling of asynchronous
 // collective operations and P2P Send and Recv operations. This corresponds to
 // the fact that the runtime use a stream to run asynchronous collective
-// operations and another stream to run P2P Send and Recv operations.
+// operations and two other streams to run P2P Send and Recv operations.
 enum class GpuResourceType {
-  kGpuAsyncStreamSend = 0,         // The resource for P2P Send operation.
-  kGpuAsyncStreamRecv = 1,         // The resource for P2P Recv operation.
-  kGpuAsyncStreamCollectives = 2,  // The resource for collective operations.
-  kNumTargetResources = 3,
+  kGpuAsyncStreamSend0 = 0,        // A resource for P2P Send operation.
+  kGpuAsyncStreamSend1 = 1,        // Another resource for P2P Send operation.
+  kGpuAsyncStreamRecv0 = 2,        // A resource for P2P Recv operation.
+  kGpuAsyncStreamRecv1 = 3,        // Another resource for P2P Recv operation.
+  kGpuAsyncStreamCollectives = 4,  // The resource for collective operations.
+  kGpuAsyncStreamComputes = 5,     // The resource for async compute operations.
+  kNumTargetResources = 6,
 };
+
+// Returns the pipeline stream for a P2P instruction recorded in a frontend
+// attribute.
+int64_t GetPipelineStream(const HloInstruction& start) {
+  auto it = start.frontend_attributes().map().find(kSendRecvPipelineAttr);
+  if (it != start.frontend_attributes().map().end() && it->second == "1") {
+    return 1;
+  }
+  return 0;
+}
+
+// Returns the resource type and resource usage for a P2P instruction.
+std::pair<GpuResourceType, ResourceUsageType> GetP2PResourceAndUsage(
+    const HloInstruction& instr, const CanonicalAsyncOp& op) {
+  ResourceUsageType usage = op.outer == HloOpcode::kAsyncStart
+                                ? ResourceUsageType::kResourceRelease
+                                : ResourceUsageType::kResourceOccupy;
+  int64_t pipeline = GetPipelineStream(instr);
+  HloOpcode opcode = op.inner;
+  GpuResourceType resource;
+  if (pipeline == 0) {
+    resource = opcode == HloOpcode::kSend
+                   ? GpuResourceType::kGpuAsyncStreamSend0
+                   : GpuResourceType::kGpuAsyncStreamRecv0;
+  } else {
+    resource = opcode == HloOpcode::kSend
+                   ? GpuResourceType::kGpuAsyncStreamSend1
+                   : GpuResourceType::kGpuAsyncStreamRecv1;
+  }
+  return {resource, usage};
+}
 
 // Base GPU async tracker that enables async tracking only for async collectives
 // that are marked for async execution.
@@ -293,17 +346,43 @@ class GpuAsyncTrackerBase : public AsyncTracker {
       GetCanonicalAsyncOpFunc func = GpuGetCanonicalAsyncOp)
       : AsyncTracker(config, func) {}
 
+  bool IsAsyncComputeOp(const HloInstruction& hlo) const {
+    return (hlo.opcode() == HloOpcode::kAsyncStart ||
+            hlo.opcode() == HloOpcode::kAsyncDone) &&
+           !hlo_query::IsCollectiveCommunicationOp(
+               hlo.async_wrapped_opcode()) &&
+           hlo.async_execution_thread() != hlo.parent()->execution_thread();
+  }
+
   bool IsSupportedAsyncDone(const HloInstruction& hlo) const override {
-    return hlo_query::IsAsyncCollectiveDoneOp(hlo.opcode(),
-                                              /*include_send_recv=*/true) &&
-           !IsSyncCollective(*hlo.operand(0));
+    return (hlo_query::IsAsyncCollectiveDoneOp(&hlo,
+                                               /*include_send_recv=*/true) &&
+            !IsSyncCollective(hlo.operand(0))) ||
+           IsAsyncComputeOp(hlo);
   }
 
   // Returns if this is an Async op start that the scheduler supports.
   bool IsSupportedAsyncStart(const HloInstruction& hlo) const override {
-    return hlo_query::IsAsyncCollectiveStartOp(hlo.opcode(),
-                                               /*include_send_recv=*/true) &&
-           !IsSyncCollective(hlo);
+    return (hlo_query::IsAsyncCollectiveStartOp(&hlo,
+                                                /*include_send_recv=*/true) &&
+            !IsSyncCollective(&hlo)) ||
+           IsAsyncComputeOp(hlo);
+  }
+
+  void PostProcessScheduleGraph(
+      HloScheduleGraph* schedule_graph,
+      const LatencyEstimator* latency_estimator) const override {
+    for (auto inst : schedule_graph->GetOriginalInstrList()) {
+      if (inst->has_backend_config()) {
+        auto gpu_config = inst->backend_config<GpuBackendConfig>();
+        if (gpu_config.ok()) {
+          HloGraphNode& node = schedule_graph->GetNode(inst);
+          node.SetForceDelay(gpu_config->force_earliest_schedule());
+          VLOG(5) << "Setting force delay for instruction: "
+                  << inst->ToString();
+        }
+      }
+    }
   }
 };
 
@@ -318,24 +397,21 @@ class GpuAsyncTracker : public GpuAsyncTrackerBase {
     CanonicalAsyncOp op = GetCanonicalAsyncOp(instr);
     if (op.outer == HloOpcode::kAsyncStart ||
         op.outer == HloOpcode::kAsyncDone) {
-      ResourceUsageType usage = op.outer == HloOpcode::kAsyncStart
-                                    ? ResourceUsageType::kResourceRelease
-                                    : ResourceUsageType::kResourceOccupy;
-      ResourcesVector resources;
-      auto add_resource = [&](GpuResourceType resource_type) {
-        const int64_t gpu_stream_resource = GetFirstTargetDefinedResource() +
-                                            static_cast<int64_t>(resource_type);
-        resources.push_back(std::make_pair(gpu_stream_resource, usage));
-      };
-
-      if (op.inner == HloOpcode::kSend) {
-        add_resource(GpuResourceType::kGpuAsyncStreamSend);
-      } else if (op.inner == HloOpcode::kRecv) {
-        add_resource(GpuResourceType::kGpuAsyncStreamRecv);
+      ResourceUsageType usage;
+      GpuResourceType resource;
+      if (op.inner == HloOpcode::kSend || op.inner == HloOpcode::kRecv) {
+        std::tie(resource, usage) = GetP2PResourceAndUsage(instr, op);
       } else {
-        add_resource(GpuResourceType::kGpuAsyncStreamCollectives);
+        usage = op.outer == HloOpcode::kAsyncStart
+                    ? ResourceUsageType::kResourceRelease
+                    : ResourceUsageType::kResourceOccupy;
+        resource = hlo_query::IsCollectiveCommunicationOp(op.inner)
+                       ? GpuResourceType::kGpuAsyncStreamCollectives
+                       : GpuResourceType::kGpuAsyncStreamComputes;
       }
-      return resources;
+      return {std::make_pair(
+          GetFirstTargetDefinedResource() + static_cast<int64_t>(resource),
+          usage)};
     }
     return GpuAsyncTrackerBase::GetResourcesFromInstruction(instr);
   }
@@ -364,6 +440,15 @@ class GpuAsyncTracker : public GpuAsyncTrackerBase {
     // async stream, we can increase this number and then do a post-pass on the
     // scheduled code to assign async stream-id to collectives (and actually
     // support > 1 async stream in the runtime).
+    // The only case we'd allow 2 for now is when the current resource is
+    // for an async computation operation which will be allocated with
+    // a dedicated compute stream. It can run concurrently with
+    // another collective.
+    if ((resource_type - first_target_resource) ==
+        static_cast<int64_t>(GpuResourceType::kGpuAsyncStreamComputes)) {
+      return 2;
+    }
+
     return 1;
   }
 
@@ -376,12 +461,18 @@ class GpuAsyncTracker : public GpuAsyncTrackerBase {
              first_target_resource + GetNumTargetDefinedResources());
     switch (
         static_cast<GpuResourceType>(resource_type - first_target_resource)) {
-      case GpuResourceType::kGpuAsyncStreamSend:
-        return "kGpuAsyncStreamSend";
-      case GpuResourceType::kGpuAsyncStreamRecv:
-        return "kGpuAsyncStreamRecv";
+      case GpuResourceType::kGpuAsyncStreamSend0:
+        return "kGpuAsyncStreamSend0";
+      case GpuResourceType::kGpuAsyncStreamSend1:
+        return "kGpuAsyncStreamSend1";
+      case GpuResourceType::kGpuAsyncStreamRecv0:
+        return "kGpuAsyncStreamRecv0";
+      case GpuResourceType::kGpuAsyncStreamRecv1:
+        return "kGpuAsyncStreamRecv1";
       case GpuResourceType::kGpuAsyncStreamCollectives:
         return "kGpuAsyncStreamCollectives";
+      case GpuResourceType::kGpuAsyncStreamComputes:
+        return "kGpuAsyncStreamComputes";
       default:
         return "kUnsupportedResource";
     }
@@ -396,6 +487,53 @@ class GpuAsyncTracker : public GpuAsyncTrackerBase {
     CHECK_LE(resource_type,
              first_target_resource + GetNumTargetDefinedResources());
     return ResourceHazardType::kUnshareable;
+  }
+
+  int64_t GetNumResourcesPerInstruction(
+      int64_t resource_type, const HloInstruction& instr) const override {
+    int64_t num_resources = GpuAsyncTrackerBase::GetNumResourcesPerInstruction(
+        resource_type, instr);
+    if (num_resources <= 0 || instr.opcode() != HloOpcode::kWhile) {
+      return num_resources;
+    }
+    // For while-loop with pipelined Send/Recv, the while-body first releases
+    // the Send/Recv resource and then uses the resource. Therefore, subtract 1
+    // from num_resources for the relevant resource type.
+    int64_t first_p2p_resource =
+        GetFirstTargetDefinedResource() +
+        static_cast<int64_t>(GpuResourceType::kGpuAsyncStreamSend0);
+    if (resource_type < first_p2p_resource ||
+        resource_type > first_p2p_resource + 4) {
+      return num_resources;
+    }
+    auto find_instruction_for_pipeline = [&](HloOpcode opcode,
+                                             int64_t pipeline) {
+      for (auto user1 : instr.users()) {
+        if (user1->opcode() == HloOpcode::kGetTupleElement) {
+          for (auto user2 : user1->users()) {
+            if (user2->opcode() == opcode) {
+              if (GetPipelineStream(*user2) == pipeline) {
+                return true;
+              }
+            }
+          }
+        }
+      }
+      return false;
+    };
+    bool found;
+    // Look into the users of the while-result to find pipelined Send-done or
+    // Recv-done.
+    if (resource_type == first_p2p_resource) {
+      found = find_instruction_for_pipeline(HloOpcode::kSendDone, 0);
+    } else if (resource_type == first_p2p_resource + 1) {
+      found = find_instruction_for_pipeline(HloOpcode::kSendDone, 1);
+    } else if (resource_type == first_p2p_resource + 2) {
+      found = find_instruction_for_pipeline(HloOpcode::kRecvDone, 0);
+    } else {
+      found = find_instruction_for_pipeline(HloOpcode::kRecvDone, 1);
+    }
+    return num_resources - (found ? 1 : 0);
   }
 };
 
@@ -630,7 +768,7 @@ absl::Status IsProfileApplicable(
 
 int64_t GetSizeOfShape(const Shape& shape, int pointer_size) {
   int64_t size = ShapeUtil::ByteSizeOf(shape, pointer_size);
-  if (shape.is_static() || shape.IsTuple()) {
+  if (shape.IsTuple() || shape.is_static()) {
     return size;
   }
   // Each dynamic dimension size is represented as a S32.
@@ -638,12 +776,19 @@ int64_t GetSizeOfShape(const Shape& shape, int pointer_size) {
   return size + metadata_size;
 }
 
-absl::Status ScheduleGpuModule(HloModule* module, int64_t pointer_size,
-                               int64_t memory_limit,
-                               const se::DeviceDescription& gpu_device_info) {
+static int64_t GetSchedulerMemoryLimit(
+    const HloModule* module, const se::DeviceDescription& gpu_device_info,
+    int pointer_size);
+
+absl::StatusOr<ScheduleMetadata> ScheduleGpuModule(
+    HloModule* module, int64_t pointer_size,
+    const se::DeviceDescription& gpu_device_info) {
+  int64_t memory_limit =
+      GetSchedulerMemoryLimit(module, gpu_device_info, pointer_size);
   if (module->has_schedule()) {
-    return absl::OkStatus();
+    return ScheduleMetadata{memory_limit};
   }
+
   HloPassPipeline prepare_pipeline("p2p-schedule-preparation");
   prepare_pipeline.AddPass<P2PSchedulePreparation>();
   TF_RETURN_IF_ERROR(prepare_pipeline.Run(module).status());
@@ -657,10 +802,9 @@ absl::Status ScheduleGpuModule(HloModule* module, int64_t pointer_size,
   // instruction name with ids.
   std::string fingerprint = module->GetFingerprint128(
       HloPrintOptions::Canonical().set_print_backend_config(true));
-  HloInstruction* root = module->entry_computation()->root_instruction();
   FrontendAttributes attributes;
   (*attributes.mutable_map())[std::string(kFingerprintBeforeLHS)] = fingerprint;
-  root->add_frontend_attributes(attributes);
+  module->add_frontend_attributes(attributes);
   VLOG(1) << "Fingerprint before LHS for module " << module->name() << "("
           << module->unique_id() << ") = " << fingerprint;
 
@@ -670,7 +814,7 @@ absl::Status ScheduleGpuModule(HloModule* module, int64_t pointer_size,
           .xla_gpu_enable_latency_hiding_scheduler();
 
   if (!enable_latency_hiding_scheduler) {
-    return absl::OkStatus();
+    return ScheduleMetadata{memory_limit};
   }
 
   SchedulerConfig config = GetSchedulerConfig(memory_limit);
@@ -731,7 +875,7 @@ absl::Status ScheduleGpuModule(HloModule* module, int64_t pointer_size,
   postprocessing_pipeline.AddPass<GpuSchedulePostprocessing>();
   TF_RETURN_IF_ERROR(postprocessing_pipeline.Run(module).status());
 
-  return absl::OkStatus();
+  return ScheduleMetadata{memory_limit};
 }
 
 HloInstructionSequence PostProcessSchedule(
@@ -742,9 +886,9 @@ HloInstructionSequence PostProcessSchedule(
 
 // Compute the device memory limit to be used by passes like scheduler and
 // HLO rematerialization.
-int64_t GetSchedulerMemoryLimit(const HloModule* module,
-                                const se::DeviceDescription& gpu_device_info,
-                                int pointer_size) {
+static int64_t GetSchedulerMemoryLimit(
+    const HloModule* module, const se::DeviceDescription& gpu_device_info,
+    int pointer_size) {
   // There is a "base" value which is either specified in HloModuleConfig (this
   // value should take into account the fact that we need to leave some memory
   // free for allocations that happen outside of XLA's allocator) or

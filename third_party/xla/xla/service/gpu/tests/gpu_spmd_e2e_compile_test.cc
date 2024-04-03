@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,10 +15,18 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/algorithm/container.h"
+#include "absl/status/statusor.h"
+#include "xla/debug_options_flags.h"
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/utils/hlo_query.h"
+#include "xla/service/executable.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
 #include "xla/service/hlo_module_config.h"
 #include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {

@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/calibrator/calibration_statistics.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/calibrator/calibration_statistics_collector_base.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
@@ -35,7 +36,7 @@ limitations under the License.
 namespace tensorflow {
 namespace calibrator {
 
-using tensorflow::quantization::CalibrationOptions;
+using stablehlo::quantization::CalibrationOptions;
 
 // TODO: b/315084876 - Move to stablehlo quantizer directory.
 class CalibratorSingleton {

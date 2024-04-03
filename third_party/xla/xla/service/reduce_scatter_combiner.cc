@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -178,7 +178,7 @@ ReduceScatterCombiner::ReduceScatterCombiner(int64_t combine_threshold_in_bytes,
       combine_threshold_count_(combine_threshold_count),
       combine_by_dim_(combine_by_dim) {}
 
-StatusOr<bool> ReduceScatterCombiner::Run(
+absl::StatusOr<bool> ReduceScatterCombiner::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   VLOG(1) << "Running ReduceScatterCombiner with threshold of "

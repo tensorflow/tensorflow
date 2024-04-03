@@ -23,6 +23,7 @@ cc_library(
     name = "split",
     hdrs = ["split.h"],
     deps = [
+        ":util",
         "//tensorflow/tools/proto_splitter:chunk_proto_cc",
         "//tensorflow/tools/proto_splitter:versions_proto_cc",
         "@com_google_absl//absl/status",
@@ -84,6 +85,7 @@ tf_cc_test(
     deps = [
         ":composable_splitter",
         ":test_util",
+        ":util",
         "//tensorflow/core:lib",
         "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core:protos_all_cc",
@@ -123,6 +125,7 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:cord",
         "@com_google_absl//absl/strings:str_format",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:protobuf",
@@ -237,6 +240,7 @@ tf_cc_test(
         ":graph_def_splitter",
         ":max_size",
         ":test_util",
+        ":util",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
@@ -284,6 +288,7 @@ tf_cc_test(
     deps = [
         ":max_size",
         ":saved_model_splitter",
+        ":util",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",

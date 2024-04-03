@@ -38,7 +38,7 @@ Status ParallelBatch::OptimizeAndCollectStats(Cluster* cluster,
       stats->num_changes++;
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 REGISTER_GRAPH_OPTIMIZER_AS(ParallelBatch, "parallel_batch");

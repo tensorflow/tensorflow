@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,8 +16,12 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_IR_EMITTER_TRITON_H_
 #define XLA_SERVICE_GPU_IR_EMITTER_TRITON_H_
 
+#include <cstdint>
 #include <functional>
+#include <optional>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "llvm/IR/Module.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -29,22 +33,32 @@ limitations under the License.
 #include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/matmul_utils.h"
+#include "xla/service/gpu/model/indexing_map.h"
 #include "xla/service/gpu/triton_fusion_analysis.h"
-#include "xla/statusor.h"
+#include "xla/service/hlo_module_config.h"
+#include "xla/status.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/launch_dim.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
 
 namespace xla {
 namespace gpu {
 
 struct TritonWrapperResult {
-  int64_t shmem_bytes;
+  int64_t shmem_bytes = 0;
+  std::optional<se::ClusterDim> cluster_dim;
 };
 
+// Computes indexing map from program id into the tile offset for the given
+// shape and tile sizes.
+IndexingMap ComputeProgramIdToOutputTileIndexing(
+    absl::Span<const int64_t> dimensions, absl::Span<const int64_t> tile_sizes,
+    mlir::MLIRContext* mlir_context);
+
 // Compute the launch dimensions for the given Triton MatMul.
-LaunchDimensions GetMatMulLaunchDimensions(const TritonFusionAnalysis& analysis,
-                                           const HloFusionAdaptor& fusion,
-                                           const TritonGemmConfig& config);
+absl::StatusOr<LaunchDimensions> GetMatMulLaunchDimensions(
+    const TritonFusionAnalysis& analysis, const HloFusionAdaptor& fusion,
+    const TritonGemmConfig& config);
 // Use tiling and execution parameters from 'config'.
 absl::Status EmitMatMul(mlir::OpBuilder b, absl::string_view libdevice_path,
                         const se::DeviceDescription& device_info,
@@ -75,8 +89,7 @@ using TritonIrEmitter = std::function<Status(
 // MatMul and SoftMax above are some such IR generators.
 absl::StatusOr<TritonWrapperResult> TritonWrapper(
     const TritonFusionAnalysis& analysis, absl::string_view fn_name,
-    const HloComputation* hlo_computation, absl::string_view fusion_kind,
-    const se::CudaComputeCapability& cc,
+    const HloComputation* hlo_computation, const se::CudaComputeCapability& cc,
     const se::DeviceDescription& device_info, const TritonGemmConfig& config,
     llvm::Module* llvm_module, TritonIrEmitter ir_emitter,
     mlir::MLIRContext& mlir_context);
@@ -88,6 +101,14 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
     const HloComputation* hlo_computation,
     const se::DeviceDescription& device_info, const TritonGemmConfig& config,
     TritonIrEmitter ir_emitter, mlir::MLIRContext& mlir_context);
+
+// Compiles a given Triton module to LLVM IR.
+absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
+    const HloModuleConfig& hlo_config, absl::string_view hlo_module_name,
+    const se::CudaComputeCapability& cc,
+    const se::DeviceDescription& device_info, const TritonGemmConfig& config,
+    mlir::ModuleOp triton_module, llvm::Module* llvm_module,
+    mlir::MLIRContext& mlir_context);
 
 }  // namespace gpu
 }  // namespace xla

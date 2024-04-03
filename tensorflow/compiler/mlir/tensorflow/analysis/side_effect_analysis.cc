@@ -194,7 +194,7 @@ void CategorizeParallelIdsMap(
   groups_different_branch = 0;
   groups_from_only = 0;
   groups_to_only = 0;
-  for (auto [group, branch] : from) {
+  for (const auto& [group, branch] : from) {
     auto to_iter = to.find(group);
     if (to_iter == to.end()) {
       ++groups_from_only;
@@ -207,7 +207,7 @@ void CategorizeParallelIdsMap(
       }
     }
   }
-  for (auto [group, _] : to) {
+  for (const auto& [group, _] : to) {
     auto from_iter = from.find(group);
     if (from_iter == from.end()) {
       ++groups_to_only;
@@ -246,13 +246,13 @@ void SideEffectAnalysisInfo::SetLastWrites(
 
 void SideEffectAnalysisInfo::Enter() {
   per_resource_access_info_.clear();
-  for (auto [resource, last_writes] : stack_down_.back()) {
+  for (const auto& [resource, last_writes] : stack_down_.back()) {
     SetLastWrites(resource, last_writes);
   }
 }
 
 void SideEffectAnalysisInfo::Exit() {
-  for (auto [resource, _] : per_resource_access_info_) {
+  for (const auto& [resource, _] : per_resource_access_info_) {
     absl::flat_hash_set<Operation*> last_writes = GetLastWrites(resource);
     auto& resource_to_operations = stack_up_.back();
     resource_to_operations.try_emplace(resource);
@@ -265,7 +265,7 @@ void SideEffectAnalysisInfo::Exit() {
 void SideEffectAnalysisInfo::Down() {
   stack_down_.emplace_back();
   stack_up_.emplace_back();
-  for (auto [resource, _] : per_resource_access_info_) {
+  for (const auto& [resource, _] : per_resource_access_info_) {
     absl::flat_hash_set<Operation*> last_writes = GetLastWrites(resource);
     stack_down_.back()[resource] = last_writes;
   }
@@ -279,7 +279,7 @@ void SideEffectAnalysisInfo::Lateral() {
 
 void SideEffectAnalysisInfo::Up() {
   Exit();
-  for (auto [resource, last_writes] : stack_up_.back()) {
+  for (const auto& [resource, last_writes] : stack_up_.back()) {
     SetLastWrites(resource, last_writes);
   }
   stack_down_.pop_back();

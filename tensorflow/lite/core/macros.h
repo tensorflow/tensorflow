@@ -73,6 +73,8 @@ inline constexpr char tflite_metadata_buffer_location[] = "buffer_location";
 // field for minimum runtime version, string
 inline constexpr char tflite_metadata_min_runtime_version[] =
     "min_runtime_version";
+// the stablehlo op version is supported by the tflite runtime
+inline constexpr char tflite_supported_stablehlo_version[] = "0.14.0";
 #endif
 
 #endif  // TENSORFLOW_LITE_CORE_MACROS_H_

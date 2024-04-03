@@ -2,7 +2,6 @@ load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
 load("@local_tsl//tsl:tsl.default.bzl", "get_compatible_with_portable")
 
 package(
-    default_visibility = ["//visibility:public"],
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
 )
@@ -130,15 +129,19 @@ cc_library(
         "sharding_param.h",
     ],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
+    visibility = ["//xla/python/ifrt:friends"],
     deps = [
         ":ifrt_dialect_inc_gen",
         ":ifrt_interfaces_inc_gen",
         ":ifrt_ops_inc_gen",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:CallOpInterfaces",  # buildcleaner: keep
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
+        "@local_tsl//tsl/platform:errors",
     ],
 )
 
@@ -147,8 +150,9 @@ cc_library(
     srcs = ["compiler.cc"],
     hdrs = ["compiler.h"],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
+    visibility = ["//xla/python/ifrt:friends"],
     deps = [
+        "//xla:statusor",
         "//xla/python/ifrt",
         "@com_google_absl//absl/container:flat_hash_map",
         "@llvm-project//llvm:Support",

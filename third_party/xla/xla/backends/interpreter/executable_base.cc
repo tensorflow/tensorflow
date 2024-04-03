@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -38,7 +38,7 @@ InterpreterExecutableBase::InterpreterExecutableBase(
     : Executable(std::move(hlo_module), /*hlo_profile_printer_data=*/nullptr,
                  /*hlo_profile_index_map=*/nullptr) {}
 
-StatusOr<ExecutionOutput> InterpreterExecutableBase::ExecuteAsyncOnStream(
+absl::StatusOr<ExecutionOutput> InterpreterExecutableBase::ExecuteAsyncOnStream(
     const ServiceExecutableRunOptions* run_options,
     std::vector<ExecutionInput> arguments,
     HloExecutionProfile* hlo_execution_profile) {
@@ -150,7 +150,7 @@ StatusOr<ExecutionOutput> InterpreterExecutableBase::ExecuteAsyncOnStream(
   return std::move(result);
 }
 
-StatusOr<ExecutionOutput>
+absl::StatusOr<ExecutionOutput>
 InterpreterExecutableBase::AllocateOutputMemoryWithInputReuse(
     const Shape& shape, const HloInputOutputAliasConfig& alias_config,
     se::DeviceMemoryAllocator* allocator,
@@ -187,8 +187,7 @@ InterpreterExecutableBase::AllocateOutputMemoryWithInputReuse(
             result.Result().on_device_shape(), result_index));
 
     if (!ShapeUtil::IndexIsValid(alias_config.shape(), result_index)) {
-      return InternalError("result_index is invalid: %s",
-                           result_index.ToString());
+      return Internal("result_index is invalid: %s", result_index.ToString());
     }
 
     std::optional<HloInputOutputAliasConfig::Alias> alias =

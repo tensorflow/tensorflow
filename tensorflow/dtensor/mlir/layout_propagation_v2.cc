@@ -1359,7 +1359,7 @@ Status RunOneIteration(
     llvm::DenseMap<mlir::Value, std::vector<mlir::OpOperand*>>& consumers,
     llvm::DenseMap<mlir::Value, Layout>& merged_layouts, mlir::ModuleOp& module,
     int stage, int* steps) {
-  if (is_updated.empty()) return OkStatus();
+  if (is_updated.empty()) return absl::OkStatus();
   // Merge any possibly updated layouts.
   if (mlir::failed(
           MergeAndGetUpdatedLayouts(is_locked, is_updated, producer_request,
@@ -1384,7 +1384,7 @@ Status RunOneIteration(
       return errors::Internal("UpdateLayoutsForOp failed to update layouts.");
   }
   ++(*steps);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Compares every value's layouts in `merged_a` with the ones in `merged_b`,
@@ -1406,7 +1406,7 @@ Status CompareMergedLayouts(const llvm::DenseMap<mlir::Value, Layout>& merged_a,
       changed.insert(value);
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // MLIR pass that propagates layout for all ops the module.

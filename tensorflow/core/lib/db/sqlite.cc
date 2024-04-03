@@ -83,7 +83,7 @@ sqlite3_stmt* PrepareRawOrDie(sqlite3* db, const char* sql) {
 }
 
 Status SetPragma(Sqlite* db, const char* pragma, const StringPiece& value) {
-  if (value.empty()) return OkStatus();
+  if (value.empty()) return absl::OkStatus();
   for (auto p = value.begin(); p < value.end(); ++p) {
     if (!(('0' <= *p && *p <= '9') || ('A' <= *p && *p <= 'Z') ||
           ('a' <= *p && *p <= 'z') || *p == '-')) {
@@ -105,7 +105,7 @@ const StringPiece GetEnv(const char* var) {
 Status EnvPragma(Sqlite* db, const char* pragma, const char* var) {
   TF_RETURN_WITH_CONTEXT_IF_ERROR(SetPragma(db, pragma, GetEnv(var)), "getenv(",
                                   var, ")");
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -130,7 +130,7 @@ Status Sqlite::Open(const string& path, int flags, Sqlite** db) {
   sqlite3_stmt* commit = PrepareRawOrDie(sqlite, "COMMIT");
   sqlite3_stmt* rollback = PrepareRawOrDie(sqlite, "ROLLBACK");
   *db = new Sqlite(sqlite, begin, commit, rollback);
-  Status s = OkStatus();
+  Status s = absl::OkStatus();
   // Up until 2016 the default SQLite page_size was 1024. This ensures
   // the new default regardless of linkage unless configured otherwise.
   s.Update(SetPragma(*db, "page_size", "4096"));
@@ -172,7 +172,7 @@ Status Sqlite::Prepare(const StringPiece& sql, SqliteStatement* stmt) {
                         sql.size(), sql.data());
   }
   *stmt = SqliteStatement(this, ps);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status SqliteStatement::Step(bool* is_done) {
@@ -188,10 +188,10 @@ Status SqliteStatement::Step(bool* is_done) {
   switch (rc) {
     case SQLITE_ROW:
       *is_done = false;
-      return OkStatus();
+      return absl::OkStatus();
     case SQLITE_DONE:
       *is_done = true;
-      return OkStatus();
+      return absl::OkStatus();
     default:
       *is_done = true;
       return PrintfStatus(rc, "Step() failed: [%d] %s: %s", rc, db_->errmsg(),
@@ -211,7 +211,7 @@ Status SqliteStatement::StepOnce() {
   if (TF_PREDICT_FALSE(is_done)) {
     return errors::Internal("No rows returned: ", sql());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 const SqliteStatement& SqliteStatement::StepOnceOrDie() {
@@ -277,7 +277,7 @@ Status SqliteTransaction::Commit() {
   sqlite3_reset(db_->commit_);
   sqlite3_reset(db_->begin_);
   Begin();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -75,6 +75,7 @@ namespace xla {
   V(kCholesky, "cholesky", 1)                                                  \
   V(kClamp, "clamp", 3)                                                        \
   V(kClz, "count-leading-zeros", 1)                                            \
+  V(kCollectiveBroadcast, "collective-broadcast", kHloOpcodeIsVariadic)        \
   V(kCollectivePermute, "collective-permute", kHloOpcodeIsVariadic)            \
   V(kCollectivePermuteDone, "collective-permute-done", 1)                      \
   V(kCollectivePermuteStart, "collective-permute-start", kHloOpcodeIsVariadic) \
@@ -92,10 +93,11 @@ namespace xla {
   V(kCustomCall, "custom-call", kHloOpcodeIsVariadic)                          \
   V(kDivide, "divide", 2)                                                      \
   V(kDomain, "domain", 1)                                                      \
-  V(kDot, "dot", 2)                                                            \
+  V(kDot, "dot", kHloOpcodeIsVariadic)                                         \
   V(kDynamicReshape, "dynamic-reshape", kHloOpcodeIsVariadic)                  \
   V(kDynamicSlice, "dynamic-slice", kHloOpcodeIsVariadic)                      \
   V(kDynamicUpdateSlice, "dynamic-update-slice", kHloOpcodeIsVariadic)         \
+  V(kErf, "erf", 1)                                                            \
   V(kExp, "exponential", 1)                                                    \
   V(kExpm1, "exponential-minus-one", 1)                                        \
   V(kFft, "fft", 1)                                                            \

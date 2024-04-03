@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -35,11 +35,12 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/hlo_creation_utils.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/statusor.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -261,9 +262,13 @@ absl::StatusOr<bool> TryDecomposeAllReduce(HloAllReduceInstruction* all_reduce,
     outputs[i] = computation.AddInstruction(HloInstruction::CreateBitcast(
         all_reduce->operand(i)->shape(), outputs[i]));
   }
+  HloInstruction* replacement = MaybeMakeTuple(outputs);
 
   TF_RETURN_IF_ERROR(
-      computation.ReplaceInstruction(all_reduce, MaybeMakeTuple(outputs)));
+      all_reduce->CopyAllControlDepsTo(reduce_scatter, replacement));
+
+  TF_RETURN_IF_ERROR(all_reduce->DropAllControlDeps());
+  TF_RETURN_IF_ERROR(computation.ReplaceInstruction(all_reduce, replacement));
 
   // Try to apply decomposition recursively.
   TF_RETURN_IF_ERROR(

@@ -25,9 +25,14 @@ message OneDnnMatMulConfig {
     TANH = 3;
     GELU_ERF = 4;
     GELU_TANH = 5;
+    BINARY_ADD = 6;
+    LINEAR = 7;
   }
   repeated FusionKind fused_ops = 3;
   bool bias_broadcast = 4;
+  // To avoid protobuf failures for specific decimal values,
+  // the original float value alpha is type-casted to int32.
+  int32 alpha_typecast = 5;
 }
 
 message OneDnnLayerNormConfig {
@@ -40,4 +45,5 @@ message OneDnnLayerNormConfig {
     SCALE_AND_SHIFT = 3;
   }
   FusionKind fused_ops = 1;
+  int32 epsilon_typecast = 2;
 }

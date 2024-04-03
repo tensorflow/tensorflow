@@ -364,7 +364,7 @@ TfLiteStatus FormatConverter<T>::SparseToDense(const T* src_data,
                                                TfLiteContext* context) {
   if (dest_size != dense_size_) {
     TF_LITE_MAYBE_KERNEL_LOG(
-        context, "unexpected buffer size for densified data, expected %lld.\n",
+        context, "unexpected buffer size for densified data, expected %zu.\n",
         dense_size_);
     return kTfLiteError;
   }

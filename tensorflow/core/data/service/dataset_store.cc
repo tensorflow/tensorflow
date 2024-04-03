@@ -38,7 +38,7 @@ Status FileSystemDatasetStore::Put(const std::string& key,
                                    const DatasetDef& dataset) {
   std::string path_to_write = io::JoinPath(datasets_dir_, key);
   TF_RETURN_IF_ERROR(WriteDatasetDef(path_to_write, dataset));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status FileSystemDatasetStore::Get(
@@ -48,14 +48,14 @@ Status FileSystemDatasetStore::Get(
   DatasetDef def;
   TF_RETURN_IF_ERROR(ReadDatasetDef(path, def));
   dataset_def = std::make_shared<const DatasetDef>(def);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status MemoryDatasetStore::Put(const std::string& key,
                                const DatasetDef& dataset) {
   auto& stored_dataset = datasets_[key];
   stored_dataset = std::make_shared<const DatasetDef>(dataset);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status MemoryDatasetStore::Get(const std::string& key,
@@ -65,7 +65,7 @@ Status MemoryDatasetStore::Get(const std::string& key,
     return errors::NotFound("Dataset with key ", key, " not found");
   }
   dataset_def = stored_dataset;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace data

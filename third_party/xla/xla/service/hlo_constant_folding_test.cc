@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -344,6 +344,32 @@ TEST_F(HloConstantFoldingTest, FoldOpsWhereOneOperandIsBroadcast) {
                                   m::Constant(),
                                   m::Constant()  //
                                   )));
+}
+
+TEST_F(HloConstantFoldingTest, FoldInt4Ops) {
+  const char* const kModuleStr = R"(
+  HloModule test
+
+  ENTRY entry {
+    c0 = s4[2]{0:E(4)} constant({1, 2})
+    c1 = s4[2]{0:E(4)} constant({3, 4})
+    add1 = s4[2]{0:E(4)} add(c0, c1)
+    c2 = s4[]{:E(4)} constant(5)
+    add2 = s4[2]{0:E(4)} add(c0, s4[2]{0:E(4)} broadcast(c2))
+    ROOT root = tuple(add1, add2)
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+  HloConstantFolding constant_folding;
+  TF_ASSERT_OK_AND_ASSIGN(bool result,
+                          RunHloPass(&constant_folding, module.get()));
+  EXPECT_TRUE(result);
+  auto is_4_bit = [](const HloInstruction* instr) {
+    return instr->shape().layout().element_size_in_bits() == 4;
+  };
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Tuple(m::Constant().WithPredicate(is_4_bit),
+                                  m::Constant().WithPredicate(is_4_bit))));
 }
 
 TEST_F(HloConstantFoldingTest, BigReduceWindow) {

@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/time/time.h"
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/model.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
@@ -94,7 +95,8 @@ class TfDatazMetricsCollector {
   // We only collect metrics for CPU devices. This is a heuristic to avoid
   // collecting metrics for device-side iterators created by the multi-device
   // iterator mechanism.
-  TfDatazMetricsCollector(const Env& env, DatasetBaseIterator* iterator);
+  TfDatazMetricsCollector(const Env& env, DatasetBaseIterator* iterator,
+                          std::shared_ptr<model::Model> model);
 
   // Records `GetNext` call latency.
   void RecordGetNextLatency(int64_t get_next_latency_usec);
@@ -116,8 +118,11 @@ class TfDatazMetricsCollector {
   // buffered in all nodes in the subtree.
   int64_t GetIteratorTotalMemoryUsage();
 
+  std::shared_ptr<model::Model> GetModel();
+
  private:
   DatasetBaseIterator* iterator_;  // not owned
+  std::shared_ptr<model::Model> model_;
   ApproximateLatencyEstimator latency_estimator_;
 };
 

@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2015 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,6 +17,8 @@ limitations under the License.
 #define XLA_STREAM_EXECUTOR_PLUGIN_REGISTRY_H_
 
 #include <map>
+#include <optional>
+#include <string>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"

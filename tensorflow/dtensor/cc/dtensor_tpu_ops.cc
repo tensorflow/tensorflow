@@ -44,7 +44,7 @@ REGISTER_OP("ConfigureAndInitializeGlobalTPU")
         TF_RETURN_IF_ERROR(c->WithRank(c->input(i), 0, &input));
       }
       c->set_output(0, c->Vector(c->UnknownDim()));
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("ShutdownTPUSystem")
@@ -58,7 +58,7 @@ REGISTER_OP("DTensorSetGlobalTPUArray")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle input;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &input));
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 }  // namespace dtensor

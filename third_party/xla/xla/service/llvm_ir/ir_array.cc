@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -371,6 +371,13 @@ IrArray::Index IrArray::Index::SourceIndexOfBitcast(
                                          decomposition_trt.transpose1_dims);
   }
   return index;
+}
+
+IrArray::Index IrArray::Index::SourceIndexOfBitcast(
+    const Shape& operand_shape, llvm::IRBuilder<>* builder) const {
+  auto shape = ShapeUtil::MakeShape(F32, dims_);
+  *shape.mutable_layout() = layout_;
+  return SourceIndexOfBitcast(shape, operand_shape, builder);
 }
 
 IrArray::Index IrArray::Index::SourceIndexOfBroadcast(

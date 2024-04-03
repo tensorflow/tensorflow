@@ -74,7 +74,7 @@ Status DirectPluginOpKernelContext::CreatePluginVariable(
   TF_RETURN_IF_ERROR(LookupResource(ctx_, handle, &var));
 
   *variable = new DirectPluginVariable(index, handle.name(), var);
-  return tsl::OkStatus();
+  return absl::OkStatus();
 }
 
 Status DirectPluginOpKernelContext::AllocateTempForPluginVariable(
@@ -112,16 +112,16 @@ Status DirectPluginOpKernelContext::LookupOrCreateResource(
         void* opaque_plugin_resource = create_func(create_func_args);
         *new_resource = new tensorflow::PluginResource(
             opaque_plugin_resource, plugin_resource_name, delete_func);
-        return tensorflow::OkStatus();
+        return absl::OkStatus();
       }));
   tf_plugin_resource_ptr.reset(tf_plugin_resource);
   *result_plugin_resource = tf_plugin_resource_ptr->GetOpaquePluginResource();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status DirectPluginOpKernelContext::GetInput(int index, Tensor* tensor) const {
   *tensor = ctx_->input(index);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status DirectPluginOpKernelContext::GetInput(const char* name,

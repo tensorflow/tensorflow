@@ -388,12 +388,15 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
   @combinations.generate(
       combinations.times(
           test_base.default_test_combinations(),
-          combinations.combine(num_workers=[1, 3], num_repetitions=[1, 10])))
+          combinations.combine(
+              num_elements=[1, 2, 1000],
+              num_workers=[1, 3],
+              num_repetitions=[1, 10])))
   def testRepeatedDatasetRecoversAndCompletes(
-      self, num_workers, num_repetitions):
+      self, num_elements, num_workers, num_repetitions):
     cluster = data_service_test_base.TestCluster(num_workers=num_workers)
     snapshot_dir = data_service_test_base.TempDir()
-    ds = dataset_ops.Dataset.range(1000)
+    ds = dataset_ops.Dataset.range(num_elements)
     ds = ds.repeat(num_repetitions)
     self.evaluate(distributed_save_op.distributed_save(
         ds, snapshot_dir.full_path, cluster.dispatcher_address()))
@@ -407,7 +410,9 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
 
     dataset = dataset_ops.Dataset.load(snapshot_dir.full_path)
     self.assertDatasetProduces(
-        dataset, list(range(1000)) * num_repetitions, assert_items_equal=True)
+        dataset,
+        list(range(num_elements)) * num_repetitions,
+        assert_items_equal=True)
 
   @combinations.generate(
       combinations.times(
@@ -473,7 +478,7 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
 
     dataset = dataset_ops.Dataset.load(snapshot_path1)
     self.assertDatasetProduces(
-        dataset, list(range(1000)), assert_items_equal=(num_workers > 1))
+        dataset, list(range(1000)), assert_items_equal=True)
 
   @combinations.generate(
       combinations.times(

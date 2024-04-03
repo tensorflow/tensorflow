@@ -316,14 +316,42 @@ class DistributedSaveLoadTest(
             dataset, snapshot_dir.full_path, cluster.dispatcher_address()))
 
     dataset = load_op._load_with_retry(snapshot_dir.full_path)
-    self.assertDatasetProduces(dataset, list(range(num_elements)))
+    self.assertDatasetProduces(
+        dataset, list(range(num_elements)), assert_items_equal=True)
 
     # After removing the dataset_spec file, the loaded dataset should produce
     # the same output.
     os.remove(os.path.join(
         snapshot_dir.full_path, dataset_ops.DATASET_SPEC_FILENAME))
     dataset = load_op._load_with_retry(snapshot_dir.full_path)
-    self.assertDatasetProduces(dataset, list(range(num_elements)))
+    self.assertDatasetProduces(
+        dataset, list(range(num_elements)), assert_items_equal=True)
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(num_elements=[10])))
+  def test_empty_dataset_spec_file(self, num_elements: int):
+    cluster = data_service_test_base.TestCluster(num_workers=1)
+    snapshot_dir = data_service_test_base.TempDir()
+    dataset = dataset_ops.Dataset.range(num_elements)
+    self.evaluate(
+        distributed_save_op.distributed_save(
+            dataset, snapshot_dir.full_path, cluster.dispatcher_address()))
+
+    dataset = load_op._load_with_retry(snapshot_dir.full_path)
+    self.assertDatasetProduces(
+        dataset, list(range(num_elements)), assert_items_equal=True)
+
+    dataset_spec_file = os.path.join(
+        snapshot_dir.full_path, dataset_ops.DATASET_SPEC_FILENAME)
+    with open(dataset_spec_file, "w") as f:
+      f.write("")
+
+    # Reads element_spec from the metadata file.
+    dataset = load_op._load_with_retry(snapshot_dir.full_path)
+    self.assertDatasetProduces(
+        dataset, list(range(num_elements)), assert_items_equal=True)
 
   @combinations.generate(test_base.default_test_combinations())
   def test_snapshot_does_not_exist(self):
@@ -348,12 +376,39 @@ class DistributedSaveLoadTest(
     dataset = load_op._ListSnapshotChunksDataset(snapshot_dir.full_path)
     if num_repetitions != 1:
       dataset = dataset.repeat(num_repetitions)
-
     while self.evaluate(dataset.cardinality()) == dataset_ops.UNKNOWN:
       time.sleep(.1)
-    expected = (
-        dataset_ops.INFINITE if num_repetitions is None else num_repetitions)
-    self.assertEqual(self.evaluate(dataset.cardinality()), expected)
+
+    num_chunks = len(os.listdir(os.path.join(snapshot_dir.full_path, "chunks")))
+    expected_cardinality = (
+        dataset_ops.INFINITE
+        if num_repetitions is None
+        else num_chunks * num_repetitions)
+    self.assertEqual(self.evaluate(dataset.cardinality()), expected_cardinality)
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(num_repetitions=[50])))
+  def test_snapshot_chunks_order(self, num_repetitions: int):
+    cluster = data_service_test_base.TestCluster(
+        num_workers=1, snapshot_max_chunk_size_bytes=1)
+    snapshot_dir = data_service_test_base.TempDir()
+    dataset = dataset_ops.Dataset.range(1)
+    dataset = dataset.repeat(num_repetitions)
+    self.evaluate(
+        distributed_save_op.distributed_save(
+            dataset, snapshot_dir.full_path, cluster.dispatcher_address()))
+
+    dataset = load_op._ListSnapshotChunksDataset(snapshot_dir.full_path)
+    while self.evaluate(dataset.cardinality()) == dataset_ops.UNKNOWN:
+      time.sleep(.1)
+
+    chunk_indices = [
+        int(os.path.basename(str(chunk)).split("_")[2])
+        for chunk in self.getDatasetOutput(dataset)]
+    self.assertEqual(chunk_indices, sorted(chunk_indices),
+                     "Snapshot chunks should be sorted by chunk indices.")
 
 
 class SaveLoadCheckpointTest(

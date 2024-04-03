@@ -175,7 +175,7 @@ class CSRSparseMatrixAddFunctor {
       TF_RETURN_IF_ERROR(csr_geam.Compute(a_comp, b_comp, &c_comp, workspace));
     }
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:

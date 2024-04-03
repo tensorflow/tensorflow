@@ -26,7 +26,7 @@ WHEEL_COLLAB = "{}"
 def _python_repository_impl(repository_ctx):
     repository_ctx.file("BUILD", "")
     version = repository_ctx.os.environ.get("TF_PYTHON_VERSION", "")
-    wheel_name = repository_ctx.os.environ.get("WHEEL_NAME", None)
+    wheel_name = repository_ctx.os.environ.get("WHEEL_NAME", "tensorflow")
     wheel_collab = repository_ctx.os.environ.get("WHEEL_COLLAB", False)
     if version not in VERSIONS:
         print(WARNING)  # buildifier: disable=print

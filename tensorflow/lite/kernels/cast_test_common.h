@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/types/span.h"
+#include "tensorflow/lite/interpreter_options.h"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
@@ -35,6 +36,23 @@ class CastOpModel : public SingleOpModel {
     SetBuiltinOp(BuiltinOperator_CAST, BuiltinOptions_CastOptions,
                  CreateCastOptions(builder_).Union());
     BuildInterpreter({GetShape(input_)});
+  }
+
+  template <class ConstInputData>
+  CastOpModel(const TensorData& input, ConstInputData&& data,
+              const TensorData& output) {
+    input_ = AddConstInput(input, static_cast<ConstInputData>(data));
+    output_ = AddOutput(output);
+    SetBuiltinOp(BuiltinOperator_CAST, BuiltinOptions_CastOptions,
+                 CreateCastOptions(builder_).Union());
+    BuildInterpreter({GetShape(input_)}, /*num_threads=*/-1,
+                     /*allow_fp32_relax_to_fp16=*/false,
+                     /*apply_delegate=*/true, /*allocate_and_delegate=*/false,
+                     /*use_simple_allocator=*/false);
+    InterpreterOptions options;
+    options.SetCacheConstantCastOp(true);
+    interpreter_->ApplyOptions(&options);
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   void Set4BitInput(absl::Span<const int8_t> f) {

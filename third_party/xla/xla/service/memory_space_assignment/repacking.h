@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -35,7 +35,8 @@ class MemorySpaceAssignmentRepacker {
   // Repack the AllocationBlocks provided in the parameter. Returns true if
   // allocations have been modified and false if not. Returns a non-ok status if
   // there was an error.
-  virtual StatusOr<bool> Repack(absl::Span<AllocationBlock*> allocations) = 0;
+  virtual absl::StatusOr<bool> Repack(
+      absl::Span<AllocationBlock*> allocations) = 0;
 
  protected:
   int64_t max_size_;

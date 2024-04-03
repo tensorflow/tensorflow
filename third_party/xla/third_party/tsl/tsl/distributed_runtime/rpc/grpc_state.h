@@ -23,6 +23,7 @@ limitations under the License.
 #include "grpcpp/generic/generic_stub.h"
 #include "grpcpp/grpcpp.h"
 #include "absl/status/status.h"
+#include "xla/tsl/util/env_var.h"
 #include "tsl/distributed_runtime/call_options.h"
 #include "tsl/distributed_runtime/rpc/grpc_client_cq_tag.h"
 #include "tsl/distributed_runtime/rpc/grpc_util.h"
@@ -30,7 +31,6 @@ limitations under the License.
 #include "tsl/platform/status.h"
 #include "tsl/platform/strcat.h"
 #include "tsl/platform/threadpool.h"
-#include "tsl/util/env_var.h"
 
 namespace tsl {
 
@@ -149,7 +149,7 @@ class RPCState : public GrpcClientCQTag {
 
     VLOG(2) << "Completed call: " << method_;
 
-    Status s = FromGrpcStatus(status_);
+    absl::Status s = FromGrpcStatus(status_);
     if (s.ok() && !ok) {
       // Since this function is only being used for processing the response
       // to Finish for client-side unary calls, ok should never be false
@@ -206,7 +206,7 @@ class RPCState : public GrpcClientCQTag {
   }
 
   void ParseAndCallDone() {
-    Status s;
+    absl::Status s;
     if (!parse_proto_fn_(&response_buf_, response_)) {
       s.Update(errors::Internal("could not parse rpc response"));
     }

@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,13 +17,16 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_LLVM_GPU_BACKEND_GPU_BACKEND_LIB_H_
 #define XLA_SERVICE_GPU_LLVM_GPU_BACKEND_GPU_BACKEND_LIB_H_
 
+#include <cstdint>
+#include <functional>
 #include <string>
-#include <utility>
+#include <vector>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Target/TargetMachine.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/types.h"
 #include "xla/xla.pb.h"
@@ -62,7 +65,7 @@ namespace amdgpu {
 // The contents of the module may be changed.
 absl::StatusOr<std::vector<uint8_t>> CompileToHsaco(
     llvm::Module* module, se::GpuComputeCapability gpu_version,
-    const DebugOptions& debug_options, const std::string& rocdl_dir_path,
+    const DebugOptions& debug_options,
     const std::string& module_config_cache_key);
 }  // namespace amdgpu
 

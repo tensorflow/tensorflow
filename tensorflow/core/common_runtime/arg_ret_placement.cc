@@ -73,7 +73,7 @@ Status CheckMemoryType(bool use_host_memory, const FullTypeDef& ft) {
                             " but full type information is\n",
                             ft.DebugString());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Note that ints_on_device is only true for single device functions
@@ -152,7 +152,7 @@ static Status SetMemoryTypeForNode(
     aa.set_on_host(mt_from_dtype == HOST_MEMORY);
     alloc_attrs->push_back(aa);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // This helper function takes a list of nodes.
@@ -169,7 +169,7 @@ static Status SetMemoryTypeHelper(
                                             weak_flag, /*ints_on_device=*/false,
                                             memory_types, alloc_attrs));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // This helper function takes a list of pairs that contain an arg node.
@@ -192,7 +192,7 @@ static Status SetMemoryTypeHelper(
         arg.first, dtype, /*is_arg=*/true, weak_flag, ints_on_device,
         /*memory_types=*/nullptr, alloc_attrs));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // This helper function takes a list of pairs that contain a ret node.
@@ -214,7 +214,7 @@ static Status SetMemoryTypeHelper(
         ret.first, dtype, /*is_arg=*/false, weak_flag, ints_on_device,
         /*memory_types=*/nullptr, alloc_attrs));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status SetMemoryTypeForArgs(const gtl::InlinedVector<Node*, 4>& nodes,

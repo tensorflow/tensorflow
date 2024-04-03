@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -243,7 +243,7 @@ absl::Status GpuLayoutAssignment::AddBackendConstraintsToDnnConvCustomCall(
 
   if (instr->operand_count() > 2 && kind != CudnnConvKind::kForwardActivation &&
       kind != CudnnConvKind::kForwardGraph) {
-    return InternalError(
+    return Internal(
         "Invalid convolution. Conv has a side input, but kind is not fused "
         "conv forward or graph conv foward: %s",
         instr->ToString());
@@ -459,6 +459,19 @@ absl::Status GpuLayoutAssignment::AddBackendConstraints(
           ShapeUtil::MoveDimToMajor(all_to_all->shape(),
                                     *all_to_all->split_dimension()),
           all_to_all));
+    } else if (instruction->opcode() == HloOpcode::kSend) {
+      Shape s = instruction->operand(0)->shape();
+      LayoutUtil::SetToDefaultLayout(&s);
+      TF_RETURN_IF_ERROR(SetInstructionLayout(s, instruction->operand(0)));
+      TF_RETURN_IF_ERROR(
+          SetArrayOperandLayout(s.layout(), instruction->operand(0), 0));
+    } else if (instruction->opcode() == HloOpcode::kRecv) {
+      Shape s = instruction->shape();
+      ShapeUtil::ForEachMutableSubshape(
+          &s, [&](Shape* subshape, const ShapeIndex& index) {
+            LayoutUtil::SetToDefaultLayout(subshape);
+          });
+      TF_RETURN_IF_ERROR(SetInstructionLayout(s, instruction));
     }
   }
   return absl::OkStatus();

@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/test.h"
@@ -89,7 +90,8 @@ ENTRY %TestComputation {
   )");
 }
 
-TEST_F(ConvolutionLayoutNormalizationTest, FusedConv3D) {
+// TODO(rocm): No Conv3D
+TEST_F(ConvolutionLayoutNormalizationTest, DISABLED_ON_GPU_ROCM(FusedConv3D)) {
   const char* hlo = R"(
 HloModule TestModule
 

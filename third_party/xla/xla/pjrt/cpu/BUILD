@@ -1,9 +1,11 @@
-load("//xla:xla.bzl", "xla_cc_test")
+load("@local_tsl//tsl:tsl.bzl", "if_oss", "internal_visibility")
 load("@local_tsl//tsl/platform:build_config.bzl", "tf_proto_library")
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
+load("//xla:xla.bzl", "xla_cc_test")
 
 package(
-    default_visibility = ["//visibility:public"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = ["//xla:internal"],
     licenses = ["notice"],
 )
 
@@ -21,7 +23,6 @@ cc_library(
     name = "tracked_tfrt_cpu_device_buffer",
     srcs = ["tracked_tfrt_cpu_device_buffer.cc"],
     hdrs = ["tracked_tfrt_cpu_device_buffer.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:cpu_function_runtime",
         "//xla:shape_util",
@@ -54,7 +55,9 @@ cc_library(
     name = "abstract_tfrt_cpu_buffer",
     srcs = ["abstract_tfrt_cpu_buffer.cc"],
     hdrs = ["abstract_tfrt_cpu_buffer.h"],
-    visibility = ["//visibility:public"],
+    visibility = [
+        "//xla:friends",
+    ],
     deps = [
         ":tracked_tfrt_cpu_device_buffer",
         "//xla:cpu_function_runtime",
@@ -106,7 +109,6 @@ cc_library(
     name = "cpu_topology",
     srcs = ["cpu_topology.cc"],
     hdrs = ["cpu_topology.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":cpu_topology_proto_cc",
         "@com_google_absl//absl/types:span",
@@ -128,7 +130,7 @@ cc_library(
     name = "cpu_client",
     srcs = ["cpu_client.cc"],
     hdrs = ["cpu_client.h"],
-    visibility = ["//visibility:public"],
+    visibility = internal_visibility(["//xla:friends"]),
     deps = [
         ":abstract_tfrt_cpu_buffer",
         ":cpu_topology",
@@ -178,6 +180,7 @@ cc_library(
         "//xla/service/cpu:cpu_executable",
         "//xla/service/cpu:cpu_executable_run_options",
         "//xla/service/cpu:cpu_xfeed",
+        "//xla/service/cpu:simple_orc_jit",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:dynamic_annotations",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -194,6 +197,7 @@ cc_library(
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
         "@eigen_archive//:eigen3",  # TODO(zhangqiaorjc): Remove if use TFRT threadpool.
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@local_tsl//tsl/concurrency:async_value",
         "@local_tsl//tsl/concurrency:ref_count",
@@ -245,7 +249,6 @@ cc_library(
         "-fno-strict-aliasing",
     ],
     features = ["-use_header_modules"],
-    visibility = ["//visibility:public"],
     deps = [
         "//third_party/gloo",
         "//xla/pjrt:status_casters",
@@ -263,7 +266,6 @@ cc_library(
         "-fno-strict-aliasing",
     ],
     features = ["-use_header_modules"],
-    visibility = ["//visibility:public"],
     deps = [
         "//third_party/gloo",
         "//xla:shape_util",
@@ -284,4 +286,35 @@ cc_library(
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
     ],
+)
+
+cc_library(
+    name = "mpi_collectives",
+    srcs = if_oss(["mpi_collectives.cc"]),
+    hdrs = if_oss(["mpi_collectives.h"]),
+    copts = [
+        "-fexceptions",
+        "-fno-strict-aliasing",
+    ],
+    features = ["-use_header_modules"],
+    deps = if_oss([
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
+        "@com_google_absl//absl/types:span",
+        "//xla:shape_util",
+        "//xla:status_macros",
+        "//xla:types",
+        "//xla:xla_data_proto_cc",
+        "//xla/service:collective_ops_utils",
+        "//xla/service:global_device_id",
+        "//xla/service/cpu:collectives_interface",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:logging",
+        "@mpitrampoline",
+    ]),
 )

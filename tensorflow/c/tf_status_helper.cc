@@ -18,7 +18,7 @@ limitations under the License.
 #include <string>
 
 #include "tensorflow/c/tf_status.h"
-#include "tsl/c/tsl_status_helper.h"
+#include "xla/tsl/c/tsl_status_helper.h"
 
 namespace tsl {
 

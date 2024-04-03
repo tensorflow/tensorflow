@@ -312,28 +312,6 @@ renames = {
         'tf.math.erf',
     'tf.erfc':
         'tf.math.erfc',
-    'tf.estimator.experimental.KMeans':
-        'tf.compat.v1.estimator.experimental.KMeans',
-    'tf.estimator.experimental.dnn_logit_fn_builder':
-        'tf.compat.v1.estimator.experimental.dnn_logit_fn_builder',
-    'tf.estimator.experimental.linear_logit_fn_builder':
-        'tf.compat.v1.estimator.experimental.linear_logit_fn_builder',
-    'tf.estimator.inputs.numpy_input_fn':
-        'tf.compat.v1.estimator.inputs.numpy_input_fn',
-    'tf.estimator.inputs.pandas_input_fn':
-        'tf.compat.v1.estimator.inputs.pandas_input_fn',
-    'tf.estimator.tpu.InputPipelineConfig':
-        'tf.compat.v1.estimator.tpu.InputPipelineConfig',
-    'tf.estimator.tpu.RunConfig':
-        'tf.compat.v1.estimator.tpu.RunConfig',
-    'tf.estimator.tpu.TPUConfig':
-        'tf.compat.v1.estimator.tpu.TPUConfig',
-    'tf.estimator.tpu.TPUEstimator':
-        'tf.compat.v1.estimator.tpu.TPUEstimator',
-    'tf.estimator.tpu.TPUEstimatorSpec':
-        'tf.compat.v1.estimator.tpu.TPUEstimatorSpec',
-    'tf.estimator.tpu.experimental.EmbeddingConfigSpec':
-        'tf.compat.v1.estimator.tpu.experimental.EmbeddingConfigSpec',
     'tf.executing_eagerly_outside_functions':
         'tf.compat.v1.executing_eagerly_outside_functions',
     'tf.experimental.output_all_intermediates':
@@ -528,82 +506,12 @@ renames = {
         'tf.compat.v1.keras.utils.get_or_create_layer',
     'tf.keras.utils.track_tf1_style_variables':
         'tf.compat.v1.keras.utils.track_tf1_style_variables',
-    'tf.layers.AveragePooling1D':
-        'tf.compat.v1.layers.AveragePooling1D',
-    'tf.layers.AveragePooling2D':
-        'tf.compat.v1.layers.AveragePooling2D',
-    'tf.layers.AveragePooling3D':
-        'tf.compat.v1.layers.AveragePooling3D',
     'tf.layers.BatchNormalization':
         'tf.compat.v1.layers.BatchNormalization',
-    'tf.layers.Conv1D':
-        'tf.compat.v1.layers.Conv1D',
-    'tf.layers.Conv2D':
-        'tf.compat.v1.layers.Conv2D',
-    'tf.layers.Conv2DTranspose':
-        'tf.compat.v1.layers.Conv2DTranspose',
-    'tf.layers.Conv3D':
-        'tf.compat.v1.layers.Conv3D',
-    'tf.layers.Conv3DTranspose':
-        'tf.compat.v1.layers.Conv3DTranspose',
-    'tf.layers.Dense':
-        'tf.compat.v1.layers.Dense',
-    'tf.layers.Dropout':
-        'tf.compat.v1.layers.Dropout',
-    'tf.layers.Flatten':
-        'tf.compat.v1.layers.Flatten',
     'tf.layers.InputSpec':
         'tf.keras.layers.InputSpec',
-    'tf.layers.Layer':
-        'tf.compat.v1.layers.Layer',
-    'tf.layers.MaxPooling1D':
-        'tf.compat.v1.layers.MaxPooling1D',
-    'tf.layers.MaxPooling2D':
-        'tf.compat.v1.layers.MaxPooling2D',
-    'tf.layers.MaxPooling3D':
-        'tf.compat.v1.layers.MaxPooling3D',
-    'tf.layers.SeparableConv1D':
-        'tf.compat.v1.layers.SeparableConv1D',
-    'tf.layers.SeparableConv2D':
-        'tf.compat.v1.layers.SeparableConv2D',
-    'tf.layers.average_pooling1d':
-        'tf.compat.v1.layers.average_pooling1d',
-    'tf.layers.average_pooling2d':
-        'tf.compat.v1.layers.average_pooling2d',
-    'tf.layers.average_pooling3d':
-        'tf.compat.v1.layers.average_pooling3d',
     'tf.layers.batch_normalization':
         'tf.compat.v1.layers.batch_normalization',
-    'tf.layers.conv1d':
-        'tf.compat.v1.layers.conv1d',
-    'tf.layers.conv2d':
-        'tf.compat.v1.layers.conv2d',
-    'tf.layers.conv2d_transpose':
-        'tf.compat.v1.layers.conv2d_transpose',
-    'tf.layers.conv3d':
-        'tf.compat.v1.layers.conv3d',
-    'tf.layers.conv3d_transpose':
-        'tf.compat.v1.layers.conv3d_transpose',
-    'tf.layers.dense':
-        'tf.compat.v1.layers.dense',
-    'tf.layers.dropout':
-        'tf.compat.v1.layers.dropout',
-    'tf.layers.experimental.keras_style_scope':
-        'tf.compat.v1.layers.experimental.keras_style_scope',
-    'tf.layers.experimental.set_keras_style':
-        'tf.compat.v1.layers.experimental.set_keras_style',
-    'tf.layers.flatten':
-        'tf.compat.v1.layers.flatten',
-    'tf.layers.max_pooling1d':
-        'tf.compat.v1.layers.max_pooling1d',
-    'tf.layers.max_pooling2d':
-        'tf.compat.v1.layers.max_pooling2d',
-    'tf.layers.max_pooling3d':
-        'tf.compat.v1.layers.max_pooling3d',
-    'tf.layers.separable_conv1d':
-        'tf.compat.v1.layers.separable_conv1d',
-    'tf.layers.separable_conv2d':
-        'tf.compat.v1.layers.separable_conv2d',
     'tf.lbeta':
         'tf.math.lbeta',
     'tf.lgamma':
@@ -1286,26 +1194,16 @@ renames = {
         'tf.compat.v1.summary.TaggedRunMetadata',
     'tf.summary.all_v2_summary_ops':
         'tf.compat.v1.summary.all_v2_summary_ops',
-    'tf.summary.audio':
-        'tf.compat.v1.summary.audio',
     'tf.summary.get_summary_description':
         'tf.compat.v1.summary.get_summary_description',
-    'tf.summary.histogram':
-        'tf.compat.v1.summary.histogram',
-    'tf.summary.image':
-        'tf.compat.v1.summary.image',
     'tf.summary.initialize':
         'tf.compat.v1.summary.initialize',
     'tf.summary.merge':
         'tf.compat.v1.summary.merge',
     'tf.summary.merge_all':
         'tf.compat.v1.summary.merge_all',
-    'tf.summary.scalar':
-        'tf.compat.v1.summary.scalar',
     'tf.summary.tensor_summary':
         'tf.compat.v1.summary.tensor_summary',
-    'tf.summary.text':
-        'tf.compat.v1.summary.text',
     'tf.svd':
         'tf.linalg.svd',
     'tf.tables_initializer':
@@ -1387,23 +1285,23 @@ renames = {
     'tf.train.AdamOptimizer':
         'tf.compat.v1.train.AdamOptimizer',
     'tf.train.CheckpointSaverHook':
-        'tf.estimator.CheckpointSaverHook',
+        'tf.compat.v1.train.CheckpointSaverHook',
     'tf.train.CheckpointSaverListener':
-        'tf.estimator.CheckpointSaverListener',
+        'tf.compat.v1.train.CheckpointSaverListener',
     'tf.train.ChiefSessionCreator':
         'tf.compat.v1.train.ChiefSessionCreator',
     'tf.train.FeedFnHook':
-        'tf.estimator.FeedFnHook',
+        'tf.compat.v1.train.FeedFnHook',
     'tf.train.FinalOpsHook':
-        'tf.estimator.FinalOpsHook',
+        'tf.compat.v1.train.FinalOpsHook',
     'tf.train.FtrlOptimizer':
         'tf.compat.v1.train.FtrlOptimizer',
     'tf.train.GlobalStepWaiterHook':
-        'tf.estimator.GlobalStepWaiterHook',
+        'tf.compat.v1.train.GlobalStepWaiterHook',
     'tf.train.GradientDescentOptimizer':
         'tf.compat.v1.train.GradientDescentOptimizer',
     'tf.train.LoggingTensorHook':
-        'tf.estimator.LoggingTensorHook',
+        'tf.compat.v1.train.LoggingTensorHook',
     'tf.train.LooperThread':
         'tf.compat.v1.train.LooperThread',
     'tf.train.MomentumOptimizer':
@@ -1413,15 +1311,15 @@ renames = {
     'tf.train.MonitoredTrainingSession':
         'tf.compat.v1.train.MonitoredTrainingSession',
     'tf.train.NanLossDuringTrainingError':
-        'tf.estimator.NanLossDuringTrainingError',
+        'tf.compat.v1.train.NanLossDuringTrainingError',
     'tf.train.NanTensorHook':
-        'tf.estimator.NanTensorHook',
+        'tf.compat.v1.train.NanTensorHook',
     'tf.train.NewCheckpointReader':
         'tf.compat.v1.train.NewCheckpointReader',
     'tf.train.Optimizer':
         'tf.compat.v1.train.Optimizer',
     'tf.train.ProfilerHook':
-        'tf.estimator.ProfilerHook',
+        'tf.compat.v1.train.ProfilerHook',
     'tf.train.ProximalAdagradOptimizer':
         'tf.compat.v1.train.ProximalAdagradOptimizer',
     'tf.train.ProximalGradientDescentOptimizer':
@@ -1437,7 +1335,7 @@ renames = {
     'tf.train.Scaffold':
         'tf.compat.v1.train.Scaffold',
     'tf.train.SecondOrStepTimer':
-        'tf.estimator.SecondOrStepTimer',
+        'tf.compat.v1.train.SecondOrStepTimer',
     'tf.train.Server':
         'tf.distribute.Server',
     'tf.train.SessionCreator':
@@ -1445,27 +1343,27 @@ renames = {
     'tf.train.SessionManager':
         'tf.compat.v1.train.SessionManager',
     'tf.train.SessionRunArgs':
-        'tf.estimator.SessionRunArgs',
+        'tf.compat.v1.train.SessionRunArgs',
     'tf.train.SessionRunContext':
-        'tf.estimator.SessionRunContext',
+        'tf.compat.v1.train.SessionRunContext',
     'tf.train.SessionRunHook':
-        'tf.estimator.SessionRunHook',
+        'tf.compat.v1.train.SessionRunHook',
     'tf.train.SessionRunValues':
-        'tf.estimator.SessionRunValues',
+        'tf.compat.v1.train.SessionRunValues',
     'tf.train.SingularMonitoredSession':
         'tf.compat.v1.train.SingularMonitoredSession',
     'tf.train.StepCounterHook':
-        'tf.estimator.StepCounterHook',
+        'tf.compat.v1.train.StepCounterHook',
     'tf.train.StopAtStepHook':
-        'tf.estimator.StopAtStepHook',
+        'tf.compat.v1.train.StopAtStepHook',
     'tf.train.SummarySaverHook':
-        'tf.estimator.SummarySaverHook',
+        'tf.compat.v1.train.SummarySaverHook',
     'tf.train.Supervisor':
         'tf.compat.v1.train.Supervisor',
     'tf.train.SyncReplicasOptimizer':
         'tf.compat.v1.train.SyncReplicasOptimizer',
     'tf.train.VocabInfo':
-        'tf.estimator.VocabInfo',
+        'tf.compat.v1.train.VocabInfo',
     'tf.train.WorkerSessionCreator':
         'tf.compat.v1.train.WorkerSessionCreator',
     'tf.train.add_queue_runner':

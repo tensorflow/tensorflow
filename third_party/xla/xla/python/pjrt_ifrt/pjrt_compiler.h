@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -38,11 +38,11 @@ class PjRtCompiler final : public llvm::RTTIExtends<PjRtCompiler, Compiler> {
 
   ~PjRtCompiler() override = default;
 
-  StatusOr<std::unique_ptr<LoadedExecutable>> Compile(
+  absl::StatusOr<std::unique_ptr<LoadedExecutable>> Compile(
       std::unique_ptr<Program> program,
       std::unique_ptr<CompileOptions> options) override;
 
-  StatusOr<std::unique_ptr<LoadedExecutable>> DeserializeLoadedExecutable(
+  absl::StatusOr<std::unique_ptr<LoadedExecutable>> DeserializeLoadedExecutable(
       absl::string_view serialized,
       std::unique_ptr<DeserializeExecutableOptions> options) override;
 

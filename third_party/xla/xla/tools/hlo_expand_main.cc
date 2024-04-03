@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -25,11 +25,11 @@ limitations under the License.
 #include "xla/service/hlo_pass_pipeline.h"
 #include "xla/tools/hlo_expand.h"
 #include "xla/tools/hlo_module_loader.h"
+#include "xla/tsl/util/command_line_flags.h"
 #include "xla/xla.pb.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/init_main.h"
 #include "tsl/platform/path.h"
-#include "tsl/util/command_line_flags.h"
 
 namespace {
 
@@ -130,9 +130,8 @@ int main(int argc, char** argv) {
     std::getline(std::cin, input, static_cast<char>(EOF));
     status_or_module = xla::LoadModuleFromData(input, config.input_format);
   } else {
-    status_or_module = xla::LoadModuleFromFile(
-        hlo_filename, xla::hlo_module_loader_details::Config(),
-        config.input_format);
+    status_or_module =
+        xla::LoadModuleFromFile(hlo_filename, config.input_format);
   }
   if (!status_or_module.ok()) {
     std::cerr << status_or_module.status() << "\nTry: hlo-expand --help\n";

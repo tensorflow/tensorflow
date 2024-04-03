@@ -58,7 +58,7 @@ Status Int32FulltypePass::Int32FullTypeForTensor(DataType dtype,
     tensor_t->set_type_id(TFT_SHAPE_TENSOR);
     (*tensor_t->add_args()) = data_t;
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 static bool is_host_memory_int32(MemoryType mtype, DataType dtype) {
@@ -135,7 +135,7 @@ Status Int32FulltypePass::ProcessGraph(Graph* graph, bool ints_on_device) {
               << t.DebugString();
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

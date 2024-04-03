@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 #include <variant>
 
+#include "absl/log/check.h"
 #include "xla/stream_executor/device_memory.h"
 
 namespace stream_executor {

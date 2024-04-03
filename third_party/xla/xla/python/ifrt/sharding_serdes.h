@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,10 +18,12 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/status/statusor.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/serdes.h"
-#include "xla/statusor.h"
+#include "xla/python/ifrt/sharding.h"
+#include "xla/python/ifrt/sharding.pb.h"
 
 namespace xla {
 namespace ifrt {
@@ -43,8 +45,19 @@ struct DeserializeShardingOptions
 };
 
 // Casts `DeserializeOptions` into `DeserializeShardingOptions`.
-StatusOr<std::unique_ptr<DeserializeShardingOptions>>
+absl::StatusOr<std::unique_ptr<DeserializeShardingOptions>>
 GetDeserializeShardingOptions(std::unique_ptr<DeserializeOptions> options);
+
+// TODO(hyeontaek): Remove these functions from xla::ifrt, once migration to
+// Sharding::FromProto() and Sharding::ToProto() is done.
+
+// Deserializes `ShardingProto` into `Sharding`.
+absl::StatusOr<std::unique_ptr<Sharding>> FromShardingProto(
+    DeviceList::LookupDeviceFunc lookup_device,
+    const ShardingProto& sharding_proto);
+
+// Serializes `Sharding` into `ShardingProto`.
+absl::StatusOr<ShardingProto> ToShardingProto(const Sharding& sharding);
 
 }  // namespace ifrt
 }  // namespace xla

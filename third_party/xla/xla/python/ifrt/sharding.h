@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -31,7 +31,7 @@ limitations under the License.
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/shape.h"
-#include "xla/statusor.h"
+#include "xla/python/ifrt/sharding.pb.h"
 
 namespace xla {
 namespace ifrt {
@@ -56,12 +56,12 @@ class Sharding : public llvm::RTTIExtends<Sharding, Serializable> {
   // Breaks a shape up into per-device shapes and shardings. See
   // Array::DisassembleIntoSingleDeviceArrays(). It may return an error if
   // disassembly is unsupported.
-  virtual StatusOr<
+  virtual absl::StatusOr<
       std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>>>
   Disassemble(const Shape& shape) const = 0;
 
   // Variant of `Disassemble` that takes a dynamic shape.
-  virtual StatusOr<
+  virtual absl::StatusOr<
       std::vector<std::pair<DynamicShape, std::shared_ptr<const Sharding>>>>
   Disassemble(const DynamicShape& dynamic_shape) const = 0;
 
@@ -70,7 +70,7 @@ class Sharding : public llvm::RTTIExtends<Sharding, Serializable> {
   // Note that multiple shards may map onto equal `IndexDomain`. For instance, a
   // fully replicated sharding would return a vector of `[IndexDomain(shape)] *
   // devices().size()`.
-  virtual StatusOr<std::vector<IndexDomain>> IndexDomains(
+  virtual absl::StatusOr<std::vector<IndexDomain>> IndexDomains(
       const Shape& shape) const = 0;
 
   virtual std::string DebugString() const = 0;
@@ -86,6 +86,9 @@ class Sharding : public llvm::RTTIExtends<Sharding, Serializable> {
 };
 
 std::ostream& operator<<(std::ostream& os, const Sharding& sharding);
+
+// TODO(hyeontaek): Move the subclasses of `Sharding` to a seperate file,
+// making this sharding.{h,cc} only define interface and common functions.
 
 // Single-device sharding.
 //
@@ -103,14 +106,14 @@ class SingleDeviceSharding final
 
   ~SingleDeviceSharding() override = default;
 
-  StatusOr<std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>>>
+  absl::StatusOr<std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>>>
   Disassemble(const Shape& shape) const override;
 
-  StatusOr<
+  absl::StatusOr<
       std::vector<std::pair<DynamicShape, std::shared_ptr<const Sharding>>>>
   Disassemble(const DynamicShape& dynamic_shape) const override;
 
-  StatusOr<std::vector<IndexDomain>> IndexDomains(
+  absl::StatusOr<std::vector<IndexDomain>> IndexDomains(
       const Shape& shape) const override;
 
   std::string DebugString() const override;
@@ -135,14 +138,14 @@ class OpaqueSharding : public llvm::RTTIExtends<OpaqueSharding, Sharding> {
 
   ~OpaqueSharding() override = default;
 
-  StatusOr<std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>>>
+  absl::StatusOr<std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>>>
   Disassemble(const Shape& shape) const override;
 
-  StatusOr<
+  absl::StatusOr<
       std::vector<std::pair<DynamicShape, std::shared_ptr<const Sharding>>>>
   Disassemble(const DynamicShape& dynamic_shape) const override;
 
-  StatusOr<std::vector<IndexDomain>> IndexDomains(
+  absl::StatusOr<std::vector<IndexDomain>> IndexDomains(
       const Shape& shape) const override;
 
   std::string DebugString() const override;
@@ -210,13 +213,13 @@ class ConcreteSharding : public llvm::RTTIExtends<ConcreteSharding, Sharding> {
 
   ~ConcreteSharding() override = default;
 
-  StatusOr<std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>>>
+  absl::StatusOr<std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>>>
   Disassemble(const Shape& shape) const override;
-  StatusOr<
+  absl::StatusOr<
       std::vector<std::pair<DynamicShape, std::shared_ptr<const Sharding>>>>
   Disassemble(const DynamicShape& dynamic_shape) const override;
 
-  StatusOr<std::vector<IndexDomain>> IndexDomains(
+  absl::StatusOr<std::vector<IndexDomain>> IndexDomains(
       const Shape& shape) const override;
 
   std::string DebugString() const override;
@@ -260,13 +263,13 @@ class ConcreteEvenSharding
 
   ~ConcreteEvenSharding() override = default;
 
-  StatusOr<std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>>>
+  absl::StatusOr<std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>>>
   Disassemble(const Shape& shape) const override;
-  StatusOr<
+  absl::StatusOr<
       std::vector<std::pair<DynamicShape, std::shared_ptr<const Sharding>>>>
   Disassemble(const DynamicShape& dynamic_shape) const override;
 
-  StatusOr<std::vector<IndexDomain>> IndexDomains(
+  absl::StatusOr<std::vector<IndexDomain>> IndexDomains(
       const Shape& shape) const override;
 
   std::string DebugString() const override;
@@ -285,18 +288,18 @@ class ConcreteEvenSharding
 class ShardingParamSharding
     : public llvm::RTTIExtends<ShardingParamSharding, Sharding> {
  public:
-  static StatusOr<std::unique_ptr<ShardingParamSharding>> Create(
+  static absl::StatusOr<std::unique_ptr<ShardingParamSharding>> Create(
       ShardingParam sharding_param, DeviceList devices, MemoryKind memory_kind);
 
   const ShardingParam& sharding_param() const { return sharding_param_; }
 
-  StatusOr<std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>>>
+  absl::StatusOr<std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>>>
   Disassemble(const Shape& shape) const override;
-  StatusOr<
+  absl::StatusOr<
       std::vector<std::pair<DynamicShape, std::shared_ptr<const Sharding>>>>
   Disassemble(const DynamicShape& dynamic_shape) const override;
 
-  StatusOr<std::vector<IndexDomain>> IndexDomains(
+  absl::StatusOr<std::vector<IndexDomain>> IndexDomains(
       const Shape& shape) const override;
 
   std::string DebugString() const override;

@@ -17,6 +17,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/log/log.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
@@ -272,10 +273,30 @@ VariableAccessesForTPUExecute BuildVariableAccessInfo(
     // TODO(lyandy): Handle updates to resource writes by remapping to parent
     // launch result and checking if launch result is an AssignVariableOp.
     auto result = execute_output.value();
-    if (!result.hasOneUse()) continue;
+    if (!result.hasOneUse()) {
+      if (VLOG_IS_ON(2)) {
+        bool any_user_is_assign = false;
+        for (auto result_user : result.getUsers()) {
+          any_user_is_assign |= llvm::isa<TF::AssignVariableOp>(result_user);
+        }
+        if (any_user_is_assign) {
+          VLOG(2) << "TPUMergeVariablesWithExecutePass: Skipping output "
+                  << execute_output.index()
+                  << " that has more than one user (including an assign):";
+          for (auto result_user : result.getUsers()) {
+            VLOG(2) << "  used by: " << debugString(*result_user);
+          }
+        }
+      }
+      continue;
+    }
 
     auto assign_op = llvm::dyn_cast<TF::AssignVariableOp>(*result.user_begin());
-    if (!assign_op) continue;
+    if (!assign_op) {
+      VLOG(2) << "TPUMergeVariablesWithExecutePass: Skipping non-assign op: "
+              << debugString(*result.user_begin());
+      continue;
+    }
     auto resource = assign_op.getResource();
     auto it = var_access_info.per_resource_info.find(resource);
     if (it == var_access_info.per_resource_info.end()) continue;
@@ -464,6 +485,8 @@ LogicalResult MergeForOneTPUExecute(
     tf_device::LaunchOp execute_launch,
     const mlir::TF::ResourceAliasAnalysis::Info& resource_analysis_info,
     bool check_device, bool check_same_region, OpBuilder* builder) {
+  VLOG(2) << "MergeForOneTPUExecute: "
+          << debugString(execute_launch->getName());
   auto var_access_info = BuildVariableAccessInfo(
       execute_launch, resource_analysis_info, check_device, check_same_region);
   if (var_access_info.per_resource_info.empty()) return success();

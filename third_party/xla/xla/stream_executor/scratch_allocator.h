@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2015 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,16 +16,14 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_SCRATCH_ALLOCATOR_H_
 #define XLA_STREAM_EXECUTOR_SCRATCH_ALLOCATOR_H_
 
+#include <cstddef>
 #include <cstdint>
-#include <memory>
 #include <utility>
 
 #include "absl/container/inlined_vector.h"
 #include "absl/status/statusor.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
-#include "xla/stream_executor/platform/port.h"
-#include "xla/stream_executor/temporary_device_memory.h"
 #include "tsl/platform/statusor.h"
 
 namespace stream_executor {
@@ -67,6 +65,9 @@ class OwningScratchAllocator : public ScratchAllocator {
   OwningScratchAllocator(int device_ordinal, DeviceMemoryAllocator* allocator)
       : device_ordinal_(device_ordinal), allocator_(allocator) {}
 
+  OwningScratchAllocator(OwningScratchAllocator&&) = default;
+  OwningScratchAllocator& operator=(OwningScratchAllocator&&) = default;
+
   int64_t GetMemoryLimitInBytes() override { return -1; }
 
   absl::StatusOr<DeviceMemory<uint8_t>> AllocateBytes(
@@ -82,9 +83,6 @@ class OwningScratchAllocator : public ScratchAllocator {
   int device_ordinal_;
   DeviceMemoryAllocator* allocator_;
   absl::InlinedVector<OwningDeviceMemory, N> buffers_;
-
-  OwningScratchAllocator(const OwningScratchAllocator&) = delete;
-  void operator=(const OwningScratchAllocator&) = delete;
 };
 
 }  // namespace stream_executor

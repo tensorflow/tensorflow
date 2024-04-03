@@ -23,7 +23,11 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/data:dataset_utils",
+        "//tensorflow/core/data:global_shuffle_utils",
         "//tensorflow/core/data:name_utils",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/platform:mutex",
     ],
 )
 
@@ -150,9 +154,12 @@ tf_kernel_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/data:captured_function",
         "//tensorflow/core/data:dataset_utils",
+        "//tensorflow/core/data:hash_utils",
         "//tensorflow/core/data:serialization_utils",
         "//tensorflow/core/grappler:graph_topology_view",
         "//tensorflow/core/grappler/utils:traversal",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 
@@ -381,6 +388,9 @@ tf_kernel_library(
         "//tensorflow/core/data:captured_function",
         "//tensorflow/core/data:dataset_utils",
         "//tensorflow/core/data:name_utils",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 
@@ -439,6 +449,7 @@ tf_kernel_library(
         "//tensorflow/core/profiler/lib:traceme_encode",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/time",
     ],
 )
@@ -482,6 +493,7 @@ tf_kernel_library(
         "//tensorflow/core/data:captured_function",
         "//tensorflow/core/data:dataset_utils",
         "//tensorflow/core/data:name_utils",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -660,12 +672,11 @@ tf_kernel_library(
     deps = [
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",
-        "//tensorflow/core:lib_internal",
         "//tensorflow/core/data:name_utils",
         "//tensorflow/core/framework:dataset_options_proto_cc",
         "//tensorflow/core/profiler/lib:traceme",
-        "//tensorflow/core/protobuf:for_core_protos_cc",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -832,6 +843,7 @@ tf_kernel_library(
         "//tensorflow/core/data:stats_utils",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/profiler/lib:traceme_encode",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -948,6 +960,8 @@ tf_kernel_library(
         "//tensorflow/core/data:stats_utils",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/profiler/lib:traceme_encode",
+        "@com_google_absl//absl/status",
+        "@local_tsl//tsl/platform:mutex",
     ],
 )
 
@@ -994,9 +1008,12 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/data:global_shuffle_utils",
         "//tensorflow/core/data:name_utils",
         "//tensorflow/core/data:split_utils",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
+        "@local_tsl//tsl/platform:mutex",
         "@local_tsl//tsl/platform:types",
     ],
 )
@@ -1063,11 +1080,13 @@ tf_kernel_library(
     deps = [
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/data:global_shuffle_utils",
         "//tensorflow/core/data:name_utils",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:thread_annotations",
     ],
 )
 
@@ -1139,7 +1158,11 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/data:dataset_utils",
+        "//tensorflow/core/data:global_shuffle_utils",
         "//tensorflow/core/data:name_utils",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/platform:thread_annotations",
     ],
 )
 
@@ -1207,9 +1230,11 @@ tf_kernel_library(
     deps = [
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
+        "//tensorflow/core/data:global_shuffle_utils",
         "//tensorflow/core/data:name_utils",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/platform:errors",
     ],
 )
 
@@ -1275,6 +1300,7 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/data:name_utils",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -1308,8 +1334,12 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
         "//tensorflow/core/data:dataset_utils",
+        "//tensorflow/core/data:global_shuffle_utils",
         "//tensorflow/core/data:name_utils",
         "//tensorflow/core/data:split_utils",
+        "@com_google_absl//absl/status",
+        "@local_tsl//tsl/platform:mutex",
+        "@local_tsl//tsl/platform:thread_annotations",
     ],
 )
 
@@ -1335,8 +1365,12 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
         "//tensorflow/core/data:dataset_utils",
+        "//tensorflow/core/data:global_shuffle_utils",
         "//tensorflow/core/data:name_utils",
         "//tensorflow/core/data:split_utils",
+        "@com_google_absl//absl/status",
+        "@local_tsl//tsl/platform:mutex",
+        "@local_tsl//tsl/platform:thread_annotations",
     ],
 )
 
@@ -1519,6 +1553,7 @@ filegroup(
         "//tensorflow/core/data:compression_utils.h",
         "//tensorflow/core/data:dataset_utils.h",
         "//tensorflow/core/data:finalization_utils.h",
+        "//tensorflow/core/data:global_shuffle_utils.h",
         "//tensorflow/core/data:metric_utils.h",
         "//tensorflow/core/data:name_utils.h",
         "//tensorflow/core/data:rewrite_utils.h",
@@ -1548,6 +1583,7 @@ filegroup(
         "//tensorflow/core/data:compression_utils.cc",
         "//tensorflow/core/data:dataset_utils.cc",
         "//tensorflow/core/data:finalization_utils.cc",
+        "//tensorflow/core/data:global_shuffle_utils.cc",
         "//tensorflow/core/data:metric_utils.cc",
         "//tensorflow/core/data:name_utils.cc",
         "//tensorflow/core/data:rewrite_utils.cc",

@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -87,7 +87,7 @@ class FlattenCallGraphTest : public HloTestBase {
     return builder.Build();
   }
 
-  StatusOr<bool> RunFlattenCallGraph(HloModule* module) {
+  absl::StatusOr<bool> RunFlattenCallGraph(HloModule* module) {
     FlattenCallGraph flatten;
     TF_ASSIGN_OR_RETURN(bool result, flatten.Run(module));
     return result;

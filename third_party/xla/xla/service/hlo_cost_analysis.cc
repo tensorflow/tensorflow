@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -135,13 +135,14 @@ Status HloCostAnalysis::HandleElementwiseOp(
   // operation can correspond to several floating point ops.
   // kLogistic is included in "trascendental" as it is implemented using
   // trascendental ops (tanh or exp).
-  if (opcode == HloOpcode::kExp || opcode == HloOpcode::kLog ||
-      opcode == HloOpcode::kLogistic || opcode == HloOpcode::kPower ||
-      opcode == HloOpcode::kSqrt || opcode == HloOpcode::kCbrt ||
-      opcode == HloOpcode::kRsqrt || opcode == HloOpcode::kTanh ||
-      opcode == HloOpcode::kSin || opcode == HloOpcode::kCos ||
-      opcode == HloOpcode::kExpm1 || opcode == HloOpcode::kLog1p ||
-      opcode == HloOpcode::kAtan2 || opcode == HloOpcode::kTan) {
+  if (opcode == HloOpcode::kErf || opcode == HloOpcode::kExp ||
+      opcode == HloOpcode::kLog || opcode == HloOpcode::kLogistic ||
+      opcode == HloOpcode::kPower || opcode == HloOpcode::kSqrt ||
+      opcode == HloOpcode::kCbrt || opcode == HloOpcode::kRsqrt ||
+      opcode == HloOpcode::kTanh || opcode == HloOpcode::kSin ||
+      opcode == HloOpcode::kCos || opcode == HloOpcode::kExpm1 ||
+      opcode == HloOpcode::kLog1p || opcode == HloOpcode::kAtan2 ||
+      opcode == HloOpcode::kTan) {
     current_properties_[kTranscendentalsKey] = computation_count;
   } else {
     // Note: transcendental operations are considered a separate category from
@@ -974,6 +975,11 @@ Status HloCostAnalysis::HandleAllToAll(const HloInstruction* hlo) {
   return OkStatus();
 }
 
+Status HloCostAnalysis::HandleCollectiveBroadcast(
+    const HloInstruction* /*hlo*/) {
+  return OkStatus();
+}
+
 Status HloCostAnalysis::HandleCollectivePermute(const HloInstruction* /*hlo*/) {
   return OkStatus();
 }
@@ -1410,8 +1416,8 @@ int64_t HloCostAnalysis::GetBytesWritten(
   return bytes_written;
 }
 
-StatusOr<HloCostAnalysis::Properties> HloCostAnalysis::ProcessSubcomputation(
-    HloComputation* computation) {
+absl::StatusOr<HloCostAnalysis::Properties>
+HloCostAnalysis::ProcessSubcomputation(HloComputation* computation) {
   auto visitor = CreateNestedCostAnalysis();
   visitor->ReserveVisitStates(computation->instruction_count());
   TF_RETURN_IF_ERROR(computation->Accept(visitor.get()));

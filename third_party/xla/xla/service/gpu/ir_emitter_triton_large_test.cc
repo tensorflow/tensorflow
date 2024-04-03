@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@ limitations under the License.
 #include <string>
 
 #include <gtest/gtest.h>
+#include "absl/log/check.h"
 #include "xla/error_spec.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
 #include "xla/tests/hlo_test_base.h"
@@ -62,7 +63,7 @@ ENTRY e {
   p0 = f16[65536,32800] parameter(0)
   p1 = f16[32800,32] parameter(1)
   ROOT _ = f16[65536,32] fusion(p0, p1), kind=kCustom, calls=triton_dot,
-    backend_config="{\"fusion_backend_config\": {kind: \"__triton_gemm\", triton_gemm_config: {\"block_m\":\"32\",\"block_n\":\"32\",\"block_k\":\"32\",\"split_k\":\"1\",\"num_stages\":\"1\",\"num_warps\":\"1\"}}}"
+    backend_config="{\"fusion_backend_config\": {kind: \"__triton_gemm\", triton_gemm_config: {\"block_m\":\"32\",\"block_n\":\"32\",\"block_k\":\"32\",\"split_k\":\"1\",\"num_stages\":\"1\",\"num_warps\":\"1\",\"num_ctas\":\"1\"}}}"
 }
 )";
 

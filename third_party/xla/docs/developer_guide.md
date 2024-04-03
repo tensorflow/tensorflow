@@ -53,14 +53,14 @@ the repository, and create a pull request.
 Build for CPU:
 
 ```sh
-docker exec xla ./configure
+docker exec xla ./configure.py --backend=CPU
 docker exec xla bazel build --test_output=all --spawn_strategy=sandboxed //xla/...
 ```
 
 Build for GPU:
 
 ```sh
-docker exec -e TF_NEED_CUDA=1 xla ./configure
+docker exec xla ./configure.py --backend=CUDA
 docker exec xla bazel build --test_output=all --spawn_strategy=sandboxed //xla/...
 ```
 

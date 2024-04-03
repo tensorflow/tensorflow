@@ -20,15 +20,18 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
+#include "tensorflow/core/data/serialization_utils.h"
 #include "tensorflow/core/data/service/snapshot/file_utils.h"
 #include "tensorflow/core/data/service/snapshot/path_utils.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/variant_tensor_data.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
@@ -44,7 +47,7 @@ namespace tensorflow {
 namespace data {
 namespace {
 
-using ::testing::ElementsAre;
+using ::testing::ElementsAreArray;
 using ::testing::HasSubstr;
 using ::testing::IsEmpty;
 using ::testing::UnorderedElementsAreArray;
@@ -81,6 +84,17 @@ absl::Status SetStatus(absl::string_view snapshot_path,
                                   tsl::Env::Default());
 }
 
+absl::StatusOr<std::string> GetChunk(
+    SnapshotChunkProvider& snapshot_chunk_provider) {
+  Tensor split;
+  bool end_of_splits = false;
+  TF_RETURN_IF_ERROR(snapshot_chunk_provider.GetNext(&split, &end_of_splits));
+  if (end_of_splits) {
+    return absl::OutOfRangeError("No more available chunks.");
+  }
+  return split.unaligned_flat<tsl::tstring>().data()[0];
+}
+
 absl::StatusOr<std::vector<std::string>> GetAllChunks(
     SnapshotChunkProvider& snapshot_chunk_provider) {
   std::vector<std::string> chunks;
@@ -106,6 +120,20 @@ std::vector<std::string> JoinPaths(absl::string_view snapshot_path,
   return joined_chunks;
 }
 
+std::string full_name(const std::string& name) {
+  return FullName("test", name);
+}
+
+absl::Status SaveAndRestore(SplitProvider& split_provider) {
+  VariantTensorDataWriter writer;
+  TF_RETURN_IF_ERROR(split_provider.Save(full_name, &writer));
+  std::vector<const VariantTensorData*> variants;
+  writer.GetData(&variants);
+  VariantTensorDataReader reader(variants);
+  TF_RETURN_IF_ERROR(split_provider.Restore(full_name, &reader));
+  return absl::OkStatus();
+}
+
 TEST(SnapshotChunkProviderTest, EmptySnapshot) {
   TF_ASSERT_OK_AND_ASSIGN(std::string snapshot_path, CreateSnapshotDirectory());
   TF_ASSERT_OK(SetDone(snapshot_path));
@@ -118,9 +146,9 @@ TEST(SnapshotChunkProviderTest, EmptySnapshot) {
 
 TEST(SnapshotChunkProviderTest, SingleReader) {
   TF_ASSERT_OK_AND_ASSIGN(std::string snapshot_path, CreateSnapshotDirectory());
-  std::vector<std::string> chunks = {"chunk_0_0_0", "chunk_1_1_1",
-                                     "chunk_2_2_2", "chunk_3_3_3",
-                                     "chunk_4_4_4"};
+  std::vector<std::string> chunks = {"chunk_4_4_4", "chunk_3_3_3",
+                                     "chunk_2_2_2", "chunk_1_1_1",
+                                     "chunk_0_0_0"};
   for (absl::string_view chunk : chunks) {
     TF_ASSERT_OK(WriteChunk(snapshot_path, chunk));
   }
@@ -128,9 +156,10 @@ TEST(SnapshotChunkProviderTest, SingleReader) {
 
   SnapshotChunkProvider snapshot_chunk_provider(snapshot_path,
                                                 tsl::Env::Default());
+  // Chunks are ordered by chunk indices.
+  absl::c_reverse(chunks);
   EXPECT_THAT(GetAllChunks(snapshot_chunk_provider),
-              IsOkAndHolds(
-                  UnorderedElementsAreArray(JoinPaths(snapshot_path, chunks))));
+              IsOkAndHolds(ElementsAreArray(JoinPaths(snapshot_path, chunks))));
 }
 
 TEST(SnapshotChunkProviderTest, Cardinality) {
@@ -185,8 +214,8 @@ TEST(SnapshotChunkProviderTest, WaitForSnapshot) {
   // The reader should be able to get chunks now.
   reader_thread.reset();
   absl::MutexLock l(&mu);
-  EXPECT_THAT(result, UnorderedElementsAreArray(
-                          JoinPaths(snapshot_path, {"chunk_0_0_0"})));
+  EXPECT_THAT(result,
+              ElementsAreArray(JoinPaths(snapshot_path, {"chunk_0_0_0"})));
 }
 
 TEST(SnapshotChunkProviderTest, ConcurrentReadWrite) {
@@ -224,7 +253,7 @@ TEST(SnapshotChunkProviderTest, ConcurrentReadWrite) {
         /*thread_options=*/{}, /*name=*/absl::StrCat("Writer_", i),
         [&snapshot_path, num_chunks_per_stream, i]() {
           for (int j = 0; j < num_chunks_per_stream; ++j) {
-            std::string filename = absl::StrCat("chunk_", i, "_", j);
+            std::string filename = absl::StrCat("chunk_", i, "_", j, "_1");
             TF_ASSERT_OK(WriteChunk(snapshot_path, filename));
             tsl::Env::Default()->SleepForMicroseconds(35);
           }
@@ -238,11 +267,34 @@ TEST(SnapshotChunkProviderTest, ConcurrentReadWrite) {
   std::vector<std::string> expected;
   for (int i = 0; i < num_streams; ++i) {
     for (int j = 0; j < num_chunks_per_stream; ++j) {
-      expected.push_back(absl::StrCat("chunk_", i, "_", j));
+      expected.push_back(absl::StrCat("chunk_", i, "_", j, "_1"));
     }
   }
   EXPECT_THAT(result,
               UnorderedElementsAreArray(JoinPaths(snapshot_path, expected)));
+}
+
+TEST(SnapshotChunkProviderTest, SaveRestore) {
+  TF_ASSERT_OK_AND_ASSIGN(std::string snapshot_path, CreateSnapshotDirectory());
+  std::vector<std::string> chunks = {"chunk_4_4_4", "chunk_3_3_3",
+                                     "chunk_2_2_2", "chunk_1_1_1",
+                                     "chunk_0_0_0"};
+  for (absl::string_view chunk : chunks) {
+    TF_ASSERT_OK(WriteChunk(snapshot_path, chunk));
+  }
+  TF_ASSERT_OK(SetDone(snapshot_path));
+
+  SnapshotChunkProvider snapshot_chunk_provider(snapshot_path,
+                                                tsl::Env::Default());
+  EXPECT_THAT(GetChunk(snapshot_chunk_provider),
+              IsOkAndHolds(tsl::io::JoinPath(
+                  CommittedChunksDirectory(snapshot_path), "chunk_0_0_0")));
+  TF_ASSERT_OK(SaveAndRestore(snapshot_chunk_provider));
+
+  EXPECT_THAT(GetAllChunks(snapshot_chunk_provider),
+              IsOkAndHolds(ElementsAreArray(
+                  JoinPaths(snapshot_path, {"chunk_1_1_1", "chunk_2_2_2",
+                                            "chunk_3_3_3", "chunk_4_4_4"}))));
 }
 
 TEST(SnapshotChunkProviderTest, SnapshotError) {

@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,9 +18,12 @@ limitations under the License.
 
 #include <memory>
 #include <optional>
+#include <utility>
 #include <vector>
 
 #include "absl/functional/any_invocable.h"
+#include "absl/status/statusor.h"
+#include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -29,8 +32,9 @@ limitations under the License.
 #include "xla/service/compiler.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/autotuner_util.h"
+#include "xla/service/shaped_buffer.h"
 #include "xla/shape.h"
-#include "xla/statusor.h"
+#include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
@@ -99,8 +103,9 @@ class AutotunerCompileUtil {
                        se::DeviceMemoryAllocator& allocator,
                        const DebugOptions& opts);
 
-  absl::StatusOr<ExecutionOutput> Execute(
-      Executable& executable, std::vector<ExecutionInput> arguments);
+  absl::StatusOr<ExecutionOutput> Execute(Executable& executable,
+                                          std::vector<ExecutionInput> arguments,
+                                          ExecutionProfile* profile = nullptr);
 
   AutotuneConfig config_;
   Compiler* compiler_;

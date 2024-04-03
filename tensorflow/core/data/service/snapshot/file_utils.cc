@@ -44,7 +44,7 @@ constexpr const char kTempFileSuffix[] = ".tmp";
 
 absl::Status AtomicallyWrite(
     absl::string_view filename, tsl::Env* env,
-    absl::FunctionRef<tsl::Status(const std::string&)> nonatomically_write) {
+    absl::FunctionRef<absl::Status(const std::string&)> nonatomically_write) {
   std::string uncommitted_filename = absl::StrCat(filename, "__");
   if (!env->CreateUniqueFileName(&uncommitted_filename, kTempFileSuffix)) {
     return tsl::errors::Internal("Failed to write file ", filename,

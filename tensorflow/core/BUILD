@@ -63,6 +63,11 @@
 
 # Placeholder: load py_proto_library
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
+load("@local_config_tensorrt//:build_defs.bzl", "if_tensorrt")
+load(
+    "@local_xla//xla/tsl/mkl:build_defs.bzl",
+    "if_mkl",
+)
 load(
     "//tensorflow:tensorflow.bzl",
     "if_android",
@@ -107,11 +112,6 @@ load(
     "//tensorflow/core/platform:rules_cc.bzl",
     "cc_library",
 )
-load(
-    "//third_party/mkl:build_defs.bzl",
-    "if_mkl",
-)
-load("@local_config_tensorrt//:build_defs.bzl", "if_tensorrt")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -131,7 +131,7 @@ package_group(
     packages = [
         "//learning/freud/topic_models/tensorflow/...",
         "//learning/infra/mira/...",
-        "//perftools/accelerators/xprof/api/...",
+        "//perftools/accelerators/xprof/...",
         "//quality/webanswers/brain/tokenization/custom_tf_ops/kernels/...",
         "//smartass/brain/server/...",
     ],
@@ -336,10 +336,8 @@ cc_library(
         ":lib_internal",
         ":protos_all_cc",
         "//tensorflow/core/kernels:required",
-        "@com_google_googletest//:gtest",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_benchmark",
-        "@local_tsl//tsl/platform/default/build_config:gtest",
     ] + tf_additional_test_deps(),
 )
 
@@ -499,7 +497,6 @@ cc_library(
             "//tensorflow/core/platform:platform_port",
             "//tensorflow/core/platform:thread_annotations",
             "//tensorflow/core/platform:mutex",
-            "@local_tsl//tsl/platform/default/build_config:minimal",
             "@local_tsl//tsl/framework:fixedpoint_types",
             "//tensorflow/core/platform:types",
         ],
@@ -647,6 +644,7 @@ cc_library(
         "//tensorflow/core/kernels/mkl:mkl_batch_matmul_op",
         "//tensorflow/core/kernels/mkl:mkl_einsum_op",
         "//tensorflow/core/kernels/mkl:mkl_matmul_op",
+        "//tensorflow/core/kernels/mkl:mkl_sparse_matrix_matmul_op",
         "//tensorflow/core/kernels/mkl:mkl_tmp_ops",
         "//tensorflow/core/kernels/mkl:mkl_deprecated_ops",
     ]) + if_cuda_or_rocm([
@@ -664,9 +662,7 @@ cc_library(
 
 cc_library(
     name = "dynamic_kernels_impl",
-    visibility = [
-        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
-    ],
+    visibility = ["//visibility:private"],
     deps = [
         "//tensorflow/core/kernels:sobol_op",
     ],
@@ -711,7 +707,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":tensorflow_opensource",
-        "@local_tsl//tsl/platform/default/build_config:tensorflow_platform_specific",
+        "//tensorflow/core/platform/default/build_config:tensorflow_platform_specific",
     ],
 )
 
@@ -1056,13 +1052,13 @@ cc_library(
 #     ],
 #     visibility = ["//visibility:public"],
 #     deps = [
+#         ":mobile_additional_lib_deps",
 #         "@com_google_absl//absl/algorithm:container",
 #         "@com_google_absl//absl/base",
 #         "@com_google_absl//absl/meta:type_traits",
 #         "@com_google_absl//absl/status:statusor",
 #         "@com_google_absl//absl/strings",
 #         "@com_google_absl//absl/types:optional",
-#         "//tensorflow/core:mobile_additional_lib_deps",
 #         "//tensorflow/core/platform:resource",
 #         "//tensorflow/core/util:managed_stack_trace",
 #         "//tensorflow/core/util:stats_calculator_portable",
@@ -1100,7 +1096,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":portable_tensorflow_lib_lite",
-        "//tensorflow/core:protos_all_cc",
+        ":protos_all_cc",
         "//tensorflow/core/kernels:portable_tensorflow_kernels",
         "@com_google_protobuf//:protobuf",
         "@eigen_archive//:eigen3",
@@ -1142,8 +1138,8 @@ cc_library(
     deps = [
         ":portable_tensorflow_lib",
         "//tensorflow/core/kernels:portable_tensorflow_kernels",
+        "@com_google_googletest//:gtest",
         "@eigen_archive//:eigen3",
-        "@local_tsl//tsl/platform/default/build_config:gtest",
     ],
 )
 
@@ -1165,7 +1161,7 @@ alias(
 
 alias(
     name = "cuda",
-    actual = "@local_tsl//tsl/cuda:cudart",
+    actual = "@local_xla//xla/tsl/cuda:cudart",
     visibility = ["//visibility:public"],
 )
 
@@ -1466,7 +1462,7 @@ cc_library(
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc_impl",
         "//tensorflow/core/protobuf:autotuning_proto_cc_impl",
         "//tensorflow/core/protobuf:conv_autotuning_proto_cc_impl",
-        "//tensorflow/core:protos_all_cc_impl",
+        ":protos_all_cc_impl",
         "@local_xla//xla:autotune_results_proto_cc_impl",
         "@local_xla//xla:autotuning_proto_cc_impl",
         "@local_tsl//tsl/profiler/protobuf:profiler_options_proto_cc_impl",
@@ -1710,8 +1706,8 @@ tf_cuda_library(
         "@local_tsl//tsl/framework:cancellation",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:stringpiece",
-        "@local_tsl//tsl/util:command_line_flags",
-        "@local_tsl//tsl/util:device_name_utils",
+        "@local_xla//xla/tsl/util:command_line_flags",
+        "@local_xla//xla/tsl/util:device_name_utils",
     ] + if_cuda([
         "@local_config_cuda//cuda:cudnn_header",
     ]) + if_static(
@@ -1910,9 +1906,9 @@ tf_cc_tests(
         "//tensorflow/core/lib/monitoring:test_utils_test.cc",
     ],
     deps = [
+        ":protos_all_cc",
         ":test",
         ":test_main",
-        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/lib/monitoring:cell_reader",
         "//tensorflow/core/lib/monitoring:counter",
         "//tensorflow/core/lib/monitoring:gauge",

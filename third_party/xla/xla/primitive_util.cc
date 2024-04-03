@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/strings/ascii.h"
 #include "absl/strings/string_view.h"
 #include "xla/statusor.h"
+#include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/logging.h"
@@ -87,6 +88,17 @@ bool HasInfinity(PrimitiveType type) {
     return FloatingPointTypeSwitch<bool>(
         [&](auto constant_type) -> bool {
           return std::numeric_limits<NativeTypeOf<constant_type>>::has_infinity;
+        },
+        type);
+  }
+  return false;
+}
+
+bool HasNegativeZero(PrimitiveType type) {
+  if (ABSL_PREDICT_TRUE(IsFloatingPointType(type))) {
+    return FloatingPointTypeSwitch<bool>(
+        [&](auto constant_type) -> bool {
+          return has_negative_zero_v<NativeTypeOf<constant_type>>;
         },
         type);
   }
@@ -166,7 +178,7 @@ GetPrimitiveTypeStringMap() {
 
 }  // namespace
 
-StatusOr<PrimitiveType> StringToPrimitiveType(absl::string_view name) {
+absl::StatusOr<PrimitiveType> StringToPrimitiveType(absl::string_view name) {
   const auto& map = GetPrimitiveTypeStringMap();
   auto found = map.find(name);
   if (found == map.end()) {

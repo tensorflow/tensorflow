@@ -183,7 +183,7 @@ LogicalResult ConvertResultsBroadcastableShapeOp::RewriteOp(
     if (broadcasted_shape != result_type.getShape()) continue;
 
     // Update the operand of the op to be the operand of the broadcast.
-    rewriter.updateRootInPlace(
+    rewriter.modifyOpInPlace(
         op, [&]() { op->getOpOperand(i).set(broadcast.getInput()); });
     changed = true;
   }

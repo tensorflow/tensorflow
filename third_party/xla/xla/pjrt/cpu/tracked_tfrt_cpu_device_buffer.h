@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -54,7 +54,7 @@ class MaybeOwningCpuMemory {
   MaybeOwningCpuMemory& operator=(const MaybeOwningCpuMemory&) = delete;
 
   // Owning.
-  static StatusOr<std::shared_ptr<MaybeOwningCpuMemory>> AllocateShared(
+  static absl::StatusOr<std::shared_ptr<MaybeOwningCpuMemory>> AllocateShared(
       size_t size) {
     uint8_t* data = static_cast<uint8_t*>(
         tsl::port::AlignedMalloc(size, cpu_function_runtime::MinAlign()));

@@ -1,4 +1,4 @@
-/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2016 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,12 +21,10 @@ limitations under the License.
 
 #include <memory>
 #include <string>
-#include <vector>
 
+#include "absl/status/statusor.h"
 #include "xla/stream_executor/executor_cache.h"
-#include "xla/stream_executor/multi_platform_manager.h"
 #include "xla/stream_executor/platform.h"
-#include "xla/stream_executor/platform/port.h"
 #include "xla/stream_executor/stream_executor.h"
 
 namespace stream_executor {

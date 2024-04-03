@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -22,6 +22,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
+#include "absl/status/statusor.h"
 #include "xla/service/call_inliner.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
@@ -29,6 +30,8 @@ limitations under the License.
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
 #include "xla/statusor.h"
+#include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/dnn.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"

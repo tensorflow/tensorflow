@@ -1,12 +1,12 @@
 load("@bazel_skylib//lib:selects.bzl", "selects")
+load("@build_bazel_rules_apple//apple:ios.bzl", "ios_static_framework")
+load("@build_bazel_rules_apple//apple:macos.bzl", "macos_dylib")
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "tf_gpu_tests_tags",
 )
 load("//tensorflow/lite:special_rules.bzl", "tflite_extra_gles_deps", "tflite_portable_test_suite")
 load("//tensorflow/lite/delegates/gpu:build_defs.bzl", "gpu_delegate_linkopts")
-load("@build_bazel_rules_apple//apple:ios.bzl", "ios_static_framework")
-load("@build_bazel_rules_apple//apple:macos.bzl", "macos_dylib")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -264,6 +264,7 @@ cc_library(
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/async:backend_async_kernel_interface",
+        "//tensorflow/lite/core/async/interop/c:types",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/delegates:serialization",
         "//tensorflow/lite/delegates/gpu/cl:api",
@@ -278,6 +279,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
     ],
 )

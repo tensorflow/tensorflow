@@ -34,7 +34,7 @@ class Subgraph;            // For friend declaration below.
 
 namespace internal {
 class CommonOpaqueConversionUtil;  // For friend declaration below.
-class RegistrationExternalsCache;  // Forward decl.
+class OperatorsCache;              // Forward decl.
 }  // namespace internal
 #endif
 
@@ -45,7 +45,7 @@ class RegistrationExternalsCache;  // Forward decl.
 /// The lifetime of the TfLiteRegistration object whose address is
 /// returned by FindOp must exceed the lifetime of any InterpreterBuilder or
 /// Interpreter created with this OpResolver.
-/// Likewise the lifetime of the TfLiteRegistrationExternal object referenced
+/// Likewise the lifetime of the TfLiteOperator object referenced
 /// from the TfLiteRegistration object, if any, must exceed the lifetime of
 /// any InterpreterBuilder or Interpreter created with this OpResolver.
 class OpResolver {
@@ -139,11 +139,11 @@ class OpResolver {
   friend class OpResolverInternal;
   friend class Subgraph;  // For OpId.
   friend class tflite::internal::CommonOpaqueConversionUtil;
-  friend class tflite::internal::RegistrationExternalsCache;
+  friend class tflite::internal::OperatorsCache;
 #endif
 
   // This holds the identity of an operator.
-  // Ths is used as the key for the RegistrationExternalsCache below.
+  // Ths is used as the key for the OperatorsCache below.
   struct OpId {
     int builtin_code;
     const char* custom_name;
@@ -176,33 +176,33 @@ class OpResolver {
     };
   };
 
-  // A set of 'TfLiteRegistrationExternal' objects whose lifetimes need to
+  // A set of 'TfLiteOperator' objects whose lifetimes need to
   // last at least as long as the lifetime of the OpResolver.
   // We use shared_ptr rather than unique_ptr here, to allow the
-  // RegistrationExternalsCache to be shared with other classes such as the
+  // OperatorsCache to be shared with other classes such as the
   // InterpreterBuilder and Interpreter. This is so that the
-  // TfLiteRegistrationExternal objects allocated by an OpResolver,
+  // TfLiteOperator objects allocated by an OpResolver,
   // which may be referenced by a Subgraph in an Interpreter, can remain live
   // even if the OpResolver is destroyed, while also allowing the same
   // OpResolver to be used with multiple InterpreterBuilders and multiple
   // Interpreters.
-  mutable std::shared_ptr<internal::RegistrationExternalsCache>
+  mutable std::shared_ptr<internal::OperatorsCache>
       registration_externals_cache_;
 };
 
 #ifndef DOXYGEN_SKIP
-// Type for a set of owned 'TfLiteRegistrationExternal' objects.
+// Type for a set of owned 'TfLiteOperator' objects.
 // This is needed when converting TfLiteRegistration to
-// TfLiteRegistrationExternal, to ensure that the number of
-// TfLiteRegistrationExternal objects that we allocate is bounded, and to
+// TfLiteOperator, to ensure that the number of
+// TfLiteOperator objects that we allocate is bounded, and to
 // ensure that those objects get deallocated at the appropriate time.
 // We use a public class rather than a typedef or using declaration here,
 // to ensure that the class can be forward-declared.
 // WARNING: Experimental interface, subject to change.
 namespace internal {
-class RegistrationExternalsCache
+class OperatorsCache
     : private std::unordered_map<OpResolver::OpId,
-                                 std::unique_ptr<TfLiteRegistrationExternal>,
+                                 std::unique_ptr<TfLiteOperator>,
                                  OpResolver::OpId::Hasher> {
   friend class ::tflite::Subgraph;
   friend class ::tflite::internal::CommonOpaqueConversionUtil;

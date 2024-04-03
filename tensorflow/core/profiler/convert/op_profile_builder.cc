@@ -24,6 +24,7 @@ limitations under the License.
 // #include "perftools/accelerators/xprof/convert/device_type_utils.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/node_hash_map.h"
+#include "absl/log/log.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/lib/gtl/top_n.h"
@@ -146,21 +147,6 @@ void FinalizeDeduplicatedNodes(bool by_program, Node* root) {
   }
 }
 
-// Recursively find computation size for HLOs -- applied only for convolutions.
-// This is only for convolutions, not other HLOs, categories or whole programs.
-// TODO(b/243596435) Find a permanent fix to this problem.
-int64_t GetComputationSize(Node node) {
-  if (node.has_xla() && node.xla().computation_primitive_size() > 0) {
-    return node.xla().computation_primitive_size();
-  }
-  for (auto child_iter = node.children().rbegin();
-       child_iter != node.children().rend(); ++child_iter) {
-    if (const int64_t computation_size = GetComputationSize(*child_iter))
-      return computation_size;
-  }
-  return 0;
-}
-
 // Fills op metrics into a node.
 void PopulateOpMetricsNode(
     const OpMetrics& op_metrics, double peak_gigaflops_per_second_per_core,
@@ -184,19 +170,11 @@ void PopulateOpMetricsNode(
   // and memory_bandwidth = raw_bytes_accessed / raw_time. See:
   // https://github.com/tensorflow/profiler/blob/master/frontend/app/common/utils/utils.ts
   metrics->set_raw_time(op_metrics.time_ps());
-  metrics->set_raw_flops(op_metrics.flops());
+  metrics->set_raw_flops(op_metrics.model_flops());
   metrics->set_occurrences(op_metrics.occurrences());
   metrics->set_avg_time_ps(
       SafeDivide(op_metrics.time_ps(), op_metrics.occurrences()));
 
-  // Hack to approximate utilization for INT8/4 convolution HLOs:
-  // Since MXU BW is 2x/4x for INT8/4, multiply peak BW by the factor determined
-  // by the computation size
-  if (GetComputationSize(*node) == 8) {
-    peak_gigaflops_per_second_per_core *= 2;
-  } else if (GetComputationSize(*node) == 4) {
-    peak_gigaflops_per_second_per_core *= 4;
-  }
   double flops_utilization = SafeDivide(GigaFlopsPerSecondPerCore(op_metrics),
                                         peak_gigaflops_per_second_per_core);
   // The UI expects flops_utilization = flop_util / time_fraction. See:
@@ -392,7 +370,10 @@ OpProfileBuilder::OpProfileBuilder(
     tensorflow::profiler::op_profile::Node* root,
     const tensorflow::protobuf::Map<uint64_t, std::string>* program_name_map)
     : options_(options), root_(root), program_name_map_(program_name_map) {
-  CHECK(root != nullptr);
+  if (root == nullptr) {
+    LOG(DFATAL) << "root is null.";
+    return;
+  }
   DCHECK(!options_.group_by_program || program_name_map_ != nullptr);
   root->set_name(options_.group_by_program ? "by_program" : "by_category");
 }

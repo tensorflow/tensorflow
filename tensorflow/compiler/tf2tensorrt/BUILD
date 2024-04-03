@@ -3,6 +3,11 @@
 #   and provide TensorRT operators and converter package.
 #   APIs are meant to change over time.
 
+load("@local_config_tensorrt//:build_defs.bzl", "if_tensorrt")
+load(
+    "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
+    "cuda_rpath_flags",
+)
 load("//tensorflow:strict.default.bzl", "py_strict_library")
 
 # Placeholder: load py_proto_library
@@ -28,11 +33,6 @@ load(
     "if_static",
 )
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-load(
-    "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
-    "cuda_rpath_flags",
-)
-load("@local_config_tensorrt//:build_defs.bzl", "if_tensorrt")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -298,6 +298,7 @@ cc_library(
     name = "trt_engine_resource_op_kernels",
     srcs = ["kernels/trt_engine_resource_ops.cc"],
     copts = tf_copts(),
+    features = ["-layering_check"],
     visibility = ["//tensorflow/core:__subpackages__"],
     deps = [
         ":trt_allocator",
@@ -994,6 +995,7 @@ tf_cuda_library(
     name = "trt_plugins",
     srcs = ["plugin/trt_plugin.cc"],
     hdrs = ["plugin/trt_plugin.h"],
+    features = ["-layering_check"],
     deps = [
         "//tensorflow/core:framework_lite",
         "//tensorflow/core:lib_proto_parsing",

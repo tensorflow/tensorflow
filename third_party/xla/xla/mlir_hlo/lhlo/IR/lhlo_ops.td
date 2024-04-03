@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -82,6 +82,22 @@ def LHLO_CommandBufferOp: LHLO_Op<"command_buffer", []> {
     A dummy operation that represents the submission of a command buffer. The
     payload of this operation is not lowered from the HLO instruction, because
     we will emit thunk from HLO.
+  }];
+  let arguments = (ins);
+}
+
+def LHLO_AsyncStartOp: LHLO_Op<"async_start", []> {
+  let summary = "Async start operator";
+  let description = [{
+    A dummy operation that represents the submission of a generic async start.
+  }];
+  let arguments = (ins);
+}
+
+def LHLO_AsyncDoneOp: LHLO_Op<"async_done", []> {
+  let summary = "Async done operator";
+  let description = [{
+    A dummy operation that represents the submission of a generic async done.
   }];
   let arguments = (ins);
 }

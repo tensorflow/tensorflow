@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,7 +19,7 @@ namespace stream_executor {
 namespace gpu {
 
 hipFuncCache_t GpuKernel::GetGpuCacheConfig() const {
-  switch (preferred_cache_config_) {
+  switch (cache_config()) {
     case KernelCacheConfig::kNoPreference:
       return hipFuncCachePreferNone;
     case KernelCacheConfig::kPreferShared:
@@ -30,7 +30,7 @@ hipFuncCache_t GpuKernel::GetGpuCacheConfig() const {
       return hipFuncCachePreferEqual;
     default:
       LOG(FATAL) << "Unknown KernelCacheConfig"
-                 << static_cast<int32>(preferred_cache_config_);
+                 << static_cast<int32>(cache_config());
   }
 }
 

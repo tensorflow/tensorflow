@@ -89,7 +89,7 @@ string XlaExpression::HumanString() const {
 }
 
 xla::XlaOp XlaExpression::AsXlaOp(xla::XlaBuilder* builder) const {
-  return builder->ReportErrorOrReturn([&]() -> StatusOr<xla::XlaOp> {
+  return builder->ReportErrorOrReturn([&]() -> absl::StatusOr<xla::XlaOp> {
     switch (kind_) {
       case Kind::kConstant: {
         xla::BorrowingLiteral literal;
@@ -112,7 +112,7 @@ xla::XlaOp XlaExpression::AsXlaOp(xla::XlaBuilder* builder) const {
   });
 }
 
-StatusOr<Tensor> XlaExpression::ResolveDynamism() const {
+absl::StatusOr<Tensor> XlaExpression::ResolveDynamism() const {
   switch (kind()) {
     case Kind::kConstant: {
       // Constant values are considered static.
@@ -147,7 +147,7 @@ StatusOr<Tensor> XlaExpression::ResolveDynamism() const {
   return tensor;
 }
 
-StatusOr<std::optional<Tensor>> XlaExpression::ResolveConstant(
+absl::StatusOr<std::optional<Tensor>> XlaExpression::ResolveConstant(
     xla::Client* client, bool dynamic_dimension_is_minus_one,
     xla::ValueInferenceMode mode) const {
   switch (kind()) {
@@ -205,7 +205,7 @@ StatusOr<std::optional<Tensor>> XlaExpression::ResolveConstant(
   return {tensor};
 }
 
-StatusOr<TensorShape> XlaExpression::GetShape() const {
+absl::StatusOr<TensorShape> XlaExpression::GetShape() const {
   switch (kind_) {
     case Kind::kConstant:
       return constant_value()->shape();
@@ -229,7 +229,7 @@ StatusOr<TensorShape> XlaExpression::GetShape() const {
   }
 }
 
-StatusOr<xla::Shape> XlaExpression::GetXlaShape() const {
+absl::StatusOr<xla::Shape> XlaExpression::GetXlaShape() const {
   if (kind_ == Kind::kXlaOp) {
     return handle().builder()->GetShape(handle());
   }

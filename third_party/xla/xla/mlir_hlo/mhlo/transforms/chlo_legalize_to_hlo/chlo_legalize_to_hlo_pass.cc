@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,60 +19,75 @@ limitations under the License.
 #include "mhlo/IR/hlo_ops.h"
 #include "mhlo/transforms/passes.h"
 #include "mhlo/transforms/rewriters.h"
+#include "mhlo/utils/type_conversion.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
-#include "mlir/Pass/Pass.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/PatternMatch.h"
+#include "mlir/Pass/PassManager.h"
+#include "mlir/Support/LogicalResult.h"
+#include "mlir/Transforms/DialectConversion.h"
 #include "stablehlo/dialect/ChloOps.h"
+#include "stablehlo/dialect/StablehloOps.h"
+#include "stablehlo/transforms/Passes.h"
 
 namespace mlir {
 namespace mhlo {
 
 #define GEN_PASS_DEF_CHLOLEGALIZETOHLOPASS
+#define GEN_PASS_DEF_CHLOLEGALIZETOHIGHLEVELMHLOPASS
 #include "mhlo/transforms/mhlo_passes.h.inc"
 
 namespace {
 
-struct ChloLegalizeToHloPass
-    : public impl::ChloLegalizeToHloPassBase<ChloLegalizeToHloPass> {
-  explicit ChloLegalizeToHloPass(bool legalizeBroadcasts,
-                                 bool expandCompositions)
-      : ChloLegalizeToHloPassBase<
-            ChloLegalizeToHloPass>::ChloLegalizeToHloPassBase() {
-    this->legalize_broadcasts_ = legalizeBroadcasts;
-    this->expand_compositions_ = expandCompositions;
-  }
-
-  void getDependentDialects(DialectRegistry &registry) const override {
-    registry.insert<mhlo::MhloDialect, shape::ShapeDialect, scf::SCFDialect>();
-  }
+struct ChloLegalizeToHighLevelMhloPass
+    : public impl::ChloLegalizeToHighLevelMhloPassBase<
+          ChloLegalizeToHighLevelMhloPass> {
+  using ChloLegalizeToHighLevelMhloPassBase::
+      ChloLegalizeToHighLevelMhloPassBase;
 
   void runOnOperation() override {
-    ConversionTarget conversionTarget(getContext());
-    RewritePatternSet conversionPatterns(&getContext());
-    conversionTarget.addIllegalDialect<chlo::ChloDialect>();
+    MLIRContext &context = getContext();
+    ConversionTarget conversionTarget(context);
+    RewritePatternSet conversionPatterns(&context);
+
+    chlo::populateChloToHighLevelMhloOpPatterns(&context, &conversionPatterns);
+
+    // Consider the mhlo dialect legal for tests. Also add helper dialects
+    // that are needed by the patterns.
+    conversionTarget.addLegalDialect<chlo::ChloDialect, mhlo::MhloDialect>();
+    conversionTarget.addIllegalOp<chlo::TopKOp, chlo::ErfOp, chlo::TanOp>();
+
+    if (failed(applyPartialConversion(getOperation(), conversionTarget,
+                                      std::move(conversionPatterns)))) {
+      return signalPassFailure();
+    }
+  }
+};
+
+struct ChloLegalizeToHloPass
+    : public impl::ChloLegalizeToHloPassBase<ChloLegalizeToHloPass> {
+  using ChloLegalizeToHloPassBase::ChloLegalizeToHloPassBase;
+
+  void runOnOperation() override {
+    MLIRContext &context = getContext();
+    ConversionTarget conversionTarget(context);
+    RewritePatternSet conversionPatterns(&context);
+
+    stablehlo::StablehloToHloTypeConverter typeConverter;
+    chlo::populateChloToHloPatterns(&context, &typeConverter,
+                                    &conversionPatterns);
 
     // Consider the mhlo dialect legal for tests. Also add helper dialects
     // that are needed by the patterns.
     conversionTarget
-        .addLegalDialect<MhloDialect, mlir::arith::ArithDialect,
-                         mlir::func::FuncDialect, mlir::tensor::TensorDialect,
-                         mlir::shape::ShapeDialect, mlir::scf::SCFDialect>();
+        .addIllegalDialect<chlo::ChloDialect, stablehlo::StablehloDialect>();
+    conversionTarget.addLegalDialect<
+        MhloDialect, mlir::arith::ArithDialect, mlir::func::FuncDialect,
+        mlir::tensor::TensorDialect, mlir::shape::ShapeDialect>();
     conversionTarget.addLegalOp<chlo::MinimumBroadcastShapesOp>();
-
-    if (legalize_broadcasts_) {
-      chlo::populateChloBroadcastingPatterns(&getContext(),
-                                             &conversionPatterns);
-    }
-
-    if (expand_compositions_) {
-      chlo::populateDecomposeChloPatterns(&getContext(), &conversionPatterns);
-    } else {
-      conversionTarget
-          .addLegalOp<chlo::NextAfterOp, chlo::PolygammaOp, chlo::ZetaOp>();
-    }
 
     if (failed(applyPartialConversion(getOperation(), conversionTarget,
                                       std::move(conversionPatterns)))) {
@@ -83,11 +98,26 @@ struct ChloLegalizeToHloPass
 
 }  // namespace
 
-std::unique_ptr<OperationPass<func::FuncOp>> createChloLegalizeToHloPass(
-    bool legalizeBroadcasts, bool expandCompositions) {
-  return std::make_unique<ChloLegalizeToHloPass>(legalizeBroadcasts,
-                                                 expandCompositions);
+}  // namespace mhlo
+
+namespace chlo {
+namespace {
+#include "chlo_legalize_to_hlo/generated_chlo_legalize_to_hlo.inc"
+
+}  // namespace
+
+void populateChloToHighLevelMhloOpPatterns(MLIRContext *,
+                                           RewritePatternSet *patterns) {
+  populateWithGenerated(*patterns);
 }
 
-}  // namespace mhlo
+void populateChloToHloPatterns(MLIRContext *context,
+                               TypeConverter *typeConverter,
+                               RewritePatternSet *patterns) {
+  chlo::populateChloToHighLevelMhloOpPatterns(context, patterns);
+  stablehlo::populateChloToStablehloPatterns(context, patterns);
+  stablehlo::populateStablehloToHloPatterns(patterns, typeConverter, context);
+}
+
+}  // namespace chlo
 }  // namespace mlir

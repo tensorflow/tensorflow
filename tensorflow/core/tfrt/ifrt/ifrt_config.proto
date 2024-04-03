@@ -1,0 +1,12 @@
+syntax = "proto3";
+
+package tensorflow.ifrt_serving;
+
+import "xla/xla_data.proto";
+
+// `tf.IfrtLoadVariableOp`'s configuration message for device and spmd
+// configuration.
+message VariableDeviceShardingConfigProto {
+  xla.OpSharding sharding = 1;
+  repeated int32 device_ids = 2;
+}

@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -83,10 +83,10 @@ class ClientLibrary {
   //     null then default platform is used.
   //   device_set: Set of device IDs for which the stream executor will be
   //   created, for the given platform.
-  static StatusOr<LocalClient*> GetOrCreateLocalClient(
+  static absl::StatusOr<LocalClient*> GetOrCreateLocalClient(
       se::Platform* platform = nullptr,
       const std::optional<std::set<int>>& device_set = std::nullopt);
-  static StatusOr<LocalClient*> GetOrCreateLocalClient(
+  static absl::StatusOr<LocalClient*> GetOrCreateLocalClient(
       const LocalClientOptions& options);
 
   // Convenience "or-die" wrapper around the above which returns the existing
@@ -101,7 +101,7 @@ class ClientLibrary {
   //
   //   platform : The platform the underlying XLA service should target. If
   //     null then default platform is used.
-  static StatusOr<CompileOnlyClient*> GetOrCreateCompileOnlyClient(
+  static absl::StatusOr<CompileOnlyClient*> GetOrCreateCompileOnlyClient(
       se::Platform* platform = nullptr);
 
   // Clears the local instance and compile only instance caches. The client

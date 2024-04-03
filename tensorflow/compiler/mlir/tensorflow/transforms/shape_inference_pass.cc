@@ -38,7 +38,7 @@ class ShapeInference
  public:
   void runOnOperation() override {
     auto failure_or_converged =
-        InferModuleShape(getOperation(), max_iterations_);
+        InferModuleShape(getOperation(), max_iterations_, /*ops_to_skip=*/{});
     if (failed(failure_or_converged)) return signalPassFailure();
     if (!failure_or_converged.value()) {
       getOperation().emitError()

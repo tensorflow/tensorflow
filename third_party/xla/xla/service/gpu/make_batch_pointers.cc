@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/service/gpu/make_batch_pointers.h"
 
 #include <cstddef>
-#include <memory>
 
 #include "absl/status/status.h"
 #include "xla/status.h"
@@ -60,13 +59,15 @@ absl::Status MakeBatchPointers(se::Stream* stream,
 #else
 
   TF_ASSIGN_OR_RETURN(
-      auto kernel, (executor->CreateTypedKernel<se::DeviceMemoryBase, size_t,
-                                                size_t, se::DeviceMemoryBase>(
-                       "make_batch_pointers", make_batch_pointers::kernel())));
+      auto kernel,
+      (se::TypedKernel<
+          se::DeviceMemoryBase, size_t, size_t,
+          se::DeviceMemoryBase>::Create(executor, "make_batch_pointers",
+                                        make_batch_pointers::kernel())));
 
   TF_RETURN_IF_ERROR(
       stream->ThenLaunch(se::ThreadDim(kThreads, 1, 1),
-                         se::BlockDim(CeilOfRatio(n, kThreads), 1, 1), *kernel,
+                         se::BlockDim(CeilOfRatio(n, kThreads), 1, 1), kernel,
                          base_ptr, stride_bytes, n, ptrs_out));
 #endif
   return absl::OkStatus();

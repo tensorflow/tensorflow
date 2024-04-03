@@ -17,7 +17,8 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   }
 }
 
-// CHECK: module attributes {tfl.description = "MLIR Converted.", tfl.metadata = {keep_stablehlo_constant = "true"}, tfl.schema_version = 3 : i32} {
+// CHECK: module attributes
+// CHECK-SAME:  tfl.metadata = {{{.*}}keep_stablehlo_constant = "true"{{.*}}}
 // CHECK-NEXT:  func.func @main(%arg0: tensor<2x3xi32>) -> tensor<2x3xi32> attributes {tf.entry_function = {inputs = "args_tf_0", outputs = "Identity"}} {
 // CHECK-NEXT:    %0 = stablehlo.custom_call @Sharding(%arg0) {mhlo.sharding = ""} : (tensor<2x3xi32>) -> tensor<2x3xi32>
 // CHECK-NEXT:    %1 = stablehlo.multiply %0, %0 : tensor<2x3xi32>

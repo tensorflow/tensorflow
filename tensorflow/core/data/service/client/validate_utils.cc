@@ -30,7 +30,7 @@ namespace {
 // Validates local worker related parameters.
 Status ValidateLocalWorkers(const DataServiceParams& data_service_params) {
   if (data_service_params.target_workers != TARGET_WORKERS_LOCAL) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   if (LocalWorkers::Empty()) {
     if (IsStaticShard(data_service_params.processing_mode)) {
@@ -54,13 +54,13 @@ Status ValidateLocalWorkers(const DataServiceParams& data_service_params) {
         "Coordinated reads require non-local workers, but `target_workers` "
         "is \"LOCAL\".");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Validates cross-trainer cache related parameters.
 Status ValidateCrossTrainerCache(const DataServiceParams& data_service_params) {
   if (!data_service_params.cross_trainer_cache_options.has_value()) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   if (data_service_params.job_name.empty()) {
     return errors::InvalidArgument(
@@ -84,14 +84,14 @@ Status ValidateCrossTrainerCache(const DataServiceParams& data_service_params) {
         "Got number of coordinated consumers: ",
         data_service_params.num_consumers.value());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 }  // namespace
 
 Status ValidateDataServiceParams(const DataServiceParams& data_service_params) {
   TF_RETURN_IF_ERROR(ValidateLocalWorkers(data_service_params));
   TF_RETURN_IF_ERROR(ValidateCrossTrainerCache(data_service_params));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace data

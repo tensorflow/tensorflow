@@ -179,6 +179,28 @@ def initialize_rbe_configs():
     )
 
     tensorflow_rbe_config(
+        name = "ubuntu20.04-clang_manylinux2014-cuda12.1-cudnn8.9",
+        compiler = "/usr/lib/llvm-17/bin/clang",
+        cuda_version = "12.1",
+        cudnn_version = "8.9",
+        os = "ubuntu20.04-manylinux2014-multipython",
+        python_versions = ["3.9", "3.10", "3.11", "3.12"],
+        sysroot = "/dt9",
+        python_install_path = "/usr/local",
+    )
+
+    tensorflow_rbe_config(
+        name = "ubuntu20.04-gcc9_manylinux2014-cuda12.1-cudnn8.9",
+        compiler = "/dt9/usr/bin/gcc",
+        compiler_prefix = "/usr/bin",
+        cuda_version = "12.1",
+        cudnn_version = "8.9",
+        os = "ubuntu20.04-manylinux2014-multipython",
+        python_versions = ["3.9", "3.10", "3.11", "3.12"],
+        python_install_path = "/usr/local",
+    )
+
+    tensorflow_rbe_config(
         name = "ubuntu20.04-clang_manylinux2014-cuda12.2-cudnn8.9",
         compiler = "/usr/lib/llvm-17/bin/clang",
         cuda_version = "12.2",
@@ -627,7 +649,7 @@ def initialize_rbe_configs():
 
     sigbuild_tf_configs(
         name_container_map = {
-            "sigbuild-r2.16": "docker://gcr.io/tensorflow-sigs/build@sha256:22d863e6fe3f98946015b9e1264b2eeb8e56e504535a6c1d5e564cae65ae5d37",
+            "sigbuild-r2.16": "docker://gcr.io/tensorflow-sigs/build@sha256:842a5ba84d3658c5bf1f8a31e16284f7becc35409da0dfd71816afa3cd28d728",
             "sigbuild-r2.16-python3.9": "docker://gcr.io/tensorflow-sigs/build@sha256:22d863e6fe3f98946015b9e1264b2eeb8e56e504535a6c1d5e564cae65ae5d37",
             "sigbuild-r2.16-python3.10": "docker://gcr.io/tensorflow-sigs/build@sha256:da15288c8464153eadd35da720540a544b76aa9d78cceb42a6821b2f3e70a0fa",
             "sigbuild-r2.16-python3.11": "docker://gcr.io/tensorflow-sigs/build@sha256:842a5ba84d3658c5bf1f8a31e16284f7becc35409da0dfd71816afa3cd28d728",
@@ -667,7 +689,7 @@ def initialize_rbe_configs():
 
     sigbuild_tf_configs(
         name_container_map = {
-            "sigbuild-r2.16-clang": "docker://gcr.io/tensorflow-sigs/build@sha256:22d863e6fe3f98946015b9e1264b2eeb8e56e504535a6c1d5e564cae65ae5d37",
+            "sigbuild-r2.16-clang": "docker://gcr.io/tensorflow-sigs/build@sha256:842a5ba84d3658c5bf1f8a31e16284f7becc35409da0dfd71816afa3cd28d728",
             "sigbuild-r2.16-clang-python3.9": "docker://gcr.io/tensorflow-sigs/build@sha256:22d863e6fe3f98946015b9e1264b2eeb8e56e504535a6c1d5e564cae65ae5d37",
             "sigbuild-r2.16-clang-python3.10": "docker://gcr.io/tensorflow-sigs/build@sha256:da15288c8464153eadd35da720540a544b76aa9d78cceb42a6821b2f3e70a0fa",
             "sigbuild-r2.16-clang-python3.11": "docker://gcr.io/tensorflow-sigs/build@sha256:842a5ba84d3658c5bf1f8a31e16284f7becc35409da0dfd71816afa3cd28d728",

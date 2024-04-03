@@ -16,14 +16,18 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/eager/remote_mgr.h"
 
 #include <memory>
+#include <string>
 #include <tuple>
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/distributed_runtime/eager/remote_tensor_handle.h"
 #include "tensorflow/core/platform/error_payloads.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/util/env_var.h"
 
 namespace tensorflow {
 
@@ -41,7 +45,7 @@ Status WithErrorSourcePayload(Status error) {
 namespace eager {
 
 void RemoteMgr::AddOperationOutputs(
-    const gtl::ArraySlice<tensorflow::TensorHandle*> handles,
+    const absl::Span<tensorflow::TensorHandle* const> handles,
     int64_t operation_id) {
   mutex_lock l(remote_tensor_handle_mu_);
   for (int i = 0, end = handles.size(); i < end; i++) {
@@ -64,19 +68,32 @@ Status RemoteMgr::GetTensorHandleImpl(
   auto iter = remote_tensor_handle_map_.find(remote_handle);
   if (iter == remote_tensor_handle_map_.end()) {
     // TODO(b/217820532): Fix the tensor deallocation order issue.
-    return WithErrorSourcePayload(errors::InvalidArgument(
+    std::string error_message = absl::StrCat(
         "Unable to find the relevant tensor remote_handle: Op ID: ",
         remote_handle.op_id, ", Output num: ", remote_handle.output_num,
         ". One possible cause is that the tensor was accessed after "
-        "deallocation in a distributed worker setup. Try setting "
-        "`os.environ['TF_ENABLE_EAGER_CLIENT_STREAMING_ENQUEUE']='False'` in "
-        "your client to disable async streaming behavior to see if it fixes "
-        "the problem."));
+        "deallocation in a distributed worker setup.");
+
+    bool result;
+    TF_CHECK_OK(ReadBoolFromEnvVar("TF_ENABLE_EAGER_CLIENT_STREAMING_ENQUEUE",
+                                   true, &result));
+    if (result) {
+      std::string error_message_ext;
+      absl::StrAppend(
+          &error_message_ext, error_message,
+          "Try setting "
+          "`os.environ['TF_ENABLE_EAGER_CLIENT_STREAMING_ENQUEUE']='False'` in "
+          "your client to disable async streaming behavior to see if it fixes "
+          "the problem.");
+      return WithErrorSourcePayload(
+          absl::InvalidArgumentError(error_message_ext));
+    }
+    return WithErrorSourcePayload(absl::InvalidArgumentError(error_message));
   }
 
   *handle = iter->second;
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status RemoteMgr::GetTensorHandle(
@@ -105,7 +122,7 @@ Status RemoteMgr::GetMirroredResourceShape(
 
   *handle = iter->second;
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status RemoteMgr::GetRemoteTensorHandle(const tensorflow::TensorHandle* handle,
@@ -121,7 +138,7 @@ Status RemoteMgr::GetRemoteTensorHandle(const tensorflow::TensorHandle* handle,
         "Found two different tensor handles with the same op_id:", *op_id,
         " and output_num:", *output_num));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status RemoteMgr::DeleteTensorHandle(
@@ -132,7 +149,7 @@ Status RemoteMgr::DeleteTensorHandle(
     if (iter != remote_tensor_handle_map_.end()) {
       iter->second->Unref();
       remote_tensor_handle_map_.erase(iter);
-      return OkStatus();
+      return absl::OkStatus();
     }
   }
   {
@@ -140,7 +157,7 @@ Status RemoteMgr::DeleteTensorHandle(
     auto iter = mirrored_resource_shape_map_.find(remote_handle);
     if (iter != mirrored_resource_shape_map_.end()) {
       mirrored_resource_shape_map_.erase(iter);
-      return OkStatus();
+      return absl::OkStatus();
     }
   }
   return WithErrorSourcePayload(errors::InvalidArgument(
@@ -176,7 +193,7 @@ Status RemoteMgr::SerializeRemoteTensorHandle(
       dtype_and_shape.shape.AsProto(dtype_and_shape_proto->mutable_shape());
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status RemoteMgr::DeserializeRemoteTensorHandle(const RemoteTensorHandle& in,
@@ -214,7 +231,7 @@ Status RemoteMgr::DeserializeRemoteTensorHandle(const RemoteTensorHandle& in,
     (*out)->SetResourceHandleDtypeAndShape(std::move(dtypes_and_shapes));
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 EagerExecutor& RemoteMgr::GetOrCreateExecutorForStream(uint64 stream_id) {

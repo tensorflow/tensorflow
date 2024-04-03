@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,10 +16,11 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_HLO_ALGORITHM_DENYLIST_H_
 #define XLA_SERVICE_GPU_HLO_ALGORITHM_DENYLIST_H_
 
-#include <vector>
+#include <string>
 
+#include "absl/types/span.h"
 #include "xla/autotuning.pb.h"
-#include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/dnn.h"
 
 namespace xla {
 namespace gpu {

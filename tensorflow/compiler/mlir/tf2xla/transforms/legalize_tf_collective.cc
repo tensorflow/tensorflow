@@ -176,7 +176,7 @@ LogicalResult ConvertAllReduce(OpBuilder& builder, int64_t channel_id,
     }
     auto divisor =
         GetScalarConstOfType(element_type, loc, replica_group_size, &builder);
-    auto broadcast_dims = GetI64ElementsAttr({}, &builder);
+    auto broadcast_dims = builder.getDenseI64ArrayAttr({});
     result = builder.create<chlo::BroadcastDivOp>(
         loc, all_reduce.getResult(0), divisor.getResult(), broadcast_dims);
   } else if (final_op != "Id") {

@@ -56,6 +56,17 @@ CreateXlaOutlineEntryFunctionsPass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateMarkOpsForOutsideCompilationPass();
 
+// Creates a pass that hoists reads out of a replicate that are on a variable
+// whose value is broacast to all replicas.
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+CreateHoistBroadcastReadPass();
+
+// Creates a pass that moves broadcasts from TF host ops to XLA code, encoded as
+// XlaAllReduces. This enables use of the device network for broadcasts, which
+// is faster.
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+CreateXlaBroadcastPass();
+
 #define GEN_PASS_REGISTRATION
 #define GEN_PASS_DECL_MARKOPSFOROUTSIDECOMPILATIONPASS
 #define GEN_PASS_DECL_TPUCLUSTERFORMATIONPASS

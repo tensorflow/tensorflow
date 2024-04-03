@@ -288,6 +288,7 @@ struct MlirCommonFlags {
 
   bool tf_mlir_enable_merge_control_flow_pass;
   bool tf_mlir_enable_convert_control_to_data_outputs_pass;
+  bool tf_mlir_enable_composite_tpuexecute_side_effects;
   bool tf_mlir_enable_strict_clusters;
   bool tf_mlir_enable_generic_outside_compilation;
   bool tf_mlir_enable_tpu_variable_runtime_reformatting_pass;

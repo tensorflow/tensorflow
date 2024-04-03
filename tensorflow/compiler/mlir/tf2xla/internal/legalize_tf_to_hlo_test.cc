@@ -27,8 +27,8 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "xla/client/client_library.h"
 #include "xla/shape.h"
-#include "xla/stream_executor/multi_platform_manager.h"
 #include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/platform_manager.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/monitoring/cell_reader.h"
@@ -80,7 +80,7 @@ tsl::StatusOr<XlaCompiler::CompilationResult> CompileMlirModule(
   mlir_to_hlo_args.mlir_module = module_str;
 
   se::Platform* platform =
-      se::MultiPlatformManager::PlatformWithName("Host").value();
+      se::PlatformManager::PlatformWithName("Host").value();
   auto client =
       xla::ClientLibrary::GetOrCreateCompileOnlyClient(platform).value();
 
@@ -132,6 +132,19 @@ TEST(LegalizeWithCombinedBridge,
               IncrementedOrFiltered(counts.Delta(kMlirCombinedMlirSuccess), 1));
   EXPECT_THAT(result,
               IncrementedOrFiltered(counts.Delta(kMlirCombinedOldFailure), 1));
+}
+
+TEST(LegalizeWithCombinedBridge, RecordsDynamicOps) {
+  static constexpr char kDynamismFunctionCounterStreamzName[] =
+      "/tensorflow/core/tf2xla/api/v2/dynamism_function_counter";
+  constexpr char kNotDynamicFunctionName[] = "kNotDynamicFunction";
+  CellReader<int64_t> dynamic_function_op_count(
+      kDynamismFunctionCounterStreamzName);
+
+  auto result = CompileMlirModule(kMlirModuleStr);
+
+  ASSERT_TRUE(result.ok());
+  EXPECT_EQ(dynamic_function_op_count.Delta(kNotDynamicFunctionName), 1);
 }
 
 };  // namespace internal

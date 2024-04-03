@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -84,7 +84,7 @@ bool ProcessInputOrOutputLayout(ShapeLayout* shape_layout,
 
 }  // namespace
 
-StatusOr<bool> SubByteNormalization::Run(
+absl::StatusOr<bool> SubByteNormalization::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
@@ -93,8 +93,11 @@ StatusOr<bool> SubByteNormalization::Run(
     changed |= UpdateShape(shape, mode_);
     return OkStatus();
   });
-  for (HloComputation* computation :
-       module->MakeNonfusionComputations(execution_threads)) {
+  for (HloComputation* computation : module->computations()) {
+    // We rewrite all computations instead of non-fusion computations, despite
+    // element_size_in_bits within fusions being meaningless, because HloVerfier
+    // checks for the correct use of element_size_in_bits even in fusion
+    // computations.
     TF_RETURN_IF_ERROR(computation->Accept(&visitor));
   }
   auto* computation_layout = module->mutable_entry_computation_layout();

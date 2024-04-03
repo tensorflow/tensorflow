@@ -6,6 +6,12 @@ load(
     "if_cuda",
 )
 load(
+    "@local_xla//xla/tsl/mkl:build_defs.bzl",
+    "if_enable_mkl",
+    "if_mkl",
+    "onednn_v3_define",
+)
+load(
     "//third_party/compute_library:build_defs.bzl",
     "if_enable_acl",
 )
@@ -21,12 +27,6 @@ load(
     "if_rocm_is_configured",
 )
 load(
-    "//tsl/mkl:build_defs.bzl",
-    "if_enable_mkl",
-    "if_mkl",
-    "onednn_v3_define",
-)
-load(
     "@local_tsl//tsl/platform:rules_cc.bzl",
     "cc_binary",
     "cc_library",
@@ -37,8 +37,8 @@ load(
     "if_tensorrt",
 )
 
-# buildifier: disable=out-of-order-load
 # Internally this loads a macro, but in OSS this is a function
+# buildifier: disable=out-of-order-load
 def register_extension_info(**kwargs):
     pass
 
@@ -100,6 +100,14 @@ def if_google(google_value, oss_value = []):
     compute elements of list attributes.
     """
     return oss_value  # copybara:comment_replace return google_value
+
+def internal_visibility(internal_targets):
+    """Returns internal_targets in g3, but returns public in OSS.
+
+    Useful for targets that are part of the XLA/TSL API surface but want finer-grained visibilites
+    internally.
+    """
+    return if_google(internal_targets, ["//visibility:public"])
 
 # TODO(jakeharmon): Use this to replace if_static
 def if_tsl_link_protobuf(if_true, if_false = []):
@@ -304,14 +312,12 @@ def tsl_copts(
 
 def tf_openmp_copts():
     # We assume when compiling on Linux gcc/clang will be used and MSVC on Windows
-    # TODO(zacmustin): Update OSS to use TSL's MKL.
     return select({
+        clean_dep("@local_xla//xla/tsl/mkl:build_with_mkl_lnx_openmp"): ["-fopenmp"],
         # copybara:uncomment_begin
-        # "//tsl/mkl:build_with_mkl_lnx_openmp": ["-fopenmp"],
-        # "//tsl/mkl:build_with_mkl_windows_openmp": ["/openmp"],
+        # "@local_xla//xla/tsl/mkl:build_with_mkl_windows_openmp": ["/openmp"],
         # copybara:uncomment_end_and_comment_begin
-        "@local_tsl//third_party/mkl:build_with_mkl_lnx_openmp": ["-fopenmp"],
-        "@local_tsl//third_party/mkl:build_with_mkl_windows_openmp": ["/openmp:llvm"],
+        clean_dep("@local_xla//xla/tsl/mkl:build_with_mkl_windows_openmp"): ["/openmp:llvm"],
         # copybara:comment_end
         "//conditions:default": [],
     })
@@ -346,7 +352,7 @@ def tsl_gpu_library(deps = None, cuda_deps = None, copts = tsl_copts(), **kwargs
         kwargs.pop("default_copts", None)
     cc_library(
         deps = deps + if_cuda([
-            clean_dep("//tsl/cuda:cudart"),
+            clean_dep("@local_xla//xla/tsl/cuda:cudart"),
             "@local_config_cuda//cuda:cuda_headers",
         ]) + if_rocm_is_configured([
             "@local_config_rocm//rocm:rocm_headers",
@@ -432,6 +438,9 @@ check_deps = rule(
 def get_compatible_with_portable():
     return []
 
+def get_compatible_with_libtpu_portable():
+    return []
+
 def filegroup(**kwargs):
     native.filegroup(**kwargs)
 
@@ -466,7 +475,7 @@ _transitive_hdrs = rule(
 
 def transitive_hdrs(name, deps = [], **kwargs):
     _transitive_hdrs(name = name + "_gather", deps = deps)
-    native.filegroup(name = name, srcs = [":" + name + "_gather"])
+    native.filegroup(name = name, srcs = [":" + name + "_gather"], **kwargs)
 
 # Create a header only library that includes all the headers exported by
 # the libraries in deps.
@@ -593,8 +602,6 @@ def tsl_pybind_extension_opensource(
     filegroup_name = "%s_filegroup" % name
     pyd_file = "%s%s.pyd" % (prefix, sname)
     exported_symbols = [
-        "init%s" % sname,
-        "init_%s" % sname,
         "PyInit_%s" % sname,
     ] + additional_exported_symbols
 
@@ -763,7 +770,5 @@ def tsl_pybind_extension_opensource(
         compatible_with = compatible_with,
     )
 
-# Used for specifying external visibility constraints. In non-monorepo situations, this needs to be
-# public, but monorepos can have more precise constraints.
-def set_external_visibility(monorepo_paths):
-    return if_oss(["//visibility:public"], monorepo_paths)
+def nvtx_headers():
+    return if_oss(["@nvtx_archive//:headers"], ["@local_config_cuda//cuda:cuda_headers"])

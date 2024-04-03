@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -83,7 +83,7 @@ bool ProcessScalar(HloInstruction* scalar) {
   return processed;
 }
 
-StatusOr<bool> FusionConstantSinking::Run(
+absl::StatusOr<bool> FusionConstantSinking::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   VLOG(3) << "HLO module before FusionConstantSinking:";

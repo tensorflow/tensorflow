@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -399,7 +399,7 @@ HloInstruction* SpmdBuilder::AddInstruction(
 }
 
 PartitionedHlo PartitionedHlo::Reshard(const HloSharding& target,
-                                       std::optional<Literal> pad_value) {
+                                       std::optional<Literal> pad_value) const {
   if (sharding() == target) {
     return *this;
   }
@@ -444,9 +444,9 @@ PartitionedHlo PartitionedHlo::Reshard(const HloSharding& target,
   return resharded;
 }
 
-PartitionedHlo PartitionedHlo::ReshardNoCache(const HloSharding& target,
-                                              std::optional<Literal> pad_value,
-                                              bool allow_full_replication) {
+PartitionedHlo PartitionedHlo::ReshardNoCache(
+    const HloSharding& target, std::optional<Literal> pad_value,
+    bool allow_full_replication) const {
   VLOG(2) << "Resharding " << hlo_->ToString() << " from "
           << hlo_->sharding().ToString() << " to " << target.ToString();
   const Shape& shape = hlo_->shape();
@@ -1215,7 +1215,7 @@ PartitionedHlo::ReshardAsWindowedInput(const Window& window,
       get_dynamic_slice_offset_on_output_if_needed()});
 }
 
-PartitionedHlo PartitionedHlo::Replicate() {
+PartitionedHlo PartitionedHlo::Replicate() const {
   auto& cache = state_.reshard_cache->per_hlo_cache[hlo()].reshard_cache;
   if (state_.partitioner->options().cache_all_gather) {
     for (auto& entry : cache) {
@@ -1263,7 +1263,7 @@ PartitionedHlo PartitionedHlo::Replicate() {
 }
 
 HloInstruction* PartitionedHlo::ReplicatePartial(
-    absl::Span<const int64_t> dims) {
+    absl::Span<const int64_t> dims) const {
   CHECK(!sharding().IsTileMaximal());
   const Shape& shard_shape = hlo()->shape();
   Shape target_shape = shard_shape;
@@ -1391,7 +1391,7 @@ HloInstruction* PartitionedHlo::ReplicatePartial(
 
 std::optional<PartitionedHlo>
 PartitionedHlo::ReshardToPartialReplicateWithAllGather(
-    const HloSharding& target) {
+    const HloSharding& target) const {
   if (!target.ReplicateOnLastTileDim()) {
     return std::nullopt;
   }
@@ -1457,7 +1457,7 @@ PartitionedHlo::ReshardToPartialReplicateWithAllGather(
 
 std::optional<PartitionedHlo>
 PartitionedHlo::ReshardFromPartialReplicateWithDynamicSlice(
-    const HloSharding& target) {
+    const HloSharding& target) const {
   if (!sharding().ReplicateOnLastTileDim()) {
     return std::nullopt;
   }
@@ -1993,7 +1993,7 @@ PartitionedHlo MergeReshapeHelper(const PartitionedHlo& to_reshape,
 }  // namespace
 
 std::optional<PartitionedHlo> PartitionedHlo::TryComplexReshardHandling(
-    const HloSharding& target) {
+    const HloSharding& target) const {
   VLOG(5) << "Trying to split complicated reshard: " << sharding().ToString()
           << " to " << target.ToString();
   const bool is_source_partially_replicated =
@@ -2082,7 +2082,8 @@ std::optional<PartitionedHlo> PartitionedHlo::TryComplexReshardHandling(
 }
 
 std::optional<PartitionedHlo>
-PartitionedHlo::ReshardPartialReplicateWithAllToAll(const HloSharding& target) {
+PartitionedHlo::ReshardPartialReplicateWithAllToAll(
+    const HloSharding& target) const {
   bool source_is_partial_replicate = sharding().ReplicateOnLastTileDim();
   const auto& partial_replicate_sharding =
       source_is_partial_replicate ? sharding() : target;
@@ -2405,7 +2406,7 @@ Status SpmdPartitioningVisitor::Preprocess(HloInstruction* hlo) {
         auto get_grouped_sharding =
             [&](const HloSharding& sharding, const Shape& shape,
                 const GroupedSharding* ref =
-                    nullptr) -> StatusOr<GroupedSharding> {
+                    nullptr) -> absl::StatusOr<GroupedSharding> {
           if (!sharding.IsTuple()) {
             GroupedSharding grouped =
                 hlo_sharding_util::GetManualSubgroupSharding(sharding);
@@ -2826,7 +2827,8 @@ Status SpmdPartitioningVisitor::HandleSort(HloInstruction* hlo) {
     int64_t first_nonsort_nonsharded_dim = -1;
     auto nshards = tile_assignment_dims[sort_dim];
     for (int64_t dim = 0; dim < subshape.rank(); ++dim) {
-      if (dim == sort_dim || tile_assignment_dims[dim] != 1) {
+      if (dim == sort_dim || tile_assignment_dims[dim] != 1 ||
+          subshape.dimensions(dim) == 1) {
         continue;
       }
       if (first_nonsort_nonsharded_dim == -1) {
@@ -2994,7 +2996,7 @@ Status SpmdPartitioningVisitor::HandleReshape(HloInstruction* hlo) {
 
   auto shard_reshape =
       [](PartitionedHlo& operand, const HloSharding& sharding,
-         const Shape& base_shape) -> StatusOr<HloInstruction*> {
+         const Shape& base_shape) -> absl::StatusOr<HloInstruction*> {
     auto replicate = [&] {
       HloInstruction* rep = operand.Replicate().hlo();
       HloInstruction* reshape = operand.state().b->AddInstruction(
@@ -3155,11 +3157,11 @@ Status SpmdPartitioningVisitor::HandleReshape(HloInstruction* hlo) {
 
   // Try to use PropagateShardingThroughReshape to find compatible dimensions,
   // then group them and recursively partition other dimensions.
-  std::function<StatusOr<HloInstruction*>(PartitionedHlo&, const HloSharding&,
-                                          const Shape&)>
+  std::function<absl::StatusOr<HloInstruction*>(
+      PartitionedHlo&, const HloSharding&, const Shape&)>
       recursive_shard =
           [&](PartitionedHlo& operand, const HloSharding& sharding,
-              const Shape& base_shape) -> StatusOr<HloInstruction*> {
+              const Shape& base_shape) -> absl::StatusOr<HloInstruction*> {
     const Shape& operand_base_shape = operand.base_shape();
     HloSharding propagated = hlo_sharding_util::PropagateShardingThroughReshape(
         operand_base_shape, base_shape, operand.sharding());
@@ -3342,7 +3344,8 @@ Status SpmdPartitioningVisitor::HandleAllReduce(HloInstruction* hlo) {
     TF_RET_CHECK(ar->use_global_device_ids())
         << "Cross-partition allreduce in partial manual partitioning mode must "
            "use global device IDs.";
-    absl::flat_hash_map<int64_t, int64_t> partition_to_group_id;
+    std::vector<int64_t> partition_to_group_id(
+        hlo->sharding().tile_assignment().num_elements());
     hlo->sharding().tile_assignment().Each(
         [&](absl::Span<const int64_t> indices, int64_t partition) {
           int64_t group_id = 0;
@@ -4637,7 +4640,7 @@ Status SpmdPartitioningVisitor::HandleTuple(HloInstruction* hlo) {
   return OkStatus();
 }
 
-StatusOr<bool> SpmdPartitioningVisitor::DoPartition(
+absl::StatusOr<bool> SpmdPartitioningVisitor::DoPartition(
     HloComputation* computation, const HloSharding& root_sharding,
     const SpmdPartitionerOptions& options) {
   VLOG(2) << "Partitioning computation " << computation->name() << " for "
@@ -4923,7 +4926,7 @@ HloInstruction* SpmdPartitioner::AllReduceAlongShardingDimsInternal(
   return result;
 }
 
-StatusOr<bool> SpmdPartitioner::PartitionComputation(
+absl::StatusOr<bool> SpmdPartitioner::PartitionComputation(
     HloComputation* computation, const HloSharding& root_sharding,
     int64_t* next_channel_id, SpmdLogger* logger, const CallGraph& call_graph) {
   auto visitor = CreateVisitor(computation, num_partitions_, num_replicas_,
@@ -4994,7 +4997,7 @@ int64_t SpmdPartitioner::CommunicationCostInBytes(HloInstruction* hlo) {
   }
 }
 
-StatusOr<bool> SpmdPartitioner::Run(
+absl::StatusOr<bool> SpmdPartitioner::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   set_execution_threads(execution_threads);

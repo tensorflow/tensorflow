@@ -72,6 +72,8 @@ Status TestCluster::Initialize() {
       config_.job_gc_check_interval_ms);
   dispatcher_config.set_job_gc_timeout_ms(config_.job_gc_timeout_ms);
   dispatcher_config.set_client_timeout_ms(config_.client_timeout_ms);
+  dispatcher_config.set_worker_max_concurrent_snapshots(
+      config_.worker_max_concurrent_snapshots);
   TF_RETURN_IF_ERROR(NewDispatchServer(dispatcher_config, dispatcher_));
   TF_RETURN_IF_ERROR(dispatcher_->Start());
   dispatcher_address_ = absl::StrCat("localhost:", dispatcher_->BoundPort());
@@ -80,7 +82,7 @@ Status TestCluster::Initialize() {
   for (int i = 0; i < num_workers_; ++i) {
     TF_RETURN_IF_ERROR(AddWorker());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status TestCluster::AddWorker(std::optional<int> port) {
@@ -99,7 +101,7 @@ Status TestCluster::AddWorker(std::optional<int> port) {
   TF_RETURN_IF_ERROR(worker->Start());
   worker_addresses_.push_back(absl::StrCat("localhost:", worker->BoundPort()));
   workers_.push_back(std::move(worker));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 std::string TestCluster::DispatcherAddress() const {

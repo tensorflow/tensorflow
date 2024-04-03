@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -104,9 +104,10 @@ inline SymbolRepositoryRegistry& GetGlobalSymbolRepositoryRegistry() {
 
 // Entry points start here.
 
-inline StatusOr<std::unique_ptr<HloModuleAndMetadata>> LookupSymbolInRepository(
-    absl::string_view repository, absl::string_view symbol_reference,
-    BackendType backend) {
+inline absl::StatusOr<std::unique_ptr<HloModuleAndMetadata>>
+LookupSymbolInRepository(absl::string_view repository,
+                         absl::string_view symbol_reference,
+                         BackendType backend) {
   if (SymbolRepository* repo =
           GetGlobalSymbolRepositoryRegistry().repo(repository);
       repo != nullptr) {

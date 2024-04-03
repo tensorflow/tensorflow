@@ -26,7 +26,6 @@
   * `PYTHON_BIN_PATH`: The python binary path
 """
 
-load("//third_party/clang_toolchain:download_clang.bzl", "download_clang")
 load(
     "@bazel_tools//tools/cpp:lib_cc_configure.bzl",
     "escape_string",
@@ -38,6 +37,7 @@ load(
     "find_vc_path",
     "setup_vc_env_vars",
 )
+load("//third_party/clang_toolchain:download_clang.bzl", "download_clang")
 load(
     "//third_party/remote_config:common.bzl",
     "config_repo_label",
@@ -827,6 +827,7 @@ def _create_dummy_repository(repository_ctx):
             "%{cuda_is_configured}": "False",
             "%{cuda_extra_copts}": "[]",
             "%{cuda_gpu_architectures}": "[]",
+            "%{cuda_version}": "0.0",
         },
     )
     _tpl(
@@ -1214,6 +1215,7 @@ def _create_local_cuda_repository(repository_ctx):
                 cuda_config.compute_capabilities,
             ),
             "%{cuda_gpu_architectures}": str(cuda_config.compute_capabilities),
+            "%{cuda_version}": cuda_config.cuda_version,
         },
     )
 
@@ -1427,6 +1429,7 @@ def _create_remote_cuda_repository(repository_ctx, remote_config_repo):
                 repository_ctx,
                 compute_capabilities(repository_ctx),
             ),
+            "%{cuda_version}": get_host_environ(repository_ctx, _TF_CUDA_VERSION),
         },
     )
     repository_ctx.template(

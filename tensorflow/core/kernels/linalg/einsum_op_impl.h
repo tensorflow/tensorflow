@@ -90,7 +90,7 @@ struct EinsumHelper {
           " but got dimension ", input_dim);
     }
     (*label_to_dim_sizes)[label] = input_dim;
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Validate input dimensions and populate unnamed labels and their label
@@ -160,7 +160,7 @@ struct EinsumHelper {
     }
     if (!absl::c_linear_search(input_has_ellipsis, true) &&
         !output_has_ellipsis) {
-      return OkStatus();
+      return absl::OkStatus();
     }
     // Insert broadcasting dimensions in the output labels.
     auto it =
@@ -178,7 +178,7 @@ struct EinsumHelper {
     // Populate EinsumDimensionType for the new broadcasting labels.
     label_types->resize(num_named_labels + max_bcast_dims,
                         EinsumDimensionType::kBroadcasting);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Permutes the labels according to the given permutation.
@@ -194,7 +194,7 @@ struct EinsumHelper {
   // Returns a reshaped input Tensor. The underlying buffer is not copied.
   static Status CopyFrom(const Tensor& input, const TensorShape& shape,
                          Tensor* output) {
-    if (output->CopyFrom(input, shape)) return OkStatus();
+    if (output->CopyFrom(input, shape)) return absl::OkStatus();
     return errors::Internal(
         "Encountered error while reshaping a Tensor of shape ",
         input.shape().DebugString(), " to shape ", shape.DebugString());
@@ -234,7 +234,7 @@ struct EinsumHelper {
         ctx->allocate_temp(DataTypeToEnum<T>::value, transposed_shape, output));
     const Device& device = ctx->eigen_device<Device>();
     TF_RETURN_IF_ERROR(DoTranspose(device, input, permutation, output));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // If there are repeated labels in either the input or output, then this
@@ -310,7 +310,7 @@ struct EinsumHelper {
             " while handling repeated indices. Up to rank 6 is supported.");
 #undef NDIMS_CASE
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Returns true if the input dimensions are already sorted in the order
@@ -413,7 +413,7 @@ struct EinsumHelper {
         const_cast<const Tensor&>(input_deduped)
             .shaped<T, 2>({output_size, reshape[kReduce]}),
         Eigen::array<Index, 1>({1}), Reducer());
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Reshapes a Tensor of shape [b0,b1...bk,N,M] to [prod(b0,b1...bk),N,M].
@@ -464,7 +464,7 @@ struct EinsumHelper {
     if (lhs.NumElements() == 0 || rhs.NumElements() == 0) {
       functor::SetZeroFunctor<Device, T> set_zero;
       set_zero(ctx->eigen_device<Device>(), output->flat<T>());
-      return OkStatus();
+      return absl::OkStatus();
     }
     Tensor output_reshaped;
     TF_RETURN_IF_ERROR(
@@ -473,7 +473,7 @@ struct EinsumHelper {
                                          /*adj_y=*/false, trans_x, trans_y,
                                          /*grad_x=*/false, /*grad_y=*/false,
                                          bcast, &output_reshaped);
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 

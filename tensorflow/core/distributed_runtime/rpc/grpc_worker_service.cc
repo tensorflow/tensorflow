@@ -725,7 +725,7 @@ void GrpcWorker::LoggingAsync(const LoggingRequest* request,
       }
     }
   }
-  done(OkStatus());
+  done(absl::OkStatus());
 }
 
 void GrpcWorker::CleanupGraphAsync(const CleanupGraphRequest* request,

@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -93,7 +93,7 @@ TpuExecutable::~TpuExecutable() {
   ExecutorApiFn()->TpuExecutable_FreeFn(se_executable_);
 }
 
-StatusOr<ExecutionOutput> TpuExecutable::ExecuteAsyncOnStream(
+absl::StatusOr<ExecutionOutput> TpuExecutable::ExecuteAsyncOnStream(
     const ServiceExecutableRunOptions* run_options,
     std::vector<ExecutionInput> arguments,
     HloExecutionProfile* hlo_execution_profile) {
@@ -182,7 +182,7 @@ absl::string_view TpuExecutable::fingerprint() const {
   return absl::string_view(data, size);
 }
 
-StatusOr<std::string> TpuExecutable::Serialize() const {
+absl::StatusOr<std::string> TpuExecutable::Serialize() const {
   SE_ExecutableSerializationHandle* handle = nullptr;
   absl::Cleanup cleanup = [&handle]() {
     ExecutorApiFn()->TpuExecutableSerialize_FreeHandleFn(handle);
@@ -210,7 +210,7 @@ StatusOr<std::string> TpuExecutable::Serialize() const {
   return serialized;
 }
 
-StatusOr<std::unique_ptr<TpuExecutable>> TpuExecutable::Deserialize(
+absl::StatusOr<std::unique_ptr<TpuExecutable>> TpuExecutable::Deserialize(
     absl::string_view serialized) {
   SE_Executable* se_executable;
   StatusHelper status;

@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,9 +16,11 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_LAUNCH_DIMENSIONS_H_
 #define XLA_SERVICE_GPU_LAUNCH_DIMENSIONS_H_
 
+#include <cstdint>
 #include <ostream>
 #include <string>
 
+#include "absl/strings/str_cat.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/launch_dim.h"
@@ -102,7 +104,7 @@ struct LaunchDimensionsConfig {
   // a block of unroll_factor elements. Otherwise each thread will
   // handle only unroll_factor.
   bool few_waves = false;
-  // If `row_optimized` is true, then the block size will equal to
+  // If `row_vectorized` is true, then the block size will equal to
   // `hlo.shape().dimensions().back()/unroll_factor`.
   // Currently few_waves and row_vectorized do not work together.
   bool row_vectorized = false;

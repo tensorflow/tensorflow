@@ -103,12 +103,12 @@ class XlaPlatformInfo {
 // Returns a set containing the device ids contained in visible_device_list or
 // nullopt if it is empty. It returns error in case of malformed configuration
 // string.
-StatusOr<std::optional<std::set<int>>> ParseVisibleDeviceList(
+absl::StatusOr<std::optional<std::set<int>>> ParseVisibleDeviceList(
     absl::string_view visible_device_list);
 
 // Returns the device type for building a DeviceCompiler from the given platform
 // type.
-StatusOr<DeviceType> GetCompilationDeviceType(
+absl::StatusOr<DeviceType> GetCompilationDeviceType(
     const DeviceType& platform_device_type);
 
 // Builds a DeviceCompiler that uses xla::LocalClient using `platform_info` and

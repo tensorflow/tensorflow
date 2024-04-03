@@ -19,6 +19,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/strip.h"
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op_def.pb.h"
@@ -391,6 +392,9 @@ void ComposeSignature(const OpDef& first_signature,
   *fused_signature->mutable_output_arg() = second_signature.output_arg();
 
   if (first_signature.is_stateful() || second_signature.is_stateful()) {
+    if (!(first_signature.is_stateful() && second_signature.is_stateful())) {
+      metrics::RecordTFDataDebug("fused_with_mixed_statefulness");
+    }
     fused_signature->set_is_stateful(true);
   }
 

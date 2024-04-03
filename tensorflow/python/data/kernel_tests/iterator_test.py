@@ -1072,6 +1072,27 @@ class IteratorTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.evaluate(counter_var.initializer)
     self.assertEqual(self.evaluate(fn()), 10)
 
+  @combinations.generate(test_base.eager_only_combinations())
+  def testSaveRestore(self):
+    ds = dataset_ops.Dataset.range(10)
+    ds = ds.shuffle(5, seed=42, reshuffle_each_iteration=False)
+    it = ds.as_numpy_iterator()
+
+    expected = list(ds.as_numpy_iterator())
+
+    for i in range(3):
+      self.assertEqual(next(it), expected[i])
+
+    state = it.save()
+
+    for i in range(3, 6):
+      self.assertEqual(next(it), expected[i])
+
+    it.restore(state)
+
+    for i in range(3, 6):
+      self.assertEqual(next(it), expected[i])
+
 
 if __name__ == "__main__":
   test.main()

@@ -135,22 +135,17 @@ bool BFCAllocator::Extend(size_t alignment, size_t rounded_bytes) {
   size_t bytes = std::min(curr_region_allocation_bytes_, available_bytes);
   size_t bytes_received;
   void* mem_addr = sub_allocator_->Alloc(alignment, bytes, &bytes_received);
-  if (mem_addr == nullptr && !started_backpedal_) {
-    // Only backpedal once.
-    started_backpedal_ = true;
-
+  if (mem_addr == nullptr) {
     static constexpr float kBackpedalFactor = 0.9;
 
     // Try allocating less memory.
     while (mem_addr == nullptr) {
       bytes = RoundedBytes(bytes * kBackpedalFactor);
-      if (bytes < rounded_bytes) break;
+      if (bytes < rounded_bytes) {
+        return false;
+      }
       mem_addr = sub_allocator_->Alloc(alignment, bytes, &bytes_received);
     }
-  }
-
-  if (mem_addr == nullptr) {
-    return false;
   }
 
   if (!increased_allocation) {

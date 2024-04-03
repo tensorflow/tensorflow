@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -283,7 +283,7 @@ TEST_F(HloOrderingTest, ValuesInWhileComputations) {
   ASSERT_EQ(dataflow->GetValueDefinedAt(xla_while).GetUses().size(), 1);
 
   const HloUse* while_use =
-      &dataflow->GetValueDefinedAt(xla_while).GetUses()[0];
+      dataflow->GetValueDefinedAt(xla_while).GetUses().data();
   EXPECT_EQ(while_use->instruction, add);
   EXPECT_TRUE(ordering.UsesBeforeValueDefinition(
       {&while_use, 1}, dataflow->GetValueDefinedAt(add), *dataflow));

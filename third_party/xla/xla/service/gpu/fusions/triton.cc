@@ -1,4 +1,4 @@
-/* Copyright 2024 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2024 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/service/gpu/fusions/triton.h"
 
+#include <memory>
 #include <optional>
 #include <string>
 #include <variant>
@@ -27,7 +28,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "xla/service/gpu/fusions/fusion_emitter.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/ir_emitter_context.h"
@@ -35,7 +35,7 @@ limitations under the License.
 #include "xla/service/gpu/kernel_reuse_cache.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/matmul_utils.h"
-#include "xla/service/gpu/runtime3/kernel_thunk.h"
+#include "xla/service/gpu/runtime/kernel_thunk.h"
 #include "xla/service/gpu/triton_fusion_analysis.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/statusor.h"
@@ -95,26 +95,15 @@ LaunchDimensions CalculateSoftMaxLaunchDimensions(
 }  // namespace
 
 absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
-    IrEmitterContext& ir_emitter_context, mlir::lmhlo::FusionOp fusion_op,
+    IrEmitterContext& ir_emitter_context,
     const HloFusionInstruction& fusion) const {
   llvm::IRBuilder builder(ir_emitter_context.llvm_module()->getContext());
 #if GOOGLE_CUDA
-  if (!ir_emitter_context.emit_ir_from_hlo()) {
-    CHECK_NE(fusion_op, nullptr);
-  }
-  if (ir_emitter_context.emit_ir_from_hlo()) {
-    VLOG(3) << fusion.ToString();
-  } else {
-    VLOG(3) << llvm_ir::DumpToString(fusion_op);
-  }
+  VLOG(3) << fusion.ToString();
   std::string suggested_kernel_name = std::string(fusion.name());
-  TF_ASSIGN_OR_RETURN(auto kernel_arguments,
-                      ir_emitter_context.emit_ir_from_hlo()
-                          ? KernelArguments::Create(
-                                ir_emitter_context.buffer_assignment(), &fusion)
-                          : KernelArguments::Create(
-                                ir_emitter_context.allocations(),
-                                mlir::cast<mlir::lmhlo::FusionOp>(fusion_op)));
+  TF_ASSIGN_OR_RETURN(
+      auto kernel_arguments,
+      KernelArguments::Create(ir_emitter_context.buffer_assignment(), &fusion));
 
   const HloComputation* hlo_computation =
       fusion.fused_instructions_computation();
@@ -135,19 +124,19 @@ absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
     if (fusion_kind == kTritonSoftmaxFusionKind) {
       launch_dimensions = *this->launch_dimensions();
 
-      auto& triton_config = *backend_config.mutable_triton_gemm_config();
-      triton_config.set_num_stages(1);
+      // This is a hack, we use TritonGemmConfig for Softmax too, but we ignore
+      // most parameters.
+      TritonGemmConfig config;
+      config.num_stages = 1;
       // Thread count per block is always a multiple of WarpSize.
-      triton_config.set_num_warps(launch_dimensions.num_threads_per_block() /
-                                  WarpSize());
-      TritonGemmConfig config = TritonGemmConfig::FromProto(triton_config);
+      config.num_warps = launch_dimensions.num_threads_per_block() / WarpSize();
+      config.num_ctas = 1;
 
       TF_ASSIGN_OR_RETURN(auto analysis,
                           TritonFusionAnalysis::Execute(*hlo_computation));
       TF_ASSIGN_OR_RETURN(
           triton_wrapper_result,
           TritonWrapper(analysis, impl_fn_name, hlo_computation,
-                        kTritonSoftmaxFusionKind,
                         ir_emitter_context.cuda_compute_capability(),
                         ir_emitter_context.gpu_device_info(), config,
                         ir_emitter_context.llvm_module(), &EmitSoftMax,
@@ -155,13 +144,8 @@ absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
     } else {  // Must be a MatMul
       CHECK_EQ(fusion_kind, kTritonGemmFusionKind);
       if (!backend_config.has_triton_gemm_config()) {
-        if (ir_emitter_context.emit_ir_from_hlo()) {
-          LOG(WARNING) << "Using fallback triton GEMM config for op "
-                       << fusion.name();
-        } else {
-          LOG(WARNING) << "Using fallback triton GEMM config for op "
-                       << GetIrNameFromLoc(fusion_op->getLoc());
-        }
+        LOG(WARNING) << "Using fallback triton GEMM config for op "
+                     << fusion.name();
         auto& triton_config = *backend_config.mutable_triton_gemm_config();
         triton_config.set_block_m(64);
         triton_config.set_block_k(64);
@@ -169,22 +153,24 @@ absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
         triton_config.set_split_k(1);
         triton_config.set_num_stages(1);
         triton_config.set_num_warps(2);
+        triton_config.set_num_ctas(1);
       }
-      TritonGemmConfig config =
-          TritonGemmConfig::FromProto(backend_config.triton_gemm_config());
+      TF_ASSIGN_OR_RETURN(
+          TritonGemmConfig config,
+          TritonGemmConfig::FromProto(backend_config.triton_gemm_config()));
 
       TF_ASSIGN_OR_RETURN(auto analysis, TritonFusionAnalysis::Execute(
                                              *hlo_computation, config.split_k));
       TF_ASSIGN_OR_RETURN(
           triton_wrapper_result,
           TritonWrapper(analysis, impl_fn_name, hlo_computation,
-                        kTritonGemmFusionKind,
                         ir_emitter_context.cuda_compute_capability(),
                         ir_emitter_context.gpu_device_info(), config,
                         ir_emitter_context.llvm_module(), &EmitMatMul,
                         *ir_emitter_context.mlir_context()));
-      launch_dimensions =
-          GetMatMulLaunchDimensions(analysis, analysis_.fusion(), config);
+      TF_ASSIGN_OR_RETURN(
+          launch_dimensions,
+          GetMatMulLaunchDimensions(analysis, analysis_.fusion(), config));
     }
 
     llvm::Function* impl_fn =
@@ -209,25 +195,20 @@ absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
     impl_fn->eraseFromParent();
 
     return {{kernel->getName().str(), launch_dimensions,
+             triton_wrapper_result.cluster_dim,
              triton_wrapper_result.shmem_bytes}};
   };
 
-  auto [kernel, was_cached] = ir_emitter_context.kernel_cache().GetWithStatus(
-      hlo_computation, kernel_arguments.args(),
-      /*discriminator=*/"", generate);
-  TF_RETURN_IF_ERROR(kernel.status());
-
-  std::variant<mlir::Operation*, const HloInstruction*> fusion_op_or_hlo;
-  if (ir_emitter_context.emit_ir_from_hlo()) {
-    fusion_op_or_hlo = &fusion;
-  } else {
-    fusion_op_or_hlo = fusion_op;
-  }
+  auto [status_or_entry, was_cached] =
+      ir_emitter_context.kernel_cache().GetWithStatus(
+          hlo_computation, kernel_arguments.args(),
+          /*discriminator=*/"", generate);
+  TF_ASSIGN_OR_RETURN(const KernelReuseCache::Entry* entry, status_or_entry);
 
   FusionEmissionResult result;
   result.thunks.emplace_back(std::make_unique<KernelThunk>(
-      fusion_op_or_hlo, kernel->kernel_name, kernel_arguments.args(),
-      kernel->launch_dimensions, kernel->shmem_bytes));
+      &fusion, entry->kernel_name, kernel_arguments.args(),
+      entry->launch_dimensions, entry->cluster_dim, entry->shmem_bytes));
 
   return result;
 #else

@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -113,6 +113,8 @@ class TensorIterationSpec {
   }
   // Returns nullptr if not found.
   const DimIterationSpec* Find(int dimension) const;
+
+  std::vector<int> GetDimensions() const;
 
   void RemoveEmptyDimensions() {
     absl::erase_if(dim_iteration_specs_,

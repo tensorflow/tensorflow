@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/python/pjrt_ifrt/pjrt_array.h"
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -24,24 +25,29 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "absl/types/span.h"
 #include "xla/literal.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_layout.h"
 #include "xla/pjrt/utils.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/dtype.h"
+#include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/pjrt_ifrt/pjrt_client.h"
 #include "xla/shape_util.h"
 #include "xla/status.h"
-#include "xla/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/concurrency/ref_count.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {
@@ -86,7 +92,7 @@ Status ValidateArrayCreationInput(std::shared_ptr<const Sharding> sharding,
 
 // Validates the PjRtBuffers have consistent memory kind and returns the memory
 // kind.
-StatusOr<MemoryKind> GetMemoryKindFromPjRtBuffers(
+absl::StatusOr<MemoryKind> GetMemoryKindFromPjRtBuffers(
     const PjRtArray::PjRtBuffers& pjrt_buffers) {
   const auto first_memory_kind =
       MakeMemoryKindFromPjRtBuffer(pjrt_buffers.front().get());
@@ -110,7 +116,7 @@ StatusOr<MemoryKind> GetMemoryKindFromPjRtBuffers(
 char PjRtCompatibleArray::ID = 0;
 char PjRtArray::ID = 0;
 
-StatusOr<xla::PrimitiveType> ToPrimitiveType(DType dtype) {
+absl::StatusOr<xla::PrimitiveType> ToPrimitiveType(DType dtype) {
   switch (dtype.kind()) {
 #define CASE(DT, PT)                                                      \
   case DT:                                                                \
@@ -149,7 +155,7 @@ StatusOr<xla::PrimitiveType> ToPrimitiveType(DType dtype) {
   return InvalidArgument("Invalid DType: %d", static_cast<int>(dtype.kind()));
 }
 
-StatusOr<DType> ToDType(xla::PrimitiveType primitive_type) {
+absl::StatusOr<DType> ToDType(xla::PrimitiveType primitive_type) {
   switch (primitive_type) {
     case xla::PrimitiveType::PRIMITIVE_TYPE_INVALID:
     case xla::PrimitiveType::PRED:
@@ -189,7 +195,7 @@ MemoryKind MakeMemoryKindFromPjRtBuffer(PjRtBuffer* pjrt_buffer) {
   return MemoryKind(pjrt_buffer->memory_space()->memory_space_kind());
 }
 
-StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
+absl::StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
     PjRtCompatibleClient* client, DType dtype, Shape shape,
     std::shared_ptr<const Sharding> sharding, PjRtBuffers pjrt_buffers) {
   TF_RETURN_IF_ERROR(ValidateArrayCreationInput(sharding, pjrt_buffers));
@@ -197,7 +203,7 @@ StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
                                  std::move(sharding), std::move(pjrt_buffers));
 }
 
-StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
+absl::StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
     PjRtCompatibleClient* client, DType dtype, DynamicShape dynamic_shape,
     std::shared_ptr<const Sharding> sharding, PjRtBuffers pjrt_buffers) {
   TF_RETURN_IF_ERROR(ValidateArrayCreationInput(sharding, pjrt_buffers));
@@ -205,7 +211,7 @@ StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
                                  std::move(sharding), std::move(pjrt_buffers));
 }
 
-StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
+absl::StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
     PjRtCompatibleClient* client, std::shared_ptr<PjRtBuffer> pjrt_buffer) {
   TF_ASSIGN_OR_RETURN(auto dtype, ToDType(pjrt_buffer->element_type()));
   Shape shape(pjrt_buffer->dimensions());
@@ -216,7 +222,7 @@ StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
                                  PjRtBuffers({std::move(pjrt_buffer)}));
 }
 
-StatusOr<tsl::RCReference<Array>> PjRtArray::FullyReplicatedShard(
+absl::StatusOr<tsl::RCReference<Array>> PjRtArray::FullyReplicatedShard(
     ArrayCopySemantics semantics) {
   return PjRtArray::Create(client(), GetPjRtBuffer(semantics, 0));
 }
@@ -237,7 +243,7 @@ std::shared_ptr<PjRtBuffer> PjRtArray::GetPjRtBuffer(
   }
 }
 
-StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
+absl::StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
     PjRtCompatibleClient* client, Shape shape, PjRtBuffers pjrt_buffers) {
   TF_ASSIGN_OR_RETURN(auto dtype,
                       xla::ifrt::ToDType(pjrt_buffers.front()->element_type()));
@@ -261,7 +267,7 @@ StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
                            std::move(pjrt_buffers));
 }
 
-StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
+absl::StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
     PjRtCompatibleClient* client, DynamicShape dynamic_shape,
     PjRtBuffers pjrt_buffers) {
   TF_ASSIGN_OR_RETURN(auto dtype,
@@ -311,7 +317,7 @@ PjRtArray::PjRtArray(PjRtCompatibleClient* client, DType dtype,
       sharding_(std::move(sharding)),
       pjrt_buffers_(std::move(pjrt_buffers)) {}
 
-StatusOr<std::vector<tsl::RCReference<Array>>>
+absl::StatusOr<std::vector<tsl::RCReference<Array>>>
 PjRtArray::DisassembleIntoSingleDeviceArrays(ArrayCopySemantics semantics) {
   DCHECK(this);
   std::vector<tsl::RCReference<Array>> result;
@@ -356,7 +362,7 @@ Future<Status> PjRtArray::CopyToHostBuffer(
 
   PjRtBuffer* pjrt_buffer = pjrt_buffers_.front().get();
   absl::Span<const int64_t> dims;
-  StatusOr<std::vector<int64_t>> logical_dims;
+  absl::StatusOr<std::vector<int64_t>> logical_dims;
   if (!pjrt_buffer->has_dynamic_dimensions()) {
     dims = std::get<Shape>(shape_).dims();
   } else {
@@ -401,7 +407,7 @@ Future<Status> PjRtArray::CopyToHostBuffer(
 }
 
 // TODO(yashkatariya): Maybe move this to ifrt::Device?
-StatusOr<PjRtMemorySpace*> GetMemorySpaceFromMemoryKind(
+absl::StatusOr<PjRtMemorySpace*> GetMemorySpaceFromMemoryKind(
     ifrt::Device* device, ifrt::MemoryKind memory_kind) {
   PjRtMemorySpace* memory_space = nullptr;
   for (PjRtMemorySpace* ms : device->memory_spaces()) {
@@ -422,7 +428,7 @@ StatusOr<PjRtMemorySpace*> GetMemorySpaceFromMemoryKind(
   return memory_space;
 }
 
-StatusOr<tsl::RCReference<Array>> PjRtArray::Reshard(
+absl::StatusOr<tsl::RCReference<Array>> PjRtArray::Reshard(
     std::shared_ptr<const Sharding> new_sharding,
     ArrayCopySemantics semantics) {
   DCHECK(this);
@@ -546,10 +552,32 @@ bool PjRtArray::IsDeleted() const {
 
 std::string PjRtArray::DebugString() const {
   DCHECK(this);
+  absl::StatusOr<std::unique_ptr<PjRtLayout>> layout_ptr = layout();
+  std::string layout_str =
+      layout_ptr.ok() ? (*layout_ptr)->ToString() : "<unknown>";
+
   return absl::StrFormat(
-      "PjRtArray(dtype=%s; shape=%s; sharding=%s)", dtype_.DebugString(),
+      "PjRtArray(dtype=%s; shape=%s; sharding=%s; layout=%s)",
+      dtype_.DebugString(),
       std::visit([](const auto& shape) { return shape.DebugString(); }, shape_),
-      sharding_->DebugString());
+      sharding_->DebugString(), layout_str);
+}
+
+// TODO(b/330198879): populate layout at construction instead of accessing PJRT
+// buffer directly for consistency with Pathways.
+absl::StatusOr<std::unique_ptr<PjRtLayout>> PjRtArray::layout() const {
+  CHECK(!pjrt_buffers_.empty());
+  std::unique_ptr<PjRtLayout> layout = pjrt_buffers_[0]->layout();
+#ifndef NDEBUG
+  for (int i = 1; i < pjrt_buffers_.size(); ++i) {
+    std::unique_ptr<PjRtLayout> layout_i = pjrt_buffers_[i]->layout();
+    DCHECK(*layout == *layout_i)
+        << "PjRtArray has mismatched layouts across shards! "
+        << "shard 0: " << layout->ToString() << ", shard " << i << ": "
+        << layout_i->ToString();
+  }
+#endif
+  return layout;
 }
 
 }  // namespace ifrt

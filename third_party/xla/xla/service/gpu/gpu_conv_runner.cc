@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,18 +15,32 @@ limitations under the License.
 
 #include "xla/service/gpu/gpu_conv_runner.h"
 
+#include <algorithm>
+#include <cstdint>
+#include <optional>
+#include <tuple>
+#include <type_traits>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
-#include "absl/strings/str_cat.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/layout_util.h"
+#include "absl/types/span.h"
+#include "Eigen/Core"  // from @eigen_archive
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/stream_executor_util.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status_macros.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/dnn.h"
+#include "xla/stream_executor/lazy_op_runner.h"
 #include "xla/util.h"
+#include "tsl/platform/ml_dtypes.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -49,9 +63,8 @@ absl::Status RunGpuConvUnfused(const GpuConvParams& params, se::Stream* stream,
                                DeviceMemory<OutputType> output_buf,
                                DeviceMemoryBase scratch_memory) {
   if (params.config->conv_result_scale != 1) {
-    return InternalError(
-        "StreamExecutor doesn't support scaled convolution: %lf.",
-        params.config->conv_result_scale);
+    return Internal("StreamExecutor doesn't support scaled convolution: %lf.",
+                    params.config->conv_result_scale);
   }
 
   TF_ASSIGN_OR_RETURN(se::dnn::ConvolutionKind kind,
@@ -95,9 +108,8 @@ absl::Status RunGpuConvGraph(const GpuConvParams& params, se::Stream* stream,
                              DeviceMemory<OutputType> output_buf,
                              DeviceMemoryBase scratch_memory) {
   if (params.config->conv_result_scale != 1) {
-    return InternalError(
-        "StreamExecutor doesn't support scaled convolution: %lf.",
-        params.config->conv_result_scale);
+    return Internal("StreamExecutor doesn't support scaled convolution: %lf.",
+                    params.config->conv_result_scale);
   }
 
   TF_ASSIGN_OR_RETURN(se::dnn::ConvolutionKind kind,
@@ -151,7 +163,7 @@ absl::Status RunGpuConvForwardActivation(
   // If there is no side input, use output as the side input.
   if (side_input.is_null()) {
     if (params.config->fusion->side_input_scale != 0) {
-      return InternalError(
+      return Internal(
           "Side input scale is not 0, yet no side input buffer is "
           "provided");
     }
@@ -254,7 +266,7 @@ absl::Status RunGpuConvInternalImpl(const GpuConvParams& params,
           params, stream, options, input_buf, filter_buf, output_buf,
           scratch_memory);
     default:
-      return InternalError(
+      return Internal(
           "Only convolution kinds kForward and kForwardActivation are "
           "supported for integer types");
   }
@@ -283,7 +295,7 @@ absl::Status RunGpuConvImpl(const GpuConvParams& params, se::Stream* stream,
     if (options.runner_cache) {
       algorithm = options.runner_cache->ToAlgorithmDesc();
     }
-    return InternalError(
+    return Internal(
         "Unable to launch convolution with type %s and algorithm %s",
         CudnnConvKindToString(params.config->kind), algorithm.ToString());
   }
@@ -350,13 +362,13 @@ absl::StatusOr<GpuConvConfig> GetGpuConvConfig(
       config.output_shape = operand1_shape;
       break;
     default:
-      return InternalError("Unknown convolution kind");
+      return Internal("Unknown convolution kind");
   }
 
   if (config.kind == CudnnConvKind::kForwardActivation) {
     if (!se::dnn::ActivationMode_IsValid(backend_config.activation_mode())) {
-      return InternalError("Bad activation mode: %s",
-                           backend_config.ShortDebugString());
+      return Internal("Bad activation mode: %s",
+                      backend_config.ShortDebugString());
     }
 
     GpuConvConfig::FusionConfig fusion;
@@ -603,14 +615,14 @@ absl::Status RunGpuConv(const gpu::GpuConvConfig& config,
   switch (input_primitive_type) {
     case F8E4M3FN:
       if (config.kind != CudnnConvKind::kForwardGraph) {
-        return InternalError("FP8 convolution requires graph mode.");
+        return Internal("FP8 convolution requires graph mode.");
       }
       return RunGpuConvImpl<tsl::float8_e4m3fn, tsl::float8_e4m3fn,
                             tsl::float8_e4m3fn>(params, stream, scratch_memory,
                                                 options);
     case F8E5M2:
       if (config.kind != CudnnConvKind::kForwardGraph) {
-        return InternalError("FP8 convolution requires graph mode.");
+        return Internal("FP8 convolution requires graph mode.");
       }
       return RunGpuConvImpl<tsl::float8_e5m2, tsl::float8_e5m2,
                             tsl::float8_e5m2>(params, stream, scratch_memory,

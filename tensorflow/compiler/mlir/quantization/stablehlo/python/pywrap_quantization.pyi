@@ -25,10 +25,34 @@ def static_range_ptq(
     *,
     signature_keys: list[str],
     signature_def_map_serialized: dict[str, bytes],
-    function_aliases: dict[str, str],
     py_function_library: py_function_lib.PyFunctionLibrary,
-    # Value type: RepresentativeDatasetFile.
-    representative_dataset_file_map_serialized: dict[str, bytes],
 ) -> Any: ...  # Status
+
+# LINT.ThenChange()
+
+# LINT.IfChange(weight_only_ptq)
+def weight_only_ptq(
+    src_saved_model_path: str,
+    dst_saved_model_path: str,
+    quantization_config_serialized: bytes,
+    *,
+    signature_keys: list[str],
+    signature_def_map_serialized: dict[str, bytes],
+    py_function_library: py_function_lib.PyFunctionLibrary,
+) -> Any: ...  # Status
+
+# LINT.ThenChange()
+
+# LINT.IfChange(populate_default_configs)
+def populate_default_configs(
+    user_provided_quantization_config_serialized: bytes,
+) -> bytes: ...  # QuantizationConfig
+
+# LINT.ThenChange()
+
+# LINT.IfChange(expand_preset_configs)
+def expand_preset_configs(
+    quantization_config_serialized: bytes,
+) -> bytes: ...  # QuantizationConfig
 
 # LINT.ThenChange()

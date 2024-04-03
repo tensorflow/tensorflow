@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -37,7 +37,7 @@ namespace xla {
 
 namespace {
 
-StatusOr<bool> RunWhileDCE(
+absl::StatusOr<bool> RunWhileDCE(
     HloModule* module, HloLivenessAnalysis* liveness,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
@@ -105,7 +105,7 @@ StatusOr<bool> RunWhileDCE(
 
 }  // namespace
 
-StatusOr<bool> HloModuleDCE::Run(
+absl::StatusOr<bool> HloModuleDCE::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   VLOG(2) << "Before HloModuleDCE:";

@@ -179,6 +179,13 @@ message ConvolutionDescriptorProto {
   string name = 7;
 }
 
+// NormKind kind
+enum NormKind {
+  LAYER_FWD_INFER = 0;
+  LAYER_FWD_TRAIN = 1;
+  LAYER_BWD = 2;
+}
+
 // FusedMHAKind kind
 enum FusedMHAKind {
   BMM1_OUTPUT_UNKNOWN = 0;

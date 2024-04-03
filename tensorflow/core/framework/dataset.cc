@@ -709,6 +709,10 @@ void WarnProtoConflicts(const protobuf::Message& src, protobuf::Message* dst) {
                         set_dst.end(), std::back_inserter(in_both));
 
   for (auto field : in_both) {
+    // Used for Job Instrumentation, users should not be warned.
+    if (field->name() == "framework_type") {
+      continue;
+    }
     if (field->type() == protobuf::FieldDescriptor::TYPE_MESSAGE) {
       WarnProtoConflicts(reflection->GetMessage(src, field),
                          reflection->MutableMessage(dst, field));
@@ -827,13 +831,19 @@ Status DatasetBase::CheckRandomAccessCompatible(const int64 index) const {
 
 Status DatasetBase::Get(OpKernelContext* ctx, int64 index,
                         std::vector<Tensor>* out_tensors) const {
-  return errors::Unimplemented(
-      "Random access is not implemented for this dataset.");
+  return errors::Unimplemented("Random access is not implemented for dataset ",
+                               DebugString());
 }
 
-StatusOr<DatasetBase*> DatasetBase::Finalize(
+Status DatasetBase::Get(AnyContext ctx, int64 index,
+                        std::vector<Tensor>* out_tensors) const {
+  return errors::Unimplemented("Random access is not implemented for dataset ",
+                               DebugString());
+}
+
+absl::StatusOr<DatasetBase*> DatasetBase::Finalize(
     OpKernelContext* ctx,
-    std::function<StatusOr<core::RefCountPtr<DatasetBase>>()>
+    std::function<absl::StatusOr<core::RefCountPtr<DatasetBase>>()>
         make_finalized_dataset) const {
   mutex_lock l(mu_);
   if (!finalized_dataset_) {

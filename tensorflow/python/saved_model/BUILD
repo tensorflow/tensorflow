@@ -874,6 +874,7 @@ tf_py_strict_test(
         ":loader",
         ":pywrap_saved_model",
         ":save",
+        "//tensorflow/python/checkpoint/sharding:sharding_policies",
         "//tensorflow/python/eager:test",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:ops",
@@ -929,7 +930,7 @@ tf_python_pybind_extension(
         "//tensorflow/python/checkpoint:__subpackages__",
         "//tensorflow/python/tpu:__pkg__",
         "//tensorflow/python/training:__subpackages__",
-        "//tensorflow/tools/pip_package/v2:__subpackages__",
+        "//tensorflow/tools/pip_package:__subpackages__",
     ],
     deps = [
         # placeholder for index annotation deps

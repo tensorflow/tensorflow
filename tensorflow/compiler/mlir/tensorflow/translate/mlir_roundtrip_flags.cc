@@ -95,7 +95,7 @@ Status ParseInputArrayInfo(absl::string_view array_names,
   return ParseInputArrayInfo(node_names, node_dtypes, node_shapes, inputs);
 }
 
-static StatusOr<std::vector<int>> ParseShapeStr(
+static absl::StatusOr<std::vector<int>> ParseShapeStr(
     absl::string_view node_shapes_str) {
   std::vector<int> dims;
   for (absl::string_view dim_str : absl::StrSplit(node_shapes_str, ',')) {
@@ -241,7 +241,7 @@ Status ParseNodeNames(absl::string_view names_str,
   return OkStatus();
 }
 
-static StatusOr<std::vector<std::string>> ParseDTypesHelper(
+static absl::StatusOr<std::vector<std::string>> ParseDTypesHelper(
     absl::string_view data_types_str) {
   bool inside_subtype = false;
   int cur_pos = 0;

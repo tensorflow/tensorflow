@@ -21,6 +21,7 @@ from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
 from tensorflow.python.framework import combinations
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
 
@@ -222,6 +223,35 @@ class RebatchTest(test_base.DatasetTestBase, parameterized.TestCase):
   @combinations.generate(
       combinations.times(test_base.default_test_combinations(),
                          combinations.combine(drop_remainder=[True, False])))
+  def testEmptyTensors(self, drop_remainder):
+    """Tests empty tensors case.
+
+    Args:
+      drop_remainder: whether to drop the remainder.
+
+    The implementation of rebatch might move the input data.
+    This test ensures the empty buffer is handled correctly.
+    """
+    new_batch_size = 4
+    dataset = dataset_ops.Dataset.range(8)
+    dataset = dataset.map(lambda x: array_ops.reshape((), (5, 0)))
+    dataset = dataset.batch(2)
+    rebatched_dataset = dataset.rebatch(
+        batch_size=new_batch_size, drop_remainder=drop_remainder
+    )
+
+    expected_output = [
+        array_ops.reshape((), (new_batch_size, 5, 0))
+        for _ in range(8 // new_batch_size)
+    ]
+    self.assertDatasetProduces(rebatched_dataset, expected_output)
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(drop_remainder=[True, False]),
+      )
+  )
   def testScalarBatchSizeInput(self, drop_remainder):
     dataset = dataset_ops.Dataset.range(8).batch(4, drop_remainder=True)
     rebatched_dataset = dataset.rebatch(batch_size=2,

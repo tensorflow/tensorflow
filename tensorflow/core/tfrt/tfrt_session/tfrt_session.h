@@ -15,16 +15,20 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TFRT_TFRT_SESSION_TFRT_SESSION_H_
 #define TENSORFLOW_CORE_TFRT_TFRT_SESSION_TFRT_SESSION_H_
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 
 #include "absl/status/status.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
+#include "tensorflow/compiler/mlir/tfrt/backend_compiler.h"
 #include "tensorflow/compiler/mlir/tfrt/translate/tfrt_compile_options.h"
 #include "tensorflow/core/common_runtime/session_factory.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/tfrt/runtime/runtime.h"
+#include "tsl/platform/thread_annotations.h"
 
 namespace tensorflow {
 
@@ -50,7 +54,9 @@ struct TfrtSessionOptions {
   bool enable_mlrt = false;
   // TODO(b/319186082): Currently this is set through a separate call to
   // `InitializeTfrtSession`, but should be set in the same call.
+  // Should only set one of `use_tpu` and `backend_compiler`.
   bool use_tpu = false;
+  tensorflow::BackendCompiler* backend_compiler = nullptr;
 };
 
 // Factory class to create `TfrtSession` instances.
@@ -68,8 +74,8 @@ class TfrtSessionFactory : public tensorflow::SessionFactory {
   //
   // Due to lack of applications and a concern for the ordering of initializers,
   // this may only be called once.
-  static void RegisterInitializer(
-      std::function<absl::Status(tfrt_stub::Runtime*)> initializer);
+  using RuntimeInitializer = absl::Status (*)(tfrt_stub::Runtime*);
+  static void RegisterInitializer(RuntimeInitializer initializer);
 
   // May not be called within code holding mutex_.
   static tfrt_stub::Runtime* GetRuntime();
@@ -96,6 +102,7 @@ class TfrtSessionFactory : public tensorflow::SessionFactory {
   bool tpu_use_tpu_runner_ TF_GUARDED_BY(mutex_) = false;
   std::unique_ptr<ThreadPoolManager> thread_pool_manager_ TF_GUARDED_BY(mutex_);
   bool enable_mlrt_ TF_GUARDED_BY(mutex_) = false;
+  tensorflow::BackendCompiler* backend_compiler_ TF_GUARDED_BY(mutex_);
 };
 
 // Configures the TfrtSessionFactory according to `options`. Should not be

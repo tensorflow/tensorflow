@@ -106,13 +106,13 @@ jobs:
         map sigbuild-r2.14-clang-python3.10 2.14-python3.10
         map sigbuild-r2.14-clang-python3.11 2.14-python3.11
         # TF 2.16
-        map sigbuild-r2.16 2.16-python3.9
+        map sigbuild-r2.16 2.16-python3.11
         map sigbuild-r2.16-python3.9 2.16-python3.9
         map sigbuild-r2.16-python3.10 2.16-python3.10
         map sigbuild-r2.16-python3.11 2.16-python3.11
         map sigbuild-r2.16-python3.12 2.16-python3.12
         # TF 2.16 + Clang (containers are the same, but env vars in configs.bzl are different)
-        map sigbuild-r2.16-clang 2.16-python3.9
+        map sigbuild-r2.16-clang 2.16-python3.11
         map sigbuild-r2.16-clang-python3.9 2.16-python3.9
         map sigbuild-r2.16-clang-python3.10 2.16-python3.10
         map sigbuild-r2.16-clang-python3.11 2.16-python3.11
@@ -123,7 +123,7 @@ jobs:
         title: Update the RBE images to the latest container versions
         committer: TensorFlow Release Automation <jenkins@tensorflow.org>
         token: ${{ secrets.JENKINS_TOKEN }}
-        reviewers: angerson,mihaimaruseac,learning-to-play,nitins17
+        reviewers: mihaimaruseac,learning-to-play,nitins17
         body: |
           This PR was created by a GitHub Actions workflow to update all the SIG Build-based RBE containers to the most recent containers. See:
 

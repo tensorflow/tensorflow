@@ -40,7 +40,7 @@ Status CheckLayoutIsSupported(const Layout& layout) {
     return errors::InvalidArgument("Large mesh rank size is not supported",
                                    layout.ToString());
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ValidateShapeAndGetNewShape(
@@ -70,7 +70,7 @@ Status ValidateShapeAndGetNewShape(
     }
     new_random_shape.emplace_back(op_dimension_size / dimension_sharding);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Get a device seed for this layout and device_id.

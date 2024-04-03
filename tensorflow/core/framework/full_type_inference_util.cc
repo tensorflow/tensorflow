@@ -70,7 +70,7 @@ TypeInferenceFn ReplicateInput(int i, int n) {
 TypeInferenceFn Merge() {
   return [](const TypeRefVector& input_types,
             const FunctionTypeInferrer& infer_function_rets)
-             -> StatusOr<FullTypeDef> {
+             -> absl::StatusOr<FullTypeDef> {
     DCHECK(!input_types.empty());
 
     FullTypeDef merged;
@@ -109,7 +109,7 @@ TypeInferenceFn Merge() {
 TypeInferenceFn Encode(FullTypeId t, int i) {
   return [t, i](const TypeRefVector& input_types,
                 const FunctionTypeInferrer& infer_function_rets)
-             -> StatusOr<FullTypeDef> {
+             -> absl::StatusOr<FullTypeDef> {
     DCHECK(input_types.size() >= i);
 
     FullTypeDef ret_type;
@@ -131,7 +131,7 @@ TypeInferenceFn Encode(FullTypeId t, int i) {
 TypeInferenceFn Decode(FullTypeId t, int i) {
   return [t, i](const TypeRefVector& input_types,
                 const FunctionTypeInferrer& infer_function_rets)
-             -> StatusOr<FullTypeDef> {
+             -> absl::StatusOr<FullTypeDef> {
     DCHECK(input_types.size() >= i);
 
     const FullTypeDef& in_t = input_types[i].get();
@@ -159,7 +159,7 @@ TypeInferenceFn Decode(FullTypeId t, int i) {
 TypeInferenceFn UnaryContainerCreate(FullTypeId t, int element_idx) {
   return [t, element_idx](const TypeRefVector& input_types,
                           const FunctionTypeInferrer& infer_function_rets)
-             -> StatusOr<FullTypeDef> {
+             -> absl::StatusOr<FullTypeDef> {
     DCHECK(input_types.size() >= element_idx);
 
     FullTypeDef ret_type;
@@ -177,7 +177,7 @@ TypeInferenceFn UnaryContainerAdd(FullTypeId t, int container_idx,
   return [t, container_idx, element_idx, homogeneous](
              const TypeRefVector& input_types,
              const FunctionTypeInferrer& infer_function_rets)
-             -> StatusOr<FullTypeDef> {
+             -> absl::StatusOr<FullTypeDef> {
     DCHECK(input_types.size() >= container_idx);
     DCHECK(input_types.size() >= element_idx);
 
@@ -246,7 +246,7 @@ TypeInferenceFn MultiaryUnstack(
     FullTypeId t, std::function<FullTypeDef(const FullTypeDef&)> unstack) {
   return [t, unstack](const TypeRefVector& input_types,
                       const FunctionTypeInferrer& infer_function_rets)
-             -> StatusOr<FullTypeDef> {
+             -> absl::StatusOr<FullTypeDef> {
     FullTypeDef ret_type;
     ret_type.set_type_id(TFT_PRODUCT);
     FullTypeDef* cont_t = ret_type.add_args();
@@ -279,7 +279,7 @@ TypeInferenceFn ContainerMap(
     std::function<FullTypeDef(const FullTypeDef&)> map) {
   return [t, input_idx, map](const TypeRefVector& input_types,
                              const FunctionTypeInferrer& infer_function_rets)
-             -> StatusOr<FullTypeDef> {
+             -> absl::StatusOr<FullTypeDef> {
     DCHECK_GE(input_types.size(), input_idx);
     const FullTypeDef& in_cont_t = input_types.at(input_idx).get();
     FullTypeDef ret_type;
@@ -316,7 +316,7 @@ TypeInferenceFn MapCovariant(FullTypeId t, FullTypeId u, int input_idx) {
   return
       [t, u, input_idx](const TypeRefVector& input_types,
                         const FunctionTypeInferrer& infer_function_rets)
-          -> StatusOr<FullTypeDef> {
+          -> absl::StatusOr<FullTypeDef> {
         DCHECK_GE(input_types.size(), input_idx);
         const FullTypeDef& in_t = input_types.at(input_idx).get();
         FullTypeDef ret_type;
@@ -339,7 +339,7 @@ TypeInferenceFn MapCovariant(FullTypeId t, FullTypeId u, int input_idx) {
 TypeInferenceFn FunctionCall(const string& func_attr_name) {
   return [func_attr_name](const TypeRefVector& input_types,
                           const FunctionTypeInferrer& infer_function_rets)
-             -> StatusOr<FullTypeDef> {
+             -> absl::StatusOr<FullTypeDef> {
     // TODO(b/224776031): Look up function name from attribute here.
     // This could be done by passing the node attributes to the lambda.
     // TODO(b/224776031): Is there a cleaner way to represent these
@@ -351,7 +351,7 @@ TypeInferenceFn FunctionCall(const string& func_attr_name) {
 TypeInferenceFn Tuple(const std::vector<TypeInferenceFn>& func_list) {
   return [func_list](const TypeRefVector& input_types,
                      const FunctionTypeInferrer& infer_function_rets)
-             -> StatusOr<FullTypeDef> {
+             -> absl::StatusOr<FullTypeDef> {
     FullTypeDef ret_type;
     ret_type.set_type_id(TFT_PRODUCT);
     for (const auto& func : func_list) {

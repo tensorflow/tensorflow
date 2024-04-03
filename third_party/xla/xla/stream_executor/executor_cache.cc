@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2015 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -53,10 +53,8 @@ absl::StatusOr<StreamExecutor*> ExecutorCache::GetOrCreate(
   // initialization of different entries.
   absl::MutexLock lock{&entry->configurations_mutex};
   for (const auto& iter : entry->configurations) {
-    if (iter.first.device_options == config.device_options) {
-      VLOG(2) << "hit in cache";
-      return iter.second.get();
-    }
+    VLOG(2) << "hit in cache";
+    return iter.second.get();
   }
 
   VLOG(2) << "building executor";
@@ -107,10 +105,7 @@ absl::StatusOr<StreamExecutor*> ExecutorCache::Get(
   }
 
   for (auto& [entry_config, entry_executor] : entry->configurations) {
-    if (entry_config.device_options == config.device_options) {
-      VLOG(2) << "hit in cache for device ordinal " << config.ordinal;
-      return entry_executor.get();
-    }
+    return entry_executor.get();
   }
 
   return absl::NotFoundError("No executor found with a matching config.");

@@ -44,6 +44,51 @@ limitations under the License.
 namespace mlir {
 namespace odml {
 
+static bool isDenseI64Array(llvm::StringRef op_name,
+                            llvm::StringRef field_name) {
+  if (op_name == "stablehlo.broadcast" && field_name == "broadcast_sizes")
+    return true;
+  if (op_name == "stablehlo.broadcast_in_dim" &&
+      field_name == "broadcast_dimensions")
+    return true;
+  if ((op_name == "stablehlo.convolution" ||
+       op_name == "stablehlo.dynamic_conv") &&
+      (field_name == "window_strides" || field_name == "lhs_dilation" ||
+       field_name == "rhs_dilation"))
+    return true;
+  if (op_name == "stablehlo.dynamic_broadcast_in_dim" &&
+      (field_name == "broadcast_dimensions" ||
+       field_name == "known_expanding_dimensions" ||
+       field_name == "known_nonexpanding_dimensions"))
+    return true;
+  if ((op_name == "stablehlo.dynamic_slice" || op_name == "stablehlo.gather") &&
+      field_name == "slice_sizes")
+    return true;
+  if (op_name == "stablehlo.fft" && field_name == "fft_length") return true;
+  if ((op_name == "stablehlo.map" || op_name == "stablehlo.reduce" ||
+       op_name == "stablehlo.reverse") &&
+      field_name == "dimensions")
+    return true;
+  if (op_name == "stablehlo.pad" &&
+      (field_name == "edge_padding_low" || field_name == "edge_padding_high" ||
+       field_name == "interior_padding"))
+    return true;
+  if (op_name == "stablehlo.reduce_window" &&
+      (field_name == "window_dimensions" || field_name == "window_strides" ||
+       field_name == "base_dilations" || field_name == "window_dilations"))
+    return true;
+  if (op_name == "stablehlo.select_and_scatter" &&
+      (field_name == "window_dimensions" || field_name == "window_strides"))
+    return true;
+  if (op_name == "stablehlo.slice" &&
+      (field_name == "start_indices" || field_name == "limit_indices" ||
+       field_name == "strides"))
+    return true;
+  if (op_name == "stablehlo.transpose" && field_name == "permutation")
+    return true;
+  return false;
+}
+
 class TflToStablehloPass
     : public mlir::PassWrapper<TflToStablehloPass,
                                mlir::OperationPass<mlir::func::FuncOp>> {
@@ -90,6 +135,16 @@ class TflToStablehloPass
           attrs.push_back(named_attr);
           break;
         }
+        case flexbuffers::FBT_VECTOR_BOOL: {
+          llvm::SmallVector<bool> vec;
+          const auto& vector = value.AsTypedVector();
+          for (size_t i = 0; i < vector.size(); i++) {
+            vec.push_back(vector[i].AsBool());
+          }
+          attrs.push_back(
+              builder->getNamedAttr(key, builder->getDenseBoolArrayAttr(vec)));
+          break;
+        }
         case flexbuffers::FBT_VECTOR_INT: {
           const auto& vector = value.AsTypedVector();
           std::vector<int64_t> vec;
@@ -104,11 +159,7 @@ class TflToStablehloPass
             shape.push_back(vec.size());
           }
           Attribute value;
-          if (op_name == "stablehlo.broadcast" ||
-              op_name == "stablehlo.dynamic_slice" ||
-              op_name == "stablehlo.fft" || op_name == "stablehlo.pad" ||
-              op_name == "stablehlo.reverse" || op_name == "stablehlo.slice" ||
-              op_name == "stablehlo.transpose") {
+          if (isDenseI64Array(op_name, key)) {
             value = builder->getDenseI64ArrayAttr(vec);
           } else {
             RankedTensorType ty = tensorflow::GetTypeFromTFTensorShape(

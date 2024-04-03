@@ -115,7 +115,7 @@ TEST_P(XPlaneToToolsTest, ToolsList) {
   std::vector<std::string> expected_tools = {"trace_viewer",
                                              "overview_page",
                                              "input_pipeline_analyzer",
-                                             "tensorflow_stats",
+                                             "framework_op_stats",
                                              "memory_profile",
                                              "pod_viewer",
                                              "tf_data_bottleneck_analysis",

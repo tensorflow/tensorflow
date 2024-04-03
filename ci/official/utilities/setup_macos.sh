@@ -74,17 +74,11 @@ fi
 # it. TFCI Mac VMs only have one Python version installed so we need to install
 # the other versions manually.
 if [[ "${TFCI_MACOS_PYENV_INSTALL_ENABLE}" == 1 ]]; then
-  pyenv install "$TFCI_PYTHON_VERSION"
+  # Install the necessary Python, unless it's already present
+  pyenv install -s "$TFCI_PYTHON_VERSION"
   pyenv local "$TFCI_PYTHON_VERSION"
   # Do a sanity check to make sure that we using the correct Python version
   python --version
-fi
-
-if [[ "$TFCI_PYTHON_VERSION" == "3.12" ]]; then
-  # dm-tree (Keras v3 dependency) doesn't have pre-built wheels for 3.12 yet.
-  # Having CMake allows building them.
-  # Once the wheels are added, this should be removed - b/308399490.
-  brew install cmake
 fi
 
 # TFCI Mac VM images do not have twine installed by default so we need to

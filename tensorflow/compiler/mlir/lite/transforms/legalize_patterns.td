@@ -70,6 +70,9 @@ def ExtractSingleElementAsInt32 : NativeCodeCall<
 def CreateTFCastToInt32Op : NativeCodeCall<
   "CreateCastToInt32($0, $_loc, $_builder)">;
 
+def CreateInt32ConstOrCast : NativeCodeCall<
+  "CreateInt32ConstOrCast($0, $_loc, $_builder)">;
+
 def CreateNoneValue : NativeCodeCall<
   "$_builder.create<TFL::NoValueOp>($0.getLoc(), $_builder.getUnitAttr())">;
 
@@ -587,10 +590,7 @@ def LegalizeCumsum : Pat<
 
 def LegalizeReshape : Pat<
   (TF_ReshapeOp $input, $shape),
-  (TFL_ReshapeOp $input, (CreateTFCastToInt32Op $shape))>;
-
-def ZeroIntAttr
-  : AttrConstraint<CPred<"$_self.cast<::mlir::IntegerAttr>().getInt() == 0">>;
+  (TFL_ReshapeOp $input, (CreateInt32ConstOrCast $shape))>;
 
 def LegalizeStridedSlice : Pat<
   (TF_StridedSliceOp

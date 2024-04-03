@@ -1,6 +1,6 @@
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -24,10 +24,9 @@ cc_library(
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels:lstm_shared",
         "//tensorflow/lite/kernels:op_macros",
-        "//tensorflow/lite/kernels/internal:kernel_utils",
-        "//tensorflow/lite/kernels/internal:optimized_base",
         "//tensorflow/lite/kernels/internal:reference",
         "//tensorflow/lite/kernels/internal:tensor_utils",
+        "@ruy//ruy/profiler:instrumentation",
     ],
 )
 
@@ -45,8 +44,6 @@ cc_library(
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels:lstm_shared",
         "//tensorflow/lite/kernels:op_macros",
-        "//tensorflow/lite/kernels/internal:kernel_utils",
-        "//tensorflow/lite/kernels/internal:optimized_base",
         "//tensorflow/lite/kernels/internal:reference",
         "//tensorflow/lite/kernels/internal:tensor_utils",
     ],

@@ -87,7 +87,7 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status CheckExternalState() const override {
@@ -116,7 +116,7 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
         {std::make_pair(kFunc, f),
          std::make_pair(kTarguments, other_arguments_types_attr)},  // Attrs
         output));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:
@@ -144,7 +144,7 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
       do {
         if (!input_impl_) {
           *end_of_sequence = true;
-          return OkStatus();
+          return absl::OkStatus();
         }
         if (current_element_iterator_) {
           // We are currently processing a mapped element, so try to get the
@@ -162,7 +162,7 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
           if (!end_of_element) {
             // Produce the subelement as output.
             *end_of_sequence = false;
-            return OkStatus();
+            return absl::OkStatus();
           }
           // Since this sub-iterator is done,
           // we can commit `input_ckpt_` to `ctx->checkpoint()`
@@ -186,7 +186,7 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
         input_ckpt_->Merge(input_ctx->checkpoint());
         if (*end_of_sequence) {
           input_impl_.reset();
-          return OkStatus();
+          return absl::OkStatus();
         }
 
         TF_RETURN_IF_ERROR(
@@ -203,7 +203,7 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
       while (*num_skipped < num_to_skip) {
         if (!input_impl_) {
           *end_of_sequence = true;
-          return OkStatus();
+          return absl::OkStatus();
         }
         if (current_element_iterator_) {
           // We are currently processing a mapped element, so try to get the
@@ -256,13 +256,13 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
         if (*end_of_sequence) {
           input_impl_.reset();
           *end_of_sequence = true;
-          return OkStatus();
+          return absl::OkStatus();
         }
         TF_RETURN_IF_ERROR(
             BuildCurrentElementIteratorLocked(ctx, /*is_get_next=*/false));
       }
       *end_of_sequence = false;
-      return OkStatus();
+      return absl::OkStatus();
       // LINT.ThenChange(:GetNextInternal)
     }
 
@@ -298,7 +298,7 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
           TF_RETURN_IF_ERROR(SaveInput(ctx, writer, current_element_iterator_));
         }
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     Status RestoreInternal(IteratorContext* ctx,
@@ -329,7 +329,7 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
           TF_RETURN_IF_ERROR(RestoreCurrentElementIterator(ctx, reader));
         }
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
 
    private:
@@ -367,7 +367,7 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
       TF_RETURN_IF_ERROR(
           BuildCurrentElementIteratorLocked(ctx, /*is_get_next=*/false));
       TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, current_element_iterator_));
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     Status RestoreCurrentElementIteratorSymbolic(IteratorContext* ctx,
@@ -388,7 +388,7 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
       TF_RETURN_IF_ERROR(
           BuildCurrentElementIteratorLocked(ctx, /*is_get_next=*/false));
       TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, current_element_iterator_));
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     mutex mu_;

@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -65,6 +65,8 @@ int main(int argc, char** argv) {
   std::string target_cpu = argv[1];
   if (target_cpu == "k8") {
     triple_string = "x86_64-none-linux-gnu";
+  } else if (target_cpu == "darwin_arm64") {
+    triple_string = "arm64-apple-darwin";
   } else if (target_cpu == "darwin") {
     triple_string = "x86_64-apple-macosx";
   } else if ((target_cpu == "arm") || (target_cpu == "aarch64")) {

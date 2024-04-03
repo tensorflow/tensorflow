@@ -766,7 +766,7 @@ class TPUStrategyV1(distribute_lib.StrategyV1):
           host. Note that this can have side-effects on performance, hooks,
           metrics, summaries etc.
           This parameter is only used when Distribution Strategy is used with
-          estimator or keras.
+          Keras.
       device_assignment: Optional `tf.tpu.experimental.DeviceAssignment` to
           specify the placement of replicas on the TPU cluster. Currently only
           supports the usecase of using a single core within a TPU cluster.

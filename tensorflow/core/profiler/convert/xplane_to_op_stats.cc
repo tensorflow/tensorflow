@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/device_caps_utils.h"
 #include "tensorflow/core/profiler/utils/event_span.h"
 #include "tensorflow/core/profiler/utils/hardware_type_utils.h"
+#include "tensorflow/core/profiler/utils/hlo_proto_map.h"
 #include "tensorflow/core/profiler/utils/kernel_stats_utils.h"
 #include "tensorflow/core/profiler/utils/math_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
@@ -56,8 +57,6 @@ std::string Hostname(const XSpace& space) {
   if (space.hostnames().empty()) return "localhost";
   DCHECK_EQ(space.hostnames_size(), 1);
   const std::string& hostname = space.hostnames(0);
-  // This shouldn't be a taskname in host:port format.
-  DCHECK(!absl::StrContains(hostname, ':'));
   return hostname;
 }
 
@@ -166,6 +165,15 @@ void PropagateXSpaceDiagnosticsToOpStats(const XSpace& space,
   }
 }
 
+// This function should be idempotent to be called
+void SetProgramIdToNameMap(const HloProtoMap& hlo_proto_map,
+                           tensorflow::profiler::OpStats& op_stats) {
+  auto& program_id_to_name_map = *op_stats.mutable_program_id_to_name_map();
+  for (const auto& [program_id, hlo_proto] : hlo_proto_map) {
+    program_id_to_name_map[program_id] = hlo_proto->hlo_module().name();
+  }
+}
+
 OpStats ConvertXSpaceToOpStats(const XSpace& space,
                                const OpStatsOptions& options) {
   std::vector<const XPlane*> device_planes = FindTensorCorePlanes(space);
@@ -259,6 +267,13 @@ OpStats ConvertXSpaceToOpStats(const XSpace& space,
         (*op_stats.mutable_core_id_to_details())[kDefaultGpuLocalCoreId];
     details.set_hostname(Hostname(space));
   }
+
+  // Set program_id_to_name map in OpStats from Xspace
+  // Will be non-op if the space does not have materialized device traces
+  HloProtoMap hlo_proto_map;
+  hlo_proto_map.AddHloProtosFromXSpace(space);
+  SetProgramIdToNameMap(hlo_proto_map, op_stats);
+
   return op_stats;
 }
 

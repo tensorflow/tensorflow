@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -84,7 +84,7 @@ class CoordinationServiceImpl {
 
 class DistributedRuntimeService {
  public:
-  static xla::StatusOr<std::unique_ptr<DistributedRuntimeService>> Get(
+  static absl::StatusOr<std::unique_ptr<DistributedRuntimeService>> Get(
       const std::string& address,
       std::shared_ptr<::grpc::ServerCredentials> credentials,
       const CoordinationServiceImpl::Options& options);

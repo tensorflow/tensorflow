@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -76,11 +76,11 @@ class EventPool {
   // such as cudaStreamWaitEvent capture the state of the event at the time of
   // the host-side call and are not affected by a later host-side
   // cudaEventRecord.
-  StatusOr<Handle> ThenAllocateAndRecordEvent(se::Stream* stream);
+  absl::StatusOr<Handle> ThenAllocateAndRecordEvent(se::Stream* stream);
 
   // Version of ThenAllocateAndRecordEvent split into two phases; this is
   // sometimes helpful if we want to avoid failures by preallocating events.
-  StatusOr<Handle> AllocateEvent(se::StreamExecutor* executor);
+  absl::StatusOr<Handle> AllocateEvent(se::StreamExecutor* executor);
   void ThenRecordEvent(se::Stream* stream, EventPool::Handle& handle);
 
  private:

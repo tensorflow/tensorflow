@@ -111,6 +111,9 @@ void SetOpMetadataFromHloEventMetadata(
   hlo_event_metadata.ForEachStat([&](const XStatVisitor& stat) {
     if (stat.Type().has_value()) {
       switch (static_cast<StatType>(*stat.Type())) {
+        case StatType::kProgramId:
+          op_metrics->set_hlo_module_id(stat.IntOrUintValue());
+          break;
         case StatType::kHloCategory:
           op_metrics->set_category(std::string(stat.StrOrRefValue()));
           break;

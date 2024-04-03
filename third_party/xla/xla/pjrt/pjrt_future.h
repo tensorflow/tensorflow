@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_PJRT_PJRT_FUTURE_H_
 
 #include <algorithm>
+#include <cstdint>
 #include <functional>
 #include <type_traits>
 #include <utility>

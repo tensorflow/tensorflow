@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,6 +19,9 @@ limitations under the License.
 #include <optional>
 #include <ostream>
 #include <string>
+
+#include "absl/status/statusor.h"
+#include "xla/python/ifrt/dtype.pb.h"
 
 namespace xla {
 namespace ifrt {
@@ -111,6 +114,12 @@ class DType {
   // Returns the bit size of a single element of this DType. Returns
   // std::nullopt if there is no fixed size.
   std::optional<int> bit_size() const;
+
+  // Constructs `DType` from `DTypeProto`.
+  static absl::StatusOr<DType> FromProto(const DTypeProto& proto);
+
+  // Returns a `DTypeProto` representation.
+  DTypeProto ToProto() const;
 
   std::string DebugString() const;
 

@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/pool_allocator.h"
 
 #include "xla/stream_executor/gpu/gpu_init.h"
+#include "xla/stream_executor/platform_manager.h"
 #include "tensorflow/core/common_runtime/device/device_host_allocator.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/platform/test.h"
@@ -26,7 +27,7 @@ namespace {
 
 TEST(PoolAllocatorTest, ZeroSizeBuffers) {
   se::Platform* platform =
-      se::MultiPlatformManager::PlatformWithName(se::GpuPlatformName()).value();
+      se::PlatformManager::PlatformWithName(se::GpuPlatformName()).value();
   PoolAllocator pool(
       2 /*pool_size_limit*/, false /*auto_resize*/,
       new DeviceHostAllocator(
@@ -45,7 +46,7 @@ TEST(PoolAllocatorTest, ZeroSizeBuffers) {
 
 TEST(PoolAllocatorTest, ZeroSizePool) {
   se::Platform* platform =
-      se::MultiPlatformManager::PlatformWithName(se::GpuPlatformName()).value();
+      se::PlatformManager::PlatformWithName(se::GpuPlatformName()).value();
   PoolAllocator pool(
       0 /*pool_size_limit*/, false /*auto_resize*/,
       new DeviceHostAllocator(
@@ -79,7 +80,7 @@ TEST(PoolAllocatorTest, ZeroSizePool) {
 
 TEST(PoolAllocatorTest, Alignment) {
   se::Platform* platform =
-      se::MultiPlatformManager::PlatformWithName(se::GpuPlatformName()).value();
+      se::PlatformManager::PlatformWithName(se::GpuPlatformName()).value();
   PoolAllocator pool(
       0 /*pool_size_limit*/, false /*auto_resize*/,
       new DeviceHostAllocator(
@@ -141,7 +142,7 @@ TEST(PoolAllocatorTest, CudaHostAllocator) {
         free_size += size;
       };
   se::Platform* platform =
-      se::MultiPlatformManager::PlatformWithName(se::GpuPlatformName()).value();
+      se::PlatformManager::PlatformWithName(se::GpuPlatformName()).value();
   DeviceHostAllocator* sub_allocator = new DeviceHostAllocator(
       platform->GetExecutor(se::StreamExecutorConfig(/*ordinal=*/0)).value(),
       0 /*numa_node*/, {alloc_visitor}, {free_visitor});
@@ -243,7 +244,7 @@ TEST(PoolAllocatorTest, Pow2Rounder) {
 
 TEST(PoolAllocatorTest, Name) {
   se::Platform* platform =
-      se::MultiPlatformManager::PlatformWithName(se::GpuPlatformName()).value();
+      se::PlatformManager::PlatformWithName(se::GpuPlatformName()).value();
   PoolAllocator pool(
       2 /*pool_size_limit*/, false /*auto_resize*/,
       new DeviceHostAllocator(

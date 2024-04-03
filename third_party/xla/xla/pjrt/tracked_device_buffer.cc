@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -79,7 +79,7 @@ void BufferSequencingEvent::WaitForEventOnStream(se::Stream* stream) {
     return;
   }
 
-  stream->ThenWaitFor(event_.event());
+  stream->WaitFor(event_.event()).IgnoreError();
   streams_defined_on_.push_back(stream);
 }
 

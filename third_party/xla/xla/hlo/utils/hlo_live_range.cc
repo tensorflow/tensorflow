@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -41,7 +41,7 @@ limitations under the License.
 
 namespace xla {
 /*static*/
-StatusOr<std::unique_ptr<HloLiveRange>> HloLiveRange::Run(
+absl::StatusOr<std::unique_ptr<HloLiveRange>> HloLiveRange::Run(
     const HloSchedule& schedule, const HloAliasAnalysis& alias_analysis,
     const HloComputation* computation, bool module_scoped_analysis) {
   std::unique_ptr<HloLiveRange> hlo_live_range(

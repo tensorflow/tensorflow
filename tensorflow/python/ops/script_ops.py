@@ -331,9 +331,9 @@ def _internal_py_func(func,
     func = EagerFunc(func, Tout, is_grad_func)
 
   # Tying the registered function's lifetime with the current default graph is
-  # not reliable. For example, Estimator-based binaries may switch graphs in
-  # between model training end evaluation, via saved_model. Those binaries work
-  # because the original function is global, and break once the registered
+  # not reliable. For example, a binary may switch graphs in between model
+  # training end evaluation, via saved_model. Those binaries work because the
+  # original function is global, and break once the registered
   # function is an anonymous lambda, like the one produced by do_not_convert.
   # To avoid breaking those cases, we attach the wrapper to the original
   # function so that their lifetime is connected.

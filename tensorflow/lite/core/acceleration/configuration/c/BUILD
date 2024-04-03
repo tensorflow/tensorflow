@@ -194,43 +194,48 @@ tflite_cc_library_with_c_headers_test(
     ],
 )
 
-# This rule invokes the "flatcc" FlatBuffer C API compiler to generate the sources
-# use by the ":configuration_c_fbs" C library rule below.
-genrule(
-    name = "configuration_c_fbs_gen",
-    srcs = ["//tensorflow/lite/acceleration/configuration:configuration.fbs"],
-    outs = [
-        "configuration_builder.h",
-        "configuration_reader.h",
-    ],
-    cmd = "$(location //third_party/flatcc:flatcc) -o$(RULEDIR) --builder --reader $(SRCS)",
-    tools = ["//third_party/flatcc"],
-    # Currently this only enables the API for _building_ configuration flatbuffer objects,
-    # not the APIs for reading them, verifying them, or converting them to/from JSON.
-    # [If you need to enable those, replace the two lines above with the following
-    #   outs = ["configuration_builder.h", "configuration_reader.h", "configuration_verifier.h",
-    #           "configuration_json_parser.h", "configuration_json_printer.h"],
-    #   cmd = "$(location //third_party/flatcc:flatcc) -o$(RULEDIR) " +
-    #         "--builder --reader --verifier --json $(SRCS)",
-    # and then in the rule below -- or preferably in a separate target --
-    # add the additional header files in "hdrs" and fix the dependencies.]
-)
-
-# This rule defines a C library containing the Flatbuffer-generated C API for constructing objects
-# using the FlatBuffer schema generated from tensorflow/lite/acceleration/configuration/configuration.proto,
-# which defines the 'TFLiteSettings' FlatBuffer table and related types.
-tflite_cc_library_with_c_headers_test(
-    name = "configuration_c_fbs",
-    hdrs = [
-        "configuration_builder.h",
-        "configuration_reader.h",
-    ],
-    deps = ["//third_party/flatcc:runtime"],
-)
-
-build_test(
-    name = "configuration_c_fbs_build_test",
-    targets = [
-        ":configuration_c_fbs",
-    ],
-)
+# Commented out under the (b/279852433) because caused an error in the OSS
+# TODO(zhurakovskyi): Uncomment when fixed.
+#
+# copybara:uncomment_begin
+# # This rule invokes the "flatcc" FlatBuffer C API compiler to generate the sources
+# # use by the ":configuration_c_fbs" C library rule below.
+# genrule(
+#     name = "configuration_c_fbs_gen",
+#     srcs = ["//tensorflow/lite/acceleration/configuration:configuration.fbs"],
+#     outs = [
+#         "configuration_builder.h",
+#         "configuration_reader.h",
+#     ],
+#     cmd = "$(location //third_party/flatcc:flatcc) -o$(RULEDIR) --builder --reader $(SRCS)",
+#     tools = ["//third_party/flatcc"],
+#     # Currently this only enables the API for _building_ configuration flatbuffer objects,
+#     # not the APIs for reading them, verifying them, or converting them to/from JSON.
+#     # [If you need to enable those, replace the two lines above with the following
+#     #   outs = ["configuration_builder.h", "configuration_reader.h", "configuration_verifier.h",
+#     #           "configuration_json_parser.h", "configuration_json_printer.h"],
+#     #   cmd = "$(location //third_party/flatcc:flatcc) -o$(RULEDIR) " +
+#     #         "--builder --reader --verifier --json $(SRCS)",
+#     # and then in the rule below -- or preferably in a separate target --
+#     # add the additional header files in "hdrs" and fix the dependencies.]
+# )
+#
+# # This rule defines a C library containing the Flatbuffer-generated C API for constructing objects
+# # using the FlatBuffer schema generated from tensorflow/lite/acceleration/configuration/configuration.proto,
+# # which defines the 'TFLiteSettings' FlatBuffer table and related types.
+# tflite_cc_library_with_c_headers_test(
+#     name = "configuration_c_fbs",
+#     hdrs = [
+#         "configuration_builder.h",
+#         "configuration_reader.h",
+#     ],
+#     deps = ["//third_party/flatcc:runtime"],
+# )
+#
+# build_test(
+#     name = "configuration_c_fbs_build_test",
+#     targets = [
+#         ":configuration_c_fbs",
+#     ],
+# )
+# copybara:uncomment_end

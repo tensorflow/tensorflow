@@ -97,7 +97,7 @@ Status TpuCompilationCacheRpcLookup::Lookup(
     }
     PostLookupLocked(&cache_entry, entry, &removed_entries);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status TpuCompilationCacheRpcLookup::Lookup(
@@ -142,7 +142,7 @@ Status TpuCompilationCacheRpcLookup::Lookup(
     }
     PostLookupLocked(&cache_entry, entry, &removed_entries);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status TpuCompilationCacheRpcLookup::RemoteLookupLocked(
@@ -169,7 +169,7 @@ Status TpuCompilationCacheRpcLookup::RemoteLookupLocked(
   cache_.emplace(local_proto_key, (*cache_entry));
   cache_size_ += (*cache_entry)->size;
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void TpuCompilationCacheRpcLookup::PostLookupLocked(

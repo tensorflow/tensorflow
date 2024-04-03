@@ -1,4 +1,4 @@
-/* Copyright 2024 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2024 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,9 +16,12 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_NCCL_CLIQUE_KEY_H_
 #define XLA_SERVICE_GPU_NCCL_CLIQUE_KEY_H_
 
+#include <array>
 #include <cstdint>
 #include <functional>
+#include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "absl/status/statusor.h"
@@ -46,11 +49,12 @@ namespace xla::gpu {
 
 enum class AsyncStreamKind : int64_t {
   kCollective = 0,  // Stream for asynchronous collective ops.
-  kP2P = 1,         // Stream for P2P Send and Recv ops.
+  kP2P0 = 1,        // One Stream for P2P Send and Recv ops.
+  kP2P1 = 2,        // Another Stream for P2P Send and Recv ops.
 };
 
 constexpr static int64_t kAsyncStreamTotal =
-    static_cast<int64_t>(AsyncStreamKind::kP2P) + 1;
+    static_cast<int64_t>(AsyncStreamKind::kP2P1) + 1;
 
 // Assigns a unique ID to a stream for asynchronous or synchronous execution.
 // These IDs can be used, for example, to look up the NCCL communicator.
@@ -70,10 +74,25 @@ inline uint64_t GetStreamId(
 // executable.
 class NcclCliqueKey {
  public:
-  explicit NcclCliqueKey(std::vector<GlobalDeviceId> devices,
-                         int64_t stream_id = 0);
+  explicit NcclCliqueKey(
+      std::vector<GlobalDeviceId> devices, int64_t stream_id = 0,
+      AsyncStreamKind stream_kind = AsyncStreamKind::kCollective);
 
   absl::Span<const GlobalDeviceId> devices() const;
+
+  int64_t stream_id() const;
+
+  // Returns the rank of the global device in the clique.
+  std::optional<int64_t> rank(GlobalDeviceId id) const;
+
+  // Returns true if this clique is a subset of `other`: both cliques have the
+  // same `stream_id` and all clique devices are part of `other` clique.
+  bool IsSubsetOf(const NcclCliqueKey& other) const;
+
+  // Returns the stream kind for this clique key,
+  // stream kind will be used to specify what configuration
+  // to pass for each type of operation.
+  AsyncStreamKind stream_kind() const { return stream_kind_; }
 
   std::string ToString() const;
 
@@ -81,10 +100,13 @@ class NcclCliqueKey {
   friend H AbslHashValue(H h, const NcclCliqueKey& k);
 
   friend bool operator==(const NcclCliqueKey& a, const NcclCliqueKey& b);
+  friend bool operator<(const NcclCliqueKey& a, const NcclCliqueKey& b);
+  friend bool operator>(const NcclCliqueKey& a, const NcclCliqueKey& b);
 
  private:
-  const std::vector<GlobalDeviceId> devices_;
-  const int64_t stream_id_;
+  std::vector<GlobalDeviceId> devices_;
+  int64_t stream_id_;
+  AsyncStreamKind stream_kind_;
 };
 
 template <typename H>
@@ -93,9 +115,10 @@ H AbslHashValue(H h, const NcclCliqueKey& k) {
 }
 
 bool operator==(const NcclCliqueKey& a, const NcclCliqueKey& b);
+bool operator<(const NcclCliqueKey& a, const NcclCliqueKey& b);
 
 //===----------------------------------------------------------------------===//
-// NcclUniqueId
+// NcclCliqueId
 //===----------------------------------------------------------------------===//
 
 // All collective cliques have a globally unique ID (128 bytes long for NCCL)
@@ -105,9 +128,34 @@ bool operator==(const NcclCliqueKey& a, const NcclCliqueKey& b);
 // host collective operations XLA automatically generates a unique id for local
 // cliques (cliques consisting of devices visible from a process).
 
+// A globally unique collective clique identifier.
+class NcclCliqueId {
+ public:
+  static constexpr int32_t kSize = 128;
+
+  static absl::StatusOr<NcclCliqueId> FromString(std::string_view str);
+
+  NcclCliqueId();
+  explicit NcclCliqueId(char bytes[kSize]);
+
+  absl::Span<const char> data() const;
+  std::string ToString() const;
+
+  template <typename H>
+  friend H AbslHashValue(H h, const NcclCliqueId& id);
+
+ private:
+  std::array<char, kSize> data_;
+};
+
+template <typename H>
+H AbslHashValue(H h, const NcclCliqueId& id) {
+  return H::combine(std::move(h), id.data());
+}
+
 // A callback to get a unique clique id (see `ncclUniqueId` documentation).
-using NcclUniqueIdCallback =  // NOLINT
-    std::function<absl::StatusOr<std::string>(const NcclCliqueKey&)>;
+using NcclCliqueIdCallback =  // NOLINT
+    std::function<absl::StatusOr<NcclCliqueId>(const NcclCliqueKey&)>;
 
 }  // namespace xla::gpu
 

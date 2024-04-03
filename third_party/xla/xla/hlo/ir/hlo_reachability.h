@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -161,8 +161,16 @@ class HloReachabilityMap {
 
     // Sets this bit-set to union of this bit-set and `other`.
     void operator|=(const BitSet& other) {
-      for (size_t i = 0; i < vector_.size(); ++i) {
-        vector_[i] |= other.vector_[i];
+      if (this == &other) return;
+      DCHECK(size_ == other.size_);
+
+      // Ease the work of the auto-vectorizer.
+      const Word* a = vector_.data();
+      const Word* b = other.vector_.data();
+      Word* __restrict out = vector_.data();
+      size_t num_words = vector_.size();
+      for (size_t i = 0; i < num_words; ++i) {
+        out[i] = a[i] | b[i];
       }
     }
 
@@ -181,6 +189,8 @@ class HloReachabilityMap {
     size_t size_;  // Number of bits in the set.
     std::vector<Word> vector_;
   };
+
+  friend class HloReachabilityMapBitSetBenchmark;
 
   using Key = std::pair<int, int>;  // module ID, instruction ID.
   static Key GetKey(const HloInstruction* instruction) {

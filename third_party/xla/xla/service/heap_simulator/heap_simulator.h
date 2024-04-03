@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_SERVICE_HEAP_SIMULATOR_HEAP_SIMULATOR_H_
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <iostream>
@@ -27,9 +28,6 @@ limitations under the License.
 #include <string>
 #include <utility>
 #include <vector>
-
-#include "xla/service/heap_simulator/allocation_block.h"
-#include "xla/service/hlo_value.h"
 
 // TODO(b/210891274): Use btree_map after build issue in Windows is resolved.
 #if defined(__GNUC__) || defined(__clang__)
@@ -45,11 +43,13 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_live_range.h"
 #include "xla/service/buffer_value.h"
 #include "xla/service/buffer_value_containers.h"
+#include "xla/service/heap_simulator/allocation_block.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_alias_analysis.h"
 #include "xla/service/hlo_buffer.h"
 #include "xla/service/hlo_dataflow_analysis.h"
 #include "xla/service/hlo_ordering.h"
+#include "xla/service/hlo_value.h"
 #include "xla/service/memory_space_assignment/repacking.h"
 #include "xla/service/tuple_points_to_analysis.h"
 #include "xla/statusor.h"
@@ -145,20 +145,20 @@ class HeapSimulator {
   // Returns the minimum memory required to compute an HLO module where all
   // computations have been scheduled (represented by the given
   // schedule), assuming no fragmentation.
-  static StatusOr<int64_t> MinimumMemoryForModule(
+  static absl::StatusOr<int64_t> MinimumMemoryForModule(
       const HloSchedule& schedule,
       const LogicalBuffer::SizeFunction& size_function);
 
   // Returns the minimum memory required to compute the given computation,
   // assuming no fragmentation.
-  static StatusOr<int64_t> MinimumMemoryForComputation(
+  static absl::StatusOr<int64_t> MinimumMemoryForComputation(
       const HloComputation& computation, const HloInstructionSequence& sequence,
       const HloAliasAnalysis& alias_analysis,
       const LogicalBuffer::SizeFunction& size_function,
       const absl::flat_hash_map<const HloComputation*, int64_t>*
           memory_by_computation = nullptr);
 
-  static StatusOr<int64_t> MinimumMemoryForComputation(
+  static absl::StatusOr<int64_t> MinimumMemoryForComputation(
       const HloComputation& computation, const HloInstructionSequence& sequence,
       const HloAliasAnalysis& alias_analysis,
       const LogicalBuffer::SizeFunction& size_function,
@@ -173,7 +173,7 @@ class HeapSimulator {
   // to running on a per-computation basis, since we can re-use buffer space for
   // called sub-computations.
   //
-  static StatusOr<Result<HloValue>> Run(
+  static absl::StatusOr<Result<HloValue>> Run(
       std::unique_ptr<HeapAlgorithm<HloValue>> algorithm,
       const HloModule& module, const HloSchedule& schedule,
       const HloAliasAnalysis& alias_analysis,
@@ -184,7 +184,7 @@ class HeapSimulator {
   // must contain a topologically-consistent total ordering of all instructions
   // in the computation. The result is invalid if instructions are not run in
   // exactly this sequence.
-  static StatusOr<Result<HloValue>> Run(
+  static absl::StatusOr<Result<HloValue>> Run(
       std::unique_ptr<HeapAlgorithm<HloValue>> algorithm,
       const HloComputation& computation,
       const HloInstructionSequence& instruction_sequence,
@@ -196,7 +196,7 @@ class HeapSimulator {
 
   // Same as above, but runs on with a schedule that covers all nested
   // computations.
-  static StatusOr<Result<HloValue>> Run(
+  static absl::StatusOr<Result<HloValue>> Run(
       std::unique_ptr<HeapAlgorithm<HloValue>> algorithm,
       const HloComputation& computation,
       const HloInstructionSequence& instruction_sequence,
@@ -236,7 +236,7 @@ class HeapSimulator {
   //  Two buffers belong to the same shared group.
   //  Eight of the buffer has no shared group assigned.
   bool InSameSharedGroup(const HloValue* left, const HloValue* right);
-  StatusOr<Result<HloValue>> Finish();
+  absl::StatusOr<Result<HloValue>> Finish();
 
   void FillDebugTrace(HeapSimulatorTrace::Event::Kind kind,
                       const HloValue* buffer, const HloInstruction* instruction,
@@ -316,7 +316,7 @@ class HeapAlgorithm {
 
   // Finish collects the buffer offset assignment results.  Finish may only be
   // called once, after all Alloc and Free calls.
-  virtual StatusOr<Result> Finish() = 0;
+  virtual absl::StatusOr<Result> Finish() = 0;
 };
 
 // NoFragmentationStatsHeap computes the heap size assuming no fragmentation;
@@ -340,7 +340,7 @@ class NoFragmentationStatsHeap : public HeapAlgorithm<BufferType> {
 
   void Free(const BufferType* buffer, int64_t size) override;
 
-  StatusOr<Result> Finish() override;
+  absl::StatusOr<Result> Finish() override;
 
  private:
   int64_t current_heap_size_ = 0;
@@ -391,21 +391,62 @@ class BufferIntervalTree {
 // An iterator that is passed to
 // GlobalDecreasingSizeBestFitHeap::CreateSlicedAllocationFinder() when trying
 // to place a buffer, telling the finder which permutations of starting slice
-// times to try (and in which order to try them). Note, the set of slice times
-// is the set {x : x ∈ [0, num_slices - 1]}. If a buffer is not sliced, it will
-// only have 1 permutation, containing slice time 0.
-//
-// Begin() must be called to initialize the iterator before it can be used.
+// times to try (and in which order to try them).
+// * The set of slice times is the set {x : x ∈ [0, num_slices - 1]}. If a
+//   buffer is not sliced, it will only have 1 permutation, containing slice
+//   time 0.
+// * The ith value in a permutation is the slice time for the slice at the
+//   ith smallest offset.
+// * Iterators skip permutations that are equivalent to previously emitted
+//   permutations. The ith smallest slice time corresponds to the ith smallest
+//   inclusive start time. Let the start_time_permutation be the mapping of a
+//   permutation to its corresponding start times. Two permutations are
+//   equivalent if their start_time_permutations are equivalent. For example,
+//   let's say slice time 0 and slice time 1 both map to inclusive start time
+//   1000. There is no difference in permutation [0, 1, x] and [1, 0, x]
+//   because the first two slices map to the same inclusive start time.
+// * When repacking slice data is provided, iterators skip invalid
+//   permutations. A permutation is invalid if the mapping from inclusive
+//   start times to slice sizes is not maintained from before the repack.
+// * Begin() must be called to initialize the iterator before it can be used.
 class SliceTimePermutationIterator {
  public:
+  enum class Ty : std::int8_t {
+    // Include all valid permutations
+    kAll,
+    // Only include perferred valid permutations. Heap simulator is trying to
+    // optimize fitting allocations into a grid of (heap) space by time. The
+    // preferred permutation iterator only allows the following triagular
+    // shapes:
+    //
+    //     Smaller offsets      Smaller offsets      Slice times are
+    //    get smaller slice     get larger slice   distributed around
+    //         times                  times         the middle offset
+    //
+    // space                space                space
+    //   ^                    ^                    ^
+    //   |             +--+   | +--------------+   |             +--+
+    //   |          +--+  |   | +--+           |   |       +-----+  |
+    //   |       +--+     |   |    +--+        |   | +-----+        |
+    //   |    +--+        |   |       +--+     |   | +--+           |
+    //   | +--+           |   |          +--+  |   |    +-----+     |
+    //   | +--------------+   |             +--+   |          +-----+
+    //   +------------------> +------------------> +------------------> time
+    //
+    // We deviate from those shapes as needed to make valid permutations.
+    kPreferred,
+  };
+
   // A new iterator is typically created for each buffer to be placed.
   // - num_slices: number of slices in the buffer. 1 if not sliced.
   // - original_sliced_allocation: For a repacking scenario, the original
-  //   details of each slice in a sliced buffer. nullptr is used if this is not
-  //   a repacking scenario or the buffer is not sliced.
-  static std::unique_ptr<SliceTimePermutationIterator> Create(
-      int64_t num_slices,
-      const SlicedAllocationData* original_sliced_allocation = nullptr);
+  //   details of each slice in a sliced buffer. nullptr is used if the buffer
+  //   was not sliced. (Note, if the repacker has no slicing data, it is
+  //   treated as unsliced in the repacker and by this iterator.)
+  static std::unique_ptr<SliceTimePermutationIterator> CreateForNewAllocation(
+      Ty ty, absl::Span<const int64_t> inclusive_slice_start_times);
+  static std::unique_ptr<SliceTimePermutationIterator> CreateForRepack(
+      Ty ty, const SlicedAllocationData* original_sliced_allocation);
 
   virtual ~SliceTimePermutationIterator() = default;
 
@@ -413,8 +454,7 @@ class SliceTimePermutationIterator {
   virtual bool Done() const = 0;
   virtual void Next() = 0;
 
-  // A permutation of starting slice times. The ith value is the slice time for
-  // the slice at the ith smallest offset.
+  // A permutation of starting slice times.
   virtual absl::Span<const int64_t> Get() const = 0;
 
  protected:
@@ -538,6 +578,7 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm<BufferType> {
     const BufferInterval& full_buffer_interval() const;
     size_t num_slices() const { return slice_sizes_sorted_by_offset_.size(); }
     const std::vector<int64_t>& SliceSizesSortedByOffset() const;
+    std::vector<int64_t> inclusive_start_times() const;
 
     // Returns a BufferInterval with the requirements to call
     // GlobalDecreasingSizeBestFitHeap::MakeFreeChunks at the specified slice
@@ -759,7 +800,9 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm<BufferType> {
 
   explicit GlobalDecreasingSizeBestFitHeap(
       int64_t alignment, Type type = kSpatial,
-      BufferIntervalCompare buffer_interval_compare = nullptr);
+      BufferIntervalCompare buffer_interval_compare = nullptr,
+      SliceTimePermutationIterator::Ty slice_time_permutation_iterator_type =
+          SliceTimePermutationIterator::Ty::kAll);
   ~GlobalDecreasingSizeBestFitHeap() override {}
 
   void Alloc(const BufferType* buffer, int64_t size) override;
@@ -855,6 +898,8 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm<BufferType> {
   // contiguous.
   BufferIntervalCompare GetTemporalBufferIntervalCompare() const;
 
+  SliceTimePermutationIterator::Ty slice_time_permutation_iterator_type() const;
+
   absl::flat_hash_map<const BufferType*, BufferInterval> buffer_intervals_;
   HeapResult result_;
   BufferIntervalCompare buffer_interval_compare_;
@@ -866,6 +911,9 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm<BufferType> {
   // The current time represented as an integer. It increments by 1 at each
   // Alloc or Free call.
   int64_t current_time_ = 0;
+
+  SliceTimePermutationIterator::Ty slice_time_permutation_iteration_type_ =
+      SliceTimePermutationIterator::Ty::kAll;
 
  protected:
   // Returns all transitive colocated buffers of this buffer interval. I.e., If
@@ -906,7 +954,7 @@ class ConstrainedGlobalDecreasingSizeBestFitHeap
         size_limit_per_heap_(size_limit_per_heap) {}
   ~ConstrainedGlobalDecreasingSizeBestFitHeap() override {}
 
-  StatusOr<Result> Finish() override;
+  absl::StatusOr<Result> Finish() override;
 
  private:
   uint64_t size_limit_per_heap_;

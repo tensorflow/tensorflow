@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -80,31 +80,81 @@ bool IsSubTilingOrEqualSharding(const Shape& potential_sharded_shape,
   const int32_t tiled_data_rank = potential_subsharding.TiledDataRank();
   // Different tiled ranks can't be compared (something is wrong, are the
   // shardings for different shapes?)
-  if (tiled_data_rank != sharding.TiledDataRank()) {
+  if (tiled_data_rank != sharding.TiledDataRank() ||
+      tiled_data_rank != potential_sharded_shape.dimensions_size()) {
     return false;
   }
-  // Helper to construct the base tile bounds based on a shape and a sharding.
-  auto get_base_tile_for_sharding = [](const Shape& shape,
-                                       const HloSharding& sharding) {
-    absl::InlinedVector<int32_t, 5> base_tile;
-    base_tile.resize(shape.dimensions_size());
-    for (int64_t i = 0; i < shape.dimensions_size(); ++i) {
-      base_tile[i] =
-          CeilOfRatio(shape.dimensions(i), sharding.tile_assignment().dim(i));
-    }
-    return base_tile;
-  };
-  auto potential_base_tile = get_base_tile_for_sharding(potential_sharded_shape,
-                                                        potential_subsharding);
-  auto base_tile =
-      get_base_tile_for_sharding(potential_sharded_shape, sharding);
-  // If the potential_base_tile is bigger than the base_tile on any dimension
-  // then it can't be contained regardless.
-  for (int64_t i = 0; i < potential_base_tile.size(); ++i) {
-    if (potential_base_tile[i] > base_tile[i]) {
+
+  DimensionVector potential_base_tile(tiled_data_rank);
+  DimensionVector base_tile(tiled_data_rank);
+  bool shortcut = true;
+  int64_t diff_dim_counter = 0;
+  DimensionVector reshape_dims(
+      potential_subsharding.tile_assignment().dimensions().begin(),
+      potential_subsharding.tile_assignment().dimensions().end());
+  for (int64_t i = 0; i < tiled_data_rank; ++i) {
+    const auto shape_i = potential_sharded_shape.dimensions(i);
+    const auto p_tile_dim_i = potential_subsharding.tile_assignment().dim(i);
+    const auto s_tile_dim_i = sharding.tile_assignment().dim(i);
+    if (p_tile_dim_i < s_tile_dim_i) {
       return false;
     }
+    potential_base_tile[i] = CeilOfRatio(shape_i, p_tile_dim_i);
+    base_tile[i] = CeilOfRatio(shape_i, s_tile_dim_i);
+
+    if (s_tile_dim_i != 1 &&
+        (p_tile_dim_i % s_tile_dim_i != 0 ||
+         base_tile[i] % potential_base_tile[i] != 0 ||
+         shape_i <= (p_tile_dim_i - 1) * potential_base_tile[i] ||
+         shape_i <= (s_tile_dim_i - 1) * base_tile[i])) {
+      // The comment below explains this condition.
+      shortcut = false;
+    }
+    if (shortcut && p_tile_dim_i != s_tile_dim_i) {
+      reshape_dims[i + diff_dim_counter] = s_tile_dim_i;
+      reshape_dims.insert(reshape_dims.begin() + i + diff_dim_counter + 1,
+                          p_tile_dim_i / s_tile_dim_i);
+      diff_dim_counter++;
+    }
   }
+
+  if (shortcut) {
+    // In the shortcut, we ensure that (1) p_tile_dim_i is divisible by
+    // s_tile_dim_i, (2) base_tile[i] is divisible by potential_base_tile[i],
+    // and (3) all devices have raw data of the tensor (a counterexample is that
+    // a device may only have paddings). We can use this shortcut to quickly
+    // make the decision.
+    //
+    // s_tile_dim_i == 1 means that it is replicated along dimension i with
+    // `sharding`, which is compatible with the shortcut.
+    //
+    // We cannot extend the shortcut if the condition fails. An example is
+    // listed below. Given potential_sharded_shape = [1, 1, 1, ..., 1], the raw
+    // data of the tensor is only on the first tile. Thus, we only need to focus
+    // on the first tile in the two input shardings.
+    if (!sharding.HasPartialReplication()) {
+      return potential_subsharding == sharding;
+    }
+
+    std::vector<int> perm(reshape_dims.size());
+    absl::c_iota(perm, 0);
+    for (int64_t i = 0; i < tiled_data_rank; ++i) {
+      if (potential_subsharding.tile_assignment().dim(i) !=
+          sharding.tile_assignment().dim(i)) {
+        auto element = perm[i + 1];
+        perm.erase(perm.begin() + i + 1);
+        perm.push_back(element);
+      }
+    }
+
+    auto reshaped_ta = potential_subsharding.tile_assignment()
+                           .Reshape(reshape_dims)
+                           .Transpose(perm)
+                           .Reshape(sharding.tile_assignment().dimensions());
+    return HloSharding::PartialTile(reshaped_ta).tile_assignment() ==
+           sharding.tile_assignment();
+  }
+
   // Use one contiguous storage to reduce allocation overhead.
   auto storage = std::make_unique<int32_t[]>(
       sharding.tile_assignment().num_elements() * tiled_data_rank);
@@ -134,7 +184,7 @@ bool IsSubTilingOrEqualSharding(const Shape& potential_sharded_shape,
       });
   // Compare the start offsets and the end offset of the tiles for each device.
   auto& potential_ta = potential_subsharding.tile_assignment().array();
-  absl::Status ok_if_no_vialation = potential_ta.EachStatus(
+  absl::Status ok_if_no_violation = potential_ta.EachStatus(
       [&](absl::Span<const int64_t> indices, int64_t device) {
         auto sharding_offset = get_sharding_offsets(device);
         for (int j = 0; j < tiled_data_rank; ++j) {
@@ -143,23 +193,43 @@ bool IsSubTilingOrEqualSharding(const Shape& potential_sharded_shape,
           // The subsharding contains data outside of the tile we are comparing
           // against.
           if (subsharding_offset_j < sharding_offset[j]) {
-            return InternalError("");
+            return Internal("");
           }
           // Skip last tile. It can never go beyond the limit as the shape is
           // the same for both shardings and sometimes there's padding making
           // one of the two limits bigger than the other, but it shouldn't be
           // counted.
-          const bool is_last_tile =
-              subsharding_offset_j + potential_base_tile[j] >=
-              potential_sharded_shape.dimensions(j);
-          if (!is_last_tile && subsharding_offset_j + potential_base_tile[j] >
-                                   sharding_offset[j] + base_tile[j]) {
-            return InternalError("");
+          if (subsharding_offset_j + potential_base_tile[j] <=
+                  potential_sharded_shape.dimensions(j) &&
+              subsharding_offset_j + potential_base_tile[j] >
+                  sharding_offset[j] + base_tile[j]) {
+            return Internal("");
           }
         }
         return absl::OkStatus();
       });
-  return ok_if_no_vialation.ok();
+  return ok_if_no_violation.ok();
+}
+
+static bool IsLeafShardingMoreSpecific(const HloSharding& lhs,
+                                       const HloSharding& rhs) {
+  DCHECK(!lhs.IsTuple());
+  DCHECK(!rhs.IsTuple());
+  // Manual sharding is more specific than tile maximal sharding.
+  if (lhs.IsManualLeaf() && rhs.IsTileMaximalLeaf()) {
+    return true;
+  }
+  if (lhs.IsManualLeaf() || rhs.IsManualLeaf()) {
+    return false;
+  }
+  if (!rhs.IsTileMaximalLeaf()) {
+    return lhs.NumTilesLeaf() > rhs.NumTilesLeaf();
+  }
+  // If we are not replicated then only tiled (not tile maximal) shardings
+  // can improve us.
+  // If we are replicated then any non-replicated sharding can improve us.
+  return !(rhs.IsReplicatedLeaf() ? lhs.IsReplicatedLeaf()
+                                  : lhs.IsTileMaximalLeaf());
 }
 
 bool IsShardingMoreSpecific(const HloSharding& lhs, const HloSharding& rhs) {
@@ -182,23 +252,7 @@ bool IsShardingMoreSpecific(const HloSharding& lhs, const HloSharding& rhs) {
     }
     return is_better;
   }
-  // Manual sharding is more specific than tile maximal sharding.
-  if (lhs.IsManual() && rhs.IsTileMaximal()) {
-    return true;
-  }
-  if (lhs.IsManual() || rhs.IsManual()) {
-    return false;
-  }
-  if (!rhs.IsTileMaximal()) {
-    return lhs.NumTiles() > rhs.NumTiles();
-  } else if (!rhs.IsReplicated()) {
-    // If we are not replicated then only tiled (not tile maximal) shardings
-    // can improve us.
-    return !lhs.IsTileMaximal();
-  } else {
-    // If we are replicated then any non-replicated sharding can improve us.
-    return !lhs.IsReplicated();
-  }
+  return IsLeafShardingMoreSpecific(lhs, rhs);
 }
 
 bool MergeSharding(const HloSharding& to_merge, HloSharding* dst,
@@ -217,7 +271,7 @@ bool MergeSharding(const HloSharding& to_merge, HloSharding* dst,
       !dst->HasPartialReplication() ||
       to_merge.tile_assignment().num_elements() !=
           dst->tile_assignment().num_elements()) {
-    return IsShardingMoreSpecific(*dst, to_merge);
+    goto check_if_more_specific;
   }
 
   if (MergeShardingIfCompatible(
@@ -226,7 +280,8 @@ bool MergeSharding(const HloSharding& to_merge, HloSharding* dst,
           dst)) {
     return true;
   }
-  return IsShardingMoreSpecific(*dst, to_merge);
+check_if_more_specific:
+  return IsLeafShardingMoreSpecific(*dst, to_merge);
 }
 
 bool MergeShardingIfCompatible(const HloSharding& to_merge,
@@ -1758,7 +1813,7 @@ HloSharding GatherOutputOrScatterUpdateShardingFromIndicesParallelDimensions(
                                      indices_sharding.metadata());
 }
 
-StatusOr<std::pair<std::unique_ptr<HloInstruction>, HloOpcode>>
+absl::StatusOr<std::pair<std::unique_ptr<HloInstruction>, HloOpcode>>
 IdentityValueAndHloOpcodeForScatterReduceComputation(
     const HloScatterInstruction& scatter) {
   auto computation = scatter.to_apply();
@@ -2858,7 +2913,8 @@ bool DeviceGroupsAreMatch(GroupedSharding& lhs, GroupedSharding& rhs,
   }
 
   bool matching_groups = true;
-  absl::flat_hash_map<int64_t, int64_t> device_to_ref_group;
+  std::vector<int64_t> device_to_ref_group(lhs.device_groups.size() *
+                                           lhs.device_groups[0].size());
   for (int64_t g = 0; g < lhs.device_groups.size(); ++g) {
     for (int64_t device : lhs.device_groups[g]) {
       device_to_ref_group[device] = g;
@@ -2958,7 +3014,8 @@ bool IsSortOperandShardingMovable(const HloInstruction* sort_operand,
   auto tile_assignment_dims = sharding.tile_assignment().dimensions();
   const int rank = sort_operand->shape().rank();
   for (int64_t dim = 0; dim < rank; ++dim) {
-    if (dim == sort_dim || tile_assignment_dims[dim] != 1) {
+    if (dim == sort_dim || tile_assignment_dims[dim] != 1 ||
+        sort_operand->shape().dimensions(dim) == 1) {
       continue;
     }
     return true;
@@ -3006,10 +3063,49 @@ Shape UntileLeafShape(const HloSharding& sharding, const Shape& shape) {
   if (sharding.IsTileMaximal() || sharding.IsManual() || sharding.IsUnknown()) {
     return shape;
   }
+  if (!shape.IsArray()) {
+    return shape;
+  }
   Shape result_shape = shape;
-  for (int64_t i = 0; i < sharding.TiledDataRank(); ++i) {
+  // sharding.TiledDataRank() == i < shape.rank() is not always true?
+  for (int64_t i = 0; i < sharding.TiledDataRank() && i < shape.rank(); ++i) {
     result_shape.set_dimensions(
         i, shape.dimensions(i) * sharding.tile_assignment().dim(i));
+  }
+  return result_shape;
+}
+
+Shape TileShape(const HloSharding& sharding, const Shape& shape) {
+  if (!sharding.IsTuple()) {
+    return TileLeafShape(sharding, shape);
+  }
+  Shape result_shape = shape;
+  ShapeUtil::ForEachMutableSubshape(
+      &result_shape,
+      [&shape, &sharding](Shape* subshape, const ShapeIndex& index) {
+        if (!ShapeUtil::IsLeafIndex(shape, index)) {
+          return;
+        }
+        const HloSharding& subshape_sharding =
+            sharding.GetSubSharding(shape, index);
+        *subshape = TileLeafShape(subshape_sharding, *subshape);
+      });
+
+  return result_shape;
+}
+
+Shape TileLeafShape(const HloSharding& sharding, const Shape& shape) {
+  if (sharding.IsTileMaximal() || sharding.IsManual() || sharding.IsUnknown()) {
+    return shape;
+  }
+  if (!shape.IsArray()) {
+    return shape;
+  }
+  Shape result_shape = shape;
+  for (int64_t i = 0; i < sharding.TiledDataRank() && i < shape.rank(); ++i) {
+    CHECK_EQ(shape.dimensions(i) % sharding.tile_assignment().dim(i), 0);
+    result_shape.set_dimensions(
+        i, shape.dimensions(i) / sharding.tile_assignment().dim(i));
   }
   return result_shape;
 }

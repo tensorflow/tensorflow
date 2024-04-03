@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -130,7 +130,7 @@ FusionDecision GpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
 
 HloInstruction::FusionKind GpuInstructionFusion::ChooseKind(
     const HloInstruction* producer, const HloInstruction* consumer) {
-  return ChooseFusionKind(*consumer);
+  return ChooseFusionKind(*producer, *consumer);
 }
 
 HloInstruction* GpuInstructionFusion::FuseInstruction(

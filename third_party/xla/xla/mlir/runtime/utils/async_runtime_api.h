@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,9 +17,11 @@ limitations under the License.
 #define XLA_MLIR_RUNTIME_UTILS_ASYNC_RUNTIME_API_H_
 
 #include "absl/functional/any_invocable.h"
+#include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/ExecutionEngine/Orc/Core.h"
 #include "llvm/ExecutionEngine/Orc/Mangling.h"
 #include "xla/runtime/async_runtime.h"
+#include "tsl/concurrency/async_value.h"
 #include "tsl/concurrency/async_value_ref.h"
 #include "tsl/concurrency/chain.h"
 

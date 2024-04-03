@@ -1,15 +1,15 @@
 # Placeholder: load py_proto_library
 load(
-    "//tensorflow/core/platform:build_config.bzl",
-    "tf_proto_library",
-)
-load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_binary",
     "tf_cc_test",
     "tf_copts",
 )
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
+load(
+    "//tensorflow/core/platform:build_config.bzl",
+    "tf_proto_library",
+)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -38,6 +38,7 @@ tf_proto_library(
     make_default_target_header_only = True,
     protodeps = [
         "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_options_proto",
+        "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto",
         "//tensorflow/compiler/mlir/lite/debug:debug_options_proto",
         ":types_proto",
     ],

@@ -117,7 +117,7 @@ NodeBuilder& NodeBuilder::XlaCluster(StringPiece xla_cluster) {
   return *this;
 }
 
-StatusOr<Node*> NodeBuilder::Finalize(Graph* graph, bool consume) {
+absl::StatusOr<Node*> NodeBuilder::Finalize(Graph* graph, bool consume) {
   Node* out;
   TF_RETURN_IF_ERROR(Finalize(graph, &out, consume));
   return out;

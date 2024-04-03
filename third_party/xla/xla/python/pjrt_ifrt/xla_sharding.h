@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -57,13 +57,13 @@ class HloSharding final
 
   ~HloSharding() override = default;
 
-  StatusOr<std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>>>
+  absl::StatusOr<std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>>>
   Disassemble(const Shape& shape) const override;
-  StatusOr<
+  absl::StatusOr<
       std::vector<std::pair<DynamicShape, std::shared_ptr<const Sharding>>>>
   Disassemble(const DynamicShape& dynamic_shape) const override;
 
-  StatusOr<std::vector<IndexDomain>> IndexDomains(
+  absl::StatusOr<std::vector<IndexDomain>> IndexDomains(
       const Shape& shape) const override;
 
   std::string DebugString() const override;

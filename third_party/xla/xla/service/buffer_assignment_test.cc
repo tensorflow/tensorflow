@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -103,7 +103,7 @@ class BufferAssignmentTest : public HloTestBase {
         .value();
   }
 
-  StatusOr<std::unique_ptr<BufferAssignment>> ConvertToProtoAndBack(
+  absl::StatusOr<std::unique_ptr<BufferAssignment>> ConvertToProtoAndBack(
       const BufferAssignment* buffers, const HloModule* module) {
     // Dump proto for buffer assignments.
     auto proto = buffers->ToProto();
@@ -841,7 +841,8 @@ TEST_F(BufferAssignmentTest, PresetAssignments) {
   auto param1 = builder.AddInstruction(
       HloInstruction::CreateParameter(2, f32vec100_, "p2"));
   Shape f32vec100_color1 = ShapeUtil::MakeShapeWithDenseLayout(
-      F32, {100}, {0}, /*tiles=*/{}, /*element_size_in_bits=*/0,
+      F32, {100}, {0}, /*tiles=*/{}, /*tail_padding_alignment_in_elements=*/1,
+      /*element_size_in_bits=*/0,
       /*memory_space=*/1);
   auto mul = builder.AddInstruction(HloInstruction::CreateBinary(
       f32vec100_color1, HloOpcode::kMultiply, broadcast, param0));
@@ -903,7 +904,8 @@ TEST_F(BufferAssignmentTest, PresetAssignmentsWhile) {
   // HloValue and HloBuffer (i.e., a while loop).
   auto module = CreateNewVerifiedModule();
   Shape f32vec10_color1 = ShapeUtil::MakeShapeWithDenseLayout(
-      F32, {10}, {0}, /*tiles=*/{}, /*element_size_in_bits=*/0,
+      F32, {10}, {0}, /*tiles=*/{}, /*tail_padding_alignment_in_elements=*/1,
+      /*element_size_in_bits=*/0,
       /*memory_space=*/1);
   Shape t_s32_f32v10_color1 =
       ShapeUtil::MakeTupleShape({s32_, f32vec10_color1});

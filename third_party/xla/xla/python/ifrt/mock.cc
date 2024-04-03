@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -74,6 +74,10 @@ MockArray::MockArray(tsl::RCReference<xla::ifrt::Array> delegated)
   ON_CALL(*this, shared_ptr_sharding).WillByDefault([this]() {
     return delegated_->shared_ptr_sharding();
   });
+  ON_CALL(*this, layout)
+      .WillByDefault([this]() -> absl::StatusOr<std::unique_ptr<PjRtLayout>> {
+        return delegated_->layout();
+      });
   ON_CALL(*this, DisassembleIntoSingleDeviceArrays)
       .WillByDefault([this](ArrayCopySemantics semantics) {
         return delegated_->DisassembleIntoSingleDeviceArrays(semantics);
@@ -188,9 +192,17 @@ MockDevice::MockDevice(Device* delegated) : delegated_(delegated) {
       .WillByDefault([this]() -> const xla::PjRtDeviceDescription& {
         return delegated_->description();
       });
-  ON_CALL(*this, id).WillByDefault([this]() { return delegated_->id(); });
+  ON_CALL(*this, global_device_id).WillByDefault([this]() {
+    return delegated_->global_device_id();
+  });
   ON_CALL(*this, process_index).WillByDefault([this]() {
     return delegated_->process_index();
+  });
+  ON_CALL(*this, local_device_id).WillByDefault([this]() {
+    return delegated_->local_device_id();
+  });
+  ON_CALL(*this, local_hardware_id_typed).WillByDefault([this]() {
+    return delegated_->local_hardware_id_typed();
   });
   ON_CALL(*this, local_hardware_id).WillByDefault([this]() {
     return delegated_->local_hardware_id();

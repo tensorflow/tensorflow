@@ -14,11 +14,6 @@ CURL_WIN_COPTS = [
     "/DCURL_DISABLE_PROXY",
     "/DHAVE_LIBZ",
     "/DHAVE_ZLIB_H",
-    # Defining _USING_V110_SDK71_ is hackery to defeat curl's incorrect
-    # detection of what OS releases we can build on with VC 2012. This
-    # may not be needed (or may have to change) if the WINVER setting
-    # changes in //third_party/msvc/vc_12_0/CROSSTOOL.
-    "/D_USING_V110_SDK71_",
 ]
 
 CURL_WIN_SRCS = [

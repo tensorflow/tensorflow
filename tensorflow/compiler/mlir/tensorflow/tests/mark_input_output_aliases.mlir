@@ -92,3 +92,27 @@ func.func @skip_multiple_reads_of_resource(%arg0: !tf_res_f32, %arg1: !tf_res_f3
 func.func @device_func_4(%arg0: tensor<f32>, %arg1: tensor<f32>) -> (tensor<f32>, tensor<f32>) {
   func.return %arg1, %arg0 : tensor<f32>, tensor<f32>
 }
+
+// CHECK-LABEL: func @include_valid_use_nested_in_parallel_execute
+func.func @include_valid_use_nested_in_parallel_execute(%arg0: !tf_res_f32, %arg1: !tf_res_f32, %arg2: !tf_res_f32) {
+  %0 = "tf.ReadVariableOp"(%arg0) : (!tf_res_f32) -> tensor<f32>
+  %1 = "tf.ReadVariableOp"(%arg1) : (!tf_res_f32) -> tensor<f32>
+  %2 = "tf.ReadVariableOp"(%arg2) : (!tf_res_f32) -> tensor<f32>
+  %execute_output:3 = "tf_device.parallel_execute"() ({
+    %3:3 = "tf_device.cluster_func"(%0, %1, %2) {_xla_compile_device_type = "TPU", _replication_info = "tpu", func = @device_func_5} : (tensor<f32>, tensor<f32>, tensor<f32>) -> (tensor<f32>, tensor<f32>, tensor<f32>)
+    tf_device.return %3#0, %3#1, %3#2 : tensor<f32>, tensor<f32>, tensor<f32>
+  }) : () -> (tensor<f32>, tensor<f32>, tensor<f32>)
+  "tf.AssignVariableOp"(%arg0, %execute_output#1) : (!tf_res_f32, tensor<f32>) -> ()
+  "tf.AssignVariableOp"(%arg1, %execute_output#2) : (!tf_res_f32, tensor<f32>) -> ()
+  "tf.AssignVariableOp"(%arg2, %execute_output#0) : (!tf_res_f32, tensor<f32>) -> ()
+  "tf.AssignVariableOp"(%arg2, %execute_output#0) : (!tf_res_f32, tensor<f32>) -> ()
+  func.return
+}
+
+// CHECK-LABEL: func @device_func_5
+// CHECK-SAME: [[ARG0:%.*]]: tensor<f32> {tf.aliasing_output = 1 : i64},
+// CHECK-SAME: [[ARG1:%.*]]: tensor<f32> {tf.aliasing_output = 2 : i64},
+// CHECK-NOT: [[ARG2:%.*]]:  tensor<f32> {tf.aliasing_output = 0 : i64}
+func.func @device_func_5(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<f32>) -> (tensor<f32>, tensor<f32>, tensor<f32>) {
+  func.return %arg2, %arg1, %arg0 : tensor<f32>, tensor<f32>, tensor<f32>
+}

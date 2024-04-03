@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -29,7 +29,6 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/stream_executor/allocator_stats.h"
 #include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/device_options.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -65,8 +64,7 @@ class TpuExecutor : public tensorflow::tpu::TpuExecutorInterface {
 
   ~TpuExecutor() override;
 
-  absl::Status Init(int device_ordinal,
-                    ::stream_executor::DeviceOptions device_options) override;
+  absl::Status Init(int device_ordinal) override;
 
   DeviceMemoryBase Allocate(uint64_t size, int64_t memory_space) override;
 
@@ -113,12 +111,13 @@ class TpuExecutor : public tensorflow::tpu::TpuExecutorInterface {
   bool HostCallback(Stream* stream,
                     absl::AnyInvocable<absl::Status() &&> callback) override;
 
-  bool Memcpy(Stream* stream, void* host_dst,
-              const ::stream_executor::DeviceMemoryBase& device_src,
-              uint64_t size) override;
+  absl::Status Memcpy(Stream* stream, void* host_dst,
+                      const ::stream_executor::DeviceMemoryBase& device_src,
+                      uint64_t size) override;
 
-  bool Memcpy(Stream* stream, ::stream_executor::DeviceMemoryBase* device_dst,
-              const void* host_src, uint64_t size) override;
+  absl::Status Memcpy(Stream* stream,
+                      ::stream_executor::DeviceMemoryBase* device_dst,
+                      const void* host_src, uint64_t size) override;
 
   bool MemcpyDeviceToDevice(Stream* stream,
                             ::stream_executor::DeviceMemoryBase* gpu_dst,
@@ -167,10 +166,6 @@ class TpuExecutor : public tensorflow::tpu::TpuExecutorInterface {
   }
 
   // -- Unimplemented (stubbed out) methods.
-  std::unique_ptr<stream_executor::internal::KernelInterface>
-  CreateKernelImplementation() override {
-    LOG(FATAL) << "Not yet implemented";
-  }
 
   absl::Status MemZero(Stream* stream, DeviceMemoryBase* location,
                        uint64_t size) override {

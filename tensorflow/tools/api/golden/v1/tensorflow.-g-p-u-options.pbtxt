@@ -150,6 +150,18 @@ tf_proto {
         label: LABEL_OPTIONAL
         type: TYPE_INT32
       }
+      field {
+        name: "populate_pjrt_gpu_client_creation_info"
+        number: 17
+        label: LABEL_OPTIONAL
+        type: TYPE_BOOL
+      }
+      field {
+        name: "node_id"
+        number: 18
+        label: LABEL_OPTIONAL
+        type: TYPE_INT32
+      }
       nested_type {
         name: "VirtualDevices"
         field {

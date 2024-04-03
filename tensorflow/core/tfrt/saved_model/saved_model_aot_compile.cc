@@ -204,7 +204,9 @@ StatusOr<AotResult> AotCompileSavedModel(absl::string_view input_model_dir,
                                        meta_graph_def.graph_def());
   UpdateCompileOptions(aot_options);
   mlir::DialectRegistry registry;
-  RegisterMlirDialect(registry);
+  RegisterMlirDialect(
+      registry,
+      aot_options.graph_execution_options->compile_options.backend_compiler);
   mlir::MLIRContext context(registry);
 
   tensorflow::SessionOptions session_options =

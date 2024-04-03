@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,15 +17,17 @@ limitations under the License.
 #define XLA_PYTHON_IFRT_DEVICE_H_
 
 #include <memory>
+#include <string>
 #include <type_traits>
 #include <variant>
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/pjrt/pjrt_client.h"
-#include "xla/python/ifrt/types.pb.h"
+#include "xla/python/ifrt/device.pb.h"
 
 namespace xla {
 namespace ifrt {
@@ -56,13 +58,13 @@ class DeviceList {
   DeviceList& operator=(DeviceList&& other) = default;
 
   // Function that matches the semantics of `Client::LookupDevice()`.
-  using LookupDeviceFunc = absl::FunctionRef<StatusOr<Device*>(int)>;
+  using LookupDeviceFunc = absl::FunctionRef<absl::StatusOr<Device*>(int)>;
 
   // Constructs `DeviceList` from `DeviceListProto`. Devices are looked up using
   // `lookup_device`. Device ids in the proto must be consistent with the
   // devices returned by `lookup_device`.
-  static StatusOr<DeviceList> FromProto(LookupDeviceFunc lookup_device,
-                                        const DeviceListProto& proto);
+  static absl::StatusOr<DeviceList> FromProto(LookupDeviceFunc lookup_device,
+                                              const DeviceListProto& proto);
 
   // Returns a `DeviceListProto` representation.
   DeviceListProto ToProto() const;
@@ -88,6 +90,8 @@ class DeviceList {
   auto cbegin() const { return state().devices.cbegin(); }
   auto end() const { return state().devices.end(); }
   auto cend() const { return state().devices.cend(); }
+
+  std::string DebugString() const;
 
  private:
   // Internal state that may be shared across `DeviceList` instances.

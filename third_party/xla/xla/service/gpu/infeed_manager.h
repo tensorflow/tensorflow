@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,12 +20,15 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_INFEED_MANAGER_H_
 #define XLA_SERVICE_GPU_INFEED_MANAGER_H_
 
-#include "absl/base/thread_annotations.h"
+#include <cstdint>
+#include <memory>
+
+#include "absl/status/status.h"
 #include "xla/literal.h"
 #include "xla/service/gpu/xfeed_queue.h"
 #include "xla/shape_tree.h"
+#include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/types.h"
 
 namespace xla {
 namespace gpu {

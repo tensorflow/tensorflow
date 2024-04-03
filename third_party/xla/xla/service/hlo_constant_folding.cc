@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -66,7 +66,7 @@ static bool IsOrContainsIllegalInstr(const HloInstruction* instr) {
 
 /*static*/ std::atomic<int64_t> HloConstantFolding::slow_op_counter_{0};
 
-StatusOr<bool> HloConstantFolding::Run(
+absl::StatusOr<bool> HloConstantFolding::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   // Limit the constant folding to 0 iterations to skip folding loops. This
@@ -233,6 +233,16 @@ StatusOr<bool> HloConstantFolding::Run(
       dead_instructions.push_back(instruction);
       HloInstruction* new_constant = computation->AddInstruction(
           HloInstruction::CreateConstant(std::move(result)));
+      if (new_constant->shape().has_layout()) {
+        // Update element_size_in_bits on the new instruction's layout. Literals
+        // always have element_size_in_bits set to 0, and CreateConstant copies
+        // the shape/layout from the Literal, so we need to set
+        // element_size_in_bits here.
+        new_constant->mutable_shape()
+            ->mutable_layout()
+            ->set_element_size_in_bits(
+                instruction->shape().layout().element_size_in_bits());
+      }
       TF_RETURN_IF_ERROR(instruction->ReplaceAllUsesWith(new_constant));
     }
   }

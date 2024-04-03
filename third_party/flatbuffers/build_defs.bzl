@@ -365,7 +365,6 @@ _gen_flatbuffer_srcs = rule(
             cfg = "exec",
         ),
     },
-    output_to_genfiles = True,
 )
 
 def flatbuffer_py_strip_prefix_srcs(name, srcs = [], strip_prefix = ""):
@@ -408,7 +407,6 @@ _concat_flatbuffer_py_srcs = rule(
     attrs = {
         "deps": attr.label_list(mandatory = True),
     },
-    output_to_genfiles = True,
     outputs = {"out": "%{name}.py"},
 )
 

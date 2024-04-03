@@ -1,7 +1,7 @@
 diff --ruN a/stablehlo/CMakeLists.txt b/stablehlo/CMakeLists.txt
 --- stablehlo/CMakeLists.txt
 +++ stablehlo/CMakeLists.txt
-@@ -13,135 +13,20 @@
+@@ -13,153 +13,20 @@
  # See the License for the specific language governing permissions and
  # limitations under the License.
  #
@@ -25,6 +25,11 @@ diff --ruN a/stablehlo/CMakeLists.txt b/stablehlo/CMakeLists.txt
 -if(POLICY CMP0116)
 -  cmake_policy(SET CMP0116 OLD)
 -endif()
+-
+-# Support for return(PROPAGATE ...) in functions.
+-if (POLICY CMP0140)
+-  cmake_policy(SET CMP0140 NEW)
+-endif()
 +# This build of StableHLO is meant to be embedded in MLIR-HLO.
 +# As a result, its root CMakeLists.txt is different from the original
 +# CMakeLists.txt from https://github.com/openxla/stablehlo.
@@ -39,6 +44,9 @@ diff --ruN a/stablehlo/CMakeLists.txt b/stablehlo/CMakeLists.txt
 -option(STABLEHLO_BUILD_EMBEDDED "Build StableHLO as part of another project" OFF)
 -option(STABLEHLO_ENABLE_BINDINGS_PYTHON "Enables StableHLO Python bindings" OFF)
 -option(STABLEHLO_ENABLE_STRICT_BUILD "Build StableHLO with strict warnings and warnings as errors" OFF)
+-option(STABLEHLO_ENABLE_SANITIZER "Enable a sanitizer [OFF, address]" OFF)
+-option(STABLEHLO_ENABLE_SPLIT_DWARF "Enable split DWARF if the platform supports it" OFF)
+-option(STABLEHLO_ENABLE_LLD "Use LLD as the linker if available" OFF)
  
 -#-------------------------------------------------------------------------------
 -# Project setup and globals
@@ -53,29 +61,6 @@ diff --ruN a/stablehlo/CMakeLists.txt b/stablehlo/CMakeLists.txt
 -  project(stablehlo LANGUAGES CXX C)
 -  set(CMAKE_C_STANDARD 11)
 -  set(CMAKE_CXX_STANDARD 17)
--endif()
--
--# Build with ccache if the package is present
--set(LLVM_CCACHE_BUILD OFF CACHE BOOL "Set to ON for a ccache enabled build")
--if(LLVM_CCACHE_BUILD)
--  find_program(CCACHE_PROGRAM ccache)
--  if(CCACHE_PROGRAM)
--      set(LLVM_CCACHE_MAXSIZE "" CACHE STRING "Size of ccache")
--      set(LLVM_CCACHE_DIR "" CACHE STRING "Directory to keep ccached data")
--      set(LLVM_CCACHE_PARAMS "CCACHE_CPP2=yes CCACHE_HASHDIR=yes"
--          CACHE STRING "Parameters to pass through to ccache")
--
--      set(CCACHE_PROGRAM "${LLVM_CCACHE_PARAMS} ${CCACHE_PROGRAM}")
--      if (LLVM_CCACHE_MAXSIZE)
--        set(CCACHE_PROGRAM "CCACHE_MAXSIZE=${LLVM_CCACHE_MAXSIZE} ${CCACHE_PROGRAM}")
--      endif()
--      if (LLVM_CCACHE_DIR)
--        set(CCACHE_PROGRAM "CCACHE_DIR=${LLVM_CCACHE_DIR} ${CCACHE_PROGRAM}")
--      endif()
--      set_property(GLOBAL PROPERTY RULE_LAUNCH_COMPILE ${CCACHE_PROGRAM})
--  else()
--    message(FATAL_ERROR "Unable to find the program ccache. Set LLVM_CCACHE_BUILD to OFF")
--  endif()
 -endif()
 -
 -#-------------------------------------------------------------------------------
@@ -114,8 +99,37 @@ diff --ruN a/stablehlo/CMakeLists.txt b/stablehlo/CMakeLists.txt
 -  message(STATUS "Building StableHLO embedded in another project")
 -endif()
 -
+-# Add the CMake modules specific to StableHLO
+-list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake")
+-
 -if(LLVM_ENABLE_ZLIB)
 -  find_package(ZLIB)
+-endif()
+-
+-#-------------------------------------------------------------------------------
+-# Performance configuration
+-#-------------------------------------------------------------------------------
+-
+-include(CheckCXXCompilerFlag)
+-include(CheckLinkerFlag)
+-if (STABLEHLO_ENABLE_LLD)
+-  message(STATUS "Enabling LLD as the linker")
+-  add_link_options("-fuse-ld=lld")
+-endif()
+-
+-if(STABLEHLO_ENABLE_SPLIT_DWARF)
+-    check_cxx_compiler_flag(-gsplit-dwarf STABLEHLO_SUPPORTS_SPLIT_DWARF)
+-    if (STABLEHLO_SUPPORTS_SPLIT_DWARF)
+-      message(STATUS "Enabling split-dwarf build")
+-      add_compile_options(-gsplit-dwarf -ggnu-pubnames)
+-    endif()
+-    check_linker_flag(CXX "-Wl,--gdb-index" STABLEHLO_SUPPORTS_GDB_INDEX)
+-    # If we set LLD it doesn't seem to affect the check_linker_flag above.
+-    # Account for it with the generator expression OR
+-    if (STABLEHLO_SUPPORTS_GDB_INDEX OR STABLEHLO_ENABLE_LLD)
+-      message(STATUS "Enabling GDB index in binary")
+-      add_link_options("-Wl,--gdb-index")
+-    endif()
 -endif()
 -
 -include(TableGen)
@@ -129,15 +143,19 @@ diff --ruN a/stablehlo/CMakeLists.txt b/stablehlo/CMakeLists.txt
 -link_directories(${LLVM_BUILD_LIBRARY_DIR})
 -add_definitions(${LLVM_DEFINITIONS})
 -
+-
+-#-------------------------------------------------------------------------------
+-# Sanitizer configuration
+-#-------------------------------------------------------------------------------
+-
+-include(SetupSanitizers)
+-setup_sanitizers()
+-
 -#-------------------------------------------------------------------------------
 -# Python configuration
 -#-------------------------------------------------------------------------------
 -
 -if(STABLEHLO_ENABLE_BINDINGS_PYTHON)
--  if(NOT STABLEHLO_EXTERNAL_PROJECT_BUILD)
--    message(WARNING "StableHLO Python bindings are not supported in standalone mode")
--  endif()
--
 -  include(MLIRDetectPythonEnv)
 -  mlir_configure_python_dev_packages()
 -endif()
@@ -156,107 +174,10 @@ diff --ruN a/stablehlo/stablehlo/CMakeLists.txt b/stablehlo/stablehlo/CMakeLists
  add_subdirectory(integrations)
  add_subdirectory(reference)
  add_subdirectory(tests)
-diff --ruN a/stablehlo/stablehlo/conversions/linalg/tests/BUILD.bazel b/stablehlo/stablehlo/conversions/linalg/tests/BUILD.bazel
---- stablehlo/stablehlo/conversions/linalg/tests/BUILD.bazel
-+++ stablehlo/stablehlo/conversions/linalg/tests/BUILD.bazel
-@@ -37,6 +37,7 @@
- [
-     lit_test(
-         name = "%s.test" % src,
-+        size = "small",
-         srcs = [src],
-         data = [
-             "lit.cfg.py",
-@@ -44,7 +45,6 @@
-             "//:stablehlo-opt",
-             "@llvm-project//llvm:FileCheck",
-         ],
--        size = "small",
-         tags = ["stablehlo_linalg_tests"],
-     )
-     for src in glob(["**/*.mlir"])
-diff --ruN a/stablehlo/stablehlo/conversions/linalg/tests/reduce.mlir b/stablehlo/stablehlo/conversions/linalg/tests/reduce.mlir
---- stablehlo/stablehlo/conversions/linalg/tests/reduce.mlir
-+++ stablehlo/stablehlo/conversions/linalg/tests/reduce.mlir
-@@ -29,7 +29,7 @@
- // CHECK-PRIMITIVE-DAG: %[[INIT:.*]] = tensor.extract %{{.*}} : tensor<i32>
- // CHECK-PRIMITIVE-DAG: %[[INIT_TENSOR:.*]] = tensor.empty()
- // CHECK-PRIMITIVE-DAG: %[[FILL_TENSOR:.*]] = linalg.fill ins(%[[INIT]]{{.*}}outs(%[[INIT_TENSOR]]
--// CHECK-PRIMITIVE: linalg.reduce { arith.addi }
-+// CHECK-PRIMITIVE: linalg.reduce { arith.addi {overflowFlags = #arith.overflow<none>} }
- // CHECK-PRIMITIVE-SAME: ins(%{{.*}}tensor<5x4xi32>)
- // CHECK-PRIMITIVE-SAME: outs(%[[FILL_TENSOR]] : tensor<5xi32>)
- // CHECK-PRIMITIVE-SAME: dimensions = [1]  {someattr}
-diff --ruN a/stablehlo/stablehlo/conversions/tosa/tests/lit.cfg.py b/stablehlo/stablehlo/conversions/tosa/tests/lit.cfg.py
---- stablehlo/stablehlo/conversions/tosa/tests/lit.cfg.py
-+++ stablehlo/stablehlo/conversions/tosa/tests/lit.cfg.py
-@@ -26,6 +26,10 @@
- config.suffixes = ['.mlir']
- config.test_source_root = os.path.dirname(__file__)
- 
-+# Disallow reusing variables across CHECK-LABEL matches.
-+# A variable can eschew this (be made "global") by prefixing its name with $.
-+config.environment['FILECHECK_OPTS'] = '-enable-var-scope'
-+
- # Make LLVM and StableHLO tools available in RUN directives
- tools = [
-   'stablehlo-opt',
-diff --ruN a/stablehlo/stablehlo/dialect/Base.td b/stablehlo/stablehlo/dialect/Base.td
---- stablehlo/stablehlo/dialect/Base.td
-+++ stablehlo/stablehlo/dialect/Base.td
-@@ -238,7 +238,7 @@
- 
- // TODO(#1578) migrate uses to DenseI64ArrayAttr and delete this attr
- def I64DenseArrayOrElements1DAttr : Attr<Or<[DenseI64ArrayAttr.predicate, I64Elements1D]>, "either a DenseI64ArrayAttr or a 1-dimensional I64ElementsAttr."> {
--  let storageType = "Attribute";
-+  let storageType = "mlir::Attribute";
-   let returnType = "SmallVector<int64_t>";
-   let convertFromStorage = "hlo::getI64Array($_self)";
- }
-diff --ruN a/stablehlo/stablehlo/dialect/StablehloAttrs.td b/stablehlo/stablehlo/dialect/StablehloAttrs.td
---- stablehlo/stablehlo/dialect/StablehloAttrs.td
-+++ stablehlo/stablehlo/dialect/StablehloAttrs.td
-@@ -191,7 +191,7 @@
- }
- 
- def BoolDenseArrayOrElementsAttr : Attr<Or<[DenseBoolArrayAttr.predicate, StableHLO_BoolElementsAttr.predicate]>, "either a DenseBoolArrayAttr or a StableHLO_BoolElementsAttr"> {
--  let storageType = "Attribute";
-+  let storageType = "mlir::Attribute";
-   let returnType = "SmallVector<bool>";
-   let convertFromStorage = "hlo::getBoolArray($_self)";
- }
-diff --ruN a/stablehlo/stablehlo/dialect/TypeInference.cpp b/stablehlo/stablehlo/dialect/TypeInference.cpp
---- stablehlo/stablehlo/dialect/TypeInference.cpp
-+++ stablehlo/stablehlo/dialect/TypeInference.cpp
-@@ -4153,8 +4153,8 @@
- //   P5. Check if the result type of window operation matches the source type.
- LogicalResult verifySelectAndScatterOp(
-     std::optional<Location> location, Value operand, Value source,
--    Value initValue, std::optional<SmallVector<int64_t>> windowDimensionsOpt,
--    std::optional<SmallVector<int64_t>> windowStridesOpt,
-+    Value initValue, std::optional<ArrayRef<int64_t>> windowDimensionsOpt,
-+    std::optional<ArrayRef<int64_t>> windowStridesOpt,
-     std::optional<DenseIntElementsAttr> padding, Region& select,
-     Region& scatter) {
-   auto operandType = operand.getType().cast<ShapedType>();
-diff --ruN a/stablehlo/stablehlo/dialect/TypeInference.h b/stablehlo/stablehlo/dialect/TypeInference.h
---- stablehlo/stablehlo/dialect/TypeInference.h
-+++ stablehlo/stablehlo/dialect/TypeInference.h
-@@ -501,8 +501,8 @@
- 
- LogicalResult verifySelectAndScatterOp(
-     std::optional<Location> location, Value operand, Value source,
--    Value initValue, std::optional<SmallVector<int64_t>> windowDimensions,
--    std::optional<SmallVector<int64_t>> windowStrides,
-+    Value initValue, std::optional<ArrayRef<int64_t>> windowDimensions,
-+    std::optional<ArrayRef<int64_t>> windowStrides,
-     std::optional<DenseIntElementsAttr> padding, Region& select,
-     Region& scatter);
- 
 diff --ruN a/stablehlo/stablehlo/experimental/BUILD.bazel b/stablehlo/stablehlo/experimental/BUILD.bazel
 --- stablehlo/stablehlo/experimental/BUILD.bazel
 +++ stablehlo/stablehlo/experimental/BUILD.bazel
-@@ -0,0 +1,114 @@
+@@ -0,0 +1,116 @@
 +# Copyright 2023 The StableHLO Authors. All Rights Reserved.
 +#
 +# Licensed under the Apache License, Version 2.0 (the "License");
@@ -327,8 +248,10 @@ diff --ruN a/stablehlo/stablehlo/experimental/BUILD.bazel b/stablehlo/stablehlo/
 +cc_library(
 +    name = "experimental_stablehlo_passes",
 +    srcs = [
++        "transforms/ChloRecomposeOps.cpp",
 +        "transforms/StablehloCanonicalizeDynamism.cpp",
 +        "transforms/StablehloRefineShapes.cpp",
++        "transforms/StablehloTrivialDce.cpp",
 +    ],
 +    hdrs = [
 +        "transforms/Passes.h",
@@ -524,7 +447,7 @@ diff --ruN a/stablehlo/stablehlo/experimental/dialect/CMakeLists.txt b/stablehlo
 diff --ruN a/stablehlo/stablehlo/experimental/dialect/StablehloOps.cpp b/stablehlo/stablehlo/experimental/dialect/StablehloOps.cpp
 --- stablehlo/stablehlo/experimental/dialect/StablehloOps.cpp
 +++ stablehlo/stablehlo/experimental/dialect/StablehloOps.cpp
-@@ -0,0 +1,641 @@
+@@ -0,0 +1,504 @@
 +/* Copyright 2023 The StableHLO Authors.
 +
 +Licensed under the Apache License, Version 2.0 (the "License");
@@ -1026,150 +949,13 @@ diff --ruN a/stablehlo/stablehlo/experimental/dialect/StablehloOps.cpp b/stableh
 +  return DynamicTopKOpAdaptor(op);
 +}
 +
-+LogicalResult TopKOpAdaptor::verify() {
-+  if (op_->getNumOperands() != 1)
-+    return op_.emitError("expects size(operands) = 1");
-+  if (op_->getNumResults() != 2)
-+    return op_.emitError("expects size(results) = 2");
-+  if (!op_.getBackendConfig().empty())
-+    return op_.emitError() << "expects an empty backend_config";
-+  if (op_.getCallTargetName() != "mhlo.topk")
-+    return op_.emitError() << "expects @mhlo.topk";
-+
-+  auto operand = op_.getInputs()[0];
-+  auto values = op_.getResults()[0];
-+  auto indices = op_.getResults()[1];
-+  DictionaryAttr topkAttributes =
-+      op_->getAttrOfType<DictionaryAttr>("mhlo.attributes");
-+  if (!topkAttributes) {
-+    return op_.emitError()
-+           << "mhlo.attributes missing or not a dictionary attribute";
-+  }
-+
-+  IntegerAttr k_attr = topkAttributes.get("k").dyn_cast_or_null<IntegerAttr>();
-+  if (!k_attr) {
-+    return op_.emitError() << "mhlo.attributes.k not present or not an integer";
-+  }
-+  int64_t k = k_attr.getInt();
-+
-+  // mhlo.topk_c5
-+  if (k < 0) return op_.emitError() << "expects k >= 0";
-+
-+  // mhlo.topk_i1
-+  auto operandType = operand.getType().dyn_cast<ShapedType>();
-+  if (!operandType || !operandType.hasRank() || operandType.getRank() < 1 ||
-+      !operandType.getElementType().isIntOrFloat())
-+    return op_.emitError()
-+           << "expects operand #0 "
-+           << "to be a tensor of integer or floating-point type "
-+           << "of rank at least 1";
-+
-+  // mhlo.topk_o1
-+  auto valuesType = values.getType().dyn_cast<ShapedType>();
-+  if (!valuesType || !valuesType.hasRank() || valuesType.getRank() < 1 ||
-+      !valuesType.getElementType().isIntOrFloat())
-+    return op_.emitError()
-+           << "expects values (result #0) "
-+           << "to be a tensor of integer or floating-point type "
-+           << "of rank at least 1";
-+
-+  // mhlo.topk_o2
-+  auto indicesType = indices.getType().dyn_cast<ShapedType>();
-+  if (!indicesType || !indicesType.hasRank() || indicesType.getRank() < 1 ||
-+      !indicesType.getElementType().isSignlessInteger(32))
-+    return op_.emitError() << "expects indices (result #1) "
-+                           << "to be a tensor of si32 of rank at least 1";
-+
-+  // mhlo.topk_c1 && mhlo.topk_c2
-+  auto operandLastDim = operandType.getRank() - 1;
-+  SmallVector<int64_t> expectedValuesShape(operandType.getShape());
-+  expectedValuesShape[operandLastDim] = k;
-+  if (failed(verifyCompatibleShape(expectedValuesShape, valuesType.getShape())))
-+    return op_.emitError() << "expects the values shape to match the operand "
-+                              "shape in all but the last dimension, and "
-+                              "that the last dimension of the values shape "
-+                              "has a size k";
-+
-+  // mhlo.topk_c3
-+  if (valuesType.getElementType() != operandType.getElementType())
-+    return op_.emitError()
-+           << "expects the values element type to be the same as the operand "
-+           << "element type";
-+
-+  // mhlo.topk_c4
-+  if (failed(
-+          verifyCompatibleShape(indicesType.getShape(), valuesType.getShape())))
-+    return op_.emitError()
-+           << "expects the indices shape to match the values shape";
-+
-+  return success();
-+}
-+
-+TypedValue<ShapedType> TopKOpAdaptor::getOperand() {
-+  return op_.getInputs()[0].cast<TypedValue<ShapedType>>();
-+}
-+
-+TypedValue<ShapedType> TopKOpAdaptor::getValues() {
-+  return op_.getResults()[0].cast<TypedValue<ShapedType>>();
-+}
-+
-+TypedValue<ShapedType> TopKOpAdaptor::getIndices() {
-+  return op_.getResults()[1].cast<TypedValue<ShapedType>>();
-+}
-+
-+int64_t TopKOpAdaptor::getK() {
-+  DictionaryAttr topkAttributes =
-+      op_->getAttrOfType<DictionaryAttr>("mhlo.attributes");
-+  return topkAttributes.get("k").cast<mlir::IntegerAttr>().getInt();
-+}
-+
-+bool TopKOpAdaptor::getLargest() {
-+  DictionaryAttr topkAttributes =
-+      op_->getAttrOfType<DictionaryAttr>("mhlo.attributes");
-+  IntegerAttr largest =
-+      topkAttributes.get("largest").dyn_cast_or_null<mlir::IntegerAttr>();
-+
-+  return (!largest) ? true : largest.getInt();
-+}
-+
-+std::optional<TopKOpAdaptor> getTopKOp(CustomCallOp op) {
-+  if (op.getCallTargetName() != "mhlo.topk") return {};
-+  return TopKOpAdaptor(op);
-+}
-+
-+LogicalResult TanOpAdaptor::verify() {
-+  if (op_->getNumOperands() != 1)
-+    return op_.emitError("expects size(operands) = 1");
-+  if (op_->getNumResults() != 1)
-+    return op_.emitError("expects size(results) = 1");
-+  auto operand = op_.getInputs()[0];
-+  auto result = op_.getResults()[0];
-+
-+  // tan_c1
-+  auto operandType = operand.getType().dyn_cast<ShapedType>();
-+  auto resultType = result.getType().dyn_cast<ShapedType>();
-+  if (!hlo::isCompatibleForHloTypeInference(operandType, resultType))
-+    return op_.emitError()
-+           << "expects operand and result to have compatible shapes";
-+  return success();
-+}
-+
-+TypedValue<ShapedType> TanOpAdaptor::getOperand() {
-+  return op_.getInputs()[0].cast<TypedValue<ShapedType>>();
-+}
-+
-+std::optional<TanOpAdaptor> getTanOp(CustomCallOp op) {
-+  if (op.getCallTargetName() != "mhlo.tan") return {};
-+  return TanOpAdaptor(op);
-+}
-+
 +}  // namespace experimental
 +}  // namespace stablehlo
 +}  // namespace mlir
 diff --ruN a/stablehlo/stablehlo/experimental/dialect/StablehloOps.h b/stablehlo/stablehlo/experimental/dialect/StablehloOps.h
 --- stablehlo/stablehlo/experimental/dialect/StablehloOps.h
 +++ stablehlo/stablehlo/experimental/dialect/StablehloOps.h
-@@ -0,0 +1,347 @@
+@@ -0,0 +1,230 @@
 +/* Copyright 2023 The StableHLO Authors.
 +
 +Licensed under the Apache License, Version 2.0 (the "License");
@@ -1395,123 +1181,6 @@ diff --ruN a/stablehlo/stablehlo/experimental/dialect/StablehloOps.h b/stablehlo
 +// "stablehlo.dynamic_top_k".
 +std::optional<DynamicTopKOpAdaptor> getDynamicTopKOp(CustomCallOp op);
 +
-+///////////////////
-+// MHLO Op Wrappers
-+// There are some ops in MHLO which have experimental support in StableHLO
-+// programs by representing them as custom_calls with the target `mhlo.op_name`.
-+// The level of support of these ops is similar to the other custom_calls in
-+// this file. Generally these ops will be added to StableHLO and their
-+// experimental support can be deprecated in favor of op's type inference.
-+///////////////////
-+
-+// The TopK experiment provides a StableHLO adapter to MHLO TopKOp.
-+// In the future we expect stablehlo.top_k to be added which will use the same
-+// refinement rules.
-+//
-+// Within this experiment, TopKOp is represented via the serialized MHLO
-+// `stablehlo.custom_call @mhlo.topk` custom call.
-+//
-+// The semantics of experimental TopKOp are inherited from the semantics of
-+// mhlo.topk.
-+//
-+// #### Inputs
-+//
-+// | Label | Name            | Type                                         |
-+// |-------|-----------------|----------------------------------------------|
-+// | (I1)  | `operand`       | tensor of integer or floating-point type     |
-+// | (I2)  | `k`             | constant of type si64                        |
-+// | (I3)  | `largest`       | constant of type i1                          |
-+//
-+// #### Outputs
-+//
-+// | Name           | Type                                     |
-+// |----------------|------------------------------------------|
-+// | `values`       | tensor of integer or floating-point type |
-+// | `indices`      | tensor of si32 type                      |
-+//
-+// #### Constraints
-+//
-+// * (C1) `shape(values)[:-1] = shape(operand)[:-1]`
-+// * (C2) `shape(values)[-1] = k`
-+// * (C3) `element_type(values) = element_type(operand)`
-+// * (C4) `shape(indices) = shape(values)`
-+// * (C5) `k >= 0`
-+//
-+class TopKOpAdaptor {
-+ public:
-+  TopKOpAdaptor(CustomCallOp op) : op_(op) {}
-+  operator Operation*() { return op_; }
-+  Operation* operator->() { return op_; }
-+
-+  // These accessors assume that the operation is well-formed (i.e. that it
-+  // can pass verification).
-+  TypedValue<ShapedType> getOperand();
-+  TypedValue<ShapedType> getValues();
-+  TypedValue<ShapedType> getIndices();
-+  int64_t getK();
-+  bool getLargest();
-+
-+  // Verifies the constraints documented above.
-+  // Emits errors if errors are detected.
-+  LogicalResult verify();
-+
-+ private:
-+  CustomCallOp op_;
-+};
-+
-+// Wraps a custom call in a TopKOpAdaptor.
-+// Fails if the call_target_name of the custom call doesn't match
-+// "mhlo.topk".
-+std::optional<TopKOpAdaptor> getTopKOp(CustomCallOp op);
-+
-+// The TanOp experiment provides a StableHLO adapter to MHLO TanOp.
-+// In the future we expect stablehlo.tan to be added which will use the same
-+// refinement rules.
-+//
-+// Within this experiment, TanOp is represented via the serialized MHLO
-+// `stablehlo.custom_call @mhlo.tan` custom call. S
-+//
-+// Semantics of experimental TanOp are inherited from semantics of mhlo.tan.
-+//
-+// #### Inputs
-+//
-+// | Label | Name            | Type                                         |
-+// |-------|-----------------|----------------------------------------------|
-+// | (I1)  | `operand`       | tensor of floating-point or complex type     |
-+//
-+// #### Outputs
-+//
-+// | Name           | Type                                     |
-+// |----------------|------------------------------------------|
-+// | `result`       | tensor of floating-point or complex type |
-+//
-+// #### Constraints
-+//
-+// * (C1) baseline_type(operand) = baseline_type(result)
-+//
-+class TanOpAdaptor {
-+ public:
-+  TanOpAdaptor(CustomCallOp op) : op_(op) {}
-+  operator Operation*() { return op_; }
-+  Operation* operator->() { return op_; }
-+
-+  // These accessors assume that the operation is well-formed (i.e. that it
-+  // can pass verification).
-+  TypedValue<ShapedType> getOperand();
-+
-+  // Verifies the constraints documented above.
-+  // Emits errors if errors are detected.
-+  LogicalResult verify();
-+
-+ private:
-+  CustomCallOp op_;
-+};
-+
-+// Wraps a custom call in a TanOpAdaptor.
-+// Fails if the call_target_name of the custom call doesn't match
-+// "mhlo.tan".
-+std::optional<TanOpAdaptor> getTanOp(CustomCallOp op);
-+
 +}  // namespace experimental
 +}  // namespace stablehlo
 +}  // namespace mlir
@@ -1613,6 +1282,61 @@ diff --ruN a/stablehlo/stablehlo/experimental/tests/CMakeLists.txt b/stablehlo/s
 +  stablehlo-translate
 +)
 +add_dependencies(check-stablehlo-quick check-experimental-stablehlo-tests)
+diff --ruN a/stablehlo/stablehlo/experimental/tests/chlo_recompose_ops.mlir b/stablehlo/stablehlo/experimental/tests/chlo_recompose_ops.mlir
+--- stablehlo/stablehlo/experimental/tests/chlo_recompose_ops.mlir
++++ stablehlo/stablehlo/experimental/tests/chlo_recompose_ops.mlir
+@@ -0,0 +1,51 @@
++// RUN: experimental-stablehlo-opt --experimental-chlo-recompose-ops --split-input-file --verify-diagnostics %s | FileCheck %s
++
++// -----
++
++// CHECK-LABEL: func @recompose_topk
++func.func @recompose_topk(%arg0: tensor<5x16xf32>) -> (tensor<?x?xf32>, tensor<?x?xi32>) {
++  // CHECK: %values, %indices = chlo.top_k(%arg0, k = 4) {largest = true} : tensor<5x16xf32> -> (tensor<?x?xf32>, tensor<?x?xi32>)
++  %0:2 = stablehlo.custom_call @mhlo.topk(%arg0) {
++    mhlo.attributes = { k = 4 : i64, largest = true}
++  } : (tensor<5x16xf32>) -> (tensor<?x?xf32>, tensor<?x?xi32>)
++  return %0#0, %0#1 : tensor<?x?xf32>, tensor<?x?xi32>
++}
++
++// -----
++
++// CHECK-LABEL: func @recompose_topk_invalid_attr
++func.func @recompose_topk_invalid_attr(%arg0: tensor<5x16xf32>) -> (tensor<?x?xf32>, tensor<?x?xi32>) {
++  // CHECK: stablehlo.custom_call @mhlo.topk
++  %0:2 = stablehlo.custom_call @mhlo.topk(%arg0) {
++    mhlo.attributes = { k = 4 : i64, largest = false}
++  } : (tensor<5x16xf32>) -> (tensor<?x?xf32>, tensor<?x?xi32>)
++  return %0#0, %0#1 : tensor<?x?xf32>, tensor<?x?xi32>
++}
++
++// -----
++
++// CHECK-LABEL: @recompose_tan
++func.func @recompose_tan(%arg0: tensor<16xf32>) -> tensor<?xf32> {
++  // CHECK: %0 = chlo.tan %arg0 : tensor<16xf32> -> tensor<?xf32>
++  %0 = "stablehlo.custom_call"(%arg0) {
++    call_target_name = "mhlo.tan",
++    mhlo.attributes = {},
++    mhlo.version = 1 : i64
++  } : (tensor<16xf32>) -> tensor<?xf32>
++  func.return %0 : tensor<?xf32>
++}
++
++// -----
++
++// CHECK-LABEL: @recompose_erf
++func.func @recompose_erf(%arg0: tensor<3x20x20xbf16>) -> tensor<?x20x20xbf16> {
++  // CHECK: %0 = chlo.erf %arg0 : tensor<3x20x20xbf16> -> tensor<?x20x20xbf16>
++  %0 = "stablehlo.custom_call"(%arg0) {
++    backend_config = "",
++    call_target_name = "mhlo.erf",
++    mhlo.attributes = {},
++    mhlo.version = 1 : i64
++  } : (tensor<3x20x20xbf16>) -> tensor<?x20x20xbf16>
++  func.return %0 : tensor<?x20x20xbf16>
++}
++
 diff --ruN a/stablehlo/stablehlo/experimental/tests/lit.cfg.py b/stablehlo/stablehlo/experimental/tests/lit.cfg.py
 --- stablehlo/stablehlo/experimental/tests/lit.cfg.py
 +++ stablehlo/stablehlo/experimental/tests/lit.cfg.py
@@ -1702,11 +1426,11 @@ diff --ruN a/stablehlo/stablehlo/experimental/tests/stablehlo_canonicalize_dynam
 +  //          CHECK-NEXT:     %[[VAL1:.*]] = stablehlo.add %arg2, %arg3 : tensor<f32>
 +  //          CHECK-NEXT:     stablehlo.return %[[VAL1]] : tensor<f32>
 +  //          CHECK-NEXT: }) {
-+  //          CHECK-SAME:   base_dilations = dense<[2, 1]> : tensor<2xi64>,
++  //          CHECK-SAME:   base_dilations = array<i64: 2, 1>,
 +  // CHECK-SAME{LITERAL}:   padding = dense<[[2, 1], [0, 0]]> : tensor<2x2xi64>,
-+  //          CHECK-SAME:   window_dilations = dense<[3, 1]> : tensor<2xi64>,
-+  //          CHECK-SAME:   window_dimensions = dense<[2, 1]> : tensor<2xi64>,
-+  //          CHECK-SAME:   window_strides = dense<[4, 1]> : tensor<2xi64>
++  //          CHECK-SAME:   window_dilations = array<i64: 3, 1>,
++  //          CHECK-SAME:   window_dimensions = array<i64: 2, 1>,
++  //          CHECK-SAME:   window_strides = array<i64: 4, 1>
 +  //          CHECK-SAME: } : (tensor<3x2xf32>, tensor<f32>) -> tensor<2x2xf32>
 +  %0 = stablehlo.constant dense<[2, 1]> : tensor<2xi64>
 +  %1 = stablehlo.constant dense<[4, 1]> : tensor<2xi64>
@@ -1734,11 +1458,11 @@ diff --ruN a/stablehlo/stablehlo/experimental/tests/stablehlo_canonicalize_dynam
 +  //          CHECK-NEXT:     %[[VAL1:.*]] = stablehlo.add %arg2, %arg3 : tensor<f32>
 +  //          CHECK-NEXT:     stablehlo.return %[[VAL1]] : tensor<f32>
 +  //          CHECK-NEXT: }) {
-+  //          CHECK-SAME:   base_dilations = dense<[2, 1]> : tensor<2xi64>,
++  //          CHECK-SAME:   base_dilations = array<i64: 2, 1>,
 +  // CHECK-SAME{LITERAL}:   padding = dense<[[2, 1], [0, 0]]> : tensor<2x2xi64>,
-+  //          CHECK-SAME:   window_dilations = dense<[3, 1]> : tensor<2xi64>,
-+  //          CHECK-SAME:   window_dimensions = dense<[2, 1]> : tensor<2xi64>,
-+  //          CHECK-SAME:   window_strides = dense<[4, 1]> : tensor<2xi64>
++  //          CHECK-SAME:   window_dilations = array<i64: 3, 1>,
++  //          CHECK-SAME:   window_dimensions = array<i64: 2, 1>,
++  //          CHECK-SAME:   window_strides = array<i64: 4, 1>
 +  //          CHECK-SAME: } : (tensor<?x2xf32>, tensor<f32>) -> tensor<?x2xf32>
 +  %0 = stablehlo.constant dense<[2, 1]> : tensor<2xi64>
 +  %1 = stablehlo.constant dense<[4, 1]> : tensor<2xi64>
@@ -2039,11 +1763,11 @@ diff --ruN a/stablehlo/stablehlo/experimental/tests/stablehlo_canonicalize_dynam
 diff --ruN a/stablehlo/stablehlo/experimental/tests/stablehlo_refine_shapes.mlir b/stablehlo/stablehlo/experimental/tests/stablehlo_refine_shapes.mlir
 --- stablehlo/stablehlo/experimental/tests/stablehlo_refine_shapes.mlir
 +++ stablehlo/stablehlo/experimental/tests/stablehlo_refine_shapes.mlir
-@@ -0,0 +1,196 @@
+@@ -0,0 +1,42 @@
 +// RUN: experimental-stablehlo-opt --experimental-stablehlo-refine-shapes --split-input-file --verify-diagnostics %s | FileCheck %s
 +
 +// CHECK-LABEL: @main
-+func.func @main(%arg0: tensor<3x2xf32>, %arg1: tensor<f32>) -> tensor<*xf32> {
++func.func @main(%arg0: tensor<3x2xf32>, %arg1: tensor<f32>) -> tensor<?x?xf32> {
 +  // CHECK: stablehlo.dynamic_reduce_window{{.*}} -> tensor<2x2xf32>
 +  %0 = stablehlo.constant dense<[2, 1]> : tensor<2xi64>
 +  %1 = stablehlo.constant dense<[4, 1]> : tensor<2xi64>
@@ -2052,8 +1776,8 @@ diff --ruN a/stablehlo/stablehlo/experimental/tests/stablehlo_refine_shapes.mlir
 +  %4 = stablehlo.constant dense<[[2, 1], [0, 0]]> : tensor<2x2xi64>
 +  %5 = stablehlo.custom_call @stablehlo.dynamic_reduce_window(%arg0, %arg1, %0, %1, %2, %3, %4) {
 +    called_computations = [@dynamic_reduce_window0]
-+  } : (tensor<3x2xf32>, tensor<f32>, tensor<2xi64>, tensor<2xi64>, tensor<2xi64>, tensor<2xi64>, tensor<2x2xi64>) -> tensor<*xf32>
-+  func.return %5 : tensor<*xf32>
++  } : (tensor<3x2xf32>, tensor<f32>, tensor<2xi64>, tensor<2xi64>, tensor<2xi64>, tensor<2xi64>, tensor<2x2xi64>) -> tensor<?x?xf32>
++  func.return %5 : tensor<?x?xf32>
 +}
 +
 +func.func private @dynamic_reduce_window0(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
@@ -2064,13 +1788,13 @@ diff --ruN a/stablehlo/stablehlo/experimental/tests/stablehlo_refine_shapes.mlir
 +// -----
 +
 +// CHECK-LABEL: @refine_dynamic_rng_bit_generator
-+func.func @refine_dynamic_rng_bit_generator(%arg0: tensor<2xui64>) -> (tensor<?xui64>, tensor<*xf32>) {
++func.func @refine_dynamic_rng_bit_generator(%arg0: tensor<2xui64>) -> (tensor<?xui64>, tensor<?x?xf32>) {
 +  // CHECK: stablehlo.dynamic_rng_bit_generator{{.*}} -> (tensor<2xui64>, tensor<1x4xf32>)
 +  %0 = stablehlo.constant dense<[1, 4]> : tensor<2xi64>
 +  %1:2 = stablehlo.custom_call @stablehlo.dynamic_rng_bit_generator(%arg0, %0) {
 +    rng_algorithm = #stablehlo<rng_algorithm DEFAULT>
-+  } : (tensor<2xui64>, tensor<2xi64>) -> (tensor<?xui64>, tensor<*xf32>)
-+  func.return %1#0, %1#1 : tensor<?xui64>, tensor<*xf32>
++  } : (tensor<2xui64>, tensor<2xi64>) -> (tensor<?xui64>, tensor<?x?xf32>)
++  func.return %1#0, %1#1 : tensor<?xui64>, tensor<?x?xf32>
 +}
 +
 +// -----
@@ -2081,160 +1805,6 @@ diff --ruN a/stablehlo/stablehlo/experimental/tests/stablehlo_refine_shapes.mlir
 +  %k = stablehlo.constant dense<4> : tensor<ui64>
 +  %1:2 = stablehlo.custom_call @stablehlo.dynamic_top_k(%arg0, %k) : (tensor<16xf32>, tensor<ui64>) -> (tensor<?xf32>, tensor<?xi32>)
 +  return %1#0, %1#1 : tensor<?xf32>, tensor<?xi32>
-+}
-+
-+// -----
-+
-+// CHECK-LABEL: func @refine_mhlo_topk
-+func.func @refine_mhlo_topk(%arg0: tensor<5x16xf32>) -> (tensor<?x?xf32>, tensor<?x?xi32>) {
-+  // CHECK: mhlo.topk{{.*}} -> (tensor<5x4xf32>, tensor<5x4xi32>)
-+  %0:2 = stablehlo.custom_call @mhlo.topk(%arg0) {
-+    mhlo.attributes = { k = 4 : i64, largest = true}
-+  } : (tensor<5x16xf32>) -> (tensor<?x?xf32>, tensor<?x?xi32>)
-+  return %0#0, %0#1 : tensor<?x?xf32>, tensor<?x?xi32>
-+}
-+
-+// -----
-+
-+// CHECK-LABEL: func @refine_mhlo_error_too_many_operands
-+func.func @refine_mhlo_error_too_many_operands(%arg0: tensor<5x16xf32>) -> (tensor<?x?xf32>, tensor<?x?xi32>) {
-+  // expected-error@+1{{expects size(operands) = 1}}
-+  %0:2 = stablehlo.custom_call @mhlo.topk(%arg0, %arg0) {
-+    mhlo.attributes = { k = 4 : i64, largest = true}
-+  } : (tensor<5x16xf32>, tensor<5x16xf32>) -> (tensor<?x?xf32>, tensor<?x?xi32>)
-+  return %0#0, %0#1 : tensor<?x?xf32>, tensor<?x?xi32>
-+}
-+
-+// -----
-+
-+// CHECK-LABEL: func @refine_mhlo_error_too_few_results
-+func.func @refine_mhlo_error_too_few_results(%arg0: tensor<5x16xf32>) -> (tensor<?x?xf32>) {
-+  // expected-error@+1{{expects size(results) = 2}}
-+  %0 = stablehlo.custom_call @mhlo.topk(%arg0) {
-+    mhlo.attributes = { k = 4 : i64, largest = true}
-+  } : (tensor<5x16xf32>) -> (tensor<?x?xf32>)
-+  return %0 : tensor<?x?xf32>
-+}
-+
-+// -----
-+
-+// CHECK-LABEL: func @refine_mhlo_error_wrong_output_1_type
-+func.func @refine_mhlo_error_wrong_output_1_type(%arg0: tensor<5x16xf32>) -> (tensor<f32>, tensor<?x?xi32>) {
-+  // expected-error@+1{{expects values (result #0) to be a tensor of integer or floating-point type of rank at least 1}}
-+  %0:2 = stablehlo.custom_call @mhlo.topk(%arg0) {
-+    mhlo.attributes = { k = 4 : i64, largest = true}
-+  } : (tensor<5x16xf32>) -> (tensor<f32>, tensor<?x?xi32>)
-+  return %0#0, %0#1 : tensor<f32>, tensor<?x?xi32>
-+}
-+
-+// -----
-+
-+// CHECK-LABEL: func @refine_mhlo_error_wrong_output_2_type
-+func.func @refine_mhlo_error_wrong_output_2_type(%arg0: tensor<5x16xf32>) -> (tensor<?x?xf32>, tensor<?x?xf32>) {
-+  // expected-error@+1{{expects indices (result #1) to be a tensor of si32 of rank at least 1}}
-+  %0:2 = stablehlo.custom_call @mhlo.topk(%arg0) {
-+    mhlo.attributes = { k = 4 : i64, largest = true}
-+  } : (tensor<5x16xf32>) -> (tensor<?x?xf32>, tensor<?x?xf32>)
-+  return %0#0, %0#1 : tensor<?x?xf32>, tensor<?x?xf32>
-+}
-+
-+// -----
-+
-+// CHECK-LABEL: func @refine_mhlo_error_c1_wrong_output_shape
-+func.func @refine_mhlo_error_c1_wrong_output_shape(%arg0: tensor<5x16xf32>) -> (tensor<?x?x?xf32>, tensor<?x?xi32>) {
-+  // expected-error@+1{{expects the values shape to match the operand}}
-+  %0:2 = stablehlo.custom_call @mhlo.topk(%arg0) {
-+    mhlo.attributes = { k = 4 : i64, largest = true}
-+  } : (tensor<5x16xf32>) -> (tensor<?x?x?xf32>, tensor<?x?xi32>)
-+  return %0#0, %0#1 : tensor<?x?x?xf32>, tensor<?x?xi32>
-+}
-+
-+// -----
-+
-+// CHECK-LABEL: func @refine_mhlo_error_c2_last_dim_not_k
-+func.func @refine_mhlo_error_c2_last_dim_not_k(%arg0: tensor<5x16xf32>) -> (tensor<?x5xf32>, tensor<?x?xi32>) {
-+  // expected-error@+1{{expects the values shape to match the operand}}
-+  %0:2 = stablehlo.custom_call @mhlo.topk(%arg0) {
-+    mhlo.attributes = { k = 4 : i64, largest = true}
-+  } : (tensor<5x16xf32>) -> (tensor<?x5xf32>, tensor<?x?xi32>)
-+  return %0#0, %0#1 : tensor<?x5xf32>, tensor<?x?xi32>
-+}
-+
-+// -----
-+
-+// CHECK-LABEL: func @refine_mhlo_error_c3_wrong_output_type
-+func.func @refine_mhlo_error_c3_wrong_output_type(%arg0: tensor<5x16xf32>) -> (tensor<?x?xi32>, tensor<?x?xi32>) {
-+  // expected-error@+1{{expects the values element type to be the same as the operand element type}}
-+  %0:2 = stablehlo.custom_call @mhlo.topk(%arg0) {
-+    mhlo.attributes = { k = 4 : i64, largest = true}
-+  } : (tensor<5x16xf32>) -> (tensor<?x?xi32>, tensor<?x?xi32>)
-+  return %0#0, %0#1 : tensor<?x?xi32>, tensor<?x?xi32>
-+}
-+
-+// -----
-+
-+// CHECK-LABEL: func @refine_mhlo_error_c4_outputs_shape_mismatch
-+func.func @refine_mhlo_error_c4_outputs_shape_mismatch(%arg0: tensor<5x16xf32>) -> (tensor<?x4xf32>, tensor<?x5xi32>) {
-+  // expected-error@+1{{expects the indices shape to match the values shape}}
-+  %0:2 = stablehlo.custom_call @mhlo.topk(%arg0) {
-+    mhlo.attributes = { k = 4 : i64, largest = true}
-+  } : (tensor<5x16xf32>) -> (tensor<?x4xf32>, tensor<?x5xi32>)
-+  return %0#0, %0#1 : tensor<?x4xf32>, tensor<?x5xi32>
-+}
-+
-+// -----
-+
-+// CHECK-LABEL: func @refine_mhlo_error_c5_negative_k
-+func.func @refine_mhlo_error_c5_negative_k(%arg0: tensor<5x16xf32>) -> (tensor<?x?xf32>, tensor<?x?xi32>) {
-+  // expected-error@+1{{expects k >= 0}}
-+  %0:2 = stablehlo.custom_call @mhlo.topk(%arg0) {
-+    mhlo.attributes = { k = -4 : i64, largest = true}
-+  } : (tensor<5x16xf32>) -> (tensor<?x?xf32>, tensor<?x?xi32>)
-+  return %0#0, %0#1 : tensor<?x?xf32>, tensor<?x?xi32>
-+}
-+
-+
-+// -----
-+
-+// CHECK-LABEL: @refine_tan
-+func.func @refine_tan(%arg0: tensor<16xf32>) -> tensor<?xf32> {
-+  // CHECK: mhlo.tan{{.*}} -> tensor<16xf32>
-+  %0 = "stablehlo.custom_call"(%arg0) {
-+    call_target_name = "mhlo.tan",
-+    mhlo.attributes = {},
-+    mhlo.version = 1 : i64
-+  } : (tensor<16xf32>) -> tensor<?xf32>
-+  func.return %0 : tensor<?xf32>
-+}
-+
-+// -----
-+
-+// tan_op I1
-+// CHECK-LABEL: func @tan_op_error_too_many_inputs
-+func.func @tan_op_error_too_many_inputs(%arg0: tensor<1xf32>) -> (tensor<1xf32>) {
-+  // expected-error@+1{{expects size(operands) = 1}}
-+  %0 = "stablehlo.custom_call"(%arg0, %arg0) {call_target_name = "mhlo.tan", mhlo.attributes = {}, mhlo.version = 1 : i64} : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
-+  return %0 : tensor<1xf32>
-+}
-+
-+// -----
-+
-+// tan_op O1
-+// CHECK-LABEL: func @tan_op_error_too_many_outputs
-+func.func @tan_op_error_too_many_outputs(%arg0: tensor<1xf32>) -> (tensor<1xf32>) {
-+  // expected-error@+1{{expects size(results) = 1}}
-+  %0:2 = "stablehlo.custom_call"(%arg0) {call_target_name = "mhlo.tan", mhlo.attributes = {}, mhlo.version = 1 : i64} : (tensor<1xf32>) -> (tensor<1xf32>, tensor<1xf32>)
-+  return %0#1 : tensor<1xf32>
-+}
-+
-+// -----
-+
-+// tan_op C1
-+// CHECK-LABEL: func @tan_op_error_values_bad_element_type
-+func.func @tan_op_error_values_bad_element_type(%arg0: tensor<1xf32>) -> (tensor<1xi32>) {
-+  // expected-error@+1{{expects operand and result to have compatible shapes}}
-+  %0 = "stablehlo.custom_call"(%arg0) {call_target_name = "mhlo.tan", mhlo.attributes = {}, mhlo.version = 1 : i64} : (tensor<1xf32>) -> tensor<1xi32>
-+  return %0 : tensor<1xi32>
 +}
 diff --ruN a/stablehlo/stablehlo/experimental/tools/CMakeLists.txt b/stablehlo/stablehlo/experimental/tools/CMakeLists.txt
 --- stablehlo/stablehlo/experimental/tools/CMakeLists.txt
@@ -2334,7 +1904,7 @@ diff --ruN a/stablehlo/stablehlo/experimental/tools/StablehloOptMain.cpp b/stabl
 diff --ruN a/stablehlo/stablehlo/experimental/transforms/CMakeLists.txt b/stablehlo/stablehlo/experimental/transforms/CMakeLists.txt
 --- stablehlo/stablehlo/experimental/transforms/CMakeLists.txt
 +++ stablehlo/stablehlo/experimental/transforms/CMakeLists.txt
-@@ -0,0 +1,39 @@
+@@ -0,0 +1,41 @@
 +# Copyright 2023 The StableHLO Authors.
 +#
 +# Licensed under the Apache License, Version 2.0 (the "License");
@@ -2355,8 +1925,10 @@ diff --ruN a/stablehlo/stablehlo/experimental/transforms/CMakeLists.txt b/stable
 +
 +add_mlir_dialect_library(ExperimentalStablehloPasses
 +  PARTIAL_SOURCES_INTENDED
++  ChloRecomposeOps.cpp
 +  StablehloCanonicalizeDynamism.cpp
 +  StablehloRefineShapes.cpp
++  StablehloTrivialDce.cpp
 +
 +  DEPENDS
 +  ExperimentalPassesIncGen
@@ -2374,10 +1946,192 @@ diff --ruN a/stablehlo/stablehlo/experimental/transforms/CMakeLists.txt b/stable
 +  StablehloPasses
 +  StablehloTypeInference
 +)
+diff --ruN a/stablehlo/stablehlo/experimental/transforms/ChloRecomposeOps.cpp b/stablehlo/stablehlo/experimental/transforms/ChloRecomposeOps.cpp
+--- stablehlo/stablehlo/experimental/transforms/ChloRecomposeOps.cpp
++++ stablehlo/stablehlo/experimental/transforms/ChloRecomposeOps.cpp
+@@ -0,0 +1,178 @@
++/* Copyright 2024 The StableHLO Authors.
++Licensed under the Apache License, Version 2.0 (the "License");
++you may not use this file except in compliance with the License.
++You may obtain a copy of the License at
++
++    http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing, software
++distributed under the License is distributed on an "AS IS" BASIS,
++WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++See the License for the specific language governing permissions and
++limitations under the License.
++==============================================================================*/
++
++#include <cstdint>
++#include <functional>
++
++#include "llvm/ADT/SmallVector.h"
++#include "mlir/Dialect/Func/IR/FuncOps.h"
++#include "mlir/IR/Attributes.h"
++#include "mlir/IR/BuiltinAttributes.h"
++#include "mlir/IR/PatternMatch.h"
++#include "mlir/Pass/PassManager.h"
++#include "mlir/Support/LogicalResult.h"
++#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
++#include "stablehlo/dialect/ChloOps.h"
++#include "stablehlo/dialect/StablehloOps.h"
++#include "stablehlo/experimental/dialect/StablehloOps.h"
++#include "stablehlo/experimental/transforms/Passes.h"
++#include "stablehlo/transforms/Passes.h"
++
++namespace mlir {
++namespace stablehlo {
++namespace experimental {
++
++#define GEN_PASS_DEF_CHLORECOMPOSEOPSPASS
++#include "stablehlo/experimental/transforms/Passes.h.inc"
++
++namespace {
++
++FailureOr<DictionaryAttr> getCustomCallOpAttributes(CustomCallOp op,
++                                                    PatternRewriter& rewriter) {
++  auto attrs = op->getAttrOfType<DictionaryAttr>("mhlo.attributes");
++  if (!attrs)
++    return rewriter.notifyMatchFailure(
++        op, "Expected mhlo.attributes dictionary attribute.");
++  return attrs;
++}
++
++LogicalResult verifyCustomCallOpAttributes(
++    CustomCallOp op, PatternRewriter& rewriter,
++    std::function<LogicalResult(NamedAttribute)> verifyFn) {
++  auto attrs = getCustomCallOpAttributes(op, rewriter);
++  if (failed(attrs)) return failure();
++
++  for (auto attr : attrs->getValue()) {
++    if (failed(verifyFn(attr))) return failure();
++  }
++  return success();
++}
++
++// Experimental and public ops in MHLO that do not exist yet in StableHLO
++// can be encoded as a StableHLO CustomCallOp to allow round-tripping
++// between dialects. Some of these ops are CHLO ops that are accelerated by XLA.
++// For these ops we can recompose to CHLO.
++//
++// Example:
++//  %0 = stablehlo.custom_call @mhlo.topk(...) {...}
++//  ==>
++//   %0 = "chlo.topk"(...) {...}
++template <typename OpType>
++LogicalResult recomposeChloOpFromCustomCall(stablehlo::CustomCallOp op,
++                                            PatternRewriter& rewriter) {
++  // Only call_target_name, backend_config, called_computations, mhlo.version,
++  // and mhlo.attributes are compatible with the extensibility protocol.
++  auto isSupportedAttrName = [](NamedAttribute attr) {
++    auto name = attr.getName();
++    return name == "call_target_name" || name == "backend_config" ||
++           name == "called_computations" || name == "mhlo.attributes" ||
++           name == "mhlo.version";
++  };
++  if (!llvm::all_of(op->getAttrs(), isSupportedAttrName) ||
++      !op.getBackendConfig().empty()) {
++    return rewriter.notifyMatchFailure(
++        op, "CHLO Recompose custom call did not have required attributes.");
++  }
++  if (!op.getCalledComputations().empty())
++    return rewriter.notifyMatchFailure(op, "Ops with regions not supported.");
++
++  auto attrs = getCustomCallOpAttributes(op, rewriter);
++  if (failed(attrs)) return failure();
++
++  rewriter.replaceOpWithNewOp<OpType>(op, op->getResultTypes(),
++                                      op->getOperands(), attrs->getValue());
++  return success();
++}
++
++struct TopKOpRecomposePattern : public OpRewritePattern<CustomCallOp> {
++  using OpRewritePattern::OpRewritePattern;
++  LogicalResult matchAndRewrite(CustomCallOp op,
++                                PatternRewriter& rewriter) const override {
++    if (op.getCallTargetName() != "mhlo.topk") return failure();
++    auto res = verifyCustomCallOpAttributes(
++        op, rewriter, [&](NamedAttribute attr) -> LogicalResult {
++          if (attr.getName() != "largest") return success();
++          if (attr.getValue().cast<BoolAttr>().getValue() == false)
++            return rewriter.notifyMatchFailure(
++                op, "largest = false is not supported.");
++          return success();
++        });
++    if (failed(res)) return failure();
++    return recomposeChloOpFromCustomCall<chlo::TopKOp>(op, rewriter);
++  }
++};
++
++struct TanOpRecomposePattern : public OpRewritePattern<CustomCallOp> {
++  using OpRewritePattern::OpRewritePattern;
++  LogicalResult matchAndRewrite(CustomCallOp op,
++                                PatternRewriter& rewriter) const override {
++    if (op.getCallTargetName() != "mhlo.tan") return failure();
++    return recomposeChloOpFromCustomCall<chlo::TanOp>(op, rewriter);
++  }
++};
++
++struct ErfOpRecomposePattern : public OpRewritePattern<CustomCallOp> {
++  using OpRewritePattern::OpRewritePattern;
++  LogicalResult matchAndRewrite(CustomCallOp op,
++                                PatternRewriter& rewriter) const override {
++    if (op.getCallTargetName() != "mhlo.erf") return failure();
++    return recomposeChloOpFromCustomCall<chlo::ErfOp>(op, rewriter);
++  }
++};
++
++}  // namespace
++
++struct ChloRecomposeOpsPass
++    : public impl::ChloRecomposeOpsPassBase<ChloRecomposeOpsPass> {
++  using ChloRecomposeOpsPassBase::ChloRecomposeOpsPassBase;
++
++  void runOnOperation() override {
++    // Do a single traversal to recompose CustomCallOp to CHLO ops.
++    GreedyRewriteConfig config;
++    config.useTopDownTraversal = true;
++    config.enableRegionSimplification = true;
++    config.maxIterations = 1;
++    config.maxNumRewrites = GreedyRewriteConfig::kNoLimit;
++    config.strictMode = GreedyRewriteStrictness::ExistingOps;
++
++    RewritePatternSet patterns(&getContext());
++    patterns.add<TopKOpRecomposePattern>(&getContext());
++    patterns.add<TanOpRecomposePattern>(&getContext());
++    patterns.add<ErfOpRecomposePattern>(&getContext());
++
++    // Only apply to CustomCallOps
++    auto moduleOp = getOperation();
++    llvm::SmallVector<Operation*> candidateOps;
++    moduleOp.walk([&](CustomCallOp op) { candidateOps.push_back(op); });
++
++    if (failed(applyOpPatternsAndFold(candidateOps, std::move(patterns),
++                                      config))) {
++      moduleOp.emitError("Failed to converge ChloRecomposeOps in ")
++          << config.maxIterations << " iterations";
++      return signalPassFailure();
++    }
++  }
++};
++
++void createChloLegalizeToStablehloPipeline(OpPassManager& pm) {
++  pm.addPass(mlir::stablehlo::experimental::createChloRecomposeOpsPass());
++  pm.addNestedPass<mlir::func::FuncOp>(
++      mlir::stablehlo::createChloLegalizeToStablehloPass());
++  pm.addNestedPass<mlir::func::FuncOp>(
++      mlir::stablehlo::createShapeLegalizeToStablehloPass());
++}
++
++}  // namespace experimental
++}  // namespace stablehlo
++}  // namespace mlir
 diff --ruN a/stablehlo/stablehlo/experimental/transforms/Passes.h b/stablehlo/stablehlo/experimental/transforms/Passes.h
 --- stablehlo/stablehlo/experimental/transforms/Passes.h
 +++ stablehlo/stablehlo/experimental/transforms/Passes.h
-@@ -0,0 +1,37 @@
+@@ -0,0 +1,38 @@
 +/* Copyright 2023 The StableHLO Authors.
 +
 +Licensed under the Apache License, Version 2.0 (the "License");
@@ -2404,11 +2158,12 @@ diff --ruN a/stablehlo/stablehlo/experimental/transforms/Passes.h b/stablehlo/st
 +namespace mlir {
 +namespace stablehlo {
 +namespace experimental {
-+  
-+#define GEN_PASS_DECL_STABLEHLOCANONICALIZEDYNAMISMPASS
-+#define GEN_PASS_DECL_STABLEHLOREFINESHAPESPASS
++
++#define GEN_PASS_DECL
 +#define GEN_PASS_REGISTRATION
 +#include "stablehlo/experimental/transforms/Passes.h.inc"
++
++void createChloLegalizeToStablehloPipeline(OpPassManager &pm);
 +
 +}  // namespace experimental
 +}  // namespace stablehlo
@@ -2418,7 +2173,7 @@ diff --ruN a/stablehlo/stablehlo/experimental/transforms/Passes.h b/stablehlo/st
 diff --ruN a/stablehlo/stablehlo/experimental/transforms/Passes.td b/stablehlo/stablehlo/experimental/transforms/Passes.td
 --- stablehlo/stablehlo/experimental/transforms/Passes.td
 +++ stablehlo/stablehlo/experimental/transforms/Passes.td
-@@ -0,0 +1,31 @@
+@@ -0,0 +1,55 @@
 +/* Copyright 2023 The StableHLO Authors.
 +
 +Licensed under the Apache License, Version 2.0 (the "License");
@@ -2450,10 +2205,34 @@ diff --ruN a/stablehlo/stablehlo/experimental/transforms/Passes.td b/stablehlo/s
 +    Experimental version of the --stablehlo-refine-shapes pass.
 +  }];
 +}
++
++def ChloRecomposeOpsPass : Pass<"experimental-chlo-recompose-ops", "ModuleOp"> {
++  let summary = "(Experimental) Recompose CHLO ops serialized as custom calls.";
++  let description = [{
++    Experimental version of CHLO serialization support.
++  }];
++  let dependentDialects = ["chlo::ChloDialect"];
++}
++
++def StablehloTrivialDcePass : Pass<"experimental-stablehlo-trivial-dce", "ModuleOp"> {
++  let summary = "(Experimental) Performs a single bottom up pass to remove values that are trivially dead.";
++  let description = [{
++    An experimental pass to remove dead values prior to running other passes
++    that may fail to converge otherwise. For example, running shape refinement
++    on a program that has a lot of dead values can fail because shape refinement
++    is top down and removing values causes a new iteration to be triggered, and
++    removing all the dead values with a top down traversal can take a lot of
++    iterations (10+), which is slow.
++
++    Performing a single pass should be fast, and doing it bottom up means that
++    values that are transitively dead can be removed since leaf values will be
++    processed first.
++  }];
++}
 diff --ruN a/stablehlo/stablehlo/experimental/transforms/StablehloCanonicalizeDynamism.cpp b/stablehlo/stablehlo/experimental/transforms/StablehloCanonicalizeDynamism.cpp
 --- stablehlo/stablehlo/experimental/transforms/StablehloCanonicalizeDynamism.cpp
 +++ stablehlo/stablehlo/experimental/transforms/StablehloCanonicalizeDynamism.cpp
-@@ -0,0 +1,167 @@
+@@ -0,0 +1,171 @@
 +/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 +   Copyright 2023 The StableHLO Authors.
 +Licensed under the Apache License, Version 2.0 (the "License");
@@ -2520,10 +2299,10 @@ diff --ruN a/stablehlo/stablehlo/experimental/transforms/StablehloCanonicalizeDy
 +      return rewriter.notifyMatchFailure(op, "expected static padding");
 +    auto newOp = rewriter.create<ReduceWindowOp>(
 +        op->getLoc(), op->getResultTypes(), op.getInputs(), op.getInitValues(),
-+        rewriter.getI64TensorAttr(windowDimensions),
-+        rewriter.getI64TensorAttr(windowStrides),
-+        rewriter.getI64TensorAttr(baseDilations),
-+        rewriter.getI64TensorAttr(windowDilations),
++        rewriter.getDenseI64ArrayAttr(windowDimensions),
++        rewriter.getDenseI64ArrayAttr(windowStrides),
++        rewriter.getDenseI64ArrayAttr(baseDilations),
++        rewriter.getDenseI64ArrayAttr(windowDilations),
 +        hlo::getPaddingAttr(&rewriter, padding));
 +
 +    // Inline the called computation into newOp.
@@ -2610,8 +2389,12 @@ diff --ruN a/stablehlo/stablehlo/experimental/transforms/StablehloCanonicalizeDy
 +    patterns.add<CanonicalizeDynamicReduceWindowOpPattern>(&getContext());
 +    patterns.add<CanonicalizeDynamicRngBitGeneratorOpPattern>(&getContext());
 +    patterns.add<CanonicalizeDynamicTopKOpPattern>(&getContext());
-+    if (failed(applyPatternsAndFoldGreedily(getOperation(), std::move(patterns),
++
++    auto funcOp = getOperation();
++    if (failed(applyPatternsAndFoldGreedily(funcOp, std::move(patterns),
 +                                            config))) {
++      funcOp.emitError("Failed to converge StablehloCanonicalizeDynamism in ")
++          << config.maxIterations << " iterations";
 +      return signalPassFailure();
 +    }
 +  }
@@ -2624,7 +2407,7 @@ diff --ruN a/stablehlo/stablehlo/experimental/transforms/StablehloCanonicalizeDy
 diff --ruN a/stablehlo/stablehlo/experimental/transforms/StablehloRefineShapes.cpp b/stablehlo/stablehlo/experimental/transforms/StablehloRefineShapes.cpp
 --- stablehlo/stablehlo/experimental/transforms/StablehloRefineShapes.cpp
 +++ stablehlo/stablehlo/experimental/transforms/StablehloRefineShapes.cpp
-@@ -0,0 +1,196 @@
+@@ -0,0 +1,170 @@
 +/* Copyright 2022 The StableHLO Authors.
 +Licensed under the Apache License, Version 2.0 (the "License");
 +you may not use this file except in compliance with the License.
@@ -2755,33 +2538,6 @@ diff --ruN a/stablehlo/stablehlo/experimental/transforms/StablehloRefineShapes.c
 +  }
 +};
 +
-+struct RefineTopKOpPattern : public OpRewritePattern<CustomCallOp> {
-+  using OpRewritePattern::OpRewritePattern;
-+  LogicalResult matchAndRewrite(CustomCallOp impl,
-+                                PatternRewriter& rewriter) const override {
-+    auto maybeOp = getTopKOp(impl);
-+    if (!maybeOp || failed(maybeOp->verify())) return failure();
-+    TopKOpAdaptor op = *maybeOp;
-+
-+    auto operandType = op.getOperand().getType().cast<ShapedType>();
-+    SmallVector<int64_t> outputShape(operandType.getShape());
-+    outputShape.back() = op.getK();
-+    return refineReturnTypes(rewriter, op, {{outputShape}, {outputShape}});
-+  }
-+};
-+
-+struct RefineTanOpPattern : public OpRewritePattern<CustomCallOp> {
-+  using OpRewritePattern::OpRewritePattern;
-+  LogicalResult matchAndRewrite(CustomCallOp impl,
-+                                PatternRewriter& rewriter) const override {
-+    auto maybeOp = getTanOp(impl);
-+    if (!maybeOp || failed(maybeOp->verify())) return failure();
-+    TanOpAdaptor op = *maybeOp;
-+    return refineReturnShape(rewriter, op,
-+                             op.getOperand().getType().getShape());
-+  }
-+};
-+
 +struct StablehloRefineShapesPass
 +    : public impl::StablehloRefineShapesPassBase<StablehloRefineShapesPass> {
 +  using StablehloRefineShapesPassBase::StablehloRefineShapesPassBase;
@@ -2799,7 +2555,7 @@ diff --ruN a/stablehlo/stablehlo/experimental/transforms/StablehloRefineShapes.c
 +    GreedyRewriteConfig config;
 +    config.useTopDownTraversal = true;
 +    config.enableRegionSimplification = true;
-+    config.maxIterations = 2;
++    config.maxIterations = 3;
 +    config.maxNumRewrites = GreedyRewriteConfig::kNoLimit;
 +    config.strictMode = GreedyRewriteStrictness::AnyOp;
 +
@@ -2808,10 +2564,11 @@ diff --ruN a/stablehlo/stablehlo/experimental/transforms/StablehloRefineShapes.c
 +    patterns.add<RefineDynamicReduceWindowOpPattern>(&getContext());
 +    patterns.add<RefineDynamicRngBitGeneratorOpPattern>(&getContext());
 +    patterns.add<RefineDynamicTopKOpPattern>(&getContext());
-+    patterns.add<RefineTanOpPattern>(&getContext());
-+    patterns.add<RefineTopKOpPattern>(&getContext());
 +    if (failed(
 +            applyPatternsAndFoldGreedily(func, std::move(patterns), config))) {
++      func.emitError()
++          << "Greedy rewriter in StablehloRefineShapes does not converge after "
++          << config.maxIterations << " iterations.";
 +      return signalPassFailure();
 +    }
 +  }
@@ -2821,58 +2578,1252 @@ diff --ruN a/stablehlo/stablehlo/experimental/transforms/StablehloRefineShapes.c
 +}  // namespace experimental
 +}  // namespace stablehlo
 +}  // namespace mlir
-diff --ruN a/stablehlo/stablehlo/testdata/lit.cfg.py b/stablehlo/stablehlo/testdata/lit.cfg.py
---- stablehlo/stablehlo/testdata/lit.cfg.py
-+++ stablehlo/stablehlo/testdata/lit.cfg.py
-@@ -28,6 +28,10 @@
- config.suffixes = ['.mlir']
- config.test_source_root = os.path.dirname(__file__)
- 
-+# Disallow reusing variables across CHECK-LABEL matches.
-+# A variable can eschew this (be made "global") by prefixing its name with $.
-+config.environment['FILECHECK_OPTS'] = '-enable-var-scope'
+diff --ruN a/stablehlo/stablehlo/experimental/transforms/StablehloTrivialDce.cpp b/stablehlo/stablehlo/experimental/transforms/StablehloTrivialDce.cpp
+--- stablehlo/stablehlo/experimental/transforms/StablehloTrivialDce.cpp
++++ stablehlo/stablehlo/experimental/transforms/StablehloTrivialDce.cpp
+@@ -0,0 +1,63 @@
++/* Copyright 2022 The StableHLO Authors.
++Licensed under the Apache License, Version 2.0 (the "License");
++you may not use this file except in compliance with the License.
++You may obtain a copy of the License at
 +
- # Make LLVM and StableHLO tools available in RUN directives
- tools = [
-   'FileCheck',
-diff --ruN a/stablehlo/stablehlo/tests/lit.cfg.py b/stablehlo/stablehlo/tests/lit.cfg.py
---- stablehlo/stablehlo/tests/lit.cfg.py
-+++ stablehlo/stablehlo/tests/lit.cfg.py
-@@ -28,6 +28,10 @@
- config.suffixes = ['.mlir']
- config.test_source_root = os.path.dirname(__file__)
- 
-+# Disallow reusing variables across CHECK-LABEL matches.
-+# A variable can eschew this (be made "global") by prefixing its name with $.
-+config.environment['FILECHECK_OPTS'] = '-enable-var-scope'
++    http://www.apache.org/licenses/LICENSE-2.0
 +
- # Make LLVM and StableHLO tools available in RUN directives
- tools = [
-   'FileCheck',
-diff --ruN a/stablehlo/stablehlo/tests/stablehlo_legalize_to_vhlo.0_17_0.mlir b/stablehlo/stablehlo/tests/stablehlo_legalize_to_vhlo.0_17_0.mlir
---- stablehlo/stablehlo/tests/stablehlo_legalize_to_vhlo.0_17_0.mlir
-+++ stablehlo/stablehlo/tests/stablehlo_legalize_to_vhlo.0_17_0.mlir
-@@ -1955,7 +1955,8 @@
- func.func @op_select_and_scatter_with_promotable_types(%arg0: tensor<10x24x24x64xf32>, %arg1: tensor<12x13x13x66xf32>, %arg2: tensor<f32>) -> tensor<10x24x24x64xf64> {
-   // CHECK: "vhlo.select_and_scatter_v1"(%arg0, %arg1, %arg2)
-   // CHECK:   ^[[BB:bb.*]](%[[ARG1:arg.*]]: !vhlo.tensor_v1<!vhlo.f64_v1>, %[[ARG2:arg.*]]: !vhlo.tensor_v1<!vhlo.f64_v1>):
--  // CHECK:     "vhlo.return_v1"(%[[VAL12]]) : (!vhlo.tensor_v1<!vhlo.f64_v1>) -> ()
-+  // CHECK:     %[[VAL:.*]] = "vhlo.add_v1"(%[[ARG1]], %[[ARG2]]) : (!vhlo.tensor_v1<!vhlo.f64_v1>, !vhlo.tensor_v1<!vhlo.f64_v1>) -> !vhlo.tensor_v1<!vhlo.f64_v1>
-+  // CHECK:     "vhlo.return_v1"(%[[VAL]]) : (!vhlo.tensor_v1<!vhlo.f64_v1>) -> ()
-   // CHECK: }) : (!vhlo.tensor_v1<10x24x24x64x!vhlo.f32_v1>, !vhlo.tensor_v1<12x13x13x66x!vhlo.f32_v1>, !vhlo.tensor_v1<!vhlo.f32_v1>) -> !vhlo.tensor_v1<10x24x24x64x!vhlo.f64_v1>
-   %0 = "stablehlo.select_and_scatter"(%arg0, %arg1, %arg2) ({
-     ^bb0(%arg3: tensor<f32>, %arg4: tensor<f32>):
-diff --ruN a/stablehlo/stablehlo/tests/stablehlo_legalize_to_vhlo.mlir b/stablehlo/stablehlo/tests/stablehlo_legalize_to_vhlo.mlir
---- stablehlo/stablehlo/tests/stablehlo_legalize_to_vhlo.mlir
-+++ stablehlo/stablehlo/tests/stablehlo_legalize_to_vhlo.mlir
-@@ -1960,7 +1960,8 @@
- func.func @op_select_and_scatter_with_promotable_types(%arg0: tensor<10x24x24x64xf32>, %arg1: tensor<12x13x13x66xf32>, %arg2: tensor<f32>) -> tensor<10x24x24x64xf64> {
-   // CHECK: "vhlo.select_and_scatter_v1"(%arg0, %arg1, %arg2)
-   // CHECK:   ^[[BB:bb.*]](%[[ARG1:arg.*]]: !vhlo.tensor_v1<!vhlo.f64_v1>, %[[ARG2:arg.*]]: !vhlo.tensor_v1<!vhlo.f64_v1>):
--  // CHECK:     "vhlo.return_v1"(%[[VAL12]]) : (!vhlo.tensor_v1<!vhlo.f64_v1>) -> ()
-+  // CHECK:     %[[VAL:.*]] = "vhlo.add_v1"(%[[ARG1]], %[[ARG2]]) : (!vhlo.tensor_v1<!vhlo.f64_v1>, !vhlo.tensor_v1<!vhlo.f64_v1>) -> !vhlo.tensor_v1<!vhlo.f64_v1>
-+  // CHECK:     "vhlo.return_v1"(%[[VAL]]) : (!vhlo.tensor_v1<!vhlo.f64_v1>) -> ()
-   // CHECK: }) : (!vhlo.tensor_v1<10x24x24x64x!vhlo.f32_v1>, !vhlo.tensor_v1<12x13x13x66x!vhlo.f32_v1>, !vhlo.tensor_v1<!vhlo.f32_v1>) -> !vhlo.tensor_v1<10x24x24x64x!vhlo.f64_v1>
-   %0 = "stablehlo.select_and_scatter"(%arg0, %arg1, %arg2) ({
-     ^bb0(%arg3: tensor<f32>, %arg4: tensor<f32>):
++Unless required by applicable law or agreed to in writing, software
++distributed under the License is distributed on an "AS IS" BASIS,
++WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++See the License for the specific language governing permissions and
++limitations under the License.
++==============================================================================*/
++
++#include <cstdint>
++
++#include "llvm/ADT/SmallVector.h"
++#include "mlir/Dialect/Func/IR/FuncOps.h"
++#include "mlir/IR/PatternMatch.h"
++#include "mlir/Support/LogicalResult.h"
++#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
++#include "stablehlo/experimental/transforms/Passes.h"
++
++namespace mlir {
++namespace stablehlo {
++namespace experimental {
++
++#define GEN_PASS_DEF_STABLEHLOTRIVIALDCEPASS
++#include "stablehlo/experimental/transforms/Passes.h.inc"
++
++namespace {
++
++struct StablehloTrivialDcePass
++    : public impl::StablehloTrivialDcePassBase<StablehloTrivialDcePass> {
++  using StablehloTrivialDcePassBase::StablehloTrivialDcePassBase;
++
++  void runOnOperation() override {
++    GreedyRewriteConfig config;
++
++    // Hardcode defaults for stability.
++    config.enableRegionSimplification = true;
++    config.maxNumRewrites = GreedyRewriteConfig::kNoLimit;
++    config.strictMode = GreedyRewriteStrictness::AnyOp;
++
++    // Run a single bottom up pass.
++    config.useTopDownTraversal = false;
++    config.maxIterations = 1;
++
++    // Running a greedy rewrite will cause trivially dead values to be removed.
++    // Doing it without patterns ensures that no other changes are made to the
++    // IR. Doing it bottom-up ensures that values that are transitively dead are
++    // also removed. Although 1 pass should be enough,
++    // applyPatternsAndFoldGreedily will want to run at least 1 more iteration
++    // to confirm convergence, but we don't need to check for convergence, so we
++    // ignore the return value.
++    (void)applyPatternsAndFoldGreedily(getOperation(), RewritePatternSet(&getContext()), config);
++  }
++};
++
++}  // namespace
++}  // namespace experimental
++}  // namespace stablehlo
++}  // namespace mlir
+diff --ruN a/stablehlo/stablehlo/tests/chlo/chlo_legalize_to_stablehlo.mlir b/stablehlo/stablehlo/tests/chlo/chlo_legalize_to_stablehlo.mlir
+--- stablehlo/stablehlo/tests/chlo/chlo_legalize_to_stablehlo.mlir
++++ stablehlo/stablehlo/tests/chlo/chlo_legalize_to_stablehlo.mlir
+@@ -1283,153 +1283,153 @@
+ func.func @zeta_f16(%arg0: tensor<f16>, %arg1: tensor<f16>) -> tensor<f16> {
+   // CHECK: %[[TMP_0:.*]] = stablehlo.convert %[[X]] : (tensor<f16>) -> tensor<f32>
+   // CHECK: %[[TMP_1:.*]] = stablehlo.convert %[[Q]] : (tensor<f16>) -> tensor<f32>
+-  // CHECK: %[[TMP_2:.*]] = stablehlo.constant dense<0.000000e+00>
+-  // CHECK: %[[TMP_3:.*]] = stablehlo.negate %[[TMP_0]]
+-  // CHECK: %[[TMP_4:.*]] = stablehlo.power %[[TMP_1]], %[[TMP_3]]
+-  // CHECK: %[[TMP_5:.*]] = stablehlo.constant dense<1.000000e+00>
+-  // CHECK: %[[TMP_6:.*]] = stablehlo.add %[[TMP_1]], %[[TMP_5]]
+-  // CHECK: %[[TMP_7:.*]] = stablehlo.power %[[TMP_6]], %[[TMP_3]]
+-  // CHECK: %[[TMP_8:.*]] = stablehlo.add %[[TMP_4]], %[[TMP_7]]
+-  // CHECK: %[[TMP_9:.*]] = stablehlo.add %[[TMP_6]], %[[TMP_5]]
+-  // CHECK: %[[TMP_10:.*]] = stablehlo.power %[[TMP_9]], %[[TMP_3]]
++  // CHECK-DAG: %[[TMP_2:.*]] = stablehlo.constant dense<0.000000e+00>
++  // CHECK-DAG: %[[TMP_3:.*]] = stablehlo.constant dense<1.000000e+00>
++  // CHECK: %[[TMP_4:.*]] = stablehlo.negate %[[TMP_0]]
++  // CHECK: %[[TMP_5:.*]] = stablehlo.power %[[TMP_1]], %[[TMP_4]]
++  // CHECK: %[[TMP_6:.*]] = stablehlo.add %[[TMP_1]], %[[TMP_3]]
++  // CHECK: %[[TMP_7:.*]] = stablehlo.power %[[TMP_6]], %[[TMP_4]]
++  // CHECK: %[[TMP_8:.*]] = stablehlo.add %[[TMP_5]], %[[TMP_7]]
++  // CHECK: %[[TMP_9:.*]] = stablehlo.add %[[TMP_6]], %[[TMP_3]]
++  // CHECK: %[[TMP_10:.*]] = stablehlo.power %[[TMP_9]], %[[TMP_4]]
+   // CHECK: %[[TMP_11:.*]] = stablehlo.add %[[TMP_8]], %[[TMP_10]]
+-  // CHECK: %[[TMP_12:.*]] = stablehlo.add %[[TMP_9]], %[[TMP_5]]
+-  // CHECK: %[[TMP_13:.*]] = stablehlo.power %[[TMP_12]], %[[TMP_3]]
++  // CHECK: %[[TMP_12:.*]] = stablehlo.add %[[TMP_9]], %[[TMP_3]]
++  // CHECK: %[[TMP_13:.*]] = stablehlo.power %[[TMP_12]], %[[TMP_4]]
+   // CHECK: %[[TMP_14:.*]] = stablehlo.add %[[TMP_11]], %[[TMP_13]]
+-  // CHECK: %[[TMP_15:.*]] = stablehlo.add %[[TMP_12]], %[[TMP_5]]
+-  // CHECK: %[[TMP_16:.*]] = stablehlo.power %[[TMP_15]], %[[TMP_3]]
++  // CHECK: %[[TMP_15:.*]] = stablehlo.add %[[TMP_12]], %[[TMP_3]]
++  // CHECK: %[[TMP_16:.*]] = stablehlo.power %[[TMP_15]], %[[TMP_4]]
+   // CHECK: %[[TMP_17:.*]] = stablehlo.add %[[TMP_14]], %[[TMP_16]]
+-  // CHECK: %[[TMP_18:.*]] = stablehlo.add %[[TMP_15]], %[[TMP_5]]
+-  // CHECK: %[[TMP_19:.*]] = stablehlo.power %[[TMP_18]], %[[TMP_3]]
++  // CHECK: %[[TMP_18:.*]] = stablehlo.add %[[TMP_15]], %[[TMP_3]]
++  // CHECK: %[[TMP_19:.*]] = stablehlo.power %[[TMP_18]], %[[TMP_4]]
+   // CHECK: %[[TMP_20:.*]] = stablehlo.add %[[TMP_17]], %[[TMP_19]]
+-  // CHECK: %[[TMP_21:.*]] = stablehlo.add %[[TMP_18]], %[[TMP_5]]
+-  // CHECK: %[[TMP_22:.*]] = stablehlo.power %[[TMP_21]], %[[TMP_3]]
++  // CHECK: %[[TMP_21:.*]] = stablehlo.add %[[TMP_18]], %[[TMP_3]]
++  // CHECK: %[[TMP_22:.*]] = stablehlo.power %[[TMP_21]], %[[TMP_4]]
+   // CHECK: %[[TMP_23:.*]] = stablehlo.add %[[TMP_20]], %[[TMP_22]]
+-  // CHECK: %[[TMP_24:.*]] = stablehlo.add %[[TMP_21]], %[[TMP_5]]
+-  // CHECK: %[[TMP_25:.*]] = stablehlo.power %[[TMP_24]], %[[TMP_3]]
++  // CHECK: %[[TMP_24:.*]] = stablehlo.add %[[TMP_21]], %[[TMP_3]]
++  // CHECK: %[[TMP_25:.*]] = stablehlo.power %[[TMP_24]], %[[TMP_4]]
+   // CHECK: %[[TMP_26:.*]] = stablehlo.add %[[TMP_23]], %[[TMP_25]]
+-  // CHECK: %[[TMP_27:.*]] = stablehlo.add %[[TMP_24]], %[[TMP_5]]
+-  // CHECK: %[[TMP_28:.*]] = stablehlo.power %[[TMP_27]], %[[TMP_3]]
++  // CHECK: %[[TMP_27:.*]] = stablehlo.add %[[TMP_24]], %[[TMP_3]]
++  // CHECK: %[[TMP_28:.*]] = stablehlo.power %[[TMP_27]], %[[TMP_4]]
+   // CHECK: %[[TMP_29:.*]] = stablehlo.add %[[TMP_26]], %[[TMP_28]]
+-  // CHECK: %[[TMP_30:.*]] = stablehlo.add %[[TMP_27]], %[[TMP_5]]
+-  // CHECK: %[[TMP_31:.*]] = stablehlo.power %[[TMP_30]], %[[TMP_3]]
++  // CHECK: %[[TMP_30:.*]] = stablehlo.add %[[TMP_27]], %[[TMP_3]]
++  // CHECK: %[[TMP_31:.*]] = stablehlo.power %[[TMP_30]], %[[TMP_4]]
+   // CHECK: %[[TMP_32:.*]] = stablehlo.add %[[TMP_29]], %[[TMP_31]]
+-  // CHECK: %[[TMP_33:.*]] = stablehlo.add %[[TMP_30]], %[[TMP_5]]
+-  // CHECK: %[[TMP_34:.*]] = stablehlo.power %[[TMP_33]], %[[TMP_3]]
++  // CHECK: %[[TMP_33:.*]] = stablehlo.add %[[TMP_30]], %[[TMP_3]]
++  // CHECK: %[[TMP_34:.*]] = stablehlo.power %[[TMP_33]], %[[TMP_4]]
+   // CHECK: %[[TMP_35:.*]] = stablehlo.constant dense<1.000000e+00>
+-  // CHECK: %[[TMP_36:.*]] = stablehlo.subtract %[[TMP_0]], %[[TMP_35]]
+-  // CHECK: %[[TMP_37:.*]] = stablehlo.multiply %[[TMP_34]], %[[TMP_33]]
+-  // CHECK: %[[TMP_38:.*]] = stablehlo.divide %[[TMP_37]], %[[TMP_36]]
+-  // CHECK: %[[TMP_39:.*]] = stablehlo.add %[[TMP_32]], %[[TMP_38]]
+-  // CHECK: %[[TMP_40:.*]] = stablehlo.multiply %[[TMP_33]], %[[TMP_33]]
+-  // CHECK: %[[TMP_41:.*]] = stablehlo.divide %[[TMP_5]], %[[TMP_40]]
+-  // CHECK: %[[TMP_42:.*]] = stablehlo.constant dense<2.200000e+01>
+-  // CHECK: %[[TMP_43:.*]] = stablehlo.add %[[TMP_0]], %[[TMP_42]]
+-  // CHECK: %[[TMP_44:.*]] = stablehlo.constant dense<2.100000e+01>
+-  // CHECK: %[[TMP_45:.*]] = stablehlo.add %[[TMP_0]], %[[TMP_44]]
+-  // CHECK: %[[TMP_46:.*]] = stablehlo.multiply %[[TMP_43]], %[[TMP_45]]
+-  // CHECK: %[[TMP_47:.*]] = stablehlo.constant dense<-1.39544646E-19>
+-  // CHECK: %[[TMP_48:.*]] = stablehlo.add %[[TMP_2]], %[[TMP_47]]
+-  // CHECK: %[[TMP_49:.*]] = stablehlo.multiply %[[TMP_41]], %[[TMP_48]]
+-  // CHECK: %[[TMP_50:.*]] = stablehlo.multiply %[[TMP_46]], %[[TMP_49]]
+-  // CHECK: %[[TMP_51:.*]] = stablehlo.constant dense<2.000000e+01>
+-  // CHECK: %[[TMP_52:.*]] = stablehlo.add %[[TMP_0]], %[[TMP_51]]
+-  // CHECK: %[[TMP_53:.*]] = stablehlo.constant dense<1.900000e+01>
+-  // CHECK: %[[TMP_54:.*]] = stablehlo.add %[[TMP_0]], %[[TMP_53]]
+-  // CHECK: %[[TMP_55:.*]] = stablehlo.multiply %[[TMP_52]], %[[TMP_54]]
+-  // CHECK: %[[TMP_56:.*]] = stablehlo.constant dense<5.50900303E-18>
+-  // CHECK: %[[TMP_57:.*]] = stablehlo.add %[[TMP_50]], %[[TMP_56]]
+-  // CHECK: %[[TMP_58:.*]] = stablehlo.multiply %[[TMP_41]], %[[TMP_57]]
+-  // CHECK: %[[TMP_59:.*]] = stablehlo.multiply %[[TMP_55]], %[[TMP_58]]
+-  // CHECK: %[[TMP_60:.*]] = stablehlo.constant dense<1.800000e+01>
+-  // CHECK: %[[TMP_61:.*]] = stablehlo.add %[[TMP_0]], %[[TMP_60]]
+-  // CHECK: %[[TMP_62:.*]] = stablehlo.constant dense<1.700000e+01>
+-  // CHECK: %[[TMP_63:.*]] = stablehlo.add %[[TMP_0]], %[[TMP_62]]
+-  // CHECK: %[[TMP_64:.*]] = stablehlo.multiply %[[TMP_61]], %[[TMP_63]]
+-  // CHECK: %[[TMP_65:.*]] = stablehlo.constant dense<-2.17486866E-16>
+-  // CHECK: %[[TMP_66:.*]] = stablehlo.add %[[TMP_59]], %[[TMP_65]]
+-  // CHECK: %[[TMP_67:.*]] = stablehlo.multiply %[[TMP_41]], %[[TMP_66]]
+-  // CHECK: %[[TMP_68:.*]] = stablehlo.multiply %[[TMP_64]], %[[TMP_67]]
+-  // CHECK: %[[TMP_69:.*]] = stablehlo.constant dense<1.600000e+01>
+-  // CHECK: %[[TMP_70:.*]] = stablehlo.add %[[TMP_0]], %[[TMP_69]]
+-  // CHECK: %[[TMP_71:.*]] = stablehlo.constant dense<1.500000e+01>
+-  // CHECK: %[[TMP_72:.*]] = stablehlo.add %[[TMP_0]], %[[TMP_71]]
+-  // CHECK: %[[TMP_73:.*]] = stablehlo.multiply %[[TMP_70]], %[[TMP_72]]
+-  // CHECK: %[[TMP_74:.*]] = stablehlo.constant dense<8.58606213E-15>
+-  // CHECK: %[[TMP_75:.*]] = stablehlo.add %[[TMP_68]], %[[TMP_74]]
+-  // CHECK: %[[TMP_76:.*]] = stablehlo.multiply %[[TMP_41]], %[[TMP_75]]
+-  // CHECK: %[[TMP_77:.*]] = stablehlo.multiply %[[TMP_73]], %[[TMP_76]]
+-  // CHECK: %[[TMP_78:.*]] = stablehlo.constant dense<1.400000e+01>
+-  // CHECK: %[[TMP_79:.*]] = stablehlo.add %[[TMP_0]], %[[TMP_78]]
+-  // CHECK: %[[TMP_80:.*]] = stablehlo.constant dense<1.300000e+01>
+-  // CHECK: %[[TMP_81:.*]] = stablehlo.add %[[TMP_0]], %[[TMP_80]]
+-  // CHECK: %[[TMP_82:.*]] = stablehlo.multiply %[[TMP_79]], %[[TMP_81]]
+-  // CHECK: %[[TMP_83:.*]] = stablehlo.constant dense<-3.3896803E-13>
+-  // CHECK: %[[TMP_84:.*]] = stablehlo.add %[[TMP_77]], %[[TMP_83]]
+-  // CHECK: %[[TMP_85:.*]] = stablehlo.multiply %[[TMP_41]], %[[TMP_84]]
+-  // CHECK: %[[TMP_86:.*]] = stablehlo.multiply %[[TMP_82]], %[[TMP_85]]
+-  // CHECK: %[[TMP_87:.*]] = stablehlo.constant dense<1.200000e+01>
+-  // CHECK: %[[TMP_88:.*]] = stablehlo.add %[[TMP_0]], %[[TMP_87]]
+-  // CHECK: %[[TMP_89:.*]] = stablehlo.constant dense<1.100000e+01>
+-  // CHECK: %[[TMP_90:.*]] = stablehlo.add %[[TMP_0]], %[[TMP_89]]
+-  // CHECK: %[[TMP_91:.*]] = stablehlo.multiply %[[TMP_88]], %[[TMP_90]]
+-  // CHECK: %[[TMP_92:.*]] = stablehlo.constant dense<1.33825364E-11>
+-  // CHECK: %[[TMP_93:.*]] = stablehlo.add %[[TMP_86]], %[[TMP_92]]
+-  // CHECK: %[[TMP_94:.*]] = stablehlo.multiply %[[TMP_41]], %[[TMP_93]]
+-  // CHECK: %[[TMP_95:.*]] = stablehlo.multiply %[[TMP_91]], %[[TMP_94]]
+-  // CHECK: %[[TMP_96:.*]] = stablehlo.constant dense<1.000000e+01>
+-  // CHECK: %[[TMP_97:.*]] = stablehlo.add %[[TMP_0]], %[[TMP_96]]
+-  // CHECK: %[[TMP_98:.*]] = stablehlo.constant dense<9.000000e+00>
+-  // CHECK: %[[TMP_99:.*]] = stablehlo.add %[[TMP_0]], %[[TMP_98]]
+-  // CHECK: %[[TMP_100:.*]] = stablehlo.multiply %[[TMP_97]], %[[TMP_99]]
+-  // CHECK: %[[TMP_101:.*]] = stablehlo.constant dense<-5.28419031E-10>
+-  // CHECK: %[[TMP_102:.*]] = stablehlo.add %[[TMP_95]], %[[TMP_101]]
+-  // CHECK: %[[TMP_103:.*]] = stablehlo.multiply %[[TMP_41]], %[[TMP_102]]
+-  // CHECK: %[[TMP_104:.*]] = stablehlo.multiply %[[TMP_100]], %[[TMP_103]]
+-  // CHECK: %[[TMP_105:.*]] = stablehlo.constant dense<8.000000e+00>
+-  // CHECK: %[[TMP_106:.*]] = stablehlo.add %[[TMP_0]], %[[TMP_105]]
+-  // CHECK: %[[TMP_107:.*]] = stablehlo.constant dense<7.000000e+00>
+-  // CHECK: %[[TMP_108:.*]] = stablehlo.add %[[TMP_0]], %[[TMP_107]]
+-  // CHECK: %[[TMP_109:.*]] = stablehlo.multiply %[[TMP_106]], %[[TMP_108]]
+-  // CHECK: %[[TMP_110:.*]] = stablehlo.constant dense<2.08767563E-8>
+-  // CHECK: %[[TMP_111:.*]] = stablehlo.add %[[TMP_104]], %[[TMP_110]]
+-  // CHECK: %[[TMP_112:.*]] = stablehlo.multiply %[[TMP_41]], %[[TMP_111]]
+-  // CHECK: %[[TMP_113:.*]] = stablehlo.multiply %[[TMP_109]], %[[TMP_112]]
+-  // CHECK: %[[TMP_114:.*]] = stablehlo.constant dense<6.000000e+00>
+-  // CHECK: %[[TMP_115:.*]] = stablehlo.add %[[TMP_0]], %[[TMP_114]]
+-  // CHECK: %[[TMP_116:.*]] = stablehlo.constant dense<5.000000e+00>
+-  // CHECK: %[[TMP_117:.*]] = stablehlo.add %[[TMP_0]], %[[TMP_116]]
+-  // CHECK: %[[TMP_118:.*]] = stablehlo.multiply %[[TMP_115]], %[[TMP_117]]
+-  // CHECK: %[[TMP_119:.*]] = stablehlo.constant dense<-8.26719599E-7>
+-  // CHECK: %[[TMP_120:.*]] = stablehlo.add %[[TMP_113]], %[[TMP_119]]
+-  // CHECK: %[[TMP_121:.*]] = stablehlo.multiply %[[TMP_41]], %[[TMP_120]]
+-  // CHECK: %[[TMP_122:.*]] = stablehlo.multiply %[[TMP_118]], %[[TMP_121]]
+-  // CHECK: %[[TMP_123:.*]] = stablehlo.constant dense<4.000000e+00>
+-  // CHECK: %[[TMP_124:.*]] = stablehlo.add %[[TMP_0]], %[[TMP_123]]
+-  // CHECK: %[[TMP_125:.*]] = stablehlo.constant dense<3.000000e+00>
+-  // CHECK: %[[TMP_126:.*]] = stablehlo.add %[[TMP_0]], %[[TMP_125]]
+-  // CHECK: %[[TMP_127:.*]] = stablehlo.multiply %[[TMP_124]], %[[TMP_126]]
+-  // CHECK: %[[TMP_128:.*]] = stablehlo.constant dense<3.30687835E-5>
+-  // CHECK: %[[TMP_129:.*]] = stablehlo.add %[[TMP_122]], %[[TMP_128]]
+-  // CHECK: %[[TMP_130:.*]] = stablehlo.multiply %[[TMP_41]], %[[TMP_129]]
+-  // CHECK: %[[TMP_131:.*]] = stablehlo.multiply %[[TMP_127]], %[[TMP_130]]
+-  // CHECK: %[[TMP_132:.*]] = stablehlo.constant dense<2.000000e+00>
+-  // CHECK: %[[TMP_133:.*]] = stablehlo.add %[[TMP_0]], %[[TMP_132]]
+-  // CHECK: %[[TMP_134:.*]] = stablehlo.constant dense<1.000000e+00>
+-  // CHECK: %[[TMP_135:.*]] = stablehlo.add %[[TMP_0]], %[[TMP_134]]
+-  // CHECK: %[[TMP_136:.*]] = stablehlo.multiply %[[TMP_133]], %[[TMP_135]]
+-  // CHECK: %[[TMP_137:.*]] = stablehlo.constant dense<-0.00138888892>
+-  // CHECK: %[[TMP_138:.*]] = stablehlo.add %[[TMP_131]], %[[TMP_137]]
+-  // CHECK: %[[TMP_139:.*]] = stablehlo.multiply %[[TMP_41]], %[[TMP_138]]
+-  // CHECK: %[[TMP_140:.*]] = stablehlo.multiply %[[TMP_136]], %[[TMP_139]]
+-  // CHECK: %[[TMP_141:.*]] = stablehlo.constant dense<5.000000e-01>
+-  // CHECK: %[[TMP_142:.*]] = stablehlo.divide %[[TMP_0]], %[[TMP_33]]
+-  // CHECK: %[[TMP_143:.*]] = stablehlo.constant dense<0.0833333358>
+-  // CHECK: %[[TMP_144:.*]] = stablehlo.add %[[TMP_143]], %[[TMP_140]]
+-  // CHECK: %[[TMP_145:.*]] = stablehlo.multiply %[[TMP_142]], %[[TMP_144]]
+-  // CHECK: %[[TMP_146:.*]] = stablehlo.add %[[TMP_141]], %[[TMP_145]]
+-  // CHECK: %[[TMP_147:.*]] = stablehlo.multiply %[[TMP_34]], %[[TMP_146]]
+-  // CHECK: %[[TMP_148:.*]] = stablehlo.add %[[TMP_39]], %[[TMP_147]]
++  // CHECK: %[[TMP_36:.*]] = stablehlo.multiply %[[TMP_34]], %[[TMP_33]]
++  // CHECK: %[[TMP_37:.*]] = stablehlo.subtract %[[TMP_0]], %[[TMP_35]]
++  // CHECK: %[[TMP_38:.*]] = stablehlo.divide %[[TMP_36]], %[[TMP_37]]
++  // CHECK: %[[TMP_39:.*]] = stablehlo.multiply %[[TMP_33]], %[[TMP_33]]
++  // CHECK: %[[TMP_40:.*]] = stablehlo.divide %[[TMP_3]], %[[TMP_39]]
++  // CHECK: %[[TMP_41:.*]] = stablehlo.constant dense<2.200000e+01>
++  // CHECK: %[[TMP_42:.*]] = stablehlo.add %[[TMP_0]], %[[TMP_41]]
++  // CHECK: %[[TMP_43:.*]] = stablehlo.constant dense<2.100000e+01>
++  // CHECK: %[[TMP_44:.*]] = stablehlo.add %[[TMP_0]], %[[TMP_43]]
++  // CHECK: %[[TMP_45:.*]] = stablehlo.multiply %[[TMP_42]], %[[TMP_44]]
++  // CHECK: %[[TMP_46:.*]] = stablehlo.constant dense<-1.39544646E-19>
++  // CHECK: %[[TMP_47:.*]] = stablehlo.add %[[TMP_2]], %[[TMP_46]]
++  // CHECK: %[[TMP_48:.*]] = stablehlo.multiply %[[TMP_40]], %[[TMP_47]]
++  // CHECK: %[[TMP_49:.*]] = stablehlo.multiply %[[TMP_45]], %[[TMP_48]]
++  // CHECK: %[[TMP_50:.*]] = stablehlo.constant dense<2.000000e+01>
++  // CHECK: %[[TMP_51:.*]] = stablehlo.add %[[TMP_0]], %[[TMP_50]]
++  // CHECK: %[[TMP_52:.*]] = stablehlo.constant dense<1.900000e+01>
++  // CHECK: %[[TMP_53:.*]] = stablehlo.add %[[TMP_0]], %[[TMP_52]]
++  // CHECK: %[[TMP_54:.*]] = stablehlo.multiply %[[TMP_51]], %[[TMP_53]]
++  // CHECK: %[[TMP_55:.*]] = stablehlo.constant dense<5.50900303E-18>
++  // CHECK: %[[TMP_56:.*]] = stablehlo.add %[[TMP_49]], %[[TMP_55]]
++  // CHECK: %[[TMP_57:.*]] = stablehlo.multiply %[[TMP_40]], %[[TMP_56]]
++  // CHECK: %[[TMP_58:.*]] = stablehlo.multiply %[[TMP_54]], %[[TMP_57]]
++  // CHECK: %[[TMP_59:.*]] = stablehlo.constant dense<1.800000e+01>
++  // CHECK: %[[TMP_60:.*]] = stablehlo.add %[[TMP_0]], %[[TMP_59]]
++  // CHECK: %[[TMP_61:.*]] = stablehlo.constant dense<1.700000e+01>
++  // CHECK: %[[TMP_62:.*]] = stablehlo.add %[[TMP_0]], %[[TMP_61]]
++  // CHECK: %[[TMP_63:.*]] = stablehlo.multiply %[[TMP_60]], %[[TMP_62]]
++  // CHECK: %[[TMP_64:.*]] = stablehlo.constant dense<-2.17486866E-16>
++  // CHECK: %[[TMP_65:.*]] = stablehlo.add %[[TMP_58]], %[[TMP_64]]
++  // CHECK: %[[TMP_66:.*]] = stablehlo.multiply %[[TMP_40]], %[[TMP_65]]
++  // CHECK: %[[TMP_67:.*]] = stablehlo.multiply %[[TMP_63]], %[[TMP_66]]
++  // CHECK: %[[TMP_68:.*]] = stablehlo.constant dense<1.600000e+01>
++  // CHECK: %[[TMP_69:.*]] = stablehlo.add %[[TMP_0]], %[[TMP_68]]
++  // CHECK: %[[TMP_70:.*]] = stablehlo.constant dense<1.500000e+01>
++  // CHECK: %[[TMP_71:.*]] = stablehlo.add %[[TMP_0]], %[[TMP_70]]
++  // CHECK: %[[TMP_72:.*]] = stablehlo.multiply %[[TMP_69]], %[[TMP_71]]
++  // CHECK: %[[TMP_73:.*]] = stablehlo.constant dense<8.58606213E-15>
++  // CHECK: %[[TMP_74:.*]] = stablehlo.add %[[TMP_67]], %[[TMP_73]]
++  // CHECK: %[[TMP_75:.*]] = stablehlo.multiply %[[TMP_40]], %[[TMP_74]]
++  // CHECK: %[[TMP_76:.*]] = stablehlo.multiply %[[TMP_72]], %[[TMP_75]]
++  // CHECK: %[[TMP_77:.*]] = stablehlo.constant dense<1.400000e+01>
++  // CHECK: %[[TMP_78:.*]] = stablehlo.add %[[TMP_0]], %[[TMP_77]]
++  // CHECK: %[[TMP_79:.*]] = stablehlo.constant dense<1.300000e+01>
++  // CHECK: %[[TMP_80:.*]] = stablehlo.add %[[TMP_0]], %[[TMP_79]]
++  // CHECK: %[[TMP_81:.*]] = stablehlo.multiply %[[TMP_78]], %[[TMP_80]]
++  // CHECK: %[[TMP_82:.*]] = stablehlo.constant dense<-3.3896803E-13>
++  // CHECK: %[[TMP_83:.*]] = stablehlo.add %[[TMP_76]], %[[TMP_82]]
++  // CHECK: %[[TMP_84:.*]] = stablehlo.multiply %[[TMP_40]], %[[TMP_83]]
++  // CHECK: %[[TMP_85:.*]] = stablehlo.multiply %[[TMP_81]], %[[TMP_84]]
++  // CHECK: %[[TMP_86:.*]] = stablehlo.constant dense<1.200000e+01>
++  // CHECK: %[[TMP_87:.*]] = stablehlo.add %[[TMP_0]], %[[TMP_86]]
++  // CHECK: %[[TMP_88:.*]] = stablehlo.constant dense<1.100000e+01>
++  // CHECK: %[[TMP_89:.*]] = stablehlo.add %[[TMP_0]], %[[TMP_88]]
++  // CHECK: %[[TMP_90:.*]] = stablehlo.multiply %[[TMP_87]], %[[TMP_89]]
++  // CHECK: %[[TMP_91:.*]] = stablehlo.constant dense<1.33825364E-11>
++  // CHECK: %[[TMP_92:.*]] = stablehlo.add %[[TMP_85]], %[[TMP_91]]
++  // CHECK: %[[TMP_93:.*]] = stablehlo.multiply %[[TMP_40]], %[[TMP_92]]
++  // CHECK: %[[TMP_94:.*]] = stablehlo.multiply %[[TMP_90]], %[[TMP_93]]
++  // CHECK: %[[TMP_95:.*]] = stablehlo.constant dense<1.000000e+01>
++  // CHECK: %[[TMP_96:.*]] = stablehlo.add %[[TMP_0]], %[[TMP_95]]
++  // CHECK: %[[TMP_97:.*]] = stablehlo.constant dense<9.000000e+00>
++  // CHECK: %[[TMP_98:.*]] = stablehlo.add %[[TMP_0]], %[[TMP_97]]
++  // CHECK: %[[TMP_99:.*]] = stablehlo.multiply %[[TMP_96]], %[[TMP_98]]
++  // CHECK: %[[TMP_100:.*]] = stablehlo.constant dense<-5.28419031E-10>
++  // CHECK: %[[TMP_101:.*]] = stablehlo.add %[[TMP_94]], %[[TMP_100]]
++  // CHECK: %[[TMP_102:.*]] = stablehlo.multiply %[[TMP_40]], %[[TMP_101]]
++  // CHECK: %[[TMP_103:.*]] = stablehlo.multiply %[[TMP_99]], %[[TMP_102]]
++  // CHECK: %[[TMP_104:.*]] = stablehlo.constant dense<8.000000e+00>
++  // CHECK: %[[TMP_105:.*]] = stablehlo.add %[[TMP_0]], %[[TMP_104]]
++  // CHECK: %[[TMP_106:.*]] = stablehlo.constant dense<7.000000e+00>
++  // CHECK: %[[TMP_107:.*]] = stablehlo.add %[[TMP_0]], %[[TMP_106]]
++  // CHECK: %[[TMP_108:.*]] = stablehlo.multiply %[[TMP_105]], %[[TMP_107]]
++  // CHECK: %[[TMP_109:.*]] = stablehlo.constant dense<2.08767563E-8>
++  // CHECK: %[[TMP_110:.*]] = stablehlo.add %[[TMP_103]], %[[TMP_109]]
++  // CHECK: %[[TMP_111:.*]] = stablehlo.multiply %[[TMP_40]], %[[TMP_110]]
++  // CHECK: %[[TMP_112:.*]] = stablehlo.multiply %[[TMP_108]], %[[TMP_111]]
++  // CHECK: %[[TMP_113:.*]] = stablehlo.constant dense<6.000000e+00>
++  // CHECK: %[[TMP_114:.*]] = stablehlo.add %[[TMP_0]], %[[TMP_113]]
++  // CHECK: %[[TMP_115:.*]] = stablehlo.constant dense<5.000000e+00>
++  // CHECK: %[[TMP_116:.*]] = stablehlo.add %[[TMP_0]], %[[TMP_115]]
++  // CHECK: %[[TMP_117:.*]] = stablehlo.multiply %[[TMP_114]], %[[TMP_116]]
++  // CHECK: %[[TMP_118:.*]] = stablehlo.constant dense<-8.26719599E-7>
++  // CHECK: %[[TMP_119:.*]] = stablehlo.add %[[TMP_112]], %[[TMP_118]]
++  // CHECK: %[[TMP_120:.*]] = stablehlo.multiply %[[TMP_40]], %[[TMP_119]]
++  // CHECK: %[[TMP_121:.*]] = stablehlo.multiply %[[TMP_117]], %[[TMP_120]]
++  // CHECK: %[[TMP_122:.*]] = stablehlo.constant dense<4.000000e+00>
++  // CHECK: %[[TMP_123:.*]] = stablehlo.add %[[TMP_0]], %[[TMP_122]]
++  // CHECK: %[[TMP_124:.*]] = stablehlo.constant dense<3.000000e+00>
++  // CHECK: %[[TMP_125:.*]] = stablehlo.add %[[TMP_0]], %[[TMP_124]]
++  // CHECK: %[[TMP_126:.*]] = stablehlo.multiply %[[TMP_123]], %[[TMP_125]]
++  // CHECK: %[[TMP_127:.*]] = stablehlo.constant dense<3.30687835E-5>
++  // CHECK: %[[TMP_128:.*]] = stablehlo.add %[[TMP_121]], %[[TMP_127]]
++  // CHECK: %[[TMP_129:.*]] = stablehlo.multiply %[[TMP_40]], %[[TMP_128]]
++  // CHECK: %[[TMP_130:.*]] = stablehlo.multiply %[[TMP_126]], %[[TMP_129]]
++  // CHECK: %[[TMP_131:.*]] = stablehlo.constant dense<2.000000e+00>
++  // CHECK: %[[TMP_132:.*]] = stablehlo.add %[[TMP_0]], %[[TMP_131]]
++  // CHECK: %[[TMP_133:.*]] = stablehlo.constant dense<1.000000e+00>
++  // CHECK: %[[TMP_134:.*]] = stablehlo.add %[[TMP_0]], %[[TMP_133]]
++  // CHECK: %[[TMP_135:.*]] = stablehlo.multiply %[[TMP_132]], %[[TMP_134]]
++  // CHECK: %[[TMP_136:.*]] = stablehlo.constant dense<-0.00138888892>
++  // CHECK: %[[TMP_137:.*]] = stablehlo.add %[[TMP_130]], %[[TMP_136]]
++  // CHECK: %[[TMP_138:.*]] = stablehlo.multiply %[[TMP_40]], %[[TMP_137]]
++  // CHECK: %[[TMP_139:.*]] = stablehlo.multiply %[[TMP_135]], %[[TMP_138]]
++  // CHECK: %[[TMP_140:.*]] = stablehlo.constant dense<5.000000e-01>
++  // CHECK: %[[TMP_141:.*]] = stablehlo.divide %[[TMP_0]], %[[TMP_33]]
++  // CHECK: %[[TMP_142:.*]] = stablehlo.constant dense<0.0833333358>
++  // CHECK: %[[TMP_143:.*]] = stablehlo.add %[[TMP_142]], %[[TMP_139]]
++  // CHECK: %[[TMP_144:.*]] = stablehlo.multiply %[[TMP_141]], %[[TMP_143]]
++  // CHECK: %[[TMP_145:.*]] = stablehlo.add %[[TMP_140]], %[[TMP_144]]
++  // CHECK: %[[TMP_146:.*]] = stablehlo.multiply %[[TMP_34]], %[[TMP_145]]
++  // CHECK: %[[TMP_147:.*]] = stablehlo.add %[[TMP_32]], %[[TMP_38]]
++  // CHECK: %[[TMP_148:.*]] = stablehlo.add %[[TMP_147]], %[[TMP_146]]
+   // CHECK: %[[TMP_149:.*]] = stablehlo.abs %[[TMP_34]]
+   // CHECK: %[[TMP_150:.*]] = stablehlo.abs %[[TMP_32]]
+   // CHECK: %[[TMP_151:.*]] = stablehlo.constant dense<1.401300e-45>
+@@ -1456,7 +1456,7 @@
+   // CHECK: %[[TMP_172:.*]] = stablehlo.and %[[TMP_169]], %[[TMP_171]] : tensor<i1>
+   // CHECK: %[[TMP_173:.*]] = stablehlo.select %[[TMP_172]], %[[TMP_163]], %[[TMP_155]]
+   // CHECK: %[[TMP_174:.*]] = stablehlo.select %[[TMP_166]], %[[TMP_173]], %[[TMP_162]]
+-  // CHECK: %[[TMP_175:.*]] = stablehlo.compare EQ, %[[TMP_0]], %[[TMP_5]], NOTYPE
++  // CHECK: %[[TMP_175:.*]] = stablehlo.compare EQ, %[[TMP_0]], %[[TMP_3]], NOTYPE
+   // CHECK: %[[TMP_176:.*]] = stablehlo.select %[[TMP_175]], %[[TMP_163]], %[[TMP_174]]
+   // CHECK: %[[TMP_177:.*]] = stablehlo.convert %[[TMP_176]] : (tensor<f32>) -> tensor<f16>
+   %0 = chlo.zeta %arg0, %arg1 : tensor<f16>, tensor<f16> -> tensor<f16>
+@@ -1465,8 +1465,7 @@
+ 
+ // -----
+ 
+-
+-// CHECK-LABEL: @polygamma_f32
++// CHECK: @polygamma_f32
+ // CHECK-SAME: (%[[ARG0:.*]]: tensor<f32>, %[[ARG1:.*]]: tensor<f32>)
+ func.func @polygamma_f32(%lhs : tensor<f32>, %rhs : tensor<f32>) -> tensor<f32> {
+   // CHECK-DAG: %[[TMP_0:.*]] = stablehlo.constant dense<1.000000e+00>
+@@ -1559,153 +1558,153 @@
+   // CHECK: %[[TMP_87:.*]] = stablehlo.constant dense<0x7F800000>
+   // CHECK: %[[TMP_88:.*]] = stablehlo.select %[[TMP_86]], %[[TMP_87]], %[[TMP_83]]
+   // CHECK: %[[TMP_89:.*]] = stablehlo.exponential %[[TMP_88]]
+-  // CHECK: %[[TMP_90:.*]] = stablehlo.constant dense<0.000000e+00>
+-  // CHECK: %[[TMP_91:.*]] = stablehlo.negate %[[TMP_5]]
+-  // CHECK: %[[TMP_92:.*]] = stablehlo.power %[[ARG1]], %[[TMP_91]]
+-  // CHECK: %[[TMP_93:.*]] = stablehlo.constant dense<1.000000e+00>
+-  // CHECK: %[[TMP_94:.*]] = stablehlo.add %[[ARG1]], %[[TMP_93]]
+-  // CHECK: %[[TMP_95:.*]] = stablehlo.power %[[TMP_94]], %[[TMP_91]]
+-  // CHECK: %[[TMP_96:.*]] = stablehlo.add %[[TMP_92]], %[[TMP_95]]
+-  // CHECK: %[[TMP_97:.*]] = stablehlo.add %[[TMP_94]], %[[TMP_93]]
+-  // CHECK: %[[TMP_98:.*]] = stablehlo.power %[[TMP_97]], %[[TMP_91]]
++  // CHECK-DAG: %[[TMP_90:.*]] = stablehlo.constant dense<0.000000e+00>
++  // CHECK-DAG: %[[TMP_91:.*]] = stablehlo.constant dense<1.000000e+00>
++  // CHECK: %[[TMP_92:.*]] = stablehlo.negate %[[TMP_5]]
++  // CHECK: %[[TMP_93:.*]] = stablehlo.power %[[ARG1]], %[[TMP_92]]
++  // CHECK: %[[TMP_94:.*]] = stablehlo.add %[[ARG1]], %[[TMP_91]]
++  // CHECK: %[[TMP_95:.*]] = stablehlo.power %[[TMP_94]], %[[TMP_92]]
++  // CHECK: %[[TMP_96:.*]] = stablehlo.add %[[TMP_93]], %[[TMP_95]]
++  // CHECK: %[[TMP_97:.*]] = stablehlo.add %[[TMP_94]], %[[TMP_91]]
++  // CHECK: %[[TMP_98:.*]] = stablehlo.power %[[TMP_97]], %[[TMP_92]]
+   // CHECK: %[[TMP_99:.*]] = stablehlo.add %[[TMP_96]], %[[TMP_98]]
+-  // CHECK: %[[TMP_100:.*]] = stablehlo.add %[[TMP_97]], %[[TMP_93]]
+-  // CHECK: %[[TMP_101:.*]] = stablehlo.power %[[TMP_100]], %[[TMP_91]]
++  // CHECK: %[[TMP_100:.*]] = stablehlo.add %[[TMP_97]], %[[TMP_91]]
++  // CHECK: %[[TMP_101:.*]] = stablehlo.power %[[TMP_100]], %[[TMP_92]]
+   // CHECK: %[[TMP_102:.*]] = stablehlo.add %[[TMP_99]], %[[TMP_101]]
+-  // CHECK: %[[TMP_103:.*]] = stablehlo.add %[[TMP_100]], %[[TMP_93]]
+-  // CHECK: %[[TMP_104:.*]] = stablehlo.power %[[TMP_103]], %[[TMP_91]]
++  // CHECK: %[[TMP_103:.*]] = stablehlo.add %[[TMP_100]], %[[TMP_91]]
++  // CHECK: %[[TMP_104:.*]] = stablehlo.power %[[TMP_103]], %[[TMP_92]]
+   // CHECK: %[[TMP_105:.*]] = stablehlo.add %[[TMP_102]], %[[TMP_104]]
+-  // CHECK: %[[TMP_106:.*]] = stablehlo.add %[[TMP_103]], %[[TMP_93]]
+-  // CHECK: %[[TMP_107:.*]] = stablehlo.power %[[TMP_106]], %[[TMP_91]]
++  // CHECK: %[[TMP_106:.*]] = stablehlo.add %[[TMP_103]], %[[TMP_91]]
++  // CHECK: %[[TMP_107:.*]] = stablehlo.power %[[TMP_106]], %[[TMP_92]]
+   // CHECK: %[[TMP_108:.*]] = stablehlo.add %[[TMP_105]], %[[TMP_107]]
+-  // CHECK: %[[TMP_109:.*]] = stablehlo.add %[[TMP_106]], %[[TMP_93]]
+-  // CHECK: %[[TMP_110:.*]] = stablehlo.power %[[TMP_109]], %[[TMP_91]]
++  // CHECK: %[[TMP_109:.*]] = stablehlo.add %[[TMP_106]], %[[TMP_91]]
++  // CHECK: %[[TMP_110:.*]] = stablehlo.power %[[TMP_109]], %[[TMP_92]]
+   // CHECK: %[[TMP_111:.*]] = stablehlo.add %[[TMP_108]], %[[TMP_110]]
+-  // CHECK: %[[TMP_112:.*]] = stablehlo.add %[[TMP_109]], %[[TMP_93]]
+-  // CHECK: %[[TMP_113:.*]] = stablehlo.power %[[TMP_112]], %[[TMP_91]]
++  // CHECK: %[[TMP_112:.*]] = stablehlo.add %[[TMP_109]], %[[TMP_91]]
++  // CHECK: %[[TMP_113:.*]] = stablehlo.power %[[TMP_112]], %[[TMP_92]]
+   // CHECK: %[[TMP_114:.*]] = stablehlo.add %[[TMP_111]], %[[TMP_113]]
+-  // CHECK: %[[TMP_115:.*]] = stablehlo.add %[[TMP_112]], %[[TMP_93]]
+-  // CHECK: %[[TMP_116:.*]] = stablehlo.power %[[TMP_115]], %[[TMP_91]]
++  // CHECK: %[[TMP_115:.*]] = stablehlo.add %[[TMP_112]], %[[TMP_91]]
++  // CHECK: %[[TMP_116:.*]] = stablehlo.power %[[TMP_115]], %[[TMP_92]]
+   // CHECK: %[[TMP_117:.*]] = stablehlo.add %[[TMP_114]], %[[TMP_116]]
+-  // CHECK: %[[TMP_118:.*]] = stablehlo.add %[[TMP_115]], %[[TMP_93]]
+-  // CHECK: %[[TMP_119:.*]] = stablehlo.power %[[TMP_118]], %[[TMP_91]]
++  // CHECK: %[[TMP_118:.*]] = stablehlo.add %[[TMP_115]], %[[TMP_91]]
++  // CHECK: %[[TMP_119:.*]] = stablehlo.power %[[TMP_118]], %[[TMP_92]]
+   // CHECK: %[[TMP_120:.*]] = stablehlo.add %[[TMP_117]], %[[TMP_119]]
+-  // CHECK: %[[TMP_121:.*]] = stablehlo.add %[[TMP_118]], %[[TMP_93]]
+-  // CHECK: %[[TMP_122:.*]] = stablehlo.power %[[TMP_121]], %[[TMP_91]]
++  // CHECK: %[[TMP_121:.*]] = stablehlo.add %[[TMP_118]], %[[TMP_91]]
++  // CHECK: %[[TMP_122:.*]] = stablehlo.power %[[TMP_121]], %[[TMP_92]]
+   // CHECK: %[[TMP_123:.*]] = stablehlo.constant dense<1.000000e+00>
+-  // CHECK: %[[TMP_124:.*]] = stablehlo.subtract %[[TMP_5]], %[[TMP_123]]
+-  // CHECK: %[[TMP_125:.*]] = stablehlo.multiply %[[TMP_122]], %[[TMP_121]]
+-  // CHECK: %[[TMP_126:.*]] = stablehlo.divide %[[TMP_125]], %[[TMP_124]]
+-  // CHECK: %[[TMP_127:.*]] = stablehlo.add %[[TMP_120]], %[[TMP_126]]
+-  // CHECK: %[[TMP_128:.*]] = stablehlo.multiply %[[TMP_121]], %[[TMP_121]]
+-  // CHECK: %[[TMP_129:.*]] = stablehlo.divide %[[TMP_93]], %[[TMP_128]]
+-  // CHECK: %[[TMP_130:.*]] = stablehlo.constant dense<2.200000e+01>
+-  // CHECK: %[[TMP_131:.*]] = stablehlo.add %[[TMP_5]], %[[TMP_130]]
+-  // CHECK: %[[TMP_132:.*]] = stablehlo.constant dense<2.100000e+01>
+-  // CHECK: %[[TMP_133:.*]] = stablehlo.add %[[TMP_5]], %[[TMP_132]]
+-  // CHECK: %[[TMP_134:.*]] = stablehlo.multiply %[[TMP_131]], %[[TMP_133]]
+-  // CHECK: %[[TMP_135:.*]] = stablehlo.constant dense<-1.39544646E-19>
+-  // CHECK: %[[TMP_136:.*]] = stablehlo.add %[[TMP_90]], %[[TMP_135]]
+-  // CHECK: %[[TMP_137:.*]] = stablehlo.multiply %[[TMP_129]], %[[TMP_136]]
+-  // CHECK: %[[TMP_138:.*]] = stablehlo.multiply %[[TMP_134]], %[[TMP_137]]
+-  // CHECK: %[[TMP_139:.*]] = stablehlo.constant dense<2.000000e+01>
+-  // CHECK: %[[TMP_140:.*]] = stablehlo.add %[[TMP_5]], %[[TMP_139]]
+-  // CHECK: %[[TMP_141:.*]] = stablehlo.constant dense<1.900000e+01>
+-  // CHECK: %[[TMP_142:.*]] = stablehlo.add %[[TMP_5]], %[[TMP_141]]
+-  // CHECK: %[[TMP_143:.*]] = stablehlo.multiply %[[TMP_140]], %[[TMP_142]]
+-  // CHECK: %[[TMP_144:.*]] = stablehlo.constant dense<5.50900303E-18>
+-  // CHECK: %[[TMP_145:.*]] = stablehlo.add %[[TMP_138]], %[[TMP_144]]
+-  // CHECK: %[[TMP_146:.*]] = stablehlo.multiply %[[TMP_129]], %[[TMP_145]]
+-  // CHECK: %[[TMP_147:.*]] = stablehlo.multiply %[[TMP_143]], %[[TMP_146]]
+-  // CHECK: %[[TMP_148:.*]] = stablehlo.constant dense<1.800000e+01>
+-  // CHECK: %[[TMP_149:.*]] = stablehlo.add %[[TMP_5]], %[[TMP_148]]
+-  // CHECK: %[[TMP_150:.*]] = stablehlo.constant dense<1.700000e+01>
+-  // CHECK: %[[TMP_151:.*]] = stablehlo.add %[[TMP_5]], %[[TMP_150]]
+-  // CHECK: %[[TMP_152:.*]] = stablehlo.multiply %[[TMP_149]], %[[TMP_151]]
+-  // CHECK: %[[TMP_153:.*]] = stablehlo.constant dense<-2.17486866E-16>
+-  // CHECK: %[[TMP_154:.*]] = stablehlo.add %[[TMP_147]], %[[TMP_153]]
+-  // CHECK: %[[TMP_155:.*]] = stablehlo.multiply %[[TMP_129]], %[[TMP_154]]
+-  // CHECK: %[[TMP_156:.*]] = stablehlo.multiply %[[TMP_152]], %[[TMP_155]]
+-  // CHECK: %[[TMP_157:.*]] = stablehlo.constant dense<1.600000e+01>
+-  // CHECK: %[[TMP_158:.*]] = stablehlo.add %[[TMP_5]], %[[TMP_157]]
+-  // CHECK: %[[TMP_159:.*]] = stablehlo.constant dense<1.500000e+01>
+-  // CHECK: %[[TMP_160:.*]] = stablehlo.add %[[TMP_5]], %[[TMP_159]]
+-  // CHECK: %[[TMP_161:.*]] = stablehlo.multiply %[[TMP_158]], %[[TMP_160]]
+-  // CHECK: %[[TMP_162:.*]] = stablehlo.constant dense<8.58606213E-15>
+-  // CHECK: %[[TMP_163:.*]] = stablehlo.add %[[TMP_156]], %[[TMP_162]]
+-  // CHECK: %[[TMP_164:.*]] = stablehlo.multiply %[[TMP_129]], %[[TMP_163]]
+-  // CHECK: %[[TMP_165:.*]] = stablehlo.multiply %[[TMP_161]], %[[TMP_164]]
+-  // CHECK: %[[TMP_166:.*]] = stablehlo.constant dense<1.400000e+01>
+-  // CHECK: %[[TMP_167:.*]] = stablehlo.add %[[TMP_5]], %[[TMP_166]]
+-  // CHECK: %[[TMP_168:.*]] = stablehlo.constant dense<1.300000e+01>
+-  // CHECK: %[[TMP_169:.*]] = stablehlo.add %[[TMP_5]], %[[TMP_168]]
+-  // CHECK: %[[TMP_170:.*]] = stablehlo.multiply %[[TMP_167]], %[[TMP_169]]
+-  // CHECK: %[[TMP_171:.*]] = stablehlo.constant dense<-3.3896803E-13>
+-  // CHECK: %[[TMP_172:.*]] = stablehlo.add %[[TMP_165]], %[[TMP_171]]
+-  // CHECK: %[[TMP_173:.*]] = stablehlo.multiply %[[TMP_129]], %[[TMP_172]]
+-  // CHECK: %[[TMP_174:.*]] = stablehlo.multiply %[[TMP_170]], %[[TMP_173]]
+-  // CHECK: %[[TMP_175:.*]] = stablehlo.constant dense<1.200000e+01>
+-  // CHECK: %[[TMP_176:.*]] = stablehlo.add %[[TMP_5]], %[[TMP_175]]
+-  // CHECK: %[[TMP_177:.*]] = stablehlo.constant dense<1.100000e+01>
+-  // CHECK: %[[TMP_178:.*]] = stablehlo.add %[[TMP_5]], %[[TMP_177]]
+-  // CHECK: %[[TMP_179:.*]] = stablehlo.multiply %[[TMP_176]], %[[TMP_178]]
+-  // CHECK: %[[TMP_180:.*]] = stablehlo.constant dense<1.33825364E-11>
+-  // CHECK: %[[TMP_181:.*]] = stablehlo.add %[[TMP_174]], %[[TMP_180]]
+-  // CHECK: %[[TMP_182:.*]] = stablehlo.multiply %[[TMP_129]], %[[TMP_181]]
+-  // CHECK: %[[TMP_183:.*]] = stablehlo.multiply %[[TMP_179]], %[[TMP_182]]
+-  // CHECK: %[[TMP_184:.*]] = stablehlo.constant dense<1.000000e+01>
+-  // CHECK: %[[TMP_185:.*]] = stablehlo.add %[[TMP_5]], %[[TMP_184]]
+-  // CHECK: %[[TMP_186:.*]] = stablehlo.constant dense<9.000000e+00>
+-  // CHECK: %[[TMP_187:.*]] = stablehlo.add %[[TMP_5]], %[[TMP_186]]
+-  // CHECK: %[[TMP_188:.*]] = stablehlo.multiply %[[TMP_185]], %[[TMP_187]]
+-  // CHECK: %[[TMP_189:.*]] = stablehlo.constant dense<-5.28419031E-10>
+-  // CHECK: %[[TMP_190:.*]] = stablehlo.add %[[TMP_183]], %[[TMP_189]]
+-  // CHECK: %[[TMP_191:.*]] = stablehlo.multiply %[[TMP_129]], %[[TMP_190]]
+-  // CHECK: %[[TMP_192:.*]] = stablehlo.multiply %[[TMP_188]], %[[TMP_191]]
+-  // CHECK: %[[TMP_193:.*]] = stablehlo.constant dense<8.000000e+00>
+-  // CHECK: %[[TMP_194:.*]] = stablehlo.add %[[TMP_5]], %[[TMP_193]]
+-  // CHECK: %[[TMP_195:.*]] = stablehlo.constant dense<7.000000e+00>
+-  // CHECK: %[[TMP_196:.*]] = stablehlo.add %[[TMP_5]], %[[TMP_195]]
+-  // CHECK: %[[TMP_197:.*]] = stablehlo.multiply %[[TMP_194]], %[[TMP_196]]
+-  // CHECK: %[[TMP_198:.*]] = stablehlo.constant dense<2.08767563E-8>
+-  // CHECK: %[[TMP_199:.*]] = stablehlo.add %[[TMP_192]], %[[TMP_198]]
+-  // CHECK: %[[TMP_200:.*]] = stablehlo.multiply %[[TMP_129]], %[[TMP_199]]
+-  // CHECK: %[[TMP_201:.*]] = stablehlo.multiply %[[TMP_197]], %[[TMP_200]]
+-  // CHECK: %[[TMP_202:.*]] = stablehlo.constant dense<6.000000e+00>
+-  // CHECK: %[[TMP_203:.*]] = stablehlo.add %[[TMP_5]], %[[TMP_202]]
+-  // CHECK: %[[TMP_204:.*]] = stablehlo.constant dense<5.000000e+00>
+-  // CHECK: %[[TMP_205:.*]] = stablehlo.add %[[TMP_5]], %[[TMP_204]]
+-  // CHECK: %[[TMP_206:.*]] = stablehlo.multiply %[[TMP_203]], %[[TMP_205]]
+-  // CHECK: %[[TMP_207:.*]] = stablehlo.constant dense<-8.26719599E-7>
+-  // CHECK: %[[TMP_208:.*]] = stablehlo.add %[[TMP_201]], %[[TMP_207]]
+-  // CHECK: %[[TMP_209:.*]] = stablehlo.multiply %[[TMP_129]], %[[TMP_208]]
+-  // CHECK: %[[TMP_210:.*]] = stablehlo.multiply %[[TMP_206]], %[[TMP_209]]
+-  // CHECK: %[[TMP_211:.*]] = stablehlo.constant dense<4.000000e+00>
+-  // CHECK: %[[TMP_212:.*]] = stablehlo.add %[[TMP_5]], %[[TMP_211]]
+-  // CHECK: %[[TMP_213:.*]] = stablehlo.constant dense<3.000000e+00>
+-  // CHECK: %[[TMP_214:.*]] = stablehlo.add %[[TMP_5]], %[[TMP_213]]
+-  // CHECK: %[[TMP_215:.*]] = stablehlo.multiply %[[TMP_212]], %[[TMP_214]]
+-  // CHECK: %[[TMP_216:.*]] = stablehlo.constant dense<3.30687835E-5>
+-  // CHECK: %[[TMP_217:.*]] = stablehlo.add %[[TMP_210]], %[[TMP_216]]
+-  // CHECK: %[[TMP_218:.*]] = stablehlo.multiply %[[TMP_129]], %[[TMP_217]]
+-  // CHECK: %[[TMP_219:.*]] = stablehlo.multiply %[[TMP_215]], %[[TMP_218]]
+-  // CHECK: %[[TMP_220:.*]] = stablehlo.constant dense<2.000000e+00>
+-  // CHECK: %[[TMP_221:.*]] = stablehlo.add %[[TMP_5]], %[[TMP_220]]
+-  // CHECK: %[[TMP_222:.*]] = stablehlo.constant dense<1.000000e+00>
+-  // CHECK: %[[TMP_223:.*]] = stablehlo.add %[[TMP_5]], %[[TMP_222]]
+-  // CHECK: %[[TMP_224:.*]] = stablehlo.multiply %[[TMP_221]], %[[TMP_223]]
+-  // CHECK: %[[TMP_225:.*]] = stablehlo.constant dense<-0.00138888892>
+-  // CHECK: %[[TMP_226:.*]] = stablehlo.add %[[TMP_219]], %[[TMP_225]]
+-  // CHECK: %[[TMP_227:.*]] = stablehlo.multiply %[[TMP_129]], %[[TMP_226]]
+-  // CHECK: %[[TMP_228:.*]] = stablehlo.multiply %[[TMP_224]], %[[TMP_227]]
+-  // CHECK: %[[TMP_229:.*]] = stablehlo.constant dense<5.000000e-01>
+-  // CHECK: %[[TMP_230:.*]] = stablehlo.divide %[[TMP_5]], %[[TMP_121]]
+-  // CHECK: %[[TMP_231:.*]] = stablehlo.constant dense<0.0833333358>
+-  // CHECK: %[[TMP_232:.*]] = stablehlo.add %[[TMP_231]], %[[TMP_228]]
+-  // CHECK: %[[TMP_233:.*]] = stablehlo.multiply %[[TMP_230]], %[[TMP_232]]
+-  // CHECK: %[[TMP_234:.*]] = stablehlo.add %[[TMP_229]], %[[TMP_233]]
+-  // CHECK: %[[TMP_235:.*]] = stablehlo.multiply %[[TMP_122]], %[[TMP_234]]
+-  // CHECK: %[[TMP_236:.*]] = stablehlo.add %[[TMP_127]], %[[TMP_235]]
++  // CHECK: %[[TMP_124:.*]] = stablehlo.multiply %[[TMP_122]], %[[TMP_121]]
++  // CHECK: %[[TMP_125:.*]] = stablehlo.subtract %[[TMP_5]], %[[TMP_123]]
++  // CHECK: %[[TMP_126:.*]] = stablehlo.divide %[[TMP_124]], %[[TMP_125]]
++  // CHECK: %[[TMP_127:.*]] = stablehlo.multiply %[[TMP_121]], %[[TMP_121]]
++  // CHECK: %[[TMP_128:.*]] = stablehlo.divide %[[TMP_91]], %[[TMP_127]]
++  // CHECK: %[[TMP_129:.*]] = stablehlo.constant dense<2.200000e+01>
++  // CHECK: %[[TMP_130:.*]] = stablehlo.add %[[TMP_5]], %[[TMP_129]]
++  // CHECK: %[[TMP_131:.*]] = stablehlo.constant dense<2.100000e+01>
++  // CHECK: %[[TMP_132:.*]] = stablehlo.add %[[TMP_5]], %[[TMP_131]]
++  // CHECK: %[[TMP_133:.*]] = stablehlo.multiply %[[TMP_130]], %[[TMP_132]]
++  // CHECK: %[[TMP_134:.*]] = stablehlo.constant dense<-1.39544646E-19>
++  // CHECK: %[[TMP_135:.*]] = stablehlo.add %[[TMP_90]], %[[TMP_134]]
++  // CHECK: %[[TMP_136:.*]] = stablehlo.multiply %[[TMP_128]], %[[TMP_135]]
++  // CHECK: %[[TMP_137:.*]] = stablehlo.multiply %[[TMP_133]], %[[TMP_136]]
++  // CHECK: %[[TMP_138:.*]] = stablehlo.constant dense<2.000000e+01>
++  // CHECK: %[[TMP_139:.*]] = stablehlo.add %[[TMP_5]], %[[TMP_138]]
++  // CHECK: %[[TMP_140:.*]] = stablehlo.constant dense<1.900000e+01>
++  // CHECK: %[[TMP_141:.*]] = stablehlo.add %[[TMP_5]], %[[TMP_140]]
++  // CHECK: %[[TMP_142:.*]] = stablehlo.multiply %[[TMP_139]], %[[TMP_141]]
++  // CHECK: %[[TMP_143:.*]] = stablehlo.constant dense<5.50900303E-18>
++  // CHECK: %[[TMP_144:.*]] = stablehlo.add %[[TMP_137]], %[[TMP_143]]
++  // CHECK: %[[TMP_145:.*]] = stablehlo.multiply %[[TMP_128]], %[[TMP_144]]
++  // CHECK: %[[TMP_146:.*]] = stablehlo.multiply %[[TMP_142]], %[[TMP_145]]
++  // CHECK: %[[TMP_147:.*]] = stablehlo.constant dense<1.800000e+01>
++  // CHECK: %[[TMP_148:.*]] = stablehlo.add %[[TMP_5]], %[[TMP_147]]
++  // CHECK: %[[TMP_149:.*]] = stablehlo.constant dense<1.700000e+01>
++  // CHECK: %[[TMP_150:.*]] = stablehlo.add %[[TMP_5]], %[[TMP_149]]
++  // CHECK: %[[TMP_151:.*]] = stablehlo.multiply %[[TMP_148]], %[[TMP_150]]
++  // CHECK: %[[TMP_152:.*]] = stablehlo.constant dense<-2.17486866E-16>
++  // CHECK: %[[TMP_153:.*]] = stablehlo.add %[[TMP_146]], %[[TMP_152]]
++  // CHECK: %[[TMP_154:.*]] = stablehlo.multiply %[[TMP_128]], %[[TMP_153]]
++  // CHECK: %[[TMP_155:.*]] = stablehlo.multiply %[[TMP_151]], %[[TMP_154]]
++  // CHECK: %[[TMP_156:.*]] = stablehlo.constant dense<1.600000e+01>
++  // CHECK: %[[TMP_157:.*]] = stablehlo.add %[[TMP_5]], %[[TMP_156]]
++  // CHECK: %[[TMP_158:.*]] = stablehlo.constant dense<1.500000e+01>
++  // CHECK: %[[TMP_159:.*]] = stablehlo.add %[[TMP_5]], %[[TMP_158]]
++  // CHECK: %[[TMP_160:.*]] = stablehlo.multiply %[[TMP_157]], %[[TMP_159]]
++  // CHECK: %[[TMP_161:.*]] = stablehlo.constant dense<8.58606213E-15>
++  // CHECK: %[[TMP_162:.*]] = stablehlo.add %[[TMP_155]], %[[TMP_161]]
++  // CHECK: %[[TMP_163:.*]] = stablehlo.multiply %[[TMP_128]], %[[TMP_162]]
++  // CHECK: %[[TMP_164:.*]] = stablehlo.multiply %[[TMP_160]], %[[TMP_163]]
++  // CHECK: %[[TMP_165:.*]] = stablehlo.constant dense<1.400000e+01>
++  // CHECK: %[[TMP_166:.*]] = stablehlo.add %[[TMP_5]], %[[TMP_165]]
++  // CHECK: %[[TMP_167:.*]] = stablehlo.constant dense<1.300000e+01>
++  // CHECK: %[[TMP_168:.*]] = stablehlo.add %[[TMP_5]], %[[TMP_167]]
++  // CHECK: %[[TMP_169:.*]] = stablehlo.multiply %[[TMP_166]], %[[TMP_168]]
++  // CHECK: %[[TMP_170:.*]] = stablehlo.constant dense<-3.3896803E-13>
++  // CHECK: %[[TMP_171:.*]] = stablehlo.add %[[TMP_164]], %[[TMP_170]]
++  // CHECK: %[[TMP_172:.*]] = stablehlo.multiply %[[TMP_128]], %[[TMP_171]]
++  // CHECK: %[[TMP_173:.*]] = stablehlo.multiply %[[TMP_169]], %[[TMP_172]]
++  // CHECK: %[[TMP_174:.*]] = stablehlo.constant dense<1.200000e+01>
++  // CHECK: %[[TMP_175:.*]] = stablehlo.add %[[TMP_5]], %[[TMP_174]]
++  // CHECK: %[[TMP_176:.*]] = stablehlo.constant dense<1.100000e+01>
++  // CHECK: %[[TMP_177:.*]] = stablehlo.add %[[TMP_5]], %[[TMP_176]]
++  // CHECK: %[[TMP_178:.*]] = stablehlo.multiply %[[TMP_175]], %[[TMP_177]]
++  // CHECK: %[[TMP_179:.*]] = stablehlo.constant dense<1.33825364E-11>
++  // CHECK: %[[TMP_180:.*]] = stablehlo.add %[[TMP_173]], %[[TMP_179]]
++  // CHECK: %[[TMP_181:.*]] = stablehlo.multiply %[[TMP_128]], %[[TMP_180]]
++  // CHECK: %[[TMP_182:.*]] = stablehlo.multiply %[[TMP_178]], %[[TMP_181]]
++  // CHECK: %[[TMP_183:.*]] = stablehlo.constant dense<1.000000e+01>
++  // CHECK: %[[TMP_184:.*]] = stablehlo.add %[[TMP_5]], %[[TMP_183]]
++  // CHECK: %[[TMP_185:.*]] = stablehlo.constant dense<9.000000e+00>
++  // CHECK: %[[TMP_186:.*]] = stablehlo.add %[[TMP_5]], %[[TMP_185]]
++  // CHECK: %[[TMP_187:.*]] = stablehlo.multiply %[[TMP_184]], %[[TMP_186]]
++  // CHECK: %[[TMP_188:.*]] = stablehlo.constant dense<-5.28419031E-10>
++  // CHECK: %[[TMP_189:.*]] = stablehlo.add %[[TMP_182]], %[[TMP_188]]
++  // CHECK: %[[TMP_190:.*]] = stablehlo.multiply %[[TMP_128]], %[[TMP_189]]
++  // CHECK: %[[TMP_191:.*]] = stablehlo.multiply %[[TMP_187]], %[[TMP_190]]
++  // CHECK: %[[TMP_192:.*]] = stablehlo.constant dense<8.000000e+00>
++  // CHECK: %[[TMP_193:.*]] = stablehlo.add %[[TMP_5]], %[[TMP_192]]
++  // CHECK: %[[TMP_194:.*]] = stablehlo.constant dense<7.000000e+00>
++  // CHECK: %[[TMP_195:.*]] = stablehlo.add %[[TMP_5]], %[[TMP_194]]
++  // CHECK: %[[TMP_196:.*]] = stablehlo.multiply %[[TMP_193]], %[[TMP_195]]
++  // CHECK: %[[TMP_197:.*]] = stablehlo.constant dense<2.08767563E-8>
++  // CHECK: %[[TMP_198:.*]] = stablehlo.add %[[TMP_191]], %[[TMP_197]]
++  // CHECK: %[[TMP_199:.*]] = stablehlo.multiply %[[TMP_128]], %[[TMP_198]]
++  // CHECK: %[[TMP_200:.*]] = stablehlo.multiply %[[TMP_196]], %[[TMP_199]]
++  // CHECK: %[[TMP_201:.*]] = stablehlo.constant dense<6.000000e+00>
++  // CHECK: %[[TMP_202:.*]] = stablehlo.add %[[TMP_5]], %[[TMP_201]]
++  // CHECK: %[[TMP_203:.*]] = stablehlo.constant dense<5.000000e+00>
++  // CHECK: %[[TMP_204:.*]] = stablehlo.add %[[TMP_5]], %[[TMP_203]]
++  // CHECK: %[[TMP_205:.*]] = stablehlo.multiply %[[TMP_202]], %[[TMP_204]]
++  // CHECK: %[[TMP_206:.*]] = stablehlo.constant dense<-8.26719599E-7>
++  // CHECK: %[[TMP_207:.*]] = stablehlo.add %[[TMP_200]], %[[TMP_206]]
++  // CHECK: %[[TMP_208:.*]] = stablehlo.multiply %[[TMP_128]], %[[TMP_207]]
++  // CHECK: %[[TMP_209:.*]] = stablehlo.multiply %[[TMP_205]], %[[TMP_208]]
++  // CHECK: %[[TMP_210:.*]] = stablehlo.constant dense<4.000000e+00>
++  // CHECK: %[[TMP_211:.*]] = stablehlo.add %[[TMP_5]], %[[TMP_210]]
++  // CHECK: %[[TMP_212:.*]] = stablehlo.constant dense<3.000000e+00>
++  // CHECK: %[[TMP_213:.*]] = stablehlo.add %[[TMP_5]], %[[TMP_212]]
++  // CHECK: %[[TMP_214:.*]] = stablehlo.multiply %[[TMP_211]], %[[TMP_213]]
++  // CHECK: %[[TMP_215:.*]] = stablehlo.constant dense<3.30687835E-5>
++  // CHECK: %[[TMP_216:.*]] = stablehlo.add %[[TMP_209]], %[[TMP_215]]
++  // CHECK: %[[TMP_217:.*]] = stablehlo.multiply %[[TMP_128]], %[[TMP_216]]
++  // CHECK: %[[TMP_218:.*]] = stablehlo.multiply %[[TMP_214]], %[[TMP_217]]
++  // CHECK: %[[TMP_219:.*]] = stablehlo.constant dense<2.000000e+00>
++  // CHECK: %[[TMP_220:.*]] = stablehlo.add %[[TMP_5]], %[[TMP_219]]
++  // CHECK: %[[TMP_221:.*]] = stablehlo.constant dense<1.000000e+00>
++  // CHECK: %[[TMP_222:.*]] = stablehlo.add %[[TMP_5]], %[[TMP_221]]
++  // CHECK: %[[TMP_223:.*]] = stablehlo.multiply %[[TMP_220]], %[[TMP_222]]
++  // CHECK: %[[TMP_224:.*]] = stablehlo.constant dense<-0.00138888892>
++  // CHECK: %[[TMP_225:.*]] = stablehlo.add %[[TMP_218]], %[[TMP_224]]
++  // CHECK: %[[TMP_226:.*]] = stablehlo.multiply %[[TMP_128]], %[[TMP_225]]
++  // CHECK: %[[TMP_227:.*]] = stablehlo.multiply %[[TMP_223]], %[[TMP_226]]
++  // CHECK: %[[TMP_228:.*]] = stablehlo.constant dense<5.000000e-01>
++  // CHECK: %[[TMP_229:.*]] = stablehlo.divide %[[TMP_5]], %[[TMP_121]]
++  // CHECK: %[[TMP_230:.*]] = stablehlo.constant dense<0.0833333358>
++  // CHECK: %[[TMP_231:.*]] = stablehlo.add %[[TMP_230]], %[[TMP_227]]
++  // CHECK: %[[TMP_232:.*]] = stablehlo.multiply %[[TMP_229]], %[[TMP_231]]
++  // CHECK: %[[TMP_233:.*]] = stablehlo.add %[[TMP_228]], %[[TMP_232]]
++  // CHECK: %[[TMP_234:.*]] = stablehlo.multiply %[[TMP_122]], %[[TMP_233]]
++  // CHECK: %[[TMP_235:.*]] = stablehlo.add %[[TMP_120]], %[[TMP_126]]
++  // CHECK: %[[TMP_236:.*]] = stablehlo.add %[[TMP_235]], %[[TMP_234]]
+   // CHECK: %[[TMP_237:.*]] = stablehlo.abs %[[TMP_122]]
+   // CHECK: %[[TMP_238:.*]] = stablehlo.abs %[[TMP_120]]
+   // CHECK: %[[TMP_239:.*]] = stablehlo.constant dense<1.401300e-45>
+@@ -1732,7 +1731,7 @@
+   // CHECK: %[[TMP_260:.*]] = stablehlo.and %[[TMP_257]], %[[TMP_259]]
+   // CHECK: %[[TMP_261:.*]] = stablehlo.select %[[TMP_260]], %[[TMP_251]], %[[TMP_243]]
+   // CHECK: %[[TMP_262:.*]] = stablehlo.select %[[TMP_254]], %[[TMP_261]], %[[TMP_250]]
+-  // CHECK: %[[TMP_263:.*]] = stablehlo.compare EQ, %[[TMP_5]], %[[TMP_93]], NOTYPE
++  // CHECK: %[[TMP_263:.*]] = stablehlo.compare EQ, %[[TMP_5]], %[[TMP_91]], NOTYPE
+   // CHECK: %[[TMP_264:.*]] = stablehlo.select %[[TMP_263]], %[[TMP_251]], %[[TMP_262]]
+   // CHECK: %[[TMP_265:.*]] = stablehlo.multiply %[[TMP_4]], %[[TMP_89]]
+   // CHECK: %[[TMP_266:.*]] = stablehlo.multiply %[[TMP_265]], %[[TMP_264]]
+@@ -1853,8 +1852,7 @@
+ 
+ // -----
+ 
+-
+-// CHECK-LABEL: @polygamma_f64
++// CHECK: @polygamma_f64
+ // CHECK-SAME: (%[[ARG0:.*]]: tensor<f64>, %[[ARG1:.*]]: tensor<f64>)
+ func.func @polygamma_f64(%lhs : tensor<f64>, %rhs : tensor<f64>) -> tensor<f64> {
+   // CHECK-DAG: %[[TMP_0:.*]] = stablehlo.constant dense<1.000000e+00>
+@@ -1947,153 +1945,153 @@
+   // CHECK: %[[TMP_87:.*]] = stablehlo.constant dense<0x7FF0000000000000>
+   // CHECK: %[[TMP_88:.*]] = stablehlo.select %[[TMP_86]], %[[TMP_87]], %[[TMP_83]]
+   // CHECK: %[[TMP_89:.*]] = stablehlo.exponential %[[TMP_88]]
+-  // CHECK: %[[TMP_90:.*]] = stablehlo.constant dense<0.000000e+00>
+-  // CHECK: %[[TMP_91:.*]] = stablehlo.negate %[[TMP_5]]
+-  // CHECK: %[[TMP_92:.*]] = stablehlo.power %[[ARG1]], %[[TMP_91]]
+-  // CHECK: %[[TMP_93:.*]] = stablehlo.constant dense<1.000000e+00>
+-  // CHECK: %[[TMP_94:.*]] = stablehlo.add %[[ARG1]], %[[TMP_93]]
+-  // CHECK: %[[TMP_95:.*]] = stablehlo.power %[[TMP_94]], %[[TMP_91]]
+-  // CHECK: %[[TMP_96:.*]] = stablehlo.add %[[TMP_92]], %[[TMP_95]]
+-  // CHECK: %[[TMP_97:.*]] = stablehlo.add %[[TMP_94]], %[[TMP_93]]
+-  // CHECK: %[[TMP_98:.*]] = stablehlo.power %[[TMP_97]], %[[TMP_91]]
++  // CHECK-DAG: %[[TMP_90:.*]] = stablehlo.constant dense<0.000000e+00>
++  // CHECK-DAG: %[[TMP_91:.*]] = stablehlo.constant dense<1.000000e+00>
++  // CHECK: %[[TMP_92:.*]] = stablehlo.negate %[[TMP_5]]
++  // CHECK: %[[TMP_93:.*]] = stablehlo.power %[[ARG1]], %[[TMP_92]]
++  // CHECK: %[[TMP_94:.*]] = stablehlo.add %[[ARG1]], %[[TMP_91]]
++  // CHECK: %[[TMP_95:.*]] = stablehlo.power %[[TMP_94]], %[[TMP_92]]
++  // CHECK: %[[TMP_96:.*]] = stablehlo.add %[[TMP_93]], %[[TMP_95]]
++  // CHECK: %[[TMP_97:.*]] = stablehlo.add %[[TMP_94]], %[[TMP_91]]
++  // CHECK: %[[TMP_98:.*]] = stablehlo.power %[[TMP_97]], %[[TMP_92]]
+   // CHECK: %[[TMP_99:.*]] = stablehlo.add %[[TMP_96]], %[[TMP_98]]
+-  // CHECK: %[[TMP_100:.*]] = stablehlo.add %[[TMP_97]], %[[TMP_93]]
+-  // CHECK: %[[TMP_101:.*]] = stablehlo.power %[[TMP_100]], %[[TMP_91]]
++  // CHECK: %[[TMP_100:.*]] = stablehlo.add %[[TMP_97]], %[[TMP_91]]
++  // CHECK: %[[TMP_101:.*]] = stablehlo.power %[[TMP_100]], %[[TMP_92]]
+   // CHECK: %[[TMP_102:.*]] = stablehlo.add %[[TMP_99]], %[[TMP_101]]
+-  // CHECK: %[[TMP_103:.*]] = stablehlo.add %[[TMP_100]], %[[TMP_93]]
+-  // CHECK: %[[TMP_104:.*]] = stablehlo.power %[[TMP_103]], %[[TMP_91]]
++  // CHECK: %[[TMP_103:.*]] = stablehlo.add %[[TMP_100]], %[[TMP_91]]
++  // CHECK: %[[TMP_104:.*]] = stablehlo.power %[[TMP_103]], %[[TMP_92]]
+   // CHECK: %[[TMP_105:.*]] = stablehlo.add %[[TMP_102]], %[[TMP_104]]
+-  // CHECK: %[[TMP_106:.*]] = stablehlo.add %[[TMP_103]], %[[TMP_93]]
+-  // CHECK: %[[TMP_107:.*]] = stablehlo.power %[[TMP_106]], %[[TMP_91]]
++  // CHECK: %[[TMP_106:.*]] = stablehlo.add %[[TMP_103]], %[[TMP_91]]
++  // CHECK: %[[TMP_107:.*]] = stablehlo.power %[[TMP_106]], %[[TMP_92]]
+   // CHECK: %[[TMP_108:.*]] = stablehlo.add %[[TMP_105]], %[[TMP_107]]
+-  // CHECK: %[[TMP_109:.*]] = stablehlo.add %[[TMP_106]], %[[TMP_93]]
+-  // CHECK: %[[TMP_110:.*]] = stablehlo.power %[[TMP_109]], %[[TMP_91]]
++  // CHECK: %[[TMP_109:.*]] = stablehlo.add %[[TMP_106]], %[[TMP_91]]
++  // CHECK: %[[TMP_110:.*]] = stablehlo.power %[[TMP_109]], %[[TMP_92]]
+   // CHECK: %[[TMP_111:.*]] = stablehlo.add %[[TMP_108]], %[[TMP_110]]
+-  // CHECK: %[[TMP_112:.*]] = stablehlo.add %[[TMP_109]], %[[TMP_93]]
+-  // CHECK: %[[TMP_113:.*]] = stablehlo.power %[[TMP_112]], %[[TMP_91]]
++  // CHECK: %[[TMP_112:.*]] = stablehlo.add %[[TMP_109]], %[[TMP_91]]
++  // CHECK: %[[TMP_113:.*]] = stablehlo.power %[[TMP_112]], %[[TMP_92]]
+   // CHECK: %[[TMP_114:.*]] = stablehlo.add %[[TMP_111]], %[[TMP_113]]
+-  // CHECK: %[[TMP_115:.*]] = stablehlo.add %[[TMP_112]], %[[TMP_93]]
+-  // CHECK: %[[TMP_116:.*]] = stablehlo.power %[[TMP_115]], %[[TMP_91]]
++  // CHECK: %[[TMP_115:.*]] = stablehlo.add %[[TMP_112]], %[[TMP_91]]
++  // CHECK: %[[TMP_116:.*]] = stablehlo.power %[[TMP_115]], %[[TMP_92]]
+   // CHECK: %[[TMP_117:.*]] = stablehlo.add %[[TMP_114]], %[[TMP_116]]
+-  // CHECK: %[[TMP_118:.*]] = stablehlo.add %[[TMP_115]], %[[TMP_93]]
+-  // CHECK: %[[TMP_119:.*]] = stablehlo.power %[[TMP_118]], %[[TMP_91]]
++  // CHECK: %[[TMP_118:.*]] = stablehlo.add %[[TMP_115]], %[[TMP_91]]
++  // CHECK: %[[TMP_119:.*]] = stablehlo.power %[[TMP_118]], %[[TMP_92]]
+   // CHECK: %[[TMP_120:.*]] = stablehlo.add %[[TMP_117]], %[[TMP_119]]
+-  // CHECK: %[[TMP_121:.*]] = stablehlo.add %[[TMP_118]], %[[TMP_93]]
+-  // CHECK: %[[TMP_122:.*]] = stablehlo.power %[[TMP_121]], %[[TMP_91]]
++  // CHECK: %[[TMP_121:.*]] = stablehlo.add %[[TMP_118]], %[[TMP_91]]
++  // CHECK: %[[TMP_122:.*]] = stablehlo.power %[[TMP_121]], %[[TMP_92]]
+   // CHECK: %[[TMP_123:.*]] = stablehlo.constant dense<1.000000e+00>
+-  // CHECK: %[[TMP_124:.*]] = stablehlo.subtract %[[TMP_5]], %[[TMP_123]]
+-  // CHECK: %[[TMP_125:.*]] = stablehlo.multiply %[[TMP_122]], %[[TMP_121]]
+-  // CHECK: %[[TMP_126:.*]] = stablehlo.divide %[[TMP_125]], %[[TMP_124]]
+-  // CHECK: %[[TMP_127:.*]] = stablehlo.add %[[TMP_120]], %[[TMP_126]]
+-  // CHECK: %[[TMP_128:.*]] = stablehlo.multiply %[[TMP_121]], %[[TMP_121]]
+-  // CHECK: %[[TMP_129:.*]] = stablehlo.divide %[[TMP_93]], %[[TMP_128]]
+-  // CHECK: %[[TMP_130:.*]] = stablehlo.constant dense<2.200000e+01>
+-  // CHECK: %[[TMP_131:.*]] = stablehlo.add %[[TMP_5]], %[[TMP_130]]
+-  // CHECK: %[[TMP_132:.*]] = stablehlo.constant dense<2.100000e+01>
+-  // CHECK: %[[TMP_133:.*]] = stablehlo.add %[[TMP_5]], %[[TMP_132]]
+-  // CHECK: %[[TMP_134:.*]] = stablehlo.multiply %[[TMP_131]], %[[TMP_133]]
+-  // CHECK: %[[TMP_135:.*]] = stablehlo.constant dense<-1.3954464685812522E-19>
+-  // CHECK: %[[TMP_136:.*]] = stablehlo.add %[[TMP_90]], %[[TMP_135]]
+-  // CHECK: %[[TMP_137:.*]] = stablehlo.multiply %[[TMP_129]], %[[TMP_136]]
+-  // CHECK: %[[TMP_138:.*]] = stablehlo.multiply %[[TMP_134]], %[[TMP_137]]
+-  // CHECK: %[[TMP_139:.*]] = stablehlo.constant dense<2.000000e+01>
+-  // CHECK: %[[TMP_140:.*]] = stablehlo.add %[[TMP_5]], %[[TMP_139]]
+-  // CHECK: %[[TMP_141:.*]] = stablehlo.constant dense<1.900000e+01>
+-  // CHECK: %[[TMP_142:.*]] = stablehlo.add %[[TMP_5]], %[[TMP_141]]
+-  // CHECK: %[[TMP_143:.*]] = stablehlo.multiply %[[TMP_140]], %[[TMP_142]]
+-  // CHECK: %[[TMP_144:.*]] = stablehlo.constant dense<5.5090028283602295E-18>
+-  // CHECK: %[[TMP_145:.*]] = stablehlo.add %[[TMP_138]], %[[TMP_144]]
+-  // CHECK: %[[TMP_146:.*]] = stablehlo.multiply %[[TMP_129]], %[[TMP_145]]
+-  // CHECK: %[[TMP_147:.*]] = stablehlo.multiply %[[TMP_143]], %[[TMP_146]]
+-  // CHECK: %[[TMP_148:.*]] = stablehlo.constant dense<1.800000e+01>
+-  // CHECK: %[[TMP_149:.*]] = stablehlo.add %[[TMP_5]], %[[TMP_148]]
+-  // CHECK: %[[TMP_150:.*]] = stablehlo.constant dense<1.700000e+01>
+-  // CHECK: %[[TMP_151:.*]] = stablehlo.add %[[TMP_5]], %[[TMP_150]]
+-  // CHECK: %[[TMP_152:.*]] = stablehlo.multiply %[[TMP_149]], %[[TMP_151]]
+-  // CHECK: %[[TMP_153:.*]] = stablehlo.constant dense<-2.1748686985580617E-16>
+-  // CHECK: %[[TMP_154:.*]] = stablehlo.add %[[TMP_147]], %[[TMP_153]]
+-  // CHECK: %[[TMP_155:.*]] = stablehlo.multiply %[[TMP_129]], %[[TMP_154]]
+-  // CHECK: %[[TMP_156:.*]] = stablehlo.multiply %[[TMP_152]], %[[TMP_155]]
+-  // CHECK: %[[TMP_157:.*]] = stablehlo.constant dense<1.600000e+01>
+-  // CHECK: %[[TMP_158:.*]] = stablehlo.add %[[TMP_5]], %[[TMP_157]]
+-  // CHECK: %[[TMP_159:.*]] = stablehlo.constant dense<1.500000e+01>
+-  // CHECK: %[[TMP_160:.*]] = stablehlo.add %[[TMP_5]], %[[TMP_159]]
+-  // CHECK: %[[TMP_161:.*]] = stablehlo.multiply %[[TMP_158]], %[[TMP_160]]
+-  // CHECK: %[[TMP_162:.*]] = stablehlo.constant dense<8.5860620562778452E-15>
+-  // CHECK: %[[TMP_163:.*]] = stablehlo.add %[[TMP_156]], %[[TMP_162]]
+-  // CHECK: %[[TMP_164:.*]] = stablehlo.multiply %[[TMP_129]], %[[TMP_163]]
+-  // CHECK: %[[TMP_165:.*]] = stablehlo.multiply %[[TMP_161]], %[[TMP_164]]
+-  // CHECK: %[[TMP_166:.*]] = stablehlo.constant dense<1.400000e+01>
+-  // CHECK: %[[TMP_167:.*]] = stablehlo.add %[[TMP_5]], %[[TMP_166]]
+-  // CHECK: %[[TMP_168:.*]] = stablehlo.constant dense<1.300000e+01>
+-  // CHECK: %[[TMP_169:.*]] = stablehlo.add %[[TMP_5]], %[[TMP_168]]
+-  // CHECK: %[[TMP_170:.*]] = stablehlo.multiply %[[TMP_167]], %[[TMP_169]]
+-  // CHECK: %[[TMP_171:.*]] = stablehlo.constant dense<-3.3896802963225832E-13>
+-  // CHECK: %[[TMP_172:.*]] = stablehlo.add %[[TMP_165]], %[[TMP_171]]
+-  // CHECK: %[[TMP_173:.*]] = stablehlo.multiply %[[TMP_129]], %[[TMP_172]]
+-  // CHECK: %[[TMP_174:.*]] = stablehlo.multiply %[[TMP_170]], %[[TMP_173]]
+-  // CHECK: %[[TMP_175:.*]] = stablehlo.constant dense<1.200000e+01>
+-  // CHECK: %[[TMP_176:.*]] = stablehlo.add %[[TMP_5]], %[[TMP_175]]
+-  // CHECK: %[[TMP_177:.*]] = stablehlo.constant dense<1.100000e+01>
+-  // CHECK: %[[TMP_178:.*]] = stablehlo.add %[[TMP_5]], %[[TMP_177]]
+-  // CHECK: %[[TMP_179:.*]] = stablehlo.multiply %[[TMP_176]], %[[TMP_178]]
+-  // CHECK: %[[TMP_180:.*]] = stablehlo.constant dense<1.3382536530684679E-11>
+-  // CHECK: %[[TMP_181:.*]] = stablehlo.add %[[TMP_174]], %[[TMP_180]]
+-  // CHECK: %[[TMP_182:.*]] = stablehlo.multiply %[[TMP_129]], %[[TMP_181]]
+-  // CHECK: %[[TMP_183:.*]] = stablehlo.multiply %[[TMP_179]], %[[TMP_182]]
+-  // CHECK: %[[TMP_184:.*]] = stablehlo.constant dense<1.000000e+01>
+-  // CHECK: %[[TMP_185:.*]] = stablehlo.add %[[TMP_5]], %[[TMP_184]]
+-  // CHECK: %[[TMP_186:.*]] = stablehlo.constant dense<9.000000e+00>
+-  // CHECK: %[[TMP_187:.*]] = stablehlo.add %[[TMP_5]], %[[TMP_186]]
+-  // CHECK: %[[TMP_188:.*]] = stablehlo.multiply %[[TMP_185]], %[[TMP_187]]
+-  // CHECK: %[[TMP_189:.*]] = stablehlo.constant dense<-5.2841901386874932E-10>
+-  // CHECK: %[[TMP_190:.*]] = stablehlo.add %[[TMP_183]], %[[TMP_189]]
+-  // CHECK: %[[TMP_191:.*]] = stablehlo.multiply %[[TMP_129]], %[[TMP_190]]
+-  // CHECK: %[[TMP_192:.*]] = stablehlo.multiply %[[TMP_188]], %[[TMP_191]]
+-  // CHECK: %[[TMP_193:.*]] = stablehlo.constant dense<8.000000e+00>
+-  // CHECK: %[[TMP_194:.*]] = stablehlo.add %[[TMP_5]], %[[TMP_193]]
+-  // CHECK: %[[TMP_195:.*]] = stablehlo.constant dense<7.000000e+00>
+-  // CHECK: %[[TMP_196:.*]] = stablehlo.add %[[TMP_5]], %[[TMP_195]]
+-  // CHECK: %[[TMP_197:.*]] = stablehlo.multiply %[[TMP_194]], %[[TMP_196]]
+-  // CHECK: %[[TMP_198:.*]] = stablehlo.constant dense<2.08767569878681E-8>
+-  // CHECK: %[[TMP_199:.*]] = stablehlo.add %[[TMP_192]], %[[TMP_198]]
+-  // CHECK: %[[TMP_200:.*]] = stablehlo.multiply %[[TMP_129]], %[[TMP_199]]
+-  // CHECK: %[[TMP_201:.*]] = stablehlo.multiply %[[TMP_197]], %[[TMP_200]]
+-  // CHECK: %[[TMP_202:.*]] = stablehlo.constant dense<6.000000e+00>
+-  // CHECK: %[[TMP_203:.*]] = stablehlo.add %[[TMP_5]], %[[TMP_202]]
+-  // CHECK: %[[TMP_204:.*]] = stablehlo.constant dense<5.000000e+00>
+-  // CHECK: %[[TMP_205:.*]] = stablehlo.add %[[TMP_5]], %[[TMP_204]]
+-  // CHECK: %[[TMP_206:.*]] = stablehlo.multiply %[[TMP_203]], %[[TMP_205]]
+-  // CHECK: %[[TMP_207:.*]] = stablehlo.constant dense<-8.2671957671957675E-7>
+-  // CHECK: %[[TMP_208:.*]] = stablehlo.add %[[TMP_201]], %[[TMP_207]]
+-  // CHECK: %[[TMP_209:.*]] = stablehlo.multiply %[[TMP_129]], %[[TMP_208]]
+-  // CHECK: %[[TMP_210:.*]] = stablehlo.multiply %[[TMP_206]], %[[TMP_209]]
+-  // CHECK: %[[TMP_211:.*]] = stablehlo.constant dense<4.000000e+00>
+-  // CHECK: %[[TMP_212:.*]] = stablehlo.add %[[TMP_5]], %[[TMP_211]]
+-  // CHECK: %[[TMP_213:.*]] = stablehlo.constant dense<3.000000e+00>
+-  // CHECK: %[[TMP_214:.*]] = stablehlo.add %[[TMP_5]], %[[TMP_213]]
+-  // CHECK: %[[TMP_215:.*]] = stablehlo.multiply %[[TMP_212]], %[[TMP_214]]
+-  // CHECK: %[[TMP_216:.*]] = stablehlo.constant dense<3.3068783068783071E-5>
+-  // CHECK: %[[TMP_217:.*]] = stablehlo.add %[[TMP_210]], %[[TMP_216]]
+-  // CHECK: %[[TMP_218:.*]] = stablehlo.multiply %[[TMP_129]], %[[TMP_217]]
+-  // CHECK: %[[TMP_219:.*]] = stablehlo.multiply %[[TMP_215]], %[[TMP_218]]
+-  // CHECK: %[[TMP_220:.*]] = stablehlo.constant dense<2.000000e+00>
+-  // CHECK: %[[TMP_221:.*]] = stablehlo.add %[[TMP_5]], %[[TMP_220]]
+-  // CHECK: %[[TMP_222:.*]] = stablehlo.constant dense<1.000000e+00>
+-  // CHECK: %[[TMP_223:.*]] = stablehlo.add %[[TMP_5]], %[[TMP_222]]
+-  // CHECK: %[[TMP_224:.*]] = stablehlo.multiply %[[TMP_221]], %[[TMP_223]]
+-  // CHECK: %[[TMP_225:.*]] = stablehlo.constant dense<-0.0013888888888888889>
+-  // CHECK: %[[TMP_226:.*]] = stablehlo.add %[[TMP_219]], %[[TMP_225]]
+-  // CHECK: %[[TMP_227:.*]] = stablehlo.multiply %[[TMP_129]], %[[TMP_226]]
+-  // CHECK: %[[TMP_228:.*]] = stablehlo.multiply %[[TMP_224]], %[[TMP_227]]
+-  // CHECK: %[[TMP_229:.*]] = stablehlo.constant dense<5.000000e-01>
+-  // CHECK: %[[TMP_230:.*]] = stablehlo.divide %[[TMP_5]], %[[TMP_121]]
+-  // CHECK: %[[TMP_231:.*]] = stablehlo.constant dense<0.083333333333333329>
+-  // CHECK: %[[TMP_232:.*]] = stablehlo.add %[[TMP_231]], %[[TMP_228]]
+-  // CHECK: %[[TMP_233:.*]] = stablehlo.multiply %[[TMP_230]], %[[TMP_232]]
+-  // CHECK: %[[TMP_234:.*]] = stablehlo.add %[[TMP_229]], %[[TMP_233]]
+-  // CHECK: %[[TMP_235:.*]] = stablehlo.multiply %[[TMP_122]], %[[TMP_234]]
+-  // CHECK: %[[TMP_236:.*]] = stablehlo.add %[[TMP_127]], %[[TMP_235]]
++  // CHECK: %[[TMP_124:.*]] = stablehlo.multiply %[[TMP_122]], %[[TMP_121]]
++  // CHECK: %[[TMP_125:.*]] = stablehlo.subtract %[[TMP_5]], %[[TMP_123]]
++  // CHECK: %[[TMP_126:.*]] = stablehlo.divide %[[TMP_124]], %[[TMP_125]]
++  // CHECK: %[[TMP_127:.*]] = stablehlo.multiply %[[TMP_121]], %[[TMP_121]]
++  // CHECK: %[[TMP_128:.*]] = stablehlo.divide %[[TMP_91]], %[[TMP_127]]
++  // CHECK: %[[TMP_129:.*]] = stablehlo.constant dense<2.200000e+01>
++  // CHECK: %[[TMP_130:.*]] = stablehlo.add %[[TMP_5]], %[[TMP_129]]
++  // CHECK: %[[TMP_131:.*]] = stablehlo.constant dense<2.100000e+01>
++  // CHECK: %[[TMP_132:.*]] = stablehlo.add %[[TMP_5]], %[[TMP_131]]
++  // CHECK: %[[TMP_133:.*]] = stablehlo.multiply %[[TMP_130]], %[[TMP_132]]
++  // CHECK: %[[TMP_134:.*]] = stablehlo.constant dense<-1.3954464685812522E-19>
++  // CHECK: %[[TMP_135:.*]] = stablehlo.add %[[TMP_90]], %[[TMP_134]]
++  // CHECK: %[[TMP_136:.*]] = stablehlo.multiply %[[TMP_128]], %[[TMP_135]]
++  // CHECK: %[[TMP_137:.*]] = stablehlo.multiply %[[TMP_133]], %[[TMP_136]]
++  // CHECK: %[[TMP_138:.*]] = stablehlo.constant dense<2.000000e+01>
++  // CHECK: %[[TMP_139:.*]] = stablehlo.add %[[TMP_5]], %[[TMP_138]]
++  // CHECK: %[[TMP_140:.*]] = stablehlo.constant dense<1.900000e+01>
++  // CHECK: %[[TMP_141:.*]] = stablehlo.add %[[TMP_5]], %[[TMP_140]]
++  // CHECK: %[[TMP_142:.*]] = stablehlo.multiply %[[TMP_139]], %[[TMP_141]]
++  // CHECK: %[[TMP_143:.*]] = stablehlo.constant dense<5.5090028283602295E-18>
++  // CHECK: %[[TMP_144:.*]] = stablehlo.add %[[TMP_137]], %[[TMP_143]]
++  // CHECK: %[[TMP_145:.*]] = stablehlo.multiply %[[TMP_128]], %[[TMP_144]]
++  // CHECK: %[[TMP_146:.*]] = stablehlo.multiply %[[TMP_142]], %[[TMP_145]]
++  // CHECK: %[[TMP_147:.*]] = stablehlo.constant dense<1.800000e+01>
++  // CHECK: %[[TMP_148:.*]] = stablehlo.add %[[TMP_5]], %[[TMP_147]]
++  // CHECK: %[[TMP_149:.*]] = stablehlo.constant dense<1.700000e+01>
++  // CHECK: %[[TMP_150:.*]] = stablehlo.add %[[TMP_5]], %[[TMP_149]]
++  // CHECK: %[[TMP_151:.*]] = stablehlo.multiply %[[TMP_148]], %[[TMP_150]]
++  // CHECK: %[[TMP_152:.*]] = stablehlo.constant dense<-2.1748686985580617E-16>
++  // CHECK: %[[TMP_153:.*]] = stablehlo.add %[[TMP_146]], %[[TMP_152]]
++  // CHECK: %[[TMP_154:.*]] = stablehlo.multiply %[[TMP_128]], %[[TMP_153]]
++  // CHECK: %[[TMP_155:.*]] = stablehlo.multiply %[[TMP_151]], %[[TMP_154]]
++  // CHECK: %[[TMP_156:.*]] = stablehlo.constant dense<1.600000e+01>
++  // CHECK: %[[TMP_157:.*]] = stablehlo.add %[[TMP_5]], %[[TMP_156]]
++  // CHECK: %[[TMP_158:.*]] = stablehlo.constant dense<1.500000e+01>
++  // CHECK: %[[TMP_159:.*]] = stablehlo.add %[[TMP_5]], %[[TMP_158]]
++  // CHECK: %[[TMP_160:.*]] = stablehlo.multiply %[[TMP_157]], %[[TMP_159]]
++  // CHECK: %[[TMP_161:.*]] = stablehlo.constant dense<8.5860620562778452E-15>
++  // CHECK: %[[TMP_162:.*]] = stablehlo.add %[[TMP_155]], %[[TMP_161]]
++  // CHECK: %[[TMP_163:.*]] = stablehlo.multiply %[[TMP_128]], %[[TMP_162]]
++  // CHECK: %[[TMP_164:.*]] = stablehlo.multiply %[[TMP_160]], %[[TMP_163]]
++  // CHECK: %[[TMP_165:.*]] = stablehlo.constant dense<1.400000e+01>
++  // CHECK: %[[TMP_166:.*]] = stablehlo.add %[[TMP_5]], %[[TMP_165]]
++  // CHECK: %[[TMP_167:.*]] = stablehlo.constant dense<1.300000e+01>
++  // CHECK: %[[TMP_168:.*]] = stablehlo.add %[[TMP_5]], %[[TMP_167]]
++  // CHECK: %[[TMP_169:.*]] = stablehlo.multiply %[[TMP_166]], %[[TMP_168]]
++  // CHECK: %[[TMP_170:.*]] = stablehlo.constant dense<-3.3896802963225832E-13>
++  // CHECK: %[[TMP_171:.*]] = stablehlo.add %[[TMP_164]], %[[TMP_170]]
++  // CHECK: %[[TMP_172:.*]] = stablehlo.multiply %[[TMP_128]], %[[TMP_171]]
++  // CHECK: %[[TMP_173:.*]] = stablehlo.multiply %[[TMP_169]], %[[TMP_172]]
++  // CHECK: %[[TMP_174:.*]] = stablehlo.constant dense<1.200000e+01>
++  // CHECK: %[[TMP_175:.*]] = stablehlo.add %[[TMP_5]], %[[TMP_174]]
++  // CHECK: %[[TMP_176:.*]] = stablehlo.constant dense<1.100000e+01>
++  // CHECK: %[[TMP_177:.*]] = stablehlo.add %[[TMP_5]], %[[TMP_176]]
++  // CHECK: %[[TMP_178:.*]] = stablehlo.multiply %[[TMP_175]], %[[TMP_177]]
++  // CHECK: %[[TMP_179:.*]] = stablehlo.constant dense<1.3382536530684679E-11>
++  // CHECK: %[[TMP_180:.*]] = stablehlo.add %[[TMP_173]], %[[TMP_179]]
++  // CHECK: %[[TMP_181:.*]] = stablehlo.multiply %[[TMP_128]], %[[TMP_180]]
++  // CHECK: %[[TMP_182:.*]] = stablehlo.multiply %[[TMP_178]], %[[TMP_181]]
++  // CHECK: %[[TMP_183:.*]] = stablehlo.constant dense<1.000000e+01>
++  // CHECK: %[[TMP_184:.*]] = stablehlo.add %[[TMP_5]], %[[TMP_183]]
++  // CHECK: %[[TMP_185:.*]] = stablehlo.constant dense<9.000000e+00>
++  // CHECK: %[[TMP_186:.*]] = stablehlo.add %[[TMP_5]], %[[TMP_185]]
++  // CHECK: %[[TMP_187:.*]] = stablehlo.multiply %[[TMP_184]], %[[TMP_186]]
++  // CHECK: %[[TMP_188:.*]] = stablehlo.constant dense<-5.2841901386874932E-10>
++  // CHECK: %[[TMP_189:.*]] = stablehlo.add %[[TMP_182]], %[[TMP_188]]
++  // CHECK: %[[TMP_190:.*]] = stablehlo.multiply %[[TMP_128]], %[[TMP_189]]
++  // CHECK: %[[TMP_191:.*]] = stablehlo.multiply %[[TMP_187]], %[[TMP_190]]
++  // CHECK: %[[TMP_192:.*]] = stablehlo.constant dense<8.000000e+00>
++  // CHECK: %[[TMP_193:.*]] = stablehlo.add %[[TMP_5]], %[[TMP_192]]
++  // CHECK: %[[TMP_194:.*]] = stablehlo.constant dense<7.000000e+00>
++  // CHECK: %[[TMP_195:.*]] = stablehlo.add %[[TMP_5]], %[[TMP_194]]
++  // CHECK: %[[TMP_196:.*]] = stablehlo.multiply %[[TMP_193]], %[[TMP_195]]
++  // CHECK: %[[TMP_197:.*]] = stablehlo.constant dense<2.08767569878681E-8>
++  // CHECK: %[[TMP_198:.*]] = stablehlo.add %[[TMP_191]], %[[TMP_197]]
++  // CHECK: %[[TMP_199:.*]] = stablehlo.multiply %[[TMP_128]], %[[TMP_198]]
++  // CHECK: %[[TMP_200:.*]] = stablehlo.multiply %[[TMP_196]], %[[TMP_199]]
++  // CHECK: %[[TMP_201:.*]] = stablehlo.constant dense<6.000000e+00>
++  // CHECK: %[[TMP_202:.*]] = stablehlo.add %[[TMP_5]], %[[TMP_201]]
++  // CHECK: %[[TMP_203:.*]] = stablehlo.constant dense<5.000000e+00>
++  // CHECK: %[[TMP_204:.*]] = stablehlo.add %[[TMP_5]], %[[TMP_203]]
++  // CHECK: %[[TMP_205:.*]] = stablehlo.multiply %[[TMP_202]], %[[TMP_204]]
++  // CHECK: %[[TMP_206:.*]] = stablehlo.constant dense<-8.2671957671957675E-7>
++  // CHECK: %[[TMP_207:.*]] = stablehlo.add %[[TMP_200]], %[[TMP_206]]
++  // CHECK: %[[TMP_208:.*]] = stablehlo.multiply %[[TMP_128]], %[[TMP_207]]
++  // CHECK: %[[TMP_209:.*]] = stablehlo.multiply %[[TMP_205]], %[[TMP_208]]
++  // CHECK: %[[TMP_210:.*]] = stablehlo.constant dense<4.000000e+00>
++  // CHECK: %[[TMP_211:.*]] = stablehlo.add %[[TMP_5]], %[[TMP_210]]
++  // CHECK: %[[TMP_212:.*]] = stablehlo.constant dense<3.000000e+00>
++  // CHECK: %[[TMP_213:.*]] = stablehlo.add %[[TMP_5]], %[[TMP_212]]
++  // CHECK: %[[TMP_214:.*]] = stablehlo.multiply %[[TMP_211]], %[[TMP_213]]
++  // CHECK: %[[TMP_215:.*]] = stablehlo.constant dense<3.3068783068783071E-5>
++  // CHECK: %[[TMP_216:.*]] = stablehlo.add %[[TMP_209]], %[[TMP_215]]
++  // CHECK: %[[TMP_217:.*]] = stablehlo.multiply %[[TMP_128]], %[[TMP_216]]
++  // CHECK: %[[TMP_218:.*]] = stablehlo.multiply %[[TMP_214]], %[[TMP_217]]
++  // CHECK: %[[TMP_219:.*]] = stablehlo.constant dense<2.000000e+00>
++  // CHECK: %[[TMP_220:.*]] = stablehlo.add %[[TMP_5]], %[[TMP_219]]
++  // CHECK: %[[TMP_221:.*]] = stablehlo.constant dense<1.000000e+00>
++  // CHECK: %[[TMP_222:.*]] = stablehlo.add %[[TMP_5]], %[[TMP_221]]
++  // CHECK: %[[TMP_223:.*]] = stablehlo.multiply %[[TMP_220]], %[[TMP_222]]
++  // CHECK: %[[TMP_224:.*]] = stablehlo.constant dense<-0.0013888888888888889>
++  // CHECK: %[[TMP_225:.*]] = stablehlo.add %[[TMP_218]], %[[TMP_224]]
++  // CHECK: %[[TMP_226:.*]] = stablehlo.multiply %[[TMP_128]], %[[TMP_225]]
++  // CHECK: %[[TMP_227:.*]] = stablehlo.multiply %[[TMP_223]], %[[TMP_226]]
++  // CHECK: %[[TMP_228:.*]] = stablehlo.constant dense<5.000000e-01>
++  // CHECK: %[[TMP_229:.*]] = stablehlo.divide %[[TMP_5]], %[[TMP_121]]
++  // CHECK: %[[TMP_230:.*]] = stablehlo.constant dense<0.083333333333333329>
++  // CHECK: %[[TMP_231:.*]] = stablehlo.add %[[TMP_230]], %[[TMP_227]]
++  // CHECK: %[[TMP_232:.*]] = stablehlo.multiply %[[TMP_229]], %[[TMP_231]]
++  // CHECK: %[[TMP_233:.*]] = stablehlo.add %[[TMP_228]], %[[TMP_232]]
++  // CHECK: %[[TMP_234:.*]] = stablehlo.multiply %[[TMP_122]], %[[TMP_233]]
++  // CHECK: %[[TMP_235:.*]] = stablehlo.add %[[TMP_120]], %[[TMP_126]]
++  // CHECK: %[[TMP_236:.*]] = stablehlo.add %[[TMP_235]], %[[TMP_234]]
+   // CHECK: %[[TMP_237:.*]] = stablehlo.abs %[[TMP_122]]
+   // CHECK: %[[TMP_238:.*]] = stablehlo.abs %[[TMP_120]]
+   // CHECK: %[[TMP_239:.*]] = stablehlo.constant dense<4.940660e-324>
+@@ -2120,7 +2118,7 @@
+   // CHECK: %[[TMP_260:.*]] = stablehlo.and %[[TMP_257]], %[[TMP_259]]
+   // CHECK: %[[TMP_261:.*]] = stablehlo.select %[[TMP_260]], %[[TMP_251]], %[[TMP_243]]
+   // CHECK: %[[TMP_262:.*]] = stablehlo.select %[[TMP_254]], %[[TMP_261]], %[[TMP_250]]
+-  // CHECK: %[[TMP_263:.*]] = stablehlo.compare EQ, %[[TMP_5]], %[[TMP_93]], NOTYPE
++  // CHECK: %[[TMP_263:.*]] = stablehlo.compare EQ, %[[TMP_5]], %[[TMP_91]], NOTYPE
+   // CHECK: %[[TMP_264:.*]] = stablehlo.select %[[TMP_263]], %[[TMP_251]], %[[TMP_262]]
+   // CHECK: %[[TMP_265:.*]] = stablehlo.multiply %[[TMP_4]], %[[TMP_89]]
+   // CHECK: %[[TMP_266:.*]] = stablehlo.multiply %[[TMP_265]], %[[TMP_264]]
+diff --ruN a/stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp b/stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp
+--- stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp
++++ stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp
+@@ -1575,11 +1575,21 @@
+ 
+ static Value materializeZeta(ConversionPatternRewriter &rewriter, Location loc,
+                              ValueRange args) {
+-  // Code should match XLA's materializeZeta from chlo_legalize_to_hlo.cc
++  // Implementation ported from:
++  // https://github.com/openxla/xla/blob/7a067a7b88d2ffb15b1dc5e3c06f701a15f0391d/xla/client/lib/math.cc#L1912-L1917
++  // Reference: Johansson, Fredrik.
++  // "Rigorous high-precision computation of the Hurwitz zeta function and its
++  // derivatives." Numerical Algorithms 69.2 (2015): 253-270.
++  // https://arxiv.org/abs/1309.2877 - formula (5)
++  // Notation is more or less kept as a reference to the whitepaper.
+   assert(args.size() == 2);
+   Value x = args[0];
+   Value q = args[1];
+-  static const std::array<double, 12> kZetaCoeffs{
++
++  static constexpr auto kTerms = 12;
++  static constexpr auto kIters = 9;
++  static constexpr auto kTwoTermsMinusOne = 2 * kTerms - 1;
++  static constexpr auto kZetaCoeffs = std::array<double, kTerms>{
+       -7.1661652561756670113e18,
+       1.8152105401943546773e17,
+       -4.5979787224074726105e15,
+@@ -1596,131 +1606,134 @@
+ 
+   // For speed we'll always use 9 iterations for the initial series estimate,
+   // and a 12 term expansion for the Euler-Maclaurin formula.
+-  Value a = q;
+-  Value zero = getConstantLike(rewriter, loc, 0.0, a);
+-  Value negPower = zero;
+-  Value negX = rewriter.create<mlir::stablehlo::NegOp>(loc, x);
+-  Value initialSum = rewriter.create<mlir::stablehlo::PowOp>(loc, q, negX);
+-  Value one = getConstantLike(rewriter, loc, 1.0, a);
+-  for (int i = 0; i < 9; ++i) {
+-    a = rewriter.create<mlir::stablehlo::AddOp>(loc, a, one);
+-    negPower = rewriter.create<mlir::stablehlo::PowOp>(loc, a, negX);
+-    initialSum =
+-        rewriter.create<mlir::stablehlo::AddOp>(loc, initialSum, negPower);
+-  }
+-
+-  a = rewriter.create<mlir::stablehlo::AddOp>(loc, a, one);
+-  negPower = rewriter.create<mlir::stablehlo::PowOp>(loc, a, negX);
++  Value zero = getConstantLike(rewriter, loc, 0.0, q);
++  Value one = getConstantLike(rewriter, loc, 1.0, q);
++  Value acc = q;
++  Value qNegPower = zero;
++  Value negX = rewriter.create<NegOp>(loc, x);
++  Value powerSum = rewriter.create<PowOp>(loc, q, negX);
++  for (int i = 0; i < kIters; ++i) {
++    acc = rewriter.create<AddOp>(loc, acc, one);
++    qNegPower = rewriter.create<PowOp>(loc, acc, negX);
++    powerSum =
++        rewriter.create<AddOp>(loc, powerSum, qNegPower);
++  }
++  acc = rewriter.create<AddOp>(loc, acc, one);
++  qNegPower = rewriter.create<PowOp>(loc, acc, negX);
+   Value oneLikeX = getConstantLike(rewriter, loc, 1.0, x);
+-  Value xMinusOne =
+-      rewriter.create<mlir::stablehlo::SubtractOp>(loc, x, oneLikeX);
+-  Value negPowerMulA =
+-      rewriter.create<mlir::stablehlo::MulOp>(loc, negPower, a);
+-  Value negPowerMulADivXMinusOne =
+-      rewriter.create<mlir::stablehlo::DivOp>(loc, negPowerMulA, xMinusOne);
+-  Value s = rewriter.create<mlir::stablehlo::AddOp>(loc, initialSum,
+-                                                    negPowerMulADivXMinusOne);
+-  Value aInverseSquare = rewriter.create<mlir::stablehlo::DivOp>(
+-      loc, one, rewriter.create<mlir::stablehlo::MulOp>(loc, a, a));
+-
+-  Value hornerSum = zero;
+-  Value factor = one;
++  Value correctionEulerMaclaurin = rewriter.create<DivOp>(
++      loc, rewriter.create<MulOp>(loc, qNegPower, acc),
++      rewriter.create<SubtractOp>(loc, x, oneLikeX));
++
++  // Manual reciprocal of the square root as RsqrtOp produces different results
++  Value rsqrtAcc = rewriter.create<DivOp>(
++      loc, one, rewriter.create<MulOp>(loc, acc, acc));
++
+   // Use Horner's rule for this.
+   // Note this differs from Cephes which does a 'naive' polynomial evaluation.
+   // Using Horner's rule allows to avoid some NaN's and Infs from happening,
+   // resulting in more numerically stable code.
+-  for (int i = 0; i < 11; ++i) {
+-    Value factorLhs = rewriter.create<mlir::stablehlo::AddOp>(
+-        loc, x, getConstantLike(rewriter, loc, 22 - 2 * i, x));
+-    Value factorRhs = rewriter.create<mlir::stablehlo::AddOp>(
+-        loc, x, getConstantLike(rewriter, loc, 21 - 2 * i, x));
+-    factor = rewriter.create<mlir::stablehlo::MulOp>(loc, factorLhs, factorRhs);
+-    hornerSum = rewriter.create<mlir::stablehlo::MulOp>(
+-        loc, factor,
+-        rewriter.create<mlir::stablehlo::MulOp>(
+-            loc, aInverseSquare,
+-            rewriter.create<mlir::stablehlo::AddOp>(
++  Value hornerSum = zero;
++  Value hornerProduct = one;
++
++  for (int i = 0; i < kTerms - 1; ++i) {
++    Value factorLhs = rewriter.create<AddOp>(
++        loc, x,
++        getConstantLike(rewriter, loc, kTwoTermsMinusOne - 1 - 2 * i, x));
++    Value factorRhs = rewriter.create<AddOp>(
++        loc, x,
++        getConstantLike(rewriter, loc, kTwoTermsMinusOne - 2 - 2 * i, x));
++    hornerProduct =
++        rewriter.create<MulOp>(loc, factorLhs, factorRhs);
++    hornerSum = rewriter.create<MulOp>(
++        loc, hornerProduct,
++        rewriter.create<MulOp>(
++            loc, rsqrtAcc,
++            rewriter.create<AddOp>(
+                 loc, hornerSum,
+-                getConstantLike(rewriter, loc, 1. / kZetaCoeffs[i], a))));
+-  }
+-  Value zeroPointFiveLikeNegPower =
+-      getConstantLike(rewriter, loc, .5, negPower);
+-  Value xDivA = rewriter.create<mlir::stablehlo::DivOp>(loc, x, a);
+-  s = rewriter.create<mlir::stablehlo::AddOp>(
+-      loc, s,
+-      rewriter.create<mlir::stablehlo::MulOp>(
+-          loc, negPower,
+-          rewriter.create<mlir::stablehlo::AddOp>(
+-              loc, zeroPointFiveLikeNegPower,
+-              rewriter.create<mlir::stablehlo::MulOp>(
+-                  loc, xDivA,
+-                  rewriter.create<mlir::stablehlo::AddOp>(
+-                      loc,
+-                      getConstantLike(rewriter, loc, 1. / kZetaCoeffs[11], a),
+-                      hornerSum)))));
++                getConstantLike(rewriter, loc, 1. / kZetaCoeffs[i], acc))));
++  }
++  Value zeroPointFiveLikeQNegPower =
++      getConstantLike(rewriter, loc, .5, qNegPower);
++  Value xDivAcc = rewriter.create<DivOp>(loc, x, acc);
++  Value bernoulliTailTerm = rewriter.create<MulOp>(
++      loc, qNegPower,
++      rewriter.create<AddOp>(
++          loc, zeroPointFiveLikeQNegPower,
++          rewriter.create<MulOp>(
++              loc, xDivAcc,
++              rewriter.create<AddOp>(
++                  loc,
++                  getConstantLike(rewriter, loc, 1. / kZetaCoeffs[kTerms - 1],
++                                  acc),
++                  hornerSum))));
++  Value accurateResult = rewriter.create<AddOp>(
++      loc,
++      rewriter.create<AddOp>(loc, powerSum,
++                                              correctionEulerMaclaurin),
++      bernoulliTailTerm);
+ 
+   // Use the initial zeta sum without the correction term coming
+   // from Euler-Maclaurin if it is accurate enough.
+-  Value absNegPower = rewriter.create<mlir::stablehlo::AbsOp>(loc, negPower);
+-  Value absInitialSum =
+-      rewriter.create<mlir::stablehlo::AbsOp>(loc, initialSum);
+-  Value output = rewriter.create<mlir::stablehlo::SelectOp>(
++  Value absQNegPower = rewriter.create<AbsOp>(loc, qNegPower);
++  Value absPowerSum = rewriter.create<AbsOp>(loc, powerSum);
++  Value output = rewriter.create<SelectOp>(
+       loc,
+-      rewriter.create<mlir::stablehlo::CompareOp>(
+-          loc, absNegPower,
+-          rewriter.create<mlir::stablehlo::MulOp>(
+-              loc, absInitialSum,
+-              getConstantLikeSmallestFiniteValue(rewriter, loc, a)),
+-          mlir::stablehlo::ComparisonDirection::LT),
+-      initialSum, s);
++      rewriter.create<CompareOp>(
++          loc, absQNegPower,
++          rewriter.create<MulOp>(
++              loc, absPowerSum,
++              getConstantLikeSmallestFiniteValue(rewriter, loc, acc)),
++          ComparisonDirection::LT),
++      powerSum, accurateResult);
+ 
+   // Function is not defined for x < 1.
+   Value nan = getConstantLike(rewriter, loc,
+                               std::numeric_limits<double>::quiet_NaN(), x);
+-  output = rewriter.create<mlir::stablehlo::SelectOp>(
++  output = rewriter.create<SelectOp>(
+       loc,
+-      rewriter.create<mlir::stablehlo::CompareOp>(
+-          loc, x, oneLikeX, mlir::stablehlo::ComparisonDirection::LT),
++      rewriter.create<CompareOp>(
++          loc, x, oneLikeX, ComparisonDirection::LT),
+       nan, output);
+ 
+   // For q <= 0, x must be an integer.
+-  Value qLeZero = rewriter.create<mlir::stablehlo::CompareOp>(
+-      loc, q, zero, mlir::stablehlo::ComparisonDirection::LE);
+-  Value xNotInt = rewriter.create<mlir::stablehlo::CompareOp>(
+-      loc, x, rewriter.create<mlir::stablehlo::FloorOp>(loc, x),
+-      mlir::stablehlo::ComparisonDirection::NE);
++  Value qLeZero = rewriter.create<CompareOp>(
++      loc, q, zero, ComparisonDirection::LE);
++  Value xNotInt = rewriter.create<CompareOp>(
++      loc, x, rewriter.create<FloorOp>(loc, x),
++      ComparisonDirection::NE);
+   Value xDomainError =
+-      rewriter.create<mlir::stablehlo::AndOp>(loc, qLeZero, xNotInt);
+-  output = rewriter.create<mlir::stablehlo::SelectOp>(loc, xDomainError, nan,
++      rewriter.create<AndOp>(loc, qLeZero, xNotInt);
++  output = rewriter.create<SelectOp>(loc, xDomainError, nan,
+                                                       output);
+ 
+   // For all integer q <= 0, zeta has a pole. The limit is only defined as
+   // +inf if x is and even integer.
+   Value inf = getConstantLike(rewriter, loc,
+                               std::numeric_limits<double>::infinity(), x);
+-  Value qIsInt = rewriter.create<mlir::stablehlo::CompareOp>(
+-      loc, q, rewriter.create<mlir::stablehlo::FloorOp>(loc, q),
+-      mlir::stablehlo::ComparisonDirection::EQ);
+-  Value atPole = rewriter.create<mlir::stablehlo::AndOp>(loc, qLeZero, qIsInt);
++  Value qIsInt = rewriter.create<CompareOp>(
++      loc, q, rewriter.create<FloorOp>(loc, q),
++      ComparisonDirection::EQ);
++  Value atPole = rewriter.create<AndOp>(loc, qLeZero, qIsInt);
+   Value two = getConstantLike(rewriter, loc, 2.0, x);
+-  Value xIsInt = rewriter.create<mlir::stablehlo::CompareOp>(
+-      loc, x, rewriter.create<mlir::stablehlo::FloorOp>(loc, x),
+-      mlir::stablehlo::ComparisonDirection::EQ);
+-  Value xIsEven = rewriter.create<mlir::stablehlo::CompareOp>(
+-      loc, rewriter.create<mlir::stablehlo::RemOp>(loc, x, two), zero,
+-      mlir::stablehlo::ComparisonDirection::EQ);
++  Value xIsInt = rewriter.create<CompareOp>(
++      loc, x, rewriter.create<FloorOp>(loc, x),
++      ComparisonDirection::EQ);
++  Value xIsEven = rewriter.create<CompareOp>(
++      loc, rewriter.create<RemOp>(loc, x, two), zero,
++      ComparisonDirection::EQ);
+   Value xIsEvenInt =
+-      rewriter.create<mlir::stablehlo::AndOp>(loc, xIsInt, xIsEven);
+-  output = rewriter.create<mlir::stablehlo::SelectOp>(
++      rewriter.create<AndOp>(loc, xIsInt, xIsEven);
++  output = rewriter.create<SelectOp>(
+       loc, atPole,
+-      rewriter.create<mlir::stablehlo::SelectOp>(loc, xIsEvenInt, inf, nan),
++      rewriter.create<SelectOp>(loc, xIsEvenInt, inf, nan),
+       output);
+ 
+   // For x = 1, this is the harmonic series and diverges.
+-  output = rewriter.create<mlir::stablehlo::SelectOp>(
++  output = rewriter.create<SelectOp>(
+       loc,
+-      rewriter.create<mlir::stablehlo::CompareOp>(
+-          loc, x, one, mlir::stablehlo::ComparisonDirection::EQ),
++      rewriter.create<CompareOp>(
++          loc, x, one, ComparisonDirection::EQ),
+       inf, output);
+ 
+   return output;
 

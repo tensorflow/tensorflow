@@ -1,11 +1,11 @@
 """TensorFlow workspace initialization. Consult the WORKSPACE on how to use it."""
 
-load("@local_tsl//:workspace0.bzl", "tsl_workspace0")
-load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 load("@bazel_toolchains//repositories:repositories.bzl", bazel_toolchains_repositories = "repositories")
+load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+load("@build_bazel_apple_support//lib:repositories.bzl", "apple_support_dependencies")
 load("@build_bazel_rules_apple//apple:repositories.bzl", "apple_rules_dependencies")
 load("@build_bazel_rules_swift//swift:repositories.bzl", "swift_rules_dependencies")
-load("@build_bazel_apple_support//lib:repositories.bzl", "apple_support_dependencies")
+load("@local_tsl//:workspace0.bzl", "tsl_workspace0")
 
 def _tf_bind():
     """Bind targets for some external repositories"""

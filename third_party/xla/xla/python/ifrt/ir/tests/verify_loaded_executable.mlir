@@ -23,7 +23,7 @@ ifrt.LoadedExecutable @requires_array_output on devices [0,1]
 
 // -----
 
-// expected-error@+1 {{'ifrt.LoadedExecutable' Device list has duplicate id 0}}
+// expected-error@+1 {{'ifrt.LoadedExecutable' Device list has duplicate logical id 0}}
 ifrt.LoadedExecutable @requires_unique_devices_attr on devices [0,0]
     : (!ifrt.array<tensor<2x2xi32>, 1x1 to [0] on 2, [0,1]>)
     -> !ifrt.array<tensor<4x4xi32>, 1x2 to [0] on 2, [0,1]>

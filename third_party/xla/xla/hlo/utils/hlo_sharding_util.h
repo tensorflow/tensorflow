@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -260,7 +260,7 @@ HloSharding GatherOutputOrScatterUpdateShardingFromIndicesParallelDimensions(
 // - If computation is min/max, return max value/min value with corresponding op
 //   code.
 // - Otherwise, return error status.
-StatusOr<std::pair<std::unique_ptr<HloInstruction>, HloOpcode>>
+absl::StatusOr<std::pair<std::unique_ptr<HloInstruction>, HloOpcode>>
 IdentityValueAndHloOpcodeForScatterReduceComputation(
     const HloScatterInstruction& scatter);
 
@@ -478,6 +478,13 @@ Shape UntileShape(const HloSharding& sharding, const Shape& shape);
 // Returns the un-tiled shape.
 // REQUIRES: !sharding.IsTuple()
 Shape UntileLeafShape(const HloSharding& sharding, const Shape& shape);
+
+// Returns the tiled shape.
+Shape TileShape(const HloSharding& sharding, const Shape& shape);
+
+// Returns the tiled shape.
+// REQUIRES: !sharding.IsTuple()
+Shape TileLeafShape(const HloSharding& sharding, const Shape& shape);
 
 }  // namespace hlo_sharding_util
 }  // namespace xla

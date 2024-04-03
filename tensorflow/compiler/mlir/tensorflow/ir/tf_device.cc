@@ -16,17 +16,19 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 
 #include <algorithm>
-#include <cstddef>
+#include <cassert>
 #include <cstdint>
 #include <iterator>
 #include <optional>
 #include <utility>
 
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/SMLoc.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -36,14 +38,18 @@ limitations under the License.
 #include "mlir/IR/OpImplementation.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/UseDefLists.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Interfaces/CallInterfaces.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "mlir/Transforms/InliningUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace mlir {
@@ -61,9 +67,10 @@ struct TFInlinerInterface : public DialectInlinerInterface {
   // Analysis Hooks
   //===--------------------------------------------------------------------===//
 
-  // Allow all call operations to be inlined.
+  // Returns whether it's legal to inline a call to a function.
   bool isLegalToInline(Operation* call, Operation* callable,
                        bool wouldBeCloned) const final {
+    if (isa<ClusterFuncOp>(call)) return false;
     return true;
   }
 
@@ -74,10 +81,8 @@ struct TFInlinerInterface : public DialectInlinerInterface {
     return true;
   }
 
-  // Defines the legality of inlining TF Device operations.
-  bool isLegalToInline(Operation*, Region*, bool,
-                       IRMapping&) const final {
-    // For now, enable inlining all operations.
+  // Defines the legality of inlining TF Device operations into a region.
+  bool isLegalToInline(Operation* call, Region*, bool, IRMapping&) const final {
     return true;
   }
 
@@ -125,6 +130,27 @@ TensorFlowDeviceDialect::TensorFlowDeviceDialect(MLIRContext* context)
       >();
 
   addInterfaces<TFInlinerInterface>();
+}
+
+//===----------------------------------------------------------------------===//
+// tf_device.cluster_func
+//===----------------------------------------------------------------------===//
+
+LogicalResult ClusterFuncOp::verifySymbolUses(
+    mlir::SymbolTableCollection& symbolTable) {
+  StringAttr func_attr = getFuncAttr().getRootReference();
+  func::FuncOp func =
+      symbolTable.lookupNearestSymbolFrom<func::FuncOp>(*this, func_attr);
+  if (!func) {
+    return emitError("'func' attribute refers to an undefined function: ")
+           << func_attr.getValue();
+  }
+  return success();
+}
+
+void ClusterFuncOp::setCalleeFromCallable(mlir::CallInterfaceCallable callee) {
+  SymbolRefAttr calleeAttr = callee.get<SymbolRefAttr>();
+  return setFuncAttr(cast<FlatSymbolRefAttr>(calleeAttr));
 }
 
 //===----------------------------------------------------------------------===//

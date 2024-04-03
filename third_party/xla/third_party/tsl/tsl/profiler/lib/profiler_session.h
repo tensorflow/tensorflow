@@ -83,6 +83,7 @@ class ProfilerSession {
   std::unique_ptr<profiler::ProfilerInterface> profilers_ TF_GUARDED_BY(mutex_);
 
   uint64 start_time_ns_;
+  uint64 stop_time_ns_;
   tensorflow::ProfileOptions options_;
 #endif
   tsl::Status status_ TF_GUARDED_BY(mutex_);

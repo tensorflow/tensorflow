@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -308,6 +308,23 @@ ENTRY main {
   CheckLayoutNormalization(hlo, R"(
 // CHECK:  [[broadcast_0:%[^ ]+]] = f32[1,5,2,1,3,4,1]{6,5,4,3,2,1,0} broadcast([[bitcast_1:%[^ ]+]]), dimensions={1,5,6}
 // CHECK:  [[abs_2:%[^ ]+]] = f32[1,5,2,1,3,4,1]{6,5,4,3,2,1,0} abs([[broadcast_0]])
+)");
+}
+
+TEST_F(LayoutNormalizationTest, IotaCustomOutputLayout) {
+  const char* hlo = R"(
+HloModule module
+
+ENTRY main {
+  a = f32[2,4,3]{1,2,0} iota(), iota_dimension=2
+  ROOT out = abs(a)
+}
+)";
+
+  CheckLayoutNormalization(hlo, R"(
+// CHECK: [[iota_2:%[^ ]+]] = f32[2,3,4]{2,1,0} iota(), iota_dimension=1
+// CHECK: [[abs_3:%[^ ]+]] = f32[2,3,4]{2,1,0} abs([[iota_2]])
+// CHECK: ROOT [[bitcast_3_4:%[^ ]+]] = f32[2,4,3]{1,2,0} bitcast([[abs_3]])
 )");
 }
 

@@ -172,6 +172,7 @@ enum class AppleGpu {
   kA14,
   kA15,
   kA16,
+  kA17Pro,
   kM1,
   kM1Pro,
   kM1Max,
@@ -180,15 +181,39 @@ enum class AppleGpu {
 };
 
 struct AppleInfo {
+  // https://developer.apple.com/documentation/metal/mtlgpufamily
+  enum class Family {
+    kApple9 = 9,
+    kApple8 = 8,
+    kApple7 = 7,
+    kApple6 = 6,
+    kApple5 = 5,
+    kApple4 = 4,
+    kApple3 = 3,
+    kApple2 = 2,
+    kApple1 = 1,
+  };
   AppleInfo() = default;
   explicit AppleInfo(const std::string& gpu_description);
   AppleGpu gpu_type;
+  Family gpu_family;
 
-  bool IsA7GenerationGpu() const;
-  bool IsA8GenerationGpu() const;
+  bool IsFamilyApple1() const;
+  bool IsFamilyApple2() const;
+  bool IsFamilyApple3() const;
+  bool IsFamilyApple4() const;
+  bool IsFamilyApple5() const;
+  bool IsFamilyApple6() const;
+  bool IsFamilyApple7() const;
+  bool IsFamilyApple8() const;
+  bool IsFamilyApple9() const;
+
+  bool IsFamilyOrLower(Family family) const;
+
   bool IsLocalMemoryPreferredOverGlobal() const;
 
   bool IsBionic() const;
+  bool IsM1Series() const;
 
   bool IsSIMDMatMulSupported() const;
   // Often, fp32 alu performance is 1/2 of fp16 alu performance
@@ -206,6 +231,7 @@ struct AppleInfo {
   void SetComputeUnits(int compute_units_count);
 
  private:
+  Family GetGpuFamily() const;
   int compute_units = -1;
 };
 
@@ -264,20 +290,23 @@ struct MaliInfo {
 };
 
 enum class PowerVRGpu {
+  kUnknown,
+  // Newer generation of IMG gpus
+  // Starting with B-series - all RTE with the exception of BXM:
+  kDXT,
+  kCXT,
+  kBXT,
+  kBXS,
+  kBXM,
+  kBXE,
+  // RTZ
+  kAXT,
+  kAXM,
+  kAXE,
+  // Older generation of rogue IMG gpus - all RTZ:
+  kRogue,
   kRogueGm9xxx,
   kRogueGe8xxx,
-  kRogue,
-  // New generation of IMG gpus after 2019:
-  kAXE,
-  kAXM,
-  kAXT,
-  kBXE,
-  kBXM,
-  kBXS,
-  kBXT,
-  kCXT,
-  kDXT,
-  kUnknown,
 };
 
 struct PowerVRInfo {
@@ -399,6 +428,8 @@ struct OpenClInfo {
   int max_work_group_size_y;
   int max_work_group_size_z;
   int max_work_group_total_size;
+  int preferred_work_group_size_multiple;
+  bool dedicated_local_memory;
 
   // The row pitch alignment size in pixels for 2D images created from a buffer.
   // The value must be a power of 2.

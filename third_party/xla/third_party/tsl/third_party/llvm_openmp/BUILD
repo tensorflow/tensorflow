@@ -1,11 +1,6 @@
 # Build file for OpenMP library that is part of llvm
 
-load(
-    "@local_tsl//tsl:tsl.bzl",
-    "if_linux_x86_64",
-    "if_macos",
-    "if_windows",
-)
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load(
     "@local_tsl//third_party/llvm_openmp:cmake_vars.bzl",
     "cmake_var_string",
@@ -16,22 +11,28 @@ load(
     "dict_add",
     "libiomp5_cc_binary",
 )
-load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+load(
+    "@local_tsl//tsl:tsl.bzl",
+    "if_linux_x86_64",
+    "if_macos",
+    "if_windows",
+)
 
 package(
-    default_visibility = ["//visibility:public"],
+    default_visibility = [
+        "//visibility:public",
+    ],
 )
 
-exports_files(
-    ["LICENSE.txt"],
-    visibility = ["//visibility:public"],
-)
+exports_files(["LICENSE.txt"])
 
 py_binary(
     name = "expand_cmake_vars",
     srcs = ["expand_cmake_vars.py"],
     srcs_version = "PY3",
-    visibility = ["//visibility:public"],
+    visibility = [
+        "@llvm_openmp//:__subpackages__",
+    ],
 )
 
 kmp_i18n_os_type = select({
@@ -239,5 +240,4 @@ if_windows(a = libiomp5_cc_binary(
 bzl_library(
     name = "openmp_bzl",
     srcs = ["openmp.bzl"],
-    visibility = ["//visibility:public"],
 )

@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -53,26 +53,33 @@ limitations under the License.
 #include "xla/service/slow_operation_alarm.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/lazy_op_runner.h"
 #include "xla/stream_executor/numeric_options.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/stream_executor/scratch_allocator.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/util/proto/proto_utils.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/numbers.h"
-#include "tsl/util/proto/proto_utils.h"
+#include "tsl/platform/statusor.h"
 
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
 #include "third_party/gpus/cudnn/cudnn.h"  // IWYU pragma: keep
+#include "third_party/gpus/cudnn/cudnn_version.h"
+#if CUDNN_VERSION >= 90000
+#include "third_party/gpus/cudnn/cudnn_ops.h"
+#else
 #include "third_party/gpus/cudnn/cudnn_ops_infer.h"
+#endif  // CUDNN_VERSION >= 90000
 #include "xla/service/gpu/buffer_comparator.h"
 #include "xla/stream_executor/gpu/redzone_allocator.h"
 #endif
@@ -147,16 +154,20 @@ absl::StatusOr<std::vector<GenericConvRunner>> GetAlgorithms(
   se::StreamExecutor* stream_exec = stream->parent();
   std::vector<GenericConvRunner> result;
 
+  auto dnn = stream_exec->AsDnn();
+  if (dnn == nullptr) {
+    return absl::InvalidArgumentError("No DNN in stream executor.");
+  }
   switch (kind) {
     default:
-      return InternalError("Unknown ConvolutionKind %d", kind);
+      return Internal("Unknown ConvolutionKind %d", kind);
     case se::dnn::ConvolutionKind::FORWARD_BIAS_ACTIVATION: {
       if (!config.fusion) {
-        return InternalError(
+        return Internal(
             "GpuConvConfig had fusion ConvolutionKind but no FusionConfig.");
       }
       std::vector<std::unique_ptr<const se::dnn::FusedConvRunner>> runners;
-      TF_RETURN_IF_ERROR(stream_exec->GetFusedConvolveRunners(
+      TF_RETURN_IF_ERROR(dnn->GetFusedConvolveRunners(
           use_cudnn_frontend,
           // This refers to the kind of convolution op inside the fusion, not
           // the whole fused graph.
@@ -182,7 +193,7 @@ absl::StatusOr<std::vector<GenericConvRunner>> GetAlgorithms(
       std::vector<std::unique_ptr<const se::dnn::GraphConvRunner>> runners;
       // This path is cuDNN-only, where the DeviceMemoryBase arguments and the
       // allocator are unused; so, they're all provided as nullptr.
-      TF_RETURN_IF_ERROR(stream_exec->GetGraphConvolveRunners(
+      TF_RETURN_IF_ERROR(dnn->GetGraphConvolveRunners(
           kind, input_type, output_type, stream, config.input_descriptor,
           config.filter_descriptor, config.output_descriptor, config.conv_desc,
           use_fallback, numeric_options, &runners, config.serialized_graph));
@@ -202,7 +213,7 @@ absl::StatusOr<std::vector<GenericConvRunner>> GetAlgorithms(
       std::vector<std::unique_ptr<const se::dnn::ConvRunner>> runners;
       // This path is cuDNN-only, where the DeviceMemoryBase arguments and the
       // allocator are unused; so, they're all provided as nullptr.
-      TF_RETURN_IF_ERROR(stream_exec->GetConvolveRunners(
+      TF_RETURN_IF_ERROR(dnn->GetConvolveRunners(
           use_cudnn_frontend, kind, input_type, output_type, stream,
           config.input_descriptor,
           /* input_data = */ DeviceMemoryBase(nullptr),
@@ -246,7 +257,11 @@ GetMIOpenAlgorithms(const HloCustomCallInstruction* instr,
       GetGpuConvParams(config, operand_buffers, result_buffers));
 
   std::vector<std::unique_ptr<const se::dnn::ConvRunner>> runners;
-  TF_RETURN_IF_ERROR(stream_exec->GetConvolveRunners(
+  auto dnn = stream_exec->AsDnn();
+  if (dnn == nullptr) {
+    return absl::InvalidArgumentError("No DNN in stream executor.");
+  }
+  TF_RETURN_IF_ERROR(dnn->GetConvolveRunners(
       /* use_cudnn_frontend = */ false, kind, dtype, dtype, stream,
       params.config->input_descriptor, params.input_buf,
       params.config->filter_descriptor, params.filter_buf,
@@ -395,7 +410,7 @@ absl::StatusOr<AutotuneResult> GpuConvAlgorithmPicker::PickBestAlgorithmNoCache(
   // Make sure any previous activity on this executor is done. We don't want
   // other work still running on the GPU to interfere with autotuning.
   if (!stream_exec->SynchronizeAllActivity()) {
-    return InternalError(
+    return Internal(
         "Failed to synchronize GPU for autotuning conv instruction");
   }
 
@@ -404,7 +419,7 @@ absl::StatusOr<AutotuneResult> GpuConvAlgorithmPicker::PickBestAlgorithmNoCache(
   se::DeviceMemoryAllocator* allocator = config_.GetAllocator();
 
   TF_ASSIGN_OR_RETURN(se::Stream* const stream, config_.GetStream());
-  absl::StatusOr<AutotuneResult> result_or(InternalError("Unknown platform."));
+  absl::StatusOr<AutotuneResult> result_or(Internal("Unknown platform."));
   // Check StreamExecutor on which platform it is. ROCm and Cuda implementation
   // have diverged. Specifically, we need to make sure redzone allocator related
   // utilities are not used in ROCm routine
@@ -597,7 +612,6 @@ absl::StatusOr<AutotuneResult> GpuConvAlgorithmPicker::AutotuneOneConvRunner(
   // Use assignment instead of brace-list to make GCC 4.9 happy.
   RunConvOptions options;
   options.runner_cache = runner;
-  options.profile_result = &profile_result;
   // The following plan timing code is based on
   // https://github.com/NVIDIA/cudnn-frontend/blob/60496f42fdc7a4ccc059f5934e306e728a756755/include/cudnn_frontend_find_plan.h
   float max_time = 0;
@@ -610,15 +624,18 @@ absl::StatusOr<AutotuneResult> GpuConvAlgorithmPicker::AutotuneOneConvRunner(
   // Dry-run to warmup the plan.
   launch_status = RunGpuConv(config, operand_buffers, result_buffers,
                              scratch_memory, stream, options);
+  // It is intentional that the warm-up run does not have a profile result.
+  options.profile_result = &profile_result;
   constexpr int kMaxIter = 10;
   // Iterate until the new measurement is within kThreshold of the current
   // minimum.
   int num_iters = 0;
-  for (;
-       num_iters < kMaxIter && launch_status.ok() && profile_result.is_valid();
-       num_iters++) {
+  for (; num_iters < kMaxIter && launch_status.ok(); ++num_iters) {
     launch_status = RunGpuConv(config, operand_buffers, result_buffers,
                                scratch_memory, stream, options);
+    if (!profile_result.is_valid()) {
+      break;
+    }
     float old_min_time = min_time;
     min_time = std::min(min_time, profile_result.elapsed_time_in_ms());
     max_time = std::max(max_time, profile_result.elapsed_time_in_ms());
@@ -754,8 +771,9 @@ absl::StatusOr<AutotuneResult> GpuConvAlgorithmPicker::AutotuneOneConvRunner(
           reference_result_buffers[i],
           runtime_arguments.input_output_allocator->AllocateBytes(
               result_buffers[i].size()));
-      stream->ThenMemcpy(&reference_result_buffers[i], result_buffers[i],
-                         result_buffers[i].size());
+      TF_RETURN_IF_ERROR(stream->Memcpy(&reference_result_buffers[i],
+                                        result_buffers[i],
+                                        result_buffers[i].size()));
     }
     (*reference_result) = {alg, reference_result_buffers};
   }
@@ -924,7 +942,7 @@ GpuConvAlgorithmPicker::PickBestAlgorithmWithAllocatedBuffer(
       /*instr=*/nullptr, stream,
       /*instruction_info=*/std::nullopt, autotune_runtime_arguments);
 #else
-  return InternalError("CUDA is not enabled");
+  return Internal("CUDA is not enabled");
 #endif
 }
 
@@ -953,7 +971,7 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheRocm(
     // before autotuning.  It's conceivable that using uninitialized memory as
     // the inputs might affect performance if e.g. the inputs contain
     // denormals, and this is easy enough.
-    stream->ThenMemZero(&buffer, buffer.size());
+    return stream->MemZero(&buffer, buffer.size());
   };
 
   // Allocate space for the input, filter, and output of the convolution.  We
@@ -963,7 +981,7 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheRocm(
     TF_ASSIGN_OR_RETURN(auto buffer,
                         input_output_allocator.AllocateBytes(
                             ShapeUtil::ByteSizeOf(operand->shape())));
-    initialize_buffer(buffer);
+    TF_RETURN_IF_ERROR(initialize_buffer(buffer));
     operand_buffers.push_back(buffer);
   }
 
@@ -975,14 +993,14 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheRocm(
           result_buffers[i],
           input_output_allocator.AllocateBytes(
               ShapeUtil::ByteSizeOf(instr->shape().tuple_shapes(i))));
-      initialize_buffer(result_buffers[i]);
+      TF_RETURN_IF_ERROR(initialize_buffer(result_buffers[i]));
     }
   } else {
     TF_ASSIGN_OR_RETURN(
         result_buffers[0],
         input_output_allocator.AllocateBytes(
             ShapeUtil::ByteSizeOf(instr->shape().tuple_shapes(0))));
-    initialize_buffer(result_buffers[0]);
+    TF_RETURN_IF_ERROR(initialize_buffer(result_buffers[0]));
   }
 
   ScratchAllocator scratch_allocator(device_ordinal, allocator);
@@ -1124,6 +1142,7 @@ absl::StatusOr<bool> GpuConvAlgorithmPicker::RunOnInstruction(
   *backend_config.mutable_algorithm() = best_algo.algorithm();
   backend_config.mutable_algorithm()->mutable_workspace_size()->set_value(
       best_algo.scratch_bytes());
+
   HloInstruction* new_call = computation->AddInstruction(
       instr->CloneWithNewOperands(new_call_shape, instr->operands()));
 

@@ -1,6 +1,4 @@
 load("//tensorflow:strict.default.bzl", "py_strict_library")
-load("//tensorflow/lite:build_def.bzl", "tf_to_tflite", "tflite_copts")
-load("//tensorflow:tensorflow.default.bzl", "pybind_extension", "tf_custom_op_py_strict_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_custom_op_library",
@@ -8,6 +6,8 @@ load(
     "tf_gen_op_wrapper_py",
     "tf_opts_nortti_if_android",
 )
+load("//tensorflow:tensorflow.default.bzl", "pybind_extension", "tf_custom_op_py_strict_library")
+load("//tensorflow/lite:build_def.bzl", "tf_to_tflite", "tflite_copts")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -81,9 +81,7 @@ cc_library(
     name = "test_delegate",
     testonly = 1,
     srcs = ["test_delegate.cc"],
-    visibility = [
-        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
-    ],
+    visibility = ["//visibility:private"],
     deps = [
         "//tensorflow/lite/core/c:common",
     ],
@@ -160,9 +158,7 @@ cc_library(
     name = "test_registerer",
     srcs = ["test_registerer.cc"],
     hdrs = ["test_registerer.h"],
-    visibility = [
-        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
-    ],
+    visibility = ["//visibility:private"],
     deps = [
         "//tensorflow/lite:framework",
         "//tensorflow/lite/kernels:builtin_ops",

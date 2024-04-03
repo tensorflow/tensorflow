@@ -71,7 +71,7 @@ class BaseCandidateSamplerOp : public OpKernel {
                    context->allocate_output(2, TensorShape({num_sampled_}),
                                             &out_sampled_expected_count));
 
-    gtl::ArraySlice<int64_t> true_candidate(
+    absl::Span<const int64_t> true_candidate(
         true_classes.matrix<int64_t>().data(), batch_size * num_true_);
 
     for (const auto& candidate : true_candidate) {
@@ -81,12 +81,12 @@ class BaseCandidateSamplerOp : public OpKernel {
                                           "), received ", candidate));
     }
 
-    gtl::MutableArraySlice<int64_t> sampled_candidate(
+    absl::Span<int64_t> sampled_candidate(
         out_sampled_candidates->vec<int64_t>().data(), num_sampled_);
-    gtl::MutableArraySlice<float> true_expected_count(
+    absl::Span<float> true_expected_count(
         out_true_expected_count->matrix<float>().data(),
         batch_size * num_true_);
-    gtl::MutableArraySlice<float> sampled_expected_count(
+    absl::Span<float> sampled_expected_count(
         out_sampled_expected_count->vec<float>().data(), num_sampled_);
 
     // Approximately conservatively estimate the number of samples required.

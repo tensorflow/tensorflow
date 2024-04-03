@@ -14,8 +14,13 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/dataset_ops.h"
 
+#include <cstdint>
 #include <memory>
 #include <vector>
+
+#include "absl/status/status.h"
+#include "absl/strings/str_format.h"
+#include "tensorflow/core/framework/op_requires.h"
 
 // On mobile we do not provide this functionality because not all of its
 // dependencies are available there.
@@ -24,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/graph_runner.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 #include "tensorflow/core/data/dataset_utils.h"
+#include "tensorflow/core/data/hash_utils.h"
 #include "tensorflow/core/data/serialization_utils.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -164,6 +170,30 @@ void DatasetFromGraphOp::Compute(OpKernelContext* ctx) {
   OP_REQUIRES_OK(ctx, ctx->set_output(kHandle, outputs[0]));
 }
 
+DatasetFingerprintOp::DatasetFingerprintOp(OpKernelConstruction* ctx)
+    : OpKernel(ctx) {}
+void DatasetFingerprintOp::Compute(OpKernelContext* ctx) {
+  DatasetBase* dataset;
+  OP_REQUIRES_OK(ctx, GetDatasetFromVariantTensor(ctx->input(0), &dataset));
+
+  SerializationContext::Params params(ctx);
+  GraphDef graph_def;
+  Status s = AsGraphDef(dataset, SerializationContext(params), &graph_def);
+
+  if (!s.ok()) {
+    ctx->CtxFailure(absl::FailedPreconditionError(absl::StrFormat(
+        "Failed to serialize the input pipeline graph: %s", s.message())));
+    return;
+  }
+
+  uint64_t hash_result = 0;
+  OP_REQUIRES_OK(ctx, HashGraph(graph_def, &hash_result));
+
+  Tensor* result;
+  OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &result));
+  result->scalar<uint64_t>()() = hash_result;
+}
+
 REGISTER_KERNEL_BUILDER(Name("DatasetToGraph").Device(DEVICE_CPU),
                         DatasetToGraphOp);
 REGISTER_KERNEL_BUILDER(Name("DatasetToGraphV2").Device(DEVICE_CPU),
@@ -177,6 +207,9 @@ REGISTER_KERNEL_BUILDER(
 
 REGISTER_KERNEL_BUILDER(Name("DatasetFromGraph").Device(DEVICE_CPU),
                         DatasetFromGraphOp);
+
+REGISTER_KERNEL_BUILDER(Name("DatasetFingerprint").Device(DEVICE_CPU),
+                        DatasetFingerprintOp);
 
 }  // namespace data
 }  // namespace tensorflow

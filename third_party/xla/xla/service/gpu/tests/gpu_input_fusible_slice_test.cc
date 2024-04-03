@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,9 +15,9 @@ limitations under the License.
 
 #include <utility>
 
+#include "xla/error_spec.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/service/hlo_parser.h"
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/test.h"
 
@@ -67,12 +67,12 @@ TEST_F(GpuSliceInputFusionTest, InputFusionWithATupleOfSlices) {
       ParseAndReturnVerifiedModule(kHloString, ConfigWithoutLayoutAssignment())
           .value();
   auto expected_ir = is_built_with_rocm_ ? R"(
-; CHECK-LABEL: define amdgpu_kernel void @fusion
+; CHECK-LABEL: define amdgpu_kernel void @{{[a-z_]*}}fusion
 ; CHECK: slice2
 ; CHECK: }
 )"
                                          : R"(
-; CHECK-LABEL: define void @fusion
+; CHECK-LABEL: define void @{{[a-z_]*}}fusion
 ; CHECK: slice2
 ; CHECK: }
 )";
@@ -114,12 +114,12 @@ TEST_F(GpuSliceInputFusionTest, ConcatThenSplit) {
       ParseAndReturnVerifiedModule(kHloString, ConfigWithoutLayoutAssignment())
           .value();
   auto expected_ir = is_built_with_rocm_ ? R"(
-; CHECK-LABEL: define amdgpu_kernel void @fusion
+; CHECK-LABEL: define amdgpu_kernel void @{{[a-z_]*}}fusion
 ; CHECK: slice2
 ; CHECK: }
 )"
                                          : R"(
-; CHECK-LABEL: define void @fusion
+; CHECK-LABEL: define void @{{[a-z_]*}}fusion
 ; CHECK: slice2
 ; CHECK: }
 )";

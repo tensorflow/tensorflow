@@ -508,7 +508,7 @@ class RaggedTensorToTensorOpUnknownShapeTest
     : public ::tensorflow::OpsTestBase {
  protected:
   std::unique_ptr<ShapeInferenceTestOp> op_;
-  void SetAttributes(const gtl::ArraySlice<string> row_partition_types,
+  void SetAttributes(const absl::Span<const string> row_partition_types,
                      int num_row_partition_tensors) {
     op_ = std::make_unique<ShapeInferenceTestOp>("RaggedTensorToTensor");
     SetAttrValue(row_partition_types,
@@ -519,7 +519,7 @@ class RaggedTensorToTensorOpUnknownShapeTest
 };
 
 TEST_F(RaggedTensorToTensorOpUnknownShapeTest, ValueRowIDs) {
-  SetAttributes(gtl::ArraySlice<string>{"FIRST_DIM_SIZE", "VALUE_ROWIDS"}, 2);
+  SetAttributes(absl::Span<const string>{"FIRST_DIM_SIZE", "VALUE_ROWIDS"}, 2);
 
   INFER_OK(*op_, "?;?;?;?;?", "?");
   INFER_OK(*op_, "?;[6];[];[];[6]", "[?,?]");
@@ -544,7 +544,7 @@ TEST_F(RaggedTensorToTensorOpUnknownShapeTest, ValueRowIDs) {
 TEST_F(RaggedTensorToTensorOpUnknownShapeTest, RowSplits) {
   // RaggedTensorToTensor(param_splits+, param_values, indices) -> [splits+,
   // values]
-  SetAttributes(gtl::ArraySlice<string>{"ROW_SPLITS"}, 1);
+  SetAttributes(absl::Span<const string>{"ROW_SPLITS"}, 1);
 
   // value, default_value, ROW_SPLITS
   INFER_OK(*op_, "?;?;?;?", "?");

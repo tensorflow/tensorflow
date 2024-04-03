@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,10 +16,14 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_CUBLAS_CUDNN_H_
 #define XLA_SERVICE_GPU_CUBLAS_CUDNN_H_
 
+#include <string>
+
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -46,6 +50,12 @@ enum class CudnnConvKind {
                        // (optionally) side_input) => output
   kForwardGraph,       // pointwise(...pointwise(conv(input, filter))...)
                        // => output
+};
+
+enum class CudnnNormKind {
+  kLayerForwardInfer,
+  kLayerForwardTrain,
+  kLayerBackward,
 };
 
 enum class CudnnfMHAKind {

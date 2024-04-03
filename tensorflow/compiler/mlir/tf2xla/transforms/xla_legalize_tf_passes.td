@@ -45,12 +45,16 @@ def LegalizeTF : Pass<"xla-legalize-tf", "ModuleOp"> {
   ];
 
   let constructor = "mlir::mhlo::createLegalizeTFPass()";
-  let dependentDialects = ["arith::ArithDialect, chlo::ChloDialect",
-                           "mhlo::MhloDialect",
-                           "quant::QuantizationDialect",
-                           "shape::ShapeDialect",
-                           "func::FuncDialect",
-                           "sparse_tensor::SparseTensorDialect"];
+  let dependentDialects = [
+    "arith::ArithDialect",
+    "chlo::ChloDialect",
+    "func::FuncDialect",
+    "mhlo::MhloDialect",
+    "quant::QuantizationDialect",
+    "shape::ShapeDialect",
+    "sparse_tensor::SparseTensorDialect",
+    "stablehlo::StablehloDialect"
+  ];
 }
 
 def LegalizeTFCollective : Pass<"xla-legalize-tf-collective", "ModuleOp"> {

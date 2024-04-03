@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,11 +18,8 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <limits>
-#include <memory>
 #include <string>
-#include <tuple>
 #include <utility>
-#include <vector>
 
 #include "absl/base/const_init.h"
 #include "absl/base/thread_annotations.h"
@@ -37,14 +34,12 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/service/compilation_environments.h"
 #include "xla/service/gpu/gpu_asm_opts_util.h"
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status.h"
 #include "xla/status_macros.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/redzone_allocator.h"
 #include "xla/stream_executor/stream.h"
@@ -65,17 +60,8 @@ static absl::Mutex autotune_cache_mu(absl::kConstInit);
 static auto& autotune_cache ABSL_GUARDED_BY(autotune_cache_mu) =
     *new AutotuneCacheMap();
 
-/*static*/ absl::Status AutotunerUtil::SerializeAutotuneResults(
-    AutotuneResults* results) {
-  absl::MutexLock lock(&autotune_cache_mu);
-  for (const auto& [k, result] : autotune_cache) {
-    auto& entry = *results->add_results();
-    entry.set_device(std::string(k.GetModelStr()));
-    entry.set_hlo(std::string(k.GetHlo()));
-    *entry.mutable_result() = result;
-  }
-
-  // Sort the results so that they're deterministic.
+// Sort the results so that they're deterministic.
+static void SortAutotuneResults(AutotuneResults* results) {
   std::sort(results->mutable_results()->pointer_begin(),
             results->mutable_results()->pointer_end(),
             [](const auto* a, const auto* b) {
@@ -84,6 +70,40 @@ static auto& autotune_cache ABSL_GUARDED_BY(autotune_cache_mu) =
                      std::make_pair(absl::string_view(b->device()),
                                     absl::string_view(b->hlo()));
             });
+}
+
+// Serialize `results` to string as a proto.
+static absl::StatusOr<std::string> AutotuneResultsToString(
+    const AutotuneResults& results, bool as_textproto) {
+  if (as_textproto) {
+    std::string textproto;
+    if (tsl::protobuf::TextFormat::PrintToString(results, &textproto)) {
+      return textproto;
+    } else {
+      return Internal("Failed to serialize autotune results.");
+    }
+  }
+  return results.SerializeAsString();
+}
+
+// Serialize a single entry to `results`.
+static void SerializeAutotuneEntry(AutotuneResults* results,
+                                   const AutotuneCacheKey& k,
+                                   const AutotuneResult* res) {
+  auto& entry = *results->add_results();
+  entry.set_device(std::string(k.GetModelStr()));
+  entry.set_hlo(std::string(k.GetHlo()));
+  *entry.mutable_result() = *res;
+}
+
+/*static*/ absl::Status AutotunerUtil::SerializeAutotuneResults(
+    AutotuneResults* results) {
+  absl::MutexLock lock(&autotune_cache_mu);
+  for (const auto& [k, result] : autotune_cache) {
+    SerializeAutotuneEntry(results, k, &result);
+  }
+
+  SortAutotuneResults(results);
 
   return absl::OkStatus();
 }
@@ -142,8 +162,19 @@ static AutotuneResult* TryFindInCache(const AutotuneCacheKey& key) {
   absl::MutexLock lock(&autotune_cache_mu);
   auto it = autotune_cache.find(key);
   if (it != autotune_cache.end()) {
-    VLOG(1) << "Autotune cache hit";
+    // Cache hit.
+    if (VLOG_IS_ON(1)) {
+      LOG(INFO) << "Autotune cache hit";
+    } else if (VLOG_IS_ON(2)) {
+      LOG(INFO) << "Autotune cache hit: key = " << key.ToString();
+    }
     return &it->second;
+  }
+
+  if (VLOG_IS_ON(1)) {
+    LOG(INFO) << "Autotune cache miss";
+  } else if (VLOG_IS_ON(2)) {
+    LOG(INFO) << "Autotune cache miss: key = " << key.ToString();
   }
   return nullptr;
 }
@@ -167,9 +198,17 @@ static AutotuneResult* TryFindInCache(const AutotuneCacheKey& key) {
 /*static*/ absl::StatusOr<AutotuneResult> AutotunerUtil::Autotune(
     const HloInstruction* instr, const AutotuneConfig& config,
     const AutotuneNoCacheFn& autotune_fn) {
-  AutotuneCacheKey key = GetKey(instr, config);
+  const AutotuneCacheKey key = GetKey(instr, config);
   if (AutotuneResult* res = TryFindInCache(key)) {
     return *res;
+  }
+
+  // Cache miss.
+  if (config.should_require_complete_aot_autotune_results()) {
+    return NotFound(
+        "Complete XLA AOT autotuning results are required, but no AOT result "
+        "was found for key: %s",
+        key.ToString());
   }
 
   TF_ASSIGN_OR_RETURN(AutotuneResult autotune_result, autotune_fn());
@@ -183,13 +222,14 @@ namespace {
 
 // Bump this version whenever you change the structure of the results.
 // LINT.IfChange(version)
-constexpr int kVersion = 2;
+constexpr int kVersion = 3;
 // LINT.ThenChange()
 
 bool IsTextProtoPath(absl::string_view file_path) {
   return absl::EndsWith(file_path, ".txt") ||
          absl::EndsWith(file_path, ".textproto") ||
-         absl::EndsWith(file_path, ".prototxt");
+         absl::EndsWith(file_path, ".prototxt") ||
+         absl::EndsWith(file_path, ".pbtxt");
 }
 
 }  // anonymous namespace
@@ -221,15 +261,7 @@ bool IsTextProtoPath(absl::string_view file_path) {
   AutotuneResults results;
   results.set_version(kVersion);
   TF_RETURN_IF_ERROR(SerializeAutotuneResults(&results));
-  if (as_textproto) {
-    std::string textproto;
-    if (tsl::protobuf::TextFormat::PrintToString(results, &textproto)) {
-      return textproto;
-    } else {
-      return InternalError("Failed to serialize autotune results.");
-    }
-  }
-  return results.SerializeAsString();
+  return AutotuneResultsToString(results, as_textproto);
 }
 
 /*static*/ absl::Status AutotunerUtil::SerializeAutotuneResultsToFile(
@@ -275,42 +307,6 @@ bool IsTextProtoPath(absl::string_view file_path) {
   return absl::OkStatus();
 }
 
-/*static*/ std::unique_ptr<HloModule>
-AutotunerUtil::ExtractInstructionIntoNewModule(const HloInstruction& hlo) {
-  auto new_hlo_module = std::make_unique<HloModule>(
-      "extracted", HloModuleConfig{},
-      std::make_unique<CompilationEnvironments>(hlo.GetModule()->comp_envs()));
-  int parameter_number = 0;
-  HloComputation::Builder builder("entry_computation");
-  HloCloneContext clone_context(new_hlo_module.get());
-  std::vector<HloInstruction*> new_operands;
-  for (const HloInstruction* operand : hlo.operands()) {
-    std::unique_ptr<HloInstruction> new_parameter =
-        HloInstruction::CreateParameter(parameter_number, operand->shape(),
-                                        operand->name());
-    ++parameter_number;
-    new_operands.push_back(builder.AddInstruction(std::move(new_parameter)));
-  }
-  std::unique_ptr<HloInstruction> new_instruction =
-      hlo.CloneWithNewOperands(hlo.shape(), new_operands, &clone_context);
-  builder.AddInstruction(std::move(new_instruction));
-  new_hlo_module->AddEntryComputationWithLayouts(builder.Build());
-  return new_hlo_module;
-}
-
-/*static*/ std::unique_ptr<HloModule>
-AutotunerUtil::ExtractComputationIntoNewModule(
-    const HloComputation& computation) {
-  auto new_hlo_module =
-      std::make_unique<HloModule>("extracted", HloModuleConfig{},
-                                  std::make_unique<CompilationEnvironments>(
-                                      computation.parent()->comp_envs()));
-  HloCloneContext clone_context(new_hlo_module.get());
-  new_hlo_module->AddEntryComputationWithLayouts(
-      computation.CloneInContext(clone_context));
-  return new_hlo_module;
-}
-
 /*static*/ absl::StatusOr<se::RedzoneAllocator>
 AutotunerUtil::CreateRedzoneAllocator(const AutotuneConfig& config,
                                       const DebugOptions& opts,
@@ -325,6 +321,25 @@ AutotunerUtil::CreateRedzoneAllocator(const AutotuneConfig& config,
       /*redzone_size=*/config.should_check_correctness()
           ? opts.xla_gpu_redzone_padding_bytes()
           : 0);
+}
+
+/*static*/ absl::StatusOr<std::string>
+AutotunerUtil::SerializeAutotuneResultsForModule(
+    const HloModule& module, const AutotuneConfig& autotune_config,
+    bool as_textproto) {
+  AutotuneResults results;
+  results.set_version(kVersion);
+
+  for (const HloInstruction* instr :
+       module.entry_computation()->instructions()) {
+    AutotuneCacheKey k(autotune_config.GetModelStr(), *instr);
+    if (const AutotuneResult* res = TryFindInCache(k)) {
+      SerializeAutotuneEntry(&results, k, res);
+    }
+  }
+
+  SortAutotuneResults(&results);
+  return AutotuneResultsToString(results, as_textproto);
 }
 
 }  // namespace gpu

@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,10 +15,12 @@ limitations under the License.
 
 #include "xla/stream_executor/cuda/cuda_blas_utils.h"
 
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "third_party/gpus/cuda/include/cublas_v2.h"
 #include "third_party/gpus/cuda/include/cuda.h"
+#include "third_party/gpus/cuda/include/library_types.h"
 #include "xla/stream_executor/blas.h"
 
 namespace stream_executor {

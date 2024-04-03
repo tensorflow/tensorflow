@@ -19,9 +19,10 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/tools/command_line_flags.h"
 #include "tensorflow/lite/tools/delegates/delegate_provider.h"
+#include "tensorflow/lite/tools/logging.h"
+#include "tensorflow/lite/tools/tool_params.h"
 
 #if !defined(_WIN32)
 #include "tensorflow/lite/acceleration/configuration/c/delegate_plugin.h"

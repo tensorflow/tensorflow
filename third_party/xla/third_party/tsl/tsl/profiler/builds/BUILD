@@ -1,5 +1,8 @@
+load("//tsl:tsl.bzl", "internal_visibility")
+
 package(
-    default_visibility = ["//visibility:public"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = internal_visibility(["//tsl/profiler:internal"]),
     licenses = ["notice"],
 )
 
@@ -7,5 +10,4 @@ package(
 config_setting(
     name = "profiler_build_oss",
     define_values = {"profiler_build": "oss"},
-    visibility = ["//visibility:public"],
 )

@@ -127,7 +127,7 @@ class NodeBuilder {
 
   // Same as `Finalize` above, but using StatusOr to return value. Preferred
   // form.
-  StatusOr<Node*> Finalize(Graph* graph, bool consume = false);
+  absl::StatusOr<Node*> Finalize(Graph* graph, bool consume = false);
 
   // Accessors for the values set in the constructor.
   const string& node_name() const { return def_builder_.node_name(); }

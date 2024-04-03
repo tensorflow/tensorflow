@@ -42,16 +42,16 @@ class DirectPluginCoordinationServiceAgent
     return agent_->InsertKeyValue(key, value);
   }
 
-  StatusOr<std::string> GetKeyValue(std::string_view key) override {
+  absl::StatusOr<std::string> GetKeyValue(std::string_view key) override {
     return agent_->GetKeyValue(key);
   }
 
-  StatusOr<std::string> GetKeyValue(std::string_view key,
-                                    absl::Duration timeout) override {
+  absl::StatusOr<std::string> GetKeyValue(std::string_view key,
+                                          absl::Duration timeout) override {
     return agent_->GetKeyValue(key, timeout);
   }
 
-  StatusOr<std::string> TryGetKeyValue(std::string_view key) override {
+  absl::StatusOr<std::string> TryGetKeyValue(std::string_view key) override {
     return agent_->TryGetKeyValue(key);
   }
 

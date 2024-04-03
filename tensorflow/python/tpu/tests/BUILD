@@ -69,37 +69,6 @@ tpu_py_strict_test(
 )
 
 tpu_py_strict_test(
-    name = "tpu_embedding_v2_optimizer_test",
-    srcs = [
-        "tpu_embedding_v2_optimizer_test.py",
-    ],
-    disable_experimental = True,
-    disable_mlir_bridge = False,
-    python_version = "PY3",
-    srcs_version = "PY3",
-    deps = [
-        ":tpu_embedding_base_test",
-        "//tensorflow/python/compat:v2_compat",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/distribute:distribute_lib",
-        "//tensorflow/python/eager:backprop",
-        "//tensorflow/python/eager:def_function",
-        "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/ops:init_ops_v2",
-        "//tensorflow/python/ops:math_ops",
-        "//tensorflow/python/ops:math_ops_gen",
-        "//tensorflow/python/ops:variables",
-        "//tensorflow/python/platform:client_testlib",
-        "//tensorflow/python/tpu:tpu_embedding",
-        "//tensorflow/python/tpu:tpu_embedding_v2",
-        "//tensorflow/python/tpu:tpu_embedding_v2_utils",
-        "//third_party/py/numpy",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-tpu_py_strict_test(
     name = "tpu_embedding_v2_mp_strategy_test",
     srcs = [
         "tpu_embedding_v2_mp_strategy_test.py",

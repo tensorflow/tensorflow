@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2015 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -24,15 +24,16 @@ limitations under the License.
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
 #if !defined(PLATFORM_WINDOWS)
 #include <link.h>
 #include <sys/sysmacros.h>
 #include <unistd.h>
 #endif
+
 #include <sys/stat.h>
 
-#include <algorithm>
-#include <memory>
+#include <string>
 #include <vector>
 
 #include "absl/container/inlined_vector.h"

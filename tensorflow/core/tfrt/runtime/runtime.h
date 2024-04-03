@@ -15,16 +15,25 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TFRT_RUNTIME_RUNTIME_H_
 #define TENSORFLOW_CORE_TFRT_RUNTIME_RUNTIME_H_
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/base/attributes.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/tfrt/graph_executor/graph_execution_options.h"
 #include "tensorflow/core/tfrt/runtime/work_queue_interface.h"
+#include "tsl/platform/errors.h"
 #include "tfrt/core_runtime/core_runtime.h"  // from @tf_runtime
 #include "tfrt/host_context/resource_context.h"  // from @tf_runtime
 
@@ -78,6 +87,12 @@ class ModelRuntimeContext {
     return *graph_execution_options_;
   }
 
+  absl::string_view checkpoint_path() const { return checkpoint_path_; }
+
+  void set_checkpoint_path(absl::string_view checkpoint_path) {
+    checkpoint_path_ = checkpoint_path;
+  }
+
  private:
   const GraphExecutionOptions* graph_execution_options_ = nullptr;
 
@@ -89,6 +104,7 @@ class ModelRuntimeContext {
   FunctionLibraryDefinition* flib_def_ = nullptr;
 
   bool is_local_session_ = false;
+  std::string checkpoint_path_;
 };
 
 // This defines the runtime abstraction in tensorflow for TFRT. It is supposed

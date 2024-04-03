@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -57,7 +57,7 @@ bool InferConvolutionShardingFromOperands(HloInstruction* instruction,
 // operand's existing sharding.
 // unspecified_dims will be populated with the converted copies if the custom
 // call is partially specified.
-StatusOr<bool> ProcessShardingInstruction(
+absl::StatusOr<bool> ProcessShardingInstruction(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads,
     bool replace_sharding_with_copy,
@@ -122,7 +122,7 @@ class ShardingPropagation : public HloModulePass {
   }
   absl::string_view name() const override { return "sharding-propagation"; }
   using HloPassInterface::Run;
-  StatusOr<bool> Run(
+  absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 

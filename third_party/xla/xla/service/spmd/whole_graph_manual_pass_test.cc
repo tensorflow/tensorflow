@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -33,7 +33,8 @@ namespace op = xla::testing::opcode_matchers;
 
 class WholeGraphManualPassTest : public HloTestBase {
  public:
-  StatusOr<std::unique_ptr<HloModule>> RunPass(absl::string_view hlo_module) {
+  absl::StatusOr<std::unique_ptr<HloModule>> RunPass(
+      absl::string_view hlo_module) {
     TF_ASSIGN_OR_RETURN(
         auto module,
         ParseAndReturnVerifiedModule(
@@ -42,7 +43,7 @@ class WholeGraphManualPassTest : public HloTestBase {
     HloPassPipeline pipeline("whole-graph-manual-pass");
     pipeline.AddPass<WholeGraphManualPass>();
     TF_RETURN_IF_ERROR(pipeline.Run(module.get()).status());
-    return StatusOr<std::unique_ptr<HloModule>>(std::move(module));
+    return absl::StatusOr<std::unique_ptr<HloModule>>(std::move(module));
   }
   Status RunPassOnModule(HloModule* module, int64_t distance_threshold = 100) {
     HloPassPipeline pipeline("all-gather-cse");

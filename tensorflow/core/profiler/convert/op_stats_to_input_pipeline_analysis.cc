@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/util/stats_calculator.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
@@ -46,7 +47,6 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/op_metrics_db_utils.h"
 #include "tsl/profiler/utils/format_utils.h"
 #include "tsl/profiler/utils/tf_op_utils.h"
-#include "tsl/util/stats_calculator.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -659,7 +659,7 @@ bool InputAnalysis(double input_percent, double all_other_percent,
         "could be due to I/O or Python execution or both).");
     return true;
   } else {
-    // Defintely not input-bound.
+    // Definitely not input-bound.
     *input_classification = "device";
     *input_statement =
         absl::StrCat("Your program is NOT input-bound because only ",

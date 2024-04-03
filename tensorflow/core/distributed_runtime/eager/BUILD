@@ -173,6 +173,9 @@ cc_library(
         "//tensorflow/core/common_runtime/eager:eager_executor",
         "//tensorflow/core/common_runtime/eager:tensor_handle",
         "//tensorflow/core/platform:error_payloads",
+        "//tensorflow/core/util:env_var",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -203,6 +206,9 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/common_runtime/eager:context",
         "//tensorflow/core/profiler/lib:traceme",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 

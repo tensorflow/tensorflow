@@ -94,9 +94,9 @@ tf_cc_test(
         "@local_xla//xla:shape_util",
         "@local_xla//xla/pjrt:pjrt_api",
         "@local_xla//xla/pjrt:pjrt_c_api_client",
-        "@local_xla//xla/pjrt:tfrt_cpu_pjrt_client",
         "@local_xla//xla/pjrt/c:pjrt_c_api_cpu",
         "@local_xla//xla/pjrt/c:pjrt_c_api_hdrs",
         "@local_xla//xla/pjrt/c:pjrt_c_api_wrapper_impl",
+        "@local_xla//xla/pjrt/cpu:cpu_client",
     ],
 )

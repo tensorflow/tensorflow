@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,11 +16,10 @@ limitations under the License.
 #include "xla/service/gpu/gpu_conv_padding_legalization.h"
 
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/test.h"
 #include "xla/tests/hlo_test_base.h"

@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -117,7 +117,7 @@ HloInstruction* WhileLoopFusibleSinking::CreateSinkableFusion(
   return fusion;
 }
 
-StatusOr<bool> WhileLoopFusibleSinking::TrySinkingFusiblesIntoWhileLoop(
+absl::StatusOr<bool> WhileLoopFusibleSinking::TrySinkingFusiblesIntoWhileLoop(
     HloInstruction* while_instr) {
   HloComputation* while_cond = while_instr->while_condition();
   HloComputation* while_body = while_instr->while_body();
@@ -144,6 +144,22 @@ StatusOr<bool> WhileLoopFusibleSinking::TrySinkingFusiblesIntoWhileLoop(
   for (HloInstruction* invariant_body_gte : invariant_body_gtes) {
     int64_t index = invariant_body_gte->tuple_index();
     HloInstruction* invariant_value = init_value->mutable_operand(index);
+
+    // If a while operand is used by a slicing instruction, avoid fusing
+    // invariant value into the loop.
+    if (absl::c_any_of(invariant_body_gte->users(),
+                       [](const HloInstruction* use) {
+                         switch (use->opcode()) {
+                           case HloOpcode::kDynamicSlice:
+                           case HloOpcode::kGather:
+                           case HloOpcode::kSlice:
+                             return true;
+                           default:
+                             return false;
+                         }
+                       })) {
+      continue;
+    }
 
     if (init_value->IsRoot() || init_value->user_count() > 1) {
       init_value = init_value->AddInstruction(init_value->Clone());
@@ -219,7 +235,7 @@ StatusOr<bool> WhileLoopFusibleSinking::TrySinkingFusiblesIntoWhileLoop(
   return changed;
 }
 
-StatusOr<bool> WhileLoopFusibleSinking::Run(
+absl::StatusOr<bool> WhileLoopFusibleSinking::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   call_counts_.clear();

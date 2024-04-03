@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -36,7 +36,7 @@ limitations under the License.
 #include "xla/service/cpu/backend_config.pb.h"
 #include "xla/service/cpu/onednn_memory_util.h"
 #include "xla/service/cpu/runtime_lightweight_check.h"
-#include "tsl/util/onednn_threadpool.h"
+#include "xla/tsl/util/onednn_threadpool.h"
 #include "unsupported/Eigen/CXX11/Tensor"
 
 namespace xla {

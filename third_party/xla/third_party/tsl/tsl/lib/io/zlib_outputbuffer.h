@@ -49,7 +49,7 @@ class ZlibOutputBuffer : public WritableFile {
       int32_t output_buffer_bytes,  // size of z_stream.next_out buffer
       const ZlibCompressionOptions& zlib_options);
 
-  ~ZlibOutputBuffer();
+  ~ZlibOutputBuffer() override;
 
   // Initializes some state necessary for the output buffer. This call is
   // required before any other operation on the buffer.

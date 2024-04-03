@@ -35,7 +35,7 @@ func.func @good_array_scalar() {
 // -----
 
 func.func @array_devices_should_be_distinct() {
-  // expected-error@+3 {{Device list has duplicate id 0}}
+  // expected-error@+3 {{Device list has duplicate logical id 0}}
   // expected-error@+2 {{failed to parse Ifrt_ArrayType parameter 'devices_attr'}}
   %0 = builtin.unrealized_conversion_cast to
       !ifrt.array<tensor<4x4xi32>, 1x1 to [0] on 2, [0,0]>
@@ -45,7 +45,7 @@ func.func @array_devices_should_be_distinct() {
 // -----
 
 func.func @array_devices_should_be_non_negative() {
-  // expected-error@+3 {{Device list has negative id -1}}
+  // expected-error@+3 {{Device list has negative logical id -1}}
   // expected-error@+2 {{failed to parse Ifrt_ArrayType parameter 'devices_attr'}}
   %0 = builtin.unrealized_conversion_cast to
       !ifrt.array<tensor<4x4xi32>, 1x1 to [0] on 2, [-1,0]>
@@ -64,7 +64,7 @@ func.func @array_requires_same_permutation_and_axis_sizes() {
 // -----
 
 func.func @array_requires_enough_devices() {
-  // expected-error@+2 {{Can't shard the dims 2, 2 to the mesh of 0 on 2}}
+  // expected-error@+2 {{Can't shard the dims 2x2 to the mesh of [0] on 2}}
   %0 = builtin.unrealized_conversion_cast to
       !ifrt.array<tensor<4x4xi32>, 2x2 to [0] on 2, [0,1]>
   return
@@ -73,7 +73,7 @@ func.func @array_requires_enough_devices() {
 // -----
 
 func.func @array_requires_shard_distributable_to_axes() {
-  // expected-error@+2 {{Dimension #1 of 2 shards can't be assigned to the axes}}
+  // expected-error@+2 {{Can't shard the dims 1x2 to the mesh of [0] on 3}}
   %0 = builtin.unrealized_conversion_cast to
       !ifrt.array<tensor<4x4xi32>, 1x2 to [0] on 3, [0,1,2]>
   return

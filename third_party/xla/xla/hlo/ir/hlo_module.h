@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -505,12 +505,18 @@ class HloModule {
   const HloInputOutputAliasConfig& input_output_alias_config() const {
     return input_output_alias_config_;
   }
+  void set_input_output_alias_config(HloInputOutputAliasConfig config) {
+    input_output_alias_config_ = std::move(config);
+  }
 
   // buffer_donor_config_ indicates the set of input buffer donors that are
   // expected from the module.
   HloBufferDonorConfig& buffer_donor_config() { return buffer_donor_config_; }
   const HloBufferDonorConfig& buffer_donor_config() const {
     return buffer_donor_config_;
+  }
+  void set_buffer_donor_config(HloBufferDonorConfig config) {
+    buffer_donor_config_ = std::move(config);
   }
 
   // Returns an id that is unique to this module across all modules created over
@@ -544,6 +550,12 @@ class HloModule {
   void SetAndUniquifyInstrName(HloInstruction* instr, absl::string_view name) {
     instr->SetAndSanitizeName(name);
     instr->UniquifyName(&instruction_name_uniquer_);
+  }
+
+  void SetAndUniquifyComputationName(HloComputation* computation,
+                                     absl::string_view name) {
+    computation->SetAndSanitizeName(name);
+    computation->UniquifyName(&computation_name_uniquer_);
   }
 
   Status CheckUniqueNamesAndIdsForComputationsAndInstructions() const;

@@ -116,7 +116,7 @@ class DistributedRuntimeClient {
   // Key-value store API.
   // There are no concurrency guarantees. To avoid a race / impose an ordering
   // on potentially concurrent ops (e.g. set, delete), use WaitAtBarrier().
-  virtual xla::StatusOr<std::string> BlockingKeyValueGet(
+  virtual absl::StatusOr<std::string> BlockingKeyValueGet(
       std::string_view key, absl::Duration timeout) = 0;
 
   // Get all key-value pairs under a directory (key).
@@ -124,7 +124,7 @@ class DistributedRuntimeClient {
   // the directory.
   // This is not a blocking call. If no keys are found, an empty vector is
   // returned immediately.
-  virtual xla::StatusOr<std::vector<std::pair<std::string, std::string>>>
+  virtual absl::StatusOr<std::vector<std::pair<std::string, std::string>>>
   KeyValueDirGet(std::string_view key) = 0;
 
   virtual xla::Status KeyValueSet(std::string_view key,
@@ -141,7 +141,7 @@ class DistributedRuntimeClient {
 
   // Returns pointer to coordination service agent, or InternalError if the
   // client does not use coordination service.
-  virtual StatusOr<tsl::CoordinationServiceAgent*>
+  virtual absl::StatusOr<tsl::CoordinationServiceAgent*>
   GetCoordinationServiceAgent() = 0;
 };
 

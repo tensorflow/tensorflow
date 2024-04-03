@@ -382,7 +382,7 @@ tf_module {
   }
   member_method {
     name: "BatchFunction"
-    argspec: "args=[\'in_tensors\', \'captured_tensors\', \'f\', \'num_batch_threads\', \'max_batch_size\', \'batch_timeout_micros\', \'Tout\', \'max_enqueued_batches\', \'allowed_batch_sizes\', \'container\', \'shared_name\', \'batching_queue\', \'low_priority_max_batch_size\', \'low_priority_batch_timeout_micros\', \'low_priority_allowed_batch_sizes\', \'low_priority_max_enqueued_batches\', \'enable_large_batch_splitting\', \'name\'], varargs=None, keywords=None, defaults=[\'10\', \'[]\', \'\', \'\', \'\', \'0\', \'0\', \'[]\', \'0\', \'False\', \'None\'], "
+    argspec: "args=[\'in_tensors\', \'captured_tensors\', \'f\', \'num_batch_threads\', \'max_batch_size\', \'batch_timeout_micros\', \'Tout\', \'max_enqueued_batches\', \'allowed_batch_sizes\', \'container\', \'shared_name\', \'batching_queue\', \'low_priority_max_batch_size\', \'low_priority_batch_timeout_micros\', \'low_priority_allowed_batch_sizes\', \'low_priority_max_enqueued_batches\', \'mixed_priority_policy\', \'enable_large_batch_splitting\', \'name\'], varargs=None, keywords=None, defaults=[\'10\', \'[]\', \'\', \'\', \'\', \'0\', \'0\', \'[]\', \'0\', \'low_priority_padding_with_max_batch_size\', \'False\', \'None\'], "
   }
   member_method {
     name: "BatchIFFT"
@@ -1107,6 +1107,10 @@ tf_module {
   member_method {
     name: "DatasetCardinality"
     argspec: "args=[\'input_dataset\', \'cardinality_options\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'None\'], "
+  }
+  member_method {
+    name: "DatasetFingerprint"
+    argspec: "args=[\'input_dataset\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "DatasetFromGraph"
@@ -1941,6 +1945,10 @@ tf_module {
     argspec: "args=[\'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "GlobalShuffleDataset"
+    argspec: "args=[\'input_dataset\', \'seed\', \'seed2\', \'seed_generator\', \'output_types\', \'output_shapes\', \'reshuffle_each_iteration\', \'metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'\', \'None\'], "
+  }
+  member_method {
     name: "Greater"
     argspec: "args=[\'x\', \'y\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -2199,6 +2207,10 @@ tf_module {
   member_method {
     name: "IteratorGetDevice"
     argspec: "args=[\'resource\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "IteratorGetModelProto"
+    argspec: "args=[\'iterator\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "IteratorGetNext"

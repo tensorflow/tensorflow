@@ -68,16 +68,19 @@ bool IsAutotuneNode(const string& node_name, const MutableGraphView& graph) {
 // `determistic` attr value.
 bool SameDeterministicAttr(const NodeDef& parallel_map_node,
                            const NodeDef& parent_parallel_map_node) {
-  const auto* first_deterministic_val =
+  const auto* first_deterministic_attr =
       gtl::FindOrNull(parallel_map_node.attr(), kDeterministicAttr);
-  const auto* second_deterministic_val =
+  const auto* second_deterministic_attr =
       gtl::FindOrNull(parent_parallel_map_node.attr(), kDeterministicAttr);
-
-  if (first_deterministic_val && second_deterministic_val) {
-    return first_deterministic_val->s() == second_deterministic_val->s();
-  }
-
-  return false;
+  const bool first_deterministic_val =
+      (first_deterministic_attr == nullptr) ||
+      (first_deterministic_attr->s() == "true" ||
+       first_deterministic_attr->s() == "default");
+  const bool second_deterministic_val =
+      (second_deterministic_attr == nullptr) ||
+      (second_deterministic_attr->s() == "true" ||
+       second_deterministic_attr->s() == "default");
+  return first_deterministic_val == second_deterministic_val;
 }
 
 // Returns a name for a new node or function that fuses the inputs.
@@ -164,7 +167,7 @@ Status MapFusion::OptimizeAndCollectStats(Cluster* cluster,
   if (!autotune_) {
     VLOG(1) << "The optimization map_fusion is not applied if "
                "autotune is off.";
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   MutableGraphView graph(output);
@@ -244,7 +247,7 @@ Status MapFusion::OptimizeAndCollectStats(Cluster* cluster,
   }
 
   TF_RETURN_IF_ERROR(graph.DeleteNodes(nodes_to_delete));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 REGISTER_GRAPH_OPTIMIZER_AS(MapFusion, "map_fusion");

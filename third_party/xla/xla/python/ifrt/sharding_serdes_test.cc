@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,6 +21,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/functional/bind_front.h"
+#include "llvm/Support/Casting.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/serdes.pb.h"
@@ -153,7 +154,8 @@ TEST_P(ShardingSerDesTest, ConcreteEvenShardingRoundTrip) {
 
 INSTANTIATE_TEST_SUITE_P(NumDevices, ShardingSerDesTest,
                          testing::Values(test_util::ShardingTestParam{
-                             .num_devices = 2, .num_addressable_devices = 2}));
+                             /*num_devices=*/2,
+                             /*num_addressable_devices=*/2}));
 
 }  // namespace
 }  // namespace ifrt

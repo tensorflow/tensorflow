@@ -1,11 +1,12 @@
 # Description:
 #   Computationally expensive, exhaustive tests for XLA
 
-load("//xla/tests:build_defs.bzl", "xla_test")
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
+load("//xla/tests:build_defs.bzl", "xla_test")
 
 package(
-    default_visibility = ["//visibility:public"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = [":friends"],
     licenses = ["notice"],
 )
 
@@ -25,7 +26,6 @@ cc_library(
     srcs = ["exhaustive_op_test_utils.cc"],
     hdrs = ["exhaustive_op_test_utils.h"],
     tags = ["no_pip"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:bit_cast",
         "//xla:shape_util",

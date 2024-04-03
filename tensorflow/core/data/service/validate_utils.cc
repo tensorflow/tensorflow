@@ -47,7 +47,7 @@ Status ValidateElementSpec(const std::string& dataset_id,
                            const std::string& encoded_spec1,
                            const std::string& encoded_spec2) {
   if (encoded_spec1.empty() && encoded_spec2.empty()) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   TF_ASSIGN_OR_RETURN(StructuredValue element_spec1,
                       DecodeElementSpec(dataset_id, encoded_spec1));
@@ -67,7 +67,7 @@ Status ValidateElementSpec(const std::string& dataset_id,
         ". To fix this error, make sure you're registering the same dataset ",
         "with the same ID.");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ValidateDatasetMetadata(const std::string& dataset_id,
@@ -89,7 +89,7 @@ Status ValidateDatasetMetadata(const std::string& dataset_id,
         "for dataset ID ", dataset_id, ": ", diff, ". To fix this error, make ",
         "sure you're registering the same dataset with the same ID.");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace

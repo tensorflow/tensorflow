@@ -1,14 +1,15 @@
 # Description:
 #   Implementation of XLA’s HLO utilities used for higher-level transformations.
 
+load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load(
     "//xla:xla.bzl",
     "xla_cc_test",
 )
-load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
-    default_visibility = ["//visibility:public"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = [":friends"],
     licenses = ["notice"],
 )
 
@@ -23,7 +24,6 @@ cc_library(
     name = "hlo_live_range",
     srcs = ["hlo_live_range.cc"],
     hdrs = ["hlo_live_range.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:shape_util",
         "//xla:statusor",
@@ -65,7 +65,6 @@ cc_library(
     testonly = 1,
     srcs = ["hlo_matchers.cc"],
     hdrs = ["hlo_matchers.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:test",
         "//xla/hlo/ir:hlo",
@@ -94,7 +93,6 @@ cc_library(
     hdrs = [
         "hlo_sharding_util.h",
     ],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:array",
         "//xla:literal_util",
@@ -127,6 +125,7 @@ xla_cc_test(
     ],
     deps = [
         ":hlo_sharding_util",
+        "//xla:array",
         "//xla:shape_util",
         "//xla:test",
         "//xla:util",
@@ -143,7 +142,6 @@ cc_library(
     name = "hlo_query",
     srcs = ["hlo_query.cc"],
     hdrs = ["hlo_query.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:literal",
         "//xla:shape_util",

@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,17 +15,18 @@ limitations under the License.
 
 #include "xla/service/gpu/hlo_fusion_stats.h"
 
+#include <set>
 #include <string>
 
 #include "absl/status/status.h"
-#include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/status.h"
 #include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -48,6 +49,7 @@ class OpcodeCollector : public ConstDfsHloVisitorWithDefault {
       case HloOpcode::kCbrt:
       case HloOpcode::kCeil:
       case HloOpcode::kCos:
+      case HloOpcode::kErf:
       case HloOpcode::kExp:
       case HloOpcode::kExpm1:
       case HloOpcode::kFloor:

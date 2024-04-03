@@ -3,6 +3,7 @@
 load(
     "//tsl:tsl.bzl",
     _filegroup = "filegroup",
+    _get_compatible_with_libtpu_portable = "get_compatible_with_libtpu_portable",
     _get_compatible_with_portable = "get_compatible_with_portable",
     _if_not_mobile_or_arm_or_lgpl_restricted = "if_not_mobile_or_arm_or_lgpl_restricted",
     _internal_hlo_deps = "internal_hlo_deps",
@@ -11,6 +12,7 @@ load(
 )
 
 get_compatible_with_portable = _get_compatible_with_portable
+get_compatible_with_libtpu_portable = _get_compatible_with_libtpu_portable
 filegroup = _filegroup
 if_not_mobile_or_arm_or_lgpl_restricted = _if_not_mobile_or_arm_or_lgpl_restricted
 internal_hlo_deps = _internal_hlo_deps

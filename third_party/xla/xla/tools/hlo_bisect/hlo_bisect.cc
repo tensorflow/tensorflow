@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,8 +20,8 @@ limitations under the License.
 #include <vector>
 
 #include "xla/tools/hlo_bisect/hlo_bisect_utils.h"
+#include "xla/tsl/util/command_line_flags.h"
 #include "tsl/platform/init_main.h"
-#include "tsl/util/command_line_flags.h"
 
 const char* const kUsage = R"(
 Given an HloModule that manifests an XLA bug, either crashes the compiler or

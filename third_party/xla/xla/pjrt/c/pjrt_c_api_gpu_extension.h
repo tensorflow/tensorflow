@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -41,10 +41,12 @@ typedef PJRT_Error* PJRT_Gpu_Register_Custom_Call(
     PJRT_Gpu_Register_Custom_Call_Args* args);
 
 typedef struct PJRT_Gpu_Custom_Call {
-  PJRT_Structure_Type type;
-  const void* next;
+  size_t struct_size;
+  PJRT_Extension_Type type;
+  PJRT_Extension_Base* next;
   PJRT_Gpu_Register_Custom_Call* custom_call;
 } PJRT_Gpu_Custom_Call;
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Gpu_Custom_Call, custom_call);
 
 #ifdef __cplusplus
 }

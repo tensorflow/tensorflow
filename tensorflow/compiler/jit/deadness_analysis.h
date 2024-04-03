@@ -73,8 +73,8 @@ class DeadnessAnalysis {
     friend class DeadnessAnalysis;
   };
 
-  virtual tsl::StatusOr<DeadnessPredicate> GetPredicateFor(Node* n,
-                                                           int oidx) const = 0;
+  virtual absl::StatusOr<DeadnessPredicate> GetPredicateFor(Node* n,
+                                                            int oidx) const = 0;
 
   // Prints out the internal state of this instance.  For debugging purposes
   // only.

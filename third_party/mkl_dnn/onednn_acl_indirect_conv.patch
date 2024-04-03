@@ -1,0 +1,31 @@
+ *******************************************************************************
+ Copyright 2024 Arm Limited and affiliates.
+ SPDX-License-Identifier: Apache-2.0
+
+ Licensed under the Apache License, Version 2.0 (the "License");
+ you may not use this file except in compliance with the License.
+ You may obtain a copy of the License at
+
+     http://www.apache.org/licenses/LICENSE-2.0
+
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+ *******************************************************************************
+diff --git a/src/cpu/aarch64/acl_convolution_utils.cpp b/src/cpu/aarch64/acl_convolution_utils.cpp
+index f043fee4bc..0384cce757 100644
+--- a/src/cpu/aarch64/acl_convolution_utils.cpp
++++ b/src/cpu/aarch64/acl_convolution_utils.cpp
+@@ -313,10 +313,6 @@ status_t init_conf_indirect_gemm(acl_conv_conf_t &acp, memory_desc_t &src_md,
+
+     CHECK(acl_init_conf(acp, src_md, weights_md, dst_md, bias_md, cd, attr));
+
+-    // Indirect is slower than gemm for low thread counts, except for fast math
+-    if (dnnl_get_max_threads() < 28 && !acp.fast_math)
+-        return status::unimplemented;
+-
+     // If we do not need to pad input channels for fast math mode then it would
+     // be faster to run convolution with im2row instead of using indirect kernel
+     int block_by = arm_compute::block_by(acp.weights_info.weight_format());

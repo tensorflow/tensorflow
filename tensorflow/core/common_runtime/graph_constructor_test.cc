@@ -109,7 +109,7 @@ class GraphConstructorTest : public ::testing::Test {
                 ImportGraphDefResults* results = nullptr) {
     Convert(gdef_ascii);
     Status s = ImportGraphDef(opts, gdef_, &graph_, refiner, results);
-    EXPECT_EQ(OkStatus(), s) << s;
+    EXPECT_EQ(absl::OkStatus(), s) << s;
   }
 
   void ExpectVersions(int min_consumer, int producer) {
@@ -184,7 +184,7 @@ Status Scalars(shape_inference::InferenceContext* c) {
   for (int i = 0; i < c->num_outputs(); ++i) {
     c->set_output(i, c->Scalar());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 REGISTER_OP("ABC");
@@ -812,7 +812,7 @@ versions {
 
   ImportGraphDefOptions opts;
   auto s = ImportGraphDef(opts, def, &graph_, nullptr);
-  ASSERT_EQ(OkStatus(), s) << s;
+  ASSERT_EQ(absl::OkStatus(), s) << s;
 }
 
 TEST_F(GraphConstructorTest, TypeMismatch) {
@@ -933,7 +933,7 @@ TEST_F(GraphConstructorTest, ImportGraphDef) {
 
   // Importing an empty graph is fine.
   Status s = ImportGraphDef(opts, def, &graph_, nullptr);
-  ASSERT_EQ(OkStatus(), s) << s;
+  ASSERT_EQ(absl::OkStatus(), s) << s;
   EXPECT_EQ(2, graph_.num_nodes());
   EXPECT_TRUE(HasControlEdge(source, sink));
   EXPECT_EQ(1, graph_.num_edges());
@@ -968,7 +968,7 @@ TEST_F(GraphConstructorTest, ImportGraphDef) {
 
   // First import should work out fine.
   s = ImportGraphDef(opts, def, &graph_, nullptr);
-  ASSERT_EQ(OkStatus(), s) << s;
+  ASSERT_EQ(absl::OkStatus(), s) << s;
   EXPECT_EQ(5 + 2, graph_.num_nodes());  // Added nodes + source and sink
   EXPECT_EQ("A", ColocationGroup("B"));
   EXPECT_TRUE(HasEdge("A", 0, "B", 0));
@@ -989,7 +989,7 @@ TEST_F(GraphConstructorTest, ImportGraphDef) {
   // But succeed if a unique prefix is provided.
   opts.prefix = "import";
   s = ImportGraphDef(opts, def, &graph_, nullptr);
-  ASSERT_EQ(OkStatus(), s) << s;
+  ASSERT_EQ(absl::OkStatus(), s) << s;
   EXPECT_EQ(
       10 + 2,
       graph_.num_nodes());  // Added nodes + original nodes + source and sink
@@ -1020,7 +1020,7 @@ TEST_F(GraphConstructorTest, ImportGraphDef_DefaultAttrs) {
   ASSERT_TRUE(protobuf::TextFormat::ParseFromString(
       "node{ name:'A' op:'TestDefaultAttr'}", &def));
   Status s = ImportGraphDef(ImportGraphDefOptions(), def, &graph_, nullptr);
-  ASSERT_EQ(OkStatus(), s) << s;
+  ASSERT_EQ(absl::OkStatus(), s) << s;
   Node* a = nullptr;
   for (Node* n : graph_.nodes()) {
     if (n->name() == "A") {
@@ -1031,7 +1031,7 @@ TEST_F(GraphConstructorTest, ImportGraphDef_DefaultAttrs) {
   ASSERT_TRUE(a != nullptr);
   int value = 0;
   s = GetNodeAttr(a->attrs(), "default_int", &value);
-  ASSERT_EQ(OkStatus(), s) << s << " -- " << a->def().DebugString();
+  ASSERT_EQ(absl::OkStatus(), s) << s << " -- " << a->def().DebugString();
   EXPECT_EQ(31415, value);
 }
 
@@ -1056,14 +1056,14 @@ TEST_F(GraphConstructorTest, ImportGraphDef_Versioning) {
   def.mutable_versions()->Clear();
   graph_.ToGraphDef(&def);
   s = ImportGraphDef(opts, def, &graph_, nullptr);
-  EXPECT_EQ(OkStatus(), s) << s;
+  EXPECT_EQ(absl::OkStatus(), s) << s;
 
   def.Clear();
   const int original_min_consumer = graph_.versions().min_consumer();
   def.mutable_versions()->set_min_consumer(original_min_consumer + 2);
   def.mutable_versions()->add_bad_consumers(TF_GRAPH_DEF_VERSION - 1);
   s = ImportGraphDef(opts, def, &graph_, nullptr);
-  EXPECT_EQ(OkStatus(), s) << s;
+  EXPECT_EQ(absl::OkStatus(), s) << s;
   EXPECT_EQ(original_min_consumer + 2, graph_.versions().min_consumer());
   ASSERT_EQ(1, graph_.versions().bad_consumers_size());
   EXPECT_EQ(TF_GRAPH_DEF_VERSION - 1, graph_.versions().bad_consumers(0));
@@ -1162,7 +1162,7 @@ node {
       &def);
   ASSERT_TRUE(parsed);
   Status s = ImportGraphDef(ImportGraphDefOptions(), def, &graph_, nullptr);
-  EXPECT_EQ(OkStatus(), s) << s;
+  EXPECT_EQ(absl::OkStatus(), s) << s;
 
   Graph g2(OpRegistry::Global());
   def.mutable_versions()->set_producer(10);
@@ -2256,7 +2256,7 @@ versions {
       &def);
   ASSERT_TRUE(parsed);
   Status s = ImportGraphDef(ImportGraphDefOptions(), def, &graph_, nullptr);
-  EXPECT_EQ(OkStatus(), s) << s;
+  EXPECT_EQ(absl::OkStatus(), s) << s;
 }
 
 TEST_F(GraphConstructorTest, ImportGraphDef_ControlDeps) {
@@ -2444,7 +2444,7 @@ TEST_F(GraphConstructorTest, ImportGraphDef_ErrorsDoNoChangeTheGraph) {
   const string& sink = graph_.FindNodeId(Graph::kSinkId)->name();
 
   Status s = ImportGraphDef(opts, def, &graph_, nullptr);
-  ASSERT_EQ(OkStatus(), s) << s;
+  ASSERT_EQ(absl::OkStatus(), s) << s;
   EXPECT_EQ(3, graph_.num_nodes());  // 'scope/A', source and sink
   EXPECT_TRUE(HasControlEdge(source, sink));
   EXPECT_TRUE(HasControlEdge(source, "scope/A"));

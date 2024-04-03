@@ -32,7 +32,7 @@ Status OptionalZerosLike(OpKernelContext* ctx, const OptionalVariant& x,
                                               const Tensor& input, Tensor* out)>
                              zeros_like_func) {
   if (!x.has_value()) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   std::vector<Tensor> zero_tensors;
   for (const Tensor& tensor : x.get_values()) {
@@ -41,7 +41,7 @@ Status OptionalZerosLike(OpKernelContext* ctx, const OptionalVariant& x,
     zero_tensors.push_back(std::move(zero_t));
   }
   *y = OptionalVariant(zero_tensors);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status OptionalBinaryAdd(
@@ -56,7 +56,7 @@ Status OptionalBinaryAdd(
         "Cannot add optionals because one has a value and the other doesn't.");
   }
   if (!a.has_value()) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   if (a.get_values().size() != b.get_values().size()) {
     return errors::InvalidArgument(
@@ -73,7 +73,7 @@ Status OptionalBinaryAdd(
     out_tensors.push_back(std::move(out_tensor));
   }
   *out = OptionalVariant(out_tensors);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace data

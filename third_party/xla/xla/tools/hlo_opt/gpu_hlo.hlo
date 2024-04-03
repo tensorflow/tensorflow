@@ -2,6 +2,9 @@
 
 HloModule module
 
+// --stage=hlo doesn't run scheduling.
+// CHECK-NOT: is_scheduled
+
 ENTRY computation {
 // CHECK: bitcast
     p = f32[5000,6000]{1,0} parameter(0)

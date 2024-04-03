@@ -14,45 +14,33 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/pre_calibration.h"
 
-#include <utility>
-
 #include "absl/base/nullability.h"
 #include "absl/log/die_if_null.h"
 #include "absl/status/statusor.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/pass_pipeline.h"
-#include "tensorflow/compiler/mlir/quantization/stablehlo/passes/passes.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/run_passes.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 #include "tsl/platform/errors.h"
 
 namespace mlir::quant::stablehlo {
 
 using ::stablehlo::quantization::QuantizationConfig;
-using ::tensorflow::quantization::CalibrationOptions;
 using ::tensorflow::quantization::RunPasses;
 
 PreCalibrationComponent::PreCalibrationComponent(
-    absl::Nonnull<MLIRContext*> ctx, CalibrationOptions calibration_options)
-    : ctx_(ABSL_DIE_IF_NULL(ctx)),  // Crash OK
-      calibration_options_(std::move(calibration_options)) {}
+    absl::Nonnull<MLIRContext*> ctx)
+    : ctx_(ABSL_DIE_IF_NULL(ctx)) {}  // Crash OK
 
 absl::StatusOr<ModuleOp> PreCalibrationComponent::Run(
     ModuleOp module_op, const QuantizationConfig& config) {
   TF_RETURN_IF_ERROR(RunPasses(
-      /*name=*/kName, /*add_passes_func=*/
-      [this](PassManager& pm) {
-        pm.addPass(createLiftQuantizableSpotsAsFunctionsPass());
-        pm.addNestedPass<func::FuncOp>(
-            CreateInsertCustomAggregationOpsPass(calibration_options_));
-        pm.addPass(CreateIssueIDsOfCustomAggregationOpsPass());
-        // StableHLO Quantizer currently uses TF's calibration passes. Serialize
-        // the StableHLO module as tf.XlaCallModule to run calibration.
-        AddCallModuleSerializationPasses(pm);
+      kName, /*add_passes_func=*/
+      [&config, this](PassManager& pm) {
+        AddPreCalibrationPasses(pm, config.calibration_options(),
+                                config.specs(), config.debugger_config());
       },
       *ctx_, module_op));
   return module_op;

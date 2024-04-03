@@ -93,6 +93,7 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:protobuf",
     ],
     alwayslink = 1,
 )
@@ -181,14 +182,12 @@ tf_cc_test(
 tf_proto_library(
     name = "op_reg_offset_proto",
     srcs = ["op_reg_offset.proto"],
-    cc_api_version = 3,
     visibility = ["//tensorflow:internal"],
 )
 
 tf_proto_library(
     name = "kythe_metadata_proto",
     srcs = ["kythe_metadata.proto"],
-    cc_api_version = 3,
     visibility = ["//tensorflow:internal"],
 )
 
@@ -204,7 +203,7 @@ tf_cc_binary(
         "@local_tsl//tsl/platform:platform_port",
         "@local_tsl//tsl/platform:strcat",
         "@local_tsl//tsl/platform:types",
-        "@local_tsl//tsl/util:command_line_flags",
+        "@local_xla//xla/tsl/util:command_line_flags",
     ],
 )
 
@@ -866,7 +865,7 @@ tf_python_pybind_extension(
         "//tensorflow/python/lib/core:safe_pyobject_ptr_required_hdrs",
         "@local_tsl//tsl/distributed_runtime:pywrap_required_hdrs",
         "@local_tsl//tsl/distributed_runtime/coordination:pywrap_required_hdrs",
-        "@local_tsl//tsl/python/lib/core:numpy_hdr",
+        "@local_xla//xla/tsl/python/lib/core:numpy_hdr",
     ],
     enable_stub_generation = True,
     pytype_srcs = [
@@ -966,7 +965,7 @@ tf_python_pybind_extension(
         "//tensorflow/python/lib/core:safe_pyobject_ptr_required_hdrs",
         "@local_tsl//tsl/distributed_runtime:pywrap_required_hdrs",
         "@local_tsl//tsl/distributed_runtime/coordination:pywrap_required_hdrs",
-        "@local_tsl//tsl/python/lib/core:numpy_hdr",
+        "@local_xla//xla/tsl/python/lib/core:numpy_hdr",
     ],
     enable_stub_generation = True,
     pytype_srcs = [
@@ -1054,6 +1053,7 @@ tf_python_pybind_extension(
         "//tensorflow/python/util:function_parameter_canonicalizer_hdrs",
         "//third_party/python_runtime:headers",  # buildcleaner: keep
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
         "@pybind11",
     ],
 )
@@ -1109,7 +1109,7 @@ tf_python_pybind_extension(
         "//tensorflow/python/lib/core:safe_pyobject_ptr_required_hdrs",
         "@local_tsl//tsl/distributed_runtime:pywrap_required_hdrs",
         "@local_tsl//tsl/distributed_runtime/coordination:pywrap_required_hdrs",
-        "@local_tsl//tsl/python/lib/core:numpy_hdr",
+        "@local_xla//xla/tsl/python/lib/core:numpy_hdr",
     ],
     enable_stub_generation = True,
     pytype_srcs = [
@@ -1183,7 +1183,6 @@ pytype_strict_library(
         ":c_api_util",
         ":composite_tensor",
         ":device",
-        ":device_spec",
         ":dtypes",
         ":errors",
         ":op_callbacks",
@@ -2088,7 +2087,6 @@ pytype_strict_library(
     srcs_version = "PY3",
     visibility = visibility + [
         "//tensorflow:internal",
-        "//tensorflow_estimator/python/estimator:__subpackages__",
         "//tensorflow_model_optimization:__subpackages__",
         "//third_party/cloud_tpu/convergence_tools:__subpackages__",
         "//third_party/py/neural_structured_learning:__subpackages__",

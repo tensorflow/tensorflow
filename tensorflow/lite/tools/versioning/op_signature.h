@@ -52,6 +52,7 @@ typedef struct {
       // TODO(b/156530611): Make this global when more ops support sparse
       // computation.
       bool sparse_weight;
+      bool is_per_channel_quantized;
     } fully_connected;
     struct {
       float input1_scale;

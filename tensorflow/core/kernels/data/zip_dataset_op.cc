@@ -70,7 +70,7 @@ class ZipDatasetOp::Dataset : public DatasetBase {
   Status MakeSplitProviders(std::vector<std::unique_ptr<SplitProvider>>*
                                 split_providers) const override {
     TF_ASSIGN_OR_RETURN(*split_providers, GetSplitProviders(this));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   const DataTypeVector& output_dtypes() const override {
@@ -104,14 +104,14 @@ class ZipDatasetOp::Dataset : public DatasetBase {
     for (const auto& input : inputs_) {
       inputs->push_back(input);
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status CheckExternalState() const override {
     for (const auto& input : inputs_) {
       TF_RETURN_IF_ERROR(input->CheckExternalState());
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status Get(OpKernelContext* ctx, int64 index,
@@ -124,7 +124,7 @@ class ZipDatasetOp::Dataset : public DatasetBase {
       out_tensors->insert(out_tensors->end(), input_tensors.begin(),
                           input_tensors.end());
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  protected:
@@ -140,7 +140,7 @@ class ZipDatasetOp::Dataset : public DatasetBase {
     }
     TF_RETURN_IF_ERROR(b->AddDataset(
         this, {}, {std::make_pair(0, input_graph_nodes)}, {}, output));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:
@@ -162,7 +162,7 @@ class ZipDatasetOp::Dataset : public DatasetBase {
             &input_impls_[i]));
         ctx->MergeCheckpoint(input_contexts_[i].checkpoint());
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     Status GetNextInternal(IteratorContext* ctx,
@@ -171,11 +171,11 @@ class ZipDatasetOp::Dataset : public DatasetBase {
       mutex_lock l(mu_);
       if (input_impls_.empty()) {
         *end_of_sequence = true;
-        return OkStatus();
+        return absl::OkStatus();
       }
       out_tensors->clear();
       out_tensors->reserve(dataset()->output_dtypes().size());
-      Status status = OkStatus();
+      Status status = absl::OkStatus();
       *end_of_sequence = false;
       for (int i = 0; i < input_impls_.size(); ++i) {
         const auto& input_impl = input_impls_[i];
@@ -232,7 +232,7 @@ class ZipDatasetOp::Dataset : public DatasetBase {
       for (auto& input_impl : input_impls_) {
         TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl));
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     Status RestoreInternal(IteratorContext* ctx,
@@ -248,7 +248,7 @@ class ZipDatasetOp::Dataset : public DatasetBase {
         for (auto& input_impl : input_impls_)
           TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl));
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
 
    private:

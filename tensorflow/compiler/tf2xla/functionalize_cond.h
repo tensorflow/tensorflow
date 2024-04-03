@@ -193,8 +193,8 @@ class FunctionalizeCond {
 
   // Add a If node to the graph defined by def that will, amongst other, replace
   // replacee in the graph.
-  StatusOr<Node*> AddIfNode(const NodeDef& def, const Node* replacee,
-                            const OutputTensor& predicate);
+  absl::StatusOr<Node*> AddIfNode(const NodeDef& def, const Node* replacee,
+                                  const OutputTensor& predicate);
 
   // Propagates the state of a newly inserted node.
   Status PropagateUpdatedState(const Node* replacee);
@@ -238,11 +238,11 @@ class FunctionalizeCond {
   // Determines the dst node's CondState by joining the src and dst's CondState
   // where either the dst node is a merge or not.
   // These may modify state_map_.
-  StatusOr<StateMap::CondId> JoinCondStatesMerge(Node* merge,
-                                                 StateMap::CondId src,
-                                                 StateMap::CondId dst);
-  StatusOr<StateMap::CondId> JoinCondStatesNonMerge(StateMap::CondId src,
-                                                    StateMap::CondId dst);
+  absl::StatusOr<StateMap::CondId> JoinCondStatesMerge(Node* merge,
+                                                       StateMap::CondId src,
+                                                       StateMap::CondId dst);
+  absl::StatusOr<StateMap::CondId> JoinCondStatesNonMerge(StateMap::CondId src,
+                                                          StateMap::CondId dst);
 
   // Determines which switch/merge nodes are ancestors of this node.
   Status DetermineAncestorState(Node* dst);

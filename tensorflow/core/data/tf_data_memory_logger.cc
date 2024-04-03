@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/data/tfdataz_metrics.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/numbers.h"
+#include "tensorflow/core/platform/status.h"
 #include "tsl/platform/logging.h"
 
 namespace tensorflow {
@@ -37,6 +38,7 @@ const int64_t kLogFrequencyS = 30;  // How often to log.
 struct IteratorMemoryUsage {
   std::optional<std::string> dataset_name;
   int64_t memory_usage;
+  std::string model_proto;
 };
 
 int64_t TotalMemoryUsage(const std::vector<IteratorMemoryUsage>& usages) {
@@ -52,9 +54,16 @@ void LogDatasetMemoryUsage() {
       metric_collectors = TfDatazMetricsRegistry::GetIteratorMetricCollectors();
   std::vector<IteratorMemoryUsage> usages;
   for (const auto& metric_collector : metric_collectors) {
-    usages.push_back(
-        IteratorMemoryUsage{metric_collector->DatasetName(),
-                            metric_collector->GetIteratorTotalMemoryUsage()});
+    int64_t total_buffered_bytes =
+        metric_collector->GetModel()->output()->TotalBufferedBytes();
+    model::ModelProto model_proto;
+    Status s = metric_collector->GetModel()->ToProto(&model_proto);
+    if (!s.ok()) {
+      LOG(ERROR) << "Failed to convert model to proto: " << s;
+    }
+    usages.push_back(IteratorMemoryUsage{metric_collector->DatasetName(),
+                                         total_buffered_bytes,
+                                         model_proto.ShortDebugString()});
   }
   std::sort(usages.begin(), usages.end(), [](const auto& a, const auto& b) {
     return a.memory_usage > b.memory_usage;
@@ -75,6 +84,7 @@ void LogDatasetMemoryUsage() {
     } else {
       VLOG(4) << "Dataset " << i << " (no name set): " << usage_string;
     }
+    VLOG(5) << "Model proto: " << usages[i].model_proto;
   }
 }
 

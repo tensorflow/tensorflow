@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -50,6 +50,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/CodeGen.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/TargetParser/Triple.h"
 #include "llvm/Transforms/Utils/Cloning.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
@@ -222,22 +223,16 @@ llvm::Type* PrimitiveTypeToIrType(PrimitiveType element_type,
       return llvm::Type::getInt8Ty(module->getContext());
     case S16:
     case U16:
-    case BF16:
-      // For BF16 we just need some type that is 16 bits wide so that it will
-      // take up the right amount of space in memory. LLVM does not have a BF16
-      // type (the LLVM half type is IEEE 16 bit floating point, not bfloat), so
-      // we can't map it directly to an LLVM type. We will not map a BF16
-      // addition to an addition on this type (int16_t) - this is just the type
-      // used for storage.
       return llvm::Type::getInt16Ty(module->getContext());
     case F8E5M2:
     case F8E5M2FNUZ:
     case F8E4M3FN:
     case F8E4M3B11FNUZ:
     case F8E4M3FNUZ:
-      // Similarly as with BF16, we represent F8 as an int since there is no
-      // LLVM F8 dtype.
+      // We represent F8 as an int since there is no LLVM F8 dtype.
       return llvm::Type::getInt8Ty(module->getContext());
+    case BF16:
+      return llvm::Type::getBFloatTy(module->getContext());
     case F16:
       return llvm::Type::getHalfTy(module->getContext());
     case S32:
@@ -321,12 +316,11 @@ llvm::Type* ShapeToIrType(const Shape& shape, llvm::Module* module) {
   return result_type;
 }
 
-StatusOr<llvm::Value*> EncodeSelfDescribingShapeConstant(const Shape& shape,
-                                                         int32_t* shape_size,
-                                                         llvm::IRBuilder<>* b) {
+absl::StatusOr<llvm::Value*> EncodeSelfDescribingShapeConstant(
+    const Shape& shape, int32_t* shape_size, llvm::IRBuilder<>* b) {
   std::string encoded_shape = shape.SerializeAsString();
   if (encoded_shape.size() > std::numeric_limits<int32_t>::max()) {
-    return InternalError("Encoded shape size exceeded int32_t size limit.");
+    return Internal("Encoded shape size exceeded int32_t size limit.");
   }
   *shape_size = static_cast<int32_t>(encoded_shape.size());
   return b->CreateGlobalStringPtr(encoded_shape);
@@ -361,6 +355,49 @@ llvm::GlobalVariable* AllocateSharedMemoryTile(llvm::Module* module,
       llvm::GlobalValue::NotThreadLocal, kGPUSharedMemoryAddrSpace);
 }
 
+SharedMemoryTile AllocateSharedMemoryTile(
+    llvm::Module* module, llvm::Type* element_type,
+    absl::Span<int64_t const> dimensions_major_to_minor,
+    absl::string_view buffer_name) {
+  llvm::Type* ty = element_type;
+  for (auto dim : llvm::reverse(dimensions_major_to_minor)) {
+    ty = llvm::ArrayType::get(ty, dim);
+  }
+  return SharedMemoryTile{
+      llvm_ir::AllocateSharedMemoryTile(module, ty, buffer_name), element_type};
+}
+
+static std::vector<llvm::Value*> IndexWith0(
+    absl::Span<llvm::Value* const> index, llvm::IRBuilder<>* b) {
+  std::vector<llvm::Value*> index_with_0{
+      llvm::ConstantInt::get(index.front()->getType(), 0)};
+  absl::c_copy(index, std::back_inserter(index_with_0));
+  return index_with_0;
+}
+
+llvm::Value* SharedMemoryTile::Address(absl::Span<llvm::Value* const> index,
+                                       llvm::IRBuilder<>* b) const {
+  llvm::Value* gep = b->CreateInBoundsGEP(base_ptr_->getValueType(), base_ptr_,
+                                          IndexWith0(index, b));
+  // __shared__ memory uses a different address space, so we cast it
+  // to global address space before writing or reading.
+  return b->CreateAddrSpaceCast(gep,
+                                llvm::PointerType::get(b->getContext(), 0));
+};
+
+llvm::Value* SharedMemoryTile::Load(absl::Span<llvm::Value* const> index,
+                                    llvm::IRBuilder<>* b) const {
+  auto* load_type = llvm::GetElementPtrInst::getIndexedType(
+      base_ptr_->getValueType(), IndexWith0(index, b));
+  return b->CreateLoad(load_type, Address(index, b));
+}
+
+llvm::StoreInst* SharedMemoryTile::Store(llvm::Value* value,
+                                         absl::Span<llvm::Value* const> index,
+                                         llvm::IRBuilder<>* b) const {
+  return b->CreateStore(value, Address(index, b));
+}
+
 llvm::AllocaInst* EmitAllocaAtFunctionEntry(llvm::Type* type,
                                             absl::string_view name,
                                             llvm::IRBuilder<>* b,
@@ -377,8 +414,12 @@ llvm::AllocaInst* EmitAllocaAtFunctionEntryWithCount(llvm::Type* type,
   llvm::Function* function = b->GetInsertBlock()->getParent();
   b->SetInsertPoint(&function->getEntryBlock(),
                     function->getEntryBlock().getFirstInsertionPt());
+  llvm::Module* module = b->GetInsertBlock()->getModule();
+  // Explicitly set local addrspace for SPIR backend.
+  llvm::Triple target(module->getTargetTriple());
+  int addrspace = target.isSPIR() || target.isAMDGPU() ? 5 : 0;
   llvm::AllocaInst* alloca =
-      b->CreateAlloca(type, element_count, AsStringRef(name));
+      b->CreateAlloca(type, addrspace, element_count, AsStringRef(name));
   if (alignment != 0) {
     alloca->setAlignment(llvm::Align(alignment));
   }
@@ -496,7 +537,11 @@ void SetDereferenceableMetadataForLoad(llvm::LoadInst* load,
 }
 
 llvm::Instruction* AddRangeMetadata(int32_t lower, int32_t upper,
-                                    llvm::Instruction* inst) {
+                                    llvm::Instruction* inst,
+                                    llvm::Module* module) {
+  if (llvm::Triple(module->getTargetTriple()).isSPIR()) {
+    return inst;
+  }
   llvm::LLVMContext& context = inst->getParent()->getContext();
   llvm::IntegerType* i32 = llvm::Type::getInt32Ty(context);
   inst->setMetadata(

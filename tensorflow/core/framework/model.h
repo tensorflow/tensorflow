@@ -520,7 +520,7 @@ class Node {
   virtual double ComputeSelfTime() const;
 
   // Returns the parameter value if it exists, not ok status otherwise.
-  StatusOr<double> ParameterValue(const std::string& parameter_name) const
+  absl::StatusOr<double> ParameterValue(const std::string& parameter_name) const
       TF_LOCKS_EXCLUDED(mu_) {
     tf_shared_lock l(mu_);
     if (parameters_.contains(parameter_name)) {
@@ -625,6 +625,10 @@ class Node {
     tf_shared_lock l(mu_);
     return AverageBufferedElementSizeLocked();
   }
+
+  // Copies node's parameter state value to parameter value if the parameter
+  // name matches `parameter_name`.
+  void SyncStateValuesToParameterValues(const std::string& parameter_name);
 
  protected:
   // Used for (incrementally) recording metrics. The class is thread-safe.
@@ -1039,7 +1043,7 @@ class Model {
   // nodes, the parameter state values are not tuned by Autotune and hence the
   // parameter values can be stale. We do not sync all parameters because it may
   // increase mutex contention with `GetNext()`.
-  void MaybeSyncStateValuesToValues(ModelParameters* parameters);
+  void MaybeSyncStateValuesToValues(std::shared_ptr<Node> snapshot);
 
   // Downsizes buffers that are too large for all nodes rooted at `snapshot`.
   // Returns true if any buffer is downsized.

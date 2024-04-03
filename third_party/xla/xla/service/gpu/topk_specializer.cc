@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -37,10 +37,9 @@ limitations under the License.
 #include "xla/service/tuple_util.h"
 #include "xla/shape.h"
 #include "xla/status.h"
-#include "xla/statusor.h"
+#include "xla/status_macros.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {

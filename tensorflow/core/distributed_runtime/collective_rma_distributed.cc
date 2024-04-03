@@ -85,7 +85,7 @@ Status PopulateTensorFromResponse(const RecvBufResponse& response,
 
   // If there are no transport options, then the tensor has already been
   // copied into request.buf_ptr.
-  if (!has_transport_options) return OkStatus();
+  if (!has_transport_options) return absl::OkStatus();
 
   const int64_t total_bytes = cpu_tensor->TotalBytes();
   int64_t num_bytes = 0;
@@ -101,7 +101,7 @@ Status PopulateTensorFromResponse(const RecvBufResponse& response,
                             " bytes, expected: ", cpu_tensor->TotalBytes());
   }
   PopulateTensorFromExtra(extra, cpu_tensor);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -236,7 +236,7 @@ void CollectiveRemoteAccessDistributed::CheckPeerHealth(
     const StatusCallback& done) {
   if (peer_task == task_name_) {
     // Fast path if the peer is the worker itself.
-    done(OkStatus());
+    done(absl::OkStatus());
     return;
   }
   // We send a GetStatus RPC to check the health of a peer task. If the RPC
@@ -282,7 +282,7 @@ void CollectiveRemoteAccessDistributed::CheckPeerHealth(
           // Skip validating device incarnation if we don't know what the
           // incarnation should be. The device attribute is cached after the
           // first collective.
-          s = OkStatus();
+          s = absl::OkStatus();
         }
         delete opts;
         delete req;

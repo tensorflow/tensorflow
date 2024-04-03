@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -43,11 +43,19 @@ namespace gpu {
 class InputSlicesFusion : public KernelFusionEmitterBase {
  public:
   explicit InputSlicesFusion(const HloFusionAnalysis& analysis)
-      : analysis_(analysis) {}
+      : analysis_(analysis),
+        unroll_factor_(analysis.input_output_info().has_4_bit_output ? 2 : 1) {}
   LaunchDimensions launch_dimensions() const override;
 
   std::optional<IndexingMap> ComputeThreadIdToOutputIndexing(
       int64_t output_id, mlir::MLIRContext* ctx) const override;
+
+  std::optional<IndexingMap> ComputeThreadIdToInputIndexing(
+      int64_t root_index, int64_t hero_operand_index,
+      mlir::MLIRContext* ctx) const override {
+    // TODO(b/319081342): Implement this.
+    return std::nullopt;
+  }
 
  protected:
   absl::Status EmitKernel(IrEmitterContext& ir_emitter_context,
@@ -59,6 +67,7 @@ class InputSlicesFusion : public KernelFusionEmitterBase {
 
  private:
   const HloFusionAnalysis& analysis_;
+  const int unroll_factor_;
 };
 
 }  // namespace gpu

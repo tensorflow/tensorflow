@@ -266,6 +266,14 @@ message GPUOptions {
     // gpu with multiple model) use case.
     int32 gpu_system_memory_size_in_mb = 16;
 
+    // If true, save information needed for created a PjRt GPU client for
+    // creating a client with remote devices.
+    bool populate_pjrt_gpu_client_creation_info = 17;
+
+    // node_id for use when creating a PjRt GPU client with remote devices,
+    // which enumerates jobs*tasks from a ServerDef.
+    int32 node_id = 18;
+
     // Whether to merge data transfer streams into the compute stream in a
     // stream group. Four types of streams will be created within a stream group
     // by default: one compute stream, one host_to_device copy stream, one
@@ -296,7 +304,7 @@ message GPUOptions {
       bool merge_device_to_device_stream = 3;
     }
 
-    StreamMergeOptions stream_merge_options = 17;
+    StreamMergeOptions stream_merge_options = 19;
   }
 
   // Everything inside experimental is subject to change and is not subject

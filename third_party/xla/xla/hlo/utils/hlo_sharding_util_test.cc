@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "absl/log/log.h"
 #include "absl/types/span.h"
+#include "xla/array.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/ir/tile_assignment.h"
@@ -668,10 +669,129 @@ TEST(HloShardingUtilTest, IsSubShardingCompatibleShapeTiledPartialTiled) {
   EXPECT_TRUE(IsSubTilingOrEqualSharding(shape, lhs_sharding, rhs_sharding));
 }
 
+TEST(HloShardingUtilTest, IsSubTilingOrEqualShardingNoShortcut) {
+  HloSharding rhs_sharding = HloSharding::PartialTile(
+      TileAssignment((absl::Span<const int64_t>){2, 2}));
+  HloSharding lhs_sharding = HloSharding::IotaTile({4});
+  std::vector<int64_t> success = {1, 3, 4, 7, 8, 11, 12, 15, 16, 19, 20};
+  std::vector<int64_t> fail = {2, 5, 6, 9, 10, 13, 14, 17, 18};
+  for (int64_t i : success) {
+    Shape shape = ShapeUtil::MakeShape(F32, {i});
+    EXPECT_TRUE(IsSubTilingOrEqualSharding(shape, lhs_sharding, rhs_sharding));
+  }
+  for (int64_t i : fail) {
+    Shape shape = ShapeUtil::MakeShape(F32, {i});
+    EXPECT_FALSE(IsSubTilingOrEqualSharding(shape, lhs_sharding, rhs_sharding));
+  }
+}
+
+TEST(HloShardingUtilTest, IsSubTilingOrEqualShardingShortcut1) {
+  HloSharding rhs_sharding = HloSharding::PartialTile(
+      TileAssignment((absl::Span<const int64_t>){2, 2}));
+  HloSharding lhs_sharding = HloSharding::IotaTile({4});
+  Shape shape = ShapeUtil::MakeShape(F32, {8});
+  EXPECT_TRUE(IsSubTilingOrEqualSharding(shape, lhs_sharding, rhs_sharding));
+}
+
+TEST(HloShardingUtilTest, IsSubTilingOrEqualShardingShortcut2) {
+  HloSharding rhs_sharding = HloSharding::PartialTile(
+      TileAssignment((absl::Span<const int64_t>){2, 2}));
+  Array<int64_t> lhs_array({4});
+  lhs_array.SetValues({1, 0, 2, 3});
+  HloSharding lhs_sharding = HloSharding::Tile(lhs_array);
+  Shape shape = ShapeUtil::MakeShape(F32, {8});
+  EXPECT_TRUE(IsSubTilingOrEqualSharding(shape, lhs_sharding, rhs_sharding));
+}
+
+TEST(HloShardingUtilTest, IsSubTilingOrEqualShardingShortcut3) {
+  HloSharding rhs_sharding = HloSharding::PartialTile(
+      TileAssignment((absl::Span<const int64_t>){2, 2}));
+  HloSharding lhs_sharding = HloSharding::IotaTile({4}, {2, 2}, {1, 0});
+  Shape shape = ShapeUtil::MakeShape(F32, {8});
+  EXPECT_FALSE(IsSubTilingOrEqualSharding(shape, lhs_sharding, rhs_sharding));
+}
+
+TEST(HloShardingUtilTest, IsSubTilingOrEqualShardingShortcut4) {
+  HloSharding rhs_sharding =
+      HloSharding::PartialTile(TileAssignment({2, 2}, {2, 2}, {1, 0}));
+  HloSharding lhs_sharding = HloSharding::IotaTile({4}, {2, 2}, {1, 0});
+  Shape shape = ShapeUtil::MakeShape(F32, {8});
+  EXPECT_TRUE(IsSubTilingOrEqualSharding(shape, lhs_sharding, rhs_sharding));
+}
+
+TEST(HloShardingUtilTest, IsSubTilingOrEqualShardingShortcut5) {
+  HloSharding rhs_sharding =
+      HloSharding::PartialTile(TileAssignment({2, 3, 5, 7}));
+  HloSharding lhs_sharding_1 =
+      HloSharding::IotaTile({2, 21, 5}, {2, 3, 5, 7}, {0, 1, 3, 2});
+  HloSharding lhs_sharding_2 =
+      HloSharding::IotaTile({2, 21, 5}, {2, 3, 5, 7}, {0, 2, 3, 1});
+  HloSharding lhs_sharding_3 = HloSharding::IotaTile({2, 21, 5});
+  std::vector<Shape> shapes = {ShapeUtil::MakeShape(F32, {10, 42, 10}),
+                               ShapeUtil::MakeShape(F32, {11, 41, 11})};
+  for (const auto& shape : shapes) {
+    EXPECT_TRUE(
+        IsSubTilingOrEqualSharding(shape, lhs_sharding_1, rhs_sharding));
+    EXPECT_FALSE(
+        IsSubTilingOrEqualSharding(shape, lhs_sharding_2, rhs_sharding));
+    EXPECT_FALSE(
+        IsSubTilingOrEqualSharding(shape, lhs_sharding_3, rhs_sharding));
+  }
+}
+
+TEST(HloShardingUtilTest, IsSubTilingOrEqualShardingShortcut6) {
+  HloSharding rhs_sharding =
+      HloSharding::PartialTile(TileAssignment({2, 3, 5, 7 * 11 * 13}));
+  HloSharding lhs_sharding_1 = HloSharding::PartialTile(TileAssignment(
+      {2 * 7, 3, 5 * 11, 13}, {2, 3, 5, 7, 11, 13}, {0, 3, 1, 2, 4, 5}));
+  HloSharding lhs_sharding_2 = HloSharding::PartialTile(TileAssignment(
+      {2 * 7, 3, 5 * 11, 13}, {2, 3, 5, 11, 7, 13}, {0, 4, 1, 2, 3, 5}));
+  HloSharding lhs_sharding_3 = HloSharding::PartialTile(TileAssignment(
+      {2 * 7, 3, 5 * 11, 13}, {2, 3, 5, 13, 7, 11}, {0, 4, 1, 2, 5, 3}));
+  HloSharding lhs_sharding_4 = HloSharding::PartialTile(TileAssignment(
+      {2 * 7, 3, 5 * 11, 13}, {2, 3, 5, 7, 13, 11}, {0, 3, 1, 2, 5, 4}));
+  HloSharding lhs_sharding_5 =
+      HloSharding::PartialTile(TileAssignment({2 * 7, 3, 5 * 11, 13}));
+  std::vector<Shape> shapes = {
+      ShapeUtil::MakeShape(F32, {2 * 7, 9, 5 * 11}),
+      ShapeUtil::MakeShape(F32, {2 * 7 - 1, 4, 5 * 11 - 1})};
+  for (const auto& shape : shapes) {
+    EXPECT_TRUE(
+        IsSubTilingOrEqualSharding(shape, lhs_sharding_1, rhs_sharding));
+    EXPECT_TRUE(
+        IsSubTilingOrEqualSharding(shape, lhs_sharding_2, rhs_sharding));
+    EXPECT_TRUE(
+        IsSubTilingOrEqualSharding(shape, lhs_sharding_3, rhs_sharding));
+    EXPECT_TRUE(
+        IsSubTilingOrEqualSharding(shape, lhs_sharding_4, rhs_sharding));
+    EXPECT_FALSE(
+        IsSubTilingOrEqualSharding(shape, lhs_sharding_5, rhs_sharding));
+  }
+}
+
+TEST(HloShardingUtilTest, IsSubTilingOrEqualShardingShortcut7) {
+  HloSharding rhs_sharding =
+      HloSharding::PartialTile(TileAssignment({1, 2, 1, 3, 5 * 7 * 11}));
+  HloSharding lhs_sharding = HloSharding::PartialTile(
+      TileAssignment({5, 2, 7, 3, 11}, {2, 3, 5, 7, 11}, {2, 0, 3, 1, 4}));
+  std::vector<Shape> shapes = {ShapeUtil::MakeShape(F32, {5, 2, 7, 3}),
+                               ShapeUtil::MakeShape(F32, {2, 2, 9, 3})};
+  for (const auto& shape : shapes) {
+    EXPECT_TRUE(IsSubTilingOrEqualSharding(shape, lhs_sharding, rhs_sharding));
+  }
+}
+
 TEST(HloShardingUtilTest, IsSortOperandShardingMovableRankTwoOneFreeDim) {
   HloIotaInstruction iota(ShapeUtil::MakeShape(F32, {8, 128}), 1);
   iota.set_sharding(HloSharding::IotaTile({1, 2}));
   EXPECT_TRUE(IsSortOperandShardingMovable(&iota, 1));
+}
+
+TEST(HloShardingUtilTest,
+     IsSortOperandShardingMovableRankTwoOneFreeDimOfSize1) {
+  HloIotaInstruction iota(ShapeUtil::MakeShape(F32, {1, 128}), 1);
+  iota.set_sharding(HloSharding::IotaTile({1, 2}));
+  EXPECT_FALSE(IsSortOperandShardingMovable(&iota, 1));
 }
 
 TEST(HloShardingUtilTest, IsSortOperandShardingMovableRankTwoNoFreeDims) {
@@ -703,6 +823,37 @@ TEST(HloShardingUtilTest, IsSortOperandShardingMovableSortDimUnsharded) {
   iota.set_sharding(HloSharding::IotaTile({1, 2}));
   EXPECT_FALSE(IsSortOperandShardingMovable(&iota, 0));
 }
+
+TEST(HloShardingUtilTest, TileShape) {
+  HloSharding sharding = HloSharding::Tile(TileAssignment({4, 1}));
+  Shape shape_0 = ShapeUtil::MakeShape(F32, {80, 128});
+  auto tile_shape_0 = hlo_sharding_util::TileShape(sharding, shape_0);
+  auto expected_shape_0 = ShapeUtil::MakeShape(F32, {20, 128});
+  EXPECT_EQ(tile_shape_0, expected_shape_0);
+  Shape shape_1 = ShapeUtil::MakeShape(F32, {40, 128});
+  auto tile_shape_1 = hlo_sharding_util::TileShape(sharding, shape_1);
+  auto expected_shape_1 = ShapeUtil::MakeShape(F32, {10, 128});
+  EXPECT_EQ(tile_shape_1, expected_shape_1);
+  const Shape tuple = ShapeUtil::MakeTupleShape({tile_shape_0, tile_shape_1});
+  EXPECT_EQ(hlo_sharding_util::TileShape(sharding, tuple),
+            ShapeUtil::MakeTupleShape({expected_shape_0, expected_shape_1}));
+}
+
+TEST(HloShardingUtilTest, UntileShape) {
+  HloSharding sharding = HloSharding::Tile(TileAssignment({4, 1}));
+  Shape shape_0 = ShapeUtil::MakeShape(F32, {80, 128});
+  auto tile_shape_0 = hlo_sharding_util::UntileShape(sharding, shape_0);
+  auto expected_shape_0 = ShapeUtil::MakeShape(F32, {320, 128});
+  EXPECT_EQ(tile_shape_0, expected_shape_0);
+  Shape shape_1 = ShapeUtil::MakeShape(F32, {40, 128});
+  auto tile_shape_1 = hlo_sharding_util::UntileShape(sharding, shape_1);
+  auto expected_shape_1 = ShapeUtil::MakeShape(F32, {160, 128});
+  EXPECT_EQ(tile_shape_1, expected_shape_1);
+  const Shape tuple = ShapeUtil::MakeTupleShape({tile_shape_0, tile_shape_1});
+  EXPECT_EQ(hlo_sharding_util::UntileShape(sharding, tuple),
+            ShapeUtil::MakeTupleShape({expected_shape_0, expected_shape_1}));
+}
+
 }  // namespace
 }  // namespace hlo_sharding_util
 }  // namespace xla

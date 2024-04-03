@@ -135,6 +135,20 @@ cc_test(
 )
 
 cc_library(
+    name = "cl_command_buffer",
+    srcs = ["cl_command_buffer.cc"],
+    hdrs = ["cl_command_buffer.h"],
+    deps = [
+        ":cl_command_queue",
+        ":cl_event",
+        ":opencl_wrapper",
+        ":util",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
     name = "cl_command_queue",
     srcs = ["cl_command_queue.cc"],
     hdrs = ["cl_command_queue.h"],
@@ -260,6 +274,7 @@ cc_library(
         ":program_cache",
         ":tensor",
         "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -394,8 +409,10 @@ cc_library(
     ],
     deps = [
         ":buffer",
+        ":cl_command_buffer",
         ":cl_command_queue",
         ":cl_device",
+        ":cl_event",
         ":cl_operation",
         ":environment",
         ":gpu_object",

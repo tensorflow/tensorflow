@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The OpenXLA Authors.
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -653,4 +653,30 @@ intptr_t mlirMhloTypeExtensionsGetBoundsSize(MlirAttribute attr) {
 
 int64_t mlirMhloTypeExtensionsGetBoundsElem(MlirAttribute attr, intptr_t pos) {
   return unwrap(attr).cast<mlir::mhlo::TypeExtensionsAttr>().getBounds()[pos];
+}
+
+//
+// SparsityDescriptor
+//
+
+MlirAttribute mlirMhloSparsityDescriptorGet(MlirContext ctx, int64_t dimension,
+                                            int64_t n, int64_t m) {
+  return wrap(
+      mlir::mhlo::SparsityDescriptorAttr::get(unwrap(ctx), dimension, n, m));
+}
+
+bool mlirMhloAttributeIsASparsityDescriptor(MlirAttribute attr) {
+  return unwrap(attr).isa<mlir::mhlo::SparsityDescriptorAttr>();
+}
+
+int64_t mlirMhloSparsityDescriptorGetDimension(MlirAttribute attr) {
+  return unwrap(attr).cast<mlir::mhlo::SparsityDescriptorAttr>().getDimension();
+}
+
+int64_t mlirMhloSparsityDescriptorGetN(MlirAttribute attr) {
+  return unwrap(attr).cast<mlir::mhlo::SparsityDescriptorAttr>().getN();
+}
+
+int64_t mlirMhloSparsityDescriptorGetM(MlirAttribute attr) {
+  return unwrap(attr).cast<mlir::mhlo::SparsityDescriptorAttr>().getM();
 }

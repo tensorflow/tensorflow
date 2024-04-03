@@ -17,6 +17,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/status/status.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/tf_pjrt_client.h"
 #include "tensorflow/core/platform/errors.h"
@@ -27,7 +28,7 @@ namespace tensorflow {
 
 PjRtState* PjRtState::Create() { return new PjRtState(); }
 
-StatusOr<xla::PjRtClient*> PjRtState::GetPjRtClient(
+absl::StatusOr<xla::PjRtClient*> PjRtState::GetPjRtClient(
     const DeviceType& device_type) {
   absl::MutexLock lock(&mu_);
   if (auto it = clients_.find(device_type); it != clients_.end()) {
@@ -37,7 +38,7 @@ StatusOr<xla::PjRtClient*> PjRtState::GetPjRtClient(
                           device_type);
 }
 
-StatusOr<xla::PjRtClient*> PjRtState::GetOrCreatePjRtClient(
+absl::StatusOr<xla::PjRtClient*> PjRtState::GetOrCreatePjRtClient(
     const DeviceType& device_type) {
   absl::MutexLock lock(&mu_);
   if (auto it = clients_.find(device_type); it != clients_.end()) {
@@ -78,6 +79,18 @@ Status PjRtState::MovePjRtClientToUnused(const DeviceType& device_type) {
   }
   return errors::NotFound("PjRt client not found for device type ",
                           device_type);
+}
+
+Status PjRtState::SetPjRtGpuClientCreationInfo(
+    std::unique_ptr<PjRtGpuClientCreationInfo> info) {
+  absl::MutexLock lock(&mu_);
+  pjrt_gpu_client_creation_info_ = std::move(info);
+  return absl::OkStatus();
+}
+
+PjRtGpuClientCreationInfo* PjRtState::GetPjRtGpuClientCreationInfo() {
+  absl::MutexLock lock(&mu_);
+  return pjrt_gpu_client_creation_info_.get();
 }
 
 string PjRtState::DebugString() const { return "PjRtState"; }

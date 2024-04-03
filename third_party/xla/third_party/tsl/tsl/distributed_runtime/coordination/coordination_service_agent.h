@@ -65,22 +65,22 @@ class Env;
 class CoordinationServiceAgent {
  public:
   using StatusOrValueCallback =
-      std::function<void(const StatusOr<std::string>&)>;
+      std::function<void(const absl::StatusOr<std::string>&)>;
   // Collection of key-value pairs in the same directory.
   using StatusOrValueDirCallback = std::function<void(
-      const StatusOr<std::vector<tensorflow::KeyValueEntry>>&)>;
+      const absl::StatusOr<std::vector<tensorflow::KeyValueEntry>>&)>;
   using ChangedKeyValuesCallback =
       std::function<void(const std::map<std::string, std::string>&)>;
 
   virtual ~CoordinationServiceAgent() = default;
 
   // Initialize coordination service agent.
-  virtual Status Initialize(
+  virtual absl::Status Initialize(
       tsl::Env* env, std::string_view job_name, int task_id,
       const tensorflow::CoordinationServiceConfig& configs,
       std::unique_ptr<CoordinationClient> leader_client,
       StatusCallback error_fn) = 0;
-  virtual Status Initialize(
+  virtual absl::Status Initialize(
       tsl::Env* env, const tensorflow::CoordinatedTask& task,
       const tensorflow::CoordinationServiceConfig& configs,
       std::unique_ptr<CoordinationClient> leader_client,
@@ -105,14 +105,14 @@ class CoordinationServiceAgent {
   //   - InvalidArgument: Unexpected task registration
   //   - Aborted: Duplicate task registration (agent will retry connecting until
   //              the configured timeout)
-  virtual Status Connect() = 0;
+  virtual absl::Status Connect() = 0;
 
   // Wait for all tasks to be up and registered. The call blocks until all tasks
   // in the cluster are up, or some error occurs.
   // Possible service errors:
   //   - FailedPrecondition: Agent is not in CONNECTED state.
   //   - InvalidArgument: Unexpected task request
-  virtual Status WaitForAllTasks(
+  virtual absl::Status WaitForAllTasks(
       const tensorflow::DeviceInfo& local_devices) = 0;
 
   // Get the device attributes of tasks from remote tasks in the cluster.
@@ -127,10 +127,10 @@ class CoordinationServiceAgent {
   //                                         Reset
 
   // Get task associated with this agent.
-  virtual StatusOr<tensorflow::CoordinatedTask> GetOwnTask() = 0;
+  virtual absl::StatusOr<tensorflow::CoordinatedTask> GetOwnTask() = 0;
 
   // Get status of a remote task.
-  virtual StatusOr<std::vector<tensorflow::CoordinatedTaskStateInfo>>
+  virtual absl::StatusOr<std::vector<tensorflow::CoordinatedTaskStateInfo>>
   GetTaskState(const std::vector<tensorflow::CoordinatedTask>& task) = 0;
 
   // Report error to coordination service. This will invoke the error callback.
@@ -139,7 +139,7 @@ class CoordinationServiceAgent {
   // Possible service errors:
   //   - FailedPrecondition: Uninitialized/disconnected/already in error state.
   //   - InvalidArgument: Unexpected task request
-  virtual Status ReportError(const Status& error) = 0;
+  virtual absl::Status ReportError(const absl::Status& error) = 0;
 
   // Shuts down by disconnecting from the service. Should only be called if
   // agent is connected and no further agent calls (except the destructor) are
@@ -151,14 +151,14 @@ class CoordinationServiceAgent {
   //   - InvalidArgument: Unexpected task request.
   //   - FailedPrecondition: Task was in error state (note: agent is still
   //                         shut down forcefully).
-  virtual Status Shutdown() = 0;
+  virtual absl::Status Shutdown() = 0;
 
   // Disconnect from the service, and clean up the internal error status.
   // Possible service errors:
   //   - InvalidArgument: Unexpected task request.
   //   - FailedPrecondition: task is not in error state/has already
   //       disconnected.
-  virtual Status Reset() = 0;
+  virtual absl::Status Reset() = 0;
 
   // Key-value store API.
   // The agent does not need to be connected to utilize the key-value store.
@@ -169,9 +169,9 @@ class CoordinationServiceAgent {
   // If the key-value is not inserted yet, this is a blocking call that waits
   // until the corresponding key is inserted.
   //   - DeadlineExceeded: timed out waiting for key.
-  virtual StatusOr<std::string> GetKeyValue(std::string_view key) = 0;
-  virtual StatusOr<std::string> GetKeyValue(std::string_view key,
-                                            absl::Duration timeout) = 0;
+  virtual absl::StatusOr<std::string> GetKeyValue(std::string_view key) = 0;
+  virtual absl::StatusOr<std::string> GetKeyValue(std::string_view key,
+                                                  absl::Duration timeout) = 0;
   // Note: Cancel the underlying RPC call with `call_opts->StartCancel()` and
   // `call_opts->ClearCancelCallback()`.
   virtual std::shared_ptr<CallOptions> GetKeyValueAsync(
@@ -179,35 +179,35 @@ class CoordinationServiceAgent {
 
   // Get config key-value from the service.
   //   - NotFound: the requested key does not exist.
-  virtual StatusOr<std::string> TryGetKeyValue(std::string_view key) = 0;
+  virtual absl::StatusOr<std::string> TryGetKeyValue(std::string_view key) = 0;
 
   // Get all values under a directory (key).
   // A value is considered to be in the directory if its key is prefixed with
   // the directory.
   // This is not a blocking call. If no keys are found, an empty vector is
   // returned immediately.
-  virtual StatusOr<std::vector<tensorflow::KeyValueEntry>> GetKeyValueDir(
+  virtual absl::StatusOr<std::vector<tensorflow::KeyValueEntry>> GetKeyValueDir(
       std::string_view key) = 0;
   virtual void GetKeyValueDirAsync(std::string_view key,
                                    StatusOrValueDirCallback done) = 0;
 
   // Insert config key-value to the service.
   //   - AlreadyExists: key is already set.
-  virtual Status InsertKeyValue(std::string_view key,
-                                std::string_view value) = 0;
+  virtual absl::Status InsertKeyValue(std::string_view key,
+                                      std::string_view value) = 0;
 
   // Delete config keys in the coordination service.
-  virtual Status DeleteKeyValue(std::string_view key) = 0;
+  virtual absl::Status DeleteKeyValue(std::string_view key) = 0;
 
   // Update the value of a config key.
-  virtual Status UpdateKeyValue(std::string_view key,
-                                std::string_view value) = 0;
+  virtual absl::Status UpdateKeyValue(std::string_view key,
+                                      std::string_view value) = 0;
 
   // Register a callback that will be invoked when the key or keys under the key
   // directory are changed (inserted, deleted, or updated).
-  virtual Status StartWatchKey(std::string_view key,
-                               ChangedKeyValuesCallback on_change) = 0;
-  virtual Status StopWatchKey(std::string_view key) = 0;
+  virtual absl::Status StartWatchKey(std::string_view key,
+                                     ChangedKeyValuesCallback on_change) = 0;
+  virtual absl::Status StopWatchKey(std::string_view key) = 0;
 
   // Blocks until all (or a subset of) tasks are at the barrier or the barrier
   // fails.
@@ -241,7 +241,7 @@ class CoordinationServiceAgent {
   //       list of participating tasks.
   //   - FailedPrecondition: Agent is in UNINITIALIZED or ERROR state. Or the
   //       same barrier_id was already used previously.
-  virtual Status WaitAtBarrier(
+  virtual absl::Status WaitAtBarrier(
       std::string_view barrier_id, absl::Duration timeout,
       const std::vector<tensorflow::CoordinatedTask>& tasks) = 0;
 
@@ -255,22 +255,22 @@ class CoordinationServiceAgent {
   // CANCELLED error status.
   // Possible service errors:
   //   - FailedPrecondition: Barrier has already been passed.
-  virtual Status CancelBarrier(std::string_view barrier_id) = 0;
+  virtual absl::Status CancelBarrier(std::string_view barrier_id) = 0;
   virtual void CancelBarrierAsync(std::string_view barrier_id,
                                   StatusCallback done) = 0;
 
   // Get unowned Env* that the agent was initialized with.
-  virtual StatusOr<tsl::Env*> GetEnv() = 0;
+  virtual absl::StatusOr<tsl::Env*> GetEnv() = 0;
 
  protected:
   // Set the service agent to error status and invoke the error callback.
   // Note: different from ReportError, this does not report the error status to
   // remote coordination service.
-  virtual void SetError(const Status& error) = 0;
+  virtual void SetError(const absl::Status& error) = 0;
 
   // Activate the key-value callback watch.
-  virtual Status ActivateWatch(std::string_view,
-                               const std::map<std::string, std::string>&) = 0;
+  virtual absl::Status ActivateWatch(
+      std::string_view, const std::map<std::string, std::string>&) = 0;
 
  private:
   friend class CoordinationServiceRpcHandler;

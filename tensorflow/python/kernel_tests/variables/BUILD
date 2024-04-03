@@ -153,7 +153,6 @@ tf_py_strict_test(
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:test_lib",
-        "//tensorflow/python/layers",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:cond",
         "//tensorflow/python/ops:init_ops",

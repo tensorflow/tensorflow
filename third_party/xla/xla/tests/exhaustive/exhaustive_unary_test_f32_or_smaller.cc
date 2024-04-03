@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -218,7 +218,7 @@ class Exhaustive32BitOrLessUnaryTest
   // the same bit as the type being tested, if needed, and then bitcasted to the
   // type being tested.
   void FillInput(std::array<Literal, 1>* input_literal) override {
-    int64 begin, end;
+    int64_t begin, end;
     if (special_input_bounder_) {
       begin = input_lower_bounder_;
       end = input_upper_bounder_;
@@ -228,8 +228,8 @@ class Exhaustive32BitOrLessUnaryTest
       FillNormalInput(input_literal, begin, end);
     }
   }
-  void FillNormalInput(std::array<Literal, 1>* input_literal, const int64 begin,
-                       const int64 end) {
+  void FillNormalInput(std::array<Literal, 1>* input_literal,
+                       const int64_t begin, const int64_t end) {
     using IntegralT =
         typename ExhaustiveOpTestBase<T, 1>::ComponentIntegralNativeT;
     int64_t input_size = (*input_literal)[0].element_count();
@@ -244,8 +244,8 @@ class Exhaustive32BitOrLessUnaryTest
     }
   }
 
-  void FillRandomInput(std::array<Literal, 1>* input_literal, const int64 begin,
-                       const int64 end) {
+  void FillRandomInput(std::array<Literal, 1>* input_literal,
+                       const int64_t begin, const int64_t end) {
     absl::Span<NativeT> input_arr = (*input_literal)[0].data<NativeT>();
 
     uint32_t size = kRandomInputSize;
@@ -518,17 +518,25 @@ UNARY_TEST_FLOAT_32_BITS_OR_LESS(Sinh, {
   Run(Sinh, host_sinh);
 })
 
-UNARY_TEST_FLOAT_32_BITS_OR_LESS(TanhBounderTest, {
+UNARY_TEST_FLOAT_32_BITS_OR_LESS(TanhBounderTestUpperBound, {
   SetBounder(8, 9);
   ErrorSpecGen error_spec_gen = GetDefaultSpecGenerator();
-  if (platform_ == "CUDA") {
-    error_spec_gen = +[](NativeT x) {
-      return x <= static_cast<NativeT>(-20.0) || x >= static_cast<NativeT>(20.0)
-                 ? ErrorSpec{0, 0}
-                 : GetDefaultSpecGenerator()(x);
-    };
+  if (platform_ == "CUDA" || platform_ == "CPU") {
+    error_spec_gen = +[](NativeT x) { return ErrorSpec{0, 0}; };
   }
-  Run(Tanh, std::tanh, error_spec_gen,
+  Run(
+      Tanh, +[](float) { return 1.0f; }, error_spec_gen,
+      [](NativeT actual) { return actual >= -1 && actual <= 1; });
+})
+
+UNARY_TEST_FLOAT_32_BITS_OR_LESS(TanhBounderTestLowerBound, {
+  SetBounder(-9, -8);
+  ErrorSpecGen error_spec_gen = GetDefaultSpecGenerator();
+  if (platform_ == "CUDA" || platform_ == "CPU") {
+    error_spec_gen = +[](NativeT x) { return ErrorSpec{0, 0}; };
+  }
+  Run(
+      Tanh, +[](float) { return -1.0f; }, error_spec_gen,
       [](NativeT actual) { return actual >= -1 && actual <= 1; });
 })
 

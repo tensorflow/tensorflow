@@ -1,4 +1,4 @@
-/* Copyright 2024 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2024 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -23,7 +23,7 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "xla/autotuning.pb.h"
 #include "xla/service/hlo_module_config.h"
-#include "tsl/util/proto/proto_utils.h"
+#include "xla/tsl/util/proto/proto_utils.h"
 
 namespace xla::gpu {
 namespace {
@@ -32,7 +32,10 @@ struct Result {
   int64_t run_time_ns;
   int64_t scratch_bytes;
 
-  bool operator==(const Result& other) const = default;
+  bool operator==(const Result& other) const {
+    return other.run_time_ns == run_time_ns &&
+           other.scratch_bytes == scratch_bytes;
+  };
 
   explicit operator AutotuneResult() const {
     AutotuneResult result;

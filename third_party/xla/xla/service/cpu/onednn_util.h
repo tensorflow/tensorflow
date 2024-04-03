@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -25,15 +25,21 @@ namespace cpu {
 
 inline bool IsSupportedType(xla::PrimitiveType dtype) {
   using tsl::port::CPUFeature;
-  static bool is_bf16_supported = TestCPUFeature(CPUFeature::AVX512_BF16) ||
-                                  TestCPUFeature(CPUFeature::AMX_BF16);
+  // TODO(intel-tf): Enable more types.
   switch (dtype) {
     case F32:
       return true;
     case BF16:
-      return is_bf16_supported;
+      return TestCPUFeature(CPUFeature::AVX512F) ||
+             TestCPUFeature(CPUFeature::AVX_NE_CONVERT) ||
+             TestCPUFeature(CPUFeature::AMX_BF16);
+    case F16:
+      return TestCPUFeature(CPUFeature::AVX512BW) &&
+             (TestCPUFeature(CPUFeature::AVX512_FP16) ||
+              TestCPUFeature(CPUFeature::AMX_FP16) ||
+              TestCPUFeature(CPUFeature::AVX_NE_CONVERT));
     default:
-      break;
+      return false;
   }
   return false;
 }

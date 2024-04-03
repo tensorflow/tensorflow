@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,20 +19,19 @@ limitations under the License.
 #include <cmath>
 #include <cstdint>
 #include <memory>
-#include <string>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/match.h"
-#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/map_util.h"
@@ -41,7 +40,7 @@ limitations under the License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/model/hlo_op_profile.pb.h"
-#include "xla/service/gpu/model/hlo_op_profiles_data.h"
+#include "xla/service/gpu/model/hlo_op_profiles.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
@@ -95,7 +94,7 @@ int64_t GpuHloCostAnalysis::FusionParameterReadBytes(
   if (!options_.count_multiple_input_accesses) {
     utilization = fmin(utilization, 1.0);
   }
-  return GetShapeSize(hlo->shape()) * utilization;
+  return std::llround(GetShapeSize(hlo->shape()) * utilization);
 }
 
 absl::Status GpuHloCostAnalysis::FusionCalculateUtilizations(
@@ -325,43 +324,9 @@ int64_t GpuHloCostAnalysis::GetConvolutionFlops(
                                               result_shape);
 }
 
-using ProfilesNestedMap = absl::flat_hash_map<
-    std::string,  // compute capability.
-    absl::flat_hash_map<std::pair<HloOpcode, PrimitiveType>, int64_t>>;
-
-const ProfilesNestedMap* LoadOpProfiles() {
-  ProfilesNestedMap* ret = new ProfilesNestedMap();
-  DeviceHloInstructionProfiles all_device_profiles;
-  CHECK(tsl::protobuf::TextFormat::ParseFromString(
-      std::string(kDeviceHloOpProfiles), &all_device_profiles));
-  for (const auto& device_profile : all_device_profiles.entries()) {
-    for (const auto& entry : device_profile.second.entries()) {
-      auto op_code = StringToHloOpcode(entry.instruction().opcode()).value();
-      auto element_type = entry.instruction().shape().element_type();
-
-      (*ret)[device_profile.first][std::make_pair(op_code, element_type)] =
-          entry.clock_cycles();
-    }
-  }
-  return ret;
-}
-
 int64_t FlopsPerElement(const se::DeviceDescription* device_info,
                         const PrimitiveType type, const HloOpcode opcode) {
-  std::string compute_capability = "<unknown>";
-  if (device_info != nullptr) {
-    if (auto* ptr = std::get_if<stream_executor::CudaComputeCapability>(
-            &device_info->gpu_compute_capability()))
-      compute_capability = absl::StrCat("sm_", ptr->major, ptr->minor);
-    if (auto* ptr = std::get_if<stream_executor::RocmComputeCapability>(
-            &device_info->gpu_compute_capability()))
-      compute_capability = ptr->gfx_version();
-  }
-
-  static const auto* all_profiles = LoadOpProfiles();
-  static const auto& default_profile = all_profiles->at("sm_86");
-  auto device_profile =
-      FindOrDefault(*all_profiles, compute_capability, default_profile);
+  auto device_profile = HloOpProfiles::Singleton().GetProfile(device_info);
   // Elementwise instructions typically take at least a few clock cycles.
   constexpr int64_t kDefaultFlopsPerElement = 3;
   return FindOrDefault(device_profile, std::make_pair(opcode, type),
@@ -463,6 +428,51 @@ absl::Status GpuHloCostAnalysis::HandleConcatenate(const HloInstruction* hlo) {
   }
   current_properties_[kFlopsKey] =
       flop_per_element * ShapeUtil::ElementsInRecursive(hlo->shape());
+  return absl::OkStatus();
+}
+
+absl::Status GpuHloCostAnalysis::HandleReduce(const HloInstruction* hlo) {
+  // HloCostAnalysis::HandleReduce computes FLOPs for the computation correctly,
+  // but `bytes_accessed` estimates are different for GPU.
+  TF_RETURN_IF_ERROR(HloCostAnalysis::HandleReduce(hlo));
+
+  const HloReduceInstruction* reduce = DynCast<HloReduceInstruction>(hlo);
+  auto output_shape = reduce->shape().IsArray()
+                          ? reduce->shape()
+                          : reduce->shape().tuple_shapes(0);
+
+  int64_t output_bytes_accessed = 0;
+  ShapeUtil::ForEachLeafShape(
+      reduce->shape(), [&](const Shape& sub_shape, const ShapeIndex& index) {
+        output_bytes_accessed += GetShapeSize(sub_shape);
+      });
+
+  current_properties_.set_output_bytes_accessed(output_bytes_accessed);
+
+  int64_t bytes_accessed = output_bytes_accessed;
+  for (int64_t input_operand_id = 0; input_operand_id < reduce->input_count();
+       ++input_operand_id) {
+    bytes_accessed +=
+        current_properties_.operand_bytes_accessed(input_operand_id);
+  }
+
+  int64_t output_shape_size = ShapeUtil::ElementsIn(output_shape);
+  for (int64_t init_operand_id = reduce->input_count();
+       init_operand_id < reduce->operand_count(); ++init_operand_id) {
+    auto init_operand = reduce->operand(init_operand_id);
+
+    int64_t operand_bytes_accessed =
+        output_shape_size * GetShapeSize(init_operand->shape());
+    current_properties_.set_operand_bytes_accessed(init_operand_id,
+                                                   operand_bytes_accessed);
+    current_properties_.set_operand_utilization(init_operand_id,
+                                                output_shape_size);
+
+    bytes_accessed += operand_bytes_accessed;
+  }
+
+  current_properties_[kBytesAccessedKey] = bytes_accessed;
+
   return absl::OkStatus();
 }
 

@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -33,7 +33,7 @@ EventPool::Handle::~Handle() {
 EventPool::EventPool(bool allow_reuse)
     : allow_reuse_(allow_reuse), next_sequence_number_(1) {}
 
-StatusOr<EventPool::Handle> EventPool::AllocateEvent(
+absl::StatusOr<EventPool::Handle> EventPool::AllocateEvent(
     se::StreamExecutor* executor) {
   Handle event;
 
@@ -54,11 +54,11 @@ StatusOr<EventPool::Handle> EventPool::AllocateEvent(
 
 void EventPool::ThenRecordEvent(se::Stream* stream, EventPool::Handle& handle) {
   absl::MutexLock lock(&mu_);
-  stream->ThenRecordEvent(handle.event_.get());
+  stream->RecordEvent(handle.event_.get()).IgnoreError();
   handle.sequence_number_ = next_sequence_number_++;
 }
 
-StatusOr<EventPool::Handle> EventPool::ThenAllocateAndRecordEvent(
+absl::StatusOr<EventPool::Handle> EventPool::ThenAllocateAndRecordEvent(
     se::Stream* stream) {
   TF_ASSIGN_OR_RETURN(EventPool::Handle handle,
                       AllocateEvent(stream->parent()));

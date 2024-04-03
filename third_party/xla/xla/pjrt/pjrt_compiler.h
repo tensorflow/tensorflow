@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -44,6 +44,10 @@ inline const char* RocmName() {
   static constexpr char kRocmName[] = "rocm";
   return kRocmName;
 }
+inline const char* SyclName() {
+  static constexpr char kSyclName[] = "sycl";
+  return kSyclName;
+}
 inline const char* TpuName() {
   static constexpr char kTpuName[] = "tpu";
   return kTpuName;
@@ -59,6 +63,10 @@ inline PjRtPlatformId CudaId() {
 inline PjRtPlatformId RocmId() {
   static const PjRtPlatformId kRocmId = tsl::Fingerprint64(RocmName());
   return kRocmId;
+}
+inline PjRtPlatformId SyclId() {
+  static const PjRtPlatformId kSyclId = tsl::Fingerprint64(SyclName());
+  return kSyclId;
 }
 inline PjRtPlatformId TpuId() {
   static const PjRtPlatformId kTpuId = tsl::Fingerprint64(TpuName());

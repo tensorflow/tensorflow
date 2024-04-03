@@ -89,6 +89,10 @@ void* AndroidDlopenSphalLibrary(const char* filename, int dlopen_flags) {
   function = reinterpret_cast<PFN_##function>(dlsym(libopencl, #function));
 #endif
 
+#define LoadFunctionExtension(plat_id, function) \
+  function = reinterpret_cast<PFN_##function>(   \
+      clGetExtensionFunctionAddressForPlatform(plat_id, #function));
+
 #ifdef __WINDOWS__
 void LoadOpenCLFunctions(HMODULE libopencl);
 #else
@@ -156,6 +160,17 @@ absl::Status LoadOpenCL() {
   return absl::UnknownError(
       absl::StrCat("Can not open OpenCL library on this device - ", error));
 #endif
+}
+
+void LoadOpenCLFunctionExtensions(cl_platform_id platform_id) {
+  // cl_khr_command_buffer extension
+  LoadFunctionExtension(platform_id, clCreateCommandBufferKHR);
+  LoadFunctionExtension(platform_id, clRetainCommandBufferKHR);
+  LoadFunctionExtension(platform_id, clReleaseCommandBufferKHR);
+  LoadFunctionExtension(platform_id, clFinalizeCommandBufferKHR);
+  LoadFunctionExtension(platform_id, clEnqueueCommandBufferKHR);
+  LoadFunctionExtension(platform_id, clCommandNDRangeKernelKHR);
+  LoadFunctionExtension(platform_id, clGetCommandBufferInfoKHR);
 }
 
 #ifdef __WINDOWS__
@@ -287,15 +302,6 @@ void LoadOpenCLFunctions(void* libopencl, bool use_wrapper) {
   LoadFunction(clCreateFromEGLImageKHR);
   LoadFunction(clEnqueueAcquireEGLObjectsKHR);
   LoadFunction(clEnqueueReleaseEGLObjectsKHR);
-
-  // cl_khr_command_buffer extension
-  LoadFunction(clCreateCommandBufferKHR);
-  LoadFunction(clRetainCommandBufferKHR);
-  LoadFunction(clReleaseCommandBufferKHR);
-  LoadFunction(clFinalizeCommandBufferKHR);
-  LoadFunction(clEnqueueCommandBufferKHR);
-  LoadFunction(clCommandNDRangeKernelKHR);
-  LoadFunction(clGetCommandBufferInfoKHR);
 
   LoadQcomExtensionFunctions();
 }

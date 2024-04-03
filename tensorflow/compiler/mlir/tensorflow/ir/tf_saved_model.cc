@@ -33,6 +33,7 @@ limitations under the License.
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
+#include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
@@ -631,5 +632,15 @@ func::FuncOp GetInitializerFunction(ModuleOp module_op,
   return init_func_itr == init_func_ops.end() ? nullptr : *init_func_itr;
 }
 
+bool IsRestoreGraph(ModuleOp module) {
+  return module
+      .walk([](mlir::Operation *op) {
+        if (llvm::isa<mlir::TF::RestoreV2Op>(op)) {
+          return mlir::WalkResult::interrupt();
+        }
+        return mlir::WalkResult::advance();
+      })
+      .wasInterrupted();
+}
 }  // namespace tf_saved_model
 }  // namespace mlir

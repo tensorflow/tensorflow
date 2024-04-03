@@ -124,9 +124,9 @@ namespace functor {
 //    back to the front
 template <typename T>
 void DoRoll(const OpKernelContext* context, const int64_t num_elements,
-            const int num_dims, const gtl::ArraySlice<int32> dim_size,
-            const T* input, T* output, const gtl::ArraySlice<int32> threshold,
-            const gtl::ArraySlice<int64_t> dim_range) {
+            const int num_dims, const absl::Span<const int32> dim_size,
+            const T* input, T* output, const absl::Span<const int32> threshold,
+            const absl::Span<const int64_t> dim_range) {
   auto work = [input, output, num_dims, &dim_size, &threshold, &dim_range](
                   int64_t start, int64_t end) {
     // array of indices for each dimension
@@ -188,9 +188,9 @@ template <typename T>
 // Use memcpy to copy memory in groups when the data type supports memcpy
 void DoRollWithMemcpy(const OpKernelContext* context,
                       const int64_t num_elements, const int num_dims,
-                      const gtl::ArraySlice<int32> dim_size, const T* input,
-                      T* output, const gtl::ArraySlice<int32> threshold,
-                      const gtl::ArraySlice<int64_t> dim_range,
+                      const absl::Span<const int32> dim_size, const T* input,
+                      T* output, const absl::Span<const int32> threshold,
+                      const absl::Span<const int64_t> dim_range,
                       const int64_t isd) {
   auto work = [input, output, num_dims, &dim_size, &threshold, &dim_range, isd](
                   int64_t start, int64_t end) {
@@ -311,10 +311,11 @@ void DoRollWithMemcpy(const OpKernelContext* context,
 template <typename T>
 struct Roll<CPUDevice, T> {
   void operator()(const OpKernelContext* context, const int64_t num_elements,
-                  const int num_dims, const gtl::ArraySlice<int32> dim_size,
+                  const int num_dims, const absl::Span<const int32> dim_size,
                   const T* input, T* output,
-                  const gtl::ArraySlice<int32> threshold,
-                  const gtl::ArraySlice<int64_t> dim_range, const int64_t isd) {
+                  const absl::Span<const int32> threshold,
+                  const absl::Span<const int64_t> dim_range,
+                  const int64_t isd) {
     if (DataTypeCanUseMemcpy(DataTypeToEnum<T>::v())) {
       // V2 copies memory in groups instead of element by element
       DoRollWithMemcpy<T>(context, num_elements, num_dims, dim_size, input,

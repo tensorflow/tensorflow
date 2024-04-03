@@ -2,7 +2,7 @@
 
 package(
     default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = ["//visibility:public"],
+    default_visibility = ["//visibility:private"],
     licenses = ["notice"],
 )
 

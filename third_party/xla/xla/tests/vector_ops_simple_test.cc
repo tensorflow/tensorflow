@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -321,10 +321,9 @@ XLA_TEST_F(VecOpsSimpleTest, ClampFloatEdgeCases) {
   auto low = ConstantR1<float>(&builder, {NAN, 1, 1});
   auto high = ConstantR1<float>(&builder, {3, NAN, 3});
   auto x = ConstantR1<float>(&builder, {2, 2, NAN});
-  Clamp(low, x, high);
-
-  std::vector<float> expected = {NAN, NAN, NAN};
-  ComputeAndCompareR1<float>(&builder, expected, {});
+  auto clamp = Clamp(low, x, high);
+  Eq(clamp, clamp);  // Check for NaN.
+  ComputeAndCompareR1<bool>(&builder, {false, false, false}, {});
 }
 
 XLA_TEST_F(VecOpsSimpleTest, ClampValuesConstantS64) {

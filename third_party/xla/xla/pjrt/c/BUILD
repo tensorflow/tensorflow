@@ -1,4 +1,3 @@
-load("//xla:xla.bzl", "xla_cc_binary", "xla_cc_test")
 load(
     "@local_tsl//tsl/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
@@ -8,6 +7,7 @@ load(
     "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
+load("//xla:xla.bzl", "xla_cc_binary", "xla_cc_test")
 
 # copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])
 
@@ -54,6 +54,15 @@ cc_library(
 )
 
 cc_library(
+    name = "pjrt_c_api_custom_partitioner_extension_hdrs",
+    hdrs = ["pjrt_c_api_custom_partitioner_extension.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":pjrt_c_api_hdrs",
+    ],
+)
+
+cc_library(
     name = "pjrt_c_api_wrapper_impl",
     srcs = ["pjrt_c_api_wrapper_impl.cc"],
     hdrs = ["pjrt_c_api_wrapper_impl.h"],
@@ -64,7 +73,6 @@ cc_library(
         "//xla:literal",
         "//xla:shape_util",
         "//xla:status",
-        "//xla:statusor",
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
@@ -78,6 +86,7 @@ cc_library(
         "//xla/pjrt:pjrt_device_description",
         "//xla/pjrt:pjrt_executable",
         "//xla/pjrt:pjrt_future",
+        "//xla/pjrt:pjrt_layout",
         "//xla/pjrt/distributed:key_value_store_interface",
         "//xla/service:computation_placer_hdr",
         "//xla/service:hlo_proto_cc",
@@ -94,8 +103,11 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@llvm-project//mlir:IR",
         "@local_tsl//tsl/framework:allocator",
+        "@local_tsl//tsl/platform:casts",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/profiler/lib:connected_traceme",
+        "@local_tsl//tsl/profiler/lib:context_types_hdrs",
     ],
 )
 
@@ -106,9 +118,9 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":pjrt_c_api_hdrs",
+        ":pjrt_c_api_profiler_extension_hdrs",
         "//xla:shape_util",
         "//xla:status",
-        "//xla:statusor",
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/pjrt:pjrt_client",
@@ -119,6 +131,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
@@ -126,6 +139,8 @@ cc_library(
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/profiler/lib:connected_traceme",
+        "@local_tsl//tsl/profiler/lib:context_types_hdrs",
     ],
 )
 
@@ -160,6 +175,7 @@ cc_library(
     hdrs = ["pjrt_c_api_gpu_internal.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":pjrt_c_api_custom_partitioner_extension_hdrs",
         ":pjrt_c_api_gpu_extension_hdrs",
         ":pjrt_c_api_hdrs",
         ":pjrt_c_api_helpers",
@@ -169,15 +185,23 @@ cc_library(
         "//xla/backends/profiler/plugin:plugin_tracer_impl",
         "//xla/backends/profiler/plugin:profiler_c_api_hdrs",
         "//xla/backends/profiler/plugin:profiler_error",
+        "//xla/client:local_client",
         "//xla/ffi",
         "//xla/ffi:ffi_api",
         "//xla/ffi/api:c_api",
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt:pjrt_common",
+        "//xla/pjrt:pjrt_compiler",
+        "//xla/pjrt:pjrt_device_description",
         "//xla/pjrt/gpu:gpu_helpers",
         "//xla/pjrt/gpu:se_gpu_pjrt_client",
+        "//xla/pjrt/gpu:se_gpu_pjrt_compiler",  # To register GPU AOT compiler
+        "//xla/python:custom_partition_callback",
         "//xla/python:inspect_sharding",  # To register "InspectSharding" custom partitioning handler.
+        "//xla/service:compiler",
         "//xla/service:custom_call_target_registry",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor:stream_executor_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:str_format",
@@ -189,7 +213,6 @@ cc_library(
     name = "pjrt_c_api_gpu",
     srcs = ["pjrt_c_api_gpu.cc"],
     hdrs = ["pjrt_c_api_gpu.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":pjrt_c_api_gpu_internal",
         ":pjrt_c_api_hdrs",

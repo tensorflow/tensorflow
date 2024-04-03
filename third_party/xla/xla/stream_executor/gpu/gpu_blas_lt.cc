@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,14 +15,20 @@ limitations under the License.
 
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
 
+#include <algorithm>
 #include <cstdint>
+#include <optional>
 #include <utility>
 
 #include "absl/status/statusor.h"
+#include "absl/strings/str_format.h"
 #include "xla/primitive_util.h"
+#include "xla/service/algorithm_util.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
+#include "tsl/protobuf/dnn.pb.h"
 #if GOOGLE_CUDA
 #include "tsl/platform/tensor_float_32_utils.h"
 #endif
@@ -41,6 +47,10 @@ absl::StatusOr<DataType> AsBlasDataType(PrimitiveType dtype) {
       return DataType::kF8E5M2;
     case PrimitiveType::F8E4M3FN:
       return DataType::kF8E4M3FN;
+    case PrimitiveType::F8E5M2FNUZ:
+      return DataType::kF8E5M2FNUZ;
+    case PrimitiveType::F8E4M3FNUZ:
+      return DataType::kF8E4M3FNUZ;
     case PrimitiveType::S8:
       return DataType::kInt8;
     case PrimitiveType::F16:
@@ -58,7 +68,7 @@ absl::StatusOr<DataType> AsBlasDataType(PrimitiveType dtype) {
     case PrimitiveType::C128:
       return DataType::kComplexDouble;
     default:
-      return xla::InternalError(
+      return xla::Internal(
           "AsBlasDataType: unsupported type: %s",
           xla::primitive_util::LowercasePrimitiveTypeName(dtype));
   }
@@ -70,6 +80,10 @@ absl::StatusOr<PrimitiveType> AsXlaPrimitiveType(DataType dtype) {
       return PrimitiveType::F8E5M2;
     case DataType::kF8E4M3FN:
       return PrimitiveType::F8E4M3FN;
+    case DataType::kF8E5M2FNUZ:
+      return PrimitiveType::F8E5M2FNUZ;
+    case DataType::kF8E4M3FNUZ:
+      return PrimitiveType::F8E4M3FNUZ;
     case DataType::kInt8:
       return PrimitiveType::S8;
     case DataType::kHalf:
@@ -87,7 +101,7 @@ absl::StatusOr<PrimitiveType> AsXlaPrimitiveType(DataType dtype) {
     case DataType::kComplexDouble:
       return PrimitiveType::C128;
     default:
-      return xla::InternalError("AsXlaPrimitiveType: unsupported dtype");
+      return xla::Internal("AsXlaPrimitiveType: unsupported dtype");
   }
 }
 
@@ -121,34 +135,40 @@ void MatrixLayout::Transpose() {
 }
 
 absl::StatusOr<ComputationType> GetBlasComputationType(
-    PrimitiveType lhs_dtype, PrimitiveType output_dtype,
-    int64_t compute_precision) {
-  switch (output_dtype) {
-    case PrimitiveType::F8E5M2:    // fall-through
-    case PrimitiveType::F8E4M3FN:  // fall-through
-    case PrimitiveType::F16:       // fall-through
-    case PrimitiveType::BF16:
-      // Accumulate in f32 precision.
-      return ComputationType::kF32;
-    case PrimitiveType::F32:  // fall-through
-    case PrimitiveType::C64:
+    xla::PrecisionConfig::Algorithm algorithm, xla::PrimitiveType lhs_dtype,
+    xla::PrimitiveType output_dtype, int64_t compute_precision) {
+  if (algorithm == xla::PrecisionConfig::ALG_UNSET) {
+    switch (output_dtype) {
+      case PrimitiveType::F8E5M2:      // fall-through
+      case PrimitiveType::F8E4M3FN:    // fall-through
+      case PrimitiveType::F8E5M2FNUZ:  // fall-through
+      case PrimitiveType::F8E4M3FNUZ:  // fall-through
+      case PrimitiveType::F16:         // fall-through
+      case PrimitiveType::BF16:
+        // Accumulate in f32 precision.
+        return ComputationType::kF32;
+      case PrimitiveType::F32:  // fall-through
+      case PrimitiveType::C64:
 #if GOOGLE_CUDA
-      if (tsl::tensor_float_32_execution_enabled() && compute_precision <= 1 &&
-          lhs_dtype == output_dtype) {
-        // CublasLt requires compute type to be F32 for F8 matmul.
-        // TF32 should only be chosen for FP32 or C64 gemm
-        return ComputationType::kTF32AsF32;
-      }
+        if (tsl::tensor_float_32_execution_enabled() &&
+            compute_precision <= 1 && lhs_dtype == output_dtype) {
+          // CublasLt requires compute type to be F32 for F8 matmul.
+          // TF32 should only be chosen for FP32 or C64 gemm
+          return ComputationType::kTF32AsF32;
+        }
 #endif
-      return ComputationType::kF32;
-    case PrimitiveType::F64:  // fall-through
-    case PrimitiveType::C128:
-      return ComputationType::kF64;
-    case PrimitiveType::S32:
-      return ComputationType::kI32;
-    default:
-      return xla::InternalError("GetBlasComputationType: unsupported type");
+        return ComputationType::kF32;
+      case PrimitiveType::F64:  // fall-through
+      case PrimitiveType::C128:
+        return ComputationType::kF64;
+      case PrimitiveType::S32:
+        return ComputationType::kI32;
+      default:
+        return xla::Internal("GetBlasComputationType: unsupported type");
+    }
   }
+
+  return xla::algorithm_util::GetBlasComputationType(algorithm);
 }
 
 // BLAS GeMM's output is column-major. If we require row-major, use identity:
@@ -176,7 +196,7 @@ bool MakeOutputColumnMajor(MatrixLayout& lhs, MatrixLayout& rhs,
     -> absl::StatusOr<MatmulPlanPtr> {
   auto blas = Get(stream);
   if (blas == nullptr) {
-    return xla::InternalError("BlasLt is unavailable");
+    return xla::Internal("BlasLt is unavailable");
   }
   return blas->GetMatmulPlan(cfg, epilogue);
 }

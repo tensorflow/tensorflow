@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/IR/IRBuilder.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -33,13 +34,33 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
+namespace {
 
-LaunchDimensions InPlaceDynamicUpdateSliceEmitter::launch_dimensions() const {
+constexpr int kDUSUpdateIndex = 1;
+
+}  // namespace
+
+LaunchDimensions InPlaceDynamicUpdateSliceFusion::launch_dimensions() const {
   const auto& update_shape = dus_ops_.front()->operand(1)->shape();
   return CalculateLaunchDimensions(update_shape, analysis_.device_info());
 }
 
-absl::Status InPlaceDynamicUpdateSliceEmitter::EmitKernel(
+std::optional<IndexingMap>
+InPlaceDynamicUpdateSliceFusion::ComputeThreadIdToInputIndexing(
+    int64_t root_index, int64_t hero_operand_index,
+    mlir::MLIRContext* mlir_context) const {
+  if (hero_operand_index != kDUSUpdateIndex) {
+    return std::nullopt;
+  }
+  auto launch_dims = launch_dimensions();
+  // It is guaranteed that all DUS ops have the same output shape at this point.
+  const auto& update_shape =
+      dus_ops_.front()->operand(kDUSUpdateIndex)->shape();
+  return GetDefaultThreadIdIndexingMap(launch_dims, /*unroll_factor=*/1,
+                                       update_shape, mlir_context);
+}
+
+absl::Status InPlaceDynamicUpdateSliceFusion::EmitKernel(
     IrEmitterContext& ir_emitter_context, const HloFusionInstruction& fusion,
     const LaunchDimensions& launch_dims, std::vector<llvm_ir::IrArray> inputs,
     std::vector<llvm_ir::IrArray> outputs, llvm::IRBuilder<>* builder) const {

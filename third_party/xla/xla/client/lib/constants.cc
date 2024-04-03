@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -35,7 +35,7 @@ XlaOp Zeros(XlaBuilder* builder, const Shape& shape) {
 
 XlaOp ZerosLike(XlaOp prototype) {
   XlaBuilder* builder = prototype.builder();
-  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+  return builder->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(prototype));
     return Zeros(builder, shape);
   });

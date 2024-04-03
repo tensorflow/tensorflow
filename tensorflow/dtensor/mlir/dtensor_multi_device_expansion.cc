@@ -747,7 +747,7 @@ mlir::LogicalResult BuildOuterMainFunc(
 Status ExtractResultLayouts(mlir::Operation* op, mlir::func::ReturnOp return_op,
                             std::vector<ExpandedResults>& expanded_results) {
   if (!return_op || (return_op.getNumOperands() == 0)) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   TF_ASSIGN_OR_RETURN(std::vector<std::optional<Layout>> layouts,
                       ExtractLayoutFromOp(op));
@@ -760,7 +760,7 @@ Status ExtractResultLayouts(mlir::Operation* op, mlir::func::ReturnOp return_op,
     size_t result_index = std::distance(operands.begin(), search);
     expanded_results[result_index].layout = layouts[layout_index];
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 struct DTensorMultiDeviceExpansion

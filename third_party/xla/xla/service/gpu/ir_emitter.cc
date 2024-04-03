@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,18 +15,24 @@ limitations under the License.
 
 #include "xla/service/gpu/ir_emitter.h"
 
+#include <cstdint>
 #include <utility>
+#include <vector>
 
 // IWYU pragma: no_include "llvm/IR/Intrinsics.gen.inc"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "llvm/IR/BasicBlock.h"
-#include "llvm/IR/Constants.h"
 #include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Module.h"
-#include "xla/hlo/ir/hlo_computation.h"
-#include "xla/primitive_util.h"
+#include "llvm/Support/AtomicOrdering.h"
+#include "llvm/TargetParser/Triple.h"
 #include "xla/service/elemental_ir_emitter.h"
 #include "xla/service/gpu/elemental_ir_emitter.h"
+#include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/ir_emitter_nested.h"
 #include "xla/service/llvm_ir/fused_ir_emitter.h"
 #include "xla/service/llvm_ir/ir_array.h"
@@ -35,7 +41,7 @@ limitations under the License.
 #include "xla/service/llvm_ir/tuple_ops.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"
-#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 

@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -69,10 +69,10 @@ class OutfeedReceiver {
   // Returns error status if the outfeed shape is different than the
   // previously used shape for the same consumer_id or the consumer id is
   // invalid.
-  StatusOr<XlaOp> AddOutfeedToBuilder(XlaBuilder* builder, XlaOp token,
-                                      uint32_t consumer_id,
-                                      std::vector<XlaOp> arrays,
-                                      uint32_t device_idx);
+  absl::StatusOr<XlaOp> AddOutfeedToBuilder(XlaBuilder* builder, XlaOp token,
+                                            uint32_t consumer_id,
+                                            std::vector<XlaOp> arrays,
+                                            uint32_t device_idx);
 
  private:
   std::unique_ptr<OutfeedReceiverImpl> p_impl_;

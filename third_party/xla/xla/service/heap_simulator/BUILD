@@ -1,14 +1,15 @@
 # Description:
 #   XLA Heap simulator.
 
+load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load(
     "//xla:xla.bzl",
     "xla_cc_test",
 )
-load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
-    default_visibility = ["//visibility:public"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = [":friends"],
     licenses = ["notice"],
 )
 
@@ -23,7 +24,6 @@ cc_library(
     name = "allocation_block",
     srcs = ["allocation_block.cc"],
     hdrs = ["allocation_block.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
@@ -35,7 +35,6 @@ cc_library(
     name = "heap_simulator",
     srcs = ["heap_simulator.cc"],
     hdrs = ["heap_simulator.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":allocation_block",
         "//xla:comparison_util",
@@ -70,12 +69,12 @@ xla_cc_test(
     name = "heap_simulator_test",
     srcs = ["heap_simulator_test.cc"],
     deps = [
+        ":allocation_block",
         ":heap_simulator",
         "//xla:literal",
         "//xla:status_macros",
         "//xla/hlo/ir:hlo",
         "//xla/service:buffer_value",
-        "//xla/service:hlo_dce",
         "//xla/service:hlo_ordering",
         "//xla/service:hlo_parser",
         "//xla/service:hlo_value",
@@ -84,7 +83,9 @@ xla_cc_test(
         "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/lib/core:status_test_util",
+        "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:test",
     ],
 )
