@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "third_party/nanobind/include/nanobind/nanobind.h"
 #include "third_party/nanobind/include/nanobind/stl/shared_ptr.h"  // IWYU pragma: keep
@@ -21,9 +20,12 @@ limitations under the License.
 #include "pybind11/numpy.h"  // from @pybind11
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "pybind11/pytypes.h"  // from @pybind11
-#include "pybind11_abseil/status_casters.h"  // from @pybind11_abseil
+// The "third_party/pybind11_abseil/status_casters.h" header says
+// it's deprecated and that we should import the other headers directly.
+#include "pybind11_abseil/import_status_module.h"  // from @pybind11_abseil
 #include "pybind11_protobuf/native_proto_caster.h"  // from @pybind11_protobuf
 #include "xla/literal.h"
+#include "xla/pjrt/status_casters.h"
 #include "xla/python/logging.h"
 #include "xla/python/nb_numpy.h"
 #include "xla/python/types.h"
@@ -39,7 +41,7 @@ namespace py = ::pybind11;
 namespace nb = ::nanobind;
 
 namespace {
-absl::StatusOr<py::object> MakeNdarray(const xla::LiteralProto& proto) {
+py::object MakeNdarray(const xla::LiteralProto& proto) {
   auto m_lit = xla::Literal::CreateFromProto(proto);
   if (!m_lit.ok()) {
     // NOTE: The OSS version of XLA is still using an old version of
@@ -55,22 +57,20 @@ absl::StatusOr<py::object> MakeNdarray(const xla::LiteralProto& proto) {
   // Move (not copy) the literal onto the heap, for sharing with Python.
   auto lit = std::make_shared<xla::Literal>(std::move(m_lit).value());
 
-  TF_ASSIGN_OR_RETURN(auto nbobj, xla::LiteralToPython(std::move(lit)));
-
-  // Convert `nb::object` into `py::object`.
+  auto nbobj = xla::ValueOrThrow(xla::LiteralToPython(std::move(lit)));
   return py::reinterpret_steal<py::object>(nbobj.release().ptr());
 }
 
 // Partial reversion of cl/617156835, until we can get the proto-casters
 // (and hence the extension) switched over to nanobind.
 // TODO(wrengr): Or can we mix `{py,nb}::module_::def` calls??
-absl::StatusOr<xla::PrimitiveType> DtypeToEtype(const py::dtype& py_d) {
+xla::PrimitiveType DtypeToEtype(const py::dtype& py_d) {
   auto nb_d = nb::borrow<xla::nb_dtype>(py_d.ptr());
-  return xla::DtypeToPrimitiveType(nb_d);
+  return xla::ValueOrThrow(xla::DtypeToPrimitiveType(nb_d));
 }
 
-absl::StatusOr<py::dtype> EtypeToDtype(xla::PrimitiveType p) {
-  TF_ASSIGN_OR_RETURN(xla::nb_dtype nb_d, xla::PrimitiveTypeToNbDtype(p));
+py::dtype EtypeToDtype(xla::PrimitiveType p) {
+  auto nb_d = xla::ValueOrThrow(xla::PrimitiveTypeToNbDtype(p));
   return py::reinterpret_steal<py::dtype>(nb_d.release().ptr());
 }
 }  // namespace
@@ -94,10 +94,12 @@ PYBIND11_MODULE(_types, py_m) {
   // protobuf objects.
   pybind11_protobuf::ImportNativeProtoCasters();
 
-  // Import implicit conversions from `absl::StatusOr` to Python exceptions.
-  // (The code for performing conversions is easy enough to port to nanobind;
-  // albeit, the conversion calls themselves have to be made explicit,
-  // since `nb::detail::type_caster` disallows raising exceptions.)
+  // Import dependencies for converting `absl::StatusOr` to Python exceptions.
+  // This also brings into scope pybind11 casters for doing conversions
+  // implicitly; however, towards the goal of converting everything to
+  // nanobind, we call `xla::ValueOrThrow` to make make the conversions
+  // explicit (since `nb::detail::type_caster` disallows raising exceptions,
+  // and therefore nanobind cannot do this implicitly).
   py::google::ImportStatusModule();
 
   // Import the 'ml_dtypes' module; which is implicitly required by
