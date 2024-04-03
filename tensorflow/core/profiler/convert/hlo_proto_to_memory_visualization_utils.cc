@@ -38,7 +38,6 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/layout_util.h"
 #include "xla/service/hlo.pb.h"
-#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/platform/errors.h"
@@ -58,16 +57,12 @@ using ::xla::LogicalBufferProto;
 using ::xla::Shape;
 using ::xla::ShapeUtil;
 
-Shape ResolveShapeIndex(const xla::ShapeProto& shape_proto,
-                        absl::Span<const int64_t> shape_index) {
-  if (shape_index.empty()) return Shape(shape_proto);
-  // Choosing the last subshape to maintain historical behavior.
-  int64_t i = shape_index.back();
-  if (i >= shape_proto.tuple_shapes_size()) {
-    LOG(DFATAL) << "shape_index out of tuple_shapes range.";
-    return Shape(shape_proto);
+const Shape* ResolveShapeIndex(const Shape* shape,
+                               absl::Span<const int64_t> shape_index) {
+  for (int64_t value : shape_index) {
+    shape = &shape->tuple_shapes(value);
   }
-  return Shape(shape_proto.tuple_shapes(i));
+  return shape;
 }
 
 std::string ShapeDescription(const Shape& shape) {
@@ -137,12 +132,12 @@ struct LogicalBufferStruct {
   LogicalBufferStruct(const LogicalBufferProto& p,
                       const BufferAllocationStruct& b,
                       const ::xla::HloInstructionProto& i, uint64_t offset)
-      : proto(p),
-        buffer_allocation(b),
-        hlo_instruction(i),
-        offset(offset),
-        shape(ResolveShapeIndex(hlo_instruction.shape(),
-                                proto.defined_at().shape_index())) {}
+      : proto(p), buffer_allocation(b), hlo_instruction(i), offset(offset) {
+    // Get shape of logical buffer.
+    const Shape top_level_shape(hlo_instruction.shape());
+    shape =
+        *ResolveShapeIndex(&top_level_shape, proto.defined_at().shape_index());
+  }
 
   absl::string_view instruction_name() const { return hlo_instruction.name(); }
 
