@@ -125,8 +125,8 @@ void QuantizePass::runOnOperation() {
     PopulateQuantizeWeightOnlyPatterns(ctx, patterns);
   }
 
-  PopulateComputeHeavyPatterns(ctx, patterns,
-                               enable_per_channel_quantized_weight_);
+  PopulateCommonQuantizationPatterns(ctx, patterns,
+                                     enable_per_channel_quantized_weight_);
 
   // Quantize all quantizable ops, including ops that are not compute-heavy.
   if (enable_full_int_quantization_) {

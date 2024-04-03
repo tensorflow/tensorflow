@@ -26,6 +26,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
+#include "tensorflow/compiler/mlir/quantization/common/func.h"
 #include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_utils.h"
 #include "tensorflow/compiler/mlir/quantization/common/test_base.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -34,7 +35,9 @@ limitations under the License.
 namespace mlir::quant::stablehlo {
 namespace {
 
+using ::mlir::stablehlo::GatherOp;
 using ::testing::IsEmpty;
+using ::testing::IsTrue;
 using ::testing::NotNull;
 using ::testing::Pair;
 using ::testing::UnorderedElementsAre;
@@ -282,6 +285,43 @@ TEST_F(GetStableHloOpQuantSpecTest,
 
   EXPECT_THAT(op_quant_spec->coeff_op_quant_dim,
               UnorderedElementsAre(Pair(1, 3)));
+}
+
+using GetStableHloQuantConstraintsTest = ::mlir::quant::QuantizationTestBase;
+
+TEST_F(GetStableHloQuantConstraintsTest,
+       HasSameOperandAndResultTypeRequirementSucceeds) {
+  // Quantizable ops: constants
+  // Non-quantizable ops: normal StableHLO ops and terminators
+  constexpr absl::string_view kModuleGather = R"mlir(
+    module {
+      func.func @main() -> (tensor<2x3x2x2xf32>) {
+        %0 = stablehlo.constant dense<1.0> : tensor<3x4x2xf32>
+        %1 = stablehlo.constant dense<2> : tensor<2x3x2xi64>
+        %2 = "stablehlo.gather"(%0, %1) {
+          dimension_numbers = #stablehlo.gather<
+            offset_dims = [2, 3],
+            collapsed_slice_dims = [0],
+            start_index_map = [1, 0],
+            index_vector_dim = 2>,
+          slice_sizes = array<i64: 1, 2, 2>,
+          indices_are_sorted = false
+        } : (tensor<3x4x2xf32>, tensor<2x3x2xi64>) -> tensor<2x3x2x2xf32>
+        func.return %2 : tensor<2x3x2x2xf32>
+      }
+    }
+  )mlir";
+  OwningOpRef<ModuleOp> module_op = ParseModuleOpString(kModuleGather);
+  ASSERT_TRUE(module_op);
+
+  func::FuncOp main_fn = FindMainFuncOp(*module_op);
+  ASSERT_THAT(main_fn, NotNull());
+
+  Operation* gather_op = FindOperationOfType<GatherOp>(main_fn);
+  const auto spec = GetStableHloQuantConstraints(gather_op);
+
+  EXPECT_THAT(spec, NotNull());
+  EXPECT_THAT(spec->has_same_operand_and_result_type_requirement, IsTrue());
 }
 
 }  // namespace

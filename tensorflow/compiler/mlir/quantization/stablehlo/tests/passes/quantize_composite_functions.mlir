@@ -776,5 +776,6 @@ module attributes {tf_saved_model.semantics} {
     return %0 : tensor<2x3x2x2xf32>
   }
 // CHECK: %[[GATHER:.+]] = "stablehlo.gather"(%[[ARG_0]], %[[ARG_1]]) {{.*}} : (tensor<3x4x2x!quant.uniform<i8:f32, {{.*}}>>, tensor<2x3x2xi32>) -> tensor<2x3x2x2x!quant.uniform<i8:f32, {{.*}}>>
-// CHECK: return %[[GATHER]] : tensor<2x3x2x2x!quant.uniform<i8:f32, {{.*}}>>
+// CHECK: %[[UNIFORM_QUANTIZE_0:.+]] = stablehlo.uniform_quantize %[[GATHER]] : tensor<2x3x2x2x!quant.uniform<i8:f32, {{.*}}>>
+// CHECK: return %[[UNIFORM_QUANTIZE]] : tensor<2x3x2x2x!quant.uniform<i8:f32, {{.*}}>>
 }

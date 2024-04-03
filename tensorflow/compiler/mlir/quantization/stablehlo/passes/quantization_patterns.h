@@ -148,7 +148,7 @@ class StableHloQuantizationPattern : public OpRewritePattern<RootOpT> {
         return failure();
       }
 
-      if (GetStableHloQuantScaleSpec(candidate_op)
+      if (GetStableHloQuantConstraints(candidate_op)
               ->has_same_scale_requirement &&
           !IsConnectedWithQuantizedCompsiteFunction(candidate_op)) {
         return failure();
@@ -250,9 +250,10 @@ class StableHloQuantizationPattern : public OpRewritePattern<RootOpT> {
   }
 };
 
-// Populates pattern for compute heavy operations.
-void PopulateComputeHeavyPatterns(MLIRContext& ctx, RewritePatternSet& patterns,
-                                  bool enable_per_channel_quantized_weight);
+// Populates common patterns that are usually compute heavy or memory bound.
+void PopulateCommonQuantizationPatterns(
+    MLIRContext& ctx, RewritePatternSet& patterns,
+    bool enable_per_channel_quantized_weight);
 
 // Populates conversion patterns for all quantizable ops, including
 // ops that are not compute-heavy and data movement ops.

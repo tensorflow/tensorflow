@@ -515,9 +515,35 @@ class QuantizeSingularOpPattern : public EntryFuncBodyQuantizationPattern {
   void rewrite(func::FuncOp entry_func_op, const Method& quantization_method,
                PatternRewriter& rewriter) const override {
     auto singular_op = *entry_func_op.getOps<SingularOpT>().begin();
-
     Value singular_op_result = singular_op.getResult();
-    singular_op_result.setType(entry_func_op.getResultTypes()[0]);
+
+    // For ops that require same operand and result types, use explicit
+    // requantize op rather than using `entry_func_op`'s result as op result.
+    auto spec = GetStableHloQuantConstraints(singular_op);
+    const bool has_same_operand_and_result_type =
+        spec->has_same_operand_and_result_type_requirement;
+    if (has_same_operand_and_result_type) {
+      const Type operand_type = entry_func_op.getArgumentTypes()[0];
+      const Type func_result_type = entry_func_op.getResultTypes()[0];
+
+      // Get the quantized tensor manipulation op's output type and update.
+      const auto singular_op_result_type =
+          singular_op_result.getType().cast<RankedTensorType>();
+      const ArrayRef<int64_t> singular_op_shape =
+          singular_op_result_type.getShape();
+      const TensorType new_singular_op_result_type =
+          singular_op_result_type.cloneWith(
+              singular_op_shape,
+              getElementTypeOrSelf(operand_type).cast<UniformQuantizedType>());
+      singular_op_result.setType(new_singular_op_result_type);
+
+      // Create requantization op and return.
+      rewriter.setInsertionPointAfter(singular_op);
+      CreateAndReturnUniformQuantizeOp(rewriter, *singular_op, entry_func_op,
+                                       func_result_type);
+    } else {
+      singular_op_result.setType(entry_func_op.getResultTypes()[0]);
+    }
   }
 };
 
@@ -664,7 +690,7 @@ class QuantizeOpWithRegionPattern
       // Quantization parameters can be propagated only for same-scale ops and
       // same-scale ops are quantized only when they are connected to quantized
       // composite functions.
-      if (!GetStableHloQuantScaleSpec(op_with_region)
+      if (!GetStableHloQuantConstraints(op_with_region)
                ->has_same_scale_requirement ||
           !IsConnectedWithQuantizedCompsiteFunction(op_with_region)) {
         return failure();
@@ -866,7 +892,8 @@ bool IsConnectedWithQuantizedCompsiteFunction(Operation* same_scale_op) {
     }
 
     // Check whether the preceding op is a quantized same-scale op.
-    if (GetStableHloQuantScaleSpec(preceding_op)->has_same_scale_requirement) {
+    if (GetStableHloQuantConstraints(preceding_op)
+            ->has_same_scale_requirement) {
       for (const OpResult result : preceding_op->getResults()) {
         const Type element_type = getElementTypeOrSelf(result.getType());
         if (element_type.isa<UniformQuantizedType>()) {
@@ -893,7 +920,7 @@ bool IsConnectedWithQuantizedCompsiteFunction(Operation* same_scale_op) {
       }
 
       // Check whether the following op is a quantized same-scale op.
-      if (GetStableHloQuantScaleSpec(following_op)
+      if (GetStableHloQuantConstraints(following_op)
               ->has_same_scale_requirement) {
         for (Value operand : following_op->getOperands()) {
           const Type element_type = getElementTypeOrSelf(operand.getType());
@@ -923,7 +950,9 @@ class QuantizeWeightOnlyOpPattern : public EntryFuncBodyQuantizationPattern {
 };
 
 // Compute heavy patterns should be quantized for both server and ODML targets.
-void PopulateComputeHeavyPatterns(
+// Most patterns here are useful when quantized since they are compute heavy
+// or memory bound.
+void PopulateCommonQuantizationPatterns(
     MLIRContext& ctx, RewritePatternSet& patterns,
     const bool enable_per_channel_quantized_weight) {
   patterns.add<XlaCallModuleOpToCallOp<QuantizeConvolutionOpPattern>>(
