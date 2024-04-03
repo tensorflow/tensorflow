@@ -139,13 +139,7 @@ int64_t StreamExecutor::GetDeviceLoad() const {
 dnn::DnnSupport* StreamExecutor::AsDnn() { return implementation_->AsDnn(); }
 
 blas::BlasSupport* StreamExecutor::AsBlas() {
-  absl::MutexLock lock(&mu_);
-  if (blas_ != nullptr) {
-    return blas_.get();
-  }
-
-  blas_.reset(implementation_->CreateBlas());
-  return blas_.get();
+  return implementation_->AsBlas();
 }
 
 fft::FftSupport* StreamExecutor::AsFft() { return implementation_->AsFft(); }

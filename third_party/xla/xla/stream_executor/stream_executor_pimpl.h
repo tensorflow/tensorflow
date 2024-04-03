@@ -439,10 +439,6 @@ class StreamExecutor {
   // fashion.
   std::unique_ptr<internal::StreamExecutorInterface> implementation_;
 
-  // Memoized BLAS support object -- we only want to create this once when asked
-  // for a BLAS interface.
-  std::unique_ptr<blas::BlasSupport> blas_ ABSL_GUARDED_BY(mu_);
-
   // Slot to cache the owned DeviceDescription for the underlying device
   // once it has been queried from DeviceDescription().
   mutable std::unique_ptr<DeviceDescription> device_description_
