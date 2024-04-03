@@ -25,6 +25,21 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "i4",
+    hdrs = ["i4.h"],
+    deps = [],
+)
+
+cc_test(
+    name = "i4_test",
+    srcs = ["i4_test.cc"],
+    deps = [
+        ":i4",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_test(
     name = "tensor_test",
     srcs = ["tensor_test.cc"],
