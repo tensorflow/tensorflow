@@ -794,10 +794,10 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     """Test gather_nd with quantized i8 parameters."""
 
     class GatherNDQI8QDQ(tf.keras.Model):
+
       @tf.function(
           input_signature=[tf.TensorSpec(shape=(2, 2), dtype=tf.float32)]
       )
-
       def func(self, input_tensor):
         x = tf.quantization.fake_quant_with_min_max_args(
             input_tensor, -3.0, 3.0
@@ -1629,7 +1629,9 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
 
     converter = lite.TFLiteConverterV2.from_saved_model(save_dir)
     converter.experimental_use_stablehlo_quantizer = True
-    with self.assertRaisesRegex(ValueError, 'only supports static-range PTQ'):
+    with self.assertRaisesRegex(
+        ValueError, 'only supports static-range and weight-only PTQ'
+    ):
       converter.convert()
 
   @test_util.run_v2_only
