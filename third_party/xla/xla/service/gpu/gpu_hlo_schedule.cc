@@ -373,6 +373,17 @@ class GpuAsyncTrackerBase : public AsyncTracker {
       HloScheduleGraph* schedule_graph,
       const LatencyEstimator* latency_estimator) const override {
     for (auto inst : schedule_graph->GetOriginalInstrList()) {
+      // Force pipelined Recv to be closed to Recvdone so that copies inserted
+      // for RecvDone can be eliminated.
+      if (inst->opcode() == HloOpcode::kRecv) {
+        if (inst->frontend_attributes().map().count(kSendRecvPipelineAttr) >
+            0) {
+          HloGraphNode& node = schedule_graph->GetNode(inst);
+          node.SetForceEarly(true);
+          VLOG(5) << "Setting force early for instruction: "
+                  << inst->ToString();
+        }
+      }
       if (inst->has_backend_config()) {
         auto gpu_config = inst->backend_config<GpuBackendConfig>();
         if (gpu_config.ok()) {
