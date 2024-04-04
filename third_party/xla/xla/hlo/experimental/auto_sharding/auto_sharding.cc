@@ -1456,8 +1456,9 @@ void TrimOrGenerateStrategiesBasedOnExistingSharding(
             HloInstruction* operand =
                 instructions.at(strategy_group->in_nodes.at(i)->instruction_id);
             std::optional<HloSharding> input_sharding =
-                ShardingPropagation::GetShardingFromUser(*operand, *ins, 10,
-                                                         true, call_graph);
+                ShardingPropagation::GetShardingFromUser(
+                    *operand, *ins, 10, true, call_graph,
+                    /*sharding_helper=*/nullptr);
             StrategyGroup* operand_strategy_group =
                 strategy_map.at(operand).get();
             Shape operand_shape = operand->shape();

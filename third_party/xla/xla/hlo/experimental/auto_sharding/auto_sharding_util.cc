@@ -97,8 +97,9 @@ std::optional<HloSharding> GetInputSharding(const HloInstruction* ins,
   }
 
   std::optional<HloSharding> inferred_sharding =
-      ShardingPropagation::GetShardingFromUser(
-          *ins_clone->operand(op_index), *ins_clone, 10, true, call_graph);
+      ShardingPropagation::GetShardingFromUser(*ins_clone->operand(op_index),
+                                               *ins_clone, 10, true, call_graph,
+                                               /*sharding_helper=*/nullptr);
 
   if (!inferred_sharding.has_value() && IsTopKCustomCall(ins)) {
     // ShardingPropagation::GetShardingFromUser does not handle TopK custom

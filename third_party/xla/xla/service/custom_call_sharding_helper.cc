@@ -35,6 +35,11 @@ bool CustomCallShardingHelper::IsCustomCallShardable(
   return false;
 }
 
+bool CustomCallShardingHelper::CanPropagateShardingToOperands(
+    const HloInstruction* instruction) const {
+  return true;
+}
+
 xla::Status CustomCallPartitioner::Partition(
     spmd::SpmdPartitioningVisitor* partitioner, HloInstruction* hlo) const {
   return xla::Unimplemented("Implement sharding for %s", hlo->ToString());
