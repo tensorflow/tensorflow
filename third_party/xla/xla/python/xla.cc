@@ -933,7 +933,7 @@ NB_MODULE(xla_extension, m_nb) {
       nb::arg("aval"), nb::arg("sharding"), nb::arg("xs"), nb::arg("devices"),
       nb::arg("committed") = true, nb::arg("force_copy") = false,
       nb::arg("host_buffer_semantics") =
-          PjRtClient::HostBufferSemantics::kZeroCopy);
+          PjRtClient::HostBufferSemantics::kImmutableZeroCopy);
 
   m_nb.def("batched_block_until_ready", [](std::vector<nb::object> xs) {
     ThrowIfError(PyArray::BatchedBlockUntilReady(std::move(xs)));

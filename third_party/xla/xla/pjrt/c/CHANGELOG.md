@@ -2,6 +2,8 @@
 
 ## 0.47
 * Added ``PJRT_Extension_Type::PJRT_Extension_Type_Custom_Partitioner``.
+* Renamed host buffer semantics enum from ``PJRT_HostBufferSemantics_kZeroCopy``
+  to ``PJRT_HostBufferSemantics_kImmutableZeroCopy``.
 
 ## 0.46 (Feb 29, 2024)
 * Update outdated struct sizes from previous changes to

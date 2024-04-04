@@ -583,6 +583,12 @@ DimOrderMapOrError GetPropagatedDimOrdersForBitcast(
         // Assign destination dimensions until the source remainder is covered.
         CHECK(dst_dim_it != dst_dim_end);
         int64_t dst_dim_size = dst_shape.dimensions(*dst_dim_it);
+        if (dst_dim_size == 1) {
+          // Destination may contain degenerate dimension. Skip it so that we
+          // don't create a fragment with size 1.
+          ++dst_dim_it;
+          continue;
+        }
         int64_t new_fragment_size = dst_dim_size;
         if (dst_dim_size > src_remaining_size) {
           // If adding the next destination dimension exceeds source fragment

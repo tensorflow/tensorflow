@@ -24,6 +24,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/gemm_fusion.h"
+#include "xla/service/gpu/triton_tiling_propagation.h"
 #include "xla/statusor.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_test_base.h"
@@ -1010,6 +1011,47 @@ ENTRY main {
   EXPECT_TRUE(
       TritonFusionAnalysis::ExecuteForProducerConsumer(*producer, *consumer)
           .ok());
+}
+
+TEST_F(TritonDotAnalysisTest,
+       DimensionOrdersIsPropagatedCorrectlyWhenBitcastingTrivialDimension) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+triton_dot {
+  parameter_0 = f32[3,1]{1,0} parameter(0)
+  bitcast = f32[3,1]{1,0} bitcast(parameter_0)
+  parameter_1 = f32[3,5]{1,0} parameter(1)
+  ROOT dot = f32[1,5]{1,0} dot(bitcast, parameter_1), lhs_contracting_dims={0}, rhs_contracting_dims={0}
+}
+
+ENTRY e {
+  p0 = f32[3,1]{1,0} parameter(0)
+  p1 = f32[3,5]{1,0} parameter(1)
+  ROOT r = f32[1,5]{1,0} fusion(p0, p1), kind=kCustom, calls=triton_dot
+})"));
+  const HloComputation* dot_computation =
+      module->entry_computation()->root_instruction()->called_computations()[0];
+  TF_ASSERT_OK_AND_ASSIGN(const auto analysis,
+                          TritonFusionAnalysis::Execute(*dot_computation));
+  const HloInstruction* dot = dot_computation->root_instruction();
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto fusion_context,
+      triton_fusion::FusionContext::FromDotOperand(*dot, 0));
+  ConstHloInstructionSet instr_set;
+  ConstHloInstructionMap<TensorIterationSpec> iter_specs;
+  ASSERT_OK(fusion_context.PropagateDimensionOrdersToParameters(
+      *dot->operand(0), instr_set, iter_specs));
+  const HloInstruction* p0 = dot_computation->parameter_instruction(0);
+  triton_fusion::DimensionOrder dim_order = fusion_context.dim_orders().at(p0);
+  EXPECT_EQ(dim_order.TensorFragmentsOrder().size(), 2);
+  triton_fusion::DimensionOrder::Fragment fragment_0 =
+      dim_order.TensorFragmentsOrder().at(0);
+  EXPECT_EQ(fragment_0.dst_dim_number(), 1);
+  EXPECT_EQ(fragment_0.full_count(), 1);
+  triton_fusion::DimensionOrder::Fragment fragment_1 =
+      dim_order.TensorFragmentsOrder().at(1);
+  EXPECT_EQ(fragment_1.dst_dim_number(), 0);
+  EXPECT_EQ(fragment_1.full_count(), 3);
 }
 
 }  // namespace

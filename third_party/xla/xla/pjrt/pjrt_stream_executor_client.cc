@@ -1805,7 +1805,7 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PjRtStreamExecutorBuffer::CopyToDevice(
         literal_pointer->untyped_data(),
         literal_pointer->shape().element_type(),
         literal_pointer->shape().dimensions(), byte_strides,
-        PjRtStreamExecutorClient::HostBufferSemantics::kZeroCopy,
+        PjRtStreamExecutorClient::HostBufferSemantics::kImmutableZeroCopy,
         [literal{std::move(literal)}]() { /* frees literal */ }, dst_device);
   }
 

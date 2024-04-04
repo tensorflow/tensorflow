@@ -3105,6 +3105,41 @@ ENTRY e {
                                       /*run_hlo_passes=*/false));
 }
 
+TEST_F(CompareTest, BitcastWithTrivialNonContractingDimension) {
+  const char* hlo_text_ref = R"(
+HloModule r
+
+ENTRY e {
+  arg0 = f32[3,1] parameter(0)
+  bitcast = f32[3,1]{1,0} bitcast(arg0)
+  arg1 = f32[3,5] parameter(1)
+  gemm = (f32[1,5], s8[0]{0}) custom-call(bitcast, arg1),
+    custom_call_target="__cublas$gemm",
+    backend_config={"gemm_backend_config": {"alpha_real":1,"beta":0,"dot_dimension_numbers":{"lhs_contracting_dimensions":[0],"rhs_contracting_dimensions":[0],"lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},"alpha_imag":0,"precision_config":{"operand_precision":["DEFAULT","DEFAULT"]},"epilogue":"DEFAULT"}}
+  ROOT get-tuple-element = f32[1,5]{1,0} get-tuple-element((f32[1,5]{1,0}, s8[0]{0}) gemm), index=0
+})";
+
+  const char* hlo_text_triton = R"(
+HloModule t
+
+triton_dot {
+  parameter_0 = f32[3,1]{1,0} parameter(0)
+  bitcast = f32[3,1]{1,0} bitcast(parameter_0)
+  parameter_1 = f32[3,5]{1,0} parameter(1)
+  ROOT dot = f32[1,5]{1,0} dot(bitcast, parameter_1), lhs_contracting_dims={0}, rhs_contracting_dims={0}
+}
+
+ENTRY e {
+  p0 = f32[3,1]{1,0} parameter(0)
+  p1 = f32[3,5]{1,0} parameter(1)
+  ROOT r = f32[1,5]{1,0} fusion(p0, p1), kind=kCustom, calls=triton_dot
+})";
+
+  EXPECT_TRUE(RunAndCompareTwoModules(hlo_text_ref, hlo_text_triton,
+                                      ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3},
+                                      /*run_hlo_passes=*/false));
+}
+
 TEST_F(CompareTest, BF16TransposedLHS) {
   const char* hlo_text_ref = R"(
 HloModule r

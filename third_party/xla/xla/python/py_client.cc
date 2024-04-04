@@ -316,8 +316,8 @@ absl::Status PyClient::Defragment() {
   DevicePutOptions options;
   options.squash_64bit_types = false;
   options.allow_zero_copy =
-      (!force_copy &&
-       (host_buffer_semantics == ifrt::Client::HostBufferSemantics::kZeroCopy));
+      (!force_copy && (host_buffer_semantics ==
+                       ifrt::Client::HostBufferSemantics::kImmutableZeroCopy));
   // TODO(phawkins): remove .ptr() after nanobind transition is complete.
   TF_ASSIGN_OR_RETURN(DevicePutResult put,
                       DevicePut(argument.ptr(), client->ifrt_client_.get(),
@@ -710,7 +710,7 @@ PyType_Slot PyClient::slots_[] = {
              PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall)
       .value("IMMUTABLE_UNTIL_TRANSFER_COMPLETES",
              PjRtClient::HostBufferSemantics::kImmutableUntilTransferCompletes)
-      .value("ZERO_COPY", PjRtClient::HostBufferSemantics::kZeroCopy);
+      .value("ZERO_COPY", PjRtClient::HostBufferSemantics::kImmutableZeroCopy);
 
   nb::class_<PyClient> py_local_client(m, "Client", nb::is_weak_referenceable(),
                                        nb::type_slots(PyClient::slots_));
@@ -742,7 +742,7 @@ PyType_Slot PyClient::slots_[] = {
           nb::arg("argument"), nb::arg("device").none() = nullptr,
           nb::arg("force_copy") = false,
           nb::arg("host_buffer_semantics") =
-              PjRtClient::HostBufferSemantics::kZeroCopy)
+              PjRtClient::HostBufferSemantics::kImmutableZeroCopy)
       .def(
           "make_cross_host_receive_buffers",
           [](nb_class_ptr<PyClient> client, absl::Span<const Shape> shapes,

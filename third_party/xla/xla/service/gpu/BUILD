@@ -1518,6 +1518,7 @@ xla_cc_test(
     deps = [
         ":gemm_fusion",
         ":triton_fusion_analysis",
+        ":triton_tiling_propagation",
         "//xla:statusor",
         "//xla/hlo/ir:hlo",
         "//xla/stream_executor:device_description",
@@ -1525,7 +1526,6 @@ xla_cc_test(
         "//xla/tests:verified_hlo_module",
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
         "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
         "@local_tsl//tsl/platform:statusor",
     ],
