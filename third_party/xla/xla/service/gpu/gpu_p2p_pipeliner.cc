@@ -38,7 +38,7 @@ namespace gpu {
 namespace {
 
 bool ShouldPipeline(const HloInstruction* instr) {
-  if (!HloPredicateIsOp<HloOpcode::kRecv, HloOpcode::kSend>(instr)) {
+  if (!HloPredicateIsOp<HloOpcode::kRecvDone, HloOpcode::kSendDone>(instr)) {
     return false;
   }
 
@@ -48,10 +48,12 @@ bool ShouldPipeline(const HloInstruction* instr) {
     return false;
   }
 
-  // Check that the Send or Recv is used for non-trivial computation. This
-  // avoids repeatedly pipelining a loop.
-  return (instr->user_count() == 1 && instr->parent() != nullptr &&
-          instr->users()[0] != instr->parent()->root_instruction());
+  // Checks that the SendDone or RecvDone is used for non-trivial computation.
+  // This avoids repeatedly pipelining a loop.
+  bool is_pipelined =
+      (instr->user_count() == 1 && instr->parent() != nullptr &&
+       instr->users()[0] == instr->parent()->root_instruction());
+  return !is_pipelined;
 }
 
 bool ShouldAllowLoopVariantParameterInChain(const HloInstruction* instr) {
@@ -65,6 +67,14 @@ bool ShouldAllowLoopVariantParameterInChain(const HloInstruction* instr) {
 Status PostprocessP2PImpl(
     HloInstruction* instr,
     std::function<std::string(std::vector<ReplicaGroup>&)> transformer) {
+  // The input instruction is a Done instruction.
+  if (!HloPredicateIsOp<HloOpcode::kRecvDone, HloOpcode::kSendDone>(instr)) {
+    return Internal("Expected SendDone/RecvDone as the pipelined collective");
+  }
+  instr = instr->mutable_operand(0);
+  if (!HloPredicateIsOp<HloOpcode::kRecv, HloOpcode::kSend>(instr)) {
+    return Internal("Expected Send/Recv as the SendDone/RecvDone operand");
+  }
   auto validation_it =
       instr->frontend_attributes().map().find(kSendRecvValidationAttr);
   if (validation_it == instr->frontend_attributes().map().end() ||
