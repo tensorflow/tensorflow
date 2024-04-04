@@ -485,8 +485,10 @@ Status DynamicDimensionInferenceVisitor::HandleCustomCall(HloInstruction* hlo) {
     TF_RETURN_IF_ERROR(custom_call_handler_(hlo, parent_));
   } else {
     TF_RETURN_IF_ERROR(ForEachOperandDynamicDimension(
-        hlo, [&](HloInstruction* operand, ShapeIndex index, int64_t dimension,
-                 int64_t operand_index, HloInstruction* dynamic_size) {
+        hlo,
+        [&](HloInstruction* operand, ShapeIndex index, int64_t dimension,
+            int64_t operand_index,
+            HloInstruction* dynamic_size) -> absl::Status {
           // Resize custom call should propagate dynamic batch (0) and channel
           // (3) dimensions.
           if (hlo->custom_call_target() == "SliceToDynamic" ||
@@ -565,8 +567,9 @@ Status DynamicDimensionInferenceVisitor::HandlePad(HloInstruction* hlo) {
     return OkStatus();
   }
   return ForEachOperandDynamicDimension(
-      hlo, [&](HloInstruction* operand, ShapeIndex index, int64_t dimension,
-               int64_t operand_index, HloInstruction* dynamic_size) {
+      hlo,
+      [&](HloInstruction* operand, ShapeIndex index, int64_t dimension,
+          int64_t operand_index, HloInstruction* dynamic_size) -> absl::Status {
         if (operand_index != 0) {
           return Unimplemented(
               "Dynamic dimension on padding value is not supported");
@@ -803,8 +806,9 @@ Status DynamicDimensionInferenceVisitor::HandleConvolution(
     return OkStatus();
   }
   return ForEachOperandDynamicDimension(
-      hlo, [&](HloInstruction* operand, ShapeIndex index, int64_t dimension,
-               int64_t operand_index, HloInstruction* dynamic_size) {
+      hlo,
+      [&](HloInstruction* operand, ShapeIndex index, int64_t dimension,
+          int64_t operand_index, HloInstruction* dynamic_size) -> absl::Status {
         HloInstruction* conv = hlo;
         const ConvolutionDimensionNumbers& dimension_numbers =
             conv->convolution_dimension_numbers();
@@ -2120,7 +2124,8 @@ Status DynamicDimensionInferenceVisitor::HandleScatter(HloInstruction* hlo) {
   return ForEachOperandDynamicDimension(
       hlo,
       [&](HloInstruction* operand, ShapeIndex dynamic_index, int64_t dimension,
-          int64_t operand_index, HloInstruction* operand_dynamic_size) {
+          int64_t operand_index,
+          HloInstruction* operand_dynamic_size) -> absl::Status {
         if (operand_index == 0) {
           SetDynamicSize(hlo, {}, dimension, operand_dynamic_size);
           return OkStatus();
