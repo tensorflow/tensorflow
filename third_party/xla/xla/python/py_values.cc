@@ -257,7 +257,8 @@ absl::StatusOr<DevicePutResult> HandleNumpyArray(
     on_done_with_host_buffer =
         [py_buffer_ref{
             std::move(py_buffer_ref)}]() { /* keeps py_buffer_ref alive */ };
-    host_buffer_semantics = ifrt::Client::HostBufferSemantics::kZeroCopy;
+    host_buffer_semantics =
+        ifrt::Client::HostBufferSemantics::kImmutableZeroCopy;
   }
   // Must release the GIL before BufferFromHostBuffer because backends may
   // decide to block/sleep for device buffer allocation.
