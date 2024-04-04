@@ -257,6 +257,41 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "nccl_clique",
+    srcs = ["nccl_clique.cc"],
+    hdrs = ["nccl_clique.h"],
+    deps = [
+        ":nccl_api",
+        "//xla:debug_options_flags",
+        "//xla:executable_run_options",
+        "//xla:status_macros",
+        "//xla/service:global_device_id",
+        "//xla/service:lockable",
+        "//xla/service:rendezvous",
+        "//xla/service/gpu:nccl_clique_key",
+        "//xla/stream_executor",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:btree",
+        "@com_google_absl//absl/container:node_hash_map",
+        "@com_google_absl//absl/functional:function_ref",
+        "@com_google_absl//absl/hash",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
+        "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:env",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:hash",
+        "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
 #===-------------------------------------------------------------------------------------------===//
 # XLA Thunks Runtime
 #===-------------------------------------------------------------------------------------------===//
@@ -818,6 +853,7 @@ cc_library(
     ]),
     deps = [
         ":nccl_api",
+        ":nccl_clique",
         "//xla:debug_options_flags",
         "//xla:shape_util",
         "//xla:status",
@@ -831,7 +867,6 @@ cc_library(
         "//xla/service:rendezvous",
         "//xla/service/gpu:buffer_allocations",
         "//xla/service/gpu:ir_emission_utils",
-        "//xla/service/gpu:nccl_clique",
         "//xla/service/gpu:nccl_clique_key",
         "//xla/service/gpu/runtime:thunk",
         "//xla/service/llvm_ir:llvm_util",
@@ -1035,6 +1070,7 @@ cc_library(
     hdrs = ["thunk.h"],
     deps = [
         ":nccl_api",
+        ":nccl_clique",
         "//xla:executable_run_options",
         "//xla/hlo/ir:hlo",
         "//xla/service:buffer_assignment",
@@ -1043,7 +1079,6 @@ cc_library(
         "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:buffer_allocations",
         "//xla/service/gpu:gpu_executable_run_options",
-        "//xla/service/gpu:nccl_clique",
         "//xla/service/gpu:nccl_clique_key",
         "//xla/stream_executor",
         "//xla/translate/mhlo_to_hlo:location_exporter",
