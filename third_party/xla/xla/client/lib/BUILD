@@ -551,10 +551,9 @@ cc_library(
 xla_test(
     name = "self_adjoint_eig_test",
     srcs = ["self_adjoint_eig_test.cc"],
-    tags = ["no_rocm",],
     real_hardware_only = True,
     shard_count = 5,
-    tags = ["optonly"],
+    tags = ["no_rocm", "optonly"],
     deps = [
         ":arithmetic",
         ":constants",
