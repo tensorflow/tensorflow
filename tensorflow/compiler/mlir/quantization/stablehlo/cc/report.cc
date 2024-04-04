@@ -14,13 +14,122 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/report.h"
 
+#include <optional>
+#include <string>
 #include <utility>
 
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/Visitors.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/quantization/common/lift_as_function_call.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
 namespace mlir::quant::stablehlo {
+namespace {
 
 using ::stablehlo::quantization::QuantizationResult;
+using ::stablehlo::quantization::QuantizationResults;
+
+// Given a `quantized_func_name` that starts with `kQuantizedFuncPrefix`,
+// converts `kQuantizedFuncPrefix` to `kCompositeFuncPrefix`.
+std::string GetCompositeFunctionName(const StringRef quantized_func_name) {
+  return Twine(kCompositeFuncPrefix)
+      .concat(quantized_func_name.rsplit(kQuantizedFuncPrefix).second)
+      .str();
+}
+
+// Retrieves `QuantizationResult` from `call_op`. If the callee's name starts
+// with `kQuantizedFuncPrefix` then a `QuantizationResult` will be returned with
+// its `name` field set to the callee's name reverted back to the lifted
+// function's name. Otherwise, returns `std::nullopt`.
+std::optional<QuantizationResult> GetQuantizationResult(func::CallOp call_op) {
+  const StringRef callee_name = call_op.getCalleeAttr().getValue();
+
+  if (callee_name.starts_with(kQuantizedFuncPrefix)) {
+    // TODO: b/329554870 - Transfer the `Method` used to quantize the op.
+    QuantizationResult result{};
+    result.mutable_quantizable_unit()->set_name(
+        GetCompositeFunctionName(callee_name));
+    return result;
+  } else {
+    return std::nullopt;
+  }
+}
+
+// Retrieves `QuantizationResult` from `xla_call_module_op`. If
+// `xla_call_module_op` is a quantizable unit, then a `QuantizationResult` will
+// be returned with its `name` field set to the callee's name. The `method`
+// field will be set to `NoQuantization` because remaining `xla_call_module_op`s
+// means they are not quantized. Returns `std::nullopt` if `xla_call_module_op`
+// is not a quantizable unit.
+std::optional<QuantizationResult> GetQuantizationResult(
+    TF::XlaCallModuleOp xla_call_module_op) {
+  const StringAttr callee_name_attr =
+      xla_call_module_op
+          ->getDiscardableAttr(kOriginalStablehloEntryFunctionAttrName)
+          .dyn_cast_or_null<StringAttr>();
+
+  // `TF::XlaCallModuleOp` without the `_original_entry_function` means it is
+  // not a quantizable unit.
+  if (callee_name_attr == nullptr) return std::nullopt;
+
+  if (callee_name_attr.getValue().starts_with(kCompositeFuncPrefix)) {
+    QuantizationResult result{};
+    result.mutable_quantizable_unit()->set_name(
+        callee_name_attr.getValue().str());
+    result.mutable_method()->mutable_no_quantization();
+    return result;
+  } else {
+    return std::nullopt;
+  }
+}
+
+// Populates quantized ops from `module_op` to `results`. After going through
+// the quantization passes, quantized ops are represented as `func::CallOp` with
+// a callee's prefix of `quantized_`.
+void PopulateQuantizedResults(ModuleOp module_op,
+                              QuantizationResults& results) {
+  module_op.walk([&results](func::CallOp call_op) {
+    std::optional<QuantizationResult> result = GetQuantizationResult(call_op);
+    if (result == std::nullopt) return WalkResult::skip();
+
+    *results.add_results() = std::move(*result);
+    return WalkResult::advance();
+  });
+}
+
+// Populates non-quantized ops from `module_op` to `results`. After going
+// through the quantization passes, non-quantized quantizable units remain as
+// `TF::XlaCallModuleOp` with a callee's prefix of `composite_`.
+void PopulateNonQuantizedResults(ModuleOp module_op,
+                                 QuantizationResults& results) {
+  module_op.walk([&results](TF::XlaCallModuleOp xla_call_module_op) {
+    std::optional<QuantizationResult> result =
+        GetQuantizationResult(xla_call_module_op);
+    if (result == std::nullopt) return WalkResult::skip();
+
+    *results.add_results() = std::move(*result);
+    return WalkResult::advance();
+  });
+}
+
+}  // namespace
+
+QuantizationReport::QuantizationReport(ModuleOp module_op)
+    : quantization_results_(CollectResultsFromModuleOp(module_op)) {}
+
+QuantizationResults QuantizationReport::CollectResultsFromModuleOp(
+    ModuleOp module_op) const {
+  QuantizationResults results{};
+
+  PopulateQuantizedResults(module_op, results);
+  PopulateNonQuantizedResults(module_op, results);
+
+  return results;
+}
 
 void QuantizationReport::AddQuantizationResult(QuantizationResult&& result) {
   *quantization_results_.add_results() = std::move(result);
