@@ -217,6 +217,20 @@ struct ArgBinding<Buffer<dtype, rank>> {
 };
 
 //===----------------------------------------------------------------------===//
+// Results binding
+//===----------------------------------------------------------------------===//
+
+template <>
+struct RetBinding<Result<BufferBase>> {
+  using Ret = BufferBase;
+};
+
+template <DataType dtype, size_t rank>
+struct RetBinding<Result<Buffer<dtype, rank>>> {
+  using Ret = Buffer<dtype, rank>;
+};
+
+//===----------------------------------------------------------------------===//
 // Arguments decoding
 //===----------------------------------------------------------------------===//
 

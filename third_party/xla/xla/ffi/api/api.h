@@ -352,6 +352,20 @@ struct ArgBinding {
   using Arg = void;
 };
 
+// XLA FFI binding for a returned result.
+//
+// Example: binding for the `MyType` result
+//
+//   template <>
+//   struct RetBinding<MyType> {
+//     using Ret = MyType;
+//   };
+//
+template <typename T>
+struct RetBinding {
+  using Ret = void;
+};
+
 // XLA FFI binding for a named attribute.
 //
 // Example: binding for the `MyType` attribute
@@ -395,6 +409,10 @@ inline constexpr bool is_arg_binding_v =
     !std::is_void_v<typename ArgBinding<Param>::Arg>;
 
 template <typename Param>
+inline constexpr bool is_ret_binding_v =
+    !std::is_void_v<typename RetBinding<Param>::Ret>;
+
+template <typename Param>
 inline constexpr bool is_attr_binding_v =
     !std::is_void_v<typename AttrBinding<Param>::Attr>;
 
@@ -422,6 +440,11 @@ struct BindOne<Fn, Param, Params...> {
       return BindOne<Fn, Params...>::To(
           std::move(fn),
           std::move(binding).template Arg<typename ArgBinding<Param>::Arg>());
+    } else if constexpr (is_ret_binding_v<Param>) {
+      // Bind parameter as an FFI handler result.
+      return BindOne<Fn, Params...>::To(
+          std::move(fn),
+          std::move(binding).template Ret<typename RetBinding<Param>::Ret>());
 
     } else if constexpr (is_attr_binding_v<Param>) {
       // Bind parameter as a named FFI handler attribute.

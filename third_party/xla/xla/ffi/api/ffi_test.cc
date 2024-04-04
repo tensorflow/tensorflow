@@ -189,6 +189,18 @@ TEST(FfiTest, AutoBinding) {
   TF_ASSERT_OK(status);
 }
 
+TEST(FfiTest, AutoBindingResult) {
+  auto handler =
+      Ffi::BindTo(+[](Result<BufferBase> buffer) { return Error::Success(); });
+
+  CallFrameBuilder builder;
+  builder.AddBufferRet(se::DeviceMemoryBase(), PrimitiveType::F32, /*dims=*/{});
+  auto call_frame = builder.Build();
+
+  auto status = Call(*handler, call_frame);
+  TF_ASSERT_OK(status);
+}
+
 struct I32AndF32 {
   int32_t i32;
   float f32;
