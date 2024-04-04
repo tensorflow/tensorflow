@@ -33,6 +33,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
+#include "tensorflow/compiler/mlir/quantization/common/attrs_and_constraints.h"
 #include "tensorflow/compiler/mlir/quantization/common/func.h"
 #include "tensorflow/compiler/mlir/quantization/common/test_base.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
