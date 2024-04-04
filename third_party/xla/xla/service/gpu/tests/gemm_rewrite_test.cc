@@ -4843,6 +4843,10 @@ TEST_P(ParameterizedFp8GemmRewriteTest, UnscaledABUnscaledDF8) {
 
 // Do not fuse FP8 matrix bias.
 TEST_P(ParameterizedFp8GemmRewriteTest, UnscaledABUnscaledDMatrixBiasF8) {
+  if (CudaOrRocmCheck(Switch::False, Switch::True)) {
+    GTEST_SKIP() << "UnscaledABUnscaledDMatrixBiasF8 is currently not supported on ROCm";
+  }
+
 #if GOOGLE_CUDA && CUDA_VERSION < 12000
   GTEST_SKIP() << "F8 gemm rewrite is only supported in CUDA 12 and above.";
 #endif  // CUDA_VERSION < 12000

@@ -529,6 +529,7 @@ cc_library(
     name = "self_adjoint_eig",
     srcs = ["self_adjoint_eig.cc"],
     hdrs = ["self_adjoint_eig.h"],
+    tags = ["no_rocm",],
     deps = [
         ":arithmetic",
         ":comparators",
