@@ -5331,6 +5331,8 @@ xla_test(
         "cpu",
         "gpu",
     ],
+    # TODO(b/332870133): Enable when it passes on H100.
+    disabled_backends = ["gpu_h100"],
     tags = [
         "no_windows",  # TODO(b/152037541)
     ],
