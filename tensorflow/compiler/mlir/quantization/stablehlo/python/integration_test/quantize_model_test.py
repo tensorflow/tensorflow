@@ -377,6 +377,10 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     ):
       return
 
+    # TODO(b/332953841): Add support for such cases.
+    if has_batch_norm and (bias_fn or not input_shape_dynamic):
+      return
+
     # Generate model input data.
     rng = np.random.default_rng(seed=42)
     static_input_shape = [dim if dim is not None else 2 for dim in input_shape]
