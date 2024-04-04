@@ -267,6 +267,32 @@ ENTRY e {
                             ErrorSpec{/*aabs=*/1e-5, /*arel=*/1e-5}));
 }
 
+TEST_F(CuDnnFusionExecutionTest, IntegerMathExecutesCorrectly) {
+  if (!IsAtLeastCuDnn91()) {
+    GTEST_SKIP() << "Integer math requires cuDNN 9.1+.";
+  }
+  const std::string kHloText =
+      R"(
+fusion1 {
+  p0 = s8[16,16] parameter(0)
+  p1 = s8[16,16] parameter(1)
+  d = s32[16,16] dot(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  p2 = s32[16,16] parameter(2)
+  ROOT a = s32[16,16] add(d, p2)
+}
+
+ENTRY e {
+  p0 = s8[16,16] parameter(0)
+  p1 = s8[16,16] parameter(1)
+  p2 = s32[16,16] parameter(2)
+  ROOT r = s32[16,16] fusion(p0, p1, p2), kind=kCustom,
+    calls=fusion1,
+    backend_config={"fusion_backend_config": {"kind":"__cudnn$fusion"}}
+})";
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/0, /*arel=*/0}));
+}
+
 class CuDnnFusionCommandBufferTest : public CuDnnFusionTest {
  public:
   DebugOptions GetDebugOptionsForTest() override {
