@@ -207,7 +207,7 @@ message QuantizationSpecs {
   // `QuantizationSpec` with conflicting quantizable units may result in
   // undefined behavior.
   // TODO: b/307620778 - Support tie-breaking for conflicting specs.
-  repeated QuantizationSpec specs = 1;
+  repeated QuantizationSpec spec = 1;
 }
 
 // Configuration for quantization debugger.

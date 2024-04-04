@@ -162,14 +162,14 @@ void ExpandStaticRangePtqPreset(const StaticRangePtqPreset& preset,
   // expansion from `StaticRangePtqPreset` gets populated first and then
   // user-provided explicit `QuantizationSpec`s will be appended.
   QuantizationSpecs new_specs{};
-  *new_specs.add_specs() =
+  *new_specs.add_spec() =
       GetDefaultStaticRangePtqSpec(/*preset=*/config.static_range_ptq_preset());
-  *new_specs.add_specs() = GetStaticRangePtqSpecForConvolution();
+  *new_specs.add_spec() = GetStaticRangePtqSpecForConvolution();
 
   // Append user-provided specs to override existing specs.
   const QuantizationSpecs& previous_specs = config.specs();
-  new_specs.mutable_specs()->Add(previous_specs.specs().begin(),
-                                 previous_specs.specs().end());
+  new_specs.mutable_spec()->Add(previous_specs.spec().begin(),
+                                previous_specs.spec().end());
 
   config.mutable_specs()->Swap(&new_specs);
 }

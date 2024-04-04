@@ -640,7 +640,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         # Disable quantization for the quantizable unit (lifted function) whose
         # function name starts with "composite_dot_general".
         specs=qc.QuantizationSpecs(
-            specs=[
+            spec=[
                 qc.QuantizationSpec(
                     matcher=qc.MatcherSpec(
                         function_name=qc.FunctionNameMatcherSpec(
@@ -742,7 +742,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         # function name matches "composite_dot_general_fn_1".
         # "composite_dot_general_fn_2" will be quantized.
         specs=qc.QuantizationSpecs(
-            specs=[
+            spec=[
                 qc.QuantizationSpec(
                     matcher=qc.MatcherSpec(
                         function_name=qc.FunctionNameMatcherSpec(
@@ -817,7 +817,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         ),
         tf_saved_model=qc.TfSavedModelConfig(tags=[tag_constants.SERVING]),
         specs=qc.QuantizationSpecs(
-            specs=[
+            spec=[
                 qc.QuantizationSpec(
                     # Provide a regex that wouldn't match any quantizable units.
                     matcher=qc.MatcherSpec(

@@ -156,14 +156,14 @@ TEST(ExpandPresetsTest, ExpandStaticRangePtqEnableFullIntquantization) {
   preset_dataset_config.mutable_tf_record()->set_path("/test/path");
 
   const QuantizationConfig new_config = ExpandPresets(config);
-  ASSERT_THAT(new_config.specs().specs(), SizeIs(2));
+  ASSERT_THAT(new_config.specs().spec(), SizeIs(2));
 
-  const QuantizationSpec& default_spec = new_config.specs().specs(0);
+  const QuantizationSpec& default_spec = new_config.specs().spec(0);
   EXPECT_THAT(default_spec.matcher().function_name().regex(), StrEq(".*"));
   EXPECT_TRUE(default_spec.method().has_static_range_ptq());
 
   // Test that the expansion for convolution ops is done.
-  const QuantizationSpec& conv_spec = new_config.specs().specs(1);
+  const QuantizationSpec& conv_spec = new_config.specs().spec(1);
   EXPECT_THAT(conv_spec.matcher().function_name().regex(),
               StrEq("composite_conv.*"));
   ASSERT_TRUE(conv_spec.method().has_static_range_ptq());
@@ -194,9 +194,9 @@ TEST(ExpandPresetsTest, ExpandStaticRangePtqPresetDefault) {
   preset_dataset_config.mutable_tf_record()->set_path("/test/path");
 
   const QuantizationConfig new_config = ExpandPresets(config);
-  ASSERT_THAT(new_config.specs().specs(), SizeIs(2));
+  ASSERT_THAT(new_config.specs().spec(), SizeIs(2));
 
-  const QuantizationSpec& spec = new_config.specs().specs(0);
+  const QuantizationSpec& spec = new_config.specs().spec(0);
   EXPECT_THAT(spec.matcher().function_name().regex(),
               StrEq("^.*(conv|dot|gather).*"));
   EXPECT_TRUE(spec.method().has_static_range_ptq());
@@ -236,7 +236,7 @@ TEST(ExpandPresetsTest, ExpandStaticRangePtqPresetThenAppendExplicitSpecs) {
   config.mutable_static_range_ptq_preset()->set_enable_full_int_quantization(
       true);
 
-  QuantizationSpec& user_provided_spec = *config.mutable_specs()->add_specs();
+  QuantizationSpec& user_provided_spec = *config.mutable_specs()->add_spec();
   user_provided_spec.mutable_matcher()->mutable_function_name()->set_regex(
       "composite_dot_general_fn_1");
   user_provided_spec.mutable_method()->mutable_no_quantization();
@@ -256,19 +256,19 @@ TEST(ExpandPresetsTest, ExpandStaticRangePtqPresetThenAppendExplicitSpecs) {
   //   method {no_quantization {}}
   // }
   const QuantizationConfig new_config = ExpandPresets(config);
-  ASSERT_THAT(new_config.specs().specs(), SizeIs(3));
+  ASSERT_THAT(new_config.specs().spec(), SizeIs(3));
 
-  const QuantizationSpec& first_spec = new_config.specs().specs(0);
+  const QuantizationSpec& first_spec = new_config.specs().spec(0);
   EXPECT_THAT(first_spec.matcher().function_name().regex(), StrEq(".*"));
   EXPECT_TRUE(first_spec.method().has_static_range_ptq());
 
-  const QuantizationSpec& second_spec = new_config.specs().specs(1);
+  const QuantizationSpec& second_spec = new_config.specs().spec(1);
   EXPECT_THAT(second_spec.matcher().function_name().regex(),
               StrEq("composite_conv.*"));
   EXPECT_TRUE(second_spec.method().has_static_range_ptq());
 
   // This corresponds to `user_provided_spec`.
-  const QuantizationSpec& third_spec = new_config.specs().specs(2);
+  const QuantizationSpec& third_spec = new_config.specs().spec(2);
   EXPECT_THAT(third_spec.matcher().function_name().regex(),
               StrEq("composite_dot_general_fn_1"));
   EXPECT_TRUE(third_spec.method().has_no_quantization());

@@ -221,7 +221,7 @@ void LiftQuantizableSpotsAsFunctionsPass::runOnOperation() {
 
   // Perform selective quantization. Iterates over the quantization specs and
   // applies quantization methods to each matched lifted function.
-  for (const QuantizationSpec& spec : quantization_specs_.specs()) {
+  for (const QuantizationSpec& spec : quantization_specs_.spec()) {
     if (failed(ApplyQuantizationSpec(spec, module_op))) {
       signalPassFailure();
       return;

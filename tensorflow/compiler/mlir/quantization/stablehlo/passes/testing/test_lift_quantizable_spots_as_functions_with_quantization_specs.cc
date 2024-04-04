@@ -41,13 +41,13 @@ using ::tsl::protobuf::TextFormat;
 using ::tsl::protobuf::io::ArrayInputStream;
 
 // Empty (default) `QuantizationSpecs` proto.
-constexpr absl::string_view kSpecsEmpty = R"pb(specs
+constexpr absl::string_view kSpecsEmpty = R"pb(spec
                                                [])pb";
 
 // Configure `QuantizationSpecs` to disable quantization for all dot_general
 // quantizable units.
 constexpr absl::string_view kSpecsDisableAllDotGeneral =
-    R"pb(specs
+    R"pb(spec
          [ {
            matcher { function_name { regex: "composite_dot_general_.*" } }
            method { no_quantization {} }
@@ -56,7 +56,7 @@ constexpr absl::string_view kSpecsDisableAllDotGeneral =
 // Configure `QuantizationSpecs` to apply `StaticRangePtq` to all quantizable
 // units.
 constexpr absl::string_view kSpecsStaticRangePtqToAll =
-    R"pb(specs
+    R"pb(spec
          [ {
            matcher { function_name { regex: ".*" } }
            method { static_range_ptq {} }
@@ -65,7 +65,7 @@ constexpr absl::string_view kSpecsStaticRangePtqToAll =
 // Configure `QuantizationSpecs` to apply `StaticRangePtq` to compute heavy
 // units.
 constexpr absl::string_view kSpecsStaticRangePtqToComputeHeavy =
-    R"pb(specs
+    R"pb(spec
          [ {
            matcher { function_name { regex: "^.*(conv|dot|gather).*" } }
            method { static_range_ptq {} }
