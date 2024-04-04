@@ -654,7 +654,7 @@ xla_test(
         "requires-gpu-sm80",
     ]},
     backends = [
-        "gpu",
+        "gpu_a100",
         "gpu_h100",
     ],
     tags = [

@@ -17,10 +17,12 @@ limitations under the License.
 
 #include <cmath>
 
-#include "tensorflow/core/framework/kernel_def_builder.h"
+#include "absl/log/log.h"
+#include "Eigen/Core"  // from @eigen_archive
+#include "unsupported/Eigen/CXX11/src/Tensor/TensorCostModel.h"  // from @eigen_archive
+#include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/framework/register_types.h"
-#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/kernels/linalg/linalg_ops_common.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/types.h"
