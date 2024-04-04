@@ -345,6 +345,7 @@ PJRT_Error* PJRT_Plugin_Attributes_Empty(PJRT_Plugin_Attributes_Args* args) {
       "PJRT_Plugin_Attributes_Args", PJRT_Plugin_Attributes_Args_STRUCT_SIZE,
       args->struct_size));
   args->num_attributes = 0;
+  args->attributes = nullptr;
   return nullptr;
 }
 
