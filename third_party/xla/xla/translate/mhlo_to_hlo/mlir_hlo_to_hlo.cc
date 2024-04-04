@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cassert>
 #include <cstddef>
+#include <cstdint>
 #include <iterator>
 #include <memory>
 #include <optional>
@@ -25,11 +26,16 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
@@ -44,20 +50,29 @@ limitations under the License.
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Block.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/Region.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/UseDefLists.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
+#include "third_party/protobuf/util/message_differencer.h"
+#include "stablehlo/dialect/Base.h"  // from @stablehlo
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "xla/array.h"
 #include "xla/client/lib/approx_topk.h"
@@ -66,10 +81,15 @@ limitations under the License.
 #include "xla/client/lib/quantize.h"
 #include "xla/client/lib/slicing.h"
 #include "xla/client/xla_builder.h"
+#include "xla/client/xla_computation.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/dynamic_parameter_binding.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/layout.h"
+#include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/mlir/utils/error_util.h"
@@ -85,13 +105,16 @@ limitations under the License.
 #include "xla/status.h"
 #include "xla/status_macros.h"
 #include "xla/translate/mhlo_to_hlo/attribute_exporter.h"
+#include "xla/translate/mhlo_to_hlo/layout_util.h"
 #include "xla/translate/mhlo_to_hlo/location_exporter.h"
 #include "xla/translate/mhlo_to_hlo/stack_frame_index_builder.h"
 #include "xla/translate/mhlo_to_hlo/type_to_shape.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/ml_dtypes.h"
 #include "tsl/platform/statusor.h"
+#include "tsl/platform/types.h"
 
 using ::int64_t;
 using ::tsl::int16;
@@ -3169,21 +3192,33 @@ LogicalResult ConvertToHloModule::Lower(
 
       *return_value = xla::Tuple(builder, returns);
       builder->ClearSharding();
-    } else if (num_return_values == 1) {
-      xla::XlaOp operand;
-      if (failed(GetXlaOp(inst->getOperand(0), value_map, &operand, inst)))
-        return failure();
-
-      if (has_ret_shardings) {
-        auto tuple = Tuple(builder, {operand});
-        builder->SetSharding(*ret_shardings[0]);
-        *return_value = GetTupleElement(tuple, 0);
-        builder->ClearSharding();
-      } else {
-        *return_value = operand;
-      }
+      return success();
     }
 
+    xla::XlaOp operand;
+    if (failed(GetXlaOp(inst->getOperand(0), value_map, &operand, inst)))
+      return failure();
+
+    if (!has_ret_shardings) {
+      *return_value = operand;
+      return success();
+    }
+
+    absl::StatusOr<xla::Shape> operand_shape = builder->GetShape(operand);
+    if (!operand_shape.ok())
+      return inst->emitError() << operand_shape.status().message();
+
+    // The added copy() or get-tuple-element(tuple()) is reshard.
+    xla::XlaScopedShardingAssignment scoped_sharding_assignment(
+        builder, ret_shardings[0]);
+
+    if (operand_shape->IsArray()) {
+      *return_value = Copy(operand);
+      return success();
+    }
+
+    auto tuple = Tuple(builder, {operand});
+    *return_value = GetTupleElement(tuple, 0);
     return success();
   }
 
