@@ -116,8 +116,8 @@ class InsertWeightParamPattern
     }
     auto quant_type =
         quant::GetUniformQuantizedTypeForWeight(
-            attr, /*symmetric=*/false, /*num_bits=*/8, /*is_signed=*/true,
-            /*narrow_range=*/false, /*legacy_float_scale=*/false)
+            attr, /*symmetric=*/true, /*num_bits=*/8, /*is_signed=*/true,
+            /*narrow_range=*/true, /*legacy_float_scale=*/false)
             .template dyn_cast<quant::QuantizedType>();
     if (!quant_type) {
       return;
