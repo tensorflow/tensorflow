@@ -77,8 +77,9 @@ message StaticRangePtqPreset {
   bool enable_full_int_quantization = 3;
 }
 
-// Applies int8 per-tensor weight-only quantization for all dot_general op.
-message WeightOnlyPreset {}
+// Applies int8 per-tensor weight-only post-training quantization for all
+// dot_general op.
+message WeightOnlyPtqPreset {}
 
 // Metadata specific to the input TensorFlow SavedModel, which may be required
 // to identify the specific MetaGraphDef to quantize, for example.
@@ -322,7 +323,7 @@ message QuantizationConfig {
   oneof preset {
     // Performs best-effort static-range post-training quantization (PTQ).
     StaticRangePtqPreset static_range_ptq_preset = 1;
-    WeightOnlyPreset weight_only_preset = 7;
+    WeightOnlyPtqPreset weight_only_ptq_preset = 7;
   }
 
   // TF SavedModel specific information for the input model.

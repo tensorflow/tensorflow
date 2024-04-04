@@ -63,7 +63,7 @@ def quantize_saved_model(
   if not (
       config.HasField('static_range_ptq_preset')
       and len(config.static_range_ptq_preset.representative_datasets) == 1
-  ) and not config.HasField('weight_only_preset'):
+  ) and not config.HasField('weight_only_ptq_preset'):
     raise ValueError(
         '`quantize_saved_model` currently only supports static-range PTQ with a'
         ' single signature or weight-only quantization.'
@@ -98,7 +98,7 @@ def quantize_saved_model(
         signature_def_map_serialized=signature_def_map_serialized,
         py_function_library=py_function_lib.PyFunctionLibrary(),
     )
-  elif config.HasField('weight_only_preset'):
+  elif config.HasField('weight_only_ptq_preset'):
     pywrap_quantization.weight_only_ptq(
         src_saved_model_path,
         dst_saved_model_path,

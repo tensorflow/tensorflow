@@ -142,7 +142,7 @@ absl::StatusOr<mlir::ModuleOp> RunQuantization(
 
     quantized_module_op =
         static_range_ptq_component.Run(module_op, updated_config);
-  } else if (quantization_config.has_weight_only_preset()) {
+  } else if (quantization_config.has_weight_only_ptq_preset()) {
     WeightOnlyPtqComponent weight_only_ptq_component(module_op.getContext());
     quantized_module_op =
         weight_only_ptq_component.Run(module_op, updated_config);
