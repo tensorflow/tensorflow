@@ -71,6 +71,10 @@ def QuantizeCompositeFunctionsPass : Pass<"stablehlo-quantize-composite-function
         "enable-weight-only",
         "bool", /*default=*/"false",
         "Whether to produce weight-only quantized op for convolution and dot_general op.">,
+    Option<"merge_fusion_with_dequantize_",
+        "merge-fusion-with-dequantize",
+        "bool", /*default=*/"false",
+        "Whether to merge quantized conv/dot_general fusion with subsequent dequantize.">,
   ];
   let dependentDialects = [
     "mlir::arith::ArithDialect",
@@ -134,6 +138,14 @@ def XlaCallModuleToCallPass : Pass<"stablehlo-xla-call-module-to-call", "ModuleO
   let summary = "Convert XlaCallModuleOp to func.call op";
   let dependentDialects = [
     "TF::TensorFlowDialect",
+  ];
+}
+
+def MergeFusionWithDequantizePass : Pass<"stablehlo-merge-fusion-with-dequantize", "mlir::ModuleOp"> {
+  let summary = "Merge quantized conv/dot_general fusion with subsequent dequantize.";
+  let dependentDialects = [
+    "chlo::ChloDialect",
+    "mlir::stablehlo::StablehloDialect",
   ];
 }
 
