@@ -529,7 +529,6 @@ cc_library(
     name = "self_adjoint_eig",
     srcs = ["self_adjoint_eig.cc"],
     hdrs = ["self_adjoint_eig.h"],
-    tags = ["no_rocm",],
     deps = [
         ":arithmetic",
         ":comparators",
@@ -552,6 +551,7 @@ cc_library(
 xla_test(
     name = "self_adjoint_eig_test",
     srcs = ["self_adjoint_eig_test.cc"],
+    tags = ["no_rocm",],
     real_hardware_only = True,
     shard_count = 5,
     tags = ["optonly"],
