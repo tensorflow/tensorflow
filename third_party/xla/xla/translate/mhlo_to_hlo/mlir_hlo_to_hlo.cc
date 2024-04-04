@@ -70,6 +70,7 @@ limitations under the License.
 #include "xla/hlo/ir/dynamic_parameter_binding.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/mlir/utils/error_util.h"
@@ -637,6 +638,30 @@ static void ExtractShardingsFromFunction(
     if (auto sharding =
             function.getResultAttrOfType<mlir::StringAttr>(i, kShardingAttr))
       (*ret_shardings)[i] = xla::ConvertSharding(sharding.getValue());
+}
+
+// Creates a tuple sharding with the given shardings if at least one is present.
+//
+// Adds replicated shardings for any missing tuple shardings.
+std::optional<xla::OpSharding> CreateTupleSharding(
+    llvm::ArrayRef<std::optional<xla::OpSharding>> tuple_shardings) {
+  if (tuple_shardings.empty() ||
+      !SomeOptionalShardingsAreSet(tuple_shardings)) {
+    return std::nullopt;
+  }
+  xla::OpSharding sharding;
+  sharding.set_type(xla::OpSharding::TUPLE);
+  for (const std::optional<xla::OpSharding>& tuple_sharding : tuple_shardings) {
+    if (tuple_sharding) {
+      *sharding.add_tuple_shardings() = *tuple_sharding;
+    } else {
+      xla::OpSharding fallback_sharding;
+      fallback_sharding.set_type(xla::OpSharding::REPLICATED);
+      *sharding.add_tuple_shardings() = fallback_sharding;
+    }
+  }
+
+  return sharding;
 }
 
 namespace mlir {
@@ -3127,8 +3152,8 @@ LogicalResult ConvertToHloModule::Lower(
     // Construct the return value for the function. If there is a single value
     // returned, then return it directly, else create a tuple and return.
     unsigned num_return_values = inst->getNumOperands();
-    const bool has_ret_shardings =
-        !ret_shardings.empty() && SomeOptionalShardingsAreSet(ret_shardings);
+    std::optional<xla::OpSharding> ret_tuple_sharding =
+        CreateTupleSharding(ret_shardings);
     if ((return_tuple_ && is_entry_function) || num_return_values != 1) {
       std::vector<xla::XlaOp> returns(num_return_values);
       for (OpOperand& ret : inst->getOpOperands()) {
@@ -3138,7 +3163,7 @@ LogicalResult ConvertToHloModule::Lower(
           return failure();
 
         returns[index] = operand;
-        if (!is_entry_function || !has_ret_shardings) continue;
+        if (!is_entry_function || !ret_tuple_sharding) continue;
 
         xla::Shape return_shape = xla::TypeToShape(ret.get().getType());
         absl::StatusOr<xla::XlaOp> reshape =
@@ -3152,29 +3177,16 @@ LogicalResult ConvertToHloModule::Lower(
         returns[index] = reshape.value();
       }
 
-      if (has_ret_shardings) {
-        xla::OpSharding sharding;
-        sharding.set_type(xla::OpSharding::TUPLE);
-        for (auto& ret_sharding : ret_shardings)
-          if (ret_sharding) {
-            *sharding.add_tuple_shardings() = *ret_sharding;
-          } else {
-            xla::OpSharding fallback_sharding;
-            fallback_sharding.set_type(xla::OpSharding::REPLICATED);
-            *sharding.add_tuple_shardings() = fallback_sharding;
-          }
-
-        builder->SetSharding(sharding);
-      }
-
+      xla::XlaScopedShardingAssignment scoped_sharding(builder,
+                                                       ret_tuple_sharding);
       *return_value = xla::Tuple(builder, returns);
-      builder->ClearSharding();
     } else if (num_return_values == 1) {
       xla::XlaOp operand;
       if (failed(GetXlaOp(inst->getOperand(0), value_map, &operand, inst)))
         return failure();
 
-      if (has_ret_shardings) {
+      if (ret_tuple_sharding) {
+        builder->SetSharding(*ret_tuple_sharding);
         auto tuple = Tuple(builder, {operand});
         builder->SetSharding(*ret_shardings[0]);
         *return_value = GetTupleElement(tuple, 0);
