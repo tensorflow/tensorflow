@@ -831,7 +831,7 @@ remote_rocm_configure = repository_rule(
     attrs = {
         "environ": attr.string_dict(),
         "_find_rocm_config": attr.label(
-            default = Label("@org_tensorflow//third_party/gpus:find_rocm_config.py"),
+            default = Label("@local_tsl//third_party/gpus:find_rocm_config.py"),
         ),
     },
 )
@@ -841,7 +841,7 @@ rocm_configure = repository_rule(
     environ = _ENVIRONS + [_TF_ROCM_CONFIG_REPO],
     attrs = {
         "_find_rocm_config": attr.label(
-            default = Label("@org_tensorflow//third_party/gpus:find_rocm_config.py"),
+            default = Label("@local_tsl//third_party/gpus:find_rocm_config.py"),
         ),
     },
 )

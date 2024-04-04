@@ -1,7 +1,7 @@
 load("@bazel_skylib//rules:expand_template.bzl", "expand_template")
+load("@local_tsl//third_party/mkl_dnn:build_defs.bzl", "if_mkldnn_openmp")
 load("@local_tsl//tsl:tsl.bzl", "tf_openmp_copts")
 load("@local_xla//xla/tsl/mkl:build_defs.bzl", "if_mkl", "if_mkl_ml")
-load("@org_tensorflow//third_party/mkl_dnn:build_defs.bzl", "if_mkldnn_openmp")
 
 exports_files(["LICENSE"])
 
@@ -76,7 +76,7 @@ expand_template(
     name = "dnnl_config_h",
     out = "include/oneapi/dnnl/dnnl_config.h",
     substitutions = select({
-        "@org_tensorflow//third_party/mkl_dnn:build_with_mkldnn_openmp": _DNNL_RUNTIME_OMP,
+        "@local_tsl//third_party/mkl_dnn:build_with_mkldnn_openmp": _DNNL_RUNTIME_OMP,
         "//conditions:default": _DNNL_RUNTIME_THREADPOOL,
     }),
     template = "include/oneapi/dnnl/dnnl_config.h.in",
