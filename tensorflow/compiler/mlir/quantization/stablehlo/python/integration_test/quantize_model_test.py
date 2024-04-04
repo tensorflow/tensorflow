@@ -1179,6 +1179,126 @@ class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         0.35,
     )
 
+  @parameterized.parameters(
+      testing.parameter_combinations([{
+          'shape_dynamic': (
+              False,
+              True,
+          ),
+      }])
+  )
+  @test_util.run_in_graph_and_eager_modes
+  def test_add_ptq_model(
+      self,
+      shape_dynamic: bool,
+  ):
+    input_shape = (None, 3, 4, 3) if shape_dynamic else (2, 3, 4, 3)
+    self._create_add_model(
+        input_shape,
+        self._input_saved_model_path,
+    )
+
+    # Generate model input data.
+    rng = np.random.default_rng(seed=42)
+    static_input_shape = [dim if dim is not None else 2 for dim in input_shape]
+
+    def data_gen() -> repr_dataset.RepresentativeDataset:
+      for _ in range(100):
+        yield {
+            'input_tensor': rng.uniform(
+                low=0.0, high=1.0, size=static_input_shape
+            ).astype(np.float32)
+        }
+
+    dataset_path = self.create_tempfile('tfrecord').full_path
+    path_map = {'serving_default': dataset_path}
+    repr_dataset.TfRecordRepresentativeDatasetSaver(path_map).save(
+        {'serving_default': data_gen()}
+    )
+
+    config = qc.QuantizationConfig(
+        static_range_ptq_preset=qc.StaticRangePtqPreset(
+            representative_datasets=[
+                qc.RepresentativeDatasetConfig(
+                    tf_record=qc.TfRecordFile(path=dataset_path)
+                )
+            ],
+        ),
+        tf_saved_model=qc.TfSavedModelConfig(tags=[tag_constants.SERVING]),
+    )
+    quantization.quantize_saved_model(
+        self._input_saved_model_path,
+        self._output_saved_model_path,
+        config,
+    )
+
+    self.assertEqual(
+        self._get_num_xla_call_module_op(self._output_saved_model_path), 1
+    )
+    module_str = self._extract_first_xla_call_module_op(
+        self._output_saved_model_path
+    )
+
+    # Check add is not quantized.
+    self.assertTrue(re.search(r'stablehlo.add.*f32>', module_str))
+
+  @parameterized.parameters(
+      testing.parameter_combinations([{
+          'shape_dynamic': (
+              False,
+              True,
+          ),
+      }])
+  )
+  @test_util.run_in_graph_and_eager_modes
+  def test_add_weight_only_model(
+      self,
+      shape_dynamic: bool,
+  ):
+    input_shape = (None, 3, 4, 3) if shape_dynamic else (2, 3, 4, 3)
+    self._create_add_model(
+        input_shape,
+        self._input_saved_model_path,
+    )
+
+    # Generate model input data.
+    rng = np.random.default_rng(seed=42)
+    static_input_shape = [dim if dim is not None else 2 for dim in input_shape]
+
+    def data_gen() -> repr_dataset.RepresentativeDataset:
+      for _ in range(100):
+        yield {
+            'input_tensor': rng.uniform(
+                low=0.0, high=1.0, size=static_input_shape
+            ).astype(np.float32)
+        }
+
+    dataset_path = self.create_tempfile('tfrecord').full_path
+    path_map = {'serving_default': dataset_path}
+    repr_dataset.TfRecordRepresentativeDatasetSaver(path_map).save(
+        {'serving_default': data_gen()}
+    )
+
+    config = qc.QuantizationConfig(
+        weight_only_ptq_preset=qc.WeightOnlyPtqPreset(),
+        tf_saved_model=qc.TfSavedModelConfig(tags=[tag_constants.SERVING]),
+    )
+    quantization.quantize_saved_model(
+        self._input_saved_model_path,
+        self._output_saved_model_path,
+        config,
+    )
+
+    self.assertEqual(
+        self._get_num_xla_call_module_op(self._output_saved_model_path), 1
+    )
+    module_str = self._extract_first_xla_call_module_op(
+        self._output_saved_model_path
+    )
+
+    # Check add is not quantized.
+    self.assertTrue(re.search(r'stablehlo.add.*f32>', module_str), module_str)
+
 
 if __name__ == '__main__':
   test.main()

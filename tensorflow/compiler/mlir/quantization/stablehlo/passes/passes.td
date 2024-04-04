@@ -130,6 +130,13 @@ def PostQuantizePass : Pass<"stablehlo-post-quantize", "mlir::func::FuncOp"> {
   ];
 }
 
+def XlaCallModuleToCallPass : Pass<"stablehlo-xla-call-module-to-call", "ModuleOp"> {
+  let summary = "Convert XlaCallModuleOp to func.call op";
+  let dependentDialects = [
+    "TF::TensorFlowDialect",
+  ];
+}
+
 def UnwrapXlaCallModuleOpPass : Pass<"stablehlo-unwrap-xla-call-module-op", "ModuleOp"> {
   let summary = "Unwrap XlaCallModuleOps into inline functions if not used for quantizing fused patterns.";
   let dependentDialects = ["TF::TensorFlowDialect"];

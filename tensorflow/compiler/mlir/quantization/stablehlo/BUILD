@@ -68,6 +68,7 @@ cc_library(
         "passes/restore_function_name.cc",
         "passes/unfuse_mhlo_batch_norm.cc",
         "passes/unwrap_xla_call_module_op.cc",
+        "passes/xla_call_module_to_call.cc",
     ],
     hdrs = [
         "passes/passes.h",

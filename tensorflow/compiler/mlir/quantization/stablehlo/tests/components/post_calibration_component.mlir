@@ -69,11 +69,6 @@ func.func private @composite_dot_general_fn_1(%arg0: tensor<1x1024xf32>, %arg1: 
 }
 // CHECK-LABEL: func.func @main
 // CHECK-SAME: (%[[ARG_0:.+]]: tensor<1x1024xf32>) -> tensor<1x3xf32>
-
 // CHECK-DAG: %[[CONST_0:.+]] = stablehlo.constant dense<{{.*}}> : tensor<1024x3xf32>
-// CHECK: "tf.XlaCallModule"(%[[ARG_0]], %[[CONST_0]])
-
-// CHECK: func.func private @composite_dot_general_fn_1
-// CHECK-SAME: attributes {_from_xla_call_module}
-// CHECK: %[[DOT_GENERAL_0:.+]] = stablehlo.dot_general
-// CHECK-SAME: contracting_dims = [1] x [0] : (tensor<1x1024xf32>, tensor<1024x3xf32>) -> tensor<1x3xf32>
+// CHECK: stablehlo.dot_general %[[ARG_0]], %[[CONST_0]]
+// CHECK-NOT: tf.XlaCallModule

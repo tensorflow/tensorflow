@@ -73,6 +73,20 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
             return str(stablehlo_module)
     raise ValueError('No XlaCallModule found in saved model.')
 
+  def _get_num_xla_call_module_op(self, output_saved_model_path: str) -> int:
+    """Gets the number of XlaCallModule ops in the output saved model."""
+    root = load.load(output_saved_model_path)
+    tf_graph_def = root.signatures['serving_default'].graph.as_graph_def()
+    count = 0
+    for node_def in tf_graph_def.node:
+      if node_def.op == 'XlaCallModule':
+        count += 1
+    for function in tf_graph_def.library.function:
+      for node_def in function.node_def:
+        if node_def.op == 'XlaCallModule':
+          count += 1
+    return count
+
   def _create_matmul_model(
       self,
       input_shape: Sequence[int],
@@ -338,6 +352,42 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
         return {'output': out}
 
     return GatherModel(use_variable)
+
+  def _create_add_model(
+      self,
+      shape: Sequence[int],
+      saved_model_path: str,
+  ) -> module.Module:
+    class AddModel(module.Module):
+      """A simple model with a single add."""
+
+      def __init__(self):
+        pass
+
+      @def_function.function
+      def add(self, input_tensor: core.Tensor) -> Mapping[str, core.Tensor]:
+        """Performs an add operation.
+
+        Args:
+          input_tensor: Input tensor to perform add on.
+
+        Returns:
+          A map of: output key -> output result.
+        """
+        out = math_ops.add(input_tensor, input_tensor)
+        return {'output': out}
+
+    model = AddModel()
+    saved_model_save.save(
+        model,
+        saved_model_path,
+        signatures=model.add.get_concrete_function(
+            tensor_spec.TensorSpec(
+                shape=shape, dtype=dtypes.float32, name='input_tensor'
+            )
+        ),
+    )
+    return model
 
   # Prepares sample einsum input data shapes.
   # This function returns:
