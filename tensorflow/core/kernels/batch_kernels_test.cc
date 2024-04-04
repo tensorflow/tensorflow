@@ -20,10 +20,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
-#include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/framework/device_factory.h"
@@ -38,7 +36,6 @@ limitations under the License.
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/status_matchers.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/public/version.h"
@@ -125,11 +122,12 @@ class BatchFunctionTestState : public SharedBatchFunctionTestState {
     std::vector<NodeDefBuilder::NodeOut> inputs(
         {NodeDefBuilder::NodeOut({"n1", 0, DataType::DT_INT64})});
     TF_RETURN_IF_ERROR(NodeDefBuilder("BatchTPUInput", "BatchFunction")
-                           .Attr("max_batch_size", 4)
-                           .Attr("num_batch_threads", 4)
-                           .Attr("allowed_batch_sizes", {4})
+                           .Attr("max_batch_size", 8)
+                           .Attr("num_batch_threads", 8)
+                           .Attr("allowed_batch_sizes", {4, 8})
                            .Attr("batch_timeout_micros", 1000000)
                            .Attr("max_enqueued_batches", 10)
+                           .Attr("enable_large_batch_splitting", true)
                            .Attr("low_priority_max_batch_size",
                                  enable_low_priority_queue ? 8 : 0)
                            .Attr("low_priority_batch_timeout_micros",
@@ -171,11 +169,11 @@ TEST_P(BatchFunctionTest, BatchingWorksWithoutCriticality) {
 
   bool enable_low_priority_queue = GetParam();
   {
-    tsl::BlockingCounter blocking_counter(4);
+    tsl::BlockingCounter blocking_counter(8);
     // 8 threads run the batch op with no explicit criticality set. They are
-    // eventually batched to form a tensor with [4, 2] shape which is verified
+    // eventually batched to form a tensor with [8, 2] shape which is verified
     // within the function.
-    for (int i = 0; i < 4; ++i) {
+    for (int i = 0; i < 8; ++i) {
       Env::Default()->SchedClosure([&]() {
         ASSERT_EQ(tsl::criticality::GetCriticality(),
                   tsl::criticality::Criticality::kCritical);
@@ -185,7 +183,7 @@ TEST_P(BatchFunctionTest, BatchingWorksWithoutCriticality) {
         TF_ASSERT_OK(test_state.Init(
             cpu_device_.get(), enable_low_priority_queue,
             serving::kLowPriorityPaddingWithMaxBatchSizeAttrValue,
-            /*expected_batch_size=*/4));
+            /*expected_batch_size=*/8));
         test_state.AddInputFromList<int64_t>(TensorShape({1, 2}), {123, 456});
         TF_EXPECT_OK(test_state.RunOpKernel());
 
@@ -237,18 +235,19 @@ TEST_P(BatchFunctionTest, PaddingWorksWithoutCriticality) {
 }
 
 #if defined(PLATFORM_GOOGLE)
-TEST_P(BatchFunctionTest, LowPriorityTaskPaddingHighPriorityBatch) {
+TEST_P(BatchFunctionTest,
+       LowPriorityTaskPaddingHighPriorityBatchUptoMaxBatchSize) {
   SessionMetadata session_metadata;
   session_metadata.set_name("test_model");
   session_metadata.set_version(123);
 
   bool enable_low_priority_queue = GetParam();
   {
-    tsl::BlockingCounter blocking_counter(4);
-    // 2 threads run the batch op with critical plus and 2 threads run the batch
-    // op with sheddable. They are eventually batched to form a tensor with [4,
+    tsl::BlockingCounter blocking_counter(8);
+    // 4 threads run the batch op with critical plus and 4 threads run the batch
+    // op with sheddable. They are eventually batched to form a tensor with [8,
     // 2] shape which is verified within the function.
-    for (int i = 0; i < 2; ++i) {
+    for (int i = 0; i < 4; ++i) {
       Env::Default()->SchedClosure([&]() {
         tsl::criticality::ScopedCriticality scoped_criticality(
             tsl::criticality::Criticality::kCriticalPlus);
@@ -260,7 +259,7 @@ TEST_P(BatchFunctionTest, LowPriorityTaskPaddingHighPriorityBatch) {
         TF_ASSERT_OK(test_state.Init(
             cpu_device_.get(), enable_low_priority_queue,
             serving::kLowPriorityPaddingWithMaxBatchSizeAttrValue,
-            /*expected_batch_size=*/4));
+            /*expected_batch_size=*/8));
         test_state.AddInputFromList<int64_t>(TensorShape({1, 2}), {123, 456});
         TF_EXPECT_OK(test_state.RunOpKernel());
 
@@ -271,7 +270,7 @@ TEST_P(BatchFunctionTest, LowPriorityTaskPaddingHighPriorityBatch) {
       });
     }
 
-    for (int i = 0; i < 2; ++i) {
+    for (int i = 0; i < 4; ++i) {
       Env::Default()->SchedClosure([&]() {
         tsl::criticality::ScopedCriticality scoped_criticality(
             tsl::criticality::Criticality::kSheddable);
@@ -283,7 +282,7 @@ TEST_P(BatchFunctionTest, LowPriorityTaskPaddingHighPriorityBatch) {
         TF_ASSERT_OK(test_state.Init(
             cpu_device_.get(), enable_low_priority_queue,
             serving::kLowPriorityPaddingWithMaxBatchSizeAttrValue,
-            /*expected_batch_size=*/4));
+            /*expected_batch_size=*/8));
         test_state.AddInputFromList<int64_t>(TensorShape({1, 2}), {234, 567});
         TF_EXPECT_OK(test_state.RunOpKernel());
 
@@ -351,6 +350,68 @@ TEST_P(BatchFunctionTest,
           test::AsTensor<int64_t>({234, 567}, TensorShape({1, 2})));
       blocking_counter.DecrementCount();
     });
+
+    blocking_counter.Wait();
+  }
+}
+
+TEST_P(BatchFunctionTest,
+       LowPriorityTaskPaddingHighPriorityBatchUptoNextAllowedBatchSize) {
+  SessionMetadata session_metadata;
+  session_metadata.set_name("test_model");
+  session_metadata.set_version(123);
+
+  bool enable_low_priority_queue = GetParam();
+  {
+    tsl::BlockingCounter blocking_counter(4);
+    // 2 threads run the batch op with critical plus and 2 threads run the batch
+    // op with sheddable. They are eventually batched to form a tensor with [4,
+    // 2] shape which is verified within the function.
+    for (int i = 0; i < 2; ++i) {
+      Env::Default()->SchedClosure([&]() {
+        tsl::criticality::ScopedCriticality scoped_criticality(
+            tsl::criticality::Criticality::kCriticalPlus);
+        ASSERT_EQ(tsl::criticality::GetCriticality(),
+                  tsl::criticality::Criticality::kCriticalPlus);
+
+        BatchFunctionTestState test_state;
+        test_state.set_session_metadata(session_metadata);
+        TF_ASSERT_OK(test_state.Init(
+            cpu_device_.get(), enable_low_priority_queue,
+            serving::kLowPriorityPaddingWithNextAllowedBatchSizeAttrValue,
+            /*expected_batch_size=*/4));
+        test_state.AddInputFromList<int64_t>(TensorShape({1, 2}), {123, 456});
+        TF_EXPECT_OK(test_state.RunOpKernel());
+
+        test::ExpectTensorEqual<int64_t>(
+            *test_state.GetOutput(0),
+            test::AsTensor<int64_t>({123, 456}, TensorShape({1, 2})));
+        blocking_counter.DecrementCount();
+      });
+    }
+
+    for (int i = 0; i < 2; ++i) {
+      Env::Default()->SchedClosure([&]() {
+        tsl::criticality::ScopedCriticality scoped_criticality(
+            tsl::criticality::Criticality::kSheddable);
+        ASSERT_EQ(tsl::criticality::GetCriticality(),
+                  tsl::criticality::Criticality::kSheddable);
+
+        BatchFunctionTestState test_state;
+        test_state.set_session_metadata(session_metadata);
+        TF_ASSERT_OK(test_state.Init(
+            cpu_device_.get(), enable_low_priority_queue,
+            serving::kLowPriorityPaddingWithNextAllowedBatchSizeAttrValue,
+            /*expected_batch_size=*/4));
+        test_state.AddInputFromList<int64_t>(TensorShape({1, 2}), {234, 567});
+        TF_EXPECT_OK(test_state.RunOpKernel());
+
+        test::ExpectTensorEqual<int64_t>(
+            *test_state.GetOutput(0),
+            test::AsTensor<int64_t>({234, 567}, TensorShape({1, 2})));
+        blocking_counter.DecrementCount();
+      });
+    }
 
     blocking_counter.Wait();
   }
@@ -437,27 +498,6 @@ TEST_F(BatchFunctionTest, LowPriorityBatchPaddedToLowPriorityAllowedBatchSize) {
   }
 }
 #endif
-
-TEST_F(BatchFunctionTest, NonDefaultBatchingPolicyNotAllowed) {
-  SessionMetadata session_metadata;
-  session_metadata.set_name("test_model");
-  session_metadata.set_version(123);
-
-  BatchFunctionTestState test_state;
-  test_state.set_session_metadata(session_metadata);
-  TF_ASSERT_OK(test_state.Init(
-      cpu_device_.get(),
-      /*enable_low_priority_queue=*/true,
-      serving::kLowPriorityPaddingWithNextAllowedBatchSizeAttrValue,
-      /*expected_batch_size=*/1));
-  test_state.AddInputFromList<int64_t>(TensorShape({1, 2}), {234, 567});
-  EXPECT_THAT(
-      test_state.RunOpKernel(),
-      testing::StatusIs(
-          absl::StatusCode::kInvalidArgument,
-          ::testing::HasSubstr("mixed_priority_policy must be "
-                               "low_priority_padding_with_max_batch_size")));
-}
 
 class BatchFunctionKernelParallelWarmupTestState
     : public SharedBatchFunctionTestState {

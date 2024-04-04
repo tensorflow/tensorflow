@@ -174,6 +174,9 @@ class BatchResource : public serving::BatchResourceBase {
                   /*low_priority_batch_timeout_micros=*/0,
                   /*low_priority_max_enqueued_batches=*/0,
                   /*low_priority_allowed_batch_sizes=*/{},
+                  /*mixed_priority_batching_policy=*/
+                  serving::MixedPriorityBatchingPolicy::
+                      kLowPriorityPaddingWithMaxBatchSize,
                   enable_large_batch_splitting, resource);
   }
 
@@ -186,6 +189,7 @@ class BatchResource : public serving::BatchResourceBase {
       int32_t low_priority_batch_timeout_micros,
       int32_t low_priority_max_enqueued_batches,
       const std::vector<int32>& low_priority_allowed_batch_sizes,
+      serving::MixedPriorityBatchingPolicy mixed_priority_batching_policy,
       bool enable_large_batch_splitting,
       std::unique_ptr<BatchResource>* resource) {
     BatcherT::Options batcher_options;
@@ -201,8 +205,8 @@ class BatchResource : public serving::BatchResourceBase {
             enable_large_batch_splitting,
             /*disable_padding=*/false, low_priority_max_batch_size,
             low_priority_batch_timeout_micros,
-            low_priority_max_enqueued_batches,
-            low_priority_allowed_batch_sizes),
+            low_priority_max_enqueued_batches, low_priority_allowed_batch_sizes,
+            mixed_priority_batching_policy),
         allowed_batch_sizes));
     return absl::OkStatus();
   }
@@ -422,15 +426,9 @@ void BatchFunctionKernel::ComputeAsync(OpKernelContext* c, DoneCallback done) {
   } else {
     creator = [this,
                session_metadata = c->session_metadata()](BatchResource** r) {
-      // TODO(b/316379576): Remove this check when batching policy is used.
       TF_ASSIGN_OR_RETURN(
-          serving::MixedPriorityBatchingPolicy batching_policy,
+          serving::MixedPriorityBatchingPolicy mixed_priority_batching_policy,
           serving::GetMixedPriorityBatchingPolicy(mixed_priority_policy_));
-      if (batching_policy != serving::MixedPriorityBatchingPolicy::
-                                 kLowPriorityPaddingWithMaxBatchSize)
-        return absl::InvalidArgumentError(
-            "mixed_priority_policy must be "
-            "low_priority_padding_with_max_batch_size");
 
       std::unique_ptr<BatchResource> new_resource;
       TF_RETURN_IF_ERROR(BatchResource::Create(
@@ -439,7 +437,8 @@ void BatchFunctionKernel::ComputeAsync(OpKernelContext* c, DoneCallback done) {
           allowed_batch_sizes_, low_priority_max_batch_size_,
           low_priority_batch_timeout_micros_,
           low_priority_max_enqueued_batches_, low_priority_allowed_batch_sizes_,
-          enable_large_batch_splitting_, &new_resource));
+          mixed_priority_batching_policy, enable_large_batch_splitting_,
+          &new_resource));
       if (session_metadata) {
         new_resource->set_session_metadata(*session_metadata);
       }

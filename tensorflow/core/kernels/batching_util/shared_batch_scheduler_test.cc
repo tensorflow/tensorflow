@@ -183,8 +183,11 @@ QueueOptions CreateQueueOptions(size_t max_execution_batch_size,
   return queue_options;
 }
 
-class SharedBatchSchedulerTest
-    : public ::testing::TestWithParam<std::tuple<bool, bool>> {
+class SharedBatchSchedulerTestBase {
+ public:
+  SharedBatchSchedulerTestBase() = default;
+  virtual ~SharedBatchSchedulerTestBase() = default;
+
  protected:
   QueueOptions CreateQueueOptions(size_t max_execution_batch_size,
                                   size_t input_batch_size_limit,
@@ -196,9 +199,9 @@ class SharedBatchSchedulerTest
         max_enqueued_batches, enable_input_batch_split(), enable_lazy_split(),
         get_split_func(), enable_priority_queue);
   }
-  bool enable_input_batch_split() const { return std::get<0>(GetParam()); }
+  virtual bool enable_input_batch_split() const = 0;
 
-  bool enable_lazy_split() const { return std::get<1>(GetParam()); }
+  virtual bool enable_lazy_split() const = 0;
 
   SplitFunc get_split_func() const {
     if (enable_input_batch_split()) {
@@ -226,6 +229,17 @@ class SharedBatchSchedulerTest
     }
     return nullptr;
   }
+};
+
+class SharedBatchSchedulerTest
+    : public ::testing::TestWithParam<std::tuple<bool, bool>>,
+      public SharedBatchSchedulerTestBase {
+ protected:
+  bool enable_input_batch_split() const override {
+    return std::get<0>(GetParam());
+  }
+
+  bool enable_lazy_split() const override { return std::get<1>(GetParam()); }
 };
 
 TEST_P(SharedBatchSchedulerTest, Basic) {
@@ -341,8 +355,6 @@ TEST_P(SharedBatchSchedulerTest,
   EXPECT_TRUE(queue_1_callback_called);
 }
 
-// For now there shouldn't be much difference with the enabled case above since
-// nothing currently inserts any tasks to the low priority task queue.
 TEST_P(SharedBatchSchedulerTest,
        CallbackWithTaskVectorOkWithPriorityQueueDisabled) {
   bool queue_0_callback_called = false;
@@ -376,7 +388,7 @@ TEST_P(SharedBatchSchedulerTest,
     const QueueOptions queue_options = CreateQueueOptions(
         /*max_execution_batch_size=*/10, /*input_batch_size_limit=*/10,
         /*batch_timeout_micros=*/1 * 1000 * 1000, /*max_enqueued_batches=*/2,
-        /*enable_priority_queue=*/true);
+        /*enable_priority_queue=*/false);
     std::unique_ptr<Queue> queue_0 =
         CreateQueue(scheduler, queue_options, queue_0_callback);
     std::unique_ptr<Queue> queue_1 =
@@ -1051,7 +1063,21 @@ INSTANTIATE_TEST_SUITE_P(
                       std::make_tuple(/*enable_input_batch_split=*/false,
                                       /*enable_lazy_split=*/false)));
 
-using SharedBatchSchedulerPriorityTest = SharedBatchSchedulerTest;
+class SharedBatchSchedulerPriorityTest
+    : public ::testing::TestWithParam<
+          std::tuple<bool, bool, MixedPriorityBatchingPolicy>>,
+      public SharedBatchSchedulerTestBase {
+ protected:
+  bool enable_input_batch_split() const override {
+    return std::get<0>(GetParam());
+  }
+
+  bool enable_lazy_split() const override { return std::get<1>(GetParam()); }
+
+  MixedPriorityBatchingPolicy mixed_priority_batching_policy() const {
+    return std::get<2>(GetParam());
+  }
+};
 
 TEST_P(SharedBatchSchedulerPriorityTest,
        InvalidLowPriorityTaskWithPriorityQueueEnabled) {
@@ -1075,6 +1101,8 @@ TEST_P(SharedBatchSchedulerPriorityTest,
         1 * 1000 * 1000;
     queue_options.low_priority_queue_options.input_batch_size_limit = 1;
     queue_options.low_priority_queue_options.max_enqueued_batches = 2;
+    queue_options.mixed_priority_batching_policy =
+        mixed_priority_batching_policy();
     std::unique_ptr<Queue> queue =
         CreateQueue(scheduler, queue_options, queue_callback);
 
@@ -1091,7 +1119,7 @@ TEST_P(SharedBatchSchedulerPriorityTest,
 }
 
 TEST_P(SharedBatchSchedulerPriorityTest,
-       InvalidLowPriorityTaskWithQueueFullWithPriorityQueueEnabled) {
+       InvalidLowPriorityTaskWithQueueFullWithPriorityQueueEnabledNew) {
   Notification processing, proceed;
   auto queue_callback = [&processing, &proceed](
                             std::unique_ptr<Batch<FakeTask>> batch,
@@ -1114,14 +1142,14 @@ TEST_P(SharedBatchSchedulerPriorityTest,
       1 * 1000 * 1000;
   queue_options.low_priority_queue_options.input_batch_size_limit = 10;
   queue_options.low_priority_queue_options.max_enqueued_batches = 2;
+  queue_options.mixed_priority_batching_policy =
+      mixed_priority_batching_policy();
   std::unique_ptr<Queue> queue =
       CreateQueue(scheduler, queue_options, queue_callback);
 
   // Schedule one task and block the thread.
   TF_ASSERT_OK(ScheduleTask(5, queue.get(),
                             tsl::criticality::Criticality::kCriticalPlus));
-  TF_ASSERT_OK(ScheduleTask(5, queue.get(),
-                            tsl::criticality::Criticality::kSheddablePlus));
   processing.WaitForNotification();
   ASSERT_EQ(0, queue->NumEnqueuedTasks());
 
@@ -1147,49 +1175,6 @@ TEST_P(SharedBatchSchedulerPriorityTest,
 
   // Unblock the thread.
   proceed.Notify();
-}
-
-TEST_P(SharedBatchSchedulerPriorityTest,
-       CallbackWithTaskVectorOkWithPriorityQueueEnabledWithPrioritySet) {
-  bool queue_callback_called = false;
-  auto queue_callback = [&queue_callback_called](
-                            std::unique_ptr<Batch<FakeTask>> batch,
-                            std::vector<std::unique_ptr<FakeTask>> tasks) {
-    queue_callback_called = true;
-    ASSERT_TRUE(batch->IsClosed());
-    ASSERT_EQ(2, batch->num_tasks());
-    EXPECT_EQ(1, batch->task(0).size());
-    EXPECT_EQ(3, batch->task(1).size());
-    EXPECT_EQ(1, tasks.size());
-    EXPECT_EQ(5, tasks[0]->size());
-  };
-
-  {
-    std::shared_ptr<Scheduler> scheduler =
-        CreateSharedBatchScheduler(/*num_batch_threads=*/3);
-
-    // Create a queue with the priority queue enabled.
-    QueueOptions queue_options = CreateQueueOptions(
-        /*max_execution_batch_size=*/10, /*input_batch_size_limit=*/10,
-        /*batch_timeout_micros=*/1 * 1000 * 1000, /*max_enqueued_batches=*/2,
-        /*enable_priority_queue=*/true);
-    queue_options.low_priority_queue_options.max_execution_batch_size = 10;
-    queue_options.low_priority_queue_options.batch_timeout_micros =
-        1 * 1000 * 1000;
-    queue_options.low_priority_queue_options.input_batch_size_limit = 10;
-    queue_options.low_priority_queue_options.max_enqueued_batches = 2;
-    std::unique_ptr<Queue> queue =
-        CreateQueue(scheduler, queue_options, queue_callback);
-
-    // Submit tasks to the queue.
-    TF_ASSERT_OK(ScheduleTask(1, queue.get(),
-                              tsl::criticality::Criticality::kCriticalPlus));
-    TF_ASSERT_OK(ScheduleTask(3, queue.get(),
-                              tsl::criticality::Criticality::kCriticalPlus));
-    TF_ASSERT_OK(ScheduleTask(5, queue.get(),
-                              tsl::criticality::Criticality::kSheddable));
-  }
-  EXPECT_TRUE(queue_callback_called);
 }
 
 TEST_P(SharedBatchSchedulerPriorityTest,
@@ -1258,6 +1243,8 @@ TEST_P(SharedBatchSchedulerPriorityTest,
         1 * 1000 * 1000;
     queue_options.low_priority_queue_options.input_batch_size_limit = 10;
     queue_options.low_priority_queue_options.max_enqueued_batches = 2;
+    queue_options.mixed_priority_batching_policy =
+        mixed_priority_batching_policy();
     std::unique_ptr<Queue> queue =
         CreateQueue(scheduler, queue_options, queue_callback);
 
@@ -1300,6 +1287,8 @@ TEST_P(SharedBatchSchedulerPriorityTest,
         1 * 1000 * 1000;
     queue_options.low_priority_queue_options.input_batch_size_limit = 10;
     queue_options.low_priority_queue_options.max_enqueued_batches = 2;
+    queue_options.mixed_priority_batching_policy =
+        mixed_priority_batching_policy();
     std::unique_ptr<Queue> queue =
         CreateQueue(scheduler, queue_options, queue_callback);
 
@@ -1319,7 +1308,246 @@ TEST_P(SharedBatchSchedulerPriorityTest,
 // when the lazy split is not enabled.
 INSTANTIATE_TEST_SUITE_P(
     Parameter, SharedBatchSchedulerPriorityTest,
+    ::testing::Values(
+        std::make_tuple(
+            /*enable_input_batch_split=*/true,
+            /*enable_lazy_split=*/false,
+            MixedPriorityBatchingPolicy::kLowPriorityPaddingWithMaxBatchSize),
+        std::make_tuple(/*enable_input_batch_split=*/true,
+                        /*enable_lazy_split=*/false,
+                        MixedPriorityBatchingPolicy::
+                            kLowPriorityPaddingWithNextAllowedBatchSize),
+        std::make_tuple(
+            /*enable_input_batch_split=*/false,
+            /*enable_lazy_split=*/false,
+            MixedPriorityBatchingPolicy::kLowPriorityPaddingWithMaxBatchSize),
+        std::make_tuple(/*enable_input_batch_split=*/false,
+                        /*enable_lazy_split=*/false,
+                        MixedPriorityBatchingPolicy::
+                            kLowPriorityPaddingWithNextAllowedBatchSize)));
+
+using SharedBatchSchedulerPriorityPolicyTest = SharedBatchSchedulerTest;
+
+TEST_P(SharedBatchSchedulerPriorityPolicyTest,
+       HighPriorityBatchPaddedUptoMaxBatchSize) {
+  bool queue_callback_called = false;
+  auto queue_callback = [&queue_callback_called](
+                            std::unique_ptr<Batch<FakeTask>> batch,
+                            std::vector<std::unique_ptr<FakeTask>> tasks) {
+    // Skip if this was called already, which is the low priority task only
+    // batch case.
+    if (queue_callback_called) return;
+
+    queue_callback_called = true;
+    ASSERT_TRUE(batch->IsClosed());
+    ASSERT_EQ(2, batch->num_tasks());
+    EXPECT_EQ(1, batch->task(0).size());
+    EXPECT_EQ(3, batch->task(1).size());
+    EXPECT_EQ(2, tasks.size());
+    EXPECT_EQ(3, tasks[0]->size());
+    EXPECT_EQ(3, tasks[1]->size());
+  };
+
+  {
+    std::shared_ptr<Scheduler> scheduler =
+        CreateSharedBatchScheduler(/*num_batch_threads=*/3);
+
+    // Create a queue with the priority queue enabled.
+    QueueOptions queue_options = CreateQueueOptions(
+        /*max_execution_batch_size=*/10, /*input_batch_size_limit=*/10,
+        /*batch_timeout_micros=*/1 * 1000 * 1000, /*max_enqueued_batches=*/2,
+        /*enable_priority_queue=*/true);
+    queue_options.low_priority_queue_options.max_execution_batch_size = 10;
+    queue_options.low_priority_queue_options.batch_timeout_micros =
+        1 * 1000 * 1000;
+    queue_options.low_priority_queue_options.input_batch_size_limit = 10;
+    queue_options.low_priority_queue_options.max_enqueued_batches = 2;
+    queue_options.mixed_priority_batching_policy =
+        MixedPriorityBatchingPolicy::kLowPriorityPaddingWithMaxBatchSize;
+    std::unique_ptr<Queue> queue =
+        CreateQueue(scheduler, queue_options, queue_callback);
+
+    // Submit tasks to the queue. The high priority batch is padded by the low
+    // priority tasks only up to 10, which is the max batch size.
+    TF_ASSERT_OK(ScheduleTask(1, queue.get(),
+                              tsl::criticality::Criticality::kCriticalPlus));
+    TF_ASSERT_OK(ScheduleTask(3, queue.get(),
+                              tsl::criticality::Criticality::kCriticalPlus));
+    TF_ASSERT_OK(ScheduleTask(3, queue.get(),
+                              tsl::criticality::Criticality::kSheddable));
+    TF_ASSERT_OK(ScheduleTask(3, queue.get(),
+                              tsl::criticality::Criticality::kSheddable));
+    TF_ASSERT_OK(ScheduleTask(3, queue.get(),
+                              tsl::criticality::Criticality::kSheddable));
+  }
+  EXPECT_TRUE(queue_callback_called);
+}
+TEST_P(SharedBatchSchedulerPriorityPolicyTest,
+       HighPriorityBatchPaddedUptoMaxAvailableBatchSize) {
+  bool queue_callback_called = false;
+  auto queue_callback = [&queue_callback_called](
+                            std::unique_ptr<Batch<FakeTask>> batch,
+                            std::vector<std::unique_ptr<FakeTask>> tasks) {
+    queue_callback_called = true;
+    ASSERT_TRUE(batch->IsClosed());
+    ASSERT_EQ(2, batch->num_tasks());
+    EXPECT_EQ(1, batch->task(0).size());
+    EXPECT_EQ(3, batch->task(1).size());
+    EXPECT_EQ(1, tasks.size());
+    EXPECT_EQ(3, tasks[0]->size());
+  };
+
+  {
+    std::shared_ptr<Scheduler> scheduler =
+        CreateSharedBatchScheduler(/*num_batch_threads=*/3);
+
+    // Create a queue with the priority queue enabled.
+    QueueOptions queue_options = CreateQueueOptions(
+        /*max_execution_batch_size=*/10, /*input_batch_size_limit=*/10,
+        /*batch_timeout_micros=*/1 * 1000 * 1000, /*max_enqueued_batches=*/2,
+        /*enable_priority_queue=*/true);
+    queue_options.low_priority_queue_options.max_execution_batch_size = 10;
+    queue_options.low_priority_queue_options.batch_timeout_micros =
+        1 * 1000 * 1000;
+    queue_options.low_priority_queue_options.input_batch_size_limit = 10;
+    queue_options.low_priority_queue_options.max_enqueued_batches = 2;
+    queue_options.mixed_priority_batching_policy =
+        MixedPriorityBatchingPolicy::kLowPriorityPaddingWithMaxBatchSize;
+    std::unique_ptr<Queue> queue =
+        CreateQueue(scheduler, queue_options, queue_callback);
+
+    // Submit tasks to the queue. The high priority batch is padded by the low
+    // priority tasks only up to 7, since there is no more available low
+    // priority task.
+    TF_ASSERT_OK(ScheduleTask(1, queue.get(),
+                              tsl::criticality::Criticality::kCriticalPlus));
+    TF_ASSERT_OK(ScheduleTask(3, queue.get(),
+                              tsl::criticality::Criticality::kCriticalPlus));
+    TF_ASSERT_OK(ScheduleTask(3, queue.get(),
+                              tsl::criticality::Criticality::kSheddable));
+  }
+  EXPECT_TRUE(queue_callback_called);
+}
+
+TEST_P(SharedBatchSchedulerPriorityPolicyTest,
+       HighPriorityBatchPaddedUptoNextAllowedBatchSize) {
+  bool queue_callback_called = false;
+  auto queue_callback = [&queue_callback_called](
+                            std::unique_ptr<Batch<FakeTask>> batch,
+                            std::vector<std::unique_ptr<FakeTask>> tasks) {
+    // Skip if this was called already, which is the low priority task only
+    // batch case.
+    if (queue_callback_called) return;
+
+    queue_callback_called = true;
+    ASSERT_TRUE(batch->IsClosed());
+    ASSERT_EQ(2, batch->num_tasks());
+    EXPECT_EQ(1, batch->task(0).size());
+    EXPECT_EQ(3, batch->task(1).size());
+    EXPECT_EQ(2, tasks.size());
+    EXPECT_EQ(2, tasks[0]->size());
+    EXPECT_EQ(2, tasks[1]->size());
+  };
+
+  {
+    std::shared_ptr<Scheduler> scheduler =
+        CreateSharedBatchScheduler(/*num_batch_threads=*/3);
+
+    // Create a queue with the priority queue enabled.
+    QueueOptions queue_options = CreateQueueOptions(
+        /*max_execution_batch_size=*/10, /*input_batch_size_limit=*/10,
+        /*batch_timeout_micros=*/1 * 1000 * 1000, /*max_enqueued_batches=*/2,
+        /*enable_priority_queue=*/true);
+    queue_options.allowed_batch_sizes = {2, 8, 16};
+    queue_options.low_priority_queue_options.max_execution_batch_size = 10;
+    queue_options.low_priority_queue_options.batch_timeout_micros =
+        1 * 1000 * 1000;
+    queue_options.low_priority_queue_options.input_batch_size_limit = 10;
+    queue_options.low_priority_queue_options.max_enqueued_batches = 2;
+    queue_options.mixed_priority_batching_policy = MixedPriorityBatchingPolicy::
+        kLowPriorityPaddingWithNextAllowedBatchSize;
+    std::unique_ptr<Queue> queue =
+        CreateQueue(scheduler, queue_options, queue_callback);
+
+    // Submit tasks to the queue. The high priority batch is padded by the low
+    // priority tasks only up to 8, which is the next allowed batch size.
+    TF_ASSERT_OK(ScheduleTask(1, queue.get(),
+                              tsl::criticality::Criticality::kCriticalPlus));
+    TF_ASSERT_OK(ScheduleTask(3, queue.get(),
+                              tsl::criticality::Criticality::kCriticalPlus));
+    TF_ASSERT_OK(ScheduleTask(2, queue.get(),
+                              tsl::criticality::Criticality::kSheddable));
+    TF_ASSERT_OK(ScheduleTask(2, queue.get(),
+                              tsl::criticality::Criticality::kSheddable));
+    TF_ASSERT_OK(ScheduleTask(2, queue.get(),
+                              tsl::criticality::Criticality::kSheddable));
+  }
+  EXPECT_TRUE(queue_callback_called);
+}
+
+TEST_P(SharedBatchSchedulerPriorityPolicyTest,
+       HighPriorityBatchNotPaddedWhenAllowedBatchSizeMissing) {
+  bool queue_callback_called = false;
+  auto queue_callback = [&queue_callback_called](
+                            std::unique_ptr<Batch<FakeTask>> batch,
+                            std::vector<std::unique_ptr<FakeTask>> tasks) {
+    // Skip if this was called already, which is the low priority task only
+    // batch case.
+    if (queue_callback_called) return;
+
+    queue_callback_called = true;
+    ASSERT_TRUE(batch->IsClosed());
+    ASSERT_EQ(2, batch->num_tasks());
+    EXPECT_EQ(1, batch->task(0).size());
+    EXPECT_EQ(3, batch->task(1).size());
+    EXPECT_EQ(0, tasks.size());
+  };
+
+  {
+    std::shared_ptr<Scheduler> scheduler =
+        CreateSharedBatchScheduler(/*num_batch_threads=*/3);
+
+    // Create a queue with the priority queue enabled.
+    QueueOptions queue_options = CreateQueueOptions(
+        /*max_execution_batch_size=*/10, /*input_batch_size_limit=*/10,
+        /*batch_timeout_micros=*/1 * 1000 * 1000, /*max_enqueued_batches=*/2,
+        /*enable_priority_queue=*/true);
+    queue_options.low_priority_queue_options.max_execution_batch_size = 10;
+    queue_options.low_priority_queue_options.batch_timeout_micros =
+        1 * 1000 * 1000;
+    queue_options.low_priority_queue_options.input_batch_size_limit = 10;
+    queue_options.low_priority_queue_options.max_enqueued_batches = 2;
+    queue_options.mixed_priority_batching_policy = MixedPriorityBatchingPolicy::
+        kLowPriorityPaddingWithNextAllowedBatchSize;
+    std::unique_ptr<Queue> queue =
+        CreateQueue(scheduler, queue_options, queue_callback);
+
+    // Submit tasks to the queue. The high priority batch is padded by the low
+    // priority tasks up to 10, which is the max batch size because the allowed
+    // batch sizes are missing.
+    TF_ASSERT_OK(ScheduleTask(1, queue.get(),
+                              tsl::criticality::Criticality::kCriticalPlus));
+    TF_ASSERT_OK(ScheduleTask(3, queue.get(),
+                              tsl::criticality::Criticality::kCriticalPlus));
+    TF_ASSERT_OK(ScheduleTask(2, queue.get(),
+                              tsl::criticality::Criticality::kSheddable));
+    TF_ASSERT_OK(ScheduleTask(2, queue.get(),
+                              tsl::criticality::Criticality::kSheddable));
+    TF_ASSERT_OK(ScheduleTask(2, queue.get(),
+                              tsl::criticality::Criticality::kSheddable));
+  }
+  EXPECT_TRUE(queue_callback_called);
+}
+
+// Lazy split is to be removed. The mixed priority batching is only supported
+// when the lazy split is not enabled.
+INSTANTIATE_TEST_SUITE_P(
+    Parameter, SharedBatchSchedulerPriorityPolicyTest,
     ::testing::Values(std::make_tuple(/*enable_input_batch_split=*/true,
+                                      /*enable_lazy_split=*/false),
+                      std::make_tuple(/*enable_input_batch_split=*/true,
+                                      /*enable_lazy_split=*/false),
+                      std::make_tuple(/*enable_input_batch_split=*/false,
                                       /*enable_lazy_split=*/false),
                       std::make_tuple(/*enable_input_batch_split=*/false,
                                       /*enable_lazy_split=*/false)));
