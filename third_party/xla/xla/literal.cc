@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/base/casts.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
+#include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
@@ -1809,6 +1810,26 @@ absl::StatusOr<Literal> LiteralBase::ConvertToShape(
     elements.push_back(std::move(new_element));
   }
   return MutableLiteralBase::MoveIntoTuple(absl::MakeSpan(elements));
+}
+
+Status MutableLiteralBase::MoveArrayIntoLiteral(const char* src_buf_ptr,
+                                                size_t size,
+                                                const Shape& source_shape) {
+  CHECK_EQ(ShapeUtil::ByteSizeOf(source_shape), size)
+      << "Byte size of shape is not equal to buffer size, "
+         "shape: "
+      << source_shape.ToString(true);
+
+  CHECK(LayoutUtil::HasLayout(*shape_));
+  CHECK(!shape_->IsTuple());
+  CHECK(!source_shape.IsTuple());
+
+  Piece new_piece;
+  new_piece.set_subshape(shape_.get());
+  new_piece.set_buffer(const_cast<char*>(src_buf_ptr));
+  piece({}).DeallocateBuffers();
+  piece({}).MoveDataFrom(new_piece);
+  return absl::OkStatus();
 }
 
 /* static */ Literal MutableLiteralBase::MoveIntoTuple(

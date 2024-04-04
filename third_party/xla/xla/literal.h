@@ -1246,9 +1246,17 @@ class MutableLiteralBase : public LiteralBase {
   Status PopulateInplaceParallel(
       absl::FunctionRef<void(void*, absl::Span<const int64_t>, int)> populator);
 
-  // Fills this literal with the given value.
   template <typename NativeT>
   void PopulateWithValue(NativeT value);
+
+  // Takes ownership of the array data into the literal. The existing shape must
+  // be dense array type and matches the source_shape. The source ptr must be
+  // allocated on heap. This is useful for moving data from raw host buffers
+  // and xla::Literal when delinearizations are not needed.
+  Status MoveArrayIntoLiteral(const char* src_buf_ptr, size_t size,
+                              const Shape& source_shape);
+
+  // Fills this literal with the given value.
 
   // This operation is the inverse of DecomposeTuple. The given elements are
   // moved into the tuple elements of a new tuple-shaped Literal which is
