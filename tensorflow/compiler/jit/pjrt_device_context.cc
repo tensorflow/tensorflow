@@ -62,7 +62,7 @@ absl::StatusOr<std::unique_ptr<xla::PjRtBuffer>> HostTensorToPjRtBuffer(
   auto first_try_buffer = pjrt_client->BufferFromHostBuffer(
       cpu_tensor->data(), shape.element_type(), shape.dimensions(),
       /*byte_strides=*/std::nullopt,
-      xla::PjRtClient::HostBufferSemantics::kZeroCopy,
+      xla::PjRtClient::HostBufferSemantics::kImmutableZeroCopy,
       /*on_done_with_host_buffer=*/
       [cpu_tensor = *cpu_tensor]() { /* frees tensor */ }, pjrt_device,
       device_layout);
@@ -78,7 +78,7 @@ absl::StatusOr<std::unique_ptr<xla::PjRtBuffer>> HostTensorToPjRtBuffer(
         pjrt_client->BufferFromHostBuffer(
             cpu_tensor->data(), shape.element_type(), shape.dimensions(),
             /*byte_strides=*/std::nullopt,
-            xla::PjRtClient::HostBufferSemantics::kZeroCopy,
+            xla::PjRtClient::HostBufferSemantics::kImmutableZeroCopy,
             /*on_done_with_host_buffer=*/
             [cpu_tensor = *cpu_tensor]() { /* frees tensor */ }, pjrt_device));
     return second_try_buffer;
