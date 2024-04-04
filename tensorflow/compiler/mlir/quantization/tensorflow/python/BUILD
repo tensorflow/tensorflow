@@ -176,8 +176,7 @@ cc_library(
         "//tensorflow/compiler/mlir/quantization/tensorflow/calibrator:calibration_statistics_proto_cc",
         "//tensorflow/core/protobuf:for_core_protos_cc",
         "@com_google_absl//absl/container:flat_hash_map",
-        #"@com_google_absl//absl/strings:string_view",
-        "@pybind11",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
 
