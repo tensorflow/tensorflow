@@ -186,13 +186,41 @@ TEST(AsyncValueRefTest, RunWhenReady) {
 }
 
 namespace {
+// We create a hierarchy of classes with different alignment requirements so
+// that we can test that they all can be safely accessed via AsyncValueRef<T>
+// references using different types. We also use this hierarchy to test
+// LLVM-style casting APIs (Isa, DynCast, Cast).
 struct A {
-  virtual ~A() = default;
+  alignas(16) int32_t a;
 };
-struct B : public A {};
-struct C : public B {};
-struct D : public A {};
+struct B : public A {
+  alignas(32) int32_t b;
+};
+struct C : public B {
+  alignas(64) int32_t c;
+};
+struct D : public B {
+  alignas(64) int32_t d;
+};
 }  // namespace
+
+TEST(AsyncValueRefTest, AlignedPayload) {
+  AsyncValueRef<D> d_ref = MakeAvailableAsyncValueRef<D>();
+  d_ref->a = 1;
+  d_ref->b = 2;
+  d_ref->d = 3;
+
+  EXPECT_EQ(d_ref->a, 1);
+  EXPECT_EQ(d_ref->b, 2);
+  EXPECT_EQ(d_ref->d, 3);
+
+  AsyncValueRef<B> b_ref = d_ref.CopyRef();
+  EXPECT_EQ(b_ref->a, 1);
+  EXPECT_EQ(b_ref->b, 2);
+
+  AsyncValueRef<A> a_ref = d_ref.CopyRef();
+  EXPECT_EQ(a_ref->a, 1);
+}
 
 TEST(AsyncValueRefTest, Isa) {
   // Empty async reference always returns false for any Isa<T>.

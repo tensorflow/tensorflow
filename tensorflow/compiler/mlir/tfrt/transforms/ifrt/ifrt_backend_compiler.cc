@@ -146,14 +146,14 @@ absl::Status IfrtBackendCompiler::CompileTensorflow(
     tensorflow::DumpMlirOpToFile("ifrt_tpu_bct_conversion_before", module);
   }
 
-  // Run backward compat pass so that we can use bridge to do clustering.
-  auto backward_compat_result =
-      tensorflow::RunTPUBackwardCompatConversion(module, {});
-  if (mlir::failed(backward_compat_result)) {
-    return diag_handler.Combine(
-        absl::InternalError("Failed to handle legacy TPU Ops"));
+  if (tpu_compiler_ != nullptr) {
+    // Run backward compat pass so that we can use bridge to do clustering.
+    if (mlir::failed(
+            tpu_compiler_->RunTPUBackwardCompatConversion(module, {}))) {
+      return diag_handler.Combine(
+          absl::InternalError("Failed to handle legacy TPU Ops"));
+    }
   }
-
   if (VLOG_IS_ON(1)) {
     tensorflow::DumpMlirOpToFile("ifrt_tpu_bct_conversion_after", module);
   }

@@ -22,6 +22,7 @@ namespace tflite {
 namespace ops {
 namespace custom {
 
+TfLiteRegistration* Register_KV_CACHE();
 TfLiteRegistration* Register_SDPA();
 
 extern "C" void GenAIOpsRegisterer(::tflite::MutableOpResolver* resolver);

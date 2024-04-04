@@ -22,6 +22,8 @@ namespace ops {
 namespace custom {
 
 extern "C" void GenAIOpsRegisterer(::tflite::MutableOpResolver* resolver) {
+  resolver->AddCustom("odml.update_kv_cache",
+                      tflite::ops::custom::Register_KV_CACHE());
   resolver->AddCustom("odml.scaled_dot_product_attention",
                       tflite::ops::custom::Register_SDPA());
 }

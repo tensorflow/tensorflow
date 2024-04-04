@@ -13,13 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/experimental/genai/kvcache.h"
-
 #include <cstdint>
 #include <vector>
 
 #include <gtest/gtest.h>
 #include "tensorflow/lite/c/c_api_types.h"
+#include "tensorflow/lite/experimental/genai/genai_ops.h"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
