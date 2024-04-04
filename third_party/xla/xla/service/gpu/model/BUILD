@@ -591,6 +591,39 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "tiled_hlo_instruction",
+    srcs = ["tiled_hlo_instruction.cc"],
+    hdrs = ["tiled_hlo_instruction.h"],
+    deps = [
+        ":indexing_map",
+        "//xla:util",
+        "//xla/hlo/ir:hlo",
+        "@com_google_absl//absl/hash",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+xla_cc_test(
+    name = "tiled_hlo_instruction_test",
+    srcs = ["tiled_hlo_instruction_test.cc"],
+    deps = [
+        ":indexing_map",
+        ":indexing_test_utils",
+        ":tiled_hlo_instruction",
+        "//xla:shape_util",
+        "//xla/hlo/ir:hlo",
+        "//xla/tests:hlo_test_base",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//mlir:IR",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+cc_library(
     name = "symbolic_tile_analysis",
     srcs = ["symbolic_tile_analysis.cc"],
     hdrs = ["symbolic_tile_analysis.h"],
