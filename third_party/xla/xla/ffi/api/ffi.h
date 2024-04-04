@@ -171,6 +171,37 @@ template <DataType dtype> using BufferR3 = Buffer<dtype, 3>;
 template <DataType dtype> using BufferR4 = Buffer<dtype, 4>;
 // clang-format on
 
+namespace internal {
+
+inline BufferBase DecodeBuffer(XLA_FFI_Buffer* buf) {
+  return BufferBase{static_cast<DataType>(buf->dtype), buf->data,
+                    Span<const int64_t>(buf->dims, buf->rank)};
+}
+
+template <DataType dtype, size_t rank>
+std::optional<Buffer<dtype, rank>> DecodeBuffer(XLA_FFI_Buffer* buf,
+                                                DiagnosticEngine& diagnostic) {
+  if (auto buf_dtype = static_cast<DataType>(buf->dtype);
+      XLA_FFI_PREDICT_FALSE(buf_dtype != dtype)) {
+    return diagnostic.Emit("Wrong buffer dtype: expected ")
+           << dtype << " but got " << buf_dtype;
+  }
+
+  if constexpr (rank != internal::kDynamicRank) {
+    if (XLA_FFI_PREDICT_FALSE(buf->rank != rank)) {
+      return diagnostic.Emit("Wrong buffer rank: expected ")
+             << rank << " but got " << buf->rank;
+    }
+  }
+
+  Buffer<dtype, rank> buffer;
+  buffer.data = static_cast<internal::NativeType<dtype>*>(buf->data);
+  buffer.dimensions = Span<const int64_t>(buf->dims, buf->rank);
+  return buffer;
+}
+
+}  // namespace internal
+
 //===----------------------------------------------------------------------===//
 // Arguments binding
 //===----------------------------------------------------------------------===//
@@ -205,9 +236,7 @@ struct ArgDecoding<BufferBase> {
       return diagnostic.Emit("Wrong argument type: expected ")
              << XLA_FFI_ArgType_BUFFER << " but got " << type;
     }
-    auto* buf = reinterpret_cast<XLA_FFI_Buffer*>(arg);
-    return BufferBase{static_cast<DataType>(buf->dtype), buf->data,
-                      Span<const int64_t>(buf->dims, buf->rank)};
+    return internal::DecodeBuffer(reinterpret_cast<XLA_FFI_Buffer*>(arg));
   }
 };
 
@@ -221,25 +250,47 @@ struct ArgDecoding<Buffer<dtype, rank>> {
              << XLA_FFI_ArgType_BUFFER << " but got " << type;
     }
 
-    auto* buf = reinterpret_cast<XLA_FFI_Buffer*>(arg);
+    return internal::DecodeBuffer<dtype, rank>(
+        reinterpret_cast<XLA_FFI_Buffer*>(arg), diagnostic);
+  }
+};
 
-    if (auto actual_dtype = static_cast<DataType>(buf->dtype);
-        XLA_FFI_PREDICT_FALSE(actual_dtype != dtype)) {
-      return diagnostic.Emit("Wrong buffer dtype: expected ")
-             << dtype << " but got " << actual_dtype;
+//===----------------------------------------------------------------------===//
+// Results decoding
+//===----------------------------------------------------------------------===//
+
+inline std::ostream& operator<<(std::ostream& os, const XLA_FFI_RetType type) {
+  switch (type) {
+    case XLA_FFI_RetType_BUFFER:
+      return os << "buffer";
+  }
+}
+
+template <>
+struct RetDecoding<BufferBase> {
+  XLA_FFI_ATTRIBUTE_ALWAYS_INLINE
+  static std::optional<Result<BufferBase>> Decode(
+      XLA_FFI_RetType type, void* ret, DiagnosticEngine& diagnostic) {
+    if (XLA_FFI_PREDICT_FALSE(type != XLA_FFI_RetType_BUFFER)) {
+      return diagnostic.Emit("Wrong result type: expected ")
+             << XLA_FFI_RetType_BUFFER << " but got " << type;
+    }
+    return internal::DecodeBuffer(reinterpret_cast<XLA_FFI_Buffer*>(ret));
+  }
+};
+
+template <DataType dtype, size_t rank>
+struct RetDecoding<Buffer<dtype, rank>> {
+  XLA_FFI_ATTRIBUTE_ALWAYS_INLINE
+  static std::optional<Result<Buffer<dtype, rank>>> Decode(
+      XLA_FFI_RetType type, void* ret, DiagnosticEngine& diagnostic) {
+    if (XLA_FFI_PREDICT_FALSE(type != XLA_FFI_RetType_BUFFER)) {
+      return diagnostic.Emit("Wrong result type: expected ")
+             << XLA_FFI_RetType_BUFFER << " but got " << type;
     }
 
-    if constexpr (rank != internal::kDynamicRank) {
-      if (XLA_FFI_PREDICT_FALSE(buf->rank != rank)) {
-        return diagnostic.Emit("Wrong buffer rank: expected ")
-               << rank << " but got " << buf->rank;
-      }
-    }
-
-    Buffer<dtype, rank> buffer;
-    buffer.data = static_cast<internal::NativeType<dtype>*>(buf->data);
-    buffer.dimensions = Span<const int64_t>(buf->dims, buf->rank);
-    return buffer;
+    return internal::DecodeBuffer<dtype, rank>(
+        reinterpret_cast<XLA_FFI_Buffer*>(ret), diagnostic);
   }
 };
 
