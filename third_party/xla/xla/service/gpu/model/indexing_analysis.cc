@@ -714,8 +714,9 @@ HloInstructionIndexing ComputeOutputToInputConvolutionOpIndexing(
     kernel_exprs[dnums.kernel_spatial_dimensions(i)] =
         getAffineSymbolExpr(i, mlir_context);
   }
-  kernel_exprs[dnums.kernel_output_feature_dimension()] =
+  AffineExpr dim_expr =
       getAffineDimExpr(dnums.output_feature_dimension(), mlir_context);
+  kernel_exprs[dnums.kernel_output_feature_dimension()] = dim_expr;
 
   // Build initial symbol ranges.
   std::vector<RangeVar> input_symbols = input_spatial_indexing.GetRangeVars();
@@ -737,10 +738,12 @@ HloInstructionIndexing ComputeOutputToInputConvolutionOpIndexing(
   // With multiple feature groups, the input feature dimension is equally split.
   if (convolution->feature_group_count() > 1) {
     AffineExpr& input_feature = input_exprs[dnums.input_feature_dimension()];
-    AffineExpr dim_expr =
-        getAffineDimExpr(dnums.output_feature_dimension(), mlir_context);
-    input_feature =
-        dim_expr.floorDiv(input_group_size) * input_group_size + input_feature;
+    int64_t output_group_size =
+        output_shape.dimensions(dnums.output_feature_dimension());
+    int64_t feature_group_size =
+        output_group_size / convolution->feature_group_count();
+    input_feature = dim_expr.floorDiv(feature_group_size) * input_group_size +
+                    input_feature;
   }
 
   // With multiple batch groups, the input batch dimension is equally split.

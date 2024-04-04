@@ -2255,7 +2255,7 @@ TEST_F(IndexingAnalysisTest, ConvolutionOp_FeatureGroups) {
   auto input_indexing = GetOutputToInputIndexing(root);
   EXPECT_THAT(input_indexing.indexing_maps,
               ElementsAre(ElementsAre(MatchIndexingMap(R"(
-                            (d0, d1, d2, d3)[s0, s1, s2] -> (d0, d1 + s0, d2 + s1, (d3 floordiv 4) * 4 + s2)
+                            (d0, d1, d2, d3)[s0, s1, s2] -> (d0, d1 + s0, d2 + s1, (d3 floordiv 8) * 4 + s2)
                             domain:
                             d0 in [0, 0]
                             d1 in [0, 9]
