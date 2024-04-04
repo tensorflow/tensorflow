@@ -4541,7 +4541,6 @@ CHECK-COUNT-6:  %{{.*}} = tt.dot %{{.*}}, %{{.*}}, %{{.*}} {allowTF32 = false, m
                                ErrorSpec{/*aabs=*/1e-6, /*arel=*/1e-6}));
 }
 
-
 TEST_F(Triton6xBF16GemmTest, Emit6xBF16GemmEndToEnd) {
   const char* kHloText = R"(
 HloModule t
@@ -4883,6 +4882,45 @@ CHECK-COUNT-3:  %{{.*}} = tt.dot %{{.*}}, %{{.*}}, %{{.*}} {allowTF32 = false, m
   EXPECT_TRUE(
       RunAndCompareNoHloPasses(std::move(module), argument_ptrs,
                                ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-4}));
+}
+
+// This test could be modified to allow TF32 once this bug is fixed.
+// TODO(b/320659359) Allow TF32 for 8-bit or less types with F32.
+TEST_F(TritonFilecheckTest, NoTF32For8BitOrLessWithF32) {
+  const std::string hlo_text = R"(
+HloModule t
+
+triton_dot {
+  parameter_0 = s32[11,24]{1,0} parameter(0)
+  broadcast.1747 = s32[11,24,128]{2,1,0} broadcast(parameter_0),
+  dimensions={0,1} parameter_1 = s32[11,24,128]{2,1,0} parameter(1)
+  compare.49 = pred[11,24,128]{2,1,0} compare(broadcast.1747, parameter_1),
+      direction=EQ bitcast.4717 = pred[264,128]{1,0} bitcast(compare.49)
+  convert.142 = f32[264,128]{1,0} convert(bitcast.4717)
+  parameter_2 = f32[128,8]{1,0} parameter(2)
+  ROOT dot.381 = f32[264,8]{1,0} dot(convert.142, parameter_2),
+      lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+ENTRY e {
+  p0 = s32[11,24]{1,0} parameter(0)
+  p1 = s32[11,24,128]{2,1,0} parameter(1)
+  p2 = f32[128,8]{1,0} parameter(2)
+  ROOT _ = f32[264,8] fusion(p0, p1, p2), kind=kCustom, calls=triton_dot,
+    backend_config={"fusion_backend_config": {kind: "__triton_gemm",
+      triton_gemm_config:
+        {"block_m":32,"block_n":16,"block_k":128,
+         "split_k":1,"num_stages":1,"num_warps":4,
+         "num_ctas":1}}}
+})";
+
+  TritonGemmConfig config(32, 16, 128, 1, 1, 4);
+  ASSERT_OK(
+      CreateTritonIrAndFileCheck(hlo_text, config, EmitMatMul, "triton_dot", R"(
+CHECK: %{{.*}} = tt.dot %{{.*}}, %{{.*}}, %{{.*}} {allowTF32 = false
+  )"));
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
 TEST_F(Triton3xBF16GemmTest, Emit3xBF16GemmEndToEnd) {
