@@ -37,9 +37,11 @@ def distributed_save(
   The op uses tf.data service
   (https://www.tensorflow.org/api_docs/python/tf/data/experimental/service) to
   write a dataset snapshot. Returns immediately after submitting the request.
-  Does not wait for the snapshot to be finished. To load the snapshot, users may
-  optionally pass `wait=True` to `tf.data.Dataset.load` so it can read snapshots
-  as they are being written.
+  Does not wait for the snapshot to be finished. Requires that the tf.data
+  service run a fixed number of worker replicas.
+
+  To load the snapshot, users may optionally pass `wait=True` to
+  `tf.data.Dataset.load` so it can read snapshots as they are being written.
 
   Example usage:
 

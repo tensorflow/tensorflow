@@ -1828,7 +1828,7 @@ class DatasetV2(
       FileNotFoundError: If `element_spec` is not specified and the saved nested
         structure of `tf.TypeSpec` can not be located with the saved dataset.
       ValueError: If `element_spec` is not specified and the method is executed
-        in graph mode, or using `wait=True` to read a non-distributed snapshot.
+        in graph mode.
     """
     # Loaded lazily due to a circular dependency (dataset_ops -> load_op ->
     # dataset_ops).
