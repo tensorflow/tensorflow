@@ -90,37 +90,6 @@ class AsyncWorkRunner {
       absl::AnyInvocable<void()> work) = 0;
 };
 
-// Represents the unpinned host memory accessible to a PjRtDevice.
-class UnpinnedHostMemorySpace : public PjRtMemorySpace {
- public:
-  static constexpr absl::string_view kMemorySpaceKind = "unpinned_host";
-
-  UnpinnedHostMemorySpace(int id, PjRtClient* client);
-
-  PjRtClient* client() const override { return client_; }
-
-  absl::Span<PjRtDevice* const> devices() const override { return devices_; }
-
-  int id() const override { return id_; }
-
-  absl::string_view memory_space_kind() const override {
-    return kMemorySpaceKind;
-  }
-
-  absl::string_view DebugString() const override { return debug_string_; }
-
-  absl::string_view ToString() const override { return to_string_; }
-
-  void AttachDevice(PjRtDevice* device) { devices_.push_back(device); }
-
- private:
-  int id_;
-  PjRtClient* client_;
-  std::vector<PjRtDevice*> devices_;
-  std::string debug_string_;
-  std::string to_string_;
-};
-
 class AbstractTfrtCpuBuffer : public PjRtBuffer {
  public:
   AbstractTfrtCpuBuffer(

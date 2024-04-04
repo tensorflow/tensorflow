@@ -70,6 +70,11 @@ constexpr double kMaxCostEpsilon = 1.0001;
 // same amount.
 constexpr double kMemoryMultiplier = 1e-6;
 
+bool AutoShardingSolverOutput::operator==(
+    const AutoShardingSolverOutput& other) const {
+  return s_val == other.s_val && e_val == other.e_val && cost == other.cost;
+}
+
 bool AutoShardingSolverResult::operator==(
     const AutoShardingSolverResult& other) const {
   return status == other.status &&
@@ -892,10 +897,10 @@ AutoShardingSolverResult SolveAndExtractSolution(
               << request.memory_budget() / (1024 * 1024 * 1024) << " GB";
   }
   PrintLargestInstructions(chosen_node_strategy, request);
-  return AutoShardingSolverResult(
-      std::make_tuple(std::move(chosen_node_strategy),
-                      std::move(chosen_edge_strategy), unsalted_objective),
-      false);
+  const AutoShardingSolverOutput output = {std::move(chosen_node_strategy),
+                                           std::move(chosen_edge_strategy),
+                                           unsalted_objective};
+  return AutoShardingSolverResult(output, false);
 }
 
 bool CostComponents::operator==(const CostComponents& other) const {
@@ -925,8 +930,8 @@ AutoShardingEvaluation Evaluate(const AutoShardingSolverRequest& request,
   const auto& r = request.resharding_costs();
   const auto& v = request.value_costs();
   const auto& p = request.departure_costs();
-  const std::vector<NodeStrategyIdx>& s_val = std::get<0>(*result.status);
-  const std::vector<EdgeStrategyIdx>& e_val = std::get<1>(*result.status);
+  const std::vector<NodeStrategyIdx>& s_val = result.status->s_val;
+  const std::vector<EdgeStrategyIdx>& e_val = result.status->e_val;
   AutoShardingEvaluation evaluation;
   // Compute violations.
   for (NodeIdx node_idx = 0; node_idx < request.num_nodes(); ++node_idx) {
@@ -1022,8 +1027,8 @@ std::vector<std::string> Rationalize(const AutoShardingSolverRequest& request,
   std::vector<std::string> rationales;
   const auto& names = request.instruction_names();
 
-  const std::vector<NodeStrategyIdx>& s_result = std::get<0>(*result.status);
-  const std::vector<NodeStrategyIdx>& s_subopt = std::get<0>(*subopt.status);
+  const std::vector<NodeStrategyIdx>& s_result = result.status->s_val;
+  const std::vector<NodeStrategyIdx>& s_subopt = subopt.status->s_val;
   for (NodeIdx node_idx = 0; node_idx < request.num_nodes(); ++node_idx) {
     const NodeStrategyIdx j = s_result[node_idx], k = s_subopt[node_idx];
     if (j != k) {
@@ -1046,8 +1051,8 @@ std::vector<std::string> Rationalize(const AutoShardingSolverRequest& request,
     }
   }
 
-  const std::vector<EdgeStrategyIdx>& e_result = std::get<1>(*result.status);
-  const std::vector<EdgeStrategyIdx>& e_subopt = std::get<1>(*subopt.status);
+  const std::vector<EdgeStrategyIdx>& e_result = result.status->e_val;
+  const std::vector<EdgeStrategyIdx>& e_subopt = subopt.status->e_val;
   for (EdgeIdx edge_idx = 0; edge_idx < request.edges_size(); ++edge_idx) {
     const auto& edge = request.edges(edge_idx);
     const EdgeStrategyIdx j = e_result[edge_idx], k = e_subopt[edge_idx];

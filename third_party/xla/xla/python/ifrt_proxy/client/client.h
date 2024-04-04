@@ -117,6 +117,12 @@ class Client final : public llvm::RTTIExtends<Client, xla::ifrt::Client> {
     return absl::UnimplementedError(
         "GetTopologyForDevices is not supported for the IFRT proxy client.");
   }
+  absl::StatusOr<std::unique_ptr<xla::PjRtLayout>> GetDefaultLayoutForDevice(
+      xla::PrimitiveType element_type, absl::Span<const int64_t> dims,
+      xla::ifrt::Device* device) const override {
+    return absl::UnimplementedError(
+        "GetDefaultLayout not supported for ocean ifrt Client.");
+  }
 
   // For llvm::RTTIExtends.
   static char ID;  // NOLINT

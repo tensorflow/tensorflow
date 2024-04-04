@@ -136,6 +136,11 @@ class MockClient final : public llvm::RTTIExtends<MockClient, Client> {
       absl::StatusOr<std::shared_ptr<const xla::PjRtTopologyDescription>>,
       GetTopologyForDevices, (absl::Span<xla::ifrt::Device* const> devices),
       (const, final));
+  MOCK_METHOD(absl::StatusOr<std::unique_ptr<xla::PjRtLayout>>,
+              GetDefaultLayoutForDevice,
+              (xla::PrimitiveType element_type, absl::Span<const int64_t> dims,
+               xla::ifrt::Device* device),
+              (const, final));
   // LINT.ThenChange(mock.cc:MockClientDelegation)
 
   xla::ifrt::Client* delegated() const { return delegated_.get(); }

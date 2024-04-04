@@ -177,6 +177,13 @@ MockClient::MockClient(std::unique_ptr<xla::ifrt::Client> delegated)
       .WillByDefault([this](absl::Span<xla::ifrt::Device* const> devices) {
         return delegated_->GetTopologyForDevices(devices);
       });
+  ON_CALL(*this, GetDefaultLayoutForDevice)
+      .WillByDefault([this](xla::PrimitiveType element_type,
+                            absl::Span<const int64_t> dims,
+                            xla::ifrt::Device* device) {
+        return delegated_->GetDefaultLayoutForDevice(element_type, dims,
+                                                     device);
+      });
 }
 // LINT.ThenChange()
 

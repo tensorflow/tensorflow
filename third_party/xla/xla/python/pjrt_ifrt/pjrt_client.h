@@ -156,6 +156,10 @@ class PjRtClient final
   absl::StatusOr<std::shared_ptr<const xla::PjRtTopologyDescription>>
   GetTopologyForDevices(absl::Span<Device* const> devices) const override;
 
+  absl::StatusOr<std::unique_ptr<xla::PjRtLayout>> GetDefaultLayoutForDevice(
+      xla::PrimitiveType element_type, absl::Span<const int64_t> dims,
+      xla::ifrt::Device* device) const override;
+
   static char ID;  // NOLINT
 
  private:

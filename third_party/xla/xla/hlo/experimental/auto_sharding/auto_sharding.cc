@@ -3810,9 +3810,7 @@ absl::StatusOr<AutoShardingResult> AutoShardingImplementation::RunAutoSharding(
     }
 
     // ----- Call the ILP Solver -----
-    std::vector<spmd::NodeStrategyIdx> s_val;
-    std::vector<spmd::EdgeStrategyIdx> e_val;
-    double objective = -1.0;
+    spmd::AutoShardingSolverOutput output;
     std::string request_name = absl::StrCat("mesh_idx_", mesh_idx);
     auto solver_result =
         Solve(*module, *hlo_live_range, liveness_node_set, liveness_edge_set,
@@ -3824,30 +3822,30 @@ absl::StatusOr<AutoShardingResult> AutoShardingImplementation::RunAutoSharding(
       return AutoShardingResult::kModuleUnchanged;
     } else {
       TF_ASSIGN_OR_RETURN(auto solution, solver_result.status);
-      std::tie(s_val, e_val, objective) = solution;
+      output = solution;
       if (mesh_idx == partial_mesh_shapes.size() - 1) {
-        this->solver_optimal_objective_value_ = objective;
+        this->solver_optimal_objective_value_ = output.cost;
       }
     }
 
-    XLA_VLOG_LINES(5, PrintAutoShardingSolution(sequence, liveness_set,
-                                                strategy_map, strategy_groups,
-                                                cost_graph, s_val, objective));
+    XLA_VLOG_LINES(5, PrintAutoShardingSolution(
+                          sequence, liveness_set, strategy_map, strategy_groups,
+                          cost_graph, output.s_val, output.cost));
     XLA_VLOG_LINES(6, PrintSolutionMemoryUsage(liveness_set, strategy_map,
-                                               cost_graph, s_val));
+                                               cost_graph, output.s_val));
 
     // ----- Substitute all-reduce with reduce-scatter -----
     if (option_.prefer_reduce_scatter) {
       TF_RETURN_IF_ERROR(GenerateReduceScatter(
-          sequence, alias_map, ins_depth_map, strategy_map, cost_graph, s_val,
-          cluster_env, option_));
+          sequence, alias_map, ins_depth_map, strategy_map, cost_graph,
+          output.s_val, cluster_env, option_));
     }
     // ----- Set Sharding -----
-    SetHloSharding(sequence, strategy_map, cost_graph, s_val,
+    SetHloSharding(sequence, strategy_map, cost_graph, output.s_val,
                    (mesh_idx == partial_mesh_shapes.size() - 1));
     if (mesh_idx == partial_mesh_shapes.size() - 1) {
       if (!SetHloShardingPostProcessing(
-               sequence, strategy_map, cost_graph, s_val, cluster_env,
+               sequence, strategy_map, cost_graph, output.s_val, cluster_env,
                /* crash_at_error */ !option_.try_multiple_mesh_shapes,
                preserve_shardings)
                .ok()) {

@@ -30,6 +30,7 @@ limitations under the License.
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
+#include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/tuple.h"
@@ -158,6 +159,12 @@ class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
   // Returns a topology description for that covers the provided devices.
   virtual absl::StatusOr<std::shared_ptr<const xla::PjRtTopologyDescription>>
   GetTopologyForDevices(absl::Span<Device* const> devices) const = 0;
+
+  // Returns the default layout on `device` for a buffer with `element_type` and
+  // `dims`.
+  virtual absl::StatusOr<std::unique_ptr<PjRtLayout>> GetDefaultLayoutForDevice(
+      PrimitiveType element_type, absl::Span<const int64_t> dims,
+      Device* device) const = 0;
 
   static char ID;  // NOLINT
 };

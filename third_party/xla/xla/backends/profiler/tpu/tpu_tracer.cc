@@ -61,7 +61,7 @@ class ProfilerStatusHelper {
     stream_executor::tpu::ProfilerApiFn()->TpuStatus_FreeFn(c_status);
   }
 
-  static tsl::Status FromC(  // TENSORFLOW_STATUS_OK
+  static absl::Status FromC(  // TENSORFLOW_STATUS_OK
       TF_Status* const c_status) {
     if (stream_executor::tpu::ProfilerApiFn()->TpuStatus_CodeFn(c_status) ==
         TSL_OK) {
@@ -80,7 +80,7 @@ class ProfilerStatusHelper {
            TSL_OK;
   }
 
-  tsl::Status status() const {  // TENSORFLOW_STATUS_OK
+  absl::Status status() const {  // TENSORFLOW_STATUS_OK
     return FromC(c_status);
   }
 
