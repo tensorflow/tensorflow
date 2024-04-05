@@ -450,7 +450,6 @@ tf_proto_library(
     srcs = ["sharding_serdes.proto"],
     protodeps = [
         ":device_proto",
-        ":dtype_proto",
         ":shape_proto",
     ],
 )

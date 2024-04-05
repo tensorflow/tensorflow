@@ -60,7 +60,6 @@ cc_library(
 tf_proto_library(
     name = "types_proto",
     srcs = ["types.proto"],
-    protodeps = ["//xla/python/ifrt:serdes_proto"],
 )
 
 tf_proto_library(
