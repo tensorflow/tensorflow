@@ -17,8 +17,10 @@ limitations under the License.
 #include <string_view>
 
 #include "mhlo/transforms/passes.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/Bytecode/BytecodeWriter.h"  // from @llvm-project
 #include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"  // from @llvm-project
 #include "mlir/Dialect/Func/Extensions/AllExtensions.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -92,6 +94,16 @@ std::string PrintModule(mlir::ModuleOp module) {
   return s;
 }
 
+absl::StatusOr<std::string> SerializeUsingBytecode(mlir::ModuleOp module) {
+  std::string bytecode;
+  llvm::raw_string_ostream os(bytecode);
+  mlir::BytecodeWriterConfig config;
+  if (mlir::failed(mlir::writeBytecodeToFile(module, os, config))) {
+    return absl::InvalidArgumentError("mlir::writeBytecodeToFile failed");
+  }
+  return bytecode;
+}
+
 void EnablePrintBeforeAndAfter(mlir::PassManager& pm) {
   auto print_before = [](mlir::Pass*, mlir::Operation*) { return true; };
   auto print_after = [](mlir::Pass*, mlir::Operation*) { return true; };
@@ -138,7 +150,7 @@ absl::StatusOr<XlaComputation> PyMlirModuleToXlaComputation(
   return computation;
 }
 
-absl::StatusOr<std::string> PyMhloToStablehlo(std::string_view mlir_module) {
+absl::StatusOr<nb::bytes> PyMhloToStablehlo(std::string_view mlir_module) {
   mlir::MLIRContext context;
   if (VLOG_IS_ON(3)) context.disableMultithreading();
   // JAX can be customized in a way that involves operations from custom
@@ -156,10 +168,13 @@ absl::StatusOr<std::string> PyMhloToStablehlo(std::string_view mlir_module) {
   if (!mlir::succeeded(pm.run(*module))) {
     return tsl::errors::InvalidArgument("MHLO => StableHLO failed");
   }
-  return PrintModule(*module);
+  // Use bytecode, passing unregistered dialects with properties causes issues
+  // when using textual assembly.
+  TF_ASSIGN_OR_RETURN(std::string bytecode, SerializeUsingBytecode(*module));
+  return nb::bytes(bytecode.data(), bytecode.size());
 }
 
-absl::StatusOr<std::string> PyStablehloToMhlo(const nb::bytes& mlir_module) {
+absl::StatusOr<nb::bytes> PyStablehloToMhlo(const nb::bytes& mlir_module) {
   mlir::MLIRContext context;
   if (VLOG_IS_ON(3)) context.disableMultithreading();
   // See PyMhloToStablehlo for an explanation of why we're allowing unregistered
@@ -175,7 +190,11 @@ absl::StatusOr<std::string> PyStablehloToMhlo(const nb::bytes& mlir_module) {
   if (!mlir::succeeded(pm.run(*module))) {
     return tsl::errors::InvalidArgument("StableHLO => MHLO failed");
   }
-  return PrintModule(*module);
+
+  // Use bytecode, passing unregistered dialects with properties causes issues
+  // when using textual assembly.
+  TF_ASSIGN_OR_RETURN(std::string bytecode, SerializeUsingBytecode(*module));
+  return nb::bytes(bytecode.data(), bytecode.size());
 }
 
 absl::StatusOr<nb::bytes> PySerializePortableArtifact(
