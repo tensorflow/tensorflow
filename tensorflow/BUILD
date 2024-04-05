@@ -1119,6 +1119,7 @@ bzl_library(
         "@local_tsl//tsl:tsl_bzl",
         "@local_tsl//tsl/platform/default:cuda_build_defs_bzl",
         "@local_xla//xla/tsl/mkl:build_defs_bzl",
+        "@rules_java//java:rules",
     ],
 )
 
