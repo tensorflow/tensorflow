@@ -133,14 +133,6 @@ ShapedBuffer AsShapedBuffer(
 
 }  //  namespace
 
-UnpinnedHostMemorySpace::UnpinnedHostMemorySpace(int id, PjRtClient* client)
-    : id_(id), client_(client) {
-  debug_string_ = absl::StrFormat(
-      "UnpinnedHostMemorySpace(id=%i, process_index=%i, client=%s)", id_,
-      client_->process_index(), client_->platform_name());
-  to_string_ = absl::StrFormat("UNPINNED_HOST_%i", id_);
-}
-
 AbstractTfrtCpuBuffer::AbstractTfrtCpuBuffer(
     Shape on_device_shape,
     std::unique_ptr<TrackedTfrtCpuDeviceBuffer> tracked_device_buffer)
