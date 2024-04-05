@@ -55,17 +55,20 @@ limitations under the License.
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/pjrt/pjrt_layout.h"
 #include "xla/pjrt/pjrt_stream_executor_client.h"
 #include "xla/pjrt/status_casters.h"
 #include "xla/python/callback.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/host_callback.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/nb_absl_span.h"  // IWYU pragma: keep
 #include "xla/python/nb_class_ptr.h"
+#include "xla/python/nb_numpy.h"
 #include "xla/python/pjrt_ifrt/pjrt_array.h"
 #include "xla/python/pjrt_ifrt/pjrt_client.h"
 #include "xla/python/pjrt_ifrt/xla_compiler.h"
@@ -79,6 +82,7 @@ limitations under the License.
 #include "xla/python/python_ref_manager.h"
 #include "xla/python/traceback.h"
 #include "xla/python/transfer_guard_lib.h"
+#include "xla/python/types.h"
 #include "xla/service/custom_call_target_registry.h"
 #include "xla/service/platform_util.h"  // IWYU pragma: keep
 #include "xla/shape.h"
@@ -802,6 +806,17 @@ PyType_Slot PyClient::slots_[] = {
            nb::arg("result_shapes"), nb::arg("send_channel_ids"),
            nb::arg("recv_channel_ids"),
            nb::arg("serializer").none() = nb::none())
+      .def(
+          "get_default_layout",
+          [](PyClient& self, nb_dtype dtype, nb::sequence shard_shape,
+             nb_class_ptr<PyDevice> device) -> std::unique_ptr<PjRtLayout> {
+            ifrt::DType ifrt_type = xla::ValueOrThrow(DtypeToIfRtDType(dtype));
+            std::vector<int64_t> dims = SequenceToVector<int64_t>(shard_shape);
+            return xla::ValueOrThrow(
+                self.ifrt_client()->GetDefaultLayoutForDevice(
+                    ifrt_type, dims, device->device()));
+          },
+          nb::arg("dtype"), nb::arg("shard_shape"), nb::arg("device"))
       .def("__getattr__",
            [](PyClient& client, std::string_view name) -> nb::object {
              const auto& attrs = client.attributes();
