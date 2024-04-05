@@ -16,15 +16,16 @@ limitations under the License.
 #ifndef XLA_BACKENDS_PROFILER_GPU_CUPTI_COLLECTOR_H_
 #define XLA_BACKENDS_PROFILER_GPU_CUPTI_COLLECTOR_H_
 
+#include <cstddef>
 #include <cstdint>
+#include <list>
 #include <memory>
+#include <utility>
 
-#include "absl/container/fixed_array.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/node_hash_set.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "tsl/platform/types.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace xla {
@@ -178,11 +179,11 @@ struct CuptiTracerEvent {
   // Although CUpti_CallbackData::functionName is persistent, however
   // CUpti_ActivityKernel4::name is not persistent, therefore we need a copy of
   // it.
-  std::string name;
+  std::string name = "";
   // This points to strings in AnnotationMap, which should outlive the point
   // where serialization happens.
-  absl::string_view annotation;
-  absl::string_view nvtx_range;
+  absl::string_view annotation = {};
+  absl::string_view nvtx_range = {};
   uint64_t start_time_ns = 0;
   uint64_t end_time_ns = 0;
   uint32_t device_id = 0;
@@ -223,43 +224,58 @@ struct CuptiTracerCollectorOptions {
   uint32_t num_gpus;
 };
 
+struct AnnotationInfo {
+  absl::string_view annotation = {};
+  absl::string_view nvtx_range = {};
+};
+
 class AnnotationMap {
  public:
-  struct AnnotationInfo {
-    absl::string_view annotation;
-    absl::string_view nvtx_range;
-  };
-
-  explicit AnnotationMap(uint64_t max_size, uint32_t num_gpus)
-      : max_size_(max_size), per_device_map_(num_gpus) {}
-  void Add(uint32_t device_id, uint32_t correlation_id,
-           const absl::string_view annotation,
-           const absl::string_view nvtx_range);
-  AnnotationInfo LookUp(uint32_t device_id, uint32_t correlation_id);
+  AnnotationMap() = default;
+  ~AnnotationMap() = default;
+  AnnotationMap(AnnotationMap&&) = default;
+  AnnotationMap& operator=(AnnotationMap&&) = default;
+  void clear() {
+    strings_.clear();
+    map_.clear();
+  }
+  void AddAnnotation(uint32_t correlation_id, absl::string_view annotation,
+                     absl::string_view nvtx_range) {
+    if (annotation.empty() && nvtx_range.empty()) return;
+    absl::string_view annotation_view =
+        annotation.empty()
+            ? absl::string_view{}
+            : absl::string_view(
+                  *strings_.emplace(std::string(annotation)).first);
+    absl::string_view nvtx_range_view =
+        nvtx_range.empty()
+            ? absl::string_view{}
+            : absl::string_view(
+                  *strings_.emplace(std::string(nvtx_range)).first);
+    map_[correlation_id] = AnnotationInfo{annotation_view, nvtx_range_view};
+  }
+  AnnotationInfo LookUp(uint32_t /*device_id*/, uint32_t correlation_id) const {
+    const auto it = map_.find(correlation_id);
+    return it == map_.end() ? AnnotationInfo{} : it->second;
+  }
+  size_t size() const { return map_.size(); }
 
  private:
-  struct PerDeviceAnnotationMap {
-    // The population/consumption of annotations might happen from multiple
-    // callback/activity api related threads.
-    absl::Mutex mutex;
-    // Annotation tends to be repetitive, use a hash_set to store the strings,
-    // an use the reference to the string in the map.
-    absl::node_hash_set<std::string> annotations;
-    absl::node_hash_set<std::string> nvtx_ranges;
-    absl::flat_hash_map<uint32_t, AnnotationInfo> correlation_map;
-  };
-  const uint64_t max_size_;
-  absl::FixedArray<PerDeviceAnnotationMap> per_device_map_;
+  absl::node_hash_set<std::string> strings_;
+  absl::flat_hash_map<uint32_t, AnnotationInfo> map_;
+};
 
-  AnnotationMap(const AnnotationMap&) = delete;
-  void operator=(const AnnotationMap&) = delete;
+class CallbackAnnotationsAndEvents;
+struct ActivityBufferAndSize {
+  std::shared_ptr<uint8_t> buffer;
+  size_t size;
+  explicit ActivityBufferAndSize(uint8_t* p = nullptr, size_t sz = 0);
 };
 
 class CuptiTraceCollector {
  public:
   explicit CuptiTraceCollector(const CuptiTracerCollectorOptions& options)
-      : options_(options),
-        annotation_map_(options.max_annotation_strings, options.num_gpus) {}
+      : options_(options) {}
   virtual ~CuptiTraceCollector() {}
 
   // Producer side functions (i.e. called by CuptiTracer).
@@ -267,6 +283,18 @@ class CuptiTraceCollector {
   virtual void OnEventsDropped(const std::string& reason,
                                uint32_t num_events) = 0;
   virtual void Flush() = 0;
+  // After CuptiTracer stop, collected per-thread callback data from threads,
+  // merged annotation map, together with the cached activity buffers will be
+  // send here. Default behavior is direct process those aggregated/cached
+  // events and recorder it by calling AddEvent().
+  // Yet collector could just save those data without processing now, but
+  // process and AddEvent() later when needed, such as during export(). This
+  // could make the profiling stop timestamp more precise.
+  virtual void OnTracerCollectedData(
+      AnnotationMap& annotation_map,
+      std::list<ActivityBufferAndSize>& activity_buffers,
+      std::list<std::shared_ptr<CallbackAnnotationsAndEvents>>&
+          callback_events);
 
   // Consumer side functions (i.e. called by GPU tracer);
   virtual bool Export(tensorflow::profiler::XSpace* space,
@@ -276,13 +304,16 @@ class CuptiTraceCollector {
   virtual std::string ReportNumEventsIfDropped() { return ""; }
 
   AnnotationMap* annotation_map() { return &annotation_map_; }
+  AnnotationInfo LookUpAnnotation(uint32_t device_id, uint32_t correlation_id) {
+    return annotation_map_.LookUp(device_id, correlation_id);
+  }
 
- protected:
   CuptiTracerCollectorOptions options_;
 
- private:
+ protected:
   AnnotationMap annotation_map_;
 
+ private:
   CuptiTraceCollector(const CuptiTraceCollector&) = delete;
   void operator=(const CuptiTraceCollector&) = delete;
 };
@@ -290,6 +321,11 @@ class CuptiTraceCollector {
 std::unique_ptr<CuptiTraceCollector> CreateCuptiCollector(
     const CuptiTracerCollectorOptions& options, uint64_t start_walltime_ns,
     uint64_t start_gputime_ns);
+
+void ProcessAggregatedCuptiCallbackAndActivities(
+    CuptiTraceCollector* collector,
+    std::list<ActivityBufferAndSize>& activity_buffers,
+    std::list<std::shared_ptr<CallbackAnnotationsAndEvents>>& callback_events);
 
 }  // namespace profiler
 }  // namespace xla

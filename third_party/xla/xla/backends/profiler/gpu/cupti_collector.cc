@@ -25,6 +25,7 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/cuda_occupancy.h"
 #include "tsl/platform/abi.h"
 #include "tsl/platform/host_info.h"
+#include "tsl/platform/mem.h"
 #include "tsl/platform/mutex.h"
 #include "tsl/profiler/utils/parse_annotation.h"
 #include "tsl/profiler/utils/trace_utils.h"
@@ -335,8 +336,7 @@ class PerDeviceCollector {
         continue;
       }
       auto* plane = is_host_event ? host_plane : device_plane;
-      VLOG(9) << "Event"
-              << " type=" << static_cast<int>(event.type)
+      VLOG(9) << "Event" << " type=" << static_cast<int>(event.type)
               << " line_id=" << line_id
               << (is_host_event ? " host plane=" : " device plane=")
               << plane->Name();
@@ -469,33 +469,13 @@ class PerDeviceCollector {
 
 }  // namespace
 
-void AnnotationMap::Add(uint32_t device_id, uint32_t correlation_id,
-                        const absl::string_view annotation,
-                        const absl::string_view nvtx_range) {
-  if (annotation.empty() && nvtx_range.empty()) return;
-  VLOG(3) << "Add annotation: device_id: " << device_id
-          << " correlation_id: " << correlation_id
-          << " annotation: " << annotation;
-  if (device_id >= per_device_map_.size()) return;
-  auto& per_device_map = per_device_map_[device_id];
-  absl::MutexLock lock(&per_device_map.mutex);
-  if (per_device_map.annotations.size() < max_size_) {
-    AnnotationInfo info;
-    info.annotation = *per_device_map.annotations.emplace(annotation).first;
-    if (!nvtx_range.empty())
-      info.nvtx_range = *per_device_map.nvtx_ranges.emplace(nvtx_range).first;
-    per_device_map.correlation_map.emplace(correlation_id, info);
-  }
-}
-
-AnnotationMap::AnnotationInfo AnnotationMap::LookUp(uint32_t device_id,
-                                                    uint32_t correlation_id) {
-  if (device_id >= per_device_map_.size()) return AnnotationInfo();
-  auto& per_device_map = per_device_map_[device_id];
-  absl::MutexLock lock(&per_device_map.mutex);
-  auto it = per_device_map.correlation_map.find(correlation_id);
-  return it != per_device_map.correlation_map.end() ? it->second
-                                                    : AnnotationInfo();
+void CuptiTraceCollector::OnTracerCollectedData(
+    AnnotationMap& annotation_map,
+    std::list<ActivityBufferAndSize>& activity_buffers,
+    std::list<std::shared_ptr<CallbackAnnotationsAndEvents>>& callback_events) {
+  annotation_map_ = std::move(annotation_map);
+  ProcessAggregatedCuptiCallbackAndActivities(this, activity_buffers,
+                                              callback_events);
 }
 
 // CuptiTraceCollectorImpl store the CuptiTracerEvents from CuptiTracer and
@@ -515,16 +495,8 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
   void AddEvent(CuptiTracerEvent&& event) override {
     if (event.device_id >= num_gpus_) return;
     if (event.source == CuptiTracerEventSource::DriverCallback) {
-      if (num_callback_events_ > options_.max_callback_api_events) {
-        OnEventsDropped("total driver(callback) events reaches max", 1);
-        return;
-      }
       num_callback_events_++;
     } else {
-      if (num_activity_events_ > options_.max_activity_api_events) {
-        OnEventsDropped("total device(activity) events reaches max", 1);
-        return;
-      }
       num_activity_events_++;
     }
     per_device_collector_[event.device_id].AddEvent(std::move(event));
@@ -534,12 +506,27 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
     absl::MutexLock lock(&mutex_);
     dropped_events_[reason] += num_events;
   }
+  void OnTracerCollectedData(
+      AnnotationMap& annotation_map,
+      std::list<ActivityBufferAndSize>& activity_buffers,
+      std::list<std::shared_ptr<CallbackAnnotationsAndEvents>>& callback_events)
+      override {
+    annotation_map_ = std::move(annotation_map);
+    activity_buffers_ = std::move(activity_buffers);
+    callback_events_ = std::move(callback_events);
+  }
+
   void Flush() override {}
   // Returns true if some GPU events are captured.
   bool Export(XSpace* space, uint64_t end_gpu_ns) override {
+    ProcessAggregatedCuptiCallbackAndActivities(this, activity_buffers_,
+                                                callback_events_);
     LOG(INFO) << " GpuTracer has collected " << num_callback_events_
               << " callback api events and " << num_activity_events_
               << " activity events. " << ReportDroppedEvents();
+    LOG(INFO) << " GpuTracer max callback_events: "
+              << options_.max_activity_api_events
+              << ", max activity events: " << options_.max_activity_api_events;
     size_t num_events = 0;
     XPlaneBuilder host_plane(
         FindOrAddMutablePlaneWithName(space, kCuptiDriverApiPlaneName));
@@ -547,8 +534,8 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
       std::string name = GpuPlaneName(device_ordinal);
       XPlaneBuilder device_plane(FindOrAddMutablePlaneWithName(space, name));
       device_plane.SetId(device_ordinal);
-      VLOG(4) << "Creating plane for"
-              << " name=" << name << " ordinal=" << device_ordinal;
+      VLOG(4) << "Creating plane for" << " name=" << name
+              << " ordinal=" << device_ordinal;
 
       // Calculate device capabilities before flushing, so that device
       // properties are available to the occupancy calculator in Flush().
@@ -577,14 +564,17 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
     if (events_dropped.empty()) return "";
     return absl::StrCat("Detected GPU events dropped on ",
                         tsl::port::Hostname(), ": Profiler has collected ",
-                        num_callback_events_.load(), " driver events and ",
-                        num_activity_events_.load(), " device events.",
+                        num_callback_events_, " driver events and ",
+                        num_activity_events_, " device events.",
                         events_dropped);
   }
 
  private:
-  std::atomic<int> num_callback_events_;
-  std::atomic<int> num_activity_events_;
+  std::list<ActivityBufferAndSize> activity_buffers_;
+  std::list<std::shared_ptr<CallbackAnnotationsAndEvents>> callback_events_;
+
+  size_t num_callback_events_ = 0;
+  size_t num_activity_events_ = 0;
   absl::Mutex mutex_;
   absl::flat_hash_map<std::string, uint64_t> dropped_events_
       ABSL_GUARDED_BY(mutex_);

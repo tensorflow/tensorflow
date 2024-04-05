@@ -52,6 +52,10 @@ CUptiResult CuptiWrapper::ActivityConfigureUnifiedMemoryCounter(
 CUptiResult CuptiWrapper::ActivityRegisterCallbacks(
     CUpti_BuffersCallbackRequestFunc func_buffer_requested,
     CUpti_BuffersCallbackCompleteFunc func_buffer_completed) {
+  uint8_t use_per_thread_activity_buffer = 1;
+  size_t value_size = sizeof(use_per_thread_activity_buffer);
+  cuptiActivitySetAttribute(CUPTI_ACTIVITY_ATTR_PER_THREAD_ACTIVITY_BUFFER,
+                            &value_size, &use_per_thread_activity_buffer);
   return cuptiActivityRegisterCallbacks(func_buffer_requested,
                                         func_buffer_completed);
 }
