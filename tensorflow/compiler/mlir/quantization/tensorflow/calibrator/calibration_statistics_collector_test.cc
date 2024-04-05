@@ -266,10 +266,10 @@ TEST(HistogramStatisticsCollectorTest, AggregateLargerBatchSizeExpandLeft) {
 
   statistics = collector.GetStatistics();
   EXPECT_TRUE(statistics.has_value());
-  EXPECT_EQ(statistics.value().histogram_statistics().lower_bound(), -6.f);
+  EXPECT_EQ(statistics.value().histogram_statistics().lower_bound(), -8.f);
   EXPECT_EQ(statistics.value().histogram_statistics().bin_width(), 2.f);
   EXPECT_THAT(statistics.value().histogram_statistics().hist_freq(),
-              ElementsAre(0, 1, 1, 2, 1, 3, 5, 7, 6, 5, 1));
+              ElementsAre(0.5, 0.5, 1, 1, 2, 1, 3.5, 5.5, 7, 6, 5, 1));
 }
 
 TEST(HistogramStatisticsCollectorTest, AggregateLargerBatchSizeExpandRight) {
@@ -296,7 +296,7 @@ TEST(HistogramStatisticsCollectorTest, AggregateLargerBatchSizeExpandRight) {
   EXPECT_EQ(statistics.value().histogram_statistics().lower_bound(), 0.f);
   EXPECT_EQ(statistics.value().histogram_statistics().bin_width(), 2.f);
   EXPECT_THAT(statistics.value().histogram_statistics().hist_freq(),
-              ElementsAre(1, 0, 3, 5, 7, 6, 6, 2, 1, 1, 0));
+              ElementsAre(1, 0, 3, 5, 7.5, 6.5, 6, 2, 1, 1, 0.5, 0.5));
 }
 
 }  // namespace

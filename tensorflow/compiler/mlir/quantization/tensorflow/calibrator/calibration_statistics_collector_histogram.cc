@@ -62,21 +62,29 @@ void CalibrationStatisticsCollectorHistogram::Collect(
     const float min, const float max, absl::Span<const int64_t> histogram) {
   if (histogram.empty()) return;
 
-  const float new_bin_width = CalculateBinWidth(min, max, histogram.size());
-  const float new_lower_bound = CalculateLowerBound(min, new_bin_width);
+  // Reconstruct the bin width, lower and upper bound from the collected data.
+  const float collected_bin_width =
+      CalculateBinWidth(min, max, histogram.size());
+  const float collected_lower_bound =
+      CalculateLowerBound(min, collected_bin_width);
+  const float collected_upper_bound =
+      std::ceil(max / collected_bin_width) * collected_bin_width;
 
   // When histogram is not initialized.
   if (hist_freq_.empty()) {
-    bin_width_ = new_bin_width;
-    lower_bound_ = new_lower_bound;
+    bin_width_ = collected_bin_width;
+    lower_bound_ = collected_lower_bound;
   }
 
-  const auto [lower_idx, upper_idx] = ExpandHistogramIfNeeded(min, max);
+  const auto [lower_idx, upper_idx] =
+      ExpandHistogramIfNeeded(collected_lower_bound, collected_upper_bound);
   for (int32_t idx = lower_idx; idx <= upper_idx; ++idx) {
+    // Calculate the range covered by this index then add with the collected
+    // frequency associated to that range.
     const float range_start = lower_bound_ + idx * bin_width_;
-    hist_freq_[idx] +=
-        GetRangeFrequencies(histogram, new_bin_width, new_lower_bound,
-                            range_start, range_start + bin_width_);
+    hist_freq_[idx] += GetRangeFrequencies(histogram, collected_bin_width,
+                                           collected_lower_bound, range_start,
+                                           range_start + bin_width_);
   }
 }
 

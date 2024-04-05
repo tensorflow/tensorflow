@@ -218,7 +218,7 @@ class CustomAggregatorTest(test.TestCase):
     with self.session():
       pywrap_calibration.clear_calibrator()
       input_tensor = array_ops.constant(
-          [1.0, 1.0, 3.0, 4.0, 5.0], dtypes.float32
+          [1.0, 1.0, 3.0, 4.0, 6.0], dtypes.float32
       )
 
       aggregator = custom_aggregator_op_wrapper.custom_aggregator(
@@ -228,12 +228,16 @@ class CustomAggregatorTest(test.TestCase):
           initial_num_bins=256,
       )
       aggregator_output = self.evaluate(aggregator)
-      self.assertAllEqual(aggregator_output.output, [1.0, 1.0, 3.0, 4.0, 5.0])
+      self.assertAllEqual(aggregator_output.output, [1.0, 1.0, 3.0, 4.0, 6.0])
       self.assertEqual(aggregator_output.min, 1.0)
-      self.assertEqual(aggregator_output.max, 5.0)
+      self.assertEqual(aggregator_output.max, 6.0)
 
       self.assertLen(aggregator_output.histogram, 512)
+      self.assertEqual(sum(aggregator_output.histogram), 5)
       self.assertEqual(aggregator_output.histogram[0], 2)
+      self.assertEqual(aggregator_output.histogram[128], 1)
+      self.assertEqual(aggregator_output.histogram[192], 1)
+      self.assertEqual(aggregator_output.histogram[320], 1)
 
 
 if __name__ == '__main__':

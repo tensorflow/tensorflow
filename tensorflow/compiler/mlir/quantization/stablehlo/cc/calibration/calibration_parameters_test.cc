@@ -14,12 +14,21 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/calibration/calibration_parameters.h"
 
+#include <cmath>
 #include <cstdint>
 
 #include <gtest/gtest.h>
 
 namespace stablehlo::quantization {
 namespace {
+
+// Calculates the number of bins from the range and bin width.
+inline int32_t CalculateActualNumBins(const float min_value,
+                                      const float max_value,
+                                      const float bin_width) {
+  const float lower_bound = CalculateLowerBound(min_value, bin_width);
+  return std::ceil((max_value - lower_bound) / bin_width);
+}
 
 TEST(CalibrationParametersTest, CalculateBinWidthSmallerThanOne) {
   float bin_width = CalculateBinWidth(/*min_value=*/0.0, /*max_value=*/25.0,

@@ -28,15 +28,16 @@ limitations under the License.
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 namespace {
 
-using ::stablehlo::quantization::CalculateActualNumBins;
 using ::stablehlo::quantization::CalculateBinIndexSafe;
 using ::stablehlo::quantization::CalculateBinWidth;
 using ::stablehlo::quantization::CalculateLowerBound;
 using ::stablehlo::quantization::CalibrationOptions;
+using ::stablehlo::quantization::GetNumBins;
 using CPUDevice = ::Eigen::ThreadPoolDevice;
 using CalibrationMethod =
     ::stablehlo::quantization::CalibrationOptions_CalibrationMethod;
@@ -58,7 +59,13 @@ REGISTER_OP("CustomAggregator")
       c->set_output(0, c->input(0));
       c->set_output(1, c->Scalar());
       c->set_output(2, c->Scalar());
-      c->set_output(3, c->UnknownShapeOfRank(c->Value(1)));
+
+      const tensorflow::AttrValue* calibration_method_attr;
+      TF_RETURN_IF_ERROR(
+          c->GetAttr("calibration_method", &calibration_method_attr));
+      int32_t num_bins = GetNumBins(
+          static_cast<CalibrationMethod>(calibration_method_attr->i()));
+      c->set_output(3, c->MakeShape({num_bins}));
 
       return absl::OkStatus();
     });
@@ -116,33 +123,16 @@ class CustomAggregatorOp : public OpKernel {
         context->template eigen_device<CPUDevice>()) = input_flat.maximum();
 
     // Calculate histogram statistics.
+    int32_t num_bins = GetNumBins(calib_opts_.calibration_method());
     Tensor* histogram_output = nullptr;
-    if (!IsHistogramCalibration(calib_opts_.calibration_method())) {
-      OP_REQUIRES_OK(context, context->allocate_output("histogram", {0},
-                                                       &histogram_output));
-      calibrator::CalibratorSingleton::Report(id_, *min_output, *max_output,
-                                              *histogram_output, calib_opts_);
-      return;
-    }
-
-    const float min_value = min_output->scalar<float>()();
-    const float max_value = max_output->scalar<float>()();
-    if (bin_width_ == 0.f) {
-      // Increase the initial number as the bin width is formalized, the actual
-      // number of bins will be smaller than the given value.
-      bin_width_ = CalculateBinWidth(
-          min_value, max_value,
-          /*num_bins=*/2 *
-              calib_opts_.calibration_parameters().initial_num_bins());
-    }
-
-    const int32_t num_bins =
-        CalculateActualNumBins(min_value, max_value, bin_width_);
     OP_REQUIRES_OK(context, context->allocate_output("histogram", {num_bins},
                                                      &histogram_output));
-
-    CalculateHistogramStatistics(context, input_tensor, min_value, num_bins,
-                                 histogram_output);
+    if (num_bins > 0) {
+      const float min_value = min_output->scalar<float>()();
+      const float max_value = max_output->scalar<float>()();
+      CalculateHistogramStatistics(context, input_tensor, min_value, max_value,
+                                   num_bins, histogram_output);
+    }
 
     // By passing calib_opts_ and input_tensor to CalibratorSingleton,
     // CalibrationStatisticsCollector can calculate statistics for calibration.
@@ -153,22 +143,22 @@ class CustomAggregatorOp : public OpKernel {
  private:
   std::string id_;
   CalibrationOptions calib_opts_;
-  // TODO: b/332176029 - Make the op stateless with a fixed number of bins.
-  float bin_width_ = 0.f;
 
   void CalculateHistogramStatistics(OpKernelContext* context,
                                     const Tensor& input_tensor,
                                     const float min_value,
+                                    const float max_value,
                                     const int32_t num_bins,
                                     Tensor* histogram_tensor) {
     const auto input_flat = input_tensor.flat<float>();
     auto histogram_flat = histogram_tensor->flat<int64_t>();
     histogram_flat.setZero();
 
-    const float lower_bound = CalculateLowerBound(min_value, bin_width_);
+    const float bin_width = CalculateBinWidth(min_value, max_value, num_bins);
+    const float lower_bound = CalculateLowerBound(min_value, bin_width);
     for (int i = 0; i < input_flat.size(); ++i) {
       int32_t bin_index = CalculateBinIndexSafe(
-          input_flat.data()[i], lower_bound, bin_width_, num_bins);
+          input_flat.data()[i], lower_bound, bin_width, num_bins);
       histogram_flat.data()[bin_index] += 1;
     }
   }

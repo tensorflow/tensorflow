@@ -23,6 +23,10 @@ limitations under the License.
 
 namespace stablehlo::quantization {
 
+// TODO: b/321158562 - Make the number of bins configurable.
+// Default number of histogram bins for each batch sample.
+constexpr int32_t kDefaultNumOfBins = 1 << 9;
+
 // Calculates the bin width from the range and expected number of bins. The
 // bin width is formalized to the form of 2^n. As a consequence, the actual
 // number of bins might be smaller than the given `num_bins`.
@@ -36,14 +40,6 @@ inline float CalculateBinWidth(const float min_value, const float max_value,
 // `N * bin_width`.
 inline float CalculateLowerBound(const float min_value, const float bin_width) {
   return std::floor(min_value / bin_width) * bin_width;
-}
-
-// Calculates the number of bins from the range and bin width.
-inline int32_t CalculateActualNumBins(const float min_value,
-                                      const float max_value,
-                                      const float bin_width) {
-  const float lower_bound = CalculateLowerBound(min_value, bin_width);
-  return std::ceil((max_value - lower_bound) / bin_width);
 }
 
 // Calculates the bin index of the current value.
@@ -71,6 +67,11 @@ inline bool IsHistogramCalibration(
                        CALIBRATION_METHOD_HISTOGRAM_MSE_MAX_FREQUENCY ||
          method ==
              CalibrationOptions::CALIBRATION_METHOD_HISTOGRAM_MSE_SYMMETRIC;
+}
+
+// Gets the number of bins for the given calibration method.
+inline int32_t GetNumBins(const CalibrationOptions::CalibrationMethod method) {
+  return IsHistogramCalibration(method) ? kDefaultNumOfBins : 0;
 }
 
 }  // namespace stablehlo::quantization
