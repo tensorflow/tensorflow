@@ -981,6 +981,8 @@ cc_library(
 xla_cc_test(
     name = "transpose_test",
     srcs = ["transpose_test.cc"],
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured(["TENSORFLOW_USE_ROCM=1"]),
+    tags = tf_cuda_tests_tags(),
     deps = [
         ":fusions",
         ":transpose",
