@@ -76,6 +76,10 @@ limitations under the License.
 #include "rocm/rocm_config.h"
 #endif
 
+#if GOOGLE_CUDA
+#include "third_party/gpus/cuda/include/cuda.h"
+#endif
+
 namespace xla {
 namespace gpu {
 namespace {
@@ -294,6 +298,11 @@ std::unique_ptr<llvm::TargetMachine> NVPTXGetTargetMachine(
     const DebugOptions& debug_options) {
   // Figure out the exact name of the processor as known to the NVPTX backend
   // from the gpu_architecture flag.
+#if defined(GOOGLE_CUDA) && CUDA_VERSION >= 12010
+  // use ptx81 for CUDA >= 12.1
+  return GetTargetMachine(target_triple, GetSmName(compute_capability),
+                          debug_options, /*feature_str=*/"+ptx81");
+#endif
   return GetTargetMachine(target_triple, GetSmName(compute_capability),
                           debug_options, /*feature_str=*/"+ptx74");
 }
