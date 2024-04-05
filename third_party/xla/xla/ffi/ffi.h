@@ -89,6 +89,45 @@ template <PrimitiveType dtype> using BufferR3 = Buffer<dtype, 3>;
 template <PrimitiveType dtype> using BufferR4 = Buffer<dtype, 4>;
 // clang-format on
 
+namespace internal {
+
+inline BufferBase DecodeBuffer(XLA_FFI_Buffer* buf) {
+  size_t size_bytes = primitive_util::ByteWidth(PrimitiveType(buf->dtype));
+  for (int64_t i = 0; i < buf->rank; ++i) size_bytes *= buf->dims[i];
+
+  BufferBase buffer;
+  buffer.dtype = PrimitiveType(buf->dtype);
+  buffer.data = se::DeviceMemoryBase(buf->data, size_bytes);
+  buffer.dimensions = absl::MakeConstSpan(buf->dims, buf->rank);
+  return buffer;
+}
+
+template <PrimitiveType dtype, size_t rank>
+std::optional<Buffer<dtype, rank>> DecodeBuffer(XLA_FFI_Buffer* buf,
+                                                DiagnosticEngine& diagnostic) {
+  if (auto buf_dtype = PrimitiveType(buf->dtype);
+      XLA_FFI_PREDICT_FALSE(buf_dtype != dtype)) {
+    return diagnostic.Emit("Wrong buffer dtype: expected ")
+           << primitive_util::LowercasePrimitiveTypeName(dtype) << " but got "
+           << primitive_util::LowercasePrimitiveTypeName(buf_dtype);
+  }
+
+  if constexpr (rank != internal::kDynamicRank) {
+    if (XLA_FFI_PREDICT_FALSE(buf->rank != rank)) {
+      return diagnostic.Emit("Wrong buffer rank: expected ")
+             << rank << " but got " << buf->rank;
+    }
+  }
+
+  Buffer<dtype, rank> buffer;
+  buffer.data =
+      se::DeviceMemory<NativeType<dtype>>(se::DeviceMemoryBase(buf->data));
+  buffer.dimensions = absl::MakeConstSpan(buf->dims, buf->rank);
+  return buffer;
+}
+
+}  // namespace internal
+
 //===----------------------------------------------------------------------===//
 // Arguments binding
 //===----------------------------------------------------------------------===//
@@ -117,16 +156,7 @@ struct ArgDecoding<BufferBase> {
              << XLA_FFI_ArgType_BUFFER << " but got " << type;
     }
 
-    auto* buf = reinterpret_cast<XLA_FFI_Buffer*>(arg);
-
-    size_t size_bytes = primitive_util::ByteWidth(PrimitiveType(buf->dtype));
-    for (int64_t i = 0; i < buf->rank; ++i) size_bytes *= buf->dims[i];
-
-    BufferBase buffer;
-    buffer.dtype = PrimitiveType(buf->dtype);
-    buffer.data = se::DeviceMemoryBase(buf->data, size_bytes);
-    buffer.dimensions = absl::MakeConstSpan(buf->dims, buf->rank);
-    return buffer;
+    return internal::DecodeBuffer(reinterpret_cast<XLA_FFI_Buffer*>(arg));
   }
 };
 
@@ -140,27 +170,40 @@ struct ArgDecoding<Buffer<dtype, rank>> {
              << XLA_FFI_ArgType_BUFFER << " but got " << type;
     }
 
-    auto* buf = reinterpret_cast<XLA_FFI_Buffer*>(arg);
+    return internal::DecodeBuffer<dtype, rank>(
+        reinterpret_cast<XLA_FFI_Buffer*>(arg), diagnostic);
+  }
+};
 
-    if (auto actual_dtype = PrimitiveType(buf->dtype);
-        XLA_FFI_PREDICT_FALSE(actual_dtype != dtype)) {
-      return diagnostic.Emit("Wrong buffer dtype: expected ")
-             << primitive_util::LowercasePrimitiveTypeName(dtype) << " but got "
-             << primitive_util::LowercasePrimitiveTypeName(actual_dtype);
+//===----------------------------------------------------------------------===//
+// Results decoding
+//===----------------------------------------------------------------------===//
+
+template <>
+struct RetDecoding<BufferBase> {
+  XLA_FFI_ATTRIBUTE_ALWAYS_INLINE
+  static std::optional<Result<BufferBase>> Decode(
+      XLA_FFI_RetType type, void* arg, DiagnosticEngine& diagnostic) {
+    if (XLA_FFI_PREDICT_FALSE(type != XLA_FFI_RetType_BUFFER)) {
+      return diagnostic.Emit("Wrong result type: expected ")
+             << XLA_FFI_RetType_BUFFER << " but got " << type;
+    }
+    return internal::DecodeBuffer(reinterpret_cast<XLA_FFI_Buffer*>(arg));
+  }
+};
+
+template <PrimitiveType dtype, size_t rank>
+struct RetDecoding<Buffer<dtype, rank>> {
+  XLA_FFI_ATTRIBUTE_ALWAYS_INLINE
+  static std::optional<Result<Buffer<dtype, rank>>> Decode(
+      XLA_FFI_RetType type, void* arg, DiagnosticEngine& diagnostic) {
+    if (XLA_FFI_PREDICT_FALSE(type != XLA_FFI_RetType_BUFFER)) {
+      return diagnostic.Emit("Wrong result type: expected ")
+             << XLA_FFI_RetType_BUFFER << " but got " << type;
     }
 
-    if constexpr (rank != internal::kDynamicRank) {
-      if (XLA_FFI_PREDICT_FALSE(buf->rank != rank)) {
-        return diagnostic.Emit("Wrong buffer rank: expected ")
-               << rank << " but got " << buf->rank;
-      }
-    }
-
-    Buffer<dtype, rank> buffer;
-    buffer.data = se::DeviceMemory<internal::NativeType<dtype>>(
-        se::DeviceMemoryBase(buf->data));
-    buffer.dimensions = absl::MakeConstSpan(buf->dims, buf->rank);
-    return buffer;
+    return internal::DecodeBuffer<dtype, rank>(
+        reinterpret_cast<XLA_FFI_Buffer*>(arg), diagnostic);
   }
 };
 
