@@ -788,7 +788,7 @@ StatusOr<std::vector<int>> ComputeParametersThatMustBeDonated(
   const HloInputOutputAliasConfig& config = module.input_output_alias_config();
   TF_RETURN_IF_ERROR(config.ForEachAliasWithStatus(
       [&](const ShapeIndex& output_index,
-          const HloInputOutputAliasConfig::Alias& alias) {
+          const HloInputOutputAliasConfig::Alias& alias) -> absl::Status {
         if (tuple_inputs) {
           if (alias.parameter_number != 0) {
             return InvalidArgument(

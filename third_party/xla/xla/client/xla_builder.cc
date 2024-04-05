@@ -1941,8 +1941,9 @@ Status XlaBuilder::VerifyConvolution(
   }
   int num_spatial_dims = num_dims - 2;
 
-  const auto check_spatial_dimensions = [&](absl::string_view field_name,
-                                            absl::Span<const int64_t> numbers) {
+  const auto check_spatial_dimensions =
+      [&](absl::string_view field_name,
+          absl::Span<const int64_t> numbers) -> absl::Status {
     if (numbers.size() != num_spatial_dims) {
       return InvalidArgument("Expected %d elements for %s, but got %d.",
                              num_spatial_dims, field_name, numbers.size());

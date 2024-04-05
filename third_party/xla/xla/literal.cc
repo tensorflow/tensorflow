@@ -490,7 +490,7 @@ void MutableLiteralBase::CopyElementFrom(const LiteralSlice& src_literal,
   Literal literal(shape);
 
   TF_RETURN_IF_ERROR(literal.root_piece_.ForEachMutableSubpieceWithStatus(
-      [&](const ShapeIndex& index, Piece* piece) {
+      [&](const ShapeIndex& index, Piece* piece) -> absl::Status {
         const LiteralProto* proto_element = &proto;
         for (int64_t i : index) {
           CHECK(i < proto_element->tuple_literals_size());

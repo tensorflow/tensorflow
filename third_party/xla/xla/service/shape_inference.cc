@@ -2812,7 +2812,8 @@ ShapeInference::InferCollectivePermuteDoneShape(const Shape& operand_shape) {
     absl::Span<const int64_t> lhs_dilation,
     absl::Span<const int64_t> rhs_dilation,
     std::optional<std::vector<bool>> window_reversal) {
-  const auto verify_size = [&](const size_t x, const char* x_name) {
+  const auto verify_size = [&](const size_t x,
+                               const char* x_name) -> absl::Status {
     if (x == 0 || x == window_dimensions.size()) {
       return OkStatus();
     } else {

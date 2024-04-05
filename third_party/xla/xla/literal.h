@@ -1602,7 +1602,7 @@ Status LiteralBase::SerializeWithShapeProto(const ShapeProto& shape_proto,
                                             OutputIterator output) const {
   SerializeState<OutputIterator> state(shape_proto, output);
   TF_RETURN_IF_ERROR(root_piece().ForEachSubpieceWithStatus(
-      [&](const ShapeIndex& shape_index, const Piece& piece) {
+      [&](const ShapeIndex& shape_index, const Piece& piece) -> absl::Status {
         const Shape& subshape = piece.subshape();
         if (subshape.IsTuple()) {
           return OkStatus();
@@ -1636,7 +1636,7 @@ absl::StatusOr<Literal> Literal::Deserialize(InputIterator begin,
   Literal literal(shape);
   TF_RETURN_IF_ERROR(
       literal.mutable_root_piece().ForEachMutableSubpieceWithStatus(
-          [&](const ShapeIndex& shape_index, Piece* piece) {
+          [&](const ShapeIndex& shape_index, Piece* piece) -> absl::Status {
             const Shape& subshape = piece->subshape();
             if (subshape.IsTuple()) {
               return OkStatus();
