@@ -122,26 +122,20 @@ absl::Status CustomCallThunk::ExecuteFfiHandler(const ExecuteParams& params) {
   // separate from arguments, as they do not change after thunk is constructed.
   CallFrameBuilder builder;
 
-  for (auto& operand : operands_) {
-    if (!operand.has_value())
-      return Internal("FFI handlers do not support tokens (yet)!");
-    if (!operand->slice.allocation())
-      return Internal("custom call argument missing buffer allocation");
+  for (auto& slices : {operands_, results_}) {
+    for (const std::optional<Slice>& slice : slices) {
+      // TODO(ezhulenev): Add a token argument type to XLA:FFI.
+      if (!slice.has_value()) {
+        return Internal("FFI handlers do not support tokens (yet)!");
+      }
 
-    builder.AddBufferArg(
-        params.buffer_allocations->GetDeviceAddress(operand->slice),
-        operand->shape.element_type(), operand->shape.dimensions());
-  }
+      if (!slice->slice.allocation())
+        return Internal("custom call input missing buffer allocation");
 
-  for (auto& result : results_) {
-    if (!result.has_value())
-      return Internal("FFI handlers do not support tokens (yet)!");
-    if (!result->slice.allocation())
-      return Internal("custom call result missing buffer allocation");
-
-    builder.AddBufferRet(
-        params.buffer_allocations->GetDeviceAddress(result->slice),
-        result->shape.element_type(), result->shape.dimensions());
+      builder.AddBufferArg(
+          params.buffer_allocations->GetDeviceAddress(slice->slice),
+          slice->shape.element_type(), slice->shape.dimensions());
+    }
   }
 
   CallFrameBuilder::AttributesBuilder attrs;
