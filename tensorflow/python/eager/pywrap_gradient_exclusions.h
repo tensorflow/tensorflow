@@ -18,6 +18,7 @@ limitations under the License.
 #include "absl/types/optional.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/lib/gtl/flatset.h"
+#include "tensorflow/core/platform/types.h"
 
 // Lookup whether the Op with the given op_name has unused input indices.
 // Returns absl::nullopt if all inputs are used, set of unused indices

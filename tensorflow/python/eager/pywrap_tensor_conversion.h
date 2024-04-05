@@ -25,6 +25,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/hash/hash.h"
+#include "absl/log/check.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"

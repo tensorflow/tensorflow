@@ -30,14 +30,19 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/debugging/leak_check.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "third_party/py/numpy/core/include/numpy/ndarrayobject.h"
+#include "third_party/py/numpy/core/include/numpy/ndarraytypes.h"
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/c_api_experimental.h"
 #include "tensorflow/c/eager/c_api_internal.h"
+#include "tensorflow/c/eager/immediate_execution_tensor_handle.h"
 #include "tensorflow/c/eager/tape.h"
 #include "tensorflow/c/eager/tfe_context_internal.h"
 #include "tensorflow/c/eager/tfe_op_internal.h"
@@ -51,6 +56,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/gtl/compactptrset.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
@@ -61,6 +67,7 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/stack_frame.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/str_util.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/util/managed_stack_trace.h"
@@ -74,7 +81,6 @@ limitations under the License.
 #include "tsl/platform/status.h"
 #include "tsl/platform/stringprintf.h"
 #include "tsl/platform/thread_annotations.h"
-#include "tsl/profiler/lib/traceme.h"
 
 using tensorflow::Status;
 using tensorflow::string;
