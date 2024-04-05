@@ -2654,6 +2654,9 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
   }
 
   Status HandleWhile(HloInstruction* xla_while) override {
+    if (xla_while->called_computations().size() != 2) {
+      return FailedPrecondition("While should have 2 called computations");
+    }
     auto* while_cond = xla_while->while_condition();
     auto* while_body = xla_while->while_body();
     if (while_cond->num_parameters() != 1) {
@@ -2670,6 +2673,19 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
       return FailedPrecondition(
           "While loop must have exactly one operand; had %d : %s",
           xla_while->operand_count(), xla_while->ToString());
+    }
+    HloInstruction* body_ptr = while_body->WhileCallInstruction();
+    if (body_ptr == nullptr) {
+      return Internal(
+          "While body corresponding call instruction is nullptr for while: %s",
+          xla_while->name());
+    }
+    HloInstruction* cond_ptr = while_cond->WhileCallInstruction();
+    if (cond_ptr == nullptr) {
+      return Internal(
+          "While condition corresponding call instruction %s is nullptr for "
+          "while: %s",
+          cond_ptr->name(), xla_while->name());
     }
     // Allow kWhile to contain computations on separate thread.
     TF_RETURN_IF_ERROR(CheckCallableInstructionThreadName(

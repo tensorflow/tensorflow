@@ -767,7 +767,9 @@ class HloComputation {
 
   // Returns if this computation is a body computation of a while.
   bool IsWhileBodyComputation() const {
-    return instruction_type() == InstructionType::kWhile;
+    return instruction_type() == InstructionType::kWhile &&
+           instruction()->called_computations().size() == 2 &&
+           instruction()->called_computations()[0] == this;
   }
 
   // Returns the owning while call instruction, or nullptr if this is not a
@@ -778,8 +780,8 @@ class HloComputation {
   }
 
   void SetWhileCallInstruction(HloInstruction* while_call_instruction) {
-    CHECK(while_call_instruction != nullptr);
-    CHECK(while_call_instruction->opcode() == HloOpcode::kWhile);
+    CHECK(while_call_instruction == nullptr ||
+          while_call_instruction->opcode() == HloOpcode::kWhile);
     SetInstruction(while_call_instruction, InstructionType::kWhile);
   }
 
@@ -921,9 +923,9 @@ class HloComputation {
     kFusion,
     // This computation is a custom-call computation.
     kCustomCall,
-    // This computation is a while body computation.
+    // This computation is a collective computation.
     kCollective,
-    // This computation is a while body computation.
+    // This computation is a while body or condition computation.
     kWhile,
     // This computation is a conditional branch computation.
     kConditional,

@@ -1323,7 +1323,8 @@ class HloCallableInstruction : public HloInstruction {
   static bool ClassOf(const HloInstruction* hlo) {
     return hlo->opcode() == HloOpcode::kFusion ||
            hlo->opcode() == HloOpcode::kCall ||
-           hlo->opcode() == HloOpcode::kCustomCall;
+           hlo->opcode() == HloOpcode::kCustomCall ||
+           hlo->opcode() == HloOpcode::kWhile;
   }
 
   // Gets a list of output/operand buffer pairs that alias each other, where the
@@ -1502,6 +1503,34 @@ class HloCallInstruction : public HloCallableInstruction {
   std::string default_called_computation_name() const override {
     return "called_computation";
   }
+};
+
+class HloWhileInstruction : public HloCallableInstruction {
+ public:
+  HloWhileInstruction(const Shape& shape, HloComputation* body,
+                      HloComputation* condition, HloInstruction* init);
+
+  ~HloWhileInstruction() override;
+
+  void ClearCalledComputations() override;
+
+  // When a while instruction is being destructed, clear the back pointer of
+  // its while computations, to avoid referencing freed memory.
+  void ClearWhileComputationInstruction();
+
+  static bool ClassOf(const HloInstruction* hlo) {
+    return hlo->opcode() == HloOpcode::kWhile;
+  }
+
+ protected:
+  std::string default_called_computation_name() const override {
+    return "body_computation";
+  }
+
+ private:
+  std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
+      const Shape& shape, absl::Span<HloInstruction* const> new_operands,
+      HloCloneContext* context) const override;
 };
 
 class HloRngInstruction : public HloInstruction {

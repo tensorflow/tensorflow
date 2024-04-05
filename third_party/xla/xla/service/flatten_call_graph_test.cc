@@ -177,12 +177,6 @@ TEST_F(FlattenCallGraphTest, SharedWhileConditionAndBody) {
   }
 
   {
-    std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module.get());
-    const CallGraphNode& cond_node = call_graph->GetNode(cond_computation);
-    EXPECT_EQ(2, cond_node.caller_callsites().size());
-  }
-
-  {
     TF_ASSERT_OK_AND_ASSIGN(bool result, RunFlattenCallGraph(module.get()));
     EXPECT_TRUE(result);
     std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module.get());

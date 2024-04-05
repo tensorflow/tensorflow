@@ -83,6 +83,9 @@ Status FlattenNode(const CallGraphNode& node) {
     // Skip first element if this computation is only called from a sequential
     // context.
     if (node.context() != CallContext::kBoth && i == 0) {
+      if (call_site.instruction()->opcode() == HloOpcode::kWhile) {
+        computation->SetWhileCallInstruction(call_site.instruction());
+      }
       continue;
     }
 

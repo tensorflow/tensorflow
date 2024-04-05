@@ -2141,6 +2141,14 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
           })) {
         return nullptr;
       }
+      if ((*condition)->WhileCallInstruction() != nullptr) {
+        computations_.emplace_back((*condition)->Clone());
+        condition = computations_.back().get();
+      }
+      if ((*body)->WhileCallInstruction() != nullptr || *body == *condition) {
+        computations_.emplace_back((*body)->Clone());
+        body = computations_.back().get();
+      }
       return builder->AddInstruction(HloInstruction::CreateWhile(
           *shape, *condition, *body, /*init=*/operands[0]));
     }

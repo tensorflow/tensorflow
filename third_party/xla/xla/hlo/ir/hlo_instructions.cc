@@ -2449,6 +2449,45 @@ HloCallInstruction::HloCallInstruction(
     : HloCallableInstruction(HloOpcode::kCall, shape, operands,
                              called_computation) {}
 
+HloWhileInstruction::HloWhileInstruction(const Shape& shape,
+                                         HloComputation* body,
+                                         HloComputation* condition,
+                                         HloInstruction* init)
+    : HloCallableInstruction(HloOpcode::kWhile, shape, {init},
+                             {body, condition}) {
+  // Set back pointer from body computation to the while call instruction.
+  body->SetWhileCallInstruction(this);
+  // Set back pointer from condition computation to the while call instruction.
+  condition->SetWhileCallInstruction(this);
+}
+
+HloWhileInstruction::~HloWhileInstruction() {
+  ClearWhileComputationInstruction();
+}
+
+void HloWhileInstruction::ClearCalledComputations() {
+  ClearWhileComputationInstruction();
+  HloInstruction::ClearCalledComputations();
+}
+
+void HloWhileInstruction::ClearWhileComputationInstruction() {
+  for (HloComputation* computation : called_computations()) {
+    if (computation->WhileCallInstruction() == this) {
+      computation->SetWhileCallInstruction(nullptr);
+    }
+  }
+}
+
+std::unique_ptr<HloInstruction> HloWhileInstruction::CloneWithNewOperandsImpl(
+    const Shape& shape, absl::Span<HloInstruction* const> new_operands,
+    HloCloneContext* context) const {
+  auto new_called_computations = GetOrCloneCalledComputations(context);
+  CHECK_EQ(new_called_computations.size(), 2);
+  return std::make_unique<HloWhileInstruction>(
+      shape, new_called_computations[0], new_called_computations[1],
+      new_operands[0]);
+}
+
 HloRngInstruction::HloRngInstruction(
     const Shape& shape, RandomDistribution distribution,
     absl::Span<HloInstruction* const> parameters)

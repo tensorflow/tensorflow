@@ -165,6 +165,9 @@ HloComputation::~HloComputation() {
     CHECK(FusionInstruction()->fused_instructions_computation() == this);
     FusionInstruction()->ClearCalledComputations();
   }
+  if (WhileCallInstruction() != nullptr) {
+    WhileCallInstruction()->ClearCalledComputations();
+  }
   if (IsAsyncComputation()) {
     CHECK(async_start_->async_wrapped_computation() == this);
     async_start_->ClearCalledComputations();

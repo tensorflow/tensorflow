@@ -2323,6 +2323,7 @@ ENTRY entry (param: s32[]) -> s32[] {
       EXPECT_EQ(instruction->GetModule(), clone.get());
     }
   }
+  TF_ASSERT_OK(verifier().Run(clone.get()).status());
 }
 
 TEST_F(HloInstructionTest, IdenticalAccountsForBackendConfig) {
