@@ -748,29 +748,29 @@ void PjitFunction::PopulateCacheEntry(PjitCacheEntry& cache_entry,
   cache_entry.executable = nb::cast<std::shared_ptr<xla::PyLoadedExecutable>>(
       fastpath_data.attr("xla_executable"));
 
-  nb::list in_shardings = fastpath_data.attr("in_shardings");
-  cache_entry.in_shardings.reserve(in_shardings.size());
+  nb::sequence in_shardings = fastpath_data.attr("in_shardings");
+  cache_entry.in_shardings.reserve(nb::len(in_shardings));
   for (nb::handle sharding : in_shardings) {
     cache_entry.in_shardings.push_back(nb::borrow(sharding));
   }
 
-  nb::list out_shardings = fastpath_data.attr("out_shardings");
-  cache_entry.out_shardings.reserve(out_shardings.size());
+  nb::sequence out_shardings = fastpath_data.attr("out_shardings");
+  cache_entry.out_shardings.reserve(nb::len(out_shardings));
   for (nb::handle sharding : out_shardings) {
     cache_entry.out_shardings.push_back(nb::borrow(sharding));
   }
 
-  nb::list out_committed = fastpath_data.attr("out_committed");
-  cache_entry.out_committed.reserve(out_committed.size());
+  nb::sequence out_committed = fastpath_data.attr("out_committed");
+  cache_entry.out_committed.reserve(nb::len(out_committed));
   for (nb::handle c : out_committed) {
     cache_entry.out_committed.push_back(nb::cast<bool>(c));
   }
 
-  nb::list out_avals = fastpath_data.attr("out_avals");
-  cache_entry.out_avals.reserve(out_avals.size());
-  cache_entry.out_dtypes.reserve(out_avals.size());
-  cache_entry.out_shapes.reserve(out_avals.size());
-  cache_entry.out_weak_types.reserve(out_avals.size());
+  nb::sequence out_avals = fastpath_data.attr("out_avals");
+  cache_entry.out_avals.reserve(nb::len(out_avals));
+  cache_entry.out_dtypes.reserve(nb::len(out_avals));
+  cache_entry.out_shapes.reserve(nb::len(out_avals));
+  cache_entry.out_weak_types.reserve(nb::len(out_avals));
   for (nb::handle aval : out_avals) {
     cache_entry.out_avals.push_back(nb::borrow(aval));
     cache_entry.out_dtypes.push_back(aval.attr("dtype"));
@@ -783,8 +783,8 @@ void PjitFunction::PopulateCacheEntry(PjitCacheEntry& cache_entry,
   cache_entry.out_pytree_def = nb::cast<xla::PyTreeDef>(
       nb::handle(fastpath_data.attr("out_pytree_def").ptr()));
 
-  nb::list kept_var_bitvec = fastpath_data.attr("kept_var_bitvec");
-  cache_entry.kept_var_bitvec.reserve(kept_var_bitvec.size());
+  nb::sequence kept_var_bitvec = fastpath_data.attr("kept_var_bitvec");
+  cache_entry.kept_var_bitvec.reserve(nb::len(kept_var_bitvec));
   for (nb::handle k : kept_var_bitvec) {
     cache_entry.kept_var_bitvec.push_back(nb::cast<bool>(k));
   }
