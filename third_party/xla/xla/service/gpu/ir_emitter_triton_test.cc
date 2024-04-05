@@ -2902,40 +2902,6 @@ ENTRY e {
 // into Triton fusions.
 using CompareTest = TritonGemmTest;
 
-// TEST_F(CompareTest, DUMMY) {
-//   const char* hlo_text_ref = R"(
-// HloModule t
-
-// triton_dot {
-//   parameter_0 = s32[11,24]{1,0} parameter(0)
-//   broadcast.1747 = s32[11,24,128]{2,1,0} broadcast(parameter_0),
-//   dimensions={0,1} parameter_1 = s32[11,24,128]{2,1,0} parameter(1)
-//   compare.49 = pred[11,24,128]{2,1,0} compare(broadcast.1747, parameter_1),
-//   direction=EQ bitcast.4717 = pred[264,128]{1,0} bitcast(compare.49)
-//   convert.142 = f32[264,128]{1,0} convert(bitcast.4717)
-//   parameter_2 = f32[128,8]{1,0} parameter(2)
-//   ROOT dot.381 = f32[264,8]{1,0} dot(convert.142, parameter_2),
-//   lhs_contracting_dims={1}, rhs_contracting_dims={0}
-// }
-
-// ENTRY e {
-//   p0 = s32[11,24]{1,0} parameter(0)
-//   p1 = s32[11,24,128]{2,1,0} parameter(1)
-//   p2 = f32[128,8]{1,0} parameter(2)
-//   ROOT _ = f32[264,8] fusion(p0, p1, p2), kind=kCustom, calls=triton_dot,
-//     backend_config={"fusion_backend_config": {kind: "__triton_gemm",
-//       triton_gemm_config:
-//         {"block_m":32,"block_n":16,"block_k":128,
-//          "split_k":1,"num_stages":1,"num_warps":4,
-//          "num_ctas":1}}}
-// })";
-
-//   EXPECT_TRUE(RunAndCompareTwoModules(hlo_text_ref, hlo_text_ref,
-//                                       ErrorSpec{/*aabs=*/1e-6,
-//                                       /*arel=*/1e-6},
-//                                       /*run_hlo_passes=*/false));;
-// }
-
 TEST_F(CompareTest, DifferentTilingsProduceSameResult) {
   const char* hlo_text_ref = R"(
 HloModule t
