@@ -451,9 +451,7 @@ gpu_only_cc_library(
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:subprocess",
-    ] + if_cuda_is_configured([
-        "//xla/stream_executor/cuda:cuda_driver",
-    ]) + if_rocm_is_configured([
+    ] + if_rocm_is_configured([
         "//xla/stream_executor/rocm:rocm_driver",
     ]),
 )
@@ -498,16 +496,21 @@ gpu_only_cc_library(
         "//xla/stream_executor",
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:device_memory_allocator",
+        "//xla/stream_executor/cuda:cuda_driver",
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:fixed_array",
+        "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
+        "@local_config_cuda//cuda:cuda_headers",
         "@local_tsl//tsl/framework:allocator",
         "@local_tsl//tsl/lib/math:math_util",
         "@local_tsl//tsl/platform:errors",

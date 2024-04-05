@@ -21,19 +21,24 @@ limitations under the License.
 #include <cstring>
 #include <memory>
 #include <string>
+#include <tuple>
 #include <utility>
 
 #include "absl/base/call_once.h"
+#include "absl/base/const_init.h"
+#include "absl/base/thread_annotations.h"
+#include "absl/container/fixed_array.h"
+#include "absl/container/node_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
-#include "xla/stream_executor/gpu/asm_compiler.h"
 #include "xla/stream_executor/gpu/gpu_asm_opts.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
@@ -45,10 +50,42 @@ limitations under the License.
 #include "tsl/platform/statusor.h"
 
 #ifdef GOOGLE_CUDA
+#include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/stream_executor/cuda/cuda_asm_compiler.h"
+#include "xla/stream_executor/cuda/cuda_driver.h"
 #endif
 
 namespace stream_executor {
+
+#if GOOGLE_CUDA
+// Maintains a cache of pointers to loaded kernels
+template <typename... Args>
+static absl::StatusOr<TypedKernel<Args...>*> LoadKernelOrGetPtr(
+    StreamExecutor* executor, absl::string_view kernel_name,
+    absl::string_view ptx, absl::Span<const uint8_t> cubin_data) {
+  using KernelPtrCacheKey =
+      std::tuple<CUcontext, absl::string_view, absl::string_view>;
+
+  static absl::Mutex kernel_ptr_cache_mutex(absl::kConstInit);
+  static auto& kernel_ptr_cache ABSL_GUARDED_BY(kernel_ptr_cache_mutex) =
+      *new absl::node_hash_map<KernelPtrCacheKey, TypedKernel<Args...>>();
+  CUcontext current_context = cuda::CurrentContextOrDie();
+  KernelPtrCacheKey kernel_ptr_cache_key{current_context, kernel_name, ptx};
+  absl::MutexLock lock(&kernel_ptr_cache_mutex);
+
+  auto it = kernel_ptr_cache.find(kernel_ptr_cache_key);
+  if (it == kernel_ptr_cache.end()) {
+    TF_ASSIGN_OR_RETURN(
+        TypedKernel<Args...> loaded,
+        (TypedKernel<Args...>::Create(executor, kernel_name, ptx, cubin_data)));
+    it =
+        kernel_ptr_cache.emplace(kernel_ptr_cache_key, std::move(loaded)).first;
+  }
+
+  CHECK(it != kernel_ptr_cache.end());
+  return &it->second;
+}
+#endif  // GOOGLE_CUDA
 
 // Rounds the value up to a multiple of the divisor by first calling CeilOfRatio
 // then multiplying by the divisor. For example: RoundUpToNearest(13, 8) => 16
