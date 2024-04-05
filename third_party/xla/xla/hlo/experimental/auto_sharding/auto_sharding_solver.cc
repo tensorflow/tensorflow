@@ -756,6 +756,39 @@ AutoShardingSolverResult CallORToolsSolver(
   return result;
 }
 
+std::vector<NodeStrategyIdx> GetChosenNodeStrategy(
+    const AutoShardingSolverRequest& request,
+    const std::vector<std::vector<MPVariable*>>& s) {
+  std::vector<NodeStrategyIdx> chosen_node_strategy(request.num_nodes(), -1);
+  for (NodeIdx node_idx = 0; node_idx < request.num_nodes(); ++node_idx) {
+    for (NodeStrategyIdx j = 0; j < s[node_idx].size(); ++j) {
+      // if lhs == 1
+      if (s[node_idx][j]->solution_value() > 0.5) {
+        chosen_node_strategy[node_idx] = j;
+        break;
+      }
+    }
+  }
+  return chosen_node_strategy;
+}
+
+std::vector<EdgeStrategyIdx> GetChosenEdgeStrategy(
+    const AutoShardingSolverRequest& request,
+    const std::vector<std::vector<MPVariable*>>& e) {
+  size_t num_edges = request.edges_size();
+  std::vector<NodeStrategyIdx> chosen_edge_strategy(num_edges, -1);
+  for (EdgeIdx edge_idx = 0; edge_idx < num_edges; ++edge_idx) {
+    for (EdgeStrategyIdx j = 0; j < e[edge_idx].size(); ++j) {
+      // if lhs == 1
+      if (e[edge_idx][j]->solution_value() > 0.5) {
+        chosen_edge_strategy[edge_idx] = j;
+        break;
+      }
+    }
+  }
+  return chosen_edge_strategy;
+}
+
 AutoShardingSolverResult SolveAndExtractSolution(
     const AutoShardingSolverRequest& request,
     const std::vector<std::vector<MPVariable*>>& s,
@@ -841,28 +874,18 @@ AutoShardingSolverResult SolveAndExtractSolution(
   // Return value
   size_t num_edges = request.edges_size();
   double unsalted_objective = 0.0;
-  std::vector<NodeStrategyIdx> chosen_strategy(request.num_nodes(), -1);
-  std::vector<EdgeStrategyIdx> e_val(num_edges, -1);
+  const std::vector<NodeStrategyIdx> chosen_node_strategy =
+      GetChosenNodeStrategy(request, s);
+  const std::vector<EdgeStrategyIdx> chosen_edge_strategy =
+      GetChosenEdgeStrategy(request, e);
   for (NodeIdx node_idx = 0; node_idx < request.num_nodes(); ++node_idx) {
-    for (NodeStrategyIdx j = 0; j < s[node_idx].size(); ++j) {
-      // if lhs == 1
-      if (s[node_idx][j]->solution_value() > 0.5) {
-        chosen_strategy[node_idx] = j;
-        unsalted_objective += request.computation_costs(node_idx).costs(j) +
-                              request.communication_costs(node_idx).costs(j);
-        break;
-      }
-    }
+    const NodeStrategyIdx j = chosen_node_strategy[node_idx];
+    unsalted_objective += request.computation_costs(node_idx).costs(j) +
+                          request.communication_costs(node_idx).costs(j);
   }
   for (EdgeIdx edge_idx = 0; edge_idx < num_edges; ++edge_idx) {
-    for (EdgeStrategyIdx j = 0; j < e[edge_idx].size(); ++j) {
-      // if lhs == 1
-      if (e[edge_idx][j]->solution_value() > 0.5) {
-        e_val[edge_idx] = j;
-        unsalted_objective += request.resharding_costs(edge_idx).costs(j);
-        break;
-      }
-    }
+    const EdgeStrategyIdx j = chosen_edge_strategy[edge_idx];
+    unsalted_objective += request.resharding_costs(edge_idx).costs(j);
   }
   if (overbudget_var) {
     unsalted_objective += request.overbudget_coeff().coeff() *
@@ -881,10 +904,10 @@ AutoShardingSolverResult SolveAndExtractSolution(
     LOG(INFO) << "memory budget: "
               << request.memory_budget() / (1024 * 1024 * 1024) << " GB";
   }
-  PrintLargestInstructions(chosen_strategy, request);
+  PrintLargestInstructions(chosen_node_strategy, request);
   return AutoShardingSolverResult(
-      std::make_tuple(std::move(chosen_strategy), std::move(e_val),
-                      unsalted_objective),
+      std::make_tuple(std::move(chosen_node_strategy),
+                      std::move(chosen_edge_strategy), unsalted_objective),
       false);
 }
 
