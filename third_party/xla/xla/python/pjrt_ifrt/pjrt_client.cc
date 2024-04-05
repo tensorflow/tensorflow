@@ -24,9 +24,12 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/memory/memory.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
+#include "xla/layout.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/pjrt_ifrt/pjrt_array.h"
@@ -230,6 +233,16 @@ PjRtClient::GetTopologyForDevices(absl::Span<Device* const> devices) const {
   TF_ASSIGN_OR_RETURN(auto topology, pjrt_client_->GetTopologyDescription());
   return std::shared_ptr<const xla::PjRtTopologyDescription>(pjrt_client_,
                                                              topology);
+}
+
+absl::StatusOr<std::unique_ptr<PjRtLayout>>
+PjRtClient::GetDefaultLayoutForDevice(DType dtype,
+                                      absl::Span<const int64_t> dims,
+                                      Device* device) const {
+  TF_ASSIGN_OR_RETURN(PrimitiveType element_type, ToPrimitiveType(dtype));
+  TF_ASSIGN_OR_RETURN(xla::Layout layout,
+                      pjrt_client_->GetDefaultLayout(element_type, dims));
+  return std::make_unique<PjRtXlaLayout>(std::move(layout));
 }
 
 }  // namespace ifrt

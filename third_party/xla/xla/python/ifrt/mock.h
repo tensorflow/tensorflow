@@ -24,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/Support/ExtensibleRTTI.h"
@@ -136,6 +137,11 @@ class MockClient final : public llvm::RTTIExtends<MockClient, Client> {
       absl::StatusOr<std::shared_ptr<const xla::PjRtTopologyDescription>>,
       GetTopologyForDevices, (absl::Span<xla::ifrt::Device* const> devices),
       (const, final));
+  MOCK_METHOD(absl::StatusOr<std::unique_ptr<xla::PjRtLayout>>,
+              GetDefaultLayoutForDevice,
+              (xla::ifrt::DType dtype, absl::Span<const int64_t> dims,
+               xla::ifrt::Device* device),
+              (const, final));
   // LINT.ThenChange(mock.cc:MockClientDelegation)
 
   xla::ifrt::Client* delegated() const { return delegated_.get(); }
