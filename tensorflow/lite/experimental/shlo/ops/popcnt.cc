@@ -15,11 +15,13 @@ limitations under the License.
 
 #include "tensorflow/lite/experimental/shlo/ops/popcnt.h"
 
+#include <cstdint>
 #include <type_traits>
 
 #include "absl/numeric/bits.h"
 #include "absl/status/status.h"
 #include "tensorflow/lite/experimental/shlo/dispatch.h"
+#include "tensorflow/lite/experimental/shlo/i4.h"
 #include "tensorflow/lite/experimental/shlo/ops/unary_elementwise.h"
 #include "tensorflow/lite/experimental/shlo/ops/util.h"
 #include "tensorflow/lite/experimental/shlo/tensor.h"
@@ -29,7 +31,11 @@ namespace shlo_ref {
 struct Popcnt {
   template <class T>
   T operator()(T v) const {
-    return absl::popcount(static_cast<std::make_unsigned_t<T>>(v));
+    if constexpr (std::is_same_v<I4, T>) {
+      return I4(absl::popcount(static_cast<uint8_t>(v & 0xf)));
+    } else {
+      return absl::popcount(static_cast<std::make_unsigned_t<T>>(v));
+    }
   }
 };
 

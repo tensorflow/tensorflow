@@ -46,8 +46,9 @@ struct Sign {
   template <class T>
   T operator()(T v) const {
     constexpr T one = static_cast<T>(1);
+    constexpr T minus_one = static_cast<T>(-1);
     constexpr T zero = static_cast<T>(0);
-    return v < zero ? -one : (v > zero ? one : v);
+    return v < zero ? minus_one : (v > zero ? one : v);
   }
 } sign_ref;
 

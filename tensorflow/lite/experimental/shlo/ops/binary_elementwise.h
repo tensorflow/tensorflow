@@ -70,7 +70,7 @@ void EvaluateNoQuantization(F&& func, const Tensor& lhs, const Tensor& rhs,
   const DimensionSize num_elements = lhs.NumElements();
   for (DimensionSize i = 0; i < num_elements;
        ++i, ++output_data, ++lhs_data, ++rhs_data) {
-    *output_data = func(*lhs_data, *rhs_data);
+    *output_data = static_cast<T>(func(*lhs_data, *rhs_data));
   }
 }
 

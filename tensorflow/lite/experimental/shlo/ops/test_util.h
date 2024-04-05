@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/inlined_vector.h"
 #include "tensorflow/lite/experimental/shlo/data_type.h"
+#include "tensorflow/lite/experimental/shlo/i4.h"
 #include "tensorflow/lite/experimental/shlo/quantized_tensor_element_type.h"
 #include "tensorflow/lite/experimental/shlo/shape.h"
 #include "tensorflow/lite/experimental/shlo/tensor.h"
@@ -45,6 +46,12 @@ template <>
 struct UniformDistributionImpl<DataType::kI1, void>
     : std::uniform_int_distribution<int32_t> {
   using std::uniform_int_distribution<int32_t>::uniform_int_distribution;
+};
+
+template <>
+struct UniformDistributionImpl<DataType::kSI4, void>
+    : std::uniform_int_distribution<int8_t> {
+  using std::uniform_int_distribution<int8_t>::uniform_int_distribution;
 };
 
 template <DataType storage_type>
@@ -82,18 +89,26 @@ Vector<typename Config::Type> RandomBuffer(const Shape& shape,
       max < Config::kMaxValue ? static_cast<StorageT>(max) : Config::kMaxValue;
   Vector<typename Config::Type> vec(shape.NumElements());
   std::random_device rd;
-  Distribution<storage_type> dist(min_val, max_val);
-  absl::c_generate(vec, [&] { return dist(rd); });
+  if constexpr (std::is_same_v<I4, StorageT>) {
+    Distribution<DataType::kSI8> dist(min_val, max_val);
+    absl::c_generate(vec, [&] { return static_cast<StorageT>(dist(rd)); });
+  } else {
+    Distribution<storage_type> dist(min_val, max_val);
+    absl::c_generate(vec, [&] { return dist(rd); });
+  }
   return vec;
 }
 
 // Returns a vector filled with incremental value. The values wrap around
 // according to the storage type range.
-template <DataType storage_type, class Config = Storage<storage_type>>
-Vector<typename Config::Type> IotaBuffer(
-    const Shape& shape, const typename Config::Type start = Config::kMinValue,
-    const typename Config::Type min = Config::kMinValue,
-    const typename Config::Type max = Config::kMaxValue) {
+template <DataType storage_type, class StartT = StorageType<storage_type>,
+          class MinT = StorageType<storage_type>,
+          class MaxT = StorageType<storage_type>,
+          class Config = Storage<storage_type>>
+Vector<typename Config::Type> IotaBuffer(const Shape& shape,
+                                         const StartT start = Config::kMinValue,
+                                         const MinT min = Config::kMinValue,
+                                         const MaxT max = Config::kMaxValue) {
   using StorageT = StorageType<storage_type>;
   const StorageT min_val =
       min > Config::kMinValue ? static_cast<StorageT>(min) : Config::kMinValue;
@@ -400,7 +415,8 @@ TensorTypeVariant TensorTypeFor(
   UniformDistribution<storage_type> storage_dist(-5, 5);
   StorageType<expressed_type> scale =
       static_cast<StorageType<expressed_type>>(expressed_dist(rd));
-  StorageType<storage_type> zero_point = storage_dist(rd);
+  StorageType<storage_type> zero_point =
+      StorageType<storage_type>(storage_dist(rd));
   return QuantizedTensorType{
       .shape = shape,
       .element_type =

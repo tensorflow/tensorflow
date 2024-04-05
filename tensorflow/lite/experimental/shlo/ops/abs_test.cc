@@ -40,7 +40,7 @@ namespace {
 constexpr struct AbsRef {
   template <class T>
   T operator()(T v) const {
-    return v < 0 ? -v : v;
+    return v < static_cast<T>(0) ? static_cast<T>(-v) : v;
   }
 } abs_ref;
 

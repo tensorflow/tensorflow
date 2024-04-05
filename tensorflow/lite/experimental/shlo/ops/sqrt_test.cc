@@ -48,7 +48,6 @@ struct Sqrt {
   T operator()(T v) const {
     return std::sqrt(v);
   }
-
 } sqrt_ref;
 
 template <>
@@ -114,9 +113,9 @@ TYPED_TEST(QuantizedSqrtTest, PerTensorWorks) {
 
   const Shape shape({2, 3, 4});
   const ExpressedT scale = static_cast<ExpressedT>(1.5);
-  const StorageT zero_point = static_cast<StorageT>(5);
-  Vector<StorageT> input_data = RandomBuffer<TypeParam::kStorage>(
-      shape, /*min=*/static_cast<StorageT>(zero_point));
+  const StorageT zero_point = static_cast<StorageT>(4);
+  Vector<StorageT> input_data =
+      RandomBuffer<TypeParam::kStorage>(shape, /*min=*/zero_point + 1);
   Vector<StorageT> output_data(shape.NumElements());
   const QuantizedTensorElementType tensor_type =
       QuantizedTensorElementType::PerTensor<TypeParam::kStorage,

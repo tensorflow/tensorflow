@@ -156,10 +156,8 @@ class QuantizedTensorElementType {
                SmallInlinedVector<Storage<DataType::kF32>::Type>>
       scales_;
 
-  // There is no need for kSI4 because it currently uses the same underlying
-  // storage type as kSI8, which complicates accessing the variant. If they ever
-  // use different underlying types, please add an alternative for kSI4.
-  std::variant<SmallInlinedVector<Storage<DataType::kSI8>::Type>,
+  std::variant<SmallInlinedVector<Storage<DataType::kSI4>::Type>,
+               SmallInlinedVector<Storage<DataType::kSI8>::Type>,
                SmallInlinedVector<Storage<DataType::kSI16>::Type>,
                SmallInlinedVector<Storage<DataType::kSI32>::Type>>
       zero_points_;

@@ -36,7 +36,7 @@ namespace {
 struct Abs {
   template <class T>
   T operator()(const T& val) {
-    return val < static_cast<T>(0) ? -val : val;
+    return val < static_cast<T>(0) ? static_cast<T>(-val) : val;
   }
 };
 
