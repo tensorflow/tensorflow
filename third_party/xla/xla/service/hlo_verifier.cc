@@ -2898,6 +2898,7 @@ absl::StatusOr<bool> HloVerifier::Run(
   if (std::find(disabled.begin(), disabled.end(), name()) != disabled.end()) {
     return false;
   }
+  LOG(INFO) << "HloVerifier::Run: " << module->ToString();
   auto status_or_changed = [&]() -> absl::StatusOr<bool> {
     TF_RET_CHECK(!module->name().empty());
 
