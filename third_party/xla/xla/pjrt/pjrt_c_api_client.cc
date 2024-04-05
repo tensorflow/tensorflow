@@ -93,15 +93,15 @@ namespace xla {
 
 // Return error future if not success and frees the PJRT_Error returned by
 // `expr`.
-#define RETURN_FUTURE_IF_ERROR(expr, c_api)                             \
-  do {                                                                  \
-    PJRT_Error* error = (expr);                                         \
-    std::unique_ptr<PJRT_Error, pjrt::PJRT_ErrorDeleter> _error(        \
-        error, pjrt::MakeErrorDeleter(c_api));                          \
-    xla::Status _status = pjrt::PjrtErrorToStatus(_error.get(), c_api); \
-    if (!_status.ok()) {                                                \
-      return PjRtFuture<Status>(_status);                               \
-    }                                                                   \
+#define RETURN_FUTURE_IF_ERROR(expr, c_api)                              \
+  do {                                                                   \
+    PJRT_Error* error = (expr);                                          \
+    std::unique_ptr<PJRT_Error, pjrt::PJRT_ErrorDeleter> _error(         \
+        error, pjrt::MakeErrorDeleter(c_api));                           \
+    absl::Status _status = pjrt::PjrtErrorToStatus(_error.get(), c_api); \
+    if (!_status.ok()) {                                                 \
+      return PjRtFuture<Status>(_status);                                \
+    }                                                                    \
   } while (false)
 
 // ---------------------------------- Client -----------------------------------
@@ -1245,9 +1245,9 @@ PJRT_SendCallbackInfo CppSendCallbackToC(
     // PJRT C API doesn't support
     // use_major_to_minor_data_layout_for_callbacks = false
     xla::Shape dummy_shape;
-    xla::Status status = send_callback(xla::PjRtTransferMetadata{dummy_shape},
-                                       ::pjrt::ConvertToCppChunk(*chunk),
-                                       total_size_in_bytes, done);
+    absl::Status status = send_callback(xla::PjRtTransferMetadata{dummy_shape},
+                                        ::pjrt::ConvertToCppChunk(*chunk),
+                                        total_size_in_bytes, done);
     if (!status.ok()) {
       absl::string_view message = status.message();
       return (*callback_error)(pjrt::StatusCodeToPjrtErrorCode(status.code()),
@@ -1418,7 +1418,7 @@ static void CppRecvCallbackListsToC(
   }
 }
 
-xla::StatusOr<PJRT_LoadedExecutable_Execute_Args>
+absl::StatusOr<PJRT_LoadedExecutable_Execute_Args>
 PjRtCApiLoadedExecutable::GetCommonExecuteArgs(
     absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
     const ExecuteOptions& options, PJRT_ExecuteOptions& c_options,
@@ -1561,10 +1561,11 @@ PjRtCApiLoadedExecutable::Execute(
           args.device_complete_events[i], pjrt_c_api());
       if (!callback_data->c_send_callbacks.empty() ||
           !callback_data->c_recv_callbacks.empty()) {
-        device_complete_futures[i].OnReady([callback_data](xla::Status status) {
-          // Keeps C callbacks alive until execution completes on all
-          // devices.
-        });
+        device_complete_futures[i].OnReady(
+            [callback_data](absl::Status status) {
+              // Keeps C callbacks alive until execution completes on all
+              // devices.
+            });
       }
     }
 
@@ -1833,7 +1834,7 @@ PjRtFuture<Status> PjRtCApiBuffer::ToLiteral(MutableLiteralBase* literal) {
 
   args.dst_size = ShapeUtil::ByteSizeOfElements(shape);
   args.dst = literal->untyped_data();
-  xla::StatusOr<pjrt::BufferMemoryLayoutData> c_layout_data;
+  absl::StatusOr<pjrt::BufferMemoryLayoutData> c_layout_data;
   if (literal->shape().has_layout()) {
     c_layout_data =
         pjrt::ConvertToBufferMemoryLayoutData(literal->shape().layout());
@@ -1852,7 +1853,7 @@ PjRtFuture<Status> PjRtCApiBuffer::ToLiteral(MutableLiteralBase* literal) {
       ::pjrt::MakeErrorDeleter(api)};
 
   if (error != nullptr) {
-    xla::Status s = ::pjrt::PjrtErrorToStatus(error.get(), api);
+    absl::Status s = ::pjrt::PjrtErrorToStatus(error.get(), api);
     return PjRtFuture<Status>(s);
   }
 

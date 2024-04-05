@@ -45,7 +45,7 @@ namespace stream_executor {
 namespace tpu {
 
 namespace {
-using xla::Status;
+using absl::Status;
 }  // namespace
 
 TpuExecutor::~TpuExecutor() { ExecutorApiFn()->TpuExecutor_FreeFn(executor_); }
