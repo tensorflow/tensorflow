@@ -28,7 +28,8 @@ class TslStatusHelper {
 
   ~TslStatusHelper() { TSL_DeleteStatus(c_status); }
 
-  static tsl::Status FromC(TF_Status* const c_status) {  // TENSORFLOW_STATUS_OK
+  static absl::Status FromC(
+      TF_Status* const c_status) {  // TENSORFLOW_STATUS_OK
     absl::StatusCode code = tsl::StatusCodeFromTSLCode(TSL_GetCode(c_status));
     if (code == absl::StatusCode::kOk) {
       return tsl::OkStatus();
@@ -41,7 +42,7 @@ class TslStatusHelper {
            absl::StatusCode::kOk;
   }
 
-  tsl::Status status() const {  // TENSORFLOW_STATUS_OK
+  absl::Status status() const {  // TENSORFLOW_STATUS_OK
     return FromC(c_status);
   }
 

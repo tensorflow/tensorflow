@@ -59,7 +59,7 @@ class RocmApiCallbackImpl {
                       RocmTraceCollector* collector)
       : options_(options), tracer_(tracer), collector_(collector) {}
 
-  tsl::Status operator()(uint32_t domain, uint32_t cbid, const void* cbdata);
+  absl::Status operator()(uint32_t domain, uint32_t cbid, const void* cbdata);
 
  private:
   void AddKernelEventUponApiExit(uint32_t cbid, const hip_api_data_t* data,
@@ -97,7 +97,7 @@ class RocmActivityCallbackImpl {
                            RocmTraceCollector* collector)
       : options_(options), tracer_(tracer), collector_(collector) {}
 
-  tsl::Status operator()(const char* begin, const char* end);
+  absl::Status operator()(const char* begin, const char* end);
 
  private:
   void AddHipKernelActivityEvent(const roctracer_record_t* record);
@@ -127,9 +127,9 @@ class RocmTracer {
   void Enable(const RocmTracerOptions& options, RocmTraceCollector* collector);
   void Disable();
 
-  tsl::Status ApiCallbackHandler(uint32_t domain, uint32_t cbid,
-                                 const void* cbdata);
-  tsl::Status ActivityCallbackHandler(const char* begin, const char* end);
+  absl::Status ApiCallbackHandler(uint32_t domain, uint32_t cbid,
+                                  const void* cbdata);
+  absl::Status ActivityCallbackHandler(const char* begin, const char* end);
 
   static uint64_t GetTimestamp();
   static int NumGpus();
@@ -153,11 +153,11 @@ class RocmTracer {
   explicit RocmTracer() : num_gpus_(NumGpus()) {}
 
  private:
-  tsl::Status EnableApiTracing();
-  tsl::Status DisableApiTracing();
+  absl::Status EnableApiTracing();
+  absl::Status DisableApiTracing();
 
-  tsl::Status EnableActivityTracing();
-  tsl::Status DisableActivityTracing();
+  absl::Status EnableActivityTracing();
+  absl::Status DisableActivityTracing();
 
   int num_gpus_;
   std::optional<RocmTracerOptions> options_;
