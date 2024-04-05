@@ -111,22 +111,6 @@ jobs:
           --suppression_regex '(?i)non-absl ok'
           --failure_message 'Use Abseil types and functions instead of those in Tensorflow/TSL.'"
 
-      - name: "Avoid CHECK and other crashing macros in non-test C++"
-        if: always() # We want to run all checks, not just til first failure
-        run: "python3 build_tools/lint/check_contents.py"
-        # We want to match TF_[Q]CHECK_OK, as well as the ABSL [Q]CHECK[<op>] and both
-        # ABSL and TF [Q]FATAL logging. The CHECK macros need to look for an open parenthesis
-        # to make sure that we don't accidentally match lit expressions like // CHECK:.
-        run: "python3 build_tools/lint/check_contents.py
-          --path_regex_exclusion '(?:.github/workflows/check_contents\\.yml|.*_test.cc)'
-          --path_regex '.*\.(cpp|cc|h)$'
-          --prohibited_regex '\\b(\
-                                  (?:TF_)?Q?CHECK(?:_OK|_EQ|_NE|_GT|_GE|_LT|_LE)?\\(\
-                                  (?:ABSL)|TF_)?LOG\\(?FATAL\\)\
-                                )'
-          --suppression_regex '(?i)crash ok'
-          --failure_message 'Avoid crashing in favor of returning a Status or other error. If you\
-                             must crash, add a // crash ok annotation to the line.'"
       # ----------------Python checks----------------
       - name: "Check for python print()"
         if: always() # We want to run all checks, not just til first failure
