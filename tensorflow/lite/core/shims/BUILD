@@ -64,7 +64,10 @@ bzl_library(
     name = "cc_library_with_tflite_bzl",
     srcs = ["cc_library_with_tflite.bzl"],
     visibility = ["//visibility:public"],
-    deps = ["//tensorflow/lite:build_def_bzl"],
+    deps = [
+        "//tensorflow/lite:build_def_bzl",
+        "@rules_java//java:rules",
+    ],
 )
 
 cc_library_with_tflite_test_suite(name = "cc_library_with_tflite_test_suite")

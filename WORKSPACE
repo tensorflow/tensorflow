@@ -15,6 +15,12 @@ http_archive(
 )
 
 http_archive(
+    name = "rules_java",
+    sha256 = "c73336802d0b4882e40770666ad055212df4ea62cfa6edf9cb0f9d29828a0934",
+    url = "https://github.com/bazelbuild/rules_java/releases/download/5.3.5/rules_java-5.3.5.tar.gz",
+)
+
+http_archive(
     name = "rules_python",
     sha256 = "9d04041ac92a0985e344235f5d946f71ac543f1b1565f2cdbc9a2aaee8adf55b",
     strip_prefix = "rules_python-0.26.0",
