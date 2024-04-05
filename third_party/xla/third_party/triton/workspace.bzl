@@ -17,5 +17,6 @@ def repo():
             "//third_party/triton:cl607293980.patch",  # long standing :(
             "//third_party/triton:cl609333259.patch",
             "//third_party/triton:sparse_dot_nvgpu.patch",
+            "//third_party/triton:sparse_dot_base.patch",
         ],
     )
