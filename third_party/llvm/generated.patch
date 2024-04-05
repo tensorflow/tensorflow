@@ -1,15 +1,350 @@
 Auto generated patch. Do not edit or delete it, even if empty.
-diff -ruN --strip-trailing-cr a/clang/include/clang/Frontend/FrontendOptions.h b/clang/include/clang/Frontend/FrontendOptions.h
---- a/clang/include/clang/Frontend/FrontendOptions.h
-+++ b/clang/include/clang/Frontend/FrontendOptions.h
-@@ -580,7 +580,9 @@
-         BuildingImplicitModuleUsesLock(true), ModulesEmbedAllFiles(false),
-         IncludeTimestamps(true), UseTemporary(true),
-         AllowPCMWithCompilerErrors(false), ModulesShareFileManager(true),
--        TimeTraceGranularity(500) {}
-+        EmitSymbolGraph(false), EmitExtensionSymbolGraphs(false),
-+        EmitSymbolGraphSymbolLabelsForTesting(false),
-+        EmitPrettySymbolGraphs(false), TimeTraceGranularity(500) {}
+diff -ruN --strip-trailing-cr a/libc/cmake/modules/LLVMLibCCompileOptionRules.cmake b/libc/cmake/modules/LLVMLibCCompileOptionRules.cmake
+--- a/libc/cmake/modules/LLVMLibCCompileOptionRules.cmake
++++ b/libc/cmake/modules/LLVMLibCCompileOptionRules.cmake
+@@ -43,6 +43,7 @@
+     list(APPEND compile_options "-fpie")
  
-   /// getInputKindForExtension - Return the appropriate input kind for a file
-   /// extension. For example, "c" would return Language::C.
+     if(LLVM_LIBC_FULL_BUILD)
++      list(APPEND compile_options "-DLIBC_FULL_BUILD")
+       # Only add -ffreestanding flag in full build mode.
+       list(APPEND compile_options "-ffreestanding")
+     endif()
+@@ -126,6 +127,7 @@
+     list(APPEND compile_options "-fpie")
+ 
+     if(LLVM_LIBC_FULL_BUILD)
++      list(APPEND compile_options "-DLIBC_FULL_BUILD")
+       # Only add -ffreestanding flag in full build mode.
+       list(APPEND compile_options "-ffreestanding")
+       list(APPEND compile_options "-fno-exceptions")
+@@ -178,5 +180,10 @@
+          -Wno-multi-gpu --cuda-path=${LIBC_CUDA_ROOT}
+          -nogpulib -march=${LIBC_GPU_TARGET_ARCHITECTURE} -fno-use-cxa-atexit)
+   endif()
++
++  if(LLVM_LIBC_FULL_BUILD)
++    list(APPEND compile_options "-DLIBC_FULL_BUILD")
++  endif()
++  
+   set(${output_var} ${compile_options} PARENT_SCOPE)
+ endfunction()
+diff -ruN --strip-trailing-cr a/libc/include/llvm-libc-macros/math-macros.h b/libc/include/llvm-libc-macros/math-macros.h
+--- a/libc/include/llvm-libc-macros/math-macros.h
++++ b/libc/include/llvm-libc-macros/math-macros.h
+@@ -9,6 +9,11 @@
+ #ifndef LLVM_LIBC_MACROS_MATH_MACROS_H
+ #define LLVM_LIBC_MACROS_MATH_MACROS_H
+ 
++// TODO: Remove this. This is a temporary fix for a downstream problem.
++// This cannot be left permanently since it would require downstream users to
++// define this macro.
++#ifdef LIBC_FULL_BUILD
++
+ #include "limits-macros.h"
+ 
+ #define FP_NAN 0
+@@ -79,4 +84,10 @@
+ 
+ #endif
+ 
++#else // LIBC_FULL_BUILD
++
++#include <math.h>
++
++#endif // LIBC_FULL_BUILD
++
+ #endif // LLVM_LIBC_MACROS_MATH_MACROS_H
+diff -ruN --strip-trailing-cr a/llvm/lib/CodeGen/GlobalISel/CombinerHelper.cpp b/llvm/lib/CodeGen/GlobalISel/CombinerHelper.cpp
+--- a/llvm/lib/CodeGen/GlobalISel/CombinerHelper.cpp
++++ b/llvm/lib/CodeGen/GlobalISel/CombinerHelper.cpp
+@@ -6276,15 +6276,14 @@
+ bool CombinerHelper::matchCommuteConstantToRHS(MachineInstr &MI) {
+   Register LHS = MI.getOperand(1).getReg();
+   Register RHS = MI.getOperand(2).getReg();
+-  if (!getIConstantVRegVal(LHS, MRI)) {
+-    // Skip commuting if LHS is not a constant. But, LHS may be a
+-    // G_CONSTANT_FOLD_BARRIER. If so we commute as long as we don't already
+-    // have a constant on the RHS.
+-    if (MRI.getVRegDef(LHS)->getOpcode() !=
+-        TargetOpcode::G_CONSTANT_FOLD_BARRIER)
+-      return false;
+-  }
+-  // Commute as long as RHS is not a constant or G_CONSTANT_FOLD_BARRIER.
++  auto *LHSDef = MRI.getVRegDef(LHS);
++  if (getIConstantVRegVal(LHS, MRI).has_value())
++    return true;
++
++  // LHS may be a G_CONSTANT_FOLD_BARRIER. If so we commute
++  // as long as we don't already have a constant on the RHS.
++  if (LHSDef->getOpcode() != TargetOpcode::G_CONSTANT_FOLD_BARRIER)
++    return false;
+   return MRI.getVRegDef(RHS)->getOpcode() !=
+              TargetOpcode::G_CONSTANT_FOLD_BARRIER &&
+          !getIConstantVRegVal(RHS, MRI);
+diff -ruN --strip-trailing-cr a/llvm/lib/Target/ARM/Thumb2InstrInfo.cpp b/llvm/lib/Target/ARM/Thumb2InstrInfo.cpp
+--- a/llvm/lib/Target/ARM/Thumb2InstrInfo.cpp
++++ b/llvm/lib/Target/ARM/Thumb2InstrInfo.cpp
+@@ -286,25 +286,6 @@
+   return ARMBaseInstrInfo::commuteInstructionImpl(MI, NewMI, OpIdx1, OpIdx2);
+ }
+ 
+-bool Thumb2InstrInfo::isSchedulingBoundary(const MachineInstr &MI,
+-                                           const MachineBasicBlock *MBB,
+-                                           const MachineFunction &MF) const {
+-  // BTI clearing instructions shall not take part in scheduling regions as
+-  // they must stay in their intended place. Although PAC isn't BTI clearing,
+-  // it can be transformed into PACBTI after the pre-RA Machine Scheduling
+-  // has taken place, so its movement must also be restricted.
+-  switch (MI.getOpcode()) {
+-  case ARM::t2BTI:
+-  case ARM::t2PAC:
+-  case ARM::t2PACBTI:
+-  case ARM::t2SG:
+-    return true;
+-  default:
+-    break;
+-  }
+-  return ARMBaseInstrInfo::isSchedulingBoundary(MI, MBB, MF);
+-}
+-
+ void llvm::emitT2RegPlusImmediate(MachineBasicBlock &MBB,
+                                   MachineBasicBlock::iterator &MBBI,
+                                   const DebugLoc &dl, Register DestReg,
+diff -ruN --strip-trailing-cr a/llvm/lib/Target/ARM/Thumb2InstrInfo.h b/llvm/lib/Target/ARM/Thumb2InstrInfo.h
+--- a/llvm/lib/Target/ARM/Thumb2InstrInfo.h
++++ b/llvm/lib/Target/ARM/Thumb2InstrInfo.h
+@@ -68,10 +68,6 @@
+                                        unsigned OpIdx1,
+                                        unsigned OpIdx2) const override;
+ 
+-  bool isSchedulingBoundary(const MachineInstr &MI,
+-                            const MachineBasicBlock *MBB,
+-                            const MachineFunction &MF) const override;
+-
+ private:
+   void expandLoadStackGuard(MachineBasicBlock::iterator MI) const override;
+ };
+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/AArch64/GlobalISel/combine-commute-int-const-lhs.mir b/llvm/test/CodeGen/AArch64/GlobalISel/combine-commute-int-const-lhs.mir
+--- a/llvm/test/CodeGen/AArch64/GlobalISel/combine-commute-int-const-lhs.mir
++++ b/llvm/test/CodeGen/AArch64/GlobalISel/combine-commute-int-const-lhs.mir
+@@ -1,28 +0,0 @@
+-# NOTE: Assertions have been autogenerated by utils/update_mir_test_checks.py UTC_ARGS: --version 4
+-# RUN: llc -mtriple aarch64 -run-pass=aarch64-prelegalizer-combiner %s -o - \
+-# RUN:     --aarch64prelegalizercombiner-disable-rule=constant_fold_binop | FileCheck %s
+-
+-# `constant_fold_binop` is disabled to trigger the infinite loop in `commute_int_constant_to_rhs`.
+-
+----
+-name:            add
+-tracksRegLiveness: true
+-body:             |
+-  bb.0:
+-    liveins: $s0
+-
+-    ; CHECK-LABEL: name: add
+-    ; CHECK: liveins: $s0
+-    ; CHECK-NEXT: {{  $}}
+-    ; CHECK-NEXT: %c0:_(s32) = G_CONSTANT i32 1
+-    ; CHECK-NEXT: %c1:_(s32) = G_CONSTANT i32 2
+-    ; CHECK-NEXT: %add:_(s32) = G_ADD %c0, %c1
+-    ; CHECK-NEXT: $s0 = COPY %add(s32)
+-    ; CHECK-NEXT: RET_ReallyLR
+-    %c0:_(s32) = G_CONSTANT i32 1
+-    %c1:_(s32) = G_CONSTANT i32 2
+-    %add:_(s32) = G_ADD %c0, %c1
+-    $s0 = COPY %add
+-    RET_ReallyLR
+-
+-...
+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/ARM/misched-branch-targets.mir b/llvm/test/CodeGen/ARM/misched-branch-targets.mir
+--- a/llvm/test/CodeGen/ARM/misched-branch-targets.mir
++++ b/llvm/test/CodeGen/ARM/misched-branch-targets.mir
+@@ -1,166 +0,0 @@
+-# RUN: llc -o - -run-pass=machine-scheduler -misched=shuffle %s | FileCheck %s
+-# RUN: llc -o - -run-pass=postmisched %s | FileCheck %s
+-
+---- |
+-  target datalayout = "e-m:e-p:32:32-Fi8-i64:64-v128:64:128-a:0:32-n32-S64"
+-  target triple = "thumbv8.1m.main-arm-none-eabi"
+-
+-  define i32 @foo_bti() #0 {
+-  entry:
+-    ret i32 0
+-  }
+-
+-  define i32 @foo_pac() #0 {
+-  entry:
+-    ret i32 0
+-  }
+-
+-  define i32 @foo_pacbti() #0 {
+-  entry:
+-    ret i32 0
+-  }
+-
+-  define i32 @foo_setjmp() #0 {
+-  entry:
+-    ret i32 0
+-  if.then:
+-    ret i32 0
+-  }
+-
+-  define i32 @foo_sg() #0 {
+-  entry:
+-    ret i32 0
+-  }
+-
+-  declare i32 @setjmp(ptr noundef) #1
+-  declare void @longjmp(ptr noundef, i32 noundef) #2
+-
+-  attributes #0 = { "frame-pointer"="all" "target-cpu"="cortex-m55" "target-features"="+armv8.1-m.main" }
+-  attributes #1 = { nounwind returns_twice "frame-pointer"="all" "target-cpu"="cortex-m55" "target-features"="+armv8.1-m.main" }
+-  attributes #2 = { noreturn nounwind "frame-pointer"="all" "target-cpu"="cortex-m55" "target-features"="+armv8.1-m.main" }
+-
+-...
+----
+-name:            foo_bti
+-tracksRegLiveness: true
+-body:             |
+-  bb.0.entry:
+-    liveins: $r0
+-
+-    t2BTI
+-    renamable $r0, dead $cpsr = nsw tADDi8 killed renamable $r0, 1, 14 /* CC::al */, $noreg
+-    tBX_RET 14 /* CC::al */, $noreg, implicit killed $r0
+-
+-...
+-
+-# CHECK-LABEL: name:            foo_bti
+-# CHECK:       body:
+-# CHECK-NEXT:   bb.0.entry:
+-# CHECK-NEXT:     liveins: $r0
+-# CHECK-NEXT:     {{^ +$}}
+-# CHECK-NEXT:     t2BTI
+-
+----
+-name:            foo_pac
+-tracksRegLiveness: true
+-body:             |
+-  bb.0.entry:
+-    liveins: $r0, $lr, $r12
+-
+-    frame-setup t2PAC implicit-def $r12, implicit $lr, implicit $sp
+-    renamable $r2 = nsw t2ADDri $r0, 3, 14 /* CC::al */, $noreg, $noreg
+-    $sp = frame-setup t2STMDB_UPD $sp, 14 /* CC::al */, $noreg, killed $r7, killed $lr
+-    $r7 = frame-setup tMOVr killed $sp, 14 /* CC::al */, $noreg
+-    early-clobber $sp = frame-setup t2STR_PRE killed $r12, $sp, -4, 14 /* CC::al */, $noreg
+-    $r12, $sp = frame-destroy t2LDR_POST $sp, 4, 14 /* CC::al */, $noreg
+-    $sp = frame-destroy t2LDMIA_UPD $sp, 14 /* CC::al */, $noreg, def $r7, def $lr
+-    t2AUT implicit $r12, implicit $lr, implicit $sp
+-    tBX_RET 14 /* CC::al */, $noreg, implicit $r0
+-
+-...
+-
+-# CHECK-LABEL: name:            foo_pac
+-# CHECK:       body:
+-# CHECK-NEXT:    bb.0.entry:
+-# CHECK-NEXT:      liveins: $r0, $lr, $r12
+-# CHECK-NEXT:      {{^ +$}}
+-# CHECK-NEXT:      frame-setup t2PAC implicit-def $r12, implicit $lr, implicit $sp
+-
+----
+-name:            foo_pacbti
+-tracksRegLiveness: true
+-body:             |
+-  bb.0.entry:
+-    liveins: $r0, $lr, $r12
+-
+-    frame-setup t2PACBTI implicit-def $r12, implicit $lr, implicit $sp
+-    renamable $r2 = nsw t2ADDri $r0, 3, 14 /* CC::al */, $noreg, $noreg
+-    $sp = frame-setup t2STMDB_UPD $sp, 14 /* CC::al */, $noreg, killed $r7, killed $lr
+-    $r7 = frame-setup tMOVr killed $sp, 14 /* CC::al */, $noreg
+-    early-clobber $sp = frame-setup t2STR_PRE killed $r12, $sp, -4, 14 /* CC::al */, $noreg
+-    $r12, $sp = frame-destroy t2LDR_POST $sp, 4, 14 /* CC::al */, $noreg
+-    $sp = frame-destroy t2LDMIA_UPD $sp, 14 /* CC::al */, $noreg, def $r7, def $lr
+-    t2AUT implicit $r12, implicit $lr, implicit $sp
+-    tBX_RET 14 /* CC::al */, $noreg, implicit $r0
+-
+-...
+-
+-# CHECK-LABEL: name:            foo_pacbti
+-# CHECK:       body:
+-# CHECK-NEXT:    bb.0.entry:
+-# CHECK-NEXT:      liveins: $r0, $lr, $r12
+-# CHECK-NEXT:      {{^ +$}}
+-# CHECK-NEXT:      frame-setup t2PACBTI implicit-def $r12, implicit $lr, implicit $sp
+-
+----
+-name:            foo_setjmp
+-tracksRegLiveness: true
+-body:             |
+-  bb.0.entry:
+-    successors: %bb.1
+-    liveins: $lr
+-
+-    frame-setup tPUSH 14 /* CC::al */, $noreg, $r7, killed $lr, implicit-def $sp, implicit $sp
+-    $r7 = frame-setup tMOVr $sp, 14 /* CC::al */, $noreg
+-    $sp = frame-setup tSUBspi $sp, 40, 14 /* CC::al */, $noreg
+-    renamable $r0 = tMOVr $sp, 14 /* CC::al */, $noreg
+-    tBL 14 /* CC::al */, $noreg, @setjmp, csr_aapcs, implicit-def dead $lr, implicit $sp, implicit killed $r0, implicit-def $sp, implicit-def $r0
+-    t2BTI
+-    renamable $r2 = nsw t2ADDri $r0, 3, 14 /* CC::al */, $noreg, $noreg
+-    tCMPi8 killed renamable $r0, 0, 14 /* CC::al */, $noreg, implicit-def $cpsr
+-    t2IT 0, 2, implicit-def $itstate
+-    renamable $r0 = tMOVi8 $noreg, 0, 0 /* CC::eq */, $cpsr, implicit $itstate
+-    $sp = frame-destroy tADDspi $sp, 40, 0 /* CC::eq */, $cpsr, implicit $itstate
+-    frame-destroy tPOP_RET 0 /* CC::eq */, killed $cpsr, def $r7, def $pc, implicit killed $r0, implicit $sp, implicit killed $itstate
+-
+-  bb.1.if.then:
+-    renamable $r0 = tMOVr $sp, 14 /* CC::al */, $noreg
+-    renamable $r1, dead $cpsr = tMOVi8 1, 14 /* CC::al */, $noreg
+-    tBL 14 /* CC::al */, $noreg, @longjmp, csr_aapcs, implicit-def dead $lr, implicit $sp, implicit killed $r0, implicit killed $r1, implicit-def $sp
+-
+-...
+-
+-# CHECK-LABEL: name:            foo_setjmp
+-# CHECK:       body:
+-# CHECK:         tBL 14 /* CC::al */, $noreg, @setjmp, csr_aapcs, implicit-def dead $lr, implicit $sp, implicit killed $r0, implicit-def $sp, implicit-def $r0
+-# CHECK-NEXT:    t2BTI
+-
+----
+-name:            foo_sg
+-tracksRegLiveness: true
+-body:             |
+-  bb.0.entry:
+-    liveins: $r0
+-
+-    t2SG 14 /* CC::al */, $noreg
+-    renamable $r0, dead $cpsr = nsw tADDi8 killed renamable $r0, 1, 14 /* CC::al */, $noreg
+-    tBX_RET 14 /* CC::al */, $noreg, implicit killed $r0
+-
+-...
+-
+-# CHECK-LABEL: name:            foo_sg
+-# CHECK:       body:
+-# CHECK-NEXT:   bb.0.entry:
+-# CHECK-NEXT:     liveins: $r0
+-# CHECK-NEXT:     {{^ +$}}
+-# CHECK-NEXT:     t2SG
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
+--- a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
+@@ -68,7 +68,6 @@
+     name = "llvm_libc_macros_math_macros",
+     hdrs = ["include/llvm-libc-macros/math-macros.h"],
+     deps = [":llvm_libc_macros_limits_macros"],
+-    defines = ["__FP_LOGBNAN_MIN"],
+ )
+ 
+ libc_support_library(
+@@ -1000,8 +999,8 @@
+ 
+ libc_support_library(
+     name = "__support_osutil_quick_exit",
+-    hdrs = ["src/__support/OSUtil/quick_exit.h"],
+     srcs = ["src/__support/OSUtil/linux/quick_exit.cpp"],
++    hdrs = ["src/__support/OSUtil/quick_exit.h"],
+     deps = [
+         ":__support_osutil_syscall",
+     ],
