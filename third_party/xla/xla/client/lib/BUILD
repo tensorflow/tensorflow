@@ -5,6 +5,11 @@ load("@local_tsl//tsl:tsl.default.bzl", "filegroup")
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load("//xla/tests:build_defs.bzl", "generate_backend_suites", "xla_test")
 
+load(
+    "@local_config_rocm//rocm:build_defs.bzl",
+    "if_rocm_is_configured",
+)
+
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = internal_visibility(["//xla/client:friends"]),
@@ -553,7 +558,8 @@ xla_test(
     srcs = ["self_adjoint_eig_test.cc"],
     real_hardware_only = True,
     shard_count = 5,
-    tags = ["no_rocm", "optonly"],
+    tags = ["optonly"],
+    local_defines = if_rocm_is_configured(["TENSORFLOW_USE_ROCM=1",]),
     deps = [
         ":arithmetic",
         ":constants",
