@@ -29,7 +29,8 @@ from tensorflow.python.platform import test
 
 
 class DistributedSaveLoadFtTest(
-    data_service_test_base.TestBase, parameterized.TestCase):
+    data_service_test_base.TestBase, parameterized.TestCase
+):
   """Fault tolerance tests for distributed save/load."""
 
   @combinations.generate(
@@ -42,14 +43,19 @@ class DistributedSaveLoadFtTest(
               load_repetitions=[1, 2],
               sharding_policy=[
                   data_service_ops.ShardingPolicy.OFF,
-                  data_service_ops.ShardingPolicy.DYNAMIC])))
+                  data_service_ops.ShardingPolicy.DYNAMIC,
+              ],
+          ),
+      )
+  )
   def test_dispatcher_restart(
       self,
       num_workers: int,
       num_elements: int,
       save_repetitions: int,
       load_repetitions: int,
-      sharding_policy: data_service_ops.ShardingPolicy):
+      sharding_policy: data_service_ops.ShardingPolicy,
+  ):
     cluster = data_service_test_base.TestCluster(num_workers=num_workers)
     snapshot_dir = data_service_test_base.TempDir()
     dataset = dataset_ops.Dataset.range(num_elements)
@@ -57,7 +63,9 @@ class DistributedSaveLoadFtTest(
       dataset = dataset.repeat(save_repetitions)
     self.evaluate(
         distributed_save_op.distributed_save(
-            dataset, snapshot_dir.full_path, cluster.dispatcher_address()))
+            dataset, snapshot_dir.full_path, cluster.dispatcher_address()
+        )
+    )
 
     dataset = dataset_ops.Dataset.load(snapshot_dir.full_path, wait=True)
     if load_repetitions > 1:
@@ -66,7 +74,9 @@ class DistributedSaveLoadFtTest(
         data_service_ops.distribute(
             sharding_policy,
             cluster.dispatcher_address(),
-            max_outstanding_requests=1))
+            max_outstanding_requests=1,
+        )
+    )
 
     iterator = self.getNext(dataset)
     output = [self.evaluate(iterator())]
@@ -94,17 +104,22 @@ class DistributedSaveLoadFtTest(
               save_repetitions=[1, 2],
               load_repetitions=[1, 2],
               sharding_policy=[
-                  # TODO(b/297930782): Enable dynamic sharding. Need to fix the
-                  # race condition where workers restart before sending the
-                  # final task completion update.
-                  data_service_ops.ShardingPolicy.OFF])))
+                  # Enable dynamic sharding. Need to fix the race condition
+                  # where workers restart before sending the final task
+                  # completion update.
+                  data_service_ops.ShardingPolicy.OFF
+              ],
+          ),
+      )
+  )
   def test_dispatcher_and_worker_restart(
       self,
       num_elements: int,
       num_workers: int,
       save_repetitions: int,
       load_repetitions: int,
-      sharding_policy: data_service_ops.ShardingPolicy):
+      sharding_policy: data_service_ops.ShardingPolicy,
+  ):
     cluster = data_service_test_base.TestCluster(num_workers=num_workers)
     snapshot_dir = data_service_test_base.TempDir()
     dataset = dataset_ops.Dataset.range(num_elements)
@@ -112,7 +127,9 @@ class DistributedSaveLoadFtTest(
       dataset = dataset.repeat(save_repetitions)
     self.evaluate(
         distributed_save_op.distributed_save(
-            dataset, snapshot_dir.full_path, cluster.dispatcher_address()))
+            dataset, snapshot_dir.full_path, cluster.dispatcher_address()
+        )
+    )
 
     dataset = dataset_ops.Dataset.load(snapshot_dir.full_path, wait=True)
     if load_repetitions > 1:
@@ -121,7 +138,9 @@ class DistributedSaveLoadFtTest(
         data_service_ops.distribute(
             sharding_policy,
             cluster.dispatcher_address(),
-            max_outstanding_requests=1))
+            max_outstanding_requests=1,
+        )
+    )
 
     iterator = self.getNext(dataset)
     output = [self.evaluate(iterator())]
@@ -137,7 +156,8 @@ class DistributedSaveLoadFtTest(
       repetitions = save_repetitions * load_repetitions
       self.assertContainsSubsequence(
           sorted(output),
-          sorted(list(range(num_elements)) * repetitions * num_workers))
+          sorted(list(range(num_elements)) * repetitions * num_workers),
+      )
 
   @combinations.generate(
       combinations.times(
@@ -146,18 +166,25 @@ class DistributedSaveLoadFtTest(
               load_repetitions=[1, 2],
               sharding_policy=[
                   data_service_ops.ShardingPolicy.OFF,
-                  data_service_ops.ShardingPolicy.DYNAMIC])))
+                  data_service_ops.ShardingPolicy.DYNAMIC,
+              ],
+          ),
+      )
+  )
   def test_add_worker_midjob(
       self,
       load_repetitions: int,
-      sharding_policy: data_service_ops.ShardingPolicy):
+      sharding_policy: data_service_ops.ShardingPolicy,
+  ):
     num_elements = 2 * multiprocessing.cpu_count() + 100
     cluster = data_service_test_base.TestCluster(num_workers=1)
     snapshot_dir = data_service_test_base.TempDir()
     dataset = dataset_ops.Dataset.range(num_elements)
     self.evaluate(
         distributed_save_op.distributed_save(
-            dataset, snapshot_dir.full_path, cluster.dispatcher_address()))
+            dataset, snapshot_dir.full_path, cluster.dispatcher_address()
+        )
+    )
 
     dataset = dataset_ops.Dataset.load(snapshot_dir.full_path, wait=True)
     dataset = dataset.repeat(load_repetitions)
@@ -165,7 +192,9 @@ class DistributedSaveLoadFtTest(
         data_service_ops.distribute(
             sharding_policy,
             cluster.dispatcher_address(),
-            max_outstanding_requests=1))
+            max_outstanding_requests=1,
+        )
+    )
     expected = list(range(num_elements)) * load_repetitions
     if sharding_policy == data_service_ops.ShardingPolicy.OFF:
       expected *= 2
@@ -191,25 +220,34 @@ class DistributedSaveLoadFtTest(
               load_repetitions=[1, 2],
               sharding_policy=[
                   data_service_ops.ShardingPolicy.OFF,
-                  data_service_ops.ShardingPolicy.DYNAMIC])))
+                  data_service_ops.ShardingPolicy.DYNAMIC,
+              ],
+          ),
+      )
+  )
   def test_new_dataset_after_restart(
       self,
       num_workers: int,
       num_elements: int,
       load_repetitions: int,
-      sharding_policy: data_service_ops.ShardingPolicy):
+      sharding_policy: data_service_ops.ShardingPolicy,
+  ):
     cluster = data_service_test_base.TestCluster(num_workers=num_workers)
     snapshot_dir = data_service_test_base.TempDir()
     dataset = dataset_ops.Dataset.range(num_elements)
     self.evaluate(
         distributed_save_op.distributed_save(
-            dataset, snapshot_dir.full_path, cluster.dispatcher_address()))
+            dataset, snapshot_dir.full_path, cluster.dispatcher_address()
+        )
+    )
 
     dataset = dataset_ops.Dataset.load(snapshot_dir.full_path, wait=True)
     dataset = dataset.repeat(load_repetitions)
     dataset = dataset.apply(
         data_service_ops.distribute(
-            sharding_policy, cluster.dispatcher_address()))
+            sharding_policy, cluster.dispatcher_address()
+        )
+    )
 
     expected = list(range(num_elements)) * load_repetitions
     if sharding_policy == data_service_ops.ShardingPolicy.OFF:

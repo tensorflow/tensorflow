@@ -290,7 +290,7 @@ absl::Status SnapshotManager::ReadOnDiskMetadata()
   return absl::OkStatus();
 }
 
-// TODO(b/297930782): Refactor this method.
+// TODO(yangchen): Refactor this method.
 absl::Status SnapshotManager::ReadOnDiskStreams()
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   std::string streams_path = StreamsDirectory(path_);
