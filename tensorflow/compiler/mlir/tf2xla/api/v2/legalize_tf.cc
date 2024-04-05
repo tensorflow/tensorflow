@@ -185,7 +185,7 @@ tsl::StatusOr<tensorflow::XlaCompilationResult> LegalizeMlirToHlo(
   }
 
   VLOG(1) << "Failed to compile MLIR computation to XLA HLO using Combined "
-             "MLIR and XlaBuilder Bridge. Falling back to MLIR tf2xla Bridge. "
+             "MLIR and XlaBuilder Bridge. Failed to lower to hlo."
           << combined_bridge_status.status();
   tsl::error_logging::Log(kBridgeComponent, "TFXLA_API_V2_COMBINED_BRIDGE",
                           combined_bridge_status.status().ToString())
