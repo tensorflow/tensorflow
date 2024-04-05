@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/service/gpu/ir_emitter_triton.h"
 
-#include <cstdint>
 #include <iterator>
 #include <limits>
 #include <memory>
@@ -42,7 +41,6 @@ limitations under the License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/matmul_utils.h"
-#include "xla/service/gpu/model/indexing_test_utils.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
 #include "xla/service/gpu/triton_fusion_analysis.h"
 #include "xla/service/pattern_matcher.h"
@@ -149,31 +147,6 @@ absl::Status TritonFilecheckTest::CreateTritonIrAndFileCheck(
     return absl::InternalError("FileCheck failed.");
   }
   return absl::OkStatus();
-}
-
-TEST_F(TritonTest, ComputeProgramIdToOutputTileIndexing) {
-  mlir::MLIRContext context;
-
-  auto compute_map = [&](absl::Span<const int64_t> dimensions,
-                         absl::Span<const int64_t> tile_sizes) {
-    return ComputeProgramIdToOutputTileIndexing(dimensions, tile_sizes,
-                                                &context);
-  };
-
-  EXPECT_THAT(compute_map(/*dimensions=*/{9, 17}, /*tile_sizes=*/{5, 10}),
-              MatchIndexingMap(R"(
-    (d0) -> ((d0 floordiv 2) * 5, (d0 mod 2) * 10)
-    domain:
-    d0 in [0, 3]
-  )"));
-
-  EXPECT_THAT(
-      compute_map(/*dimensions=*/{8, 16, 32}, /*tile_sizes=*/{1, 1, 32}),
-      MatchIndexingMap(R"(
-    (d0) -> (d0 floordiv 16, d0 mod 16, 0)
-    domain:
-    d0 in [0, 127]
-  )"));
 }
 
 TEST_F(TritonFilecheckTest, TestGemm) {

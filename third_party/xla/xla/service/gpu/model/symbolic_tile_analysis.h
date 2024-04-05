@@ -23,8 +23,10 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/service/gpu/model/indexing_map.h"
 #include "xla/service/gpu/model/symbolic_tiled_hlo_instruction.h"
 #include "xla/service/instruction_fusion.h"
 
@@ -64,6 +66,13 @@ class SymbolicTileAnalysis {
   std::vector<int64_t> TileStrides(
       const SymbolicTiledHloInstruction& tiled_hlo) const;
 
+  // Computes the indexing map from block id to tile offset of the tiled HLO
+  // instruction. The indexing map has the following form:
+  //
+  // (block_id) -> (tile_offset0, tile_offset1, ...)
+  absl::StatusOr<IndexingMap> ComputeBlockIdToTileOffsetIndexing(
+      const SymbolicTiledHloInstruction& tiled_hlo) const;
+
   // Populates input tile sizes. This is a prerequisite in order to extract
   // concrete values using `TileOffsets`, `TileSizes`, and `TileStrides`.
   void SetTileSizes(std::vector<int64_t> sizes);
@@ -99,6 +108,10 @@ class SymbolicTileAnalysis {
   // computation. The order and type of parameters are as explained in the
   // documentation of `SymbolicTile`.
   std::optional<std::vector<int64_t>> tile_parameters_;
+
+  // Indexing map from block id to root tile offset. Computed from the tile
+  // parameters.
+  std::optional<IndexingMap> block_id_to_root_tile_offset_;
 };
 
 }  // namespace gpu
