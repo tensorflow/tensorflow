@@ -30,8 +30,6 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
-#include "nvidia/include/NVGPUToLLVM/NVGPUToLLVMPass.h"
-#include "nvidia/include/TritonNVIDIAGPUToLLVM/Passes.h"
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -54,6 +52,7 @@ limitations under the License.
 #include "llvm/TargetParser/Triple.h"
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"  // from @llvm-project
 #include "mlir/Conversion/ArithToLLVM/ArithToLLVM.h"  // from @llvm-project
+#include "mlir/Conversion/ControlFlowToLLVM/ControlFlowToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/IndexToLLVM/IndexToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"  // from @llvm-project
 #include "mlir/Dialect/Affine/IR/AffineOps.h"  // from @llvm-project
@@ -90,6 +89,7 @@ limitations under the License.
 #include "mlir/Target/LLVMIR/Dialect/Builtin/BuiltinToLLVMIRTranslation.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Dialect/NVVM/NVVMToLLVMIRTranslation.h"  // from @llvm-project
+#include "mlir/Target/LLVMIR/Dialect/ROCDL/ROCDLToLLVMIRTranslation.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Export.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "xla/autotuning.pb.h"
@@ -139,8 +139,6 @@ limitations under the License.
 #include "triton/Conversion/TritonToTritonGPU/TritonToTritonGPUPass.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
 #include "triton/Dialect/Triton/IR/Types.h"
-#include "triton/Dialect/Triton/Transforms/Passes.h"
-#include "triton/Dialect/TritonGPU/Transforms/Passes.h"
 #include "triton/Dialect/TritonNvidiaGPU/Transforms/Passes.h"
 
 namespace xla {
@@ -423,11 +421,15 @@ absl::StatusOr<Value> EmitElementwise(ImplicitLocOpBuilder& b,
       mlir::getElementTypeOrSelf(inputs[0]).isF64()) {
     auto dev_fn_id = GetTargetDeviceFunctionID(hlo.opcode());
     if (dev_fn_id.ok()) {
+      llvm::Triple triple("nvptx64-unknown-unknown");
+      if (std::holds_alternative<se::RocmComputeCapability>(
+              device_info.gpu_compute_capability())) {
+        triple.setTriple("amdgcn-unknown-unknown");
+      }
       return b.create<mt::ExternElementwiseOp>(
           inputs[0].getType(), inputs, "libdevice", libdevice_path,
           ObtainDeviceFunctionName(dev_fn_id.value(),
-                                   hlo.shape().element_type(),
-                                   llvm::Triple("nvptx64-unknown-unknown")),
+                                   hlo.shape().element_type(), triple),
           /*pure=*/true);
     }
   }
@@ -930,81 +932,6 @@ absl::StatusOr<Value> EmitScope(
     VLOG(8) << "Emitted " << hlo->ToString(HloPrintOptions::ShortParsable());
   }
   return values[instructions.back()];
-}
-
-// Create Triton pipeline.
-//
-// `out_cluster_info` must be kept alive at least until pm.run() is called.
-// It should be read after that. We have to pass the cluster dims to
-// LaunchDimensions. Triton currently uses this as an out-parameter to return
-// the cluster dims determined based on `config.num_ctas` and a heuristic. There
-// are some signs that show that this was intended to be used as an in-out
-// parameter which would give a hint to Triton which cluster dims we prefer to
-// use, but that's not the case currently.
-absl::Status CreateTritonPipeline(
-    mlir::OpPassManager& pm, const se::CudaComputeCapability& cc,
-    const TritonGemmConfig& config,
-    mt::nvidia_gpu::ClusterInfo& out_cluster_info) {
-  const int ccAsInt = cc.major * 10 + cc.minor;
-  const int threadsPerWarp = 32;
-
-  // Based on make_ttir() in
-  // @triton//:third_party/nvidia/backend/compiler.py
-  pm.addPass(mlir::createInlinerPass());
-  pm.addPass(mt::createRewriteTensorPointerPass());
-  pm.addPass(mt::createCombineOpsPass());
-  pm.addPass(mlir::createCanonicalizerPass());
-  pm.addPass(mt::createReorderBroadcastPass());
-  pm.addPass(mlir::createCSEPass());
-  pm.addPass(mlir::createLoopInvariantCodeMotionPass());
-  pm.addPass(mlir::createSymbolDCEPass());
-
-  // Based on make_ttgir() in
-  // @triton//:third_party/nvidia/backend/compiler.py
-  pm.addPass(mt::createConvertTritonToTritonGPUPass(
-      config.num_warps, threadsPerWarp, config.num_ctas, ccAsInt));
-  pm.addPass(mt::gpu::createCoalescePass());
-  pm.addPass(mlir::createTritonNvidiaGPUPlanCTAPass(&out_cluster_info));
-  pm.addPass(mt::gpu::createRemoveLayoutConversionsPass());
-  pm.addPass(mt::gpu::createOptimizeThreadLocalityPass());
-  pm.addPass(mt::gpu::createAccelerateMatmulPass(ccAsInt));
-  pm.addPass(mt::gpu::createRemoveLayoutConversionsPass());
-  pm.addPass(mt::gpu::createOptimizeDotOperandsPass());
-  pm.addPass(mlir::createCSEPass());
-
-  pm.addPass(mt::gpu::createPipelinePass(config.num_stages, config.num_warps,
-                                         config.num_ctas, ccAsInt));
-
-  if (!cc.IsAtLeastHopper()) {
-    pm.addPass(mt::gpu::createPrefetchPass());
-  }
-
-  pm.addPass(mt::gpu::createOptimizeDotOperandsPass());
-  pm.addPass(mt::gpu::createRemoveLayoutConversionsPass());
-  pm.addPass(mt::gpu::createReduceDataDuplicationPass());
-  pm.addPass(mt::gpu::createReorderInstructionsPass());
-  pm.addPass(mlir::createCSEPass());
-  pm.addPass(mlir::createSymbolDCEPass());
-  if (cc.IsAtLeastHopper()) {
-    pm.addPass(mlir::createTritonNvidiaGPUFenceInsertionPass(ccAsInt));
-  }
-  pm.addPass(mlir::createCanonicalizerPass());
-
-  // Based on make_llir() in
-  // @triton//:third_party/nvidia/backend/compiler.py
-  pm.addPass(mt::gpu::createDecomposeUnsupportedConversionsPass());
-  pm.addPass(mlir::createConvertSCFToCFPass());
-  pm.addPass(mlir::createConvertIndexToLLVMPass());
-  pm.addPass(mt::gpu::createAllocateSharedMemoryPass());
-  pm.addPass(mt::createConvertTritonGPUToLLVMPass(ccAsInt));
-  pm.addPass(mt::createConvertNVGPUToLLVMPass());
-  pm.addPass(mlir::createArithToLLVMConversionPass());
-  pm.addPass(mlir::createCanonicalizerPass());
-  pm.addPass(mlir::createCSEPass());
-  pm.addPass(mlir::createSymbolDCEPass());
-  // Note: translateTritonGPUToLLVMIR adds line info with LLVMDIScopePass.
-
-  return absl::OkStatus();
 }
 
 // Extract additional attributes from an LLVM function that are not passed
@@ -2606,6 +2533,7 @@ absl::StatusOr<std::unique_ptr<llvm::Module>> TranslateLLVMToLLVMIR(
   mlir::registerBuiltinDialectTranslation(registry);
   mlir::registerLLVMDialectTranslation(registry);
   mlir::registerNVVMDialectTranslation(registry);
+  mlir::registerROCDLDialectTranslation(registry);
   module->getContext()->appendDialectRegistry(registry);
 
   std::unique_ptr<llvm::Module> llvmModule =
@@ -2629,15 +2557,6 @@ absl::StatusOr<std::unique_ptr<llvm::Module>> TranslateLLVMToLLVMIR(
 
   return llvmModule;
 }
-
-namespace {
-
-std::string GetLibdevicePath(const HloModuleConfig& hlo_config) {
-  return nvptx::LibDevicePath(
-      hlo_config.debug_options().xla_gpu_cuda_data_dir());
-}
-
-}  // namespace
 
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
     const TritonFusionAnalysis& analysis, absl::string_view fn_name,
@@ -2676,9 +2595,9 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
   fn.addEntryBlock();
   b.setInsertionPointToStart(&fn.front());
 
-  TF_RETURN_IF_ERROR(
-      ir_emitter(b, GetLibdevicePath(hlo_computation->parent()->config()),
-                 device_info, analysis, hlo_computation, fn, config));
+  TF_RETURN_IF_ERROR(ir_emitter(
+      b, GetLibdevicePath(hlo_computation->parent()->config(), device_info),
+      device_info, analysis, hlo_computation, fn, config));
 
   b.create<mt::ReturnOp>(loc);
 
@@ -2699,13 +2618,16 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
 
 absl::StatusOr<TritonWrapperResult> TritonWrapper(
     const TritonFusionAnalysis& analysis, absl::string_view fn_name,
-    const HloComputation* hlo_computation, const se::CudaComputeCapability& cc,
+    const HloComputation* hlo_computation, const se::GpuComputeCapability& cc,
     const se::DeviceDescription& device_info, const TritonGemmConfig& config,
     llvm::Module* llvm_module, TritonIrEmitter ir_emitter,
     mlir::MLIRContext& mlir_context) {
-  if (!cc.IsAtLeastAmpere()) {
-    return absl::FailedPreconditionError(
-        "Triton support is only enabled for Ampere GPUs and up.");
+  if (std::holds_alternative<se::CudaComputeCapability>(cc)) {
+    auto ccCuda = std::get<se::CudaComputeCapability>(cc);
+    if (!ccCuda.IsAtLeastAmpere()) {
+      return absl::FailedPreconditionError(
+          "Triton support is only enabled for Ampere GPUs and up.");
+    }
   }
 
   auto debug_options = GetDebugOptionsFromFlags();
@@ -2733,13 +2655,16 @@ absl::StatusOr<TritonWrapperResult> TritonWrapper(
 // TODO(b/325220878): Replace TritonGemmConfig with a more generic abstraction.
 absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
     const HloModuleConfig& hlo_config, absl::string_view hlo_module_name,
-    const se::CudaComputeCapability& cc,
+    const se::GpuComputeCapability& cc,
     const se::DeviceDescription& device_info, const TritonGemmConfig& config,
     mlir::ModuleOp triton_module, llvm::Module* llvm_module,
     mlir::MLIRContext& mlir_context) {
-  if (!cc.IsAtLeastAmpere()) {
-    return absl::FailedPreconditionError(
-        "Triton support is only enabled for Ampere GPUs and up.");
+  if (std::holds_alternative<se::CudaComputeCapability>(cc)) {
+    auto ccCuda = std::get<se::CudaComputeCapability>(cc);
+    if (!ccCuda.IsAtLeastAmpere()) {
+      return absl::FailedPreconditionError(
+          "Triton support is only enabled for Ampere GPUs and up.");
+    }
   }
 
   bool should_verify =
@@ -2813,7 +2738,8 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
       triton_module->getAttrOfType<mlir::IntegerAttr>("triton_gpu.shared")
           .getInt();
   VLOG(2) << "Shared memory usage: " << shared_mem_bytes << " B";
-  if (shared_mem_bytes > device_info.shared_memory_per_block_optin()) {
+  if (std::holds_alternative<se::CudaComputeCapability>(cc) &&
+      shared_mem_bytes > device_info.shared_memory_per_block_optin()) {
     return absl::ResourceExhaustedError(absl::StrFormat(
         "Shared memory size limit exceeded: requested %d, available: %d",
         shared_mem_bytes, device_info.shared_memory_per_block_optin()));
@@ -2822,7 +2748,7 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<llvm::Module> ll_triton_module,
       TranslateLLVMToLLVMIR(&llvm_module->getContext(), triton_module,
-                            GetLibdevicePath(hlo_config)));
+                            GetLibdevicePath(hlo_config, device_info)));
   VLogModule(5, *ll_triton_module);
   if (should_verify) {
     VerifyModule(*ll_triton_module);
