@@ -57,10 +57,12 @@ const absl::string_view kLowPriorityPaddingWithMaxBatchSizeAttrValue =
     "low_priority_padding_with_max_batch_size";
 const absl::string_view kLowPriorityPaddingWithNextAllowedBatchSizeAttrValue =
     "low_priority_padding_with_next_allowed_batch_size";
+const absl::string_view kPriorityIsolationAttrValue = "priority_isolation";
 
 enum class MixedPriorityBatchingPolicy {
   kLowPriorityPaddingWithMaxBatchSize,
-  kLowPriorityPaddingWithNextAllowedBatchSize
+  kLowPriorityPaddingWithNextAllowedBatchSize,
+  kPriorityIsolation
 };
 
 absl::StatusOr<MixedPriorityBatchingPolicy> GetMixedPriorityBatchingPolicy(

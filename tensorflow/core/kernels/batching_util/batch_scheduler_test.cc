@@ -68,7 +68,10 @@ INSTANTIATE_TEST_SUITE_P(
         std::make_tuple(
             /*attr_name=*/kLowPriorityPaddingWithNextAllowedBatchSizeAttrValue,
             /*policy=*/MixedPriorityBatchingPolicy::
-                kLowPriorityPaddingWithNextAllowedBatchSize)));
+                kLowPriorityPaddingWithNextAllowedBatchSize),
+        std::make_tuple(
+            /*attr_name=*/kPriorityIsolationAttrValue,
+            /*policy=*/MixedPriorityBatchingPolicy::kPriorityIsolation)));
 
 class FakeTask : public BatchTask {
  public:
