@@ -3538,7 +3538,7 @@ LogicalResult ConvertToHloModule::LowerRegionAsComputation(
 }
 
 // Runs the PrepareForExport pass on the ModuleOp.
-xla::Status PrepareForExport(mlir::ModuleOp module) {
+absl::Status PrepareForExport(mlir::ModuleOp module) {
   bool hasShapeOps = false;
   module.walk([&](Operation* op) {
     hasShapeOps |= isa<shape::ShapeDialect>(op->getDialect());
@@ -3562,9 +3562,10 @@ xla::Status PrepareForExport(mlir::ModuleOp module) {
 
 }  // namespace
 
-xla::Status ConvertMlirHloToHlo(mlir::ModuleOp module, xla::HloProto* hlo_proto,
-                                bool use_tuple_args, bool return_tuple,
-                                MlirToHloConversionOptions options) {
+absl::Status ConvertMlirHloToHlo(mlir::ModuleOp module,
+                                 xla::HloProto* hlo_proto, bool use_tuple_args,
+                                 bool return_tuple,
+                                 MlirToHloConversionOptions options) {
   // To support the ongoing migration of XLA's compiler interface from MHLO
   // to StableHLO, we've inserted this fallback to provide support for backends
   // which are converting incoming ModuleOps directly to HLO.
@@ -3637,10 +3638,10 @@ xla::Status ConvertMlirHloToHlo(mlir::ModuleOp module, xla::HloProto* hlo_proto,
   return absl::OkStatus();
 }
 
-xla::Status BuildHloFromMlirHlo(mlir::Block& block, xla::XlaBuilder& builder,
-                                llvm::ArrayRef<xla::XlaOp> xla_params,
-                                std::vector<xla::XlaOp>& returns,
-                                MlirToHloConversionOptions options) {
+absl::Status BuildHloFromMlirHlo(mlir::Block& block, xla::XlaBuilder& builder,
+                                 llvm::ArrayRef<xla::XlaOp> xla_params,
+                                 std::vector<xla::XlaOp>& returns,
+                                 MlirToHloConversionOptions options) {
   auto module = block.getParentOp()->getParentOfType<mlir::ModuleOp>();
   TF_RETURN_IF_ERROR(PrepareForExport(module));
   ConvertToHloModule converter(module, builder,

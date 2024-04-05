@@ -749,7 +749,7 @@ class PjRtCApiLoadedExecutable : public PjRtLoadedExecutable {
   // Gets common Execute_Args between Execute, ExecuteSharded and
   // ExecutePortable. device_complete_events in the return is set if the input
   // device_complete_events has value.
-  xla::StatusOr<PJRT_LoadedExecutable_Execute_Args> GetCommonExecuteArgs(
+  absl::StatusOr<PJRT_LoadedExecutable_Execute_Args> GetCommonExecuteArgs(
       absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
       const ExecuteOptions& options, PJRT_ExecuteOptions& c_options,
       std::vector<std::vector<PJRT_Buffer*>>& c_argument_lists_storage,
