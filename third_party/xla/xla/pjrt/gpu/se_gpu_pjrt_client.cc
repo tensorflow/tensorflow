@@ -1130,6 +1130,12 @@ absl::StatusOr<std::string> StreamExecutorGpuTopologyDescription::Serialize()
   return result;
 }
 
+absl::StatusOr<Layout> StreamExecutorGpuTopologyDescription::GetDefaultLayout(
+    PrimitiveType element_type, absl::Span<const int64_t> dims) const {
+  Shape shape = ShapeUtil::MakeShape(element_type, dims);
+  return LayoutUtil::GetWithDefaultLayout(shape).layout();
+}
+
 std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> BuildLocalDevices(
     std::map<int, std::unique_ptr<LocalDeviceState>> local_device_states,
     int node_id) {

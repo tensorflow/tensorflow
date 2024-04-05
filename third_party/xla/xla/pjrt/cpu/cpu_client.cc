@@ -285,6 +285,12 @@ absl::string_view TfrtCpuDeviceDescription::ToString() const {
                                     machine_attributes);
 }
 
+absl::StatusOr<Layout> TfrtCpuTopologyDescription::GetDefaultLayout(
+    PrimitiveType element_type, absl::Span<const int64_t> dims) const {
+  Shape shape = ShapeUtil::MakeShape(element_type, dims);
+  return LayoutUtil::GetWithDefaultLayout(shape).layout();
+}
+
 absl::StatusOr<std::string> TfrtCpuTopologyDescription::Serialize() const {
   std::string result;
   if (!tsl::SerializeToStringDeterministic(cpu_topology_.ToProto(), &result)) {
