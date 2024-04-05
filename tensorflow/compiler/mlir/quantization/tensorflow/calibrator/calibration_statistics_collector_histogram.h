@@ -18,7 +18,9 @@ limitations under the License.
 #include <cstdint>
 #include <deque>
 #include <optional>
+#include <utility>
 
+#include "absl/types/span.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/calibrator/calibration_statistics.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/calibrator/calibration_statistics_collector_base.h"
@@ -35,34 +37,25 @@ class CalibrationStatisticsCollectorHistogram
   explicit CalibrationStatisticsCollectorHistogram(
       const CalibrationOptions& calib_opts) {
     ClearData();
-    num_bins_ = calib_opts.calibration_parameters().initial_num_bins();
   }
 
   void ClearData() override;
 
-  void Collect(const float* data, unsigned int N) override;
+  void Collect(float min, float max,
+               absl::Span<const int64_t> histogram) override;
 
   std::optional<CalibrationStatistics> GetStatistics() const override;
 
  private:
-  // Returns expanded histogram's index. If idx < 0, then expand the histogram
-  // to the left. If idx >= hist_freq_.size(), then expand the histogram to the
-  // right.
-  int ExpandHistogramIfNeeded(int idx);
-
-  // Calculate the histogram index of value and if index of value is exceeds the
-  // range of histogram, then this function extends hist_freq_ and updates
-  // lower_bound_. This function returns the expanded histogram's index.
-  int GetHistogramIndex(float value);
+  // Expands the histogram so the lower_bound and upper_bound can fit in the
+  // histogram. Returns the indexes associated to those values.
+  std::pair<int32_t, int32_t> ExpandHistogramIfNeeded(float lower_bound,
+                                                      float upper_bound);
 
   // hist_freq_[i] saves frequency of range [bins[i], bins[i + 1]).
   // bins[i]     = lower_bound_ + bin_width_ * i
   // bins[i + 1] = lower_bound_ + bin_width_ * (i + 1)
-  std::deque<int64_t> hist_freq_;
-
-  // The number of bins when histogram is initialized. It can be increased
-  // because histogram is dynamically expanded by sample inputs.
-  int num_bins_;
+  std::deque<float> hist_freq_;
 
   // Width of bin
   float bin_width_;

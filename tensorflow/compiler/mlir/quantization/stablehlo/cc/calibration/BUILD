@@ -99,3 +99,20 @@ tf_cc_test(
         "@local_tsl//tsl/platform:status_matchers",
     ],
 )
+
+cc_library(
+    name = "calibration_parameters",
+    srcs = [],
+    hdrs = ["calibration_parameters.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = ["//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc"],
+)
+
+tf_cc_test(
+    name = "calibration_parameters_test",
+    srcs = ["calibration_parameters_test.cc"],
+    deps = [
+        ":calibration_parameters",
+        "@com_google_googletest//:gtest_main",
+    ],
+)

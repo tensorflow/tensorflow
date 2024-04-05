@@ -411,6 +411,7 @@ cc_library(
         "//tensorflow/compiler/mlir/quantization/common/quantization_lib",
         "//tensorflow/compiler/mlir/quantization/common/quantization_lib:quantization_config",
         "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
+        "//tensorflow/compiler/mlir/quantization/stablehlo/cc/calibration:calibration_parameters",
         "//tensorflow/compiler/mlir/quantization/tensorflow/cc:const_op_size",
         "//tensorflow/compiler/mlir/quantization/tensorflow/cc:constant_fold",
         "//tensorflow/compiler/mlir/quantization/tensorflow/cc:quantization_unit_loc",

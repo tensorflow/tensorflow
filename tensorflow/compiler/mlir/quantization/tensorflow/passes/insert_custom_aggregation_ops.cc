@@ -268,14 +268,20 @@ class AddCustomAggregationOp : public RewritePattern {
                   calib_opts_.calibration_parameters().max_percentile())),
       };
 
+      SmallVector<Type, 4> output_types{
+          value.getType(),
+          RankedTensorType::get({}, rewriter.getF32Type()),
+          RankedTensorType::get({}, rewriter.getF32Type()),
+          UnrankedTensorType::get(rewriter.getI64Type()),
+      };
+
       // Insert custom aggregation op between operand and operator.
       rewriter.setInsertionPointAfterValue(value);
       Operation *aggregator_op = rewriter.create<TF::CustomAggregatorOp>(
-          op->getLoc(), value.getType(), value, attributes);
+          op->getLoc(), output_types, value, attributes);
 
       Value aggregator_op_result = aggregator_op->getOpResult(0);
-      value.replaceAllUsesWith(aggregator_op_result);
-      aggregator_op->replaceUsesOfWith(aggregator_op_result, value);
+      value.replaceAllUsesExcept(aggregator_op_result, aggregator_op);
     }
 
     return success();

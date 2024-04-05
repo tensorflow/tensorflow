@@ -6211,25 +6211,25 @@ class CalibrationOptionsTest(quantize_model_test_base.QuantizedModelTest):
               stablehlo_quant_config_pb2.CalibrationOptions(
                   calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_PERCENTILE,
                   calibration_parameters=stablehlo_quant_config_pb2.CalibrationOptions.CalibrationParameters(
-                      initial_num_bins=10,
+                      initial_num_bins=32,
                   ),
               ),
               stablehlo_quant_config_pb2.CalibrationOptions(
                   calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_MSE_BRUTEFORCE,
                   calibration_parameters=stablehlo_quant_config_pb2.CalibrationOptions.CalibrationParameters(
-                      initial_num_bins=10,
+                      initial_num_bins=32,
                   ),
               ),
               stablehlo_quant_config_pb2.CalibrationOptions(
                   calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_MSE_MAX_FREQUENCY,
                   calibration_parameters=stablehlo_quant_config_pb2.CalibrationOptions.CalibrationParameters(
-                      initial_num_bins=10,
+                      initial_num_bins=32,
                   ),
               ),
               stablehlo_quant_config_pb2.CalibrationOptions(
                   calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_MSE_SYMMETRIC,
                   calibration_parameters=stablehlo_quant_config_pb2.CalibrationOptions.CalibrationParameters(
-                      initial_num_bins=10,
+                      initial_num_bins=32,
                   ),
               ),
           ],

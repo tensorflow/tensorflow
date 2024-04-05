@@ -15,9 +15,11 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/quantization/tensorflow/calibrator/calibration_statistics_collector_min_max.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <limits>
 #include <optional>
 
+#include "absl/types/span.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/calibrator/calibration_statistics.pb.h"
 
 namespace tensorflow {
@@ -33,18 +35,12 @@ void CalibrationStatisticsCollectorMinMax::ClearData() {
   min_max_statistics_.set_global_max(std::numeric_limits<float>::lowest());
 }
 
-void CalibrationStatisticsCollectorMinMax::Collect(const float *data,
-                                                   const unsigned int N) {
-  float input_min = min_max_statistics_.global_min();
-  float input_max = min_max_statistics_.global_max();
-
-  for (int i = 0; i < N; ++i) {
-    input_min = std::min(input_min, data[i]);
-    input_max = std::max(input_max, data[i]);
-  }
-
-  min_max_statistics_.set_global_min(input_min);
-  min_max_statistics_.set_global_max(input_max);
+void CalibrationStatisticsCollectorMinMax::Collect(
+    const float min, const float max, absl::Span<const int64_t> histogram) {
+  min_max_statistics_.set_global_min(
+      std::min(min_max_statistics_.global_min(), min));
+  min_max_statistics_.set_global_max(
+      std::max(min_max_statistics_.global_max(), max));
 }
 
 std::optional<CalibrationStatistics>
