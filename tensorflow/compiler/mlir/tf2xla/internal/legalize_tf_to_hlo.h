@@ -29,7 +29,7 @@ namespace internal {
 
 // Legalize the given MLIR module to XLA HLO using a combination of the MLIR
 // Bridge and XlaBuilder
-tsl::StatusOr<XlaCompilationResult> LegalizeTfToHlo(
+absl::StatusOr<XlaCompilationResult> LegalizeTfToHlo(
     const tpu::MlirToHloArgs& computation,
     const tpu::TPUCompileMetadataProto& metadata, bool use_tuple_args,
     llvm::StringRef device_type,

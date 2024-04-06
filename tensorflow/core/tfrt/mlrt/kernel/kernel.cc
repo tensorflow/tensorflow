@@ -705,7 +705,7 @@ void CreateOp::Invoke() {
                     node_def.input().size(),
                     [&](tensorflow::AttrValueMap* attr_value_map) {
                       *attr_value_map = node_def.attr();
-                      return OkStatus();
+                      return absl::OkStatus();
                     },
                     fallback_request_state.device_manager(),
                     fallback_request_state.process_function_library_runtime())

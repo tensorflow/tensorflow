@@ -149,7 +149,7 @@ void BatchFunctionOp::Invoke() {
     auto ptr_value = absl::bit_cast<int64_t>(f);
     (*attr_value_map)["opaque_function_handle"].set_i(ptr_value);
 
-    return OkStatus();
+    return absl::OkStatus();
   };
 
   tfrt::Location loc;
@@ -194,14 +194,14 @@ class MlrtBatchResource : public tensorflow::serving::BatchResourceBase {
 
   // This can only be called in Compute() and ComputeAsync() because thread
   // local is used to pass the context.
-  static StatusOr<std::unique_ptr<BatchTask>> CreateBatchTask(
+  static absl::StatusOr<std::unique_ptr<BatchTask>> CreateBatchTask(
       OpKernelContext*) {
     return {std::make_unique<MlrtBatchTask>(GetBatchFunctionMlrtContext())};
   }
 
   // This can only be called in Compute() and ComputeAsync() because thread
   // local is used to pass the context.
-  static StatusOr<tfrt::ResourceContext*> GetClientGraphResourceContext(
+  static absl::StatusOr<tfrt::ResourceContext*> GetClientGraphResourceContext(
       OpKernelContext*) {
     const auto& context =
         GetBatchFunctionMlrtContext()->GetUserContext<Context>();
@@ -240,7 +240,7 @@ class MlrtBatchResource : public tensorflow::serving::BatchResourceBase {
             options.low_priority_allowed_batch_sizes,
             options.mixed_priority_batching_policy),
         options.allowed_batch_sizes));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   static Status Create(
@@ -262,7 +262,7 @@ class MlrtBatchResource : public tensorflow::serving::BatchResourceBase {
                                        true /* enable large batch split */,
                                        allowed_batch_sizes, disable_padding),
         allowed_batch_sizes));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   string DebugString() const final { return "MlrtBatchResource"; }
@@ -342,14 +342,14 @@ void MlrtBatchResource::ProcessFuncBatchImpl(
   fallback_request_state.set_runtime_config(
       caller_fallback_request_state.runtime_config());
 
-  tensorflow::profiler::TraceMeProducer activity(
+  tsl::profiler::TraceMeProducer activity(
       // To TraceMeConsumers in WorkQueue.
       [step_id] {
-        return tensorflow::profiler::TraceMeEncode(
-            "RunMlrtFunction", {{"id", step_id}, {"_r", 1}});
+        return tsl::profiler::TraceMeEncode("RunMlrtFunction",
+                                            {{"id", step_id}, {"_r", 1}});
       },
-      tensorflow::profiler::ContextType::kTfrtExecutor, step_id,
-      tensorflow::profiler::TraceMeLevel::kInfo);
+      tsl::profiler::ContextType::kTfrtExecutor, step_id,
+      tsl::profiler::TraceMeLevel::kInfo);
 
   // Copy the ExecutionContext and its user contexts for async execution.
   auto user_contexts = caller_context.CopyUserContexts();

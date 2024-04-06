@@ -110,7 +110,7 @@ Status MaybeRewriteLayoutWithShardedShape(
     mlir::StringAttr sharding,
     const XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns,
     xla::Shape* shape) {
-  if (!sharding) return OkStatus();
+  if (!sharding) return absl::OkStatus();
 
   xla::OpSharding op_sharding;
   if (tensorflow::DecodeShardingAttribute(sharding, op_sharding).failed()) {
@@ -121,7 +121,7 @@ Status MaybeRewriteLayoutWithShardedShape(
   TF_ASSIGN_OR_RETURN(hlo_sharding, xla::HloSharding::FromProto(op_sharding));
   TF_RETURN_IF_ERROR(RewriteLayoutWithShardedShape(
       hlo_sharding, /*use_fast_memory=*/false, shape_determination_fns, shape));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Converts arg_shapes to xla::Shape's and store into xla_input_shapes.
@@ -168,7 +168,7 @@ Status GetXlaInputShapes(
   } else {
     *xla_input_shapes = individual_arg_shapes;
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Returns a static ranked tensor type corresponding to the given static or
@@ -307,7 +307,7 @@ Status GetOutputInfo(
 
   // XLA computation always uses Tuple shape.
   *xla_output_shape = xla::ShapeUtil::MakeTupleShape(shapes);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Creates a vector that maps from the parameters of the XLA computation to
@@ -666,7 +666,7 @@ Status ConvertMLIRWithOptionalXlaComputation(
         module_op, &hlo_proto, use_tuple_args, return_tuple, options));
     *xla_computation = xla::XlaComputation(hlo_proto.hlo_module());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Wraps the optional lowering version to keep the api the same for clients.
@@ -692,7 +692,7 @@ Status CompileMlirSetup(mlir::ModuleOp module_op,
   if (VLOG_IS_ON(2))
     tensorflow::DumpMlirOpToFile("compile_mlir_shape_refiner", module_op);
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status BuildHloFromTf(mlir::ModuleOp module_op, xla::XlaBuilder& builder,
@@ -715,7 +715,7 @@ Status BuildHloFromTf(mlir::ModuleOp module_op, xla::XlaBuilder& builder,
   if (VLOG_IS_ON(2))
     tensorflow::DumpMlirOpToFile("build_hlo_tf_after", module_op);
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status PopulateCollectiveInfo(mlir::ModuleOp module_op,
@@ -729,7 +729,7 @@ Status PopulateCollectiveInfo(mlir::ModuleOp module_op,
           kGroupSizeAttrName.data(), kGroupSizeAttrName.size()));
   if (group_key_attr == nullptr && group_size_attr == nullptr) {
     // No CollectiveInfo is present.
-    return OkStatus();
+    return absl::OkStatus();
   }
   DCHECK(group_key_attr != nullptr)
       << "module attribute " << kGroupKeyAttrName
@@ -742,7 +742,7 @@ Status PopulateCollectiveInfo(mlir::ModuleOp module_op,
   VLOG(2) << "Populating CollectiveInfo: group_key=" << group_key
           << " group_size=" << group_size;
   compilation_result->collective_info = {group_key, group_size, 0};
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status PopulateResultIOInfo(
@@ -945,7 +945,7 @@ Status CompileGraphSetup(
   if (VLOG_IS_ON(1))
     tensorflow::DumpMlirOpToFile("compile_graph_setup_after", module_op);
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status BuildHloFromModule(mlir::ModuleOp module_op, xla::XlaBuilder& builder,
