@@ -1865,7 +1865,7 @@ TEST(XlaBuilderTest, UnboundedAnd) {
   TF_ASSERT_OK_AND_ASSIGN(const Shape expected,
                           ParseShape("s32[?, ?, 2, 2, <=2, <=2, ?]"));
   And(Parameter(&b, 0, lhs, "lhs"), Parameter(&b, 1, rhs, "rhs"),
-      /*broadcast_dimensions=*/absl::Span<const int64_t>{});
+      /*broadcast_dimensions=*/empty_array);
   TF_ASSERT_OK_AND_ASSIGN(const auto module, BuildHloModule(b));
   EXPECT_THAT(GetRoot(*module),
               GmockMatch(m::Op().WithShapeEqualTo(&expected)));
@@ -2481,6 +2481,22 @@ TEST(XlaBuilderTest, UnboundedTranspose) {
   Transpose(Parameter(&b, 0, operand, "operand"),
             /*permutation=*/{4, 0, 3, 2, 1});
   TF_ASSERT_OK_AND_ASSIGN(const auto module, BuildHloModule(b));
+  EXPECT_THAT(GetRoot(*module),
+              GmockMatch(m::Op().WithShapeEqualTo(&expected)));
+}
+
+TEST(XlaBuilderTest, UnboundedXor) {
+  XlaBuilder b(TestName());
+  TF_ASSERT_OK_AND_ASSIGN(const Shape lhs,
+                          ParseShape("s32[1, ?, 2, ?, <=2, ?, ?]"));
+  TF_ASSERT_OK_AND_ASSIGN(const Shape rhs,
+                          ParseShape("s32[?, 1, ?, 2, ?, <=2, ?]"));
+  TF_ASSERT_OK_AND_ASSIGN(const Shape expected,
+                          ParseShape("s32[?, ?, 2, 2, <=2, <=2, ?]"));
+  Xor(Parameter(&b, 0, lhs, "lhs"), Parameter(&b, 1, rhs, "rhs"),
+      /*broadcast_dimensions=*/empty_array);
+  TF_ASSERT_OK_AND_ASSIGN(const std::unique_ptr<HloModule> module,
+                          BuildHloModule(b));
   EXPECT_THAT(GetRoot(*module),
               GmockMatch(m::Op().WithShapeEqualTo(&expected)));
 }
