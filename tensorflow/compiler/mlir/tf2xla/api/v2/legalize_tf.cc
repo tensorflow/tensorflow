@@ -108,7 +108,7 @@ Status DumpHloCompilationResult(std::string_view name,
                                 XlaCompilationResult* compilation_result) {
   if (!VLOG_IS_ON(2) &&
       !DEBUG_DATA_DUMPER()->ShouldDump(std::string(name), kDebugGroupMain)) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   TF_ASSIGN_OR_RETURN(
@@ -128,12 +128,12 @@ Status DumpHloCompilationResult(std::string_view name,
 
   tensorflow::DumpRawStringToFile(name, all_computations);
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
 
-tsl::StatusOr<tensorflow::XlaCompilationResult> LegalizeMlirToHlo(
+absl::StatusOr<tensorflow::XlaCompilationResult> LegalizeMlirToHlo(
     const std::variant<tpu::MlirToHloArgs, tpu::FunctionToHloArgs>& computation,
     const tpu::TPUCompileMetadataProto& metadata, bool use_tuple_args,
     llvm::StringRef device_type,
