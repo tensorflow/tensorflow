@@ -2193,7 +2193,8 @@ TEST(XlaBuilderTest, UnboundedOr) {
                           ParseShape("s32[?, ?, 2, 2, <=2, <=2, ?]"));
   Or(Parameter(&b, 0, lhs, "lhs"), Parameter(&b, 1, rhs, "rhs"),
      /*broadcast_dimensions=*/empty_array);
-  TF_ASSERT_OK_AND_ASSIGN(const auto module, BuildHloModule(b));
+  TF_ASSERT_OK_AND_ASSIGN(const std::unique_ptr<HloModule> module,
+                          BuildHloModule(b));
   EXPECT_THAT(GetRoot(*module),
               GmockMatch(m::Op().WithShapeEqualTo(&expected)));
 }
@@ -2242,6 +2243,17 @@ TEST(XlaBuilderTest, UnboundedReduce) {
       {Parameter(&b, 0, input0, "input0"), Parameter(&b, 1, input1, "input1"),
        Parameter(&b, 2, input2, "input2")},
       {init, init, init}, sum, {1});
+  TF_ASSERT_OK_AND_ASSIGN(const auto module, BuildHloModule(b));
+  EXPECT_THAT(GetRoot(*module),
+              GmockMatch(m::Op().WithShapeEqualTo(&expected)));
+}
+
+TEST(XlaBuilderTest, UnboundedReducePrecision) {
+  XlaBuilder b(TestName());
+  TF_ASSERT_OK_AND_ASSIGN(const Shape operand, ParseShape("f32[?, 10]"));
+  TF_ASSERT_OK_AND_ASSIGN(const Shape expected, ParseShape("f32[?, 10]"));
+  ReducePrecision(Parameter(&b, 0, operand, "operand"), /*exponent_bits=*/2,
+                  /*mantissa_bits=*/2);
   TF_ASSERT_OK_AND_ASSIGN(const auto module, BuildHloModule(b));
   EXPECT_THAT(GetRoot(*module),
               GmockMatch(m::Op().WithShapeEqualTo(&expected)));

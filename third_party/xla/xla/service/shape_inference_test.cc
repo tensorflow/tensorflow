@@ -4552,6 +4552,18 @@ TEST_F(ShapeInferenceTest, UnboundedReduceInvalidReduceDimension) {
               HasSubstr("All reduced tensors must have compatible dimension"));
 }
 
+TEST_F(ShapeInferenceTest, UnboundedReducePrecision) {
+  TF_ASSERT_OK_AND_ASSIGN(const Shape operand, ParseShape("f32[?, 10]"));
+  TF_ASSERT_OK_AND_ASSIGN(const Shape expected, ParseShape("f32[?, 10]"));
+  TF_ASSERT_OK_AND_ASSIGN(
+      const Shape inferred,
+      ShapeInference::InferReducePrecisionShape(operand, /*exponent_bits=*/2,
+                                                /*mantissa_bits=*/2));
+  ASSERT_TRUE(ShapeUtil::Equal(inferred, expected))
+      << "inferred: " << ShapeUtil::HumanString(inferred)
+      << " expected: " << ShapeUtil::HumanString(expected);
+}
+
 TEST_F(ShapeInferenceTest, UnboundedReduceWindow) {
   TF_ASSERT_OK_AND_ASSIGN(const Shape input, ParseShape("f32[?, 4, 8]"));
   TF_ASSERT_OK_AND_ASSIGN(const Shape expected, ParseShape("f32[?, 3, 5]"));
