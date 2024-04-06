@@ -543,9 +543,14 @@ ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY int __xla_cpu_runtime_PrintfToStderr(
 }
 
 ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY int64_t __xla_cpu_runtime_TracingStart(
-    const void* /* ExecutableRunOptions*  run_options_ptr*/, const char* name) {
+    const void* /* ExecutableRunOptions*  run_options_ptr*/, const char* name,
+    const char* type, const char* src_op_type, const char* src_op_name) {
   VLOG(3) << "TracingStart " << name;
-  return tsl::profiler::TraceMe::ActivityStart(name);
+  auto trace_in =
+      tsl::profiler::TraceMeEncode(type, {{"hlo_name", name},
+                                          {"src_opType", src_op_type},
+                                          {"src_opName", src_op_name}});
+  return tsl::profiler::TraceMe::ActivityStart(trace_in);
 }
 
 ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_TracingEnd(

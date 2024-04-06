@@ -68,8 +68,9 @@ class MlirTransposeFusion : public MlirFusionEmitterBase {
       mlir::func::FuncOp entry_function,
       const HloFusionInstruction& fusion) const override;
 
-  std::vector<const HloInstruction*> GetInstructionsWithCustomCodegen(
-      const HloFusionInstruction& fusion) const override;
+  std::optional<mlir_converter::EpilogueSpecification> GetEpilogue(
+      const HloFusionInstruction& fusion,
+      mlir::MLIRContext* mlir_context) const override;
 
   absl::StatusOr<llvm::SmallVector<mlir::Value, 4>> EmitWriteToShMemMlir(
       mlir::ImplicitLocOpBuilder& builder, mlir::func::FuncOp entry_function,
