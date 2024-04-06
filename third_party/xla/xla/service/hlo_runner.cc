@@ -525,7 +525,7 @@ absl::StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
                                                     argument_buffer_slices));
         } else {
           absl::Mutex mutex;
-          std::vector<StatusOr<ScopedShapedBuffer>> thread_results(
+          std::vector<absl::StatusOr<ScopedShapedBuffer>> thread_results(
               options.num_replicas);
           {
             VLOG(1) << "Creating thread pool for " << options.num_replicas
@@ -581,7 +581,7 @@ absl::StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
         TF_RET_CHECK(options.use_threads);
         std::vector<ScopedShapedBuffer> results;
         absl::Mutex mutex;
-        std::vector<StatusOr<ScopedShapedBuffer>> thread_results(
+        std::vector<absl::StatusOr<ScopedShapedBuffer>> thread_results(
             options.num_replicas);
         {
           VLOG(1) << "Creating thread pool for " << options.num_replicas

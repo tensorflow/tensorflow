@@ -36,7 +36,7 @@ namespace profiler {
 
 namespace {
 
-StatusOr<std::string> ConvertHloProtoToMemoryViewer(
+absl::StatusOr<std::string> ConvertHloProtoToMemoryViewer(
     const xla::HloProto& hlo_proto) {
   static constexpr int kSmallBufferSize = 16 * 1024;  // 16KB
   static constexpr int kMemorySpaceColor = 0;         // HBM
@@ -64,7 +64,7 @@ StatusOr<std::string> ConvertHloProtoToMemoryViewer(
   return json_output;
 }
 
-StatusOr<std::string> ConvertHloProtoToGraphViewer(
+absl::StatusOr<std::string> ConvertHloProtoToGraphViewer(
     const xla::HloProto& hlo_proto, const ToolOptions& options) {
   TF_ASSIGN_OR_RETURN(GraphViewerParams params,
                       ParseGraphViewerParams(options));
@@ -80,7 +80,7 @@ StatusOr<std::string> ConvertHloProtoToGraphViewer(
 
 }  // namespace
 
-StatusOr<std::string> ConvertHloProtoToToolData(
+absl::StatusOr<std::string> ConvertHloProtoToToolData(
     const SessionSnapshot& session_snapshot, const absl::string_view tool_name,
     const ToolOptions& options) {
   // <options> must provide a hlo module_name field to identify the HLO module.
