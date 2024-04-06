@@ -3985,6 +3985,8 @@ absl::StatusOr<bool> AutoSharding::Run(
   metrics::RecordAutoShardingInvocations();
 #endif
 
+  TF_RETURN_IF_ERROR(module->RemoveUnusedComputations());
+
   TF_RETURN_IF_ERROR(option_.CheckAndSetup());
   LOG(INFO) << "AutoShardingOptions:\n" << option_.ToString();
 
@@ -4158,12 +4160,25 @@ absl::StatusOr<bool> AutoSharding::Run(
                 << " which had the minimal solver objective value of "
                 << min_objective_value;
         chosen_mesh_shape_ = mesh_shapes[min_mesh_shape_index];
+        TF_RETURN_IF_ERROR(
+            modules[min_mesh_shape_index]->RemoveUnusedComputations());
+        const std::vector<HloComputation*>& original_module_computations =
+            module->MakeComputationSorted();
+        const std::vector<HloComputation*>& clone_module_computations =
+            modules[min_mesh_shape_index]->MakeComputationSorted();
+        if (original_module_computations.size() !=
+            clone_module_computations.size()) {
+          return absl::InternalError(
+              "The cloned and the original modules do not have the same number "
+              "of computations. This is a bug and should be reported.");
+        }
+
         absl::flat_hash_map<HloComputation*, HloComputation*>
             computation_replacements;
-        for (size_t i = 0; i < module->computation_count(); ++i) {
-          auto original_computation = module->mutable_computation(i);
-          auto new_computation =
-              modules[min_mesh_shape_index]->mutable_computation(i);
+        for (size_t i = 0; i < original_module_computations.size(); ++i) {
+          HloComputation* original_computation =
+              original_module_computations[i];
+          HloComputation* new_computation = clone_module_computations[i];
           computation_replacements[original_computation] = new_computation;
         }
 
