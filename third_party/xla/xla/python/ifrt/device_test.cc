@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -67,6 +68,24 @@ TEST_P(DeviceListTest, IdenticalHashFromConcurrentCalls) {
     EXPECT_EQ(hashes[i], device_list.hash());
   }
   EXPECT_NE(device_list.hash(), 0);
+}
+
+TEST_P(DeviceListTest, EqualityTest) {
+  auto device_list1 = GetDevices({0, 1});
+  auto device_list2 = GetDevices({0, 1});
+  EXPECT_EQ(device_list1, device_list2);
+
+  auto device_list3 = device_list1;
+  EXPECT_EQ(device_list1, device_list3);
+
+  auto device_list4 = std::move(device_list2);
+  EXPECT_EQ(device_list1, device_list4);
+
+  auto device_list5 = GetDevices({0});
+  EXPECT_NE(device_list1, device_list5);
+
+  auto device_list6 = GetDevices({1, 0});
+  EXPECT_NE(device_list1, device_list6);
 }
 
 INSTANTIATE_TEST_SUITE_P(NumDevices, DeviceListTest,

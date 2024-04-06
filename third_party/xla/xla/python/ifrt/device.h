@@ -74,11 +74,16 @@ class DeviceList {
   absl::Span<Device* const> devices() const { return state().devices; }
 
   bool operator==(const DeviceList& other) const {
+    const std::shared_ptr<State>* lhs =
+        std::get_if<std::shared_ptr<State>>(&state_);
+    const std::shared_ptr<State>* rhs =
+        std::get_if<std::shared_ptr<State>>(&other.state_);
+    if (lhs != nullptr && rhs != nullptr && lhs->get() == rhs->get()) {
+      return true;
+    }
     return devices() == other.devices();
   }
-  bool operator!=(const DeviceList& other) const {
-    return devices() != other.devices();
-  }
+  bool operator!=(const DeviceList& other) const { return !(*this == other); }
 
   // Returns the hash of devices. This hash is stable only within the process.
   uint64_t hash() const;
