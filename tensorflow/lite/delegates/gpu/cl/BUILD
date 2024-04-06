@@ -444,12 +444,6 @@ cc_library(
     name = "opencl_wrapper",
     srcs = ["opencl_wrapper.cc"],
     hdrs = ["opencl_wrapper.h"],
-    defines = select({
-        # copybara:uncomment_begin(google-only)
-        # "//tools/cc_target_os:linux-google": ["__LINUX_GOOGLE__"],
-        # copybara:uncomment_end
-        "//conditions:default": [],
-    }),
     linkopts = select({
         "//tensorflow:android": ["-lm"],
         "//conditions:default": [],
@@ -459,7 +453,6 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@opencl_headers",
         "//tensorflow/lite/delegates/gpu/cl/" + if_google("google", "default") + ":qcom_wrapper",
-        "//tensorflow/lite/tools:logging",
     ] + select({
         # copybara:uncomment_begin(google-only)
         # "//tools/cc_target_os:linux-google": ["//third_party/opencl_icd_loader"],
