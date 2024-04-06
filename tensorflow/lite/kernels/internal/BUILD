@@ -567,7 +567,10 @@ cc_test(
     ],
     deps = [
         ":common",
+        ":cppmath",
         ":quantization_util",
+        ":types",
+        "//base:types",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -600,7 +603,10 @@ cc_test(
     ],
     deps = [
         ":common",
+        ":cppmath",
         ":quantization_util_single_rounding",
+        ":types",
+        "//base:types",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1454,7 +1460,6 @@ cc_test(
     deps = [
         ":reference_base",
         ":types",
-        "//tensorflow/lite/kernels:test_util",
         "@com_google_googletest//:gtest_main",
     ],
 )
