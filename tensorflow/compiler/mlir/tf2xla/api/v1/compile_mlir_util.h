@@ -147,7 +147,7 @@ Status PopulateResultIOInfo(
 // If enable_op_fallback is set to false, graph is legalized only if the graph
 // analysis for the graph is successful. Otherwise, an error is returned.
 ABSL_DEPRECATED("Use v2/legalize_tf.h::LegalizeMlirToHlo instead.")
-StatusOr<std::string> CompileMlirToXlaHlo(
+absl::StatusOr<std::string> CompileMlirToXlaHlo(
     mlir::ModuleOp module_op, llvm::ArrayRef<TensorOrResourceShape> arg_shapes,
     llvm::StringRef device_type, bool use_tuple_args, bool enable_op_fallback,
     bool use_return_tuple, bool use_resource_updates_for_aliases,
@@ -163,7 +163,7 @@ StatusOr<std::string> CompileMlirToXlaHlo(
 // If lower_to_xla_hlo is true then compiles down into XLA HLO, generates all
 // accompanying metadata and stores them in CompilationResult.
 ABSL_DEPRECATED("Use v2/legalize_tf.h::LegalizeMlirToHlo instead.")
-StatusOr<std::string> CompileSerializedMlirToXlaHlo(
+absl::StatusOr<std::string> CompileSerializedMlirToXlaHlo(
     llvm::StringRef mlir_module_string, llvm::ArrayRef<TensorShape> arg_shapes,
     llvm::StringRef device_type, bool use_tuple_args, bool enable_op_fallback,
     const XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns,
