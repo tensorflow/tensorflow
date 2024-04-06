@@ -18,7 +18,11 @@ limitations under the License.
 
 #include <string>
 
+#include "llvm/IR/Module.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/service/compiler.h"
 #include "xla/service/llvm_compiler.h"
+#include "xla/status.h"
 #include "xla/tests/codegen_test_base.h"
 
 namespace xla {
