@@ -173,7 +173,7 @@ REGISTER_OP("Combine")
     .SetShapeFn(shape_inference::UnknownShape);
 
 Output ConstructOp(const Scope& scope, const string& op_type,
-                   const gtl::ArraySlice<Input>& inputs) {
+                   const absl::Span<const Input>& inputs) {
   if (!scope.ok()) return Output();
   const string unique_name = scope.GetUniqueNameForOp(op_type);
   auto builder =
@@ -685,8 +685,8 @@ TEST(TopologicalSortNodesWithTimePriority, Dependencies) {
   // Create addn to sum all squares.
   std::vector<Input> inputs;
   for (const auto& s : squares) inputs.push_back(s);
-  ops::AddN addn = ops::AddN(root.WithOpName("addn"),
-                             tensorflow::gtl::ArraySlice<Input>(inputs));
+  ops::AddN addn =
+      ops::AddN(root.WithOpName("addn"), absl::Span<const Input>(inputs));
   // Start times is actually listed earlier than the nodes it depends on.
   // But because of dependency ordering, it is last in the list.
   addn.node()->AddAttr("_start_time", 1);

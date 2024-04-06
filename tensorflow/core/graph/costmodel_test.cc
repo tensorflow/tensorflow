@@ -283,7 +283,7 @@ TEST(CostModelTest, TimeEstimate) {
   EXPECT_EQ(cm.TimeEstimate(C), Microseconds(kMicrosPerCount));
 }
 
-TensorShapeProto CreateTensorShapeProto(gtl::ArraySlice<int64_t> dims) {
+TensorShapeProto CreateTensorShapeProto(absl::Span<const int64_t> dims) {
   TensorShapeProto shape;
   for (int i = 0; i < dims.size(); ++i) {
     shape.add_dim()->set_size(dims[i]);
