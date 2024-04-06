@@ -20,10 +20,12 @@ limitations under the License.
 
 #include <array>
 
+#include "Eigen/src/Core/util/ConfigureVectorization.h"  // from @eigen_archive
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/util/padding.h"
 
 namespace tensorflow {
