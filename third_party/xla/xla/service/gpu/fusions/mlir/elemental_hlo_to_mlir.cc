@@ -927,17 +927,15 @@ absl::StatusOr<SmallVector<Value>> HloToMlir(
       return MapElementwiseOp<mhlo::ClzOp>(arg_types, operands, builder);
     case HloOpcode::kCompare: {
       auto* context = builder.getContext();
-      auto dir = builder.getDictionaryAttr(builder.getNamedAttr(
-          "comparison_direction",
-          mhlo::ComparisonDirectionAttr::get(
-              context,
-              mhlo::symbolizeComparisonDirection(
-                  ComparisonDirectionToString(instr->comparison_direction()))
-                  .value())));
+      auto direction = mhlo::symbolizeComparisonDirection(
+          ComparisonDirectionToString(instr->comparison_direction()));
+      mhlo::CompareOp::Properties properties;
+      properties.comparison_direction =
+          mhlo::ComparisonDirectionAttr::get(context, direction.value());
       auto result_types = llvm::to_vector(mlir::TypeRange{builder.getI1Type()});
       return {{mhlo::MhloOpToStdScalarOp::mapOpOfType<mhlo::CompareOp>(
           builder.getLoc(), result_types, arg_types,
-          mhlo::CompareOp::Adaptor(operands, dir), &builder)}};
+          mhlo::CompareOp::Adaptor(operands, nullptr, properties), &builder)}};
     }
     case HloOpcode::kComplex:
       return MapHloOp<mhlo::ComplexOp>(element_mlir_type, arg_types, operands,

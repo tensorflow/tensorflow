@@ -13,8 +13,8 @@ ENTRY %dummy_main (Arg_0.1: f32[]) -> f32[] {
 %test_custom_call_dynamic_broadcast_in_dim (arg1: f32[1,?], arg2: s64[3]) -> f32[2,?,2] {
   %arg1 = f32[1,?] parameter(0)
   %arg2 = s64[3] parameter(1)
-  // CHECK:  "mhlo.dynamic_broadcast_in_dim"([[ARG_0]], [[ARG_1]]) {
-  // CHECK-SAME: broadcast_dimensions = dense<[0, 1]> : tensor<2xi64>}
+  // CHECK:  "mhlo.dynamic_broadcast_in_dim"([[ARG_0]], [[ARG_1]]) <{
+  // CHECK-SAME: broadcast_dimensions = dense<[0, 1]> : tensor<2xi64>}>
   // CHECK-SAME: (tensor<1x?xf32>, tensor<3xi64>) -> tensor<2x?x2xf32>
   ROOT %custom-call = f32[2,?,2] custom-call(f32[1,?] %arg1, s64[3] %arg2), custom_call_target="mhlo.dynamic_broadcast_in_dim", backend_config={broadcast_dimensions=[0,1]}
 }

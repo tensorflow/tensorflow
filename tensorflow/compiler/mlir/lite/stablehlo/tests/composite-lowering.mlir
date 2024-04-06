@@ -8,15 +8,15 @@ func.func @hardswish(%arg0: tensor<2xf32>) -> (tensor<*xf32>) {
 }
 func.func private @XlaCallModule_aten.hardswish.default.impl_0(%arg0: tensor<2xf32>) -> tensor<2xf32> {
   %0 = mhlo.constant dense<6.000000e+00> : tensor<f32>
-  %1 = "mhlo.broadcast_in_dim"(%0) {broadcast_dimensions = dense<> : tensor<0xi64>} : (tensor<f32>) -> tensor<2xf32>
+  %1 = "mhlo.broadcast_in_dim"(%0) <{broadcast_dimensions = dense<> : tensor<0xi64>}> : (tensor<f32>) -> tensor<2xf32>
   %2 = mhlo.constant dense<3.40282347E+38> : tensor<f32>
-  %3 = "mhlo.broadcast_in_dim"(%2) {broadcast_dimensions = dense<> : tensor<0xi64>} : (tensor<f32>) -> tensor<2xf32>
+  %3 = "mhlo.broadcast_in_dim"(%2) <{broadcast_dimensions = dense<> : tensor<0xi64>}> : (tensor<f32>) -> tensor<2xf32>
   %4 = mhlo.constant dense<3.000000e+00> : tensor<f32>
-  %5 = "mhlo.broadcast_in_dim"(%4) {broadcast_dimensions = dense<> : tensor<0xi64>} : (tensor<f32>) -> tensor<2xf32>
+  %5 = "mhlo.broadcast_in_dim"(%4) <{broadcast_dimensions = dense<> : tensor<0xi64>}> : (tensor<f32>) -> tensor<2xf32>
   %6 = mhlo.constant dense<0.000000e+00> : tensor<f32>
-  %7 = "mhlo.broadcast_in_dim"(%6) {broadcast_dimensions = dense<> : tensor<0xi64>} : (tensor<f32>) -> tensor<2xf32>
+  %7 = "mhlo.broadcast_in_dim"(%6) <{broadcast_dimensions = dense<> : tensor<0xi64>}> : (tensor<f32>) -> tensor<2xf32>
   %8 = mhlo.constant dense<-3.40282347E+38> : tensor<f32>
-  %9 = "mhlo.broadcast_in_dim"(%8) {broadcast_dimensions = dense<> : tensor<0xi64>} : (tensor<f32>) -> tensor<2xf32>
+  %9 = "mhlo.broadcast_in_dim"(%8) <{broadcast_dimensions = dense<> : tensor<0xi64>}> : (tensor<f32>) -> tensor<2xf32>
   %10 = mhlo.add %arg0, %5 : tensor<2xf32>
   %11 = mhlo.clamp %7, %10, %3 : tensor<2xf32>
   %12 = mhlo.clamp %9, %11, %1 : tensor<2xf32>
