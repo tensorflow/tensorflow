@@ -130,11 +130,11 @@ Status PopulateInputOutputAliasing(
       output_to_input_alias[aliasing_output.getInt()] = arg_index;
   }
 
-  if (output_to_input_alias.empty()) return OkStatus();
+  if (output_to_input_alias.empty()) return absl::OkStatus();
 
   xla::HloModuleProto* module_proto =
       compilation_result->computation->mutable_proto();
-  StatusOr<xla::ProgramShape> program_shape_or_status =
+  absl::StatusOr<xla::ProgramShape> program_shape_or_status =
       compilation_result->computation->GetProgramShape();
   TF_RET_CHECK(program_shape_or_status.ok());
 
@@ -155,10 +155,10 @@ Status PopulateInputOutputAliasing(
     }
   }
   *module_proto->mutable_input_output_alias() = config.ToProto();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-bool failed(const tsl::Status& status) { return !status.ok(); }
+bool failed(const absl::Status& status) { return !status.ok(); }
 
 // Transforms the given module to be suitable for export to TensorFlow GraphDef
 // and then exports all functions to the given library.
@@ -203,7 +203,7 @@ Status PrepareAndExportToLibrary(mlir::ModuleOp module,
                                         flib_def);
 }
 
-tsl::Status CompileTFFunctionWithoutMlir(
+absl::Status CompileTFFunctionWithoutMlir(
     FunctionToHloArgs function_computation,
     const tpu::TPUCompileMetadataProto& metadata, bool use_tuple_args,
     const XlaShapeLayoutHelpers::ShapeDeterminationFns
@@ -230,7 +230,7 @@ tsl::Status CompileTFFunctionWithoutMlir(
   return comp_status;
 }
 
-tsl::Status CompileMLIRTFFunction(
+absl::Status CompileMLIRTFFunction(
     tpu::MlirToHloArgs mlir_computation,
     const tpu::TPUCompileMetadataProto& metadata, bool use_tuple_args,
     const XlaShapeLayoutHelpers::ShapeDeterminationFns
@@ -293,7 +293,7 @@ tsl::Status CompileMLIRTFFunction(
 
 }  // namespace
 
-tsl::Status CompileTensorflowGraphToHlo(
+absl::Status CompileTensorflowGraphToHlo(
     const std::variant<tpu::MlirToHloArgs, tpu::FunctionToHloArgs>& computation,
     const tpu::TPUCompileMetadataProto& metadata, bool use_tuple_args,
     const XlaShapeLayoutHelpers::ShapeDeterminationFns
@@ -331,7 +331,7 @@ tsl::Status CompileTensorflowGraphToHlo(
   phase2_bridge_compilation_time->GetCell(kBridgePhase2Config)
       ->Add(timer.ElapsedCyclesInMilliseconds());
 
-  return tsl::OkStatus();
+  return absl::OkStatus();
 }
 
 };  // namespace v1

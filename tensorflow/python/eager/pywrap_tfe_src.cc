@@ -913,8 +913,8 @@ void TFE_Py_ExecuteCancelable(TFE_Context* ctx, const char* device_name,
                               TFE_CancellationManager* cancellation_manager,
                               TFE_OutputTensorHandles* outputs,
                               TF_Status* out_status) {
-  tensorflow::profiler::TraceMe activity(
-      "TFE_Py_ExecuteCancelable", tensorflow::profiler::TraceMeLevel::kInfo);
+  tsl::profiler::TraceMe activity("TFE_Py_ExecuteCancelable",
+                                  tsl::profiler::TraceMeLevel::kInfo);
 
   TFE_Op* op = GetOp(ctx, op_name, device_name, out_status);
 
@@ -1332,7 +1332,7 @@ class PyVSpace : public tensorflow::eager::VSpace<PyObject, PyBackwardFunction,
   }
 
   PyObject* AggregateGradients(
-      tensorflow::gtl::ArraySlice<PyObject*> gradient_tensors) const final {
+      absl::Span<PyObject* const> gradient_tensors) const final {
     PyObject* list = PyList_New(gradient_tensors.size());
     for (int i = 0; i < gradient_tensors.size(); ++i) {
       // Note: stealing a reference to the gradient tensors.
@@ -1406,7 +1406,7 @@ class PyVSpace : public tensorflow::eager::VSpace<PyObject, PyBackwardFunction,
   tensorflow::Status CallBackwardFunction(
       const string& op_type, PyBackwardFunction* backward_function,
       const std::vector<int64_t>& unneeded_gradients,
-      tensorflow::gtl::ArraySlice<PyObject*> output_gradients,
+      absl::Span<PyObject* const> output_gradients,
       absl::Span<PyObject*> result) const final {
     PyObject* grads = PyTuple_New(output_gradients.size());
     for (int i = 0; i < output_gradients.size(); ++i) {
@@ -3680,8 +3680,8 @@ bool RunCallbacks(
 }  // namespace
 
 PyObject* TFE_Py_FastPathExecute_C(PyObject* args) {
-  tensorflow::profiler::TraceMe activity(
-      "TFE_Py_FastPathExecute_C", tensorflow::profiler::TraceMeLevel::kInfo);
+  tsl::profiler::TraceMe activity("TFE_Py_FastPathExecute_C",
+                                  tsl::profiler::TraceMeLevel::kInfo);
   Py_ssize_t args_size = PyTuple_GET_SIZE(args);
   if (args_size < FAST_PATH_EXECUTE_ARG_INPUT_START) {
     PyErr_SetString(
