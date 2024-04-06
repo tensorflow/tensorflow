@@ -71,8 +71,7 @@ static se::StreamExecutor* GpuExecutor() {
 TEST(AddressComputationThunkTest, SlicedGemm) {
   se::StreamExecutor* executor = GpuExecutor();
 
-  se::Stream stream(executor);
-  TF_ASSERT_OK(stream.Initialize());
+  TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
 
   int64_t lhs_length = sizeof(float) * 2 * 4;
   int64_t rhs_length = sizeof(float) * 3 * 1;
@@ -161,27 +160,29 @@ TEST(AddressComputationThunkTest, SlicedGemm) {
   //        5.0, 6.0, 7.0, 8.0]
   se::DeviceMemory<float> lhs = executor->AllocateArray<float>(2 * 4);
   std::vector<float> lhs_arr{1, 2, 3, 4, 5, 6, 7, 8};
-  TF_ASSERT_OK(stream.Memcpy(&lhs, lhs_arr.data(), lhs_length));
+  TF_ASSERT_OK(stream->Memcpy(&lhs, lhs_arr.data(), lhs_length));
 
   // rhs = [1.0,
   //        1.0,
   //        1.0]
   se::DeviceMemory<float> rhs = executor->AllocateArray<float>(3 * 1);
   std::vector<float> rhs_arr(3, 1);
-  TF_ASSERT_OK(stream.Memcpy(&rhs, rhs_arr.data(), rhs_length));
+  TF_ASSERT_OK(stream->Memcpy(&rhs, rhs_arr.data(), rhs_length));
 
   se::DeviceMemory<float> out = executor->AllocateArray<float>(1 * 1);
-  TF_ASSERT_OK(stream.MemZero(&out, out_length));
+  TF_ASSERT_OK(stream->MemZero(&out, out_length));
 
   se::DeviceMemory<float> workspace =
       executor->AllocateArray<float>(1024 * 1024);
-  TF_ASSERT_OK(stream.MemZero(&workspace, 1024 * 1024));
+  TF_ASSERT_OK(stream->MemZero(&workspace, 1024 * 1024));
 
   se::DeviceMemory<int64_t> lhs_offset_0 = executor->AllocateArray<int64_t>(1);
   se::DeviceMemory<int64_t> lhs_offset_1 = executor->AllocateArray<int64_t>(1);
   std::vector<int64_t> lhs_offset_arr{0, 1};
-  TF_ASSERT_OK(stream.Memcpy(&lhs_offset_0, &lhs_offset_arr[0], offset_length));
-  TF_ASSERT_OK(stream.Memcpy(&lhs_offset_1, &lhs_offset_arr[1], offset_length));
+  TF_ASSERT_OK(
+      stream->Memcpy(&lhs_offset_0, &lhs_offset_arr[0], offset_length));
+  TF_ASSERT_OK(
+      stream->Memcpy(&lhs_offset_1, &lhs_offset_arr[1], offset_length));
 
   // Preparing parameters for thunk execution.
   ServiceExecutableRunOptions run_options;
@@ -189,20 +190,21 @@ TEST(AddressComputationThunkTest, SlicedGemm) {
       {lhs, rhs, out, workspace, lhs_offset_0, lhs_offset_1}, 0,
       executor->GetAllocator());
 
-  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
-      run_options, allocations, &stream, &stream, {}, nullptr, nullptr);
+  Thunk::ExecuteParams params =
+      Thunk::ExecuteParams::Create(run_options, allocations, stream.get(),
+                                   stream.get(), {}, nullptr, nullptr);
 
   Thunk::ExecutableSource source = {/*text=*/"", /*binary=*/{}};
-  TF_ASSERT_OK(
-      thunk.Initialize({executor, source, &allocations, &stream, &stream}));
+  TF_ASSERT_OK(thunk.Initialize(
+      {executor, source, &allocations, stream.get(), stream.get()}));
 
   // Executing address computation thunk.
   TF_ASSERT_OK(thunk.ExecuteOnStream(params));
-  TF_ASSERT_OK(stream.BlockHostUntilDone());
+  TF_ASSERT_OK(stream->BlockHostUntilDone());
 
   // Copying `out` data back to host for verification.
   std::vector<float> dst(1, 0);
-  TF_ASSERT_OK(stream.Memcpy(dst.data(), out, out_length));
+  TF_ASSERT_OK(stream->Memcpy(dst.data(), out, out_length));
 
   ASSERT_EQ(dst, std::vector<float>({9}));
 }
@@ -210,8 +212,7 @@ TEST(AddressComputationThunkTest, SlicedGemm) {
 TEST(AddressComputationThunkTest, SlicedNonContiguousGemm) {
   se::StreamExecutor* executor = GpuExecutor();
 
-  se::Stream stream(executor);
-  TF_ASSERT_OK(stream.Initialize());
+  TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
 
   int64_t lhs_length = sizeof(float) * 2 * 4;
   int64_t rhs_length = sizeof(float) * 4 * 3;
@@ -318,7 +319,7 @@ TEST(AddressComputationThunkTest, SlicedNonContiguousGemm) {
   //        5.0, 6.0, 7.0, 8.0]
   se::DeviceMemory<float> lhs = executor->AllocateArray<float>(2 * 4);
   std::vector<float> lhs_arr{1, 2, 3, 4, 5, 6, 7, 8};
-  TF_ASSERT_OK(stream.Memcpy(&lhs, lhs_arr.data(), lhs_length));
+  TF_ASSERT_OK(stream->Memcpy(&lhs, lhs_arr.data(), lhs_length));
 
   // Given a `rhs` tensor of shape f32[4,3]{1,0}
   // The `rhs` slice that we want to use will be equivalent to this static
@@ -330,26 +331,30 @@ TEST(AddressComputationThunkTest, SlicedNonContiguousGemm) {
   //        1.0, 1.0, 1.0]
   se::DeviceMemory<float> rhs = executor->AllocateArray<float>(4 * 3);
   std::vector<float> rhs_arr(12, 1);
-  TF_ASSERT_OK(stream.Memcpy(&rhs, rhs_arr.data(), rhs_length));
+  TF_ASSERT_OK(stream->Memcpy(&rhs, rhs_arr.data(), rhs_length));
 
   se::DeviceMemory<float> out = executor->AllocateArray<float>(2 * 2);
-  TF_ASSERT_OK(stream.MemZero(&out, out_length));
+  TF_ASSERT_OK(stream->MemZero(&out, out_length));
 
   se::DeviceMemory<float> workspace =
       executor->AllocateArray<float>(1024 * 1024);
-  TF_ASSERT_OK(stream.MemZero(&workspace, 1024 * 1024));
+  TF_ASSERT_OK(stream->MemZero(&workspace, 1024 * 1024));
 
   se::DeviceMemory<int64_t> lhs_offset_0 = executor->AllocateArray<int64_t>(1);
   se::DeviceMemory<int64_t> lhs_offset_1 = executor->AllocateArray<int64_t>(1);
   std::vector<int64_t> lhs_offset_arr{0, 1};
-  TF_ASSERT_OK(stream.Memcpy(&lhs_offset_0, &lhs_offset_arr[0], offset_length));
-  TF_ASSERT_OK(stream.Memcpy(&lhs_offset_1, &lhs_offset_arr[1], offset_length));
+  TF_ASSERT_OK(
+      stream->Memcpy(&lhs_offset_0, &lhs_offset_arr[0], offset_length));
+  TF_ASSERT_OK(
+      stream->Memcpy(&lhs_offset_1, &lhs_offset_arr[1], offset_length));
 
   se::DeviceMemory<int64_t> rhs_offset_0 = executor->AllocateArray<int64_t>(1);
   se::DeviceMemory<int64_t> rhs_offset_1 = executor->AllocateArray<int64_t>(1);
   std::vector<int64_t> rhs_offset_arr{2, 1};
-  TF_ASSERT_OK(stream.Memcpy(&rhs_offset_0, &rhs_offset_arr[0], offset_length));
-  TF_ASSERT_OK(stream.Memcpy(&rhs_offset_1, &rhs_offset_arr[1], offset_length));
+  TF_ASSERT_OK(
+      stream->Memcpy(&rhs_offset_0, &rhs_offset_arr[0], offset_length));
+  TF_ASSERT_OK(
+      stream->Memcpy(&rhs_offset_1, &rhs_offset_arr[1], offset_length));
 
   // Preparing parameters for thunk execution.
   ServiceExecutableRunOptions run_options;
@@ -357,12 +362,13 @@ TEST(AddressComputationThunkTest, SlicedNonContiguousGemm) {
                                  lhs_offset_1, rhs_offset_0, rhs_offset_1},
                                 0, executor->GetAllocator());
 
-  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
-      run_options, allocations, &stream, &stream, {}, nullptr, nullptr);
+  Thunk::ExecuteParams params =
+      Thunk::ExecuteParams::Create(run_options, allocations, stream.get(),
+                                   stream.get(), {}, nullptr, nullptr);
 
   Thunk::ExecutableSource source = {/*text=*/"", /*binary=*/{}};
-  TF_ASSERT_OK(
-      thunk.Initialize({executor, source, &allocations, &stream, &stream}));
+  TF_ASSERT_OK(thunk.Initialize(
+      {executor, source, &allocations, stream.get(), stream.get()}));
 
   // Execute address computation thunk and verify that it failed because of non
   // contiguous slices on both `lhs` and `rhs`.
@@ -372,8 +378,7 @@ TEST(AddressComputationThunkTest, SlicedNonContiguousGemm) {
 TEST(AddressComputationThunkTest, MulipleSlicedOperandsGemm) {
   se::StreamExecutor* executor = GpuExecutor();
 
-  se::Stream stream(executor);
-  TF_ASSERT_OK(stream.Initialize());
+  TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
 
   int64_t length = sizeof(float) * 2 * 4;
   int64_t out_length = sizeof(float) * 1;
@@ -479,7 +484,7 @@ TEST(AddressComputationThunkTest, MulipleSlicedOperandsGemm) {
   //        5.0, 6.0, 7.0, 8.0]
   std::vector<float> arr{1, 2, 3, 4, 5, 6, 7, 8};
   se::DeviceMemory<float> lhs = executor->AllocateArray<float>(2 * 4);
-  TF_ASSERT_OK(stream.Memcpy(&lhs, arr.data(), length));
+  TF_ASSERT_OK(stream->Memcpy(&lhs, arr.data(), length));
 
   // Given a `rhs` tensor of shape f32[8,1]{1,0}
   // The `rhs` slice that we want to use will be equivalent to this static
@@ -495,26 +500,30 @@ TEST(AddressComputationThunkTest, MulipleSlicedOperandsGemm) {
   //        8.0]
   se::DeviceMemory<float> rhs = executor->AllocateArray<float>(8);
   std::vector<float> rhs_arr(8, 1);
-  TF_ASSERT_OK(stream.Memcpy(&rhs, arr.data(), length));
+  TF_ASSERT_OK(stream->Memcpy(&rhs, arr.data(), length));
 
   se::DeviceMemory<float> out = executor->AllocateArray<float>(1);
-  TF_ASSERT_OK(stream.MemZero(&out, out_length));
+  TF_ASSERT_OK(stream->MemZero(&out, out_length));
 
   se::DeviceMemory<float> workspace =
       executor->AllocateArray<float>(1024 * 1024);
-  TF_ASSERT_OK(stream.MemZero(&workspace, 1024 * 1024));
+  TF_ASSERT_OK(stream->MemZero(&workspace, 1024 * 1024));
 
   se::DeviceMemory<int64_t> lhs_offset_0 = executor->AllocateArray<int64_t>(1);
   se::DeviceMemory<int64_t> lhs_offset_1 = executor->AllocateArray<int64_t>(1);
   std::vector<int64_t> lhs_offset_arr{0, 1};
-  TF_ASSERT_OK(stream.Memcpy(&lhs_offset_0, &lhs_offset_arr[0], offset_length));
-  TF_ASSERT_OK(stream.Memcpy(&lhs_offset_1, &lhs_offset_arr[1], offset_length));
+  TF_ASSERT_OK(
+      stream->Memcpy(&lhs_offset_0, &lhs_offset_arr[0], offset_length));
+  TF_ASSERT_OK(
+      stream->Memcpy(&lhs_offset_1, &lhs_offset_arr[1], offset_length));
 
   se::DeviceMemory<int64_t> rhs_offset_0 = executor->AllocateArray<int64_t>(1);
   se::DeviceMemory<int64_t> rhs_offset_1 = executor->AllocateArray<int64_t>(1);
   std::vector<int64_t> rhs_offset_arr{2, 0};
-  TF_ASSERT_OK(stream.Memcpy(&rhs_offset_0, &rhs_offset_arr[0], offset_length));
-  TF_ASSERT_OK(stream.Memcpy(&rhs_offset_1, &rhs_offset_arr[1], offset_length));
+  TF_ASSERT_OK(
+      stream->Memcpy(&rhs_offset_0, &rhs_offset_arr[0], offset_length));
+  TF_ASSERT_OK(
+      stream->Memcpy(&rhs_offset_1, &rhs_offset_arr[1], offset_length));
 
   // Preparing parameters for thunk execution.
   ServiceExecutableRunOptions run_options;
@@ -522,21 +531,22 @@ TEST(AddressComputationThunkTest, MulipleSlicedOperandsGemm) {
                                  lhs_offset_1, rhs_offset_0, rhs_offset_1},
                                 0, executor->GetAllocator());
 
-  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
-      run_options, allocations, &stream, &stream, {}, nullptr, nullptr);
+  Thunk::ExecuteParams params =
+      Thunk::ExecuteParams::Create(run_options, allocations, stream.get(),
+                                   stream.get(), {}, nullptr, nullptr);
 
   Thunk::ExecutableSource source = {/*text=*/"", /*binary=*/{}};
-  TF_ASSERT_OK(
-      thunk.Initialize({executor, source, &allocations, &stream, &stream}));
+  TF_ASSERT_OK(thunk.Initialize(
+      {executor, source, &allocations, stream.get(), stream.get()}));
 
   // Execute address computation thunk and verify that it executed a GEMM on the
   // right slices.
   TF_ASSERT_OK(thunk.ExecuteOnStream(params));
-  TF_ASSERT_OK(stream.BlockHostUntilDone());
+  TF_ASSERT_OK(stream->BlockHostUntilDone());
 
   // Copy `out` data back to host for verification.
   std::vector<float> dst(1, 0);
-  TF_ASSERT_OK(stream.Memcpy(dst.data(), out, out_length));
+  TF_ASSERT_OK(stream->Memcpy(dst.data(), out, out_length));
 
   ASSERT_EQ(dst, std::vector<float>({2 * 3 + 3 * 4 + 4 * 5}));
 }
@@ -561,8 +571,7 @@ XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$memcpy", PLATFORM,
 TEST(AddressComputationThunkTest, SlicedMemcpy) {
   se::StreamExecutor* executor = GpuExecutor();
 
-  se::Stream stream(executor);
-  TF_ASSERT_OK(stream.Initialize());
+  TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
 
   int64_t src_count = 8 * 8 * 10 * 8;
   int64_t dst_count = 8 * 8;
@@ -647,20 +656,20 @@ TEST(AddressComputationThunkTest, SlicedMemcpy) {
   se::DeviceMemory<int32_t> src = executor->AllocateArray<int32_t>(src_count);
   std::vector<int32_t> src_arr(src_count, 0);
   for (unsigned i = 0; i < src_count; ++i) src_arr[i] = i;
-  TF_ASSERT_OK(stream.Memcpy(&src, src_arr.data(), src_length));
+  TF_ASSERT_OK(stream->Memcpy(&src, src_arr.data(), src_length));
 
   se::DeviceMemory<int32_t> dst = executor->AllocateArray<int32_t>(dst_count);
-  TF_ASSERT_OK(stream.MemZero(&dst, dst_length));
+  TF_ASSERT_OK(stream->MemZero(&dst, dst_length));
 
   se::DeviceMemory<int64_t> offset_0 = executor->AllocateArray<int64_t>(1);
   se::DeviceMemory<int64_t> offset_1 = executor->AllocateArray<int64_t>(1);
   se::DeviceMemory<int64_t> offset_2 = executor->AllocateArray<int64_t>(1);
   se::DeviceMemory<int64_t> offset_3 = executor->AllocateArray<int64_t>(1);
   std::vector<int64_t> offset_arr{3, 5, 2, 0};
-  TF_ASSERT_OK(stream.Memcpy(&offset_0, &offset_arr[0], offset_length));
-  TF_ASSERT_OK(stream.Memcpy(&offset_1, &offset_arr[1], offset_length));
-  TF_ASSERT_OK(stream.Memcpy(&offset_2, &offset_arr[2], offset_length));
-  TF_ASSERT_OK(stream.Memcpy(&offset_3, &offset_arr[3], offset_length));
+  TF_ASSERT_OK(stream->Memcpy(&offset_0, &offset_arr[0], offset_length));
+  TF_ASSERT_OK(stream->Memcpy(&offset_1, &offset_arr[1], offset_length));
+  TF_ASSERT_OK(stream->Memcpy(&offset_2, &offset_arr[2], offset_length));
+  TF_ASSERT_OK(stream->Memcpy(&offset_3, &offset_arr[3], offset_length));
 
   // Preparing parameters for thunk execution.
   ServiceExecutableRunOptions run_options;
@@ -668,20 +677,21 @@ TEST(AddressComputationThunkTest, SlicedMemcpy) {
       {src, dst, offset_0, offset_1, offset_2, offset_3}, 0,
       executor->GetAllocator());
 
-  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
-      run_options, allocations, &stream, &stream, {}, nullptr, nullptr);
+  Thunk::ExecuteParams params =
+      Thunk::ExecuteParams::Create(run_options, allocations, stream.get(),
+                                   stream.get(), {}, nullptr, nullptr);
 
   Thunk::ExecutableSource source = {/*text=*/"", /*binary=*/{}};
-  TF_ASSERT_OK(
-      thunk.Initialize({executor, source, &allocations, &stream, &stream}));
+  TF_ASSERT_OK(thunk.Initialize(
+      {executor, source, &allocations, stream.get(), stream.get()}));
 
   // Executing address computation thunk.
   TF_ASSERT_OK(thunk.ExecuteOnStream(params));
-  TF_ASSERT_OK(stream.BlockHostUntilDone());
+  TF_ASSERT_OK(stream->BlockHostUntilDone());
 
   // Copying `dst` data back to host for verification.
   std::vector<int32_t> out(dst_count, 0);
-  TF_ASSERT_OK(stream.Memcpy(out.data(), dst, dst_length));
+  TF_ASSERT_OK(stream->Memcpy(out.data(), dst, dst_length));
 
   // Verifying that the right slice of `src` was copied to `dst`.
   std::vector<int32_t> ref(dst_count, 0);
@@ -696,8 +706,7 @@ TEST(AddressComputationThunkTest, SlicedMemcpy) {
 TEST(AddressComputationThunkTest, SlicedOutputMemcpy) {
   se::StreamExecutor* executor = GpuExecutor();
 
-  se::Stream stream(executor);
-  TF_ASSERT_OK(stream.Initialize());
+  TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
 
   int64_t src_count = 8 * 8 * 10 * 2;
   int64_t dst_count = 2 * 2 * 2 * 2;
@@ -817,30 +826,38 @@ TEST(AddressComputationThunkTest, SlicedOutputMemcpy) {
   se::DeviceMemory<int32_t> src = executor->AllocateArray<int32_t>(src_count);
   std::vector<int32_t> src_arr(src_count, 0);
   for (unsigned i = 0; i < src_count; ++i) src_arr[i] = i;
-  TF_ASSERT_OK(stream.Memcpy(&src, src_arr.data(), src_length));
+  TF_ASSERT_OK(stream->Memcpy(&src, src_arr.data(), src_length));
 
   se::DeviceMemory<int32_t> dst = executor->AllocateArray<int32_t>(dst_count);
-  TF_ASSERT_OK(stream.MemZero(&dst, dst_length));
+  TF_ASSERT_OK(stream->MemZero(&dst, dst_length));
 
   se::DeviceMemory<int64_t> src_offset_0 = executor->AllocateArray<int64_t>(1);
   se::DeviceMemory<int64_t> src_offset_1 = executor->AllocateArray<int64_t>(1);
   se::DeviceMemory<int64_t> src_offset_2 = executor->AllocateArray<int64_t>(1);
   se::DeviceMemory<int64_t> src_offset_3 = executor->AllocateArray<int64_t>(1);
   std::vector<int64_t> src_offset_arr{3, 5, 2, 0};
-  TF_ASSERT_OK(stream.Memcpy(&src_offset_0, &src_offset_arr[0], offset_length));
-  TF_ASSERT_OK(stream.Memcpy(&src_offset_1, &src_offset_arr[1], offset_length));
-  TF_ASSERT_OK(stream.Memcpy(&src_offset_2, &src_offset_arr[2], offset_length));
-  TF_ASSERT_OK(stream.Memcpy(&src_offset_3, &src_offset_arr[3], offset_length));
+  TF_ASSERT_OK(
+      stream->Memcpy(&src_offset_0, &src_offset_arr[0], offset_length));
+  TF_ASSERT_OK(
+      stream->Memcpy(&src_offset_1, &src_offset_arr[1], offset_length));
+  TF_ASSERT_OK(
+      stream->Memcpy(&src_offset_2, &src_offset_arr[2], offset_length));
+  TF_ASSERT_OK(
+      stream->Memcpy(&src_offset_3, &src_offset_arr[3], offset_length));
 
   se::DeviceMemory<int64_t> dst_offset_0 = executor->AllocateArray<int64_t>(1);
   se::DeviceMemory<int64_t> dst_offset_1 = executor->AllocateArray<int64_t>(1);
   se::DeviceMemory<int64_t> dst_offset_2 = executor->AllocateArray<int64_t>(1);
   se::DeviceMemory<int64_t> dst_offset_3 = executor->AllocateArray<int64_t>(1);
   std::vector<int64_t> dst_offset_arr{1, 1, 0, 0};
-  TF_ASSERT_OK(stream.Memcpy(&dst_offset_0, &dst_offset_arr[0], offset_length));
-  TF_ASSERT_OK(stream.Memcpy(&dst_offset_1, &dst_offset_arr[1], offset_length));
-  TF_ASSERT_OK(stream.Memcpy(&dst_offset_2, &dst_offset_arr[2], offset_length));
-  TF_ASSERT_OK(stream.Memcpy(&dst_offset_3, &dst_offset_arr[3], offset_length));
+  TF_ASSERT_OK(
+      stream->Memcpy(&dst_offset_0, &dst_offset_arr[0], offset_length));
+  TF_ASSERT_OK(
+      stream->Memcpy(&dst_offset_1, &dst_offset_arr[1], offset_length));
+  TF_ASSERT_OK(
+      stream->Memcpy(&dst_offset_2, &dst_offset_arr[2], offset_length));
+  TF_ASSERT_OK(
+      stream->Memcpy(&dst_offset_3, &dst_offset_arr[3], offset_length));
 
   // Preparing parameters for thunk execution.
   ServiceExecutableRunOptions run_options;
@@ -849,20 +866,21 @@ TEST(AddressComputationThunkTest, SlicedOutputMemcpy) {
        dst_offset_0, dst_offset_1, dst_offset_2, dst_offset_3},
       0, executor->GetAllocator());
 
-  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
-      run_options, allocations, &stream, &stream, {}, nullptr, nullptr);
+  Thunk::ExecuteParams params =
+      Thunk::ExecuteParams::Create(run_options, allocations, stream.get(),
+                                   stream.get(), {}, nullptr, nullptr);
 
   Thunk::ExecutableSource source = {/*text=*/"", /*binary=*/{}};
-  TF_ASSERT_OK(
-      thunk.Initialize({executor, source, &allocations, &stream, &stream}));
+  TF_ASSERT_OK(thunk.Initialize(
+      {executor, source, &allocations, stream.get(), stream.get()}));
 
   // Executing address computation thunk.
   TF_ASSERT_OK(thunk.ExecuteOnStream(params));
-  TF_ASSERT_OK(stream.BlockHostUntilDone());
+  TF_ASSERT_OK(stream->BlockHostUntilDone());
 
   // Copying `dst` data back to host for verification.
   std::vector<int32_t> out(dst_count, 0);
-  TF_ASSERT_OK(stream.Memcpy(out.data(), dst, dst_length));
+  TF_ASSERT_OK(stream->Memcpy(out.data(), dst, dst_length));
 
   // Verifying that the right slice of `src` was copied to `dst`.
   std::vector<int32_t> ref(dst_count, 0);
@@ -882,8 +900,7 @@ TEST(AddressComputationThunkTest, SlicedOutputMemcpy) {
 TEST(AddressComputationThunkTest, SlicedGemmArbitraryArgumentOrder) {
   se::StreamExecutor* executor = GpuExecutor();
 
-  se::Stream stream(executor);
-  TF_ASSERT_OK(stream.Initialize());
+  TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
 
   int64_t lhs_length = sizeof(float) * 2 * 4;
   int64_t rhs_length = sizeof(float) * 3 * 1;
@@ -981,27 +998,29 @@ TEST(AddressComputationThunkTest, SlicedGemmArbitraryArgumentOrder) {
   //        5.0, 6.0, 7.0, 8.0]
   se::DeviceMemory<float> lhs = executor->AllocateArray<float>(2 * 4);
   std::vector<float> lhs_arr{1, 2, 3, 4, 5, 6, 7, 8};
-  TF_ASSERT_OK(stream.Memcpy(&lhs, lhs_arr.data(), lhs_length));
+  TF_ASSERT_OK(stream->Memcpy(&lhs, lhs_arr.data(), lhs_length));
 
   // rhs = [1.0,
   //        1.0,
   //        1.0]
   se::DeviceMemory<float> rhs = executor->AllocateArray<float>(3 * 1);
   std::vector<float> rhs_arr(3, 1);
-  TF_ASSERT_OK(stream.Memcpy(&rhs, rhs_arr.data(), rhs_length));
+  TF_ASSERT_OK(stream->Memcpy(&rhs, rhs_arr.data(), rhs_length));
 
   se::DeviceMemory<float> out = executor->AllocateArray<float>(1 * 1);
-  TF_ASSERT_OK(stream.MemZero(&out, out_length));
+  TF_ASSERT_OK(stream->MemZero(&out, out_length));
 
   se::DeviceMemory<float> workspace =
       executor->AllocateArray<float>(1024 * 1024);
-  TF_ASSERT_OK(stream.MemZero(&workspace, 1024 * 1024));
+  TF_ASSERT_OK(stream->MemZero(&workspace, 1024 * 1024));
 
   se::DeviceMemory<int64_t> lhs_offset_0 = executor->AllocateArray<int64_t>(1);
   se::DeviceMemory<int64_t> lhs_offset_1 = executor->AllocateArray<int64_t>(1);
   std::vector<int64_t> lhs_offset_arr{0, 1};
-  TF_ASSERT_OK(stream.Memcpy(&lhs_offset_0, &lhs_offset_arr[0], offset_length));
-  TF_ASSERT_OK(stream.Memcpy(&lhs_offset_1, &lhs_offset_arr[1], offset_length));
+  TF_ASSERT_OK(
+      stream->Memcpy(&lhs_offset_0, &lhs_offset_arr[0], offset_length));
+  TF_ASSERT_OK(
+      stream->Memcpy(&lhs_offset_1, &lhs_offset_arr[1], offset_length));
 
   // Preparing parameters for thunk execution.
   ServiceExecutableRunOptions run_options;
@@ -1009,20 +1028,21 @@ TEST(AddressComputationThunkTest, SlicedGemmArbitraryArgumentOrder) {
       {workspace, lhs, out, rhs, lhs_offset_0, lhs_offset_1}, 0,
       executor->GetAllocator());
 
-  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
-      run_options, allocations, &stream, &stream, {}, nullptr, nullptr);
+  Thunk::ExecuteParams params =
+      Thunk::ExecuteParams::Create(run_options, allocations, stream.get(),
+                                   stream.get(), {}, nullptr, nullptr);
 
   Thunk::ExecutableSource source = {/*text=*/"", /*binary=*/{}};
-  TF_ASSERT_OK(
-      thunk.Initialize({executor, source, &allocations, &stream, &stream}));
+  TF_ASSERT_OK(thunk.Initialize(
+      {executor, source, &allocations, stream.get(), stream.get()}));
 
   // Executing address computation thunk.
   TF_ASSERT_OK(thunk.ExecuteOnStream(params));
-  TF_ASSERT_OK(stream.BlockHostUntilDone());
+  TF_ASSERT_OK(stream->BlockHostUntilDone());
 
   // Copying `out` data back to host for verification.
   std::vector<float> dst(1, 0);
-  TF_ASSERT_OK(stream.Memcpy(dst.data(), out, out_length));
+  TF_ASSERT_OK(stream->Memcpy(dst.data(), out, out_length));
 
   ASSERT_EQ(dst, std::vector<float>({9}));
 }
@@ -1030,8 +1050,7 @@ TEST(AddressComputationThunkTest, SlicedGemmArbitraryArgumentOrder) {
 TEST(AddressComputationThunkTest, SlicedGemmArbitraryNumberOfArguments) {
   se::StreamExecutor* executor = GpuExecutor();
 
-  se::Stream stream(executor);
-  TF_ASSERT_OK(stream.Initialize());
+  TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
 
   int64_t lhs_length = sizeof(float) * 2 * 4;
   int64_t rhs_length = sizeof(float) * 3 * 1;
@@ -1129,27 +1148,29 @@ TEST(AddressComputationThunkTest, SlicedGemmArbitraryNumberOfArguments) {
   //        5.0, 6.0, 7.0, 8.0]
   se::DeviceMemory<float> lhs = executor->AllocateArray<float>(2 * 4);
   std::vector<float> lhs_arr{1, 2, 3, 4, 5, 6, 7, 8};
-  TF_ASSERT_OK(stream.Memcpy(&lhs, lhs_arr.data(), lhs_length));
+  TF_ASSERT_OK(stream->Memcpy(&lhs, lhs_arr.data(), lhs_length));
 
   // rhs = [1.0,
   //        1.0,
   //        1.0]
   se::DeviceMemory<float> rhs = executor->AllocateArray<float>(3 * 1);
   std::vector<float> rhs_arr(3, 1);
-  TF_ASSERT_OK(stream.Memcpy(&rhs, rhs_arr.data(), rhs_length));
+  TF_ASSERT_OK(stream->Memcpy(&rhs, rhs_arr.data(), rhs_length));
 
   se::DeviceMemory<float> out = executor->AllocateArray<float>(1 * 1);
-  TF_ASSERT_OK(stream.MemZero(&out, out_length));
+  TF_ASSERT_OK(stream->MemZero(&out, out_length));
 
   se::DeviceMemory<float> workspace =
       executor->AllocateArray<float>(1024 * 1024);
-  TF_ASSERT_OK(stream.MemZero(&workspace, 1024 * 1024));
+  TF_ASSERT_OK(stream->MemZero(&workspace, 1024 * 1024));
 
   se::DeviceMemory<int64_t> lhs_offset_0 = executor->AllocateArray<int64_t>(1);
   se::DeviceMemory<int64_t> lhs_offset_1 = executor->AllocateArray<int64_t>(1);
   std::vector<int64_t> lhs_offset_arr{0, 1};
-  TF_ASSERT_OK(stream.Memcpy(&lhs_offset_0, &lhs_offset_arr[0], offset_length));
-  TF_ASSERT_OK(stream.Memcpy(&lhs_offset_1, &lhs_offset_arr[1], offset_length));
+  TF_ASSERT_OK(
+      stream->Memcpy(&lhs_offset_0, &lhs_offset_arr[0], offset_length));
+  TF_ASSERT_OK(
+      stream->Memcpy(&lhs_offset_1, &lhs_offset_arr[1], offset_length));
 
   // Preparing parameters for thunk execution.
   ServiceExecutableRunOptions run_options;
@@ -1158,20 +1179,21 @@ TEST(AddressComputationThunkTest, SlicedGemmArbitraryNumberOfArguments) {
        lhs_offset_0, lhs_offset_1, /*garbage, to be ignored*/ rhs, lhs},
       0, executor->GetAllocator());
 
-  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
-      run_options, allocations, &stream, &stream, {}, nullptr, nullptr);
+  Thunk::ExecuteParams params =
+      Thunk::ExecuteParams::Create(run_options, allocations, stream.get(),
+                                   stream.get(), {}, nullptr, nullptr);
 
   Thunk::ExecutableSource source = {/*text=*/"", /*binary=*/{}};
-  TF_ASSERT_OK(
-      thunk.Initialize({executor, source, &allocations, &stream, &stream}));
+  TF_ASSERT_OK(thunk.Initialize(
+      {executor, source, &allocations, stream.get(), stream.get()}));
 
   // Executing address computation thunk.
   TF_ASSERT_OK(thunk.ExecuteOnStream(params));
-  TF_ASSERT_OK(stream.BlockHostUntilDone());
+  TF_ASSERT_OK(stream->BlockHostUntilDone());
 
   // Copying `out` data back to host for verification.
   std::vector<float> dst(1, 0);
-  TF_ASSERT_OK(stream.Memcpy(dst.data(), out, out_length));
+  TF_ASSERT_OK(stream->Memcpy(dst.data(), out, out_length));
 
   ASSERT_EQ(dst, std::vector<float>({9}));
 }
@@ -1179,8 +1201,7 @@ TEST(AddressComputationThunkTest, SlicedGemmArbitraryNumberOfArguments) {
 TEST(AddressComputationThunkTest, SlicedTupledOperandGemm) {
   se::StreamExecutor* executor = GpuExecutor();
 
-  se::Stream stream(executor);
-  TF_ASSERT_OK(stream.Initialize());
+  TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
 
   int64_t lhs_length = sizeof(float) * 2 * 4;
   int64_t rhs_length = sizeof(float) * 3 * 1;
@@ -1272,31 +1293,33 @@ TEST(AddressComputationThunkTest, SlicedTupledOperandGemm) {
   // f32[1,3]{1,0} slice(lhs), slice={[0:1], [1:4]}
   se::DeviceMemory<float> lhs_whole_buffer =
       executor->AllocateArray<float>(2 * 4 * 3);
-  TF_ASSERT_OK(stream.MemZero(&lhs_whole_buffer, 2 * 4 * 3));
+  TF_ASSERT_OK(stream->MemZero(&lhs_whole_buffer, 2 * 4 * 3));
   std::vector<float> lhs_arr{1, 2, 3, 4, 5, 6, 7, 8};
   se::DeviceMemoryBase lhs =
       lhs_whole_buffer.GetByteSlice(lhs_length, lhs_length);
-  TF_ASSERT_OK(stream.Memcpy(&lhs, lhs_arr.data(), lhs_length));
+  TF_ASSERT_OK(stream->Memcpy(&lhs, lhs_arr.data(), lhs_length));
 
   // rhs = [1.0,
   //        1.0,
   //        1.0]
   se::DeviceMemory<float> rhs = executor->AllocateArray<float>(3 * 1);
   std::vector<float> rhs_arr(3, 1);
-  TF_ASSERT_OK(stream.Memcpy(&rhs, rhs_arr.data(), rhs_length));
+  TF_ASSERT_OK(stream->Memcpy(&rhs, rhs_arr.data(), rhs_length));
 
   se::DeviceMemory<float> out = executor->AllocateArray<float>(1 * 1);
-  TF_ASSERT_OK(stream.MemZero(&out, out_length));
+  TF_ASSERT_OK(stream->MemZero(&out, out_length));
 
   se::DeviceMemory<float> workspace =
       executor->AllocateArray<float>(1024 * 1024);
-  TF_ASSERT_OK(stream.MemZero(&workspace, 1024 * 1024));
+  TF_ASSERT_OK(stream->MemZero(&workspace, 1024 * 1024));
 
   se::DeviceMemory<int64_t> lhs_offset_0 = executor->AllocateArray<int64_t>(1);
   se::DeviceMemory<int64_t> lhs_offset_1 = executor->AllocateArray<int64_t>(1);
   std::vector<int64_t> lhs_offset_arr{0, 1};
-  TF_ASSERT_OK(stream.Memcpy(&lhs_offset_0, &lhs_offset_arr[0], offset_length));
-  TF_ASSERT_OK(stream.Memcpy(&lhs_offset_1, &lhs_offset_arr[1], offset_length));
+  TF_ASSERT_OK(
+      stream->Memcpy(&lhs_offset_0, &lhs_offset_arr[0], offset_length));
+  TF_ASSERT_OK(
+      stream->Memcpy(&lhs_offset_1, &lhs_offset_arr[1], offset_length));
 
   // Preparing parameters for thunk execution.
   ServiceExecutableRunOptions run_options;
@@ -1304,20 +1327,21 @@ TEST(AddressComputationThunkTest, SlicedTupledOperandGemm) {
       {lhs_whole_buffer, rhs, out, workspace, lhs_offset_0, lhs_offset_1}, 0,
       executor->GetAllocator());
 
-  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
-      run_options, allocations, &stream, &stream, {}, nullptr, nullptr);
+  Thunk::ExecuteParams params =
+      Thunk::ExecuteParams::Create(run_options, allocations, stream.get(),
+                                   stream.get(), {}, nullptr, nullptr);
 
   Thunk::ExecutableSource source = {/*text=*/"", /*binary=*/{}};
-  TF_ASSERT_OK(
-      thunk.Initialize({executor, source, &allocations, &stream, &stream}));
+  TF_ASSERT_OK(thunk.Initialize(
+      {executor, source, &allocations, stream.get(), stream.get()}));
 
   // Executing address computation thunk.
   TF_ASSERT_OK(thunk.ExecuteOnStream(params));
-  TF_ASSERT_OK(stream.BlockHostUntilDone());
+  TF_ASSERT_OK(stream->BlockHostUntilDone());
 
   // Copying `out` data back to host for verification.
   std::vector<float> dst(1, 0);
-  TF_ASSERT_OK(stream.Memcpy(dst.data(), out, out_length));
+  TF_ASSERT_OK(stream->Memcpy(dst.data(), out, out_length));
 
   ASSERT_EQ(dst, std::vector<float>({9}));
 }
@@ -1325,8 +1349,7 @@ TEST(AddressComputationThunkTest, SlicedTupledOperandGemm) {
 TEST(AddressComputationThunkTest, SlicedMemcpyOOB) {
   se::StreamExecutor* executor = GpuExecutor();
 
-  se::Stream stream(executor);
-  TF_ASSERT_OK(stream.Initialize());
+  TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
 
   int64_t src_count = 8 * 8 * 10 * 2;
   int64_t dst_count = 2 * 2 * 2 * 2;
@@ -1446,10 +1469,10 @@ TEST(AddressComputationThunkTest, SlicedMemcpyOOB) {
   se::DeviceMemory<int32_t> src = executor->AllocateArray<int32_t>(src_count);
   std::vector<int32_t> src_arr(src_count, 0);
   for (unsigned i = 0; i < src_count; ++i) src_arr[i] = i;
-  TF_ASSERT_OK(stream.Memcpy(&src, src_arr.data(), src_length));
+  TF_ASSERT_OK(stream->Memcpy(&src, src_arr.data(), src_length));
 
   se::DeviceMemory<int32_t> dst = executor->AllocateArray<int32_t>(dst_count);
-  TF_ASSERT_OK(stream.MemZero(&dst, dst_length));
+  TF_ASSERT_OK(stream->MemZero(&dst, dst_length));
 
   se::DeviceMemory<int64_t> src_offset_0 = executor->AllocateArray<int64_t>(1);
   se::DeviceMemory<int64_t> src_offset_1 = executor->AllocateArray<int64_t>(1);
@@ -1457,10 +1480,14 @@ TEST(AddressComputationThunkTest, SlicedMemcpyOOB) {
   se::DeviceMemory<int64_t> src_offset_3 = executor->AllocateArray<int64_t>(1);
   std::vector<int64_t> src_ref_offset_arr{3, 5, 2, 0};
   std::vector<int64_t> src_offset_arr{3, 5, 2, -3};
-  TF_ASSERT_OK(stream.Memcpy(&src_offset_0, &src_offset_arr[0], offset_length));
-  TF_ASSERT_OK(stream.Memcpy(&src_offset_1, &src_offset_arr[1], offset_length));
-  TF_ASSERT_OK(stream.Memcpy(&src_offset_2, &src_offset_arr[2], offset_length));
-  TF_ASSERT_OK(stream.Memcpy(&src_offset_3, &src_offset_arr[3], offset_length));
+  TF_ASSERT_OK(
+      stream->Memcpy(&src_offset_0, &src_offset_arr[0], offset_length));
+  TF_ASSERT_OK(
+      stream->Memcpy(&src_offset_1, &src_offset_arr[1], offset_length));
+  TF_ASSERT_OK(
+      stream->Memcpy(&src_offset_2, &src_offset_arr[2], offset_length));
+  TF_ASSERT_OK(
+      stream->Memcpy(&src_offset_3, &src_offset_arr[3], offset_length));
 
   se::DeviceMemory<int64_t> dst_offset_0 = executor->AllocateArray<int64_t>(1);
   se::DeviceMemory<int64_t> dst_offset_1 = executor->AllocateArray<int64_t>(1);
@@ -1468,10 +1495,14 @@ TEST(AddressComputationThunkTest, SlicedMemcpyOOB) {
   se::DeviceMemory<int64_t> dst_offset_3 = executor->AllocateArray<int64_t>(1);
   std::vector<int64_t> dst_ref_offset_arr{1, 1, 0, 0};
   std::vector<int64_t> dst_offset_arr{3, 2, 5, -4};
-  TF_ASSERT_OK(stream.Memcpy(&dst_offset_0, &dst_offset_arr[0], offset_length));
-  TF_ASSERT_OK(stream.Memcpy(&dst_offset_1, &dst_offset_arr[1], offset_length));
-  TF_ASSERT_OK(stream.Memcpy(&dst_offset_2, &dst_offset_arr[2], offset_length));
-  TF_ASSERT_OK(stream.Memcpy(&dst_offset_3, &dst_offset_arr[3], offset_length));
+  TF_ASSERT_OK(
+      stream->Memcpy(&dst_offset_0, &dst_offset_arr[0], offset_length));
+  TF_ASSERT_OK(
+      stream->Memcpy(&dst_offset_1, &dst_offset_arr[1], offset_length));
+  TF_ASSERT_OK(
+      stream->Memcpy(&dst_offset_2, &dst_offset_arr[2], offset_length));
+  TF_ASSERT_OK(
+      stream->Memcpy(&dst_offset_3, &dst_offset_arr[3], offset_length));
 
   // Preparing parameters for thunk execution.
   ServiceExecutableRunOptions run_options;
@@ -1480,20 +1511,21 @@ TEST(AddressComputationThunkTest, SlicedMemcpyOOB) {
        dst_offset_0, dst_offset_1, dst_offset_2, dst_offset_3},
       0, executor->GetAllocator());
 
-  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
-      run_options, allocations, &stream, &stream, {}, nullptr, nullptr);
+  Thunk::ExecuteParams params =
+      Thunk::ExecuteParams::Create(run_options, allocations, stream.get(),
+                                   stream.get(), {}, nullptr, nullptr);
 
   Thunk::ExecutableSource source = {/*text=*/"", /*binary=*/{}};
-  TF_ASSERT_OK(
-      thunk.Initialize({executor, source, &allocations, &stream, &stream}));
+  TF_ASSERT_OK(thunk.Initialize(
+      {executor, source, &allocations, stream.get(), stream.get()}));
 
   // Executing address computation thunk.
   TF_ASSERT_OK(thunk.ExecuteOnStream(params));
-  TF_ASSERT_OK(stream.BlockHostUntilDone());
+  TF_ASSERT_OK(stream->BlockHostUntilDone());
 
   // Copying `dst` data back to host for verification.
   std::vector<int32_t> out(dst_count, 0);
-  TF_ASSERT_OK(stream.Memcpy(out.data(), dst, dst_length));
+  TF_ASSERT_OK(stream->Memcpy(out.data(), dst, dst_length));
 
   // Verifying that the right slice of `src` was copied to `dst`.
   std::vector<int32_t> ref(dst_count, 0);
@@ -1514,8 +1546,7 @@ TEST(AddressComputationThunkTest, SlicedMemcpyOOB) {
 TEST(AddressComputationThunkTest, SlicedOperandsSameBufferGemm) {
   se::StreamExecutor* executor = GpuExecutor();
 
-  se::Stream stream(executor);
-  TF_ASSERT_OK(stream.Initialize());
+  TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
 
   int64_t lhs_length = sizeof(float) * 2 * 4;
   int64_t rhs_length = sizeof(float) * 3 * 1;
@@ -1614,51 +1645,54 @@ TEST(AddressComputationThunkTest, SlicedOperandsSameBufferGemm) {
   // f32[1,3]{1,0} slice(lhs), slice={[0:1], [1:4]}
   se::DeviceMemory<float> buffer =
       executor->AllocateArray<float>(lhs_length + rhs_length + out_length);
-  TF_ASSERT_OK(stream.MemZero(&buffer, lhs_length + rhs_length + out_length));
+  TF_ASSERT_OK(stream->MemZero(&buffer, lhs_length + rhs_length + out_length));
 
   se::DeviceMemoryBase lhs = buffer.GetByteSlice(0, lhs_length);
   std::vector<float> lhs_arr{1, 2, 3, 4, 5, 6, 7, 8};
-  TF_ASSERT_OK(stream.Memcpy(&lhs, lhs_arr.data(), lhs_length));
+  TF_ASSERT_OK(stream->Memcpy(&lhs, lhs_arr.data(), lhs_length));
 
   // rhs = [1.0,
   //        1.0,
   //        1.0]
   se::DeviceMemoryBase rhs = buffer.GetByteSlice(lhs_length, rhs_length);
   std::vector<float> rhs_arr(3, 1);
-  TF_ASSERT_OK(stream.Memcpy(&rhs, rhs_arr.data(), rhs_length));
+  TF_ASSERT_OK(stream->Memcpy(&rhs, rhs_arr.data(), rhs_length));
 
   se::DeviceMemoryBase out =
       buffer.GetByteSlice(lhs_length + rhs_length, out_length);
 
   se::DeviceMemory<float> workspace =
       executor->AllocateArray<float>(1024 * 1024);
-  TF_ASSERT_OK(stream.MemZero(&workspace, 1024 * 1024));
+  TF_ASSERT_OK(stream->MemZero(&workspace, 1024 * 1024));
 
   se::DeviceMemory<int64_t> lhs_offset_0 = executor->AllocateArray<int64_t>(1);
   se::DeviceMemory<int64_t> lhs_offset_1 = executor->AllocateArray<int64_t>(1);
   std::vector<int64_t> lhs_offset_arr{0, 1};
-  TF_ASSERT_OK(stream.Memcpy(&lhs_offset_0, &lhs_offset_arr[0], offset_length));
-  TF_ASSERT_OK(stream.Memcpy(&lhs_offset_1, &lhs_offset_arr[1], offset_length));
+  TF_ASSERT_OK(
+      stream->Memcpy(&lhs_offset_0, &lhs_offset_arr[0], offset_length));
+  TF_ASSERT_OK(
+      stream->Memcpy(&lhs_offset_1, &lhs_offset_arr[1], offset_length));
 
   // Preparing parameters for thunk execution.
   ServiceExecutableRunOptions run_options;
   BufferAllocations allocations({buffer, workspace, lhs_offset_0, lhs_offset_1},
                                 0, executor->GetAllocator());
 
-  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
-      run_options, allocations, &stream, &stream, {}, nullptr, nullptr);
+  Thunk::ExecuteParams params =
+      Thunk::ExecuteParams::Create(run_options, allocations, stream.get(),
+                                   stream.get(), {}, nullptr, nullptr);
 
   Thunk::ExecutableSource source = {/*text=*/"", /*binary=*/{}};
-  TF_ASSERT_OK(
-      thunk.Initialize({executor, source, &allocations, &stream, &stream}));
+  TF_ASSERT_OK(thunk.Initialize(
+      {executor, source, &allocations, stream.get(), stream.get()}));
 
   // Executing address computation thunk.
   TF_ASSERT_OK(thunk.ExecuteOnStream(params));
-  TF_ASSERT_OK(stream.BlockHostUntilDone());
+  TF_ASSERT_OK(stream->BlockHostUntilDone());
 
   // Copying `out` data back to host for verification.
   std::vector<float> dst(1, 0);
-  TF_ASSERT_OK(stream.Memcpy(dst.data(), out, out_length));
+  TF_ASSERT_OK(stream->Memcpy(dst.data(), out, out_length));
 
   ASSERT_EQ(dst, std::vector<float>({9}));
 }
