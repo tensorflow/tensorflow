@@ -36,7 +36,7 @@ REGISTER_OP("TPUExecute")
       for (int i = 0; i < c->num_outputs(); ++i) {
         c->set_output(i, c->UnknownShape());
       }
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("TPUExecuteAndUpdateVariables")
@@ -57,7 +57,7 @@ REGISTER_OP("TPUExecuteAndUpdateVariables")
       for (int i = 0; i < c->num_outputs(); ++i) {
         c->set_output(i, c->UnknownShape());
       }
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 }  // namespace tensorflow

@@ -93,7 +93,7 @@ void PjRtDeviceContext::CopyDeviceTensorToCPU(const Tensor* device_tensor,
                                               Device* device,
                                               Tensor* cpu_tensor,
                                               StatusCallback done) {
-  profiler::TraceMe traceme("PjRtDeviceContext::CopyDeviceTensorToCPU");
+  tsl::profiler::TraceMe traceme("PjRtDeviceContext::CopyDeviceTensorToCPU");
   if (device_tensor->NumElements() == 0) {
     VLOG(2) << "CopyDeviceTensorToCPU empty tensor";
     done(absl::OkStatus());
@@ -146,7 +146,7 @@ void PjRtDeviceContext::CopyCPUTensorToDevice(const Tensor* cpu_tensor,
                                               Tensor* device_tensor,
                                               StatusCallback done,
                                               bool sync_dst_compute) const {
-  profiler::TraceMe traceme("PjRtDeviceContext::CopyCPUTensorToDevice");
+  tsl::profiler::TraceMe traceme("PjRtDeviceContext::CopyCPUTensorToDevice");
   if (cpu_tensor->NumElements() == 0) {
     VLOG(2) << "CopyCPUTensorToDevice empty tensor";
     done(absl::OkStatus());
@@ -240,7 +240,7 @@ void PjRtDeviceToDeviceCopy(DeviceContext* send_dev_context,
                             AllocatorAttributes dst_alloc_attr,
                             const Tensor* input, Tensor* output,
                             int dev_to_dev_stream_index, StatusCallback done) {
-  profiler::TraceMe traceme("PjRtDevice_DeviceToDeviceCopy");
+  tsl::profiler::TraceMe traceme("PjRtDevice_DeviceToDeviceCopy");
   if (input->NumElements() == 0) {
     VLOG(2) << "PjRtDevice_DeviceToDeviceCopy empty tensor";
     done(absl::OkStatus());
