@@ -599,12 +599,12 @@ xla_cc_test(
         "//xla:statusor",
         "//xla:test",
         "//xla:test_helpers",
-        "//xla:types",
         "//xla:xla_data_proto_cc",
         "//xla/client:padding",
         "//xla/hlo/ir:hlo",
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",

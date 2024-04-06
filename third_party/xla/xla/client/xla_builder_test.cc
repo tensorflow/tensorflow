@@ -1797,7 +1797,8 @@ TEST_P(XlaBuilderUnboundedUnaryOpTest, UnboundedUnaryOpTest) {
   TF_ASSERT_OK_AND_ASSIGN(const Shape expected,
                           ParseShape(GetParam().expected));
   GetParam().unary_op(Parameter(&b, 0, operand, "operand"));
-  TF_ASSERT_OK_AND_ASSIGN(const auto module, BuildHloModule(b));
+  TF_ASSERT_OK_AND_ASSIGN(const std::unique_ptr<xla::HloModule> module,
+                          BuildHloModule(b));
   EXPECT_THAT(GetRoot(*module),
               GmockMatch(m::Op().WithShapeEqualTo(&expected)));
 }
@@ -1811,9 +1812,9 @@ TEST_P(XlaBuilderUnboundedBinaryOpTest, UnboundedBinaryOpTest) {
   GetParam().binary_op(Parameter(&b, 0, lhs, "lhs"),
                        Parameter(&b, 1, rhs, "rhs"),
                        GetParam().broadcast_dimensions);
-  if (auto result = BuildHloModule(b); result.ok()) {
-    const std::unique_ptr<HloModule> module = std::move(*result);
-    EXPECT_THAT(GetRoot(*module),
+  if (const auto result = BuildHloModule(b); result.ok()) {
+    ASSERT_NE(*result, nullptr);
+    EXPECT_THAT(GetRoot(**result),
                 GmockMatch(m::Op().WithShapeEqualTo(&expected)));
   } else {
     ASSERT_TRUE(GetParam().error_message.has_value());
@@ -2540,6 +2541,11 @@ INSTANTIATE_TEST_SUITE_P(
         {"f32[1, ?, 2, ?, <=2, ?, ?]", "f32[?, 1, ?, 2, ?, <=2, ?]",
          /*broadcast_dimensions=*/empty_array, "f32[?, ?, 2, 2, <=2, <=2, ?]",
          &Atan2},
+        {"f32[1, ?, 2, ?, <=2, ?, ?]", "f32[?, 1, ?, 2, ?, <=2, ?]",
+         /*broadcast_dimensions=*/empty_array, "c64[?, ?, 2, 2, <=2, <=2, ?]",
+         &Complex},
+        {"f32[?, 10]", "f32[1]", /*broadcast_dimensions=*/zero_array,
+         "c64[?, 10]", &Complex},
         {"f32[1, ?, 2, ?, <=2, ?, ?]", "f32[?, 1, ?, 2, ?, <=2, ?]",
          /*broadcast_dimensions=*/empty_array, "f32[?, ?, 2, 2, <=2, <=2, ?]",
          &Div},
