@@ -1589,9 +1589,9 @@ StatusOr<DTensorDevice::DTensorOperationLoweringContext>
 DTensorDevice::DTensorOperationToModule(
     TFE_Context* context, const std::vector<TensorWithLayout*>& inputs,
     const DTensorOperation& doperation, const NameAttrList& eager_attributes) {
-  profiler::TraceMe activity(
+  tsl::profiler::TraceMe activity(
       [&] { return "DTensorDevice::DTensorOperationToModule"; },
-      profiler::TraceMeLevel::kInfo);
+      tsl::profiler::TraceMeLevel::kInfo);
   FunctionLibraryDefinition* flib_def =
       tensorflow::unwrap(context)->FuncLibDef();
   DTensorOperationLoweringContext result;
@@ -1679,9 +1679,9 @@ void DTensorDevice::ModuleToExecutionFunctions(
     const DTensorOperation& doperation, const NameAttrList& eager_attributes,
     int num_outputs, DTensorOperationLoweringContext& lowering_context,
     const ExecutionFunctions** execution_functions, TF_Status* status) {
-  profiler::TraceMe activity(
+  tsl::profiler::TraceMe activity(
       [&] { return "DTensorDevice::ModuleToExecutionFunctions"; },
-      profiler::TraceMeLevel::kInfo);
+      tsl::profiler::TraceMeLevel::kInfo);
   FunctionLibraryDefinition* flib_def =
       tensorflow::unwrap(context)->FuncLibDef();
   const FunctionDef* function_def = doperation.function_def;
@@ -1706,8 +1706,9 @@ void DTensorDevice::ModuleToExecutionFunctions(
                   "ModuleOp for ExecutionFunctions extraction is missing.");
   }
   {
-    profiler::TraceMe activity([&] { return "DTensorDevice::RunMLIRPasses"; },
-                               profiler::TraceMeLevel::kInfo);
+    tsl::profiler::TraceMe activity(
+        [&] { return "DTensorDevice::RunMLIRPasses"; },
+        tsl::profiler::TraceMeLevel::kInfo);
     RETURN_C_STATUS_IF_NOT_OK(pass_runner_.Run(*lowering_context.module),
                               status);
   }
