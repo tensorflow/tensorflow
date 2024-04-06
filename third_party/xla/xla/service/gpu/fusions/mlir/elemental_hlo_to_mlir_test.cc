@@ -1451,6 +1451,27 @@ TEST_F(ElementalHloToMlirTest, ReducePrecision) {
                    "// CHECK: @main"));
 }
 
+TEST_F(ElementalHloToMlirTest, Map) {
+  TF_EXPECT_OK(Run(R"(
+    mapper {
+      a = f32[] parameter(0)
+      b = f32[] parameter(1)
+      ROOT add = f32[] add(a, b)
+    }
+    ENTRY main {
+      %p0 = f32[5,7] parameter(0)
+      %p1 = f32[5,7] parameter(1)
+      ROOT r = f32[5,7] map(%p0, %p1), dimensions={}, to_apply=mapper
+    })",
+                   R"(
+    // CHECK: @main
+    // CHECK-NEXT: tensor.extract
+    // CHECK-NEXT: tensor.extract
+    // CHECK-NEXT: pure_call @mapper_add
+    // CHECK-NEXT: return
+  )"));
+}
+
 }  // namespace
 }  // namespace mlir_converter
 }  // namespace gpu
