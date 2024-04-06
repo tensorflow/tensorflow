@@ -2112,6 +2112,8 @@ void SetHloSharding(const HloInstructionSequence& sequence,
 
   for (HloInstruction* inst : instructions) {
     if (inst->opcode() == HloOpcode::kOutfeed ||
+        inst->opcode() == HloOpcode::kRecv ||
+        inst->opcode() == HloOpcode::kRecvDone ||
         inst->opcode() == HloOpcode::kSend ||
         inst->opcode() == HloOpcode::kSendDone) {
       continue;
@@ -2271,7 +2273,8 @@ Status SetHloShardingPostProcessing(
       // have. Here we restore these maximal shardings if present.
       auto preserved_sharding_iter = preserve_shardings.find(inst->name());
       if (preserved_sharding_iter != preserve_shardings.end()) {
-        const auto& preserved_sharding = preserved_sharding_iter->second;
+        const std::vector<HloSharding>& preserved_sharding =
+            preserved_sharding_iter->second;
         if (preserved_sharding.size() > 1) {
           std::vector<Shape> tuple_elements_shape(
               inst->operand(0)->shape().tuple_shapes().begin(),
@@ -2282,27 +2285,36 @@ Status SetHloShardingPostProcessing(
           ShapeTree<HloSharding> output_tuple_sharding(
               output_tuple_sharding_shape, Undefined());
           size_t i = 0;
-          for (auto& leaf : output_tuple_sharding.leaves()) {
+          for (std::pair<ShapeIndex, HloSharding>& leaf :
+               output_tuple_sharding.leaves()) {
             leaf.second = preserved_sharding.at(i++);
           }
           inst->set_sharding(HloSharding::Tuple(output_tuple_sharding));
         } else {
-          inst->set_sharding(preserved_sharding.at(0));
+          CHECK_EQ(preserved_sharding.size(), 1);  // Crash OK
+          inst->set_sharding(preserved_sharding[0]);
         }
       }
       continue;
-    } else if (inst->opcode() == HloOpcode::kSend) {
+    } else if (inst->opcode() == HloOpcode::kSend ||
+               inst->opcode() == HloOpcode::kRecv ||
+               inst->opcode() == HloOpcode::kRecvDone) {
       // In the analysis itself, we use replicated strategies as a stand-in for
       // the (expected) maximal sharding annotations that send ops usually
       // have. Here we restore these maximal shardings if present.
       auto preserved_sharding_iter = preserve_shardings.find(inst->name());
       if (preserved_sharding_iter != preserve_shardings.end()) {
-        const auto& preserved_sharding = preserved_sharding_iter->second;
+        const std::vector<HloSharding>& preserved_sharding =
+            preserved_sharding_iter->second;
         if (preserved_sharding.size() > 1) {
           inst->set_sharding(
               HloSharding::Tuple(inst->shape(), preserved_sharding));
         } else {
-          CHECK_EQ(preserved_sharding.size(), 1);
+          if (preserved_sharding.size() != 1) {
+            return absl::InternalError(absl::StrCat(
+                "An empty sharding was preserved for ", inst->name(),
+                ". This should be reported as a bug."));
+          }
           inst->set_sharding(preserved_sharding[0]);
         }
       }
@@ -3450,6 +3462,8 @@ AutoShardingImplementation::SaveAndRemoveShardingAnnotation(
        module->computations(execution_threads)) {
     for (const auto inst : computation->instructions()) {
       if (inst->opcode() == HloOpcode::kOutfeed ||
+          inst->opcode() == HloOpcode::kRecv ||
+          inst->opcode() == HloOpcode::kRecvDone ||
           inst->opcode() == HloOpcode::kSend ||
           inst->opcode() == HloOpcode::kSendDone) {
         spmd::SaveShardingForInstruction(inst,
