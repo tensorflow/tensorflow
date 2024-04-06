@@ -63,6 +63,15 @@ class MatmulTest : public HloTestBase {
     ; CHECK-DAG:   }
     ; CHECK:     }
     )";
+  const char* fused_matmul_bias_gelu_tanh_ = R"(
+    ; CHECK:     custom_call_target="__onednn$matmul",
+    ; CHECK:       backend_config={
+    ; CHECK-DAG:     "outer_dimension_partitions":[],
+    ; CHECK-DAG:     "onednn_matmul_config":{
+    ; CHECK-DAG:       "fused_ops":["BIAS","GELU_TANH"]
+    ; CHECK-DAG:   }
+    ; CHECK:     }
+    )";
 };
 
 TEST_F(MatmulTest, SimpleTestF32) {
@@ -394,16 +403,126 @@ TEST_F(MatmulTest, BiasAndApproxGELUTestF32) {
   })";
 
   EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec{1e-4, 1e-4}));
-  MatchOptimizedHlo(matmul_module_str,
-                    R"(
-  ; CHECK:     custom_call_target="__onednn$matmul",
-  ; CHECK:       backend_config={
-  ; CHECK-DAG:     "outer_dimension_partitions":[],
-  ; CHECK-DAG:     "onednn_matmul_config":{
-  ; CHECK-DAG:       "fused_ops":["BIAS","GELU_TANH"]
-  ; CHECK-DAG:   }
-  ; CHECK:     }
-  )");
+  MatchOptimizedHlo(matmul_module_str, fused_matmul_bias_gelu_tanh_);
+}
+
+// Tests GELU approximate pattern from tf.nn.gelu(approximate=True).
+TEST_F(MatmulTest, BiasAndApproxTFGELUTestF32) {
+  const char* matmul_module_str = R"(
+  HloModule matmul.test.f32
+
+  ENTRY matmul.test.f32 {
+  arg0.1 = f32[1024,512] parameter(0), parameter_replication={false}
+  arg1.2 = f32[256,512] parameter(1), parameter_replication={false}
+  dot.7 = f32[1024,256] dot(arg0.1, arg1.2), lhs_contracting_dims={1}, rhs_contracting_dims={1}, frontend_attributes={grad_x="false",grad_y="false"}
+  arg2.3 = f32[256] parameter(2), parameter_replication={false}
+  broadcast.9 = f32[1024,256] broadcast(arg2.3), dimensions={1}
+  add.10 = f32[1024,256] add(dot.7, broadcast.9)
+  constant.12 = f32[] constant(0.044715)
+  broadcast.13 = f32[1024,256] broadcast(constant.12), dimensions={}
+  multiply.14 = f32[1024,256] multiply(broadcast.13, add.10)
+  multiply.11 = f32[1024,256] multiply(add.10, add.10)
+  multiply.15 = f32[1024,256] multiply(multiply.14, multiply.11)
+  add.16 = f32[1024,256] add(add.10, multiply.15)
+  constant.17 = f32[] constant(0.797884583)
+  broadcast.18 = f32[1024,256] broadcast(constant.17), dimensions={}
+  multiply.19 = f32[1024,256] multiply(add.16, broadcast.18)
+  tanh.20 = f32[1024,256] tanh(multiply.19)
+  constant.21 = f32[] constant(1)
+  broadcast.22 = f32[1024,256] broadcast(constant.21), dimensions={}
+  add.23 = f32[1024,256] add(tanh.20, broadcast.22)
+  constant.24 = f32[] constant(0.5)
+  broadcast.25 = f32[1024,256] broadcast(constant.24), dimensions={}
+  multiply.26 = f32[1024,256] multiply(add.23, broadcast.25)
+  ROOT multiply.27 = f32[1024,256] multiply(add.10, multiply.26)
+  })";
+
+  EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec{1e-4, 1e-4}));
+  MatchOptimizedHlo(matmul_module_str, fused_matmul_bias_gelu_tanh_);
+}
+
+// Tests GELU approximate pattern from tf.nn.gelu(approximate=True) with
+// auto_mixed_precision_onednn_bfloat16.
+TEST_F(MatmulTest, BiasAndApproxTFGELUTestBF16) {
+  if (!IsSupportedType(PrimitiveType::BF16)) {
+    GTEST_SKIP() << "CPU does not support BF16.";
+  }
+  const char* matmul_module_str = R"(
+  HloModule matmul.test.f32
+
+  ENTRY matmul.test.f32 {
+  arg0.1 = f32[1024,512] parameter(0), parameter_replication={false}
+  convert.8 = bf16[1024,512] convert(arg0.1)
+  arg1.2 = f32[256,512] parameter(1), parameter_replication={false}
+  convert.9 = bf16[256,512] convert(arg1.2)
+  dot.10 = bf16[1024,256] dot(convert.8, convert.9), lhs_contracting_dims={1}, rhs_contracting_dims={1}, frontend_attributes={grad_x="false",grad_y="false"}
+  convert = f32[1024,256] convert(dot.10)
+  arg2.3 = f32[256] parameter(2), parameter_replication={false}
+  broadcast = f32[1024,256] broadcast(arg2.3), dimensions={1}
+  add.13 = f32[1024,256] add(convert, broadcast)
+  constant.16 = f32[] constant(0.044715)
+  broadcast.17 = f32[1024,256] broadcast(constant.16), dimensions={}
+  multiply.18 = f32[1024,256] multiply(broadcast.17, add.13)
+  multiply.15 = f32[1024,256] multiply(add.13, add.13)
+  multiply.19 = f32[1024,256] multiply(multiply.18, multiply.15)
+  add.20 = f32[1024,256] add(add.13, multiply.19)
+  constant.21 = f32[] constant(0.797884583)
+  broadcast.22 = f32[1024,256] broadcast(constant.21), dimensions={}
+  multiply.23 = f32[1024,256] multiply(add.20, broadcast.22)
+  tanh.24 = f32[1024,256] tanh(multiply.23)
+  constant.25 = f32[] constant(1)
+  broadcast.26 = f32[1024,256] broadcast(constant.25), dimensions={}
+  add.27 = f32[1024,256] add(tanh.24, broadcast.26)
+  constant.1 = f32[] constant(0.5)
+  broadcast.2 = f32[1024,256] broadcast(constant.1), dimensions={}
+  multiply.30 = f32[1024,256] multiply(add.13, broadcast.2)
+  ROOT multiply.32 = f32[1024,256] multiply(add.27, multiply.30)
+  })";
+
+  EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec{1e-2, 1e-2}));
+  MatchOptimizedHlo(matmul_module_str, fused_matmul_bias_gelu_tanh_);
+}
+
+// Tests GELU approximate pattern from tf.nn.gelu(approximate=True)
+TEST_F(MatmulTest, BiasAndApproxTFGELUTestF16) {
+  if (!IsSupportedType(PrimitiveType::F16)) {
+    GTEST_SKIP() << "CPU does not support F16.";
+  }
+  const char* matmul_module_str = R"(
+  HloModule matmul.test.f32
+
+  ENTRY matmul.test.f32 {
+  arg0.1 = f16[1024,512] parameter(0), parameter_replication={false}
+  reshape.4 = f16[1024,512] reshape(arg0.1)
+  arg1.2 = f16[256,512] parameter(1), parameter_replication={false}
+  reshape.5 = f16[256,512] reshape(arg1.2)
+  dot.7 = f16[1024,256] dot(reshape.4, reshape.5), lhs_contracting_dims={1}, rhs_contracting_dims={1}, frontend_attributes={grad_x="false",grad_y="false"}
+  transpose.8 = f16[1024,256] transpose(dot.7), dimensions={0,1}
+  arg2.3 = f16[256] parameter(2), parameter_replication={false}
+  reshape.6 = f16[256] reshape(arg2.3)
+  broadcast.9 = f16[1024,256] broadcast(reshape.6), dimensions={1}
+  add.10 = f16[1024,256] add(transpose.8, broadcast.9)
+  constant.12 = f16[] constant(0.044708)
+  broadcast.13 = f16[1024,256] broadcast(constant.12), dimensions={}
+  multiply.14 = f16[1024,256] multiply(broadcast.13, add.10)
+  multiply.11 = f16[1024,256] multiply(add.10, add.10)
+  multiply.15 = f16[1024,256] multiply(multiply.14, multiply.11)
+  add.16 = f16[1024,256] add(add.10, multiply.15)
+  constant.17 = f16[] constant(0.79785)
+  broadcast.18 = f16[1024,256] broadcast(constant.17), dimensions={}
+  multiply.19 = f16[1024,256] multiply(add.16, broadcast.18)
+  tanh.20 = f16[1024,256] tanh(multiply.19)
+  constant.21 = f16[] constant(1)
+  broadcast.22 = f16[1024,256] broadcast(constant.21), dimensions={}
+  add.23 = f16[1024,256] add(tanh.20, broadcast.22)
+  constant.24 = f16[] constant(0.5)
+  broadcast.25 = f16[1024,256] broadcast(constant.24), dimensions={}
+  multiply.26 = f16[1024,256] multiply(add.23, broadcast.25)
+  ROOT multiply.27 = f16[1024,256] multiply(add.10, multiply.26)
+  })";
+
+  EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec{1e-2, 1e-4}));
+  MatchOptimizedHlo(matmul_module_str, fused_matmul_bias_gelu_tanh_);
 }
 
 TEST_F(MatmulTest, ReLUTestF32) {

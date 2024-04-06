@@ -321,13 +321,20 @@ std::unique_ptr<llvm::TargetMachine> NVPTXGetTargetMachine(
     const DebugOptions& debug_options) {
   // Figure out the exact name of the processor as known to the NVPTX backend
   // from the gpu_architecture flag.
-#if defined(GOOGLE_CUDA) && CUDA_VERSION >= 12010
-  // use ptx81 for CUDA >= 12.1
-  return GetTargetMachine(target_triple, GetSmName(compute_capability),
-                          debug_options, /*feature_str=*/"+ptx81");
+#if !defined(GOOGLE_CUDA) || CUDA_VERSION < 11000
+  const char feature_str[] = "+ptx65";
+#elif CUDA_VERSION < 13000
+  const char feature_str[] = {'+',
+                              'p',
+                              't',
+                              'x',
+                              '7' + (CUDA_VERSION / 1000) - 11,
+                              '0' + (CUDA_VERSION / 10) % 10};
+#else
+  const char feature_str[] = "+ptx84";
 #endif
   return GetTargetMachine(target_triple, GetSmName(compute_capability),
-                          debug_options, /*feature_str=*/"+ptx74");
+                          debug_options, feature_str);
 }
 
 using TargetModuleLinker =
