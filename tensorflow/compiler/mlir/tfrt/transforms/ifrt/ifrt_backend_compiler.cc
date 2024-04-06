@@ -92,6 +92,7 @@ CompileAndRegisterIfrtPrograms(absl::string_view model_name,
         model_name, entry_function_name.str(), *std::move(submodule),
         ifrt_model_context.GetClient(), &ifrt_model_context.GetThreadPool(),
         &ifrt_model_context.GetLoadedVariableRegistry(),
+        ifrt_model_context.GetDeviceMgr(),
         ifrt_model_context.GetShapeRepresentationFn());
 
     // Register the Ifrt program to `ServingExecutableRegistry` so that
