@@ -58,10 +58,11 @@ absl::Status Prepare(LogOp& op, const Tensor& input, Tensor& output) {
 absl::Status Evaluate(LogOp& op, const Tensor& input, Tensor& output) {
   Log log;
   if (input.IsPerTensorQuantized()) {
-    DISPATCH_QUANTIZED(detail::DequantizeOpQuantizePerTensor,
-                       input.quantized_tensor_element_type().StorageType(),
-                       input.quantized_tensor_element_type().ExpressedType(),
-                       log, input, output)
+    DISPATCH_QUANTIZED(
+        detail::DequantizeOpQuantizePerTensor,
+        input.quantized_per_tensor_element_type().StorageType(),
+        input.quantized_per_tensor_element_type().ExpressedType(), log, input,
+        output)
   } else if (IsFloatTensor(input)) {
     DISPATCH_FLOAT(detail::EvaluateNoQuantization, input.tensor_element_type(),
                    log, input, output);

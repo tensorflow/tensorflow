@@ -227,7 +227,6 @@ cc_library(
         ":unary_elementwise",
         ":util",
         "//tensorflow/lite/experimental/shlo:bf16",
-        "//tensorflow/lite/experimental/shlo:data_type",
         "//tensorflow/lite/experimental/shlo:dispatch",
         "//tensorflow/lite/experimental/shlo:f16",
         "//tensorflow/lite/experimental/shlo:tensor",

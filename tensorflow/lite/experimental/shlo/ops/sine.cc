@@ -59,10 +59,11 @@ absl::Status Prepare(SineOp& op, const Tensor& input, Tensor& output) {
 absl::Status Evaluate(SineOp& op, const Tensor& input, Tensor& output) {
   Sine sine;
   if (input.IsPerTensorQuantized()) {
-    DISPATCH_QUANTIZED(detail::DequantizeOpQuantizePerTensor,
-                       input.quantized_tensor_element_type().StorageType(),
-                       input.quantized_tensor_element_type().ExpressedType(),
-                       sine, input, output)
+    DISPATCH_QUANTIZED(
+        detail::DequantizeOpQuantizePerTensor,
+        input.quantized_per_tensor_element_type().StorageType(),
+        input.quantized_per_tensor_element_type().ExpressedType(), sine, input,
+        output)
   } else if (!input.IsQuantized() && IsFloat(input.StorageType())) {
     DISPATCH_FLOAT(detail::EvaluateNoQuantization, input.tensor_element_type(),
                    sine, input, output);

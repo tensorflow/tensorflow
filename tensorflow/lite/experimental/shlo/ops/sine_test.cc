@@ -112,10 +112,10 @@ TYPED_TEST(QuantizedSineTest, PerTensorWorks) {
   const StorageT zero_point = static_cast<StorageT>(5);
   Vector<StorageT> input_data = RandomBuffer<TypeParam::kStorage>(shape);
   Vector<StorageT> output_data(shape.NumElements());
-  const QuantizedTensorType tensor_type = {
+  const QuantizedPerTensorTensorType tensor_type = {
       .shape = shape,
-      .element_type = QuantizedTensorElementType::PerTensor<
-          TypeParam::kStorage, TypeParam::kExpressed>(scale, zero_point)};
+      .element_type = QuantizedElementTypePerTensor(
+          TypeParam::kStorage, zero_point, TypeParam::kExpressed, scale)};
   Tensor input_tensor{.type = tensor_type, .data = input_data.data()};
   Tensor output_tensor{.type = tensor_type, .data = output_data.data()};
 

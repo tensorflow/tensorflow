@@ -33,17 +33,17 @@ void DequantizeOpQuantizePerTensor(F&& func, const Tensor& lhs,
   using ExpressedT = StorageType<expressed_type>;
   const DimensionSize num_elements = lhs.NumElements();
   const StorageT lhs_zero_point =
-      lhs.quantized_tensor_element_type().ZeroPoints<storage_type>()[0];
+      lhs.quantized_per_tensor_element_type().ZeroPointAs<storage_type>();
   const ExpressedT lhs_scale =
-      lhs.quantized_tensor_element_type().Scales<expressed_type>()[0];
+      lhs.quantized_per_tensor_element_type().ScaleAs<expressed_type>();
   const StorageT rhs_zero_point =
-      rhs.quantized_tensor_element_type().ZeroPoints<storage_type>()[0];
+      rhs.quantized_per_tensor_element_type().ZeroPointAs<storage_type>();
   const ExpressedT rhs_scale =
-      rhs.quantized_tensor_element_type().Scales<expressed_type>()[0];
+      rhs.quantized_per_tensor_element_type().ScaleAs<expressed_type>();
   const StorageT output_zero_point =
-      output.quantized_tensor_element_type().ZeroPoints<storage_type>()[0];
+      output.quantized_per_tensor_element_type().ZeroPointAs<storage_type>();
   const ExpressedT output_scale =
-      output.quantized_tensor_element_type().Scales<expressed_type>()[0];
+      output.quantized_per_tensor_element_type().ScaleAs<expressed_type>();
   const StorageT* lhs_data = lhs.GetDataAs<storage_type>();
   const StorageT* rhs_data = rhs.GetDataAs<storage_type>();
   StorageT* output_data = output.GetDataAs<storage_type>();

@@ -117,15 +117,16 @@ TYPED_TEST(QuantizedSqrtTest, PerTensorWorks) {
   Vector<StorageT> input_data =
       RandomBuffer<TypeParam::kStorage>(shape, /*min=*/zero_point + 1);
   Vector<StorageT> output_data(shape.NumElements());
-  const QuantizedTensorElementType tensor_type =
-      QuantizedTensorElementType::PerTensor<TypeParam::kStorage,
-                                            TypeParam::kExpressed>(scale,
-                                                                   zero_point);
+  const QuantizedElementTypePerTensor tensor_type =
+      QuantizedElementTypePerTensor(TypeParam::kStorage, zero_point,
+                                    TypeParam::kExpressed, scale);
   Tensor input_tensor{
-      .type = QuantizedTensorType{.shape = shape, .element_type = tensor_type},
+      .type = QuantizedPerTensorTensorType{.shape = shape,
+                                           .element_type = tensor_type},
       .data = input_data.data()};
   Tensor output_tensor{
-      .type = QuantizedTensorType{.shape = shape, .element_type = tensor_type},
+      .type = QuantizedPerTensorTensorType{.shape = shape,
+                                           .element_type = tensor_type},
       .data = output_data.data()};
 
   Vector<StorageT> expected_data(shape.NumElements());

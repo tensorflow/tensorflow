@@ -19,8 +19,10 @@ cc_library(
     hdrs = ["tensor.h"],
     deps = [
         ":data_type",
+        ":overload",
         ":quantized_tensor_element_type",
         ":shape",
+        "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -74,6 +76,7 @@ cc_test(
 
 cc_library(
     name = "quantized_tensor_element_type",
+    srcs = ["quantized_tensor_element_type.cc"],
     hdrs = ["quantized_tensor_element_type.h"],
     deps = [
         ":data_type",
@@ -81,6 +84,7 @@ cc_library(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/log:absl_check",
+        "@com_google_absl//absl/log:absl_log",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -91,7 +95,6 @@ cc_test(
     linkopts = shlo_ref_linkopts(),
     deps = [
         ":data_type",
-        ":f16",
         ":quantized_tensor_element_type",
         "@com_google_googletest//:gtest_main",
     ],
@@ -146,6 +149,23 @@ cc_test(
         ":dispatch",
         ":status_matcher",
         "@com_google_absl//absl/status",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "overload",
+    hdrs = ["overload.h"],
+    visibility = ["//tensorflow/lite/experimental/shlo:__subpackages__"],
+)
+
+cc_test(
+    name = "overload_test",
+    srcs = ["overload_test.cc"],
+    deps = [
+        ":overload",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
     ],
 )

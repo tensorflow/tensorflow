@@ -90,15 +90,16 @@ TYPED_TEST(QuantizedUnaryElementWiseTest, QuantizedPerTensorWithAbs) {
   Vector<StorageT> output_data(shape.NumElements());
   const ExpressedT scale = static_cast<ExpressedT>(1.5);
   const StorageT zero_point = static_cast<StorageT>(5);
-  const QuantizedTensorElementType tensor_type =
-      QuantizedTensorElementType::PerTensor<TypeParam::kStorage,
-                                            TypeParam::kExpressed>(scale,
-                                                                   zero_point);
+  const QuantizedElementTypePerTensor tensor_type =
+      QuantizedElementTypePerTensor(TypeParam::kStorage, zero_point,
+                                    TypeParam::kExpressed, scale);
   Tensor input_tensor{
-      .type = QuantizedTensorType{.shape = shape, .element_type = tensor_type},
+      .type = QuantizedPerTensorTensorType{.shape = shape,
+                                           .element_type = tensor_type},
       .data = input_data.data()};
   Tensor output_tensor{
-      .type = QuantizedTensorType{.shape = shape, .element_type = tensor_type},
+      .type = QuantizedPerTensorTensorType{.shape = shape,
+                                           .element_type = tensor_type},
       .data = output_data.data()};
 
   Vector<StorageT> expected_data(shape.NumElements());
@@ -139,15 +140,16 @@ TYPED_TEST(QuantizedUnaryElementWiseTest, QuantizedPerAxisWithAbs) {
   Vector<ExpressedT> scales_data = RandomBuffer<TypeParam::kExpressed>(
       /*shape=*/Shape({shape.Dim(2)}), /*min=*/static_cast<ExpressedT>(1),
       /*max=*/static_cast<ExpressedT>(3));
-  const QuantizedTensorElementType tensor_type =
-      QuantizedTensorElementType::PerAxis<TypeParam::kStorage,
-                                          TypeParam::kExpressed>(
-          scales_data, zero_points_data, quantized_dimension);
+  const QuantizedElementTypePerAxis tensor_type = QuantizedElementTypePerAxis(
+      TypeParam::kStorage, zero_points_data, TypeParam::kExpressed, scales_data,
+      quantized_dimension);
   Tensor input_tensor{
-      .type = QuantizedTensorType{.shape = shape, .element_type = tensor_type},
+      .type = QuantizedPerAxisTensorType{.shape = shape,
+                                         .element_type = tensor_type},
       .data = input_data.data()};
   Tensor output_tensor{
-      .type = QuantizedTensorType{.shape = shape, .element_type = tensor_type},
+      .type = QuantizedPerAxisTensorType{.shape = shape,
+                                         .element_type = tensor_type},
       .data = output_data.data()};
 
   Vector<StorageT> expected_data(shape.NumElements());

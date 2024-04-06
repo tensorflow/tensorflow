@@ -34,7 +34,8 @@ constexpr TensorElementType BaselineType(TensorElementType type) {
 }
 
 using TensorElementTypeVariant =
-    std::variant<TensorElementType, QuantizedTensorElementType>;
+    std::variant<TensorElementType, QuantizedElementTypePerTensor,
+                 QuantizedElementTypePerAxis>;
 
 TensorElementTypeVariant BaselineType(const TensorElementTypeVariant& type);
 
@@ -43,12 +44,18 @@ struct TensorType {
   TensorElementType element_type;
 };
 
-struct QuantizedTensorType {
+struct QuantizedPerTensorTensorType {
   Shape shape;
-  QuantizedTensorElementType element_type;
+  QuantizedElementTypePerTensor element_type;
 };
 
-using TensorTypeVariant = std::variant<TensorType, QuantizedTensorType>;
+struct QuantizedPerAxisTensorType {
+  Shape shape;
+  QuantizedElementTypePerAxis element_type;
+};
+
+using TensorTypeVariant = std::variant<TensorType, QuantizedPerTensorTensorType,
+                                       QuantizedPerAxisTensorType>;
 
 struct Tensor {
   const Shape& shape() const;
@@ -67,11 +74,16 @@ struct Tensor {
   TensorType& tensor_type();
   const TensorType& tensor_type() const;
 
-  QuantizedTensorType& quantized_tensor_type();
-  const QuantizedTensorType& quantized_tensor_type() const;
+  QuantizedPerTensorTensorType& quantized_per_tensor_type();
+  const QuantizedPerTensorTensorType& quantized_per_tensor_type() const;
+
+  QuantizedPerAxisTensorType& quantized_per_axis_type();
+  const QuantizedPerAxisTensorType& quantized_per_axis_type() const;
 
   const TensorElementType& tensor_element_type() const;
-  const QuantizedTensorElementType& quantized_tensor_element_type() const;
+  const QuantizedElementTypePerTensor& quantized_per_tensor_element_type()
+      const;
+  const QuantizedElementTypePerAxis& quantized_per_axis_element_type() const;
 
   TensorElementTypeVariant element_type() const;
 
@@ -104,8 +116,15 @@ struct Tensor {
 bool operator==(const TensorType& lhs, const TensorType& rhs);
 bool operator!=(const TensorType& lhs, const TensorType& rhs);
 
-bool operator==(const QuantizedTensorType& lhs, const QuantizedTensorType& rhs);
-bool operator!=(const QuantizedTensorType& lhs, const QuantizedTensorType& rhs);
+bool operator==(const QuantizedPerTensorTensorType& lhs,
+                const QuantizedPerTensorTensorType& rhs);
+bool operator!=(const QuantizedPerTensorTensorType& lhs,
+                const QuantizedPerTensorTensorType& rhs);
+
+bool operator==(const QuantizedPerAxisTensorType& lhs,
+                const QuantizedPerAxisTensorType& rhs);
+bool operator!=(const QuantizedPerAxisTensorType& lhs,
+                const QuantizedPerAxisTensorType& rhs);
 
 }  // namespace shlo_ref
 

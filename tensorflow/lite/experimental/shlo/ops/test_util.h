@@ -417,11 +417,10 @@ TensorTypeVariant TensorTypeFor(
       static_cast<StorageType<expressed_type>>(expressed_dist(rd));
   StorageType<storage_type> zero_point =
       StorageType<storage_type>(storage_dist(rd));
-  return QuantizedTensorType{
+  return QuantizedPerTensorTensorType{
       .shape = shape,
-      .element_type =
-          QuantizedTensorElementType::PerTensor<storage_type, expressed_type>(
-              scale, zero_point)};
+      .element_type = QuantizedElementTypePerTensor(storage_type, zero_point,
+                                                    expressed_type, scale)};
 }
 
 // Builds a per axis QuantizedTensorType object and returns it in a variant
@@ -432,11 +431,10 @@ template <DataType storage_type, DataType expressed_type, Axis axis>
 TensorTypeVariant TensorTypeFor(
     PerAxis<TestParam<storage_type, expressed_type>, axis>,
     const Shape& shape) {
-  return QuantizedTensorType{
+  return QuantizedPerAxisTensorType{
       .shape = shape,
-      .element_type =
-          QuantizedTensorElementType::PerAxis<storage_type, expressed_type>(
-              /*scales=*/{}, /*zero_points=*/{}, axis)};
+      .element_type = QuantizedElementTypePerAxis(storage_type, {},
+                                                  expressed_type, {}, axis)};
 }
 
 }  // namespace shlo_ref
