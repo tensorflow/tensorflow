@@ -21,6 +21,7 @@ package_group(
         "//xla:internal",
     ],
     packages = [
+        "//tensorflow/core/tfrt/ifrt/...",
         "//third_party/australis/...",
         "//third_party/openxla_pjrt_plugin/...",
         "//third_party/py/jax/...",
@@ -818,7 +819,7 @@ cc_library(
     name = "host_callback",
     srcs = ["host_callback.cc"],
     hdrs = ["host_callback.h"],
-    visibility = [":friends"],
+    visibility = internal_visibility([":friends"]),
     deps = [
         ":pjrt_client",
         ":pjrt_future",
