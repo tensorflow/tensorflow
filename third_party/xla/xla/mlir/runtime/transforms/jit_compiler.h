@@ -25,9 +25,17 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "absl/types/span.h"
+#include "llvm/ADT/ArrayRef.h"
+#include "llvm/Support/CodeGen.h"
 #include "llvm/Support/SourceMgr.h"
+#include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/Diagnostics.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
+#include "mlir/Interfaces/FunctionInterfaces.h"  // from @llvm-project
 #include "xla/mlir/runtime/transforms/calling_convention.h"
 #include "xla/mlir/runtime/transforms/specialization.h"
 #include "xla/mlir/runtime/transforms/type_converter.h"
@@ -35,6 +43,7 @@ limitations under the License.
 #include "xla/runtime/compiler.h"
 #include "xla/runtime/constraints.h"
 #include "xla/runtime/executable.h"
+#include "xla/runtime/execution_engine.h"
 #include "xla/runtime/symbolic_shape.h"
 
 namespace xla {

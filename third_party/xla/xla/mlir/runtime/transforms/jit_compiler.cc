@@ -23,32 +23,57 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Analysis/CGSCCPassManager.h"
 #include "llvm/Analysis/LoopAnalysisManager.h"
+#include "llvm/ExecutionEngine/Orc/JITTargetMachineBuilder.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/PassManager.h"
 #include "llvm/IR/PassTimingInfo.h"
 #include "llvm/Pass.h"
 #include "llvm/Passes/OptimizationLevel.h"
 #include "llvm/Passes/PassBuilder.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/Error.h"
+#include "llvm/Support/FormatVariadic.h"
+#include "llvm/Support/SMLoc.h"
 #include "llvm/Support/TargetSelect.h"
+#include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetMachine.h"
 #include "mlir/Dialect/Func/Extensions/AllExtensions.h"  // from @llvm-project
 #include "mlir/ExecutionEngine/OptUtils.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/OperationSupport.h"  // from @llvm-project
+#include "mlir/IR/SymbolTable.h"  // from @llvm-project
+#include "mlir/Interfaces/FunctionInterfaces.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/Support/Timing.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Export.h"  // from @llvm-project
 #include "xla/mlir/runtime/ir/rt_dialect.h"
 #include "xla/mlir/runtime/ir/rt_ops.h"
 #include "xla/mlir/runtime/transforms/compiler.h"
 #include "xla/mlir/runtime/transforms/passes.h"
+#include "xla/mlir/runtime/transforms/specialization.h"
+#include "xla/runtime/arguments.h"
+#include "xla/runtime/constraints.h"
+#include "xla/runtime/errors.h"
+#include "xla/runtime/executable.h"
+#include "xla/runtime/execution_engine.h"
+#include "xla/runtime/logical_result.h"
+#include "xla/runtime/memory_mapper.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 
 namespace xla {
