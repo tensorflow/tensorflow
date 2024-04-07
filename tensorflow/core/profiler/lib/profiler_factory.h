@@ -40,7 +40,7 @@ using ProfilerFactor ABSL_DEPRECATE_AND_INLINE() =
 
 // Registers a profiler factory. Should be invoked at most once per factory.
 ABSL_DEPRECATE_AND_INLINE()
-inline void RegisterProfilerFactory(ProfilerFactor factory) {
+inline void RegisterProfilerFactory(tsl::profiler::ProfilerFactory factory) {
   tsl::profiler::RegisterProfilerFactory(std::move(factory));
 }
 
