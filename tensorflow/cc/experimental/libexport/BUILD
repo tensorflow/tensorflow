@@ -21,6 +21,7 @@ cc_library(
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -43,14 +44,21 @@ cc_library(
     hdrs = ["load.h"],
     deps = [
         "//tensorflow/cc/saved_model:constants",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:env",
-        "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:path",
         "//tensorflow/core/platform:protobuf",
+        "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:statusor",
         "//tensorflow/core/util/tensor_bundle",
+        "//third_party/protobuf:protobuf_lite",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/platform:errors",
     ],
 )
 
