@@ -6,7 +6,7 @@ load(
     "if_cuda",
 )
 load(
-    "@local_xla//xla/tsl/mkl:build_defs.bzl",
+    "//xla/tsl/mkl:build_defs.bzl",
     "if_enable_mkl",
     "if_mkl",
     "onednn_v3_define",
@@ -16,7 +16,7 @@ load(
     "if_enable_acl",
 )
 load(
-    "//third_party/mkl_dnn:build_defs.bzl",
+    "@local_tsl//third_party/mkl_dnn:build_defs.bzl",
     "if_mkldnn_aarch64_acl",
     "if_mkldnn_aarch64_acl_openmp",
     "if_mkldnn_openmp",
@@ -39,7 +39,7 @@ load(
 
 # Internally this loads a macro, but in OSS this is a function
 # buildifier: disable=out-of-order-load
-def register_extension_info(**kwargs):
+def register_extension_info(**_kwargs):
     pass
 
 two_gpu_tags = ["requires-gpu-nvidia:2", "notap", "manual", "no_pip"]
@@ -49,11 +49,23 @@ def clean_dep(target):
 
     Use this function when referring to targets in the TSL
     repository from macros that may be called from external repositories.
+
+    Args:
+      target: the target to produce a canonicalized label for.
+    Returns:
+      The canonical label of the target.
     """
 
     # A repo-relative label is resolved relative to the file in which the
     # Label() call appears, e.g. @local_tsl or tsl.
-    return str(Label(target))
+    # TODO(ddunleavy): update this during and after go/moving-tsl-into-xla-lsc
+    label = Label(target)
+    not_yet_moved = ["concurrency", "distributed_runtime", "framework", "lib", "platform", "profiler", "protobuf"]
+
+    if any([label.package.startswith("tsl/" + dirname) for dirname in not_yet_moved]):
+        return "@local_tsl//" + label.package + ":" + label.name
+    else:
+        return str(label)
 
 def if_cuda_or_rocm(if_true, if_false = []):
     """Shorthand for select()'ing whether to build for either CUDA or ROCm.
@@ -91,6 +103,7 @@ def if_oss(oss_value, google_value = []):
     Specifically, it does not return a `select`, and can be used to e.g.
     compute elements of list attributes.
     """
+    _ = (google_value, oss_value)  # buildifier: disable=unused-variable
     return oss_value  # copybara:comment_replace return google_value
 
 def if_google(google_value, oss_value = []):
@@ -99,6 +112,7 @@ def if_google(google_value, oss_value = []):
     Specifically, it does not return a `select`, and can be used to e.g.
     compute elements of list attributes.
     """
+    _ = (google_value, oss_value)  # buildifier: disable=unused-variable
     return oss_value  # copybara:comment_replace return google_value
 
 def internal_visibility(internal_targets):
@@ -113,7 +127,7 @@ def internal_visibility(internal_targets):
 def if_tsl_link_protobuf(if_true, if_false = []):
     return select({
         "//conditions:default": if_true,
-        clean_dep("//tsl:tsl_protobuf_header_only"): if_false,
+        clean_dep("//xla/tsl:tsl_protobuf_header_only"): if_false,
     })
 
 def if_libtpu(if_true, if_false = []):
@@ -122,32 +136,32 @@ def if_libtpu(if_true, if_false = []):
         # copybara:uncomment_begin(different config setting in OSS)
         # "//tools/cc_target_os:gce": if_true,
         # copybara:uncomment_end_and_comment_begin
-        clean_dep("//tsl:with_tpu_support"): if_true,
+        clean_dep("//xla/tsl:with_tpu_support"): if_true,
         # copybara:comment_end
         "//conditions:default": if_false,
     })
 
 def if_macos(a, otherwise = []):
     return select({
-        clean_dep("//tsl:macos"): a,
+        clean_dep("//xla/tsl:macos"): a,
         "//conditions:default": otherwise,
     })
 
 def if_windows(a, otherwise = []):
     return select({
-        clean_dep("//tsl:windows"): a,
+        clean_dep("//xla/tsl:windows"): a,
         "//conditions:default": otherwise,
     })
 
 def if_not_windows(a):
     return select({
-        clean_dep("//tsl:windows"): [],
+        clean_dep("//xla/tsl:windows"): [],
         "//conditions:default": a,
     })
 
 def if_not_fuchsia(a):
     return select({
-        clean_dep("//tsl:fuchsia"): [],
+        clean_dep("//xla/tsl:fuchsia"): [],
         "//conditions:default": a,
     })
 
@@ -159,37 +173,37 @@ def if_nvcc(a):
 
 def if_xla_available(if_true, if_false = []):
     return select({
-        clean_dep("//tsl:with_xla_support"): if_true,
+        clean_dep("//xla/tsl:with_xla_support"): if_true,
         "//conditions:default": if_false,
     })
 
 def if_android_arm(a):
     return select({
-        clean_dep("//tsl:android_arm"): a,
+        clean_dep("//xla/tsl:android_arm"): a,
         "//conditions:default": [],
     })
 
 def if_not_android(a):
     return select({
-        clean_dep("//tsl:android"): [],
+        clean_dep("//xla/tsl:android"): [],
         "//conditions:default": a,
     })
 
 def if_linux_x86_64(a):
     return select({
-        clean_dep("//tsl:linux_x86_64"): a,
+        clean_dep("//xla/tsl:linux_x86_64"): a,
         "//conditions:default": [],
     })
 
 def if_ios_x86_64(a):
     return select({
-        clean_dep("//tsl:ios_x86_64"): a,
+        clean_dep("//xla/tsl:ios_x86_64"): a,
         "//conditions:default": [],
     })
 
 def if_no_default_logger(a):
     return select({
-        clean_dep("//tsl:no_default_logger"): a,
+        clean_dep("//xla/tsl:no_default_logger"): a,
         "//conditions:default": [],
     })
 
@@ -197,16 +211,16 @@ def if_no_default_logger(a):
 # Combine with 'if_gpu_is_configured' (XLA) or 'if_cuda_or_rocm' (otherwise).
 def if_nccl(if_true, if_false = []):
     return select({
-        clean_dep("//tsl:no_nccl_support"): if_false,
-        clean_dep("//tsl:windows"): if_false,
-        clean_dep("//tsl:arm"): if_false,
+        clean_dep("//xla/tsl:no_nccl_support"): if_false,
+        clean_dep("//xla/tsl:windows"): if_false,
+        clean_dep("//xla/tsl:arm"): if_false,
         "//conditions:default": if_true,
     })
 
 def if_with_tpu_support(if_true, if_false = []):
     """Shorthand for select()ing whether to build API support for TPUs when building TSL"""
     return select({
-        clean_dep("//tsl:with_tpu_support"): if_true,
+        clean_dep("//xla/tsl:with_tpu_support"): if_true,
         "//conditions:default": if_false,
     })
 
@@ -296,16 +310,16 @@ def tsl_copts(
         if_ios_x86_64(["-msse4.1"]) +
         if_no_default_logger(["-DNO_DEFAULT_LOGGER"]) +
         select({
-            clean_dep("//tsl:framework_shared_object"): [],
+            clean_dep("//xla/tsl:framework_shared_object"): [],
             "//conditions:default": ["-DTENSORFLOW_MONOLITHIC_BUILD"],
         }) +
         select({
-            clean_dep("//tsl:android"): android_copts,
-            clean_dep("//tsl:emscripten"): [],
-            clean_dep("//tsl:macos"): [],
-            clean_dep("//tsl:windows"): get_win_copts(is_external),
-            clean_dep("//tsl:ios"): [],
-            clean_dep("//tsl:no_lgpl_deps"): ["-D__TENSORFLOW_NO_LGPL_DEPS__", "-pthread"],
+            clean_dep("//xla/tsl:android"): android_copts,
+            clean_dep("//xla/tsl:emscripten"): [],
+            clean_dep("//xla/tsl:macos"): [],
+            clean_dep("//xla/tsl:windows"): get_win_copts(is_external),
+            clean_dep("//xla/tsl:ios"): [],
+            clean_dep("//xla/tsl:no_lgpl_deps"): ["-D__TENSORFLOW_NO_LGPL_DEPS__", "-pthread"],
             "//conditions:default": ["-pthread"],
         })
     )
@@ -313,11 +327,11 @@ def tsl_copts(
 def tf_openmp_copts():
     # We assume when compiling on Linux gcc/clang will be used and MSVC on Windows
     return select({
-        clean_dep("@local_xla//xla/tsl/mkl:build_with_mkl_lnx_openmp"): ["-fopenmp"],
+        clean_dep("//xla/tsl/mkl:build_with_mkl_lnx_openmp"): ["-fopenmp"],
         # copybara:uncomment_begin
-        # "@local_xla//xla/tsl/mkl:build_with_mkl_windows_openmp": ["/openmp"],
+        # "//xla/tsl/mkl:build_with_mkl_windows_openmp": ["/openmp"],
         # copybara:uncomment_end_and_comment_begin
-        clean_dep("@local_xla//xla/tsl/mkl:build_with_mkl_windows_openmp"): ["/openmp:llvm"],
+        clean_dep("//xla/tsl/mkl:build_with_mkl_windows_openmp"): ["/openmp:llvm"],
         # copybara:comment_end
         "//conditions:default": [],
     })
@@ -352,7 +366,7 @@ def tsl_gpu_library(deps = None, cuda_deps = None, copts = tsl_copts(), **kwargs
         kwargs.pop("default_copts", None)
     cc_library(
         deps = deps + if_cuda([
-            clean_dep("@local_xla//xla/tsl/cuda:cudart"),
+            clean_dep("//xla/tsl/cuda:cudart"),
             "@local_config_cuda//cuda:cuda_headers",
         ]) + if_rocm_is_configured([
             "@local_config_rocm//rocm:rocm_headers",
@@ -456,7 +470,7 @@ def if_not_mobile_or_arm_or_lgpl_restricted(a):
     })
 
 def tsl_grpc_cc_dependencies():
-    return [clean_dep("//tsl:grpc++")]
+    return [clean_dep("//xla/tsl:grpc++")]
 
 # Bazel rule for collecting the header files that a target depends on.
 def _transitive_hdrs_impl(ctx):
@@ -642,7 +656,7 @@ def tsl_pybind_extension_opensource(
                 "-fno-strict-aliasing",
                 "-fexceptions",
             ] + select({
-                clean_dep("//tsl:windows"): [],
+                clean_dep("//xla/tsl:windows"): [],
                 "//conditions:default": [
                     "-fvisibility=hidden",
                 ],
@@ -668,13 +682,13 @@ def tsl_pybind_extension_opensource(
             shared_lib_name = so_file,
             testonly = testonly,
             user_link_flags = linkopts + select({
-                clean_dep("//tsl:macos"): [
+                clean_dep("//xla/tsl:macos"): [
                     # TODO: the -w suppresses a wall of harmless warnings about hidden typeinfo symbols
                     # not being exported.  There should be a better way to deal with this.
                     "-Wl,-w",
                     "-Wl,-exported_symbols_list,$(location %s)" % exported_symbols_file,
                 ],
-                clean_dep("//tsl:windows"): [],
+                clean_dep("//xla/tsl:windows"): [],
                 "//conditions:default": [
                     "-Wl,--version-script",
                     "$(location %s)" % version_script_file,
@@ -701,19 +715,19 @@ def tsl_pybind_extension_opensource(
                 "-fno-strict-aliasing",
                 "-fexceptions",
             ] + select({
-                clean_dep("//tsl:windows"): [],
+                clean_dep("//xla/tsl:windows"): [],
                 "//conditions:default": [
                     "-fvisibility=hidden",
                 ],
             }),
             linkopts = linkopts + select({
-                clean_dep("//tsl:macos"): [
+                clean_dep("//xla/tsl:macos"): [
                     # TODO: the -w suppresses a wall of harmless warnings about hidden typeinfo symbols
                     # not being exported.  There should be a better way to deal with this.
                     "-Wl,-w",
                     "-Wl,-exported_symbols_list,$(location %s)" % exported_symbols_file,
                 ],
-                clean_dep("//tsl:windows"): [],
+                clean_dep("//xla/tsl:windows"): [],
                 "//conditions:default": [
                     "-Wl,--version-script",
                     "$(location %s)" % version_script_file,
@@ -757,7 +771,7 @@ def tsl_pybind_extension_opensource(
     native.py_library(
         name = name,
         data = select({
-            clean_dep("//tsl:windows"): [pyd_file],
+            clean_dep("//xla/tsl:windows"): [pyd_file],
             "//conditions:default": [so_file],
         }) + pytype_srcs,
         deps = pytype_deps,

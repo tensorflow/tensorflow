@@ -5,13 +5,6 @@
 #   to other TF components outside of TSL.
 
 load(
-    "@local_tsl//tsl:tsl.bzl",
-    "check_deps",
-    "internal_visibility",
-    "tsl_copts",
-)
-load("@local_tsl//tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
-load(
     "@local_tsl//tsl/platform:build_config.bzl",
     "tsl_cc_test",
 )
@@ -23,6 +16,13 @@ load(
     "@local_tsl//tsl/platform:rules_cc.bzl",
     "cc_library",
 )
+load(
+    "//xla/tsl:tsl.bzl",
+    "check_deps",
+    "internal_visibility",
+    "tsl_copts",
+)
+load("//xla/tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -242,7 +242,7 @@ cc_library(
     ],
     copts = tsl_copts(),
     visibility = internal_visibility([
-        "@local_tsl//tsl:internal",
+        "//xla/tsl:internal",
     ]),
 )
 

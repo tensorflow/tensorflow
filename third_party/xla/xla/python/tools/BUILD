@@ -1,10 +1,9 @@
-load("@local_tsl//tsl:tsl.default.bzl", "tsl_pybind_extension")
-
 # NOTE: We can't use `pytype_pybind_extension` nor `pytype_strict_contrib_test`
 # because the OSS versions of these files do not include ports of those rules.
 # We must instead use `tsl_pybind_extension` and `py_strict_test`.
 load("//xla:pytype.default.bzl", "pytype_strict_library")
 load("//xla:strict.default.bzl", "py_strict_test")
+load("//xla/tsl:tsl.default.bzl", "tsl_pybind_extension")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],

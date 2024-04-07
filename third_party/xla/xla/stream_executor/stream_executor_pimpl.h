@@ -208,9 +208,9 @@ class StreamExecutor {
 
   // Blocks the caller while a data segment of the given size is copied from the
   // device source to the device destination.
-  bool SynchronousMemcpy(DeviceMemoryBase* device_dst,
-                         const DeviceMemoryBase& device_src,
-                         uint64_t size) ABSL_MUST_USE_RESULT;
+  absl::Status SynchronousMemcpy(DeviceMemoryBase* device_dst,
+                                 const DeviceMemoryBase& device_src,
+                                 uint64_t size) ABSL_MUST_USE_RESULT;
 
   // Enqueues an operation onto stream to zero out size bytes at the given
   // device memory location. Neither stream nor location may be null. Returns
@@ -534,7 +534,7 @@ ScopedDeviceMemory<ElemT>::ScopedDeviceMemory(
     : ScopedDeviceMemory(parent, parent->AllocateArray<ElemT>(values.size())) {
   if (ptr() != nullptr) {
     std::vector<ElemT> local(values);
-    if (!parent->SynchronousMemcpy(ptr(), local.data(), ptr()->size())) {
+    if (!parent->SynchronousMemcpy(ptr(), local.data(), ptr()->size()).ok()) {
       TF_CHECK_OK(Free());
     }
   }

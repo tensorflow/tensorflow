@@ -293,7 +293,7 @@ struct XLA_FFI_CallFrame {
   size_t struct_size;
   void* priv;
 
-  XLA_FFI_Api* api;
+  const XLA_FFI_Api* api;
   XLA_FFI_ExecutionContext* ctx;
   XLA_FFI_Args args;
   XLA_FFI_Rets rets;
@@ -373,6 +373,8 @@ struct XLA_FFI_Api {
 #undef _XLA_FFI_API_STRUCT_FIELD
 
 XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_Api, XLA_FFI_Stream_Get);
+
+const XLA_FFI_Api* XLA_FFI_GetApi();
 
 #ifdef __cplusplus
 }

@@ -1,7 +1,7 @@
 """Default (OSS) build versions of TSL general-purpose build extensions."""
 
 load(
-    "//tsl:tsl.bzl",
+    "//xla/tsl:tsl.bzl",
     _filegroup = "filegroup",
     _get_compatible_with_libtpu_portable = "get_compatible_with_libtpu_portable",
     _get_compatible_with_portable = "get_compatible_with_portable",

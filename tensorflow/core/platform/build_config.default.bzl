@@ -2,7 +2,7 @@
 
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 load(
-    "@local_tsl//tsl:tsl.bzl",
+    "@local_xla//xla/tsl:tsl.bzl",
     "if_libtpu",
 )
 load(

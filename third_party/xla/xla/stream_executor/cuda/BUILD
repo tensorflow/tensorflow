@@ -1,5 +1,4 @@
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
-load("@local_tsl//tsl:tsl.bzl", "if_google", "if_nccl", "internal_visibility", "tsl_copts")
 load(
     "@local_tsl//tsl/platform:build_config_root.bzl",
     "if_static",
@@ -25,6 +24,7 @@ load(
     "tf_additional_cudnn_plugin_copts",
     "tf_additional_gpu_compilation_copts",
 )
+load("//xla/tsl:tsl.bzl", "if_google", "if_nccl", "internal_visibility", "tsl_copts")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -685,7 +685,7 @@ cc_library(
         [
             "//xla/tsl/cuda:cudart",
         ] + select({
-            "@local_tsl//tsl:macos": ["IOKit"],
+            "//xla/tsl:macos": ["IOKit"],
             "//conditions:default": [],
         }),
     ),
