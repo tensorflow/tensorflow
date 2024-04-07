@@ -218,15 +218,15 @@ class Node:
       elif isinstance(t, np.ndarray):
         data = t.tolist()
       elif isinstance(t, tensor_lib.Tensor):
-        data = backend.get_value(t).tolist()
+          data = backend.get_value(t).tolist()
       elif isinstance(t, (int, float, bool, str)):
-        data = t
+          data = t
       else:
-        raise TypeError(
-          f"Invalid first argument passed to the layer: {t}. "
-          "Only Keras tensors or constant values (e.g., integers, floats, "
-          "booleans, strings, or NumPy arrays) are supported as the first argument."
-        )
+          raise TypeError(
+              f"Invalid first argument passed to the layer: {t}. "
+              "Only Keras tensors or constant values (e.g., integers, floats, "
+              "booleans, strings, or NumPy arrays) are supported as the first argument."
+          )
       return tf_utils.ListWrapper(data)
 
     data = nest.map_structure(serialize_first_arg_tensor, inputs)
@@ -304,4 +304,12 @@ class KerasHistory(
 
 
 def is_keras_tensor(obj):
+  """Check if the object is a Keras tensor.
+
+      Args:
+          obj: The object to be checked.
+
+      Returns:
+          bool: True if the object is a Keras tensor, False otherwise.
+      """
   return hasattr(obj, '_keras_history')
