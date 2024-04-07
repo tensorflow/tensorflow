@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/mock_nccl_xml.h"
 
+#include <cstdlib>
 #include <memory>
 #include <string>
 
@@ -41,8 +42,11 @@ TEST_F(MockNcclXmlParserTest, PciNic) {
       </nic>
     </pci>
   )";
-  auto xml = std::make_unique<ncclXml>();
-  auto result = MockTopoGetXml(original, xml.get());
+
+  ncclXml *xml;
+  xmlAlloc(&xml, 1024);
+  std::unique_ptr<void, void (*)(void *)> xml_ptr(xml, free);
+  auto result = MockTopoGetXml(original, xml);
 
   EXPECT_EQ(OkStatus(), result);
   EXPECT_EQ(xml->maxIndex, 3);
@@ -74,8 +78,10 @@ TEST_F(MockNcclXmlParserTest, GpuNvlink) {
       <nvlink target="0000:c7:00.0" count="2" tclass="0x068000"/>
     </gpu>
   )";
-  auto xml = std::make_unique<ncclXml>();
-  auto result = MockTopoGetXml(original, xml.get());
+  ncclXml *xml;
+  xmlAlloc(&xml, 1024);
+  std::unique_ptr<void, void (*)(void *)> xml_ptr(xml, free);
+  auto result = MockTopoGetXml(original, xml);
   EXPECT_EQ(OkStatus(), result);
   EXPECT_EQ(xml->maxIndex, 2);
   EXPECT_EQ(std::string(xml->nodes[0].name), "gpu");
