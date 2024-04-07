@@ -17,11 +17,21 @@ limitations under the License.
 #define TENSORFLOW_CORE_GRAPPLER_CLUSTERS_SINGLE_MACHINE_H_
 
 #include "tensorflow/cc/training/coordinator.h"
+#include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/core/framework/cost_graph.pb.h"
+#include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/grappler/clusters/cluster.h"
+#include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/protobuf/config.pb.h"
+#include "tensorflow/core/protobuf/queue_runner.pb.h"
 #include "tensorflow/core/public/session.h"
+#include "tsl/platform/thread_annotations.h"
 
 namespace tensorflow {
 namespace grappler {

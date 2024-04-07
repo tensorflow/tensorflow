@@ -15,7 +15,13 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/clusters/utils.h"
 
+#include "absl/log/log.h"
 #include "Eigen/Core"  // from @eigen_archive
+#include "Eigen/src/Core/util/ConfigureVectorization.h"  // from @eigen_archive
+#include "Eigen/src/Core/util/Macros.h"  // from @eigen_archive
+#include "tensorflow/core/common_runtime/device/device_id.h"
+#include "tensorflow/core/protobuf/device_properties.pb.h"
+#include "tensorflow/core/util/device_name_utils.h"
 
 #if GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda.h"
@@ -27,12 +33,9 @@ limitations under the License.
 #include "rocm/include/hip/hip_runtime.h"
 #endif
 
-#include "tensorflow/core/common_runtime/gpu/gpu_id.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_id_manager.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/mem.h"
 
