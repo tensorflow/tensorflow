@@ -541,9 +541,6 @@ absl::StatusOr<nb::object> PjitFunction::Call(nb::handle callable,
     }
 
     xla::PyArray py_array = nb::borrow<xla::PyArray>(arg);
-    if (!py_array.fastpath_enabled()) {
-      return fallback_to_cache_miss();
-    }
 
     // Only allow committed PyArray in cpp pjit for now as the logic on handling
     // sharding for uncommitted PyArray is complicated and still under

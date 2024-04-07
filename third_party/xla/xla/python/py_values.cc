@@ -383,9 +383,7 @@ absl::StatusOr<DevicePutResult> DevicePut(nb::handle arg, ifrt::Client* client,
 
   if (arg.type().ptr() == PyArray::type().ptr()) {
     auto array = nb::borrow<PyArray>(arg);
-    if (array.fastpath_enabled()) {
-      return HandlePyArray(arg, client, to_device, options, to_memory_kind);
-    }
+    return HandlePyArray(arg, client, to_device, options, to_memory_kind);
   }
 
   auto res = handlers->find(arg.type().ptr());
@@ -565,15 +563,13 @@ absl::StatusOr<PyArgSignature> PyArgSignatureOfValue(nb::handle arg,
 
   if (arg.type().ptr() == PyArray::type().ptr()) {
     auto array = nb::borrow<PyArray>(arg);
-    if (array.fastpath_enabled()) {
-      ifrt::Array* ifrt_array = array.ifrt_array();
-      if (ifrt_array == nullptr) {
-        return xla::InvalidArgument("Array has been deleted.");
-      }
-      TF_ASSIGN_OR_RETURN(auto primitive_type,
-                          ifrt::ToPrimitiveType(ifrt_array->dtype()));
-      return PyArgSignature(primitive_type, array.shape(), array.weak_type());
+    ifrt::Array* ifrt_array = array.ifrt_array();
+    if (ifrt_array == nullptr) {
+      return xla::InvalidArgument("Array has been deleted.");
     }
+    TF_ASSIGN_OR_RETURN(auto primitive_type,
+                        ifrt::ToPrimitiveType(ifrt_array->dtype()));
+    return PyArgSignature(primitive_type, array.shape(), array.weak_type());
   }
 
   auto res = handlers->find(arg.type().ptr());

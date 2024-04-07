@@ -349,8 +349,7 @@ PyArray_Storage::PyArray_Storage(nb::object aval, bool weak_type,
                                  std::optional<nb_traceback> traceback,
                                  tsl::RCReference<ifrt::Array> ifrt_array,
                                  xla::PjRtFuture<absl::Status> result_status)
-    : fastpath_enabled(true),
-      aval(std::move(aval)),
+    : aval(std::move(aval)),
       weak_type(weak_type),
       dtype(std::move(dtype)),
       shape(std::move(shape)),
@@ -368,8 +367,6 @@ PyArray_Storage::PyArray_Storage(nb::object aval, bool weak_type,
   prev = nullptr;
 }
 
-PyArray_Storage::PyArray_Storage(DisableFastpath) : fastpath_enabled(false) {}
-
 void PyArray::PyInit(PyArray self, nb::object aval, nb::object sharding,
                      absl::Span<const PyArray> py_arrays, bool committed,
                      bool skip_checks) {
@@ -386,11 +383,6 @@ void PyArray::PyInit(PyArray self, nb::object aval, nb::object sharding,
   if (!skip_checks) {
     self.CheckAndRearrange();
   }
-}
-
-void PyArray::PyInit(nb::object self, DisableFastpath) {
-  Construct(reinterpret_cast<PyArrayObject*>(self.ptr()),
-            PyArray_Storage::DisableFastpath());
 }
 
 PyArray PyArray::MakeFromSingleDeviceArray(
@@ -957,9 +949,6 @@ nb::handle PyArray::Storage::AsHandle() {
 
 PyArray::Storage::~PyArray_Storage() {
   CHECK(PyGILState_Check());
-  if (!fastpath_enabled) {
-    return;
-  }
   if (py_client->arrays_ == this) {
     py_client->arrays_ = next;
   }
@@ -1562,12 +1551,6 @@ Status PyArray::RegisterTypes(nb::module_& m) {
       },
       nb::is_method(), nb::arg("aval"), nb::arg("sharding"), nb::arg("arrays"),
       nb::arg("committed"), nb::arg("_skip_checks") = false);
-  // TODO(yashkatariya): remove this once the transition completes.
-  type.attr("_init_with_fastpath_disabled") = nb::cpp_function(
-      [](nb::object self) {
-        PyArray::PyInit(self, PyArray::DisableFastpath());
-      },
-      nb::is_method());
   type.attr("delete") = nb::cpp_function(
       [](PyArray& self) { xla::ThrowIfError(self.Delete()); }, nb::is_method());
   type.attr("_sharding") = nb_property_readonly(&PyArray::sharding);
