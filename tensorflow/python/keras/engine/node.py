@@ -142,7 +142,18 @@ class Node:
       yield layer, node_index, tensor_index, kt
 
   def map_arguments(self, tensor_dict):
-    """Maps Keras Tensors to computed Tensors using `tensor_dict`."""
+    """Maps Keras Tensors to computed Tensors using `tensor_dict`.
+
+    This method takes a dictionary mapping Keras tensors to computed tensors
+    and updates the call arguments of the node with the computed values.
+
+    Args:
+        tensor_dict: A dictionary mapping Keras tensors (or their IDs) to their
+            computed values.
+
+    Returns:
+        Tuple containing the updated positional arguments and keyword arguments.
+    """
     if self._single_positional_tensor_passed:
       # Performance optimization for most common case.
       kt_id, _ = self._keras_inputs_ids_and_indices[0]
@@ -204,12 +215,18 @@ class Node:
         node_key = make_node_key(kh.layer.name, node_index)
         new_node_index = node_conversion_map.get(node_key, 0)
         data = [kh.layer.name, new_node_index, kh.tensor_index, kwargs]
+      elif isinstance(t, np.ndarray):
+        data = t.tolist()
+      elif isinstance(t, tensor_lib.Tensor):
+        data = backend.get_value(t).tolist()
+      elif isinstance(t, (int, float, bool, str)):
+        data = t
       else:
-        # If an element in the first call argument did not originate as a
-        # keras tensor and is a constant value, we save it using the format
-        # ['_CONSTANT_VALUE', -1, serializaed_tensor_or_python_constant]
-        # (potentially including serialized kwargs in an optional 4th argument
-        data = [_CONSTANT_VALUE, -1, _serialize_keras_tensor(t), kwargs]
+        raise TypeError(
+          f"Invalid first argument passed to the layer: {t}. "
+          "Only Keras tensors or constant values (e.g., integers, floats, "
+          "booleans, strings, or NumPy arrays) are supported as the first argument."
+        )
       return tf_utils.ListWrapper(data)
 
     data = nest.map_structure(serialize_first_arg_tensor, inputs)
