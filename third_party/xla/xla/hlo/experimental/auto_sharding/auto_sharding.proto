@@ -46,6 +46,7 @@ message AutoShardingSolverRequest {
   repeated int64 s_len = 3;
   repeated int64 s_follow = 4;
   repeated int64 s_hint = 5;
+  repeated int64 peak_times = 35;
   repeated Pair edges = 6;
   repeated Nodes live = 7;
   repeated Edges live_edges = 28;

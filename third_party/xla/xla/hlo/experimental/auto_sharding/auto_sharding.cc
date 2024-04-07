@@ -1825,9 +1825,9 @@ AutoShardingSolverResult CallSolver(
     const LivenessEdgeSet& liveness_edge_set, const StrategyMap& strategy_map,
     const StrategyGroups& strategy_groups, const CostGraph& cost_graph,
     const AliasSet& alias_set, const std::vector<NodeStrategyIdx>& s_hint,
-    const bool compute_iis, const int64_t solver_timeout_in_seconds,
-    const AutoShardingOption& option, std::optional<double> max_cost,
-    absl::string_view request_name,
+    const absl::flat_hash_set<LivenessIdx>& peak_times, const bool compute_iis,
+    const int64_t solver_timeout_in_seconds, const AutoShardingOption& option,
+    std::optional<double> max_cost, absl::string_view request_name,
     const absl::flat_hash_map<std::string, const HloInstruction*>&
         sharding_propagation_solution,
     bool deterministic_mode) {
@@ -1841,6 +1841,7 @@ AutoShardingSolverResult CallSolver(
   request.mutable_s_follow()->Add(cost_graph.follow_idx_.begin(),
                                   cost_graph.follow_idx_.end());
   request.mutable_s_hint()->Add(s_hint.begin(), s_hint.end());
+  request.mutable_peak_times()->Add(peak_times.begin(), peak_times.end());
   request.mutable_solver_timeout()->set_solver_timeout_in_seconds(
       solver_timeout_in_seconds);
   request.mutable_overbudget_coeff()->set_coeff(kOverbudgetCoeff);
