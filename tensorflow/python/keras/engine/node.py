@@ -287,4 +287,12 @@ class KerasHistory(
 
 
 def is_keras_tensor(obj):
+  """Check if the object is a Keras tensor.
+
+      Args:
+          obj: The object to be checked.
+
+      Returns:
+          bool: True if the object is a Keras tensor, False otherwise.
+      """
   return hasattr(obj, '_keras_history')
