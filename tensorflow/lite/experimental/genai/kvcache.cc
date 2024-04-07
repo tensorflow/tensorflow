@@ -19,7 +19,10 @@ limitations under the License.
 #include <cstdint>
 #include <cstring>
 
+#include "flatbuffers/flexbuffers.h"
 #include "tensorflow/lite/core/c/common.h"
+#include "tensorflow/lite/core/subgraph.h"
+#include "tensorflow/lite/experimental/resource/cache_buffer.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 
@@ -32,23 +35,59 @@ static const int kKeyTensor = 0;
 static const int kValueTensor = 1;
 static const int kFullKeyTensor = 0;
 static const int kFullValueTensor = 1;
-static const int kMaxNumCacheEntries = 1024;
 static const int kRequiredNumDimensions = 4;
+static const int kDefaultMaxNumCacheEntries = 2048;
+static const int kDefaultNumTransformerLayers = 32;
+static const int kDefaultTransformerLayerId = 0;
+
+static const int KVCACHE_KEY_RESOURCE = 42;
+static const int KVCACHE_VALUE_RESOURCE = 43;
 
 struct OpData {
-  int num_entries;
+  int num_layers;
+  int layer_index;
+  int max_num_entries;
+  // Pointers to the key and value cache buffers that this Op doesn't own
+  // (and therefore does not free on destruction of this Op).
+  resource::CacheBuffer* key_cache_buffer;
+  resource::CacheBuffer* value_cache_buffer;
+  bool is_initialized;
 };
 
 void* KVCacheInit(TfLiteContext* context, const char* buffer, size_t length) {
   OpData* op_data = new OpData();
   // TODO(talumbau) Reset this value via ClearCaches in InternalBackendContext.
-  op_data->num_entries = 0;
+  op_data->max_num_entries = -1;
+  op_data->num_layers = -1;
+  op_data->layer_index = -1;
+  op_data->key_cache_buffer = nullptr;
+  op_data->value_cache_buffer = nullptr;
+  op_data->is_initialized = false;
   return op_data;
 }
 
 TfLiteStatus KVCachePrepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 2);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 2);
+
+  OpData* op_data = reinterpret_cast<OpData*>(node->user_data);
+
+  if (!op_data->is_initialized) {
+    const uint8_t* buffer =
+        reinterpret_cast<const uint8_t*>(node->custom_initial_data);
+    const size_t length = node->custom_initial_data_size;
+    auto flexbuffer_map = flexbuffers::GetRoot(buffer, length).AsMap();
+    int32_t max_num_entries = flexbuffer_map["kv_cache_max"].AsInt32();
+    int32_t num_layers = flexbuffer_map["num_layers"].AsInt32();
+    int32_t layer_index = flexbuffer_map["layer_index"].AsInt32();
+    op_data->max_num_entries =
+        max_num_entries > 0 ? max_num_entries : kDefaultMaxNumCacheEntries;
+    op_data->num_layers =
+        num_layers > 0 ? num_layers : kDefaultNumTransformerLayers;
+    op_data->layer_index =
+        layer_index > 0 ? layer_index : kDefaultTransformerLayerId;
+    op_data->is_initialized = true;
+  }
 
   // Prepare the inputs.
   const TfLiteTensor* key;
@@ -81,14 +120,46 @@ TfLiteStatus KVCachePrepare(TfLiteContext* context, TfLiteNode* node) {
   TfLiteIntArray* input_dims = key->dims;
   TfLiteIntArray* kcache_dims = TfLiteIntArrayCopy(input_dims);
   TfLiteIntArray* vcache_dims = TfLiteIntArrayCopy(input_dims);
-  kcache_dims->data[1] = kMaxNumCacheEntries;
-  vcache_dims->data[1] = kMaxNumCacheEntries;
+  kcache_dims->data[1] = op_data->max_num_entries;
+  vcache_dims->data[1] = op_data->max_num_entries;
+
+  TfLiteIntArray* kcache_buffer_dims = TfLiteIntArrayCreate(5);
+  // Batch
+  kcache_buffer_dims->data[0] = input_dims->data[0];
+  // Number of layers
+  kcache_buffer_dims->data[1] = op_data->num_layers;
+  // Sequence Length
+  kcache_buffer_dims->data[2] = op_data->max_num_entries;
+  // Num heads
+  kcache_buffer_dims->data[3] = input_dims->data[2];
+  // Head dim
+  kcache_buffer_dims->data[4] = input_dims->data[3];
+
+  TfLiteIntArray* vcache_buffer_dims = TfLiteIntArrayCopy(kcache_buffer_dims);
 
   TF_LITE_ENSURE_OK(context,
                     context->ResizeTensor(context, kfull, kcache_dims));
   TF_LITE_ENSURE_OK(context,
                     context->ResizeTensor(context, vfull, vcache_dims));
 
+  // Get the pointer to the tensor for our buffer storage.
+  Subgraph* subgraph = reinterpret_cast<Subgraph*>(context->impl_);
+  auto& resources = subgraph->resources();
+
+  if (resources.count(KVCACHE_KEY_RESOURCE) == 0) {
+    auto* cbuffer = new resource::CacheBuffer();
+    cbuffer->Initialize(*kcache_buffer_dims);
+    resources.emplace(KVCACHE_KEY_RESOURCE, cbuffer);
+    op_data->key_cache_buffer = cbuffer;
+  }
+  if (resources.count(KVCACHE_VALUE_RESOURCE) == 0) {
+    auto* cbuffer = new resource::CacheBuffer();
+    cbuffer->Initialize(*vcache_buffer_dims);
+    resources.emplace(KVCACHE_VALUE_RESOURCE, cbuffer);
+    op_data->value_cache_buffer = cbuffer;
+  }
+  TfLiteIntArrayFree(kcache_buffer_dims);
+  TfLiteIntArrayFree(vcache_buffer_dims);
   return kTfLiteOk;
 }
 
@@ -110,29 +181,31 @@ TfLiteStatus KVCacheEval(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_OK(context,
                     GetOutputSafe(context, node, kFullValueTensor, &vfull));
   OpData* op_data = reinterpret_cast<OpData*>(node->user_data);
-  int current_num_entries = op_data->num_entries;
 
-  // 0. Init the cache if there are no entries.
-  if (current_num_entries == 0) {
-    float* kfull_ptr = GetTensorData<float>(kfull);
-    float* vfull_ptr = GetTensorData<float>(vfull);
-    memset(kfull_ptr, 0, kfull->bytes);
-    memset(vfull_ptr, 0, vfull->bytes);
-  }
+  float* key_cache_ptr = op_data->key_cache_buffer->GetBuffer();
+  float* value_cache_ptr = op_data->value_cache_buffer->GetBuffer();
+  int layer_index = op_data->layer_index;
+  int current_num_entries =
+      op_data->key_cache_buffer->GetNumEntries(layer_index);
 
   // 1. Determine how many slots remain in the cache.
-  const int num_slots_remaining = kMaxNumCacheEntries - current_num_entries;
+  const int num_slots_remaining =
+      op_data->max_num_entries - current_num_entries;
 
   // 2. Determine how many slots these inputs take up.
   RuntimeShape shape(GetTensorShape(key));
   const int num_slots_needed = shape.Dims(1);
   const int elements_in_one_entry = shape.Dims(2) * shape.Dims(3);
+  const int elements_in_one_block =
+      op_data->max_num_entries * elements_in_one_entry;
 
   // 3. If we need more slots, make room in the cache by writing over oldest
   //    entries.
+  uint8_t* k_ptr = reinterpret_cast<uint8_t*>(key_cache_ptr);
+  uint8_t* v_ptr = reinterpret_cast<uint8_t*>(value_cache_ptr);
+  k_ptr = k_ptr + sizeof(float) * op_data->layer_index * elements_in_one_block;
+  v_ptr = v_ptr + sizeof(float) * op_data->layer_index * elements_in_one_block;
   if (num_slots_remaining < num_slots_needed) {
-    char* k_ptr = reinterpret_cast<char*>(kfull->data.data);
-    char* v_ptr = reinterpret_cast<char*>(vfull->data.data);
     const int slots_to_grow = num_slots_needed - num_slots_remaining;
     const int bytes_offset =
         sizeof(float) * elements_in_one_entry * slots_to_grow;
@@ -150,12 +223,17 @@ TfLiteStatus KVCacheEval(TfLiteContext* context, TfLiteNode* node) {
   // 4. Put the key and value in their respective caches.
   const int64_t num_bytes_per_tensor = sizeof(float) * elements_in_one_entry;
   const int64_t offset = current_num_entries * num_bytes_per_tensor;
-  memcpy((uint8_t*)(kfull->data.data) + offset, key->data.data, key->bytes);
-  memcpy((uint8_t*)(vfull->data.data) + offset, value->data.data, value->bytes);
+  memcpy(k_ptr + offset, key->data.data, key->bytes);
+  memcpy(v_ptr + offset, value->data.data, value->bytes);
 
-  // Update count.
+  // 5. Set the output tensors with the relevant block's cache.
+  memcpy((uint8_t*)(kfull->data.data), k_ptr, kfull->bytes);
+  memcpy((uint8_t*)(vfull->data.data), v_ptr, vfull->bytes);
+
+  // Update counts.
   current_num_entries += num_slots_needed;
-  op_data->num_entries = current_num_entries;
+  op_data->key_cache_buffer->SetNumEntries(layer_index, current_num_entries);
+  op_data->value_cache_buffer->SetNumEntries(layer_index, current_num_entries);
 
   return kTfLiteOk;
 }
