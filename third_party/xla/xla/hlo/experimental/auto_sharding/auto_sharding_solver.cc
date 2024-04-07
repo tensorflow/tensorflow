@@ -777,7 +777,7 @@ AutoShardingSolverResult SolveAndExtractSolution(
     MPSolver& solver) {
   absl::Time start_time = absl::Now();
   absl::flat_hash_set<LivenessIdx> peak_times;
-  if (request.memory_budget() > 0) {
+  if (request.memory_budget() > 0 && !request.deterministic_mode()) {
     for (const LivenessIdx peak_time_idx : request.peak_times()) {
       peak_times.insert(peak_time_idx);
       ImposeMemoryConstraint(request, s, e, overbudget_var, solver,
