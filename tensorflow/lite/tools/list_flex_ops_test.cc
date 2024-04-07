@@ -18,13 +18,16 @@ limitations under the License.
 #include <cstdint>
 #include <string>
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "flatbuffers/flexbuffers.h"  // from @flatbuffers
+#include "third_party/protobuf/text_format.h"
 #include "tensorflow/core/framework/node_def.pb.h"
-#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/resource_loader.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/test_util.h"
+#include "tensorflow/lite/model_builder.h"
+#include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/string_type.h"
 
 namespace tflite {
 namespace flex {

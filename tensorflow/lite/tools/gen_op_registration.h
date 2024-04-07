@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_TOOLS_GEN_OP_REGISTRATION_H_
 
 #include "tensorflow/lite/core/model.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/string_type.h"
 
 namespace tflite {

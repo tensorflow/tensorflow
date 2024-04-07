@@ -23,8 +23,13 @@ limitations under the License.
 
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_split.h"
+#include "absl/strings/string_view.h"
+#include "flatbuffers/base.h"  // from @flatbuffers
+#include "tensorflow/lite/allocation.h"
 #include "tensorflow/lite/core/model_builder.h"
+#include "tensorflow/lite/logger.h"
 #include "tensorflow/lite/minimal_logging.h"
+#include "tensorflow/lite/stderr_reporter.h"
 
 namespace tflite {
 namespace tools {
