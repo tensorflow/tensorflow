@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "third_party/gpus/cudnn/cudnn_version.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
@@ -107,6 +108,10 @@ inline std::optional<fe::PointwiseMode_t> GetElementwiseMode(
       return m::POW;
     case HloOpcode::kRsqrt:
       return m::RSQRT;
+#if CUDNN_VERSION >= 90100
+    case HloOpcode::kSelect:
+      return m::BINARY_SELECT;
+#endif  // CUDNN_VERSION
     case HloOpcode::kSin:
       return m::SIN;
     case HloOpcode::kSqrt:
@@ -142,6 +147,20 @@ inline std::optional<fe::DataType_t> ToCudnnDataType(const PrimitiveType type) {
   }
 }
 
+inline std::optional<fe::DataType_t> GetComputeDataType(
+    const PrimitiveType type) {
+  fe::DataType_t compute_dtype = fe::DataType_t::FLOAT;
+  if (primitive_util::IsIntegralType(type)) {
+#if CUDNN_VERSION >= 90100
+    compute_dtype = fe::DataType_t::INT32;
+#else
+    VLOG(3) << "Integer math requires cuDNN 9.1+.";
+    return std::nullopt;
+#endif  // CUDNN_VERSION
+  }
+  return compute_dtype;
+}
+
 int FusionLevel(const HloInstruction& hlo) {
   return hlo.GetModule()
       ->config()
@@ -154,7 +173,7 @@ int FusionLevel(const HloInstruction& hlo) {
 class GemmDimensionAdapter {
   explicit GemmDimensionAdapter(const HloDotInstruction& dot,
                                 TritonFusionAnalysis analysis)
-      : analysis_(std::move(analysis)), dot_(dot){};
+      : analysis_(std::move(analysis)), dot_(dot) {};
 
  public:
   const TritonFusionAnalysis analysis_;
@@ -367,31 +386,39 @@ absl::StatusOr<std::optional<se::gpu::CudnnGraph>> HloFusionToCuDnnGraph(
         return std::nullopt;
       }
       const auto compute_dtype =
-          (primitive_util::IsIntegralType(hlo->shape().element_type()))
-              ? fe::DataType_t::INT32
-              : fe::DataType_t::FLOAT;
+          GetComputeDataType(hlo->shape().element_type());
+      if (!compute_dtype.has_value()) {
+        return std::nullopt;
+      }
       const auto attrs = graph::Pointwise_attributes()
                              .set_mode(mode.value())
-                             .set_compute_data_type(compute_dtype);
+                             .set_compute_data_type(compute_dtype.value());
       if (hlo->operand_count() == 1) {
         hlo_to_cudnn[hlo] = graph.pointwise(operand(0), attrs);
       } else if (hlo->operand_count() == 2) {
         hlo_to_cudnn[hlo] = graph.pointwise(operand(0), operand(1), attrs);
       } else if (hlo->operand_count() == 3) {
+        if (hlo->opcode() != HloOpcode::kSelect) {
+          VLOG(3) << "Unexpected ternary operation: " << hlo->ToString();
+          return std::nullopt;
+        }
+        // Operand order for select differs between HLO and cuDNN.
         hlo_to_cudnn[hlo] =
-            graph.pointwise(operand(0), operand(1), operand(2), attrs);
+            graph.pointwise(operand(1), operand(2), operand(0), attrs);
       } else {
         VLOG(3) << "Unimplemented elementwise operation.";
         return std::nullopt;
       }
     } else if (hlo->opcode() == HloOpcode::kDot) {
       const auto compute_dtype =
-          (primitive_util::IsIntegralType(hlo->shape().element_type()))
-              ? fe::DataType_t::INT32
-              : fe::DataType_t::FLOAT;
-      hlo_to_cudnn[hlo] = graph.matmul(
-          operand(0), operand(1),
-          graph::Matmul_attributes().set_compute_data_type(compute_dtype));
+          GetComputeDataType(hlo->shape().element_type());
+      if (!compute_dtype.has_value()) {
+        return std::nullopt;
+      }
+      hlo_to_cudnn[hlo] =
+          graph.matmul(operand(0), operand(1),
+                       graph::Matmul_attributes().set_compute_data_type(
+                           compute_dtype.value()));
     } else {
       VLOG(3) << "Unimplemented operation.";
       return std::nullopt;

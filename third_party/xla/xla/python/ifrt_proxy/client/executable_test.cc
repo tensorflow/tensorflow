@@ -35,6 +35,7 @@
 #include "xla/python/ifrt/mock.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
+#include "xla/python/ifrt/sharding_serdes.h"
 #include "xla/python/ifrt_proxy/client/array.h"
 #include "xla/python/ifrt_proxy/client/client_session.h"
 #include "xla/python/ifrt_proxy/client/host_buffer.h"
@@ -196,13 +197,13 @@ TEST_F(LoadedExecutableTest, Execute) {
                                             loaded_executable_execute_response {
                                               status_handle: 2000
                                               outputs {
-                                                dtype: DTYPE_F32
-                                                shape { dimensions: [ 4, 4 ] }
+                                                dtype { kind: KIND_F32 }
+                                                shape { dims: [ 4, 4 ] }
                                                 array_handle: 3000
                                               }
                                               outputs {
-                                                dtype: DTYPE_F16
-                                                shape { dimensions: [ 8 ] }
+                                                dtype { kind: KIND_F16 }
+                                                shape { dims: [ 8 ] }
                                                 array_handle: 3001
                                               }
                                             }

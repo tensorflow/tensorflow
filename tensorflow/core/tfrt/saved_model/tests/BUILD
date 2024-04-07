@@ -1,8 +1,8 @@
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load("//tensorflow:pytype.default.bzl", "pytype_strict_binary")
 load("//tensorflow:strict.default.bzl", "py_strict_library")
 load("//tensorflow:tensorflow.bzl", "if_google", "tf_cc_test")
 load("//tensorflow:tensorflow.default.bzl", "tf_cuda_cc_test")
-load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load(":gen_saved_model.bzl", "gen_saved_model")
 
 package(
@@ -599,18 +599,34 @@ cc_library(
     tags = ["no_oss"],
     deps = [
         "//tensorflow/compiler/mlir/tfrt:backend_compiler",
+        "//tensorflow/core:framework",
         "//tensorflow/core:test",
+        "//tensorflow/core/framework:tensor",
+        "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/platform:path",
         "//tensorflow/core/platform:resource_loader",
-        "//tensorflow/core/tfrt/fallback:cost_recorder",
         "//tensorflow/core/tfrt/graph_executor:config",
         "//tensorflow/core/tfrt/graph_executor:test_config_proto_cc",
         "//tensorflow/core/tfrt/run_handler_thread_pool:run_handler_concurrent_work_queue",
+        "//tensorflow/core/tfrt/runtime",
+        "//tensorflow/core/tfrt/runtime:work_queue_interface",
+        "//tensorflow/core/tfrt/saved_model:saved_model_cpu",
         "//tensorflow/core/tfrt/saved_model:saved_model_testutil",
+        "//tensorflow/core/tfrt/saved_model:saved_model_util",
         "//tensorflow/python/framework:test_ops_kernels",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/time",
+        "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
         "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@local_tsl//tsl/platform:status",
+        "@local_tsl//tsl/platform:statusor",
         "@tf_runtime//:core_runtime_alwayslink",
+        "@tf_runtime//:hostcontext",
     ],
     alwayslink = 1,
 )

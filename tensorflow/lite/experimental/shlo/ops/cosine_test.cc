@@ -48,17 +48,17 @@ struct Cosine {
   T operator()(T v) const {
     return std::cos(v);
   }
-
-  template <>
-  F16 operator()<F16>(F16 val) const {
-    return F16(operator()(static_cast<float>(val)));
-  }
-
-  template <>
-  BF16 operator()<BF16>(BF16 val) const {
-    return BF16(operator()(static_cast<float>(val)));
-  }
 } cosine_ref;
+
+template <>
+F16 Cosine::operator()<F16>(F16 val) const {
+  return F16(operator()(static_cast<float>(val)));
+}
+
+template <>
+BF16 Cosine::operator()<BF16>(BF16 val) const {
+  return BF16(operator()(static_cast<float>(val)));
+}
 
 INSTANTIATE_TYPED_TEST_SUITE_P(Cosine, UnaryElementwiseOpShapePropagationTest,
                                CosineOp, TestParamNames);
@@ -116,15 +116,16 @@ TYPED_TEST(QuantizedCosineTest, PerTensorWorks) {
   Vector<StorageT> output_data(shape.NumElements());
   const ExpressedT scale = static_cast<ExpressedT>(1.5);
   const StorageT zero_point = static_cast<StorageT>(5);
-  const QuantizedTensorElementType tensor_type =
-      QuantizedTensorElementType::PerTensor<TypeParam::kStorage,
-                                            TypeParam::kExpressed>(scale,
-                                                                   zero_point);
+  const QuantizedElementTypePerTensor tensor_type =
+      QuantizedElementTypePerTensor(TypeParam::kStorage, zero_point,
+                                    TypeParam::kExpressed, scale);
   Tensor input_tensor{
-      .type = QuantizedTensorType{.shape = shape, .element_type = tensor_type},
+      .type = QuantizedPerTensorTensorType{.shape = shape,
+                                           .element_type = tensor_type},
       .data = input_data.data()};
   Tensor output_tensor{
-      .type = QuantizedTensorType{.shape = shape, .element_type = tensor_type},
+      .type = QuantizedPerTensorTensorType{.shape = shape,
+                                           .element_type = tensor_type},
       .data = output_data.data()};
 
   Vector<StorageT> expected_data(shape.NumElements());

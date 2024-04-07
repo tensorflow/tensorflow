@@ -29,7 +29,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/global_device_id.h"
-#include "xla/service/gpu/thunk.h"
+#include "xla/service/gpu/runtime/thunk.h"
 #include "xla/shape.h"
 #include "xla/status.h"
 #include "xla/statusor.h"

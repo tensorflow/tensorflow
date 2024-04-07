@@ -45,7 +45,7 @@ Status WithErrorSourcePayload(Status error) {
 namespace eager {
 
 void RemoteMgr::AddOperationOutputs(
-    const gtl::ArraySlice<tensorflow::TensorHandle*> handles,
+    const absl::Span<tensorflow::TensorHandle* const> handles,
     int64_t operation_id) {
   mutex_lock l(remote_tensor_handle_mu_);
   for (int i = 0, end = handles.size(); i < end; i++) {

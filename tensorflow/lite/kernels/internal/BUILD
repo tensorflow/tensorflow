@@ -1507,9 +1507,7 @@ filegroup(
     srcs = glob([
         "optimized/*.h",
     ]),
-    visibility = [
-        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
-    ],
+    visibility = ["//visibility:private"],
 )
 
 filegroup(
@@ -1517,9 +1515,7 @@ filegroup(
     srcs = glob([
         "reference/*.h",
     ]),
-    visibility = [
-        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
-    ],
+    visibility = ["//visibility:private"],
 )
 
 filegroup(
@@ -1527,9 +1523,7 @@ filegroup(
     srcs = glob([
         "*.h",
     ]),
-    visibility = [
-        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
-    ],
+    visibility = ["//visibility:private"],
 )
 
 transitive_hdrs(

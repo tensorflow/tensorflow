@@ -48,11 +48,11 @@ limitations under the License.
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/gpu/redzone_allocator.h"
 #include "xla/stream_executor/scratch_allocator.h"
+#include "xla/tsl/util/proto/proto_utils.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
-#include "tsl/util/proto/proto_utils.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "xla/service/gpu/buffer_comparator.h"
@@ -193,6 +193,7 @@ class GemmAutotuner {
           c_scale_buffer, d_scale_buffer, d_amax_buffer, algorithm,
           scratch_allocator));
       se::blas::ProfileResult profile_result;
+      profile_result.set_warmup_run_executed(true);
       TF_RETURN_IF_ERROR(plan->ExecuteOnStream(
           stream_, lhs_buffer_, rhs_buffer_, output_buffer_, output_buffer_,
           bias_buffer, aux_buffer, a_scale_buffer, b_scale_buffer,
@@ -246,7 +247,17 @@ class GemmAutotuner {
 
     auto tuned_func = [&](const se::blas::AlgorithmType& algorithm)
         -> absl::StatusOr<se::blas::ProfileResult> {
+      // Do a warm-up run first, without a profile result. RunGemm swallows
+      // error codes when profile_result is passed, as it is in the measurement
+      // below, but not otherwise. It is, therefore, consistent to ignore the
+      // error code here.
+      static_cast<void>(RunGemm(gemm_config, lhs_buffer_, rhs_buffer_,
+                                output_buffer_, workspace_buffer,
+                                deterministic_ops_, stream_, algorithm));
       se::blas::ProfileResult profile_result;
+      // Allow GpuTimer to use its delay kernel implementation to improve
+      // accuracy.
+      profile_result.set_warmup_run_executed(true);
       // We expect GemmWithAlgorithm to fail sometimes -- in fact, it will fail
       // for all algorithms if we're targeting < sm_50. But because we pass a
       // non-null ProfileResult, DoGemmWithAlgorithm should always return true,
@@ -417,22 +428,35 @@ absl::StatusOr<bool> RunOnInstruction(HloInstruction* gemm,
                  config.GetGpuComputeCapability());
 
   if (update_algorithm) {
+    int64_t new_algorithm{};
     if (algorithm.has_gemm()) {
-      backend_config.set_selected_algorithm(algorithm.gemm().algorithm());
+      new_algorithm = algorithm.gemm().algorithm();
     } else {
       // NOTE: runtime autotuning is no longer available => set to default
-      backend_config.set_selected_algorithm(se::blas::kDefaultAlgorithm);
+      new_algorithm = se::blas::kDefaultAlgorithm;
     }
+
+    if (new_algorithm == old_algorithm &&
+        backend_config.has_selected_algorithm()) {
+      // We don't need to update the backend config if
+      // the algorithm hasn't changed unless previously
+      // the algorithm wasn't set explicitly.
+      return false;
+    }
+
+    backend_config.set_selected_algorithm(new_algorithm);
+    TF_RETURN_IF_ERROR(gemm->set_backend_config(gpu_config));
+    return true;  // We changed `gemm`
   }
-  TF_RETURN_IF_ERROR(gemm->set_backend_config(gpu_config));
-  return old_algorithm != backend_config.selected_algorithm();
+
+  return false;  // No change to `gemm`
 }
 
 absl::StatusOr<bool> RunOnComputation(HloComputation* computation,
                                       AutotuneConfig config) {
   bool changed = false;
   for (HloInstruction* instr : computation->instructions()) {
-    if (IsCublasGemm(*instr) || IsCublasLtMatmulF8(*instr)) {
+    if (IsCublasGemm(*instr)) {
       TF_ASSIGN_OR_RETURN(bool result, RunOnInstruction(instr, config));
       changed |= result;
     }

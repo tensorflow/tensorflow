@@ -20,14 +20,17 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
-#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tsl/distributed_runtime/coordination/coordination_service_agent.h"
+#include "tsl/protobuf/coordination_service.pb.h"
 
 namespace tensorflow {
 

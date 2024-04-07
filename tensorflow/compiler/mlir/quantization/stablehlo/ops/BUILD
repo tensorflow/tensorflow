@@ -40,13 +40,17 @@ tf_cc_test(
     deps = [
         ":stablehlo_op_quant_spec",
         "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
+        "//tensorflow/compiler/mlir/quantization/common:attrs_and_constraints",
+        "//tensorflow/compiler/mlir/quantization/common:func",
         "//tensorflow/compiler/mlir/quantization/common:test_base",
+        "//tensorflow/compiler/mlir/quantization/common/quantization_lib",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/core:test",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
         "@stablehlo//:stablehlo_ops",
     ],
 )

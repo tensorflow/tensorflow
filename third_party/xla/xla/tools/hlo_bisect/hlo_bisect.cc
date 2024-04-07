@@ -20,8 +20,8 @@ limitations under the License.
 #include <vector>
 
 #include "xla/tools/hlo_bisect/hlo_bisect_utils.h"
+#include "xla/tsl/util/command_line_flags.h"
 #include "tsl/platform/init_main.h"
-#include "tsl/util/command_line_flags.h"
 
 const char* const kUsage = R"(
 Given an HloModule that manifests an XLA bug, either crashes the compiler or

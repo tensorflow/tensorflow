@@ -43,12 +43,12 @@ limitations under the License.
 #include "xla/stream_executor/scratch_allocator.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/util/determinism.h"
+#include "xla/tsl/util/env_var.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/hash.h"
 #include "tsl/platform/logging.h"
-#include "tsl/util/determinism.h"
-#include "tsl/util/env_var.h"
 
 namespace {
 
@@ -2379,8 +2379,12 @@ absl::Status MIOpenSupport::DoRnnForwardImpl(
 
   const bool is_profiling = output_profile_result != nullptr;
 
-  TF_ASSIGN_OR_RETURN(std::optional<GpuTimer> timer,
-                      GpuTimer::CreateIfNeeded(stream, is_profiling));
+  TF_ASSIGN_OR_RETURN(
+      std::optional<GpuTimer> timer,
+      GpuTimer::CreateIfNeeded(
+          stream,
+          output_profile_result && output_profile_result->warmup_run_executed(),
+          is_profiling));
 
   // make the forward call
   if (!is_training) {
@@ -2507,8 +2511,12 @@ absl::Status MIOpenSupport::DoRnnBackwardImpl(
 
   const bool is_profiling = output_profile_result != nullptr;
 
-  TF_ASSIGN_OR_RETURN(std::optional<GpuTimer> timer,
-                      GpuTimer::CreateIfNeeded(stream, is_profiling));
+  TF_ASSIGN_OR_RETURN(
+      std::optional<GpuTimer> timer,
+      GpuTimer::CreateIfNeeded(
+          stream,
+          output_profile_result && output_profile_result->warmup_run_executed(),
+          is_profiling));
 
   // make the backward data call
   auto status = wrap::miopenRNNBackwardData(
@@ -3201,7 +3209,11 @@ class RocmConvRunner : public dnn::ConvRunner {
 
     const bool is_profiling = profile_result != nullptr;
     TF_ASSIGN_OR_RETURN(std::optional<GpuTimer> timer,
-                        GpuTimer::CreateIfNeeded(stream, is_profiling));
+                        GpuTimer::CreateIfNeeded(
+                            stream,
+                            output_profile_result &&
+                                output_profile_result->warmup_run_executed(),
+                            is_profiling));
 
     miopenStatus_t status = miopenStatusSuccess;
     switch (kind_) {

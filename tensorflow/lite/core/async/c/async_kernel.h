@@ -178,6 +178,44 @@ TFL_CAPI_EXPORT extern void TfLiteAsyncKernelSetSetAttributes(
                                    TfLiteOpaqueNode* node, int tensor_index,
                                    const TfLiteAttributeMap* attrs));
 
+/// Sets the callback for the backend to set buffer attributes.
+///
+/// `set_buffer_attributes`:
+/// Sets the attributes of the buffers.
+/// Backend kernel will check if the provided buffer has been registered, and
+/// update the map in the backend, so that the callers can retrieve specific
+/// buffer's attributes. `attrs` should be initialized
+/// before calling this function and could be constructed by calling
+/// TfLiteAttributeMapCreate(). The attributes will be sent to backend kernels
+/// and stored in the map with the buffer. `buffer` and `attrs` should not be
+/// nullptr. The buffer needs to be registered before calling this
+/// function. Returns kTfLiteOk if the buffer has been registered and
+/// callers can successfully set the attributes for a buffer.
+TFL_CAPI_EXPORT extern void TfLiteAsyncKernelSetSetBufferAttributes(
+    TfLiteAsyncKernel* async_kernel,
+    TfLiteStatus (*set_buffer_attributes)(TfLiteAsyncKernel* async_kernel,
+                                          const TfLiteBackendBuffer* buffer,
+                                          const TfLiteAttributeMap* attrs));
+
+/// Sets the callback for the backend to get buffer attributes.
+///
+/// `get_buffer_attributes`:
+/// Gets the attributes of the buffers.
+/// Backend kernel will check if the provided buffer has been registered, and
+/// get the corresponding attributes from the map. `attrs` should be initialized
+/// before calling this function and could be constructed by calling
+/// TfLiteAttributeMapCreate(). `attrs` will be used to store the attributes
+/// obtained from the backend kernel. If `attrs` is a non-empty map, it will be
+/// overwritten by the attributes of the buffer. `buffer` and `attrs` should not
+/// be nullptr. The buffer needs to be registered before calling this function.
+/// Returns kTfLiteOk if the buffer has been registered and callers can
+/// successfully get the attributes for a buffer.
+TFL_CAPI_EXPORT extern void TfLiteAsyncKernelSetGetBufferAttributes(
+    TfLiteAsyncKernel* async_kernel,
+    TfLiteStatus (*get_buffer_attributes)(TfLiteAsyncKernel* async_kernel,
+                                          const TfLiteBackendBuffer* buffer,
+                                          TfLiteAttributeMap* attrs));
+
 /// Sets the callback to prepare the kernels using the information from
 /// `set_attributes` calls.
 TFL_CAPI_EXPORT extern void TfLiteAsyncKernelSetPrepare(

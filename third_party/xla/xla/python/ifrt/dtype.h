@@ -20,6 +20,9 @@ limitations under the License.
 #include <ostream>
 #include <string>
 
+#include "absl/status/statusor.h"
+#include "xla/python/ifrt/dtype.pb.h"
+
 namespace xla {
 namespace ifrt {
 
@@ -111,6 +114,12 @@ class DType {
   // Returns the bit size of a single element of this DType. Returns
   // std::nullopt if there is no fixed size.
   std::optional<int> bit_size() const;
+
+  // Constructs `DType` from `DTypeProto`.
+  static absl::StatusOr<DType> FromProto(const DTypeProto& proto);
+
+  // Returns a `DTypeProto` representation.
+  DTypeProto ToProto() const;
 
   std::string DebugString() const;
 

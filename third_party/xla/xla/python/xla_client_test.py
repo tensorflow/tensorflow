@@ -2946,6 +2946,34 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
       with self.assertRaises(AttributeError):
         self.backend.pjrt_c_api_minor_version  # pylint: disable=pointless-statement
 
+    @unittest.skipIf(pathways or pathways_ifrt, "has different behavior")
+    def testPluginProgramDoesNotCompile(self):
+      program = xla_client.ifrt_programs.make_plugin_program("foobar")
+      options = xla_client.ifrt_programs.make_plugin_compile_options()
+      with self.assertRaisesRegex(
+          xla_client.XlaRuntimeError, "PjRtCompiler requires an XlaProgram"
+      ):
+        self.backend.compile_ifrt_program(program, options)
+
+    @unittest.skipIf(pathways, "does not work with non-ifrt legacy pathways")
+    def testXlaProgramViaIfrtProgram(self):
+      c = self._NewComputation()
+      ops.Iota(c, xla_client.PrimitiveType.F32, 10)
+      program = xla_client.ifrt_programs.make_xla_program(
+          xla_computation_to_mlir_module(c.build())
+      )
+      options = xla_client.ifrt_programs.make_xla_compile_options(
+          xla_client.CompileOptions(), []
+      )
+
+      compiled_c = self.backend.compile_ifrt_program(program, options)
+      results = xla_client.execute_with_python_values(
+          compiled_c, arguments=(), backend=self.backend
+      )
+
+      self.assertLen(results, 1)
+      np.testing.assert_equal(results[0], np.arange(10, dtype=np.float32))
+
     @unittest.skipIf(cloud_tpu or pathways or pathways_ifrt or tfrt_tpu,
                      "not implemented")
     def testExecutableSerialization(self):

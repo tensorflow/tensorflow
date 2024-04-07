@@ -3,6 +3,16 @@ load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load(
+    "@local_config_rocm//rocm:build_defs.bzl",
+    "if_rocm",
+    "if_rocm_hipblaslt",
+)
+load(
+    "@local_xla//xla/tsl/mkl:build_defs.bzl",
+    "if_mkl",
+    "mkl_deps",
+)
+load(
     "//tensorflow:tensorflow.bzl",
     "if_android",
     "if_cuda_or_rocm",
@@ -21,11 +31,6 @@ load(
 )
 load("//tensorflow:tensorflow.default.bzl", "cc_header_only_library", "filegroup", "get_compatible_with_portable", "tf_cc_shared_library", "tf_cuda_cc_test", "tf_cuda_cc_tests", "tf_disable_ptxas_warning_flags", "tf_kernel_library")
 load(
-    "@local_xla//xla/tsl/mkl:build_defs.bzl",
-    "if_mkl",
-    "mkl_deps",
-)
-load(
     "//tensorflow/core/kernels/mlir_generated:build_defs.bzl",
     "if_mlir_generated_experimental_kernels_enabled",
     "if_mlir_generated_gpu_kernels_enabled",
@@ -40,11 +45,6 @@ load(
     "tf_cuda_tests_tags",
 )
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-load(
-    "@local_config_rocm//rocm:build_defs.bzl",
-    "if_rocm",
-    "if_rocm_hipblaslt",
-)
 
 # Description:
 # Op kernel implementations for TensorFlow.
@@ -703,11 +703,13 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/kernels/batching_util:adaptive_shared_batch_scheduler",
         "//tensorflow/core/kernels/batching_util:batch_resource_base",
+        "//tensorflow/core/kernels/batching_util:batch_scheduler_hdrs",
         "//tensorflow/core/kernels/batching_util:bounded_executor",
         "//tensorflow/core/kernels/batching_util:concat_split_util",
         "//tensorflow/core/kernels/batching_util:periodic_function_dynamic",
         "//tensorflow/core/kernels/batching_util:warmup",
         "//tensorflow/core/platform:numbers",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
         "@local_tsl//tsl/platform:types",
@@ -1662,6 +1664,7 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/framework:types_proto_cc",
+        "//tensorflow/core/kernels/batching_util:batch_scheduler_hdrs",
         "//tensorflow/core/kernels/batching_util:warmup",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/protobuf:for_core_protos_cc",
@@ -3433,7 +3436,7 @@ tf_cc_tests(
         "//tensorflow/core:testlib",
         "//tensorflow/core/platform:status_matchers",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/util:determinism_test_util",
+        "@local_xla//xla/tsl/util:determinism_test_util",
     ],
 )
 

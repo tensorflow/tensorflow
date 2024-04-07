@@ -38,7 +38,9 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
+#include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/test_util.h"
+#include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_matcher.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -48,6 +50,7 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_loaded_variable_registry.h"
 #include "tensorflow/core/tfrt/ifrt/sharding_utils.h"
+#include "tensorflow/core/tfrt/ifrt/tf_host_callback.h"
 #include "tsl/concurrency/ref_count.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/statusor.h"
@@ -101,10 +104,14 @@ TEST(IfrtServingExecutableTest, Basic) {
                           xla::ifrt::test_util::GetClient());
 
   IfrtLoadedVariableRegistry ifrt_loaded_variable_registry;
-  IfrtServingExecutable executable("test", "main", std::move(mlir_module),
-                                   client, &GetThreadPool(),
-                                   &ifrt_loaded_variable_registry,
-                                   tensorflow::IdentityShapeRepresentationFn());
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<tensorflow::StaticDeviceMgr> device_mgr,
+      CreateTfStaticDeviceMgr());
+
+  IfrtServingExecutable executable(
+      "test", "main", std::move(mlir_module), client, &GetThreadPool(),
+      &ifrt_loaded_variable_registry, device_mgr.get(),
+      tensorflow::IdentityShapeRepresentationFn());
 
   auto x = AsTensor<int32_t>({1, 2, 3}, tensorflow::TensorShape({1, 3}));
   auto y = AsTensor<int32_t>({1, 2, 3}, tensorflow::TensorShape({3, 1}));
@@ -142,11 +149,14 @@ TEST(IfrtServingExecutableTest, MultipleShapes) {
                           xla::ifrt::test_util::GetClient());
 
   IfrtLoadedVariableRegistry ifrt_loaded_variable_registry;
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<tensorflow::StaticDeviceMgr> device_mgr,
+      CreateTfStaticDeviceMgr());
 
-  IfrtServingExecutable executable("test", "main", std::move(mlir_module),
-                                   client, &GetThreadPool(),
-                                   &ifrt_loaded_variable_registry,
-                                   tensorflow::IdentityShapeRepresentationFn());
+  IfrtServingExecutable executable(
+      "test", "main", std::move(mlir_module), client, &GetThreadPool(),
+      &ifrt_loaded_variable_registry, device_mgr.get(),
+      tensorflow::IdentityShapeRepresentationFn());
 
   auto x1 = AsTensor<int32_t>({1, 2, 3}, tensorflow::TensorShape({1, 3}));
   auto y1 = AsTensor<int32_t>({1, 2, 3}, tensorflow::TensorShape({3, 1}));
@@ -199,11 +209,14 @@ TEST(IfrtServingExecutableTest, Spmd) {
                           xla::ifrt::test_util::GetClient());
 
   IfrtLoadedVariableRegistry ifrt_loaded_variable_registry;
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<tensorflow::StaticDeviceMgr> device_mgr,
+      CreateTfStaticDeviceMgr());
 
-  IfrtServingExecutable executable("test", "main", std::move(mlir_module),
-                                   client, &GetThreadPool(),
-                                   &ifrt_loaded_variable_registry,
-                                   tensorflow::IdentityShapeRepresentationFn());
+  IfrtServingExecutable executable(
+      "test", "main", std::move(mlir_module), client, &GetThreadPool(),
+      &ifrt_loaded_variable_registry, device_mgr.get(),
+      tensorflow::IdentityShapeRepresentationFn());
 
   auto x = AsTensor<int32_t>({1, 2, 3, 4, 5, 6, 7, 8},
                              tensorflow::TensorShape({4, 2}));
@@ -246,11 +259,14 @@ TEST(IfrtServingExecutableTest, SpmdTwoReturns) {
                           xla::ifrt::test_util::GetClient());
 
   IfrtLoadedVariableRegistry ifrt_loaded_variable_registry;
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<tensorflow::StaticDeviceMgr> device_mgr,
+      CreateTfStaticDeviceMgr());
 
-  IfrtServingExecutable executable("test", "main", std::move(mlir_module),
-                                   client, &GetThreadPool(),
-                                   &ifrt_loaded_variable_registry,
-                                   tensorflow::IdentityShapeRepresentationFn());
+  IfrtServingExecutable executable(
+      "test", "main", std::move(mlir_module), client, &GetThreadPool(),
+      &ifrt_loaded_variable_registry, device_mgr.get(),
+      tensorflow::IdentityShapeRepresentationFn());
 
   auto x = AsTensor<int32_t>({1, 2, 3, 4, 5, 6, 7, 8},
                              tensorflow::TensorShape({4, 2}));
@@ -297,11 +313,14 @@ TEST(IfrtServingExecutableTest, NoReturn) {
                           xla::ifrt::test_util::GetClient());
 
   IfrtLoadedVariableRegistry ifrt_loaded_variable_registry;
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<tensorflow::StaticDeviceMgr> device_mgr,
+      CreateTfStaticDeviceMgr());
 
-  IfrtServingExecutable executable("test", "main", std::move(mlir_module),
-                                   client, &GetThreadPool(),
-                                   &ifrt_loaded_variable_registry,
-                                   tensorflow::IdentityShapeRepresentationFn());
+  IfrtServingExecutable executable(
+      "test", "main", std::move(mlir_module), client, &GetThreadPool(),
+      &ifrt_loaded_variable_registry, device_mgr.get(),
+      tensorflow::IdentityShapeRepresentationFn());
 
   auto x = AsTensor<int32_t>({1, 2, 3}, tensorflow::TensorShape({1, 3}));
   auto y = AsTensor<int32_t>({1, 2, 3}, tensorflow::TensorShape({3, 1}));
@@ -336,10 +355,13 @@ TEST_P(VariableInputTest, InterleaveVariable) {
                           xla::ifrt::test_util::GetClient());
 
   IfrtLoadedVariableRegistry ifrt_loaded_variable_registry;
-  IfrtServingExecutable executable("test", "main", std::move(mlir_module),
-                                   client, &GetThreadPool(),
-                                   &ifrt_loaded_variable_registry,
-                                   tensorflow::IdentityShapeRepresentationFn());
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<tensorflow::StaticDeviceMgr> device_mgr,
+      CreateTfStaticDeviceMgr());
+  IfrtServingExecutable executable(
+      "test", "main", std::move(mlir_module), client, &GetThreadPool(),
+      &ifrt_loaded_variable_registry, device_mgr.get(),
+      tensorflow::IdentityShapeRepresentationFn());
 
   std::vector<tensorflow::Tensor> inputs;
   std::vector<int> loaded_variable_indices;
@@ -348,15 +370,27 @@ TEST_P(VariableInputTest, InterleaveVariable) {
       std::string variable_name = absl::StrCat("variable_", i);
       ASSERT_OK(ifrt_loaded_variable_registry.TryRegisterLoadedVariable(
           variable_name,
-          [&]() -> absl::StatusOr<tsl::RCReference<xla::ifrt::Array>> {
+          [&]() -> absl::StatusOr<IfrtLoadedVariableRegistry::LoadedVariable> {
+            tensorflow::Tensor in_tensor = GetParam().in_tensors[i];
             TF_ASSIGN_OR_RETURN(
                 tsl::RCReference<xla::ifrt::Array> array,
-                MakeArrayFromTensor(*client, GetParam().in_tensors[i],
+                MakeArrayFromTensor(*client, in_tensor,
                                     /*device_ids=*/{0},
                                     xla::HloSharding::Replicate(),
                                     GetThreadPool()));
 
-            return array;
+            auto promise = xla::ifrt::Future<absl::StatusOr<
+                tsl::RCReference<xla::ifrt::Array>>>::CreatePromise();
+            auto future = xla::ifrt::Future<
+                absl::StatusOr<tsl::RCReference<xla::ifrt::Array>>>(promise);
+            promise.Set(array);
+
+            IfrtLoadedVariableRegistry::LoadedVariable loaded_variable;
+            loaded_variable.array = future;
+            loaded_variable.dtype_and_shape.dtype = in_tensor.dtype();
+            loaded_variable.dtype_and_shape.shape = in_tensor.shape();
+
+            return loaded_variable;
           }));
       loaded_variable_indices.push_back(i);
 

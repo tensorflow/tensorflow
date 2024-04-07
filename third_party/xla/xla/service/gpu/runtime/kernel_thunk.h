@@ -32,7 +32,7 @@ limitations under the License.
 #include "xla/service/gpu/kernel_arguments.h"
 #include "xla/service/gpu/kernels/custom_kernel.h"
 #include "xla/service/gpu/launch_dimensions.h"
-#include "xla/service/gpu/thunk.h"
+#include "xla/service/gpu/runtime/thunk.h"
 #include "xla/status.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"

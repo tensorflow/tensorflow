@@ -312,6 +312,14 @@ class TypedKernel {
                                             absl::string_view kernel_name,
                                             void *symbol);
 
+  // Creates a kernel which can be launched with `stream.ThenLaunch(...)` from
+  // an LLVM IR.
+  static absl::StatusOr<TypedKernel> Create(StreamExecutor *executor,
+                                            absl::string_view ir,
+                                            absl::string_view entrypoint,
+                                            absl::string_view kernel_name,
+                                            absl::Span<std::string> options);
+
   TypedKernel() = default;
 
   Kernel &operator*() { return *kernel_; }
@@ -753,6 +761,17 @@ inline absl::StatusOr<TypedKernel<Args...>> TypedKernel<Args...>::Create(
     StreamExecutor *executor, absl::string_view kernel_name, void *symbol) {
   MultiKernelLoaderSpec loader_spec(TypedKernel<Args...>::kNumberOfParameters);
   loader_spec.AddInProcessSymbol(symbol, kernel_name);
+
+  return TypedKernel<Args...>::Create(executor, loader_spec);
+}
+
+template <typename... Args>
+inline absl::StatusOr<TypedKernel<Args...>> TypedKernel<Args...>::Create(
+    StreamExecutor *executor, absl::string_view ir,
+    absl::string_view entrypoint, absl::string_view kernel_name,
+    absl::Span<std::string> options) {
+  MultiKernelLoaderSpec loader_spec(TypedKernel<Args...>::kNumberOfParameters);
+  loader_spec.AddLlvmHostKernel(ir, entrypoint, kernel_name, options);
 
   return TypedKernel<Args...>::Create(executor, loader_spec);
 }

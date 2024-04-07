@@ -26,13 +26,14 @@ namespace shlo_ref {
 struct Not {
   template <class T>
   T operator()(T v) const {
-    return ~v;
-  }
-  template <>
-  bool operator()(bool v) const {
-    return !v;
+    return static_cast<T>(~v);
   }
 };
+
+template <>
+bool Not::operator()(bool v) const {
+  return !v;
+}
 
 NotOp Create(NotOp::Attributes) { return {}; }
 

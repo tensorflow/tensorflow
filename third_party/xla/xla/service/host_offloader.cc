@@ -22,9 +22,9 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
@@ -40,7 +40,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status.h"
-#include "xla/statusor.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
@@ -222,28 +221,34 @@ Status HostOffloader::HandleMoveToHostCustomCall(HloInstruction* custom_call) {
   // Save a pointer to this custom call for when we want to remove it later.
   custom_calls_to_remove_.emplace(custom_call);
 
-  // We expect that the DUS is the only user of this custom call.
-  if (custom_call->user_count() != 1) {
+  // We expect that either the custom call is the root or the DUS is the only
+  // user of this custom call.
+  if (!custom_call->IsRoot() && custom_call->user_count() != 1) {
     return FailedPrecondition(
-        "Expecting custom call %s to only have 1 user; it has %d users: [%s]",
+        "Expecting custom call %s to either be the root or only have 1 user; "
+        "it is not the root and has %d users: [%s]",
         custom_call->name(), custom_call->user_count(),
         absl::StrJoin(custom_call->users(), ", ",
                       [](std::string* out, const HloInstruction* user) {
                         out->append(user->name());
                       }));
   }
-  HloInstruction* op_being_annotated = custom_call->users()[0];
 
-  // Skip past any bitcasts.
-  while (op_being_annotated->opcode() == HloOpcode::kBitcast) {
-    VLOG(1) << "Skipping bitcast " << op_being_annotated->ToString();
-    op_being_annotated = op_being_annotated->users()[0];
+  HloInstruction* consumer = nullptr;
+  if (!custom_call->IsRoot()) {
+    consumer = custom_call->users().at(0);
+    // Skip past any bitcasts.
+    while (consumer != nullptr && consumer->opcode() == HloOpcode::kBitcast) {
+      VLOG(1) << "Skipping bitcast " << consumer->ToString();
+      consumer = consumer->users().at(0);
+    }
   }
 
-  if (op_being_annotated->opcode() == HloOpcode::kDynamicUpdateSlice) {
-    TF_RETURN_IF_ERROR(MemoryOnlyOffloadStartingWithDus(op_being_annotated));
-  } else if (op_being_annotated->opcode() == HloOpcode::kCopy) {
-    TF_RETURN_IF_ERROR(MemoryOnlyOffloadStartingWithCopy(op_being_annotated));
+  if (consumer != nullptr &&
+      consumer->opcode() == HloOpcode::kDynamicUpdateSlice) {
+    TF_RETURN_IF_ERROR(MemoryOnlyOffloadStartingWithDus(consumer));
+  } else if (consumer != nullptr && consumer->opcode() == HloOpcode::kCopy) {
+    TF_RETURN_IF_ERROR(MemoryOnlyOffloadStartingWithCopy(consumer));
   } else {
     TF_ASSIGN_OR_RETURN(bool did_output_streaming,
                         TryOutputStreaming(custom_call));
@@ -578,8 +583,31 @@ absl::StatusOr<bool> HostOffloader::TryParameterStreaming(
   HloInstruction* copy_to_device =
       custom_call->parent()->AddInstruction(HloInstruction::CreateUnary(
           copy_shape, HloOpcode::kCopy, operand_of_load_annotation));
-  TF_RETURN_IF_ERROR(
-      operand_of_load_annotation->ReplaceAllUsesWith(copy_to_device));
+
+  auto users = operand_of_load_annotation->users();
+  for (HloInstruction* use : users) {
+    if (use == copy_to_device) {
+      continue;
+    }
+    auto callers = call_graph_->GetComputationCallers(copy_to_device->parent());
+    if (callers.size() > 1) {
+      return absl::InvalidArgumentError(
+          "Expected to be called only by one caller");
+    } else if (callers.size() == 1) {
+      auto* caller = callers[0];
+      if (caller->opcode() == HloOpcode::kWhile &&
+          use->opcode() == HloOpcode::kTuple && use->IsRoot()) {
+        // Do not replace the while loop parameter with the moved data. Because
+        // of the nature of while loops, since the data started on the host, it
+        // must end on the host. Only the while loop body's root should not use
+        // copy_to_device since it's on host at the loop entry.
+        continue;
+      }
+    }
+
+    TF_RETURN_IF_ERROR(
+        operand_of_load_annotation->ReplaceUseWith(use, copy_to_device));
+  }
 
   AddAllPositionsToBeMovedToHostMemory(unique_buffer);
   return true;
@@ -626,6 +654,8 @@ absl::StatusOr<bool> HostOffloader::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
+
+  call_graph_ = CallGraph::Build(module);
 
   // Run HloAliasAnalysis on module.
   TF_ASSIGN_OR_RETURN(alias_analysis_, HloAliasAnalysis::Run(module));

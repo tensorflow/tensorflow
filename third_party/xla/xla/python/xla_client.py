@@ -43,15 +43,16 @@ from . import xla_extension as _xla
 # Pylint has false positives for type annotations.
 # pylint: disable=invalid-sequence-index
 
+ifrt_programs = _xla.ifrt_programs
 ops = _xla.ops
 profiler = _xla.profiler
 
 # Just an internal arbitrary increasing number to help with backward-compatible
 # changes. In JAX, reference this via jax._src.lib.xla_extension_version.
-_version = 248
+_version = 255
 
 # Version number for MLIR:Python components.
-mlir_api_version = 55
+mlir_api_version = 56
 
 xla_platform_names = {
     'cpu': 'Host',

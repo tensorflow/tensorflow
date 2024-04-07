@@ -1,11 +1,19 @@
 load(
-    "//tensorflow:tensorflow.bzl",
-    "check_deps",
-    "tf_cc_binary",
+    "@local_config_rocm//rocm:build_defs.bzl",
+    "if_rocm_is_configured",
+)
+load(
+    "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
+    "if_cuda_is_configured",
 )
 load(
     "@local_xla//xla/stream_executor:build_defs.bzl",
     "if_gpu_is_configured",
+)
+load(
+    "//tensorflow:tensorflow.bzl",
+    "check_deps",
+    "tf_cc_binary",
 )
 load(
     "//tensorflow/core/platform:build_config.bzl",
@@ -18,14 +26,6 @@ load(
     "if_llvm_powerpc_available",
     "if_llvm_system_z_available",
     "if_llvm_x86_available",
-)
-load(
-    "@local_config_rocm//rocm:build_defs.bzl",
-    "if_rocm_is_configured",
-)
-load(
-    "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
-    "if_cuda_is_configured",
 )
 
 package(
@@ -89,6 +89,7 @@ cc_library(
         "@llvm-project//mlir:ShapeDialect",
         "@llvm-project//mlir:ShapeToStandard",
         "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
         "@local_xla//xla/mlir_hlo",
         "@local_xla//xla/mlir_hlo:all_passes",  # fixdeps: keep

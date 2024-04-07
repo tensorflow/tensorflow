@@ -721,11 +721,23 @@ Status LayoutAssignment::AddMandatoryConstraints(
         if (parameter_layout.LayoutIsSet()) {
           // Parameter layouts must match the respective layout in
           // ComputationLayout, if there is one.
-          TF_RETURN_IF_ERROR(
-              SetInstructionLayout(parameter_layout.shape(), instruction));
+          Shape param_shape = parameter_layout.shape();
+          // Clear out memory space in layout. Host offloader will do the
+          // analysis later.
+          TF_RETURN_IF_ERROR(ShapeUtil::ForEachMutableSubshapeWithStatus(
+              &param_shape, [](Shape* subshape, const ShapeIndex& index) {
+                if (!subshape->has_layout() || !subshape->IsArray()) {
+                  return OkStatus();
+                }
+                subshape->mutable_layout()->set_memory_space(
+                    Layout::kDefaultMemorySpace);
+                return OkStatus();
+              }));
+
+          TF_RETURN_IF_ERROR(SetInstructionLayout(param_shape, instruction));
           if (reverse_computation_order_) {
             TF_RETURN_IF_ERROR(PropagateParameterLayoutToUsers(
-                instruction, parameter_layout.shape(), this));
+                instruction, param_shape, this));
           }
         }
       }
@@ -794,14 +806,17 @@ Status LayoutAssignment::AddMandatoryConstraints(
       const ComputationLayout& called_computation_layout =
           FindOrDie(computation_layouts_, instruction->to_apply())
               ->computation_layout();
-      TF_RETURN_IF_ERROR(SetInstructionLayout(
-          called_computation_layout.result_layout().shape(), instruction));
+      auto result_shape = UnShardedShape(
+          instruction, called_computation_layout.result_layout().shape(), -1);
+      TF_RETURN_IF_ERROR(SetInstructionLayout(result_shape, instruction));
       TF_RET_CHECK(instruction->operand_count() ==
                    called_computation_layout.parameter_count());
       for (int64_t i = 0; i < instruction->operand_count(); ++i) {
-        TF_RETURN_IF_ERROR(SetOperandLayout(
-            called_computation_layout.parameter_layout(i).shape(), instruction,
-            i, /*mandatory=*/true, /*dfs=*/true));
+        auto operand_shape = UnShardedShape(
+            instruction, called_computation_layout.parameter_layout(i).shape(),
+            i);
+        TF_RETURN_IF_ERROR(SetOperandLayout(operand_shape, instruction, i,
+                                            /*mandatory=*/true, /*dfs=*/true));
       }
     } else if (instruction->opcode() == HloOpcode::kWhile &&
                computation_layouts_.find(instruction->while_body()) !=
@@ -951,22 +966,6 @@ bool LayoutsInShapesEqual(const Shape& lhs, const Shape& rhs) {
   return Layout::Equal().MinorToMajorOnly()(lhs.layout(), rhs.layout());
 }
 
-// The operands of a call must match the layouts of parameters in the
-// ComputationLayout, and the call instruction itself must match the result
-// layout in the ComputationLayout.
-Status CheckCallLayout(HloInstruction* call,
-                       const ComputationLayout& computation_layout) {
-  HloComputation* computation = call->to_apply();
-  TF_RET_CHECK(computation->num_parameters() == call->operand_count());
-  for (int64_t i = 0; i < computation->num_parameters(); ++i) {
-    TF_RET_CHECK(computation_layout.parameter_layout(i).MatchesLayoutInShape(
-        call->operand(i)->shape(), /*minor_to_major_only=*/true));
-  }
-  TF_RET_CHECK(computation_layout.result_layout().MatchesLayoutInShape(
-      call->shape(), /*minor_to_major_only=*/true));
-  return OkStatus();
-}
-
 // Operands of layout-constrained custom calls must match the expected
 // constrained layouts.
 Status CheckCustomCallLayout(HloInstruction* instruction) {
@@ -1056,7 +1055,8 @@ Status CheckParameterLayout(HloInstruction* parameter,
       computation_layout.parameter_layout(parameter->parameter_number());
   return ShapeUtil::ForEachSubshapeWithStatus(
       parameter_layout.shape(),
-      [&](const Shape& subshape, const ShapeIndex& shape_index) {
+      [&](const Shape& subshape,
+          const ShapeIndex& shape_index) -> absl::Status {
         if (!ShapeUtil::IsLeafIndex(parameter_layout.shape(), shape_index) ||
             !subshape.has_layout()) {
           return OkStatus();
@@ -1113,6 +1113,20 @@ Status CheckBroadcastLayout(HloInstruction* broadcast) {
 }
 
 }  // namespace
+
+Status LayoutAssignment::CheckCallLayout(
+    HloInstruction* call, const ComputationLayout& computation_layout) {
+  HloComputation* computation = call->to_apply();
+  TF_RET_CHECK(computation->num_parameters() == call->operand_count());
+  for (int64_t i = 0; i < computation->num_parameters(); ++i) {
+    TF_RET_CHECK(computation_layout.parameter_layout(i).MatchesLayoutInShape(
+        ShardedShape(call, call->operand(i)->shape(), i),
+        /*minor_to_major_only=*/true));
+  }
+  TF_RET_CHECK(computation_layout.result_layout().MatchesLayoutInShape(
+      ShardedShape(call, call->shape(), -1), /*minor_to_major_only=*/true));
+  return OkStatus();
+}
 
 absl::StatusOr<HloInstruction*> LayoutAssignment::CreateCopyWithNewLayout(
     const Shape& shape_with_layout, HloInstruction* instruction) {
@@ -2527,7 +2541,8 @@ Status LayoutAssignment::PropagateComputationLayouts(
     bool needs_assign = false;
     TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
         param_layout->shape(),
-        [&](const Shape& subshape, const ShapeIndex& shape_index) {
+        [&](const Shape& subshape,
+            const ShapeIndex& shape_index) -> absl::Status {
           if (!ShapeUtil::IsLeafIndex(param_layout->shape(), shape_index)) {
             return OkStatus();
           }
@@ -2537,7 +2552,8 @@ Status LayoutAssignment::PropagateComputationLayouts(
           }
           const auto& computed_subshape = ShapeUtil::GetSubshape(
               computed_computation_layout.parameter_shape(i), shape_index);
-          if (subshape.layout() != computed_subshape.layout()) {
+          if (!Layout::Equal().IgnoreMemorySpace()(
+                  subshape.layout(), computed_subshape.layout())) {
             return Internal(
                 "Assigned parameter shape %s does not match layout of "
                 "computation shape: %s",

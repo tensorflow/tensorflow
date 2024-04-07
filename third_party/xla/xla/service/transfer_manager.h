@@ -77,7 +77,7 @@ class TransferManager {
   //
   // Optionally caller can specify platform-specific transfer metadata that
   // tells the actual implementation to do something special.
-  StatusOr<Literal> TransferLiteralFromDevice(
+  absl::StatusOr<Literal> TransferLiteralFromDevice(
       se::Stream* stream, const ShapedBuffer& device_buffer,
       const TransferMetadata* transfer_metadata = nullptr);
 
@@ -171,7 +171,7 @@ class TransferManager {
       const se::DeviceMemoryBase& dest,
       const TransferMetadata* transfer_metadata = nullptr);
 
-  StatusOr<Literal> TransferArrayFromDevice(
+  absl::StatusOr<Literal> TransferArrayFromDevice(
       se::Stream* stream, const Shape& shape,
       const se::DeviceMemoryBase& source,
       const TransferMetadata* transfer_metadata = nullptr);
@@ -228,7 +228,7 @@ class TransferManager {
   // devices that have tiled memory architectures.
   // The default implementation always picks a default (major-to-minor) layout.
   // Fails if 'shape' cannot be represented by the device.
-  virtual StatusOr<Shape> ChooseCompactLayoutForShape(
+  virtual absl::StatusOr<Shape> ChooseCompactLayoutForShape(
       const Shape& host_shape) const;
 
   // For the given shape, chooses a layout for infeed. The returned shape
@@ -241,7 +241,7 @@ class TransferManager {
   // Allocates a ScopedShapedBuffer which can hold data with the given on-host
   // shape. The on-device shape may be different as indicated by
   // HostShapeToDeviceShape.
-  StatusOr<ScopedShapedBuffer> AllocateScopedShapedBuffer(
+  absl::StatusOr<ScopedShapedBuffer> AllocateScopedShapedBuffer(
       const Shape& on_host_shape, se::DeviceMemoryAllocator* allocator,
       int device_ordinal,
       DeviceShapeRepresentationFn shape_representation_fn = nullptr);
@@ -288,7 +288,7 @@ class TransferManager {
 
   // Returns the transfer manager singleton pointer if it is available for the
   // given platform, or an error status if it is not.
-  static StatusOr<TransferManager*> GetForPlatform(
+  static absl::StatusOr<TransferManager*> GetForPlatform(
       const se::Platform* platform);
 
   // Writes the given device-memory pointers in 'elements' to the given region

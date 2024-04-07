@@ -875,7 +875,7 @@ tf_cuda_library(
         "@com_google_absl//absl/strings",
         "@eigen_archive//:eigen3",
         "@local_tsl//tsl/framework:device_type",
-        "@local_tsl//tsl/util:byte_swap_array",
+        "@local_xla//xla/tsl/util:byte_swap_array",
     ],
     alwayslink = 1,
 )
@@ -1415,9 +1415,7 @@ cc_library(
     name = "loose_headers",
     tags = ["avoid_dep"],
     textual_hdrs = ["op_gen_lib.h"],
-    visibility = [
-        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
-    ],
+    visibility = ["//visibility:private"],
 )
 
 # All framework protos are self-contained, i.e. they only import other

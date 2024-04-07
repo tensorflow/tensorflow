@@ -47,10 +47,13 @@ class ThreadSafeBuffer final {
   // REQUIRES: !status.ok()
   void Cancel(Status status);
 
+  // Returns whether the buffer is empty.
+  bool Empty() const;
+
  private:
   const size_t buffer_size_;
 
-  mutex mu_;
+  mutable mutex mu_;
   condition_variable ready_to_pop_;
   condition_variable ready_to_push_;
   std::deque<StatusOr<T>> results_ TF_GUARDED_BY(mu_);
@@ -66,6 +69,12 @@ ThreadSafeBuffer<T>::ThreadSafeBuffer(size_t buffer_size)
   DCHECK_GT(buffer_size, 0)
       << "ThreadSafeBuffer must have a positive buffer size. Got "
       << buffer_size << ".";
+}
+
+template <class T>
+bool ThreadSafeBuffer<T>::Empty() const {
+  tf_shared_lock l(mu_);
+  return results_.empty();
 }
 
 template <class T>

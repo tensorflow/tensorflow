@@ -27,7 +27,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/runtime/sequential_thunk.h"
-#include "xla/service/gpu/thunk.h"
+#include "xla/service/gpu/runtime/thunk.h"
 #include "xla/status.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -45,10 +45,12 @@ class AddressComputationThunk : public Thunk {
   AddressComputationThunk(
       ThunkInfo thunk_info, std::unique_ptr<ThunkSequence> embedded_thunk,
       std::vector<std::optional<const BufferAllocation::Slice>> arguments,
+      std::vector<std::unique_ptr<BufferAllocation>> fake_allocations_,
       std::vector<std::optional<std::vector<BufferAllocation::Slice>>>
           offset_buffer_indices,
-      std::vector<std::optional<const Shape>> orig_shapes,
-      std::vector<std::optional<const Shape>> sliced_shapes);
+      std::vector<std::optional<Shape>> orig_shapes,
+      std::vector<std::optional<Shape>> sliced_shapes,
+      std::vector<std::optional<uint64_t>> offset_byte_sizes);
 
   AddressComputationThunk(const AddressComputationThunk&) = delete;
   AddressComputationThunk& operator=(const AddressComputationThunk&) = delete;
@@ -62,10 +64,12 @@ class AddressComputationThunk : public Thunk {
   std::unique_ptr<SequentialThunk> embedded_thunk_;
   std::vector<std::optional<const BufferAllocation::Slice>>
       embedded_thunk_arguments_;
+  std::vector<std::unique_ptr<BufferAllocation>> fake_allocations_;
   std::vector<std::optional<std::vector<BufferAllocation::Slice>>>
       offset_buffer_indices_;
-  std::vector<std::optional<const Shape>> orig_shapes_;
-  std::vector<std::optional<const Shape>> sliced_shapes_;
+  std::vector<std::optional<Shape>> orig_shapes_;
+  std::vector<std::optional<Shape>> sliced_shapes_;
+  std::vector<std::optional<uint64_t>> offset_byte_sizes_;
 
   // Pinned host memory for transferring offset values from device to host.
   absl::Mutex mutex_;

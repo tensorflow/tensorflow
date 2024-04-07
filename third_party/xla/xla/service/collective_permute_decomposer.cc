@@ -106,8 +106,10 @@ bool MayPipeline(const HloCollectivePermuteInstruction& collective_permute) {
 }
 
 // Decomposes a collective-permute and adds frontend attributes to record
-// pipeline decision. The absence of the frontend attribute means the
-// collective-permute will not be pipelined.
+// pipeline decision. The present of the frontend attribute means that the
+// collective-permute will be pipelined and the value of the attribute
+// represents the runtime stream to execute the instruction. Without the
+// frontend attribute, the collective-permute will not be pipelined.
 Status DecomposeCollectivePermute(
     HloCollectivePermuteInstruction* collective_permute,
     HloComputation* computation, const std::string& pipeline_decision) {
@@ -151,7 +153,8 @@ Status DecomposeCollectivePermute(
 
   HloInstruction* recv_done =
       computation->AddInstruction(HloInstruction::CreateRecvDone(recv));
-  computation->AddInstruction(HloInstruction::CreateSendDone(send));
+  HloInstruction* send_done =
+      computation->AddInstruction(HloInstruction::CreateSendDone(send));
 
   HloInstruction* recv_data = computation->AddInstruction(
       HloInstruction::CreateGetTupleElement(recv_done, 0));
@@ -163,7 +166,9 @@ Status DecomposeCollectivePermute(
     xla::FrontendAttributes attributes;
     (*attributes.mutable_map())[kSendRecvPipelineAttr] = pipeline_decision;
     send->add_frontend_attributes(attributes);
+    send_done->add_frontend_attributes(attributes);
     recv->add_frontend_attributes(attributes);
+    recv_done->add_frontend_attributes(attributes);
   }
 
   return OkStatus();

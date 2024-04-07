@@ -18,7 +18,7 @@ limitations under the License.
 namespace mlir {
 
 // Rewrites the layout of xla_shape if there is tiled sharding.
-xla::Status RewriteLayoutWithShardedShape(
+absl::Status RewriteLayoutWithShardedShape(
     const std::optional<xla::HloSharding>& sharding, bool use_fast_memory,
     const LayoutPreferenceFn& layout_preference_fn,
     const ShapeRepresentationFn& shape_representation_fn,
@@ -105,6 +105,7 @@ absl::StatusOr<xla::XlaOp> ReshapeWithCorrectRepresentationAndSharding(
       to_shape.set_dynamic_dimension(i, original_shape.is_dynamic_dimension(i));
     }
   }
+  xla::XlaScopedShardingAssignment scoped_sharding(builder, sharding);
   return xla::Reshape(to_shape, original);
 }
 

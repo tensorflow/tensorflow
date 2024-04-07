@@ -2795,6 +2795,9 @@ class Subgraph {
       case kTfLiteBuiltinRound:
         return VisitRoundNode(subgraph, delegate, logging_context, node_index,
                               node, context->tensors, input_output_tensors);
+      case kTfLiteBuiltinRsqrt:
+        return VisitRsqrtNode(subgraph, delegate, logging_context, node_index,
+                              node, context->tensors, input_output_tensors);
       case kTfLiteBuiltinSlice:
         return VisitSliceNode(subgraph, delegate, logging_context, node_index,
                               node, context->tensors, input_output_tensors);
@@ -6124,6 +6127,38 @@ class Subgraph {
       if (status != xnn_status_success) {
         TF_LITE_KERNEL_LOG(logging_context, "failed to delegate %s node #%d",
                            EnumNameBuiltinOperator(BuiltinOperator_SQRT),
+                           node_index);
+        return kTfLiteError;
+      }
+    }
+
+    return kTfLiteOk;
+  }
+
+  static TfLiteStatus VisitRsqrtNode(
+      xnn_subgraph_t subgraph, const Delegate& delegate,
+      TfLiteContext* logging_context, int node_index, TfLiteNode* node,
+      const TfLiteTensor* tensors,
+      const std::unordered_map<int, uint32_t>& input_output_tensors) {
+    TF_LITE_ENSURE_STATUS(CheckNumInputsAndOutputs(
+        logging_context, node, 1, 1, BuiltinOperator_RSQRT, node_index));
+
+    const TfLiteTensor& input_tensor = tensors[node->inputs->data[0]];
+    TF_LITE_ENSURE_STATUS(CheckTensorFloat32Type(
+        logging_context, input_tensor, node->inputs->data[0], node_index));
+
+    const TfLiteTensor& output_tensor = tensors[node->outputs->data[0]];
+    TF_LITE_ENSURE_STATUS(CheckTensorFloat32Type(
+        logging_context, output_tensor, node->outputs->data[0], node_index));
+
+    if (subgraph != nullptr) {
+      const xnn_status status = xnn_define_reciprocal_square_root(
+          subgraph, /*input_id=*/input_output_tensors.at(node->inputs->data[0]),
+          /*output_id=*/input_output_tensors.at(node->outputs->data[0]),
+          /*flags=*/0);
+      if (status != xnn_status_success) {
+        TF_LITE_KERNEL_LOG(logging_context, "failed to delegate %s node #%d",
+                           EnumNameBuiltinOperator(BuiltinOperator_RSQRT),
                            node_index);
         return kTfLiteError;
       }

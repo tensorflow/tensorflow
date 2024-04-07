@@ -50,6 +50,7 @@ limitations under the License.
 #include "xla/python/sharding.h"
 #include "xla/python/types.h"
 #include "xla/shape.h"
+#include "xla/tsl/python/lib/core/numpy.h"
 #include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -57,7 +58,6 @@ limitations under the License.
 #include "tsl/platform/ml_dtypes.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/profiler/lib/traceme.h"
-#include "tsl/python/lib/core/numpy.h"
 
 namespace nb = nanobind;
 
@@ -257,7 +257,8 @@ absl::StatusOr<DevicePutResult> HandleNumpyArray(
     on_done_with_host_buffer =
         [py_buffer_ref{
             std::move(py_buffer_ref)}]() { /* keeps py_buffer_ref alive */ };
-    host_buffer_semantics = ifrt::Client::HostBufferSemantics::kZeroCopy;
+    host_buffer_semantics =
+        ifrt::Client::HostBufferSemantics::kImmutableZeroCopy;
   }
   // Must release the GIL before BufferFromHostBuffer because backends may
   // decide to block/sleep for device buffer allocation.
@@ -382,9 +383,7 @@ absl::StatusOr<DevicePutResult> DevicePut(nb::handle arg, ifrt::Client* client,
 
   if (arg.type().ptr() == PyArray::type().ptr()) {
     auto array = nb::borrow<PyArray>(arg);
-    if (array.fastpath_enabled()) {
-      return HandlePyArray(arg, client, to_device, options, to_memory_kind);
-    }
+    return HandlePyArray(arg, client, to_device, options, to_memory_kind);
   }
 
   auto res = handlers->find(arg.type().ptr());
@@ -564,15 +563,13 @@ absl::StatusOr<PyArgSignature> PyArgSignatureOfValue(nb::handle arg,
 
   if (arg.type().ptr() == PyArray::type().ptr()) {
     auto array = nb::borrow<PyArray>(arg);
-    if (array.fastpath_enabled()) {
-      ifrt::Array* ifrt_array = array.ifrt_array();
-      if (ifrt_array == nullptr) {
-        return xla::InvalidArgument("Array has been deleted.");
-      }
-      TF_ASSIGN_OR_RETURN(auto primitive_type,
-                          ifrt::ToPrimitiveType(ifrt_array->dtype()));
-      return PyArgSignature(primitive_type, array.shape(), array.weak_type());
+    ifrt::Array* ifrt_array = array.ifrt_array();
+    if (ifrt_array == nullptr) {
+      return xla::InvalidArgument("Array has been deleted.");
     }
+    TF_ASSIGN_OR_RETURN(auto primitive_type,
+                        ifrt::ToPrimitiveType(ifrt_array->dtype()));
+    return PyArgSignature(primitive_type, array.shape(), array.weak_type());
   }
 
   auto res = handlers->find(arg.type().ptr());

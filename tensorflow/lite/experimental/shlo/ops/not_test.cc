@@ -48,11 +48,12 @@ struct Not {
   T operator()(T v) const {
     return ~v;
   }
-  template <>
-  bool operator()(bool v) const {
-    return !v;
-  }
 } not_ref;
+
+template <>
+bool Not::operator()(bool v) const {
+  return !v;
+}
 
 INSTANTIATE_TYPED_TEST_SUITE_P(Not, UnaryElementwiseOpShapePropagationTest,
                                NotOp, TestParamNames);

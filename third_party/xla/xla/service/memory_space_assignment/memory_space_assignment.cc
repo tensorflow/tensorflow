@@ -1339,11 +1339,13 @@ std::function<int(const HloInstruction*)> GetOperandDistanceFunction(
     const HloLiveRange& hlo_live_range, const HloInstruction* use_inst) {
   const int use_idx = hlo_live_range.instruction_schedule().at(use_inst);
   return [&, use_idx](const HloInstruction* operand) -> int {
-    // We just use -1 for parameter, tuple, and gte instructions. We could make
-    // this "see through" the gtes if we get too many false positives.
+    // We just use -1 for parameter, tuple, gte and constant instructions. We
+    // could make this "see through" the gtes if we get too many false
+    // positives.
     if (operand->opcode() == HloOpcode::kParameter ||
         operand->opcode() == HloOpcode::kTuple ||
-        operand->opcode() == HloOpcode::kGetTupleElement) {
+        operand->opcode() == HloOpcode::kGetTupleElement ||
+        operand->opcode() == HloOpcode::kConstant) {
       return -1;
     }
     return use_idx - hlo_live_range.instruction_schedule().at(operand);
@@ -6008,7 +6010,7 @@ Status MemorySpaceAssignment::FixSchedule() {
 
     VLOG(4) << "Scheduling: " << computation->ToString();
 
-    for (int64_t instruction_index = 0;; ++instruction_index) {
+    for (int64_t instruction_index = -1;; ++instruction_index) {
       auto insts_before_iter = schedule_before_.find(instruction_index);
       if (insts_before_iter != schedule_before_.end()) {
         for (HloInstruction* new_instruction : insts_before_iter->second) {
@@ -6020,25 +6022,32 @@ Status MemorySpaceAssignment::FixSchedule() {
           }
         }
       }
-      // We allow scheduling copy dones past the root instruction (for
-      // end-of-program cross-program prefetch). So the loop exit condition is
-      // actually here.
-      if (instruction_index >= flattened_instructions_.size()) {
-        break;
+
+      if (instruction_index != -1) {
+        // We allow scheduling copy dones past the root instruction (for
+        // end-of-program cross-program prefetch). So the loop exit condition is
+        // actually here.
+        if (instruction_index >= flattened_instructions_.size()) {
+          break;
+        }
+
+        HloInstruction* instruction =
+            flattened_instructions_[instruction_index];
+        // Insert only if it is not deleted (SimplifyGraph sets it to nullptr if
+        // it was deleted) and not previously inserted. Also bitcasts and tuples
+        // are treated specially and only inserted as a result of operand
+        // dependencies.
+        if (instruction != nullptr && instruction->parent() == computation &&
+            instruction->opcode() != HloOpcode::kBitcast &&
+            instruction->opcode() != HloOpcode::kTuple &&
+            !inserted_instructions.contains(instruction)) {
+          VLOG(4) << "inst " << instruction_index << ": "
+                  << instruction->name();
+          TF_RETURN_IF_ERROR(InsertInstructionAndEnsureOperandsInserted(
+              instruction, &new_sequence, &inserted_instructions));
+        }
       }
-      HloInstruction* instruction = flattened_instructions_[instruction_index];
-      // Insert only if it is not deleted (SimplifyGraph sets it to nullptr if
-      // it was deleted) and not previously inserted. Also bitcasts and tuples
-      // are treated specially and only inserted as a result of operand
-      // dependencies.
-      if (instruction != nullptr && instruction->parent() == computation &&
-          instruction->opcode() != HloOpcode::kBitcast &&
-          instruction->opcode() != HloOpcode::kTuple &&
-          !inserted_instructions.contains(instruction)) {
-        VLOG(4) << "inst " << instruction_index << ": " << instruction->name();
-        TF_RETURN_IF_ERROR(InsertInstructionAndEnsureOperandsInserted(
-            instruction, &new_sequence, &inserted_instructions));
-      }
+
       auto insts_after_iter = schedule_after_.find(instruction_index);
       if (insts_after_iter != schedule_after_.end()) {
         for (HloInstruction* new_instruction : insts_after_iter->second) {
@@ -6051,6 +6060,7 @@ Status MemorySpaceAssignment::FixSchedule() {
         }
       }
     }
+
     // For rare cases where the original sequence is empty, ensure the root
     // instruction and its dependencies are scheduled.
     TF_RETURN_IF_ERROR(EnsureInstructionAndOperandsInserted(
@@ -6088,7 +6098,7 @@ Status MemorySpaceAssignment::VerifyAndExportHeapSimulatorTrace() {
 
   auto add_allocation_and_verify = [&](int64_t start_time, int64_t end_time,
                                        const HeapSimulator::Chunk& chunk,
-                                       const HloValue* value) {
+                                       const HloValue* value) -> absl::Status {
     events[std::make_tuple(start_time, /*is_free=*/false, value->id())] =
         std::make_tuple(value, chunk, HeapSimulatorTrace::Event::ALLOC);
     events[std::make_tuple(end_time, /*is_free=*/true, value->id())] =
@@ -6324,10 +6334,9 @@ DefaultCrossProgramPrefetchBufferIntervalComparator::GetTuple(
       sort_data.cumulative_use_size +=
           ShapeUtil::ElementsInRecursive(use.instruction->shape());
     });
-    sort_data_it = additional_sort_data_
-                       .insert(std::make_pair(buffer_interval.buffer,
-                                              std::move(sort_data)))
-                       .first;
+    sort_data_it =
+        additional_sort_data_.try_emplace(buffer_interval.buffer, sort_data)
+            .first;
   }
 
   return std::make_tuple(

@@ -1,0 +1,55 @@
+/* Copyright 2023 The OpenXLA Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+syntax = "proto3";
+
+package xla.ifrt;
+
+import "xla/python/ifrt/device.proto";
+import "xla/python/ifrt/shape.proto";
+
+// Wire format for `SingleDeviceSharding`.
+message SingleDeviceShardingProto {
+  // Serialization and deserialization are expected to ensure that device ids
+  // are stable across proto construction and consumption.
+  int32 device_id = 1;
+  optional string memory_kind = 2;
+}
+
+// Wire format for `OpaqueSharding`.
+message OpaqueShardingProto {
+  DeviceListProto devices = 1;
+  optional string memory_kind = 2;
+}
+
+// Wire format for `ConcreteSharding`.
+message ConcreteShardingProto {
+  DeviceListProto devices = 1;
+  optional string memory_kind = 4;
+  oneof shape_or_dynamic_shape {
+    ShapeProto shape = 2;
+    DynamicShapeProto dynamic_shape = 5;
+  }
+  repeated ShapeProto shard_shapes = 3;
+  repeated DynamicShapeProto shard_dynamic_shapes = 6;
+}
+
+// Wire format for `ConcreteEvenSharding`.
+message ConcreteEvenShardingProto {
+  DeviceListProto devices = 1;
+  optional string memory_kind = 4;
+  ShapeProto shape = 2;
+  ShapeProto shard_shape = 3;
+}

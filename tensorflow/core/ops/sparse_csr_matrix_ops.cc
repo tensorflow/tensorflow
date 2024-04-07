@@ -1,4 +1,4 @@
-/* Copyright 2024 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,11 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <tuple>
+
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
-#include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
-#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/status.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 
@@ -295,7 +299,7 @@ REGISTER_OP("SparseMatrixMatMul")
       return absl::OkStatus();
     });
 
-#ifdef INTEL_MKL
+#if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
 
 REGISTER_OP("_MklNativeSparseMatrixMatMul")
     .Input("a: variant")
@@ -373,7 +377,7 @@ REGISTER_OP("_MklNativeSparseMatrixMatMul")
       c->set_output(0, out);
       return OkStatus();
     });
-#endif
+#endif  // INTEL_MKL && ENABLE_ONEDNN_V3
 
 REGISTER_OP("SparseMatrixMul")
     .Input("a: variant")

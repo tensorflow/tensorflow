@@ -18,18 +18,25 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/device_description.h"
+#include "xla/tests/hlo_test_base.h"
 #include "xla/tests/verified_hlo_module.h"
+#include "tsl/platform/status_matchers.h"
 
 namespace xla {
 namespace gpu {
@@ -37,26 +44,12 @@ namespace gpu {
 using ::mlir::ArrayRef;
 using ::mlir::NamedAttribute;
 
-using GpuIrEmitterUnnestedTest = GpuCodegenTest;
+namespace {
 
-TEST_F(GpuIrEmitterUnnestedTest,
-       EmitTritonCustomCallWithCorrectLoweringAndWithoutNoaliasOrAlignment) {
-  // Tests that the lowering of a Triton custom call produces the correct LLVM
-  // IR, and that the arguments do not specify noalias or alignment attributes.
-
-  HloComputation::Builder computation_builder(TestName());
+std::unique_ptr<HloInstruction> CreateAddTritonCustomCall(
+    Shape tuple_shape, HloInstruction* param_0, HloInstruction* param_1) {
   mlir::MLIRContext context_;
   mlir::Builder builder(&context_);
-
-  // Create parameters and custom call in the computation builder.
-  Shape scalar_shape = xla::ShapeUtil::MakeShape(xla::F32, {});
-  Shape tuple_shape = ShapeUtil::MakeTupleShape({scalar_shape, scalar_shape});
-
-  HloInstruction* param_0 = computation_builder.AddInstruction(
-      HloInstruction::CreateParameter(0, scalar_shape, "arg_0"));
-
-  HloInstruction* param_1 = computation_builder.AddInstruction(
-      HloInstruction::CreateParameter(1, scalar_shape, "arg_1"));
 
   // Create the backend_config for the triton custom call.
   const std::string kMLIRText = R"(
@@ -103,9 +96,46 @@ TEST_F(GpuIrEmitterUnnestedTest,
   std::string backend_config_str;
   llvm::raw_string_ostream(backend_config_str) << backend_config;
 
-  computation_builder.AddInstruction(HloInstruction::CreateCustomCall(
-      tuple_shape, {param_0, param_1}, "__gpu$xla.gpu.triton",
-      backend_config_str));
+  return HloInstruction::CreateCustomCall(tuple_shape, {param_0, param_1},
+                                          "__gpu$xla.gpu.triton",
+                                          backend_config_str);
+}
+
+}  // namespace
+
+class GpuIrEmitterUnnestedTest : public GpuCodegenTest {
+ public:
+  se::CudaComputeCapability GetCudaComputeCapability() {
+    return backend()
+        .default_stream_executor()
+        ->GetDeviceDescription()
+        .cuda_compute_capability();
+  }
+};
+
+TEST_F(GpuIrEmitterUnnestedTest,
+       EmitTritonCustomCallWithCorrectLoweringAndWithoutNoaliasOrAlignment) {
+  if (!GetCudaComputeCapability().IsAtLeastAmpere()) {
+    GTEST_SKIP() << "Triton support is only enabled for Ampere GPUs and up.";
+  }
+
+  // Tests that the lowering of a Triton custom call produces the correct LLVM
+  // IR, and that the arguments do not specify noalias or alignment attributes.
+
+  HloComputation::Builder computation_builder(TestName());
+
+  // Create parameters and custom call in the computation builder.
+  Shape scalar_shape = xla::ShapeUtil::MakeShape(xla::F32, {});
+  Shape tuple_shape = ShapeUtil::MakeTupleShape({scalar_shape, scalar_shape});
+
+  HloInstruction* param_0 = computation_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, scalar_shape, "arg_0"));
+
+  HloInstruction* param_1 = computation_builder.AddInstruction(
+      HloInstruction::CreateParameter(1, scalar_shape, "arg_1"));
+
+  computation_builder.AddInstruction(
+      CreateAddTritonCustomCall(tuple_shape, param_0, param_1));
 
   auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(computation_builder.Build());
@@ -137,6 +167,84 @@ TEST_F(GpuIrEmitterUnnestedTest,
 ; CHECK:    ret void
       )",
                      /*match_optimized_ir=*/false);
+}
+
+TEST_F(GpuIrEmitterUnnestedTest, CanNotEmitTritonCustomCallOnPreAmpereGpu) {
+  if (GetCudaComputeCapability().IsAtLeastAmpere()) {
+    GTEST_SKIP() << "Running on Ampere or more recent GPU, skipping.";
+  }
+
+  HloComputation::Builder computation_builder(TestName());
+
+  // Create parameters and custom call in the computation builder.
+  Shape scalar_shape = xla::ShapeUtil::MakeShape(xla::F32, {});
+  Shape tuple_shape = ShapeUtil::MakeTupleShape({scalar_shape, scalar_shape});
+
+  HloInstruction* param_0 = computation_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, scalar_shape, "arg_0"));
+
+  HloInstruction* param_1 = computation_builder.AddInstruction(
+      HloInstruction::CreateParameter(1, scalar_shape, "arg_1"));
+
+  computation_builder.AddInstruction(
+      CreateAddTritonCustomCall(tuple_shape, param_0, param_1));
+
+  auto module = CreateNewVerifiedModule();
+  module->AddEntryComputation(computation_builder.Build());
+
+  EXPECT_THAT(
+      CompileToExecutable(std::move(module), /*run_optimization_passes=*/false),
+      tsl::testing::StatusIs(
+          absl::StatusCode::kFailedPrecondition,
+          ::testing::StrEq(
+              "Triton support is only enabled for Ampere GPUs and up.")));
+}
+
+class TritonCustomCallTest : public HloTestBase {};
+
+TEST_F(TritonCustomCallTest, NoArgumentDeduplication) {
+  if (auto cc = backend()
+                    .default_stream_executor()
+                    ->GetDeviceDescription()
+                    .cuda_compute_capability();
+      !cc.IsAtLeastAmpere()) {
+    GTEST_SKIP() << "Triton support is only enabled for Ampere GPUs and up.";
+  }
+
+  // Tests that no argument deduplication is done for Triton kernels.
+  //
+  // Triton kernels are compiled on the first call and re-used for all the
+  // following calls. So, if we are unlucky, we could end up calling the
+  // compiled kernel with fewer arguments than it expects in the presence
+  // of argument deduplication.
+  //
+  // For example,
+  //
+  //  * The first call is f(x, y). The arguments are distinct, no deduplication
+  //    is done at compilation time and the compiled kernel expects two
+  //    arguments.
+  //  * The second call is f(x, x). The arguments are deduplicated and we
+  //    call the previously compiled kernel with just x, causing a crash.
+
+  HloComputation::Builder computation_builder(TestName());
+
+  Shape scalar_shape = xla::ShapeUtil::MakeShape(xla::F32, {});
+  Shape tuple_shape = ShapeUtil::MakeTupleShape({scalar_shape, scalar_shape});
+
+  HloInstruction* param_0 = computation_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, scalar_shape, "arg_0"));
+
+  HloInstruction* param_1 = computation_builder.AddInstruction(
+      HloInstruction::CreateParameter(1, scalar_shape, "arg_1"));
+
+  auto* instr_0 = computation_builder.AddInstruction(
+      CreateAddTritonCustomCall(tuple_shape, param_0, param_1));
+  computation_builder.AddInstruction(
+      CreateAddTritonCustomCall(tuple_shape, instr_0, instr_0));
+
+  auto module = CreateNewVerifiedModule();
+  module->AddEntryComputation(computation_builder.Build());
+  EXPECT_TRUE(Run(std::move(module), /*run_hlo_passes=*/false));
 }
 
 }  // namespace gpu

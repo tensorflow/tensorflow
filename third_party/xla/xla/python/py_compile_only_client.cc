@@ -46,6 +46,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_future.h"
+#include "xla/pjrt/pjrt_layout.h"
 #include "xla/pjrt/status_casters.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
@@ -60,11 +61,11 @@ limitations under the License.
 #include "xla/python/nb_class_ptr.h"
 #include "xla/python/py_client.h"
 #include "xla/service/computation_placer.h"
+#include "xla/tsl/python/lib/core/numpy.h"
 #include "xla/util.h"
 #include "tsl/concurrency/ref_count.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
-#include "tsl/python/lib/core/numpy.h"
 
 namespace nb = nanobind;
 
@@ -226,6 +227,13 @@ class CompileOnlyIfRtClient final
   GetTopologyForDevices(
       absl::Span<ifrt::Device* const> devices) const override {
     return topology_;
+  }
+
+  absl::StatusOr<std::unique_ptr<PjRtLayout>> GetDefaultLayoutForDevice(
+      ifrt::DType dtype, absl::Span<const int64_t> dims,
+      ifrt::Device* device) const override {
+    return absl::UnimplementedError(
+        "GetDefaultLayout not supported for CompileOnlyIfRtClient.");
   }
 
  private:

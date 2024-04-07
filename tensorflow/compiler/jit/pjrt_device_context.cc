@@ -62,7 +62,7 @@ absl::StatusOr<std::unique_ptr<xla::PjRtBuffer>> HostTensorToPjRtBuffer(
   auto first_try_buffer = pjrt_client->BufferFromHostBuffer(
       cpu_tensor->data(), shape.element_type(), shape.dimensions(),
       /*byte_strides=*/std::nullopt,
-      xla::PjRtClient::HostBufferSemantics::kZeroCopy,
+      xla::PjRtClient::HostBufferSemantics::kImmutableZeroCopy,
       /*on_done_with_host_buffer=*/
       [cpu_tensor = *cpu_tensor]() { /* frees tensor */ }, pjrt_device,
       device_layout);
@@ -78,7 +78,7 @@ absl::StatusOr<std::unique_ptr<xla::PjRtBuffer>> HostTensorToPjRtBuffer(
         pjrt_client->BufferFromHostBuffer(
             cpu_tensor->data(), shape.element_type(), shape.dimensions(),
             /*byte_strides=*/std::nullopt,
-            xla::PjRtClient::HostBufferSemantics::kZeroCopy,
+            xla::PjRtClient::HostBufferSemantics::kImmutableZeroCopy,
             /*on_done_with_host_buffer=*/
             [cpu_tensor = *cpu_tensor]() { /* frees tensor */ }, pjrt_device));
     return second_try_buffer;
@@ -153,7 +153,6 @@ void PjRtDeviceContext::CopyCPUTensorToDevice(const Tensor* cpu_tensor,
     return;
   }
 
-  // TODO(b/252887149): figure out how to cache PJRT client.
   absl::StatusOr<xla::PjRtClient*> pjrt_client =
       GetOrCreatePjRtClient(DeviceType(device->device_type()));
   if (!pjrt_client.ok()) {
@@ -187,8 +186,6 @@ void PjRtDeviceContext::CopyCPUTensorToDevice(const Tensor* cpu_tensor,
     CHECK(!result_tensor->GetBuffer());  // Crash OK
     result_tensor->SetBuffer(std::move(*buffer_or));
   }
-  // TODO(b/244666476): evaluate the performance impact of marking ready when
-  // the data in device buffer is computed.
   pjrt_buffer->GetReadyFuture().OnReady(std::move(done));
 }
 
@@ -298,8 +295,6 @@ void PjRtDeviceToDeviceCopy(DeviceContext* send_dev_context,
     CHECK(!output_tensor->GetBuffer());  // Crash OK
     output_tensor->SetBuffer(std::move(*buffer_or));
   }
-  // TODO(b/244666476): evaluate the performance impact of marking ready when
-  // the data in device buffer is computed.
   pjrt_buffer->GetReadyFuture().OnReady(std::move(done));
 }
 

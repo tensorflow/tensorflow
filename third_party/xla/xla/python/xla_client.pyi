@@ -22,6 +22,7 @@ import numpy
 from . import xla_extension as _xla
 from .xla_extension import Shape as Shape
 from .xla_extension import Layout as Layout
+from .xla_extension import ifrt_programs as ifrt_programs
 from .xla_extension import ops as ops
 from .xla_extension import profiler as profiler
 
@@ -42,6 +43,7 @@ from .xla_extension import OpSharding as OpSharding
 from .xla_extension import HloSharding as HloSharding
 from .xla_extension import PrimitiveType as PrimitiveType
 from .xla_extension import Traceback as Traceback
+from .xla_extension import PjRtLayout as PjRtLayout
 from .xla_extension import XlaBuilder as XlaBuilder
 from .xla_extension import XlaComputation as XlaComputation
 from .xla_extension import XlaOp as XlaOp

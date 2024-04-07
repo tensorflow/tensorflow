@@ -1,3 +1,8 @@
+load(
+    "@local_tsl//tsl/platform:rules_cc.bzl",
+    "cc_library",
+)
+
 # Tensorflow windows-specific implementations of tensorflow/core/platform libraries.
 load(
     "//tsl:tsl.bzl",
@@ -5,10 +10,6 @@ load(
     "tsl_copts",
 )
 load("//tsl:tsl.default.bzl", "filegroup")
-load(
-    "@local_tsl//tsl/platform:rules_cc.bzl",
-    "cc_library",
-)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],

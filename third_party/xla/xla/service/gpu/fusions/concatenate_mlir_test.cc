@@ -17,7 +17,9 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "xla/error_spec.h"
+#include "xla/service/gpu/fusions/concatenate.h"
 #include "xla/service/gpu/fusions/mlir_emitter_test_base.h"
+#include "xla/service/gpu/model/indexing_test_utils.h"
 #include "tsl/lib/core/status_test_util.h"
 
 namespace xla {
@@ -25,6 +27,59 @@ namespace gpu {
 namespace {
 
 using MlirConcatenateFusionTest = MlirEmitterTestBase<MlirConcatenateFusion>;
+
+TEST_F(MlirConcatenateFusionTest, ThreadIdIndexing) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+    HloModule module
+
+    fused_computation {
+      param0 = f32[200] parameter(0)
+      param1 = f32[400] parameter(1)
+      param2 = f32[300] parameter(2)
+      ROOT concat = f32[900] concatenate(param0, param1, param2), dimensions={0}
+    }
+    ENTRY main {
+      param0 = f32[200] parameter(0)
+      param1 = f32[400] parameter(1)
+      param2 = f32[300] parameter(2)
+      ROOT fusion = f32[900] fusion(param0, param1, param2),
+        calls=fused_computation, kind=kLoop
+    }
+  )"));
+  thread_id_printer_.SetSymbolName(0, "chunk_id");
+  thread_id_printer_.SetSymbolName(1, "unroll_id");
+
+  auto* root = module->entry_computation()->root_instruction();
+  auto analysis = AnalyzeFusion(*root, device_info_);
+  MlirConcatenateFusion fusion(analysis);
+
+  constexpr auto kIndexing = R"(
+    (th_x, th_y, th_z, bl_x, bl_y, bl_z)[chunk_id, unroll_id] -> (
+    (th_x + bl_x * 128) mod 400)
+    domain:
+    th_x in [0, 127]
+    th_y in [0, 0]
+    th_z in [0, 0]
+    bl_x in [0, 3]
+    bl_y in [0, 0]
+    bl_z in [0, 0]
+    chunk_id in [0, 0]
+    unroll_id in [0, 0]
+    th_x + bl_x * 128 in [0, 399]
+  )";
+  auto thread_id_to_output_indexing_0 = fusion.ComputeThreadIdToInputIndexing(
+      /*root_index=*/0, /*hero_operand_index=*/0, &mlir_context_);
+  EXPECT_THAT(thread_id_to_output_indexing_0->ToString(thread_id_printer_),
+              MatchIndexingString(kIndexing));
+  auto thread_id_to_output_indexing_1 = fusion.ComputeThreadIdToInputIndexing(
+      /*root_index=*/0, /*hero_operand_index=*/1, &mlir_context_);
+  EXPECT_THAT(thread_id_to_output_indexing_1->ToString(thread_id_printer_),
+              MatchIndexingString(kIndexing));
+  auto thread_id_to_output_indexing_2 = fusion.ComputeThreadIdToInputIndexing(
+      /*root_index=*/0, /*hero_operand_index=*/2, &mlir_context_);
+  EXPECT_THAT(thread_id_to_output_indexing_2->ToString(thread_id_printer_),
+              MatchIndexingString(kIndexing));
+}
 
 TEST_F(MlirConcatenateFusionTest, StandAloneConcatenate) {
   auto kHloString = R"(

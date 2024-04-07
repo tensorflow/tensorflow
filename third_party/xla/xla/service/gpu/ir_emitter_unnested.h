@@ -43,7 +43,7 @@ limitations under the License.
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/runtime/send_recv_thunk.h"
-#include "xla/service/gpu/thunk.h"
+#include "xla/service/gpu/runtime/thunk.h"
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/service/llvm_ir/loop_emitter.h"

@@ -32,17 +32,17 @@ struct Cosine {
   T operator()(T v) const {
     return std::cos(v);
   }
-
-  template <>
-  F16 operator()<F16>(F16 val) const {
-    return F16(operator()(static_cast<float>(val)));
-  }
-
-  template <>
-  BF16 operator()<BF16>(BF16 val) const {
-    return BF16(operator()(static_cast<float>(val)));
-  }
 };
+
+template <>
+F16 Cosine::operator()<F16>(F16 val) const {
+  return F16(operator()(static_cast<float>(val)));
+}
+
+template <>
+BF16 Cosine::operator()<BF16>(BF16 val) const {
+  return BF16(operator()(static_cast<float>(val)));
+}
 
 CosineOp Create(CosineOp::Attributes) { return {}; }
 
@@ -58,10 +58,11 @@ absl::Status Prepare(CosineOp& op, const Tensor& input, Tensor& output) {
 absl::Status Evaluate(CosineOp& op, const Tensor& input, Tensor& output) {
   Cosine cosine;
   if (input.IsPerTensorQuantized()) {
-    DISPATCH_QUANTIZED(detail::DequantizeOpQuantizePerTensor,
-                       input.quantized_tensor_element_type().StorageType(),
-                       input.quantized_tensor_element_type().ExpressedType(),
-                       cosine, input, output)
+    DISPATCH_QUANTIZED(
+        detail::DequantizeOpQuantizePerTensor,
+        input.quantized_per_tensor_element_type().StorageType(),
+        input.quantized_per_tensor_element_type().ExpressedType(), cosine,
+        input, output)
   } else if (IsFloatTensor(input)) {
     DISPATCH_FLOAT(detail::EvaluateNoQuantization, input.tensor_element_type(),
                    cosine, input, output);

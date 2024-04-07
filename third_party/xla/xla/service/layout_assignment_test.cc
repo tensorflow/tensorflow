@@ -1612,7 +1612,7 @@ ENTRY main {
 TEST_F(LayoutAssignmentTest, PropagateOperandLayout2) {
   const char* module_str = R"(
  HloModule TensorFlowGather, entry_computation_layout={(f32[32,650]{1,0},s32[16,1,18]{0,1,2})->f32[16,1,18,32]{3,1,2,0}}
- 
+
  ENTRY %main (operand: f32[32,650], indices: s32[16,1,18]) -> f32[16,1,18,32] {
    %operand = f32[32,650]{1,0} parameter(0)
    %transpose = f32[650,32]{0,1} transpose(f32[32,650]{1,0} %operand), dimensions={1,0}
@@ -1638,7 +1638,7 @@ TEST_F(LayoutAssignmentTest, PropagateOperandLayout2) {
 TEST_F(LayoutAssignmentTest, PreserveInstructionLayout) {
   const char* module_str = R"(
  HloModule TensorFlowGather, entry_computation_layout={(f32[32,650]{1,0},s32[16,1,18]{0,1,2})->(f32[16,1,18,32]{3,1,2,0})}
- 
+
  ENTRY %main  {
    %operand = f32[32,650]{1,0} parameter(0)
    %transpose = f32[650,32]{0,1} transpose(f32[32,650]{1,0} %operand), dimensions={1,0}
@@ -1697,7 +1697,7 @@ ENTRY main {
 TEST_F(LayoutAssignmentTest, PartialEntryParameterLayout) {
   const char* module_str = R"(
  HloModule EntryLayout, entry_computation_layout={(f32[32,650]{1,0},s32[16,1,18]{0,1,2})->(f32[650,32]{1,0},s32[18,16,1]{0,1,2})}
- 
+
  ENTRY %main {
    operand = f32[32,650] parameter(0)
    transpose = transpose(operand), dimensions={1,0}
@@ -1726,7 +1726,7 @@ TEST_F(LayoutAssignmentTest, PartialEntryParameterLayout) {
 TEST_F(LayoutAssignmentTest, AliasParameterAndOutput) {
   const char* module_str = R"(
  HloModule EntryAlias, input_output_alias={ {}: (0, {}, may-alias) }
- 
+
  ENTRY %main {
    p0 = f32[65,65] parameter(0)
    p1 = f32[4225] parameter(1)
@@ -1752,7 +1752,7 @@ TEST_F(LayoutAssignmentTest, AliasParameterAndOutput) {
 TEST_F(LayoutAssignmentTest, AliasUnconstrainedParamterWithConstrainedOutput) {
   const char* module_str = R"(
  HloModule EntryAlias, input_output_alias={ {}: (0, {}, may-alias) }
- 
+
  ENTRY %main {
    p0 = f32[65,65] parameter(0)
    p1 = f32[4225] parameter(1)
@@ -1776,7 +1776,7 @@ TEST_F(LayoutAssignmentTest, AliasUnconstrainedParamterWithConstrainedOutput) {
 TEST_F(LayoutAssignmentTest, AliasConstrainedParamterWithUnconstrainedOutput) {
   const char* module_str = R"(
  HloModule EntryAlias, input_output_alias={ {}: (0, {}, may-alias) }
- 
+
  ENTRY %main {
    p0 = f32[65,65] parameter(0)
    p1 = f32[4225] parameter(1)
@@ -1811,9 +1811,15 @@ body {
 
     t1 = f32[100,100] get-tuple-element(p), index=0
     t = (f32[100,100], u32[], token[]) get-tuple-element(p), index=1
-    sdone = token[] send-done(t), channel_id=0
+    sdone = token[] send-done(t), channel_id=1,
+      frontend_attributes={
+       _xla_send_recv_pipeline="0"
+      }
     tk = token[] after-all()
-    snd = (f32[100,100], u32[], token[]) send(t1, tk), channel_id=0
+    snd = (f32[100,100], u32[], token[]) send(t1, tk), channel_id=1,
+      frontend_attributes={
+        _xla_send_recv_pipeline="0"
+      }
     a = add(t1, t1)
     ROOT tup =  tuple(a, snd)
 }
@@ -1821,9 +1827,18 @@ body {
 ENTRY %main {
     p0 = f32[100,100] parameter(0)
     tk = token[] after-all()
-    snd = (f32[100,100], u32[], token[]) send(p0, tk), channel_id=1
+    snd = (f32[100,100], u32[], token[]) send(p0, tk), channel_id=1,
+      frontend_attributes={
+        _xla_send_recv_pipeline="0"
+      }
     t = tuple(p0, snd)
-    ROOT loop = while(t), condition=condition, body=body
+    loop = while(t), condition=condition, body=body
+    ssend = (f32[100,100], u32[], token[]) get-tuple-element(loop), index=1
+    sdone = token[] send-done(ssend), channel_id=1,
+      frontend_attributes={
+       _xla_send_recv_pipeline="0"
+      }
+    ROOT result = f32[100,100] get-tuple-element(loop), index=0
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,

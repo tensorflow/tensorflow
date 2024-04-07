@@ -910,6 +910,8 @@ class ProfileResult {
     return algorithm_.has_value() &&
            elapsed_time_in_ms() != std::numeric_limits<float>::max();
   }
+  bool warmup_run_executed() const { return warmup_run_executed_; }
+  void set_warmup_run_executed(bool val) { warmup_run_executed_ = val; }
 
   AlgorithmDesc algorithm() const { return *algorithm_; }
   void set_algorithm(AlgorithmDesc val) { algorithm_ = val; }
@@ -926,6 +928,7 @@ class ProfileResult {
   // The scratch size algorithm_ requires. Currently it's only populated by
   // convolutions.
   size_t scratch_size_ = 0;
+  bool warmup_run_executed_ = false;
 };
 
 // Backend-specific data shared between repeated launches of the same

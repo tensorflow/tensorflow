@@ -48,17 +48,17 @@ struct Sine {
   T operator()(T v) const {
     return std::sin(v);
   }
-
-  template <>
-  F16 operator()<F16>(F16 val) const {
-    return F16(operator()(static_cast<float>(val)));
-  }
-
-  template <>
-  BF16 operator()<BF16>(BF16 val) const {
-    return BF16(operator()(static_cast<float>(val)));
-  }
 } sine_ref;
+
+template <>
+F16 Sine::operator()<F16>(F16 val) const {
+  return F16(operator()(static_cast<float>(val)));
+}
+
+template <>
+BF16 Sine::operator()<BF16>(BF16 val) const {
+  return BF16(operator()(static_cast<float>(val)));
+}
 
 INSTANTIATE_TYPED_TEST_SUITE_P(Sine, UnaryElementwiseOpShapePropagationTest,
                                SineOp, TestParamNames);
@@ -112,10 +112,10 @@ TYPED_TEST(QuantizedSineTest, PerTensorWorks) {
   const StorageT zero_point = static_cast<StorageT>(5);
   Vector<StorageT> input_data = RandomBuffer<TypeParam::kStorage>(shape);
   Vector<StorageT> output_data(shape.NumElements());
-  const QuantizedTensorType tensor_type = {
+  const QuantizedPerTensorTensorType tensor_type = {
       .shape = shape,
-      .element_type = QuantizedTensorElementType::PerTensor<
-          TypeParam::kStorage, TypeParam::kExpressed>(scale, zero_point)};
+      .element_type = QuantizedElementTypePerTensor(
+          TypeParam::kStorage, zero_point, TypeParam::kExpressed, scale)};
   Tensor input_tensor{.type = tensor_type, .data = input_data.data()};
   Tensor output_tensor{.type = tensor_type, .data = output_data.data()};
 

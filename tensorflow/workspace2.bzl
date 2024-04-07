@@ -8,6 +8,13 @@ load("@bazel_skylib//lib:versions.bzl", "versions")
 load("@bazel_tools//tools/build_defs/repo:java.bzl", "java_import_external")
 load("@rules_jvm_external//:defs.bzl", "maven_install")
 load("@tf_runtime//:dependencies.bzl", "tfrt_dependencies")
+load("//tensorflow/tools/def_file_filter:def_file_filter_configure.bzl", "def_file_filter_configure")
+load("//tensorflow/tools/toolchains:cpus/aarch64/aarch64_compiler_configure.bzl", "aarch64_compiler_configure")
+load("//tensorflow/tools/toolchains:cpus/arm/arm_compiler_configure.bzl", "arm_compiler_configure")
+load("//tensorflow/tools/toolchains/clang6:repo.bzl", "clang6_configure")
+load("//tensorflow/tools/toolchains/embedded/arm-linux:arm_linux_toolchain_configure.bzl", "arm_linux_toolchain_configure")
+load("//tensorflow/tools/toolchains/remote:configure.bzl", "remote_execution_configure")
+load("//tensorflow/tools/toolchains/remote_config:configs.bzl", "initialize_rbe_configs")
 load("//third_party:repo.bzl", "tf_http_archive", "tf_mirror_urls")
 load("//third_party/absl:workspace.bzl", absl = "repo")
 load("//third_party/benchmark:workspace.bzl", benchmark = "repo")
@@ -45,13 +52,6 @@ load("//third_party/ruy:workspace.bzl", ruy = "repo")
 load("//third_party/sobol_data:workspace.bzl", sobol_data = "repo")
 load("//third_party/stablehlo:workspace.bzl", stablehlo = "repo")
 load("//third_party/systemlibs:syslibs_configure.bzl", "syslibs_configure")
-load("//tensorflow/tools/def_file_filter:def_file_filter_configure.bzl", "def_file_filter_configure")
-load("//tensorflow/tools/toolchains:cpus/aarch64/aarch64_compiler_configure.bzl", "aarch64_compiler_configure")
-load("//tensorflow/tools/toolchains:cpus/arm/arm_compiler_configure.bzl", "arm_compiler_configure")
-load("//tensorflow/tools/toolchains/clang6:repo.bzl", "clang6_configure")
-load("//tensorflow/tools/toolchains/embedded/arm-linux:arm_linux_toolchain_configure.bzl", "arm_linux_toolchain_configure")
-load("//tensorflow/tools/toolchains/remote:configure.bzl", "remote_execution_configure")
-load("//tensorflow/tools/toolchains/remote_config:configs.bzl", "initialize_rbe_configs")
 load("//third_party/tensorrt:tensorrt_configure.bzl", "tensorrt_configure")
 load("//third_party/tensorrt:workspace.bzl", tensorrt = "repo")
 load("//third_party/triton:workspace.bzl", triton = "repo")
@@ -150,9 +150,9 @@ def _tf_repositories():
     # LINT.IfChange
     tf_http_archive(
         name = "XNNPACK",
-        sha256 = "55827bd7c39a080d4296e84dfbe576240d83a3347df8ad4e10cf9fe400678db7",
-        strip_prefix = "XNNPACK-65ca94a2d3f39e7ff8e4045852b32b65ca6a16b7",
-        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/65ca94a2d3f39e7ff8e4045852b32b65ca6a16b7.zip"),
+        sha256 = "179a680ef85deb5380b850f2551b214e00835c232f5b197dedf7c011a6adf5a6",
+        strip_prefix = "XNNPACK-2fe25b859581a34e77b48b06c640ac1a5a58612e",
+        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/2fe25b859581a34e77b48b06c640ac1a5a58612e.zip"),
     )
     # LINT.ThenChange(//tensorflow/lite/tools/cmake/modules/xnnpack.cmake)
 

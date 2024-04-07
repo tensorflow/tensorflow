@@ -1,6 +1,6 @@
+load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load("//tsl:tsl.bzl", "if_oss", "internal_visibility", "tsl_gpu_library")
 load("//tsl/platform:build_config.bzl", "tf_proto_library", "tsl_cc_test")
-load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -78,13 +78,13 @@ tsl_gpu_library(
         "//tsl/platform:thread_annotations",
         "//tsl/protobuf:coordination_config_proto_cc",
         "//tsl/protobuf:coordination_service_proto_cc",
-        "//tsl/util:device_name_utils",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
+        "@local_xla//xla/tsl/util:device_name_utils",
     ],
     alwayslink = 1,
 )

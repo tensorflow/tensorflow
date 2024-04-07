@@ -1,9 +1,9 @@
-load("//xla:xla.bzl", "xla_cc_test")
 load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm_is_configured",
 )
 load("@local_tsl//tsl:tsl.bzl", "internal_visibility")
+load("//xla:xla.bzl", "xla_cc_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -29,6 +29,7 @@ cc_library(
         "utils.h",
     ],
     deps = [
+        "//xla:status",
         "//xla:status_macros",
         "//xla:statusor",
         "//xla:types",
@@ -38,12 +39,16 @@ cc_library(
         "//xla/service/llvm_ir:llvm_command_line_options",
         "//xla/service/llvm_ir:llvm_type_conversion_util",
         "//xla/stream_executor:device_description",
+        "//xla/tsl/util:env_var",
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/synchronization",
         "@llvm-project//llvm:Analysis",
         "@llvm-project//llvm:BitReader",
         "@llvm-project//llvm:BitWriter",
@@ -59,14 +64,18 @@ cc_library(
         "@llvm-project//llvm:Scalar",
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:Target",
+        "@llvm-project//mlir:NVVMDialect",
+        "@local_config_cuda//cuda:cuda_headers",
         "@local_tsl//tsl/platform:cuda_libdevice_path",
         "@local_tsl//tsl/platform:env",
+        "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:random",
         "@local_tsl//tsl/platform:rocm_rocdl_path",
+        "@local_tsl//tsl/platform:status",
+        "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/profiler/lib:traceme",
-        "@local_tsl//tsl/util:env_var",
     ] + if_rocm_is_configured([
         "@local_config_rocm//rocm:rocm_headers",
         "@llvm-project//llvm:AMDGPUCodeGen",

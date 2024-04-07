@@ -234,10 +234,12 @@ cc_library(
         "//conditions:default": [],
     }) + select({
         ":xnnpack_enable_subgraph_reshaping_explicit": ["-DXNNPACK_DELEGATE_ENABLE_SUBGRAPH_RESHAPING=1"],
-        "//conditions:default": [],
+        # copybara:uncomment "//conditions:default": [],
+        "//conditions:default": ["-DXNNPACK_DELEGATE_ENABLE_SUBGRAPH_RESHAPING=1"],  # copybara:comment
     }) + select({
         ":xnnpack_use_latest_ops_explicit": ["-DXNNPACK_DELEGATE_USE_LATEST_OPS=1"],
-        "//conditions:default": [],
+        # copybara:uncomment "//conditions:default": [],
+        "//conditions:default": ["-DXNNPACK_DELEGATE_USE_LATEST_OPS=1"],  # copybara:comment
     }) + select({
         ":xnnpack_use_transient_indirection_buffers_explicit": ["-DXNNPACK_DELEGATE_USE_TRANSIENT_INDIRECTION_BUFFERS=1"],
         "//conditions:default": [],
@@ -1794,6 +1796,23 @@ cc_test(
         ":test_main",
         ":unary_elementwise_tester",
         ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "rsqrt_test",
+    srcs = ["rsqrt_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":test_main",
+        ":unary_elementwise_tester",
+        ":xnnpack_delegate_test_mode",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
     ],
 )

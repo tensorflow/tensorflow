@@ -12,10 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("//xla/python/ifrt_proxy/common:ifrt_proxy.bzl", "default_ifrt_proxy_visibility", "ifrt_proxy_cc_test")
 load("@local_tsl//tsl:tsl.bzl", "if_google")
 load("@local_tsl//tsl/platform:build_config.bzl", "tf_proto_library")
 # copybara:uncomment load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+
+load("//xla/python/ifrt_proxy/common:ifrt_proxy.bzl", "default_ifrt_proxy_visibility", "ifrt_proxy_cc_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -59,7 +60,6 @@ cc_library(
 tf_proto_library(
     name = "types_proto",
     srcs = ["types.proto"],
-    protodeps = ["//xla/python/ifrt:serdes_proto"],
 )
 
 tf_proto_library(
@@ -70,7 +70,10 @@ tf_proto_library(
         # copybara:uncomment "//google/protobuf:any",
         "//xla:xla_data_proto",
         "//xla/pjrt:execute_options_proto",
+        "//xla/python/ifrt:dtype_proto",
         "//xla/python/ifrt:serdes_proto",
+        "//xla/python/ifrt:shape_proto",
+        "//xla/python/ifrt:sharding_proto",
         "@local_tsl//tsl/protobuf:status_proto",
     ],
 )

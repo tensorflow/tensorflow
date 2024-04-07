@@ -84,7 +84,7 @@ namespace xla {
       HloInstruction::CreateTuple(tuple_elements));
 }
 
-/*static*/ StatusOr<HloInstruction*> TupleUtil::ReplaceTupleWith(
+/*static*/ absl::StatusOr<HloInstruction*> TupleUtil::ReplaceTupleWith(
     HloInstruction* new_instruction, HloInstruction* tuple,
     ShapeIndex shape_index, bool insert_bitcast_if_different_shape) {
   const Shape& tuple_shape = tuple->shape();

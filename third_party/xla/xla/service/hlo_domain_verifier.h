@@ -37,7 +37,7 @@ class HloDomainVerifier : public HloModulePass {
   absl::string_view name() const override { return "domain_verifier"; }
 
   using HloPassInterface::Run;
-  StatusOr<bool> Run(
+  absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
@@ -55,7 +55,7 @@ class HloDomainVerifier : public HloModulePass {
   // represents the common metadata within such domain. If the returned
   // DomainMetadata pointer is nullptr, the input domain had no kDomain
   // boundary.
-  static StatusOr<const DomainMetadata*> VerifyDomain(
+  static absl::StatusOr<const DomainMetadata*> VerifyDomain(
       const DomainMetadata::Domain& domain);
 
  private:

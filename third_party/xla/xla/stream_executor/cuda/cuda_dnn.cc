@@ -69,13 +69,13 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_internal.h"
+#include "xla/tsl/util/env_var.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/tensor_float_32_utils.h"
 #include "tsl/protobuf/dnn.pb.h"
-#include "tsl/util/env_var.h"
 
 // clang-format off
 #include "third_party/gpus/cuda/include/library_types.h"
@@ -2308,8 +2308,12 @@ absl::Status CudnnSupport::DoRnnForwardImpl(
       reserve_space_allocator, is_training, &workspace, &reserve_space));
 
   const bool is_profiling = output_profile_result != nullptr;
-  TF_ASSIGN_OR_RETURN(std::optional<GpuTimer> timer,
-                      GpuTimer::CreateIfNeeded(stream, is_profiling));
+  TF_ASSIGN_OR_RETURN(
+      std::optional<GpuTimer> timer,
+      GpuTimer::CreateIfNeeded(
+          stream,
+          output_profile_result && output_profile_result->warmup_run_executed(),
+          is_profiling));
 
   if (input_desc.is_var_seq_lengths()) {
     // In CUDNN v8, the cudnnRNNForward*** and cudnnRNNForward***Ex have been
@@ -2458,8 +2462,12 @@ absl::Status CudnnSupport::DoRnnBackwardImpl(
                                         nullptr, true, &workspace, nullptr));
 
   const bool is_profiling = output_profile_result != nullptr;
-  TF_ASSIGN_OR_RETURN(std::optional<GpuTimer> timer,
-                      GpuTimer::CreateIfNeeded(stream, is_profiling));
+  TF_ASSIGN_OR_RETURN(
+      std::optional<GpuTimer> timer,
+      GpuTimer::CreateIfNeeded(
+          stream,
+          output_profile_result && output_profile_result->warmup_run_executed(),
+          is_profiling));
 
   if (input_desc.is_var_seq_lengths()) {
     // In CUDNN v8, the cudnnRNNBackward*** and cudnnRNNBackward***Ex have
@@ -7448,8 +7456,11 @@ class CudnnLegacyConvRunner : public dnn::ConvRunner {
                      : static_cast<void*>(&fbeta);
 
     const bool is_profiling = profile_result != nullptr;
-    TF_ASSIGN_OR_RETURN(std::optional<GpuTimer> timer,
-                        GpuTimer::CreateIfNeeded(stream, is_profiling));
+    TF_ASSIGN_OR_RETURN(
+        std::optional<GpuTimer> timer,
+        GpuTimer::CreateIfNeeded(
+            stream, profile_result && profile_result->warmup_run_executed(),
+            is_profiling));
 
     const auto get_fwd_bugs = [&]() -> absl::Status {
 #if CUDNN_VERSION < 8000
@@ -7919,8 +7930,11 @@ class CudnnExecutionPlanRunner<void(Args...)>
             << "\nVariantPack: " << variantPack.describe();
 
     const bool is_profiling = profile_result != nullptr;
-    TF_ASSIGN_OR_RETURN(std::optional<GpuTimer> timer,
-                        GpuTimer::CreateIfNeeded(stream, is_profiling));
+    TF_ASSIGN_OR_RETURN(
+        std::optional<GpuTimer> timer,
+        GpuTimer::CreateIfNeeded(
+            stream, profile_result && profile_result->warmup_run_executed(),
+            is_profiling));
 
     cudnnStatus_t status = cudnnBackendExecute(
         cudnn.handle(), plan_.get_raw_desc(), variantPack.get_raw_desc());
@@ -8510,7 +8524,9 @@ class CudnnLegacyFusedConvRunner : public dnn::FusedConvRunner {
 
     TF_ASSIGN_OR_RETURN(
         std::optional<GpuTimer> timer,
-        GpuTimer::CreateIfNeeded(stream, profile_result != nullptr));
+        GpuTimer::CreateIfNeeded(
+            stream, profile_result && profile_result->warmup_run_executed(),
+            profile_result != nullptr));
     auto side_input_data_ptr = (side_input_scale_ == 0)
                                    ? output_data.opaque()
                                    : side_input_data.opaque();

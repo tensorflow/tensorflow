@@ -47,6 +47,7 @@ namespace {
 
 using ::mlir::stablehlo::DotGeneralOp;
 using ::stablehlo::quantization::Method;
+using ::stablehlo::quantization::StaticRangePtq;
 
 // Whether it represents a lifted function (i.e. `op` is the corresponding
 // `XlaCallModuleOp`) that is explicitly marked `NoQuantization`.
@@ -61,6 +62,31 @@ bool IsDenylistedLiftedFunction(Operation* op) {
   return false;
 }
 
+// Populates `spec.coeff_op_quant_dim` according to `xla_call_module_op`'s
+// `_quantization_method` attribute. If there is an input `QuantizedType` with
+// `dimension_specs` set, which represents the quantization dimension for the
+// input, then the corresponding operand index -> quantization dimension mapping
+// is set for `spec`.
+// TODO: b/323478683 - Duplicate tracking of config will be eliminated.
+// `OpQuantSpec` will be deprecated and `Method` will be used instead.
+void PopulateCoeffOpQuantDimIfPerChannelQuantized(
+    TF::XlaCallModuleOp xla_call_module_op, OpQuantSpec& spec) {
+  absl::StatusOr<Method> method = GetQuantizationMethod(xla_call_module_op);
+  if (method.ok() && method->has_static_range_ptq()) {
+    // TODO: b/331145946 - Use `Method` accessors.
+    const StaticRangePtq& static_range_ptq_spec = method->static_range_ptq();
+    // Look for quantized dimension specs for each quantized type and
+    // populate `coeff_op_quant_dim`.
+    for (const auto& [operand_idx, quantized_type] :
+         static_range_ptq_spec.input_quantized_types()) {
+      if (quantized_type.has_dimension_specs()) {
+        spec.coeff_op_quant_dim[operand_idx] =
+            quantized_type.dimension_specs().dimension();
+      }
+    }
+  }
+}
+
 }  // namespace
 
 std::unique_ptr<OpQuantSpec> GetStableHloOpQuantSpec(Operation* op) {
@@ -72,8 +98,12 @@ std::unique_ptr<OpQuantSpec> GetStableHloOpQuantSpec(Operation* op) {
     if (!function_name.starts_with("composite_")) {
       return spec;
     }
+
     if (function_name.contains("conv")) {
-      spec->coeff_op_quant_dim[1] = 3;
+      // Looks up `Method` to see if it should be per-channel quantized and
+      // populates the spec accordingly.
+      PopulateCoeffOpQuantDimIfPerChannelQuantized(call_op, *spec);
+
       if (function_name.contains("with_bias")) {
         spec->biases_params[2] = {{0, 1},
                                   quant::GetUniformQuantizedTypeForBias};
@@ -101,7 +131,7 @@ std::unique_ptr<OpQuantSpec> GetStableHloOpQuantSpec(Operation* op) {
   return spec;
 }
 
-std::unique_ptr<OpQuantScaleSpec> GetStableHloQuantScaleSpec(Operation* op) {
+std::unique_ptr<OpQuantScaleSpec> GetStableHloQuantConstraints(Operation* op) {
   auto scale_spec = std::make_unique<OpQuantScaleSpec>();
   if (llvm::isa<mlir::stablehlo::BroadcastInDimOp,
                 mlir::stablehlo::ConcatenateOp,
@@ -111,6 +141,10 @@ std::unique_ptr<OpQuantScaleSpec> GetStableHloQuantScaleSpec(Operation* op) {
                 mlir::stablehlo::ReshapeOp, mlir::stablehlo::SelectOp,
                 mlir::stablehlo::SliceOp, mlir::stablehlo::TransposeOp>(op)) {
     scale_spec->has_same_scale_requirement = true;
+  }
+  if (llvm::isa<mlir::stablehlo::DynamicSliceOp, mlir::stablehlo::GatherOp,
+                mlir::stablehlo::PadOp, mlir::stablehlo::SliceOp>(op)) {
+    scale_spec->has_same_operand_and_result_type_requirement = true;
   }
   return scale_spec;
 }
@@ -135,7 +169,7 @@ bool IsOpQuantizableStableHlo(Operation* op) {
     return false;
   }
 
-  if (GetStableHloQuantScaleSpec(op)->has_same_scale_requirement) {
+  if (GetStableHloQuantConstraints(op)->has_same_scale_requirement) {
     return true;
   }
 

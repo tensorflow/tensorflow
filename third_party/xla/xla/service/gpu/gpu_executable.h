@@ -40,7 +40,7 @@ limitations under the License.
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/runtime/annotation.h"
-#include "xla/service/gpu/thunk.h"
+#include "xla/service/gpu/runtime/thunk.h"
 #include "xla/service/hlo_execution_profile.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/service_executable_run_options.h"

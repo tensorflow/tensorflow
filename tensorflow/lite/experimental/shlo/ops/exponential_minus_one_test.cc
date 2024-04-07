@@ -48,17 +48,17 @@ struct ExponentialMinusOne {
   T operator()(T v) const {
     return std::expm1(v);
   }
-
-  template <>
-  F16 operator()(F16 v) const {
-    return F16(operator()(static_cast<float>(v)));
-  }
-
-  template <>
-  BF16 operator()(BF16 v) const {
-    return BF16(operator()(static_cast<float>(v)));
-  }
 } exponential_minus_one_ref;
+
+template <>
+F16 ExponentialMinusOne::operator()(F16 v) const {
+  return F16(operator()(static_cast<float>(v)));
+}
+
+template <>
+BF16 ExponentialMinusOne::operator()(BF16 v) const {
+  return BF16(operator()(static_cast<float>(v)));
+}
 
 INSTANTIATE_TYPED_TEST_SUITE_P(ExponentialMinusOne,
                                UnaryElementwiseOpShapePropagationTest,
@@ -120,15 +120,16 @@ TYPED_TEST(QuantizedExponentialMinusOneTest, PerTensorWorks) {
   Vector<StorageT> output_data(shape.NumElements());
   const ExpressedT scale = static_cast<ExpressedT>(1.5);
   const StorageT zero_point = static_cast<StorageT>(5);
-  const QuantizedTensorElementType tensor_type =
-      QuantizedTensorElementType::PerTensor<TypeParam::kStorage,
-                                            TypeParam::kExpressed>(scale,
-                                                                   zero_point);
+  const QuantizedElementTypePerTensor tensor_type =
+      QuantizedElementTypePerTensor(TypeParam::kStorage, zero_point,
+                                    TypeParam::kExpressed, scale);
   Tensor input_tensor{
-      .type = QuantizedTensorType{.shape = shape, .element_type = tensor_type},
+      .type = QuantizedPerTensorTensorType{.shape = shape,
+                                           .element_type = tensor_type},
       .data = input_data.data()};
   Tensor output_tensor{
-      .type = QuantizedTensorType{.shape = shape, .element_type = tensor_type},
+      .type = QuantizedPerTensorTensorType{.shape = shape,
+                                           .element_type = tensor_type},
       .data = output_data.data()};
 
   Vector<StorageT> expected_data(shape.NumElements());

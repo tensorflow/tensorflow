@@ -50,6 +50,19 @@ TEST(PopulateDefaultsTest, DefaultCalibrationOptionsPopulated) {
               Eq(CalibrationOptions::CALIBRATION_METHOD_MIN_MAX));
 }
 
+TEST(PopulateDefaultsTest,
+     DefaultCalibrationOptionsPopulatedForUnspecifiedMethod) {
+  QuantizationConfig config{};
+  CalibrationOptions& calibration_options =
+      *config.mutable_calibration_options();
+  calibration_options.set_calibration_method(
+      CalibrationOptions::CALIBRATION_METHOD_UNSPECIFIED);
+
+  const QuantizationConfig new_config = PopulateDefaults(config);
+  EXPECT_THAT(new_config.calibration_options().calibration_method(),
+              Eq(CalibrationOptions::CALIBRATION_METHOD_MIN_MAX));
+}
+
 TEST(PopulateDefaultsTest, ExplicitCalibrationOptionsNotOverridden) {
   QuantizationConfig config{};
   CalibrationOptions& calibration_options =
@@ -70,6 +83,60 @@ TEST(PopulateDefaultsTest, ExplicitCalibrationOptionsNotOverridden) {
               Eq(512));
 }
 
+TEST(PopulateDefaultsTest, DefaultNumbersPopulatedForPartOfCalibrationOptions) {
+  QuantizationConfig config{};
+  CalibrationOptions& calibration_options =
+      *config.mutable_calibration_options();
+  calibration_options.set_calibration_method(
+      CalibrationOptions::CALIBRATION_METHOD_HISTOGRAM_PERCENTILE);
+  calibration_options.mutable_calibration_parameters()->set_initial_num_bins(
+      512);
+
+  // Test that if the user explicitly provided part of the
+  // `calibration_options`, it is not overridden, rest of the data are default.
+  const QuantizationConfig new_config = PopulateDefaults(config);
+  EXPECT_THAT(new_config.calibration_options().calibration_method(),
+              Eq(CalibrationOptions::CALIBRATION_METHOD_HISTOGRAM_PERCENTILE));
+  EXPECT_THAT(new_config.calibration_options()
+                  .calibration_parameters()
+                  .initial_num_bins(),
+              Eq(512));
+  EXPECT_THAT(new_config.calibration_options()
+                  .calibration_parameters()
+                  .min_percentile(),
+              Eq(0.001f));
+  EXPECT_THAT(new_config.calibration_options()
+                  .calibration_parameters()
+                  .max_percentile(),
+              Eq(99.999f));
+}
+
+TEST(PopulateDefaultsTest,
+     DefaultNumbersPopulatedForCalibrationOptionsOfHistogramMseBruteforce) {
+  QuantizationConfig config{};
+  CalibrationOptions& calibration_options =
+      *config.mutable_calibration_options();
+  calibration_options.set_calibration_method(
+      CalibrationOptions::CALIBRATION_METHOD_HISTOGRAM_MSE_BRUTEFORCE);
+
+  const QuantizationConfig new_config = PopulateDefaults(config);
+  EXPECT_THAT(
+      new_config.calibration_options().calibration_method(),
+      Eq(CalibrationOptions::CALIBRATION_METHOD_HISTOGRAM_MSE_BRUTEFORCE));
+  EXPECT_THAT(new_config.calibration_options()
+                  .calibration_parameters()
+                  .initial_num_bins(),
+              Eq(256));
+  EXPECT_THAT(new_config.calibration_options()
+                  .calibration_parameters()
+                  .min_percentile(),
+              Eq(0.0f));
+  EXPECT_THAT(new_config.calibration_options()
+                  .calibration_parameters()
+                  .max_percentile(),
+              Eq(0.0f));
+}
+
 TEST(ExpandPresetsTest, ExpandUnspecifiedPreset) {
   QuantizationConfig config{};
   const QuantizationConfig new_config = ExpandPresets(config);
@@ -80,18 +147,34 @@ TEST(ExpandPresetsTest, ExpandUnspecifiedPreset) {
   EXPECT_FALSE(new_config.has_pipeline_config());
 }
 
-TEST(ExpandPresetsTest, ExpandStaticRangePtqPreset) {
+TEST(ExpandPresetsTest, ExpandStaticRangePtqEnableFullIntquantization) {
   QuantizationConfig config{};
   RepresentativeDatasetConfig& preset_dataset_config =
       *config.mutable_static_range_ptq_preset()->add_representative_datasets();
+  config.mutable_static_range_ptq_preset()->set_enable_full_int_quantization(
+      true);
   preset_dataset_config.mutable_tf_record()->set_path("/test/path");
 
   const QuantizationConfig new_config = ExpandPresets(config);
-  ASSERT_THAT(new_config.specs().specs(), SizeIs(1));
+  ASSERT_THAT(new_config.specs().specs(), SizeIs(2));
 
-  const QuantizationSpec& spec = new_config.specs().specs(0);
-  EXPECT_THAT(spec.matcher().function_name().regex(), StrEq(".*"));
-  EXPECT_TRUE(spec.method().has_static_range_ptq());
+  const QuantizationSpec& default_spec = new_config.specs().specs(0);
+  EXPECT_THAT(default_spec.matcher().function_name().regex(), StrEq(".*"));
+  EXPECT_TRUE(default_spec.method().has_static_range_ptq());
+
+  // Test that the expansion for convolution ops is done.
+  const QuantizationSpec& conv_spec = new_config.specs().specs(1);
+  EXPECT_THAT(conv_spec.matcher().function_name().regex(),
+              StrEq("composite_conv.*"));
+  ASSERT_TRUE(conv_spec.method().has_static_range_ptq());
+
+  const StaticRangePtq& srq_spec = conv_spec.method().static_range_ptq();
+  ASSERT_THAT(srq_spec.input_quantized_types(), SizeIs(1));
+  ASSERT_TRUE(srq_spec.input_quantized_types().contains(1));
+
+  EXPECT_THAT(
+      srq_spec.input_quantized_types().at(1).dimension_specs().dimension(),
+      Eq(3));
 
   // Test that representative dataset config has been transferred to the
   // `CalibrationOptions`.
@@ -104,8 +187,23 @@ TEST(ExpandPresetsTest, ExpandStaticRangePtqPreset) {
               StrEq("/test/path"));
 }
 
+TEST(ExpandPresetsTest, ExpandStaticRangePtqPresetDefault) {
+  QuantizationConfig config{};
+  RepresentativeDatasetConfig& preset_dataset_config =
+      *config.mutable_static_range_ptq_preset()->add_representative_datasets();
+  preset_dataset_config.mutable_tf_record()->set_path("/test/path");
+
+  const QuantizationConfig new_config = ExpandPresets(config);
+  ASSERT_THAT(new_config.specs().specs(), SizeIs(2));
+
+  const QuantizationSpec& spec = new_config.specs().specs(0);
+  EXPECT_THAT(spec.matcher().function_name().regex(),
+              StrEq("^.*(conv|dot|gather).*"));
+  EXPECT_TRUE(spec.method().has_static_range_ptq());
+}
+
 TEST(ExpandPresetsTest,
-     ExpandStaticRangePtqPresetWithExplicitRepresentativeDatasetConfigs) {
+     ExpandStaticRangePtqPresetWithTopLevelRepresentativeDataset) {
   // Test the scenario where both
   // `config.calibration_options.representative_datasets` and
   // `config.static_range_ptq_preset.representative_datasets` are both
@@ -133,10 +231,10 @@ TEST(ExpandPresetsTest,
               StrEq("/test/path/1"));
 }
 
-TEST(ExpandPresetsTest,
-     ExpandStaticRangePtqPresetWithExplicitSpecsAppendedAfterExpandedSpecs) {
+TEST(ExpandPresetsTest, ExpandStaticRangePtqPresetThenAppendExplicitSpecs) {
   QuantizationConfig config{};
-  config.mutable_static_range_ptq_preset();
+  config.mutable_static_range_ptq_preset()->set_enable_full_int_quantization(
+      true);
 
   QuantizationSpec& user_provided_spec = *config.mutable_specs()->add_specs();
   user_provided_spec.mutable_matcher()->mutable_function_name()->set_regex(
@@ -150,11 +248,15 @@ TEST(ExpandPresetsTest,
   //
   // specs {matcher {function_name {regex: ".*"}} method {static_range_ptq {}}}
   // specs {
+  //   matcher {function_name {regex: "composite_conv.*"}}
+  //   method {static_range_ptq {...}}}
+  // }
+  // specs {
   //   matcher {function_name {regex: "composite_dot_general_fn_1"}}
   //   method {no_quantization {}}
   // }
   const QuantizationConfig new_config = ExpandPresets(config);
-  ASSERT_THAT(new_config.specs().specs(), SizeIs(2));
+  ASSERT_THAT(new_config.specs().specs(), SizeIs(3));
 
   const QuantizationSpec& first_spec = new_config.specs().specs(0);
   EXPECT_THAT(first_spec.matcher().function_name().regex(), StrEq(".*"));
@@ -162,8 +264,14 @@ TEST(ExpandPresetsTest,
 
   const QuantizationSpec& second_spec = new_config.specs().specs(1);
   EXPECT_THAT(second_spec.matcher().function_name().regex(),
+              StrEq("composite_conv.*"));
+  EXPECT_TRUE(second_spec.method().has_static_range_ptq());
+
+  // This corresponds to `user_provided_spec`.
+  const QuantizationSpec& third_spec = new_config.specs().specs(2);
+  EXPECT_THAT(third_spec.matcher().function_name().regex(),
               StrEq("composite_dot_general_fn_1"));
-  EXPECT_TRUE(second_spec.method().has_no_quantization());
+  EXPECT_TRUE(third_spec.method().has_no_quantization());
 }
 
 }  // namespace

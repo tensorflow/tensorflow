@@ -48,8 +48,8 @@ NodeDef GetMapNode(absl::string_view name, absl::string_view input_node_name,
       name, /*op=*/"MapDataset", {std::string(input_node_name)},
       {{"f", FunctionDefHelper::FunctionRef(std::string(function_name))},
        {"Targuments", {}},
-       {"output_shapes", gtl::ArraySlice<TensorShape>{TensorShape()}},
-       {"output_types", gtl::ArraySlice<DataType>{DT_INT64}}});
+       {"output_shapes", absl::Span<const TensorShape>{TensorShape()}},
+       {"output_types", absl::Span<const DataType>{DT_INT64}}});
 }
 
 FunctionDef XTimesX() {
@@ -71,8 +71,8 @@ GraphDef GetRangeSquareDatasetDef(const int64_t range) {
        NDef("step", "Const", /*inputs=*/{},
             {{"value", AsScalar<int64_t>(1)}, {"dtype", DT_INT64}}),
        NDef("range", "RangeDataset", /*inputs=*/{"start", "stop", "step"},
-            {{"output_shapes", gtl::ArraySlice<TensorShape>{TensorShape()}},
-             {"output_types", gtl::ArraySlice<DataType>{DT_INT64}}}),
+            {{"output_shapes", absl::Span<const TensorShape>{TensorShape()}},
+             {"output_types", absl::Span<const DataType>{DT_INT64}}}),
        GetMapNode("map", "range", "XTimesX"),
        NDef("dataset", "_Retval", /*inputs=*/{"map"},
             {{"T", DT_VARIANT}, {"index", 0}})},

@@ -480,7 +480,10 @@ void QuantizationDriver::PreprocessConstantOps() {
     // Skip if the value is NaN or INF.
     // Otherwise the illegal scale/zp will be calculated.
     auto float_attr = cst.getValueAttr().dyn_cast<DenseFPElementsAttr>();
-    if (float_attr && !float_attr.getValues<APFloat>()[0].isFinite()) return;
+    if (float_attr && (float_attr.getValues<APFloat>().empty() ||
+                       !float_attr.getValues<APFloat>()[0].isFinite())) {
+      return;
+    }
 
     const Value value = cst.getResult();
     builder_.setInsertionPoint(cst);

@@ -742,10 +742,12 @@ cc_library(
         "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:SideEffectInterfaces",
         "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
         "@local_xla//xla:status",
         "@local_xla//xla:statusor",
         "@local_xla//xla/mlir_hlo",
+        "@stablehlo//:stablehlo_ops",
     ],
 )
 
@@ -885,6 +887,7 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
         "@local_xla//xla/mlir_hlo",
+        "@stablehlo//:stablehlo_ops",
     ],
 )
 
@@ -1153,6 +1156,7 @@ cc_library(
         ":size_utils",
         ":tensorflow_lite",
         "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
+        "//tensorflow/compiler/mlir/lite/stablehlo:legalize_stablehlo_composite_to_tfl_custom",
         "//tensorflow/compiler/mlir/lite/stablehlo:legalize_stablehlo_to_vhlo_pass",
         "//tensorflow/compiler/mlir/quantization/common/quantization_lib",
         "//tensorflow/compiler/mlir/tensorflow",
@@ -1380,6 +1384,7 @@ cc_library(
         "//tensorflow/compiler/mlir/lite/quantization:quantization_passes",
         "//tensorflow/compiler/mlir/lite/quantization/tensorflow:tf_quantization_passes",
         "//tensorflow/compiler/mlir/lite/stablehlo:compose_uniform_quantized_type_pass",
+        "//tensorflow/compiler/mlir/lite/stablehlo:composite_lowering",
         "//tensorflow/compiler/mlir/lite/stablehlo:legalize_tf_xla_call_module_to_stablehlo_pass",
         "//tensorflow/compiler/mlir/lite/stablehlo:rename_entrypoint_to_main",
         "//tensorflow/compiler/mlir/lite/stablehlo:tf_legalize_hlo",  # buildcleaner: keep
@@ -1391,7 +1396,6 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow/transforms:tf_saved_model_passes",
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/lite/toco:toco_flags_proto_cc",
-        "@com_google_absl//absl/log",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:Pass",
@@ -1419,6 +1423,7 @@ cc_library(
         "//tensorflow/compiler/mlir/lite/metrics:error_collector",
         "//tensorflow/compiler/mlir/lite/metrics:error_collector_inst",
         "//tensorflow/compiler/mlir/lite/quantization/stablehlo:quantization",
+        "//tensorflow/compiler/mlir/lite/stablehlo:legalize_stablehlo_composite_to_tfl_custom",
         "//tensorflow/compiler/mlir/lite/stablehlo:legalize_stablehlo_to_vhlo_pass",
         "//tensorflow/compiler/mlir/lite/stablehlo:op_stat_pass",
         "//tensorflow/compiler/mlir/lite/stablehlo:stablehlo_util",

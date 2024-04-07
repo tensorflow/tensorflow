@@ -30,10 +30,6 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-// Filters GEMMs which can be handled using Triton.
-FusionDecision CanTritonHandleGEMM(const HloDotInstruction&,
-                                   const se::GpuComputeCapability&);
-
 // Filters GEMMs which are better to handle using Triton.
 bool ShouldTritonHandleGEMM(HloDotInstruction&,
                             const se::GpuComputeCapability&);

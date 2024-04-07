@@ -35,9 +35,7 @@ limitations under the License.
 #include "absl/base/attributes.h"
 #include "absl/base/casts.h"
 #include "absl/base/config.h"
-#include "absl/base/optimization.h"
 #include "absl/functional/function_ref.h"
-#include "absl/hash/hash.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/array.h"
@@ -355,20 +353,6 @@ class LiteralBase {
     return LiteralBase::Hash(std::move(state), value);
   }
 
- private:
-  // With C++20, we can use `requires { absl::Hash<NativeT>(); }`.
-  template <typename T>
-  static constexpr bool IsAbslHashable() {
-#ifdef _MSC_VER
-    // `std::is_invocable_v<absl::Hash<T>, T>` doesn't work on MSVC.
-    // See https://godbolt.org/z/Wj9d7zrav.
-    return std::is_arithmetic_v<T>;
-#else
-    return std::is_invocable_v<absl::Hash<T>, T>;
-#endif
-  }
-
- public:
   template <typename H, bool kIsLayoutSensitive = true,
             int64_t kByteLimit = std::numeric_limits<int64_t>::max()>
   static H Hash(H state, const LiteralBase& literal) {
@@ -382,36 +366,10 @@ class LiteralBase {
           }
 
           CHECK(LayoutUtil::IsDenseArray(subshape));
-          const auto hash_func = [&](auto primitive_type_constant) {
-            using NativeT =
-                primitive_util::NativeTypeOf<primitive_type_constant>;
-            // If we can hash NativeT, then do so. Otherwise, hash raw buffer
-            // data taking care to avoid invalid parts of 4-bit type data.
-            if constexpr (IsAbslHashable<NativeT>()) {
-              state = H::combine(std::move(state),
-                                 literal.piece(index).data<NativeT>());
-            } else {
-              const int64_t num_bytes =
-                  std::min(kByteLimit, literal.size_bytes(index));
-              const char* buffer =
-                  static_cast<const char*>(literal.untyped_data(index));
-              if (primitive_util::Is4BitType(subshape.element_type())) {
-                // Note: in this case, we could potentially read 8 bytes at a
-                // time, mask out the upper 4 bits of each byte, and then hash 8
-                // bytes, but it adds complexity and needs special handling for
-                // the non-divisible-by-8 leftover bytes.
-                for (int64_t i = 0; i < num_bytes; ++i) {
-                  state =
-                      H::combine(std::move(state), buffer[i] & uint8_t{0xf});
-                }
-              } else {
-                auto data = absl::MakeConstSpan(buffer, num_bytes);
-                state = H::combine(std::move(state), data);
-              }
-            }
-          };
-          primitive_util::ArrayTypeSwitch<void>(hash_func,
-                                                subshape.element_type());
+          auto data = absl::MakeConstSpan(
+              static_cast<const char*>(literal.untyped_data(index)),
+              std::min(kByteLimit, literal.size_bytes(index)));
+          state = H::combine(std::move(state), data);
         });
 
     return std::move(state);
@@ -910,18 +868,6 @@ class LiteralBase {
       auto* tuple_rep = GetTupleRep();
       DCHECK(tuple_rep);
       return tuple_rep->children[index];
-    }
-
-    Piece& child(ShapeIndexView index) {
-      return const_cast<Piece&>(const_cast<const Piece*>(this)->child(index));
-    }
-    const Piece& child(ShapeIndexView index) const {
-      const Piece* result = this;
-      while (!index.empty()) {
-        result = &result->child(index.front());
-        index.remove_prefix(1);
-      }
-      return *result;
     }
 
     // Adds a child piece to this piece's children.
@@ -1590,10 +1536,6 @@ class BorrowingLiteral : public LiteralBase {
                    const Shape& shape);
   // TODO(b/79707221): adding constructors for nested tuples as well.
 
-  // Construct a BorrowingLiteral from a LiteralProto.  The proto must not be
-  // modified during the lifetime of the BorrowingLiteral.
-  explicit BorrowingLiteral(const LiteralProto& proto);
-
  private:
   // Recursively builds the subtree for the given piece and sets the subshapes
   // of the given piece with the given shape.
@@ -1660,7 +1602,7 @@ Status LiteralBase::SerializeWithShapeProto(const ShapeProto& shape_proto,
                                             OutputIterator output) const {
   SerializeState<OutputIterator> state(shape_proto, output);
   TF_RETURN_IF_ERROR(root_piece().ForEachSubpieceWithStatus(
-      [&](const ShapeIndex& shape_index, const Piece& piece) {
+      [&](const ShapeIndex& shape_index, const Piece& piece) -> absl::Status {
         const Shape& subshape = piece.subshape();
         if (subshape.IsTuple()) {
           return OkStatus();
@@ -1694,7 +1636,7 @@ absl::StatusOr<Literal> Literal::Deserialize(InputIterator begin,
   Literal literal(shape);
   TF_RETURN_IF_ERROR(
       literal.mutable_root_piece().ForEachMutableSubpieceWithStatus(
-          [&](const ShapeIndex& shape_index, Piece* piece) {
+          [&](const ShapeIndex& shape_index, Piece* piece) -> absl::Status {
             const Shape& subshape = piece->subshape();
             if (subshape.IsTuple()) {
               return OkStatus();

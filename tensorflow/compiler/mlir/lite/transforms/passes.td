@@ -108,7 +108,7 @@ def LegalizeHashTablesPass : Pass<"tfl-legalize-hashtables-tf", "mlir::ModuleOp"
 def LegalizeJaxRandomPass : Pass<"tfl-legalize-random", "mlir::func::FuncOp"> {
   let summary = "Replace jax.random.uniform/normal with tfl.custom.";
   let constructor = "CreateLegalizeJaxRandomPass()";
-  let dependentDialects = ["TFL::TensorFlowLiteDialect"];
+  let dependentDialects = ["TFL::TensorFlowLiteDialect", "stablehlo::StablehloDialect"];
 }
 
 def LegalizeTFPass : Pass<"tfl-legalize-tf", "mlir::func::FuncOp"> {

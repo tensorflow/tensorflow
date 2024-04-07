@@ -51,11 +51,11 @@ limitations under the License.
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/gpu_constants.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
-#include "xla/service/gpu/nccl_clique.h"
 #include "xla/service/gpu/nccl_clique_key.h"
 #include "xla/service/gpu/runtime/annotation.h"
+#include "xla/service/gpu/runtime/nccl_clique.h"
+#include "xla/service/gpu/runtime/thunk.h"
 #include "xla/service/gpu/stream_executor_util.h"
-#include "xla/service/gpu/thunk.h"
 #include "xla/service/hlo_execution_profile.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_parser.h"
@@ -439,8 +439,9 @@ absl::Status ExecuteThunks(
   if (ExecutionProfile* profile =
           run_options->run_options().execution_profile();
       profile) {
-    TF_ASSIGN_OR_RETURN(execution_timer,
-                        se::gpu::GpuTimer::Create(main_stream));
+    TF_ASSIGN_OR_RETURN(
+        execution_timer,
+        se::gpu::GpuTimer::Create(main_stream, profile->warmup_run_executed()));
   }
 #endif
 

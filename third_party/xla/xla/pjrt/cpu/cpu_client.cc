@@ -82,6 +82,7 @@ limitations under the License.
 #include "xla/service/cpu/cpu_executable.h"
 #include "xla/service/cpu/cpu_executable_run_options.h"
 #include "xla/service/cpu/cpu_xfeed.h"
+#include "xla/service/cpu/simple_orc_jit.h"
 #include "xla/service/custom_call_status.h"
 #include "xla/service/dump.h"
 #include "xla/service/executable.h"
@@ -271,7 +272,8 @@ absl::string_view TfrtCpuDeviceDescription::ToString() const {
 /*static*/ TfrtCpuTopologyDescription TfrtCpuTopologyDescription::Create(
     PjRtPlatformId platform_id, absl::string_view platform_name,
     absl::string_view platform_version,
-    absl::Span<const std::unique_ptr<TfrtCpuDevice>> devices) {
+    absl::Span<const std::unique_ptr<TfrtCpuDevice>> devices,
+    absl::Span<const std::string> machine_attributes) {
   std::vector<CpuTopology::CpuDevice> cpu_devices;
   cpu_devices.reserve(devices.size());
   for (auto& device : devices) {
@@ -279,7 +281,14 @@ absl::string_view TfrtCpuDeviceDescription::ToString() const {
         {device->id(), device->process_index(), device->local_hardware_id()});
   }
   return TfrtCpuTopologyDescription(platform_id, platform_name,
-                                    platform_version, cpu_devices);
+                                    platform_version, cpu_devices,
+                                    machine_attributes);
+}
+
+absl::StatusOr<Layout> TfrtCpuTopologyDescription::GetDefaultLayout(
+    PrimitiveType element_type, absl::Span<const int64_t> dims) const {
+  Shape shape = ShapeUtil::MakeShape(element_type, dims);
+  return LayoutUtil::GetWithDefaultLayout(shape).layout();
 }
 
 absl::StatusOr<std::string> TfrtCpuTopologyDescription::Serialize() const {
@@ -363,14 +372,23 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetTfrtCpuClient(
       std::move(options.collectives), num_threads));
 }
 
+static tsl::ThreadOptions GetThreadOptions() {
+  tsl::ThreadOptions thread_options;
+  // On Mac OS the default stack size is 512KiB, which is too small for some
+  // BLAS and LAPACK functions (https://github.com/google/jax/issues/20428).
+  thread_options.stack_size = 2 * 1024 * 1024;
+  return thread_options;
+}
+
 TfrtCpuClient::TfrtCpuClient(
     int process_index, std::vector<std::unique_ptr<TfrtCpuDevice>> devices,
     std::shared_ptr<cpu::CollectivesInterface> collectives, size_t num_threads)
     : process_index_(process_index),
       owned_devices_(std::move(devices)),
       computation_placer_(std::make_unique<ComputationPlacer>()),
-      pjrt_client_thread_pool_(new tsl::thread::ThreadPool(
-          tsl::Env::Default(), "XLATfrtCpuClient", num_threads)),
+      pjrt_client_thread_pool_(
+          new tsl::thread::ThreadPool(tsl::Env::Default(), GetThreadOptions(),
+                                      "XLATfrtCpuClient", num_threads)),
       async_work_runner_(std::make_unique<ThreadPoolAsyncWorkRunner>(
           pjrt_client_thread_pool_.get())),
       eigen_intraop_pool_(new tsl::thread::ThreadPool(
@@ -383,7 +401,8 @@ TfrtCpuClient::TfrtCpuClient(
       transpose_cache_(1024),
       collectives_(std::move(collectives)),
       topology_(TfrtCpuTopologyDescription::Create(
-          platform_id(), platform_name(), platform_version(), owned_devices_)) {
+          platform_id(), platform_name(), platform_version(), owned_devices_,
+          cpu::DetectMachineAttributes())) {
   for (const std::unique_ptr<TfrtCpuDevice>& device : owned_devices_) {
     devices_.push_back(device.get());
     CHECK(id_to_device_.insert({device->id(), device.get()}).second)

@@ -9,13 +9,6 @@
 """
 
 load(
-    ":cuda_configure.bzl",
-    "enable_cuda",
-    "make_copy_dir_rule",
-    "make_copy_files_rule",
-    "to_list_of_strings",
-)
-load(
     "//third_party/remote_config:common.bzl",
     "config_repo_label",
     "err_out",
@@ -28,6 +21,13 @@ load(
     "raw_exec",
     "realpath",
     "which",
+)
+load(
+    ":cuda_configure.bzl",
+    "enable_cuda",
+    "make_copy_dir_rule",
+    "make_copy_files_rule",
+    "to_list_of_strings",
 )
 
 _GCC_HOST_COMPILER_PATH = "GCC_HOST_COMPILER_PATH"
@@ -831,7 +831,7 @@ remote_rocm_configure = repository_rule(
     attrs = {
         "environ": attr.string_dict(),
         "_find_rocm_config": attr.label(
-            default = Label("@org_tensorflow//third_party/gpus:find_rocm_config.py"),
+            default = Label("@local_tsl//third_party/gpus:find_rocm_config.py"),
         ),
     },
 )
@@ -841,7 +841,7 @@ rocm_configure = repository_rule(
     environ = _ENVIRONS + [_TF_ROCM_CONFIG_REPO],
     attrs = {
         "_find_rocm_config": attr.label(
-            default = Label("@org_tensorflow//third_party/gpus:find_rocm_config.py"),
+            default = Label("@local_tsl//third_party/gpus:find_rocm_config.py"),
         ),
     },
 )

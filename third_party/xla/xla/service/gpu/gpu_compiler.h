@@ -71,9 +71,6 @@ class GpuCompiler : public LLVMCompiler {
       std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
       const CompileOptions& options) override;
 
-  absl::StatusOr<std::unique_ptr<BufferAssignment>> AssignBuffers(
-      HloModule* hlo_module, const se::StreamExecutor* stream_exec) override;
-
   absl::StatusOr<std::unique_ptr<Executable>> RunBackend(
       std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
       const CompileOptions& options) override;
@@ -163,6 +160,13 @@ class GpuCompiler : public LLVMCompiler {
   // Add passes that convert HLO operations to custom kernels.
   virtual absl::Status AddCustomKernelReplacementPasses(
       HloPassPipeline* pipeline, const DebugOptions& debug_options) {
+    return absl::OkStatus();
+  }
+
+  // Runs CUDNN fusion compiler pass.
+  virtual absl::Status RunCudnnFusionCompilerPass(
+      HloModule* module, se::StreamExecutor* stream_exec,
+      Thunk::BinaryMap* dnn_compiled_graphs) {
     return absl::OkStatus();
   }
 

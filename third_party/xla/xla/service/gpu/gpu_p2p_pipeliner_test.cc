@@ -93,7 +93,10 @@ TEST_F(GpuP2PPipelinerTest,
         _xla_send_recv_pipeline="0",
         _xla_send_recv_validation="{{1,7}}"
       }
-    recv-done.0 = (u32[2], token[]) recv-done(recv.0), channel_id=1
+    recv-done.0 = (u32[2], token[]) recv-done(recv.0), channel_id=1,
+      frontend_attributes={
+        _xla_send_recv_pipeline="0"
+      }
     recv-data = u32[2] get-tuple-element(recv-done.0), index=0
 
     c1 = u32[] constant(1)
@@ -102,7 +105,10 @@ TEST_F(GpuP2PPipelinerTest,
     r = u32[2] broadcast(c1), dimensions={}
     s = u32[2] add(r, recv-data)
 
-    send-done.0 = token[] send-done(send.0), channel_id=1
+    send-done.0 = token[] send-done(send.0), channel_id=1,
+      frontend_attributes={
+        _xla_send_recv_pipeline="0"
+      }
     ROOT result = (u32[], u32[2]) tuple(new_count, s)
   }
 

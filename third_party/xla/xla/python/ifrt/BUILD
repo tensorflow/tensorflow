@@ -1,7 +1,7 @@
-load("//xla:xla.bzl", "xla_cc_test")
 load("@local_tsl//tsl:tsl.bzl", "internal_visibility")
 load("@local_tsl//tsl:tsl.default.bzl", "get_compatible_with_portable")
 load("@local_tsl//tsl/platform:build_config.bzl", "tf_proto_library")
+load("//xla:xla.bzl", "xla_cc_test")
 
 package_group(
     name = "friends",
@@ -70,8 +70,11 @@ cc_library(
     ],
     compatible_with = get_compatible_with_portable(),
     deps = [
+        ":device_proto_cc",
+        ":dtype_proto_cc",
         ":serdes",
-        ":types_proto_cc",
+        ":shape_proto_cc",
+        ":sharding_proto_cc",
         "//xla:status",
         "//xla:statusor",
         "//xla:util",
@@ -85,8 +88,10 @@ cc_library(
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/container:node_hash_set",
         "@com_google_absl//absl/functional:function_ref",
+        "@com_google_absl//absl/hash",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
@@ -160,7 +165,7 @@ xla_cc_test(
     srcs = ["shape_test.cc"],
     deps = [
         ":ifrt",
-        ":types_proto_cc",
+        ":shape_proto_cc",
         "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:status_matchers",
@@ -307,7 +312,9 @@ cc_library(
         "//xla:test",
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt:pjrt_device_description",
+        "//xla/pjrt:pjrt_layout",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
@@ -366,8 +373,11 @@ cc_library(
         ":ifrt",
         ":serdes",
         ":sharding_proto_cc",
-        "//xla:statusor",
+        ":sharding_serdes_proto_cc",
+        "//xla:util",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
         "@llvm-project//llvm:Support",
         "@local_tsl//tsl/platform:statusor",
     ],
@@ -385,17 +395,108 @@ xla_cc_test(
         ":sharding_test_util",
         "@com_google_absl//absl/functional:bind_front",
         "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Support",
         "@local_tsl//tsl/platform:statusor",
     ],
 )
 
 tf_proto_library(
-    name = "types_proto",
-    srcs = ["types.proto"],
+    name = "device_proto",
+    srcs = ["device.proto"],
+)
+
+xla_cc_test(
+    name = "device_test",
+    size = "small",
+    srcs = ["device_test.cc"],
+    deps = [
+        ":device_proto_cc",
+        ":ifrt",
+        ":sharding_test_util",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:env",
+        "@local_tsl//tsl/platform:platform_port",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+tf_proto_library(
+    name = "dtype_proto",
+    srcs = ["dtype.proto"],
+)
+
+xla_cc_test(
+    name = "dtype_test",
+    size = "small",
+    srcs = ["dtype_test.cc"],
+    deps = [
+        ":dtype_proto_cc",
+        ":ifrt",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:test",
+    ],
+)
+
+tf_proto_library(
+    name = "shape_proto",
+    srcs = ["shape.proto"],
 )
 
 tf_proto_library(
     name = "sharding_proto",
     srcs = ["sharding.proto"],
-    protodeps = [":types_proto"],
+    protodeps = [":serdes_proto"],
+)
+
+tf_proto_library(
+    name = "sharding_serdes_proto",
+    srcs = ["sharding_serdes.proto"],
+    protodeps = [
+        ":device_proto",
+        ":shape_proto",
+    ],
+)
+
+cc_library(
+    name = "plugin_program",
+    srcs = ["plugin_program.cc"],
+    hdrs = ["plugin_program.h"],
+    deps = [
+        ":ifrt",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_library(
+    name = "plugin_program_serdes",
+    srcs = ["plugin_program_serdes.cc"],
+    deps = [
+        ":plugin_program",
+        ":serdes",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@llvm-project//llvm:Support",
+    ],
+    alwayslink = True,
+)
+
+xla_cc_test(
+    name = "plugin_program_serdes_test",
+    srcs = ["plugin_program_serdes_test.cc"],
+    deps = [
+        ":plugin_program",
+        ":plugin_program_serdes",
+        ":serdes",
+        ":serdes_proto_cc",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Support",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/protobuf:error_codes_proto_impl_cc",
+        "@local_tsl//tsl/protobuf:status_proto_cc",
+    ],
 )

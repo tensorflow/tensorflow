@@ -32,17 +32,17 @@ struct ExponentialMinusOne {
   T operator()(T v) const {
     return std::expm1(v);
   }
-
-  template <>
-  F16 operator()(F16 v) const {
-    return F16(operator()(static_cast<float>(v)));
-  }
-
-  template <>
-  BF16 operator()(BF16 v) const {
-    return BF16(operator()(static_cast<float>(v)));
-  }
 };
+
+template <>
+F16 ExponentialMinusOne::operator()(F16 v) const {
+  return F16(operator()(static_cast<float>(v)));
+}
+
+template <>
+BF16 ExponentialMinusOne::operator()(BF16 v) const {
+  return BF16(operator()(static_cast<float>(v)));
+}
 
 ExponentialMinusOneOp Create(ExponentialMinusOneOp::Attributes) { return {}; }
 
@@ -61,10 +61,11 @@ absl::Status Evaluate(ExponentialMinusOneOp& op, const Tensor& input,
                       Tensor& output) {
   ExponentialMinusOne exponential_minus_one;
   if (input.IsPerTensorQuantized()) {
-    DISPATCH_QUANTIZED(detail::DequantizeOpQuantizePerTensor,
-                       input.quantized_tensor_element_type().StorageType(),
-                       input.quantized_tensor_element_type().ExpressedType(),
-                       exponential_minus_one, input, output)
+    DISPATCH_QUANTIZED(
+        detail::DequantizeOpQuantizePerTensor,
+        input.quantized_per_tensor_element_type().StorageType(),
+        input.quantized_per_tensor_element_type().ExpressedType(),
+        exponential_minus_one, input, output)
   } else if (IsFloatTensor(input)) {
     DISPATCH_FLOAT(detail::EvaluateNoQuantization, input.tensor_element_type(),
                    exponential_minus_one, input, output);

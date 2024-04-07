@@ -30,6 +30,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/hash/hash.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -67,13 +68,13 @@ limitations under the License.
 #include "xla/python/traceback.h"
 #include "xla/python/types.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/python/lib/core/numpy.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/concurrency/ref_count.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/profiler/lib/traceme.h"
-#include "tsl/python/lib/core/numpy.h"
 
 namespace jax {
 
@@ -135,40 +136,37 @@ absl::StatusOr<ShardArgResult> ShardArg(
     const nb::callable& python_fallback) {
   if (arg.type().ptr() == xla::PyArray::type().ptr()) {
     auto py_array = nb::borrow<xla::PyArray>(arg);
-    if (py_array.fastpath_enabled()) {
-      if (py_array.sharding().type().ptr() ==
-          input_spec.array_sharding.type().ptr()) {
-        auto* pmap_sharding =
-            nb::cast<jax::PmapSharding*>(nb::handle(py_array.sharding().ptr()));
-        auto* cached_pmap_sharding = nb::cast<jax::PmapSharding*>(
-            nb::handle(input_spec.array_sharding.ptr()));
+    if (py_array.sharding().type().ptr() ==
+        input_spec.array_sharding.type().ptr()) {
+      auto* pmap_sharding =
+          nb::cast<jax::PmapSharding*>(nb::handle(py_array.sharding().ptr()));
+      auto* cached_pmap_sharding = nb::cast<jax::PmapSharding*>(
+          nb::handle(input_spec.array_sharding.ptr()));
 
-        if (pmap_sharding->sharding_spec() ==
-            cached_pmap_sharding->sharding_spec()) {
-          ShardArgResult result;
-          result.owning_sda = nb::borrow<nb::object>(arg.ptr());
-          result.ifrt_array = tsl::FormRef(py_array.ifrt_array());
-          if (result.ifrt_array == nullptr) {
-            return xla::InvalidArgument("Array has been deleted.");
-          }
-          if (result.ifrt_array->sharding().devices().devices() != devices) {
-            xla::ifrt::DeviceList::Devices ifrt_devices;
-            ifrt_devices.reserve(devices.size());
-            ifrt_devices.insert(ifrt_devices.end(), devices.begin(),
-                                devices.end());
-            // pmap does not support memory_kind for now.
-            auto sharding = xla::ifrt::OpaqueSharding::Create(
-                xla::ifrt::DeviceList(std::move(ifrt_devices)),
-                xla::ifrt::MemoryKind());
-            TF_ASSIGN_OR_RETURN(
-                auto copied_ifrt_array,
-                result.ifrt_array->Reshard(
-                    std::move(sharding),
-                    xla::ifrt::ArrayCopySemantics::kReuseInput));
-            result.ifrt_array = std::move(copied_ifrt_array);
-          }
-          return result;
+      if (pmap_sharding->sharding_spec() ==
+          cached_pmap_sharding->sharding_spec()) {
+        ShardArgResult result;
+        result.owning_sda = nb::borrow<nb::object>(arg.ptr());
+        result.ifrt_array = tsl::FormRef(py_array.ifrt_array());
+        if (result.ifrt_array == nullptr) {
+          return xla::InvalidArgument("Array has been deleted.");
         }
+        if (result.ifrt_array->sharding().devices().devices() != devices) {
+          xla::ifrt::DeviceList::Devices ifrt_devices;
+          ifrt_devices.reserve(devices.size());
+          ifrt_devices.insert(ifrt_devices.end(), devices.begin(),
+                              devices.end());
+          // pmap does not support memory_kind for now.
+          auto sharding = xla::ifrt::OpaqueSharding::Create(
+              xla::ifrt::DeviceList(std::move(ifrt_devices)),
+              xla::ifrt::MemoryKind());
+          TF_ASSIGN_OR_RETURN(auto copied_ifrt_array,
+                              result.ifrt_array->Reshard(
+                                  std::move(sharding),
+                                  xla::ifrt::ArrayCopySemantics::kReuseInput));
+          result.ifrt_array = std::move(copied_ifrt_array);
+        }
+        return result;
       }
     }
   }
@@ -330,7 +328,7 @@ class PmapFunction {
   }
   const std::vector<int>& static_argnums() const { return static_argnums_; }
 
-  // nanobind::object typed subclass for PmapFunction objects.
+  // nb::object typed subclass for PmapFunction objects.
   class pyobject : public nb::object {
    public:
     NB_OBJECT(pyobject, nb::object, "PmapFunction",
@@ -363,27 +361,28 @@ class PmapFunction {
   //
   // It deals with the arguments signatures and also of the global and
   // thread-local jit context.
-  absl::Status UpdateArgsSignature(ParsedArgumentsAsBuffers& arguments) {
-    arguments.signature.function_name = function_name_;
+  absl::Status ComputeCallSignature(
+      absl::Span<nb::object const> flat_dynamic_args,
+      CallSignature& signature) {
+    signature.function_name = function_name_;
 
     // Get dynamic argument signatures.
     JitState& global_state = jax::GlobalJitState();
     JitState& tls = jax::ThreadLocalJitState();
     const bool jax_enable_x64 = GetEnableX64();
-    arguments.signature.jax_enable_x64 = jax_enable_x64;
-    for (nb::handle arg : arguments.flat_dynamic_args) {
+    signature.jax_enable_x64 = jax_enable_x64;
+    for (nb::handle arg : flat_dynamic_args) {
       auto signature_or_error = xla::PyArgSignatureOfValue(arg, jax_enable_x64);
       if (!signature_or_error.ok()) {
         VLOG(2) << "PyArgSignatureOfValue failed: "
                 << signature_or_error.status();
         return signature_or_error.status();
       }
-      arguments.signature.dynamic_arg_signatures.push_back(
+      signature.dynamic_arg_signatures.push_back(
           std::move(signature_or_error).value());
     }
-    arguments.signature.thread_local_extra_jit_context = tls.extra_jit_context;
-    arguments.signature.global_extra_jit_context =
-        global_state.extra_jit_context;
+    signature.thread_local_extra_jit_context = tls.extra_jit_context;
+    signature.global_extra_jit_context = global_state.extra_jit_context;
     return absl::Status();
   }
 
@@ -404,7 +403,6 @@ class PmapFunction {
  private:
   // Mutates `cache_entry` in place.
   void PopulateCacheEntry(PmapCacheEntry& cache_entry,
-                          const CallSignature& signature,
                           const nb::tuple& out_and_fastpath_data);
 
   bool always_fallback_to_python_ = false;
@@ -428,7 +426,6 @@ class PmapFunction {
 };
 
 void PmapFunction::PopulateCacheEntry(PmapCacheEntry& cache_entry,
-                                      const CallSignature& signature,
                                       const nb::tuple& out_and_fastpath_data) {
   CHECK_EQ(out_and_fastpath_data.size(), 2);
   if (out_and_fastpath_data[1].is_none()) {
@@ -551,16 +548,19 @@ absl::StatusOr<nb::object> PmapFunction::Call(nb::handle callable,
   absl::Span<PyObject* const> positional_args(args, num_positional_args);
   absl::Span<PyObject* const> keyword_args(args + num_positional_args,
                                            num_keyword_args);
-  ParsedArgumentsAsBuffers arguments;
+  CallSignature call_signature;
+  absl::InlinedVector<nb::object, 2> flat_dynamic_args;
+  std::vector<nb::object> keep_alive_objects;
   absl::Status status =
       ParseArguments(positional_args, keyword_args, kwnames, static_argnums_,
-                     /*static_argnames=*/{}, pytree_registry_.get(), arguments);
+                     /*static_argnames=*/{}, pytree_registry_.get(),
+                     call_signature.arg_signature, flat_dynamic_args);
   if (!status.ok()) {
     VLOG(2) << "ParseArguments failed: " << status;
     return fallback_to_cache_miss();
   }
 
-  status = UpdateArgsSignature(arguments);
+  status = ComputeCallSignature(flat_dynamic_args, call_signature);
   if (!status.ok()) {
     return fallback_to_cache_miss();
   }
@@ -570,7 +570,7 @@ absl::StatusOr<nb::object> PmapFunction::Call(nb::handle callable,
       it;
   bool inserted;
   std::tie(it, inserted) = executables_.try_emplace(
-      arguments.signature, std::unique_ptr<PmapCacheEntry>());
+      call_signature, std::unique_ptr<PmapCacheEntry>());
   if (inserted) {
     it->second = std::make_unique<PmapCacheEntry>(pytree_registry_.get());
   }
@@ -582,7 +582,7 @@ absl::StatusOr<nb::object> PmapFunction::Call(nb::handle callable,
     if (inserted) {
       nb::object out_and_fastpath_data;
       nb::tuple out_tuple;
-      VLOG(2) << "Cache miss for " << arguments.signature.DebugString();
+      VLOG(2) << "Cache miss for " << call_signature.DebugString();
       try {
         // Calls Python and may release the GIL. May also throw if
         // compilation/tracing fails.
@@ -592,7 +592,7 @@ absl::StatusOr<nb::object> PmapFunction::Call(nb::handle callable,
         }
         out_tuple = nb::cast<nb::tuple>(out_and_fastpath_data);
 
-        PopulateCacheEntry(cache_entry, arguments.signature, out_tuple);
+        PopulateCacheEntry(cache_entry, out_tuple);
       } catch (const std::exception& e) {
         cache_entry.fall_back_to_python = true;
         cache_entry.compilation_complete.Notify();
@@ -618,20 +618,19 @@ absl::StatusOr<nb::object> PmapFunction::Call(nb::handle callable,
   // 1. Parse arguments.
   std::vector<xla::PjRtDevice*>& input_devices = cache_entry.devices;
   std::vector<InputSpec>& input_specs = cache_entry.input_specs;
-  const int num_args = arguments.flat_dynamic_args.size();
+  const int num_args = flat_dynamic_args.size();
 
   // We need [num_args] for the `Execute` call below.
   std::vector<tsl::RCReference<xla::ifrt::Array>> num_args_arrays(num_args);
   for (int i = 0; i < num_args; ++i) {
     TF_ASSIGN_OR_RETURN(
         ShardArgResult sharded_arg,
-        ShardArg(arguments.flat_dynamic_args[i].ptr(), input_devices,
-                 input_specs[i], cache_entry.py_devices,
-                 python_shard_arg_fallback_));
+        ShardArg(flat_dynamic_args[i].ptr(), input_devices, input_specs[i],
+                 cache_entry.py_devices, python_shard_arg_fallback_));
 
     num_args_arrays[i] = std::move(sharded_arg.ifrt_array);
     if (sharded_arg.owning_sda) {
-      arguments.keep_alive_objects.push_back(std::move(sharded_arg.owning_sda));
+      keep_alive_objects.push_back(std::move(sharded_arg.owning_sda));
     }
   }
 

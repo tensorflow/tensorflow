@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/literal.h"
 #include "xla/pjrt/pjrt_device_description.h"
+#include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
@@ -176,6 +177,12 @@ MockClient::MockClient(std::unique_ptr<xla::ifrt::Client> delegated)
   ON_CALL(*this, GetTopologyForDevices)
       .WillByDefault([this](absl::Span<xla::ifrt::Device* const> devices) {
         return delegated_->GetTopologyForDevices(devices);
+      });
+  ON_CALL(*this, GetDefaultLayoutForDevice)
+      .WillByDefault([this](xla::ifrt::DType dtype,
+                            absl::Span<const int64_t> dims,
+                            xla::ifrt::Device* device) {
+        return delegated_->GetDefaultLayoutForDevice(dtype, dims, device);
       });
 }
 // LINT.ThenChange()

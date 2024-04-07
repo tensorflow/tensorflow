@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/pjrt/status_casters.h"
 #include "xla/python/xplane_to_profile_instructions.h"
 #include "tsl/platform/macros.h"
+#include "tsl/platform/protobuf.h"  // IWYU pragma: keep
 #include "tsl/profiler/lib/profiler_factory.h"
 #include "tsl/profiler/lib/profiler_interface.h"
 #include "tsl/profiler/lib/profiler_session.h"
@@ -131,6 +132,25 @@ struct ProfilerSessionWrapper {
 
   std::unique_ptr<tsl::ProfilerSession> session;
 };
+
+static std::string GetFdoProfile(const std::string& xspace,
+                                 bool as_textproto = false) {
+  tensorflow::profiler::XSpace xspace_proto;
+  // TODO(phawkins): change to std::string_view when protobuf is
+  // updated in XLA.
+  xspace_proto.ParseFromString(std::string(xspace.c_str(), xspace.size()));
+  tensorflow::profiler::ProfiledInstructionsProto fdo_profile;
+  xla::ThrowIfError(xla::ConvertXplaneToProfiledInstructionsProto(
+      {xspace_proto}, &fdo_profile));
+  if (as_textproto) {
+    std::string textproto;
+    if (tsl::protobuf::TextFormat::PrintToString(fdo_profile, &textproto)) {
+      return textproto;
+    }
+    throw xla::XlaRuntimeError("Unable to serialize format to textproto");
+  }
+  return fdo_profile.SerializeAsString();
+}
 
 void BuildProfilerSubmodule(nb::module_& m) {
   nb::module_ profiler =
@@ -265,16 +285,16 @@ void BuildProfilerSubmodule(nb::module_& m) {
       },
       nb::arg("tensorboard_dir"));
 
-  profiler.def("get_fdo_profile", [](nb::bytes xspace) -> nb::bytes {
-    tensorflow::profiler::XSpace xspace_proto;
-    // TODO(phawkins): change to std::string_view when protobuf is
-    // updated in XLA.
-    xspace_proto.ParseFromString(std::string(xspace.c_str(), xspace.size()));
-    tensorflow::profiler::ProfiledInstructionsProto fdo_profile;
-    xla::ThrowIfError(xla::ConvertXplaneToProfiledInstructionsProto(
-        {xspace_proto}, &fdo_profile));
-    std::string fdo_profile_str = fdo_profile.SerializeAsString();
-    return nb::bytes(fdo_profile_str.data(), fdo_profile_str.size());
+  profiler.def("get_fdo_profile",
+               [](nb::bytes xspace, bool as_textproto = false) -> nb::object {
+                 std::string out = GetFdoProfile(
+                     std::string(xspace.c_str(), xspace.size()), as_textproto);
+                 return nb::bytes(out.data(), out.size());
+               });
+
+  profiler.def("get_fdo_profile", [](nb::bytes xspace) -> nb::object {
+    std::string out = GetFdoProfile(std::string(xspace.c_str(), xspace.size()));
+    return nb::bytes(out.data(), out.size());
   });
 }
 

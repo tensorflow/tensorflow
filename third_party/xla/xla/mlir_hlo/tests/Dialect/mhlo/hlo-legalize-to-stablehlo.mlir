@@ -390,15 +390,15 @@ func.func @op_all_reduce(%arg0: tensor<f32>) -> tensor<f32> {
   // CHECK-SAME{LITERAL}:   replica_groups = dense<[[0], [1]]> : tensor<2x1xi64>,
   //          CHECK-SAME:   use_global_device_ids
   //          CHECK-SAME: } : (tensor<f32>) -> tensor<f32>
-  %0 = "mhlo.all_reduce"(%arg0) ({
-    ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
-      %1 = "mhlo.add"(%arg1, %arg2) : (tensor<f32>, tensor<f32>) -> tensor<f32>
-      "mhlo.return"(%1) : (tensor<f32>) -> ()
-  }) {
+  %0 = "mhlo.all_reduce"(%arg0) <{
     replica_groups = dense<[[0], [1]]> : tensor<2x1xi64>,
     channel_handle = #mhlo.channel_handle<handle = 1, type = 0>,
     use_global_device_ids
-  } : (tensor<f32>) -> tensor<f32>
+  }> ({
+    ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
+      %1 = "mhlo.add"(%arg1, %arg2) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+      "mhlo.return"(%1) : (tensor<f32>) -> ()
+  }) : (tensor<f32>) -> tensor<f32>
   func.return %0 : tensor<f32>
 }
 
@@ -492,9 +492,9 @@ func.func @op_broadcast_in_dim(%arg0: tensor<16xf32>) -> tensor<16x16xf32> {
   //      CHECK: "stablehlo.broadcast_in_dim"(%arg0) {
   // CHECK-SAME:   broadcast_dimensions = array<i64: 1>
   // CHECK-SAME: } : (tensor<16xf32>) -> tensor<16x16xf32>
-  %0 = "mhlo.broadcast_in_dim"(%arg0) {
+  %0 = "mhlo.broadcast_in_dim"(%arg0) <{
     broadcast_dimensions = dense<1> : tensor<1xi64>
-  } : (tensor<16xf32>) -> tensor<16x16xf32>
+  }> : (tensor<16xf32>) -> tensor<16x16xf32>
   func.return %0 : tensor<16x16xf32>
 }
 
@@ -802,11 +802,11 @@ func.func @op_dynamic_broadcast_in_dim(%arg0: tensor<?xf32>, %arg1: tensor<2xind
   // CHECK-SAME:   known_expanding_dimensions = array<i64>,
   // CHECK-SAME:   known_nonexpanding_dimensions = array<i64: 0>
   // CHECK-SAME: } : (tensor<?xf32>, tensor<2xindex>) -> tensor<?x?xf32>
-  %0 = "mhlo.dynamic_broadcast_in_dim"(%arg0, %arg1) {
+  %0 = "mhlo.dynamic_broadcast_in_dim"(%arg0, %arg1) <{
     broadcast_dimensions = dense<1> : tensor<1xi64>,
     known_expanding_dimensions = dense<[]> : tensor<0xi64>,
     known_nonexpanding_dimensions = dense<0> : tensor<1xi64>
-  } : (tensor<?xf32>, tensor<2xindex>) -> tensor<?x?xf32>
+  }> : (tensor<?xf32>, tensor<2xindex>) -> tensor<?x?xf32>
   func.return %0 : tensor<?x?xf32>
 }
 

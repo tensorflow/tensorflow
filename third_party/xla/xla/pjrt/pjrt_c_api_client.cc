@@ -93,15 +93,15 @@ namespace xla {
 
 // Return error future if not success and frees the PJRT_Error returned by
 // `expr`.
-#define RETURN_FUTURE_IF_ERROR(expr, c_api)                             \
-  do {                                                                  \
-    PJRT_Error* error = (expr);                                         \
-    std::unique_ptr<PJRT_Error, pjrt::PJRT_ErrorDeleter> _error(        \
-        error, pjrt::MakeErrorDeleter(c_api));                          \
-    xla::Status _status = pjrt::PjrtErrorToStatus(_error.get(), c_api); \
-    if (!_status.ok()) {                                                \
-      return PjRtFuture<Status>(_status);                               \
-    }                                                                   \
+#define RETURN_FUTURE_IF_ERROR(expr, c_api)                              \
+  do {                                                                   \
+    PJRT_Error* error = (expr);                                          \
+    std::unique_ptr<PJRT_Error, pjrt::PJRT_ErrorDeleter> _error(         \
+        error, pjrt::MakeErrorDeleter(c_api));                           \
+    absl::Status _status = pjrt::PjrtErrorToStatus(_error.get(), c_api); \
+    if (!_status.ok()) {                                                 \
+      return PjRtFuture<Status>(_status);                                \
+    }                                                                    \
   } while (false)
 
 // ---------------------------------- Client -----------------------------------
@@ -131,6 +131,7 @@ PjRtCApiClient::PjRtCApiClient(
       platform_name_(::pjrt::GetPlatformName(c_client, c_api)),
       platform_id_(tsl::Fingerprint64(platform_name_)) {
   InitDevicesAndMemorySpaces();
+  InitAttributes();
   LOG(INFO) << "PjRtCApiClient created.";
 }
 
@@ -252,6 +253,15 @@ void PjRtCApiClient::InitDevicesAndMemorySpaces() {
   }
 }
 
+void PjRtCApiClient::InitAttributes() {
+  PJRT_Plugin_Attributes_Args args;
+  args.struct_size = PJRT_Plugin_Attributes_Args_STRUCT_SIZE;
+  args.extension_start = nullptr;
+  pjrt::LogFatalIfPjrtError(c_api_->PJRT_Plugin_Attributes(&args), c_api_);
+  attributes_ =
+      pjrt::ConvertFromPjRtNamedValueList(args.attributes, args.num_attributes);
+}
+
 int PjRtCApiClient::device_count() const { return devices_.size(); }
 
 int PjRtCApiClient::addressable_device_count() const {
@@ -279,6 +289,12 @@ int PjRtCApiClient::process_index() const {
 
 absl::string_view PjRtCApiClient::platform_version() const {
   return platform_version_;
+}
+
+std::optional<PjRtPluginAttributes> PjRtCApiClient::plugin_attributes() const {
+  return PjRtPluginAttributes{c_api_->pjrt_api_version.major_version,
+                              c_api_->pjrt_api_version.minor_version,
+                              attributes_};
 }
 
 static DeviceAssignment CalculateDefaultAssignment(
@@ -468,13 +484,13 @@ PjRtCApiClient::BufferFromHostBufferInternalImpl(
     std::variant<PjRtDevice*, PjRtMemorySpace*> device_or_memory,
     const Layout* device_layout) {
   if (host_buffer_semantics != HostBufferSemantics::kImmutableOnlyDuringCall &&
-      host_buffer_semantics != HostBufferSemantics::kZeroCopy &&
+      host_buffer_semantics != HostBufferSemantics::kImmutableZeroCopy &&
       host_buffer_semantics !=
           HostBufferSemantics::kImmutableUntilTransferCompletes) {
     return Unimplemented(
         "PJRT C API does not support HostBufferSemantics other than "
         "HostBufferSemantics::kImmutableOnlyDuringCall, "
-        "HostBufferSemantics::kZeroCopy and "
+        "HostBufferSemantics::kImmutableZeroCopy and "
         "HostBufferSemantics::kImmutableUntilTransferCompletes.");
   }
 
@@ -1229,9 +1245,9 @@ PJRT_SendCallbackInfo CppSendCallbackToC(
     // PJRT C API doesn't support
     // use_major_to_minor_data_layout_for_callbacks = false
     xla::Shape dummy_shape;
-    xla::Status status = send_callback(xla::PjRtTransferMetadata{dummy_shape},
-                                       ::pjrt::ConvertToCppChunk(*chunk),
-                                       total_size_in_bytes, done);
+    absl::Status status = send_callback(xla::PjRtTransferMetadata{dummy_shape},
+                                        ::pjrt::ConvertToCppChunk(*chunk),
+                                        total_size_in_bytes, done);
     if (!status.ok()) {
       absl::string_view message = status.message();
       return (*callback_error)(pjrt::StatusCodeToPjrtErrorCode(status.code()),
@@ -1402,7 +1418,7 @@ static void CppRecvCallbackListsToC(
   }
 }
 
-xla::StatusOr<PJRT_LoadedExecutable_Execute_Args>
+absl::StatusOr<PJRT_LoadedExecutable_Execute_Args>
 PjRtCApiLoadedExecutable::GetCommonExecuteArgs(
     absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
     const ExecuteOptions& options, PJRT_ExecuteOptions& c_options,
@@ -1545,10 +1561,11 @@ PjRtCApiLoadedExecutable::Execute(
           args.device_complete_events[i], pjrt_c_api());
       if (!callback_data->c_send_callbacks.empty() ||
           !callback_data->c_recv_callbacks.empty()) {
-        device_complete_futures[i].OnReady([callback_data](xla::Status status) {
-          // Keeps C callbacks alive until execution completes on all
-          // devices.
-        });
+        device_complete_futures[i].OnReady(
+            [callback_data](absl::Status status) {
+              // Keeps C callbacks alive until execution completes on all
+              // devices.
+            });
       }
     }
 
@@ -1817,7 +1834,7 @@ PjRtFuture<Status> PjRtCApiBuffer::ToLiteral(MutableLiteralBase* literal) {
 
   args.dst_size = ShapeUtil::ByteSizeOfElements(shape);
   args.dst = literal->untyped_data();
-  xla::StatusOr<pjrt::BufferMemoryLayoutData> c_layout_data;
+  absl::StatusOr<pjrt::BufferMemoryLayoutData> c_layout_data;
   if (literal->shape().has_layout()) {
     c_layout_data =
         pjrt::ConvertToBufferMemoryLayoutData(literal->shape().layout());
@@ -1836,7 +1853,7 @@ PjRtFuture<Status> PjRtCApiBuffer::ToLiteral(MutableLiteralBase* literal) {
       ::pjrt::MakeErrorDeleter(api)};
 
   if (error != nullptr) {
-    xla::Status s = ::pjrt::PjrtErrorToStatus(error.get(), api);
+    absl::Status s = ::pjrt::PjrtErrorToStatus(error.get(), api);
     return PjRtFuture<Status>(s);
   }
 
@@ -1927,7 +1944,7 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCApiBuffer::CopyToDevice(
         literal_pointer->untyped_data(),
         literal_pointer->shape().element_type(),
         literal_pointer->shape().dimensions(), byte_strides,
-        PjRtClient::HostBufferSemantics::kZeroCopy,
+        PjRtClient::HostBufferSemantics::kImmutableZeroCopy,
         [literal{std::move(literal)}]() { /* frees literal */ }, dst_device);
   }
 }
@@ -1959,7 +1976,7 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCApiBuffer::CopyToMemorySpace(
         literal_pointer->untyped_data(),
         literal_pointer->shape().element_type(),
         literal_pointer->shape().dimensions(), byte_strides,
-        PjRtClient::HostBufferSemantics::kZeroCopy,
+        PjRtClient::HostBufferSemantics::kImmutableZeroCopy,
         [literal{std::move(literal)}]() { /* frees literal */ }, dst_memory,
         /*device_layout=*/nullptr);
   }

@@ -1,11 +1,12 @@
-# Placeholder: load py_proto_library
-load("//xla:xla.bzl", "xla_cc_test")
 load("@local_tsl//tsl:tsl.bzl", "internal_visibility")
 load(
     "@local_tsl//tsl/platform:build_config.bzl",
     "tf_proto_library",
 )
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
+
+# Placeholder: load py_proto_library
+load("//xla:xla.bzl", "xla_cc_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -20,6 +21,7 @@ package_group(
         "//xla:internal",
     ],
     packages = [
+        "//tensorflow/core/tfrt/ifrt/...",
         "//third_party/australis/...",
         "//third_party/openxla_pjrt_plugin/...",
         "//third_party/py/jax/...",
@@ -440,6 +442,7 @@ cc_library(
     visibility = internal_visibility(["//xla:friends"]),
     deps = [
         ":event_pool",
+        ":host_callback",
         ":local_device_state",
         ":metrics",
         ":mlir_to_hlo",
@@ -568,6 +571,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:BytecodeWriter",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:FuncExtensions",
         "@llvm-project//mlir:IR",
@@ -596,6 +600,17 @@ cc_library(
         "@com_google_absl//absl/functional:any_invocable",
         "@local_tsl//tsl/concurrency:async_value",
         "@local_tsl//tsl/concurrency:ref_count",
+    ],
+)
+
+cc_library(
+    name = "host_memory_spaces",
+    srcs = ["host_memory_spaces.cc"],
+    hdrs = ["host_memory_spaces.h"],
+    deps = [
+        ":pjrt_client",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
 
@@ -804,7 +819,7 @@ cc_library(
     name = "host_callback",
     srcs = ["host_callback.cc"],
     hdrs = ["host_callback.h"],
-    visibility = [":friends"],
+    visibility = internal_visibility([":friends"]),
     deps = [
         ":pjrt_client",
         ":pjrt_future",

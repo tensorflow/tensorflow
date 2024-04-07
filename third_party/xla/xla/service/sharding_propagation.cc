@@ -542,7 +542,8 @@ std::optional<HloSharding> LookaheadUserSharding(HloInstruction* instr,
     HloInstruction* current = users_chain[i - 1];
     CHECK(user->has_sharding());
     sharding = ShardingPropagation::GetShardingFromUser(
-        *current, *user, INT64_MAX, is_spmd, call_graph);
+        *current, *user, INT64_MAX, is_spmd, call_graph,
+        /*sharding_helper=*/nullptr);
     // We need to set the sharding to the instruction, because
     // GetShardingFromUser() interface uses sharding from the instruction
     // itself. It will be cleared out later.
@@ -1140,7 +1141,8 @@ bool InferUnspecifiedDimsFromOneUser(HloInstruction* annotate_op,
   std::optional<HloSharding> user_sharding =
       ShardingPropagation::GetShardingFromUser(
           man_conversion_op == nullptr ? *annotate_op : *man_conversion_op,
-          *user, aggressiveness, is_spmd, call_graph);
+          *user, aggressiveness, is_spmd, call_graph,
+          /*sharding_helper=*/nullptr);
   if (!user_sharding.has_value() || user_sharding->IsTileMaximal()) {
     return false;
   }
@@ -1720,7 +1722,8 @@ int64_t ComputeNonRootUsers(const HloInstruction* instr) {
 // Return the sharding that should be propagated from user to instruction.
 std::optional<HloSharding> ShardingPropagation::GetShardingFromUser(
     const HloInstruction& instruction, const HloInstruction& user,
-    int64_t aggressiveness, bool is_spmd, const CallGraph& call_graph) {
+    int64_t aggressiveness, bool is_spmd, const CallGraph& call_graph,
+    const CustomCallShardingHelper* sharding_helper) {
   if (!CanPropagateThroughAtAggressiveLevel(user, aggressiveness)) {
     return std::nullopt;
   }
@@ -2071,6 +2074,23 @@ std::optional<HloSharding> ShardingPropagation::GetShardingFromUser(
       }
       if (!from_indices.IsTileMaximal()) {
         return from_indices;
+      }
+      return std::nullopt;
+    }
+    case HloOpcode::kCustomCall: {
+      bool compatible_shapes = ShapeUtil::CompatibleIgnoringElementType(
+          instruction.shape(), user.shape());
+      if (!compatible_shapes) {
+        // Incompatible shapes, we will not propagate sharding.
+        return std::nullopt;
+      }
+      if (!sharding_helper) {
+        // No available sharding helper and shapes are compatible, we will
+        // propagate sharding.
+        return user.sharding();
+      }
+      if (sharding_helper->CanPropagateShardingToOperands(&user)) {
+        return user.sharding();
       }
       return std::nullopt;
     }
@@ -2801,7 +2821,8 @@ bool ShardingPropagation::InferShardingFromUsers(
       } else {
         std::optional<HloSharding> user_sharding =
             ShardingPropagation::GetShardingFromUser(
-                *instruction, *user, aggressiveness, is_spmd, call_graph);
+                *instruction, *user, aggressiveness, is_spmd, call_graph,
+                sharding_helper);
         if (user_sharding && user_sharding->IsManual()) {
           instruction->set_sharding(std::move(*user_sharding));
           return true;
@@ -2820,8 +2841,9 @@ bool ShardingPropagation::InferShardingFromUsers(
   const bool may_combine_partial_sharding = is_spmd && aggressiveness > 0;
   for (const HloInstruction* user : instruction->users()) {
     std::optional<HloSharding> user_sharding =
-        ShardingPropagation::GetShardingFromUser(
-            *instruction, *user, aggressiveness, is_spmd, call_graph);
+        ShardingPropagation::GetShardingFromUser(*instruction, *user,
+                                                 aggressiveness, is_spmd,
+                                                 call_graph, sharding_helper);
     if (user_sharding && instruction->opcode() == HloOpcode::kCustomCall) {
       if (auto* partitioner =
               GetCustomCallPartitioner(instruction->custom_call_target())) {

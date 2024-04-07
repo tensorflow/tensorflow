@@ -66,9 +66,10 @@ std::optional<IndexingMap>
 MlirConcatenateFusion::ComputeThreadIdToInputIndexing(
     int64_t root_index, int64_t hero_operand_index,
     mlir::MLIRContext* ctx) const {
-  return GetDefaultThreadIdToOutputIndexingMap(
-      launch_dimensions(), /*unroll_factor=*/1,
-      GetLargestConcatOperandShape(analysis_), ctx);
+  // TODO(b/331356433): Add constraints depending on the `hero_operand_index`.
+  return GetDefaultThreadIdIndexingMap(launch_dimensions(), /*unroll_factor=*/1,
+                                       GetLargestConcatOperandShape(analysis_),
+                                       ctx);
 }
 
 std::vector<const HloInstruction*>

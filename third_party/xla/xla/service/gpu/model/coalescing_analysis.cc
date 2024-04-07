@@ -234,7 +234,7 @@ bool IsCoalesced(const IndexingMap& thread_id_to_input_indexing_map,
       /*rt_vars=*/{}};
   IndexingMap thread_x_to_linearized_input =
       thread_x_first_32_elements * thread_id_to_input_indexing_map;
-  thread_x_to_linearized_input.Simplify();
+  thread_x_to_linearized_input.Simplify(GetIndexingMapForInstruction);
   thread_x_to_linearized_input.RemoveUnusedSymbols();
   return EstimateCoalescingViaMemoryTransactionsCount(
       FindContiguousIntervals(thread_x_to_linearized_input), element_type);
@@ -300,7 +300,8 @@ std::optional<GroupedByOpIndexingMap> GetThreadIdToInputMemoryLayoutsMaps(
         IndexingMap operand_logical_to_linearized_physical_shape =
             operand_logical_to_physical_map *
             operand_physical_to_linearized_shape;
-        operand_logical_to_linearized_physical_shape.Simplify();
+        operand_logical_to_linearized_physical_shape.Simplify(
+            GetIndexingMapForInstruction);
 
         for (const IndexingMap& operand_indexing_map :
              operand_indexing_maps_it->second) {
@@ -316,7 +317,8 @@ std::optional<GroupedByOpIndexingMap> GetThreadIdToInputMemoryLayoutsMaps(
           IndexingMap thread_id_to_linearized_physical_input_map =
               *thread_id_to_hero_operand_map *
               logical_output_to_linearized_physical_input_map;
-          thread_id_to_linearized_physical_input_map.Simplify();
+          thread_id_to_linearized_physical_input_map.Simplify(
+              GetIndexingMapForInstruction);
           result[operand].insert(thread_id_to_linearized_physical_input_map);
         }
       }

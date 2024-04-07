@@ -93,6 +93,7 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:protobuf",
     ],
     alwayslink = 1,
 )
@@ -202,7 +203,7 @@ tf_cc_binary(
         "@local_tsl//tsl/platform:platform_port",
         "@local_tsl//tsl/platform:strcat",
         "@local_tsl//tsl/platform:types",
-        "@local_tsl//tsl/util:command_line_flags",
+        "@local_xla//xla/tsl/util:command_line_flags",
     ],
 )
 
@@ -864,7 +865,7 @@ tf_python_pybind_extension(
         "//tensorflow/python/lib/core:safe_pyobject_ptr_required_hdrs",
         "@local_tsl//tsl/distributed_runtime:pywrap_required_hdrs",
         "@local_tsl//tsl/distributed_runtime/coordination:pywrap_required_hdrs",
-        "@local_tsl//tsl/python/lib/core:numpy_hdr",
+        "@local_xla//xla/tsl/python/lib/core:numpy_hdr",
     ],
     enable_stub_generation = True,
     pytype_srcs = [
@@ -964,7 +965,7 @@ tf_python_pybind_extension(
         "//tensorflow/python/lib/core:safe_pyobject_ptr_required_hdrs",
         "@local_tsl//tsl/distributed_runtime:pywrap_required_hdrs",
         "@local_tsl//tsl/distributed_runtime/coordination:pywrap_required_hdrs",
-        "@local_tsl//tsl/python/lib/core:numpy_hdr",
+        "@local_xla//xla/tsl/python/lib/core:numpy_hdr",
     ],
     enable_stub_generation = True,
     pytype_srcs = [
@@ -1108,7 +1109,7 @@ tf_python_pybind_extension(
         "//tensorflow/python/lib/core:safe_pyobject_ptr_required_hdrs",
         "@local_tsl//tsl/distributed_runtime:pywrap_required_hdrs",
         "@local_tsl//tsl/distributed_runtime/coordination:pywrap_required_hdrs",
-        "@local_tsl//tsl/python/lib/core:numpy_hdr",
+        "@local_xla//xla/tsl/python/lib/core:numpy_hdr",
     ],
     enable_stub_generation = True,
     pytype_srcs = [

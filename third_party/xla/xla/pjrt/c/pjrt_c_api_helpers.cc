@@ -349,8 +349,8 @@ const char* HostBufferSemanticsToString(
   switch (h) {
     case xla::PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall:
       return "xla::PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall";
-    case xla::PjRtClient::HostBufferSemantics::kZeroCopy:
-      return "xla::PjRtClient::HostBufferSemantics::kZeroCopy";
+    case xla::PjRtClient::HostBufferSemantics::kImmutableZeroCopy:
+      return "xla::PjRtClient::HostBufferSemantics::kImmutableZeroCopy";
     case xla::PjRtClient::HostBufferSemantics::kImmutableUntilTransferCompletes:
       return "xla::PjRtClient::HostBufferSemantics::"
              "kImmutableUntilTransferCompletes";
@@ -366,8 +366,9 @@ PJRT_HostBufferSemantics ConvertToPjRtHostBufferSemantics(
     case xla::PjRtClient::HostBufferSemantics::kImmutableUntilTransferCompletes:
       return PJRT_HostBufferSemantics::
           PJRT_HostBufferSemantics_kImmutableUntilTransferCompletes;
-    case xla::PjRtClient::HostBufferSemantics::kZeroCopy:
-      return PJRT_HostBufferSemantics::PJRT_HostBufferSemantics_kZeroCopy;
+    case xla::PjRtClient::HostBufferSemantics::kImmutableZeroCopy:
+      return PJRT_HostBufferSemantics::
+          PJRT_HostBufferSemantics_kImmutableZeroCopy;
     default:
       CHECK(false)
           << "Input host buffer semantics is not supported in C API layer: "
@@ -385,8 +386,8 @@ xla::PjRtClient::HostBufferSemantics ConvertFromPjRtHostBufferSemantics(
         PJRT_HostBufferSemantics_kImmutableUntilTransferCompletes:
       return xla::PjRtClient::HostBufferSemantics::
           kImmutableUntilTransferCompletes;
-    case PJRT_HostBufferSemantics::PJRT_HostBufferSemantics_kZeroCopy:
-      return xla::PjRtClient::HostBufferSemantics::kZeroCopy;
+    case PJRT_HostBufferSemantics::PJRT_HostBufferSemantics_kImmutableZeroCopy:
+      return xla::PjRtClient::HostBufferSemantics::kImmutableZeroCopy;
   }
 }
 
@@ -559,6 +560,22 @@ absl::Status ValidateCreateOptions(
     }
   }
   return absl::OkStatus();
+}
+
+const std::vector<PJRT_NamedValue>& GetXlaPluginCAttributes() {
+  constexpr absl::string_view kXlaVersion = "xla_version";
+  PJRT_NamedValue c_value;
+  c_value.struct_size = PJRT_NamedValue_STRUCT_SIZE;
+  c_value.extension_start = nullptr;
+  c_value.name = kXlaVersion.data();
+  c_value.name_size = kXlaVersion.size();
+  c_value.type = PJRT_NamedValue_Type::PJRT_NamedValue_kInt64;
+  // TODO(b/327203806): figure out where to keep the xla_version.
+  c_value.int64_value = 1;
+  c_value.value_size = 1;
+  static const std::vector<PJRT_NamedValue>* c_values =
+      new std::vector<PJRT_NamedValue>({c_value});
+  return *c_values;
 }
 
 static std::string StructSizeErrorMsg(absl::string_view struct_name,

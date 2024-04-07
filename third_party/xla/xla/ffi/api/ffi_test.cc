@@ -100,6 +100,25 @@ TEST(FfiTest, BufferArgument) {
   TF_ASSERT_OK(status);
 }
 
+TEST(FfiTest, BufferBaseResult) {
+  std::vector<float> storage(4, 0.0f);
+  se::DeviceMemoryBase memory(storage.data(), 4 * sizeof(float));
+
+  CallFrameBuilder builder;
+  builder.AddBufferRet(memory, PrimitiveType::F32, /*dims=*/{2, 2});
+  auto call_frame = builder.Build();
+
+  auto handler =
+      Ffi::Bind().Ret<BufferBase>().To([&](Result<BufferBase> buffer) {
+        EXPECT_EQ(buffer->data, storage.data());
+        EXPECT_EQ(buffer->dimensions.size(), 2);
+        return Error::Success();
+      });
+  auto status = Call(*handler, call_frame);
+
+  TF_ASSERT_OK(status);
+}
+
 TEST(FfiTest, MissingBufferArgument) {
   CallFrameBuilder builder;
   auto call_frame = builder.Build();
@@ -170,6 +189,18 @@ TEST(FfiTest, AutoBinding) {
   TF_ASSERT_OK(status);
 }
 
+TEST(FfiTest, AutoBindingResult) {
+  auto handler =
+      Ffi::BindTo(+[](Result<BufferBase> buffer) { return Error::Success(); });
+
+  CallFrameBuilder builder;
+  builder.AddBufferRet(se::DeviceMemoryBase(), PrimitiveType::F32, /*dims=*/{});
+  auto call_frame = builder.Build();
+
+  auto status = Call(*handler, call_frame);
+  TF_ASSERT_OK(status);
+}
+
 struct I32AndF32 {
   int32_t i32;
   float f32;
@@ -229,6 +260,29 @@ struct CtxBinding<TestStream> {
 TEST(FfiTest, BindingPlatformStreamInference) {
   // We only check that it compiles.
   (void)Ffi::BindTo(+[](TestStream stream) { return Error::Success(); });
+}
+
+TEST(FfiTest, ArrayAttr) {
+  CallFrameBuilder::AttributesBuilder attrs;
+  attrs.Insert("arr", std::vector<int32_t>({1, 2, 3, 4}));
+
+  CallFrameBuilder builder;
+  builder.AddAttributes(attrs.Build());
+  auto call_frame = builder.Build();
+
+  auto fn = [&](Span<const int32_t> arr) {
+    EXPECT_EQ(arr.size(), 4);
+    EXPECT_EQ(arr[0], 1);
+    EXPECT_EQ(arr[1], 2);
+    EXPECT_EQ(arr[2], 3);
+    EXPECT_EQ(arr[3], 4);
+    return Error::Success();
+  };
+
+  auto handler = Ffi::Bind().Attr<Span<const int32_t>>("arr").To(fn);
+  auto status = Call(*handler, call_frame);
+
+  TF_ASSERT_OK(status);
 }
 
 TEST(FfiTest, PointerAttr) {

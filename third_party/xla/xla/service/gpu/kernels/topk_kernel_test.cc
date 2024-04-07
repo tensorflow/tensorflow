@@ -206,11 +206,14 @@ void BM_SmallTopk(benchmark::State& state) {
   }
 
   for (auto _ : state) {
-    auto timer = se::gpu::GpuTimer::Create(stream.get());
+    // Warmup execution without GpuTimer active
+    CHECK_OK(RunTopk(stream.get(), Get(T()), *input_buffer, n, *output_values,
+                     *output_indices, k, batch_size));
+    auto timer = se::gpu::GpuTimer::Create(stream.get(),
+                                           true /* warmup run was executed */);
     CHECK_OK(timer.status());
     CHECK_OK(RunTopk(stream.get(), Get(T()), *input_buffer, n, *output_values,
                      *output_indices, k, batch_size));
-    CHECK_OK(stream->BlockHostUntilDone());
     auto timer_duration = timer.value().GetElapsedDuration();
     CHECK_OK(timer_duration.status());
     state.SetIterationTime(absl::ToDoubleSeconds(timer_duration.value()));

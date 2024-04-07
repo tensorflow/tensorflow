@@ -139,6 +139,15 @@ class PjRtTopologyDescription {
   // Returns vendor specific attributes about the topology.
   virtual const absl::flat_hash_map<std::string, PjRtDeviceAttribute>&
   Attributes() const = 0;
+
+  // Returns the default device layout for a buffer with `element_type` and
+  // `dims`. The default layout is a platform-specific layout used when no other
+  // layout is specified, e.g. for host-to-device transfers. When compiling, the
+  // default layout is used for program arguments and outputs unless
+  // user-specified or compiler-chosen layouts are requested via the
+  // "mhlo.layout_mode" attribute.
+  virtual StatusOr<Layout> GetDefaultLayout(
+      PrimitiveType element_type, absl::Span<const int64_t> dims) const = 0;
 };
 
 // Abstract interface that all registered compilers must implement.

@@ -441,6 +441,7 @@ class PjRtLoadedExecutable;
 struct PjRtPluginAttributes {
   int64_t pjrt_c_api_major_version;
   int64_t pjrt_c_api_minor_version;
+  absl::flat_hash_map<std::string, PjRtValueType> attributes;
 };
 
 // Encapsulates the state of Python session with XLA.
@@ -812,13 +813,14 @@ class PjRtClient {
     kImmutableUntilTransferCompletes,
 
     // The PjRtBuffer may alias `data` internally and the runtime may use the
-    // `data` contents as long as the buffer is alive. The caller promises to
-    // keep `data` alive and not to mutate its contents as long as the buffer is
-    // alive; to notify the caller that the buffer may be freed, the runtime
-    // will call `on_done_with_host_buffer` when the PjRtBuffer is freed. On
-    // non-CPU platforms this acts identically to
-    // kImmutableUntilTransferCompletes.
-    kZeroCopy,
+    // `data` contents as long as the buffer is alive. The runtime promises not
+    // to mutate contents of the buffer (i.e. it will not use it for aliased
+    // output buffers). The caller promises to keep `data` alive and also not to
+    // mutate its contents as long as the buffer is alive; to notify the caller
+    // that the buffer may be freed, the runtime will call
+    // `on_done_with_host_buffer` when the PjRtBuffer is freed. On non-CPU
+    // platforms this acts identically to kImmutableUntilTransferCompletes.
+    kImmutableZeroCopy,
   };
 
   // on_done_with_host_buffer is optional and may be null.

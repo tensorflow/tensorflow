@@ -895,6 +895,7 @@ absl::StatusOr<bool> ConvolutionVisitor::Run() {
     }
     if (convs_to_visit_.count(conv) > 0) {
       TF_CHECK_OK(PerformSpaceToBatchOnConvolution(conv));
+      changed_ = true;
     }
   }
   conv_visitor_list_.clear();
@@ -3709,8 +3710,6 @@ Status ConvolutionVisitor::PerformSpaceToBatchOnConvolution(
   }
   VLOG(1) << "Handling conv " << convolution->ToString();
 
-  changed_ = false;
-
   ConvolutionDimensionNumbers dim_numbers =
       convolution->convolution_dimension_numbers();
 
@@ -3915,7 +3914,6 @@ Status ConvolutionVisitor::PerformSpaceToBatchOnConvolution(
   }
   TF_CHECK_OK(PropagateOnUsers(original_conv));
 
-  changed_ = true;
 
   return OkStatus();
 }

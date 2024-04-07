@@ -34,6 +34,10 @@ inline constexpr StringRef kFusedFunctionAttr = "tf_quant.composite_function";
 // The keyword to detect if this is a `NullAttribute`.
 inline constexpr StringRef kNullAttributeValue = "N/A";
 
+// Prefixes attached to lifted functions.
+constexpr StringRef kQuantizedFuncPrefix = "quantized_";
+constexpr StringRef kCompositeFuncPrefix = "composite_";
+
 // The attribute will be used for TF::XlaCallModuleOp to restore the original
 // function name when loading it back.
 inline constexpr StringRef kOriginalStablehloEntryFunctionAttrName =
@@ -63,6 +67,13 @@ bool IsEinsumSupportedByXlaDotV2(StringAttr equation_attr);
 // `absl::InvalidArgumentError` when the attribute doesn't exist. Returns
 // `absl::InternalError` when parsing the attribute to `Method` failed.
 absl::StatusOr<::stablehlo::quantization::Method> GetQuantizationMethod(
+    TF::XlaCallModuleOp xla_call_module_op);
+
+// Gets the quantization method from the given `XlaCallModuleOp`. It is
+// retrieved from the `kQuantizationMethodAttr` string attribute. Returns a
+// default instance of `Method` iff the attribute doesn't exist or the attribute
+// contains an invalid textproto for `Method`.
+::stablehlo::quantization::Method GetQuantizationMethodOrDefault(
     TF::XlaCallModuleOp xla_call_module_op);
 
 // Creates a function to wrap the section between arguments and results.

@@ -33,17 +33,17 @@ struct Sine {
   T operator()(T v) const {
     return std::sin(v);
   }
-
-  template <>
-  F16 operator()<F16>(F16 val) const {
-    return F16(operator()(static_cast<float>(val)));
-  }
-
-  template <>
-  BF16 operator()<BF16>(BF16 val) const {
-    return BF16(operator()(static_cast<float>(val)));
-  }
 };
+
+template <>
+F16 Sine::operator()<F16>(F16 val) const {
+  return F16(operator()(static_cast<float>(val)));
+}
+
+template <>
+BF16 Sine::operator()<BF16>(BF16 val) const {
+  return BF16(operator()(static_cast<float>(val)));
+}
 
 SineOp Create(SineOp::Attributes) { return {}; }
 
@@ -59,10 +59,11 @@ absl::Status Prepare(SineOp& op, const Tensor& input, Tensor& output) {
 absl::Status Evaluate(SineOp& op, const Tensor& input, Tensor& output) {
   Sine sine;
   if (input.IsPerTensorQuantized()) {
-    DISPATCH_QUANTIZED(detail::DequantizeOpQuantizePerTensor,
-                       input.quantized_tensor_element_type().StorageType(),
-                       input.quantized_tensor_element_type().ExpressedType(),
-                       sine, input, output)
+    DISPATCH_QUANTIZED(
+        detail::DequantizeOpQuantizePerTensor,
+        input.quantized_per_tensor_element_type().StorageType(),
+        input.quantized_per_tensor_element_type().ExpressedType(), sine, input,
+        output)
   } else if (!input.IsQuantized() && IsFloat(input.StorageType())) {
     DISPATCH_FLOAT(detail::EvaluateNoQuantization, input.tensor_element_type(),
                    sine, input, output);

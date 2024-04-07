@@ -15,8 +15,10 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_CALIBRATOR_CALIBRATION_STATISTICS_COLLECTOR_MIN_MAX_H_
 #define TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_CALIBRATOR_CALIBRATION_STATISTICS_COLLECTOR_MIN_MAX_H_
 
+#include <cstdint>
 #include <optional>
 
+#include "absl/types/span.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/calibrator/calibration_statistics.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/calibrator/calibration_statistics_collector_base.h"
@@ -37,7 +39,8 @@ class CalibrationStatisticsCollectorMinMax
 
   void ClearData() override;
 
-  void Collect(const float *data, unsigned int N) override;
+  void Collect(float min, float max,
+               absl::Span<const int64_t> histogram) override;
 
   std::optional<CalibrationStatistics> GetStatistics() const override;
 

@@ -188,15 +188,22 @@ typedef enum {
 } XLA_FFI_ArgType;
 
 //===----------------------------------------------------------------------===//
+// Builtin result types
+//===----------------------------------------------------------------------===//
+
+typedef enum {
+  XLA_FFI_RetType_BUFFER = 1,
+} XLA_FFI_RetType;
+
+//===----------------------------------------------------------------------===//
 // Builtin attribute types
 //===----------------------------------------------------------------------===//
 
 typedef enum {
-  XLA_FFI_AttrType_I32 = 1,
-  XLA_FFI_AttrType_I64 = 2,
-  XLA_FFI_AttrType_F32 = 3,
+  XLA_FFI_AttrType_ARRAY = 1,
+  XLA_FFI_AttrType_DICTIONARY = 2,
+  XLA_FFI_AttrType_SCALAR = 3,
   XLA_FFI_AttrType_STRING = 4,
-  XLA_FFI_AttrType_DICTIONARY = 5,
 } XLA_FFI_AttrType;
 
 //===----------------------------------------------------------------------===//
@@ -223,16 +230,50 @@ struct XLA_FFI_ByteSpan {
 
 XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_ByteSpan, len);
 
+// A struct to pass a scalar value to FFI handler.
+struct XLA_FFI_Scalar {
+  size_t struct_size;
+  void* priv;
+
+  XLA_FFI_DataType dtype;
+  void* value;
+};
+
+XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_Scalar, value);
+
+// A struct to pass a dense array to FFI handler.
+struct XLA_FFI_Array {
+  size_t struct_size;
+  void* priv;
+
+  XLA_FFI_DataType dtype;
+  size_t size;
+  void* data;
+};
+
+XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_Array, data);
+
 struct XLA_FFI_Args {
   size_t struct_size;
   void* priv;
 
-  int64_t num_args;
-  XLA_FFI_ArgType* types;  // length == num_args
-  void** args;             // length == num_args
+  int64_t size;
+  XLA_FFI_ArgType* types;  // length == size
+  void** args;             // length == size
 };
 
 XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_Args, args);
+
+struct XLA_FFI_Rets {
+  size_t struct_size;
+  void* priv;
+
+  int64_t size;
+  XLA_FFI_RetType* types;  // length == size
+  void** rets;             // length == size
+};
+
+XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_Rets, rets);
 
 // FFI handler attributes are always sorted by name, so that the handler can
 // rely on binary search to look up attributes by name.
@@ -240,10 +281,10 @@ struct XLA_FFI_Attrs {
   size_t struct_size;
   void* priv;
 
-  int64_t num_attrs;
-  XLA_FFI_AttrType* types;   // length == num_attrs
-  XLA_FFI_ByteSpan** names;  // length == num_attrs
-  void** attrs;              // length == num_attrs
+  int64_t size;
+  XLA_FFI_AttrType* types;   // length == size
+  XLA_FFI_ByteSpan** names;  // length == size
+  void** attrs;              // length == size
 };
 
 XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_Attrs, attrs);
@@ -255,6 +296,7 @@ struct XLA_FFI_CallFrame {
   XLA_FFI_Api* api;
   XLA_FFI_ExecutionContext* ctx;
   XLA_FFI_Args args;
+  XLA_FFI_Rets rets;
   XLA_FFI_Attrs attrs;
 };
 

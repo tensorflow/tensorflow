@@ -45,7 +45,7 @@ tf_python_pybind_extension(
         "//tensorflow/python/lib/core:safe_pyobject_ptr_required_hdrs",
         "@local_tsl//tsl/distributed_runtime:pywrap_required_hdrs",
         "@local_tsl//tsl/distributed_runtime/coordination:pywrap_required_hdrs",
-        "@local_tsl//tsl/python/lib/core:numpy_hdr",
+        "@local_xla//xla/tsl/python/lib/core:numpy_hdr",
     ],
     enable_stub_generation = True,
     pytype_srcs = [
@@ -68,7 +68,7 @@ tf_python_pybind_extension(
         "//third_party/python_runtime:headers",
         "@com_google_absl//absl/types:optional",
         "@eigen_archive//:eigen3",
-        "@local_tsl//tsl/python/lib/core:numpy",
+        "@local_xla//xla/tsl/python/lib/core:numpy",
         "@pybind11",
         "@pybind11_abseil//pybind11_abseil:absl_casters",
         "@pybind11_protobuf//pybind11_protobuf:native_proto_caster",
@@ -259,7 +259,7 @@ tf_cuda_library(
         "//tensorflow/python/lib/core:safe_pyobject_ptr",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/python/lib/core:numpy",
+        "@local_xla//xla/tsl/python/lib/core:numpy",
     ],
     alwayslink = 1,
 )

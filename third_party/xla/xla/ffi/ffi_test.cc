@@ -21,6 +21,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/strings/match.h"
+#include "absl/types/span.h"
 #include "xla/ffi/call_frame.h"
 #include "xla/ffi/ffi_api.h"
 #include "xla/service/service_executable_run_options.h"
@@ -156,6 +158,29 @@ TEST(FfiTest, BuiltinAttributesAutoBinding) {
 
   auto handler = Ffi::BindTo(fn);
   auto status = Call(*handler, call_frame);
+  TF_ASSERT_OK(status);
+}
+
+TEST(FfiTest, ArrayAttr) {
+  CallFrameBuilder::AttributesBuilder attrs;
+  attrs.Insert("arr", std::vector<int32_t>({1, 2, 3, 4}));
+
+  CallFrameBuilder builder;
+  builder.AddAttributes(attrs.Build());
+  auto call_frame = builder.Build();
+
+  auto fn = [&](absl::Span<const int32_t> arr) {
+    EXPECT_EQ(arr.size(), 4);
+    EXPECT_EQ(arr[0], 1);
+    EXPECT_EQ(arr[1], 2);
+    EXPECT_EQ(arr[2], 3);
+    EXPECT_EQ(arr[3], 4);
+    return absl::OkStatus();
+  };
+
+  auto handler = Ffi::Bind().Attr<absl::Span<const int32_t>>("arr").To(fn);
+  auto status = Call(*handler, call_frame);
+
   TF_ASSERT_OK(status);
 }
 
@@ -353,9 +378,18 @@ TEST(FfiTest, DecodingErrors) {
 
   auto status = Call(*handler, call_frame);
 
-  ASSERT_EQ(
+  EXPECT_TRUE(absl::StrContains(
       status.message(),
-      "Failed to decode all FFI handler operands (bad operands at: 0, 1, 3)");
+      "Failed to decode all FFI handler operands (bad operands at: 0, 1, 3)"));
+
+  EXPECT_TRUE(absl::StrContains(
+      status.message(), "Attribute name mismatch: i32 vs not_i32_should_fail"));
+
+  EXPECT_TRUE(absl::StrContains(
+      status.message(), "Attribute name mismatch: i64 vs not_i64_should_fail"));
+
+  EXPECT_TRUE(absl::StrContains(
+      status.message(), "Attribute name mismatch: str vs not_str_should_fail"));
 }
 
 TEST(FfiTest, BufferBaseArgument) {

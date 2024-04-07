@@ -124,11 +124,9 @@ limitations under the License.
 #include "xla/service/gpu/compile_module_to_llvm_ir.h"
 #include "xla/service/gpu/conv_layout_normalization.h"
 #include "xla/service/gpu/copy_fusion.h"
-#include "xla/service/gpu/cudnn_fusion_compiler.h"
 #include "xla/service/gpu/custom_kernel_fusion_rewriter.h"
 #include "xla/service/gpu/dot_dimension_sorter.h"
 #include "xla/service/gpu/dot_operand_converter.h"
-#include "xla/service/gpu/fusion_merger_triton.h"
 #include "xla/service/gpu/fusion_pipeline.h"
 #include "xla/service/gpu/fusion_wrapper.h"
 #include "xla/service/gpu/gemm_broadcast_folding_rewriter.h"
@@ -166,12 +164,12 @@ limitations under the License.
 #include "xla/service/gpu/reduction_splitter.h"
 #include "xla/service/gpu/reduction_utils.h"
 #include "xla/service/gpu/rename_fusions.h"
+#include "xla/service/gpu/runtime/thunk.h"
 #include "xla/service/gpu/runtime_intrinsics.h"
 #include "xla/service/gpu/scatter_slice_simplifier.h"
 #include "xla/service/gpu/softmax_rewriter_triton.h"
 #include "xla/service/gpu/stream_attribute_annotator.h"
 #include "xla/service/gpu/stream_attribute_async_wrapper.h"
-#include "xla/service/gpu/thunk.h"
 #include "xla/service/gpu/topk_specializer.h"
 #include "xla/service/gpu/topk_splitter.h"
 #include "xla/service/gpu/tree_reduction_rewriter.h"
@@ -1043,12 +1041,6 @@ absl::Status RunFusionPasses(HloModule* hlo_module,
                          .Run(hlo_module)
                          .status());
 
-  if (hlo_module->config()
-          .debug_options()
-          .xla_gpu_enable_triton_softmax_fusion()) {
-    TF_RETURN_IF_ERROR(FusionMergerTriton().Run(hlo_module).status());
-  }
-
   if (hlo_module->config().debug_options().xla_gpu_collect_cost_model_stats()) {
     GpuHloCostAnalysis::Options cost_analysis_options{
         shape_size_fn,
@@ -1294,6 +1286,17 @@ absl::Status GpuCompiler::OptimizeHloModule(
   TF_RETURN_IF_ERROR(OptimizeHloPostLayoutAssignment(
       hlo_module, stream_exec, options, gpu_target_config, thread_pool.get()));
 
+  // This is a "low effort, high impact" fusion that should be run first.
+  if (hlo_module->config()
+          .debug_options()
+          .xla_gpu_enable_address_computation_fusion()) {
+    HloPassPipeline pipeline("address-computation");
+    TF_ASSIGN_OR_RETURN(se::Platform * platform,
+                        se::PlatformManager::PlatformWithId(PlatformId()));
+    pipeline.AddPass<AddressComputationFusionRewriter>(platform->Name());
+    TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
+  }
+
   TF_RETURN_IF_ERROR(RunFusionPasses(hlo_module, gpu_target_config,
                                      thread_pool.get(),
                                      ShapeSizeBytesFunction()));
@@ -1410,7 +1413,7 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     // and may rewrite quantized FP8 GEMMs as higher-precision GEMMs.
     pipeline.AddPass<GemmRewriter>(gpu_version, /*f8_rewrite=*/true);
     if (debug_options.xla_gpu_enable_triton_gemm() && cuda_cc != nullptr &&
-        cuda_cc->IsAtLeast(se::CudaComputeCapability::VOLTA)) {
+        cuda_cc->IsAtLeast(se::CudaComputeCapability::AMPERE)) {
       pipeline.AddPass<GemmFusion>(gpu_version);
     }
     // Rewrite non-FP8 GEMMs.
@@ -1432,7 +1435,7 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     // harder.
     if (debug_options.xla_gpu_enable_triton_softmax_fusion() &&
         cuda_cc != nullptr &&
-        cuda_cc->IsAtLeast(se::CudaComputeCapability::VOLTA)) {
+        cuda_cc->IsAtLeast(se::CudaComputeCapability::AMPERE)) {
       pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(simplifier_options);
       pipeline.AddPass<SoftmaxRewriterTriton>(gpu_version);
     }
@@ -1670,45 +1673,15 @@ absl::Status RunPostSchedulingCopyInsertion(
 }
 }  // namespace
 
-absl::StatusOr<std::unique_ptr<BufferAssignment>> GpuCompiler::AssignBuffers(
-    HloModule* hlo_module, const se::StreamExecutor* stream_exec) {
-  const se::DeviceDescription& gpu_device_info =
-      stream_exec->GetDeviceDescription();
-  TF_RETURN_IF_ERROR(
-      ScheduleGpuModule(hlo_module, pointer_size_, gpu_device_info).status());
-
-  TF_RETURN_IF_ERROR(
-      RunPostSchedulingCopyInsertion(hlo_module, GetCanShareBuffer()));
-
-  auto buffer_size_bytes_function =
-      [this](const BufferValue& buffer_value) -> int64_t {
-    return GetSizeOfShape(buffer_value.shape(), pointer_size_);
-  };
-
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<BufferAssignment> assignment,
-      BufferAssigner::Run(
-          hlo_module,
-          std::make_unique<SequentialHloOrdering>(hlo_module->schedule()),
-          buffer_size_bytes_function,
-          /*color_alignment=*/
-          [](LogicalBuffer::Color) { return kXlaAllocatedBufferAlignBytes; },
-          /*allocate_buffers_for_constants=*/true,
-          /*colorer=*/BufferAssigner::DefaultColorer(),
-          /*must_not_live_out=*/{}, GetCanShareBuffer()));
-
-  return std::move(assignment);
-}
-
 using OutputInfoMap =
     absl::flat_hash_map<ShapeIndex, GpuExecutable::OutputInfo>;
 
-static void NullDiagnosticHandler(const llvm::DiagnosticInfo& diag_info,
+static void NullDiagnosticHandler(const llvm::DiagnosticInfo* diag_info,
                                   void* context) {
   std::string error_string;
   llvm::raw_string_ostream string_printer(error_string);
   llvm::DiagnosticPrinterRawOStream diagnostic_printer(string_printer);
-  diag_info.print(diagnostic_printer);
+  diag_info->print(diagnostic_printer);
 
   VLOG(5) << error_string;
 }
@@ -1987,8 +1960,8 @@ absl::StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
     const CompileOptions& options) {
   Thunk::BinaryMap dnn_compiled_graphs;
   if (stream_exec) {
-    CuDnnFusionCompiler cudnn_compiler(*stream_exec, dnn_compiled_graphs);
-    TF_RETURN_IF_ERROR(cudnn_compiler.Run(&*module).status());
+    TF_RETURN_IF_ERROR(RunCudnnFusionCompilerPass(module.get(), stream_exec,
+                                                  &dnn_compiled_graphs));
   }
 
   const DebugOptions& debug_opts = module->config().debug_options();
@@ -2224,16 +2197,6 @@ absl::Status GpuCompiler::RunPostSchedulingPipelines(
       VLOG(1) << "HloRematerialization saved "
               << sizes.before_bytes - sizes.after_bytes << " bytes";
     }
-  }
-
-  if (module->config()
-          .debug_options()
-          .xla_gpu_enable_address_computation_fusion()) {
-    HloPassPipeline pipeline("address-computation");
-    TF_ASSIGN_OR_RETURN(se::Platform * platform,
-                        se::PlatformManager::PlatformWithId(PlatformId()));
-    pipeline.AddPass<AddressComputationFusionRewriter>(platform->Name());
-    TF_RETURN_IF_ERROR(pipeline.Run(module).status());
   }
 
   {

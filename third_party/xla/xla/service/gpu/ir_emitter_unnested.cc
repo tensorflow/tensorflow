@@ -109,7 +109,6 @@ limitations under the License.
 #include "xla/service/gpu/kernels/topk_custom_kernel.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/matmul_utils.h"
-#include "xla/service/gpu/nccl_api.h"
 #include "xla/service/gpu/parallel_loop_emitter.h"
 #include "xla/service/gpu/runtime/command_buffer_cmd.h"
 #include "xla/service/gpu/runtime/command_buffer_cmd_emitter.h"
@@ -126,6 +125,7 @@ limitations under the License.
 #include "xla/service/gpu/runtime/nccl_all_gather_thunk.h"
 #include "xla/service/gpu/runtime/nccl_all_reduce_thunk.h"
 #include "xla/service/gpu/runtime/nccl_all_to_all_thunk.h"
+#include "xla/service/gpu/runtime/nccl_api.h"
 #include "xla/service/gpu/runtime/nccl_collective_broadcast_thunk.h"
 #include "xla/service/gpu/runtime/nccl_collective_permute_thunk.h"
 #include "xla/service/gpu/runtime/nccl_collective_thunk.h"
@@ -136,9 +136,9 @@ limitations under the License.
 #include "xla/service/gpu/runtime/replica_id_thunk.h"
 #include "xla/service/gpu/runtime/send_recv_thunk.h"
 #include "xla/service/gpu/runtime/sequential_thunk.h"
+#include "xla/service/gpu/runtime/thunk.h"
 #include "xla/service/gpu/runtime/wait_for_streams_thunk.h"
 #include "xla/service/gpu/runtime/while_thunk.h"
-#include "xla/service/gpu/thunk.h"
 #include "xla/service/gpu/triton_call.h"
 #include "xla/service/llvm_ir/buffer_assignment_util.h"
 #include "xla/service/llvm_ir/ir_array.h"
@@ -1653,7 +1653,8 @@ absl::Status IrEmitterUnnested::EmitTritonCustomCall(
     TF_ASSIGN_OR_RETURN(
         auto kernel_arguments,
         KernelArguments::Create(ir_emitter_context_->buffer_assignment(), instr,
-                                instr->operands()));
+                                instr->operands(),
+                                /*dedup=*/false));
     auto launch_dimensions =
         LaunchDimensions(se::BlockDim(call.grid_x, call.grid_y, call.grid_z),
                          se::ThreadDim(call.num_warps * 32));
@@ -1696,7 +1697,8 @@ absl::Status IrEmitterUnnested::EmitTritonCustomCall(
   TF_ASSIGN_OR_RETURN(
       auto kernel_arguments,
       KernelArguments::Create(ir_emitter_context_->buffer_assignment(), instr,
-                              instr->operands()));
+                              instr->operands(),
+                              /*dedup=*/false));
 
   AddThunkToThunkSequence(std::make_unique<KernelThunk>(
       instr, entry->kernel_name, kernel_arguments.args(),
@@ -2397,7 +2399,8 @@ absl::Status IrEmitterUnnested::EmitInfeed(const HloInfeedInstruction* instr) {
   // We only need the result data to construct the infeed thunk.
   std::vector<ShapedSlice> shaped_slices;
   TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
-      instr->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
+      instr->shape(),
+      [&](const Shape& subshape, const ShapeIndex& index) -> absl::Status {
         if (subshape.IsTuple() || subshape.IsToken()) return absl::OkStatus();
         if (subshape.IsArray()) {
           TF_ASSIGN_OR_RETURN(BufferAllocation::Slice data,
@@ -2423,7 +2426,8 @@ absl::Status IrEmitterUnnested::EmitOutfeed(
   const HloInstruction* source = instr->operand(0);
   std::vector<ShapedSlice> shaped_slices;
   TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
-      source->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
+      source->shape(),
+      [&](const Shape& subshape, const ShapeIndex& index) -> absl::Status {
         if (subshape.IsTuple()) return absl::OkStatus();
         if (subshape.IsArray()) {
           TF_ASSIGN_OR_RETURN(BufferAllocation::Slice data,

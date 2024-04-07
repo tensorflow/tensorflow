@@ -2,6 +2,10 @@
 # Public targets:
 #  ":platform" - Low-level and platform-specific Python code.
 
+load(
+    "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
+    "if_cuda_is_configured",
+)
 load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
 load("//tensorflow:strict.default.bzl", "py_strict_library")
 
@@ -18,10 +22,6 @@ load(
     "if_static",
     "tf_additional_plugin_deps",
     "tf_additional_profiler_deps",
-)
-load(
-    "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
-    "if_cuda_is_configured",
 )
 
 # TODO(mdan): Break into per-directory files.
@@ -834,9 +834,9 @@ pywrap_tensorflow_macro(
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/profiler/rpc:profiler_server_impl",
         "@local_tsl//tsl/profiler/rpc/client:profiler_client_impl",
-        "@local_tsl//tsl/python/lib/core:numpy",
         "@local_xla//xla/backends/profiler/cpu:python_tracer",
         "@local_xla//xla/stream_executor:stream_executor_impl",
+        "@local_xla//xla/tsl/python/lib/core:numpy",
     ] + select({
         "//tensorflow/compiler/mlir/python:disable_mlir_config": [],
         "//conditions:default": [
@@ -951,9 +951,9 @@ filegroup(
         "@local_tsl//tsl/profiler/lib:profiler_session_impl",  # profiler
         "@local_tsl//tsl/profiler/rpc:profiler_server_impl",  # profiler
         "@local_tsl//tsl/profiler/rpc/client:profiler_client_impl",
-        "@local_tsl//tsl/python/lib/core:ml_dtypes_lib",  # bfloat16, float8_e4m3fn, float8_e5m2
-        "@local_tsl//tsl/python/lib/core:numpy",  # checkpoint_reader
         "@local_xla//xla/stream_executor",  # stat_summarizer
+        "@local_xla//xla/tsl/python/lib/core:ml_dtypes_lib",  # bfloat16, float8_e4m3fn, float8_e5m2
+        "@local_xla//xla/tsl/python/lib/core:numpy",  # checkpoint_reader
     ] + select({
         "//tensorflow/compiler/mlir/python:disable_mlir_config": [],
         "//conditions:default": [
@@ -1151,7 +1151,7 @@ cc_library(
     name = "unified_api_pywrap_required_headers",
     textual_hdrs = [
         "//tensorflow/python/lib/core:basic_hdrs",
-        "@local_tsl//tsl/python/lib/core:basic_hdrs",
+        "@local_xla//xla/tsl/python/lib/core:basic_hdrs",
         "//tensorflow/c:headers",
         "//tensorflow/c:safe_ptr_hdr",
         "//tensorflow/c/eager:headers",
@@ -1205,7 +1205,7 @@ tf_python_pybind_extension(
         "//tensorflow/python/util:util_hdr",
         "@local_tsl//tsl/distributed_runtime:pywrap_required_hdrs",
         "@local_tsl//tsl/distributed_runtime/coordination:pywrap_required_hdrs",
-        "@local_tsl//tsl/python/lib/core:numpy_hdr",
+        "@local_xla//xla/tsl/python/lib/core:numpy_hdr",
     ],
     dynamic_deps = [":_pywrap_tensorflow_internal.so"] + select({
         "//tensorflow:macos": ["//tensorflow:libtensorflow_framework.%s.dylib" % VERSION],

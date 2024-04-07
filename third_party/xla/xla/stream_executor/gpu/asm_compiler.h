@@ -104,16 +104,25 @@ absl::StatusOr<std::vector<uint8_t>> LinkUsingNvlink(
     absl::string_view preferred_cuda_dir, gpu::GpuContext* context,
     std::vector<CubinOrPTXImage> images);
 
+using ToolVersion = std::array<int64_t, 3>;
+absl::StatusOr<std::string> FindCudaExecutable(
+    std::string_view binary_name, std::string_view preferred_cuda_dir,
+    ToolVersion minimum_version,
+    absl::Span<const ToolVersion> excluded_versions);
+
 absl::StatusOr<std::string> FindCudaExecutable(
     std::string_view binary_name, std::string_view preferred_cuda_dir);
 
 // Runs tool --version and parses its version string.
-using ToolVersion = std::array<int64_t, 3>;
 absl::StatusOr<ToolVersion> GetToolVersion(std::string_view tool_path);
 
-// On NVIDIA GPUs, returns the CUDA toolkit version supported by the driver,
+// On NVIDIA GPUs, returns the version of the ptxas command line tool.
 absl::StatusOr<ToolVersion> GetAsmCompilerVersion(
-    const std::string& preferred_cuda_dir);
+    std::string_view preferred_cuda_dir);
+
+// On NVIDIA GPUs, returns the version of the nvlink command line tool.
+absl::StatusOr<ToolVersion> GetNvLinkVersion(
+    std::string_view preferred_cuda_dir);
 
 #if GOOGLE_CUDA
 // Maintains a cache of pointers to loaded kernels

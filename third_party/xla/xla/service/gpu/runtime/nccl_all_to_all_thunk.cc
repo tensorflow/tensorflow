@@ -28,7 +28,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/ir_emission_utils.h"
-#include "xla/service/gpu/nccl_api.h"
+#include "xla/service/gpu/runtime/nccl_api.h"
 #include "xla/service/gpu/runtime/nccl_collective_thunk.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"

@@ -22,7 +22,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
-#include "absl/types/span.h"
+#include "absl/strings/match.h"
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -176,11 +176,8 @@ absl::StatusOr<std::unique_ptr<FusionInterface>> GetFusionEmitter(
   switch (analysis.GetEmitterFusionKind()) {
     case HloFusionAnalysis::EmitterFusionKind::kCustomFusion: {
       const auto& config = backend_config.custom_fusion_config();
-      if (config.name() == "address_computation") {
+      if (absl::StrContains(config.name(), "address_computation")) {
         return std::make_unique<AddressComputationFusion>(analysis);
-      }
-      if (config.name() == "dynamic_address_computation") {
-        return std::make_unique<DynamicAddressComputationFusion>(analysis);
       }
       return std::make_unique<CustomFusion>();
     }

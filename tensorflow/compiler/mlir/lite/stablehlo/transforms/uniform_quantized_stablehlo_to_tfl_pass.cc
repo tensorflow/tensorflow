@@ -61,7 +61,9 @@ using ::mlir::quant::CreateI32F32UniformQuantizedPerAxisType;
 using ::mlir::quant::CreateI32F32UniformQuantizedType;
 using ::mlir::quant::CreateI8F32UniformQuantizedPerAxisType;
 using ::mlir::quant::CreateI8F32UniformQuantizedType;
+using ::mlir::quant::FindOperandOfType;
 using ::mlir::quant::FindUserOfType;
+using ::mlir::quant::GetElementType;
 using ::mlir::quant::IsI32F32UniformQuantizedPerAxisType;
 using ::mlir::quant::IsI32F32UniformQuantizedType;
 using ::mlir::quant::IsI8F32UniformQuantizedPerAxisType;
@@ -106,6 +108,20 @@ double GetBiasScale(const double input_scale, const double filter_scale) {
   return filter_scale * input_scale;
 }
 
+// Returns the optionally broadcasted bias constant op used for a given op.
+// If no such constant op exists, returns a nullptr.
+Operation* GetBiasConstOp(Operation* op) {
+  Operation* bias_const_op;
+  if (Operation* broadcast_in_dim_op =
+          FindOperandOfType<stablehlo::BroadcastInDimOp>(op);
+      broadcast_in_dim_op != nullptr) {
+    bias_const_op = broadcast_in_dim_op->getOperand(0).getDefiningOp();
+  } else {
+    bias_const_op = FindOperandOfType<stablehlo::ConstantOp>(op);
+  }
+  return isa<stablehlo::ConstantOp>(bias_const_op) ? bias_const_op : nullptr;
+}
+
 // Creates a new `tfl.qconst` op for the quantized filter. Transposes the
 // filter value from [i, o] -> [o, i]. This is because we assume `[i, o]`
 // format for `stablehlo.dot_general` (i.e. contracting dimension == 1)
@@ -142,10 +158,7 @@ TFL::QConstOp CreateTransposedTflConstOpForFilter(
   Type new_filter_quantized_type;
 
   if (is_per_channel) {
-    auto filter_quantized_type = filter_constant_op.getResult()
-                                     .getType()
-                                     .cast<TensorType>()
-                                     .getElementType()
+    auto filter_quantized_type = GetElementType(filter_constant_op.getResult())
                                      .cast<UniformQuantizedPerAxisType>();
     new_filter_quantized_type = CreateI8F32UniformQuantizedPerAxisType(
         filter_constant_op->getLoc(), *rewriter.getContext(),
@@ -153,10 +166,7 @@ TFL::QConstOp CreateTransposedTflConstOpForFilter(
         filter_quantized_type.getZeroPoints(),
         /*quantization_dimension=*/0, /*narrow_range=*/true);
   } else {
-    auto filter_quantized_type = filter_constant_op.getResult()
-                                     .getType()
-                                     .cast<TensorType>()
-                                     .getElementType()
+    auto filter_quantized_type = GetElementType(filter_constant_op.getResult())
                                      .cast<UniformQuantizedType>();
     new_filter_quantized_type = CreateI8F32UniformQuantizedType(
         filter_constant_op->getLoc(), *rewriter.getContext(),
@@ -224,9 +234,7 @@ TFL::QConstOp CreateTflConstOpForDummyBias(
   Type bias_quantized_type;
   if (is_per_channel) {
     const auto filter_quantized_element_type =
-        filter_const_op.getResult()
-            .getType()
-            .getElementType()
+        GetElementType(filter_const_op.getResult())
             .cast<UniformQuantizedPerAxisType>();
 
     // The storage type is i32 for bias, which is the precision used for
@@ -238,9 +246,7 @@ TFL::QConstOp CreateTflConstOpForDummyBias(
         /*quantization_dimension=*/0);
   } else {
     const auto filter_quantized_element_type =
-        filter_const_op.getResult()
-            .getType()
-            .getElementType()
+        GetElementType(filter_const_op.getResult())
             .cast<UniformQuantizedType>();
 
     // The storage type is i32 for bias, which is the precision used for
@@ -277,8 +283,9 @@ arith::ConstantOp CreateI32ShapeConstantOp(const TensorType op_type,
 }
 
 // Returns the desired qi8 per-tensor quantized output type for a given gemm op.
-Type GetOutputType(Operation* op, MLIRContext& ctx, const bool has_i32_output,
-                   const bool fuse_bias_constant) {
+Type GetQuantizedOutputType(Operation* op, PatternRewriter& rewriter,
+                            const bool has_i32_output,
+                            const bool fuse_bias_constant) {
   Operation* uniform_quantize_op;
   if (!has_i32_output) return op->getResult(0).getType();
   if (fuse_bias_constant) {
@@ -289,17 +296,15 @@ Type GetOutputType(Operation* op, MLIRContext& ctx, const bool has_i32_output,
   }
   // StableHLO Quantizer outputs an i32 type. Rewrite to i8 type result
   // to meet TFLite op requirement.
-  auto result_quantized_type = uniform_quantize_op->getResult(0)
-                                   .getType()
-                                   .cast<TensorType>()
-                                   .getElementType()
+  auto result_quantized_type = GetElementType(uniform_quantize_op->getResult(0))
                                    .cast<UniformQuantizedType>();
   auto new_result_quantized_type = CreateI8F32UniformQuantizedType(
-      uniform_quantize_op->getLoc(), ctx, result_quantized_type.getScale(),
-      result_quantized_type.getZeroPoint());
+      uniform_quantize_op->getLoc(), *rewriter.getContext(),
+      result_quantized_type.getScale(), result_quantized_type.getZeroPoint());
   // Omit any bias and requantize ops as `tfl.{gemm_op}` outputs a
   // fused `qi8` type.
-  FindUserOfType<>(uniform_quantize_op)->setOperand(0, op->getResult(0));
+  rewriter.replaceAllUsesWith(uniform_quantize_op->getResult(0),
+                              op->getResult(0));
   return op->getResult(0).getType().cast<TensorType>().clone(
       new_result_quantized_type);
 }
@@ -315,8 +320,7 @@ class RewriteUniformQuantizeOp
   // detailed limitations
   // (https://github.com/tensorflow/tensorflow/blob/8f145d579aa0ee7f4187af32dbbf4e12fdabbffe/tensorflow/lite/kernels/quantize.cc#L105).
   LogicalResult match(stablehlo::UniformQuantizeOp op) const override {
-    const Type input_element_type =
-        op.getOperand().getType().cast<TensorType>().getElementType();
+    const Type input_element_type = GetElementType(op.getOperand());
     if (!(input_element_type.isa<FloatType>() ||
           IsI32F32UniformQuantizedType(input_element_type) ||
           IsI32F32UniformQuantizedPerAxisType(input_element_type))) {
@@ -328,10 +332,7 @@ class RewriteUniformQuantizeOp
 
     // Output type of `UniformQuantizeOp` is guaranteed to be a quantized
     // tensor with integer storage type.
-    const auto output_storage_type = op.getResult()
-                                         .getType()
-                                         .cast<TensorType>()
-                                         .getElementType()
+    const auto output_storage_type = GetElementType(op.getResult())
                                          .cast<QuantizedType>()
                                          .getStorageType()
                                          .cast<IntegerType>();
@@ -363,10 +364,7 @@ class RewriteUniformDequantizeOp
   // detailed limitations
   // (https://github.com/tensorflow/tensorflow/blob/8f145d579aa0ee7f4187af32dbbf4e12fdabbffe/tensorflow/lite/kernels/dequantize.cc#L52).
   LogicalResult match(stablehlo::UniformDequantizeOp op) const override {
-    const auto input_storage_type = op.getOperand()
-                                        .getType()
-                                        .cast<TensorType>()
-                                        .getElementType()
+    const auto input_storage_type = GetElementType(op.getOperand())
                                         .cast<QuantizedType>()
                                         .getStorageType()
                                         .cast<IntegerType>();
@@ -377,11 +375,8 @@ class RewriteUniformDequantizeOp
     }
 
     // Output type is guaranteed to be a float tensor for a valid StableHLO.
-    const auto output_element_type = op.getResult()
-                                         .getType()
-                                         .cast<TensorType>()
-                                         .getElementType()
-                                         .cast<FloatType>();
+    const auto output_element_type =
+        GetElementType(op.getResult()).cast<FloatType>();
     if (!output_element_type.isa<Float32Type>()) {
       LLVM_DEBUG(llvm::dbgs() << "Uniform dequantize op's output element type "
                                  "should be f32. Got: "
@@ -448,8 +443,7 @@ class RewriteQuantizedDotGeneralOpToTflFullyConnectedOrBatchMatmulOp
         op.getDotDimensionNumbers();
     const bool is_batch_matmul =
         !dot_dimension_nums.getLhsBatchingDimensions().empty();
-    const Type elem_type =
-        op.getResult().getType().cast<TensorType>().getElementType();
+    const Type elem_type = GetElementType(op.getResult());
     const bool has_i32_output = IsI32F32UniformQuantizedType(elem_type) ||
                                 IsI32F32UniformQuantizedPerAxisType(elem_type);
 
@@ -479,8 +473,7 @@ class RewriteQuantizedDotGeneralOpToTflFullyConnectedOrBatchMatmulOp
 
   void rewrite(stablehlo::DotGeneralOp op,
                PatternRewriter& rewriter) const override {
-    const Type output_type =
-        op.getResult().getType().cast<TensorType>().getElementType();
+    const Type output_type = GetElementType(op.getResult());
     const bool has_i32_output =
         IsI32F32UniformQuantizedType(output_type) ||
         IsI32F32UniformQuantizedPerAxisType(output_type);
@@ -656,8 +649,7 @@ class RewriteQuantizedDotGeneralOpToTflFullyConnectedOrBatchMatmulOp
   static LogicalResult MatchOutput(const Value output,
                                    const bool has_i32_output,
                                    const bool is_batch_matmul) {
-    const Type output_element_type =
-        output.getType().cast<TensorType>().getElementType();
+    const Type output_element_type = GetElementType(output);
     if (has_i32_output) {
       if (is_batch_matmul &&
           !IsI32F32UniformQuantizedType(output_element_type)) {
@@ -760,11 +752,8 @@ class RewriteQuantizedDotGeneralOpToTflFullyConnectedOrBatchMatmulOp
     TFL::QConstOp filter_constant_op = CreateTflConstOpForFilter(
         rhs_value.getDefiningOp(), rewriter, /*is_per_channel=*/true);
 
-    const double input_scale = lhs_value.getType()
-                                   .cast<TensorType>()
-                                   .getElementType()
-                                   .cast<UniformQuantizedType>()
-                                   .getScale();
+    const double input_scale =
+        GetElementType(lhs_value).cast<UniformQuantizedType>().getScale();
     TFL::QConstOp bias_tfl_op;
     bool fuse_bias_constant =
         FindUserOfType<stablehlo::AddOp>(op) && has_i32_output;
@@ -800,16 +789,10 @@ class RewriteQuantizedDotGeneralOpToTflFullyConnectedOrBatchMatmulOp
         Operation* add_op = FindUserOfType<stablehlo::AddOp>(op);
         uniform_quantize_op = FindUserOfType<TFL::QuantizeOp>(add_op);
         const auto filter_quantized_type =
-            op->getOperand(1)
-                .getType()
-                .cast<TensorType>()
-                .getElementType()
+            GetElementType(op->getOperand(1))
                 .cast<UniformQuantizedPerAxisType>();
         const SmallVector<double> bias_scales = GetBiasScales(
-            /*input_scale=*/op->getOperand(0)
-                .getType()
-                .cast<TensorType>()
-                .getElementType()
+            /*input_scale=*/GetElementType(op->getOperand(0))
                 .cast<UniformQuantizedType>()
                 .getScale(),
             /*filter_scales=*/filter_quantized_type.getScales());
@@ -821,31 +804,28 @@ class RewriteQuantizedDotGeneralOpToTflFullyConnectedOrBatchMatmulOp
         const auto bias_quantized_type =
             CreateI32F32UniformQuantizedPerAxisType(
                 op->getLoc(), *op->getContext(), std::move(bias_scales),
-                op->getResult(0)
-                    .getType()
-                    .cast<TensorType>()
-                    .getElementType()
+                GetElementType(op->getResult(0))
                     .cast<UniformQuantizedPerAxisType>()
                     .getZeroPoints(),
                 /*quantization_dimension=*/0);
-        Operation* stablehlo_bias_op = add_op->getOperand(1).getDefiningOp();
-        const auto bias_type = RankedTensorType::getChecked(
-            op->getLoc(), bias_shape, bias_quantized_type);
-        const auto bias_value = cast<DenseIntElementsAttr>(
-            cast<stablehlo::ConstantOp>(stablehlo_bias_op).getValue());
+        Operation* bias_const_op = GetBiasConstOp(add_op);
+        if (bias_const_op != nullptr) {
+          const auto bias_type = RankedTensorType::getChecked(
+              op->getLoc(), bias_shape, bias_quantized_type);
+          const auto bias_value = cast<DenseIntElementsAttr>(
+              cast<stablehlo::ConstantOp>(bias_const_op).getValue());
 
-        *bias_tfl_op = rewriter.create<TFL::QConstOp>(
-            op->getLoc(),
-            /*output=*/TypeAttr::get(bias_type), /*value=*/bias_value);
+          *bias_tfl_op = rewriter.create<TFL::QConstOp>(
+              op->getLoc(),
+              /*output=*/TypeAttr::get(bias_type), /*value=*/bias_value);
+        }
       } else {
         uniform_quantize_op = FindUserOfType<TFL::QuantizeOp>(op);
       }
 
-      const auto result_quantized_type = uniform_quantize_op->getResult(0)
-                                             .getType()
-                                             .cast<TensorType>()
-                                             .getElementType()
-                                             .cast<UniformQuantizedType>();
+      const auto result_quantized_type =
+          GetElementType(uniform_quantize_op->getResult(0))
+              .cast<UniformQuantizedType>();
       const auto new_result_quantized_type = CreateI8F32UniformQuantizedType(
           uniform_quantize_op->getLoc(), *rewriter.getContext(),
           result_quantized_type.getScale(),
@@ -856,8 +836,8 @@ class RewriteQuantizedDotGeneralOpToTflFullyConnectedOrBatchMatmulOp
       // fused `qi8` type.
       FindUserOfType<>(uniform_quantize_op)->setOperand(0, op->getResult(0));
     } else {
-      output_type = GetOutputType(op, *rewriter.getContext(), has_i32_output,
-                                  fuse_bias_constant);
+      output_type = GetQuantizedOutputType(op, rewriter, has_i32_output,
+                                           fuse_bias_constant);
     }
     return output_type;
   }
@@ -898,8 +878,8 @@ class RewriteQuantizedConvolutionOp
  public:
   using OpRewritePattern<stablehlo::ConvolutionOp>::OpRewritePattern;
   LogicalResult match(stablehlo::ConvolutionOp op) const override {
-    const bool has_i32_output = IsI32F32UniformQuantizedPerAxisType(
-        op.getResult().getType().cast<TensorType>().getElementType());
+    const bool has_i32_output =
+        IsI32F32UniformQuantizedPerAxisType(GetElementType(op.getResult()));
     const bool fuse_bias_constant =
         FindUserOfType<stablehlo::AddOp>(op) && has_i32_output;
     stablehlo::ConvDimensionNumbersAttr dimension_numbers =
@@ -939,22 +919,14 @@ class RewriteQuantizedConvolutionOp
       return failure();
     }
 
-    // TODO: b/309896242 - Lift the assumptions on adjacent ops below
-    // as we cover more dynamic fused pattern legalization.
     if (fuse_bias_constant) {
       Operation* add_op = FindUserOfType<stablehlo::AddOp>(op);
       if (add_op == nullptr) {
         LLVM_DEBUG(llvm::dbgs() << "Failed to find AddOp for bias fusion.\n");
         return failure();
       }
-      Operation* broadcast_in_dim_op = add_op->getOperand(1).getDefiningOp();
-      if (!isa<stablehlo::BroadcastInDimOp>(broadcast_in_dim_op)) {
-        LLVM_DEBUG(llvm::dbgs() << "Failed to find broadcasted bias.\n");
-        return failure();
-      }
-      Operation* bias_const_op =
-          broadcast_in_dim_op->getOperand(0).getDefiningOp();
-      if (!isa<stablehlo::ConstantOp>(bias_const_op)) {
+      Operation* bias_const_op = GetBiasConstOp(add_op);
+      if (bias_const_op == nullptr) {
         LLVM_DEBUG(llvm::dbgs() << "Failed to find bias constant.\n");
         return failure();
       }
@@ -965,8 +937,8 @@ class RewriteQuantizedConvolutionOp
 
   void rewrite(stablehlo::ConvolutionOp op,
                PatternRewriter& rewriter) const override {
-    const bool has_i32_output = IsI32F32UniformQuantizedPerAxisType(
-        op.getResult().getType().cast<TensorType>().getElementType());
+    const bool has_i32_output =
+        IsI32F32UniformQuantizedPerAxisType(GetElementType(op.getResult()));
     stablehlo::ConvDimensionNumbersAttr dimension_numbers =
         op.getDimensionNumbers();
 
@@ -993,8 +965,8 @@ class RewriteQuantizedConvolutionOp
       input_value = pad_op.getResult();
     }
 
-    const Type output_type = GetOutputType(op, *rewriter.getContext(),
-                                           has_i32_output, fuse_bias_constant);
+    const Type output_type = GetQuantizedOutputType(
+        op, rewriter, has_i32_output, fuse_bias_constant);
     const auto [stride_h, stride_w] = GetStrides(op);
     const auto [dilation_h_factor, dilation_w_factor] = GetDilationFactors(op);
     if (is_depthwise) {
@@ -1110,8 +1082,7 @@ class RewriteQuantizedConvolutionOp
   }
 
   static LogicalResult MatchOutput(Value output) {
-    const Type output_element_type =
-        output.getType().cast<TensorType>().getElementType();
+    const Type output_element_type = GetElementType(output);
     if (!IsI32F32UniformQuantizedPerAxisType(output_element_type) &&
         !IsI8F32UniformQuantizedType(output_element_type)) {
       LLVM_DEBUG(
@@ -1397,10 +1368,7 @@ class RewriteQuantizedConvolutionOp
     Value filter_value = op.getOperand(1);
     Operation* filter_op = filter_value.getDefiningOp();
     auto filter_uniform_quantized_type =
-        filter_value.getType()
-            .cast<TensorType>()
-            .getElementType()
-            .cast<UniformQuantizedPerAxisType>();
+        GetElementType(filter_value).cast<UniformQuantizedPerAxisType>();
     auto filter_constant_value_attr = cast<DenseIntElementsAttr>(
         cast<stablehlo::ConstantOp>(filter_value.getDefiningOp()).getValue());
     const DenseIntElementsAttr new_filter_value_attr =
@@ -1440,10 +1408,7 @@ class RewriteQuantizedConvolutionOp
       const SmallVector<int64_t, 1> bias_shape, const bool has_i32_output,
       const bool fuse_bias_constant) const {
     const SmallVector<double> bias_scales = GetBiasScales(
-        /*input_scale=*/op.getOperand(0)
-            .getType()
-            .cast<TensorType>()
-            .getElementType()
+        /*input_scale=*/GetElementType(op.getOperand(0))
             .cast<UniformQuantizedType>()
             .getScale(),
         /*filter_scales=*/new_filter_quantized_type.getScales());
@@ -1457,11 +1422,7 @@ class RewriteQuantizedConvolutionOp
     TFL::QConstOp bias;
     if (fuse_bias_constant && has_i32_output) {
       Operation* add_op = FindUserOfType<stablehlo::AddOp>(op);
-      // TODO: b/309896242 - Lift the assumptions on adjacent ops below
-      // as we cover more dynamic fused pattern legalization.
-      Operation* broadcast_in_dim_op = add_op->getOperand(1).getDefiningOp();
-      Operation* bias_const_op =
-          broadcast_in_dim_op->getOperand(0).getDefiningOp();
+      Operation* bias_const_op = GetBiasConstOp(add_op);
       const ElementsAttr bias_constant_value =
           cast<stablehlo::ConstantOp>(bias_const_op).getValue();
       bias = rewriter.create<TFL::QConstOp>(op.getLoc(),
@@ -2108,13 +2069,103 @@ class RewriteQuantizedDynamicSliceOp
   }
 };
 
+class RewriteQuantizedAddOp : public OpRewritePattern<stablehlo::AddOp> {
+ public:
+  using OpRewritePattern<stablehlo::AddOp>::OpRewritePattern;
+
+  LogicalResult match(stablehlo::AddOp op) const override {
+    return success(IsI8F32UniformQuantizedType(GetElementType(op.getLhs())) &&
+                   IsI8F32UniformQuantizedType(GetElementType(op.getRhs())));
+  }
+
+  void rewrite(stablehlo::AddOp op, PatternRewriter& rewriter) const override {
+    TFL::QConstOp lhs_qconst_op;
+    TFL::QConstOp rhs_qconst_op;
+
+    auto GetBroadcastedConstOp = [&](Value operand) -> TFL::QConstOp {
+      if (auto broadcast_op = dyn_cast_or_null<stablehlo::BroadcastInDimOp>(
+              operand.getDefiningOp())) {
+        auto stablehlo_const_op = dyn_cast_or_null<stablehlo::ConstantOp>(
+            broadcast_op.getOperand().getDefiningOp());
+        auto const_uniform_quantized_type =
+            stablehlo_const_op.getResult().getType().cast<ShapedType>();
+        return rewriter.create<TFL::QConstOp>(
+            op.getLoc(), TypeAttr::get(const_uniform_quantized_type),
+            cast<DenseIntElementsAttr>(stablehlo_const_op.getValue()));
+      }
+      return nullptr;
+    };
+
+    lhs_qconst_op = GetBroadcastedConstOp(op.getLhs());
+    rhs_qconst_op = GetBroadcastedConstOp(op.getRhs());
+
+    rewriter.replaceOpWithNewOp<TFL::AddOp>(
+        op, op.getResult().getType(),
+        lhs_qconst_op ? lhs_qconst_op : op.getOperand(0),
+        rhs_qconst_op ? rhs_qconst_op : op.getOperand(1),
+        /*fused_activation_function=*/rewriter.getStringAttr("NONE"));
+  }
+};
+
+// Rewrites quantized `stablehlo.constant` to `tfl.pseudo_qconst`.
+class RewriteQuantizedConstantOp
+    : public OpRewritePattern<stablehlo::ConstantOp> {
+ public:
+  using OpRewritePattern<stablehlo::ConstantOp>::OpRewritePattern;
+
+  LogicalResult match(stablehlo::ConstantOp op) const override {
+    return success(IsQuantizedTensorType(op.getOutput().getType()));
+  }
+
+  void rewrite(stablehlo::ConstantOp op,
+               PatternRewriter& rewriter) const override {
+    rewriter.replaceOpWithNewOp<TFL::QConstOp>(
+        op, /*qtype=*/TypeAttr::get(op.getOutput().getType()),
+        /*value=*/op.getValue());
+  }
+};
+
+// Splits dot-like hybrid quantized StableHLO ops into `tfl.dequantize` and
+// float StableHLO op. Legalization of float StableHLO op depends on existing
+// passes for conversion of StableHLO -> MHLO -> TF -> TFL.
+template <typename OpType>
+class RewriteHybridQuantizedDotLikeOp : public OpRewritePattern<OpType> {
+ public:
+  using OpRewritePattern<OpType>::OpRewritePattern;
+
+  LogicalResult match(OpType op) const override {
+    if (op->getNumOperands() != 2 || op->getNumResults() != 1) {
+      return failure();
+    }
+    // Lhs and result should not be quantized and rhs should be quantized.
+    return success(!IsQuantizedTensorType(op->getOperand(0).getType()) &&
+                   IsQuantizedTensorType(op->getOperand(1).getType()) &&
+                   !IsQuantizedTensorType(op->getResult(0).getType()));
+  }
+
+  void rewrite(OpType op, PatternRewriter& rewriter) const override {
+    Value rhs = op.getOperand(1);
+    Type lhs_element_type =
+        op.getOperand(0).getType().template cast<TensorType>().getElementType();
+    Type dequantized_rhs_type =
+        quant::CloneTypeWithNewElementType(rhs.getType(), lhs_element_type);
+    auto dq = rewriter.create<TFL::DequantizeOp>(
+        op->getLoc(), /*output=*/dequantized_rhs_type,
+        /*input=*/rhs);
+    rewriter.replaceAllUsesExcept(rhs, dq.getOutput(), dq);
+  }
+};
+
 void UniformQuantizedStableHloToTflPass::runOnOperation() {
   func::FuncOp func_op = getOperation();
   MLIRContext& ctx = getContext();
 
   RewritePatternSet patterns(&ctx);
-  patterns.add<RewriteUniformDequantizeOp, RewriteUniformQuantizeOp,
-               RewriteQuantizedBroadcastInDimOp, RewriteQuantizedConcatenateOp,
+  patterns.add<RewriteHybridQuantizedDotLikeOp<stablehlo::ConvolutionOp>,
+               RewriteHybridQuantizedDotLikeOp<stablehlo::DotGeneralOp>,
+               RewriteUniformDequantizeOp, RewriteUniformQuantizeOp,
+               RewriteQuantizedAddOp, RewriteQuantizedBroadcastInDimOp,
+               RewriteQuantizedConcatenateOp, RewriteQuantizedConstantOp,
                RewriteQuantizedConvolutionOp,
                RewriteQuantizedDotGeneralOpToTflFullyConnectedOrBatchMatmulOp,
                RewriteQuantizedDynamicReshapeOp, RewriteQuantizedDynamicSliceOp,

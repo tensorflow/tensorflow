@@ -177,15 +177,6 @@ class Compiler {
                         CompileOptions{device_allocator});
   }
 
-  // Performs scheduling and buffer assignment and returns the buffer
-  // assignments.
-  // The returned 'BufferAssignment' retains a pointer to the 'HloModule', so
-  // the module must live at least as long as the buffer assignments.
-  virtual absl::StatusOr<std::unique_ptr<BufferAssignment>> AssignBuffers(
-      HloModule* module, const se::StreamExecutor* executor) {
-    return Unimplemented("This compiler does not support this method");
-  }
-
   // Compiles the HLO module for execution on a device given by the executor,
   // and returns an executable object or an error status. No HLO passes are
   // applied to module. Generally a module should be passed through RunHloPasses
@@ -448,7 +439,7 @@ class AotCompilationOptions {
     return target_config_;
   }
   void set_target_config(const Compiler::TargetConfig& target_config) {
-    target_config_ = std::move(target_config);
+    target_config_ = target_config;
   }
 
  protected:

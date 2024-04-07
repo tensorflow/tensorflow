@@ -44,12 +44,12 @@ class WhileLoopExpensiveInvariantCodeMotion : public HloModulePass {
     return "while-loop-expensive-invariant-code-motion";
   }
   using HloPassInterface::Run;
-  StatusOr<bool> Run(
+  absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
-  StatusOr<bool> TryHoistingInvariantInstructionsFromWhileBody(
+  absl::StatusOr<bool> TryHoistingInvariantInstructionsFromWhileBody(
       HloInstruction* while_instr);
 
   ShapeSizeFunction shape_size_function_;

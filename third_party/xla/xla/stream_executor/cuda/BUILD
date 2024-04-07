@@ -1,16 +1,4 @@
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
-load(
-    "//xla:xla.bzl",
-    "xla_cc_test",
-)
-load(
-    "//xla/stream_executor:build_defs.bzl",
-    "cuda_only_cc_library",
-    "stream_executor_friends",
-    "tf_additional_cuda_platform_deps",
-    "tf_additional_cudnn_plugin_copts",
-    "tf_additional_gpu_compilation_copts",
-)
 load("@local_tsl//tsl:tsl.bzl", "if_google", "if_nccl", "internal_visibility", "tsl_copts")
 load(
     "@local_tsl//tsl/platform:build_config_root.bzl",
@@ -24,6 +12,18 @@ load(
 load(
     "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
+)
+load(
+    "//xla:xla.bzl",
+    "xla_cc_test",
+)
+load(
+    "//xla/stream_executor:build_defs.bzl",
+    "cuda_only_cc_library",
+    "stream_executor_friends",
+    "tf_additional_cuda_platform_deps",
+    "tf_additional_cudnn_plugin_copts",
+    "tf_additional_gpu_compilation_copts",
 )
 
 package(
@@ -396,6 +396,7 @@ cuda_only_cc_library(
         "//xla/stream_executor/gpu:gpu_timer_header",
         "//xla/stream_executor/platform",
         "//xla/tsl/cuda:cudnn",
+        "//xla/tsl/util:env_var",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -420,7 +421,6 @@ cuda_only_cc_library(
         "@local_tsl//tsl/platform:tensor_float_32_hdr_lib",
         "@local_tsl//tsl/platform:tensor_float_32_utils",
         "@local_tsl//tsl/protobuf:dnn_proto_cc",
-        "@local_tsl//tsl/util:env_var",
     ],
     alwayslink = True,
 )
@@ -566,10 +566,7 @@ cuda_only_cc_library(
         "//xla:status_macros",
         "//xla/stream_executor:stream_executor_headers",
         "//xla/stream_executor/gpu:asm_compiler_header",
-        "//xla/stream_executor/gpu:gpu_asm_opts",
         "//xla/stream_executor/gpu:gpu_driver_header",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/log",
@@ -577,6 +574,7 @@ cuda_only_cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
         "@local_config_cuda//cuda:cuda_headers",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:errors",

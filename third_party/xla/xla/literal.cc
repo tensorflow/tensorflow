@@ -49,6 +49,7 @@ limitations under the License.
 #include "xla/status.h"
 #include "xla/status_macros.h"
 #include "xla/statusor.h"
+#include "xla/tsl/util/byte_swap_array.h"
 #include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -59,7 +60,6 @@ limitations under the License.
 #include "tsl/platform/ml_dtypes.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
-#include "tsl/util/byte_swap_array.h"
 
 namespace xla {
 namespace {
@@ -490,7 +490,7 @@ void MutableLiteralBase::CopyElementFrom(const LiteralSlice& src_literal,
   Literal literal(shape);
 
   TF_RETURN_IF_ERROR(literal.root_piece_.ForEachMutableSubpieceWithStatus(
-      [&](const ShapeIndex& index, Piece* piece) {
+      [&](const ShapeIndex& index, Piece* piece) -> absl::Status {
         const LiteralProto* proto_element = &proto;
         for (int64_t i : index) {
           CHECK(i < proto_element->tuple_literals_size());
@@ -2706,109 +2706,6 @@ BorrowingLiteral::BorrowingLiteral(absl::Span<const char* const> src_buf_ptrs,
     const auto& src_shape = shape_->tuple_shapes(i);
     CHECK(src_shape.IsArray());
     root_piece_.child(i).set_buffer(const_cast<char*>(src_buf_ptrs[i]));
-  }
-}
-
-BorrowingLiteral::BorrowingLiteral(const LiteralProto& proto)
-    : LiteralBase(), shape_(std::make_unique<Shape>(proto.shape())) {
-  root_piece_ = Piece();
-  root_piece_.set_subshape(shape_.get());
-
-  if (shape().IsArray()) {
-    absl::Span<const char> data;
-    switch (shape_->element_type()) {
-#define BORROWING_LITERAL_CAST_DATA_(FIELD)                                   \
-  absl::Span<const char>(reinterpret_cast<const char*>(proto.FIELD().data()), \
-                         proto.FIELD().size() * sizeof *proto.FIELD().data())
-      case PRED:
-        data = BORROWING_LITERAL_CAST_DATA_(preds);
-        break;
-      case S4:
-        data = proto.s4s();
-        break;
-      case S8:
-        data = proto.s8s();
-        break;
-      case S16:
-        data = proto.s16s();
-        break;
-      case S32:
-        data = BORROWING_LITERAL_CAST_DATA_(s32s);
-        break;
-      case S64:
-        data = BORROWING_LITERAL_CAST_DATA_(s64s);
-        break;
-      case U4:
-        data = proto.u4s();
-        break;
-      case U8:
-        data = proto.u8s();
-        break;
-      case U16:
-        data = proto.u16s();
-        break;
-      case U32:
-        data = BORROWING_LITERAL_CAST_DATA_(u32s);
-        break;
-      case U64:
-        data = BORROWING_LITERAL_CAST_DATA_(u64s);
-        break;
-      case F16:
-        data = proto.f16s();
-        break;
-      case F32:
-        data = BORROWING_LITERAL_CAST_DATA_(f32s);
-        break;
-      case BF16:
-        data = proto.bf16s();
-        break;
-      case F64:
-        data = BORROWING_LITERAL_CAST_DATA_(f64s);
-        break;
-      case F8E5M2:
-        data = proto.f8e5m2s();
-        break;
-      case F8E4M3FN:
-        data = proto.f8e4m3fns();
-        break;
-      case F8E4M3B11FNUZ:
-        data = proto.f8e4m3b11fnuzs();
-        break;
-      case F8E5M2FNUZ:
-        data = proto.f8e5m2fnuzs();
-        break;
-      case F8E4M3FNUZ:
-        data = proto.f8e4m3fnuzs();
-        break;
-      case C64:
-        data = BORROWING_LITERAL_CAST_DATA_(c64s);
-        break;
-      case C128:
-        data = BORROWING_LITERAL_CAST_DATA_(c128s);
-        break;
-#undef BORROWING_LITERAL_CAST_DATA_
-      default:
-        LOG(FATAL) << "Invalid element type for array: " << shape();
-    }
-    CHECK_EQ(data.size(), ShapeUtil::ByteSizeOfElements(*shape_));
-    root_piece_.set_buffer(const_cast<char*>(data.data()));
-  } else if (shape_->IsTuple()) {
-    CHECK_EQ(shape().tuple_shapes_size(), proto.tuple_literals_size());
-    BuildPieceSubtree(*shape_, &root_piece_);
-    for (int i = 0; i < shape_->tuple_shapes_size(); ++i) {
-      BorrowingLiteral child(proto.tuple_literals(i));
-      child.root_piece_.ForEachMutableSubpiece(
-          [&](const ShapeIndex& child_index, Piece* child_piece) {
-            if (!child_piece->subshape().IsArray()) {
-              return;
-            }
-            ShapeIndex index = {i};
-            index.insert(index.end(), child_index.begin(), child_index.end());
-            root_piece_.child(index).set_buffer(child_piece->buffer());
-          });
-    }
-  } else {
-    LOG(FATAL) << "Invalid shape: " << *shape_;
   }
 }
 

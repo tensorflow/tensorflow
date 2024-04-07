@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/service/gpu/fusions/mlir/elemental_hlo_to_mlir.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/launch_dimensions.h"
+#include "xla/service/gpu/model/indexing_analysis.h"
 #include "xla/service/gpu/model/indexing_map.h"
 #include "xla/xla_data.pb.h"
 
@@ -81,12 +82,16 @@ std::optional<IndexingMap>
 MlirInPlaceDynamicUpdateSliceFusion::ComputeThreadIdToInputIndexing(
     int64_t root_index, int64_t hero_operand_index,
     mlir::MLIRContext* mlir_context) const {
+  // TODO(b/331355203): Implement thread ID -> operand indexing.
+  if (hero_operand_index != kDUSUpdateIndex) {
+    return std::nullopt;
+  }
   auto launch_dims = launch_dimensions();
   // It is guaranteed that all DUS ops have the same output shape at this point.
   const auto& update_shape =
       dus_ops_.front()->operand(kDUSUpdateIndex)->shape();
-  return GetDefaultThreadIdToOutputIndexingMap(launch_dims, /*unroll_factor=*/1,
-                                               update_shape, mlir_context);
+  return GetDefaultThreadIdIndexingMap(launch_dims, /*unroll_factor=*/1,
+                                       update_shape, mlir_context);
 }
 
 std::vector<const HloInstruction*>
@@ -107,7 +112,7 @@ absl::Status MlirInPlaceDynamicUpdateSliceFusion::EmitEntryFunction(
   auto indexing = *ComputeThreadIdToInputIndexing(
       /*root_index=*/0,
       /*hero_operand_index=*/kDUSUpdateIndex, mlir_context);
-  indexing.Simplify();
+  indexing.Simplify(GetIndexingMapForInstruction);
   indexing.RemoveUnusedSymbols();
 
   int num_inputs = fusion.fused_instructions_computation()->num_parameters();
@@ -120,7 +125,7 @@ absl::Status MlirInPlaceDynamicUpdateSliceFusion::EmitEntryFunction(
 
   const auto* dus_instr =
       Cast<HloDynamicUpdateSliceInstruction>(dus_ops_.front());
-  const auto& update_shape = dus_instr->operand(kDUSUpdateIndex)->shape();
+  const auto& update_shape = dus_instr->update()->shape();
   auto result_tensors = EmitThreadLoopNest(
       b, output_tensor_args, indexing,
       [&](ValueRange output_tensors, ValueRange dim_values,

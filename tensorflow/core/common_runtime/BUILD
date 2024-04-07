@@ -1,5 +1,10 @@
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load(
+    "@local_xla//xla/tsl/mkl:build_defs.bzl",
+    "if_mkl",
+    "if_mkl_ml",
+)
+load(
     "//tensorflow:tensorflow.bzl",
     "if_libtpu",
     "if_macos",
@@ -13,11 +18,6 @@ load(
     "tf_openmp_lopts",
 )
 load("//tensorflow:tensorflow.default.bzl", "cc_header_only_library", "filegroup", "tf_cuda_cc_test")
-load(
-    "@local_xla//xla/tsl/mkl:build_defs.bzl",
-    "if_mkl",
-    "if_mkl_ml",
-)
 
 # For platform specific build config
 load(
@@ -1191,6 +1191,8 @@ cc_library(
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
         "//tensorflow/core:portable_gif_internal",
+        "//tensorflow/core/config:flag_defs",
+        "//tensorflow/core/config:flags",
         "//tensorflow/core/framework:node_def_util",
         "//tensorflow/core/framework:tensor_proto_cc",
         "//tensorflow/core/framework:tensor_shape_proto_cc",
@@ -2408,6 +2410,7 @@ tf_cc_tests(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/config:flag_defs",
+        "//tensorflow/core/config:flags",
         "//tensorflow/core/kernels:ops_util",
         "//tensorflow/core/nccl:collective_communicator",
         "//tensorflow/core/platform:regexp",
@@ -2894,6 +2897,7 @@ tf_cc_test(
         "//tensorflow/core/kernels:queue_ops",
         "//tensorflow/core/kernels:session_ops",
         "//tensorflow/core/kernels:variable_ops",
+        "@local_tsl//tsl/platform:protobuf",
     ],
 )
 

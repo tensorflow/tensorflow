@@ -446,6 +446,7 @@ cc_library(
     features = ["-layering_check"],
     deps = [
         ":gpu_scheduling_metrics_storage",
+        "//tensorflow/core/framework:resource_base",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:fixed_array",
         "@com_google_absl//absl/container:node_hash_map",

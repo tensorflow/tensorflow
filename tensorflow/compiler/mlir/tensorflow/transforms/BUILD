@@ -60,6 +60,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
     ],
 )
@@ -337,6 +338,7 @@ cc_library(
         "@llvm-project//mlir:MLProgramDialect",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
     ],
 )
@@ -458,9 +460,6 @@ cc_library(
         "device_index_selector.cc",
         "drop_while_shape_invariant.cc",
         "einsum.cc",
-        "embedding_pipelining.cc",
-        "embedding_program_key.cc",
-        "embedding_sequencing.cc",
         "executor_island_coarsening.cc",
         "executor_tpuv1_inline_tpu_island.cc",
         "executor_tpuv1_island_coarsening.cc",

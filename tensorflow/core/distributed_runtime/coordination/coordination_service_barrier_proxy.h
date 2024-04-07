@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tsl/distributed_runtime/coordination/coordination_service_agent.h"
+#include "tsl/protobuf/coordination_service.pb.h"
 
 namespace tensorflow {
 

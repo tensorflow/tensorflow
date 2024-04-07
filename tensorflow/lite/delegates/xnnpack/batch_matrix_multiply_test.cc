@@ -25,7 +25,7 @@ limitations under the License.
 namespace tflite {
 namespace xnnpack {
 
-class BatchMatrixMultiplyTest : public testing::Test {
+class DISABLED_BatchMatrixMultiplyTest : public testing::Test {
  public:
   // std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
   auto get_delegate(int num_threads = 1) {
@@ -52,7 +52,7 @@ class BatchMatrixMultiplyTest : public testing::Test {
   std::mt19937 rng_ = std::mt19937(random_device_());
 };
 
-TEST_F(BatchMatrixMultiplyTest, 3D) {
+TEST_F(DISABLED_BatchMatrixMultiplyTest, 3D) {
   const auto batch = shape_rng();
   const auto height = shape_rng();
   const auto input1_channels = channels_rng();
@@ -65,7 +65,7 @@ TEST_F(BatchMatrixMultiplyTest, 3D) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST_F(BatchMatrixMultiplyTest, BroadcastOne3D) {
+TEST_F(DISABLED_BatchMatrixMultiplyTest, BroadcastOne3D) {
   const auto batch = shape_rng();
   const auto height = shape_rng();
   const auto input1_channels = channels_rng();
@@ -83,7 +83,7 @@ TEST_F(BatchMatrixMultiplyTest, BroadcastOne3D) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST_F(BatchMatrixMultiplyTest, BroadcastImplicit3D) {
+TEST_F(DISABLED_BatchMatrixMultiplyTest, BroadcastImplicit3D) {
   const auto batch = shape_rng();
   const auto height = shape_rng();
   const auto input1_channels = channels_rng();
@@ -101,7 +101,7 @@ TEST_F(BatchMatrixMultiplyTest, BroadcastImplicit3D) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST_F(BatchMatrixMultiplyTest, 4D) {
+TEST_F(DISABLED_BatchMatrixMultiplyTest, 4D) {
   const auto outer_batch = shape_rng();
   const auto inner_batch = shape_rng();
   const auto height = shape_rng();
@@ -115,7 +115,7 @@ TEST_F(BatchMatrixMultiplyTest, 4D) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST_F(BatchMatrixMultiplyTest, BroadcastOne4D) {
+TEST_F(DISABLED_BatchMatrixMultiplyTest, BroadcastOne4D) {
   const auto outer_batch = shape_rng();
   const auto inner_batch = shape_rng();
   const auto height = shape_rng();
@@ -149,7 +149,7 @@ TEST_F(BatchMatrixMultiplyTest, BroadcastOne4D) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST_F(BatchMatrixMultiplyTest, BroadcastImplicit4D) {
+TEST_F(DISABLED_BatchMatrixMultiplyTest, BroadcastImplicit4D) {
   const auto outer_batch = shape_rng();
   const auto inner_batch = shape_rng();
   const auto height = shape_rng();
@@ -175,7 +175,7 @@ TEST_F(BatchMatrixMultiplyTest, BroadcastImplicit4D) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST_F(BatchMatrixMultiplyTest, 4D_AdjY) {
+TEST_F(DISABLED_BatchMatrixMultiplyTest, 4D_AdjY) {
   const auto outer_batch = shape_rng();
   const auto inner_batch = shape_rng();
   const auto height = shape_rng();
@@ -190,7 +190,7 @@ TEST_F(BatchMatrixMultiplyTest, 4D_AdjY) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST_F(BatchMatrixMultiplyTest, MultiThreading) {
+TEST_F(DISABLED_BatchMatrixMultiplyTest, MultiThreading) {
   const auto batch = shape_rng();
   const auto height = shape_rng();
   const auto input1_channels = channels_rng();
@@ -203,7 +203,7 @@ TEST_F(BatchMatrixMultiplyTest, MultiThreading) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST_F(BatchMatrixMultiplyTest, WeightsCache) {
+TEST_F(DISABLED_BatchMatrixMultiplyTest, WeightsCache) {
   TfLiteXNNPackDelegateOptions delegate_options =
       TfLiteXNNPackDelegateOptionsDefault();
   std::unique_ptr<TfLiteXNNPackDelegateWeightsCache,

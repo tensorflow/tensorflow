@@ -38,6 +38,7 @@ namespace mlir::quant {
 namespace {
 
 using ::mlir::stablehlo::AddOp;
+using ::mlir::stablehlo::ConstantOp;
 using ::mlir::stablehlo::ConvolutionOp;
 using ::mlir::stablehlo::DotGeneralOp;
 using ::mlir::stablehlo::SubtractOp;
@@ -70,10 +71,11 @@ constexpr absl::string_view kModuleDynamic = R"mlir(
 
 constexpr absl::string_view kModuleMultipleUses = R"mlir(
   module {
-    func.func @main(%arg0: tensor<1x1024xf32>, %arg1: tensor<1024x3xf32>, %arg2: tensor<1x3xf32>) -> tensor<1x3xf32> attributes {_from_xla_call_module} {
+    func.func @main(%arg0: tensor<1x1024xf32>, %arg1: tensor<1024x3xf32>) -> tensor<1x3xf32> attributes {_from_xla_call_module} {
+      %cst = stablehlo.constant dense<1.0> : tensor<1x3xf32>
       %0 = stablehlo.dot_general %arg0, %arg1, contracting_dims = [1] x [0], precision = [] : (tensor<1x1024xf32>, tensor<1024x3xf32>) -> tensor<1x3xf32>
-      %1 = stablehlo.subtract %0, %arg2 : tensor<1x3xf32>
-      %2 = stablehlo.add %0, %arg2 : tensor<1x3xf32>
+      %1 = stablehlo.subtract %cst, %0 : tensor<1x3xf32>
+      %2 = stablehlo.add %0, %cst : tensor<1x3xf32>
       return %2 : tensor<1x3xf32>
     }
   }
@@ -326,6 +328,22 @@ TEST_F(AttrsAndConstraintsTest, FindUserOfDifferentTypes) {
   EXPECT_THAT(FindUserOfType<ConvolutionOp>(dot_general_op), IsNull());
 }
 
+TEST_F(AttrsAndConstraintsTest, FindOperandOfDifferentTypes) {
+  OwningOpRef<ModuleOp> module_op = ParseModuleOpString(kModuleMultipleUses);
+  ASSERT_TRUE(module_op);
+
+  func::FuncOp main_fn = FindMainFuncOp(*module_op);
+  ASSERT_THAT(main_fn, NotNull());
+
+  auto subtract_op = FindOperationOfType<SubtractOp>(main_fn);
+  ASSERT_THAT(subtract_op, NotNull());
+
+  EXPECT_THAT(FindOperandOfType<DotGeneralOp>(subtract_op), NotNull());
+  EXPECT_THAT(FindOperandOfType<ConstantOp>(subtract_op), NotNull());
+  EXPECT_THAT(FindOperandOfType<>(subtract_op), NotNull());
+  EXPECT_THAT(FindOperandOfType<AddOp>(subtract_op), IsNull());
+}
+
 TEST_F(AttrsAndConstraintsTest, XlaCallModuleOpGetFuncAttr) {
   OwningOpRef<ModuleOp> module_op = ParseModuleOpString(kModuleXlaCallModule);
   ASSERT_TRUE(module_op);
@@ -411,9 +429,8 @@ TEST_F(AttrsAndConstraintsTest, HasQuantizableTraitFalse) {
 }
 
 TEST_F(AttrsAndConstraintsTest, IsHybridQuantizedOpTrue) {
-  OwningOpRef<ModuleOp> module_op_ref =
-      ParseModuleOpString(kModuleHybridQuantized);
-  func::FuncOp main_fn = FindMainFuncOp(*module_op_ref);
+  OwningOpRef<ModuleOp> module_op = ParseModuleOpString(kModuleHybridQuantized);
+  func::FuncOp main_fn = FindMainFuncOp(*module_op);
   ASSERT_THAT(main_fn, NotNull());
 
   Operation* dot_general = FindOperationOfType<DotGeneralOp>(main_fn);
@@ -421,9 +438,8 @@ TEST_F(AttrsAndConstraintsTest, IsHybridQuantizedOpTrue) {
 }
 
 TEST_F(AttrsAndConstraintsTest, IsHybridQuantizedOpFalse) {
-  OwningOpRef<ModuleOp> module_op_ref =
-      ParseModuleOpString(kModuleXlaCallModule);
-  func::FuncOp main_fn = FindMainFuncOp(*module_op_ref);
+  OwningOpRef<ModuleOp> module_op = ParseModuleOpString(kModuleXlaCallModule);
+  func::FuncOp main_fn = FindMainFuncOp(*module_op);
   ASSERT_THAT(main_fn, NotNull());
 
   Operation* call_op = FindOperationOfType<TF::XlaCallModuleOp>(main_fn);
@@ -453,17 +469,25 @@ constexpr absl::string_view kModuleDotGeneralBatchMatmul = R"mlir(
 )mlir";
 
 TEST_F(AttrsAndConstraintsTest, DotGeneralFullyConnectedReturnsQuantDim) {
-  OwningOpRef<ModuleOp> module_op_ref =
+  OwningOpRef<ModuleOp> module_op =
       ParseModuleOpString(kModuleDotGeneralFullyConnected);
-  func::FuncOp main_fn = FindMainFuncOp(*module_op_ref);
+  ASSERT_TRUE(module_op);
+
+  func::FuncOp main_fn = FindMainFuncOp(*module_op);
+  ASSERT_THAT(main_fn, NotNull());
+
   auto dot_general_op = *main_fn.getOps<DotGeneralOp>().begin();
   EXPECT_THAT(GetDotGeneralQuantizationDim(dot_general_op), Optional(1));
 }
 
 TEST_F(AttrsAndConstraintsTest, DotGeneralBatchMatmulReturnsNullQuantDim) {
-  OwningOpRef<ModuleOp> module_op_ref =
+  OwningOpRef<ModuleOp> module_op =
       ParseModuleOpString(kModuleDotGeneralBatchMatmul);
-  func::FuncOp main_fn = FindMainFuncOp(*module_op_ref);
+  ASSERT_TRUE(module_op);
+
+  func::FuncOp main_fn = FindMainFuncOp(*module_op);
+  ASSERT_THAT(main_fn, NotNull());
+
   auto dot_general_op = *main_fn.getOps<DotGeneralOp>().begin();
   EXPECT_THAT(GetDotGeneralQuantizationDim(dot_general_op), Eq(std::nullopt));
 }

@@ -342,6 +342,8 @@ class HloGraphNode {
   void SetGraphDepth(TimeCost graph_depth) { graph_depth_ = graph_depth; }
   bool GetForceDelay() const { return force_delay_; }
   void SetForceDelay(bool force_delay) { force_delay_ = force_delay; }
+  bool GetForceEarly() const { return force_early_; }
+  void SetForceEarly(bool force_early) { force_early_ = force_early; }
   ResourcesVector GetResources() const { return resources_; }
   bool DoesOccupyAnyResource() const {
     return absl::c_any_of(resources_, [](const ResourcePair& resource) {
@@ -414,6 +416,7 @@ class HloGraphNode {
     absl::StrAppend(&result, "Depth: ", depth_, "\n");
     absl::StrAppend(&result, "Graph Depth: ", graph_depth_, "\n");
     absl::StrAppend(&result, "Force Delay: ", force_delay_, "\n");
+    absl::StrAppend(&result, "Force Early: ", force_early_, "\n");
     absl::StrAppend(&result, "Predecessors:\n");
     for (const HloEdge& e : predecessors_) {
       absl::StrAppend(&result, e.ToString());
@@ -466,6 +469,8 @@ class HloGraphNode {
   ResourcesVector resources_;
   // Force the scheduling of the nodes with attribute set as late as possible.
   bool force_delay_ = false;
+  // Force the scheduling of the nodes with attribute set as early as possible.
+  bool force_early_ = false;
   // Whether this node has been scheduled or not yet.
   bool scheduled_ = false;
   // Shareable resources released by this node.

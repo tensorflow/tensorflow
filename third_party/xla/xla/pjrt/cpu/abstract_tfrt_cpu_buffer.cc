@@ -133,14 +133,6 @@ ShapedBuffer AsShapedBuffer(
 
 }  //  namespace
 
-UnpinnedHostMemorySpace::UnpinnedHostMemorySpace(int id, PjRtClient* client)
-    : id_(id), client_(client) {
-  debug_string_ = absl::StrFormat(
-      "UnpinnedHostMemorySpace(id=%i, process_index=%i, client=%s)", id_,
-      client_->process_index(), client_->platform_name());
-  to_string_ = absl::StrFormat("UNPINNED_HOST_%i", id_);
-}
-
 AbstractTfrtCpuBuffer::AbstractTfrtCpuBuffer(
     Shape on_device_shape,
     std::unique_ptr<TrackedTfrtCpuDeviceBuffer> tracked_device_buffer)
@@ -474,7 +466,7 @@ AbstractTfrtCpuBuffer::CopyToDeviceAcrossClients(PjRtDevice* dst_device) {
   return dst_device->client()->BufferFromHostBuffer(
       literal_pointer->untyped_data(), literal_pointer->shape().element_type(),
       literal_pointer->shape().dimensions(), byte_strides,
-      PjRtClient::HostBufferSemantics::kZeroCopy,
+      PjRtClient::HostBufferSemantics::kImmutableZeroCopy,
       [literal{std::move(literal)}]() { /* frees literal */ }, dst_device);
 }
 
@@ -695,7 +687,8 @@ AbstractTfrtCpuBuffer::BufferFromHostBufferHelper(
   // code which requires it.
   bool can_use_zero_copy =
       has_default_layout && !is_int4 &&
-      host_buffer_semantics == PjRtClient::HostBufferSemantics::kZeroCopy &&
+      host_buffer_semantics ==
+          PjRtClient::HostBufferSemantics::kImmutableZeroCopy &&
       ((absl::bit_cast<std::uintptr_t>(data) &
         (cpu_function_runtime::MinAlign() - 1)) == 0);
   absl::InlinedVector<std::shared_ptr<MaybeOwningCpuMemory>, 4> buffers;

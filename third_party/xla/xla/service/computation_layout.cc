@@ -65,7 +65,8 @@ ComputationLayout::FlattenedParameterLayouts() const {
   for (int i = 0; i < parameter_count(); ++i) {
     TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
         parameter_shape(i),
-        [this, &result](const Shape& subshape, const ShapeIndex& index) {
+        [this, &result](const Shape& subshape,
+                        const ShapeIndex& index) -> absl::Status {
           if (subshape.IsTuple()) {
             return OkStatus();
           }
@@ -93,7 +94,8 @@ absl::StatusOr<std::vector<Layout>> ComputationLayout::FlattenedResultLayouts()
   std::vector<Layout> result;
   TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
       result_shape(),
-      [this, &result](const Shape& subshape, const ShapeIndex& index) {
+      [this, &result](const Shape& subshape,
+                      const ShapeIndex& index) -> absl::Status {
         if (subshape.IsTuple()) {
           return OkStatus();
         }

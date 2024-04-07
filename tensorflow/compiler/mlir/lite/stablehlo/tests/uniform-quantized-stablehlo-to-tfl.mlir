@@ -764,7 +764,7 @@ func.func @conv_with_bias_same_padding_srq_depthwise(%arg0: tensor<1x4x5x3x!quan
 
 // -----
 
-// Tests that a quantized stablehlo.transpose is converted to tfl.transpose.
+// Tests that a quantized `stablehlo.transpose` is converted to `tfl.transpose`.
 
 func.func @transpose(
     %arg0: tensor<2x3x4x!quant.uniform<i8:f32, 2.000000e+00:-1>>
@@ -781,19 +781,19 @@ func.func @transpose(
 
 // -----
 
-// Tests that a float stablehlo.transpose is not converted to tfl.transpose.
+// Tests that a float `stablehlo.transpose` is not converted to `tfl.transpose`.
 
-func.func @float_transpose(%arg0: tensor<2x3x4xf32>) -> tensor<4x3x2xf32> {
+func.func @transpose_float(%arg0: tensor<2x3x4xf32>) -> tensor<4x3x2xf32> {
   %0 = stablehlo.transpose %arg0, dims = [2, 1, 0] : (tensor<2x3x4xf32>) -> tensor<4x3x2xf32>
   return %0 : tensor<4x3x2xf32>
 }
-// CHECK-LABEL: float_transpose
+// CHECK-LABEL: transpose_float
 // CHECK-NOT: tfl.transpose
 // CHECK: stablehlo.transpose
 
 // -----
 
-// Tests that a quantized stablehlo.reshape is converted to tfl.reshape.
+// Tests that a quantized `stablehlo.reshape` is converted to `tfl.reshape`.
 
 func.func @reshape(
     %arg0: tensor<2x3x4x!quant.uniform<i8:f32, 2.000000e+00:-1>>
@@ -810,19 +810,19 @@ func.func @reshape(
 
 // -----
 
-// Tests that a float stablehlo.reshape is not converted to tfl.reshape.
+// Tests that a float `stablehlo.reshape` is not converted to `tfl.reshape`.
 
-func.func @float_reshape(%arg0: tensor<2x3x4xf32>) -> tensor<6x4xf32> {
+func.func @reshape_float(%arg0: tensor<2x3x4xf32>) -> tensor<6x4xf32> {
   %0 = stablehlo.reshape %arg0 : (tensor<2x3x4xf32>) -> tensor<6x4xf32>
   return %0 : tensor<6x4xf32>
 }
-// CHECK-LABEL: float_reshape
+// CHECK-LABEL: reshape_float
 // CHECK-NOT: tfl.reshape
 // CHECK: stablehlo.reshape
 
 // -----
 
-// Tests that a quantized stablehlo.select is converted to tfl.select_v2.
+// Tests that a quantized `stablehlo.select` is converted to `tfl.select_v2`.
 
 func.func @select(
     %arg0: tensor<1x3xi1>,
@@ -844,19 +844,20 @@ func.func @select(
 
 // -----
 
-// Tests that a float stablehlo.select is not converted to tfl.select_v2.
+// Tests that a float `stablehlo.select` is not converted to `tfl.select_v2`.
 
-func.func @float_select(%arg0: tensor<1x3xi1>, %arg1: tensor<1x3xf32>, %arg2: tensor<1x3xf32>) -> tensor<1x3xf32> {
+func.func @select_float(%arg0: tensor<1x3xi1>, %arg1: tensor<1x3xf32>, %arg2: tensor<1x3xf32>) -> tensor<1x3xf32> {
   %0 = "stablehlo.select"(%arg0, %arg1, %arg2) : (tensor<1x3xi1>, tensor<1x3xf32>, tensor<1x3xf32>) -> tensor<1x3xf32>
   return %0 : tensor<1x3xf32>
 }
-// CHECK-LABEL: float_select
+// CHECK-LABEL: select_float
 // CHECK-NOT: tfl.select_v2
 // CHECK: stablehlo.select
 
 // -----
 
-// Tests that a quantized stablehlo.concatenate is converted to tfl.concatenation.
+// Tests that a quantized `stablehlo.concatenate` is converted to
+// `tfl.concatenation`.
 
 func.func @concatenate(
     %arg0: tensor<3x2x!quant.uniform<i8:f32, 2.000000e+00:-1>>,
@@ -876,20 +877,21 @@ func.func @concatenate(
 
 // -----
 
-// Tests that a float stablehlo.concatenate is not converted to tfl.concatenation.
+// Tests that a float `stablehlo.concatenate` is not converted to
+// `tfl.concatenation`.
 
-func.func @float_concatenate(%arg0: tensor<3x2xf32>, %arg1: tensor<1x2xf32>) -> tensor<4x2xf32> {
+func.func @concatenate_float(%arg0: tensor<3x2xf32>, %arg1: tensor<1x2xf32>) -> tensor<4x2xf32> {
   %0 = "stablehlo.concatenate"(%arg0, %arg1) {dimension = 0 : i64} : (tensor<3x2xf32>, tensor<1x2xf32>) -> tensor<4x2xf32>
   return %0 : tensor<4x2xf32>
 }
-// CHECK-LABEL: float_concatenate
+// CHECK-LABEL: concatenate_float
 // CHECK-NOT: tfl.concatenation
 // CHECK: stablehlo.concatenate
 
 // -----
 
-// Tests that a quantized stablehlo.pad without interior padding is converted to
-// tfl.padv2.
+// Tests that a quantized `stablehlo.pad` without interior padding is
+// converted to `tfl.padv2`.
 
 func.func @pad_without_interior_padding(
     %arg0: tensor<2x3x!quant.uniform<i8:f32, 2.000000e+00:-1>>,
@@ -911,8 +913,8 @@ func.func @pad_without_interior_padding(
 
 // -----
 
-// Tests that a quantized stablehlo.pad with interior padding is converted to
-// tfl.dilate and tfl.padv2.
+// Tests that a quantized `stablehlo.pad` with interior padding is converted to
+// `tfl.dilate` and `tfl.padv2`.
 
 func.func @pad_with_interior_padding(
     %arg0: tensor<2x3x!quant.uniform<i8:f32, 2.000000e+00:-1>>,
@@ -937,20 +939,20 @@ func.func @pad_with_interior_padding(
 
 // -----
 
-// Tests that a float stablehlo.pad is not converted to tfl.padv2.
+// Tests that a float `stablehlo.pad` is not converted to `tfl.padv2`.
 
-func.func @float_pad(%arg0: tensor<2x3xf32>, %arg1: tensor<f32>) -> tensor<4x5xf32> {
+func.func @pad_float(%arg0: tensor<2x3xf32>, %arg1: tensor<f32>) -> tensor<4x5xf32> {
   %0 = stablehlo.pad %arg0, %arg1, low = [0, 1], high = [2, 1], interior = [0, 0] : (tensor<2x3xf32>, tensor<f32>) -> tensor<4x5xf32>
   return %0 : tensor<4x5xf32>
 }
-// CHECK-LABEL: float_pad
+// CHECK-LABEL: pad_float
 // CHECK-NOT: tfl.padv2
 // CHECK: stablehlo.pad
 
 // -----
 
-// Tests that a quantized stablehlo.slice is converted to tfl.slice when stride
-// is 1.
+// Tests that a quantized `stablehlo.slice` is converted to
+// `tfl.slice` when stride is 1.
 
 func.func @slice(
     %arg0: tensor<3x4x!quant.uniform<i8:f32, 2.000000e+00:-1>>
@@ -973,8 +975,8 @@ func.func @slice(
 
 // -----
 
-// Tests that a quantized stablehlo.slice is converted to tfl.strided_slice when
-// stride is not 1.
+// Tests that a quantized `stablehlo.slice` is converted to `tfl.strided_slice`
+// when stride is not 1.
 
 func.func @strided_slice(
     %arg0: tensor<3x6x!quant.uniform<i8:f32, 2.000000e+00:-1>>
@@ -1001,9 +1003,9 @@ func.func @strided_slice(
 
 // -----
 
-// Tests that a float stablehlo.slice is not converted to tfl.slice.
+// Tests that a float `stablehlo.slice` is not converted to `tfl.slice`.
 
-func.func @float_slice(%arg0: tensor<3x4xf32>) -> tensor<2x2xf32> {
+func.func @slice_float(%arg0: tensor<3x4xf32>) -> tensor<2x2xf32> {
   %0 = "stablehlo.slice"(%arg0) {
     start_indices = array<i64: 1, 2>,
     limit_indices = array<i64: 3, 4>,
@@ -1011,15 +1013,15 @@ func.func @float_slice(%arg0: tensor<3x4xf32>) -> tensor<2x2xf32> {
   } : (tensor<3x4xf32>) -> tensor<2x2xf32>
   return %0 : tensor<2x2xf32>
 }
-// CHECK-LABEL: float_slice
+// CHECK-LABEL: slice_float
 // CHECK-NOT: tfl.slice
 // CHECK-NOT: tfl.strided_slice
 // CHECK: stablehlo.slice
 
 // -----
 
-// Tests that a quantized stablehlo.broadcast_in_dim is converted to
-// tfl.broadcast_to.
+// Tests that a quantized `stablehlo.broadcast_in_dim` is converted to
+// `tfl.broadcast_to`.
 
 func.func @broadcast_in_dim(
     %arg0: tensor<1x2x!quant.uniform<i8:f32, 2.000000e+00:3>>
@@ -1038,8 +1040,8 @@ func.func @broadcast_in_dim(
 
 // -----
 
-// Tests that a quantized stablehlo.broadcast_in_dim is converted to
-// tfl.transpose and tfl.broadcast_to when broadcast_dimensions is not in
+// Tests that a quantized `stablehlo.broadcast_in_dim` is converted to
+// `tfl.transpose` and `tfl.broadcast_to` when `broadcast_dimensions` is not in
 // ascending order.
 
 func.func @broadcast_in_dim_with_transpose(
@@ -1062,8 +1064,8 @@ func.func @broadcast_in_dim_with_transpose(
 
 // -----
 
-// Tests that a quantized stablehlo.broadcast_in_dim is converted to
-// tfl.expand_dims and tfl.broadcast_to when input rank is smaller than output
+// Tests that a quantized `stablehlo.broadcast_in_dim` is converted to
+// tfl.expand_dims and `tfl.broadcast_to` when input rank is smaller than output
 // rank.
 
 func.func @broadcast_in_dim_with_expand(
@@ -1086,9 +1088,10 @@ func.func @broadcast_in_dim_with_expand(
 
 // -----
 
-// Tests that a quantized stablehlo.broadcast_in_dim is converted to
-// tfl.transpose, tfl.expand_dims and tfl.broadcast_to when broadcast_dimensions
-// is not in ascending order and input rank is smaller than output rank.
+// Tests that a quantized `stablehlo.broadcast_in_dim` is converted to
+// `tfl.transpose`, `tfl.expand_dims` and `tfl.broadcast_to` when
+// `broadcast_dimensions` is not in ascending order and input rank is smaller
+// than output rank.
 
 func.func @broadcast_in_dim_with_transpose_and_expand(
     %arg0: tensor<2x3x4x!quant.uniform<i8:f32, 2.000000e+00:3>>
@@ -1112,15 +1115,16 @@ func.func @broadcast_in_dim_with_transpose_and_expand(
 
 // -----
 
-// Tests that a float stablehlo.broadcast_in_dim is not converted to tfl.broadcast_to.
+// Tests that a float `stablehlo.broadcast_in_dim` is not converted to
+// `tfl.broadcast_to`.
 
-func.func @float_broadcast_in_dim(%arg0: tensor<1x2xf32>) -> tensor<3x2xf32> {
+func.func @broadcast_in_dim_float(%arg0: tensor<1x2xf32>) -> tensor<3x2xf32> {
   %0 = "stablehlo.broadcast_in_dim"(%arg0) {
     broadcast_dimensions = array<i64: 0, 1>
   } : (tensor<1x2xf32>) -> tensor<3x2xf32>
   return %0 : tensor<3x2xf32>
 }
-// CHECK-LABEL: float_broadcast_in_dim
+// CHECK-LABEL: broadcast_in_dim_float
 // CHECK-NOT: tfl.broadcast_to
 // CHECK-NOT: tfl.transpose
 // CHECK-NOT: tfl.expand_dims
@@ -1128,8 +1132,8 @@ func.func @float_broadcast_in_dim(%arg0: tensor<1x2xf32>) -> tensor<3x2xf32> {
 
 // -----
 
-// Test that a quantized stablehlo.reduce_window with max is converted to
-// tfl.max_pool_2d.
+// Tests that a quantized `stablehlo.reduce_window` with max is converted to
+// `tfl.max_pool_2d`.
 
 func.func @reduce_window_with_max(
   %arg0: tensor<2x9x10x3x!quant.uniform<i8:f32, 3.000000e-01:-5>>,
@@ -1153,8 +1157,8 @@ func.func @reduce_window_with_max(
 
 // -----
 
-// Test that a quantized stablehlo.reduce_window with max whose rank is not 4
-// is not converted to tfl.max_pool_2d.
+// Tests that a quantized `stablehlo.reduce_window `with max whose rank is not 4
+// is not converted to `tfl.max_pool_2d`.
 
 func.func @reduce_window_not_4d(
   %arg0: tensor<3x2x9x10x3x!quant.uniform<i8:f32, 3.000000e-01:-5>>,
@@ -1174,8 +1178,8 @@ func.func @reduce_window_not_4d(
 
 // -----
 
-// Test that a quantized stablehlo.reduce_window with max that takes multiple
-// inputs is not converted to tfl.max_pool_2d.
+// Tests that a quantized `stablehlo.reduce_window` with max that takes multiple
+// inputs is not converted to `tfl.max_pool_2d`.
 
 func.func @reduce_window_not_binary(
   %arg0: tensor<3x2x9x10x3x!quant.uniform<i8:f32, 3.000000e-01:-5>>,
@@ -1198,10 +1202,10 @@ func.func @reduce_window_not_binary(
 
 // -----
 
-// Test that a float stablehlo.reduce_window with max is not converted to
-// tfl.max_pool_2d.
+// Tests that a float `stablehlo.reduce_window` with max is not converted to
+// `tfl.max_pool_2d`.
 
-func.func @float_reduce_window_with_max(
+func.func @reduce_window_with_max_float(
   %arg0: tensor<2x9x10x3xf32>,
   %arg1: tensor<f32>
 ) -> tensor<2x4x3x3xf32> {
@@ -1213,13 +1217,14 @@ func.func @float_reduce_window_with_max(
   return %0 : tensor<2x4x3x3xf32>
 }
 
-// CHECK-LABEL: float_reduce_window_with_max
+// CHECK-LABEL: reduce_window_with_max_float
 // CHECK: stablehlo.reduce_window
 // CHECK-NOT: tfl.max_pool_2d
 
 // -----
 
-// Test that a quantized stablehlo.dynamic_reshape is converted to tfl.reshape.
+// Tests that a quantized `stablehlo.dynamic_reshape` is converted to
+// `tfl.reshape`.
 
 func.func @dynamic_reshape(
     %arg0: tensor<?x3x!quant.uniform<i8:f32, 3.000000e-01:-5>>,
@@ -1240,20 +1245,21 @@ func.func @dynamic_reshape(
 
 // -----
 
-// Test that a float stablehlo.dynamic_reshape is not converted to tfl.reshape.
+// Tests that a float `stablehlo.dynamic_reshape` is not converted to
+// `tfl.reshape`.
 
-func.func @float_dynamic_reshape(%arg0: tensor<?x3xf32>, %arg1: tensor<2xi32>) -> tensor<?x?xf32> {
+func.func @dynamic_reshape_float(%arg0: tensor<?x3xf32>, %arg1: tensor<2xi32>) -> tensor<?x?xf32> {
   %0 = "stablehlo.dynamic_reshape"(%arg0, %arg1) : (tensor<?x3xf32>, tensor<2xi32>) -> tensor<?x?xf32>
   return %0 : tensor<?x?xf32>
 }
 
-// CHECK-LABEL: func @float_dynamic_reshape
+// CHECK-LABEL: func @dynamic_reshape_float
 // CHECK: stablehlo.dynamic_reshape
 // CHECK-NOT: tfl.reshape
 
 // -----
 
-// Test that a quantized stablehlo.gather is converted to tfl.gather_nd.
+// Tests that a quantized `stablehlo.gather` is converted to tfl.gather_nd.
 
 func.func @gather(
     %arg0: tensor<3x4x2x2x!quant.uniform<i8:f32, 3.000000e-01:-5>>,
@@ -1282,8 +1288,8 @@ func.func @gather(
 
 // -----
 
-// Test that a quantized stablehlo.gather with unsorted start_index_map is not
-// converted to tfl.gather_nd (condition 1 is not satisfied).
+// Tests that a quantized `stablehlo.gather` with unsorted start_index_map is
+// not converted to `tfl.gather_nd` (condition 1 is not satisfied).
 
 func.func @gather_start_index_map_not_sorted(
     %arg0: tensor<3x4x2x2x!quant.uniform<i8:f32, 3.000000e-01:-5>>,
@@ -1311,7 +1317,7 @@ func.func @gather_start_index_map_not_sorted(
 
 // -----
 
-// Test that a quantized stablehlo.gather is not converted to tfl.gather_nd
+// Tests that a quantized `stablehlo.gather` is not converted to tfl.gather_nd
 // when index_vector_dim is not the last dimension of start_indices (condition 2
 // is not satisfied).
 
@@ -1341,7 +1347,7 @@ func.func @gather_start_index_vector_dim_not_at_last(
 
 // -----
 
-// Test that a quantized stablehlo.gather is not converted to tfl.gather_nd
+// Tests that a quantized `stablehlo.gather` is not converted to tfl.gather_nd
 // when offset_dims are not the last dimensions of the output (condition 3 is
 // not satisfied).
 
@@ -1371,7 +1377,7 @@ func.func @gather_offset_dims_not_at_last(
 
 // -----
 
-// Test that a quantized stablehlo.gather is not converted to tfl.gather_nd
+// Tests that a quantized `stablehlo.gather` is not converted to tfl.gather_nd
 // when shape of slice is not same with shape of offset (condition 4 is not
 // satisfied).
 
@@ -1401,9 +1407,9 @@ func.func @gather_different_slice_and_offset(
 
 // -----
 
-// Test that a float stablehlo.gather is not converted to tfl.gather_nd.
+// Tests that a float `stablehlo.gather` is not converted to `tfl.gather_nd`.
 
-func.func @float_gather(%arg0: tensor<3x4x2x2xf32>, %arg1: tensor<2x3x2xi64>) -> tensor<2x3x2x2xf32> {
+func.func @gather_float(%arg0: tensor<3x4x2x2xf32>, %arg1: tensor<2x3x2xi64>) -> tensor<2x3x2x2xf32> {
   %0 = "stablehlo.gather"(%arg0, %arg1) {
     dimension_numbers = #stablehlo.gather<
       offset_dims = [2, 3],
@@ -1416,14 +1422,14 @@ func.func @float_gather(%arg0: tensor<3x4x2x2xf32>, %arg1: tensor<2x3x2xi64>) ->
   return %0 : tensor<2x3x2x2xf32>
 }
 
-// CHECK-LABEL: func @float_gather
+// CHECK-LABEL: func @gather_float
 // CHECK: stablehlo.gather
 // CHECK-NOT: tfl.gather_nd
 // CHECK-NOT: tfl.gather
 
 // -----
 
-// Test that a quantized stablehlo.dynamic_slice is converted to tfl.slice.
+// Tests that a quantized `stablehlo.dynamic_slice` is converted to `tfl.slice`.
 
 // CHECK-LABEL: func @dynamic_slice
 // CHECK-SAME: %[[ARG0:.+]]: tensor<4x4x!quant.uniform<i8:f32, 3.000000e-01:-5>>, %[[ARG1:.+]]: tensor<i64>, %[[ARG2:.+]]: tensor<i64>
@@ -1457,18 +1463,120 @@ func.func @dynamic_slice(
 
 // -----
 
-// Test that a float stablehlo.dynamic_slice is not converted to tfl.slice.
+// Tests that a float `stablehlo.dynamic_slice` is not converted to `tfl.slice`.
 
-func.func @float_dynamic_slice(%arg0: tensor<4x4xf32>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<2x1xf32> {
+func.func @dynamic_slice_float(%arg0: tensor<4x4xf32>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<2x1xf32> {
   %0 = "stablehlo.dynamic_slice"(%arg0, %arg1, %arg2) {
     slice_sizes = array<i64: 2, 1>
   } : (tensor<4x4xf32>, tensor<i64>, tensor<i64>) -> tensor<2x1xf32>
   return %0 : tensor<2x1xf32>
 }
 
-// CHECK-LABEL: func @float_dynamic_slice
+// CHECK-LABEL: func @dynamic_slice_float
 // CHECK: stablehlo.dynamic_slice
 // CHECK-NOT: tfl.bitcast
 // CHECK-NOT: tfl.minimum
 // CHECK-NOT: tfl.maximum
 // CHECK-NOT: tfl.slice
+
+// -----
+
+// Tests that `stablehlo.add` with both operands int8 UniformQuantizedType is
+// properly converted into `tfl.add`.
+
+func.func @add(%arg0: tensor<1x3x!quant.uniform<i8:f32, 1.000000e+0:8>>, %arg1: tensor<1x3x!quant.uniform<i8:f32, 2.000000e+0:8>>) -> tensor<1x3x!quant.uniform<i8:f32, 3.000000e+0:8>> {
+  %0 = stablehlo.add %arg0, %arg1 : (tensor<1x3x!quant.uniform<i8:f32, 1.000000e+0:8>>, tensor<1x3x!quant.uniform<i8:f32, 2.000000e+0:8>>) -> tensor<1x3x!quant.uniform<i8:f32, 3.000000e+0:8>>
+  return %0 : tensor<1x3x!quant.uniform<i8:f32, 3.000000e+0:8>>
+}
+
+// CHECK-LABEL: func @add
+// CHECK: %[[ADD:.+]] = tfl.add(%arg0, %arg1) {fused_activation_function = "NONE"} : (tensor<1x3x!quant.uniform<i8:f32, {{.*}}>>, tensor<1x3x!quant.uniform<i8:f32, {{.*}}>>) -> tensor<1x3x!quant.uniform<i8:f32, {{.*}}>>
+// CHECK: return %[[ADD]]
+
+// -----
+
+// Tests that `stablehlo.add` with int32 UniformQuantizedPerAxisTypes is
+// not converted.
+
+func.func @add_i32(%arg0: tensor<1x3x!quant.uniform<i32:f32:1, {1.000000e+0, 1.000000e+0, 1.000000e+0}>>, %arg1: tensor<1x3x!quant.uniform<i32:f32:1, {2.000000e+0, 2.000000e+0, 2.000000e+0}>>) -> tensor<1x3x!quant.uniform<i32:f32:1, {2.000000e+0, 2.000000e+0, 2.000000e+0}>> {
+  %0 = stablehlo.add %arg0, %arg1 : (tensor<1x3x!quant.uniform<i32:f32:1, {1.000000e+0, 1.000000e+0, 1.000000e+0}>>, tensor<1x3x!quant.uniform<i32:f32:1, {2.000000e+0, 2.000000e+0, 2.000000e+0}>>) -> tensor<1x3x!quant.uniform<i32:f32:1, {2.000000e+0, 2.000000e+0, 2.000000e+0}>>
+  return %0 : tensor<1x3x!quant.uniform<i32:f32:1, {2.000000e+0, 2.000000e+0, 2.000000e+0}>>
+}
+
+// CHECK-LABEL: func @add_i32
+// CHECK: stablehlo.add
+// CHECK-NOT: tfl.add
+
+// -----
+
+// Tests that a quantized `stablehlo.constant` is converted into `tfl.qconst`.
+
+// CHECK-LABEL: func @quantized_constant
+func.func @quantized_constant() -> tensor<1x2x4x5x!quant.uniform<i8:f32, 1.000000e+0>> {
+  %0 = stablehlo.constant() {value = dense<1> : tensor<1x2x4x5xi8>} : () -> tensor<1x2x4x5x!quant.uniform<i8:f32, 1.000000e+0>>
+  return %0 : tensor<1x2x4x5x!quant.uniform<i8:f32, 1.000000e+0>>
+}
+
+// CHECK: %[[QCONST:.+]] = "tfl.pseudo_qconst"() {qtype = tensor<1x2x4x5x!quant.uniform<i8:f32, 1.000000e+00>>, value = dense<1> : tensor<1x2x4x5xi8>}
+// CHECK-SAME: () -> tensor<1x2x4x5x!quant.uniform<i8:f32, 1.000000e+00>>
+// CHECK: return %[[QCONST]]
+
+// -----
+
+// Tests that a float `stablehlo.constant` is not converted into `tfl.qconst`.
+
+// CHECK-LABEL: func @float_constant
+func.func @float_constant() -> tensor<1x2x4x5xf32> {
+  %0 = stablehlo.constant() {value = dense<1.0> : tensor<1x2x4x5xf32>} : () -> tensor<1x2x4x5xf32>
+  return %0 : tensor<1x2x4x5xf32>
+}
+
+// CHECK: stablehlo.constant
+// CHECK-NOT: tfl.pseudo_qconst
+// CHECK-NOT: tfl.pseudo_const
+// CHECK-NOT: arith.constant
+
+// -----
+
+// Tests that a hybrid quantized dot_general is splitted into dequantize and float
+// dot_general.
+
+// CHECK-LABEL: func @dot_general_hybrid
+// CHECK-SAME: %[[ARG0:.+]]: tensor<1x2x3x4xf32>
+func.func @dot_general_hybrid(%arg0: tensor<1x2x3x4xf32>) -> tensor<1x2x3x5xf32> {
+  %0 = stablehlo.constant() {value = dense<1> : tensor<1x2x4x5xi8>} : () -> tensor<1x2x4x5x!quant.uniform<i8:f32, 1.000000e+0>>
+  %1 = "stablehlo.dot_general"(%arg0, %0) {
+    dot_dimension_numbers = #stablehlo.dot<
+      lhs_batching_dimensions = [0, 1],
+      rhs_batching_dimensions = [0, 1],
+      lhs_contracting_dimensions = [3],
+      rhs_contracting_dimensions = [2]>,
+      precision_config = [#stablehlo<precision DEFAULT>, #stablehlo<precision DEFAULT>]
+  } : (tensor<1x2x3x4xf32>, tensor<1x2x4x5x!quant.uniform<i8:f32, 1.000000e+0>>) -> tensor<1x2x3x5xf32>
+  return %1 : tensor<1x2x3x5xf32>
+}
+
+// CHECK: %[[WEIGHT:.+]] = "tfl.pseudo_qconst"() {qtype = tensor<1x2x4x5x!quant.uniform<i8:f32, 1.000000e+00>>, value = dense<1> : tensor<1x2x4x5xi8>}
+// CHECK: %[[DQ:.+]] = "tfl.dequantize"(%[[WEIGHT]]) : (tensor<1x2x4x5x!quant.uniform<i8:f32, 1.000000e+00>>) -> tensor<1x2x4x5xf32>
+// CHECK: %[[DOT:.+]] = stablehlo.dot_general %[[ARG0]], %[[DQ]], batching_dims = [0, 1] x [0, 1], contracting_dims = [3] x [2], precision = [DEFAULT, DEFAULT] : (tensor<1x2x3x4xf32>, tensor<1x2x4x5xf32>) -> tensor<1x2x3x5xf32>
+// CHECK: return %[[DOT]]
+
+// -----
+
+// Tests that a hybrid quantized convolution is splitted into dequantize and
+// float convolution.
+
+// CHECK-LABEL: func @convolution_hybrid
+// CHECK-SAME: %[[ARG0:.+]]: tensor<1x3x3x4xf32>
+func.func @convolution_hybrid(%arg0: tensor<1x3x3x4xf32>) -> tensor<1x3x3x2xf32> {
+  %0 = stablehlo.constant() {value = dense<3> : tensor<3x3x4x2xi8>} : () -> tensor<3x3x4x2x!quant.uniform<i8:f32:3, {2.000000e+2, 3.000000e+3}>>
+  %1 = stablehlo.convolution(%arg0, %0) dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f], window = {pad = [[1, 1], [1, 1]]} {batch_group_count = 1 : i64, feature_group_count = 1 : i64} : (tensor<1x3x3x4xf32>, tensor<3x3x4x2x!quant.uniform<i8:f32:3, {2.000000e+2, 3.000000e+3}>>) -> tensor<1x3x3x2xf32>
+  return %1 : tensor<1x3x3x2xf32>
+}
+
+// CHECK: %[[WEIGHT:.+]] = "tfl.pseudo_qconst"() {qtype = tensor<3x3x4x2x!quant.uniform<i8:f32:3, {2.000000e+02,3.000000e+03}>>, value = dense<3> : tensor<3x3x4x2xi8>}
+// CHECK: %[[DQ:.+]] = "tfl.dequantize"(%[[WEIGHT]]) : (tensor<3x3x4x2x!quant.uniform<i8:f32:3, {2.000000e+02,3.000000e+03}>>) -> tensor<3x3x4x2xf32>
+// CHECK: %[[CONV:.+]] = stablehlo.convolution(%[[ARG0]], %[[DQ]])
+// CHECK{LITERAL}: dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f], window = {pad = [[1, 1], [1, 1]]} {batch_group_count = 1 : i64, feature_group_count = 1 : i64}
+// CHECK-SAME: (tensor<1x3x3x4xf32>, tensor<3x3x4x2xf32>) -> tensor<1x3x3x2xf32>
+// CHECK: return %[[CONV]]

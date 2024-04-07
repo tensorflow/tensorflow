@@ -1,7 +1,7 @@
 load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
-load("//tensorflow/compiler/tests:build_defs.bzl", "generate_backend_suites", "tf_xla_py_strict_test")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "tf_cuda_cc_test")
 load("//tensorflow/compiler/aot:tfcompile.bzl", "tf_library")
+load("//tensorflow/compiler/tests:build_defs.bzl", "generate_backend_suites", "tf_xla_py_strict_test")
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",

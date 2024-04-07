@@ -49,7 +49,7 @@ cc_library(
         "//tensorflow/lite/tools/evaluation/proto:preprocessing_steps_cc_proto",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/util:stats_calculator_portable",
+        "@local_xla//xla/tsl/util:stats_calculator_portable",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:portable_jpeg_internal",
@@ -118,7 +118,7 @@ cc_library(
         "//tensorflow/lite/tools/evaluation/proto:evaluation_config_cc_proto",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_stages_cc_proto",
         "@com_google_absl//absl/base:core_headers",
-        "@local_tsl//tsl/util:stats_calculator_portable",
+        "@local_xla//xla/tsl/util:stats_calculator_portable",
     ],
 )
 
@@ -172,7 +172,7 @@ cc_library(
         "//tensorflow/lite/tools/evaluation/proto:evaluation_config_cc_proto",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_stages_cc_proto",
         "@FP16",
-        "@local_tsl//tsl/util:stats_calculator_portable",
+        "@local_xla//xla/tsl/util:stats_calculator_portable",
     ],
 )
 

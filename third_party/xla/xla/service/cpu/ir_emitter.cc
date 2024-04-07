@@ -2821,7 +2821,7 @@ Status IrEmitter::HandleWhile(HloInstruction* xla_while) {
       [this, &xla_while](const Shape& /*subshape*/,
                          const ShapeIndex& index) -> Status {
         auto check = [this](const HloInstruction* a, const HloInstruction* b,
-                            const ShapeIndex& index) {
+                            const ShapeIndex& index) -> absl::Status {
           const BufferAllocation::Slice slice_a =
               assignment_.GetUniqueSlice(a, index).value();
           const BufferAllocation::Slice slice_b =

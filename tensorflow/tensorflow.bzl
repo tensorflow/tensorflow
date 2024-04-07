@@ -1,5 +1,6 @@
 """Provides build configuration for TensorFlow."""
 
+load("@rules_java//java:defs.bzl", "java_test")
 load(
     "//tensorflow:py.default.bzl",
     _plain_py_binary = "py_binary",
@@ -1883,7 +1884,7 @@ def tf_java_test(
         name = cc_library_name,
         srcs = tf_binary_additional_srcs(fullversion = True) + tf_binary_dynamic_kernel_dsos() + tf_binary_dynamic_kernel_deps(kernels),
     )
-    native.java_test(
+    java_test(
         name = name,
         srcs = srcs,
         deps = deps + [cc_library_name],

@@ -150,7 +150,7 @@ static void AssignProtoDotConfig(
     for (int64_t val : list_vector) {
       list.add_vals(val);
     }
-    proto.mutable_dot_config()->insert({key, std::move(list)});
+    proto.mutable_dot_config()->try_emplace(key, std::move(list));
   }
 }
 
@@ -198,7 +198,7 @@ static void AssignProtoPhaseOrderingConfig(
     pair.output_shape_index.assign(output_idx.begin(), output_idx.end());
     cfg_pairs.push_back(pair);
   }
-  config.set_shardable_value_update_pairs(cfg_pairs);
+  config.set_shardable_value_update_pairs(std::move(cfg_pairs));
 }
 
 static void AssignStructFusionConfig(HloModuleConfig& config,
@@ -258,7 +258,7 @@ static void AssignStructPhaseOrderingConfig(HloModuleConfig& config,
   *config.mutable_phase_ordering_config() = std::move(module_config);
 }
 
-StatusOr<HloModuleConfigProto> HloModuleConfig::ToProto() const {
+absl::StatusOr<HloModuleConfigProto> HloModuleConfig::ToProto() const {
   HloModuleConfigProto proto;
   if (has_entry_computation_layout()) {
     *proto.mutable_entry_computation_layout() =
@@ -324,8 +324,8 @@ StatusOr<HloModuleConfigProto> HloModuleConfig::ToProto() const {
   return proto;
 }
 
-StatusOr<std::unique_ptr<HloModuleConfig>> HloModuleConfig::CreateFromProto(
-    const HloModuleConfigProto& proto) {
+absl::StatusOr<std::unique_ptr<HloModuleConfig>>
+HloModuleConfig::CreateFromProto(const HloModuleConfigProto& proto) {
   auto config = std::make_unique<HloModuleConfig>();
 
   if (proto.has_entry_computation_layout()) {

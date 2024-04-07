@@ -167,6 +167,9 @@ static bool IsCommand(const HloInstruction* hlo,
           &custom_call_adaptor->instruction());
       return IsCommand(custom_call, config);
     }
+    if (custom_config.name() == "dynamic_address_computation") {
+      return false;
+    }
     return config.enabled_commands.contains(DebugOptions::FUSION);
   }
 

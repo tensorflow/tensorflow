@@ -99,12 +99,20 @@ gentbl_cc_library(
     compatible_with = get_compatible_with_portable(),
     tbl_outs = [
         (
+            ["-gen-attr-interface-decls"],
+            "ifrt_attr_interfaces.h.inc",
+        ),
+        (
+            ["-gen-attr-interface-defs"],
+            "ifrt_attr_interfaces.cc.inc",
+        ),
+        (
             ["-gen-op-interface-decls"],
-            "ifrt_interfaces.h.inc",
+            "ifrt_op_interfaces.h.inc",
         ),
         (
             ["-gen-op-interface-defs"],
-            "ifrt_interfaces.cc.inc",
+            "ifrt_op_interfaces.cc.inc",
         ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
@@ -135,6 +143,7 @@ cc_library(
         ":ifrt_interfaces_inc_gen",
         ":ifrt_ops_inc_gen",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:CallOpInterfaces",  # buildcleaner: keep

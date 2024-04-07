@@ -21,7 +21,7 @@
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/TypeRange.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
-#include "xla/mlir/runtime/ir/rt_ops.h"
+#include "xla/mlir/runtime/ir/rt_dialect.h"
 #include "tsl/platform/test.h"
 
 namespace xla {

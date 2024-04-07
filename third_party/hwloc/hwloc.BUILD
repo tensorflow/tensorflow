@@ -1,5 +1,8 @@
 # hwloc: Portable Hardware Locality Library
 
+load("@bazel_skylib//rules:expand_template.bzl", "expand_template")
+load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
+
 package(
     default_visibility = ["//visibility:public"],
 )
@@ -7,9 +10,6 @@ package(
 licenses(["notice"])
 
 exports_files(["COPYING"])
-
-load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
-load("@bazel_skylib//rules:expand_template.bzl", "expand_template")
 
 COMMON_INCLUDE_COPTS = [
     "-I.",
@@ -224,7 +224,7 @@ expand_template(
     name = "move_static_components_h",
     out = "hwloc/static-components.h",
     substitutions = {"&hwloc_linuxio_component": "//&hwloc_linuxio_component"},
-    template = "@org_tensorflow//third_party/hwloc:static-components.h",
+    template = "@local_tsl//third_party/hwloc:static-components.h",
 )
 
 cc_library(

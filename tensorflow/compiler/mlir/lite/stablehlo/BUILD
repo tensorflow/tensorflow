@@ -86,6 +86,7 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
         "@local_xla//xla/mlir_hlo",
     ],
@@ -109,6 +110,7 @@ cc_library(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
         "@stablehlo//:stablehlo_ops",
     ],
@@ -138,6 +140,7 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:ShapeDialect",
         "@llvm-project//mlir:TensorDialect",
+        "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
         "@local_xla//xla/mlir_hlo",
         "@local_xla//xla/mlir_hlo:hlo_dialect_registration",
@@ -315,6 +318,7 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:ShapeDialect",
         "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
         "@local_xla//xla/mlir_hlo",
     ],
@@ -339,6 +343,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
         "@local_xla//xla/mlir_hlo",
     ],
@@ -367,6 +372,7 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:ShapeDialect",
         "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
         "@local_xla//xla/mlir_hlo",
     ],
@@ -419,10 +425,37 @@ cc_library(
         "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:ShapeDialect",
         "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
         "@stablehlo//:stablehlo_ops",
         "@stablehlo//:stablehlo_serialization",
         "@stablehlo//:vhlo_ops",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "legalize_stablehlo_composite_to_tfl_custom",
+    srcs = [
+        "transforms/legalize_stablehlo_composite_to_tfl_custom.cc",
+    ],
+    hdrs = [
+        "transforms/passes.h",
+        "transforms/passes.h.inc",
+    ],
+    copts = [
+        "-Ithird_party",
+    ],
+    deps = [
+        "//tensorflow/compiler/mlir/lite:tensorflow_lite",
+        "@flatbuffers",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+        "@stablehlo//:stablehlo_ops",
     ],
     alwayslink = 1,
 )
@@ -488,6 +521,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
         "@stablehlo//:stablehlo_ops",
     ],
@@ -511,6 +545,7 @@ cc_library(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
         "@local_xla//xla/mlir_hlo",
     ],
@@ -650,10 +685,55 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
         "@local_xla//xla/mlir_hlo",
         "@stablehlo//:broadcast_utils",
         "@stablehlo//:chlo_ops",
+    ],
+)
+
+cc_library(
+    name = "composite_lowering",
+    srcs = [
+        "transforms/composite_lowering_pass.cc",
+    ],
+    hdrs = [
+        "transforms/passes.h",
+    ],
+    copts = [
+        "-Ithird_party",
+    ],
+    deps = [
+        ":composite_lowering_inc_gen",
+        ":passes_inc_gen",
+        "//tensorflow/compiler/mlir/lite:tensorflow_lite",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+        "@local_xla//xla/mlir_hlo",
+    ],
+    alwayslink = True,
+)
+
+gentbl_cc_library(
+    name = "composite_lowering_inc_gen",
+    compatible_with = get_compatible_with_portable(),
+    tbl_outs = [
+        (
+            ["-gen-rewriters"],
+            "transforms/generated_composite_lowering.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "transforms/composite_lowering_patterns.td",
+    deps = [
+        "//tensorflow/compiler/mlir/lite:tensorflow_lite_ops_td_files",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncTdFiles",
+        "@local_xla//xla/mlir_hlo:hlo_ops_td_files",
     ],
 )
 
@@ -709,6 +789,7 @@ tf_cc_binary(
         ":compose_uniform_quantized_type_pass",
         ":fold_broadcast_pass",
         ":fuse_convolution_pass",
+        ":legalize_stablehlo_composite_to_tfl_custom",
         ":legalize_stablehlo_custom_call_to_composite",
         ":legalize_stablehlo_to_vhlo_pass",
         ":legalize_tf_xla_call_module_to_stablehlo_pass",

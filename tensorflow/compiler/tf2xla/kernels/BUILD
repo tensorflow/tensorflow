@@ -1,3 +1,4 @@
+load("@local_tsl//tsl/platform:build_config_root.bzl", "if_static")
 load(
     "//tensorflow:tensorflow.bzl",
     "if_cuda_or_rocm",
@@ -11,7 +12,6 @@ load(
     "tf_proto_library",
 )
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-load("@local_tsl//tsl/platform:build_config_root.bzl", "if_static")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],

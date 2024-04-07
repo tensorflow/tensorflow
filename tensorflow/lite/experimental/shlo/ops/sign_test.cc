@@ -46,20 +46,21 @@ struct Sign {
   template <class T>
   T operator()(T v) const {
     constexpr T one = static_cast<T>(1);
+    constexpr T minus_one = static_cast<T>(-1);
     constexpr T zero = static_cast<T>(0);
-    return v < zero ? -one : (v > zero ? one : v);
-  }
-
-  template <>
-  F16 operator()(F16 v) const {
-    return static_cast<F16>(operator()(static_cast<float>(v)));
-  }
-
-  template <>
-  BF16 operator()(BF16 v) const {
-    return static_cast<BF16>(operator()(static_cast<float>(v)));
+    return v < zero ? minus_one : (v > zero ? one : v);
   }
 } sign_ref;
+
+template <>
+F16 Sign::operator()(F16 v) const {
+  return static_cast<F16>(operator()(static_cast<float>(v)));
+}
+
+template <>
+BF16 Sign::operator()(BF16 v) const {
+  return static_cast<BF16>(operator()(static_cast<float>(v)));
+}
 
 INSTANTIATE_TYPED_TEST_SUITE_P(Sign, UnaryElementwiseOpShapePropagationTest,
                                SignOp, TestParamNames);
@@ -116,15 +117,16 @@ TYPED_TEST(QuantizedSignTest, PerTensorWorks) {
   Vector<StorageT> output_data(shape.NumElements());
   const ExpressedT scale = static_cast<ExpressedT>(1.5);
   const StorageT zero_point = static_cast<StorageT>(5);
-  const QuantizedTensorElementType tensor_type =
-      QuantizedTensorElementType::PerTensor<TypeParam::kStorage,
-                                            TypeParam::kExpressed>(scale,
-                                                                   zero_point);
+  const QuantizedElementTypePerTensor tensor_type =
+      QuantizedElementTypePerTensor(TypeParam::kStorage, zero_point,
+                                    TypeParam::kExpressed, scale);
   Tensor input_tensor{
-      .type = QuantizedTensorType{.shape = shape, .element_type = tensor_type},
+      .type = QuantizedPerTensorTensorType{.shape = shape,
+                                           .element_type = tensor_type},
       .data = input_data.data()};
   Tensor output_tensor{
-      .type = QuantizedTensorType{.shape = shape, .element_type = tensor_type},
+      .type = QuantizedPerTensorTensorType{.shape = shape,
+                                           .element_type = tensor_type},
       .data = output_data.data()};
 
   Vector<StorageT> expected_data(shape.NumElements());

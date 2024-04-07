@@ -1,8 +1,8 @@
+load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load("//tsl:tsl.bzl", "if_not_android", "internal_visibility", "nvtx_headers")
 load("//tsl:tsl.default.bzl", "filegroup")
 load("//tsl/platform:build_config.bzl", "tsl_cc_test")
 load("//tsl/platform:build_config_root.bzl", "if_static")
-load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load(
     "//tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
@@ -31,6 +31,8 @@ cc_library(
 filegroup(
     name = "mobile_srcs_no_runtime",
     srcs = [
+        "nvtx_utils.h",
+        "nvtx_utils_stub.cc",  #Include the stub implementation here since CUDA isn't relevant to Android.
         "scoped_annotation.h",
         "scoped_memory_debug_annotation.cc",
         "scoped_memory_debug_annotation.h",
@@ -147,8 +149,8 @@ cc_library(
         "//tsl/platform:errors",
         "//tsl/platform:macros",
         "//tsl/platform:statusor",
-        "//tsl/util:env_var",
         "@com_google_absl//absl/strings:string_view",
+        "@local_xla//xla/tsl/util:env_var",
     ],
 )
 
@@ -269,27 +271,28 @@ cc_library(
 
 cc_library(
     name = "nvtx_utils",
+    srcs = if_cuda_is_configured(
+        ["nvtx_utils.cc"],
+        ["nvtx_utils_stub.cc"],
+    ),
     hdrs = ["nvtx_utils.h"],
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     visibility = ["//visibility:public"],
-    deps = [
-        "//tsl/platform:logging",
-        "//tsl/platform:macros",
-        "//tsl/platform:types",
-        "@com_google_absl//absl/strings",
-    ] + if_cuda_is_configured(nvtx_headers()),
+    deps = if_cuda_is_configured(nvtx_headers()),
 )
 
 cc_library(
     name = "scoped_annotation",
-    hdrs = ["scoped_annotation.h"],
+    hdrs = [
+        "nvtx_utils.h",
+        "scoped_annotation.h",
+    ],
     visibility = ["//visibility:public"],
     deps = [
+        ":nvtx_utils",
         "//tsl/platform:macros",
         "//tsl/platform:types",
         "@com_google_absl//absl/strings",
     ] + if_not_android([
-        ":nvtx_utils",
         "//tsl/profiler/backends/cpu:annotation_stack",
     ]),
 )

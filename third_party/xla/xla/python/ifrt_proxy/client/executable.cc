@@ -47,6 +47,7 @@
 #include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/host_callback.h"
 #include "xla/python/ifrt/shape.h"
+#include "xla/python/ifrt/sharding_serdes.h"
 #include "xla/python/ifrt_proxy/client/array.h"
 #include "xla/python/ifrt_proxy/client/host_buffer.h"
 #include "xla/python/ifrt_proxy/client/rpc_helper.h"
@@ -56,10 +57,12 @@
 #include "xla/shape_util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/concurrency/ref_count.h"
+#include "tsl/platform/cpu_info.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/status_to_from_proto.h"
 #include "tsl/platform/statusor.h"
+#include "tsl/platform/threadpool.h"
 
 namespace xla {
 namespace ifrt {
@@ -449,8 +452,8 @@ LoadedExecutable::Execute(absl::Span<tsl::RCReference<xla::ifrt::Array>> args,
   };
   const auto lookup_device = absl::bind_front(&Client::LookupDevice, client());
   for (const auto& output : response->outputs()) {
-    DType dtype = FromDTypeProto(output.dtype());
-    Shape shape = FromShapeProto(output.shape());
+    TF_ASSIGN_OR_RETURN(DType dtype, DType::FromProto(output.dtype()));
+    TF_ASSIGN_OR_RETURN(Shape shape, Shape::FromProto(output.shape()));
     TF_ASSIGN_OR_RETURN(auto sharding,
                         FromShardingProto(lookup_device, output.sharding()));
     result.outputs.push_back(tsl::MakeRef<Array>(
@@ -497,6 +500,17 @@ absl::Span<xla::ifrt::Device* const> LoadedExecutable::addressable_devices()
     const {
   return addressable_devices_;
 }
+
+namespace {
+
+static tsl::ThreadOptions GetThreadOptions() {
+  tsl::ThreadOptions thread_options;
+  // Ensure the threads' stack is large enough for arbitrary Python code.
+  thread_options.stack_size = 2 * 1024 * 1024;  // 2 MiB
+  return thread_options;
+}
+
+}  // namespace
 
 void LoadedExecutable::PollLoadedHostCallback(
     uint64_t handle,
@@ -553,7 +567,11 @@ void LoadedExecutable::PollLoadedHostCallback(
           });
     }
   };
-  tsl::Env::Default()->SchedClosure(std::move(f));
+
+  static auto* global_pool = new tsl::thread::ThreadPool(
+      tsl::Env::Default(), GetThreadOptions(), "XLAIFRTProxy",
+      std::min(16, tsl::port::MaxParallelism()));
+  global_pool->Schedule(std::move(f));
 }
 
 char LoadedExecutable::ID = 0;  // NOLINT

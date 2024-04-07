@@ -31,11 +31,14 @@ limitations under the License.
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
+#include "tensorflow/compiler/mlir/quantization/common/attrs_and_constraints.h"
 #include "tensorflow/compiler/mlir/quantization/common/func.h"
 #include "tensorflow/compiler/mlir/quantization/common/test_base.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tsl/platform/protobuf.h"  // IWYU pragma: keep
 #include "tsl/platform/status_matchers.h"
 
 namespace mlir::quant {
@@ -44,6 +47,7 @@ namespace {
 using ::stablehlo::quantization::Method;
 using ::testing::HasSubstr;
 using ::testing::NotNull;
+using ::tsl::protobuf::util::MessageDifferencer;
 using ::tsl::testing::IsOk;
 using ::tsl::testing::StatusIs;
 
@@ -285,6 +289,67 @@ TEST_F(LiftAsFunctionCallTest, IsInRegionFailsWhenOpNotInsideRegion) {
 
   auto subtract_op = FindOperationOfType<mlir::stablehlo::SubtractOp>(main_fn);
   EXPECT_FALSE(IsInStableHloOpRegion(subtract_op));
+}
+
+TEST_F(LiftAsFunctionCallTest,
+       GetQuantizationMethodOrDefaultReturnsCorrectMethod) {
+  // Function containing a simple `TF::XlaCallModuleOp` with a valid string
+  // attribute `_quantization_method` set to `"no_quantization { }"`.
+  constexpr absl::string_view kXlaCallModuleOpWithQuantizationMethodAttr =
+      R"mlir(
+    func.func @main(%arg0: tensor<1x1x3xf32>, %arg1: tensor<3x4xf32>) -> tensor<1x1x4xf32> {
+      %0 = "tf.XlaCallModule"(%arg0, %arg1) <{Sout = [#tf_type.shape<1x1x4>], dim_args_spec = [], disabled_checks = [], function_list = [], has_token_input_output = false, module = "", platforms = ["CPU"], version = 9 : i64}>
+          {
+            _entry_function = @composite_dot_general_fn_1,
+            _quantization_method = "no_quantization { }",
+            _stablehlo_module_attrs = {jax.uses_shape_polymorphism = true}
+          } : (tensor<1x1x3xf32>, tensor<3x4xf32>) -> tensor<1x1x4xf32>
+      return %0 : tensor<1x1x4xf32>
+    }
+  )mlir";
+
+  const OwningOpRef<ModuleOp> module_op =
+      ParseModuleOpString(kXlaCallModuleOpWithQuantizationMethodAttr);
+  ASSERT_TRUE(module_op);
+
+  FailureOr<TF::XlaCallModuleOp> xla_call_module_op =
+      FindFirstOpFromMainFunc<TF::XlaCallModuleOp>(*module_op);
+  ASSERT_TRUE(succeeded(xla_call_module_op));
+
+  // Test that `GetQuantizationMethodOrDefault` returns a valid `Method`
+  // corresponding to `"no_quantization {}"`.
+  const Method method = GetQuantizationMethodOrDefault(*xla_call_module_op);
+  EXPECT_TRUE(method.has_no_quantization());
+}
+
+TEST_F(
+    LiftAsFunctionCallTest,
+    GetQuantizationMethodOrDefaultReturnsDefaultWhenNoQuantizationMethodAttr) {
+  // Function containing a simple `TF::XlaCallModuleOp` that is missing the
+  // "_quantization_method" attribute.
+  constexpr absl::string_view kXlaCallModuleOpWithoutQuantizationMethodAttr =
+      R"mlir(
+    func.func @main(%arg0: tensor<1x1x3xf32>, %arg1: tensor<3x4xf32>) -> tensor<1x1x4xf32> {
+      %0 = "tf.XlaCallModule"(%arg0, %arg1) <{Sout = [#tf_type.shape<1x1x4>], dim_args_spec = [], disabled_checks = [], function_list = [], has_token_input_output = false, module = "", platforms = ["CPU"], version = 9 : i64}>
+          {
+            _entry_function = @composite_dot_general_fn_1,
+            _stablehlo_module_attrs = {jax.uses_shape_polymorphism = true}
+          } : (tensor<1x1x3xf32>, tensor<3x4xf32>) -> tensor<1x1x4xf32>
+      return %0 : tensor<1x1x4xf32>
+    }
+  )mlir";
+
+  const OwningOpRef<ModuleOp> module_op =
+      ParseModuleOpString(kXlaCallModuleOpWithoutQuantizationMethodAttr);
+  ASSERT_TRUE(module_op);
+
+  FailureOr<TF::XlaCallModuleOp> xla_call_module_op =
+      FindFirstOpFromMainFunc<TF::XlaCallModuleOp>(*module_op);
+  ASSERT_TRUE(succeeded(xla_call_module_op));
+
+  // Test that `GetQuantizationMethodOrDefault` returns the default instance.
+  const Method method = GetQuantizationMethodOrDefault(*xla_call_module_op);
+  EXPECT_TRUE(MessageDifferencer::Equals(method, Method::default_instance()));
 }
 
 }  // namespace

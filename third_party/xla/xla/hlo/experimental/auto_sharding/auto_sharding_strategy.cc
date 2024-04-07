@@ -763,6 +763,8 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
                                 strategy_group, replicated_penalty);
         break;
       }
+      case HloOpcode::kRecv:
+      case HloOpcode::kRecvDone:
       case HloOpcode::kSend: {
         strategy_group = CreateTupleStrategyGroup(instruction_id);
         strategy_group->childs.reserve(ins->shape().tuple_shapes_size());

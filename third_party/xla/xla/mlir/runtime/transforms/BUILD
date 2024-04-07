@@ -1,5 +1,4 @@
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
-load("//xla:xla.bzl", "xla_cc_test")
 load("@local_tsl//tsl:tsl.default.bzl", "get_compatible_with_portable")
 load(
     "@local_tsl//tsl/platform:build_config_root.bzl",
@@ -10,6 +9,7 @@ load(
     "if_llvm_x86_available",
 )
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
+load("//xla:xla.bzl", "xla_cc_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -53,6 +53,7 @@ cc_library(
         "//xla/mlir/runtime/ir:rt",
         "//xla/mlir/runtime/utils:custom_calls",
         "//xla/runtime:custom_call",
+        "//xla/runtime:logical_result",
         "//xla/runtime:tracing",
         "//xla/runtime:type_id",
         "@com_google_absl//absl/log:check",
@@ -79,8 +80,10 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         "//xla/mlir/runtime/ir:rt",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Transforms",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
     ],
 )
 
@@ -93,7 +96,7 @@ xla_cc_test(
         "//xla/mlir/runtime/ir:rt",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:MemRefDialect",
-        "@llvm-project//mlir:Transforms",
+        "@llvm-project//mlir:TransformUtils",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_main",
     ],
@@ -170,6 +173,7 @@ cc_library(
     deps = [
         ":custom_call_encoding",
         "//xla/runtime:type_id",
+        "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
     ],
 )
@@ -181,10 +185,15 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
         "//xla/mlir/runtime/ir:rt",
         "//xla/runtime:custom_call",
+        "//xla/runtime:logical_result",
+        "//xla/runtime:memref_view",
         "//xla/runtime:tracing",
         "//xla/runtime:type_id",
+        "@com_google_absl//absl/types:span",
+        "@eigen_archive//:eigen3",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:AsyncDialect",
@@ -212,18 +221,27 @@ cc_library(
         "//xla/runtime:arguments",
         "//xla/runtime:compiler",
         "//xla/runtime:constraints",
+        "//xla/runtime:errors",
         "//xla/runtime:executable",
+        "//xla/runtime:execution_engine",
+        "//xla/runtime:logical_result",
+        "//xla/runtime:memory_mapper",
         "//xla/runtime:symbolic_shape",
         "//xla/service/llvm_ir:llvm_util",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Analysis",
         "@llvm-project//llvm:Core",
+        "@llvm-project//llvm:JITLink",
         "@llvm-project//llvm:Passes",
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:Target",
         "@llvm-project//mlir:ExecutionEngineUtils",
         "@llvm-project//mlir:FuncExtensions",
+        "@llvm-project//mlir:FunctionInterfaces",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Pass",
@@ -247,10 +265,12 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         ":type_converter",
+        "//xla:xla_data_proto_cc",
         "//xla/mlir/runtime/utils:constraints",
         "//xla/runtime:arguments",
         "//xla/runtime:constraints",
         "//xla/runtime:symbolic_shape",
+        "//xla/runtime:types",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -270,14 +290,17 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
         "//xla/mlir/runtime/ir:rt",
         "//xla/runtime:types",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AsyncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -287,6 +310,9 @@ xla_cc_test(
     compatible_with = get_compatible_with_portable(),
     deps = [
         ":type_converter",
+        "//xla:xla_data_proto_cc",
+        "//xla/runtime:types",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_main",

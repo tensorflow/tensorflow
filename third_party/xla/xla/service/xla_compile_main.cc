@@ -22,10 +22,9 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/status.h"
 #include "xla/tools/xla_compile_lib.h"
+#include "xla/tsl/util/command_line_flags.h"
 #include "tsl/platform/init_main.h"
 #include "tsl/platform/types.h"
-#include "tsl/util/command_line_flags.h"
-
 
 namespace xla {
 namespace xla_compile {
@@ -111,7 +110,7 @@ int main(int argc, char* argv[]) {
 
   tsl::port::InitMain(usage.c_str(), &argc, &argv);
 
-  xla::Status result = xla::XlaCompileMain(
+  absl::Status result = xla::XlaCompileMain(
       module_path, output_path, platform, gpu_target_config_path,
       autotune_results_path, symbol_repository, symbol_id, use_attached_device,
       wait_for_uploads, result_output_file);

@@ -214,6 +214,9 @@ TEST_F(CollectivePermuteDecomposerTest, Pipeline1) {
           "_xla_send_recv_source_target_pairs=\"{{0,1},{1,2},{2,3},{3,4}}\""));
   EXPECT_THAT(recv->ToString(), HasSubstr("_xla_send_recv_pipeline=\"0\""));
   EXPECT_THAT(recv->ToString(), HasSubstr("_xla_other_attribute=\"xyz\""));
+  HloInstruction* recv_done = FindInstruction(module.get(), "recv-done");
+  EXPECT_THAT(recv_done->ToString(),
+              HasSubstr("_xla_send_recv_pipeline=\"0\""));
 
   HloInstruction* send = FindInstruction(module.get(), "send");
   EXPECT_EQ(send->channel_id().value(), 1);
@@ -223,6 +226,9 @@ TEST_F(CollectivePermuteDecomposerTest, Pipeline1) {
           "_xla_send_recv_source_target_pairs=\"{{0,1},{1,2},{2,3},{3,4}}\""));
   EXPECT_THAT(send->ToString(), HasSubstr("_xla_send_recv_pipeline=\"0\""));
   EXPECT_THAT(send->ToString(), HasSubstr("_xla_other_attribute=\"xyz\""));
+  HloInstruction* send_done = FindInstruction(module.get(), "send-done");
+  EXPECT_THAT(send_done->ToString(),
+              HasSubstr("_xla_send_recv_pipeline=\"0\""));
 }
 
 TEST_F(CollectivePermuteDecomposerTest, ForwardPipeline2) {
@@ -293,11 +299,17 @@ TEST_F(CollectivePermuteDecomposerTest, ForwardPipeline2) {
       recv1->ToString(),
       HasSubstr("_xla_send_recv_source_target_pairs=\"{{0,1},{1,2},{2,3}}\""));
   EXPECT_THAT(recv1->ToString(), HasSubstr("_xla_send_recv_pipeline=\"1\""));
+  HloInstruction* recv_done1 = FindInstruction(module.get(), "recv-done.1");
+  EXPECT_THAT(recv_done1->ToString(),
+              HasSubstr("_xla_send_recv_pipeline=\"1\""));
   HloInstruction* send1 = FindInstruction(module.get(), "send.1");
   EXPECT_THAT(
       send1->ToString(),
       HasSubstr("_xla_send_recv_source_target_pairs=\"{{0,1},{1,2},{2,3}}\""));
   EXPECT_THAT(send1->ToString(), HasSubstr("_xla_send_recv_pipeline=\"1\""));
+  HloInstruction* send_done1 = FindInstruction(module.get(), "send-done.1");
+  EXPECT_THAT(send_done1->ToString(),
+              HasSubstr("_xla_send_recv_pipeline=\"1\""));
 }
 
 TEST_F(CollectivePermuteDecomposerTest, BackwardPipeline2) {

@@ -80,7 +80,7 @@ class ConvertCustomAggregationOpToQuantStats
 
     // When there are no min and max attributes, remove op.
     if (min == nullptr || max == nullptr) {
-      op->replaceAllUsesWith(op->getOperands());
+      op.getOutput().replaceAllUsesWith(op.getInput());
       rewriter.eraseOp(op);
       return success();
     }
@@ -93,8 +93,9 @@ class ConvertCustomAggregationOpToQuantStats
     ElementsAttr axis_stats;
     IntegerAttr axis;
 
-    rewriter.replaceOpWithNewOp<quantfork::StatisticsOp>(
-        op, op->getOperand(0), layer_stats, axis_stats, axis);
+    quantfork::StatisticsOp stats_op = rewriter.create<quantfork::StatisticsOp>(
+        op->getLoc(), op.getInput(), layer_stats, axis_stats, axis);
+    op.getOutput().replaceAllUsesWith(stats_op.getResult());
     return success();
   }
 };

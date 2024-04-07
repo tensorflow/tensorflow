@@ -90,33 +90,27 @@ TYPED_TEST(DequantizeOpQuantizePerTensor, QuantizedPerTensorWithTestOp) {
   const StorageT rhs_zero_point = static_cast<StorageT>(5);
   const ExpressedT output_scale = static_cast<ExpressedT>(1.5);
   const StorageT output_zero_point = static_cast<StorageT>(3);
-  Tensor lhs_tensor{
-      .type =
-          QuantizedTensorType{
-              .shape = shape,
-              .element_type =
-                  QuantizedTensorElementType::PerTensor<TypeParam::kStorage,
-                                                        TypeParam::kExpressed>(
-                      lhs_scale, lhs_zero_point)},
-      .data = lhs_data.data()};
-  Tensor rhs_tensor{
-      .type =
-          QuantizedTensorType{
-              .shape = shape,
-              .element_type =
-                  QuantizedTensorElementType::PerTensor<TypeParam::kStorage,
-                                                        TypeParam::kExpressed>(
-                      rhs_scale, rhs_zero_point)},
-      .data = rhs_data.data()};
-  Tensor output_tensor{
-      .type =
-          QuantizedTensorType{
-              .shape = shape,
-              .element_type =
-                  QuantizedTensorElementType::PerTensor<TypeParam::kStorage,
-                                                        TypeParam::kExpressed>(
-                      output_scale, output_zero_point)},
-      .data = output_data.data()};
+  Tensor lhs_tensor{.type =
+                        QuantizedPerTensorTensorType{
+                            .shape = shape,
+                            .element_type = QuantizedElementTypePerTensor(
+                                TypeParam::kStorage, lhs_zero_point,
+                                TypeParam::kExpressed, lhs_scale)},
+                    .data = lhs_data.data()};
+  Tensor rhs_tensor{.type =
+                        QuantizedPerTensorTensorType{
+                            .shape = shape,
+                            .element_type = QuantizedElementTypePerTensor(
+                                TypeParam::kStorage, rhs_zero_point,
+                                TypeParam::kExpressed, rhs_scale)},
+                    .data = rhs_data.data()};
+  Tensor output_tensor{.type =
+                           QuantizedPerTensorTensorType{
+                               .shape = shape,
+                               .element_type = QuantizedElementTypePerTensor(
+                                   TypeParam::kStorage, output_zero_point,
+                                   TypeParam::kExpressed, output_scale)},
+                       .data = output_data.data()};
 
   Vector<StorageT> expected_data(shape.NumElements());
   absl::c_transform(

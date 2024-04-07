@@ -60,7 +60,9 @@ bool IsNopInstruction(const HloInstruction& hlo) {
   return op == HloOpcode::kGetTupleElement || op == HloOpcode::kBitcast ||
          op == HloOpcode::kConstant || op == HloOpcode::kParameter ||
          op == HloOpcode::kBroadcast || op == HloOpcode::kIota ||
-         hlo.IsEffectiveBitcast();
+         hlo.IsEffectiveBitcast() ||
+         (op == HloOpcode::kTuple && hlo.user_count() == 1 &&
+          hlo.users().front()->opcode() == HloOpcode::kWhile);
 }
 }  // namespace
 
@@ -713,6 +715,12 @@ class ReadySetLt {
   DefaultSchedulerCore::CandidateResult operator()(
       DefaultSchedulerCore::ScheduleCandidate& a,
       DefaultSchedulerCore::ScheduleCandidate& b) const {
+    // Schedule according to ForceEarly.
+    if (auto value = DefaultSchedulerCore::ChooseBestCandidate(
+            a.node->GetForceEarly(), a, b.node->GetForceEarly(), b,
+            "kForceEarly")) {
+      return *value;
+    }
     // Schedule according to ForceDelay first.
     if (auto value = DefaultSchedulerCore::ChooseBestCandidate(
             !a.node->GetForceDelay(), a, !b.node->GetForceDelay(), b,

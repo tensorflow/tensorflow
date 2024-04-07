@@ -36,6 +36,7 @@ cc_library(
         ":unfreeze_constants",
         "//tensorflow/cc/saved_model:loader",
         "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
+        "//tensorflow/compiler/mlir/quantization/stablehlo/cc:config",
         "//tensorflow/compiler/mlir/quantization/stablehlo/cc:context",
         "//tensorflow/compiler/mlir/quantization/stablehlo/cc:debugger",
         "//tensorflow/compiler/mlir/quantization/stablehlo/cc:io",

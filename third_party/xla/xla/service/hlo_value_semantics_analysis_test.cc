@@ -195,6 +195,12 @@ class HloValueSemanticsAnalysisTest : public HloTestBase {
     return HasLabel(hlo_value_semantics_analysis, module, instruction_name,
                     HloValueSemanticLabel::kWeightGradient);
   }
+  bool IsTupleOrToken(
+      const HloValueSemanticsAnalysis& hlo_value_semantics_analysis,
+      HloModule* module, absl::string_view instruction_name) {
+    return HasLabel(hlo_value_semantics_analysis, module, instruction_name,
+                    HloValueSemanticLabel::kTupleOrToken);
+  }
 };
 
 TEST_F(HloValueSemanticsAnalysisTest, OneMatmul) {
@@ -242,6 +248,41 @@ ENTRY entry {
   EXPECT_TRUE(
       IsStatic(*hlo_value_semantics_analysis, module.get(), "select.35"));
   EXPECT_TRUE(IsWeight(*hlo_value_semantics_analysis, module.get(), "dot.2"));
+}
+
+TEST_F(HloValueSemanticsAnalysisTest, HandleConditional) {
+  const std::string module_str = R"(
+    HloModule Module
+
+    branch0 {
+      tparam = f32[4] parameter(0)
+      tgte1 = f32[4] ceil(tparam)
+      ROOT tuple = (f32[4], f32[4]) tuple(tparam, tgte1)
+    }
+
+    branch1 {
+      fparam = f32[4] parameter(0)
+      %async-start = ((f32[4]), f32[4], s32[]) custom-call-start(f32[4] fparam), async_execution_thread="parallel_thread", custom_call_target="foo"
+      %async-done = f32[4] custom-call-done(((f32[4]), f32[4], s32[]) %async-start)
+      ROOT tuple = (f32[4], f32[4]) tuple(fparam, %async-done)
+    }
+
+    ENTRY entry {
+      p0 = f32[4] parameter(0)
+      b0 = s32[] parameter(1)
+      ROOT conditional = (f32[4], f32[4]) conditional(b0, p0, p0),
+        branch_computations={branch0, branch1}
+    }
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(module_str, /*replica_count=*/1,
+                                                /*num_partitions=*/2));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloValueSemanticsAnalysis> hlo_value_semantics_analysis,
+      HloValueSemanticsAnalysis::Run(*module));
+  EXPECT_TRUE(IsTupleOrToken(*hlo_value_semantics_analysis, module.get(),
+                             "conditional"));
 }
 
 TEST_F(HloValueSemanticsAnalysisTest, TwoMatmuls) {
@@ -619,6 +660,29 @@ TEST_F(EinsumDepthAnalysisTest, HandleConditional) {
       einsum_depth_analysis->GetEinsumDepthMap();
   HloComputation* computation = module->GetComputationWithName("entry");
   EXPECT_EQ(GetInstructionDepth(einsum_depth_map, computation, "conditional"),
+            0);
+}
+
+TEST_F(EinsumDepthAnalysisTest, HandleAfterAll) {
+  const char* const hlo_string = R"(
+    ENTRY entry {
+      after-all.1 = token[] after-all()
+      parameter.1 = f32[] parameter(0)
+      send.1 = (f32[], u32[], token[]) send(parameter.1, after-all.1), channel_id=1, is_host_transfer=true, frontend_attributes={_xla_host_transfer_handler_name="tf_rendezvous",_xla_host_transfer_rendezvous="rendezvous1"}
+      send-done.1 = token[] send-done(send.1), channel_id=1, is_host_transfer=true, frontend_attributes={_xla_host_transfer_handler_name="tf_rendezvous",_xla_host_transfer_rendezvous="rendezvous1"}
+      ROOT after-all.2 = token[] after-all(send-done.1), frontend_attributes={_xla_host_transfer_handler_name="tf_rendezvous",_xla_host_transfer_rendezvous="rendezvous1"}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<EinsumDepthAnalysis> einsum_depth_analysis,
+      EinsumDepthAnalysis::Run(*module->entry_computation(),
+                               SendRecvGroupMap(*module)));
+  const EinsumDepthMap& einsum_depth_map =
+      einsum_depth_analysis->GetEinsumDepthMap();
+  HloComputation* computation = module->GetComputationWithName("entry");
+  EXPECT_EQ(GetInstructionDepth(einsum_depth_map, computation, "after-all.2"),
             0);
 }
 

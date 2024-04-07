@@ -513,7 +513,7 @@ SavedModelImpl::LoadSavedModel(Options options,
     LOG(INFO) << "Found AOT package. Load and deserialize MLIR module.";
 
     TF_RETURN_IF_ERROR(
-        DeserializeAotMlirModule(saved_model_dir, &context, &mlir_module));
+        DeserializeAoTMlirModule(saved_model_dir, &context, &mlir_module));
   } else {
     ASSIGN_OR_RETURN_IN_IMPORT(
         mlir_module,
@@ -579,11 +579,19 @@ SavedModelImpl::LoadSavedModel(Options options,
   mlrt::bc::Buffer bytecode;
   tfrt::BefBuffer bef;
   if (aot_exist) {
-    LOG(INFO) << "Found AOT package. Load and deserialize BEF.";
+    LOG(INFO) << "Found AoT package. Load and deserialize BEF.";
     if (options.graph_execution_options.enable_mlrt) {
-      // TODO(b/303504882): Add deserialization for mlrt path
-      return absl::InternalError("AOT is not supported in MLRT");
+      LOG(INFO) << "Found AoT package. Load and deserialize MLRT Bytecode.";
+
+      ASSIGN_OR_RETURN_IN_COMPILE(
+          bytecode,
+          LoadMlrtAndMlir(options.graph_execution_options.compile_options,
+                          mlir_module.get(), saved_model_dir_string,
+                          fallback_state.get()));
+
     } else {
+      LOG(INFO) << "Found AoT package. Load and deserialize BEF.";
+
       ASSIGN_OR_RETURN_IN_COMPILE(
           bef, LoadBefAndMlir(options.graph_execution_options.compile_options,
                               mlir_module.get(), saved_model_dir_string,

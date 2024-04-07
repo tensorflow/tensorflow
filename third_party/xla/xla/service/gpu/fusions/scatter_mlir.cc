@@ -42,6 +42,7 @@ limitations under the License.
 #include "xla/service/gpu/fusions/mlir/elemental_hlo_to_mlir.h"
 #include "xla/service/gpu/fusions/mlir/ir/xla_gpu_ops.h"
 #include "xla/service/gpu/launch_dimensions.h"
+#include "xla/service/gpu/model/indexing_analysis.h"
 #include "xla/service/gpu/model/indexing_map.h"
 #include "xla/shape.h"
 #include "xla/xla_data.pb.h"
@@ -105,7 +106,7 @@ std::optional<IndexingMap> MlirScatterFusion::ComputeThreadIdToInputIndexing(
   }
   // Compute thread id mapping based on the first update operand.
   Shape scatter_update_shape = scatter->scatter_updates().front()->shape();
-  IndexingMap scatter_update_map = GetDefaultThreadIdToOutputIndexingMap(
+  IndexingMap scatter_update_map = GetDefaultThreadIdIndexingMap(
       launch_dimensions(), config_.unroll_factor, scatter_update_shape, ctx);
 
   // For scatter indices we project indexing for scatter updates and take the
@@ -123,7 +124,7 @@ std::optional<IndexingMap> MlirScatterFusion::ComputeThreadIdToInputIndexing(
         RangeVarsFromTensorSizes({scatter_indices_shape.dimensions(1)}),
         /*rt_vars=*/{}};
     auto scatter_indices_map = scatter_update_map * updates_to_indices_map;
-    scatter_indices_map.Simplify();
+    scatter_indices_map.Simplify(GetIndexingMapForInstruction);
     return scatter_indices_map;
   }
   return scatter_update_map;
@@ -190,7 +191,7 @@ absl::Status MlirScatterFusion::EmitEntryFunction(
           /*root_index=*/0, /*hero_operand_index=*/kScatterUpdateIndex,
           mlir_context)
           .value();
-  thread_id_to_update_map.Simplify();
+  thread_id_to_update_map.Simplify(GetIndexingMapForInstruction);
   thread_id_to_update_map.RemoveUnusedSymbols();
 
   const auto& root_computation = computations.FindPartitionedComputation(

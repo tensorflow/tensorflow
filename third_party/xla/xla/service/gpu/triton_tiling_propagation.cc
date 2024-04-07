@@ -943,9 +943,24 @@ DimOrderMapOrError GetPropagatedDimOrders(const HloInstruction& hlo,
     if (!std::holds_alternative<DotProperties>(properties)) {
       return "Concatenations for now are only supported in GEMM fusions.";
     }
-    auto dim = LogicalIndexOfLabeledDimension(
-        hlo.shape(), src_dim_order,
-        std::get<DotProperties>(properties).noncontracting_dimension);
+
+    int64_t noncontracting_dim_label =
+        std::get<DotProperties>(properties).noncontracting_dimension;
+    const FragmentOrders& src_dim_fragments_orders =
+        src_dim_order.DimFragmentsOrders();
+
+    auto noncontracting_dim_fragment_order_it =
+        src_dim_fragments_orders.find(noncontracting_dim_label);
+    if (noncontracting_dim_fragment_order_it !=
+        src_dim_fragments_orders.end()) {
+      if (noncontracting_dim_fragment_order_it->second.size() > 1) {
+        return "Concatenations on split non-contracting dimensions are "
+               "unsupported.";
+      }
+    }
+
+    auto dim = LogicalIndexOfLabeledDimension(hlo.shape(), src_dim_order,
+                                              noncontracting_dim_label);
     if (!dim.has_value() || dim.value() != hlo.concatenate_dimension()) {
       return "Unsupported concatenation.";
     }
@@ -1086,11 +1101,6 @@ GetPropagatedDimOrdersAndRequirementsIfProfitablyFusible(
   int fusion_level =
       hlo.GetModule()->config().debug_options().xla_gpu_triton_fusion_level();
   // TODO(ROCm): Check fusion level for ROCm.
-  if (std::holds_alternative<se::CudaComputeCapability>(gpu_version) &&
-      !std::get<se::CudaComputeCapability>(gpu_version)
-           .IsAtLeast(se::CudaComputeCapability::AMPERE)) {
-    fusion_level = std::min(fusion_level, 1);
-  }
   if (transform_direction == TransformDirection::kOutputToInput) {
     if (fusion_level < 2) {
       if (hlo.opcode() == HloOpcode::kConvert) {

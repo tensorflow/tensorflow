@@ -32,17 +32,17 @@ struct Log {
   T operator()(T v) const {
     return std::log(v);
   }
-
-  template <>
-  F16 operator()<F16>(F16 val) const {
-    return F16(operator()(static_cast<float>(val)));
-  }
-
-  template <>
-  BF16 operator()<BF16>(BF16 val) const {
-    return BF16(operator()(static_cast<float>(val)));
-  }
 };
+
+template <>
+F16 Log::operator()<F16>(F16 val) const {
+  return F16(operator()(static_cast<float>(val)));
+}
+
+template <>
+BF16 Log::operator()<BF16>(BF16 val) const {
+  return BF16(operator()(static_cast<float>(val)));
+}
 
 LogOp Create(LogOp::Attributes) { return {}; }
 
@@ -58,10 +58,11 @@ absl::Status Prepare(LogOp& op, const Tensor& input, Tensor& output) {
 absl::Status Evaluate(LogOp& op, const Tensor& input, Tensor& output) {
   Log log;
   if (input.IsPerTensorQuantized()) {
-    DISPATCH_QUANTIZED(detail::DequantizeOpQuantizePerTensor,
-                       input.quantized_tensor_element_type().StorageType(),
-                       input.quantized_tensor_element_type().ExpressedType(),
-                       log, input, output)
+    DISPATCH_QUANTIZED(
+        detail::DequantizeOpQuantizePerTensor,
+        input.quantized_per_tensor_element_type().StorageType(),
+        input.quantized_per_tensor_element_type().ExpressedType(), log, input,
+        output)
   } else if (IsFloatTensor(input)) {
     DISPATCH_FLOAT(detail::EvaluateNoQuantization, input.tensor_element_type(),
                    log, input, output);

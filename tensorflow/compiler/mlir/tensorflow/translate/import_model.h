@@ -41,8 +41,7 @@ inline constexpr absl::string_view kImportModelDefaultGraphFuncName = "main";
 // tf_executor dialect.
 tsl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertGraphdefToMlir(
     const GraphDef& graphdef, const GraphDebugInfo& debug_info,
-    const GraphImportConfig& specs, mlir::MLIRContext* context,
-    bool add_default_attributes = true);
+    const GraphImportConfig& specs, mlir::MLIRContext* context);
 
 // Given a Graph, returns a MLIR module containing the graph, expressed with
 // tf_executor dialect.

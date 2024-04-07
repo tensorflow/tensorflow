@@ -1867,7 +1867,7 @@ TfLiteStatus Subgraph::SetTensorParametersReadOnly(
     TF_LITE_ENSURE_OK(
         &context_,
         tflite::BytesRequired(type, dims, ndims, &required_bytes, &context_));
-    TF_LITE_ENSURE_EQ(&context_, required_bytes, bytes);
+    TF_LITE_ENSURE(&context_, required_bytes <= bytes);
   }
 
   TfLiteTensor& tensor = context_.tensors[tensor_index];
