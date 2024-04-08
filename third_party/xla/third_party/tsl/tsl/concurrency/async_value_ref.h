@@ -22,8 +22,11 @@ limitations under the License.
 #include <utility>
 
 #include "absl/base/attributes.h"
+#include "absl/container/inlined_vector.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "tsl/concurrency/async_value.h"
 #include "tsl/concurrency/ref_count.h"
 #include "tsl/platform/logging.h"
@@ -363,6 +366,40 @@ RCReference<ErrorAsyncValue> MakeErrorAsyncValueRef(std::string_view message);
 
 // Construct an empty IndirectAsyncValue, not forwarding to anything.
 RCReference<IndirectAsyncValue> MakeIndirectAsyncValue();
+
+//===----------------------------------------------------------------------===//
+// Functions for awaiting on the async values.
+//===----------------------------------------------------------------------===//
+
+template <typename T>
+void BlockUntilReady(const AsyncValueRef<T>& ref) {
+  BlockUntilReady(ref.GetAsyncValue());
+}
+
+template <typename T>
+void BlockUntilReady(const AsyncValuePtr<T>& ptr) {
+  BlockUntilReady(ptr.value());
+}
+
+template <typename T>
+void RunWhenReady(absl::Span<const AsyncValueRef<T>> refs,
+                  absl::AnyInvocable<void()> callee) {
+  absl::InlinedVector<AsyncValue*, 8> values(refs.size());
+  for (size_t i = 0; i < refs.size(); ++i) {
+    values[i] = refs[i].GetAsyncValue();
+  }
+  RunWhenReady(values, std::move(callee));
+}
+
+template <typename T>
+void RunWhenReady(absl::Span<const AsyncValuePtr<T>> ptrs,
+                  absl::AnyInvocable<void()> callee) {
+  absl::InlinedVector<AsyncValue*, 8> values(ptrs.size());
+  for (size_t i = 0; i < ptrs.size(); ++i) {
+    values[i] = ptrs[i].value();
+  }
+  RunWhenReady(values, std::move(callee));
+}
 
 //===----------------------------------------------------------------------===//
 // LLVM-style type casting library for async value refs and ptrs.

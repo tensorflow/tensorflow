@@ -52,6 +52,7 @@ tsl_cc_test(
         "//tsl/platform:test",
         "//tsl/platform:test_main",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -64,6 +65,7 @@ tsl_cc_test(
         "//tsl/platform:test_main",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
     ],
 )
 

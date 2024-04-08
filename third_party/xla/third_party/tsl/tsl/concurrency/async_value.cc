@@ -17,14 +17,14 @@ limitations under the License.
 
 #include <atomic>
 #include <cstdlib>
-#include <functional>
 #include <utility>
-#include <vector>
 
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/synchronization/blocking_counter.h"
+#include "absl/types/span.h"
 #include "tsl/concurrency/async_value_ref.h"
+#include "tsl/concurrency/ref_count.h"
 
 namespace tsl {
 

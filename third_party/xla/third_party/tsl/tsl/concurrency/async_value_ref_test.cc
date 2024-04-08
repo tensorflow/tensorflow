@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "tsl/platform/test.h"
 
 namespace tsl {
@@ -187,6 +188,18 @@ TEST(AsyncValueRefTest, Nullptr) {
   EXPECT_TRUE(av_int2);
   av_int2 = nullptr;
   EXPECT_FALSE(av_int2);
+}
+
+TEST(AsyncValueRefTest, BlockUntilReady) {
+  AsyncValueRef<int32_t> ref = MakeAvailableAsyncValueRef<int32_t>(42);
+  BlockUntilReady(ref);
+}
+
+TEST(AsyncValueRefTest, RunWhenReady) {
+  AsyncValueRef<int32_t> ref = MakeAvailableAsyncValueRef<int32_t>(42);
+  bool executed = false;
+  RunWhenReady(absl::MakeConstSpan({ref}), [&] { executed = true; });
+  EXPECT_TRUE(executed);
 }
 
 namespace {

@@ -16,6 +16,7 @@ limitations under the License.
 #include <cstdint>
 
 #include "absl/status/status.h"
+#include "absl/types/span.h"
 #include "tsl/concurrency/async_value_ref.h"
 #include "tsl/platform/test.h"
 
@@ -75,6 +76,20 @@ TEST(AsyncValuePtrTest, AndThen) {
   ptr.AndThen([&]() { executed = true; });
 
   ptr.emplace(42);
+  EXPECT_TRUE(executed);
+}
+
+TEST(AsyncValuePtrTest, BlockUntilReady) {
+  AsyncValueRef<int32_t> ref = MakeAvailableAsyncValueRef<int32_t>(42);
+  AsyncValuePtr<int32_t> ptr = ref.AsPtr();
+  BlockUntilReady(ptr);
+}
+
+TEST(AsyncValuePtrTest, RunWhenReady) {
+  AsyncValueRef<int32_t> ref = MakeAvailableAsyncValueRef<int32_t>(42);
+  AsyncValuePtr<int32_t> ptr = ref.AsPtr();
+  bool executed = false;
+  RunWhenReady(absl::MakeConstSpan({ptr}), [&] { executed = true; });
   EXPECT_TRUE(executed);
 }
 
