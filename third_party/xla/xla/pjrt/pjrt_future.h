@@ -22,10 +22,11 @@ limitations under the License.
 #include <type_traits>
 #include <utility>
 
-#include "absl/functional/any_invocable.h"
+#include "absl/status/status.h"
 #include "tsl/concurrency/async_value.h"
 #include "tsl/concurrency/async_value_ref.h"
 #include "tsl/concurrency/ref_count.h"
+#include "tsl/platform/logging.h"
 
 namespace xla {
 
@@ -88,7 +89,7 @@ struct PjRtFutureHelpers {
 // PjRtFuture can be used by the client to wait for work to complete, either via
 // a blocking call or a callback.
 //
-// The implementation wraps a TFRT AsyncValueRef<T>, but we prefer to
+// The implementation wraps a tsl::AsyncValueRef<T>, but we prefer to
 // encapsulate the AVR rather than returning it directly for two reasons.
 //
 // First, we want to retain portability in case a future implementation moves
@@ -99,43 +100,86 @@ struct PjRtFutureHelpers {
 // integration between blocking and profiling (e.g., TraceMe).
 //
 // There are two ways to construct a PjRtFuture, one used by clients that
-// natively use TFRT, which already have import APIs for constructing
-// AsyncValueRefs; and another that avoids exposing TFRT APIs and can be used by
-// non-TFRT clients.
+// natively use TSL concurrency library, which already have import APIs for
+// constructing AsyncValueRefs; and another that avoids exposing TSL APIs and
+// can be used by non-TSL clients.
 template <class T>
 class PjRtFuture {
+  // TODO(ezhulenev): While we are in transition period to PjRtFuture<T> with
+  // implicit absl::Status that represents errors we have to rely on a little
+  // bit of template metaprogramming to disable new `OnReady` callbacks for
+  // PjRtFuture<absl::Status> and PjRtFuture<absl::StatusOr<T>>. Once all users
+  // migrate to implicit absl::Status semantics it should be possible to use
+  // simple absl::AnyInvocable<> type to pass callbacks.
+
+  // A type trait to detect if `T` is an `absl::StatusOr` specialization.
+  template <typename U>
+  struct IsStatusOr : std::false_type {};
+  template <typename U>
+  struct IsStatusOr<absl::StatusOr<U>> : std::true_type {};
+
+  // A type check for a callback that accepts future value and doesn't handle
+  // errors. If underlying promise will be completed with an error this will be
+  // a crash in debug build and undefined behavior in optimized.
+  template <typename Callback>
+  using ValueCallback =
+      std::enable_if_t<((std::is_invocable_v<Callback, T> &&
+                         !std::is_invocable_v<Callback, absl::StatusOr<T>>) ||
+                        std::is_same_v<T, absl::Status> ||
+                        IsStatusOr<T>::value)>;
+
+  // A type check for a callback that accepts absl::Status and only interested
+  // if the future was completed successfully or with error.
+  template <typename Callback>
+  using StatusCallback =
+      std::enable_if_t<((std::is_invocable_v<Callback, absl::Status> &&
+                         !std::is_invocable_v<Callback, absl::StatusOr<T>>) &&
+                        !std::is_same_v<T, absl::Status>)>;
+
+  // A type check for a callback that accepts absl::StatusOr<T> and can handle
+  // future completed with either value or error.
+  template <typename Callback>
+  using StatusOrCallback =
+      std::enable_if_t<(std::is_invocable_v<Callback, absl::StatusOr<T>> &&
+                        !IsStatusOr<T>::value)>;
+
  public:
   // Wrapper for AsyncValueRef<T> that can be used by clients that don't
-  // natively use TFRT.
-  struct Promise {
+  // natively use TSL.
+  class Promise {
    public:
     // Creates an empty promise with !this == true.
     explicit Promise() = default;
     Promise(Promise&& other) = default;
-    Promise(const Promise& other) : avr(other.avr.CopyRef()) {}
+    Promise(const Promise& other) : avr_(other.avr_.CopyRef()) {}
     Promise& operator=(const Promise& other) {
-      avr = other.avr.CopyRef();
+      avr_ = other.avr_.CopyRef();
       return *this;
     }
-    bool operator!() { return !avr; }
+    bool operator!() { return !avr_; }
 
     // Sets the value of the promise. Must be called at most once.
     //
     // After Set is called, value will be delivered to waiters on the parent
     // PjRtFuture, via blocking or callbacks.
-    void Set(T value) { avr.emplace(std::move(value)); }
+    void Set(T value) { avr_.emplace(std::move(value)); }
+
+    // Sets the value of the promise to error. Must called at most once.
+    //
+    // After SetError is called, the error will be delivered to waiters on the
+    // parent PjRtFuture, via blocking or callbacks.
+    void SetError(absl::Status error) { avr_.SetError(std::move(error)); }
 
    private:
     friend class PjRtFuture<T>;
-    explicit Promise(tsl::AsyncValueRef<T> ref) : avr(std::move(ref)) {}
-    // The underlying TFRT value that can be waited on.
-    tsl::AsyncValueRef<T> avr;
+    explicit Promise(tsl::AsyncValueRef<T> ref) : avr_(std::move(ref)) {}
+    tsl::AsyncValueRef<T> avr_;
   };
 
   // Returns a Promise that can be used to construct a PjRtFuture, and then Set
   // later.
   //
-  // Used by clients that do not use TFRT natively.
+  // Used by clients that do not use TSL concurrency library natively.
   static Promise CreatePromise() {
     return Promise(tsl::MakeUnconstructedAsyncValueRef<T>());
   }
@@ -153,8 +197,7 @@ class PjRtFuture {
         on_block_start_([]() { return PjRtFutureHelpers::ProfilingKeys(); }),
         on_block_end_([](PjRtFutureHelpers::ProfilingKeys) {}) {}
 
-  // Constructor used by clients that natively use TFRT and already have a
-  // host_ctx that should be used for awaiting promises.
+  // Constructor used by clients that natively use TSL concurrency library.
   //
   // on_block_start is called before Await starts to block.
   // on_block_end is called after Await finishes blocking.
@@ -168,8 +211,8 @@ class PjRtFuture {
         on_block_start_(std::move(on_block_start)),
         on_block_end_(std::move(on_block_end)) {}
 
-  // Constructor used by clients that don't natively use TFRT and want to use
-  // the wrapped PjRtFuture<T>::Promise class.
+  // Constructor used by clients that don't natively use TSL concurrency library
+  // and want to use the wrapped PjRtFuture<T>::Promise class.
   //
   // on_block_start is called before Await starts to block.
   // on_block_end is called after Await finishes blocking.
@@ -179,13 +222,13 @@ class PjRtFuture {
           []() { return PjRtFutureHelpers::ProfilingKeys(); },
       PjRtFutureHelpers::OnBlockEndFn on_block_end =
           [](PjRtFutureHelpers::ProfilingKeys) {})
-      : promise_ref_(std::move(promise.avr)),
+      : promise_ref_(std::move(promise.avr_)),
         on_block_start_(std::move(on_block_start)),
         on_block_end_(std::move(on_block_end)) {}
 
-  // Two functions exist to know whether the future is ready, to accomodate
-  // the fact some backends (e.g. disributed ones) could take a non-trivial time
-  // to check the state of a future.
+  // Two functions exist to know whether the future is ready, to accommodate
+  // the fact some backends (e.g. distributed ones) could take a non-trivial
+  // time to check the state of a future.
   //
   // `IsReady()` is guaranteed to return true if the future became ready before
   // `IsReady()` was called. `IsReady()` will return immediately if a call to
@@ -219,29 +262,73 @@ class PjRtFuture {
     return *promise_ref_;
   }
 
-  // Registers callback to be called once the promise is ready, with the final
-  // value.
+  // WARNING: In all `OnReady` APIs defined below `callback` may be called on an
+  // internal system thread or the calling thread. The client should avoid any
+  // potentially re-entrant API calls within the callback, for example by using
+  // the callback to enqueue work on a client-owned threadpool.
+
+  // WARNING: In all `OnReady` APIs defined below for non-copyable types, we
+  // have no ways to check the number of waiters but we have to move the data
+  // into the consumer callback. Registering two callbacks will lead to
+  // double-move of the data. It is users' responsibility to make sure only
+  // one waiter is registered.
   //
-  // callback may be called on an internal system thread or the calling thread.
-  // The client should avoid any potentially re-entrant API calls within the
-  // callback, for example by using the callback to enqueue work on a
-  // client-owned threadpool.
-  void OnReady(absl::AnyInvocable<void(T) &&> callback) {
+  // TODO(ezhulenev): Replace move semantics of `OnReady` callback with
+  // passing a pointer to the payload? Add special case for rvalue futures?
+  // Find a way to fix this gian footgun!
+
+  // Registers callback to be called once the promise is ready, with the
+  // final value.
+  template <typename Callback, ValueCallback<Callback>* = nullptr>
+  void OnReady(Callback&& callback) {
     CHECK(IsValid());
-    promise_ref_.AndThen([promise = promise_ref_.AsPtr(),
-                          callback = std::move(callback)]() mutable {
-      DCHECK(promise.IsConcrete());
-      if constexpr (std::is_copy_constructible_v<T>) {
-        std::move(callback)(*promise);
-        return;
-      }
-      // For non-copyable types, we have no ways to check the number of waiters
-      // but we have to move the data into the consumer callback. Registering
-      // two callbacks will lead to double-move of the data. It is users'
-      // responsibility to make sure only one waiter is registered.
-      // TODO(yunlongl): Implement `PjRtUniqueFuture`.
-      std::move(callback)(std::move(*promise));
-    });
+    promise_ref_.AndThen(
+        [promise = promise_ref_.AsPtr(),
+         callback = std::forward<Callback>(callback)]() mutable {
+          DCHECK(promise.IsConcrete());
+          if constexpr (std::is_copy_constructible_v<T>) {
+            std::forward<Callback>(callback)(*promise);
+          } else {
+            std::forward<Callback>(callback)(std::move(*promise));
+          }
+        });
+  }
+
+  // Registers callback to be called once the promise is ready with the
+  // absl::Status that signals if future completed successfully or failed
+  // with an error. This is an API for users that do not care about future value
+  // and only care if it was completed (i.e. valus is an empty struct).
+  template <typename Callback, StatusCallback<Callback>* = nullptr>
+  void OnReady(Callback&& callback) const {
+    promise_ref_.AndThen(
+        [promise = promise_ref_.AsPtr(),
+         callback = std::forward<Callback>(callback)]() mutable {
+          if (promise.IsError()) {
+            return std::forward<Callback>(callback)(promise.GetError());
+          } else {
+            return std::forward<Callback>(callback)(absl::OkStatus());
+          }
+        });
+  }
+
+  // Registers callback to be called once the promise is ready with the
+  // absl::StatusOr<T> that signals if future completed successfully or failed
+  // with an error.
+  template <typename Callback, StatusOrCallback<Callback>* = nullptr>
+  void OnReady(Callback&& callback) const {
+    promise_ref_.AndThen(
+        [promise = promise_ref_.AsPtr(),
+         callback = std::forward<Callback>(callback)]() mutable {
+          if (promise.IsError()) {
+            return std::forward<Callback>(callback)(promise.GetError());
+          } else {
+            if constexpr (std::is_copy_constructible_v<T>) {
+              std::forward<Callback>(callback)(*promise);
+            } else {
+              std::forward<Callback>(callback)(std::move(*promise));
+            }
+          }
+        });
   }
 
   // Indicates that event will not complete until after this becomes ready.

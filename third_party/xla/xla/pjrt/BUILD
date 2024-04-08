@@ -597,9 +597,24 @@ cc_library(
     hdrs = ["pjrt_future.h"],
     visibility = internal_visibility([":friends"]),
     deps = [
-        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@local_tsl//tsl/concurrency:async_value",
         "@local_tsl//tsl/concurrency:ref_count",
+        "@local_tsl//tsl/platform:logging",
+    ],
+)
+
+xla_cc_test(
+    name = "pjrt_future_test",
+    srcs = ["pjrt_future_test.cc"],
+    deps = [
+        ":pjrt_future",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@local_tsl//tsl/lib/core:status_test_util",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:test_main",
     ],
 )
 

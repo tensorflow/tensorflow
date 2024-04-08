@@ -24,6 +24,7 @@ cc_library(
         ":concurrent_vector",
         ":ref_count",
         "//tsl/platform:logging",
+        "//tsl/platform:platform_port",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/functional:any_invocable",
@@ -41,6 +42,7 @@ tsl_cc_test(
         ":async_value",
         "//tsl/platform:test",
         "//tsl/platform:test_main",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -52,6 +54,8 @@ tsl_cc_test(
         "//tsl/platform:test",
         "//tsl/platform:test_main",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -60,10 +64,12 @@ tsl_cc_test(
     srcs = ["async_value_ref_test.cc"],
     deps = [
         ":async_value",
+        ":ref_count",
         "//tsl/platform:test",
         "//tsl/platform:test_main",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
     ],
 )
 

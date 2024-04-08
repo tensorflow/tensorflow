@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tsl/concurrency/concurrent_vector.h"
 #include "tsl/concurrency/ref_count.h"
+#include "tsl/platform/mem.h"
 
 namespace tsl {
 
@@ -42,11 +43,6 @@ class ConcreteAsyncValue;
 
 template <typename T>
 constexpr bool kMaybeBase = std::is_class<T>::value && !std::is_final<T>::value;
-
-// TODO(ezhulenev): Switch to `tsl::port::Aligned(Malloc|Free)` once TFRT will
-// be able to properly depend on TSL in the open source build.
-void* AlignedAlloc(size_t alignment, size_t size);
-void AlignedFree(void* ptr);
 
 }  // namespace internal
 
@@ -974,12 +970,12 @@ inline void AsyncValue::Destroy() {
     // explicit check and instead make ~IndirectAsyncValue go through the
     // GetTypeInfo().destructor case below.
     static_cast<IndirectAsyncValue*>(this)->~IndirectAsyncValue();
-    if (was_ref_counted) internal::AlignedFree(this);
+    if (was_ref_counted) port::AlignedFree(this);
     return;
   }
 
   GetTypeInfo().destructor(this);
-  if (was_ref_counted) internal::AlignedFree(this);
+  if (was_ref_counted) port::AlignedFree(this);
 }
 
 inline bool AsyncValue::IsUnique() const {
