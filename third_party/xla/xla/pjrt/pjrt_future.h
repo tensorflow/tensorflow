@@ -142,7 +142,8 @@ class PjRtFuture {
 
   PjRtFuture() = default;
 
-  bool IsValid() const { return promise_ref_ != nullptr; }
+  PjRtFuture(PjRtFuture&&) = default;
+  PjRtFuture& operator=(PjRtFuture&&) = default;
 
   // Constructor for an already-available PjRtFuture.
   //
@@ -182,6 +183,8 @@ class PjRtFuture {
       : promise_ref_(std::move(promise.avr)),
         on_block_start_(std::move(on_block_start)),
         on_block_end_(std::move(on_block_end)) {}
+
+  bool IsValid() const { return promise_ref_ != nullptr; }
 
   // Two functions exist to know whether the future is ready, to accomodate
   // the fact some backends (e.g. disributed ones) could take a non-trivial time
