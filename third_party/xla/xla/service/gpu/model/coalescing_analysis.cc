@@ -125,7 +125,7 @@ void FindAllIndices(const IndexingMap& thread_id_to_physical_index,
     }
     return;
   }
-  if (symbol_id < thread_id_to_physical_index.GetSymbolCount()) {
+  if (symbol_id < thread_id_to_physical_index.GetRangeVarsCount()) {
     Interval symbol_range =
         thread_id_to_physical_index.GetSymbolBound(symbol_id);
     for (int64_t symbol_value = symbol_range.lower;
@@ -234,7 +234,36 @@ bool IsCoalesced(const IndexingMap& thread_id_to_input_indexing_map,
       /*rt_vars=*/{}};
   IndexingMap thread_x_to_linearized_input =
       thread_x_first_32_elements * thread_id_to_input_indexing_map;
+
+  // If RTVars are present, replace them with constants.
+  if (thread_x_to_linearized_input.GetRTVarsCount() > 0) {
+    llvm::SmallVector<AffineExpr, 2> symbol_replacements;
+    for (int64_t symbol_id = 0;
+         symbol_id < thread_x_to_linearized_input.GetRangeVarsCount();
+         ++symbol_id) {
+      symbol_replacements.push_back(
+          mlir::getAffineSymbolExpr(symbol_id, mlir_context));
+    }
+    for (const RTVar& rt_var : thread_x_to_linearized_input.GetRTVars()) {
+      // Take midpoint of the feasible interval for the RT variable.
+      symbol_replacements.push_back(getAffineConstantExpr(
+          (rt_var.feasible_values.lower + rt_var.feasible_values.upper) / 2,
+          mlir_context));
+    }
+    AffineMap thread_x_to_input_no_rt_symbols =
+        thread_x_to_linearized_input.GetAffineMap().replaceDimsAndSymbols(
+            {}, symbol_replacements,
+            thread_x_to_linearized_input.GetDimVarsCount(),
+            thread_x_to_linearized_input.GetRangeVarsCount());
+    thread_x_to_linearized_input = IndexingMap{
+        thread_x_to_input_no_rt_symbols,
+        thread_x_to_linearized_input.GetDimVars(),
+        thread_x_to_linearized_input.GetRangeVars(),
+        thread_x_to_linearized_input.GetRTVars(),
+    };
+  }
   thread_x_to_linearized_input.Simplify(GetIndexingMapForInstruction);
+  thread_x_to_linearized_input.RescaleSymbols();
   thread_x_to_linearized_input.RemoveUnusedSymbols();
   return EstimateCoalescingViaMemoryTransactionsCount(
       FindContiguousIntervals(thread_x_to_linearized_input), element_type);
