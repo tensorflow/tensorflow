@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tfrt/mlrt/kernel/batch_kernel.h"
 
+#include <cstdint>
 #include <cstdlib>
 #include <functional>
 #include <memory>
@@ -25,7 +26,9 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/kernels/batching_util/batch_resource_base.h"
 #include "tensorflow/core/kernels/batching_util/batch_scheduler.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/runtime_fallback/runtime/fallback_batch_kernel.h"
 #include "tensorflow/core/tfrt/fallback/op_kernel_runner_cache.h"
@@ -215,25 +218,28 @@ class MlrtBatchResource : public tensorflow::serving::BatchResourceBase {
     return batch_function.name();
   }
 
-  static Status Create(OpKernelContext* c, int32_t num_batch_threads,
-                       int32_t max_batch_size, int32_t batch_timeout_micros,
-                       int32_t max_enqueued_batches,
-                       const std::vector<int32_t>& allowed_batch_sizes,
+  static Status Create(OpKernelContext* c,
+                       const serving::BatchResourceOptions& options,
                        mlrt::bc::Function function,
                        bool enable_large_batch_splitting, bool disable_padding,
                        std::unique_ptr<MlrtBatchResource>* resource) {
     BatcherT::Options batcher_options;
-    batcher_options.num_batch_threads = num_batch_threads;
+    batcher_options.num_batch_threads = options.num_batch_threads;
     std::shared_ptr<BatcherT> batcher;
     TF_RETURN_IF_ERROR(BatcherT::Create(batcher_options, &batcher));
 
     resource->reset(new MlrtBatchResource(
         function, std::move(batcher),
-        GetBatcherQueueOptions(num_batch_threads, max_batch_size,
-                               batch_timeout_micros, max_enqueued_batches,
-                               allowed_batch_sizes,
-                               enable_large_batch_splitting, disable_padding),
-        allowed_batch_sizes));
+        GetBatcherQueueOptions(
+            options.num_batch_threads, options.max_batch_size,
+            options.batch_timeout_micros, options.max_enqueued_batches,
+            options.allowed_batch_sizes, enable_large_batch_splitting,
+            disable_padding, options.low_priority_max_batch_size,
+            options.low_priority_batch_timeout_micros,
+            options.low_priority_max_enqueued_batches,
+            options.low_priority_allowed_batch_sizes,
+            options.mixed_priority_batching_policy),
+        options.allowed_batch_sizes));
     return OkStatus();
   }
 
