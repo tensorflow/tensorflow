@@ -140,7 +140,7 @@ struct D : public A {};
 }  // namespace
 
 TEST(AsyncValuePtrTest, Isa) {
-  // Empty async pointer always returns false for any Isa<T>().
+  // Empty async pointer always returns false for any Isa<T>.
   AsyncValuePtr<A> null_ptr;
   EXPECT_FALSE(Isa<A>(null_ptr));
 
@@ -153,6 +153,23 @@ TEST(AsyncValuePtrTest, Isa) {
   EXPECT_TRUE(Isa<B>(b_ref.AsPtr()));
   EXPECT_TRUE(Isa<C>(c_ref.AsPtr()));
   EXPECT_TRUE(Isa<D>(d_ref.AsPtr()));
+
+  // Error async value is Isa<T> of any type in the hierarchy.
+  AsyncValueRef<A> err = MakeErrorAsyncValueRef(absl::InternalError("error"));
+  EXPECT_TRUE(Isa<A>(err.AsPtr()));
+  EXPECT_TRUE(Isa<B>(err.AsPtr()));
+  EXPECT_TRUE(Isa<C>(err.AsPtr()));
+  EXPECT_TRUE(Isa<D>(err.AsPtr()));
+
+  // If the value was constructed with a concrete type it should return true
+  // for Isa<T> even if it was set to error later but only if types match.
+  AsyncValueRef<A> a_err = MakeConstructedAsyncValueRef<A>();
+  AsyncValueRef<B> b_err = MakeConstructedAsyncValueRef<B>();
+  a_err.SetError(absl::InternalError("error"));
+  b_err.SetError(absl::InternalError("error"));
+
+  EXPECT_TRUE(Isa<A>(a_err.AsPtr()));
+  EXPECT_TRUE(Isa<B>(b_err.AsPtr()));
 }
 
 TEST(AsyncValuePtrTest, DynCast) {
@@ -177,6 +194,24 @@ TEST(AsyncValuePtrTest, DynCast) {
 
   // Types are unrelated, although they have same base.
   EXPECT_FALSE(DynCast<C>(d_ref.AsPtr()));
+
+  // Error async value can be DynCast to any type in the hierarchy.
+  AsyncValueRef<A> err = MakeErrorAsyncValueRef(absl::InternalError("error"));
+  EXPECT_TRUE(DynCast<A>(err.AsPtr()));
+  EXPECT_TRUE(DynCast<B>(err.AsPtr()));
+  EXPECT_TRUE(DynCast<C>(err.AsPtr()));
+  EXPECT_TRUE(DynCast<D>(err.AsPtr()));
+
+  // If the value was constructed with a concrete type it should DynCast
+  // successfully even it it was set to error later but only if types match.
+  AsyncValueRef<A> a_err = MakeConstructedAsyncValueRef<A>();
+  AsyncValueRef<B> b_err = MakeConstructedAsyncValueRef<B>();
+  a_err.SetError(absl::InternalError("error"));
+  b_err.SetError(absl::InternalError("error"));
+
+  EXPECT_TRUE(DynCast<A>(a_err.AsPtr()));
+  EXPECT_TRUE(DynCast<B>(b_err.AsPtr()));
+  EXPECT_FALSE(DynCast<C>(a_err.AsPtr()));
 }
 
 TEST(AsyncValuePtrTest, Cast) {
@@ -191,6 +226,23 @@ TEST(AsyncValuePtrTest, Cast) {
   EXPECT_TRUE(Cast<D>(d_ref.AsPtr()));
 
   EXPECT_TRUE(Cast<A>(c_ref.AsPtr()));
+
+  // Error async value can be Cast to any type in the hierarchy.
+  AsyncValueRef<A> err = MakeErrorAsyncValueRef(absl::InternalError("error"));
+  EXPECT_TRUE(Cast<A>(err.AsPtr()));
+  EXPECT_TRUE(Cast<B>(err.AsPtr()));
+  EXPECT_TRUE(Cast<C>(err.AsPtr()));
+  EXPECT_TRUE(Cast<D>(err.AsPtr()));
+
+  // If the value was constructed with a concrete type it should Cast
+  // successfully even it it was set to error later but only if types match.
+  AsyncValueRef<A> a_err = MakeConstructedAsyncValueRef<A>();
+  AsyncValueRef<B> b_err = MakeConstructedAsyncValueRef<B>();
+  a_err.SetError(absl::InternalError("error"));
+  b_err.SetError(absl::InternalError("error"));
+
+  EXPECT_TRUE(Cast<A>(a_err.AsPtr()));
+  EXPECT_TRUE(Cast<B>(b_err.AsPtr()));
 }
 
 }  // namespace tsl
