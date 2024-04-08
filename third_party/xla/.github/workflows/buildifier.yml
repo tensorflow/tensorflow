@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ============================================================================
+# Changes to the name/trigger of this workflow may need corresponding changes in
+# the XLA Copybara file's `status_context_names`.
 name: Buildifier
 on:
   pull_request:
