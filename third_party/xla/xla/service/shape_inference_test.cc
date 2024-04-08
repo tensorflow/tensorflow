@@ -4194,6 +4194,16 @@ TEST_F(ShapeInferenceTest, UnboundedBroadcastInDimUnsupported) {
               HasSubstr("Non-broadcast dimensions must not be dynamic."));
 }
 
+TEST_F(ShapeInferenceTest, UnboundedCholesky) {
+  TF_ASSERT_OK_AND_ASSIGN(const Shape a, ParseShape("f32[?, 10]"));
+  TF_ASSERT_OK_AND_ASSIGN(const Shape expected, ParseShape("f32[?, 10]"));
+  TF_ASSERT_OK_AND_ASSIGN(const Shape inferred_shape,
+                          ShapeInference::InferCholeskyShape(a));
+  EXPECT_TRUE(ShapeUtil::Equal(inferred_shape, expected))
+      << "inferred: " << ShapeUtil::HumanString(inferred_shape)
+      << " expected: " << ShapeUtil::HumanString(expected);
+}
+
 TEST_P(UnboundedClampOpShapeInferenceTest, UnboundedClamp) {
   TF_ASSERT_OK_AND_ASSIGN(const Shape lhs, ParseShape(GetParam()[0]));
   TF_ASSERT_OK_AND_ASSIGN(const Shape rhs, ParseShape(GetParam()[1]));

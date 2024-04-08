@@ -2370,9 +2370,10 @@ ShapeInference::InferScalarBroadcastShape(absl::Span<const Shape> shapes) {
         "The 'a' argument to Cholesky must have rank >= 2, got shape %s",
         a.ToString());
   }
-  if (a.dimensions(a.rank() - 2) != a.dimensions(a.rank() - 1)) {
+  if (!CompatibleDimensionSizes(a.dimensions(a.rank() - 2),
+                                a.dimensions(a.rank() - 1))) {
     return InvalidArgument(
-        "The two minor dimensions of 'a' must have equal size, got %s.",
+        "The two minor dimensions of 'a' must have compatible size, got %s.",
         a.ToString());
   }
   return a;
