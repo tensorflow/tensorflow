@@ -34,8 +34,11 @@ from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import load
+from tensorflow.python.saved_model import loader_impl
 from tensorflow.python.saved_model import save as saved_model_save
 from tensorflow.python.types import core
+
+FUNC_ALIAS = 'some_alias'
 
 
 class QuantizedModelTest(test.TestCase, parameterized.TestCase):
@@ -86,6 +89,15 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
         if node_def.op == 'XlaCallModule':
           count += 1
     return count
+
+  def _get_function_aliases(
+      self, output_saved_model_path: str, tags: List[str]
+  ) -> dict[str, str]:
+    """Gets the function aliases in the output saved model."""
+    loader = loader_impl.SavedModelLoader(output_saved_model_path)
+    return loader.get_meta_graph_def_from_tags(
+        tags
+    ).meta_info_def.function_aliases
 
   def _create_matmul_model(
       self,
@@ -253,6 +265,7 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
       strides: Sequence[int] = (1, 1, 1, 1),
       dilations: Sequence[int] = (1, 1, 1, 1),
       padding: str = 'SAME',
+      has_func_alias: bool = False,
   ) -> module.Module:
     class ConvModel(module.Module):
       """A simple model with a single conv2d, bias and relu."""
@@ -309,6 +322,11 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
         return {'output': out}
 
     model = ConvModel()
+    save_options = None
+    if has_func_alias:
+      save_options = tensorflow.saved_model.SaveOptions(
+          function_aliases={FUNC_ALIAS: model.conv2d}
+      )
     saved_model_save.save(
         model,
         saved_model_path,
@@ -317,6 +335,7 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
                 shape=input_shape, dtype=dtypes.float32, name='input_tensor'
             )
         ),
+        options=save_options,
     )
     return model
 

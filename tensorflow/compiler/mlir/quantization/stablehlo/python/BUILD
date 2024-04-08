@@ -63,6 +63,7 @@ pytype_strict_library(
 #         "//tensorflow/python/ops:variables",
 #         "//tensorflow/python/platform:client_testlib",
 #         "//tensorflow/python/saved_model:load",
+#         "//tensorflow/python/saved_model:loader",
 #         "//tensorflow/python/saved_model:save",
 #         "//tensorflow/python/types:core",
 #         "@absl_py//absl/testing:parameterized",
