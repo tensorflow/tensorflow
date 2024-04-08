@@ -170,6 +170,18 @@ TEST(AsyncValuePtrTest, Isa) {
 
   EXPECT_TRUE(Isa<A>(a_err.AsPtr()));
   EXPECT_TRUE(Isa<B>(b_err.AsPtr()));
+
+  // Indirect async value is Isa<T> only if it would be a no-op cast.
+  auto indirect = MakeIndirectAsyncValue();
+  AsyncValueRef<A> c_indirect(indirect);
+  EXPECT_TRUE(Isa<A>(c_indirect.AsPtr()));
+  EXPECT_FALSE(Isa<C>(c_indirect.AsPtr()));
+
+  // After forwarding indirect async value to a concrete one it correctly
+  // returns true from Isa<T> check.
+  indirect->ForwardTo(c_ref.CopyRCRef());
+  EXPECT_TRUE(Isa<A>(c_indirect.AsPtr()));
+  EXPECT_TRUE(Isa<C>(c_indirect.AsPtr()));
 }
 
 TEST(AsyncValuePtrTest, DynCast) {
@@ -212,6 +224,19 @@ TEST(AsyncValuePtrTest, DynCast) {
   EXPECT_TRUE(DynCast<A>(a_err.AsPtr()));
   EXPECT_TRUE(DynCast<B>(b_err.AsPtr()));
   EXPECT_FALSE(DynCast<C>(a_err.AsPtr()));
+
+  // Indirect async value can't be DynCast until it's forwarded unless it's a
+  // no-op DynCast to the same type.
+  auto indirect = MakeIndirectAsyncValue();
+  AsyncValueRef<A> c_indirect(indirect);
+  EXPECT_TRUE(DynCast<A>(c_indirect.AsPtr()));
+  EXPECT_FALSE(DynCast<C>(c_indirect.AsPtr()));
+
+  // After forwarding indirect async value to a concrete one it can be DynCast
+  // to a concrete type.
+  indirect->ForwardTo(c_ref.CopyRCRef());
+  EXPECT_TRUE(DynCast<A>(c_indirect.AsPtr()));
+  EXPECT_TRUE(DynCast<C>(c_indirect.AsPtr()));
 }
 
 TEST(AsyncValuePtrTest, Cast) {
@@ -243,6 +268,18 @@ TEST(AsyncValuePtrTest, Cast) {
 
   EXPECT_TRUE(Cast<A>(a_err.AsPtr()));
   EXPECT_TRUE(Cast<B>(b_err.AsPtr()));
+
+  // Indirect async value can't be Cast until it's forwarded unless it's a
+  // no-op Cast to the same type.
+  auto indirect = MakeIndirectAsyncValue();
+  AsyncValueRef<A> c_indirect(indirect);
+  EXPECT_TRUE(Cast<A>(c_indirect.AsPtr()));
+
+  // After forwarding indirect async value to a concrete one it can be Cast
+  // to a concrete type.
+  indirect->ForwardTo(c_ref.CopyRCRef());
+  EXPECT_TRUE(Cast<A>(c_indirect.AsPtr()));
+  EXPECT_TRUE(Cast<C>(c_indirect.AsPtr()));
 }
 
 }  // namespace tsl

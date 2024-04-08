@@ -96,8 +96,13 @@ class AsyncValueRef {
 
   template <typename Derived, internal::DerivedFrom<Derived, T>* = nullptr>
   bool Isa() const {
-    return value_ && (value_->IsType<Derived>() ||
-                      value_->IsType<DummyValueForErrorAsyncValue>());
+    // Isa is successful if:
+    //   (1) This is no-op cast even if concrete payload has different type.
+    //   (2) Type id of a concrete payload matches Derived type id.
+    //   (3) Payload is for a special case of ErrorAsyncValue.
+    return value_ && (std::is_same_v<Derived, T> ||                     // (1)
+                      value_->IsType<Derived>() ||                      // (2)
+                      value_->IsType<DummyValueForErrorAsyncValue>());  // (3)
   }
 
   template <typename Derived, internal::DerivedFrom<Derived, T>* = nullptr>
@@ -109,18 +114,8 @@ class AsyncValueRef {
   template <typename Derived, internal::DerivedFrom<Derived, T>* = nullptr>
   AsyncValueRef<Derived> DynCast() const {
     DCHECK(value_) << "Async value must be not null";
-    // Cast is successful if:
-    //   (1) This is no-op cast even if concrete payload has different type.
-    //   (2) Type id of a concrete payload matches Derived type id.
-    //   (3) Payload is for a special case of ErrorAsyncValue.
-    if (std::is_same_v<Derived, T> ||                    // (1)
-        value_->IsType<Derived>() ||                     // (1)
-        value_->IsType<DummyValueForErrorAsyncValue>())  // (3)
-    {
-      return AsyncValueRef<Derived>(value_);
-    } else {
-      return AsyncValueRef<Derived>(nullptr);
-    }
+    return Isa<Derived>() ? AsyncValueRef<Derived>(value_)
+                          : AsyncValueRef<Derived>(nullptr);
   }
 
   template <typename Derived, internal::DerivedFrom<Derived, T>* = nullptr>
@@ -241,8 +236,13 @@ class AsyncValuePtr {
 
   template <typename Derived, internal::DerivedFrom<Derived, T>* = nullptr>
   bool Isa() const {
-    return value_ && (value_->IsType<Derived>() ||
-                      value_->IsType<DummyValueForErrorAsyncValue>());
+    // Isa is successful if:
+    //   (1) This is no-op cast even if concrete payload has different type.
+    //   (2) Type id of a concrete payload matches Derived type id.
+    //   (3) Payload is for a special case of ErrorAsyncValue.
+    return value_ && (std::is_same_v<Derived, T> ||                     // (1)
+                      value_->IsType<Derived>() ||                      // (2)
+                      value_->IsType<DummyValueForErrorAsyncValue>());  // (3)
   }
 
   template <typename Derived, internal::DerivedFrom<Derived, T>* = nullptr>
@@ -254,18 +254,8 @@ class AsyncValuePtr {
   template <typename Derived, internal::DerivedFrom<Derived, T>* = nullptr>
   AsyncValuePtr<Derived> DynCast() const {
     DCHECK(value_) << "Async value must be not null";
-    // DynCast is successful if:
-    //   (1) This is no-op cast even if concrete payload has different type.
-    //   (2) Type id of a concrete payload matches Derived type id.
-    //   (3) Payload is for a special case of ErrorAsyncValue.
-    if (std::is_same_v<Derived, T> ||                    // (1)
-        value_->IsType<Derived>() ||                     // (1)
-        value_->IsType<DummyValueForErrorAsyncValue>())  // (3)
-    {
-      return AsyncValuePtr<Derived>(value_);
-    } else {
-      return AsyncValuePtr<Derived>(nullptr);
-    }
+    return Isa<Derived>() ? AsyncValuePtr<Derived>(value_)
+                          : AsyncValuePtr<Derived>(nullptr);
   }
 
   template <typename Derived, internal::DerivedFrom<Derived, T>* = nullptr>

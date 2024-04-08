@@ -225,6 +225,18 @@ TEST(AsyncValueRefTest, Isa) {
 
   EXPECT_TRUE(Isa<A>(a_err));
   EXPECT_TRUE(Isa<B>(b_err));
+
+  // Indirect async value is Isa<T> only if it would be a no-op cast.
+  auto indirect = MakeIndirectAsyncValue();
+  AsyncValueRef<A> c_indirect(indirect);
+  EXPECT_TRUE(Isa<A>(c_indirect));
+  EXPECT_FALSE(Isa<C>(c_indirect));
+
+  // After forwarding indirect async value to a concrete one it correctly
+  // returns true from Isa<T> check.
+  indirect->ForwardTo(c_ref.CopyRCRef());
+  EXPECT_TRUE(Isa<A>(c_indirect));
+  EXPECT_TRUE(Isa<C>(c_indirect));
 }
 
 TEST(AsyncValueRefTest, DynCast) {
@@ -267,6 +279,19 @@ TEST(AsyncValueRefTest, DynCast) {
   EXPECT_TRUE(DynCast<A>(a_err));
   EXPECT_TRUE(DynCast<B>(b_err));
   EXPECT_FALSE(DynCast<C>(a_err));
+
+  // Indirect async value can't be DynCast until it's forwarded unless it's a
+  // no-op DynCast to the same type.
+  auto indirect = MakeIndirectAsyncValue();
+  AsyncValueRef<A> c_indirect(indirect);
+  EXPECT_TRUE(DynCast<A>(c_indirect));
+  EXPECT_FALSE(DynCast<C>(c_indirect));
+
+  // After forwarding indirect async value to a concrete one it can be DynCast
+  // to a concrete type.
+  indirect->ForwardTo(c_ref.CopyRCRef());
+  EXPECT_TRUE(DynCast<A>(c_indirect));
+  EXPECT_TRUE(DynCast<C>(c_indirect));
 }
 
 TEST(AsyncValueRefTest, Cast) {
@@ -298,6 +323,18 @@ TEST(AsyncValueRefTest, Cast) {
 
   EXPECT_TRUE(Cast<A>(a_err));
   EXPECT_TRUE(Cast<B>(b_err));
+
+  // Indirect async value can't be Cast until it's forwarded unless it's a
+  // no-op Cast to the same type.
+  auto indirect = MakeIndirectAsyncValue();
+  AsyncValueRef<A> c_indirect(indirect);
+  EXPECT_TRUE(Cast<A>(c_indirect));
+
+  // After forwarding indirect async value to a concrete one it can be Cast
+  // to a concrete type.
+  indirect->ForwardTo(c_ref.CopyRCRef());
+  EXPECT_TRUE(Cast<A>(c_indirect));
+  EXPECT_TRUE(Cast<C>(c_indirect));
 }
 
 }  // namespace tsl
