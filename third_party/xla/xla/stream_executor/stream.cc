@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <utility>
@@ -59,14 +60,6 @@ Stream::~Stream() {
   }
 }
 
-void Stream::SetPriority(StreamPriority priority) {
-  implementation_->SetPriority(priority);
-}
-
-void Stream::SetPriority(int priority) {
-  implementation_->SetPriority(priority);
-}
-
 std::variant<StreamPriority, int> Stream::priority() const {
   return implementation_->priority();
 }
@@ -88,7 +81,8 @@ absl::Status Stream::RefreshStatus() {
   return status;
 }
 
-absl::Status Stream::Initialize() {
+absl::Status Stream::Initialize(
+    std::optional<std::variant<StreamPriority, int>> priority) {
   absl::MutexLock lock(&mu_);
   if (allocated_) {
     return absl::InternalError(
@@ -98,7 +92,13 @@ absl::Status Stream::Initialize() {
     return absl::InternalError(
         "stream should be in !ok() state pre-initialization");
   }
-
+  if (priority.has_value()) {
+    if (std::holds_alternative<StreamPriority>(*priority)) {
+      implementation_->SetPriority(std::get<StreamPriority>(*priority));
+    } else {
+      implementation_->SetPriority(std::get<int>(*priority));
+    }
+  }
   if (parent_->AllocateStream(this)) {
     // Successful initialization!
     allocated_ = true;

@@ -23,6 +23,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <variant>
@@ -110,7 +111,8 @@ class Stream {
 
   // Initialize the stream. This must be performed before entraining any other
   // operations.
-  absl::Status Initialize();
+  absl::Status Initialize(
+      std::optional<std::variant<StreamPriority, int>> priority = std::nullopt);
 
   // Get or create a sub-stream from this stream. If there is any sub-stream in
   // the pool that can be reused then just return this sub-stream.  Otherwise
@@ -291,9 +293,6 @@ class Stream {
   RocmComputeCapability GetRocmComputeCapability() const {
     return parent()->GetDeviceDescription().rocm_compute_capability();
   }
-
-  void SetPriority(StreamPriority priority);
-  void SetPriority(int priority);
 
   std::variant<StreamPriority, int> priority() const;
 

@@ -442,14 +442,7 @@ Event::Status StreamExecutor::PollForEventStatus(Event* event) {
 absl::StatusOr<std::unique_ptr<Stream>> StreamExecutor::CreateStream(
     std::optional<std::variant<StreamPriority, int>> priority) {
   auto stream = std::make_unique<Stream>(this);
-  if (priority.has_value()) {
-    if (std::holds_alternative<StreamPriority>(*priority)) {
-      stream->SetPriority(std::get<StreamPriority>(*priority));
-    } else {
-      stream->SetPriority(std::get<int>(*priority));
-    }
-  }
-  TF_RETURN_IF_ERROR(stream->Initialize());
+  TF_RETURN_IF_ERROR(stream->Initialize(priority));
   return std::move(stream);
 }
 
