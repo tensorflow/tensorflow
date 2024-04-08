@@ -782,24 +782,24 @@ new file mode 100644
 +  };
 +
 +  // Create descriptor for loading A from shared memory.
-+  auto [shapeA, ordA, baseDescA] = getSharedData(adaptor.getA(), aTensorTy);
-+  Value warpA = urem(warpM, i32_val(shapeA[0] / instrShape[0]));
-+  bool transA = ordA[0] == 0;
++  auto tA = getSharedData(adaptor.getA(), aTensorTy);
++  Value warpA = urem(warpM, i32_val(std::get<0>(tA)[0] / instrShape[0]));
++  bool transA = std::get<1>(tA)[0] == 0;
 +  auto loadA = [&](int m, int k) {
 +    return smemDescriptor(m, k, rewriter, loc, {instrShape[0], instrShape[2]},
-+                          transA, wpt[0], warpA, aTensorTy, baseDescA,
-+                          shapeA[ordA[1]]);
++                          transA, wpt[0], warpA, aTensorTy, std::get<2>(tA),
++                          std::get<0>(tA)[std::get<1>(tA)[1]]);
 +  };
 +
 +  // Create descriptor for loading B from shared memory.
-+  auto [shapeB, ordB, baseDescB] = getSharedData(adaptor.getB(), bTensorTy);
-+  Value warpB = urem(warpN, i32_val(shapeB[1] / instrShape[1]));
-+  bool transB = ordB[0] == 1;
++  auto tB = getSharedData(adaptor.getB(), bTensorTy);
++  Value warpB = urem(warpN, i32_val(std::get<0>(tB)[1] / instrShape[1]));
++  bool transB = std::get<1>(tB)[0] == 1;
 +  auto loadB = [&](int n, int k) {
 +    return smemDescriptor(n, k, rewriter, loc,
 +                          {instrShape[1], instrShape[2] * kContractingFactor},
-+                          transB, wpt[1], warpB, bTensorTy, baseDescB,
-+                          shapeB[ordB[1]]);
++                          transB, wpt[1], warpB, bTensorTy, std::get<2>(tB),
++                          std::get<0>(tB)[std::get<1>(tB)[1]]);
 +  };
 +
 +  // Load metadata from shared memory.
