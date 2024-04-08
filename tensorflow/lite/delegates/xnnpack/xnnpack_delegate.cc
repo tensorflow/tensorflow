@@ -34,6 +34,7 @@ limitations under the License.
 #include "experiments-config.h"  // from @XNNPACK
 #include "xnnpack.h"  // from @XNNPACK
 #include "tensorflow/lite/builtin_ops.h"
+#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/core/api/profiler.h"
 #include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/core/c/common.h"
@@ -1968,9 +1969,10 @@ class Subgraph {
           }
           if (quantization_params->scale->size > 1) {
             if (xnn_validate_channelwise_quantized_tensor(
-                    xnn_datatype_qcint8, /*zero_point=*/0,
+                    xnn_datatype_qcint8,
+                    /*zero_point=*/quantization_params->zero_point->data[0],
                     quantization_params->scale->data, tensor_dims.size(),
-                    /*channel_dim=*/0,
+                    /*channel_dim=*/quantization_params->quantized_dimension,
                     tensor_dims.data()) != xnn_status_success) {
               TF_LITE_MAYBE_KERNEL_LOG(
                   context,
@@ -3131,6 +3133,7 @@ class Subgraph {
       TfLiteContext* logging_context, int node_index, TfLiteNode* node,
       const TfLiteTensor* tensors, const TfLiteBatchMatMulParams* params,
       const std::unordered_map<int, uint32_t>& input_output_tensors) {
+    // Make sure that we're allowed to delegate this op.
     if (!delegate.enable_latest_operators()) {
       TF_LITE_MAYBE_KERNEL_LOG(
           logging_context,
@@ -3139,22 +3142,45 @@ class Subgraph {
           EnumNameBuiltinOperator(BuiltinOperator_BATCH_MATMUL), node_index);
       return kTfLiteError;
     }
-    const TfLiteTensor& input1_tensor = tensors[node->inputs->data[0]];
+
+    // Check whether all required options are supported.
+    if (params->adj_x) {
+      TF_LITE_MAYBE_KERNEL_LOG(
+          logging_context,
+          "failed to delegate %s node #%d. adj_x is not supported",
+          EnumNameBuiltinOperator(BuiltinOperator_BATCH_MATMUL), node_index);
+      return kTfLiteError;
+    }
+
+    // Check the input tensor types.
+    const TfLiteTensor& input_a = tensors[node->inputs->data[0]];
     TF_LITE_ENSURE_STATUS(CheckTensorFloat32Type(
-        logging_context, input1_tensor, node->inputs->data[0], node_index));
-    const TfLiteTensor& input2_tensor = tensors[node->inputs->data[1]];
-    TF_LITE_ENSURE_STATUS(CheckTensorFloat32Type(
-        logging_context, input2_tensor, node->inputs->data[1], node_index));
+        logging_context, input_a, node->inputs->data[0], node_index));
+    const TfLiteTensor& input_b = tensors[node->inputs->data[1]];
+    TF_LITE_ENSURE_STATUS(CheckTensorFloat32OrQCInt8Type(
+        delegate, logging_context, input_b,
+        /*expected_quantized_dimension=*/params->adj_y
+            ? NumDimensions(&input_b) - 2
+            : NumDimensions(&input_b) - 1,
+        node->inputs->data[1], node_index));
+
+    // Check whether input_a will be quantized dynamically.
+    const bool dynamically_quantized =
+        (input_a.type == kTfLiteFloat32 && input_b.type == kTfLiteInt8);
+
+    // Check the output tensor type.
     const TfLiteTensor& output_tensor = tensors[node->outputs->data[0]];
     TF_LITE_ENSURE_STATUS(CheckTensorFloat32Type(
         logging_context, output_tensor, node->outputs->data[0], node_index));
+
+    // Check the input tensor non-dynamic allocations.
     TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
-        delegate, logging_context, input1_tensor, node->inputs->data[0],
-        node_index));
+        delegate, logging_context, input_a, node->inputs->data[0], node_index));
     TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
-        delegate, logging_context, input2_tensor, node->inputs->data[1],
-        node_index));
-    const int num_dims_a = NumDimensions(&input1_tensor);
+        delegate, logging_context, input_b, node->inputs->data[1], node_index));
+
+    // Check whether the dimensions are compatible.
+    const int num_dims_a = NumDimensions(&input_a);
     if (num_dims_a < 2) {
       TF_LITE_MAYBE_KERNEL_LOG(
           logging_context,
@@ -3164,7 +3190,7 @@ class Subgraph {
           node->inputs->data[0], num_dims_a);
       return kTfLiteError;
     }
-    const int num_dims_b = NumDimensions(&input2_tensor);
+    const int num_dims_b = NumDimensions(&input_b);
     if (num_dims_b < 2) {
       TF_LITE_MAYBE_KERNEL_LOG(
           logging_context,
@@ -3181,17 +3207,129 @@ class Subgraph {
           EnumNameBuiltinOperator(BuiltinOperator_BATCH_MATMUL), node_index);
       return kTfLiteError;
     }
+
+    // Create and attach the subgraph nodes.
     if (subgraph != nullptr) {
-      uint32_t flags = params->adj_y ? XNN_FLAG_TRANSPOSE_B : 0;
-      xnn_status status = xnn_define_batch_matrix_multiply(
-          subgraph, input_output_tensors.at(node->inputs->data[0]),
-          input_output_tensors.at(node->inputs->data[1]),
-          input_output_tensors.at(node->outputs->data[0]), flags);
-      if (status != xnn_status_success) {
-        TF_LITE_KERNEL_LOG(
-            logging_context, "failed to delegate %s node #%d",
-            EnumNameBuiltinOperator(BuiltinOperator_BATCH_MATMUL), node_index);
-        return kTfLiteError;
+      const uint32_t flags = params->adj_y ? XNN_FLAG_TRANSPOSE_B : 0;
+
+      // If we're using dynamic quantization, we first need to convert the first
+      // input `A` from `float32` to `int8`, and set up the quantization
+      // parameters of the already-quantized input `B`.
+      if (dynamically_quantized) {
+        // Compute some shapes and sizes.
+        const int32_t n = params->adj_y
+                              ? SizeOfDimension(&input_b, num_dims_b - 2)
+                              : SizeOfDimension(&input_b, num_dims_b - 1);
+        int32_t batch_size_b = 1;
+        for (int i = 0; i < num_dims_b - 2; ++i) {
+          batch_size_b *= SizeOfDimension(&input_b, i);
+        }
+
+        // Validate or create the quantization parameters for the per-channel
+        // quantized input_b. Note that we currently only expect the `B` tensor
+        // to be per-tensor quantized, and not per-channel (see b/332675940).
+        TfLiteAffineQuantization* quant_params_b =
+            reinterpret_cast<TfLiteAffineQuantization*>(
+                input_b.quantization.params);
+        if (quant_params_b->scale->size != batch_size_b * n) {
+          if (quant_params_b->scale->size != 1) {
+            TF_LITE_MAYBE_KERNEL_LOG(
+                logging_context,
+                "failed to delegate %s node #%d. unexpected number of "
+                "quantizations scales (expected %d or 1, got %d)",
+                EnumNameBuiltinOperator(BuiltinOperator_BATCH_MATMUL),
+                node_index, batch_size_b * n, quant_params_b->scale->size);
+            return kTfLiteError;
+          }
+          TfLiteFloatArrayFree(quant_params_b->scale);
+          quant_params_b->scale = TfLiteFloatArrayCreate(batch_size_b * n);
+          std::fill_n(quant_params_b->scale->data, batch_size_b * n,
+                      input_b.params.scale);
+          TfLiteIntArrayFree(quant_params_b->zero_point);
+          quant_params_b->zero_point = TfLiteIntArrayCreate(batch_size_b * n);
+          std::fill_n(quant_params_b->zero_point->data, batch_size_b * n,
+                      input_b.params.zero_point);
+        }
+
+        // Create the quantized input_b.
+        std::vector<size_t> dims_b(num_dims_b, 0);
+        for (int i = 0; i < num_dims_b; ++i) {
+          dims_b[i] = SizeOfDimension(&input_b, i);
+        }
+        const int32_t zero_point_value = quant_params_b->zero_point->data[0];
+        uint32_t cq_input_b_id = XNN_INVALID_VALUE_ID;
+        if (xnn_status status =
+                xnn_define_channelwise_quantized_tensor_value_v2(
+                    subgraph, xnn_datatype_qcint8, zero_point_value,
+                    quant_params_b->scale->data, dims_b.size(),
+                    /*channel_dim=*/
+                    (params->adj_y ? num_dims_b - 2 : num_dims_b - 1),
+                    dims_b.data(), GetTensorData<int8_t>(&input_b),
+                    XNN_INVALID_VALUE_ID,
+                    /*flags=*/0, &cq_input_b_id);
+            status != xnn_status_success) {
+          TF_LITE_KERNEL_LOG(
+              logging_context, "failed to update filter tensor %s node #%d",
+              EnumNameBuiltinOperator(BuiltinOperator_BATCH_MATMUL),
+              node_index);
+          return kTfLiteError;
+        }
+
+        // Create the dynamically quantized input_a.
+        uint32_t dq_input_a_id = XNN_INVALID_VALUE_ID;
+        size_t dims_a[XNN_MAX_TENSOR_DIMS];
+        for (int i = 0; i < num_dims_a; ++i) {
+          dims_a[i] = SizeOfDimension(&input_a, i);
+        }
+        if (xnn_status status = xnn_define_dynamically_quantized_tensor_value(
+                subgraph, xnn_datatype_qdint8, num_dims_a,
+                /*num_nonbatch_dims=*/1, dims_a, XNN_INVALID_VALUE_ID,
+                /*flags=*/0, &dq_input_a_id);
+            status != xnn_status_success) {
+          TF_LITE_KERNEL_LOG(logging_context,
+                             "failed to create XNNPACK Value for tensor %d",
+                             -1);
+          return kTfLiteError;
+        }
+
+        // Define the conversion op for the quantized input_a.
+        if (xnn_status status = xnn_define_convert(
+                subgraph,
+                /*input_id=*/input_output_tensors.at(node->inputs->data[0]),
+                dq_input_a_id, /*flags=*/0);
+            status != xnn_status_success) {
+          TF_LITE_KERNEL_LOG(
+              logging_context, "failed to delegate %s node #%d",
+              EnumNameBuiltinOperator(BuiltinOperator_BATCH_MATMUL),
+              node_index);
+          return kTfLiteError;
+        }
+
+        // Create the batch_matrix_multiply op.
+        if (xnn_status status = xnn_define_batch_matrix_multiply(
+                subgraph, dq_input_a_id, cq_input_b_id,
+                input_output_tensors.at(node->outputs->data[0]), flags);
+            status != xnn_status_success) {
+          TF_LITE_KERNEL_LOG(
+              logging_context, "failed to delegate %s node #%d",
+              EnumNameBuiltinOperator(BuiltinOperator_BATCH_MATMUL),
+              node_index);
+          return kTfLiteError;
+        }
+
+      } else {
+        // No conversion of the inputs necessary, just send them on their way.
+        if (xnn_status status = xnn_define_batch_matrix_multiply(
+                subgraph, input_output_tensors.at(node->inputs->data[0]),
+                input_output_tensors.at(node->inputs->data[1]),
+                input_output_tensors.at(node->outputs->data[0]), flags);
+            status != xnn_status_success) {
+          TF_LITE_KERNEL_LOG(
+              logging_context, "failed to delegate %s node #%d",
+              EnumNameBuiltinOperator(BuiltinOperator_BATCH_MATMUL),
+              node_index);
+          return kTfLiteError;
+        }
       }
     }
     return kTfLiteOk;
