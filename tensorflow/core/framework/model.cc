@@ -1326,8 +1326,8 @@ class AsyncKnownRatio : public AsyncRatio {
       parameters.push_back(pair.second);
     }
     return std::make_shared<AsyncKnownRatio>(
-        Args{id_, name_, std::move(output)}, Ratio(), MemoryRatio(),
-        parameters);
+        Args{id_, name_, std::move(output)}, Ratio(), MemoryRatio(), parameters,
+        is_legacy_prefetch_autotuned_);
   }
 
   Status ToProto(ModelProto::Node* node_proto) const override {

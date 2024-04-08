@@ -24,7 +24,10 @@ limitations under the License.
 #include <tuple>
 #include <utility>
 
+#include <gmock/gmock.h>
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/cancellation.h"
+#include "tensorflow/core/framework/model.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
@@ -239,6 +242,27 @@ INSTANTIATE_TEST_SUITE_P(Test, AsyncKnownRatioTest,
                          ::testing::Combine(::testing::Values(1, 2, 4, 8),
                                             ::testing::Values(0, 50, 100, 200),
                                             ::testing::Values(0, 1, 2, 4)));
+
+TEST(AsyncKnownRatioTest, LegacyPrefetchAutotuneShouldBeExportedAsTunable) {
+  static constexpr int IRRELEVANT_MIN = 1;
+  constexpr int IRRELEVANT_MAX = 16;
+  constexpr int IRRELEVANT_VALUE = 1;
+  const Node::Args irrelevant_args = {0, "async_known_many", nullptr};
+
+  std::shared_ptr<Node> async_known_many = model::MakeAsyncKnownRatioNode(
+      irrelevant_args, /*ratio=*/100,
+      {model::MakeParameter(kBufferSize,
+                            std::make_shared<SharedState>(IRRELEVANT_VALUE,
+                                                          /*mu=*/nullptr,
+                                                          /*cond_var=*/nullptr),
+                            IRRELEVANT_MIN, IRRELEVANT_MAX)},
+      /*is_legacy_prefetch_autotuned=*/true);
+  std::shared_ptr<Node> cloned = async_known_many->Snapshot();
+  ModelProto::Node node;
+  ASSERT_EQ(cloned->ToProto(&node), absl::OkStatus());
+  ASSERT_EQ(node.parameters().size(), 1);
+  EXPECT_TRUE(node.parameters(0).tunable());
+}
 
 TEST(InterleaveManyTest, Model) {
   auto parameter =
