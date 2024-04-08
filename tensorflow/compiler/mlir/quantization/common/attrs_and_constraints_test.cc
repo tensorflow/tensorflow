@@ -20,6 +20,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "llvm/Support/MathExtras.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -33,6 +34,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/quantization/common/func.h"
 #include "tensorflow/compiler/mlir/quantization/common/test_base.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tsl/platform/status_matchers.h"
 
 namespace mlir::quant {
 namespace {
@@ -48,6 +50,7 @@ using ::testing::IsEmpty;
 using ::testing::IsNull;
 using ::testing::NotNull;
 using ::testing::Optional;
+using ::tsl::testing::StatusIs;
 
 using AttrsAndConstraintsTest = ::mlir::quant::QuantizationTestBase;
 
@@ -467,6 +470,37 @@ constexpr absl::string_view kModuleDotGeneralBatchMatmul = R"mlir(
     }
   }
 )mlir";
+
+TEST_F(AttrsAndConstraintsTest, IsDotGeneralFullyConnectedReturnsError) {
+  DotGeneralOp dot_general_op = nullptr;
+  StatusIs(absl::StatusCode::kInvalidArgument,
+           "Given dot_general op cannot be null when checking "
+           "`IsDotGeneralBatchMatmul`");
+}
+
+TEST_F(AttrsAndConstraintsTest, IsDotGeneralFullyConnectedReturnsTrue) {
+  OwningOpRef<ModuleOp> module_op =
+      ParseModuleOpString(kModuleDotGeneralFullyConnected);
+  ASSERT_TRUE(module_op);
+
+  func::FuncOp main_fn = FindMainFuncOp(*module_op);
+  ASSERT_THAT(main_fn, NotNull());
+
+  auto dot_general_op = *main_fn.getOps<DotGeneralOp>().begin();
+  EXPECT_THAT(IsDotGeneralFullyConnected(dot_general_op), true);
+}
+
+TEST_F(AttrsAndConstraintsTest, IsDotGeneralFullyConnectedReturnsFalse) {
+  OwningOpRef<ModuleOp> module_op =
+      ParseModuleOpString(kModuleDotGeneralBatchMatmul);
+  ASSERT_TRUE(module_op);
+
+  func::FuncOp main_fn = FindMainFuncOp(*module_op);
+  ASSERT_THAT(main_fn, NotNull());
+
+  auto dot_general_op = *main_fn.getOps<DotGeneralOp>().begin();
+  EXPECT_THAT(IsDotGeneralFullyConnected(dot_general_op), false);
+}
 
 TEST_F(AttrsAndConstraintsTest, DotGeneralFullyConnectedReturnsQuantDim) {
   OwningOpRef<ModuleOp> module_op =
