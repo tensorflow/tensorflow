@@ -10818,5 +10818,35 @@ TEST_F(AlgebraicSimplifierTest, SparseDotTranspose) {
   EXPECT_EQ(descriptor.dimension(), 1);
 }
 
+TEST_F(AlgebraicSimplifierTest, BroadcastToTranspose) {
+  const std::string hlo_string = R"(
+  HloModule broadcast_module
+    ENTRY %main {
+      input = f32[6,4,3] parameter(0)
+      ROOT output = f32[4,3,6] broadcast(input), dimensions={2,0,1}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  EXPECT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+  HloInstruction* root = m->entry_computation()->root_instruction();
+  EXPECT_THAT(root, GmockMatch(m::Transpose(m::Parameter(0))));
+  EXPECT_EQ(root->dimensions(), std::vector<int64_t>({1, 2, 0}));
+}
+
+TEST_F(AlgebraicSimplifierTest, BroadcastToTranspose2) {
+  const std::string hlo_string = R"(
+  HloModule broadcast_module
+    ENTRY %main {
+      input = f32[6,4,3] parameter(0)
+      ROOT output = f32[4,6,3] broadcast(input), dimensions={1,0,2}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  EXPECT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+  HloInstruction* root = m->entry_computation()->root_instruction();
+  EXPECT_THAT(root, GmockMatch(m::Transpose(m::Parameter(0))));
+  EXPECT_EQ(root->dimensions(), std::vector<int64_t>({1, 0, 2}));
+}
+
 }  // namespace
 }  // namespace xla
