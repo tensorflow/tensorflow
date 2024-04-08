@@ -439,7 +439,7 @@ class HloComputation {
   void ForEachInstructionPostOrder(
       absl::FunctionRef<void(HloInstruction*)> func) const;
 
-  int64_t instruction_count() const { return instruction_indices_.size(); }
+  int64_t instruction_count() const { return instruction_count_; }
 
   // Creates and returns a list of the embedded computations called by this
   // computation. This includes all embedded computations called directly or
@@ -961,17 +961,19 @@ class HloComputation {
   HloInstruction::InstructionVector param_instructions_;
 
   // Store instructions in std::vector as they can be added and removed
-  // arbitrarily and we want a stable iteration order. Keep a map from
-  // instruction pointer to index in the vector for fast lookup.
+  // arbitrarily and we want a stable iteration order.
+  // For the reverse mapping we use HloInstruction::index_in_parent_.
   HloInstructionList instructions_;
-  absl::flat_hash_map<const HloInstruction*, int> instruction_indices_;
 
-  // Execution thread of this computation. By default, it's main thread.
-  std::string execution_thread_ = HloInstruction::kMainExecutionThread;
+  // Number of not-marked-for-deletion entries in instructions_.
+  int64_t instruction_count_;
 
   // Removed instructions are moved into to_be_deleted_ first and then
   // deallocated when Cleanup is called.
   PtrVec<HloInstruction*> to_be_deleted_;
+
+  // Execution thread of this computation. By default, it's main thread.
+  std::string execution_thread_ = HloInstruction::kMainExecutionThread;
 
   std::string name_;
 
@@ -1010,9 +1012,6 @@ Status HloComputation::AcceptOrdered(
   absl::flat_hash_set<const HloInstruction*> visited;
   for (const HloInstruction* instruction : order) {
     VLOG(3) << "Visiting ordered: " << instruction->ToString();
-    TF_RET_CHECK(instruction_indices_.contains(instruction))
-        << "Instruction " << instruction->name() << " is not in computation "
-        << name();
     TF_RET_CHECK(!visited.contains(instruction))
         << "Instruction " << instruction->name()
         << " appears more than once in order";
