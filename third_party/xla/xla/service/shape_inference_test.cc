@@ -4892,6 +4892,18 @@ TEST_F(ShapeInferenceTest, UnboundedTransposeRank1) {
       << " expected: " << ShapeUtil::HumanString(expected);
 }
 
+TEST_F(ShapeInferenceTest, UnboundedTuple) {
+  TF_ASSERT_OK_AND_ASSIGN(const Shape operand, ParseShape("f32[?, 10]"));
+  const Shape expected = ShapeUtil::MakeTupleShape({operand});
+  TF_ASSERT_OK_AND_ASSIGN(
+      const Shape result_shape,
+      ShapeInference::InferVariadicOpShape(
+          HloOpcode::kTuple, std::vector<const Shape*>({&operand})));
+  EXPECT_TRUE(ShapeUtil::Equal(result_shape, expected))
+      << "inferred: " << ShapeUtil::HumanString(result_shape)
+      << " expected: " << ShapeUtil::HumanString(expected);
+}
+
 TEST_F(ShapeInferenceTest, UnboundedWhile) {
   TF_ASSERT_OK_AND_ASSIGN(const Shape init, ParseShape("f32[?]"));
   TF_ASSERT_OK_AND_ASSIGN(const Shape result_shape, ParseShape("f32[?]"));
