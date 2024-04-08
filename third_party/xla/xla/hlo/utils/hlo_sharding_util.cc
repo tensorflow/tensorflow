@@ -18,11 +18,9 @@ limitations under the License.
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
-#include <cstdlib>
 #include <iterator>
 #include <map>
 #include <memory>
-#include <numeric>
 #include <optional>
 #include <string>
 #include <tuple>
@@ -693,34 +691,30 @@ std::optional<HloSharding> ReshapeSharding(const Shape& source_shape,
     return sharding;
   }
 
-  // In case of a tiled sharding, the reshaped sharding will be valid if the
+  // In case of a tiled sharding the reshaped sharding will be a valid if the
   // reshape is composed from the following operations:
   // * Adding or removing dimensions with size 1.
   // * Merging consecutive dimensions where only the most major is sharded.
   // * Splitting a dimension to consecutive dimensions.
   // * Any reshaping of unsharded dimensions.
-  //
-  // Merge and split can happen consecutively on the same dimension, e.g.,
-  // f32[1024,256] to f32[128,2048] can be considered that 1024 gets split into
-  // 128 and 8, but 8 then gets merged with 256. We use stacks to make
-  // supporting such cases easy.
-  //
-  // If transpose is needed between source and target shapes, we use the GCD of
-  // (target_shape_dim, sharding_dim) if source_shape_dim % sharding_dim == 0.
-  // For example, given the source_shape f32[6,4], target_shape f32[4,6] and
-  // sharding {devices=[6,1]<=[6]}, the output sharding is {devices=[2,1,3]<=[6]
-  // last_tile_dim_replicate}.
+  // Note that merge and split can happen consecutively on the same dimension,
+  // e.g., f32[1024,256,1024] to f32[128,2048,1024] can be considered that 1024
+  // gets split into 128 and 8, but 8 then gets merged with 256. We use stacks
+  // to make supporting such cases easy.
+  const Shape tile_shape = sharding.TileShape(source_shape);
   DimensionVector target_tile_assignment_dimensions;
-  DimensionVector source_dims_stack(source_shape.dimensions().rbegin(),
-                                    source_shape.dimensions().rend());
-  DimensionVector target_dims_stack(target_shape.dimensions().rbegin(),
-                                    target_shape.dimensions().rend());
-  DimensionVector sharding_tile_dims_stack(
-      sharding.tile_assignment().dimensions().begin(),
-      sharding.tile_assignment().dimensions().begin() + source_shape.rank());
-  std::reverse(sharding_tile_dims_stack.begin(),
-               sharding_tile_dims_stack.end());
-
+  DimensionVector source_dims_stack(source_shape.rank());
+  DimensionVector target_dims_stack(target_shape.rank());
+  DimensionVector sharding_tile_dims_stack(source_shape.rank());
+  int64_t added_to_partially_replicated = 1;
+  for (int64_t i = 0; i < source_shape.rank(); ++i) {
+    source_dims_stack[i] = source_shape.dimensions(source_shape.rank() - 1 - i);
+    sharding_tile_dims_stack[i] =
+        sharding.tile_assignment().dim(source_shape.rank() - 1 - i);
+  }
+  for (int64_t i = 0; i < target_shape.rank(); ++i) {
+    target_dims_stack[i] = target_shape.dimensions(target_shape.rank() - 1 - i);
+  }
   bool inplace_add_sharding_dim = false;
   auto append_sharding_dim = [&](int64_t size) {
     if (inplace_add_sharding_dim) {
@@ -730,7 +724,6 @@ std::optional<HloSharding> ReshapeSharding(const Shape& source_shape,
     }
     inplace_add_sharding_dim = false;
   };
-
   while (!source_dims_stack.empty() || !target_dims_stack.empty()) {
     if (target_dims_stack.empty()) {
       if (Product(sharding_tile_dims_stack) != 1) {
@@ -739,6 +732,7 @@ std::optional<HloSharding> ReshapeSharding(const Shape& source_shape,
       break;
     }
     int64_t s_size = 1;
+    int64_t t_size = 1;
     int64_t s_partitions = 1;
     if (!source_dims_stack.empty()) {
       s_size = source_dims_stack.back();
@@ -746,7 +740,7 @@ std::optional<HloSharding> ReshapeSharding(const Shape& source_shape,
       s_partitions = sharding_tile_dims_stack.back();
       sharding_tile_dims_stack.pop_back();
     }
-    int64_t t_size = target_dims_stack.back();
+    t_size = target_dims_stack.back();
     target_dims_stack.pop_back();
     if (s_partitions * Product(sharding_tile_dims_stack) == 1) {
       // No more partitions left.
@@ -774,19 +768,14 @@ std::optional<HloSharding> ReshapeSharding(const Shape& source_shape,
       sharding_tile_dims_stack.push_back(s_partitions);
     } else if (s_size == 1) {
       // Trivial dimension removed.
+      if (s_partitions != 1) {
+        added_to_partially_replicated *= s_partitions;
+      }
       target_dims_stack.push_back(t_size);
     } else if (s_size > t_size) {
       // Dimension split.
-      if (s_size % s_partitions != 0) {
+      if (s_size % t_size != 0 || s_size % s_partitions != 0) {
         return std::nullopt;
-      }
-      if (s_size % t_size != 0) {
-        // Transpose is needed between source and target shapes.
-        auto gcd = std::gcd(t_size, s_partitions);
-        if (gcd > 1) {
-          append_sharding_dim(gcd);
-        }
-        break;
       }
       if (t_size % s_partitions == 0) {
         append_sharding_dim(s_partitions);
@@ -799,25 +788,15 @@ std::optional<HloSharding> ReshapeSharding(const Shape& source_shape,
         source_dims_stack.push_back(s_size / t_size);
         sharding_tile_dims_stack.push_back(s_partitions / t_size);
       } else {
-        break;
+        return std::nullopt;
       }
     } else {
       // Dimension merge. Also merge the source dimension with the next, and
       // process it next time.
-      if (source_dims_stack.empty()) {
-        LOG(ERROR) << "source_dims_stack is empty";
-      }
       if (s_size % s_partitions != 0) {
         return std::nullopt;
       }
-      if (t_size % s_size != 0) {
-        // Transpose is needed between source and target shapes.
-        auto gcd = std::gcd(t_size, s_partitions);
-        if (gcd > 1) {
-          append_sharding_dim(gcd);
-        }
-        break;
-      }
+      CHECK(!source_dims_stack.empty());
       if (sharding_tile_dims_stack.back() != 1 && s_size != s_partitions) {
         // If the next dimension to combine is sharded, we require that the
         // current dimension's shard size to be 1. Otherwise, the new shard
@@ -832,42 +811,31 @@ std::optional<HloSharding> ReshapeSharding(const Shape& source_shape,
   if (Product(target_tile_assignment_dimensions) == 1) {
     return std::nullopt;
   }
-  while (target_tile_assignment_dimensions.size() < target_shape.rank()) {
-    target_tile_assignment_dimensions.push_back(1);
-  }
   for (int64_t i = sharding.TiledDataRank();
        i < sharding.tile_assignment().num_dimensions(); ++i) {
     target_tile_assignment_dimensions.push_back(
-        i == sharding.SubgroupReplicationDim()
-            ? 1
-            : sharding.tile_assignment().dim(i));
+        sharding.tile_assignment().dim(i));
   }
 
   auto subgroup_types = sharding.subgroup_types();
-  auto partially_replicated = std::div(
-      sharding.TotalNumTiles(), Product(target_tile_assignment_dimensions));
-  if (partially_replicated.rem != 0) {
-    LOG(ERROR) << "sharding: " << sharding.ToString()
-               << "; target_tile_assignment_dimensions: "
-               << absl::StrJoin(target_tile_assignment_dimensions, ",");
-  }
-  if (partially_replicated.quot > 1) {
-    if (sharding.HasPartialReplication()) {
-      target_tile_assignment_dimensions[sharding.SubgroupReplicationDim() -
-                                        sharding.TiledDataRank() +
-                                        target_shape.rank()] =
-          partially_replicated.quot;
+  // If we added dimensions to the partially replicated dimension then add the
+  // additional dimension on the partially replicated tiling.
+  if (added_to_partially_replicated > 1) {
+    if (sharding.ReplicateOnLastTileDim()) {
+      target_tile_assignment_dimensions.back() *= added_to_partially_replicated;
     } else {
-      target_tile_assignment_dimensions.push_back(partially_replicated.quot);
-    }
-    // If subgroup_types doesn't have partially replicated as a sharding type
-    // then add it.
-    if (subgroup_types.empty() ||
-        subgroup_types.back() != OpSharding::REPLICATED) {
-      subgroup_types.push_back(OpSharding::REPLICATED);
+      target_tile_assignment_dimensions.push_back(
+          added_to_partially_replicated);
     }
   }
-
+  // If subgroup_types doesn't have already partially replicated as a sharding
+  // type then add it.
+  if ((sharding.ReplicateOnLastTileDim() ||
+       added_to_partially_replicated > 1) &&
+      (subgroup_types.empty() ||
+       subgroup_types.back() != OpSharding::REPLICATED)) {
+    subgroup_types.push_back(OpSharding::REPLICATED);
+  }
   auto new_tile_assignment =
       sharding.tile_assignment().Reshape(target_tile_assignment_dimensions);
   return HloSharding::Subgroup(new_tile_assignment, subgroup_types,

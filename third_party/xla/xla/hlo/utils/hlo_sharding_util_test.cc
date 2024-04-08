@@ -337,39 +337,6 @@ TEST(HloShardingUtilTest, ReshapeToTileDimension4D) {
   }
 }
 
-TEST(HloShardingUtilTest, PropagateReshapeShardingTranspose1) {
-  Shape input_shape = ShapeUtil::MakeShape(F32, {6, 4});
-  Shape output_shape = ShapeUtil::MakeShape(F32, {2, 2, 3, 2});
-  HloSharding input_sharding = HloSharding::IotaTile({6, 1});
-  HloSharding output_sharding =
-      HloSharding::PartialTile(TileAssignment({2, 1, 1, 1, 3}));
-  HloSharding result = PropagateShardingThroughReshape(
-      input_shape, output_shape, input_sharding);
-  EXPECT_EQ(result, output_sharding);
-}
-
-TEST(HloShardingUtilTest, PropagateReshapeShardingTranspose2) {
-  Shape input_shape = ShapeUtil::MakeShape(F32, {6, 4});
-  Shape output_shape = ShapeUtil::MakeShape(F32, {4, 6});
-  HloSharding input_sharding = HloSharding::IotaTile({6, 1});
-  HloSharding output_sharding =
-      HloSharding::PartialTile(TileAssignment({2, 1, 3}));
-  HloSharding result = PropagateShardingThroughReshape(
-      input_shape, output_shape, input_sharding);
-  EXPECT_EQ(result, output_sharding);
-}
-
-TEST(HloShardingUtilTest, PropagateReshapeShardingTranspose3) {
-  Shape input_shape = ShapeUtil::MakeShape(F32, {4, 6, 5});
-  Shape output_shape = ShapeUtil::MakeShape(F32, {2, 2, 2, 5, 3});
-  HloSharding input_sharding = HloSharding::IotaTile({2, 6, 1});
-  HloSharding output_sharding =
-      HloSharding::PartialTile(TileAssignment({2, 1, 2, 1, 1, 3}));
-  HloSharding result = PropagateShardingThroughReshape(
-      input_shape, output_shape, input_sharding);
-  EXPECT_EQ(result, output_sharding);
-}
-
 TEST(HloShardingUtilTest, PropagateReshapeShardingTiledSplitPartialMatch) {
   Shape input_shape = ShapeUtil::MakeShape(F32, {14, 16});
   Shape output_shape = ShapeUtil::MakeShape(F32, {2, 7, 4, 4});
