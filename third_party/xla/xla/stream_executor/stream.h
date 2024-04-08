@@ -322,11 +322,6 @@ class Stream {
   // Mutable so that it can be obtained via const reader lock.
   mutable absl::Mutex mu_;
 
-  // Whether Init() was successfully called to allocate this stream on the
-  // underlying platform. It simply flips from 0 to 1 with a sanity check.
-  // See StreamExecutor::AllocateStream.
-  bool allocated_ ABSL_GUARDED_BY(mu_);
-
   // The last error (if any) of all method calls.
   absl::Status status_ ABSL_GUARDED_BY(mu_);
 
