@@ -17,8 +17,10 @@ limitations under the License.
 #define XLA_PJRT_HOST_MEMORY_SPACES_H_
 
 #include <string>
+#include <vector>
 
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/pjrt/pjrt_client.h"
 
 namespace xla {
@@ -85,10 +87,6 @@ class PinnedHostMemorySpace : public PjRtMemorySpace {
   void AttachDevice(PjRtDevice* device) { device_ = device; }
 
  private:
-  // This is for TfrtTpuDevice::AttachMemorySpace.
-  // TODO(yunlongl): Clean up host memory spaces so that this won't be needed.
-  friend class TfrtTpuDevice;
-
   int id_;
   PjRtClient* client_ = nullptr;
   PjRtDevice* device_ = nullptr;
