@@ -3993,60 +3993,6 @@ class Subgraph {
       num_input_elements *= SizeOfDimension(&input_tensor, i);
     }
 
-    if (fc_params->keep_num_dims) {
-      TF_LITE_ENSURE_STATUS(CheckTensorShape(
-          logging_context, output_tensor, NumDimensions(&input_tensor),
-          node->outputs->data[0], BuiltinOperator_FULLY_CONNECTED, node_index));
-
-      for (int i = 0; i < NumDimensions(&input_tensor) - 1; i++) {
-        if (SizeOfDimension(&input_tensor, i) !=
-            SizeOfDimension(&output_tensor, i)) {
-          TF_LITE_MAYBE_KERNEL_LOG(
-              logging_context,
-              "mismatch in shape dimension %d (%d != %d) in input and output "
-              "tensors of FULLY_CONNECTED operator #%d",
-              i, SizeOfDimension(&input_tensor, i),
-              SizeOfDimension(&output_tensor, i), node_index);
-          return kTfLiteError;
-        }
-      }
-    } else {
-      if (num_input_elements % input_channels != 0) {
-        TF_LITE_MAYBE_KERNEL_LOG(
-            logging_context,
-            "number of elements in input tensor #%d in FULLY_CONNECTED "
-            "operator is not divisible by input channels (%d)",
-            node->inputs->data[0], input_channels);
-        return kTfLiteError;
-      }
-
-      TF_LITE_ENSURE_STATUS(CheckTensorShape(
-          logging_context, output_tensor, 2, node->outputs->data[0],
-          BuiltinOperator_FULLY_CONNECTED, node_index));
-
-      if (SizeOfDimension(&output_tensor, 0) !=
-          num_input_elements / input_channels) {
-        TF_LITE_MAYBE_KERNEL_LOG(
-            logging_context,
-            "batch size %d in output tensor #%d in FULLY_CONNECTED operator "
-            "does not match batch size %d in reshaped input tensor #%d",
-            SizeOfDimension(&output_tensor, 0), node->outputs->data[0],
-            num_input_elements / input_channels, node->inputs->data[0]);
-        return kTfLiteError;
-      }
-    }
-
-    if (SizeOfDimension(&output_tensor, NumDimensions(&output_tensor) - 1) !=
-        output_channels) {
-      TF_LITE_MAYBE_KERNEL_LOG(
-          logging_context,
-          "number of channels %d in output tensor #%d does not match output "
-          "channels %d in filter tensor #%d",
-          SizeOfDimension(&output_tensor, NumDimensions(&output_tensor) - 1),
-          node->outputs->data[0], output_channels, node->inputs->data[1]);
-      return kTfLiteError;
-    }
-
     float output_min = -std::numeric_limits<float>::infinity();
     float output_max = +std::numeric_limits<float>::infinity();
     TF_LITE_ENSURE_STATUS(ConvertActivationToOutputRange(
