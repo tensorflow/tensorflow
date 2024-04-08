@@ -20,6 +20,7 @@ limitations under the License.
 #include <optional>
 #include <type_traits>
 
+#include "absl/status/statusor.h"
 #include "llvm/Support/Debug.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -236,6 +237,11 @@ inline bool HasQuantizableTrait(Operation* op) {
 // Returns true if `op` has two operands and one result and only second operand
 // is quantized.
 bool IsHybridQuantizedOp(Operation* op);
+
+// Returns whether a given `stablehlo.dot_general` can be legalizable to
+// `tfl.fully_connected`.
+absl::StatusOr<bool> IsDotGeneralFullyConnected(
+    ::mlir::stablehlo::DotGeneralOp dot_general_op);
 
 // Returns the quantization dimension for a given `stablehlo.dot_general` op,
 // or `std::nullopt` if the given op is not per-channel quantizable.

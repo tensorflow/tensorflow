@@ -33,7 +33,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
-#include "xla/statusor.h"
+#include "xla/status.h"
 #include "xla/xla.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"

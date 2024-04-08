@@ -21,7 +21,6 @@
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/host_memory_offload_annotations.h"
 #include "xla/side_effect_util.h"
-#include "xla/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"

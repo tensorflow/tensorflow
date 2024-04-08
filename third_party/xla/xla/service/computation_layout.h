@@ -21,7 +21,10 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/statusor.h"
+#include "xla/layout.h"
 #include "xla/printer.h"
+#include "xla/shape.h"
 #include "xla/shape_layout.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"

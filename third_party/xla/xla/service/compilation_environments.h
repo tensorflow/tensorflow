@@ -24,10 +24,13 @@ limitations under the License.
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/statusor.h"
+#include "xla/status.h"
 #include "xla/statusor.h"
 #include "xla/xla.pb.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/protobuf.h"
+#include "tsl/platform/status.h"
 
 namespace xla {
 

@@ -19,12 +19,12 @@ limitations under the License.
 #include <utility>
 
 #include "xla/service/test_compilation_environment.pb.h"
-#include "xla/statusor.h"
 #include "xla/test.h"
 #include "xla/xla.pb.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/protobuf.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 

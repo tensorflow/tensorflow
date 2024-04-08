@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/synchronization/mutex.h"
 #include "xla/array2d.h"
 #include "xla/service/global_device_id.h"
 #include "xla/status.h"

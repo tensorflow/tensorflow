@@ -20,10 +20,14 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/statusor.h"
+#include "absl/synchronization/mutex.h"
 #include "xla/service/executable.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/types.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 
