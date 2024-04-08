@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/xla.pb.h"
 
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
 #include "xla/stream_executor/gpu/redzone_allocator.h"

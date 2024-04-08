@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/tests/hlo_test_base.h"
+#include "xla/xla.pb.h"
 #include "tsl/platform/test.h"
 
 namespace xla {

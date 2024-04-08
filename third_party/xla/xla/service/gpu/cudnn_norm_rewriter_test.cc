@@ -18,6 +18,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "xla/error_spec.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/xla.pb.h"
 
 #if GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda.h"

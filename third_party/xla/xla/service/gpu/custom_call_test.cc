@@ -21,6 +21,9 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "xla/service/hlo.pb.h"
+#include "xla/xla_data.pb.h"
+
 #if GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda.h"  // IWYU pragma: keep
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"

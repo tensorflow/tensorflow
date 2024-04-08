@@ -21,6 +21,7 @@ limitations under the License.
 #include <cstdint>
 
 #include "absl/status/status.h"
+#include "xla/xla_data.pb.h"
 #if GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuComplex.h"
 #include "third_party/gpus/cuda/include/cusolverDn.h"

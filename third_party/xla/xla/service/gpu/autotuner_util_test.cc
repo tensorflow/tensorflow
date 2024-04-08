@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor_pimpl.h"
 #include "xla/tests/hlo_test_base.h"
+#include "xla/xla.pb.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/logging.h"   // IWYU pragma: keep
