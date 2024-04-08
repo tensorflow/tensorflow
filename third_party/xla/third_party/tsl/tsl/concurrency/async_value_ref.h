@@ -30,14 +30,6 @@ limitations under the License.
 
 namespace tsl {
 
-namespace internal {
-// TODO(ezhulenev): Replace with C++20 concept when available.
-// https://en.cppreference.com/w/cpp/concepts/derived_from
-template <typename Subclass, typename Base>
-using DerivedFrom =
-    typename std::enable_if_t<std::is_base_of_v<Base, Subclass>>;
-}  // namespace internal
-
 // Forward declare non-owning typed async value pointer.
 template <typename T>
 class AsyncValuePtr;
@@ -60,10 +52,10 @@ class AsyncValueRef {
   explicit AsyncValueRef(RCReference<AsyncValue> value)
       : value_(std::move(value)) {}
 
-  // Support implicit conversion from AsyncValueRef<Subclass> to
+  // Support implicit conversion from AsyncValueRef<Derived> to
   // AsyncValueRef<Base>.
-  template <typename Subclass, internal::DerivedFrom<Subclass, T>* = nullptr>
-  AsyncValueRef(AsyncValueRef<Subclass>&& u)  // NOLINT
+  template <typename Derived, internal::DerivedFrom<Derived, T>* = nullptr>
+  AsyncValueRef(AsyncValueRef<Derived>&& u)  // NOLINT
       : value_(u.ReleaseRCRef()) {}
 
   // Support implicit conversion from RCReference<ErrorAsyncValue>.
@@ -91,11 +83,40 @@ class AsyncValueRef {
   // Return the stored value. The AsyncValueRef must be available.
   T& get() const { return value_->get<T>(); }
 
-  // Return the stored value as a subclass type. The AsyncValueRef must be
+  // Return the stored value as a derived type. The AsyncValueRef must be
   // available.
-  template <typename Subclass, internal::DerivedFrom<Subclass, T>* = nullptr>
-  Subclass& get() const {
-    return value_->get<Subclass>();
+  template <typename Derived, internal::DerivedFrom<Derived, T>* = nullptr>
+  Derived& get() const {
+    return value_->get<Derived>();
+  }
+
+  template <typename Derived, internal::DerivedFrom<Derived, T>* = nullptr>
+  bool Isa() const {
+    return value_ && value_->IsType<Derived>();
+  }
+
+  template <typename Derived, internal::DerivedFrom<Derived, T>* = nullptr>
+  AsyncValueRef<Derived> Cast() const {
+    DCHECK(value_) << "Async value must be not null";
+    DCHECK((std::is_same_v<Derived, T> || value_->IsType<Derived>()));
+    return AsyncValueRef<Derived>(value_);
+  }
+
+  template <typename Derived, internal::DerivedFrom<Derived, T>* = nullptr>
+  AsyncValueRef<Derived> DynCast() const {
+    DCHECK(value_) << "Async value must be not null";
+    if (std::is_same_v<Derived, T> || value_->IsType<Derived>()) {
+      return AsyncValueRef<Derived>(value_);
+    }
+    return AsyncValueRef<Derived>(nullptr);
+  }
+
+  template <typename Derived, internal::DerivedFrom<Derived, T>* = nullptr>
+  AsyncValueRef<Derived> DynCastOrNull() const {
+    if (std::is_same_v<Derived, T> || (value_ && value_->IsType<Derived>())) {
+      return AsyncValueRef<Derived>(value_);
+    }
+    return AsyncValueRef<Derived>(nullptr);
   }
 
   T* operator->() const { return &get(); }
@@ -209,33 +230,33 @@ class AsyncValuePtr {
     return *this;
   }
 
-  template <typename Subclass, internal::DerivedFrom<Subclass, T>* = nullptr>
-  bool Isa() {
-    return value_ && value_->IsType<Subclass>();
+  template <typename Derived, internal::DerivedFrom<Derived, T>* = nullptr>
+  bool Isa() const {
+    return value_ && value_->IsType<Derived>();
   }
 
-  template <typename Subclass, internal::DerivedFrom<Subclass, T>* = nullptr>
-  AsyncValuePtr<Subclass> Cast() const {
+  template <typename Derived, internal::DerivedFrom<Derived, T>* = nullptr>
+  AsyncValuePtr<Derived> Cast() const {
     DCHECK(value_) << "Async value must be not null";
-    DCHECK((std::is_same_v<Subclass, T> || value_->IsType<Subclass>()));
-    return AsyncValuePtr<Subclass>(value_);
+    DCHECK((std::is_same_v<Derived, T> || value_->IsType<Derived>()));
+    return AsyncValuePtr<Derived>(value_);
   }
 
-  template <typename Subclass, internal::DerivedFrom<Subclass, T>* = nullptr>
-  AsyncValuePtr<Subclass> DynCast() const {
+  template <typename Derived, internal::DerivedFrom<Derived, T>* = nullptr>
+  AsyncValuePtr<Derived> DynCast() const {
     DCHECK(value_) << "Async value must be not null";
-    if (std::is_same_v<Subclass, T> || value_->IsType<Subclass>()) {
-      return AsyncValuePtr<Subclass>(value_);
+    if (std::is_same_v<Derived, T> || value_->IsType<Derived>()) {
+      return AsyncValuePtr<Derived>(value_);
     }
-    return AsyncValuePtr<Subclass>(nullptr);
+    return AsyncValuePtr<Derived>(nullptr);
   }
 
-  template <typename Subclass, internal::DerivedFrom<Subclass, T>* = nullptr>
-  AsyncValuePtr<Subclass> DynCastOrNull() const {
-    if (std::is_same_v<Subclass, T> || (value_ && value_->IsType<Subclass>())) {
-      return AsyncValuePtr<Subclass>(value_);
+  template <typename Derived, internal::DerivedFrom<Derived, T>* = nullptr>
+  AsyncValuePtr<Derived> DynCastOrNull() const {
+    if (std::is_same_v<Derived, T> || (value_ && value_->IsType<Derived>())) {
+      return AsyncValuePtr<Derived>(value_);
     }
-    return AsyncValuePtr<Subclass>(nullptr);
+    return AsyncValuePtr<Derived>(nullptr);
   }
 
   bool IsAvailable() const { return value_->IsAvailable(); }
@@ -347,28 +368,52 @@ RCReference<IndirectAsyncValue> MakeIndirectAsyncValue();
 // LLVM-style type casting library for async value refs and ptrs.
 //===----------------------------------------------------------------------===//
 
-template <typename Subclass, typename T,
-          internal::DerivedFrom<Subclass, T>* = nullptr>
+template <typename Derived, typename T,
+          internal::DerivedFrom<Derived, T>* = nullptr>
+bool Isa(const AsyncValueRef<T>& ref) {
+  return ref.template Isa<Derived>();
+}
+
+template <typename Derived, typename T,
+          internal::DerivedFrom<Derived, T>* = nullptr>
+AsyncValueRef<Derived> Cast(const AsyncValueRef<T>& ref) {
+  return ref.template Cast<Derived>();
+}
+
+template <typename Derived, typename T,
+          internal::DerivedFrom<Derived, T>* = nullptr>
+AsyncValueRef<Derived> DynCast(const AsyncValueRef<T>& ref) {
+  return ref.template DynCast<Derived>();
+}
+
+template <typename Derived, typename T,
+          internal::DerivedFrom<Derived, T>* = nullptr>
+AsyncValueRef<Derived> DynCastOrNull(const AsyncValueRef<T>& ref) {
+  return ref.template DynCastOrNull<Derived>();
+}
+
+template <typename Derived, typename T,
+          internal::DerivedFrom<Derived, T>* = nullptr>
 bool Isa(AsyncValuePtr<T> ptr) {
-  return ptr.template Isa<Subclass>();
+  return ptr.template Isa<Derived>();
 }
 
-template <typename Subclass, typename T,
-          internal::DerivedFrom<Subclass, T>* = nullptr>
-AsyncValuePtr<Subclass> Cast(AsyncValuePtr<T> ptr) {
-  return ptr.template Cast<Subclass>();
+template <typename Derived, typename T,
+          internal::DerivedFrom<Derived, T>* = nullptr>
+AsyncValuePtr<Derived> Cast(AsyncValuePtr<T> ptr) {
+  return ptr.template Cast<Derived>();
 }
 
-template <typename Subclass, typename T,
-          internal::DerivedFrom<Subclass, T>* = nullptr>
-AsyncValuePtr<Subclass> DynCast(AsyncValuePtr<T> ptr) {
-  return ptr.template DynCast<Subclass>();
+template <typename Derived, typename T,
+          internal::DerivedFrom<Derived, T>* = nullptr>
+AsyncValuePtr<Derived> DynCast(AsyncValuePtr<T> ptr) {
+  return ptr.template DynCast<Derived>();
 }
 
-template <typename Subclass, typename T,
-          internal::DerivedFrom<Subclass, T>* = nullptr>
-AsyncValuePtr<Subclass> DynCastOrNull(AsyncValuePtr<T> ptr) {
-  return ptr.template DynCastOrNull<Subclass>();
+template <typename Derived, typename T,
+          internal::DerivedFrom<Derived, T>* = nullptr>
+AsyncValuePtr<Derived> DynCastOrNull(AsyncValuePtr<T> ptr) {
+  return ptr.template DynCastOrNull<Derived>();
 }
 
 //===----------------------------------------------------------------------===//
