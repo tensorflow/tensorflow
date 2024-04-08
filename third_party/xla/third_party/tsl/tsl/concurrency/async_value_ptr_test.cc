@@ -16,6 +16,7 @@ limitations under the License.
 #include <cstdint>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "tsl/concurrency/async_value_ref.h"
 #include "tsl/platform/test.h"
@@ -77,6 +78,42 @@ TEST(AsyncValuePtrTest, AndThen) {
 
   ptr.emplace(42);
   EXPECT_TRUE(executed);
+}
+
+TEST(AsyncValuePtrTest, AndThenError) {
+  AsyncValueRef<int32_t> ref = MakeConstructedAsyncValueRef<int32_t>(42);
+  AsyncValuePtr<int32_t> ptr = ref.AsPtr();
+
+  auto error = absl::InternalError("test error");
+  ptr.SetError(error);
+  ptr.AndThen([&](absl::Status status) { EXPECT_EQ(status, error); });
+}
+
+TEST(AsyncValuePtrTest, AndThenNoError) {
+  AsyncValueRef<int32_t> ref = MakeAvailableAsyncValueRef<int32_t>(42);
+  AsyncValuePtr<int32_t> ptr = ref.AsPtr();
+
+  ptr.AndThen([](absl::Status status) { EXPECT_TRUE(status.ok()); });
+}
+
+TEST(AsyncValuePtrTest, AndThenStatusOrError) {
+  AsyncValueRef<int32_t> ref = MakeConstructedAsyncValueRef<int32_t>(42);
+  AsyncValuePtr<int32_t> ptr = ref.AsPtr();
+
+  auto error = absl::InternalError("test error");
+  ptr.SetError(error);
+
+  ptr.AndThen([&](absl::StatusOr<int32_t*> v) {
+    EXPECT_FALSE(v.ok());
+    EXPECT_EQ(v.status(), error);
+  });
+}
+
+TEST(AsyncValuePtrTest, AndThenStatusOrNoError) {
+  AsyncValueRef<int32_t> ref = MakeAvailableAsyncValueRef<int32_t>(42);
+  AsyncValuePtr<int32_t> ptr = ref.AsPtr();
+
+  ptr.AndThen([&](absl::StatusOr<int32_t*> v) { EXPECT_EQ(**v, 42); });
 }
 
 TEST(AsyncValuePtrTest, BlockUntilReady) {
