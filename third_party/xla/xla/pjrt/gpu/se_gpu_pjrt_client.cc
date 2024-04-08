@@ -857,7 +857,8 @@ GetStreamExecutorGpuDeviceAllocator(
             auto bfc_allocator,
             CreateBFCAllocator(ordinal_and_device.second->executor(),
                                allocator_config.memory_fraction,
-                               allocator_config.preallocate));
+                               allocator_config.preallocate,
+                               allocator_config.gpu_system_memory_size));
         allocators.emplace_back(std::move(bfc_allocator),
                                 ordinal_and_device.second->compute_stream(),
                                 /*memory_space=*/0);
