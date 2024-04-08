@@ -67,7 +67,6 @@ class HloDimensionsInstruction : public HloInstruction {
       case HloOpcode::kReduce:
       case HloOpcode::kReverse:
       case HloOpcode::kSort:
-      case HloOpcode::kTopK:
       case HloOpcode::kTranspose:
         return true;
       default:
