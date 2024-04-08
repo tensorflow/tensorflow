@@ -42,6 +42,7 @@ tsl_cc_test(
         ":async_value",
         "//tsl/platform:test",
         "//tsl/platform:test_main",
+        "@com_google_absl//absl/status",
     ],
 )
 
