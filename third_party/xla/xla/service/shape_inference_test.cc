@@ -4892,6 +4892,21 @@ TEST_F(ShapeInferenceTest, UnboundedTransposeRank1) {
       << " expected: " << ShapeUtil::HumanString(expected);
 }
 
+TEST_F(ShapeInferenceTest, UnboundedWhile) {
+  TF_ASSERT_OK_AND_ASSIGN(const Shape init, ParseShape("f32[?]"));
+  TF_ASSERT_OK_AND_ASSIGN(const Shape result_shape, ParseShape("f32[?]"));
+  TF_ASSERT_OK_AND_ASSIGN(const Shape expected, ParseShape("f32[?]"));
+  TF_ASSERT_OK_AND_ASSIGN(
+      const Shape inferred_shape,
+      ShapeInference::InferWhileShape(
+          /*condition=*/ShapeUtil::MakeProgramShape({result_shape}, pred_),
+          /*body=*/ShapeUtil::MakeProgramShape({result_shape}, result_shape),
+          /*init=*/init));
+  EXPECT_TRUE(ShapeUtil::Equal(inferred_shape, expected))
+      << "inferred: " << ShapeUtil::HumanString(inferred_shape)
+      << " expected: " << ShapeUtil::HumanString(expected);
+}
+
 TEST_P(UnboundedLogicalOpShapeInferenceTest, UnboundedXor) {
   TF_ASSERT_OK_AND_ASSIGN(const Shape lhs, ParseShape(GetParam().lhs));
   TF_ASSERT_OK_AND_ASSIGN(const Shape rhs, ParseShape(GetParam().rhs));

@@ -2537,6 +2537,48 @@ TEST(XlaBuilderTest, UnboundedTranspose) {
               GmockMatch(m::Op().WithShapeEqualTo(&expected)));
 }
 
+TEST(XlaBuilderTest, UnboundedWhile) {
+  XlaBuilder b(TestName());
+  TF_ASSERT_OK_AND_ASSIGN(const Shape init, ParseShape("f32[?]"));
+  TF_ASSERT_OK_AND_ASSIGN(const Shape expected, ParseShape("f32[?]"));
+
+  XlaComputation add;
+  {
+    const std::unique_ptr<XlaBuilder> sub_builder = b.CreateSubBuilder("add");
+    Add(Parameter(sub_builder.get(), 0, ShapeUtil::MakeScalarShape(F32),
+                  "arg0"),
+        Parameter(sub_builder.get(), 1, ShapeUtil::MakeScalarShape(F32),
+                  "arg1"));
+    TF_ASSERT_OK_AND_ASSIGN(add, sub_builder->Build());
+  }
+
+  XlaComputation condition;
+  {
+    const std::unique_ptr<XlaBuilder> sub_builder =
+        b.CreateSubBuilder("compare");
+    Ge(/*lhs=*/ConstantR0<float>(sub_builder.get(), 10.0f),
+       /*rhs=*/Reduce(/*operand=*/Parameter(sub_builder.get(), 0, init, "prev"),
+                      ConstantR0<float>(sub_builder.get(), 0.0f), add,
+                      /*dimensions_to_reduce=*/{0}));
+    TF_ASSERT_OK_AND_ASSIGN(condition, sub_builder->Build());
+  }
+
+  XlaComputation body;
+  {
+    const std::unique_ptr<XlaBuilder> sub_builder = b.CreateSubBuilder("add");
+    Add(ConstantR1<float>(sub_builder.get(), {1.0f}),
+        Parameter(sub_builder.get(), 0, init, "prev"),
+        /*broadcast_dimensions=*/{0});
+    TF_ASSERT_OK_AND_ASSIGN(body, sub_builder->Build());
+  }
+
+  While(condition, body, Parameter(&b, 0, init, "init"));
+  TF_ASSERT_OK_AND_ASSIGN(const std::unique_ptr<HloModule> module,
+                          BuildHloModule(b));
+  EXPECT_THAT(GetRoot(*module),
+              GmockMatch(m::Op().WithShapeEqualTo(&expected)));
+}
+
 TEST(XlaBuilderTest, UnboundedXor) {
   XlaBuilder b(TestName());
   TF_ASSERT_OK_AND_ASSIGN(const Shape lhs,
