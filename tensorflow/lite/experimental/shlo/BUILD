@@ -123,6 +123,36 @@ cc_test(
 cc_library(
     name = "f16",
     hdrs = ["f16.h"],
+    deps = ["@FP16"],
+)
+
+cc_library(
+    name = "f16_emulated",
+    hdrs = ["f16.h"],
+    copts = ["-DSHLO_REF_EMULATE_F16=1"],
+    deps = ["@FP16"],
+)
+
+cc_test(
+    name = "f16_test",
+    srcs = ["f16_test.cc"],
+    linkopts = shlo_ref_linkopts(),
+    deps = [
+        ":f16",
+        "@com_google_absl//absl/base",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "f16_emulated_test",
+    srcs = ["f16_test.cc"],
+    linkopts = shlo_ref_linkopts(),
+    deps = [
+        ":f16_emulated",
+        "@com_google_absl//absl/base",
+        "@com_google_googletest//:gtest_main",
+    ],
 )
 
 cc_library(
