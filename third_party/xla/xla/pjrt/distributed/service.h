@@ -43,6 +43,9 @@ class CoordinationServiceImpl {
     // Number of nodes in the job. Mandatory. Must be non-negative.
     int num_nodes = -1;
 
+    // This node's global ID. -1 if unspecified.
+    int node_id = -1;
+
     tsl::Env* env = tsl::Env::Default();
 
     // Interval at which the service should check for missed heartbeat RPCs
