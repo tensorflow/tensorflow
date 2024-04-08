@@ -394,6 +394,29 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
+    name = "index_flat_map_dataset_op",
+    srcs = ["index_flat_map_dataset_op.cc"],
+    deps = [
+        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_types_hdr",
+        "//tensorflow/core/data:captured_function",
+        "//tensorflow/core/data:dataset_utils",
+        "//tensorflow/core/data:name_utils",
+        "//tensorflow/core/framework:dataset_options_proto_cc",
+        "//tensorflow/core/framework:op_requires",
+        "//tensorflow/core/framework:types_proto_cc",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+tf_kernel_library(
     name = "save_dataset_op",
     srcs = ["save_dataset_op.cc"],
     hdrs = ["save_dataset_op.h"],
@@ -965,6 +988,7 @@ tf_kernel_library(
         ":group_by_reducer_dataset_op",
         ":group_by_window_dataset_op",
         ":ignore_errors_dataset_op",
+        ":index_flat_map_dataset_op",
         ":list_dataset_op",
         ":load_dataset_op",
         ":lookup_ops",

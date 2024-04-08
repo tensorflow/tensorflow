@@ -209,6 +209,22 @@ py_strict_library(
 )
 
 py_strict_library(
+    name = "index_flat_map_op",
+    srcs = [
+        "index_flat_map_op.py",
+    ],
+    srcs_version = "PY3",
+    deps = [
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/ops:structured_function",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:tensor",
+        "//tensorflow/python/framework:tensor_spec",
+        "//tensorflow/python/ops:experimental_dataset_ops_gen",
+    ],
+)
+
+py_strict_library(
     name = "interleave_ops",
     srcs = ["interleave_ops.py"],
     srcs_version = "PY3",

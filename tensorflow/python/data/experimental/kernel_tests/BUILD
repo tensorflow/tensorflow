@@ -241,6 +241,25 @@ tf_py_strict_test(
 )
 
 tf_py_strict_test(
+    name = "index_flat_map_test",
+    srcs = ["index_flat_map_test.py"],
+    deps = [
+        "//tensorflow/python/data/experimental/ops:index_flat_map_op",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/framework:combinations",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:tensor",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops/ragged:ragged_string_ops",
+        "//tensorflow/python/platform:client_testlib",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_py_strict_test(
     name = "index_shuffle_test",
     size = "large",
     srcs = ["index_shuffle_test.py"],
