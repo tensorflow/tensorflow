@@ -139,7 +139,7 @@ static std::string UniquifyName(const std::string& name) {
 }
 
 // Converts a computation to a serialized HloModuleProto.
-StatusOr<nb::bytes> GetComputationSerializedProto(
+absl::StatusOr<nb::bytes> GetComputationSerializedProto(
     const XlaComputation& computation) {
   std::string result;
   if (!tsl::SerializeToStringDeterministic(computation.proto(), &result)) {
@@ -149,7 +149,7 @@ StatusOr<nb::bytes> GetComputationSerializedProto(
 }
 
 // Converts a hlo module to a serialized HloModuleProto.
-StatusOr<nb::bytes> GetHloModuleSerializedProto(const HloModule& module) {
+absl::StatusOr<nb::bytes> GetHloModuleSerializedProto(const HloModule& module) {
   std::string result;
   if (!tsl::SerializeToStringDeterministic(module.ToProto(), &result)) {
     return Unknown("Failed to serialize the HloModuleProto.");
@@ -158,7 +158,7 @@ StatusOr<nb::bytes> GetHloModuleSerializedProto(const HloModule& module) {
 }
 
 // Converts a serialized HloModuleProto into a HloModule.
-StatusOr<std::shared_ptr<HloModule>> HloModuleFromSerializedProto(
+absl::StatusOr<std::shared_ptr<HloModule>> HloModuleFromSerializedProto(
     const nb::bytes& bytes) {
   HloModuleProto proto;
   proto.ParseFromArray(bytes.c_str(), bytes.size());
@@ -170,7 +170,7 @@ StatusOr<std::shared_ptr<HloModule>> HloModuleFromSerializedProto(
   return std::shared_ptr<HloModule>(std::move(module));
 }
 
-StatusOr<std::shared_ptr<HloModule>> GetHloModule(
+absl::StatusOr<std::shared_ptr<HloModule>> GetHloModule(
     const XlaComputation& computation) {
   TF_ASSIGN_OR_RETURN(const HloModuleConfig module_config,
                       HloModule::CreateModuleConfigFromProto(
@@ -182,7 +182,7 @@ StatusOr<std::shared_ptr<HloModule>> GetHloModule(
 }
 
 // Converts a computation to textual HLO form.
-StatusOr<std::string> GetComputationHloText(
+absl::StatusOr<std::string> GetComputationHloText(
     const XlaComputation& computation, bool print_large_constants = false) {
   TF_ASSIGN_OR_RETURN(std::shared_ptr<HloModule> hlo_module,
                       GetHloModule(computation));
@@ -193,7 +193,7 @@ StatusOr<std::string> GetComputationHloText(
 }
 
 // Converts a computation to HLO dot graph form.
-StatusOr<std::string> GetComputationHloDotGraph(
+absl::StatusOr<std::string> GetComputationHloDotGraph(
     const XlaComputation& computation) {
   TF_ASSIGN_OR_RETURN(std::shared_ptr<HloModule> hlo_module,
                       GetHloModule(computation));
@@ -203,14 +203,14 @@ StatusOr<std::string> GetComputationHloDotGraph(
 }
 
 // Hashes the HLO module.
-StatusOr<uint64_t> HashComputation(const XlaComputation& computation) {
+absl::StatusOr<uint64_t> HashComputation(const XlaComputation& computation) {
   TF_ASSIGN_OR_RETURN(std::shared_ptr<HloModule> hlo_module,
                       GetHloModule(computation));
   return absl::HashOf(*hlo_module);
 }
 // Safe version of ShapeUtil::MakeShapeWithDenseLayout that fails gracefully on
 // invalid input.
-StatusOr<Shape> MakeShapeWithDenseLayout(
+absl::StatusOr<Shape> MakeShapeWithDenseLayout(
     PrimitiveType element_type, absl::Span<const int64_t> dims,
     std::optional<absl::Span<const int64_t>> minor_to_major,
     std::optional<const std::vector<bool>> dynamic_dimensions) {
@@ -255,7 +255,7 @@ StatusOr<Shape> MakeShapeWithDenseLayout(
 // transpose_perm=[0,1,2] (no transpose)
 // PartitionSpec('B', 'A', 'C') corresponds to reshape_dims=[4,2,2],
 // transpose_perm=[1,0,2] (swap A and B)
-StatusOr<HloSharding> IotaTileHelper(
+absl::StatusOr<HloSharding> IotaTileHelper(
     absl::Span<const int64_t> dims, absl::Span<const int64_t> reshape_dims,
     absl::Span<const int> transpose_perm,
     absl::Span<const OpSharding::Type> subgroup_types) {
@@ -390,7 +390,7 @@ void BuildXlaCompilerSubmodule(nb::module_& m) {
                       [](PrimitiveType type, nb::sequence dims_seq,
                          std::optional<nb::sequence> layout_seq,
                          std::optional<std::vector<bool>> dynamic_dimensions)
-                          -> StatusOr<Shape> {
+                          -> absl::StatusOr<Shape> {
                         std::vector<int64_t> dims =
                             SequenceToVector<int64_t>(dims_seq);
                         if (layout_seq) {
@@ -412,7 +412,7 @@ void BuildXlaCompilerSubmodule(nb::module_& m) {
               [](nb_dtype dtype, nb::sequence dims_seq,
                  std::optional<nb::sequence> layout_seq,
                  std::optional<std::vector<bool>> dynamic_dimensions)
-                  -> StatusOr<Shape> {
+                  -> absl::StatusOr<Shape> {
                 PrimitiveType type = ValueOrThrow(DtypeToPrimitiveType(dtype));
                 std::vector<int64_t> dims = SequenceToVector<int64_t>(dims_seq);
                 if (layout_seq) {
@@ -715,7 +715,7 @@ void BuildXlaCompilerSubmodule(nb::module_& m) {
   m.def(
       "hlo_module_cost_analysis",
       xla::ValueOrThrowWrapper([](PyClient* client, const HloModule& module)
-                                   -> StatusOr<nb::dict> {
+                                   -> absl::StatusOr<nb::dict> {
         TF_ASSIGN_OR_RETURN(auto analysis,
                             client->pjrt_client()->GetHloCostAnalysis());
         TF_RETURN_IF_ERROR(module.entry_computation()->Accept(analysis.get()));
@@ -728,14 +728,15 @@ void BuildXlaCompilerSubmodule(nb::module_& m) {
         return ret;
       }));
   m.def("hlo_module_from_text",
-        xla::ValueOrThrowWrapper([](const std::string& hlo_module_text)
-                                     -> StatusOr<std::shared_ptr<HloModule>> {
-          auto hlo_module =
-              xla::ParseAndReturnUnverifiedModule(hlo_module_text);
-          TF_RETURN_IF_ERROR(hlo_module.status());
-          std::shared_ptr<HloModule> result(std::move(*hlo_module));
-          return result;
-        }));
+        xla::ValueOrThrowWrapper(
+            [](const std::string& hlo_module_text)
+                -> absl::StatusOr<std::shared_ptr<HloModule>> {
+              auto hlo_module =
+                  xla::ParseAndReturnUnverifiedModule(hlo_module_text);
+              TF_RETURN_IF_ERROR(hlo_module.status());
+              std::shared_ptr<HloModule> result(std::move(*hlo_module));
+              return result;
+            }));
 
   nb::class_<XlaOp> xla_op_class(m, "XlaOp");
 
@@ -765,7 +766,7 @@ void BuildXlaCompilerSubmodule(nb::module_& m) {
       .def(
           "get_program_shape",
           [](const XlaBuilder& builder,
-             std::optional<XlaOp> root) -> StatusOr<ProgramShape> {
+             std::optional<XlaOp> root) -> absl::StatusOr<ProgramShape> {
             return root ? builder.GetProgramShape(*root)
                         : builder.GetProgramShape();
           },
@@ -790,7 +791,7 @@ void BuildXlaCompilerSubmodule(nb::module_& m) {
       .def_static(
           "create",
           xla::ValueOrThrowWrapper([](nb::ndarray<int, nb::ndim<2>> array)
-                                       -> StatusOr<DeviceAssignment> {
+                                       -> absl::StatusOr<DeviceAssignment> {
             if (array.ndim() != 2) {
               return InvalidArgument(
                   "Argument to DeviceAssignment constructor must be a "
@@ -808,16 +809,18 @@ void BuildXlaCompilerSubmodule(nb::module_& m) {
       .def("replica_count", &DeviceAssignment::replica_count)
       .def("computation_count", &DeviceAssignment::computation_count)
       .def("__repr__", &DeviceAssignment::ToString)
-      .def("serialize", xla::ValueOrThrowWrapper([](const DeviceAssignment& da)
-                                                     -> StatusOr<nb::bytes> {
-             DeviceAssignmentProto proto;
-             TF_RETURN_IF_ERROR(da.Serialize(&proto));
-             std::string result;
-             if (!tsl::SerializeToStringDeterministic(proto, &result)) {
-               return Unknown("Failed to serialize the DeviceAssignmentProto.");
-             }
-             return nb::bytes(result.data(), result.size());
-           }));
+      .def("serialize",
+           xla::ValueOrThrowWrapper(
+               [](const DeviceAssignment& da) -> absl::StatusOr<nb::bytes> {
+                 DeviceAssignmentProto proto;
+                 TF_RETURN_IF_ERROR(da.Serialize(&proto));
+                 std::string result;
+                 if (!tsl::SerializeToStringDeterministic(proto, &result)) {
+                   return Unknown(
+                       "Failed to serialize the DeviceAssignmentProto.");
+                 }
+                 return nb::bytes(result.data(), result.size());
+               }));
 
   nb::class_<CompileOptions> compile_options(m, "CompileOptions");
   compile_options

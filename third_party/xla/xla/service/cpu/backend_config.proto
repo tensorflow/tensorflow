@@ -33,6 +33,8 @@ message OneDnnMatMulConfig {
   // To avoid protobuf failures for specific decimal values,
   // the original float value alpha is type-casted to int32.
   int32 alpha_typecast = 5;
+  bool weights_prepacked = 6;
+  bool user_scratchpad = 7;
 }
 
 message OneDnnLayerNormConfig {

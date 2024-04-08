@@ -41,25 +41,27 @@ using TraceMeArg ABSL_DEPRECATE_AND_INLINE() =
     tsl::profiler::TraceMeArg;  // NOLINT
 
 ABSL_DEPRECATE_AND_INLINE()
-inline std::string TraceMeEncode(std::string name,
-                                 std::initializer_list<TraceMeArg> args) {
+inline std::string TraceMeEncode(
+    std::string name, std::initializer_list<tsl::profiler::TraceMeArg> args) {
   return tsl::profiler::TraceMeEncode(std::move(name), args);
 }
 
 ABSL_DEPRECATE_AND_INLINE()
-inline std::string TraceMeEncode(absl::string_view name,
-                                 std::initializer_list<TraceMeArg> args) {
+inline std::string TraceMeEncode(
+    absl::string_view name,
+    std::initializer_list<tsl::profiler::TraceMeArg> args) {
   return tsl::profiler::TraceMeEncode(name, args);
 }
 
 ABSL_DEPRECATE_AND_INLINE()
-inline std::string TraceMeEncode(const char* name,
-                                 std::initializer_list<TraceMeArg> args) {
+inline std::string TraceMeEncode(
+    const char* name, std::initializer_list<tsl::profiler::TraceMeArg> args) {
   return tsl::profiler::TraceMeEncode(name, args);
 }
 
 ABSL_DEPRECATE_AND_INLINE()
-inline std::string TraceMeEncode(std::initializer_list<TraceMeArg> args) {
+inline std::string TraceMeEncode(
+    std::initializer_list<tsl::profiler::TraceMeArg> args) {
   return tsl::profiler::TraceMeEncode(args);
 }
 

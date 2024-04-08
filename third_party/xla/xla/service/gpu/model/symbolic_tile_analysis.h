@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
-#include <optional>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -26,8 +25,8 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/service/gpu/model/indexing_map.h"
 #include "xla/service/gpu/model/symbolic_tiled_hlo_instruction.h"
+#include "xla/service/gpu/model/tiled_hlo_instruction.h"
 #include "xla/service/instruction_fusion.h"
 
 namespace xla {
@@ -50,42 +49,21 @@ class SymbolicTileAnalysis {
   static SymbolicTileAnalysisOrError AnalyzeComputation(
       const HloComputation& computation, mlir::MLIRContext* ctx);
 
-  // Evaluates the tile offsets of an instruction from the analyzed computation
-  // following the provided path from the root. Tile parameters must have been
-  // set before calling this method.
-  std::vector<int64_t> TileOffsets(
-      const SymbolicTiledHloInstruction& tiled_hlo) const;
-  // Evaluates the tile sizes of an instruction from the analyzed computation
-  // following the provided path from the root. Tile parameters must have been
-  // set before calling this method.
-  std::vector<int64_t> TileSizes(
-      const SymbolicTiledHloInstruction& tiled_hlo) const;
-  // Evaluates the tile strides of an instruction from the analyzed computation
-  // following the provided path from the root. Tile parameters must have been
-  // set before calling this method.
-  std::vector<int64_t> TileStrides(
-      const SymbolicTiledHloInstruction& tiled_hlo) const;
-
-  // Computes the indexing map from block id to tile offset of the tiled HLO
-  // instruction. The indexing map has the following form:
-  //
-  // (block_id) -> (tile_offset0, tile_offset1, ...)
-  absl::StatusOr<IndexingMap> ComputeBlockIdToTileOffsetIndexing(
-      const SymbolicTiledHloInstruction& tiled_hlo) const;
-
-  // Populates input tile sizes. This is a prerequisite in order to extract
-  // concrete values using `TileOffsets`, `TileSizes`, and `TileStrides`.
-  void SetTileSizes(std::vector<int64_t> sizes);
+  // Returns a graph of HLO instructions tiled with the given tile parameters.
+  // Result vector has instructions in def-before-use order.
+  absl::StatusOr<std::vector<std::unique_ptr<TiledHloInstruction>>>
+  ComputeTiledHloInstructions(
+      const std::vector<int64_t>& tile_parameters) const;
 
   // Returns the tiled root instruction.
   const SymbolicTiledHloInstruction* GetRoot() const {
-    return tiled_hlo_instructions_.back().get();
+    return symbolic_tiled_hlo_instructions_.back().get();
   }
 
-  // Returns the tiled HLO instructions in def-before-use order.
+  // Returns the symbolic tiled HLO instructions in def-before-use order.
   const std::vector<std::unique_ptr<SymbolicTiledHloInstruction>>&
-  GetTiledHloInstructions() const {
-    return tiled_hlo_instructions_;
+  GetSymbolicTiledHloComputation() const {
+    return symbolic_tiled_hlo_instructions_;
   }
 
   // Return the underlying MLIRContext.
@@ -93,25 +71,17 @@ class SymbolicTileAnalysis {
 
  private:
   SymbolicTileAnalysis(std::vector<std::unique_ptr<SymbolicTiledHloInstruction>>
-                           tiled_hlo_instructions,
+                           symbolic_tiled_hlo_instructions,
                        mlir::MLIRContext* context)
-      : tiled_hlo_instructions_(std::move(tiled_hlo_instructions)),
+      : symbolic_tiled_hlo_instructions_(
+            std::move(symbolic_tiled_hlo_instructions)),
         context_(context) {}
 
   // The tiled HLO instructions in def-before-use order.
   std::vector<std::unique_ptr<SymbolicTiledHloInstruction>>
-      tiled_hlo_instructions_;
+      symbolic_tiled_hlo_instructions_;
 
   mlir::MLIRContext* context_;
-  // Optionally set tile parameters. These parameters can be set by calling
-  // `SetTileParameters`, and correspond to the output tile for the analyzed
-  // computation. The order and type of parameters are as explained in the
-  // documentation of `SymbolicTile`.
-  std::optional<std::vector<int64_t>> tile_parameters_;
-
-  // Indexing map from block id to root tile offset. Computed from the tile
-  // parameters.
-  std::optional<IndexingMap> block_id_to_root_tile_offset_;
 };
 
 }  // namespace gpu
