@@ -560,6 +560,22 @@ xla_cc_test(
 
 cuda_only_cc_library(
     name = "cuda_asm_compiler",
+    hdrs = ["cuda_asm_compiler.h"],
+    visibility = internal_visibility([
+        "//third_party/py/jax:__subpackages__",
+        "//tensorflow/compiler/mlir/tools/kernel_gen:__subpackages__",
+        "//xla/service/gpu:__subpackages__",
+        "//xla/stream_executor:__subpackages__",
+        "//tensorflow/core/kernels:__subpackages__",
+    ]),
+    deps = [
+        ":cuda_asm_compiler_legacy",
+        "//xla/stream_executor/gpu:asm_compiler",
+    ],
+)
+
+cuda_only_cc_library(
+    name = "cuda_asm_compiler_legacy",
     srcs = ["cuda_asm_compiler.cc"],
     copts = tf_additional_gpu_compilation_copts(),
     deps = [
