@@ -20,9 +20,11 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "xla/literal_util.h"
 #include "xla/shape_util.h"
 #include "xla/tests/hlo_test_base.h"
+#include "xla/xla_data.pb.h"
 
 namespace op = xla::testing::opcode_matchers;
 using ::testing::_;
@@ -371,6 +373,48 @@ TEST_F(HloMatchersTest, SourceTargetPairsMatcher) {
   EXPECT_THAT(Explain(cp.get(), op::SourceTargetPairs({{0, 1}, {2, 3}})),
               HasSubstr("source_target_pairs (expected: {{0,1},{2,3}}"));
   EXPECT_THAT(cp.get(), op::SourceTargetPairs({{0, 1}, {2, 3}, {1, 2}}));
+}
+
+TEST_F(HloMatchersTest, MetadataMatcher) {
+  Shape shape = ShapeUtil::MakeShape(F32, {5, 7});
+  std::unique_ptr<HloInstruction> p0 =
+      HloInstruction::CreateParameter(0, shape, "param");
+  OpMetadata metadata;
+  metadata.set_op_type("op_type1");
+  metadata.set_op_name("op_name1");
+  p0->set_metadata(metadata);
+
+  OpMetadata actual_opname;
+  actual_opname.set_op_type("op_type1");
+  actual_opname.set_op_name("op_name2");
+
+  OpMetadata actual_source_file;
+  actual_source_file.set_op_type("op_type1");
+  actual_source_file.set_op_name("op_name1");
+  actual_source_file.set_source_file("source_file");
+
+  OpMetadata actual_optype;
+  actual_optype.set_op_type("op_type2");
+  actual_optype.set_op_name("op_name1");
+
+  OpMetadata actual_source_line;
+  actual_source_line.set_op_type("op_type1");
+  actual_source_line.set_op_name("op_name1");
+  actual_source_line.set_source_line(1);
+
+  EXPECT_THAT(Explain(p0.get(), op::Metadata(actual_opname)),
+              HasSubstr("has wrong metadata (got op_name1, want op_name2)"));
+  EXPECT_THAT(Explain(p0.get(), op::Metadata(actual_source_file)),
+              HasSubstr("has wrong metadata (got "
+                        ", want source_file)"));
+  EXPECT_THAT(Explain(p0.get(), op::Metadata(actual_optype)),
+              HasSubstr("has wrong metadata (got"
+                        " op_type1, want op_type2)"));
+  EXPECT_THAT(Explain(p0.get(), op::Metadata(actual_source_line)),
+              HasSubstr("has wrong metadata (got 0"
+                        ", want 1)"));
+  EXPECT_THAT(DescribeHloMatcher(op::Metadata(p0->metadata())),
+              R"( (metadata: op_type1 op_name1  0))");
 }
 }  // namespace
 }  // namespace xla
