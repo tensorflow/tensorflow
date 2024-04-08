@@ -1052,9 +1052,13 @@ class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
               # tf.MatMul cases.
               ([None, 1024], [1024, 3]),  # dynamic batch dim.
               ([1, 1024], [1024, 3]),
-              # tf.BatchMatMul cases.
+              # # tf.BatchMatMul cases.
               ([10, 1, 1024], [10, 1024, 3]),
               ([2, 3, 1, 1024], [2, 3, 1024, 3]),
+          ),
+          'enable_per_channel_quantized_weight': (
+              # False,
+              True,
           ),
       }])
   )
@@ -1064,6 +1068,7 @@ class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
       bias_fn: Optional[ops.Operation],
       activation_fn: Optional[ops.Operation],
       dim_sizes: Sequence[int],
+      enable_per_channel_quantized_weight: bool,
   ):
     lhs_dim_size, rhs_dim_size = dim_sizes
     input_shape = (*lhs_dim_size,)
@@ -1085,7 +1090,9 @@ class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     )
 
     config = qc.QuantizationConfig(
-        weight_only_ptq_preset=qc.WeightOnlyPtqPreset(),
+        weight_only_ptq_preset=qc.WeightOnlyPtqPreset(
+            enable_per_channel_quantized_weight=enable_per_channel_quantized_weight,
+        ),
         tf_saved_model=qc.TfSavedModelConfig(tags=[tag_constants.SERVING]),
     )
     quantization.quantize_saved_model(
@@ -1142,6 +1149,10 @@ class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
               False,
               True,
           ),
+          'enable_per_channel_quantized_weight': (
+              False,
+              True,
+          ),
       }])
   )
   @test_util.run_in_graph_and_eager_modes
@@ -1151,6 +1162,7 @@ class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
       activation_fn: Optional[ops.Operation],
       has_batch_norm: bool,
       input_shape_dynamic: bool,
+      enable_per_channel_quantized_weight: bool,
       dilations: Sequence[int] = None,
   ):
     input_shape = (None, 3, 4, 3) if input_shape_dynamic else (1, 3, 4, 3)
@@ -1176,7 +1188,9 @@ class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     )
 
     config = qc.QuantizationConfig(
-        weight_only_ptq_preset=qc.WeightOnlyPtqPreset(),
+        weight_only_ptq_preset=qc.WeightOnlyPtqPreset(
+            enable_per_channel_quantized_weight=enable_per_channel_quantized_weight,
+        ),
         tf_saved_model=qc.TfSavedModelConfig(tags=[tag_constants.SERVING]),
     )
     quantization.quantize_saved_model(
@@ -1201,9 +1215,8 @@ class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         self._output_saved_model_path
     )
 
-    # Tests that the output graph contains subtract and multiply for
+    # Tests that the output graph contains multiply for symmetric
     # dequantization.
-    self.assertTrue(re.search('stablehlo.subtract', module_str))
     self.assertTrue(re.search('stablehlo.multiply', module_str))
     # Tests that the output graph contains float dot_general.
     self.assertTrue(

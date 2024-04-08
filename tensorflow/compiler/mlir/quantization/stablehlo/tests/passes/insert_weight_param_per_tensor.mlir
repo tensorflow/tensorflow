@@ -1,4 +1,6 @@
-// RUN: stablehlo-quant-opt %s -split-input-file -stablehlo-insert-weight-param | FileCheck %s
+// RUN: stablehlo-quant-opt %s -split-input-file \
+// RUN:     -stablehlo-insert-weight-param=enable-per-channel-quantized-weight=false \
+// RUN:     | FileCheck %s
 
 // Test that q/dq pair is inserted between constant and XlaCallModule op
 // with quantizable trait and function name containing conv.
@@ -19,8 +21,8 @@ func.func @qdq_for_conv_weight(%arg0: tensor<1x3x2x3xf32>) -> tensor<1x2x2x2xf32
 // CHECK-LABEL: func.func @qdq_for_conv_weight
 // CHECK-SAME: (%[[ARG_0:.+]]: tensor<1x3x2x3xf32>) -> tensor<1x2x2x2xf32>
 // CHECK: %[[CST:.+]] = "tf.Const"() <{value = dense<3.000000e-01> : tensor<2x3x3x2xf32>}> : () -> tensor<2x3x3x2xf32>
-// CHECK: %[[Q:.+]] = "quantfork.qcast"(%[[CST]]) : (tensor<2x3x3x2xf32>) -> tensor<2x3x3x2x!quant.uniform<i8:f32, 0.0011764706349840352:-128>>
-// CHECK: %[[DQ:.+]] = "quantfork.dcast"(%[[Q]]) : (tensor<2x3x3x2x!quant.uniform<i8:f32, 0.0011764706349840352:-128>>) -> tensor<2x3x3x2xf32>
+// CHECK: %[[Q:.+]] = "quantfork.qcast"(%[[CST]]) : (tensor<2x3x3x2xf32>) -> tensor<2x3x3x2x!quant.uniform<i8<-127:127>:f32, 0.0023622048182750312>>
+// CHECK: %[[DQ:.+]] = "quantfork.dcast"(%0) : (tensor<2x3x3x2x!quant.uniform<i8<-127:127>:f32, 0.0023622048182750312>>) -> tensor<2x3x3x2xf32>
 // CHECK: %[[CALL:.+]] = "tf.XlaCallModule"(%[[ARG_0]], %[[DQ]]) <{Sout = [#tf_type.shape<1x2x2x2>], dim_args_spec = [], disabled_checks = [], has_token_input_output = false, module = "", platforms = [], version = 5 : i64}> {_entry_function = @composite_conv_fn, _original_entry_function = "composite_conv_fn", _stablehlo_module_attrs = {}, _tfl_quant_trait = "fully_quantizable", device = ""} : (tensor<1x3x2x3xf32>, tensor<2x3x3x2xf32>) -> tensor<1x2x2x2xf32>
 // CHECK: return %[[CALL]] : tensor<1x2x2x2xf32>
 
@@ -45,8 +47,8 @@ func.func @qdq_for_dot_general_weight(%arg0: tensor<1x2xf32>) -> tensor<1x3xf32>
 // CHECK-LABEL: func.func @qdq_for_dot_general_weight
 // CHECK-SAME: (%[[ARG_0:.+]]: tensor<1x2xf32>) -> tensor<1x3xf32>
 // CHECK: %[[CST:.+]] = "tf.Const"() <{value = dense<3.000000e-01> : tensor<2x3xf32>}> : () -> tensor<2x3xf32>
-// CHECK: %[[Q:.+]] = "quantfork.qcast"(%[[CST]]) : (tensor<2x3xf32>) -> tensor<2x3x!quant.uniform<i8:f32, 0.0011764706349840352:-128>>
-// CHECK: %[[DQ:.+]] = "quantfork.dcast"(%[[Q]]) : (tensor<2x3x!quant.uniform<i8:f32, 0.0011764706349840352:-128>>) -> tensor<2x3xf32>
+// CHECK: %[[Q:.+]] = "quantfork.qcast"(%[[CST]]) : (tensor<2x3xf32>) -> tensor<2x3x!quant.uniform<i8<-127:127>:f32, 0.0023622048182750312>>
+// CHECK: %[[DQ:.+]] = "quantfork.dcast"(%[[Q]]) : (tensor<2x3x!quant.uniform<i8<-127:127>:f32, 0.0023622048182750312>>) -> tensor<2x3xf32>
 // CHECK: %[[CALL:.+]] = "tf.XlaCallModule"(%[[ARG_0]], %[[DQ]]) <{Sout = [#tf_type.shape<1x3>], dim_args_spec = [], disabled_checks = [], has_token_input_output = false, module = "", platforms = [], version = 5 : i64}> {_entry_function = @composite_dot_general_fn, _original_entry_function = "composite_dot_general_fn", _stablehlo_module_attrs = {}, _tfl_quant_trait = "fully_quantizable", device = ""} : (tensor<1x2xf32>, tensor<2x3xf32>) -> tensor<1x3xf32>
 // CHECK: return %[[CALL]] : tensor<1x3xf32>
 

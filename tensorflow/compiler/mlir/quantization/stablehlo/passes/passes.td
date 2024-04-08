@@ -205,6 +205,12 @@ def DeferActivationTransposePass : Pass<"stablehlo-defer-activation-transpose", 
 
 def InsertWeightParamPass : Pass<"stablehlo-insert-weight-param", "mlir::func::FuncOp"> {
   let summary = "Insert quantization parameters of weights for weight-only quantization and dynamic range quantization.";
+  let options = [
+    Option<"enable_per_channel_quantized_weight_",
+        "enable-per-channel-quantized-weight",
+        "bool", /*default=*/"true",
+        "Whether to enable per-channel quantized weights.">,
+  ];
   let dependentDialects = [
       "mlir::stablehlo::StablehloDialect",
       "TF::TensorFlowDialect",

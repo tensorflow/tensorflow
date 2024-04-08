@@ -77,9 +77,17 @@ message StaticRangePtqPreset {
   bool enable_full_int_quantization = 3;
 }
 
-// Applies int8 per-tensor weight-only post-training quantization for all
-// dot_general op.
-message WeightOnlyPtqPreset {}
+// Applies int8 weight-only post-training quantization for all
+// convolution and dot_general op.
+// Next ID: 2
+message WeightOnlyPtqPreset {
+  // NOTE: This field will be deprecated.
+  // Granularity should be controlled in custom configuration, deprecating
+  // this field once available.
+  // If set true, enable channel-wise quantization for all supported ops.
+  // Otherwise, all supported ops are per-tensor quantized.
+  bool enable_per_channel_quantized_weight = 1;
+}
 
 // Metadata specific to the input TensorFlow SavedModel, which may be required
 // to identify the specific MetaGraphDef to quantize, for example.

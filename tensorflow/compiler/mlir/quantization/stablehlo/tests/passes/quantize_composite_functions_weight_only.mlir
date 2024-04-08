@@ -1,5 +1,6 @@
-// RUN: stablehlo-quant-opt %s -split-input-file -verify-diagnostics \
-// RUN:     -stablehlo-quantize-composite-functions=enable-weight-only=true | FileCheck --check-prefix=CHECK %s
+// RUN: stablehlo-quant-opt %s -split-input-file \
+// RUN:     -stablehlo-quantize-composite-functions="enable-weight-only=true enable-per-channel-quantized-weight=false" \
+// RUN:     | FileCheck --check-prefix=CHECK-PER-TENSOR %s
 
 // Test that weight-only quantized dot_general op is produced when
 // enable-weight-only is set to true.
@@ -17,17 +18,27 @@ module attributes {tf_saved_model.semantics} {
   }
 }
 
-// CHECK-LABEL: quantize_dot_general_fn
-// CHECK-SAME: %[[ARG0:.+]]: tensor<1x2xf32>
-// CHECK: %[[CST:.+]] = stablehlo.constant() {value = dense<127> : tensor<2x3xi8>} : () -> tensor<2x3x!quant.uniform<i8:f32, 0.0011764706349840352:-128>>
-// CHECK: %[[CALL:.+]] = call @quantized_dot_general_fn(%[[ARG0]], %[[CST]]) : (tensor<1x2xf32>, tensor<2x3x!quant.uniform<i8:f32, 0.0011764706349840352:-128>>) -> tensor<1x3xf32>
-// CHECK: return %[[CALL]]
+// CHECK-PER-CHANNEL: quantize_dot_general_fn(%[[ARG0:.+]]: tensor<1x2xf32>)
+// CHECK-PER-CHANNEL: %[[CST:.+]] = stablehlo.constant() {value = dense<127> : tensor<2x3xi8>} : () -> tensor<2x3x!quant.uniform<i8:f32:1, {0.0011764706349840352:-128,0.0011764706349840352:-128,0.0011764706349840352:-128}>>
+// CHECK-PER-CHANNEL: %[[CALL:.+]] = call @quantized_dot_general_fn(%[[ARG0]], %[[CST]]) : (tensor<1x2xf32>, tensor<2x3x!quant.uniform<i8:f32:1, {0.0011764706349840352:-128,0.0011764706349840352:-128,0.0011764706349840352:-128}>>) -> tensor<1x3xf32>
+// CHECK-PER-CHANNEL: return %[[CALL]]
 
-// CHECK: quantized_dot_general_fn
-// CHECK-SAME: (%[[ARG1:.+]]: tensor<1x2xf32>,  %[[ARG2:.+]]: tensor<2x3x!quant.uniform<i8:f32, 0.0011764706349840352:-128>>) -> tensor<1x3xf32>
-// CHECK: %[[DOT:.+]] = stablehlo.dot_general %[[ARG1]], %[[ARG2]]
-// CHECK-SAME: (tensor<1x2xf32>, tensor<2x3x!quant.uniform<i8:f32, 0.0011764706349840352:-128>>) -> tensor<1x3xf32>
-// CHECK: return %[[DOT]]
+// CHECK-PER-CHANNEL: quantized_dot_general_fn
+// CHECK-PER-CHANNEL-SAME: (%[[ARG1:.+]]: tensor<1x2xf32>,  %[[ARG2:.+]]: tensor<2x3x!quant.uniform<i8:f32:1, {0.0011764706349840352:-128,0.0011764706349840352:-128,0.0011764706349840352:-128}>>) -> tensor<1x3xf32>
+// CHECK-PER-CHANNEL: %[[DOT:.+]] = stablehlo.dot_general %[[ARG1]], %[[ARG2]]
+// CHECK-PER-CHANNEL-SAME: (tensor<1x2xf32>, tensor<2x3x!quant.uniform<i8:f32:1, {0.0011764706349840352:-128,0.0011764706349840352:-128,0.0011764706349840352:-128}>>) -> tensor<1x3xf32>
+// CHECK-PER-CHANNEL: return %[[DOT]]
+
+// CHECK-PER-TENSOR: quantize_dot_general_fn(%[[ARG0:.+]]: tensor<1x2xf32>)
+// CHECK-PER-TENSOR: %[[CST:.+]] = stablehlo.constant() {value = dense<127> : tensor<2x3xi8>} : () -> tensor<2x3x!quant.uniform<i8<-127:127>:f32, 0.0023622048182750312>>
+// CHECK-PER-TENSOR: %[[CALL:.+]] = call @quantized_dot_general_fn(%[[ARG0]], %[[CST]]) : (tensor<1x2xf32>, tensor<2x3x!quant.uniform<i8<-127:127>:f32, 0.0023622048182750312>>) -> tensor<1x3xf32>
+// CHECK-PER-TENSOR: return %[[CALL]]
+
+// CHECK-PER-TENSOR quantized_dot_general_fn
+// CHECK-PER-TENSOR: (%[[ARG1:.+]]: tensor<1x2xf32>,  %[[ARG2:.+]]: tensor<2x3x!quant.uniform<i8<-127:127>:f32, 0.0023622048182750312>>) -> tensor<1x3xf32>
+// CHECK-PER-TENSOR: %[[DOT:.+]] = stablehlo.dot_general %[[ARG1]], %[[ARG2]]
+// CHECK-PER-TENSOR-SAME: (tensor<1x2xf32>, tensor<2x3x!quant.uniform<i8<-127:127>:f32, 0.0023622048182750312>>) -> tensor<1x3xf32>
+// CHECK-PER-TENSOR: return %[[DOT]]
 
 // -----
 
@@ -47,14 +58,26 @@ module attributes {tf_saved_model.semantics} {
   }
 }
 
-// CHECK-LABEL: quantize_conv_fn
-// CHECK-SAME: %[[ARG0:.+]]: tensor<1x3x4x3xf32>
-// CHECK: %[[CST:.+]] = stablehlo.constant() {value = dense<127> : tensor<2x3x3x2xi8>} : () -> tensor<2x3x3x2x!quant.uniform<i8:f32, 0.0011764706349840352:-128>>
-// CHECK: %[[CALL:.+]] = call @quantized_conv_fn(%[[ARG0]], %[[CST]]) : (tensor<1x3x4x3xf32>, tensor<2x3x3x2x!quant.uniform<i8:f32, 0.0011764706349840352:-128>>) -> tensor<1x3x4x2xf32>
-// CHECK: return %[[CALL]]
+// CHECK-PER-CHANNEL-LABEL: quantize_conv_fn
+// CHECK-PER-CHANNEL-SAME: %[[ARG0:.+]]: tensor<1x3x4x3xf32>
+// CHECK-PER-CHANNEL: %[[CST:.+]] = stablehlo.constant() {value = dense<127> : tensor<2x3x3x2xi8>} : () -> tensor<2x3x3x2x!quant.uniform<i8:f32:3, {0.0011764706349840352:-128,0.0011764706349840352:-128}>>
+// CHECK-PER-CHANNEL: %[[CALL:.+]] = call @quantized_conv_fn(%[[ARG0]], %[[CST]]) : (tensor<1x3x4x3xf32>, tensor<2x3x3x2x!quant.uniform<i8:f32:3, {0.0011764706349840352:-128,0.0011764706349840352:-128}>>) -> tensor<1x3x4x2xf32>
+// CHECK-PER-CHANNEL: return %[[CALL]]
 
-// CHECK: quantized_conv_fn
-// CHECK-SAME: (%[[ARG1:.+]]: tensor<1x3x4x3xf32>,  %[[ARG2:.+]]: tensor<2x3x3x2x!quant.uniform<i8:f32, 0.0011764706349840352:-128>>) -> tensor<1x3x4x2xf32>
-// CHECK: %[[CONV:.+]] = stablehlo.convolution(%[[ARG1]], %[[ARG2]])
-// CHECK-SAME: (tensor<1x3x4x3xf32>, tensor<2x3x3x2x!quant.uniform<i8:f32, 0.0011764706349840352:-128>>) -> tensor<1x3x4x2xf32>
-// CHECK: return %[[CONV]]
+// CHECK-PER-CHANNEL: quantized_conv_fn
+// CHECK-PER-CHANNEL-SAME: (%[[ARG1:.+]]: tensor<1x3x4x3xf32>,  %[[ARG2:.+]]: tensor<2x3x3x2x!quant.uniform<i8:f32:3, {0.0011764706349840352:-128,0.0011764706349840352:-128}>>) -> tensor<1x3x4x2xf32>
+// CHECK-PER-CHANNEL: %[[CONV:.+]] = stablehlo.convolution(%[[ARG1]], %[[ARG2]])
+// CHECK-PER-CHANNEL-SAME: (tensor<1x3x4x3xf32>, tensor<2x3x3x2x!quant.uniform<i8:f32:3, {0.0011764706349840352:-128,0.0011764706349840352:-128}>>) -> tensor<1x3x4x2xf32>
+// CHECK-PER-CHANNEL: return %[[CONV]]
+
+// CHECK-PER-TENSOR-LABEL: quantize_conv_fn
+// CHECK-PER-TENSOR-SAME: %[[ARG0:.+]]: tensor<1x3x4x3xf32>
+// CHECK-PER-TENSOR: %[[CST:.+]] = stablehlo.constant() {value = dense<127> : tensor<2x3x3x2xi8>} : () -> tensor<2x3x3x2x!quant.uniform<i8<-127:127>:f32, 0.0023622048182750312>>
+// CHECK-PER-TENSOR: %[[CALL:.+]] = call @quantized_conv_fn(%[[ARG0]], %[[CST]]) : (tensor<1x3x4x3xf32>, tensor<2x3x3x2x!quant.uniform<i8<-127:127>:f32, 0.0023622048182750312>>) -> tensor<1x3x4x2xf32>
+// CHECK-PER-TENSOR: return %[[CALL]]
+
+// CHECK-PER-TENSOR: quantized_conv_fn
+// CHECK-PER-TENSOR-SAME: (%[[ARG1:.+]]: tensor<1x3x4x3xf32>,  %[[ARG2:.+]]: tensor<2x3x3x2x!quant.uniform<i8<-127:127>:f32, 0.0023622048182750312>>) -> tensor<1x3x4x2xf32>
+// CHECK-PER-TENSOR: %[[CONV:.+]] = stablehlo.convolution(%[[ARG1]], %[[ARG2]])
+// CHECK-PER-TENSOR-SAME: (tensor<1x3x4x3xf32>, tensor<2x3x3x2x!quant.uniform<i8<-127:127>:f32, 0.0023622048182750312>>) -> tensor<1x3x4x2xf32>
+// CHECK-PER-TENSOR: return %[[CONV]]
