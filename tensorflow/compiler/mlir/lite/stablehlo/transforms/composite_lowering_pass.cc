@@ -16,6 +16,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
@@ -25,6 +26,7 @@ limitations under the License.
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/composite_avg_pool.h"  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"  // IWYU pragma: keep
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"  // IWYU pragma: keep
@@ -57,6 +59,7 @@ void CompositeLoweringPass::runOnOperation() {
 
   ConversionTarget target(context);
   target.addLegalDialect<TFL::TensorFlowLiteDialect>();
+  target.addLegalDialect<arith::ArithDialect>();
 
   if (failed(applyPartialConversion(getOperation(), target,
                                     std::move(patterns)))) {

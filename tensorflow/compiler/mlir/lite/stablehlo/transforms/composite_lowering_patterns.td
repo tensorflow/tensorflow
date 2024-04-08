@@ -14,15 +14,16 @@ limitations under the License.
 ==============================================================================*/
 
 // Pattern definition file for direct lowering of mhlo composites to tflite ops.
-
 include "mlir/IR/OpBase.td"
+include "mlir/Dialect/Arith/IR/ArithOps.td"
 include "mlir/Dialect/Func/IR/FuncOps.td"
 include "mhlo/IR/hlo_ops.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_ops.td"
 
+include "tensorflow/compiler/mlir/lite/stablehlo/transforms/composite_avg_pool_patterns.td"
 
 def LegalizeHardSwishComposite: Pat<
-                    (MHLO_CompositeOp:$old_value
+                    (MHLO_CompositeOp:$old_val
                     (variadic $input),
                     ConstantStrAttr<StrAttr, "aten.hardswish.default">, $_, $_, $_),
                     (TFL_HardSwishOp $input)>;

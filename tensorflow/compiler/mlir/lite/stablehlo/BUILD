@@ -696,9 +696,13 @@ cc_library(
 cc_library(
     name = "composite_lowering",
     srcs = [
+        "transforms/composite_avg_pool.cc",
         "transforms/composite_lowering_pass.cc",
+        "transforms/composite_utils.cc",
     ],
     hdrs = [
+        "transforms/composite_avg_pool.h",
+        "transforms/composite_utils.h",
         "transforms/passes.h",
     ],
     copts = [
@@ -708,6 +712,10 @@ cc_library(
         ":composite_lowering_inc_gen",
         ":passes_inc_gen",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
+        "//tensorflow/core:framework",
+        "@com_google_absl//absl/status",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
@@ -729,6 +737,10 @@ gentbl_cc_library(
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "transforms/composite_lowering_patterns.td",
+    td_srcs = [
+        "transforms/composite_avg_pool_patterns.td",
+        "transforms/composite_utils.td",
+    ],
     deps = [
         "//tensorflow/compiler/mlir/lite:tensorflow_lite_ops_td_files",
         "@llvm-project//llvm:Support",
