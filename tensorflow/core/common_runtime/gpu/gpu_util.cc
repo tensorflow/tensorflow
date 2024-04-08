@@ -172,7 +172,7 @@ void GPUUtil::SetProtoFromGPU(const Tensor& tensor, Device* dev,
   char* buf = nullptr;
   const int64_t total_bytes = is_dead ? 0 : tensor.TotalBytes();
   if (total_bytes > 0) {
-    profiler::ScopedAnnotation annotation("SetProtoFromGPU");
+    tsl::profiler::ScopedAnnotation annotation("SetProtoFromGPU");
     alloc =
         GPUProcessState::singleton()->GetGpuHostAllocator(/*options=*/{}, 0);
     buf = static_cast<char*>(
