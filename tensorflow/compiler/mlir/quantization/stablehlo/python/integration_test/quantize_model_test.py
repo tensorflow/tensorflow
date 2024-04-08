@@ -1110,9 +1110,8 @@ class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         self._output_saved_model_path
     )
 
-    # Tests that the output graph contains subtract and multiply for
+    # Tests that the output graph contains multiply for symmetric
     # dequantization.
-    self.assertTrue(re.search('stablehlo.subtract', module_str))
     self.assertTrue(re.search('stablehlo.multiply', module_str))
     # Tests that the output graph contains float dot_general.
     self.assertTrue(
