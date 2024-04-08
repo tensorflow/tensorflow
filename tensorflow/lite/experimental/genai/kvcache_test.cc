@@ -25,6 +25,8 @@ limitations under the License.
 namespace tflite {
 namespace {
 
+static const int kDefaultMaxNumCacheEntries = 2048;
+
 class SimpleCacheOpModel : public SingleOpModel {
  public:
   SimpleCacheOpModel(const TensorData& k_tensor, const TensorData& v_tensor) {
@@ -74,8 +76,8 @@ TEST(SimpleCacheOp1Test, BasicTest) {
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   std::vector<float> fullk = m.GetFullK();
   std::vector<float> fullv = m.GetFullV();
-  ASSERT_EQ(fullk.size(), 2 * 3 * 1024);
-  ASSERT_EQ(fullv.size(), 2 * 3 * 1024);
+  ASSERT_EQ(fullk.size(), 2 * 3 * kDefaultMaxNumCacheEntries);
+  ASSERT_EQ(fullv.size(), 2 * 3 * kDefaultMaxNumCacheEntries);
 }
 
 TEST(SimpleCacheOp2Test, AddToCache) {
@@ -99,8 +101,8 @@ TEST(SimpleCacheOp2Test, AddToCache) {
     ASSERT_EQ(fullv[i], 0.);
   }
 
-  ASSERT_EQ(fullk.size(), 2 * 3 * 1024);
-  ASSERT_EQ(fullv.size(), 2 * 3 * 1024);
+  ASSERT_EQ(fullk.size(), 2 * 3 * kDefaultMaxNumCacheEntries);
+  ASSERT_EQ(fullv.size(), 2 * 3 * kDefaultMaxNumCacheEntries);
 
   for (int i = 0; i < 510; i++) {
     ASSERT_EQ(m.Invoke(), kTfLiteOk);
@@ -137,11 +139,11 @@ TEST(SimpleCacheOp2Test, ShiftSlotsInCache) {
     ASSERT_EQ(fullk[i], 0.);
     ASSERT_EQ(fullv[i], 0.);
   }
-  ASSERT_EQ(fullk.size(), 2 * 3 * 1024);
-  ASSERT_EQ(fullv.size(), 2 * 3 * 1024);
+  ASSERT_EQ(fullk.size(), 2 * 3 * kDefaultMaxNumCacheEntries);
+  ASSERT_EQ(fullv.size(), 2 * 3 * kDefaultMaxNumCacheEntries);
 
   // Now fill up the cache
-  for (int i = 0; i < 511; i++) {
+  for (int i = 0; i < 1023; i++) {
     ASSERT_EQ(m.Invoke(), kTfLiteOk);
   }
 

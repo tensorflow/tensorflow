@@ -72,7 +72,8 @@ constexpr double kMemoryMultiplier = 1e-6;
 
 bool AutoShardingSolverOutput::operator==(
     const AutoShardingSolverOutput& other) const {
-  return s_val == other.s_val && e_val == other.e_val && cost == other.cost;
+  return s_val == other.s_val && e_val == other.e_val && cost == other.cost &&
+         peak_times == other.peak_times;
 }
 
 bool AutoShardingSolverResult::operator==(
@@ -736,9 +737,9 @@ LivenessIdx FindPeakLiveness(const AutoShardingSolverRequest& request,
 void ImposeMemoryConstraint(const AutoShardingSolverRequest& request,
                             const std::vector<std::vector<MPVariable*>>& s,
                             const std::vector<std::vector<MPVariable*>>& e,
-                            const MPVariable* overbudget_var,
-                            const MPVariable* makespan_var, MPSolver& solver,
+                            const MPVariable* overbudget_var, MPSolver& solver,
                             LivenessIdx time_idx) {
+  VLOG(1) << "Imposing a memory constraint at time " << time_idx;
   MPConstraint* constraint =
       solver.MakeRowConstraint(-MPSolver::infinity(), MPSolver::infinity(),
                                absl::StrCat("mem[", time_idx, "]"));
@@ -775,15 +776,22 @@ AutoShardingSolverResult SolveAndExtractSolution(
     const MPVariable* overbudget_var, const MPVariable* makespan_var,
     MPSolver& solver) {
   absl::Time start_time = absl::Now();
+  absl::flat_hash_set<LivenessIdx> peak_times;
+  if (request.memory_budget() > 0 && !request.deterministic_mode()) {
+    for (const LivenessIdx peak_time_idx : request.peak_times()) {
+      peak_times.insert(peak_time_idx);
+      ImposeMemoryConstraint(request, s, e, overbudget_var, solver,
+                             peak_time_idx);
+    }
+  }
   auto status = solver.Solve();
   if (request.memory_budget() > 0) {
-    absl::flat_hash_set<LivenessIdx> peak_times;
     while (status == operations_research::MPSolver::OPTIMAL) {
       const LivenessIdx peak_time_idx = FindPeakLiveness(request, s, e);
       if (peak_time_idx == -1 || peak_times.contains(peak_time_idx)) break;
       peak_times.insert(peak_time_idx);
-      ImposeMemoryConstraint(request, s, e, overbudget_var, makespan_var,
-                             solver, peak_time_idx);
+      ImposeMemoryConstraint(request, s, e, overbudget_var, solver,
+                             peak_time_idx);
       status = solver.Solve();
     }
     LOG(INFO) << "Imposed " << peak_times.size()
@@ -899,7 +907,7 @@ AutoShardingSolverResult SolveAndExtractSolution(
   PrintLargestInstructions(chosen_node_strategy, request);
   const AutoShardingSolverOutput output = {std::move(chosen_node_strategy),
                                            std::move(chosen_edge_strategy),
-                                           unsalted_objective};
+                                           unsalted_objective, peak_times};
   return AutoShardingSolverResult(output, false);
 }
 

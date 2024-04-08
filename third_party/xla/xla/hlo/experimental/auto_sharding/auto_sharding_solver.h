@@ -33,6 +33,7 @@ struct AutoShardingSolverOutput {
   std::vector<NodeStrategyIdx> s_val;
   std::vector<EdgeStrategyIdx> e_val;
   double cost = -1.0;
+  absl::flat_hash_set<LivenessIdx> peak_times;
 
   bool operator==(const AutoShardingSolverOutput& other) const;
 };

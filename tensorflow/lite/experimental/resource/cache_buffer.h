@@ -34,15 +34,22 @@ class CacheBuffer : public ResourceVariable {
  public:
   CacheBuffer() = default;
   CacheBuffer(const CacheBuffer &) = delete;
+  ~CacheBuffer() override;
   CacheBuffer &operator=(const CacheBuffer &) = delete;
   // Initialize tensor of a certain shape using the provided type.
-  TfLiteStatus Initialize(const TfLiteIntArray &shape, const TfLiteType &type);
-  size_t GetNumEntries() const;
-  void SetNumEntries(size_t count);
+  TfLiteStatus Initialize(const TfLiteIntArray &shape);
+  size_t GetNumEntries(int idx) const;
+  float *GetBuffer();
+  size_t GetSize();
+  void SetNumEntries(int idx, size_t count);
 
  private:
   // The number of entries currently used in the buffer;
-  size_t num_entries_ = 0;
+  std::unique_ptr<size_t[]> num_entries_;
+  // The float buffer for storage. Has shape:
+  // <batch, num layers, seq length, num heads, head dim>
+  std::unique_ptr<float[]> buffer_;
+  TfLiteIntArray *dims_;
 };
 
 }  // namespace resource

@@ -27,19 +27,16 @@ TEST(CacheBufferTest, Initialize) {
   shape->data[2] = 5;
   shape->data[3] = 7;
 
-  TfLiteType type = kTfLiteFloat32;
   CacheBuffer cache_buffer;
-  cache_buffer.Initialize(*shape, type);
+  cache_buffer.Initialize(*shape);
 
-  EXPECT_EQ(cache_buffer.GetTensor()->type, type);
-  EXPECT_EQ(cache_buffer.GetTensor()->dims->size, 4);
-  EXPECT_EQ(cache_buffer.GetTensor()->dims->data[0], 1);
-  EXPECT_EQ(cache_buffer.GetTensor()->dims->data[1], 3);
-  EXPECT_EQ(cache_buffer.GetTensor()->bytes, 420);
-  ASSERT_NE(cache_buffer.GetTensor()->data.raw, nullptr);
-  EXPECT_EQ(cache_buffer.GetNumEntries(), 0);
-  cache_buffer.SetNumEntries(3);
-  EXPECT_EQ(cache_buffer.GetNumEntries(), 3);
+  EXPECT_EQ(cache_buffer.GetSize(), 420);
+  ASSERT_NE(cache_buffer.GetBuffer(), nullptr);
+  EXPECT_EQ(cache_buffer.GetNumEntries(0), 0);
+  EXPECT_EQ(cache_buffer.GetNumEntries(1), 0);
+  EXPECT_EQ(cache_buffer.GetNumEntries(2), 0);
+  cache_buffer.SetNumEntries(0, 3);
+  EXPECT_EQ(cache_buffer.GetNumEntries(0), 3);
   TfLiteIntArrayFree(shape);
 }
 
