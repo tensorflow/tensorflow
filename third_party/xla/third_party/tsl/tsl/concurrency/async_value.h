@@ -22,13 +22,11 @@ limitations under the License.
 #include <cstdint>
 #include <iostream>
 #include <memory>
-#include <string>
 #include <type_traits>
 #include <utility>
 
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
-#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "tsl/concurrency/concurrent_vector.h"
 #include "tsl/concurrency/ref_count.h"
@@ -258,11 +256,12 @@ class AsyncValue {
   // -----------------------------------------------------------
   // Implementation details follow.  Clients should ignore them.
 
+  friend class IndirectAsyncValue;
+
   // Utility template for tag dispatching.
   template <typename T>
   struct TypeTag {};
 
-  friend class IndirectAsyncValue;
   template <typename T>
   AsyncValue(Kind kind, State state, bool is_refcounted, TypeTag<T>)
       : refcount_(1),

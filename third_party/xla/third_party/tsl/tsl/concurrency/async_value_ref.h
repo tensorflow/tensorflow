@@ -17,17 +17,26 @@ limitations under the License.
 #define TENSORFLOW_TSL_CONCURRENCY_ASYNC_VALUE_REF_H_
 
 #include <cstddef>
-#include <cstdlib>
 #include <string_view>
 #include <type_traits>
 #include <utility>
 
+#include "absl/base/attributes.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "tsl/concurrency/async_value.h"
 #include "tsl/concurrency/ref_count.h"
+#include "tsl/platform/logging.h"
 
 namespace tsl {
+
+namespace internal {
+// TODO(ezhulenev): Replace with C++20 concept when available.
+// https://en.cppreference.com/w/cpp/concepts/derived_from
+template <typename Subclass, typename Base>
+using DerivedFrom =
+    typename std::enable_if_t<std::is_base_of_v<Base, Subclass>>;
+}  // namespace internal
 
 // Forward declare non-owning typed async value pointer.
 template <typename T>
@@ -51,14 +60,13 @@ class AsyncValueRef {
   explicit AsyncValueRef(RCReference<AsyncValue> value)
       : value_(std::move(value)) {}
 
-  // Support implicit conversion from AsyncValueRef<Derived> to
+  // Support implicit conversion from AsyncValueRef<Subclass> to
   // AsyncValueRef<Base>.
-  template <typename DerivedT,
-            std::enable_if_t<std::is_base_of<T, DerivedT>::value>* = nullptr>
-  AsyncValueRef(AsyncValueRef<DerivedT>&& u)  // NOLINT
+  template <typename Subclass, internal::DerivedFrom<Subclass, T>* = nullptr>
+  AsyncValueRef(AsyncValueRef<Subclass>&& u)  // NOLINT
       : value_(u.ReleaseRCRef()) {}
 
-  // Support implicit conversion from RCReference<AsyncValue>.
+  // Support implicit conversion from RCReference<ErrorAsyncValue>.
   AsyncValueRef(RCReference<ErrorAsyncValue> value)  // NOLINT
       : value_(std::move(value)) {}
 
@@ -85,10 +93,9 @@ class AsyncValueRef {
 
   // Return the stored value as a subclass type. The AsyncValueRef must be
   // available.
-  template <typename SubclassT,
-            std::enable_if_t<std::is_base_of<T, SubclassT>::value>* = nullptr>
-  SubclassT& get() const {
-    return value_->get<SubclassT>();
+  template <typename Subclass, internal::DerivedFrom<Subclass, T>* = nullptr>
+  Subclass& get() const {
+    return value_->get<Subclass>();
   }
 
   T* operator->() const { return &get(); }
@@ -130,7 +137,7 @@ class AsyncValueRef {
   }
 
   void SetError(absl::Status status) const {
-    assert(!status.ok() && "expected non-ok status");
+    DCHECK(!status.ok()) << "expected non-ok status";
     return value_->SetError(std::move(status));
   }
 
@@ -202,6 +209,35 @@ class AsyncValuePtr {
     return *this;
   }
 
+  template <typename Subclass, internal::DerivedFrom<Subclass, T>* = nullptr>
+  bool Isa() {
+    return value_ && value_->IsType<Subclass>();
+  }
+
+  template <typename Subclass, internal::DerivedFrom<Subclass, T>* = nullptr>
+  AsyncValuePtr<Subclass> Cast() const {
+    DCHECK(value_) << "Async value must be not null";
+    DCHECK((std::is_same_v<Subclass, T> || value_->IsType<Subclass>()));
+    return AsyncValuePtr<Subclass>(value_);
+  }
+
+  template <typename Subclass, internal::DerivedFrom<Subclass, T>* = nullptr>
+  AsyncValuePtr<Subclass> DynCast() const {
+    DCHECK(value_) << "Async value must be not null";
+    if (std::is_same_v<Subclass, T> || value_->IsType<Subclass>()) {
+      return AsyncValuePtr<Subclass>(value_);
+    }
+    return AsyncValuePtr<Subclass>(nullptr);
+  }
+
+  template <typename Subclass, internal::DerivedFrom<Subclass, T>* = nullptr>
+  AsyncValuePtr<Subclass> DynCastOrNull() const {
+    if (std::is_same_v<Subclass, T> || (value_ && value_->IsType<Subclass>())) {
+      return AsyncValuePtr<Subclass>(value_);
+    }
+    return AsyncValuePtr<Subclass>(nullptr);
+  }
+
   bool IsAvailable() const { return value_->IsAvailable(); }
   bool IsUnavailable() const { return value_->IsUnavailable(); }
 
@@ -218,7 +254,7 @@ class AsyncValuePtr {
   const absl::Status& GetError() const { return value_->GetError(); }
 
   void SetError(absl::Status status) const {
-    assert(!status.ok() && "expected non-ok status");
+    DCHECK(!status.ok()) << "expected non-ok status";
     return value_->SetError(std::move(status));
   }
 
@@ -308,6 +344,36 @@ RCReference<ErrorAsyncValue> MakeErrorAsyncValueRef(std::string_view message);
 RCReference<IndirectAsyncValue> MakeIndirectAsyncValue();
 
 //===----------------------------------------------------------------------===//
+// LLVM-style type casting library for async value refs and ptrs.
+//===----------------------------------------------------------------------===//
+
+template <typename Subclass, typename T,
+          internal::DerivedFrom<Subclass, T>* = nullptr>
+bool Isa(AsyncValuePtr<T> ptr) {
+  return ptr.template Isa<Subclass>();
+}
+
+template <typename Subclass, typename T,
+          internal::DerivedFrom<Subclass, T>* = nullptr>
+AsyncValuePtr<Subclass> Cast(AsyncValuePtr<T> ptr) {
+  return ptr.template Cast<Subclass>();
+}
+
+template <typename Subclass, typename T,
+          internal::DerivedFrom<Subclass, T>* = nullptr>
+AsyncValuePtr<Subclass> DynCast(AsyncValuePtr<T> ptr) {
+  return ptr.template DynCast<Subclass>();
+}
+
+template <typename Subclass, typename T,
+          internal::DerivedFrom<Subclass, T>* = nullptr>
+AsyncValuePtr<Subclass> DynCastOrNull(AsyncValuePtr<T> ptr) {
+  return ptr.template DynCastOrNull<Subclass>();
+}
+
+//===----------------------------------------------------------------------===//
+// Constructing reference-counted async values on the heap.
+//===----------------------------------------------------------------------===//
 
 namespace internal {
 
@@ -324,10 +390,6 @@ T* AllocateAndConstruct(Args&&... args) {
 }
 
 }  // namespace internal
-
-//===----------------------------------------------------------------------===//
-// Constructing reference-counted async values on the heap.
-//===----------------------------------------------------------------------===//
 
 // Allocate an unconstructed AsyncValueRef. The AsyncValueRef should be made
 // available later by invoking AsyncValueRef::emplace or
