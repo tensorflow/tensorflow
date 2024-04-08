@@ -175,6 +175,7 @@ tf_py_strict_test(
 tf_py_strict_test(
     name = "from_list_test",
     size = "small",
+    timeout = "moderate",
     srcs = ["from_list_test.py"],
     shard_count = 4,
     deps = [
