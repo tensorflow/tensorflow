@@ -2010,17 +2010,21 @@ std::string ComputationsToString(
 
 // Verifies various invariants about the structure of the HLO:
 //
-// (1) each instruction has a non-null parent() set to the HloComputation
-// which
-//     contains it.
+// (1) each instruction is non-null and has a non-null parent() set to the
+// HloComputation which contains it.
 //
-// (2) each computation has a non-null parent() set to the HloModule which
-//     contains it.
+// (2) each computation is non-null and has a non-null parent() set to the
+// HloModule which contains it.
 //
-// (3) the operands of each instruction are in the same computation as the
-//     instruction.
+// (3) the operands of each instruction are non-null and are in the same
+// computation as the instruction.
 Status VerifyHloStructure(HloModule* module) {
   for (const HloComputation* computation : module->computations()) {
+    if (computation == nullptr) {
+      return Internal("Computation in module %s is a null pointer",
+                      module->name());
+    }
+
     if (computation->parent() == nullptr) {
       return Internal("Computation %s has a null parent pointer",
                       computation->name());
@@ -2031,6 +2035,10 @@ Status VerifyHloStructure(HloModule* module) {
     }
 
     for (const HloInstruction* instruction : computation->instructions()) {
+      if (instruction == nullptr) {
+        return Internal("Instruction in computation %s is a null pointer",
+                        computation->name());
+      }
       if (instruction->parent() == nullptr) {
         return Internal("Instruction %s has a null parent pointer",
                         instruction->name());
@@ -2051,6 +2059,17 @@ Status VerifyHloStructure(HloModule* module) {
     for (const HloInstruction* instruction : computation->instructions()) {
       for (int i = 0; i < instruction->operand_count(); ++i) {
         const HloInstruction* operand = instruction->operand(i);
+        if (operand == nullptr) {
+          return Internal(
+              "Operand %d (out of %d) of instruction: %s is a null pointer", i,
+              instruction->operand_count(), instruction->name());
+        }
+        if (operand->parent() == nullptr) {
+          return Internal(
+              "Operand %d (out of %d) of instruction: %s has a null pointer "
+              "parent",
+              i, instruction->operand_count(), instruction->name());
+        }
         if (operand->parent() != instruction->parent()) {
           return Internal(
               "Operand %d (%s) of instruction %s is in a different "
