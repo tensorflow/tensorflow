@@ -43,6 +43,7 @@ limitations under the License.
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
+#include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/module_spec.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform/port.h"
@@ -187,7 +188,8 @@ class StreamExecutorInterface {
   virtual absl::Status CollectiveMemoryDeallocate(void* mem) {
     return absl::UnimplementedError("Not implemented");
   }
-  virtual void* HostMemoryAllocate(uint64_t size) = 0;
+  virtual absl::StatusOr<std::unique_ptr<MemoryAllocation>> HostMemoryAllocate(
+      uint64_t size) = 0;
   virtual void HostMemoryDeallocate(void* mem) = 0;
   virtual bool HostMemoryRegister(void* mem, uint64_t size) = 0;
   virtual bool HostMemoryUnregister(void* mem) = 0;
@@ -270,11 +272,18 @@ class StreamExecutorInterface {
   virtual absl::StatusOr<std::unique_ptr<DeviceDescription>>
   CreateDeviceDescription() const = 0;
 
-  // Creates a new BlasSupport object, ownership is transferred to the caller.
+  // Gets-or-creates (creates with memoization) a BlasSupport datatype that can
+  // be used to execute BLAS routines on the current platform. This is typically
+  // not user-facing, as users will use the Stream::ThenBlas* family of routines
+  // to entrain BLAS operations. See blas.h for additional details.
   //
-  // This may return null if the BLAS initialization fails or this object does
-  // not support BLAS.
-  virtual blas::BlasSupport* CreateBlas() { return nullptr; }
+  // Ownership is not transferred to the caller -- ownership is retained by this
+  // object for memoization. This BLAS interface is also only expected to be
+  // used by a Stream for entraining calls to BLAS functionality.
+  //
+  // Returns null if there was an error initializing the BLAS support for the
+  // underlying platform.
+  virtual blas::BlasSupport* AsBlas() { return nullptr; }
 
   // Gets-or-creates (creates with memoization) a FftSupport datatype that can
   // be used to execute FFT routines on the current platform.

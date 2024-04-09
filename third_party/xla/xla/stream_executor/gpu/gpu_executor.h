@@ -38,8 +38,10 @@ limitations under the License.
 #include "absl/numeric/int128.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/dnn.h"
@@ -48,9 +50,11 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_collectives.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
+#include "xla/stream_executor/host_memory_allocation.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
+#include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/module_spec.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -178,8 +182,14 @@ class GpuExecutor : public internal::StreamExecutorInterface {
   // internally sets up buffers for DMA operations (and page locks them).
   // There's no external interface for us to otherwise control these DMA
   // settings.
-  void* HostMemoryAllocate(uint64_t size) override {
-    return GpuDriver::HostAllocate(context_, size);
+  absl::StatusOr<std::unique_ptr<MemoryAllocation>> HostMemoryAllocate(
+      uint64_t size) override {
+    auto* buffer = GpuDriver::HostAllocate(context_, size);
+    if (buffer == nullptr && size > 0) {
+      return absl::InternalError(
+          absl::StrFormat("Failed to allocate HostMemory of size %d", size));
+    }
+    return std::make_unique<HostMemoryAllocation>(buffer, size, this);
   }
 
   void HostMemoryDeallocate(void* location) override {
@@ -270,7 +280,7 @@ class GpuExecutor : public internal::StreamExecutorInterface {
   static absl::StatusOr<std::unique_ptr<DeviceDescription>>
   CreateDeviceDescription(int device_ordinal);
 
-  blas::BlasSupport* CreateBlas() override;
+  blas::BlasSupport* AsBlas() override;
 
   fft::FftSupport* AsFft() override;
 
@@ -435,7 +445,11 @@ class GpuExecutor : public internal::StreamExecutorInterface {
 
   // Memoized FFT support object -- we only want to create this once when asked
   // for a FFT interface.
-  std::unique_ptr<fft::FftSupport> fft_;
+  std::unique_ptr<fft::FftSupport> fft_ ABSL_GUARDED_BY(mu_);
+
+  // Memoized BLAS support object -- we only want to create this once when asked
+  // for a BLAS interface.
+  std::unique_ptr<blas::BlasSupport> blas_ ABSL_GUARDED_BY(mu_);
 
   GpuExecutor(const GpuExecutor&) = delete;
   void operator=(const GpuExecutor&) = delete;

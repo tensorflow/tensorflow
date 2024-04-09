@@ -1,3 +1,4 @@
+#include "xla/stream_executor/memory_allocation.h"
 /* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -182,7 +183,8 @@ class TpuExecutor : public tensorflow::tpu::TpuExecutorInterface {
     LOG(FATAL) << "not yet implemented";
   }
 
-  void* HostMemoryAllocate(uint64_t size) override {
+  absl::StatusOr<std::unique_ptr<MemoryAllocation>> HostMemoryAllocate(
+      uint64_t size) override {
     LOG(FATAL) << "not yet implemented";
   }
   void HostMemoryDeallocate(void* mem) override {
