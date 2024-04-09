@@ -3360,7 +3360,9 @@ void IrEmitter::TracingState::EmitTracingStart(llvm::IRBuilder<>* b,
 
   llvm::Type* void_ptr_type = b->getPtrTy();
   llvm::FunctionType* fn_type =
-      llvm::FunctionType::get(b->getInt64Ty(), {void_ptr_type, void_ptr_type},
+      llvm::FunctionType::get(b->getInt64Ty(),
+                              {void_ptr_type, void_ptr_type, void_ptr_type,
+                               void_ptr_type, void_ptr_type},
                               /*isVarArg=*/false);
 
   llvm::Function* function = b->GetInsertBlock()->getParent();
@@ -3373,8 +3375,25 @@ void IrEmitter::TracingState::EmitTracingStart(llvm::IRBuilder<>* b,
     fn->setDoesNotThrow();
     fn->setOnlyAccessesArgMemory();
   }
+
+  // Pass opcode as argument to TraceMe call
+  absl::string_view hlo_type_str;
+  if (hlo->opcode() == HloOpcode::kCustomCall) {
+    // For custom call, passing custom call target is more informative
+    hlo_type_str = hlo->custom_call_target();
+  } else {
+    hlo_type_str = HloOpcodeString(hlo->opcode());
+  }
+  auto* hlo_type = b->CreateGlobalStringPtr(hlo_type_str);
   auto* hlo_name = b->CreateGlobalStringPtr(hlo->name());
-  auto* activity_id = b->CreateCall(trace_func, {run_options, hlo_name});
+
+  // Also pass metadata, as it can be useful for debugging
+  auto* hlo_src_op_type = b->CreateGlobalStringPtr(hlo->metadata().op_type());
+  auto* hlo_src_op_name = b->CreateGlobalStringPtr(hlo->metadata().op_name());
+
+  auto* activity_id = b->CreateCall(
+      trace_func,
+      {run_options, hlo_name, hlo_type, hlo_src_op_type, hlo_src_op_name});
   activity_id->setName(IrName(hlo, "activity_id"));
   activity_ids_[hlo] = activity_id;
 }
