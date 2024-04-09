@@ -1,1 +1,21 @@
 Auto generated patch. Do not edit or delete it, even if empty.
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
+--- a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
+@@ -747,6 +747,7 @@
+         ":__support_macros_properties_architectures",
+         ":__support_macros_sanitizer",
+         ":errno",
++        ":hdr_fenv_macros",
+         ":hdr_math_macros",
+     ],
+ )
+@@ -756,7 +757,7 @@
+     hdrs = ["src/__support/FPUtil/rounding_mode.h"],
+     deps = [
+         ":__support_macros_attributes",
+-	":hdr_fenv_macros",
++        ":hdr_fenv_macros",
+     ],
+ )
+ 
