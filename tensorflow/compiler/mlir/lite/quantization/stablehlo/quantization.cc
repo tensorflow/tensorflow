@@ -45,6 +45,7 @@ namespace {
 
 using ::mlir::quant::stablehlo::StaticRangePtqComponent;
 using ::mlir::quant::stablehlo::WeightOnlyPtqComponent;
+using ::stablehlo::quantization::Method;
 using ::stablehlo::quantization::PopulateDefaults;
 using ::stablehlo::quantization::QuantizationConfig;
 using ::tensorflow::SignatureDef;
@@ -134,7 +135,10 @@ absl::StatusOr<mlir::ModuleOp> RunQuantization(
   }
 
   absl::StatusOr<mlir::ModuleOp> quantized_module_op;
-  if (quantization_config.has_static_range_ptq_preset()) {
+  // Currently, only StaticRangePtq or WeightOnlyPtq is supported.
+  // Consider merging the pipelines to address mixed algorithm models.
+  if (HasQuantizationMethod(updated_config.specs(),
+                            Method::MethodCase::kStaticRangePtq)) {
     StaticRangePtqComponent static_range_ptq_component(
         module_op.getContext(), quantization_py_function_lib, saved_model_dir,
         /*signature_keys=*/exported_names, saved_model_tags, signature_def_map,
@@ -142,7 +146,8 @@ absl::StatusOr<mlir::ModuleOp> RunQuantization(
 
     quantized_module_op =
         static_range_ptq_component.Run(module_op, updated_config);
-  } else if (quantization_config.has_weight_only_ptq_preset()) {
+  } else if (HasQuantizationMethod(updated_config.specs(),
+                                   Method::MethodCase::kWeightOnlyPtq)) {
     WeightOnlyPtqComponent weight_only_ptq_component(module_op.getContext());
     quantized_module_op =
         weight_only_ptq_component.Run(module_op, updated_config);

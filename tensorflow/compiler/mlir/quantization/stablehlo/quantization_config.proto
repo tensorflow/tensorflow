@@ -165,6 +165,12 @@ message StaticRangePtq {
   map<int32, QuantizedType> input_quantized_types = 1;
 }
 
+message WeightOnlyPtq {
+  // Operand index -> QuantizedType mapping. Operands that are not specified
+  // here will be quantized with best effort.
+  map<int32, QuantizedType> input_quantized_types = 1;
+}
+
 // Represents a matching method that matches quantizable units by lifted
 // functions' names.
 message FunctionNameMatcherSpec {
@@ -185,6 +191,7 @@ message Method {
   oneof method {
     NoQuantization no_quantization = 1;
     StaticRangePtq static_range_ptq = 2;
+    WeightOnlyPtq weight_only_ptq = 3;
   }
 }
 

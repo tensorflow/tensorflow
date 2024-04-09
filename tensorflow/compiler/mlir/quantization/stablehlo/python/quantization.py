@@ -43,6 +43,16 @@ def _serialize_signature_def_map(
   return signature_def_map_serialized
 
 
+def _has_quantization_method(
+    quantization_specs: qc.QuantizationSpecs, method: str
+) -> bool:
+  """Returns whether a given QuantizationSpecs has the given quantization method."""
+  for spec in quantization_specs.specs:
+    if spec.method.HasField(method):
+      return True
+  return False
+
+
 # TODO: b/310594193 - Export API to pip package.
 def quantize_saved_model(
     src_saved_model_path: str,
@@ -60,15 +70,6 @@ def quantize_saved_model(
     ValueError: When `config` was not configured for static-range PTQ
     single representative dataset.
   """
-  if not (
-      config.HasField('static_range_ptq_preset')
-      and len(config.static_range_ptq_preset.representative_datasets) == 1
-  ) and not config.HasField('weight_only_ptq_preset'):
-    raise ValueError(
-        '`quantize_saved_model` currently only supports static-range PTQ with a'
-        ' single signature or weight-only quantization.'
-    )
-
   # Updates user-provided `QuantizationConfig`s for the internal quantization
   # pipeline to work with.
   print('=== User-provided QuantizationConfig ===')
@@ -82,6 +83,15 @@ def quantize_saved_model(
   print('=== Updated QuantizationConfig ===')
   print(config)
 
+  if not (
+      _has_quantization_method(config.specs, 'static_range_ptq')
+      and len(config.static_range_ptq_preset.representative_datasets) == 1
+  ) and not _has_quantization_method(config.specs, 'weight_only_ptq'):
+    raise ValueError(
+        '`quantize_saved_model` currently only supports static-range PTQ with a'
+        ' single signature or weight-only quantization.'
+    )
+
   signature_def_map = save_model.get_signatures_from_saved_model(
       src_saved_model_path,
       signature_keys=None,
@@ -89,7 +99,9 @@ def quantize_saved_model(
   )
 
   signature_def_map_serialized = _serialize_signature_def_map(signature_def_map)
-  if config.HasField('static_range_ptq_preset'):
+  # Currently, only StaticRangePtq or WeightOnlyPtq is supported.
+  # Consider merging the pipelines to address mixed algorithm models.
+  if _has_quantization_method(config.specs, 'static_range_ptq'):
     pywrap_quantization.static_range_ptq(
         src_saved_model_path,
         dst_saved_model_path,
@@ -98,7 +110,7 @@ def quantize_saved_model(
         signature_def_map_serialized=signature_def_map_serialized,
         py_function_library=py_function_lib.PyFunctionLibrary(),
     )
-  elif config.HasField('weight_only_ptq_preset'):
+  elif _has_quantization_method(config.specs, 'weight_only_ptq'):
     pywrap_quantization.weight_only_ptq(
         src_saved_model_path,
         dst_saved_model_path,
