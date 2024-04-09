@@ -124,7 +124,8 @@ class CallFrame {
   ~CallFrame();
 
   // Builds an XLA_FFI_CallFrame from owned arguments and attributes.
-  XLA_FFI_CallFrame Build(XLA_FFI_Api* api, XLA_FFI_ExecutionContext* ctx);
+  XLA_FFI_CallFrame Build(const XLA_FFI_Api* api,
+                          XLA_FFI_ExecutionContext* ctx);
 
  private:
   friend class CallFrameBuilder;

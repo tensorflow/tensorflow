@@ -81,7 +81,7 @@ absl::flat_hash_map<std::string, HandlerRegistration> StaticRegisteredHandlers(
 // XLA FFI Api Implementation
 //===----------------------------------------------------------------------===//
 
-XLA_FFI_Api* GetXlaFfiApi();
+const XLA_FFI_Api* GetXlaFfiApi();
 
 }  // namespace xla::ffi
 
