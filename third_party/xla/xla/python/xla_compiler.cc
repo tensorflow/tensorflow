@@ -1184,6 +1184,11 @@ void BuildXlaCompilerSubmodule(nb::module_& m) {
   op_sharding_shard_group_type.value("AS", OpSharding::AS)
       .value("LIKE", OpSharding::LIKE);
 
+  nb::enum_<OpSharding::ShardBarrierType> op_sharding_shard_barrier_type(
+      m, "OpSharding_ShardBarrierType");
+  op_sharding_shard_barrier_type.value("FROM", OpSharding::FROM)
+      .value("TO", OpSharding::TO);
+
   nb::class_<OpSharding> op_sharding(m, "OpSharding");
   op_sharding
       .def_prop_ro_static(
@@ -1192,6 +1197,10 @@ void BuildXlaCompilerSubmodule(nb::module_& m) {
       .def_prop_ro_static("ShardGroupType",
                           [op_sharding_shard_group_type](const nb::object&) {
                             return op_sharding_shard_group_type;
+                          })
+      .def_prop_ro_static("ShardBarrierType",
+                          [op_sharding_shard_barrier_type](const nb::object&) {
+                            return op_sharding_shard_barrier_type;
                           })
       .def(nb::init<>())
       .def("__getstate__",
@@ -1216,6 +1225,12 @@ void BuildXlaCompilerSubmodule(nb::module_& m) {
                    &xla::OpSharding::set_shard_group_id)
       .def_prop_rw("shard_group_type", &xla::OpSharding::shard_group_type,
                    &xla::OpSharding::set_shard_group_type)
+      .def_prop_rw("is_shard_barrier", &xla::OpSharding::is_shard_barrier,
+                   &xla::OpSharding::set_is_shard_barrier)
+      .def_prop_rw("shard_barrier_id", &xla::OpSharding::shard_barrier_id,
+                   &xla::OpSharding::set_shard_barrier_id)
+      .def_prop_rw("shard_barrier_type", &xla::OpSharding::shard_barrier_type,
+                   &xla::OpSharding::set_shard_barrier_type)
       .def("__repr__",
            [](const xla::OpSharding& self) { return self.DebugString(); })
       .def("ParseFromString",

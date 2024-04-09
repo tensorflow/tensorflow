@@ -3661,6 +3661,47 @@ TEST_F(HloParserTest, ParseShardLike) {
             original);
 }
 
+TEST_F(HloParserTest, ParseShardBarrierFrom) {
+  const std::string original = "{manual shard_barrier_from 1}";
+  TF_ASSERT_OK_AND_ASSIGN(HloSharding sharding, ParseSharding(original));
+  EXPECT_EQ(sharding.ToString(), original);
+  EXPECT_EQ(HloSharding::Manual()
+                .SetShardBarrier(HloSharding::ShardBarrierFrom(1))
+                .ToString(),
+            original);
+}
+
+TEST_F(HloParserTest, ParseShardBarrierTo) {
+  const std::string original =
+      "{devices=[2,2,2,2]<=[16] last_tile_dims={manual, replicated} "
+      "shard_barrier_to 1}";
+  TF_ASSERT_OK_AND_ASSIGN(HloSharding sharding, ParseSharding(original));
+  EXPECT_EQ(sharding.ToString(), original);
+  TileAssignment tile_assignment({2, 2, 2, 2});
+  std::vector<OpSharding::Type> subgroup_types = {OpSharding::MANUAL,
+                                                  OpSharding::REPLICATED};
+  EXPECT_EQ(HloSharding::Subgroup(tile_assignment, subgroup_types)
+                .SetShardBarrier(HloSharding::ShardBarrierTo(1))
+                .ToString(),
+            original);
+}
+
+TEST_F(HloParserTest, ParseShardAsWithBarrier) {
+  const std::string original =
+      "{devices=[2,2,2,2]<=[16] last_tile_dims={manual, replicated} "
+      "shard_as 1 shard_barrier_to 1}";
+  TF_ASSERT_OK_AND_ASSIGN(HloSharding sharding, ParseSharding(original));
+  EXPECT_EQ(sharding.ToString(), original);
+  TileAssignment tile_assignment({2, 2, 2, 2});
+  std::vector<OpSharding::Type> subgroup_types = {OpSharding::MANUAL,
+                                                  OpSharding::REPLICATED};
+  EXPECT_EQ(HloSharding::Subgroup(tile_assignment, subgroup_types)
+                .SetShardGroup(HloSharding::ShardAs(1))
+                .SetShardBarrier(HloSharding::ShardBarrierTo(1))
+                .ToString(),
+            original);
+}
+
 TEST_F(HloParserTest, ParseUnknownSharding) {
   const std::string original = "{unknown}";
   TF_ASSERT_OK_AND_ASSIGN(HloSharding sharding, ParseSharding(original));

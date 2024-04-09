@@ -71,6 +71,8 @@ enum class TokKind {
   kw_shard_as,
   kw_shard_like,
   kw_unknown,
+  kw_shard_barrier_from,
+  kw_shard_barrier_to,
   kw_inf,
 
   kNegInf,  // -inf
