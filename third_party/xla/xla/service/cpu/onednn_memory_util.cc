@@ -169,6 +169,45 @@ int64_t MemrefInfo::GetChannels() const { return pod_->dims[pod_->rank - 1]; }
 
 int64_t MemrefInfo::GetRank() const { return pod_->rank; }
 
+StatusOr<dnnl::memory::desc> TransposeLastTwoDims(
+    const dnnl::memory::desc& md) {
+  int64_t ndims = md.get_ndims();
+  if (ndims < 2) {
+    return absl::InvalidArgumentError("Requires at least 2D shape.");
+  }
+  std::vector<int> permutation(ndims);
+  std::iota(permutation.begin(), permutation.end(), 0);
+  std::swap(permutation[ndims - 1], permutation[ndims - 2]);
+  return md.permute_axes(permutation);
+}
+
+dnnl::memory::desc ShapeToMemDesc(const Shape& shape) {
+  auto dimensions = shape.dimensions();
+  if (dimensions.empty()) {
+    return dnnl::memory::desc{};
+  }
+  auto dims = dnnl::memory::dims(dimensions.begin(), dimensions.end());
+  dnnl::memory::dims strides(dims.size());
+  dnnl::memory::dim stride = 1;
+  for (auto i : shape.layout().minor_to_major()) {
+    strides.at(i) = stride;
+    stride *= dims.at(i);
+  }
+  auto dt = ToOneDnnDataType(static_cast<PrimitiveType>(shape.element_type()));
+  return dnnl::memory::desc(dims, dt, strides);
+}
+
+Shape MemDescToXlaShapeFlattened(const dnnl::memory::desc& md) {
+  if (md.is_zero()) {
+    LOG(FATAL) << "Memory descriptor is zero.";
+  }
+  auto dtype = md.get_data_type();
+  auto element_size = dnnl::memory::data_type_size(dtype);
+  int64_t bytes_num = md.get_size();
+  int64_t elements_num = static_cast<int64_t>(bytes_num / element_size);
+  return ShapeUtil::MakeShape(ToXlaPrimitiveType(dtype), {elements_num});
+}
+
 }  // namespace cpu
 }  // namespace xla
 
