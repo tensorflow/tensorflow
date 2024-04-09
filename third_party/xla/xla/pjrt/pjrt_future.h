@@ -19,18 +19,26 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <functional>
+#include <optional>
 #include <type_traits>
 #include <utility>
 
 #include "absl/functional/any_invocable.h"
+#include "absl/status/status.h"
 #include "tsl/concurrency/async_value.h"
 #include "tsl/concurrency/async_value_ref.h"
 #include "tsl/concurrency/ref_count.h"
+#include "tsl/platform/logging.h"
 
 namespace xla {
 
-template <class T>
+template <class T = void>
 class PjRtFuture;
+
+namespace internal {
+template <class T>
+class PjRtFutureBase;
+}
 
 // An RAII event that a caller can use to tell the PjRtClient about asynchronous
 // actions outside PjRt.
@@ -55,7 +63,7 @@ class ScopedAsyncTrackingEvent {
 
  private:
   template <class T>
-  friend class PjRtFuture;
+  friend class internal::PjRtFutureBase;
 
   // Indicates that the ScopedAsyncTrackingEvent won't complete until dependency
   // becomes available. Called only by PjRtFuture.
@@ -73,13 +81,133 @@ struct PjRtFutureHelpers {
   struct ProfilingKeys {
     uint64_t traceme_context_id = -1;
   };
+
   // Signature of handler called by the PjRtFuture class before it starts to
   // block a thread.
   using OnBlockStartFn = std::function<ProfilingKeys()>;
+
   // Signature of handler called by the PjRtFuture class after it finishes
   // blocking a thread.
   using OnBlockEndFn = std::function<void(ProfilingKeys)>;
 };
+
+namespace internal {
+// A base class for a stateful future PjRtFuture<T> and a stateless future
+// PjRtFuture<void>.
+template <typename T>
+class PjRtFutureBase {
+ public:
+  bool IsValid() const { return promise_ != nullptr; }
+
+  // Two functions exist to know whether the future is ready, to accommodate
+  // the fact some backends (e.g. distributed ones) could take a non-trivial
+  // time to check the state of a future.
+  //
+  // `IsReady()` is guaranteed to return true if the future became ready
+  // before `IsReady()` was called. `IsReady()` will return immediately if a
+  // call to `Await()` has already returned, or any callback passed to
+  // `OnReady` has already been triggered. Otherwise IsReady() may block for
+  // the duration of a network message on some backends.
+  bool IsReady() {
+    CHECK(IsValid());
+    return promise_.IsAvailable();
+  }
+  // `IsKnownReady()` is guaranteed to return immediately. `IsKnownReady()` will
+  // always return true if a call to `Await()` has already returned, or any
+  // callback passed to `OnReady` has already been triggered. Otherwise,
+  // `IsKnownReady()` may return false in some cases in which the future was
+  // ready before `IsKnownReady()` was called.
+  bool IsKnownReady() {
+    CHECK(IsValid());
+    return promise_.IsAvailable();
+  }
+
+  // Indicates that event will not complete until after this becomes ready.
+  //
+  // May safely be called with event==nullptr in which case AssertHappensBefore
+  // has no effect.
+  void AssertHappensBefore(ScopedAsyncTrackingEvent* event) {
+    CHECK(IsValid());
+    if (event) event->AddDependency(promise_.CopyRCRef());
+  }
+
+ protected:
+  // Wrapper for AsyncValueRef<T> that can be used by clients that don't
+  // natively use TSL concurrency library. Stateless and stateful PjRtFuture<T>
+  // specializations define their own Promise type inheriting from this one.
+  class Promise {
+   public:
+    Promise() = default;
+
+    Promise(Promise&& other) = default;
+    Promise& operator=(Promise&& other) = default;
+
+    Promise(const Promise& other) : ref_(other.ref_.CopyRef()) {}
+    Promise& operator=(const Promise& other) {
+      ref_ = other.ref_.CopyRef();
+      return *this;
+    }
+
+    operator bool() const { return static_cast<bool>(ref_); }  // NOLINT
+
+   protected:
+    friend class PjRtFuture<T>;
+    friend class PjRtFuture<void>;
+
+    explicit Promise(tsl::AsyncValueRef<T> ref) : ref_(std::move(ref)) {}
+
+    void SetStateConcrete() {
+      DCHECK(ref_) << "Promise must wrap an async value";
+      ref_.SetStateConcrete();
+    }
+
+    void SetError(absl::Status error) {
+      DCHECK(ref_) << "Promise must wrap an async value";
+      ref_.SetError(std::move(error));
+    }
+
+    template <typename... Args>
+    void emplace(Args&&... args) const {
+      DCHECK(ref_) << "Promise must wrap an async value";
+      ref_.template emplace<T>(std::forward<Args>(args)...);
+    }
+
+    tsl::AsyncValueRef<T> ExtractRef() && { return std::move(ref_); }
+
+   private:
+    tsl::AsyncValueRef<T> ref_;
+  };
+
+  PjRtFutureBase() = default;
+
+  PjRtFutureBase(tsl::AsyncValueRef<T> promise,
+                 PjRtFutureHelpers::OnBlockStartFn on_block_start,
+                 PjRtFutureHelpers::OnBlockEndFn on_block_end)
+      : promise_(std::move(promise)),
+        on_block_start_(std::move(on_block_start)),
+        on_block_end_(std::move(on_block_end)) {}
+
+  tsl::AsyncValuePtr<T> promise() { return promise_.AsPtr(); }
+
+  PjRtFutureHelpers::ProfilingKeys OnBlockStart() {
+    return on_block_start_ ? on_block_start_()
+                           : PjRtFutureHelpers::ProfilingKeys();
+  }
+
+  void OnBlockEnd(PjRtFutureHelpers::ProfilingKeys keys) {
+    if (on_block_end_) on_block_end_(std::move(keys));
+  }
+
+ private:
+  tsl::AsyncValueRef<T> promise_;
+
+  // Function that is called before a thread starts blocking on the promise.
+  PjRtFutureHelpers::OnBlockStartFn on_block_start_;
+  // Function that is called after a thread finishes blocking on the promise.
+  PjRtFutureHelpers::OnBlockEndFn on_block_end_;
+};
+
+}  // namespace internal
 
 // PjRtFuture<T> is a simple future that is returned by PjRt APIs that
 // enqueue asynchronous work, reporting a value of type T (frequently T=Status)
@@ -88,7 +216,7 @@ struct PjRtFutureHelpers {
 // PjRtFuture can be used by the client to wait for work to complete, either via
 // a blocking call or a callback.
 //
-// The implementation wraps a TFRT AsyncValueRef<T>, but we prefer to
+// The implementation wraps a tsl::AsyncValueRef<T>, but we prefer to
 // encapsulate the AVR rather than returning it directly for two reasons.
 //
 // First, we want to retain portability in case a future implementation moves
@@ -99,124 +227,80 @@ struct PjRtFutureHelpers {
 // integration between blocking and profiling (e.g., TraceMe).
 //
 // There are two ways to construct a PjRtFuture, one used by clients that
-// natively use TFRT, which already have import APIs for constructing
-// AsyncValueRefs; and another that avoids exposing TFRT APIs and can be used by
-// non-TFRT clients.
+// natively use TSL concurrency library, which already have import APIs for
+// constructing AsyncValueRefs; and another that avoids exposing TSL APIs and
+// can be used by non-TSL clients.
 template <class T>
-class PjRtFuture {
+class PjRtFuture : public internal::PjRtFutureBase<T> {
+  using Base = internal::PjRtFutureBase<T>;
+
  public:
   // Wrapper for AsyncValueRef<T> that can be used by clients that don't
-  // natively use TFRT.
-  struct Promise {
+  // natively use TSL concurrency library.
+  class Promise : public Base::Promise {
    public:
-    // Creates an empty promise with !this == true.
-    explicit Promise() = default;
-    Promise(Promise&& other) = default;
-    Promise(const Promise& other) : avr(other.avr.CopyRef()) {}
-    Promise& operator=(const Promise& other) {
-      avr = other.avr.CopyRef();
-      return *this;
-    }
-    bool operator!() { return !avr; }
+    using Base::Promise::Promise;
 
     // Sets the value of the promise. Must be called at most once.
     //
     // After Set is called, value will be delivered to waiters on the parent
     // PjRtFuture, via blocking or callbacks.
-    void Set(T value) { avr.emplace(std::move(value)); }
-
-   private:
-    friend class PjRtFuture<T>;
-    explicit Promise(tsl::AsyncValueRef<T> ref) : avr(std::move(ref)) {}
-    // The underlying TFRT value that can be waited on.
-    tsl::AsyncValueRef<T> avr;
+    void Set(T value) { Base::Promise::emplace(std::move(value)); }
   };
 
   // Returns a Promise that can be used to construct a PjRtFuture, and then Set
   // later.
   //
-  // Used by clients that do not use TFRT natively.
+  // Used by clients that do not use TSL concurrency library natively.
   static Promise CreatePromise() {
     return Promise(tsl::MakeUnconstructedAsyncValueRef<T>());
   }
 
   PjRtFuture() = default;
 
-  bool IsValid() const { return promise_ref_ != nullptr; }
-
   // Constructor for an already-available PjRtFuture.
   //
   // Typically used to eagerly return error values when async work will not
   // be enqueued, e.g., due to invalid arguments.
   explicit PjRtFuture(T t)
-      : promise_ref_(tsl::MakeAvailableAsyncValueRef<T>(std::move(t))),
-        on_block_start_([]() { return PjRtFutureHelpers::ProfilingKeys(); }),
-        on_block_end_([](PjRtFutureHelpers::ProfilingKeys) {}) {}
+      : Base(tsl::MakeAvailableAsyncValueRef<T>(std::move(t)),
+             /*on_block_start=*/nullptr,
+             /*on_block_end=*/nullptr) {}
 
-  // Constructor used by clients that natively use TFRT and already have a
-  // host_ctx that should be used for awaiting promises.
+  // Constructor used by clients that natively use TSL concurrency library.
   //
   // on_block_start is called before Await starts to block.
   // on_block_end is called after Await finishes blocking.
   explicit PjRtFuture(
       tsl::AsyncValueRef<T> async_value,
-      PjRtFutureHelpers::OnBlockStartFn on_block_start =
-          []() { return PjRtFutureHelpers::ProfilingKeys(); },
-      PjRtFutureHelpers::OnBlockEndFn on_block_end =
-          [](PjRtFutureHelpers::ProfilingKeys) {})
-      : promise_ref_(std::move(async_value)),
-        on_block_start_(std::move(on_block_start)),
-        on_block_end_(std::move(on_block_end)) {}
+      PjRtFutureHelpers::OnBlockStartFn on_block_start = nullptr,
+      PjRtFutureHelpers::OnBlockEndFn on_block_end = nullptr)
+      : Base(std::move(async_value), std::move(on_block_start),
+             std::move(on_block_end)) {}
 
-  // Constructor used by clients that don't natively use TFRT and want to use
-  // the wrapped PjRtFuture<T>::Promise class.
+  // Constructor used by clients that don't natively use TSL concurrency library
+  // and want to use the wrapped PjRtFuture<T>::Promise class.
   //
   // on_block_start is called before Await starts to block.
   // on_block_end is called after Await finishes blocking.
   explicit PjRtFuture(
       Promise promise,
-      PjRtFutureHelpers::OnBlockStartFn on_block_start =
-          []() { return PjRtFutureHelpers::ProfilingKeys(); },
-      PjRtFutureHelpers::OnBlockEndFn on_block_end =
-          [](PjRtFutureHelpers::ProfilingKeys) {})
-      : promise_ref_(std::move(promise.avr)),
-        on_block_start_(std::move(on_block_start)),
-        on_block_end_(std::move(on_block_end)) {}
+      PjRtFutureHelpers::OnBlockStartFn on_block_start = nullptr,
+      PjRtFutureHelpers::OnBlockEndFn on_block_end = nullptr)
+      : Base(std::move(promise).ExtractRef(), std::move(on_block_start),
+             std::move(on_block_end)) {}
 
-  // Two functions exist to know whether the future is ready, to accomodate
-  // the fact some backends (e.g. disributed ones) could take a non-trivial time
-  // to check the state of a future.
-  //
-  // `IsReady()` is guaranteed to return true if the future became ready before
-  // `IsReady()` was called. `IsReady()` will return immediately if a call to
-  // `Await()` has already returned, or any callback passed to `OnReady` has
-  // already been triggered. Otherwise IsReady() may block for the duration of a
-  // network message on some backends.
-  bool IsReady() {
-    CHECK(IsValid());
-    return promise_ref_.IsAvailable();
-  }
-  // `IsKnownReady()` is guaranteed to return immediately. `IsKnownReady()` will
-  // always return true if a call to `Await()` has already returned, or any
-  // callback passed to `OnReady` has already been triggered. Otherwise,
-  // `IsKnownReady()` may return false in some cases in which the future was
-  // ready before `IsKnownReady()` was called.
-  bool IsKnownReady() {
-    CHECK(IsValid());
-    return promise_ref_.IsAvailable();
-  }
-
-  // Blocks the calling thread until the promise is ready, then returns the
+  // Blocks the calling thread until the future is ready, then returns the
   // final value.
   T Await() {
-    CHECK(IsValid());
-    if (!promise_ref_.IsAvailable()) {
-      const auto keys = on_block_start_();
-      BlockUntilReady(promise_ref_.GetAsyncValue());
-      on_block_end_(keys);
+    CHECK(Base::IsValid());
+    if (!Base::promise().IsAvailable()) {
+      PjRtFutureHelpers::ProfilingKeys keys = Base::OnBlockStart();
+      BlockUntilReady(Base::promise());
+      Base::OnBlockEnd(std::move(keys));
     }
-    DCHECK(promise_ref_.IsConcrete());
-    return *promise_ref_;
+    DCHECK(Base::promise().IsConcrete());
+    return *Base::promise();
   }
 
   // Registers callback to be called once the promise is ready, with the final
@@ -227,41 +311,104 @@ class PjRtFuture {
   // callback, for example by using the callback to enqueue work on a
   // client-owned threadpool.
   void OnReady(absl::AnyInvocable<void(T) &&> callback) {
-    CHECK(IsValid());
-    promise_ref_.AndThen([promise = promise_ref_.AsPtr(),
-                          callback = std::move(callback)]() mutable {
-      DCHECK(promise.IsConcrete());
-      if constexpr (std::is_copy_constructible_v<T>) {
-        std::move(callback)(*promise);
-        return;
-      }
-      // For non-copyable types, we have no ways to check the number of waiters
-      // but we have to move the data into the consumer callback. Registering
-      // two callbacks will lead to double-move of the data. It is users'
-      // responsibility to make sure only one waiter is registered.
-      // TODO(yunlongl): Implement `PjRtUniqueFuture`.
-      std::move(callback)(std::move(*promise));
-    });
+    CHECK(Base::IsValid());
+    Base::promise().AndThen(
+        [promise = Base::promise(), callback = std::move(callback)]() mutable {
+          DCHECK(promise.IsConcrete());
+          if constexpr (std::is_copy_constructible_v<T>) {
+            std::move(callback)(*promise);
+            return;
+          }
+          // For non-copyable types, we have no ways to check the number of
+          // waiters but we have to move the data into the consumer callback.
+          // Registering two callbacks will lead to double-move of the data. It
+          // is users' responsibility to make sure only one waiter is
+          // registered.
+          // TODO(yunlongl): Implement `PjRtUniqueFuture`.
+          std::move(callback)(std::move(*promise));
+        });
   }
+};
 
-  // Indicates that event will not complete until after this becomes ready.
+// PjRtFuture<void> specialization for communicating stateless events.
+//
+// See PjRtFuture<T> documentation above for more details.
+template <>
+class PjRtFuture<void> : public internal::PjRtFutureBase<std::nullopt_t> {
+  using Base = internal::PjRtFutureBase<std::nullopt_t>;
+
+ public:
+  // Wrapper for AsyncValueRef<T> that can be used by clients that don't
+  // natively use TSL concurrency library.
+  class Promise : public Base::Promise {
+   public:
+    using Base::Promise::Promise;
+
+    // Sets the promise completed. Must be called at most once.
+    //
+    // After Set is called, completion event will be delivered to waiters on the
+    // parent PjRtFuture, via blocking or callbacks.
+    void Set() { Base::Promise::SetStateConcrete(); }
+
+    // Sets the promise completed with an error. Must be called at most once.
+    //
+    // After SetError is called, completion event will be delivered to waiters
+    // on the parent PjRtFuture, via blocking or callbacks.
+    void SetError(absl::Status err) { Base::Promise::SetError(std::move(err)); }
+  };
+
+  // Returns a Promise that can be used to construct a PjRtFuture, and then Set
+  // later.
   //
-  // May safely be called with event==nullptr in which case AssertHappensBefore
-  // has no effect.
-  void AssertHappensBefore(ScopedAsyncTrackingEvent* event) {
-    CHECK(IsValid());
-    if (event) {
-      event->AddDependency(promise_ref_.CopyRCRef());
-    }
+  // Used by clients that do not use TSL concurrency library.
+  static Promise CreatePromise() {
+    return Promise(
+        tsl::MakeConstructedAsyncValueRef<std::nullopt_t>(std::nullopt));
   }
 
- private:
-  // Wrapped object to wait on.
-  tsl::AsyncValueRef<T> promise_ref_;
-  // Function that is called before a thread starts blocking on the promise.
-  PjRtFutureHelpers::OnBlockStartFn on_block_start_;
-  // Function that is called after a thread finishes blocking on the promise.
-  PjRtFutureHelpers::OnBlockEndFn on_block_end_;
+  // Constructor for an already-available PjRtFuture. OkStatus means that future
+  // is already successfully completed. Error means that future is already
+  // completed with an error.
+  explicit PjRtFuture(absl::Status status)
+      : Base(status.ok()
+                 ? tsl::MakeAvailableAsyncValueRef<std::nullopt_t>(std::nullopt)
+                 : tsl::MakeErrorAsyncValueRef(std::move(status)),
+             /*on_block_start=*/nullptr, /*on_block_end=*/nullptr) {}
+
+  // Constructor used by clients that don't natively use TSL concurrency library
+  // and want to use the wrapped PjRtFuture<T>::Promise class.
+  //
+  // on_block_start is called before Await starts to block.
+  // on_block_end is called after Await finishes blocking.
+  explicit PjRtFuture(
+      Promise promise,
+      PjRtFutureHelpers::OnBlockStartFn on_block_start = nullptr,
+      PjRtFutureHelpers::OnBlockEndFn on_block_end = nullptr)
+      : Base(std::move(promise).ExtractRef(), std::move(on_block_start),
+             std::move(on_block_end)) {}
+
+  // Blocks the calling thread until the future is ready.
+  absl::Status Await() {
+    CHECK(Base::IsValid());
+    if (!Base::promise().IsAvailable()) {
+      PjRtFutureHelpers::ProfilingKeys keys = Base::OnBlockStart();
+      BlockUntilReady(Base::promise());
+      Base::OnBlockEnd(std::move(keys));
+    }
+    return Base::promise().IsError() ? Base::promise().GetError()
+                                     : absl::OkStatus();
+  }
+
+  // Registers callback to be called once the future is ready.
+  //
+  // callback may be called on an internal system thread or the calling thread.
+  // The client should avoid any potentially re-entrant API calls within the
+  // callback, for example by using the callback to enqueue work on a
+  // client-owned threadpool.
+  void OnReady(absl::AnyInvocable<void(absl::Status)> callback) {
+    CHECK(Base::IsValid());
+    Base::promise().AndThen(std::move(callback));
+  }
 };
 
 }  // namespace xla
