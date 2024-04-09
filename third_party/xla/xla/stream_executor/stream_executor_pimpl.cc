@@ -90,17 +90,8 @@ StreamExecutor::StreamExecutor(
     : platform_(platform),
       implementation_(std::move(implementation)),
       device_ordinal_(device_ordinal),
-      live_stream_count_(0),
       memory_limit_bytes_(GetMemoryLimitBytes()),
       allocator_(this) {}
-
-StreamExecutor::~StreamExecutor() {
-  if (live_stream_count_.load() != 0) {
-    LOG(WARNING) << "Not all streams were deallocated at executor destruction "
-                 << "time. This may lead to unexpected/bad behavior - "
-                 << "especially if any stream is still active!";
-  }
-}
 
 absl::Status StreamExecutor::Init() {
   TF_RETURN_IF_ERROR(implementation_->Init(device_ordinal_));
@@ -447,15 +438,7 @@ absl::StatusOr<std::unique_ptr<Stream>> StreamExecutor::CreateStream(
 }
 
 bool StreamExecutor::AllocateStream(Stream* stream) {
-  live_stream_count_.fetch_add(1, std::memory_order_relaxed);
-  if (!implementation_->AllocateStream(stream)) {
-    auto count = live_stream_count_.fetch_sub(1);
-    CHECK_GE(count, 0) << "live stream count should not dip below zero";
-    LOG(INFO) << "failed to allocate stream; live stream count: " << count;
-    return false;
-  }
-
-  return true;
+  return implementation_->AllocateStream(stream);
 }
 
 void StreamExecutor::DeallocateStream(Stream* stream) {
@@ -468,8 +451,6 @@ void StreamExecutor::DeallocateStream(Stream* stream) {
     dnn->NotifyStreamDestroyed(stream);
   }
   implementation_->DeallocateStream(stream);
-  CHECK_GE(live_stream_count_.fetch_sub(1), 0)
-      << "live stream count should not dip below zero";
 }
 
 bool StreamExecutor::CreateStreamDependency(Stream* dependent, Stream* other) {
