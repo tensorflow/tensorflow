@@ -121,10 +121,6 @@ class StreamExecutorInterface {
   // Default destructor for the abstract interface.
   virtual ~StreamExecutorInterface() = default;
 
-  // Returns the (transitively) wrapped executor if this executor is
-  // wrapping another executor; otherwise, returns this.
-  virtual StreamExecutorInterface* GetUnderlyingExecutor() { return this; }
-
   // See the StreamExecutor interface for comments on the same-named methods.
   virtual absl::Status Init(int device_ordinal) = 0;
 

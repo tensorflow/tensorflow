@@ -395,7 +395,7 @@ Stream* StreamExecutor::FindAllocatedStream(void* gpu_stream) {
 }
 
 internal::StreamExecutorInterface* StreamExecutor::implementation() {
-  return implementation_->GetUnderlyingExecutor();
+  return implementation_.get();
 }
 
 StreamExecutorMemoryAllocator::StreamExecutorMemoryAllocator(
