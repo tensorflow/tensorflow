@@ -72,10 +72,12 @@ MlirConcatenateFusion::ComputeThreadIdToInputIndexing(
                                        ctx);
 }
 
-std::vector<const HloInstruction*>
-MlirConcatenateFusion::GetInstructionsWithCustomCodegen(
-    const HloFusionInstruction& fusion) const {
-  return analysis_.fusion_heroes();
+std::optional<mlir_converter::EpilogueSpecification>
+MlirConcatenateFusion::GetEpilogue(const HloFusionInstruction& fusion,
+                                   mlir::MLIRContext* mlir_context) const {
+  return mlir_converter::EpilogueSpecification::FromIdentityIndexing(
+      analysis_.fusion_heroes().front(), analysis_.fusion_roots().front(),
+      mlir_context);
 }
 
 absl::Status MlirConcatenateFusion::EmitEntryFunction(

@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <functional>
+#include <iterator>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -37,6 +38,7 @@ limitations under the License.
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Interfaces/DataLayoutInterfaces.h"  // from @llvm-project
@@ -44,6 +46,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/fusions/mlir/type_util.h"
+#include "xla/service/gpu/hlo_fusion_analysis.h"
+#include "xla/service/gpu/model/indexing_analysis.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/shape.h"
 #include "xla/translate/hlo_to_mhlo/hlo_utils.h"
@@ -93,10 +97,53 @@ absl::flat_hash_map<const HloInstruction*, int> PartitionGraphByIndexing(
 
 }  // namespace
 
+EpilogueSpecification EpilogueSpecification::FromIdentityIndexing(
+    const HloInstruction* hero, const HloInstruction* root,
+    mlir::MLIRContext* mlir_context) {
+  EpilogueSpecification result;
+  absl::c_copy(root->shape().dimensions(),
+               std::back_inserter(result.index_ranges));
+  result.root_indexing.push_back(mlir::AffineMap::getMultiDimIdentityMap(
+      root->shape().rank(), mlir_context));
+  result.heroes.push_back(hero);
+  return result;
+}
+
+EpilogueSpecification EpilogueSpecification::FromOutputIndexing(
+    const HloFusionAnalysis& analysis,
+    const std::vector<const HloInstruction*>& heroes,
+    const KernelFusionInterface& fusion, mlir::MLIRContext* mlir_context) {
+  EpilogueSpecification result;
+
+  for (auto [index, hero] : llvm::enumerate(analysis.fusion_heroes())) {
+    auto indexing = fusion.ComputeThreadIdToOutputIndexing(index, mlir_context);
+    if (index == 0) {
+      result.index_ranges.reserve(indexing->GetDimensionCount() +
+                                  indexing->GetSymbolCount());
+      for (const auto& dim : indexing->GetDimensionBounds()) {
+        result.index_ranges.push_back(dim.upper + 1);
+      }
+      for (const auto& sym : indexing->GetSymbolBounds()) {
+        result.index_ranges.push_back(sym.upper + 1);
+      }
+    }
+
+    auto epilogue_indexing =
+        ComputeEpilogueInputToOutputIndexing(hero, mlir_context);
+    auto root_indexing = ComposeIndexingMaps(*indexing, epilogue_indexing);
+
+    result.root_indexing.push_back(root_indexing.GetAffineMap());
+  }
+  result.heroes = heroes;
+  return result;
+}
+
 std::string PartitionedComputation::Subgraph::ToString() const {
   std::ostringstream ss;
   ss << "SUBGRAPH " << name << " {\n";
-  for (auto instr : instructions_post_order) {
+  for (auto* instr :
+       (*instructions.begin())->parent()->MakeInstructionPostOrder()) {
+    if (!instructions.contains(instr)) continue;
     ss << "  ";
     if (absl::c_linear_search(roots, instr)) {
       ss << "ROOT ";
@@ -126,7 +173,7 @@ std::string PartitionedComputations::ToString() const {
 }
 
 PartitionedComputation::PartitionedComputation(
-    const HloComputation* computation,
+    const HloComputation* computation, mlir::MLIRContext* mlir_context,
     std::function<bool(const HloInstruction*)> is_subgraph_root)
     : computation_(computation) {
   CHECK_NE(computation, nullptr);
@@ -189,12 +236,38 @@ PartitionedComputation::PartitionedComputation(
     };
 
     std::vector<const HloInstruction*> roots;
+    std::vector<mlir::AffineMap> root_indexing;
+    const xla::Shape* first_root_shape = nullptr;
     for (auto* instruction : instructions) {
       if (instruction->user_count() == 0 ||
           absl::c_any_of(instruction->users(), is_different_cluster)) {
         roots.push_back(instruction);
+        if (first_root_shape) {
+          CHECK(!instruction->shape().IsTuple())
+              << "Internal tuples are not supported";
+          if (ShapeUtil::EqualIgnoringElementType(*first_root_shape,
+                                                  instruction->shape())) {
+            root_indexing.push_back(root_indexing.front());
+          } else {
+            // Bitcast from the first root to the target shape.
+            auto bitcast = GetBitcastMap(*first_root_shape,
+                                         instruction->shape(), mlir_context);
+            root_indexing.push_back(bitcast.GetAffineMap());
+          }
+        } else {
+          first_root_shape = &instruction->shape();
+          if (first_root_shape->IsTuple()) {
+            first_root_shape = &first_root_shape->tuple_shapes()[0];
+          }
+          root_indexing.push_back(mlir::AffineMap::getMultiDimIdentityMap(
+              first_root_shape->rank(), mlir_context));
+        }
       }
     }
+
+    std::vector<int64_t> ranges{first_root_shape->dimensions().begin(),
+                                first_root_shape->dimensions().end()};
+
     CHECK(!roots.empty()) << "No roots found";
     std::string name = llvm_ir::SanitizeFunctionName(absl::StrCat(
         roots.front()->parent()->name(), "_",
@@ -204,12 +277,13 @@ PartitionedComputation::PartitionedComputation(
     subgraphs_.push_back(
         Subgraph{.name = std::move(name),
                  .instructions = {instructions.begin(), instructions.end()},
-                 .instructions_post_order = std::move(instructions),
-                 .roots = std::move(roots)});
+                 .roots = std::move(roots),
+                 .index_ranges = std::move(ranges),
+                 .root_indexing = std::move(root_indexing)});
   }
 
   for (const auto& subgraph : subgraphs_) {
-    for (const auto* instruction : subgraph.instructions_post_order) {
+    for (const auto* instruction : subgraph.instructions) {
       instructions_to_subgraphs_[instruction] = &subgraph;
     }
   }
@@ -217,28 +291,37 @@ PartitionedComputation::PartitionedComputation(
 
 std::optional<PartitionedComputation::Subgraph>
 PartitionedComputation::Subgraph::ForEpilogue(
-    const HloComputation* computation,
-    absl::Span<const HloInstruction* const> heroes) {
-  if (heroes.empty() ||
-      (heroes.size() == 1 && heroes[0] == computation->root_instruction())) {
+    const std::optional<EpilogueSpecification>& epilogue) {
+  if (!epilogue) {
+    return std::nullopt;
+  }
+  const auto* computation = epilogue->heroes.front()->parent();
+  if ((epilogue->heroes.size() == 1 &&
+       epilogue->heroes[0] == computation->root_instruction())) {
     return std::nullopt;
   }
 
-  PartitionedComputation::Subgraph subgraph{
-      .name = llvm_ir::SanitizeFunctionName(
-          absl::StrCat(computation->name(), "__epilogue__")),
-      .roots = {computation->root_instruction()},
-  };
-  for (auto [index, hero] : llvm::enumerate(heroes)) {
-    subgraph.injected_values[hero] = index;
+  PartitionedComputation::Subgraph subgraph;
+  subgraph.name = llvm_ir::SanitizeFunctionName(
+      absl::StrCat(computation->name(), "__epilogue__"));
+  if (computation->root_instruction()->opcode() == HloOpcode::kTuple) {
+    absl::c_copy(computation->root_instruction()->operands(),
+                 std::back_inserter(subgraph.roots));
+  } else {
+    subgraph.roots = {computation->root_instruction()};
   }
 
-  std::vector<const HloInstruction*> instructions_pre_order;
+  for (auto* hero : epilogue->heroes) {
+    if (!subgraph.injected_values.contains(hero)) {
+      int index = subgraph.injected_values.size();
+      subgraph.injected_values[hero] = index;
+    }
+  }
+
   absl::flat_hash_set<const HloInstruction*> seen;
   std::function<void(const HloInstruction*)> visit;
   visit = [&](const HloInstruction* instruction) {
     if (!seen.insert(instruction).second) return;
-    instructions_pre_order.push_back(instruction);
     for (auto [index, operand] : llvm::enumerate(instruction->operands())) {
       if (!subgraph.injected_values.contains(operand)) {
         visit(operand);
@@ -248,16 +331,16 @@ PartitionedComputation::Subgraph::ForEpilogue(
 
   visit(computation->root_instruction());
   subgraph.instructions = std::move(seen);
-  subgraph.instructions_post_order = {instructions_pre_order.rbegin(),
-                                      instructions_pre_order.rend()};
+  subgraph.index_ranges = epilogue->index_ranges;
+  subgraph.root_indexing = epilogue->root_indexing;
   return subgraph;
 }
 
 PartitionedComputations::PartitionedComputations(
-    const HloComputation* fusion,
-    absl::Span<const HloInstruction* const> heroes)
+    const HloComputation* fusion, mlir::MLIRContext* mlir_context,
+    std::optional<EpilogueSpecification> epilogue)
     : fusion_(fusion),
-      epilogue_(PartitionedComputation::Subgraph::ForEpilogue(fusion, heroes)) {
+      epilogue_(PartitionedComputation::Subgraph::ForEpilogue(epilogue)) {
   // Collect all transitively called computations (including the fusion itself).
   absl::flat_hash_set<const HloComputation*> seen;
   std::vector<const HloComputation*> computations;
@@ -271,11 +354,13 @@ PartitionedComputations::PartitionedComputations(
   };
   visit(fusion);
 
-  absl::flat_hash_set<const HloInstruction*> roots{heroes.begin(),
-                                                   heroes.end()};
-  for (auto* instruction : heroes) {
-    roots.insert(instruction->operands().begin(),
-                 instruction->operands().end());
+  absl::flat_hash_set<const HloInstruction*> roots;
+  if (epilogue) {
+    roots = {epilogue->heroes.begin(), epilogue->heroes.end()};
+    for (auto* instruction : epilogue->heroes) {
+      roots.insert(instruction->operands().begin(),
+                   instruction->operands().end());
+    }
   }
   auto is_root = [&](const HloInstruction* instruction) {
     return roots.contains(instruction);
@@ -285,7 +370,7 @@ PartitionedComputations::PartitionedComputations(
   for (auto* computation : computations) {
     computation_to_partitioning_[computation] =
         &partitioned_computations_.emplace_back(
-            PartitionedComputation{computation, is_root});
+            PartitionedComputation{computation, mlir_context, is_root});
   }
 }
 
@@ -325,7 +410,9 @@ CallTargetProvider PartitionedComputations::CreateCallTargetProvider(
                               mlir::func::FuncOp>& subgraph_to_func) const {
   return [&, this](const HloInstruction* instr) {
     const auto& subgraph = FindSubgraph(instr);
-    CHECK(subgraph_to_func.contains(&subgraph));
+    CHECK(subgraph_to_func.contains(&subgraph))
+        << "No function found for subgraph with instruction "
+        << instr->ToString();
     return subgraph_to_func.at(&subgraph);
   };
 }
@@ -341,19 +428,12 @@ mlir::func::FuncOp CreateSubgraphMlirFunction(
     return *ConvertPrimitiveTypeToMlirType(shape.element_type(), b);
   };
 
-  const xla::Shape* first_root_shape = nullptr;
   for (auto* root : subgraph.roots) {
     if (root->shape().IsTuple()) {
       for (auto& shape : root->shape().tuple_shapes()) {
-        if (!first_root_shape) {
-          first_root_shape = &shape;
-        }
         result_types.push_back(element_type(shape));
       }
     } else {
-      if (!first_root_shape) {
-        first_root_shape = &root->shape();
-      }
       result_types.push_back(element_type(root->shape()));
     }
   }
@@ -366,13 +446,11 @@ mlir::func::FuncOp CreateSubgraphMlirFunction(
       parameter_types.push_back(TensorShapeToMlirType(param->shape(), b));
       arg_attrs.emplace_back();
     }
-    for (int dim = 0; dim < first_root_shape->rank(); ++dim) {
+    for (int64_t size : subgraph.index_ranges) {
       parameter_types.push_back(b.getIndexType());
       arg_attrs.emplace_back(mlir::DictionaryAttr::get(
           b.getContext(),
-          {b.getNamedAttr("xla.range",
-                          b.getIndexArrayAttr(
-                              {0, first_root_shape->dimensions(dim) - 1}))}));
+          {b.getNamedAttr("xla.range", b.getIndexArrayAttr({0, size - 1}))}));
     }
 
     // Populate arguments for injected parameters (values that are computed

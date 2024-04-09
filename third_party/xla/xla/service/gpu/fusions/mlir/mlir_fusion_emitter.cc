@@ -163,6 +163,13 @@ Value MlirFusionEmitterBase::EmitThreadId(mlir::ImplicitLocOpBuilder& builder,
   return thread_id;
 }
 
+llvm::SmallVector<Value> MlirFusionEmitterBase::EmitThreadAndBlockIds(
+    mlir::ImplicitLocOpBuilder& builder) const {
+  auto& b = builder;
+  return {EmitThreadId(b, 0), EmitThreadId(b, 1), EmitThreadId(b, 2),
+          EmitBlockId(b, 0),  EmitBlockId(b, 1),  EmitBlockId(b, 2)};
+}
+
 absl::StatusOr<FusionEmissionResult> MlirFusionEmitterBase::Emit(
     IrEmitterContext& ir_emitter_context,
     const HloFusionInstruction& fusion) const {
@@ -401,29 +408,29 @@ SmallVector<Value> MlirFusionEmitterBase::EmitThreadLoopNest(
     const std::function<
         SmallVector<Value>(ValueRange outputs_tensors, ValueRange dim_values,
                            ValueRange symbol_values)>& create_body) const {
-  SmallVector<Value> dim_values{EmitThreadId(b, 0), EmitThreadId(b, 1),
-                                EmitThreadId(b, 2), EmitBlockId(b, 0),
-                                EmitBlockId(b, 1),  EmitBlockId(b, 2)};
-  return mlir_converter::EmitLoopNest(b, dim_values, outputs, indexing_map,
-                                      create_body);
+  return mlir_converter::EmitLoopNest(b, EmitThreadAndBlockIds(b), outputs,
+                                      indexing_map, create_body);
 }
 
 absl::Status MlirFusionEmitterBase::EmitMlir(
     mlir::ModuleOp module, mlir::func::FuncOp entry_function,
     const HloFusionInstruction& fusion) const {
-  auto customized = GetInstructionsWithCustomCodegen(fusion);
+  std::optional<mlir_converter::EpilogueSpecification> epilogue =
+      GetEpilogue(fusion, module->getContext());
   mlir_converter::PartitionedComputations computations(
-      fusion.fused_instructions_computation(), customized);
+      fusion.fused_instructions_computation(), module->getContext(), epilogue);
   auto subgraph_to_mlir_fn = computations.DeclareFunctions(module);
 
-  // Erase subgraphs for all customized instructions that aren't used anywhere
-  // else. This is necessary because the instructions may not have elemental
-  // implementations (scatter).
-  for (auto* custom : customized) {
-    if (custom->user_count() == 0) {
-      subgraph_to_mlir_fn.extract(&computations.FindSubgraph(custom))
-          .mapped()
-          .erase();
+  // Erase subgraphs for all heroes that aren't used anywhere else. This is
+  // necessary because the instructions may not have elemental implementations
+  // (scatter).
+  if (epilogue) {
+    for (auto* custom : epilogue->heroes) {
+      if (custom->user_count() == 0) {
+        subgraph_to_mlir_fn.extract(&computations.FindSubgraph(custom))
+            .mapped()
+            .erase();
+      }
     }
   }
 
