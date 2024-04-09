@@ -467,7 +467,6 @@ cc_library(
     name = "executor_cache",
     srcs = ["executor_cache.cc"],
     hdrs = ["executor_cache.h"],
-    visibility = ["//visibility:private"],
     deps = [
         ":platform",
         ":stream_executor_headers",
@@ -499,7 +498,6 @@ cc_library(
     name = "kernel",
     srcs = ["kernel.cc"],
     hdrs = ["kernel.h"],
-    visibility = ["//visibility:private"],
     deps = [
         ":device_memory",
         ":kernel_spec",

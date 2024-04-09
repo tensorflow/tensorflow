@@ -3916,6 +3916,7 @@ xla_test(
         "gpu_a100",
     ],
     tags = [
+        "no_rocm",
         "nomsan",  # Pulls in precompiled NVIDIA libraries which cause false positives in msan.
     ],
     deps = [
