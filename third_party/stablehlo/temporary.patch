@@ -3741,4 +3741,224 @@ diff --ruN a/stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp b/stable
        inf, output);
  
    return output;
+diff --ruN a/stablehlo/stablehlo/transforms/StablehloLegalizeToVhlo.cpp b/stablehlo/stablehlo/transforms/StablehloLegalizeToVhlo.cpp
+--- stablehlo/stablehlo/transforms/StablehloLegalizeToVhlo.cpp
++++ stablehlo/stablehlo/transforms/StablehloLegalizeToVhlo.cpp
+@@ -143,24 +143,18 @@
+                                    attr.getRawData());
+   }
+   if (auto attr = stablehloAttr.dyn_cast<DenseI64ArrayAttr>()) {
+-    auto vhloType = vhlo::RankedTensorV1Type::get(
+-        attr.getContext(), {attr.size()},
+-        vhlo::IntegerSI64V1Type::get(attr.getContext()), Attribute{});
+-    LLVM_DEBUG(llvm::dbgs() << "Converted " << vhloType << '\n');
+-    if (!vhloType) return {};
+-    return vhlo::TensorV1Attr::get(attr.getContext(), vhloType,
+-                                   attr.getRawData());
++    // Leverage the serialization for DenseElements.
++    auto data = attr.asArrayRef();
++    auto ty = RankedTensorType::get({static_cast<int64_t>(data.size())},
++                                    IntegerType::get(attr.getContext(), 64));
++    auto dense = DenseElementsAttr::get(ty, data);
++    return convertGeneric(dense, typeConverter);
+   }
+   if (auto attr = stablehloAttr.dyn_cast<DenseBoolArrayAttr>()) {
+-    // Dense arrays of bool need special handling as their raw data is
+-    // encoded differently from a DenseElementsAttr of bool. Using a similar
+-    // conversion as for DenseI64ArrayAttr causes issues when attempting to
+-    // construct a DenseIntOrFPElementsAttr from the underlying raw data.
+-    // Converting to a DenseElementsAttr up front avoids issues.
++    // Leverage the serialization for DenseElements.
+     auto data = attr.asArrayRef();
+-    auto ty =
+-        RankedTensorType::get({static_cast<int64_t>(attr.asArrayRef().size())},
+-                              IntegerType::get(attr.getContext(), 1));
++    auto ty = RankedTensorType::get({static_cast<int64_t>(data.size())},
++                                    IntegerType::get(attr.getContext(), 1));
+     auto dense = DenseElementsAttr::get(ty, data);
+     return convertGeneric(dense, typeConverter);
+   }
+diff --ruN a/stablehlo/stablehlo/transforms/VhloLegalizeToStablehlo.cpp b/stablehlo/stablehlo/transforms/VhloLegalizeToStablehlo.cpp
+--- stablehlo/stablehlo/transforms/VhloLegalizeToStablehlo.cpp
++++ stablehlo/stablehlo/transforms/VhloLegalizeToStablehlo.cpp
+@@ -426,47 +426,37 @@
+   return success();
+ }
+ 
+-template <typename T, typename Attr>
+-SpecialResult convertDenseArray(StringAttr vhloName, Attribute vhloAttr,
++template <typename T, typename DenseArrayAttr>
++SpecialResult convertDenseArray(const TypeConverter* typeConverter,
++                                StringAttr vhloName, Attribute vhloAttr,
+                                 SmallVector<NamedAttribute>& stablehloAttrs) {
+   auto tensorAttr = dyn_cast<vhlo::TensorV1Attr>(vhloAttr);
+   if (!tensorAttr) return specialFailure();
+ 
+-  if (tensorAttr.getData().size() % sizeof(T) != 0) return specialFailure();
+-
+-  // Extracting the data in this way prevents misaligned memory issues.
+-  auto vec =
+-      ArrayRef<T>(reinterpret_cast<const T*>(tensorAttr.getData().data()),
+-                  tensorAttr.getData().size() / sizeof(T))
+-          .vec();
+-  SmallVector<T> data;
+-  for (T b : vec) data.push_back(b);
+-
+-  // Handle splats
+-  if (data.size() == 1) {
+-    auto tensorType = tensorAttr.getType().dyn_cast<vhlo::RankedTensorV1Type>();
+-    if (!tensorType || (tensorType.getShape().size() != 1))
+-      return specialFailure();
+-    auto size = tensorType.getShape()[0];
+-    data.resize(size, data[0]);
+-  }
+-
+-  stablehloAttrs.emplace_back(vhloName, Attr::get(vhloAttr.getContext(), data));
++  auto type = typeConverter->convertType(tensorAttr.getType())
++                  .dyn_cast<RankedTensorType>();
++  if (!type) return specialFailure();
++
++  auto elems = DenseElementsAttr::getFromRawBuffer(type, tensorAttr.getData());
++
++  stablehloAttrs.emplace_back(
++      vhloName, DenseArrayAttr::get(vhloAttr.getContext(),
++                                    llvm::to_vector(elems.getValues<T>())));
+   return specialSuccess();
+ }
+ 
++SpecialResult convertDenseBoolArray(
++    const TypeConverter* typeConverter, StringAttr vhloName, Attribute vhloAttr,
++    SmallVector<NamedAttribute>& stablehloAttrs) {
++  return convertDenseArray<bool, DenseBoolArrayAttr>(typeConverter, vhloName,
++                                                     vhloAttr, stablehloAttrs);
++}
++
+ SpecialResult convertDenseI64Array(
+-    StringAttr vhloName, Attribute vhloAttr,
++    const TypeConverter* typeConverter, StringAttr vhloName, Attribute vhloAttr,
+     SmallVector<NamedAttribute>& stablehloAttrs) {
+-  return convertDenseArray<int64_t, DenseI64ArrayAttr>(vhloName, vhloAttr,
+-                                                       stablehloAttrs);
+-}
+-
+-SpecialResult convertDenseBoolArray(
+-    StringAttr vhloName, Attribute vhloAttr,
+-    SmallVector<NamedAttribute>& stablehloAttrs) {
+-  return convertDenseArray<bool, DenseBoolArrayAttr>(vhloName, vhloAttr,
+-                                                     stablehloAttrs);
++  return convertDenseArray<int64_t, DenseI64ArrayAttr>(
++      typeConverter, vhloName, vhloAttr, stablehloAttrs);
+ }
+ 
+ template <typename VhloOpTy>
+@@ -475,6 +465,8 @@
+                              SmallVector<NamedAttribute>& stablehloAttrs) {
+   StringAttr stablehloName = vhloName;
+   Attribute stablehloAttr;
++  auto typeConverter = pattern.getTypeConverter();
++
+   if constexpr (std::is_same<VhloOpTy, vhlo::AllGatherOpV1>::value ||
+                 std::is_same<VhloOpTy, vhlo::AllReduceOpV1>::value ||
+                 std::is_same<VhloOpTy, vhlo::AllToAllOpV1>::value ||
+@@ -518,70 +510,85 @@
+   }
+   if constexpr (std::is_same<VhloOpTy, vhlo::FftOpV1>::value) {
+     if (vhloName == "fft_length")
+-      return convertDenseI64Array(vhloName, vhloAttr, stablehloAttrs);
++      return convertDenseI64Array(typeConverter, vhloName, vhloAttr,
++                                  stablehloAttrs);
+   }
+   if constexpr (std::is_same<VhloOpTy, vhlo::BroadcastOpV1>::value) {
+     if (vhloName == "broadcast_sizes")
+-      return convertDenseI64Array(vhloName, vhloAttr, stablehloAttrs);
++      return convertDenseI64Array(typeConverter, vhloName, vhloAttr,
++                                  stablehloAttrs);
+   }
+   if constexpr (std::is_same<VhloOpTy, vhlo::DynamicSliceOpV1>::value) {
+     if (vhloName == "slice_sizes")
+-      return convertDenseI64Array(vhloName, vhloAttr, stablehloAttrs);
++      return convertDenseI64Array(typeConverter, vhloName, vhloAttr,
++                                  stablehloAttrs);
+   }
+   if constexpr (std::is_same<VhloOpTy, vhlo::ReverseOpV1>::value) {
+     if (vhloName == "dimensions")
+-      return convertDenseI64Array(vhloName, vhloAttr, stablehloAttrs);
++      return convertDenseI64Array(typeConverter, vhloName, vhloAttr,
++                                  stablehloAttrs);
+   }
+   if constexpr (std::is_same<VhloOpTy, vhlo::TransposeOpV1>::value) {
+     if (vhloName == "permutation")
+-      return convertDenseI64Array(vhloName, vhloAttr, stablehloAttrs);
++      return convertDenseI64Array(typeConverter, vhloName, vhloAttr,
++                                  stablehloAttrs);
+   }
+   if constexpr (std::is_same<VhloOpTy, vhlo::PadOpV1>::value) {
+     if (vhloName == "edge_padding_low" || vhloName == "edge_padding_high" ||
+         vhloName == "interior_padding")
+-      return convertDenseI64Array(vhloName, vhloAttr, stablehloAttrs);
++      return convertDenseI64Array(typeConverter, vhloName, vhloAttr,
++                                  stablehloAttrs);
+   }
+   if constexpr (std::is_same<VhloOpTy, vhlo::SliceOpV1>::value) {
+     if (vhloName == "start_indices" || vhloName == "limit_indices" ||
+         vhloName == "strides")
+-      return convertDenseI64Array(vhloName, vhloAttr, stablehloAttrs);
++      return convertDenseI64Array(typeConverter, vhloName, vhloAttr,
++                                  stablehloAttrs);
+   }
+   if constexpr (std::is_same<VhloOpTy, vhlo::BroadcastInDimOpV1>::value) {
+     if (vhloName == "broadcast_dimensions")
+-      return convertDenseI64Array(vhloName, vhloAttr, stablehloAttrs);
++      return convertDenseI64Array(typeConverter, vhloName, vhloAttr,
++                                  stablehloAttrs);
+   }
+   if constexpr (std::is_same<VhloOpTy,
+                              vhlo::DynamicBroadcastInDimOpV1>::value) {
+     if (vhloName == "broadcast_dimensions" ||
+         vhloName == "known_expanding_dimensions" ||
+         vhloName == "known_nonexpanding_dimensions")
+-      return convertDenseI64Array(vhloName, vhloAttr, stablehloAttrs);
++      return convertDenseI64Array(typeConverter, vhloName, vhloAttr,
++                                  stablehloAttrs);
+   }
+   if constexpr (std::is_same<VhloOpTy, vhlo::SelectAndScatterOpV1>::value) {
+     if (vhloName == "window_dimensions" || vhloName == "window_strides")
+-      return convertDenseI64Array(vhloName, vhloAttr, stablehloAttrs);
++      return convertDenseI64Array(typeConverter, vhloName, vhloAttr,
++                                  stablehloAttrs);
+   }
+   if constexpr (std::is_same<VhloOpTy, vhlo::ReduceWindowOpV1>::value) {
+     if (vhloName == "window_dimensions" || vhloName == "window_strides" ||
+         vhloName == "base_dilations" || vhloName == "window_dilations")
+-      return convertDenseI64Array(vhloName, vhloAttr, stablehloAttrs);
++      return convertDenseI64Array(typeConverter, vhloName, vhloAttr,
++                                  stablehloAttrs);
+   }
+   if constexpr (std::is_same<VhloOpTy, vhlo::MapOpV1>::value ||
+                 std::is_same<VhloOpTy, vhlo::ReduceOpV1>::value) {
+     if (vhloName == "dimensions")
+-      return convertDenseI64Array(vhloName, vhloAttr, stablehloAttrs);
++      return convertDenseI64Array(typeConverter, vhloName, vhloAttr,
++                                  stablehloAttrs);
+   }
+   if constexpr (std::is_same<VhloOpTy, vhlo::GatherOpV1>::value) {
+     if (vhloName == "slice_sizes")
+-      return convertDenseI64Array(vhloName, vhloAttr, stablehloAttrs);
++      return convertDenseI64Array(typeConverter, vhloName, vhloAttr,
++                                  stablehloAttrs);
+   }
+   if constexpr (std::is_same<VhloOpTy, vhlo::ConvolutionOpV1>::value ||
+                 std::is_same<VhloOpTy, vhlo::DynamicConvOpV1>::value) {
+     if (vhloName == "lhs_dilation" || vhloName == "rhs_dilation" ||
+         vhloName == "window_strides")
+-      return convertDenseI64Array(vhloName, vhloAttr, stablehloAttrs);
++      return convertDenseI64Array(typeConverter, vhloName, vhloAttr,
++                                  stablehloAttrs);
+     if (vhloName == "window_reversal")
+-      return convertDenseBoolArray(vhloName, vhloAttr, stablehloAttrs);
++      return convertDenseBoolArray(typeConverter, vhloName, vhloAttr,
++                                   stablehloAttrs);
+   }
+   return notSpecial();
+ }
 
