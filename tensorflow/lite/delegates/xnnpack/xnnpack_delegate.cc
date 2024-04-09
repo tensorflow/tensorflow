@@ -4052,14 +4052,14 @@ class Subgraph {
       }
     }
 
+    const int32_t output_channels = SizeOfDimension(&filter_tensor, 0);
+    const int32_t input_channels = SizeOfDimension(&filter_tensor, 1);
+
     int bias_tensor_id = -1;
     if (node->inputs->size >= 3) {
       bias_tensor_id = node->inputs->data[2];
       if (bias_tensor_id >= 0) {
         const TfLiteTensor& bias_tensor = tensors[bias_tensor_id];
-        TF_LITE_ENSURE_STATUS(CheckTensorShape(
-            logging_context, bias_tensor, 1, node->inputs->data[2],
-            BuiltinOperator_FULLY_CONNECTED, node_index));
         // Dynamic bias is supported, but only for FP32.
         if (delegate.support_dynamic_fully_connected_operator() &&
             bias_tensor.type == kTfLiteFloat32) {
@@ -4067,6 +4067,15 @@ class Subgraph {
               delegate, logging_context, bias_tensor, node->inputs->data[2],
               node_index));
         } else {
+          const int num_bias_elements = NumElements(&bias_tensor);
+          if (num_bias_elements != output_channels) {
+            TF_LITE_MAYBE_KERNEL_LOG(
+                logging_context,
+                "Fully Connected: Mismatch between number of bias elements %d "
+                "and number of output channels %d at node %d",
+                num_bias_elements, output_channels, node->inputs->data[0]);
+            return kTfLiteError;
+          }
           TF_LITE_ENSURE_STATUS(CheckTensorFloat32OrQInt32Type(
               delegate, logging_context, bias_tensor, node->inputs->data[2],
               node_index));
@@ -4086,9 +4095,6 @@ class Subgraph {
     TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
         delegate, logging_context, output_tensor, node->outputs->data[0],
         node_index));
-
-    const int32_t output_channels = SizeOfDimension(&filter_tensor, 0);
-    const int32_t input_channels = SizeOfDimension(&filter_tensor, 1);
 
     bool dynamically_quantized = (delegate.enable_latest_operators() &&
                                   (input_tensor.type == kTfLiteFloat32 &&
@@ -4118,17 +4124,6 @@ class Subgraph {
           " operator #%d",
           input_channels, node_index);
       return kTfLiteError;
-    }
-
-    int32_t num_input_elements = 1;
-    for (int i = 0; i < NumDimensions(&input_tensor); i++) {
-      if (SizeOfDimension(&input_tensor, i) <= 0) {
-        TF_LITE_MAYBE_KERNEL_LOG(
-            logging_context, "invalid dimension #%d (%d) in tensor #%d", i,
-            SizeOfDimension(&input_tensor, i), node->inputs->data[0]);
-        return kTfLiteError;
-      }
-      num_input_elements *= SizeOfDimension(&input_tensor, i);
     }
 
     float output_min = -std::numeric_limits<float>::infinity();
