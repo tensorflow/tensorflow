@@ -67,8 +67,9 @@ class MlirInPlaceDynamicUpdateSliceFusion : public MlirFusionEmitterBase {
       mlir::func::FuncOp entry_function,
       const HloFusionInstruction& fusion) const override;
 
-  std::vector<const HloInstruction*> GetInstructionsWithCustomCodegen(
-      const HloFusionInstruction& fusion) const override;
+  std::optional<mlir_converter::EpilogueSpecification> GetEpilogue(
+      const HloFusionInstruction& fusion,
+      mlir::MLIRContext* mlir_context) const override;
 
  private:
   const HloFusionAnalysis& analysis_;

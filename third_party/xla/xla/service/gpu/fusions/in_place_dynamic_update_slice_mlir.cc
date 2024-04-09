@@ -94,10 +94,13 @@ MlirInPlaceDynamicUpdateSliceFusion::ComputeThreadIdToInputIndexing(
                                        update_shape, mlir_context);
 }
 
-std::vector<const HloInstruction*>
-MlirInPlaceDynamicUpdateSliceFusion::GetInstructionsWithCustomCodegen(
-    const HloFusionInstruction& fusion) const {
-  return dus_ops_;
+std::optional<mlir_converter::EpilogueSpecification>
+MlirInPlaceDynamicUpdateSliceFusion::GetEpilogue(
+    const HloFusionInstruction& fusion, mlir::MLIRContext* mlir_context) const {
+  // We don't actually support epilogues for DUS, but this is how we tell
+  // the base class that we don't want it to generate code for the DUS.
+  return mlir_converter::EpilogueSpecification::FromIdentityIndexing(
+      dus_ops_.front(), analysis_.fusion_roots().front(), mlir_context);
 }
 
 absl::Status MlirInPlaceDynamicUpdateSliceFusion::EmitEntryFunction(
