@@ -14,16 +14,19 @@
 # ==============================================================================
 """Tests for the index flat map dataset."""
 
-from typing import Any, Union
+from typing import Any, Callable, Union
 
 from absl.testing import parameterized
 
+from tensorflow.python.data.experimental.ops import cardinality as cardinality_lib
+from tensorflow.python.data.experimental.ops import global_shuffle_op
 from tensorflow.python.data.experimental.ops import index_flat_map_op
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -34,7 +37,7 @@ _IndexType = index_flat_map_op._IndexType
 
 
 class IndexFlatMapTest(test_base.DatasetTestBase, parameterized.TestCase):
-  """Tests for global shuffling of tf.data datasets."""
+  """Tests for global shuffling of index flat map datasets."""
 
   @combinations.generate(
       combinations.times(
@@ -42,25 +45,16 @@ class IndexFlatMapTest(test_base.DatasetTestBase, parameterized.TestCase):
           combinations.combine(use_tensors=[True, False])))
   def test_split_strings(self, use_tensors: bool):
     input_data = ["0 1", "2 3 4 5", "6 7", "8"]
-    metadata = constant_op.constant(
-        [(0, 2, 0), (2, 6, 1), (6, 8, 2), (8, 9, 3)], dtype=dtypes.int64)
-
-    def _split(element: str) -> tensor.Tensor:
-      return ragged_string_ops.string_split_v2(element, " ")
+    # The metadata is [(0, 2, 0), (2, 6, 1), (6, 8, 2), (8, 9, 3)].
+    metadata = _get_metadata(input_data)
 
     def _index_map_func(index: _IndexType) -> tuple[_IndexType, _IndexType]:
-      element_index = _maybe_convert_to_tensor(0)
-      while (element_index < metadata.shape[0] and
-             index >= array_ops.gather_nd(metadata, [element_index, 1])):
-        element_index += 1
-      offset = (
-          index - array_ops.gather_nd(metadata, [element_index, 0])
-          if element_index < metadata.shape[0]
-          else constant_op.constant(0, dtype=dtypes.int64))
+      index = _maybe_convert_to_tensor(index)
+      element_index, offset = _get_index_map_func(metadata)(index)
       return (_maybe_convert_to_tensor(element_index),
               _maybe_convert_to_tensor(offset))
 
-    def _maybe_convert_to_tensor(value: Any) -> Union[int, tensor.Tensor]:
+    def _maybe_convert_to_tensor(value: Any) -> _IndexType:
       return math_ops.cast(value, dtypes.int64) if use_tensors else value
 
     dataset = dataset_ops.Dataset.from_tensor_slices(input_data)
@@ -68,6 +62,38 @@ class IndexFlatMapTest(test_base.DatasetTestBase, parameterized.TestCase):
     output = self.getDatasetOutput(dataset)
     self.assertEqual(output,
                      [b"0", b"1", b"2", b"3", b"4", b"5", b"6", b"7", b"8"])
+
+  @combinations.generate(test_base.default_test_combinations())
+  def test_global_shuffle(self):
+    input_data = ["0 1", "2 3 4 5", "6 7", "8"]
+    metadata = _get_metadata(input_data)
+
+    dataset = dataset_ops.Dataset.from_tensor_slices(input_data)
+    dataset = index_flat_map_op.index_flat_map(
+        dataset, _split, _get_index_map_func(metadata))
+    dataset = dataset.apply(cardinality_lib.assert_cardinality(9))
+    dataset = global_shuffle_op._global_shuffle(dataset)
+
+    dataset_output = self.getDatasetOutput(
+        dataset, requires_initialization=True)
+    expected = [b"0", b"1", b"2", b"3", b"4", b"5", b"6", b"7", b"8"]
+    self.assertCountEqual(dataset_output, expected)
+    self.assertNotEqual(dataset_output, expected)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def test_global_shuffle_unsupported(self):
+    input_data = ["0 1", "2 3 4 5", "6 7", "8"]
+    metadata = _get_metadata(input_data)
+
+    dataset = dataset_ops.Dataset.from_tensor_slices(input_data)
+    # Shuffle dataset does not support global shuffling.
+    dataset = dataset.shuffle(buffer_size=dataset.cardinality())
+    with self.assertRaisesRegex(
+        errors.FailedPreconditionError,
+        "ShuffleDataset.*does not support random access"):
+      dataset = index_flat_map_op.index_flat_map(
+          dataset, _split, _get_index_map_func(metadata))
+      self.getDatasetOutput(dataset, requires_initialization=True)
 
   @combinations.generate(
       combinations.times(
@@ -85,6 +111,39 @@ class IndexFlatMapTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = index_flat_map_op.index_flat_map(
         dataset, _map_func, _index_map_func)
     self.assertDatasetProduces(dataset, list(range(dataset_range)))
+
+
+def _split(element: str) -> tensor.Tensor:
+  return ragged_string_ops.string_split_v2(element, " ")
+
+
+def _get_metadata(input_data: list[str]) -> tensor.Tensor:
+  """Given a list of strings, creates a metadata matrix."""
+
+  metadata = []
+  for i, data in enumerate(input_data):
+    split_data = data.split()
+    last_index = metadata[-1][1] if metadata else 0
+    metadata.append((last_index, last_index + len(split_data), i))
+  return constant_op.constant(metadata, dtype=dtypes.int64)
+
+
+def _get_index_map_func(
+    metadata: tensor.Tensor) -> Callable[[int], tuple[int, int]]:
+  """Turns a `metadata` Tensor into an index map function."""
+
+  def _index_map_func(index: Union[int, tensor.Tensor]) -> tuple[int, int]:
+    element_index = 0
+    while (element_index < metadata.shape[0] and
+           index >= array_ops.gather_nd(metadata, [element_index, 1])):
+      element_index += 1
+    offset = (
+        index - array_ops.gather_nd(metadata, [element_index, 0])
+        if element_index < metadata.shape[0]
+        else constant_op.constant(0, dtype=dtypes.int64))
+    return (element_index, offset)
+
+  return _index_map_func
 
 
 if __name__ == "__main__":

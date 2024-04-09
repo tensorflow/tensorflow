@@ -142,6 +142,10 @@ class IndexFlatMapDatasetOp::Dataset : public DatasetBase {
     return input_->CheckExternalState();
   }
 
+  absl::Status RandomIndexingCompatible() const override {
+    return absl::OkStatus();
+  }
+
  protected:
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
       const std::string& prefix) const override;
@@ -222,7 +226,6 @@ class IndexFlatMapDatasetOp::Dataset::Iterator
                                bool* end_of_sequence) override
       ABSL_LOCKS_EXCLUDED(mu_) {
     absl::MutexLock l(&mu_);
-    // TODO(b/325112575): Support global shuffling.
     // TODO(b/325112575): Make it easier to return multiple values from
     // IndexMapperFn.
     size_t offset = 0;
@@ -327,6 +330,14 @@ IndexFlatMapDatasetOp::IndexFlatMapDatasetOp(OpKernelConstruction* ctx)
 void IndexFlatMapDatasetOp::MakeDataset(OpKernelContext* ctx,
                                         DatasetBase* input,
                                         DatasetBase** output) {
+  // TODO(b/325112575): Support input datasets without random indexing
+  // compatibility.
+  OP_REQUIRES(ctx, input->RandomIndexingCompatible().ok(),
+              absl::FailedPreconditionError(absl::StrCat(
+                  "`index_flat_map` requires all upstream transformations be "
+                  "compatible with random access. Got: ",
+                  input->RandomIndexingCompatible().ToString())));
+
   std::unique_ptr<CapturedFunction> captured_map_func;
   OP_REQUIRES_OK(
       ctx, CapturedFunction::Create(ctx, map_func_metadata_, kMapFuncOtherArgs,
