@@ -48,7 +48,7 @@ HostStream* AsHostStream(Stream* stream) {
   return dynamic_cast<HostStream*>(stream->implementation());
 }
 
-absl::Status HostExecutor::Init(int device_ordinal) { return absl::OkStatus(); }
+absl::Status HostExecutor::Init() { return absl::OkStatus(); }
 
 bool HostExecutor::DeviceMemoryUsage(int64_t* free, int64_t* total) const {
   tsl::port::MemoryInfo mem_info = tsl::port::GetMemoryInfo();

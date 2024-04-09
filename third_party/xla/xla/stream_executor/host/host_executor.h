@@ -51,9 +51,9 @@ namespace host {
 // See stream_executor.h for description of the below operations.
 class HostExecutor : public internal::StreamExecutorInterface {
  public:
-  HostExecutor() = default;
+  explicit HostExecutor(int device_ordinal) : device_ordinal_(device_ordinal) {}
 
-  absl::Status Init(int device_ordinal) override;
+  absl::Status Init() override;
 
   absl::Status GetKernel(const MultiKernelLoaderSpec& spec,
                          Kernel* kernel) override {
@@ -134,6 +134,7 @@ class HostExecutor : public internal::StreamExecutorInterface {
 
   static absl::StatusOr<std::unique_ptr<DeviceDescription>>
   CreateDeviceDescription(int device_ordinal);
+  int device_ordinal() const override { return device_ordinal_; }
 
   absl::Status EnablePeerAccessTo(StreamExecutorInterface* other) override {
     return absl::OkStatus();
@@ -147,6 +148,9 @@ class HostExecutor : public internal::StreamExecutorInterface {
       override;
 
   std::unique_ptr<internal::StreamInterface> GetStreamImplementation() override;
+
+ private:
+  int device_ordinal_;
 };
 
 }  // namespace host

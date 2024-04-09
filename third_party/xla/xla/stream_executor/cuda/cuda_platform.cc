@@ -133,7 +133,7 @@ absl::StatusOr<StreamExecutor*> CudaPlatform::GetExecutor(
 absl::StatusOr<std::unique_ptr<StreamExecutor>>
 CudaPlatform::GetUncachedExecutor(const StreamExecutorConfig& config) {
   auto executor = std::make_unique<StreamExecutor>(
-      this, std::make_unique<GpuExecutor>(), config.ordinal);
+      this, std::make_unique<GpuExecutor>(config.ordinal));
   auto init_status = executor->Init();
   if (!init_status.ok()) {
     return absl::InternalError(absl::StrFormat(
