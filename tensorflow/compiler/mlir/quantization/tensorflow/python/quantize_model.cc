@@ -437,7 +437,6 @@ absl::StatusOr<ExportedModel> QuantizeStaticRangePtq(
 
   py_function_library.RunCalibration(
       *precalibrated_saved_model_dir, signature_keys, tags,
-      quantization_options.calibration_options(),
       quantization_options.force_graph_mode_calibration(),
       representative_dataset_file_map_serialized);
 
