@@ -1107,6 +1107,7 @@ bzl_library(
     srcs = ["tensorflow.bzl"],
     visibility = ["//visibility:public"],
     deps = [
+        "//devtools/build_cleaner/skylark:build_defs_lib",
         "//tensorflow/core/platform:build_config_root_bzl",
         "//tensorflow/core/platform:rules_cc_bzl",
         "//third_party/compute_library:build_defs_bzl",
