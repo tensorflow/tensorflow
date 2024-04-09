@@ -51,8 +51,6 @@ namespace tensorflow {
 namespace tf2xla {
 namespace v2 {
 
-using metrics::IncrementTfMlirBridgeSecondPhaseCounter;
-using metrics::MlirBridgeSecondPhaseMetric;
 using tpu::FunctionToHloArgs;
 using tpu::MlirToHloArgs;
 using tpu::ShardingAndIndex;
