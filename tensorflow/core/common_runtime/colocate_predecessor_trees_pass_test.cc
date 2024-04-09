@@ -49,6 +49,7 @@ Node* GetNode(const Graph& graph, const std::string& name) {
 // Test the pass is skipped by default because flag enable_tf2min_ici_weight is
 // false by default.
 TEST(ColocatePredecessorTreesPassTest, ICIFlagFalse) {
+  flags::Global().enable_tf2min_ici_weight.reset(false);
   auto graph = std::make_unique<Graph>(OpRegistry::Global());
   GraphDefBuilder builder(GraphDefBuilder::kFailImmediately);
   Node* const_0 = ops::SourceOp("Const", builder.opts()

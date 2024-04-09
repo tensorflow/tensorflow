@@ -59,7 +59,7 @@ class Flags {
   TF_DECLARE_FLAG(enable_colocation_key_propagation_in_while_op_lowering, false,
                   "If true, colocation key attributes for the ops will be "
                   "propagated during while op lowering to switch/merge ops.")
-  TF_DECLARE_FLAG(enable_tf2min_ici_weight, false,
+  TF_DECLARE_FLAG(enable_tf2min_ici_weight, true,
                   "If true, ici weight optimization will be used in tf2/min.")
   // LINT.ThenChange(//tensorflow/core/config/flags_api_wrapper.cc)
 };

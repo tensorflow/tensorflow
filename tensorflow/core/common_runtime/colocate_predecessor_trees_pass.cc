@@ -53,7 +53,7 @@ constexpr absl::string_view kClassAttr = "_class";
 // 3. not have colocation attr
 // 4. must register for CPU
 // 5. only have one output node
-bool IsValidTreeNode(const Node& node, bool in_node_mode) {
+bool IsValidTreeNode(const Node& node) {
   if (node.IsArg()) {
     return false;
   }
@@ -71,11 +71,9 @@ bool IsValidTreeNode(const Node& node, bool in_node_mode) {
   }
 
   int num_parents_to_tree_nodes = 0;
-  auto parent_nodes = in_node_mode ? node.out_nodes() : node.in_nodes();
+  auto parent_nodes = node.out_nodes();
   for (auto parent_node : parent_nodes) {
-    if (in_node_mode && (parent_node->IsExit() || parent_node->IsSink()))
-      continue;
-    if (!in_node_mode && parent_node->IsSource()) continue;
+    if (parent_node->IsSink()) continue;
     num_parents_to_tree_nodes++;
   }
   if (num_parents_to_tree_nodes != 1) return false;
@@ -111,13 +109,11 @@ std::optional<absl::flat_hash_set<Node*>> FindTreeNodes(Node* potential_root) {
   absl::flat_hash_set<Node*> tree_nodes;
   tree_nodes.insert(potential_root);
 
-  auto seek_tree_nodes = [&](bool in_node_mode) {
+  auto seek_tree_nodes = [&]() {
     std::queue<Node*> pending_nodes;
-    auto nodes_to_potential_nodes =
-        in_node_mode ? potential_root->in_nodes() : potential_root->out_nodes();
+    auto nodes_to_potential_nodes = potential_root->in_nodes();
     for (Node* node : nodes_to_potential_nodes) {
-      if (in_node_mode && node->IsSource()) continue;
-      if (!in_node_mode && (node->IsSink() || node->IsExit())) continue;
+      if (node->IsSource()) continue;
       pending_nodes.push(node);
     }
     while (!pending_nodes.empty()) {
@@ -126,22 +122,20 @@ std::optional<absl::flat_hash_set<Node*>> FindTreeNodes(Node* potential_root) {
       if (tree_nodes.find(node) != tree_nodes.end()) {
         return false;
       }
-      if (!IsValidTreeNode(*node, in_node_mode)) {
+      if (!IsValidTreeNode(*node)) {
         return false;
       }
       tree_nodes.insert(node);
-      auto nodes_to_potential_node =
-          in_node_mode ? node->in_nodes() : node->out_nodes();
+      auto nodes_to_potential_node = node->in_nodes();
       for (Node* node : nodes_to_potential_node) {
-        if (in_node_mode && node->IsSource()) continue;
-        if (!in_node_mode && (node->IsSink() || node->IsExit())) continue;
+        if (node->IsSource()) continue;
         pending_nodes.push(node);
       }
     }
     return true;
   };
 
-  if (!seek_tree_nodes(/*in_node_mode=*/true)) {
+  if (!seek_tree_nodes()) {
     return std::nullopt;
   }
 
