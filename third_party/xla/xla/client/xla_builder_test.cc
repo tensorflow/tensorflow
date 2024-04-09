@@ -2374,6 +2374,17 @@ TEST(XlaBuilderTest, UnboundedReshapeUnsupportedInferredShape) {
                    "Reshaping with unbounded result shape is not supported.")));
 }
 
+TEST(XlaBuilderTest, UnboundedReverse) {
+  XlaBuilder b(TestName());
+  TF_ASSERT_OK_AND_ASSIGN(const Shape operand, ParseShape("f32[?, 10]"));
+  TF_ASSERT_OK_AND_ASSIGN(const Shape expected, ParseShape("f32[?, 10]"));
+  Rev(Parameter(&b, 0, operand, "operand"), /*dimensions=*/{0, 1});
+  TF_ASSERT_OK_AND_ASSIGN(const std::unique_ptr<HloModule> module,
+                          BuildHloModule(b));
+  EXPECT_THAT(GetRoot(*module),
+              GmockMatch(m::Op().WithShapeEqualTo(&expected)));
+}
+
 TEST(XlaBuilderTest, UnboundedRngBitGenerator) {
   XlaBuilder b(TestName());
   TF_ASSERT_OK_AND_ASSIGN(const Shape initial_state, ParseShape("u32[?, 10]"));
