@@ -23,7 +23,9 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/btree_map.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
@@ -46,6 +48,7 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/tests/test_utils.h"
 #include "xla/tools/hlo_control_flow_flattening.h"
+#include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
@@ -829,6 +832,97 @@ FunctionalHloRunner::Run(PjRtClient& client, PjRtLoadedExecutable* executable,
 }
 
 namespace {
+absl::StatusOr<bool> ArgumentsAreTupled(
+    const FunctionalHloRunner::LiteralVec& argument_literals,
+    const FunctionalHloRunner::PerDeviceIndexVecType& argument_indices) {
+  bool first_device_arguments_are_tupled = true;
+  if (argument_indices.begin()->second.size() != 1) {
+    first_device_arguments_are_tupled = false;
+  } else {
+    int first_device_argument_index = argument_indices.begin()->second.front();
+    first_device_arguments_are_tupled &=
+        argument_literals[first_device_argument_index].shape().IsTuple();
+  }
+  for (const auto& device_id_and_argument_indices : argument_indices) {
+    const std::vector<int>& device_argument_indices =
+        device_id_and_argument_indices.second;
+    bool device_arguments_are_tupled = true;
+    if (device_argument_indices.size() != 1) {
+      device_arguments_are_tupled = false;
+    } else {
+      device_arguments_are_tupled &=
+          argument_literals[device_argument_indices.front()].shape().IsTuple();
+    }
+    if (first_device_arguments_are_tupled != device_arguments_are_tupled) {
+      return InvalidArgument(
+          "All device arguments must be uniformly tupled or flattened.");
+    }
+  }
+  return first_device_arguments_are_tupled;
+}
+}  // namespace
+
+absl::StatusOr<FunctionalHloRunner::PerDeviceLiteralVecType>
+FunctionalHloRunner::Run(PjRtClient& client, PjRtLoadedExecutable* executable,
+                         const LiteralVec& argument_literals,
+                         const PerDeviceIndexVecType& argument_indices,
+                         const RunningOptions& running_options) {
+  CHECK(!argument_literals.empty());
+  CHECK(!argument_indices.empty());
+  auto create_argument_buffers_on_device =
+      [&client, &executable, &argument_literals, &argument_indices,
+       &running_options](bool flatten_tupled_arguments)
+      -> absl::StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>> {
+    bool arguments_are_tupled = false;
+    if (flatten_tupled_arguments) {
+      TF_ASSIGN_OR_RETURN(
+          arguments_are_tupled,
+          ArgumentsAreTupled(argument_literals, argument_indices));
+    }
+
+    // If the per-device argument is not a single tuple, we ignore the
+    // flatten_tupled_arguments parameter and assume the provided arguments have
+    // already been flattened.
+    if (!flatten_tupled_arguments || !arguments_are_tupled) {
+      return CopyArgumentsToDevice(client, executable->addressable_devices(),
+                                   argument_literals, argument_indices,
+                                   running_options.log_input_output());
+    }
+    absl::flat_hash_map<int, std::pair<int, int>>
+        index_to_flattened_start_and_end;
+    LiteralVec flattened_arguments;
+    PerDeviceIndexVecType flattened_argument_indices;
+    int start_index = 0, end_index = 0;
+    for (const auto& device_id_and_argument_indices : argument_indices) {
+      const std::vector<int>& device_argument_indices =
+          device_id_and_argument_indices.second;
+      int device_id = device_id_and_argument_indices.first;
+      auto index_iter = index_to_flattened_start_and_end.find(device_id);
+      if (index_iter == index_to_flattened_start_and_end.end()) {
+        int index = device_argument_indices.front();
+        Literal tupled_argument = argument_literals[index].Clone();
+        LiteralVec flattened_argument = tupled_argument.DecomposeTuple();
+        start_index = flattened_arguments.size();
+        for (int i = 0; i < flattened_argument.size(); i++) {
+          flattened_arguments.push_back(std::move(flattened_argument[i]));
+        }
+        end_index = flattened_arguments.size();
+        auto [iter, inserted] = index_to_flattened_start_and_end.insert(
+            {device_id, std::make_pair(start_index, end_index)});
+        index_iter = iter;
+      }
+      std::vector<int> argument_indices(end_index - start_index + 1);
+      absl::c_iota(argument_indices, start_index);
+      flattened_argument_indices.insert({device_id, argument_indices});
+    }
+    return CopyArgumentsToDevice(
+        client, executable->addressable_devices(), flattened_arguments,
+        flattened_argument_indices, running_options.log_input_output());
+  };
+  return RunInternal(client, executable, create_argument_buffers_on_device,
+                     running_options);
+}
+namespace {
 
 std::vector<std::vector<PjRtBuffer*>> CreateArgumentPointersFromDeviceBuffers(
     absl::Span<const std::vector<std::unique_ptr<PjRtBuffer>>> device_buffers) {
@@ -921,6 +1015,9 @@ FunctionalHloRunner::RunInternal(
   ExecuteOptions execute_options;
   if (running_options.multi_slice_config != nullptr) {
     execute_options.multi_slice_config = running_options.multi_slice_config;
+  }
+  if (running_options.untuple_result.has_value()) {
+    execute_options.untuple_result = *running_options.untuple_result;
   }
   TF_ASSIGN_OR_RETURN(std::vector<std::shared_ptr<HloModule>> hlo_modules,
                       executable->GetHloModules());

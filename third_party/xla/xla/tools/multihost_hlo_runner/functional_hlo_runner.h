@@ -190,6 +190,7 @@ class FunctionalHloRunner {
     LogOutputMode log_input_output_mode = LogOutputMode::kNotLogOutput;
     const MultiSliceConfig* multi_slice_config = nullptr;
     ProfilerInterface* profiler = nullptr;
+    std::optional<bool> untuple_result = std::nullopt;
 
     // Should we log the inputs and outputs to stderr?
     bool log_input_output() const {
@@ -304,6 +305,11 @@ class FunctionalHloRunner {
   static absl::StatusOr<PerDeviceLiteralVecType> Run(
       PjRtClient& client, PjRtLoadedExecutable* executable,
       const PerDeviceLiteralVecType& arguments,
+      const RunningOptions& running_options);
+  static absl::StatusOr<PerDeviceLiteralVecType> Run(
+      PjRtClient& client, PjRtLoadedExecutable* executable,
+      const LiteralVec& argument_literals,
+      const PerDeviceIndexVecType& argument_indices,
       const RunningOptions& running_options);
 
   static absl::StatusOr<std::unique_ptr<HloModule>> ReadModuleFromHloTextFile(

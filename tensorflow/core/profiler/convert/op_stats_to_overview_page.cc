@@ -198,7 +198,7 @@ OverviewPageAnalysis ComputeAnalysisResult(const OpStats& op_stats) {
     device_cumulative_fraction += op->self_time_fraction();
     op->set_cumulative_time_fraction(device_cumulative_fraction);
     op->set_flop_rate(tsl::profiler::SafeDivide(
-        metrics->flops(), PicoToNano(metrics->time_ps())));
+        metrics->flops(), tsl::profiler::PicoToNano(metrics->time_ps())));
     auto iter = kernel_stats_by_op_name.find(op->name());
     if (iter != kernel_stats_by_op_name.end()) {
       op->set_is_op_tensorcore_eligible(
