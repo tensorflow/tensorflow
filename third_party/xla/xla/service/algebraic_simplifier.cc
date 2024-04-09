@@ -1186,7 +1186,6 @@ Status AlgebraicSimplifierVisitor::HandleBitcast(HloInstruction* bitcast) {
     VLOG(3) << bitcast->ToString() << " has control predecessors, skipping.";
     return OkStatus();
   }
-
   // If a bitcast feeds a bitcast, make it a single bitcast.
   // Make sure the whole chain of bitcasts is optimized.
   if (bitcast->operand(0)->opcode() == HloOpcode::kBitcast) {
@@ -1201,8 +1200,13 @@ Status AlgebraicSimplifierVisitor::HandleBitcast(HloInstruction* bitcast) {
     bitcast = new_bitcast_ptr;
   }
 
-  // All bitcasts can be eliminated (assuming layout constraints are satisfied).
   HloInstruction* new_bitcast = bitcast->mutable_operand(0);
+  // Below this point avoid bitcast optimizations with mismatched data types.
+  if (!ShapeUtil::SameElementType(bitcast->shape(), new_bitcast->shape())) {
+    return OkStatus();
+  }
+
+  // All bitcasts can be eliminated (assuming layout constraints are satisfied).
   if (ReplaceInstructionIfCompatible(bitcast, new_bitcast)) {
     bitcast = new_bitcast;
   }
