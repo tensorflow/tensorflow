@@ -507,14 +507,17 @@ cc_library(
         ":worker_env",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
-        "//tensorflow/core:graph",
+        "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/debug",
         "//tensorflow/core/profiler/lib:connected_traceme",
+        "//tensorflow/core/profiler/lib:context_types_hdrs",
+        "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/profiler/lib:traceme_encode",
         "//tensorflow/core/protobuf:worker_proto_cc",
+        "@com_google_absl//absl/status",
     ],
 )
 
