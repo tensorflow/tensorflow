@@ -2626,7 +2626,6 @@ absl::StatusOr<TritonWrapperResult> TritonWrapper(
   if (debug_options.xla_gpu_enable_triton_hopper()) {
     // Set environment variables for consumption by Triton.
     tsl::setenv("ENABLE_MMA_V3", "true", true /*overwrite*/);
-    tsl::setenv("ENABLE_PIPELINING", "true", true /*overwrite*/);
   }
 
   TF_ASSIGN_OR_RETURN(
