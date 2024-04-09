@@ -650,10 +650,10 @@ class ToSingleElementOp : public AsyncOpKernel {
 
  private:
   Status DoCompute(OpKernelContext* ctx) {
-    profiler::TraceMe traceme(
+    tsl::profiler::TraceMe traceme(
         [&] {
-          return profiler::TraceMeEncode("ToSingleElementOp::DoCompute",
-                                         {{"id", ctx->step_id()}});
+          return tsl::profiler::TraceMeEncode("ToSingleElementOp::DoCompute",
+                                              {{"id", ctx->step_id()}});
         },
         profiler::kInfo);
     tensorflow::ResourceTagger tag(kTFDataResourceTag,
@@ -893,13 +893,13 @@ AsyncOpKernel* IteratorGetNextOp::AsAsync() {
 }
 
 void RecordElementSize(const std::vector<Tensor> element,
-                       profiler::TraceMe* traceme) {
+                       tsl::profiler::TraceMe* traceme) {
   traceme->AppendMetadata([&]() {
     int64_t element_size = 0;
     for (const auto& component : element) {
       element_size += component.TotalBytes();
     }
-    return profiler::TraceMeEncode({{"element_size", element_size}});
+    return tsl::profiler::TraceMeEncode({{"element_size", element_size}});
   });
 }
 
@@ -913,9 +913,9 @@ Status IteratorGetNextOp::DoCompute(OpKernelContext* ctx) {
         ctx, "IteratorGetNextOp::DoCompute",
         activity_watcher::ActivityCategory::kDatasetOp);
   });
-  profiler::TraceMe traceme(
+  tsl::profiler::TraceMe traceme(
       [&] {
-        return profiler::TraceMeEncode(
+        return tsl::profiler::TraceMeEncode(
             "IteratorGetNextOp::DoCompute",
             {{"id", ctx->step_id()}, {"iter_num", ctx->frame_iter().iter_id}});
       },
@@ -968,9 +968,9 @@ Status IteratorGetNextAsOptionalOp::DoCompute(OpKernelContext* ctx) {
         ctx, "IteratorGetNextAsOptionalOp::DoCompute",
         activity_watcher::ActivityCategory::kDatasetOp);
   });
-  profiler::TraceMe traceme(
+  tsl::profiler::TraceMe traceme(
       [&] {
-        return profiler::TraceMeEncode(
+        return tsl::profiler::TraceMeEncode(
             "IteratorGetNextAsOptionalOp::DoCompute",
             {{"id", ctx->step_id()}, {"iter_num", ctx->frame_iter().iter_id}});
       },
