@@ -10,15 +10,6 @@ load(
     "rocm_copts",
 )
 load(
-    "@local_tsl//tsl:tsl.bzl",
-    "if_google",
-    "if_nccl",
-    "internal_visibility",
-    "tsl_copts",
-    "tsl_gpu_library",
-)
-load("@local_tsl//tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
-load(
     "@local_tsl//tsl/platform:build_config.bzl",
     "tf_proto_library",
 )
@@ -44,6 +35,15 @@ load(
     "if_gpu_is_configured",
 )
 load("//xla/tests:build_defs.bzl", "xla_test")
+load(
+    "//xla/tsl:tsl.bzl",
+    "if_google",
+    "if_nccl",
+    "internal_visibility",
+    "tsl_copts",
+    "tsl_gpu_library",
+)
+load("//xla/tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],

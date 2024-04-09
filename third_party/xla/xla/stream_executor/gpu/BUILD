@@ -11,13 +11,6 @@ load(
     "if_rocm_is_configured",
 )
 load(
-    "@local_tsl//tsl:tsl.bzl",
-    "if_libtpu",
-    "internal_visibility",
-    "tsl_copts",
-    "tsl_gpu_library",
-)
-load(
     "@local_tsl//tsl/platform:build_config_root.bzl",
     "if_static",
     "tf_gpu_tests_tags",
@@ -46,6 +39,13 @@ load(
 load(
     "//xla/tests:build_defs.bzl",
     "xla_test",
+)
+load(
+    "//xla/tsl:tsl.bzl",
+    "if_libtpu",
+    "internal_visibility",
+    "tsl_copts",
+    "tsl_gpu_library",
 )
 
 package(
@@ -238,7 +238,7 @@ tsl_gpu_library(
         "gpu_init.h",
     ],
     visibility = internal_visibility([
-        "@local_tsl//tsl:internal",
+        "//xla/tsl:internal",
     ]),
     deps = [
         "@com_google_absl//absl/status",

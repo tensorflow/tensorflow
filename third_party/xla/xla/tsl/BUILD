@@ -519,8 +519,11 @@ package_group(
         "//third_party/py/cloud_ml_autoflow/...",
         "//third_party/py/envlogger/...",
         "//third_party/yggdrasil_decision_forests/...",
-        "//tsl/...",
-    ],
+    ] + if_google([
+        # Needed in OSS, where bazel won't allow a package group to refer to an
+        # external repo.
+        "@local_tsl//tsl/...",
+    ]),
 )
 
 bzl_library(
@@ -529,13 +532,13 @@ bzl_library(
     visibility = ["//visibility:public"],
     deps = [
         "//third_party/compute_library:build_defs_bzl",
-        "//third_party/mkl_dnn:build_defs_bzl",
-        "//tsl/platform:rules_cc_bzl",
+        "//xla/tsl/mkl:build_defs_bzl",
         "@bazel_skylib//lib:new_sets",
         "@local_config_cuda//cuda:build_defs_bzl",
         "@local_config_rocm//rocm:build_defs_bzl",
         "@local_config_tensorrt//:build_defs_bzl",
-        "@local_xla//xla/tsl/mkl:build_defs_bzl",
+        "@local_tsl//third_party/mkl_dnn:build_defs_bzl",
+        "@local_tsl//tsl/platform:rules_cc_bzl",
     ],
 )
 

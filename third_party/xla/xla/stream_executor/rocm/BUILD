@@ -19,7 +19,7 @@ load(
     "if_rocm_is_configured",
     "rocm_library",
 )
-load("@local_tsl//tsl:tsl.bzl", "internal_visibility", "tsl_copts")
+load("//xla/tsl:tsl.bzl", "internal_visibility", "tsl_copts")
 load("@local_tsl//tsl/platform:build_config_root.bzl", "if_static")
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 

@@ -6,12 +6,12 @@ load(
     "@local_tsl//tsl/platform:rules_cc.bzl",
     "cc_library",
 )
-load("//tsl:tsl.bzl", "internal_visibility")
+load("@local_xla//xla/tsl:tsl.bzl", "internal_visibility")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = internal_visibility([
-        "//tsl:internal",
+        "@local_xla//xla/tsl:internal",
     ]),
     licenses = ["notice"],
 )

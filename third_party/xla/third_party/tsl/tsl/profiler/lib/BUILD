@@ -1,6 +1,6 @@
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
-load("//tsl:tsl.bzl", "if_not_android", "internal_visibility", "nvtx_headers")
-load("//tsl:tsl.default.bzl", "filegroup")
+load("@local_xla//xla/tsl:tsl.bzl", "if_not_android", "internal_visibility", "nvtx_headers")
+load("@local_xla//xla/tsl:tsl.default.bzl", "filegroup")
 load("//tsl/platform:build_config.bzl", "tsl_cc_test")
 load("//tsl/platform:build_config_root.bzl", "if_static")
 load(
@@ -126,7 +126,7 @@ cc_library(
     hdrs = ["profiler_interface.h"],
     copts = tf_profiler_copts(),
     visibility = internal_visibility([
-        "//tsl:internal",
+        "@local_xla//xla/tsl:internal",
         "//tsl/profiler:internal",
         "//tsl/profiler:xla_profiler_backends",
     ]),
@@ -168,7 +168,7 @@ tsl_cc_test(
 cc_library(
     name = "profiler_session",
     hdrs = ["profiler_session.h"],
-    visibility = internal_visibility(["//tsl:internal"]),
+    visibility = internal_visibility(["@local_xla//xla/tsl:internal"]),
     deps = [
         "//tsl/platform",
         "//tsl/platform:errors",
