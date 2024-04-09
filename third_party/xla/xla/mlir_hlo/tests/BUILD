@@ -26,7 +26,9 @@ package(
         tags = [
             "nomsan",  # The execution engine doesn't work with msan, see b/248097619.
         ],
-        deps = ["@pypi_lit//:pkg"],
+        #Build failing due to the double deps definition. Should be resolved by next weekly thanks to 
+        #https://github.com/llvm/llvm-project/commit/dd5797505ebc2dbfdd58927c4f0a11a1256696eb
+        #deps = ["@pypi_lit//:pkg"],
     )
     for src in glob(["**/*.mlir"])
 ]
