@@ -895,7 +895,7 @@ xla_cc_test(
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_main",
     ] + if_cuda_is_configured([
-        "//xla/stream_executor/gpu:asm_compiler",
+        "//xla/stream_executor/cuda:cuda_asm_compiler",
         "//xla/service/gpu:gpu_asm_opts_util",
         "//xla/stream_executor",
         "//xla/service/gpu:stream_executor_util",

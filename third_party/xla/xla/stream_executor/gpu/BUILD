@@ -406,55 +406,13 @@ cc_library(
 )
 
 gpu_only_cc_library(
-    name = "asm_compiler_header",
-    hdrs = ["asm_compiler.h"],
-    copts = tsl_copts(),
-    visibility = internal_visibility([
-        "//tensorflow/compiler/mlir/tools/kernel_gen:__subpackages__",
-        "//xla/service/gpu:__subpackages__",
-        "//xla/stream_executor:__subpackages__",
-        "//tensorflow/core/kernels:__subpackages__",
-    ]),
-    deps = [
-        ":gpu_asm_opts",
-        ":gpu_driver_header",
-        ":gpu_helpers_header",
-        "//xla/stream_executor",
-        "//xla/stream_executor/platform",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/cleanup",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/container:node_hash_map",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/types:span",
-        "@local_config_cuda//cuda:cuda_headers",
-        "@local_tsl//tsl/platform:cuda_libdevice_path",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:mutex",
-        "@local_tsl//tsl/platform:path",
-        "@local_tsl//tsl/platform:regexp",
-        "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/platform:subprocess",
-    ] + if_cuda_is_configured([
-        "//xla/stream_executor/cuda:cuda_driver",
-    ]) + if_rocm_is_configured([
-        "//xla/stream_executor/rocm:rocm_driver",
-    ]),
-)
-
-gpu_only_cc_library(
     name = "asm_compiler",
     srcs = ["asm_compiler.cc"],
     hdrs = ["asm_compiler.h"],
     copts = tsl_copts(),
     visibility = internal_visibility([
+        # TODO(hebecker): Remove this once triton_kernels from jaxlib has been updated
         "//third_party/py/jax:__subpackages__",
-        "//tensorflow/compiler/mlir/tools/kernel_gen:__subpackages__",
         "//xla/service/gpu:__subpackages__",
         "//xla/stream_executor:__subpackages__",
         "//tensorflow/core/kernels:__subpackages__",
@@ -495,11 +453,9 @@ gpu_only_cc_library(
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:subprocess",
     ] + if_cuda_is_configured([
-        "//xla/stream_executor/cuda:cuda_asm_compiler_legacy",
+        # TODO(hebecker): Remove this dependency once triton_kernels from jaxlib does not depend on it anymore.
+        "//xla/stream_executor/cuda:cuda_asm_compiler",
         "//xla/stream_executor/cuda:cuda_driver",
-        "//xla/stream_executor/cuda:ptxas_wrapper",
-        "//xla/stream_executor/cuda:nvlink_wrapper",
-        "//xla/stream_executor/cuda:fatbinary_wrapper",
     ]) + if_rocm_is_configured([
         "//xla/stream_executor/rocm:rocm_driver",
     ]),
@@ -563,6 +519,8 @@ gpu_only_cc_library(
         "@local_tsl//tsl/platform:statusor",
     ] + if_rocm_is_configured([
         ":redzone_allocator_kernel",
+    ]) + if_cuda_is_configured([
+        "//xla/stream_executor/cuda:cuda_asm_compiler",
     ]),
 )
 
