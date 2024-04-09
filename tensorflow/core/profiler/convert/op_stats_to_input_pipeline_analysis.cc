@@ -222,7 +222,8 @@ InputPipelineAnalysisResult ComputeGenericInputPipelineAnalysisResult(
     } else {
       details.set_step_name(step_info.step_name());
     }
-    details.set_step_time_ms(PicoToMilli(step_info.duration_ps()));
+    details.set_step_time_ms(
+        tsl::profiler::PicoToMilli(step_info.duration_ps()));
     GenericStepBreakdown generic;
     bool success = step_info.step_breakdown().UnpackTo(&generic);
     if (!success && !step_info.step_breakdown().type_url().empty()) {
@@ -247,9 +248,9 @@ InputPipelineAnalysisResult ComputeGenericInputPipelineAnalysisResult(
     result.add_step_details()->PackFrom(details);
 
     const double input_percent_of_step_time =
-        100.0 *
-        SafeDivide(details.host_wait_input_ms() + details.host_to_device_ms(),
-                   details.step_time_ms());
+        100.0 * tsl::profiler::SafeDivide(
+                    details.host_wait_input_ms() + details.host_to_device_ms(),
+                    details.step_time_ms());
     input_summary_stats_in_percent.UpdateStat(input_percent_of_step_time);
   }
 
@@ -350,12 +351,15 @@ InputOpDetails ConvertOpMetricsToInputOpDetails(const OpMetrics& op_metrics,
   InputOpDetails details;
   details.set_op_name(op_metrics.name());
   details.set_count(op_metrics.occurrences());
-  details.set_time_in_ms(PicoToMilli(op_metrics.time_ps()));
-  details.set_self_time_in_ms(PicoToMilli(op_metrics.self_time_ps()));
+  details.set_time_in_ms(tsl::profiler::PicoToMilli(op_metrics.time_ps()));
+  details.set_self_time_in_ms(
+      tsl::profiler::PicoToMilli(op_metrics.self_time_ps()));
   details.set_time_in_percent(
-      100.0 * SafeDivide(op_metrics.time_ps(), input_op_time_ps));
+      100.0 *
+      tsl::profiler::SafeDivide(op_metrics.time_ps(), input_op_time_ps));
   details.set_self_time_in_percent(
-      100.0 * SafeDivide(op_metrics.self_time_ps(), input_op_time_ps));
+      100.0 *
+      tsl::profiler::SafeDivide(op_metrics.self_time_ps(), input_op_time_ps));
   details.set_category(InputOpCategoryString(category));
   return details;
 }
@@ -380,7 +384,8 @@ double RatioOfHostToDeviceTimeToStepTime(
             &generic_breakdown)) {
       double avg_host_to_device_time_ms =
           generic_breakdown.host_to_device_ms_summary().average();
-      return SafeDivide(avg_host_to_device_time_ms, avg_step_time_ms);
+      return tsl::profiler::SafeDivide(avg_host_to_device_time_ms,
+                                       avg_step_time_ms);
     }
   }
   return 0.0;
@@ -493,7 +498,7 @@ void GenerateHostResult(const OpMetricsDb& host_tf_metrics_db,
     *result->add_input_op_details() = ConvertOpMetricsToInputOpDetails(
         *op_metrics, input_op_metrics.input_op_time_ps, category);
     aggregated_input_op_times_us[category] +=
-        PicoToMicro(op_metrics->self_time_ps());
+        tsl::profiler::PicoToMicro(op_metrics->self_time_ps());
   }
 
   double enqueue_time_us =
@@ -511,15 +516,15 @@ void GenerateHostResult(const OpMetricsDb& host_tf_metrics_db,
                                    : total_input_op_time_us;
 
   // Scales the various input-time components wrt to non_enqueue_time_us.
-  double scaled_demanded_fileread_time_us = SafeDivide(
+  double scaled_demanded_fileread_time_us = tsl::profiler::SafeDivide(
       non_enqueue_time_us *
           aggregated_input_op_times_us[InputOpCategory::kDemandedFileRead],
       total_input_op_time_us);
-  double scaled_advanced_fileread_time_us = SafeDivide(
+  double scaled_advanced_fileread_time_us = tsl::profiler::SafeDivide(
       non_enqueue_time_us *
           aggregated_input_op_times_us[InputOpCategory::kAdvancedFileRead],
       total_input_op_time_us);
-  double scaled_preprocessing_time_us = SafeDivide(
+  double scaled_preprocessing_time_us = tsl::profiler::SafeDivide(
       non_enqueue_time_us *
           aggregated_input_op_times_us[InputOpCategory::kPreprocessing],
       total_input_op_time_us);
@@ -833,7 +838,8 @@ double HostToDeviceTransferAsPercentOfInputTime(
       breakdown.demanded_file_read_us() + breakdown.advanced_file_read_us() +
       breakdown.preprocessing_us() + breakdown.enqueue_us() +
       breakdown.unclassified_non_enqueue_us();
-  return 100.0 * SafeDivide(breakdown.enqueue_us(), total_input_time_us);
+  return 100.0 *
+         tsl::profiler::SafeDivide(breakdown.enqueue_us(), total_input_time_us);
 }
 
 }  // namespace profiler

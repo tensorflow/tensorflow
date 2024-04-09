@@ -63,10 +63,10 @@ void BuildOpProfileNodeTree(const OpStats& op_stats, bool group_by_program,
 
   const auto& perf_env = op_stats.perf_env();
   double max_gigaflops_per_second_per_core =
-      TeraToGiga(perf_env.peak_tera_flops_per_second());
+      tsl::profiler::TeraToGiga(perf_env.peak_tera_flops_per_second());
   std::vector<double> peak_bws;
   for (auto bw : perf_env.peak_bws_giga_bytes_per_second()) {
-    peak_bws.push_back(GigaToGibi(bw));
+    peak_bws.push_back(tsl::profiler::GigaToGibi(bw));
   }
   builder.Finalize(max_gigaflops_per_second_per_core, peak_bws,
                    TotalTimePs(metrics_db, exclude_idle_ops));
