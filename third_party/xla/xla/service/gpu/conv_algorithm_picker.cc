@@ -64,6 +64,7 @@ limitations under the License.
 #include "xla/stream_executor/scratch_allocator.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/util/env_var.h"
 #include "xla/tsl/util/proto/proto_utils.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -99,9 +100,16 @@ class ScratchAllocator : public se::ScratchAllocator {
       : device_ordinal_(device_ordinal), memory_allocator_(memory_allocator) {}
 
   int64_t GetMemoryLimitInBytes() override {
-    return 1LL << 32;  // 4GB.  TODO(jlebar): Tune this?
+    return ScratchAllocator::GetDefaultMemoryLimitInBytes();
   }
   int64_t TotalAllocatedBytes() { return total_allocated_bytes_; }
+
+  static int64_t GetDefaultMemoryLimitInBytes() {
+    int64_t value;
+    TF_CHECK_OK(tsl::ReadInt64FromEnvVar("TF_CUDNN_WORKSPACE_LIMIT_IN_MB",
+                                         1LL << 12, &value));
+    return value * (1LL << 20);
+  }
 
   absl::StatusOr<se::DeviceMemory<uint8_t>> AllocateBytes(
       int64_t byte_size) override;
