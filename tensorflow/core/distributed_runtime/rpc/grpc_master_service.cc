@@ -291,7 +291,7 @@ class GrpcMasterService : public tsl::AsyncServiceInterface {
 #undef ENQUEUE_REQUEST
 
   // Start tracing, including the ID attached to the RPC.
-  profiler::TraceMe* TraceRpc(
+  tsl::profiler::TraceMe* TraceRpc(
       StringPiece name,
       const std::multimap<::grpc::string_ref, ::grpc::string_ref>& metadata) {
     StringPiece id;
@@ -299,8 +299,9 @@ class GrpcMasterService : public tsl::AsyncServiceInterface {
     if (it != metadata.end()) {
       id = StringPiece(it->second.data(), it->second.size());
     }
-    return new profiler::TraceMe([&] { return strings::StrCat(name, ":", id); },
-                                 profiler::TraceMeLevel::kInfo);
+    return new tsl::profiler::TraceMe(
+        [&] { return strings::StrCat(name, ":", id); },
+        tsl::profiler::TraceMeLevel::kInfo);
   }
 
   GrpcMasterService(const GrpcMasterService&) = delete;
