@@ -770,7 +770,10 @@ tensorflow::Status SavedModelImpl::Run(
         /*visited_feed_tensor_names=*/nullptr, input_tensors,
         output_tensor_names));
 
-    return graph_executor_->Run(run_options, input_tensors, output_tensor_names,
+    auto run_opt = run_options;
+    run_opt.name = name;
+
+    return graph_executor_->Run(run_opt, input_tensors, output_tensor_names,
                                 /*target_tensor_names=*/{}, outputs);
   }
 

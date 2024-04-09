@@ -1178,7 +1178,7 @@ TEST(SavedModelTest, CustomCompiler) {
   tfrt::SavedModel::RunOptions run_options;
   TF_ASSERT_OK(saved_model->Run(run_options, "toy", inputs, &outputs));
 
-  EXPECT_EQ(test_context.signature_name, "input1:0^result1:0^");
+  EXPECT_EQ(test_context.signature_name, "toy");
 }
 
 }  // namespace
