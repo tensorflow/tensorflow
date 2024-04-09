@@ -437,14 +437,14 @@ void GraphMgr::ExecuteAsync(
     tsl::CoordinationServiceAgent* coordination_service_agent,
     StatusCallback done) {
   const uint64 start_time_usecs = Env::Default()->NowMicros();
-  profiler::TraceMeProducer activity(
+  tsl::profiler::TraceMeProducer activity(
       // To TraceMeConsumers in ExecutorState::Process/Finish or RunGraphDone.
       [step_id] {
-        return profiler::TraceMeEncode(
+        return tsl::profiler::TraceMeEncode(
             "RunGraph", {{"id", step_id}, {"_r", 1} /*root_event*/});
       },
-      profiler::ContextType::kTfExecutor, step_id,
-      profiler::TraceMeLevel::kInfo);
+      tsl::profiler::ContextType::kTfExecutor, step_id,
+      tsl::profiler::TraceMeLevel::kInfo);
   // Lookup an item. Holds one ref while executing.
   Item* item = nullptr;
   {
@@ -511,13 +511,14 @@ void GraphMgr::ExecuteAsync(
       coordination_service_agent,
       [item, rendezvous, ce_handle, done, start_time_usecs, input_size,
        step_id](const Status& s) {
-        profiler::TraceMeConsumer activity(
+        tsl::profiler::TraceMeConsumer activity(
             // From TraceMeProducer in GraphMgr::ExecuteAsync.
             [step_id] {
-              return profiler::TraceMeEncode("RunGraphDone", {{"id", step_id}});
+              return tsl::profiler::TraceMeEncode("RunGraphDone",
+                                                  {{"id", step_id}});
             },
-            profiler::ContextType::kTfExecutor, step_id,
-            profiler::TraceMeLevel::kInfo);
+            tsl::profiler::ContextType::kTfExecutor, step_id,
+            tsl::profiler::TraceMeLevel::kInfo);
         done(s);
         metrics::RecordGraphInputTensors(input_size);
         metrics::UpdateGraphExecTime(Env::Default()->NowMicros() -

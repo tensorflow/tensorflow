@@ -167,9 +167,6 @@ static auto& kUnsupportedOps =
                                         HloOpcode::kStochasticConvert,
                                         HloOpcode::kCall};
 
-static auto& kUnimplementedOps =
-    *new absl::flat_hash_set<HloOpcode>{HloOpcode::kMap};
-
 bool IsUnsupportedConstant(const HloInstruction* instr) {
   return instr->opcode() == HloOpcode::kConstant &&
          (!ShapeUtil::IsEffectiveScalar(instr->shape()) ||
@@ -762,7 +759,6 @@ absl::StatusOr<SmallVector<Value>> HloToMlir(
     const CallTargetProvider& call_target_provider,
     ImplicitLocOpBuilder& builder) {
   CHECK(!kUnsupportedOps.contains(instr->opcode())) << instr->ToShortString();
-  CHECK(!kUnimplementedOps.contains(instr->opcode())) << instr->ToShortString();
 
   auto element_type = instr->shape().element_type();
   mlir::Type element_mlir_type;
@@ -953,6 +949,11 @@ absl::StatusOr<SmallVector<Value>> HloToMlir(
       return MapElementwiseOp<mhlo::Log1pOp>(arg_types, operands, builder);
     case HloOpcode::kLogistic:
       return MapElementwiseOp<mhlo::LogisticOp>(arg_types, operands, builder);
+    case HloOpcode::kMap: {
+      auto mapper = call_target_provider(
+          instr->called_computations().front()->root_instruction());
+      return builder.create<PureCallOp>(mapper, operands).getResults();
+    }
     case HloOpcode::kMaximum:
       return MapElementwiseOp<mhlo::MaxOp>(arg_types, operands, builder);
     case HloOpcode::kMinimum:
@@ -1061,7 +1062,6 @@ bool IsHloOpSupported(const HloInstruction* instr,
   }
 
   return !(kUnsupportedOps.contains(instr->opcode()) ||
-           kUnimplementedOps.contains(instr->opcode()) ||
            IsUnsupportedConstant(instr) || IsUnsupportedTuple(instr) ||
            IsUnsupportedGather(instr));
 }
