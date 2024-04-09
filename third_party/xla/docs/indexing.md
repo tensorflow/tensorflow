@@ -14,8 +14,8 @@ p0 = f32[20] parameter(0)
 bc0 = f32[10, 20, 30] broadcast(p0), dimensions={1}
 ```
 
-the indexing map from the output to input is $(i, j, k) \mapsto (j)$ for $i \in
-[0, 10]$, $j \in [0, 20]$ and $k \in [0, 30]$.
+the indexing map from the output to input is `(i, j, k) -> (j)` for `i in
+[0, 10]`, `j in [0, 20]` and `k in [0, 30]`.
 
 ## Motivation
 
@@ -49,33 +49,32 @@ robust if it is expressed via indexing maps.
 
 ## Function and Domain
 
-The indexing map is a function $\boldsymbol{f}(\boldsymbol{d}, \boldsymbol{s})$
-that maps a multi-index $\boldsymbol{d}$ of a tensor $A$ to elements/ranges of
-tensor $B$. The parameter $\boldsymbol{s}$ refers to the ranges of indices of
-the dimensions that are present in tensor $B$, but not in tensor $A$​.
+The indexing map is a function **f**(**d**, **s**)
+that maps a multi-index **d** of a tensor `A` to elements/ranges of
+tensor `B`. The parameter **s** refers to the ranges of indices of
+the dimensions that are present in tensor `B`, but not in tensor `A`​.
 
 For example, if we have a reduction from `tensor<2x4x8x16xf32>` to
 `tensor<4x8xf32>`, then the indexing map from the 2D output to the 4D input is
-$(d_0, d_1) \mapsto (s_0, d_0, d_1, s_1)$, where $d_i$ are the dimension
-parameters that correspond to the indices of the output tensor. Parameters $s_j$
-encode multiple values, i.e. to compute a $(d_0, d_1)$ element of the output, we
-need $(s_0, d_0, d_1, s_1)$ elements of the input, where $s_0 \in [0, 2)$ and
-$s_1 \in [0, 16)$.
+`(d0, d1) -> (s0, d0, d1, s1)`, where `d_i` are the dimension
+parameters that correspond to the indices of the output tensor. Parameters `s_j`
+encode multiple values, i.e. to compute a `(d0, d1)` element of the output, we
+need `(s0, d0, d1, s1)` elements of the input, where `s0 in [0, 2)` and
+`s1 in [0, 16)`.
 
 This mapping can be constructed from the attributes of HLO instructions or the
 mappings of unfused instructions can be composed to get indexing for a fusion.
 The mapping also has a domain, which specifies for what elements of the tensor
 the mapping exists.
 
-$$
-\begin{eqnarray}
-\boldsymbol{f}(\boldsymbol{d}, \boldsymbol{s})\; &s.t.& \\
-\boldsymbol{lb}_d &\leq& \boldsymbol{d} \leq \boldsymbol{ub}_d \\
-\boldsymbol{lb}_s &\leq& \boldsymbol{s} \leq \boldsymbol{ub}_s \\
-\boldsymbol{lb}_g &\leq& \boldsymbol{g}(\boldsymbol{d},
-  \boldsymbol{s}) \leq \boldsymbol{ub}_g
-\end{eqnarray}
-$$
+**f**(**d**, **s**) s.t.
+
+**lb**_d <= **d** <= **ub**_d
+
+**lb**_s <= **s** <= **ub**_s
+
+**lb**_g <= **g** <= **ub**_g
+
 
 Since we want to minimize recomputation, we need a library for symbolic
 computations. XLA already depends on MLIR, so we use
@@ -89,7 +88,7 @@ A typical `AffineMap` looks like
 ```
 
 `AffineMap` conveniently has two types of parameters: *dimensions* and *symbols*
-that we can use for $\boldsymbol d$ and $\boldsymbol s$ respectively.
+that we can use for **d** and **s** respectively.
 `AffineMap` does not contain any metadata about ranges of the dimensions, so we
 have to provide this data ourselves.
 
@@ -109,13 +108,12 @@ struct IndexingMap {
 ```
 
 `dim_ranges` encodes the **inclusive** box constraints for the dimension
-parameters $\boldsymbol{d}$ of the indexing map, which usually coincide with the
+parameters **d** of the indexing map, which usually coincide with the
 shape of the output tensor for ops like transpose, reduce, elementwise, dot, but
 there are some exceptions like
 [HloConcatenateInstruction](https://github.com/openxla/stablehlo/blob/main/docs/spec.md#concatenate).
 
-`symbol_ranges` encode possible values that $\boldsymbol {s}$ parameters can
-take.
+`symbol_ranges` encode possible values that **s** parameters can take.
 
 Let's study-by-example to understand what's all of the above actually means.
 
@@ -133,15 +131,25 @@ For elementwise ops the indexing map is an identity.
 
 The output to input maps:
 
--   output -> input_0: $(d_0, d_1) \mapsto (d_0, d_1)$ for $\boldsymbol{d} \in
-    [0,9] \times [0, 19]$, i.e. $\boldsymbol{d} \in {\rm Dom}(output)$
--   output -> input_1: $(d_0, d_1) \mapsto (d_0, d_1)$ for $\boldsymbol{d} \in
-    {\rm Dom} (output)$
+-   output -> input_i:
+
+```
+(d0, d1) -> (d0, d1)
+domain:
+d0 in [0, 19]
+d1 in [0, 19]
+```
 
 The input to output maps
 
--   input_i -> output: $(d_0, d_1) \mapsto (d_0, d_1)$ for $\boldsymbol{d} \in
-    {\rm Dom}(input)$
+-   input_i -> output:
+
+```
+(d0, d1) -> (d0, d1)
+domain:
+d0 in [0, 19]
+d1 in [0, 19]
+```
 
 ### [Broadcast](https://openxla.org/xla/operation_semantics#broadcastindim)
 
@@ -155,17 +163,27 @@ bc0 = f32[10, 20, 30] broadcast(p0), dimensions={1}
 
 The output to input map:
 
--   output -> input: $(d_0, d_1, d_2) \mapsto (d_1)$ for $\boldsymbol{d} \in
-    {\rm Dom}(output)$
+```
+(d0, d1, d2) -> (d1)
+domain:
+d0 in [0, 9]
+d1 in [0, 19]
+d2 in [0, 29]
+```
 
 The input to output map
 
--   input -> output: $(d_0) \mapsto (s_0, d_0, s_1)$ for $\boldsymbol{d} \in
-    {\rm Dom}(input)$ and $\boldsymbol{s} \in [0, 9] \times [0, 29]$.
+```
+(d0)[s0, s1] -> (s0, d0, s1)
+domain:
+d0 in [0, 19]
+s0 in [0, 9]
+s1 in [0, 29]
+```
 
-Note that now we have $\boldsymbol s$ on the right side for the input-to-output
+Note that now we have **s** on the right side for the input-to-output
 mapping. Those are the symbols that represent ranges of values. For example, in
-this particular case every element of input with index $d_0$ is mapped to a
+this particular case every element of input with index `d0` is mapped to a
 10x1x30 slice of the output.
 
 ### Constant and [Iota](https://openxla.org/xla/operation_semantics#iota)
@@ -184,18 +202,30 @@ transpose = f32[3, 6, 128, 12288] transpose(p0), dimensions={0, 2, 3, 1}
 
 The output to input map:
 
--   output -> input: $(d_0, d_1, d_2, d_3) \mapsto (d_0, d_3, d_1, d_2)$ for
-    $\boldsymbol{d} \in {\rm Dom}(output)$
+```
+(d0, d1, d2, d3) -> (d0, d3, d1, d2)
+domain:
+d0 in [0, 2]
+d1 in [0, 5]
+d2 in [0, 127]
+d3 in [0, 12287]
+```
 
 The input to output map:
 
--   input -> output: $(d_0, d_1, d_2, d_3) \mapsto (d_0, d_2, d_3, d_1)$ for
-    $\boldsymbol{d} \in {\rm Dom}(input)$
+```
+(d0, d1, d2, d3) -> (d0, d2, d3, d1)
+domain:
+d0 in [0, 2]
+d1 in [0, 12287]
+d2 in [0, 5]
+d3 in [0, 127]
+```
 
 ### [Reverse](https://openxla.org/xla/operation_semantics#rev_reverse)
 
-Indexing map for reverse changes the reverted dimensions to $upper\_bound(d_i) -
-d_i$:
+Indexing map for reverse changes the reverted dimensions to `upper_bound(d_i) -
+d_i`:
 
 ```c+
 p0 = f32[1, 17, 9, 9] parameter(0)
@@ -204,13 +234,25 @@ reverse = f32[1, 17, 9, 9] reverse(p0), dimensions={1, 2}
 
 The output to input map:
 
--   output -> input: $(d_0, d_1, d_2, d_3) \mapsto (d_0, -d_1 + 16, -d_2 + 8,
-    d_3)$ for $\boldsymbol{d} \in {\rm Dom}(output)$
+```
+(d0, d1, d2, d3) -> (d0, -d1 + 16, -d2 + 8, d3)
+domain:
+d0 in [0, 0]
+d1 in [0, 16]
+d2 in [0, 8]
+d3 in [0, 8]
+```
 
 The input to output map:
 
--   input -> output: $(d_0, d_1, d_2, d_3) \mapsto (d_0, -d_1 + 16, -d_2 + 8,
-    d_3)$ for $\boldsymbol{d} \in {\rm Dom}(input)$
+```
+(d0, d1, d2, d3) -> (d0, -d1 + 16, -d2 + 8, d3)
+domain:
+d0 in [0, 0]
+d1 in [0, 16]
+d2 in [0, 8]
+d3 in [0, 8]
+```
 
 ### **[(Variadic)Reduce](https://openxla.org/xla/operation_semantics#reduce)**
 
@@ -229,18 +271,43 @@ reduce = (f32[10], s32[10]) reduce(p0, p1, p0_init, p1_init),
 
 The output to input maps:
 
--   output -> input_j: $(d_0) \mapsto (s_0, d_0)$ for $\boldsymbol{d} \in {\rm
-    Dom}(output)$ and $\boldsymbol{s} \in [0, 9]$
--   output -> init_j: $(d_0) \mapsto ()$ for $\boldsymbol{d} \in {\rm
-    Dom}(output)$
+-   output -> input_j:
+
+```
+(d0)[s0] -> (s0, d0)
+domain:
+d0 in [0, 9]
+s0 in [0, 255]
+```
+
+-   output -> init_j:
+
+```
+(d0) -> ()
+domain:
+d0 in [0, 9]
+```
 
 The input to output maps:
 
--   input_i -> output_j: $(d_0, d_1) \mapsto (d_1)$ for $\boldsymbol{d} \in {\rm
-    Dom}(input)$
--   init_i -> output_j: $() \mapsto (s_0)$ for $\boldsymbol{s} \in [0, 9]$
+-   input_i -> output_j:
 
-for $i, j = 0, \ldots, INPUT\\_COUNT$.
+```
+(d0, d1) -> (d1)
+domain:
+d0 in [0, 255]
+d1 in [0, 9]
+```
+
+-   init_i -> output_j:
+
+```
+()[s0] -> (s0)
+domain:
+s0 in [0, 9]
+```
+
+for i, j = 0, ... INPUT_COUNT.
 
 ### [Slice](https://openxla.org/xla/operation_semantics#slice)
 
@@ -256,14 +323,15 @@ slice = f32[5, 3, 25] slice(f32[10, 20, 50] p0),
 
 The output to input map:
 
--   output -> input: $(d_0, d_1, d_2) \mapsto (d_0 + 5, 7d_1 + 3, 2d_2)$ for
-    $\boldsymbol{d} \in {\rm Dom}(output)$
+```
+(d0, d1, d2) -> (d0 + 5, d1 * 7 + 3, d2 * 2)
+domain:
+d0 in [0, 4]
+d1 in [0, 2]
+d2 in [0, 24]
+```
 
 The input to output map:
-
--   input -> output: $(d_0, d_1, d_2) \mapsto (d_0, d_1 / 7, d_2 / 2)$ for
-    $\boldsymbol{d} \in [5, 9] \times [3, 19] \times [0, 49]$ with strides $[1,
-    7, 2]$​.
 
 **TBD**: input-to-output indexing
 
@@ -282,13 +350,20 @@ reshape = f32[32] reshape(p0)
 
 The output to input map:
 
--   output -> input: $(d_0) \mapsto (d_0 / 8, d_0 \mod 8)$ for $\boldsymbol{d}
-    \in {\rm Dom}(output)$
+```
+(d0) -> (d0 floordiv 8, d0 mod 8)
+domain:
+d0 in [0, 31]
+```
 
 The input to output map:
 
--   input -> output: $(d_0, d_1) \mapsto (8 d_0 + d_1)$ for $\boldsymbol{d} \in
-    {\rm Dom}(input)$.
+```
+(d0) -> (d0 floordiv 8, d0 mod 8)
+domain:
+d0 in [0, 31]
+```
+
 
 #### Expand shape
 
@@ -301,13 +376,24 @@ reshape = f32[4, 8] reshape(p0)
 
 The output to input map:
 
--   output -> input: $(d_0, d_1) \mapsto (8 d_0 + d_1)$ for $\boldsymbol{d} \in
-    {\rm Dom}(output)$
+```
+(d0, d1, d2) -> (d0 floordiv 8, d0 mod 8, d1 * 4 + d2)
+domain:
+d0 in [0, 31]
+d1 in [0, 2]
+d2 in [0, 3]
+```
 
 The input to output map:
 
--   input -> output: $(d_0) \mapsto (d_0 / 8, d_0 \mod 8)$ for $\boldsymbol{d}
-    \in {\rm Dom}(input)$.
+```
+(d0, d1, d2) -> (d0 * 8 + d1, d2 floordiv 4, d2 mod 4)
+domain:
+d0 in [0, 3]
+d1 in [0, 7]
+d2 in [0, 11]
+```
+
 
 #### Generic reshape
 
@@ -328,17 +414,22 @@ This reshape can be represented as a composition of collapse shape of
 
 The output to input map:
 
--   output -> input: $(d_0, d_1, d_2) \mapsto (2d_0 + (4d_1 + d_2) / 8, 4d_1 +
-    d_2) \mod 8)$
-
-for $\boldsymbol{d} \in {\rm Dom}(output)$
+```
+(d0, d1, d2) -> (d0 * 2 + d1 floordiv 2, d2 + (d1 mod 2) * 4) 
+domain:
+d0 in [0, 1]
+d1 in [0, 3]
+d2 in [0, 3]
+```
 
 The input to output map:
 
--   input -> output: $(d_0, d_1) \mapsto ((8d_0 + d_1) / 16, ((8d_0 + d_1) \mod
-    16) / 4, d_1 \mod 4)$
-
-for $\boldsymbol{d} \in {\rm Dom}(input)$.
+```
+(d0, d1) -> (d0 floordiv 2, d1 floordiv 4 + (d0 mod 2) * 2, d1 mod 4)
+domain:
+d0 in [0, 3]
+d1 in [0, 7]
+```
 
 ##### Example 2: Expanded and collapsed subshapes
 
@@ -354,13 +445,23 @@ and the second one expand the innermost dimension `tensor<32x12xf32>` into
 
 The output to input map:
 
--   output -> input: $(d_0, d_1, d_2) \mapsto (d_0 / 8, d_0 \mod 8, 4d_1 + d_2)$
-    for $\boldsymbol{d} \in {\rm Dom}(output)$
+```
+(d0, d1, d2) -> (d0 floordiv 8, d0 mod 8, d1 * 4 + d2)
+domain:
+d0 in [0, 31]
+d1 in [0, 2]
+d2 in [0, 3]
+```
 
 The input to output map:
 
--   input -> output: $(d_0, d_1, d_2) \mapsto (8d_0 + d_1, d_2 / 4, d_2 \mod 4)$
-    for $\boldsymbol{d} \in {\rm Dom}(input)$.
+```
+(d0, d1, d2) -> (d0 * 8 + d1, d2 floordiv 4, d2 mod 4)
+domain:
+d0 in [0, 3]
+d1 in [0, 7]
+d2 in [0, 11]
+```
 
 ### Bitcast
 
@@ -375,29 +476,76 @@ Output-to-input mapping for concat is defined for all inputs, but with
 non-overlapping domains, i.e. only one of the inputs will be used at a time.
 
 ```c+
-p0 = f32[3,50] parameter(0)
-p1 = f32[3,30] parameter(1)
-concat = f32[3,80] concatenate(f32[3,50] p0, f32[3,30] p1),
-  dimensions={1}
+p0 = f32[2, 5, 7] parameter(0)
+p1 = f32[2, 11, 7] parameter(1)
+p2 = f32[2, 17, 7] parameter(2)
+ROOT concat = f32[2, 33, 7] concatenate(f32[2, 5, 7] p0, f32[2, 11, 7] p1, f32[2, 17, 7] p2), dimensions={1}
 ```
 
-The output to input map:
+The output to inputs maps:
 
 -   output -> input 1:
 
-$(d_0, d_1) \mapsto (d_0, d_1)$ for $\boldsymbol{d} \in [0, 2] \times [0, 49]$
+```
+(d0, d1, d2) -> (d0, d1, d2)
+domain:
+d0 in [0, 1]
+d1 in [0, 4]
+d2 in [0, 6]
+```
 
 -   output -> input 2:
 
-$(d_0, d_1) \mapsto (d_0, d_1 - 50)$ for $\boldsymbol{d} \in [0, 2] \times [50,
-79]$
+```
+(d0, d1, d2) -> (d0, d1 - 5, d2)
+domain:
+d0 in [0, 1]
+d1 in [5, 15]
+d2 in [0, 6]
+```
 
-The inputs to output map:
+-   output -> input 3:
 
--   input 1 -> output: $(d_0, d_1) \mapsto (d_0, d_1)$ for $\boldsymbol{d} \in
-    {\rm Dom}(input_1)$.
--   input 2 -> output: $(d_0, d_1) \mapsto (d_0, d_1 + 50)$ for $\boldsymbol{d}
-    \in {\rm Dom}(input_2)$.
+```
+(d0, d1, d2) -> (d0, d1 - 16, d2)
+domain:
+d0 in [0, 1]
+d1 in [16, 32]
+d2 in [0, 6]
+```
+
+
+The inputs to output maps:
+
+-   input 1 -> output:
+
+```
+(d0, d1, d2) -> (d0, d1, d2)
+domain:
+d0 in [0, 1]
+d1 in [0, 4]
+d2 in [0, 6]
+```
+
+-   input 2 -> output:
+
+```
+(d0, d1, d2) -> (d0, d1 + 5, d2)
+domain:
+d0 in [0, 1]
+d1 in [0, 10]
+d2 in [0, 6]
+```
+
+-   input 3 -> output:
+
+```
+(d0, d1, d2) -> (d0, d1 + 16, d2)
+domain:
+d0 in [0, 1]
+d1 in [0, 16]
+d2 in [0, 6]
+```
 
 ### [Dot](https://openxla.org/xla/operation_semantics#dot)
 
@@ -413,17 +561,51 @@ dot = f32[4, 128, 64] dot(p0, p1),
 
 The output to inputs maps:
 
--   output -> input_1: $(d_0, d_1, d_2) \mapsto (d_0, d_1, s_0)$ for
-    $\boldsymbol{d} \in {\rm Dom}(output)$ and $\boldsymbol{s} \in [0, 255]$
--   output -> input_2: $(d_0, d_1, d_2) \mapsto (d_0, s_0, d_2)$ for
-    $\boldsymbol{d} \in {\rm Dom}(output)$ and $\boldsymbol{s} \in [0, 255]$
+-   output -> input_1:
+
+```
+(d0, d1, d2)[s0] -> (d0, d1, s0)
+domain:
+d0 in [0, 3]
+d1 in [0, 127]
+d2 in [0, 63]
+s0 in [0, 255]
+```
+
+-   output -> input_2:
+
+```
+(d0, d1, d2)[s0] -> (d0, s0, d2)
+domain:
+d0 in [0, 3]
+d1 in [0, 127]
+d2 in [0, 63]
+s0 in [0, 255]
+```
 
 The inputs to output maps:
 
--   input_1 -> output: $(d_0, d_1, d_2) \mapsto (d_0, d_1, s_0)$ for
-    $\boldsymbol{d} \in {\rm Dom}(input_1)$ and $\boldsymbol{s} \in [0, 63]$
--   input_2 -> output: $(d_0, d_1, d_2) \mapsto (d_0, s_0, d_1)$ for
-    $\boldsymbol{d} \in {\rm Dom}(input_2)$ and $\boldsymbol{s} \in [0, 127]$
+-   input_1 -> output:
+
+```
+(d0, d1, d2) -> (d0, d1, s0)
+domain:
+d0 in [0, 3]
+d1 in [0, 127]
+d2 in [0, 255]
+s0 in [0, 63]
+```
+
+-   input_2 -> output:
+
+```
+(d0, d1, d2) -> (d0, s_0, d1)
+domain:
+d0 in [0, 3]
+d1 in [0, 255]
+d2 in [0, 63]
+s0 in [0, 127]
+```
 
 ### [Pad](https://openxla.org/xla/operation_semantics#pad)
 
@@ -439,9 +621,24 @@ The padding config `1_4_1x4_8_0` denotes `lowPad_highPad_interiorPad_dim_0 x low
 
 The output to input maps:
 
--   output -> input: $(d_0, d_1) \mapsto ((d_0 - 1) / 2, d_1 - 4)$
-    for $\boldsymbol{d} \in [1, 7] \times [4, 7]$ and $(d_0 - 1) \mod 2 \equiv 0$
--   output -> init: $(d_0, d_1) \mapsto ()$ for $\boldsymbol{d} \in {\rm Dom}(output)$
+-   output -> input:
+
+```
+(d0, d1) -> ((d0 - 1) floordiv 2, d1 - 4)
+domain:
+d0 in [1, 7]
+d1 in [4, 7]
+(d0 - 1) mod 2 in [0, 0]
+```
+
+-   output -> init:
+
+```
+(d0, d1) -> ()
+domain:
+d0 in [0, 11]
+d1 in [0, 15]
+```
 
 
 ### [ReduceWindow](https://openxla.org/xla/operation_semantics#reducewindow)
@@ -460,8 +657,24 @@ reduce-window = f32[1024, 3] reduce-window(p0, c_inf),
 
 The output to input maps:
 
--   output -> input: $(d_0, d_1) \mapsto (d_0, d_1 + s_0)$ for $\boldsymbol{d} \in [0, 1023] \times [0, 2]$ and $\boldsymbol{s} \in [0, 511]$
--   output -> init: $(d_0, d_1) \mapsto ()$ for $\boldsymbol{d} \in {\rm Dom}(output)$
+-   output -> input:
+
+```
+(d0, d1)[s0] -> (d0, d1 + s0)
+domain:
+d0 in [0, 1023]
+d1 in [0, 2]
+s0 in [0, 511]
+```
+
+-   output -> init:
+
+```
+(d0, d1) -> ()
+domain:
+d0 in [0, 1023]
+d1 in [0, 2]
+```
 
 ## Indexing Maps for Fusion
 
@@ -471,7 +684,7 @@ access patterns.
 
 ### One input, several indexing maps
 
-Here is an example for $p_0 + p_0^T$
+Here is an example for `p0 + transpose(p0)`.
 
 ```c+
 f {
@@ -481,8 +694,8 @@ f {
 }
 ```
 
-The output-to-input indexing maps for `p0` will be $(d_0, d_1) \mapsto (d_0,
-d_1)$ and $(d_0, d_1) \mapsto (d_1, d_0)$. It means that to compute one element
+The output-to-input indexing maps for `p0` will be `(d0, d1) -> (d0, d1)` and 
+`(d0, d1) -> (d1, d0)`. It means that to compute one element
 of the output we might need to read the input parameter twice.
 
 ### One input, deduplicated indexing map
@@ -505,9 +718,8 @@ f {
 }
 ```
 
-The output-to-input indexing map for `p0` in this case is just $(d_0, d_1, d_2)
-\mapsto (d_2, d_0, d_1)$.
-
+The output-to-input indexing map for `p0` in this case is just
+`(d0, d1, d2) -> (d2, d0, d1)`.
 
 ### Softmax
 
@@ -515,11 +727,26 @@ The output-to-input indexing map for `p0` in this case is just $(d_0, d_1, d_2)
 
 The output-to-input indexing maps for `parameter 0` for softmax:
 
--   $(d_0, d_1, d_2) \mapsto (d_0, d_1, d_2)$
--   $(d_0, d_1, d_2)[s_0] \mapsto (d_0, d_1, s_0)$
+```
+(d0, d1, d2)[s0] -> (d0, d1, s0)
+domain:
+d0 in [0, 1]
+d1 in [0, 64]
+d2 in [0, 124]
+s0 in [0, 124]
+```
 
-for $\boldsymbol{d} \in {\rm Dom}(output)$ and $\boldsymbol{s} \in [0, 124]$
-refers to the inner-most dimension of the input.
+and
+
+```
+(d0, d1, d2) -> (d0, d1, d2)
+domain:
+d0 in [0, 1]
+d1 in [0, 64]
+d2 in [0, 124]
+```
+
+where `s_0` refers to the inner-most dimension of the input.
 
 ## Indexing Map Simplifier
 
@@ -532,16 +759,16 @@ sub-expressions in the affine maps to simplify them even more.
 
 The simplifier can rewrite the following expressions.
 
-1.  $(d_0, d_1) \mapsto (d_0 + d1 / 16, d1 \mod 16)$ for $\boldsymbol{d} \in [0,
-    6] \times [0, 14]$ becomes $(d_0, d_1) \mapsto (d_0, d_1)$
-2.  $(d_0, d_1, d_2) \mapsto ((100d_0 + 10d_1 + d_2) /100, ((100d_0 + 10d_1 +
-    d_2) \mod 100) / 10, d_2 \mod 10)$ for $d_i \in [0, 9]$ becomes $(d_0, d_1,
-    d_2) \mapsto (d_0, d_1, d_2)$.
-3.  $(d_0, d_1, d_2) \mapsto ((16d_0 + 4d_1 + d_2) /8, (16d_0 + 4d_1 + d_2) \mod
-    8)$ for $d_i \in [0, 9]$ becomes $(d_0, d_1, d_2) \mapsto (2d_0 + (4d_1 +
-    d_2) /8,(4d_1 + d_2) \mod 8)$.
-4.  $(d_0, d_1) \mapsto (-(-11d_0 - d_1 + 109) / 11 + 9)$ for $\boldsymbol{d}
-    \in [0, 9] \times [0, 10]$ becomes $(d_0, d_1) \mapsto (d_0)$.
+1.  `(d0, d1) -> (d0 + d1 floordiv 16, d1 mod 16)` for **d** in `[0,
+    6] x [0, 14]` becomes `(d0, d1) -> (d0, d1)`
+2.  `(d0, d1, d2) -> ((100d0 + 10d1 + d2) floorDiv 100, ((100d0 + 10d1 +
+    d2) mod 100) floordiv 10, d2 mod 10)` for `di in [0, 9]` becomes `(d0, d1,
+    d2) -> (d0, d1, d2)`.
+3.  `(d0, d1, d2) -> ((16d0 + 4d1 + d2) floordiv 8, (16d0 + 4d1 + d2) mod
+    8)` for `d_i in [0, 9]` becomes `(d0, d1, d2) -> (2d0 + (4d1 +
+    d2) floordiv 8,(4d1 + d2) mod 8)`.
+4.  `(d0, d1) -> (-(-11d0 - d1 + 109) floordiv 11 + 9)` for **d**
+    in `[0, 9] x [0, 10]` becomes `(d0, d1) -> (d0)`.
 
 Indexing map simplifier allows us to understand that some of the chained
 reshapes in HLO cancel each other.
@@ -554,14 +781,14 @@ reshape2 = f32[10, 10, 10] reshape(reshape1)
 
 After the composition of indexing maps and their simplification we will get
 
-$(d_0, d_1, d_2) \mapsto (d_0, d_1, d_2)$.
+`(d0, d1, d2) -> (d0, d1, d2)`.
 
 Indexing map simplification also simplifies the constraints.
 
 1. Constraints of type
 `lower_bound <= affine_expr (floordiv, +, -, *) constant <= upper_bound` are
 rewritten as `updated_lower_bound <= affine_expr <= updated_upped_bound`.
-2. Constraints that are always satisfied, e.g. $d_0 + s_0 in [0, 20]$
-for $d_0 \in [0, 5]$ and $s_0 \in [1, 3]$ are eliminated.
+2. Constraints that are always satisfied, e.g. `d0 + s0 in [0, 20]`
+for `d0 in [0, 5]` and `s0 in [1, 3]` are eliminated.
 3. Affine expressions in the constraints are optimized as the indexing affine
 map above.
