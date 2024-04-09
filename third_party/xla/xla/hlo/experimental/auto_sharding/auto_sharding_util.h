@@ -462,21 +462,21 @@ Shape ComputeIntermediateShape(const HloSharding& src_sharding,
 
 // Forcibly set the sharding of the operand of inst.
 // Also fix the resharding between 1d and 2d logical mesh.
-void FixMixedMeshShapeReshardingGetTupleElement(
+absl::Status FixMixedMeshShapeReshardingGetTupleElement(
     HloInstruction* inst, const HloSharding& dst_sharding,
     const Array<int64_t>& device_mesh,
     absl::flat_hash_map<std::string, std::vector<HloSharding>>&
         preserve_shardings);
 
-void FixMixedMeshShapeReshardingGetTupleElementWithTupleOutput(
+absl::Status FixMixedMeshShapeReshardingGetTupleElementWithTupleOutput(
     HloInstruction* inst,
     const std::vector<std::optional<HloSharding>>& dst_sharding,
     const Array<int64_t>& device_mesh);
 
-void FixMixedMeshShapeResharding(HloInstruction* inst, int operand_num,
-                                 const HloSharding& dst_sharding,
-                                 const Array<int64_t>& device_mesh,
-                                 ReshardingCache* resharding_cache);
+absl::Status FixMixedMeshShapeResharding(HloInstruction* inst, int operand_num,
+                                         const HloSharding& dst_sharding,
+                                         const Array<int64_t>& device_mesh,
+                                         ReshardingCache* resharding_cache);
 
 /*
  * Gradient accumulation
