@@ -171,7 +171,7 @@ tf_kernel_library(
         ":gpu_sinh_kernels",
         ":gpu_tan_kernels",
         ":gpu_tanh_kernels",
-    ]),
+    ]) + ["//tensorflow/core/framework:types_proto_cc"],
 )
 
 tf_kernel_library(
@@ -253,7 +253,7 @@ tf_kernel_library(
         ":gpu_greater_equal_kernels",
         ":gpu_less_equal_kernels",
         ":gpu_less_kernels",
-    ]),
+    ]) + ["//tensorflow/core/framework:types_proto_cc"],
 )
 
 tf_kernel_library(
@@ -306,7 +306,7 @@ tf_kernel_library(
         ":gpu_ones_like_kernels",
         ":gpu_zeros_like_kernels",
         "@eigen_archive//:eigen3",
-    ]),
+    ]) + ["//tensorflow/core/framework:types_proto_cc"],
 )
 
 tf_kernel_library(
@@ -327,7 +327,7 @@ tf_kernel_library(
     deps = if_mlir_generated_gpu_kernels_enabled([
         ":base_gpu_op",
         ":gpu_next_after_kernels",
-    ]),
+    ]) + ["//tensorflow/core/framework:types_proto_cc"],
 )
 
 tf_kernel_library(
@@ -353,7 +353,7 @@ tf_kernel_library(
         ":gpu_relu_kernels",
         ":gpu_selu_kernels",
         "@eigen_archive//:eigen3",
-    ]),
+    ]) + ["//tensorflow/core/framework:types_proto_cc"],
 )
 
 tf_kernel_library(
@@ -375,7 +375,7 @@ tf_kernel_library(
         ":base_gpu_op",
         ":gpu_softplus_kernels",
         "@eigen_archive//:eigen3",
-    ]),
+    ]) + ["//tensorflow/core/framework:types_proto_cc"],
 )
 
 tf_kernel_library(
@@ -397,7 +397,7 @@ tf_kernel_library(
         ":base_gpu_op",
         ":gpu_softsign_kernels",
         "@eigen_archive//:eigen3",
-    ]),
+    ]) + ["//tensorflow/core/framework:types_proto_cc"],
 )
 
 tf_kernel_library(

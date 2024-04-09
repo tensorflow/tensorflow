@@ -319,10 +319,9 @@ ReductionInfo ReductionInfo::Create(const HloFusionAnalysis& analysis) {
 std::optional<IndexingMap> ReductionInfo::ComputeThreadIdToOutputIndexing(
     int64_t root_index, mlir::MLIRContext* ctx) const {
   if (!groups_.is_reduction_root[root_index]) {
-    // Non-transpose roots are elementwise by definition.
+    // Non-reduction roots are elementwise by definition.
     return ComputeThreadIdToInputIndexing(root_index, 0, ctx);
   }
-  auto* root = analysis_.fusion_roots()[root_index];
   auto* hero = analysis_.fusion_heroes()[root_index];
 
   auto block_offsets = GetBlockOffsetsForTiling(tiling_, ctx);
@@ -349,7 +348,7 @@ std::optional<IndexingMap> ReductionInfo::ComputeThreadIdToOutputIndexing(
   constexpr int kColMinorKept = ReductionDimensions::kColMinorKeptDimension;
   constexpr int kColReduced = ReductionDimensions::kColReducedDimension;
 
-  auto physical_index = [&]() {
+  auto map = [&]() {
     if (is_row_reduction_) {
       IndexingMap linear_index(
           mlir::AffineMap::get(
@@ -397,10 +396,6 @@ std::optional<IndexingMap> ReductionInfo::ComputeThreadIdToOutputIndexing(
                           tiling_.GetXlaShape()),
                       physical_shape, ctx));
   }();
-
-  auto map = ComposeIndexingMaps(
-      physical_index,
-      GetBitcastMap(FirstShape(hero->shape()), FirstShape(root->shape()), ctx));
 
   int group_index = groups_.group_id_per_root[root_index];
   map.AddConstraint(

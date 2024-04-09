@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/service/gpu/fusions/mlir/elemental_hlo_to_mlir.h"
 
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -28,16 +29,20 @@ limitations under the License.
 #include "mlir/Dialect/Math/IR/Math.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/IR/SCF.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
+#include "mlir/IR/AffineExpr.h"  // from @llvm-project
 #include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/service/gpu/fusions/mlir/computation_partitioner.h"
 #include "xla/service/gpu/fusions/mlir/ir/xla_gpu_ops.h"
+#include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/hlo_parser.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/status_macros.h"
+#include "xla/stream_executor/launch_dim.h"
 #include "xla/tests/filecheck.h"
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/lib/core/status_test_util.h"
@@ -61,9 +66,9 @@ class ElementalHloToMlirTest : public HloTestBase {
 
   // Converts the root subgraph of the entry function of the given hlo module to
   // MLIR.
-  absl::Status Run(
-      const std::string& hlo, const std::string& filecheck_str,
-      std::function<bool(const HloInstruction*)> is_subgraph_root = nullptr) {
+  absl::Status Run(const std::string& hlo, const std::string& filecheck_str,
+                   std::function<EpilogueSpecification(HloComputation* entry)>
+                       epilogue_spec_fn = nullptr) {
     auto hlo_module = ParseAndReturnVerifiedModule(hlo).value();
 
     mlir::ImplicitLocOpBuilder builder(mlir::UnknownLoc::get(&context_),
@@ -75,15 +80,12 @@ class ElementalHloToMlirTest : public HloTestBase {
                              builder.getContext()));
     builder.setInsertionPointToStart(module->getBody());
     auto* entry_computation = hlo_module->entry_computation();
-    std::vector<const HloInstruction*> roots;
-    if (is_subgraph_root) {
-      for (auto* instr : entry_computation->instructions()) {
-        if (is_subgraph_root(instr)) {
-          roots.push_back(instr);
-        }
-      }
+    std::optional<EpilogueSpecification> epilogue_spec = std::nullopt;
+    if (epilogue_spec_fn) {
+      epilogue_spec = epilogue_spec_fn(entry_computation);
     }
-    PartitionedComputations partitioned_computations(entry_computation, roots);
+    PartitionedComputations partitioned_computations(entry_computation,
+                                                     &context_, epilogue_spec);
     auto fns = partitioned_computations.DeclareFunctions(module.get());
     auto entry_func = fns[&partitioned_computations
                                .FindPartitionedComputation(entry_computation)
@@ -1215,15 +1217,20 @@ TEST_F(ElementalHloToMlirTest, Epilogue) {
       // CHECK-SAME:     %[[ARG0:.*]]: tensor<2x16x17xf32>
       // CHECK-SAME:     %[[ARG1:.*]]: tensor<f32>
       // CHECK-SAME:     %[[X:.*]]: index {xla.range = [0 : index, 1 :
-      // CHECK-SAME:     %[[Y:.*]]: index {xla.range = [0 : index, 16 :
-      // CHECK-SAME:     %[[Z:.*]]: index {xla.range = [0 : index, 15 :
+      // CHECK-SAME:     %[[Y:.*]]: index {xla.range = [0 : index, 15 :
+      // CHECK-SAME:     %[[Z:.*]]: index {xla.range = [0 : index, 16 :
       // CHECK-SAME:     %[[TRANSPOSE:.*]]: f32) -> f32
       // CHECK:        %[[B:.*]] = tensor.extract %[[ARG1]][]
       // CHECK:        %[[RET:.*]] = arith.addf %[[TRANSPOSE]], %[[B]]
       // CHECK:        return %[[RET]])",
-      [](const HloInstruction* instr) {
-        // Make the transpose a new root.
-        return instr->opcode() == HloOpcode::kTranspose;
+      [this](HloComputation* entry) {
+        EpilogueSpecification epilogue;
+        epilogue.heroes.push_back(entry->GetInstructionWithName("transpose"));
+        epilogue.index_ranges = {2, 16, 17};
+        epilogue.root_indexing.push_back(
+            mlir::AffineMap::getMultiDimIdentityMap(3, &context_)
+                .getSubMap({0, 2, 1}));
+        return epilogue;
       }));
 }
 
@@ -1431,6 +1438,17 @@ TEST_F(ElementalHloToMlirTest, MixedIndexingTuple) {
     // CHECK:        %[[B:.*]] = tensor.extract %[[P1]][%[[IDX]]]
     // CHECK:        return %[[A]], %[[B]]
   )"));
+}
+
+TEST_F(ElementalHloToMlirTest, ReducePrecision) {
+  TF_EXPECT_OK(Run(R"(
+                     ENTRY main {
+                       %p0 = f32[5,7] parameter(0)
+                       ROOT r = f32[5,7] reduce-precision(%p0),
+                        exponent_bits=8, mantissa_bits=23
+                     }
+                   )",
+                   "// CHECK: @main"));
 }
 
 }  // namespace
