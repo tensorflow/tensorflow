@@ -4415,6 +4415,20 @@ TEST_F(ShapeInferenceTest, UnboundedDotGeneral) {
       << " expected: " << ShapeUtil::HumanString(expected);
 }
 
+TEST_F(ShapeInferenceTest, UnboundedDynamicSlice) {
+  TF_ASSERT_OK_AND_ASSIGN(const Shape operand, ParseShape("f32[?, 10]"));
+  TF_ASSERT_OK_AND_ASSIGN(const Shape start_index, ParseShape("s32[]"));
+  TF_ASSERT_OK_AND_ASSIGN(const Shape expected, ParseShape("f32[2, 2]"));
+  TF_ASSERT_OK_AND_ASSIGN(
+      const Shape inferred_shape,
+      ShapeInference::InferDynamicSliceShape(
+          operand, /*start_index_shapes=*/{start_index, start_index},
+          /*slice_sizes=*/{2, 2}, /*allow_scalar_indices=*/true));
+  EXPECT_TRUE(ShapeUtil::Equal(inferred_shape, expected))
+      << "inferred: " << ShapeUtil::HumanString(inferred_shape)
+      << " expected: " << ShapeUtil::HumanString(expected);
+}
+
 TEST_F(ShapeInferenceTest, UnboundedGather) {
   TF_ASSERT_OK_AND_ASSIGN(const Shape operand, ParseShape("f32[3, 4, 2]"));
   TF_ASSERT_OK_AND_ASSIGN(const Shape start_indices,

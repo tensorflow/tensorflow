@@ -3040,7 +3040,8 @@ ShapeInference::InferCollectivePermuteDoneShape(const Shape& operand_shape) {
       return InvalidArgument("Negative size index to dynamic slice: %d.",
                              slice_dim_size);
     }
-    if (slice_dim_size > input_dim_size) {
+    if (!IsUnboundedDynamicSize(input_dim_size) &&
+        slice_dim_size > input_dim_size) {
       return InvalidArgument(
           "Slice dim size %d greater than dynamic slice dimension: %d.",
           slice_dim_size, input_dim_size);
