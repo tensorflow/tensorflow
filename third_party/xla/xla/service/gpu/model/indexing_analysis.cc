@@ -1501,6 +1501,7 @@ IndexingMap ComputeEpilogueInputToOutputIndexing(
         user, user->operand_index(instr), mlir_context);
     root_indexing = root_indexing * *user_indexing.indexing_maps[0].begin();
     root_indexing.Simplify(GetIndexingMapForInstruction);
+    root_indexing.RemoveUnusedSymbols();
     instr = user;
   }
   return root_indexing;

@@ -632,8 +632,8 @@ cc_library(
         ":indexing_map",
         ":symbolic_tile",
         ":symbolic_tiled_hlo_instruction",
+        ":tiled_hlo_instruction",
         "//xla:status",
-        "//xla:status_macros",
         "//xla/hlo/ir:hlo",
         "//xla/service:instruction_fusion",
         "@com_google_absl//absl/algorithm:container",
@@ -646,6 +646,8 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
+        "@local_tsl//tsl/platform:status",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -655,7 +657,7 @@ xla_cc_test(
     deps = [
         ":indexing_test_utils",
         ":symbolic_tile_analysis",
-        ":symbolic_tiled_hlo_instruction",
+        ":tiled_hlo_instruction",
         "//xla/hlo/ir:hlo",
         "//xla/tests:hlo_test_base",
         "//xla/tests:verified_hlo_module",

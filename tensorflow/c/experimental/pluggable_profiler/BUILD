@@ -43,7 +43,7 @@ cc_library(
         "//tensorflow/core/common_runtime/device:device_utils",
         "//tensorflow/core/profiler/lib:profiler_factory",
         "//tensorflow/core/profiler/lib:profiler_interface",
-        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "@com_google_absl//absl/memory",
     ],
 )
 

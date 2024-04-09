@@ -194,17 +194,6 @@ bool IsUnsupportedTuple(const HloInstruction* instr) {
     return true;
   }
 
-  // All tuple elements must have bitcast-compatible dimensions (element types
-  // may differ).
-  auto first_shape = instr->shape().tuple_shapes(0);
-  for (int i = 1; i < instr->operand_count(); ++i) {
-    const auto& tuple_shape = instr->shape().tuple_shapes(i);
-    if (!ShapeUtil::EqualIgnoringElementType(tuple_shape, first_shape) &&
-        !ShapeUtil::IsReshapeOrTransposeBitcast(tuple_shape, first_shape,
-                                                /*ignore_element_type=*/true)) {
-      return true;
-    }
-  }
   return false;
 }
 
@@ -985,16 +974,14 @@ absl::StatusOr<SmallVector<Value>> HloToMlir(
       return MapHloOp<mhlo::RealOp>(element_mlir_type, arg_types, operands,
                                     builder);
     case HloOpcode::kReducePrecision: {
-      mlir::NamedAttribute exponent_bits(
-          builder.getStringAttr("exponent_bits"),
-          builder.getI32IntegerAttr(instr->exponent_bits()));
-      mlir::NamedAttribute mantissa_bits(
-          builder.getStringAttr("mantissa_bits"),
-          builder.getI32IntegerAttr(instr->mantissa_bits()));
-      return MapHloOp<mhlo::ReducePrecisionOp>(
-          operands.front().getType(), arg_types, operands, builder,
-          mlir::DictionaryAttr::get(builder.getContext(),
-                                    {exponent_bits, mantissa_bits}));
+      mhlo::ReducePrecisionOp::Properties properties;
+      properties.exponent_bits =
+          builder.getI32IntegerAttr(instr->exponent_bits());
+      properties.mantissa_bits =
+          builder.getI32IntegerAttr(instr->mantissa_bits());
+      return MapHloOp<mhlo::ReducePrecisionOp>(operands.front().getType(),
+                                               arg_types, operands, builder,
+                                               nullptr, properties);
     }
     case HloOpcode::kRemainder:
       return MapElementwiseOp<mhlo::RemOp>(arg_types, operands, builder);
@@ -1188,16 +1175,15 @@ absl::StatusOr<SmallVector<Value>> SubgraphToMlir(
 
   auto provide_operand =
       [&](const HloInstruction* instr, int index,
-          ValueRange indices) -> absl::StatusOr<SmallVector<Value>> {
+          ValueRange operand_indices) -> absl::StatusOr<SmallVector<Value>> {
     auto* operand = instr->operand(index);
     if (subgraph.instructions.contains(operand)) {
-      return emit_instr(operand, indices);
+      return emit_instr(operand, operand_indices);
     }
     return ConvertToSignless(
-        ProvideParameter(subgraph, instr, index, indices, call_target_provider,
-                         this_fn, builder),
+        ProvideParameter(subgraph, instr, index, operand_indices,
+                         call_target_provider, this_fn, builder),
         builder);
-    return results;
   };
 
   emit_instr = [&](const HloInstruction* instr,
@@ -1236,8 +1222,21 @@ absl::StatusOr<SmallVector<Value>> SubgraphToMlir(
     return entry;
   };
 
-  for (const auto* root : subgraph.roots) {
-    TF_ASSIGN_OR_RETURN(auto root_results, emit_instr(root, indices));
+  TF_RET_CHECK(subgraph.roots.size() == subgraph.root_indexing.size())
+      << "roots and root_indexing must have the same size in "
+      << subgraph.ToString();
+  for (const auto [root, indexing] :
+       llvm::zip(subgraph.roots, subgraph.root_indexing)) {
+    TF_RET_CHECK(indexing.getNumDims() + indexing.getNumSymbols() ==
+                 indices.size())
+        << "Incorrect number of indices (got " << indices.size()
+        << ", expected " << indexing.getNumDims() << " dims and "
+        << indexing.getNumSymbols() << "symbols) in " << subgraph.ToString();
+    int num_dims = indexing.getNumDims();
+    auto root_indices =
+        ApplyAffineMap(indexing, /*dims=*/indices.take_front(num_dims),
+                       /*symbols=*/indices.drop_front(num_dims), builder);
+    TF_ASSIGN_OR_RETURN(auto root_results, emit_instr(root, root_indices));
     results.append(root_results.begin(), root_results.end());
   }
   return results;
@@ -1365,6 +1364,9 @@ mlir::Value ClampIndex(mlir::Value index, bool is_unsigned, int64_t high,
   }
 
   if (is_unsigned) {
+    if (index.getType().isUnsignedInteger()) {
+      index = ConvertToSignless({index}, b).front();
+    }
     if (index.getType() != b.getIndexType()) {
       index = b.create<arith::IndexCastUIOp>(b.getIndexType(), index);
     }

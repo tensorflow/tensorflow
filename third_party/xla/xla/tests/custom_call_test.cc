@@ -572,7 +572,7 @@ XLA_TEST_F(FfiCustomCallTest, FfiReportsSuccess) {
       /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI));
 
   auto status = BuildAndExecute({}).status();
-  EXPECT_EQ(status.code(), absl::StatusCode::kOk);
+  EXPECT_EQ(status, absl::OkStatus());
 }
 
 XLA_TEST_F(FfiCustomCallTest, FfiUnknownTarget) {
@@ -581,7 +581,7 @@ XLA_TEST_F(FfiCustomCallTest, FfiUnknownTarget) {
       /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI));
 
   auto status = BuildAndExecute({}).status();
-  EXPECT_EQ(status.code(), absl::StatusCode::kUnimplemented);
+  EXPECT_EQ(status.code(), absl::StatusCode::kUnimplemented) << status;
 }
 
 XLA_TEST_F(FfiCustomCallTest, FfiReportsFailure) {
@@ -641,7 +641,7 @@ XLA_TEST_F(FfiCustomCallTest, FfiWrongNumberOfArguments) {
       /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI));
 
   auto status = BuildAndExecute({}).status();
-  EXPECT_EQ(status.code(), absl::StatusCode::kInvalidArgument);
+  EXPECT_EQ(status.code(), absl::StatusCode::kInvalidArgument) << status;
 }
 
 XLA_TEST_F(FfiCustomCallTest, FfiWrongTypeOfArguments) {
@@ -658,7 +658,7 @@ XLA_TEST_F(FfiCustomCallTest, FfiWrongTypeOfArguments) {
       /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI));
 
   auto status = BuildAndExecute({}).status();
-  EXPECT_EQ(status.code(), absl::StatusCode::kInvalidArgument);
+  EXPECT_EQ(status.code(), absl::StatusCode::kInvalidArgument) << status;
 }
 
 XLA_TEST_F(FfiCustomCallTest, FfiHandleTypedBuffers) {
