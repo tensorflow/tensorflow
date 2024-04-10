@@ -20,6 +20,32 @@ from tensorflow.compiler.mlir.quantization.stablehlo.python import pywrap_quanti
 from tensorflow.compiler.mlir.quantization.tensorflow.python import py_function_lib
 from tensorflow.compiler.mlir.quantization.tensorflow.python import save_model
 from tensorflow.core.protobuf import meta_graph_pb2
+from tensorflow.python.util import tf_export
+
+# Type aliases for quantization_config_pb2 messages.
+_QuantizationConfig = tf_export.tf_export(
+    'quantization.stablehlo.experimental.QuantizationConfig'
+)(qc.QuantizationConfig)
+
+_StaticRangePtqPreset = tf_export.tf_export(
+    'quantization.stablehlo.experimental.StaticRangePtqPreset'
+)(qc.StaticRangePtqPreset)
+
+_RepresentativeDatasetConfig = tf_export.tf_export(
+    'quantization.stablehlo.experimental.RepresentativeDatasetConfig'
+)(qc.RepresentativeDatasetConfig)
+
+_TfRecordFile = tf_export.tf_export(
+    'quantization.stablehlo.experimental.TfRecordFile'
+)(qc.TfRecordFile)
+
+_TfSavedModelConfig = tf_export.tf_export(
+    'quantization.stablehlo.experimental.TfSavedModelConfig'
+)(qc.TfSavedModelConfig)
+
+_PipelineConfig = tf_export.tf_export(
+    'quantization.stablehlo.experimental.PipelineConfig'
+)(qc.PipelineConfig)
 
 # Mapping of signature def key -> SignatureDef.
 _SignatureDefMap = Mapping[str, meta_graph_pb2.SignatureDef]
@@ -53,13 +79,43 @@ def _has_quantization_method(
   return False
 
 
-# TODO: b/310594193 - Export API to pip package.
+@tf_export.tf_export('quantization.stablehlo.experimental.quantize_saved_model')
 def quantize_saved_model(
     src_saved_model_path: str,
     dst_saved_model_path: str,
-    config: qc.QuantizationConfig,
+    config: _QuantizationConfig,
 ) -> None:
-  """Quantizes a saved model.
+  """Quantizes a saved model with the given quantization config.
+
+  Example usage:
+  ```python
+  # Quantizing a model with static-range PTQ (Post-Training Quantization).
+  representative_dataset = [{"input_tensor": tf.random.uniform(shape=(3, 3))}
+                        for _ in range(256)]
+  repre_dataset_path_map = {'serving_default': 'tmp/repre_dataset'}
+  tf.quantization.experimental.TfRecordRepresentativeDatasetSaver(
+      repre_dataset_path_map
+  ).save({'serving_default': representative_dataset})
+  quantization_config =
+  tf.quantization.stablehlo.experimental.QuantizationConfig(
+      static_range_ptq_preset=tf.quantization.stablehlo.experimental.StaticRangePtqPreset(
+          representative_datasets=[
+              tf.quantization.stablehlo.experimental.RepresentativeDatasetConfig(
+                  tf_record=tf.quantization.stablehlo.experimental.TfRecordFile(path=dataset_path)
+              )
+          ]
+      ),
+      tf_saved_model=tf.quantization.stablehlo.experimental.TfSavedModelConfig(tags=[tag_constants.SERVING]),
+      pipeline_config=tf.quantization.stablehlo.experimental.PipelineConfig(
+          merge_fusion_with_dequantize=merge_fusion_with_dequantize
+      ),
+  )
+  tf.quantization.stablehlo.experimental.quantize_saved_model(
+      '/tmp/input_model',
+      '/tmp/output_model',
+      quantization_config,
+  )
+  ```
 
   Args:
     src_saved_model_path: Path to the directory for the source SavedModel.
@@ -74,10 +130,10 @@ def quantize_saved_model(
   # pipeline to work with.
   print('=== User-provided QuantizationConfig ===')
   print(config)
-  config = qc.QuantizationConfig.FromString(
+  config = _QuantizationConfig.FromString(
       pywrap_quantization.populate_default_configs(config.SerializeToString())
   )
-  config = qc.QuantizationConfig.FromString(
+  config = _QuantizationConfig.FromString(
       pywrap_quantization.expand_preset_configs(config.SerializeToString())
   )
   print('=== Updated QuantizationConfig ===')

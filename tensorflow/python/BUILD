@@ -133,6 +133,7 @@ py_strict_library(
         ":proto_exports",
         ":pywrap_tensorflow",
         ":pywrap_tfe",
+        "//tensorflow/compiler/mlir/quantization/stablehlo/python:quantization",
         "//tensorflow/compiler/mlir/quantization/tensorflow/python:quantize_model",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/dtensor/python:dtensor",

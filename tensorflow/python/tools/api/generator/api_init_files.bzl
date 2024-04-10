@@ -89,6 +89,7 @@ TENSORFLOW_API_INIT_FILES = [
     "profiler/experimental/server/__init__.py",
     "quantization/__init__.py",
     "quantization/experimental/__init__.py",
+    "quantization/stablehlo/experimental/__init__.py",
     "ragged/__init__.py",
     "random/__init__.py",
     "random/experimental/__init__.py",

@@ -7,6 +7,7 @@ load("//tensorflow/python/tools/api/generator:api_init_files.bzl", "TENSORFLOW_A
 
 TENSORFLOW_API_GEN_PACKAGES = [
     "tensorflow.python",
+    "tensorflow.compiler.mlir.quantization.stablehlo.python.quantization",
     "tensorflow.compiler.mlir.quantization.tensorflow.python.quantize_model",
     "tensorflow.compiler.mlir.quantization.tensorflow.python.representative_dataset",
     "tensorflow.dtensor.python.accelerator_util",
