@@ -501,9 +501,6 @@ class Client:
       force_copy: bool = ...,
       host_buffer_semantics: HostBufferSemantics = ...,
   ) -> ArrayImpl: ...
-  def make_cross_host_receive_buffers(
-      self, shapes: Sequence[Shape], device: Device
-  ) -> List[Tuple[ArrayImpl, bytes]]: ...
   def compile(
       self,
       computation: Union[str, bytes],

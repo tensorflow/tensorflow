@@ -338,61 +338,6 @@ absl::Status PyClient::Defragment() {
   }
 }
 
-/* static */ absl::StatusOr<nb::list> PyClient::MakeCrossHostReceiveBuffers(
-    nb_class_ptr<PyClient> client, absl::Span<const Shape> shapes,
-    PjRtDevice* device) {
-  CHECK(device != nullptr);
-  absl::Mutex mu;
-  absl::StatusOr<std::vector<PjRtCrossHostRecvDescriptors>> recv_descriptors_or;
-  bool done = false;
-
-  TF_ASSIGN_OR_RETURN(
-      auto buffers,
-      client->pjrt_client()->MakeCrossHostReceiveBuffers(
-          shapes, device,
-          [&done, &recv_descriptors_or,
-           &mu](absl::StatusOr<PjRtCrossHostRecvState> recv_state_or) {
-            absl::MutexLock l(&mu);
-            if (recv_state_or.ok()) {
-              nb::gil_scoped_acquire gil;
-              recv_descriptors_or = std::move(recv_state_or->descriptors);
-            } else {
-              recv_descriptors_or = recv_state_or.status();
-            }
-            done = true;
-          }));
-
-  {
-    nb::gil_scoped_release gil_release;
-    absl::MutexLock l(&mu);
-    mu.Await(absl::Condition(&done));
-  }
-
-  TF_RETURN_IF_ERROR(recv_descriptors_or.status());
-  CHECK_EQ(buffers.size(), recv_descriptors_or->size());
-  nb::list result;
-  for (int i = 0; i < buffers.size(); ++i) {
-    auto& descriptors = recv_descriptors_or->at(i);
-    CHECK_EQ(descriptors.serialized_descriptors.size(), 1);
-    const std::string& desc = descriptors.serialized_descriptors[0];
-    nb::bytes py_desc = nb::bytes(desc.data(), desc.size());
-    auto* ifrt_client = llvm::dyn_cast_or_null<ifrt::PjRtCompatibleClient>(
-        client->ifrt_client());
-    if (ifrt_client == nullptr) {
-      throw XlaRuntimeError(
-          "This operation is implemented for a PjRt-compatible backend only.");
-    }
-    TF_ASSIGN_OR_RETURN(auto ifrt_array,
-                        ifrt_client->CreatePjRtArray(std::move(buffers[i])));
-    auto py_buf = PyArray::MakeFromSingleDeviceArray(client, Traceback::Get(),
-                                                     std::move(ifrt_array),
-                                                     /*weak_type=*/false,
-                                                     /*committed=*/false);
-    result.append(nb::make_tuple(std::move(py_desc), std::move(py_buf)));
-  }
-  return result;
-}
-
 namespace {
 
 // Makes IFRT `CompileOptions` from XLA `CompileOptions` and optional host
@@ -747,14 +692,6 @@ PyType_Slot PyClient::slots_[] = {
           nb::arg("force_copy") = false,
           nb::arg("host_buffer_semantics") =
               PjRtClient::HostBufferSemantics::kImmutableZeroCopy)
-      .def(
-          "make_cross_host_receive_buffers",
-          [](nb_class_ptr<PyClient> client, absl::Span<const Shape> shapes,
-             PjRtDevice* device) {
-            return ValueOrThrow(PyClient::MakeCrossHostReceiveBuffers(
-                std::move(client), shapes, device));
-          },
-          nb::arg("shapes"), nb::arg("device"))
       .def(
           "compile",
           [](nb_class_ptr<PyClient> client, nb::bytes mlir_module,

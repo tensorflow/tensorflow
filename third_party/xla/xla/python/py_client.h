@@ -141,10 +141,6 @@ class PyClient {
   // TODO(zhangqiaorjc): Remove when we have transparent defragmentation.
   absl::Status Defragment();
 
-  static absl::StatusOr<nanobind::list> MakeCrossHostReceiveBuffers(
-      nb_class_ptr<PyClient> client, absl::Span<const Shape> shapes,
-      PjRtDevice* device);
-
   static absl::StatusOr<nanobind::object> BufferFromPyval(
       nb_class_ptr<PyClient> client, nanobind::handle argument,
       PjRtDevice* device, bool force_copy,
