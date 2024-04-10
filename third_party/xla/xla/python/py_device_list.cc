@@ -53,7 +53,7 @@ PyDeviceList::PyDeviceList(nb::tuple py_device_assignment)
     : device_list_(py_device_assignment) {
   // Attempt to convert to Python devices into `ifrt::DeviceList`.
   if (py_device_assignment.size() == 0) {
-    device_list_ = xla::ifrt::DeviceList({});
+    device_list_ = xla::ifrt::DeviceList();
     return;
   }
   xla::ifrt::DeviceList::Devices devices;
