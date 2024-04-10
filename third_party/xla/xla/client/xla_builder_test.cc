@@ -1857,6 +1857,19 @@ TEST(XlaBuilderTest, UnboundedAddUnsupportedImplicitBroadcast) {
               StatusIs(_, HasSubstr(kBroadcastDimensionMismatch)));
 }
 
+TEST(XlaBuilderTest, UnboundedAllGather) {
+  XlaBuilder b(TestName());
+  TF_ASSERT_OK_AND_ASSIGN(const Shape operand, ParseShape("f32[?, 10]"));
+  TF_ASSERT_OK_AND_ASSIGN(const Shape expected, ParseShape("f32[?, 10]"));
+  AllGather(Parameter(&b, 0, operand, "operand"), /*all_gather_dimension=*/0,
+            /*shard_count=*/2,
+            /*replica_groups=*/{});
+  TF_ASSERT_OK_AND_ASSIGN(const std::unique_ptr<HloModule> module,
+                          BuildHloModule(b));
+  EXPECT_THAT(GetRoot(*module),
+              GmockMatch(m::Op().WithShapeEqualTo(&expected)));
+}
+
 TEST(XlaBuilderTest, UnboundedAnd) {
   XlaBuilder b(TestName());
   TF_ASSERT_OK_AND_ASSIGN(const Shape lhs,
