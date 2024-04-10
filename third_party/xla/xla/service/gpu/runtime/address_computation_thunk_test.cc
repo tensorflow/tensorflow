@@ -552,9 +552,9 @@ TEST(AddressComputationThunkTest, MulipleSlicedOperandsGemm) {
 }
 
 static absl::Status Memcpy(se::Stream* stream, ffi::BufferBase src,
-                           ffi::BufferBase dst) {
+                           ffi::Result<ffi::BufferBase> dst) {
   return stream->MemcpyD2D(
-      &dst.data, src.data,
+      &dst->data, src.data,
       absl::c_accumulate(src.dimensions, 1.0, std::multiplies<int64_t>()) *
           sizeof(float));
 }
@@ -563,7 +563,7 @@ XLA_FFI_DEFINE_HANDLER(kMemcpy, Memcpy,
                        ffi::Ffi::Bind()
                            .Ctx<ffi::Stream>()
                            .Arg<ffi::BufferBase>()  // src
-                           .Arg<ffi::BufferBase>()  // dst
+                           .Ret<ffi::BufferBase>()  // dst
 );
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$memcpy", PLATFORM,
                          kMemcpy);
