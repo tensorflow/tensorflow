@@ -233,11 +233,14 @@ tf_staging/third_party/googleapis/googleapis.BUILD:
 tf_staging/third_party/googleapis/repository_rules.bzl:
 tf_staging/third_party/gpus/BUILD:
 tf_staging/third_party/gpus/crosstool/BUILD.rocm.tpl:
+tf_staging/third_party/gpus/crosstool/BUILD.sycl.tpl:
 tf_staging/third_party/gpus/crosstool/BUILD.tpl:
 tf_staging/third_party/gpus/crosstool/BUILD:
 tf_staging/third_party/gpus/crosstool/LICENSE:
 tf_staging/third_party/gpus/crosstool/clang/bin/crosstool_wrapper_driver_is_not_gcc.tpl:
 tf_staging/third_party/gpus/crosstool/clang/bin/crosstool_wrapper_driver_rocm.tpl:
+tf_staging/third_party/gpus/crosstool/clang/bin/crosstool_wrapper_driver_sycl.tpl:
+tf_staging/third_party/gpus/crosstool/sycl_cc_toolchain_config.bzl.tpl:
 tf_staging/third_party/gpus/crosstool/windows/msvc_wrapper_for_nvcc.py.tpl:
 tf_staging/third_party/gpus/cuda/BUILD.tpl:
 tf_staging/third_party/gpus/cuda/BUILD.windows.tpl:
@@ -253,6 +256,10 @@ tf_staging/third_party/gpus/rocm/BUILD:
 tf_staging/third_party/gpus/rocm/build_defs.bzl.tpl:
 tf_staging/third_party/gpus/rocm/rocm_config.h.tpl:
 tf_staging/third_party/gpus/rocm_configure.bzl:
+tf_staging/third_party/gpus/sycl/BUILD.tpl:
+tf_staging/third_party/gpus/sycl/BUILD:
+tf_staging/third_party/gpus/sycl/build_defs.bzl.tpl:
+tf_staging/third_party/gpus/sycl_configure.bzl:
 tf_staging/third_party/grpc/BUILD:
 tf_staging/third_party/icu/udata.patch:
 tf_staging/third_party/implib_so/BUILD:
