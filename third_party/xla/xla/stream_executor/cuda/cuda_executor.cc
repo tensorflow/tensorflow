@@ -838,6 +838,10 @@ bool GpuExecutor::AllocateStream(Stream* stream) {
 }
 
 void GpuExecutor::DeallocateStream(Stream* stream) {
+  dnn::DnnSupport* dnn = AsDnn();
+  if (dnn) {
+    dnn->NotifyStreamDestroyed(stream);
+  }
   GpuStream* cuda_stream = AsGpuStream(stream);
   absl::MutexLock l(&alive_gpu_streams_mu_);
   alive_gpu_streams_.erase(cuda_stream->platform_specific_stream());

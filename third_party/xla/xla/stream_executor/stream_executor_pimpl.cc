@@ -336,12 +336,6 @@ bool StreamExecutor::AllocateStream(Stream* stream) {
 }
 
 void StreamExecutor::DeallocateStream(Stream* stream) {
-  // TODO(b/301020144) Make this part of
-  // StreamExecutorInterface::DeallocateStream methods that care about DNNs.
-  dnn::DnnSupport* dnn = AsDnn();
-  if (dnn) {
-    dnn->NotifyStreamDestroyed(stream);
-  }
   implementation_->DeallocateStream(stream);
 }
 
