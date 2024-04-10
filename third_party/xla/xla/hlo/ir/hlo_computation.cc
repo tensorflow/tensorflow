@@ -50,6 +50,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/lib/gtl/iterator_range.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
@@ -211,6 +212,18 @@ HloInstruction* HloComputation::AddInstruction(
     std::unique_ptr<HloInstruction> instruction, const OpMetadata* metadata) {
   if (metadata != nullptr) {
     instruction->set_metadata(*metadata);
+  }
+  return AddInstruction(std::move(instruction));
+}
+
+HloInstruction* HloComputation::AddInstruction(
+    std::unique_ptr<HloInstruction> instruction, const OpMetadata* metadata,
+    const FrontendAttributes* frontend_attributes) {
+  if (metadata != nullptr) {
+    instruction->set_metadata(*metadata);
+  }
+  if (frontend_attributes != nullptr) {
+    instruction->set_frontend_attributes(*frontend_attributes);
   }
   return AddInstruction(std::move(instruction));
 }

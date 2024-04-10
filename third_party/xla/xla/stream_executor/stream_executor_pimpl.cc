@@ -46,10 +46,10 @@ limitations under the License.
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/fft.h"
-#include "xla/stream_executor/host_memory_allocation.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
+#include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/module_spec.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
@@ -225,14 +225,9 @@ absl::Status StreamExecutor::CollectiveMemoryDeallocate(void* location) {
   return implementation_->CollectiveMemoryDeallocate(location);
 }
 
-absl::StatusOr<std::unique_ptr<HostMemoryAllocation>>
+absl::StatusOr<std::unique_ptr<MemoryAllocation>>
 StreamExecutor::HostMemoryAllocate(uint64_t size) {
-  void* buffer = implementation_->HostMemoryAllocate(size);
-  if (buffer == nullptr && size > 0) {
-    return absl::InternalError(
-        absl::StrFormat("Failed to allocate HostMemory of size %d", size));
-  }
-  return std::make_unique<HostMemoryAllocation>(buffer, size, implementation());
+  return implementation_->HostMemoryAllocate(size);
 }
 
 void StreamExecutor::HostMemoryDeallocate(void* data, uint64_t size) {

@@ -21,15 +21,20 @@ limitations under the License.
 // device.
 #include "tensorflow/c/experimental/stream_executor/stream_executor.h"
 
+#include <memory>
 #include <string>
 #include <utility>
 
 #include "absl/functional/any_invocable.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_format.h"
 #include "tensorflow/c/c_api_macros.h"
 #include "tensorflow/c/c_api_macros_internal.h"
 #include "tensorflow/c/experimental/stream_executor/stream_executor_internal.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "xla/stream_executor/executor_cache.h"
+#include "xla/stream_executor/host_memory_allocation.h"
+#include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
@@ -237,8 +242,14 @@ class CStreamExecutor : public internal::StreamExecutorInterface {
     stream_executor_->deallocate(&device_, &device_memory_base);
   }
 
-  void* HostMemoryAllocate(uint64 size) override {
-    return stream_executor_->host_memory_allocate(&device_, size);
+  absl::StatusOr<std::unique_ptr<MemoryAllocation>> HostMemoryAllocate(
+      uint64 size) override {
+    auto* buffer = stream_executor_->host_memory_allocate(&device_, size);
+    if (buffer == nullptr && size > 0) {
+      return absl::InternalError(
+          absl::StrFormat("Failed to allocate HostMemory of size %d", size));
+    }
+    return std::make_unique<HostMemoryAllocation>(buffer, size, this);
   }
 
   void HostMemoryDeallocate(void* mem) override {

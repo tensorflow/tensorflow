@@ -46,6 +46,7 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/statusor.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
@@ -67,23 +68,21 @@ HloInstruction* MakeCopyHlo(HloInstruction* from, const Shape& to) {
       HloInstruction::CreateUnary(to, HloOpcode::kCopy, from));
 }
 
-absl::StatusOr<HloInstruction*> MakeBinaryHlo(HloOpcode opcode,
-                                              HloInstruction* lhs,
-                                              HloInstruction* rhs,
-                                              const OpMetadata* metadata) {
+absl::StatusOr<HloInstruction*> MakeBinaryHlo(
+    HloOpcode opcode, HloInstruction* lhs, HloInstruction* rhs,
+    const OpMetadata* metadata, const FrontendAttributes* frontend_attributes) {
   HloComputation* computation = lhs->parent();
   CHECK_EQ(computation, rhs->parent());
   TF_ASSIGN_OR_RETURN(Shape binary_op_shape,
                       ShapeInference::InferBinaryOpShape(opcode, lhs, rhs));
   return computation->AddInstruction(
-      HloInstruction::CreateBinary(binary_op_shape, opcode, lhs, rhs),
-      metadata);
+      HloInstruction::CreateBinary(binary_op_shape, opcode, lhs, rhs), metadata,
+      frontend_attributes);
 }
 
-absl::StatusOr<HloInstruction*> MakeCompareHlo(ComparisonDirection direction,
-                                               HloInstruction* lhs,
-                                               HloInstruction* rhs,
-                                               const OpMetadata* metadata) {
+absl::StatusOr<HloInstruction*> MakeCompareHlo(
+    ComparisonDirection direction, HloInstruction* lhs, HloInstruction* rhs,
+    const OpMetadata* metadata, const FrontendAttributes* frontend_attributes) {
   HloComputation* computation = lhs->parent();
   CHECK_EQ(computation, rhs->parent());
   TF_ASSIGN_OR_RETURN(
@@ -91,29 +90,30 @@ absl::StatusOr<HloInstruction*> MakeCompareHlo(ComparisonDirection direction,
       ShapeInference::InferBinaryOpShape(HloOpcode::kCompare, lhs, rhs));
   return computation->AddInstruction(
       HloInstruction::CreateCompare(binary_op_shape, lhs, rhs, direction),
-      metadata);
+      metadata, frontend_attributes);
 }
 
-absl::StatusOr<HloInstruction*> MakePadHlo(HloInstruction* operand,
-                                           HloInstruction* padding_value,
-                                           const PaddingConfig& padding_config,
-                                           const OpMetadata* metadata) {
+absl::StatusOr<HloInstruction*> MakePadHlo(
+    HloInstruction* operand, HloInstruction* padding_value,
+    const PaddingConfig& padding_config, const OpMetadata* metadata,
+    const FrontendAttributes* frontend_attributes) {
   HloComputation* computation = operand->parent();
   CHECK_EQ(computation, padding_value->parent());
   TF_ASSIGN_OR_RETURN(
       Shape pad_shape,
       ShapeInference::InferPadShape(operand->shape(), padding_value->shape(),
                                     padding_config));
+
   return computation->AddInstruction(
       HloInstruction::CreatePad(pad_shape, operand, padding_value,
                                 padding_config),
-      metadata);
+      metadata, frontend_attributes);
 }
 
 absl::StatusOr<HloInstruction*> MakeSliceHlo(
     HloInstruction* operand, absl::Span<const int64_t> start_indices,
     absl::Span<const int64_t> limit_indices, absl::Span<const int64_t> strides,
-    const OpMetadata* metadata) {
+    const OpMetadata* metadata, const FrontendAttributes* frontend_attributes) {
   HloComputation* computation = operand->parent();
   TF_ASSIGN_OR_RETURN(Shape slice_shape, ShapeInference::InferSliceShape(
                                              operand->shape(), start_indices,
@@ -121,7 +121,7 @@ absl::StatusOr<HloInstruction*> MakeSliceHlo(
   return computation->AddInstruction(
       HloInstruction::CreateSlice(slice_shape, operand, start_indices,
                                   limit_indices, strides),
-      metadata);
+      metadata, frontend_attributes);
 }
 
 absl::StatusOr<HloInstruction*> MakeConvolveHlo(
@@ -130,7 +130,7 @@ absl::StatusOr<HloInstruction*> MakeConvolveHlo(
     const ConvolutionDimensionNumbers& dimension_numbers,
     const PrecisionConfig& precision_config,
     std::optional<PrimitiveType> preferred_element_type,
-    const OpMetadata* metadata) {
+    const OpMetadata* metadata, const FrontendAttributes* frontend_attributes) {
   HloComputation* computation = lhs->parent();
   CHECK_EQ(computation, rhs->parent());
   TF_ASSIGN_OR_RETURN(
@@ -142,7 +142,7 @@ absl::StatusOr<HloInstruction*> MakeConvolveHlo(
       HloInstruction::CreateConvolve(
           convolve_shape, lhs, rhs, feature_group_count, batch_group_count,
           window, dimension_numbers, precision_config),
-      metadata);
+      metadata, frontend_attributes);
 }
 
 absl::StatusOr<HloInstruction*> MakeTransposeHlo(
@@ -269,24 +269,24 @@ absl::StatusOr<HloInstruction*> MakeDynamicUpdateSliceHlo(
       metadata);
 }
 
-HloInstruction* MakeBroadcastHlo(HloInstruction* operand,
-                                 absl::Span<const int64_t> broadcast_dimensions,
-                                 absl::Span<const int64_t> result_shape_bounds,
-                                 const OpMetadata* metadata) {
+HloInstruction* MakeBroadcastHlo(
+    HloInstruction* operand, absl::Span<const int64_t> broadcast_dimensions,
+    absl::Span<const int64_t> result_shape_bounds, const OpMetadata* metadata,
+    const FrontendAttributes* frontend_attributes) {
   Shape broadcast_shape = ShapeUtil::MakeShape(operand->shape().element_type(),
                                                result_shape_bounds);
   return MakeBroadcastHlo(operand, broadcast_dimensions, broadcast_shape,
-                          metadata);
+                          metadata, frontend_attributes);
 }
 
-HloInstruction* MakeBroadcastHlo(HloInstruction* operand,
-                                 absl::Span<const int64_t> broadcast_dimensions,
-                                 const Shape& shape,
-                                 const OpMetadata* metadata) {
+HloInstruction* MakeBroadcastHlo(
+    HloInstruction* operand, absl::Span<const int64_t> broadcast_dimensions,
+    const Shape& shape, const OpMetadata* metadata,
+    const FrontendAttributes* frontend_attributes) {
   HloComputation* computation = operand->parent();
   return computation->AddInstruction(
       HloInstruction::CreateBroadcast(shape, operand, broadcast_dimensions),
-      metadata);
+      metadata, frontend_attributes);
 }
 
 absl::StatusOr<HloInstruction*> MakeGetTupleElementHlo(
@@ -303,7 +303,7 @@ absl::StatusOr<HloInstruction*> MakeGetTupleElementHlo(
 
 absl::StatusOr<HloInstruction*> MakeConcatHlo(
     absl::Span<HloInstruction* const> operands, int64_t dimension,
-    const OpMetadata* metadata) {
+    const OpMetadata* metadata, const FrontendAttributes* frontend_attributes) {
   CHECK_GT(operands.size(), 0);
 
   HloComputation* computation = operands[0]->parent();
@@ -319,7 +319,7 @@ absl::StatusOr<HloInstruction*> MakeConcatHlo(
                                               operand_shapes, dimension));
   return computation->AddInstruction(
       HloInstruction::CreateConcatenate(concat_shape, operands, dimension),
-      metadata);
+      metadata, frontend_attributes);
 }
 
 HloInstruction* MakeConvertToHlo(HloInstruction* hlo, PrimitiveType type,
@@ -536,10 +536,10 @@ absl::StatusOr<HloInstruction*> MakeReverseHlo(
       metadata);
 }
 
-absl::StatusOr<HloInstruction*> MakeSelectHlo(HloInstruction* pred,
-                                              HloInstruction* on_true,
-                                              HloInstruction* on_false,
-                                              HloInstruction* derived_from) {
+absl::StatusOr<HloInstruction*> MakeSelectHlo(
+    HloInstruction* pred, HloInstruction* on_true, HloInstruction* on_false,
+    HloInstruction* derived_from, const OpMetadata* metadata,
+    const FrontendAttributes* frontend_attributes) {
   HloComputation* computation = pred->parent();
   DCHECK_EQ(computation, on_true->parent());
   DCHECK_EQ(computation, on_false->parent());
@@ -548,9 +548,11 @@ absl::StatusOr<HloInstruction*> MakeSelectHlo(HloInstruction* pred,
     if (!ShapeUtil::IsScalar(op_shape) && !op_shape.IsTuple()) {
       // If the output is not scalar, we need to broadcast the condition
       // to match the contract of kSelect.
-      pred = computation->AddInstruction(HloInstruction::CreateBroadcast(
-          ShapeUtil::ChangeElementType(op_shape, PrimitiveType::PRED), pred,
-          {}));
+      pred = computation->AddInstruction(
+          HloInstruction::CreateBroadcast(
+              ShapeUtil::ChangeElementType(op_shape, PrimitiveType::PRED), pred,
+              {}),
+          metadata, frontend_attributes);
       if (derived_from) {
         derived_from->SetupDerivedInstruction(pred);
       }
@@ -561,9 +563,10 @@ absl::StatusOr<HloInstruction*> MakeSelectHlo(HloInstruction* pred,
   TF_ASSIGN_OR_RETURN(Shape select_shape,
                       ShapeInference::InferTernaryOpShape(select_op_code, pred,
                                                           on_true, on_false));
-  HloInstruction* select =
-      computation->AddInstruction(HloInstruction::CreateTernary(
-          select_shape, select_op_code, pred, on_true, on_false));
+  HloInstruction* select = computation->AddInstruction(
+      HloInstruction::CreateTernary(select_shape, select_op_code, pred, on_true,
+                                    on_false),
+      metadata, frontend_attributes);
   if (derived_from) {
     derived_from->SetupDerivedInstruction(select);
   }
