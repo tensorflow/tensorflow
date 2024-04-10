@@ -2105,6 +2105,17 @@ TEST(XlaBuilderTest,
               StatusIs(_, HasSubstr("Unimplemented implicit broadcast.")));
 }
 
+TEST(XlaBuilderTest, UnboundedCollectiveBroadcast) {
+  XlaBuilder b(TestName());
+  TF_ASSERT_OK_AND_ASSIGN(const Shape operand, ParseShape("f32[?, 10]"));
+  TF_ASSERT_OK_AND_ASSIGN(const Shape expected, ParseShape("f32[?, 10]"));
+  CollectiveBroadcast(/*operand=*/Parameter(&b, 0, operand, "operand"),
+                      /*replica_groups=*/{});
+  TF_ASSERT_OK_AND_ASSIGN(const auto module, BuildHloModule(b));
+  EXPECT_THAT(GetRoot(*module),
+              GmockMatch(m::Op().WithShapeEqualTo(&expected)));
+}
+
 TEST(XlaBuilderTest, UnboundedCollectivePermute) {
   XlaBuilder b(TestName());
   TF_ASSERT_OK_AND_ASSIGN(const Shape operand, ParseShape("f32[?, 10]"));

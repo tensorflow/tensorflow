@@ -4255,6 +4255,17 @@ TEST_F(ShapeInferenceTest, UnboundedClampWithTuple) {
           "Expected array argument for clamp min, but got (f32[2], f32[?])."));
 }
 
+TEST_F(ShapeInferenceTest, UnboundedCollectiveBroadcast) {
+  TF_ASSERT_OK_AND_ASSIGN(const Shape operand, ParseShape("f32[?, 10]"));
+  TF_ASSERT_OK_AND_ASSIGN(const Shape expected, ParseShape("f32[?, 10]"));
+  TF_ASSERT_OK_AND_ASSIGN(const Shape inferred_shape,
+                          ShapeInference::InferCollectiveBroadcastShape(
+                              /*operand_shapes=*/{&operand}));
+  EXPECT_TRUE(ShapeUtil::Equal(inferred_shape, expected))
+      << "inferred: " << ShapeUtil::HumanString(inferred_shape)
+      << " expected: " << ShapeUtil::HumanString(expected);
+}
+
 TEST_F(ShapeInferenceTest, UnboundedCollectivePermute) {
   TF_ASSERT_OK_AND_ASSIGN(const Shape operand, ParseShape("f32[?, 10]"));
   TF_ASSERT_OK_AND_ASSIGN(const Shape expected, ParseShape("f32[?, 10]"));
