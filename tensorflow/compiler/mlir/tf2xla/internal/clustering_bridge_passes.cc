@@ -189,8 +189,6 @@ void AddNonReplicatedBridgeClusteringPipelinePasses(OpPassManager& pm) {
   // inference.
   pm.addPass(mlir::TF::CreateGuaranteeAllFuncsOneUsePass());
   pm.addPass(mlir::TF::CreateTFShapeInferencePass());
-  pm.addPass(
-      tensorflow::tf2xla::internal::CreateXlaOutlineEntryFunctionsPass());
   // Encapsulate PartitionedCall ops within a cluster so that the composite
   // resource ops can be decomposed.
   pm.addPass(tensorflow::tf2xla::internal::CreateXlaClusterFormationPass());
