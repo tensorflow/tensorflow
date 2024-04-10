@@ -50,8 +50,9 @@ class NcclTopoXmlParser {
   Status Parse(ncclXmlNode* head) {
     if (head && head->type == NODE_TYPE_SINGLE) return absl::OkStatus();
     while (true) {
-      if (xml_->maxIndex == MAX_NODES) {
-        return absl::InternalError("XML parser is limited to 1024 nodes");
+      if (xml_->maxIndex == xml_->maxNodes) {
+        return absl::InternalError(absl::StrFormat(
+            "XML parser is limited to %ld nodes", xml_->maxNodes));
       }
       ncclXmlNode* node = xml_->nodes + xml_->maxIndex;
       memset(node, 0, sizeof(ncclXmlNode));
