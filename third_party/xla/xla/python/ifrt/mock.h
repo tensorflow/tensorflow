@@ -48,7 +48,7 @@ namespace ifrt {
 
 // array.h
 
-class MockArray final : public llvm::RTTIExtends<MockArray, Array> {
+class MockArray : public llvm::RTTIExtends<MockArray, Array> {
  public:
   MockArray() = default;
   explicit MockArray(tsl::RCReference<xla::ifrt::Array> delegated);
@@ -93,7 +93,7 @@ class MockArray final : public llvm::RTTIExtends<MockArray, Array> {
 
 // client.h
 
-class MockClient final : public llvm::RTTIExtends<MockClient, Client> {
+class MockClient : public llvm::RTTIExtends<MockClient, Client> {
  public:
   MockClient() = default;
   explicit MockClient(std::unique_ptr<xla::ifrt::Client> delegated);
@@ -154,7 +154,7 @@ class MockClient final : public llvm::RTTIExtends<MockClient, Client> {
 
 // compiler.h
 
-class MockCompiler final : public llvm::RTTIExtends<MockCompiler, Compiler> {
+class MockCompiler : public llvm::RTTIExtends<MockCompiler, Compiler> {
  public:
   MOCK_METHOD(absl::StatusOr<std::unique_ptr<LoadedExecutable>>, Compile,
               (std::unique_ptr<Program> program,
@@ -171,7 +171,7 @@ class MockCompiler final : public llvm::RTTIExtends<MockCompiler, Compiler> {
 
 // device.h
 
-class MockDevice final : public Device {
+class MockDevice : public Device {
  public:
   MockDevice() = default;
   explicit MockDevice(Device* delegated);
@@ -215,7 +215,7 @@ class MockDevice final : public Device {
 
 // memory.h
 
-class MockMemory final : public Memory {
+class MockMemory : public Memory {
  public:
   MOCK_METHOD(xla::PjRtClient*, client, (), (const, final));
   MOCK_METHOD(absl::Span<Device* const>, devices, (), (const, final));
@@ -227,8 +227,7 @@ class MockMemory final : public Memory {
 
 // executable.h
 
-class MockExecutable final
-    : public llvm::RTTIExtends<MockExecutable, Executable> {
+class MockExecutable : public llvm::RTTIExtends<MockExecutable, Executable> {
  public:
   MOCK_METHOD(absl::string_view, name, (), (const, final));
   MOCK_METHOD(absl::StatusOr<std::optional<std::string>>, Fingerprint, (),
