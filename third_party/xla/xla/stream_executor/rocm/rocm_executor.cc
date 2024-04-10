@@ -806,17 +806,24 @@ dnn::DnnSupport* GpuExecutor::AsDnn() {
   return dnn_.get();
 }
 
-fft::FftSupport* GpuExecutor::CreateFft() {
+fft::FftSupport* GpuExecutor::AsFft() {
+  absl::MutexLock lock(&mu_);
+  if (fft_ != nullptr) {
+    return fft_.get();
+  }
   PluginRegistry* registry = PluginRegistry::Instance();
   absl::StatusOr<PluginRegistry::FftFactory> status =
-      registry->GetFactory<PluginRegistry::FftFactory>(rocm::kROCmPlatformId);
+      registry->GetFactory<PluginRegistry::FftFactory>(cuda::kCudaPlatformId);
   if (!status.ok()) {
     LOG(ERROR) << "Unable to retrieve FFT factory: "
                << status.status().message();
     return nullptr;
   }
 
-  return status.value()(this);
+  auto fft = status.value()(this);
+
+  fft_.reset(fft);
+  return fft_.get();
 }
 
 bool GpuExecutor::CanEnablePeerAccessTo(StreamExecutorInterface* other) {

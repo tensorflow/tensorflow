@@ -272,7 +272,7 @@ class GpuExecutor : public internal::StreamExecutorInterface {
 
   blas::BlasSupport* CreateBlas() override;
 
-  fft::FftSupport* CreateFft() override;
+  fft::FftSupport* AsFft() override;
 
   dnn::DnnSupport* AsDnn() override;
 
@@ -432,6 +432,10 @@ class GpuExecutor : public internal::StreamExecutorInterface {
   // Memoized DNN support object -- we only want to create this once when asked
   // for a DNN interface.
   std::unique_ptr<dnn::DnnSupport> dnn_ ABSL_GUARDED_BY(mu_);
+
+  // Memoized FFT support object -- we only want to create this once when asked
+  // for a FFT interface.
+  std::unique_ptr<fft::FftSupport> fft_;
 
   GpuExecutor(const GpuExecutor&) = delete;
   void operator=(const GpuExecutor&) = delete;

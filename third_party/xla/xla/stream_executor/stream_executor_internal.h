@@ -276,11 +276,12 @@ class StreamExecutorInterface {
   // not support BLAS.
   virtual blas::BlasSupport* CreateBlas() { return nullptr; }
 
-  // Creates a new fft::FftSupport object, ownership is transferred to the
-  // caller.
-  // This may return null if the FFT initialization fails or this object does
-  // not support FFT.
-  virtual fft::FftSupport* CreateFft() { return nullptr; }
+  // Gets-or-creates (creates with memoization) a FftSupport datatype that can
+  // be used to execute FFT routines on the current platform.
+  //
+  // Returns null if there was an error initializing the FFT support for the
+  // underlying platform.
+  virtual fft::FftSupport* AsFft() { return nullptr; }
 
   // Gets-or-creates (creates with memoization) a DnnSupport datatype that can
   // be used for neural network routines on the current platform.
