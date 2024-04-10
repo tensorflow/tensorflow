@@ -49,6 +49,8 @@
 #include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/host_callback.h"
 #include "xla/python/ifrt/memory.h"
+#include "xla/python/ifrt/program.h"
+#include "xla/python/ifrt/program_serdes.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
@@ -695,8 +697,13 @@ Future<BackendInterface::Response> IfrtBackend::HandleCompileRequest(
                       std::move(request))]() -> Response {
     const CompileRequest& compile_request = request->compile_request();
 
-    TF_ASSIGN_OR_RETURN(auto program, Deserialize<xla::ifrt::Program>(
-                                          compile_request.program()));
+    auto deserialize_program_options =
+        std::make_unique<DeserializeProgramOptions>(
+            absl::bind_front(&Client::LookupDevice, client_.get()));
+    TF_ASSIGN_OR_RETURN(
+        auto program,
+        Deserialize<xla::ifrt::Program>(
+            compile_request.program(), std::move(deserialize_program_options)));
     TF_ASSIGN_OR_RETURN(auto options, Deserialize<xla::ifrt::CompileOptions>(
                                           compile_request.compile_options()));
 

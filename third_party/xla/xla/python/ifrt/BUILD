@@ -46,6 +46,9 @@ cc_library(
         "index.cc",
         "index_domain.cc",
         "memory.cc",
+        "program.cc",
+        # TODO(hyeontaek): Move this SerDes out of `ifrt` target once `Compiler::DeserializeLoadedExecutable()` is split into executable deserialization and executable loading, and thus the method can be removed.
+        "executable_serdes.cc",
         "shape.cc",
         "sharding.cc",
         "tuple.cc",
@@ -63,6 +66,9 @@ cc_library(
         "index.h",
         "index_domain.h",
         "memory.h",
+        "program.h",
+        # TODO(hyeontaek): Move this SerDes out of `ifrt` target once `Compiler::DeserializeLoadedExecutable()` is split into executable deserialization and executable loading, and thus the method can be removed.
+        "executable_serdes.h",
         "shape.h",
         "sharding.h",
         "tuple.h",
@@ -362,6 +368,20 @@ xla_cc_test(
 tf_proto_library(
     name = "serdes_proto",
     srcs = ["serdes.proto"],
+)
+
+cc_library(
+    name = "program_serdes",
+    srcs = ["program_serdes.cc"],
+    hdrs = ["program_serdes.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":ifrt",
+        ":serdes",
+        "//xla:util",
+        "@com_google_absl//absl/status:statusor",
+        "@llvm-project//llvm:Support",
+    ],
 )
 
 cc_library(

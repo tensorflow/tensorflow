@@ -1,4 +1,4 @@
-/* Copyright 2022 The OpenXLA Authors.
+/* Copyright 2024 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,13 +13,22 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/python/ifrt/compiler.h"
+#ifndef XLA_PYTHON_IFRT_PROGRAM_H_
+#define XLA_PYTHON_IFRT_PROGRAM_H_
+
+#include "llvm/Support/ExtensibleRTTI.h"
+#include "xla/python/ifrt/serdes.h"
 
 namespace xla {
 namespace ifrt {
 
-char CompileOptions::ID = 0;
-char Compiler::ID = 0;
+// Abstract program. A program is any serializable code that can be compiled and
+// loaded onto devices to create a `LoadedExecutable`.
+struct Program : llvm::RTTIExtends<Program, Serializable> {
+  static char ID;  // NOLINT
+};
 
 }  // namespace ifrt
 }  // namespace xla
+
+#endif  // XLA_PYTHON_IFRT_PROGRAM_H_

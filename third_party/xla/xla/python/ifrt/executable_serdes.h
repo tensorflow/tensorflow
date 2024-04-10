@@ -1,4 +1,4 @@
-/* Copyright 2022 The OpenXLA Authors.
+/* Copyright 2024 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,13 +13,26 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/python/ifrt/compiler.h"
+#ifndef XLA_PYTHON_IFRT_EXECUTABLE_SERDES_H_
+#define XLA_PYTHON_IFRT_EXECUTABLE_SERDES_H_
+
+#include "llvm/Support/ExtensibleRTTI.h"
+#include "xla/python/ifrt/serdes.h"
 
 namespace xla {
 namespace ifrt {
 
-char CompileOptions::ID = 0;
-char Compiler::ID = 0;
+// Abstract options for deserializing an `Executable` and load it as
+// `LoadedExecutable`. This option structure is to express legacy compilation
+// options that are not included in the program.
+//
+// TODO(hyeontaek): Make an new `LoadOptions` that is specific for loading.
+struct DeserializeExecutableOptions
+    : llvm::RTTIExtends<DeserializeExecutableOptions, DeserializeOptions> {
+  static char ID;  // NOLINT
+};
 
 }  // namespace ifrt
 }  // namespace xla
+
+#endif  // XLA_PYTHON_IFRT_EXECUTABLE_SERDES_H_
