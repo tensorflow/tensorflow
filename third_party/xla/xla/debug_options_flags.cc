@@ -250,6 +250,8 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   const int64_t kDefaultMinGemmRewriteSize = 100;
   opts.set_xla_gpu_gemm_rewrite_size_threshold(kDefaultMinGemmRewriteSize);
 
+  opts.set_xla_gpu_use_memcpy_local_p2p(true);
+
   return opts;
 }
 
@@ -1654,6 +1656,11 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "Threshold to rewrite matmul to cuBLAS or Triton "
       "(minumum combined number of elements of both matrices "
       "in non-batch dimensions to be considered for a rewrite)."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_use_memcpy_local_p2p",
+      bool_setter_for(&DebugOptions::set_xla_gpu_use_memcpy_local_p2p),
+      debug_options->xla_gpu_use_memcpy_local_p2p(),
+      "Whether to use memcpy for local p2p communication."));
 }  // NOLINT(readability/fn_size)
 
 // Allocates flag_values and flag_objects; this function must not be called more

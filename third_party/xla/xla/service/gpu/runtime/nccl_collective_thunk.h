@@ -107,6 +107,18 @@ NcclCollectiveConfig GetNcclCollectiveConfigForMlir(
   return config;
 }
 
+// This wraps the ncclCommHandle object along with other information
+// that could be useful.
+struct NcclCommHandleWrapper {
+  NcclCommHandleWrapper(NcclApi::NcclCommHandle handle, bool is_local)
+      : comm_handle(handle), is_local(is_local) {}
+
+  // Communicator handle.
+  NcclApi::NcclCommHandle comm_handle;
+  // Whether this comm is a node-local comm.
+  bool is_local;
+};
+
 //===----------------------------------------------------------------------===//
 // NcclCollectiveThunk
 //===----------------------------------------------------------------------===//
@@ -165,9 +177,9 @@ class NcclCollectiveThunk : public Thunk {
   }
 
  protected:
-  virtual absl::Status RunNcclCollective(const ExecuteParams& params,
-                                         se::Stream& stream,
-                                         NcclApi::NcclCommHandle comm) = 0;
+  virtual absl::Status RunNcclCollective(
+      const ExecuteParams& params, se::Stream& stream,
+      NcclCommHandleWrapper comm_wrapper) = 0;
   virtual const NcclCollectiveConfig& config() const = 0;
   virtual AsyncStreamKind GetAsyncStreamKind() const {
     return AsyncStreamKind::kCollective;
@@ -261,7 +273,9 @@ size_t GetNumLocalParticipants(
     const std::vector<GlobalDeviceId>& participants,
     const std::vector<GlobalDeviceId>* local_devices);  // may be null
 
-absl::StatusOr<NcclApi::NcclCommHandle> GetNcclComm(
+// Returns a nccl comm handle and a flag indicating if
+// it's a local communicator.
+absl::StatusOr<NcclCommHandleWrapper> GetNcclComm(
     const Thunk::CollectiveExecuteParams& params,
     const Thunk::CollectiveCliques& collective_cliques,
     const std::vector<ReplicaGroup>& replica_groups,

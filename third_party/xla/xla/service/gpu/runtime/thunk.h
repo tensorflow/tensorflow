@@ -201,6 +201,9 @@ class Thunk {
     absl::StatusOr<size_t> num_communicators(
         const NcclCliqueKey& clique_key) const;
 
+    // Returns whether the clique is a local clique.
+    absl::StatusOr<bool> is_local_clique(const NcclCliqueKey& clique_key) const;
+
     bool empty() const { return cliques_map_.empty(); }
 
    private:
