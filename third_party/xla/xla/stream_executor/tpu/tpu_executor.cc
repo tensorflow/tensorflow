@@ -50,10 +50,9 @@ using absl::Status;
 
 TpuExecutor::~TpuExecutor() { ExecutorApiFn()->TpuExecutor_FreeFn(executor_); }
 
-Status TpuExecutor::Init(int device_ordinal) {
+Status TpuExecutor::Init() {
   StatusHelper status;
-  ExecutorApiFn()->TpuExecutor_InitFn(executor_, device_ordinal,
-                                      status.c_status);
+  ExecutorApiFn()->TpuExecutor_InitFn(executor_, status.c_status);
   return status.status();
 }
 

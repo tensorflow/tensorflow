@@ -103,10 +103,10 @@ class GpuExecutor : public internal::StreamExecutorInterface {
  public:
   // sub_platform indicates the subplatform used in this executor; it must
   // be a CUDA type.
-  GpuExecutor()
+  explicit GpuExecutor(int device_ordinal)
       : device_(0),
         context_(nullptr),
-        device_ordinal_(0),
+        device_ordinal_(device_ordinal),
         cc_major_(0),
         cc_minor_(0),
         version_(0) {}
@@ -116,7 +116,7 @@ class GpuExecutor : public internal::StreamExecutorInterface {
 
   ~GpuExecutor() override;
 
-  absl::Status Init(int device_ordinal) override;
+  absl::Status Init() override;
 
   int device_ordinal() const override { return device_ordinal_; };
 

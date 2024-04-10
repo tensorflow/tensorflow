@@ -73,8 +73,7 @@ class StreamExecutor {
  public:
   StreamExecutor(
       const Platform* platform,
-      std::unique_ptr<internal::StreamExecutorInterface> implementation,
-      int device_ordinal);
+      std::unique_ptr<internal::StreamExecutorInterface> implementation);
 
   ~StreamExecutor() = default;
 
@@ -262,7 +261,7 @@ class StreamExecutor {
 
   // Returns the device ordinal that this StreamExecutor was initialized with.
   // Meaningless before initialization.
-  int device_ordinal() const { return device_ordinal_; }
+  int device_ordinal() const { return implementation_->device_ordinal(); }
 
   // Returns a borrowed pointer to the underlying StreamExecutor implementation.
   internal::StreamExecutorInterface* implementation();
@@ -443,11 +442,6 @@ class StreamExecutor {
   // once it has been queried from DeviceDescription().
   mutable std::unique_ptr<DeviceDescription> device_description_
       ABSL_GUARDED_BY(mu_);
-
-  // The device ordinal that this object was initialized with.
-  //
-  // Immutable post-initialization.
-  int device_ordinal_;
 
   // Only one worker thread is needed; little work will be done by the
   // executor.

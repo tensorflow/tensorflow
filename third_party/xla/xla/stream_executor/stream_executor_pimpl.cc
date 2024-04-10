@@ -73,17 +73,13 @@ static int64_t GetMemoryLimitBytes() {
 
 StreamExecutor::StreamExecutor(
     const Platform* platform,
-    std::unique_ptr<internal::StreamExecutorInterface> implementation,
-    int device_ordinal)
+    std::unique_ptr<internal::StreamExecutorInterface> implementation)
     : platform_(platform),
       implementation_(std::move(implementation)),
-      device_ordinal_(device_ordinal),
       memory_limit_bytes_(GetMemoryLimitBytes()),
       allocator_(this) {}
 
-absl::Status StreamExecutor::Init() {
-  return implementation_->Init(device_ordinal_);
-}
+absl::Status StreamExecutor::Init() { return implementation_->Init(); }
 
 absl::Status StreamExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
                                        Kernel* kernel) {
@@ -179,7 +175,7 @@ DeviceMemoryBase StreamExecutor::Allocate(uint64_t size, int64_t memory_space) {
   if (memory_limit_bytes_ > 0 &&
       static_cast<int64_t>(size) > memory_limit_bytes_) {
     LOG(WARNING) << "Not enough memory to allocate " << size << " on device "
-                 << device_ordinal_
+                 << device_ordinal()
                  << " within provided limit.  limit=" << memory_limit_bytes_
                  << "]";
     return DeviceMemoryBase();
