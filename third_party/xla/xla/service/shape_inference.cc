@@ -2531,6 +2531,7 @@ ShapeInference::InferScalarBroadcastShape(absl::Span<const Shape> shapes) {
 
   return InferVariadicOpShape(HloOpcode::kTuple, operand_shapes);
 }
+
 /* static */ absl::StatusOr<Shape>
 ShapeInference::InferCollectiveBroadcastShape(
     absl::Span<const Shape* const> operand_shapes) {
