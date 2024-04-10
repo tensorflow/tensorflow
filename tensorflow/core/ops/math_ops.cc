@@ -259,6 +259,12 @@ REGISTER_OP("ComplexAbs")
       .Attr("T: {bfloat16, half, float, double}") \
       .SetShapeFn(shape_inference::UnchangedShape)
 
+#define UNARY_REAL_6()                              \
+  Input("x: T")                                   \
+      .Output("y: T")                             \
+      .Attr("T: {bfloat16, half, float, double, int32, int64}") \
+      .SetShapeFn(shape_inference::UnchangedShape)
+
 #define UNARY_COMPLEX()                                                  \
   Input("x: T")                                                          \
       .Output("y: T")                                                    \
@@ -290,7 +296,7 @@ REGISTER_OP("SqrtGrad").UNARY_GRADIENT_COMPLEX();
 
 REGISTER_OP("Rsqrt").UNARY_COMPLEX();
 
-REGISTER_OP("Round").UNARY();
+REGISTER_OP("Round").UNARY_REAL_6();
 
 REGISTER_OP("RsqrtGrad").UNARY_GRADIENT_COMPLEX();
 
