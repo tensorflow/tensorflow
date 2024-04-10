@@ -136,15 +136,7 @@ int64_t StreamExecutor::GetDeviceLoad() const {
   return implementation_->GetDeviceLoad();
 }
 
-dnn::DnnSupport* StreamExecutor::AsDnn() {
-  absl::MutexLock lock(&mu_);
-  if (dnn_ != nullptr) {
-    return dnn_.get();
-  }
-
-  dnn_.reset(implementation_->CreateDnn());
-  return dnn_.get();
-}
+dnn::DnnSupport* StreamExecutor::AsDnn() { return implementation_->AsDnn(); }
 
 blas::BlasSupport* StreamExecutor::AsBlas() {
   absl::MutexLock lock(&mu_);
@@ -358,11 +350,9 @@ bool StreamExecutor::AllocateStream(Stream* stream) {
 }
 
 void StreamExecutor::DeallocateStream(Stream* stream) {
-  dnn::DnnSupport* dnn;
-  {
-    absl::MutexLock lock(&mu_);
-    dnn = dnn_.get();
-  }
+  // TODO(b/301020144) Make this part of
+  // StreamExecutorInterface::DeallocateStream methods that care about DNNs.
+  dnn::DnnSupport* dnn = AsDnn();
   if (dnn) {
     dnn->NotifyStreamDestroyed(stream);
   }

@@ -282,10 +282,12 @@ class StreamExecutorInterface {
   // not support FFT.
   virtual fft::FftSupport* CreateFft() { return nullptr; }
 
-  // Creates a new DnnSupport object, ownership is transferred to the caller.
-  // This may return null if the DNN initialization fails or this object does
-  // not support Dnns.
-  virtual dnn::DnnSupport* CreateDnn() { return nullptr; }
+  // Gets-or-creates (creates with memoization) a DnnSupport datatype that can
+  // be used for neural network routines on the current platform.
+  //
+  // Returns null if there was an error initializing the DNN support for the
+  // underlying platform.
+  virtual dnn::DnnSupport* AsDnn() { return nullptr; }
 
   // Each call creates a new instance of the platform-specific implementation of
   // the corresponding interface type.

@@ -443,10 +443,6 @@ class StreamExecutor {
   // for a BLAS interface.
   std::unique_ptr<blas::BlasSupport> blas_ ABSL_GUARDED_BY(mu_);
 
-  // Memoized DNN support object -- we only want to create this once when asked
-  // for an DNN interface.
-  std::unique_ptr<dnn::DnnSupport> dnn_ ABSL_GUARDED_BY(mu_);
-
   // Memoized FFT support object -- we only want to create this once when asked
   // for a FFT interface.
   std::unique_ptr<fft::FftSupport> fft_;

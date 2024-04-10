@@ -274,7 +274,7 @@ class GpuExecutor : public internal::StreamExecutorInterface {
 
   fft::FftSupport* CreateFft() override;
 
-  dnn::DnnSupport* CreateDnn() override;
+  dnn::DnnSupport* AsDnn() override;
 
   std::unique_ptr<internal::EventInterface> CreateEventImplementation()
       override;
@@ -425,6 +425,13 @@ class GpuExecutor : public internal::StreamExecutorInterface {
   // Lookup map for alive streams, from raw stream pointers.
   absl::flat_hash_map<void*, Stream*> alive_gpu_streams_
       ABSL_GUARDED_BY(alive_gpu_streams_mu_);
+
+  // Reader/writer lock for mutable data structures on this object.
+  absl::Mutex mu_;
+
+  // Memoized DNN support object -- we only want to create this once when asked
+  // for a DNN interface.
+  std::unique_ptr<dnn::DnnSupport> dnn_ ABSL_GUARDED_BY(mu_);
 
   GpuExecutor(const GpuExecutor&) = delete;
   void operator=(const GpuExecutor&) = delete;

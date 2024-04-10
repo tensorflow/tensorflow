@@ -785,17 +785,25 @@ blas::BlasSupport* GpuExecutor::CreateBlas() {
   return status.value()(this);
 }
 
-dnn::DnnSupport* GpuExecutor::CreateDnn() {
+dnn::DnnSupport* GpuExecutor::AsDnn() {
+  absl::MutexLock lock(&mu_);
+  if (dnn_ != nullptr) {
+    return dnn_.get();
+  }
   PluginRegistry* registry = PluginRegistry::Instance();
   absl::StatusOr<PluginRegistry::DnnFactory> status =
-      registry->GetFactory<PluginRegistry::DnnFactory>(rocm::kROCmPlatformId);
+      registry->GetFactory<PluginRegistry::DnnFactory>(cuda::kCudaPlatformId);
   if (!status.ok()) {
     LOG(ERROR) << "Unable to retrieve DNN factory: "
                << status.status().message();
     return nullptr;
   }
 
-  return status.value()(this);
+  auto dnn = status.value()(this);
+
+  dnn_.reset(dnn);
+
+  return dnn_.get();
 }
 
 fft::FftSupport* GpuExecutor::CreateFft() {
