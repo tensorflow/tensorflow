@@ -27,7 +27,7 @@ limitations under the License.
 
 namespace tflite {
 
-using xla::StatusOr;
+using absl::StatusOr;
 
 namespace errors = tensorflow::errors;
 

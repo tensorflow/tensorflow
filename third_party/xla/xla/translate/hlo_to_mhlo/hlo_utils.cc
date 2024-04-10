@@ -39,8 +39,6 @@ using mlir::AffineMap;
 using mlir::Builder;
 using mlir::DenseElementsAttr;
 using mlir::ShapedType;
-using xla::LiteralBase;
-using xla::StatusOr;
 
 template <typename CppType>
 ::mlir::DenseElementsAttr CreateDenseAttrFromLiteral(

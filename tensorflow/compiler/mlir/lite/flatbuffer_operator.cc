@@ -58,9 +58,9 @@ limitations under the License.
 
 namespace {
 
+using ::absl::StatusOr;
 using ::tensorflow::Status;
 using ::tensorflow::errors::InvalidArgument;
-using ::xla::StatusOr;
 
 StatusOr<mlir::StringAttr> GetPaddingAttr(TfLitePadding pad_params,
                                           mlir::Builder builder,
