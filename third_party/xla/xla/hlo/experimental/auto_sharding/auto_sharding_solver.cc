@@ -787,6 +787,14 @@ AutoShardingSolverResult SolveAndExtractSolution(
   auto status = solver.Solve();
   if (request.memory_budget() > 0) {
     while (status == operations_research::MPSolver::OPTIMAL) {
+      std::vector<std::pair<const MPVariable*, double>> hint;
+      for (NodeIdx node_idx = 0; node_idx < request.num_nodes(); ++node_idx) {
+        if (request.s_follow(node_idx) >= 0) continue;
+        for (NodeStrategyIdx j = 0; j < s[node_idx].size(); ++j) {
+          hint.push_back({s[node_idx][j], s[node_idx][j]->solution_value()});
+        }
+      }
+      solver.SetHint(hint);
       const LivenessIdx peak_time_idx = FindPeakLiveness(request, s, e);
       if (peak_time_idx == -1 || peak_times.contains(peak_time_idx)) break;
       peak_times.insert(peak_time_idx);
