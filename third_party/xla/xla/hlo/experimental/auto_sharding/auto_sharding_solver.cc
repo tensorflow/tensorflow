@@ -22,7 +22,6 @@ limitations under the License.
 #include <limits>
 #include <memory>
 #include <string>
-#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -739,7 +738,7 @@ void ImposeMemoryConstraint(const AutoShardingSolverRequest& request,
                             const std::vector<std::vector<MPVariable*>>& e,
                             const MPVariable* overbudget_var, MPSolver& solver,
                             LivenessIdx time_idx) {
-  VLOG(1) << "Imposing a memory constraint at time " << time_idx;
+  VLOG(1) << "Imposing a memory constraint at time index " << time_idx;
   MPConstraint* constraint =
       solver.MakeRowConstraint(-MPSolver::infinity(), MPSolver::infinity(),
                                absl::StrCat("mem[", time_idx, "]"));
@@ -777,6 +776,7 @@ AutoShardingSolverResult SolveAndExtractSolution(
     MPSolver& solver) {
   absl::Time start_time = absl::Now();
   absl::flat_hash_set<LivenessIdx> peak_times;
+  // Add in any peak times that were encountered in previous iterations.
   if (request.memory_budget() > 0 && !request.deterministic_mode()) {
     for (const LivenessIdx peak_time_idx : request.peak_times()) {
       peak_times.insert(peak_time_idx);
@@ -786,6 +786,8 @@ AutoShardingSolverResult SolveAndExtractSolution(
   }
   auto status = solver.Solve();
   if (request.memory_budget() > 0) {
+    // Continue to add memory constraints until (a) they are all satisfied,
+    // (b) the problem becomes infeasible, or (c) the solver times out.
     while (status == operations_research::MPSolver::OPTIMAL) {
       std::vector<std::pair<const MPVariable*, double>> hint;
       for (NodeIdx node_idx = 0; node_idx < request.num_nodes(); ++node_idx) {
@@ -800,6 +802,12 @@ AutoShardingSolverResult SolveAndExtractSolution(
       peak_times.insert(peak_time_idx);
       ImposeMemoryConstraint(request, s, e, overbudget_var, solver,
                              peak_time_idx);
+      if (request.has_solver_timeout()) {
+        auto remaining_time =
+            request.solver_timeout().solver_timeout_in_seconds();
+        remaining_time -= absl::ToInt64Seconds(absl::Now() - start_time);
+        solver.SetTimeLimit(absl::Seconds(std::max(remaining_time, 0L)));
+      }
       status = solver.Solve();
     }
     LOG(INFO) << "Imposed " << peak_times.size()
