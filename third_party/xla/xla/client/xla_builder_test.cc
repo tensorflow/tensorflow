@@ -2352,6 +2352,28 @@ TEST(XlaBuilderTest, UnboundedOr) {
               GmockMatch(m::Op().WithShapeEqualTo(&expected)));
 }
 
+TEST(XlaBuilderTest, UnboundedOutfeed) {
+  XlaBuilder b(TestName());
+  TF_ASSERT_OK_AND_ASSIGN(const Shape operand, ParseShape("f32[?, 10]"));
+  TF_ASSERT_OK_AND_ASSIGN(const Shape shape_with_layout,
+                          ParseShape("f32[?, 10]"));
+  Outfeed(/*operand=*/Parameter(&b, 0, operand, "operand"),
+          /*shape_with_layout=*/shape_with_layout, /*outfeed_config=*/"");
+  EXPECT_IS_OK(BuildHloModule(b));
+}
+
+TEST(XlaBuilderTest, UnboundedOutfeedWithToken) {
+  XlaBuilder b(TestName());
+  TF_ASSERT_OK_AND_ASSIGN(const Shape operand, ParseShape("f32[?, 10]"));
+  TF_ASSERT_OK_AND_ASSIGN(const Shape shape_with_layout,
+                          ParseShape("f32[?, 10]"));
+  OutfeedWithToken(/*operand=*/Parameter(&b, 0, operand, "operand"),
+                   /*token=*/CreateToken(&b),
+                   /*shape_with_layout=*/shape_with_layout,
+                   /*outfeed_config=*/"");
+  EXPECT_IS_OK(BuildHloModule(b));
+}
+
 TEST(XlaBuilderTest, UnboundedPad) {
   XlaBuilder b(TestName());
   TF_ASSERT_OK_AND_ASSIGN(const Shape operand, ParseShape("f32[?, 10]"));
