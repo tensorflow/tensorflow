@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_GPU_GPU_TIMER_H_
 #define XLA_STREAM_EXECUTOR_GPU_GPU_TIMER_H_
 
+#include <memory>
 #include <optional>
 #include <utility>
 
@@ -56,9 +57,9 @@ class GpuTimer {
     DeviceMemory<GpuSemaphoreState> device();
 
    private:
-    explicit GpuSemaphore(std::unique_ptr<HostMemoryAllocation> alloc)
+    explicit GpuSemaphore(std::unique_ptr<MemoryAllocation> alloc)
         : ptr_{std::move(alloc)} {}
-    std::unique_ptr<HostMemoryAllocation> ptr_;
+    std::unique_ptr<MemoryAllocation> ptr_;
   };
   static absl::StatusOr<GpuTimer> Create(Stream* stream, bool use_delay_kernel);
   [[deprecated("Pass Stream* not GpuStream*")]] static absl::StatusOr<GpuTimer>
