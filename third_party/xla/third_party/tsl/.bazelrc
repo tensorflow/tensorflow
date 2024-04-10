@@ -293,6 +293,11 @@ build:rocm --define=using_rocm_hipcc=true
 build:rocm --define=tensorflow_mkldnn_contraction_kernel=0
 build:rocm --repo_env TF_NEED_ROCM=1
 
+build:sycl --crosstool_top=@local_config_sycl//crosstool:toolchain
+build:sycl --define=using_sycl=true
+build:sycl --define=tensorflow_mkldnn_contraction_kernel=0
+build:sycl --repo_env TF_NEED_SYCL=1
+
 # Options to disable default on features
 build:noaws --define=no_aws_support=true
 build:nogcp --define=no_gcp_support=true
