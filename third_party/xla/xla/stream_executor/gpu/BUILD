@@ -411,8 +411,6 @@ gpu_only_cc_library(
     hdrs = ["asm_compiler.h"],
     copts = tsl_copts(),
     visibility = internal_visibility([
-        # TODO(hebecker): Remove this once triton_kernels from jaxlib has been updated
-        "//third_party/py/jax:__subpackages__",
         "//xla/service/gpu:__subpackages__",
         "//xla/stream_executor:__subpackages__",
         "//tensorflow/core/kernels:__subpackages__",
@@ -453,8 +451,6 @@ gpu_only_cc_library(
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:subprocess",
     ] + if_cuda_is_configured([
-        # TODO(hebecker): Remove this dependency once triton_kernels from jaxlib does not depend on it anymore.
-        "//xla/stream_executor/cuda:cuda_asm_compiler",
         "//xla/stream_executor/cuda:cuda_driver",
     ]) + if_rocm_is_configured([
         "//xla/stream_executor/rocm:rocm_driver",

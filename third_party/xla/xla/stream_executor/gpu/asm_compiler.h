@@ -39,11 +39,6 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_driver.h"
 #endif  // GOOGLE_CUDA
 
-// TODO(hebecker): Remove this once triton_kernels from jaxlib has been updated.
-#ifdef JAX_GPU_CUDA
-#include "xla/stream_executor/cuda/cuda_asm_compiler.h"  // IWYU pragma: export
-#endif
-
 namespace stream_executor {
 
 struct HsacoImage {
