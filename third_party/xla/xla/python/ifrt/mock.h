@@ -254,7 +254,7 @@ class MockExecutable : public llvm::RTTIExtends<MockExecutable, Executable> {
   static char ID;  // NOLINT
 };
 
-class MockLoadedExecutable final
+class MockLoadedExecutable
     : public llvm::RTTIExtends<MockLoadedExecutable, LoadedExecutable> {
  public:
   MOCK_METHOD(Client*, client, (), (const, final));
