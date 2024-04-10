@@ -792,7 +792,7 @@ dnn::DnnSupport* GpuExecutor::AsDnn() {
   }
   PluginRegistry* registry = PluginRegistry::Instance();
   absl::StatusOr<PluginRegistry::DnnFactory> status =
-      registry->GetFactory<PluginRegistry::DnnFactory>(cuda::kCudaPlatformId);
+      registry->GetFactory<PluginRegistry::DnnFactory>(rocm::kROCmPlatformId);
   if (!status.ok()) {
     LOG(ERROR) << "Unable to retrieve DNN factory: "
                << status.status().message();

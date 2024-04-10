@@ -29,6 +29,9 @@ limitations under the License.
 
 namespace complex_unary_op_samples {
 
+template <class>
+constexpr bool dependent_false = false;
+
 template <typename T, int default_dps_deficiency = 0>
 struct Log1p {
   typedef std::complex<T> InputType;
@@ -1438,7 +1441,7 @@ struct Log1p {
           /* 288 */ {{inf, inf}, {inf, pi_4}, 1.e+00}};
       return table;
     } else {
-      static_assert(false); /* unreachable */
+      static_assert(dependent_false<T>); /* unreachable */
     }
   }
 };

@@ -29,6 +29,9 @@ limitations under the License.
 namespace xla {
 namespace {
 
+template <class>
+constexpr bool dependent_false = false;
+
 class ComplexUnaryOpTest : public ClientLibraryTestBase {
  protected:
   template <typename T, size_t index, typename... Types>
@@ -64,7 +67,7 @@ class ComplexUnaryOpTest : public ClientLibraryTestBase {
     } else if constexpr (std::is_same_v<FloatType, double>) {
       atol = std::ldexp(1e-15f, precision_deficiency);
     } else {
-      static_assert(false);  // unreachable
+      static_assert(dependent_false<FloatType>);
     }
 
     XlaBuilder builder(TestName());
