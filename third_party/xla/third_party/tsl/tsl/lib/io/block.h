@@ -20,6 +20,7 @@ limitations under the License.
 #include <stdint.h>
 
 #include "tsl/lib/io/iterator.h"
+#include "tsl/platform/types.h"
 
 namespace tsl {
 namespace table {

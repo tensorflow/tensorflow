@@ -43,8 +43,11 @@ limitations under the License.
 
 #include <algorithm>
 
+#include "absl/log/check.h"
 #include "tsl/lib/io/table_builder.h"
 #include "tsl/platform/coding.h"
+#include "tsl/platform/stringpiece.h"
+#include "tsl/platform/types.h"
 
 namespace tsl {
 namespace table {

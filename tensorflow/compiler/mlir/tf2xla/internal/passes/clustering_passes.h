@@ -46,11 +46,6 @@ CreateExtractOutsideCompilationPass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateXlaClusterFormationPass();
 
-// Create a pass that rewrites entry functions with `_xla_compile_device` into a
-// `tf.StatefulPartitionedCall` to the original function.
-std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-CreateXlaOutlineEntryFunctionsPass();
-
 // Creates a pass that marks unsupported ops in device cluster for outside
 // compilation.
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
