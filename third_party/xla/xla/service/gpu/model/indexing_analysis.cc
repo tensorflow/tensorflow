@@ -465,8 +465,7 @@ IndexingMap ComputeOutputToInputPadOpIndexingImpl(
       AffineMap::get(output_rank, /*symbolCount=*/0, exprs, mlir_context),
       std::move(dim_vars),
       /*range_vars = */ {},
-      /*rt_vars = */ {},
-      absl::MakeSpan(constraints)};
+      /*rt_vars = */ {}, absl::MakeSpan(constraints)};
 }
 
 HloInstructionIndexing ComputeOutputToInputPadOpIndexing(
@@ -1388,7 +1387,10 @@ bool FuseProducerConsumerOutputToInputIndexing(
 HloInstructionIndexing ComputeOutputToInputIndexing(const HloInstruction* instr,
                                                     int output_id,
                                                     MLIRContext* ctx) {
-  if (HloInstruction::IsOpElementwise(instr->opcode())) {
+  if (HloInstruction::IsOpElementwise(instr->opcode()) ||
+      instr->opcode() == HloOpcode::kMap) {
+    // Note: map has a `dimensions` attribute, but it does nothing. See
+    // b/65689298.
     return ComputeOutputToInputCwiseOpIndexing(instr, ctx);
   }
   if (instr->opcode() == HloOpcode::kBitcast) {
@@ -1454,7 +1456,10 @@ HloInstructionIndexing ComputeOutputToInputIndexing(const HloInstruction* instr,
 HloInstructionIndexing ComputeInputToOutputIndexing(const HloInstruction* instr,
                                                     int input_id,
                                                     MLIRContext* ctx) {
-  if (HloInstruction::IsOpElementwise(instr->opcode())) {
+  if (HloInstruction::IsOpElementwise(instr->opcode()) ||
+      instr->opcode() == HloOpcode::kMap) {
+    // Note: map has a `dimensions` attribute, but it does nothing. See
+    // b/65689298.
     return ComputeInputToOutputCwiseOpIndexing(instr, ctx);
   }
   if (instr->opcode() == HloOpcode::kBitcast) {
