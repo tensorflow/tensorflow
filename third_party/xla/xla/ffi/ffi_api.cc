@@ -38,7 +38,7 @@ limitations under the License.
 //===----------------------------------------------------------------------===//
 
 struct XLA_FFI_Error {
-  xla::Status status;
+  absl::Status status;
 };
 
 struct XLA_FFI_ExecutionContext {

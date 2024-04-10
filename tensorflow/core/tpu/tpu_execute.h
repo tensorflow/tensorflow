@@ -37,7 +37,7 @@ namespace tensorflow {
 // `output_shape` is the output shape of the XLA computation from which
 // `program` was derived. If `session_module` is not nullptr, it will be filled
 // with the input and output literals of the execution.
-xla::StatusOr<xla::ExecutionOutput> TPUExecute(
+absl::StatusOr<xla::ExecutionOutput> TPUExecute(
     const TPUExecutableInfoProto& executable,
     const TPUHostTransferInfoProto& host_transfers,
     const xla::HloProto& hlo_metadata,

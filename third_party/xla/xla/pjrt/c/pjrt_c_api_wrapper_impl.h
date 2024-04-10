@@ -41,7 +41,7 @@ limitations under the License.
 #include "tsl/platform/casts.h"
 
 struct PJRT_Error {
-  xla::Status status;
+  absl::Status status;
 };
 
 struct PJRT_TopologyDescription {
@@ -177,12 +177,12 @@ struct PJRT_Buffer {
 };
 
 struct PJRT_Event {
-  xla::PjRtFuture<xla::Status> future;
+  xla::PjRtFuture<absl::Status> future;
   // Set and stored upon future.Await(), as PjRtFuture only allows its result to
   // be queried through Await() and Await() can only safely be called once. This
   // variable allows C API users to check for error status any time after
   // Await() has been called.
-  std::optional<xla::Status> status;
+  std::optional<absl::Status> status;
 };
 
 struct PJRT_SerializedExecutable {
@@ -367,7 +367,7 @@ PJRT_Error* PJRT_Compile(PJRT_Compile_Args* args);
 
 #define PJRT_RETURN_IF_ERROR(expr)                                \
   do {                                                            \
-    xla::Status _status = (expr);                                 \
+    absl::Status _status = (expr);                                \
     if (!_status.ok()) {                                          \
       PJRT_Error* _c_status = new PJRT_Error{std::move(_status)}; \
       return _c_status;                                           \

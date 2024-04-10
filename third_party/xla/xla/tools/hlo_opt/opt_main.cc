@@ -230,7 +230,7 @@ int main(int argc, char** argv) {
     LOG(QFATAL) << kUsageString;
   }
 
-  xla::Status s = xla::RunOpt(argc, argv, opts);
+  absl::Status s = xla::RunOpt(argc, argv, opts);
   if (!s.ok()) {
     std::cerr << s;
     return 1;

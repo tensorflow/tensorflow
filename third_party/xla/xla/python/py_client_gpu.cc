@@ -132,7 +132,7 @@ void XlaPythonGpuCallback(gpuStreamHandle stream, void** buffers,
       options.dims = dims;
       options.permutation = result.reversed_layout;
       options.input_layout = xla::TransposePlan::Striding{strides};
-      xla::StatusOr<std::shared_ptr<xla::TransposePlan>> plan =
+      absl::StatusOr<std::shared_ptr<xla::TransposePlan>> plan =
           callback->transpose_cache().GetOrCreate(options);
       if (!plan.ok()) {
         throw xla::XlaRuntimeError(plan.status().ToString());
