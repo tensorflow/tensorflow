@@ -22,6 +22,8 @@ limitations under the License.
 
 #include <deque>
 
+#include "absl/status/statusor.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/shape.h"
 #include "xla/statusor.h"

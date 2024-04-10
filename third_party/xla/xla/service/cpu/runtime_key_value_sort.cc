@@ -20,6 +20,7 @@ limitations under the License.
 #include <numeric>
 #include <string>
 
+#include "absl/base/attributes.h"
 #include "absl/base/dynamic_annotations.h"
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 

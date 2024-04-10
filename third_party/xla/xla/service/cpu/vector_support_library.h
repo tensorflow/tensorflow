@@ -19,8 +19,14 @@ limitations under the License.
 #include <string>
 
 #include "absl/types/span.h"
+#include "llvm/ADT/APFloat.h"
+#include "llvm/IR/Constants.h"
+#include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/Instructions.h"
 #include "llvm/IR/Value.h"
+#include "llvm/Support/Casting.h"
+#include "llvm/Support/TypeSize.h"
 #include "xla/primitive_util.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
