@@ -43,6 +43,7 @@ limitations under the License.
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
+#include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/module_spec.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform/port.h"
@@ -187,7 +188,8 @@ class StreamExecutorInterface {
   virtual absl::Status CollectiveMemoryDeallocate(void* mem) {
     return absl::UnimplementedError("Not implemented");
   }
-  virtual void* HostMemoryAllocate(uint64_t size) = 0;
+  virtual absl::StatusOr<std::unique_ptr<MemoryAllocation>> HostMemoryAllocate(
+      uint64_t size) = 0;
   virtual void HostMemoryDeallocate(void* mem) = 0;
   virtual bool HostMemoryRegister(void* mem, uint64_t size) = 0;
   virtual bool HostMemoryUnregister(void* mem) = 0;

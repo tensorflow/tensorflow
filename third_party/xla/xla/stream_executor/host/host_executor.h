@@ -29,9 +29,11 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/event.h"
+#include "xla/stream_executor/host_memory_allocation.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
+#include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_internal.h"
 
@@ -66,7 +68,10 @@ class HostExecutor : public internal::StreamExecutorInterface {
   DeviceMemoryBase Allocate(uint64_t size, int64_t memory_space) override;
   void Deallocate(DeviceMemoryBase* mem) override;
 
-  void* HostMemoryAllocate(uint64_t size) override { return new char[size]; }
+  absl::StatusOr<std::unique_ptr<MemoryAllocation>> HostMemoryAllocate(
+      uint64_t size) override {
+    return std::make_unique<HostMemoryAllocation>(new char[size], size, this);
+  }
   void HostMemoryDeallocate(void* mem) override {
     delete[] static_cast<char*>(mem);
   }
