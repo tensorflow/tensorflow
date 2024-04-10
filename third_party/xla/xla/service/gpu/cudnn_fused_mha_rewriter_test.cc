@@ -24,6 +24,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
 #include "absl/strings/string_view.h"
+#include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/algebraic_simplifier.h"
 #include "xla/service/computation_layout.h"
@@ -5200,6 +5201,10 @@ ENTRY main.49 {
 )";
 
 TEST_F(CudnnFusedMhaRewriterTestHloTest, HeadDimNotMultipleOf64) {
+  // TODO(hebecker): Remove this skip instruction once the mis-compile with
+  // cuDNN 8.9.6+ is fixed.
+  GTEST_SKIP() << "cuDNN 8.9.6+ features are currently disabled.";
+
   if (skip_reason_) GTEST_SKIP() << *skip_reason_;
   TF_ASSERT_OK_AND_ASSIGN(
       auto m, ParseAndReturnVerifiedModule(hlo_head_dim_not_multiple_of_64,
@@ -5231,6 +5236,83 @@ TEST_F(CudnnFusedMhaRewriterTestHloTest, HeadDimNotMultipleOf64) {
   EXPECT_EQ(config.fmha_scale(), 0.5);
   EXPECT_EQ(config.dropout_rate(), 0.0);
   EXPECT_EQ(config.is_flash_attention(), true);
+}
+
+// TODO(hebecker): Remove this test (or convert it into a proper unit test)
+// once the mis-compile with cuDNN 8.9.6+ is fixed.
+TEST_F(CudnnFusedMhaRewriterTestHloTest, Miscompile) {
+  auto hlo_text = R"hlo(
+    HloModule jit__reference, entry_computation_layout={(f16[4,48,1024,16]{3,2,1,0}, f16[4,48,1024,16]{3,2,1,0}, f16[4,48,1024,16]{3,2,1,0})->f16[4,48,1024,16]{3,2,1,0}}, allow_spmd_sharding_propagation_to_parameters={true,true,true}, allow_spmd_sharding_propagation_to_output={true}
+
+    _where.18 {
+      Arg_0.19 = pred[1024,1024]{1,0} parameter(0)
+      broadcast.23 = pred[4,48,1024,1024]{3,2,1,0} broadcast(Arg_0.19), dimensions={2,3}
+      Arg_1.20 = f16[4,48,1024,1024]{3,2,1,0} parameter(1)
+      Arg_2.21 = f32[] parameter(2)
+      convert.22 = f16[] convert(Arg_2.21)
+      broadcast.24 = f16[4,48,1024,1024]{3,2,1,0} broadcast(convert.22), dimensions={}
+      ROOT select.25 = f16[4,48,1024,1024]{3,2,1,0} select(broadcast.23, Arg_1.20, broadcast.24)
+    } // _where.18
+
+    region_0.28 {
+      Arg_0.29 = f32[] parameter(0)
+      Arg_1.30 = f32[] parameter(1)
+      ROOT maximum.31 = f32[] maximum(Arg_0.29, Arg_1.30)
+    }
+
+    region_1.40 {
+      Arg_0.41 = f32[] parameter(0)
+      Arg_1.42 = f32[] parameter(1)
+      ROOT add.43 = f32[] add(Arg_0.41, Arg_1.42)
+    }
+
+    ENTRY main.52 {
+      iota.13 = s32[1024]{0} iota(), iota_dimension=0
+      broadcast.14 = s32[1024,1024]{1,0} broadcast(iota.13), dimensions={0}
+      iota.15 = s32[1024]{0} iota(), iota_dimension=0
+      broadcast.16 = s32[1024,1024]{1,0} broadcast(iota.15), dimensions={1}
+      compare.17 = pred[1024,1024]{1,0} compare(broadcast.14, broadcast.16), direction=GE
+      Arg_0.1 = f16[4,48,1024,16]{3,2,1,0} parameter(0)
+      Arg_1.2 = f16[4,48,1024,16]{3,2,1,0} parameter(1)
+      transpose.10 = f16[4,48,16,1024]{2,3,1,0} transpose(Arg_1.2), dimensions={0,1,3,2}
+      dot.11 = f16[4,48,1024,1024]{3,2,1,0} dot(Arg_0.1, transpose.10), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={2}
+      constant.6 = f16[] constant(0.5)
+      broadcast.7 = f16[4,48,1024,1024]{3,2,1,0} broadcast(constant.6), dimensions={}
+      multiply.12 = f16[4,48,1024,1024]{3,2,1,0} multiply(dot.11, broadcast.7)
+      constant.9 = f32[] constant(-inf)
+      call.26 = f16[4,48,1024,1024]{3,2,1,0} call(compare.17, multiply.12, constant.9), to_apply=_where.18
+      convert.27 = f32[4,48,1024,1024]{3,2,1,0} convert(call.26)
+      reduce.32 = f32[4,48,1024]{2,1,0} reduce(convert.27, constant.9), dimensions={3}, to_apply=region_0.28
+      constant.4 = f32[] constant(-inf)
+      broadcast.5 = f32[4,48,1024]{2,1,0} broadcast(constant.4), dimensions={}
+      maximum.33 = f32[4,48,1024]{2,1,0} maximum(reduce.32, broadcast.5)
+      reshape.34 = f32[4,48,1024,1]{3,2,1,0} reshape(maximum.33)
+      broadcast.35 = f32[4,48,1024,1]{3,2,1,0} broadcast(reshape.34), dimensions={0,1,2,3}
+      reshape.36 = f32[4,48,1024]{2,1,0} reshape(broadcast.35)
+      broadcast.37 = f32[4,48,1024,1024]{3,2,1,0} broadcast(reshape.36), dimensions={0,1,2}
+      subtract.38 = f32[4,48,1024,1024]{3,2,1,0} subtract(convert.27, broadcast.37)
+      exponential.39 = f32[4,48,1024,1024]{3,2,1,0} exponential(subtract.38)
+      constant.8 = f32[] constant(0)
+      reduce.44 = f32[4,48,1024]{2,1,0} reduce(exponential.39, constant.8), dimensions={3}, to_apply=region_1.40
+      reshape.45 = f32[4,48,1024,1]{3,2,1,0} reshape(reduce.44)
+      broadcast.46 = f32[4,48,1024,1]{3,2,1,0} broadcast(reshape.45), dimensions={0,1,2,3}
+      reshape.47 = f32[4,48,1024]{2,1,0} reshape(broadcast.46)
+      broadcast.48 = f32[4,48,1024,1024]{3,2,1,0} broadcast(reshape.47), dimensions={0,1,2}
+      divide.49 = f32[4,48,1024,1024]{3,2,1,0} divide(exponential.39, broadcast.48)
+      convert.50 = f16[4,48,1024,1024]{3,2,1,0} convert(divide.49)
+      Arg_2.3 = f16[4,48,1024,16]{3,2,1,0} parameter(2)
+      ROOT dot.51 = f16[4,48,1024,16]{3,2,1,0} dot(convert.50, Arg_2.3), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={2}
+    } // main.52
+  )hlo";
+
+  HloModuleConfig with_fmha{};
+  HloModuleConfig without_fmha{};
+  DebugOptions debug_options = GetDebugOptionsForTest();
+  debug_options.set_xla_gpu_enable_cudnn_fmha(false);
+  without_fmha.set_debug_options(debug_options);
+
+  EXPECT_TRUE(RunAndCompareTwoModules(hlo_text, hlo_text, with_fmha,
+                                      without_fmha, ErrorSpec{1e-3, 1e-3}));
 }
 }  // anonymous namespace
 }  // namespace gpu
