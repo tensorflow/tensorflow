@@ -193,14 +193,15 @@ struct EmbeddingPipeliningPass
 
 bool UseEmbeddingPipelining(ModuleOp& module) {
   // Enable automated pipelining pass unless:
-  // 1. The user disables it via flog, or
+  // 1. The user disables it via flag, or
   // 2. The graph contains TF.Summary ops. Graphs like this typically only run
   //    for a single step which doesn't work in pipelining.
 
   if (tensorflow::GetBuildXlaOpsPassFlags()
-          ->tf_xla_disable_full_embedding_pipelining)
+          ->tf_xla_disable_full_embedding_pipelining) {
+    LOG(INFO) << "Embedding pipelining disabled via flag.";
     return false;
-
+  }
   // Detect summaries by looking for key Ops in the graph. It would be better to
   // do this via operator attributes rather than looking for a specific op.
   WalkResult walk_result = module.walk([&](Operation* op) -> WalkResult {
@@ -208,10 +209,10 @@ bool UseEmbeddingPipelining(ModuleOp& module) {
     return WalkResult::advance();
   });
   if (walk_result.wasInterrupted()) {
-    VLOG(1) << "TF summaries detected - disabling embedding pipelining.";
+    LOG(INFO) << "TF summaries detected - disabling embedding pipelining.";
     return false;
   }
-  VLOG(1) << "Embedding pipelining rewrite enabled.";
+  LOG(INFO) << "Embedding pipelining rewrite enabled.";
   return true;
 }
 
@@ -1685,12 +1686,11 @@ Operation* LiftNonTpuFuncCaller(mlir::OpBuilder& builder,
 }
 
 void EmbeddingPipeliningPass::runOnOperation() {
-  VLOG(3) << "EmbeddingPipeliningPass::runOnOperation()";
+  LOG(INFO) << "EmbeddingPipeliningPass::runOnOperation()";
   ModuleOp module = getOperation();
 
   // We only use one of the EmbeddingPipelining and EmbeddingSequencing passes.
   if (!UseEmbeddingPipelining(module)) return;
-  VLOG(1) << "Embedding pipelining rewrite enabled.";
 
   SymbolTable symbol_table(module);
 
@@ -1722,7 +1722,7 @@ void EmbeddingPipeliningPass::runOnOperation() {
   // If there are no forward pass ops, there is no SC, so we end early.
   if (forward_pass_ops.empty()) {
     if (backward_pass_ops.empty()) {
-      VLOG(1) << "no pipelining ops found";
+      LOG(INFO) << "no pipelining ops found";
       return;
     } else {
       (*backward_pass_ops.begin())->emitOpError()
@@ -1812,11 +1812,11 @@ void EmbeddingPipeliningPass::runOnOperation() {
   if (failed(result)) return signalPassFailure();
   merged_set.insert(non_tpu_ops.begin(), non_tpu_ops.end());
 
-  VLOG(3) << "Forwards pass " << forward_pass_ops.size()
-          << " ops, backwards pass " << backward_pass_ops.size()
-          << " ops, core " << core_tpu_ops.size()
-          << " ops. Total = " << merged_set.size() << " of "
-          << GetNumOps(loop_body_func);
+  LOG(INFO) << "Forwards pass " << forward_pass_ops.size()
+            << " ops, backwards pass " << backward_pass_ops.size()
+            << " ops, core " << core_tpu_ops.size()
+            << " ops. Total = " << merged_set.size() << " of "
+            << GetNumOps(loop_body_func);
 
   builder.setInsertionPointAfter(*non_tpu_ops.begin());
   TF::StatefulPartitionedCallOp non_tpu_caller = nullptr;
@@ -2185,7 +2185,8 @@ void EmbeddingPipeliningPass::runOnOperation() {
   int parallel_iterations = parallel_iterations_flag > 0
                                 ? parallel_iterations_flag
                                 : orig_while_op.getParallelIterations();
-  VLOG(1) << "Setting parallel_iterations_flag to " << parallel_iterations_flag;
+  LOG(INFO) << "Setting parallel_iterations_flag to "
+            << parallel_iterations_flag;
   auto new_while_op = builder.create<TF::WhileOp>(
       orig_while_op->getLoc(), new_body_return_types,
       new_while_operands.getArrayRef(), cond.getSymName(), body.getSymName(),
@@ -2252,7 +2253,7 @@ void EmbeddingPipeliningPass::runOnOperation() {
   orig_while_op.body_function().erase();
   orig_while_op.erase();
 
-  VLOG(3) << "EmbeddingPipeliningPass::runOnOperation done.";
+  LOG(INFO) << "EmbeddingPipeliningPass::runOnOperation done.";
 }
 }  // namespace
 
