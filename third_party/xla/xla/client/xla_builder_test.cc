@@ -2392,6 +2392,36 @@ TEST(XlaBuilderTest, UnboundedPad) {
               GmockMatch(m::Op().WithShapeEqualTo(&expected)));
 }
 
+TEST(XlaBuilderTest, UnboundedRecv) {
+  XlaBuilder b(TestName());
+  TF_ASSERT_OK_AND_ASSIGN(const Shape shape, ParseShape("f32[?, 10]"));
+  ChannelHandle handle;
+  handle.set_handle(1);
+  handle.set_type(ChannelHandle::DEVICE_TO_DEVICE);
+  Recv(/*builder=*/&b, /*shape=*/shape, /*handle=*/handle);
+  EXPECT_IS_OK(BuildHloModule(b));
+}
+
+TEST(XlaBuilderTest, UnboundedRecvFromHost) {
+  XlaBuilder b(TestName());
+  TF_ASSERT_OK_AND_ASSIGN(const Shape shape, ParseShape("f32[?, 10]"));
+  ChannelHandle handle;
+  handle.set_handle(1);
+  handle.set_type(ChannelHandle::HOST_TO_DEVICE);
+  RecvFromHost(/*token=*/CreateToken(&b), /*shape=*/shape, /*handle=*/handle);
+  EXPECT_IS_OK(BuildHloModule(b));
+}
+
+TEST(XlaBuilderTest, UnboundedRecvWithToken) {
+  XlaBuilder b(TestName());
+  TF_ASSERT_OK_AND_ASSIGN(const Shape shape, ParseShape("f32[?, 10]"));
+  ChannelHandle handle;
+  handle.set_handle(1);
+  handle.set_type(ChannelHandle::DEVICE_TO_DEVICE);
+  RecvWithToken(/*token=*/CreateToken(&b), /*shape=*/shape, /*handle=*/handle);
+  EXPECT_IS_OK(BuildHloModule(b));
+}
+
 TEST(XlaBuilderTest, UnboundedReduce) {
   XlaBuilder b(TestName());
   const Shape shape = ShapeUtil::MakeShape(F32, {7}, {false});
