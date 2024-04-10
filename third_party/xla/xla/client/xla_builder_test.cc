@@ -2695,6 +2695,41 @@ TEST(XlaBuilderTest, UnboundedSelectAndScatter) {
               GmockMatch(m::Op().WithShapeEqualTo(&expected)));
 }
 
+TEST(XlaBuilderTest, UnboundedSend) {
+  XlaBuilder b(TestName());
+  TF_ASSERT_OK_AND_ASSIGN(const Shape operand, ParseShape("f32[?, 10]"));
+  ChannelHandle handle;
+  handle.set_handle(1);
+  handle.set_type(ChannelHandle::DEVICE_TO_DEVICE);
+  Send(/*operand=*/Parameter(&b, 0, operand, "operand"), /*handle=*/handle);
+  EXPECT_IS_OK(BuildHloModule(b));
+}
+
+TEST(XlaBuilderTest, UnboundedSendToHost) {
+  XlaBuilder b(TestName());
+  TF_ASSERT_OK_AND_ASSIGN(const Shape operand, ParseShape("f32[?, 10]"));
+  TF_ASSERT_OK_AND_ASSIGN(const Shape shape_with_layout,
+                          ParseShape("f32[?, 10]"));
+  ChannelHandle handle;
+  handle.set_handle(1);
+  handle.set_type(ChannelHandle::DEVICE_TO_HOST);
+  SendToHost(/*operand=*/Parameter(&b, 0, operand, "operand"),
+             /*token=*/CreateToken(&b), /*shape_with_layout=*/shape_with_layout,
+             /*handle=*/handle);
+  EXPECT_IS_OK(BuildHloModule(b));
+}
+
+TEST(XlaBuilderTest, UnboundedSendWithToken) {
+  XlaBuilder b(TestName());
+  TF_ASSERT_OK_AND_ASSIGN(const Shape operand, ParseShape("f32[?, 10]"));
+  ChannelHandle handle;
+  handle.set_handle(1);
+  handle.set_type(ChannelHandle::DEVICE_TO_DEVICE);
+  SendWithToken(/*operand=*/Parameter(&b, 0, operand, "operand"),
+                /*token=*/CreateToken(&b), /*handle=*/handle);
+  EXPECT_IS_OK(BuildHloModule(b));
+}
+
 TEST(XlaBuilderTest, UnboundedSlice) {
   XlaBuilder b(TestName());
   TF_ASSERT_OK_AND_ASSIGN(const Shape operand, ParseShape("f32[1, <=3, ?]"));
