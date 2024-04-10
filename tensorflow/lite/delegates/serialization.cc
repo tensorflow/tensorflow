@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/delegates/serialization.h"
 
+#include "tensorflow/lite/logger.h"
+
 #if defined(_WIN32)
 #include <fstream>
 #include <iostream>

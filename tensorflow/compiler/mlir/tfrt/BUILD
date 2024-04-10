@@ -693,6 +693,7 @@ cc_library(
     hdrs = ["backend_compiler.h"],
     deps = [
         "//tensorflow/core/tfrt/runtime",
+        "@com_google_absl//absl/status",
         "@llvm-project//mlir:IR",
     ],
 )

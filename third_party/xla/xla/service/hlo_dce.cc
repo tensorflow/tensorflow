@@ -103,14 +103,16 @@ bool IsRemovableWhile(HloInstruction* instruction,
 Status HloDCE::RecursivelyRemoveDeadComputation(
     HloModule* module, HloComputation* computation,
     absl::flat_hash_map<HloComputation*, int>& live_call_counts) {
+  std::vector<HloComputation*> to_be_deleted;
   // First loops all the sub-instructions/sub-computations.
   for (HloInstruction* instruction : computation->instructions()) {
     for (HloComputation* subcomp : instruction->called_computations()) {
       auto iter = live_call_counts.find(subcomp);
       if (iter == live_call_counts.end()) {
         return tsl::errors::Internal(
-            "called computation not found in live_call_counts table during "
-            "HloDCE");
+            "called computation %s not found in live_call_counts table during "
+            "HloDCE",
+            subcomp->name());
       }
 
       // Decrements the live call count and sees if there are no more live
@@ -118,14 +120,23 @@ Status HloDCE::RecursivelyRemoveDeadComputation(
       int live_call_count = --iter->second;
       CHECK_GE(live_call_count, 0);
       if (live_call_count == 0) {
-        TF_RETURN_IF_ERROR(RecursivelyRemoveDeadComputation(module, subcomp,
-                                                            live_call_counts));
+        to_be_deleted.push_back(subcomp);
+        live_call_counts.erase(iter);
       }
     }
   }
   VLOG(1) << "Removing dead computation " << computation->name();
   // After looping called subcomputations, now safe to delete the computation.
-  return module->RemoveEmbeddedComputation(computation);
+  TF_RETURN_IF_ERROR(module->RemoveEmbeddedComputation(computation));
+
+  // Only remove the to be deleted subcomputations now after 'computation' has
+  // been removed. Otherwise we might still have pointers to subcomputations
+  // that we want to delete.
+  for (HloComputation* subcomp : to_be_deleted) {
+    TF_RETURN_IF_ERROR(
+        RecursivelyRemoveDeadComputation(module, subcomp, live_call_counts));
+  }
+  return OkStatus();
 }
 
 absl::StatusOr<bool> HloDCE::RecursivelyRemoveDeadComputations(
