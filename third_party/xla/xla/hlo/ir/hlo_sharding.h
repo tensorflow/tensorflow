@@ -252,6 +252,22 @@ class HloSharding {
                           [](const HloSharding& s) { return s.IsShardLike(); });
   }
 
+  bool IsShardBarrier() const {
+    return shard_barrier_.shard_barrier_id != -1 &&
+           (shard_barrier_.shard_barrier_from ||
+            shard_barrier_.shard_barrier_to);
+  }
+
+  bool IsShardBarrierFrom() const {
+    return shard_barrier_.shard_barrier_id != -1 &&
+           shard_barrier_.shard_barrier_from;
+  }
+
+  bool IsShardBarrierTo() const {
+    return shard_barrier_.shard_barrier_id != -1 &&
+           shard_barrier_.shard_barrier_to;
+  }
+
   // Returns whether the sharding represents manual subgroup sharding.
   bool IsManualSubgroup() const {
     if (!IsTuple()) {
@@ -382,7 +398,8 @@ class HloSharding {
            tuple_elements_ == other.tuple_elements_ &&
            replicate_on_last_tile_dim_ == other.replicate_on_last_tile_dim_ &&
            subgroup_types_ == other.subgroup_types_ &&
-           shard_group_ == other.shard_group_;
+           shard_group_ == other.shard_group_ &&
+           shard_barrier_ == other.shard_barrier_;
   }
   bool operator!=(const HloSharding& other) const { return !(*this == other); }
 
@@ -391,10 +408,10 @@ class HloSharding {
     if (sharding.tuple_) {
       return H::combine(std::move(h), sharding.tuple_elements_);
     }
-    return H::combine(std::move(h), sharding.replicated_, sharding.manual_,
-                      sharding.unknown_, sharding.tile_assignment_.array(),
-                      sharding.replicate_on_last_tile_dim_,
-                      sharding.shard_group_.ToString());
+    return H::combine(
+        std::move(h), sharding.replicated_, sharding.manual_, sharding.unknown_,
+        sharding.tile_assignment_.array(), sharding.replicate_on_last_tile_dim_,
+        sharding.shard_group_.ToString(), sharding.shard_barrier_.ToString());
   }
 
   // Gets the tile assignment tensor.
@@ -551,6 +568,77 @@ class HloSharding {
 
   const ShardGroup& GetShardGroup() const { return shard_group_; }
 
+  struct ShardBarrier {
+    ShardBarrier(int64_t shard_barrier_id, bool shard_barrier_from,
+                 bool shard_barrier_to)
+        : shard_barrier_id(shard_barrier_id),
+          shard_barrier_from(shard_barrier_from),
+          shard_barrier_to(shard_barrier_to) {}
+
+    bool operator==(const ShardBarrier& rhs) const {
+      return shard_barrier_id == rhs.shard_barrier_id &&
+             shard_barrier_from == rhs.shard_barrier_from &&
+             shard_barrier_to == rhs.shard_barrier_to;
+    }
+
+    std::string ToString() const {
+      std::ostringstream result;
+      if (shard_barrier_from) {
+        result << "shard_barrier_from " << shard_barrier_id;
+      } else if (shard_barrier_to) {
+        result << "shard_barrier_to " << shard_barrier_id;
+      }
+      return result.str();
+    }
+
+    int64_t shard_barrier_id = 0;
+    bool shard_barrier_from = false;
+    bool shard_barrier_to = false;
+  };
+  static ShardBarrier NotShardBarrier() {
+    return ShardBarrier(
+        /*shard_barrier_id=*/-1,
+        /*shard_barrier_from==*/false,
+        /*shard_barrier_to=*/false);
+  }
+
+  static ShardBarrier ShardBarrierFrom(int64_t shard_barrier_id) {
+    return ShardBarrier(shard_barrier_id,
+                        /*shard_barrier_from=*/true,
+                        /*shard_barrier_to=*/false);
+  }
+
+  static ShardBarrier ShardBarrierTo(int64_t shard_barrier_id) {
+    return ShardBarrier(shard_barrier_id,
+                        /*shard_barrier_from=*/false,
+                        /*shard_barrier_to=*/true);
+  }
+
+  HloSharding& SetShardBarrier(const ShardBarrier& shard_barrier) {
+    shard_barrier_ = shard_barrier;
+    return *this;
+  }
+
+  HloSharding& SetShardBarrierFromProto(const OpSharding& proto) {
+    ShardBarrier shard_barrier = NotShardBarrier();
+    if (proto.is_shard_barrier()) {
+      if (proto.shard_barrier_type() == OpSharding::FROM) {
+        shard_barrier = ShardBarrierFrom(proto.shard_barrier_id());
+      } else {
+        shard_barrier = ShardBarrierTo(proto.shard_barrier_id());
+      }
+    }
+    SetShardBarrier(shard_barrier);
+    return *this;
+  }
+
+  HloSharding& ClearShardBarrier() {
+    shard_barrier_ = NotShardBarrier();
+    return *this;
+  }
+
+  const ShardBarrier& GetShardBarrier() const { return shard_barrier_; }
+
  private:
   explicit HloSharding(bool manual, bool replicated, bool unknown,
                        absl::Span<const OpMetadata> metadata)
@@ -687,6 +775,9 @@ class HloSharding {
   // within the same shard group(i.e. under the same shard_group_id) will be
   // sharded alike or exactly the same as each other.
   ShardGroup shard_group_ = NotShardGroup();
+  // This field is used to store the shard barrier information. Sharding
+  // propagation will be forbidden from one annotated op to another.
+  ShardBarrier shard_barrier_ = NotShardBarrier();
 };
 
 std::ostream& operator<<(std::ostream& out, const HloSharding& sharding);

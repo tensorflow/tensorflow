@@ -421,10 +421,17 @@ void HloSharding::Print(Printer* printer, bool include_metadata) const {
       printer->Append(" " + shard_group_str);
     }
   };
+  auto print_shard_barrier = [&] {
+    auto shard_barrier_str = shard_barrier_.ToString();
+    if (!shard_barrier_str.empty()) {
+      printer->Append(" " + shard_barrier_str);
+    }
+  };
 
   if (replicated_) {
     printer->Append("{replicated");
     print_shard_group();
+    print_shard_barrier();
     print_metadata();
     printer->Append("}");
     return;
@@ -433,6 +440,7 @@ void HloSharding::Print(Printer* printer, bool include_metadata) const {
   if (manual_) {
     printer->Append("{manual");
     print_shard_group();
+    print_shard_barrier();
     print_metadata();
     printer->Append("}");
     return;
@@ -441,6 +449,7 @@ void HloSharding::Print(Printer* printer, bool include_metadata) const {
   if (unknown_) {
     printer->Append("{unknown");
     print_shard_group();
+    print_shard_barrier();
     print_metadata();
     printer->Append("}");
     return;
@@ -450,6 +459,7 @@ void HloSharding::Print(Printer* printer, bool include_metadata) const {
     AppendCat(printer, "{maximal device=",
               static_cast<int64_t>(*tile_assignment_.array().begin()));
     print_shard_group();
+    print_shard_barrier();
     print_metadata();
     printer->Append("}");
     return;
@@ -485,6 +495,7 @@ void HloSharding::Print(Printer* printer, bool include_metadata) const {
   }
   print_last_tile_dims();
   print_shard_group();
+  print_shard_barrier();
   print_metadata();
   printer->Append("}");
 }
@@ -813,21 +824,31 @@ Status HloSharding::ValidateNonTuple(const Shape& shape,
                           HloSharding::FromProto(tuple_sharding_proto));
       tuple_shardings.push_back(std::move(sharding));
     }
-    return std::move(
-        HloSharding(std::move(tuple_shardings)).SetShardGroupFromProto(proto));
+    return std::move(HloSharding(std::move(tuple_shardings))
+                         .SetShardGroupFromProto(proto)
+                         .SetShardBarrierFromProto(proto));
   } else if (proto.type() == OpSharding::REPLICATED) {
-    return std::move(Replicate(metadata).SetShardGroupFromProto(proto));
+    return std::move(Replicate(metadata)
+                         .SetShardGroupFromProto(proto)
+                         .SetShardBarrierFromProto(proto));
   } else if (proto.type() == OpSharding::MANUAL) {
-    return std::move(Manual(metadata).SetShardGroupFromProto(proto));
+    return std::move(
+        Manual(metadata).SetShardGroupFromProto(proto).SetShardBarrierFromProto(
+            proto));
   } else if (proto.type() == OpSharding::UNKNOWN) {
-    return std::move(Unknown(metadata).SetShardGroupFromProto(proto));
+    return std::move(Unknown(metadata)
+                         .SetShardGroupFromProto(proto)
+                         .SetShardBarrierFromProto(proto));
   } else if (proto.tile_assignment_devices().size() == 1) {
     return std::move(HloSharding(proto.tile_assignment_devices(0), metadata)
-                         .SetShardGroupFromProto(proto));
+                         .SetShardGroupFromProto(proto)
+                         .SetShardBarrierFromProto(proto));
   } else if (!proto.iota_reshape_dims().empty() &&
              absl::c_all_of(proto.iota_reshape_dims(),
                             [](int64_t d) { return d == 1; })) {
-    return std::move(HloSharding(0, metadata).SetShardGroupFromProto(proto));
+    return std::move(HloSharding(0, metadata)
+                         .SetShardGroupFromProto(proto)
+                         .SetShardBarrierFromProto(proto));
   }
 
   TF_RET_CHECK(proto.type() != OpSharding::MAXIMAL)
@@ -887,15 +908,18 @@ Status HloSharding::ValidateNonTuple(const Shape& shape,
     TF_RET_CHECK(!proto.replicate_on_last_tile_dim());
     return std::move(
         Subgroup(create_tile_assignment(), subgroup_types, metadata)
-            .SetShardGroupFromProto(proto));
+            .SetShardGroupFromProto(proto)
+            .SetShardBarrierFromProto(proto));
   }
   if (proto.replicate_on_last_tile_dim()) {
     return std::move(PartialTile(create_tile_assignment(), metadata)
-                         .SetShardGroupFromProto(proto));
+                         .SetShardGroupFromProto(proto)
+                         .SetShardBarrierFromProto(proto));
   }
   return std::move(HloSharding(create_tile_assignment(),
                                /*replicate_on_last_tile_dim=*/false, metadata)
-                       .SetShardGroupFromProto(proto));
+                       .SetShardGroupFromProto(proto)
+                       .SetShardBarrierFromProto(proto));
 }
 
 OpSharding HloSharding::ToProto() const {
@@ -965,6 +989,16 @@ OpSharding HloSharding::ToProto() const {
       result.set_shard_group_type(OpSharding::AS);
     } else {
       result.set_shard_group_type(OpSharding::LIKE);
+    }
+  }
+
+  if (IsShardBarrier()) {
+    result.set_is_shard_barrier(true);
+    result.set_shard_barrier_id(shard_barrier_.shard_barrier_id);
+    if (shard_barrier_.shard_barrier_from) {
+      result.set_shard_barrier_type(OpSharding::FROM);
+    } else {
+      result.set_shard_barrier_type(OpSharding::TO);
     }
   }
   return result;

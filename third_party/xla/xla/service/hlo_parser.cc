@@ -3432,7 +3432,8 @@ bool HloParserImpl::ParseStatisticsViz(StatisticsViz* statistics_viz) {
 
 // ::= '{' 'replicated'? 'manual'? 'maximal'? 'unknown'? ('device=' int)? shape?
 //         ('devices=' ('[' dims ']')* device_list)?
-//         (('shard_like' | 'shard_as') int)* '}'
+//         (('shard_like' | 'shard_as') int)*
+//         (('shard_barrier_from' | 'shard_barrier_to') int)* '}'
 //         ('metadata=' metadata)*
 //
 // dims ::= int_list
@@ -3458,6 +3459,9 @@ bool HloParserImpl::ParseSingleSharding(OpSharding* sharding,
   bool shard_like = false;
   bool shard_as = false;
   int64_t shard_group_id;
+  bool shard_barrier_from = false;
+  bool shard_barrier_to = false;
+  int64_t shard_barrier_id;
   std::vector<int64_t> devices;
   std::vector<int64_t> tile_assignment_dimensions;
   std::vector<int64_t> iota_reshape_dims;
@@ -3607,6 +3611,22 @@ bool HloParserImpl::ParseSingleSharding(OpSharding* sharding,
         }
         break;
       }
+      case TokKind::kw_shard_barrier_from: {
+        shard_barrier_from = true;
+        lexer_.Lex();
+        if (!ParseInt64(&shard_barrier_id)) {
+          return false;
+        }
+        break;
+      }
+      case TokKind::kw_shard_barrier_to: {
+        shard_barrier_to = true;
+        lexer_.Lex();
+        if (!ParseInt64(&shard_barrier_id)) {
+          return false;
+        }
+        break;
+      }
       case TokKind::kRbrace:
         break;
       default:
@@ -3695,6 +3715,18 @@ bool HloParserImpl::ParseSingleSharding(OpSharding* sharding,
     }
   } else {
     sharding->set_is_shard_group(false);
+  }
+
+  if (shard_barrier_from || shard_barrier_to) {
+    sharding->set_is_shard_barrier(true);
+    sharding->set_shard_barrier_id(shard_barrier_id);
+    if (shard_barrier_from) {
+      sharding->set_shard_barrier_type(OpSharding::FROM);
+    } else {
+      sharding->set_shard_barrier_type(OpSharding::TO);
+    }
+  } else {
+    sharding->set_is_shard_barrier(false);
   }
 
   lexer_.Lex();

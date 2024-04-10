@@ -417,6 +417,32 @@ ENTRY %broadcast {
   }
 }
 
+// Regression Test for b/129569657.
+TEST_P(ParameterizedMetadataTestWithOutput, BroadcastForwardPassWithBarrier) {
+  const char* const hlo_string = R"(
+HloModule module
+ENTRY %broadcast {
+  %param0 = f32[3,2048,2048]{2,1,0} parameter(0),
+    sharding={devices=[1,2,2]0,1,2,3 metadata={op_name="a"} shard_barrier_from 0}
+  %broadcast = f32[3,2048,2048,3]{3,2,1,0} broadcast(%param0), dimensions={0,1,2}, sharding={unknown shard_barrier_to 0}
+  ROOT %copy = f32[3,2048,2048,3]{3,2,1,0} copy(%broadcast)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  if (GetParam().clear_metadata) {
+    ClearMetadata(module.get());
+  }
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool _,
+      ShardingPropagation(/*is_spmd=*/false, GetParam().propagate_metadata,
+                          {GetParam().allow_root_sharding_propagation})
+          .Run(module.get()));
+  XLA_VLOG_LINES(1, module->ToString());
+  auto* instruction = FindInstruction(module.get(), "broadcast");
+  ASSERT_NE(instruction, nullptr);
+  EXPECT_THAT(instruction, op::Sharding("{replicated}"));
+}
+
 TEST_P(ParameterizedMetadataTest, BroadcastBackwardPass) {
   const char* const hlo_string = R"(
 HloModule module
@@ -446,6 +472,31 @@ ENTRY %broadcast {
   } else {
     EXPECT_THAT(instruction->sharding(), ShardingMetadata({}));
   }
+}
+
+TEST_P(ParameterizedMetadataTest, BroadcastBackwardPassWithBarrier) {
+  const char* const hlo_string = R"(
+HloModule module
+ENTRY %broadcast {
+  %param0 = f32[13]{0} parameter(0)
+  %param0_copy = f32[13]{0} copy(param0), sharding={unknown shard_barrier_to 0}
+  %broadcast = f32[5,7,11,13]{3,2,1,0} broadcast(%param0_copy), dimensions={3}, sharding={unknown shard_barrier_from 0}
+  ROOT %copy = f32[5,7,11,13]{3,2,1,0} copy(%broadcast),
+    sharding={devices=[1,1,2,2]0,1,2,3 metadata={op_name="a"}}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  if (GetParam().clear_metadata) {
+    ClearMetadata(module.get());
+  }
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool _,
+      ShardingPropagation(/*is_spmd=*/true, GetParam().propagate_metadata)
+          .Run(module.get()));
+  XLA_VLOG_LINES(1, module->ToString());
+  auto* instruction = FindInstruction(module.get(), "param0_copy");
+  ASSERT_NE(instruction, nullptr);
+  EXPECT_THAT(instruction, op::Sharding("{replicated}"));
 }
 
 TEST_P(ParameterizedMetadataTest, Broadcast1DBackwardNoChange) {
@@ -688,6 +739,36 @@ ENTRY %reduce {
   }
 }
 
+TEST_P(ParameterizedMetadataTest, ReduceForwardPassWithBarrier) {
+  const char* const hlo_string = R"(
+HloModule module
+%add {
+  %lhs = f32[] parameter(0)
+  %rhs = f32[] parameter(1)
+  ROOT %add = f32[] add(%lhs, %rhs)
+}
+ENTRY %reduce {
+  %param0 = f32[5,7,11,13]{3,2,1,0} parameter(0),
+    sharding={devices=[1,2,2,1]0,1,2,3 metadata={op_name="a"} shard_barrier_from 0}
+  %init = f32[] parameter(1)
+  %reduce = f32[7,11]{1,0} reduce(%param0, %init), dimensions={0,3}, to_apply=%add, sharding={unknown shard_barrier_to 0}
+  ROOT %copy = f32[7,11]{0,1} copy(f32[7,11]{1,0} %reduce)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  if (GetParam().clear_metadata) {
+    ClearMetadata(module.get());
+  }
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool _,
+      ShardingPropagation(/*is_spmd=*/false, GetParam().propagate_metadata)
+          .Run(module.get()));
+  XLA_VLOG_LINES(1, module->ToString());
+  auto* instruction = FindInstruction(module.get(), "reduce");
+  ASSERT_NE(instruction, nullptr);
+  EXPECT_THAT(instruction, op::Sharding("{replicated}"));
+}
+
 TEST_P(ParameterizedMetadataTest, ReducePartiallyOnTiledDims) {
   const char* const hlo_string = R"(
 HloModule module
@@ -802,6 +883,37 @@ ENTRY %reduce {
   } else {
     EXPECT_THAT(instruction->sharding(), ShardingMetadata({}));
   }
+}
+
+TEST_P(ParameterizedMetadataTest, ReduceBackwardWithBarrier) {
+  const char* const hlo_string = R"(
+HloModule module
+%add {
+  %lhs = f32[] parameter(0)
+  %rhs = f32[] parameter(1)
+  ROOT %add = f32[] add(%lhs, %rhs)
+}
+ENTRY %reduce {
+  %param0 = f32[8,8] parameter(0)
+  %input = f32[8,8] copy(%param0), sharding={unknown shard_barrier_to 0}
+  %init = f32[] parameter(1)
+  %reduce = f32[8] reduce(%input, %init), dimensions={0}, to_apply=%add,
+    sharding={devices=[2,2]0,1,2,3 last_tile_dim_replicate metadata={op_name="a"} shard_barrier_from 0}
+  ROOT %copy = f32[8] copy(%reduce)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  if (GetParam().clear_metadata) {
+    ClearMetadata(module.get());
+  }
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool _,
+      ShardingPropagation(/*is_spmd=*/false, GetParam().propagate_metadata)
+          .Run(module.get()));
+  XLA_VLOG_LINES(1, module->ToString());
+  auto* instruction = FindInstruction(module.get(), "input");
+  ASSERT_NE(instruction, nullptr);
+  EXPECT_THAT(instruction, op::Sharding("{replicated}"));
 }
 
 TEST_P(ParameterizedMetadataTestWithOutput,
@@ -992,6 +1104,34 @@ ENTRY %gte {
     EXPECT_THAT(module->entry_computation()->root_instruction(),
                 op::Sharding("{replicated}"));
   }
+}
+
+TEST_P(ParameterizedMetadataTestWithOutput,
+       GetTupleElementForwardPassWithBarrier) {
+  const char* const hlo_string = R"(
+HloModule module
+ENTRY %gte {
+  %param0 = f32[5,7,11,13]{3,2,1,0} parameter(0)
+  %tuple = (f32[5,7,11,13]{3,2,1,0}, f32[5,7,11,13]{3,2,1,0}) tuple(
+    %param0, %param0), sharding={{devices=[1,2,2,1]0,1,2,3 metadata={op_name="a"} shard_barrier_from 0},
+    {replicated metadata={op_name="b"}}}
+  %gte = f32[5,7,11,13]{3,2,1,0} get-tuple-element(%tuple), index=0, sharding={unknown shard_barrier_to 0}
+  ROOT %copy = f32[5,7,11,13]{3,2,1,0} copy(%gte)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  if (GetParam().clear_metadata) {
+    ClearMetadata(module.get());
+  }
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool _,
+      ShardingPropagation(/*is_spmd=*/false, GetParam().propagate_metadata,
+                          {GetParam().allow_root_sharding_propagation})
+          .Run(module.get()));
+  XLA_VLOG_LINES(1, module->ToString());
+  auto* gte = FindInstruction(module.get(), "gte");
+  ASSERT_NE(gte, nullptr);
+  EXPECT_THAT(gte, op::Sharding("{replicated}"));
 }
 
 TEST_P(ParameterizedMetadataTest, TupleForwardPass) {
@@ -1379,6 +1519,30 @@ ENTRY %transpose {
   }
 }
 
+TEST_P(ParameterizedMetadataTest, TransposeForwardPassWithBarrier) {
+  const char* const hlo_string = R"(
+HloModule module
+ENTRY %transpose {
+  %param = f32[7,11,13]{2,1,0} parameter(0),
+    sharding={devices=[2,1,2]0,1,2,3 metadata={op_name="a"} shard_barrier_from 0}
+  %transpose = f32[11,13,7]{2,1,0} transpose(%param), dimensions={1,2,0}, sharding={unknown shard_barrier_to 0}
+  ROOT %copy = f32[11,13,7]{2,1,0} copy(%transpose)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  if (GetParam().clear_metadata) {
+    ClearMetadata(module.get());
+  }
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool _,
+      ShardingPropagation(/*is_spmd=*/false, GetParam().propagate_metadata)
+          .Run(module.get()));
+  XLA_VLOG_LINES(1, module->ToString());
+  auto* instruction = FindInstruction(module.get(), "transpose");
+  ASSERT_NE(instruction, nullptr);
+  EXPECT_THAT(instruction, op::Sharding("{replicated}"));
+}
+
 TEST_P(ParameterizedMetadataTest, TransposeBackwardPass) {
   const char* const hlo_string = R"(
 HloModule module
@@ -1410,6 +1574,30 @@ ENTRY %transpose {
   }
 }
 
+TEST_P(ParameterizedMetadataTest, TransposeBackwardPassWithBarrier) {
+  const char* const hlo_string = R"(
+HloModule module
+ENTRY %transpose {
+  %param = f32[7,11,13]{2,1,0} parameter(0)
+  %copy = f32[7,11,13]{2,1,0} copy(%param), sharding={unknown shard_barrier_to 0}
+  ROOT %transpose = f32[11,13,7]{2,1,0} transpose(%copy), dimensions={1,2,0},
+    sharding={devices=[1,2,2]0,1,2,3 metadata={op_name="a"} shard_barrier_from 0}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  if (GetParam().clear_metadata) {
+    ClearMetadata(module.get());
+  }
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool _,
+      ShardingPropagation(/*is_spmd=*/false, GetParam().propagate_metadata)
+          .Run(module.get()));
+  XLA_VLOG_LINES(1, module->ToString());
+  auto* instruction = FindInstruction(module.get(), "copy");
+  ASSERT_NE(instruction, nullptr);
+  EXPECT_THAT(instruction, op::Sharding("{replicated}"));
+}
+
 TEST_P(ParameterizedMetadataTest, ReshapeForwardPass) {
   const char* const hlo_string = R"(
 HloModule module
@@ -1439,6 +1627,30 @@ ENTRY %reshape {
   } else {
     EXPECT_THAT(instruction->sharding(), ShardingMetadata({}));
   }
+}
+
+TEST_P(ParameterizedMetadataTest, ReshapeForwardPassWithBarrier) {
+  const char* const hlo_string = R"(
+HloModule module
+ENTRY %reshape {
+  %param0 = f32[1430,1]{1,0} parameter(0),
+    sharding={devices=[2,1]0,1 metadata={op_name="a"} shard_barrier_from 0}
+  %reshape = f32[10,11,13]{2,1,0} reshape(%param0), sharding={unknown shard_barrier_to 0}
+  ROOT %copy = f32[10,11,13]{2,1,0} copy(%reshape)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  if (GetParam().clear_metadata) {
+    ClearMetadata(module.get());
+  }
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool _,
+      ShardingPropagation(/*is_spmd=*/false, GetParam().propagate_metadata)
+          .Run(module.get()));
+  XLA_VLOG_LINES(1, module->ToString());
+  auto* instruction = FindInstruction(module.get(), "reshape");
+  ASSERT_NE(instruction, nullptr);
+  EXPECT_THAT(instruction, op::Sharding("{replicated}"));
 }
 
 TEST_P(ParameterizedMetadataTest, ReshapeForwardPassPartialMatch) {
@@ -1536,6 +1748,30 @@ ENTRY %reshape {
   } else {
     EXPECT_THAT(instruction->sharding(), ShardingMetadata({}));
   }
+}
+
+TEST_P(ParameterizedMetadataTest, ReshapeBackwardPassWithBarrier) {
+  const char* const hlo_string = R"(
+HloModule module
+ENTRY %reshape {
+  %param0 = f32[2002,1]{1,0} parameter(0)
+  %copy = f32[2002,1]{1,0} copy(f32[2002,1]{1,0} %param0), sharding={unknown shard_barrier_to 0}
+  ROOT %reshape = f32[14,11,13]{2,1,0} reshape(%copy),
+    sharding={devices=[2,1,1]0,1 metadata={op_name="a"} shard_barrier_from 0}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  if (GetParam().clear_metadata) {
+    ClearMetadata(module.get());
+  }
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool _,
+      ShardingPropagation(/*is_spmd=*/false, GetParam().propagate_metadata)
+          .Run(module.get()));
+  XLA_VLOG_LINES(1, module->ToString());
+  auto* instruction = FindInstruction(module.get(), "copy");
+  ASSERT_NE(instruction, nullptr);
+  EXPECT_THAT(instruction, op::Sharding("{replicated}"));
 }
 
 TEST_P(ParameterizedMetadataTest, PadForwardPass) {
@@ -1916,6 +2152,37 @@ ENTRY %reduce_window {
   }
 }
 
+TEST_P(ParameterizedMetadataTest, ReduceWindowBackwardPassWithBarrier) {
+  const char* const hlo_string = R"(
+HloModule module
+%add (lhs: f32[], rhs: f32[]) -> f32[] {
+  %lhs = f32[] parameter(0)
+  %rhs = f32[] parameter(1)
+  ROOT %add = f32[] add(%lhs, %rhs)
+}
+ENTRY %reduce_window {
+  %param = f32[13,17]{1,0} parameter(0)
+  %param.copy = f32[13,17]{1,0} copy(%param), sharding={unknown shard_barrier_to 0}
+  %init = f32[] parameter(1)
+  ROOT %reduce-window = f32[7,17]{1,0} reduce-window(%param.copy, %init),
+    window={size=3x2 stride=2x1 pad=1_1x0_1}, to_apply=%add,
+    sharding={devices=[2,1]0,1 metadata={op_name="a"} shard_barrier_from 0}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  if (GetParam().clear_metadata) {
+    ClearMetadata(module.get());
+  }
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool _,
+      ShardingPropagation(/*is_spmd=*/false, GetParam().propagate_metadata)
+          .Run(module.get()));
+  XLA_VLOG_LINES(1, module->ToString());
+  auto* param_copy = FindInstruction(module.get(), "param.copy");
+  ASSERT_NE(param_copy, nullptr);
+  EXPECT_THAT(param_copy, op::Sharding("{replicated}"));
+}
+
 TEST_P(ParameterizedMetadataTest, VariadicReduceWindowBackwardPass) {
   const char* const hlo_string = R"(
 HloModule module
@@ -2116,6 +2383,62 @@ ENTRY %concat {
   } else {
     EXPECT_THAT(instruction->sharding(), ShardingMetadata({}));
   }
+}
+
+TEST_P(ParameterizedMetadataTest, ConcatenateForwardWithBarrier) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY %concat {
+  %param.0 = f32[5,7] parameter(0),
+    sharding={devices=[2,1]0,1 metadata={op_name="a"} shard_barrier_from 0}
+  %param.1 = f32[5,9] parameter(1),
+    sharding={devices=[2,1]0,1 metadata={op_name="b"}}
+  %concat = f32[5,16] concatenate(%param.0, %param.1),
+    dimensions={1}, sharding={unknown shard_barrier_to 0}
+  ROOT %tuple = (f32[5,16]) tuple(%concat)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  if (GetParam().clear_metadata) {
+    ClearMetadata(module.get());
+  }
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool _,
+      ShardingPropagation(/*is_spmd=*/false, GetParam().propagate_metadata)
+          .Run(module.get()));
+  XLA_VLOG_LINES(1, module->ToString());
+  auto* instruction = FindInstruction(module.get(), "concat");
+  ASSERT_NE(instruction, nullptr);
+  EXPECT_THAT(instruction, op::Sharding("{replicated}"));
+}
+
+TEST_P(ParameterizedMetadataTest, ConcatenateBackwardWithBarrier) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY %concat {
+  %param.0 = f32[5,7] parameter(0)
+  %copy.0 = f32[5,7] copy(%param.0)
+  %param.1 = f32[5,9] parameter(1)
+  %copy.1 = f32[5,9] copy(%param.1), sharding={unknown shard_barrier_to 0}
+  %concat = f32[5,16] concatenate(%copy.0, %copy.1),
+    dimensions={1}, sharding={devices=[2,1]0,1 metadata={op_name="a"} shard_barrier_from 0}
+  ROOT %tuple = (f32[5,16]) tuple(%concat)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  if (GetParam().clear_metadata) {
+    ClearMetadata(module.get());
+  }
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool _,
+      ShardingPropagation(/*is_spmd=*/false, GetParam().propagate_metadata)
+          .Run(module.get()));
+  XLA_VLOG_LINES(1, module->ToString());
+  auto* instruction = FindInstruction(module.get(), "copy.1");
+  ASSERT_NE(instruction, nullptr);
+  EXPECT_THAT(instruction, op::Sharding("{replicated}"));
 }
 
 TEST_P(ParameterizedMetadataTest, TupleBackwardPass) {
@@ -2929,6 +3252,62 @@ ENTRY %conv {
   }
 }
 
+TEST_P(ParameterizedMetadataTest, ForwardDotWithBarrier) {
+  const char* const hlo_string = R"(
+HloModule module
+ENTRY %conv {
+  %p0 = f32[8,256,512] parameter(0),
+    sharding={devices=[2,2,2]0,1,2,3,4,5,6,7 metadata={op_name="a"} shard_barrier_from 0}
+  %p1 = f32[8,128,512] parameter(1)
+  %dot = f32[8,256,128] dot(%p0, %p1),
+    lhs_batch_dims={0}, rhs_batch_dims={0},
+    lhs_contracting_dims={2}, rhs_contracting_dims={2}, sharding={unknown shard_barrier_to 0}
+  ROOT %copy = f32[8,256,128] copy(%dot)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  if (GetParam().clear_metadata) {
+    ClearMetadata(module.get());
+  }
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool _,
+      ShardingPropagation(/*is_spmd=*/true, GetParam().propagate_metadata)
+          .Run(module.get()));
+  XLA_VLOG_LINES(1, module->ToString());
+  auto* instruction = FindInstruction(module.get(), "dot");
+  ASSERT_NE(instruction, nullptr);
+  EXPECT_THAT(instruction, op::Sharding("{replicated}"));
+}
+
+TEST_P(ParameterizedMetadataTest, BackwardDotWithBarrier) {
+  const char* const hlo_string = R"(
+HloModule module
+ENTRY %conv {
+  %p0 = f32[8,256,512] parameter(0),
+    sharding={devices=[2,2,2]0,1,2,3,4,5,6,7 metadata={op_name="a"}}
+  %p1 = f32[8,128,512] parameter(1)
+  %copy1 = f32[8,128,512] copy(%p1), sharding={unknown shard_barrier_to 0}
+  %dot = f32[8,256,128] dot(%p0, %copy1),
+    lhs_batch_dims={0}, rhs_batch_dims={0},
+    lhs_contracting_dims={2}, rhs_contracting_dims={2},
+    sharding={devices=[2,1,2,2]0,1,2,3,4,5,6,7 last_tile_dim_replicate metadata={op_name="b"} shard_barrier_from 0}
+  ROOT %copy = f32[8,256,128] copy(%dot)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  if (GetParam().clear_metadata) {
+    ClearMetadata(module.get());
+  }
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool _,
+      ShardingPropagation(/*is_spmd=*/true, GetParam().propagate_metadata)
+          .Run(module.get()));
+  XLA_VLOG_LINES(1, module->ToString());
+  auto* instruction = FindInstruction(module.get(), "copy1");
+  ASSERT_NE(instruction, nullptr);
+  EXPECT_THAT(instruction, op::Sharding("{replicated}"));
+}
+
 TEST_P(ParameterizedMetadataTest, BackwardDotFromContracting) {
   const char* const hlo_string = R"(
 HloModule module
@@ -3002,7 +3381,7 @@ ENTRY %dot {
   }
 }
 
-TEST_P(ParameterizedMetadataTest, ConvAsDotOnTrivialDims) {
+TEST_P(ParameterizedMetadataTest, ConvAsDotOnTrivialDimsForward) {
   const char* const hlo_string = R"(
 HloModule module
 ENTRY %conv {
@@ -3034,6 +3413,33 @@ ENTRY %conv {
   } else {
     EXPECT_THAT(instruction->sharding(), ShardingMetadata({}));
   }
+}
+
+TEST_P(ParameterizedMetadataTest, ConvAsDotForwardWithBarrier) {
+  const char* const hlo_string = R"(
+HloModule module
+ENTRY %conv {
+  %lhs = f32[128,1,1,1001] parameter(0),
+    sharding={devices=[1,2,1,1]0,1 metadata={op_name="a"}}
+  %rhs = f32[1,1,1024,1001] parameter(1),
+    sharding={devices=[1,2,1,1]0,1 metadata={op_name="b"} shard_barrier_from 0}
+  %convolution = f32[128,1,1,1024] convolution(%lhs, %rhs),
+    window={size=1x1 rhs_reversal=1x1}, dim_labels=b01f_01oi->b01f, sharding={unknown shard_barrier_to 0}
+  ROOT %copy = f32[128,1,1,1024] copy(%convolution)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  if (GetParam().clear_metadata) {
+    ClearMetadata(module.get());
+  }
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool _,
+      ShardingPropagation(/*is_spmd=*/true, GetParam().propagate_metadata)
+          .Run(module.get()));
+  XLA_VLOG_LINES(1, module->ToString());
+  auto* instruction = FindInstruction(module.get(), "convolution");
+  ASSERT_NE(instruction, nullptr);
+  EXPECT_THAT(instruction, op::Sharding("{replicated}"));
 }
 
 TEST_P(ParameterizedMetadataTest, ConvAsDotOnTrivialDimsBackward) {
@@ -3073,6 +3479,35 @@ ENTRY %conv {
       EXPECT_THAT(instruction->sharding(), ShardingMetadata({}));
     }
   }
+}
+
+TEST_P(ParameterizedMetadataTest, ConvAsDotBackwardWithBarrier) {
+  const char* const hlo_string = R"(
+HloModule module
+ENTRY %conv {
+  %p0 = f32[128,5,5,128] parameter(0)
+  %lhs = f32[128,5,5,128] copy(%p0), sharding={unknown shard_barrier_to 0}
+  %p1 = f32[5,5,128,768] parameter(1)
+  %rhs = f32[5,5,128,768] copy(%p1)
+  %convolution = f32[128,1,1,768] convolution(%lhs, %rhs), window={size=5x5},
+    dim_labels=b01f_01io->b01f,
+    sharding={devices=[1,2,1,1]0,1 metadata={op_name="a"} shard_barrier_from 0}
+  ROOT %copy = f32[128,1,1,768] copy(%convolution)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  if (GetParam().clear_metadata) {
+    ClearMetadata(module.get());
+  }
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(/*is_spmd=*/true, GetParam().propagate_metadata)
+          .Run(module.get()));
+  XLA_VLOG_LINES(1, module->ToString());
+  EXPECT_TRUE(changed);
+  auto* lhs = FindInstruction(module.get(), "lhs");
+  ASSERT_NE(lhs, nullptr);
+  EXPECT_THAT(lhs, op::Sharding("{replicated}"));
 }
 
 TEST_P(ParameterizedMetadataTest,
@@ -3496,6 +3931,34 @@ ENTRY %entry {
   }
 }
 
+TEST_P(ParameterizedMetadataTest, DynamicSliceForwardPassWithBarrier) {
+  const char* hlo_string = R"(
+HloModule module
+ENTRY %entry {
+  %p0 = f32[11,13,15] parameter(0)
+  %c0 = f32[11,13,15] copy(%p0),
+    sharding={devices=[1,1,2]0,1 metadata={op_name="a"} shard_barrier_from 0}
+  %p1 = s32[] parameter(1)
+  %i0 = s32[] constant(0)
+  %ds = f32[11,1,15] dynamic-slice(%c0, %i0, %p1, %i0),
+    dynamic_slice_sizes={11,1,15}, sharding={unknown shard_barrier_to 0}
+  ROOT %root = (f32[11,1,15]) tuple(%ds)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  if (GetParam().clear_metadata) {
+    ClearMetadata(module.get());
+  }
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool _,
+      ShardingPropagation(/*is_spmd=*/false, GetParam().propagate_metadata)
+          .Run(module.get()));
+  XLA_VLOG_LINES(1, module->ToString());
+  auto* instruction = FindInstruction(module.get(), "ds");
+  ASSERT_NE(instruction, nullptr);
+  EXPECT_THAT(instruction, op::Sharding("{replicated}"));
+}
+
 TEST_P(ParameterizedMetadataTest, DynamicSliceForwardPass) {
   const char* hlo_string = R"(
 HloModule module
@@ -3566,6 +4029,34 @@ ENTRY %entry {
   }
 }
 
+TEST_P(ParameterizedMetadataTest, DynamicSliceBackwardPassWithBarrier) {
+  const char* hlo_string = R"(
+HloModule module
+ENTRY %entry {
+  %p0 = f32[11,13,15] parameter(0)
+  %c0 = f32[11,13,15] copy(%p0), sharding={unknown shard_barrier_to 0}
+  %p1 = s32[] parameter(1)
+  %i0 = s32[] constant(0)
+  %ds = f32[11,1,15] dynamic-slice(%c0, %i0, %p1, %i0),
+    dynamic_slice_sizes={11,1,15},
+    sharding={devices=[1,1,2]0,1 metadata={op_name="a"} shard_barrier_from 0}
+  ROOT %root = (f32[11,1,15]) tuple(%ds)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  if (GetParam().clear_metadata) {
+    ClearMetadata(module.get());
+  }
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool _,
+      ShardingPropagation(/*is_spmd=*/false, GetParam().propagate_metadata)
+          .Run(module.get()));
+  XLA_VLOG_LINES(1, module->ToString());
+  auto* instruction = FindInstruction(module.get(), "c0");
+  ASSERT_NE(instruction, nullptr);
+  EXPECT_THAT(instruction, op::Sharding("{replicated}"));
+}
+
 TEST_P(ParameterizedMetadataTest, DynamicUpdateSliceForwardPassBase) {
   const char* hlo_string = R"(
 HloModule module
@@ -3605,6 +4096,36 @@ ENTRY %entry {
       EXPECT_THAT(instruction->sharding(), ShardingMetadata({}));
     }
   }
+}
+
+TEST_P(ParameterizedMetadataTest, DynamicUpdateSliceForwardPassWithBarrier) {
+  const char* hlo_string = R"(
+HloModule module
+ENTRY %entry {
+  %p0 = f32[11,13,15] parameter(0)
+  %c0 = f32[11,13,15] copy(%p0),
+    sharding={devices=[1,1,2]0,1 metadata={op_name="a"} shard_barrier_from 0}
+  %p1 = f32[11,1,15] parameter(1)
+  %c1 = f32[11,1,15] copy(%p1)
+  %p2 = s32[] parameter(2)
+  %i0 = s32[] constant(0)
+  %dus = f32[11,13,15] dynamic-update-slice(%c0, %c1, %i0, %p2, %i0),
+    sharding={unknown shard_barrier_to 0}
+  ROOT %root = (f32[11,13,15]) tuple(%dus)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  if (GetParam().clear_metadata) {
+    ClearMetadata(module.get());
+  }
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool _,
+      ShardingPropagation(/*is_spmd=*/false, GetParam().propagate_metadata)
+          .Run(module.get()));
+  XLA_VLOG_LINES(1, module->ToString());
+  auto* dus = FindInstruction(module.get(), "dus");
+  ASSERT_NE(dus, nullptr);
+  EXPECT_THAT(dus, op::Sharding("{replicated}"));
 }
 
 TEST_P(ParameterizedMetadataTest, DynamicUpdateSliceForwardPassUpdate) {
@@ -3687,6 +4208,35 @@ ENTRY %entry {
       EXPECT_THAT(instruction->sharding(), ShardingMetadata({}));
     }
   }
+}
+
+TEST_P(ParameterizedMetadataTest, DynamicUpdateSliceBackwardPassWithBarrier) {
+  const char* hlo_string = R"(
+HloModule module
+ENTRY %entry {
+  %p0 = f32[11,13,15] parameter(0)
+  %c0 = f32[11,13,15] copy(%p0), sharding={unknown shard_barrier_to 0}
+  %p1 = f32[11,1,15] parameter(1)
+  %c1 = f32[11,1,15] copy(%p1)
+  %p2 = s32[] parameter(2)
+  %i0 = s32[] constant(0)
+  %dus = f32[11,13,15] dynamic-update-slice(%c0, %c1, %i0, %p2, %i0),
+    sharding={devices=[1,1,2]0,1 metadata={op_name="a"} shard_barrier_from 0}
+  ROOT %root = (f32[11,13,15]) tuple(%dus)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  if (GetParam().clear_metadata) {
+    ClearMetadata(module.get());
+  }
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool _,
+      ShardingPropagation(/*is_spmd=*/false, GetParam().propagate_metadata)
+          .Run(module.get()));
+  XLA_VLOG_LINES(1, module->ToString());
+  auto* c0 = FindInstruction(module.get(), "c0");
+  ASSERT_NE(c0, nullptr);
+  EXPECT_THAT(c0, op::Sharding("{replicated}"));
 }
 
 TEST_P(ParameterizedMetadataTestWithOutput, EinsumLHSBatchPartitioned) {
@@ -5659,6 +6209,80 @@ ENTRY %transpose {
   }
 }
 
+TEST_P(ParameterizedMetadataTest, GatherForwardPassWithBarrier) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY %module {
+  %parameter.0 = s32[8,4,2,2]{3,2,1,0} parameter(0),
+    sharding={devices=[8,1,1,1]0,1,4,5,2,3,6,7 metadata={op_name="a"} shard_barrier_from 0}
+  %iota = s32[1,8,4]{2,1,0} iota(), iota_dimension=1
+  %iota2 = s32[1,8,4]{2,1,0} iota(), iota_dimension=2
+  %concatenate.19 = s32[2,8,4]{2,1,0} concatenate(s32[1,8,4]{2,1,0} %iota,
+    s32[1,8,4]{2,1,0} %iota2), dimensions={0}, sharding={unknown shard_barrier_from 1}
+  %gather = s32[8,4,2,2]{3,2,1,0} gather(
+    s32[8,4,2,2]{3,2,1,0} %parameter.0,
+    s32[2,8,4]{2,1,0} %concatenate.19), offset_dims={2,3},
+    collapsed_slice_dims={0,1}, start_index_map={0,1}, index_vector_dim=0,
+    slice_sizes={1,1,2,2}, sharding={unknown shard_barrier_to 0}
+  %annotate = s32[8,4,2,2]{3,2,1,0} custom-call(%gather), custom_call_target="Sharding",
+    sharding={unknown shard_barrier_to 1}
+  ROOT %copy = s32[8,4,2,2]{3,2,1,0} copy(%annotate)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  if (GetParam().clear_metadata) {
+    ClearMetadata(module.get());
+  }
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool _,
+      ShardingPropagation(/*is_spmd=*/true, GetParam().propagate_metadata)
+          .Run(module.get()));
+  XLA_VLOG_LINES(1, module->ToString());
+  auto* instruction = FindInstruction(module.get(), "gather");
+  ASSERT_NE(instruction, nullptr);
+  EXPECT_THAT(instruction, op::Sharding("{replicated}"));
+}
+
+TEST_P(ParameterizedMetadataTest, GatherBackwardPassWithBarrier) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY %module {
+  %parameter.0 = s32[8,4,2,2]{3,2,1,0} parameter(0)
+  %copy.p = s32[8,4,2,2]{3,2,1,0} copy(%parameter.0),
+    sharding={unknown shard_barrier_to 0}
+  %iota = s32[1,8,4]{2,1,0} iota(), iota_dimension=1
+  %iota2 = s32[1,8,4]{2,1,0} iota(), iota_dimension=2
+  %concatenate = s32[2,8,4]{2,1,0} concatenate(s32[1,8,4]{2,1,0} %iota,
+    s32[1,8,4]{2,1,0} %iota2), dimensions={0}
+  %gather = s32[8,4,2,2]{3,2,1,0} gather(
+    s32[8,4,2,2]{3,2,1,0} %copy.p,
+    s32[2,8,4]{2,1,0} %concatenate), offset_dims={2,3},
+    collapsed_slice_dims={0,1}, start_index_map={0,1}, index_vector_dim=0,
+    slice_sizes={1,1,2,2},
+    sharding={devices=[8,1,1,1]0,1,4,5,2,3,6,7 metadata={op_name="a"} shard_barrier_from 0}
+  ROOT %copy = s32[8,4,2,2]{3,2,1,0} copy(%gather)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  if (GetParam().clear_metadata) {
+    ClearMetadata(module.get());
+  }
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(/*is_spmd=*/true, GetParam().propagate_metadata)
+          .Run(module.get()));
+  XLA_VLOG_LINES(1, module->ToString());
+  EXPECT_TRUE(changed);
+  auto* concatenate = FindInstruction(module.get(), "concatenate");
+  ASSERT_NE(concatenate, nullptr);
+  EXPECT_THAT(concatenate, op::Sharding("{devices=[1,8,1]0,1,4,5,2,3,6,7}"));
+  auto* copy_p = FindInstruction(module.get(), "copy.p");
+  ASSERT_NE(copy_p, nullptr);
+  EXPECT_THAT(copy_p, op::Sharding("{replicated}"));
+}
+
 TEST_P(ParameterizedMetadataTest, ParallelGatherFromOperandForwardPass) {
   const char* const hlo_string = R"(
 HloModule module
@@ -6019,6 +6643,107 @@ ENTRY %module {
       EXPECT_THAT(instruction->sharding(), ShardingMetadata({}));
     }
   }
+}
+
+TEST_P(ParameterizedMetadataTest, ScatterForwardPassWithBarrier) {
+  const char* const hlo_string = R"(
+HloModule module
+
+add (lhs: s32[], rhs: s32[]) -> s32[] {
+  lhs = s32[] parameter(0)
+  rhs = s32[] parameter(1)
+  ROOT sum = s32[] add(lhs, rhs)
+}
+
+ENTRY %module {
+  %parameter.0 = s32[8,4,2,2]{3,2,1,0} parameter(0),
+    sharding={devices=[8,1,1,1]0,1,4,5,2,3,6,7 metadata={op_name="a"} shard_barrier_from 0}
+  %iota = s32[1,8,4]{2,1,0} iota(), iota_dimension=1
+  %iota2 = s32[1,8,4]{2,1,0} iota(), iota_dimension=2
+  %concatenate = s32[2,8,4]{2,1,0} concatenate(s32[1,8,4]{2,1,0} %iota,
+    s32[1,8,4]{2,1,0} %iota2), dimensions={0}, sharding={unknown shard_barrier_from 1}
+  %parameter.1 = s32[8,4,2,2]{3,2,1,0} parameter(1), sharding={unknown shard_barrier_from 2}
+  %scatter = s32[8,4,2,2]{3,2,1,0} scatter(
+    s32[8,4,2,2]{3,2,1,0} %parameter.0,
+    s32[2,8,4]{2,1,0} %concatenate,
+    s32[8,4,2,2]{3,2,1,0} %parameter.1),
+    to_apply=add,
+    update_window_dims={2,3},
+    inserted_window_dims={0,1},
+    scatter_dims_to_operand_dims={0,1},
+    index_vector_dim=0, sharding={unknown shard_barrier_to 0}
+  %annotate.0 = s32[8,4,2,2]{3,2,1,0} custom-call(%scatter), custom_call_target="Sharding",
+    sharding={unknown shard_barrier_to 1}
+  %annotate.1 = s32[8,4,2,2]{3,2,1,0} custom-call(%annotate.0), custom_call_target="Sharding",
+    sharding={unknown shard_barrier_to 1}
+  ROOT %copy = s32[8,4,2,2]{3,2,1,0} copy(%annotate.1)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  if (GetParam().clear_metadata) {
+    ClearMetadata(module.get());
+  }
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool _,
+      ShardingPropagation(/*is_spmd=*/true, GetParam().propagate_metadata)
+          .Run(module.get()));
+  XLA_VLOG_LINES(1, module->ToString());
+  auto* instruction = FindInstruction(module.get(), "scatter");
+  ASSERT_NE(instruction, nullptr);
+  EXPECT_THAT(instruction, op::Sharding("{replicated}"));
+}
+
+TEST_P(ParameterizedMetadataTest, ScatterBackwardPassWithBarrier) {
+  const char* const hlo_string = R"(
+HloModule module
+
+add (lhs: s32[], rhs: s32[]) -> s32[] {
+  lhs = s32[] parameter(0)
+  rhs = s32[] parameter(1)
+  ROOT sum = s32[] add(lhs, rhs)
+}
+
+ENTRY %module {
+  %parameter.0 = s32[8,4,2,2]{3,2,1,0} parameter(0)
+  %copy.p0 = s32[8,4,2,2]{3,2,1,0} copy(%parameter.0), sharding={unknown shard_barrier_to 0}
+  %iota = s32[1,8,4]{2,1,0} iota(), iota_dimension=1
+  %iota2 = s32[1,8,4]{2,1,0} iota(), iota_dimension=2
+  %concatenate = s32[2,8,4]{2,1,0} concatenate(s32[1,8,4]{2,1,0} %iota,
+    s32[1,8,4]{2,1,0} %iota2), dimensions={0}
+  %parameter.1 = s32[8,4,2,2]{3,2,1,0} parameter(1)
+  %copy.p1 = s32[8,4,2,2]{3,2,1,0} copy(%parameter.1)
+  %scatter = s32[8,4,2,2]{3,2,1,0} scatter(
+    s32[8,4,2,2]{3,2,1,0} %copy.p0,
+    s32[2,8,4]{2,1,0} %concatenate,
+    s32[8,4,2,2]{3,2,1,0} %copy.p1),
+    to_apply=add,
+    update_window_dims={2,3},
+    inserted_window_dims={0,1},
+    scatter_dims_to_operand_dims={0,1},
+    index_vector_dim=0,
+    sharding={devices=[8,1,1,1]0,1,4,5,2,3,6,7 metadata={op_name="a"} shard_barrier_from 0}
+  ROOT %copy = s32[8,4,2,2]{3,2,1,0} copy(%scatter)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  if (GetParam().clear_metadata) {
+    ClearMetadata(module.get());
+  }
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(/*is_spmd=*/true, GetParam().propagate_metadata)
+          .Run(module.get()));
+  XLA_VLOG_LINES(1, module->ToString());
+  EXPECT_TRUE(changed);
+  auto* concatenate = FindInstruction(module.get(), "concatenate");
+  ASSERT_NE(concatenate, nullptr);
+  EXPECT_THAT(concatenate, op::Sharding("{devices=[1,8,1]0,1,4,5,2,3,6,7}"));
+  auto* copy_p0 = FindInstruction(module.get(), "copy.p0");
+  ASSERT_NE(copy_p0, nullptr);
+  EXPECT_THAT(copy_p0, op::Sharding("{replicated}"));
+  auto* copy_p1 = FindInstruction(module.get(), "copy.p1");
+  ASSERT_NE(copy_p1, nullptr);
+  EXPECT_THAT(copy_p1, op::Sharding("{devices=[8,1,1,1]0,1,4,5,2,3,6,7}"));
 }
 
 TEST_P(ParameterizedMetadataTest, ParallelScatterFromOperandForwardPass) {
@@ -9751,6 +10476,65 @@ ENTRY %main.21 {
               op::Sharding("{devices=[2,1]0,1}"));
 }
 
+TEST_F(ShardingPropagationTest, SortForwardWithBarrier) {
+  const char* const hlo_string = R"(
+HloModule module
+
+compare {
+  p.0.lhs = f32[] parameter(0), sharding={replicated}
+  p.0.rhs = f32[] parameter(1), sharding={replicated}
+  ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT, sharding={replicated}
+}
+
+ENTRY entry {
+  param.0 = f32[1024,1024]{1,0} parameter(0)
+  negate.0 = f32[1024,1024]{1,0} negate(param.0), sharding={devices=[1,8]0,1,2,3,4,5,6,7 shard_barrier_from 0}
+  sort.0 = f32[1024,1024]{1,0} sort(negate.0), dimensions={1}, is_stable=true, to_apply=compare, sharding={unknown shard_barrier_to 0}
+  ROOT copy.0 = f32[1024,1024]{1,0} copy(sort.0)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool _, ShardingPropagation(/*is_spmd=*/true, /*propagate_metadata=*/true)
+                  .Run(module.get()));
+
+  XLA_VLOG_LINES(1, module->ToString());
+  EXPECT_THAT(FindInstruction(module.get(), "sort.0"),
+              op::Sharding("{replicated}"));
+}
+
+TEST_F(ShardingPropagationTest, SortBackwardWithBarrier) {
+  const char* const hlo_string = R"(
+HloModule module
+
+compare {
+  p.0.lhs = f32[] parameter(0), sharding={replicated}
+  p.0.rhs = f32[] parameter(1), sharding={replicated}
+  ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT, sharding={replicated}
+}
+
+ENTRY entry {
+  param.0 = f32[1024,1024]{1,0} parameter(0)
+  negate.0 = f32[1024,1024]{1,0} negate(param.0), sharding={unknown shard_barrier_to 0}
+  sort.0 = f32[1024,1024]{1,0} sort(negate.0), dimensions={1}, is_stable=true, to_apply=compare,
+    sharding={devices=[1,8]0,1,2,3,4,5,6,7 shard_barrier_from 0}
+  ROOT copy.0 = f32[1024,1024]{1,0} copy(sort.0)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool _, ShardingPropagation(/*is_spmd=*/true, /*propagate_metadata=*/true)
+                  .Run(module.get()));
+
+  XLA_VLOG_LINES(1, module->ToString());
+  EXPECT_THAT(FindInstruction(module.get(), "negate.0"),
+              op::Sharding("{replicated}"));
+}
+
 TEST_F(ShardingPropagationTest, SortOperandShardedOnSortDim_RankOne) {
   const char* const hlo_string = R"(
 HloModule module, entry_computation_layout={(f32[1024]{0})->(f32[1024]{0}, s32[1024]{0})}
@@ -10716,8 +11500,8 @@ ENTRY main.6 {
       bool changed,
       ShardingPropagation(
           /*is_spmd=*/true, /*propagate_metadata=*/true,
-          /*allow_spmd_sharding_propagation_to_output=*/{false},
-          /*allow_spmd_sharding_propagation_to_parameters=*/{false, false})
+          /*allow_spmd_sharding_propagation_to_output=*/{true},
+          /*allow_spmd_sharding_propagation_to_parameters=*/{true})
           .Run(module.get()));
   EXPECT_TRUE(changed);
   VLOG(1) << module->ToString();
@@ -10730,7 +11514,7 @@ TEST_F(ShardingPropagationTest, PropagateShardAsBetweenInputOutput2) {
 HloModule jit_f, entry_computation_layout={(f32[8]{0:T(256)})->(f32[8]{0:T(256)}, f32[8]{0:T(256)})}, allow_spmd_sharding_propagation_to_output={true,true}, num_partitions=4
 
 ENTRY main.9 {
-  Arg_0.1 = f32[8]{0} parameter(0), sharding={replicated}
+  Arg_0.1 = f32[8]{0} parameter(0)
   custom-call.6 = f32[8]{0} custom-call(Arg_0.1), custom_call_target="Sharding", custom_call_has_side_effect=true, sharding={unknown shard_as 0}, metadata={op_name="jit(f)/jit(main)/shard_alike" source_file="third_party/py/jax/tests/shard_alike_test.py" source_line=206}
   custom-call.4 = f32[8]{0} custom-call(Arg_0.1), custom_call_target="Sharding", sharding={devices=[4]<=[4]}, metadata={op_name="jit(f)/jit(main)/sharding_constraint[sharding=GSPMDSharding({devices=[4]<=[4]}) resource_env=ResourceEnv(mesh=Mesh(), ()) unconstrained_dims=set()]" source_file="third_party/py/jax/tests/shard_alike_test.py" source_line=204}
   constant.0 = f32[] constant(2)
@@ -10746,7 +11530,7 @@ ENTRY main.9 {
       ShardingPropagation(
           /*is_spmd=*/true, /*propagate_metadata=*/true,
           /*allow_spmd_sharding_propagation_to_output=*/{true, true},
-          /*allow_spmd_sharding_propagation_to_parameters=*/{false})
+          /*allow_spmd_sharding_propagation_to_parameters=*/{true})
           .Run(module.get()));
   EXPECT_TRUE(changed);
   VLOG(1) << module->ToString();
@@ -10938,6 +11722,49 @@ ENTRY entry_computation {
             .Run(module.get()));
     EXPECT_FALSE(changed);
   }
+}
+
+TEST_F(ShardingPropagationTest, ShardAsWithShardBarrier) {
+  const char* const hlo_string = R"(
+HloModule pjit_f
+
+ENTRY main.11 {
+  Arg_0.1 = bf16[384,1408]{1,0} parameter(0), sharding={devices=[1,16,512]<=[8,16,64]T(1,0,2) last_tile_dim_replicate}
+  broadcast.4 = bf16[8,384,1408]{2,1,0} broadcast(Arg_0.1), dimensions={1,2}
+  custom-call.5 = bf16[8,384,1408]{2,1,0} custom-call(broadcast.4), custom_call_target="Sharding", custom_call_has_side_effect=true, sharding={unknown shard_as 1}
+  custom-call.11 = bf16[8,384,1408]{2,1,0} custom-call(custom-call.5), custom_call_target="Sharding", custom_call_has_side_effect=true, sharding={unknown shard_barrier_to 1}
+  broadcast.2 = bf16[8,384,1408]{2,1,0} broadcast(Arg_0.1), dimensions={1,2}
+  custom-call.3 = bf16[8,384,1408]{2,1,0} custom-call(broadcast.2), custom_call_target="Sharding", sharding={devices=[8,1,1,1024]<=[8192] last_tile_dim_replicate}
+  custom-call.6 = bf16[8,384,1408]{2,1,0} custom-call(custom-call.3), custom_call_target="Sharding", custom_call_has_side_effect=true, sharding={unknown shard_as 1}
+  custom-call.12 = bf16[8,384,1408]{2,1,0} custom-call(custom-call.6), custom_call_target="Sharding", custom_call_has_side_effect=true, sharding={unknown shard_barrier_from 1}
+  slice.7 = bf16[1,384,1408]{2,1,0} slice(custom-call.12), slice={[1:2], [0:384], [0:1408]}
+  reshape.8 = bf16[384,1408]{1,0} reshape(slice.7)
+  tuple.9 = (bf16[384,1408]{1,0}) tuple(reshape.8)
+  get-tuple-element.10 = bf16[384,1408]{1,0} get-tuple-element(tuple.9), index=0, sharding={devices=[16,1,512]<=[8,16,64]T(1,0,2) last_tile_dim_replicate}
+  ROOT tuple.13 = (bf16[384,1408]{1,0}, bf16[8,384,1408]{2,1,0}) tuple(get-tuple-element.10, custom-call.11)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(
+          /*is_spmd=*/true, /*propagate_metadata=*/true,
+          /*allow_spmd_sharding_propagation_to_output=*/{true},
+          /*allow_spmd_sharding_propagation_to_parameters=*/{false, false})
+          .Run(module.get()));
+  EXPECT_TRUE(changed);
+
+  XLA_VLOG_LINES(1, module->ToString());
+  auto* broadcast_4 = FindInstruction(module.get(), "broadcast.4");
+  ASSERT_NE(broadcast_4, nullptr);
+  EXPECT_THAT(
+      broadcast_4,
+      op::Sharding("{devices=[8,1,16,64]<=[8192] last_tile_dim_replicate}"));
+  auto* copy = FindInstruction(module.get(), "copy");
+  ASSERT_NE(copy, nullptr);
+  EXPECT_THAT(
+      copy,
+      op::Sharding("{devices=[8,1,16,64]<=[8192] last_tile_dim_replicate}"));
 }
 
 }  // namespace

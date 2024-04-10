@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/types/span.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/custom_call_sharding_helper.h"
@@ -32,20 +33,59 @@ limitations under the License.
 
 namespace xla {
 
+// Data structure for checking if there is a shard barrier.
+class ShardBarrier {
+ public:
+  ShardBarrier(
+      absl::flat_hash_map<const HloInstruction*, absl::flat_hash_set<int64_t>>
+          instruction_to_shard_barrier_from_ids,
+      absl::flat_hash_map<const HloInstruction*, absl::flat_hash_set<int64_t>>
+          instruction_to_shard_barrier_to_ids)
+      : instruction_to_shard_barrier_from_ids_(
+            instruction_to_shard_barrier_from_ids),
+        instruction_to_shard_barrier_to_ids_(
+            instruction_to_shard_barrier_to_ids) {}
+
+  bool HasShardBarrier(const HloInstruction* from, const HloInstruction* to) {
+    for (int64_t from_id : instruction_to_shard_barrier_from_ids_[from]) {
+      if (instruction_to_shard_barrier_to_ids_[to].contains(from_id)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  bool HasShardBarrier(const HloSharding& from_sharding,
+                       const HloInstruction* to) {
+    if (from_sharding.IsShardBarrierFrom()) {
+      if (instruction_to_shard_barrier_to_ids_[to].contains(
+              from_sharding.GetShardBarrier().shard_barrier_id)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  absl::flat_hash_map<const HloInstruction*, absl::flat_hash_set<int64_t>>
+      instruction_to_shard_barrier_from_ids_;
+  absl::flat_hash_map<const HloInstruction*, absl::flat_hash_set<int64_t>>
+      instruction_to_shard_barrier_to_ids_;
+};
+
 // Infers the shardings for a dot HLO op from the shardings on its operands,
 // which are expected to have sharding annotations.
 bool InferDotShardingFromOperands(
     HloInstruction* instruction, const CallGraph& call_graph,
     const dot_as_convolution_util::DotConvolutionDimsInfo& dnums,
-    bool may_combine_partial_sharding, bool is_spmd);
+    bool may_combine_partial_sharding, bool is_spmd,
+    std::optional<ShardBarrier> shard_barrier = std::nullopt);
 
 // Infers the shardings for a convolution HLO op from the shardings on its
 // operands, which are expected to have sharding annotations.
-bool InferConvolutionShardingFromOperands(HloInstruction* instruction,
-                                          const CallGraph& call_graph,
-                                          int64_t aggressiveness,
-                                          bool may_combine_partial_sharding,
-                                          bool is_spmd);
+bool InferConvolutionShardingFromOperands(
+    HloInstruction* instruction, const CallGraph& call_graph,
+    int64_t aggressiveness, bool may_combine_partial_sharding, bool is_spmd,
+    std::optional<ShardBarrier> shard_barrier = std::nullopt);
 
 // Remove Sharding custom-call instruction by folding the sharding attribute
 // to its operand. If the operand already has a different sharding, insert a
@@ -71,6 +111,10 @@ absl::StatusOr<bool> ProcessShardingInstruction(
         shard_group_id_to_shard_as_group = nullptr,
     absl::flat_hash_map<int64_t, absl::flat_hash_set<HloInstruction*>>*
         shard_group_id_to_shard_like_group = nullptr,
+    absl::flat_hash_map<const HloInstruction*, absl::flat_hash_set<int64_t>>*
+        instruction_to_shard_barrier_from_ids = nullptr,
+    absl::flat_hash_map<const HloInstruction*, absl::flat_hash_set<int64_t>>*
+        instruction_to_shard_barrier_to_ids = nullptr,
     const std::vector<bool>*
         allow_spmd_sharding_propagation_to_parameters_vector = nullptr);
 
@@ -80,9 +124,9 @@ int64_t ComputeNonRootUsers(const HloInstruction* instr);
 std::optional<HloSharding> InferBroadcastOperandSharding(
     const HloInstruction& instruction, bool is_spmd = true);
 
-bool InferReduceShardingFromOperand(HloInstruction* instruction,
-                                    bool may_combine_partial_sharding,
-                                    bool is_spmd);
+bool InferReduceShardingFromOperand(
+    HloInstruction* instruction, bool may_combine_partial_sharding,
+    bool is_spmd, std::optional<ShardBarrier> shard_barrier = std::nullopt);
 
 // Propagates sharding information around the graph. HLOs that have shardings
 // are kept as-is, those that do not have shardings are given shardings based on
@@ -162,6 +206,11 @@ class ShardingPropagation : public HloModulePass {
       const CustomCallShardingHelper* sharding_helper,
       const CallGraph& call_graph);
 
+  bool HasShardBarrier(const HloInstruction* from, const HloInstruction* to);
+
+  bool HasShardBarrier(const HloSharding& from_sharding,
+                       const HloInstruction* to);
+
   std::unique_ptr<CustomCallShardingHelper> sharding_helper_;
   bool is_spmd_;
   bool propagate_metadata_;
@@ -173,6 +222,8 @@ class ShardingPropagation : public HloModulePass {
   // instructions to prevent CSE across unrelated subgraphs. (A common case is
   // scalar broadcasts).
   bool cse_prevention_only_;
+
+  std::optional<ShardBarrier> shard_barrier_;
 };
 
 }  // namespace xla

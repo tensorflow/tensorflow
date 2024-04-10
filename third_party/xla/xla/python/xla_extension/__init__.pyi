@@ -360,6 +360,10 @@ class OpSharding_ShardGroupType(enum.IntEnum):
   AS: int
   LIKE: int
 
+class OpSharding_ShardBarrierType(enum.IntEnum):
+  FROM: int
+  TO: int
+
 class OpSharding:
   Type: typing.Type[OpSharding_Type]
   type: OpSharding_Type
@@ -374,6 +378,10 @@ class OpSharding:
   shard_group_id: int
   ShardGroupType: typing.Type[OpSharding_ShardGroupType]
   shard_group_type: OpSharding_ShardGroupType
+  is_shard_barrier: bool
+  shard_barrier_id: int
+  ShardBarrierType: typing.Type[OpSharding_ShardBarrierType]
+  shard_barrier_type: OpSharding_ShardBarrierType
   def ParseFromString(self, s: bytes) -> None: ...
   def SerializeToString(self) -> bytes: ...
   def clone(self) -> OpSharding: ...

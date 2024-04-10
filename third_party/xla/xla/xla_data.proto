@@ -926,6 +926,23 @@ message OpSharding {
   }
 
   ShardGroupType shard_group_type = 13;
+
+  // This field decides whether this op is in a shard barrier.
+  bool is_shard_barrier = 14;
+
+  // This field is used to store the unique id of the shard barrier.
+  int64 shard_barrier_id = 15;
+
+  // Used to forbids sharding propagation from happening unilaterally from an
+  // op to another op.
+  enum ShardBarrierType {
+    // Sharding propagation is forbidden from this op associated with given id.
+    FROM = 0;
+    // Sharding propagation is forbidden to this op associated with given id.
+    TO = 1;
+  }
+
+  ShardBarrierType shard_barrier_type = 16;
 }
 // LINT.ThenChange()
 
