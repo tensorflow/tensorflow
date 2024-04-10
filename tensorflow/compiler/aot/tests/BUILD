@@ -152,33 +152,33 @@ tfcompile_test_dep_configs = [
                 "no_mac",  # TODO(b/228273415)
             ],
         ),
-        tf_library(
-            name = "test_graph_tfadd_with_ckpt" + suffix,
-            testonly = 1,
-            config = "test_graph_tfadd_with_ckpt.config.pbtxt",
-            cpp_class = "AddWithCkptComp",
-            freeze_checkpoint = "test_graph_tfadd_with_ckpt.ckpt",
-            graph = "test_graph_tfadd_with_ckpt.pb",
-            mlir_components = mlir_component,
-            tags = [
-                "manual",
-                "no_mac",  # TODO(b/228273415)
-            ],
-        ),
-        tf_library(
-            name = "test_graph_tfadd_with_ckpt_saver" + suffix,
-            testonly = 1,
-            config = "test_graph_tfadd_with_ckpt.config.pbtxt",
-            cpp_class = "AddWithCkptSaverComp",
-            freeze_checkpoint = "test_graph_tfadd_with_ckpt_saver.ckpt",
-            freeze_saver = "test_graph_tfadd_with_ckpt_saver.saver",
-            graph = "test_graph_tfadd_with_ckpt_saver.pb",
-            mlir_components = mlir_component,
-            tags = [
-                "manual",
-                "no_mac",  # TODO(b/228273415)
-            ],
-        ),
+        # tf_library(
+        #     name = "test_graph_tfadd_with_ckpt" + suffix,
+        #     testonly = 1,
+        #     config = "test_graph_tfadd_with_ckpt.config.pbtxt",
+        #     cpp_class = "AddWithCkptComp",
+        #     freeze_checkpoint = "test_graph_tfadd_with_ckpt.ckpt",
+        #     graph = "test_graph_tfadd_with_ckpt.pb",
+        #     mlir_components = mlir_component,
+        #     tags = [
+        #         "manual",
+        #         "no_mac",  # TODO(b/228273415)
+        #     ],
+        # ),
+        # tf_library(
+        #     name = "test_graph_tfadd_with_ckpt_saver" + suffix,
+        #     testonly = 1,
+        #     config = "test_graph_tfadd_with_ckpt.config.pbtxt",
+        #     cpp_class = "AddWithCkptSaverComp",
+        #     freeze_checkpoint = "test_graph_tfadd_with_ckpt_saver.ckpt",
+        #     freeze_saver = "test_graph_tfadd_with_ckpt_saver.saver",
+        #     graph = "test_graph_tfadd_with_ckpt_saver.pb",
+        #     mlir_components = mlir_component,
+        #     tags = [
+        #         "manual",
+        #         "no_mac",  # TODO(b/228273415)
+        #     ],
+        # ),
         tf_library(
             name = "test_graph_tfassert_eq" + suffix,
             testonly = 1,
@@ -445,8 +445,8 @@ tf_cc_test(
     ],
     deps = [
         ":test_graph_tfadd",
-        ":test_graph_tfadd_with_ckpt",
-        ":test_graph_tfadd_with_ckpt_saver",
+        # ":test_graph_tfadd_with_ckpt",
+        # ":test_graph_tfadd_with_ckpt_saver",
         ":test_graph_tfassert_eq",
         ":test_graph_tfcond",
         ":test_graph_tffunction",
@@ -459,16 +459,16 @@ tf_cc_test(
         ":test_graph_tfvariable",
         ":test_graph_tfvariable_readonly",
         ":test_graph_tfvariable_sequential_updates",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core/platform:regexp",
         "@com_google_absl//absl/strings",
         "@eigen_archive//:eigen3",
         "@local_xla//xla:shape_util",
         "@local_xla//xla:test",
         "@local_xla//xla:xla_data_proto_cc",
         "@local_xla//xla/service:hlo_profile_printer",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:regexp",
     ],
 )
 

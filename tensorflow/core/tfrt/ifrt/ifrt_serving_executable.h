@@ -73,8 +73,8 @@ class IfrtServingExecutable {
         shape_representation_fn_(std::move(shape_representation_fn)) {}
 
   // Movable but not copyable.
-  IfrtServingExecutable(IfrtServingExecutable&& other) = default;
-  IfrtServingExecutable& operator=(IfrtServingExecutable&& other) = default;
+  IfrtServingExecutable(IfrtServingExecutable&& other) = delete;
+  IfrtServingExecutable& operator=(IfrtServingExecutable&& other) = delete;
   IfrtServingExecutable(const IfrtServingExecutable& other) = delete;
   IfrtServingExecutable& operator=(const IfrtServingExecutable& other) = delete;
 

@@ -292,6 +292,9 @@ def _tf_repositories():
         name = "com_github_googlecloudplatform_google_cloud_cpp",
         sha256 = "ff82045b9491f0d880fc8e5c83fd9542eafb156dcac9ff8c6209ced66ed2a7f0",
         strip_prefix = "google-cloud-cpp-1.17.1",
+        # copybara:comment_begin(oss-only)
+        patch_file = ["//third_party/systemlibs:google_cloud_cpp_int_types_fix.patch"],
+        # copybara:comment_end
         repo_mapping = {
             "@com_github_curl_curl": "@curl",
             "@com_github_nlohmann_json": "@nlohmann_json_lib",
@@ -434,6 +437,9 @@ def _tf_repositories():
         patch_file = [
             "//third_party/grpc:generate_cc_env_fix.patch",
             "//third_party/grpc:register_go_toolchain.patch",
+            # copybara:comment_begin(oss-only)
+            "//third_party/grpc:cast_memory_order_to_int.patch",
+            # copybara:comment_end
         ],
         system_link_files = {
             "//third_party/systemlibs:BUILD": "bazel/BUILD",

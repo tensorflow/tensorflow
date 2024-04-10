@@ -281,8 +281,8 @@ absl::Status MlrtIfrtLoadVariableKernel::InvokeHelper() {
   VariableDeviceShardingConfigProto sharding_config;
   absl::string_view sharding_config_text = sharding_config_proto_text();
 
-  if (!tensorflow::protobuf::TextFormat::ParseFromString(sharding_config_text,
-                                                         &sharding_config)) {
+  if (!tensorflow::protobuf::TextFormat::ParseFromString(
+          sharding_config_text.data(), &sharding_config)) {
     return absl::InvalidArgumentError(
         absl::StrCat("Attribute: ", sharding_config_text, " cannot be parsed"));
   }
