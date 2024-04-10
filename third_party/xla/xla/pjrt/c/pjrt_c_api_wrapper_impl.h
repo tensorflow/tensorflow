@@ -263,6 +263,7 @@ PJRT_Error* PJRT_Device_MemoryStats(PJRT_Device_MemoryStats_Args* args);
 
 PJRT_Error* PJRT_Memory_Id(PJRT_Memory_Id_Args* args);
 PJRT_Error* PJRT_Memory_Kind(PJRT_Memory_Kind_Args* args);
+PJRT_Error* PJRT_Memory_Kind_Id(PJRT_Memory_Kind_Id_Args* args);
 PJRT_Error* PJRT_Memory_DebugString(PJRT_Memory_DebugString_Args* args);
 PJRT_Error* PJRT_Memory_ToString(PJRT_Memory_ToString_Args* args);
 PJRT_Error* PJRT_Memory_AddressableByDevices(

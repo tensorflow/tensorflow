@@ -101,7 +101,8 @@ class PjRtCApiMemorySpace : public PjRtMemorySpace {
 
   int id() const override;
 
-  absl::string_view memory_space_kind() const override;
+  absl::string_view kind() const override;
+  int kind_id() const override;
 
   absl::string_view DebugString() const override;
 

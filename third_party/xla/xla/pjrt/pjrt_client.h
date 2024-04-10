@@ -92,7 +92,12 @@ class PjRtMemorySpace {
 
   // A platform-dependent string that uniquely identifies the kind of the
   // memory space.
-  virtual absl::string_view memory_space_kind() const = 0;
+  virtual absl::string_view kind() const = 0;
+
+  // An ID uniquely identifies the kind of the memory space among those attached
+  // to the same `PjRtClient`. The IDs assigned to a kind is implementation
+  // specific.
+  virtual int kind_id() const = 0;
 
   // Debug string suitable for logging when errors occur. Should be verbose
   // enough to describe the current memory space unambiguously.

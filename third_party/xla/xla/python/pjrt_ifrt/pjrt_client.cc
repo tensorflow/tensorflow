@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/functional/any_invocable.h"
 #include "absl/memory/memory.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "xla/layout.h"
@@ -120,7 +121,7 @@ absl::StatusOr<tsl::RCReference<Array>> PjRtClient::MakeArrayFromHostBuffer(
     // matches the sharding's memory_kind.
     PjRtMemorySpace* memory_space = nullptr;
     for (PjRtMemorySpace* ms : sharding->devices().front()->memory_spaces()) {
-      if (ms->memory_space_kind() == *sharding->memory_kind().memory_kind()) {
+      if (ms->kind() == *sharding->memory_kind().memory_kind()) {
         memory_space = ms;
         break;
       }
@@ -131,7 +132,7 @@ absl::StatusOr<tsl::RCReference<Array>> PjRtClient::MakeArrayFromHostBuffer(
           *sharding->memory_kind().memory_kind(),
           absl::StrJoin(sharding->devices().front()->memory_spaces(), ", ",
                         [](std::string* out, PjRtMemorySpace* ms) {
-                          absl::StrAppend(out, ms->memory_space_kind());
+                          absl::StrAppend(out, ms->kind());
                         }));
     }
     TF_ASSIGN_OR_RETURN(

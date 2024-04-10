@@ -192,7 +192,7 @@ MemoryKind MakeMemoryKindFromPjRtBuffer(PjRtBuffer* pjrt_buffer) {
   if (pjrt_buffer->memory_space() == nullptr) {
     return MemoryKind();
   }
-  return MemoryKind(pjrt_buffer->memory_space()->memory_space_kind());
+  return MemoryKind(pjrt_buffer->memory_space()->kind());
 }
 
 absl::StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
@@ -411,7 +411,7 @@ absl::StatusOr<PjRtMemorySpace*> GetMemorySpaceFromMemoryKind(
     ifrt::Device* device, ifrt::MemoryKind memory_kind) {
   PjRtMemorySpace* memory_space = nullptr;
   for (PjRtMemorySpace* ms : device->memory_spaces()) {
-    if (ms->memory_space_kind() == memory_kind.memory_kind()) {
+    if (ms->kind() == memory_kind.memory_kind()) {
       memory_space = ms;
       break;
     }
@@ -422,7 +422,7 @@ absl::StatusOr<PjRtMemorySpace*> GetMemorySpaceFromMemoryKind(
         memory_kind.DebugString(),
         absl::StrJoin(device->memory_spaces(), ", ",
                       [](std::string* out, PjRtMemorySpace* ms) {
-                        absl::StrAppend(out, ms->memory_space_kind());
+                        absl::StrAppend(out, ms->kind());
                       }));
   }
   return memory_space;
@@ -453,7 +453,7 @@ absl::StatusOr<tsl::RCReference<Array>> PjRtArray::Reshard(
     bool memories_supported = pjrt_buffers_[i]->memory_space() != nullptr;
     bool memory_kind_equal =
         new_sharding_has_memory_kind && memories_supported &&
-        pjrt_buffers_[i]->memory_space()->memory_space_kind() ==
+        pjrt_buffers_[i]->memory_space()->kind() ==
             canonicalized_sharding_memory_kind.memory_kind();
 
     // No need for data transfer.
