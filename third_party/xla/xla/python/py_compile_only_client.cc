@@ -224,8 +224,7 @@ class CompileOnlyIfRtClient final
   const PjRtTopologyDescription& topology() const { return *topology_; }
 
   absl::StatusOr<std::shared_ptr<const xla::PjRtTopologyDescription>>
-  GetTopologyForDevices(
-      absl::Span<ifrt::Device* const> devices) const override {
+  GetTopologyForDevices(const xla::ifrt::DeviceList& devices) const override {
     return topology_;
   }
 

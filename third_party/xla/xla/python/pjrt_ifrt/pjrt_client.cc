@@ -227,7 +227,7 @@ absl::StatusOr<tsl::RCReference<Tuple>> PjRtClient::MakeTuple(
 }
 
 absl::StatusOr<std::shared_ptr<const xla::PjRtTopologyDescription>>
-PjRtClient::GetTopologyForDevices(absl::Span<Device* const> devices) const {
+PjRtClient::GetTopologyForDevices(const xla::ifrt::DeviceList& devices) const {
   // TODO(parkers): Consider constructing a sub-slice topology based on the
   // provided devices.
   TF_ASSIGN_OR_RETURN(auto topology, pjrt_client_->GetTopologyDescription());

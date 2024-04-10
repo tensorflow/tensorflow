@@ -463,7 +463,7 @@ NB_MODULE(xla_extension, m_nb) {
               "get_topology_for_devices requires >= 1 devices.");
         }
         auto client = py_devices[0]->client();
-        std::vector<PjRtDevice*> ifrt_devices;
+        ifrt::DeviceList::Devices ifrt_devices;
         ifrt_devices.reserve(py_devices.size());
         for (const auto& py_device : py_devices) {
           if (py_device->client().get() != client.get()) {
@@ -473,8 +473,9 @@ NB_MODULE(xla_extension, m_nb) {
           }
           ifrt_devices.push_back(py_device->device());
         }
-        return xla::ValueOrThrow(client->ifrt_client()->GetTopologyForDevices(
-            absl::MakeSpan(ifrt_devices)));
+        ifrt::DeviceList device_list(std::move(ifrt_devices));
+        return xla::ValueOrThrow(
+            client->ifrt_client()->GetTopologyForDevices(device_list));
       });
 
   TF_CHECK_OK(PyArray::RegisterTypes(m_nb));

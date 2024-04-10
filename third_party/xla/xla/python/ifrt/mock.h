@@ -135,7 +135,7 @@ class MockClient final : public llvm::RTTIExtends<MockClient, Client> {
   MOCK_METHOD(Compiler*, GetDefaultCompiler, (), (final));
   MOCK_METHOD(
       absl::StatusOr<std::shared_ptr<const xla::PjRtTopologyDescription>>,
-      GetTopologyForDevices, (absl::Span<xla::ifrt::Device* const> devices),
+      GetTopologyForDevices, (const xla::ifrt::DeviceList& devices),
       (const, final));
   MOCK_METHOD(absl::StatusOr<std::unique_ptr<xla::PjRtLayout>>,
               GetDefaultLayoutForDevice,
