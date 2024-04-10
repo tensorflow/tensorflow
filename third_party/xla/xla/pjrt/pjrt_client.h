@@ -1306,8 +1306,23 @@ class PjRtBuffer {
   // If either 'this' or 'dependency' transitions to error, then the returned
   // buffer will transition to error.
   virtual StatusOr<std::unique_ptr<PjRtBuffer>> DonateWithControlDependency(
-      PjRtFuture<Status> dependency) {
+      PjRtFuture<> dependency) {
     return Unimplemented("DonateWithControlDependency is not supported.");
+  }
+
+  // TODO(b/333538339): Delete this adaptor once all users migrate from
+  // PjRtFuture<Status> to PjRtFuture<>.
+  StatusOr<std::unique_ptr<PjRtBuffer>> DonateWithControlDependency(
+      PjRtFuture<Status> dependency) {
+    PjRtFuture<>::Promise promise = PjRtFuture<>::CreatePromise();
+    dependency.OnReady([promise](Status status) mutable {
+      if (status.ok()) {
+        promise.Set();
+      } else {
+        promise.SetError(std::move(status));
+      }
+    });
+    return DonateWithControlDependency(PjRtFuture<>(std::move(promise)));
   }
 
   // Helper to allow a caller to indicate that it is going to do some "sends"

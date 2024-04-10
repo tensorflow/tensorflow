@@ -726,8 +726,7 @@ PjRtStreamExecutorBuffer::ReleaseDeviceMemoryOwnership(
 }
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer>>
-PjRtStreamExecutorBuffer::DonateWithControlDependency(
-    PjRtFuture<absl::Status> dependency) {
+PjRtStreamExecutorBuffer::DonateWithControlDependency(PjRtFuture<> dependency) {
   VLOG(1) << "PjRtStreamExecutorBuffer::DonateWithControlDependency";
   std::unique_ptr<PjRtBuffer> new_buffer;
 
