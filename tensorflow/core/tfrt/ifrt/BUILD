@@ -25,6 +25,29 @@ tf_proto_library(
 )
 
 cc_library(
+    name = "ifrt_serving_core_selector",
+    srcs = ["ifrt_serving_core_selector.cc"],
+    hdrs = ["ifrt_serving_core_selector.h"],
+    deps = [
+        "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/framework:serving_device_selector",
+    ],
+)
+
+tf_cc_test(
+    name = "ifrt_serving_core_selector_test",
+    srcs = ["ifrt_serving_core_selector_test.cc"],
+    tags = ["no_oss"],
+    deps = [
+        ":ifrt_serving_core_selector",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/framework:serving_device_selector",
+        "@local_tsl//tsl/framework/test_util:mock_serving_device_selector",
+    ],
+)
+
+cc_library(
     name = "ifrt_serving_executable",
     srcs = ["ifrt_serving_executable.cc"],
     hdrs = ["ifrt_serving_executable.h"],
