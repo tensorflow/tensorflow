@@ -474,12 +474,7 @@ Status HloComputation::RemoveInstructionImpl(HloInstruction* instruction,
   to_be_deleted_.back()->DetachFromOperandsAndUsers();
   // Clear all operands to avoid Null operands.
   to_be_deleted_.back()->RemoveAllOperands();
-  // These require non-trivial cleanup for their called computations,
-  // which is invoked in the ops destructor.
-  if (!to_be_deleted_.back()->IsAsynchronous() &&
-      !to_be_deleted_.back()->IsFused()) {
-    to_be_deleted_.back()->ClearCalledComputations();
-  }
+  to_be_deleted_.back()->ClearCalledComputations();
   to_be_deleted_.back()->MarkAsDead();
   // TODO(jeff): should we set info->opcode to something?
   info->inst_ =
