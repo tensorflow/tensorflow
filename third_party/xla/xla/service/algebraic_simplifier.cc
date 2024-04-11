@@ -45,6 +45,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/utils/hlo_sharding_util.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
@@ -3838,6 +3839,21 @@ Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
   return OkStatus();
 }
 
+namespace {
+std::vector<int64_t> GetPaddedDims(const HloInstruction* pad) {
+  CHECK_EQ(pad->opcode(), HloOpcode::kPad);
+  std::vector<int64_t> padded_dims;
+  for (int64_t i = 0; i != pad->shape().rank(); ++i) {
+    if (pad->padding_config().dimensions(i).edge_padding_high() != 0 ||
+        pad->padding_config().dimensions(i).edge_padding_low() != 0 ||
+        pad->padding_config().dimensions(i).interior_padding() != 0) {
+      padded_dims.push_back(i);
+    }
+  }
+  return padded_dims;
+}
+}  // namespace
+
 Status AlgebraicSimplifierVisitor::HandleGather(HloInstruction* gather) {
   const Shape& operand_shape = gather->operand(0)->shape();
   if (ShapeUtil::IsZeroElementArray(operand_shape)) {
@@ -3891,6 +3907,178 @@ Status AlgebraicSimplifierVisitor::HandleGather(HloInstruction* gather) {
                                         index_mask, get_value(i), result));
     }
     return ReplaceInstruction(gather, result);
+  }
+
+  const auto gather_operand_passthrough_operand_dims =
+      hlo_sharding_util::GetGatherOperandPassthroughOperandDims(
+          gather->operand(0)->shape(), *gather, gather->gather_slice_sizes());
+  const auto gather_operand_passthrough_output_dims =
+      hlo_sharding_util::GetGatherOperandPassthroughOutputDims(
+          gather->shape(), gather->operand(0)->shape(), *gather,
+          gather->gather_slice_sizes());
+  absl::flat_hash_map<int64_t, int64_t>
+      gather_operand_passthrough_operand_to_output_dims;
+  absl::flat_hash_map<int64_t, int64_t>
+      gather_operand_passthrough_output_to_operand_dims;
+  CHECK_EQ(gather_operand_passthrough_operand_dims.size(),
+           gather_operand_passthrough_output_dims.size());
+  for (int64_t i = 0; i != gather_operand_passthrough_operand_dims.size();
+       ++i) {
+    gather_operand_passthrough_operand_to_output_dims
+        [gather_operand_passthrough_operand_dims[i]] =
+            gather_operand_passthrough_output_dims[i];
+    gather_operand_passthrough_output_to_operand_dims
+        [gather_operand_passthrough_output_dims[i]] =
+            gather_operand_passthrough_operand_dims[i];
+  }
+  // If the gather operand is a pad on the pass-through dimensions, then we can
+  // gather the unpadded operand and then pad.
+  if (HloInstruction* pad = gather->mutable_operand(0);
+      pad->opcode() == HloOpcode::kPad) {
+    bool padded_on_gather_operand_passthrough_operand_dims = true;
+    std::vector<int64_t> padded_dims = GetPaddedDims(pad);
+    for (int64_t padded_dims : padded_dims) {
+      if (!gather_operand_passthrough_operand_to_output_dims.contains(
+              padded_dims)) {
+        padded_on_gather_operand_passthrough_operand_dims = false;
+        break;
+      }
+    }
+    // Change gather(pad(...)) to pad(gather(...)).
+    if (padded_on_gather_operand_passthrough_operand_dims) {
+      Shape gather_shape = gather->shape();
+      for (int64_t padded_dim : padded_dims) {
+        gather_shape.mutable_dimensions()
+            [gather_operand_passthrough_operand_to_output_dims[padded_dim]] =
+            pad->operand(0)->shape().dimensions()[padded_dim];
+      }
+      auto gather_inst = Cast<HloGatherInstruction>(gather);
+      std::vector<int64_t> slice_sizes;
+      for (int i = 0; i != gather_inst->gather_slice_sizes().size(); ++i) {
+        if (absl::c_linear_search(padded_dims, i)) {
+          slice_sizes.push_back(pad->operand(0)->shape().dimensions()[i]);
+        } else {
+          slice_sizes.push_back(gather_inst->gather_slice_sizes()[i]);
+        }
+      }
+      HloInstruction* result =
+          gather->AddInstruction(HloInstruction::CreateGather(
+              gather_shape, pad->mutable_operand(0), gather->mutable_operand(1),
+              gather_inst->gather_dimension_numbers(), slice_sizes,
+              gather_inst->indices_are_sorted()));
+      PaddingConfig pad_config;
+      for (int64_t i = 0; i != gather->shape().rank(); ++i) {
+        auto dimension = pad_config.add_dimensions();
+        if (gather_operand_passthrough_output_to_operand_dims.contains(i) &&
+            absl::c_linear_search(
+                padded_dims,
+                gather_operand_passthrough_output_to_operand_dims[i])) {
+          int64_t padded_dim =
+              gather_operand_passthrough_output_to_operand_dims[i];
+          dimension->set_edge_padding_low(
+              pad->padding_config().dimensions(padded_dim).edge_padding_low());
+          dimension->set_edge_padding_high(
+              pad->padding_config().dimensions(padded_dim).edge_padding_high());
+          dimension->set_interior_padding(
+              pad->padding_config().dimensions(padded_dim).interior_padding());
+        }
+      }
+      result = gather->AddInstruction(HloInstruction::CreatePad(
+          gather->shape(), result, pad->mutable_operand(1), pad_config));
+      return ReplaceInstruction(gather, result);
+    }
+  }
+
+  // If the gather operand is a reshape of a pad on the pass-through dimensions,
+  // then we can gather the unpadded reshape and then pad.
+  if (HloInstruction* reshape = gather->mutable_operand(0);
+      reshape->opcode() == HloOpcode::kReshape &&
+      ShapeUtil::ReshapeIsBitcast(reshape->operand(0)->shape(),
+                                  reshape->shape())) {
+    absl::flat_hash_map<int64_t, int64_t> reshape_unmodified_dims;
+    for (const auto& [from_dim, to_dim] :
+         ShapeUtil::DimensionsUnmodifiedByReshape(reshape->operand(0)->shape(),
+                                                  reshape->shape())) {
+      reshape_unmodified_dims[from_dim] = to_dim;
+    }
+    if (HloInstruction* pad = reshape->mutable_operand(0);
+        pad->opcode() == HloOpcode::kPad) {
+      bool padded_on_reshape_unmodified_dims = true;
+      bool padded_on_gather_operand_passthrough_operand_dims = true;
+      std::vector<int64_t> padded_dims = GetPaddedDims(pad);
+      absl::flat_hash_map<int64_t, int64_t> reshape_dims_to_padded_dims;
+      for (int64_t padded_dim : padded_dims) {
+        reshape_dims_to_padded_dims[reshape_unmodified_dims[padded_dim]] =
+            padded_dim;
+      }
+      for (int64_t padded_dim : padded_dims) {
+        if (!reshape_unmodified_dims.contains(padded_dim)) {
+          padded_on_reshape_unmodified_dims = false;
+          break;
+        }
+      }
+      for (auto& [padded_reshape_dim, _] : reshape_dims_to_padded_dims) {
+        if (!gather_operand_passthrough_operand_to_output_dims.contains(
+                padded_reshape_dim)) {
+          padded_on_gather_operand_passthrough_operand_dims = false;
+          break;
+        }
+      }
+      // Change gather(reshape(pad(...))) to pad(gather(reshape(...))).
+      if (padded_on_reshape_unmodified_dims &&
+          padded_on_gather_operand_passthrough_operand_dims) {
+        Shape reshape_shape = reshape->shape();
+        Shape gather_shape = gather->shape();
+        for (int64_t padded_dim : padded_dims) {
+          int64_t to_dim = reshape_unmodified_dims[padded_dim];
+          reshape_shape.mutable_dimensions()[to_dim] =
+              pad->operand(0)->shape().dimensions()[padded_dim];
+          gather_shape.mutable_dimensions()
+              [gather_operand_passthrough_operand_to_output_dims[to_dim]] =
+              pad->operand(0)->shape().dimensions()[padded_dim];
+        }
+        HloInstruction* result =
+            gather->AddInstruction(HloInstruction::CreateReshape(
+                reshape_shape, pad->mutable_operand(0)));
+        auto gather_inst = Cast<HloGatherInstruction>(gather);
+        std::vector<int64_t> slice_sizes;
+        for (int i = 0; i != gather_inst->gather_slice_sizes().size(); ++i) {
+          if (reshape_dims_to_padded_dims.contains(i)) {
+            slice_sizes.push_back(
+                pad->operand(0)
+                    ->shape()
+                    .dimensions()[reshape_dims_to_padded_dims[i]]);
+          } else {
+            slice_sizes.push_back(gather_inst->gather_slice_sizes()[i]);
+          }
+        }
+        result = gather->AddInstruction(HloInstruction::CreateGather(
+            gather_shape, result, gather->mutable_operand(1),
+            gather_inst->gather_dimension_numbers(), slice_sizes,
+            gather_inst->indices_are_sorted()));
+        PaddingConfig pad_config;
+        for (int64_t i = 0; i != gather->shape().rank(); ++i) {
+          auto dimension = pad_config.add_dimensions();
+          if (reshape_dims_to_padded_dims.contains(
+                  gather_operand_passthrough_output_to_operand_dims[i])) {
+            int64_t padded_dim = reshape_dims_to_padded_dims
+                [gather_operand_passthrough_output_to_operand_dims[i]];
+            dimension->set_edge_padding_low(pad->padding_config()
+                                                .dimensions(padded_dim)
+                                                .edge_padding_low());
+            dimension->set_edge_padding_high(pad->padding_config()
+                                                 .dimensions(padded_dim)
+                                                 .edge_padding_high());
+            dimension->set_interior_padding(pad->padding_config()
+                                                .dimensions(padded_dim)
+                                                .interior_padding());
+          }
+        }
+        result = gather->AddInstruction(HloInstruction::CreatePad(
+            gather->shape(), result, pad->mutable_operand(1), pad_config));
+        return ReplaceInstruction(gather, result);
+      }
+    }
   }
   return OkStatus();
 }

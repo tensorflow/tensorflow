@@ -7866,6 +7866,109 @@ TEST_F(AlgebraicSimplifierTest, GatherOfScalarToBroadcast) {
   EXPECT_THAT(root, GmockMatch(m::Broadcast(m::Reshape(m::Parameter(0)))));
 }
 
+TEST_F(AlgebraicSimplifierTest, GatherOfPad) {
+  const char* hlo_string = R"(
+HloModule module
+
+ENTRY %entry {
+  reshape.17992 = f32[25165824,32]{1,0} parameter(0)
+  constant.31700 = f32[] constant(0)
+  pad.921 = f32[25165824,128]{1,0} pad(reshape.17992, constant.31700), padding=0_0x0_96
+  reshape.40561 = s32[20447232,1]{1,0} parameter(1)
+  gather.100277 = f32[20447232,128]{1,0} gather(pad.921, reshape.40561),
+    offset_dims={1}, collapsed_slice_dims={0}, start_index_map={0},
+    index_vector_dim=1, slice_sizes={1,128}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  AlgebraicSimplifierOptions options;
+  AlgebraicSimplifier simplifier(options);
+  EXPECT_TRUE(simplifier.Run(module.get()).value());
+  VLOG(2) << "After rewrite \n" << module->ToString();
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root,
+              GmockMatch(m::Pad(m::Gather(m::Parameter(0), m::Parameter(1)),
+                                m::ConstantScalar(0))));
+}
+
+TEST_F(AlgebraicSimplifierTest, GatherOfPad2) {
+  const char* hlo_string = R"(
+HloModule module
+
+ENTRY %entry {
+  iota.3 = s32[4,1]{1,0} iota(), iota_dimension=0
+  constant.36 = s32[] constant(0)
+  pad = s32[4,2]{1,0} pad(iota.3, constant.36), padding=0_0x0_1
+  reshape.300 = s32[3,40,1]{2,1,0} parameter(0)
+  gather.363 = s32[3,40,2]{2,1,0} gather(pad, reshape.300),
+    offset_dims={2}, collapsed_slice_dims={0}, start_index_map={0},
+    index_vector_dim=2, slice_sizes={1,2}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  AlgebraicSimplifierOptions options;
+  AlgebraicSimplifier simplifier(options);
+  EXPECT_TRUE(simplifier.Run(module.get()).value());
+  VLOG(2) << "After rewrite \n" << module->ToString();
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, GmockMatch(m::Pad(m::Gather(m::Iota(), m::Parameter(0)),
+                                      m::ConstantScalar(0))));
+}
+
+TEST_F(AlgebraicSimplifierTest, GatherOfReshapeOfPad) {
+  const char* hlo_string = R"(
+ENTRY %entry {
+  reshape.17992 = f32[64,393216,32]{2,1,0} parameter(0)
+  constant.31700 = f32[] constant(0)
+  pad.921 = f32[64,393216,128]{2,1,0} pad(reshape.17992, constant.31700), padding=0_0x0_0x0_96
+  reshape.100261 = f32[25165824,128]{1,0} reshape(pad.921)
+  reshape.40561 = s32[20447232,1]{1,0} parameter(1)
+  gather.100277 = f32[20447232,128]{1,0} gather(reshape.100261, reshape.40561),
+    offset_dims={1}, collapsed_slice_dims={0}, start_index_map={0},
+    index_vector_dim=1, slice_sizes={1,128}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  AlgebraicSimplifierOptions options;
+  AlgebraicSimplifier simplifier(options);
+  EXPECT_TRUE(simplifier.Run(module.get()).value());
+  VLOG(2) << "After rewrite \n" << module->ToString();
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, GmockMatch(m::Pad(
+                        m::Gather(m::Reshape(m::Parameter(0)), m::Parameter(1)),
+                        m::ConstantScalar(0))));
+}
+
+TEST_F(AlgebraicSimplifierTest, GatherOfReshapeOfPad2) {
+  const char* hlo_string = R"(
+HloModule module
+
+ENTRY %entry {
+  iota.3 = s32[2,4,1]{2,1,0} iota(), iota_dimension=0
+  constant.36 = s32[] constant(0)
+  pad = s32[2,4,2]{2,1,0} pad(iota.3, constant.36), padding=0_0x0_0x0_1
+  reshape = s32[8,2]{1,0} reshape(pad)
+  reshape.300 = s32[3,40,1]{2,1,0} parameter(0)
+  gather.363 = s32[3,40,2]{2,1,0} gather(reshape, reshape.300),
+    offset_dims={2}, collapsed_slice_dims={0}, start_index_map={0},
+    index_vector_dim=2, slice_sizes={1,2}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  AlgebraicSimplifierOptions options;
+  AlgebraicSimplifier simplifier(options);
+  EXPECT_TRUE(simplifier.Run(module.get()).value());
+  VLOG(2) << "After rewrite \n" << module->ToString();
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(
+      root, GmockMatch(m::Pad(m::Gather(m::Reshape(m::Iota()), m::Parameter(0)),
+                              m::ConstantScalar(0))));
+}
+
 TEST_F(AlgebraicSimplifierTest, TupleReduceReshape) {
   const char* hlo_string = R"(
 HloModule module
