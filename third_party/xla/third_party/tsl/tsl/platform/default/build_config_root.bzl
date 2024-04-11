@@ -79,6 +79,9 @@ def if_llvm_arm_available(then, otherwise = []):
         "//conditions:default": otherwise,
     })
 
+def if_llvm_hexagon_available(then, otherwise = []):
+    return otherwise
+
 def if_llvm_powerpc_available(then, otherwise = []):
     return select({
         str(Label("@local_xla//xla/tsl:ppc64le_or_cross")): then,
