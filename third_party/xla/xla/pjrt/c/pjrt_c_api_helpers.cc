@@ -351,6 +351,8 @@ const char* HostBufferSemanticsToString(
       return "xla::PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall";
     case xla::PjRtClient::HostBufferSemantics::kImmutableZeroCopy:
       return "xla::PjRtClient::HostBufferSemantics::kImmutableZeroCopy";
+    case xla::PjRtClient::HostBufferSemantics::kMutableZeroCopy:
+      return "xla::PjRtClient::HostBufferSemantics::kMutableZeroCopy";
     case xla::PjRtClient::HostBufferSemantics::kImmutableUntilTransferCompletes:
       return "xla::PjRtClient::HostBufferSemantics::"
              "kImmutableUntilTransferCompletes";
@@ -369,6 +371,9 @@ PJRT_HostBufferSemantics ConvertToPjRtHostBufferSemantics(
     case xla::PjRtClient::HostBufferSemantics::kImmutableZeroCopy:
       return PJRT_HostBufferSemantics::
           PJRT_HostBufferSemantics_kImmutableZeroCopy;
+    case xla::PjRtClient::HostBufferSemantics::kMutableZeroCopy:
+      return PJRT_HostBufferSemantics::
+          PJRT_HostBufferSemantics_kMutableZeroCopy;
     default:
       CHECK(false)
           << "Input host buffer semantics is not supported in C API layer: "
@@ -388,6 +393,8 @@ xla::PjRtClient::HostBufferSemantics ConvertFromPjRtHostBufferSemantics(
           kImmutableUntilTransferCompletes;
     case PJRT_HostBufferSemantics::PJRT_HostBufferSemantics_kImmutableZeroCopy:
       return xla::PjRtClient::HostBufferSemantics::kImmutableZeroCopy;
+    case PJRT_HostBufferSemantics::PJRT_HostBufferSemantics_kMutableZeroCopy:
+      return xla::PjRtClient::HostBufferSemantics::kMutableZeroCopy;
   }
 }
 
