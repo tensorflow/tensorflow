@@ -659,6 +659,17 @@ typedef enum {
   // buffer may be freed, the runtime will call `done_with_host_buffer` when the
   // PjRtBuffer is freed.
   PJRT_HostBufferSemantics_kImmutableZeroCopy,
+
+  // The PjRtBuffer may alias `data` internally and the runtime may use the
+  // `data` contents as long as the buffer is alive. The runtime is allowed
+  // to mutate contents of the buffer (i.e. use it for aliased output
+  // buffers). The caller promises to keep `data` alive and not to mutate its
+  // contents as long as the buffer is alive (otherwise it could be a data
+  // race with the runtime); to notify the caller that the buffer may be
+  // freed, the runtime will call `on_done_with_host_buffer` when the
+  // PjRtBuffer is freed. On non-CPU platforms this acts identically to
+  // kImmutableUntilTransferCompletes.
+  PJRT_HostBufferSemantics_kMutableZeroCopy,
 } PJRT_HostBufferSemantics;
 
 typedef enum {
