@@ -139,6 +139,8 @@ class AutoMixedPrecisionListsFp16 : public AutoMixedPrecisionLists {
       list.insert("CudnnRNNBackpropV3");
       list.insert("CudnnRNNV2");
       list.insert("CudnnRNNV3");
+      list.insert("Dropout");
+      list.insert("DropoutGrad");
       list.insert("FusedConv2DBiasActivation");
       list.insert("FusedSparseConvGpuV2");
       list.insert("GRUBlockCell");
