@@ -9,6 +9,7 @@ cc_library(
     name = "genai_ops",
     srcs = [
         "genai_ops.cc",
+        "kvcache.cc",
         "sdpa.cc",
     ],
     hdrs = [
@@ -18,7 +19,10 @@ cc_library(
     deps = [
         "//tensorflow/lite:framework",
         "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/core:subgraph",
         "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/experimental/resource",
+        "//tensorflow/lite/experimental/resource:cache_buffer",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels:reference_ops",
         "//tensorflow/lite/kernels/internal:common",
@@ -31,30 +35,12 @@ cc_library(
     ],
 )
 
-cc_library(
-    name = "kvcache",
-    srcs = [
-        "kvcache.cc",
-    ],
-    hdrs = ["kvcache.h"],
-    copts = tflite_copts(),
-    deps = [
-        "//tensorflow/lite/core:subgraph",
-        "//tensorflow/lite/core/c:common",
-        "//tensorflow/lite/experimental/resource",
-        "//tensorflow/lite/experimental/resource:cache_buffer",
-        "//tensorflow/lite/kernels:kernel_util",
-        "//tensorflow/lite/kernels/internal:tensor",
-        "@flatbuffers",
-    ],
-)
-
 cc_test(
     name = "kvcache_test",
     srcs = ["kvcache_test.cc"],
     copts = tflite_copts(),
     deps = [
-        ":kvcache",
+        ":genai_ops",
         "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/kernels:test_util",
         "//tensorflow/lite/schema:schema_fbs",
