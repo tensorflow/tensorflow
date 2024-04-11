@@ -2050,6 +2050,29 @@ TEST(XlaBuilderTest, UnboundedBroadcastInDimUnsupported) {
                                     "static or bounded dynamic")));
 }
 
+TEST(XlaBuilderTest, UnboundedCall) {
+  // This also serves as a test for StableHLO's FuncOp since there is no direct
+  // 1 to 1 mapping of StableHLO FuncOp in HLO. Instead, we create
+  // XlaComputation with unbounded shapes to test "UnboundedFunc".
+  XlaBuilder b(TestName());
+  TF_ASSERT_OK_AND_ASSIGN(const Shape operand, ParseShape("f32[?, 10]"));
+  TF_ASSERT_OK_AND_ASSIGN(const Shape expected, ParseShape("f32[?, 10]"));
+
+  XlaComputation computation;
+  {
+    const std::unique_ptr<XlaBuilder> sub_builder = b.CreateSubBuilder("add");
+    Add(Parameter(sub_builder.get(), 0, operand, "arg0"),
+        Parameter(sub_builder.get(), 1, operand, "arg1"));
+    TF_ASSERT_OK_AND_ASSIGN(computation, sub_builder->Build());
+  }
+
+  Call(/*builder=*/&b, /*computation=*/computation, /*operands=*/
+       {Parameter(&b, 0, operand, "arg0"), Parameter(&b, 1, operand, "arg1")});
+  TF_ASSERT_OK_AND_ASSIGN(const auto module, BuildHloModule(b));
+  EXPECT_THAT(GetRoot(*module),
+              GmockMatch(m::Op().WithShapeEqualTo(&expected)));
+}
+
 TEST(XlaBuilderTest, UnboundedCholesky) {
   XlaBuilder b(TestName());
   TF_ASSERT_OK_AND_ASSIGN(const Shape a, ParseShape("f32[?, 10]"));
