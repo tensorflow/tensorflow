@@ -61,7 +61,7 @@ std::vector<AutotuneResult> Results(const std::vector<Result>& stats) {
 TEST(StreamExecutorTest, PickBestResult) {
   absl::StatusOr<AutotuneResult> atr;
 
-  atr = PickBestResult(Results({{5000, 0}, {1000, 0}, {6000, 0}}), "", {});
+  atr = PickBestResult(Results({{9000, 0}, {1000, 0}, {16000, 0}}), "", {});
   EXPECT_EQ(ATRToResult(atr.value()), Result({1000, 0}));
 
   atr = PickBestResult(Results({{4700, 0}, {4600, 0}, {4500, 0}}), "", {});

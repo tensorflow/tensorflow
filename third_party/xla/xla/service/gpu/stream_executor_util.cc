@@ -660,7 +660,7 @@ absl::Span<AutotuneResult const> TopResultsWithinMeasurementError(
   // This value was picked by repeatedly running a few kernels that run for a
   // short time and observing the run-time variance. A more rigorous analysis
   // of the measurement error might yield a better error threshold.
-  constexpr absl::Duration kMeasurementError = absl::Microseconds(2);
+  constexpr absl::Duration kMeasurementError = absl::Microseconds(4);
 
   absl::Duration min_time = tsl::proto_utils::FromDurationProto(
       results_sorted_by_runtime.front().run_time());
