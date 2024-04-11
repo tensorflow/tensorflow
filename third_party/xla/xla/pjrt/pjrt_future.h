@@ -25,6 +25,7 @@ limitations under the License.
 
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
+#include "absl/types/span.h"
 #include "tsl/concurrency/async_value.h"
 #include "tsl/concurrency/async_value_ref.h"
 #include "tsl/concurrency/ref_count.h"
@@ -39,6 +40,10 @@ namespace internal {
 template <class T>
 class PjRtFutureBase;
 }
+
+// Returns a `PjRtFuture` that will be successful if all `futures` complete
+// successfully, or return a first encountered error.
+PjRtFuture<> JoinFutures(absl::Span<const PjRtFuture<>> futures);
 
 // An RAII event that a caller can use to tell the PjRtClient about asynchronous
 // actions outside PjRt.
@@ -187,7 +192,7 @@ class PjRtFutureBase {
         on_block_start_(std::move(on_block_start)),
         on_block_end_(std::move(on_block_end)) {}
 
-  tsl::AsyncValuePtr<T> promise() { return promise_.AsPtr(); }
+  tsl::AsyncValuePtr<T> promise() const { return promise_.AsPtr(); }
 
   PjRtFutureHelpers::ProfilingKeys OnBlockStart() {
     return on_block_start_ ? on_block_start_()
@@ -405,7 +410,7 @@ class PjRtFuture<void> : public internal::PjRtFutureBase<std::nullopt_t> {
   // The client should avoid any potentially re-entrant API calls within the
   // callback, for example by using the callback to enqueue work on a
   // client-owned threadpool.
-  void OnReady(absl::AnyInvocable<void(absl::Status)> callback) {
+  void OnReady(absl::AnyInvocable<void(absl::Status)> callback) const {
     CHECK(Base::IsValid());
     Base::promise().AndThen(std::move(callback));
   }

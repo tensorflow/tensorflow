@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_future.h"
 
 #include <cstdint>
+#include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -103,6 +104,62 @@ TEST(PjRtFutureTest, StatusOrFuture) {
   EXPECT_TRUE(future.IsReady());
 
   future.OnReady([](absl::StatusOr<int32_t> value) { EXPECT_EQ(*value, 42); });
+}
+
+TEST(PjRtFutureTest, JoinFutures) {
+  auto empty_join = JoinFutures({});
+  EXPECT_TRUE(empty_join.IsReady());
+  EXPECT_EQ(empty_join.Await(), absl::OkStatus());
+
+  auto promise0 = PjRtFuture<>::CreatePromise();
+  auto promise1 = PjRtFuture<>::CreatePromise();
+
+  std::vector<PjRtFuture<>> futures0 = {PjRtFuture<>(promise0)};
+  std::vector<PjRtFuture<>> futures1 = {PjRtFuture<>(promise0),
+                                        PjRtFuture<>(promise1)};
+
+  auto join_one = JoinFutures(futures0);
+  EXPECT_FALSE(join_one.IsReady());
+
+  auto join_two = JoinFutures(futures1);
+  EXPECT_FALSE(join_two.IsReady());
+
+  promise0.Set();
+  EXPECT_TRUE(join_one.IsReady());
+  EXPECT_FALSE(join_two.IsReady());
+  EXPECT_EQ(join_one.Await(), absl::OkStatus());
+
+  promise1.Set();
+  EXPECT_TRUE(join_two.IsReady());
+  EXPECT_EQ(join_two.Await(), absl::OkStatus());
+}
+
+TEST(PjRtFutureTest, JoinErrors) {
+  auto empty_join = JoinFutures({});
+  EXPECT_TRUE(empty_join.IsReady());
+  EXPECT_EQ(empty_join.Await(), absl::OkStatus());
+
+  auto promise0 = PjRtFuture<>::CreatePromise();
+  auto promise1 = PjRtFuture<>::CreatePromise();
+
+  std::vector<PjRtFuture<>> futures0 = {PjRtFuture<>(promise0)};
+  std::vector<PjRtFuture<>> futures1 = {PjRtFuture<>(promise0),
+                                        PjRtFuture<>(promise1)};
+
+  auto join_one = JoinFutures(futures0);
+  EXPECT_FALSE(join_one.IsReady());
+
+  auto join_two = JoinFutures(futures1);
+  EXPECT_FALSE(join_two.IsReady());
+
+  promise0.SetError(absl::InternalError("error #0"));
+  EXPECT_TRUE(join_one.IsReady());
+  EXPECT_FALSE(join_two.IsReady());
+  EXPECT_EQ(join_one.Await(), absl::InternalError("error #0"));
+
+  promise1.SetError(absl::InternalError("error #1"));
+  EXPECT_TRUE(join_two.IsReady());
+  EXPECT_EQ(join_two.Await(), absl::InternalError("error #0"));
 }
 
 }  // namespace xla
