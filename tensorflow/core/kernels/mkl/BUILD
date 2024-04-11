@@ -402,15 +402,6 @@ tf_mkl_kernel_library(
 )
 
 tf_mkl_kernel_library(
-    name = "mkl_deprecated_ops",
-    prefix = "mkl_deprecated_ops",
-    deps = [
-        "//tensorflow/core/graph:mkl_graph_util",
-        "//tensorflow/core/kernels:cwise_op",
-    ] + MKL_DEPS,
-)
-
-tf_mkl_kernel_library(
     name = "mkl_fused_batch_norm_op",
     srcs = ["mkl_fused_batch_norm_op.cc"],
     deps = [

@@ -432,45 +432,6 @@ REGISTER_OP("AddV2")
     .SetIsAggregate()
     .SetIsCommutative();
 
-#ifdef INTEL_MKL
-REGISTER_OP("_MklAdd")
-    .Input("x: T")
-    .Input("y: T")
-    .Input("mkl_x: uint8")
-    .Input("mkl_y: uint8")
-    .Output("z: T")
-    .Output("mkl_z: uint8")
-    .Attr(
-        "T: {half, float, double, uint8, int8, int16, int32, int64, complex64, "
-        "complex128, string, bfloat16}")
-    .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn)
-    .Doc(R"doc(
-Returns `x` + `y` element-wise.
-
-*NOTE*: `tf.math.add` supports broadcasting. `tf.math.add_n` does not. More about broadcasting
-[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html).
-)doc");
-
-REGISTER_OP("_MklAddV2")
-    .Input("x: T")
-    .Input("y: T")
-    .Input("mkl_x: uint8")
-    .Input("mkl_y: uint8")
-    .Output("z: T")
-    .Output("mkl_z: uint8")
-    .Attr(
-        "T: {bfloat16, half, float, double, uint8, int8, int16, int32, int64, "
-        "complex64, complex128}")
-    .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn)
-    .SetIsAggregate()
-    .SetIsCommutative()
-    .Doc(R"doc(
-Returns `x` + `y` element-wise.
-*NOTE*: `tf.math.add` supports broadcasting. `tf.math.add_n` does not. More about broadcasting
-[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html).
-)doc");
-#endif  // INTEL_MKL
-
 REGISTER_OP("Sub")
     .Input("x: T")
     .Input("y: T")
@@ -479,19 +440,6 @@ REGISTER_OP("Sub")
         "T: {bfloat16, half, float, double, uint8, int8, uint16, int16, int32, "
         "int64, complex64, complex128, uint32, uint64}")
     .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn);
-
-REGISTER_OP("_MklSub")
-    .BINARY_FEWER()
-    .Input("mkl_x: uint8")
-    .Input("mkl_y: uint8")
-    .Output("mkl_z: uint8")
-    .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn)
-    .Doc(R"doc(
-Returns x - y element-wise.
-
-*NOTE*: `Sub` supports broadcasting. More about broadcasting
-[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
-)doc");
 
 REGISTER_OP("Mul").BINARY_MORE().SetIsCommutative().SetShapeFn(
     shape_inference::BroadcastBinaryOpShapeFn);
@@ -502,20 +450,6 @@ REGISTER_OP("MulNoNan")
     .Output("z: T")
     .Attr("T: {bfloat16, half, float, double, complex64, complex128}")
     .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn);
-
-// Note: This op is not commutative w.r.t. to all its inputs.
-REGISTER_OP("_MklMul")
-    .BINARY_MORE()
-    .Input("mkl_x: uint8")
-    .Input("mkl_y: uint8")
-    .Output("mkl_z: uint8")
-    .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn)
-    .Doc(R"doc(
-Returns x * y element-wise.
-
-*NOTE*: `Mul` supports broadcasting. More about broadcasting
-[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
-)doc");
 
 REGISTER_OP("Div").BINARY_MORE().SetShapeFn(
     shape_inference::BroadcastBinaryOpShapeFn);
@@ -543,20 +477,6 @@ REGISTER_OP("SquaredDifference")
     .BINARY_FEWER()
     .SetIsCommutative()
     .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn);
-
-// Note: This op is not commutative w.r.t. to all its inputs.
-REGISTER_OP("_MklSquaredDifference")
-    .BINARY_FEWER()
-    .Input("mkl_x: uint8")
-    .Input("mkl_y: uint8")
-    .Output("mkl_z: uint8")
-    .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn)
-    .Doc(R"doc(
-Returns (x - y)(x - y) element-wise.
-
-*NOTE*: `SquaredDifference` supports broadcasting. More about broadcasting
-[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
-)doc");
 
 REGISTER_OP("Xlogy")
     .Input("x: T")
@@ -590,22 +510,6 @@ REGISTER_OP("Maximum")
         "T: {bfloat16, half, float, double, int8, uint8, int16, uint16, "
         "int32, uint32, int64, uint64}")
     .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn);
-
-REGISTER_OP("_MklMaximum")
-    .Input("x: T")
-    .Input("y: T")
-    .Input("mkl_x: uint8")
-    .Input("mkl_y: uint8")
-    .Output("z: T")
-    .Output("mkl_z: uint8")
-    .Attr("T: {half, float, double, int32, int64, bfloat16}")
-    .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn)
-    .Doc(R"doc(
-Returns the max of x and y (i.e. x > y ? x : y) element-wise.
-
-*NOTE*: `Maximum` supports broadcasting. More about broadcasting
-[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
-)doc");
 
 REGISTER_OP("Minimum")
     .Input("x: T")
@@ -2151,32 +2055,6 @@ REGISTER_OP("ClipByValue")
     .Output("output: T")
     .Attr("T: numbertype")
     .SetShapeFn(shape_inference::UnchangedShape);
-
-#ifdef INTEL_MKL
-// Note: This op is not commutative w.r.t. to all its inputs.
-REGISTER_OP("_MklAddN")
-    .Input("inputs: N * T")
-    .Input("mkl_input: N * uint8")
-    .Output("sum: T")
-    .Output("mkl_sum: uint8")
-    .Attr("N: int >= 1")
-    .Attr("T: numbertype")
-    .SetShapeFn([](InferenceContext* c) {
-      ShapeHandle cur = c->input(c->num_inputs() - 1);
-      for (int i = c->num_inputs() - 2; i >= 0; --i) {
-        TF_RETURN_WITH_CONTEXT_IF_ERROR(c->Merge(c->input(i), cur, &cur),
-                                        "From merging shape ", i,
-                                        " with other shapes.");
-      }
-      c->set_output(0, cur);
-      return OkStatus();
-    })
-    .Doc(R"doc(
-Add two input tensors element wise using mkl kernel sum.
-inputs: Must all be the same size and shape.
-)doc");
-
-#endif  // INTEL_MKL
 
 REGISTER_OP("RequantizePerChannel")
     .Input("input: T")
