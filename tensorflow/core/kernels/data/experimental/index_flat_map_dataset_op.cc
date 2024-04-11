@@ -83,6 +83,20 @@ absl::StatusOr<size_t> GetValue(const Tensor& tensor) {
   }
 }
 
+// Returns the `offset`-th element from `tensors`.
+std::vector<Tensor> GetSlice(const std::vector<Tensor>& tensors,
+                             size_t offset) {
+  std::vector<Tensor> result;
+  for (size_t i = 0; i < tensors.size(); ++i) {
+    if (tensors[i].dims() == 0) {  // Scalar.
+      result.push_back(tensors[i]);
+    } else {
+      result.push_back(MaybeCopySubSlice(tensors[i], offset));
+    }
+  }
+  return result;
+}
+
 class IndexFlatMapDatasetOp : public UnaryDatasetOpKernel {
  public:
   explicit IndexFlatMapDatasetOp(OpKernelConstruction* ctx);
@@ -226,30 +240,57 @@ class IndexFlatMapDatasetOp::Dataset::Iterator
                                bool* end_of_sequence) override
       ABSL_LOCKS_EXCLUDED(mu_) {
     absl::MutexLock l(&mu_);
-    // TODO(b/325112575): Make it easier to return multiple values from
-    // IndexMapperFn.
-    size_t offset = 0;
-    IteratorContext ctx_with_index_mapper =
-        GetContextWithIndexMapper(ctx, offset);
+    *end_of_sequence = false;
+    if (ctx->index_mapper() == nullptr) {
+      absl::StatusOr<std::tuple<size_t, size_t>> next_input_index_and_offset =
+          GetUnflattenedIndex(ctx, element_count_);
+      TF_RETURN_IF_ERROR(next_input_index_and_offset.status());
+      const auto [next_input_index, offset] = *next_input_index_and_offset;
+      // When all the values of the current input element have been read,
+      // advances to the next input element. Otherwise, returns an element from
+      // the current `input_unflattened_tensors_`.
+      if (next_input_index > input_element_count_ ||
+          input_unflattened_tensors_.empty()) {
+        input_unflattened_tensors_.clear();
+        TF_RETURN_IF_ERROR(GetMappedTensorsFromInput(
+            ctx, &input_unflattened_tensors_, end_of_sequence));
+        if (*end_of_sequence) {
+          return absl::OkStatus();
+        }
+        input_element_count_ = next_input_index;
+      }
+      *out_tensors = GetSlice(input_unflattened_tensors_, offset);
+      ++element_count_;
+    } else {
+      // TODO(b/325112575): Make it easier to return multiple values from
+      // IndexMapperFn.
+      size_t offset = 0;
+      IteratorContext ctx_with_index_mapper =
+          GetContextWithIndexMapper(ctx, offset);
+      std::vector<Tensor> mapped_tensors;
+      TF_RETURN_IF_ERROR(GetMappedTensorsFromInput(
+          &ctx_with_index_mapper, &mapped_tensors, end_of_sequence));
+      ctx->MergeCheckpoint(ctx_with_index_mapper.checkpoint());
+      if (*end_of_sequence) {
+        return absl::OkStatus();
+      }
+      *out_tensors = GetSlice(mapped_tensors, offset);
+    }
+    return absl::OkStatus();
+  }
+
+  absl::Status GetMappedTensorsFromInput(IteratorContext* ctx,
+                                         std::vector<Tensor>* mapped_tensors,
+                                         bool* end_of_sequence)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     std::vector<Tensor> input_tensors;
-    TF_RETURN_IF_ERROR(input_impl_->GetNext(&ctx_with_index_mapper,
-                                            &input_tensors, end_of_sequence));
-    ctx->MergeCheckpoint(ctx_with_index_mapper.checkpoint());
+    TF_RETURN_IF_ERROR(
+        input_impl_->GetNext(ctx, &input_tensors, end_of_sequence));
     if (*end_of_sequence) {
       return absl::OkStatus();
     }
-
-    std::vector<Tensor> mapped_tensors;
-    TF_RETURN_IF_ERROR(instantiated_map_func_->Run(
-        ctx, {std::move(input_tensors)}, &mapped_tensors));
-    for (int i = 0; i < mapped_tensors.size(); ++i) {
-      if (mapped_tensors[i].dims() == 0) {  // Scalar.
-        out_tensors->push_back(std::move(mapped_tensors[i]));
-      } else {
-        out_tensors->push_back(MaybeCopySubSlice(mapped_tensors[i], offset));
-      }
-    }
-    return absl::OkStatus();
+    return instantiated_map_func_->Run(ctx, {std::move(input_tensors)},
+                                       mapped_tensors);
   }
 
   IteratorContext GetContextWithIndexMapper(IteratorContext* ctx,
@@ -313,6 +354,14 @@ class IndexFlatMapDatasetOp::Dataset::Iterator
  private:
   mutable absl::Mutex mu_;
   std::unique_ptr<IteratorBase> input_impl_ ABSL_GUARDED_BY(mu_);
+
+  // Tracks the input element. When not using global shuffling, these record the
+  // current element count, the element count of the input iterator, and the
+  // current output of the input iterator.
+  int64_t element_count_ ABSL_GUARDED_BY(mu_) = 0;
+  size_t input_element_count_ ABSL_GUARDED_BY(mu_) = 0;
+  std::vector<Tensor> input_unflattened_tensors_ ABSL_GUARDED_BY(mu_);
+
   std::unique_ptr<InstantiatedCapturedFunction> instantiated_map_func_;
   std::unique_ptr<InstantiatedCapturedFunction> instantiated_index_map_func_;
 };
@@ -330,14 +379,6 @@ IndexFlatMapDatasetOp::IndexFlatMapDatasetOp(OpKernelConstruction* ctx)
 void IndexFlatMapDatasetOp::MakeDataset(OpKernelContext* ctx,
                                         DatasetBase* input,
                                         DatasetBase** output) {
-  // TODO(b/325112575): Support input datasets without random indexing
-  // compatibility.
-  OP_REQUIRES(ctx, input->RandomIndexingCompatible().ok(),
-              absl::FailedPreconditionError(absl::StrCat(
-                  "`index_flat_map` requires all upstream transformations be "
-                  "compatible with random access. Got: ",
-                  input->RandomIndexingCompatible().ToString())));
-
   std::unique_ptr<CapturedFunction> captured_map_func;
   OP_REQUIRES_OK(
       ctx, CapturedFunction::Create(ctx, map_func_metadata_, kMapFuncOtherArgs,

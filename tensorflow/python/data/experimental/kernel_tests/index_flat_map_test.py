@@ -26,7 +26,6 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import errors
 from tensorflow.python.framework import tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -64,6 +63,19 @@ class IndexFlatMapTest(test_base.DatasetTestBase, parameterized.TestCase):
                      [b"0", b"1", b"2", b"3", b"4", b"5", b"6", b"7", b"8"])
 
   @combinations.generate(test_base.default_test_combinations())
+  def test_cache(self):
+    input_data = ["0 1", "2 3 4 5", "6 7", "8"]
+    metadata = _get_metadata(input_data)
+
+    dataset = dataset_ops.Dataset.from_tensor_slices(input_data)
+    dataset = dataset.cache()
+    dataset = index_flat_map_op.index_flat_map(
+        dataset, _split, _get_index_map_func(metadata))
+    output = self.getDatasetOutput(dataset)
+    self.assertEqual(output,
+                     [b"0", b"1", b"2", b"3", b"4", b"5", b"6", b"7", b"8"])
+
+  @combinations.generate(test_base.default_test_combinations())
   def test_global_shuffle(self):
     input_data = ["0 1", "2 3 4 5", "6 7", "8"]
     metadata = _get_metadata(input_data)
@@ -79,21 +91,6 @@ class IndexFlatMapTest(test_base.DatasetTestBase, parameterized.TestCase):
     expected = [b"0", b"1", b"2", b"3", b"4", b"5", b"6", b"7", b"8"]
     self.assertCountEqual(dataset_output, expected)
     self.assertNotEqual(dataset_output, expected)
-
-  @combinations.generate(test_base.default_test_combinations())
-  def test_global_shuffle_unsupported(self):
-    input_data = ["0 1", "2 3 4 5", "6 7", "8"]
-    metadata = _get_metadata(input_data)
-
-    dataset = dataset_ops.Dataset.from_tensor_slices(input_data)
-    # Shuffle dataset does not support global shuffling.
-    dataset = dataset.shuffle(buffer_size=dataset.cardinality())
-    with self.assertRaisesRegex(
-        errors.FailedPreconditionError,
-        "ShuffleDataset.*does not support random access"):
-      dataset = index_flat_map_op.index_flat_map(
-          dataset, _split, _get_index_map_func(metadata))
-      self.getDatasetOutput(dataset, requires_initialization=True)
 
   @combinations.generate(
       combinations.times(
