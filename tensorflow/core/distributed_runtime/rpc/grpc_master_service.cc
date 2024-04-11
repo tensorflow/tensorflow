@@ -34,6 +34,8 @@ limitations under the License.
 
 #include "grpcpp/alarm.h"
 #include "grpcpp/server_builder.h"
+#include "xla/tsl/distributed_runtime/rpc/async_service_interface.h"
+#include "xla/tsl/distributed_runtime/rpc/grpc_call.h"
 #include "tensorflow/core/distributed_runtime/master.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_master_service_impl.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
@@ -42,8 +44,6 @@ limitations under the License.
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/protobuf/master.pb.h"
-#include "tsl/distributed_runtime/rpc/async_service_interface.h"
-#include "tsl/distributed_runtime/rpc/grpc_call.h"
 
 namespace tensorflow {
 

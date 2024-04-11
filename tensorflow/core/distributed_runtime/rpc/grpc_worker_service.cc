@@ -23,6 +23,8 @@ limitations under the License.
 #include "grpcpp/alarm.h"
 #include "grpcpp/server_builder.h"
 #include "absl/container/flat_hash_map.h"
+#include "xla/tsl/distributed_runtime/rpc/async_service_interface.h"
+#include "xla/tsl/distributed_runtime/rpc/grpc_call.h"
 #include "tensorflow/core/common_runtime/buf_rendezvous.h"
 #include "tensorflow/core/common_runtime/copy_tensor.h"
 #include "tensorflow/core/common_runtime/device.h"
@@ -54,8 +56,6 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/scoped_memory_debug_annotation.h"
 #include "tensorflow/core/protobuf/transport_options.pb.h"
 #include "tensorflow/core/protobuf/worker.pb.h"
-#include "tsl/distributed_runtime/rpc/async_service_interface.h"
-#include "tsl/distributed_runtime/rpc/grpc_call.h"
 #include "tsl/protobuf/rpc_options.pb.h"
 
 namespace tensorflow {

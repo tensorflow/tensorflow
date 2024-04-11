@@ -913,8 +913,8 @@ tf_cuda_library(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
-        "@local_tsl//tsl/distributed_runtime/coordination:coordination_service_agent",
         "@local_xla//xla/tsl/c:tsl_status_internal",
+        "@local_xla//xla/tsl/distributed_runtime/coordination:coordination_service_agent",
     ],
     alwayslink = 1,
 )
