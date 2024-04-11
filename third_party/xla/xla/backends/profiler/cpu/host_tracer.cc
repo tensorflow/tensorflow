@@ -23,9 +23,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "tsl/platform/errors.h"
 #include "tsl/profiler/backends/cpu/host_tracer_utils.h"
-#include "tsl/profiler/backends/cpu/threadpool_listener.h"
 #include "tsl/profiler/backends/cpu/traceme_recorder.h"
-#include "tsl/profiler/lib/profiler_collection.h"
 #include "tsl/profiler/lib/profiler_interface.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 #include "tsl/profiler/utils/time_utils.h"
@@ -117,12 +115,7 @@ absl::Status HostTracer::CollectData(  // TENSORFLOW_STATUS_OK
 std::unique_ptr<tsl::profiler::ProfilerInterface> CreateHostTracer(
     const HostTracerOptions& options) {
   if (options.trace_level == 0) return nullptr;
-  std::vector<std::unique_ptr<tsl::profiler::ProfilerInterface>> profilers;
-  profilers.push_back(std::make_unique<HostTracer>(options.trace_level));
-  profilers.push_back(
-      std::make_unique<tsl::profiler::ThreadpoolProfilerInterface>());
-  return std::make_unique<tsl::profiler::ProfilerCollection>(
-      std::move(profilers));
+  return std::make_unique<HostTracer>(options.trace_level);
 }
 
 }  // namespace profiler
