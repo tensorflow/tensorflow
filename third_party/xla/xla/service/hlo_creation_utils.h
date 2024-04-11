@@ -204,17 +204,20 @@ absl::StatusOr<HloInstruction*> MakeReduceWindowHlo(
 absl::StatusOr<HloInstruction*> MakeReduceHlo(
     HloInstruction* operand, HloInstruction* init_value,
     absl::Span<const int64_t> dimensions, HloOpcode binary_opcode,
-    const OpMetadata* metadata = nullptr);
+    const OpMetadata* metadata = nullptr,
+    const FrontendAttributes* frontend_attributes = nullptr);
 
 absl::StatusOr<HloInstruction*> MakeReduceHlo(
     HloInstruction* operand, HloInstruction* init_value,
     absl::Span<const int64_t> dimensions, HloComputation* reduce_computation,
-    const OpMetadata* metadata = nullptr);
+    const OpMetadata* metadata = nullptr,
+    const FrontendAttributes* frontend_attributes = nullptr);
 
 absl::StatusOr<HloInstruction*> MakeReduceHlo(
     HloInstruction* operand, HloInstruction* init_value,
     HloOpcode binary_opcode, HloModule* module,
-    const OpMetadata* metadata = nullptr);
+    const OpMetadata* metadata = nullptr,
+    const FrontendAttributes* frontend_attributes = nullptr);
 
 // Generic helper function to create a reduction.
 //
@@ -227,7 +230,8 @@ absl::StatusOr<HloInstruction*> MakeReduceHlo(
     absl::Span<HloInstruction* const> operands,
     absl::Span<HloInstruction* const> init_values,
     absl::Span<const int64_t> dimensions, HloComputation* reduce_computation,
-    const OpMetadata* metadata = nullptr);
+    const OpMetadata* metadata = nullptr,
+    const FrontendAttributes* frontend_attributes = nullptr);
 
 // Creates a Reverse HLO instruction and adds it to the computation containing
 // `operand`.

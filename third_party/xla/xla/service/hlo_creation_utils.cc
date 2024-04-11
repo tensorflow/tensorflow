@@ -423,14 +423,14 @@ HloInstruction* MakeReducePrecisionHlo(HloInstruction* operand,
 absl::StatusOr<HloInstruction*> MakeReduceHlo(
     HloInstruction* operand, HloInstruction* init_value,
     absl::Span<const int64_t> dimensions, HloComputation* reduce_computation,
-    const OpMetadata* metadata) {
+    const OpMetadata* metadata, const FrontendAttributes* frontend_attributes) {
   auto scalar_shape = ShapeUtil::MakeShape(operand->shape().element_type(), {});
   auto result_shape = ShapeUtil::DeleteDimensions(dimensions, operand->shape());
 
   return operand->parent()->AddInstruction(
       HloInstruction::CreateReduce(result_shape, operand, init_value,
                                    dimensions, reduce_computation),
-      metadata);
+      metadata, frontend_attributes);
 }
 
 absl::StatusOr<HloInstruction*> MakeReduceWindowHlo(
@@ -449,7 +449,7 @@ absl::StatusOr<HloInstruction*> MakeReduceWindowHlo(
 absl::StatusOr<HloInstruction*> MakeReduceHlo(
     HloInstruction* operand, HloInstruction* init_value,
     absl::Span<const int64_t> dimensions, HloOpcode binary_opcode,
-    const OpMetadata* metadata) {
+    const OpMetadata* metadata, const FrontendAttributes* frontend_attributes) {
   auto scalar_shape = ShapeUtil::MakeShape(operand->shape().element_type(), {});
   HloComputation* reduce_computation;
   {
@@ -465,14 +465,13 @@ absl::StatusOr<HloInstruction*> MakeReduceHlo(
         operand->GetModule()->AddEmbeddedComputation(b.Build());
   }
   return MakeReduceHlo(operand, init_value, dimensions, reduce_computation,
-                       metadata);
+                       metadata, frontend_attributes);
 }
 
-absl::StatusOr<HloInstruction*> MakeReduceHlo(HloInstruction* operand,
-                                              HloInstruction* init_value,
-                                              HloOpcode binary_opcode,
-                                              HloModule* module,
-                                              const OpMetadata* metadata) {
+absl::StatusOr<HloInstruction*> MakeReduceHlo(
+    HloInstruction* operand, HloInstruction* init_value,
+    HloOpcode binary_opcode, HloModule* module, const OpMetadata* metadata,
+    const FrontendAttributes* frontend_attributes) {
   DCHECK_NE(nullptr, module);
   std::vector<int64_t> all_dims(operand->shape().rank());
   std::iota(all_dims.begin(), all_dims.end(), 0);
@@ -491,14 +490,14 @@ absl::StatusOr<HloInstruction*> MakeReduceHlo(HloInstruction* operand,
     reduce_computation = module->AddEmbeddedComputation(b.Build());
   }
   return MakeReduceHlo(operand, init_value, all_dims, reduce_computation,
-                       metadata);
+                       metadata, frontend_attributes);
 }
 
 absl::StatusOr<HloInstruction*> MakeReduceHlo(
     absl::Span<HloInstruction* const> operands,
     absl::Span<HloInstruction* const> init_values,
     absl::Span<const int64_t> dimensions, HloComputation* reduce_computation,
-    const OpMetadata* metadata) {
+    const OpMetadata* metadata, const FrontendAttributes* frontend_attributes) {
   CHECK(!operands.empty());
   CHECK_EQ(operands.size(), init_values.size());
   auto root = reduce_computation->root_instruction();
@@ -522,7 +521,7 @@ absl::StatusOr<HloInstruction*> MakeReduceHlo(
   return operands[0]->parent()->AddInstruction(
       HloInstruction::CreateReduce(output_shape, operands, init_values,
                                    dimensions, reduce_computation),
-      metadata);
+      metadata, frontend_attributes);
 }
 
 absl::StatusOr<HloInstruction*> MakeReverseHlo(
