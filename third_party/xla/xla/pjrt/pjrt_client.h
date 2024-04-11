@@ -377,14 +377,14 @@ class CopyToDeviceStream {
 
   virtual ~CopyToDeviceStream();
 
-  // Emplaces a new Chunk of data to copy to the device. Returns a non-OK status
+  // Emplaces a new Chunk of data to copy to the device. Returns an error future
   // if the Chunk's size causes the amount of transferred data to exceed
   // total_bytes(), if the stream is already complete, or if the chunk is not a
   // multiple of granule_size_in_bytes().
   //
   // The transfer is started immediately, and the returned future is fulfilled
   // when the transfer completes or fails.
-  virtual PjRtFuture<Status> AddChunk(PjRtChunk chunk) = 0;
+  virtual PjRtFuture<> AddChunk(PjRtChunk chunk) = 0;
 
   // Returns the total amount of data the stream expects to be transferred.
   int64_t total_bytes() const { return total_bytes_; }

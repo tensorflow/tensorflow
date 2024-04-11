@@ -2385,7 +2385,7 @@ class StreamExecutorCopyToDeviceStream : public CopyToDeviceStream {
         dst_(dst),
         done_(std::move(done)) {}
 
-  PjRtFuture<Status> AddChunk(PjRtChunk chunk) final {
+  PjRtFuture<> AddChunk(PjRtChunk chunk) final {
     tsl::profiler::TraceMe trace([&] {
       return tsl::profiler::TraceMeEncode(
           "StreamExecutorCopyToDeviceStream::AddChunk",
@@ -2403,7 +2403,7 @@ class StreamExecutorCopyToDeviceStream : public CopyToDeviceStream {
       done_.SetError(absl::InvalidArgumentError(absl::StrFormat(
           "Chunk size (%d) was not a multiple of the granule size (%d)",
           chunk.size(), granule_size_in_bytes())));
-      return PjRtFuture<Status>(done_.GetError());
+      return PjRtFuture<>(done_.GetError());
     }
 
     if (current_bytes_ + chunk.size() > total_bytes_) {
@@ -2411,7 +2411,7 @@ class StreamExecutorCopyToDeviceStream : public CopyToDeviceStream {
           absl::StrFormat("Adding chunk of size %d would overflow buffer of "
                           "size %d (%d already transferred)",
                           chunk.size(), total_bytes_, current_bytes_)));
-      return PjRtFuture<Status>(done_.GetError());
+      return PjRtFuture<>(done_.GetError());
     }
 
     se::DeviceMemoryBase dst(
@@ -2425,7 +2425,7 @@ class StreamExecutorCopyToDeviceStream : public CopyToDeviceStream {
     auto copied = stream_->Memcpy(&dst, chunk.data(), chunk.size());
     if (!copied.ok()) {
       done_.SetError(copied);
-      return PjRtFuture<Status>(done_.GetError());
+      return PjRtFuture<>(done_.GetError());
     }
 
     // Delete chunk once the memcpy operation completes.
@@ -2433,7 +2433,7 @@ class StreamExecutorCopyToDeviceStream : public CopyToDeviceStream {
     auto deleted = stream_->DoHostCallback([chunk_ptr]() { delete chunk_ptr; });
     if (!deleted.ok()) {
       done_.SetError(deleted);
-      return PjRtFuture<Status>(done_.GetError());
+      return PjRtFuture<>(done_.GetError());
     }
 
     // Record done event once processed the last chunk. It is the caller
@@ -2443,12 +2443,12 @@ class StreamExecutorCopyToDeviceStream : public CopyToDeviceStream {
       auto recorded = stream_->RecordEvent(&done_.get());
       if (!recorded.ok()) {
         done_.SetError(recorded);
-        return PjRtFuture<Status>(done_.GetError());
+        return PjRtFuture<>(done_.GetError());
       }
       done_.SetStateConcrete();
     }
 
-    return PjRtFuture<Status>(OkStatus());
+    return PjRtFuture<>(OkStatus());
   }
 
  private:

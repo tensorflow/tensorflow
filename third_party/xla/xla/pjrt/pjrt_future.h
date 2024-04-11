@@ -404,6 +404,17 @@ class PjRtFuture<void> : public internal::PjRtFutureBase<std::nullopt_t> {
                                      : absl::OkStatus();
   }
 
+  // TODO(b/333538339): Remove when all users of PjRtFuture<Status> will be
+  // converted to PjRtFuture<>. Currently this is an escape hatch to convert
+  // implicit error of a stateless event to a stateful future.
+  PjRtFuture<absl::Status> ToStatusFuture() {
+    auto promise = PjRtFuture<absl::Status>::CreatePromise();
+    OnReady([promise](absl::Status status) mutable {
+      promise.Set(std::move(status));
+    });
+    return PjRtFuture<absl::Status>(std::move(promise));
+  }
+
   // Registers callback to be called once the future is ready.
   //
   // callback may be called on an internal system thread or the calling thread.

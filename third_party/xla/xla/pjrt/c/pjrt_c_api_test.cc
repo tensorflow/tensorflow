@@ -542,7 +542,7 @@ class PjrtCApiBufferTest : public PjrtCApiTest {
     PjrtCApiTest::SetUp();
     auto buffer_and_event = create_buffer();
     buffer_ = std::move(buffer_and_event.first);
-    event_ = buffer_and_event.second;
+    event_ = buffer_and_event.second.ToStatusFuture();
   }
 
   void TearDown() override {
@@ -645,7 +645,7 @@ TEST_F(PjrtCApiBufferTest, ToHostBufferNoHostLayout) {
   args.event = nullptr;
 
   PJRT_Error* error = api_->PJRT_Buffer_ToHostBuffer(&args);
-  xla::PjRtFuture<absl::Status> transfer_to_host =
+  xla::PjRtFuture<> transfer_to_host =
       ::pjrt::ConvertCEventToCppFuture(args.event, api_);
   TF_CHECK_OK(transfer_to_host.Await());
 

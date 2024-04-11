@@ -135,8 +135,8 @@ xla::PjRtClient::HostBufferSemantics ConvertFromPjRtHostBufferSemantics(
 
 // Create and return a `PjRtFuture`  which will be set when `c_event` is ready.
 // This also deletes `c_event` when the `PjRtFuture` is set.
-xla::PjRtFuture<absl::Status> ConvertCEventToCppFuture(PJRT_Event* c_event,
-                                                       const PJRT_Api* c_api);
+xla::PjRtFuture<> ConvertCEventToCppFuture(PJRT_Event* c_event,
+                                           const PJRT_Api* c_api);
 
 // The data of returned variable-length PJRT_NamedValue list is backed by
 // `cpp_value_map`, so `cpp_value_map` must outlive the returned list. It will
