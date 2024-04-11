@@ -1,8 +1,35 @@
 # Custom Ops useful for GenAI models.
+load("//tensorflow:tensorflow.default.bzl", "pybind_extension")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 
 # copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])
+
+cc_library(
+    name = "genai_ops",
+    srcs = [
+        "genai_ops.cc",
+        "sdpa.cc",
+    ],
+    hdrs = [
+        "genai_ops.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/kernels:kernel_util",
+        "//tensorflow/lite/kernels:reference_ops",
+        "//tensorflow/lite/kernels/internal:common",
+        "//tensorflow/lite/kernels/internal:compatibility",
+        "//tensorflow/lite/kernels/internal:reference_base",
+        "//tensorflow/lite/kernels/internal:tensor",
+        "//tensorflow/lite/kernels/internal:tensor_utils",
+        "//tensorflow/lite/kernels/internal:types",
+        "@flatbuffers",
+    ],
+)
 
 cc_library(
     name = "kvcache",
@@ -32,6 +59,29 @@ cc_test(
         "//tensorflow/lite/kernels:test_util",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+pybind_extension(
+    name = "pywrap_genai_ops",
+    srcs = [
+        "genai_ops_wrapper.cc",
+    ],
+    hdrs = ["genai_ops.h"],
+    additional_exported_symbols = ["GenAIOpsRegisterer"],
+    enable_stub_generation = True,
+    link_in_framework = True,
+    module_name = "pywrap_genai_ops",
+    pytype_srcs = [
+        "pywrap_genai_ops.pyi",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":genai_ops",
+        "//tensorflow/lite:framework_stable",
+        "//tensorflow/lite:mutable_op_resolver",
+        "//third_party/python_runtime:headers",
+        "@pybind11",
     ],
 )
 
