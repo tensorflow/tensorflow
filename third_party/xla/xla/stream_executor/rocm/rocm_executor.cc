@@ -222,9 +222,7 @@ void GpuExecutor::UnloadKernel(const Kernel* kernel) {
   kernel_to_gpu_binary_.erase(gpu_binary_it);
 }
 
-absl::Status GpuExecutor::Init(int device_ordinal) {
-  device_ordinal_ = device_ordinal;
-
+absl::Status GpuExecutor::Init() {
   auto status = GpuDriver::Init();
   if (!status.ok()) {
     return status;

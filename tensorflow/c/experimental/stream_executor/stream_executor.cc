@@ -220,9 +220,7 @@ class CStreamExecutor : public internal::StreamExecutorInterface {
     platform_fns_->destroy_device(platform_, &device_);
   }
 
-  absl::Status Init(int device_ordinal) override {
-    return ::tensorflow::OkStatus();
-  }
+  absl::Status Init() override { return absl::OkStatus(); }
 
   DeviceMemoryBase Allocate(uint64 size, int64_t memory_space) override {
     SP_DeviceMemoryBase mem = {SP_DEVICE_MEMORY_BASE_STRUCT_SIZE};
@@ -666,11 +664,10 @@ absl::StatusOr<std::unique_ptr<StreamExecutor>> CPlatform::GetUncachedExecutor(
                                  c_status.get());
   TF_RETURN_IF_ERROR(StatusFromTF_Status(c_status.get()));
 
-  auto executor = absl::make_unique<CStreamExecutor>(
+  auto executor = std::make_unique<CStreamExecutor>(
       std::move(device), &device_fns_, &stream_executor_, &platform_,
       &platform_fns_, &timer_fns_, name_, visible_device_count);
-  auto result = absl::make_unique<StreamExecutor>(this, std::move(executor),
-                                                  config.ordinal);
+  auto result = std::make_unique<StreamExecutor>(this, std::move(executor));
   return result;
 }
 

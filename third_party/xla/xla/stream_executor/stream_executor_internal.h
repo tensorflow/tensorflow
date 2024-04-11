@@ -123,7 +123,7 @@ class StreamExecutorInterface {
   virtual ~StreamExecutorInterface() = default;
 
   // See the StreamExecutor interface for comments on the same-named methods.
-  virtual absl::Status Init(int device_ordinal) = 0;
+  virtual absl::Status Init() = 0;
 
   // This value is cached by the wrapping StreamExecutor instance, so it's OK if
   // this function is slow.

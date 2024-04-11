@@ -47,12 +47,10 @@ namespace interpreter {
 
 class XlaInterpreterExecutor : public internal::StreamExecutorInterface {
  public:
-  XlaInterpreterExecutor() = default;
+  explicit XlaInterpreterExecutor(int device_ordinal)
+      : device_ordinal_(device_ordinal) {}
 
-  absl::Status Init(int device_ordinal) override {
-    device_ordinal_ = device_ordinal;
-    return absl::OkStatus();
-  }
+  absl::Status Init() override { return absl::OkStatus(); }
 
   int device_ordinal() const override { return device_ordinal_; };
   absl::Status GetKernel(const MultiKernelLoaderSpec &spec,

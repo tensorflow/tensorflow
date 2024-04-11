@@ -136,9 +136,7 @@ GpuExecutor::~GpuExecutor() {
   }
 }
 
-absl::Status GpuExecutor::Init(int device_ordinal) {
-  device_ordinal_ = device_ordinal;
-
+absl::Status GpuExecutor::Init() {
   TF_RETURN_IF_ERROR(GpuDriver::Init());
   TF_RETURN_IF_ERROR(GpuDriver::GetDevice(device_ordinal_, &device_));
   TF_RETURN_IF_ERROR(
