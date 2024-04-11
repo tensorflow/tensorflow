@@ -185,7 +185,6 @@ TEST_F(StreamExecutorTest, Allocate) {
   ASSERT_NE(mem.opaque(), nullptr);
   ASSERT_EQ(mem.size(), 2 * sizeof(int));
   executor->Deallocate(&mem);
-  ASSERT_EQ(mem.opaque(), nullptr);
 }
 
 TEST_F(StreamExecutorTest, HostMemoryAllocate) {

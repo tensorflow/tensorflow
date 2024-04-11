@@ -107,7 +107,6 @@ StreamExecutor::CreateOrShareConstant(Stream* stream,
 
 void StreamExecutor::Deallocate(DeviceMemoryBase* mem) {
   implementation_->Deallocate(mem);
-  mem->Reset(nullptr, 0);
 }
 
 bool StreamExecutor::CanEnablePeerAccessTo(StreamExecutor* other) {
