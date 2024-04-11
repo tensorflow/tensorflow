@@ -594,7 +594,8 @@ void MemoryPressureTracker::UpdateBuffers(const HloInstruction* instruction) {
   for (auto* op : instruction->operands()) {
     auto& output_values = output_buffers_[op];
     for (auto& info : output_values) {
-      if (ShouldSkipBufferAllocations(instruction, info.second) ||
+      if (ShouldSkipBufferAllocations(instruction, info.second,
+                                      info.first.first_definition) ||
           (info.first.value->values()[0]->shape().has_layout() &&
            info.first.value->values()[0]->shape().layout().memory_space() !=
                kDefaultMemorySpace)) {
@@ -653,7 +654,8 @@ std::pair<int64_t, int64_t> MemoryPressureTracker::MemoryPressureDifference(
     auto it = output_buffers_.find(op);
     CHECK(it != output_buffers_.end());
     for (auto& b : it->second) {
-      if (ShouldSkipBufferAllocations(instruction, b.second) ||
+      if (ShouldSkipBufferAllocations(instruction, b.second,
+                                      b.first.first_definition) ||
           (b.first.value->values()[0]->shape().has_layout() &&
            b.first.value->values()[0]->shape().layout().memory_space() !=
                kDefaultMemorySpace)) {
