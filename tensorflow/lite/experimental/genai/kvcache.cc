@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/experimental/genai/kvcache.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -55,11 +56,13 @@ struct OpData {
   resource::CacheBuffer* key_cache_buffer;
   resource::CacheBuffer* value_cache_buffer;
   bool is_initialized;
+  bool output_initialized;
 };
 
 void* KVCacheInit(TfLiteContext* context, const char* buffer, size_t length) {
   OpData* op_data = new OpData();
-  // TODO(talumbau) Reset this value via ClearCaches in InternalBackendContext.
+  // TODO(b/333891673) Reset this value via ClearCaches in
+  // InternalBackendContext.
   op_data->max_num_entries = -1;
   op_data->num_layers = -1;
   op_data->layer_index = -1;
@@ -67,6 +70,7 @@ void* KVCacheInit(TfLiteContext* context, const char* buffer, size_t length) {
   op_data->key_cache_buffer = nullptr;
   op_data->value_cache_buffer = nullptr;
   op_data->is_initialized = false;
+  op_data->output_initialized = false;
   return op_data;
 }
 
@@ -210,54 +214,107 @@ TfLiteStatus KVCacheEval(TfLiteContext* context, TfLiteNode* node) {
 
   float* key_cache_ptr = op_data->key_cache_buffer->GetBuffer();
   float* value_cache_ptr = op_data->value_cache_buffer->GetBuffer();
-  int layer_index = op_data->layer_index;
+  const int layer_index = op_data->layer_index;
+  const int64_t max_num_entries = op_data->max_num_entries;
   int current_num_entries =
       op_data->key_cache_buffer->GetNumEntries(layer_index);
 
-  // 1. Determine how many slots remain in the cache.
-  const int num_slots_remaining =
-      op_data->max_num_entries - current_num_entries;
-
-  // 2. Determine how many slots these inputs take up.
+  // Compute some constants for various pieces of the cache.
   RuntimeShape shape(GetTensorShape(key));
-  const int num_slots_needed = shape.Dims(1);
+  const int64_t num_slots_needed = shape.Dims(1);
   const int elements_in_one_entry = shape.Dims(2) * shape.Dims(3);
   const int elements_in_one_block =
       op_data->max_num_entries * elements_in_one_entry;
+  const int64_t num_bytes_per_tensor = sizeof(float) * elements_in_one_entry;
 
-  // 3. If we need more slots, make room in the cache by writing over oldest
-  //    entries.
+  // Get the pointers to the individual caches for a layer.
   uint8_t* k_ptr = reinterpret_cast<uint8_t*>(key_cache_ptr);
   uint8_t* v_ptr = reinterpret_cast<uint8_t*>(value_cache_ptr);
   k_ptr = k_ptr + sizeof(float) * op_data->layer_index * elements_in_one_block;
   v_ptr = v_ptr + sizeof(float) * op_data->layer_index * elements_in_one_block;
-  if (num_slots_remaining < num_slots_needed) {
-    const int slots_to_grow = num_slots_needed - num_slots_remaining;
-    const int bytes_offset =
-        sizeof(float) * elements_in_one_entry * slots_to_grow;
 
-    const int num_bytes_to_shift =
-        sizeof(float) * elements_in_one_entry * current_num_entries;
-    // TODO(talumbau): This is O(cache_size) data motion. Consider optimizing
-    // with a circular buffer or similar.
-    memmove(k_ptr, k_ptr + bytes_offset, num_bytes_to_shift);
-    memmove(v_ptr, v_ptr + bytes_offset, num_bytes_to_shift);
-    op_data->first_slot_index = op_data->first_slot_index + slots_to_grow;
+  // 0. Init the outputs from the cache buffer if needed.
+  if (!op_data->output_initialized) {
+    float* kfull_ptr = GetTensorData<float>(kfull);
+    float* vfull_ptr = GetTensorData<float>(vfull);
+    memcpy(kfull_ptr, k_ptr, kfull->bytes);
+    memcpy(vfull_ptr, v_ptr, kfull->bytes);
+    op_data->output_initialized = true;
   }
 
+  // 1. Determine which slots the inputs take up, and which slots are in the
+  //    existing span of the cache.
+
+  // Compute the span of the inputs.
+  const int64_t input_first_idx = position->data.i64[0];
+  const int64_t input_last_idx = input_first_idx + num_slots_needed - 1;
+
+  // Compute the span of the cache.
+  const int64_t cache_first_slot_idx = op_data->first_slot_index;
+  const int64_t cache_last_slot_idx =
+      cache_first_slot_idx + op_data->max_num_entries - 1;
+
+  // Compute if a shift is needed.
+  const int slots_to_shift = std::min(
+      std::max(static_cast<int64_t>(0), input_last_idx - cache_last_slot_idx),
+      max_num_entries);
+
+  // These values determine how we will write to the output tensor:
+  // first_slot := the first cache entry that we will write to in the output
+  int64_t first_slot = input_first_idx - op_data->first_slot_index;
+  if (first_slot < 0) {
+    TF_LITE_KERNEL_LOG(
+        context,
+        "Can not specify a position before this cache's first slot index of %d",
+        op_data->first_slot_index);
+    return kTfLiteError;
+  }
+
+  // byte_offset_for_output := the byte offset for the first slot.
+  int64_t byte_offset_for_output = first_slot * num_bytes_per_tensor;
+  // num_slots_for_output := the number of slots we write in the output
+  int64_t num_slots_for_output = num_slots_needed;
+
+  // 3. If we need more slots, make room in the cache by writing over oldest
+  //    entries.
+  if (slots_to_shift > 0 && slots_to_shift < max_num_entries) {
+    // If we are shifting the cache, we need to start writing from the
+    // beginning.
+    byte_offset_for_output = 0;
+    // And we need to write the entire cache.
+    num_slots_for_output = max_num_entries;
+    const int bytes_offset =
+        sizeof(float) * elements_in_one_entry * slots_to_shift;
+    const int size_bytes_to_shift = sizeof(float) * elements_in_one_entry *
+                                    (max_num_entries - slots_to_shift);
+    // TODO(b/333893996): This is O(cache_size) data motion. Consider optimizing
+    // with a circular buffer or similar.
+    memmove(k_ptr, k_ptr + bytes_offset, size_bytes_to_shift);
+    memmove(v_ptr, v_ptr + bytes_offset, size_bytes_to_shift);
+  }
+
+  // Update the first slot this cache now covers.
+  op_data->first_slot_index = op_data->first_slot_index + slots_to_shift;
+
+  // Recompute the first slot in case any shifting occurred.
+  first_slot = input_first_idx - op_data->first_slot_index;
+  const int64_t bytes_offset_for_cache = first_slot * num_bytes_per_tensor;
+
   // 4. Put the key and value in their respective caches.
-  const int64_t num_bytes_per_tensor = sizeof(float) * elements_in_one_entry;
-  const int64_t first_slot = position->data.i64[0] - op_data->first_slot_index;
-  const int64_t offset = first_slot * num_bytes_per_tensor;
-  memcpy(k_ptr + offset, key->data.data, key->bytes);
-  memcpy(v_ptr + offset, value->data.data, value->bytes);
+  memcpy(k_ptr + bytes_offset_for_cache, key->data.data, key->bytes);
+  memcpy(v_ptr + bytes_offset_for_cache, value->data.data, value->bytes);
 
   // 5. Set the output tensors with the relevant block's cache.
-  memcpy((uint8_t*)(kfull->data.data), k_ptr, kfull->bytes);
-  memcpy((uint8_t*)(vfull->data.data), v_ptr, vfull->bytes);
+  memcpy((uint8_t*)(kfull->data.data) + byte_offset_for_output,
+         k_ptr + byte_offset_for_output,
+         num_slots_for_output * num_bytes_per_tensor);
+  memcpy((uint8_t*)(vfull->data.data) + byte_offset_for_output,
+         v_ptr + byte_offset_for_output,
+         num_slots_for_output * num_bytes_per_tensor);
 
   // Update counts.
-  current_num_entries = first_slot + num_slots_needed;
+  current_num_entries =
+      std::min(first_slot + num_slots_needed, max_num_entries);
   op_data->key_cache_buffer->SetNumEntries(layer_index, current_num_entries);
   op_data->value_cache_buffer->SetNumEntries(layer_index, current_num_entries);
 

@@ -99,9 +99,9 @@ TEST(SimpleCacheOp2Test, AddToCache) {
                        {TensorType_FLOAT32, {1, 2, 2, 3}});
 
   m.SetPosition({0, 1});
-  std::vector<float> key = {1, 5, -6, 2, 4, 3, 1, 5, -6, 2, 4, 3};
+  std::vector<float> key = {1, 5, -6, 2, 4, 3, 8, 9, -8, 7, 2, 11};
   m.SetKey(key);
-  std::vector<float> value = {4, 2, -4, 2, 4, 2, 4, 2, -4, 2, 4, 2};
+  std::vector<float> value = {2, 3, -4, 5, 6, 7, 1, 8, -12, 11, 14, 21};
   m.SetValue(value);
   const int key_size = 2 * 3;
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
@@ -222,6 +222,20 @@ TEST(SimpleCacheOp2Test, ShiftSlotsInCache) {
     ASSERT_EQ(fullk[idxfull], key3[j]);
     ASSERT_EQ(fullv[idxfull], value3[j]);
   }
+
+  // Verify that other cache entries got shifted up 1.
+  for (int j = 0; j < 6; ++j) {
+    int idxfull = fullk.size() - 12 + j;
+    ASSERT_EQ(fullk[idxfull], key2[6 + j]);
+    ASSERT_EQ(fullv[idxfull], value2[6 + j]);
+  }
+
+  std::vector<float> key4 = {5, 5, 5, 5, 5, 5};
+  m.SetKey(key3);
+  std::vector<float> value4 = {3, 3, 3, 3, 3, 3};
+  m.SetValue(value3);
+  m.SetPosition({0});
+  ASSERT_EQ(m.Invoke(), kTfLiteError);
 }
 
 }  // namespace
