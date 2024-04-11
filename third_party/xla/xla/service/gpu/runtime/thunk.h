@@ -49,7 +49,7 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-TSL_LIB_GTL_DEFINE_INT_TYPE(ExecutionStreamId, int64_t);
+TSL_LIB_GTL_DEFINE_INT_TYPE(ExecutionStreamId, uint64_t);
 
 // Thunk acts as the bridge between IrEmitter and GpuExecutable. It stores the
 // metadata IrEmitter generates for GpuExecutable to invoke an HloInstruction.

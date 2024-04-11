@@ -37,7 +37,8 @@ namespace xla::gpu {
 //===----------------------------------------------------------------------===//
 
 NcclCliqueKey::NcclCliqueKey(std::vector<GlobalDeviceId> devices,
-                             int64_t stream_id, AsyncStreamKind stream_kind)
+                             NcclStreamId stream_id,
+                             AsyncStreamKind stream_kind)
     : devices_(std::move(devices)),
       stream_id_(stream_id),
       stream_kind_(stream_kind) {}
@@ -46,7 +47,7 @@ absl::Span<const GlobalDeviceId> NcclCliqueKey::devices() const {
   return devices_;
 }
 
-int64_t NcclCliqueKey::stream_id() const { return stream_id_; }
+NcclStreamId NcclCliqueKey::stream_id() const { return stream_id_; }
 
 std::optional<int64_t> NcclCliqueKey::rank(GlobalDeviceId id) const {
   if (auto it = absl::c_find(devices_, id); it != devices_.end()) {
@@ -64,7 +65,7 @@ bool NcclCliqueKey::IsSubsetOf(const NcclCliqueKey& other) const {
 
 std::string NcclCliqueKey::ToString() const {
   return absl::StrFormat("devices=[%s]; stream=%d",
-                         GlobalDeviceIdsToString(devices_), stream_id_);
+                         GlobalDeviceIdsToString(devices_), stream_id_.value());
 }
 
 bool operator==(const NcclCliqueKey& a, const NcclCliqueKey& b) {
@@ -78,7 +79,7 @@ bool operator<(const NcclCliqueKey& a, const NcclCliqueKey& b) {
   if (a.devices_ < b.devices_) return true;
   if (b.devices_ < a.devices_) return false;
 
-  return a.stream_id_ < b.stream_id_;
+  return a.stream_id_.value() < b.stream_id_.value();
 }
 
 bool operator>(const NcclCliqueKey& a, const NcclCliqueKey& b) {
@@ -90,7 +91,7 @@ bool operator>(const NcclCliqueKey& a, const NcclCliqueKey& b) {
 
   // We still use `<` to order by stream id as we want to acquire sync cliques
   // before async ones.
-  return a.stream_id_ < b.stream_id_;
+  return a.stream_id_.value() < b.stream_id_.value();
 }
 
 //===----------------------------------------------------------------------===//

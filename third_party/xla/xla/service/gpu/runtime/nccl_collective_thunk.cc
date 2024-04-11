@@ -68,7 +68,7 @@ namespace gpu {
 namespace {
 
 static constexpr int64_t kCollectiveMemorySpaceColor = 1;
-static constexpr int64_t kNoStreamId = 0;
+static constexpr NcclStreamId kNoStreamId = NcclStreamId(0);
 
 bool IsTypeSupportedByNccl(PrimitiveType element_type,
                            Thunk::Kind reduction_op) {
@@ -221,7 +221,7 @@ NcclCollectiveThunk::NcclCollectiveThunk(Kind kind, ThunkInfo thunk_info,
 static absl::StatusOr<NcclCliqueKey> GetNcclCliqueKey(
     const Thunk::CollectiveExecuteParams& params,
     const std::vector<ReplicaGroup>& replica_groups,
-    CollectiveOpGroupMode group_mode, int64_t stream_id,
+    CollectiveOpGroupMode group_mode, NcclStreamId stream_id,
     AsyncStreamKind stream_kind) {
   GlobalDeviceId global_device_id = params.global_device_id;
 
@@ -248,7 +248,7 @@ absl::StatusOr<NcclCommHandleWrapper> GetNcclComm(
     const Thunk::CollectiveExecuteParams& params,
     const Thunk::CollectiveCliques& collective_cliques,
     const std::vector<ReplicaGroup>& replica_groups,
-    CollectiveOpGroupMode group_mode, int64_t stream_id,
+    CollectiveOpGroupMode group_mode, NcclStreamId stream_id,
     AsyncStreamKind stream_kind) {
   TF_ASSIGN_OR_RETURN(NcclCliqueKey clique_key,
                       GetNcclCliqueKey(params, replica_groups, group_mode,
@@ -435,7 +435,7 @@ bool operator==(const FirstCallRendezvousKey& a,
 Status NcclCollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
   VLOG(1) << absl::StreamFormat("Starting %s %s.", IsAsync() ? "async" : "sync",
                                 Thunk::KindToString(kind()));
-  const int64_t stream_id = GetStreamId();
+  const NcclStreamId stream_id = GetStreamId();
   AsyncStreamKind stream_kind = GetAsyncStreamKind();
   TF_ASSIGN_OR_RETURN(
       NcclCommHandleWrapper comm_handle,
