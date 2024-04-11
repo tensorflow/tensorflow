@@ -338,8 +338,7 @@ AbstractTfrtCpuBuffer::Release(bool wait_for_operations_to_complete) {
     for (const auto& av : events) {
       BlockUntilReady(av.GetAsyncValue());
       if (auto* error = av.GetErrorIfPresent()) {
-        first_error.Update(
-            Internal("Error Execute: %s", error->message()));
+        first_error.Update(Internal("Error Execute: %s", error->message()));
       }
     }
     if (!first_error.ok()) return std::move(first_error);
@@ -380,19 +379,18 @@ AbstractTfrtCpuBuffer::AcquireDonation() {
   return DonationTransaction(this, std::move(tracked_device_buffer_));
 }
 
-PjRtFuture<Status> AbstractTfrtCpuBuffer::ToLiteralHelper(
+PjRtFuture<> AbstractTfrtCpuBuffer::ToLiteralHelper(
     MutableLiteralBase* literal, AsyncWorkRunner* async_work_runner) {
   std::string message = absl::StrCat(buffer_name(), "::ToLiteral");
   absl::string_view message_view(message);
   tsl::profiler::TraceMe traceme(message_view);
   if (IsEmptyTuple()) {
-    return PjRtFuture<Status>(
-        InvalidArgument("ToLiteral called on empty tuple"));
+    return PjRtFuture<>(InvalidArgument("ToLiteral called on empty tuple"));
   }
   auto usage_event = tsl::MakeConstructedAsyncValueRef<CpuEvent>();
   auto* device_buffer = AcquireUsage(usage_event);
   if (device_buffer == nullptr) {
-    return PjRtFuture<Status>(InvalidArgument(
+    return PjRtFuture<>(InvalidArgument(
         "CopyToHostAsync() called on deleted or donated buffer"));
   }
   MarkEventReadyOnExit ready_on_exit(std::move(usage_event));
@@ -406,14 +404,14 @@ PjRtFuture<Status> AbstractTfrtCpuBuffer::ToLiteralHelper(
                           literal->size_bytes() < kSmallDataTransferByteSize;
   absl::StatusOr<Shape> device_shape = logical_on_device_shape();
   if (!device_shape.ok()) {
-    return PjRtFuture<Status>(device_shape.status());
+    return PjRtFuture<>(device_shape.status());
   }
   if (should_sync_copy) {
     CopyCpuBufferToLiteral(*device_shape, device_buffer, literal);
     // Unblock ToLiteral caller.
-    return PjRtFuture<Status>(OkStatus());
+    return PjRtFuture<>(OkStatus());
   } else {
-    auto ready_event = tsl::MakeUnconstructedAsyncValueRef<Status>();
+    PjRtFuture<>::Promise promise = PjRtFuture<>::CreatePromise();
     // Wait for buffer definition events to finish before d2h dispatch. D2H
     // dispatch should be in parallel, e.g. one Execute event finish may trigger
     // multiple outputs' D2H, they should happen in different threads in
@@ -421,22 +419,22 @@ PjRtFuture<Status> AbstractTfrtCpuBuffer::ToLiteralHelper(
     async_work_runner->ScheduleWhenReady(
         device_buffer_wait_avs,
         [device_buffer_wait_avs = std::move(device_buffer_wait_avs_copy),
-         literal, ready_event = ready_event.CopyRef(), device_buffer,
-         device_shape, ready_on_exit = std::move(ready_on_exit)]() mutable {
+         literal, promise, device_buffer, device_shape,
+         ready_on_exit = std::move(ready_on_exit)]() mutable {
           tsl::profiler::TraceMe traceme("D2H Dispatch");
           // Errors in src buffer are surfaced to user.
           for (const auto& av : device_buffer_wait_avs) {
             if (auto* error = av->GetErrorIfPresent()) {
-              ready_event.emplace(*error);
+              promise.SetError(*error);
               return;
             }
           }
           CopyCpuBufferToLiteral(*device_shape, device_buffer, literal);
           // Unblock ToLiteral event.
-          ready_event.emplace(OkStatus());
+          promise.Set();
         });
-    return PjRtFuture<Status>(
-        std::move(ready_event),
+    return PjRtFuture<>(
+        std::move(promise),
         /*on_block_start=*/
         [message]() {
           absl::string_view message_view(message);

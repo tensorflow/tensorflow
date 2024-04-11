@@ -1827,16 +1827,16 @@ StatusOr<std::vector<int64_t>> PjRtCApiBuffer::logical_dimensions() {
                               args.unpadded_dims + args.num_dims);
 }
 
-PjRtFuture<absl::Status> PjRtCApiBuffer::LazyToLiteral(
+PjRtFuture<> PjRtCApiBuffer::LazyToLiteral(
     absl::AnyInvocable<absl::StatusOr<MutableLiteralBase*>() &&> generator) {
   auto buffer = std::move(generator)();
   if (!buffer.ok()) {
-    return PjRtFuture<Status>(buffer.status());
+    return PjRtFuture<>(buffer.status());
   }
   return ToLiteral(buffer.value());
 }
 
-PjRtFuture<Status> PjRtCApiBuffer::ToLiteral(MutableLiteralBase* literal) {
+PjRtFuture<> PjRtCApiBuffer::ToLiteral(MutableLiteralBase* literal) {
   PJRT_Buffer_ToHostBuffer_Args args;
   args.struct_size = PJRT_Buffer_ToHostBuffer_Args_STRUCT_SIZE;
   args.extension_start = nullptr;
@@ -1845,7 +1845,7 @@ PjRtFuture<Status> PjRtCApiBuffer::ToLiteral(MutableLiteralBase* literal) {
   const xla::Shape& shape = literal->shape();
 
   if (!shape.IsArray()) {
-    return PjRtFuture<Status>(
+    return PjRtFuture<>(
         Unimplemented("PjRtCApiBuffer::ToLiteral: Shapes other than array are"
                       "not supported."));
   }
@@ -1857,7 +1857,7 @@ PjRtFuture<Status> PjRtCApiBuffer::ToLiteral(MutableLiteralBase* literal) {
     c_layout_data =
         pjrt::ConvertToBufferMemoryLayoutData(literal->shape().layout());
     if (!c_layout_data.ok()) {
-      return PjRtFuture<Status>(c_layout_data.status());
+      return PjRtFuture<>(c_layout_data.status());
     }
     args.host_layout = &(c_layout_data->c_layout);
   } else {
@@ -1871,11 +1871,10 @@ PjRtFuture<Status> PjRtCApiBuffer::ToLiteral(MutableLiteralBase* literal) {
       ::pjrt::MakeErrorDeleter(api)};
 
   if (error != nullptr) {
-    absl::Status s = ::pjrt::PjrtErrorToStatus(error.get(), api);
-    return PjRtFuture<Status>(s);
+    return PjRtFuture<>(::pjrt::PjrtErrorToStatus(error.get(), api));
   }
 
-  return pjrt::ConvertCEventToCppFuture(args.event, api).ToStatusFuture();
+  return pjrt::ConvertCEventToCppFuture(args.event, api);
 }
 
 StatusOr<size_t> PjRtCApiBuffer::GetOnDeviceSizeInBytes() const {

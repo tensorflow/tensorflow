@@ -245,8 +245,8 @@ class AbstractTfrtCpuBuffer : public PjRtBuffer {
  protected:
   virtual absl::string_view buffer_name() const = 0;
 
-  PjRtFuture<Status> ToLiteralHelper(MutableLiteralBase* literal,
-                                     AsyncWorkRunner* async_work_runner);
+  PjRtFuture<> ToLiteralHelper(MutableLiteralBase* literal,
+                               AsyncWorkRunner* async_work_runner);
 
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> CopyToDeviceAcrossClients(
       PjRtDevice* dst_device);

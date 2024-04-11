@@ -136,7 +136,7 @@ void PjRtDeviceContext::CopyDeviceTensorToCPU(const Tensor* device_tensor,
     return;
   }
 
-  xla::PjRtFuture<Status> future = device_buffer->ToLiteral(literal.get());
+  xla::PjRtFuture<> future = device_buffer->ToLiteral(literal.get());
   future.OnReady([literal = std::move(literal), done = std::move(done)](
                      const tensorflow::Status& status) { done(status); });
 }

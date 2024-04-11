@@ -351,7 +351,7 @@ void GPUUtil::CopyGPUTensorToCPU(Device* gpu_device,
     auto literal = std::make_unique<xla::MutableBorrowingLiteral>();
     auto status = tensorflow::HostTensorToMutableBorrowingLiteral(
         cpu_tensor, literal.get());
-    xla::PjRtFuture<Status> future =
+    xla::PjRtFuture<> future =
         pjrt_tensor_buffer->pjrt_buffer()->ToLiteral(literal.get());
     future.OnReady([literal = std::move(literal),
                     done](const tensorflow::Status& status) { done(status); });

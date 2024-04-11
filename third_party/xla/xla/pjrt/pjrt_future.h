@@ -179,6 +179,10 @@ class PjRtFutureBase {
 
     tsl::AsyncValueRef<T> ExtractRef() && { return std::move(ref_); }
 
+    tsl::RCReference<tsl::AsyncValue> CopyRCRef() const {
+      return ref_.CopyRCRef();
+    }
+
    private:
     tsl::AsyncValueRef<T> ref_;
   };
@@ -348,6 +352,11 @@ class PjRtFuture<void> : public internal::PjRtFutureBase<std::nullopt_t> {
   class Promise : public Base::Promise {
    public:
     using Base::Promise::Promise;
+
+    // Returns a reference to the underlying AsyncValue that can be used to
+    // track completion of a promise. It is undefined behavior to access the
+    // value stored in the AsyncValue.
+    using Base::Promise::CopyRCRef;
 
     // Sets the promise completed. Must be called at most once.
     //

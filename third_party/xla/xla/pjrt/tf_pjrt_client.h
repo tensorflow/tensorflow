@@ -57,10 +57,10 @@ class TfPjRtBuffer : public PjRtBuffer {
       override {
     return wrapped_->AcquireExternalReference();
   }
-  PjRtFuture<absl::Status> ToLiteral(MutableLiteralBase* literal) override {
+  PjRtFuture<> ToLiteral(MutableLiteralBase* literal) override {
     return wrapped_->ToLiteral(literal);
   }
-  PjRtFuture<absl::Status> LazyToLiteral(
+  PjRtFuture<> LazyToLiteral(
       absl::AnyInvocable<absl::StatusOr<MutableLiteralBase*>() &&> generator)
       override {
     return wrapped_->LazyToLiteral(std::move(generator));

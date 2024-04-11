@@ -472,8 +472,8 @@ class TfrtCpuBuffer final : public AbstractTfrtCpuBuffer {
   TfrtCpuClient* client() const override { return client_; }
 
   using PjRtBuffer::ToLiteralSync;
-  PjRtFuture<Status> ToLiteral(MutableLiteralBase* literal) override;
-  PjRtFuture<Status> LazyToLiteral(
+  PjRtFuture<> ToLiteral(MutableLiteralBase* literal) override;
+  PjRtFuture<> LazyToLiteral(
       absl::AnyInvocable<absl::StatusOr<MutableLiteralBase*>() &&> generator)
       override;
 

@@ -1102,13 +1102,13 @@ class PjRtBuffer {
   // Return value is a future the caller can use to discover when the copy has
   // completed. The transfer respects the layout of `literal`; to specify a
   // particular layout, set the layout before calling `ToLiteral`.
-  virtual PjRtFuture<Status> ToLiteral(MutableLiteralBase* literal) = 0;
+  virtual PjRtFuture<> ToLiteral(MutableLiteralBase* literal) = 0;
   // This version of ToLiteral allows the implementation to defer the
   // construction of the literal (e.g. until the underlying buffer is ready).
   // The specific timing of calling `generator` is implementation defined, and
   // might be done eagerly, but it is guaranteed to be earlier than when the
   // returned future becomes ready.
-  virtual PjRtFuture<Status> LazyToLiteral(
+  virtual PjRtFuture<> LazyToLiteral(
       absl::AnyInvocable<absl::StatusOr<MutableLiteralBase*>() &&>
           generator) = 0;
 
