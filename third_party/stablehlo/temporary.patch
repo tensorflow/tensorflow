@@ -1,3 +1,14 @@
+diff --ruN a/stablehlo/BUILD.bazel b/stablehlo/BUILD.bazel
+--- stablehlo/BUILD.bazel
++++ stablehlo/BUILD.bazel
+@@ -311,6 +311,7 @@
+     ],
+     strip_include_prefix = ".",
+     deps = [
++        ":base",
+         ":interpreter_ops_inc_gen",
+         ":reference_numpy",
+         ":reference_ops",
 diff --ruN a/stablehlo/CMakeLists.txt b/stablehlo/CMakeLists.txt
 --- stablehlo/CMakeLists.txt
 +++ stablehlo/CMakeLists.txt
@@ -163,6 +174,20 @@ diff --ruN a/stablehlo/CMakeLists.txt b/stablehlo/CMakeLists.txt
  
  #-------------------------------------------------------------------------------
  # Directory setup
+diff --ruN a/stablehlo/docs/spec.md b/stablehlo/docs/spec.md
+--- stablehlo/docs/spec.md
++++ stablehlo/docs/spec.md
+@@ -208,8 +208,8 @@
+ * For per-tensor quantization:
+   * No additional constraints.
+ * For per-axis quantization:
+-  * (C12) `quantization_dimension < rank(self)`.
+-  * (C13) `dim(self, quantization_dimension) = size(scales)`.
++  * (C13) `quantization_dimension < rank(self)`.
++  * (C14) `dim(self, quantization_dimension) = size(scales)`.
+ 
+ ```ebnf
+ TokenType ::= 'token'
 diff --ruN a/stablehlo/stablehlo/CMakeLists.txt b/stablehlo/stablehlo/CMakeLists.txt
 --- stablehlo/stablehlo/CMakeLists.txt
 +++ stablehlo/stablehlo/CMakeLists.txt
@@ -174,6 +199,224 @@ diff --ruN a/stablehlo/stablehlo/CMakeLists.txt b/stablehlo/stablehlo/CMakeLists
  add_subdirectory(integrations)
  add_subdirectory(reference)
  add_subdirectory(tests)
+diff --ruN a/stablehlo/stablehlo/dialect/Base.cpp b/stablehlo/stablehlo/dialect/Base.cpp
+--- stablehlo/stablehlo/dialect/Base.cpp
++++ stablehlo/stablehlo/dialect/Base.cpp
+@@ -611,5 +611,75 @@
+                      [val](int64_t x) { return x == val; });
+ }
+ 
++bool isValidStablehloQuantizedElementType(Type elementType) {
++  auto quantizedElementType = dyn_cast<mlir::quant::QuantizedType>(elementType);
++  if (!quantizedElementType) return false;
++
++  int64_t storageTypeMin = quantizedElementType.getStorageTypeMin();
++  int64_t storageTypeMax = quantizedElementType.getStorageTypeMax();
++
++  SmallVector<int64_t> zeroPoints;
++  SmallVector<double> scales;
++  if (auto quantizedPerTensorElementType =
++          dyn_cast<mlir::quant::UniformQuantizedType>(elementType)) {
++    zeroPoints.push_back(quantizedPerTensorElementType.getZeroPoint());
++    scales.push_back(quantizedPerTensorElementType.getScale());
++  } else {
++    auto quantizedPerAxisElementType =
++        cast<mlir::quant::UniformQuantizedPerAxisType>(elementType);
++    zeroPoints.insert(zeroPoints.begin(),
++                      quantizedPerAxisElementType.getZeroPoints().begin(),
++                      quantizedPerAxisElementType.getZeroPoints().end());
++    scales.insert(scales.begin(),
++                  quantizedPerAxisElementType.getScales().begin(),
++                  quantizedPerAxisElementType.getScales().end());
++  }
++
++  // quantized_type_c5
++  auto maxPosFiniteNum =
++      APFloat::getLargest(quantizedElementType.getExpressedType()
++                              .cast<FloatType>()
++                              .getFloatSemantics())
++          .convertToDouble();
++  auto minPosFiniteNum =
++      APFloat::getSmallest(quantizedElementType.getExpressedType()
++                               .cast<FloatType>()
++                               .getFloatSemantics())
++          .convertToDouble();
++  if (llvm::any_of(scales, [&](double scale) {
++        return scale < minPosFiniteNum || scale > maxPosFiniteNum;
++      })) {
++    return false;
++  }
++
++  // quantized_type_c8, quantized_type_c9
++  if (llvm::any_of(zeroPoints, [&](int64_t zeroPoint) {
++        return storageTypeMin > zeroPoint || zeroPoint > storageTypeMax;
++      })) {
++    return false;
++  }
++
++  return true;
++}
++
++bool isValidQuantizedDimension(Type type) {
++  auto rankedType = dyn_cast<RankedTensorType>(type);
++  if (!rankedType) return true;
++
++  auto quantizedPerAxisElementType =
++      dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(
++          rankedType.getElementType());
++
++  if (!quantizedPerAxisElementType) return true;
++
++  // quantized_type_c12, quantized_type_c13, quantized_type_c14
++  int64_t quantDim = quantizedPerAxisElementType.getQuantizedDimension();
++  return quantDim >= 0 && quantDim < rankedType.getRank() &&
++         (!rankedType.isDynamicDim(quantDim) &&
++          static_cast<int64_t>(
++              quantizedPerAxisElementType.getScales().size()) ==
++              rankedType.getDimSize(quantDim));
++}
++
+ }  // namespace hlo
+ }  // namespace mlir
+diff --ruN a/stablehlo/stablehlo/dialect/Base.h b/stablehlo/stablehlo/dialect/Base.h
+--- stablehlo/stablehlo/dialect/Base.h
++++ stablehlo/stablehlo/dialect/Base.h
+@@ -86,6 +86,16 @@
+ // undefined behavior.
+ bool isCompatibleForHloTypeInference(Value shape1, Type tp2);
+ 
++// Returns true if the given element-type is a mlir::quant::QuantizedType
++// and follow the constraints corresponding to quantization parameters as
++// mentioned in the StableHLO specification.
++bool isValidStablehloQuantizedElementType(Type elementType);
++
++// Returns true if the given type is a ranked per-axis tensor type
++// and follow the constraints corresponding to quantized dimension as
++// mentioned in the StableHLO specification.
++bool isValidQuantizedDimension(Type type);
++
+ // TODO(zhouxin) Move type inference related methods to TypeInference.cpp
+ 
+ std::pair<int64_t, int64_t> inferConcatenatedDimAndBound(int64_t leftSize,
+diff --ruN a/stablehlo/stablehlo/dialect/Base.td b/stablehlo/stablehlo/dialect/Base.td
+--- stablehlo/stablehlo/dialect/Base.td
++++ stablehlo/stablehlo/dialect/Base.td
+@@ -52,13 +52,16 @@
+ // Quantized element type definitions.
+ //===----------------------------------------------------------------------===//
+ 
++def IsValidStablehloQuantizedElementType : CPred<"mlir::hlo::isValidStablehloQuantizedElementType($_self)">;
++def IsValidQuantizedDimension : CPred<"mlir::hlo::isValidQuantizedDimension($_self)">;
++
+ // TODO(b/230381284): Upstream width-specific uniform quantized element types.
+ class StableHLO_UniformQuantizedSignedInt<int width>
+   : Type<And<[CPred<"$_self.isa<mlir::quant::UniformQuantizedType>()">,
+            CPred<"$_self.cast<mlir::quant::UniformQuantizedType>()" #
+                  ".getStorageTypeIntegralWidth() == " # width>,
+            CPred<"$_self.cast<mlir::quant::UniformQuantizedType>()" #
+-                 ".getStorageType().cast<mlir::IntegerType>().isSignless()">]>,
++                 ".getStorageType().cast<mlir::IntegerType>().isSignless()">,  IsValidStablehloQuantizedElementType]>,
+     "QI" # width # " type"> {
+   string name = "UniformQuantizedSignedInt";
+   int bitwidth = width;
+@@ -69,7 +72,7 @@
+            CPred<"$_self.cast<mlir::quant::UniformQuantizedPerAxisType>()" #
+                  ".getStorageTypeIntegralWidth() == " # width>,
+            CPred<"$_self.cast<mlir::quant::UniformQuantizedPerAxisType>()" #
+-                 ".getStorageType().cast<mlir::IntegerType>().isSignless()">]>,
++                 ".getStorageType().cast<mlir::IntegerType>().isSignless()">, IsValidStablehloQuantizedElementType]>,
+     "QI" # width # " type"> {
+   string name = "UniformQuantizedPerAxisSignedInt";
+   int bitwidth = width;
+@@ -80,7 +83,7 @@
+            CPred<"$_self.cast<mlir::quant::UniformQuantizedType>()" #
+                  ".getStorageTypeIntegralWidth() == " # width>,
+            CPred<"!$_self.cast<mlir::quant::UniformQuantizedType>()" #
+-                 ".isSigned()">]>,
++                 ".isSigned()">, IsValidStablehloQuantizedElementType]>,
+     "QUI" # width # " type"> {
+   string name = "UniformQuantizedUnsignedInt";
+   int bitwidth = width;
+@@ -91,7 +94,7 @@
+            CPred<"$_self.cast<mlir::quant::UniformQuantizedPerAxisType>()" #
+                  ".getStorageTypeIntegralWidth() == " # width>,
+            CPred<"!$_self.cast<mlir::quant::UniformQuantizedPerAxisType>()" #
+-                 ".isSigned()">]>,
++                 ".isSigned()">, IsValidStablehloQuantizedElementType]>,
+     "QUI" # width # " type"> {
+   string name = "UniformQuantizedPerAxisUnsignedInt";
+   int bitwidth = width;
+@@ -150,10 +153,12 @@
+ def HLO_QuantizedIntTensor : RankedTensorOf<[HLO_QuantizedInt]>;
+ 
+ // per-axis quantized integer tensor type
+-def HLO_PerAxisQuantizedIntTensor : RankedTensorOf<[HLO_PerAxisQuantizedInt]>;
++def HLO_PerAxisQuantizedIntTensor : RankedTensorOf<[HLO_PerAxisQuantizedInt],
++    [IsValidQuantizedDimension]>;
+ 
+ // per-tensor or per-axis quantized integer tensor type
+-def HLO_QuantizedIntOrPerAxisQuantizedIntTensor : RankedTensorOf<[HLO_QuantizedInt, HLO_PerAxisQuantizedInt]>;
++def HLO_QuantizedIntOrPerAxisQuantizedIntTensor : RankedTensorOf<[HLO_QuantizedInt, HLO_PerAxisQuantizedInt],
++    [IsValidQuantizedDimension]>;
+ 
+ def HLO_PredTensor : RankedTensorOf<[HLO_Pred]>;
+ 
+@@ -161,7 +166,8 @@
+ 
+ def HLO_NonQuantizedTensor : RankedTensorOf<[HLO_Float, HLO_Pred, HLO_Int, HLO_Complex]>;
+ 
+-def HLO_TensorOrPerAxisQuantizedTensor : RankedTensorOf<[HLO_Float, HLO_Pred, HLO_Int, HLO_Complex, HLO_QuantizedInt, HLO_PerAxisQuantizedInt]>;
++def HLO_TensorOrPerAxisQuantizedTensor : RankedTensorOf<[HLO_Float, HLO_Pred, HLO_Int, HLO_Complex, HLO_QuantizedInt, HLO_PerAxisQuantizedInt],
++    [IsValidQuantizedDimension]>;
+ 
+ def HLO_ComplexTensor : RankedTensorOf<[HLO_Complex]>;
+ 
+@@ -186,7 +192,8 @@
+ // TODO(b/326463552): Remove these when CHLO no longer needs unranked dynamism.
+ //===----------------------------------------------------------------------===//
+ 
+-def HLO_AnyTensor : TensorOf<[HLO_Float, HLO_Pred, HLO_Int, HLO_Complex, HLO_QuantizedInt, HLO_PerAxisQuantizedInt]>;
++def HLO_AnyTensor : TensorOf<[HLO_Float, HLO_Pred, HLO_Int, HLO_Complex, HLO_QuantizedInt, HLO_PerAxisQuantizedInt],
++    [IsValidQuantizedDimension]>;
+ 
+ def HLO_AnyPredTensor : TensorOf<[HLO_Pred]>;
+ 
+@@ -246,8 +253,8 @@
+ def HLO_StaticShapeTensor : StaticShapeTensorOf<[
+       HLO_Float, HLO_Pred, HLO_Int, HLO_Complex, HLO_QuantizedInt]>;
+ 
+-def HLO_StaticShapeTensorOrPerAxisQuantizedTensor : StaticShapeTensorOf<[
+-      HLO_Float, HLO_Pred, HLO_Int, HLO_Complex, HLO_QuantizedInt, HLO_PerAxisQuantizedInt]>;
++def HLO_StaticShapeTensorOrPerAxisQuantizedTensor : RankedTensorOf<[HLO_Float, HLO_Pred, HLO_Int, HLO_Complex, HLO_QuantizedInt, HLO_PerAxisQuantizedInt],
++    [IsValidQuantizedDimension, HasStaticShapePred], "statically shaped tensor">;
+ 
+ def HLO_StaticShapeTensorOrPerAxisQuantizedTensorOrToken : AnyTypeOf<[HLO_StaticShapeTensor, HLO_StaticShapeTensorOrPerAxisQuantizedTensor, HLO_Token]>;
+ 
+diff --ruN a/stablehlo/stablehlo/dialect/TypeInference.cpp b/stablehlo/stablehlo/dialect/TypeInference.cpp
+--- stablehlo/stablehlo/dialect/TypeInference.cpp
++++ stablehlo/stablehlo/dialect/TypeInference.cpp
+@@ -444,7 +444,7 @@
+     if (operandQDim != permutation[resultQDim])
+       return emitOptionalError(location, "operand quantization_dimension ",
+                                operandQDim, " is not same as permutation[",
+-                               resultQDim, "] ", permutation[resultQDim]);
++                               resultQDim, "] = ", permutation[resultQDim]);
+   }
+   return success();
+ }
+@@ -3380,9 +3380,9 @@
+     auto resultQDim = resultQType.getQuantizedDimension();
+     if (resultQDim != broadcastDimensions[operandQDim])
+       return emitOptionalError(location, "result quantization_dimension ",
+-                               resultQDim, " not same as broadcast_dimensions ",
+-                               operandQDim, " (",
+-                               broadcastDimensions[operandQDim], ")");
++                               resultQDim, " not same as broadcast_dimensions[",
++                               operandQDim,
++                               "] = ", broadcastDimensions[operandQDim]);
+     if (operandType.getDimSize(operandQDim) == 1) {
+       for (int64_t j = 0; j != resultType.getDimSize(resultQDim); ++j) {
+         if (resultQType.getScales()[j] != operandQType.getScales()[0])
 diff --ruN a/stablehlo/stablehlo/experimental/BUILD.bazel b/stablehlo/stablehlo/experimental/BUILD.bazel
 --- stablehlo/stablehlo/experimental/BUILD.bazel
 +++ stablehlo/stablehlo/experimental/BUILD.bazel
@@ -2560,6 +2803,50 @@ diff --ruN a/stablehlo/stablehlo/experimental/transforms/StablehloRefineShapes.c
 +}  // namespace experimental
 +}  // namespace stablehlo
 +}  // namespace mlir
+diff --ruN a/stablehlo/stablehlo/reference/CMakeLists.txt b/stablehlo/stablehlo/reference/CMakeLists.txt
+--- stablehlo/stablehlo/reference/CMakeLists.txt
++++ stablehlo/stablehlo/reference/CMakeLists.txt
+@@ -93,6 +93,7 @@
+   InterpreterOpsIncGen
+ 
+   LINK_LIBS PUBLIC
++  StablehloBase
+   StablehloReferenceValue
+   StablehloReferenceNumPy
+   StablehloReferenceOps
+diff --ruN a/stablehlo/stablehlo/reference/InterpreterOps.cpp b/stablehlo/stablehlo/reference/InterpreterOps.cpp
+--- stablehlo/stablehlo/reference/InterpreterOps.cpp
++++ stablehlo/stablehlo/reference/InterpreterOps.cpp
+@@ -30,6 +30,7 @@
+ #include "mlir/IR/SymbolTable.h"
+ #include "mlir/Support/DebugStringHelper.h"
+ #include "mlir/Support/LLVM.h"
++#include "stablehlo/dialect/Base.h"
+ #include "stablehlo/reference/NumPy.h"
+ #include "stablehlo/reference/Ops.h"
+ #include "stablehlo/reference/ProcessGrid.h"
+diff --ruN a/stablehlo/stablehlo/tests/BUILD.bazel b/stablehlo/stablehlo/tests/BUILD.bazel
+--- stablehlo/stablehlo/tests/BUILD.bazel
++++ stablehlo/stablehlo/tests/BUILD.bazel
+@@ -32,6 +32,7 @@
+     strip_include_prefix = ".",
+     deps = [
+         ":check_ops_inc_gen",
++        "//:base",
+         "//:reference_errors",
+         "//:reference_numpy",
+         "//:reference_tensor",
+diff --ruN a/stablehlo/stablehlo/tests/CheckOps.cpp b/stablehlo/stablehlo/tests/CheckOps.cpp
+--- stablehlo/stablehlo/tests/CheckOps.cpp
++++ stablehlo/stablehlo/tests/CheckOps.cpp
+@@ -23,6 +23,7 @@
+ #include "llvm/Support/Path.h"
+ #include "mlir/IR/BuiltinTypes.h"
+ #include "mlir/Support/DebugStringHelper.h"
++#include "stablehlo/dialect/Base.h"
+ #include "stablehlo/reference/Errors.h"
+ #include "stablehlo/reference/NumPy.h"
+ #include "stablehlo/reference/Tensor.h"
 diff --ruN a/stablehlo/stablehlo/tests/chlo/chlo_legalize_to_stablehlo.mlir b/stablehlo/stablehlo/tests/chlo/chlo_legalize_to_stablehlo.mlir
 --- stablehlo/stablehlo/tests/chlo/chlo_legalize_to_stablehlo.mlir
 +++ stablehlo/stablehlo/tests/chlo/chlo_legalize_to_stablehlo.mlir
@@ -3486,6 +3773,525 @@ diff --ruN a/stablehlo/stablehlo/tests/chlo/chlo_legalize_to_stablehlo.mlir b/st
    // CHECK: %[[TMP_264:.*]] = stablehlo.select %[[TMP_263]], %[[TMP_251]], %[[TMP_262]]
    // CHECK: %[[TMP_265:.*]] = stablehlo.multiply %[[TMP_4]], %[[TMP_89]]
    // CHECK: %[[TMP_266:.*]] = stablehlo.multiply %[[TMP_265]], %[[TMP_264]]
+diff --ruN a/stablehlo/stablehlo/tests/ops_stablehlo.mlir b/stablehlo/stablehlo/tests/ops_stablehlo.mlir
+--- stablehlo/stablehlo/tests/ops_stablehlo.mlir
++++ stablehlo/stablehlo/tests/ops_stablehlo.mlir
+@@ -51,18 +51,18 @@
+ 
+ // CHECK-LABEL: func @all_reduce_with_promotable_quantized_types
+ func.func @all_reduce_with_promotable_quantized_types(%operand: tensor<!quant.uniform<i8:f32, 2.000000e+00:15>>)
+-    -> tensor<!quant.uniform<i32:f32, 2.000000e+00:15>> {
++    -> tensor<!quant.uniform<i16:f32, 2.000000e+00:15>> {
+ 
+   %result = "stablehlo.all_reduce"(%operand) ({
+-    ^bb0(%arg0: tensor<!quant.uniform<i32:f32, 2.000000e+00:15>>, %arg1: tensor<!quant.uniform<i32:f32, 2.000000e+00:15>>):
+-      %0 = stablehlo.add %arg0, %arg1 : tensor<!quant.uniform<i32:f32, 2.000000e+00:15>>
+-      "stablehlo.return"(%0) : (tensor<!quant.uniform<i32:f32, 2.000000e+00:15>>) -> ()
++    ^bb0(%arg0: tensor<!quant.uniform<i16:f32, 2.000000e+00:15>>, %arg1: tensor<!quant.uniform<i16:f32, 2.000000e+00:15>>):
++      %0 = stablehlo.add %arg0, %arg1 : tensor<!quant.uniform<i16:f32, 2.000000e+00:15>>
++      "stablehlo.return"(%0) : (tensor<!quant.uniform<i16:f32, 2.000000e+00:15>>) -> ()
+   }) {
+     replica_groups = dense<[[0, 1]]> : tensor<1x2xi64>,
+     channel_handle = #stablehlo.channel_handle<handle = 0, type = 0>
+-  } : (tensor<!quant.uniform<i8:f32, 2.000000e+00:15>>) -> tensor<!quant.uniform<i32:f32, 2.000000e+00:15>>
+-
+-  func.return %result : tensor<!quant.uniform<i32:f32, 2.000000e+00:15>>
++  } : (tensor<!quant.uniform<i8:f32, 2.000000e+00:15>>) -> tensor<!quant.uniform<i16:f32, 2.000000e+00:15>>
++
++  func.return %result : tensor<!quant.uniform<i16:f32, 2.000000e+00:15>>
+ }
+ 
+ // -----
+@@ -334,16 +334,16 @@
+ // CHECK-LABEL: func @reduce_scatter_with_promotable_quantized_types
+ func.func @reduce_scatter_with_promotable_quantized_types(
+     %data: tensor<4x16x!quant.uniform<i8:f32, 2.000000e+00:15>>) ->
+-    tensor<4x4x!quant.uniform<i32:f32, 2.000000e+00:15>> {
++    tensor<4x4x!quant.uniform<i16:f32, 2.000000e+00:15>> {
+   %0 = "stablehlo.reduce_scatter"(%data) ({
+-    ^bb0(%arg2: tensor<!quant.uniform<i32:f32, 2.000000e+00:15>>, %arg3: tensor<!quant.uniform<i32:f32, 2.000000e+00:15>>):
+-    %1 = stablehlo.add %arg2, %arg3 : tensor<!quant.uniform<i32:f32, 2.000000e+00:15>>
+-    "stablehlo.return"(%1) : (tensor<!quant.uniform<i32:f32, 2.000000e+00:15>>) -> ()
++    ^bb0(%arg2: tensor<!quant.uniform<i16:f32, 2.000000e+00:15>>, %arg3: tensor<!quant.uniform<i16:f32, 2.000000e+00:15>>):
++    %1 = stablehlo.add %arg2, %arg3 : tensor<!quant.uniform<i16:f32, 2.000000e+00:15>>
++    "stablehlo.return"(%1) : (tensor<!quant.uniform<i16:f32, 2.000000e+00:15>>) -> ()
+   }) {replica_groups = dense<[[0, 1, 2, 3]]> : tensor<1x4xi64>,
+       scatter_dimension = 1 : i64,
+       channel_handle = #stablehlo.channel_handle<handle = 1, type = 0>,
+-      use_global_device_ids} : (tensor<4x16x!quant.uniform<i8:f32, 2.000000e+00:15>>) -> tensor<4x4x!quant.uniform<i32:f32, 2.000000e+00:15>>
+-  func.return %0 : tensor<4x4x!quant.uniform<i32:f32, 2.000000e+00:15>>
++      use_global_device_ids} : (tensor<4x16x!quant.uniform<i8:f32, 2.000000e+00:15>>) -> tensor<4x4x!quant.uniform<i16:f32, 2.000000e+00:15>>
++  func.return %0 : tensor<4x4x!quant.uniform<i16:f32, 2.000000e+00:15>>
+ }
+ 
+ // -----
+@@ -4817,9 +4817,9 @@
+ // -----
+ 
+ // CHECK-LABEL: func @quantized_dot_i4
+-func.func @quantized_dot_i4(%arg0: tensor<2x2x!quant.uniform<i4:f32, 2.0:15>>, %arg1: tensor<2x2x!quant.uniform<i4:f32, 5.0:20>>) -> tensor<2x2x!quant.uniform<i4:f32, 10.0:50>> {
+-  %0 = "stablehlo.dot"(%arg0, %arg1) : (tensor<2x2x!quant.uniform<i4:f32, 2.0:15>>, tensor<2x2x!quant.uniform<i4:f32, 5.0:20>>) -> tensor<2x2x!quant.uniform<i4:f32, 10.0:50>>
+-  func.return %0: tensor<2x2x!quant.uniform<i4:f32, 10.0:50>>
++func.func @quantized_dot_i4(%arg0: tensor<2x2x!quant.uniform<i4:f32, 2.0:1>>, %arg1: tensor<2x2x!quant.uniform<i4:f32, 5.0:2>>) -> tensor<2x2x!quant.uniform<i4:f32, 10.0:5>> {
++  %0 = "stablehlo.dot"(%arg0, %arg1) : (tensor<2x2x!quant.uniform<i4:f32, 2.0:1>>, tensor<2x2x!quant.uniform<i4:f32, 5.0:2>>) -> tensor<2x2x!quant.uniform<i4:f32, 10.0:5>>
++  func.return %0: tensor<2x2x!quant.uniform<i4:f32, 10.0:5>>
+ }
+ 
+ // -----
+@@ -5096,7 +5096,7 @@
+ 
+ func.func @add_c3(%arg0: tensor<1x!quant.uniform<i8:f32, 1.0:17>>) {
+   // expected-error@+1 {{mismatched operands and result quantization storage types}}
+-  %0 = "stablehlo.add"(%arg0, %arg0) : (tensor<1x!quant.uniform<i8:f32, 1.0:17>>, tensor<1x!quant.uniform<i8:f32, 1.0:17>>) -> tensor<1x!quant.uniform<i4:f32, 1.0:17>>
++  %0 = "stablehlo.add"(%arg0, %arg0) : (tensor<1x!quant.uniform<i8:f32, 1.0:17>>, tensor<1x!quant.uniform<i8:f32, 1.0:17>>) -> tensor<1x!quant.uniform<i4:f32, 1.0:1>>
+   func.return
+ }
+ 
+@@ -5120,15 +5120,15 @@
+ 
+ func.func @add_c6(%arg0: tensor<1x2x!quant.uniform<i8:f32:0, {1.0:17}>>) {
+   // expected-error@+1 {{quantization_dimension of lhs and result are not same}}
+-  %0 = "stablehlo.add"(%arg0, %arg0) : (tensor<1x2x!quant.uniform<i8:f32:0, {1.0:17}>>, tensor<1x2x!quant.uniform<i8:f32:0, {1.0:17}>>) -> tensor<1x2x!quant.uniform<i8:f32:2, {1.0:17}>>
++  %0 = "stablehlo.add"(%arg0, %arg0) : (tensor<1x2x!quant.uniform<i8:f32:0, {1.0:17}>>, tensor<1x2x!quant.uniform<i8:f32:0, {1.0:17}>>) -> tensor<1x2x!quant.uniform<i8:f32:1, {1.0:17, 1.0:17}>>
+   func.return
+ }
+ 
+ // -----
+ 
+-func.func @add_c7(%arg0: tensor<1x2x!quant.uniform<i8:f32:0, {1.0:17}>>, %arg1: tensor<1x2x!quant.uniform<i8:f32:1, {1.0:17}>>) {
++func.func @add_c7(%arg0: tensor<1x2x!quant.uniform<i8:f32:0, {1.0:17}>>, %arg1: tensor<1x2x!quant.uniform<i8:f32:1, {1.0:17, 1.0:17}>>) {
+   // expected-error@+1 {{quantization_dimension of rhs and result are not same}}
+-  %0 = "stablehlo.add"(%arg0, %arg1) : (tensor<1x2x!quant.uniform<i8:f32:0, {1.0:17}>>, tensor<1x2x!quant.uniform<i8:f32:1, {1.0:17}>>) -> tensor<1x2x!quant.uniform<i8:f32:0, {1.0:17}>>
++  %0 = "stablehlo.add"(%arg0, %arg1) : (tensor<1x2x!quant.uniform<i8:f32:0, {1.0:17}>>, tensor<1x2x!quant.uniform<i8:f32:1, {1.0:17, 1.0:17}>>) -> tensor<1x2x!quant.uniform<i8:f32:0, {1.0:17}>>
+   func.return
+ }
+ 
+diff --ruN a/stablehlo/stablehlo/tests/ops_stablehlo_quantized.mlir b/stablehlo/stablehlo/tests/ops_stablehlo_quantized.mlir
+--- stablehlo/stablehlo/tests/ops_stablehlo_quantized.mlir
++++ stablehlo/stablehlo/tests/ops_stablehlo_quantized.mlir
+@@ -29,7 +29,7 @@
+ // %arg1 can be a per-axis Quantized
+ func.func @dot_general_per_axis_quantization(
+   %arg0: tensor<2x3x4x!quant.uniform<i8:f32, 1.0:17>>,
+-  %arg1: tensor<2x3x5x!quant.uniform<i8:f32:0, {0.1:0}>>) -> tensor<2x4x5x!quant.uniform<i8:f32:0, {0.1:-30}>> {
++  %arg1: tensor<2x3x5x!quant.uniform<i8:f32:0, {0.1:0, 0.1:0}>>) -> tensor<2x4x5x!quant.uniform<i8:f32:0, {0.1:-30, 0.1:-30}>> {
+   %0 = "stablehlo.dot_general"(%arg0, %arg1) {
+     dot_dimension_numbers = #stablehlo.dot<
+       lhs_batching_dimensions = [0],
+@@ -38,8 +38,8 @@
+       rhs_contracting_dimensions = [1]
+     >
+   } : (tensor<2x3x4x!quant.uniform<i8:f32, 1.0:17>>,
+-  tensor<2x3x5x!quant.uniform<i8:f32:0, {0.1:0}>>) -> tensor<2x4x5x!quant.uniform<i8:f32:0, {0.1:-30}>>
+-  func.return %0 : tensor<2x4x5x!quant.uniform<i8:f32:0, {0.1:-30}>>
++  tensor<2x3x5x!quant.uniform<i8:f32:0, {0.1:0, 0.1:0}>>) -> tensor<2x4x5x!quant.uniform<i8:f32:0, {0.1:-30, 0.1:-30}>>
++  func.return %0 : tensor<2x4x5x!quant.uniform<i8:f32:0, {0.1:-30, 0.1:-30}>>
+ }
+ 
+ // -----
+@@ -856,30 +856,31 @@
+ // -----
+ 
+ func.func @broadcast_in_dim_c6(
+-  %arg0: tensor<1x2x1x!quant.uniform<i8<-128:127>:f32:2, {0.1:-30, 0.5:-20}>>) {
+-  // expected-error@+1 {{result quantization_dimension 3 not same as broadcast_dimensions 2 (2)}}
++  %arg0: tensor<1x2x1x!quant.uniform<i8<-128:127>:f32:2, {0.1:-30}>>) {
++  // expected-error@+1 {{result quantization_dimension 3 not same as broadcast_dimensions[2] = 2}}
+   %broadcast_in_dim = "stablehlo.broadcast_in_dim" (%arg0) {broadcast_dimensions = array<i64: 0, 1, 2>
+-  } : (tensor<1x2x1x!quant.uniform<i8<-128:127>:f32:2, {0.1:-30, 0.5:-20}>>) -> tensor<1x2x3x2x!quant.uniform<i8<-128:127>:f32:3, {0.1:-30, 0.1:-30}>>
++  } : (tensor<1x2x1x!quant.uniform<i8<-128:127>:f32:2, {0.1:-30}>>) ->
++        tensor<1x2x3x2x!quant.uniform<i8<-128:127>:f32:3, {0.1:-30, 0.1:-30}>>
+   func.return
+ }
+ 
+ // -----
+ 
+ func.func @broadcast_in_dim_c6(
+-  %arg0: tensor<1x2x1x!quant.uniform<i8<-128:127>:f32:2, {0.1:-30, 0.5:-20}>>) {
++  %arg0: tensor<1x2x1x!quant.uniform<i8<-128:127>:f32:2, {0.1:-30}>>) {
+   // expected-error@+1 {{mismatch result scale 0 (2.000000e-01) and operand scale 0 (1.000000e-01)}}
+   %broadcast_in_dim = "stablehlo.broadcast_in_dim" (%arg0) {broadcast_dimensions = array<i64: 0, 1, 3>
+-  } : (tensor<1x2x1x!quant.uniform<i8<-128:127>:f32:2, {0.1:-30, 0.5:-20}>>) -> tensor<1x2x3x2x!quant.uniform<i8<-128:127>:f32:3, {0.2:2, 0.5:-20}>>
++  } : (tensor<1x2x1x!quant.uniform<i8<-128:127>:f32:2, {0.1:-30}>>) -> tensor<1x2x3x2x!quant.uniform<i8<-128:127>:f32:3, {0.2:2, 0.5:-20}>>
+   func.return
+ }
+ 
+ // -----
+ 
+ func.func @broadcast_in_dim_c6(
+-  %arg0: tensor<1x2x1x!quant.uniform<i8<-128:127>:f32:2, {0.1:-30, 0.5:-20}>>) {
++  %arg0: tensor<1x2x1x!quant.uniform<i8<-128:127>:f32:2, {0.1:-30}>>) {
+   // expected-error@+1 {{mismatch result zero_point 1 (-20) and operand zero_point 0 (-30)}}
+   %broadcast_in_dim = "stablehlo.broadcast_in_dim" (%arg0) {broadcast_dimensions = array<i64: 0, 1, 3>
+-  } : (tensor<1x2x1x!quant.uniform<i8<-128:127>:f32:2, {0.1:-30, 0.5:-20}>>) -> tensor<1x2x3x2x!quant.uniform<i8<-128:127>:f32:3, {0.1:-30, 0.1:-20}>>
++  } : (tensor<1x2x1x!quant.uniform<i8<-128:127>:f32:2, {0.1:-30}>>) -> tensor<1x2x3x2x!quant.uniform<i8<-128:127>:f32:3, {0.1:-30, 0.1:-20}>>
+   func.return
+ }
+ 
+@@ -903,28 +904,28 @@
+ 
+ // -----
+ 
+-func.func @transpose_c1_mismatched_scales(%arg0: tensor<1x2x2x!quant.uniform<i8<-128:127>:f32:0, {0.1:-30, 0.5:-20}>>) {
++func.func @transpose_c1_mismatched_scales(%arg0: tensor<1x2x2x!quant.uniform<i8<-128:127>:f32:0, {0.1:-30}>>) {
+   // expected-error@+1 {{expect same quantization scales and zero_points}}
+   %transpose = "stablehlo.transpose"(%arg0) {permutation = array<i64: 0, 2, 1>
+-  } : (tensor<1x2x2x!quant.uniform<i8<-128:127>:f32:0, {0.1:-30, 0.5:-20}>>) -> tensor<1x2x2x!quant.uniform<i8<-128:127>:f32:0, {0.1:-30, 0.9:-20}>>
+-  func.return
+-}
+-
+-// -----
+-
+-func.func @transpose_c1_mismatched_zps(%arg0: tensor<1x2x2x!quant.uniform<i8<-128:127>:f32:0, {0.1:-30, 0.5:-20}>>) {
++  } : (tensor<1x2x2x!quant.uniform<i8<-128:127>:f32:0, {0.1:-30}>>) -> tensor<1x2x2x!quant.uniform<i8<-128:127>:f32:0, {0.2:-30}>>
++  func.return
++}
++
++// -----
++
++func.func @transpose_c1_mismatched_zps(%arg0: tensor<1x2x2x!quant.uniform<i8<-128:127>:f32:0, {0.1:-20}>>) {
+   // expected-error@+1 {{expect same quantization scales and zero_points}}
+   %transpose = "stablehlo.transpose"(%arg0) {permutation = array<i64: 0, 2, 1>
+-  } : (tensor<1x2x2x!quant.uniform<i8<-128:127>:f32:0, {0.1:-30, 0.5:-20}>>) -> tensor<1x2x2x!quant.uniform<i8<-128:127>:f32:0, {0.1:-30, 0.5:-10}>>
+-  func.return
+-}
+-
+-// -----
+-
+-func.func @transpose_c4(%arg0: tensor<1x2x2x!quant.uniform<i8<-128:127>:f32:0, {0.1:-30, 0.5:-20}>>) {
+-  // expected-error@+1 {{operand quantization_dimension 0 is not same as permutation[1] 2}}
++  } : (tensor<1x2x2x!quant.uniform<i8<-128:127>:f32:0, {0.1:-20}>>) -> tensor<1x2x2x!quant.uniform<i8<-128:127>:f32:0, {0.1:-30}>>
++  func.return
++}
++
++// -----
++
++func.func @transpose_c4(%arg0: tensor<1x2x2x!quant.uniform<i8<-128:127>:f32:0, {0.1:-30}>>) {
++  // expected-error@+1 {{operand quantization_dimension 0 is not same as permutation[1] = 2}}
+   %transpose = "stablehlo.transpose"(%arg0) {permutation = array<i64: 0, 2, 1>
+-  } : (tensor<1x2x2x!quant.uniform<i8<-128:127>:f32:0, {0.1:-30, 0.5:-20}>>) -> tensor<1x2x2x!quant.uniform<i8<-128:127>:f32:1, {0.1:-30, 0.5:-20}>>
++  } : (tensor<1x2x2x!quant.uniform<i8<-128:127>:f32:0, {0.1:-30}>>) -> tensor<1x2x2x!quant.uniform<i8<-128:127>:f32:1, {0.1:-30, 0.5:-20}>>
+   func.return
+ }
+ 
+@@ -956,7 +957,7 @@
+ 
+ func.func @reshape_c3_mismatch_qdim_size(%arg0: tensor<1x2x3x4x5x!quant.uniform<i8:f32:0, {1.0:17}>>){
+   // expected-error@+1 {{expect same quantization dimension size for operand and result}}
+-  %reshape = "stablehlo.reshape" (%arg0) : (tensor<1x2x3x4x5x!quant.uniform<i8:f32:0, {1.0:17}>>) -> tensor<2x3x20x!quant.uniform<i8:f32:1, {1.0:17}>>
++  %reshape = "stablehlo.reshape" (%arg0) : (tensor<1x2x3x4x5x!quant.uniform<i8:f32:0, {1.0:17}>>) -> tensor<2x3x20x!quant.uniform<i8:f32:1, {1.0:17, 1.0:17, 1.0:17}>>
+   func.return
+ }
+ 
+@@ -967,3 +968,59 @@
+   %reshape = "stablehlo.reshape" (%arg0) : (tensor<1x2x3x4x5x!quant.uniform<i8:f32:0, {1.0:17}>>) -> tensor<2x1x3x20x!quant.uniform<i8:f32:1, {1.0:17}>>
+   func.return
+ }
++
++// -----
++
++func.func @quantized_element_type_c8_per_tensor(%arg0: tensor<1x2x!quant.uniform<i8<-128:127>:f32, 1.0:300>>) {
++  // expected-error@+1 {{operand #0 must be ranked tensor of f8E4M3B11FNUZ type or f8E4M3FN type or f8E4M3FNUZ type or f8E5M2 type or f8E5M2FNUZ type or 16-bit float or 32-bit float or 64-bit float or bfloat16 type or pred (AKA boolean or 1-bit integer) or 4/8/16/32/64-bit signless integer or 4/8/16/32/64-bit unsigned integer or complex type with 32-bit float or 64-bit float elements or 4/8/16/32-bit uniform quantized signed integer or 4/8/16/32-bit uniform quantized unsigned integer or 4/8/16/32-bit uniform quantized per axis signed integer or 4/8/16/32-bit uniform quantized per axis unsigned integer values, but got 'tensor<1x2x!quant.uniform<i8:f32, 1.000000e+00:300>>'}}
++  %0 = stablehlo.add %arg0,  %arg0 : tensor<1x2x!quant.uniform<i8<-128:127>:f32, 1.0:300>>
++  func.return
++}
++
++// -----
++
++func.func @quantized_element_type_c8_per_axis(%arg0: tensor<1x2x!quant.uniform<i8<-128:127>:f32:1, {1.0:3, 1.0:300}>>) {
++  // expected-error@+1 {{operand #0 must be ranked tensor of f8E4M3B11FNUZ type or f8E4M3FN type or f8E4M3FNUZ type or f8E5M2 type or f8E5M2FNUZ type or 16-bit float or 32-bit float or 64-bit float or bfloat16 type or pred (AKA boolean or 1-bit integer) or 4/8/16/32/64-bit signless integer or 4/8/16/32/64-bit unsigned integer or complex type with 32-bit float or 64-bit float elements or 4/8/16/32-bit uniform quantized signed integer or 4/8/16/32-bit uniform quantized unsigned integer or 4/8/16/32-bit uniform quantized per axis signed integer or 4/8/16/32-bit uniform quantized per axis unsigned integer values, but got 'tensor<1x2x!quant.uniform<i8:f32:1, {1.000000e+00:3,1.000000e+00:300}>>'}}
++  %0 = stablehlo.add %arg0,  %arg0 : tensor<1x2x!quant.uniform<i8<-128:127>:f32:1, {1.0:3, 1.0:300}>>
++  func.return
++}
++
++// -----
++
++func.func @quantized_element_type_c12(%arg0: tensor<1x5x2x!quant.uniform<i8<-128:127>:f32:-1, {0.1:-30, 0.1:-30}>>) {
++  // expected-error@+1 {{operand #0 must be ranked tensor of f8E4M3B11FNUZ type or f8E4M3FN type or f8E4M3FNUZ type or f8E5M2 type or f8E5M2FNUZ type or 16-bit float or 32-bit float or 64-bit float or bfloat16 type or pred (AKA boolean or 1-bit integer) or 4/8/16/32/64-bit signless integer or 4/8/16/32/64-bit unsigned integer or complex type with 32-bit float or 64-bit float elements or 4/8/16/32-bit uniform quantized signed integer or 4/8/16/32-bit uniform quantized unsigned integer or 4/8/16/32-bit uniform quantized per axis signed integer or 4/8/16/32-bit uniform quantized per axis unsigned integer values, but got 'tensor<1x5x2x!quant.uniform<i8:f32:-1, {1.000000e-01:-30,1.000000e-01:-30}>>'}}
++  %0 = stablehlo.add %arg0,  %arg0 : tensor<1x5x2x!quant.uniform<i8<-128:127>:f32:-1, {0.1:-30, 0.1:-30}>>
++  func.return
++}
++
++// -----
++
++func.func @quantized_element_type_c13(%arg0: tensor<1x5x2x!quant.uniform<i8<-128:127>:f32:10, {0.1:-30, 0.1:-30}>>) {
++  // expected-error@+1 {{operand #0 must be ranked tensor of f8E4M3B11FNUZ type or f8E4M3FN type or f8E4M3FNUZ type or f8E5M2 type or f8E5M2FNUZ type or 16-bit float or 32-bit float or 64-bit float or bfloat16 type or pred (AKA boolean or 1-bit integer) or 4/8/16/32/64-bit signless integer or 4/8/16/32/64-bit unsigned integer or complex type with 32-bit float or 64-bit float elements or 4/8/16/32-bit uniform quantized signed integer or 4/8/16/32-bit uniform quantized unsigned integer or 4/8/16/32-bit uniform quantized per axis signed integer or 4/8/16/32-bit uniform quantized per axis unsigned integer values, but got 'tensor<1x5x2x!quant.uniform<i8:f32:10, {1.000000e-01:-30,1.000000e-01:-30}>>'}}
++  %0 = stablehlo.add %arg0,  %arg0 : tensor<1x5x2x!quant.uniform<i8<-128:127>:f32:10, {0.1:-30, 0.1:-30}>>
++  func.return
++}
++
++// -----
++
++func.func @quantized_element_type_c14(%arg0: tensor<1x5x2x!quant.uniform<i8<-128:127>:f32:1, {0.1:-30,0.1:-30 }>>) {
++  // expected-error@+1 {{operand #0 must be ranked tensor of f8E4M3B11FNUZ type or f8E4M3FN type or f8E4M3FNUZ type or f8E5M2 type or f8E5M2FNUZ type or 16-bit float or 32-bit float or 64-bit float or bfloat16 type or pred (AKA boolean or 1-bit integer) or 4/8/16/32/64-bit signless integer or 4/8/16/32/64-bit unsigned integer or complex type with 32-bit float or 64-bit float elements or 4/8/16/32-bit uniform quantized signed integer or 4/8/16/32-bit uniform quantized unsigned integer or 4/8/16/32-bit uniform quantized per axis signed integer or 4/8/16/32-bit uniform quantized per axis unsigned integer values, but got 'tensor<1x5x2x!quant.uniform<i8:f32:1, {1.000000e-01:-30,1.000000e-01:-30}>>'}}
++  %0 = stablehlo.add %arg0,  %arg0 : tensor<1x5x2x!quant.uniform<i8<-128:127>:f32:1, {0.1:-30,0.1:-30 }>>
++  func.return
++}
++
++// -----
++
++func.func @quantized_element_type_c8_per_axis(%arg0: tensor<1x2x!quant.uniform<i4:f16, 10.550400e+04>>) {
++  // expected-error@+1 {{operand #0 must be ranked tensor of f8E4M3B11FNUZ type or f8E4M3FN type or f8E4M3FNUZ type or f8E5M2 type or f8E5M2FNUZ type or 16-bit float or 32-bit float or 64-bit float or bfloat16 type or pred (AKA boolean or 1-bit integer) or 4/8/16/32/64-bit signless integer or 4/8/16/32/64-bit unsigned integer or complex type with 32-bit float or 64-bit float elements or 4/8/16/32-bit uniform quantized signed integer or 4/8/16/32-bit uniform quantized unsigned integer or 4/8/16/32-bit uniform quantized per axis signed integer or 4/8/16/32-bit uniform quantized per axis unsigned integer values, but got 'tensor<1x2x!quant.uniform<i4:f16, 1.055040e+05>>'}}
++   %0 = stablehlo.add %arg0,  %arg0 : tensor<1x2x!quant.uniform<i4:f16, 10.550400e+04>>
++   func.return
++}
++
++// -----
++
++func.func @quantized_element_type_c8_per_axis(%arg0: tensor<1x2x!quant.uniform<i4:f16, 4.960464e-08>>) {
++  // expected-error@+1 {{perand #0 must be ranked tensor of f8E4M3B11FNUZ type or f8E4M3FN type or f8E4M3FNUZ type or f8E5M2 type or f8E5M2FNUZ type or 16-bit float or 32-bit float or 64-bit float or bfloat16 type or pred (AKA boolean or 1-bit integer) or 4/8/16/32/64-bit signless integer or 4/8/16/32/64-bit unsigned integer or complex type with 32-bit float or 64-bit float elements or 4/8/16/32-bit uniform quantized signed integer or 4/8/16/32-bit uniform quantized unsigned integer or 4/8/16/32-bit uniform quantized per axis signed integer or 4/8/16/32-bit uniform quantized per axis unsigned integer values, but got 'tensor<1x2x!quant.uniform<i4:f16, 4.9604639999999998E-8>>'}}
++   %0 = stablehlo.add %arg0,  %arg0 : tensor<1x2x!quant.uniform<i4:f16, 4.960464e-08>>
++   func.return
++}
+diff --ruN a/stablehlo/stablehlo/tests/verify_reduce.mlir b/stablehlo/stablehlo/tests/verify_reduce.mlir
+--- stablehlo/stablehlo/tests/verify_reduce.mlir
++++ stablehlo/stablehlo/tests/verify_reduce.mlir
+@@ -80,13 +80,13 @@
+ 
+ // CHECK-LABEL: func @reduce_with_promotable_quantized_types
+ func.func @reduce_with_promotable_quantized_types(%arg0: tensor<4x4x!quant.uniform<i8:f32, 2.000000e+00:15>>,
+-  %arg1: tensor<!quant.uniform<i8:f32, 2.000000e+00:15>>) -> tensor<4x!quant.uniform<i32:f32, 2.000000e+00:15>> {
+-  %0 = stablehlo.reduce(%arg0 init: %arg1) across dimensions = [0] : (tensor<4x4x!quant.uniform<i8:f32, 2.000000e+00:15>>, tensor<!quant.uniform<i8:f32, 2.000000e+00:15>>) -> tensor<4x!quant.uniform<i32:f32, 2.000000e+00:15>>
+-  reducer(%arg2: tensor<!quant.uniform<i32:f32, 2.000000e+00:15>>, %arg3: tensor<!quant.uniform<i32:f32, 2.000000e+00:15>>)  {
+-    %1 = stablehlo.add %arg2, %arg3 : tensor<!quant.uniform<i32:f32, 2.000000e+00:15>>
+-    stablehlo.return %1 : tensor<!quant.uniform<i32:f32, 2.000000e+00:15>>
++  %arg1: tensor<!quant.uniform<i8:f32, 2.000000e+00:15>>) -> tensor<4x!quant.uniform<i16:f32, 2.000000e+00:15>> {
++  %0 = stablehlo.reduce(%arg0 init: %arg1) across dimensions = [0] : (tensor<4x4x!quant.uniform<i8:f32, 2.000000e+00:15>>, tensor<!quant.uniform<i8:f32, 2.000000e+00:15>>) -> tensor<4x!quant.uniform<i16:f32, 2.000000e+00:15>>
++  reducer(%arg2: tensor<!quant.uniform<i16:f32, 2.000000e+00:15>>, %arg3: tensor<!quant.uniform<i16:f32, 2.000000e+00:15>>)  {
++    %1 = stablehlo.add %arg2, %arg3 : tensor<!quant.uniform<i16:f32, 2.000000e+00:15>>
++    stablehlo.return %1 : tensor<!quant.uniform<i16:f32, 2.000000e+00:15>>
+   }
+-  return %0 : tensor<4x!quant.uniform<i32:f32, 2.000000e+00:15>>
++  return %0 : tensor<4x!quant.uniform<i16:f32, 2.000000e+00:15>>
+ }
+ 
+ // -----
+@@ -425,17 +425,17 @@
+ // -----
+ 
+ func.func @reduce_c6(%arg0: tensor<4x4x!quant.uniform<i8:f64, 2.000000e+00:15>>,
+-  %arg1: tensor<!quant.uniform<i8:f32, 2.000000e+00:15>>) -> tensor<4x!quant.uniform<i32:f32, 2.000000e+00:15>> {
+-
+-  // expected-error@+1 {{The element-type of reduction-region's argument at index 1 is expected to be promotable from '!quant.uniform<i8:f64, 2.000000e+00:15>', but got '!quant.uniform<i32:f32, 2.000000e+00:15>'}}
++  %arg1: tensor<!quant.uniform<i8:f32, 2.000000e+00:15>>) -> tensor<4x!quant.uniform<i16:f32, 2.000000e+00:15>> {
++
++  // expected-error@+1 {{The element-type of reduction-region's argument at index 1 is expected to be promotable from '!quant.uniform<i8:f64, 2.000000e+00:15>', but got '!quant.uniform<i16:f32, 2.000000e+00:15>'}}
+   %0 = stablehlo.reduce(%arg0 init: %arg1) across dimensions = [0] : (tensor<4x4x!quant.uniform<i8:f64, 2.000000e+00:15>>,
+-      tensor<!quant.uniform<i8:f32, 2.000000e+00:15>>) -> tensor<4x!quant.uniform<i32:f32, 2.000000e+00:15>>
+-
+-  reducer(%arg2: tensor<!quant.uniform<i32:f32, 2.000000e+00:15>>, %arg3: tensor<!quant.uniform<i32:f32, 2.000000e+00:15>>)  {
+-    %1 = stablehlo.add %arg2, %arg3 : tensor<!quant.uniform<i32:f32, 2.000000e+00:15>>
+-    stablehlo.return %1 : tensor<!quant.uniform<i32:f32, 2.000000e+00:15>>
++      tensor<!quant.uniform<i8:f32, 2.000000e+00:15>>) -> tensor<4x!quant.uniform<i16:f32, 2.000000e+00:15>>
++
++  reducer(%arg2: tensor<!quant.uniform<i16:f32, 2.000000e+00:15>>, %arg3: tensor<!quant.uniform<i16:f32, 2.000000e+00:15>>)  {
++    %1 = stablehlo.add %arg2, %arg3 : tensor<!quant.uniform<i16:f32, 2.000000e+00:15>>
++    stablehlo.return %1 : tensor<!quant.uniform<i16:f32, 2.000000e+00:15>>
+   }
+-  return %0 : tensor<4x!quant.uniform<i32:f32, 2.000000e+00:15>>
++  return %0 : tensor<4x!quant.uniform<i16:f32, 2.000000e+00:15>>
+ }
+ 
+ // The following invalid cases arises while parsing a pretty-printed version of reduce-op will "non-eligible" inner-op.
+diff --ruN a/stablehlo/stablehlo/tests/verify_reduce_window.mlir b/stablehlo/stablehlo/tests/verify_reduce_window.mlir
+--- stablehlo/stablehlo/tests/verify_reduce_window.mlir
++++ stablehlo/stablehlo/tests/verify_reduce_window.mlir
+@@ -82,19 +82,19 @@
+ 
+ // CHECK-LABEL: func @reduce_window_with_promotable_quantized_types
+ func.func @reduce_window_with_promotable_quantized_types(%arg0: tensor<4x2x!quant.uniform<i8:f32, 2.000000e+00:15>>,
+-    %init0: tensor<!quant.uniform<i8:f32, 2.000000e+00:15>>) -> (tensor<2x2x!quant.uniform<i32:f32, 2.000000e+00:15>>) {
+-
+-  %0 = "stablehlo.reduce_window"(%arg0, %init0) ({
+-         ^bb0(%a0: tensor<!quant.uniform<i32:f32, 2.000000e+00:15>>, %b0: tensor<!quant.uniform<i32:f32, 2.000000e+00:15>>):
+-              %1 = stablehlo.add %a0, %b0 : tensor<!quant.uniform<i32:f32, 2.000000e+00:15>>
+-              "stablehlo.return"(%1) : (tensor<!quant.uniform<i32:f32, 2.000000e+00:15>>) -> ()
+-            })
+-         { padding = dense<[[2, 2], [0, 0]]> : tensor<2x2xi64>,
+-           window_dimensions = array<i64: 5, 1>,
+-           window_strides = array<i64: 3, 1>
+-         }
+-         : (tensor<4x2x!quant.uniform<i8:f32, 2.000000e+00:15>>, tensor<!quant.uniform<i8:f32, 2.000000e+00:15>>) -> (tensor<2x2x!quant.uniform<i32:f32, 2.000000e+00:15>>)
+-  func.return %0 : tensor<2x2x!quant.uniform<i32:f32, 2.000000e+00:15>>
++    %init0: tensor<!quant.uniform<i8:f32, 2.000000e+00:15>>) -> (tensor<2x2x!quant.uniform<i16:f32, 2.000000e+00:15>>) {
++
++  %0 = "stablehlo.reduce_window"(%arg0, %init0) ({
++         ^bb0(%a0: tensor<!quant.uniform<i16:f32, 2.000000e+00:15>>, %b0: tensor<!quant.uniform<i16:f32, 2.000000e+00:15>>):
++              %1 = stablehlo.add %a0, %b0 : tensor<!quant.uniform<i16:f32, 2.000000e+00:15>>
++              "stablehlo.return"(%1) : (tensor<!quant.uniform<i16:f32, 2.000000e+00:15>>) -> ()
++            })
++         { padding = dense<[[2, 2], [0, 0]]> : tensor<2x2xi64>,
++           window_dimensions = array<i64: 5, 1>,
++           window_strides = array<i64: 3, 1>
++         }
++         : (tensor<4x2x!quant.uniform<i8:f32, 2.000000e+00:15>>, tensor<!quant.uniform<i8:f32, 2.000000e+00:15>>) -> (tensor<2x2x!quant.uniform<i16:f32, 2.000000e+00:15>>)
++  func.return %0 : tensor<2x2x!quant.uniform<i16:f32, 2.000000e+00:15>>
+ }
+ 
+ // -----
+@@ -619,20 +619,20 @@
+ // -----
+ 
+ func.func @reduce_window_c13(%arg0: tensor<4x2x!quant.uniform<i8:f64, 2.000000e+00:15>>,
+-    %init0: tensor<!quant.uniform<i8:f32, 2.000000e+00:15>>) -> (tensor<2x2x!quant.uniform<i32:f32, 2.000000e+00:15>>) {
+-
+-  // expected-error@+1 {{The element-type of reduction-region's argument at index 1 is expected to be promotable from '!quant.uniform<i8:f64, 2.000000e+00:15>', but got '!quant.uniform<i32:f32, 2.000000e+00:15>'}}
+-  %0 = "stablehlo.reduce_window"(%arg0, %init0) ({
+-         ^bb0(%a0: tensor<!quant.uniform<i32:f32, 2.000000e+00:15>>, %b0: tensor<!quant.uniform<i32:f32, 2.000000e+00:15>>):
+-              %1 = stablehlo.add %a0, %b0 : tensor<!quant.uniform<i32:f32, 2.000000e+00:15>>
+-              "stablehlo.return"(%1) : (tensor<!quant.uniform<i32:f32, 2.000000e+00:15>>) -> ()
+-            })
+-         { padding = dense<[[2, 2], [0, 0]]> : tensor<2x2xi64>,
+-           window_dimensions = array<i64: 5, 1>,
+-           window_strides = array<i64: 3, 1>
+-         }
+-         : (tensor<4x2x!quant.uniform<i8:f64, 2.000000e+00:15>>, tensor<!quant.uniform<i8:f32, 2.000000e+00:15>>) -> (tensor<2x2x!quant.uniform<i32:f32, 2.000000e+00:15>>)
+-  func.return %0 : tensor<2x2x!quant.uniform<i32:f32, 2.000000e+00:15>>
++    %init0: tensor<!quant.uniform<i8:f32, 2.000000e+00:15>>) -> (tensor<2x2x!quant.uniform<i16:f32, 2.000000e+00:15>>) {
++
++  // expected-error@+1 {{The element-type of reduction-region's argument at index 1 is expected to be promotable from '!quant.uniform<i8:f64, 2.000000e+00:15>', but got '!quant.uniform<i16:f32, 2.000000e+00:15>'}}
++  %0 = "stablehlo.reduce_window"(%arg0, %init0) ({
++         ^bb0(%a0: tensor<!quant.uniform<i16:f32, 2.000000e+00:15>>, %b0: tensor<!quant.uniform<i16:f32, 2.000000e+00:15>>):
++              %1 = stablehlo.add %a0, %b0 : tensor<!quant.uniform<i16:f32, 2.000000e+00:15>>
++              "stablehlo.return"(%1) : (tensor<!quant.uniform<i16:f32, 2.000000e+00:15>>) -> ()
++            })
++         { padding = dense<[[2, 2], [0, 0]]> : tensor<2x2xi64>,
++           window_dimensions = array<i64: 5, 1>,
++           window_strides = array<i64: 3, 1>
++         }
++         : (tensor<4x2x!quant.uniform<i8:f64, 2.000000e+00:15>>, tensor<!quant.uniform<i8:f32, 2.000000e+00:15>>) -> (tensor<2x2x!quant.uniform<i16:f32, 2.000000e+00:15>>)
++  func.return %0 : tensor<2x2x!quant.uniform<i16:f32, 2.000000e+00:15>>
+ }
+ 
+ // -----
+diff --ruN a/stablehlo/stablehlo/tests/verify_scatter.mlir b/stablehlo/stablehlo/tests/verify_scatter.mlir
+--- stablehlo/stablehlo/tests/verify_scatter.mlir
++++ stablehlo/stablehlo/tests/verify_scatter.mlir
+@@ -73,25 +73,25 @@
+ 
+ // CHECK: func @scatter_with_promotable_quantized_types
+ func.func @scatter_with_promotable_quantized_types(%input_tensor: tensor<200x100x300x!quant.uniform<i8:f32, 2.000000e+00:15>>,
+-    %scatter_indices: tensor<10x2xi32>, %updates: tensor<10x300x!quant.uniform<i8:f32, 2.000000e+00:15>>) ->
+-      tensor<200x100x300x!quant.uniform<i32:f32, 2.000000e+00:15>> {
+-  %0 = "stablehlo.scatter" (%input_tensor, %scatter_indices, %updates) ({
+-  ^bb0(%lhs: tensor<!quant.uniform<i32:f32, 2.000000e+00:15>>, %rhs: tensor<!quant.uniform<i32:f32, 2.000000e+00:15>>):
+-    %add = stablehlo.add %lhs, %rhs : tensor<!quant.uniform<i32:f32, 2.000000e+00:15>>
+-    "stablehlo.return"(%add) : (tensor<!quant.uniform<i32:f32, 2.000000e+00:15>>) -> ()
+-  }) {
+-    scatter_dimension_numbers = #stablehlo.scatter<
+-      update_window_dims = [1],
+-      inserted_window_dims = [0, 1],
+-      scatter_dims_to_operand_dims = [0, 1],
+-      index_vector_dim = 1
+-    >,
+-    indices_are_sorted = true,
+-    unique_indices = true
+-  } : (tensor<200x100x300x!quant.uniform<i8:f32, 2.000000e+00:15>>, tensor<10x2xi32>,
++    %scatter_indices: tensor<10x2xi16>, %updates: tensor<10x300x!quant.uniform<i8:f32, 2.000000e+00:15>>) ->
++      tensor<200x100x300x!quant.uniform<i16:f32, 2.000000e+00:15>> {
++  %0 = "stablehlo.scatter" (%input_tensor, %scatter_indices, %updates) ({
++  ^bb0(%lhs: tensor<!quant.uniform<i16:f32, 2.000000e+00:15>>, %rhs: tensor<!quant.uniform<i16:f32, 2.000000e+00:15>>):
++    %add = stablehlo.add %lhs, %rhs : tensor<!quant.uniform<i16:f32, 2.000000e+00:15>>
++    "stablehlo.return"(%add) : (tensor<!quant.uniform<i16:f32, 2.000000e+00:15>>) -> ()
++  }) {
++    scatter_dimension_numbers = #stablehlo.scatter<
++      update_window_dims = [1],
++      inserted_window_dims = [0, 1],
++      scatter_dims_to_operand_dims = [0, 1],
++      index_vector_dim = 1
++    >,
++    indices_are_sorted = true,
++    unique_indices = true
++  } : (tensor<200x100x300x!quant.uniform<i8:f32, 2.000000e+00:15>>, tensor<10x2xi16>,
+       tensor<10x300x!quant.uniform<i8:f32, 2.000000e+00:15>>) ->
+-      tensor<200x100x300x!quant.uniform<i32:f32, 2.000000e+00:15>>
+-  func.return %0 : tensor<200x100x300x!quant.uniform<i32:f32, 2.000000e+00:15>>
++      tensor<200x100x300x!quant.uniform<i16:f32, 2.000000e+00:15>>
++  func.return %0 : tensor<200x100x300x!quant.uniform<i16:f32, 2.000000e+00:15>>
+ }
+ 
+ // -----
+@@ -898,24 +898,24 @@
+ // -----
+ 
+ func.func @scatter_c15(%input_tensor: tensor<200x100x300x!quant.uniform<i8:f64, 2.000000e+00:15>>,
+-    %scatter_indices: tensor<10x2xi32>, %updates: tensor<10x300x!quant.uniform<i8:f32, 2.000000e+00:15>>) ->
+-      tensor<200x100x300x!quant.uniform<i32:f32, 2.000000e+00:15>> {
+-
+-  // expected-error@+1 {{The element-type of reduction-region's argument at index 1 is expected to be promotable from '!quant.uniform<i8:f64, 2.000000e+00:15>', but got '!quant.uniform<i32:f32, 2.000000e+00:15>'}}
+-  %0 = "stablehlo.scatter" (%input_tensor, %scatter_indices, %updates) ({
+-  ^bb0(%lhs: tensor<!quant.uniform<i32:f32, 2.000000e+00:15>>, %rhs: tensor<!quant.uniform<i32:f32, 2.000000e+00:15>>):
+-    %add = stablehlo.add %lhs, %rhs : tensor<!quant.uniform<i32:f32, 2.000000e+00:15>>
+-    "stablehlo.return"(%add) : (tensor<!quant.uniform<i32:f32, 2.000000e+00:15>>) -> ()
+-  }) {
+-    scatter_dimension_numbers = #stablehlo.scatter<
+-      update_window_dims = [1],
+-      inserted_window_dims = [0, 1],
+-      scatter_dims_to_operand_dims = [0, 1],
+-      index_vector_dim = 1
+-    >,
+-    indices_are_sorted = true,
+-    unique_indices = true
+-  } : (tensor<200x100x300x!quant.uniform<i8:f64, 2.000000e+00:15>>, tensor<10x2xi32>, tensor<10x300x!quant.uniform<i8:f32, 2.000000e+00:15>>) ->
+-      tensor<200x100x300x!quant.uniform<i32:f32, 2.000000e+00:15>>
+-  func.return %0 : tensor<200x100x300x!quant.uniform<i32:f32, 2.000000e+00:15>>
+-}
++    %scatter_indices: tensor<10x2xi16>, %updates: tensor<10x300x!quant.uniform<i8:f32, 2.000000e+00:15>>) ->
++      tensor<200x100x300x!quant.uniform<i16:f32, 2.000000e+00:15>> {
++
++  // expected-error@+1 {{The element-type of reduction-region's argument at index 1 is expected to be promotable from '!quant.uniform<i8:f64, 2.000000e+00:15>', but got '!quant.uniform<i16:f32, 2.000000e+00:15>'}}
++  %0 = "stablehlo.scatter" (%input_tensor, %scatter_indices, %updates) ({
++  ^bb0(%lhs: tensor<!quant.uniform<i16:f32, 2.000000e+00:15>>, %rhs: tensor<!quant.uniform<i16:f32, 2.000000e+00:15>>):
++    %add = stablehlo.add %lhs, %rhs : tensor<!quant.uniform<i16:f32, 2.000000e+00:15>>
++    "stablehlo.return"(%add) : (tensor<!quant.uniform<i16:f32, 2.000000e+00:15>>) -> ()
++  }) {
++    scatter_dimension_numbers = #stablehlo.scatter<
++      update_window_dims = [1],
++      inserted_window_dims = [0, 1],
++      scatter_dims_to_operand_dims = [0, 1],
++      index_vector_dim = 1
++    >,
++    indices_are_sorted = true,
++    unique_indices = true
++  } : (tensor<200x100x300x!quant.uniform<i8:f64, 2.000000e+00:15>>, tensor<10x2xi16>, tensor<10x300x!quant.uniform<i8:f32, 2.000000e+00:15>>) ->
++      tensor<200x100x300x!quant.uniform<i16:f32, 2.000000e+00:15>>
++  func.return %0 : tensor<200x100x300x!quant.uniform<i16:f32, 2.000000e+00:15>>
++}
+diff --ruN a/stablehlo/stablehlo/tests/verify_select_and_scatter.mlir b/stablehlo/stablehlo/tests/verify_select_and_scatter.mlir
+--- stablehlo/stablehlo/tests/verify_select_and_scatter.mlir
++++ stablehlo/stablehlo/tests/verify_select_and_scatter.mlir
+@@ -57,7 +57,7 @@
+   %arg0: tensor<10x24x24x64x!quant.uniform<i8:f32, 2.000000e+00:15>>,
+   %arg1: tensor<10x12x12x64x!quant.uniform<i8:f32, 2.000000e+00:15>>,
+   %arg2 : tensor<!quant.uniform<i8:f32, 2.000000e+00:15>>) ->
+-  tensor<10x24x24x64x!quant.uniform<i32:f32, 2.000000e+00:15>> {
++  tensor<10x24x24x64x!quant.uniform<i16:f32, 2.000000e+00:15>> {
+ 
+   %1 = "stablehlo.select_and_scatter"(%arg0, %arg1, %arg2) ({
+   ^bb0(%arg3: tensor<!quant.uniform<i8:f32, 2.000000e+00:15>>, %arg4: tensor<!quant.uniform<i8:f32, 2.000000e+00:15>>):
+@@ -67,17 +67,17 @@
+       } : (tensor<!quant.uniform<i8:f32, 2.000000e+00:15>>, tensor<!quant.uniform<i8:f32, 2.000000e+00:15>>) -> tensor<i1>
+     "stablehlo.return"(%2) : (tensor<i1>) -> ()
+   },  {
+-  ^bb0(%arg3: tensor<!quant.uniform<i32:f32, 2.000000e+00:15>>, %arg4: tensor<!quant.uniform<i32:f32, 2.000000e+00:15>>):
+-    %2 = stablehlo.add %arg3, %arg4 : tensor<!quant.uniform<i32:f32, 2.000000e+00:15>>
+-    "stablehlo.return"(%2) : (tensor<!quant.uniform<i32:f32, 2.000000e+00:15>>) -> ()
++  ^bb0(%arg3: tensor<!quant.uniform<i16:f32, 2.000000e+00:15>>, %arg4: tensor<!quant.uniform<i16:f32, 2.000000e+00:15>>):
++    %2 = stablehlo.add %arg3, %arg4 : tensor<!quant.uniform<i16:f32, 2.000000e+00:15>>
++    "stablehlo.return"(%2) : (tensor<!quant.uniform<i16:f32, 2.000000e+00:15>>) -> ()
+   }) {
+     window_dimensions = array<i64: 1, 2, 2, 1>,
+     window_strides = array<i64: 1, 2, 2, 1>
+   } : (tensor<10x24x24x64x!quant.uniform<i8:f32, 2.000000e+00:15>>,
+       tensor<10x12x12x64x!quant.uniform<i8:f32, 2.000000e+00:15>>,
+       tensor<!quant.uniform<i8:f32, 2.000000e+00:15>>) ->
+-      tensor<10x24x24x64x!quant.uniform<i32:f32, 2.000000e+00:15>>
+-  func.return %1 : tensor<10x24x24x64x!quant.uniform<i32:f32, 2.000000e+00:15>>
++      tensor<10x24x24x64x!quant.uniform<i16:f32, 2.000000e+00:15>>
++  func.return %1 : tensor<10x24x24x64x!quant.uniform<i16:f32, 2.000000e+00:15>>
+ }
+ 
+ // -----
 diff --ruN a/stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp b/stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp
 --- stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp
 +++ stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp
