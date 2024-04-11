@@ -53,7 +53,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status.h"
-#include "xla/statusor.h"
 #include "xla/test.h"
 #include "xla/test_helpers.h"
 #include "xla/util.h"
@@ -1541,6 +1540,44 @@ TEST(XlaBuilderTest, AddFrontendAttribute) {
 
   TF_ASSERT_OK_AND_ASSIGN(const auto module, BuildHloModule(b));
   ExpectInstructionsAttributesMatch(*module, expected);
+}
+
+TEST(XlaBuilderTest, SetAndGetSharding) {
+  XlaBuilder b(TestName());
+
+  const Shape shape = ShapeUtil::MakeShape(F32, {1024});
+  OpSharding op_sharding_1 = sharding_builder::Replicate();
+  OpSharding op_sharding_2 = sharding_builder::Tile1D(shape, 4);
+  TF_ASSERT_OK_AND_ASSIGN(HloSharding hlo_sharding_1,
+                          HloSharding::FromProto(op_sharding_1));
+  TF_ASSERT_OK_AND_ASSIGN(HloSharding hlo_sharding_2,
+                          HloSharding::FromProto(op_sharding_2));
+
+  b.SetSharding(op_sharding_1);
+  XlaOp p0 = Parameter(&b, 0, shape, "p0");
+  TF_ASSERT_OK_AND_ASSIGN(auto p0_sharding, b.GetOpSharding(p0));
+  EXPECT_TRUE(p0_sharding.has_value());
+  EXPECT_EQ(HloSharding::FromProto(p0_sharding.value()).value(),
+            hlo_sharding_1);
+
+  EXPECT_TRUE(b.SetInstructionSharding(p0, std::nullopt).ok());
+  TF_ASSERT_OK_AND_ASSIGN(p0_sharding, b.GetOpSharding(p0));
+  EXPECT_FALSE(p0_sharding.has_value());
+
+  EXPECT_TRUE(b.SetInstructionSharding(p0, op_sharding_2).ok());
+  TF_ASSERT_OK_AND_ASSIGN(p0_sharding, b.GetOpSharding(p0));
+  EXPECT_TRUE(p0_sharding.has_value());
+  EXPECT_EQ(HloSharding::FromProto(p0_sharding.value()).value(),
+            hlo_sharding_2);
+
+  EXPECT_EQ(HloSharding::FromProto(b.sharding().value()).value(),
+            hlo_sharding_1);
+
+  TF_ASSERT_OK_AND_ASSIGN(const auto module, BuildHloModule(b));
+  EXPECT_TRUE(
+      module->entry_computation()->parameter_instruction(0)->has_sharding());
+  EXPECT_EQ(module->entry_computation()->parameter_instruction(0)->sharding(),
+            hlo_sharding_2);
 }
 
 TEST(XlaBuilderTest, ComparisonType) {

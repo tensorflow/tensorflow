@@ -297,7 +297,6 @@ xla_cc_test(
         "//xla:debug_options_flags",
         "//xla:shape_util",
         "//xla:status",
-        "//xla:statusor",
         "//xla:test",
         "//xla:test_helpers",
         "//xla:util",

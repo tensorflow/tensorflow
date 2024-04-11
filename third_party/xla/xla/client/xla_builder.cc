@@ -62,7 +62,6 @@ limitations under the License.
 #include "xla/sharding_op_util.h"
 #include "xla/status.h"
 #include "xla/status_macros.h"
-#include "xla/statusor.h"
 #include "xla/util.h"
 #include "xla/window_util.h"
 #include "xla/xla_data.pb.h"
@@ -110,6 +109,18 @@ bool InstrIsSetBound(const HloInstructionProto* instr_proto) {
     return true;
   }
   return false;
+}
+
+Status NormalizeAndAssignSharing(HloInstructionProto* instr,
+                                 const OpSharding& op_sharding) {
+  // Normalize tuple sharding and fail the call if the sharding is invalid.
+  Shape shape(instr->shape());
+  TF_ASSIGN_OR_RETURN(HloSharding sharding,
+                      HloSharding::FromProto(op_sharding));
+  sharding = sharding.NormalizeTupleSharding(shape);
+  TF_RETURN_IF_ERROR(sharding.Validate(shape));
+  *instr->mutable_sharding() = sharding.ToProto();
+  return OkStatus();
 }
 
 }  // namespace
@@ -476,6 +487,15 @@ absl::StatusOr<std::vector<Shape>> XlaBuilder::GetOperandShapes(
   return operand_shapes;
 }
 
+absl::StatusOr<std::optional<OpSharding>> XlaBuilder::GetOpSharding(
+    XlaOp op) const {
+  TF_ASSIGN_OR_RETURN(auto instr_proto, LookUpInstruction(op));
+  if (instr_proto->has_sharding()) {
+    return instr_proto->sharding();
+  }
+  return std::nullopt;
+}
+
 std::string XlaBuilder::OpToString(XlaOp op) const {
   std::string s;
   ToStringHelper(&s, /*ident=*/0, op.handle());
@@ -681,6 +701,16 @@ Status XlaBuilder::SetInstructionFrontendAttribute(const XlaOp op,
   auto* frontend_attributes = instr_proto->mutable_frontend_attributes();
   (*frontend_attributes->mutable_map())[attribute] = std::move(value);
   return OkStatus();
+}
+
+Status XlaBuilder::SetInstructionSharding(
+    XlaOp op, const std::optional<OpSharding>& sharding) {
+  TF_ASSIGN_OR_RETURN(auto instr_proto, LookUpMutableInstruction(op));
+  if (!sharding.has_value()) {
+    instr_proto->clear_sharding();
+    return OkStatus();
+  }
+  return NormalizeAndAssignSharing(instr_proto, sharding.value());
 }
 
 XlaComputation XlaBuilder::BuildAndNoteError() {
@@ -4560,13 +4590,7 @@ absl::StatusOr<XlaOp> XlaBuilder::AddInstruction(
     *instr.mutable_metadata() = metadata_;
   }
   if (sharding_) {
-    // Normalize tuple sharding and fail the call if the sharding is not valid.
-    Shape shape(instr.shape());
-    TF_ASSIGN_OR_RETURN(HloSharding sharding,
-                        HloSharding::FromProto(*sharding_));
-    sharding = sharding.NormalizeTupleSharding(shape);
-    TF_RETURN_IF_ERROR(sharding.Validate(shape));
-    *instr.mutable_sharding() = sharding.ToProto();
+    TF_RETURN_IF_ERROR(NormalizeAndAssignSharing(&instr, *sharding_));
   }
   *instr.mutable_frontend_attributes() = frontend_attributes_;
 
