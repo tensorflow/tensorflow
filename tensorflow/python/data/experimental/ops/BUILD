@@ -525,6 +525,25 @@ py_strict_library(
 )
 
 py_strict_library(
+    name = "weighted_flat_map_op",
+    srcs = [
+        "weighted_flat_map_op.py",
+    ],
+    srcs_version = "PY3",
+    deps = [
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/util:convert",
+        "//tensorflow/python/data/util:nest",
+        "//tensorflow/python/data/util:random_seed",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
+        "//tensorflow/python/ops:dataset_ops_gen",
+        "//tensorflow/python/ops:experimental_dataset_ops_gen",
+    ],
+)
+
+py_strict_library(
     name = "writers",
     srcs = [
         "writers.py",

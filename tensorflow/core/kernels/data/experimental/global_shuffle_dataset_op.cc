@@ -155,6 +155,10 @@ class GlobalShuffleDatasetOp::Dataset : public DatasetBase {
         output);
   }
 
+  absl::Status RandomIndexingCompatible() const override {
+    return absl::OkStatus();
+  }
+
  private:
   class Iterator;
 
@@ -253,6 +257,7 @@ class GlobalShuffleDatasetOp::Dataset::Iterator
     }
     IteratorContext::Params params(ctx);
     params.restored_element_count = element_count_;
+    params.index_mapper = GetIndexMapper(ctx->index_mapper());
     IteratorContext ctx_copy(params);
     TF_RETURN_IF_ERROR(RestoreInput(&ctx_copy, reader, input_impl_));
     ctx->MergeCheckpoint(ctx_copy.checkpoint());

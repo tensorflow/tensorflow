@@ -942,6 +942,28 @@ tf_kernel_library(
     ],
 )
 
+tf_kernel_library(
+    name = "weighted_flat_map_dataset_op",
+    srcs = ["weighted_flat_map_dataset_op.cc"],
+    deps = [
+        "//tensorflow/core:dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core/data:captured_function",
+        "//tensorflow/core/data:dataset_utils",
+        "//tensorflow/core/data:name_utils",
+        "//tensorflow/core/framework:types_proto_cc",
+        "//tensorflow/core/platform:errors",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
 tf_cc_test(
     name = "unique_dataset_op_test",
     size = "small",
@@ -1016,6 +1038,7 @@ tf_kernel_library(
         ":to_tf_record_op",
         ":unbatch_dataset_op",
         ":unique_dataset_op",
+        ":weighted_flat_map_dataset_op",
         "//tensorflow/core/data/service/snapshot:list_snapshot_chunks_dataset_op",
         "//tensorflow/core/data/service/snapshot:snapshot_chunk_dataset_op",
     ] + select({

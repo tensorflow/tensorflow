@@ -5613,6 +5613,10 @@ tf_module {
     argspec: "args=[\'shape\', \'dtype\', \'container\', \'shared_name\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'\', \'None\'], "
   }
   member_method {
+    name: "WeightedFlatMapDataset"
+    argspec: "args=[\'input_datasets\', \'weights\', \'output_types\', \'output_shapes\', \'metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'None\'], "
+  }
+  member_method {
     name: "Where"
     argspec: "args=[\'condition\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }

@@ -539,6 +539,19 @@ REGISTER_OP("IndexFlatMapDataset")
                                                            "output_types"))
     .SetShapeFn(shape_inference::ScalarShape);
 
+REGISTER_OP("WeightedFlatMapDataset")
+    .Input("input_datasets: N * variant")
+    .Input("weights: M * double")
+    .Output("handle: variant")
+    .Attr("N: int >= 2")
+    .Attr("M: int >= 2")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .Attr("metadata: string = ''")
+    .SetTypeConstructor(full_type::VariadicTensorContainer(TFT_DATASET,
+                                                           "output_types"))
+    .SetShapeFn(shape_inference::ScalarShape);
+
 REGISTER_OP("IgnoreErrorsDataset")
     .Input("input_dataset: variant")
     .Output("handle: variant")
