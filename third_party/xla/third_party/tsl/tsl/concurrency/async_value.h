@@ -384,10 +384,12 @@ class AsyncValue {
 
   std::atomic<WaitersAndState> waiters_and_state_;
 
-  // We assume (and static_assert) that this is the offset of
-  // ConcreteAsyncValue::data_, which is the same as the offset of
-  // ConcreteAsyncValue::error_.
-  static constexpr int kDataOffset = 16;
+  // We assume (and static_assert) that this is the offset of ConcreteAsyncValue
+  // data payload so that we can always get a pointer to the start of payload
+  // from an async value pointer. We use alignas attribute to guarantee that the
+  // data payload stored at exactly this offset. It means that types that have
+  // larger alignment requirement are not compatible with AsyncValues.
+  static constexpr int kDataOffset = 64;
 
  private:
   // Information about a ConcreteAsyncValue<T> subclass.
@@ -536,14 +538,18 @@ class ConcreteAsyncValue : public AsyncValue {
   explicit ConcreteAsyncValue(ConstructedPayload payload, Args&&... args)
       : AsyncValue(Kind::kConcrete, State::kConstructed, payload.is_refcounted,
                    TypeTag<T>()),
-        data_store_{TypeTag<T>(), std::forward<Args>(args)...} {}
+        data_store_{TypeTag<T>(), std::forward<Args>(args)...} {
+    VerifyOffsets();
+  }
 
   // Make a ConcreteAsyncValue with kConcrete state.
   template <typename... Args>
   explicit ConcreteAsyncValue(ConcretePayload payload, Args&&... args)
       : AsyncValue(Kind::kConcrete, State::kConcrete, payload.is_refcounted,
                    TypeTag<T>()),
-        data_store_{TypeTag<T>(), std::forward<Args>(args)...} {}
+        data_store_{TypeTag<T>(), std::forward<Args>(args)...} {
+    VerifyOffsets();
+  }
 
   ~ConcreteAsyncValue() { Destroy(); }
 
@@ -688,7 +694,7 @@ class ConcreteAsyncValue : public AsyncValue {
   using DataStoreT =
       std::conditional_t<std::is_base_of_v<KeepAsyncValuePayloadOnError, T>,
                          DataAndError, DataOrError>;
-  DataStoreT data_store_;
+  alignas(AsyncValue::kDataOffset) DataStoreT data_store_;
 
   void Destroy() { data_store_.Destroy(state()); }
   bool HasData() const { return data_store_.HasData(state()); }
@@ -696,12 +702,8 @@ class ConcreteAsyncValue : public AsyncValue {
   static void VerifyOffsets() {
     static_assert(offsetof(ConcreteAsyncValue<T>, data_store_.data_) ==
                       AsyncValue::kDataOffset,
-                  "Offset of ConcreteAsyncValue::data_ is assumed to be "
-                  "AsyncValue::kDataOffset == 16");
-    static_assert(offsetof(ConcreteAsyncValue<T>, data_store_.error_) ==
-                      AsyncValue::kDataOffset,
-                  "Offset of ConcreteAsyncValue::error_ is assumed to be "
-                  "AsyncValue::kDataOffset == 16");
+                  "Offset of ConcreteAsyncValue data payload is assumed to be "
+                  "AsyncValue::kDataOffset == 64");
   }
 
   static const uint16_t concrete_type_id_;

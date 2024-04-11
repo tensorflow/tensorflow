@@ -48,7 +48,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status.h"
 #include "xla/status_macros.h"
-#include "xla/statusor.h"
 #include "xla/tsl/util/byte_swap_array.h"
 #include "xla/types.h"
 #include "xla/util.h"
@@ -68,10 +67,6 @@ using absl::StrCat;
 using primitive_util::NativeTypeOf;
 
 constexpr bool kLittleEndian = __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__;
-// Literals can be used as DMA targets, which can require alignment. We
-// force a tsl::Allocator::kAllocatorAlignment-byte minimum
-// alignment.
-constexpr int kMinimumAlignment = 64;
 
 // Converts between little and big endian.
 //

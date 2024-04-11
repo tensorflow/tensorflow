@@ -998,13 +998,18 @@ class LiteralBase {
       std::vector<Piece> children = {};
     };
 
+    // Literals can be used as DMA targets, which can require alignment. We
+    // force a tsl::Allocator::kAllocatorAlignment-byte minimum
+    // alignment.
+    static inline constexpr size_t kMinimumAlignment = 64;
+
     // Use just so many bytes that we don't increase the sizeof(Piece).
     static inline constexpr size_t kMaxInlinedBytes =
         std::max(sizeof(DenseRep), sizeof(TupleRep));
 
     // Inlined dense array storage.
     struct DenseInlinedRep {
-      char data[kMaxInlinedBytes];
+      alignas(kMinimumAlignment) char data[kMaxInlinedBytes];
     };
 
     const DenseInlinedRep* GetDenseInlinedRep() const {
