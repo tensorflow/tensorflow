@@ -300,6 +300,7 @@ xla_cc_binary(
 tf_proto_library(
     name = "auto_sharding_proto",
     srcs = ["auto_sharding.proto"],
+    visibility = ["//visibility:public"],
 )
 
 build_test(
