@@ -63,21 +63,30 @@ class ConvertReduceOpToArgMin
   bool IsValueInitValue(const DenseElementsAttr& attr) const override;
 };
 
+// mhlo.reduce to arg_min/max <ReduceOp, ArgReduceOp, BooleanReduceOp>
+//
+// Matches: mhlo.reduce
+//  inputs: Must be 2 inputs.
+//  init_values: Trivial 0 init values.
+//  dimensions: Must be array of size 1.
+//
+// Additionally matches: mhlo.select, mhlo.compare, mhlo.min, mhlo.or
+//
+// Emits:
+//  ArgReduceOp
+//  ReduceOp if dtype is not boolean
+//  BooleanReduceOp if dtype is boolean.
 using ConvertReduceOpToTFLiteArgmax =
     ConvertReduceOpToArgMax<TFL::ReduceMaxOp, TFL::ArgMaxOp, TFL::ReduceAnyOp>;
-using ConvertReduceOpToTfArgmax =
-    ConvertReduceOpToArgMax<TF::MaxOp, TF::ArgMaxOp, TF::AnyOp>;
+
 using ConvertReduceOpToTFLiteArgmin =
     ConvertReduceOpToArgMin<TFL::ReduceMinOp, TFL::ArgMinOp, TFL::ReduceAllOp>;
+
+using ConvertReduceOpToTfArgmax =
+    ConvertReduceOpToArgMax<TF::MaxOp, TF::ArgMaxOp, TF::AnyOp>;
+
 using ConvertReduceOpToTfArgmin =
     ConvertReduceOpToArgMin<TF::MinOp, TF::ArgMinOp, TF::AllOp>;
-
-template class ConvertReduceOpToArgMax<TFL::ReduceMaxOp, TFL::ArgMaxOp,
-                                       TFL::ReduceAnyOp>;
-template class ConvertReduceOpToArgMin<TFL::ReduceMinOp, TFL::ArgMinOp,
-                                       TFL::ReduceAllOp>;
-template class ConvertReduceOpToArgMax<TF::MaxOp, TF::ArgMaxOp, TF::AnyOp>;
-template class ConvertReduceOpToArgMin<TF::MinOp, TF::ArgMinOp, TF::AllOp>;
 
 // Returns true if the given reduce op can be legalized to ArgMax/ArgMin ops.
 std::optional<bool> IsReduceOpLegal(mhlo::ReduceOp reduce_op);

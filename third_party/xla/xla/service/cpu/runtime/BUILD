@@ -923,3 +923,20 @@ cc_library(
         "@local_tsl//tsl/profiler/lib:traceme",
     ],
 )
+
+cc_library(
+    name = "topk_thunk",
+    srcs = ["topk_thunk.cc"],
+    hdrs = ["topk_thunk.h"],
+    deps = [
+        ":thunk",
+        "//xla/runtime:buffer_use",
+        "//xla/service:buffer_assignment",
+        "//xla/service/cpu:runtime_topk",
+        "//xla/stream_executor:device_memory",
+        "//xla/tsl/concurrency:async_value",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status:statusor",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
