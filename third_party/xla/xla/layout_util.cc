@@ -527,6 +527,18 @@ Layout CreateDefaultLayoutForRank(int64_t rank) {
   return shape.has_layout();
 }
 
+/* static */ bool LayoutUtil::HasAnyLayout(const Shape& shape) {
+  if (shape.IsTuple()) {
+    // Tuple shape: all subshapes must have a layout.
+    return absl::c_any_of(shape.tuple_shapes(),
+                          [](const Shape& s) { return HasAnyLayout(s); });
+  } else if (!shape.IsArray()) {
+    // Opaque, token types etc. ignore layout.
+    return true;
+  }
+  return shape.has_layout();
+}
+
 /* static */ bool LayoutUtil::HasLayout(const ProgramShape& program_shape) {
   for (auto& parameter_shape : program_shape.parameters()) {
     if (!LayoutUtil::HasLayout(parameter_shape)) {
