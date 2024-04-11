@@ -1136,17 +1136,12 @@ absl::Status IrEmitterUnnested::EmitFusedMHABackwardThunk(
   Shape d_bmm2_rhs_shape =
       ShapeUtil::GetSubshape(instr->shape(), {output_index++});
 
-  BufferAllocation::Slice d_s_slice, softmax_sum_slice, d_Q_accum_slice;
+  BufferAllocation::Slice d_s_slice;
   std::optional<Shape> d_s_shape;
   if (!is_flash_attention) {
     TF_ASSIGN_OR_RETURN(d_s_slice,
                         GetAllocationSliceForHlo(instr, {output_index}));
     d_s_shape = ShapeUtil::GetSubshape(instr->shape(), {output_index++});
-  } else {
-    TF_ASSIGN_OR_RETURN(softmax_sum_slice,
-                        GetAllocationSliceForHlo(instr, {output_index++}));
-    TF_ASSIGN_OR_RETURN(d_Q_accum_slice,
-                        GetAllocationSliceForHlo(instr, {output_index++}));
   }
 
   TF_ASSIGN_OR_RETURN(BufferAllocation::Slice scratch_slice,
@@ -1161,7 +1156,6 @@ absl::Status IrEmitterUnnested::EmitFusedMHABackwardThunk(
                         GetAllocationSliceForHlo(instr, {output_index}));
     d_bias_shape = ShapeUtil::GetSubshape(instr->shape(), {output_index++});
   }
-
   TF_RET_CHECK(output_index == instr->shape().tuple_shapes().size());
 
   GpufMHABackwardDescriptor descriptor = {
@@ -1196,8 +1190,8 @@ absl::Status IrEmitterUnnested::EmitFusedMHABackwardThunk(
       bmm1_grad_gemm2_rhs_slice, bmm2_grad_gemm1_lhs_slice,
       bmm2_grad_gemm2_rhs_slice, d_output_slice, scratch_slice,
       d_bmm1_lhs_slice, d_bmm1_rhs_slice, d_bmm2_rhs_slice, d_s_slice,
-      softmax_sum_slice, d_Q_accum_slice, mask_slice, d_bias_slice,
-      fwd_output_slice, bias_slice, seqlen_q_slice, seqlen_k_slice));
+      mask_slice, d_bias_slice, fwd_output_slice, bias_slice, seqlen_q_slice,
+      seqlen_k_slice));
 
   return absl::OkStatus();
 }

@@ -182,8 +182,6 @@ struct GpufMHABackwardParams {
       se::DeviceMemoryBase d_bmm1_rhs_buffer,
       se::DeviceMemoryBase d_bmm2_rhs_buffer,
       std::optional<se::DeviceMemoryBase> d_s_buffer,
-      std::optional<se::DeviceMemoryBase> softmax_sum_buffer,
-      std::optional<se::DeviceMemoryBase> d_Q_accum_buffer,
       std::optional<se::DeviceMemoryBase> mask_buffer,
       std::optional<se::DeviceMemoryBase> d_bias_buffer,
       std::optional<se::DeviceMemoryBase> fwd_output_buffer,
@@ -201,8 +199,6 @@ struct GpufMHABackwardParams {
   se::DeviceMemoryBase d_bmm1_rhs_buffer;
   se::DeviceMemoryBase d_bmm2_rhs_buffer;
   std::optional<se::DeviceMemoryBase> d_s_buffer;
-  std::optional<se::DeviceMemoryBase> softmax_sum_buffer;
-  std::optional<se::DeviceMemoryBase> d_Q_accum_buffer;
   std::optional<se::DeviceMemoryBase> mask_buffer;
   std::optional<se::DeviceMemoryBase> d_bias_buffer;
   std::optional<se::DeviceMemoryBase> fwd_output_buffer;
@@ -412,8 +408,6 @@ absl::Status RunGpuFMHABackward(
     se::DeviceMemoryBase d_bmm1_rhs_buffer,
     se::DeviceMemoryBase d_bmm2_rhs_buffer,
     std::optional<se::DeviceMemoryBase> d_s_buffer,
-    std::optional<se::DeviceMemoryBase> softmax_sum_buffer,
-    std::optional<se::DeviceMemoryBase> d_Q_accum_buffer,
     std::optional<se::DeviceMemoryBase> mask_buffer,
     std::optional<se::DeviceMemoryBase> d_bias_buffer,
     std::optional<se::DeviceMemoryBase> fwd_output_buffer,

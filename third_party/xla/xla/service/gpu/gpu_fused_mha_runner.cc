@@ -179,7 +179,6 @@ absl::Status RunFusedMHABackward(
     DeviceMemory<OutputType> d_bmm1_lhs_buffer,
     DeviceMemory<OutputType> d_bmm1_rhs_buffer,
     DeviceMemory<OutputType> d_bmm2_rhs_buffer, DeviceMemoryBase d_s_buffer,
-    DeviceMemoryBase softmax_buffer, DeviceMemoryBase d_Q_accum_buffer,
     DeviceMemoryBase mask_buffer, DeviceMemoryBase d_bias_buffer,
     DeviceMemoryBase fwd_output_buffer, DeviceMemoryBase bias_buffer,
     DeviceMemoryBase scratch_memory, DeviceMemoryBase seqlen_q,
@@ -235,8 +234,7 @@ absl::Status RunFusedMHABackward(
                    bmm1_grad_gemm1_rhs_buffer, bmm1_grad_gemm2_rhs_buffer,
                    bmm2_grad_gemm1_lhs_buffer, bmm2_grad_gemm2_rhs_buffer,
                    d_output_buffer, d_bmm1_lhs_buffer, d_bmm1_rhs_buffer,
-                   d_bmm2_rhs_buffer, d_s_buffer, softmax_buffer,
-                   d_Q_accum_buffer, mask_buffer, d_bias_buffer,
+                   d_bmm2_rhs_buffer, d_s_buffer, mask_buffer, d_bias_buffer,
                    fwd_output_buffer, bias_buffer, seqlen_q, seqlen_k);
   return absl::OkStatus();
 }
@@ -266,15 +264,6 @@ absl::Status RunGpuFMHABackwardImpl(const GpufMHABackwardParams &params,
   auto d_s_buffer = params.d_s_buffer.has_value()
                         ? se::DeviceMemory<OutputType>(*params.d_s_buffer)
                         : se::DeviceMemoryBase();
-  auto softmax_sum_buffer =
-      params.softmax_sum_buffer.has_value()
-          ? se::DeviceMemory<float>(*params.softmax_sum_buffer)
-          : se::DeviceMemoryBase();
-
-  auto d_Q_accum_buffer =
-      params.d_Q_accum_buffer.has_value()
-          ? se::DeviceMemory<float>(*params.d_Q_accum_buffer)
-          : se::DeviceMemoryBase();
 
   auto mask_buffer = params.mask_buffer.has_value()
                          ? se::DeviceMemory<ElementType>(*params.mask_buffer)
@@ -323,9 +312,9 @@ absl::Status RunGpuFMHABackwardImpl(const GpufMHABackwardParams &params,
           params, stream, options, bmm1_grad_gemm1_rhs_buffer,
           bmm1_grad_gemm2_rhs_buffer, bmm2_grad_gemm1_lhs_buffer,
           bmm2_grad_gemm2_rhs_buffer, d_output_buffer, d_bmm1_lhs_buffer,
-          d_bmm1_rhs_buffer, d_bmm2_rhs_buffer, d_s_buffer, softmax_sum_buffer,
-          d_Q_accum_buffer, mask_buffer, d_bias_buffer, fwd_output_buffer,
-          bias_buffer, scratch_memory, seqlen_q_buffer, seqlen_k_buffer);
+          d_bmm1_rhs_buffer, d_bmm2_rhs_buffer, d_s_buffer, mask_buffer,
+          d_bias_buffer, fwd_output_buffer, bias_buffer, scratch_memory,
+          seqlen_q_buffer, seqlen_k_buffer);
       break;
     default:
       return Internal("Invalid cuDNN fMHA kind");
@@ -617,8 +606,6 @@ absl::Status RunGpuFMHABackwardImpl(const GpufMHABackwardParams &params,
     se::DeviceMemoryBase d_bmm1_rhs_buffer,
     se::DeviceMemoryBase d_bmm2_rhs_buffer,
     std::optional<se::DeviceMemoryBase> d_s_buffer,
-    std::optional<se::DeviceMemoryBase> softmax_sum_buffer,
-    std::optional<se::DeviceMemoryBase> d_Q_accum_buffer,
     std::optional<se::DeviceMemoryBase> mask_buffer,
     std::optional<se::DeviceMemoryBase> d_bias_buffer,
     std::optional<se::DeviceMemoryBase> fwd_output_buffer,
@@ -636,8 +623,6 @@ absl::Status RunGpuFMHABackwardImpl(const GpufMHABackwardParams &params,
   params.d_bmm1_rhs_buffer = d_bmm1_rhs_buffer;
   params.d_bmm2_rhs_buffer = d_bmm2_rhs_buffer;
   params.d_s_buffer = d_s_buffer;
-  params.softmax_sum_buffer = softmax_sum_buffer;
-  params.d_Q_accum_buffer = d_Q_accum_buffer;
   params.mask_buffer = mask_buffer;
   params.d_bias_buffer = d_bias_buffer;
   params.fwd_output_buffer = fwd_output_buffer;
@@ -691,8 +676,6 @@ absl::Status RunGpuFMHABackward(
     se::DeviceMemoryBase d_bmm1_rhs_buffer,
     se::DeviceMemoryBase d_bmm2_rhs_buffer,
     std::optional<se::DeviceMemoryBase> d_s_buffer,
-    std::optional<se::DeviceMemoryBase> softmax_sum_buffer,
-    std::optional<se::DeviceMemoryBase> d_Q_accum_buffer,
     std::optional<se::DeviceMemoryBase> mask_buffer,
     std::optional<se::DeviceMemoryBase> d_bias_buffer,
     std::optional<se::DeviceMemoryBase> fwd_output_buffer,
@@ -706,9 +689,8 @@ absl::Status RunGpuFMHABackward(
           fmha_config, bmm1_grad_gemm1_rhs_buffer, bmm1_grad_gemm2_rhs_buffer,
           bmm2_grad_gemm1_lhs_buffer, bmm2_grad_gemm2_rhs_buffer,
           d_output_buffer, d_bmm1_lhs_buffer, d_bmm1_rhs_buffer,
-          d_bmm2_rhs_buffer, d_s_buffer, softmax_sum_buffer, d_Q_accum_buffer,
-          mask_buffer, d_bias_buffer, fwd_output_buffer, bias_buffer,
-          seqlen_q_buffer, seqlen_k_buffer));
+          d_bmm2_rhs_buffer, d_s_buffer, mask_buffer, d_bias_buffer,
+          fwd_output_buffer, bias_buffer, seqlen_q_buffer, seqlen_k_buffer));
   PrimitiveType input_primitive_type = fmha_config.input_type;
   switch (input_primitive_type) {
     case F16:

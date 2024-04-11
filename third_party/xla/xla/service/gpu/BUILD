@@ -2936,6 +2936,34 @@ cc_library(
     ]),
 )
 
+cc_library(
+    name = "cudnn_workspace_rewriter",
+    srcs = if_cuda_is_configured(["cudnn_workspace_rewriter.cc"]),
+    hdrs = if_cuda_is_configured(["cudnn_workspace_rewriter.h"]),
+    deps = if_cuda_is_configured([
+        ":backend_configs_cc",
+        ":ir_emission_utils",
+        ":gpu_fused_mha_runner",
+        ":cublas_cudnn",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@local_config_cuda//cuda:cudnn_header",
+        "//xla:shape_util",
+        "//xla:util",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:hlo_pass",
+        "//xla/stream_executor:stream_executor_headers",
+        "//xla/stream_executor/cuda:cudnn_frontend_helpers",
+        "//xla/stream_executor/cuda:cudnn_plugin",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:statusor",
+        "@com_google_absl//absl/container:flat_hash_set",
+    ]),
+)
+
 tf_proto_library(
     name = "executable_proto",
     srcs = ["executable.proto"],
@@ -3664,6 +3692,7 @@ cc_library(
         ":cudnn_fused_conv_rewriter",
         ":cudnn_fused_mha_rewriter",
         ":cudnn_fused_mha_transpose_fusion",
+        ":cudnn_workspace_rewriter",
         ":cudnn_fusion_compiler",
         ":cudnn_norm_rewriter",
         ":cudnn_pad_for_convolutions",

@@ -61,6 +61,7 @@ limitations under the License.
 #include "xla/service/gpu/cudnn_pad_for_convolutions.h"
 #include "xla/service/gpu/cudnn_simplify_padding.h"
 #include "xla/service/gpu/cudnn_vectorize_convolutions.h"
+#include "xla/service/gpu/cudnn_workspace_rewriter.h"
 #include "xla/service/gpu/cusolver_rewriter.h"
 #include "xla/service/gpu/gemm_algorithm_picker.h"
 #include "xla/service/gpu/gemm_fusion_autotuner.h"
@@ -295,7 +296,9 @@ absl::Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
   // Transform TriangularSolve ops into custom-calls, so we can add temp
   // memory.
   post_pipeline.AddPass<TriangularSolveRewriter>();
-
+  if (stream_exec) {
+    post_pipeline.AddPass<CuDnnWorkspaceRewriter>(*stream_exec);
+  }
   TF_RETURN_IF_ERROR(post_pipeline.Run(hlo_module).status());
 
   return absl::OkStatus();
