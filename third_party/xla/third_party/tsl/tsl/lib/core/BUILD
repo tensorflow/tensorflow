@@ -92,7 +92,7 @@ cc_library(
     testonly = 1,
     hdrs = ["status_test_util.h"],
     deps = [
-        "//tsl/platform:status",
+        "//tsl/platform:status_matchers",
         "//tsl/platform:test",
     ],
 )
