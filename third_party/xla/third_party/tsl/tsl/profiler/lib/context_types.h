@@ -37,7 +37,6 @@ enum class ContextType : int {
   kTpuLaunch,
   kPathwaysExecutor,
   kPjrtLibraryCall,
-  kThreadpoolEvent,
   kLastContextType = ContextType::kTpuLaunch,
 };
 

@@ -332,7 +332,6 @@ cc_library(
     visibility = internal_visibility([
         "@local_xla//xla/backends/profiler/plugin:__pkg__",
         "//learning/brain/tfrc/executor/stream_executor:__pkg__",
-        "@local_xla//xla/backends/profiler/cpu:__pkg__",
     ]),
     deps = [
         ":profiler_interface",
