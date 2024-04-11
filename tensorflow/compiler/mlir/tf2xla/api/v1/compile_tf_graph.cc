@@ -43,6 +43,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/translate_utils.h"
 #include "tensorflow/compiler/mlir/tf2xla/internal/logging_hooks.h"
 #include "tensorflow/compiler/tf2xla/layout_util.h"
+#include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "xla/client/compile_only_client.h"
@@ -205,7 +206,8 @@ Status PrepareAndExportToLibrary(mlir::ModuleOp module,
 
 tsl::Status CompileTFFunctionWithoutMlir(
     FunctionToHloArgs function_computation,
-    const tpu::TPUCompileMetadataProto& metadata, bool use_tuple_args,
+    const tpu::TPUCompileMetadataProto& metadata,
+    const TupleArgResultOptions& tuple_arg_result_options,
     const XlaShapeLayoutHelpers::ShapeDeterminationFns
         shape_determination_funcs,
     const std::vector<tensorflow::TensorShape>& arg_shapes,
@@ -217,8 +219,8 @@ tsl::Status CompileTFFunctionWithoutMlir(
       *function_computation.flib_def, function_computation.graph_def_version,
       shape_determination_funcs, arg_shapes,
       function_computation.guaranteed_constants, *function_computation.function,
-      metadata, client, arg_core_mapping, per_core_arg_shapes, use_tuple_args,
-      compilation_result);
+      metadata, client, arg_core_mapping, per_core_arg_shapes,
+      tuple_arg_result_options, compilation_result);
   if (comp_status.ok()) {
     phase2_bridge_compilation_status->GetCell(kOldBridgeNoMlirSuccess)
         ->IncrementBy(1);
@@ -232,7 +234,8 @@ tsl::Status CompileTFFunctionWithoutMlir(
 
 tsl::Status CompileMLIRTFFunction(
     tpu::MlirToHloArgs mlir_computation,
-    const tpu::TPUCompileMetadataProto& metadata, bool use_tuple_args,
+    const tpu::TPUCompileMetadataProto& metadata,
+    const TupleArgResultOptions& tuple_arg_result_options,
     const XlaShapeLayoutHelpers::ShapeDeterminationFns
         shape_determination_funcs,
     const std::vector<tensorflow::TensorShape>& arg_shapes,
@@ -285,17 +288,18 @@ tsl::Status CompileMLIRTFFunction(
   TF_RETURN_IF_ERROR(CompileTFFunctionToHlo(
       *flib_def, versions.producer(), shape_determination_funcs, arg_shapes,
       consts, func, metadata, client, arg_core_mapping, per_core_arg_shapes,
-      use_tuple_args, compilation_result));
+      tuple_arg_result_options, compilation_result));
 
   return PopulateInputOutputAliasing(main_fn, compilation_result,
-                                     use_tuple_args);
+                                     tuple_arg_result_options.use_tuple_args);
 }
 
 }  // namespace
 
 tsl::Status CompileTensorflowGraphToHlo(
     const std::variant<tpu::MlirToHloArgs, tpu::FunctionToHloArgs>& computation,
-    const tpu::TPUCompileMetadataProto& metadata, bool use_tuple_args,
+    const tpu::TPUCompileMetadataProto& metadata,
+    const TupleArgResultOptions& tuple_arg_result_options,
     const XlaShapeLayoutHelpers::ShapeDeterminationFns
         shape_determination_funcs,
     const std::vector<tensorflow::TensorShape>& arg_shapes,
@@ -316,14 +320,14 @@ tsl::Status CompileTensorflowGraphToHlo(
 
   if (has_mlir) {
     TF_RETURN_IF_ERROR(CompileMLIRTFFunction(
-        std::get<0>(computation), metadata, use_tuple_args,
+        std::get<0>(computation), metadata, tuple_arg_result_options,
         shape_determination_funcs, arg_shapes, arg_core_mapping,
         per_core_arg_shapes, client, compilation_result));
 
   } else {
     FunctionToHloArgs function_computation = std::get<1>(computation);
     TF_RETURN_IF_ERROR(CompileTFFunctionWithoutMlir(
-        function_computation, metadata, use_tuple_args,
+        function_computation, metadata, tuple_arg_result_options,
         shape_determination_funcs, arg_shapes, arg_core_mapping,
         per_core_arg_shapes, client, compilation_result));
   }

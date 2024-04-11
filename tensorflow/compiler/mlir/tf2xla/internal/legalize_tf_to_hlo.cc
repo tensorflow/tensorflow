@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tf2xla/internal/compilation_timer.h"
 #include "tensorflow/compiler/mlir/tf2xla/internal/legalize_tf_mlir.h"
 #include "tensorflow/compiler/tf2xla/layout_util.h"
+#include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "xla/client/compile_only_client.h"
 #include "xla/shape.h"
@@ -46,7 +47,8 @@ using tpu::MlirToHloArgs;
 
 tsl::StatusOr<XlaCompilationResult> LegalizeTfToHlo(
     const tpu::MlirToHloArgs& computation,
-    const tpu::TPUCompileMetadataProto& metadata, bool use_tuple_args,
+    const tpu::TPUCompileMetadataProto& metadata,
+    const TupleArgResultOptions& tuple_arg_result_options,
     llvm::StringRef device_type,
     XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns,
     const std::vector<tensorflow::TensorShape>& arg_shapes,
@@ -57,10 +59,10 @@ tsl::StatusOr<XlaCompilationResult> LegalizeTfToHlo(
   LOG_FIRST_N(INFO, 1) << "Compiling MLIR computation to XLA HLO using the "
                           "Combined MLIR Tf2Xla Bridge.";
 
-  tsl::StatusOr<std::string> mlir_compilation
-      = internal::CompileFromMlirToXlaHlo(
+  absl::StatusOr<std::string> mlir_compilation =
+      internal::CompileFromMlirToXlaHlo(
           /*lower_to_xla_hlo=*/false, computation, metadata, device_type,
-          shape_determination_fns, use_tuple_args, compilation_result,
+          shape_determination_fns, tuple_arg_result_options, compilation_result,
           custom_legalization_passes, arg_shapes, arg_core_mapping,
           per_core_arg_shapes);
 
@@ -74,9 +76,9 @@ tsl::StatusOr<XlaCompilationResult> LegalizeTfToHlo(
       MlirBridgeSecondPhaseMetric::kMlirCombinedMlirSuccess);
 
   Status old_bridge_status = v1::CompileTensorflowGraphToHlo(
-      MlirToHloArgs{mlir_compilation.value()}, metadata, use_tuple_args,
-      shape_determination_fns, arg_shapes, arg_core_mapping,
-      per_core_arg_shapes, client, compilation_result);
+      MlirToHloArgs{mlir_compilation.value()}, metadata,
+      tuple_arg_result_options, shape_determination_fns, arg_shapes,
+      arg_core_mapping, per_core_arg_shapes, client, compilation_result);
 
   if (!old_bridge_status.ok()) {
     IncrementTfMlirBridgeSecondPhaseCounter(

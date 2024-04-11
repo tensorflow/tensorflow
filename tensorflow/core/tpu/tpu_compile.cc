@@ -101,8 +101,8 @@ Status SetPerCoreArgShapes(
     }
   } else {
     TF_RET_CHECK(proto_arg.sharding().type() == xla::OpSharding::REPLICATED)
-        << "Unsupported argument sharding: "
-        << " proto_arg=" << proto_arg.DebugString();
+        << "Unsupported argument sharding: proto_arg="
+        << proto_arg.DebugString();
     for (int core = 0; core < per_core_arg_shapes->size(); ++core) {
       (*arg_core_mapping)[arg_index].indices.push_back(
           (*per_core_arg_shapes)[core].size());
@@ -439,7 +439,8 @@ Status CompileTFFunctionToHlo(
     xla::CompileOnlyClient* client,
     std::vector<tpu::ShardingAndIndex>* arg_core_mapping,
     std::vector<std::vector<xla::Shape>>* per_core_arg_shapes,
-    bool use_tuple_args, XlaCompiler::CompilationResult* compilation_result) {
+    const TupleArgResultOptions& tuple_arg_result_options,
+    XlaCompiler::CompilationResult* compilation_result) {
   XlaCompiler::Options compiler_options;
   FunctionLibraryDefinition flib_definition(flib_def);
   compiler_options.device_type = DeviceType(DEVICE_TPU_XLA_JIT);
@@ -503,9 +504,11 @@ Status CompileTFFunctionToHlo(
   VLOG(1) << "Compiling TensorFlow graph to HLO";
   XlaCompiler::CompileOptions compile_options;
   compile_options.return_updated_values_for_all_resources = false;
-  compile_options.use_tuple_arg = use_tuple_args;
+  compile_options.use_tuple_arg = tuple_arg_result_options.use_tuple_args;
   compile_options.is_entry_computation = true;
   compile_options.alias_resource_update = true;
+  compile_options.always_return_tuple =
+      tuple_arg_result_options.always_return_tuple;
   return compiler->CompileGraph(compile_options, function_id, std::move(graph),
                                 args, compilation_result);
 }

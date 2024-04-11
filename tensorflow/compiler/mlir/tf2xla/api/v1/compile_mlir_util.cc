@@ -63,6 +63,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tf2xla/transforms/passes.h"
 #include "tensorflow/compiler/tf2xla/layout_util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
+#include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "xla/client/xla_computation.h"
@@ -812,7 +813,9 @@ absl::StatusOr<std::string> CompileMlirToXlaHlo(
 
 absl::StatusOr<std::string> CompileSerializedMlirToXlaHlo(
     llvm::StringRef mlir_module_string, llvm::ArrayRef<TensorShape> arg_shapes,
-    llvm::StringRef device_type, bool use_tuple_args, bool enable_op_fallback,
+    llvm::StringRef device_type,
+    const TupleArgResultOptions& tuple_arg_result_options,
+    bool enable_op_fallback,
     const XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns,
     XlaCompilationResult* compilation_result,
     llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
@@ -830,8 +833,9 @@ absl::StatusOr<std::string> CompileSerializedMlirToXlaHlo(
   for (const auto& arg_shape : arg_shapes)
     tensor_or_resource_shapes.push_back({arg_shape});
   return CompileMlirToXlaHlo(
-      mlir_module.get(), tensor_or_resource_shapes, device_type, use_tuple_args,
-      enable_op_fallback, /*use_return_tuple=*/true,
+      mlir_module.get(), tensor_or_resource_shapes, device_type,
+      tuple_arg_result_options.use_tuple_args, enable_op_fallback,
+      /*use_return_tuple=*/tuple_arg_result_options.always_return_tuple,
       /*use_resource_updates_for_aliases=*/false, shape_determination_fns,
       compilation_result, custom_legalization_passes, module_name,
       lower_to_xla_hlo);

@@ -25,6 +25,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tf2xla/api/v2/device_type.pb.h"
+#include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "xla/client/compile_only_client.h"
 #include "xla/pjrt/compile_options.pb.h"
@@ -44,7 +45,8 @@ namespace v2 {
 //  computation - The MLIR module op. It currently takes in
 //  tpu::FunctionToHloArgs but this is deprecated. arg_shapes - The shapes of
 //  the arguments in module_op. device_type - The device type to compile for.
-//  use_tuple_args - Pack the incoming arg shapes into a single tuple.
+//  tuple_arg_result_options - Pack the incoming arg shapes into a single tuple,
+//  and always use tuple for outputs.
 //  custom_legalization_passes - Extra passes to lower from TF -> MHLO.
 //  arg_shapes  - The shapes of the args.
 //  arg_core_mapping - Which args go on which cores.
@@ -52,7 +54,8 @@ namespace v2 {
 //  client - The Xla Compilation client.
 tsl::StatusOr<tensorflow::XlaCompilationResult> LegalizeMlirToHlo(
     const std::variant<tpu::MlirToHloArgs, tpu::FunctionToHloArgs>& computation,
-    const tpu::TPUCompileMetadataProto& metadata, bool use_tuple_args,
+    const tpu::TPUCompileMetadataProto& metadata,
+    const TupleArgResultOptions& tuple_arg_result_options,
     llvm::StringRef device_type,
     std::vector<std::unique_ptr<mlir::Pass>>& custom_legalization_passes,
     XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns,

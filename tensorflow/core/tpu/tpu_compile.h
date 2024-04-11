@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/types/span.h"
 #include "tensorflow/compiler/jit/shape_inference.h"
+#include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "xla/client/compile_only_client.h"
 #include "tensorflow/core/platform/status.h"
@@ -49,7 +50,8 @@ Status CompileTFFunctionToHlo(
     xla::CompileOnlyClient* client,
     std::vector<tpu::ShardingAndIndex>* arg_core_mapping,
     std::vector<std::vector<xla::Shape>>* per_core_arg_shapes,
-    bool use_tuple_args, XlaCompiler::CompilationResult* compilation_result);
+    const TupleArgResultOptions& tuple_arg_result_options,
+    XlaCompiler::CompilationResult* compilation_result);
 
 // Gets information regarding how input arguments are sharded across multiple
 // cores.

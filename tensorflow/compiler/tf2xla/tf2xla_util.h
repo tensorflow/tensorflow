@@ -221,6 +221,20 @@ absl::StatusOr<bool> IsLoopInvariant(
     const FunctionBody* loop_body, int index,
     const FunctionLibraryDefinition* lookup_fld);
 
+struct TupleArgResultOptions {
+  TupleArgResultOptions() = default;
+
+  // Allow implicit conversion for backward compatibility.
+  //
+  // NOLINTNEXTLINE
+  TupleArgResultOptions(bool use_tuple_args) : use_tuple_args(use_tuple_args) {}
+
+  // Whether tuple is used for arguments.
+  bool use_tuple_args = true;
+  // Whether tuple is always used for results even if there is only one output.
+  bool always_return_tuple = true;
+};
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_TF2XLA_TF2XLA_UTIL_H_

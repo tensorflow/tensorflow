@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "llvm/ADT/StringRef.h"
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_support.h"
 #include "tsl/platform/statusor.h"
@@ -37,7 +38,8 @@ tsl::StatusOr<std::string> CompileFromMlirToXlaHlo(
     bool lower_to_xla_hlo, const tpu::MlirToHloArgs& computation,
     const tpu::TPUCompileMetadataProto& metadata, llvm::StringRef device_type,
     const XlaShapeLayoutHelpers::ShapeDeterminationFns& shape_determination_fns,
-    bool use_tuple_args, XlaCompiler::CompilationResult* compilation_result,
+    const TupleArgResultOptions& tuple_arg_result_options,
+    XlaCompiler::CompilationResult* compilation_result,
     std::vector<std::unique_ptr<mlir::Pass>>& custom_legalization_passes,
     const std::vector<TensorShape>& arg_shapes,
     std::vector<tpu::ShardingAndIndex>* arg_core_mapping,

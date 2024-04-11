@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tf2xla/api/v1/compile_mlir_util.h"
 #include "tensorflow/compiler/mlir/tf2xla/internal/compilation_timer.h"
 #include "tensorflow/compiler/tf2xla/layout_util.h"
+#include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "xla/mlir_hlo/mhlo/IR/register.h"
@@ -63,7 +64,8 @@ tsl::StatusOr<std::string> CompileFromMlirToXlaHlo(
     bool lower_to_xla_hlo, const MlirToHloArgs& computation,
     const tpu::TPUCompileMetadataProto& metadata, llvm::StringRef device_type,
     const XlaShapeLayoutHelpers::ShapeDeterminationFns& shape_determination_fns,
-    bool use_tuple_args, XlaCompiler::CompilationResult* compilation_result,
+    const TupleArgResultOptions& tuple_arg_result_options,
+    XlaCompiler::CompilationResult* compilation_result,
     std::vector<std::unique_ptr<mlir::Pass>>& custom_legalization_passes,
     const std::vector<TensorShape>& arg_shapes,
     std::vector<ShardingAndIndex>* arg_core_mapping,
@@ -89,9 +91,9 @@ tsl::StatusOr<std::string> CompileFromMlirToXlaHlo(
       auto compiled_mlir,
       CompileSerializedMlirToXlaHlo(
           SerializeMlirModule(mlir_module.get()), arg_shapes, device_type,
-          use_tuple_args, true, shape_determination_fns, compilation_result,
-          custom_legalization_passes, metadata.module_name(),
-          lower_to_xla_hlo));
+          tuple_arg_result_options, true, shape_determination_fns,
+          compilation_result, custom_legalization_passes,
+          metadata.module_name(), lower_to_xla_hlo));
 
   // Compute how arguments are shared across different cores.
   auto sharding_result =
