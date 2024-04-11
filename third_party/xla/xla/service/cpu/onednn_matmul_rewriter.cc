@@ -56,13 +56,41 @@ inline Status ValidateDotDimensionNumbers(
   return OkStatus();
 }
 
+// Whether the element type of instr is compatible with oneDNN kernels.
+// TODO(intel-tf): Restict compatible types based on instruction kind.
+inline bool CompatibleElementType(const HloInstruction* instr) {
+  PrimitiveType element_type = instr->shape().element_type();
+  return element_type == BF16 || element_type == F32 || element_type == F16;
+}
+
+// Type conversion from and to any of F16, BF16 and FP32.
+// TODO(intel-tf): Support more types when enabled.
+template <typename Pattern>
+inline auto SupportedConvert(Pattern pattern) {
+  auto supported_convert = [](const HloInstruction* instr) -> bool {
+    return CompatibleElementType(instr) &&
+           CompatibleElementType(instr->operand(0));
+  };
+  return m::Convert(pattern).WithPredicate(supported_convert);
+}
+
+template <typename Pattern>
+inline auto SupportedConvert(HloInstruction** convert, Pattern pattern) {
+  auto supported_convert = [](const HloInstruction* instr) -> bool {
+    return CompatibleElementType(instr) &&
+           CompatibleElementType(instr->operand(0));
+  };
+  return m::Convert(convert, pattern).WithPredicate(supported_convert);
+}
+
 template <typename Pattern>
 auto ElementwiseSafeIntermediate(HloInstruction** instr, Pattern pattern) {
-  return m::AnyOf<HloInstruction>(m::Broadcast(instr, pattern.WithOneUser()),
-                                  m::Slice(instr, pattern.WithOneUser()),
-                                  m::Bitcast(instr, pattern.WithOneUser()),
-                                  m::Reshape(instr, pattern.WithOneUser()),
-                                  pattern);
+  return m::AnyOf<HloInstruction>(
+      m::Broadcast(instr, pattern.WithOneUser()),
+      m::Slice(instr, pattern.WithOneUser()),
+      m::Bitcast(instr, pattern.WithOneUser()),
+      m::Reshape(instr, pattern.WithOneUser()),
+      SupportedConvert(instr, pattern.WithOneUser()), pattern);
 }
 
 inline auto OneDnnMatmulInstr(HloInstruction** instr) {
@@ -137,35 +165,65 @@ inline auto BcastConstScalarNear(double value) {
   return m::Broadcast(ConstScalarNear(value));
 }
 
-auto GELUActivation(HloInstruction* instr, HloInstruction** src) {
+// Associativity and commutativity properties of multiply results in various
+// patterns for an equivalent computation. This function tries to capture most
+// of the variations for a computation a * b * c. For example, patterns could be
+// any of (a * b) * c or a * (b * c), along with the variations resulting from
+// commutative patterns.
+template <typename PatternA, typename PatternB, typename PatternC>
+inline auto MultiplyMultiplyAnyOrder(PatternA a, PatternB b, PatternC c) {
+  return m::AnyOf<HloInstruction>(
+      m::MultiplyAnyOrder(a, m::MultiplyAnyOrder(b, c)),
+      m::MultiplyAnyOrder(b, m::MultiplyAnyOrder(a, c)),
+      m::MultiplyAnyOrder(c, m::MultiplyAnyOrder(a, b)));
+}
+
+bool GELUActivation(HloInstruction* instr, HloInstruction** src) {
   // Attempt to match GELU_TANH activation
   // (https://arxiv.org/abs/1606.08415), where:
   // gelu_tanh(x) = x * cdf(x)
   // cdf(x) = 0.5 * (1 + tanh(sqrt(2 / pi) * (x + 0.044715 * x**3))
+  //                     \--------- errf_approximate term -------/
+
   HloInstruction* errf;
-  return Match(instr, m::MultiplyAnyOrder(
-                          m::Op(src),
-                          m::MultiplyAnyOrder(
-                              BcastConstScalar(0.5),
-                              m::AddAnyOrder(BcastConstScalar(1.0),
-                                             m::Op(&errf).WithOneUser())))) &&
-         Match(errf,
-               m::Tanh(m::MultiplyAnyOrder(
-                           BcastConstScalarNear(sqrt(M_2_PI)),
-                           m::AddAnyOrder(
-                               m::Op().Is(*src),
-                               m::MultiplyAnyOrder(
-                                   BcastConstScalarNear(0.044715),
-                                   m::MultiplyAnyOrder(
-                                       m::Op().Is(*src),
-                                       m::MultiplyAnyOrder(m::Op().Is(*src),
-                                                           m::Op().Is(*src))
-                                           .WithOneUser())
-                                       .WithOneUser())
-                                   .WithOneUser())
-                               .WithOneUser())
-                           .WithOneUser())
-                   .WithOneUser());
+
+  // The expression 0.5 * x * (1 + errf) as common pattern for GELU exact and
+  // approximate activations.
+  auto common_pattrn = MultiplyMultiplyAnyOrder(
+      BcastConstScalar(0.5), m::Op(src),
+      m::AddAnyOrder(BcastConstScalar(1.0), m::Op(&errf).WithOneUser()));
+
+  bool matched = Match(instr, common_pattrn);
+  if (matched) {
+    // The subexpression 0.044715 * x**3 appears in GELU approximate activation.
+    // However, it is often optimized by other HLO passes into an expression of
+    // 0.044715 * x * (x * x). Since there are three consecutive multiplies,
+    // there could be a large number of patterns. We try to capture some of
+    // those:
+    //
+    //      1. (0.044715 * x) * x * x
+    //      2. 0.044715 * (x * x) * x
+    //
+    // Note each of the above could in turn have various patterns due to
+    // associativity and commutativity properties of multiply.
+    auto subexpr_pattern = m::AnyOf<HloInstruction>(
+        MultiplyMultiplyAnyOrder(
+            m::MultiplyAnyOrder(BcastConstScalarNear(0.044715),
+                                m::Op().Is(*src)),
+            m::Op().Is(*src), m::Op().Is(*src)),
+        MultiplyMultiplyAnyOrder(
+            BcastConstScalarNear(0.044715),
+            m::Multiply(m::Op().Is(*src), m::Op().Is(*src)), m::Op().Is(*src)));
+
+    auto errf_apprx_pattern =
+        m::Tanh(m::MultiplyAnyOrder(
+                    BcastConstScalarNear(sqrt(M_2_PI)),
+                    m::AddAnyOrder(m::Op().Is(*src), subexpr_pattern)
+                        .WithOneUser()))
+            .WithOneUser();
+    matched = Match(errf, errf_apprx_pattern);
+  }
+  return matched;
 }
 
 // OneDNN matmul can fuse add operation with automatic broadcasting along the
@@ -239,33 +297,6 @@ inline bool IsOperandFusible(HloInstruction* operand, HloInstruction* dot) {
 
 inline bool IsRowMajor(const Shape& shape) {
   return LayoutUtil::IsMonotonicWithDim0Major(shape.layout());
-}
-
-// Whether the element type of instr is compatible with oneDNN kernels.
-// TODO(intel-tf): Restict compatible types based on instruction kind.
-inline bool CompatibleElementType(const HloInstruction* instr) {
-  PrimitiveType element_type = instr->shape().element_type();
-  return element_type == BF16 || element_type == F32 || element_type == F16;
-}
-
-// Type conversion from and to any of BF16, F16 and FP32.
-// TODO(intel-tf): Support more types when enabled.
-template <typename Pattern>
-inline auto SupportedConvert(Pattern pattern) {
-  auto supported_convert = [](const HloInstruction* instr) -> bool {
-    return CompatibleElementType(instr) &&
-           CompatibleElementType(instr->operand(0));
-  };
-  return m::Convert(pattern).WithPredicate(supported_convert);
-}
-
-template <typename Pattern>
-inline auto SupportedConvert(HloInstruction** convert, Pattern pattern) {
-  auto supported_convert = [](const HloInstruction* instr) -> bool {
-    return CompatibleElementType(instr) &&
-           CompatibleElementType(instr->operand(0));
-  };
-  return m::Convert(convert, pattern).WithPredicate(supported_convert);
 }
 
 template <typename Pattern>
