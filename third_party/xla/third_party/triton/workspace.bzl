@@ -15,5 +15,5 @@ def repo():
         sha256 = TRITON_SHA256,
         strip_prefix = "triton-{commit}".format(commit = TRITON_COMMIT),
         urls = tf_mirror_urls("https://github.com/openxla/triton/archive/{commit}.tar.gz".format(commit = TRITON_COMMIT)),
-        patch_file = extensions_files_patch_list + llvm_patch_list + temporary_patch_list,
+        patch_file = llvm_patch_list + extensions_files_patch_list + temporary_patch_list,
     )
