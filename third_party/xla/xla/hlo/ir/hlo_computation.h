@@ -845,16 +845,14 @@ class HloComputation {
     return execution_thread_ == HloInstruction::kMainExecutionThread;
   }
 
-  // Deallocate instructions that are marked by "RemoveInstruction". The two
-  // stage clean up process is designed such that HloPass can have stable
-  // internal pointers to HloInstructions while we create and remove
+  // Deallocates instructions that are marked by "RemoveInstruction" and
+  // compacts the instructions_ vector by removing the deleted instructions'
+  // entries (a.k.a. tombstones).
+  // This two-stage clean up process is designed such that HloPass can have
+  // stable internal pointers to HloInstructions while we create and remove
   // HloInstructions in a pass.
-  void Cleanup() {
-    for (HloInstruction* it : to_be_deleted_) {
-      delete it;
-    }
-    to_be_deleted_.clear();
-  }
+  // Note: the removal operation is stable because some users depend on it.
+  void Cleanup();
 
   // Returns true if a given instruction is marked dead in this computation.
   bool IsMarkedAsDead(const HloInstruction* inst);
@@ -967,6 +965,9 @@ class HloComputation {
   // Store instructions in std::vector as they can be added and removed
   // arbitrarily and we want a stable iteration order.
   // For the reverse mapping we use HloInstruction::index_in_parent_.
+  //
+  // Note: removals from this vector must be stable because some users depend on
+  // it. See the Cleanup() method for details on the two-stage removal process.
   HloInstructionList instructions_;
 
   // Number of not-marked-for-deletion entries in instructions_.
