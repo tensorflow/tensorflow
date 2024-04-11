@@ -2552,8 +2552,8 @@ Status LayoutAssignment::PropagateComputationLayouts(
           }
           const auto& computed_subshape = ShapeUtil::GetSubshape(
               computed_computation_layout.parameter_shape(i), shape_index);
-          if (!Layout::Equal().IgnoreMemorySpace()(
-                  subshape.layout(), computed_subshape.layout())) {
+          if (!Layout::Equal().MinorToMajorOnly()(subshape.layout(),
+                                                  computed_subshape.layout())) {
             return Internal(
                 "Assigned parameter shape %s does not match layout of "
                 "computation shape: %s",
