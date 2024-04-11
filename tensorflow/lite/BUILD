@@ -7,9 +7,55 @@ load("//tensorflow/lite:build_def.bzl", "tflite_cc_shared_object", "tflite_copts
 load("//tensorflow/lite:special_rules.bzl", "SPECIAL_RULES_DEPS", "internal_visibility_allowlist", "tflite_internal_cc_3p_api_deps_src_all_visibility_allowlist", "tflite_portable_test_suite")
 load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "alias_with_tflite", "cc_library_with_tflite", "cc_test_with_tflite")
 
+package_group(
+    name = "tf_lite_runtime",
+    packages = ["//tensorflow/lite/..."],
+)
+
+package_group(
+    name = "tf_lite_current_dependencies_in_tf",
+    packages = [
+        "//tensorflow",
+        "//tensorflow/compiler/mlir/lite",
+        "//tensorflow/compiler/mlir/lite/experimental/google/interpreter_from_mlir",
+        "//tensorflow/compiler/mlir/lite/experimental/google/tooling",
+        "//tensorflow/compiler/mlir/lite/experimental/google/tooling/tools",
+        "//tensorflow/compiler/mlir/lite/experimental/jax/tests",
+        "//tensorflow/compiler/mlir/lite/experimental/tac/tools",
+        "//tensorflow/compiler/mlir/lite/experimental/xnnpack_mhlo",
+        "//tensorflow/compiler/mlir/lite/metrics",
+        "//tensorflow/compiler/mlir/lite/python",
+        "//tensorflow/compiler/mlir/lite/quantization/lite",
+        "//tensorflow/compiler/mlir/lite/sparsity",
+        "//tensorflow/compiler/mlir/lite/stablehlo",
+        "//tensorflow/compiler/mlir/lite/tests/flatbuffer2mlir",
+        "//tensorflow/compiler/mlir/quantization/common/quantization_lib",
+        "//tensorflow/compiler/mlir/quantization/stablehlo",
+        "//tensorflow/compiler/mlir/quantization/tensorflow",
+        "//tensorflow/compiler/mlir/quantization/tensorflow/utils",
+        "//tensorflow/compiler/mlir/tosa",
+        "//tensorflow/core",
+        "//tensorflow/python",
+        "//tensorflow/python/kernel_tests/signal",
+        "//tensorflow/python/tools/api/generator",
+    ],
+)
+
+package_group(
+    name = "anything_but_tf",
+    includes = [
+        "tf_lite_current_dependencies_in_tf",
+        "tf_lite_runtime",
+    ],
+    packages = [
+        "-//third_party/tensorflow/...",
+        "//...",
+    ],
+)
+
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:LICENSE"],
-    default_visibility = ["//visibility:public"],
+    default_visibility = [":anything_but_tf"],
     licenses = ["notice"],
 )
 
