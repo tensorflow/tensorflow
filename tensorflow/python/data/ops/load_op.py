@@ -106,10 +106,12 @@ def _load_distributed_snapshot_metadata(
     DistributedSnapshotMetadata if the snapshot is a distributed snapshot.
     Returns None if it is a non-distributed snapshot.
   """
+  metadata_file = _pywrap_snapshot_utils.TF_DATA_SnapshotMetadataFilePath(path)
+  if not gfile.Exists(metadata_file):
+    return None
+
   try:
-    with gfile.GFile(
-        _pywrap_snapshot_utils.TF_DATA_SnapshotMetadataFilePath(path), "r"
-    ) as f:
+    with gfile.GFile(metadata_file, "r") as f:
       return text_format.ParseLines(
           f, snapshot_pb2.DistributedSnapshotMetadata())
   except (
@@ -149,6 +151,12 @@ def _load_element_spec(path: str) -> Any:
     NotFoundError if the element spec file does not exist or cannot be decoded.
   """
   dataset_spec_filename = os.path.join(path, dataset_ops.DATASET_SPEC_FILENAME)
+  if not gfile.Exists(dataset_spec_filename):
+    raise errors.NotFoundError(
+        node_def=None, op=None,
+        message="tf.data snapshot element_spec file not found: "
+                f"{dataset_spec_filename}.")
+
   with gfile.GFile(dataset_spec_filename, "rb") as f:
     encoded_spec = f.read()
   try:
