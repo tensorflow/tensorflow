@@ -194,7 +194,14 @@ absl::StatusOr<std::string> FindCudaExecutable(
   candidates.emplace_back(
       tsl::io::JoinPath(preferred_cuda_dir, "bin", binary_filename));
 
-  // #2 - Check the PATH environment variable
+  // #2 - Check generic CUDA locations if that is preferred over the PATH
+  if (!tsl::PreferPtxasFromPath()) {
+    for (std::string_view path : tsl::CandidateCudaRoots()) {
+      candidates.emplace_back(tsl::io::JoinPath(path, "bin", binary_filename));
+    }
+  }
+
+  // #3 - Check the PATH environment variable
   std::string_view path_env = std::getenv("PATH");
 
 #if defined(PLATFORM_WINDOWS)
@@ -207,9 +214,11 @@ absl::StatusOr<std::string> FindCudaExecutable(
     candidates.emplace_back(tsl::io::JoinPath(path, binary_filename));
   }
 
-  // #3 - Check generic CUDA locations
-  for (std::string_view path : tsl::CandidateCudaRoots()) {
-    candidates.emplace_back(tsl::io::JoinPath(path, "bin", binary_filename));
+  // #4 - Check generic CUDA locations if we didn't do that already in #2
+  if (tsl::PreferPtxasFromPath()) {
+    for (std::string_view path : tsl::CandidateCudaRoots()) {
+      candidates.emplace_back(tsl::io::JoinPath(path, "bin", binary_filename));
+    }
   }
 
   for (const auto& candidate : candidates) {
