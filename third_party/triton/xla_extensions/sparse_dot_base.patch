@@ -544,7 +544,7 @@ diff --git a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM/Sparse.cpp
 new file mode 100644
 --- /dev/null
 +++ b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM/Sparse.cpp
-@@ -0,0 +1,337 @@
+@@ -0,0 +1,339 @@
 +#include "../Utility.h"
 +
 +using namespace mlir;
@@ -778,6 +778,8 @@ new file mode 100644
 +    int64_t swizzling =
 +        getSwizzlingFromLayout(sharedLayout, shape[ord[0]] * byteSize);
 +    Value baseDesc = createDescriptor(rewriter, loc, swizzling, shape[ord[1]]);
++    baseDesc =
++        add(baseDesc, lshr(ptrtoint(i64_ty, sharedObj.base), int_val(64, 4)));
 +    return std::make_tuple(shape, ord, baseDesc);
 +  };
 +
