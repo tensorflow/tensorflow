@@ -3153,16 +3153,6 @@ class Subgraph {
       TfLiteContext* logging_context, int node_index, TfLiteNode* node,
       const TfLiteTensor* tensors, const TfLiteBatchMatMulParams* params,
       const std::unordered_map<int, uint32_t>& input_output_tensors) {
-    // Make sure that we're allowed to delegate this op.
-    if (!delegate.enable_latest_operators()) {
-      TF_LITE_MAYBE_KERNEL_LOG(
-          logging_context,
-          "failed to delegate %s node #%d. Delegation of latest "
-          "operators must be enabled",
-          EnumNameBuiltinOperator(BuiltinOperator_BATCH_MATMUL), node_index);
-      return kTfLiteError;
-    }
-
     // Check whether all required options are supported.
     if (params->adj_x) {
       TF_LITE_MAYBE_KERNEL_LOG(
@@ -3269,6 +3259,8 @@ class Subgraph {
           quant_params_b->zero_point = TfLiteIntArrayCreate(batch_size_b * n);
           std::fill_n(quant_params_b->zero_point->data, batch_size_b * n,
                       input_b.params.zero_point);
+          quant_params_b->quantized_dimension =
+              params->adj_y ? num_dims_b - 2 : num_dims_b - 1;
         }
 
         // Create the quantized input_b.
