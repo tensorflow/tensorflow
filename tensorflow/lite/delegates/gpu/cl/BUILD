@@ -444,16 +444,16 @@ cc_library(
     name = "opencl_wrapper",
     srcs = ["opencl_wrapper.cc"],
     hdrs = ["opencl_wrapper.h"],
-    defines = select({
+    linkopts = select({
+        "//tensorflow:android": ["-lm"],
+        "//conditions:default": [],
+    }) + ["-ldl"],  # opencl_wrapper calls dlopen()
+    local_defines = select({
         # copybara:uncomment_begin(google-only)
         # "//tools/cc_target_os:linux-google": ["__LINUX_GOOGLE__"],
         # copybara:uncomment_end
         "//conditions:default": [],
     }),
-    linkopts = select({
-        "//tensorflow:android": ["-lm"],
-        "//conditions:default": [],
-    }) + ["-ldl"],  # opencl_wrapper calls dlopen()
     deps = [
         "//tensorflow/lite/delegates/gpu/common:status",
         "@com_google_absl//absl/strings",
