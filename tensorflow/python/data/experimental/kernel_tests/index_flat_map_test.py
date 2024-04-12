@@ -26,6 +26,7 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -108,6 +109,22 @@ class IndexFlatMapTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = index_flat_map_op.index_flat_map(
         dataset, _map_func, _index_map_func)
     self.assertDatasetProduces(dataset, list(range(dataset_range)))
+
+  @combinations.generate(test_base.default_test_combinations())
+  def test_invalid_map_fn(self):
+
+    def _index_map_func(_) -> str:
+      # Expected to return two integers.
+      return "Hello"
+
+    input_data = ["0 1", "2 3 4 5", "6 7", "8"]
+    dataset = dataset_ops.Dataset.from_tensor_slices(input_data)
+    dataset = index_flat_map_op.index_flat_map(
+        dataset, _split, _index_map_func)
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        "expected to return two int values"):
+      self.getDatasetOutput(dataset)
 
 
 def _split(element: str) -> tensor.Tensor:

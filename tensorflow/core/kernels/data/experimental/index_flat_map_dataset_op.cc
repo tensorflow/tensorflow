@@ -302,13 +302,15 @@ class IndexFlatMapDatasetOp::Dataset::Iterator
 
   IndexMapperFn GetFlatMapIndexMapper(IteratorContext* ctx,
                                       size_t& offset) const {
-    return [this, ctx, &offset](size_t element_position) {
-      size_t shuffled_index = ctx->index_mapper()
-                                  ? ctx->index_mapper()(element_position)
-                                  : element_position;
+    return [this, ctx,
+            &offset](size_t element_position) -> absl::StatusOr<size_t> {
+      if (ctx->index_mapper()) {
+        TF_ASSIGN_OR_RETURN(element_position,
+                            ctx->index_mapper()(element_position));
+      }
       absl::StatusOr<std::tuple<size_t, size_t>> unflattened_index =
-          GetUnflattenedIndex(ctx, shuffled_index);
-      // TODO(b/325112575): Update the index mapper API to return a `StatusOr`.
+          GetUnflattenedIndex(ctx, element_position);
+      TF_RETURN_IF_ERROR(unflattened_index.status());
       offset = std::get<1>(*unflattened_index);
       return std::get<0>(*unflattened_index);
     };

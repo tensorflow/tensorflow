@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/core/data/captured_function.h"
@@ -41,6 +42,7 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace data {
@@ -266,7 +268,8 @@ class WeightedFlatMapDatasetOp::Dataset : public DatasetBase {
         TF_RETURN_IF_ERROR(input_impls_[input_dataset_index]->GetNext(
             ctx, out_tensors, end_of_sequence));
       } else {
-        auto parent_index = ctx->index_mapper()(element_count_);
+        TF_ASSIGN_OR_RETURN(auto parent_index,
+                            ctx->index_mapper()(element_count_));
         input_dataset_index =
             IntervalIndex(cumulative_input_cardinalities_, parent_index);
         IteratorContext::Params params(ctx);
@@ -287,8 +290,8 @@ class WeightedFlatMapDatasetOp::Dataset : public DatasetBase {
         IndexMapperFn parent_index_mapper, size_t input_dataset_index = 0)
         ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       size_t last_position = this->cumulative_input_cardinalities_.back();
-      return [parent_index_mapper, this, input_dataset_index,
-              last_position](size_t element_position) -> size_t {
+      return [this, parent_index_mapper, input_dataset_index, last_position](
+                 size_t element_position) -> absl::StatusOr<size_t> {
         // This index mapper function scans the position of the
         // `WeightedFlatMap` elements to find the first element that matches the
         // `input_dataset_index`. It updates this position each time the
@@ -312,7 +315,7 @@ class WeightedFlatMapDatasetOp::Dataset : public DatasetBase {
           // inputs.
           size_t index = this->next_positions_[input_dataset_index];
           if (parent_index_mapper != nullptr) {
-            index = parent_index_mapper(index);
+            TF_ASSIGN_OR_RETURN(index, parent_index_mapper(index));
           }
           ++(this->next_positions_[input_dataset_index]);
           // Finds the shuffled `index` comes from dataset
@@ -357,9 +360,10 @@ class WeightedFlatMapDatasetOp::Dataset : public DatasetBase {
           if (element_count_ >= cumulative_input_cardinalities_.back()) {
             break;
           }
-          auto parent_index = ctx->index_mapper() != nullptr
-                                  ? ctx->index_mapper()(count)
-                                  : count;
+          auto parent_index = count;
+          if (ctx->index_mapper() != nullptr) {
+            TF_ASSIGN_OR_RETURN(parent_index, ctx->index_mapper()(count));
+          }
           auto input_dataset_index =
               IntervalIndex(cumulative_input_cardinalities_, parent_index);
           ++inputs_element_count_[input_dataset_index];
