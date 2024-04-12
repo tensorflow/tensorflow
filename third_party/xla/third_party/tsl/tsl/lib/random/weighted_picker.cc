@@ -19,7 +19,9 @@ limitations under the License.
 
 #include <algorithm>
 
+#include "absl/log/check.h"
 #include "tsl/lib/random/simple_philox.h"
+#include "tsl/platform/types.h"
 
 namespace tsl {
 namespace random {
