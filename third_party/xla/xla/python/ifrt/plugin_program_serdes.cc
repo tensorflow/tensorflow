@@ -63,7 +63,7 @@ class PluginProgramSerDes
   static char ID;  // NOLINT
 };
 
-char PluginProgramSerDes::ID __attribute__((unused)) = 0;
+[[maybe_unused]] char PluginProgramSerDes::ID = 0;
 
 bool register_plugin_program_serdes = ([]() {
   RegisterSerDes<PluginProgram>(
@@ -90,7 +90,7 @@ class PluginCompileOptionsSerDes
   static char ID;  // NOLINT
 };
 
-char PluginCompileOptionsSerDes::ID __attribute__((unused)) = 0;
+[[maybe_unused]] char PluginCompileOptionsSerDes::ID = 0;
 
 bool register_plugin_compile_options_serdes = ([]() {
   RegisterSerDes<PluginCompileOptions>(
