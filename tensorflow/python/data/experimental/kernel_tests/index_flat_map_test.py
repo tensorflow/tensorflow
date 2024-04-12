@@ -21,8 +21,10 @@ from absl.testing import parameterized
 from tensorflow.python.data.experimental.ops import cardinality as cardinality_lib
 from tensorflow.python.data.experimental.ops import global_shuffle_op
 from tensorflow.python.data.experimental.ops import index_flat_map_op
+from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -125,6 +127,68 @@ class IndexFlatMapTest(test_base.DatasetTestBase, parameterized.TestCase):
         errors.InvalidArgumentError,
         "expected to return two int values"):
       self.getDatasetOutput(dataset)
+
+
+class IndexFlatMapCheckpointTest(
+    checkpoint_test_base.CheckpointTestBase, parameterized.TestCase):
+
+  # TODO(b/325112575): Support the graph mode.
+  @combinations.generate(
+      combinations.times(
+          test_base.eager_only_combinations(),
+          checkpoint_test_base.default_test_combinations(),
+          combinations.combine(symbolic_checkpoint=[True, False])))
+  def test_index_flat_map(
+      self,
+      verify_fn: Callable[..., None],
+      symbolic_checkpoint: bool):
+
+    input_data = ["0 1", "2 3 4 5", "6 7", "8"]
+    metadata = _get_metadata(input_data)
+
+    def _build_dataset() -> dataset_ops.Dataset:
+      dataset = dataset_ops.Dataset.from_tensor_slices(input_data)
+      dataset = index_flat_map_op.index_flat_map(
+          dataset, _split, _get_index_map_func(metadata))
+      options = options_lib.Options()
+      options.experimental_symbolic_checkpoint = symbolic_checkpoint
+      return dataset.with_options(options)
+
+    verify_fn(self, _build_dataset, num_outputs=9)
+
+  @combinations.generate(
+      combinations.times(
+          test_base.eager_only_combinations(),
+          checkpoint_test_base.default_test_combinations(),
+          combinations.combine(
+              reshuffle_each_iteration=[True, False],
+              symbolic_checkpoint=[True, False])))
+  def test_global_shuffle(
+      self,
+      verify_fn: Callable[..., None],
+      reshuffle_each_iteration: bool,
+      symbolic_checkpoint: bool):
+
+    input_data = ["0 1", "2 3 4 5", "6 7", "8"]
+    metadata = _get_metadata(input_data)
+
+    def _build_dataset() -> dataset_ops.Dataset:
+      dataset = dataset_ops.Dataset.from_tensor_slices(input_data)
+      dataset = index_flat_map_op.index_flat_map(
+          dataset, _split, _get_index_map_func(metadata))
+      dataset = dataset.apply(cardinality_lib.assert_cardinality(9))
+      dataset = global_shuffle_op._global_shuffle(
+          dataset, seed=42, reshuffle_each_iteration=reshuffle_each_iteration)
+
+      options = options_lib.Options()
+      options.experimental_symbolic_checkpoint = symbolic_checkpoint
+      return dataset.with_options(options)
+
+    verify_fn(
+        self,
+        _build_dataset,
+        num_outputs=9,
+        assert_items_equal=reshuffle_each_iteration)
 
 
 def _split(element: str) -> tensor.Tensor:

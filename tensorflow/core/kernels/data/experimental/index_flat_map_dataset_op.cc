@@ -54,6 +54,11 @@ constexpr const char kIndexMapFuncTargs[] = "Tindex_map_func_args";
 constexpr const char kIndexMapFuncOtherArgs[] = "index_map_func_other_args";
 constexpr const char kOutputTypes[] = "output_types";
 constexpr const char kOutputShapes[] = "output_shapes";
+constexpr const char kElementCount[] = "element_count";
+constexpr const char kInputElementCount[] = "input_element_count";
+constexpr const char kInputUnflattenedTensors[] = "input_unflattened_tensors";
+constexpr const char kInputUnflattenedTensorsSize[] =
+    "input_unflattened_tensors_size";
 
 std::string ToDebugString(const std::vector<Tensor>& tensors) {
   std::vector<std::string> tensor_strs;
@@ -339,18 +344,53 @@ class IndexFlatMapDatasetOp::Dataset::Iterator
     return std::tuple<size_t, size_t>{element_index, offset};
   }
 
-  // TODO(b/325112575): Support save/load for index_flat_map.
-  // TODO(b/325112575): Support symbolic checkpoints.
+  bool SymbolicCheckpointCompatible() const override { return true; }
+
   absl::Status SaveInternal(SerializationContext* ctx,
-                            IteratorStateWriter* writer) override {
-    return absl::UnimplementedError(
-        "TODO(b/325112575): Support save/load for index_flat_map.");
+                            IteratorStateWriter* writer) override
+      ABSL_LOCKS_EXCLUDED(mu_) {
+    absl::MutexLock l(&mu_);
+    TF_RETURN_IF_ERROR(
+        writer->WriteScalar(prefix(), kElementCount, element_count_));
+    TF_RETURN_IF_ERROR(writer->WriteScalar(prefix(), kInputElementCount,
+                                           input_element_count_));
+    TF_RETURN_IF_ERROR(writer->WriteScalar(prefix(),
+                                           kInputUnflattenedTensorsSize,
+                                           input_unflattened_tensors_.size()));
+    for (int64_t i = 0; i < input_unflattened_tensors_.size(); ++i) {
+      TF_RETURN_IF_ERROR(writer->WriteTensor(
+          prefix(), absl::StrCat(kInputUnflattenedTensors, "[", i, "]"),
+          input_unflattened_tensors_[i]));
+    }
+    return SaveInput(ctx, writer, input_impl_);
   }
 
   absl::Status RestoreInternal(IteratorContext* ctx,
-                               IteratorStateReader* reader) override {
-    return absl::UnimplementedError(
-        "TODO(b/325112575): Support save/load for index_flat_map.");
+                               IteratorStateReader* reader) override
+      ABSL_LOCKS_EXCLUDED(mu_) {
+    absl::MutexLock l(&mu_);
+    if (ctx->restored_element_count().has_value()) {
+      return RestoreInput(ctx, reader, input_impl_);
+    }
+    TF_RETURN_IF_ERROR(
+        reader->ReadScalar(prefix(), kElementCount, &element_count_));
+    TF_RETURN_IF_ERROR(reader->ReadScalar(prefix(), kInputElementCount,
+                                          &input_element_count_));
+
+    int64_t input_unflattened_tensors_size = 0;
+    TF_RETURN_IF_ERROR(reader->ReadScalar(prefix(),
+                                          kInputUnflattenedTensorsSize,
+                                          &input_unflattened_tensors_size));
+    input_unflattened_tensors_.clear();
+    input_unflattened_tensors_.reserve(input_unflattened_tensors_size);
+    for (int64_t i = 0; i < input_unflattened_tensors_size; ++i) {
+      Tensor tensor;
+      TF_RETURN_IF_ERROR(reader->ReadTensor(
+          prefix(), absl::StrCat(kInputUnflattenedTensors, "[", i, "]"),
+          &tensor));
+      input_unflattened_tensors_.push_back(std::move(tensor));
+    }
+    return RestoreInput(ctx, reader, input_impl_);
   }
 
  private:
@@ -361,7 +401,7 @@ class IndexFlatMapDatasetOp::Dataset::Iterator
   // current element count, the element count of the input iterator, and the
   // current output of the input iterator.
   int64_t element_count_ ABSL_GUARDED_BY(mu_) = 0;
-  size_t input_element_count_ ABSL_GUARDED_BY(mu_) = 0;
+  int64_t input_element_count_ ABSL_GUARDED_BY(mu_) = 0;
   std::vector<Tensor> input_unflattened_tensors_ ABSL_GUARDED_BY(mu_);
 
   std::unique_ptr<InstantiatedCapturedFunction> instantiated_map_func_;
