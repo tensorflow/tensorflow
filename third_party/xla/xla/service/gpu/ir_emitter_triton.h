@@ -28,32 +28,29 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
+#include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "xla/autotuning.pb.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/matmul_utils.h"
-#include "xla/service/gpu/model/indexing_map.h"
 #include "xla/service/gpu/triton_fusion_analysis.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/status.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
+#include "triton/Dialect/TritonNvidiaGPU/Transforms/Passes.h"
 
 namespace xla {
 namespace gpu {
+
+namespace mt = ::mlir::triton;
 
 struct TritonWrapperResult {
   int64_t shmem_bytes = 0;
   std::optional<se::ClusterDim> cluster_dim;
 };
-
-// Computes indexing map from program id into the tile offset for the given
-// shape and tile sizes.
-IndexingMap ComputeProgramIdToOutputTileIndexing(
-    absl::Span<const int64_t> dimensions, absl::Span<const int64_t> tile_sizes,
-    mlir::MLIRContext* mlir_context);
 
 // Compute the launch dimensions for the given Triton MatMul.
 absl::StatusOr<LaunchDimensions> GetMatMulLaunchDimensions(
@@ -89,7 +86,7 @@ using TritonIrEmitter = std::function<Status(
 // MatMul and SoftMax above are some such IR generators.
 absl::StatusOr<TritonWrapperResult> TritonWrapper(
     const TritonFusionAnalysis& analysis, absl::string_view fn_name,
-    const HloComputation* hlo_computation, const se::CudaComputeCapability& cc,
+    const HloComputation* hlo_computation, const se::GpuComputeCapability& cc,
     const se::DeviceDescription& device_info, const TritonGemmConfig& config,
     llvm::Module* llvm_module, TritonIrEmitter ir_emitter,
     mlir::MLIRContext& mlir_context);
@@ -105,10 +102,27 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
 // Compiles a given Triton module to LLVM IR.
 absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
     const HloModuleConfig& hlo_config, absl::string_view hlo_module_name,
-    const se::CudaComputeCapability& cc,
+    const se::GpuComputeCapability& cc,
     const se::DeviceDescription& device_info, const TritonGemmConfig& config,
     mlir::ModuleOp triton_module, llvm::Module* llvm_module,
     mlir::MLIRContext& mlir_context);
+
+// Create Triton pipeline.
+//
+// `out_cluster_info` must be kept alive at least until pm.run() is called.
+// It should be read after that. We have to pass the cluster dims to
+// LaunchDimensions. Triton currently uses this as an out-parameter to return
+// the cluster dims determined based on `config.num_ctas` and a heuristic. There
+// are some signs that show that this was intended to be used as an in-out
+// parameter which would give a hint to Triton which cluster dims we prefer to
+// use, but that's not the case currently.
+absl::Status CreateTritonPipeline(
+    mlir::OpPassManager& pm, const se::GpuComputeCapability& cc,
+    const TritonGemmConfig& config,
+    mt::nvidia_gpu::ClusterInfo& out_cluster_info);
+
+std::string GetLibdevicePath(const HloModuleConfig& hlo_config,
+                             const se::DeviceDescription& device_info);
 
 }  // namespace gpu
 }  // namespace xla

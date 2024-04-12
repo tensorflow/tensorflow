@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 
+#include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/fusions/fusion_emitter.h"

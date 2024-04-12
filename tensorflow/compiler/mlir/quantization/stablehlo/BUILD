@@ -8,6 +8,7 @@ load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
 package_group(
     name = "internal_visibility_allowlist_package",
     packages = [
+        "//learning/brain/mlir/quantization/stablehlo/python/integration_test/...",
         "//tensorflow/compiler/mlir/lite/...",
         "//tensorflow/compiler/mlir/quantization/...",
         "//tensorflow/compiler/mlir/tf2xla/transforms/...",
@@ -54,6 +55,7 @@ cc_library(
         "passes/lift_quantizable_spots_as_functions.cc",
         "passes/lift_quantizable_spots_as_functions_fusion.inc",
         "passes/lift_quantizable_spots_as_functions_simple.inc",
+        "passes/merge_fusion_with_dequantize.cc",
         "passes/nchw_convolution_to_nhwc.cc",
         "passes/optimize_graph.cc",
         "passes/post_quantize.cc",
@@ -67,6 +69,7 @@ cc_library(
         "passes/restore_function_name.cc",
         "passes/unfuse_mhlo_batch_norm.cc",
         "passes/unwrap_xla_call_module_op.cc",
+        "passes/xla_call_module_to_call.cc",
     ],
     hdrs = [
         "passes/passes.h",
@@ -111,8 +114,6 @@ cc_library(
         "//tensorflow/core/ir/types:Dialect",
         "//tensorflow/core/platform:path",
         "//tensorflow/core/tpu:tpu_defs",
-        "//tensorflow/lite/kernels:padding",
-        "//tensorflow/lite/kernels/internal:quantization_util",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/cleanup",
@@ -745,7 +746,9 @@ tf_proto_library(
 # py_proto_library(
 #     name = "quantization_config_py_pb2",
 #     api_version = 2,
-#     visibility = [":internal_visibility_allowlist_package"],
+#     visibility = [
+#         ":internal_visibility_allowlist_package",
+#     ],
 #     deps = [":quantization_config_proto"],
 # )
 # copybara:uncomment_end

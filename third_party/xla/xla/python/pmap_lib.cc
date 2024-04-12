@@ -136,40 +136,37 @@ absl::StatusOr<ShardArgResult> ShardArg(
     const nb::callable& python_fallback) {
   if (arg.type().ptr() == xla::PyArray::type().ptr()) {
     auto py_array = nb::borrow<xla::PyArray>(arg);
-    if (py_array.fastpath_enabled()) {
-      if (py_array.sharding().type().ptr() ==
-          input_spec.array_sharding.type().ptr()) {
-        auto* pmap_sharding =
-            nb::cast<jax::PmapSharding*>(nb::handle(py_array.sharding().ptr()));
-        auto* cached_pmap_sharding = nb::cast<jax::PmapSharding*>(
-            nb::handle(input_spec.array_sharding.ptr()));
+    if (py_array.sharding().type().ptr() ==
+        input_spec.array_sharding.type().ptr()) {
+      auto* pmap_sharding =
+          nb::cast<jax::PmapSharding*>(nb::handle(py_array.sharding().ptr()));
+      auto* cached_pmap_sharding = nb::cast<jax::PmapSharding*>(
+          nb::handle(input_spec.array_sharding.ptr()));
 
-        if (pmap_sharding->sharding_spec() ==
-            cached_pmap_sharding->sharding_spec()) {
-          ShardArgResult result;
-          result.owning_sda = nb::borrow<nb::object>(arg.ptr());
-          result.ifrt_array = tsl::FormRef(py_array.ifrt_array());
-          if (result.ifrt_array == nullptr) {
-            return xla::InvalidArgument("Array has been deleted.");
-          }
-          if (result.ifrt_array->sharding().devices().devices() != devices) {
-            xla::ifrt::DeviceList::Devices ifrt_devices;
-            ifrt_devices.reserve(devices.size());
-            ifrt_devices.insert(ifrt_devices.end(), devices.begin(),
-                                devices.end());
-            // pmap does not support memory_kind for now.
-            auto sharding = xla::ifrt::OpaqueSharding::Create(
-                xla::ifrt::DeviceList(std::move(ifrt_devices)),
-                xla::ifrt::MemoryKind());
-            TF_ASSIGN_OR_RETURN(
-                auto copied_ifrt_array,
-                result.ifrt_array->Reshard(
-                    std::move(sharding),
-                    xla::ifrt::ArrayCopySemantics::kReuseInput));
-            result.ifrt_array = std::move(copied_ifrt_array);
-          }
-          return result;
+      if (pmap_sharding->sharding_spec() ==
+          cached_pmap_sharding->sharding_spec()) {
+        ShardArgResult result;
+        result.owning_sda = nb::borrow<nb::object>(arg.ptr());
+        result.ifrt_array = tsl::FormRef(py_array.ifrt_array());
+        if (result.ifrt_array == nullptr) {
+          return xla::InvalidArgument("Array has been deleted.");
         }
+        if (result.ifrt_array->sharding().devices().devices() != devices) {
+          xla::ifrt::DeviceList::Devices ifrt_devices;
+          ifrt_devices.reserve(devices.size());
+          ifrt_devices.insert(ifrt_devices.end(), devices.begin(),
+                              devices.end());
+          // pmap does not support memory_kind for now.
+          auto sharding = xla::ifrt::OpaqueSharding::Create(
+              xla::ifrt::DeviceList(std::move(ifrt_devices)),
+              xla::ifrt::MemoryKind());
+          TF_ASSIGN_OR_RETURN(auto copied_ifrt_array,
+                              result.ifrt_array->Reshard(
+                                  std::move(sharding),
+                                  xla::ifrt::ArrayCopySemantics::kReuseInput));
+          result.ifrt_array = std::move(copied_ifrt_array);
+        }
+        return result;
       }
     }
   }

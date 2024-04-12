@@ -2379,8 +2379,12 @@ absl::Status MIOpenSupport::DoRnnForwardImpl(
 
   const bool is_profiling = output_profile_result != nullptr;
 
-  TF_ASSIGN_OR_RETURN(std::optional<GpuTimer> timer,
-                      GpuTimer::CreateIfNeeded(stream, is_profiling));
+  TF_ASSIGN_OR_RETURN(
+      std::optional<GpuTimer> timer,
+      GpuTimer::CreateIfNeeded(
+          stream,
+          output_profile_result && output_profile_result->warmup_run_executed(),
+          is_profiling));
 
   // make the forward call
   if (!is_training) {
@@ -2507,8 +2511,12 @@ absl::Status MIOpenSupport::DoRnnBackwardImpl(
 
   const bool is_profiling = output_profile_result != nullptr;
 
-  TF_ASSIGN_OR_RETURN(std::optional<GpuTimer> timer,
-                      GpuTimer::CreateIfNeeded(stream, is_profiling));
+  TF_ASSIGN_OR_RETURN(
+      std::optional<GpuTimer> timer,
+      GpuTimer::CreateIfNeeded(
+          stream,
+          output_profile_result && output_profile_result->warmup_run_executed(),
+          is_profiling));
 
   // make the backward data call
   auto status = wrap::miopenRNNBackwardData(
@@ -3188,7 +3196,8 @@ class RocmConvRunner : public dnn::ConvRunner {
     return {{algo_id_, false, workspace_size_}};
   }
 
-  absl::Status operator()(Stream* stream, dnn::ProfileResult* profile_result,
+  absl::Status operator()(Stream* stream,
+                          dnn::ProfileResult* output_profile_result,
                           DeviceMemoryBase scratch_memory,
                           DeviceMemoryBase input_data,
                           DeviceMemoryBase filter_data,
@@ -3199,9 +3208,13 @@ class RocmConvRunner : public dnn::ConvRunner {
     // Beta is the scaling factor for output.
     float beta = 0.0;
 
-    const bool is_profiling = profile_result != nullptr;
+    const bool is_profiling = output_profile_result != nullptr;
     TF_ASSIGN_OR_RETURN(std::optional<GpuTimer> timer,
-                        GpuTimer::CreateIfNeeded(stream, is_profiling));
+                        GpuTimer::CreateIfNeeded(
+                            stream,
+                            output_profile_result &&
+                                output_profile_result->warmup_run_executed(),
+                            is_profiling));
 
     miopenStatus_t status = miopenStatusSuccess;
     switch (kind_) {
@@ -3272,11 +3285,11 @@ class RocmConvRunner : public dnn::ConvRunner {
       if (status == miopenStatusSuccess) {
         TF_ASSIGN_OR_RETURN(absl::Duration elapsed,
                             timer->GetElapsedDuration());
-        profile_result->set_elapsed_time_in_ms(
+        output_profile_result->set_elapsed_time_in_ms(
             absl::ToDoubleMilliseconds(elapsed));
         dnn::AlgorithmDesc algotype(algo_id_, false);
-        profile_result->set_algorithm(algotype);
-        profile_result->set_scratch_size(scratch_memory.size());
+        output_profile_result->set_algorithm(algotype);
+        output_profile_result->set_scratch_size(scratch_memory.size());
       }
     }
 

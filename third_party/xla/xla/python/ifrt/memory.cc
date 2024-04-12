@@ -65,7 +65,7 @@ MemoryKind CanonicalizeMemoryKind(MemoryKind memory_kind, Device* device) {
   }
   auto default_memory_space = device->default_memory_space();
   if (default_memory_space.ok()) {
-    return MemoryKind((*default_memory_space)->memory_space_kind());
+    return MemoryKind((*default_memory_space)->kind());
   }
   return MemoryKind();
 }

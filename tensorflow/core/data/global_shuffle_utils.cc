@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace data {
@@ -59,7 +60,8 @@ absl::Status GlobalShuffleIterator::GetNext(IteratorContext* ctx,
   }
 
   absl::MutexLock l(&mu_);
-  int64_t output_index = ctx->index_mapper()(element_count_++);
+  TF_ASSIGN_OR_RETURN(int64_t output_index,
+                      ctx->index_mapper()(element_count_++));
   absl::Status status =
       dataset_->Get(AnyContext(ctx), output_index, out_tensors);
   if (absl::IsOutOfRange(status)) {

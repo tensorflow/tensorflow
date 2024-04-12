@@ -1,6 +1,6 @@
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load(
-    "@local_tsl//tsl:tsl.bzl",
+    "@local_xla//xla/tsl:tsl.bzl",
     "clean_dep",
 )
 
@@ -126,13 +126,13 @@ cc_library(
     }),
     visibility = ["//visibility:public"],
     deps = select({
-        clean_dep("@local_tsl//tsl:linux_x86_64"): [
+        clean_dep("@local_xla//xla/tsl:linux_x86_64"): [
             ":mkl_libs_linux",
         ],
-        clean_dep("@local_tsl//tsl:macos"): [
+        clean_dep("@local_xla//xla/tsl:macos"): [
             ":mkl_libs_darwin",
         ],
-        clean_dep("@local_tsl//tsl:windows"): [
+        clean_dep("@local_xla//xla/tsl:windows"): [
             ":mkl_libs_windows",
         ],
         "//conditions:default": [],

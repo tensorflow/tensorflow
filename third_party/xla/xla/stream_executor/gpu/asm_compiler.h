@@ -40,50 +40,6 @@ limitations under the License.
 #endif  // GOOGLE_CUDA
 
 namespace stream_executor {
-namespace gpu {
-class GpuContext;
-}
-
-// Compiles the given PTX string using ptxas and returns the resulting machine
-// code (i.e. a cubin) as a byte array. The generated cubin matches the compute
-// capabilities of the device associated with 'device_ordinal'.
-//
-// 'options' is used to query for the CUDA location in case it is
-// customized in a passed flag, and for controlling ptxas optimizations.
-absl::StatusOr<std::vector<uint8_t>> CompileGpuAsm(int device_ordinal,
-                                                   const char* ptx_contents,
-                                                   GpuAsmOpts options);
-
-// Compiles the given PTX string using ptxas and returns the resulting machine
-// code (i.e. a cubin) as a byte array. The generated cubin matches the compute
-// capabilities provided by 'cc_major' and 'cc_minor'.
-//
-// 'options' is used to query for the CUDA location in case it is
-// customized in a passed flag, and for controlling ptxas optimizations.
-absl::StatusOr<std::vector<uint8_t>> CompileGpuAsm(
-    int cc_major, int cc_minor, const char* ptx_contents, GpuAsmOpts options,
-    bool cancel_if_reg_spill = false);
-
-absl::StatusOr<std::vector<uint8_t>> CompileGpuAsmUsingPtxAs(
-    int cc_major, int cc_minor, const char* ptx_contents, GpuAsmOpts options,
-    bool cancel_if_reg_spill = false);
-
-// Same as CompileGpuAsm, but caches the result, and returns unowned view of
-// the compiled binary.
-//
-// A copy of the string provided in ptx will be made.
-absl::StatusOr<absl::Span<const uint8_t>> CompileGpuAsmOrGetCached(
-    int device_ordinal, const char* ptx, GpuAsmOpts compilation_options);
-
-struct CubinOrPTXImage {
-  std::string profile;
-  std::vector<uint8_t> bytes;
-};
-
-// Bundles the GPU machine code (cubins) and PTX if requested and returns the
-// resulting binary (i.e. a fatbin) as a byte array.
-absl::StatusOr<std::vector<uint8_t>> BundleGpuAsm(
-    std::vector<CubinOrPTXImage> images, GpuAsmOpts options);
 
 struct HsacoImage {
   std::string gfx_arch;
@@ -94,35 +50,6 @@ struct HsacoImage {
 // binary (i.e. a fatbin) as a byte array.
 absl::StatusOr<std::vector<uint8_t>> BundleGpuAsm(
     std::vector<HsacoImage> images, const std::string rocm_root_dir);
-
-// Links multiple relocatable GPU images (e.g. results of ptxas -c) into a
-// single image.
-absl::StatusOr<std::vector<uint8_t>> LinkGpuAsm(
-    gpu::GpuContext* context, std::vector<CubinOrPTXImage> images);
-
-absl::StatusOr<std::vector<uint8_t>> LinkUsingNvlink(
-    absl::string_view preferred_cuda_dir, gpu::GpuContext* context,
-    std::vector<CubinOrPTXImage> images);
-
-using ToolVersion = std::array<int64_t, 3>;
-absl::StatusOr<std::string> FindCudaExecutable(
-    std::string_view binary_name, std::string_view preferred_cuda_dir,
-    ToolVersion minimum_version,
-    absl::Span<const ToolVersion> excluded_versions);
-
-absl::StatusOr<std::string> FindCudaExecutable(
-    std::string_view binary_name, std::string_view preferred_cuda_dir);
-
-// Runs tool --version and parses its version string.
-absl::StatusOr<ToolVersion> GetToolVersion(std::string_view tool_path);
-
-// On NVIDIA GPUs, returns the version of the ptxas command line tool.
-absl::StatusOr<ToolVersion> GetAsmCompilerVersion(
-    std::string_view preferred_cuda_dir);
-
-// On NVIDIA GPUs, returns the version of the nvlink command line tool.
-absl::StatusOr<ToolVersion> GetNvLinkVersion(
-    std::string_view preferred_cuda_dir);
 
 #if GOOGLE_CUDA
 // Maintains a cache of pointers to loaded kernels

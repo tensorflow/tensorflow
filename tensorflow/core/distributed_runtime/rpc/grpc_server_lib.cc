@@ -27,6 +27,7 @@ limitations under the License.
 #include "grpcpp/security/credentials.h"
 #include "grpcpp/server_builder.h"
 #include "absl/strings/numbers.h"
+#include "xla/tsl/distributed_runtime/rpc/async_service_interface.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/process_util.h"
@@ -61,7 +62,6 @@ limitations under the License.
 #include "tensorflow/core/profiler/rpc/profiler_service_impl.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/env_var.h"
-#include "tsl/distributed_runtime/rpc/async_service_interface.h"
 
 namespace tensorflow {
 

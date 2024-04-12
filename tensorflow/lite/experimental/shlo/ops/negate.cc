@@ -42,10 +42,11 @@ absl::Status Prepare(NegateOp& op, const Tensor& input, Tensor& output) {
 absl::Status Evaluate(NegateOp& op, const Tensor& input, Tensor& output) {
   Negate negate;
   if (input.IsPerTensorQuantized()) {
-    DISPATCH_QUANTIZED(detail::DequantizeOpQuantizePerTensor,
-                       input.quantized_tensor_element_type().StorageType(),
-                       input.quantized_tensor_element_type().ExpressedType(),
-                       negate, input, output)
+    DISPATCH_QUANTIZED(
+        detail::DequantizeOpQuantizePerTensor,
+        input.quantized_per_tensor_element_type().StorageType(),
+        input.quantized_per_tensor_element_type().ExpressedType(), negate,
+        input, output)
   } else if (IsSignedIntTensor(input) || IsFloatTensor(input)) {
     DISPATCH_INT_FLOAT(detail::EvaluateNoQuantization,
                        input.tensor_element_type(), negate, input, output);

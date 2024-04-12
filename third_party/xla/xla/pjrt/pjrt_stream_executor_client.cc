@@ -726,8 +726,7 @@ PjRtStreamExecutorBuffer::ReleaseDeviceMemoryOwnership(
 }
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer>>
-PjRtStreamExecutorBuffer::DonateWithControlDependency(
-    PjRtFuture<absl::Status> dependency) {
+PjRtStreamExecutorBuffer::DonateWithControlDependency(PjRtFuture<> dependency) {
   VLOG(1) << "PjRtStreamExecutorBuffer::DonateWithControlDependency";
   std::unique_ptr<PjRtBuffer> new_buffer;
 
@@ -1492,21 +1491,19 @@ void PjRtStreamExecutorBuffer::DropHold(ScopedHold::Type type,
   }
 }
 
-PjRtFuture<absl::Status> PjRtStreamExecutorBuffer::LazyToLiteral(
+PjRtFuture<> PjRtStreamExecutorBuffer::LazyToLiteral(
     absl::AnyInvocable<absl::StatusOr<MutableLiteralBase*>() &&> generator) {
   auto buffer = std::move(generator)();
   if (!buffer.ok()) {
-    return PjRtFuture<Status>(buffer.status());
+    return PjRtFuture<>(buffer.status());
   }
   return ToLiteral(buffer.value());
 }
 
-PjRtFuture<Status> PjRtStreamExecutorBuffer::ToLiteral(
-    MutableLiteralBase* literal) {
+PjRtFuture<> PjRtStreamExecutorBuffer::ToLiteral(MutableLiteralBase* literal) {
   VLOG(1) << "PjRtStreamExecutorBuffer::ToLiteral";
   if (IsEmptyTuple()) {
-    return PjRtFuture<Status>(
-        InvalidArgument("ToLiteral called on empty tuple"));
+    return PjRtFuture<>(InvalidArgument("ToLiteral called on empty tuple"));
   }
   LocalDeviceState* local_device = device_->local_device_state();
   se::Stream* stream = local_device->GetDeviceToHostStream();
@@ -1516,13 +1513,13 @@ PjRtFuture<Status> PjRtStreamExecutorBuffer::ToLiteral(
     // We can't perform any other action while a donation hold is in progress.
     WaitForOutstandingDonationHold();
     if (device_buffer_ == nullptr) {
-      return PjRtFuture<Status>(InvalidArgument(
+      return PjRtFuture<>(InvalidArgument(
           "CopyToHostAsync() called on deleted or donated buffer"));
     }
     AcquireHoldLocked(&device_buffer);
   }
 
-  auto promise = PjRtFuture<Status>::CreatePromise();
+  auto promise = PjRtFuture<>::CreatePromise();
   auto usage_event =
       std::make_shared<BufferSequencingEvent>(client_->thread_pool());
 
@@ -1551,14 +1548,14 @@ PjRtFuture<Status> PjRtStreamExecutorBuffer::ToLiteral(
     StatusOr<EventPool::Handle> event_or =
         local_device->event_pool().AllocateEvent(stream->parent());
     if (!event_or.ok()) {
-      promise.Set(event_or.status());
+      promise.SetError(event_or.status());
       return;
     }
 
     Status defined_status =
         tracked_device_buffer->definition_events()[0]->GetDefinedStatus();
     if (!defined_status.ok()) {
-      promise.Set(defined_status);
+      promise.SetError(defined_status);
       return;
     }
 
@@ -1577,7 +1574,13 @@ PjRtFuture<Status> PjRtStreamExecutorBuffer::ToLiteral(
 
     transfer_manager->TransferLiteralFromDevice(
         stream, shaped_buffer, literal,
-        [promise](Status status) mutable { promise.Set(status); },
+        [promise](Status status) mutable {
+          if (!status.ok()) {
+            promise.SetError(status);
+          } else {
+            promise.Set();
+          }
+        },
         transfer_metadata_ptr);
 
     local_device->event_pool().ThenRecordEvent(stream, event_or.value());
@@ -1585,7 +1588,7 @@ PjRtFuture<Status> PjRtStreamExecutorBuffer::ToLiteral(
 
     defined_status = local_device->ThenRelease(stream, tracked_device_buffer);
     if (!defined_status.ok()) {
-      promise.Set(defined_status);
+      promise.SetError(defined_status);
     }
   };
 
@@ -1593,7 +1596,7 @@ PjRtFuture<Status> PjRtStreamExecutorBuffer::ToLiteral(
       absl::StrFormat("async_to_literal_%p", literal),
       std::move(async_to_literal));
 
-  return PjRtFuture<Status>(
+  return PjRtFuture<>(
       std::move(promise),
       /*on_block_start=*/
       []() {
@@ -1623,14 +1626,14 @@ StatusOr<size_t> PjRtStreamExecutorBuffer::GetOnDeviceSizeInBytes() const {
   return device_buffer_->device_memory()[0].size();
 }
 
-PjRtFuture<Status> PjRtStreamExecutorBuffer::CopyRawToHost(
-    void* dst, int64_t offset, int64_t transfer_size) {
+PjRtFuture<> PjRtStreamExecutorBuffer::CopyRawToHost(void* dst, int64_t offset,
+                                                     int64_t transfer_size) {
   return client_->CopyRawSubBufferToHost(this, dst, offset, transfer_size);
 }
 
-PjRtFuture<Status> PjRtStreamExecutorBuffer::CopyRawToHostFuture(
+PjRtFuture<> PjRtStreamExecutorBuffer::CopyRawToHostFuture(
     PjRtFuture<StatusOr<void*>> dst, int64_t offset, int64_t transfer_size) {
-  auto promise = PjRtFuture<Status>::CreatePromise();
+  auto promise = PjRtFuture<>::CreatePromise();
   dst.OnReady([this, promise, offset,
                transfer_size](absl::StatusOr<void*> dst) mutable {
     if (dst.ok()) {
@@ -1641,14 +1644,18 @@ PjRtFuture<Status> PjRtStreamExecutorBuffer::CopyRawToHostFuture(
            promise = std::move(promise)]() mutable {
             CopyRawToHost(dst, offset, transfer_size)
                 .OnReady([promise = std::move(promise)](Status status) mutable {
-                  promise.Set(status);
+                  if (status.ok()) {
+                    promise.Set();
+                  } else {
+                    promise.SetError(status);
+                  }
                 });
           });
     } else {
-      promise.Set(dst.status());
+      promise.SetError(dst.status());
     }
   });
-  return PjRtFuture<Status>(std::move(promise));
+  return PjRtFuture<>(std::move(promise));
 }
 
 StatusOr<ShapedBuffer> PjRtStreamExecutorBuffer::AsShapedBuffer() const {
@@ -1805,7 +1812,7 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PjRtStreamExecutorBuffer::CopyToDevice(
         literal_pointer->untyped_data(),
         literal_pointer->shape().element_type(),
         literal_pointer->shape().dimensions(), byte_strides,
-        PjRtStreamExecutorClient::HostBufferSemantics::kZeroCopy,
+        PjRtStreamExecutorClient::HostBufferSemantics::kImmutableZeroCopy,
         [literal{std::move(literal)}]() { /* frees literal */ }, dst_device);
   }
 
@@ -1888,75 +1895,85 @@ void PjRtStreamExecutorBuffer::CopyToRemoteDeviceScattered(
   }
 }
 
-PjRtFuture<Status> PjRtStreamExecutorBuffer::GetReadyFuture() {
+PjRtFuture<> PjRtStreamExecutorBuffer::GetReadyFuture() {
   std::shared_ptr<TrackedDeviceBuffer> device_buffer;
-  PjRtFuture<Status>::Promise definition_promise;
+  PjRtFuture<>::Promise definition_promise;
   {
     absl::MutexLock lock(&mu_);
     if (device_buffer_ == nullptr) {
-      return PjRtFuture<Status>(InvalidArgument(
+      return PjRtFuture<>(InvalidArgument(
           "GetReadyFuture() called on deleted or donated buffer"));
     }
     if (!definition_promise_) {
       device_buffer = device_buffer_;
-      definition_promise_ = PjRtFuture<Status>::CreatePromise();
+      definition_promise_ = PjRtFuture<>::CreatePromise();
     }
     definition_promise = definition_promise_;
   }
 
   if (device_buffer) {
     LocalDeviceState* local_device_state = device_->local_device_state();
-    auto async_wait_for_events =
-        [device_buffer, local_device_state = std::move(local_device_state),
-         definition_promise]() mutable {
-          std::unique_ptr<se::Stream> stream;
-          Status defined_status =
-              device_buffer->definition_events()[0]->GetDefinedStatus();
-          if (!defined_status.ok()) {
-            definition_promise.Set(defined_status);
-            return;
+    auto async_wait_for_events = [device_buffer,
+                                  local_device_state =
+                                      std::move(local_device_state),
+                                  definition_promise]() mutable {
+      std::unique_ptr<se::Stream> stream;
+      Status defined_status =
+          device_buffer->definition_events()[0]->GetDefinedStatus();
+      if (!defined_status.ok()) {
+        definition_promise.SetError(defined_status);
+        return;
+      }
+      for (auto& event : device_buffer->definition_events()) {
+        if (!event->IsComplete()) {
+          if (stream == nullptr) {
+            stream = local_device_state->BorrowStreamFromPool();
           }
-          for (auto& event : device_buffer->definition_events()) {
-            if (!event->IsComplete()) {
-              if (stream == nullptr) {
-                stream = local_device_state->BorrowStreamFromPool();
-              }
-              event->WaitForEventOnStream(stream.get());
-            }
-          }
+          event->WaitForEventOnStream(stream.get());
+        }
+      }
 
-          if (stream != nullptr) {
-            auto* stream_ptr = stream.release();
-            // We already borrowed a stream from the pool so we can safely do
-            // the callback directly on that stream instead of bouncing through
-            // local_device_state->ThenExecuteCallback. The direct callback
-            // saves significant time.
-            auto status = stream_ptr->DoHostCallback(
-                [definition_promise, stream_ptr, local_device_state,
-                 event_with_status =
-                     device_buffer->definition_events()[0]]() mutable {
-                  local_device_state->ReturnStreamToPool(
-                      std::unique_ptr<se::Stream>(stream_ptr));
-                  definition_promise.Set(event_with_status->GetDefinedStatus());
-                });
-            if (!status.ok()) {
-              definition_promise.Set(status);
-              return;
-            }
-          } else {
-            // All events are already complete; set the `definition_promise`
-            // with the status of the buffer's first definition event which may
-            // have error status to propagate.
-            definition_promise.Set(
-                device_buffer->definition_events()[0]->GetDefinedStatus());
-          }
-        };
+      if (stream != nullptr) {
+        auto* stream_ptr = stream.release();
+        // We already borrowed a stream from the pool so we can safely do
+        // the callback directly on that stream instead of bouncing through
+        // local_device_state->ThenExecuteCallback. The direct callback
+        // saves significant time.
+        auto status = stream_ptr->DoHostCallback(
+            [definition_promise, stream_ptr, local_device_state,
+             event_with_status =
+                 device_buffer->definition_events()[0]]() mutable {
+              local_device_state->ReturnStreamToPool(
+                  std::unique_ptr<se::Stream>(stream_ptr));
+              auto status = event_with_status->GetDefinedStatus();
+              if (status.ok()) {
+                definition_promise.Set();
+              } else {
+                definition_promise.SetError(status);
+              }
+            });
+        if (!status.ok()) {
+          definition_promise.SetError(status);
+          return;
+        }
+      } else {
+        // All events are already complete; set the `definition_promise`
+        // with the status of the buffer's first definition event which may
+        // have error status to propagate.
+        auto status = device_buffer->definition_events()[0]->GetDefinedStatus();
+        if (status.ok()) {
+          definition_promise.Set();
+        } else {
+          definition_promise.SetError(status);
+        }
+      }
+    };
     device_buffer->definition_events()[0]->ExecuteOrAddToFutureTasks(
         absl::StrFormat("async_wait_for_events_%p", &async_wait_for_events),
         std::move(async_wait_for_events));
   }
 
-  return PjRtFuture<Status>(
+  return PjRtFuture<>(
       std::move(definition_promise),
       /*on_block_start=*/
       []() {
@@ -2386,7 +2403,7 @@ class StreamExecutorCopyToDeviceStream : public CopyToDeviceStream {
         dst_(dst),
         done_(std::move(done)) {}
 
-  PjRtFuture<Status> AddChunk(PjRtChunk chunk) final {
+  PjRtFuture<> AddChunk(PjRtChunk chunk) final {
     tsl::profiler::TraceMe trace([&] {
       return tsl::profiler::TraceMeEncode(
           "StreamExecutorCopyToDeviceStream::AddChunk",
@@ -2404,7 +2421,7 @@ class StreamExecutorCopyToDeviceStream : public CopyToDeviceStream {
       done_.SetError(absl::InvalidArgumentError(absl::StrFormat(
           "Chunk size (%d) was not a multiple of the granule size (%d)",
           chunk.size(), granule_size_in_bytes())));
-      return PjRtFuture<Status>(done_.GetError());
+      return PjRtFuture<>(done_.GetError());
     }
 
     if (current_bytes_ + chunk.size() > total_bytes_) {
@@ -2412,7 +2429,7 @@ class StreamExecutorCopyToDeviceStream : public CopyToDeviceStream {
           absl::StrFormat("Adding chunk of size %d would overflow buffer of "
                           "size %d (%d already transferred)",
                           chunk.size(), total_bytes_, current_bytes_)));
-      return PjRtFuture<Status>(done_.GetError());
+      return PjRtFuture<>(done_.GetError());
     }
 
     se::DeviceMemoryBase dst(
@@ -2426,7 +2443,7 @@ class StreamExecutorCopyToDeviceStream : public CopyToDeviceStream {
     auto copied = stream_->Memcpy(&dst, chunk.data(), chunk.size());
     if (!copied.ok()) {
       done_.SetError(copied);
-      return PjRtFuture<Status>(done_.GetError());
+      return PjRtFuture<>(done_.GetError());
     }
 
     // Delete chunk once the memcpy operation completes.
@@ -2434,7 +2451,7 @@ class StreamExecutorCopyToDeviceStream : public CopyToDeviceStream {
     auto deleted = stream_->DoHostCallback([chunk_ptr]() { delete chunk_ptr; });
     if (!deleted.ok()) {
       done_.SetError(deleted);
-      return PjRtFuture<Status>(done_.GetError());
+      return PjRtFuture<>(done_.GetError());
     }
 
     // Record done event once processed the last chunk. It is the caller
@@ -2444,12 +2461,12 @@ class StreamExecutorCopyToDeviceStream : public CopyToDeviceStream {
       auto recorded = stream_->RecordEvent(&done_.get());
       if (!recorded.ok()) {
         done_.SetError(recorded);
-        return PjRtFuture<Status>(done_.GetError());
+        return PjRtFuture<>(done_.GetError());
       }
       done_.SetStateConcrete();
     }
 
-    return PjRtFuture<Status>(OkStatus());
+    return PjRtFuture<>(OkStatus());
   }
 
  private:

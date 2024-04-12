@@ -52,9 +52,7 @@ std::string_view PyMemorySpace::platform() const {
   }
 }
 
-std::string_view PyMemorySpace::kind() const {
-  return memory_space_->memory_space_kind();
-}
+std::string_view PyMemorySpace::kind() const { return memory_space_->kind(); }
 
 std::string_view PyMemorySpace::Str() const {
   return memory_space_->DebugString();

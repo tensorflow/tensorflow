@@ -116,7 +116,6 @@ TEST_F(ReductionTest, ThreadIndexingRowReduction) {
         d3 in [0, 799]
         d4 in [0, 0]
         d5 in [0, 0]
-        (d3 * 8 + d0 floordiv 32) mod 64 in [0, 63]
         d0 mod 32 in [0, 0]
         d3 * 8 + d0 floordiv 32 in [0, 6399]
       )"));
@@ -185,10 +184,8 @@ TEST_F(ReductionTest, ThreadIndexingMultiRowReduction) {
         d3 in [0, 99]
         d4 in [0, 0]
         d5 in [0, 0]
-        (d0 floordiv 4) mod 64 in [0, 63]
         d0 mod 4 in [0, 0]
         d3 * 64 + d0 floordiv 4 in [0, 6399]
-        d3 + (d0 floordiv 4) floordiv 64 in [0, 99]
       )"));
 }
 
@@ -289,7 +286,6 @@ TEST_F(ReductionTest, ThreadIndexingOutputLayout) {
         d3 in [0, 799]
         d4 in [0, 0]
         d5 in [0, 0]
-        (d3 * 8 + d0 floordiv 32) mod 64 in [0, 63]
         d0 mod 32 in [0, 0]
         d3 * 8 + d0 floordiv 32 in [0, 6399]
       )"));

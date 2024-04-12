@@ -112,10 +112,15 @@ class Client final : public llvm::RTTIExtends<Client, xla::ifrt::Client> {
     return &default_compiler_;
   }
   absl::StatusOr<std::shared_ptr<const xla::PjRtTopologyDescription>>
-  GetTopologyForDevices(
-      absl::Span<xla::ifrt::Device* const> devices) const override {
+  GetTopologyForDevices(const xla::ifrt::DeviceList& devices) const override {
     return absl::UnimplementedError(
         "GetTopologyForDevices is not supported for the IFRT proxy client.");
+  }
+  absl::StatusOr<std::unique_ptr<xla::PjRtLayout>> GetDefaultLayoutForDevice(
+      xla::ifrt::DType dtype, absl::Span<const int64_t> dims,
+      xla::ifrt::Device* device) const override {
+    return absl::UnimplementedError(
+        "GetDefaultLayout is not supported for the IFRT proxy client.");
   }
 
   // For llvm::RTTIExtends.

@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "llvm/ADT/ArrayRef.h"
@@ -28,6 +29,7 @@ limitations under the License.
 #include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/OpImplementation.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -194,6 +196,70 @@ std::string ShardingParam::DebugString() const {
   llvm::raw_string_ostream os(result);
   os << *this;
   return result;
+}
+
+mlir::LogicalResult ShardingParam::CanApplyTo(
+    llvm::function_ref<mlir::InFlightDiagnostic()> emitError,
+    mlir::RankedTensorType shape, llvm::ArrayRef<int> device_ids) const {
+  if (mlir::failed(verify(emitError))) {
+    return mlir::failure();
+  }
+
+  if (shape.getRank() != dim_shards().size()) {
+    return emitError() << "Requires dim shards to have the same rank as the "
+                          "array. Array rank is "
+                       << shape.getRank() << " vs dim shards rank of "
+                       << dim_shards().size();
+  }
+
+  auto devices_in_mesh = NumDevices();
+  if (devices_in_mesh != device_ids.size()) {
+    return emitError() << "Requires the same amount of `devices` and from "
+                          "`sharding`. Actual: "
+                       << device_ids.size() << " vs " << devices_in_mesh;
+  }
+
+  return mlir::success();
+}
+
+absl::StatusOr<llvm::SmallVector<int64_t>>
+ShardingParam::GlobalShapeFromLocalShape(
+    llvm::ArrayRef<int64_t> local_shape) const {
+  llvm::SmallVector<int64_t> global_shape;
+  if (local_shape.size() != dim_shards().size()) {
+    return absl::InvalidArgumentError(
+        "Rank of local tensor differs from rank of `dim_shards`.");
+  }
+  for (auto [idx, dim_shard] : llvm::enumerate(dim_shards())) {
+    global_shape.push_back(dim_shard * local_shape[idx]);
+  }
+  return global_shape;
+}
+
+absl::StatusOr<llvm::SmallVector<int64_t>>
+ShardingParam::LocalShapeFromGlobalShape(
+    llvm::ArrayRef<int64_t> global_shape) const {
+  auto num_shards = dim_shards();
+  llvm::SmallVector<int64_t> local_shape;
+  local_shape.reserve(global_shape.size());
+  for (int i = 0; i < num_shards.size(); ++i) {
+    if (global_shape[i] % num_shards[i] != 0) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Global shape is not divisible by the number of shards in dimension ",
+          i, ". Global size: ", global_shape[i],
+          ", number of shards: ", num_shards[i], "."));
+    }
+    local_shape.push_back(global_shape[i] / num_shards[i]);
+  }
+  return local_shape;
+}
+
+int ShardingParam::NumDevices() const {
+  int devices_in_mesh = 1;
+  for (const int axis_size : minor_to_major().axis_sizes) {
+    devices_in_mesh *= axis_size;
+  }
+  return devices_in_mesh;
 }
 
 llvm::hash_code hash_value(ShardingParam sharding) {

@@ -965,7 +965,7 @@ GraphExecutor::GetOrCreateLoadedClientGraph(
     input_nodes[input_name] = array_info;
   }
   ClientGraph client_graph{
-      joined_name,
+      run_options.name.empty() ? joined_name : run_options.name,
       std::move(input_nodes),
       {output_tensor_names.begin(), output_tensor_names.end()},
       {target_tensor_names.begin(), target_tensor_names.end()}};

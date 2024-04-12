@@ -133,7 +133,6 @@ template <>
 struct ShardedBufferAdapter<ExecuteShardedArg> {
   static int num_devices(const ExecuteShardedArg& arg) {
     if (std::holds_alternative<PyArray>(arg)) {
-      CHECK(std::get<PyArray>(arg).fastpath_enabled());
       return std::get<PyArray>(arg).num_addressable_shards();
     } else {
       return std::get<std::vector<PyArray>>(arg).size();
@@ -142,7 +141,6 @@ struct ShardedBufferAdapter<ExecuteShardedArg> {
   static tsl::RCReference<ifrt::Array> GetIfRtArray(
       const ExecuteShardedArg& arg) {
     if (std::holds_alternative<PyArray>(arg)) {
-      CHECK(std::get<PyArray>(arg).fastpath_enabled());
       return tsl::FormRef(std::get<PyArray>(arg).ifrt_array());
     }
     auto& arg_vector = std::get<std::vector<PyArray>>(arg);

@@ -34,6 +34,10 @@ inline constexpr StringRef kFusedFunctionAttr = "tf_quant.composite_function";
 // The keyword to detect if this is a `NullAttribute`.
 inline constexpr StringRef kNullAttributeValue = "N/A";
 
+// Prefixes attached to lifted functions.
+constexpr StringRef kQuantizedFuncPrefix = "quantized_";
+constexpr StringRef kCompositeFuncPrefix = "composite_";
+
 // The attribute will be used for TF::XlaCallModuleOp to restore the original
 // function name when loading it back.
 inline constexpr StringRef kOriginalStablehloEntryFunctionAttrName =

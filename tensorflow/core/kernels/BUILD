@@ -1667,7 +1667,6 @@ tf_cc_test(
         "//tensorflow/core/kernels/batching_util:batch_scheduler_hdrs",
         "//tensorflow/core/kernels/batching_util:warmup",
         "//tensorflow/core/platform:status",
-        "//tensorflow/core/platform:status_matchers",
         "//tensorflow/core/protobuf:for_core_protos_cc",
         "//tensorflow/core/public:version",
         "@com_google_absl//absl/status",

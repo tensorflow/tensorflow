@@ -31,6 +31,8 @@ absl::StatusOr<MixedPriorityBatchingPolicy> GetMixedPriorityBatchingPolicy(
              kLowPriorityPaddingWithNextAllowedBatchSizeAttrValue) {
     return MixedPriorityBatchingPolicy::
         kLowPriorityPaddingWithNextAllowedBatchSize;
+  } else if (attr_value == kPriorityIsolationAttrValue) {
+    return MixedPriorityBatchingPolicy::kPriorityIsolation;
   }
   return absl::InvalidArgumentError(absl::StrFormat(
       "Unknown mixed priority batching policy: %s", attr_value));

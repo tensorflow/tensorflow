@@ -277,8 +277,8 @@ const char* GetRocmTracerEventDomainName(const RocmTracerEventDomain& domain) {
   return "";
 }
 
-tsl::Status RocmApiCallbackImpl::operator()(uint32_t domain, uint32_t cbid,
-                                            const void* cbdata) {
+absl::Status RocmApiCallbackImpl::operator()(uint32_t domain, uint32_t cbid,
+                                             const void* cbdata) {
   /* Some APIs such as hipMalloc, implicitly work on th devices set by the
     user using APIs such as hipSetDevice. API callbacks and activity records
     for functions like hipMalloc does not return the device id (CUDA does). To
@@ -838,8 +838,8 @@ void RocmApiCallbackImpl::AddSynchronizeEventUponApiExit(
   collector_->AddEvent(std::move(event), is_auxiliary);
 }
 
-tsl::Status RocmActivityCallbackImpl::operator()(const char* begin,
-                                                 const char* end) {
+absl::Status RocmActivityCallbackImpl::operator()(const char* begin,
+                                                  const char* end) {
   // we do not dump activities in this set in logger
 
   static std::set<activity_op_t> dump_excluded_activities = {
@@ -1359,14 +1359,14 @@ void ApiCallback(uint32_t domain, uint32_t cbid, const void* cbdata,
   tracer->ApiCallbackHandler(domain, cbid, cbdata).IgnoreError();
 }
 
-tsl::Status RocmTracer::ApiCallbackHandler(uint32_t domain, uint32_t cbid,
-                                           const void* cbdata) {
+absl::Status RocmTracer::ApiCallbackHandler(uint32_t domain, uint32_t cbid,
+                                            const void* cbdata) {
   if (api_tracing_enabled_)
     TF_RETURN_IF_ERROR((*api_cb_impl_)(domain, cbid, cbdata));
   return tsl::OkStatus();
 }
 
-tsl::Status RocmTracer::EnableApiTracing() {
+absl::Status RocmTracer::EnableApiTracing() {
   if (api_tracing_enabled_) return tsl::OkStatus();
   api_tracing_enabled_ = true;
 
@@ -1392,7 +1392,7 @@ tsl::Status RocmTracer::EnableApiTracing() {
   return tsl::OkStatus();
 }
 
-tsl::Status RocmTracer::DisableApiTracing() {
+absl::Status RocmTracer::DisableApiTracing() {
   if (!api_tracing_enabled_) return tsl::OkStatus();
   api_tracing_enabled_ = false;
 
@@ -1423,8 +1423,8 @@ void ActivityCallback(const char* begin, const char* end, void* user_data) {
   tracer->ActivityCallbackHandler(begin, end).IgnoreError();
 }
 
-tsl::Status RocmTracer::ActivityCallbackHandler(const char* begin,
-                                                const char* end) {
+absl::Status RocmTracer::ActivityCallbackHandler(const char* begin,
+                                                 const char* end) {
   if (activity_tracing_enabled_) {
     TF_RETURN_IF_ERROR((*activity_cb_impl_)(begin, end));
   } else {
@@ -1452,7 +1452,7 @@ tsl::Status RocmTracer::ActivityCallbackHandler(const char* begin,
   return tsl::OkStatus();
 }
 
-tsl::Status RocmTracer::EnableActivityTracing() {
+absl::Status RocmTracer::EnableActivityTracing() {
   if (activity_tracing_enabled_) return tsl::OkStatus();
   activity_tracing_enabled_ = true;
 
@@ -1493,7 +1493,7 @@ tsl::Status RocmTracer::EnableActivityTracing() {
   return tsl::OkStatus();
 }
 
-tsl::Status RocmTracer::DisableActivityTracing() {
+absl::Status RocmTracer::DisableActivityTracing() {
   if (!activity_tracing_enabled_) return tsl::OkStatus();
 
   for (auto& iter : options_->activity_tracing) {

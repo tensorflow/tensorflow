@@ -57,11 +57,11 @@ class TestStream : public CopyToDeviceStream {
         chunk_(chunk),
         done_(done) {}
 
-  PjRtFuture<Status> AddChunk(PjRtChunk chunk) override {
+  PjRtFuture<> AddChunk(PjRtChunk chunk) override {
     CHECK(!done_.HasBeenNotified());
     chunk_ = std::move(chunk);
     done_.Notify();
-    return PjRtFuture<Status>(OkStatus());
+    return PjRtFuture<>(OkStatus());
   }
 
  private:

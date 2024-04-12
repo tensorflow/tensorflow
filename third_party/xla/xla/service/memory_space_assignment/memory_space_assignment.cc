@@ -467,8 +467,8 @@ absl::StatusOr<std::optional<int64_t>> GetOverriddenPreferredPrefetchTime(
 }
 
 bool DoesResultMatchFilter(const HloPositionMatcher& filter,
-                           const ShapeIndex& index,
-                           HloInstruction* instruction) {
+                           const BufferInterval& buffer_interval) {
+  HloInstruction* instruction = buffer_interval.buffer->instruction();
   if (filter.has_instruction_regex() &&
       !RE2::FullMatch(instruction->ToString(), filter.instruction_regex())) {
     return false;
@@ -478,8 +478,15 @@ bool DoesResultMatchFilter(const HloPositionMatcher& filter,
     return false;
   }
   if (filter.has_tuple_index() &&
-      index != ShapeIndex(filter.tuple_index().index().begin(),
-                          filter.tuple_index().index().end())) {
+      buffer_interval.buffer->index() !=
+          ShapeIndex(filter.tuple_index().index().begin(),
+                     filter.tuple_index().index().end())) {
+    return false;
+  }
+  if (filter.has_size_gte() && filter.size_gte() > buffer_interval.size) {
+    return false;
+  }
+  if (filter.has_size_lte() && filter.size_lte() < buffer_interval.size) {
     return false;
   }
   return true;
@@ -496,8 +503,7 @@ int64_t GetBufferIntervalOverridePriority(
   for (int64_t i = 0; i < msa_sort_order_overrides.overrides_size(); ++i) {
     const auto& override = msa_sort_order_overrides.overrides(i);
     if (!DoesResultMatchFilter(override.hlo_position_matcher(),
-                               buffer_interval.buffer->index(),
-                               buffer_interval.buffer->instruction())) {
+                               buffer_interval)) {
       continue;
     }
     LOG(INFO) << "Override Sort Order Config " << i << " matches "
@@ -6098,7 +6104,7 @@ Status MemorySpaceAssignment::VerifyAndExportHeapSimulatorTrace() {
 
   auto add_allocation_and_verify = [&](int64_t start_time, int64_t end_time,
                                        const HeapSimulator::Chunk& chunk,
-                                       const HloValue* value) {
+                                       const HloValue* value) -> absl::Status {
     events[std::make_tuple(start_time, /*is_free=*/false, value->id())] =
         std::make_tuple(value, chunk, HeapSimulatorTrace::Event::ALLOC);
     events[std::make_tuple(end_time, /*is_free=*/true, value->id())] =

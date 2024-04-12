@@ -23,6 +23,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <variant>
@@ -110,7 +111,8 @@ class Stream {
 
   // Initialize the stream. This must be performed before entraining any other
   // operations.
-  absl::Status Initialize();
+  absl::Status Initialize(
+      std::optional<std::variant<StreamPriority, int>> priority = std::nullopt);
 
   // Get or create a sub-stream from this stream. If there is any sub-stream in
   // the pool that can be reused then just return this sub-stream.  Otherwise
@@ -292,9 +294,6 @@ class Stream {
     return parent()->GetDeviceDescription().rocm_compute_capability();
   }
 
-  void SetPriority(StreamPriority priority);
-  void SetPriority(int priority);
-
   std::variant<StreamPriority, int> priority() const;
 
  private:
@@ -322,11 +321,6 @@ class Stream {
   // mutex that guards the allocation / error state flags.
   // Mutable so that it can be obtained via const reader lock.
   mutable absl::Mutex mu_;
-
-  // Whether Init() was successfully called to allocate this stream on the
-  // underlying platform. It simply flips from 0 to 1 with a sanity check.
-  // See StreamExecutor::AllocateStream.
-  bool allocated_ ABSL_GUARDED_BY(mu_);
 
   // The last error (if any) of all method calls.
   absl::Status status_ ABSL_GUARDED_BY(mu_);

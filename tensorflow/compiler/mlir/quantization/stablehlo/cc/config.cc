@@ -102,9 +102,18 @@ QuantizationSpec GetDefaultStaticRangePtqSpec(StaticRangePtqPreset preset) {
   QuantizationSpec spec{};
   // Default for all ops.
   spec.mutable_matcher()->mutable_function_name()->set_regex(
-      preset.enable_full_int_quantization() ? ".*" : "^.*(conv|dot|gather).*");
+      preset.enable_full_int_quantization() ? ".*"
+                                            : "^.*(dot_general|gather).*");
   spec.mutable_method()->mutable_static_range_ptq();
 
+  return spec;
+}
+
+QuantizationSpec GetDefaultWeightOnlyPtqSpec(WeightOnlyPtqPreset preset) {
+  QuantizationSpec spec{};
+  spec.mutable_matcher()->mutable_function_name()->set_regex(
+      "^.*(conv|dot_general).*");
+  spec.mutable_method()->mutable_weight_only_ptq();
   return spec;
 }
 
@@ -122,14 +131,12 @@ QuantizationSpec GetDefaultStaticRangePtqSpec(StaticRangePtqPreset preset) {
 //       value {dimension_specs {dimension: 3}}}}
 //   }}
 // }
-QuantizationSpec GetStaticRangePtqSpecForConvolution() {
+QuantizationSpec GetPtqSpecForConvolution(Method::MethodCase method_case) {
   QuantizationSpec spec{};
 
   // Matches all convolution quantizable unit family.
   spec.mutable_matcher()->mutable_function_name()->set_regex(
       "composite_conv.*");
-  StaticRangePtq& static_range_ptq_spec =
-      *spec.mutable_method()->mutable_static_range_ptq();
 
   // Enable per-channel quantization for convolution weights.
   QuantizedType conv_weight_quantized_type{};
@@ -140,8 +147,17 @@ QuantizationSpec GetStaticRangePtqSpecForConvolution() {
 
   // The index of weight operands passed to lifted functions for convolution
   // is 1.
-  static_range_ptq_spec.mutable_input_quantized_types()->try_emplace(
-      1, std::move(conv_weight_quantized_type));
+  if (method_case == Method::kStaticRangePtq) {
+    StaticRangePtq& static_range_ptq_spec =
+        *spec.mutable_method()->mutable_static_range_ptq();
+    static_range_ptq_spec.mutable_input_quantized_types()->try_emplace(
+        1, std::move(conv_weight_quantized_type));
+  } else if (method_case == Method::kWeightOnlyPtq) {
+    WeightOnlyPtq& weight_only_ptq_spec =
+        *spec.mutable_method()->mutable_weight_only_ptq();
+    weight_only_ptq_spec.mutable_input_quantized_types()->try_emplace(
+        1, std::move(conv_weight_quantized_type));
+  }
 
   return spec;
 };
@@ -164,13 +180,34 @@ void ExpandStaticRangePtqPreset(const StaticRangePtqPreset& preset,
   QuantizationSpecs new_specs{};
   *new_specs.add_specs() =
       GetDefaultStaticRangePtqSpec(/*preset=*/config.static_range_ptq_preset());
-  *new_specs.add_specs() = GetStaticRangePtqSpecForConvolution();
+  *new_specs.add_specs() =
+      GetPtqSpecForConvolution(Method::MethodCase::kStaticRangePtq);
 
   // Append user-provided specs to override existing specs.
   const QuantizationSpecs& previous_specs = config.specs();
   new_specs.mutable_specs()->Add(previous_specs.specs().begin(),
                                  previous_specs.specs().end());
 
+  // TODO: b/331120943 - Remove preset from config.
+  config.mutable_specs()->Swap(&new_specs);
+}
+
+void ExpandWeightOnlyPtqPreset(const WeightOnlyPtqPreset& preset,
+                               QuantizationConfig& config) {
+  // Create a new `QuantizationSpecs` to replace the existing one. The
+  // expansion from `WeightOnlyPtqPreset` gets populated first and then
+  // user-provided explicit `QuantizationSpec`s will be appended.
+  QuantizationSpecs new_specs{};
+  *new_specs.add_specs() =
+      GetDefaultWeightOnlyPtqSpec(/*preset=*/config.weight_only_ptq_preset());
+  // TODO: b/307625297 - Add per-channel weight only support.
+
+  // Append user-provided specs to override existing specs.
+  const QuantizationSpecs& previous_specs = config.specs();
+  new_specs.mutable_specs()->Add(previous_specs.specs().begin(),
+                                 previous_specs.specs().end());
+
+  config.clear_weight_only_ptq_preset();
   config.mutable_specs()->Swap(&new_specs);
 }
 
@@ -184,12 +221,25 @@ QuantizationConfig ExpandPresets(const QuantizationConfig& config) {
     case QuantizationConfig::kStaticRangePtqPreset:
       ExpandStaticRangePtqPreset(config.static_range_ptq_preset(), new_config);
       break;
+    case QuantizationConfig::kWeightOnlyPtqPreset:
+      ExpandWeightOnlyPtqPreset(config.weight_only_ptq_preset(), new_config);
+      break;
     default:
       // Preset has not been specified. The expansion is a no-op.
       break;
   }
 
   return new_config;
+}
+
+bool HasQuantizationMethod(const QuantizationSpecs& specs,
+                           Method::MethodCase method_case) {
+  for (const auto& spec : specs.specs()) {
+    if (spec.method().method_case() == method_case) {
+      return true;
+    }
+  }
+  return false;
 }
 
 QuantizationConfig PopulateDefaults(

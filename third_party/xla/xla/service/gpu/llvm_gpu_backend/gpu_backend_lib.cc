@@ -15,21 +15,37 @@ limitations under the License.
 
 #include "xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
 
+#include <cstdint>
 #include <fstream>
 #include <functional>
 #include <ios>
 #include <memory>
+#include <mutex>  // NOLINT
 #include <optional>
 #include <string>
+#include <system_error>  // NOLINT
 #include <utility>
 #include <variant>
 #include <vector>
 
 #include "absl/base/call_once.h"
+#include "absl/base/const_init.h"
+#include "absl/base/thread_annotations.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
+#include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
+#include "llvm/ADT/Any.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringSet.h"
+#include "llvm/Analysis/CGSCCPassManager.h"
+#include "llvm/Analysis/LazyCallGraph.h"
+#include "llvm/Analysis/LoopAnalysisManager.h"
 #include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/Analysis/TargetTransformInfo.h"
 #include "llvm/Bitcode/BitcodeReader.h"
@@ -39,19 +55,22 @@ limitations under the License.
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Metadata.h"
 #include "llvm/IR/Module.h"
+#include "llvm/IR/PassManager.h"
 #include "llvm/IR/Verifier.h"
 #include "llvm/InitializePasses.h"
 #include "llvm/Linker/Linker.h"
 #include "llvm/MC/TargetRegistry.h"
 #include "llvm/PassRegistry.h"
+#include "llvm/Passes/OptimizationLevel.h"
 #include "llvm/Passes/PassBuilder.h"
 #include "llvm/Passes/StandardInstrumentations.h"
+#include "llvm/Support/CodeGen.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Program.h"
 #include "llvm/Support/TargetSelect.h"
+#include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetMachine.h"
-#include "llvm/Transforms/IPO.h"
 #include "llvm/Transforms/IPO/AlwaysInliner.h"
 #include "llvm/Transforms/IPO/Internalize.h"
 #include "llvm/Transforms/Scalar.h"
@@ -59,21 +78,27 @@ limitations under the License.
 #include "xla/service/gpu/metrics.h"
 #include "xla/service/llvm_ir/llvm_command_line_options.h"
 #include "xla/service/llvm_ir/llvm_type_conversion_util.h"
-#include "xla/status_macros.h"
+#include "xla/status.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/util/env_var.h"
-#include "xla/types.h"
 #include "xla/util.h"
 #include "tsl/platform/cuda_libdevice_path.h"
 #include "tsl/platform/env.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/random.h"
 #include "tsl/platform/rocm_rocdl_path.h"
+#include "tsl/platform/status.h"
+#include "tsl/platform/statusor.h"
 #include "tsl/profiler/lib/traceme.h"
 
 #if !defined(PLATFORM_GOOGLE) && TENSORFLOW_USE_ROCM
 #include "rocm/rocm_config.h"
+#endif
+
+#if GOOGLE_CUDA
+#include "third_party/gpus/cuda/include/cuda.h"
 #endif
 
 namespace xla {
@@ -123,12 +148,14 @@ static std::string GetSmName(se::CudaComputeCapability compute_capability) {
   return absl::StrCat("sm_", sm_version, extension);
 }
 
+// NOLINTBEGIN: clang-diagnostic-unused-function
 // Convenience function for producing a name of a temporary compilation product
 // from the input filename.
 std::string MakeNameForTempProduct(absl::string_view input_filename,
                                    absl::string_view extension) {
   return ReplaceFilenameExtension(tsl::io::Basename(input_filename), extension);
 }
+// NOLINTEND: clang-diagnostic-unused-function
 
 // Initializes LLVM passes. Uses the PassRegistry mechanism.
 void InitializePasses(llvm::PassRegistry* pass_registry) {
@@ -294,6 +321,11 @@ std::unique_ptr<llvm::TargetMachine> NVPTXGetTargetMachine(
     const DebugOptions& debug_options) {
   // Figure out the exact name of the processor as known to the NVPTX backend
   // from the gpu_architecture flag.
+#if defined(GOOGLE_CUDA) && CUDA_VERSION >= 12010
+  // use ptx81 for CUDA >= 12.1
+  return GetTargetMachine(target_triple, GetSmName(compute_capability),
+                          debug_options, /*feature_str=*/"+ptx81");
+#endif
   return GetTargetMachine(target_triple, GetSmName(compute_capability),
                           debug_options, /*feature_str=*/"+ptx74");
 }
@@ -667,7 +699,7 @@ struct HsacoCache {
                   const std::vector<uint8_t>& hsaco);
 };
 
-static HsacoCache g_hsacoCache;
+static HsacoCache g_hsacoCache;  // NOLINT: static/global vars forbidden
 
 bool HsacoCache::Find(const std::string& ir, uint64_t& hash,
                       const std::string& gfx, std::vector<uint8_t>& hsaco) {
@@ -908,7 +940,7 @@ std::unique_ptr<llvm::TargetMachine> AMDGPUGetTargetMachine(
 // Returns the directory containing ROCm-Device-Libs files.
 std::string GetROCDLDir(const DebugOptions& debug_options) {
   std::vector<std::string> potential_rocdl_dirs;
-  const std::string datadir = debug_options.xla_gpu_cuda_data_dir();
+  const std::string& datadir = debug_options.xla_gpu_cuda_data_dir();
   if (!datadir.empty()) {
     potential_rocdl_dirs.push_back(datadir);
   }
@@ -941,6 +973,7 @@ void AMDGPUBackendInit(const DebugOptions& debug_options,
   LLVMInitializeAMDGPUTarget();
   LLVMInitializeAMDGPUTargetInfo();
   LLVMInitializeAMDGPUTargetMC();
+  LLVMInitializeAMDGPUAsmParser();
   LLVMInitializeAMDGPUAsmPrinter();
 #endif
 
@@ -952,6 +985,18 @@ void AMDGPUBackendInit(const DebugOptions& debug_options,
 }  // namespace
 
 namespace amdgpu {
+
+std::string LibDevicePath(std::string gcn_arch_name,
+                          const std::string& rocdl_dir_path) {
+  auto libdevice_dir_paths = GetROCDLPaths(gcn_arch_name, rocdl_dir_path);
+  for (auto libdevice_dir_path : libdevice_dir_paths) {
+    if (libdevice_dir_path.find("ocml.bc")) {
+      return libdevice_dir_path;
+    }
+  }
+  return "";
+}
+
 absl::StatusOr<std::vector<uint8_t>> CompileToHsaco(
     llvm::Module* module, se::GpuComputeCapability gpu_version,
     const DebugOptions& debug_options,
@@ -959,7 +1004,7 @@ absl::StatusOr<std::vector<uint8_t>> CompileToHsaco(
   static absl::once_flag backend_init_flag;
   // TODO(rocm) Ideally this would be refreshed if xla_gpu_cuda_data_dir
   // changes.
-  static std::string rocdl_dir_path;
+  static std::string rocdl_dir_path;  // NOLINT: static/global vars forbidden
   absl::call_once(backend_init_flag, AMDGPUBackendInit, debug_options,
                   rocdl_dir_path);
 

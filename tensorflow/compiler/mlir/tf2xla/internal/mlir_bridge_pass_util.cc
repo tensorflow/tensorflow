@@ -111,22 +111,6 @@ bool IsReplicatedGraph(const Graph& graph,
   return HasAttr(graph, function_library, predicate).succeeded();
 }
 
-bool IsSingleCoreTpuGraph(const Graph& graph,
-                          const FunctionLibraryDefinition* function_library) {
-  auto predicate = [](const Graph& graph) {
-    for (const Node* node : graph.nodes()) {
-      // _xla_compile_device_type=TPU is found in single-core TPU graphs.
-      auto attr =
-          node->attrs().FindByString(std::string(kCompileDeviceTypeAttr));
-      if (attr && attr->s() == kTpuDevice) {
-        return true;
-      }
-    }
-    return false;
-  };
-  return HasAttr(graph, function_library, predicate).succeeded();
-}
-
 bool IsReplicatedGraph(mlir::ModuleOp module) {
   auto walk_result = module.walk([&](mlir::Operation* op) {
     // TODO(b/223677572): Once the scope for new compilation and replication
@@ -139,25 +123,6 @@ bool IsReplicatedGraph(mlir::ModuleOp module) {
     auto replicate_attr =
         op->getAttrOfType<mlir::StringAttr>(tpu_replicate_attr_name);
     if (replicate_attr) return mlir::WalkResult::interrupt();
-    return mlir::WalkResult::advance();
-  });
-  return walk_result.wasInterrupted();
-}
-
-bool IsSingleCoreTPUGraph(mlir::ModuleOp module) {
-  auto walk_result = module.walk([&](mlir::Operation* op) {
-    // Check for ops with compile device type "TPU". This allows us to support
-    // TPU compilation without replication. Note that currently the compile
-    // device type is not set by default before bridge, only if eager context
-    // attribute `jit_compile_rewrite` is true.
-    // TODO(b/229028654): Remove string conversion once we have C++17.
-    const llvm::StringRef compile_device_type_attr_name(
-        kCompileDeviceTypeAttr.data(), kCompileDeviceTypeAttr.size());
-    auto compilation_attr =
-        op->getAttrOfType<mlir::StringAttr>(compile_device_type_attr_name);
-    if (compilation_attr && compilation_attr.getValue().str() == kTpuDevice) {
-      return mlir::WalkResult::interrupt();
-    }
     return mlir::WalkResult::advance();
   });
   return walk_result.wasInterrupted();
@@ -211,12 +176,11 @@ bool IsSupportedByNonReplicatedBridge(
 
 bool IsSupportedByReplicatedBridge(
     const Graph& graph, const FunctionLibraryDefinition* function_library) {
-  return IsReplicatedGraph(graph, function_library) ||
-         IsSingleCoreTpuGraph(graph, function_library);
+  return IsReplicatedGraph(graph, function_library);
 }
 
 bool IsSupportedByReplicatedBridge(mlir::ModuleOp module) {
-  return IsReplicatedGraph(module) || IsSingleCoreTPUGraph(module);
+  return IsReplicatedGraph(module);
 }
 
 bool HasTPUPartitionedCallOpInModule(mlir::ModuleOp module) {

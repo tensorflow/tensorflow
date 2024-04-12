@@ -45,15 +45,14 @@ namespace stream_executor {
 namespace tpu {
 
 namespace {
-using xla::Status;
+using absl::Status;
 }  // namespace
 
 TpuExecutor::~TpuExecutor() { ExecutorApiFn()->TpuExecutor_FreeFn(executor_); }
 
-Status TpuExecutor::Init(int device_ordinal) {
+Status TpuExecutor::Init() {
   StatusHelper status;
-  ExecutorApiFn()->TpuExecutor_InitFn(executor_, device_ordinal,
-                                      status.c_status);
+  ExecutorApiFn()->TpuExecutor_InitFn(executor_, status.c_status);
   return status.status();
 }
 

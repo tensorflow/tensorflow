@@ -98,6 +98,17 @@ void QuantizeCompositeFunctionsPass::runOnOperation() {
   pm.addPass(createQuantizePass(quantize_options));
   pm.addNestedPass<func::FuncOp>(createPostQuantizePass());
 
+  // Convert XlaCallModuleOps lifted but not quantized to func.call op.
+  // The reasons these ops are not quantized may be:
+  // 1. Disabled due to selective quantization.
+  // 2. Not supported, e.g. add op for server.
+  pm.addPass(createXlaCallModuleToCallPass());
+
+  // TODO: b/321729008 - move this implementation to quantization_patterns.cc.
+  if (merge_fusion_with_dequantize_) {
+    pm.addPass(createMergeFusionWithDequantizePass());
+  }
+
   ModuleOp module_op = getOperation();
   if (const absl::Status pm_run_status =
           RunPassesOnModuleOp(mlir_dump_file_name_, pm, module_op);

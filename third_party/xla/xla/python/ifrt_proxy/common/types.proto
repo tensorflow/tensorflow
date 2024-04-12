@@ -16,8 +16,6 @@ syntax = "proto3";
 
 package xla.ifrt.proto;
 
-import "xla/python/ifrt/serdes.proto";
-
 // Mirrors `xla::PjRtValueType`, which is used in IFRT to model
 // polymorphic-typed values, e.g., `xla::ifrt::Executable::CostAnalysisValue`.
 message Variant {

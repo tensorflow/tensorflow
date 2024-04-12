@@ -78,8 +78,6 @@ using ::stablehlo::quantization::Method;
 using ::stablehlo::quantization::QuantizedType;
 using ::stablehlo::quantization::StaticRangePtq;
 
-constexpr StringRef kCompositeFuncPrefix = "composite_";
-constexpr StringRef kQuantizedFuncPrefix = "quantized_";
 constexpr StringRef kEntryFuncAttrName = "_entry_function";
 
 // Returns broadcasted user op of an input op. Returns null if

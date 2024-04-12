@@ -530,7 +530,10 @@ absl::Status ROCMBlas::DoBlasGemmWithAlgorithm(
         static_cast<int>(type_a), static_cast<int>(type_b)));
   }
   TF_ASSIGN_OR_RETURN(
-      auto timer, GpuTimer::CreateIfNeeded(stream, profile_result != nullptr));
+      auto timer,
+      GpuTimer::CreateIfNeeded(
+          stream, profile_result && profile_result->warmup_run_executed(),
+          profile_result != nullptr));
 
   // fall back to the default implementation
   if (algorithm == blas::kDefaultAlgorithm && type_a == type_c) {
@@ -586,7 +589,10 @@ absl::Status ROCMBlas::DoBlasGemmStridedBatchedWithAlgorithm(
         static_cast<int>(type_a), static_cast<int>(type_b)));
   }
   TF_ASSIGN_OR_RETURN(
-      auto timer, GpuTimer::CreateIfNeeded(stream, profile_result != nullptr));
+      auto timer,
+      GpuTimer::CreateIfNeeded(
+          stream, profile_result && profile_result->warmup_run_executed(),
+          profile_result != nullptr));
 
   // fall back to the default implementation
   if (algorithm == blas::kDefaultAlgorithm && type_a == type_c) {

@@ -13,36 +13,27 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/python/ifrt/sharding_serdes.h"
-
 #include <memory>
-#include <string>
-#include <utility>
-#include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "llvm/Support/Casting.h"
-#include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/sharding_serdes.pb.h"
-#include "xla/util.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {
 
-char DeserializeShardingOptions::ID = 0;
-
 namespace {
 
-// TODO(hyeontaek): Move SerDes for the subclasses of `Sharding` to a separate
-// file, making this sharding_serdes.{h,cc} only define common functions.
+// TODO(hyeontaek): Rename sharding_serdes.cc once the subclasses of `Sharding`
+// are moved to to a separate file other than sharding.{h,cc}.
 
 // Serialization/deserialization for `SingleDeviceSharding`.
 class SingleDeviceShardingSerDes
@@ -66,8 +57,9 @@ class SingleDeviceShardingSerDes
   absl::StatusOr<std::unique_ptr<Serializable>> Deserialize(
       const std::string& serialized,
       std::unique_ptr<DeserializeOptions> options) override {
-    TF_ASSIGN_OR_RETURN(auto deserialize_sharding_options,
-                        GetDeserializeShardingOptions(std::move(options)));
+    const auto* deserialize_sharding_options =
+        llvm::cast<DeserializeShardingOptions>(options.get());
+
     SingleDeviceShardingProto proto;
     if (!proto.ParseFromString(serialized)) {
       return absl::InvalidArgumentError(
@@ -107,8 +99,8 @@ class OpaqueShardingSerDes
   absl::StatusOr<std::unique_ptr<Serializable>> Deserialize(
       const std::string& serialized,
       std::unique_ptr<DeserializeOptions> options) override {
-    TF_ASSIGN_OR_RETURN(auto deserialize_sharding_options,
-                        GetDeserializeShardingOptions(std::move(options)));
+    const auto* deserialize_sharding_options =
+        llvm::cast<DeserializeShardingOptions>(options.get());
 
     OpaqueShardingProto proto;
     if (!proto.ParseFromString(serialized)) {
@@ -163,8 +155,8 @@ class ConcreteShardingSerDes
   absl::StatusOr<std::unique_ptr<Serializable>> Deserialize(
       const std::string& serialized,
       std::unique_ptr<DeserializeOptions> options) override {
-    TF_ASSIGN_OR_RETURN(auto deserialize_sharding_options,
-                        GetDeserializeShardingOptions(std::move(options)));
+    const auto* deserialize_sharding_options =
+        llvm::cast<DeserializeShardingOptions>(options.get());
 
     ConcreteShardingProto proto;
     if (!proto.ParseFromString(serialized)) {
@@ -237,8 +229,8 @@ class ConcreteEvenShardingSerDes
   absl::StatusOr<std::unique_ptr<Serializable>> Deserialize(
       const std::string& serialized,
       std::unique_ptr<DeserializeOptions> options) override {
-    TF_ASSIGN_OR_RETURN(auto deserialize_sharding_options,
-                        GetDeserializeShardingOptions(std::move(options)));
+    const auto* deserialize_sharding_options =
+        llvm::cast<DeserializeShardingOptions>(options.get());
 
     ConcreteEvenShardingProto proto;
     if (!proto.ParseFromString(serialized)) {
@@ -294,35 +286,6 @@ bool register_concrete_even_sharding_serdes = ([]{
 // clang-format on
 
 }  // namespace
-
-absl::StatusOr<std::unique_ptr<DeserializeShardingOptions>>
-GetDeserializeShardingOptions(std::unique_ptr<DeserializeOptions> options) {
-  if (!llvm::isa<DeserializeShardingOptions>(options.get())) {
-    return xla::InvalidArgument("options must be DeserializeShardingOptions");
-  }
-  return std::unique_ptr<DeserializeShardingOptions>(
-      static_cast<DeserializeShardingOptions*>(options.release()));
-}
-
-// TODO(hyeontaek): Move this common logic into Sharding::FromProto() and
-// Sharding::ToProto().
-
-absl::StatusOr<std::unique_ptr<Sharding>> FromShardingProto(
-    DeviceList::LookupDeviceFunc lookup_device,
-    const ShardingProto& sharding_proto) {
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<Serializable> sharding,
-                      Deserialize(sharding_proto.serialized_sharding(),
-                                  std::make_unique<DeserializeShardingOptions>(
-                                      std::move(lookup_device))));
-  return std::unique_ptr<Sharding>(llvm::cast<Sharding>(sharding.release()));
-}
-
-absl::StatusOr<ShardingProto> ToShardingProto(const Sharding& sharding) {
-  ShardingProto sharding_proto;
-  TF_ASSIGN_OR_RETURN(*sharding_proto.mutable_serialized_sharding(),
-                      Serialize(const_cast<Sharding&>(sharding)));
-  return sharding_proto;
-}
 
 }  // namespace ifrt
 }  // namespace xla

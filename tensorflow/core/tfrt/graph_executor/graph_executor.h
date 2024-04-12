@@ -239,7 +239,8 @@ class GraphExecutor {
 
   // A subgraph constructed by specifying input/output tensors.
   struct ClientGraph {
-    // A unique name by joining all the input/output/target names.
+    // The human-readable name for the graph, e.g. the signature_name in the
+    // saved model.
     std::string name;
     // The feed nodes for the corresponding inputs, but they might not be in the
     // original order and if there are more than one original inputs mapped to

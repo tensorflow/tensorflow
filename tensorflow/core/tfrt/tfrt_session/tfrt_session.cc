@@ -756,7 +756,7 @@ Status TfrtSessionFactory::InitializeLocked(const TfrtSessionOptions& options) {
   mutex_.AssertHeld();
   if (options.use_tpu) {
     DCHECK(!options.backend_compiler);
-    device_target_ = TfrtDeviceInfraTarget::kBridgeFallback;
+    device_target_ = TfrtDeviceInfraTarget::kTpurt;
     tpu_use_tpu_runner_ = true;
   } else if (options.backend_compiler) {
     backend_compiler_ = options.backend_compiler;

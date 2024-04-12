@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/hlo_verifier.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <iterator>
 #include <map>
@@ -28,11 +29,16 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -42,21 +48,23 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/layout.h"
+#include "xla/layout_util.h"
 #include "xla/permutation_util.h"
 #include "xla/primitive_util.h"
 #include "xla/service/collective_ops_utils.h"
-#include "xla/service/pattern_matcher.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/shape_inference.h"
+#include "xla/shape.h"
+#include "xla/shape_layout.h"
 #include "xla/shape_util.h"
+#include "xla/status.h"
 #include "xla/status_macros.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
-
-namespace m = match;
-
 namespace {
 
 bool IsCallerInstruction(HloInstruction* hlo) {
@@ -1751,7 +1759,8 @@ Status CheckMixedPrecisionOperands(const HloInstruction* instruction) {
       for (auto operand : instruction->operands()) {
         TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
             operand->shape(),
-            [&](const Shape& subshape, const ShapeIndex& index) {
+            [&](const Shape& subshape,
+                const ShapeIndex& index) -> absl::Status {
               if (!ShapeUtil::ElementIsFloating(subshape)) {
                 return OkStatus();
               }
@@ -2001,17 +2010,21 @@ std::string ComputationsToString(
 
 // Verifies various invariants about the structure of the HLO:
 //
-// (1) each instruction has a non-null parent() set to the HloComputation
-// which
-//     contains it.
+// (1) each instruction is non-null and has a non-null parent() set to the
+// HloComputation which contains it.
 //
-// (2) each computation has a non-null parent() set to the HloModule which
-//     contains it.
+// (2) each computation is non-null and has a non-null parent() set to the
+// HloModule which contains it.
 //
-// (3) the operands of each instruction are in the same computation as the
-//     instruction.
+// (3) the operands of each instruction are non-null and are in the same
+// computation as the instruction.
 Status VerifyHloStructure(HloModule* module) {
   for (const HloComputation* computation : module->computations()) {
+    if (computation == nullptr) {
+      return Internal("Computation in module %s is a null pointer",
+                      module->name());
+    }
+
     if (computation->parent() == nullptr) {
       return Internal("Computation %s has a null parent pointer",
                       computation->name());
@@ -2022,6 +2035,10 @@ Status VerifyHloStructure(HloModule* module) {
     }
 
     for (const HloInstruction* instruction : computation->instructions()) {
+      if (instruction == nullptr) {
+        return Internal("Instruction in computation %s is a null pointer",
+                        computation->name());
+      }
       if (instruction->parent() == nullptr) {
         return Internal("Instruction %s has a null parent pointer",
                         instruction->name());
@@ -2042,6 +2059,17 @@ Status VerifyHloStructure(HloModule* module) {
     for (const HloInstruction* instruction : computation->instructions()) {
       for (int i = 0; i < instruction->operand_count(); ++i) {
         const HloInstruction* operand = instruction->operand(i);
+        if (operand == nullptr) {
+          return Internal(
+              "Operand %d (out of %d) of instruction: %s is a null pointer", i,
+              instruction->operand_count(), instruction->name());
+        }
+        if (operand->parent() == nullptr) {
+          return Internal(
+              "Operand %d (out of %d) of instruction: %s has a null pointer "
+              "parent",
+              i, instruction->operand_count(), instruction->name());
+        }
         if (operand->parent() != instruction->parent()) {
           return Internal(
               "Operand %d (%s) of instruction %s is in a different "
@@ -2070,22 +2098,6 @@ bool ShapeContainsToken(const Shape& shape) {
   return contains_token;
 }
 
-// Verifies that all types entering and exiting the entry computation are
-// legal.
-Status VerifyEntryAndExitShapes(const HloModule& module) {
-  // Tokens cannot be passed as entry parameters.
-  // TODO(b/80000000): Remove this constraint.
-  for (int i = 0; i < module.entry_computation()->num_parameters(); ++i) {
-    HloInstruction* param =
-        module.entry_computation()->parameter_instruction(i);
-    if (ShapeContainsToken(param->shape())) {
-      return Internal("Entry parameter %d is or contains a token shape: %s", i,
-                      ShapeUtil::HumanString(param->shape()));
-    }
-  }
-  return OkStatus();
-}
-
 // Checks if the given two instructions share the same channel id.
 Status CheckSameChannel(const HloInstruction* instr1,
                         const HloInstruction* instr2) {
@@ -2100,7 +2112,7 @@ Status CheckSameChannel(const HloInstruction* instr1,
 }
 
 // Checks if the given two instructions have the same is_host_transfer
-// attribute value. Intsructions must be send/recv instructions or their
+// attribute value. Instructions must be send/recv instructions or their
 // 'done' variant.
 Status CheckSameIsHostTransfer(const HloInstruction* instr1,
                                const HloInstruction* instr2) {
@@ -2292,7 +2304,7 @@ Status VerifyChannels(const HloModule& module) {
   // (5) the group should contain equal number uses of each Send/Recv related
   //     instructions.
   //
-  // Comparing the verification of unpiplined Send/Recv with the verification
+  // Comparing the verification of unpipelined Send/Recv with the verification
   // of pipelined, what we missing verifying is that the direct connection
   // between Send/Recv and SendDone/RecvDone through operands.
   //
@@ -2930,7 +2942,6 @@ absl::StatusOr<bool> HloVerifier::Run(
     }
 
     TF_RETURN_IF_ERROR(shape_verifier->VerifyEntryComputationLayout(*module));
-    TF_RETURN_IF_ERROR(VerifyEntryAndExitShapes(*module));
 
     // If the module has a schedule, it must be valid.
     if (module->has_schedule()) {

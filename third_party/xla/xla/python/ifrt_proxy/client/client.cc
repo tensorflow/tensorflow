@@ -60,8 +60,9 @@ absl::StatusOr<std::unique_ptr<Client>> Client::Create(
 
   absl::flat_hash_map<int, std::unique_ptr<Memory>> memories;
   for (const auto& m : init_response.memories()) {
-    auto memory = std::make_unique<Memory>(m.id(), m.memory_space_kind(),
-                                           m.debug_string(), m.to_string());
+    auto memory =
+        std::make_unique<Memory>(m.id(), m.memory_space_kind(), m.kind_id(),
+                                 m.debug_string(), m.to_string());
     memories.insert({m.id(), std::move(memory)});
   }
 

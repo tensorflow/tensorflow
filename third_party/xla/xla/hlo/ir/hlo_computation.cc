@@ -50,6 +50,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/lib/gtl/iterator_range.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
@@ -136,6 +137,7 @@ HloComputation::HloComputation(
     HloInstruction* root_instruction)
     : unique_id_(-1),
       root_instruction_(root_instruction),
+      instruction_count_(0),
       name_(NameUniquer::GetSanitizedName(name)) {
   param_instructions_.resize(parameter_count, nullptr);
   bool root_found = false;
@@ -167,10 +169,10 @@ HloComputation::~HloComputation() {
     CHECK(async_start_->async_wrapped_computation() == this);
     async_start_->ClearCalledComputations();
   }
+  Cleanup();
   for (const auto& i : instructions_) {
     delete i.inst();
   }
-  Cleanup();
 }
 
 void HloComputation::SetInstruction(HloInstruction* instruction,
@@ -214,6 +216,18 @@ HloInstruction* HloComputation::AddInstruction(
   return AddInstruction(std::move(instruction));
 }
 
+HloInstruction* HloComputation::AddInstruction(
+    std::unique_ptr<HloInstruction> instruction, const OpMetadata* metadata,
+    const FrontendAttributes* frontend_attributes) {
+  if (metadata != nullptr) {
+    instruction->set_metadata(*metadata);
+  }
+  if (frontend_attributes != nullptr) {
+    instruction->set_frontend_attributes(*frontend_attributes);
+  }
+  return AddInstruction(std::move(instruction));
+}
+
 HloInstruction* HloComputation::AddInstructionInternal(
     std::unique_ptr<HloInstruction> instruction) {
   if (parent() != nullptr) {
@@ -228,7 +242,7 @@ HloInstruction* HloComputation::AddInstructionInternal(
   VLOG(2) << "Adding instruction " << pinst << " " << pinst->name()
           << " from computation " << name() << " opcode " << info.opcode();
   uint32_t index = instructions_.size();
-  instruction_indices_[pinst] = index;
+  instruction_count_++;
   pinst->index_in_parent_ = index;
   instructions_.push_back(info);
   return pinst;
@@ -453,27 +467,62 @@ Status HloComputation::RemoveInstructionImpl(HloInstruction* instruction,
       << "instruction " << instruction->name()
       << " has control successors and cannot be removed";
 
-  auto inst_it = instruction_indices_.find(instruction);
-  TF_RET_CHECK(inst_it != instruction_indices_.end());
-  HloInstructionInfo* info = &instructions_[inst_it->second];
+  HloInstructionInfo* info = &instructions_[instruction->index_in_parent_];
+  DCHECK_EQ(info->inst(), instruction);
   info->inst()->set_parent(nullptr);
   to_be_deleted_.push_back(info->inst());  // Takes ownership
   to_be_deleted_.back()->DetachFromOperandsAndUsers();
   // Clear all operands to avoid Null operands.
   to_be_deleted_.back()->RemoveAllOperands();
-  // These require non-trivial cleanup for their called computations,
-  // which is invoked in the ops destructor.
-  if (!to_be_deleted_.back()->IsAsynchronous() &&
-      !to_be_deleted_.back()->IsFused()) {
-    to_be_deleted_.back()->ClearCalledComputations();
-  }
+  to_be_deleted_.back()->ClearCalledComputations();
   to_be_deleted_.back()->MarkAsDead();
   // TODO(jeff): should we set info->opcode to something?
   info->inst_ =
       nullptr;  // Leave a hole: this is no longer part of "instructions()"
-  instruction_indices_.erase(inst_it);
   instruction->index_in_parent_ = ~0u;
+  instruction_count_--;
+  DCHECK_EQ(instructions_.size() - to_be_deleted_.size(), instruction_count())
+      << "instructions_.size(): " << instructions_.size()
+      << ", to_be_deleted_.size(): " << to_be_deleted_.size();
   return OkStatus();
+}
+
+void HloComputation::Cleanup() {
+  if (to_be_deleted_.empty()) return;
+
+  // Given that there are instructions to be deleted, there must be at least one
+  // instruction not marked for deletion. Otherwise we have deleted *all*
+  // instructions, which is probably a bug.
+  DCHECK_GT(instruction_count(), 0);
+
+  // Perform a stable compaction with the erase-remove idiom. We have to open
+  // code it (instead of using std::erase(std::remove_if)) because we must
+  // update the reverse mapping.
+  auto is_marked_for_removal = [](const HloInstructionInfo& info) {
+    return info.inst() == nullptr;
+  };
+  auto marked_it = absl::c_find_if(instructions_, is_marked_for_removal);
+  DCHECK(marked_it < instructions_.end());
+  for (auto it = marked_it + 1; it < instructions_.end(); ++it) {
+    if (is_marked_for_removal(*it)) continue;
+    // Update reverse mapping and overwrite the 'marked' entry.
+    HloInstruction* unmarked_instruction = it->inst();
+    unmarked_instruction->index_in_parent_ =
+        std::distance(instructions_.begin(), marked_it);
+    *marked_it++ = std::move(*it);
+  }
+
+  DCHECK(marked_it < instructions_.end());
+  DCHECK_EQ(std::distance(marked_it, instructions_.end()),
+            to_be_deleted_.size());
+  DCHECK_EQ(instructions_.size() - to_be_deleted_.size(), instruction_count())
+      << "instructions_.size(): " << instructions_.size()
+      << ", to_be_deleted_.size(): " << to_be_deleted_.size();
+  for (HloInstruction* marked_instruction : to_be_deleted_) {
+    delete marked_instruction;
+  }
+  to_be_deleted_.clear();
+  instructions_.resize(instruction_count());
 }
 
 void HloComputation::set_root_instruction(HloInstruction* new_root_instruction,
@@ -647,7 +696,7 @@ std::vector<HloInstruction*> HloComputation::MakeInstructionPostOrder(
                                   post_order, &dfs_stack_scratch);
     }
   }
-  CHECK_EQ(instruction_indices_.size(), post_order.size())
+  CHECK_EQ(instruction_count(), post_order.size())
       << "number of instructions does not match post order size";
   return post_order;
 }
@@ -917,7 +966,7 @@ HloComputationProto HloComputation::ToProto() const {
   return proto;
 }
 
-/* static */ StatusOr<std::unique_ptr<HloComputation>>
+/* static */ absl::StatusOr<std::unique_ptr<HloComputation>>
 HloComputation::CreateFromProto(
     const HloComputationProto& proto,
     const absl::flat_hash_map<int64_t, HloComputation*>& computation_map,
@@ -1026,7 +1075,7 @@ HloInstruction* HloComputation::CreateCallInstruction(
   return call_instruction;
 }
 
-StatusOr<HloInstruction*> HloComputation::CreateAsyncInstructions(
+absl::StatusOr<HloInstruction*> HloComputation::CreateAsyncInstructions(
     HloInstruction* instruction, absl::Span<const Shape> context_shapes,
     absl::string_view async_execution_thread, bool replace,
     bool override_names) {
@@ -1103,7 +1152,7 @@ StatusOr<HloInstruction*> HloComputation::CreateAsyncInstructions(
   return async_done;
 }
 
-StatusOr<HloInstruction*> HloComputation::DeepCopyHelper(
+absl::StatusOr<HloInstruction*> HloComputation::DeepCopyHelper(
     HloInstruction* instruction, ShapeIndex* index,
     absl::FunctionRef<HloInstruction*(HloInstruction* leaf,
                                       const ShapeIndex& leaf_index,
@@ -1137,7 +1186,7 @@ StatusOr<HloInstruction*> HloComputation::DeepCopyHelper(
   return copy_leaf(instruction, *index, this);
 }
 
-StatusOr<HloInstruction*> HloComputation::DeepCopyInstruction(
+absl::StatusOr<HloInstruction*> HloComputation::DeepCopyInstruction(
     HloInstruction* instruction, const ShapeTree<bool>* indices_to_copy,
     ShapeTree<HloInstruction*>* copies_added) {
   if (instruction->parent() != this) {
@@ -1173,7 +1222,8 @@ StatusOr<HloInstruction*> HloComputation::DeepCopyInstruction(
   return DeepCopyHelper(instruction, &index, copy_leaf);
 }
 
-StatusOr<HloInstruction*> HloComputation::DeepCopyInstructionWithCustomCopier(
+absl::StatusOr<HloInstruction*>
+HloComputation::DeepCopyInstructionWithCustomCopier(
     HloInstruction* instruction,
     absl::FunctionRef<HloInstruction*(HloInstruction* leaf,
                                       const ShapeIndex& leaf_index,
@@ -1276,7 +1326,7 @@ Status HloComputation::ReplaceWithNewEntryComputationParameter(
                                                  std::move(new_instruction)));
 }
 
-StatusOr<bool> HloComputation::ReplaceInstruction(
+absl::StatusOr<bool> HloComputation::ReplaceInstruction(
     HloInstruction* old_instruction, HloInstruction* new_instruction,
     bool preserve_sharding, bool relay_control_dependency) {
   TF_RET_CHECK(
@@ -1297,7 +1347,7 @@ Status HloComputation::ReplaceInstruction(HloInstruction* old_instruction,
   return OkStatus();
 }
 
-StatusOr<bool> HloComputation::ReplaceInstructionWithDifferentShape(
+absl::StatusOr<bool> HloComputation::ReplaceInstructionWithDifferentShape(
     HloInstruction* old_instruction, HloInstruction* new_instruction,
     bool preserve_sharding, bool relay_control_dependency,
     bool remove_unused_operands) {

@@ -285,6 +285,12 @@ absl::string_view TfrtCpuDeviceDescription::ToString() const {
                                     machine_attributes);
 }
 
+absl::StatusOr<Layout> TfrtCpuTopologyDescription::GetDefaultLayout(
+    PrimitiveType element_type, absl::Span<const int64_t> dims) const {
+  Shape shape = ShapeUtil::MakeShape(element_type, dims);
+  return LayoutUtil::GetWithDefaultLayout(shape).layout();
+}
+
 absl::StatusOr<std::string> TfrtCpuTopologyDescription::Serialize() const {
   std::string result;
   if (!tsl::SerializeToStringDeterministic(cpu_topology_.ToProto(), &result)) {
@@ -939,15 +945,15 @@ static std::vector<tsl::RCReference<tsl::AsyncValue>> CopyAsyncValues(
   return avs;
 }
 
-PjRtFuture<absl::Status> TfrtCpuBuffer::ToLiteral(MutableLiteralBase* literal) {
+PjRtFuture<> TfrtCpuBuffer::ToLiteral(MutableLiteralBase* literal) {
   return ToLiteralHelper(literal, client()->async_work_runner());
 }
 
-PjRtFuture<absl::Status> TfrtCpuBuffer::LazyToLiteral(
+PjRtFuture<> TfrtCpuBuffer::LazyToLiteral(
     absl::AnyInvocable<absl::StatusOr<MutableLiteralBase*>() &&> generator) {
   auto buffer = std::move(generator)();
   if (!buffer.ok()) {
-    return PjRtFuture<Status>(buffer.status());
+    return PjRtFuture<>(buffer.status());
   }
   return ToLiteralHelper(buffer.value(), client()->async_work_runner());
 }

@@ -46,6 +46,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_future.h"
+#include "xla/pjrt/pjrt_layout.h"
 #include "xla/pjrt/status_casters.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
@@ -223,9 +224,15 @@ class CompileOnlyIfRtClient final
   const PjRtTopologyDescription& topology() const { return *topology_; }
 
   absl::StatusOr<std::shared_ptr<const xla::PjRtTopologyDescription>>
-  GetTopologyForDevices(
-      absl::Span<ifrt::Device* const> devices) const override {
+  GetTopologyForDevices(const xla::ifrt::DeviceList& devices) const override {
     return topology_;
+  }
+
+  absl::StatusOr<std::unique_ptr<PjRtLayout>> GetDefaultLayoutForDevice(
+      ifrt::DType dtype, absl::Span<const int64_t> dims,
+      ifrt::Device* device) const override {
+    return absl::UnimplementedError(
+        "GetDefaultLayout not supported for CompileOnlyIfRtClient.");
   }
 
  private:

@@ -13,7 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "xla/execution_options_util.h"
+
 #include "xla/debug_options_flags.h"
+#include "xla/xla.pb.h"
 
 namespace xla {
 

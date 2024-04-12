@@ -1109,7 +1109,7 @@ Status EagerContextDistributedManager::EnableCollectiveOps(
           "sigterm", Env::Default());
       preemption_notifier_->WillBePreemptedAtAsync(
           [coord_agent = coordination_service_agent_](
-              StatusOr<absl::Time> time_or_status) {
+              absl::StatusOr<absl::Time> time_or_status) {
             if (time_or_status.ok()) {
               const auto coord_task = coord_agent->GetOwnTask().value();
               Status s = coord_agent->InsertKeyValue(

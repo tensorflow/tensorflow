@@ -16,27 +16,39 @@ limitations under the License.
 #ifndef XLA_PYTHON_IFRT_EXECUTABLE_H_
 #define XLA_PYTHON_IFRT_EXECUTABLE_H_
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/Support/ExtensibleRTTI.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_common.h"
+#include "xla/pjrt/pjrt_executable.h"
 #include "xla/python/ifrt/array.h"
+#include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/future.h"
-#include "xla/statusor.h"
+#include "xla/status.h"
+#include "tsl/concurrency/ref_count.h"
 
 namespace xla {
 namespace ifrt {
 
 class Client;
+struct DeserializeExecutableOptions;
 
 // Wraps a computation that has been partially compiled and can be loaded.
 class Executable : public llvm::RTTIExtends<Executable, llvm::RTTIRoot> {
  public:
+  using DeserializeOptions = DeserializeExecutableOptions;
+
   // Unique name for this executable.
   virtual absl::string_view name() const = 0;
 
@@ -48,8 +60,8 @@ class Executable : public llvm::RTTIExtends<Executable, llvm::RTTIRoot> {
   virtual absl::StatusOr<std::string> Serialize() const = 0;
 
   // The following APIs are taken from `xla::PjRtExecutable` for fast
-  // prototyping. TODO(hyeontaek): Factor some of them out as
-  // `XlaCompatibleExecutable`.
+  // prototyping.
+  // TODO(hyeontaek): Factor some of them out as `XlaCompatibleExecutable`.
   virtual int num_devices() const = 0;
   virtual int64_t SizeOfGeneratedCodeInBytes() const = 0;
   virtual absl::StatusOr<CompiledMemoryStats> GetCompiledMemoryStats()

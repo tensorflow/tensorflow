@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/c/kernels_experimental.h"
 
 #include <algorithm>
+#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
@@ -414,9 +415,9 @@ void TF_MaybeLockVariableInputMutexesInOrder(
   std::sort(acquire_order.begin(), acquire_order.end(),
             [&mutexes](int a, int b) { return mutexes[a] < mutexes[b]; });
 
-  auto locks = absl::make_unique<std::vector<tensorflow::mutex_lock>>();
+  auto locks = std::make_unique<std::vector<tensorflow::mutex_lock>>();
   auto shared_locks =
-      absl::make_unique<std::vector<tensorflow::tf_shared_lock>>();
+      std::make_unique<std::vector<tensorflow::tf_shared_lock>>();
   locks->reserve(acquire_order.size());
 
   for (auto acquire : acquire_order) {

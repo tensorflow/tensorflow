@@ -309,12 +309,8 @@ bool IsTextProtoPath(absl::string_view file_path) {
 
 /*static*/ absl::StatusOr<se::RedzoneAllocator>
 AutotunerUtil::CreateRedzoneAllocator(const AutotuneConfig& config,
-                                      const DebugOptions& opts,
-                                      se::Stream* force_stream) {
-  se::Stream* stream = force_stream;
-  if (stream == nullptr) {
-    TF_ASSIGN_OR_RETURN(stream, config.GetStream());
-  }
+                                      const DebugOptions& opts) {
+  TF_ASSIGN_OR_RETURN(se::Stream * stream, config.GetStream());
   return se::RedzoneAllocator(
       stream, config.GetAllocator(), PtxOptsFromDebugOptions(opts),
       /*memory_limit=*/std::numeric_limits<int64_t>::max(),

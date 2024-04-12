@@ -393,10 +393,12 @@ void DeriveEventsFromHostTrace(
         device_event.AddStatValue(group_id_stat_metadata, group_id);
         device_event.AddStatValue(num_launches_stat_metadata,
                                   group_info.stat.count());
-        device_event.AddStatValue(max_launch_time_us_stat_metadata,
-                                  PicoToMicro(group_info.stat.max()));
-        device_event.AddStatValue(avg_launch_time_us_stat_metadata,
-                                  PicoToMicro(group_info.stat.avg()));
+        device_event.AddStatValue(
+            max_launch_time_us_stat_metadata,
+            tsl::profiler::PicoToMicro(group_info.stat.max()));
+        device_event.AddStatValue(
+            avg_launch_time_us_stat_metadata,
+            tsl::profiler::PicoToMicro(group_info.stat.avg()));
       }
     }
   }

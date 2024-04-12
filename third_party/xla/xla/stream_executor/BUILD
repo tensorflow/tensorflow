@@ -1,10 +1,10 @@
-load("@local_tsl//tsl:tsl.bzl", "internal_visibility", "transitive_hdrs")
-load("@local_tsl//tsl:tsl.default.bzl", "filegroup")
 load("@local_tsl//tsl/platform:build_config.bzl", "tf_proto_library")
 load("@local_tsl//tsl/platform:build_config_root.bzl", "if_static")
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load("//xla:xla.bzl", "xla_cc_test")
 load("//xla/stream_executor:build_defs.bzl", "stream_executor_friends", "stream_executor_internal")
+load("//xla/tsl:tsl.bzl", "internal_visibility", "transitive_hdrs")
+load("//xla/tsl:tsl.default.bzl", "filegroup")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -382,7 +382,8 @@ cc_library(
 cc_library(
     name = "stream_executor_headers",
     hdrs = [
-        "stream_executor_pimpl.h",  # TODO(ezhulenev): Remove internal header
+        "stream_executor_internal.h",  # TODO(301020144): Remove internal header
+        "stream_executor_pimpl.h",  # TODO(301020144): Remove internal header
         ":stream_executor_api_headers",
         ":stream_executor_plugin_headers",
     ],
@@ -467,7 +468,6 @@ cc_library(
     name = "executor_cache",
     srcs = ["executor_cache.cc"],
     hdrs = ["executor_cache.h"],
-    visibility = ["//visibility:private"],
     deps = [
         ":platform",
         ":stream_executor_headers",
@@ -499,7 +499,6 @@ cc_library(
     name = "kernel",
     srcs = ["kernel.cc"],
     hdrs = ["kernel.h"],
-    visibility = ["//visibility:private"],
     deps = [
         ":device_memory",
         ":kernel_spec",

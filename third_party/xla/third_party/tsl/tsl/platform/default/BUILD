@@ -2,13 +2,13 @@
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load(
-    "//tsl:tsl.bzl",
+    "@local_xla//xla/tsl:tsl.bzl",
     "if_not_fuchsia",
     "if_not_windows",
     "internal_visibility",
     "tsl_copts",
 )
-load("//tsl:tsl.default.bzl", "filegroup", "tsl_grpc_cc_dependencies")
+load("@local_xla//xla/tsl:tsl.default.bzl", "filegroup", "tsl_grpc_cc_dependencies")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -76,7 +76,7 @@ cc_library(
     name = "dso_loader",
     srcs = ["dso_loader.cc"] + select({
         # include dynamic loading checker only for open source build
-        "//tsl:oss": ["dlopen_checker.cc"],
+        "@local_xla//xla/tsl:oss": ["dlopen_checker.cc"],
         "//conditions:default": ["dlopen_checker_stub.cc"],
     }),
     hdrs = ["dso_loader.h"],
@@ -341,7 +341,7 @@ cc_library(
     copts = tsl_copts(),
     defines = ["TF_USE_SNAPPY"] + select({
         # TF Additional NUMA defines
-        "//tsl:with_numa_support": ["TENSORFLOW_USE_NUMA"],
+        "@local_xla//xla/tsl:with_numa_support": ["TENSORFLOW_USE_NUMA"],
         "//conditions:default": [],
     }),
     tags = [
@@ -361,7 +361,7 @@ cc_library(
         "@snappy",
     ] + select({
         # TF Additional NUMA dependencies
-        "//tsl:with_numa_support": [
+        "@local_xla//xla/tsl:with_numa_support": [
             # Don't merge in a single line
             "@hwloc",
         ],

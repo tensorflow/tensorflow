@@ -21,10 +21,11 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/while_util.h"
-#include "xla/statusor.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
 
@@ -143,6 +144,18 @@ absl::StatusOr<bool> WhileLoopFusibleSinking::TrySinkingFusiblesIntoWhileLoop(
 
   for (HloInstruction* invariant_body_gte : invariant_body_gtes) {
     int64_t index = invariant_body_gte->tuple_index();
+    if (while_instr->operand_count() == 0 || init_value->operand_count() == 0) {
+      // This is the case when each of tuple elements in the operand tuple of
+      // the while loop was an invariant value and each of the usages has been
+      // replaced.
+      CHECK_EQ(while_instr->user_count(), 0);
+      VLOG(3) << "Each element in the operand tuple of the while instruction '"
+              << while_instr->name()
+              << "' was an invariant value, whose usage has been replaced "
+                 " directly by the value.";
+      break;
+    }
+
     HloInstruction* invariant_value = init_value->mutable_operand(index);
 
     // If a while operand is used by a slicing instruction, avoid fusing

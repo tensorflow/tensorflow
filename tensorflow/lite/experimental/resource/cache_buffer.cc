@@ -26,30 +26,30 @@ limitations under the License.
 namespace tflite {
 namespace resource {
 
-constexpr char kCacheBufferTensorName[] = "CacheBuffer";
+TfLiteStatus CacheBuffer::Initialize(const TfLiteIntArray& shape) {
+  // Set the dims and allocate the memory.
+  dims_ = TfLiteIntArrayCopy(&shape);
+  const size_t buf_size = NumElements(&shape);
+  buffer_.reset(new float[buf_size]);
+  memset(buffer_.get(), 0, sizeof(float) * buf_size);
 
-TfLiteStatus CacheBuffer::Initialize(const TfLiteIntArray &shape,
-                                     const TfLiteType &type) {
-  // Set basic parameters.
-  tensor_.name = kCacheBufferTensorName;
-  tensor_.allocation_type = kTfLiteDynamic;
-  tensor_.type = type;
-
-  // Set the shape and allocate the memory.
-  tensor_.dims = TfLiteIntArrayCopy(&shape);
-  const size_t num_bytes = TfLiteTypeGetSize(type) * NumElements(&tensor_);
-  TfLiteTensorRealloc(num_bytes, &tensor_);
-
-  memset(tensor_.data.raw, 0, tensor_.bytes);
+  num_entries_.reset(new size_t[shape.data[1]]);
+  memset(num_entries_.get(), 0, sizeof(size_t) * shape.data[1]);
   is_initialized_ = true;
   return kTfLiteOk;
 }
 
-size_t CacheBuffer::GetNumEntries() const { return num_entries_; }
+size_t CacheBuffer::GetSize() { return sizeof(float) * NumElements(dims_); }
 
-void CacheBuffer::SetNumEntries(size_t count) {
-  TFLITE_DCHECK(count <= tensor_.dims->data[2]);
-  num_entries_ = count;
+size_t CacheBuffer::GetNumEntries(int idx) const { return num_entries_[idx]; }
+
+CacheBuffer::~CacheBuffer() { TfLiteIntArrayFree(dims_); }
+
+float* CacheBuffer::GetBuffer() { return buffer_.get(); }
+
+void CacheBuffer::SetNumEntries(int idx, size_t count) {
+  TFLITE_DCHECK(count <= dims_->data[2]);
+  num_entries_[idx] = count;
 }
 
 }  // namespace resource

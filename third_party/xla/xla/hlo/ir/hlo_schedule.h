@@ -122,9 +122,9 @@ class HloSchedule {
   explicit HloSchedule(const HloModule* module) : module_(module) {}
 
   // (De)Serialize an HloSchedule to/from a HloScheduleProto.
-  static StatusOr<HloSchedule> CreateFromProto(const HloModule* module,
-                                               const HloScheduleProto& proto);
-  StatusOr<HloScheduleProto> ToProto() const;
+  static absl::StatusOr<HloSchedule> CreateFromProto(
+      const HloModule* module, const HloScheduleProto& proto);
+  absl::StatusOr<HloScheduleProto> ToProto() const;
 
   // Returns a reference to the sequence for the given computation.
   const HloInstructionSequence& sequence(

@@ -1,7 +1,6 @@
 # Description:
 #   Memory Space Assignment service implementation.
 
-load("@local_tsl//tsl:tsl.bzl", "internal_visibility")
 load(
     "@local_tsl//tsl/platform:build_config.bzl",
     "tf_proto_library",
@@ -11,6 +10,7 @@ load(
     "//xla:xla.bzl",
     "xla_cc_test",
 )
+load("//xla/tsl:tsl.bzl", "internal_visibility")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],

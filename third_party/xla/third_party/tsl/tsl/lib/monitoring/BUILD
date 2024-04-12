@@ -2,8 +2,8 @@ load(
     "@local_tsl//tsl/platform:rules_cc.bzl",
     "cc_library",
 )
-load("//tsl:tsl.bzl", "internal_visibility")
-load("//tsl:tsl.default.bzl", "filegroup")
+load("@local_xla//xla/tsl:tsl.bzl", "internal_visibility")
+load("@local_xla//xla/tsl:tsl.default.bzl", "filegroup")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -24,7 +24,7 @@ package(
         "//tensorflow/core/lib/monitoring:__subpackages__",
         "@local_xla//xla/service:__subpackages__",
         "//tsl/framework:__subpackages__",
-        "//tsl/distributed_runtime:__subpackages__",
+        "@local_xla//xla/tsl/distributed_runtime:__subpackages__",
         "//tensorflow/compiler/mlir/tf2xla:__subpackages__",
         "//tensorflow_serving/model_servers:__subpackages__",
     ]),

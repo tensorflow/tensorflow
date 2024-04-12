@@ -453,6 +453,7 @@ absl::StatusOr<bool> IsFlashAttention(
   bool is_hidden_dim_supported = hidden_dim <= 128 && hidden_dim % 8 == 0;
   bool is_flash_attention = is_seqlen_supported && is_hidden_dim_supported;
   if (!is_flash_attention) return false;
+
   // going backwards to check compatibility
   if ((is_training && (s_q < 64 || s_kv < 64)) &&
       !IsComputeCapabilityAndCudnnSupported(
@@ -1459,12 +1460,8 @@ absl::StatusOr<HloInstruction*> FuseFwdMultiHeadedAttentionBlock(
   // Activation output is used by backward gemm.
   HloInstruction* activation_output = nullptr;
 
-  std::vector<Shape> output_shapes = {
-      output_shape,
-      ShapeUtil::MakeShape(
-          U8, {is_flash_attention
-                   ? 16
-                   : 0})};  // reserved 2 int64 for dropout seed and offset
+  std::vector<Shape> output_shapes = {output_shape,
+                                      ShapeUtil::MakeShape(U8, {0})};
   if (is_training) {
     activation_output = bmm_2->mutable_operand(0);
     // Sometimes activation output is bitcast, the actual activation is the
@@ -1727,25 +1724,15 @@ absl::StatusOr<bool> FuseBwdMultiHeadedAttentionBlock(
 
   // Output order:
   // {dQ(bmm_1_grad_2), dK(bmm_1_grad_1), dV(bmm_2_grad_1),
-  // d_intermediate_tensor*, softmax_sum*, d_Q_accum*, scratch, dbias*}
+  // d_intermediate_tensor*, scratch, dbias*}
   std::vector<Shape> output_shapes = {
       bmm_1_grad_2->shape(), bmm_1_grad_1->shape(), bmm_2_grad_1->shape()};
   if (!fwd_config.is_flash_attention()) {
     output_shapes.push_back(lhs_bmm2_grad_gemm1->shape());
-  } else {
-    // softmax_sum, d_Q_accum
-    // add softmax sum here and change the data type
-    // softmax sum and d_Q_accum should both be fp32 datatype
-    output_shapes.push_back(
-        ShapeUtil::MakeShape(F32, fwd_act->shape().dimensions()));
-    output_shapes.push_back(
-        ShapeUtil::MakeShape(F32, bmm_1_grad_2->shape().dimensions()));
   }
+
   // Reserved placeholder for workspace
-  output_shapes.push_back(ShapeUtil::MakeShape(
-      U8, {is_flash_attention
-               ? 16
-               : 0}));  // reserved 2 int64 for dropout seed and offset
+  output_shapes.push_back(ShapeUtil::MakeShape(U8, {0}));
 
   if (dbias) {
     // Cudnn kernel only outputs dbias in this shape [1, num_heads, seq, seq],
@@ -1870,6 +1857,10 @@ absl::StatusOr<bool> CudnnFusedMHARewriter::Run(
       MatchFwdResult matched_result =
           MatchFwdMHAPatternsForCanonicalization(instr);
       if (!matched_result.has_match) {
+        continue;
+      }
+      // disable cuDNN mask input
+      if (matched_result.matched_mask) {
         continue;
       }
       // We check the validity of bmms here before canonicalization so we don't

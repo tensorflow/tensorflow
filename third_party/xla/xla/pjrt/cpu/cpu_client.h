@@ -183,6 +183,10 @@ class TfrtCpuTopologyDescription : public PjRtTopologyDescription {
     return attributes_;
   }
 
+  StatusOr<Layout> GetDefaultLayout(
+      PrimitiveType element_type,
+      absl::Span<const int64_t> dims) const override;
+
  private:
   const PjRtPlatformId platform_id_;
   const std::string platform_name_;
@@ -468,8 +472,8 @@ class TfrtCpuBuffer final : public AbstractTfrtCpuBuffer {
   TfrtCpuClient* client() const override { return client_; }
 
   using PjRtBuffer::ToLiteralSync;
-  PjRtFuture<Status> ToLiteral(MutableLiteralBase* literal) override;
-  PjRtFuture<Status> LazyToLiteral(
+  PjRtFuture<> ToLiteral(MutableLiteralBase* literal) override;
+  PjRtFuture<> LazyToLiteral(
       absl::AnyInvocable<absl::StatusOr<MutableLiteralBase*>() &&> generator)
       override;
 

@@ -62,11 +62,15 @@ REGISTER_OP("BatchFunction")
     // waiting to be processed.
     // low_priority_padding_with_max_batch_size: Same as above but pad up to the
     // max batch size.
+    // priority_isolation: High priority and low priority inputs never share the
+    // same batch, i.e., no low priority input padding high priority batches.
+    // Low priority inputs get scheduled only as part of low priority only
+    // batches as described above.
     .Attr(
         "mixed_priority_policy: "
         "{'low_priority_padding_with_max_batch_size', "
-        "'low_priority_padding_with_next_allowed_batch_size'} = "
-        "'low_priority_padding_with_max_batch_size'")
+        "'low_priority_padding_with_next_allowed_batch_size', "
+        "'priority_isolation'} = 'low_priority_padding_with_max_batch_size'")
     .Attr("Tin: list(type)")
     .Attr("Tcaptured: list(type) >= 0")
     .Attr("Tout: list(type)")

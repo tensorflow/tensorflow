@@ -108,6 +108,8 @@ class EinsumDepthAnalysis : public DfsHloVisitorWithDefault {
   Status HandleSendDone(HloInstruction* send_done) override;
   Status HandleRecvDone(HloInstruction* recv_done) override;
   Status HandleAllReduce(HloInstruction* all_reduce) override;
+  Status HandleAsyncStart(HloInstruction* async_start) override;
+  Status HandleAsyncDone(HloInstruction* async_done) override;
   const EinsumDepthMap& GetEinsumDepthMap() const { return einsum_depth_map_; }
 
  private:
@@ -115,9 +117,8 @@ class EinsumDepthAnalysis : public DfsHloVisitorWithDefault {
       : send_recv_group_map_(&send_recv_group_map) {}
   Status RunInternal(const HloComputation& computation,
                      const std::optional<ShapeTree<int>>& root_depth);
-  EinsumDepthMap::iterator GetOrCreateDepthTree(
-      const HloInstruction* instruction);
-  EinsumDepthMap::iterator GetDepthTreeOrDie(const HloInstruction* instruction);
+  ShapeTree<int>& GetOrCreateDepthTree(const HloInstruction* instruction);
+  ShapeTree<int>& GetDepthTreeOrDie(const HloInstruction* instruction);
   Status SetInstructionDepth(const HloInstruction* instruction, int depth);
   Status SetInstructionDepth(const HloInstruction* instruction,
                              const ShapeTree<int>& depth);
@@ -159,6 +160,8 @@ class EinsumHeightAnalysis : public DfsHloVisitorWithDefault {
   Status HandleSendDone(HloInstruction* send_done) override;
   Status HandleRecvDone(HloInstruction* recv_done) override;
   Status HandleAllReduce(HloInstruction* all_reduce) override;
+  Status HandleAsyncStart(HloInstruction* async_start) override;
+  Status HandleAsyncDone(HloInstruction* async_done) override;
   const EinsumHeightMap& GetEinsumHeightMap() const {
     return einsum_height_map_;
   }
@@ -168,10 +171,8 @@ class EinsumHeightAnalysis : public DfsHloVisitorWithDefault {
       : send_recv_group_map_(&send_recv_group_map) {}
   Status RunInternal(const HloComputation& computation,
                      absl::Span<HloInstruction* const> operands);
-  EinsumHeightMap::iterator GetOrCreateHeightTree(
-      const HloInstruction* instruction);
-  EinsumHeightMap::iterator GetHeightTreeOrDie(
-      const HloInstruction* instruction);
+  ShapeTree<int>& GetOrCreateHeightTree(const HloInstruction* instruction);
+  ShapeTree<int>& GetHeightTreeOrDie(const HloInstruction* instruction);
   bool HasHeightFor(const HloInstruction* instruction) const;
   Status SetInstructionHeight(const HloInstruction* instruction, int height);
   Status SetInstructionHeight(const HloInstruction* instruction,

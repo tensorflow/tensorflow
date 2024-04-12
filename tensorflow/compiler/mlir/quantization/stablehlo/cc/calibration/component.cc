@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/calibration/component.h"
 
+#include <optional>
 #include <string>
 #include <unordered_set>
 #include <utility>
@@ -132,10 +133,13 @@ absl::StatusOr<ModuleOp> CalibrationComponent::Run(
   // Runs calibration on the exported model. The statistics will be stored in a
   // separate singleton object `CalibratorSingleton` and are directly added to
   // `exported_model` without re-importing it.
-  py_function_lib_->RunCalibration(
-      precalibrated_saved_model_dir, signature_keys_, tags_,
-      config.calibration_options(),
-      /*force_graph_mode_calibration=*/true, representative_dataset_file_map);
+  if (py_function_lib_->RunCalibration(
+          precalibrated_saved_model_dir, signature_keys_, tags_,
+          /*force_graph_mode_calibration=*/true,
+          representative_dataset_file_map) == std::nullopt) {
+    return absl::InternalError(
+        "CalibrationComponent error: Failed to run calibration.");
+  }
 
   if (absl::Status status = AddCalibrationStatistics(
           module_op, config.calibration_options(), *py_function_lib_);

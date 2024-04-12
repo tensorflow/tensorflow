@@ -593,20 +593,32 @@ absl::StatusOr<bool> HostOffloader::TryParameterStreaming(
     if (callers.size() > 1) {
       return absl::InvalidArgumentError(
           "Expected to be called only by one caller");
-    } else if (callers.size() == 1) {
-      auto* caller = callers[0];
-      if (caller->opcode() == HloOpcode::kWhile &&
-          use->opcode() == HloOpcode::kTuple && use->IsRoot()) {
-        // Do not replace the while loop parameter with the moved data. Because
-        // of the nature of while loops, since the data started on the host, it
-        // must end on the host. Only the while loop body's root should not use
-        // copy_to_device since it's on host at the loop entry.
-        continue;
-      }
     }
-
-    TF_RETURN_IF_ERROR(
-        operand_of_load_annotation->ReplaceUseWith(use, copy_to_device));
+    if (callers.size() == 1 && callers[0]->opcode() == HloOpcode::kWhile &&
+        use->opcode() == HloOpcode::kTuple && use->IsRoot()) {
+      // Need some special filtering for while body's root instruction.
+      for (int i = 0; i < use->operands().size(); i++) {
+        if (use->operands()[i] == operand_of_load_annotation) {
+          if (operand_of_load_annotation->opcode() ==
+                  HloOpcode::kGetTupleElement &&
+              operand_of_load_annotation->operand(0)->opcode() ==
+                  HloOpcode::kParameter &&
+              operand_of_load_annotation->tuple_index() == i) {
+            // A special case where move-to-device is put into the result
+            // tuple element at the same index as where the move-to-device
+            // gets the data from. In this case, while loop's result tuple
+            // should not use move-to-device since at loop entry it's still
+            // on host.
+            continue;
+          }
+          TF_RETURN_IF_ERROR(operand_of_load_annotation->ReplaceUseWith(
+              use, i, copy_to_device));
+        }
+      }
+    } else {
+      TF_RETURN_IF_ERROR(
+          operand_of_load_annotation->ReplaceUseWith(use, copy_to_device));
+    }
   }
 
   AddAllPositionsToBeMovedToHostMemory(unique_buffer);

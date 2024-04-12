@@ -42,7 +42,7 @@ Status GetComputationCacheEntry(
     std::unique_ptr<tpu::CompilationCacheEntryRef>* entry,
     tpu::CompilationCacheFetchTarget fetch_target);
 
-xla::StatusOr<xla::ShapeTree<xla::MaybeOwningDeviceMemory>> BuildInputBuffers(
+absl::StatusOr<xla::ShapeTree<xla::MaybeOwningDeviceMemory>> BuildInputBuffers(
     OpKernelContext* context, const std::vector<VariableInfo>& variables,
     const xla::Shape& input_host_shape, xla::Backend* backend,
     int device_ordinal, se::Stream* stream);

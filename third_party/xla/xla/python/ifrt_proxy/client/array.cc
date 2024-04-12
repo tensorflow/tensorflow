@@ -40,7 +40,6 @@
 #include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
-#include "xla/python/ifrt/sharding_serdes.h"
 #include "xla/python/ifrt_proxy/client/rpc_helper.h"
 #include "xla/python/ifrt_proxy/common/array_util.h"
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
@@ -80,7 +79,7 @@ Array::MakeArrayFromHostBuffer(
   req->set_host_buffer_handle(host_buffer_handle);
   *req->mutable_dtype() = dtype.ToProto();
   *req->mutable_shape() = shape.ToProto();
-  TF_ASSIGN_OR_RETURN(*req->mutable_sharding(), ToShardingProto(*sharding));
+  TF_ASSIGN_OR_RETURN(*req->mutable_sharding(), sharding->ToProto());
   if (byte_strides.has_value()) {
     *req->mutable_byte_strides() = ToByteStridesProto(*byte_strides);
   }
@@ -169,7 +168,7 @@ Array::AssembleArrayFromSingleDeviceArrays(
   auto req = std::make_unique<AssembleArrayFromSingleDeviceArraysRequest>();
   TF_RET_CHECK(!arrays.empty());
   *req->mutable_shape() = shape.ToProto();
-  TF_ASSIGN_OR_RETURN(*req->mutable_sharding(), ToShardingProto(*sharding));
+  TF_ASSIGN_OR_RETURN(*req->mutable_sharding(), sharding->ToProto());
   req->set_copy_semantics(ToArrayCopySemanticsProto(semantics));
   for (const tsl::RCReference<xla::ifrt::Array>& rcref : arrays) {
     Array* array = llvm::dyn_cast<Array>(rcref.get());
@@ -253,7 +252,7 @@ absl::StatusOr<tsl::RCReference<xla::ifrt::Array>> Array::Reshard(
     ArrayCopySemantics semantics) {
   auto req = std::make_unique<ReshardRequest>();
   req->set_array_handle(handle_.handle);
-  TF_ASSIGN_OR_RETURN(*req->mutable_sharding(), ToShardingProto(*new_sharding));
+  TF_ASSIGN_OR_RETURN(*req->mutable_sharding(), new_sharding->ToProto());
   req->set_copy_semantics(ToArrayCopySemanticsProto(semantics));
 
   TF_ASSIGN_OR_RETURN(std::shared_ptr<ReshardResponse> response,

@@ -40,8 +40,7 @@ SE_TpuTopology* TpuPlatform_GetTopologyPtr(SE_Platform* platform);
 SE_TpuTopology_Host* TpuPlatform_GetHostLocation(SE_Platform* platform);
 TpuRuntimeVersion TpuPlatform_GetRuntimeVersion(SE_Platform* platform);
 
-void TpuExecutor_Init(SE_StreamExecutor* executor, int device_ordinal,
-                      TF_Status* status);
+void TpuExecutor_Init(SE_StreamExecutor* executor, TF_Status* status);
 void TpuExecutor_Free(SE_StreamExecutor* executor);
 
 SE_DeviceMemoryBase TpuExecutor_Allocate(SE_StreamExecutor* executor,

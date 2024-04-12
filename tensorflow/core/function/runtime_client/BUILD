@@ -77,8 +77,8 @@ cc_library(
         "//tensorflow/core/distributed_runtime:pywrap_required_hdrs",
         "//tensorflow/core/distributed_runtime/coordination:pywrap_required_hdrs",
         "//tensorflow/core/distributed_runtime/eager:pywrap_required_hdrs",
-        "@local_tsl//tsl/distributed_runtime:pywrap_required_hdrs",
-        "@local_tsl//tsl/distributed_runtime/coordination:pywrap_required_hdrs",
+        "@local_xla//xla/tsl/distributed_runtime:pywrap_required_hdrs",
+        "@local_xla//xla/tsl/distributed_runtime/coordination:pywrap_required_hdrs",
     ],
 )
 

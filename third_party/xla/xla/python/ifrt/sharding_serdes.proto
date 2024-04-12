@@ -18,7 +18,6 @@ syntax = "proto3";
 package xla.ifrt;
 
 import "xla/python/ifrt/device.proto";
-import "xla/python/ifrt/dtype.proto";
 import "xla/python/ifrt/shape.proto";
 
 // Wire format for `SingleDeviceSharding`.

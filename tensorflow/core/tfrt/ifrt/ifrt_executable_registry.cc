@@ -74,7 +74,7 @@ ServingExecutableRegistry::Handle::Handle(int64_t program_id)
 
 absl::StatusOr<ServingExecutableRegistry::Handle>
 ServingExecutableRegistry::Register(
-    int64_t program_id, std::shared_ptr<IfrtServingExecutable> executable) {
+    int64_t program_id, std::unique_ptr<IfrtServingExecutable> executable) {
   absl::MutexLock l(&mu_);
   VLOG(1) << "Registering program " << program_id << " from signature '"
           << executable->signature_name() << "' of model '"
@@ -87,20 +87,19 @@ ServingExecutableRegistry::Register(
   return Handle(program_id);
 }
 
-std::shared_ptr<IfrtServingExecutable> ServingExecutableRegistry::Lookup(
-    int64_t program_id) {
+IfrtServingExecutable* ServingExecutableRegistry::Lookup(int64_t program_id) {
   absl::ReaderMutexLock l(&mu_);
   VLOG(1) << "Looking up program " << program_id;
   const auto it = executables_->find(program_id);
-  return it != executables_->end() ? it->second : nullptr;
+  return it != executables_->end() ? it->second.get() : nullptr;
 }
 
 ABSL_CONST_INIT absl::Mutex ServingExecutableRegistry::mu_(absl::kConstInit);
 
-absl::flat_hash_map<int64_t, std::shared_ptr<IfrtServingExecutable>>* const
+absl::flat_hash_map<int64_t, std::unique_ptr<IfrtServingExecutable>>* const
     ServingExecutableRegistry::executables_ =
         new absl::flat_hash_map<int64_t,
-                                std::shared_ptr<IfrtServingExecutable>>();
+                                std::unique_ptr<IfrtServingExecutable>>();
 
 }  // namespace ifrt_serving
 }  // namespace tensorflow

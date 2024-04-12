@@ -1,3 +1,4 @@
+#include "xla/stream_executor/memory_allocation.h"
 /* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -59,12 +60,14 @@ class TpuExecutor : public tensorflow::tpu::TpuExecutorInterface {
       ::stream_executor::internal::StreamExecutorInterface;
 
   explicit TpuExecutor(::tensorflow::tpu::TpuPlatformInterface* platform,
-                       SE_StreamExecutor* executor)
-      : platform_(platform), executor_(executor) {}
+                       SE_StreamExecutor* executor, int device_ordinal)
+      : platform_(platform),
+        executor_(executor),
+        device_ordinal_(device_ordinal) {}
 
   ~TpuExecutor() override;
 
-  absl::Status Init(int device_ordinal) override;
+  absl::Status Init() override;
 
   DeviceMemoryBase Allocate(uint64_t size, int64_t memory_space) override;
 
@@ -155,7 +158,7 @@ class TpuExecutor : public tensorflow::tpu::TpuExecutorInterface {
   ::tensorflow::tpu::TpuPlatformInterface& platform() override {
     return *platform_;
   }
-
+  int device_ordinal() const override { return device_ordinal_; }
   // TODO(henrytan): convert this to override once the base interface is changed
   // to TpuExecutorInterface.
   StatusOr<std::unique_ptr<
@@ -182,7 +185,8 @@ class TpuExecutor : public tensorflow::tpu::TpuExecutorInterface {
     LOG(FATAL) << "not yet implemented";
   }
 
-  void* HostMemoryAllocate(uint64_t size) override {
+  absl::StatusOr<std::unique_ptr<MemoryAllocation>> HostMemoryAllocate(
+      uint64_t size) override {
     LOG(FATAL) << "not yet implemented";
   }
   void HostMemoryDeallocate(void* mem) override {
@@ -221,6 +225,7 @@ class TpuExecutor : public tensorflow::tpu::TpuExecutorInterface {
 
   tensorflow::tpu::TpuPlatformInterface* platform_;
   SE_StreamExecutor* executor_;
+  int device_ordinal_;
 };
 
 }  // namespace tpu

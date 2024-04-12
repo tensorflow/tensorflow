@@ -1,6 +1,6 @@
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
-load("//tsl:tsl.bzl", "internal_visibility")
-load("//tsl:tsl.default.bzl", "get_compatible_with_portable")
+load("@local_xla//xla/tsl:tsl.bzl", "internal_visibility")
+load("@local_xla//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -50,7 +50,7 @@ filegroup(
     compatible_with = get_compatible_with_portable(),
     visibility = internal_visibility([
         "//tensorflow:__subpackages__",
-        "//tsl:internal",
+        "@local_xla//xla/tsl:internal",
     ]),
 )
 

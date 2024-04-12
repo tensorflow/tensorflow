@@ -90,6 +90,7 @@ void prepareConstantOp(Operation *op, SplatElementsAttr attr) {
 void prepareWhileOp(WhileOp whileOp) {
   llvm::SetVector<Value> implicitInputs;
   getUsedValuesDefinedAbove(whileOp->getRegions(), implicitInputs);
+  if (implicitInputs.empty()) return;
   // Each captured value has to be passed as operand to the while, become then
   // an operand to the condition region and the body region, and an extra
   // operand to the return op in the body. It also becomes an extra result for

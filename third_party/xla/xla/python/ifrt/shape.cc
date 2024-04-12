@@ -106,7 +106,7 @@ absl::StatusOr<DynamicShape> DynamicShape::Create(Shape shape,
                                                   DynamicShapeTag tag) {
   TF_RETURN_IF_ERROR(std::visit(
       overloaded{
-          [&](const BoundedDynamicShapeTag& tag) {
+          [&](const BoundedDynamicShapeTag& tag) -> absl::Status {
             if (tag.DynamicDims().size() != shape.dims().size()) {
               return InvalidArgument(
                   "Shape and tag must have the same number of dimensions.");

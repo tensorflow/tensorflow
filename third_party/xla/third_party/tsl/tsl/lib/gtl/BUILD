@@ -2,8 +2,8 @@ load(
     "@local_tsl//tsl/platform:rules_cc.bzl",
     "cc_library",
 )
-load("//tsl:tsl.bzl", "internal_visibility")
-load("//tsl:tsl.default.bzl", "filegroup")
+load("@local_xla//xla/tsl:tsl.bzl", "internal_visibility")
+load("@local_xla//xla/tsl:tsl.default.bzl", "filegroup")
 load(
     "//tsl/platform:build_config.bzl",
     "tsl_cc_test",
@@ -29,7 +29,7 @@ package(
         "//tensorflow/examples/custom_ops_doc/simple_hash_table:__pkg__",
         "@local_xla//xla:__subpackages__",
         "//tensorflow/core/lib/gtl:__subpackages__",
-        "//tsl/distributed_runtime/rpc:__pkg__",
+        "@local_xla//xla/tsl/distributed_runtime/rpc:__pkg__",
         "//tsl/profiler/utils:__pkg__",
     ]),
     licenses = ["notice"],

@@ -177,13 +177,14 @@ CollectiveOpGroupMode NcclAllReduceStartThunk::GetGroupMode(
 
 absl::Status NcclAllReduceStartThunk::RunNcclCollective(
     const ExecuteParams& params, se::Stream& stream,
-    NcclApi::NcclCommHandle comm) {
+    NcclCommHandleWrapper comm_wrapper) {
   TF_ASSIGN_OR_RETURN(
       std::vector<DeviceBufferPair> device_buffers,
       ConvertToDeviceBuffers(params, buffers_,
                              config_.config.operand_element_type));
   return ::xla::gpu::RunAllReduce(nccl_api(), config_.reduction_kind,
-                                  device_buffers, stream, comm);
+                                  device_buffers, stream,
+                                  comm_wrapper.comm_handle);
 }
 
 NcclReduceScatterStartThunk::NcclReduceScatterStartThunk(
@@ -211,13 +212,14 @@ NcclReduceScatterStartThunk::NcclReduceScatterStartThunk(
 
 absl::Status NcclReduceScatterStartThunk::RunNcclCollective(
     const ExecuteParams& params, se::Stream& stream,
-    NcclApi::NcclCommHandle comm) {
+    NcclCommHandleWrapper comm_wrapper) {
   TF_ASSIGN_OR_RETURN(
       std::vector<DeviceBufferPair> device_buffers,
       ConvertToDeviceBuffers(params, buffers_,
                              config_.config.operand_element_type));
   return ::xla::gpu::RunReduceScatter(nccl_api(), config_.reduction_kind,
-                                      device_buffers, stream, comm);
+                                      device_buffers, stream,
+                                      comm_wrapper.comm_handle);
 }
 
 absl::Status RunReduceScatter(NcclApi* nccl_api, ReductionKind reduction_kind,

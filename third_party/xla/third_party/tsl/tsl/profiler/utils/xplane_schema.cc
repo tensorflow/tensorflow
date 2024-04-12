@@ -553,6 +553,13 @@ const absl::string_view kMegaScaleH2DTransferFinished =
 const absl::string_view kMegaScaleReductionStart = "MegaScale: Reduction";
 const absl::string_view kMegaScaleReductionFinished =
     "MegaScale: Reduction Finished";
+const absl::string_view kMegaScaleCompressionStart = "MegaScale: Compression";
+const absl::string_view kMegaScaleCompressionFinished =
+    "MegaScale: Compression Finished";
+const absl::string_view kMegaScaleDecompressionStart =
+    "MegaScale: Decompression";
+const absl::string_view kMegaScaleDecompressionFinished =
+    "MegaScale: Decompression Finished";
 const char kXProfMetadataKey[] = "key";
 const char kXProfMetadataFlow[] = "flow";
 const char kXProfMetadataTransfers[] = "transfers";

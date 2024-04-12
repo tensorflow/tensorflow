@@ -99,6 +99,8 @@ BatchFunctionFallbackKernelBase::BatchFunctionFallbackKernelBase(
                                &low_priority_allowed_batch_sizes_));
   OP_REQUIRES_OK(c, c->GetAttr("low_priority_max_enqueued_batches",
                                &low_priority_max_enqueued_batches_));
+  OP_REQUIRES_OK(c,
+                 c->GetAttr("mixed_priority_policy", &mixed_priority_policy_));
 
   if (shared_name_.empty()) {
     // If shared_name is not supplied, use name instead (prevent collisions by

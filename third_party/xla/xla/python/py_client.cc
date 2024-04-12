@@ -55,17 +55,20 @@ limitations under the License.
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/pjrt/pjrt_layout.h"
 #include "xla/pjrt/pjrt_stream_executor_client.h"
 #include "xla/pjrt/status_casters.h"
 #include "xla/python/callback.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/host_callback.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/nb_absl_span.h"  // IWYU pragma: keep
 #include "xla/python/nb_class_ptr.h"
+#include "xla/python/nb_numpy.h"
 #include "xla/python/pjrt_ifrt/pjrt_array.h"
 #include "xla/python/pjrt_ifrt/pjrt_client.h"
 #include "xla/python/pjrt_ifrt/xla_compiler.h"
@@ -79,6 +82,7 @@ limitations under the License.
 #include "xla/python/python_ref_manager.h"
 #include "xla/python/traceback.h"
 #include "xla/python/transfer_guard_lib.h"
+#include "xla/python/types.h"
 #include "xla/service/custom_call_target_registry.h"
 #include "xla/service/platform_util.h"  // IWYU pragma: keep
 #include "xla/shape.h"
@@ -316,8 +320,8 @@ absl::Status PyClient::Defragment() {
   DevicePutOptions options;
   options.squash_64bit_types = false;
   options.allow_zero_copy =
-      (!force_copy &&
-       (host_buffer_semantics == ifrt::Client::HostBufferSemantics::kZeroCopy));
+      (!force_copy && (host_buffer_semantics ==
+                       ifrt::Client::HostBufferSemantics::kImmutableZeroCopy));
   // TODO(phawkins): remove .ptr() after nanobind transition is complete.
   TF_ASSIGN_OR_RETURN(DevicePutResult put,
                       DevicePut(argument.ptr(), client->ifrt_client_.get(),
@@ -332,61 +336,6 @@ absl::Status PyClient::Defragment() {
   } else {
     return put.owning_pybuffer;
   }
-}
-
-/* static */ absl::StatusOr<nb::list> PyClient::MakeCrossHostReceiveBuffers(
-    nb_class_ptr<PyClient> client, absl::Span<const Shape> shapes,
-    PjRtDevice* device) {
-  CHECK(device != nullptr);
-  absl::Mutex mu;
-  absl::StatusOr<std::vector<PjRtCrossHostRecvDescriptors>> recv_descriptors_or;
-  bool done = false;
-
-  TF_ASSIGN_OR_RETURN(
-      auto buffers,
-      client->pjrt_client()->MakeCrossHostReceiveBuffers(
-          shapes, device,
-          [&done, &recv_descriptors_or,
-           &mu](absl::StatusOr<PjRtCrossHostRecvState> recv_state_or) {
-            absl::MutexLock l(&mu);
-            if (recv_state_or.ok()) {
-              nb::gil_scoped_acquire gil;
-              recv_descriptors_or = std::move(recv_state_or->descriptors);
-            } else {
-              recv_descriptors_or = recv_state_or.status();
-            }
-            done = true;
-          }));
-
-  {
-    nb::gil_scoped_release gil_release;
-    absl::MutexLock l(&mu);
-    mu.Await(absl::Condition(&done));
-  }
-
-  TF_RETURN_IF_ERROR(recv_descriptors_or.status());
-  CHECK_EQ(buffers.size(), recv_descriptors_or->size());
-  nb::list result;
-  for (int i = 0; i < buffers.size(); ++i) {
-    auto& descriptors = recv_descriptors_or->at(i);
-    CHECK_EQ(descriptors.serialized_descriptors.size(), 1);
-    const std::string& desc = descriptors.serialized_descriptors[0];
-    nb::bytes py_desc = nb::bytes(desc.data(), desc.size());
-    auto* ifrt_client = llvm::dyn_cast_or_null<ifrt::PjRtCompatibleClient>(
-        client->ifrt_client());
-    if (ifrt_client == nullptr) {
-      throw XlaRuntimeError(
-          "This operation is implemented for a PjRt-compatible backend only.");
-    }
-    TF_ASSIGN_OR_RETURN(auto ifrt_array,
-                        ifrt_client->CreatePjRtArray(std::move(buffers[i])));
-    auto py_buf = PyArray::MakeFromSingleDeviceArray(client, Traceback::Get(),
-                                                     std::move(ifrt_array),
-                                                     /*weak_type=*/false,
-                                                     /*committed=*/false);
-    result.append(nb::make_tuple(std::move(py_desc), std::move(py_buf)));
-  }
-  return result;
 }
 
 namespace {
@@ -710,7 +659,7 @@ PyType_Slot PyClient::slots_[] = {
              PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall)
       .value("IMMUTABLE_UNTIL_TRANSFER_COMPLETES",
              PjRtClient::HostBufferSemantics::kImmutableUntilTransferCompletes)
-      .value("ZERO_COPY", PjRtClient::HostBufferSemantics::kZeroCopy);
+      .value("ZERO_COPY", PjRtClient::HostBufferSemantics::kImmutableZeroCopy);
 
   nb::class_<PyClient> py_local_client(m, "Client", nb::is_weak_referenceable(),
                                        nb::type_slots(PyClient::slots_));
@@ -742,15 +691,7 @@ PyType_Slot PyClient::slots_[] = {
           nb::arg("argument"), nb::arg("device").none() = nullptr,
           nb::arg("force_copy") = false,
           nb::arg("host_buffer_semantics") =
-              PjRtClient::HostBufferSemantics::kZeroCopy)
-      .def(
-          "make_cross_host_receive_buffers",
-          [](nb_class_ptr<PyClient> client, absl::Span<const Shape> shapes,
-             PjRtDevice* device) {
-            return ValueOrThrow(PyClient::MakeCrossHostReceiveBuffers(
-                std::move(client), shapes, device));
-          },
-          nb::arg("shapes"), nb::arg("device"))
+              PjRtClient::HostBufferSemantics::kImmutableZeroCopy)
       .def(
           "compile",
           [](nb_class_ptr<PyClient> client, nb::bytes mlir_module,
@@ -802,6 +743,17 @@ PyType_Slot PyClient::slots_[] = {
            nb::arg("result_shapes"), nb::arg("send_channel_ids"),
            nb::arg("recv_channel_ids"),
            nb::arg("serializer").none() = nb::none())
+      .def(
+          "get_default_layout",
+          [](PyClient& self, nb_dtype dtype, nb::sequence shard_shape,
+             nb_class_ptr<PyDevice> device) -> std::unique_ptr<PjRtLayout> {
+            ifrt::DType ifrt_type = xla::ValueOrThrow(DtypeToIfRtDType(dtype));
+            std::vector<int64_t> dims = SequenceToVector<int64_t>(shard_shape);
+            return xla::ValueOrThrow(
+                self.ifrt_client()->GetDefaultLayoutForDevice(
+                    ifrt_type, dims, device->device()));
+          },
+          nb::arg("dtype"), nb::arg("shard_shape"), nb::arg("device"))
       .def("__getattr__",
            [](PyClient& client, std::string_view name) -> nb::object {
              const auto& attrs = client.attributes();

@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_QUANTIZATION_STABLEHLO_CC_REPORT_H_
 #define TENSORFLOW_COMPILER_MLIR_QUANTIZATION_STABLEHLO_CC_REPORT_H_
 
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 
 namespace mlir::quant::stablehlo {
@@ -27,6 +28,10 @@ class QuantizationReport {
  public:
   QuantizationReport() = default;
 
+  // Initializes `QuantizationReport` by collecting `QuantizationResults` from
+  // `module_op`.
+  explicit QuantizationReport(ModuleOp module_op);
+
   // Adds a `QuantizationResult` to the report.
   void AddQuantizationResult(
       ::stablehlo::quantization::QuantizationResult&& result);
@@ -38,6 +43,9 @@ class QuantizationReport {
   }
 
  private:
+  ::stablehlo::quantization::QuantizationResults CollectResultsFromModuleOp(
+      ModuleOp module_op) const;
+
   // Quantization results that are registered in this report. A quantization
   // result may be added manually by calling `AddQuantizationResult`.
   ::stablehlo::quantization::QuantizationResults quantization_results_;

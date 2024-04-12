@@ -53,7 +53,7 @@ PyDeviceList::PyDeviceList(nb::tuple py_device_assignment)
     : device_list_(py_device_assignment) {
   // Attempt to convert to Python devices into `ifrt::DeviceList`.
   if (py_device_assignment.size() == 0) {
-    device_list_ = xla::ifrt::DeviceList({});
+    device_list_ = xla::ifrt::DeviceList();
     return;
   }
   xla::ifrt::DeviceList::Devices devices;
@@ -351,14 +351,12 @@ void PyDeviceList::PopulateMemoryKindInfo() {
     memory_kind_info_ = default_memory.status();
     return;
   }
-  info.default_memory_kind =
-      nb::cast(std::string((*default_memory)->memory_space_kind()));
+  info.default_memory_kind = nb::cast(std::string((*default_memory)->kind()));
   nb::tuple memory_kinds = nb::steal<nb::tuple>(
       PyTuple_New(addressable_device->memory_spaces().size()));
   for (size_t i = 0; i < addressable_device->memory_spaces().size(); ++i) {
     auto* memory = addressable_device->memory_spaces()[i];
-    nb::str s = nb::str(memory->memory_space_kind().data(),
-                        memory->memory_space_kind().size());
+    nb::str s = nb::str(memory->kind().data(), memory->kind().size());
     PyTuple_SET_ITEM(memory_kinds.ptr(), i, s.release().ptr());
   }
   info.memory_kinds = std::move(memory_kinds);

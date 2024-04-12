@@ -800,16 +800,17 @@ Status DataServiceClient::GetElementTraced(Task* task, int64_t deadline_micros,
                                            std::shared_ptr<Result> result)
     TF_LOCKS_EXCLUDED(mu_) {
   VLOG(3) << "Getting an element for task id " << task->info.task_id();
-  tensorflow::profiler::TraceMe activity(
-      "GetDataServiceElement", tensorflow::profiler::TraceMeLevel::kInfo);
+  tsl::profiler::TraceMe activity("GetDataServiceElement",
+                                  tsl::profiler::TraceMeLevel::kInfo);
   activity.AppendMetadata([&]() {
-    return profiler::TraceMeEncode({{"address", task->info.worker_address()}});
+    return tsl::profiler::TraceMeEncode(
+        {{"address", task->info.worker_address()}});
   });
   if (IsCoordinatedRead()) {
     VLOG(3) << "Requesting element from consumer index "
             << params_.consumer_index.value() << ", round " << task->round;
     activity.AppendMetadata([&]() {
-      return profiler::TraceMeEncode(
+      return tsl::profiler::TraceMeEncode(
           {{"consumer_index", params_.consumer_index.value()},
            {"round_index", task->round}});
     });

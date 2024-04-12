@@ -1,7 +1,7 @@
-load("@local_tsl//tsl:tsl.bzl", "if_oss", "internal_visibility")
 load("@local_tsl//tsl/platform:build_config.bzl", "tf_proto_library")
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load("//xla:xla.bzl", "xla_cc_test")
+load("//xla/tsl:tsl.bzl", "if_oss", "internal_visibility")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -285,6 +285,32 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
+    ],
+)
+
+xla_cc_test(
+    name = "gloo_collectives_test",
+    srcs = ["gloo_collectives_test.cc"],
+    deps = [
+        ":gloo_collectives",
+        ":gloo_kv_store",
+        "//third_party/gloo:transport_tcp",
+        "//xla:executable_run_options",
+        "//xla:xla_data_proto_cc",
+        "//xla/pjrt/distributed:in_memory_key_value_store",
+        "//xla/pjrt/distributed:key_value_store_interface",
+        "//xla/service:collective_ops_utils",
+        "//xla/service:global_device_id",
+        "//xla/service/cpu:collectives_interface",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/time",
+        "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/lib/core:status_test_util",
+        "@local_tsl//tsl/platform:env",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:test_main",
     ],
 )
 

@@ -36,13 +36,13 @@ void DequantizeCompare(F&& func, const Tensor& lhs, const Tensor& rhs,
   using ExpressedT = StorageType<expressed_type>;
   const DimensionSize num_elements = lhs.NumElements();
   const StorageT lhs_zero_point =
-      lhs.quantized_tensor_element_type().ZeroPoints<storage_type>()[0];
+      lhs.quantized_per_tensor_element_type().ZeroPointAs<storage_type>();
   const ExpressedT lhs_scale =
-      lhs.quantized_tensor_element_type().Scales<expressed_type>()[0];
+      lhs.quantized_per_tensor_element_type().ScaleAs<expressed_type>();
   const StorageT rhs_zero_point =
-      rhs.quantized_tensor_element_type().ZeroPoints<storage_type>()[0];
+      rhs.quantized_per_tensor_element_type().ZeroPointAs<storage_type>();
   const ExpressedT rhs_scale =
-      rhs.quantized_tensor_element_type().Scales<expressed_type>()[0];
+      rhs.quantized_per_tensor_element_type().ScaleAs<expressed_type>();
   const StorageT* lhs_data = lhs.GetDataAs<storage_type>();
   const StorageT* rhs_data = rhs.GetDataAs<storage_type>();
   bool* output_data = output.GetDataAs<DataType::kI1>();
@@ -79,19 +79,20 @@ absl::Status Prepare(CompareOp& op, const Tensor& lhs, const Tensor& rhs,
 // NOLINTNEXTLINE(google-readability-function-size)
 absl::Status Evaluate(CompareOp& op, const Tensor& lhs, const Tensor& rhs,
                       Tensor& output) {
-#define SHLO_REF_COMPARISON_DIRECTION_CASE(DIRECTION, COMPARISON_OP)          \
-  case CompareOp::ComparisonDirection::DIRECTION: {                           \
-    if (IsBoolTensor(lhs) || IsIntTensor(lhs) || IsFloatTensor(lhs)) {        \
-      DISPATCH_BOOL_INT_FLOAT(detail::EvaluateNoQuantization,                 \
-                              lhs.tensor_element_type(), COMPARISON_OP, lhs,  \
-                              rhs, output);                                   \
-    } else if (IsQuantizedPerTensorTensor(lhs)) {                             \
-      DISPATCH_QUANTIZED(DequantizeCompare,                                   \
-                         lhs.quantized_tensor_element_type().StorageType(),   \
-                         lhs.quantized_tensor_element_type().ExpressedType(), \
-                         COMPARISON_OP, lhs, rhs, output)                     \
-    }                                                                         \
-    break;                                                                    \
+#define SHLO_REF_COMPARISON_DIRECTION_CASE(DIRECTION, COMPARISON_OP)         \
+  case CompareOp::ComparisonDirection::DIRECTION: {                          \
+    if (IsBoolTensor(lhs) || IsIntTensor(lhs) || IsFloatTensor(lhs)) {       \
+      DISPATCH_BOOL_INT_FLOAT(detail::EvaluateNoQuantization,                \
+                              lhs.tensor_element_type(), COMPARISON_OP, lhs, \
+                              rhs, output);                                  \
+    } else if (IsQuantizedPerTensorTensor(lhs)) {                            \
+      DISPATCH_QUANTIZED(                                                    \
+          DequantizeCompare,                                                 \
+          lhs.quantized_per_tensor_element_type().StorageType(),             \
+          lhs.quantized_per_tensor_element_type().ExpressedType(),           \
+          COMPARISON_OP, lhs, rhs, output)                                   \
+    }                                                                        \
+    break;                                                                   \
   }
 
   switch (op.attributes.comparison_direction) {

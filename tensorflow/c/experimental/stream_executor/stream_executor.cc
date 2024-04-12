@@ -21,15 +21,20 @@ limitations under the License.
 // device.
 #include "tensorflow/c/experimental/stream_executor/stream_executor.h"
 
+#include <memory>
 #include <string>
 #include <utility>
 
 #include "absl/functional/any_invocable.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_format.h"
 #include "tensorflow/c/c_api_macros.h"
 #include "tensorflow/c/c_api_macros_internal.h"
 #include "tensorflow/c/experimental/stream_executor/stream_executor_internal.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "xla/stream_executor/executor_cache.h"
+#include "xla/stream_executor/host_memory_allocation.h"
+#include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
@@ -215,9 +220,7 @@ class CStreamExecutor : public internal::StreamExecutorInterface {
     platform_fns_->destroy_device(platform_, &device_);
   }
 
-  absl::Status Init(int device_ordinal) override {
-    return ::tensorflow::OkStatus();
-  }
+  absl::Status Init() override { return absl::OkStatus(); }
 
   DeviceMemoryBase Allocate(uint64 size, int64_t memory_space) override {
     SP_DeviceMemoryBase mem = {SP_DEVICE_MEMORY_BASE_STRUCT_SIZE};
@@ -237,8 +240,14 @@ class CStreamExecutor : public internal::StreamExecutorInterface {
     stream_executor_->deallocate(&device_, &device_memory_base);
   }
 
-  void* HostMemoryAllocate(uint64 size) override {
-    return stream_executor_->host_memory_allocate(&device_, size);
+  absl::StatusOr<std::unique_ptr<MemoryAllocation>> HostMemoryAllocate(
+      uint64 size) override {
+    auto* buffer = stream_executor_->host_memory_allocate(&device_, size);
+    if (buffer == nullptr && size > 0) {
+      return absl::InternalError(
+          absl::StrFormat("Failed to allocate HostMemory of size %d", size));
+    }
+    return std::make_unique<HostMemoryAllocation>(buffer, size, this);
   }
 
   void HostMemoryDeallocate(void* mem) override {
@@ -655,11 +664,10 @@ absl::StatusOr<std::unique_ptr<StreamExecutor>> CPlatform::GetUncachedExecutor(
                                  c_status.get());
   TF_RETURN_IF_ERROR(StatusFromTF_Status(c_status.get()));
 
-  auto executor = absl::make_unique<CStreamExecutor>(
+  auto executor = std::make_unique<CStreamExecutor>(
       std::move(device), &device_fns_, &stream_executor_, &platform_,
       &platform_fns_, &timer_fns_, name_, visible_device_count);
-  auto result = absl::make_unique<StreamExecutor>(this, std::move(executor),
-                                                  config.ordinal);
+  auto result = std::make_unique<StreamExecutor>(this, std::move(executor));
   return result;
 }
 

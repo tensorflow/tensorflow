@@ -998,13 +998,18 @@ class LiteralBase {
       std::vector<Piece> children = {};
     };
 
+    // Literals can be used as DMA targets, which can require alignment. We
+    // force a tsl::Allocator::kAllocatorAlignment-byte minimum
+    // alignment.
+    static inline constexpr size_t kMinimumAlignment = 64;
+
     // Use just so many bytes that we don't increase the sizeof(Piece).
     static inline constexpr size_t kMaxInlinedBytes =
         std::max(sizeof(DenseRep), sizeof(TupleRep));
 
     // Inlined dense array storage.
     struct DenseInlinedRep {
-      char data[kMaxInlinedBytes];
+      alignas(kMinimumAlignment) char data[kMaxInlinedBytes];
     };
 
     const DenseInlinedRep* GetDenseInlinedRep() const {
@@ -1602,7 +1607,7 @@ Status LiteralBase::SerializeWithShapeProto(const ShapeProto& shape_proto,
                                             OutputIterator output) const {
   SerializeState<OutputIterator> state(shape_proto, output);
   TF_RETURN_IF_ERROR(root_piece().ForEachSubpieceWithStatus(
-      [&](const ShapeIndex& shape_index, const Piece& piece) {
+      [&](const ShapeIndex& shape_index, const Piece& piece) -> absl::Status {
         const Shape& subshape = piece.subshape();
         if (subshape.IsTuple()) {
           return OkStatus();
@@ -1636,7 +1641,7 @@ absl::StatusOr<Literal> Literal::Deserialize(InputIterator begin,
   Literal literal(shape);
   TF_RETURN_IF_ERROR(
       literal.mutable_root_piece().ForEachMutableSubpieceWithStatus(
-          [&](const ShapeIndex& shape_index, Piece* piece) {
+          [&](const ShapeIndex& shape_index, Piece* piece) -> absl::Status {
             const Shape& subshape = piece->subshape();
             if (subshape.IsTuple()) {
               return OkStatus();

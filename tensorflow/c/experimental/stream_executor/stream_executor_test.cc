@@ -185,7 +185,6 @@ TEST_F(StreamExecutorTest, Allocate) {
   ASSERT_NE(mem.opaque(), nullptr);
   ASSERT_EQ(mem.size(), 2 * sizeof(int));
   executor->Deallocate(&mem);
-  ASSERT_EQ(mem.opaque(), nullptr);
 }
 
 TEST_F(StreamExecutorTest, HostMemoryAllocate) {
@@ -530,7 +529,7 @@ TEST_F(StreamExecutorTest, SyncMemcpyDeviceToDevice) {
   int dst_data = 0;
   DeviceMemoryBase device_dst(&dst_data, size);
   DeviceMemoryBase device_src(&src_data, size);
-  ASSERT_TRUE(executor->SynchronousMemcpy(&device_dst, device_src, size));
+  TF_ASSERT_OK(executor->SynchronousMemcpy(&device_dst, device_src, size));
   ASSERT_EQ(dst_data, 18);
 }
 

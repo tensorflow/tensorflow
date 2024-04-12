@@ -27,6 +27,7 @@ limitations under the License.
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/python/ifrt/client.h"
+#include "xla/python/ifrt/device.h"
 #include "xla/python/pjrt_ifrt/pjrt_compiler.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/concurrency/ref_count.h"
@@ -154,7 +155,11 @@ class PjRtClient final
   }
 
   absl::StatusOr<std::shared_ptr<const xla::PjRtTopologyDescription>>
-  GetTopologyForDevices(absl::Span<Device* const> devices) const override;
+  GetTopologyForDevices(const DeviceList& devices) const override;
+
+  absl::StatusOr<std::unique_ptr<xla::PjRtLayout>> GetDefaultLayoutForDevice(
+      DType dtype, absl::Span<const int64_t> dims,
+      Device* device) const override;
 
   static char ID;  // NOLINT
 

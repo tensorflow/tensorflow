@@ -1,10 +1,10 @@
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
-load("@local_tsl//tsl:tsl.bzl", "if_nccl", "nvtx_headers")
-load("@local_tsl//tsl:tsl.default.bzl", "get_compatible_with_portable")
 load("@local_tsl//tsl/platform/default:cuda_build_defs.bzl", "if_cuda_is_configured")
 load("//xla/service/gpu:build_defs.bzl", "get_cub_sort_kernel_types")
 load("//xla/stream_executor:build_defs.bzl", "if_gpu_is_configured")
 load("//xla/tests:build_defs.bzl", "xla_test")
+load("//xla/tsl:tsl.bzl", "if_google", "if_nccl", "nvtx_headers")
+load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -257,6 +257,41 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "nccl_clique",
+    srcs = ["nccl_clique.cc"],
+    hdrs = ["nccl_clique.h"],
+    deps = [
+        ":nccl_api",
+        "//xla:debug_options_flags",
+        "//xla:executable_run_options",
+        "//xla:status_macros",
+        "//xla/service:global_device_id",
+        "//xla/service:lockable",
+        "//xla/service:rendezvous",
+        "//xla/service/gpu:nccl_clique_key",
+        "//xla/stream_executor",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:btree",
+        "@com_google_absl//absl/container:node_hash_map",
+        "@com_google_absl//absl/functional:function_ref",
+        "@com_google_absl//absl/hash",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
+        "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:env",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:hash",
+        "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
 #===-------------------------------------------------------------------------------------------===//
 # XLA Thunks Runtime
 #===-------------------------------------------------------------------------------------------===//
@@ -292,8 +327,8 @@ xla_test(
     name = "address_computation_thunk_test",
     srcs = if_gpu_is_configured(["address_computation_thunk_test.cc"]),
     backend_tags = {
-        "gpu_a100": ["config-cuda-only"],
-        "gpu_v100": ["config-cuda-only"],
+        "gpu_a100": if_google(["config-cuda-only"]),
+        "gpu_v100": if_google(["config-cuda-only"]),
     },
     backends = [
         "gpu_a100",
@@ -392,8 +427,8 @@ xla_test(
     name = "command_buffer_thunk_test",
     srcs = if_gpu_is_configured(["command_buffer_thunk_test.cc"]),
     backend_tags = {
-        "gpu_a100": ["config-cuda-only"],
-        "gpu_v100": ["config-cuda-only"],
+        "gpu_a100": if_google(["config-cuda-only"]),
+        "gpu_v100": if_google(["config-cuda-only"]),
     },
     backends = [
         "gpu_a100",
@@ -804,6 +839,7 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
+        "@local_tsl//tsl/concurrency:async_value",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:statusor",
     ],
@@ -818,6 +854,7 @@ cc_library(
     ]),
     deps = [
         ":nccl_api",
+        ":nccl_clique",
         "//xla:debug_options_flags",
         "//xla:shape_util",
         "//xla:status",
@@ -831,7 +868,6 @@ cc_library(
         "//xla/service:rendezvous",
         "//xla/service/gpu:buffer_allocations",
         "//xla/service/gpu:ir_emission_utils",
-        "//xla/service/gpu:nccl_clique",
         "//xla/service/gpu:nccl_clique_key",
         "//xla/service/gpu/runtime:thunk",
         "//xla/service/llvm_ir:llvm_util",
@@ -1035,6 +1071,7 @@ cc_library(
     hdrs = ["thunk.h"],
     deps = [
         ":nccl_api",
+        ":nccl_clique",
         "//xla:executable_run_options",
         "//xla/hlo/ir:hlo",
         "//xla/service:buffer_assignment",
@@ -1043,7 +1080,6 @@ cc_library(
         "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:buffer_allocations",
         "//xla/service/gpu:gpu_executable_run_options",
-        "//xla/service/gpu:nccl_clique",
         "//xla/service/gpu:nccl_clique_key",
         "//xla/stream_executor",
         "//xla/translate/mhlo_to_hlo:location_exporter",

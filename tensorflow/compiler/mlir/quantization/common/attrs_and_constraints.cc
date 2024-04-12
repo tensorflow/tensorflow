@@ -18,6 +18,8 @@ limitations under the License.
 #include <optional>
 
 #include "absl/algorithm/container.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/MathExtras.h"
@@ -119,9 +121,11 @@ bool IsHybridQuantizedOp(Operation* op) {
          !IsQuantizedTensorType(result_type);
 }
 
-std::optional<int64_t> GetDotGeneralQuantizationDim(
-    DotGeneralOp dot_general_op) {
-  if (dot_general_op == nullptr) return std::nullopt;
+absl::StatusOr<bool> IsDotGeneralFullyConnected(DotGeneralOp dot_general_op) {
+  if (dot_general_op == nullptr)
+    return absl::InvalidArgumentError(
+        "Given dot_general op cannot be null when checking "
+        "`IsDotGeneralBatchMatmul`.");
   const ::mlir::stablehlo::DotDimensionNumbersAttr dot_dimension_numbers =
       dot_general_op.getDotDimensionNumbers();
   const ArrayRef<int64_t> lhs_contracting_dims =
@@ -132,10 +136,8 @@ std::optional<int64_t> GetDotGeneralQuantizationDim(
       dot_general_op.getOperand(0).getType().dyn_cast<ShapedType>().getRank();
   const int64_t filter_rank =
       dot_general_op.getOperand(1).getType().dyn_cast<ShapedType>().getRank();
-  // To quantize rhs per-channel, we currently only consider the case where
-  // `stablehlo.dot_general` is legalizable to `tfl.fully_connected`.
   // The following conditions are such requirements:
-  //   - rank(lhs) <= 2
+  //   - rank(lhs) is 1 or 2
   //   - rank(rhs) = 2
   //   - size(lhs_contracting_dimensions) = 1
   //   - size(rhs_contracting_dimensions) = 1
@@ -144,7 +146,8 @@ std::optional<int64_t> GetDotGeneralQuantizationDim(
   //   - quantization_dimension(rhs) should not be in
   //     `rhs_contracting_dimensions`.
   // https://github.com/openxla/stablehlo/blob/main/docs/spec.md#dot_general
-  const bool has_proper_rank = input_rank <= 2 && filter_rank == 2;
+  const bool has_proper_rank =
+      (input_rank == 1 || input_rank == 2) && filter_rank == 2;
   const bool has_proper_contracting_dim =
       lhs_contracting_dims.size() == 1 && rhs_contracting_dims.size() == 1 &&
       lhs_contracting_dims[0] == input_rank - 1;
@@ -153,9 +156,20 @@ std::optional<int64_t> GetDotGeneralQuantizationDim(
   const bool has_proper_quantization_dimension =
       absl::c_find(rhs_contracting_dims, filter_rank) ==
       rhs_contracting_dims.end();
+  return has_proper_rank && has_proper_contracting_dim && is_not_batch_op &&
+         has_proper_quantization_dimension;
+}
+
+std::optional<int64_t> GetDotGeneralQuantizationDim(
+    DotGeneralOp dot_general_op) {
+  if (dot_general_op == nullptr) return std::nullopt;
+  const int64_t filter_rank =
+      dot_general_op.getOperand(1).getType().dyn_cast<ShapedType>().getRank();
+
+  // To quantize rhs per-channel, we currently only consider the case where
+  // `stablehlo.dot_general` is legalizable to `tfl.fully_connected`.
   const bool is_per_axis_quantizable =
-      has_proper_rank && has_proper_contracting_dim && is_not_batch_op &&
-      has_proper_quantization_dimension;
+      IsDotGeneralFullyConnected(dot_general_op).value();
   if (!is_per_axis_quantizable) return std::nullopt;
   return filter_rank - 1;
 }

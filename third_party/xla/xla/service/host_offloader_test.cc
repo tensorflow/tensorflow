@@ -224,6 +224,54 @@ ENTRY main {
   VLOG(1) << "module after: " << module->ToString();
 }
 
+TEST_F(HostOffloaderTest, ParameterStreamingFeedingIntoWhile) {
+  const std::string& hlo_string = R"(
+HloModule jit__prefill_impl, entry_computation_layout={(bf16[2,16,16]{2,1,0:T(8,128)(2,1)S(5)})->bf16[2,16,16]{2,1,0:T(8,128)(2,1)}}
+
+while_condition {
+  condition_param = (s32[], bf16[2,16,16]{2,1,0:T(8,128)(2,1)}, bf16[2,16,16]{2,1,0:T(8,128)(2,1)}) parameter(0)
+  condition_current_iteration_index = s32[] get-tuple-element(condition_param), index=0
+  condition_iteration_count = s32[] constant(16)
+  ROOT condition_result = pred[] compare(condition_current_iteration_index, condition_iteration_count), direction=LT
+}
+
+while_body {
+  input_tuple.0 = (s32[], bf16[2,16,16]{2,1,0:T(8,128)(2,1)}, bf16[2,16,16]{2,1,0:T(8,128)(2,1)}) parameter(0)
+  current_iteration_index.0 = s32[] get-tuple-element(input_tuple.0), index=0
+  orig_data = bf16[2,16,16]{2,1,0:T(8,128)(2,1)} get-tuple-element(input_tuple.0), index=1
+  custom-call.0 = bf16[2,16,16]{2,1,0:T(8,128)(2,1)} custom-call(orig_data), custom_call_target="MoveToDevice"
+  sum = bf16[2,16,16]{2,1,0:T(8,128)(2,1)} get-tuple-element(input_tuple.0), index=2
+  sum.1 = bf16[2,16,16]{2,1,0:T(8,128)(2,1)} add(custom-call.0, sum)
+
+  constant_1 = s32[] constant(1)
+  /* Increment iteration index */
+  incremented_index.0 = s32[] add(current_iteration_index.0, constant_1)
+  ROOT tuple_result.0 = (s32[], bf16[2,16,16]{2,1,0:T(8,128)(2,1)}, bf16[2,16,16]{2,1,0:T(8,128)(2,1)}) tuple(incremented_index.0, custom-call.0, sum.1)
+}
+
+ENTRY main {
+  param.0 = bf16[2,16,16]{2,1,0:T(8,128)(2,1)} parameter(0)
+  constant_0 = s32[] constant(0)
+  constant_0.0 = bf16[] constant(0.0)
+  broadcast = bf16[2,16,16]{2,1,0:T(8,128)(2,1)} broadcast(constant_0.0), dimensions={}
+  tuple_for_while = (s32[], bf16[2,16,16]{2,1,0:T(8,128)(2,1)}, bf16[2,16,16]{2,1,0:T(8,128)(2,1)}) tuple(constant_0, param.0, broadcast)
+  while = (s32[], bf16[2,16,16]{2,1,0:T(8,128)(2,1)}, bf16[2,16,16]{2,1,0:T(8,128)(2,1)}) while(tuple_for_while), condition=while_condition, body=while_body
+  ROOT gte = bf16[2,16,16]{2,1,0:T(8,128)(2,1)} get-tuple-element(while), index=2
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed, RunHostOffloader(module.get(), /*after_layout=*/true));
+  EXPECT_TRUE(changed);
+  EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
+  HloVerifier verifier(/*layout_sensitive=*/true,
+                       /*allow_mixed_precision=*/true);
+  TF_EXPECT_OK(verifier.Run(module.get()).status());
+  VLOG(1) << "module after: " << module->ToString();
+}
+
 TEST_F(HostOffloaderTest, BasicNoCopy) {
   const std::string& hlo_string = R"(
 HloModule my_module

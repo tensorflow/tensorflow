@@ -219,6 +219,7 @@ message InitResponse {
   message Memory {
     int32 id = 1;
     string memory_space_kind = 2;
+    int32 kind_id = 6;
     repeated int32 device_ids = 3;
     string debug_string = 4;
     string to_string = 5;

@@ -122,13 +122,13 @@ absl::StatusOr<nb_class_ptr<PyMemorySpace>> PyDevice::Memory(
     std::string_view kind) const {
   xla::PjRtMemorySpace* result_memory_space = nullptr;
   for (auto* memory_space : device_->memory_spaces()) {
-    if (memory_space->memory_space_kind() == kind) {
+    if (memory_space->kind() == kind) {
       if (result_memory_space != nullptr) {
-        std::string memories = absl::StrJoin(
-            device_->memory_spaces(), ", ",
-            [](std::string* out, const auto& memory_space) {
-              absl::StrAppend(out, memory_space->memory_space_kind());
-            });
+        std::string memories =
+            absl::StrJoin(device_->memory_spaces(), ", ",
+                          [](std::string* out, const auto& memory_space) {
+                            absl::StrAppend(out, memory_space->kind());
+                          });
         auto device_kind = device_->device_kind();
         return xla::InvalidArgument(
             "Found more than one addressable memory for "
@@ -145,7 +145,7 @@ absl::StatusOr<nb_class_ptr<PyMemorySpace>> PyDevice::Memory(
     std::string memories =
         absl::StrJoin(device_->memory_spaces(), ", ",
                       [](std::string* out, const auto& memory_space) {
-                        absl::StrAppend(out, memory_space->memory_space_kind());
+                        absl::StrAppend(out, memory_space->kind());
                       });
     auto device_kind = device_->device_kind();
     return xla::InvalidArgument(

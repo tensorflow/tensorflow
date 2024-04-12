@@ -19,10 +19,14 @@ limitations under the License.
 #include <limits>
 #include <string>
 
+#include "absl/container/flat_hash_set.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/hlo_pass_interface.h"
+#include "xla/status.h"
 
 namespace xla {
 
@@ -89,8 +93,9 @@ class HloControlFlowFlattening : public HloModulePass {
   bool remove_host_transfer_;
 
  protected:
-  // Replaces a collective op with a custom call.
-  Status RemoveCollective(HloInstruction* hlo) const;
+  // Replaces a collective op with a custom call and returns the custom call.
+  virtual absl::StatusOr<HloInstruction*> RemoveCollective(
+      HloInstruction* hlo) const;
 
   bool remove_comm_;
 };

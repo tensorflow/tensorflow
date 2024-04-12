@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/service/gpu/ir_emitter_triton.h"
 
-#include <cstdint>
 #include <iterator>
 #include <limits>
 #include <memory>
@@ -42,7 +41,6 @@ limitations under the License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/matmul_utils.h"
-#include "xla/service/gpu/model/indexing_test_utils.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
 #include "xla/service/gpu/triton_fusion_analysis.h"
 #include "xla/service/pattern_matcher.h"
@@ -149,31 +147,6 @@ absl::Status TritonFilecheckTest::CreateTritonIrAndFileCheck(
     return absl::InternalError("FileCheck failed.");
   }
   return absl::OkStatus();
-}
-
-TEST_F(TritonTest, ComputeProgramIdToOutputTileIndexing) {
-  mlir::MLIRContext context;
-
-  auto compute_map = [&](absl::Span<const int64_t> dimensions,
-                         absl::Span<const int64_t> tile_sizes) {
-    return ComputeProgramIdToOutputTileIndexing(dimensions, tile_sizes,
-                                                &context);
-  };
-
-  EXPECT_THAT(compute_map(/*dimensions=*/{9, 17}, /*tile_sizes=*/{5, 10}),
-              MatchIndexingMap(R"(
-    (d0) -> ((d0 floordiv 2) * 5, (d0 mod 2) * 10)
-    domain:
-    d0 in [0, 3]
-  )"));
-
-  EXPECT_THAT(
-      compute_map(/*dimensions=*/{8, 16, 32}, /*tile_sizes=*/{1, 1, 32}),
-      MatchIndexingMap(R"(
-    (d0) -> (d0 floordiv 16, d0 mod 16, 0)
-    domain:
-    d0 in [0, 127]
-  )"));
 }
 
 TEST_F(TritonFilecheckTest, TestGemm) {
@@ -2009,6 +1982,31 @@ ENTRY e {
 )");
 
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1e-6, /*arel=*/1e-6}));
+}
+
+TEST_F(TritonGemmTestAny,
+       DoNotFuseConcatenationOfSplitNonContractingDimension) {
+  const std::string hlo_text = R"(
+HloModule m
+
+ENTRY e {
+  x = bf16[2,128,10] parameter(0)
+  y = bf16[2,256,10] parameter(1)
+  concat = bf16[2,384,10] concatenate(x, y), dimensions={1}
+  z = bf16[10,20] parameter(2)
+  ROOT d = bf16[2,384,20] dot(concat, z), lhs_contracting_dims={2}, rhs_contracting_dims={0}
+})";
+
+  MatchOptimizedHlo(hlo_text, R"(
+; CHECK:      ENTRY
+; CHECK:      concatenate
+; CHECK:        ROOT
+; CHECK-SAME:     fusion
+; CHECK-SAME:       kind=kCustom
+; CHECK-SAME:       "block_m"
+)");
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
 class TritonGemmLevel2Test : public TritonGemmTest {
@@ -4516,7 +4514,6 @@ CHECK-COUNT-6:  %{{.*}} = tt.dot %{{.*}}, %{{.*}}, %{{.*}} {allowTF32 = false, m
                                ErrorSpec{/*aabs=*/1e-6, /*arel=*/1e-6}));
 }
 
-
 TEST_F(Triton6xBF16GemmTest, Emit6xBF16GemmEndToEnd) {
   const char* kHloText = R"(
 HloModule t
@@ -4858,6 +4855,45 @@ CHECK-COUNT-3:  %{{.*}} = tt.dot %{{.*}}, %{{.*}}, %{{.*}} {allowTF32 = false, m
   EXPECT_TRUE(
       RunAndCompareNoHloPasses(std::move(module), argument_ptrs,
                                ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-4}));
+}
+
+// This test could be modified to allow TF32 once this bug is fixed.
+// TODO(b/320659359) Allow TF32 for 8-bit or less types with F32.
+TEST_F(TritonFilecheckTest, NoTF32For8BitOrLessWithF32) {
+  const std::string hlo_text = R"(
+HloModule t
+
+triton_dot {
+  parameter_0 = s32[11,24]{1,0} parameter(0)
+  broadcast.1747 = s32[11,24,128]{2,1,0} broadcast(parameter_0),
+  dimensions={0,1} parameter_1 = s32[11,24,128]{2,1,0} parameter(1)
+  compare.49 = pred[11,24,128]{2,1,0} compare(broadcast.1747, parameter_1),
+      direction=EQ bitcast.4717 = pred[264,128]{1,0} bitcast(compare.49)
+  convert.142 = f32[264,128]{1,0} convert(bitcast.4717)
+  parameter_2 = f32[128,8]{1,0} parameter(2)
+  ROOT dot.381 = f32[264,8]{1,0} dot(convert.142, parameter_2),
+      lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+ENTRY e {
+  p0 = s32[11,24]{1,0} parameter(0)
+  p1 = s32[11,24,128]{2,1,0} parameter(1)
+  p2 = f32[128,8]{1,0} parameter(2)
+  ROOT _ = f32[264,8] fusion(p0, p1, p2), kind=kCustom, calls=triton_dot,
+    backend_config={"fusion_backend_config": {kind: "__triton_gemm",
+      triton_gemm_config:
+        {"block_m":32,"block_n":16,"block_k":128,
+         "split_k":1,"num_stages":1,"num_warps":4,
+         "num_ctas":1}}}
+})";
+
+  TritonGemmConfig config(32, 16, 128, 1, 1, 4);
+  ASSERT_OK(
+      CreateTritonIrAndFileCheck(hlo_text, config, EmitMatMul, "triton_dot", R"(
+CHECK: %{{.*}} = tt.dot %{{.*}}, %{{.*}}, %{{.*}} {allowTF32 = false
+  )"));
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
 TEST_F(Triton3xBF16GemmTest, Emit3xBF16GemmEndToEnd) {

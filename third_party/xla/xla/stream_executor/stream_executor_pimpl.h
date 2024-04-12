@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_STREAM_EXECUTOR_PIMPL_H_
 #define XLA_STREAM_EXECUTOR_STREAM_EXECUTOR_PIMPL_H_
 
-#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <initializer_list>
@@ -41,11 +40,12 @@ limitations under the License.
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/fft.h"
-#include "xla/stream_executor/host_memory_allocation.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
+#include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/module_spec.h"
 #include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/stream_executor_internal.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/status.h"
 
@@ -73,10 +73,9 @@ class StreamExecutor {
  public:
   StreamExecutor(
       const Platform* platform,
-      std::unique_ptr<internal::StreamExecutorInterface> implementation,
-      int device_ordinal);
+      std::unique_ptr<internal::StreamExecutorInterface> implementation);
 
-  ~StreamExecutor();
+  ~StreamExecutor() = default;
 
   absl::Status Init();
 
@@ -175,7 +174,7 @@ class StreamExecutor {
   // Memory allocated in this manner (or allocated and registered with
   // HostMemoryRegister() is required for use in asynchronous memcpy operations,
   // such as Stream::ThenMemcpy.
-  absl::StatusOr<std::unique_ptr<HostMemoryAllocation>> HostMemoryAllocate(
+  absl::StatusOr<std::unique_ptr<MemoryAllocation>> HostMemoryAllocate(
       uint64_t size);
 
   // Synchronizes all activity occurring in the StreamExecutor's context (most
@@ -208,9 +207,9 @@ class StreamExecutor {
 
   // Blocks the caller while a data segment of the given size is copied from the
   // device source to the device destination.
-  bool SynchronousMemcpy(DeviceMemoryBase* device_dst,
-                         const DeviceMemoryBase& device_src,
-                         uint64_t size) ABSL_MUST_USE_RESULT;
+  absl::Status SynchronousMemcpy(DeviceMemoryBase* device_dst,
+                                 const DeviceMemoryBase& device_src,
+                                 uint64_t size) ABSL_MUST_USE_RESULT;
 
   // Enqueues an operation onto stream to zero out size bytes at the given
   // device memory location. Neither stream nor location may be null. Returns
@@ -262,7 +261,7 @@ class StreamExecutor {
 
   // Returns the device ordinal that this StreamExecutor was initialized with.
   // Meaningless before initialization.
-  int device_ordinal() const { return device_ordinal_; }
+  int device_ordinal() const { return implementation_->device_ordinal(); }
 
   // Returns a borrowed pointer to the underlying StreamExecutor implementation.
   internal::StreamExecutorInterface* implementation();
@@ -439,34 +438,10 @@ class StreamExecutor {
   // fashion.
   std::unique_ptr<internal::StreamExecutorInterface> implementation_;
 
-  // Memoized BLAS support object -- we only want to create this once when asked
-  // for a BLAS interface.
-  std::unique_ptr<blas::BlasSupport> blas_ ABSL_GUARDED_BY(mu_);
-
-  // Memoized DNN support object -- we only want to create this once when asked
-  // for an DNN interface.
-  std::unique_ptr<dnn::DnnSupport> dnn_ ABSL_GUARDED_BY(mu_);
-
-  // Memoized FFT support object -- we only want to create this once when asked
-  // for a FFT interface.
-  std::unique_ptr<fft::FftSupport> fft_;
-
   // Slot to cache the owned DeviceDescription for the underlying device
   // once it has been queried from DeviceDescription().
   mutable std::unique_ptr<DeviceDescription> device_description_
       ABSL_GUARDED_BY(mu_);
-
-  // The device ordinal that this object was initialized with.
-  //
-  // Immutable post-initialization.
-  int device_ordinal_;
-
-  // Counter for the current number of live streams. This is used to check
-  // for accidentally-outstanding streams at StreamExecutor teardown time, as
-  // well
-  // as to indicate leaks (via a large outstanding count being logged) in the
-  // case we can't allocate more streams.
-  std::atomic_int_fast32_t live_stream_count_;
 
   // Only one worker thread is needed; little work will be done by the
   // executor.
@@ -541,7 +516,7 @@ ScopedDeviceMemory<ElemT>::ScopedDeviceMemory(
     : ScopedDeviceMemory(parent, parent->AllocateArray<ElemT>(values.size())) {
   if (ptr() != nullptr) {
     std::vector<ElemT> local(values);
-    if (!parent->SynchronousMemcpy(ptr(), local.data(), ptr()->size())) {
+    if (!parent->SynchronousMemcpy(ptr(), local.data(), ptr()->size()).ok()) {
       TF_CHECK_OK(Free());
     }
   }

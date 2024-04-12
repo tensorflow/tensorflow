@@ -1163,7 +1163,7 @@ inline Value mapMhloOpToStdScalarOp<mhlo::PowOp>(Location loc,
   // The accum is correct when the rhs is non-negative. When rhs is
   // negative, we return 0 for integer, with the exception of lhs values of 1
   // and -1 which have integer results for negative exponents. Specifically, the
-  // calulation is the following:
+  // calculation is the following:
   //
   // - Return accum if the rhs is not negative.
   // - Return 1 or -1 depending on the parity of rhs when the lhs is -1.
@@ -1313,9 +1313,11 @@ struct MhloOpToStdScalarOp {
                                  ArrayRef<Type> argTypes, ValueRange args,
                                  OpBuilder* b) {
     static_assert(!std::is_same<MhloOpTy, mhlo::ConvertOp>::value);
-    return mapOpOfType<MhloOpTy>(
-        op.getLoc(), resultTypes, argTypes,
-        typename MhloOpTy::Adaptor(args, op->getAttrDictionary()), b);
+    typename MhloOpTy::Adaptor adaptor(args, op->getAttrDictionary(),
+                                       op->getPropertiesStorage(),
+                                       op->getRegions());
+    return mapOpOfType<MhloOpTy>(op.getLoc(), resultTypes, argTypes, adaptor,
+                                 b);
   }
   // Overload for mhlo::ConvertOp.
   static Value mapOpWithArgTypes(mhlo::ConvertOp op, ArrayRef<Type> resultTypes,

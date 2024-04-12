@@ -646,12 +646,12 @@ class CollectiveOpV2Kernel : public AsyncOpKernel {
   void Run(OpKernelContext* c, CollectiveParams* col_params,
            DoneCallback done) {
     // Trace the Run event.
-    profiler::TraceMeProducer producer(
+    tsl::profiler::TraceMeProducer producer(
         [this] {
-          return profiler::TraceMeEncode("CollectiveOpV2Kernel::Run",
-                                         {{"name", name()}});
+          return tsl::profiler::TraceMeEncode("CollectiveOpV2Kernel::Run",
+                                              {{"name", name()}});
         },
-        profiler::ContextType::kTfExecutor);
+        tsl::profiler::ContextType::kTfExecutor);
     auto xprof_ctx_id = producer.GetContextId();
 
     CollectiveExecutor* col_exec = c->collective_executor();
@@ -689,12 +689,13 @@ class CollectiveOpV2Kernel : public AsyncOpKernel {
     c->collective_executor()->RunClosure([c, activity_id, xprof_ctx_id,
                                           done = std::move(done), col_params,
                                           col_exec]() mutable {
-      profiler::TraceMeConsumer consumer(
+      tsl::profiler::TraceMeConsumer consumer(
           [&] {
-            return profiler::TraceMeEncode("CollectiveExecutor::RunClosure",
-                                           {{"name", c->op_kernel().name()}});
+            return tsl::profiler::TraceMeEncode(
+                "CollectiveExecutor::RunClosure",
+                {{"name", c->op_kernel().name()}});
           },
-          profiler::ContextType::kTfExecutor, xprof_ctx_id);
+          tsl::profiler::ContextType::kTfExecutor, xprof_ctx_id);
 
       VLOG(1) << "Collective CompleteParams for " << col_params->name
               << " device " << c->device()->name() << " group "
@@ -704,24 +705,24 @@ class CollectiveOpV2Kernel : public AsyncOpKernel {
           c->device()->attributes(), col_params, c->cancellation_manager(),
           [c, activity_id, xprof_ctx_id, done = std::move(done), col_params,
            col_exec](const Status& s) mutable {
-            profiler::TraceMeConsumer consumer(
+            tsl::profiler::TraceMeConsumer consumer(
                 [&] {
-                  return profiler::TraceMeEncode(
+                  return tsl::profiler::TraceMeEncode(
                       "CollectiveExecutor::CompleteParamsAsync::Done",
                       {{"name", c->op_kernel().name()}});
                 },
-                profiler::ContextType::kTfExecutor, xprof_ctx_id);
+                tsl::profiler::ContextType::kTfExecutor, xprof_ctx_id);
 
             if (s.ok()) {
               auto actual_done = [c, activity_id, col_params, xprof_ctx_id,
                                   done = std::move(done)](const Status& s) {
-                profiler::TraceMeConsumer consumer(
+                tsl::profiler::TraceMeConsumer consumer(
                     [&] {
-                      return profiler::TraceMeEncode(
+                      return tsl::profiler::TraceMeEncode(
                           "CollectiveExecutor::ExecuteAsync::Done",
                           {{"name", c->op_kernel().name()}});
                     },
-                    profiler::ContextType::kTfExecutor, xprof_ctx_id);
+                    tsl::profiler::ContextType::kTfExecutor, xprof_ctx_id);
 
                 VLOG(1) << "Collective ExecuteAsync done for "
                         << col_params->name << " device " << c->device()->name()

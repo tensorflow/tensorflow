@@ -29,9 +29,11 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/event.h"
+#include "xla/stream_executor/host_memory_allocation.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
+#include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_internal.h"
 
@@ -49,9 +51,9 @@ namespace host {
 // See stream_executor.h for description of the below operations.
 class HostExecutor : public internal::StreamExecutorInterface {
  public:
-  HostExecutor() = default;
+  explicit HostExecutor(int device_ordinal) : device_ordinal_(device_ordinal) {}
 
-  absl::Status Init(int device_ordinal) override;
+  absl::Status Init() override;
 
   absl::Status GetKernel(const MultiKernelLoaderSpec& spec,
                          Kernel* kernel) override {
@@ -66,7 +68,10 @@ class HostExecutor : public internal::StreamExecutorInterface {
   DeviceMemoryBase Allocate(uint64_t size, int64_t memory_space) override;
   void Deallocate(DeviceMemoryBase* mem) override;
 
-  void* HostMemoryAllocate(uint64_t size) override { return new char[size]; }
+  absl::StatusOr<std::unique_ptr<MemoryAllocation>> HostMemoryAllocate(
+      uint64_t size) override {
+    return std::make_unique<HostMemoryAllocation>(new char[size], size, this);
+  }
   void HostMemoryDeallocate(void* mem) override {
     delete[] static_cast<char*>(mem);
   }
@@ -129,6 +134,7 @@ class HostExecutor : public internal::StreamExecutorInterface {
 
   static absl::StatusOr<std::unique_ptr<DeviceDescription>>
   CreateDeviceDescription(int device_ordinal);
+  int device_ordinal() const override { return device_ordinal_; }
 
   absl::Status EnablePeerAccessTo(StreamExecutorInterface* other) override {
     return absl::OkStatus();
@@ -142,6 +148,9 @@ class HostExecutor : public internal::StreamExecutorInterface {
       override;
 
   std::unique_ptr<internal::StreamInterface> GetStreamImplementation() override;
+
+ private:
+  int device_ordinal_;
 };
 
 }  // namespace host

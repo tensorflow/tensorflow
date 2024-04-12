@@ -411,7 +411,11 @@ HloAsyncStartInstruction::HloAsyncStartInstruction(
 
 HloAsyncStartInstruction::~HloAsyncStartInstruction() {
   ClearAsyncComputationInstruction();
-  ClearCalledComputations();
+}
+
+void HloAsyncStartInstruction::ClearCalledComputations() {
+  ClearAsyncComputationInstruction();
+  HloInstruction::ClearCalledComputations();
 }
 
 void HloAsyncStartInstruction::ClearAsyncComputationInstruction() {

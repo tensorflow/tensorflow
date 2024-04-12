@@ -13,12 +13,22 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <array>
+#include <cstdint>
+#include <memory>
+#include <string>
+#include <utility>
 
-#include "xla/service/hlo_verifier.h"
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/literal.h"
+#include "xla/literal_util.h"
+#include "xla/service/hlo_runner.h"
 #include "xla/tests/hlo_test_base.h"
+#include "xla/tests/literal_test_util.h"
 #include "xla/tests/test_macros.h"
 #include "xla/tests/test_utils.h"
+#include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
 namespace xla {
@@ -76,47 +86,6 @@ XLA_TEST_F(TokenHloTest, TokenTree) {
 
   TF_ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(module), {}));
   EXPECT_TRUE(LiteralTestUtil::Equal(result, LiteralUtil::CreateToken()));
-}
-
-XLA_TEST_F(TokenHloTest, InvalidTokenShapedEntryParameter) {
-  std::unique_ptr<HloModule> module = CreateNewUnverifiedModule();
-  auto builder = HloComputation::Builder(TestName());
-  builder.AddInstruction(
-      HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(F32, {}), "p0"));
-  builder.AddInstruction(
-      HloInstruction::CreateParameter(1, ShapeUtil::MakeTokenShape(), "p1"));
-  builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(42)));
-  module->AddEntryComputation(builder.Build());
-
-  Status status =
-      HloVerifier(/*layout_sensitive=*/false, /*allow_mixed_precision=*/false)
-          .Run(module.get())
-          .status();
-  ASSERT_IS_NOT_OK(status);
-  EXPECT_THAT(
-      status.message(),
-      ::testing::HasSubstr("Entry parameter 1 is or contains a token shape"));
-}
-
-XLA_TEST_F(TokenHloTest, InvalidTupleTokenShapedEntryParameter) {
-  std::unique_ptr<HloModule> module = CreateNewUnverifiedModule();
-  auto builder = HloComputation::Builder(TestName());
-  builder.AddInstruction(HloInstruction::CreateParameter(
-      0,
-      ShapeUtil::MakeTupleShape(
-          {ShapeUtil::MakeShape(F32, {1, 2, 3}), ShapeUtil::MakeTokenShape()}),
-      "param"));
-  module->AddEntryComputation(builder.Build());
-
-  Status status =
-      HloVerifier(/*layout_sensitive=*/false, /*allow_mixed_precision=*/false)
-          .Run(module.get())
-          .status();
-  ASSERT_IS_NOT_OK(status);
-  EXPECT_THAT(
-      status.message(),
-      ::testing::HasSubstr("Entry parameter 0 is or contains a token shape"));
 }
 
 XLA_TEST_F(TokenHloTest, TokenInWhileLoop) {

@@ -136,9 +136,7 @@ GpuExecutor::~GpuExecutor() {
   }
 }
 
-absl::Status GpuExecutor::Init(int device_ordinal) {
-  device_ordinal_ = device_ordinal;
-
+absl::Status GpuExecutor::Init() {
   TF_RETURN_IF_ERROR(GpuDriver::Init());
   TF_RETURN_IF_ERROR(GpuDriver::GetDevice(device_ordinal_, &device_));
   TF_RETURN_IF_ERROR(
@@ -838,6 +836,10 @@ bool GpuExecutor::AllocateStream(Stream* stream) {
 }
 
 void GpuExecutor::DeallocateStream(Stream* stream) {
+  dnn::DnnSupport* dnn = AsDnn();
+  if (dnn) {
+    dnn->NotifyStreamDestroyed(stream);
+  }
   GpuStream* cuda_stream = AsGpuStream(stream);
   absl::MutexLock l(&alive_gpu_streams_mu_);
   alive_gpu_streams_.erase(cuda_stream->platform_specific_stream());
@@ -866,7 +868,12 @@ absl::Status GpuExecutor::BlockHostUntilDone(Stream* stream) {
   return GpuDriver::SynchronizeStream(context_, AsGpuStreamValue(stream));
 }
 
-blas::BlasSupport* GpuExecutor::CreateBlas() {
+blas::BlasSupport* GpuExecutor::AsBlas() {
+  absl::MutexLock lock(&mu_);
+  if (blas_ != nullptr) {
+    return blas_.get();
+  }
+
   PluginRegistry* registry = PluginRegistry::Instance();
   absl::StatusOr<PluginRegistry::BlasFactory> status =
       registry->GetFactory<PluginRegistry::BlasFactory>(cuda::kCudaPlatformId);
@@ -876,10 +883,16 @@ blas::BlasSupport* GpuExecutor::CreateBlas() {
     return nullptr;
   }
 
-  return status.value()(this);
+  auto blas = status.value()(this);
+  blas_.reset(blas);
+  return blas_.get();
 }
 
-dnn::DnnSupport* GpuExecutor::CreateDnn() {
+dnn::DnnSupport* GpuExecutor::AsDnn() {
+  absl::MutexLock lock(&mu_);
+  if (dnn_ != nullptr) {
+    return dnn_.get();
+  }
   PluginRegistry* registry = PluginRegistry::Instance();
   absl::StatusOr<PluginRegistry::DnnFactory> status =
       registry->GetFactory<PluginRegistry::DnnFactory>(cuda::kCudaPlatformId);
@@ -889,10 +902,18 @@ dnn::DnnSupport* GpuExecutor::CreateDnn() {
     return nullptr;
   }
 
-  return status.value()(this);
+  auto dnn = status.value()(this);
+
+  dnn_.reset(dnn);
+
+  return dnn_.get();
 }
 
-fft::FftSupport* GpuExecutor::CreateFft() {
+fft::FftSupport* GpuExecutor::AsFft() {
+  absl::MutexLock lock(&mu_);
+  if (fft_ != nullptr) {
+    return fft_.get();
+  }
   PluginRegistry* registry = PluginRegistry::Instance();
   absl::StatusOr<PluginRegistry::FftFactory> status =
       registry->GetFactory<PluginRegistry::FftFactory>(cuda::kCudaPlatformId);
@@ -902,7 +923,10 @@ fft::FftSupport* GpuExecutor::CreateFft() {
     return nullptr;
   }
 
-  return status.value()(this);
+  auto fft = status.value()(this);
+
+  fft_.reset(fft);
+  return fft_.get();
 }
 
 bool GpuExecutor::CanEnablePeerAccessTo(StreamExecutorInterface* other) {
