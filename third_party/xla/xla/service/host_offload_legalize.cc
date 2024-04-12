@@ -401,6 +401,42 @@ absl::StatusOr<bool> ProcessAnnotationForCopyMovement(
         VLOG(5) << "Couldn't find annotation for consumer instruction in chain";
         return false;
       }
+
+      // Fix up while body's root instruction shape along the way.
+      if (annotation->IsCustomCall(
+              host_memory_offload_annotations::kMoveToDeviceCustomCallTarget)) {
+        for (HloInstruction* user : annotation->users()) {
+          HloInstruction* root_instruction =
+              annotation->parent()->root_instruction();
+          if (root_instruction == user &&
+              root_instruction->opcode() == HloOpcode::kTuple) {
+            auto callers =
+                call_graph->GetComputationCallers(annotation->parent());
+            if (callers.size() != 1 ||
+                callers[0]->opcode() != HloOpcode::kWhile) {
+              return absl::InvalidArgumentError(
+                  "Expected to be called only by one caller and caller be a "
+                  "While");
+            }
+            for (int i = 0; i < user->operands().size(); i++) {
+              if (user->operands()[i] == annotation &&
+                  annotation->operand(0)->opcode() ==
+                      HloOpcode::kGetTupleElement &&
+                  annotation->operand(0)->operand(0)->opcode() ==
+                      HloOpcode::kParameter &&
+                  annotation->operand(0)->tuple_index() == i) {
+                // A special case where move-to-device is put into the result
+                // tuple element at the same index as where the move-to-device
+                // gets the data from. In this case, while loop's result tuple
+                // should not use move-to-device since at loop entry it's still
+                // on host.
+                user->ReplaceOperandWith(i, annotation->mutable_operand(0))
+                    .IgnoreError();
+              }
+            }
+          }
+        }
+      }
       stack.pop_back();
       continue;
     }
@@ -478,25 +514,8 @@ absl::StatusOr<bool> ProcessAnnotationForCopyMovement(
                 "Expected to be called only by one caller");
           }
           auto* caller = callers[0];
-          if (caller->opcode() == HloOpcode::kWhile) {
-            update_shape_layout(std::make_pair(caller, instruction.second),
-                                copy_to_move.first);
-
-            HloInstruction* root_instruction =
-                caller->while_body()->root_instruction();
-            // Fix while loop's result tuple to not use move-to-device since
-            // at loop entry it's still on host.
-            if (root_instruction->operand(instruction.second)
-                    ->IsCustomCall(host_memory_offload_annotations::
-                                       kMoveToDeviceCustomCallTarget)) {
-              root_instruction
-                  ->ReplaceOperandWith(
-                      instruction.second,
-                      root_instruction->mutable_operand(instruction.second)
-                          ->mutable_operand(0))
-                  .IgnoreError();
-            }
-          }
+          update_shape_layout(std::make_pair(caller, instruction.second),
+                              copy_to_move.first);
         }
       }
       stack.pop_back();
