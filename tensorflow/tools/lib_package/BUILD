@@ -72,7 +72,7 @@ pkg_tar(
         "//tensorflow/c:headers",
     ],
     package_dir = "include/",
-    strip_prefix = "/external/local_tsl",
+    strip_prefix = "/external/local_xla",
     # Mark as "manual" till
     # https://github.com/bazelbuild/bazel/issues/2352
     # and https://github.com/bazelbuild/bazel/issues/1580
