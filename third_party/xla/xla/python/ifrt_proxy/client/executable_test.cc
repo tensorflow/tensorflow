@@ -35,7 +35,6 @@
 #include "xla/python/ifrt/mock.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
-#include "xla/python/ifrt/sharding_serdes.h"
 #include "xla/python/ifrt_proxy/client/array.h"
 #include "xla/python/ifrt_proxy/client/client_session.h"
 #include "xla/python/ifrt_proxy/client/host_buffer.h"
@@ -214,10 +213,10 @@ TEST_F(LoadedExecutableTest, Execute) {
                         ->mutable_outputs();
     TF_ASSERT_OK_AND_ASSIGN(
         *(*outputs)[0].mutable_sharding(),
-        ToShardingProto(*SingleDeviceSharding::Create(&device, MemoryKind())));
+        SingleDeviceSharding::Create(&device, MemoryKind())->ToProto());
     TF_ASSERT_OK_AND_ASSIGN(
         *(*outputs)[1].mutable_sharding(),
-        ToShardingProto(*SingleDeviceSharding::Create(&device, MemoryKind())));
+        SingleDeviceSharding::Create(&device, MemoryKind())->ToProto());
   }
   EXPECT_CALL(*session_, Enqueue(Pointee(Partially(EquivToProto(
                              R"pb(loaded_executable_execute_request {

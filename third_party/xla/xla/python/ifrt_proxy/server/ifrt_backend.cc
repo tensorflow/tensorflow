@@ -54,7 +54,6 @@
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
-#include "xla/python/ifrt/sharding_serdes.h"
 #include "xla/python/ifrt_proxy/common/array_util.h"
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
 #include "xla/python/ifrt_proxy/common/proto_util.h"
@@ -345,9 +344,9 @@ BackendInterface::Response IfrtBackend::HandleMakeArrayFromHostBufferRequest(
       request->mutable_make_array_from_host_buffer_request();
 
   TF_ASSIGN_OR_RETURN(
-      auto sharding,
-      FromShardingProto(absl::bind_front(&Client::LookupDevice, client_.get()),
-                        make_array_request->sharding()));
+      auto sharding, Sharding::FromProto(
+                         absl::bind_front(&Client::LookupDevice, client_.get()),
+                         make_array_request->sharding()));
 
   const auto byte_strides = [&]() -> std::optional<std::vector<int64_t>> {
     if (!make_array_request->has_byte_strides()) return std::nullopt;
@@ -413,9 +412,9 @@ IfrtBackend::HandleAssembleArrayFromSingleDeviceArraysRequest(
 
   TF_ASSIGN_OR_RETURN(Shape shape, Shape::FromProto(assemble_request.shape()));
   TF_ASSIGN_OR_RETURN(
-      auto sharding,
-      FromShardingProto(absl::bind_front(&Client::LookupDevice, client_.get()),
-                        assemble_request.sharding()));
+      auto sharding, Sharding::FromProto(
+                         absl::bind_front(&Client::LookupDevice, client_.get()),
+                         assemble_request.sharding()));
   TF_ASSIGN_OR_RETURN(auto semantics, FromArrayCopySemanticsProto(
                                           assemble_request.copy_semantics()));
 
@@ -572,8 +571,9 @@ BackendInterface::Response IfrtBackend::HandleReshardRequest(
   TF_ASSIGN_OR_RETURN(auto array, GetArray(reshard_request.array_handle()));
   TF_ASSIGN_OR_RETURN(
       std::shared_ptr<const Sharding> sharding,
-      FromShardingProto(absl::bind_front(&Client::LookupDevice, client_.get()),
-                        reshard_request.sharding()));
+      Sharding::FromProto(
+          absl::bind_front(&Client::LookupDevice, client_.get()),
+          reshard_request.sharding()));
   TF_ASSIGN_OR_RETURN(auto semantics, FromArrayCopySemanticsProto(
                                           reshard_request.copy_semantics()));
 
@@ -933,7 +933,7 @@ BackendInterface::Response IfrtBackend::HandleLoadedExecutableExecuteRequest(
       *output->mutable_dtype() = array->dtype().ToProto();
       *output->mutable_shape() = array->shape().ToProto();
       TF_ASSIGN_OR_RETURN(*output->mutable_sharding(),
-                          ToShardingProto(array->sharding()));
+                          array->sharding().ToProto());
       output->set_array_handle(output_handles[i]);
 
       arrays_.insert({output_handles[i], std::move(array)});

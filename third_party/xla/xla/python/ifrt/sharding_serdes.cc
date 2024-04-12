@@ -13,18 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/python/ifrt/sharding_serdes.h"
-
 #include <memory>
-#include <string>
-#include <utility>
-#include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "llvm/Support/Casting.h"
-#include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/serdes.h"
@@ -36,12 +30,10 @@ limitations under the License.
 namespace xla {
 namespace ifrt {
 
-char DeserializeShardingOptions::ID = 0;
-
 namespace {
 
-// TODO(hyeontaek): Move SerDes for the subclasses of `Sharding` to a separate
-// file, making this sharding_serdes.{h,cc} only define common functions.
+// TODO(hyeontaek): Rename sharding_serdes.cc once the subclasses of `Sharding`
+// are moved to to a separate file other than sharding.{h,cc}.
 
 // Serialization/deserialization for `SingleDeviceSharding`.
 class SingleDeviceShardingSerDes
@@ -294,24 +286,6 @@ bool register_concrete_even_sharding_serdes = ([]{
 // clang-format on
 
 }  // namespace
-
-// TODO(hyeontaek): Move this common logic into Sharding::FromProto() and
-// Sharding::ToProto().
-
-absl::StatusOr<std::unique_ptr<Sharding>> FromShardingProto(
-    DeviceList::LookupDeviceFunc lookup_device,
-    const ShardingProto& sharding_proto) {
-  return Deserialize<Sharding>(
-      sharding_proto.serialized_sharding(),
-      std::make_unique<DeserializeShardingOptions>(std::move(lookup_device)));
-}
-
-absl::StatusOr<ShardingProto> ToShardingProto(const Sharding& sharding) {
-  ShardingProto sharding_proto;
-  TF_ASSIGN_OR_RETURN(*sharding_proto.mutable_serialized_sharding(),
-                      Serialize(const_cast<Sharding&>(sharding)));
-  return sharding_proto;
-}
 
 }  // namespace ifrt
 }  // namespace xla

@@ -390,12 +390,10 @@ cc_library(
 cc_library(
     name = "sharding_serdes",
     srcs = ["sharding_serdes.cc"],
-    hdrs = ["sharding_serdes.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
         ":ifrt",
         ":serdes",
-        ":sharding_proto_cc",
         ":sharding_serdes_proto_cc",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",

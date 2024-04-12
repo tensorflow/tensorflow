@@ -77,6 +77,18 @@ class Sharding : public llvm::RTTIExtends<Sharding, Serializable> {
   virtual absl::StatusOr<std::vector<IndexDomain>> IndexDomains(
       const Shape& shape) const = 0;
 
+  // Deserializes `ShardingProto` into `Sharding`.
+  // Note that `Sharding` serialization uses `SerDes` to handle an open set of
+  // `Sharding` subclasses. See `serdes.h`.
+  static absl::StatusOr<std::unique_ptr<Sharding>> FromProto(
+      DeviceList::LookupDeviceFunc lookup_device,
+      const ShardingProto& sharding_proto);
+
+  // Serializes `Sharding` into `ShardingProto`.
+  // Note that `Sharding` serialization uses `SerDes` to handle an open set of
+  // `Sharding` subclasses. See `serdes.h`.
+  absl::StatusOr<ShardingProto> ToProto() const;
+
   virtual std::string DebugString() const = 0;
 
   static char ID;  // NOLINT
@@ -318,6 +330,20 @@ class ShardingParamSharding
         sharding_param_(sharding_param) {}
 
   ShardingParam sharding_param_;
+};
+
+// Options for deserializing shardings. Function referenced by `lookup_device`
+// must remain valid during deserialization.
+struct DeserializeShardingOptions
+    : llvm::RTTIExtends<DeserializeShardingOptions, DeserializeOptions> {
+  explicit DeserializeShardingOptions(
+      DeviceList::LookupDeviceFunc lookup_device)
+      : lookup_device(lookup_device) {}
+
+  static char ID;  // NOLINT
+
+  // Function that converts device ids to devices.
+  DeviceList::LookupDeviceFunc lookup_device;
 };
 
 }  // namespace ifrt

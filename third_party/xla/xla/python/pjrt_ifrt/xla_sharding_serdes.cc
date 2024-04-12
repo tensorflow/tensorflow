@@ -26,7 +26,6 @@ limitations under the License.
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/serdes.h"
-#include "xla/python/ifrt/sharding_serdes.h"
 #include "xla/python/pjrt_ifrt/xla_sharding.h"
 #include "xla/python/pjrt_ifrt/xla_sharding.pb.h"
 #include "tsl/platform/statusor.h"
