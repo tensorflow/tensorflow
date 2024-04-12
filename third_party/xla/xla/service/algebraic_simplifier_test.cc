@@ -7969,6 +7969,33 @@ ENTRY %entry {
                               m::ConstantScalar(0))));
 }
 
+TEST_F(AlgebraicSimplifierTest, GatherOfReshapeOfPad3) {
+  const char* hlo_string = R"(
+HloModule module
+
+ENTRY %entry {
+  parameter.0 = f32[2,4256]{1,0} parameter(0)
+  constant = f32[] constant(0)
+  pad.264 = f32[2,4480]{1,0} pad(parameter.0, constant), padding=0_0x0_224
+  slice.267 = f32[2,4480]{1,0} slice(pad.264), slice={[0:2], [0:4480]}
+  reshape.269 = f32[2,28,160]{2,1,0} reshape(slice.267)
+  parameter.1 = s32[27,2]{1,0} parameter(1)
+  ROOT gather.271 = f32[2,27,2,160]{3,2,1,0} gather(reshape.269, parameter.1), offset_dims={0,3}, collapsed_slice_dims={1}, start_index_map={1}, index_vector_dim=2, slice_sizes={2,1,160}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  AlgebraicSimplifierOptions options;
+  AlgebraicSimplifier simplifier(options);
+  VLOG(2) << "After rewrite \n" << module->ToString();
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(
+      root,
+      GmockMatch(m::Gather(
+          m::Reshape(m::Slice(m::Pad(m::Parameter(0), m::ConstantScalar(0)))),
+          m::Parameter(1))));
+}
+
 TEST_F(AlgebraicSimplifierTest, TupleReduceReshape) {
   const char* hlo_string = R"(
 HloModule module

@@ -4006,16 +4006,16 @@ Status AlgebraicSimplifierVisitor::HandleGather(HloInstruction* gather) {
       bool padded_on_reshape_unmodified_dims = true;
       bool padded_on_gather_operand_passthrough_operand_dims = true;
       std::vector<int64_t> padded_dims = GetPaddedDims(pad);
-      absl::flat_hash_map<int64_t, int64_t> reshape_dims_to_padded_dims;
-      for (int64_t padded_dim : padded_dims) {
-        reshape_dims_to_padded_dims[reshape_unmodified_dims[padded_dim]] =
-            padded_dim;
-      }
       for (int64_t padded_dim : padded_dims) {
         if (!reshape_unmodified_dims.contains(padded_dim)) {
           padded_on_reshape_unmodified_dims = false;
           break;
         }
+      }
+      absl::flat_hash_map<int64_t, int64_t> reshape_dims_to_padded_dims;
+      for (int64_t padded_dim : padded_dims) {
+        reshape_dims_to_padded_dims[reshape_unmodified_dims[padded_dim]] =
+            padded_dim;
       }
       for (auto& [padded_reshape_dim, _] : reshape_dims_to_padded_dims) {
         if (!gather_operand_passthrough_operand_to_output_dims.contains(
