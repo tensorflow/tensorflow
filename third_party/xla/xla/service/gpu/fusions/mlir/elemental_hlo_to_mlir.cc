@@ -170,8 +170,6 @@ static auto& kUnsupportedOps =
 bool IsUnsupportedConstant(const HloInstruction* instr) {
   return instr->opcode() == HloOpcode::kConstant &&
          (!ShapeUtil::IsEffectiveScalar(instr->shape()) ||
-          primitive_util::IsUnsignedIntegralType(
-              instr->shape().element_type()) ||
           primitive_util::IsComplexType(instr->shape().element_type()));
 }
 
@@ -787,9 +785,14 @@ absl::StatusOr<SmallVector<Value>> HloToMlir(
                         builder);
     case HloOpcode::kConstant:
       if (ShapeUtil::IsEffectiveScalar(instr->shape())) {
+        TF_ASSIGN_OR_RETURN(auto value_attr, CreateDenseElementsAttrFromLiteral(
+                                                 instr->literal(), builder));
+        if (result_element_type != element_mlir_type) {
+          value_attr = value_attr.mapValues(
+              result_element_type, [](const llvm::APInt& i) { return i; });
+        }
         auto val = mlir::cast<mlir::TypedAttr>(
-            CreateDenseElementsAttrFromLiteral(instr->literal(), builder)
-                ->getValues<mlir::Attribute>()[0]);
+            value_attr.getValues<mlir::Attribute>()[0]);
         return {{builder.create<ConstantOp>(val).getResult()}};
       }
       return absl::UnimplementedError(

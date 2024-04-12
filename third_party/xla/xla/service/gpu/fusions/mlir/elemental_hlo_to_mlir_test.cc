@@ -1252,6 +1252,26 @@ TEST_F(ElementalHloToMlirTest, ScalarConstant) {
   })"));
 }
 
+TEST_F(ElementalHloToMlirTest, ScalarUnsignedConstant) {
+  TF_EXPECT_OK(Run(R"(
+    ENTRY main {
+      p0 = u32[1,1] parameter(0)
+      c1 = u32[1,1] constant({{1}})
+      ROOT add = u32[1,1] add(p0, c1)
+    })",
+                   R"(
+    // CHECK:      @main_add(
+    // CHECK-SAME:     %[[ARG0:.*]]: tensor<1x1xui32>
+    // CHECK-SAME:     %[[X:.*]]: index {{.*}}, %[[Y:.*]]: index {{.*}}
+    // CHECK:        %[[C_1:.*]] = arith.constant 1
+    // CHECK:        %[[A:.*]] = tensor.extract %[[ARG0]][%[[X]], %[[Y]]]
+    // CHECK:        %[[CAST:.*]] = builtin.unrealized_conversion_cast %[[A]] : ui32 to i32
+    // CHECK:        %[[RET:.*]] = arith.addi %[[CAST]], %[[C_1]]
+    // CHECK:        %[[CAST_RET:.*]] = builtin.unrealized_conversion_cast %[[RET]] : i32 to ui32
+    // CHECK:        return %[[CAST_RET]]
+  })"));
+}
+
 TEST_F(ElementalHloToMlirTest, DynamicSlice) {
   TF_EXPECT_OK(Run(R"(
     ENTRY main {
