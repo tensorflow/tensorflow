@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/status.h"
 #include "xla/statusor.h"
+#include "xla/stream_executor/device_description.h"
 
 namespace xla {
 namespace gpu {

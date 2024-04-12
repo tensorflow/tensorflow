@@ -22,6 +22,8 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/match.h"
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -29,6 +31,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/layout_util.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/fusions/concatenate.h"
 #include "xla/service/gpu/fusions/concatenate_mlir.h"
 #include "xla/service/gpu/fusions/copy.h"
@@ -54,7 +57,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status.h"
-#include "xla/statusor.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
