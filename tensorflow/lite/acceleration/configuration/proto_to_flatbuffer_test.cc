@@ -141,5 +141,31 @@ TEST(ConversionTest, CompilationCachingSettings) {
             kModelToken);
 }
 
+TEST(ConversionTest, ArmNNSettings) {
+  // Define the fields to be tested.
+  const std::string kBackends = "TEST_BACKENDS";
+  const bool kFastmath = true;
+  const std::string kAdditionalParameters = "TEST_ADDITIONAL_PARAMETERS";
+
+  // Create the proto settings.
+  proto::TFLiteSettings input_settings;
+  auto* armnn_settings = input_settings.mutable_armnn_settings();
+  armnn_settings->set_backends(kBackends);
+  armnn_settings->set_fastmath(kFastmath);
+  armnn_settings->set_additional_parameters(kAdditionalParameters);
+  flatbuffers::FlatBufferBuilder flatbuffers_builder;
+
+  // Convert.
+  auto output_settings = ConvertFromProto(input_settings, &flatbuffers_builder);
+
+  // Verify the conversion results.
+  const auto* output_armnn_settings = output_settings->armnn_settings();
+  ASSERT_NE(output_armnn_settings, nullptr);
+  EXPECT_EQ(output_armnn_settings->backends()->str(), kBackends);
+  EXPECT_EQ(output_armnn_settings->fastmath(), kFastmath);
+  EXPECT_EQ(output_armnn_settings->additional_parameters()->str(),
+            kAdditionalParameters);
+}
+
 }  // namespace
 }  // namespace tflite

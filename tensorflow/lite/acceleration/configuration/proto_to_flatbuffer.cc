@@ -401,6 +401,13 @@ Offset<CompilationCachingSettings> ConvertCompilationCachingSettings(
       builder.CreateString(settings.model_token()));
 }
 
+Offset<ArmNNSettings> ConvertArmNNSettings(const proto::ArmNNSettings& settings,
+                                           FlatBufferBuilder& builder) {
+  return CreateArmNNSettings(
+      builder, builder.CreateString(settings.backends()), settings.fastmath(),
+      builder.CreateString(settings.additional_parameters()));
+}
+
 Offset<CoralSettings> ConvertCoralSettings(const proto::CoralSettings& settings,
                                            FlatBufferBuilder& builder) {
   return CreateCoralSettings(
@@ -428,7 +435,8 @@ Offset<TFLiteSettings> ConvertTfliteSettings(
           settings.stable_delegate_loader_settings(), builder),
       ConvertGoogleEdgeTpuSettings(settings.google_edgetpu_settings(), builder),
       ConvertCompilationCachingSettings(settings.compilation_caching_settings(),
-                                        builder));
+                                        builder),
+      ConvertArmNNSettings(settings.armnn_settings(), builder));
 }
 
 Offset<ModelFile> ConvertModelFile(const proto::ModelFile& model_file,
