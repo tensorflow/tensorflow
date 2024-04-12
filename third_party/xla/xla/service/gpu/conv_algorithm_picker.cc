@@ -49,7 +49,6 @@ limitations under the License.
 #include "xla/service/gpu/hlo_algorithm_denylist.h"
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/service/service_executable_run_options.h"
 #include "xla/service/slow_operation_alarm.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -928,35 +927,6 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
   return selected_algorithm;
 }
 #endif
-
-absl::StatusOr<AutotuneResult>
-GpuConvAlgorithmPicker::PickBestAlgorithmWithAllocatedBuffer(
-    const AutotuneConfig& config, const GpuConvConfig conv_config,
-    const ServiceExecutableRunOptions* run_options,
-    const DebugOptions& debug_options,
-    const std::vector<se::DeviceMemoryBase> buffers,
-    std::vector<se::DeviceMemoryBase> result_buffers) {
-#if GOOGLE_CUDA
-  Shape output_shape = conv_config.output_shape;
-  HloModuleConfig hlo_module_config;
-  hlo_module_config.set_debug_options(debug_options);
-  se::Stream* stream = run_options->stream();
-  TF_ASSIGN_OR_RETURN(
-      se::RedzoneAllocator input_output_allocator,
-      AutotunerUtil::CreateRedzoneAllocator(config, debug_options, stream));
-
-  GpuConvAlgorithmPicker::AutotuneRuntimeArguments autotune_runtime_arguments =
-      {output_shape,   hlo_module_config,       buffers,
-       result_buffers, &input_output_allocator, conv_config,
-       std::nullopt};
-
-  return PickBestAlgorithmNoCacheCuda(
-      /*instr=*/nullptr, stream,
-      /*instruction_info=*/std::nullopt, autotune_runtime_arguments);
-#else
-  return Internal("CUDA is not enabled");
-#endif
-}
 
 absl::StatusOr<AutotuneResult>
 GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheRocm(

@@ -35,7 +35,6 @@ limitations under the License.
 #include "xla/service/gpu/gpu_conv_runner.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_pass_interface.h"
-#include "xla/service/service_executable_run_options.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
@@ -103,14 +102,6 @@ class GpuConvAlgorithmPicker : public HloModulePass {
   absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-
-  // Run autotuning on allocated buffers and pick the best algorithm.
-  absl::StatusOr<AutotuneResult> PickBestAlgorithmWithAllocatedBuffer(
-      const AutotuneConfig& config, GpuConvConfig conv_config,
-      const ServiceExecutableRunOptions* run_options,
-      const DebugOptions& debug_options,
-      std::vector<se::DeviceMemoryBase> buffers,
-      std::vector<se::DeviceMemoryBase> result_buffers);
 
  private:
   absl::StatusOr<bool> RunOnComputation(HloComputation* computation);
