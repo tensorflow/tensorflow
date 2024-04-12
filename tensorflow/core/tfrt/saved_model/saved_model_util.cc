@@ -232,7 +232,7 @@ StatusOr<tensorflow::MetaGraphDef> ReadSavedModel(
 
   tensorflow::MetaGraphDef meta_graph_def;
   TF_RETURN_IF_ERROR(tensorflow::ReadMetaGraphDefFromSavedModel(
-      std::string(saved_model_dir), tags, &meta_graph_def));
+      saved_model_dir, tags, &meta_graph_def));
 
   const auto read_meta_graph_duration = absl::Now() - read_start_time;
   saved_model_read_meta_graph_time_seconds
