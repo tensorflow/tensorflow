@@ -177,7 +177,8 @@ class BatchResource : public serving::BatchResourceBase {
                   /*mixed_priority_batching_policy=*/
                   serving::MixedPriorityBatchingPolicy::
                       kLowPriorityPaddingWithMaxBatchSize,
-                  enable_large_batch_splitting, resource);
+                  enable_large_batch_splitting,
+                  /*full_queue_returns_resource_exhausted=*/false, resource);
   }
 
   static Status Create(
@@ -191,6 +192,7 @@ class BatchResource : public serving::BatchResourceBase {
       const std::vector<int32>& low_priority_allowed_batch_sizes,
       serving::MixedPriorityBatchingPolicy mixed_priority_batching_policy,
       bool enable_large_batch_splitting,
+      bool full_queue_returns_resource_exhausted,
       std::unique_ptr<BatchResource>* resource) {
     BatcherT::Options batcher_options;
     batcher_options.num_batch_threads = num_batch_threads;
@@ -206,7 +208,8 @@ class BatchResource : public serving::BatchResourceBase {
             /*disable_padding=*/false, low_priority_max_batch_size,
             low_priority_batch_timeout_micros,
             low_priority_max_enqueued_batches, low_priority_allowed_batch_sizes,
-            mixed_priority_batching_policy),
+            mixed_priority_batching_policy,
+            full_queue_returns_resource_exhausted),
         allowed_batch_sizes));
     return absl::OkStatus();
   }
@@ -313,6 +316,9 @@ BatchFunctionKernel::BatchFunctionKernel(OpKernelConstruction* c)
                                  &enable_large_batch_splitting_));
     has_attribute_enable_large_batch_splitting_ = true;
   }
+
+  OP_REQUIRES_OK(c, c->GetAttr("full_queue_returns_resource_exhausted",
+                               &full_queue_returns_resource_exhausted_));
 
   // Helper function `SetAdaptiveBatchSchedulerOptions` calls
   // `OP_REQUIRES_OK`, which exits the current function upon error.
@@ -438,7 +444,7 @@ void BatchFunctionKernel::ComputeAsync(OpKernelContext* c, DoneCallback done) {
           low_priority_batch_timeout_micros_,
           low_priority_max_enqueued_batches_, low_priority_allowed_batch_sizes_,
           mixed_priority_batching_policy, enable_large_batch_splitting_,
-          &new_resource));
+          full_queue_returns_resource_exhausted_, &new_resource));
       if (session_metadata) {
         new_resource->set_session_metadata(*session_metadata);
       }

@@ -9,6 +9,12 @@ import "google/protobuf/wrappers.proto";
 message BatchOpRewriteConfig {
   bool enable_adaptive_shared_batching_thread_pool = 4;
 
+  // Return a ResourceExhausted error instead of Unavailable when the
+  // batch queue is full. ResourceExhausted can result in different behavior.
+  // For example, in some systems, this can cause clients farther upstream
+  // to become responsible for retrying the failed queries.
+  bool full_queue_returns_resource_exhausted = 5;
+
   // The options for tensorflow::serving::AdaptiveSharedBatchScheduler.
   // See AdaptiveSharedBatchScheduler::Options for meaning of each field.
   //

@@ -46,6 +46,8 @@ constexpr char kBatchTimeoutMicrosAttr[] = "batch_timeout_micros";
 constexpr char kAllowedBatchSizesAttr[] = "allowed_batch_sizes";
 constexpr char kMaxEnqueuedBatchesAttr[] = "max_enqueued_batches";
 constexpr char kEnableLargeBatchSplitting[] = "enable_large_batch_splitting";
+constexpr char kFullQueueReturnsResourceExhaustedAttr[] =
+    "full_queue_returns_resource_exhausted";
 constexpr int64 kBoostMicrosNotSet = -1;
 
 using BatchOpRewriteFunction = std::function<void(NodeDef* batch_op)>;
@@ -171,6 +173,13 @@ Status BatchOpRewriter::Optimize(Cluster* cluster, const GrapplerItem& item,
   VLOG(2) << "Running BatchOp Rewriter";
   *optimized_graph = item.graph;
 
+  if (config_.full_queue_returns_resource_exhausted()) {
+    UpdateBatchOps(optimized_graph, [](NodeDef* batch_op) {
+      ::tensorflow::graph_transforms::SetNodeAttr(
+          kFullQueueReturnsResourceExhaustedAttr, true, batch_op);
+    });
+  }
+
   bool asbs_overridden = false;
   if (config_proto_.has_experimental() &&
       config_proto_.experimental().has_session_metadata()) {
@@ -214,7 +223,7 @@ Status BatchOpRewriter::Optimize(Cluster* cluster, const GrapplerItem& item,
         });
       }
 
-      // There is an edge case where the adapative shared batch thread pool
+      // There is an edge case where the adaptive shared batch thread pool
       // option is enabled which clears the number of threads, and the user
       // provides a num_batch_threads override. In this case, it is not clear
       // what the user wants so error.

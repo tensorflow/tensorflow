@@ -504,7 +504,8 @@ BatchResourceBase::GetBatcherQueueOptions(
       /*low_priority_max_enqueued_batches=*/0,
       /*low_priority_allowed_batch_sizes=*/{},
       /*mixed_priority_batching_policy*/
-      MixedPriorityBatchingPolicy::kLowPriorityPaddingWithMaxBatchSize);
+      MixedPriorityBatchingPolicy::kLowPriorityPaddingWithMaxBatchSize,
+      /*full_queue_returns_resource_exhausted=*/false);
 }
 
 /*static*/ BatchResourceBase::BatcherT::QueueOptions
@@ -517,7 +518,8 @@ BatchResourceBase::GetBatcherQueueOptions(
     int32_t low_priority_batch_timeout_micros,
     int32_t low_priority_max_enqueued_batches,
     const std::vector<int32>& low_priority_allowed_batch_sizes,
-    MixedPriorityBatchingPolicy mixed_priority_batching_policy) {
+    MixedPriorityBatchingPolicy mixed_priority_batching_policy,
+    bool full_queue_returns_resource_exhausted) {
   BatcherT::QueueOptions batcher_queue_options;
   batcher_queue_options.input_batch_size_limit = max_batch_size;
   batcher_queue_options.max_enqueued_batches = max_enqueued_batches;
@@ -548,6 +550,8 @@ BatchResourceBase::GetBatcherQueueOptions(
       low_priority_allowed_batch_sizes;
   batcher_queue_options.mixed_priority_batching_policy =
       mixed_priority_batching_policy;
+  batcher_queue_options.full_queue_returns_resource_exhausted =
+      full_queue_returns_resource_exhausted;
   batcher_queue_options.enable_large_batch_splitting =
       enable_large_batch_splitting;
   if (enable_large_batch_splitting) {

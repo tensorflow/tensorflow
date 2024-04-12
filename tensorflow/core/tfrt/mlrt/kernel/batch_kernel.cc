@@ -238,7 +238,8 @@ class MlrtBatchResource : public tensorflow::serving::BatchResourceBase {
             options.low_priority_batch_timeout_micros,
             options.low_priority_max_enqueued_batches,
             options.low_priority_allowed_batch_sizes,
-            options.mixed_priority_batching_policy),
+            options.mixed_priority_batching_policy,
+            options.full_queue_returns_resource_exhausted),
         options.allowed_batch_sizes));
     return OkStatus();
   }

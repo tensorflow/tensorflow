@@ -57,6 +57,7 @@ struct BatchResourceOptions {
   int32_t low_priority_max_enqueued_batches;
   std::vector<int32_t> low_priority_allowed_batch_sizes;
   MixedPriorityBatchingPolicy mixed_priority_batching_policy;
+  bool full_queue_returns_resource_exhausted;
 };
 
 // Base class for resource that encapsulating the state and logic for batching
@@ -217,7 +218,8 @@ class BatchResourceBase : public ResourceBase {
       int32_t low_priority_batch_timeout_micros,
       int32_t low_priority_max_enqueued_batches,
       const std::vector<int32>& low_priority_allowed_batch_sizes,
-      MixedPriorityBatchingPolicy mixed_priority_batching_policy);
+      MixedPriorityBatchingPolicy mixed_priority_batching_policy,
+      bool full_queue_returns_resource_exhausted);
 
   static AdaptiveBatcherT::QueueOptions GetAdaptiveBatcherQueueOptions(
       int32_t max_batch_size, int32_t batch_timeout_micros,

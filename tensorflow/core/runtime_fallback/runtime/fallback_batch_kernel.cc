@@ -101,6 +101,8 @@ BatchFunctionFallbackKernelBase::BatchFunctionFallbackKernelBase(
                                &low_priority_max_enqueued_batches_));
   OP_REQUIRES_OK(c,
                  c->GetAttr("mixed_priority_policy", &mixed_priority_policy_));
+  OP_REQUIRES_OK(c, c->GetAttr("full_queue_returns_resource_exhausted",
+                               &full_queue_returns_resource_exhausted_));
 
   if (shared_name_.empty()) {
     // If shared_name is not supplied, use name instead (prevent collisions by

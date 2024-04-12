@@ -25,12 +25,14 @@ limitations under the License.
 #include <functional>
 #include <list>
 #include <memory>
+#include <string>
 #include <utility>
 #include <variant>
 #include <vector>
 
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/time/clock.h"
 #include "tensorflow/core/kernels/batching_util/batch_input_task.h"
@@ -269,6 +271,12 @@ class SharedBatchScheduler
     // effective only when enable_priority_queue is true.
     MixedPriorityBatchingPolicy mixed_priority_batching_policy =
         MixedPriorityBatchingPolicy::kLowPriorityPaddingWithMaxBatchSize;
+
+    // Return a ResourceExhausted error instead of Unavailable when the
+    // Queue is full. ResourceExhausted can result in different behavior.
+    // For example, in some systems, this can cause clients farther upstream
+    // to become responsible for retrying the failed queries.
+    bool full_queue_returns_resource_exhausted = false;
   };
   Status AddQueue(const QueueOptions& options,
                   ProcessBatchCallback process_batch_callback,
@@ -1146,7 +1154,7 @@ Status Queue<TaskType>::ValidateBatchTaskQueueCapacity(TaskType* task) const {
   // lazy split.
   if (options_.enable_large_batch_splitting) {
     if (task->size() > SchedulingCapacityInternal()) {
-      return errors::Unavailable(
+      std::string error_message = absl::StrCat(
           "The batch scheduling queue to which this task was submitted is "
           "full; task size is ",
           task->size(), " but scheduling capacity is only ",
@@ -1155,6 +1163,11 @@ Status Queue<TaskType>::ValidateBatchTaskQueueCapacity(TaskType* task) const {
           ", max_enqueued_batches=", options_.max_enqueued_batches,
           ", open_batch_size=", tail_batch_task_size(),
           ", max_execution_batch_size=", max_execution_batch_size(), ")");
+      if (options_.full_queue_returns_resource_exhausted) {
+        return errors::ResourceExhausted(error_message);
+      } else {
+        return errors::Unavailable(error_message);
+      }
     }
     return absl::OkStatus();
   }
@@ -1170,11 +1183,16 @@ Status Queue<TaskType>::ValidateBatchTaskQueueCapacity(TaskType* task) const {
   const std::deque<std::unique_ptr<Batch<TaskType>>>& batches = GetBatches();
   if (batches.back()->size() + task->size() > options_.input_batch_size_limit) {
     if (batches.size() >= options_.max_enqueued_batches) {
-      return errors::Unavailable(
+      std::string error_message = absl::StrCat(
           "The batch scheduling queue to which this task was submitted is "
           "full; currently ",
           batches.size(), " batches enqueued and max_enqueued_batches is ",
           options_.max_enqueued_batches);
+      if (options_.full_queue_returns_resource_exhausted) {
+        return errors::ResourceExhausted(error_message);
+      } else {
+        return errors::Unavailable(error_message);
+      }
     }
   }
   return absl::OkStatus();
@@ -1189,23 +1207,33 @@ Status Queue<TaskType>::ValidateLowPriorityTaskQueueCapacity(
   // max_execution_batch_size is present.
   if (task.size() >
       options_.low_priority_queue_options.max_execution_batch_size) {
-    return absl::UnavailableError(absl::StrFormat(
+    std::string error_message = absl::StrFormat(
         "The low priority task queue to which this task was submitted has "
         "max_execution_batch_size=%d and the task size is %d",
         options_.low_priority_queue_options.max_execution_batch_size,
-        task.size()));
+        task.size());
+    if (options_.full_queue_returns_resource_exhausted) {
+      return errors::ResourceExhausted(error_message);
+    } else {
+      return errors::Unavailable(error_message);
+    }
   }
   if (low_priority_tasks_.size() + task.size() >
       options_.low_priority_queue_options.max_enqueued_batches *
           options_.low_priority_queue_options.max_execution_batch_size) {
-    return absl::UnavailableError(absl::StrFormat(
+    std::string error_message = absl::StrFormat(
         "The low priority task queue to which this task was submitted does not "
         "have the capcity to handle this task; currently the low priority "
         "queue has %d tasks enqueued and the submitted task size is %d while "
         "max_enqueued_batches=%d and max_execution_batch_size=%d",
         low_priority_tasks_.size(), task.size(),
         options_.low_priority_queue_options.max_enqueued_batches,
-        options_.low_priority_queue_options.max_execution_batch_size));
+        options_.low_priority_queue_options.max_execution_batch_size);
+    if (options_.full_queue_returns_resource_exhausted) {
+      return errors::ResourceExhausted(error_message);
+    } else {
+      return errors::Unavailable(error_message);
+    }
   }
   return absl::OkStatus();
 }

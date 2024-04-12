@@ -141,7 +141,8 @@ class FallbackBatchResource : public tensorflow::serving::BatchResourceBase {
             options.low_priority_batch_timeout_micros,
             options.low_priority_max_enqueued_batches,
             options.low_priority_allowed_batch_sizes,
-            options.mixed_priority_batching_policy),
+            options.mixed_priority_batching_policy,
+            options.full_queue_returns_resource_exhausted),
         options.allowed_batch_sizes));
     return OkStatus();
   }
@@ -440,6 +441,7 @@ REGISTER_OP("_BatchFunctionFallback")
     .Attr("disable_padding: bool = false")
     // An opaque function handle for the batch function.
     .Attr("opaque_function_handle: int")
+    .Attr("full_queue_returns_resource_exhausted: bool = false")
     .SetShapeFn(shape_inference::UnknownShape);
 
 }  // namespace

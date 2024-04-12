@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/batching_util/shared_batch_scheduler.h"
 
+#include <climits>
 #include <cstddef>
+#include <functional>
 #include <memory>
 #include <string>
 #include <thread>  // NOLINT(build/c++11)
@@ -23,24 +25,30 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/base/call_once.h"
 #include "absl/container/fixed_array.h"
+#include "absl/log/check.h"
 #include "absl/status/status.h"
-#include "absl/time/time.h"
+#include "benchmark/benchmark.h"  // from @com_google_benchmark
 #include "tensorflow/core/kernels/batching_util/batch_scheduler.h"
 #include "tensorflow/core/kernels/batching_util/fake_clock_env.h"
+#include "tensorflow/core/kernels/batching_util/input_split_metadata.h"
 #include "tensorflow/core/lib/core/notification.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/cpu_info.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/status_matchers.h"
+#include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/criticality.h"
+#include "tsl/platform/status.h"
+#include "tsl/platform/test_benchmark.h"
 
 namespace tensorflow {
 namespace serving {
@@ -807,122 +815,136 @@ TEST_P(SharedBatchSchedulerTest, Fairness) {
 
 TEST_P(SharedBatchSchedulerTest, ConstMethods) {
   for (const int max_enqueued_batches : {1, 2, 5}) {
-    Notification processing, proceed;
-    auto callback = [&processing,
-                     &proceed](std::unique_ptr<Batch<FakeTask>> batch) {
-      if (!processing.HasBeenNotified()) {
-        processing.Notify();
+    const auto error_codes = {error::UNAVAILABLE, error::RESOURCE_EXHAUSTED};
+    for (const auto error_code : error_codes) {
+      Notification processing, proceed;
+      auto callback = [&processing,
+                       &proceed](std::unique_ptr<Batch<FakeTask>> batch) {
+        if (!processing.HasBeenNotified()) {
+          processing.Notify();
+        }
+        proceed.WaitForNotification();
+      };
+
+      auto scheduler = CreateSharedBatchScheduler(/*num_batch_threads*/ 1);
+
+      const size_t input_batch_size_limit = 2;
+      const size_t batch_timeout_micros = 0;
+      auto queue_options =
+          CreateQueueOptions(input_batch_size_limit, input_batch_size_limit,
+                             batch_timeout_micros, max_enqueued_batches);
+      if (error_code == error::RESOURCE_EXHAUSTED) {
+        queue_options.full_queue_returns_resource_exhausted = true;
       }
-      proceed.WaitForNotification();
-    };
+      auto queue = CreateQueue(scheduler, queue_options, callback);
 
-    auto scheduler = CreateSharedBatchScheduler(/*num_batch_threads*/ 1);
+      EXPECT_EQ(2, queue->max_task_size());
+      EXPECT_EQ(0, queue->NumEnqueuedTasks());
+      EXPECT_EQ(max_enqueued_batches * 2, queue->SchedulingCapacity());
 
-    const size_t input_batch_size_limit = 2;
-    const size_t batch_timeout_micros = 0;
-    auto queue = CreateQueue(
-        scheduler,
-        CreateQueueOptions(input_batch_size_limit, input_batch_size_limit,
-                           batch_timeout_micros, max_enqueued_batches),
-        callback);
+      // Get one batch going on the thread, and keep the thread blocked until
+      // we're done testing the maximum queue length.
+      TF_ASSERT_OK(ScheduleTask(2, queue.get()));
+      processing.WaitForNotification();
+      EXPECT_EQ(0, queue->NumEnqueuedTasks());
 
-    EXPECT_EQ(2, queue->max_task_size());
-    EXPECT_EQ(0, queue->NumEnqueuedTasks());
-    EXPECT_EQ(max_enqueued_batches * 2, queue->SchedulingCapacity());
+      // We should be able to enqueue 'max_enqueued_batches'*2 tasks without
+      // issue.
+      for (int i = 0; i < max_enqueued_batches; ++i) {
+        EXPECT_EQ(i * 2, queue->NumEnqueuedTasks());
+        EXPECT_EQ((max_enqueued_batches - i) * 2, queue->SchedulingCapacity());
+        TF_ASSERT_OK(ScheduleTask(1, queue.get()));
+        EXPECT_EQ((i * 2) + 1, queue->NumEnqueuedTasks());
+        EXPECT_EQ((max_enqueued_batches - i) * 2 - 1,
+                  queue->SchedulingCapacity());
+        TF_ASSERT_OK(ScheduleTask(1, queue.get()));
+      }
+      EXPECT_EQ(max_enqueued_batches * 2, queue->NumEnqueuedTasks());
+      EXPECT_EQ(0, queue->SchedulingCapacity());
 
-    // Get one batch going on the thread, and keep the thread blocked until
-    // we're done testing the maximum queue length.
-    TF_ASSERT_OK(ScheduleTask(2, queue.get()));
-    processing.WaitForNotification();
-    EXPECT_EQ(0, queue->NumEnqueuedTasks());
-
-    // We should be able to enqueue 'max_enqueued_batches'*2 tasks without
-    // issue.
-    for (int i = 0; i < max_enqueued_batches; ++i) {
-      EXPECT_EQ(i * 2, queue->NumEnqueuedTasks());
-      EXPECT_EQ((max_enqueued_batches - i) * 2, queue->SchedulingCapacity());
-      TF_ASSERT_OK(ScheduleTask(1, queue.get()));
-      EXPECT_EQ((i * 2) + 1, queue->NumEnqueuedTasks());
-      EXPECT_EQ((max_enqueued_batches - i) * 2 - 1,
-                queue->SchedulingCapacity());
-      TF_ASSERT_OK(ScheduleTask(1, queue.get()));
-    }
-    EXPECT_EQ(max_enqueued_batches * 2, queue->NumEnqueuedTasks());
-    EXPECT_EQ(0, queue->SchedulingCapacity());
-
-    // Attempting to enqueue one more task should yield an UNAVAILABLE error.
-    EXPECT_THAT(
-        ScheduleTask(1, queue.get()),
-        testing::StatusIs(error::UNAVAILABLE,
-                          HasSubstr("The batch scheduling queue to which this "
+      // Attempting to enqueue one more task should yield an UNAVAILABLE error.
+      EXPECT_THAT(
+          ScheduleTask(1, queue.get()),
+          testing::StatusIs(
+              error_code, HasSubstr("The batch scheduling queue to which this "
                                     "task was submitted is full")));
 
-    EXPECT_EQ(max_enqueued_batches * 2, queue->NumEnqueuedTasks());
-    EXPECT_EQ(0, queue->SchedulingCapacity());
+      EXPECT_EQ(max_enqueued_batches * 2, queue->NumEnqueuedTasks());
+      EXPECT_EQ(0, queue->SchedulingCapacity());
 
-    proceed.Notify();
+      proceed.Notify();
+    }
   }
 }
 
 TEST_P(SharedBatchSchedulerTest, OneFullQueueDoesntBlockOtherQueues) {
-  Notification queue_0_processing, queue_0_proceed;
-  auto queue_0_callback = [&queue_0_processing, &queue_0_proceed](
-                              std::unique_ptr<Batch<FakeTask>> batch) {
-    if (!queue_0_processing.HasBeenNotified()) {
-      queue_0_processing.Notify();
-      queue_0_proceed.WaitForNotification();
+  const auto error_codes = {error::UNAVAILABLE, error::RESOURCE_EXHAUSTED};
+  for (const auto error_code : error_codes) {
+    Notification queue_0_processing, queue_0_proceed;
+    auto queue_0_callback = [&queue_0_processing, &queue_0_proceed](
+                                std::unique_ptr<Batch<FakeTask>> batch) {
+      if (!queue_0_processing.HasBeenNotified()) {
+        queue_0_processing.Notify();
+        queue_0_proceed.WaitForNotification();
+      }
+    };
+
+    Notification queue_1_first_batch_processed, queue_1_second_batch_processed,
+        queue_1_third_batch_processed;
+    auto queue_1_callback = [&queue_1_first_batch_processed,
+                             &queue_1_second_batch_processed,
+                             &queue_1_third_batch_processed](
+                                std::unique_ptr<Batch<FakeTask>> batch) {
+      if (batch->size() == 1) {
+        queue_1_first_batch_processed.Notify();
+      } else if (batch->size() == 2) {
+        queue_1_second_batch_processed.Notify();
+      } else if (batch->size() == 3) {
+        queue_1_third_batch_processed.Notify();
+      } else {
+        ADD_FAILURE() << "Unexpected batch size";
+      }
+    };
+
+    auto scheduler = CreateSharedBatchScheduler(/*num_batch_threads*/ 2);
+
+    const size_t input_batch_size_limit = 10;
+    const size_t batch_timeout_micros = 0;
+    const size_t max_enqueued_batches = 2;
+    QueueOptions queue_options =
+        CreateQueueOptions(input_batch_size_limit, input_batch_size_limit,
+                           batch_timeout_micros, max_enqueued_batches);
+    if (error_code == error::RESOURCE_EXHAUSTED) {
+      queue_options.full_queue_returns_resource_exhausted = true;
     }
-  };
 
-  Notification queue_1_first_batch_processed, queue_1_second_batch_processed,
-      queue_1_third_batch_processed;
-  auto queue_1_callback =
-      [&queue_1_first_batch_processed, &queue_1_second_batch_processed,
-       &queue_1_third_batch_processed](std::unique_ptr<Batch<FakeTask>> batch) {
-        if (batch->size() == 1) {
-          queue_1_first_batch_processed.Notify();
-        } else if (batch->size() == 2) {
-          queue_1_second_batch_processed.Notify();
-        } else if (batch->size() == 3) {
-          queue_1_third_batch_processed.Notify();
-        } else {
-          EXPECT_TRUE(false) << "Unexpected batch size";
-        }
-      };
+    std::unique_ptr<BatchScheduler<FakeTask>> queue_0;
+    TF_ASSERT_OK(
+        scheduler->AddQueue(queue_options, queue_0_callback, &queue_0));
+    std::unique_ptr<BatchScheduler<FakeTask>> queue_1;
+    TF_ASSERT_OK(
+        scheduler->AddQueue(queue_options, queue_1_callback, &queue_1));
 
-  auto scheduler = CreateSharedBatchScheduler(/*num_batch_threads*/ 2);
+    // Clog up queue 0.
+    TF_ASSERT_OK(ScheduleTask(1, queue_0.get()));
+    queue_0_processing.WaitForNotification();
+    Status queue_0_status;
+    do {
+      queue_0_status = ScheduleTask(1, queue_0.get());
+    } while (queue_0_status.ok());
+    EXPECT_EQ(error_code, queue_0_status.code());
 
-  const size_t input_batch_size_limit = 10;
-  const size_t batch_timeout_micros = 0;
-  const size_t max_enqueued_batches = 2;
-  QueueOptions queue_options =
-      CreateQueueOptions(input_batch_size_limit, input_batch_size_limit,
-                         batch_timeout_micros, max_enqueued_batches);
+    // Ensure that queue 1 still behaves normally, and lets us process tasks.
+    TF_ASSERT_OK(ScheduleTask(1, queue_1.get()));
+    queue_1_first_batch_processed.WaitForNotification();
+    TF_ASSERT_OK(ScheduleTask(2, queue_1.get()));
+    queue_1_second_batch_processed.WaitForNotification();
+    TF_ASSERT_OK(ScheduleTask(3, queue_1.get()));
+    queue_1_third_batch_processed.WaitForNotification();
 
-  std::unique_ptr<BatchScheduler<FakeTask>> queue_0;
-  TF_ASSERT_OK(scheduler->AddQueue(queue_options, queue_0_callback, &queue_0));
-  std::unique_ptr<BatchScheduler<FakeTask>> queue_1;
-  TF_ASSERT_OK(scheduler->AddQueue(queue_options, queue_1_callback, &queue_1));
-
-  // Clog up queue 0.
-  TF_ASSERT_OK(ScheduleTask(1, queue_0.get()));
-  queue_0_processing.WaitForNotification();
-  Status queue_0_status;
-  do {
-    queue_0_status = ScheduleTask(1, queue_0.get());
-  } while (queue_0_status.ok());
-  EXPECT_EQ(error::UNAVAILABLE, queue_0_status.code());
-
-  // Ensure that queue 1 still behaves normally, and lets us process tasks.
-  TF_ASSERT_OK(ScheduleTask(1, queue_1.get()));
-  queue_1_first_batch_processed.WaitForNotification();
-  TF_ASSERT_OK(ScheduleTask(2, queue_1.get()));
-  queue_1_second_batch_processed.WaitForNotification();
-  TF_ASSERT_OK(ScheduleTask(3, queue_1.get()));
-  queue_1_third_batch_processed.WaitForNotification();
-
-  // Let poor queue 0 drain.
-  queue_0_proceed.Notify();
+    // Let poor queue 0 drain.
+    queue_0_proceed.Notify();
+  }
 }
 
 TEST_P(SharedBatchSchedulerTest, QueueDestructorBlocksUntilAllTasksProcessed) {
@@ -1088,7 +1110,9 @@ TEST_P(SharedBatchSchedulerPriorityTest,
     queue_callback_called = true;
   };
 
-  {
+  const auto error_codes = {absl::StatusCode::kUnavailable,
+                            absl::StatusCode::kResourceExhausted};
+  for (const auto error_code : error_codes) {
     std::shared_ptr<Scheduler> scheduler =
         CreateSharedBatchScheduler(/*num_batch_threads=*/3);
 
@@ -1103,6 +1127,9 @@ TEST_P(SharedBatchSchedulerPriorityTest,
     queue_options.low_priority_queue_options.max_enqueued_batches = 2;
     queue_options.mixed_priority_batching_policy =
         mixed_priority_batching_policy();
+    if (error_code == absl::StatusCode::kResourceExhausted) {
+      queue_options.full_queue_returns_resource_exhausted = true;
+    }
     std::unique_ptr<Queue> queue =
         CreateQueue(scheduler, queue_options, queue_callback);
 
@@ -1110,7 +1137,7 @@ TEST_P(SharedBatchSchedulerPriorityTest,
         ScheduleTask(10, queue.get(),
                      tsl::criticality::Criticality::kSheddablePlus),
         testing::StatusIs(
-            absl::StatusCode::kUnavailable,
+            error_code,
             HasSubstr(
                 "The low priority task queue to which this task was submitted "
                 "has max_execution_batch_size=1 and the task size is 10")));
@@ -1120,61 +1147,69 @@ TEST_P(SharedBatchSchedulerPriorityTest,
 
 TEST_P(SharedBatchSchedulerPriorityTest,
        InvalidLowPriorityTaskWithQueueFullWithPriorityQueueEnabledNew) {
-  Notification processing, proceed;
-  auto queue_callback = [&processing, &proceed](
-                            std::unique_ptr<Batch<FakeTask>> batch,
-                            std::vector<std::unique_ptr<FakeTask>> tasks) {
-    if (!processing.HasBeenNotified()) {
-      processing.Notify();
+  const auto error_codes = {absl::StatusCode::kUnavailable,
+                            absl::StatusCode::kResourceExhausted};
+  for (const auto error_code : error_codes) {
+    Notification processing, proceed;
+    auto queue_callback = [&processing, &proceed](
+                              std::unique_ptr<Batch<FakeTask>> batch,
+                              std::vector<std::unique_ptr<FakeTask>> tasks) {
+      if (!processing.HasBeenNotified()) {
+        processing.Notify();
+      }
+      proceed.WaitForNotification();
+    };
+
+    std::shared_ptr<Scheduler> scheduler =
+        CreateSharedBatchScheduler(/*num_batch_threads=*/1);
+
+    QueueOptions queue_options = CreateQueueOptions(
+        /*max_execution_batch_size=*/100, /*input_batch_size_limit=*/100,
+        /*batch_timeout_micros=*/1 * 1000 * 1000, /*max_enqueued_batches=*/2,
+        /*enable_priority_queue=*/true);
+    queue_options.low_priority_queue_options.max_execution_batch_size = 10;
+    queue_options.low_priority_queue_options.batch_timeout_micros =
+        1 * 1000 * 1000;
+    queue_options.low_priority_queue_options.input_batch_size_limit = 10;
+    queue_options.low_priority_queue_options.max_enqueued_batches = 2;
+    queue_options.mixed_priority_batching_policy =
+        mixed_priority_batching_policy();
+    if (error_code == absl::StatusCode::kResourceExhausted) {
+      queue_options.full_queue_returns_resource_exhausted = true;
     }
-    proceed.WaitForNotification();
-  };
+    std::unique_ptr<Queue> queue =
+        CreateQueue(scheduler, queue_options, queue_callback);
 
-  std::shared_ptr<Scheduler> scheduler =
-      CreateSharedBatchScheduler(/*num_batch_threads=*/1);
+    // Schedule one task and block the thread.
+    TF_ASSERT_OK(ScheduleTask(5, queue.get(),
+                              tsl::criticality::Criticality::kCriticalPlus));
+    processing.WaitForNotification();
+    ASSERT_EQ(0, queue->NumEnqueuedTasks());
 
-  QueueOptions queue_options = CreateQueueOptions(
-      /*max_execution_batch_size=*/100, /*input_batch_size_limit=*/100,
-      /*batch_timeout_micros=*/1 * 1000 * 1000, /*max_enqueued_batches=*/2,
-      /*enable_priority_queue=*/true);
-  queue_options.low_priority_queue_options.max_execution_batch_size = 10;
-  queue_options.low_priority_queue_options.batch_timeout_micros =
-      1 * 1000 * 1000;
-  queue_options.low_priority_queue_options.input_batch_size_limit = 10;
-  queue_options.low_priority_queue_options.max_enqueued_batches = 2;
-  queue_options.mixed_priority_batching_policy =
-      mixed_priority_batching_policy();
-  std::unique_ptr<Queue> queue =
-      CreateQueue(scheduler, queue_options, queue_callback);
+    // Adding tasks up to size 20 should be fine.
+    TF_ASSERT_OK(ScheduleTask(10, queue.get(),
+                              tsl::criticality::Criticality::kSheddablePlus));
+    ASSERT_EQ(1, queue->NumEnqueuedTasks());
+    TF_ASSERT_OK(ScheduleTask(10, queue.get(),
+                              tsl::criticality::Criticality::kSheddablePlus));
+    ASSERT_EQ(2, queue->NumEnqueuedTasks());
 
-  // Schedule one task and block the thread.
-  TF_ASSERT_OK(ScheduleTask(5, queue.get(),
-                            tsl::criticality::Criticality::kCriticalPlus));
-  processing.WaitForNotification();
-  ASSERT_EQ(0, queue->NumEnqueuedTasks());
+    // Adding one more task should result in an error.
+    EXPECT_THAT(
+        ScheduleTask(1, queue.get(),
+                     tsl::criticality::Criticality::kSheddablePlus),
+        testing::StatusIs(
+            error_code,
+            HasSubstr(
+                "The low priority task queue to which this task was "
+                "submitted does not have the capcity to handle this task; "
+                "currently the low priority queue has 20 tasks enqueued "
+                "and the submitted task size is 1 while "
+                "max_enqueued_batches=2 and max_execution_batch_size=10")));
 
-  // Adding tasks up to size 20 should be fine.
-  TF_ASSERT_OK(ScheduleTask(10, queue.get(),
-                            tsl::criticality::Criticality::kSheddablePlus));
-  ASSERT_EQ(1, queue->NumEnqueuedTasks());
-  TF_ASSERT_OK(ScheduleTask(10, queue.get(),
-                            tsl::criticality::Criticality::kSheddablePlus));
-  ASSERT_EQ(2, queue->NumEnqueuedTasks());
-
-  // Adding one more task should result in an error.
-  EXPECT_THAT(
-      ScheduleTask(1, queue.get(),
-                   tsl::criticality::Criticality::kSheddablePlus),
-      testing::StatusIs(
-          absl::StatusCode::kUnavailable,
-          HasSubstr("The low priority task queue to which this task was "
-                    "submitted does not have the capcity to handle this task; "
-                    "currently the low priority queue has 20 tasks enqueued "
-                    "and the submitted task size is 1 while "
-                    "max_enqueued_batches=2 and max_execution_batch_size=10")));
-
-  // Unblock the thread.
-  proceed.Notify();
+    // Unblock the thread.
+    proceed.Notify();
+  }
 }
 
 TEST_P(SharedBatchSchedulerPriorityTest,

@@ -83,6 +83,7 @@ class BatchFunctionFallbackKernelBase : public AsyncOpKernel {
   bool enable_large_batch_splitting_;
   bool has_attribute_enable_large_batch_splitting_;
   bool disable_padding_;
+  bool full_queue_returns_resource_exhausted_;
 
   // Parameters for adaptive batch scheduler only.
   // Note 'num_batch_threads_' above is shared by two implementations of batch
@@ -222,6 +223,8 @@ void BatchFunctionFallbackKernel<BatchResourceType>::ComputeAsync(
           low_priority_max_enqueued_batches_;
       batch_resource_options.low_priority_allowed_batch_sizes =
           low_priority_allowed_batch_sizes_;
+      batch_resource_options.full_queue_returns_resource_exhausted =
+          full_queue_returns_resource_exhausted_;
 
       std::unique_ptr<BatchResourceType> new_resource;
       auto status = BatchResourceType::Create(

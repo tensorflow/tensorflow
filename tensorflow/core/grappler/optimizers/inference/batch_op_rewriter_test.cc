@@ -50,7 +50,8 @@ void AddBatchOp(GraphDef* graph, int num_batch_threads = 16,
                 int max_batch_size = 16, int batch_timeout_micros = 10000,
                 const std::vector<int32>& allowed_batch_sizes = {8, 16},
                 int max_enqueued_batches = 1000,
-                bool disable_large_batch_splitting = false) {
+                bool disable_large_batch_splitting = false,
+                bool full_queue_returns_resource_exhausted = false) {
   auto set_batch_node_attribute = [&](const int32_t num_batch_threads,
                                       NodeDef* batch_op) {
     batch_op->set_name("cond/batch/BatchFunction");
@@ -68,6 +69,9 @@ void AddBatchOp(GraphDef* graph, int num_batch_threads = 16,
     ::tensorflow::graph_transforms::SetNodeAttr("enable_large_batch_splitting",
                                                 !disable_large_batch_splitting,
                                                 batch_op);
+    ::tensorflow::graph_transforms::SetNodeAttr(
+        "full_queue_returns_resource_exhausted",
+        full_queue_returns_resource_exhausted, batch_op);
 
     if (!reserved_int_attrs.empty()) {
       ::tensorflow::graph_transforms::SetNodeAttr(kEnableAdaptiveSchedulerAttr,
@@ -314,6 +318,35 @@ TEST_F(BatchOpRewriterTest,
   TF_ASSERT_OK(optimizer.InitWithConfig(config_proto, &rewriter_config));
   GraphDef optimized_graph;
   ASSERT_FALSE(optimizer.Optimize(nullptr, item, &optimized_graph).ok());
+}
+
+TEST_F(BatchOpRewriterTest, FullQueueReturnsResourceExhausted) {
+  BatchOpRewriteConfig config;
+  config.set_full_queue_returns_resource_exhausted(true);
+  RewriterConfig_CustomGraphOptimizer rewriter_config = MakeConfig(config);
+  ConfigProto config_proto;
+  BatchOpRewriter optimizer;
+  TF_ASSERT_OK(optimizer.InitWithConfig(config_proto, &rewriter_config));
+
+  GraphDef optimized_graph;
+  GrapplerItem item;
+  AddBatchOp(&item.graph);
+  TF_ASSERT_OK(optimizer.Optimize(nullptr, item, &optimized_graph));
+  // We can't use the testing::EqualsProto matcher because it is not available
+  // in OSS.
+  GraphDef expected_graph;
+  // For `model_with_override`, attribute `num_batch_threads` is 16 and not
+  // overridden to zero regardless of
+  // `enable_adaptive_shared_batching_thread_pool`, since `model_with_override`
+  // override its scheduler options in `model_scheduler_options`.
+  AddBatchOp(&expected_graph, 16 /* num_batch_threads */,
+             {} /* reserved_int_attrs */, 16 /* max_batch_size */,
+             10000 /* batch_timeout_micros */,
+             {8, 16} /* allowed_batch_sizes */, 1000 /* max_enqueued_batches */,
+             false /* disable_large_batch_splitting */,
+             true /* full_queue_returns_resource_exhausted */);
+
+  EXPECT_EQ(optimized_graph.DebugString(), expected_graph.DebugString());
 }
 
 }  // namespace
