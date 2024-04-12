@@ -78,21 +78,6 @@ ShapedType GetPaddedType(Operation* old_op) {
   return RankedTensorType::get(output_shape, input_type.getElementType());
 }
 
-ShapedType GetAvgPoolReturnType(Operation* old_op) {
-  auto composite_result_shape =
-      old_op->getResults().front().getType().cast<ShapedType>().getShape();
-  std::array<int64_t, 4> output_shape;
-  // NHWC <- NCHW
-  output_shape[0] = composite_result_shape[0];
-  output_shape[1] = composite_result_shape[2];
-  output_shape[2] = composite_result_shape[3];
-  output_shape[3] = composite_result_shape[1];
-
-  auto input_type = old_op->getOperand(0).getType().cast<ShapedType>();
-
-  return RankedTensorType::get(output_shape, input_type.getElementType());
-}
-
 // Checks if the provided configuration can be supported by the tensorflow
 // "SAME" padding configuration.
 static bool IsSamePadding(const std::vector<int32_t>& spatial_dim_sizes,

@@ -16,9 +16,6 @@ limitations under the License.
 include "mlir/IR/PatternBase.td"
 include "tensorflow/compiler/mlir/lite/stablehlo/transforms/composite_utils.td"
 
-// See the function doc in the header file.
-def GetAvgPoolReturnType: NativeCodeCall<
-  "GetAvgPoolReturnType((*$0.begin()).getDefiningOp())">;
 
 // See the function doc in the header file.
 def GetPaddedType : NativeCodeCall<
@@ -58,7 +55,7 @@ def LegalizeAvgPool2dComposite: Pat<
                             /*stride_h*/(GetI32At<0> (GetAsVectorAttr<"stride"> $attrs)),
                             /*stride_w*/(GetI32At<1> (GetAsVectorAttr<"stride"> $attrs)),
                             /*fused_activation_function*/TFL_AF_None,
-                            (returnType (GetAvgPoolReturnType $old_val))), 
+                            (returnType (GetNhwcReturnTypeFromNchw $old_val))), 
                         (Arith_ConstantOp
                             ConstantAttr<RankedI32ElementsAttr<[4]>,"{0, 3, 1, 2}">)), 
                     [(IsBoolCompositeAttribute<"ceil_mode", "false"> $attrs),
@@ -86,7 +83,7 @@ def LegalizeAvgPool2dWithPadComposite: Pat<
                             /*stride_h*/(GetI32At<0> (GetAsVectorAttr<"stride"> $attrs)),
                             /*stride_w*/(GetI32At<1> (GetAsVectorAttr<"stride"> $attrs)),
                             /*fused_activation_function*/TFL_AF_None,
-                            (returnType (GetAvgPoolReturnType $old_val))), 
+                            (returnType (GetNhwcReturnTypeFromNchw $old_val))), 
                         (Arith_ConstantOp
                             ConstantAttr<RankedI32ElementsAttr<[4]>,"{0, 3, 1, 2}">)), 
                     [(IsBoolCompositeAttribute<"ceil_mode", "false"> $attrs),

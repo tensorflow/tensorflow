@@ -1,4 +1,4 @@
-load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
+load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
@@ -693,16 +693,41 @@ cc_library(
     ],
 )
 
+td_library(
+    name = "composite_td_files",
+    srcs = [
+        "transforms/composite_avg_pool_patterns.td",
+        "transforms/composite_utils.td",
+    ],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "//tensorflow/compiler/mlir/lite:tensorflow_lite_ops_td_files",
+        "@llvm-project//mlir:FuncTdFiles",
+        "@local_xla//xla/mlir_hlo:hlo_ops_td_files",
+    ],
+)
+
+cc_library(
+    name = "composite_utils",
+    srcs = ["transforms/composite_utils.cc"],
+    hdrs = ["transforms/composite_utils.h"],
+    deps = [
+        "//tensorflow/compiler/mlir/lite:tensorflow_lite",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+        "@local_xla//xla/mlir_hlo",
+    ],
+)
+
 cc_library(
     name = "composite_lowering",
     srcs = [
         "transforms/composite_avg_pool.cc",
         "transforms/composite_lowering_pass.cc",
-        "transforms/composite_utils.cc",
     ],
     hdrs = [
         "transforms/composite_avg_pool.h",
-        "transforms/composite_utils.h",
         "transforms/passes.h",
     ],
     copts = [
@@ -710,6 +735,7 @@ cc_library(
     ],
     deps = [
         ":composite_lowering_inc_gen",
+        ":composite_utils",
         ":passes_inc_gen",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
         "//tensorflow/core:framework",
@@ -737,11 +763,9 @@ gentbl_cc_library(
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "transforms/composite_lowering_patterns.td",
-    td_srcs = [
-        "transforms/composite_avg_pool_patterns.td",
-        "transforms/composite_utils.td",
-    ],
     deps = [
+        ":composite_td_files",
+        ":composite_utils",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite_ops_td_files",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncTdFiles",

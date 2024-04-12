@@ -23,6 +23,7 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"  // IWYU pragma: keep
@@ -59,6 +60,21 @@ bool DenseI64AttrToI32Vector(const DenseIntElementsAttr& dense_attr,
 bool GetI32VectorFromDenseI64CompositeAttr(
     const DictionaryAttr& composite_attrs, const std::string& attr_name,
     std::vector<int32_t>* out_vec);
+
+// Get a DenseIntElementsAttr of type I64 and convert it to an I32 attribute.
+DenseIntElementsAttr DenseI64AttrToI32Attr(
+    const DenseIntElementsAttr& dense_attr, PatternRewriter& builder);
+
+// Returns true if the given input and output are in NCHW layout
+bool IsSupportedNchwUpsampleBlinear(
+    Value input, Value output, const DenseIntElementsAttr& output_size_attr);
+
+// Returns a NHWC shaped type from an NCHW shaped type op.
+// For example- Given a Composite op that wraps a core.aten.avg_pool2d, this
+// returns the return type of the tfl.average_pool_2d emitted. Note that the
+// aten.avg_pool2d works with the NCHW layout while tfl.average_pool_2d assumes
+// NHWC.
+ShapedType GetNhwcReturnTypeFromNchw(Operation* old_op);
 
 }  // namespace odml
 

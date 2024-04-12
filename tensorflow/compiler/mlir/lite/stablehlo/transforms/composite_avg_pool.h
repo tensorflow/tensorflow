@@ -38,11 +38,6 @@ DenseIntElementsAttr GetPaddingArrayAttr(Builder& builder, Operation* old_op);
 // tfl.pad .
 ShapedType GetPaddedType(Operation* old_op);
 
-// Given a Composite op that wraps a core.aten.avg_pool2d, this returns the
-// return type of the tfl.average_pool_2d emitted. Note that the aten.avg_pool2d
-// works with the NCHW layout while tfl.average_pool_2d assumes NHWC.
-ShapedType GetAvgPoolReturnType(Operation* old_op);
-
 // Given a Composite op that wraps a core.aten.avg_pool2d, finds the padding
 // attribute to be passed to the a tfl.average_pool_2d that can fully replace
 // this composite (here, padding is done directly by the tfl.average_pool_2d as
