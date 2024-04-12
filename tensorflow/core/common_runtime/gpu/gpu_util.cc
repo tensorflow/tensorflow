@@ -477,6 +477,18 @@ void GPUUtil::CopyCPUTensorToGPU(const Tensor* cpu_tensor,
   }
 
   if (merge_host_to_device_stream) {
+    // It brings acceleration to move these lines ahead of the event_mgr
+    // callback, because they mark the completion of this op (usually a
+    // host_to_device Send/Recv), so that subsequent ops can be scheduled, no
+    // longer needed to wait for the callback. And we believe it's safe to do
+    // so, because:
+    // 1. For `recv_host_to_device_stream->ok()`, it checks `Stream::status_`,
+    // which will not be modified by the event_mgr.
+    // 2. For `done(absl::OkStatus())`, it leads to the scheduling of subsequent
+    // ops, and if one op needs to access the transferred data, it must be
+    // queued in the same stream as the copy, so there is a CUDA-promised
+    // dependency: the operations will not be executed until the copy is really
+    // finished.
     if (!recv_host_to_device_stream->ok()) {
       LOG(FATAL) << "CPU->GPU Memcpy failed";
     }
