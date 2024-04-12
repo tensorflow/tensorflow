@@ -27,7 +27,9 @@ limitations under the License.
 #include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/core/c/c_api.h"
 #include "tensorflow/lite/core/interpreter.h"
-#include "tensorflow/lite/profiling/telemetry/profiler.h"
+#include "tensorflow/lite/mutable_op_resolver.h"
+#include "tensorflow/lite/profiling/telemetry/c/profiler.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/signature_runner.h"
 
 extern "C" {
