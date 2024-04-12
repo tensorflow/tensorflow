@@ -393,6 +393,14 @@ Offset<EdgeTpuSettings> ConvertEdgeTpuSettings(
           settings.use_layer_ir_tgc_backend()));
 }
 
+Offset<CompilationCachingSettings> ConvertCompilationCachingSettings(
+    const proto::CompilationCachingSettings& settings,
+    FlatBufferBuilder& builder) {
+  return CreateCompilationCachingSettings(
+      builder, builder.CreateString(settings.cache_dir()),
+      builder.CreateString(settings.model_token()));
+}
+
 Offset<CoralSettings> ConvertCoralSettings(const proto::CoralSettings& settings,
                                            FlatBufferBuilder& builder) {
   return CreateCoralSettings(
@@ -418,8 +426,9 @@ Offset<TFLiteSettings> ConvertTfliteSettings(
       settings.disable_default_delegates(),
       ConvertStableDelegateLoaderSettings(
           settings.stable_delegate_loader_settings(), builder),
-      ConvertGoogleEdgeTpuSettings(settings.google_edgetpu_settings(),
-                                   builder));
+      ConvertGoogleEdgeTpuSettings(settings.google_edgetpu_settings(), builder),
+      ConvertCompilationCachingSettings(settings.compilation_caching_settings(),
+                                        builder));
 }
 
 Offset<ModelFile> ConvertModelFile(const proto::ModelFile& model_file,
