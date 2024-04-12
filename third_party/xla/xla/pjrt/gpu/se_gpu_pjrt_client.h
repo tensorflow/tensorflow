@@ -196,9 +196,9 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
   CreateBuffersForAsyncHostToDevice(absl::Span<const Shape> shapes,
                                     PjRtDevice* device) override;
 
-  PjRtFuture<Status> CopyRawSubBufferToHost(PjRtBuffer* buffer, void* dst,
-                                            int64_t offset,
-                                            int64_t transfer_size) override;
+  PjRtFuture<> CopyRawSubBufferToHost(PjRtBuffer* buffer, void* dst,
+                                      int64_t offset,
+                                      int64_t transfer_size) override;
 
   absl::StatusOr<const xla::PjRtTopologyDescription*> GetTopologyDescription()
       const override {

@@ -43,23 +43,27 @@ StatusOr<std::uintptr_t> PjRtClient::UnsafeBufferPointer(PjRtBuffer* buffer) {
   return absl::bit_cast<std::uintptr_t>(ptr);
 }
 
-PjRtFuture<Status> PjRtBuffer::CopyRawToHostFuture(
-    PjRtFuture<StatusOr<void*>> dst, int64_t offset, int64_t transfer_size) {
-  auto promise = PjRtFuture<Status>::CreatePromise();
+PjRtFuture<> PjRtBuffer::CopyRawToHostFuture(PjRtFuture<StatusOr<void*>> dst,
+                                             int64_t offset,
+                                             int64_t transfer_size) {
+  auto promise = PjRtFuture<>::CreatePromise();
   dst.OnReady(
       [this, promise, offset, transfer_size](StatusOr<void*> dst) mutable {
         if (dst.ok()) {
           CopyRawToHost(*dst, offset, transfer_size)
               .OnReady([promise = std::move(promise)](Status status) mutable {
-                promise.Set(status);
+                if (status.ok()) {
+                  promise.Set();
+                } else {
+                  promise.SetError(status);
+                }
               });
         } else {
-          promise.Set(dst.status());
+          promise.SetError(dst.status());
         }
       });
-  return PjRtFuture<Status>(std::move(promise));
+  return PjRtFuture<>(std::move(promise));
 }
-
 
 std::string CompiledMemoryStats::DebugString() const {
   return absl::Substitute(

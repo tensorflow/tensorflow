@@ -1626,14 +1626,14 @@ StatusOr<size_t> PjRtStreamExecutorBuffer::GetOnDeviceSizeInBytes() const {
   return device_buffer_->device_memory()[0].size();
 }
 
-PjRtFuture<Status> PjRtStreamExecutorBuffer::CopyRawToHost(
-    void* dst, int64_t offset, int64_t transfer_size) {
+PjRtFuture<> PjRtStreamExecutorBuffer::CopyRawToHost(void* dst, int64_t offset,
+                                                     int64_t transfer_size) {
   return client_->CopyRawSubBufferToHost(this, dst, offset, transfer_size);
 }
 
-PjRtFuture<Status> PjRtStreamExecutorBuffer::CopyRawToHostFuture(
+PjRtFuture<> PjRtStreamExecutorBuffer::CopyRawToHostFuture(
     PjRtFuture<StatusOr<void*>> dst, int64_t offset, int64_t transfer_size) {
-  auto promise = PjRtFuture<Status>::CreatePromise();
+  auto promise = PjRtFuture<>::CreatePromise();
   dst.OnReady([this, promise, offset,
                transfer_size](absl::StatusOr<void*> dst) mutable {
     if (dst.ok()) {
@@ -1644,14 +1644,18 @@ PjRtFuture<Status> PjRtStreamExecutorBuffer::CopyRawToHostFuture(
            promise = std::move(promise)]() mutable {
             CopyRawToHost(dst, offset, transfer_size)
                 .OnReady([promise = std::move(promise)](Status status) mutable {
-                  promise.Set(status);
+                  if (status.ok()) {
+                    promise.Set();
+                  } else {
+                    promise.SetError(status);
+                  }
                 });
           });
     } else {
-      promise.Set(dst.status());
+      promise.SetError(dst.status());
     }
   });
-  return PjRtFuture<Status>(std::move(promise));
+  return PjRtFuture<>(std::move(promise));
 }
 
 StatusOr<ShapedBuffer> PjRtStreamExecutorBuffer::AsShapedBuffer() const {
