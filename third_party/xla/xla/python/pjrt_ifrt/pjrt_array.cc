@@ -524,12 +524,12 @@ absl::StatusOr<tsl::RCReference<Array>> PjRtArray::Reshard(
 Future<Status> PjRtArray::GetReadyFuture() const {
   DCHECK(this);
   if (pjrt_buffers_.size() == 1) {
-    return pjrt_buffers_.front()->GetReadyFuture();
+    return pjrt_buffers_.front()->GetReadyFuture().ToStatusFuture();
   }
   std::vector<Future<Status>> futures;
   futures.reserve(pjrt_buffers_.size());
   for (auto& buf : pjrt_buffers_) {
-    futures.push_back(buf->GetReadyFuture());
+    futures.push_back(buf->GetReadyFuture().ToStatusFuture());
   }
   return JoinFutures(absl::MakeSpan(futures));
 }

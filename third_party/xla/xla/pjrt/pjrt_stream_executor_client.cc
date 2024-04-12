@@ -1895,75 +1895,85 @@ void PjRtStreamExecutorBuffer::CopyToRemoteDeviceScattered(
   }
 }
 
-PjRtFuture<Status> PjRtStreamExecutorBuffer::GetReadyFuture() {
+PjRtFuture<> PjRtStreamExecutorBuffer::GetReadyFuture() {
   std::shared_ptr<TrackedDeviceBuffer> device_buffer;
-  PjRtFuture<Status>::Promise definition_promise;
+  PjRtFuture<>::Promise definition_promise;
   {
     absl::MutexLock lock(&mu_);
     if (device_buffer_ == nullptr) {
-      return PjRtFuture<Status>(InvalidArgument(
+      return PjRtFuture<>(InvalidArgument(
           "GetReadyFuture() called on deleted or donated buffer"));
     }
     if (!definition_promise_) {
       device_buffer = device_buffer_;
-      definition_promise_ = PjRtFuture<Status>::CreatePromise();
+      definition_promise_ = PjRtFuture<>::CreatePromise();
     }
     definition_promise = definition_promise_;
   }
 
   if (device_buffer) {
     LocalDeviceState* local_device_state = device_->local_device_state();
-    auto async_wait_for_events =
-        [device_buffer, local_device_state = std::move(local_device_state),
-         definition_promise]() mutable {
-          std::unique_ptr<se::Stream> stream;
-          Status defined_status =
-              device_buffer->definition_events()[0]->GetDefinedStatus();
-          if (!defined_status.ok()) {
-            definition_promise.Set(defined_status);
-            return;
+    auto async_wait_for_events = [device_buffer,
+                                  local_device_state =
+                                      std::move(local_device_state),
+                                  definition_promise]() mutable {
+      std::unique_ptr<se::Stream> stream;
+      Status defined_status =
+          device_buffer->definition_events()[0]->GetDefinedStatus();
+      if (!defined_status.ok()) {
+        definition_promise.SetError(defined_status);
+        return;
+      }
+      for (auto& event : device_buffer->definition_events()) {
+        if (!event->IsComplete()) {
+          if (stream == nullptr) {
+            stream = local_device_state->BorrowStreamFromPool();
           }
-          for (auto& event : device_buffer->definition_events()) {
-            if (!event->IsComplete()) {
-              if (stream == nullptr) {
-                stream = local_device_state->BorrowStreamFromPool();
-              }
-              event->WaitForEventOnStream(stream.get());
-            }
-          }
+          event->WaitForEventOnStream(stream.get());
+        }
+      }
 
-          if (stream != nullptr) {
-            auto* stream_ptr = stream.release();
-            // We already borrowed a stream from the pool so we can safely do
-            // the callback directly on that stream instead of bouncing through
-            // local_device_state->ThenExecuteCallback. The direct callback
-            // saves significant time.
-            auto status = stream_ptr->DoHostCallback(
-                [definition_promise, stream_ptr, local_device_state,
-                 event_with_status =
-                     device_buffer->definition_events()[0]]() mutable {
-                  local_device_state->ReturnStreamToPool(
-                      std::unique_ptr<se::Stream>(stream_ptr));
-                  definition_promise.Set(event_with_status->GetDefinedStatus());
-                });
-            if (!status.ok()) {
-              definition_promise.Set(status);
-              return;
-            }
-          } else {
-            // All events are already complete; set the `definition_promise`
-            // with the status of the buffer's first definition event which may
-            // have error status to propagate.
-            definition_promise.Set(
-                device_buffer->definition_events()[0]->GetDefinedStatus());
-          }
-        };
+      if (stream != nullptr) {
+        auto* stream_ptr = stream.release();
+        // We already borrowed a stream from the pool so we can safely do
+        // the callback directly on that stream instead of bouncing through
+        // local_device_state->ThenExecuteCallback. The direct callback
+        // saves significant time.
+        auto status = stream_ptr->DoHostCallback(
+            [definition_promise, stream_ptr, local_device_state,
+             event_with_status =
+                 device_buffer->definition_events()[0]]() mutable {
+              local_device_state->ReturnStreamToPool(
+                  std::unique_ptr<se::Stream>(stream_ptr));
+              auto status = event_with_status->GetDefinedStatus();
+              if (status.ok()) {
+                definition_promise.Set();
+              } else {
+                definition_promise.SetError(status);
+              }
+            });
+        if (!status.ok()) {
+          definition_promise.SetError(status);
+          return;
+        }
+      } else {
+        // All events are already complete; set the `definition_promise`
+        // with the status of the buffer's first definition event which may
+        // have error status to propagate.
+        auto status = device_buffer->definition_events()[0]->GetDefinedStatus();
+        if (status.ok()) {
+          definition_promise.Set();
+        } else {
+          definition_promise.SetError(status);
+        }
+      }
+    };
     device_buffer->definition_events()[0]->ExecuteOrAddToFutureTasks(
         absl::StrFormat("async_wait_for_events_%p", &async_wait_for_events),
         std::move(async_wait_for_events));
   }
 
-  return PjRtFuture<Status>(
+  return PjRtFuture<>(
       std::move(definition_promise),
       /*on_block_start=*/
       []() {

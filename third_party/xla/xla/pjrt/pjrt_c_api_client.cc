@@ -2032,7 +2032,11 @@ void PjRtCApiBuffer::MakePromiseTrackEvent() {
   args.user_arg = new std::function<void(PJRT_Error*)>(
       [promise = readiness_promise_, api](PJRT_Error* error) -> void {
         Status status = ::pjrt::PjrtErrorToStatus(error, api);
-        promise->Set(status);
+        if (status.ok()) {
+          promise->Set();
+        } else {
+          promise->SetError(status);
+        }
         ::pjrt::MakeErrorDeleter(api)(error);
       });
   args.callback = [](PJRT_Error* error, void* callback_ptr) {
@@ -2046,17 +2050,17 @@ void PjRtCApiBuffer::MakePromiseTrackEvent() {
   std::unique_ptr<PJRT_Error, ::pjrt::PJRT_ErrorDeleter> error{
       api->PJRT_Event_OnReady(&args), ::pjrt::MakeErrorDeleter(api)};
   if (error != nullptr) {
-    readiness_promise_->Set(::pjrt::PjrtErrorToStatus(error.get(), api));
+    readiness_promise_->SetError(::pjrt::PjrtErrorToStatus(error.get(), api));
   }
 }
 
-PjRtFuture<Status> PjRtCApiBuffer::GetReadyFuture() {
+PjRtFuture<> PjRtCApiBuffer::GetReadyFuture() {
   if (readiness_promise_ == nullptr) {
-    readiness_promise_ = std::make_shared<PjRtFuture<Status>::Promise>(
-        PjRtFuture<Status>::CreatePromise());
+    readiness_promise_ =
+        std::make_shared<PjRtFuture<>::Promise>(PjRtFuture<>::CreatePromise());
     MakePromiseTrackEvent();
   }
-  return PjRtFuture<Status>{*readiness_promise_};
+  return PjRtFuture<>{*readiness_promise_};
 }
 
 StatusOr<std::unique_ptr<PjRtBuffer::ExternalReference>>

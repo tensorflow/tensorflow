@@ -533,12 +533,12 @@ AbstractTfrtCpuBuffer::CopyToDeviceHelper(AsyncWorkRunner* async_work_runner) {
       std::move(dst_definition_events));
 }
 
-PjRtFuture<Status> AbstractTfrtCpuBuffer::GetReadyFuture() {
+PjRtFuture<> AbstractTfrtCpuBuffer::GetReadyFuture() {
   tsl::AsyncValueRef<CpuEvent> definition_event;
   {
     absl::MutexLock lock(&mu_);
     if (!tracked_device_buffer_) {
-      return PjRtFuture<Status>(InvalidArgument(
+      return PjRtFuture<>(InvalidArgument(
           "GetReadyFuture() called on deleted or donated buffer"));
     }
     definition_event = tracked_device_buffer_->definition_event();
@@ -547,29 +547,27 @@ PjRtFuture<Status> AbstractTfrtCpuBuffer::GetReadyFuture() {
 
   if (definition_event.IsAvailable()) {
     if (definition_event.IsError()) {
-      return PjRtFuture<Status>(
+      return PjRtFuture<>(
           FailedPrecondition("Buffer Definition Event: %s",
                              definition_event.GetError().message()));
     }
-    return PjRtFuture<Status>(OkStatus());
+    return PjRtFuture<>(OkStatus());
   } else {
-    tsl::AsyncValueRef<Status> status_event =
-        tsl::MakeUnconstructedAsyncValueRef<Status>();
-
+    PjRtFuture<>::Promise promise = PjRtFuture<>::CreatePromise();
     definition_event.AndThen(
-        [definition_event = definition_event.AsPtr(), status_event]() {
+        [definition_event = definition_event.AsPtr(), promise]() mutable {
           if (definition_event.IsError()) {
-            status_event.emplace(
+            promise.SetError(
                 FailedPrecondition("Buffer Definition Event: %s",
                                    definition_event.GetError().message()));
           } else {
-            status_event.emplace(OkStatus());
+            promise.Set();
           }
         });
 
     std::string message = absl::StrCat(buffer_name(), "::Await");
-    return PjRtFuture<Status>(
-        std::move(status_event),
+    return PjRtFuture<>(
+        std::move(promise),
         /*on_block_start=*/
         [message]() {
           absl::string_view message_view(message);

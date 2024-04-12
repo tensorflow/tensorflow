@@ -723,7 +723,7 @@ class PjRtStreamExecutorBuffer : public PjRtBuffer {
       std::vector<RemoteSendCallback> callbacks,
       const ScatterDetails& scatter_details) override;
 
-  PjRtFuture<Status> GetReadyFuture() override;
+  PjRtFuture<> GetReadyFuture() override;
 
   bool IsOnCpu() const override;
 
@@ -803,7 +803,7 @@ class PjRtStreamExecutorBuffer : public PjRtBuffer {
   std::shared_ptr<TrackedDeviceBuffer> device_buffer_ ABSL_GUARDED_BY(mu_);
   // Count of holds on the buffer.
   std::array<int, ScopedHold::Type::kMaxValue> holds_ ABSL_GUARDED_BY(mu_);
-  PjRtFuture<Status>::Promise definition_promise_ ABSL_GUARDED_BY(mu_);
+  PjRtFuture<>::Promise definition_promise_ ABSL_GUARDED_BY(mu_);
 };
 
 // Wraps one or more XLA LocalExecutables (one per partition, as specified by

@@ -1385,7 +1385,7 @@ class PjRtBuffer {
   // the buffer has been deleted or donated then the returned future will stay
   // valid (will not transition to error as a consequence of buffer deletion)
   // even if the buffer is subsequently donated or deleted.
-  virtual PjRtFuture<Status> GetReadyFuture() = 0;
+  virtual PjRtFuture<> GetReadyFuture() = 0;
 
   // Blocks the host until the buffer's value has been computed and is ready for
   // immediate use on the device. Useful in particular for timing benchmarks.

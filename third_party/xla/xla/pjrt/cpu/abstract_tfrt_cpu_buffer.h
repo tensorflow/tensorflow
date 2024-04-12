@@ -140,7 +140,7 @@ class AbstractTfrtCpuBuffer : public PjRtBuffer {
     }
   }
 
-  PjRtFuture<Status> GetReadyFuture() override;
+  PjRtFuture<> GetReadyFuture() override;
 
   bool IsOnCpu() const override { return true; }
 
