@@ -499,9 +499,7 @@ cc_library(
 
 cc_library(
     name = "ir_emitter_triton",
-    srcs = if_cuda_is_configured(["ir_emitter_triton.cc"]) + if_rocm_hipblaslt([
-        "ir_emitter_triton.cc",
-    ]) + if_cuda_is_configured(["ir_emitter_triton_cuda.cc"]) + if_rocm_is_configured([
+    srcs = if_gpu_is_configured(["ir_emitter_triton.cc"]) + if_cuda_is_configured(["ir_emitter_triton_cuda.cc"]) + if_rocm_is_configured([
         "ir_emitter_triton_rocm.cc",
     ]),
     hdrs = if_gpu_is_configured(["ir_emitter_triton.h"]),
