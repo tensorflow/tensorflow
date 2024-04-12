@@ -454,12 +454,6 @@ absl::StatusOr<bool> IsFlashAttention(
   bool is_flash_attention = is_seqlen_supported && is_hidden_dim_supported;
   if (!is_flash_attention) return false;
 
-  // TODO(hebecker): The fMHA rewriter is triggering some miscompile when used
-  // with cuDNN 8.9.6+. So this is temporarily disabling all the capabilities
-  // added by 8.9.6 and beyond:
-  cudnn_version =
-      std::min(cudnn_version, stream_executor::dnn::VersionInfo(8, 9, 5));
-
   // going backwards to check compatibility
   if ((is_training && (s_q < 64 || s_kv < 64)) &&
       !IsComputeCapabilityAndCudnnSupported(
@@ -1863,6 +1857,10 @@ absl::StatusOr<bool> CudnnFusedMHARewriter::Run(
       MatchFwdResult matched_result =
           MatchFwdMHAPatternsForCanonicalization(instr);
       if (!matched_result.has_match) {
+        continue;
+      }
+      // disable cuDNN mask input
+      if (matched_result.matched_mask) {
         continue;
       }
       // We check the validity of bmms here before canonicalization so we don't
