@@ -27,14 +27,5 @@ namespace ifrt {
 
 char DeserializeProgramOptions::ID = 0;
 
-absl::StatusOr<std::unique_ptr<DeserializeProgramOptions>>
-GetDeserializeProgramOptions(std::unique_ptr<DeserializeOptions> options) {
-  if (!llvm::isa<DeserializeProgramOptions>(options.get())) {
-    return xla::InvalidArgument("options must be DeserializeProgramOptions");
-  }
-  return std::unique_ptr<DeserializeProgramOptions>(
-      static_cast<DeserializeProgramOptions*>(options.release()));
-}
-
 }  // namespace ifrt
 }  // namespace xla

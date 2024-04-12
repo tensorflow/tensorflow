@@ -77,24 +77,6 @@ namespace xla {
 namespace ifrt {
 namespace proxy {
 
-namespace {
-
-// Convenient wrapper for `xla::ifrt::Deserialize()`.
-template <typename T>
-absl::StatusOr<std::unique_ptr<T>> Deserialize(
-    const Serialized& serialized,
-    std::unique_ptr<DeserializeOptions> options = nullptr) {
-  TF_ASSIGN_OR_RETURN(auto deserialized,
-                      Deserialize(serialized, std::move(options)));
-  auto obj = absl::WrapUnique(llvm::dyn_cast<T>(deserialized.release()));
-  if (obj == nullptr) {
-    return absl::InvalidArgumentError("Deserialization type mismatch");
-  }
-  return obj;
-}
-
-}  // namespace
-
 IfrtBackend::IfrtBackend(IfrtProxyVersion version, uint64_t session_id,
                          std::unique_ptr<xla::ifrt::Client> ifrt_client,
                          std::shared_ptr<HostBufferStore> host_buffer_store)
@@ -706,7 +688,8 @@ Future<BackendInterface::Response> IfrtBackend::HandleCompileRequest(
         Deserialize<xla::ifrt::Program>(
             compile_request.program(), std::move(deserialize_program_options)));
     TF_ASSIGN_OR_RETURN(auto options, Deserialize<xla::ifrt::CompileOptions>(
-                                          compile_request.compile_options()));
+                                          compile_request.compile_options(),
+                                          /*options=*/nullptr));
 
     // Deserialize host callbacks. IFRT proxy currently allows only one type of
     // host callbacks from the client (`RemoteLoadedHostCallback`) and this is

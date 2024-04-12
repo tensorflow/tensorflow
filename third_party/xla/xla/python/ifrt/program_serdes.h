@@ -16,9 +16,6 @@ limitations under the License.
 #ifndef XLA_PYTHON_IFRT_PROGRAM_SERDES_H_
 #define XLA_PYTHON_IFRT_PROGRAM_SERDES_H_
 
-#include <memory>
-
-#include "absl/status/statusor.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/serdes.h"
@@ -37,10 +34,6 @@ struct DeserializeProgramOptions
   // Function that converts device ids to devices.
   DeviceList::LookupDeviceFunc lookup_device;
 };
-
-// Casts `DeserializeOptions` into `DeserializeProgramOptions`.
-absl::StatusOr<std::unique_ptr<DeserializeProgramOptions>>
-GetDeserializeProgramOptions(std::unique_ptr<DeserializeOptions> options);
 
 }  // namespace ifrt
 }  // namespace xla

@@ -44,10 +44,6 @@ struct DeserializeShardingOptions
   DeviceList::LookupDeviceFunc lookup_device;
 };
 
-// Casts `DeserializeOptions` into `DeserializeShardingOptions`.
-absl::StatusOr<std::unique_ptr<DeserializeShardingOptions>>
-GetDeserializeShardingOptions(std::unique_ptr<DeserializeOptions> options);
-
 // TODO(hyeontaek): Remove these functions from xla::ifrt, once migration to
 // Sharding::FromProto() and Sharding::ToProto() is done.
 

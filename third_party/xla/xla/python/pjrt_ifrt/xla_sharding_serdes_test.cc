@@ -13,15 +13,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <memory>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/functional/bind_front.h"
+#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/python/ifrt/memory.h"
+#include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/sharding_serdes.h"
 #include "xla/python/ifrt/sharding_test_util.h"
 #include "xla/python/pjrt_ifrt/xla_sharding.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {
@@ -41,13 +46,11 @@ TEST_P(XlaShardingSerDesTest, HloShardingRoundTrip) {
   TF_ASSERT_OK_AND_ASSIGN(auto serialized, Serialize(*sharding));
 
   TF_ASSERT_OK_AND_ASSIGN(
-      auto deserialized,
-      Deserialize(serialized,
-                  std::make_unique<DeserializeShardingOptions>(
-                      absl::bind_front(&Client::LookupDevice, client()))));
+      auto out_sharding,
+      Deserialize<HloSharding>(
+          serialized, std::make_unique<DeserializeShardingOptions>(
+                          absl::bind_front(&Client::LookupDevice, client()))));
 
-  const auto* out_sharding = llvm::dyn_cast<HloSharding>(deserialized.get());
-  ASSERT_NE(out_sharding, nullptr);
   EXPECT_THAT(out_sharding->devices(), ElementsAreArray(sharding->devices()));
   EXPECT_EQ(out_sharding->xla_hlo_sharding(), sharding->xla_hlo_sharding());
 }

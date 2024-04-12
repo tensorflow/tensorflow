@@ -38,6 +38,8 @@ namespace ifrt {
 
 // TODO(hyeontaek): Unify sharding types with jax::Sharding.
 
+struct DeserializeShardingOptions;
+
 // Abstract sharding type.
 //
 // TODO(hyeontaek): There is an indication that we may prefer to split logical
@@ -47,6 +49,8 @@ namespace ifrt {
 // sharding design may help reduce overhead around these operations.
 class Sharding : public llvm::RTTIExtends<Sharding, Serializable> {
  public:
+  using DeserializeOptions = DeserializeShardingOptions;
+
   // All devices in this sharding. Devices may appear more than once.
   const DeviceList& devices() const { return devices_; }
 

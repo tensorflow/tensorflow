@@ -21,7 +21,6 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/functional/bind_front.h"
-#include "llvm/Support/Casting.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/serdes.pb.h"
@@ -45,14 +44,11 @@ TEST_P(ShardingSerDesTest, SingleDeviceShardingRoundTrip) {
   TF_ASSERT_OK_AND_ASSIGN(auto serialized, Serialize(*sharding));
 
   TF_ASSERT_OK_AND_ASSIGN(
-      auto deserialized,
-      Deserialize(serialized,
-                  std::make_unique<DeserializeShardingOptions>(
-                      absl::bind_front(&Client::LookupDevice, client()))));
+      auto out_sharding,
+      Deserialize<SingleDeviceSharding>(
+          serialized, std::make_unique<DeserializeShardingOptions>(
+                          absl::bind_front(&Client::LookupDevice, client()))));
 
-  const auto* out_sharding =
-      llvm::dyn_cast<SingleDeviceSharding>(deserialized.get());
-  ASSERT_NE(out_sharding, nullptr);
   EXPECT_THAT(out_sharding->devices(), ElementsAreArray(sharding->devices()));
 }
 
@@ -62,13 +58,11 @@ TEST_P(ShardingSerDesTest, OpaqueShardingRoundTrip) {
   TF_ASSERT_OK_AND_ASSIGN(auto serialized, Serialize(*sharding));
 
   TF_ASSERT_OK_AND_ASSIGN(
-      auto deserialized,
-      Deserialize(serialized,
-                  std::make_unique<DeserializeShardingOptions>(
-                      absl::bind_front(&Client::LookupDevice, client()))));
+      auto out_sharding,
+      Deserialize<OpaqueSharding>(
+          serialized, std::make_unique<DeserializeShardingOptions>(
+                          absl::bind_front(&Client::LookupDevice, client()))));
 
-  const auto* out_sharding = llvm::dyn_cast<OpaqueSharding>(deserialized.get());
-  ASSERT_NE(out_sharding, nullptr);
   EXPECT_THAT(out_sharding->devices(), ElementsAreArray(sharding->devices()));
 }
 
@@ -81,14 +75,11 @@ TEST_P(ShardingSerDesTest, ConcreteShardingRoundTrip) {
   TF_ASSERT_OK_AND_ASSIGN(auto serialized, Serialize(*sharding));
 
   TF_ASSERT_OK_AND_ASSIGN(
-      auto deserialized,
-      Deserialize(serialized,
-                  std::make_unique<DeserializeShardingOptions>(
-                      absl::bind_front(&Client::LookupDevice, client()))));
+      auto out_sharding,
+      Deserialize<ConcreteSharding>(
+          serialized, std::make_unique<DeserializeShardingOptions>(
+                          absl::bind_front(&Client::LookupDevice, client()))));
 
-  const auto* out_sharding =
-      llvm::dyn_cast<ConcreteSharding>(deserialized.get());
-  ASSERT_NE(out_sharding, nullptr);
   EXPECT_THAT(out_sharding->devices(), ElementsAreArray(sharding->devices()));
   EXPECT_THAT(out_sharding->shape(), sharding->shape());
   EXPECT_THAT(out_sharding->shard_shapes(),
@@ -116,14 +107,11 @@ TEST_P(ShardingSerDesTest, ConcreteShardingWithDynamicShapeRoundTrip) {
   TF_ASSERT_OK_AND_ASSIGN(Serialized serialized, Serialize(*sharding));
 
   TF_ASSERT_OK_AND_ASSIGN(
-      auto deserialized,
-      Deserialize(serialized,
-                  std::make_unique<DeserializeShardingOptions>(
-                      absl::bind_front(&Client::LookupDevice, client()))));
+      auto out_sharding,
+      Deserialize<ConcreteSharding>(
+          serialized, std::make_unique<DeserializeShardingOptions>(
+                          absl::bind_front(&Client::LookupDevice, client()))));
 
-  const auto* out_sharding =
-      llvm::dyn_cast<ConcreteSharding>(deserialized.get());
-  ASSERT_NE(out_sharding, nullptr);
   EXPECT_THAT(out_sharding->devices(), ElementsAreArray(sharding->devices()));
   EXPECT_THAT(out_sharding->dynamic_shape(), sharding->dynamic_shape());
   EXPECT_THAT(out_sharding->shard_dynamic_shapes(),
@@ -139,14 +127,11 @@ TEST_P(ShardingSerDesTest, ConcreteEvenShardingRoundTrip) {
   TF_ASSERT_OK_AND_ASSIGN(auto serialized, Serialize(*sharding));
 
   TF_ASSERT_OK_AND_ASSIGN(
-      auto deserialized,
-      Deserialize(serialized,
-                  std::make_unique<DeserializeShardingOptions>(
-                      absl::bind_front(&Client::LookupDevice, client()))));
+      auto out_sharding,
+      Deserialize<ConcreteEvenSharding>(
+          serialized, std::make_unique<DeserializeShardingOptions>(
+                          absl::bind_front(&Client::LookupDevice, client()))));
 
-  const auto* out_sharding =
-      llvm::dyn_cast<ConcreteEvenSharding>(deserialized.get());
-  ASSERT_NE(out_sharding, nullptr);
   EXPECT_THAT(out_sharding->devices(), ElementsAreArray(sharding->devices()));
   EXPECT_THAT(out_sharding->shape(), sharding->shape());
   EXPECT_THAT(out_sharding->shard_shape(), sharding->shard_shape());
