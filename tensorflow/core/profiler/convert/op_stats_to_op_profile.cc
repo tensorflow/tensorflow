@@ -32,13 +32,11 @@ namespace tensorflow {
 namespace profiler {
 namespace {
 
-using ::tensorflow::profiler::GigaToGibi;
 using ::tensorflow::profiler::IsIdleOp;
 using ::tensorflow::profiler::OpMetrics;
 using ::tensorflow::profiler::OpProfileBuilder;
 using ::tensorflow::profiler::OpProfileOptions;
 using ::tensorflow::profiler::OpStats;
-using ::tensorflow::profiler::TeraToGiga;
 using ::tensorflow::profiler::TotalTimePs;
 using ::tensorflow::profiler::op_profile::Node;
 
