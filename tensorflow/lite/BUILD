@@ -30,7 +30,6 @@ package_group(
         "//tensorflow/compiler/mlir/lite/stablehlo",
         "//tensorflow/compiler/mlir/lite/tests/flatbuffer2mlir",
         "//tensorflow/compiler/mlir/quantization/common/quantization_lib",
-        "//tensorflow/compiler/mlir/quantization/tensorflow",
         "//tensorflow/compiler/mlir/quantization/tensorflow/utils",
         "//tensorflow/compiler/mlir/tosa",
         "//tensorflow/core",

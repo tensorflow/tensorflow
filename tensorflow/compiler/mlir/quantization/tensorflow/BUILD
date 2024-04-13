@@ -441,8 +441,6 @@ cc_library(
         "//tensorflow/core/platform:macros",
         "//tensorflow/core/platform:path",
         "//tensorflow/core/tpu:tpu_defs",
-        "//tensorflow/lite/kernels:padding",
-        "//tensorflow/lite/kernels/internal:quantization_util",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/container:flat_hash_map",
