@@ -4100,7 +4100,7 @@ absl::StatusOr<bool> AutoSharding::Run(
 
   size_t num_meshes = mesh_shapes.size();
   std::vector<std::unique_ptr<HloModule>> modules(num_meshes);
-  std::vector<StatusOr<AutoShardingResult>> changed(
+  std::vector<absl::StatusOr<AutoShardingResult>> changed(
       num_meshes, AutoShardingResult::kModuleUnchanged);
   std::vector<double> objective_values(num_meshes, -1);
 
