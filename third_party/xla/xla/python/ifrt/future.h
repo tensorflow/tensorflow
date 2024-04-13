@@ -42,8 +42,14 @@ using Future = ::xla::PjRtFuture<T>;
 template <typename T>
 using Promise = typename ::xla::PjRtFuture<T>::Promise;
 
+// TODO(b/333538339): Add JoinFutures API to PjRtFuture.
+
 // Returns a `Future` that aggregates the return status of all `Future`s.
 Future<Status> JoinFutures(absl::Span<Future<Status>> futures);
+
+// TODO(b/333538339): Use Future<> with implicit Status in IFRT APIs. For now
+// this is a workaround to convert between different error semantics.S
+Future<Status> JoinFutures(absl::Span<Future<void>> futures);
 
 }  // namespace ifrt
 }  // namespace xla

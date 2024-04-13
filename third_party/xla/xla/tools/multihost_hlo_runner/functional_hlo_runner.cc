@@ -984,7 +984,7 @@ FunctionalHloRunner::RunInternal(
       execute_options.untuple_result = false;
       break;
   }
-  std::optional<std::vector<PjRtFuture<Status>>> futures;
+  std::optional<std::vector<PjRtFuture<>>> futures;
   futures.emplace();
   for (int repeat = 0; repeat < running_options.num_repeats; ++repeat) {
     VLOG(1) << "FunctionalHloRunner: ExecuteOnDevices started (repeat = "

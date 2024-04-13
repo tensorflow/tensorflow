@@ -1535,7 +1535,7 @@ StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>
 PjRtCApiLoadedExecutable::Execute(
     absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
     const ExecuteOptions& options,
-    std::optional<std::vector<PjRtFuture<Status>>>& returned_futures) {
+    std::optional<std::vector<PjRtFuture<>>>& returned_futures) {
   std::vector<std::vector<PJRT_Buffer*>> c_argument_lists_storage;
   std::vector<std::vector<PJRT_Buffer*>> c_output_lists_storage;
   std::vector<PJRT_Buffer**> c_output_lists;
@@ -1569,16 +1569,14 @@ PjRtCApiLoadedExecutable::Execute(
       pjrt_c_api()->PJRT_LoadedExecutable_Execute(&args), pjrt_c_api());
 
   if (device_complete_events.has_value()) {
-    std::vector<PjRtFuture<Status>> device_complete_futures;
-    device_complete_futures.resize(args.num_devices);
-    for (int i = 0; i < device_complete_futures.size(); ++i) {
-      device_complete_futures[i] =
-          pjrt::ConvertCEventToCppFuture(args.device_complete_events[i],
-                                         pjrt_c_api())
-              .ToStatusFuture();
+    std::vector<PjRtFuture<>> device_complete_futures;
+    device_complete_futures.reserve(args.num_devices);
+    for (int i = 0; i < args.num_devices; ++i) {
+      device_complete_futures.push_back(pjrt::ConvertCEventToCppFuture(
+          args.device_complete_events[i], pjrt_c_api()));
       if (!callback_data->c_send_callbacks.empty() ||
           !callback_data->c_recv_callbacks.empty()) {
-        device_complete_futures[i].OnReady(
+        device_complete_futures.back().OnReady(
             [callback_data](absl::Status status) {
               // Keeps C callbacks alive until execution completes on all
               // devices.
@@ -1587,7 +1585,6 @@ PjRtCApiLoadedExecutable::Execute(
     }
 
     if (returned_futures.has_value()) {
-      returned_futures->resize(device_complete_futures.size());
       *returned_futures = std::move(device_complete_futures);
     }
   }
@@ -1600,8 +1597,8 @@ PjRtCApiLoadedExecutable::Execute(
 StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
 PjRtCApiLoadedExecutable::ExecuteWithSingleDevice(
     absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
-    const ExecuteOptions& options,
-    std::optional<PjRtFuture<Status>>& returned_future, bool fill_future) {
+    const ExecuteOptions& options, std::optional<PjRtFuture<>>& returned_future,
+    bool fill_future) {
   if (!options.send_callbacks.empty() || !options.recv_callbacks.empty()) {
     return Status(absl::StatusCode::kUnimplemented,
                   "Send/recv callbacks not implemented for "
@@ -1646,8 +1643,7 @@ PjRtCApiLoadedExecutable::ExecuteWithSingleDevice(
 
   if (fill_future) {
     returned_future = pjrt::ConvertCEventToCppFuture(
-                          args.device_complete_events[0], pjrt_c_api())
-                          .ToStatusFuture();
+        args.device_complete_events[0], pjrt_c_api());
   }
   return std::move(Convert2DCBuffersToCppBuffers(
       args.output_lists, args.num_devices, c_output_lists_storage[0].size(),
@@ -1657,8 +1653,8 @@ PjRtCApiLoadedExecutable::ExecuteWithSingleDevice(
 StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
 PjRtCApiLoadedExecutable::ExecuteSharded(
     absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
-    const ExecuteOptions& options,
-    std::optional<PjRtFuture<Status>>& returned_future, bool fill_future) {
+    const ExecuteOptions& options, std::optional<PjRtFuture<>>& returned_future,
+    bool fill_future) {
   return ExecuteWithSingleDevice(argument_handles, device, options,
                                  returned_future, fill_future);
 }
@@ -1666,8 +1662,8 @@ PjRtCApiLoadedExecutable::ExecuteSharded(
 StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
 PjRtCApiLoadedExecutable::ExecutePortable(
     absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
-    const ExecuteOptions& options,
-    std::optional<PjRtFuture<Status>>& returned_future, bool fill_future) {
+    const ExecuteOptions& options, std::optional<PjRtFuture<>>& returned_future,
+    bool fill_future) {
   return ExecuteWithSingleDevice(argument_handles, device, options,
                                  returned_future, fill_future);
 }

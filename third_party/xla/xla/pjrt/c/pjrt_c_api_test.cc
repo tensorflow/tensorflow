@@ -542,7 +542,7 @@ class PjrtCApiBufferTest : public PjrtCApiTest {
     PjrtCApiTest::SetUp();
     auto buffer_and_event = create_buffer();
     buffer_ = std::move(buffer_and_event.first);
-    event_ = buffer_and_event.second.ToStatusFuture();
+    event_ = buffer_and_event.second;
   }
 
   void TearDown() override {
@@ -559,7 +559,7 @@ class PjrtCApiBufferTest : public PjrtCApiTest {
   }
 
   std::unique_ptr<PJRT_Buffer, ::pjrt::PJRT_BufferDeleter> buffer_;
-  xla::PjRtFuture<absl::Status> event_;
+  xla::PjRtFuture<> event_;
 };
 
 TEST_F(PjrtCApiBufferTest, IsDeleted) {

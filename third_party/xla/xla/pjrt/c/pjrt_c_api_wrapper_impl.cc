@@ -690,11 +690,10 @@ PJRT_Error* PJRT_Client_BufferFromHostBuffer(
     }
   }
 
-  xla::PjRtFuture<absl::Status>::Promise promise =
-      xla::PjRtFuture<absl::Status>::CreatePromise();
+  xla::PjRtFuture<>::Promise promise = xla::PjRtFuture<>::CreatePromise();
 
   absl::AnyInvocable<void() &&> on_done_with_host_buffer = [promise]() mutable {
-    promise.Set(xla::OkStatus());
+    promise.Set();
   };
 
   std::unique_ptr<xla::PjRtBuffer> buffer;
@@ -742,7 +741,7 @@ PJRT_Error* PJRT_Client_BufferFromHostBuffer(
 
   args->buffer = new PJRT_Buffer{std::move(buffer), args->client};
   args->done_with_host_buffer =
-      new PJRT_Event{xla::PjRtFuture<absl::Status>(std::move(promise))};
+      new PJRT_Event{xla::PjRtFuture<>(std::move(promise))};
 
   return nullptr;
 }
@@ -1422,8 +1421,7 @@ PJRT_Error* PJRT_LoadedExecutable_Execute(
     std::vector<std::vector<std::unique_ptr<xla::PjRtBuffer>>> cpp_buffer_lists;
     if (args->device_complete_events != nullptr ||
         !cpp_send_callbacks->empty() || !cpp_recv_callbacks->empty()) {
-      std::optional<std::vector<xla::PjRtFuture<absl::Status>>>
-          returned_futures;
+      std::optional<std::vector<xla::PjRtFuture<>>> returned_futures;
       returned_futures.emplace();
       PJRT_ASSIGN_OR_RETURN(cpp_buffer_lists,
                             args->executable->get()->Execute(
@@ -1477,7 +1475,7 @@ PJRT_Error* PJRT_LoadedExecutable_Execute(
     }
 
     std::vector<std::unique_ptr<xla::PjRtBuffer>> cpp_buffer_list;
-    std::optional<xla::PjRtFuture<absl::Status>> returned_future;
+    std::optional<xla::PjRtFuture<>> returned_future;
     bool fill_future = args->device_complete_events != nullptr;
     PJRT_ASSIGN_OR_RETURN(xla::CompileOptions compile_options,
                           args->executable->get()->GetCompileOptions());
@@ -1805,7 +1803,7 @@ PJRT_Error* PJRT_Buffer_ToHostBuffer(PJRT_Buffer_ToHostBuffer_Args* args) {
       static_cast<char*>(args->dst), host_shape);
   xla::PjRtFuture<> future = args->src->buffer->ToLiteral(literal.get());
 
-  args->event = new PJRT_Event{std::move(future).ToStatusFuture()};
+  args->event = new PJRT_Event{std::move(future)};
   args->event->future.OnReady(
       [literal{std::move(literal)}](absl::Status status) {
         /* To keep literal alive */
@@ -1827,7 +1825,7 @@ PJRT_Error* PJRT_Buffer_ReadyEvent(PJRT_Buffer_ReadyEvent_Args* args) {
       "PJRT_Buffer_ReadyEvent_Args", PJRT_Buffer_ReadyEvent_Args_STRUCT_SIZE,
       args->struct_size));
   xla::PjRtFuture<> wrapped_promise = args->buffer->buffer->GetReadyFuture();
-  args->event = new PJRT_Event{std::move(wrapped_promise).ToStatusFuture()};
+  args->event = new PJRT_Event{std::move(wrapped_promise)};
   return nullptr;
 }
 
@@ -1906,7 +1904,7 @@ PJRT_Error* PJRT_CopyToDeviceStream_AddChunk(
 
   xla::PjRtFuture<> future =
       args->stream->stream->AddChunk(ConvertToCppChunk(*args->chunk));
-  args->transfer_complete = new PJRT_Event{std::move(future).ToStatusFuture()};
+  args->transfer_complete = new PJRT_Event{std::move(future)};
   return nullptr;
 }
 

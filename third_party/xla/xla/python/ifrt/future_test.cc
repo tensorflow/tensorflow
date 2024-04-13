@@ -30,7 +30,7 @@ using ::testing::HasSubstr;
 using ::tsl::testing::StatusIs;
 
 TEST(FutureTest, JoinZeroFuture) {
-  Future<Status> future = JoinFutures({});
+  Future<Status> future = JoinFutures(absl::Span<Future<Status>>());
 
   TF_EXPECT_OK(future.Await());
 }

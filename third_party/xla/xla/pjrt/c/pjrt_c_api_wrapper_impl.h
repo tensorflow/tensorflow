@@ -25,6 +25,7 @@ limitations under the License.
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
@@ -177,7 +178,10 @@ struct PJRT_Buffer {
 };
 
 struct PJRT_Event {
-  xla::PjRtFuture<absl::Status> future;
+  xla::PjRtFuture<> future;
+  // TODO(b/333538339): It's safe to Await() on PjRtFuture<> multiple times,
+  // remove this workaround.
+  //
   // Set and stored upon future.Await(), as PjRtFuture only allows its result to
   // be queried through Await() and Await() can only safely be called once. This
   // variable allows C API users to check for error status any time after

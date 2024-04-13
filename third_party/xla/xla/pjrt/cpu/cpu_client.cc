@@ -1486,18 +1486,17 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
         result_shape, std::move(tracked_device_buffer), client_, device);
     res.push_back(std::move(tfrt_output_buffer));
   }
-  std::optional<PjRtFuture<Status>> future;
+  std::optional<PjRtFuture<>> future;
   if (fill_future) {
-    auto done_event = tsl::MakeUnconstructedAsyncValueRef<Status>();
-    execute_event.AndThen(
-        [done_event = done_event.CopyRef(), event = execute_event.CopyRef()]() {
-          Status s;
-          if (auto* error = event.GetErrorIfPresent()) {
-            s = Internal("Compute error: %s", error->message());
-          }
-          done_event.emplace(std::move(s));
-        });
-    future = PjRtFuture<Status>(std::move(done_event));
+    PjRtFuture<>::Promise promise = PjRtFuture<>::CreatePromise();
+    execute_event.AndThen([promise, event = execute_event.CopyRef()]() mutable {
+      if (auto* error = event.GetErrorIfPresent()) {
+        promise.SetError(Internal("Compute error: %s", error->message()));
+      } else {
+        promise.Set();
+      }
+    });
+    future = PjRtFuture<>(std::move(promise));
   }
   return Result({/*future=*/std::move(future), /*buffers=*/std::move(res)});
 }
@@ -1540,7 +1539,7 @@ absl::StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>
 TfrtCpuExecutable::Execute(
     absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
     const ExecuteOptions& options,
-    std::optional<std::vector<PjRtFuture<Status>>>& returned_futures) {
+    std::optional<std::vector<PjRtFuture<>>>& returned_futures) {
   tsl::profiler::TraceMe traceme("TfrtCpuExecutable::Execute");
   if (device_assignment_ == nullptr) {
     return InvalidArgument("Execute expects a non-null device_assignment");
@@ -1662,8 +1661,8 @@ TfrtCpuExecutable::Execute(
 absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
 TfrtCpuExecutable::ExecuteSharded(
     absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
-    const ExecuteOptions& options,
-    std::optional<PjRtFuture<Status>>& returned_future, bool fill_future) {
+    const ExecuteOptions& options, std::optional<PjRtFuture<>>& returned_future,
+    bool fill_future) {
   tsl::profiler::TraceMe traceme("TfrtCpuExecutable::ExecuteSharded");
   if (device_assignment_ == nullptr) {
     return InvalidArgument("ExecuteShard expects a non-null device_assignment");
@@ -1693,8 +1692,8 @@ TfrtCpuExecutable::ExecuteSharded(
 absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
 TfrtCpuExecutable::ExecutePortable(
     absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
-    const ExecuteOptions& options,
-    std::optional<PjRtFuture<Status>>& returned_future, bool fill_future) {
+    const ExecuteOptions& options, std::optional<PjRtFuture<>>& returned_future,
+    bool fill_future) {
   tsl::profiler::TraceMe traceme("TfrtCpuExecutable::ExecutePortable");
   if (device_assignment_ != nullptr) {
     return InvalidArgument("ExecutePortable gets a non-portable executable");
