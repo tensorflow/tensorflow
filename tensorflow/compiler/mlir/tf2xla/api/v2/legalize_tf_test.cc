@@ -101,7 +101,7 @@ static constexpr char kUnsupportedMlirBridgeModuleStr[] = R"(
   }
 })";
 
-tsl::StatusOr<XlaCompiler::CompilationResult> CompileMlirModule(
+absl::StatusOr<XlaCompiler::CompilationResult> CompileMlirModule(
     const char* mlir_module_str,
     ConfigProto::Experimental::MlirBridgeRollout rollout_state) {
   MlirToHloArgs mlir_to_hlo_args;
@@ -291,7 +291,7 @@ TEST(LegalizeTFTest, RecordsStreamzForNoMlirFallback) {
   std::vector<std::unique_ptr<mlir::Pass>> custom_legalization_passes;
 
   // This doesn't actually compile correctly.
-  tsl::StatusOr<XlaCompiler::CompilationResult> compile_result =
+  absl::StatusOr<XlaCompiler::CompilationResult> compile_result =
       LegalizeMlirToHlo(function_to_hlo_args, metadata_proto, use_tuple_args,
                         /*device_type=*/"XLA_CPU_JIT",
                         custom_legalization_passes,
