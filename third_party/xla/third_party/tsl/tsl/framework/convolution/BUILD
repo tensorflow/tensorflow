@@ -98,10 +98,13 @@ tsl_cc_test(
         "eigen_spatial_convolutions_test.cc",
     ],
     deps = [
-        ":eigen_helpers",
+        "//tsl/framework:fixedpoint_types",
+        "//tsl/framework/contraction:eigen_contraction_kernel_no_mkl",
         "//tsl/platform:test",
         "//tsl/platform:test_benchmark",
         "//tsl/platform:test_main",
         "@com_google_absl//absl/strings",
+        "@eigen_archive//:eigen3",
+        "@eigen_archive//:eigen3_test",
     ],
 )
