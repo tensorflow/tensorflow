@@ -35,6 +35,7 @@ limitations under the License.
 #define DISABLED_ON_INTERPRETER(X) X
 #define DISABLED_ON_INTERPRETER_TSAN(X) X
 #define DISABLED_ON_DEBUG(X) X
+#define DISABLED_ON_TPU(X) X
 
 // We need this macro instead of pasting directly to support nesting
 // the DISABLED_ON_FOO macros, as in the definition of DISABLED_ON_CPU.
@@ -80,6 +81,11 @@ limitations under the License.
 # undef DISABLED_ON_DEBUG
 # define DISABLED_ON_DEBUG(X) XLA_TEST_PASTE(DISABLED_, X)
 #endif  // !NDEBUG
+
+#ifdef XLA_TEST_BACKEND_TPU
+# undef DISABLED_ON_TPU
+# define DISABLED_ON_TPU(X) XLA_TEST_PASTE(DISABLED_, X)
+#endif  // XLA_TEST_BACKEND_TPU
 
 // clang-format on
 
