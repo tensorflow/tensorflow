@@ -39,7 +39,7 @@ GraphDefBuilder::Options GraphDefBuilder::Options::WithControlInput(
   return Options(*this).WithControlInputImpl(control_input);
 }
 GraphDefBuilder::Options GraphDefBuilder::Options::WithControlInputs(
-    gtl::ArraySlice<Node*> control_inputs) const {
+    absl::Span<Node* const> control_inputs) const {
   return Options(*this).WithControlInputsImpl(control_inputs);
 }
 GraphDefBuilder::Options GraphDefBuilder::Options::WithNameImpl(
@@ -58,7 +58,7 @@ GraphDefBuilder::Options GraphDefBuilder::Options::WithControlInputImpl(
   return *this;
 }
 GraphDefBuilder::Options GraphDefBuilder::Options::WithControlInputsImpl(
-    gtl::ArraySlice<Node*> control_inputs) {
+    absl::Span<Node* const> control_inputs) {
   control_inputs_.insert(control_inputs_.end(), control_inputs.begin(),
                          control_inputs.end());
   return *this;
