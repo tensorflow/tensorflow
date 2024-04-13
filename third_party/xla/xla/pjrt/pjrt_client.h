@@ -1321,13 +1321,7 @@ class PjRtBuffer {
   StatusOr<std::unique_ptr<PjRtBuffer>> DonateWithControlDependency(
       PjRtFuture<Status> dependency) {
     PjRtFuture<>::Promise promise = PjRtFuture<>::CreatePromise();
-    dependency.OnReady([promise](Status status) mutable {
-      if (status.ok()) {
-        promise.Set();
-      } else {
-        promise.SetError(std::move(status));
-      }
-    });
+    dependency.OnReady([promise](Status s) mutable { promise.Set(s); });
     return DonateWithControlDependency(PjRtFuture<>(std::move(promise)));
   }
 

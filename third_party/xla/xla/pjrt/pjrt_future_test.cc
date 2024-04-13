@@ -43,7 +43,7 @@ TEST(PjRtFutureTest, StatelessError) {
   PjRtFuture<> future(promise);
 
   EXPECT_FALSE(future.IsReady());
-  promise.SetError(absl::InternalError("test"));
+  promise.Set(absl::InternalError("test"));
   EXPECT_TRUE(future.IsReady());
 
   absl::Status status = future.Await();
@@ -152,12 +152,12 @@ TEST(PjRtFutureTest, JoinErrors) {
   auto join_two = JoinFutures(futures1);
   EXPECT_FALSE(join_two.IsReady());
 
-  promise0.SetError(absl::InternalError("error #0"));
+  promise0.Set(absl::InternalError("error #0"));
   EXPECT_TRUE(join_one.IsReady());
   EXPECT_FALSE(join_two.IsReady());
   EXPECT_EQ(join_one.Await(), absl::InternalError("error #0"));
 
-  promise1.SetError(absl::InternalError("error #1"));
+  promise1.Set(absl::InternalError("error #1"));
   EXPECT_TRUE(join_two.IsReady());
   EXPECT_EQ(join_two.Await(), absl::InternalError("error #0"));
 }

@@ -425,7 +425,7 @@ PjRtFuture<> AbstractTfrtCpuBuffer::ToLiteralHelper(
           // Errors in src buffer are surfaced to user.
           for (const auto& av : device_buffer_wait_avs) {
             if (auto* error = av->GetErrorIfPresent()) {
-              promise.SetError(*error);
+              promise.Set(*error);
               return;
             }
           }
@@ -554,16 +554,15 @@ PjRtFuture<> AbstractTfrtCpuBuffer::GetReadyFuture() {
     return PjRtFuture<>(OkStatus());
   } else {
     PjRtFuture<>::Promise promise = PjRtFuture<>::CreatePromise();
-    definition_event.AndThen(
-        [definition_event = definition_event.AsPtr(), promise]() mutable {
-          if (definition_event.IsError()) {
-            promise.SetError(
-                FailedPrecondition("Buffer Definition Event: %s",
-                                   definition_event.GetError().message()));
-          } else {
-            promise.Set();
-          }
-        });
+    definition_event.AndThen([definition_event = definition_event.AsPtr(),
+                              promise]() mutable {
+      if (definition_event.IsError()) {
+        promise.Set(FailedPrecondition("Buffer Definition Event: %s",
+                                       definition_event.GetError().message()));
+      } else {
+        promise.Set();
+      }
+    });
 
     std::string message = absl::StrCat(buffer_name(), "::Await");
     return PjRtFuture<>(

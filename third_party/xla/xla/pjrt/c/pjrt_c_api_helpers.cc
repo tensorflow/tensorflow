@@ -403,7 +403,7 @@ xla::PjRtFuture<> ConvertCEventToCppFuture(PJRT_Event* c_event,
   event_onready_args.user_arg = new std::function<void(PJRT_Error*)>(
       [promise, c_event, c_api](PJRT_Error* error) mutable {
         if (error != nullptr) {
-          promise.SetError(::pjrt::PjrtErrorToStatus(error, c_api));
+          promise.Set(::pjrt::PjrtErrorToStatus(error, c_api));
           ::pjrt::MakeErrorDeleter(c_api)(error);
         } else {
           promise.Set();

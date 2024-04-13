@@ -1491,7 +1491,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
     PjRtFuture<>::Promise promise = PjRtFuture<>::CreatePromise();
     execute_event.AndThen([promise, event = execute_event.CopyRef()]() mutable {
       if (auto* error = event.GetErrorIfPresent()) {
-        promise.SetError(Internal("Compute error: %s", error->message()));
+        promise.Set(Internal("Compute error: %s", error->message()));
       } else {
         promise.Set();
       }

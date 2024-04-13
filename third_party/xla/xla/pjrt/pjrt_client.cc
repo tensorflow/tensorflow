@@ -52,14 +52,10 @@ PjRtFuture<> PjRtBuffer::CopyRawToHostFuture(PjRtFuture<StatusOr<void*>> dst,
         if (dst.ok()) {
           CopyRawToHost(*dst, offset, transfer_size)
               .OnReady([promise = std::move(promise)](Status status) mutable {
-                if (status.ok()) {
-                  promise.Set();
-                } else {
-                  promise.SetError(status);
-                }
+                promise.Set(std::move(status));
               });
         } else {
-          promise.SetError(dst.status());
+          promise.Set(dst.status());
         }
       });
   return PjRtFuture<>(std::move(promise));

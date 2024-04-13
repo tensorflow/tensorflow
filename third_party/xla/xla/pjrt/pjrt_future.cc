@@ -63,11 +63,7 @@ PjRtFuture<> JoinFutures(absl::Span<const PjRtFuture<>> futures) {
 
       if (pending_count == 1) {
         absl::MutexLock lock(&state->mu);
-        if (state->status.ok()) {
-          state->promise.Set();
-        } else {
-          state->promise.SetError(std::move(state->status));
-        }
+        state->promise.Set(std::move(state->status));
       }
     });
   }
