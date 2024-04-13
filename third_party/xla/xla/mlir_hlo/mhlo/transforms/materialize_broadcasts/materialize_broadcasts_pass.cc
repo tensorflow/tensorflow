@@ -59,7 +59,7 @@ struct TestMaterializeBroadcastsPass
 
 }  // namespace
 
-std::unique_ptr<::mlir::Pass> createTestMaterializeBroadcastsPass() {
+static std::unique_ptr<::mlir::Pass> createTestMaterializeBroadcastsPass() {
   return std::make_unique<TestMaterializeBroadcastsPass>();
 }
 
