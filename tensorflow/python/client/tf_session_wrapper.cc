@@ -534,7 +534,7 @@ struct PyGraph {
     return py::bytes(versions);
   }
 
-  tsl::StatusOr<py::bytes> _op_def_for_type(
+  absl::StatusOr<py::bytes> _op_def_for_type(
       const std::string& kTypeName) const {
     tsl::mutex_lock l(tf_graph()->mu);
     const tensorflow::OpDef* op_def;
@@ -620,7 +620,7 @@ struct PyOperation {
     }
   }
 
-  tsl::Status _add_outputs(py::list dtypes, py::list shapes);
+  absl::Status _add_outputs(py::list dtypes, py::list shapes);
 
   TF_Output _tf_output(int idx) const { return TF_Output{tf_op(), idx}; }
   TF_Input _tf_input(int idx) const { return TF_Input{tf_op(), idx}; }
@@ -737,7 +737,7 @@ struct PyTensor {
 
   int value_index() const { return data->value_index; }
 
-  tsl::StatusOr<py::object> shape() {
+  absl::StatusOr<py::object> shape() {
     tensorflow::Safe_TF_StatusPtr status =
         tensorflow::make_safe(TF_NewStatus());
     bool unknown_shape = false;
@@ -756,7 +756,7 @@ struct PyTensor {
     return py::make_tuple(py_list, py::cast(unknown_shape));
   }
 
-  tsl::Status set_shape(py::iterable shape, bool unknown_shape) {
+  absl::Status set_shape(py::iterable shape, bool unknown_shape) {
     tensorflow::Safe_TF_StatusPtr status =
         tensorflow::make_safe(TF_NewStatus());
     std::vector<int64_t> dims;
@@ -809,7 +809,7 @@ void PyOperationData::Dismantle(PyOperation* py_op) {
   PyDict_Clear(py_op->dict);
 }
 
-tsl::Status PyOperation::_add_outputs(py::list dtypes, py::list shapes) {
+absl::Status PyOperation::_add_outputs(py::list dtypes, py::list shapes) {
   int orig_outputs = data->outputs.size();
   for (int i = 0; i < dtypes.size(); ++i) {
     py::object tensor =
@@ -834,7 +834,7 @@ tsl::Status PyOperation::_add_outputs(py::list dtypes, py::list shapes) {
         AsPyTfObject<PyTensor>(tensor)->set_shape(dims, unknown_shape));
     data->outputs.append(tensor);
   }
-  return tsl::OkStatus();
+  return absl::OkStatus();
 }
 
 void PyOperation::add_control_inputs(py::iterable inputs) {
@@ -1917,7 +1917,7 @@ PYBIND11_MODULE(_pywrap_tf_session, m) {
         TF_Function* func = new TF_Function();
         func->record =
             new tensorflow::FunctionRecord(std::move(fdef), {}, false);
-        status.get()->status = ::tensorflow::OkStatus();
+        status.get()->status = absl::OkStatus();
         // Acquire GIL for returning output returning.
         pybind11::gil_scoped_acquire acquire;
         tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
