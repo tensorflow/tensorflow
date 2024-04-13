@@ -84,31 +84,60 @@ class SinkVariableAsNamedArrayPass
       }
     }
 
+    // TODO(b/332906178): collapse the below with the
+    // CollectVariablesUsedByDevice above or just remove the
+    // CollectVariablesUsedByDevice.
+    //
     // Rewrite ReadVariableOp with IfrtLoadVariableOp
     llvm::SmallDenseMap<mlir::TF::ReadVariableOp, mlir::TF::IfrtLoadVariableOp>
         read_to_load;
-    for (auto& [name, variable_config] : variable_config_by_name) {
-      for (auto& read_variable_op : variable_config.read_variable_op) {
-        builder.setInsertionPointAfter(read_variable_op);
-        // TODO(b/319045348): consider use resource alias analysis for this.
-        auto var_handle = GetDefiningOp<mlir::TF::VarHandleOp>(
-            read_variable_op.getResource());
 
-        if (!var_handle) {
-          read_variable_op->emitError(
-              "ReadVariableOp has no defining VarHandleOp.");
-          return signalPassFailure();
-        }
+    mlir::WalkResult walk_result =
+        module.walk([&](mlir::TF::ReadVariableOp read_variable_op) {
+          mlir::FailureOr<std::string> variable_runtime_name =
+              GetVariableTensorName(read_variable_op);
+          if (mlir::failed(variable_runtime_name)) {
+            read_variable_op->emitError() << "Failed to get variable name.";
+            return mlir::WalkResult::interrupt();
+          }
 
-        auto load_variable_op = builder.create<mlir::TF::IfrtLoadVariableOp>(
-            read_variable_op->getLoc(),
-            mlir::RankedTensorType::get(
-                {}, builder.getType<mlir::TF::StringType>()),
-            var_handle.getResult(),
-            builder.getStringAttr(variable_config.device_sharding_config),
-            builder.getStringAttr(name));
-        read_to_load[read_variable_op] = load_variable_op;
-      }
+          builder.setInsertionPointAfter(read_variable_op);
+          // TODO(b/319045348): consider use resource alias analysis for
+          // this.
+          auto var_handle = GetDefiningOp<mlir::TF::VarHandleOp>(
+              read_variable_op.getResource());
+
+          if (!var_handle) {
+            read_variable_op->emitError(
+                "ReadVariableOp has no defining VarHandleOp.");
+            return mlir::WalkResult::interrupt();
+          }
+
+          auto iter = variable_config_by_name.find(*variable_runtime_name);
+          mlir::StringAttr device_sharding_config_attr;
+          if (iter == variable_config_by_name.end()) {
+            device_sharding_config_attr = builder.getStringAttr("");
+          } else {
+            device_sharding_config_attr =
+                builder.getStringAttr(iter->second.device_sharding_config);
+          }
+
+          std::vector<mlir::Type> result_types;
+          result_types.push_back(mlir::RankedTensorType::get(
+              {}, builder.getType<mlir::TF::StringType>()));
+          result_types.push_back(read_variable_op.getResult().getType());
+
+          auto load_variable_op = builder.create<mlir::TF::IfrtLoadVariableOp>(
+              read_variable_op->getLoc(), result_types, var_handle.getResult(),
+              device_sharding_config_attr,
+              builder.getStringAttr(*variable_runtime_name));
+          read_to_load[read_variable_op] = load_variable_op;
+
+          return mlir::WalkResult::advance();
+        });
+
+    if (walk_result.wasInterrupted()) {
+      return signalPassFailure();
     }
 
     // Rewrite ifrt call: variable tensors are sunk as attribute.
@@ -142,7 +171,7 @@ class SinkVariableAsNamedArrayPass
           variable_arg_indices.push_back(arg_idx);
           // Variable use the key from IfrtLoadVariable.
           updated_args.push_back(
-              read_to_load[arg.read_variable_op].getResult());
+              read_to_load[arg.read_variable_op].getArrayKey());
         } else {
           // non variable
           updated_args.push_back(call->getOperand(arg_idx));
@@ -162,14 +191,16 @@ class SinkVariableAsNamedArrayPass
       call.erase();
     }
 
-    // Delete all ReadVariableOps that are not used.
-    for (auto& [name, variable_config] : variable_config_by_name) {
-      for (auto& read_variable_op : variable_config.read_variable_op) {
-        if (read_variable_op.use_empty()) {
-          read_variable_op.erase();
-        }
+    // Remove all ReadVariableOp after replacing the CPU usage of
+    // ReadVariableOp.
+    module.walk([&](mlir::TF::ReadVariableOp read_variable_op) {
+      if (!read_variable_op->use_empty()) {
+        // Replace CPU use of ReadVariableOp
+        read_variable_op.replaceAllUsesWith(
+            read_to_load[read_variable_op].getTensorFuture());
       }
-    }
+      read_variable_op.erase();
+    });
   }
 
  private:

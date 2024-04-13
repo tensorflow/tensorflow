@@ -69,6 +69,7 @@ cc_library(
         "//tensorflow/core/tfrt/ifrt:sharding_utils",
         "//tensorflow/core/tfrt/mlrt/bytecode",
         "//tensorflow/core/tfrt/mlrt/interpreter:context",
+        "//tensorflow/core/tfrt/mlrt/interpreter:future",
         "//tensorflow/core/tfrt/utils:fallback_tensor",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",

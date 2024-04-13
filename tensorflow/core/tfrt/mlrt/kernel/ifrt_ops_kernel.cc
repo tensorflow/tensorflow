@@ -47,6 +47,7 @@ limitations under the License.
 #include "tensorflow/core/tfrt/ifrt/sharding_utils.h"
 #include "tensorflow/core/tfrt/mlrt/bytecode/bytecode.h"
 #include "tensorflow/core/tfrt/mlrt/interpreter/context.h"
+#include "tensorflow/core/tfrt/mlrt/interpreter/future.h"
 #include "tensorflow/core/tfrt/mlrt/kernel/context.h"
 #include "tensorflow/core/tfrt/mlrt/kernel/kernel.h"
 #include "tensorflow/core/tfrt/mlrt/kernel/kernel_runner_utils.h"
@@ -297,7 +298,7 @@ void MlrtIfrtLoadVariableKernel::Invoke() {
 }
 
 absl::Status MlrtIfrtLoadVariableKernel::InvokeHelper() {
-  DCHECK_EQ(1, results().size());
+  DCHECK_EQ(2, results().size());
   std::optional<tensorflow::ifrt_serving::IfrtModelContext*>
       ifrt_model_context =
           context()
@@ -340,16 +341,26 @@ absl::Status MlrtIfrtLoadVariableKernel::InvokeHelper() {
                      .array = loaded_variable_future});
               }));
 
+  auto tensor_promise =
+      mlrt::Promise::Allocate<tensorflow::tfrt_stub::FallbackTensor>();
+  auto tensor_future = tensor_promise.GetFuture();
+
   restored_tensor_future.OnReady(
       [ifrt_model_context = *ifrt_model_context,
        sharding_config = std::string(sharding_config_proto_text()),
        runtime_name = runtime_name,
-       loaded_variable_promise = std::move(loaded_variable_promise)](
+       loaded_variable_promise = std::move(loaded_variable_promise),
+       tensor_promise = std::move(tensor_promise)](
           absl::StatusOr<tensorflow::Tensor> restored_tensor) mutable {
         if (!restored_tensor.ok()) {
+          std::move(tensor_promise).SetError(restored_tensor.status());
           loaded_variable_promise.Set(std::move(restored_tensor).status());
           return;
         }
+
+        std::move(tensor_promise)
+            .Set<tensorflow::tfrt_stub::FallbackTensor>(
+                tensorflow::tfrt_stub::FallbackTensor(*restored_tensor));
 
         // Transfer tensor to array in a separate thread.
         ifrt_model_context->checkpoint_loader_queue()->AddTask(
@@ -369,7 +380,7 @@ absl::Status MlrtIfrtLoadVariableKernel::InvokeHelper() {
   tensorflow::Tensor key_tensor(tensorflow::DT_STRING, {});
   key_tensor.scalar<tsl::tstring>()() = runtime_name;
   results()[0].Set(tensorflow::tfrt_stub::FallbackTensor(key_tensor));
-
+  results()[1].Set(std::move(tensor_future));
   return absl::OkStatus();
 }
 
