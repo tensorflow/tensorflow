@@ -510,7 +510,7 @@ class Tensor {
   typename TTypes<T, NDIMS>::Tensor flat_inner_outer_dims(int64_t begin);
 
   template <typename T, size_t NDIMS>
-  typename TTypes<T, NDIMS>::Tensor shaped(gtl::ArraySlice<int64_t> new_sizes);
+  typename TTypes<T, NDIMS>::Tensor shaped(absl::Span<const int64_t> new_sizes);
 
   /// \brief Return the tensor data to an `Eigen::Tensor` with the new
   /// shape specified in `new_sizes` and cast to a new dtype `T`.
@@ -519,11 +519,11 @@ class Tensor {
   /// The allowed bitcast is the only difference from `shaped()`.
   template <typename T, size_t NDIMS>
   typename TTypes<T, NDIMS>::Tensor bit_casted_shaped(
-      gtl::ArraySlice<int64_t> new_sizes);
+      absl::Span<const int64_t> new_sizes);
 
   template <typename T, size_t NDIMS>
   typename TTypes<T, NDIMS>::UnalignedTensor unaligned_shaped(
-      gtl::ArraySlice<int64_t> new_sizes);
+      absl::Span<const int64_t> new_sizes);
 
   /// \brief Return the Tensor data as a `TensorMap` of fixed size 1:
   /// `TensorMap<TensorFixedSize<T, 1>>`.
@@ -575,7 +575,7 @@ class Tensor {
 
   template <typename T, size_t NDIMS>
   typename TTypes<T, NDIMS>::ConstTensor shaped(
-      gtl::ArraySlice<int64_t> new_sizes) const;
+      absl::Span<const int64_t> new_sizes) const;
 
   /// \brief Return the tensor data to an `Eigen::Tensor` with the new
   /// shape specified in `new_sizes` and cast to a new dtype `T`.
@@ -584,11 +584,11 @@ class Tensor {
   /// The allowed bitcast is the only difference from `shaped()`.
   template <typename T, size_t NDIMS>
   typename TTypes<T, NDIMS>::ConstTensor bit_casted_shaped(
-      gtl::ArraySlice<int64_t> new_sizes) const;
+      absl::Span<const int64_t> new_sizes) const;
 
   template <typename T, size_t NDIMS>
   typename TTypes<T, NDIMS>::UnalignedConstTensor unaligned_shaped(
-      gtl::ArraySlice<int64_t> new_sizes) const;
+      absl::Span<const int64_t> new_sizes) const;
 
   template <typename T>
   typename TTypes<T>::ConstScalar scalar() const;
@@ -687,9 +687,9 @@ class Tensor {
 
   // TensorShape's InlineVector.
   static gtl::InlinedVector<int64_t, 4> ComputeFlatInnerDims(
-      gtl::ArraySlice<int64_t> orig, int64_t num_out_dims);
+      absl::Span<const int64_t> orig, int64_t num_out_dims);
   static gtl::InlinedVector<int64_t, 4> ComputeFlatOuterDims(
-      gtl::ArraySlice<int64_t> orig, int64_t num_out_dims);
+      absl::Span<const int64_t> orig, int64_t num_out_dims);
 
   TensorShape shape_;
   TensorBuffer* buf_;
@@ -753,12 +753,12 @@ class Tensor {
 
   template <size_t NDIMS>
   void FillDimsAndValidateCompatibleShape(
-      gtl::ArraySlice<int64_t> new_sizes,
+      absl::Span<const int64_t> new_sizes,
       Eigen::array<Eigen::DenseIndex, NDIMS>* dims) const;
 
   template <typename T, size_t NDIMS>
   void FillDimsAndValidateCompatibleShape(
-      gtl::ArraySlice<int64_t> new_sizes,
+      absl::Span<const int64_t> new_sizes,
       Eigen::array<Eigen::DenseIndex, NDIMS>* dims) const;
 };
 
@@ -836,7 +836,7 @@ typename TTypes<T, NDIMS>::ConstTensor Tensor::reinterpret_last_dimension()
 
 template <size_t NDIMS>
 void Tensor::FillDimsAndValidateCompatibleShape(
-    gtl::ArraySlice<int64_t> new_sizes,
+    absl::Span<const int64_t> new_sizes,
     Eigen::array<Eigen::DenseIndex, NDIMS>* dims) const {
   CHECK_EQ(NDIMS, new_sizes.size());
   int64_t new_num_elements = 1;
@@ -849,7 +849,7 @@ void Tensor::FillDimsAndValidateCompatibleShape(
 
 template <typename T, size_t NDIMS>
 void Tensor::FillDimsAndValidateCompatibleShape(
-    gtl::ArraySlice<int64_t> new_sizes,
+    absl::Span<const int64_t> new_sizes,
     Eigen::array<Eigen::DenseIndex, NDIMS>* dims) const {
   CHECK_EQ(NDIMS, new_sizes.size());
   int64_t new_num_elements = 1;
@@ -892,7 +892,7 @@ typename TTypes<T>::ConstFlat Tensor::flat() const {
 
 template <typename T, size_t NDIMS>
 typename TTypes<T, NDIMS>::Tensor Tensor::shaped(
-    gtl::ArraySlice<int64_t> new_sizes) {
+    absl::Span<const int64_t> new_sizes) {
   CheckTypeAndIsAligned(DataTypeToEnum<T>::v());
   Eigen::array<Eigen::DenseIndex, NDIMS> dims;
   FillDimsAndValidateCompatibleShape(new_sizes, &dims);
@@ -901,7 +901,7 @@ typename TTypes<T, NDIMS>::Tensor Tensor::shaped(
 
 template <typename T, size_t NDIMS>
 typename TTypes<T, NDIMS>::Tensor Tensor::bit_casted_shaped(
-    gtl::ArraySlice<int64_t> new_sizes) {
+    absl::Span<const int64_t> new_sizes) {
   CHECK(IsAligned());
   Eigen::array<Eigen::DenseIndex, NDIMS> dims;
   FillDimsAndValidateCompatibleShape<T>(new_sizes, &dims);
@@ -910,7 +910,7 @@ typename TTypes<T, NDIMS>::Tensor Tensor::bit_casted_shaped(
 
 template <typename T, size_t NDIMS>
 typename TTypes<T, NDIMS>::UnalignedTensor Tensor::unaligned_shaped(
-    gtl::ArraySlice<int64_t> new_sizes) {
+    absl::Span<const int64_t> new_sizes) {
   CheckType(DataTypeToEnum<T>::v());
   Eigen::array<Eigen::DenseIndex, NDIMS> dims;
   FillDimsAndValidateCompatibleShape(new_sizes, &dims);
@@ -919,7 +919,7 @@ typename TTypes<T, NDIMS>::UnalignedTensor Tensor::unaligned_shaped(
 
 template <typename T, size_t NDIMS>
 typename TTypes<T, NDIMS>::ConstTensor Tensor::shaped(
-    gtl::ArraySlice<int64_t> new_sizes) const {
+    absl::Span<const int64_t> new_sizes) const {
   CheckType(DataTypeToEnum<T>::v());
   CHECK(IsAligned()) << "ptr = " << base<void>();
   Eigen::array<Eigen::DenseIndex, NDIMS> dims;
@@ -929,7 +929,7 @@ typename TTypes<T, NDIMS>::ConstTensor Tensor::shaped(
 
 template <typename T, size_t NDIMS>
 typename TTypes<T, NDIMS>::ConstTensor Tensor::bit_casted_shaped(
-    gtl::ArraySlice<int64_t> new_sizes) const {
+    absl::Span<const int64_t> new_sizes) const {
   CHECK(IsAligned());
   Eigen::array<Eigen::DenseIndex, NDIMS> dims;
   FillDimsAndValidateCompatibleShape<T>(new_sizes, &dims);
@@ -938,7 +938,7 @@ typename TTypes<T, NDIMS>::ConstTensor Tensor::bit_casted_shaped(
 
 template <typename T, size_t NDIMS>
 typename TTypes<T, NDIMS>::UnalignedConstTensor Tensor::unaligned_shaped(
-    gtl::ArraySlice<int64_t> new_sizes) const {
+    absl::Span<const int64_t> new_sizes) const {
   CheckType(DataTypeToEnum<T>::v());
   Eigen::array<Eigen::DenseIndex, NDIMS> dims;
   FillDimsAndValidateCompatibleShape(new_sizes, &dims);

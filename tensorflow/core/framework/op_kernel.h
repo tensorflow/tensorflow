@@ -904,11 +904,11 @@ class OpKernelContext {
   // not nullptr). If no inputs are forwarded, forwarded_input will be assigned
   // -1.
   Status forward_input_or_allocate_output(
-      gtl::ArraySlice<int> candidate_input_indices, int output_index,
+      absl::Span<const int> candidate_input_indices, int output_index,
       const TensorShape& output_shape, Tensor** output,
       int* forwarded_input = nullptr) TF_MUST_USE_RESULT;
   Status forward_input_or_allocate_output(
-      gtl::ArraySlice<StringPiece> candidate_input_names,
+      absl::Span<const StringPiece> candidate_input_names,
       StringPiece output_name, const TensorShape& output_shape,
       Tensor** output) TF_MUST_USE_RESULT;
 
@@ -916,12 +916,12 @@ class OpKernelContext {
   // If none of the given inputs can be forwarded, calls
   // allocate_temp() to allocate a new temporary buffer.
   Status forward_input_or_allocate_temp(
-      gtl::ArraySlice<int> candidate_input_indices, DataType type,
+      absl::Span<const int> candidate_input_indices, DataType type,
       const TensorShape& shape, const AllocatorAttributes& allocator_attr,
       Tensor* out_temp) TF_MUST_USE_RESULT;
 
   Status forward_input_or_allocate_temp(
-      gtl::ArraySlice<int> candidate_input_indices, DataType type,
+      absl::Span<const int> candidate_input_indices, DataType type,
       const TensorShape& shape, Tensor* out_temp) TF_MUST_USE_RESULT {
     return forward_input_or_allocate_temp(candidate_input_indices, type, shape,
                                           AllocatorAttributes(), out_temp);

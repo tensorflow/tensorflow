@@ -124,7 +124,7 @@ class FunctionDefHelper {
   // Constructs an AttrValue.func given the "name" and "attrs".
   static AttrValueWrapper FunctionRef(
       const std::string& name,
-      gtl::ArraySlice<std::pair<string, AttrValueWrapper>> attrs);
+      absl::Span<const std::pair<string, AttrValueWrapper>> attrs);
   static AttrValueWrapper FunctionRef(const std::string& name) {
     return FunctionRef(name, {});
   }
@@ -169,35 +169,34 @@ class FunctionDefHelper {
   // - `control_ret_def` holds a mapping from the function control
   //   output names to the nodes from `node_def`.
   static FunctionDef Create(
-      const std::string& function_name, gtl::ArraySlice<string> in_def,
-      gtl::ArraySlice<string> out_def, gtl::ArraySlice<string> attr_def,
-      gtl::ArraySlice<Node> node_def,
-      gtl::ArraySlice<std::pair<string, string>> ret_def,
-      gtl::ArraySlice<std::pair<string, string>> control_ret_def);
+      const std::string& function_name, absl::Span<const string> in_def,
+      absl::Span<const string> out_def, absl::Span<const string> attr_def,
+      absl::Span<const Node> node_def,
+      absl::Span<const std::pair<string, string>> ret_def,
+      absl::Span<const std::pair<string, string>> control_ret_def);
 
   // Creates a FunctionDef from the given parameters. Node inputs must use
   // function encoding (node_name:output_name[:output_index]).
   // - `ret_def` holds a mapping from the function output names from `out_def`
   //   to the node outputs from `node_def`.
-  static FunctionDef Create(const std::string& function_name,
-                            gtl::ArraySlice<string> in_def,
-                            gtl::ArraySlice<string> out_def,
-                            gtl::ArraySlice<string> attr_def,
-                            gtl::ArraySlice<Node> node_def,
-                            gtl::ArraySlice<std::pair<string, string>> ret_def);
+  static FunctionDef Create(
+      const std::string& function_name, absl::Span<const string> in_def,
+      absl::Span<const string> out_def, absl::Span<const string> attr_def,
+      absl::Span<const Node> node_def,
+      absl::Span<const std::pair<string, string>> ret_def);
 
   // TODO(josh11b): Get rid of these and transition to the one above.
   static FunctionDef Define(const std::string& function_name,
-                            gtl::ArraySlice<string> arg_def,
-                            gtl::ArraySlice<string> ret_def,
-                            gtl::ArraySlice<string> attr_def,
-                            gtl::ArraySlice<Node> node_def);
+                            absl::Span<const string> arg_def,
+                            absl::Span<const string> ret_def,
+                            absl::Span<const string> attr_def,
+                            absl::Span<const Node> node_def);
 
   // Defines an anonymous function. I.e., its name is not relevant.
-  static FunctionDef Define(gtl::ArraySlice<string> arg_def,
-                            gtl::ArraySlice<string> ret_def,
-                            gtl::ArraySlice<string> attr_def,
-                            gtl::ArraySlice<Node> node_def);
+  static FunctionDef Define(absl::Span<const string> arg_def,
+                            absl::Span<const string> ret_def,
+                            absl::Span<const string> attr_def,
+                            absl::Span<const Node> node_def);
 
   // Helpers to construct a constant scalar.
   template <typename T>
@@ -279,7 +278,7 @@ Status InstantiateFunction(const FunctionDef& fdef, AttrSlice attr_values,
 // etc.)
 std::string DebugString(const FunctionDef& func_def);
 std::string DebugString(const GraphDef& instantiated_func_def);
-std::string DebugString(gtl::ArraySlice<NodeDef> instantiated_func_nodes);
+std::string DebugString(absl::Span<const NodeDef> instantiated_func_nodes);
 
 // Returns a debug string for a top level graph (the main program and
 // its supporting functions defined in its library).
@@ -329,7 +328,7 @@ class FunctionCallFrame : public CallFrameInterface {
   ~FunctionCallFrame() override;
 
   // Caller methods.
-  Status SetArgs(gtl::ArraySlice<Tensor> args);
+  Status SetArgs(absl::Span<const Tensor> args);
   Status GetRetvals(std::vector<Tensor>* rets) const;
 
   // Moves the return values from the frame to rets. If allow_dead_tensors is
@@ -965,13 +964,13 @@ class FunctionLibraryRuntime : public core::WeakRefCounted {
   };
   typedef std::function<void(const Status&)> DoneCallback;
   virtual void Run(const Options& opts, Handle handle,
-                   gtl::ArraySlice<Tensor> args, std::vector<Tensor>* rets,
+                   absl::Span<const Tensor> args, std::vector<Tensor>* rets,
                    DoneCallback done) = 0;
   virtual void Run(const Options& opts, Handle handle,
                    CallFrameInterface* call_frame, DoneCallback done) = 0;
 
   virtual Status RunSync(Options opts, Handle handle,
-                         gtl::ArraySlice<Tensor> args,
+                         absl::Span<const Tensor> args,
                          std::vector<Tensor>* rets) = 0;
   virtual Status RunSync(Options opts, Handle handle,
                          CallFrameInterface* call_frame) = 0;
@@ -1126,7 +1125,7 @@ class DistributedFunctionLibraryRuntime {
   // opts.runner isn't used for execution.
   virtual void Run(const FunctionLibraryRuntime::Options& opts,
                    FunctionLibraryRuntime::LocalHandle handle,
-                   gtl::ArraySlice<Tensor> args, std::vector<Tensor>* rets,
+                   absl::Span<const Tensor> args, std::vector<Tensor>* rets,
                    FunctionLibraryRuntime::DoneCallback done) = 0;
 
   // Run an instantiated remote function (specified by `handle`) with a list of
@@ -1138,7 +1137,7 @@ class DistributedFunctionLibraryRuntime {
   // supported in TensorFlow v1 runtime.
   virtual void Run(const FunctionLibraryRuntime::Options& opts,
                    FunctionLibraryRuntime::LocalHandle handle,
-                   gtl::ArraySlice<FunctionArg> args,
+                   absl::Span<const FunctionArg> args,
                    std::vector<FunctionRet>* rets,
                    FunctionLibraryRuntime::DoneCallback done) = 0;
 
