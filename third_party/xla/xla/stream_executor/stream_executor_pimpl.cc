@@ -53,7 +53,7 @@ limitations under the License.
 #include "xla/stream_executor/module_spec.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
-#include "xla/stream_executor/stream_executor_internal.h"
+#include "xla/stream_executor/stream_executor_interface.h"
 #include "xla/tsl/util/env_var.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/numbers.h"
@@ -73,7 +73,7 @@ static int64_t GetMemoryLimitBytes() {
 
 StreamExecutor::StreamExecutor(
     const Platform* platform,
-    std::unique_ptr<internal::StreamExecutorInterface> implementation)
+    std::unique_ptr<StreamExecutorInterface> implementation)
     : platform_(platform),
       implementation_(std::move(implementation)),
       memory_limit_bytes_(GetMemoryLimitBytes()),
@@ -125,10 +125,6 @@ const DeviceDescription& StreamExecutor::GetDeviceDescription() const {
 
   device_description_ = CreateDeviceDescription();
   return *device_description_;
-}
-
-int64_t StreamExecutor::GetDeviceLoad() const {
-  return implementation_->GetDeviceLoad();
 }
 
 dnn::DnnSupport* StreamExecutor::AsDnn() { return implementation_->AsDnn(); }
@@ -354,7 +350,7 @@ Stream* StreamExecutor::FindAllocatedStream(void* gpu_stream) {
   return implementation_->FindAllocatedStream(gpu_stream);
 }
 
-internal::StreamExecutorInterface* StreamExecutor::implementation() {
+StreamExecutorInterface* StreamExecutor::implementation() {
   return implementation_.get();
 }
 

@@ -63,7 +63,7 @@ cc_library(
         "host_stream.h",
     ],
     deps = [
-        "//xla/stream_executor:stream_executor_internal",
+        "//xla/stream_executor:stream_interface",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/log:check",
@@ -89,7 +89,7 @@ cc_library(
         ":host_kernel_c_api",
         "//xla/stream_executor",
         "//xla/stream_executor:device_memory",
-        "//xla/stream_executor:stream_executor_internal",
+        "//xla/stream_executor:stream_executor_interface",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
@@ -121,7 +121,8 @@ cc_library(
     deps = [
         ":host_stream",
         "//xla/stream_executor",
-        "//xla/stream_executor:stream_executor_internal",
+        "//xla/stream_executor:event_interface",
+        "//xla/stream_executor:stream_executor_interface",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",

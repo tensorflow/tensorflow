@@ -34,9 +34,10 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/event.h"
+#include "xla/stream_executor/event_interface.h"
 #include "xla/stream_executor/host/host_stream.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/stream_executor/stream_executor_internal.h"
+#include "xla/stream_executor/stream_executor_interface.h"
 #include "tsl/platform/mem.h"
 #include "tsl/platform/profile_utils/cpu_utils.h"
 
@@ -73,12 +74,6 @@ void HostExecutor::Deallocate(DeviceMemoryBase* mem) {
 absl::Status HostExecutor::SynchronousMemZero(DeviceMemoryBase* location,
                                               uint64_t size) {
   memset(location->opaque(), 0, size);
-  return absl::OkStatus();
-}
-
-absl::Status HostExecutor::SynchronousMemSet(DeviceMemoryBase* location,
-                                             int value, uint64_t size) {
-  memset(location->opaque(), value, size);
   return absl::OkStatus();
 }
 
@@ -185,7 +180,7 @@ bool HostExecutor::CreateStreamDependency(Stream* dependent, Stream* other) {
   return true;
 }
 
-class HostEvent : public internal::EventInterface {
+class HostEvent : public EventInterface {
  public:
   HostEvent() : notification_(std::make_shared<absl::Notification>()) {}
 
@@ -198,9 +193,8 @@ class HostEvent : public internal::EventInterface {
   std::shared_ptr<absl::Notification> notification_;
 };
 
-std::unique_ptr<internal::EventInterface>
-HostExecutor::CreateEventImplementation() {
-  return std::unique_ptr<internal::EventInterface>(new HostEvent());
+std::unique_ptr<EventInterface> HostExecutor::CreateEventImplementation() {
+  return std::unique_ptr<EventInterface>(new HostEvent());
 }
 
 static HostEvent* AsHostEvent(Event* event) {
@@ -264,8 +258,7 @@ HostExecutor::CreateDeviceDescription(int device_ordinal) {
   return builder.Build();
 }
 
-std::unique_ptr<internal::StreamInterface>
-HostExecutor::GetStreamImplementation() {
+std::unique_ptr<StreamInterface> HostExecutor::GetStreamImplementation() {
   return std::make_unique<HostStream>();
 }
 

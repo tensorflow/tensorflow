@@ -58,7 +58,7 @@ limitations under the License.
 #include "xla/stream_executor/module_spec.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/stream_executor/stream_executor_internal.h"
+#include "xla/stream_executor/stream_executor_interface.h"
 #include "tsl/platform/thread_annotations.h"
 
 namespace stream_executor {
@@ -72,7 +72,7 @@ class GpuCommandBuffer;
 
 // CUDA-platform implementation of the platform-agnostic
 // StreamExecutorInterface.
-class GpuExecutor : public internal::StreamExecutorInterface {
+class GpuExecutor : public StreamExecutorInterface {
   // Helper classes to attach a type erased state to the GpuExecutor. Currently,
   // we just need to support some XLA specific state.
   class Object {
@@ -196,17 +196,10 @@ class GpuExecutor : public internal::StreamExecutorInterface {
     return GpuDriver::HostDeallocate(context_, location);
   }
 
-  bool HostMemoryRegister(void* location, uint64_t size) override;
-
-  bool HostMemoryUnregister(void* location) override;
-
   bool SynchronizeAllActivity() override;
 
   absl::Status SynchronousMemZero(DeviceMemoryBase* location,
                                   uint64_t size) override;
-
-  absl::Status SynchronousMemSet(DeviceMemoryBase* location, int value,
-                                 uint64_t size) override;
 
   absl::Status SynchronousMemcpy(DeviceMemoryBase* gpu_dst,
                                  const void* host_src, uint64_t size) override;
@@ -286,10 +279,9 @@ class GpuExecutor : public internal::StreamExecutorInterface {
 
   dnn::DnnSupport* AsDnn() override;
 
-  std::unique_ptr<internal::EventInterface> CreateEventImplementation()
-      override;
+  std::unique_ptr<EventInterface> CreateEventImplementation() override;
 
-  std::unique_ptr<internal::StreamInterface> GetStreamImplementation() override;
+  std::unique_ptr<StreamInterface> GetStreamImplementation() override;
 
   absl::StatusOr<std::unique_ptr<Kernel>> CreateKernel() override;
 

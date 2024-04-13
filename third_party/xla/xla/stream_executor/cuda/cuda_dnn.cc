@@ -68,7 +68,7 @@ limitations under the License.
 #include "xla/stream_executor/scratch_allocator.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/stream_executor/stream_executor_internal.h"
+#include "xla/stream_executor/stream_executor_interface.h"
 #include "xla/tsl/util/env_var.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
@@ -6776,7 +6776,7 @@ class CudnnLegacyConvRunner : public dnn::ConvRunner {
                           DeviceMemoryBase output_data) const override {
     auto algo = MakeAlgorithmDesc();
 
-    if (static_cast<internal::StreamExecutorInterface*>(parent_) !=
+    if (static_cast<StreamExecutorInterface*>(parent_) !=
         stream->parent()->implementation()) {
       return tsl::errors::Internal(
           "CudnnLegacyConvRunner cached across multiple StreamExecutors.");
@@ -7185,7 +7185,7 @@ class CudnnExecutionPlanRunner<void(Args...)>
   absl::Status operator()(Stream* stream, dnn::ProfileResult* profile_result,
                           DeviceMemoryBase scratch_memory,
                           Args... inputs) const override {
-    if (static_cast<internal::StreamExecutorInterface*>(parent_) !=
+    if (static_cast<StreamExecutorInterface*>(parent_) !=
         stream->parent()->implementation()) {
       return tsl::errors::Internal(
           "CudnnExecutionPlanRunner cached across multiple StreamExecutors.");
@@ -7391,7 +7391,7 @@ class CudnnGraphRunner<void(Args...)> : public dnn::OpRunner<void(Args...)> {
   absl::Status operator()(Stream* stream, dnn::ProfileResult* profile_result,
                           DeviceMemoryBase scratch_memory,
                           Args... inputs) const override {
-    if (static_cast<internal::StreamExecutorInterface*>(parent_) !=
+    if (static_cast<StreamExecutorInterface*>(parent_) !=
         stream->parent()->implementation()) {
       return tsl::errors::Internal(
           "CudnnExecutionPlanRunner cached across multiple StreamExecutors.");
@@ -7861,7 +7861,7 @@ class CudnnLegacyFusedConvRunner : public dnn::FusedConvRunner {
                           DeviceMemoryBase side_input_data,
                           DeviceMemoryBase bias_data,
                           DeviceMemoryBase output_data) const override {
-    if (static_cast<internal::StreamExecutorInterface*>(parent_) !=
+    if (static_cast<StreamExecutorInterface*>(parent_) !=
         stream->parent()->implementation()) {
       return tsl::errors::Internal(
           "CudnnLegacyFusedConvRunner cached across multiple "
@@ -9797,7 +9797,7 @@ void initialize_cudnn() {
   absl::Status status =
       PluginRegistry::Instance()->RegisterFactory<PluginRegistry::DnnFactory>(
           cuda::kCudaPlatformId, "cuDNN",
-          [](internal::StreamExecutorInterface* parent) -> dnn::DnnSupport* {
+          [](StreamExecutorInterface* parent) -> dnn::DnnSupport* {
             gpu::GpuExecutor* cuda_executor =
                 dynamic_cast<gpu::GpuExecutor*>(parent);
             if (cuda_executor == nullptr) {

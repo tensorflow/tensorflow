@@ -29,7 +29,7 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/event.h"
-#include "xla/stream_executor/stream_executor_internal.h"
+#include "xla/stream_executor/stream_executor_interface.h"
 #include "xla/stream_executor/tpu/c_api_conversions.h"
 #include "xla/stream_executor/tpu/c_api_decl.h"
 #include "xla/stream_executor/tpu/status_helper.h"
@@ -140,8 +140,7 @@ Status TpuExecutor::WaitForEvent(Stream* stream,
 // responsible for deallocating the internal value when they are destroyed.
 
 // Called by Stream::Stream
-std::unique_ptr<::stream_executor::internal::StreamInterface>
-TpuExecutor::GetStreamImplementation() {
+std::unique_ptr<StreamInterface> TpuExecutor::GetStreamImplementation() {
   SE_Stream* tpu_stream = ExecutorApiFn()->TpuStream_NewFn(executor_);
   auto ptr = std::make_unique<tensorflow::tpu::TpuStream>(tpu_stream);
   tpu_platform().mutex().Lock();
@@ -151,8 +150,7 @@ TpuExecutor::GetStreamImplementation() {
 }
 
 // Called by Event::Event
-std::unique_ptr<::stream_executor::internal::EventInterface>
-TpuExecutor::CreateEventImplementation() {
+std::unique_ptr<EventInterface> TpuExecutor::CreateEventImplementation() {
   SE_Event* tpu_event = ExecutorApiFn()->TpuEvent_NewFn(executor_);
   auto ptr = std::make_unique<TpuEvent>(tpu_event);
   tpu_platform().InsertEvent(ptr.get(), tpu_event);

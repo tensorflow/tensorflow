@@ -33,7 +33,7 @@ limitations under the License.
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/stream_executor/stream_executor_internal.h"
+#include "xla/stream_executor/stream_executor_interface.h"
 #include "xla/stream_executor/tpu/c_api_decl.h"
 #include "xla/stream_executor/tpu/tpu_executor_c_api.h"
 #include "xla/stream_executor/tpu/tpu_executor_interface.h"
@@ -52,12 +52,6 @@ class TpuExecutor : public tensorflow::tpu::TpuExecutorInterface {
   template <typename T>
   using StatusOr = ::absl::StatusOr<T>;
   using StatusCallback = std::function<void(const absl::Status&)>;
-  using Stream = ::stream_executor::Stream;
-  using Event = ::stream_executor::Event;
-  using DeviceMemoryBase = ::stream_executor::DeviceMemoryBase;
-  using StreamInterface = ::stream_executor::internal::StreamInterface;
-  using StreamExecutorInterface =
-      ::stream_executor::internal::StreamExecutorInterface;
 
   explicit TpuExecutor(::tensorflow::tpu::TpuPlatformInterface* platform,
                        SE_StreamExecutor* executor, int device_ordinal)
@@ -75,10 +69,10 @@ class TpuExecutor : public tensorflow::tpu::TpuExecutorInterface {
 
   bool AllocateStream(Stream* stream) override;
 
-  absl::Status BlockHostUntilDone(::stream_executor::Stream* stream) override;
+  absl::Status BlockHostUntilDone(Stream* stream) override;
 
-  StatusOr<std::unique_ptr<::stream_executor::DeviceDescription>>
-  CreateDeviceDescription() const override;
+  StatusOr<std::unique_ptr<DeviceDescription>> CreateDeviceDescription()
+      const override;
 
   bool CreateStreamDependency(Stream* dependent, Stream* other) override;
 
@@ -105,46 +99,38 @@ class TpuExecutor : public tensorflow::tpu::TpuExecutorInterface {
 
   absl::Status GetStatus(Stream* stream) override;
 
-  std::unique_ptr<::stream_executor::internal::StreamInterface>
-  GetStreamImplementation() override;
+  std::unique_ptr<StreamInterface> GetStreamImplementation() override;
 
-  std::unique_ptr<::stream_executor::internal::EventInterface>
-  CreateEventImplementation() override;
+  std::unique_ptr<EventInterface> CreateEventImplementation() override;
 
   bool HostCallback(Stream* stream,
                     absl::AnyInvocable<absl::Status() &&> callback) override;
 
   absl::Status Memcpy(Stream* stream, void* host_dst,
-                      const ::stream_executor::DeviceMemoryBase& device_src,
+                      const DeviceMemoryBase& device_src,
                       uint64_t size) override;
 
-  absl::Status Memcpy(Stream* stream,
-                      ::stream_executor::DeviceMemoryBase* device_dst,
+  absl::Status Memcpy(Stream* stream, DeviceMemoryBase* device_dst,
                       const void* host_src, uint64_t size) override;
 
-  bool MemcpyDeviceToDevice(Stream* stream,
-                            ::stream_executor::DeviceMemoryBase* gpu_dst,
-                            const ::stream_executor::DeviceMemoryBase& host_src,
+  bool MemcpyDeviceToDevice(Stream* stream, DeviceMemoryBase* gpu_dst,
+                            const DeviceMemoryBase& host_src,
                             uint64_t size) override;
 
   bool SynchronizeAllActivity() override;
 
-  absl::Status SynchronousMemcpy(
-      ::stream_executor::DeviceMemoryBase* device_dst, const void* host_src,
-      uint64_t size) override;
-  absl::Status SynchronousMemcpy(
-      void* host_dst, const ::stream_executor::DeviceMemoryBase& device_src,
-      uint64_t size) override;
+  absl::Status SynchronousMemcpy(DeviceMemoryBase* device_dst,
+                                 const void* host_src, uint64_t size) override;
+  absl::Status SynchronousMemcpy(void* host_dst,
+                                 const DeviceMemoryBase& device_src,
+                                 uint64_t size) override;
   absl::Status SynchronousMemcpyDeviceToDevice(
-      ::stream_executor::DeviceMemoryBase* device_dst,
-      const ::stream_executor::DeviceMemoryBase& device_src,
+      DeviceMemoryBase* device_dst, const DeviceMemoryBase& device_src,
       uint64_t size) override;
 
   Event::Status PollForEventStatus(Event* event) override;
-  absl::Status RecordEvent(Stream* stream,
-                           ::stream_executor::Event* event) override;
-  absl::Status WaitForEvent(Stream* stream,
-                            ::stream_executor::Event* event) override;
+  absl::Status RecordEvent(Stream* stream, Event* event) override;
+  absl::Status WaitForEvent(Stream* stream, Event* event) override;
 
   absl::Status UnloadAllPrograms() override;
 
@@ -192,18 +178,8 @@ class TpuExecutor : public tensorflow::tpu::TpuExecutorInterface {
   void HostMemoryDeallocate(void* mem) override {
     LOG(FATAL) << "not yet implemented";
   }
-  bool HostMemoryRegister(void* mem, uint64_t size) override {
-    LOG(FATAL) << "not yet implemented";
-  }
-  bool HostMemoryUnregister(void* mem) override {
-    LOG(FATAL) << "not yet implemented";
-  }
   absl::Status SynchronousMemZero(DeviceMemoryBase* location,
                                   uint64_t size) override {
-    LOG(FATAL) << "not yet implemented";
-  }
-  absl::Status SynchronousMemSet(DeviceMemoryBase* location, int value,
-                                 uint64_t size) override {
     LOG(FATAL) << "not yet implemented";
   }
 

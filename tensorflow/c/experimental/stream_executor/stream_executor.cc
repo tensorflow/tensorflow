@@ -200,7 +200,7 @@ void HostCallbackTrampoline(void* ctx, TF_Status* status) {
   delete host_ctx;
 }
 
-class CStreamExecutor : public internal::StreamExecutorInterface {
+class CStreamExecutor : public StreamExecutorInterface {
  public:
   explicit CStreamExecutor(SP_Device device, SP_DeviceFns* device_fns,
                            SP_StreamExecutor* stream_executor,
@@ -253,9 +253,6 @@ class CStreamExecutor : public internal::StreamExecutorInterface {
   void HostMemoryDeallocate(void* mem) override {
     stream_executor_->host_memory_deallocate(&device_, mem);
   }
-
-  bool HostMemoryRegister(void* mem, uint64 size) override { return false; }
-  bool HostMemoryUnregister(void* mem) override { return false; }
 
   void* UnifiedMemoryAllocate(uint64 size) override {
     CHECK(stream_executor_->unified_memory_allocate);
@@ -310,11 +307,6 @@ class CStreamExecutor : public internal::StreamExecutorInterface {
     // functionality by allocating on host and then copying to device.
     return tsl::errors::Unimplemented(
         "SynchronousMemZero is not supported by pluggable device.");
-  }
-  absl::Status SynchronousMemSet(DeviceMemoryBase* location, int value,
-                                 uint64 size) override {
-    return tsl::errors::Unimplemented(
-        "SynchronousMemSet is not supported by pluggable device.");
   }
   absl::Status SynchronousMemcpy(DeviceMemoryBase* gpu_dst,
                                  const void* host_src, uint64 size) override {
@@ -577,14 +569,12 @@ class CStreamExecutor : public internal::StreamExecutorInterface {
 
   // Each call creates a new instance of the platform-specific implementation of
   // the corresponding interface type.
-  std::unique_ptr<internal::EventInterface> CreateEventImplementation()
-      override {
-    return std::unique_ptr<internal::EventInterface>(
+  std::unique_ptr<EventInterface> CreateEventImplementation() override {
+    return std::unique_ptr<EventInterface>(
         new CEvent(&device_, stream_executor_));
   }
-  std::unique_ptr<internal::StreamInterface> GetStreamImplementation()
-      override {
-    return std::unique_ptr<internal::StreamInterface>(
+  std::unique_ptr<StreamInterface> GetStreamImplementation() override {
+    return std::unique_ptr<StreamInterface>(
         new CStream(&device_, stream_executor_));
   }
 

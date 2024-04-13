@@ -45,17 +45,13 @@ limitations under the License.
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/module_spec.h"
 #include "xla/stream_executor/platform.h"
-#include "xla/stream_executor/stream_executor_internal.h"
+#include "xla/stream_executor/stream_executor_interface.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/status.h"
 
 namespace stream_executor {
 
 class Stream;
-
-namespace internal {
-class StreamExecutorInterface;
-}  // namespace internal
 
 // A StreamExecutor manages a single device, in terms of executing work (kernel
 // launches) and memory management (allocation/deallocation, memory copies to
@@ -71,9 +67,8 @@ class StreamExecutorInterface;
 // StreamExecutor interface should not be invoked from a signal handler.
 class StreamExecutor {
  public:
-  StreamExecutor(
-      const Platform* platform,
-      std::unique_ptr<internal::StreamExecutorInterface> implementation);
+  StreamExecutor(const Platform* platform,
+                 std::unique_ptr<StreamExecutorInterface> implementation);
 
   ~StreamExecutor() = default;
 
@@ -171,9 +166,8 @@ class StreamExecutor {
   absl::Status CollectiveMemoryDeallocate(void* location);
 
   // Allocates a region of host memory and registers it with the platform API.
-  // Memory allocated in this manner (or allocated and registered with
-  // HostMemoryRegister() is required for use in asynchronous memcpy operations,
-  // such as Stream::ThenMemcpy.
+  // Memory allocated in this manner is required for use in asynchronous memcpy
+  // operations, such as Stream::ThenMemcpy.
   absl::StatusOr<std::unique_ptr<MemoryAllocation>> HostMemoryAllocate(
       uint64_t size);
 
@@ -245,10 +239,6 @@ class StreamExecutor {
   // The value is cached on first use.
   const DeviceDescription& GetDeviceDescription() const;
 
-  // If implemented, returns device specific measurement of load
-  // (e.g. pending requests).
-  int64_t GetDeviceLoad() const;
-
   // Returns the underlying device memory usage information, if it is available.
   // If it is not available (false is returned), free/total may not be
   // initialized.
@@ -264,7 +254,7 @@ class StreamExecutor {
   int device_ordinal() const { return implementation_->device_ordinal(); }
 
   // Returns a borrowed pointer to the underlying StreamExecutor implementation.
-  internal::StreamExecutorInterface* implementation();
+  StreamExecutorInterface* implementation();
 
   // Warning: use Stream::ThenLaunch instead, this method is not for general
   // consumption. However, this is the only way to launch a kernel for which
@@ -436,7 +426,7 @@ class StreamExecutor {
   // Pointer to the platform-specific-interface implementation. This is
   // delegated to by the interface routines in pointer-to-implementation
   // fashion.
-  std::unique_ptr<internal::StreamExecutorInterface> implementation_;
+  std::unique_ptr<StreamExecutorInterface> implementation_;
 
   // Slot to cache the owned DeviceDescription for the underlying device
   // once it has been queried from DeviceDescription().

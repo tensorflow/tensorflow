@@ -35,7 +35,7 @@ limitations under the License.
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/stream_executor/stream_executor_internal.h"
+#include "xla/stream_executor/stream_executor_interface.h"
 
 namespace stream_executor {
 namespace host {
@@ -49,7 +49,7 @@ namespace host {
 // This is useful for evaluating the performance of host-based or fallback
 // routines executed under the context of a GPU executor.
 // See stream_executor.h for description of the below operations.
-class HostExecutor : public internal::StreamExecutorInterface {
+class HostExecutor : public StreamExecutorInterface {
  public:
   explicit HostExecutor(int device_ordinal) : device_ordinal_(device_ordinal) {}
 
@@ -75,8 +75,6 @@ class HostExecutor : public internal::StreamExecutorInterface {
   void HostMemoryDeallocate(void* mem) override {
     delete[] static_cast<char*>(mem);
   }
-  bool HostMemoryRegister(void* mem, uint64_t size) override { return true; }
-  bool HostMemoryUnregister(void* mem) override { return true; }
 
   absl::Status Memcpy(Stream* stream, void* host_dst,
                       const DeviceMemoryBase& gpu_src, uint64_t size) override;
@@ -97,9 +95,6 @@ class HostExecutor : public internal::StreamExecutorInterface {
   bool SynchronizeAllActivity() override { return true; }
   absl::Status SynchronousMemZero(DeviceMemoryBase* location,
                                   uint64_t size) override;
-
-  absl::Status SynchronousMemSet(DeviceMemoryBase* location, int value,
-                                 uint64_t size) override;
 
   absl::Status SynchronousMemcpy(DeviceMemoryBase* gpu_dst,
                                  const void* host_src, uint64_t size) override;
@@ -144,10 +139,9 @@ class HostExecutor : public internal::StreamExecutorInterface {
     return true;
   }
 
-  std::unique_ptr<internal::EventInterface> CreateEventImplementation()
-      override;
+  std::unique_ptr<EventInterface> CreateEventImplementation() override;
 
-  std::unique_ptr<internal::StreamInterface> GetStreamImplementation() override;
+  std::unique_ptr<StreamInterface> GetStreamImplementation() override;
 
  private:
   int device_ordinal_;

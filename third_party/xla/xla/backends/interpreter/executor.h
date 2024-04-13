@@ -39,13 +39,13 @@ limitations under the License.
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/stream_executor/stream_executor_internal.h"
+#include "xla/stream_executor/stream_executor_interface.h"
 #include "xla/xla_data.pb.h"
 
 namespace stream_executor {
 namespace interpreter {
 
-class XlaInterpreterExecutor : public internal::StreamExecutorInterface {
+class XlaInterpreterExecutor : public StreamExecutorInterface {
  public:
   explicit XlaInterpreterExecutor(int device_ordinal)
       : device_ordinal_(device_ordinal) {}
@@ -73,8 +73,6 @@ class XlaInterpreterExecutor : public internal::StreamExecutorInterface {
   void HostMemoryDeallocate(void *mem) override {
     delete[] static_cast<char *>(mem);
   }
-  bool HostMemoryRegister(void *mem, uint64_t size) override { return true; }
-  bool HostMemoryUnregister(void *mem) override { return true; }
 
   absl::Status Memcpy(Stream *stream, void *host_dst,
                       const DeviceMemoryBase &dev_src, uint64_t size) override;
@@ -104,11 +102,6 @@ class XlaInterpreterExecutor : public internal::StreamExecutorInterface {
   absl::Status SynchronousMemZero(DeviceMemoryBase *location,
                                   uint64_t size) override {
     return absl::InternalError("Interpreter can not memzero");
-  }
-
-  absl::Status SynchronousMemSet(DeviceMemoryBase *location, int value,
-                                 uint64_t size) override {
-    return absl::InternalError("Interpreter can not memset");
   }
 
   absl::Status SynchronousMemcpy(DeviceMemoryBase *dev_dst,
@@ -169,13 +162,11 @@ class XlaInterpreterExecutor : public internal::StreamExecutorInterface {
     return true;
   }
 
-  std::unique_ptr<internal::EventInterface> CreateEventImplementation()
-      override {
+  std::unique_ptr<EventInterface> CreateEventImplementation() override {
     return nullptr;
   }
 
-  std::unique_ptr<internal::StreamInterface> GetStreamImplementation()
-      override {
+  std::unique_ptr<StreamInterface> GetStreamImplementation() override {
     return std::make_unique<host::HostStream>();
   }
 

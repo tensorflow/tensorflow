@@ -189,15 +189,13 @@ class Stream {
 
   // Entrain onto the stream: a memcpy to a host destination from a GPU source
   // of the given target size. host_dst must be a pointer to host memory
-  // allocated by StreamExecutor::HostMemoryAllocate or otherwise allocated and
-  // then registered with StreamExecutor::HostMemoryRegister.
+  // allocated by StreamExecutor::HostMemoryAllocate.
   absl::Status Memcpy(void *host_dst, const DeviceMemoryBase &gpu_src,
                       uint64_t size);
 
   // Entrain onto the stream: a memcpy to a GPU destination from a host source
   // of the given target size. host_src must be a pointer to host memory
-  // allocated by StreamExecutor::HostMemoryAllocate or otherwise allocated and
-  // then registered with StreamExecutor::HostMemoryRegister.
+  // allocated by StreamExecutor::HostMemoryAllocate.
   absl::Status Memcpy(DeviceMemoryBase *gpu_dst, const void *host_src,
                       uint64_t size);
 
@@ -257,7 +255,7 @@ class Stream {
 
   // Returns the (opaque) platform-specific backing object. Ownership is not
   // transferred to the caller.
-  internal::StreamInterface *implementation() { return implementation_.get(); }
+  StreamInterface *implementation() { return implementation_.get(); }
 
   // Entrains onto the stream a callback to the host (from the device).
   // Behaves as DoHostCallbackWithStatus below, but the callback should
@@ -316,7 +314,7 @@ class Stream {
 
   // The platform-dependent implementation that the StreamExecutor interface
   // delegates to.
-  std::unique_ptr<internal::StreamInterface> implementation_;
+  std::unique_ptr<StreamInterface> implementation_;
 
   // mutex that guards the allocation / error state flags.
   // Mutable so that it can be obtained via const reader lock.

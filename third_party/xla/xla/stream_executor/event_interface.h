@@ -13,22 +13,22 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/stream_executor/host_memory_allocation.h"
-
-#include <cstdint>
-
-#include "xla/stream_executor/stream_executor_interface.h"
+#ifndef XLA_STREAM_EXECUTOR_EVENT_INTERFACE_H_
+#define XLA_STREAM_EXECUTOR_EVENT_INTERFACE_H_
 
 namespace stream_executor {
 
-HostMemoryAllocation::HostMemoryAllocation(void* ptr, uint64_t size,
-                                           StreamExecutorInterface* executor)
-    : ptr_(ptr), size_(size), executor_(executor) {}
+// Base class for all kinds of Events supported by StreamExecutors.
+class EventInterface {
+ public:
+  EventInterface() = default;
+  virtual ~EventInterface() = default;
 
-HostMemoryAllocation::~HostMemoryAllocation() {
-  if (ptr_ != nullptr && executor_ != nullptr) {
-    executor_->HostMemoryDeallocate(ptr_);
-  }
-}
+ private:
+  EventInterface(const EventInterface&) = delete;
+  void operator=(const EventInterface&) = delete;
+};
 
 }  // namespace stream_executor
+
+#endif  // XLA_STREAM_EXECUTOR_EVENT_INTERFACE_H_

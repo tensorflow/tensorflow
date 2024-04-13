@@ -1,4 +1,4 @@
-/* Copyright 2015 The OpenXLA Authors.
+/* Copyright 2024 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,29 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// Interfaces for platform-dependent implementations to satisfy. This are
-// delegated to from the StreamExecutor in pointer-to-implementation style; i.e.
-// the StreamExecutor is just a husk that delegates calls to the
-// platform-specific objects which implement the interfaces defined here.
+#ifndef XLA_STREAM_EXECUTOR_STREAM_EXECUTOR_INTERFACE_H_
+#define XLA_STREAM_EXECUTOR_STREAM_EXECUTOR_INTERFACE_H_
 
-#ifndef XLA_STREAM_EXECUTOR_STREAM_EXECUTOR_INTERNAL_H_
-#define XLA_STREAM_EXECUTOR_STREAM_EXECUTOR_INTERNAL_H_
-
-#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
-#include <string>
-#include <variant>
 
-#include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/stream_executor/allocator_stats.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/command_buffer.h"
-#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/event.h"
@@ -45,115 +35,69 @@ limitations under the License.
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/module_spec.h"
-#include "xla/stream_executor/platform.h"
-#include "xla/stream_executor/platform/port.h"
+#include "xla/stream_executor/stream_interface.h"
 
 namespace stream_executor {
 
 class Stream;
 
-namespace internal {
-
-//===----------------------------------------------------------------------===//
-// EventInterface
-//===----------------------------------------------------------------------===//
-
-// Platform-dependent interface class for the generic Events interface, in
-// the PIMPL style.
-class EventInterface {
- public:
-  EventInterface() = default;
-  virtual ~EventInterface() = default;
-
- private:
-  EventInterface(const EventInterface&) = delete;
-  void operator=(const EventInterface&) = delete;
-};
-
-//===----------------------------------------------------------------------===//
-// StreamInterface
-//===----------------------------------------------------------------------===//
-
-// Pointer-to-implementation object type (i.e. the Stream class delegates to
-// this interface) with virtual destruction. This class exists for the
-// platform-dependent code to hang any kernel data/resource info/functionality
-// off of.
-class StreamInterface {
- public:
-  // Default constructor for the abstract interface.
-  StreamInterface() = default;
-
-  // Default destructor for the abstract interface.
-  virtual ~StreamInterface() = default;
-
-  // Sets priority for a stream.
-  virtual void SetPriority(StreamPriority priority) {}
-
-  virtual void SetPriority(int priority) {}
-
-  // Gets priority for a stream.
-  virtual std::variant<StreamPriority, int> priority() const {
-    return StreamPriority::Default;
-  }
-
-  // Returns a pointer to a platform specific stream associated with this object
-  // if it exists, or nullptr otherwise. This is available via Stream public API
-  // as Stream::PlatformSpecificHandle, and should not be accessed directly
-  // outside of a StreamExecutor package.
-  virtual void* platform_specific_stream() { return nullptr; }
-
- private:
-  StreamInterface(const StreamInterface&) = delete;
-  void operator=(const StreamInterface&) = delete;
-};
-
-//===----------------------------------------------------------------------===//
-// StreamExecutorInterface
-//===----------------------------------------------------------------------===//
-
-// Interface for the different StreamExecutor platforms (i.e. CUDA, OpenCL).
-//
-// Various platforms will provide an implementation that satisfy this interface.
+// Interface which defines the method for interacting with an accelerator device
+// (e.g. GPU, TPU).
 class StreamExecutorInterface {
  public:
-  // Default constructor for the abstract interface.
   StreamExecutorInterface() = default;
-
-  // Default destructor for the abstract interface.
   virtual ~StreamExecutorInterface() = default;
 
-  // See the StreamExecutor interface for comments on the same-named methods.
+  // Initializes the device for use.
   virtual absl::Status Init() = 0;
 
-  // This value is cached by the wrapping StreamExecutor instance, so it's OK if
-  // this function is slow.
-  //
-  // The wrapping StreamExecutor will use the platform name if this is nullopt.
-  virtual std::optional<std::string> MakeDeviceDescriptionStr() const {
-    return std::nullopt;
-  }
-
+  // Returns the device ordinal.
   virtual int device_ordinal() const { return -1; }
 
+  // Retrieves (loads) a kernel, if one exists.
+  //
+  // Parameters:
+  //   spec: The MultiKernelLoaderSpec is usually generated as a compile-time
+  //    constant into an appropriate namespace.
+  //   kernel: Outparam that the kernel is loaded into. A given Kernel
+  //    instantiation should not be loaded into more than once.
   virtual absl::Status GetKernel(const MultiKernelLoaderSpec& spec,
                                  Kernel* kernel) {
     return absl::UnimplementedError("Not Implemented");
   }
+
+  // Unloads the module with handle `module_handle`.
   virtual bool UnloadModule(ModuleHandle module_handle) { return false; }
+
+  // Loads a module for the platform this StreamExecutor is acting upon.
+  //
+  // `spec` describes the module to be loaded.  On success writes the handle for
+  // the loaded module to `module_handle` and returns OkStatus().  Otherwise,
+  // returns the error which has occurred.
   virtual absl::Status LoadModule(const MultiModuleLoaderSpec& spec,
                                   ModuleHandle* module_handle) {
     return absl::UnimplementedError("Not Implemented");
   }
+
+  // Creates a shared constant using the content provided.
   virtual absl::StatusOr<std::shared_ptr<DeviceMemoryBase>>
   CreateOrShareConstant(Stream* stream, absl::Span<const uint8_t> content) {
     return absl::UnimplementedError("Not Implemented");
   }
+
+  // Launches a data parallel kernel with the given thread/block
+  // dimensionality and already-packed args/sizes to pass to the underlying
+  // platform driver.
+
   virtual absl::Status Launch(Stream* stream, const ThreadDim& thread_dims,
                               const BlockDim& block_dims, const Kernel& k,
                               const KernelArgs& args) {
     return absl::UnimplementedError("Not Implemented");
   }
 
+  // Launches a data parallel kernel with the given thread/block
+  // dimensionality and already-packed args/sizes to pass to the underlying
+  // platform driver.
   virtual absl::Status Launch(Stream* stream, const ThreadDim& thread_dims,
                               const BlockDim& block_dims,
                               const ClusterDim& cluster_dims, const Kernel& k,
@@ -161,18 +105,26 @@ class StreamExecutorInterface {
     return absl::UnimplementedError("Not Implemented");
   }
 
+  // Submits command buffer for execution to the underlying platform driver.
   virtual absl::Status Submit(Stream* stream,
                               const CommandBuffer& command_buffer) {
     return absl::UnimplementedError("Not Implemented");
   }
 
-  // Releases any state associated with the kernel.
+  // Releases any state associated with the previously loaded kernel.
   virtual void UnloadKernel(const Kernel* kernel) {}
+
+  // Synchronously allocates size bytes on the underlying platform and returns
+  // a DeviceMemoryBase representing that allocation. In the case of failure,
+  // nullptr is returned.
   virtual DeviceMemoryBase Allocate(uint64_t size, int64_t memory_space) = 0;
   DeviceMemoryBase Allocate(uint64_t size) {
     return Allocate(size, /*memory_space=*/0);
   }
+  // Deallocates the DeviceMemory previously allocated via this interface.
+  // Deallocation of a nullptr-representative value is permitted.
   virtual void Deallocate(DeviceMemoryBase* mem) = 0;
+
   // Allocates unified memory space of the given size, if supported.
   // See
   // https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#um-unified-memory-programming-hd
@@ -182,72 +134,159 @@ class StreamExecutorInterface {
   // Deallocates unified memory space previously allocated with
   // UnifiedMemoryAllocate.
   virtual void UnifiedMemoryDeallocate(void* mem) {}
+
+  // Allocates collective device memory using ncclMemAlloc.
+  // See
+  // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/usage/bufferreg.html
+  // for more details on User Buffer Registration.
   virtual absl::StatusOr<void*> CollectiveMemoryAllocate(uint64_t size) {
     return absl::UnimplementedError("Not implemented");
   }
+
+  // Deallocates collective device memory previously allocated with
+  // CollectiveMemoryAllocate.
   virtual absl::Status CollectiveMemoryDeallocate(void* mem) {
     return absl::UnimplementedError("Not implemented");
   }
+
+  // Allocates a region of host memory and registers it with the platform API.
+  // Memory allocated in this manner is required for use in asynchronous memcpy
+  // operations, such as Stream::Memcpy.
   virtual absl::StatusOr<std::unique_ptr<MemoryAllocation>> HostMemoryAllocate(
       uint64_t size) = 0;
+
+  // Deallocates a region of host memory allocated by HostMemoryAllocate().
   virtual void HostMemoryDeallocate(void* mem) = 0;
-  virtual bool HostMemoryRegister(void* mem, uint64_t size) = 0;
-  virtual bool HostMemoryUnregister(void* mem) = 0;
+
+  // Synchronizes all activity occurring in the StreamExecutor's context.
   virtual bool SynchronizeAllActivity() = 0;
+
+  // Blocks the caller while "size" bytes are zeroed out (in POD fashion) at the
+  // given location in device memory.
   virtual absl::Status SynchronousMemZero(DeviceMemoryBase* location,
                                           uint64_t size) = 0;
-  virtual absl::Status SynchronousMemSet(DeviceMemoryBase* location, int value,
-                                         uint64_t size) = 0;
-  virtual absl::Status SynchronousMemcpy(DeviceMemoryBase* gpu_dst,
+
+  // Blocks the caller while "size" bytes are copied to the given location in
+  // device memory.
+  virtual absl::Status SynchronousMemcpy(DeviceMemoryBase* device_dst,
                                          const void* host_src,
                                          uint64_t size) = 0;
+
+  // Blocks the caller while "size" bytes are copied to the given location in
+  // host memory.
   virtual absl::Status SynchronousMemcpy(void* host_dst,
-                                         const DeviceMemoryBase& gpu_src,
+                                         const DeviceMemoryBase& device_src,
                                          uint64_t size) = 0;
+
+  // Enqueues a memcpy operation onto stream, with a device destination location
+  // and a device source location, with target size . Peer access should
+  // have been enabled between the StreamExecutors owning the device memory
+  // regions.
   virtual absl::Status SynchronousMemcpyDeviceToDevice(
-      DeviceMemoryBase* gpu_dst, const DeviceMemoryBase& gpu_src,
+      DeviceMemoryBase* device_dst, const DeviceMemoryBase& device_src,
       uint64_t size) = 0;
+
+  // Enqueues an operation onto stream to zero out size bytes at the given
+  // device memory location. Neither stream nor location may be null. Returns
+  // whether the operation was successfully enqueued onto the stream.
   virtual absl::Status MemZero(Stream* stream, DeviceMemoryBase* location,
                                uint64_t size) = 0;
+
+  // Enqueues an operation onto stream to set 8-bit patterns starting at
+  // location, for byte count given by size.  Returns whether the operation was
+  // successfully enqueued onto the stream.
   virtual absl::Status Memset(Stream* stream, DeviceMemoryBase* location,
                               uint8 pattern, uint64_t size) {
     return absl::InternalError("Not implemented");
   }
+
+  // Enqueues an operation onto stream to set 32-bit patterns starting at
+  // location, for byte count given by size. size must be 32-bit quantified
+  // (i.e. evenly divisible by 4). Returns whether the operation was
+  // successfully enqueued onto the stream.
   virtual absl::Status Memset32(Stream* stream, DeviceMemoryBase* location,
                                 uint32_t pattern, uint64_t size) = 0;
+
+  // Enqueues a memcpy operation onto stream, with a host destination location
+  // host_dst and a device memory source, with target size size.
   virtual absl::Status Memcpy(Stream* stream, void* host_dst,
-                              const DeviceMemoryBase& gpu_src,
+                              const DeviceMemoryBase& device_src,
                               uint64_t size) = 0;
-  virtual absl::Status Memcpy(Stream* stream, DeviceMemoryBase* gpu_dst,
+
+  // Enqueues a memcpy operation onto stream, with a device destination location
+  // and a host memory source, with target size size.
+  virtual absl::Status Memcpy(Stream* stream, DeviceMemoryBase* device_dst,
                               const void* host_src, uint64_t size) = 0;
-  virtual bool MemcpyDeviceToDevice(Stream* stream, DeviceMemoryBase* gpu_dst,
-                                    const DeviceMemoryBase& gpu_src,
+
+  // Enqueues a memcpy operation onto stream, with a device destination location
+  // and a device source location, with target size size. Peer access should
+  // have been enabled between the StreamExecutors owning the device memory
+  // regions.
+  virtual bool MemcpyDeviceToDevice(Stream* stream,
+                                    DeviceMemoryBase* device_dst,
+                                    const DeviceMemoryBase& device_src,
                                     uint64_t size) = 0;
+
+  // Enqueues on a stream a user-specified function to be run on the host.
   virtual bool HostCallback(Stream* stream,
                             absl::AnyInvocable<absl::Status() &&> callback) = 0;
+
+  // Performs platform-specific allocation and initialization of an event.
   virtual absl::Status AllocateEvent(Event* event) = 0;
+
+  // Performs platform-specific deallocation and cleanup of an event.
   virtual absl::Status DeallocateEvent(Event* event) = 0;
+
+  // Inserts the specified event at the end of the specified stream.
   virtual absl::Status RecordEvent(Stream* stream, Event* event) = 0;
+
+  // Waits for the specified event at the end of the specified stream.
   virtual absl::Status WaitForEvent(Stream* stream, Event* event) = 0;
+
+  // Waits for the specified event at the end of the raw platform-specific
+  // stream.
   virtual absl::Status WaitForEventOnExternalStream(std::intptr_t stream,
                                                     Event* event) {
     return absl::UnimplementedError(
         "WaitForEventOnExternalStream not supported on this executor.");
   }
+
+  // Requests the current status of the event from the underlying platform.
   virtual Event::Status PollForEventStatus(Event* event) = 0;
+
+  // Allocates stream resources on the underlying platform and initializes its
+  // internals.
   virtual bool AllocateStream(Stream* stream) = 0;
+
+  // Deallocates stream resources on the underlying platform.
   virtual void DeallocateStream(Stream* stream) = 0;
+
+  // Causes dependent to not begin execution until other has finished its
+  // last-enqueued work.
   virtual bool CreateStreamDependency(Stream* dependent, Stream* other) = 0;
+
+  // Causes the host code to synchronously wait for operations enqueued
+  // onto stream to complete. Effectively a join on the asynchronous device
+  // operations enqueued on the stream before this program point.
   virtual absl::Status BlockHostUntilDone(Stream* stream) = 0;
+
+  // Without blocking the device, retrieve the current stream status.
   virtual absl::Status GetStatus(Stream* stream) {
     return absl::UnimplementedError(
         "GetStatus is not supported on this executor.");
   }
+  // Enables peer access from this StreamExecutor to memory
+  // allocated by other, such that launched device code, memcpies, etc may
+  // access it directly.
   virtual absl::Status EnablePeerAccessTo(StreamExecutorInterface* other) = 0;
+
+  // Returns whether it's possible to enable peer access from this
+  // StreamExecutor to memory allocated by another.
   virtual bool CanEnablePeerAccessTo(StreamExecutorInterface* other) = 0;
 
-  virtual int64_t GetDeviceLoad() { return -1; }
-
+  // Returns the underlying device memory usage information, if it is available.
+  // If it is not available (false is returned), free/total may not be
+  // initialized.
   virtual bool DeviceMemoryUsage(int64_t* free, int64_t* total) const {
     return false;
   }
@@ -272,28 +311,22 @@ class StreamExecutorInterface {
   virtual absl::StatusOr<std::unique_ptr<DeviceDescription>>
   CreateDeviceDescription() const = 0;
 
-  // Gets-or-creates (creates with memoization) a BlasSupport datatype that can
-  // be used to execute BLAS routines on the current platform. This is typically
-  // not user-facing, as users will use the Stream::ThenBlas* family of routines
-  // to entrain BLAS operations. See blas.h for additional details.
-  //
-  // Ownership is not transferred to the caller -- ownership is retained by this
-  // object for memoization. This BLAS interface is also only expected to be
-  // used by a Stream for entraining calls to BLAS functionality.
+  // Gets-or-creates a BlasSupport datatype that can be used to execute BLAS
+  // routines on the current platform.
   //
   // Returns null if there was an error initializing the BLAS support for the
   // underlying platform.
   virtual blas::BlasSupport* AsBlas() { return nullptr; }
 
-  // Gets-or-creates (creates with memoization) a FftSupport datatype that can
-  // be used to execute FFT routines on the current platform.
+  // Gets or creates a FftSupport datatype that can be used to execute FFT
+  // routines on the current platform.
   //
   // Returns null if there was an error initializing the FFT support for the
   // underlying platform.
   virtual fft::FftSupport* AsFft() { return nullptr; }
 
-  // Gets-or-creates (creates with memoization) a DnnSupport datatype that can
-  // be used for neural network routines on the current platform.
+  // Gets-or-creates  a DnnSupport datatype that can be used for neural network
+  // routines on the current platform.
   //
   // Returns null if there was an error initializing the DNN support for the
   // underlying platform.
@@ -304,25 +337,26 @@ class StreamExecutorInterface {
   virtual std::unique_ptr<EventInterface> CreateEventImplementation() = 0;
   virtual std::unique_ptr<StreamInterface> GetStreamImplementation() = 0;
 
+  // Creates a new Kernel object.
+  // TODO(klucke) Combine with GetKernel.
   virtual absl::StatusOr<std::unique_ptr<Kernel>> CreateKernel() {
     return absl::UnimplementedError("Kernels are not implemented");
   }
 
+  // Creates a new CommandBuffer object.
   virtual absl::StatusOr<std::unique_ptr<CommandBuffer>> CreateCommandBuffer(
       CommandBuffer::Mode mode) {
     return absl::UnimplementedError("Command buffers are not implemented");
   }
 
-  // Return allocator statistics.
+  // Returns allocator statistics.
   virtual std::optional<AllocatorStats> GetAllocatorStats() {
     return std::nullopt;
   }
 
-  // If implemented, clears the internal stats except for the `in_use` fields
-  // and sets the `peak_bytes_in_use` to be equal to the `bytes_in_use`. Returns
-  // true if implemented.
-  //
-  // REQUIRES: GetAllocatorStats is overridden.
+  // Clears the internal stats except for the `in_use` fields  and sets the
+  // `peak_bytes_in_use` to be equal to the `bytes_in_use`. Returns true if
+  // implemented.
   virtual bool ClearAllocatorStats() { return false; }
 
   // Clears the compilation cache from volatile memory. Returns OK if no
@@ -331,15 +365,13 @@ class StreamExecutorInterface {
   virtual absl::Status FlushCompilationCache() { return absl::OkStatus(); }
 
   // Returns a stream allocated by this executor, or nullptr if not found.
-  // Performs linear search over alive GPU streams.
-  virtual Stream* FindAllocatedStream(void* /*gpu_stream*/) { return nullptr; }
+  virtual Stream* FindAllocatedStream(void* device_stream) { return nullptr; }
 
  private:
   StreamExecutorInterface(const StreamExecutorInterface&) = delete;
   void operator=(const StreamExecutorInterface&) = delete;
 };
 
-}  // namespace internal
 }  // namespace stream_executor
 
-#endif  // XLA_STREAM_EXECUTOR_STREAM_EXECUTOR_INTERNAL_H_
+#endif  // XLA_STREAM_EXECUTOR_STREAM_EXECUTOR_INTERFACE_H_

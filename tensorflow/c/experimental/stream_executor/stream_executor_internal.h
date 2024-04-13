@@ -20,10 +20,12 @@ limitations under the License.
 
 #include "tensorflow/c/experimental/stream_executor/stream_executor.h"
 #include "tensorflow/c/tf_status_helper.h"
+#include "xla/stream_executor/event_interface.h"
 #include "xla/stream_executor/executor_cache.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/stream_executor/stream_executor_internal.h"
+#include "xla/stream_executor/stream_executor_interface.h"
+#include "xla/stream_executor/stream_interface.h"
 #include "tsl/platform/statusor.h"
 
 namespace stream_executor {
@@ -95,7 +97,7 @@ class CPlatform : public Platform {
   stream_executor::ExecutorCache executor_cache_;
 };
 
-class CStream : public internal::StreamInterface {
+class CStream : public StreamInterface {
  public:
   CStream(SP_Device* device, SP_StreamExecutor* stream_executor)
       : device_(device),
@@ -125,7 +127,7 @@ class CStream : public internal::StreamInterface {
   SP_Stream stream_handle_;
 };
 
-class CEvent : public internal::EventInterface {
+class CEvent : public EventInterface {
  public:
   CEvent(SP_Device* device, SP_StreamExecutor* stream_executor)
       : device_(device),

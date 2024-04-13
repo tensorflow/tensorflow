@@ -208,7 +208,7 @@ cc_library(
     hdrs = ["host_memory_allocation.h"],
     deps = [
         ":memory_allocation",
-        ":stream_executor_internal",  # TODO(b/323534971): Remove dependency on Interface.
+        ":stream_executor_interface",
     ],
 )
 
@@ -359,11 +359,13 @@ exports_files(["lazy_op_runner.h"])
 # implementation in static build configuration), or a header only `stream_executor_headers`.
 
 cc_library(
-    name = "stream_executor_internal",
-    hdrs = ["stream_executor_internal.h"],
-    visibility = internal_visibility([":internal"]),
+    name = "stream_executor_interface",
+    hdrs = [
+        "stream_executor_interface.h",
+    ],
     deps = [
         ":stream_executor_headers",
+        ":stream_interface",
         "//xla/stream_executor/platform",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/status",
@@ -382,7 +384,7 @@ cc_library(
 cc_library(
     name = "stream_executor_headers",
     hdrs = [
-        "stream_executor_internal.h",  # TODO(301020144): Remove internal header
+        "stream_executor_interface.h",
         "stream_executor_pimpl.h",  # TODO(301020144): Remove internal header
         ":stream_executor_api_headers",
         ":stream_executor_plugin_headers",
@@ -391,6 +393,7 @@ cc_library(
     deps = STREAM_EXECUTOR_DEPENDENCIES + if_static([
         "@com_google_protobuf//:protobuf",  # indirectly-used by dnn.h
     ]) + [
+        ":stream_interface",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status:statusor",
         "@local_tsl//tsl/platform:thread_annotations",
@@ -413,6 +416,21 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
+    ],
+)
+
+cc_library(
+    name = "event_interface",
+    hdrs = ["event_interface.h"],
+    deps = [
+    ],
+)
+
+cc_library(
+    name = "stream_interface",
+    hdrs = ["stream_interface.h"],
+    deps = [
+        ":platform",
     ],
 )
 
@@ -440,7 +458,7 @@ cc_library(
     visibility = ["//visibility:private"],
     deps = [
         ":stream_executor_headers",
-        ":stream_executor_internal",
+        ":stream_executor_interface",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -457,8 +475,9 @@ cc_library(
     hdrs = ["event.h"],
     visibility = ["//visibility:private"],
     deps = [
+        ":event_interface",
         ":stream_executor_headers",
-        ":stream_executor_internal",
+        ":stream_executor_interface",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
     ],
@@ -504,7 +523,7 @@ cc_library(
         ":kernel_spec",
         ":platform",
         ":stream_executor_headers",
-        ":stream_executor_internal",
+        ":stream_executor_interface",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/meta:type_traits",
@@ -564,7 +583,7 @@ cc_library(
         ":kernel_spec",
         ":platform",
         ":stream_executor_headers",
-        ":stream_executor_internal",
+        ":stream_executor_interface",
         "//xla/tsl/util:env_var",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/functional:any_invocable",

@@ -114,7 +114,7 @@ cc_library(
         ":rocm_driver",
         "@local_config_rocm//rocm:rocm_headers",
         "//xla/stream_executor",
-        "//xla/stream_executor:stream_executor_internal",
+        "//xla/stream_executor:stream_executor_interface",
         "//xla/stream_executor/gpu:gpu_activation",
         "//xla/stream_executor/platform",
     ]),
