@@ -231,7 +231,7 @@ absl::StatusOr<bool> HloConstantFolding::Run(
 
       VLOG(4) << "Constant folded: " << instruction->ToString();
       dead_instructions.push_back(instruction);
-      HloInstruction* new_constant = computation->AddInstruction(
+      HloInstruction* new_constant = instruction->AddInstruction(
           HloInstruction::CreateConstant(std::move(result)));
       if (new_constant->shape().has_layout()) {
         // Update element_size_in_bits on the new instruction's layout. Literals

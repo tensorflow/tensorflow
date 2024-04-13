@@ -5129,10 +5129,13 @@ xla_cc_test(
         "//xla:shape_util",
         "//xla:test",
         "//xla:types",
+        "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/utils:hlo_matchers",
         "//xla/tests:hlo_test_base",
         "//xla/tests:literal_test_util",
         "//xla/tests:xla_internal_test_main",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
 
