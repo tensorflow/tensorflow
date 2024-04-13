@@ -124,14 +124,15 @@ class AbstractTfrtCpuBuffer : public PjRtBuffer {
   bool IsDeleted() override;
 
   void CopyToRemoteDevice(
-      PjRtFuture<StatusOr<std::string>> serialized_descriptor,
+      PjRtFuture<absl::StatusOr<std::string>> serialized_descriptor,
       RemoteSendCallback on_done) override {
     on_done(Unimplemented("CopyToRemoteDevice not implemented."),
             /*sends_were_enqueued=*/false);
   }
 
   void CopyToRemoteDeviceScattered(
-      PjRtFuture<StatusOr<std::vector<std::string>>> serialized_descriptors,
+      PjRtFuture<absl::StatusOr<std::vector<std::string>>>
+          serialized_descriptors,
       std::vector<RemoteSendCallback> callbacks,
       const xla::PjRtBuffer::ScatterDetails& scatter_details) override {
     for (const auto& on_done : callbacks) {
