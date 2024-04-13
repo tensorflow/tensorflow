@@ -194,7 +194,7 @@ absl::StatusOr<xla::Literal> CreateArrayLiteralFromAttr(mlir::ElementsAttr attr,
 
   xla::Shape shape = xla::TypeToShape(dense_attr.getType());
 
-  return xla::primitive_util::PrimitiveTypeSwitch<StatusOr<xla::Literal>>(
+  return xla::primitive_util::PrimitiveTypeSwitch<absl::StatusOr<xla::Literal>>(
       [&](auto primitive_type_constant) -> absl::StatusOr<xla::Literal> {
         if constexpr (xla::primitive_util::IsArrayType(
                           primitive_type_constant)) {
