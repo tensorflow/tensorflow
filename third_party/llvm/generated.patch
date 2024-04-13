@@ -1,1 +1,45 @@
 Auto generated patch. Do not edit or delete it, even if empty.
+diff -ruN --strip-trailing-cr a/compiler-rt/lib/xray/xray_trampoline_AArch64.S b/compiler-rt/lib/xray/xray_trampoline_AArch64.S
+--- a/compiler-rt/lib/xray/xray_trampoline_AArch64.S
++++ b/compiler-rt/lib/xray/xray_trampoline_AArch64.S
+@@ -138,8 +138,9 @@
+   ret
+ ASM_SIZE(__xray_ArgLoggerEntry)
+ 
++// __xray_*Event have default visibility so that they can be referenced by user
++// DSOs that do not link against the runtime.
+ .global ASM_SYMBOL(__xray_CustomEvent)
+-ASM_HIDDEN(__xray_CustomEvent)
+ ASM_TYPE_FUNCTION(__xray_CustomEvent)
+ ASM_SYMBOL(__xray_CustomEvent):
+   SAVE_REGISTERS
+@@ -153,7 +154,6 @@
+ ASM_SIZE(__xray_CustomEvent)
+ 
+ .global ASM_SYMBOL(__xray_TypedEvent)
+-ASM_HIDDEN(__xray_TypedEvent)
+ ASM_TYPE_FUNCTION(__xray_TypedEvent)
+ ASM_SYMBOL(__xray_TypedEvent):
+   SAVE_REGISTERS
+diff -ruN --strip-trailing-cr a/compiler-rt/lib/xray/xray_trampoline_x86_64.S b/compiler-rt/lib/xray/xray_trampoline_x86_64.S
+--- a/compiler-rt/lib/xray/xray_trampoline_x86_64.S
++++ b/compiler-rt/lib/xray/xray_trampoline_x86_64.S
+@@ -257,8 +257,9 @@
+ 
+ //===----------------------------------------------------------------------===//
+ 
++// __xray_*Event have default visibility so that they can be referenced by user
++// DSOs that do not link against the runtime.
+ 	.global ASM_SYMBOL(__xray_CustomEvent)
+-	ASM_HIDDEN(__xray_CustomEvent)
+ 	.align 16, 0x90
+ 	ASM_TYPE_FUNCTION(__xray_CustomEvent)
+ # LLVM-MCA-BEGIN __xray_CustomEvent
+@@ -284,7 +285,6 @@
+ //===----------------------------------------------------------------------===//
+ 
+ 	.global ASM_SYMBOL(__xray_TypedEvent)
+-	ASM_HIDDEN(__xray_TypedEvent)
+ 	.align 16, 0x90
+ 	ASM_TYPE_FUNCTION(__xray_TypedEvent)
+ # LLVM-MCA-BEGIN __xray_TypedEvent
