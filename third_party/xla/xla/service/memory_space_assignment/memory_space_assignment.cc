@@ -434,7 +434,7 @@ absl::StatusOr<std::optional<int64_t>> GetPrefetchTime(
     case PreferredPrefetchOverrideOptions::OPTIONS_NOT_SET:
       break;
   }
-  return static_cast<StatusOr<std::optional<int64_t>>>(std::nullopt);
+  return static_cast<absl::StatusOr<std::optional<int64_t>>>(std::nullopt);
 }
 
 absl::StatusOr<std::optional<int64_t>> GetOverriddenPreferredPrefetchTime(
@@ -463,7 +463,7 @@ absl::StatusOr<std::optional<int64_t>> GetOverriddenPreferredPrefetchTime(
       return prefetch_time;
     }
   }
-  return static_cast<StatusOr<std::optional<int64_t>>>(std::nullopt);
+  return static_cast<absl::StatusOr<std::optional<int64_t>>>(std::nullopt);
 }
 
 bool DoesResultMatchFilter(const HloPositionMatcher& filter,
