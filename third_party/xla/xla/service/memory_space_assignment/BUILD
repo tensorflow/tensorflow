@@ -108,7 +108,6 @@ xla_cc_test(
         "//xla/service:hlo_cost_analysis",
         "//xla/service:hlo_value",
         "//xla/service:instruction_hoister",
-        "//xla/service:time_utils",
         "//xla/service/heap_simulator",
         "//xla/service/heap_simulator:allocation_block",
         "//xla/tests:hlo_test_base",
@@ -117,7 +116,6 @@ xla_cc_test(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
@@ -184,8 +182,24 @@ cc_library(
     deps = [
         ":memory_space_assignment_proto_cc",
         "//xla:shape_util",
+        "//xla/service:time_utils",
         "//xla/service/heap_simulator",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+xla_cc_test(
+    name = "slice_test",
+    srcs = ["slice_test.cc"],
+    deps = [
+        ":slice",
+        "//xla/service:time_utils",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/log:check",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
