@@ -85,7 +85,7 @@ absl::StatusOr<Literal> MakeFakeLiteralWithSameValue(const Shape& shape,
   }
   Shape new_shape = shape;
   new_shape.mutable_layout()->clear_tiles();
-  return primitive_util::PrimitiveTypeSwitch<StatusOr<Literal>>(
+  return primitive_util::PrimitiveTypeSwitch<absl::StatusOr<Literal>>(
       [&](auto type) -> absl::StatusOr<Literal> {
         if constexpr (primitive_util::IsArrayType(type)) {
           using NativeT = primitive_util::NativeTypeOf<type>;
