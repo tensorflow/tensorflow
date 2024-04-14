@@ -150,7 +150,7 @@ BatchFunctionFallbackKernelBase::BatchFunctionFallbackKernelBase(
 
 Status BatchFunctionFallbackKernelBase::ValidateAllowedBatchSizes() const {
   if (allowed_batch_sizes_.empty()) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   int32_t last_size = 0;
   for (size_t i = 0; i < allowed_batch_sizes_.size(); ++i) {
@@ -169,7 +169,7 @@ Status BatchFunctionFallbackKernelBase::ValidateAllowedBatchSizes() const {
 
     last_size = size;
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void BatchFunctionFallbackKernelBase::SetAdaptiveBatchSchedulerOptions(

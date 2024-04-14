@@ -65,7 +65,7 @@ Status GetTfrtExecutionContext(OpKernelContext* c,
   TF_RETURN_IF_ERROR(c->input("tfrt_exec_ctx", &tensor));
   int64_t exec_ctx_intptr = *reinterpret_cast<const int64_t*>(tensor->data());
   *exec_ctx = absl::bit_cast<const tfrt::ExecutionContext*>(exec_ctx_intptr);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 class FallbackBatchResource : public tensorflow::serving::BatchResourceBase {
@@ -143,7 +143,7 @@ class FallbackBatchResource : public tensorflow::serving::BatchResourceBase {
             options.low_priority_allowed_batch_sizes,
             options.mixed_priority_batching_policy),
         options.allowed_batch_sizes));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   static Status Create(
@@ -176,7 +176,7 @@ class FallbackBatchResource : public tensorflow::serving::BatchResourceBase {
                                        true /* enable large batch split */,
                                        allowed_batch_sizes, disable_padding),
         allowed_batch_sizes));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   string DebugString() const final { return "FallbackBatchResource"; }
@@ -328,14 +328,14 @@ void FallbackBatchResource::ProcessFuncBatchImpl(
   auto req_ctx = std::move(statusor).value();
 
   int64_t id = req_ctx->id();
-  tensorflow::profiler::TraceMeProducer activity(
+  tsl::profiler::TraceMeProducer activity(
       // To TraceMeConsumers in WorkQueue.
       [id] {
-        return tensorflow::profiler::TraceMeEncode("RunBefFunction",
-                                                   {{"id", id}, {"_r", 1}});
+        return tsl::profiler::TraceMeEncode("RunBefFunction",
+                                            {{"id", id}, {"_r", 1}});
       },
-      tensorflow::profiler::ContextType::kTfrtExecutor, id,
-      tensorflow::profiler::TraceMeLevel::kInfo);
+      tsl::profiler::ContextType::kTfrtExecutor, id,
+      tsl::profiler::TraceMeLevel::kInfo);
 
   tfrt::ExecutionContext batch_exec_ctx(std::move(req_ctx));
   batch_exec_ctx.set_work_queue(&exec_ctx.work_queue());
