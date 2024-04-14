@@ -917,7 +917,9 @@ cc_library(
     hdrs = ["refine_polymorphic_shapes.h"],
     deps = [
         "//xla/mlir/utils:error_util",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:BytecodeWriter",
         "@llvm-project//mlir:FuncDialect",
@@ -928,6 +930,7 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
         "@local_tsl//tsl/platform:errors",
+        "@stablehlo//:base",
         "@stablehlo//:chlo_ops",
         "@stablehlo//:stablehlo_ops",
         "@stablehlo//stablehlo/experimental:experimental_stablehlo_passes",

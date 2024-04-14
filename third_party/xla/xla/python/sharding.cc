@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/python/py_client.h"
 #include "xla/python/py_device_list.h"
 #include "xla/python/sharded_device_array.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/logging.h"
 
 namespace jax {
