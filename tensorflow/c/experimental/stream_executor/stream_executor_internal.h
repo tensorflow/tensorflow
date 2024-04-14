@@ -37,14 +37,15 @@ typedef void (*SEInitPluginFn)(SE_PlatformRegistrationParams* const,
 
 // Registers StreamExecutor platform. `device_type` and `platform_name` are
 // output parameters.
-tsl::Status InitStreamExecutorPlugin(void* dso_handle, std::string* device_type,
-                                     std::string* platform_name);
+absl::Status InitStreamExecutorPlugin(void* dso_handle,
+                                      std::string* device_type,
+                                      std::string* platform_name);
 
 // Allow registering a StreamExecutor plugin using a function (used for
 // testing).
-tsl::Status InitStreamExecutorPlugin(SEInitPluginFn init_fn,
-                                     std::string* device_type,
-                                     std::string* platform_name);
+absl::Status InitStreamExecutorPlugin(SEInitPluginFn init_fn,
+                                      std::string* device_type,
+                                      std::string* platform_name);
 
 // This file implements core stream executor base classes in terms of
 // the C API defined in stream_executor.h. A class "CSomething" represents a
@@ -74,12 +75,12 @@ class CPlatform : public Platform {
   }
   bool UseBfcAllocator() const { return platform_.use_bfc_allocator; }
   bool ForceMemoryGrowth() const { return platform_.force_memory_growth; }
-  tsl::StatusOr<std::unique_ptr<DeviceDescription>> DescriptionForDevice(
+  absl::StatusOr<std::unique_ptr<DeviceDescription>> DescriptionForDevice(
       int ordinal) const override;
-  tsl::StatusOr<StreamExecutor*> ExecutorForDevice(int ordinal) override;
-  tsl::StatusOr<StreamExecutor*> GetExecutor(
+  absl::StatusOr<StreamExecutor*> ExecutorForDevice(int ordinal) override;
+  absl::StatusOr<StreamExecutor*> GetExecutor(
       const StreamExecutorConfig& config) override;
-  tsl::StatusOr<std::unique_ptr<StreamExecutor>> GetUncachedExecutor(
+  absl::StatusOr<std::unique_ptr<StreamExecutor>> GetUncachedExecutor(
       const StreamExecutorConfig& config) override;
 
   void DestroyAllExecutors() { executor_cache_.DestroyAllExecutors(); }
@@ -105,10 +106,10 @@ class CStream : public StreamInterface {
         stream_handle_(nullptr) {}
   ~CStream() override { Destroy(); }
 
-  tsl::Status Create() {
+  absl::Status Create() {
     tensorflow::TF_StatusPtr c_status(TF_NewStatus());
     stream_executor_->create_stream(device_, &stream_handle_, c_status.get());
-    tsl::Status s = tensorflow::StatusFromTF_Status(c_status.get());
+    absl::Status s = tensorflow::StatusFromTF_Status(c_status.get());
     return s;
   }
 
@@ -135,13 +136,13 @@ class CEvent : public EventInterface {
         event_handle_(nullptr) {}
   ~CEvent() override { Destroy(); }
 
-  tsl::Status Create() {
+  absl::Status Create() {
     tensorflow::TF_StatusPtr c_status(TF_NewStatus());
     stream_executor_->create_event(device_, &event_handle_, c_status.get());
     return tensorflow::StatusFromTF_Status(c_status.get());
   }
 
-  tsl::Status Record(SP_Stream stream_handle) {
+  absl::Status Record(SP_Stream stream_handle) {
     tensorflow::TF_StatusPtr c_status(TF_NewStatus());
     stream_executor_->record_event(device_, stream_handle, event_handle_,
                                    c_status.get());

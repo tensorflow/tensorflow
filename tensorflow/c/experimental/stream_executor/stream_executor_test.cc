@@ -39,17 +39,17 @@ TEST(StreamExecutor, SuccessfulRegistration) {
     test_util::PopulateDefaultPlatformRegistrationParams(params);
   };
   std::string device_type, platform_name;
-  tsl::Status status =
+  absl::Status status =
       InitStreamExecutorPlugin(plugin_init, &device_type, &platform_name);
   TF_ASSERT_OK(status);
-  tsl::StatusOr<Platform*> maybe_platform =
+  absl::StatusOr<Platform*> maybe_platform =
       PlatformManager::PlatformWithName("MY_DEVICE");
   TF_ASSERT_OK(maybe_platform.status());
   Platform* platform = std::move(maybe_platform).value();
   ASSERT_EQ(platform->Name(), test_util::kDeviceName);
   ASSERT_EQ(platform->VisibleDeviceCount(), test_util::kDeviceCount);
 
-  tsl::StatusOr<StreamExecutor*> maybe_executor =
+  absl::StatusOr<StreamExecutor*> maybe_executor =
       platform->ExecutorForDevice(0);
   TF_ASSERT_OK(maybe_executor.status());
 }
@@ -63,7 +63,7 @@ TEST(StreamExecutor, NameNotSet) {
   };
 
   std::string device_type, platform_name;
-  tsl::Status status =
+  absl::Status status =
       InitStreamExecutorPlugin(plugin_init, &device_type, &platform_name);
   ASSERT_EQ(status.code(), tensorflow::error::FAILED_PRECONDITION);
   ASSERT_EQ(status.message(), "'name' field in SP_Platform must be set.");
@@ -78,7 +78,7 @@ TEST(StreamExecutor, InvalidNameWithSemicolon) {
   };
 
   std::string device_type, platform_name;
-  tsl::Status status =
+  absl::Status status =
       InitStreamExecutorPlugin(plugin_init, &device_type, &platform_name);
   ASSERT_EQ(status.code(), tensorflow::error::FAILED_PRECONDITION);
   EXPECT_THAT(
@@ -95,7 +95,7 @@ TEST(StreamExecutor, InvalidNameWithSlash) {
   };
 
   std::string device_type, platform_name;
-  tsl::Status status =
+  absl::Status status =
       InitStreamExecutorPlugin(plugin_init, &device_type, &platform_name);
   ASSERT_EQ(status.code(), tensorflow::error::FAILED_PRECONDITION);
   EXPECT_THAT(status.message(),
@@ -111,7 +111,7 @@ TEST(StreamExecutor, CreateDeviceNotSet) {
   };
 
   std::string device_type, platform_name;
-  tsl::Status status =
+  absl::Status status =
       InitStreamExecutorPlugin(plugin_init, &device_type, &platform_name);
   ASSERT_EQ(status.code(), tensorflow::error::FAILED_PRECONDITION);
   ASSERT_EQ(status.message(),
@@ -127,7 +127,7 @@ TEST(StreamExecutor, UnifiedMemoryAllocateNotSet) {
   };
 
   std::string device_type, platform_name;
-  tsl::Status status =
+  absl::Status status =
       InitStreamExecutorPlugin(plugin_init, &device_type, &platform_name);
   ASSERT_EQ(status.code(), tensorflow::error::FAILED_PRECONDITION);
   ASSERT_EQ(
@@ -153,7 +153,7 @@ class StreamExecutorTest : public ::testing::Test {
           platform_, test_util::DestroyPlatform, platform_fns_,
           test_util::DestroyPlatformFns, device_fns_, se_, timer_fns_);
     }
-    tsl::StatusOr<StreamExecutor*> maybe_executor =
+    absl::StatusOr<StreamExecutor*> maybe_executor =
         cplatform_->ExecutorForDevice(ordinal);
     TF_CHECK_OK(maybe_executor.status());
     return std::move(maybe_executor).value();
@@ -624,7 +624,7 @@ TEST_F(StreamExecutorTest, HostCallbackError) {
   };
   StreamExecutor* executor = GetExecutor(0);
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
-  std::function<tsl::Status()> callback = []() -> tsl::Status {
+  std::function<absl::Status()> callback = []() -> absl::Status {
     return tsl::errors::Unimplemented("Unimplemented");
   };
   ASSERT_FALSE(stream->DoHostCallbackWithStatus(callback).ok());
