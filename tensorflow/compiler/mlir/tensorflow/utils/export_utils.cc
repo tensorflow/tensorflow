@@ -89,7 +89,7 @@ Status ConvertLocation(mlir::Location inst_loc, llvm::StringRef node_name,
           name_loc.getName().strref().split('@');
       // The location points to the current node def.
       if (node_name == original_node_name && original_func_name.empty()) {
-        return OkStatus();
+        return absl::OkStatus();
       }
       debug_info->add_original_node_names(original_node_name.str());
       if (!original_func_name.empty()) {
@@ -105,22 +105,22 @@ Status ConvertLocation(mlir::Location inst_loc, llvm::StringRef node_name,
       TF_RETURN_IF_ERROR(ConvertLocation(locations[i], node_name, debug_info));
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ConvertAttribute(const mlir::BoolAttr& attr, AttrValue* value) {
   value->set_b(attr.getValue());
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ConvertAttribute(const mlir::IntegerAttr& attr, AttrValue* value) {
   value->set_i(attr.getInt());
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ConvertAttribute(const mlir::FloatAttr& attr, AttrValue* value) {
   value->set_f(attr.getValueAsDouble());
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ConvertAttribute(const mlir::ElementsAttr& attr, AttrValue* value) {
@@ -130,17 +130,17 @@ Status ConvertAttribute(const mlir::ElementsAttr& attr, AttrValue* value) {
 Status ConvertAttribute(const mlir::TF::PlaceholderAttr& attr,
                         AttrValue* value) {
   value->set_placeholder(attr.getValue().str());
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ConvertAttribute(const mlir::TF::ShapeAttr& attr, AttrValue* value) {
   SetTensorShapeProto(attr, value->mutable_shape());
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ConvertAttribute(const mlir::FlatSymbolRefAttr& attr, AttrValue* value) {
   value->mutable_func()->set_name(attr.getValue().str());
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ConvertAttribute(const mlir::TF::FuncAttr& attr, bool remove_ref_type,
@@ -150,7 +150,7 @@ Status ConvertAttribute(const mlir::TF::FuncAttr& attr, bool remove_ref_type,
   TF_RETURN_IF_ERROR(ConvertAttributes(attr.getAttrs().getValue(),
                                        /*attrs_to_ignore=*/{}, remove_ref_type,
                                        value->mutable_func()->mutable_attr()));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ConvertAttribute(const mlir::StringAttr& attr, AttrValue* value) {
@@ -158,22 +158,22 @@ Status ConvertAttribute(const mlir::StringAttr& attr, AttrValue* value) {
   switch (mangling_util::GetMangledKind(attr_value)) {
     case mangling_util::MangledKind::kUnknown: {
       value->set_s(std::string(attr_value));
-      return OkStatus();
+      return absl::OkStatus();
     }
     case mangling_util::MangledKind::kDataType: {
       DataType dtype;
       TF_RETURN_IF_ERROR(mangling_util::DemangleDataType(attr_value, &dtype));
       value->set_type(dtype);
-      return OkStatus();
+      return absl::OkStatus();
     }
     case mangling_util::MangledKind::kTensorShape:
       TF_RETURN_IF_ERROR(
           mangling_util::DemangleShape(attr_value, value->mutable_shape()));
-      return OkStatus();
+      return absl::OkStatus();
     default:
       return errors::Unimplemented("Mangled string couldn't be handled!");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ConvertAttribute(mlir::Type type, bool remove_ref_type,
@@ -182,7 +182,7 @@ Status ConvertAttribute(mlir::Type type, bool remove_ref_type,
   TF_RETURN_IF_ERROR(ConvertToDataType(type, &dtype));
   if (tensorflow::IsRefType(dtype)) dtype = tensorflow::RemoveRefType(dtype);
   value->set_type(dtype);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ConvertAttribute(const mlir::TypeAttr& type, bool remove_ref_type,
@@ -192,7 +192,7 @@ Status ConvertAttribute(const mlir::TypeAttr& type, bool remove_ref_type,
 
 Status ConvertAttribute(const mlir::UnitAttr& attr, AttrValue* value) {
   value->clear_value();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ConvertAttribute(const mlir::ArrayAttr& attr, bool remove_ref_type,
@@ -263,7 +263,7 @@ Status ConvertAttribute(const mlir::ArrayAttr& attr, bool remove_ref_type,
       return errors::Unimplemented("Unhandled attribute!");
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Returns true if the executor/control dialect op should map to Ref node in
@@ -444,7 +444,7 @@ Status ConvertAttributes(
   for (auto& it : func_call_attrs) {
     (*values)[it.first] = std::move(it.second);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status SetShapeAttribute(absl::string_view name, mlir::ShapedType shaped_type,
@@ -467,7 +467,7 @@ Status SetShapeAttribute(absl::string_view name, mlir::ShapedType shaped_type,
                                      actual_shape.ShortDebugString());
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 bool IsLegacyCallInstruction(mlir::Operation* inst) {
@@ -476,7 +476,7 @@ bool IsLegacyCallInstruction(mlir::Operation* inst) {
 
 Status AddTensorFlowOpPrefix(std::string prefix) {
   GlobalOpPrefixes()->insert(prefix);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow
