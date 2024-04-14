@@ -125,9 +125,9 @@ absl::StatusOr<mlir::ModuleOp> RunQuantization(
   // after variable freezing.
   mlir::PassManager pm(module_op.getContext());
   pm.addPass(mlir::TF::CreateTFShapeInferencePass());
-  mlir::odml::AddLegalizeTFToStablehloPasses(
-      pm, /*skip_quantization_ops=*/true,
-      /*skip_resize=*/false, /*skip_stateful_partitioned_call=*/false);
+  mlir::odml::AddLegalizeTFToStablehloPasses(pm, /*skip_quantization_ops=*/true,
+                                             /*skip_resize=*/false,
+                                             /*skip_partitioned_calls=*/false);
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::quant::stablehlo::createRemoveShardingCustomCallPass());
   if (failed(pm.run(module_op))) {
