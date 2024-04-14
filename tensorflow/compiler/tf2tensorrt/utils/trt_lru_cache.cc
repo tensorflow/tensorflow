@@ -13,15 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/tf2tensorrt/utils/trt_lru_cache.h"
-
 #include <sstream>
-
-#include "tensorflow/compiler/tf2tensorrt/utils/trt_allocator.h"
-#include "tensorflow/core/framework/device_base.h"
-#include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/framework/tensor_shape.h"
-#include "tensorflow/core/platform/mutex.h"
 
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
 #include "third_party/tensorrt/NvInfer.h"
