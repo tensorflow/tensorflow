@@ -547,82 +547,6 @@ class MemorySpaceAssignment {
   absl::flat_hash_map<int64_t, std::vector<HloInstruction*>> schedule_before_;
 };
 
-// A BufferIntervalComparator that utilizes MemoryBoundedness as its primary
-// sorting criteria.
-//
-// This comparator caches HloValues -> latest use time.
-class MemoryBoundednessBufferIntervalComparator
-    : public BufferIntervalComparator {
- public:
-  MemoryBoundednessBufferIntervalComparator(
-      const CostAnalysis& cost_analysis,
-      CostAnalysis::Cache* cost_analysis_cache);
-
-  MemoryBoundednessBufferIntervalComparator(
-      const CostAnalysis& cost_analysis,
-      CostAnalysis::Cache* cost_analysis_cache,
-      MsaSortOrderOverrides msa_sort_order_overrides);
-
-  ~MemoryBoundednessBufferIntervalComparator() override = default;
-
-  std::string DescribeComparisonCriteria() const override;
-  std::string CriteriaToString(
-      const MsaBufferInterval& buffer_interval) override;
-  bool LessThan(const MsaBufferInterval& lhs,
-                const MsaBufferInterval& rhs) override;
-
- private:
-  // See the value returned by DescribeComparisonCriteria() for the meaning of
-  // each tuple element.
-  using ComparisonTuple = std::tuple<int64_t, float, int64_t, int64_t, int64_t,
-                                     int64_t, BufferValue::Id>;
-
-  ComparisonTuple GetTuple(const MsaBufferInterval& buffer_interval);
-  int64_t GetLatestUseTime(const MsaBufferInterval& buffer_interval);
-  absl::flat_hash_map<const HloValue*, int64_t> buffer_to_latest_use_;
-  const CostAnalysis& cost_analysis_;
-  CostAnalysis::Cache* cost_analysis_cache_;
-
-  // Config to override alternate memory assignment sorting order for filtered
-  // buffers.
-  MsaSortOrderOverrides msa_sort_order_overrides_;
-};
-
-// The default BufferIntervalComparator used for cross-program prefetching.
-//
-// This class caches HloValue -> {latest use, cumulative use size }.
-class DefaultCrossProgramPrefetchBufferIntervalComparator
-    : public BufferIntervalComparator {
- public:
-  explicit DefaultCrossProgramPrefetchBufferIntervalComparator(
-      const HloLiveRange& hlo_live_range);
-
-  ~DefaultCrossProgramPrefetchBufferIntervalComparator() override = default;
-
-  std::string DescribeComparisonCriteria() const override;
-  std::string CriteriaToString(
-      const MsaBufferInterval& buffer_interval) override;
-  bool LessThan(const MsaBufferInterval& lhs,
-                const MsaBufferInterval& rhs) override;
-
- private:
-  // See the value returned by DescribeComparisonCriteria() for the meaning of
-  // each tuple element.
-  using ComparisonTuple =
-      std::tuple<int64_t, int64_t, int64_t, BufferValue::Id>;
-
-  struct AdditionalSortData {
-    int64_t latest_use = 0;
-    int64_t cumulative_use_size = 0;
-  };
-
-  ComparisonTuple GetTuple(const MsaBufferInterval& buffer_interval);
-
-  absl::flat_hash_map<const HloValue*, AdditionalSortData>
-      additional_sort_data_;
-  const HloLiveRange& hlo_live_range_;
-};
-
 // A struct representing an asynchronous copy with its logical start and end
 // time (time that copy done is scheduled), the resource this copy would use,
 // its destination memory space, and a unique ID.
@@ -823,8 +747,7 @@ class AlternateMemoryBestFitHeap
   // Given colocated intervals, populates allocation_values with the
   // corresponding AllocationValue objects.
   virtual void CreateAllocationValuesFromColocatedIntervals(
-      absl::Span<const AlternateMemoryBestFitHeap::BufferInterval* const>
-          colocated_intervals,
+      absl::Span<const MsaBufferInterval* const> colocated_intervals,
       std::vector<MemorySpaceAssignment::AllocationValue>& allocation_values);
 
   // Go through all the uses in the AllocationValues and find the aliasing
@@ -1225,8 +1148,7 @@ class AlternateMemoryBestFitHeap
 
   // Goes through the colocated intervals and adds any required assignment.
   void AddRequiredAssignmentsForColocatedIntervals(
-      absl::Span<const AlternateMemoryBestFitHeap::BufferInterval* const>
-          colocated_intervals);
+      absl::Span<const MsaBufferInterval* const> colocated_intervals);
 
   // Propagates aliased required assignment for a given position.
   void AddAliasedRequiredAssignment(const HloInstruction* instruction,

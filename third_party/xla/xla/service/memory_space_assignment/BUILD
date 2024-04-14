@@ -89,6 +89,7 @@ xla_cc_test(
     srcs = ["memory_space_assignment_test.cc"],
     deps = [
         ":allocation",
+        ":buffer_interval_comparator",
         ":cost_analysis",
         ":memory_space_assignment",
         ":memory_space_assignment_proto_cc",
@@ -249,6 +250,7 @@ cc_library(
     srcs = [],
     hdrs = ["options.h"],
     deps = [
+        ":buffer_interval_comparator",
         ":cost_analysis",
         ":memory_space_assignment_proto_cc",
         ":prefetch_interval_picker",
@@ -421,6 +423,30 @@ xla_cc_test(
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
+    ],
+)
+
+cc_library(
+    name = "buffer_interval_comparator",
+    srcs = ["buffer_interval_comparator.cc"],
+    hdrs = ["buffer_interval_comparator.h"],
+    deps = [
+        ":cost_analysis",
+        ":memory_space_assignment_proto_cc",
+        "//xla:shape_util",
+        "//xla:util",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/utils:hlo_live_range",
+        "//xla/service:buffer_value",
+        "//xla/service:hlo_value",
+        "//xla/service/heap_simulator",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_googlesource_code_re2//:re2",
     ],
 )
 
