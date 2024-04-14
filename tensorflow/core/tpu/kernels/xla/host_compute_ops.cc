@@ -66,8 +66,8 @@ namespace {
 static const char* const kSendFromHostOp = "_XlaSendFromHost";
 static const char* const kRecvAtHostOp = "_XlaRecvAtHost";
 
-Status MakeXlaShapes(gtl::ArraySlice<TensorShape> shapes,
-                     gtl::ArraySlice<DataType> dtypes,
+Status MakeXlaShapes(absl::Span<const TensorShape> shapes,
+                     absl::Span<const DataType> dtypes,
                      std::vector<xla::Shape>* xla_shapes,
                      xla::Shape* xla_shape) {
   for (int i = 0; i < shapes.size(); i++) {
