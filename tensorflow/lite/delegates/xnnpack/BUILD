@@ -655,6 +655,7 @@ cc_library(
     deps = [
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/core/kernels:builtin_ops",
@@ -674,6 +675,7 @@ cc_library(
         ":xnnpack_delegate_test_mode",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/core/kernels:builtin_ops",
@@ -693,6 +695,7 @@ cc_library(
         ":xnnpack_delegate_test_mode",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/core/kernels:builtin_ops",
@@ -712,6 +715,7 @@ cc_library(
         ":xnnpack_delegate_test_mode",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/core/kernels:builtin_ops",
@@ -766,6 +770,7 @@ cc_library(
     deps = [
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/core/kernels:builtin_ops",
@@ -839,6 +844,7 @@ cc_library(
         ":xnnpack_delegate_test_mode",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/core:cc_api_stable",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_conversion_utils",
@@ -861,6 +867,7 @@ cc_library(
         ":xnnpack_delegate",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/core:cc_api_stable",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_conversion_utils",
@@ -1083,7 +1090,6 @@ cc_library(
         "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_conversion_utils",
         "//tensorflow/lite/schema:schema_fbs",
-        "@FP16",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
     ],
@@ -1427,6 +1433,8 @@ cc_test(
         ":test_main",
         ":unary_elementwise_tester",
         ":xnnpack_delegate_test_mode",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -1442,6 +1450,7 @@ cc_test(
         ":leaky_relu_tester",
         ":test_main",
         ":xnnpack_delegate_test_mode",
+        "//tensorflow/lite/c:c_api_types",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -1457,6 +1466,8 @@ cc_test(
         ":test_main",
         ":unary_elementwise_tester",
         ":xnnpack_delegate_test_mode",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -1472,6 +1483,8 @@ cc_test(
         ":pool_2d_tester",
         ":test_main",
         ":xnnpack_delegate_test_mode",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -1487,6 +1500,8 @@ cc_test(
         ":binary_elementwise_tester",
         ":test_main",
         ":xnnpack_delegate_test_mode",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -1502,6 +1517,8 @@ cc_test(
         ":reduce_tester",
         ":test_main",
         ":xnnpack_delegate_test_mode",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -1532,6 +1549,8 @@ cc_test(
         ":binary_elementwise_tester",
         ":test_main",
         ":xnnpack_delegate_test_mode",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -1547,6 +1566,8 @@ cc_test(
         ":binary_elementwise_tester",
         ":test_main",
         ":xnnpack_delegate_test_mode",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -1562,6 +1583,8 @@ cc_test(
         ":test_main",
         ":unary_elementwise_tester",
         ":xnnpack_delegate_test_mode",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -1593,6 +1616,7 @@ cc_test(
         ":pad_tester",
         ":test_main",
         ":xnnpack_delegate_test_mode",
+        "//tensorflow/lite/c:c_api_types",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -1608,6 +1632,7 @@ cc_test(
         ":prelu_tester",
         ":test_main",
         ":xnnpack_delegate_test_mode",
+        "//tensorflow/lite/c:c_api_types",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -1638,6 +1663,8 @@ cc_test(
         ":quantize_tester",
         ":test_main",
         ":xnnpack_delegate_test_mode",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -1653,6 +1680,8 @@ cc_test(
         ":quantize_tester",
         ":test_main",
         ":xnnpack_delegate_test_mode",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -1668,6 +1697,8 @@ cc_test(
         ":quantize_tester",
         ":test_main",
         ":xnnpack_delegate_test_mode",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -1683,6 +1714,8 @@ cc_test(
         ":quantize_tester",
         ":test_main",
         ":xnnpack_delegate_test_mode",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -1731,6 +1764,8 @@ cc_test(
         ":test_main",
         ":unary_elementwise_tester",
         ":xnnpack_delegate_test_mode",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -1746,6 +1781,8 @@ cc_test(
         ":test_main",
         ":unary_elementwise_tester",
         ":xnnpack_delegate_test_mode",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -1761,6 +1798,8 @@ cc_test(
         ":test_main",
         ":unary_elementwise_tester",
         ":xnnpack_delegate_test_mode",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -1776,6 +1815,8 @@ cc_test(
         ":reshape_tester",
         ":test_main",
         ":xnnpack_delegate_test_mode",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -1821,6 +1862,7 @@ cc_test(
         ":resize_bilinear_tester",
         ":test_main",
         ":xnnpack_delegate_test_mode",
+        "//tensorflow/lite/c:c_api_types",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -1836,6 +1878,8 @@ cc_test(
         ":test_main",
         ":unary_elementwise_tester",
         ":xnnpack_delegate_test_mode",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -1868,6 +1912,7 @@ cc_test(
         ":dequantize_tester",
         ":test_main",
         ":xnnpack_delegate_test_mode",
+        "//tensorflow/lite/c:c_api_types",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -1883,6 +1928,8 @@ cc_test(
         ":quantized_binary_elementwise_tester",
         ":test_main",
         ":xnnpack_delegate_test_mode",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -1898,6 +1945,8 @@ cc_test(
         ":concatenation_tester",
         ":test_main",
         ":xnnpack_delegate_test_mode",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -1913,6 +1962,7 @@ cc_test(
         ":quantized_conv_2d_tester",
         ":test_main",
         ":xnnpack_delegate_test_mode",
+        "//tensorflow/lite/c:c_api_types",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -1928,6 +1978,7 @@ cc_test(
         ":quantized_depthwise_conv_2d_tester",
         ":test_main",
         ":xnnpack_delegate_test_mode",
+        "//tensorflow/lite/c:c_api_types",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -1943,6 +1994,8 @@ cc_test(
         ":depth_to_space_tester",
         ":test_main",
         ":xnnpack_delegate_test_mode",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
     ],
 )
