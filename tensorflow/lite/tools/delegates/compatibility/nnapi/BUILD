@@ -32,7 +32,8 @@ cc_library(
     copts = ["-DNNAPI_VERBOSE_VALIDATION"],
     deps = [
         "//tensorflow/lite:framework_stable",
-        "//tensorflow/lite:util",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core:cc_api_stable",
         "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
         "//tensorflow/lite/nnapi:nnapi_lib",
@@ -54,6 +55,7 @@ cc_test(
     deps = [
         ":nnapi_compatibility_lib",
         "//tensorflow/lite/core/c:c_api_types",
+        "//tensorflow/lite/delegates/nnapi:nnapi_delegate_verbose_validation",
         "//tensorflow/lite/kernels:test_util",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest_main",
@@ -72,7 +74,10 @@ cc_test(
     deps = [
         ":nnapi_delegate_compatibility_checker",
         "//tensorflow/core/platform:resource_loader",
+        "//tensorflow/lite:model_builder",
         "//tensorflow/lite/kernels:test_util",
+        "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/tools/delegates/compatibility/protos:compatibility_result_cc",
         "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
     ],
