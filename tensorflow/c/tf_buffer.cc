@@ -78,7 +78,7 @@ Status MessageToBuffer(const tensorflow::protobuf::MessageLite& in,
   out->data = buf;
   out->length = proto_size;
   out->data_deallocator = [](void* data, size_t length) { port::Free(data); };
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status BufferToMessage(const TF_Buffer* in,
@@ -87,7 +87,7 @@ Status BufferToMessage(const TF_Buffer* in,
     return errors::InvalidArgument("Unparseable ", out->GetTypeName(),
                                    " proto");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

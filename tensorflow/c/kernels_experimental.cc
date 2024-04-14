@@ -75,7 +75,7 @@ tensorflow::Status EnsureSparseVariableAccess(
     tensorflow::Var* var, bool lock_held = false) {
   auto* context = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
   if (var->copy_on_read_mode.load()) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   std::optional<mutex_lock> ml;
@@ -88,7 +88,7 @@ tensorflow::Status EnsureSparseVariableAccess(
   // copy-on-read mode is false.
   if (var->tensor()->RefCountIsOne()) {
     var->copy_on_read_mode.store(true);
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
   Tensor tmp;
   if (variantType) {
@@ -115,7 +115,7 @@ tensorflow::Status EnsureSparseVariableAccess(
   }
   *var->tensor() = tmp;
   var->copy_on_read_mode.store(true);
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 tensorflow::Status PrepareToUpdateVariable(
@@ -152,7 +152,7 @@ tensorflow::Status PrepareToUpdateVariable(
     }
     *tensor = tmp;
   }
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 tensorflow::mutex* GetTrainingVariableMutex(TF_OpKernelContext* ctx,
@@ -187,7 +187,7 @@ void TF_AssignVariable(TF_OpKernelContext* ctx, int input_index,
                                *ptr = new tensorflow::Var(value.dtype());
                                *(*ptr)->tensor() = value;
                                (*ptr)->is_initialized = true;
-                               return ::tensorflow::OkStatus();
+                               return absl::OkStatus();
                              }));
   tensorflow::mutex_lock ml(*variable->mu());
 
@@ -566,7 +566,7 @@ static Status ValidateVariantType(const Variant& variant) {
         type_index_name);
   }
 
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 static Status VariantBinaryAddFunc(
@@ -582,11 +582,11 @@ static Status CCBinaryAddFunc(
                             TF_Tensor* out)) {
   if (cc_a.dtype() == ::tensorflow::DT_INVALID) {
     *cc_out = cc_b;
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
   if (cc_b.dtype() == ::tensorflow::DT_INVALID) {
     *cc_out = cc_a;
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   Status status;
