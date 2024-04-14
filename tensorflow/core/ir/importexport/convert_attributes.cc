@@ -68,22 +68,22 @@ Status ConvertLocation(Location inst_loc,
       TF_RETURN_IF_ERROR(ConvertLocation(locations[i], debug_info));
     }
   }
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 Status ConvertAttribute(BoolAttr attr, AttrValue* value) {
   value->set_b(attr.getValue());
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 Status ConvertAttribute(IntegerAttr attr, AttrValue* value) {
   value->set_i(attr.getInt());
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 Status ConvertAttribute(FloatAttr attr, AttrValue* value) {
   value->set_f(attr.getValueAsDouble());
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 Status ConvertAttribute(ElementsAttr attr, AttrValue* value) {
@@ -92,17 +92,17 @@ Status ConvertAttribute(ElementsAttr attr, AttrValue* value) {
 
 Status ConvertAttribute(PlaceholderAttr attr, AttrValue* value) {
   value->set_placeholder(attr.getValue().str());
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 Status ConvertAttribute(ShapeAttr attr, AttrValue* value) {
   SetTensorShapeProto(attr, value->mutable_shape());
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 Status ConvertAttribute(FlatSymbolRefAttr attr, AttrValue* value) {
   value->mutable_func()->set_name(attr.getValue().str());
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 Status ConvertAttribute(FuncAttr attr, bool remove_ref_type, AttrValue* value) {
@@ -111,12 +111,12 @@ Status ConvertAttribute(FuncAttr attr, bool remove_ref_type, AttrValue* value) {
   TF_RETURN_IF_ERROR(ConvertAttributes(attr.getAttrs().getValue(),
                                        /*attrs_to_ignore=*/{}, remove_ref_type,
                                        value->mutable_func()->mutable_attr()));
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 Status ConvertAttribute(StringAttr attr, AttrValue* value) {
   value->set_s(attr.str());
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 Status ConvertAttribute(Type type, bool remove_ref_type, AttrValue* value) {
@@ -124,7 +124,7 @@ Status ConvertAttribute(Type type, bool remove_ref_type, AttrValue* value) {
   TF_RETURN_IF_ERROR(ConvertToDataType(type, &dtype));
   if (tensorflow::IsRefType(dtype)) dtype = tensorflow::RemoveRefType(dtype);
   value->set_type(dtype);
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 Status ConvertAttribute(const TypeAttr& type, bool remove_ref_type,
@@ -134,7 +134,7 @@ Status ConvertAttribute(const TypeAttr& type, bool remove_ref_type,
 
 Status ConvertAttribute(const UnitAttr& attr, AttrValue* value) {
   value->clear_value();
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 Status ConvertAttribute(const ArrayAttr& attr, bool remove_ref_type,
@@ -194,7 +194,7 @@ Status ConvertAttribute(const ArrayAttr& attr, bool remove_ref_type,
                            debugString(a));
     }
   }
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 }  // namespace
 
@@ -276,7 +276,7 @@ Status ConvertAttributes(ArrayRef<NamedAttribute> attrs,
   for (const auto& it : func_call_attrs) {
     (*values)[it.first] = it.second;
   }
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 Status SetShapeAttribute(absl::string_view name, ShapedType shaped_type,
@@ -299,7 +299,7 @@ Status SetShapeAttribute(absl::string_view name, ShapedType shaped_type,
                              actual_shape.ShortDebugString());
     }
   }
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 // Converts non func AttrValue proto into an MLIR attribute. Func attribute is

@@ -146,7 +146,7 @@ tensorflow::Status GetSubgraphNamesForFunctionExecution(
       }
     }
   }
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -163,7 +163,7 @@ tensorflow::Status RegisterFunctionDefForSubgraphs(
   if (!subgraphs) {
     // If there are no subgraphs associated with the main subgraph, we will
     // return ok status because no FunctionDef needs to be registered.
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
   std::set<std::string> function_subgraphs;
   TF_RETURN_IF_ERROR(
@@ -186,7 +186,7 @@ tensorflow::Status RegisterFunctionDefForSubgraphs(
     BuildFunctionDefProto(subgraph_name, *(subgraphs->at(i)), fdef);
     TF_RETURN_IF_ERROR(eager_context->AddFunctionDef(fdef));
   }
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 DelegateData::DelegateData() {}
