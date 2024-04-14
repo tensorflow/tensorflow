@@ -158,7 +158,7 @@ RemoteProfilerSessionManagerOptions GetRemoteSessionManagerOptionsLocked(
   return options;
 }
 
-tsl::Status ValidateRemoteProfilerSessionManagerOptions(
+absl::Status ValidateRemoteProfilerSessionManagerOptions(
     const RemoteProfilerSessionManagerOptions& options) {
   if (options.service_addresses().empty()) {
     return tsl::errors::InvalidArgument("No service address provided.");
@@ -180,10 +180,10 @@ tsl::Status ValidateRemoteProfilerSessionManagerOptions(
         "to the local profiler duration.");
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-tsl::Status ValidateHostPortPair(absl::string_view host_port) {
+absl::Status ValidateHostPortPair(absl::string_view host_port) {
   tsl::uint32 port;
   std::vector<absl::string_view> parts = absl::StrSplit(host_port, ':');
   // Must be host:port, port must be a number, host must not contain a '/',
@@ -193,7 +193,7 @@ tsl::Status ValidateHostPortPair(absl::string_view host_port) {
     return tsl::errors::InvalidArgument("Could not interpret \"", host_port,
                                         "\" as a host-port pair.");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace profiler
