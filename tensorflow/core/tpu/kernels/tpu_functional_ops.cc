@@ -1308,7 +1308,7 @@ void TPUPartitionedCallOp::ComputeAsync(OpKernelContext* ctx,
             << " cache_hash: " << cache_hash
             << " device_ordinal: " << device_ordinal;
 
-    profiler::TraceMe trace_me(
+    tsl::profiler::TraceMe trace_me(
         "TPUPartitionedCallOp-RewriteAndInstantiateFunctions");
     std::unique_ptr<Graph> graph(new Graph(flib_def_.get()));
     bool enable_spmd_xla_partitioning = false;
@@ -1397,7 +1397,7 @@ Status TPUPartitionedCallOp::GetTpuCoreOrdinal(OpKernelContext* ctx,
                                                uint64_t input_hash,
                                                int64_t* ordinal_selector_req_id,
                                                int32_t* core_ordinal) {
-  profiler::TraceMe trace_me("TPUPartitionedCallOp-GetTpuCoreOrdinal");
+  tsl::profiler::TraceMe trace_me("TPUPartitionedCallOp-GetTpuCoreOrdinal");
   const Tensor* device_ordinal_t;
   TF_RETURN_IF_ERROR(ctx->input(kDeviceOrdinalAttr, &device_ordinal_t));
   int device_ordinal = device_ordinal_t->scalar<int>()();
@@ -1468,7 +1468,7 @@ Status TPUPartitionedCallOp::InitializeVarOnTPU(
   std::vector<Tensor>* dummy_rets = new std::vector<Tensor>;
   Notification done;
   Status status;
-  profiler::TraceMe trace_me("TPUPartitionedCallOp-InitializeVarOnTPU");
+  tsl::profiler::TraceMe trace_me("TPUPartitionedCallOp-InitializeVarOnTPU");
   library_runtime_->Run(opts, fhandle, dummy_args, dummy_rets,
                         [dummy_rets, &done, &status](const Status& s) {
                           status = s;
@@ -1639,7 +1639,7 @@ Status TPUPartitionedCallOp::InitializeShardedVarOnTPU(
     std::vector<Tensor> dummy_args;
     std::vector<Tensor>* dummy_rets = new std::vector<Tensor>;
 
-    profiler::TraceMe trace_me(
+    tsl::profiler::TraceMe trace_me(
         "TPUPartitionedCallOp-InitializeShardedVarOnTPU");
     library_runtime_->Run(opts, handle, dummy_args, dummy_rets,
                           [dummy_rets, i, &bcount, &statuses](const Status& s) {
@@ -2698,7 +2698,7 @@ void TPUPartitionedCallOp::ExecuteRemoteFunction(
   std::vector<Tensor> dummy_args;
   std::vector<Tensor>* dummy_rets = new std::vector<Tensor>;
 
-  profiler::TraceMe trace_me("TPUPartitionedCallOp-ExecuteRemote");
+  tsl::profiler::TraceMe trace_me("TPUPartitionedCallOp-ExecuteRemote");
   library_runtime_->Run(opts, handle, dummy_args, dummy_rets,
                         [dummy_rets, done, ctx](const Status& status) {
                           if (!status.ok()) {
@@ -2724,7 +2724,7 @@ void TPUPartitionedCallOp::ExecuteLocalFunction(
   }
   auto* rets = new std::vector<Tensor>;
 
-  profiler::TraceMe trace_me("TPUPartitionedCallOp-ExecuteLocal");
+  tsl::profiler::TraceMe trace_me("TPUPartitionedCallOp-ExecuteLocal");
   library_runtime_->Run(opts, handle, args, rets,
                         [rets, done, ctx](const Status& status) {
                           if (!status.ok()) {
@@ -2742,7 +2742,7 @@ void TPUPartitionedCallOp::ExecuteLocalFunction(
 void TPUPartitionedCallOp::ExecuteFunctions(
     const std::vector<DeviceAndFHandle>& functions, OpKernelContext* ctx,
     int device_ordinal, int64_t ordinal_selector_req_id, DoneCallback done) {
-  profiler::TraceMe trace_me("TPUPartitionedCallOp-ExecuteFunctions");
+  tsl::profiler::TraceMe trace_me("TPUPartitionedCallOp-ExecuteFunctions");
   FunctionLibraryRuntime::Options opts(ctx->step_id());
   opts.step_container = ctx->step_container();
   opts.stats_collector = ctx->stats_collector();

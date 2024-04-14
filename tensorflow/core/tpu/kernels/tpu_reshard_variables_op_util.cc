@@ -72,7 +72,7 @@ Status CheckIsValidKey(const Tensor& key) {
         "new_format_key argument to TPUReshardVariables must be DT_STRING "
         "type");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 bool IsDefaultKey(const Tensor& key) { return key.vec<tstring>()(0).empty(); }
@@ -83,8 +83,8 @@ Status GetComputationCacheEntry(
     const Tensor& key, string* rendezvous_key_base,
     std::unique_ptr<tpu::CompilationCacheEntryRef>* entry,
     tpu::CompilationCacheFetchTarget fetch_target) {
-  profiler::TraceMe trace_me("TPUReshardVariablesOpKernel::LookupProto",
-                             /*level=*/2);
+  tsl::profiler::TraceMe trace_me("TPUReshardVariablesOpKernel::LookupProto",
+                                  /*level=*/2);
   TF_RETURN_IF_ERROR(CheckIsValidKey(key));
   auto* rmgr = GetTPUConfigResourceMgr();
   tpu::TpuCompilationCacheLookup* proto_lookup;
@@ -95,7 +95,7 @@ Status GetComputationCacheEntry(
   TF_RETURN_IF_ERROR(
       proto_lookup->Lookup(key.vec<tstring>()(0), entry, fetch_target));
   *rendezvous_key_base = key.vec<tstring>()(1);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Builds an InputBuffers object that describes the inputs to the computation.
@@ -103,7 +103,7 @@ absl::StatusOr<xla::ShapeTree<xla::MaybeOwningDeviceMemory>> BuildInputBuffers(
     OpKernelContext* context, const std::vector<VariableInfo>& variables,
     const xla::Shape& input_host_shape, xla::Backend* backend,
     int device_ordinal, se::Stream* stream) {
-  profiler::TraceMe trace_me("BuildComputationInputs", /*level=*/2);
+  tsl::profiler::TraceMe trace_me("BuildComputationInputs", /*level=*/2);
   OpInputList var_list;
   TF_RETURN_IF_ERROR(context->input_list("vars", &var_list));
 
@@ -142,7 +142,7 @@ absl::StatusOr<xla::ShapeTree<xla::MaybeOwningDeviceMemory>> BuildInputBuffers(
       }
     }
 
-    return OkStatus();
+    return absl::OkStatus();
   };
 
   for (int i = 0; i < variables.size(); ++i) {
@@ -200,7 +200,7 @@ absl::StatusOr<xla::ShapeTree<xla::MaybeOwningDeviceMemory>> BuildInputBuffers(
                                tensor.RefCountIsOne());
       xla_tensor->WaitForDefinitionEventOnStream(stream);
     }
-    return OkStatus();
+    return absl::OkStatus();
   };
 
   for (int i = 0; i < var_list.size(); ++i) {
@@ -213,7 +213,7 @@ absl::StatusOr<xla::ShapeTree<xla::MaybeOwningDeviceMemory>> BuildInputBuffers(
 
 // Perform a compaction to reduce fragmentation.
 Status PerformCompaction(stream_executor::Stream* stream) {
-  profiler::TraceMe trace_me("PerformCompaction", /*level=*/2);
+  tsl::profiler::TraceMe trace_me("PerformCompaction", /*level=*/2);
   auto* ds_executor =
       down_cast<tpu::TpuExecutorInterface*>(stream->parent()->implementation());
   TF_RETURN_IF_ERROR(ds_executor->EnqueueCompactionOnStreamForHbm(stream));
@@ -231,7 +231,7 @@ Status UpdateOutputVariables(
     xla::Backend* backend, se::Stream* stream, int device_ordinal,
     const std::vector<VariableInfo>& variables,
     const std::shared_ptr<se::Event>& definition_event) {
-  profiler::TraceMe trace_me("UpdateOutputVariables", /*level=*/2);
+  tsl::profiler::TraceMe trace_me("UpdateOutputVariables", /*level=*/2);
   // Shapes of the outputs, in TensorShape form.
   const int64_t sub_elements =
       xla::ShapeUtil::TupleElementCount(result_buffers.on_host_shape());

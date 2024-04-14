@@ -744,6 +744,12 @@ void IndexingMap::AddConstraint(mlir::AffineExpr expr, Interval range) {
     current_range = Intersect(current_range, range);
     return;
   }
+  if (auto constant_expr = mlir::dyn_cast<AffineConstantExpr>(expr)) {
+    if (constant_expr.getValue() >= range.lower &&
+        constant_expr.getValue() <= range.upper) {
+      return;
+    }
+  }
   if (SimplifyConstraintRange(&expr, &range)) {
     AddConstraint(expr, range);
     return;
