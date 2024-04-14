@@ -56,12 +56,12 @@ class Tf2XlaRewriter {
 
   // Compiles the given Operation with XlaBuilder and imports the generated HLO
   // via the HLO -> MHLO importer.
-  tsl::StatusOr<mhlo::TupleOp> CompileWithHloImporter(
+  absl::StatusOr<mhlo::TupleOp> CompileWithHloImporter(
       tensorflow::OpKernelContext& op_context);
 
   // Import the given XlaComputation into the parent module. Returns the given
   // generated function.
-  tsl::StatusOr<mhlo::TupleOp> ImportXlaComputation(
+  absl::StatusOr<mhlo::TupleOp> ImportXlaComputation(
       xla::XlaComputation& computation);
 
   // Prepares OpKernelContext params common to all the ops.
