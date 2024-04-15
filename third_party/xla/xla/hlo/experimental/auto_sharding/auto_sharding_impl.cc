@@ -16,6 +16,8 @@ limitations under the License.
 #include <cstddef>
 #include <optional>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
@@ -36,11 +38,14 @@ AutoShardingSolverResult Solve(
     const HloModule& hlo_module, const HloLiveRange& hlo_live_range,
     const StrategyMap& strategy_map, const StrategyGroups& strategy_groups,
     const CostGraph& cost_graph, const AliasSet& alias_set,
+    const std::vector<std::pair<LivenessIdx, LivenessIdx>>& node_intervals,
+    const std::vector<std::pair<LivenessIdx, LivenessIdx>>& edge_intervals,
     const AutoShardingOption& option, absl::string_view request_prefix,
     const absl::flat_hash_map<std::string, const HloInstruction*>&
         sharding_propagation_solution) {
   return CallSolver(hlo_module, hlo_live_range, strategy_map, strategy_groups,
-                    cost_graph, alias_set, /*s_hint*/ {}, /*compute_iis*/ true,
+                    cost_graph, alias_set, node_intervals, edge_intervals,
+                    /*s_hint*/ {}, /*compute_iis*/ true,
                     option.solver_timeout_in_seconds, option,
                     /*max_cost*/ std::nullopt, request_prefix,
                     sharding_propagation_solution,

@@ -1948,6 +1948,8 @@ AutoShardingSolverResult CallSolver(
     const HloModule& hlo_module, const HloLiveRange& hlo_live_range,
     const StrategyMap& strategy_map, const StrategyGroups& strategy_groups,
     const CostGraph& cost_graph, const AliasSet& alias_set,
+    const std::vector<std::pair<LivenessIdx, LivenessIdx>>& node_intervals,
+    const std::vector<std::pair<LivenessIdx, LivenessIdx>>& edge_intervals,
     const std::vector<NodeStrategyIdx>& s_hint, const bool compute_iis,
     const int64_t solver_timeout_in_seconds, const AutoShardingOption& option,
     std::optional<double> max_cost, absl::string_view request_name,
@@ -2128,57 +2130,18 @@ AutoShardingSolverResult CallSolver(
     }
   }
 
-  // Serialize intervals
-  std::vector<absl::flat_hash_set<EdgeIdx>> node_to_edges(
-      strategy_groups.size());
-  EdgeIdx edge_idx = 0;
-  for (const auto& [edge, _] : cost_graph.edge_costs_) {
-    node_to_edges[edge.second].insert(edge_idx);
-    ++edge_idx;
+  for (const auto& interval : node_intervals) {
+    AutoShardingSolverRequest_Pair pair;
+    pair.set_first(interval.first);
+    pair.set_second(interval.second);
+    *request.add_node_intervals() = std::move(pair);
   }
-  const absl::flat_hash_map<const HloValue*, HloLiveRange::TimeBound>&
-      buffer_live_ranges = hlo_live_range.buffer_live_ranges();
-  absl::flat_hash_map<NodeIdx, HloLiveRange::TimeBound> node_to_time_bound;
-  absl::flat_hash_map<EdgeIdx, HloLiveRange::TimeBound> edge_to_time_bound;
-  for (const auto& [value, time_bound] : buffer_live_ranges) {
-    const HloInstruction* instruction = value->instruction();
-    const ShapeIndex& index = value->index();
-    if (instruction->shape().IsTuple() && index.empty()) continue;
-    const spmd::StrategyGroup* strategy_group =
-        strategy_map.at(instruction).get();
-    const spmd::NodeIdx node_idx =
-        strategy_group->GetSubStrategyGroup(index)->node_idx;
-    if (node_idx < 0) continue;
-    node_to_time_bound[node_idx] = time_bound;
-    for (const EdgeIdx edge_idx : node_to_edges[node_idx]) {
-      edge_to_time_bound[edge_idx] = time_bound;
-    }
+  for (const auto& interval : edge_intervals) {
+    AutoShardingSolverRequest_Pair pair;
+    pair.set_first(interval.first);
+    pair.set_second(interval.second);
+    *request.add_edge_intervals() = std::move(pair);
   }
-  for (NodeIdx node_idx = 0; node_idx < request.num_nodes(); ++node_idx) {
-    AutoShardingSolverRequest_Pair interval;
-    if (auto time_bound = node_to_time_bound.find(node_idx);
-        time_bound != node_to_time_bound.end()) {
-      interval.set_first(time_bound->second.start);
-      interval.set_second(time_bound->second.end);
-    } else {
-      interval.set_first(std::numeric_limits<int64_t>::max());
-      interval.set_second(0);
-    }
-    *request.add_node_intervals() = std::move(interval);
-  }
-  for (EdgeIdx edge_idx = 0; edge_idx < request.edges_size(); ++edge_idx) {
-    AutoShardingSolverRequest_Pair interval;
-    if (auto time_bound = edge_to_time_bound.find(edge_idx);
-        time_bound != edge_to_time_bound.end()) {
-      interval.set_first(time_bound->second.start);
-      interval.set_second(time_bound->second.end);
-    } else {
-      interval.set_first(std::numeric_limits<int64_t>::max());
-      interval.set_second(0);
-    }
-    *request.add_edge_intervals() = std::move(interval);
-  }
-
   PopulateTemporalValues(cost_graph, request);
 
   return CallORToolsSolver(request);
@@ -4080,12 +4043,70 @@ absl::StatusOr<AutoShardingResult> AutoShardingImplementation::RunAutoSharding(
     spmd::CostGraph cost_graph(strategy_groups, associative_dot_pairs);
     cost_graph.Simplify(option_.simplify_graph);
 
+    // ----- Build node and edge intervals -----
+    std::vector<absl::flat_hash_set<spmd::EdgeIdx>> node_to_edges(
+        strategy_groups.size());
+    spmd::EdgeIdx edge_idx = 0;
+    for (const auto& [edge, _] : cost_graph.edge_costs_) {
+      node_to_edges[edge.second].insert(edge_idx);
+      ++edge_idx;
+    }
+    const absl::flat_hash_map<const HloValue*, HloLiveRange::TimeBound>&
+        buffer_live_ranges = hlo_live_range->buffer_live_ranges();
+    absl::flat_hash_map<spmd::NodeIdx, HloLiveRange::TimeBound>
+        node_to_time_bound;
+    absl::flat_hash_map<spmd::EdgeIdx, HloLiveRange::TimeBound>
+        edge_to_time_bound;
+    for (const auto& [value, time_bound] : buffer_live_ranges) {
+      const HloInstruction* instruction = value->instruction();
+      const ShapeIndex& index = value->index();
+      if (instruction->shape().IsTuple() && index.empty()) continue;
+      const spmd::StrategyGroup* strategy_group =
+          strategy_map.at(instruction).get();
+      const spmd::NodeIdx node_idx =
+          strategy_group->GetSubStrategyGroup(index)->node_idx;
+      if (node_idx < 0) continue;
+      node_to_time_bound[node_idx] = time_bound;
+      for (const spmd::EdgeIdx edge_idx : node_to_edges[node_idx]) {
+        edge_to_time_bound[edge_idx] = time_bound;
+      }
+    }
+    std::vector<std::pair<spmd::LivenessIdx, spmd::LivenessIdx>> node_intervals,
+        edge_intervals;
+    for (spmd::NodeIdx node_idx = 0; node_idx < strategy_groups.size();
+         ++node_idx) {
+      std::pair<spmd::LivenessIdx, spmd::LivenessIdx> interval;
+      if (auto time_bound = node_to_time_bound.find(node_idx);
+          time_bound != node_to_time_bound.end()) {
+        interval.first = time_bound->second.start;
+        interval.second = time_bound->second.end;
+      } else {
+        interval.first = std::numeric_limits<int64_t>::max();
+        interval.second = 0;
+      }
+      node_intervals.push_back(std::move(interval));
+    }
+    for (spmd::EdgeIdx edge_idx = 0; edge_idx < cost_graph.edge_costs_.size();
+         ++edge_idx) {
+      std::pair<spmd::LivenessIdx, spmd::LivenessIdx> interval;
+      if (auto time_bound = edge_to_time_bound.find(edge_idx);
+          time_bound != edge_to_time_bound.end()) {
+        interval.first = time_bound->second.start;
+        interval.second = time_bound->second.end;
+      } else {
+        interval.first = std::numeric_limits<int64_t>::max();
+        interval.second = 0;
+      }
+      edge_intervals.push_back(std::move(interval));
+    }
+
     // ----- Call the ILP Solver -----
     spmd::AutoShardingSolverOutput output;
     std::string request_name = absl::StrCat("mesh_idx_", mesh_idx);
-    auto solver_result = Solve(*module, *hlo_live_range, strategy_map,
-                               strategy_groups, cost_graph, alias_set, option_,
-                               request_name, sharding_propagation_solution);
+    auto solver_result =
+        Solve(*module, *hlo_live_range, strategy_map, strategy_groups,
+              cost_graph, alias_set, node_intervals, edge_intervals, option_,
+              request_name, sharding_propagation_solution);
     if (solver_result.skip_auto_sharding) {
       return AutoShardingResult::kModuleUnchangedNoShardingPerformed;
     } else if (!solver_result.status.ok()) {

@@ -689,6 +689,10 @@ Status HostOffloader::HandleStreamedBuffer(const HloBuffer& unique_buffer) {
           expected_host_to_device_annotations_.emplace(
               move_to_device_custom_call.value());
         }
+      } else {
+        return absl::InvalidArgumentError(
+            absl::StrCat("Unsupported use of streamed parameter: ",
+                         use.instruction->ToString()));
       }
     }
   }
@@ -806,20 +810,63 @@ absl::StatusOr<bool> HostOffloader::Run(
         to_device_annotation->ReplaceAllUsesWith(copy_to_device));
   }
 
-  // Check that we found all the annotations that we expected.
+  // Check if we found all the annotations that we expected.
   if (found_host_to_device_annotations_ !=
       expected_host_to_device_annotations_) {
-    return Internal(
-        "There is a mismatch between the expected host-to-device annotations "
-        "(%s) and the found host-to-device annotations (%s)",
-        absl::StrJoin(expected_host_to_device_annotations_, ", ",
-                      [](std::string* str, HloInstruction* instr) {
-                        str->append(instr->name());
-                      }),
-        absl::StrJoin(found_host_to_device_annotations_, ", ",
-                      [](std::string* str, HloInstruction* instr) {
-                        str->append(instr->name());
-                      }));
+    auto is_superset_of = [](const auto& set_1, const auto& set_2) {
+      // Returns true if set_1 is a superset of set_2, i.e. set_1 contains at
+      // least everything that set_2 contains.
+      if (set_1.size() < set_2.size()) {
+        return false;
+      }
+      for (const auto& thing : set_2) {
+        if (!set_1.contains(thing)) {
+          return false;
+        }
+      }
+      return true;
+    };
+
+    if (is_superset_of(found_host_to_device_annotations_,
+                       expected_host_to_device_annotations_)) {
+      // We found more annotations than we were expecting. We assume that these
+      // are no-op annotations.
+      LOG(WARNING) << "We found more annotations than we were expecting. We "
+                      "assume that these are no-op annotations. The expected "
+                      "host-to-device annotations are\n("
+                   << absl::StrJoin(
+                          expected_host_to_device_annotations_, ", ",
+                          [](std::string* str, HloInstruction* instr) {
+                            str->append(instr->name());
+                          })
+                   << ")\nand the found host-to-device annotations\n("
+                   << absl::StrJoin(
+                          found_host_to_device_annotations_, ", ",
+                          [](std::string* str, HloInstruction* instr) {
+                            str->append(instr->name());
+                          })
+                   << ')';
+
+      // Remove these annotations.
+      for (HloInstruction* instr : found_host_to_device_annotations_) {
+        custom_calls_to_remove_.emplace(instr);
+      }
+    } else {
+      // We either expected more than we found or there was a more significant
+      // mismatch. Given that "finding" annotations is so trivial, the second
+      // case is much more likely.
+      return Internal(
+          "We found these annotations (%s) but only expected these annotations "
+          "(%s)",
+          absl::StrJoin(expected_host_to_device_annotations_, ", ",
+                        [](std::string* str, HloInstruction* instr) {
+                          str->append(instr->name());
+                        }),
+          absl::StrJoin(found_host_to_device_annotations_, ", ",
+                        [](std::string* str, HloInstruction* instr) {
+                          str->append(instr->name());
+                        }));
+    }
   }
 
   // Remove these host-to-device annotations.
