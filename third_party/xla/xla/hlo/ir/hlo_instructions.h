@@ -349,11 +349,11 @@ class HloCopyStartInstruction : public HloInstruction {
 
   // Each cross program prefetched buffer has a unique index. The indices are
   // assigned contiguously starting from zero in
-  // AlternateMemoryBestFitHeap::AllocateCrossProgramPrefetchBuffer. This value
-  // is used during codegen to determine which buffer is being speculated at
-  // runtime. One possible implementation is to initialize an array with boolean
-  // values indicating whether the cross program prefetch succeeds or fails for
-  // each buffer.
+  // MsaAlgorithm::AllocateCrossProgramPrefetchBuffer. This value is used during
+  // codegen to determine which buffer is being speculated at runtime. One
+  // possible implementation is to initialize an array with boolean values
+  // indicating whether the cross program prefetch succeeds or fails for each
+  // buffer.
   std::optional<int> cross_program_prefetch_index_;
 };
 

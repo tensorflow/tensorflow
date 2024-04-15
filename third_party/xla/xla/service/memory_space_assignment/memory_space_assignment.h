@@ -468,8 +468,7 @@ class MemorySpaceAssignment {
                            const HloAliasAnalysis& alias_analysis);
 
   // Finds an AllocationSequence for placing buffers in alternate memory using
-  // the AlternateMemoryBestFitHeap algorithm. Must be set before Process() is
-  // called.
+  // the MsaAlgorithm algorithm. Must be set before Process() is called.
   virtual Status FindAllocationSequence(const HloLiveRange& hlo_live_range,
                                         const HloAliasAnalysis& alias_analysis);
 
@@ -712,16 +711,14 @@ class AsynchronousCopyResource {
 
 // This class inherits from GlobalDecreasingSizeBestFitHeap with a notion of
 // maximum size.
-class AlternateMemoryBestFitHeap
-    : public GlobalDecreasingSizeBestFitHeap<HloValue> {
+class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
  public:
   using AllocationValue = MemorySpaceAssignment::AllocationValue;
   using HloPositionOrUse = std::variant<HloPosition, HloUse>;
 
-  AlternateMemoryBestFitHeap(AllocationSequence* allocations,
-                             const Options& options,
-                             const HloAliasAnalysis& alias_analysis,
-                             const HloLiveRange& hlo_live_range);
+  MsaAlgorithm(AllocationSequence* allocations, const Options& options,
+               const HloAliasAnalysis& alias_analysis,
+               const HloLiveRange& hlo_live_range);
 
   // Allocates a buffer in preferred memory with whole program lifetime and
   // enables prefetching prefetch_candidate from default memory across program

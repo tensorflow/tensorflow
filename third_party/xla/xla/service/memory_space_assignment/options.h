@@ -205,7 +205,7 @@ struct Options {
   float inefficient_use_to_copy_ratio = 0.0;
 
   // This is mostly used for testing, it allows a test case to inject its own
-  // logic for AlternateMemoryBestFitHeap::GetInefficientAllocationSites.
+  // logic for MsaAlgorithm::GetInefficientAllocationSites.
   std::function<std::vector<std::variant<HloPosition, HloUse>>(
       absl::Span<HloPosition>)>
       get_inefficient_allocation_sites_fn = nullptr;
