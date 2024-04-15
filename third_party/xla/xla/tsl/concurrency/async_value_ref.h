@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_TSL_CONCURRENCY_ASYNC_VALUE_REF_H_
-#define TENSORFLOW_TSL_CONCURRENCY_ASYNC_VALUE_REF_H_
+#ifndef XLA_TSL_CONCURRENCY_ASYNC_VALUE_REF_H_
+#define XLA_TSL_CONCURRENCY_ASYNC_VALUE_REF_H_
 
 #include <cstddef>
 #include <string_view>
@@ -27,8 +27,8 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "tsl/concurrency/async_value.h"
-#include "tsl/concurrency/ref_count.h"
+#include "xla/tsl/concurrency/async_value.h"
+#include "xla/tsl/concurrency/ref_count.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/mem.h"
 
@@ -609,4 +609,4 @@ AsyncValueOwningRef<T> MakeAvailableAsyncValueRef(
 
 }  // namespace tsl
 
-#endif  // TENSORFLOW_TSL_CONCURRENCY_ASYNC_VALUE_REF_H_
+#endif  // XLA_TSL_CONCURRENCY_ASYNC_VALUE_REF_H_

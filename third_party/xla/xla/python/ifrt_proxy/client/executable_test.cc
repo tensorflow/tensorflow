@@ -44,7 +44,7 @@
 #include "xla/python/ifrt_proxy/client/version.h"
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
 #include "xla/python/ifrt_proxy/common/types.h"
-#include "tsl/concurrency/ref_count.h"
+#include "xla/tsl/concurrency/ref_count.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep
 #include "tsl/platform/status_matchers.h"

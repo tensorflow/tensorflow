@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tsl/concurrency/async_value_ref.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
 
 #include <cstdint>
 #include <utility>
@@ -21,8 +21,8 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "tsl/concurrency/async_value.h"
-#include "tsl/concurrency/ref_count.h"
+#include "xla/tsl/concurrency/async_value.h"
+#include "xla/tsl/concurrency/ref_count.h"
 #include "tsl/platform/test.h"
 
 namespace tsl {

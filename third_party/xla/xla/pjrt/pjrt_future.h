@@ -27,9 +27,9 @@ limitations under the License.
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/types/span.h"
-#include "tsl/concurrency/async_value.h"
-#include "tsl/concurrency/async_value_ref.h"
-#include "tsl/concurrency/ref_count.h"
+#include "xla/tsl/concurrency/async_value.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
+#include "xla/tsl/concurrency/ref_count.h"
 #include "tsl/platform/logging.h"
 
 namespace xla {

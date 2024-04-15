@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "xla/tsl/concurrency/ref_count.h"
 #include "tsl/platform/statusor.h"
 
 namespace tensorflow {

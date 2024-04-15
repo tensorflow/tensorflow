@@ -39,7 +39,7 @@
 #include "xla/python/pjrt_ifrt/xla_host_callback.pb.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "tsl/concurrency/ref_count.h"
+#include "xla/tsl/concurrency/ref_count.h"
 #include "tsl/platform/errors.h"
 
 namespace xla {

@@ -46,8 +46,8 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/status.h"
 #include "xla/statusor.h"
+#include "xla/tsl/concurrency/ref_count.h"
 #include "xla/util.h"
-#include "tsl/concurrency/ref_count.h"
 
 namespace xla {
 

@@ -22,10 +22,10 @@ limitations under the License.
 #include <functional>
 #include <utility>
 
-#include "tsl/concurrency/async_value.h"
-#include "tsl/concurrency/async_value_ref.h"
-#include "tsl/concurrency/chain.h"
-#include "tsl/concurrency/ref_count.h"
+#include "xla/tsl/concurrency/async_value.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
+#include "xla/tsl/concurrency/chain.h"
+#include "xla/tsl/concurrency/ref_count.h"
 #include "tsl/platform/threadpool.h"
 
 namespace mlir {

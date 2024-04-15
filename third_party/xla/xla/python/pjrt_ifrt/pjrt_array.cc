@@ -43,9 +43,9 @@ limitations under the License.
 #include "xla/python/pjrt_ifrt/pjrt_client.h"
 #include "xla/shape_util.h"
 #include "xla/status.h"
+#include "xla/tsl/concurrency/ref_count.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/concurrency/ref_count.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 

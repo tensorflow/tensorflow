@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_TSL_CONCURRENCY_CHAIN_H_
-#define TENSORFLOW_TSL_CONCURRENCY_CHAIN_H_
+#ifndef XLA_TSL_CONCURRENCY_CHAIN_H_
+#define XLA_TSL_CONCURRENCY_CHAIN_H_
 
 namespace tsl {
 
@@ -22,4 +22,4 @@ class Chain {};
 
 }  // namespace tsl
 
-#endif  // TENSORFLOW_TSL_CONCURRENCY_CHAIN_H_
+#endif  // XLA_TSL_CONCURRENCY_CHAIN_H_

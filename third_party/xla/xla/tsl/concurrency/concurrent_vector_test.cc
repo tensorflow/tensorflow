@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tsl/concurrency/concurrent_vector.h"
+#include "xla/tsl/concurrency/concurrent_vector.h"
 
 #include <algorithm>
 #include <vector>

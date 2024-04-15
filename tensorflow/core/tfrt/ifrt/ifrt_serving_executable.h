@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
+#include "xla/tsl/concurrency/ref_count.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -47,7 +48,6 @@ limitations under the License.
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_loaded_variable_registry.h"
 #include "tensorflow/core/tfrt/ifrt/tf_host_callback.h"
-#include "tsl/concurrency/ref_count.h"
 #include "tsl/platform/threadpool.h"
 
 namespace tensorflow {

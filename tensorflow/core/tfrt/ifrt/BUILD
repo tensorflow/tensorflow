@@ -79,7 +79,6 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@llvm-project//mlir:IR",
-        "@local_tsl//tsl/concurrency:ref_count",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:statusor",
@@ -93,6 +92,7 @@ cc_library(
         "@local_xla//xla/python/pjrt_ifrt",
         "@local_xla//xla/python/pjrt_ifrt:xla_ifrt",
         "@local_xla//xla/service:computation_placer_hdr",
+        "@local_xla//xla/tsl/concurrency:ref_count",
     ],
 )
 
@@ -143,10 +143,10 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
-        "@local_tsl//tsl/concurrency:ref_count",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:statusor",
         "@local_xla//xla/python/ifrt",
+        "@local_xla//xla/tsl/concurrency:ref_count",
     ],
 )
 
@@ -165,9 +165,9 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
-        "@local_tsl//tsl/concurrency:ref_count",
         "@local_tsl//tsl/platform:env",
         "@local_xla//xla/python/ifrt",
+        "@local_xla//xla/tsl/concurrency:ref_count",
         "@tf_runtime//:hostcontext",
     ],
 )
@@ -218,7 +218,6 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@eigen_archive//:eigen3",
-        "@local_tsl//tsl/concurrency:ref_count",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:statusor",
@@ -226,6 +225,7 @@ cc_library(
         "@local_xla//xla/hlo/ir:hlo",
         "@local_xla//xla/python/ifrt",
         "@local_xla//xla/python/pjrt_ifrt:xla_ifrt",
+        "@local_xla//xla/tsl/concurrency:ref_count",
     ],
 )
 
@@ -246,12 +246,12 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/concurrency:ref_count",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:statusor",
         "@local_xla//xla/hlo/ir:hlo",
         "@local_xla//xla/python/ifrt",
+        "@local_xla//xla/tsl/concurrency:ref_count",
         "@tf_runtime//:hostcontext",
     ],
 )
@@ -305,7 +305,6 @@ tf_cc_test(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/concurrency:ref_count",
         "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:status_matchers",
@@ -315,6 +314,7 @@ tf_cc_test(
         "@local_xla//xla/python/ifrt",
         "@local_xla//xla/python/ifrt:test_util",
         "@local_xla//xla/python/pjrt_ifrt:tfrt_cpu_client_test_lib",
+        "@local_xla//xla/tsl/concurrency:ref_count",
         "@tf_runtime//:hostcontext",
     ],
 )
@@ -365,7 +365,6 @@ tf_cc_test(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/concurrency:ref_count",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:status_matchers",
         "@local_tsl//tsl/platform:statusor",
@@ -375,6 +374,7 @@ tf_cc_test(
         "@local_xla//xla/python/ifrt:test_util",
         "@local_xla//xla/python/pjrt_ifrt:tfrt_cpu_client_test_lib",
         "@local_xla//xla/python/pjrt_ifrt:xla_ifrt",
+        "@local_xla//xla/tsl/concurrency:ref_count",
     ],
 )
 
@@ -412,7 +412,6 @@ tf_cc_test(
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
-        "@local_tsl//tsl/concurrency:ref_count",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:tstring",
@@ -420,6 +419,7 @@ tf_cc_test(
         "@local_xla//xla/python/ifrt",
         "@local_xla//xla/python/ifrt:test_util",
         "@local_xla//xla/python/pjrt_ifrt:tfrt_cpu_client_test_lib",
+        "@local_xla//xla/tsl/concurrency:ref_count",
         "@tf_runtime//:basic_kernels_alwayslink",
         "@tf_runtime//:core_runtime_alwayslink",
         "@tf_runtime//:test_kernels_alwayslink",

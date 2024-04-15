@@ -78,6 +78,7 @@ cc_library(
         "@local_tsl//tsl/platform:tstring",
         "@local_xla//xla:xla_data_proto_cc",
         "@local_xla//xla/python/ifrt",
+        "@local_xla//xla/tsl/concurrency:ref_count",
         "@tf_runtime//:hostcontext",
     ],
     alwayslink = 1,

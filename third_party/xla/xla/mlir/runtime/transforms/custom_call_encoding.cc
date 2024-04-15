@@ -60,9 +60,9 @@ limitations under the License.
 #include "xla/runtime/memref_view.h"
 #include "xla/runtime/tracing.h"
 #include "xla/runtime/type_id.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
+#include "xla/tsl/concurrency/chain.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/concurrency/async_value_ref.h"
-#include "tsl/concurrency/chain.h"
 
 namespace Eigen {
 struct half;

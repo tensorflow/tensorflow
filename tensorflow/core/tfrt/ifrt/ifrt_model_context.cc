@@ -21,7 +21,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "xla/python/ifrt/array.h"
-#include "tsl/concurrency/ref_count.h"
+#include "xla/tsl/concurrency/ref_count.h"
 #include "tsl/platform/threadpool.h"
 
 namespace tensorflow {

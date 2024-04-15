@@ -55,9 +55,9 @@ limitations under the License.
 #include "xla/status.h"
 #include "xla/statusor.h"
 #include "xla/translate/mhlo_to_hlo/type_to_shape.h"
+#include "xla/tsl/concurrency/ref_count.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/concurrency/ref_count.h"
 #include "tsl/platform/errors.h"
 
 namespace xla {

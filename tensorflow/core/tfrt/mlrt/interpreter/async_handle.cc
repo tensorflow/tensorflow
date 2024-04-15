@@ -17,9 +17,9 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "xla/tsl/concurrency/async_value_ref.h"
+#include "xla/tsl/concurrency/chain.h"
 #include "tensorflow/core/tfrt/mlrt/interpreter/context.h"
-#include "tsl/concurrency/async_value_ref.h"
-#include "tsl/concurrency/chain.h"
 
 namespace mlrt {
 

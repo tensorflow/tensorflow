@@ -66,9 +66,9 @@ limitations under the License.
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/concurrency/ref_count.h"
 #include "xla/types.h"  // IWYU pragma: keep
 #include "xla/util.h"
-#include "tsl/concurrency/ref_count.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"

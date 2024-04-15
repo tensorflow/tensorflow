@@ -90,6 +90,7 @@ cc_library(
         "//xla/pjrt:pjrt_executable",
         "//xla/pjrt:pjrt_layout",
         "//xla/python/ifrt/ir",
+        "//xla/tsl/concurrency:ref_count",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -105,7 +106,6 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
-        "@local_tsl//tsl/concurrency:ref_count",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:statusor",
@@ -205,10 +205,10 @@ cc_library(
     deps = [
         ":ifrt",
         "//xla:statusor",
+        "//xla/tsl/concurrency:ref_count",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/concurrency:ref_count",
         "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
@@ -291,8 +291,8 @@ cc_library(
     deps = [
         ":ifrt",
         ":test_util",
+        "//xla/tsl/concurrency:ref_count",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/concurrency:ref_count",
         "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
@@ -321,6 +321,7 @@ cc_library(
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt:pjrt_device_description",
         "//xla/pjrt:pjrt_layout",
+        "//xla/tsl/concurrency:ref_count",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -328,7 +329,6 @@ cc_library(
         "@com_google_googletest//:gtest",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
-        "@local_tsl//tsl/concurrency:ref_count",
     ],
 )
 
