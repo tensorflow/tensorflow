@@ -94,7 +94,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status.h"
-#include "xla/statusor.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
@@ -369,7 +368,7 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetTfrtCpuClient(
 
   return std::unique_ptr<PjRtClient>(std::make_unique<TfrtCpuClient>(
       /*process_index=*/options.node_id, std::move(devices),
-      std::move(options.collectives), num_threads));
+      std::move(options.collectives), num_threads, options.asynchronous));
 }
 
 static tsl::ThreadOptions GetThreadOptions() {
@@ -382,7 +381,8 @@ static tsl::ThreadOptions GetThreadOptions() {
 
 TfrtCpuClient::TfrtCpuClient(
     int process_index, std::vector<std::unique_ptr<TfrtCpuDevice>> devices,
-    std::shared_ptr<cpu::CollectivesInterface> collectives, size_t num_threads)
+    std::shared_ptr<cpu::CollectivesInterface> collectives, size_t num_threads,
+    bool asynchronous)
     : process_index_(process_index),
       owned_devices_(std::move(devices)),
       computation_placer_(std::make_unique<ComputationPlacer>()),
@@ -402,7 +402,8 @@ TfrtCpuClient::TfrtCpuClient(
       collectives_(std::move(collectives)),
       topology_(TfrtCpuTopologyDescription::Create(
           platform_id(), platform_name(), platform_version(), owned_devices_,
-          cpu::DetectMachineAttributes())) {
+          cpu::DetectMachineAttributes())),
+      asynchronous_(asynchronous) {
   for (const std::unique_ptr<TfrtCpuDevice>& device : owned_devices_) {
     devices_.push_back(device.get());
     CHECK(id_to_device_.insert({device->id(), device.get()}).second)
@@ -1012,10 +1013,12 @@ TfrtCpuExecutable::TfrtCpuExecutable(
       addressable_devices_(std::move(addressable_devices)) {
   auto hlo_cost_analysis =
       std::make_unique<HloCostAnalysis>(cpu::CpuExecutable::ShapeSizeBytes);
-  // Cache to avoid std::map lookup in flop_count() on critical path.
-  // The magic constant 1000 is determined by correlating computation with flop
-  // estimate. It is a crude heuristic to find computation less than the thread
-  // context switch time (~5us).
+  CHECK_OK(cpu_executable_->module().entry_computation()->Accept(
+      hlo_cost_analysis.get()));
+  // Cache to avoid std::map lookup in flop_count() on critical path. The magic
+  // constant 1000 is determined by correlating computation with flop estimate.
+  // It is a crude heuristic to find computation less than the thread context
+  // switch time (~5us).
   cheap_computation_ = hlo_cost_analysis->flop_count() < 1000;
 
   const auto& computation_layout =
@@ -1343,7 +1346,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
     input_deps.push_back(std::move(last_collective_launch_event));
   }
 
-  bool execute_inline = cheap_computation_;
+  bool execute_inline = cheap_computation_ || !client_->asynchronous_;
 
   // Overwrite `execute_inline` if it is specified in the ExecuteOptions.
   if (options.execution_mode == ExecuteOptions::ExecutionMode::kAsynchronous) {
@@ -1419,6 +1422,16 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
             }
           }
 
+          // Commit donation transactions early before execution to prevent a
+          // tricky deadlock case when we have both donated args and python host
+          // callbacks: `~TfrtCpuBuffer()` will wait for all pending donations
+          // to be committed, while it may be holding the python GIL. However,
+          // when the computation contains python callbacks, they also need the
+          // python GIL, which leads to a deadlock.
+          for (auto& donation_transaction : donation_transactions) {
+            std::move(donation_transaction).Commit();
+          }
+
           // Set denormal and rounding behavior to match the default TF
           // ThreadPool behavior.
           tsl::port::ScopedFlushDenormal flush;
@@ -1439,10 +1452,6 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
                                                nullptr, buffer_pointers.data(),
                                                &status, nullptr);
             error_message = xla::CustomCallStatusGetMessage(&status);
-          }
-
-          for (auto& donation_transaction : donation_transactions) {
-            std::move(donation_transaction).Commit();
           }
 
           if (error_message) {

@@ -49,7 +49,7 @@ profiler = _xla.profiler
 
 # Just an internal arbitrary increasing number to help with backward-compatible
 # changes. In JAX, reference this via jax._src.lib.xla_extension_version.
-_version = 256
+_version = 257
 
 # Version number for MLIR:Python components.
 mlir_api_version = 56
@@ -65,6 +65,7 @@ _NameValueMapping = Mapping[str, Union[str, int, List[int], float, bool]]
 
 
 def make_cpu_client(
+    asynchronous=True,
     distributed_client=None,
     node_id=0,
     num_nodes=1,
@@ -72,7 +73,7 @@ def make_cpu_client(
 ) -> ...:
   register_custom_call_handler('cpu', _xla.register_custom_call_target)
   return _xla.get_tfrt_cpu_client(
-      asynchronous=True,
+      asynchronous=asynchronous,
       distributed_client=distributed_client,
       node_id=node_id,
       num_nodes=num_nodes,
