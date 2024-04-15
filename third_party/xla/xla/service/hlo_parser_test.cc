@@ -5214,19 +5214,26 @@ TEST_F(HloParserTest, PipelinedSendRecv) {
     count = get-tuple-element(%param), index=0
 
     recv.0 = (u32[2], u32[], token[]) get-tuple-element(param), index=1
-    recv-done.0 = (u32[2], token[]) recv-done(recv.0), channel_id=1
+    recv-done.0 = (u32[2], token[]) recv-done(recv.0), channel_id=1,
+      frontend_attributes={
+        _xla_send_recv_pipeline="0"
+      }
     recv-data.0 = u32[2] get-tuple-element(recv-done.0), index=0
 
     c1 = u32[] constant(1)
     new_count = u32[] add(count, c1)
 
     send.0 = (u32[2], u32[], token[]) get-tuple-element(param), index=2
-    send-done.0 = (u32[2], token[]) recv-done(send.0), channel_id=1
+    send-done.0 = (u32[2], token[]) recv-done(send.0), channel_id=1,
+      frontend_attributes={
+        _xla_send_recv_pipeline="0"
+      }
 
     after-all.0.n = token[] after-all()
     recv.0.n = (u32[2], u32[], token[]) recv(after-all.0.n), channel_id=1,
       frontend_attributes={
-        _xla_send_recv_source_target_pairs="{{1,0}}"
+        _xla_send_recv_source_target_pairs="{{1,0}}",
+        _xla_send_recv_pipeline="0"
       }
 
 
@@ -5234,7 +5241,8 @@ TEST_F(HloParserTest, PipelinedSendRecv) {
     send.0.n = (u32[2], u32[], token[]) send(recv-data.0, after-all.1.n),
       channel_id=1,
       frontend_attributes={
-        _xla_send_recv_source_target_pairs="{{1,0}}"
+        _xla_send_recv_source_target_pairs="{{1,0}}",
+        _xla_send_recv_pipeline="0"
       }
 
     ROOT result = (u32[], (u32[2], u32[], token[]), (u32[2], u32[], token[])) tuple(new_count, recv.0.n, send.0.n)
@@ -5246,23 +5254,31 @@ TEST_F(HloParserTest, PipelinedSendRecv) {
     after-all.0.p = token[] after-all()
     recv.0.p = (u32[2], u32[], token[]) recv(after-all.0.p), channel_id=1,
       frontend_attributes={
-        _xla_send_recv_source_target_pairs="{{1,0}}"
+        _xla_send_recv_source_target_pairs="{{1,0}}",
+        _xla_send_recv_pipeline="0"
       }
 
     after-all.1.p = token[] after-all()
     send.0.p = (u32[2], u32[], token[]) send(init, after-all.1.p),
       channel_id=1,
       frontend_attributes={
-        _xla_send_recv_source_target_pairs="{{1,0}}"
+        _xla_send_recv_source_target_pairs="{{1,0}}",
+        _xla_send_recv_pipeline="0"
       }
 
     while_init = (u32[], (u32[2], u32[], token[]), (u32[2], u32[], token[])) tuple(c0, recv.0.p, send.0.p)
     while_result = (u32[], (u32[2], u32[], token[]), (u32[2], u32[], token[])) while(while_init), body=body, condition=cond
 
     recv.0.q = (u32[2], u32[], token[]) get-tuple-element(while_result), index=1
-    recv-done.0.q = (u32[2], token[]) recv-done(recv.0.q), channel_id=1
+    recv-done.0.q = (u32[2], token[]) recv-done(recv.0.q), channel_id=1,
+      frontend_attributes={
+        _xla_send_recv_pipeline="0"
+      }
     send.0.q = (u32[2], u32[], token[]) get-tuple-element(while_result), index=2
-    send-done.0.q = token[] send-done(send.0.q), channel_id=1
+    send-done.0.q = token[] send-done(send.0.q), channel_id=1,
+      frontend_attributes={
+        _xla_send_recv_pipeline="0"
+      }
 
     ROOT recv-data.0.q = u32[2] get-tuple-element(recv-done.0.q), index=0
       })";

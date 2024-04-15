@@ -20,7 +20,6 @@ limitations under the License.
 #include <fstream>
 #include <iterator>
 #include <memory>
-#include <optional>
 #include <string>
 #include <tuple>
 #include <utility>
@@ -101,6 +100,7 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/util/env_var.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "tsl/platform/env.h"
@@ -110,7 +110,6 @@ limitations under the License.
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/threadpool.h"
 #include "tsl/profiler/lib/traceme.h"
-#include "tsl/util/env_var.h"
 
 namespace xla {
 namespace gpu {
@@ -267,8 +266,10 @@ absl::Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
   }
 
   HloPassPipeline pre_pipeline("nvptx post-layout_assignment part 1");
-  // Rewrite normalization patterns into cuDNN Custom Calls.
-  pre_pipeline.AddPass<CudnnNormRewriter>(cuda_compute_capability);
+  if (hlo_module->config().debug_options().xla_gpu_enable_cudnn_layer_norm()) {
+    // Rewrite normalization patterns into cuDNN Custom Calls.
+    pre_pipeline.AddPass<CudnnNormRewriter>(cuda_compute_capability);
+  }
 
   pre_pipeline.AddPass<DotDimensionMerger>();
 
@@ -324,7 +325,6 @@ absl::Status NVPTXCompiler::AddConvAndGemmAutotuningPasses(
     pipeline->AddPass<GpuConvAlgorithmPicker>(autotune_config);
   }
   pipeline->AddPass<GemmAlgorithmPicker>(autotune_config);
-  pipeline->AddPass<CuDnnFusionCompiler>(autotune_config);
   return absl::OkStatus();
 }
 
@@ -342,6 +342,14 @@ absl::Status NVPTXCompiler::AddCustomKernelReplacementPasses(
   }
   return absl::OkStatus();
 }
+
+absl::Status NVPTXCompiler::RunCudnnFusionCompilerPass(
+    HloModule* module, se::StreamExecutor* stream_exec,
+    Thunk::BinaryMap* dnn_compiled_graphs) {
+  CuDnnFusionCompiler cudnn_compiler(*stream_exec, *dnn_compiled_graphs);
+  return cudnn_compiler.Run(module).status();
+}
+
 namespace {
 // Try to load ptx from files defined in the FLAGS. If successful, return true.
 bool MaybeLoadPtxFromFile(const HloModuleConfig module_config,
@@ -672,8 +680,7 @@ NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
   return cache_value->maybe_cubin;
 }
 
-static std::optional<std::array<int64_t, 3>> GetNvLinkVersion(
-    const std::string& preferred_cuda_dir) {
+static bool IsNvlinkEnabled() {
   const bool use_nvlink_by_default =
 #ifdef TF_DISABLE_NVLINK_BY_DEFAULT
       false;
@@ -684,24 +691,7 @@ static std::optional<std::array<int64_t, 3>> GetNvLinkVersion(
   TF_CHECK_OK(tsl::ReadBoolFromEnvVar("TF_USE_NVLINK_FOR_PARALLEL_COMPILATION",
                                       /*default_val=*/
                                       use_nvlink_by_default, &use_nvlink));
-
-  if (!use_nvlink) {
-    return std::nullopt;
-  }
-
-  // Make sure nvlink exists and is executable.
-  absl::StatusOr<std::string> bin_path =
-      se::FindCudaExecutable("nvlink", preferred_cuda_dir);
-
-  if (!bin_path.ok()) {
-    return std::nullopt;
-  }
-
-  auto version = se::GetToolVersion(bin_path.value());
-  if (!version.ok()) {
-    return std::nullopt;
-  }
-  return *version;
+  return use_nvlink;
 }
 
 absl::StatusOr<NVPTXCompiler::LinkingMethod> ChooseLinkingMethodImpl(
@@ -710,16 +700,9 @@ absl::StatusOr<NVPTXCompiler::LinkingMethod> ChooseLinkingMethodImpl(
   TF_ASSIGN_OR_RETURN(auto ptxas_version_tuple,
                       se::GetAsmCompilerVersion(preferred_cuda_dir));
 
-  // ptxas versions prior to 11.8 are not supported anymore. We check this here,
-  // since we are fetching the ptxas version anyway. Catching the error
-  // elsewhere might introduce unnecessary overhead.
-  if (ptxas_version_tuple < std::array<int64_t, 3>{11, 8, 0}) {
-    return absl::InternalError("XLA requires ptxas version 11.8 or higher");
-  }
-
-  std::optional<std::array<int64_t, 3>> nvlink_version =
-      GetNvLinkVersion(preferred_cuda_dir);
-  if (nvlink_version && *nvlink_version >= ptxas_version_tuple) {
+  auto nvlink_version = stream_executor::GetNvLinkVersion(preferred_cuda_dir);
+  if (IsNvlinkEnabled() && nvlink_version.ok() &&
+      nvlink_version.value() >= ptxas_version_tuple) {
     return LinkingMethod::kNvLink;
   }
 

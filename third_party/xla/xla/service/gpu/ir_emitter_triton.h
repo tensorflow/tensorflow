@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/matmul_utils.h"
+#include "xla/service/gpu/model/indexing_map.h"
 #include "xla/service/gpu/triton_fusion_analysis.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/status.h"
@@ -48,10 +49,16 @@ struct TritonWrapperResult {
   std::optional<se::ClusterDim> cluster_dim;
 };
 
+// Computes indexing map from program id into the tile offset for the given
+// shape and tile sizes.
+IndexingMap ComputeProgramIdToOutputTileIndexing(
+    absl::Span<const int64_t> dimensions, absl::Span<const int64_t> tile_sizes,
+    mlir::MLIRContext* mlir_context);
+
 // Compute the launch dimensions for the given Triton MatMul.
-LaunchDimensions GetMatMulLaunchDimensions(const TritonFusionAnalysis& analysis,
-                                           const HloFusionAdaptor& fusion,
-                                           const TritonGemmConfig& config);
+absl::StatusOr<LaunchDimensions> GetMatMulLaunchDimensions(
+    const TritonFusionAnalysis& analysis, const HloFusionAdaptor& fusion,
+    const TritonGemmConfig& config);
 // Use tiling and execution parameters from 'config'.
 absl::Status EmitMatMul(mlir::OpBuilder b, absl::string_view libdevice_path,
                         const se::DeviceDescription& device_info,
@@ -82,8 +89,7 @@ using TritonIrEmitter = std::function<Status(
 // MatMul and SoftMax above are some such IR generators.
 absl::StatusOr<TritonWrapperResult> TritonWrapper(
     const TritonFusionAnalysis& analysis, absl::string_view fn_name,
-    const HloComputation* hlo_computation, absl::string_view fusion_kind,
-    const se::CudaComputeCapability& cc,
+    const HloComputation* hlo_computation, const se::CudaComputeCapability& cc,
     const se::DeviceDescription& device_info, const TritonGemmConfig& config,
     llvm::Module* llvm_module, TritonIrEmitter ir_emitter,
     mlir::MLIRContext& mlir_context);

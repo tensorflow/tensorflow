@@ -55,7 +55,7 @@ class GemmFusionAutotuner : public HloModulePass {
 
 // TODO(b/266210099): have a way to generate/load these dynamically.
 // Returns a list of possible tilings for a GEMM performed in Triton.
-std::vector<TritonGemmConfig> GetPossibleMatmulAutotuneConfigs(
+absl::StatusOr<std::vector<TritonGemmConfig>> GetPossibleMatmulAutotuneConfigs(
     const HloDotInstruction& dot, se::CudaComputeCapability compute_capability,
     const DebugOptions& debug_options, bool exhaustive_tiling_search = false);
 

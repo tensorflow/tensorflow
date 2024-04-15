@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/c/safe_ptr.h"
 #include "tensorflow/c/tf_buffer.h"
 #include "tensorflow/c/tf_datatype.h"
+#include "xla/tsl/python/lib/core/numpy.h"
 #include "tensorflow/core/distributed_runtime/server_lib.h"
 #include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/framework/versions.pb.h"
@@ -50,7 +51,6 @@ limitations under the License.
 #include "tensorflow/python/lib/core/pybind11_status.h"
 #include "tensorflow/python/lib/core/safe_pyobject_ptr.h"
 #include "tsl/platform/mutex.h"
-#include "tsl/python/lib/core/numpy.h"
 
 namespace pybind11 {
 namespace detail {

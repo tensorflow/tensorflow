@@ -154,8 +154,8 @@ absl::Status RemoteLoadedHostCallback::Execute(void** result_ptrs,
         buffers.reserve(args.size());
         for (int i = 0; i < args.size(); ++i) {
           const int64_t size = xla::ShapeUtil::ByteSizeOf(args[i].shape);
-          buffers.push_back(RemoteLoadedHostCallbackQueue::Buffer{
-              .data = ptrs[i], .size = size});
+          buffers.push_back(
+              RemoteLoadedHostCallbackQueue::Buffer{ptrs[i], size});
         }
       };
   to_buffer(host_callback().operands, operand_ptrs, request.operands);

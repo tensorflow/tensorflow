@@ -192,11 +192,10 @@ typedef enum {
 //===----------------------------------------------------------------------===//
 
 typedef enum {
-  XLA_FFI_AttrType_I32 = 1,
-  XLA_FFI_AttrType_I64 = 2,
-  XLA_FFI_AttrType_F32 = 3,
+  XLA_FFI_AttrType_ARRAY = 1,
+  XLA_FFI_AttrType_DICTIONARY = 2,
+  XLA_FFI_AttrType_SCALAR = 3,
   XLA_FFI_AttrType_STRING = 4,
-  XLA_FFI_AttrType_DICTIONARY = 5,
 } XLA_FFI_AttrType;
 
 //===----------------------------------------------------------------------===//
@@ -222,6 +221,29 @@ struct XLA_FFI_ByteSpan {
 };
 
 XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_ByteSpan, len);
+
+// A struct to pass a scalar value to FFI handler.
+struct XLA_FFI_Scalar {
+  size_t struct_size;
+  void* priv;
+
+  XLA_FFI_DataType dtype;
+  void* value;
+};
+
+XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_Scalar, value);
+
+// A struct to pass a dense array to FFI handler.
+struct XLA_FFI_Array {
+  size_t struct_size;
+  void* priv;
+
+  XLA_FFI_DataType dtype;
+  size_t size;
+  void* data;
+};
+
+XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_Array, data);
 
 struct XLA_FFI_Args {
   size_t struct_size;
@@ -267,6 +289,15 @@ XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_CallFrame, attrs);
 // External functions registered with XLA as FFI handlers.
 typedef XLA_FFI_Error* XLA_FFI_Handler(XLA_FFI_CallFrame* call_frame);
 
+enum XLA_FFI_Handler_TraitsBits {
+  // Calls to FFI handler are safe to trace into the command buffer. It means
+  // that calls to FFI handler always launch exactly the same device operations
+  // (can depend on attribute values) that can be captured and then replayed.
+  XLA_FFI_HANDLER_TRAITS_COMMAND_BUFFER_COMPATIBLE = 1u << 0,
+};
+
+typedef uint32_t XLA_FFI_Handler_Traits;
+
 struct XLA_FFI_Handler_Register_Args {
   size_t struct_size;
   void* priv;
@@ -274,9 +305,10 @@ struct XLA_FFI_Handler_Register_Args {
   const char* name;      // null terminated
   const char* platform;  // null terminated
   XLA_FFI_Handler* handler;
+  XLA_FFI_Handler_Traits traits;
 };
 
-XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_Handler_Register_Args, handler);
+XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_Handler_Register_Args, traits);
 
 typedef XLA_FFI_Error* XLA_FFI_Handler_Register(
     XLA_FFI_Handler_Register_Args* args);

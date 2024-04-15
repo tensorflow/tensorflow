@@ -33,25 +33,26 @@ namespace xla {
 ConvolutionDimensionNumbers ConvertConvDimensionNumbers(
     mlir::mhlo::ConvDimensionNumbersAttr input);
 
-StatusOr<std::vector<ReplicaGroup>> ConvertReplicaGroups(
+absl::StatusOr<std::vector<ReplicaGroup>> ConvertReplicaGroups(
     mlir::DenseIntElementsAttr input);
 
 // Convert a (N, 2) dense attribute to a list of tuples. This is the way padding
 // and source-target pairs are defined in HLO.
-StatusOr<std::vector<std::pair<int64_t, int64_t>>> ConvertNx2Attribute(
+absl::StatusOr<std::vector<std::pair<int64_t, int64_t>>> ConvertNx2Attribute(
     std::optional<mlir::DenseIntElementsAttr> optional_attr);
 
-StatusOr<FftType> ConvertFftType(llvm::StringRef type_string);
-StatusOr<TriangularSolveOptions::Transpose> ConvertTranspose(
+absl::StatusOr<FftType> ConvertFftType(llvm::StringRef type_string);
+absl::StatusOr<TriangularSolveOptions::Transpose> ConvertTranspose(
     llvm::StringRef transpose_string);
 
-StatusOr<xla::CustomCallSchedule> ConvertCustomCallSchedule(
+absl::StatusOr<xla::CustomCallSchedule> ConvertCustomCallSchedule(
     mlir::mhlo::CustomCallSchedule schedule);
 
-StatusOr<xla::CustomCallApiVersion> ConvertCustomCallApiVersion(
+absl::StatusOr<xla::CustomCallApiVersion> ConvertCustomCallApiVersion(
     mlir::mhlo::CustomCallApiVersion api_version);
 
-StatusOr<std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>>
+absl::StatusOr<
+    std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>>
 ConvertOutputOperandAliasing(mlir::ArrayAttr aliasArrayAttr);
 
 // Returns an OpSharding that represents the result of parsing the given string:
@@ -67,7 +68,7 @@ DotDimensionNumbers ConvertDotDimensionNumbers(
     absl::Span<const int64_t> rhs_batch,
     absl::Span<const int64_t> rhs_contract);
 
-StatusOr<std::vector<int64_t>> ConvertMlirArrayAttrToInt64Array(
+absl::StatusOr<std::vector<int64_t>> ConvertMlirArrayAttrToInt64Array(
     const mlir::ArrayAttr& array);
 }  // namespace xla
 #endif  // XLA_TRANSLATE_MHLO_TO_HLO_ATTRIBUTE_EXPORTER_H_

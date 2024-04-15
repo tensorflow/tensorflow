@@ -19,13 +19,18 @@ limitations under the License.
 
 #include <optional>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
+#include "absl/base/attributes.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/types.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/exported_model.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/graph/graph.h"
@@ -56,8 +61,20 @@ struct ExportOptions {
   std::string debug_name = "stablehlo_quant";
 };
 
+// Creates `ExportedModel` from `module_op`. `module_op` goes through post
+// process passes before an `ExportModel` is created.
+// TODO: b/329206105 - Add unit tests after decomposing post processing passes.
+absl::StatusOr<tensorflow::quantization::ExportedModel> CreateExportedModel(
+    const std::vector<std::string>& signature_keys,
+    const std::unordered_set<std::string>& tags,
+    const ::stablehlo::quantization::QuantizationConfig& quantization_config,
+    absl::string_view debug_name_prefix,
+    const absl::flat_hash_map<FunctionName, FunctionAlias>& function_aliases,
+    MLIRContext& ctx ABSL_ATTRIBUTE_LIFETIME_BOUND, ModuleOp module_op);
+
 // Factory function for `ExportedModel`.
-[[nodiscard]] tensorflow::quantization::ExportedModel CreateExportedModel(
+[[nodiscard]] tensorflow::quantization::ExportedModel
+CreateExportedModelFromGraphDef(
     tensorflow::GraphDef&& graph_def, absl::string_view init_node_name,
     absl::string_view checkpoint_dir,
     std::optional<tensorflow::SaverDef> saver_def,
@@ -110,6 +127,15 @@ ConvertMlirModuleToExportedModel(
     mlir::ModuleOp module_op, absl::string_view checkpoint_dir,
     const absl::flat_hash_map<std::string, std::string>& function_aliases,
     const std::vector<tensorflow::AssetFileDef>& asset_file_defs);
+
+// Sets up and runs the passes for exporting `module_op`. The behavior of the
+// exporting passes is controlled by `export_opts`. Returns `AssetFileDef`s that
+// associate the input arguments of @main and the asset file names. Asset file
+// names will be used to feed the corresponding tensors during initialization
+// upon model loading.
+// TODO: b/329206105 - Add unit tests after decomposing post processing passes.
+absl::StatusOr<SmallVector<::tensorflow::AssetFileDef>> RunExportPasses(
+    const ExportOptions& export_opts, MLIRContext& ctx, ModuleOp module_op);
 
 }  // namespace mlir::quant::stablehlo
 

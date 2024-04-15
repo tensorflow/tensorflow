@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/global_shuffle_utils.h"
 #include "tensorflow/core/data/name_utils.h"
@@ -90,7 +91,11 @@ class BatchDatasetOp::Dataset : public DatasetBase {
     }
 
     random_indexing_compatible_ = absl::OkStatus();
-    if (input_ != nullptr) {
+    if (!drop_remainder_) {
+      random_indexing_compatible_ = absl::FailedPreconditionError(absl::StrCat(
+          type_string(),
+          " does not support global shuffling with `drop_remainder=False`."));
+    } else if (input_ != nullptr) {
       random_indexing_compatible_ = input_->RandomIndexingCompatible();
     }
   }
@@ -153,9 +158,8 @@ class BatchDatasetOp::Dataset : public DatasetBase {
       TF_RETURN_IF_ERROR(input_->Get(ctx, i, &batch_element_tuple));
       batch_elements.emplace_back(std::move(batch_element_tuple));
     }
-    TF_RETURN_IF_ERROR(CopyBatch(CopyBatchParams(ctx),
-                                 std::move(batch_elements), parallel_copy_,
-                                 out_tensors));
+    TF_RETURN_IF_ERROR(CopyBatch(AnyContext(ctx), std::move(batch_elements),
+                                 parallel_copy_, out_tensors));
     return absl::OkStatus();
   }
 
@@ -242,8 +246,7 @@ class BatchDatasetOp::Dataset : public DatasetBase {
       // respective slice locations. This would require a different GetNext()
       // overload that supports zero-copy, and might make sense in an
       // optimization pass.
-      TF_RETURN_IF_ERROR(CopyBatch(CopyBatchParams(ctx),
-                                   std::move(batch_elements),
+      TF_RETURN_IF_ERROR(CopyBatch(AnyContext(ctx), std::move(batch_elements),
                                    dataset()->parallel_copy_, out_tensors));
 
       *end_of_sequence = false;

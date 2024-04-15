@@ -28,6 +28,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v2/device_type.pb.h"
@@ -51,8 +52,6 @@ using mlir::ModuleOp;
 using mlir::OpPassManager;
 using mlir::PassManager;
 using mlir::func::FuncOp;
-
-constexpr char kBridgeComponent[] = "TFXLABridge";
 
 // Run the TF XLA Bridge based on the input pipeline, which can be either TPU
 // bridge pipeline or non TPU bridge pipeline.
@@ -114,6 +113,7 @@ tensorflow::Status RunTFXLABridge(
 
 tensorflow::Status RecordIfErrorStatus(const std::string error_prefix,
                                        bool fallback_enabled,
+                                       std::string bridge_type,
                                        std::string device_type,
                                        absl::Status status) {
   if (status.ok()) {
@@ -122,7 +122,7 @@ tensorflow::Status RecordIfErrorStatus(const std::string error_prefix,
 
   VLOG(2) << error_prefix << " " << status;
   tensorflow::metrics::UpdateTfMlirBridgeFirstPhaseCounter(
-      device_type, /*bridge_version=*/"v2",
+      /*bridge_type*/ bridge_type, /*bridge_version=*/"v2", device_type,
       /*fallback_enabled=*/fallback_enabled,
       /*result=*/"failure");
 
@@ -135,7 +135,7 @@ tensorflow::Status RecordIfErrorStatus(const std::string error_prefix,
     bridge_subcomponent = "TFXLA_PHASE_ONE_MLIR_CPU/GPU_BRIDGE";
   }
 
-  tsl::error_logging::Log(kBridgeComponent, bridge_subcomponent,
+  tsl::error_logging::Log(mlir::TF::kBridgeComponent, bridge_subcomponent,
                           status.ToString())
       .IgnoreError();
 
@@ -162,8 +162,9 @@ void CreateReplicatedClusteringPipelineV2(OpPassManager &pm) {
 tensorflow::Status RunFunctionTf2xlaClusteringBridge(
     ModuleOp module, bool is_supported_by_replicated_brige,
     bool is_in_fallback_enabled_mode, llvm::StringRef module_name) {
-  std::string device_type_filter =
-      is_supported_by_replicated_brige ? "tpu" : "cpu/gpu";
+  std::string device_type = is_supported_by_replicated_brige
+                                ? mlir::TF::kMlirPh1BridgeCounterTpu
+                                : mlir::TF::kMlirPh1BridgeCounterNonTpu;
 
   VLOG(2)
       << (is_supported_by_replicated_brige ? "Replicated" : "NonReplicated")
@@ -186,14 +187,17 @@ tensorflow::Status RunFunctionTf2xlaClusteringBridge(
                 },
                 module_name, /*dump_prefix=*/"tf_xla_bridge_v2_nonreplicated");
 
+  std::string bridge_type = is_supported_by_replicated_brige
+                                ? mlir::TF::kMlirPh1BridgeCounterReplicated
+                                : mlir::TF::kMlirPh1BridgeCounterNonReplicated;
   // TODO(b/317798386): add is_supported_by_replicated_brige as a filter.
   TF_RETURN_IF_ERROR(RecordIfErrorStatus(
       /*error_prefix=*/"clustering_v2", is_in_fallback_enabled_mode,
-      device_type_filter, clustering_status));
+      bridge_type, device_type, clustering_status));
 
   // TODO(b/317798386): add is_supported_by_replicated_brige as a filter.
   tensorflow::metrics::UpdateTfMlirBridgeFirstPhaseCounter(
-      device_type_filter, /*bridge_version=*/"v2",
+      bridge_type, /*bridge_version=*/"v2", device_type,
       /*fallback_enabled=*/is_in_fallback_enabled_mode,
       /*result=*/"success");
 

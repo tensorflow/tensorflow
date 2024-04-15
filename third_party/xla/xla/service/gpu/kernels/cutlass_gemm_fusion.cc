@@ -170,7 +170,7 @@ static absl::StatusOr<GemmWithDynamicSlice> MatchGemmWithDynamicUpdateSlice(
     HloDynamicUpdateSliceInstruction* update_slice) {
   GemmWithDynamicSlice match(update_slice);
 
-  if (!Match(const_cast<HloInstruction*>(update_slice->operand(1)),
+  if (!Match(const_cast<HloInstruction*>(update_slice->update()),
              OptionalBitcast(&match.bitcast,
                              m::Dot(&match.dot, m::Op(), m::Op())))) {
     return absl::InternalError("failed to match update slice instr");

@@ -15,6 +15,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/status/statusor.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/CommandLine.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -32,6 +33,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/quantization/common/lift_as_function_call.h"
 #include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_utils.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
@@ -45,6 +47,7 @@ namespace quant {
 namespace {
 
 using ::stablehlo::quantization::CalibrationOptions;
+using ::stablehlo::quantization::Method;
 
 constexpr StringRef kQuantTraitAttrName = "_tfl_quant_trait";
 
@@ -199,7 +202,7 @@ class AddCustomAggregationOp : public RewritePattern {
 
     // The CustomAggregatorOp is only added after quantizable values.
     SmallVector<Value> quantizable_values;
-    if (isCallToLiftedFunction(op)) {
+    if (IsCallToQuantizableLiftedFunction(op)) {
       // Quantize inputs of quantizable composite functions.
       for (Value input : op->getOperands()) {
         Type element_type = getElementTypeOrSelf(input.getType());
@@ -226,7 +229,7 @@ class AddCustomAggregationOp : public RewritePattern {
       // Quantize output of fully quantizable composite functions.
       for (Value input : op->getOperands()) {
         auto defining_op = input.getDefiningOp();
-        if (!isCallToLiftedFunction(defining_op)) {
+        if (!IsCallToQuantizableLiftedFunction(defining_op)) {
           continue;
         }
 
@@ -282,9 +285,13 @@ class AddCustomAggregationOp : public RewritePattern {
   CalibrationOptions calib_opts_;
 
   // Whether the op is a call op to lifted composite function.
-  bool isCallToLiftedFunction(Operation *op) const {
+  bool IsCallToQuantizableLiftedFunction(Operation *op) const {
     if (!op) return false;
-    if (isa<TF::XlaCallModuleOp>(op)) return true;
+    if (auto xla_call_module_op = dyn_cast_or_null<TF::XlaCallModuleOp>(op);
+        xla_call_module_op != nullptr) {
+      absl::StatusOr<Method> method = GetQuantizationMethod(xla_call_module_op);
+      if (method.ok() && method->has_static_range_ptq()) return true;
+    }
 
     TF::PartitionedCallOp call_op = dyn_cast_or_null<TF::PartitionedCallOp>(op);
     return call_op && call_op->hasAttrOfType<StringAttr>(kQuantTraitAttrName) &&

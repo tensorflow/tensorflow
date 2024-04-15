@@ -242,7 +242,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/profiler/utils:format_utils",
         "@local_tsl//tsl/profiler/utils:tf_op_utils",
-        "@local_tsl//tsl/util:stats_calculator_portable",
+        "@local_xla//xla/tsl/util:stats_calculator_portable",
     ],
 )
 
@@ -755,6 +755,7 @@ cc_library(
         "//tensorflow/core/profiler/protobuf:memory_viewer_preprocess_proto_cc",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -816,6 +817,7 @@ cc_library(
         "//tensorflow/core/profiler/utils:op_metrics_db_utils",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:node_hash_map",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/profiler/convert:xla_op_utils",
     ],

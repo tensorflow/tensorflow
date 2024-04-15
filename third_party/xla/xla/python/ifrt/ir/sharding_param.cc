@@ -18,14 +18,20 @@ limitations under the License.
 #include <cstdint>
 #include <string>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/Hashing.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/OpImplementation.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "tsl/platform/errors.h"
 
 namespace xla {
 namespace ifrt {
@@ -66,14 +72,37 @@ void PopulateDevices(llvm::ArrayRef<int> permutation,
 
 }  // namespace
 
+absl::Status ShardingParam::MinorToMajor::verify() const {
+  if (permutation.size() != axis_sizes.size() || axis_sizes.empty()) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Expect same non-zero size for `permutation` and `axis_sizes`. Actual ",
+        permutation.size(), " vs ", axis_sizes.size()));
+  }
+  llvm::DenseSet<int> permutation_set(permutation.begin(), permutation.end());
+  if (permutation_set.size() != permutation.size()) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("`permutation` [", absl::StrJoin(permutation, ","),
+                     "] has duplicate values"));
+  }
+  for (const int index : permutation) {
+    if (index < 0 || index >= axis_sizes.size()) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Out of range axis ", index, " to the mesh of [",
+                       absl::StrJoin(permutation, ","), "] on ",
+                       absl::StrJoin(axis_sizes, "x")));
+    }
+  }
+  return absl::OkStatus();
+}
+
 mlir::LogicalResult ShardingParam::MinorToMajor::verify(
     llvm::function_ref<mlir::InFlightDiagnostic()> emit_error) const {
-  if (permutation.size() != axis_sizes.size() || axis_sizes.empty()) {
-    return emit_error() << "Expect same non-zero size for `permutation` and "
-                           "`axis_sizes`. Actual "
-                        << permutation.size() << " vs " << axis_sizes.size();
+  auto status = verify();
+  if (status.ok()) {
+    return mlir::success();
+  } else {
+    return emit_error() << status.message();
   }
-  return mlir::success();
 }
 
 void ShardingParam::MinorToMajor::ToDeviceList(
@@ -120,12 +149,8 @@ mlir::FailureOr<ShardingParam> ShardingParam::Parse(
   return ShardingParam(dim_shards, minor_to_major);
 }
 
-mlir::LogicalResult ShardingParam::verify(
-    llvm::function_ref<mlir::InFlightDiagnostic()> emit_error) const {
-  if (mlir::failed(minor_to_major().verify(emit_error))) {
-    return mlir::failure();
-  }
-
+absl::Status ShardingParam::verify() const {
+  TF_RETURN_IF_ERROR(minor_to_major().verify());
   int dim_index = 0;
   int cum_size = 1;
   for (const int index : minor_to_major().permutation) {
@@ -135,19 +160,10 @@ mlir::LogicalResult ShardingParam::verify(
     if (dim_index == dim_shards().size()) {
       break;
     }
-    if (index < 0 || index >= minor_to_major().axis_sizes.size()) {
-      return emit_error() << "Out of range axis " << index << " to the mesh of "
-                          << minor_to_major().permutation << " on "
-                          << minor_to_major().axis_sizes;
-    }
-
     cum_size *= minor_to_major().axis_sizes[index];
-    if (cum_size > dim_shards()[dim_index]) {
-      return emit_error() << "Dimension #" << dim_index << " of "
-                          << dim_shards()[dim_index]
-                          << " shards can't be assigned to the axes";
-    } else if (cum_size == dim_shards()[dim_index]) {
-      cum_size = 1;
+    while (dim_index < dim_shards().size() &&
+           cum_size % dim_shards()[dim_index] == 0) {
+      cum_size /= dim_shards()[dim_index];
       dim_index++;
     }
   }
@@ -155,12 +171,22 @@ mlir::LogicalResult ShardingParam::verify(
     dim_index++;
   }
   if (dim_index != dim_shards().size()) {
-    return emit_error() << "Can't shard the dims " << dim_shards()
-                        << " to the mesh of " << minor_to_major().permutation
-                        << " on " << minor_to_major().axis_sizes;
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Can't shard the dims ", absl::StrJoin(dim_shards(), "x"),
+        " to the mesh of [", absl::StrJoin(minor_to_major().permutation, ","),
+        "] on ", absl::StrJoin(minor_to_major().axis_sizes, "x")));
   }
+  return absl::OkStatus();
+}
 
-  return mlir::success();
+mlir::LogicalResult ShardingParam::verify(
+    llvm::function_ref<mlir::InFlightDiagnostic()> emit_error) const {
+  auto status = verify();
+  if (status.ok()) {
+    return mlir::success();
+  } else {
+    return emit_error() << status.message();
+  }
 }
 
 std::string ShardingParam::DebugString() const {

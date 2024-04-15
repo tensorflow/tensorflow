@@ -54,8 +54,8 @@ limitations under the License.
 #include "xla/service/gpu/nccl_clique.h"
 #include "xla/service/gpu/nccl_clique_key.h"
 #include "xla/service/gpu/runtime/annotation.h"
+#include "xla/service/gpu/runtime/thunk.h"
 #include "xla/service/gpu/stream_executor_util.h"
-#include "xla/service/gpu/thunk.h"
 #include "xla/service/hlo_execution_profile.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_parser.h"
@@ -167,6 +167,7 @@ GpuExecutable::GpuExecutable(GpuExecutable::Params params)
     : Executable(std::move(params.debug_module)),
       text_(std::move(params.asm_text)),
       binary_(std::move(params.binary)),
+      dnn_compiled_graphs_(std::move(params.dnn_compiled_graphs)),
       gpu_version_(params.gpu_version),
       thunks_(std::move(params.executable)),
       execution_stream_ids_(has_module()
@@ -1015,7 +1016,8 @@ absl::Status GpuExecutable::ExecuteThunksOrXlaRuntime(
   ModuleIdentifier unique_id = has_module() ? module().unique_id() : -1;
 
   if (thunks_) {
-    Thunk::ExecutableSource executable_source = {text_, binary_};
+    Thunk::ExecutableSource executable_source = {text_, binary_,
+                                                 dnn_compiled_graphs_};
     int64_t collective_max_nchannels =
         has_module() ? module_config()
                            .debug_options()

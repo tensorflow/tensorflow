@@ -115,6 +115,57 @@ ENTRY e {
                             /*slice_limit=*/3, ElementsAre(3))));
 }
 
+TEST_F(TritonDotAnalysisTest, DoNotRemoveTrivialDimensionForDot) {
+  const std::string hlo_text = R"(
+HloModule t, is_scheduled=true
+
+triton_dot {
+  param_0.1 = f32[137,115]{1,0} parameter(0)
+  param_1.1 = f32[1,115]{1,0} parameter(1)
+  ROOT dot = f32[137,1]{1,0} dot(param_0.1, param_1.1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={1}
+}
+
+ENTRY e {
+  p0 = f32[137,115]{1,0} parameter(0)
+  p1 = f32[1,115]{1,0} parameter(1)
+  ROOT custom-call = f32[137,1]{1,0} fusion(p0, p1), kind=kCustom,
+    calls=triton_dot,
+    backend_config={"fusion_backend_config": {kind: "__triton_gemm",
+    triton_gemm_config: {"block_m":16,"block_n":64,"block_k":32,
+                         "split_k":1,"num_stages":1,"num_warps":2,
+                         "num_ctas":1}}}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+  const HloComputation* dot_computation =
+      module->entry_computation()->root_instruction()->called_computations()[0];
+  const HloInstruction* p0 = dot_computation->parameter_instruction(0);
+  const HloInstruction* p1 = dot_computation->parameter_instruction(1);
+  TF_ASSERT_OK_AND_ASSIGN(const auto analysis,
+                          TritonFusionAnalysis::Execute(*dot_computation));
+  EXPECT_EQ(*analysis.ScopeParameters(TritonFusionAnalysis::Scope::LHS).begin(),
+            p0);
+  EXPECT_EQ(*analysis.ScopeParameters(TritonFusionAnalysis::Scope::RHS).begin(),
+            p1);
+  EXPECT_THAT(
+      *analysis.IterSpec(TritonFusionAnalysis::Scope::LHS, p0, 0),
+      ElementsAre(FieldsAre(/*stride=*/115, /*count=*/137, /*slice_start=*/0,
+                            /*slice_limit=*/137, ElementsAre(137))));
+  EXPECT_THAT(
+      *analysis.IterSpec(TritonFusionAnalysis::Scope::LHS, p0, 1),
+      ElementsAre(FieldsAre(/*stride=*/1, /*count=*/115, /*slice_start=*/0,
+                            /*slice_limit=*/115, ElementsAre(115))));
+  EXPECT_THAT(
+      *analysis.IterSpec(TritonFusionAnalysis::Scope::RHS, p1, 0),
+      ElementsAre(FieldsAre(/*stride=*/115, /*count=*/1, /*slice_start=*/0,
+                            /*slice_limit=*/1, ElementsAre(1))));
+  EXPECT_THAT(
+      *analysis.IterSpec(TritonFusionAnalysis::Scope::RHS, p1, 1),
+      ElementsAre(FieldsAre(/*stride=*/1, /*count=*/115, /*slice_start=*/0,
+                            /*slice_limit=*/115, ElementsAre(115))));
+}
+
 TEST_F(TritonDotAnalysisTest, Merge) {
   const std::string hlo_text = R"(
 HloModule t
@@ -687,9 +738,11 @@ ENTRY e {
               ElementsAre(FieldsAre(/*stride=*/1, /*count=*/97,
                                     /*slice_start=*/0, /*slice_limit=*/97,
                                     /*subfragments=*/ElementsAre(97))));
-  EXPECT_EQ(analysis.IterSpec(TritonFusionAnalysis::Scope::OUTPUT,
-                              computation->root_instruction(), 1),
-            nullptr);
+  EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::OUTPUT,
+                                 computation->root_instruction(), 1),
+              ElementsAre(FieldsAre(/*stride=*/97, /*count=*/1,
+                                    /*slice_start=*/0, /*slice_limit=*/1,
+                                    /*subfragments=*/ElementsAre(1))));
 }
 
 TEST_F(TritonSoftmaxAnalysisTest, BroadcastIntoBatchDimensionIsSupported) {

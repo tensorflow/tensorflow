@@ -317,41 +317,10 @@ int64_t GetPipelineStream(const HloInstruction& start) {
 // Returns the resource type and resource usage for a P2P instruction.
 std::pair<GpuResourceType, ResourceUsageType> GetP2PResourceAndUsage(
     const HloInstruction& instr, const CanonicalAsyncOp& op) {
-  ResourceUsageType usage;
-  int64_t pipeline = 0;
-  if (op.outer == HloOpcode::kAsyncStart) {
-    usage = ResourceUsageType::kResourceRelease;
-    pipeline = GetPipelineStream(instr);
-  } else {
-    usage = ResourceUsageType::kResourceOccupy;
-    // Check the operand for the Send-done or Recv-done instruction.
-    const HloInstruction* operand = instr.operand(0);
-    HloOpcode operand_opcode = operand->opcode();
-    if (operand_opcode == HloOpcode::kSend ||
-        operand_opcode == HloOpcode::kRecv) {
-      // Not a pipelined P2P.
-      pipeline = GetPipelineStream(*operand);
-    } else {
-      // A pipelined P2P. Find the corresponding start-op.
-      const HloSendRecvInstruction* start;
-      const HloGetTupleElementInstruction* gte =
-          DynCast<HloGetTupleElementInstruction>(operand);
-      int64_t tuple_index = gte->tuple_index();
-      if (gte->operand(0)->opcode() == HloOpcode::kWhile) {
-        // The op is a while-result, so the start-op should be a value in the
-        // while-op operands.
-        start = DynCast<HloSendRecvInstruction>(
-            gte->operand(0)->operand(0)->operand(tuple_index));
-      } else {
-        // The op is a while-body parameter, so the start-op should be a value
-        // in the while-body result.
-        const HloComputation* computation = instr.parent();
-        start = DynCast<HloSendRecvInstruction>(
-            computation->root_instruction()->operand(tuple_index));
-      }
-      pipeline = GetPipelineStream(*start);
-    }
-  }
+  ResourceUsageType usage = op.outer == HloOpcode::kAsyncStart
+                                ? ResourceUsageType::kResourceRelease
+                                : ResourceUsageType::kResourceOccupy;
+  int64_t pipeline = GetPipelineStream(instr);
   HloOpcode opcode = op.inner;
   GpuResourceType resource;
   if (pipeline == 0) {
@@ -398,6 +367,22 @@ class GpuAsyncTrackerBase : public AsyncTracker {
                                                 /*include_send_recv=*/true) &&
             !IsSyncCollective(&hlo)) ||
            IsAsyncComputeOp(hlo);
+  }
+
+  void PostProcessScheduleGraph(
+      HloScheduleGraph* schedule_graph,
+      const LatencyEstimator* latency_estimator) const override {
+    for (auto inst : schedule_graph->GetOriginalInstrList()) {
+      if (inst->has_backend_config()) {
+        auto gpu_config = inst->backend_config<GpuBackendConfig>();
+        if (gpu_config.ok()) {
+          HloGraphNode& node = schedule_graph->GetNode(inst);
+          node.SetForceDelay(gpu_config->force_earliest_schedule());
+          VLOG(5) << "Setting force delay for instruction: "
+                  << inst->ToString();
+        }
+      }
+    }
   }
 };
 
@@ -523,26 +508,30 @@ class GpuAsyncTracker : public GpuAsyncTrackerBase {
     }
     auto find_instruction_for_pipeline = [&](HloOpcode opcode,
                                              int64_t pipeline) {
-      for (auto operand : instr.operand(0)->operands()) {
-        if (operand->opcode() == opcode) {
-          int64_t cur_pipeline = GetPipelineStream(*operand);
-          if (cur_pipeline == pipeline) {
-            return true;
+      for (auto user1 : instr.users()) {
+        if (user1->opcode() == HloOpcode::kGetTupleElement) {
+          for (auto user2 : user1->users()) {
+            if (user2->opcode() == opcode) {
+              if (GetPipelineStream(*user2) == pipeline) {
+                return true;
+              }
+            }
           }
         }
       }
       return false;
     };
     bool found;
-    // Look into the while-op init-values to find pipelined Send/Recv.
+    // Look into the users of the while-result to find pipelined Send-done or
+    // Recv-done.
     if (resource_type == first_p2p_resource) {
-      found = find_instruction_for_pipeline(HloOpcode::kSend, 0);
+      found = find_instruction_for_pipeline(HloOpcode::kSendDone, 0);
     } else if (resource_type == first_p2p_resource + 1) {
-      found = find_instruction_for_pipeline(HloOpcode::kSend, 1);
+      found = find_instruction_for_pipeline(HloOpcode::kSendDone, 1);
     } else if (resource_type == first_p2p_resource + 2) {
-      found = find_instruction_for_pipeline(HloOpcode::kRecv, 0);
+      found = find_instruction_for_pipeline(HloOpcode::kRecvDone, 0);
     } else {
-      found = find_instruction_for_pipeline(HloOpcode::kRecv, 1);
+      found = find_instruction_for_pipeline(HloOpcode::kRecvDone, 1);
     }
     return num_resources - (found ? 1 : 0);
   }

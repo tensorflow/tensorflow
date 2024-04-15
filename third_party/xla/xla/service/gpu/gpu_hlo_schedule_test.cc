@@ -790,11 +790,17 @@ TEST_F(GpuHloScheduleTest, LHSSendRecvPipelined1) {
     count = get-tuple-element(param), index=0
 
     recv.1.q = (f32[1,1024,1024], u32[], token[]) get-tuple-element(param), index=1
-    recv-done.1 = (f32[1,1024,1024], token[]) recv-done(recv.1.q), channel_id=1
+    recv-done.1 = (f32[1,1024,1024], token[]) recv-done(recv.1.q), channel_id=1,
+      frontend_attributes={
+      _xla_send_recv_pipeline="0"
+      }
     recv-data = f32[1, 1024, 1024] get-tuple-element(recv-done.1), index=0
 
     send.1.q = (f32[1,1024,1024], u32[], token[]) get-tuple-element(param), index=2
-    send-done.1 = token[] send-done(send.1.q), channel_id=1
+    send-done.1 = token[] send-done(send.1.q), channel_id=1,
+      frontend_attributes={
+      _xla_send_recv_pipeline="0"
+      }
 
     c1 = u32[] constant(1)
     new-count = u32[] add(count, c1)
@@ -852,10 +858,16 @@ TEST_F(GpuHloScheduleTest, LHSSendRecvPipelined1) {
       backend_config={"known_trip_count":{"n":"25"}}
 
     recv.2.q = (f32[1,1024,1024], u32[], token[]) get-tuple-element(while-result), index=1
-    recv-done.2 = (f32[1,1024,1024], token[]) recv-done(recv.2.q), channel_id=1
+    recv-done.2 = (f32[1,1024,1024], token[]) recv-done(recv.2.q), channel_id=1,
+      frontend_attributes={
+      _xla_send_recv_pipeline="0"
+      }
 
     send.2.q = (f32[1,1024,1024], u32[], token[]) get-tuple-element(while-result), index=2
-    send-done.2 = token[] send-done(send.2.q), channel_id=1
+    send-done.2 = token[] send-done(send.2.q), channel_id=1,
+      frontend_attributes={
+      _xla_send_recv_pipeline="0"
+      }
 
     ROOT entry-result = f32[1, 1024, 1024] get-tuple-element(recv-done.2), index=0
   }
@@ -920,18 +932,30 @@ TEST_F(GpuHloScheduleTest, LHSSendRecvPipelined2) {
     count = get-tuple-element(param), index=0
 
     recv.0.q = (f32[1,1024,1024], u32[], token[]) get-tuple-element(param), index=1
-    recv-done.0 = (f32[1,1024,1024], token[]) recv-done(recv.0.q), channel_id=1
+    recv-done.0 = (f32[1,1024,1024], token[]) recv-done(recv.0.q), channel_id=1,
+      frontend_attributes={
+      _xla_send_recv_pipeline="0"
+      }
     recv-data.0 = f32[1, 1024, 1024] get-tuple-element(recv-done.0), index=0
 
     send.0.q = (f32[1,1024,1024], u32[], token[]) get-tuple-element(param), index=2
-    send-done.0 = token[] send-done(send.0.q), channel_id=1
+    send-done.0 = token[] send-done(send.0.q), channel_id=1,
+      frontend_attributes={
+      _xla_send_recv_pipeline="0"
+      }
 
     recv.1.q = (f32[1,1024,1024], u32[], token[]) get-tuple-element(param), index=3
-    recv-done.1 = (f32[1,1024,1024], token[]) recv-done(recv.1.q), channel_id=2
+    recv-done.1 = (f32[1,1024,1024], token[]) recv-done(recv.1.q), channel_id=2,
+      frontend_attributes={
+      _xla_send_recv_pipeline="1"
+      }
     recv-data.1 = f32[1, 1024, 1024] get-tuple-element(recv-done.1), index=0
 
     send.1.q = (f32[1,1024,1024], u32[], token[]) get-tuple-element(param), index=4
-    send-done.1 = token[] send-done(send.1.q), channel_id=2
+    send-done.1 = token[] send-done(send.1.q), channel_id=2,
+      frontend_attributes={
+      _xla_send_recv_pipeline="1"
+      }
 
     replica = u32[] replica-id()
     constant0 = u32[] constant(0)
@@ -1021,18 +1045,30 @@ TEST_F(GpuHloScheduleTest, LHSSendRecvPipelined2) {
       backend_config={"known_trip_count":{"n":"25"}}
 
     recv.2.q = (f32[1,1024,1024], u32[], token[]) get-tuple-element(while-result), index=1
-    recv-done.2 = (f32[1,1024,1024], token[]) recv-done(recv.2.q), channel_id=1
+    recv-done.2 = (f32[1,1024,1024], token[]) recv-done(recv.2.q), channel_id=1,
+      frontend_attributes={
+      _xla_send_recv_pipeline="0"
+      }
     recv-data.2 = f32[1, 1024, 1024] get-tuple-element(recv-done.2), index=0
 
     send.2.q = (f32[1,1024,1024], u32[], token[]) get-tuple-element(while-result), index=2
-    send-done.2 = token[] send-done(send.2.q), channel_id=1
+    send-done.2 = token[] send-done(send.2.q), channel_id=1,
+      frontend_attributes={
+      _xla_send_recv_pipeline="0"
+      }
 
     recv.3.q = (f32[1,1024,1024], u32[], token[]) get-tuple-element(while-result), index=3
-    recv-done.3 = (f32[1,1024,1024], token[]) recv-done(recv.3.q), channel_id=2
+    recv-done.3 = (f32[1,1024,1024], token[]) recv-done(recv.3.q), channel_id=2,
+      frontend_attributes={
+      _xla_send_recv_pipeline="1"
+      }
     recv-data.3 = f32[1, 1024, 1024] get-tuple-element(recv-done.3), index=0
 
     send.3.q = (f32[1,1024,1024], u32[], token[]) get-tuple-element(while-result), index=4
-    send-done.3 = token[] send-done(send.3.q), channel_id=2
+    send-done.3 = token[] send-done(send.3.q), channel_id=2,
+      frontend_attributes={
+      _xla_send_recv_pipeline="1"
+      }
 
     replica = u32[] replica-id()
     constant0 = u32[] constant(0)
@@ -1109,6 +1145,77 @@ ENTRY e {
 // CHECK: wrapped_negate = f32[1024,1024]{1,0}
 // CHECK: wrapped_exponential = f32[1024,1024]{1,0}
 )"));
+}
+
+TEST_F(GpuHloScheduleTest, ProfileGuidedCostModelWithForceEarliestSchedule) {
+  const char* hlo_text = R"(
+  HloModule AsyncAR
+  apply_op {
+    x = f32[] parameter(0)
+    y = f32[] parameter(1)
+    ROOT apply_op = f32[] add(x, y)
+  }
+
+  ENTRY main {
+    p0 = f32[32] parameter(0)
+    p1 = f32[32, 32] parameter(1)
+    p2 = f32[32, 32] parameter(2)
+    p3 = f32[32] parameter(3)
+
+    // Independent compute
+    dot0 = f32[32,32]{1,0} custom-call(p1, p2), custom_call_target="__cublas$gemm", backend_config={"force_earliest_schedule":true}
+    dot1 = f32[32,32]{1,0} custom-call(p1, p2), custom_call_target="__cublas$gemm"
+    add0 = f32[32,32] add(dot0, dot1)
+
+    // 2 Independent collectives.
+    ar-start = f32[32] all-reduce-start(p0), to_apply=apply_op
+    ar-done = f32[32] all-reduce-done(ar-start)
+
+    ROOT t = (f32[32], f32[32,32]) tuple(ar-done, add0)
+  })";
+
+  const std::string ar_long_latency_proto_text = R"pb(
+    costs { name: "dot0" cost_us: 100.0 }
+    costs { name: "dot1" cost_us: 100.0 }
+    costs { name: "add0" cost_us: 10.0 }
+    costs { name: "ar-start" cost_us: 1000.0 }
+  )pb";
+
+  tensorflow::profiler::ProfiledInstructionsProto profile;
+  ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
+      ar_long_latency_proto_text, &profile));
+  std::string ar_long_latency_proto_binary = profile.SerializeAsString();
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module,
+      ParseAndReturnVerifiedModule(
+          hlo_text,
+          GetModuleConfig(/*enable_latency_hiding_scheduler=*/true,
+                          // Post processing should work even with
+                          // GpuAsyncTrackerBase.
+                          /*enable_gpu_async_tracker=*/false,
+                          /*fdo_profile=*/ar_long_latency_proto_binary)));
+  SequentialHloOrdering order = BuildHloOrdering(module.get());
+
+  const std::vector<HloInstruction*>& main =
+      order.SequentialOrder(*module->GetComputationWithName("main"))
+          ->instructions();
+  auto get_index =
+      [](absl::string_view hlo_name,
+         const std::vector<HloInstruction*>& instruction_sequence) {
+        return absl::c_find_if(instruction_sequence,
+                               [hlo_name](HloInstruction* instruction) {
+                                 return instruction->name() == hlo_name;
+                               }) -
+               instruction_sequence.begin();
+      };
+  // Using the profile, LHS should schedule all computes between ar pair,
+  // but since dot0 is marked as force delay, it should be scheduled
+  // before ar-start now.
+  EXPECT_LT(get_index("dot0", main), get_index("ar-start", main));
+  // Also verify that dot1 is scheduled between ar start and ar done.
+  EXPECT_GT(get_index("dot1", main), get_index("ar-start", main));
+  EXPECT_LT(get_index("dot1", main), get_index("ar-done", main));
 }
 
 class GpuHloScheduleParameterizedTest

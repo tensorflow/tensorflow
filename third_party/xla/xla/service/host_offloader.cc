@@ -22,9 +22,9 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
@@ -40,7 +40,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status.h"
-#include "xla/statusor.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
@@ -166,36 +165,96 @@ HloInstruction* FindDSAnnotation(HloInstruction* hlo) {
 
 }  // namespace
 
+absl::StatusOr<bool> HostOffloader::TryOutputStreaming(
+    HloInstruction* custom_call) {
+  const HloBuffer& unique_buffer =
+      alias_analysis_->GetUniqueBufferAt(custom_call);
+  bool is_used_as_output_with_host_memory_space = false;
+  const HloComputation* const entry_computation =
+      custom_call->GetModule()->entry_computation();
+  for (const HloValue* value : unique_buffer.values()) {
+    // Check if this is memory-only.
+    if (!AllPositionsAreAllowed(value)) {
+      // Found a position which is not allowed.
+      return false;
+    }
+
+    // Look for a value used as a output.
+    for (const auto& position : value->positions()) {
+      const HloInstruction* instruction = position.instruction;
+      const ShapeIndex& index = position.index;
+      if (instruction->parent() == entry_computation && instruction->IsRoot()) {
+        const Shape& output_shape =
+            ShapeUtil::GetSubshape(entry_computation->parent()
+                                       ->entry_computation_layout()
+                                       .result_shape(),
+                                   index);
+        CHECK(output_shape.has_layout());
+
+        if (output_shape.layout().memory_space() != kHostMemorySpaceColor) {
+          return FailedPrecondition(
+              "Output buffer is annotated with %s but is not marked with host "
+              "memory space in the entry computation.",
+              custom_call->name());
+        }
+        is_used_as_output_with_host_memory_space = true;
+      }
+    }
+  }
+  if (!is_used_as_output_with_host_memory_space) {
+    VLOG(1) << "Buffer annotated by " << custom_call->name()
+            << " is not used as an output with host memory space.";
+    return false;
+  }
+
+  VLOG(3) << "Found an output buffer annotated with " << custom_call->name()
+          << ". Expecting that we'll need to insert copies.";
+
+  annotations_for_copy_to_host_to_insert_.emplace(custom_call);
+  AddAllPositionsToBeMovedToHostMemory(unique_buffer);
+  return true;
+}
+
 Status HostOffloader::HandleMoveToHostCustomCall(HloInstruction* custom_call) {
   VLOG(2) << "Found a custom call annotating start-of-host-offload: "
           << custom_call->ToString();
   // Save a pointer to this custom call for when we want to remove it later.
   custom_calls_to_remove_.emplace(custom_call);
 
-  // We expect that the DUS is the only user of this custom call.
-  if (custom_call->user_count() != 1) {
+  // We expect that either the custom call is the root or the DUS is the only
+  // user of this custom call.
+  if (!custom_call->IsRoot() && custom_call->user_count() != 1) {
     return FailedPrecondition(
-        "Expecting custom call %s to only have 1 user; it has %d users: [%s]",
+        "Expecting custom call %s to either be the root or only have 1 user; "
+        "it is not the root and has %d users: [%s]",
         custom_call->name(), custom_call->user_count(),
         absl::StrJoin(custom_call->users(), ", ",
                       [](std::string* out, const HloInstruction* user) {
                         out->append(user->name());
                       }));
   }
-  HloInstruction* op_being_annotated = custom_call->users()[0];
 
-  // Skip past any bitcasts.
-  while (op_being_annotated->opcode() == HloOpcode::kBitcast) {
-    VLOG(1) << "Skipping bitcast " << op_being_annotated->ToString();
-    op_being_annotated = op_being_annotated->users()[0];
+  HloInstruction* consumer = nullptr;
+  if (!custom_call->IsRoot()) {
+    consumer = custom_call->users().at(0);
+    // Skip past any bitcasts.
+    while (consumer != nullptr && consumer->opcode() == HloOpcode::kBitcast) {
+      VLOG(1) << "Skipping bitcast " << consumer->ToString();
+      consumer = consumer->users().at(0);
+    }
   }
 
-  if (op_being_annotated->opcode() == HloOpcode::kDynamicUpdateSlice) {
-    TF_RETURN_IF_ERROR(MemoryOnlyOffloadStartingWithDus(op_being_annotated));
-  } else if (op_being_annotated->opcode() == HloOpcode::kCopy) {
-    TF_RETURN_IF_ERROR(MemoryOnlyOffloadStartingWithCopy(op_being_annotated));
+  if (consumer != nullptr &&
+      consumer->opcode() == HloOpcode::kDynamicUpdateSlice) {
+    TF_RETURN_IF_ERROR(MemoryOnlyOffloadStartingWithDus(consumer));
+  } else if (consumer != nullptr && consumer->opcode() == HloOpcode::kCopy) {
+    TF_RETURN_IF_ERROR(MemoryOnlyOffloadStartingWithCopy(consumer));
   } else {
-    TF_RETURN_IF_ERROR(MemoryOnlyOffloadInsertCopies(custom_call));
+    TF_ASSIGN_OR_RETURN(bool did_output_streaming,
+                        TryOutputStreaming(custom_call));
+    if (!did_output_streaming) {
+      TF_RETURN_IF_ERROR(MemoryOnlyOffloadInsertCopies(custom_call));
+    }
   }
   return OkStatus();
 }
@@ -524,8 +583,31 @@ absl::StatusOr<bool> HostOffloader::TryParameterStreaming(
   HloInstruction* copy_to_device =
       custom_call->parent()->AddInstruction(HloInstruction::CreateUnary(
           copy_shape, HloOpcode::kCopy, operand_of_load_annotation));
-  TF_RETURN_IF_ERROR(
-      operand_of_load_annotation->ReplaceAllUsesWith(copy_to_device));
+
+  auto users = operand_of_load_annotation->users();
+  for (HloInstruction* use : users) {
+    if (use == copy_to_device) {
+      continue;
+    }
+    auto callers = call_graph_->GetComputationCallers(copy_to_device->parent());
+    if (callers.size() > 1) {
+      return absl::InvalidArgumentError(
+          "Expected to be called only by one caller");
+    } else if (callers.size() == 1) {
+      auto* caller = callers[0];
+      if (caller->opcode() == HloOpcode::kWhile &&
+          use->opcode() == HloOpcode::kTuple && use->IsRoot()) {
+        // Do not replace the while loop parameter with the moved data. Because
+        // of the nature of while loops, since the data started on the host, it
+        // must end on the host. Only the while loop body's root should not use
+        // copy_to_device since it's on host at the loop entry.
+        continue;
+      }
+    }
+
+    TF_RETURN_IF_ERROR(
+        operand_of_load_annotation->ReplaceUseWith(use, copy_to_device));
+  }
 
   AddAllPositionsToBeMovedToHostMemory(unique_buffer);
   return true;
@@ -573,10 +655,12 @@ absl::StatusOr<bool> HostOffloader::Run(
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
 
+  call_graph_ = CallGraph::Build(module);
+
   // Run HloAliasAnalysis on module.
   TF_ASSIGN_OR_RETURN(alias_analysis_, HloAliasAnalysis::Run(module));
 
-  // Iterate over all instructions and look for XLA host offload annoations.
+  // Iterate over all instructions and look for XLA host offload annotations.
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
     for (HloInstruction* instruction :

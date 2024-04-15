@@ -60,13 +60,17 @@ def QuantizeCompositeFunctionsPass : Pass<"stablehlo-quantize-composite-function
         "enable-per-channel-quantized-weight",
         "bool", /*default=*/"true",
         "Whether to enable per-channel quantized weights.">,
+    Option<"enable_full_int_quantization_",
+        "enable-full-int-quantization",
+        "bool", /*default=*/"false",
+        "Whether to enable full int quantization, including non compute-heavy ops.">,
     Option<"mlir_dump_file_name_", "mlir-dump-file-name",
         "std::optional<std::string>", /*default=*/"std::nullopt",
         "MLIR dump file name.">,
     Option<"enable_weight_only_",
         "enable-weight-only",
         "bool", /*default=*/"false",
-        "Whether to produce weight-only quantized op for dot_general op.">,
+        "Whether to produce weight-only quantized op for convolution and dot_general op.">,
   ];
   let dependentDialects = [
     "mlir::arith::ArithDialect",
@@ -102,10 +106,14 @@ def QuantizePass : Pass<"stablehlo-quantize", "mlir::ModuleOp"> {
         "enable-per-channel-quantized-weight",
         "bool", /*default=*/"true",
         "Whether to enable per-channel quantized weights.">,
+    Option<"enable_full_int_quantization_",
+      "enable-full-int-quantization",
+      "bool", /*default=*/"false",
+      "Whether to apply full int quantization, including non compute-heavy ops.">,
     Option<"enable_weight_only_",
         "enable-weight-only",
         "bool", /*default=*/"false",
-        "Whether to produce weight-only quantized op for dot_general op.">,
+        "Whether to produce weight-only quantized op for convolution and dot_general op.">,
   ];
   let dependentDialects = [
     "mlir::stablehlo::StablehloDialect",
@@ -162,8 +170,22 @@ def NchwConvolutionToNhwcPass : Pass<"stablehlo-nchw-convolution-to-nhwc", "mlir
   let dependentDialects = ["mlir::stablehlo::StablehloDialect"];
 }
 
-def PrepareQuantizeHybridPass : Pass<"stablehlo-prepare-quantize-hybrid", "mlir::func::FuncOp"> {
-  let summary = "Prepare hybrid quantization for weight-only quantization and dynamic range quantization.";
+def DeferActivationTransposePass : Pass<"stablehlo-defer-activation-transpose", "mlir::func::FuncOp"> {
+  let summary = "Merges stablehlo.transpose for activations.";
+  let description = [{
+    Defers activation transposes (e.g. LHS of `stablehlo.add`) to the output and
+    optionally inserts `stablehlo.transpose`s to match the shape of operands.
+    This is useful when recursively pushing down the extra `stablehlo.transpose`
+    inserted to activation tensors after running `NchwConvolutionToNhwcPass`.
+
+    Currently only converts limited cases that appear in NCHW->NHWC 2D
+    convolution conversion, to avoid introducing unwanted pessimizations.
+  }];
+  let dependentDialects = ["mlir::stablehlo::StablehloDialect"];
+}
+
+def InsertWeightParamPass : Pass<"stablehlo-insert-weight-param", "mlir::func::FuncOp"> {
+  let summary = "Insert quantization parameters of weights for weight-only quantization and dynamic range quantization.";
   let dependentDialects = [
       "mlir::stablehlo::StablehloDialect",
       "TF::TensorFlowDialect",

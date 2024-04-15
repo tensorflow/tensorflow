@@ -676,6 +676,10 @@ class PjRtStreamExecutorBuffer : public PjRtBuffer {
   PjRtFuture<Status> CopyRawToHost(void* dst, int64_t offset,
                                    int64_t transfer_size) override;
 
+  PjRtFuture<Status> CopyRawToHostFuture(PjRtFuture<StatusOr<void*>> dst,
+                                         int64_t offset,
+                                         int64_t transfer_size) override;
+
   // Drops the buffer's reference to its associated device memory, leaving the
   // buffer in an invalid state. The memory will be freed lazily when all async
   // operations using the buffer have completed, according to the allocation

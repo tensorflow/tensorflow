@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_PROFILER_UTILS_OP_METRICS_DB_UTILS_H_
 
 #include <algorithm>
+#include <optional>
 #include <string>
 
 #include "absl/container/flat_hash_map.h"
@@ -121,7 +122,7 @@ inline uint64_t ChildrenTimePs(const OpMetrics& metrics) {
 
 // Returns the ratio of time spent sending data from the host to the device
 // relative to the total time the host was active.
-absl::optional<double> HostInfeedEnqueueRatio(const OpMetricsDb& db);
+std::optional<double> HostInfeedEnqueueRatio(const OpMetricsDb& db);
 
 // Converts from the device op metrics to Tf-op metrics.
 OpMetricsDb CreateTfMetricsDbFromDeviceOpMetricsDb(

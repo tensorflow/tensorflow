@@ -7,10 +7,10 @@ load(
     "tf_opts_nortti_if_lite_protos",
     "tf_opts_nortti_if_mobile",
 )
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 load("//tensorflow/lite:special_rules.bzl", "internal_visibility_allowlist")
 load("//tensorflow/lite/delegates/flex:build_def.bzl", "tflite_flex_cc_library", "tflite_flex_shared_library")
-load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 
 default_visibility = [
     "//tensorflow/compiler/mlir/lite:__subpackages__",
@@ -322,6 +322,7 @@ cc_library(
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite:util",
+        "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels/internal:tensor",
         "@com_google_absl//absl/strings:str_format",
@@ -341,6 +342,7 @@ tf_cc_test(
     srcs = ["util_test.cc"],
     deps = [
         ":util",
+        "//tensorflow/c:tf_datatype",
         "//tensorflow/core:framework",
         "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
         "//tensorflow/lite:string",

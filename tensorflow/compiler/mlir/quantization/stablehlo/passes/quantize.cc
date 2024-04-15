@@ -57,7 +57,7 @@ struct StableHloQuantizationBase
                                      quantfork::DequantizeCastOp,
                                      /*VerifierT=*/void, RootOpT>(ctx) {}
 
-  static bool AllowHybridQuantization(Operation& op) { return false; }
+  static bool AllowWeightOnlyQuantization(Operation& op) { return false; }
 };
 
 // Quantization rewrite pattern using DQ as the root op.
@@ -77,15 +77,22 @@ struct StableHloQuantizationReverse
                                   quantfork::QuantizeCastOp>(ctx) {}
 };
 
-// Quantization rewrite pattern using DQ as the root op.
-struct StableHloQuantizationHybrid
-    : public StableHloQuantizationBase<StableHloQuantizationHybrid> {
-  explicit StableHloQuantizationHybrid(MLIRContext* ctx)
-      : StableHloQuantizationBase<StableHloQuantizationHybrid>(ctx) {}
+bool IsHybridQuantizableOp(Operation& op) {
+  auto call_op = cast<TF::XlaCallModuleOp>(op);
+  if (call_op == nullptr) return false;
+  StringRef entry_function_name = GetEntryFunctionName(call_op);
+  return entry_function_name.contains("conv") ||
+         entry_function_name.contains("dot_general");
+}
 
-  static bool AllowHybridQuantization(Operation& op) {
-    auto call_op = cast<TF::XlaCallModuleOp>(op);
-    return call_op && GetEntryFunctionName(call_op).contains("dot_general");
+// Quantization rewrite pattern using DQ as the root op.
+struct StableHloQuantizationWeightOnly
+    : public StableHloQuantizationBase<StableHloQuantizationWeightOnly> {
+  explicit StableHloQuantizationWeightOnly(MLIRContext* ctx)
+      : StableHloQuantizationBase<StableHloQuantizationWeightOnly>(ctx) {}
+
+  static bool AllowWeightOnlyQuantization(Operation& op) {
+    return IsHybridQuantizableOp(op);
   }
 };
 
@@ -96,9 +103,10 @@ class QuantizePass : public impl::QuantizePassBase<QuantizePass> {
   using impl::QuantizePassBase<QuantizePass>::QuantizePassBase;
 
   explicit QuantizePass(const bool enable_per_channel_quantized_weight,
-                        const bool enable_weight_only,
-                        const QuantizationSpecs& quant_specs) {
+                        const bool enable_full_int_quantization,
+                        const bool enable_weight_only) {
     enable_per_channel_quantized_weight_ = enable_per_channel_quantized_weight;
+    enable_full_int_quantization_ = enable_full_int_quantization;
     enable_weight_only_ = enable_weight_only;
   }
 
@@ -113,14 +121,17 @@ void QuantizePass::runOnOperation() {
   RewritePatternSet patterns(&ctx);
   patterns.add<StableHloQuantization, StableHloQuantizationReverse>(&ctx);
   if (enable_weight_only_) {
-    patterns.add<StableHloQuantizationHybrid>(&ctx);
-    PopulateQuantizeHybridPatterns(ctx, patterns);
+    patterns.add<StableHloQuantizationWeightOnly>(&ctx);
+    PopulateQuantizeWeightOnlyPatterns(ctx, patterns);
   }
 
-  PopulateQuantizeOpWithRegionPattern(ctx, patterns);
-  PopulateFusedGemmStylePatterns(ctx, patterns,
-                                 enable_per_channel_quantized_weight_);
-  PopulateQuantizeSingularOpPatterns(ctx, patterns);
+  PopulateComputeHeavyPatterns(ctx, patterns,
+                               enable_per_channel_quantized_weight_);
+
+  // Quantize all quantizable ops, including ops that are not compute-heavy.
+  if (enable_full_int_quantization_) {
+    PopulateAllQuantizablePatterns(ctx, patterns);
+  }
 
   if (failed(applyPatternsAndFoldGreedily(module_op, std::move(patterns)))) {
     // There are cases where no rewrites happen even if a pattern matches,

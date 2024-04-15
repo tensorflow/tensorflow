@@ -97,8 +97,8 @@ int64_t GetIterationSpaceSize(const IndexingMap& indexing_map,
         return num_iters;
       };
 
-  return get_ranges_iteration_space_size(indexing_map.GetSymbolRanges()) *
-         get_ranges_iteration_space_size(indexing_map.GetDimensionRanges());
+  return get_ranges_iteration_space_size(indexing_map.GetSymbolBounds()) *
+         get_ranges_iteration_space_size(indexing_map.GetDimensionBounds());
 }
 
 EstimateRunTimeData

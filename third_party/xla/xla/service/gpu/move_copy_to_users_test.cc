@@ -18,6 +18,7 @@ limitations under the License.
 #include <optional>
 
 #include "absl/strings/string_view.h"
+#include "xla/service/layout_assignment.h"
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/test.h"
 
@@ -26,6 +27,10 @@ namespace {
 
 class MoveCopyToUsersTest : public HloTestBase {
  public:
+  MoveCopyToUsersTest()
+      : HloTestBase(/*verifier_layout_sensitive=*/true,
+                    /*allow_mixed_precision_in_hlo_verifier=*/true,
+                    LayoutAssignment::InstructionCanChangeLayout) {}
   void CheckMoveCopyToUsers(absl::string_view hlo,
                             std::optional<absl::string_view> expected) {
     RunAndFilecheckHloRewrite(hlo, MoveCopyToUsers{}, expected);
@@ -112,13 +117,34 @@ HloModule module
 ENTRY main {
   input = f32[1,17,9,9]{3,2,1,0} parameter(0)
   copy = f32[1,17,9,9]{1,3,2,0} copy(input)
-  ROOT converted = f32[1,4,6,6] slice(copy), slice={[0:1],[0:4],[0:6],[0:6]}
+  ROOT slice = f32[1,4,6,6]{1,3,2,0} slice(copy), slice={[0:1],[0:4],[0:6],[0:6]}
 }
 )";
 
   CheckMoveCopyToUsers(hlo, R"(
 // CHECK: [[slice_0:%[^ ]+]] = f32[1,4,6,6]{3,2,1,0} slice([[input_1:%[^ ]+]]), slice={[0:1], [0:4], [0:6], [0:6]}
-// CHECK-NEXT: ROOT [[copy_1_2:%[^ ]+]] = f32[1,4,6,6]{3,2,1,0} copy([[slice_0]])
+// CHECK-NEXT: ROOT [[copy_1_2:%[^ ]+]] = f32[1,4,6,6]{1,3,2,0} copy([[slice_0]])
+)");
+}
+
+TEST_F(MoveCopyToUsersTest, DynamicSlice) {
+  const char* hlo = R"(
+HloModule module
+
+ENTRY main {
+  input = f32[1,17,9,9]{3,2,1,0} parameter(0)
+  copy = f32[1,17,9,9]{1,3,2,0} copy(input)
+  s0 = s32[] parameter(1)
+  s1 = s32[] parameter(2)
+  s2 = s32[] parameter(3)
+  s3 = s32[] parameter(4)
+  ROOT ds = f32[1,4,6,6]{1,3,2,0} dynamic-slice(copy, s0, s1, s2, s3), dynamic_slice_sizes={1,4,6,6}
+}
+)";
+
+  CheckMoveCopyToUsers(hlo, R"(
+// CHECK: [[ds:%[^ ]+]] = f32[1,4,6,6]{3,2,1,0} dynamic-slice({{.*}}), dynamic_slice_sizes={1,4,6,6}
+// CHECK-NEXT: ROOT {{.*}} = f32[1,4,6,6]{1,3,2,0} copy([[ds]])
 )");
 }
 

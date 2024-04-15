@@ -56,8 +56,8 @@ namespace wrap {
     }                                                                          \
     static FuncPtrT LoadOrDie() {                                              \
       void* f;                                                                 \
-      auto s = tsl::Env::Default()                                             \
-          -> GetSymbolFromLibrary(GetDsoHandle(), kName, &f);                  \
+      auto s = tsl::Env::Default()->GetSymbolFromLibrary(GetDsoHandle(),       \
+                                                         kName, &f);           \
       CHECK(s.ok()) << "could not find " << kName                              \
                     << " in miopen DSO; dlerror: " << s.message();             \
       return reinterpret_cast<FuncPtrT>(f);                                    \

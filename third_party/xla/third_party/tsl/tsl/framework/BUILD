@@ -4,6 +4,10 @@
 #   The libraries in this package are not allowed to have ANY dependencies
 #   to other TF components outside of TSL.
 
+load(
+    "@local_tsl//tsl/platform:rules_cc.bzl",
+    "cc_library",
+)
 load("//tsl:tsl.bzl", "internal_visibility")
 load("//tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
 load(
@@ -13,10 +17,6 @@ load(
 load(
     "//tsl/platform:build_config_root.bzl",
     "if_static",
-)
-load(
-    "@local_tsl//tsl/platform:rules_cc.bzl",
-    "cc_library",
 )
 
 package(
@@ -273,10 +273,10 @@ cc_library(
         "//tsl/platform:status",
         "//tsl/platform:statusor",
         "//tsl/platform:str_util",
-        "//tsl/util:device_name_utils",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@local_xla//xla/tsl/util:device_name_utils",
     ],
 )
 
@@ -465,7 +465,7 @@ tsl_cc_test(
         "//tsl/platform:status_matchers",
         "//tsl/platform:test_main",
         "//tsl/protobuf:error_codes_proto_impl_cc",
-        "//tsl/util:device_name_utils",
+        "@local_xla//xla/tsl/util:device_name_utils",
     ],
 )
 

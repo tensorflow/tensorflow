@@ -25,7 +25,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
-#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -49,11 +48,11 @@ limitations under the License.
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/gpu/redzone_allocator.h"
 #include "xla/stream_executor/scratch_allocator.h"
+#include "xla/tsl/util/proto/proto_utils.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
-#include "tsl/util/proto/proto_utils.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "xla/service/gpu/buffer_comparator.h"
@@ -187,6 +186,12 @@ class GemmAutotuner {
         -> absl::StatusOr<se::blas::ProfileResult> {
       se::OwningScratchAllocator<> scratch_allocator(
           stream_->parent()->device_ordinal(), autotune_config_.GetAllocator());
+      // Run a warmup iteration without the profiler active.
+      TF_RETURN_IF_ERROR(plan->ExecuteOnStream(
+          stream_, lhs_buffer_, rhs_buffer_, output_buffer_, output_buffer_,
+          bias_buffer, aux_buffer, a_scale_buffer, b_scale_buffer,
+          c_scale_buffer, d_scale_buffer, d_amax_buffer, algorithm,
+          scratch_allocator));
       se::blas::ProfileResult profile_result;
       TF_RETURN_IF_ERROR(plan->ExecuteOnStream(
           stream_, lhs_buffer_, rhs_buffer_, output_buffer_, output_buffer_,
@@ -241,15 +246,6 @@ class GemmAutotuner {
 
     auto tuned_func = [&](const se::blas::AlgorithmType& algorithm)
         -> absl::StatusOr<se::blas::ProfileResult> {
-      // Do a warm-up run first, without a profile result. This avoids a timeout
-      // and error message if lazy module loading is enabled by ensuring that
-      // lazy loading happens outside the GpuTimer. RunGemm swallows error codes
-      // when profile_result is passed, as it is in the measurement below, but
-      // not otherwise. It is, therefore, consistent to ignore the error code
-      // here.
-      static_cast<void>(RunGemm(gemm_config, lhs_buffer_, rhs_buffer_,
-                                output_buffer_, workspace_buffer,
-                                deterministic_ops_, stream_, algorithm));
       se::blas::ProfileResult profile_result;
       // We expect GemmWithAlgorithm to fail sometimes -- in fact, it will fail
       // for all algorithms if we're targeting < sm_50. But because we pass a
@@ -449,7 +445,7 @@ absl::StatusOr<bool> RunOnComputation(HloComputation* computation,
                                       AutotuneConfig config) {
   bool changed = false;
   for (HloInstruction* instr : computation->instructions()) {
-    if (IsCublasGemm(*instr) || IsCublasLtMatmulF8(*instr)) {
+    if (IsCublasGemm(*instr)) {
       TF_ASSIGN_OR_RETURN(bool result, RunOnInstruction(instr, config));
       changed |= result;
     }

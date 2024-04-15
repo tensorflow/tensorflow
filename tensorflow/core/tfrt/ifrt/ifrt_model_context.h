@@ -91,9 +91,11 @@ class IfrtModelContext {
     return restore_tensor_registry_;
   }
 
-  tfrt::ConcurrentWorkQueue* work_queue() const { return work_queue_; }
-  void set_work_queue(tfrt::ConcurrentWorkQueue* work_queue) {
-    work_queue_ = work_queue;
+  tfrt::ConcurrentWorkQueue* checkpoint_loader_queue() const {
+    return checkpoint_loader_queue_;
+  }
+  void set_checkpoint_loader_queue(tfrt::ConcurrentWorkQueue* work_queue) {
+    checkpoint_loader_queue_ = work_queue;
   }
 
  private:
@@ -103,7 +105,7 @@ class IfrtModelContext {
       tensorflow::IdentityShapeRepresentationFn();
 
   // Dedicated work queue for heavy task such as variable tensor restoration.
-  tfrt::ConcurrentWorkQueue* work_queue_ = nullptr;
+  tfrt::ConcurrentWorkQueue* checkpoint_loader_queue_ = nullptr;
 
   std::vector<ServingExecutableRegistry::Handle> handles_;
 

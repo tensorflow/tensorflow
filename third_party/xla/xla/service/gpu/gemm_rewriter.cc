@@ -821,8 +821,13 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
                                         .WithOneUser()))
                       .WithOneUser(),
                   m::Op(&bias).WithPredicate(is_not_broadcast)))) {
-      return FuseMatrixBiasAdd(instr, bias, existing_gemm,
-                               optional_bitcast_matrix, optional_slice_matrix);
+      // The matrix bias must not be FP8, see
+      // https://docs.nvidia.com/cuda/cublas/index.html.
+      if (!IsF8Type(bias)) {
+        return FuseMatrixBiasAdd(instr, bias, existing_gemm,
+                                 optional_bitcast_matrix,
+                                 optional_slice_matrix);
+      }
     }
 
     return absl::OkStatus();
@@ -922,8 +927,10 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
 
 #endif  // TENSORFLOW_USE_ROCM
 
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
     PrimitiveType a_type = a->shape().element_type();
     PrimitiveType b_type = b->shape().element_type();
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
     // cuBLASLt FP8 GEMM kernels require one of the two operands to be in
     // F8E4M3FN format.
@@ -1611,6 +1618,16 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     if (!SupportsEpilogueFusion(gemm->shape().element_type())) {
       return absl::OkStatus();
     }
+
+#if CUDA_VERSION < 12040
+    // For CUDA versions less than 12.3.2, cuBLAS LT returns
+    // CUBLAS_STATUS_NOT_SUPPORTED in some cases when fusing gelu into an FP8
+    // matmul. We cannot check the patch version, so disable this fusion with
+    // CUDA versions less than 12.4.
+    if (IsCublasLtMatmulF8(*gemm)) {
+      return absl::OkStatus();
+    }
+#endif
 
     // There are four users of the gemm output within the GELU calculation.
     bool has_aux = gemm->user_count() > 4;

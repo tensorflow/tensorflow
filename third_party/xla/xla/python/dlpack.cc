@@ -33,14 +33,13 @@ limitations under the License.
 #include "include/dlpack/dlpack.h"  // from @dlpack
 #include "llvm/Support/Casting.h"
 #include "third_party/nanobind/include/nanobind/nanobind.h"
-#include "pybind11/gil.h"  // from @pybind11
-#include "pybind11/pytypes.h"  // from @pybind11
 #include "xla/layout.h"
 #include "xla/pjrt/exceptions.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
+#include "xla/python/nb_class_ptr.h"
 #include "xla/python/pjrt_ifrt/pjrt_array.h"
 #include "xla/python/pjrt_ifrt/pjrt_client.h"
 #include "xla/python/py_array.h"
@@ -57,7 +56,6 @@ limitations under the License.
 #include "tsl/platform/statusor.h"
 
 namespace nb = nanobind;
-namespace py = pybind11;
 
 namespace xla {
 namespace {
@@ -68,7 +66,7 @@ struct DLPackTensor {
   ~DLPackTensor();
 
   // `buffer_reference` is populated if we have shared (read-only) access.
-  py::object buffer_reference;
+  nb::object buffer_reference;
 
   // `external_reference` is always populated.
   std::unique_ptr<PjRtBuffer::ExternalReference> external_reference;
@@ -293,11 +291,9 @@ absl::StatusOr<PjRtDevice*> DeviceForDLDevice(const PjRtClient* cpu_client,
 
 }  // namespace
 
-absl::StatusOr<py::capsule> BufferToDLPackManagedTensor(
-    py::handle py_buffer, std::optional<std::intptr_t> stream) {
-  // TODO(phawkins): remove .ptr() when nanobind transition is complete.
-  ifrt::Array* ifrt_array =
-      nb::cast<xla::PyArray>(nb::handle(py_buffer.ptr())).ifrt_array();
+absl::StatusOr<nb::capsule> BufferToDLPackManagedTensor(
+    nb::handle py_buffer, std::optional<std::intptr_t> stream) {
+  ifrt::Array* ifrt_array = nb::cast<xla::PyArray>(py_buffer).ifrt_array();
   if (ifrt_array == nullptr) {
     return Unimplemented(
         "BufferToDLPackManagedTensor called on deleted array.");
@@ -323,7 +319,7 @@ absl::StatusOr<py::capsule> BufferToDLPackManagedTensor(
   {
     // AcquireExternalReference may block; there are no API guarantees.
     GlobalPyRefManager()->CollectGarbage();
-    py::gil_scoped_release gil_release;
+    nb::gil_scoped_release gil_release;
     TF_ASSIGN_OR_RETURN(pack->external_reference,
                         pjrt_buffer->AcquireExternalReference());
     if (stream) {
@@ -334,7 +330,7 @@ absl::StatusOr<py::capsule> BufferToDLPackManagedTensor(
           AwaitBuffersReady(absl::MakeConstSpan(&ifrt_array, 1)));
     }
   }
-  pack->buffer_reference = py::reinterpret_borrow<py::object>(py_buffer);
+  pack->buffer_reference = nb::borrow<nb::object>(py_buffer);
 
   dt.data = pack->external_reference->OpaqueDeviceMemoryDataPointer();
   pack->tensor.manager_ctx = pack.get();
@@ -357,29 +353,36 @@ absl::StatusOr<py::capsule> BufferToDLPackManagedTensor(
   dt.strides = reinterpret_cast<std::int64_t*>(pack->strides.data());
   dt.byte_offset = 0;
 
-  py::capsule capsule(&pack.release()->tensor, kDlTensorCapsuleName,
-                      [](PyObject* obj) {
-                        DLManagedTensor* dlmt = static_cast<DLManagedTensor*>(
-                            PyCapsule_GetPointer(obj, kDlTensorCapsuleName));
-                        if (dlmt) {
-                          DLPackTensorDeleter(dlmt);
-                        } else {
-                          // The tensor has been deleted. Clear any error from
-                          // PyCapsule_GetPointer.
-                          PyErr_Clear();
-                        }
-                      });
+  // We cannot use nanobind's capsule object constructor because we need to
+  // detect if the capsule name has been changed in the deleter, but nanobind
+  // hides the underlying Python object from the deleter.
+  nb::capsule capsule = nb::steal<nb::capsule>(
+      PyCapsule_New(&pack.release()->tensor, kDlTensorCapsuleName,
+                    [](PyObject* obj) noexcept {
+                      DLManagedTensor* dlmt = static_cast<DLManagedTensor*>(
+                          PyCapsule_GetPointer(obj, kDlTensorCapsuleName));
+                      if (dlmt) {
+                        DLPackTensorDeleter(dlmt);
+                      } else {
+                        // The tensor has been deleted. Clear any error from
+                        // PyCapsule_GetPointer.
+                        PyErr_Clear();
+                      }
+                    }));
+  if (!capsule.ptr()) {
+    throw nb::python_error();
+  }
   return capsule;
 }
 
-absl::StatusOr<pybind11::object> DLPackManagedTensorToBuffer(
-    const pybind11::capsule& tensor, std::shared_ptr<PyClient> cpu_client,
-    std::shared_ptr<PyClient> gpu_client) {
+absl::StatusOr<nb::object> DLPackManagedTensorToBuffer(
+    const nb::capsule& tensor, std::optional<nb_class_ptr<PyClient>> cpu_client,
+    std::optional<nb_class_ptr<PyClient>> gpu_client) {
   // TODO(hyeontaek): This is a potential target for an IFRT client to multiplex
   // multiple PjRt clients. Devices from these PjRt clients could be expressed
   // as a unified set of IFRT devices.
-  auto* cpu_pjrt_client = cpu_client ? cpu_client->pjrt_client() : nullptr;
-  auto* gpu_pjrt_client = gpu_client ? gpu_client->pjrt_client() : nullptr;
+  auto* cpu_pjrt_client = cpu_client ? (*cpu_client)->pjrt_client() : nullptr;
+  auto* gpu_pjrt_client = gpu_client ? (*gpu_client)->pjrt_client() : nullptr;
 
   if (std::string_view(tensor.name()) != kDlTensorCapsuleName) {
     return InvalidArgument(
@@ -387,7 +390,7 @@ absl::StatusOr<pybind11::object> DLPackManagedTensorToBuffer(
         "Note that a DLPack tensor may be consumed at most once.",
         std::string_view(tensor.name()));
   }
-  DLManagedTensor* dlmt = static_cast<DLManagedTensor*>(tensor);
+  DLManagedTensor* dlmt = static_cast<DLManagedTensor*>(tensor.data());
   if (dlmt->dl_tensor.ndim < 0) {
     return InvalidArgument(
         "Number of dimensions in DLManagedTensor must be nonnegative, got %d",
@@ -447,8 +450,8 @@ absl::StatusOr<pybind11::object> DLPackManagedTensorToBuffer(
   // TODO(phawkins): simplify the expression below once we know cpu_client is
   // always non-null.
   auto client = (cpu_client && device->client() == cpu_pjrt_client)
-                    ? std::move(cpu_client)
-                    : std::move(gpu_client);
+                    ? std::move(*cpu_client)
+                    : std::move(*gpu_client);
   auto* ifrt_client =
       llvm::dyn_cast_or_null<ifrt::PjRtCompatibleClient>(client->ifrt_client());
   if (ifrt_client == nullptr) {
@@ -457,22 +460,20 @@ absl::StatusOr<pybind11::object> DLPackManagedTensorToBuffer(
   }
   TF_ASSIGN_OR_RETURN(auto ifrt_array,
                       ifrt_client->CreatePjRtArray(std::move(pjrt_buffer)));
-  auto out = PyArray::MakeFromSingleDeviceArray(
-      std::move(client), Traceback::Get(), std::move(ifrt_array), false, true);
-  // TODO(phawkins): remove after nanobind transition is complete.
-  return py::reinterpret_steal<py::object>(out.release().ptr());
+  return PyArray::MakeFromSingleDeviceArray(std::move(client), Traceback::Get(),
+                                            std::move(ifrt_array), false, true);
 }
 
-absl::StatusOr<pybind11::object> DLPackManagedTensorToBuffer(
-    const pybind11::capsule& tensor, PjRtDevice* device,
-    std::shared_ptr<PyClient> client, std::optional<std::intptr_t> stream) {
+absl::StatusOr<nb::object> DLPackManagedTensorToBuffer(
+    const nb::capsule& tensor, PjRtDevice* device,
+    nb_class_ptr<PyClient> client, std::optional<std::intptr_t> stream) {
   if (std::string_view(tensor.name()) != kDlTensorCapsuleName) {
     return InvalidArgument(
         "DLPack tensor must be a capsule with name \"dltensor\", got \"%s\". "
         "Note that a DLPack tensor may be consumed at most once.",
         std::string_view(tensor.name()));
   }
-  DLManagedTensor* dlmt = static_cast<DLManagedTensor*>(tensor);
+  DLManagedTensor* dlmt = static_cast<DLManagedTensor*>(tensor.data());
   if (dlmt->dl_tensor.ndim < 0) {
     return InvalidArgument(
         "Number of dimensions in DLManagedTensor must be nonnegative, got %d",
@@ -519,10 +520,8 @@ absl::StatusOr<pybind11::object> DLPackManagedTensorToBuffer(
   }
   TF_ASSIGN_OR_RETURN(auto ifrt_array,
                       ifrt_client->CreatePjRtArray(std::move(pjrt_buffer)));
-  auto out = PyArray::MakeFromSingleDeviceArray(
-      std::move(client), Traceback::Get(), std::move(ifrt_array), false, true);
-  // TODO(phawkins): remove after nanobind transition is complete.
-  return py::reinterpret_steal<py::object>(out.release().ptr());
+  return PyArray::MakeFromSingleDeviceArray(std::move(client), Traceback::Get(),
+                                            std::move(ifrt_array), false, true);
 }
 
 }  // namespace xla

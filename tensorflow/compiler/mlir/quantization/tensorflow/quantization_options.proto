@@ -145,21 +145,6 @@ message RepresentativeDatasetFile {
   }
 }
 
-// Configuration for quantization debugger.
-// NEXT ID: 4
-message DebuggerOptions {
-  // Type of quantization debugger. Depending on the type, inputs and outputs
-  // are wired differently.
-  stablehlo.quantization.DebuggerConfig.DebuggerType debugger_type = 1;
-
-  // Path to save unquantized model with dump tensor ops attached.
-  // Used when debugger_type is WHOLE_MODEL.
-  string unquantized_dump_model_path = 2;
-
-  // Path to save debugger related logs. Defaults to '/tmp/dumps'.
-  string log_dir_path = 3;
-}
-
 // Defines various options to specify and control the behavior of the quantizer.
 // It consists of
 // 1) Model-wise quantization configuration as a default configuration. If it is
@@ -251,7 +236,7 @@ message QuantizationOptions {
   stablehlo.quantization.CalibrationOptions calibration_options = 15;
 
   // Configuration related to quantization debugger.
-  DebuggerOptions debugger_options = 16;
+  stablehlo.quantization.DebuggerConfig debugger_config = 16;
 
   reserved 3;
 }

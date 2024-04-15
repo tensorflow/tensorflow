@@ -413,6 +413,7 @@ class HloTestBase : public ManifestCheckingTest {
 
   bool verifier_layout_sensitive_;
   bool allow_mixed_precision_in_hlo_verifier_;
+  HloPredicate instruction_can_change_layout_func_;
   std::unique_ptr<HloVerifier> hlo_verifier_;
 
   ErrorSpec error_spec_{0.0001};

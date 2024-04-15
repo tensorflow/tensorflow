@@ -1723,14 +1723,29 @@ add {
   ROOT %not.2 = u16[4] not(u16[4] %Arg_0.1)
 }
 
-// CHECK-LABEL:  func private @rngbitgen
-// CHECK-SAME:    (%[[ARG0:.*]]: tensor<3xui64>)
-%rngbitgen (Arg_0.1: u64[3]) -> (u64[3], u32[2,2]) {
+// CHECK-LABEL:  func private @rngbitgen_tuple_shape
+// CHECK-SAME:    (%[[ARG0:.*]]: tensor<3xui64>) -> (tuple<tensor<3xui64>, tensor<2x2xui32>> {mhlo.sharding = "{{\{}}{maximal device=0}, {maximal device=1}}"})
+%rngbitgen_tuple_shape (Arg_0.1: u64[3]) -> (u64[3], u32[2,2]) {
   %Arg_0.1 = u64[3] parameter(0)
-  // CHECK: %[[RNG0:.+]], %[[RNG1:.+]] = "mhlo.rng_bit_generator"(%[[ARG0]]) {rng_algorithm = #mhlo.rng_algorithm<PHILOX>} : (tensor<3xui64>) -> (tensor<3xui64>, tensor<2x2xui32>)
+  // CHECK: %[[RNG0:.+]], %[[RNG1:.+]] = "mhlo.rng_bit_generator"(%[[ARG0]]) 
+  // CHECK-SAME: mhlo.sharding = "{{\{}}{maximal device=0}, {maximal device=1}}"
+  // CHECK-SAME: rng_algorithm = #mhlo.rng_algorithm<PHILOX>
+  // CHECK-SAME: (tensor<3xui64>) -> (tensor<3xui64>, tensor<2x2xui32>)
   // CHECK: %[[TUPLE:.+]] = mhlo.tuple %[[RNG0]], %[[RNG1]] {xla_shape = "(u64[3]{0}, u32[2,2]{1,0})"} : tuple<tensor<3xui64>, tensor<2x2xui32>>
   // CHECK: return %[[TUPLE]]
-  ROOT %rng-bit-generator.2 = (u64[3], u32[2,2]) rng-bit-generator(u64[3] %Arg_0.1), algorithm=rng_philox
+  ROOT %rng-bit-generator.2 = (u64[3], u32[2,2]) rng-bit-generator(u64[3] %Arg_0.1), algorithm=rng_philox, sharding={{maximal device=0}, {maximal device=1}}
+}
+
+// CHECK-LABEL:  func private @rngbitgen_array_shape
+// CHECK-SAME:    (%[[ARG0:.*]]: tensor<3xui64>) -> (tensor<2x2xui32> {mhlo.sharding = "{maximal device=0}"})
+%rngbitgen_array_shape (Arg_0.1: u64[3]) -> u32[2,2] {
+  %Arg_0.1 = u64[3] parameter(0)
+  // CHECK: %[[RNG0:.+]], %[[RNG1:.+]] = "mhlo.rng_bit_generator"(%[[ARG0]])
+  // CHECK-SAME: mhlo.sharding = "{{\{}}{replicated}, {maximal device=0}}"
+  // CHECK-SAME: rng_algorithm = #mhlo.rng_algorithm<DEFAULT>
+  // CHECK-SAME: (tensor<3xui64>) -> (tensor<3xui64>, tensor<2x2xui32>)
+  // CHECK: return %[[RNG1]]
+  ROOT %rng-bit-generator.2 = u32[2,2] rng-bit-generator(u64[3] %Arg_0.1), algorithm=rng_default, sharding={maximal device=0}
 }
 
 // CHECK-LABEL:  func private @cbrt

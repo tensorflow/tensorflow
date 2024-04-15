@@ -57,11 +57,15 @@ class CallFrameBuilder {
   CallFrameBuilder(CallFrameBuilder&&);
   CallFrameBuilder& operator=(CallFrameBuilder&&);
 
+  using Scalar = std::variant<int32_t, int64_t, float>;
+  using Array = std::variant<std::vector<int32_t>, std::vector<int64_t>,
+                             std::vector<float>>;
+
   // Declare implementation detail structs for call frame builder storage.
   struct Dictionary;
 
   // Attributes that do not support nested dictionaries.
-  using FlatAttribute = std::variant<int32_t, int64_t, float, std::string>;
+  using FlatAttribute = std::variant<Scalar, Array, std::string>;
   using FlatAttributesMap = absl::flat_hash_map<std::string, FlatAttribute>;
 
   // Attributes that support arbitrary nesting.
@@ -123,13 +127,15 @@ class CallFrame {
 
   // Declare implementation detail structs for call frame storage.
   struct Arguments;
+  struct Array;
   struct Attributes;
   struct Buffer;
   struct Dictionary;
   struct NamedAttribute;
+  struct Scalar;
   struct String;
 
-  using Attribute = std::variant<int32_t, int64_t, float, String, Dictionary>;
+  using Attribute = std::variant<Scalar, Array, String, Dictionary>;
 
   CallFrame(absl::Span<const CallFrameBuilder::Buffer> args,
             const CallFrameBuilder::AttributesMap& attrs);

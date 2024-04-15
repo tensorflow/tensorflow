@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/ifrt_types.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "xla/python/ifrt/client.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -30,11 +31,6 @@ limitations under the License.
 
 namespace tensorflow {
 namespace ifrt_serving {
-
-struct DtypeAndShape {
-  tensorflow::DataType dtype;
-  tensorflow::TensorShape shape;
-};
 
 struct Tf2HloResult {
   mlir::OwningOpRef<mlir::ModuleOp> mlir_hlo_module;

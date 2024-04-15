@@ -145,4 +145,39 @@ XLA_TEST_F(QrTest, SubnormalComplex) {
                                     xla::ErrorSpec(1e-4, 1e-4));
 }
 
+XLA_TEST_F(QrTest, DuplicateHouseholderExpansion) {
+  xla::XlaBuilder builder(TestName());
+
+  xla::Array2D<float> a0_vals({
+      {0, 1, 1},
+      {1, 0, 1},
+      {1, 1, 0},
+  });
+  xla::Array2D<float> a1_vals({
+      {1, 0},
+      {0, 1},
+      {1, 0},
+  });
+
+  // Verifies that different computations are created to generate HouseHolder
+  // transformations with identical QR shapes, but different tau shapes.
+  // The first QR decomposition should generate a ([3,3], [3]) computation,
+  // the second should generate a ([3,3], [2]) computation. Mismatch will result
+  // in compilation failure.
+
+  xla::XlaOp a0, q0, r0;
+  auto a0_data = CreateR2Parameter<float>(a0_vals, 0, "a0", &builder, &a0);
+  xla::QrExplicit(a0, /*full_matrices=*/true, q0, r0);
+
+  xla::XlaOp a1, q1, r1;
+  auto a1_data = CreateR2Parameter<float>(a1_vals, 1, "a1", &builder, &a1);
+  xla::QrExplicit(a1, /*full_matrices=*/true, q1, r1);
+
+  // Verifies that the decomposition composes back to the original matrix.
+  xla::BatchDot(q1, r1, xla::PrecisionConfig::HIGHEST);
+
+  ComputeAndCompareR2<float>(&builder, a1_vals, {a0_data.get(), a1_data.get()},
+                             xla::ErrorSpec(1e-4, 1e-4));
+}
+
 }  // namespace

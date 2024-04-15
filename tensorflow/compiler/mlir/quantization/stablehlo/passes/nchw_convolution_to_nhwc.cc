@@ -28,6 +28,7 @@ limitations under the License.
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/quantization/common/attrs_and_constraints.h"
 #include "tensorflow/compiler/mlir/quantization/common/uniform_quantized_types.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/permutation.h"
 
 namespace mlir::quant::stablehlo {
 
@@ -72,20 +73,20 @@ class RewriteNchwConvolutionToNhwc
     // Transpose the input tensor: [b, f, 0, 1] => [b, 0, 1, f]
     Value input = op->getOperand(0);
     const TensorType new_input_tensor_type = GetTransposedTensorType(
-        input.getType().cast<TensorType>(), kActivationPermutation);
+        input.getType().cast<TensorType>(), kNchwToNhwcPermutation);
 
     auto input_transpose_op = rewriter.create<mlir::stablehlo::TransposeOp>(
         op.getLoc(), /*resultType0=*/new_input_tensor_type, /*operand=*/input,
-        rewriter.getDenseI64ArrayAttr(kActivationPermutation));
+        rewriter.getDenseI64ArrayAttr(kNchwToNhwcPermutation));
 
     // Transpose the filter tensor: [o, i, 0, 1] => [0, 1, i, o]
     Value filter = op->getOperand(1);
     const TensorType new_filter_tensor_type = GetTransposedTensorType(
-        filter.getType().cast<TensorType>(), kFilterPermutation);
+        filter.getType().cast<TensorType>(), kOihwToHwioPermutation);
 
     auto filter_transpose_op = rewriter.create<mlir::stablehlo::TransposeOp>(
         op.getLoc(), /*resultType0=*/new_filter_tensor_type, /*operand=*/filter,
-        rewriter.getDenseI64ArrayAttr(kFilterPermutation));
+        rewriter.getDenseI64ArrayAttr(kOihwToHwioPermutation));
 
     // [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f]
     const auto new_dimension_nums = rewriter.getAttr<ConvDimensionNumbersAttr>(
@@ -99,7 +100,7 @@ class RewriteNchwConvolutionToNhwc
     // Determine the shape of the output tensor: [b, f, 0, 1] => [b, 0, 1, f]
     auto output_tensor_type = op->getResult(0).getType().cast<TensorType>();
     const TensorType new_conv_output_tensor_type =
-        GetTransposedTensorType(output_tensor_type, kOutputPermutation);
+        GetTransposedTensorType(output_tensor_type, kNchwToNhwcPermutation);
 
     // window_strides, padding, lhs_dilation, rhs_dilation, window_reversal are
     // reused without modification because the ordering of spatial dimensions
@@ -125,31 +126,12 @@ class RewriteNchwConvolutionToNhwc
     auto output_transpose_op = rewriter.create<mlir::stablehlo::TransposeOp>(
         new_convolution_op.getLoc(), /*resultType0=*/output_tensor_type,
         /*operand=*/new_convolution_op,
-        rewriter.getDenseI64ArrayAttr(kOutputReversePermutation));
+        rewriter.getDenseI64ArrayAttr(kNhwcToNchwPermutation));
 
     rewriter.replaceAllUsesWith(op, output_transpose_op);
   }
 
  private:
-  // Permutation to transpose the input tensor from [b, f, 0, 1] to
-  // [b, 0, 1, f].
-  static constexpr std::array<int64_t, 4> kActivationPermutation = {0, 2, 3, 1};
-
-  // Permutation to transpose the filter tensor from [o, i, 0, 1] to
-  // [0, 1, i, o].
-  static constexpr std::array<int64_t, 4> kFilterPermutation = {2, 3, 1, 0};
-
-  // Permutation to transpose the output tensor from [b, f, 0, 1] to
-  // [b, 0, 1, f]. This is used to determine the shape of the new
-  // `ConvolutionOp`'s output tensor.
-  static constexpr std::array<int64_t, 4> kOutputPermutation = {0, 2, 3, 1};
-
-  // Permutation to transpose the output tensor from [b, 0, 1, f] to
-  // [b, f, 0, 1]. This is used to revert the new output tensor of
-  // `ConvolutionOp` with a `TransposeOp`.
-  static constexpr std::array<int64_t, 4> kOutputReversePermutation = {0, 3, 1,
-                                                                       2};
-
   // Matches input dimensions corresponding to: [b, f, 0, 1].
   bool MatchInputDimensionNumbers(
       const ConvDimensionNumbersAttr dimension_numbers) const {
@@ -183,20 +165,8 @@ class RewriteNchwConvolutionToNhwc
   TensorType GetTransposedTensorType(
       const TensorType type, const ArrayRef<int64_t> permutation) const {
     const SmallVector<int64_t> after_shape =
-        PermuteShape(type.getShape(), permutation);
+        Permute<int64_t>(type.getShape(), permutation);
     return type.cloneWith(after_shape, type.getElementType());
-  }
-
-  // Permutes the shape according to the permutation. The size of `shape` and
-  // `permutation` should be equal.
-  SmallVector<int64_t> PermuteShape(const ArrayRef<int64_t> shape,
-                                    const ArrayRef<int64_t> permutation) const {
-    const int64_t size = shape.size();
-    SmallVector<int64_t, 4> after_shape(size);
-    for (int i = 0; i < size; ++i) {
-      after_shape[i] = shape[permutation[i]];
-    }
-    return after_shape;
   }
 };
 

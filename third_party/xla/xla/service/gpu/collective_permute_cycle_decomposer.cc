@@ -16,11 +16,14 @@ limitations under the License.
 #include "xla/service/gpu/collective_permute_cycle_decomposer.h"
 
 #include <cstdint>
+#include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -30,10 +33,13 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/literal_util.h"
+#include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/hlo_parser.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status.h"
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 
@@ -118,6 +124,57 @@ CycleType ShouldDecomposeWithCycleType(
                                   : CycleType::kUnknown;
 }
 
+// Constructs the frontend attributes for the two decomposed CollectivePermute
+// instructions.
+Status GetFrontendAttributes(HloCollectivePermuteInstruction* cp,
+                             CycleType cycle_type,
+                             xla::FrontendAttributes& cp1_attr,
+                             xla::FrontendAttributes& cp2_attr) {
+  cp1_attr = cp->frontend_attributes();
+  cp2_attr = cp->frontend_attributes();
+  auto validation_it =
+      cp->frontend_attributes().map().find(kSendRecvValidationAttr);
+  if (validation_it == cp->frontend_attributes().map().end() ||
+      validation_it->second == "invalid") {
+    return OkStatus();
+  }
+
+  auto statusor_bounds = ParseReplicaGroupsOnly(validation_it->second);
+  if (!statusor_bounds.ok()) {
+    return statusor_bounds.status();
+  }
+  const std::vector<ReplicaGroup>& bounds = statusor_bounds.value();
+  if (bounds.size() < 2) {
+    return Internal("Invalid number of replica groups");
+  }
+
+  int64_t num_pairs = bounds.size();
+  // A forward cycle has its backedge at the end while a backward cycle has its
+  // backedge at the beginning.
+  auto backedge_start = cycle_type == CycleType::kBackward
+                            ? bounds.begin()
+                            : bounds.begin() + num_pairs - 1;
+  auto other_edges_start =
+      cycle_type == CycleType::kBackward ? bounds.begin() + 1 : bounds.begin();
+  std::vector<ReplicaGroup> cp1_bounds(backedge_start, backedge_start + 1);
+  std::vector<ReplicaGroup> cp2_bounds(other_edges_start,
+                                       other_edges_start + num_pairs - 1);
+  auto bounds_to_string = [](const std::vector<ReplicaGroup> groups) {
+    return "{" +
+           absl::StrJoin(groups, ",",
+                         [](std::string* out, const ReplicaGroup& value) {
+                           absl::StrAppend(out, "{", value.replica_ids(0), ",",
+                                           value.replica_ids(1), "}");
+                         }) +
+           "}";
+  };
+  std::string cp1_validation_str = bounds_to_string(cp1_bounds);
+  std::string cp2_validation_str = bounds_to_string(cp2_bounds);
+  (*cp1_attr.mutable_map())[kSendRecvValidationAttr] = cp1_validation_str;
+  (*cp2_attr.mutable_map())[kSendRecvValidationAttr] = cp2_validation_str;
+  return OkStatus();
+}
+
 // Decomposes a CollectivePermute instruction with a cycle in its source-target
 // pairs into two CollectivePermute instructions.
 Status DecomposeCollectivePermuteCycle(HloCollectivePermuteInstruction* cp,
@@ -139,6 +196,8 @@ Status DecomposeCollectivePermuteCycle(HloCollectivePermuteInstruction* cp,
   SourceTargetPairs other_edges(other_edges_start,
                                 other_edges_start + num_pairs - 1);
   const OpMetadata& metadata = cp->metadata();
+  xla::FrontendAttributes cp1_attr, cp2_attr;
+  TF_RETURN_IF_ERROR(GetFrontendAttributes(cp, cycle_type, cp1_attr, cp2_attr));
 
   // Create the CollectivePermute instruction for the communication represented
   // by the backedge.
@@ -147,6 +206,7 @@ Status DecomposeCollectivePermuteCycle(HloCollectivePermuteInstruction* cp,
           cp->shape(), cp->mutable_operand(0), backedge,
           cp->channel_id().value()));
   cp1->set_metadata(metadata);
+  cp1->set_frontend_attributes(cp1_attr);
   int64_t cp1_receiver = backedge.back().second;
 
   // Create the CollectivePermute instruction for the communication represented
@@ -155,6 +215,7 @@ Status DecomposeCollectivePermuteCycle(HloCollectivePermuteInstruction* cp,
       computation->AddInstruction(HloInstruction::CreateCollectivePermute(
           cp->shape(), cp->mutable_operand(0), other_edges, next_channel_id));
   cp2->set_metadata(metadata);
+  cp2->set_frontend_attributes(cp2_attr);
 
   // Calculate the received data as follows:
   //   partition = u32[] partition-id()

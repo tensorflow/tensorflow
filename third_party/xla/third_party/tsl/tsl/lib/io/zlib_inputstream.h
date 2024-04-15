@@ -55,7 +55,7 @@ class ZlibInputStream : public InputStreamInterface {
                   size_t output_buffer_bytes,
                   const ZlibCompressionOptions& zlib_options);
 
-  ~ZlibInputStream();
+  ~ZlibInputStream() override;
 
   // Reads bytes_to_read bytes into *result, overwriting *result.
   //

@@ -18,10 +18,10 @@ limitations under the License.
 #include <algorithm>
 #include <functional>
 
+#include "xla/tsl/util/env_var.h"
 #include "tensorflow/core/platform/blocking_counter.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tsl/profiler/lib/traceme.h"
-#include "tsl/util/env_var.h"
 
 namespace tensorflow {
 namespace {

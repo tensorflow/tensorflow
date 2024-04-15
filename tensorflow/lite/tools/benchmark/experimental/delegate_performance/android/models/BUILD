@@ -1,9 +1,9 @@
 # Description:
 #  Holds model-specific files. The app will bundle the files into assets.
 
-load("//tensorflow/lite/tools/benchmark/experimental/delegate_performance/android:proto.bzl", "proto_data")
-load("//tensorflow/lite/tools/benchmark/experimental/delegate_performance/android:build_defs.bzl", "accuracy_benchmark_extra_models", "latency_benchmark_extra_models")
 load("//tensorflow/lite/experimental/acceleration/mini_benchmark:build_defs.bzl", "validation_model")
+load("//tensorflow/lite/tools/benchmark/experimental/delegate_performance/android:build_defs.bzl", "accuracy_benchmark_extra_models", "latency_benchmark_extra_models")
+load("//tensorflow/lite/tools/benchmark/experimental/delegate_performance/android:proto.bzl", "proto_data")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],

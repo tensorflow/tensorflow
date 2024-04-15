@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/pjrt/compile_options.pb.h"
 #include "xla/pjrt/execute_options.pb.h"
 #include "xla/pjrt/pjrt_common.h"
+#include "xla/pjrt/pjrt_layout.h"
 #include "xla/service/computation_layout.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/shape.h"
@@ -321,7 +322,8 @@ PjRtExecutable::GetOutputDimensions() const {
   return output_dimensions;
 }
 
-StatusOr<std::vector<Layout>> PjRtExecutable::GetParameterLayouts() const {
+absl::StatusOr<std::vector<std::unique_ptr<PjRtLayout>>>
+PjRtExecutable::GetParameterLayouts() const {
   TF_ASSIGN_OR_RETURN(std::vector<std::shared_ptr<HloModule>> hlo_modules,
                       GetHloModules());
   if (hlo_modules.size() > 1) {
@@ -335,10 +337,18 @@ StatusOr<std::vector<Layout>> PjRtExecutable::GetParameterLayouts() const {
         "from executable.");
   }
   ComputationLayout comp_layout = hlo_modules[0]->entry_computation_layout();
-  return comp_layout.FlattenedParameterLayouts();
+  TF_ASSIGN_OR_RETURN(std::vector<Layout> layouts,
+                      comp_layout.FlattenedParameterLayouts());
+  std::vector<std::unique_ptr<PjRtLayout>> result;
+  result.reserve(layouts.size());
+  for (const Layout& layout : layouts) {
+    result.push_back(std::make_unique<PjRtXlaLayout>(layout));
+  }
+  return result;
 }
 
-StatusOr<std::vector<Layout>> PjRtExecutable::GetOutputLayouts() const {
+absl::StatusOr<std::vector<std::unique_ptr<PjRtLayout>>>
+PjRtExecutable::GetOutputLayouts() const {
   TF_ASSIGN_OR_RETURN(std::vector<std::shared_ptr<HloModule>> hlo_modules,
                       GetHloModules());
   if (hlo_modules.size() > 1) {
@@ -352,7 +362,14 @@ StatusOr<std::vector<Layout>> PjRtExecutable::GetOutputLayouts() const {
         "from executable.");
   }
   ComputationLayout comp_layout = hlo_modules[0]->entry_computation_layout();
-  return comp_layout.FlattenedResultLayouts();
+  TF_ASSIGN_OR_RETURN(std::vector<Layout> layouts,
+                      comp_layout.FlattenedResultLayouts());
+  std::vector<std::unique_ptr<PjRtLayout>> result;
+  result.reserve(layouts.size());
+  for (const Layout& layout : layouts) {
+    result.push_back(std::make_unique<PjRtXlaLayout>(layout));
+  }
+  return result;
 }
 
 StatusOr<absl::flat_hash_map<std::string, PjRtValueType>>

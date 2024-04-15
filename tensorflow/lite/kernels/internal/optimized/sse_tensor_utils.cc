@@ -23,6 +23,8 @@ limitations under the License.
 #endif
 #ifdef __AVX2__
 #include <immintrin.h>
+
+#include "absl/base/prefetch.h"
 #endif
 
 #include <cstdint>
@@ -217,8 +219,11 @@ void Avx2MatrixBatchVectorMultiplyAccumulateImpl(
       // Initialize the dot product sum for the row to 0.
       __m256i dotprod_32x8 = _mm256_setzero_si256();
       std::intptr_t col = 0;
+      constexpr int prefetch_distance = 704;
       // For every block of 32x 8-bit inputs.
       while (col < (m_cols & ~31)) {
+        absl::PrefetchToLocalCache(vectors + col + prefetch_distance);
+        absl::PrefetchToLocalCache(row_ptr + col + prefetch_distance);
         const __m256i vec_16x16 =
             _mm256_loadu_si256(reinterpret_cast<const __m256i*>(vectors + col));
         const __m256i row_16x16 =

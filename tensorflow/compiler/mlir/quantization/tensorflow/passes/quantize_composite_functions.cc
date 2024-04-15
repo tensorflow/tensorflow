@@ -62,6 +62,7 @@ namespace quant {
 namespace {
 
 using QuantMethod = tensorflow::quantization::QuantizationMethod::PresetMethod;
+using ::tensorflow::quantization::OpSet;
 
 constexpr absl::string_view kQuantizeCompositeFunctionsStepName =
     "_quantize_composite_functions";

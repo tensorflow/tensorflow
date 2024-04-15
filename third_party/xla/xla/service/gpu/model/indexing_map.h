@@ -31,6 +31,8 @@ limitations under the License.
 #include "mlir/IR/AffineExpr.h"  // from @llvm-project
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/model/affine_map_printer.h"
 
 namespace xla {
@@ -135,7 +137,53 @@ class RangeEvaluator {
   llvm::DenseMap<mlir::AffineExpr, Interval> expression_ranges_cache_;
 };
 
-std::vector<Interval> RangesFromTensorSizes(
+// Dimension variable represents a dimension of a tensor or a GPU grid.
+// Dimensions correspond to the dimension parameter of `affine_map_`.
+struct DimVar {
+  Interval bounds;
+};
+bool operator==(const DimVar& lhs, const DimVar& rhs);
+
+template <typename H>
+H AbslHashValue(H h, const DimVar& dimension) {
+  return H::combine(std::move(h), dimension.bounds);
+}
+
+// RangeSymbol variable represents a range of values, e.g. to compute a single
+// element of the reduction's result we need a range of values from the input
+// tensor. RangeSymbol variables correspond to the front portion of the
+// symbols in `affine_map_`.
+struct RangeVar {
+  Interval range;
+};
+bool operator==(const RangeVar& lhs, const RangeVar& rhs);
+
+template <typename H>
+H AbslHashValue(H h, const RangeVar& range_var) {
+  return H::combine(std::move(h), range_var.range);
+}
+
+// RTSymbol variable represents a runtime symbol, e.g. a dynamic offset in
+// HLO dynamic-update-slice op. RTSymbol variables correspond to the back
+// portion of the symbols in `affine_map_`.
+struct RTVar {
+  Interval feasible_values;
+  const HloInstruction* hlo;
+  mlir::AffineMap map;
+};
+bool operator==(const RTVar& lhs, const RTVar& rhs);
+
+template <typename H>
+H AbslHashValue(H h, const RTVar& rt_var) {
+  llvm::hash_code map_hash = llvm::hash_combine(rt_var.map);
+  return H::combine(std::move(h), rt_var.feasible_values, rt_var.hlo,
+                    static_cast<size_t>(map_hash));
+}
+
+std::vector<DimVar> DimVarsFromTensorSizes(
+    absl::Span<const int64_t> tensor_sizes);
+
+std::vector<RangeVar> RangeVarsFromTensorSizes(
     absl::Span<const int64_t> tensor_sizes);
 
 // Contains an affine map with N dimension expressions and M symbols:
@@ -166,23 +214,24 @@ std::vector<Interval> RangesFromTensorSizes(
 class IndexingMap {
  public:
   IndexingMap(
-      mlir::AffineMap affine_map, std::vector<Interval> dim_ranges,
-      std::vector<Interval> symbol_ranges,
+      mlir::AffineMap affine_map, std::vector<DimVar> dimensions,
+      std::vector<RangeVar> range_vars, std::vector<RTVar> rt_vars,
       absl::Span<std::pair<mlir::AffineExpr, Interval>> constraints = {})
       : affine_map_(affine_map),
-        dim_ranges_(std::move(dim_ranges)),
-        symbol_ranges_(std::move(symbol_ranges)) {
+        dim_vars_(std::move(dimensions)),
+        range_vars_(std::move(range_vars)),
+        rt_vars_(std::move(rt_vars)) {
     for (const auto& [expr, range] : constraints) {
       AddConstraint(expr, range);
     }
   }
-
-  IndexingMap(mlir::AffineMap affine_map, std::vector<Interval> dim_ranges,
-              std::vector<Interval> symbol_ranges,
+  IndexingMap(mlir::AffineMap affine_map, std::vector<DimVar> dimensions,
+              std::vector<RangeVar> range_vars, std::vector<RTVar> rt_vars,
               const llvm::DenseMap<mlir::AffineExpr, Interval>& constraints)
       : affine_map_(affine_map),
-        dim_ranges_(std::move(dim_ranges)),
-        symbol_ranges_(std::move(symbol_ranges)),
+        dim_vars_(std::move(dimensions)),
+        range_vars_(std::move(range_vars)),
+        rt_vars_(std::move(rt_vars)),
         constraints_(constraints) {}
 
   static IndexingMap GetUndefined() { return IndexingMap(); }
@@ -196,28 +245,46 @@ class IndexingMap {
 
   void Print(std::ostream& out, const AffineMapPrinter& printer) const;
 
+  // TODO(hebecker): Rearrange code structure so that we can call
+  // `ComputeInputToOutputIndexing` from `:indexing_analysis` directly.
+  using IndexingMapProvider = llvm::function_ref<IndexingMap(
+      const HloInstruction*, int64_t /*operand id*/, mlir::MLIRContext*)>;
+
   // Returns true if the map was simplified.
-  bool Simplify();
+  bool Simplify(IndexingMapProvider indexing_map_provider);
 
   // Return MLIRContext.
-  mlir::MLIRContext* GetMLIRContext() const { return affine_map_.getContext(); }
+  mlir::MLIRContext* GetMLIRContext() const;
 
   // Returns the affine map.
   mlir::AffineMap GetAffineMap() const { return affine_map_; }
 
-  // Getters for dimension ranges.
-  Interval GetDimensionRange(int64_t id) const { return dim_ranges_[id]; }
-  const std::vector<Interval>& GetDimensionRanges() const {
-    return dim_ranges_;
-  }
-  int64_t GetDimensionCount() const { return dim_ranges_.size(); }
+  // Getters for dimension vars.
+  const DimVar& GetDimVars(int64_t id) const { return dim_vars_[id]; }
+  const std::vector<DimVar>& GetDimVars() const { return dim_vars_; }
+  int64_t GetDimVarsCount() const { return dim_vars_.size(); }
 
-  // Getters for symbol ranges.
-  Interval GetSymbolRange(int64_t id) const { return symbol_ranges_[id]; }
-  const std::vector<Interval>& GetSymbolRanges() const {
-    return symbol_ranges_;
-  }
-  int64_t GetSymbolCount() const { return symbol_ranges_.size(); }
+  // Getters for range vars.
+  const RangeVar& GetRangeVar(int64_t id) const { return range_vars_[id]; }
+  const std::vector<RangeVar>& GetRangeVars() const { return range_vars_; }
+  int64_t GetRangeVarsCount() const { return range_vars_.size(); }
+
+  // Getters for runtime vars.
+  const RTVar& GetRTVar(int64_t id) const { return rt_vars_[id]; }
+  const std::vector<RTVar>& GetRTVars() const { return rt_vars_; }
+  int64_t GetRTVarsCount() const { return rt_vars_.size(); }
+
+  // Gets bounds of `affine_map_` dimensions.
+  const Interval& GetDimensionBound(int64_t dim_id) const;
+  Interval& GetMutableDimensionBound(int64_t dim_id);
+  std::vector<Interval> GetDimensionBounds() const;
+  int64_t GetDimensionCount() const { return affine_map_.getNumDims(); }
+
+  // Gets bounds of `affine_map_` symbols.
+  const Interval& GetSymbolBound(int64_t symbol_id) const;
+  Interval& GetMutableSymbolBound(int64_t symbol_id);
+  std::vector<Interval> GetSymbolBounds() const;
+  int64_t GetSymbolCount() const { return affine_map_.getNumSymbols(); }
 
   // Getters for affine expression constraints.
   const llvm::DenseMap<mlir::AffineExpr, Interval>& GetConstraints() const {
@@ -254,6 +321,10 @@ class IndexingMap {
   // Removes unused symbols from the `affine_map_` and constraints.
   void RemoveUnusedSymbols();
 
+  // Rescales all symbols that are sufficiently constrained through `s? mod x =
+  // [N, N]` constraints. Returns true if a rescale took place, otherwise false.
+  bool RescaleSymbols();
+
  private:
   IndexingMap() = default;
 
@@ -265,9 +336,17 @@ class IndexingMap {
   // Returns true if simplification was performed.
   bool SimplifyConstraintRanges();
 
+  // Merges "mod" constraints for the same AffineExpr.
+  void MergeModConstraints();
+
+  // Replace RTVars that yield constants by indexing expressions.
+  // Returns true if a replacement was performed, otherwise false.
+  bool ReplaceConstantRTVars(IndexingMapProvider indexing_map_provider);
+
   mlir::AffineMap affine_map_;
-  std::vector<Interval> dim_ranges_;
-  std::vector<Interval> symbol_ranges_;
+  std::vector<DimVar> dim_vars_;
+  std::vector<RangeVar> range_vars_;
+  std::vector<RTVar> rt_vars_;
   // Inequality constraints for affine expressions. They restrict the feasible
   // set for the domain of the indexing map. It contains affine expressions
   // other than AffineDimExpr and AffineSymbolExpr.
@@ -286,8 +365,8 @@ H AbslHashValue(H h, const IndexingMap& indexing_map) {
   llvm::hash_code affine_map_hash =
       llvm::hash_combine(indexing_map.GetAffineMap());
   return H::combine(std::move(h), static_cast<size_t>(affine_map_hash),
-                    indexing_map.GetDimensionRanges(),
-                    indexing_map.GetSymbolRanges(),
+                    indexing_map.GetDimVars(), indexing_map.GetRangeVars(),
+                    indexing_map.GetRTVars(),
                     indexing_map.GetConstraintsCount());
 }
 

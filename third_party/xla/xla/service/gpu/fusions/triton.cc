@@ -137,7 +137,6 @@ absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
       TF_ASSIGN_OR_RETURN(
           triton_wrapper_result,
           TritonWrapper(analysis, impl_fn_name, hlo_computation,
-                        kTritonSoftmaxFusionKind,
                         ir_emitter_context.cuda_compute_capability(),
                         ir_emitter_context.gpu_device_info(), config,
                         ir_emitter_context.llvm_module(), &EmitSoftMax,
@@ -154,6 +153,7 @@ absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
         triton_config.set_split_k(1);
         triton_config.set_num_stages(1);
         triton_config.set_num_warps(2);
+        triton_config.set_num_ctas(1);
       }
       TF_ASSIGN_OR_RETURN(
           TritonGemmConfig config,
@@ -164,13 +164,13 @@ absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
       TF_ASSIGN_OR_RETURN(
           triton_wrapper_result,
           TritonWrapper(analysis, impl_fn_name, hlo_computation,
-                        kTritonGemmFusionKind,
                         ir_emitter_context.cuda_compute_capability(),
                         ir_emitter_context.gpu_device_info(), config,
                         ir_emitter_context.llvm_module(), &EmitMatMul,
                         *ir_emitter_context.mlir_context()));
-      launch_dimensions =
-          GetMatMulLaunchDimensions(analysis, analysis_.fusion(), config);
+      TF_ASSIGN_OR_RETURN(
+          launch_dimensions,
+          GetMatMulLaunchDimensions(analysis, analysis_.fusion(), config));
     }
 
     llvm::Function* impl_fn =

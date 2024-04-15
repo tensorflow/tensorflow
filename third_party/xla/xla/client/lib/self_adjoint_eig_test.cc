@@ -277,6 +277,10 @@ class RandomEighTest : public ClientLibraryTestBase,
                        public ::testing::WithParamInterface<EighTestCase> {};
 
 XLA_TEST_P(RandomEighTest, Random) {
+#if TENSORFLOW_USE_ROCM
+  GTEST_SKIP() << "RandomEighTest.Random is currently not supported on ROCm.";
+#endif  // TENSORFLOW_USE_ROCM
+
   XlaBuilder builder(TestName());
   int64_t size = GetParam();
   Array2D<float> a_val = GenerateRandomSymmetricMatrix(size);

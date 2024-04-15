@@ -123,7 +123,7 @@ Let's study-by-example to understand what's all of the above actually means.
 
 ### Elementwise
 
-For an elementwise ops the indexing map is an identity.
+For elementwise ops the indexing map is an identity.
 
 ```c++
   p0 = f32[10, 20] parameter(0)
@@ -141,7 +141,7 @@ The output to input maps:
 The input to output maps
 
 -   input_i -> output: $(d_0, d_1) \mapsto (d_0, d_1)$ for $\boldsymbol{d} \in
-    {\rm Dom}(output)$
+    {\rm Dom}(input)$
 
 ### [Broadcast](https://openxla.org/xla/operation_semantics#broadcastindim)
 
@@ -160,8 +160,8 @@ The output to input map:
 
 The input to output map
 
--   input -> output: $(d_0) \mapsto (s_0, d_1, s_1)$ for $\boldsymbol{d} \in
-    {\rm Dom}(output)$ and $\boldsymbol{s} \in [0, 9] \times [0, 29]$.
+-   input -> output: $(d_0) \mapsto (s_0, d_0, s_1)$ for $\boldsymbol{d} \in
+    {\rm Dom}(input)$ and $\boldsymbol{s} \in [0, 9] \times [0, 29]$.
 
 Note that now we have $\boldsymbol s$ on the right side for the input-to-output
 mapping. Those are the symbols that represent ranges of values. For example, in

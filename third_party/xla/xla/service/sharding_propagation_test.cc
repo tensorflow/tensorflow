@@ -9306,6 +9306,7 @@ ENTRY %entry {
       HloConstantSplitter(/*split_expressions=*/true).Run(module.get()));
   EXPECT_TRUE(is_split);
   TF_ASSERT_OK_AND_ASSIGN(auto _, HloDCE().Run(module.get()));
+  (void)_;  // Suppress unused variable warning in OSS
   TF_ASSERT_OK_AND_ASSIGN(
       bool changed,
       ShardingPropagation(/*is_spmd=*/true, /*propagate_metadata=*/true)

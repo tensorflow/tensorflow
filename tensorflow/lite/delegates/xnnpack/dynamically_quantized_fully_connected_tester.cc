@@ -32,6 +32,7 @@ limitations under the License.
 #include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
 #include "flatbuffers/string.h"  // from @flatbuffers
 #include "tensorflow/lite/c/c_api_types.h"
+#include "tensorflow/lite/core/interpreter_builder.h"
 #include "tensorflow/lite/core/kernels/register.h"
 #include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
 #include "tensorflow/lite/interpreter.h"
@@ -157,7 +158,19 @@ std::vector<char> DynamicallyQuantizedFullyConnectedTester::CreateTfLiteModel()
   std::vector<flatbuffers::Offset<Operator>> operators;
 
   /*********************** Generate filter and bias data **********************/
-  std::vector<int8_t> filter_data(InputChannels() * OutputChannels());
+  int filter_size_bytes = -1;
+  switch (WeightsType()) {
+    case WeightsType::kChannelWiseQuantizedInt4: {
+      filter_size_bytes = (InputChannels() * OutputChannels() + 1) / 2;
+      break;
+    }
+    case WeightsType::kChannelWiseQuantizedInt8:
+    case WeightsType::kTensorWiseQuantizedInt8: {
+      filter_size_bytes = InputChannels() * OutputChannels();
+      break;
+    }
+  }
+  std::vector<int8_t> filter_data(filter_size_bytes);
   std::generate(filter_data.begin(), filter_data.end(), std::ref(filter_rng));
   std::vector<float> bias_data(OutputChannels());
   std::generate(bias_data.begin(), bias_data.end(), std::ref(bias_rng));
@@ -185,15 +198,22 @@ std::vector<char> DynamicallyQuantizedFullyConnectedTester::CreateTfLiteModel()
       builder,
       builder.CreateVector<int32_t>(InputShape().data(), InputShape().size()),
       TensorType_FLOAT32, /*buffer=*/0));
-
+  tflite::TensorType filter_tensor_type;
   std::vector<float> filter_scale;
   std::vector<int64_t> filter_zero_point;
   switch (WeightsType()) {
+    case WeightsType::kChannelWiseQuantizedInt4:
+      filter_tensor_type = tflite::TensorType_INT4;
+      filter_scale.assign(OutputChannels(), FilterScale());
+      filter_zero_point.assign(OutputChannels(), 0);
+      break;
     case WeightsType::kChannelWiseQuantizedInt8:
+      filter_tensor_type = tflite::TensorType_INT8;
       filter_scale.assign(OutputChannels(), FilterScale());
       filter_zero_point.assign(OutputChannels(), 0);
       break;
     case WeightsType::kTensorWiseQuantizedInt8: {
+      filter_tensor_type = tflite::TensorType_INT8;
       filter_scale = {FilterScale()};
       filter_zero_point = {0};
       break;
@@ -202,7 +222,7 @@ std::vector<char> DynamicallyQuantizedFullyConnectedTester::CreateTfLiteModel()
   tensors.emplace_back(CreateTensor(
       builder,
       builder.CreateVector<int32_t>(filter_shape.data(), filter_shape.size()),
-      TensorType_INT8, /*buffer=*/1, /*name=*/0,
+      filter_tensor_type, /*buffer=*/1, /*name=*/0,
       CreateQuantizationParameters(
           builder, /*min=*/0, /*max=*/0,
           builder.CreateVector<float>(filter_scale),

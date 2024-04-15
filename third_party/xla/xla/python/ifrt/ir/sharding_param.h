@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <string>
 
+#include "absl/status/status.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/Hashing.h"
 #include "llvm/ADT/STLFunctionalExtras.h"
@@ -79,6 +80,7 @@ class ShardingParam {
     // The size of mesh dimensions before the permutation.
     llvm::SmallVector<int, 4> axis_sizes;
 
+    absl::Status verify() const;
     mlir::LogicalResult verify(
         llvm::function_ref<mlir::InFlightDiagnostic()> emit_error) const;
 
@@ -94,6 +96,7 @@ class ShardingParam {
       : dim_shards_(dim_shards), minor_to_major_(minor_to_major) {}
 
   static mlir::FailureOr<ShardingParam> Parse(mlir::AsmParser& ods_parser);
+  absl::Status verify() const;
   mlir::LogicalResult verify(
       llvm::function_ref<mlir::InFlightDiagnostic()> emit_error) const;
 

@@ -298,6 +298,16 @@ class TransferManager {
       se::Stream* stream, absl::Span<const se::DeviceMemoryBase> elements,
       const Shape& shape, se::DeviceMemoryBase* region) = 0;
 
+  // Returns whether subbyte types (types less than 1 byte, e.g. U4) should
+  // have multiple values packed into a single byte on the device. Subbyte
+  // bytes are never packed on the host. By default, returns false, so a byte
+  // can only hold one value, but subclasses can override this.
+  //
+  // If overridden to return true, subclasses should pack and unpack in their
+  // overridden implementations of TransferLiteralToDeviceAsync and
+  // TransferLiteralFromDevice respectively.
+  virtual bool PackSubbyteTypes() const { return false; }
+
  private:
   // The mutex that guards the platform-to-transfer manager map.
   static absl::Mutex platform_transfer_manager_mutex_;

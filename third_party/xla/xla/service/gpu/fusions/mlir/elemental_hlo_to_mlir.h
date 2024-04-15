@@ -25,6 +25,7 @@ limitations under the License.
 #include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/IR/ValueRange.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/fusions/mlir/computation_partitioner.h"
@@ -97,9 +98,20 @@ mlir::Value CheckConstraints(const IndexingMap& map, mlir::ValueRange dims,
 llvm::SmallVector<mlir::Value> EmitLoopNest(
     mlir::ImplicitLocOpBuilder& b, mlir::ValueRange dim_values,
     mlir::ValueRange iter_args_inits, const IndexingMap& indexing_map,
-    const std::function<llvm::SmallVector<mlir::Value>(
+    mlir::function_ref<llvm::SmallVector<mlir::Value>(
         mlir::ValueRange iter_args, mlir::ValueRange dim_values,
-        mlir::ValueRange symbol_values)>& create_body);
+        mlir::ValueRange symbol_values)>
+        create_body);
+
+// Same as EmitLoopNest, but the body building function can return an error
+// which gets returned from EmitLoopNestWithStatus.
+absl::StatusOr<llvm::SmallVector<mlir::Value>> EmitLoopNestWithStatus(
+    mlir::ImplicitLocOpBuilder& b, mlir::ValueRange dim_values,
+    mlir::ValueRange iter_args_inits, const IndexingMap& indexing_map,
+    mlir::function_ref<absl::StatusOr<llvm::SmallVector<mlir::Value>>(
+        mlir::ValueRange iter_args, mlir::ValueRange dim_values,
+        mlir::ValueRange symbol_values)>
+        create_body);
 
 // Clamps `index` to [0, high] boundaries.
 mlir::Value ClampIndex(mlir::Value index, bool is_unsigned, int64_t high,

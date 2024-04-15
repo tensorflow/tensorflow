@@ -700,16 +700,12 @@ StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromShape(
         execution_options->use_spmd_partitioning());
     module_config.set_use_auto_spmd_partitioning(
         execution_options->use_auto_spmd_partitioning());
-    std::vector<int64_t> mesh_shape;
-    for (auto t : execution_options->auto_spmd_partitioning_mesh_shape()) {
-      mesh_shape.push_back(t);
-    }
-    module_config.set_auto_spmd_partitioning_mesh_shape(mesh_shape);
-    std::vector<int64_t> mesh_ids;
-    for (auto t : execution_options->auto_spmd_partitioning_mesh_ids()) {
-      mesh_ids.push_back(t);
-    }
-    module_config.set_auto_spmd_partitioning_mesh_ids(mesh_ids);
+    module_config.set_auto_spmd_partitioning_mesh_shape(std::vector<int64_t>(
+        execution_options->auto_spmd_partitioning_mesh_shape().begin(),
+        execution_options->auto_spmd_partitioning_mesh_shape().end()));
+    module_config.set_auto_spmd_partitioning_mesh_ids(std::vector<int64_t>(
+        execution_options->auto_spmd_partitioning_mesh_ids().begin(),
+        execution_options->auto_spmd_partitioning_mesh_ids().end()));
     module_config.set_deduplicate_hlo(execution_options->deduplicate_hlo());
     if (!execution_options->allow_spmd_sharding_propagation_to_parameters()
              .empty()) {
@@ -735,11 +731,10 @@ StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromShape(
                  module_config.num_partitions());
       }
     }
-    std::vector<bool> param_requires_broadcast_via_collectives(
+    module_config.set_param_requires_broadcast_via_collectives(std::vector<
+                                                               bool>(
         execution_options->param_requires_broadcast_via_collectives().begin(),
-        execution_options->param_requires_broadcast_via_collectives().end());
-    module_config.set_param_requires_broadcast_via_collectives(
-        param_requires_broadcast_via_collectives);
+        execution_options->param_requires_broadcast_via_collectives().end()));
     module_config.set_allow_separate_sharding_programs(
         execution_options->allow_separate_sharding_programs());
     HloModuleConfig::AssignStructShardableValueUpdatePairs(

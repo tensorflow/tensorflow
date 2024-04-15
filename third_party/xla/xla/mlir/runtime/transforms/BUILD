@@ -1,5 +1,4 @@
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
-load("//xla:xla.bzl", "xla_cc_test")
 load("@local_tsl//tsl:tsl.default.bzl", "get_compatible_with_portable")
 load(
     "@local_tsl//tsl/platform:build_config_root.bzl",
@@ -10,6 +9,7 @@ load(
     "if_llvm_x86_available",
 )
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
+load("//xla:xla.bzl", "xla_cc_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -80,6 +80,7 @@ cc_library(
     deps = [
         "//xla/mlir/runtime/ir:rt",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
     ],
 )
@@ -93,6 +94,7 @@ xla_cc_test(
         "//xla/mlir/runtime/ir:rt",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:MemRefDialect",
+        "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_main",
@@ -170,6 +172,7 @@ cc_library(
     deps = [
         ":custom_call_encoding",
         "//xla/runtime:type_id",
+        "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
     ],
 )

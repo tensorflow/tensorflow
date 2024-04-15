@@ -8082,7 +8082,8 @@ Status AlgebraicSimplifierVisitor::HandleTranspose(HloInstruction* transpose) {
   // Replace reshape of a transpose of a reshape with concatenated slicing if
   // the reshape/transpose combination can be interpreted as a space-to-depth
   // transformation.
-  if (operand->opcode() == HloOpcode::kReshape &&
+  if (!options_.is_layout_sensitive() &&
+      operand->opcode() == HloOpcode::kReshape &&
       transpose->user_count() == 1 &&
       HloOpcode::kReshape == transpose->users()[0]->opcode()) {
     VLOG(2) << "trying depth-to-space transform";

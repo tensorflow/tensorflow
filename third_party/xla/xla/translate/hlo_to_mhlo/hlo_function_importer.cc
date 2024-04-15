@@ -575,7 +575,12 @@ absl::StatusOr<Value> HloFunctionImporter::ImportInstructionsImpl(
         auto new_operation,
         ImportInstructionWithLayout(instruction, operands, builder));
     if (new_operation) {
-      instruction_value_map_[instruction] = new_operation->getResult(0);
+      unsigned int idx =
+          (instruction->opcode() == HloOpcode::kRngBitGenerator &&
+           instruction->shape().IsArray())
+              ? 1
+              : 0;
+      instruction_value_map_[instruction] = new_operation->getResult(idx);
     }
   }
 
@@ -1643,18 +1648,44 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       }
     }
     case HloOpcode::kRngBitGenerator: {
+      // HloRngBitGeneratorInstruction can have two kinds of shapes, (1)
+      // tuple(output_state, output_data), and (2) output_data.
+      // mhlo::RngBitGeneratorOp has only one shape, (output_state,
+      // output_data).
       auto rng_op = Cast<HloRngBitGeneratorInstruction>(instruction);
-
-      // Flatten the return type if they are tuple-typed.
-      llvm::SmallVector<Type> flattened_ret_types;
-      FlattenTupleType(result_type, flattened_ret_types);
 
       auto algorithm_attr = mlir::mhlo::RngAlgorithmAttr::get(
           builder_->getContext(),
           *mlir::mhlo::symbolizeRngAlgorithm(rng_op->algorithm()));
-      auto op = func_builder->create<mlir::mhlo::RngBitGeneratorOp>(
-          loc, flattened_ret_types, algorithm_attr, operands[0]);
+      attributes.push_back(
+          builder_->getNamedAttr("rng_algorithm", algorithm_attr));
 
+      // Flatten the return type if they are tuple-typed.
+      llvm::SmallVector<Type> flattened_ret_types;
+      FlattenTupleType(result_type, flattened_ret_types);
+      if (rng_op->shape().IsArray()) {
+        TF_ASSIGN_OR_RETURN(auto state_type,
+                            ConvertShapeToType<RankedTensorType>(
+                                rng_op->operand(0)->shape(), *builder_));
+        flattened_ret_types.insert(flattened_ret_types.begin(), state_type);
+
+        if (instruction->has_sharding()) {
+          Shape tuple_shape = ShapeUtil::MakeTupleShape(
+              {rng_op->operand(0)->shape(), instruction->shape()});
+          HloSharding tuple_sharding = HloSharding::Tuple(
+              tuple_shape, {HloSharding::Replicate(), instruction->sharding()});
+          CHECK_EQ(attributes.front().getName().str(), kShardingAttr);
+          attributes.front() = builder_->getNamedAttr(
+              kShardingAttr, ConvertSharding(tuple_sharding, builder_));
+        }
+      }
+      CHECK_EQ(flattened_ret_types.size(), 2);
+
+      auto op = func_builder->create<mlir::mhlo::RngBitGeneratorOp>(
+          loc, flattened_ret_types, operands[0], attributes);
+      if (rng_op->shape().IsArray()) {
+        return op.getOperation();
+      }
       return CreateTupleFromOpResults(func_builder, loc, op.getOperation(),
                                       result_type);
     }

@@ -58,7 +58,7 @@ ConvolutionDimensionNumbers ConvertConvDimensionNumbers(
 
 // Convert replica group from MLIR encoding to HLO.
 // See HloFunctionImporter::ConvertReplicaGroups for the MLIR encoding.
-StatusOr<std::vector<ReplicaGroup>> ConvertReplicaGroups(
+absl::StatusOr<std::vector<ReplicaGroup>> ConvertReplicaGroups(
     mlir::DenseIntElementsAttr input) {
   mlir::RankedTensorType type =
       input.getType().dyn_cast<mlir::RankedTensorType>();
@@ -85,7 +85,7 @@ StatusOr<std::vector<ReplicaGroup>> ConvertReplicaGroups(
 
 // Convert a (N, 2) dense attribute to a list of tuples. This is the way padding
 // and source-target pairs are defined in HLO.
-StatusOr<std::vector<std::pair<int64_t, int64_t>>> ConvertNx2Attribute(
+absl::StatusOr<std::vector<std::pair<int64_t, int64_t>>> ConvertNx2Attribute(
     std::optional<mlir::DenseIntElementsAttr> optional_attr) {
   if (!optional_attr.has_value())
     return std::vector<std::pair<int64_t, int64_t>>{};
@@ -105,7 +105,7 @@ StatusOr<std::vector<std::pair<int64_t, int64_t>>> ConvertNx2Attribute(
   return out;
 }
 
-StatusOr<FftType> ConvertFftType(llvm::StringRef type_string) {
+absl::StatusOr<FftType> ConvertFftType(llvm::StringRef type_string) {
   std::optional<mlir::mhlo::FftType> type =
       mlir::mhlo::symbolizeEnum<mlir::mhlo::FftType>(type_string);
   if (!type) return InvalidArgument("Unknown FFT type %s", type_string.str());
@@ -124,7 +124,7 @@ StatusOr<FftType> ConvertFftType(llvm::StringRef type_string) {
   }
 }
 
-StatusOr<TriangularSolveOptions::Transpose> ConvertTranspose(
+absl::StatusOr<TriangularSolveOptions::Transpose> ConvertTranspose(
     llvm::StringRef transpose_string) {
   std::optional<mlir::mhlo::Transpose> transpose =
       mlir::mhlo::symbolizeTranspose(transpose_string);
@@ -145,7 +145,7 @@ StatusOr<TriangularSolveOptions::Transpose> ConvertTranspose(
   }
 }
 
-StatusOr<xla::CustomCallSchedule> ConvertCustomCallSchedule(
+absl::StatusOr<xla::CustomCallSchedule> ConvertCustomCallSchedule(
     mlir::mhlo::CustomCallSchedule schedule) {
   switch (schedule) {
     case mlir::mhlo::CustomCallSchedule::NONE:
@@ -160,7 +160,7 @@ StatusOr<xla::CustomCallSchedule> ConvertCustomCallSchedule(
   }
 }
 
-StatusOr<xla::CustomCallApiVersion> ConvertCustomCallApiVersion(
+absl::StatusOr<xla::CustomCallApiVersion> ConvertCustomCallApiVersion(
     mlir::mhlo::CustomCallApiVersion api_version) {
   switch (api_version) {
     case mlir::mhlo::CustomCallApiVersion::API_VERSION_UNSPECIFIED:
@@ -179,7 +179,8 @@ StatusOr<xla::CustomCallApiVersion> ConvertCustomCallApiVersion(
   }
 }
 
-StatusOr<std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>>
+absl::StatusOr<
+    std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>>
 ConvertOutputOperandAliasing(mlir::ArrayAttr aliasArrayAttr) {
   std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>> aliasInfo;
   for (auto attr : aliasArrayAttr.getValue()) {
@@ -196,7 +197,8 @@ ConvertOutputOperandAliasing(mlir::ArrayAttr aliasArrayAttr) {
 std::optional<xla::OpSharding> ConvertSharding(llvm::StringRef sharding) {
   xla::OpSharding sharding_proto;
   if (sharding_proto.ParseFromString(sharding.str())) return sharding_proto;
-  StatusOr<xla::HloSharding> sharding_cpp = xla::ParseSharding(sharding.str());
+  absl::StatusOr<xla::HloSharding> sharding_cpp =
+      xla::ParseSharding(sharding.str());
   if (sharding_cpp.ok()) return sharding_cpp->ToProto();
   return std::nullopt;
 }
@@ -248,7 +250,7 @@ DotDimensionNumbers ConvertDotDimensionNumbers(
   return output;
 }
 
-StatusOr<std::vector<int64_t>> ConvertMlirArrayAttrToInt64Array(
+absl::StatusOr<std::vector<int64_t>> ConvertMlirArrayAttrToInt64Array(
     const mlir::ArrayAttr& array) {
   int rank = array.size();
   std::vector<int64_t> converted_array(rank);

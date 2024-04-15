@@ -29,13 +29,14 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_structs.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/host_runtime/lower_cluster_to_runtime_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v1/cluster_tf.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v1/tf_dialect_to_executor.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v2/cluster_tf.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v2/tf_dialect_to_executor.h"
 #include "tensorflow/compiler/mlir/tf2xla/internal/mlir_bridge_pass_util.h"
-#include "tensorflow/compiler/tf2xla/tf2xla_defs.h"
+// #include "tensorflow/compiler/tf2xla/tf2xla_defs.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/framework/device.h"
@@ -162,16 +163,28 @@ MlirOptimizationPassState GetPassStateImpl(
               << " Bridge, disabled by user. "
                  "The fallback will evaluate.";
       metrics::UpdateTfMlirBridgeFirstPhaseCounter(
-          is_supported_by_replicated_brige ? "tpu" : "cpu/gpu", "v2", true,
-          "disabled_by_user");
+          /*bridge_type*/ is_supported_by_replicated_brige
+              ? mlir::TF::kMlirPh1BridgeCounterReplicated
+              : mlir::TF::kMlirPh1BridgeCounterNonReplicated,
+          /*bridge_version*/ mlir::TF::kMlirPh1BridgeCounterV2,
+          /*device_type*/
+          is_supported_by_replicated_brige
+              ? mlir::TF::kMlirPh1BridgeCounterTpu
+              : mlir::TF::kMlirPh1BridgeCounterNonTpu,
+          /*fallback_enabled*/ true,
+          /*result*/ "disabled_by_user");
       return MlirOptimizationPassState::Disabled;
     }
     case MlirBridgeRolloutPolicy::kDisabledAfterGraphAnalysis:
       // Graph analysis only runs on TPU graph.
       VLOG(1) << "Skipping MLIR TPU Bridge, disabled because the "
                  "graph has unsupported features. The fallback will evaluate.";
-      metrics::UpdateTfMlirBridgeFirstPhaseCounter("tpu", "v2", true,
-                                                   "invalid_graph");
+      metrics::UpdateTfMlirBridgeFirstPhaseCounter(
+          /*bridge_type*/ mlir::TF::kMlirPh1BridgeCounterReplicated,
+          /*bridge_version*/ mlir::TF::kMlirPh1BridgeCounterV2,
+          /*device_type*/ mlir::TF::kMlirPh1BridgeCounterTpu,
+          /*fallback_enabled*/ true,
+          /*result*/ "invalid_graph");
       // We set `uses_uninitialized_resource_args` to false here because the
       // first phase of the bridge is not affected by uninitialized resource
       // args.
@@ -305,16 +318,24 @@ MlirOptimizationPassState MlirBridgeV1CompatPass::GetPassState(
       VLOG(1) << "Skipping MLIR Replicated Bridge V1 Compat, MLIR Replicated "
                  "bridge disabled "
                  "by user. Fallback will evaluate.";
-      metrics::UpdateTfMlirBridgeFirstPhaseCounter("tpu", "v1", true,
-                                                   "disabled_by_user");
+      metrics::UpdateTfMlirBridgeFirstPhaseCounter(
+          /*bridge_type*/ mlir::TF::kMlirPh1BridgeCounterReplicated,
+          /*bridge_version*/ mlir::TF::kMlirPh1BridgeCounterV1,
+          /*device_type*/ mlir::TF::kMlirPh1BridgeCounterTpu,
+          /*fallback_enabled*/ true,
+          /*result*/ "disabled_by_user");
       return MlirOptimizationPassState::Disabled;
     case MlirBridgeRolloutPolicy::kDisabledAfterGraphAnalysis:
       VLOG(1) << "Skipping MLIR Replicated Bridge V1 Compat, MLIR Replicated "
                  "bridge disabled "
                  "because graph has unsupported features. Old bridge will "
                  "evaluate.";
-      metrics::UpdateTfMlirBridgeFirstPhaseCounter("tpu", "v1", true,
-                                                   "invalid_graph");
+      metrics::UpdateTfMlirBridgeFirstPhaseCounter(
+          /*bridge_type*/ mlir::TF::kMlirPh1BridgeCounterReplicated,
+          /*bridge_version*/ mlir::TF::kMlirPh1BridgeCounterV1,
+          /*device_type*/ mlir::TF::kMlirPh1BridgeCounterTpu,
+          /*fallback_enabled*/ true,
+          /*result*/ "invalid_graph");
       // We set `uses_uninitialized_resource_args` to false here because the
       // first phase of the bridge is not affected by uninitialized resource
       // args.

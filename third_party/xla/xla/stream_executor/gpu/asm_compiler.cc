@@ -26,6 +26,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/base/const_init.h"
 #include "absl/base/optimization.h"
 #include "absl/base/thread_annotations.h"
@@ -63,7 +64,7 @@ limitations under the License.
 namespace stream_executor {
 
 static absl::StatusOr<std::string> GetToolVersionString(
-    absl::string_view binary_path) {
+    std::string_view binary_path) {
   // If binary_path doesn't exist, then tsl::SubProcess will log a bunch of
   // error messages that have confused users in the past. Therefore we first
   // check whether the binary_path exists and error out early if not.
@@ -103,7 +104,7 @@ static absl::StatusOr<ToolVersion> GetToolVersionImpl(
   }
   static constexpr LazyRE2 kVersionRegex = {R"(\bV(\d+)\.(\d+)\.(\d+)\b)"};
   ToolVersion version{};
-  absl::string_view vmaj_str, vmin_str, vdot_str;
+  std::string_view vmaj_str, vmin_str, vdot_str;
   if (!RE2::PartialMatch(tool_version.value(), *kVersionRegex, &vmaj_str,
                          &vmin_str, &vdot_str) ||
       !absl::SimpleAtoi(vmaj_str, &version[0]) ||
@@ -132,28 +133,6 @@ absl::StatusOr<ToolVersion> GetToolVersion(std::string_view tool_path) {
 
   return cache->try_emplace(tool_path, GetToolVersionImpl(tool_path))
       .first->second;
-}
-
-// Prints a warning if the ptxas at ptxas_path has known bugs.
-//
-// Only prints a warning the first time it's called for a particular value of
-// ptxas_path.
-//
-// Locks on entry.˝
-static void WarnIfBadPtxasVersion(absl::string_view ptxas_path) {
-  absl::StatusOr<std::array<int64_t, 3>> version = GetToolVersion(ptxas_path);
-  if (!version.ok()) {
-    LOG(WARNING) << "Couldn't get ptxas version : " << version.status();
-    return;
-  }
-
-  if (std::make_tuple((*version)[0], (*version)[1]) < std::make_tuple(11, 1)) {
-    LOG(ERROR) << "*** WARNING *** You are using ptxas " << (*version)[0] << "."
-               << (*version)[1] << "." << (*version)[2]
-               << ", which is older than 11.1. ptxas before 11.1 is known to "
-                  "miscompile XLA code, leading to incorrect results or "
-                  "invalid-address errors.\n";
-  }
 }
 
 absl::StatusOr<absl::Span<const uint8_t>> CompileGpuAsmOrGetCached(
@@ -201,12 +180,11 @@ absl::StatusOr<std::vector<uint8_t>> CompileGpuAsm(int device_ordinal,
 }
 
 absl::StatusOr<std::string> FindCudaExecutable(
-    std::string_view binary_name, std::string_view preferred_cuda_dir) {
-#if defined(PLATFORM_WINDOWS)
-  const std::string binary_filename = std::string{binary_name} + ".exe";
-#else
-  std::string_view binary_filename = binary_name;
-#endif
+    std::string_view binary_name, std::string_view preferred_cuda_dir,
+    ToolVersion minimum_version,
+    absl::Span<const ToolVersion> excluded_versions) {
+  std::string binary_filename = std::string{binary_name};
+  tsl::io::AppendDotExeIfWindows(binary_filename);
 
   std::vector<std::string> candidates{};
 
@@ -234,16 +212,42 @@ absl::StatusOr<std::string> FindCudaExecutable(
 
   for (const auto& candidate : candidates) {
     VLOG(2) << "Looking for " << candidate;
-    if (GetToolVersion(candidate).ok()) {
-      VLOG(2) << "Using " << candidate;
-      return candidate;
+    auto candidate_version = GetToolVersion(candidate);
+    if (!candidate_version.ok()) {
+      continue;
     }
+
+    if (candidate_version.value() < minimum_version) {
+      VLOG(2) << candidate << " with version "
+              << absl::StrJoin(minimum_version, ".") << " is too old.";
+      continue;
+    }
+
+    if (absl::c_find(excluded_versions, candidate_version.value()) !=
+        excluded_versions.end()) {
+      VLOG(2) << candidate << " has version "
+              << absl::StrJoin(candidate_version.value(), ".")
+              << " which was explicitly excluded.";
+      continue;
+    }
+
+    VLOG(2) << "Using " << candidate << " with version "
+            << absl::StrJoin(candidate_version.value(), ".");
+    return candidate;
   }
 
   return absl::NotFoundError(
-      absl::StrCat("Couldn't find ", binary_name,
+      absl::StrCat("Couldn't find a suitable version of ", binary_name,
                    ". The following locations were considered: ",
                    absl::StrJoin(candidates, ", ")));
+}
+
+absl::StatusOr<std::string> FindCudaExecutable(
+    std::string_view binary_name, std::string_view preferred_cuda_dir) {
+  static constexpr ToolVersion kNoMinimumVersion{0, 0, 0};
+  static constexpr absl::Span<const ToolVersion> kNoExcludedVersions{};
+  return FindCudaExecutable(binary_name, preferred_cuda_dir, kNoMinimumVersion,
+                            kNoExcludedVersions);
 }
 
 static void LogPtxasTooOld(const std::string& ptxas_path, int cc_major,
@@ -274,29 +278,28 @@ static void AppendArgsFromOptions(GpuAsmOpts options,
               options.extra_flags.end());
 }
 
-absl::StatusOr<std::array<int64_t, 3>> GetAsmCompilerVersion(
-    const std::string& preferred_cuda_dir) {
+static absl::StatusOr<std::string> FindPtxAsExecutable(
+    std::string_view preferred_cuda_dir) {
+  static constexpr ToolVersion kMinimumSupportedPtxAsVersion{11, 8, 0};
+  static constexpr ToolVersion kBuggyPtxAsVersions[] = {{12, 3, 103}};
+  static constexpr std::string_view kPtxAsBinaryName = "ptxas";
+
+  return FindCudaExecutable(kPtxAsBinaryName, preferred_cuda_dir,
+                            kMinimumSupportedPtxAsVersion, kBuggyPtxAsVersions);
+}
+
+absl::StatusOr<ToolVersion> GetAsmCompilerVersion(
+    std::string_view preferred_cuda_dir) {
   TF_ASSIGN_OR_RETURN(std::string ptxas_path,
-                      FindCudaExecutable("ptxas", preferred_cuda_dir));
+                      FindPtxAsExecutable(preferred_cuda_dir));
   return GetToolVersion(ptxas_path);
 }
 
 absl::StatusOr<std::vector<uint8_t>> CompileGpuAsmUsingPtxAs(
     int cc_major, int cc_minor, const char* ptx_contents, GpuAsmOpts options,
     bool cancel_if_reg_spill) {
-  TF_ASSIGN_OR_RETURN(auto ptxas_version_tuple,
-                      GetAsmCompilerVersion(options.preferred_cuda_dir));
-  if (ptxas_version_tuple == std::array<int64_t, 3>{12, 3, 103}) {
-    return absl::InternalError(absl::StrFormat(
-        "ptxas %d.%d.%d has a bug that we think can affect XLA. "
-        "Please use a different version.",
-        std::get<0>(ptxas_version_tuple), std::get<1>(ptxas_version_tuple),
-        std::get<2>(ptxas_version_tuple)));
-  }
   TF_ASSIGN_OR_RETURN(std::string ptxas_path,
-                      FindCudaExecutable("ptxas", options.preferred_cuda_dir));
-
-  WarnIfBadPtxasVersion(ptxas_path);
+                      FindPtxAsExecutable(options.preferred_cuda_dir));
 
   // Write ptx into a temporary file.
   std::string ptx_path;

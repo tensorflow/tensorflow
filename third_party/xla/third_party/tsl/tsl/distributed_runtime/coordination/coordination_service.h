@@ -116,8 +116,8 @@ class CoordinationServiceInterface {
   //   - InvalidArgument: Unexpected task request.
   //   - Aborted: (1) task is in error state, or (2) task is in connected state
   //       with a different incarnation, indicating that it restarted.
-  virtual Status RegisterTask(const tensorflow::CoordinatedTask& task,
-                              uint64_t incarnation) = 0;
+  virtual absl::Status RegisterTask(const tensorflow::CoordinatedTask& task,
+                                    uint64_t incarnation) = 0;
 
   // Wait for all tasks to be up and running, and register local device
   // info. The callback is invoked when all tasks are up and registered, or some
@@ -141,16 +141,16 @@ class CoordinationServiceInterface {
   // Possible service errors:
   //   - InvalidArgument: Unexpected task request.
   //   - FailedPrecondition: task has already disconnected.
-  virtual Status ResetTask(const tensorflow::CoordinatedTask& task) = 0;
+  virtual absl::Status ResetTask(const tensorflow::CoordinatedTask& task) = 0;
 
   // Update the heartbeat timestamp of a task. This should only be invoked on
   // the leader of the cluster.
-  virtual Status RecordHeartbeat(const tensorflow::CoordinatedTask& task,
-                                 uint64_t incarnation) = 0;
+  virtual absl::Status RecordHeartbeat(const tensorflow::CoordinatedTask& task,
+                                       uint64_t incarnation) = 0;
 
   // Set a task in error state permanently.
-  virtual Status ReportTaskError(const tensorflow::CoordinatedTask& task,
-                                 Status error) = 0;
+  virtual absl::Status ReportTaskError(const tensorflow::CoordinatedTask& task,
+                                       absl::Status error) = 0;
 
   // Get the state and the error status of the tasks.
   virtual std::vector<tensorflow::CoordinatedTaskStateInfo> GetTaskState(
@@ -159,8 +159,8 @@ class CoordinationServiceInterface {
   // Insert a configuration key-value in the coordination service.
   // For now, a key-value can only be inserted once and cannot be updated.
   // The key-values are not persisted and will be lost if the leader fails.
-  virtual Status InsertKeyValue(const std::string& key,
-                                const std::string& value) = 0;
+  virtual absl::Status InsertKeyValue(const std::string& key,
+                                      const std::string& value) = 0;
 
   // Get a configuration key-value from the coordination service. The `done`
   // callback is invoked when the key-value becomes available.
@@ -181,7 +181,7 @@ class CoordinationServiceInterface {
 
   // Delete configuration key-value. If key is a directory, recursively clean
   // up all key-values under the directory.
-  virtual Status DeleteKeyValue(const std::string& key) = 0;
+  virtual absl::Status DeleteKeyValue(const std::string& key) = 0;
 
   // Blocks until all (or a subset of) tasks are at the barrier or the barrier
   // fails.
@@ -223,8 +223,9 @@ class CoordinationServiceInterface {
   // CANCELLED error status.
   // Possible service errors:
   //   - FailedPrecondition: Barrier has already been passed.
-  virtual Status CancelBarrier(const std::string& barrier_id,
-                               const tensorflow::CoordinatedTask& task) = 0;
+  virtual absl::Status CancelBarrier(
+      const std::string& barrier_id,
+      const tensorflow::CoordinatedTask& task) = 0;
 
  private:
   friend class CoordinationServiceRpcHandler;

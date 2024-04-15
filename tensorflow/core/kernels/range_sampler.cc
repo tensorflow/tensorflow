@@ -36,21 +36,18 @@ using gtl::MutableArraySlice;
 RangeSampler::~RangeSampler() {}
 
 void RangeSampler::SampleBatch(random::SimplePhilox* rnd, bool unique,
-                               gtl::MutableArraySlice<int64_t> batch) const {
-  SampleBatchGetExpectedCount(
-      rnd, unique, batch, gtl::MutableArraySlice<float>(),
-      gtl::ArraySlice<int64_t>(), gtl::MutableArraySlice<float>());
+                               absl::Span<int64_t> batch) const {
+  SampleBatchGetExpectedCount(rnd, unique, batch, absl::Span<float>(),
+                              absl::Span<const int64_t>(), absl::Span<float>());
 }
 
 void RangeSampler::SampleBatchGetExpectedCount(
-    random::SimplePhilox* rnd, bool unique,
-    gtl::MutableArraySlice<int64_t> batch,
-    gtl::MutableArraySlice<float> batch_expected_count,
-    gtl::ArraySlice<int64_t> extras,
-    gtl::MutableArraySlice<float> extras_expected_count) const {
+    random::SimplePhilox* rnd, bool unique, absl::Span<int64_t> batch,
+    absl::Span<float> batch_expected_count, absl::Span<const int64_t> extras,
+    absl::Span<float> extras_expected_count) const {
   SampleBatchGetExpectedCountAvoid(rnd, unique, batch, batch_expected_count,
                                    extras, extras_expected_count,
-                                   gtl::ArraySlice<int64_t>());
+                                   absl::Span<const int64_t>());
 }
 
 namespace {
@@ -77,10 +74,10 @@ static float ExpectedCountHelper(float p, int batch_size, int num_tries) {
 }  // namespace
 
 void RangeSampler::SampleBatchGetExpectedCountAvoid(
-    random::SimplePhilox* rnd, bool unique, MutableArraySlice<int64_t> batch,
-    MutableArraySlice<float> batch_expected_count, ArraySlice<int64_t> extras,
-    MutableArraySlice<float> extras_expected_count,
-    ArraySlice<int64_t> avoided_values) const {
+    random::SimplePhilox* rnd, bool unique, absl::Span<int64_t> batch,
+    absl::Span<float> batch_expected_count, absl::Span<const int64_t> extras,
+    absl::Span<float> extras_expected_count,
+    absl::Span<const int64_t> avoided_values) const {
   const int batch_size = batch.size();
   int num_tries;
 
@@ -124,10 +121,10 @@ void RangeSampler::SampleBatchGetExpectedCountAvoid(
 AllSampler::AllSampler(int64_t range) : RangeSampler(range) {}
 
 void AllSampler::SampleBatchGetExpectedCountAvoid(
-    random::SimplePhilox* rnd, bool unique, MutableArraySlice<int64_t> batch,
-    MutableArraySlice<float> batch_expected_count, ArraySlice<int64_t> extras,
-    MutableArraySlice<float> extras_expected_count,
-    ArraySlice<int64_t> avoided_values) const {
+    random::SimplePhilox* rnd, bool unique, absl::Span<int64_t> batch,
+    absl::Span<float> batch_expected_count, absl::Span<const int64_t> extras,
+    absl::Span<float> extras_expected_count,
+    absl::Span<const int64_t> avoided_values) const {
   const int batch_size = batch.size();
   CHECK_EQ(range_, batch_size);
   for (int i = 0; i < batch_size; i++) {
@@ -191,7 +188,7 @@ float ThreadUnsafeUnigramSampler::Probability(int64_t value) const {
   return static_cast<float>(picker_.get_weight(value)) / picker_.total_weight();
 }
 
-void ThreadUnsafeUnigramSampler::Update(ArraySlice<int64_t> values) {
+void ThreadUnsafeUnigramSampler::Update(absl::Span<const int64_t> values) {
   int num_updates = std::min(static_cast<int>(values.size()),
                              kint32max - picker_.total_weight());
   for (int i = 0; i < num_updates; i++) {
@@ -218,17 +215,17 @@ float UnigramSampler::Probability(int64_t value) const {
 
 // Overriding at a high level results in far fewer lock acquisitions.
 void UnigramSampler::SampleBatchGetExpectedCountAvoid(
-    random::SimplePhilox* rnd, bool unique, MutableArraySlice<int64_t> batch,
-    MutableArraySlice<float> batch_expected_count, ArraySlice<int64_t> extras,
-    MutableArraySlice<float> extras_expected_count,
-    ArraySlice<int64_t> avoided_values) const {
+    random::SimplePhilox* rnd, bool unique, absl::Span<int64_t> batch,
+    absl::Span<float> batch_expected_count, absl::Span<const int64_t> extras,
+    absl::Span<float> extras_expected_count,
+    absl::Span<const int64_t> avoided_values) const {
   tf_shared_lock lock(mu_);
   unsafe_sampler_.SampleBatchGetExpectedCountAvoid(
       rnd, unique, batch, batch_expected_count, extras, extras_expected_count,
       avoided_values);
 }
 
-void UnigramSampler::Update(ArraySlice<int64_t> values) {
+void UnigramSampler::Update(absl::Span<const int64_t> values) {
   mutex_lock lock(mu_);
   unsafe_sampler_.Update(values);
 }

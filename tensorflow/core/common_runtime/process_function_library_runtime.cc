@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/types/optional.h"
 #include "absl/types/variant.h"
+#include "xla/tsl/util/env_var.h"
 #include "tensorflow/core/common_runtime/build_graph_options.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/function.h"
@@ -67,7 +68,6 @@ limitations under the License.
 #include "tensorflow/core/util/reffed_status_callback.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
-#include "tsl/util/env_var.h"
 #if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/protobuf/remote_tensor_handle.pb.h"
 #endif  // IS_MOBILE_PLATFORM
@@ -573,7 +573,7 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
     }
   }
 
-  StatusOr<OptimizedFunctionGraphInfo> optimized_graph_info =
+  absl::StatusOr<OptimizedFunctionGraphInfo> optimized_graph_info =
       (!optimized_graph_proto.has_value() ||
        !optimized_graph_proto.value().ok())
           ? OptimizeFunctionGraphOrReadFromFileCache(
@@ -615,7 +615,7 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
   // We must preserve control returns in each of the function components,
   // otherwise after function inlining we might prune side-effectful nodes.
   const auto control_ret =
-      [&node_name_to_control_ret](const Node* n) -> absl::optional<string> {
+      [&node_name_to_control_ret](const Node* n) -> std::optional<string> {
     const auto it = node_name_to_control_ret.find(n->name());
     return it != node_name_to_control_ret.end()
                // NOLINTNEXTLINE
@@ -684,7 +684,8 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
     }
 
     FunctionDef shard;
-    s = GraphToFunctionDef(*subgraph, comp_data->name, control_ret, &shard);
+    s = GraphToFunctionDef(std::move(subgraph), comp_data->name, control_ret,
+                           &shard);
     if (!s.ok()) {
       done(s);
       return;

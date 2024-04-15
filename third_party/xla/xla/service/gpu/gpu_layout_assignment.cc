@@ -55,7 +55,7 @@ limitations under the License.
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
-#include "tsl/util/env_var.h"
+#include "xla/tsl/util/env_var.h"
 
 namespace xla {
 namespace gpu {
@@ -474,6 +474,19 @@ absl::Status GpuLayoutAssignment::AddBackendConstraints(
           ShapeUtil::MoveDimToMajor(all_to_all->shape(),
                                     *all_to_all->split_dimension()),
           all_to_all));
+    } else if (instruction->opcode() == HloOpcode::kSend) {
+      Shape s = instruction->operand(0)->shape();
+      LayoutUtil::SetToDefaultLayout(&s);
+      TF_RETURN_IF_ERROR(SetInstructionLayout(s, instruction->operand(0)));
+      TF_RETURN_IF_ERROR(
+          SetArrayOperandLayout(s.layout(), instruction->operand(0), 0));
+    } else if (instruction->opcode() == HloOpcode::kRecv) {
+      Shape s = instruction->shape();
+      ShapeUtil::ForEachMutableSubshape(
+          &s, [&](Shape* subshape, const ShapeIndex& index) {
+            LayoutUtil::SetToDefaultLayout(subshape);
+          });
+      TF_RETURN_IF_ERROR(SetInstructionLayout(s, instruction));
     }
   }
   return absl::OkStatus();

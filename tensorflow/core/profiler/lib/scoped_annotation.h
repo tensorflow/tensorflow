@@ -22,6 +22,7 @@ limitations under the License.
 #include <string_view>
 #include <utility>
 
+#include "absl/base/macros.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/types.h"
 #include "tsl/profiler/lib/scoped_annotation.h"
@@ -30,10 +31,16 @@ limitations under the License.
 #include "tsl/profiler/backends/cpu/annotation_stack.h"
 #endif
 
+// TODO: b/323943471 - This macro should eventually be provided by Abseil.
+#ifndef ABSL_DEPRECATE_AND_INLINE
+#define ABSL_DEPRECATE_AND_INLINE()
+#endif
+
 namespace tensorflow {
 namespace profiler {
 
-using tsl::profiler::ScopedAnnotation;  // NOLINT
+using ScopedAnnotation ABSL_DEPRECATE_AND_INLINE() =
+    tsl::profiler::ScopedAnnotation;  // NOLINT
 
 }  // namespace profiler
 }  // namespace tensorflow

@@ -16,11 +16,9 @@ limitations under the License.
 #include "xla/service/while_loop_unroller.h"
 
 #include <cstdint>
-#include <iterator>
 #include <memory>
 #include <optional>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -353,6 +351,82 @@ TEST_F(WhileLoopUnrollerTest, SimpleLoopUnroll) {
   UnrollAndCompare(MakeModuleWithSimpleLoop(/*num_iters=*/5), {}, -1, true);
 }
 
+// This test passes because we run WhileLoopConstantSinking before unrolling.
+TEST_F(WhileLoopUnrollerTest, SimpleLoopUnrollNeedPrepare) {
+  std::string hlo_string = R"(
+  HloModule SimpleLoop
+  SimpleLoop.body {
+    loop_var.1 = (s64[], s32[3]{0}, s64[]) parameter(0)
+    get-tuple-element.1 = s64[] get-tuple-element(loop_var.1), index=0
+    get-tuple-element.2 = s32[3]{0} get-tuple-element(loop_var.1), index=1
+    get-tuple-element.3 = s64[] get-tuple-element(loop_var.1), index=2
+    add = s64[] add(get-tuple-element.1, get-tuple-element.3)
+    multiply = s32[3]{0} add(get-tuple-element.2, get-tuple-element.2)
+    ROOT tuple = (s64[], s32[3]{0}, s64[]) tuple(add, multiply, get-tuple-element.3)
+  }
+  SimpleLoop.condition {
+    loop_var.2 = (s64[], s32[3]{0}, s64[]) parameter(0)
+    get-tuple-element.3 = s64[] get-tuple-element(loop_var.2), index=0
+    /* number of iterations is 10 */
+    constant.2 = s64[] constant(10)
+    ROOT less-than = pred[] compare(get-tuple-element.3, constant.2), direction=LT
+  }
+  ENTRY SimpleLoop {
+    constant.3 = s64[] constant(0)
+    one = s64[] constant(1)
+    constant.4 = s32[3]{0} constant({0, 1, 2})
+    tuple.1 = (s64[], s32[3]{0}, s64[]) tuple(constant.3, constant.4, one)
+    while = (s64[], s32[3]{0}, s64[]) while(tuple.1), condition=
+      SimpleLoop.condition, body=SimpleLoop.body
+    ROOT result = s32[3]{0} get-tuple-element(while), index=1
+  }
+  )";
+  UnrollAndCompare(ParseAndReturnVerifiedModule(hlo_string).value(), {}, -1,
+                   false);
+  UnrollAndCompare(ParseAndReturnVerifiedModule(hlo_string).value(), {}, -1,
+                   true);
+}
+
+// This test passes because we run TupleSimplifier before unrolling.
+TEST_F(WhileLoopUnrollerTest, SimpleLoopUnrollNeedPrepare2) {
+  std::string hlo_string = R"(
+  HloModule SimpleLoop
+  SimpleLoop.body {
+    loop_var.1 = (s64[], s32[3]{0}, s64[]) parameter(0)
+    get-tuple-element.1 = s64[] get-tuple-element(loop_var.1), index=0
+    get-tuple-element.2 = s32[3]{0} get-tuple-element(loop_var.1), index=1
+    get-tuple-element.3 = s64[] get-tuple-element(loop_var.1), index=2
+    add = s64[] add(get-tuple-element.1, get-tuple-element.3)
+    multiply = s32[3]{0} add(get-tuple-element.2, get-tuple-element.2)
+    ROOT tuple = (s64[], s32[3]{0}, s64[]) tuple(add, multiply, get-tuple-element.3)
+  }
+  SimpleLoop.condition {
+    loop_var.2 = (s64[], s32[3]{0}, s64[]) parameter(0)
+    get-tuple-element.3 = s64[] get-tuple-element(loop_var.2), index=0
+    /* number of iterations is 10 */
+    constant.2 = s64[] constant(10)
+    ROOT less-than = pred[] compare(get-tuple-element.3, constant.2), direction=LT
+  }
+  ENTRY SimpleLoop {
+    constant.3 = s64[] constant(0)
+    one = s64[] constant(1)
+    constant.4 = s32[3]{0} constant({0, 1, 2})
+    tuple.1 = (s64[], s32[3]{0}, s64[]) tuple(constant.3, constant.4, one)
+    gte1 = s64[] get-tuple-element(tuple.1), index=0
+    gte2 = s32[3]{0} get-tuple-element(tuple.1), index=1
+    gte3 = s64[] get-tuple-element(tuple.1), index=2
+    tuple = (s64[], s32[3]{0}, s64[]) tuple(gte1, gte2, gte3)
+    while = (s64[], s32[3]{0}, s64[]) while(tuple), condition=
+      SimpleLoop.condition, body=SimpleLoop.body
+    ROOT result = s32[3]{0} get-tuple-element(while), index=1
+  }
+  )";
+  UnrollAndCompare(ParseAndReturnVerifiedModule(hlo_string).value(), {}, -1,
+                   false);
+  UnrollAndCompare(ParseAndReturnVerifiedModule(hlo_string).value(), {}, -1,
+                   true);
+}
+
 TEST_F(WhileLoopUnrollerTest, SimpleLoopNotRoot) {
   std::string hlo_string = R"(
   HloModule SimpleLoop
@@ -456,17 +530,9 @@ TEST_F(WhileLoopUnrollerTest, GetUnrollableLoops) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
 
-  HloInstruction* while1 =
-      module->entry_computation()->GetInstructionWithName("while1");
-  HloInstruction* while2 =
-      module->entry_computation()->GetInstructionWithName("while2");
-  HloInstruction* while3 =
-      module->entry_computation()->GetInstructionWithName("while3");
-
   auto unrollable_loops = GetUnrollableLoops(module.get(), {});
-  EXPECT_TRUE(unrollable_loops.contains(while1));
-  EXPECT_TRUE(unrollable_loops.contains(while2));
-  EXPECT_FALSE(unrollable_loops.contains(while3));
+  // Only while1 and while2 are unrollable
+  EXPECT_EQ(unrollable_loops.size(), 2);
 }
 
 TEST_F(WhileLoopUnrollerTest, UnrollMutipleLoops) {

@@ -1,9 +1,14 @@
 # Common computation builders for XLA.
 
-load("//xla/tests:build_defs.bzl", "generate_backend_suites", "xla_test")
 load("@local_tsl//tsl:tsl.bzl", "internal_visibility")
 load("@local_tsl//tsl:tsl.default.bzl", "filegroup")
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
+load("//xla/tests:build_defs.bzl", "generate_backend_suites", "xla_test")
+
+load(
+    "@local_config_rocm//rocm:build_defs.bzl",
+    "if_rocm_is_configured",
+)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -554,6 +559,7 @@ xla_test(
     real_hardware_only = True,
     shard_count = 5,
     tags = ["optonly"],
+    local_defines = if_rocm_is_configured(["TENSORFLOW_USE_ROCM=1",]),
     deps = [
         ":arithmetic",
         ":constants",

@@ -1,9 +1,9 @@
 # Automatic sharding annotation
 
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
-load("//xla:xla.bzl", "auto_sharding_deps", "auto_sharding_solver_deps", "xla_cc_binary", "xla_cc_test")
 load("@local_tsl//tsl:tsl.default.bzl", "get_compatible_with_libtpu_portable")
 load("@local_tsl//tsl/platform:build_config.bzl", "tf_proto_library")
+load("//xla:xla.bzl", "auto_sharding_deps", "auto_sharding_solver_deps", "xla_cc_binary", "xla_cc_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -318,12 +318,17 @@ xla_cc_test(
     deps = [
         ":auto_sharding",
         ":auto_sharding_option",
+        ":auto_sharding_strategy",
         ":auto_sharding_util",
         "//xla:statusor",
-        "//xla:test_helpers",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/utils:hlo_live_range",
         "//xla/hlo/utils:hlo_matchers",
+        "//xla/service:buffer_value",
+        "//xla/service:hlo_alias_analysis",
+        "//xla/service:hlo_memory_scheduler",
         "//xla/service:hlo_parser",
+        "//xla/service:hlo_value",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/container:flat_hash_map",

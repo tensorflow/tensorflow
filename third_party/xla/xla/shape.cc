@@ -200,9 +200,20 @@ bool Shape::Equal::operator()(const Shape& lhs, const Shape& rhs) {
   }
 
   if (!ignore_dimensions_) {
-    if (!ShapeUtil::SameDimensions(lhs, rhs)) {
-      VLOG(3) << "CompareShapes: lhs dimensions != rhs dimensions";
+    if (!ShapeUtil::SameRank(lhs, rhs)) {
+      VLOG(3) << "CompareShapes: lhs rank != rhs rank";
       return false;
+    }
+    for (int i = 0; i < lhs.rank(); ++i) {
+      if (ignore_dynamic_dimension_ &&
+          (lhs.is_unbounded_dynamic_dimension(i) ||
+           rhs.is_unbounded_dynamic_dimension(i))) {
+        continue;
+      }
+      if (lhs.dimensions(i) != rhs.dimensions(i)) {
+        VLOG(3) << "CompareShapes: lhs dimensions != rhs dimensions";
+        return false;
+      }
     }
   } else {
     if (!ShapeUtil::SameRank(lhs, rhs)) {

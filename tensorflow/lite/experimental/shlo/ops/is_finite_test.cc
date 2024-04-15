@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/lite/experimental/shlo/bf16.h"
 #include "tensorflow/lite/experimental/shlo/data_type.h"
+#include "tensorflow/lite/experimental/shlo/f16.h"
 #include "tensorflow/lite/experimental/shlo/shape.h"
 #include "tensorflow/lite/experimental/shlo/status_matcher.h"
 #include "tensorflow/lite/experimental/shlo/tensor.h"
@@ -45,15 +46,15 @@ TEST_P(IsFiniteTest, IsFinite) {
   const auto& params = GetParam();
 
   IsFiniteOp op = Create(IsFiniteOp::Attributes{});
+  Tensor result{.type = params.expected.tensor().type};
 
-  EXPECT_OK(Prepare(op, params.operand.tensor(),
-                    Tensor{.type = params.expected.tensor().type}));
+  ASSERT_OK(Prepare(op, params.operand.tensor(), result));
 
-  std::vector<std::byte> result_data(op.result.SizeInBytes());
-  op.result.data = result_data.data();
+  std::vector<std::byte> result_data(result.SizeInBytes());
+  result.data = result_data.data();
 
-  EXPECT_OK(Evaluate(op));
-  EXPECT_THAT(op.result, TensorEq(params.expected.tensor()));
+  EXPECT_OK(Evaluate(op, params.operand.tensor(), result));
+  EXPECT_THAT(result, TensorEq(params.expected.tensor()));
 }
 
 INSTANTIATE_TEST_SUITE_P(
@@ -65,11 +66,12 @@ INSTANTIATE_TEST_SUITE_P(
                     BF16{-1.0f}, BF16{0.0f}, BF16{1.0f}}),
                TensorWithData::Create<DataType::kI1>(
                    Shape{{7}}, {false, false, false, false, true, true, true})},
-        Params{TensorWithData::Create<DataType::kF16>(
-                   Shape{{7}},
-                   {+NAN, -NAN, -INFINITY, +INFINITY, -1.0f, 0.0f, 1.0f}),
-               TensorWithData::Create<DataType::kI1>(
-                   Shape{{7}}, {false, false, false, false, true, true, true})},
+        Params{
+            TensorWithData::Create<DataType::kF16>(
+                Shape{{7}}, {F16{+NAN}, F16{-NAN}, F16{-INFINITY},
+                             F16{+INFINITY}, F16{-1.0f}, F16{0.0f}, F16{1.0f}}),
+            TensorWithData::Create<DataType::kI1>(
+                Shape{{7}}, {false, false, false, false, true, true, true})},
         Params{
             TensorWithData::Create<DataType::kF32>(
                 Shape{{7}},

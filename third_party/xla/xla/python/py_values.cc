@@ -50,6 +50,7 @@ limitations under the License.
 #include "xla/python/sharding.h"
 #include "xla/python/types.h"
 #include "xla/shape.h"
+#include "xla/tsl/python/lib/core/numpy.h"
 #include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -57,7 +58,6 @@ limitations under the License.
 #include "tsl/platform/ml_dtypes.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/profiler/lib/traceme.h"
-#include "tsl/python/lib/core/numpy.h"
 
 namespace nb = nanobind;
 

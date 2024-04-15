@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <memory>
 #include <optional>
-#include <string>
 #include <utility>
 #include <vector>
 
@@ -30,6 +29,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/ifrt_types.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/tf2hlo.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "xla/hlo/ir/hlo_sharding.h"
@@ -37,10 +37,8 @@ limitations under the License.
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
-#include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/future.h"
-#include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/pjrt_ifrt/xla_compiler.h"
@@ -74,12 +72,10 @@ absl::StatusOr<std::vector<DtypeAndShape>> BuildDtypeAndShape(
     if (variable_index < variable_arg_indices.size() &&
         i == variable_arg_indices[variable_index]) {
       // Get already loaded variable tensor.
-      TF_ASSIGN_OR_RETURN(auto single_array,
+      TF_ASSIGN_OR_RETURN(auto loaded_variable,
                           ifrt_loaded_variable_registry.GetLoadedVariable(
                               inputs[i].scalar<tsl::tstring>()()));
-      TF_ASSIGN_OR_RETURN(auto dtype, ToTensorDataType(single_array->dtype()));
-      dtypes_and_shapes.push_back(DtypeAndShape{
-          .dtype = dtype, .shape = ToTensorShape(single_array->shape())});
+      dtypes_and_shapes.push_back(loaded_variable.dtype_and_shape);
 
       variable_index++;
     } else {
@@ -91,37 +87,21 @@ absl::StatusOr<std::vector<DtypeAndShape>> BuildDtypeAndShape(
 }
 
 absl::StatusOr<xla::DeviceAssignment> GetXlaDeviceAssignment(
-    const xla::ifrt::Client& ifrt_client,
     const tensorflow::tpu::TPUCompileMetadataProto& compile_metadata) {
-  int num_replicas = compile_metadata.num_replicas();
-  int num_partitions = compile_metadata.num_cores_per_replica();
-
-  VLOG(2) << " Number of replcas is " << num_replicas
-          << " and num_partitions is " << num_partitions;
-
-  if (num_replicas > 1) {
-    return absl::UnimplementedError(
-        absl::StrCat("Only support single replica, but replica number is ",
-                     num_replicas, " and num_partitions is ", num_partitions));
+  if (!compile_metadata.has_device_assignment()) {
+    return absl::InternalError("No device assignment found.");
   }
-
-  if (compile_metadata.has_device_assignment()) {
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::DeviceAssignment> da,
-                        xla::DeviceAssignment::Deserialize(
-                            compile_metadata.device_assignment()));
-
-    return *std::move(da);
-  } else {
-    // TODO(b/316068010): integrate core selection.
-    return ifrt_client.GetDefaultDeviceAssignment(num_replicas, num_partitions);
-  }
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<xla::DeviceAssignment> da,
+      xla::DeviceAssignment::Deserialize(compile_metadata.device_assignment()));
+  return *da;
 }
 
 absl::StatusOr<std::vector<xla::ifrt::Device*>> GetAssignedDevices(
     const xla::ifrt::Client& ifrt_client,
     const tensorflow::tpu::TPUCompileMetadataProto& compile_metadata) {
   TF_ASSIGN_OR_RETURN(auto device_assignment,
-                      GetXlaDeviceAssignment(ifrt_client, compile_metadata));
+                      GetXlaDeviceAssignment(compile_metadata));
 
   const int num_devices =
       device_assignment.replica_count() * device_assignment.computation_count();
@@ -177,9 +157,8 @@ IfrtServingExecutable::CreateExecutableSynchronously(
                      num_replicas, " and num_partitions is ", num_partitions));
   }
 
-  TF_ASSIGN_OR_RETURN(
-      xla::DeviceAssignment da,
-      GetXlaDeviceAssignment(*ifrt_client_, tf2hlo_result.compile_metadata));
+  TF_ASSIGN_OR_RETURN(xla::DeviceAssignment da,
+                      GetXlaDeviceAssignment(tf2hlo_result.compile_metadata));
 
   VLOG(2) << "Device assignment :" << da.ToString();
 
@@ -304,9 +283,11 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
   for (int i = 0; i < inputs.size(); i++) {
     if (variable_index < variable_arg_indices.size() &&
         i == variable_arg_indices[variable_index]) {
-      TF_ASSIGN_OR_RETURN(auto single_array,
+      TF_ASSIGN_OR_RETURN(auto loaded_variable,
                           ifrt_loaded_variable_registry_.GetLoadedVariable(
                               inputs[i].scalar<tsl::tstring>()()));
+      TF_ASSIGN_OR_RETURN(tsl::RCReference<xla::ifrt::Array> single_array,
+                          loaded_variable.array.Await());
       args.push_back(single_array);
       variable_index++;
     } else {

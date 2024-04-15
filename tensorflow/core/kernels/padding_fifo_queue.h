@@ -57,7 +57,7 @@ class PaddingFIFOQueue : public FIFOQueue {
   // Any unknown dimension sizes are converted to 0.
   // REQUIRED: All the input shapes have well defined rank.
   static std::vector<TensorShape> ConvertShapesPartialDimensionsToZero(
-      const gtl::ArraySlice<PartialTensorShape>& partial_shapes);
+      const absl::Span<const PartialTensorShape>& partial_shapes);
 
   // Sets the values in the given element to zero.
   static Status SetElementZero(Tensor* element);

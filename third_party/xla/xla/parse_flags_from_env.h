@@ -51,8 +51,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/string_view.h"
+#include "xla/tsl/util/command_line_flags.h"
 #include "xla/types.h"
-#include "tsl/util/command_line_flags.h"
 
 namespace xla {
 
