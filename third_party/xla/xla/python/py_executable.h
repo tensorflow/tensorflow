@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_future.h"
+#include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/nb_class_ptr.h"
@@ -46,6 +47,7 @@ limitations under the License.
 #include "xla/python/py_array.h"
 #include "xla/python/py_client.h"
 #include "xla/python/traceback.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/concurrency/ref_count.h"
 #include "tsl/platform/status.h"
 

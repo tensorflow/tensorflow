@@ -81,6 +81,7 @@ limitations under the License.
 #include "xla/status.h"
 #include "xla/status_macros.h"
 #include "xla/statusor.h"
+#include "xla/xla_data.pb.h"
 #if GOOGLE_CUDA
 #include "xla/stream_executor/cuda/cuda_driver.h"
 #endif
