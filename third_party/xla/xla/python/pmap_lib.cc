@@ -197,6 +197,8 @@ absl::StatusOr<ShardArgResult> ShardArg(
     result.owning_sda = owning_pylist;
     const bool jax_enable_x64 = GetEnableX64();
 
+    std::vector<xla::DevicePutResultFn> device_put_fns;
+    device_put_fns.reserve(n_devices);
     xla::DevicePutOptions options;
     options.squash_64bit_types = !jax_enable_x64;
     options.allow_zero_copy = true;
@@ -207,15 +209,25 @@ absl::StatusOr<ShardArgResult> ShardArg(
       }
 
       TF_ASSIGN_OR_RETURN(
-          xla::DevicePutResult on_device,
+          device_put_fns.emplace_back(),
           DevicePut(arg[indices[i]], to_device->client()->ifrt_client(),
                     to_device->device(), options, xla::ifrt::MemoryKind()));
-
-      per_device_arrays.push_back(std::move(on_device.ifrt_array));
+    }
+    std::vector<xla::DevicePutResult> device_puts;
+    device_puts.reserve(n_devices);
+    {
+      nb::gil_scoped_release gil_release;
+      for (auto& device_put_fn : device_put_fns) {
+        TF_ASSIGN_OR_RETURN(auto device_put, std::move(device_put_fn)());
+        device_puts.push_back(std::move(device_put));
+      }
+    }
+    for (auto& device_put : device_puts) {
+      per_device_arrays.push_back(std::move(device_put.ifrt_array));
       devices.push_back(per_device_arrays.back()->sharding().devices().front());
       shapes.push_back(per_device_arrays.back()->shape());
-      if (on_device.owning_pybuffer) {
-        owning_pylist.append(on_device.owning_pybuffer);
+      if (device_put.owning_pybuffer) {
+        owning_pylist.append(device_put.owning_pybuffer);
       }
     }
 

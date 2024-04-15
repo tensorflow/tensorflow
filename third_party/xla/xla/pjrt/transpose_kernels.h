@@ -381,15 +381,11 @@ inline uint64x2_t Unpack<4, Extract::kHi>(uint64x2_t a, uint64x2_t b) {
 
 template <>
 inline uint64x2_t Unpack<8, Extract::kLo>(uint64x2_t a, uint64x2_t b) {
-  uint64x1_t a_lo = vget_low_u64(a);
-  uint64x1_t b_lo = vget_low_u64(b);
-  return vcombine_u64(a_lo, b_lo);
+  return vzip1q_u64(a, b);
 }
 template <>
 inline uint64x2_t Unpack<8, Extract::kHi>(uint64x2_t a, uint64x2_t b) {
-  uint64x1_t a_hi = vget_high_u64(a);
-  uint64x1_t b_hi = vget_high_u64(b);
-  return vcombine_u64(a_hi, b_hi);
+  return vzip2q_u64(a, b);
 }
 
 using Vec128 = uint64x2_t;

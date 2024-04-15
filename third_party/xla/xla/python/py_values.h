@@ -24,6 +24,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "third_party/nanobind/include/nanobind/nanobind.h"
@@ -44,6 +45,13 @@ struct DevicePutResult {
         weak_type(weak_type),
         owning_pybuffer(owning_pybuffer) {}
 
+  // Disallow copy since copying `DevicePutResult` without holding GIL may be
+  // dangerous due to `owning_pybuffer`.
+  DevicePutResult(const DevicePutResult&) = delete;
+  DevicePutResult& operator=(const DevicePutResult&) = delete;
+  DevicePutResult(DevicePutResult&&) = default;
+  DevicePutResult& operator=(DevicePutResult&&) = default;
+
   // Points to the on-device array. Not owned.
   tsl::RCReference<ifrt::Array> ifrt_array;
   bool weak_type;
@@ -58,17 +66,24 @@ struct DevicePutResult {
 // If the value is known to be a PyBuffer object, py_buffer can be passed as
 // an optimization to avoid a Python->C++ cast.
 //
+// This function performs Python work inline but postpones C++ work until the
+// returned function is called. The returned function must be called after
+// releasing GIL. Useful for batching GIL release when there are many device_put
+// to execute.
+//
 // May throw exceptions from nanobind in addition to failing via an error
 // Status. (We could catch these if needed, but there seems little point.)
 struct DevicePutOptions {
   bool squash_64bit_types = false;
   bool allow_zero_copy = true;
 };
-absl::StatusOr<DevicePutResult> DevicePut(nanobind::handle arg,
-                                          ifrt::Client* client,
-                                          ifrt::Device* to_device,
-                                          const DevicePutOptions& options,
-                                          ifrt::MemoryKind to_memory_kind);
+using DevicePutResultFn =
+    absl::AnyInvocable<absl::StatusOr<DevicePutResult>() &&>;
+absl::StatusOr<DevicePutResultFn> DevicePut(nanobind::handle arg,
+                                            ifrt::Client* client,
+                                            ifrt::Device* to_device,
+                                            const DevicePutOptions& options,
+                                            ifrt::MemoryKind to_memory_kind);
 
 // Returns `true` if `arg` is a JAX float0 array.
 bool IsFloat0(xla::nb_numpy_ndarray arg);
