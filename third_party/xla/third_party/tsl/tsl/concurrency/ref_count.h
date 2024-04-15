@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_TSL_CONCURRENCY_REF_COUNT_H_
-#define XLA_TSL_CONCURRENCY_REF_COUNT_H_
+#ifndef TENSORFLOW_TSL_CONCURRENCY_REF_COUNT_H_
+#define TENSORFLOW_TSL_CONCURRENCY_REF_COUNT_H_
 
 #include <atomic>
 #include <cassert>
@@ -262,4 +262,4 @@ void swap(RCReference<T>& a, RCReference<T>& b) {
 
 }  // namespace tsl
 
-#endif  // XLA_TSL_CONCURRENCY_REF_COUNT_H_
+#endif  // TENSORFLOW_TSL_CONCURRENCY_REF_COUNT_H_
