@@ -114,69 +114,67 @@ namespace {
 using ::testing::HasSubstr;
 
 class CustomCallTest : public HloTestBase {
- public:
-  CustomCallTest()
-      : HloTestBase(),
-        module_(CreateNewVerifiedModule()),
-        builder_(TestName()) {}
-
  protected:
-  // Call this function when builder_ is complete (i.e. when all instructions
-  // have been added). Note that module_ is empty after calling this function.
-  auto BuildAndExecute(absl::Span<Literal* const> arguments) {
-    module_->AddEntryComputation(builder_.Build());
-    return Execute(std::move(module_), arguments);
-  }
-
   Shape r0f32_ = ShapeUtil::MakeShape(F32, {});
   Shape r2f32_ = ShapeUtil::MakeShape(F32, {2, 2});
-
-  std::unique_ptr<HloModule> module_;
-  HloComputation::Builder builder_;
 };
 
 XLA_TEST_F(CustomCallTest, CustomCallR0F32Add2) {
-  auto constant = builder_.AddInstruction(
+  auto module = CreateNewVerifiedModule();
+  auto builder = HloComputation::Builder(TestName());
+
+  auto constant = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
-  builder_.AddInstruction(
+  builder.AddInstruction(
       HloInstruction::CreateCustomCall(r0f32_, {constant}, "R0F32Add2"));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto result, BuildAndExecute({}));
+  module->AddEntryComputation(builder.Build());
+
+  TF_ASSERT_OK_AND_ASSIGN(auto result, Execute(std::move(module), {}));
   LiteralTestUtil::ExpectR0Near<float>(44.0f, result, error_spec_);
 }
 
 XLA_TEST_F(CustomCallTest, CustomCallR2F32Reduce) {
+  auto module = CreateNewVerifiedModule();
+  auto builder = HloComputation::Builder(TestName());
+
   Array2D<float> array(2, 2);
   array(0, 0) = 1.0f;
   array(0, 1) = 2.0f;
   array(1, 0) = 3.0f;
   array(1, 1) = 4.0f;
 
-  auto constant = builder_.AddInstruction(
+  auto constant = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR2FromArray2D(array)));
-  builder_.AddInstruction(
+  builder.AddInstruction(
       HloInstruction::CreateCustomCall(r0f32_, {constant}, "R2F32ReduceSum"));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto result, BuildAndExecute({}));
+  module->AddEntryComputation(builder.Build());
+
+  TF_ASSERT_OK_AND_ASSIGN(auto result, Execute(std::move(module), {}));
   LiteralTestUtil::ExpectR0Near<float>(10.0f, result, error_spec_);
 }
 
 XLA_TEST_F(CustomCallTest, UsedInOtherComputations) {
-  auto input = builder_.AddInstruction(
+  auto module = CreateNewVerifiedModule();
+  auto b = HloComputation::Builder(TestName());
+
+  auto input = b.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR2FromArray2D(
           Array2D<float>{{1.0f, 2.0f}, {3.0f, 4.0f}})));
-  auto incremented = builder_.AddInstruction(HloInstruction::CreateCustomCall(
+  auto incremented = b.AddInstruction(HloInstruction::CreateCustomCall(
       ShapeUtil::MakeShape(F32, {1, 2, 2}), {input}, "Add1ToValues"));
-  auto incremented_again =
-      builder_.AddInstruction(HloInstruction::CreateCustomCall(
-          ShapeUtil::MakeShape(F32, {1, 2, 2}), {incremented}, "Add1ToValues"));
+  auto incremented_again = b.AddInstruction(HloInstruction::CreateCustomCall(
+      ShapeUtil::MakeShape(F32, {1, 2, 2}), {incremented}, "Add1ToValues"));
 
   // Concatenate the values along first dim.
-  builder_.AddInstruction(
+  b.AddInstruction(
       HloInstruction::CreateConcatenate(ShapeUtil::MakeShape(F32, {2, 2, 2}),
                                         {incremented, incremented_again}, 0));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto result, BuildAndExecute({}));
+  module->AddEntryComputation(b.Build());
+
+  TF_ASSERT_OK_AND_ASSIGN(auto result, Execute(std::move(module), {}));
   LiteralTestUtil::ExpectR3EqualArray3D<float>(
       Array3D<float>{{{2, 3}, {4, 5}}, {{3, 4}, {5, 6}}}, result);
 }
@@ -188,22 +186,24 @@ XLA_TEST_F(CustomCallTest, InputAndOutputLayoutDiffer) {
     GTEST_SKIP() << "Appears to test an XLA current implementation detail";
   }
 
+  auto module = CreateNewVerifiedModule();
+  auto b = HloComputation::Builder(TestName());
+
   auto input =
-      builder_.AddInstruction(HloInstruction::CreateParameter(0, r2f32_, "p"));
-  builder_.AddInstruction(
+      b.AddInstruction(HloInstruction::CreateParameter(0, r2f32_, "p"));
+  b.AddInstruction(
       HloInstruction::CreateCustomCall(r2f32_, {input}, "Add1ToValues"));
 
-  module_->AddEntryComputation(builder_.Build());
-  ForceParameterLayout(module_.get(), 0, LayoutUtil::MakeLayout({1, 0}));
-  ForceResultLayout(module_.get(), LayoutUtil::MakeLayout({0, 1}));
+  module->AddEntryComputation(b.Build());
+  ForceParameterLayout(module.get(), 0, LayoutUtil::MakeLayout({1, 0}));
+  ForceResultLayout(module.get(), LayoutUtil::MakeLayout({0, 1}));
 
   Literal argument = LiteralUtil::CreateR2<float>({{1.f, 2.f}, {3.f, 4.f}});
 
   // Note, the expected result is transposed! This is because the input and
   // output layouts of the custom call differ and the called function just
   // blindly adds one to each element.
-  TF_ASSERT_OK_AND_ASSIGN(auto result,
-                          Execute(std::move(module_), {&argument}));
+  TF_ASSERT_OK_AND_ASSIGN(auto result, Execute(std::move(module), {&argument}));
   LiteralTestUtil::ExpectR2Equal<float>({{2.f, 4.f}, {3.f, 5.f}}, result);
 }
 
@@ -211,24 +211,26 @@ XLA_TEST_F(CustomCallTest, LayoutConstrained) {
   // The argument and result of the computation are set to different layouts,
   // but the custom call is layout constrained to a fixed operand and result
   // layout, so the correct result should be produced.
+  auto module = CreateNewVerifiedModule();
+  auto b = HloComputation::Builder(TestName());
+
   auto input =
-      builder_.AddInstruction(HloInstruction::CreateParameter(0, r2f32_, "p"));
+      b.AddInstruction(HloInstruction::CreateParameter(0, r2f32_, "p"));
 
   const Shape& r2f32_dim0_major =
       ShapeUtil::MakeShapeWithDenseLayout(F32, {2, 2}, {1, 0});
-  auto custom_call = builder_.AddInstruction(HloInstruction::CreateCustomCall(
+  auto custom_call = b.AddInstruction(HloInstruction::CreateCustomCall(
       r2f32_dim0_major, {input}, "Add1ToValues", {r2f32_dim0_major}));
-  builder_.AddInstruction(
+  b.AddInstruction(
       custom_call->CloneWithNewOperands(r2f32_dim0_major, {custom_call}));
 
-  module_->AddEntryComputation(builder_.Build());
-  ForceParameterLayout(module_.get(), 0, LayoutUtil::MakeLayout({1, 0}));
-  ForceResultLayout(module_.get(), LayoutUtil::MakeLayout({0, 1}));
+  module->AddEntryComputation(b.Build());
+  ForceParameterLayout(module.get(), 0, LayoutUtil::MakeLayout({1, 0}));
+  ForceResultLayout(module.get(), LayoutUtil::MakeLayout({0, 1}));
 
   Literal argument = LiteralUtil::CreateR2<float>({{1.f, 2.f}, {3.f, 4.f}});
 
-  TF_ASSERT_OK_AND_ASSIGN(auto result,
-                          Execute(std::move(module_), {&argument}));
+  TF_ASSERT_OK_AND_ASSIGN(auto result, Execute(std::move(module), {&argument}));
   LiteralTestUtil::ExpectR2Equal<float>({{3.f, 4.f}, {5.f, 6.f}}, result);
 }
 
@@ -254,43 +256,58 @@ XLA_TEST_F(CustomCallTest, TupleOutput) {
 }
 
 XLA_TEST_F(CustomCallTest, ReportsSuccess) {
-  auto constant = builder_.AddInstruction(
+  auto module = CreateNewVerifiedModule();
+  auto builder = HloComputation::Builder(TestName());
+
+  auto constant = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
-  builder_.AddInstruction(HloInstruction::CreateCustomCall(
+  builder.AddInstruction(HloInstruction::CreateCustomCall(
       r0f32_, {constant}, "R0F32Add2Succeed",
       /*opaque=*/"", CustomCallApiVersion::API_VERSION_STATUS_RETURNING));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto result, BuildAndExecute({}));
+  module->AddEntryComputation(builder.Build());
+
+  TF_ASSERT_OK_AND_ASSIGN(auto result, Execute(std::move(module), {}));
   LiteralTestUtil::ExpectR0Near<float>(44.0f, result, error_spec_);
 }
 
 XLA_TEST_F(CustomCallTest, ReportsFailure) {
-  auto constant = builder_.AddInstruction(
+  auto module = CreateNewVerifiedModule();
+  auto builder = HloComputation::Builder(TestName());
+
+  auto constant = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
-  builder_.AddInstruction(HloInstruction::CreateCustomCall(
+  builder.AddInstruction(HloInstruction::CreateCustomCall(
       ShapeUtil::MakeShape(F32, {}), {constant}, "CustomCallFail",
       /*opaque=*/"", CustomCallApiVersion::API_VERSION_STATUS_RETURNING));
 
-  auto status = BuildAndExecute({}).status();
+  module->AddEntryComputation(builder.Build());
+
+  auto status = Execute(std::move(module), {}).status();
   EXPECT_EQ(status.code(), absl::StatusCode::kInternal);
   EXPECT_THAT(status.message(), ::testing::HasSubstr("Failed: 42.0"));
 }
 
 XLA_TEST_F(CustomCallTest, ReportsFirstFailure) {
-  auto constant_1 = builder_.AddInstruction(
+  auto module = CreateNewVerifiedModule();
+  auto builder = HloComputation::Builder(TestName());
+
+  auto constant_1 = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0f)));
-  auto constant_2 = builder_.AddInstruction(
+  auto constant_2 = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(2.0f)));
-  auto res_1 = builder_.AddInstruction(HloInstruction::CreateCustomCall(
+  auto res_1 = builder.AddInstruction(HloInstruction::CreateCustomCall(
       ShapeUtil::MakeShape(F32, {}), {constant_1}, "CustomCallFail",
       /*opaque=*/"", CustomCallApiVersion::API_VERSION_STATUS_RETURNING));
-  auto res_2 = builder_.AddInstruction(HloInstruction::CreateCustomCall(
+  auto res_2 = builder.AddInstruction(HloInstruction::CreateCustomCall(
       ShapeUtil::MakeShape(F32, {}), {constant_2}, "CustomCallFail",
       /*opaque=*/"", CustomCallApiVersion::API_VERSION_STATUS_RETURNING));
-  builder_.AddInstruction(HloInstruction::CreateBinary(
+  builder.AddInstruction(HloInstruction::CreateBinary(
       ShapeUtil::MakeShape(F32, {}), HloOpcode::kAdd, res_1, res_2));
 
-  auto status = BuildAndExecute({}).status();
+  module->AddEntryComputation(builder.Build());
+
+  auto status = Execute(std::move(module), {}).status();
   EXPECT_EQ(status.code(), absl::StatusCode::kInternal);
   EXPECT_THAT(status.message(), ::testing::HasSubstr("Failed: 1.0"));
 }
@@ -581,20 +598,30 @@ class FfiCustomCallTest : public CustomCallTest {
 };
 
 XLA_TEST_F(FfiCustomCallTest, FfiReportsSuccess) {
-  builder_.AddInstruction(HloInstruction::CreateCustomCall(
+  auto module = CreateNewVerifiedModule();
+  auto builder = HloComputation::Builder(TestName());
+
+  builder.AddInstruction(HloInstruction::CreateCustomCall(
       r0f32_, {}, "__xla_test$$always_succeed", "",
       /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI));
 
-  auto status = BuildAndExecute({}).status();
+  module->AddEntryComputation(builder.Build());
+
+  auto status = Execute(std::move(module), {}).status();
   EXPECT_EQ(status, absl::OkStatus());
 }
 
 XLA_TEST_F(FfiCustomCallTest, FfiUnknownTarget) {
-  builder_.AddInstruction(HloInstruction::CreateCustomCall(
+  auto module = CreateNewVerifiedModule();
+  auto builder = HloComputation::Builder(TestName());
+
+  builder.AddInstruction(HloInstruction::CreateCustomCall(
       r0f32_, {}, "__xla_test$$unknown_target", "",
       /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI));
 
-  auto status = BuildAndExecute({}).status();
+  module->AddEntryComputation(builder.Build());
+
+  auto status = Execute(std::move(module), {}).status();
   // NOTE: In the current CPU implementation, the 'kInternal' status code is
   // returned when the target is not found. This behavior differs from that of
   // the GPU, which returns 'kUnimplemented' in such case. When the CPU adopts
@@ -604,29 +631,39 @@ XLA_TEST_F(FfiCustomCallTest, FfiUnknownTarget) {
 }
 
 XLA_TEST_F(FfiCustomCallTest, FfiReportsFailure) {
-  builder_.AddInstruction(HloInstruction::CreateCustomCall(
+  auto module = CreateNewVerifiedModule();
+  auto builder = HloComputation::Builder(TestName());
+
+  builder.AddInstruction(HloInstruction::CreateCustomCall(
       r0f32_, {}, "__xla_test$$always_fail",
       /*opaque=*/"{value = 42 : i32}",
       CustomCallApiVersion::API_VERSION_TYPED_FFI));
 
-  auto status = BuildAndExecute({}).status();
+  module->AddEntryComputation(builder.Build());
+
+  auto status = Execute(std::move(module), {}).status();
   EXPECT_EQ(status.code(), absl::StatusCode::kInternal);
   EXPECT_THAT(status.message(), ::testing::HasSubstr("Failed: 42"));
 }
 
 XLA_TEST_F(FfiCustomCallTest, FfiReportsFirstFailure) {
-  auto res_1 = builder_.AddInstruction(HloInstruction::CreateCustomCall(
+  auto module = CreateNewVerifiedModule();
+  auto builder = HloComputation::Builder(TestName());
+
+  auto res_1 = builder.AddInstruction(HloInstruction::CreateCustomCall(
       r0f32_, {}, "__xla_test$$always_fail",
       /*opaque=*/"{value = 1 : i32}",
       CustomCallApiVersion::API_VERSION_TYPED_FFI));
-  auto res_2 = builder_.AddInstruction(HloInstruction::CreateCustomCall(
+  auto res_2 = builder.AddInstruction(HloInstruction::CreateCustomCall(
       r0f32_, {}, "__xla_test$$always_fail",
       /*opaque=*/"{value = 2 : i32}",
       CustomCallApiVersion::API_VERSION_TYPED_FFI));
-  builder_.AddInstruction(
+  builder.AddInstruction(
       HloInstruction::CreateBinary(r0f32_, HloOpcode::kAdd, res_1, res_2));
 
-  auto status = BuildAndExecute({}).status();
+  module->AddEntryComputation(builder.Build());
+
+  auto status = Execute(std::move(module), {}).status();
   EXPECT_EQ(status.code(), absl::StatusCode::kInternal);
   EXPECT_THAT(status.message(), ::testing::HasSubstr("Failed: 1"));
 }
@@ -655,11 +692,16 @@ XLA_TEST_F(FfiCustomCallTest, FfiTransitiveCustomCallReportsFirstFailure) {
 }
 
 XLA_TEST_F(FfiCustomCallTest, FfiWrongNumberOfArguments) {
-  builder_.AddInstruction(HloInstruction::CreateCustomCall(
+  auto module = CreateNewVerifiedModule();
+  auto builder = HloComputation::Builder(TestName());
+
+  builder.AddInstruction(HloInstruction::CreateCustomCall(
       r0f32_, {}, "__xla_test$$FfiR0F32Add2", "",
       /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI));
 
-  auto status = BuildAndExecute({}).status();
+  module->AddEntryComputation(builder.Build());
+
+  auto status = Execute(std::move(module), {}).status();
   // NOTE: In the current CPU implementation, the 'kInternal' status code is
   // returned when the argument is invalid. This behavior differs from that of
   // the GPU, which returns 'kInvalidArgument' in such case. When the CPU adopts
@@ -669,19 +711,24 @@ XLA_TEST_F(FfiCustomCallTest, FfiWrongNumberOfArguments) {
 }
 
 XLA_TEST_F(FfiCustomCallTest, FfiWrongRankOfArgument) {
+  auto module = CreateNewVerifiedModule();
+  auto builder = HloComputation::Builder(TestName());
+
   Array2D<float> array(2, 2);
   array(0, 0) = 1.0f;
   array(0, 1) = 2.0f;
   array(1, 0) = 3.0f;
   array(1, 1) = 4.0f;
 
-  auto constant = builder_.AddInstruction(
+  auto constant = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR2FromArray2D(array)));
-  builder_.AddInstruction(HloInstruction::CreateCustomCall(
+  builder.AddInstruction(HloInstruction::CreateCustomCall(
       r2f32_, {constant}, "__xla_test$$FfiR0F32Add2", "",
       /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI));
 
-  auto status = BuildAndExecute({}).status();
+  module->AddEntryComputation(builder.Build());
+
+  auto status = Execute(std::move(module), {}).status();
   // NOTE: In the current CPU implementation, the 'kInternal' status code is
   // returned when the argument is invalid. This behavior differs from that of
   // the GPU, which returns 'kInvalidArgument' in such case. When the CPU adopts
@@ -691,13 +738,18 @@ XLA_TEST_F(FfiCustomCallTest, FfiWrongRankOfArgument) {
 }
 
 XLA_TEST_F(FfiCustomCallTest, FfiWrongDTypeOfArgument) {
-  auto constant = builder_.AddInstruction(
+  auto module = CreateNewVerifiedModule();
+  auto builder = HloComputation::Builder(TestName());
+
+  auto constant = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<int>(42)));
-  builder_.AddInstruction(HloInstruction::CreateCustomCall(
+  builder.AddInstruction(HloInstruction::CreateCustomCall(
       r2f32_, {constant}, "__xla_test$$FfiR0F32Add2", "",
       /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI));
 
-  auto status = BuildAndExecute({}).status();
+  module->AddEntryComputation(builder.Build());
+
+  auto status = Execute(std::move(module), {}).status();
   // NOTE: In the current CPU implementation, the 'kInternal' status code is
   // returned when the argument is invalid. This behavior differs from that of
   // the GPU, which returns 'kInvalidArgument' in such case. When the CPU adopts
@@ -707,123 +759,166 @@ XLA_TEST_F(FfiCustomCallTest, FfiWrongDTypeOfArgument) {
 }
 
 XLA_TEST_F(FfiCustomCallTest, FfiHandleTypedBuffers) {
-  auto constant = builder_.AddInstruction(
+  auto module = CreateNewVerifiedModule();
+  auto builder = HloComputation::Builder(TestName());
+
+  auto constant = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
-  builder_.AddInstruction(HloInstruction::CreateCustomCall(
+  builder.AddInstruction(HloInstruction::CreateCustomCall(
       r0f32_, {constant}, "__xla_test$$FfiR0F32Add2", "",
       /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto result, BuildAndExecute({}));
+  module->AddEntryComputation(builder.Build());
+
+  TF_ASSERT_OK_AND_ASSIGN(auto result, Execute(std::move(module), {}));
   LiteralTestUtil::ExpectR0Near<float>(44.0f, result, error_spec_);
 }
 
 XLA_TEST_F(FfiCustomCallTest, FfiHandleInputAsParameters) {
+  auto module = CreateNewVerifiedModule();
+  auto builder = HloComputation::Builder(TestName());
+
   auto constant =
-      builder_.AddInstruction(HloInstruction::CreateParameter(0, r0f32_, "p"));
-  builder_.AddInstruction(HloInstruction::CreateCustomCall(
+      builder.AddInstruction(HloInstruction::CreateParameter(0, r0f32_, "p"));
+  builder.AddInstruction(HloInstruction::CreateCustomCall(
       r0f32_, {constant}, "__xla_test$$FfiR0F32Add2", "",
       /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI));
 
+  module->AddEntryComputation(builder.Build());
+
   Literal argument = LiteralUtil::CreateR0<float>(42.0f);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto result, BuildAndExecute({&argument}));
+  TF_ASSERT_OK_AND_ASSIGN(auto result, Execute(std::move(module), {&argument}));
   LiteralTestUtil::ExpectR0Near<float>(44.0f, result, error_spec_);
 }
 
 XLA_TEST_F(FfiCustomCallTest, FfiHandleBufferBaseFloat) {
-  auto constant = builder_.AddInstruction(
+  auto module = CreateNewVerifiedModule();
+  auto builder = HloComputation::Builder(TestName());
+
+  auto constant = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
-  builder_.AddInstruction(HloInstruction::CreateCustomCall(
+  builder.AddInstruction(HloInstruction::CreateCustomCall(
       r0f32_, {constant}, "__xla_test$$FfiR0FAdd2BufferBase", "",
       /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto result, BuildAndExecute({}));
+  module->AddEntryComputation(builder.Build());
+
+  TF_ASSERT_OK_AND_ASSIGN(auto result, Execute(std::move(module), {}));
   LiteralTestUtil::ExpectR0Near<float>(44.0f, result, error_spec_);
 }
 
 XLA_TEST_F(FfiCustomCallTest, FfiHandleBufferBaseDouble) {
-  auto constant = builder_.AddInstruction(
+  auto module = CreateNewVerifiedModule();
+  auto builder = HloComputation::Builder(TestName());
+
+  auto constant = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<double>(42.0f)));
-  builder_.AddInstruction(HloInstruction::CreateCustomCall(
+  builder.AddInstruction(HloInstruction::CreateCustomCall(
       ShapeUtil::MakeShape(F64, {}), {constant},
       "__xla_test$$FfiR0FAdd2BufferBase", "",
       /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto result, BuildAndExecute({}));
+  module->AddEntryComputation(builder.Build());
+
+  TF_ASSERT_OK_AND_ASSIGN(auto result, Execute(std::move(module), {}));
   LiteralTestUtil::ExpectR0Near<double>(44.0f, result, error_spec_);
 }
 
 XLA_TEST_F(FfiCustomCallTest, FfiHandleAttr) {
-  auto constant = builder_.AddInstruction(
+  auto module = CreateNewVerifiedModule();
+  auto builder = HloComputation::Builder(TestName());
+
+  auto constant = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
-  builder_.AddInstruction(HloInstruction::CreateCustomCall(
+  builder.AddInstruction(HloInstruction::CreateCustomCall(
       r0f32_, {constant}, "__xla_test$$FfiR0F32AddN",
       /*opaque=*/"{n = 3.0 : f32}",
       /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto result, BuildAndExecute({}));
+  module->AddEntryComputation(builder.Build());
+
+  TF_ASSERT_OK_AND_ASSIGN(auto result, Execute(std::move(module), {}));
   LiteralTestUtil::ExpectR0Near<float>(45.0f, result, error_spec_);
 }
 
 XLA_TEST_F(FfiCustomCallTest, FfiHandleAttrPointer) {
-  auto constant = builder_.AddInstruction(
+  auto module = CreateNewVerifiedModule();
+  auto builder = HloComputation::Builder(TestName());
+
+  auto constant = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
   auto n = 4.0f;
   auto ptr = reinterpret_cast<uintptr_t>(&n);
-  builder_.AddInstruction(HloInstruction::CreateCustomCall(
+  builder.AddInstruction(HloInstruction::CreateCustomCall(
       r0f32_, {constant}, "__xla_test$$FfiR0F32AddN",
       /*opaque=*/absl::StrFormat("{n = %d : i64}", ptr),
       /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto result, BuildAndExecute({}));
+  module->AddEntryComputation(builder.Build());
+
+  TF_ASSERT_OK_AND_ASSIGN(auto result, Execute(std::move(module), {}));
   LiteralTestUtil::ExpectR0Near<float>(46.0f, result, error_spec_);
 }
 
 XLA_TEST_F(FfiCustomCallTest, FfiHandleR2Vector) {
+  auto module = CreateNewVerifiedModule();
+  auto builder = HloComputation::Builder(TestName());
+
   Array2D<float> array(2, 2);
   array(0, 0) = 1.0f;
   array(0, 1) = 2.0f;
   array(1, 0) = 3.0f;
   array(1, 1) = 4.0f;
 
-  auto constant = builder_.AddInstruction(
+  auto constant = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR2FromArray2D(array)));
-  builder_.AddInstruction(HloInstruction::CreateCustomCall(
+  builder.AddInstruction(HloInstruction::CreateCustomCall(
       r0f32_, {constant}, "__xla_test$$FfiF32ReduceSum",
       /*opaque=*/"",
       /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto result, BuildAndExecute({}));
+  module->AddEntryComputation(builder.Build());
+
+  TF_ASSERT_OK_AND_ASSIGN(auto result, Execute(std::move(module), {}));
   LiteralTestUtil::ExpectR0Near<float>(10.0f, result, error_spec_);
 }
 
 XLA_TEST_F(FfiCustomCallTest, FfiUsedInOtherComputations) {
-  auto input = builder_.AddInstruction(
+  auto module = CreateNewVerifiedModule();
+  auto builder = HloComputation::Builder(TestName());
+
+  auto input = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR2FromArray2D(
           Array2D<float>{{1.0f, 2.0f}, {3.0f, 4.0f}})));
-  auto incremented = builder_.AddInstruction(HloInstruction::CreateCustomCall(
+  auto incremented = builder.AddInstruction(HloInstruction::CreateCustomCall(
       ShapeUtil::MakeShape(F32, {1, 2, 2}), {input},
       "__xla_test$$FfiF32Add1ToValues",
       /*opaque=*/"",
       /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI));
   auto incremented_again =
-      builder_.AddInstruction(HloInstruction::CreateCustomCall(
+      builder.AddInstruction(HloInstruction::CreateCustomCall(
           ShapeUtil::MakeShape(F32, {1, 2, 2}), {incremented},
           "__xla_test$$FfiF32Add1ToValues",
           /*opaque=*/"",
           /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI));
 
   // Concatenate the values along first dim.
-  builder_.AddInstruction(
+  builder.AddInstruction(
       HloInstruction::CreateConcatenate(ShapeUtil::MakeShape(F32, {2, 2, 2}),
                                         {incremented, incremented_again}, 0));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto result, BuildAndExecute({}));
+  module->AddEntryComputation(builder.Build());
+
+  TF_ASSERT_OK_AND_ASSIGN(auto result, Execute(std::move(module), {}));
   LiteralTestUtil::ExpectR3EqualArray3D<float>(
       Array3D<float>{{{2, 3}, {4, 5}}, {{3, 4}, {5, 6}}}, result);
 }
 
 XLA_TEST_F(FfiCustomCallTest, FfiInputAndOutputLayoutDiffer) {
+  auto module = CreateNewVerifiedModule();
+  auto builder = HloComputation::Builder(TestName());
+
   if (IsMlirLoweringEnabled()) {
     // The MLIR pipeline does /not/ transpose the output here, and there's no
     // obvious reason why it should.
@@ -831,69 +926,76 @@ XLA_TEST_F(FfiCustomCallTest, FfiInputAndOutputLayoutDiffer) {
   }
 
   auto input =
-      builder_.AddInstruction(HloInstruction::CreateParameter(0, r2f32_, "p"));
+      builder.AddInstruction(HloInstruction::CreateParameter(0, r2f32_, "p"));
 
-  builder_.AddInstruction(HloInstruction::CreateCustomCall(
+  builder.AddInstruction(HloInstruction::CreateCustomCall(
       r2f32_, {input}, "__xla_test$$FfiF32Add1ToValues", /*opaque=*/"",
       /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI));
 
-  module_->AddEntryComputation(builder_.Build());
-  ForceParameterLayout(module_.get(), 0, LayoutUtil::MakeLayout({1, 0}));
-  ForceResultLayout(module_.get(), LayoutUtil::MakeLayout({0, 1}));
+  module->AddEntryComputation(builder.Build());
+  ForceParameterLayout(module.get(), 0, LayoutUtil::MakeLayout({1, 0}));
+  ForceResultLayout(module.get(), LayoutUtil::MakeLayout({0, 1}));
 
   Literal argument = LiteralUtil::CreateR2<float>({{1.f, 2.f}, {3.f, 4.f}});
 
   // Note, the expected result is transposed! This is because the input and
   // output layouts of the custom call differ and the called function just
   // blindly adds one to each element.
-  TF_ASSERT_OK_AND_ASSIGN(auto result,
-                          Execute(std::move(module_), {&argument}));
+  TF_ASSERT_OK_AND_ASSIGN(auto result, Execute(std::move(module), {&argument}));
   LiteralTestUtil::ExpectR2Equal<float>({{2.f, 4.f}, {3.f, 5.f}}, result);
 }
 
 XLA_TEST_F(FfiCustomCallTest, FfiLayoutConstrained) {
+  auto module = CreateNewVerifiedModule();
+  auto builder = HloComputation::Builder(TestName());
+
   // The argument and result of the computation are set to different layouts,
   // but the custom call is layout constrained to a fixed operand and result
   // layout, so the correct result should be produced.
   auto input =
-      builder_.AddInstruction(HloInstruction::CreateParameter(0, r2f32_, "p"));
+      builder.AddInstruction(HloInstruction::CreateParameter(0, r2f32_, "p"));
 
   const Shape& r2f32_dim0_major =
       ShapeUtil::MakeShapeWithDenseLayout(F32, {2, 2}, {1, 0});
-  auto custom_call = builder_.AddInstruction(HloInstruction::CreateCustomCall(
+  auto custom_call = builder.AddInstruction(HloInstruction::CreateCustomCall(
       r2f32_dim0_major, {input}, "__xla_test$$FfiF32Add1ToValues",
       /*operand_shapes_with_layout=*/{r2f32_dim0_major},
       /*opaque=*/"",
       /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI));
-  builder_.AddInstruction(
+  builder.AddInstruction(
       custom_call->CloneWithNewOperands(r2f32_dim0_major, {custom_call}));
 
-  module_->AddEntryComputation(builder_.Build());
-  ForceParameterLayout(module_.get(), 0, LayoutUtil::MakeLayout({1, 0}));
-  ForceResultLayout(module_.get(), LayoutUtil::MakeLayout({0, 1}));
+  module->AddEntryComputation(builder.Build());
+  ForceParameterLayout(module.get(), 0, LayoutUtil::MakeLayout({1, 0}));
+  ForceResultLayout(module.get(), LayoutUtil::MakeLayout({0, 1}));
 
   Literal argument = LiteralUtil::CreateR2<float>({{1.f, 2.f}, {3.f, 4.f}});
 
-  TF_ASSERT_OK_AND_ASSIGN(auto result,
-                          Execute(std::move(module_), {&argument}));
+  TF_ASSERT_OK_AND_ASSIGN(auto result, Execute(std::move(module), {&argument}));
   LiteralTestUtil::ExpectR2Equal<float>({{3.f, 4.f}, {5.f, 6.f}}, result);
 }
 
 XLA_TEST_F(FfiCustomCallTest, FfiTupleOutput) {
+  auto module = CreateNewVerifiedModule();
+  auto builder = HloComputation::Builder(TestName());
+
   auto input0 =
-      builder_.AddInstruction(HloInstruction::CreateParameter(0, r0f32_, "p0"));
+      builder.AddInstruction(HloInstruction::CreateParameter(0, r0f32_, "p0"));
   auto input1 =
-      builder_.AddInstruction(HloInstruction::CreateParameter(1, r0f32_, "p1"));
-  builder_.AddInstruction(HloInstruction::CreateCustomCall(
+      builder.AddInstruction(HloInstruction::CreateParameter(1, r0f32_, "p1"));
+  builder.AddInstruction(HloInstruction::CreateCustomCall(
       ShapeUtil::MakeTupleShape({r0f32_, r0f32_}), {input0, input1},
       "__xla_test$$FfiF32TupleSwap", /*opaque=*/"",
       /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI));
+
+  module->AddEntryComputation(builder.Build());
 
   Literal arg0 = LiteralUtil::CreateR0<float>(7.f);
   Literal arg1 = LiteralUtil::CreateR0<float>(42.f);
 
   Literal expected = LiteralUtil::MakeTuple({&arg1, &arg0});
-  TF_ASSERT_OK_AND_ASSIGN(auto result, BuildAndExecute({&arg0, &arg1}));
+  TF_ASSERT_OK_AND_ASSIGN(auto result,
+                          Execute(std::move(module), {&arg0, &arg1}));
   EXPECT_EQ(result, expected);
 }
 
