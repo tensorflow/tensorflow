@@ -1132,40 +1132,32 @@ absl::Status RunPostFusionCollectiveOptimizationPasses(HloModule* hlo_module) {
   config.convert_all_to_all = HloPredicateTrue;
   pipeline.AddPass<AsyncCollectiveCreator>(std::move(config));
 
-  auto convert_to_async = [&hlo_module](const HloInstruction* inst) {
-    const bool enable_all_async =
-        hlo_module->config().debug_options().xla_gpu_enable_async_collectives();
+  absl::flat_hash_set<DebugOptions::CollectiveOpType> disabled_async_ops;
+  for (auto collective_op_type : hlo_module->config()
+                                     .debug_options()
+                                     .xla_gpu_disable_async_collectives()) {
+    disabled_async_ops.insert(
+        static_cast<DebugOptions::CollectiveOpType>(collective_op_type));
+  }
+  auto convert_to_async = [&hlo_module,
+                           &disabled_async_ops](const HloInstruction* inst) {
     switch (inst->opcode()) {
       case HloOpcode::kAllReduceStart:
-        return enable_all_async || hlo_module->config()
-                                       .debug_options()
-                                       .xla_gpu_enable_async_all_reduce();
-      case HloOpcode::kAllGatherStart:
-        return enable_all_async || hlo_module->config()
-                                       .debug_options()
-                                       .xla_gpu_enable_async_all_gather();
+        return !disabled_async_ops.contains(DebugOptions::ALLREDUCE);
       case HloOpcode::kCollectivePermuteStart:
-        return enable_all_async ||
-               hlo_module->config()
-                   .debug_options()
-                   .xla_gpu_enable_async_collective_permute();
+        return !disabled_async_ops.contains(DebugOptions::COLLECTIVEPERMUTE);
+      case HloOpcode::kAllGatherStart:
+        return !disabled_async_ops.contains(DebugOptions::ALLGATHER);
       case HloOpcode::kAsyncStart: {
         auto async_inst = Cast<HloAsyncInstruction>(inst);
         switch (async_inst->async_wrapped_opcode()) {
           case HloOpcode::kCollectiveBroadcast:
-            return enable_all_async ||
-                   hlo_module->config()
-                       .debug_options()
-                       .xla_gpu_enable_async_collective_broadcast();
+            return !disabled_async_ops.contains(
+                DebugOptions::COLLECTIVEBROADCAST);
           case HloOpcode::kReduceScatter:
-            return enable_all_async ||
-                   hlo_module->config()
-                       .debug_options()
-                       .xla_gpu_enable_async_reduce_scatter();
+            return !disabled_async_ops.contains(DebugOptions::REDUCESCATTER);
           case HloOpcode::kAllToAll:
-            return enable_all_async || hlo_module->config()
-                                           .debug_options()
-                                           .xla_gpu_enable_async_all_to_all();
+            return !disabled_async_ops.contains(DebugOptions::ALLTOALL);
           default:
             return false;
         }

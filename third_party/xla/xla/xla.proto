@@ -377,14 +377,28 @@ message DebugOptions {
   // Paths to files with LLVM code.
   repeated string xla_gpu_llvm_ir_file = 150;
 
-  // Convert synchronous collective ops into asynchronous.
-  bool xla_gpu_enable_async_collectives = 238;
-  bool xla_gpu_enable_async_all_reduce = 152;
-  bool xla_gpu_enable_async_collective_broadcast = 278;
-  bool xla_gpu_enable_async_collective_permute = 183;
-  bool xla_gpu_enable_async_all_gather = 199;
-  bool xla_gpu_enable_async_reduce_scatter = 200;
-  bool xla_gpu_enable_async_all_to_all = 201;
+  // Enum to define all collective ops
+  // that xla supports.
+  enum CollectiveOpType {
+    NOOP = 0;
+    ALLREDUCE = 1;
+    ALLGATHER = 2;
+    REDUCESCATTER = 3;
+    COLLECTIVEBROADCAST = 4;
+    ALLTOALL = 5;
+    COLLECTIVEPERMUTE = 6;
+  }
+
+  repeated CollectiveOpType xla_gpu_disable_async_collectives = 289;
+
+  // Used to be xla_gpu_enable_async_all_reduce
+  // xla_gpu_enable_async_collective_broadcast
+  // xla_gpu_enable_async_collective_permute
+  // xla_gpu_enable_async_all_gather
+  // xla_gpu_enable_async_reduce_scatter
+  // xla_gpu_enable_async_all_to_all
+  // xla_gpu_enable_async_collectives
+  reserved 152, 278, 183, 199, 200, 201, 238;
 
   // Size threshold (in bytes) for the GPU collective combiners.
   int64 xla_gpu_all_reduce_combine_threshold_bytes = 157;
@@ -740,7 +754,7 @@ message DebugOptions {
   // solutions.
   int64 xla_gpu_autotune_max_solutions = 288;
 
-  // Next id: 289
+  // Next id: 290
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
