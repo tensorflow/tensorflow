@@ -18,6 +18,9 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/protobuf/config.pb.h"
+#include "tsl/platform/thread_annotations.h"
 
 namespace tensorflow {
 
