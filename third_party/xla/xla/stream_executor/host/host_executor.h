@@ -101,9 +101,6 @@ class HostExecutor : public StreamExecutorInterface {
   absl::Status SynchronousMemcpy(void* host_dst,
                                  const DeviceMemoryBase& gpu_src,
                                  uint64_t size) override;
-  absl::Status SynchronousMemcpyDeviceToDevice(DeviceMemoryBase* gpu_dst,
-                                               const DeviceMemoryBase& gpu_src,
-                                               uint64_t size) override;
 
   bool HostCallback(Stream* stream,
                     absl::AnyInvocable<absl::Status() &&> callback) override;

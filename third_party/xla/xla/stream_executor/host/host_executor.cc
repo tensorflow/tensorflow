@@ -156,12 +156,6 @@ absl::Status HostExecutor::SynchronousMemcpy(void* host_dst,
   return absl::OkStatus();
 }
 
-absl::Status HostExecutor::SynchronousMemcpyDeviceToDevice(
-    DeviceMemoryBase* gpu_dst, const DeviceMemoryBase& gpu_src, uint64_t size) {
-  memcpy(gpu_dst->opaque(), gpu_src.opaque(), size);
-  return absl::OkStatus();
-}
-
 bool HostExecutor::HostCallback(
     Stream* stream, absl::AnyInvocable<absl::Status() &&> callback) {
   AsHostStream(stream)->EnqueueTaskWithStatus(std::move(callback));

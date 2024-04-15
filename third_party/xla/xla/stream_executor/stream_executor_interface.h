@@ -178,14 +178,6 @@ class StreamExecutorInterface {
                                          const DeviceMemoryBase& device_src,
                                          uint64_t size) = 0;
 
-  // Enqueues a memcpy operation onto stream, with a device destination location
-  // and a device source location, with target size . Peer access should
-  // have been enabled between the StreamExecutors owning the device memory
-  // regions.
-  virtual absl::Status SynchronousMemcpyDeviceToDevice(
-      DeviceMemoryBase* device_dst, const DeviceMemoryBase& device_src,
-      uint64_t size) = 0;
-
   // Enqueues an operation onto stream to zero out size bytes at the given
   // device memory location. Neither stream nor location may be null. Returns
   // whether the operation was successfully enqueued onto the stream.

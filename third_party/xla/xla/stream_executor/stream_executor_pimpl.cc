@@ -234,13 +234,6 @@ absl::Status StreamExecutor::SynchronousMemZero(DeviceMemoryBase* location,
   return implementation_->SynchronousMemZero(location, size);
 }
 
-absl::Status StreamExecutor::SynchronousMemcpy(
-    DeviceMemoryBase* device_dst, const DeviceMemoryBase& device_src,
-    uint64_t size) {
-  return implementation_->SynchronousMemcpyDeviceToDevice(device_dst,
-                                                          device_src, size);
-}
-
 absl::Status StreamExecutor::SynchronousMemcpyD2H(
     const DeviceMemoryBase& device_src, int64_t size, void* host_dst) {
   return implementation_->SynchronousMemcpy(host_dst, device_src, size);

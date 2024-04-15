@@ -124,9 +124,6 @@ class TpuExecutor : public tensorflow::tpu::TpuExecutorInterface {
   absl::Status SynchronousMemcpy(void* host_dst,
                                  const DeviceMemoryBase& device_src,
                                  uint64_t size) override;
-  absl::Status SynchronousMemcpyDeviceToDevice(
-      DeviceMemoryBase* device_dst, const DeviceMemoryBase& device_src,
-      uint64_t size) override;
 
   Event::Status PollForEventStatus(Event* event) override;
   absl::Status RecordEvent(Stream* stream, Event* event) override;

@@ -514,25 +514,6 @@ TEST_F(StreamExecutorTest, SyncMemcpyFromHost) {
   ASSERT_EQ(dst_data, 18);
 }
 
-TEST_F(StreamExecutorTest, SyncMemcpyDeviceToDevice) {
-  se_.sync_memcpy_dtod = [](const SP_Device* const device,
-                            SP_DeviceMemoryBase* const device_dst,
-                            const SP_DeviceMemoryBase* const device_src,
-                            uint64_t size, TF_Status* const status) {
-    TF_SetStatus(status, TF_OK, "");
-    std::memcpy(device_dst->opaque, device_src->opaque, size);
-  };
-
-  StreamExecutor* executor = GetExecutor(0);
-  size_t size = sizeof(int);
-  int src_data = 18;
-  int dst_data = 0;
-  DeviceMemoryBase device_dst(&dst_data, size);
-  DeviceMemoryBase device_src(&src_data, size);
-  TF_ASSERT_OK(executor->SynchronousMemcpy(&device_dst, device_src, size));
-  ASSERT_EQ(dst_data, 18);
-}
-
 TEST_F(StreamExecutorTest, BlockHostForEvent) {
   static bool block_host_for_event_called = false;
   se_.create_event = [](const SP_Device* const device, SP_Event* event,

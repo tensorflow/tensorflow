@@ -325,16 +325,6 @@ class CStreamExecutor : public StreamExecutorInterface {
                                        size, c_status.get());
     return StatusFromTF_Status(c_status.get());
   }
-  absl::Status SynchronousMemcpyDeviceToDevice(DeviceMemoryBase* gpu_dst,
-                                               const DeviceMemoryBase& gpu_src,
-                                               uint64 size) override {
-    OwnedTFStatus c_status(TF_NewStatus());
-    SP_DeviceMemoryBase device_mem_dst = DeviceMemoryBaseToC(gpu_dst);
-    SP_DeviceMemoryBase device_mem_src = DeviceMemoryBaseToC(&gpu_src);
-    stream_executor_->sync_memcpy_dtod(&device_, &device_mem_dst,
-                                       &device_mem_src, size, c_status.get());
-    return StatusFromTF_Status(c_status.get());
-  }
   absl::Status MemZero(Stream* stream, DeviceMemoryBase* location,
                        uint64 size) override {
     OwnedTFStatus c_status(TF_NewStatus());
