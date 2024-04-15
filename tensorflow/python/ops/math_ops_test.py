@@ -373,6 +373,120 @@ class MatMulTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
 
 @test_util.run_all_in_graph_and_eager_modes
+class SampledADDMMTest(test_util.TensorFlowTestCase):
+  """Test for sampled_addmm."""
+
+  SUPPORTED_DTYPES = [
+      dtypes.bfloat16,
+      dtypes.float16,
+      dtypes.float32,
+      dtypes.float64,
+  ]
+
+  def sampledADDMMRef(
+      self,
+      indices,
+      values,
+      dense_shape,
+      mat1,
+      mat2,
+      beta=1.0,
+      alpha=1.0,
+      output_type=dtypes.float32,
+  ):
+    dense = math_ops.matmul(mat1, mat2, output_type=output_type)
+    dense_vals = array_ops.gather_nd(dense, indices, batch_dims=dense.ndim - 2)
+    return alpha * dense_vals + beta * values
+
+  def testSampledADDMM2D(self):
+    for dtype in self.SUPPORTED_DTYPES:
+      indices = constant_op.constant([[0, 0], [1, 1]])
+      values = constant_op.constant([0.5, 0.3], dtype=dtype)
+      dense_shape = constant_op.constant([2, 2])
+      mat1 = constant_op.constant([1, 2, 3, 4, 5, 6], shape=[2, 3], dtype=dtype)
+      mat2 = constant_op.constant(
+          [7, 8, 9, 10, 11, 12], shape=[3, 2], dtype=dtype
+      )
+      alpha = 0.75
+      beta = 0.25
+
+      _, res, _ = math_ops.sampled_addmm(
+          indices,
+          values,
+          dense_shape,
+          mat1,
+          mat2,
+          beta=beta,
+          alpha=alpha,
+          output_type=dtype,
+      )
+      ref = self.sampledADDMMRef(
+          indices,
+          values,
+          dense_shape,
+          mat1,
+          mat2,
+          beta=beta,
+          alpha=alpha,
+          output_type=dtype,
+      )
+      self.assertAllClose(res, ref, atol=1e-2)
+
+  def testBatchSampledADDMM(self):
+    for dtype in self.SUPPORTED_DTYPES:
+      indices = constant_op.constant([[[0, 1], [1, 0]], [[0, 0], [1, 0]]])
+      values = constant_op.constant([[3, 5], [2, 7]], dtype=dtype)
+      dense_shape = constant_op.constant([2, 2])
+      mat1 = constant_op.constant(
+          np.arange(1, 13), shape=[2, 2, 3], dtype=dtype
+      )
+      mat2 = constant_op.constant(
+          np.arange(13, 25), shape=[2, 3, 2], dtype=dtype
+      )
+      alpha = 0.4
+      beta = 0.6
+
+      _, res, _ = math_ops.sampled_addmm(
+          indices,
+          values,
+          dense_shape,
+          mat1,
+          mat2,
+          beta=beta,
+          alpha=alpha,
+          output_type=dtype,
+      )
+      ref = self.sampledADDMMRef(
+          indices,
+          values,
+          dense_shape,
+          mat1,
+          mat2,
+          beta=beta,
+          alpha=alpha,
+          output_type=dtype,
+      )
+      self.assertAllClose(res, ref, atol=1e-2)
+
+  def testInvalidDenseShape(self):
+    for dtype in self.SUPPORTED_DTYPES:
+      indices = constant_op.constant([[[0, 1], [1, 0]], [[0, 0], [1, 0]]])
+      values = constant_op.constant([[3, 5], [2, 7]], dtype=dtype)
+      dense_shape = constant_op.constant([1, 2])
+      mat1 = constant_op.constant(
+          np.arange(1, 13), shape=[2, 2, 3], dtype=dtype
+      )
+      mat2 = constant_op.constant(
+          np.arange(13, 25), shape=[2, 3, 2], dtype=dtype
+      )
+
+      with self.assertRaisesRegex(ValueError, "does not match output shape"):
+        math_ops.sampled_addmm(
+            indices, values, dense_shape, mat1, mat2, output_type=dtype
+        )
+
+
+@test_util.run_all_in_graph_and_eager_modes
 class ModTest(test_util.TensorFlowTestCase):
 
   def testFloat(self):

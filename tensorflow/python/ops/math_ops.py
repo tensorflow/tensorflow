@@ -87,6 +87,7 @@ from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_bitwise_ops
 from tensorflow.python.ops import gen_data_flow_ops
+from tensorflow.python.ops import gen_logging_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import gen_sparse_ops
@@ -4676,6 +4677,200 @@ def sparse_segment_sum(
         sparse_gradient=sparse_gradient,
         name=name,
     )
+
+
+@tf_export("sparse.sampled_addmm", v1=[])
+def sampled_addmm(
+    indices,
+    values,
+    dense_shape,
+    mat1,
+    mat2,
+    beta=1.0,
+    alpha=1.0,
+    output_type=dtypes.float32,
+):
+  """Performs the sampled matrix multiplication of two dense matrices.
+
+  Multiplies matrix `mat1` by matrix `mat2` at the locations defined by
+  `indices`. The product is scaled and added to `values`,
+  producing `alpha` * (`mat1` @ `mat2`) * spy(`indices`) + `beta` * `values`.
+
+  The function `spy(indices)` is the sparsity pattern matrix derived from
+  `indices`.
+
+  The `mat1` and `mat2` inputs must be tensors of rank >= 2 where the inner 2
+  dimensions specify valid matrix multiplication dimensions, and any further
+  dimensions specify matching batch size.
+
+  The `indices`, `values`, and `dense_shape` inputs make up the components of a
+  `SparseTensor` which defines the sparsity pattern of the output. The sparsity
+  pattern has values of 1 at the positions defined by the `SparseTensor`, and 0
+  elsewhere.
+
+  The `alpha` and `beta` inputs are the scaling factors.
+
+  The supported types for `values`, `mat1`, and `mat2` are:
+  `bfloat16`, `float16`, `float32`, `float64`.
+
+  A simple 2-D tensor operation:
+
+  >>> indices = tf.constant([0, 0, 1, 1], shape=[2, 2])
+  >>> indices
+  <tf.Tensor: shape=(2, 2), dtype=int32, numpy=
+  array([[0, 0],
+         [1, 1]], dtype=int32)>
+  >>> values = tf.constant([0.5, 0.3])
+  >>> values
+  <tf.Tensor: shape=(2,), dtype=float32, numpy=array([0.5, 0.3], dtype=float32)>
+  >>> dense_shape = tf.constant([2, 2])
+  >>> dense_shape
+  <tf.Tensor: shape=(2,), dtype=int32, numpy=array([2, 2], dtype=int32)>
+  >>> mat1 = tf.constant([1, 2, 3, 4, 5, 6], shape=[2, 3], dtype=tf.float32)
+  >>> mat1
+  <tf.Tensor: shape=(2, 3), dtype=float32, numpy=
+  array([[1., 2., 3.],
+         [4., 5., 6.]], dtype=float32)>
+  >>> mat2 = tf.constant([7, 8, 9, 10, 11, 12], shape=[3, 2], dtype=tf.float32)
+  >>> mat2
+  <tf.Tensor: shape=(3, 2), dtype=float32, numpy=
+  array([[ 7.,  8.],
+         [ 9., 10.],
+         [11., 12.]], dtype=float32)>
+  >>> tf.sparse.sampled_addmm(indices, values, dense_shape, mat1, mat2,
+  ... alpha=0.75, beta=0.25)
+  (<tf.Tensor: shape=(2, 2), dtype=int32, numpy=
+  array([[0, 0],
+         [1, 1]], dtype=int32)>, <tf.Tensor: shape=(2,), dtype=float32, numpy=
+  array([ 43.625, 115.575], dtype=float32)>,
+  <tf.Tensor: shape=(2,), dtype=int32, numpy=array([2, 2], dtype=int32)>)
+
+  A batch operation:
+
+  >>> indices = tf.constant([0, 1, 1, 0, 0, 0, 1, 0], shape=[2, 2, 2])
+  >>> indices
+  <tf.Tensor: shape=(2, 2, 2), dtype=int32, numpy=
+  array([[[0, 1],
+          [1, 0]],
+         [[0, 0],
+          [1, 0]]], dtype=int32)>
+  >>> values = tf.constant([3, 5, 2, 7], shape=[2, 2], dtype=tf.float32)
+  >>> values
+  <tf.Tensor: shape=(2, 2), dtype=float32, numpy=
+  array([[3., 5.],
+         [2., 7.]], dtype=float32)>
+  >>> dense_shape = tf.constant([2, 2])
+  >>> dense_shape
+  <tf.Tensor: shape=(2,), dtype=int32, numpy=array([2, 2], dtype=int32)>
+  >>> mat1 = tf.constant(np.arange(1, 13), shape=[2, 2, 3], dtype=tf.float32)
+  >>> mat1
+  <tf.Tensor: shape=(2, 2, 3), dtype=float32, numpy=
+  array([[[ 1.,  2.,  3.],
+          [ 4.,  5.,  6.]],
+         [[ 7.,  8.,  9.],
+          [10., 11., 12.]]], dtype=float32)>
+  >>> mat2 = tf.constant(np.arange(13, 25), shape=[2, 3, 2], dtype=tf.float32)
+  >>> mat2
+  <tf.Tensor: shape=(2, 3, 2), dtype=float32, numpy=
+  array([[[13., 14.],
+          [15., 16.],
+          [17., 18.]],
+         [[19., 20.],
+          [21., 22.],
+          [23., 24.]]], dtype=float32)>
+  >>> tf.sparse.sampled_addmm(indices, values, dense_shape, mat1, mat2,
+  ... alpha=0.75, beta=0.25)
+  (<tf.Tensor: shape=(2, 2, 2), dtype=int32, numpy=
+  array([[[0, 1],
+          [1, 0]],
+         [[0, 0],
+          [1, 0]]], dtype=int32)>, <tf.Tensor: shape=(2, 2), dtype=float32,
+  numpy=array([[ 75.75, 173.  ],
+         [381.5 , 524.5 ]], dtype=float32)>,
+  <tf.Tensor: shape=(2,), dtype=int32, numpy=array([2, 2], dtype=int32)>)
+
+  Args:
+    indices: `tf.Tensor` containing coordinates for the rows and columns to be
+      multiplied. Must have rank > 1.
+    values: `tf.Tensor` containing the values to be scaled and added to the
+      sampled dot product.
+    dense_shape: `tf.Tensor` defining the dense shape of the output.
+    mat1: `tf.Tensor` to be multiplied. Must have rank > 1.
+    mat2: `tf.Tensor` to be multiplied. Must have rank > 1.
+    beta: Number to be multipled with `values`. Defaults to 1.0.
+    alpha: Number to be multiplied with the sampled dot product of `mat1` and
+      `mat2`. Defaults to 1.0.
+    output_type: The output datatype if needed. Defaults to float32.
+
+  Returns:
+    A tuple representing the `SparseTensor` components of the result of the
+    operation.
+
+  Raises:
+    ValueError: If `dense_shape` does not match the shape of the product.
+  """
+  indices = ops.convert_to_tensor(indices)
+  values = ops.convert_to_tensor(values, dtype=output_type)
+  dense_shape = ops.convert_to_tensor(dense_shape, dtype=dtypes.int32)
+  mat1 = ops.convert_to_tensor(mat1, dtype=output_type)
+  mat2 = ops.convert_to_tensor(mat2, dtype=output_type)
+
+  mat1_shape = tensor_util.constant_value(array_ops.shape(mat1))
+  mat2_shape = tensor_util.constant_value(array_ops.shape(mat2))
+
+  dense_rows = mat1_shape[-2]
+  dense_cols = mat2_shape[-1]
+
+  output_shape = array_ops_stack.stack([dense_rows, dense_cols])
+  condition = reduce_all(equal(dense_shape, output_shape))
+
+  # Use dense_shape to validate input matrix shapes.
+  if context.executing_eagerly():
+    if not condition:
+      raise ValueError(
+          f"Dense shape: {dense_shape} does not match "
+          f"output shape: {output_shape}"
+      )
+  else:  # not context.executing_eagerly()
+    dense_shape_static = tensor_util.constant_value(dense_shape)
+    output_shape_static = tensor_util.constant_value(output_shape)
+    if dense_shape_static is not None and output_shape_static is not None:
+      condition_static = np.all(
+          np.equal(dense_shape_static, output_shape_static)
+      )
+      if not condition_static:
+        raise ValueError(
+            f"Dense shape: {dense_shape} does not match "
+            f"output shape: {output_shape}"
+        )
+
+    data = [
+        "Dense shape: ",
+        dense_shape,
+        " does not match output shape: ",
+        output_shape,
+    ]
+
+    gen_logging_ops._assert(condition, data, None, name="Assert")
+
+  # Extract row and column indices.
+  batch_indices = indices[..., :-2]
+  row_indices = indices[..., :-1]
+  col_indices = array_ops.concat([batch_indices, indices[..., -1:]], axis=-1)
+
+  # Calculate batch dimensions.
+  rank = tensor_util.constant_value(array_ops.rank(mat1))
+  batch_dims = rank - 2
+
+  # Extract rows and columns.
+  rows = array_ops.gather_nd(mat1, row_indices, batch_dims=batch_dims)
+  cols = array_ops.gather_nd(
+      array_ops.matrix_transpose(mat2), col_indices, batch_dims=batch_dims
+  )
+
+  # Calculate dot product for the extracted rows and columns.
+  dot = reduce_sum(rows * cols, axis=-1)
+  return (indices, dot * alpha + values * beta, dense_shape)
 
 
 @tf_export("sparse.segment_sum", v1=[])

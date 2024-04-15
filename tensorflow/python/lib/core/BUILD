@@ -298,6 +298,7 @@ cc_library(
 #     deps = [
 #         ":ndarray_tensor",
 #         ":ndarray_tensor_bridge",
+#         ":safe_pyobject_ptr",
 #         "@com_google_absl//absl/log:check",
 #         "@com_google_absl//absl/status",
 #         "//third_party/clif/python:clif",

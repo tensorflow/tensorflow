@@ -2,7 +2,6 @@ load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
 load(
     "@local_tsl//tsl/platform:build_config_root.bzl",
     "if_llvm_aarch64_available",
-    "if_llvm_arm_available",
     "if_llvm_powerpc_available",
     "if_llvm_system_z_available",
     "if_llvm_x86_available",
@@ -101,69 +100,6 @@ xla_cc_test(
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_main",
     ],
-)
-
-cc_library(
-    name = "compilation_pipeline_cpu",
-    srcs = ["compilation_pipeline_cpu.cc"],
-    hdrs = ["compilation_pipeline_cpu.h"],
-    compatible_with = get_compatible_with_portable(),
-    local_defines = select({
-        "//xla/service/cpu:experimental_mlir_gpu_enabled": [
-            "EXPERIMENTAL_MLIR_GPU=1",
-        ],
-        "//conditions:default": [],
-    }),
-    visibility = ["//visibility:public"],
-    deps = [
-        ":compilation_pipeline_options",
-        ":compiler",
-        ":passes",
-        "//xla/mlir/memref/transforms:passes",
-        "//xla/mlir/runtime/ir:rt",
-        "//xla/mlir_hlo:transforms_passes",
-        "//xla/runtime:compiler",
-        "@llvm-project//mlir:AffineDialect",
-        "@llvm-project//mlir:AffineToStandard",
-        "@llvm-project//mlir:ArithDialect",
-        "@llvm-project//mlir:ArithTransforms",
-        "@llvm-project//mlir:AsyncDialect",
-        "@llvm-project//mlir:AsyncToLLVM",
-        "@llvm-project//mlir:AsyncTransforms",
-        "@llvm-project//mlir:BuiltinToLLVMIRTranslation",
-        "@llvm-project//mlir:ComplexToLLVM",
-        "@llvm-project//mlir:ControlFlowDialect",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:FuncExtensions",
-        "@llvm-project//mlir:LLVMToLLVMIRTranslation",
-        "@llvm-project//mlir:LinalgDialect",
-        "@llvm-project//mlir:LinalgTransforms",
-        "@llvm-project//mlir:MathDialect",
-        "@llvm-project//mlir:MathToLLVM",
-        "@llvm-project//mlir:MemRefDialect",
-        "@llvm-project//mlir:MemRefToLLVM",
-        "@llvm-project//mlir:MemRefTransforms",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:ReconcileUnrealizedCasts",
-        "@llvm-project//mlir:SCFDialect",
-        "@llvm-project//mlir:SparseTensorDialect",
-        "@llvm-project//mlir:Transforms",
-        "@local_tsl//tsl/platform:logging",
-    ] + select({
-        "//xla/service/cpu:experimental_mlir_gpu_enabled": [
-            "@llvm-project//mlir:GPUToGPURuntimeTransforms",
-            "@llvm-project//mlir:GPUTransforms",
-        ],
-        "//conditions:default": [],
-    }) + if_llvm_aarch64_available([
-        "@llvm-project//mlir:ArmSVEToLLVMIRTranslation",
-    ]) + if_llvm_arm_available([
-        "@llvm-project//mlir:ArmNeonToLLVMIRTranslation",
-    ]) + if_llvm_x86_available([
-        "@llvm-project//mlir:AMXToLLVMIRTranslation",
-        "@llvm-project//mlir:X86VectorToLLVMIRTranslation",
-    ]),
-    alwayslink = 1,  # has pipeline registration
 )
 
 cc_library(

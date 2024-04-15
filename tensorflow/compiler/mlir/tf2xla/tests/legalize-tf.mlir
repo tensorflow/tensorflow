@@ -2680,7 +2680,7 @@ func.func @squeeze_ranked(%arg0: tensor<?x?x?xf32>) -> tensor<?xf32> {
   // CHECK: %[[C2:.*]] = arith.constant 2 : index
   // CHECK: %[[D2:.*]] = tensor.dim %arg0, %[[C2]] : tensor<?x?x?xf32>
   // CHECK: %[[T:.*]] = tensor.from_elements %[[D2]] : tensor<1xindex>
-  // CHECK: %[[R:.*]] = "chlo.dynamic_reshape"(%arg0, %[[T]]) : (tensor<?x?x?xf32>, tensor<1xindex>) -> tensor<?xf32>
+  // CHECK: %[[R:.*]] = mhlo.dynamic_reshape %arg0, %[[T]] : (tensor<?x?x?xf32>, tensor<1xindex>) -> tensor<?xf32>
   // CHECK: return %[[R]] : tensor<?xf32>
   %0 = "tf.Squeeze"(%arg0) { squeeze_dims = [0, 1] }: (tensor<?x?x?xf32>) -> tensor<?xf32>
   func.return %0 : tensor<?xf32>
@@ -2695,7 +2695,7 @@ func.func @squeeze_ranked_negative(%arg0: tensor<?x?x10xf32>) -> tensor<?x10xf32
   // CHECK: %[[C2:.*]] = arith.constant 2 : index
   // CHECK: %[[D2:.*]] = tensor.dim %arg0, %[[C2]] : tensor<?x?x10xf32>
   // CHECK: %[[T:.*]] = tensor.from_elements %[[D0]], %[[D2]] : tensor<2xindex>
-  // CHECK: %[[R:.*]] = "chlo.dynamic_reshape"(%arg0, %[[T]]) : (tensor<?x?x10xf32>, tensor<2xindex>) -> tensor<?x10xf32>
+  // CHECK: %[[R:.*]] = mhlo.dynamic_reshape %arg0, %[[T]] : (tensor<?x?x10xf32>, tensor<2xindex>) -> tensor<?x10xf32>
   // CHECK: return %[[R]] : tensor<?x10xf32>
   %0 = "tf.Squeeze"(%arg0) { squeeze_dims = [-2] }: (tensor<?x?x10xf32>) -> tensor<?x10xf32>
   func.return %0 : tensor<?x10xf32>

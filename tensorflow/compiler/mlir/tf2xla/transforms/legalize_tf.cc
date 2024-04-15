@@ -6457,9 +6457,7 @@ class ConvertDynamicSqueezeOp : public OpRewritePattern<TF::SqueezeOp> {
 
     auto from_extents =
         rewriter.create<tensor::FromElementsOp>(op.getLoc(), dims);
-    // chlo::DynamicReshapeOp checks if the reshape is legal and will fail if
-    // any non-1 dimension is squeezed.
-    rewriter.replaceOpWithNewOp<chlo::DynamicReshapeOp>(op, result_ty, input,
+    rewriter.replaceOpWithNewOp<mhlo::DynamicReshapeOp>(op, result_ty, input,
                                                         from_extents);
     return success();
   }
