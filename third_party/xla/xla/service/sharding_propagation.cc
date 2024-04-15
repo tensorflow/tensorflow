@@ -714,6 +714,7 @@ bool CanPropagateThroughAtAggressiveLevel(const HloInstruction& inst,
       inst.opcode() != HloOpcode::kGetTupleElement &&
       inst.opcode() != HloOpcode::kWhile &&
       inst.opcode() != HloOpcode::kDynamicSlice &&
+      inst.opcode() != HloOpcode::kDynamicUpdateSlice &&
       inst.opcode() != HloOpcode::kOptimizationBarrier &&
       inst.opcode() != HloOpcode::kConcatenate &&
       inst.opcode() != HloOpcode::kCall && inst.opcode() != HloOpcode::kCopy) {
