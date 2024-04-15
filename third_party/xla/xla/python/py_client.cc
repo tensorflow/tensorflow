@@ -323,9 +323,15 @@ absl::Status PyClient::Defragment() {
       (!force_copy && (host_buffer_semantics ==
                        ifrt::Client::HostBufferSemantics::kImmutableZeroCopy));
   // TODO(phawkins): remove .ptr() after nanobind transition is complete.
-  TF_ASSIGN_OR_RETURN(DevicePutResult put,
-                      DevicePut(argument.ptr(), client->ifrt_client_.get(),
-                                device, options, ifrt::MemoryKind()));
+  TF_ASSIGN_OR_RETURN(
+      auto put_fn, DevicePut(argument.ptr(), client->ifrt_client_.get(), device,
+                             options, ifrt::MemoryKind()));
+  TF_ASSIGN_OR_RETURN(auto put, [&]() {
+    // Must release the GIL before calling IFRT because backends may
+    // decide to block/sleep for device buffer allocation.
+    nb::gil_scoped_release gil_release;
+    return std::move(put_fn)();
+  }());
 
   if (put.ifrt_array) {
     auto traceback = Traceback::Get();

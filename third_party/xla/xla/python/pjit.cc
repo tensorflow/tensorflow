@@ -401,9 +401,15 @@ PrepareIfrtInputs(const xla::PyLoadedExecutable& executable,
         TF_RETURN_IF_ERROR(
             jax::ApplyTransferGuardToHostToDevice(transfer_guard_formatter));
         TF_ASSIGN_OR_RETURN(
-            xla::DevicePutResult on_device,
+            auto on_device_fn,
             DevicePut(arg, executable.ifrt_loaded_executable()->client(),
                       data_device, options, xla::ifrt::MemoryKind()));
+        TF_ASSIGN_OR_RETURN(xla::DevicePutResult on_device, [&]() {
+          // Must release the GIL before calling IFRT because backends may
+          // decide to block/sleep for device buffer allocation.
+          nb::gil_scoped_release gil_release;
+          return std::move(on_device_fn)();
+        }());
 
         num_args_arrays.push_back(std::move(on_device.ifrt_array));
         if (on_device.owning_pybuffer) {
