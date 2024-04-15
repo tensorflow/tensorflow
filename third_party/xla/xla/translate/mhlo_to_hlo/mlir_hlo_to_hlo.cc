@@ -3170,6 +3170,8 @@ LogicalResult ConvertToHloModule::Lower(
         CreateArrayLiteralFromAttr(const_attr, shape_or->layout());
     if (!literal_or.ok())
       return inst->emitError(literal_or.status().ToString());
+    xla::XlaScopedShardingAssignment scoped_sharding(
+        builder, CreateOpShardingFromAttribute(inst));
     auto constant = xla::ConstantLiteral(builder, literal_or.value());
     value_map[inst->getResult(0)] = constant;
 

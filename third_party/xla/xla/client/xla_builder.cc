@@ -1364,9 +1364,14 @@ XlaOp XlaBuilder::ConstantLiteral(const LiteralSlice& literal) {
       HloInstructionProto instr;
       *instr.mutable_shape() = scalar.shape().ToProto();
       *instr.mutable_literal() = scalar.ToProto();
-      TF_ASSIGN_OR_RETURN(
-          XlaOp scalar_op,
-          AddInstruction(std::move(instr), HloOpcode::kConstant));
+      XlaOp scalar_op;
+      {
+        // If the builder has a sharding, it should only be added to the
+        // broadcast (and not the scalar constant).
+        XlaScopedShardingAssignment scoped_sharding(this, std::nullopt);
+        TF_ASSIGN_OR_RETURN(
+            scalar_op, AddInstruction(std::move(instr), HloOpcode::kConstant));
+      }
       return Broadcast(scalar_op, literal.shape().dimensions());
     } else {
       HloInstructionProto instr;
