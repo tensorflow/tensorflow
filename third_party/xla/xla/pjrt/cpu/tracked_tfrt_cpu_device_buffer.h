@@ -16,35 +16,35 @@ limitations under the License.
 #ifndef XLA_PJRT_CPU_TRACKED_TFRT_CPU_DEVICE_BUFFER_H_
 #define XLA_PJRT_CPU_TRACKED_TFRT_CPU_DEVICE_BUFFER_H_
 
-#include <functional>
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <utility>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/functional/any_invocable.h"
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/cpu_function_runtime.h"
 #include "xla/runtime/cpu_event.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"
 #include "tsl/concurrency/async_value_ref.h"
-#include "tsl/platform/env.h"
 #include "tsl/platform/mem.h"
-#include "tsl/platform/threadpool.h"
 
 namespace xla {
 
 class MaybeOwningCpuMemory {
  public:
+  using OwnedDataPtr = std::unique_ptr<uint8_t[], void (*)(void*)>;
+
   MaybeOwningCpuMemory() = default;
 
   // Non-owning.
-  explicit MaybeOwningCpuMemory(void* buf, size_t size)
-      : buf_(buf), size_(size) {}
+  MaybeOwningCpuMemory(void* buf, size_t size) : buf_(buf), size_(size) {}
 
   // Owning.
-  using OwnedDataPtr =
-      std::unique_ptr<uint8_t[], decltype(tsl::port::AlignedFree)*>;
-  explicit MaybeOwningCpuMemory(OwnedDataPtr data, size_t size)
+  MaybeOwningCpuMemory(OwnedDataPtr data, size_t size)
       : buf_(data.get()), data_(std::move(data)), size_(size) {}
 
   // Move-only.

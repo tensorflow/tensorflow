@@ -269,12 +269,6 @@ Status TpuExecutor::SynchronousMemcpy(
   return status.status();
 }
 
-Status TpuExecutor::SynchronousMemcpyDeviceToDevice(
-    ::stream_executor::DeviceMemoryBase* device_dst,
-    const ::stream_executor::DeviceMemoryBase& device_src, uint64_t size) {
-  return absl::UnimplementedError("This operation not supported on TPU");
-}
-
 bool TpuExecutor::MemcpyDeviceToDevice(
     Stream* stream, ::stream_executor::DeviceMemoryBase* gpu_dst,
     const ::stream_executor::DeviceMemoryBase& host_src, uint64_t size) {

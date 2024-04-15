@@ -208,10 +208,6 @@ class GpuExecutor : public StreamExecutorInterface {
                                  const DeviceMemoryBase& gpu_src,
                                  uint64_t size) override;
 
-  absl::Status SynchronousMemcpyDeviceToDevice(DeviceMemoryBase* gpu_dst,
-                                               const DeviceMemoryBase& gpu_src,
-                                               uint64_t size) override;
-
   absl::Status MemZero(Stream* stream, DeviceMemoryBase* location,
                        uint64_t size) override;
   absl::Status Memset(Stream* stream, DeviceMemoryBase* location,
