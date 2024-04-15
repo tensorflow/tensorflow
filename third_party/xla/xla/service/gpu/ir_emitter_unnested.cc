@@ -1705,8 +1705,9 @@ absl::Status IrEmitterUnnested::EmitFusion(const HloFusionInstruction* instr,
                                            HloFusionAnalysis& fusion_analysis) {
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<FusionInterface> emitter,
-      GetFusionEmitter(HloFusionInfo(
-          fusion_analysis, instr, &ir_emitter_context_->buffer_assignment())));
+      GetFusionEmitter(HloFusionInfo(fusion_analysis, instr,
+                                     &ir_emitter_context_->buffer_assignment()),
+                       /*is_emission_phase=*/true));
   return AddThunksToThunkSequence(emitter->Emit(*ir_emitter_context_, *instr));
 }
 
