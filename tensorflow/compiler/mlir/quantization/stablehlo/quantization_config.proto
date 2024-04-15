@@ -323,8 +323,28 @@ message CalibrationOptions {
   repeated RepresentativeDatasetConfig representative_datasets = 3;
 }
 
-// Quantization configuration for StableHLO Quantizer. This is the primary
-// message containing all configurable options.
+// Preset quantization configuration for StableHLO Quantizer. This message
+// will cover most general quantization use cases, which can be overwritten
+// with `QuantizationConfig` (i.e. for selective quantization).
+// TODO: b/334004813 - Migrate `preset` from `QuantizationConfig`.
+// Next ID: 7
+message QuantizationPreset {
+  enum Enum {
+    UNKNOWN = 0;
+    STATIC_RANGE_PTQ_INT8X8 = 1;
+    STATIC_RANGE_PTQ_INT8X8_COMMON_OPS_ONLY = 2;
+    STATIC_RANGE_PTQ_INT16X8 = 3;
+    STATIC_RANGE_PTQ_INT16X8_COMMON_OPS_ONLY = 4;
+    WEIGHT_ONLY_PTQ_INT8 = 5;
+  }
+  // Defines calibration options for quantization. This option is only used for
+  // activation of static range quantization (SRQ). Quantization calibration
+  // method is set to MIN_MAX by default.
+  optional CalibrationOptions calibration_options = 6;
+}
+
+// Quantization configuration for StableHLO Quantizer. This is an auxiliary
+// message containing additional configurable options.
 // Next ID: 8
 message QuantizationConfig {
   // Config presets provide predefined popular or common quantization specs.
