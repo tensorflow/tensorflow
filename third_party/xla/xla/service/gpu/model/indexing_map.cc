@@ -25,7 +25,6 @@ limitations under the License.
 #include <sstream>
 #include <string>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include "absl/base/optimization.h"
@@ -61,16 +60,6 @@ using mlir::AffineSymbolExpr;
 using mlir::getAffineBinaryOpExpr;
 using mlir::getAffineConstantExpr;
 using mlir::MLIRContext;
-
-int64_t FloorDiv(int64_t dividend, int64_t divisor) {
-  return dividend / divisor -
-         (((dividend >= 0) != (divisor >= 0) && dividend % divisor) ? 1 : 0);
-}
-
-int64_t CeilDiv(int64_t dividend, int64_t divisor) {
-  return dividend / divisor +
-         (((dividend >= 0) == (divisor >= 0) && dividend % divisor) ? 1 : 0);
-}
 
 class AffineExprSimplifier {
  public:
@@ -625,6 +614,16 @@ SmallVector<AffineExpr, 4> MapSymbolsToComposedSymbolsList(
 }
 
 }  // namespace
+
+int64_t FloorDiv(int64_t dividend, int64_t divisor) {
+  return dividend / divisor -
+         (((dividend >= 0) != (divisor >= 0) && dividend % divisor) ? 1 : 0);
+}
+
+int64_t CeilDiv(int64_t dividend, int64_t divisor) {
+  return dividend / divisor +
+         (((dividend >= 0) == (divisor >= 0) && dividend % divisor) ? 1 : 0);
+}
 
 std::string Interval::ToString() const {
   std::stringstream ss;
