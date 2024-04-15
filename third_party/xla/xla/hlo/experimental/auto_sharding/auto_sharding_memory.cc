@@ -36,6 +36,7 @@ namespace {
 
 using PrimIdx = int64_t;  // Indexes into the primitive list (ie, nodes & edges)
 using LiveIdx = int64_t;  // Indexes into the liveness range (like a time point)
+using GroupIdx = int64_t;  // Indexes into the list of groups
 
 using PrimPair = std::pair<PrimIdx, PrimIdx>;
 using LiveAndPrim = std::pair<LiveIdx, PrimIdx>;
@@ -101,6 +102,30 @@ int64_t MemoryTermReducer::Reduce(
     return overlap;
   };
 
+  // A function that merges a primitive (or members of a group) into a group.
+  auto MergeIntoGroup = [num_primitives, this](
+                            PrimIdx prim_idx,
+                            absl::flat_hash_set<PrimIdx>& reduced_group) {
+    if (prim_idx < num_primitives) {
+      reduced_group.insert(prim_idx);
+    } else {
+      const auto& group = reduced_groups_[prim_idx - num_primitives];
+      reduced_group.insert(group.begin(), group.end());
+    }
+  };
+
+  // A function that calculates the # of terms a primitive (or group) uses.
+  auto CalcNumTerms = [num_primitives, &intervals, this](
+                          PrimIdx prim_idx,
+                          std::optional<Interval> overlap = std::nullopt) {
+    int64_t num_terms = intervals[prim_idx].length();
+    if (overlap) num_terms -= overlap->length();
+    if (prim_idx >= num_primitives && num_terms > 0) {
+      num_terms += reduced_groups_[prim_idx - num_primitives].size();
+    }
+    return num_terms;
+  };
+
   // A function to update a primitive after being merged into a group.
   auto UpdatePrimitive = [&intervals, &enter, &evict](
                              PrimIdx prim_idx,
@@ -120,7 +145,8 @@ int64_t MemoryTermReducer::Reduce(
 
   // A function to sweep through live points & merge large overlaps.
   auto SweepAndMerge = [&num_lives, &intervals, &enter, &evict, &CalcOverlap,
-                        &UpdatePrimitive, this]() {
+                        &CalcNumTerms, &MergeIntoGroup, &UpdatePrimitive,
+                        this]() -> bool {
     absl::btree_set<LiveAndPrim> actives;  // Active prims sorted by lower value
     absl::btree_multimap<int64_t, PrimPair> overlaps;
     for (LiveIdx live_idx = 0; live_idx < num_lives; ++live_idx) {
@@ -134,22 +160,41 @@ int64_t MemoryTermReducer::Reduce(
         overlaps.insert({active.first - live_idx, {prim_idx, active.second}});
       }
     }
+    bool changed = false;
     for (const auto& [_, prim_pair] : overlaps) {
       PrimIdx prim0_idx = prim_pair.first, prim1_idx = prim_pair.second;
       std::optional<Interval> overlap = CalcOverlap(prim0_idx, prim1_idx);
       if (!overlap) continue;
-      absl::flat_hash_set<PrimIdx> reduced_group = {prim0_idx, prim1_idx};
-      if (overlap->length() <= reduced_group.size()) continue;  // Not reduced.
+      absl::flat_hash_set<PrimIdx> reduced_group;
+      MergeIntoGroup(prim0_idx, reduced_group);
+      MergeIntoGroup(prim1_idx, reduced_group);
+      if (CalcNumTerms(prim0_idx) + CalcNumTerms(prim1_idx) <=
+          CalcNumTerms(prim0_idx, overlap) + CalcNumTerms(prim1_idx, overlap) +
+              overlap->length() + reduced_group.size()) {
+        continue;  // Not reduced.
+      }
       enter[overlap->lower].insert(intervals.size());
       evict[overlap->upper].insert(intervals.size());
       intervals.push_back({overlap->lower, overlap->upper});
       reduced_groups_.push_back(reduced_group);
       UpdatePrimitive(prim0_idx, *overlap);
       UpdatePrimitive(prim1_idx, *overlap);
+      changed = true;
     }
+    return changed;
   };
 
-  SweepAndMerge();
+  while (SweepAndMerge()) {
+    // Repeated until no additional reductions can be achieved.
+  }
+
+  // Remove any groups that have vanished.
+  for (GroupIdx group_idx = reduced_groups_.size() - 1; group_idx >= 0;
+       --group_idx) {
+    if (intervals[num_primitives + group_idx].IsValid()) continue;
+    intervals.erase(intervals.begin() + num_primitives + group_idx);
+    reduced_groups_.erase(reduced_groups_.begin() + group_idx);
+  }
 
   // Create the reduced live matrix.
   int64_t num_reduced_terms = 0;

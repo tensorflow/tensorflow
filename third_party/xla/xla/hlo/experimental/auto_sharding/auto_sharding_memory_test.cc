@@ -377,6 +377,136 @@ TEST(AutoShardingMemoryTest, MergingPrimitivesWouldNotReduceTerms) {
   EXPECT_EQ(reduced_groups, expected_reduced_groups);
 }
 
+//  |          ==>  | 333333
+//  | 222222   ==>  | ......
+//  | 111111   ==>  | ......   Groups:
+//  | 000000   ==>  | ......     m[3] = m[0] + m[1] + m[2]
+//  +------->  ==>  +------->
+//    (time)          (time)
+TEST(AutoShardingMemoryTest, AllPrimitivesVanish) {
+  const std::vector<std::vector<int64_t>> live =
+      {{0, 1, 2},
+       {0, 1, 2},
+       {0, 1, 2},
+       {0, 1, 2},
+       {0, 1, 2},
+       {0, 1, 2}};
+
+  MemoryTermReducer reducer;
+  const auto num_reduced_terms =
+          reducer.Reduce(live.size(), /*num_primitives=*/3, Convert(live));
+  const auto reduced_live = reducer.GetReducedLive();
+  const auto reduced_groups = reducer.GetReducedGroups();
+
+  const std::vector<std::vector<int64_t>> expected_reduced_live =
+      {{3},
+       {3},
+       {3},
+       {3},
+       {3},
+       {3}};
+  const std::vector<absl::flat_hash_set<int64_t>> expected_reduced_groups =
+      {{0, 1, 2}};
+  EXPECT_EQ(num_reduced_terms, 9);
+  EXPECT_EQ(reduced_live, expected_reduced_live);
+  EXPECT_EQ(reduced_groups, expected_reduced_groups);
+}
+
+//  |            ==>  |    555555
+//  |            ==>  | 4444444
+//  |    333333  ==>  |    ......
+//  |    222222  ==>  |    ......  Groups:
+//  | 1111111    ==>  | .......      m[4] = m[0] + m[1]
+//  | 0000000    ==>  | .......      m[5] = m[2] + m[3]
+//  +--------->  ==>  +--------->
+//     (time)            (time)
+TEST(AutoShardingMemoryTest, MergingGroupsWouldNotReduceTerms) {
+  const std::vector<std::vector<int64_t>> live =
+      {{0, 1      },
+       {0, 1      },
+       {0, 1      },
+       {0, 1, 2, 3},
+       {0, 1, 2, 3},
+       {0, 1, 2, 3},
+       {0, 1, 2, 3},
+       {      2, 3},
+       {      2, 3}};
+
+  MemoryTermReducer reducer;
+  const auto num_reduced_terms =
+          reducer.Reduce(live.size(), /*num_primitives=*/4, Convert(live));
+  const auto reduced_live = reducer.GetReducedLive();
+  const auto reduced_groups = reducer.GetReducedGroups();
+
+  const std::vector<std::vector<int64_t>> expected_reduced_live =
+      {{4   },
+       {4   },
+       {4   },
+       {4, 5},
+       {4, 5},
+       {4, 5},
+       {4, 5},
+       {   5},
+       {   5}};
+  const std::vector<absl::flat_hash_set<int64_t>> expected_reduced_groups =
+      {{0, 1}, {2, 3}};
+  EXPECT_EQ(num_reduced_terms, 17);
+  EXPECT_EQ(reduced_live, expected_reduced_live);
+  EXPECT_EQ(reduced_groups, expected_reduced_groups);
+}
+
+//  |                      |  444466666555
+//  |      333333333  ==>  |      ........3  Groups:
+//  |      22222222   ==>  |      ........     m[4] = m[0] + m[1]
+//  |  111111111      ==>  |  .........        m[5] = m[2] + m[3]
+//  | 0000000000      ==>  | 0.........        m[6] = m[0] + m[1] + m[2] + m[3]
+//  +-------------->  ==>  +-------------->
+//       (time)                 (time)
+TEST(AutoShardingMemoryTest, ExampleFromDocumentation) {
+  const std::vector<std::vector<int64_t>> live =
+      {{0         },
+       {0, 1      },
+       {0, 1      },
+       {0, 1      },
+       {0, 1      },
+       {0, 1, 2, 3},
+       {0, 1, 2, 3},
+       {0, 1, 2, 3},
+       {0, 1, 2, 3},
+       {0, 1, 2, 3},
+       {      2, 3},
+       {      2, 3},
+       {      2, 3},
+       {         3}};
+
+  MemoryTermReducer reducer;
+  const auto num_reduced_terms =
+          reducer.Reduce(live.size(), /*num_primitives=*/4, Convert(live));
+  const auto reduced_live = reducer.GetReducedLive();
+  const auto reduced_groups = reducer.GetReducedGroups();
+
+  const std::vector<std::vector<int64_t>> expected_reduced_live =
+      {{0      },
+       {      4},
+       {      4},
+       {      4},
+       {      4},
+       {      6},
+       {      6},
+       {      6},
+       {      6},
+       {      6},
+       {      5},
+       {      5},
+       {      5},
+       {   3   }};
+  const std::vector<absl::flat_hash_set<int64_t>> expected_reduced_groups =
+      {{0, 1}, {2, 3}, {0, 1, 2, 3}};
+  EXPECT_EQ(num_reduced_terms, 22);
+  EXPECT_EQ(reduced_live, expected_reduced_live);
+  EXPECT_EQ(reduced_groups, expected_reduced_groups);
+}
+
 // clang-format on
 
 }  // namespace
