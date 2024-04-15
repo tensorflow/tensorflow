@@ -511,6 +511,12 @@ TF_CONST_INIT extern const char kXProfMetadataFlow[];
 TF_CONST_INIT extern const char kXProfMetadataTransfers[];
 TF_CONST_INIT extern const char kXProfMetadataBufferSize[];
 
+// String constants for threadpool_listener events
+TF_CONST_INIT extern const absl::string_view kThreadpoolListenerRecord;
+TF_CONST_INIT extern const absl::string_view kThreadpoolListenerStartRegion;
+TF_CONST_INIT extern const absl::string_view kThreadpoolListenerStopRegion;
+TF_CONST_INIT extern const absl::string_view kThreadpoolListenerRegion;
+
 }  // namespace profiler
 }  // namespace tsl
 

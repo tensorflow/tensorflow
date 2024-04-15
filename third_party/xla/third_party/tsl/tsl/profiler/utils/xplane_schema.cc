@@ -565,5 +565,14 @@ const char kXProfMetadataFlow[] = "flow";
 const char kXProfMetadataTransfers[] = "transfers";
 const char kXProfMetadataBufferSize[] = "buffer_size";
 
+// String constants for threadpool_listener
+const absl::string_view kThreadpoolListenerRecord =
+    "ThreadpoolListener::Record";
+const absl::string_view kThreadpoolListenerStartRegion =
+    "ThreadpoolListener::StartRegion";
+const absl::string_view kThreadpoolListenerStopRegion =
+    "ThreadpoolListener::StopRegion";
+const absl::string_view kThreadpoolListenerRegion =
+    "ThreadpoolListener::Region";
 }  // namespace profiler
 }  // namespace tsl
