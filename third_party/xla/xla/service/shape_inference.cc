@@ -2464,8 +2464,10 @@ ShapeInference::InferScalarBroadcastShape(absl::Span<const Shape> shapes) {
     }
 
     Shape output_shape = *operand_shape;
-    output_shape.set_dimensions(scatter_dimension,
-                                scatter_dim_input_size / shard_count);
+    output_shape.set_dimensions(
+        scatter_dimension, output_shape.is_dynamic_dimension(scatter_dimension)
+                               ? Shape::kUnboundedSize
+                               : scatter_dim_input_size / shard_count);
     output_shapes.push_back(output_shape);
   }
 

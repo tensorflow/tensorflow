@@ -2546,6 +2546,34 @@ TEST(XlaBuilderTest, UnboundedReducePrecision) {
               GmockMatch(m::Op().WithShapeEqualTo(&expected)));
 }
 
+TEST(XlaBuilderTest, UnboundedReduceScatter) {
+  XlaBuilder b(TestName());
+  TF_ASSERT_OK_AND_ASSIGN(const Shape operand, ParseShape("f32[?, 10]"));
+  TF_ASSERT_OK_AND_ASSIGN(const Shape expected, ParseShape("f32[?, 10]"));
+
+  XlaComputation computation;
+  {
+    const std::unique_ptr<XlaBuilder> sub_builder = b.CreateSubBuilder("add");
+    Add(/*lhs=*/Parameter(sub_builder.get(), 0, operand, "arg0"),
+        /*rhs=*/Parameter(sub_builder.get(), 1, operand, "arg1"));
+    TF_ASSERT_OK_AND_ASSIGN(computation, sub_builder->Build());
+  }
+
+  ReplicaGroup replica_group;
+  replica_group.add_replica_ids(0);
+  replica_group.add_replica_ids(1);
+
+  ReduceScatter(
+      /*operand=*/Parameter(&b, 0, operand, "operand"),
+      /*computation=*/computation,
+      /*scatter_dimension=*/0,
+      /*shard_count=*/2,
+      /*replica_groups=*/{replica_group});
+  TF_ASSERT_OK_AND_ASSIGN(const auto module, BuildHloModule(b));
+  EXPECT_THAT(GetRoot(*module),
+              GmockMatch(m::Op().WithShapeEqualTo(&expected)));
+}
+
 TEST(XlaBuilderTest, UnboundedReduceWindow) {
   XlaBuilder b(TestName());
   TF_ASSERT_OK_AND_ASSIGN(const Shape input, ParseShape("f32[?, 4, 8]"));
