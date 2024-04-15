@@ -190,7 +190,6 @@ cc_library(
     hdrs = ["type_to_shape.h"],
     deps = [
         "//xla:shape_util",
-        "//xla:statusor",
         "//xla:xla_data_proto_cc",
         "//xla/mlir/utils:type_util",
         "//xla/mlir_hlo",
@@ -199,6 +198,7 @@ cc_library(
         "@llvm-project//mlir:SparseTensorDialect",
         "@llvm-project//mlir:SparseTensorEnums",
         "@llvm-project//mlir:Support",
+        "@stablehlo//:stablehlo_ops",
     ],
 )
 
