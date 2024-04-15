@@ -350,7 +350,7 @@ TEST(StridedSliceAssignBCastTest, RemapDimensionsOutOfBoundsFails) {
 
 using IntVector = gtl::InlinedVector<int64_t, 4>;
 
-TensorShape AsTensorShape(gtl::ArraySlice<int64_t> dim_sizes) {
+TensorShape AsTensorShape(absl::Span<const int64_t> dim_sizes) {
   TensorShape out;
   TF_CHECK_OK(TensorShape::BuildTensorShape(dim_sizes, &out));
   return out;
