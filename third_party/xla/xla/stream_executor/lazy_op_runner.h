@@ -296,7 +296,7 @@ struct FusedMHAOp {
     std::optional<double> dropout_rate;
     std::optional<int64_t> seed;
     bool is_flash_attention;
-    bool is_causal_mask;
+    FMHAMaskKind mask_type;
   };
 
   static absl::StatusOr<std::unique_ptr<const OpRunner<FusedMHASignature>>>
@@ -309,7 +309,7 @@ struct FusedMHAOp {
         config.intermediate_bmm2_lhs_descriptor, config.output_descriptor,
         config.activation_descriptor, config.mask_descriptor,
         config.bias_descriptor, config.scale, config.dropout_rate, config.seed,
-        config.is_flash_attention, config.is_causal_mask);
+        config.is_flash_attention, config.mask_type);
   }
 };
 
@@ -335,7 +335,7 @@ struct FusedMHABackwardOp {
     std::optional<double> dropout_rate;
     std::optional<int64_t> seed;
     bool is_flash_attention;
-    bool is_causal_mask;
+    FMHAMaskKind mask_type;
   };
 
   static absl::StatusOr<
@@ -353,7 +353,7 @@ struct FusedMHABackwardOp {
         config.mask_descriptor, config.d_bias_descriptor,
         config.fwd_output_descriptor, config.bias_descriptor, config.scale,
         config.dropout_rate, config.seed, config.is_flash_attention,
-        config.is_causal_mask);
+        config.mask_type);
   }
 };
 

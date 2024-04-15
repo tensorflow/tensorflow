@@ -348,7 +348,7 @@ class CudnnSupport : public dnn::DnnSupport {
       std::optional<dnn::TensorDescriptor> mask_descriptor,
       std::optional<dnn::TensorDescriptor> bias_descriptor, double scale,
       std::optional<double> dropout_rate, std::optional<int64_t> seed,
-      bool is_flash_attention, bool is_causal_mask) override;
+      bool is_flash_attention, dnn::FMHAMaskKind mask_type) override;
 
   absl::StatusOr<std::unique_ptr<const dnn::FusedMHABackwardRunner>>
   FusedMHABackwardRunnerFromDesc(
@@ -368,7 +368,7 @@ class CudnnSupport : public dnn::DnnSupport {
       std::optional<dnn::TensorDescriptor> fwd_output_descriptor,
       std::optional<dnn::TensorDescriptor> bias_descriptor, double scale,
       std::optional<double> dropout_rate, std::optional<int64_t> seed,
-      bool is_flash_attention, bool is_causal_mask);
+      bool is_flash_attention, dnn::FMHAMaskKind mask_type);
 
   bool GetRnnAlgorithms(
       std::vector<dnn::AlgorithmDesc>* out_algorithms) override;
@@ -730,7 +730,8 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionOperationGraph(
     const std::optional<dnn::TensorDescriptor> mask_descriptor,
     const std::optional<dnn::TensorDescriptor> stats_descriptor,
     const float scale, const bool use_dropout,
-    const std::optional<double> dropout_rate, const bool is_causal_mask);
+    const std::optional<double> dropout_rate,
+    const dnn::FMHAMaskKind mask_type);
 
 absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionBackwardOperationGraph(
     dnn::DnnSupport& dnn_support, const dnn::MatmulTensorDescriptor& q_desc,
@@ -743,7 +744,7 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionBackwardOperationGraph(
     const std::optional<dnn::TensorDescriptor> bias_descriptor,
     std::optional<double> dropout_rate, std::optional<int64_t> seed,
     double scale, bool use_dropout, bool use_mask, bool use_bias,
-    bool use_causal_mask);
+    const dnn::FMHAMaskKind mask_type);
 
 }  // namespace gpu
 }  // namespace stream_executor

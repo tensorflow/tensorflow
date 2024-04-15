@@ -79,6 +79,14 @@ enum class CudnnfMHAKind {
   kBackwardScaleBiasSoftmaxDropout,
 };
 
+enum class CudnnfMHAMaskKind {
+  kNoMask,
+  kPadding,
+  kCausal,
+  kPaddingCausal,
+  kAlibi,
+};
+
 absl::StatusOr<CudnnConvKind> GetCudnnConvKind(
     const HloCustomCallInstruction* instr);
 

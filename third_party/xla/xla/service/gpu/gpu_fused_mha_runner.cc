@@ -80,7 +80,9 @@ absl::Status RunFusedMHA(GpufMHAParams params, se::Stream *stream,
   if (params.config->seed) {
     seed = *params.config->seed;
   }
-
+  TF_ASSIGN_OR_RETURN(
+      se::dnn::FMHAMaskKind mask_type,
+      GetDNNFmhaMaskKindFromCudnnFmhaMaskKind(params.config->mask_type));
   se::dnn::FusedMHAOp::Config config{kind,
                                      scale,
                                      params.config->lhs_bmm1,
@@ -94,7 +96,7 @@ absl::Status RunFusedMHA(GpufMHAParams params, se::Stream *stream,
                                      dropout_rate,
                                      seed,
                                      params.config->is_flash_attention,
-                                     params.config->is_causal_mask};
+                                     mask_type};
   TF_ASSIGN_OR_RETURN(auto *runner,
                       lazy_runner->GetOrCreateRunner(config, stream));
   return (*runner)(stream, options.profile_result, scratch_memory,
@@ -208,6 +210,10 @@ absl::Status RunFusedMHABackward(
   if (params.config->seed) {
     seed = *params.config->seed;
   }
+
+  TF_ASSIGN_OR_RETURN(
+      se::dnn::FMHAMaskKind mask_type,
+      GetDNNFmhaMaskKindFromCudnnFmhaMaskKind(params.config->mask_type));
   se::dnn::FusedMHABackwardOp::Config config{kind,
                                              scale,
                                              params.config->bmm1_grad_gemm1_rhs,
@@ -226,7 +232,7 @@ absl::Status RunFusedMHABackward(
                                              dropout_rate,
                                              seed,
                                              params.config->is_flash_attention,
-                                             params.config->is_causal_mask};
+                                             mask_type};
   TF_ASSIGN_OR_RETURN(auto *runner,
                       lazy_runner->GetOrCreateRunner(config, stream));
   // TODO: pass in real softmax_sum, dQ_accum, fwd_output
@@ -420,7 +426,7 @@ absl::Status RunGpuFMHABackwardImpl(const GpufMHABackwardParams &params,
   }
   config.kind = desc.kind;
   config.is_flash_attention = desc.is_flash_attention;
-  config.is_causal_mask = desc.is_causal_mask;
+  config.mask_type = desc.mask_type;
   const CudnnfMHABackendConfig &backend_config = desc.backend_config;
   config.algorithm = se::dnn::AlgorithmDesc(backend_config.algorithm());
   config.fmha_scale.emplace(backend_config.fmha_scale());
@@ -563,7 +569,7 @@ absl::Status RunGpuFMHABackwardImpl(const GpufMHABackwardParams &params,
 
   config.kind = desc.kind;
   config.is_flash_attention = desc.is_flash_attention;
-  config.is_causal_mask = desc.is_causal_mask;
+  config.mask_type = desc.mask_type;
   const CudnnfMHABackendConfig &backend_config = desc.backend_config;
   config.algorithm = se::dnn::AlgorithmDesc(backend_config.algorithm());
   config.fmha_scale.emplace(backend_config.fmha_scale());

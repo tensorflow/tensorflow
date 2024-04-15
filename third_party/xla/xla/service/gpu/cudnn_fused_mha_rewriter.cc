@@ -1451,7 +1451,8 @@ absl::StatusOr<HloInstruction*> FuseFwdMultiHeadedAttentionBlock(
   fmha_config.set_is_flash_attention(is_flash_attention);
   // set is_causal_mask here
   // choose to generate causal mask inside cuDNN attention or not
-  fmha_config.set_is_causal_mask(is_causal_mask);
+  fmha_config.set_mask_type(is_causal_mask ? CudnnfMHABackendConfig::CAUSAL
+                                           : CudnnfMHABackendConfig::NO_MASK);
 
   // Output Order: {O, scratch, Fwd act*}
   const Shape& output_shape = bmm_2->shape();
@@ -1595,7 +1596,8 @@ absl::StatusOr<bool> FuseBwdMultiHeadedAttentionBlock(
                       fwd_fmha_call->backend_config<GpuBackendConfig>());
   CudnnfMHABackendConfig fwd_config = gpu_config.cudnn_fmha_backend_config();
   bool is_flash_attention = fwd_config.is_flash_attention();
-  bool is_causal_mask = fwd_config.is_causal_mask();
+  bool is_causal_mask =
+      fwd_config.mask_type() == CudnnfMHABackendConfig::CAUSAL;
   CudnnfMHABackendConfig bwd_fmha_config;
   // Q tensor
   TF_ASSIGN_OR_RETURN(
@@ -1705,7 +1707,9 @@ absl::StatusOr<bool> FuseBwdMultiHeadedAttentionBlock(
 
   // Set is flash attention
   bwd_fmha_config.set_is_flash_attention(is_flash_attention);
-  bwd_fmha_config.set_is_causal_mask(is_causal_mask);
+  bwd_fmha_config.set_mask_type(is_causal_mask
+                                    ? CudnnfMHABackendConfig::CAUSAL
+                                    : CudnnfMHABackendConfig::NO_MASK);
 
   *bwd_fmha_config.mutable_intermediate_tensor_shape() =
       fwd_config.intermediate_tensor_shape();

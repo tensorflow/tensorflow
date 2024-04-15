@@ -530,6 +530,24 @@ absl::StatusOr<se::dnn::NormKind> GetDNNNormKindFromCudnnNormKind(
   }
 }
 
+absl::StatusOr<se::dnn::FMHAMaskKind> GetDNNFmhaMaskKindFromCudnnFmhaMaskKind(
+    CudnnfMHAMaskKind kind) {
+  switch (kind) {
+    case CudnnfMHAMaskKind::kNoMask:
+      return se::dnn::NO_MASK;
+    case CudnnfMHAMaskKind::kPadding:
+      return se::dnn::PADDING;
+    case CudnnfMHAMaskKind::kCausal:
+      return se::dnn::CAUSAL;
+    case CudnnfMHAMaskKind::kPaddingCausal:
+      return se::dnn::PADDING_CAUSAL;
+    case CudnnfMHAMaskKind::kAlibi:
+      return se::dnn::ALIBI;
+    default:
+      return Internal("Unexpected fmha mask kind");
+  }
+}
+
 absl::StatusOr<se::dnn::FusedMHAKind> GetDNNFusedMHAKindFromCudnnfMHAKind(
     CudnnfMHAKind kind) {
   switch (kind) {

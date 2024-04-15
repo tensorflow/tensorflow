@@ -1877,7 +1877,6 @@ ENTRY main.129 {
   EXPECT_EQ(CountFusedAttentionCall(m.get(), /*is_backward*/ true), 1);
 }
 
-
 TEST_F(CudnnFusedMhaRewriterTestHloTest,
        BF16TrainingBmm1ScaleBiasSoftmaxDropoutBmm2DbiasShouldHaveUserShape) {
   if (skip_reason_) GTEST_SKIP() << *skip_reason_;
@@ -3046,7 +3045,7 @@ ENTRY main.92 {
   EXPECT_EQ(bwd_fmha->operands().size(), 6);
   EXPECT_NEAR(config.dropout_rate(), 0, 1e-2);
   EXPECT_EQ(config.is_flash_attention(), true);
-  EXPECT_EQ(config.is_causal_mask(), true);
+  EXPECT_EQ(config.mask_type(), CudnnfMHABackendConfig::CAUSAL);
 }
 
 TEST_F(CudnnFusedMhaRewriterTestHloTest,
@@ -3154,7 +3153,7 @@ ENTRY main.92 {
   EXPECT_EQ(fmha->operands().size(), 7);
   EXPECT_NEAR(config.dropout_rate(), 0, 1e-2);
   EXPECT_EQ(config.is_flash_attention(), true);
-  EXPECT_EQ(config.is_causal_mask(), false);
+  EXPECT_EQ(config.mask_type(), CudnnfMHABackendConfig::NO_MASK);
 }
 
 TEST_F(CudnnFusedMhaRewriterTestHloTest,
@@ -3257,9 +3256,8 @@ ENTRY main.92 {
   EXPECT_NEAR(config.dropout_rate(), 0, 1e-2);
   EXPECT_FLOAT_EQ(config.fmha_scale(), 2);
   EXPECT_EQ(config.is_flash_attention(), true);
-  EXPECT_EQ(config.is_causal_mask(), false);
+  EXPECT_EQ(config.mask_type(), CudnnfMHABackendConfig::NO_MASK);
 }
-
 
 // GPT3 pattern
 TEST_F(CudnnFusedMhaRewriterTestHloTest, FlashAttentionBF16TrainingGPT3_5B) {
@@ -3845,7 +3843,7 @@ main {
                           fwd_instruction->backend_config<GpuBackendConfig>());
   const CudnnfMHABackendConfig& config = gpu_config.cudnn_fmha_backend_config();
   EXPECT_EQ(config.is_flash_attention(), true);
-  EXPECT_EQ(config.is_causal_mask(), true);
+  EXPECT_EQ(config.mask_type(), CudnnfMHABackendConfig::CAUSAL);
 }
 
 TEST_F(CudnnFusedMhaRewriterTestHloTest,
