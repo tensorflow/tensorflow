@@ -245,11 +245,11 @@ def _impl(ctx):
                         flag_group(
                             flags = [
                                 "-isystem",
-                                "%{AARCH64_COMPILER_PATH}%/lib/gcc/aarch64-none-linux-gnu/11.3.1/include",
+                                "%{AARCH64_COMPILER_PATH}%/lib/gcc/aarch64-none-linux-gnu/13.2.1/include",
                                 "-isystem",
-                                "%{AARCH64_COMPILER_PATH}%/lib/gcc/aarch64-none-linux-gnu/11.3.1/include-fixed",
+                                "%{AARCH64_COMPILER_PATH}%/lib/gcc/aarch64-none-linux-gnu/13.2.1/include-fixed",
                                 "-isystem",
-                                "%{AARCH64_COMPILER_PATH}%/aarch64-none-linux-gnu/include/c++/11.3.1/",
+                                "%{AARCH64_COMPILER_PATH}%/aarch64-none-linux-gnu/include/c++/13.2.1/",
                                 "-isystem",
                                 "%{AARCH64_COMPILER_PATH}%/aarch64-none-linux-gnu/libc/usr/include/",
                                 "-isystem",
@@ -344,11 +344,11 @@ def _impl(ctx):
                         flag_group(
                             flags = [
                                 "-isystem",
-                                "%{ARMHF_COMPILER_PATH}%/lib/gcc/arm-none-linux-gnueabihf/11.3.1/include",
+                                "%{ARMHF_COMPILER_PATH}%/lib/gcc/arm-none-linux-gnueabihf/13.2.1/include",
                                 "-isystem",
-                                "%{ARMHF_COMPILER_PATH}%/lib/gcc/arm-none-linux-gnueabihf/11.3.1/include-fixed",
+                                "%{ARMHF_COMPILER_PATH}%/lib/gcc/arm-none-linux-gnueabihf/13.2.1/include-fixed",
                                 "-isystem",
-                                "%{ARMHF_COMPILER_PATH}%/arm-none-linux-gnueabihf/include/c++/11.3.1/",
+                                "%{ARMHF_COMPILER_PATH}%/arm-none-linux-gnueabihf/include/c++/13.2.1/",
                                 "-isystem",
                                 "%{ARMHF_COMPILER_PATH}%/arm-none-linux-gnueabihf/libc/usr/include/",
                                 "-isystem",
@@ -470,17 +470,17 @@ def _impl(ctx):
 
     if (ctx.attr.cpu == "aarch64"):
         cxx_builtin_include_directories = [
-                "%{AARCH64_COMPILER_PATH}%/lib/gcc/aarch64-none-linux-gnu/11.3.1/include",
-                "%{AARCH64_COMPILER_PATH}%/lib/gcc/aarch64-none-linux-gnu/11.3.1/include-fixed",
-                "%{AARCH64_COMPILER_PATH}%/aarch64-none-linux-gnu/include/c++/11.3.1/",
+                "%{AARCH64_COMPILER_PATH}%/lib/gcc/aarch64-none-linux-gnu/13.2.1/include",
+                "%{AARCH64_COMPILER_PATH}%/lib/gcc/aarch64-none-linux-gnu/13.2.1/include-fixed",
+                "%{AARCH64_COMPILER_PATH}%/aarch64-none-linux-gnu/include/c++/13.2.1/",
                 "%{AARCH64_COMPILER_PATH}%/aarch64-none-linux-gnu/libc/usr/include/",
                 "/usr/include",
             ]
     elif (ctx.attr.cpu == "armhf"):
         cxx_builtin_include_directories = [
-                "%{ARMHF_COMPILER_PATH}%/lib/gcc/arm-none-linux-gnueabihf/11.3.1/include",
-                "%{ARMHF_COMPILER_PATH}%/lib/gcc/arm-none-linux-gnueabihf/11.3.1/include-fixed",
-                "%{ARMHF_COMPILER_PATH}%/arm-none-linux-gnueabihf/include/c++/11.3.1/",
+                "%{ARMHF_COMPILER_PATH}%/lib/gcc/arm-none-linux-gnueabihf/13.2.1/include",
+                "%{ARMHF_COMPILER_PATH}%/lib/gcc/arm-none-linux-gnueabihf/13.2.1/include-fixed",
+                "%{ARMHF_COMPILER_PATH}%/arm-none-linux-gnueabihf/include/c++/13.2.1/",
                 "%{ARMHF_COMPILER_PATH}%/arm-none-linux-gnueabihf/libc/usr/include/",
                 "/usr/include",
             ]
