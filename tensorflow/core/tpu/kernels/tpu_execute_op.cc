@@ -93,7 +93,7 @@ Status GetComputationCacheEntry(
     std::unique_ptr<CompilationCacheEntryRef>* entry) {
   const Tensor* key;
   TF_RETURN_IF_ERROR(context->input("key", &key));
-  profiler::TraceMe trace_me("TpuExecuteOp::LookupProto", /*level=*/2);
+  tsl::profiler::TraceMe trace_me("TpuExecuteOp::LookupProto", /*level=*/2);
   if (!TensorShapeUtils::IsVector(key->shape()) ||
       key->shape().dim_size(0) != 3) {
     return absl::InvalidArgumentError(
@@ -219,7 +219,7 @@ absl::StatusOr<std::unique_ptr<InputBuffers>> BuildComputationInputs(
     OpKernelContext* context, const xla::Shape& input_host_shape,
     const VariableUpdateMap& variable_updates, xla::Backend* backend,
     int device_ordinal, se::Stream* stream) {
-  profiler::TraceMe trace_me("BuildComputationInputs", /*level=*/2);
+  tsl::profiler::TraceMe trace_me("BuildComputationInputs", /*level=*/2);
   OpInputList arg_list;
   TF_RETURN_IF_ERROR(context->input_list("args", &arg_list));
 
@@ -422,7 +422,7 @@ absl::StatusOr<std::unique_ptr<OutputBuffers>> AllocateOutputTensors(
     const std::shared_ptr<se::Event>& definition_event) {
   VLOG(4) << "Output buffers: " << scoped_buffers.ToString();
 
-  profiler::TraceMe trace_me("AllocateOutputTensors", /*level=*/2);
+  tsl::profiler::TraceMe trace_me("AllocateOutputTensors", /*level=*/2);
   // Shapes of the outputs, in TensorShape form.
   const int64_t sub_elements =
       xla::ShapeUtil::TupleElementCount(scoped_buffers.on_host_shape());
@@ -647,15 +647,15 @@ Status TPUExecuteOp::DoWork(OpKernelContext* context) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<TpuNodeContext> node_context,
                       TpuNodeContext::Create(device_ordinal));
 
-  profiler::TraceMe trace_me(
+  tsl::profiler::TraceMe trace_me(
       [device_ordinal, context] {
-        return profiler::TraceMeEncode(
+        return tsl::profiler::TraceMeEncode(
             "TpuExecuteOp", {{"device_ordinal", device_ordinal},
                              {"id", context->step_id()},
                              {"iter_num", context->frame_iter().iter_id}});
       },
       /*level=*/2);
-  profiler::TraceMe trace_me_init("TPUExecuteOp::Init", /*level=*/2);
+  tsl::profiler::TraceMe trace_me_init("TPUExecuteOp::Init", /*level=*/2);
 
   std::string rendezvous_key_base;
   std::unique_ptr<CompilationCacheEntryRef> entry_ref;

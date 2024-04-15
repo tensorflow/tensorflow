@@ -64,7 +64,7 @@ TpuTransferAsyncOpKernelBase::TpuTransferAsyncOpKernelBase(
 
 void TpuTransferAsyncOpKernelBase::ComputeAsync(OpKernelContext* ctx,
                                                 DoneCallback done) {
-  profiler::TraceMeProducer schedule_activity(
+  tsl::profiler::TraceMeProducer schedule_activity(
       "TpuTransferAsyncOpKernelBase::ComputeAsync");
   CancellationToken token =
       ctx->cancellation_manager()->get_cancellation_token();
@@ -84,8 +84,8 @@ void TpuTransferAsyncOpKernelBase::ComputeAsync(OpKernelContext* ctx,
   thread_pool_->Schedule(
       [this, ctx, done, token,
        traceme_context_id = schedule_activity.GetContextId()]() {
-        profiler::TraceMeConsumer compute_activity(
-            [this] { return profiler::TraceMeOp(name(), type_string()); },
+        tsl::profiler::TraceMeConsumer compute_activity(
+            [this] { return tsl::profiler::TraceMeOp(name(), type_string()); },
             traceme_context_id);
         Status s = RunTransfer(ctx);
         ctx->cancellation_manager()->DeregisterCallback(token);
@@ -102,9 +102,9 @@ Status TpuTransferAsyncOpKernelBase::RunTransferWithOrdinal(
                         transfer_op_->GetDeviceOrdinal(ctx));
   }
 
-  profiler::TraceMe activity(
+  tsl::profiler::TraceMe activity(
       [real_device_ordinal] {
-        return profiler::TraceMeEncode(
+        return tsl::profiler::TraceMeEncode(
             "RunTransferWithOrdinal",
             {{"device_ordinal", real_device_ordinal}});
       },
@@ -162,7 +162,7 @@ void StreamExecutorTransferOpImpl::Cancel() {
   TF_CHECK_OK(tpu::TpuNodeContext::CloseTpuHost());
 }
 
-StatusOr<int> StreamExecutorTransferOpImpl::GetDeviceOrdinal(
+absl::StatusOr<int> StreamExecutorTransferOpImpl::GetDeviceOrdinal(
     OpKernelContext* ctx) {
   const XlaDevice::Metadata* metadata;
   TF_RETURN_IF_ERROR(XlaDevice::GetMetadata(ctx, &metadata));
@@ -188,7 +188,7 @@ Status StreamExecutorTransferOpImpl::TransferLiteralFromOutfeed(
   return transfer_manager_->TransferLiteralFromOutfeed(executor, literal);
 }
 
-StatusOr<stream_executor::StreamExecutor*>
+absl::StatusOr<stream_executor::StreamExecutor*>
 StreamExecutorTransferOpImpl::GetStreamExecutor(int device_ordinal) {
   return tpu_platform_->ExecutorForDevice(device_ordinal);
 }

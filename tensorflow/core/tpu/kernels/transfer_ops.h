@@ -37,7 +37,7 @@ class TpuTransferOpInterface {
  public:
   virtual ~TpuTransferOpInterface() = default;
   virtual void Cancel() = 0;
-  virtual StatusOr<int> GetDeviceOrdinal(OpKernelContext* ctx) = 0;
+  virtual absl::StatusOr<int> GetDeviceOrdinal(OpKernelContext* ctx) = 0;
 
   virtual Status TransferBuffersToInfeed(
       int device_ordinal,
@@ -117,7 +117,7 @@ class StreamExecutorTransferOpImpl : public TpuTransferOpInterface {
   explicit StreamExecutorTransferOpImpl();
   ~StreamExecutorTransferOpImpl() override = default;
   void Cancel() override;
-  StatusOr<int> GetDeviceOrdinal(OpKernelContext* ctx) override;
+  absl::StatusOr<int> GetDeviceOrdinal(OpKernelContext* ctx) override;
 
   Status TransferBuffersToInfeed(
       int device_ordinal,
@@ -129,7 +129,7 @@ class StreamExecutorTransferOpImpl : public TpuTransferOpInterface {
       int device_ordinal, xla::MutableBorrowingLiteral literal) override;
 
  private:
-  StatusOr<stream_executor::StreamExecutor*> GetStreamExecutor(
+  absl::StatusOr<stream_executor::StreamExecutor*> GetStreamExecutor(
       int device_ordinal);
   xla::TpuTransferManagerInterface* transfer_manager_;
   tpu::TpuPlatformInterface* tpu_platform_;
