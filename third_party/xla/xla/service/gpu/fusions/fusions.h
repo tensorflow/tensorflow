@@ -91,7 +91,7 @@ class PreBufferAssignmentFusionInfo : public FusionInfo {
 // Returns the emitter for the given fusion. Returns nullopt if the fusion
 // type is not yet supported.
 absl::StatusOr<std::unique_ptr<FusionInterface>> GetFusionEmitter(
-    const FusionInfo& fusion_info);
+    const FusionInfo& fusion_info, bool is_emission_phase = false);
 
 }  // namespace gpu
 }  // namespace xla
