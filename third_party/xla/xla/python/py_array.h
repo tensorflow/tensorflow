@@ -98,6 +98,7 @@ struct PyArray_Storage {
   nb_class_ptr<PyClient> py_client;
   std::optional<nb_traceback> traceback;
   tsl::RCReference<ifrt::Array> ifrt_array;
+  nanobind::object fully_replicated_array = nanobind::none();
 
   // optional field, used only in python
   std::vector<PyArray> py_arrays;
@@ -289,7 +290,6 @@ class PyArray : public nanobind::object {
       std::vector<nanobind::object> objs);
 
  private:
-  absl::StatusOr<PyArray> FetchSingleShard(std::string_view api);
   absl::StatusOr<PyArray> AssertUnsharded(std::string_view api);
 
   void CheckAndRearrange();
