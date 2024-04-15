@@ -188,7 +188,7 @@ void ExpandStaticRangePtqPreset(const StaticRangePtqPreset& preset,
   new_specs.mutable_specs()->Add(previous_specs.specs().begin(),
                                  previous_specs.specs().end());
 
-  // TODO: b/331120943 - Remove preset from config.
+  config.clear_static_range_ptq_preset();
   config.mutable_specs()->Swap(&new_specs);
 }
 

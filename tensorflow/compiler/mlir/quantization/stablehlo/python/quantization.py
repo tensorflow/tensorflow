@@ -85,7 +85,7 @@ def quantize_saved_model(
 
   if not (
       _has_quantization_method(config.specs, 'static_range_ptq')
-      and len(config.static_range_ptq_preset.representative_datasets) == 1
+      and len(config.calibration_options.representative_datasets) == 1
   ) and not _has_quantization_method(config.specs, 'weight_only_ptq'):
     raise ValueError(
         '`quantize_saved_model` currently only supports static-range PTQ with a'

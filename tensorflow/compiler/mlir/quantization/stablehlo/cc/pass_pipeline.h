@@ -34,8 +34,7 @@ void AddPreCalibrationPasses(
 void AddPostCalibrationPasses(
     OpPassManager& pm,
     const ::stablehlo::quantization::PipelineConfig& pipeline_config,
-    const ::stablehlo::quantization::StaticRangePtqPreset&
-        static_range_ptq_preset);
+    const ::stablehlo::quantization::QuantizationSpecs& specs);
 
 // Adds passes for weight-only quantization.
 void AddWeightOnlyQuantizationPasses(

@@ -123,7 +123,7 @@ absl::StatusOr<ModuleOp> CalibrationComponent::Run(
   // Translates `RepresentativeDatasetConfig`s to signature key ->
   // `RepresentativeDatasetFile` mapping.
   const auto dataset_configs =
-      config.static_range_ptq_preset().representative_datasets();
+      config.calibration_options().representative_datasets();
   const std::vector<RepresentativeDatasetConfig> dataset_config_vector(
       dataset_configs.begin(), dataset_configs.end());
   TF_ASSIGN_OR_RETURN(

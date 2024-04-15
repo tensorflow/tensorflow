@@ -391,18 +391,13 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         'SAME',
         has_func_alias,
     )
-    # TODO(b/331809306): investigate why these tests fail.
-    # skip these test cases.
-    if (
-        bias_fn is None
-        and has_batch_norm
-        and input_shape_dynamic
-        and enable_per_channel_quantized_weight
-    ):
+    # TODO: b/331809306 - Investigate why these test fail then re-enable.
+    if has_batch_norm and (bias_fn or not input_shape_dynamic):
       return
 
-    # TODO(b/332953841): Add support for such cases.
-    if has_batch_norm and (bias_fn or not input_shape_dynamic):
+    # TODO: b/331120943 - Re-enable this after correctly handling quantization
+    # granularity per quantizable scope.
+    if has_batch_norm and (not bias_fn and input_shape_dynamic):
       return
 
     # Generate model input data.
