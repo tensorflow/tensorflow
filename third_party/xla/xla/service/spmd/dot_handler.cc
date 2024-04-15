@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/functional/function_ref.h"
 #include "absl/log/log.h"
+#include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -117,9 +118,12 @@ Status SpmdPartitioningVisitor::HandleDot(HloInstruction* hlo) {
         ShapeInference::InferDotOpShape(
             l->shape(), r->shape(), hlo->dot_dimension_numbers(),
             /*preferred_element_type=*/hlo->shape().element_type(), sparsity));
-    return b->AddInstruction(HloInstruction::CreateDot(
+    auto new_dot = b->AddInstruction(HloInstruction::CreateDot(
         sharded_dot_shape, l, r, hlo->dot_dimension_numbers(),
         hlo->precision_config(), sparsity, resharded_meta));
+    std::string new_name(hlo->name());
+    new_dot->SetAndSanitizeName(new_name + ".0");
+    return new_dot;
   };
   return HandleDotHelper(hlo, mapping, create_sharded_dot);
 }
@@ -992,8 +996,9 @@ absl::StatusOr<HloInstruction*> EmitWindowedDotGeneral(
   // Create a while loop that computes one window per iteration. During each
   // iteration, each partition sends its input window to its neighbor using
   // collective-permute for the next iteration.
-  std::string body_name = "windowed_dot_general_body";
-  body_name += (einsum_config.is_ag_einsum) ? "_ag" : "_rs";
+  std::string body_name = absl::StrCat("windowed_dot_general_body_",
+                                       einsum_config.is_ag_einsum ? "ag" : "rs",
+                                       "_", original_hlo->name());
   SpmdBuilder body_b(body_name, original_hlo);
 
   // Generate partial results used by bidirectional algorithm.
@@ -1700,8 +1705,9 @@ absl::StatusOr<HloInstruction*> EmitWindowedDotGeneral(
         HloInstruction::CreateTuple({l, r, o, extra_inout, i}));
   }
 
-  std::string cond_name = "windowed_dot_general_cond";
-  cond_name += (einsum_config.is_ag_einsum) ? "_ag" : "_rs";
+  std::string cond_name = absl::StrCat("windowed_dot_general_cond_",
+                                       einsum_config.is_ag_einsum ? "ag" : "rs",
+                                       "_", original_hlo->name());
   SpmdBuilder cond_b(cond_name, original_hlo);
   auto cond_param = cond_b.AddInstruction(HloInstruction::CreateParameter(
       /*parameter_number=*/0,
@@ -1765,6 +1771,9 @@ absl::StatusOr<HloInstruction*> EmitWindowedDotGeneral(
         unpadded_result_buffer_shape.dimensions(),
         std::vector<int64_t>(padded_result_buffer_shape.rank(), 1)));
   }
+  FrontendAttributes attrs;
+  (*attrs.mutable_map())["skip-simplify-while-loops/trip-count-one"] = "true";
+  while_loop->add_frontend_attributes(attrs);
   return result;
 }
 

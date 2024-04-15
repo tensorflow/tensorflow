@@ -2352,6 +2352,8 @@ AlgebraicSimplifierVisitor::RemoveDegenerateDimensionFromDot(
       MakeDotHlo(new_lhs, new_rhs, new_dnums, dot->precision_config(),
                  dot->shape().element_type(), sparsity, sparse_meta));
   dot->SetupDerivedInstruction(new_dot);
+  std::string new_name(dot->name());
+  new_dot->SetAndSanitizeName(new_name + ".0");
 
   if (ShapeUtil::Compatible(dot->shape(), new_dot->shape())) {
     TF_RETURN_IF_ERROR(ReplaceInstruction(dot, new_dot));
@@ -2497,6 +2499,8 @@ AlgebraicSimplifierVisitor::RemoveTransposesFromDotOperands(
           ? SwapOperandsInDotPrecisionConfig(dot->precision_config())
           : dot->precision_config()));
   dot->SetupDerivedInstruction(new_dot);
+  std::string new_name(dot->name());
+  new_dot->SetAndSanitizeName(new_name + ".0");
   TF_RETURN_IF_ERROR(ReplaceWithNewInstruction(
       dot,
       HloInstruction::CreateTranspose(dot->shape(), new_dot, permutation)));
@@ -2666,7 +2670,8 @@ AlgebraicSimplifierVisitor::OptimizeDotOfConcatHelper(
         HloInstruction::CreateDot(dot->shape(), new_dot_lhs, new_dot_rhs,
                                   new_dot_dnums, dot->precision_config()));
     dot->SetupDerivedInstruction(new_dot);
-
+    std::string new_name(dot->name());
+    new_dot->SetAndSanitizeName(new_name + ".0");
     if (add_result) {
       add_result = dot->AddInstruction(HloInstruction::CreateBinary(
           dot->shape(), HloOpcode::kAdd, add_result, new_dot));
@@ -2775,6 +2780,8 @@ absl::StatusOr<HloInstruction*> AlgebraicSimplifierVisitor::OptimizeDotOfGather(
       HloInstruction::CreateDot(memoized_shape, left_operand, right_operand,
                                 dnums, dot->precision_config()));
   dot->SetupDerivedInstruction(memoized_inst);
+  std::string new_name(dot->name());
+  memoized_inst->SetAndSanitizeName(new_name + ".0");
   // Get pair {start, 0} or {0, start}.
   // Position of start:
   int index_of_non_zero_start = lhs_is_dynamic_slice
@@ -3025,6 +3032,8 @@ AlgebraicSimplifierVisitor::OptimizeDotOfReorderContractingDims(
 
   HloInstruction* new_dot = dot->AddInstruction(HloInstruction::CreateDot(
       dot->shape(), lhs, rhs, dnums, dot->precision_config()));
+  std::string new_name(dot->name());
+  new_dot->SetAndSanitizeName(new_name + ".0");
   return new_dot;
 }
 
@@ -8804,7 +8813,8 @@ absl::StatusOr<bool> AlgebraicSimplifierVisitor::SimplifyConvToDot(
   auto dot = convolution->AddInstruction(HloInstruction::CreateDot(
       dot_output_shape, new_lhs, new_rhs, dot_dimension_numbers,
       convolution->precision_config()));
-
+  std::string new_name(convolution->name());
+  dot->SetAndSanitizeName(new_name + ".0");
   TF_RETURN_IF_ERROR(
       ReplaceInstruction(convolution, add_bitcast(convolution_shape, dot)));
   return true;
