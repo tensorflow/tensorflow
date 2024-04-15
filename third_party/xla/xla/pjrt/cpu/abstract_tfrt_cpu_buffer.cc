@@ -676,25 +676,46 @@ AbstractTfrtCpuBuffer::BufferFromHostBufferHelper(
       !byte_strides || HasMajorToMinorLayout(type, dims, *byte_strides);
   // Int4 arrays are unpacked on host and packed on device.
   bool is_int4 = primitive_util::Is4BitType(type);
+
   // If the input buffer has a default layout and is sufficiently aligned, we
   // can simply point to the input array's data without any further copies. At
   // the time of writing we require a 16-byte alignment because XLA may generate
   // code which requires it.
+  bool is_aligned_data = ((absl::bit_cast<std::uintptr_t>(data) &
+                           (cpu_function_runtime::MinAlign() - 1)) == 0);
+
+  using HostBufferSemantics = PjRtClient::HostBufferSemantics;
+  bool immutable_zero_copy_semantics =
+      host_buffer_semantics == HostBufferSemantics::kImmutableZeroCopy;
+  bool mutable_zero_copy_semantics =
+      host_buffer_semantics == HostBufferSemantics::kMutableZeroCopy;
+
   bool can_use_zero_copy =
-      has_default_layout && !is_int4 &&
-      host_buffer_semantics ==
-          PjRtClient::HostBufferSemantics::kImmutableZeroCopy &&
-      ((absl::bit_cast<std::uintptr_t>(data) &
-        (cpu_function_runtime::MinAlign() - 1)) == 0);
+      has_default_layout && !is_int4 && is_aligned_data &&
+      (immutable_zero_copy_semantics || mutable_zero_copy_semantics);
+
   absl::InlinedVector<std::shared_ptr<MaybeOwningCpuMemory>, 4> buffers;
   absl::InlinedVector<tsl::AsyncValueRef<CpuEvent>, 4> definition_events;
   absl::AnyInvocable<void() &&> on_delete_callback;
   size_t byte_size = ShapeUtil::ByteSizeOf(shape);
-  if (can_use_zero_copy) {
-    auto device_buffer = std::make_shared<MaybeOwningCpuMemory>(
-        const_cast<void*>(data), byte_size);
-    buffers.push_back(std::move(device_buffer));
+
+  if (can_use_zero_copy && mutable_zero_copy_semantics) {
+    // For a mutable zero copy semantics we pass a no-op deleter because
+    // underlying buffer is owned by the caller and it will free it when
+    // PjRt will call `on_done_with_host_buffer` callback.
+    MaybeOwningCpuMemory::OwnedDataPtr::deleter_type no_op = +[](void*) {};
+    buffers.push_back(std::make_shared<MaybeOwningCpuMemory>(
+        MaybeOwningCpuMemory::OwnedDataPtr(
+            reinterpret_cast<uint8_t*>(const_cast<void*>(data)), no_op),
+        byte_size));
     on_delete_callback = std::move(on_done_with_host_buffer);
+
+  } else if (can_use_zero_copy && immutable_zero_copy_semantics) {
+    // For immutable zero-copy semantics we pass non-owning cpu memory.
+    buffers.push_back(std::make_shared<MaybeOwningCpuMemory>(
+        const_cast<void*>(data), byte_size));
+    on_delete_callback = std::move(on_done_with_host_buffer);
+
   } else {
     size_t dst_byte_size =
         is_int4 ? CeilOfRatio(byte_size, size_t{2}) : byte_size;

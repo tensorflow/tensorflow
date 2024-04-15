@@ -4,6 +4,8 @@
 * Added ``PjRtCApiMemorySpace::kind_id`` for uniquely identifying memory space kinds.
 * Renamed memory space kind to ``PjRtCApiMemorySpace::memory_space_kind`` to
   ``PjRtCApiMemorySpace::kind``.
+* Added new host buffer semantics enum
+  ``PJRT_HostBufferSemantics_kMutableZeroCopy``
 
 ## 0.47
 * Added ``PJRT_Extension_Type::PJRT_Extension_Type_Custom_Partitioner``.
