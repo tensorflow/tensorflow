@@ -175,7 +175,6 @@ cc_library(
         "//xla/service:hlo_module_util",
         "//xla/service:hlo_proto_cc",
         "//xla/service:hlo_value",
-        "//xla/service/cpu:buffer_desc",
         "//xla/service/cpu:collectives_interface",
         "//xla/service/cpu:cpu_compiler",
         "//xla/service/cpu:cpu_executable",
