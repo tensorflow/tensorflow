@@ -35,7 +35,7 @@ cc_library(
         "random_distributions.h",
         "simple_philox.h",
     ],
-    visibility = internal_visibility(default_visibility),
+    visibility = internal_visibility(default_visibility) + ["//tensorflow/contrib/boosted_trees/lib:__pkg__"],
     deps = [
         ":exact_uniform_int",
         ":philox_random",
@@ -67,7 +67,7 @@ cc_library(
     visibility = internal_visibility([
         "//tensorflow/core/lib/random:__pkg__",
         "//tensorflow/lite:__subpackages__",
-    ]),
+    ]) + ["//tensorflow/contrib/boosted_trees/lib:__pkg__"],
 )
 
 cc_library(
