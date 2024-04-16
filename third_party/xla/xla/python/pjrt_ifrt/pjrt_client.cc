@@ -36,8 +36,8 @@ limitations under the License.
 #include "xla/python/pjrt_ifrt/pjrt_array.h"
 #include "xla/python/pjrt_ifrt/pjrt_tuple.h"
 #include "xla/python/pjrt_ifrt/xla_sharding.h"
-#include "xla/tsl/concurrency/ref_count.h"
 #include "xla/util.h"
+#include "tsl/concurrency/ref_count.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {

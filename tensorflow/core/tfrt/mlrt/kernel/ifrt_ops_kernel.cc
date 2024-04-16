@@ -27,7 +27,6 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/ifrt_types.h"
 #include "xla/python/ifrt/future.h"
-#include "xla/tsl/concurrency/ref_count.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/device_base.h"
