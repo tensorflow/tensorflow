@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_SCATTER_SIMPLIFIER_H_
 #define XLA_SERVICE_SCATTER_SIMPLIFIER_H_
 
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/op_expander_pass.h"
 
 namespace xla {
@@ -42,10 +43,13 @@ class ScatterSimplifier : public OpExpanderPass {
  public:
   absl::string_view name() const override { return "scatter_simplifier"; }
 
+  static bool IsSimplifiedScatter(const HloScatterInstruction* scatter);
+
  protected:
   bool InstructionMatchesPattern(HloInstruction* inst) override;
 
-  StatusOr<HloInstruction*> ExpandInstruction(HloInstruction* inst) override;
+  absl::StatusOr<HloInstruction*> ExpandInstruction(
+      HloInstruction* inst) override;
 };
 
 }  // namespace xla

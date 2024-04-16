@@ -47,9 +47,9 @@ class TestAllocator : public se::StreamExecutorMemoryAllocator {
       : se::StreamExecutorMemoryAllocator(
             platform, PlatformUtil::GetStreamExecutors(platform).value()) {}
 
-  StatusOr<se::OwningDeviceMemory> Allocate(int device_ordinal, uint64_t size,
-                                            bool retry_on_failure,
-                                            int64_t memory_space) override;
+  absl::StatusOr<se::OwningDeviceMemory> Allocate(
+      int device_ordinal, uint64_t size, bool retry_on_failure,
+      int64_t memory_space) override;
   Status Deallocate(int device_ordinal, se::DeviceMemoryBase mem) override;
 
   // Return the number of allocations that have been performed.
@@ -93,10 +93,10 @@ class LocalClientTestBase : public ManifestCheckingTest {
 
   // Execute the given computation on the local client. With and without
   // options.
-  StatusOr<ScopedShapedBuffer> ExecuteLocally(
+  absl::StatusOr<ScopedShapedBuffer> ExecuteLocally(
       const XlaComputation& computation,
       absl::Span<const ShapedBuffer* const> arguments);
-  StatusOr<ScopedShapedBuffer> ExecuteLocally(
+  absl::StatusOr<ScopedShapedBuffer> ExecuteLocally(
       const XlaComputation& computation,
       absl::Span<const ShapedBuffer* const> arguments,
       const ExecutableBuildOptions& build_options,
@@ -112,10 +112,11 @@ class LocalClientTestBase : public ManifestCheckingTest {
       const ExecutableRunOptions& run_options);
 
   // Parses the given string and returns module as a VerifiedHloModule.
-  StatusOr<std::unique_ptr<VerifiedHloModule>> ParseAndReturnVerifiedModule(
-      absl::string_view hlo_text);
-  StatusOr<std::unique_ptr<VerifiedHloModule>> ParseAndReturnVerifiedModule(
-      absl::string_view hlo_text, const HloModuleConfig& config);
+  absl::StatusOr<std::unique_ptr<VerifiedHloModule>>
+  ParseAndReturnVerifiedModule(absl::string_view hlo_text);
+  absl::StatusOr<std::unique_ptr<VerifiedHloModule>>
+  ParseAndReturnVerifiedModule(absl::string_view hlo_text,
+                               const HloModuleConfig& config);
 
   // Returns a default set of execute options.
   ExecutableBuildOptions DefaultExecutableBuildOptions() const;

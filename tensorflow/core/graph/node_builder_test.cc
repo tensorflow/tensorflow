@@ -84,7 +84,7 @@ REGISTER_OP("FullTypeOpBasicType")
       arg->set_type_id(TFT_VAR);
       arg->set_s("out_type");
 
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 TEST(NodeBuilderTest, TypeConstructorBasicType) {
@@ -115,7 +115,7 @@ REGISTER_OP("FullTypeOpListType")
       arg->set_type_id(TFT_VAR);
       arg->set_s("out_types");
 
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 TEST(NodeBuilderTest, TypeConstructorListType) {

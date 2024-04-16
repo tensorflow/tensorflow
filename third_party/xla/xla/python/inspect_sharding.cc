@@ -56,8 +56,8 @@ std::optional<xla::HloSharding> InspectShardingReadArgs(
 
 class InspectShardingCallPartitioner : public xla::CustomCallPartitioner {
  public:
-  xla::Status Partition(xla::spmd::SpmdPartitioningVisitor* partitioner,
-                        HloInstruction* instruction) const override {
+  absl::Status Partition(xla::spmd::SpmdPartitioningVisitor* partitioner,
+                         HloInstruction* instruction) const override {
     const HloInstruction* operand = instruction->operand(0);
     if (!operand->has_sharding()) {
       return xla::Internal(

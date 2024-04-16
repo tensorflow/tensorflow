@@ -26,6 +26,12 @@
 * <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
 * <NOTES SHOULD BE GROUPED PER AREA>
 
+* GPU
+    * Support for NVIDIA GPUs with compute capability 8.9 (e.g. L4 & L40) has
+      been added to TF binary distributions (Python wheels).
+* Replace `DebuggerOptions` of TensorFlow Quantizer, and migrate to
+  `DebuggerConfig` of StableHLO Quantizer.
+
 ## Keras
 
 <INSERT SMALL BLURB ABOUT RELEASE FOCUS AREA AND POTENTIAL TOOLCHAIN CHANGES>
@@ -34,6 +40,9 @@
 
 * <DOCUMENT BREAKING CHANGES HERE>
 * <THIS SECTION SHOULD CONTAIN API, ABI AND BEHAVIORAL BREAKING CHANGES>
+* GPU
+    * Support for NVIDIA GPUs with compute capability 5.x (Maxwell generation)
+      has been removed from TF binary distributions (Python wheels).
 
 ### Known Caveats
 
@@ -46,11 +55,45 @@
 *   <INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
 *   <IF RELEASE CONTAINS MULTIPLE FEATURES FROM SAME AREA, GROUP THEM TOGETHER>
 
+*   Add `is_cpu_target_available`, which indicates whether or not TensorFlow was
+    built with support for a given CPU target. This can be useful for skipping
+    target-specific tests if a target is not supported.
+
+*   `tf.data`
+    * Support `data.experimental.distribued_save`. `distribued_save` uses
+      tf.data service
+      (https://www.tensorflow.org/api_docs/python/tf/data/experimental/service)
+      to write distributed dataset snapshots. The call is non-blocking and
+      returns without waiting for the snapshot to finish. Setting `wait=True` to
+      `tf.data.Dataset.load` allows the snapshots to be read while they are
+      being written.
+
 ### Bug Fixes and Other Changes
 
 * <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
 * <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
 * <NOTES SHOULD BE GROUPED PER AREA>
+
+* `tf.lite`
+    * Quantization for `FullyConnected` layer is switched from per-tensor to
+      per-channel scales for dynamic range quantization use case (`float32`
+      inputs / outputs and `int8` weights). The change enables new quantization
+      schema globally in the converter and inference engine. The new behaviour
+      can be disabled via experimental
+      flag `converter._experimental_disable_per_channel_quantization_for_dense_layers = True`.
+    * C API:
+        * The experimental `TfLiteRegistrationExternal` type has been renamed as
+          `TfLiteOperator`, and likewise for the corresponding API functions.
+    * The Python TF Lite Interpreter bindings now have an option
+      `experimental_default_delegate_latest_features` to enable all default
+      delegate features.
+
+* `tf.data`
+    * Add `wait` to `tf.data.Dataset.load`. If `True`, for snapshots written
+      with `distributed_save`, it reads the snapshot while it is being written.
+      For snapshots written with regular `save`, it waits for the snapshot until
+      it's finished. The default is `False` for backward compatibility. Users of
+      `distributed_save` are recommended to set it to `True`.
 
 ## Thanks to our Contributors
 
@@ -110,8 +153,9 @@ This release contains contributions from many people at Google, as well as:
     keras
 * **Apple Silicon users:** If you previously installed TensorFlow using
     `pip install tensorflow-macos`, please update your installation method. Use
-    `pip install tensorflow` from now on. Starting with TF 2.17, the
-    `tensorflow-macos` package will no longer receive updates.
+    `pip install tensorflow` from now on.
+* **Mac x86 users:** Mac x86 builds are being deprecated and will no longer be
+  released as a Pip package from TF 2.17 onwards.
 
 ### Known Caveats
 
@@ -119,7 +163,7 @@ This release contains contributions from many people at Google, as well as:
 * <ADDING/BUMPING DEPENDENCIES SHOULD GO HERE>
 * <KNOWN LACK OF SUPPORT ON SOME PLATFORM, SHOULD GO HERE>
 
-*  Full aarch64 Linux and Arm64 macOS wheels are now published to the 
+*  Full aarch64 Linux and Arm64 macOS wheels are now published to the
   `tensorflow` pypi repository and no longer redirect to a separate package.
 
 ### Major Features and Improvements
@@ -128,7 +172,7 @@ This release contains contributions from many people at Google, as well as:
 *   <IF RELEASE CONTAINS MULTIPLE FEATURES FROM SAME AREA, GROUP THEM TOGETHER>
 
 *  Support for Python 3.12 has been added.
-*  [tensorflow-tpu](https://pypi.org/project/tensorflow-tpu/) package is now 
+*  [tensorflow-tpu](https://pypi.org/project/tensorflow-tpu/) package is now
    available for easier TPU based installs.
 *  TensorFlow pip packages are now built with CUDA 12.3 and cuDNN 8.9.7
 
@@ -146,6 +190,25 @@ This release contains contributions from many people at Google, as well as:
     * Added support for `stablehlo.maximum`.
     * Added support for `stablehlo.minimum`.
     * Added boolean parameter support for `tfl.gather_nd`.
+    * C API:
+        * New API functions:
+            * `tensorflow/lite/c/c_api_experimental.h`:
+                * `TfLiteInterpreterGetVariableTensorCount`
+                * `TfLiteInterpreterGetVariableTensor`
+                * `TfLiteInterpreterGetBufferHandle`
+                * `TfLiteInterpreterSetBufferHandle`
+            * `tensorflow/lite/c/c_api_opaque.h`:
+                * `TfLiteOpaqueTensorSetAllocationTypeToDynamic`
+        * API functions promoted from experimental to stable:
+            * `tensorflow/lite/c/c_api.h`:
+                * `TfLiteInterpreterOptionsEnableCancellation`
+                * `TfLiteInterpreterCancel`
+    * C++ API:
+        * New virtual methods in the `tflite::SimpleDelegateInterface` class in `tensorflow/lite/delegates/utils/simple_delegate.h`,
+          and likewise in the `tflite::SimpleOpaqueDelegateInterface` class in `tensorflow/lite/delegates/utils/simple_opaque_delegate.h`:
+            * `CopyFromBufferHandle`
+            * `CopyToBufferHandle`
+            * `FreeBufferHandle`
 
 * `tf.train.CheckpointOptions` and `tf.saved_model.SaveOptions`
     * These now take in a new argument called `experimental_sharding_callback`.
@@ -168,6 +231,13 @@ This release contains contributions from many people at Google, as well as:
       from both the node defs and the function defs of the graph. Note that
       this currently only strips the `Assert` nodes from the graph and
       converts them into `NoOp`s instead.
+
+*   `tf.data`
+
+    * `tf.data` now has an `autotune_options.initial_parallelism` option to
+      control the initial parallelism setting used by autotune before the data
+      pipeline has started running. The default is 16. A lower value reduces
+      initial memory usage, while a higher value improves startup time.
 
 ## Keras
 
@@ -214,7 +284,7 @@ This release contains contributions from many people at Google, as well as:
 
 This release contains contributions from many people at Google, as well as:
 
-<INSERT>, <NAME>, <HERE>, <USING>, <GITHUB>, <HANDLE>
+RoboTux, <INSERT>, <NAME>, <HERE>, <USING>, <GITHUB>, <HANDLE>
 
 # Release 2.15.0.post1
 

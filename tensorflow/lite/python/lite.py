@@ -61,6 +61,7 @@ from tensorflow.lite.python.util import convert_debug_info_func as _convert_debu
 from tensorflow.lite.python.util import freeze_graph as _freeze_graph
 from tensorflow.lite.python.util import get_debug_info as _get_debug_info
 from tensorflow.lite.python.util import get_grappler_config as _get_grappler_config
+from tensorflow.lite.python.util import get_model_hash as _get_model_hash
 from tensorflow.lite.python.util import get_sparsity_modes as _get_sparsity_modes
 from tensorflow.lite.python.util import get_tensor_name as _get_tensor_name
 from tensorflow.lite.python.util import get_tensors_from_tensor_names as _get_tensors_from_tensor_names
@@ -636,7 +637,10 @@ class TFLiteConverterBase:
     self._experimental_full_integer_quantization_bias_type = None
     # Provides specs for quantization, whether preset or custom.
     self._experimental_quantization_options = None  # Deprecated
+    # Whether to use StableHLO Quantizer instead of TFLite Quantizer.
     self.experimental_use_stablehlo_quantizer = False
+    # Quantization configuration to pass to StableHLO Quantizer.
+    self.experimental_stablehlo_quantizer_config = None
     # Initializes conversion metadata.
     self.exclude_conversion_metadata = False
     self._metadata = conversion_metadata_fb.ConversionMetadataT()
@@ -663,6 +667,8 @@ class TFLiteConverterBase:
     self._experimental_use_buffer_offset = False
     self._experimental_reduce_type_precision = False
     self._experimental_qdq_conversion_mode = None
+    self._experimental_disable_per_channel_quantization_for_dense_layers = False
+    self._experimental_enable_composite_direct_lowering = False
 
     # Debug parameters
     self.ir_dump_dir = None
@@ -748,6 +754,7 @@ class TFLiteConverterBase:
           input_data_type=input_type,
           output_data_type=output_type,
           enable_variable_quantization=enable_variable_quantization,
+          disable_per_channel_for_dense_layers=self._experimental_disable_per_channel_quantization_for_dense_layers,
       )
     else:
       return calibrate_quantize.calibrate_and_quantize(
@@ -812,7 +819,16 @@ class TFLiteConverterBase:
         "use_buffer_offset": self._experimental_use_buffer_offset,
         "reduce_type_precision": self._experimental_reduce_type_precision,
         "use_stablehlo_quantizer": self.experimental_use_stablehlo_quantizer,
+        "stablehlo_quantizer_config": (
+            self.experimental_stablehlo_quantizer_config
+        ),
         "qdq_conversion_mode": self._experimental_qdq_conversion_mode,
+        "disable_per_channel_quantization_for_dense_layers": (
+            self._experimental_disable_per_channel_quantization_for_dense_layers
+        ),
+        "enable_composite_direct_lowering": (
+            self._experimental_enable_composite_direct_lowering
+        ),
     }
 
     if self.saved_model_dir:
@@ -832,39 +848,67 @@ class TFLiteConverterBase:
       )
 
     if self.experimental_use_stablehlo_quantizer:
-      if Optimize.DEFAULT in self.optimizations and self.representative_dataset:
-        if len(self._saved_model_exported_names) != 1:
-          raise ValueError(
-              "StableHLO quantizer is only supported when converting from a"
-              " SavedModel with one signature key."
-          )
-
-        signature_key = self._saved_model_exported_names[0]
-
-        # Convert a programmatically provided representative dataset to a
-        # temporary TFRecord file to be used by the StableHLO quantizer.
-        tfrecord_file_path: str = tempfile.mkstemp(
-            suffix=".tfrecord", prefix=signature_key
-        )[1]
-        rd.TfRecordRepresentativeDatasetSaver(
-            {signature_key: tfrecord_file_path}
-        ).save({signature_key: self.representative_dataset()})
-
-        quantization_config = qc.QuantizationConfig(
-            static_range_ptq_preset=qc.StaticRangePtqPreset(
-                representative_datasets=[
-                    qc.RepresentativeDatasetConfig(
-                        tf_record=qc.TfRecordFile(path=tfrecord_file_path)
-                    )
-                ]
-            )
-        )
-
-        args["quantization_config"] = quantization_config
-      else:
-        raise ValueError("StableHLO quantizer only supports static-range PTQ.")
+      self._assign_stablehlo_quantization_config_or_populate_default(args)
+    elif self.experimental_stablehlo_quantizer_config is not None:
+      raise ValueError(
+          "QuantizationConfig should be provided only when"
+          " experimental_use_stablehlo_quantizer is set to true."
+      )
 
     return args
+
+  def _assign_stablehlo_quantization_config_or_populate_default(self, args):
+    """Assigns `QuantizationConfig` to `args` or populate default.
+
+    Args:
+      args: Dictionary of argument names and associated values.
+    """
+    if (
+        self.experimental_stablehlo_quantizer_config is not None
+        and Optimize.DEFAULT not in self.optimizations
+    ):
+      args["quantization_config"] = self.experimental_stablehlo_quantizer_config
+    elif Optimize.DEFAULT in self.optimizations and self.representative_dataset:
+      if len(self._saved_model_exported_names) != 1:
+        raise ValueError(
+            "StableHLO quantizer is only supported when converting from a"
+            " SavedModel with one signature key."
+        )
+
+      signature_key = self._saved_model_exported_names[0]
+
+      # Convert a programmatically provided representative dataset to a
+      # temporary TFRecord file to be used by the StableHLO quantizer.
+      tfrecord_file_path = tempfile.mkstemp(
+          suffix=".tfrecord", prefix=signature_key
+      )[1]
+      rd.TfRecordRepresentativeDatasetSaver(
+          {signature_key: tfrecord_file_path}
+      ).save({signature_key: self.representative_dataset()})
+
+      quantization_config = qc.QuantizationConfig(
+          static_range_ptq_preset=qc.StaticRangePtqPreset(
+              representative_datasets=[
+                  qc.RepresentativeDatasetConfig(
+                      tf_record=qc.TfRecordFile(path=tfrecord_file_path)
+                  )
+              ],
+              enable_per_channel_quantized_weight=True,
+              enable_full_int_quantization=True,
+          ),
+          # For ODML use cases, uniform quantized types should be left intact.
+          pipeline_config=qc.PipelineConfig(
+              unpack_quantized_types=False,
+          ),
+      )
+
+      args["quantization_config"] = quantization_config
+      # TODO: b/307626463 - Enable StableHLO quantizer DRQ when Optimize.DEFAULT
+      # is set without representative dataset.
+    else:
+      raise ValueError(
+          "StableHLO quantizer only supports static-range and weight-only PTQ."
+      )
 
   def _contains_function_with_implements_attr(self, saved_model_proto):
     meta_graph = saved_model_proto.meta_graphs[0]
@@ -1142,7 +1186,9 @@ class TFLiteConverterBase:
     # Populates the conversion metadata.
     # TODO(b/202090541): Collects sparsity block size information.
     sparsity_modes = _get_sparsity_modes(model_object)
+    model_hash = _get_model_hash(model_object)
     self._metadata.options.modelOptimizationModes.extend(sparsity_modes)
+    self._metadata.environment.modelHash = model_hash
     model_object = _populate_conversion_metadata(model_object, self._metadata)
     return flatbuffer_utils.convert_object_to_bytearray(model_object)
 

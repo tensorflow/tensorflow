@@ -112,8 +112,8 @@ class XlaOpKernelContext {
   xla::XlaOp Input(absl::string_view name);
 
   // Returns the xla input shape for a given index.
-  StatusOr<xla::Shape> InputXlaShape(int index);
-  StatusOr<xla::Shape> InputXlaShape(absl::string_view name);
+  absl::StatusOr<xla::Shape> InputXlaShape(int index);
+  absl::StatusOr<xla::Shape> InputXlaShape(absl::string_view name);
 
   // Returns true if all inputs are the same shape, otherwise sets the
   // status to a non-OK value and returns false.
@@ -162,7 +162,7 @@ class XlaOpKernelContext {
       absl::string_view name, int64_t* out,
       xla::ValueInferenceMode mode = xla::ValueInferenceMode::kValue);
 
-  StatusOr<int64_t> ConstantInputAsIntScalar(
+  absl::StatusOr<int64_t> ConstantInputAsIntScalar(
       absl::string_view name,
       xla::ValueInferenceMode mode = xla::ValueInferenceMode::kValue);
 
@@ -213,7 +213,7 @@ class XlaOpKernelContext {
       xla::ValueInferenceMode mode = xla::ValueInferenceMode::kValue);
 
   // Returns the Tensor representation of the constant input.
-  StatusOr<Tensor> ConstantInputTensor(
+  absl::StatusOr<Tensor> ConstantInputTensor(
       int index,
       xla::ValueInferenceMode mode = xla::ValueInferenceMode::kValue);
 

@@ -100,6 +100,18 @@ bool TfLiteAttributeMapSetStringBufferAttr(TfLiteAttributeMap* attrs,
                                            TfLiteBufferAttrKey key,
                                            const char* val);
 
+/// Gets the bool buffer attribute value for the given `key`.
+/// Returns false if the key is not set, `attrs` is not a buffer attribute map,
+/// or the value is not of type `bool`.
+bool TfLiteAttributeMapGetBoolBufferAttr(const TfLiteAttributeMap* attrs,
+                                         TfLiteBufferAttrKey key, bool* val);
+
+/// Sets the `key` buffer attribute as `val`.
+/// Returns false if `attrs` is not a sync attribute map.
+/// `attrs` does not own the `val` C string.
+bool TfLiteAttributeMapSetBoolBufferAttr(TfLiteAttributeMap* attrs,
+                                         TfLiteBufferAttrKey key, bool val);
+
 /// Gets the C string synchronization attribute value for the given `key`.
 /// Returns false if the key is not set, `attrs` is not a sync attribute map,
 /// or the value is not of type `size_t`.
@@ -134,6 +146,7 @@ bool TfLiteAttributeMapSetStringSyncAttr(TfLiteAttributeMap* attrs,
 DECLARE_ATTR_MAP_ACCESSOR(int, Int);
 DECLARE_ATTR_MAP_ACCESSOR(size_t, SizeT);
 DECLARE_ATTR_MAP_ACCESSOR(const char*, String);
+DECLARE_ATTR_MAP_ACCESSOR(bool, Bool);
 
 #undef DECLARE_ATTR_MAP_ACCESSOR
 

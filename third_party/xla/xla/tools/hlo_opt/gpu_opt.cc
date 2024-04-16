@@ -50,7 +50,7 @@ namespace {
 
 class GpuOptProvider : public OptProvider {
  public:
-  StatusOr<std::optional<std::string>> GenerateStage(
+  absl::StatusOr<std::optional<std::string>> GenerateStage(
       std::unique_ptr<HloModule> module, absl::string_view s) override {
     if (s == "llvm-before-optimizations") {
       TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> optimized_module,
@@ -92,7 +92,8 @@ class GpuOptProvider : public OptProvider {
   }
 
  private:
-  StatusOr<std::string> LlvmIrBeforeOptimizations(HloModule* optimized_module) {
+  absl::StatusOr<std::string> LlvmIrBeforeOptimizations(
+      HloModule* optimized_module) {
     Compiler::CompileOptions opts;
     TF_ASSIGN_OR_RETURN(se::StreamExecutor * executor, GetExecutor());
     TF_ASSIGN_OR_RETURN(
@@ -131,7 +132,7 @@ class GpuOptProvider : public OptProvider {
 }  // namespace
 }  // namespace xla
 
-REGISTER_MODULE_INITIALIZER(gpu_opt_provider, {
+STREAM_EXECUTOR_REGISTER_MODULE_INITIALIZER(gpu_opt_provider, {
   xla::OptProvider::RegisterForPlatform(
       "gpu", std::make_unique<xla::GpuOptProvider>());
 });

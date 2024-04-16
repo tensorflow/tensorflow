@@ -53,7 +53,7 @@ class CompileOnlyClient : public Client {
   // This is intended for use in static compilation. The |options|
   // parameter describes the target for which the compiler should emit
   // code. |metadata|, if provided, is populated during compilation.
-  StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
+  absl::StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
   CompileAheadOfTime(
       absl::Span<const AotXlaComputationInstance> computations,
       const AotCompilationOptions& options,
@@ -61,7 +61,7 @@ class CompileOnlyClient : public Client {
 
   // Create a Hlo module config for the given program shape and arguments.
   // execution_options is optional; if not given a default is used.
-  StatusOr<std::unique_ptr<HloModuleConfig>> CreateModuleConfig(
+  absl::StatusOr<std::unique_ptr<HloModuleConfig>> CreateModuleConfig(
       const ProgramShape& program_shape,
       absl::Span<const Shape* const> argument_shapes,
       const ExecutionOptions* execution_options);

@@ -217,12 +217,12 @@ class UnfuseBatchNormInferencePattern
     auto broadcast_multiplier =
         broadcastToFeatureDim(bn_op.getLoc(), input_type, multiplier,
                               shape_value, feature_dim, rewriter);
-    auto broadcast_rhs = broadcastToFeatureDim(
-        bn_op.getLoc(), input_type, rhs, shape_value, feature_dim, rewriter);
 
     // Computes x * multiplier + rhs
     Value lhs = rewriter.create<mhlo::MulOp>(bn_op.getLoc(), bn_op.getOperand(),
                                              broadcast_multiplier);
+    auto broadcast_rhs = broadcastToFeatureDim(
+        bn_op.getLoc(), input_type, rhs, shape_value, feature_dim, rewriter);
     rewriter.replaceOpWithNewOp<mhlo::AddOp>(bn_op, lhs, broadcast_rhs);
 
     return success();

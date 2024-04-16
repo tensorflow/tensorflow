@@ -54,6 +54,7 @@ limitations under the License.
 #include "xla/stream_executor/tpu/c_api_decl.h"
 #include "xla/stream_executor/tpu/tpu_platform_interface.h"
 #include "xla/stream_executor/tpu/tpu_topology.h"
+#include "xla/tsl/util/env_var.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/common_runtime/eager/eager_operation.h"
@@ -93,7 +94,6 @@ limitations under the License.
 #include "tensorflow/dtensor/proto/layout.pb.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
-#include "tsl/util/env_var.h"
 
 using tensorflow::EagerExecutor;
 
@@ -1589,9 +1589,9 @@ StatusOr<DTensorDevice::DTensorOperationLoweringContext>
 DTensorDevice::DTensorOperationToModule(
     TFE_Context* context, const std::vector<TensorWithLayout*>& inputs,
     const DTensorOperation& doperation, const NameAttrList& eager_attributes) {
-  profiler::TraceMe activity(
+  tsl::profiler::TraceMe activity(
       [&] { return "DTensorDevice::DTensorOperationToModule"; },
-      profiler::TraceMeLevel::kInfo);
+      tsl::profiler::TraceMeLevel::kInfo);
   FunctionLibraryDefinition* flib_def =
       tensorflow::unwrap(context)->FuncLibDef();
   DTensorOperationLoweringContext result;
@@ -1679,9 +1679,9 @@ void DTensorDevice::ModuleToExecutionFunctions(
     const DTensorOperation& doperation, const NameAttrList& eager_attributes,
     int num_outputs, DTensorOperationLoweringContext& lowering_context,
     const ExecutionFunctions** execution_functions, TF_Status* status) {
-  profiler::TraceMe activity(
+  tsl::profiler::TraceMe activity(
       [&] { return "DTensorDevice::ModuleToExecutionFunctions"; },
-      profiler::TraceMeLevel::kInfo);
+      tsl::profiler::TraceMeLevel::kInfo);
   FunctionLibraryDefinition* flib_def =
       tensorflow::unwrap(context)->FuncLibDef();
   const FunctionDef* function_def = doperation.function_def;
@@ -1706,8 +1706,9 @@ void DTensorDevice::ModuleToExecutionFunctions(
                   "ModuleOp for ExecutionFunctions extraction is missing.");
   }
   {
-    profiler::TraceMe activity([&] { return "DTensorDevice::RunMLIRPasses"; },
-                               profiler::TraceMeLevel::kInfo);
+    tsl::profiler::TraceMe activity(
+        [&] { return "DTensorDevice::RunMLIRPasses"; },
+        tsl::profiler::TraceMeLevel::kInfo);
     RETURN_C_STATUS_IF_NOT_OK(pass_runner_.Run(*lowering_context.module),
                               status);
   }

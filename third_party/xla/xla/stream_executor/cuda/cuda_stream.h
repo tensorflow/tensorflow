@@ -19,6 +19,7 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_CUDA_CUDA_STREAM_H_
 #define XLA_STREAM_EXECUTOR_CUDA_CUDA_STREAM_H_
 
+#include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
 
 namespace stream_executor {

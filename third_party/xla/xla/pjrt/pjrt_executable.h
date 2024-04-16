@@ -33,10 +33,12 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/layout.h"
 #include "xla/pjrt/compile_options.pb.h"
 #include "xla/pjrt/executable_metadata.pb.h"
 #include "xla/pjrt/execute_options.pb.h"
 #include "xla/pjrt/pjrt_common.h"
+#include "xla/pjrt/pjrt_layout.h"
 #include "xla/service/compiler.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_cost_analysis.h"
@@ -260,18 +262,26 @@ struct ExecuteOptions {
       const ExecuteOptionsProto& proto);
 };
 
-// Static device memory usage for a compiled program.
+// Static memory usage for a compiled program.
 // The on-device memory needed to run an executable is at least
 //   generated_code_size_in_bytes
 //   + argument_size_in_bytes + output_size_in_bytes - alias_size_in_bytes
 //   + temp_size_in_bytes.
 struct CompiledMemoryStats {
+  // Device default memory (e.g., HBM for GPU/TPU) usage stats.
   int64_t generated_code_size_in_bytes = 0;
   int64_t argument_size_in_bytes = 0;
   int64_t output_size_in_bytes = 0;
   // How much argument is reused for output.
   int64_t alias_size_in_bytes = 0;
   int64_t temp_size_in_bytes = 0;
+
+  // Host memory usage stats.
+  int64_t host_generated_code_size_in_bytes = 0;
+  int64_t host_argument_size_in_bytes = 0;
+  int64_t host_output_size_in_bytes = 0;
+  int64_t host_alias_size_in_bytes = 0;
+  int64_t host_temp_size_in_bytes = 0;
 
   std::string serialized_hlo_proto = "";
   std::string DebugString() const;
@@ -284,6 +294,12 @@ struct CompiledMemoryStats {
     proto.set_alias_size_in_bytes(alias_size_in_bytes);
     proto.set_temp_size_in_bytes(temp_size_in_bytes);
     proto.mutable_hlo_proto()->ParseFromString(serialized_hlo_proto);
+    proto.set_host_generated_code_size_in_bytes(
+        host_generated_code_size_in_bytes);
+    proto.set_host_argument_size_in_bytes(host_argument_size_in_bytes);
+    proto.set_host_output_size_in_bytes(host_output_size_in_bytes);
+    proto.set_host_alias_size_in_bytes(host_alias_size_in_bytes);
+    proto.set_host_temp_size_in_bytes(host_temp_size_in_bytes);
     return proto;
   }
 
@@ -295,6 +311,12 @@ struct CompiledMemoryStats {
     stats.alias_size_in_bytes = proto.alias_size_in_bytes();
     stats.temp_size_in_bytes = proto.temp_size_in_bytes();
     stats.serialized_hlo_proto = proto.hlo_proto().SerializeAsString();
+    stats.host_generated_code_size_in_bytes =
+        proto.host_generated_code_size_in_bytes();
+    stats.host_argument_size_in_bytes = proto.host_argument_size_in_bytes();
+    stats.host_output_size_in_bytes = proto.host_output_size_in_bytes();
+    stats.host_alias_size_in_bytes = proto.host_alias_size_in_bytes();
+    stats.host_temp_size_in_bytes = proto.host_temp_size_in_bytes();
     return stats;
   }
 };
@@ -331,10 +353,12 @@ class PjRtExecutable {
   GetOutputDimensions() const;
 
   // Returns the layout of each input parameter.
-  virtual StatusOr<std::vector<Layout>> GetParameterLayouts() const;
+  virtual absl::StatusOr<std::vector<std::unique_ptr<PjRtLayout>>>
+  GetParameterLayouts() const;
 
   // Returns the layout of each output.
-  virtual StatusOr<std::vector<Layout>> GetOutputLayouts() const;
+  virtual absl::StatusOr<std::vector<std::unique_ptr<PjRtLayout>>>
+  GetOutputLayouts() const;
 
   // Returns a list of lists of memory kind strings for output. The returned
   // value is `[num_programs, num_output]`. The size of the outer list should be

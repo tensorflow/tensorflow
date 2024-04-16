@@ -17,6 +17,8 @@ limitations under the License.
 #define XLA_STREAM_EXECUTOR_PLUGIN_REGISTRY_H_
 
 #include <map>
+#include <optional>
+#include <string>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -27,9 +29,7 @@ limitations under the License.
 
 namespace stream_executor {
 
-namespace internal {
 class StreamExecutorInterface;
-}
 
 // Enumeration to list the supported types of plugins / support libraries.
 enum class PluginKind {
@@ -54,9 +54,9 @@ enum class PluginKind {
 // late-loading from distorting performance/benchmarks as much as possible.
 class PluginRegistry {
  public:
-  typedef blas::BlasSupport* (*BlasFactory)(internal::StreamExecutorInterface*);
-  typedef dnn::DnnSupport* (*DnnFactory)(internal::StreamExecutorInterface*);
-  typedef fft::FftSupport* (*FftFactory)(internal::StreamExecutorInterface*);
+  typedef blas::BlasSupport* (*BlasFactory)(StreamExecutorInterface*);
+  typedef dnn::DnnSupport* (*DnnFactory)(StreamExecutorInterface*);
+  typedef fft::FftSupport* (*FftFactory)(StreamExecutorInterface*);
 
   // Gets (and creates, if necessary) the singleton PluginRegistry instance.
   static PluginRegistry* Instance();

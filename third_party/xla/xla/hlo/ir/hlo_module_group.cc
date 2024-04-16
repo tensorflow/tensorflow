@@ -72,7 +72,7 @@ HloModuleGroupProto HloModuleGroup::ToProto() const {
   return proto;
 }
 
-/* static */ StatusOr<HloModuleGroup> HloModuleGroup::CreateFromProto(
+/* static */ absl::StatusOr<HloModuleGroup> HloModuleGroup::CreateFromProto(
     const HloModuleGroupProto& proto,
     absl::Span<const HloModuleConfig> module_configs) {
   TF_RET_CHECK(!proto.name().empty()) << "Module group name cannot be empty";

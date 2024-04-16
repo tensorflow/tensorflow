@@ -15,17 +15,27 @@ limitations under the License.
 
 #include "xla/service/gpu/hlo_to_ir_bindings.h"
 
+#include <string>
+
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_cat.h"
+#include "absl/types/span.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Function.h"
+#include "llvm/IR/GlobalValue.h"
 #include "llvm/IR/Instructions.h"
+#include "llvm/Support/Casting.h"
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/service/gpu/buffer_allocations.h"
-#include "xla/service/gpu/ir_emission_utils.h"
+#include "xla/map_util.h"
 #include "xla/service/llvm_ir/buffer_assignment_util.h"
+#include "xla/service/llvm_ir/ir_array.h"
 #include "xla/service/llvm_ir/llvm_util.h"
-#include "xla/service/llvm_ir/tuple_ops.h"
+#include "xla/shape.h"
+#include "xla/shape_tree.h"
+#include "xla/shape_util.h"
 #include "tsl/platform/logging.h"
 
 namespace xla {
@@ -97,20 +107,6 @@ void HloToIrBindings::EmitBasePointersForHlos(
   }
 }
 
-llvm::Value* HloToIrBindings::EmitGetTupleElement(const HloInstruction* gte,
-                                                  llvm::Value* base_ptr) {
-  // TODO(b/26344050): tighten the alignment based on the real element type.
-  if (gte->operand(0)->opcode() != HloOpcode::kGetTupleElement) {
-    return llvm_ir::EmitGetTupleElement(
-        gte->shape(), gte->tuple_index(), /*alignment=*/1, base_ptr,
-        llvm_ir::ShapeToIrType(gte->operand(0)->shape(), module_), b_);
-  }
-  return llvm_ir::EmitGetTupleElement(
-      gte->shape(), gte->tuple_index(), /*alignment=*/1,
-      EmitGetTupleElement(gte->operand(0), base_ptr),
-      llvm_ir::ShapeToIrType(gte->operand(0)->shape(), module_), b_);
-}
-
 // Returns true if `value` has a name that should not be changed.
 static bool HasMeaningfulName(llvm::Value* value) {
   if (auto* global = llvm::dyn_cast<llvm::GlobalValue>(value)) {
@@ -149,26 +145,9 @@ llvm_ir::IrArray HloToIrBindings::GetIrArray(const HloInstruction& hlo,
   return ir_array;
 }
 
-void HloToIrBindings::UnbindAllLocalIrValues() {
-  std::vector<const HloInstruction*> hlos_to_unbind;
-  for (auto& key_value : base_ptrs_) {
-    if (!llvm::isa<llvm::GlobalVariable>(
-            (key_value.second.element({}))->stripPointerCasts())) {
-      hlos_to_unbind.push_back(key_value.first);
-    }
-  }
-  for (const HloInstruction* hlo_to_unbind : hlos_to_unbind) {
-    VLOG(2) << "Unbinding " << hlo_to_unbind->ToString();
-    base_ptrs_.erase(hlo_to_unbind);
-  }
-}
-
 std::string HloToIrBindings::ToString() const {
   std::string s = StrCat("** HloToIrBindings **\n");
   StrAppend(&s, "  is_nested_=", is_nested_, "\n");
-  StrAppend(&s,
-            "  temp_buffer_base_=", llvm_ir::DumpToString(temp_buffer_base_),
-            "\n");
 
   if (base_ptrs_.empty()) {
     return s;

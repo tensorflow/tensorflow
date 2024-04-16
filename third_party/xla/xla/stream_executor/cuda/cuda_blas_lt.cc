@@ -15,21 +15,27 @@ limitations under the License.
 
 #include "xla/stream_executor/cuda/cuda_blas_lt.h"
 
+#include <Eigen/Core>
 #include <algorithm>
 #include <any>
 #include <climits>
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
-#include <string>
 #include <tuple>
 #include <utility>
 #include <vector>
 
+#include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/synchronization/mutex.h"
+#include "absl/time/time.h"
 #include "third_party/gpus/cuda/include/cublasLt.h"
 #include "third_party/gpus/cuda/include/cublas_v2.h"
 #include "third_party/gpus/cuda/include/cuda.h"
+#include "third_party/gpus/cuda/include/library_types.h"
 #include "xla/primitive_util.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/blas.h"
@@ -42,7 +48,12 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_timer.h"
 #include "xla/stream_executor/scratch_allocator.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/types.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/ml_dtypes.h"
+#include "tsl/platform/statusor.h"
 
 #define SET_ATTR(setter, handle, attr, value) \
   ToStatus(setter(handle, attr, &value, sizeof(decltype(value))), #setter)
@@ -163,8 +174,7 @@ absl::Status BlasLt::Init() {
 
   VLOG(2) << "MatrixLayout::Create: num_rows: " << m.num_rows
           << " num_cols:" << (int)m.num_cols << ", order: " << (int)m.order
-          << ","
-          << " batchsz " << m.batch_size
+          << "," << " batchsz " << m.batch_size
           << " leaddimstride: " << m.leading_dim_stride
           << " batch_stride: " << m.batch_stride;
 
@@ -266,6 +276,24 @@ auto BlasLt::MatmulPlan::GetAlgorithms(size_t max_algorithm_count,
   return std::move(algorithms);
 }
 
+namespace {
+
+bool IsFastAccumEnabled(const xla::PrecisionConfig::Algorithm algorithm,
+                        xla::PrimitiveType lhs_type,
+                        xla::PrimitiveType rhs_type,
+                        int64_t compute_precision) {
+  if (algorithm == xla::PrecisionConfig::ALG_UNSET) {
+    return (xla::primitive_util::IsF8Type(lhs_type) ||
+            xla::primitive_util::IsF8Type(rhs_type)) &&
+           compute_precision == 0;
+  }
+
+  return algorithm ==
+         xla::PrecisionConfig::ALG_DOT_ANY_F8_ANY_F8_F32_FAST_ACCUM;
+}
+
+}  // namespace
+
 auto BlasLt::GetMatmulPlan(const gpu::GemmConfig& cfg,
                            gpu::BlasLt::Epilogue epilogue) const
     -> absl::StatusOr<MatmulPlanPtr> {
@@ -303,17 +331,18 @@ auto BlasLt::GetMatmulPlan(const gpu::GemmConfig& cfg,
 
   auto compute_type = cfg.compute_type;
   if (!compute_type) {  // obtain compute_type unless provided by the user
-    TF_ASSIGN_OR_RETURN(compute_type, gpu::GetBlasComputationType(
-                                          lhs_layout.dtype, output_layout.dtype,
-                                          cfg.compute_precision));
+    TF_ASSIGN_OR_RETURN(compute_type,
+                        gpu::GetBlasComputationType(
+                            cfg.precision_algorithm, lhs_layout.dtype,
+                            output_layout.dtype, cfg.compute_precision));
   }
 
   // FP8 matmuls have a fast accumulation mode that is less precise than the
   // default accumulation mode. Use the fast accumulation mode if the compute
   // precision is DEFAULT.
-  bool enable_fast_accum = (xla::primitive_util::IsF8Type(lhs_layout.dtype) ||
-                            xla::primitive_util::IsF8Type(rhs_layout.dtype)) &&
-                           cfg.compute_precision == 0;
+  bool enable_fast_accum =
+      IsFastAccumEnabled(cfg.precision_algorithm, lhs_layout.dtype,
+                         rhs_layout.dtype, cfg.compute_precision);
   TF_ASSIGN_OR_RETURN(
       auto op_desc,
       MatmulDesc::Create(*compute_type,
@@ -379,7 +408,9 @@ absl::Status BlasLt::MatmulPlan::DoMatmul(
     blas::ProfileResult* profile_result) const {
   TF_ASSIGN_OR_RETURN(
       std::optional<gpu::GpuTimer> timer,
-      gpu::GpuTimer::CreateIfNeeded(gpu::AsGpuStream(stream), profile_result));
+      gpu::GpuTimer::CreateIfNeeded(
+          stream, profile_result && profile_result->warmup_run_executed(),
+          profile_result != nullptr));
 
   void* workspace = nullptr;
   if (algorithm.workspace_size > 0) {

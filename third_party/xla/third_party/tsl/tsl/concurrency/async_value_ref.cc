@@ -18,6 +18,10 @@ limitations under the License.
 #include <string_view>
 #include <utility>
 
+#include "absl/status/status.h"
+#include "tsl/concurrency/async_value.h"
+#include "tsl/concurrency/ref_count.h"
+
 namespace tsl {
 
 RCReference<IndirectAsyncValue> MakeIndirectAsyncValue() {

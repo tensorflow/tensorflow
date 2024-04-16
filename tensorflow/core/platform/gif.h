@@ -16,6 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PLATFORM_GIF_H_
 #define TENSORFLOW_CORE_PLATFORM_GIF_H_
 
-#include "tsl/platform/gif.h"  // IWYU pragma: export
+#include "gif_lib.h"  // from @gif
 
 #endif  // TENSORFLOW_CORE_PLATFORM_GIF_H_

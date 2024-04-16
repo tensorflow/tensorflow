@@ -110,14 +110,14 @@ ExecutableBuildOptions& ExecutableBuildOptions::set_use_auto_spmd_partitioning(
 ExecutableBuildOptions&
 ExecutableBuildOptions::set_auto_spmd_partitioning_mesh_shape(
     std::vector<int64_t> mesh_shape) {
-  auto_spmd_partitioning_mesh_shape_ = mesh_shape;
+  auto_spmd_partitioning_mesh_shape_ = std::move(mesh_shape);
   return *this;
 }
 
 ExecutableBuildOptions&
 ExecutableBuildOptions::set_auto_spmd_partitioning_mesh_ids(
     std::vector<int64_t> mesh_ids) {
-  auto_spmd_partitioning_mesh_ids_ = mesh_ids;
+  auto_spmd_partitioning_mesh_ids_ = std::move(mesh_ids);
   return *this;
 }
 
@@ -144,7 +144,8 @@ std::string ExecutableBuildOptions::ToString() const {
       device_ordinal_, result_layout, num_replicas_);
 }
 
-StatusOr<ExecutableBuildOptionsProto> ExecutableBuildOptions::ToProto() const {
+absl::StatusOr<ExecutableBuildOptionsProto> ExecutableBuildOptions::ToProto()
+    const {
   ExecutableBuildOptionsProto output;
   output.set_device_ordinal(device_ordinal());
   if (result_layout()) {
@@ -176,6 +177,12 @@ StatusOr<ExecutableBuildOptionsProto> ExecutableBuildOptions::ToProto() const {
   }
   output.set_alias_passthrough_params(alias_passthrough_params());
   output.set_run_backend_only(run_backend_only());
+  if (!allow_spmd_sharding_propagation_to_parameters().empty()) {
+    output.mutable_allow_spmd_sharding_propagation_to_parameters()->Clear();
+    for (bool v : allow_spmd_sharding_propagation_to_parameters()) {
+      output.mutable_allow_spmd_sharding_propagation_to_parameters()->Add(v);
+    }
+  }
   if (!allow_spmd_sharding_propagation_to_output().empty()) {
     output.mutable_allow_spmd_sharding_propagation_to_output()->Clear();
     for (bool v : allow_spmd_sharding_propagation_to_output()) {
@@ -193,7 +200,7 @@ StatusOr<ExecutableBuildOptionsProto> ExecutableBuildOptions::ToProto() const {
   return output;
 }
 
-StatusOr<ExecutableBuildOptions> ExecutableBuildOptionsFromProto(
+absl::StatusOr<ExecutableBuildOptions> ExecutableBuildOptionsFromProto(
     const ExecutableBuildOptionsProto& input) {
   xla::ExecutableBuildOptions output;
   if (input.device_ordinal() != -1) {
@@ -224,6 +231,8 @@ StatusOr<ExecutableBuildOptions> ExecutableBuildOptionsFromProto(
   }
   output.set_alias_passthrough_params(input.alias_passthrough_params());
   output.set_run_backend_only(input.run_backend_only());
+  output.set_allow_spmd_sharding_propagation_to_parameters(
+      input.allow_spmd_sharding_propagation_to_parameters());
   output.set_allow_spmd_sharding_propagation_to_output(
       input.allow_spmd_sharding_propagation_to_output());
   *output.mutable_fdo_profile() = input.fdo_profile();
@@ -266,6 +275,15 @@ ExecutionOptions CreateExecutionOptions(
     execution_options.mutable_auto_spmd_partitioning_mesh_ids()->Add(t);
   }
   execution_options.set_deduplicate_hlo(build_options.deduplicate_hlo());
+  if (!build_options.allow_spmd_sharding_propagation_to_parameters().empty()) {
+    execution_options.mutable_allow_spmd_sharding_propagation_to_parameters()
+        ->Clear();
+    for (bool v :
+         build_options.allow_spmd_sharding_propagation_to_parameters()) {
+      execution_options.mutable_allow_spmd_sharding_propagation_to_parameters()
+          ->Add(v);
+    }
+  }
   if (!build_options.allow_spmd_sharding_propagation_to_output().empty()) {
     execution_options.mutable_allow_spmd_sharding_propagation_to_output()
         ->Clear();

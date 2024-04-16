@@ -35,7 +35,6 @@ limitations under the License.
 #include "xla/mlir/runtime/transforms/type_converter.h"
 #include "xla/mlir/runtime/utils/custom_calls.h"
 #include "xla/mlir/xla_cpu/ir/xla_cpu.h"
-#include "xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/service/hlo_parser.h"
 
@@ -47,8 +46,6 @@ namespace {
 #include "xla/mlir/backends/cpu/transforms/passes.h.inc"
 
 using namespace mlir;  // NOLINT
-
-using mlir::lmhlo::CustomCallOp;
 
 using xla_cpu::PartitionIdOp;
 using xla_cpu::ReplicaIdOp;
@@ -112,133 +109,6 @@ func::CallOp CreateCallForDpsCollectiveOp(Operation* op,
   rewriter.eraseOp(op);
   return call;
 }
-
-//===----------------------------------------------------------------------===//
-
-class CustomCallOpLowering : public OpRewritePattern<CustomCallOp> {
- private:
-  static constexpr const char kCustomCallTarget[] = "xla.cpu.custom_call";
-
- public:
-  CustomCallOpLowering(MLIRContext* ctx, CustomCallDeclarations& custom_calls)
-      : OpRewritePattern(ctx), custom_calls_(custom_calls) {}
-
-  // Rewrite custom call with `API_VERSION_TYPED_FFI` version into XLA runtime
-  // custom calls bypassing custom call adaptor.
-  LogicalResult rewriteTypedCustomCall(CustomCallOp op,
-                                       PatternRewriter& rewriter) const {
-    // TODO(ezhulenev): Support target arg mapping, or explain why we do not
-    // need them for typed custom calls.
-    if (op.getTargetArgMapping())
-      return op.emitOpError(
-          "API_VERSION_TYPED_FFI custom calls do not "
-          "support target arg mapping");
-
-    // Create a custom call function declaration.
-    ImplicitLocOpBuilder b(op.getLoc(), rewriter);
-    func::FuncOp callee =
-        custom_calls_.GetOrCreate(b, op.getCallTargetName(), op);
-    callee->setAttr("rt.dynamic", UnitAttr::get(b.getContext()));
-
-    // Forward backend config to the custom call implementation.
-    auto config = op.getBackendConfig();
-    if (!config) return op.emitOpError("Failed to get backend config");
-    auto dict = config->cast<mlir::DictionaryAttr>();
-    llvm::SmallVector<NamedAttribute> backend_config(dict.begin(), dict.end());
-
-    // Call the custom call function forwarding user-defined attributes.
-    auto call = rewriter.replaceOpWithNewOp<func::CallOp>(
-        op, callee.getName(), TypeRange(), op.getOperands());
-    AppendCustomCallAttrs(call, backend_config);
-
-    return success();
-  }
-
-  LogicalResult matchAndRewrite(CustomCallOp op,
-                                PatternRewriter& rewriter) const override {
-    // Typed custom calls lowered directly to XLA runtime custom calls.
-    if (op.getApiVersion() == mhlo::CustomCallApiVersion::API_VERSION_TYPED_FFI)
-      return rewriteTypedCustomCall(op, rewriter);
-
-    ImplicitLocOpBuilder b(op.getLoc(), rewriter);
-
-    // By default all operands passed to the custom call handler.
-    llvm::SmallVector<Value> operands = op.getOperands();
-
-    // Get the number of outputs from operand_segment_sizes.
-    int64_t num_results = op->getAttrOfType<DenseI32ArrayAttr>(
-        op.getOperandSegmentSizesAttrName())[1];
-
-    // If custom call has target arguments mapping, then we need to pass empty
-    // memrefs in place of holes.
-    if (op.getTargetArgMapping().has_value()) {
-      auto mapping = *op.getTargetArgMapping();
-      int64_t num_args = mapping.getNumArgs();
-      num_results = mapping.getNumResults();
-
-      // Always create an `alloca` in the parent function entry block.
-      // See: https://llvm.org/docs/Frontend/PerformanceTips.html#use-of-allocas
-      Value hole = [&]() -> Value {
-        OpBuilder::InsertionGuard guard(b);
-        b.setInsertionPointToStart(
-            &op->getParentOfType<func::FuncOp>().front());
-        return b.create<memref::AllocaOp>(MemRefType::get({0}, b.getI8Type()));
-      }();
-
-      // We represent holes as empty i8 memrefs.
-      operands = llvm::SmallVector<Value>(num_args + num_results, hole);
-
-      // Update operands to mapped custom call arguments.
-      auto args = mapping.getArgsToTargetArgs();
-      for (const auto& indexed : llvm::enumerate(args))
-        operands[indexed.value()] = op.getArgs()[indexed.index()];
-
-      // Update operands to mapped custom call results.
-      auto res = mapping.getResultsToTargetResults();
-      for (const auto& indexed : llvm::enumerate(res))
-        operands[num_args + indexed.value()] = op.getOutput()[indexed.index()];
-    }
-
-    // TODO(jreiffers): This will break if an output has a non-default layout.
-    operands = EnsureFlatMemrefs(operands, b);
-    // Create a custom call function declaration.
-    func::FuncOp callee = custom_calls_.GetOrCreate(
-        b, kCustomCallTarget, TypeRange(ValueRange(operands)), TypeRange());
-
-    // The ABI is different depending on whether the original op was outputting
-    // a tuple or not. For multiple outputs this is trivial but for a single
-    // output we rely on the xla_shape attribute to distinguish the ABIs.
-    bool output_tuple = num_results > 1;
-    if (auto xla_shape = op->getAttrOfType<StringAttr>("xla_shape"))
-      output_tuple = ParseShape(xla_shape.strref())->IsTuple();
-
-    // This is not equivalent to op.getApiVersionAttr() - that call returns null
-    // if the attribute is absent. getApiVersion returns the default.
-    Attribute api_version =
-        mhlo::CustomCallApiVersionAttr::get(getContext(), op.getApiVersion());
-    llvm::SmallVector<NamedAttribute> custom_call_attrs = {
-        {b.getStringAttr("num_results"),
-         b.getI32IntegerAttr(static_cast<int32_t>(num_results))},
-        {b.getStringAttr("output_tuple"), b.getBoolAttr(output_tuple)},
-        {b.getStringAttr("api_version"), api_version},
-        {b.getStringAttr("call_target_name"), op.getCallTargetNameAttr()}};
-
-    if (auto backend_config = op.getBackendConfigAttr()) {
-      custom_call_attrs.emplace_back(b.getStringAttr("backend_config"),
-                                     op.getBackendConfigAttr());
-    }
-
-    // Call the runtime intrinsic with the original operands.
-    auto call = rewriter.replaceOpWithNewOp<func::CallOp>(
-        op, callee.getName(), TypeRange(), operands);
-    AppendCustomCallAttrs(call, custom_call_attrs);
-
-    return success();
-  }
-
- private:
-  CustomCallDeclarations& custom_calls_;
-};
 
 //===----------------------------------------------------------------------===//
 
@@ -542,11 +412,10 @@ void ConvertXlaCpuToCpuRuntimePass::runOnOperation() {
 
   // Convert xla_cpu operations to XLA cpu runtime custom calls.
   RewritePatternSet patterns(ctx);
-  patterns
-      .insert<AllReduceLowering, AllToAllLowering, CollectivePermuteLowering,
-              ConvolutionLowering, CustomCallOpLowering, FftLowering,
-              InfeedLowering, OutfeedLowering, RngBitGeneratorLowering>(
-          ctx, custom_calls);
+  patterns.insert<AllReduceLowering, AllToAllLowering,
+                  CollectivePermuteLowering, ConvolutionLowering, FftLowering,
+                  InfeedLowering, OutfeedLowering, RngBitGeneratorLowering>(
+      ctx, custom_calls);
   patterns.insert<IdOpLowering<PartitionIdOp>>(ctx, "xla.cpu.partition_id",
                                                custom_calls);
   patterns.insert<IdOpLowering<ReplicaIdOp>>(ctx, "xla.cpu.replica_id",

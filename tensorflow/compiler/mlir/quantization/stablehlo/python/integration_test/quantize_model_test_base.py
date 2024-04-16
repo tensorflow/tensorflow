@@ -17,9 +17,12 @@
 from typing import List, Mapping, Optional, Sequence, Tuple
 
 from absl.testing import parameterized
+from mlir import ir
+from mlir.dialects import stablehlo as stablehlo_dialect
 import numpy as np
 import tensorflow  # pylint: disable=unused-import
 
+from tensorflow.compiler.mlir.stablehlo import stablehlo
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -28,9 +31,14 @@ from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
+from tensorflow.python.saved_model import load
+from tensorflow.python.saved_model import loader_impl
 from tensorflow.python.saved_model import save as saved_model_save
 from tensorflow.python.types import core
+
+FUNC_ALIAS = 'some_alias'
 
 
 class QuantizedModelTest(test.TestCase, parameterized.TestCase):
@@ -48,6 +56,48 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
     # Extra output path occasionally used for comparing two different
     # quantized models.
     self._output_saved_model_path_2 = self.create_tempdir('output2').full_path
+
+  def _extract_first_xla_call_module_op(
+      self, output_saved_model_path: str
+  ) -> str:
+    """Extracts the first XlaCallModule op from output saved model to string."""
+    root = load.load(output_saved_model_path)
+    tf_graph_def = root.signatures['serving_default'].graph.as_graph_def()
+    for function in tf_graph_def.library.function:
+      for node_def in function.node_def:
+        if node_def.op == 'XlaCallModule':
+          with ir.Context() as context:
+            stablehlo_dialect.register_dialect(context)
+            # Serialization in VHLO dialect.
+            serialized = node_def.attr.get('module').s
+            # MLIR bytecode matching StableHLO version.
+            mlir_bytecode = stablehlo.deserialize_portable_artifact(serialized)
+            stablehlo_module = ir.Module.parse(mlir_bytecode, context=context)
+            return str(stablehlo_module)
+    raise ValueError('No XlaCallModule found in saved model.')
+
+  def _get_num_xla_call_module_op(self, output_saved_model_path: str) -> int:
+    """Gets the number of XlaCallModule ops in the output saved model."""
+    root = load.load(output_saved_model_path)
+    tf_graph_def = root.signatures['serving_default'].graph.as_graph_def()
+    count = 0
+    for node_def in tf_graph_def.node:
+      if node_def.op == 'XlaCallModule':
+        count += 1
+    for function in tf_graph_def.library.function:
+      for node_def in function.node_def:
+        if node_def.op == 'XlaCallModule':
+          count += 1
+    return count
+
+  def _get_function_aliases(
+      self, output_saved_model_path: str, tags: List[str]
+  ) -> dict[str, str]:
+    """Gets the function aliases in the output saved model."""
+    loader = loader_impl.SavedModelLoader(output_saved_model_path)
+    return loader.get_meta_graph_def_from_tags(
+        tags
+    ).meta_info_def.function_aliases
 
   def _create_matmul_model(
       self,
@@ -169,7 +219,7 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
           )
           out = array_ops.pad(out, paddings, 'CONSTANT')
         elif self.same_scale_op == 'reshape':
-          out = array_ops.reshape(out, (array_ops.size(out), -1))
+          out = array_ops.reshape(out, [-1])
         elif self.same_scale_op == 'select':
           rng = np.random.default_rng(seed=1234)
           condition = ops.convert_to_tensor(
@@ -215,6 +265,7 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
       strides: Sequence[int] = (1, 1, 1, 1),
       dilations: Sequence[int] = (1, 1, 1, 1),
       padding: str = 'SAME',
+      has_func_alias: bool = False,
   ) -> module.Module:
     class ConvModel(module.Module):
       """A simple model with a single conv2d, bias and relu."""
@@ -261,22 +312,97 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
         )
         if bias_fn is not None:
           out = nn_ops.bias_add(out, self.bias)
-        if activation_fn is not None:
-          out = activation_fn(out)
         if has_batch_norm:
           # Fusing is supported for non-training case.
           out, _, _, _, _, _ = nn_ops.fused_batch_norm_v3(
               out, scale, offset, mean, variance, is_training=False
           )
+        if activation_fn is not None:
+          out = activation_fn(out)
         return {'output': out}
 
     model = ConvModel()
+    save_options = None
+    if has_func_alias:
+      save_options = tensorflow.saved_model.SaveOptions(
+          function_aliases={FUNC_ALIAS: model.conv2d}
+      )
     saved_model_save.save(
         model,
         saved_model_path,
         signatures=model.conv2d.get_concrete_function(
             tensor_spec.TensorSpec(
                 shape=input_shape, dtype=dtypes.float32, name='input_tensor'
+            )
+        ),
+        options=save_options,
+    )
+    return model
+
+  def _create_gather_model(self, input_type, use_variable) -> module.Module:
+    class GatherModel(module.Module):
+      """A simple model with a single gather."""
+
+      def __init__(self, use_variable):
+        """Initializes a GatherModel.
+
+        Args:
+          use_variable: If True, creates a variable for weight.
+        """
+        super().__init__()
+        w_val = np.random.randn(128, 32).astype('f4')
+        if use_variable:
+          self.w = variables.Variable(w_val)
+        else:
+          self.w = w_val
+
+      @def_function.function(
+          input_signature=[
+              tensor_spec.TensorSpec(
+                  shape=[6], dtype=input_type, name='input_tensor'
+              )
+          ]
+      )
+      def __call__(
+          self, input_tensor: core.Tensor
+      ) -> Mapping[str, core.Tensor]:
+        """Performs a gather operation."""
+        out = array_ops.gather_v2(self.w, input_tensor)
+        return {'output': out}
+
+    return GatherModel(use_variable)
+
+  def _create_add_model(
+      self,
+      shape: Sequence[int],
+      saved_model_path: str,
+  ) -> module.Module:
+    class AddModel(module.Module):
+      """A simple model with a single add."""
+
+      def __init__(self):
+        pass
+
+      @def_function.function
+      def add(self, input_tensor: core.Tensor) -> Mapping[str, core.Tensor]:
+        """Performs an add operation.
+
+        Args:
+          input_tensor: Input tensor to perform add on.
+
+        Returns:
+          A map of: output key -> output result.
+        """
+        out = math_ops.add(input_tensor, input_tensor)
+        return {'output': out}
+
+    model = AddModel()
+    saved_model_save.save(
+        model,
+        saved_model_path,
+        signatures=model.add.get_concrete_function(
+            tensor_spec.TensorSpec(
+                shape=shape, dtype=dtypes.float32, name='input_tensor'
             )
         ),
     )

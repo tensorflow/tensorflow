@@ -53,13 +53,13 @@ class ComputeConstantTest : public ::testing::Test {
 
   Client* ClientOrDie(se::Platform* platform, ClientType client_type) {
     if (client_type == ClientType::kLocal) {
-      StatusOr<Client*> result =
+      absl::StatusOr<Client*> result =
           ClientLibrary::GetOrCreateLocalClient(platform);
       TF_CHECK_OK(result.status())
           << "could not create LocalClient for testing";
       return result.value();
     } else if (client_type == ClientType::kCompileOnly) {
-      StatusOr<Client*> result =
+      absl::StatusOr<Client*> result =
           ClientLibrary::GetOrCreateCompileOnlyClient(platform);
       TF_CHECK_OK(result.status())
           << "could not create CompileOnlyClient for testing";
@@ -68,9 +68,9 @@ class ComputeConstantTest : public ::testing::Test {
     LOG(FATAL) << "invalid client_type value";
   }
 
-  StatusOr<Literal> ComputeConstantLiteral(Client* client, const XlaOp operand,
-                                           XlaBuilder* builder,
-                                           Layout* output_layout = nullptr) {
+  absl::StatusOr<Literal> ComputeConstantLiteral(
+      Client* client, const XlaOp operand, XlaBuilder* builder,
+      Layout* output_layout = nullptr) {
     TF_ASSIGN_OR_RETURN(auto subgraph, builder->BuildConstantSubGraph(operand));
     TF_ASSIGN_OR_RETURN(auto computed,
                         client->ComputeConstant(subgraph, output_layout));
@@ -86,7 +86,7 @@ class ComputeConstantTest : public ::testing::Test {
   }
 
   bool IsConstant(const XlaOp operand, XlaBuilder* builder) {
-    StatusOr<bool> result = builder->IsConstant(operand);
+    absl::StatusOr<bool> result = builder->IsConstant(operand);
     EXPECT_TRUE(result.ok()) << result.status();
     return result.ok() ? result.value() : false;
   }

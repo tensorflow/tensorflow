@@ -1,5 +1,9 @@
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load(
+    "@local_config_rocm//rocm:build_defs.bzl",
+    "if_rocm",
+)
+load(
     "//tensorflow:tensorflow.bzl",
     "check_deps",
     "tf_cc_test",
@@ -23,10 +27,6 @@ load(
 load(
     "//tensorflow/core/platform:rules_cc.bzl",
     "cc_library",
-)
-load(
-    "@local_config_rocm//rocm:build_defs.bzl",
-    "if_rocm",
 )
 
 default_package_visibility = [
@@ -66,7 +66,7 @@ filegroup(
         "padding.h",
         "tensor_format.cc",
         "tensor_format.h",
-        "@local_tsl//tsl/util:mobile_srcs_no_runtime",
+        "@local_xla//xla/tsl/util:mobile_srcs_no_runtime",
     ],
 )
 
@@ -132,7 +132,7 @@ filegroup(
         "work_sharder.h",
         "//tensorflow/core/config:mobile_srcs_only_runtime",
         "//tensorflow/core/util/quantization:mobile_srcs_only_runtime",
-        "@local_tsl//tsl/util:mobile_srcs_only_runtime",
+        "@local_xla//xla/tsl/util:mobile_srcs_only_runtime",
     ],
 )
 
@@ -189,7 +189,7 @@ filegroup(
         "util.h",
         "work_sharder.h",
         "xla_config_registry.h",
-        "@local_tsl//tsl/util:framework_internal_private_hdrs",
+        "@local_xla//xla/tsl/util:framework_internal_private_hdrs",
     ],
 )
 
@@ -231,7 +231,7 @@ filegroup(
         "util.cc",
         "work_sharder.cc",
         "xla_config_registry.cc",
-        "@local_tsl//tsl/util:framework_internal_impl_srcs",
+        "@local_xla//xla/tsl/util:framework_internal_impl_srcs",
     ],
 )
 
@@ -240,7 +240,7 @@ filegroup(
     srcs = [
         "env_var.h",
         "use_cudnn.h",
-        "@local_tsl//tsl/util:lib_internal_public_hdrs",
+        "@local_xla//xla/tsl/util:lib_internal_public_hdrs",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
@@ -286,7 +286,7 @@ filegroup(
     testonly = 1,
     srcs = [
         "reporter.h",
-        "@local_tsl//tsl/util:test_hdrs",
+        "@local_xla//xla/tsl/util:test_hdrs",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
@@ -297,7 +297,7 @@ filegroup(
         "mkl_heuristics.h",
         "mkl_util.h",
         "onednn_env_vars.h",
-        "@local_tsl//tsl/util:onednn_util_hdrs",
+        "@local_xla//xla/tsl/util:onednn_util_hdrs",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
@@ -316,7 +316,7 @@ filegroup(
     testonly = 1,
     srcs = [
         "reporter.h",
-        "@local_tsl//tsl/util:android_test_hdrs",
+        "@local_xla//xla/tsl/util:android_test_hdrs",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
@@ -326,7 +326,7 @@ filegroup(
     testonly = 1,
     srcs = [
         ":android_test_hdrs",
-        "@local_tsl//tsl/util:android_test_srcs",
+        "@local_xla//xla/tsl/util:android_test_srcs",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
@@ -367,7 +367,7 @@ filegroup(
         "use_cudnn.h",
         "util.h",
         "work_sharder.h",
-        "@local_tsl//tsl/util:framework_srcs",
+        "@local_xla//xla/tsl/util:framework_srcs",
     ],
 )
 
@@ -422,7 +422,7 @@ cc_library(
         "//tensorflow:internal",
     ],
     deps = [
-        "@local_tsl//tsl/util:stats_calculator_portable",
+        "@local_xla//xla/tsl/util:stats_calculator_portable",
     ],
 )
 
@@ -510,7 +510,7 @@ cc_library(
         "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform:str_util",
         "//tensorflow/core/platform:types",
-        "@local_tsl//tsl/util:reporter",
+        "@local_xla//xla/tsl/util:reporter",
     ],
 )
 
@@ -641,7 +641,7 @@ cc_library(
         "//tensorflow/core/platform:strcat",
         "//tensorflow/core/platform:stringpiece",
         "//tensorflow/core/platform:types",
-        "@local_tsl//tsl/util:env_var",
+        "@local_xla//xla/tsl/util:env_var",
     ],
 )
 
@@ -666,7 +666,7 @@ cc_library(
     deps = [
         ":env_var",
         "//tensorflow/core/platform:mutex",
-        "@local_tsl//tsl/util:determinism",
+        "@local_xla//xla/tsl/util:determinism",
     ],
     alwayslink = 1,
 )
@@ -675,7 +675,7 @@ filegroup(
     name = "determinism_hdr",
     srcs = [
         "determinism.h",
-        "@local_tsl//tsl/util:determinism_hdr",
+        "@local_xla//xla/tsl/util:determinism_hdr",
     ],
     compatible_with = get_compatible_with_portable(),
     visibility = ["//tensorflow:__subpackages__"],
@@ -688,7 +688,7 @@ cc_library(
     # TODO(b/298501506): narrow this in a way that won't break TFRT
     visibility = ["//visibility:public"],
     deps = [
-        "@local_tsl//tsl/util:determinism_hdr_lib",
+        "@local_xla//xla/tsl/util:determinism_hdr_lib",
     ],
 )
 
@@ -726,21 +726,12 @@ tf_kernel_library(
     hdrs = ["gpu_solvers.h"],
     compatible_with = [],
     features = ["-layering_check"],
-    # @local_config_cuda//cuda:cusolver_static, //third_party/eigen3:blas,
-    # and //third_party/libf2c all contain various parts of BLAS, LAPACK,
-    # and f2c helper functions in global namespace. Tell the compiler to
-    # allow multiple definitions when linking this.
-    linkopts = select({
-        "//tensorflow:macos": [],
-        "//tensorflow:windows": [],
-        "//conditions:default": ["-Wl,-z,muldefs"],
-    }),
     visibility = ["//tensorflow/core/kernels:friends"],
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "@local_tsl//tsl/cuda:cusolver",
         "@local_xla//xla/stream_executor/cuda:cublas_plugin",
+        "@local_xla//xla/tsl/cuda:cusolver",
     ],
 )
 
@@ -781,7 +772,7 @@ tf_kernel_library(
     ] + if_cuda([
         "@local_xla//xla/stream_executor/cuda:cuda_blas_utils",
         "@local_xla//xla/stream_executor",
-        "@local_tsl//tsl/cuda:cusparse",
+        "@local_xla//xla/tsl/cuda:cusparse",
         "@local_config_cuda//cuda:cub_headers",
     ]) + if_rocm([
         "@local_xla//xla/stream_executor/rocm:rocsolver_wrapper",

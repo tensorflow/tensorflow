@@ -24,7 +24,6 @@ namespace xla {
 // NOLINTBEGIN(misc-unused-using-decls)
 using absl::OkStatus;
 using absl::Status;
-using absl::StatusOr;
 // NOLINTEND(misc-unused-using-decls)
 }  // namespace xla
 

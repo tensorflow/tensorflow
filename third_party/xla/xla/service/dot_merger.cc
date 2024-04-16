@@ -15,15 +15,32 @@ limitations under the License.
 
 #include "xla/service/dot_merger.h"
 
-#include <functional>
+#include <cstdint>
 #include <set>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
+#include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/protobuf_util.h"
 #include "xla/service/graphcycles/graphcycles.h"
 #include "xla/service/shape_inference.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
+#include "xla/util.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -49,8 +66,8 @@ namespace {
 //  - `a` does not transitively depend on the value of `b`, and `b` does not
 //    transitively depend on the value of `a`.
 //
-StatusOr<HloInstruction*> TryMergeSameOperand(HloInstruction* a,
-                                              HloInstruction* b) {
+absl::StatusOr<HloInstruction*> TryMergeSameOperand(HloInstruction* a,
+                                                    HloInstruction* b) {
   if (a->shape().layout() != b->shape().layout()) {
     VLOG(3) << "Can't merge dots because they have a different layout:\n"
             << "\t" << a->ToString() << "\n"
@@ -107,6 +124,17 @@ StatusOr<HloInstruction*> TryMergeSameOperand(HloInstruction* a,
                      b->precision_config().operand_precision())) {
     VLOG(3) << "Can't merge dots because they have mismatching operand "
                "precisions:\n"
+            << "\t" << a->ToString() << "\n"
+            << "\t" << b->ToString();
+    return nullptr;
+  }
+
+  HloDotInstruction* dot_a = Cast<HloDotInstruction>(a);
+  HloDotInstruction* dot_b = Cast<HloDotInstruction>(b);
+  if (!absl::c_equal(dot_a->sparsity(), dot_b->sparsity(),
+                     protobuf_util::ProtobufEquals)) {
+    VLOG(3) << "Can't merge dots because they have mismatching sparsity "
+               "descriptors:\n"
             << "\t" << a->ToString() << "\n"
             << "\t" << b->ToString();
     return nullptr;
@@ -172,6 +200,32 @@ StatusOr<HloInstruction*> TryMergeSameOperand(HloInstruction* a,
     ++outer_dim;
   }
 
+  std::vector<SparsityDescriptor> sparsity(dot_a->sparsity().begin(),
+                                           dot_a->sparsity().end());
+  std::vector<HloInstruction*> sparse_meta(sparsity.size());
+  for (int i = 0; i < sparsity.size(); ++i) {
+    HloInstruction* meta = a->mutable_operand(HloDotInstruction::kOperands + i);
+    HloInstruction* other_meta =
+        b->mutable_operand(HloDotInstruction::kOperands + i);
+    if (sparsity[i].index() == (lhs_same ? 1 : 0)) {
+      TF_ASSIGN_OR_RETURN(
+          Shape meta_concat_shape,
+          ShapeInference::InferConcatOpShape(
+              {&meta->shape(), &other_meta->shape()}, outer_dim));
+      meta = meta->AddInstruction(HloInstruction::CreateConcatenate(
+          meta_concat_shape, {meta, other_meta}, outer_dim));
+    } else {
+      if (other_meta != meta) {
+        VLOG(3)
+            << "Can't merge dots because the sparsity metadata is different:\n"
+            << "\t" << a->ToString() << "\n"
+            << "\t" << b->ToString();
+        return nullptr;
+      }
+    }
+    sparse_meta[i] = meta;
+  }
+
   TF_ASSIGN_OR_RETURN(
       Shape concat_shape,
       ShapeInference::InferConcatOpShape(
@@ -187,10 +241,11 @@ StatusOr<HloInstruction*> TryMergeSameOperand(HloInstruction* a,
       Shape new_dot_shape,
       ShapeInference::InferDotOpShape(
           dot_lhs->shape(), dot_rhs->shape(), dnums,
-          /*preferred_element_type=*/a->shape().element_type()));
+          /*preferred_element_type=*/a->shape().element_type(), sparsity));
   *new_dot_shape.mutable_layout() = a->shape().layout();
-  HloInstruction* new_dot = a->AddInstruction(HloInstruction::CreateDot(
-      new_dot_shape, dot_lhs, dot_rhs, dnums, a->precision_config()));
+  HloInstruction* new_dot = a->AddInstruction(
+      HloInstruction::CreateDot(new_dot_shape, dot_lhs, dot_rhs, dnums,
+                                a->precision_config(), sparsity, sparse_meta));
 
   // We can't keep both. But one is better then none.
   if (!a->metadata().op_name().empty()) {
@@ -223,7 +278,8 @@ StatusOr<HloInstruction*> TryMergeSameOperand(HloInstruction* a,
   return new_dot;
 }
 
-StatusOr<bool> MergeDots(HloComputation* comp, int64_t max_size_to_merge) {
+absl::StatusOr<bool> MergeDots(HloComputation* comp,
+                               int64_t max_size_to_merge) {
   auto is_merge_candidate = [&](HloInstruction* instr) {
     int64_t bytes = ShapeUtil::ByteSizeOfElements(instr->shape());
     for (const HloInstruction* operand : instr->operands()) {
@@ -336,9 +392,10 @@ StatusOr<bool> MergeDots(HloComputation* comp, int64_t max_size_to_merge) {
         int32_t b_id = graph_id(b);
 
         if (dead_instrs.contains(a) || dead_instrs.contains(b) ||
+            (!is_merge_candidate(a) && !is_merge_candidate(b)) ||
+            // Perform reachability checks last since they can be expensive.
             graph.IsReachableNonConst(a_id, b_id) ||
-            graph.IsReachableNonConst(b_id, a_id) ||
-            (!is_merge_candidate(a) && !is_merge_candidate(b))) {
+            graph.IsReachableNonConst(b_id, a_id)) {
           continue;
         }
 
@@ -373,7 +430,7 @@ StatusOr<bool> MergeDots(HloComputation* comp, int64_t max_size_to_merge) {
 
 }  // anonymous namespace
 
-StatusOr<bool> DotMerger::Run(
+absl::StatusOr<bool> DotMerger::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

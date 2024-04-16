@@ -28,10 +28,10 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "grpcpp/channel.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
-#include "tsl/distributed_runtime/coordination/coordination_client.h"
-#include "tsl/distributed_runtime/coordination/coordination_service_agent.h"
-#include "tsl/distributed_runtime/coordination/coordination_service_error_util.h"
-#include "tsl/distributed_runtime/rpc/coordination/grpc_coordination_client.h"
+#include "xla/tsl/distributed_runtime/coordination/coordination_client.h"
+#include "xla/tsl/distributed_runtime/coordination/coordination_service_agent.h"
+#include "xla/tsl/distributed_runtime/coordination/coordination_service_error_util.h"
+#include "xla/tsl/distributed_runtime/rpc/coordination/grpc_coordination_client.h"
 #include "tsl/platform/errors.h"
 #include "tsl/protobuf/coordination_config.pb.h"
 #include "tsl/protobuf/coordination_service.pb.h"
@@ -48,18 +48,18 @@ class DistributedRuntimeCoordinationServiceClient
       : DistributedRuntimeCoordinationServiceClient(channel, Options()) {}
   ~DistributedRuntimeCoordinationServiceClient() override;
 
-  xla::Status Connect() override;
-  xla::Status Shutdown() override;
-  xla::StatusOr<std::string> BlockingKeyValueGet(
+  absl::Status Connect() override;
+  absl::Status Shutdown() override;
+  absl::StatusOr<std::string> BlockingKeyValueGet(
       std::string_view key, absl::Duration timeout) override;
-  xla::StatusOr<std::vector<std::pair<std::string, std::string>>>
+  absl::StatusOr<std::vector<std::pair<std::string, std::string>>>
   KeyValueDirGet(std::string_view key) override;
-  xla::Status KeyValueSet(std::string_view key,
-                          std::string_view value) override;
-  xla::Status KeyValueDelete(std::string_view key) override;
-  xla::Status WaitAtBarrier(std::string barrier_id,
-                            absl::Duration timeout) override;
-  xla::StatusOr<tsl::CoordinationServiceAgent*> GetCoordinationServiceAgent()
+  absl::Status KeyValueSet(std::string_view key,
+                           std::string_view value) override;
+  absl::Status KeyValueDelete(std::string_view key) override;
+  absl::Status WaitAtBarrier(std::string barrier_id,
+                             absl::Duration timeout) override;
+  absl::StatusOr<tsl::CoordinationServiceAgent*> GetCoordinationServiceAgent()
       override;
 
  private:
@@ -107,7 +107,7 @@ DistributedRuntimeCoordinationServiceClient::
 DistributedRuntimeCoordinationServiceClient::
     ~DistributedRuntimeCoordinationServiceClient() = default;
 
-xla::Status DistributedRuntimeCoordinationServiceClient::Connect() {
+absl::Status DistributedRuntimeCoordinationServiceClient::Connect() {
   const absl::Time deadline =
       absl::Now() +
       absl::Milliseconds(config_.cluster_register_timeout_in_ms());
@@ -130,20 +130,20 @@ xla::Status DistributedRuntimeCoordinationServiceClient::Connect() {
   return s;
 }
 
-xla::Status DistributedRuntimeCoordinationServiceClient::Shutdown() {
+absl::Status DistributedRuntimeCoordinationServiceClient::Shutdown() {
   LOG(INFO) << "Distributed task shutdown initiated.";
   Status s = coord_agent_->Shutdown();
   LOG(INFO) << "Distributed task shutdown result: " << s;
   return s;
 }
 
-xla::StatusOr<std::string>
+absl::StatusOr<std::string>
 DistributedRuntimeCoordinationServiceClient::BlockingKeyValueGet(
     std::string_view key, absl::Duration timeout) {
   return coord_agent_->GetKeyValue(key, timeout);
 }
 
-xla::StatusOr<std::vector<std::pair<std::string, std::string>>>
+absl::StatusOr<std::vector<std::pair<std::string, std::string>>>
 DistributedRuntimeCoordinationServiceClient::KeyValueDirGet(
     std::string_view key) {
   // TODO(hanyangtay): Migrate to string_view for both client and coordination
@@ -162,22 +162,22 @@ DistributedRuntimeCoordinationServiceClient::KeyValueDirGet(
   return kvs;
 }
 
-xla::Status DistributedRuntimeCoordinationServiceClient::KeyValueDelete(
+absl::Status DistributedRuntimeCoordinationServiceClient::KeyValueDelete(
     std::string_view key) {
   return coord_agent_->DeleteKeyValue(key);
 }
 
-xla::Status DistributedRuntimeCoordinationServiceClient::KeyValueSet(
+absl::Status DistributedRuntimeCoordinationServiceClient::KeyValueSet(
     std::string_view key, std::string_view value) {
   return coord_agent_->InsertKeyValue(key, value);
 }
 
-xla::Status DistributedRuntimeCoordinationServiceClient::WaitAtBarrier(
+absl::Status DistributedRuntimeCoordinationServiceClient::WaitAtBarrier(
     std::string barrier_id, absl::Duration timeout) {
   return coord_agent_->WaitAtBarrier(barrier_id, timeout, /*tasks=*/{});
 }
 
-xla::StatusOr<tsl::CoordinationServiceAgent*>
+absl::StatusOr<tsl::CoordinationServiceAgent*>
 DistributedRuntimeCoordinationServiceClient::GetCoordinationServiceAgent() {
   return coord_agent_.get();
 }

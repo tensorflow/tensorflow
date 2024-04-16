@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/ffi/ffi_api.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -31,15 +32,13 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/status.h"
-#include "xla/statusor.h"
-#include "tsl/platform/logging.h"
 
 //===----------------------------------------------------------------------===//
 // XLA FFI C structs definition
 //===----------------------------------------------------------------------===//
 
 struct XLA_FFI_Error {
-  xla::Status status;
+  absl::Status status;
 };
 
 struct XLA_FFI_ExecutionContext {
@@ -50,6 +49,10 @@ struct XLA_FFI_ExecutionContext {
 //===----------------------------------------------------------------------===//
 
 namespace xla::ffi {
+
+bool IsCommandBufferCompatible(XLA_FFI_Handler_Traits traits) {
+  return traits & XLA_FFI_HANDLER_TRAITS_COMMAND_BUFFER_COMPATIBLE;
+}
 
 //===----------------------------------------------------------------------===//
 // Calling XLA FFI handlers
@@ -85,7 +88,7 @@ Status Call(XLA_FFI_Handler* handler, CallFrame& call_frame,
 //===----------------------------------------------------------------------===//
 
 using HandlerKey = std::pair<std::string, std::string>;
-using HandlerRegistry = absl::flat_hash_map<HandlerKey, XLA_FFI_Handler*>;
+using HandlerRegistry = absl::flat_hash_map<HandlerKey, HandlerRegistration>;
 
 static HandlerKey MakeHandlerKey(std::string_view name,
                                  std::string_view platform) {
@@ -98,9 +101,10 @@ static HandlerRegistry& GetHandlerRegistry() {
 }
 
 static Status RegisterHandler(std::string_view name, std::string_view platform,
-                              XLA_FFI_Handler* handler) {
-  auto emplaced =
-      GetHandlerRegistry().try_emplace(MakeHandlerKey(name, platform), handler);
+                              XLA_FFI_Handler* handler,
+                              XLA_FFI_Handler_Traits traits) {
+  auto emplaced = GetHandlerRegistry().try_emplace(
+      MakeHandlerKey(name, platform), HandlerRegistration{handler, traits});
   if (!emplaced.second)
     return absl::InvalidArgumentError(
         absl::StrCat("Duplicate FFI handler registration for ", name,
@@ -108,13 +112,25 @@ static Status RegisterHandler(std::string_view name, std::string_view platform,
   return OkStatus();
 }
 
-StatusOr<XLA_FFI_Handler*> FindHandler(std::string_view name,
-                                       std::string_view platform) {
+absl::StatusOr<HandlerRegistration> FindHandler(std::string_view name,
+                                                std::string_view platform) {
   auto it = GetHandlerRegistry().find(MakeHandlerKey(name, platform));
   if (it == GetHandlerRegistry().end())
     return absl::NotFoundError(absl::StrCat("No FFI handler registered for ",
                                             name, " on a platform ", platform));
   return it->second;
+}
+
+absl::flat_hash_map<std::string, HandlerRegistration> StaticRegisteredHandlers(
+    std::string_view platform) {
+  absl::flat_hash_map<std::string, HandlerRegistration> calls;
+  for (const auto& [metadata, handler] : GetHandlerRegistry()) {
+    if (absl::AsciiStrToLower(platform) == metadata.second) {
+      calls[metadata.first] = handler;
+    }
+  }
+
+  return calls;
 }
 
 //===----------------------------------------------------------------------===//
@@ -225,7 +241,8 @@ static XLA_FFI_Error* XLA_FFI_Handler_Register(
       "XLA_FFI_Handler_Register", XLA_FFI_Handler_Register_Args_STRUCT_SIZE,
       args->struct_size));
 
-  if (auto status = RegisterHandler(args->name, args->platform, args->handler);
+  if (auto status = RegisterHandler(args->name, args->platform, args->handler,
+                                    args->traits);
       !status.ok()) {
     return new XLA_FFI_Error{std::move(status)};
   }
@@ -247,16 +264,26 @@ static XLA_FFI_Error* XLA_FFI_Stream_Get(XLA_FFI_Stream_Get_Args* args) {
 // XLA FFI Internal Api Implementation
 //===----------------------------------------------------------------------===//
 
-static XLA_FFI_Error* XLA_FFI_Error_Forward(void* status) {
+static XLA_FFI_Error* XLA_FFI_INTERNAL_Error_Forward(void* status) {
   return new XLA_FFI_Error{std::move(*reinterpret_cast<Status*>(status))};
 }
 
-static void* XLA_FFI_ServiceExecutableRunOptions_Get(
-    XLA_FFI_ExecutionContext* ctx) {
-  return const_cast<ServiceExecutableRunOptions*>(ctx->run_options);
+static void* XLA_FFI_INTERNAL_Stream_Get(XLA_FFI_ExecutionContext* ctx) {
+  return ctx->run_options->stream();
 }
 
-static void* XLA_FFI_CalledComputation_Get(XLA_FFI_ExecutionContext* ctx) {
+static int32_t XLA_FFI_INTERNAL_DeviceOrdinal_Get(
+    XLA_FFI_ExecutionContext* ctx) {
+  return ctx->run_options->device_ordinal();
+}
+
+static void* XLA_FFI_INTERNAL_DeviceMemoryAllocator_Get(
+    XLA_FFI_ExecutionContext* ctx) {
+  return ctx->run_options->allocator();
+}
+
+static void* XLA_FFI_INTERNAL_CalledComputation_Get(
+    XLA_FFI_ExecutionContext* ctx) {
   return const_cast<HloComputation*>(ctx->called_computation);
 }
 
@@ -264,10 +291,14 @@ static void* XLA_FFI_CalledComputation_Get(XLA_FFI_ExecutionContext* ctx) {
 // XLA FFI Api access
 //===----------------------------------------------------------------------===//
 
+extern "C" const XLA_FFI_Api* XLA_FFI_GetApi() { return GetXlaFfiApi(); }
+
 static XLA_FFI_InternalApi internal_api = {
-    XLA_FFI_Error_Forward,
-    XLA_FFI_ServiceExecutableRunOptions_Get,
-    XLA_FFI_CalledComputation_Get,
+    XLA_FFI_INTERNAL_Error_Forward,
+    XLA_FFI_INTERNAL_Stream_Get,
+    XLA_FFI_INTERNAL_DeviceOrdinal_Get,
+    XLA_FFI_INTERNAL_DeviceMemoryAllocator_Get,
+    XLA_FFI_INTERNAL_CalledComputation_Get,
 };
 
 static XLA_FFI_Api api = {
@@ -283,6 +314,6 @@ static XLA_FFI_Api api = {
     XLA_FFI_Stream_Get,        // returns platform specific stream
 };
 
-XLA_FFI_Api* GetXlaFfiApi() { return &api; }
+const XLA_FFI_Api* GetXlaFfiApi() { return &api; }
 
 }  // namespace xla::ffi

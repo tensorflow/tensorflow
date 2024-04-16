@@ -21,6 +21,7 @@ limitations under the License.
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "stablehlo/dialect/ChloOps.h"  // from @stablehlo
+#include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
@@ -34,6 +35,7 @@ ConversionTarget GetDefaultLegalConversionTargets(MLIRContext& mlir_context,
 
   if (legalize_chlo) {
     target.addIllegalDialect<chlo::ChloDialect>();
+    target.addIllegalDialect<stablehlo::StablehloDialect>();
   } else {
     target.addLegalDialect<chlo::ChloDialect>();
   }

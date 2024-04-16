@@ -19,8 +19,8 @@ limitations under the License.
 #include <cmath>
 #include <cstdint>
 #include <optional>
+#include <vector>
 
-#include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/time/time.h"
@@ -43,6 +43,27 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
+namespace {
+
+std::vector<const HloInstruction*> GetUniqueFusionOperands(
+    const HloInstruction* producer, const HloInstruction* consumer) {
+  std::vector<const HloInstruction*> fusion_operands;
+  for (const HloInstruction* operand : producer->operands()) {
+    fusion_operands.push_back(operand);
+  }
+  for (const HloInstruction* operand : consumer->operands()) {
+    if (operand != producer) {
+      fusion_operands.push_back(operand);
+    }
+  }
+  std::sort(fusion_operands.begin(), fusion_operands.end());
+  fusion_operands.erase(
+      std::unique(fusion_operands.begin(), fusion_operands.end()),
+      fusion_operands.end());
+  return fusion_operands;
+}
+
+}  // namespace
 
 /*static*/ EstimateRunTimeData
 GpuPerformanceModel::EstimateRunTimeForInstruction(
@@ -53,7 +74,6 @@ GpuPerformanceModel::EstimateRunTimeForInstruction(
 
   int64_t flops = cost_analysis->flop_count(*instr);
   int64_t bytes_written = cost_analysis->output_bytes_accessed(*instr);
-  int64_t bytes_read = cost_analysis->bytes_accessed(*instr) - bytes_written;
 
   // Use the analysis cache if present.
   // TODO(jreiffers): Remove this once all callers use a cache.
@@ -72,46 +92,36 @@ GpuPerformanceModel::EstimateRunTimeForInstruction(
 
   absl::Duration compute_time = ComputeTime(*device_info, flops, num_threads);
 
-  // TODO(jreiffers): We should be checking each operand.
-  bool coalesced = IsReadCoalescedHeuristic(fusion_analysis, instr,
-                                            /*consumer=*/nullptr);
+  CoalescingAnalysis coalescing_analysis(instr, instr->operands(),
+                                         fusion_analysis);
 
   absl::Duration read_time;
-  for (int i = 0; i < instr->operand_count(); ++i) {
-    auto element_type = instr->operand(i)->shape().element_type();
-    // Information about data read taking into account utilization.
-    // If `operand_utilization` is 0, `operand_bytes_accessed` should be also 0.
-    int64_t n_bytes_total = cost_analysis->operand_bytes_accessed(*instr, i);
-    float operand_utilization = cost_analysis->operand_utilization(*instr, i);
+  int64_t bytes_read = 0;
+  for (const auto [operand_id, operand] : llvm::enumerate(instr->operands())) {
+    int64_t operand_size = cost_analysis->GetShapeSize(operand->shape());
+    int64_t n_bytes_total =
+        GetOperandBytesAccessed(cost_analysis, instr, operand);
+    int64_t n_bytes_net = std::min(operand_size, n_bytes_total);
+    bytes_read += n_bytes_total;
 
-    // An estimate how much data would need to fit into L1/L2 cache to speed up
-    // the operand access.
-    // If `operand_utilization` < 1, only a part of the full operand size should
-    // be read. Otherwise, `n_bytes_total / operand_utilization` is the
-    // size of the operand without reuse.
-    int64_t n_bytes_net =
-        std::llround(n_bytes_total / std::max(operand_utilization, 1.0f));
+    bool coalesced = coalescing_analysis.IsReadCoalesced(operand);
 
-    read_time +=
-        ReadTimeWithDRAMHeuristic(*device_info, num_blocks, n_bytes_net,
-                                  n_bytes_total, element_type, coalesced);
+    VLogOperandRead(operand, n_bytes_total, n_bytes_net, coalesced);
+
+    read_time += ReadTimeWithDRAMHeuristic(
+        *device_info, num_blocks, n_bytes_net, n_bytes_total,
+        operand->shape().element_type(), coalesced);
   }
 
   absl::Duration write_time = WriteTime(*device_info, bytes_written);
   absl::Duration exec_time = CombineComputeAndMemoryAccessTime(
       compute_time, read_time + write_time, config);
 
-  if (VLOG_IS_ON(8)) {
-    LOG(INFO) << "FLOPs: " << flops;
-    LOG(INFO) << "Bytes read: " << bytes_read;
-    LOG(INFO) << "Bytes written: " << bytes_written;
-    LOG(INFO) << "Num threads: " << num_threads;
-    LOG(INFO) << "Compute time: " << compute_time;
-    LOG(INFO) << "Input read time: " << read_time;
-    LOG(INFO) << "Output write time: " << write_time;
-  }
+  VLogResult(flops, bytes_read, bytes_written, num_threads, compute_time,
+             read_time, write_time, exec_time);
 
-  return {flops, bytes_written, num_threads, write_time, exec_time};
+  return {flops,      bytes_written, num_threads, read_time,
+          write_time, compute_time,  exec_time};
 }
 
 /*static*/ EstimateRunTimeData
@@ -209,51 +219,43 @@ absl::Duration GpuPerformanceModel::EstimateUnfusedExecTime(
       producer_runtime.num_threads * utilization_by_this_consumer,
       fusion_analysis, *device_info);
 
-  int64_t fused_flops = producer_runtime.flops * utilization_by_this_consumer +
-                        consumer_runtime.flops;
+  int64_t flops = producer_runtime.flops * utilization_by_this_consumer +
+                  consumer_runtime.flops;
 
   int64_t num_threads = launch_dimensions.launch_bound();
-  absl::Duration compute_time =
-      ComputeTime(*device_info, fused_flops, num_threads);
+  absl::Duration compute_time = ComputeTime(*device_info, flops, num_threads);
 
-  absl::flat_hash_set<const HloInstruction*> fusion_operands;
-  for (auto* operand : producer->operands()) {
-    fusion_operands.insert(operand);
-  }
-  for (auto* operand : consumer->operands()) {
-    if (operand != producer) {
-      fusion_operands.insert(operand);
-    }
-  }
+  std::vector<const HloInstruction*> fusion_operands =
+      GetUniqueFusionOperands(producer, consumer);
+  CoalescingAnalysis coalescing_analysis(producer, consumer, fusion_operands,
+                                         fusion_analysis);
 
   absl::Duration read_time;
+  int64_t bytes_read = 0;
   for (const auto* operand : fusion_operands) {
-    float operand_utilization =
-        GetSharedUtilization(cost_analysis, producer, consumer, operand);
-
     int64_t operand_size = cost_analysis->GetShapeSize(operand->shape());
 
-    int64_t n_bytes_total = std::llround(operand_size * operand_utilization);
+    int64_t n_bytes_total = GetSharedOperandBytesAccessed(
+        cost_analysis, producer, consumer, operand);
     int64_t n_bytes_net = std::min(operand_size, n_bytes_total);
+    bytes_read += n_bytes_total;
 
-    bool coalesced =
-        IsReadCoalescedHeuristic(fusion_analysis, producer, consumer);
+    bool coalesced = coalescing_analysis.IsReadCoalesced(operand);
+
+    VLogOperandRead(operand, n_bytes_total, n_bytes_net, coalesced);
 
     read_time += ReadTimeWithDRAMHeuristic(
         *device_info, launch_dimensions.num_blocks(), n_bytes_net,
         n_bytes_total, operand->shape().element_type(), coalesced);
   }
 
-  if (VLOG_IS_ON(8)) {
-    LOG(INFO) << "Fused FLOPs: " << fused_flops;
-    LOG(INFO) << "Num threads: " << num_threads;
-    LOG(INFO) << "Compute time: " << compute_time;
-    LOG(INFO) << "Input read time: " << read_time;
-    LOG(INFO) << "Output write time: " << consumer_runtime.write_time;
-  }
-
-  return CombineComputeAndMemoryAccessTime(
+  auto exec_time = CombineComputeAndMemoryAccessTime(
       compute_time, read_time + consumer_runtime.write_time, config);
+
+  VLogResult(flops, bytes_read, consumer_runtime.bytes_written, num_threads,
+             compute_time, read_time, consumer_runtime.write_time, exec_time);
+
+  return exec_time;
 }
 
 /*static*/
@@ -406,19 +408,8 @@ GpuPerformanceModel::RunTimes GpuPerformanceModel::EstimateRunTimes(
       EstimateFusedExecTime(producer, producer_runtime, cost_analysis, config,
                             fused_consumers, multi_output);
 
-  int64_t fused_consumer_count = fused_consumers.size();
-  float total_producer_utilization = 0;
-
-  for (const HloInstruction* fused_consumer : fused_consumers) {
-    float utilization_by_this_consumer = cost_analysis->operand_utilization(
-        *fused_consumer, fused_consumer->operand_index(producer));
-    total_producer_utilization += utilization_by_this_consumer;
-  }
-
   if (VLOG_IS_ON(8)) {
-    LOG(INFO) << "Consumer count: " << fused_consumer_count;
-    LOG(INFO) << "Utilization of producer output: "
-              << total_producer_utilization;
+    LOG(INFO) << "Consumer count: " << fused_consumers.size();
     LOG(INFO) << "Unfused time: " << time_unfused;
     LOG(INFO) << "Fused time: " << time_fused;
   }
@@ -440,9 +431,15 @@ void GpuPerformanceModel::RecordEstimatedRunTime(
 
   auto gpu_config = instruction->backend_config<GpuBackendConfig>();
   TF_CHECK_OK(gpu_config.status()) << instruction->ToString();
-  FusionBackendConfig& backend_config =
-      *gpu_config->mutable_fusion_backend_config();
-  backend_config.mutable_reification_cost()->set_end_to_end_cycles(cycles);
+  auto reification_cost =
+      gpu_config->mutable_fusion_backend_config()->mutable_reification_cost();
+  reification_cost->set_end_to_end_cycles(cycles);
+  reification_cost->set_compute_time_us(
+      absl::ToDoubleMicroseconds(data.compute_time));
+  reification_cost->set_memory_access_time_us(
+      absl::ToDoubleMicroseconds(data.read_time + data.write_time));
+  reification_cost->set_exec_time_us(
+      absl::ToDoubleMicroseconds(data.exec_time));
   TF_CHECK_OK(instruction->set_backend_config(*gpu_config));
 
   VLOG(8) << "RecordEstimatedRunTime: " << instruction->ToString();

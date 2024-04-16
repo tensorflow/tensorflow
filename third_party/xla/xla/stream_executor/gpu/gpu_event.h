@@ -17,16 +17,16 @@ limitations under the License.
 #define XLA_STREAM_EXECUTOR_GPU_GPU_EVENT_H_
 
 #include "absl/status/status.h"
-#include "xla/stream_executor/event.h"
-#include "xla/stream_executor/gpu/gpu_driver.h"
+#include "xla/stream_executor/event_interface.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
+#include "xla/stream_executor/gpu/gpu_types.h"
 
 namespace stream_executor {
 namespace gpu {
 
 // GpuEvent wraps a GpuEventHandle in the platform-independent EventInterface
 // interface.
-class GpuEvent : public internal::EventInterface {
+class GpuEvent : public EventInterface {
  public:
   explicit GpuEvent(GpuExecutor* parent);
 

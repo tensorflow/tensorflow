@@ -46,8 +46,9 @@ struct InferReturnTypesPattern : public RewritePattern {
     SmallVector<Type, 4> types;
     if (failed(definingOpInt.inferReturnTypes(
             op->getContext(), op->getLoc(), definingOp->getOperands(),
-            definingOp->getAttrDictionary(), op->getPropertiesStorage(),
-            definingOp->getRegions(), types))) {
+            definingOpInt->getAttrDictionary(),
+            definingOpInt->getPropertiesStorage(), definingOpInt->getRegions(),
+            types))) {
       return failure();
     }
 

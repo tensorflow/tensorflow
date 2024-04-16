@@ -23,13 +23,10 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-
-// Enable definition of Eigen::ThreadPoolDevice instead of just declaration.
-#define EIGEN_USE_THREADS
-#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/DialectRegistry.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -41,7 +38,9 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
+#include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/test_util.h"
+#include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_matcher.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -51,10 +50,12 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_loaded_variable_registry.h"
 #include "tensorflow/core/tfrt/ifrt/sharding_utils.h"
+#include "tensorflow/core/tfrt/ifrt/tf_host_callback.h"
 #include "tsl/concurrency/ref_count.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/threadpool.h"
+#include "tsl/platform/tstring.h"
 
 namespace tensorflow {
 namespace ifrt_serving {
@@ -72,15 +73,12 @@ using ::tensorflow::test::AsTensor;
 using ::tensorflow::test::TensorEq;
 using ::testing::ElementsAre;
 
-Eigen::ThreadPoolDevice GetThreadPoolDevice() {
+const tsl::thread::ThreadPool& GetThreadPool() {
   constexpr int kMaxParallelism = 16;
-  static tsl::thread::ThreadPool* thread_pool = []() {
-    return new tsl::thread::ThreadPool(tsl::Env::Default(),
-                                       tsl::ThreadOptions(), "IfrtSharding",
-                                       kMaxParallelism);
-  }();
-  return Eigen::ThreadPoolDevice(thread_pool->AsEigenThreadPool(),
-                                 kMaxParallelism);
+  static auto* const thread_pool =
+      new tsl::thread::ThreadPool(tsl::Env::Default(), tsl::ThreadOptions(),
+                                  "IfrtSharding", kMaxParallelism);
+  return *thread_pool;
 }
 
 TEST(IfrtServingExecutableTest, Basic) {
@@ -104,20 +102,23 @@ TEST(IfrtServingExecutableTest, Basic) {
   // Create contexts required for the compiler execution.
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::ifrt::Client> client,
                           xla::ifrt::test_util::GetClient());
-  Eigen::ThreadPoolDevice thread_pool_device = GetThreadPoolDevice();
 
   IfrtLoadedVariableRegistry ifrt_loaded_variable_registry;
-  IfrtServingExecutable executable("test", "main", std::move(mlir_module),
-                                   client, &thread_pool_device,
-                                   &ifrt_loaded_variable_registry,
-                                   tensorflow::IdentityShapeRepresentationFn());
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<tensorflow::StaticDeviceMgr> device_mgr,
+      CreateTfStaticDeviceMgr());
+
+  IfrtServingExecutable executable(
+      "test", "main", std::move(mlir_module), client, &GetThreadPool(),
+      &ifrt_loaded_variable_registry, device_mgr.get(),
+      tensorflow::IdentityShapeRepresentationFn());
 
   auto x = AsTensor<int32_t>({1, 2, 3}, tensorflow::TensorShape({1, 3}));
   auto y = AsTensor<int32_t>({1, 2, 3}, tensorflow::TensorShape({3, 1}));
   std::vector<tensorflow::Tensor> inputs{x, y};
 
   TF_ASSERT_OK_AND_ASSIGN(auto result,
-                          executable.Execute(absl::MakeSpan(inputs), {}, {}));
+                          executable.Execute(absl::MakeSpan(inputs), {}));
 
   const auto expected_out =
       AsTensor<int32_t>({14}, tensorflow::TensorShape({1, 1}));
@@ -146,14 +147,16 @@ TEST(IfrtServingExecutableTest, MultipleShapes) {
   // Create contexts required for the compiler execution.
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::ifrt::Client> client,
                           xla::ifrt::test_util::GetClient());
-  Eigen::ThreadPoolDevice thread_pool_device = GetThreadPoolDevice();
 
   IfrtLoadedVariableRegistry ifrt_loaded_variable_registry;
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<tensorflow::StaticDeviceMgr> device_mgr,
+      CreateTfStaticDeviceMgr());
 
-  IfrtServingExecutable executable("test", "main", std::move(mlir_module),
-                                   client, &thread_pool_device,
-                                   &ifrt_loaded_variable_registry,
-                                   tensorflow::IdentityShapeRepresentationFn());
+  IfrtServingExecutable executable(
+      "test", "main", std::move(mlir_module), client, &GetThreadPool(),
+      &ifrt_loaded_variable_registry, device_mgr.get(),
+      tensorflow::IdentityShapeRepresentationFn());
 
   auto x1 = AsTensor<int32_t>({1, 2, 3}, tensorflow::TensorShape({1, 3}));
   auto y1 = AsTensor<int32_t>({1, 2, 3}, tensorflow::TensorShape({3, 1}));
@@ -170,10 +173,10 @@ TEST(IfrtServingExecutableTest, MultipleShapes) {
 
   std::vector<tensorflow::Tensor> outputs1, outputs2;
   for (int i = 0; i < 3; i++) {
-    TF_ASSERT_OK_AND_ASSIGN(
-        outputs1, executable.Execute(absl::MakeSpan(inputs1), {}, {}));
-    TF_ASSERT_OK_AND_ASSIGN(
-        outputs2, executable.Execute(absl::MakeSpan(inputs2), {}, {}));
+    TF_ASSERT_OK_AND_ASSIGN(outputs1,
+                            executable.Execute(absl::MakeSpan(inputs1), {}));
+    TF_ASSERT_OK_AND_ASSIGN(outputs2,
+                            executable.Execute(absl::MakeSpan(inputs2), {}));
   }
 
   ASSERT_EQ(executable.num_executables(), 2);
@@ -204,14 +207,16 @@ TEST(IfrtServingExecutableTest, Spmd) {
   // Create contexts required for the compiler execution.
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::ifrt::Client> client,
                           xla::ifrt::test_util::GetClient());
-  Eigen::ThreadPoolDevice thread_pool_device = GetThreadPoolDevice();
 
   IfrtLoadedVariableRegistry ifrt_loaded_variable_registry;
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<tensorflow::StaticDeviceMgr> device_mgr,
+      CreateTfStaticDeviceMgr());
 
-  IfrtServingExecutable executable("test", "main", std::move(mlir_module),
-                                   client, &thread_pool_device,
-                                   &ifrt_loaded_variable_registry,
-                                   tensorflow::IdentityShapeRepresentationFn());
+  IfrtServingExecutable executable(
+      "test", "main", std::move(mlir_module), client, &GetThreadPool(),
+      &ifrt_loaded_variable_registry, device_mgr.get(),
+      tensorflow::IdentityShapeRepresentationFn());
 
   auto x = AsTensor<int32_t>({1, 2, 3, 4, 5, 6, 7, 8},
                              tensorflow::TensorShape({4, 2}));
@@ -226,7 +231,7 @@ TEST(IfrtServingExecutableTest, Spmd) {
 
   std::vector<tensorflow::Tensor> inputs{x, y, z};
   TF_ASSERT_OK_AND_ASSIGN(auto result,
-                          executable.Execute(absl::MakeSpan(inputs), {}, {}));
+                          executable.Execute(absl::MakeSpan(inputs), {}));
 
   EXPECT_THAT(result, ElementsAre(TensorEq(expected_out)));
 }
@@ -252,14 +257,16 @@ TEST(IfrtServingExecutableTest, SpmdTwoReturns) {
   // Create contexts required for the compiler execution.
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::ifrt::Client> client,
                           xla::ifrt::test_util::GetClient());
-  Eigen::ThreadPoolDevice thread_pool_device = GetThreadPoolDevice();
 
   IfrtLoadedVariableRegistry ifrt_loaded_variable_registry;
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<tensorflow::StaticDeviceMgr> device_mgr,
+      CreateTfStaticDeviceMgr());
 
-  IfrtServingExecutable executable("test", "main", std::move(mlir_module),
-                                   client, &thread_pool_device,
-                                   &ifrt_loaded_variable_registry,
-                                   tensorflow::IdentityShapeRepresentationFn());
+  IfrtServingExecutable executable(
+      "test", "main", std::move(mlir_module), client, &GetThreadPool(),
+      &ifrt_loaded_variable_registry, device_mgr.get(),
+      tensorflow::IdentityShapeRepresentationFn());
 
   auto x = AsTensor<int32_t>({1, 2, 3, 4, 5, 6, 7, 8},
                              tensorflow::TensorShape({4, 2}));
@@ -277,7 +284,7 @@ TEST(IfrtServingExecutableTest, SpmdTwoReturns) {
   std::vector<tensorflow::Tensor> inputs{x, y, z};
 
   TF_ASSERT_OK_AND_ASSIGN(auto result,
-                          executable.Execute(absl::MakeSpan(inputs), {}, {}));
+                          executable.Execute(absl::MakeSpan(inputs), {}));
 
   EXPECT_THAT(result,
               ElementsAre(TensorEq(expected_out0), TensorEq(expected_out1)));
@@ -304,21 +311,23 @@ TEST(IfrtServingExecutableTest, NoReturn) {
   // Create contexts required for the compiler execution.
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::ifrt::Client> client,
                           xla::ifrt::test_util::GetClient());
-  Eigen::ThreadPoolDevice thread_pool_device = GetThreadPoolDevice();
 
   IfrtLoadedVariableRegistry ifrt_loaded_variable_registry;
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<tensorflow::StaticDeviceMgr> device_mgr,
+      CreateTfStaticDeviceMgr());
 
-  IfrtServingExecutable executable("test", "main", std::move(mlir_module),
-                                   client, &thread_pool_device,
-                                   &ifrt_loaded_variable_registry,
-                                   tensorflow::IdentityShapeRepresentationFn());
+  IfrtServingExecutable executable(
+      "test", "main", std::move(mlir_module), client, &GetThreadPool(),
+      &ifrt_loaded_variable_registry, device_mgr.get(),
+      tensorflow::IdentityShapeRepresentationFn());
 
   auto x = AsTensor<int32_t>({1, 2, 3}, tensorflow::TensorShape({1, 3}));
   auto y = AsTensor<int32_t>({1, 2, 3}, tensorflow::TensorShape({3, 1}));
   std::vector<tensorflow::Tensor> inputs{x, y};
 
   TF_ASSERT_OK_AND_ASSIGN(auto result,
-                          executable.Execute(absl::MakeSpan(inputs), {}, {}));
+                          executable.Execute(absl::MakeSpan(inputs), {}));
 
   ASSERT_EQ(result.size(), 0);
 }
@@ -344,39 +353,61 @@ TEST_P(VariableInputTest, InterleaveVariable) {
   // Create contexts required for the compiler execution.
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::ifrt::Client> client,
                           xla::ifrt::test_util::GetClient());
-  Eigen::ThreadPoolDevice thread_pool_device = GetThreadPoolDevice();
 
   IfrtLoadedVariableRegistry ifrt_loaded_variable_registry;
-  IfrtServingExecutable executable("test", "main", std::move(mlir_module),
-                                   client, &thread_pool_device,
-                                   &ifrt_loaded_variable_registry,
-                                   tensorflow::IdentityShapeRepresentationFn());
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<tensorflow::StaticDeviceMgr> device_mgr,
+      CreateTfStaticDeviceMgr());
+  IfrtServingExecutable executable(
+      "test", "main", std::move(mlir_module), client, &GetThreadPool(),
+      &ifrt_loaded_variable_registry, device_mgr.get(),
+      tensorflow::IdentityShapeRepresentationFn());
 
   std::vector<tensorflow::Tensor> inputs;
   std::vector<int> loaded_variable_indices;
-  std::vector<std::string> loaded_variable_names;
   for (int i = 0; i < GetParam().in_tensors.size(); i++) {
     if (GetParam().is_variable[i]) {
-      TF_ASSERT_OK_AND_ASSIGN(
-          tsl::RCReference<xla::ifrt::Array> array,
-          MakeArrayFromTensor(*client, GetParam().in_tensors[i],
-                              /*device_ids=*/{0}, xla::HloSharding::Replicate(),
-                              thread_pool_device));
-
       std::string variable_name = absl::StrCat("variable_", i);
-      ASSERT_OK(ifrt_loaded_variable_registry.RegisterLoadedVariable(
-          variable_name, array));
-      loaded_variable_names.push_back(variable_name);
+      ASSERT_OK(ifrt_loaded_variable_registry.TryRegisterLoadedVariable(
+          variable_name,
+          [&]() -> absl::StatusOr<IfrtLoadedVariableRegistry::LoadedVariable> {
+            tensorflow::Tensor in_tensor = GetParam().in_tensors[i];
+            TF_ASSIGN_OR_RETURN(
+                tsl::RCReference<xla::ifrt::Array> array,
+                MakeArrayFromTensor(*client, in_tensor,
+                                    /*device_ids=*/{0},
+                                    xla::HloSharding::Replicate(),
+                                    GetThreadPool()));
+
+            auto promise = xla::ifrt::Future<absl::StatusOr<
+                tsl::RCReference<xla::ifrt::Array>>>::CreatePromise();
+            auto future = xla::ifrt::Future<
+                absl::StatusOr<tsl::RCReference<xla::ifrt::Array>>>(promise);
+            promise.Set(array);
+
+            IfrtLoadedVariableRegistry::LoadedVariable loaded_variable;
+            loaded_variable.array = future;
+            loaded_variable.dtype_and_shape.dtype = in_tensor.dtype();
+            loaded_variable.dtype_and_shape.shape = in_tensor.shape();
+
+            return loaded_variable;
+          }));
       loaded_variable_indices.push_back(i);
 
+      // Use string tensor containing the key (name) in place of variable
+      // tensor.
+      tensorflow::Tensor key_tensor(tensorflow::DT_STRING, {});
+      key_tensor.scalar<tsl::tstring>()() = variable_name;
+      inputs.push_back(key_tensor);
     } else {
       inputs.push_back(GetParam().in_tensors[i]);
     }
   }
 
+  ASSERT_EQ(inputs.size(), GetParam().is_variable.size());
+
   TF_ASSERT_OK_AND_ASSIGN(
       auto result, executable.Execute(absl::MakeSpan(inputs),
-                                      absl::MakeSpan(loaded_variable_names),
                                       absl::MakeSpan(loaded_variable_indices)));
 
   EXPECT_THAT(result,

@@ -59,7 +59,7 @@ class EagerNode {
 
   // Prepares the node when adding it into EagerExecutor. If any errors happens,
   // EagerExecutor will abort the node immediately.
-  virtual Status Prepare() { return OkStatus(); }
+  virtual Status Prepare() { return absl::OkStatus(); }
 
   // Runs the computation corresponding to this node and blocks till the
   // execution is done.
@@ -152,7 +152,7 @@ class EagerExecutor {
 
   // Returns Status based on any errors that occurred during async execution.
   Status status() const {
-    if (ok()) return OkStatus();
+    if (ok()) return absl::OkStatus();
 
     tf_shared_lock l(node_queue_mutex_);
     return status_;

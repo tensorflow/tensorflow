@@ -1,7 +1,6 @@
 load("//xla:lit.bzl", "enforce_glob", "lit_test_suite")
 
 package(
-    default_visibility = ["//visibility:public"],
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
 )
@@ -12,6 +11,7 @@ lit_test_suite(
         [
             "bool_compare.hlotxt",
             "case_conditional.hlotxt",
+            "custom_call.hlotxt",
             "dynamic_param.hlo",
             "entry_computation_layout.hlotxt",
             "frontend_attributes.hlotxt",

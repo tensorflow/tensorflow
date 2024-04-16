@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/topk_rewriter.h"
 
 #include <array>
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <vector>
@@ -29,8 +30,10 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/primitive_util.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape_util.h"
+#include "xla/util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 
@@ -39,7 +42,7 @@ namespace xla {
 namespace m = match;
 
 // TODO(cheshire): Avoid duplication w/ cudnn_vectorize_convolutions.
-static StatusOr<HloComputation*> BuilderToHloComputation(
+static absl::StatusOr<HloComputation*> BuilderToHloComputation(
     XlaComputation& comp, HloComputation* sibling_computation) {
   TF_ASSIGN_OR_RETURN(ProgramShape program_shape, comp.GetProgramShape());
   HloModuleConfig config(program_shape);
@@ -120,6 +123,36 @@ static bool IsNanSafeGt(HloComputation* comp) {
                      param_s32);
   };
 
+  auto match_generic_iec559 = [](int64_t parameter_number,
+                                 PrimitiveType fp_type,
+                                 PrimitiveType int_type) {
+    auto param = m::Parameter(parameter_number)
+                     .WithShape(m::Shape().WithElementType(fp_type));
+    auto signed_value = m::BitcastConvert(param).WithShape(
+        m::Shape().WithElementType(int_type));
+    int64_t bit_width = primitive_util::BitWidth(fp_type);
+    auto max_value = m::ConstantScalar(LsbMask<uint64_t>(bit_width - 1));
+    auto flipped_value = m::XorAnyOrder(max_value, signed_value);
+    auto is_negative = m::Lt(signed_value, m::ConstantScalar(0));
+    return m::Select(is_negative, flipped_value, signed_value);
+  };
+
+  auto match_generic_iec559_with_convert =
+      [](int64_t parameter_number, PrimitiveType param_type,
+         PrimitiveType fp_type, PrimitiveType int_type) {
+        auto param = m::Parameter(parameter_number)
+                         .WithShape(m::Shape().WithElementType(param_type));
+        auto convert =
+            m::Convert(param).WithShape(m::Shape().WithElementType(fp_type));
+        auto signed_value = m::BitcastConvert(convert).WithShape(
+            m::Shape().WithElementType(int_type));
+        int64_t bit_width = primitive_util::BitWidth(fp_type);
+        auto max_value = m::ConstantScalar(LsbMask<uint64_t>(bit_width - 1));
+        auto flipped_value = m::XorAnyOrder(max_value, signed_value);
+        auto is_negative = m::Lt(signed_value, m::ConstantScalar(0));
+        return m::Select(is_negative, flipped_value, signed_value);
+      };
+
   auto match_s32 = [](int64_t parameter_number) {
     auto param = m::Parameter(parameter_number)
                      .WithShape(m::Shape().WithElementType(S32));
@@ -155,6 +188,15 @@ static bool IsNanSafeGt(HloComputation* comp) {
   };
 
   return Match(comp->root_instruction(),
+               m::Gt(match_generic_iec559(0, F32, S32),
+                     match_generic_iec559(1, F32, S32))) ||
+         Match(comp->root_instruction(),
+               m::Gt(match_generic_iec559(0, BF16, S16),
+                     match_generic_iec559(1, BF16, S16))) ||
+         Match(comp->root_instruction(),
+               m::Gt(match_generic_iec559_with_convert(0, BF16, F32, S32),
+                     match_generic_iec559_with_convert(1, BF16, F32, S32))) ||
+         Match(comp->root_instruction(),
                m::Gt(match_bitcast_f32(0), match_bitcast_f32(1))) ||
          Match(comp->root_instruction(),
                m::Gt(match_bitcast_bf16(0), match_bitcast_bf16(1))) ||
@@ -332,7 +374,7 @@ TopKCustomCall CreateTopKCustomCall(HloInstruction* input,
   return {topk, value_gte, index_gte};
 }
 
-StatusOr<HloInstruction*> TopkRewriter::TransformPatternToCustomCall(
+absl::StatusOr<HloInstruction*> TopkRewriter::TransformPatternToCustomCall(
     HloInstruction* inst) {
   // Check if sort is in TopK.
   std::optional<int64_t> k = SortIsInTopK(inst);
@@ -386,7 +428,7 @@ StatusOr<HloInstruction*> TopkRewriter::TransformPatternToCustomCall(
   return topkcc.topk;
 }
 
-StatusOr<bool> TopkRewriter::TransformToCustomCall(
+absl::StatusOr<bool> TopkRewriter::TransformToCustomCall(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
@@ -403,7 +445,7 @@ StatusOr<bool> TopkRewriter::TransformToCustomCall(
   return changed;
 }
 
-StatusOr<bool> TopkRewriter::Run(
+absl::StatusOr<bool> TopkRewriter::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
@@ -444,7 +486,8 @@ class TopkDecomposerVisitor : public DfsHloRewriteVisitor {
     return inst->user_count() == 1 && inst->users().front()->tuple_index() == 0;
   }
 
-  StatusOr<HloComputation*> CreateVariadicComparator(HloInstruction* inst) {
+  absl::StatusOr<HloComputation*> CreateVariadicComparator(
+      HloInstruction* inst) {
     HloTopKInstruction* topk = DynCast<HloTopKInstruction>(inst);
     XlaBuilder b(absl::StrCat("comparator_", topk->name()));
     std::vector<PrimitiveType> ptypes = {
@@ -512,7 +555,7 @@ class TopkDecomposerVisitor : public DfsHloRewriteVisitor {
   HloPredicate should_decompose_;
 };
 
-StatusOr<bool> TopkDecomposer::Run(
+absl::StatusOr<bool> TopkDecomposer::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   return TopkDecomposerVisitor(should_decompose_)

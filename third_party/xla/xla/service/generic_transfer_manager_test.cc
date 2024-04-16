@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/host/host_platform_id.h"
+#include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/types.h"
@@ -58,11 +59,9 @@ class GenericTransferManagerTest : public ::testing::Test {
   void SetUp() override {
     TF_ASSERT_OK_AND_ASSIGN(
         se::Platform * platform,
-        se::MultiPlatformManager::PlatformWithId(se::host::kHostPlatformId));
+        se::PlatformManager::PlatformWithId(se::host::kHostPlatformId));
     TF_ASSERT_OK_AND_ASSIGN(stream_executor_, platform->ExecutorForDevice(0));
-    stream_.emplace(stream_executor_);
-    stream_->Init();
-    ASSERT_TRUE(stream_->ok());
+    TF_ASSERT_OK_AND_ASSIGN(stream_, stream_executor_->CreateStream());
   }
 
   ScopedShapedBuffer AllocateBuffer(const Shape& shape) {
@@ -74,14 +73,14 @@ class GenericTransferManagerTest : public ::testing::Test {
 
   PackingTransferManager transfer_manager_;
   se::StreamExecutor* stream_executor_;
-  std::optional<se::Stream> stream_;
+  std::unique_ptr<se::Stream> stream_;
 };
 
 TEST_F(GenericTransferManagerTest, TransferLiteralToDevice) {
   ScopedShapedBuffer buffer = AllocateBuffer(ShapeUtil::MakeShape(U16, {2, 2}));
   Literal literal = LiteralUtil::CreateR2<uint16_t>({{1, 2}, {3, 4}});
-  TF_ASSERT_OK(transfer_manager_.TransferLiteralToDevice(&stream_.value(),
-                                                         literal, buffer));
+  TF_ASSERT_OK(transfer_manager_.TransferLiteralToDevice(stream_.get(), literal,
+                                                         buffer));
 
   se::DeviceMemoryBase device_mem = buffer.buffers().element({});
   uint16_t* device_ptr = static_cast<uint16_t*>(device_mem.opaque());
@@ -114,7 +113,7 @@ TEST_F(GenericTransferManagerTest, TransferLiteralToDeviceInt4) {
     transfer_manager_.pack_subbyte_types_ = pack;
     ScopedShapedBuffer buffer =
         AllocateBuffer(ShapeUtil::MakeShape(S4, {2, 2}));
-    TF_ASSERT_OK(transfer_manager_.TransferLiteralToDevice(&stream_.value(),
+    TF_ASSERT_OK(transfer_manager_.TransferLiteralToDevice(stream_.get(),
                                                            literal, buffer));
     se::DeviceMemoryBase device_mem = buffer.buffers().element({});
     ASSERT_EQ(device_mem.size(), pack ? 2 : 4);
@@ -141,7 +140,7 @@ TEST_F(GenericTransferManagerTest, TransferLiteralFromDevice) {
   TF_ASSERT_OK_AND_ASSIGN(
       Literal literal,
       transfer_manager_.TransferManager::TransferLiteralFromDevice(
-          &stream_.value(), buffer));
+          stream_.get(), buffer));
   EXPECT_TRUE(LiteralTestUtil::Equal(
       literal, LiteralUtil::CreateR2<uint16_t>({{1, 2}, {3, 4}})));
 }
@@ -170,7 +169,7 @@ TEST_F(GenericTransferManagerTest, TransferLiteralFromDeviceInt4) {
     TF_ASSERT_OK_AND_ASSIGN(
         Literal literal,
         transfer_manager_.TransferManager::TransferLiteralFromDevice(
-            &stream_.value(), buffer));
+            stream_.get(), buffer));
     EXPECT_TRUE(LiteralTestUtil::Equal(
         literal,
         LiteralUtil::CreateR2<s4>({{s4{1}, s4{-2}}, {s4{-3}, s4{4}}})));

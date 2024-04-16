@@ -28,14 +28,20 @@ namespace xla {
 class OpExpanderPass : public HloModulePass {
  public:
   using HloPassInterface::Run;
-  StatusOr<bool> Run(
+  absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
   // extra_filter: Optional extra filtering criteria for matching instructions,
   // used in conjunction with InstructionMatchesPattern.
-  explicit OpExpanderPass(HloPredicate extra_filter = nullptr)
-      : extra_filter_(std::move(extra_filter)) {}
+  // preserve_sharding and relay_control_dependency: If we preserve sharding and
+  // relay control dependency when replacing the matched instructions.
+  explicit OpExpanderPass(HloPredicate extra_filter = nullptr,
+                          bool preserve_sharding = false,
+                          bool relay_control_dependency = false)
+      : extra_filter_(std::move(extra_filter)),
+        preserve_sharding_(preserve_sharding),
+        relay_control_dependency_(relay_control_dependency) {}
 
  protected:
   // Returns `true` if `instruction` should be expanded by this pass.
@@ -44,10 +50,12 @@ class OpExpanderPass : public HloModulePass {
   // Returns a replacement for `instruction`, or nullptr if no replacement is
   // needed (e.g. only the to_apply subcomputation of the instruction was
   // modified).
-  virtual StatusOr<HloInstruction*> ExpandInstruction(
+  virtual absl::StatusOr<HloInstruction*> ExpandInstruction(
       HloInstruction* instruction) = 0;
 
   HloPredicate extra_filter_;
+  const bool preserve_sharding_;
+  const bool relay_control_dependency_;
 };
 
 }  // namespace xla

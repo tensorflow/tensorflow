@@ -1,19 +1,26 @@
+load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
+load("@local_xla//xla/tsl:tsl.bzl", "internal_visibility")
+load("@local_xla//xla/tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
 load(
     "//tsl/platform:build_config.bzl",
     "tsl_cc_test",
 )
-load("//tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
-load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
+
+default_visibility = [
+    "//tsl/lib/io:__pkg__",
+    # tensorflow/core/platform/random aliases this package
+    "//tensorflow/core/lib/random:__pkg__",
+]
 
 package(
-    default_visibility = ["//visibility:public"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = internal_visibility(default_visibility),
     licenses = ["notice"],
 )
 
 cc_library(
     name = "exact_uniform_int",
     hdrs = ["exact_uniform_int.h"],
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
@@ -28,7 +35,7 @@ cc_library(
         "random_distributions.h",
         "simple_philox.h",
     ],
-    visibility = ["//visibility:public"],
+    visibility = internal_visibility(default_visibility),
     deps = [
         ":exact_uniform_int",
         ":philox_random",
@@ -46,7 +53,10 @@ cc_library(
     name = "random_distributions_utils",
     hdrs = ["random_distributions_utils.h"],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
+    visibility = internal_visibility([
+        "//tensorflow/core/lib/random:__pkg__",
+        "//tensorflow/lite:__subpackages__",
+    ]),
     deps = [":philox_random"],
 )
 
@@ -54,14 +64,16 @@ cc_library(
     name = "philox_random",
     hdrs = ["philox_random.h"],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
+    visibility = internal_visibility([
+        "//tensorflow/core/lib/random:__pkg__",
+        "//tensorflow/lite:__subpackages__",
+    ]),
 )
 
 cc_library(
     name = "philox_random_test_utils",
     testonly = True,
     hdrs = ["philox_random_test_utils.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":philox_random",
         "//tsl/platform:logging",
@@ -73,7 +85,6 @@ cc_library(
     name = "weighted_picker",
     srcs = ["weighted_picker.cc"],
     hdrs = ["weighted_picker.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":philox",
         "//tsl/platform:logging",
@@ -98,7 +109,6 @@ filegroup(
         "weighted_picker.cc",
         "weighted_picker.h",
     ],
-    visibility = ["//visibility:public"],
 )
 
 filegroup(
@@ -110,7 +120,7 @@ filegroup(
         "random_distributions_utils.h",
         "simple_philox.h",
     ],
-    visibility = ["//visibility:public"],
+    visibility = internal_visibility(["//tensorflow/core/lib/random:__pkg__"]),
 )
 
 filegroup(
@@ -120,7 +130,7 @@ filegroup(
         "random_distributions_utils.h",
         "weighted_picker.h",
     ],
-    visibility = ["//visibility:public"],
+    visibility = internal_visibility(["//tensorflow/core/lib/random:__pkg__"]),
 )
 
 filegroup(
@@ -128,7 +138,7 @@ filegroup(
     srcs = [
         "philox_random_test_utils.h",
     ],
-    visibility = ["//visibility:public"],
+    visibility = internal_visibility(["//tensorflow/core/lib/random:__pkg__"]),
 )
 
 filegroup(
@@ -143,14 +153,13 @@ filegroup(
         "simple_philox.h",
         "weighted_picker.h",
     ],
-    visibility = ["//visibility:public"],
+    visibility = internal_visibility(["//tensorflow/core/lib/random:__pkg__"]),
 )
 
 tsl_cc_test(
     name = "distribution_sampler_test",
     size = "small",
     srcs = ["distribution_sampler_test.cc"],
-    visibility = ["//visibility:public"],
     deps = [
         ":philox",
         "//tsl/platform:macros",
@@ -165,7 +174,6 @@ tsl_cc_test(
     name = "philox_random_test",
     size = "small",
     srcs = ["philox_random_test.cc"],
-    visibility = ["//visibility:public"],
     deps = [
         ":philox",
         ":philox_random",
@@ -181,7 +189,6 @@ tsl_cc_test(
     name = "random_distributions_test",
     srcs = ["random_distributions_test.cc"],
     tags = ["optonly"],
-    visibility = ["//visibility:public"],
     deps = [
         ":philox",
         ":philox_random",
@@ -198,7 +205,6 @@ tsl_cc_test(
     name = "simple_philox_test",
     size = "small",
     srcs = ["simple_philox_test.cc"],
-    visibility = ["//visibility:public"],
     deps = [
         ":philox",
         "//tsl/platform:logging",
@@ -212,7 +218,6 @@ tsl_cc_test(
     name = "weighted_picker_test",
     size = "medium",
     srcs = ["weighted_picker_test.cc"],
-    visibility = ["//visibility:public"],
     deps = [
         ":philox",
         ":weighted_picker",

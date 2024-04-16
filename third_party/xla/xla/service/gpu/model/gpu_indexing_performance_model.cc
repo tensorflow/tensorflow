@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/model/gpu_indexing_performance_model.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <vector>
 
@@ -28,10 +29,12 @@ limitations under the License.
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/launch_dimensions.h"
+#include "xla/service/gpu/model/coalescing_analysis.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/service/gpu/model/gpu_performance_model_base.h"
 #include "xla/service/gpu/model/indexing_analysis.h"
 #include "xla/service/gpu/model/indexing_map.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"
 #include "tsl/platform/status.h"
@@ -51,8 +54,28 @@ int64_t GpuPerformanceModelWithIndexingAnalysis::FlopsPerElement(
   TF_CHECK_OK(
       cost_analysis.RevisitInstruction(const_cast<HloInstruction*>(instr)));
 
-  int64_t num_elements = ShapeUtil::ElementsInRecursive(instr->shape());
+  int64_t num_elements = [&] {
+    if (instr->opcode() == HloOpcode::kReduce && instr->shape().IsTuple()) {
+      return ShapeUtil::ElementsInRecursive(instr->shape().tuple_shapes(0));
+    }
+    return ShapeUtil::ElementsInRecursive(instr->shape());
+  }();
+
   return cost_analysis.flop_count(*instr) / num_elements;
+}
+
+int64_t GpuPerformanceModelWithIndexingAnalysis::GetShapeSizeRecursive(
+    const Shape& shape) const {
+  CHECK(shape.IsArray() || shape.IsTuple());
+  if (shape.IsArray()) {
+    return shape_size_(shape);
+  }
+
+  int64_t total_size = 0;
+  for (const auto& element_shape : shape.tuple_shapes()) {
+    total_size += GetShapeSizeRecursive(element_shape);
+  }
+  return total_size;
 }
 
 int64_t GetIterationSpaceSize(const IndexingMap& indexing_map,
@@ -65,22 +88,25 @@ int64_t GetIterationSpaceSize(const IndexingMap& indexing_map,
     return 0;
   }
 
-  auto get_ranges_iteration_space_size = [](const std::vector<Range>& ranges) {
-    int64_t num_iters = 1;
-    for (const Range& range : ranges) {
-      num_iters *= range.upper_bound - range.lower_bound + 1;
-    }
-    return num_iters;
-  };
+  auto get_ranges_iteration_space_size =
+      [](const std::vector<Interval>& ranges) {
+        int64_t num_iters = 1;
+        for (const Interval& range : ranges) {
+          num_iters *= range.upper - range.lower + 1;
+        }
+        return num_iters;
+      };
 
-  return get_ranges_iteration_space_size(indexing_map.GetSymbolRanges()) *
-         get_ranges_iteration_space_size(indexing_map.GetDimensionRanges());
+  return get_ranges_iteration_space_size(indexing_map.GetSymbolBounds()) *
+         get_ranges_iteration_space_size(indexing_map.GetDimensionBounds());
 }
 
 EstimateRunTimeData
 GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForFusion(
-    const HloFusionAnalysis& fusion_analysis) {
+    const HloFusionAnalysis& fusion_analysis, bool is_coalesced) {
   auto& fusion_adaptor = fusion_analysis.fusion();
+  VLOG(5) << "EstimateRunTimeForFusion: " << fusion_adaptor.ToString();
+
   auto roots = fusion_adaptor.GetRoots();
   CHECK_EQ(roots.size(), 1)
       << "Indexing cost model doesn't support multi-output fusions.";
@@ -97,42 +123,51 @@ GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForFusion(
   // operands. For each instruction, tells which elements of the instructions
   // result will be used to compute one result element of the fusion.
   auto grouped_fusion_indexing = ComputeGroupedOutputToInputIndexing(
-      fusion_adaptor, /*output_id=*/0, mlir_context_);
+      fusion_adaptor, roots[0], mlir_context_);
 
   int64_t flops = 0;
+  int64_t bytes_read = 0;
   absl::Duration read_time = absl::ZeroDuration();
 
   for (const auto& [instr, indexing_maps] : grouped_fusion_indexing) {
+    VLOG(10) << "instr: " << instr->name();
     HloInstructionAdaptor instr_adaptor(*instr);
 
+    // Instructions inside the fusion are computation and account for FLOPs
+    // count. Instructions outside the fusion are operands of the fusion and
+    // account for memory read time.
+    bool is_operand = !fusion_adaptor.ContainsInstruction(instr_adaptor);
+
+    auto element_type = instr->shape().element_type();
     int64_t n_bytes_total = 0;
     for (const auto& indexing_map : indexing_maps) {
+      VLOG(10) << indexing_map.ToString();
+
       int64_t num_iters = GetIterationSpaceSize(indexing_map, instr);
 
-      // Instructions inside the fusion are computation and account for FLOPs
-      // count. Instructions outside the fusion are operands of the fusion and
-      // account for memory read time.
-      if (fusion_adaptor.ContainsInstruction(instr_adaptor)) {
+      if (is_operand) {
+        int64_t type_size = ShapeUtil::ByteSizeOfPrimitiveType(element_type);
+        n_bytes_total += type_size * num_iters;
+      } else {
         int64_t flops_per_element = FlopsPerElement(instr);
         flops += flops_per_element * num_iters;
-      } else {
-        int64_t type_size =
-            ShapeUtil::ByteSizeOfPrimitiveType(instr->shape().element_type());
-        n_bytes_total += type_size * num_iters;
       }
     }
 
-    if (n_bytes_total > 0) {
-      int64_t n_bytes_net = shape_size_(instr->shape());
-      auto element_type = instr->shape().element_type();
+    if (is_operand) {
+      int64_t operand_size = shape_size_(instr->shape());
+      int64_t n_bytes_net = std::min(operand_size, n_bytes_total);
+      bytes_read += n_bytes_total;
 
-      read_time += ReadTimeWithDRAMHeuristic(*device_info_, num_blocks,
-                                             n_bytes_net, n_bytes_total,
-                                             element_type, /*coalesced=*/true);
+      VLogOperandRead(instr, n_bytes_total, n_bytes_net, is_coalesced);
+
+      read_time +=
+          ReadTimeWithDRAMHeuristic(*device_info_, num_blocks, n_bytes_net,
+                                    n_bytes_total, element_type, is_coalesced);
     }
   }
 
-  int64_t bytes_written = shape_size_(root_shape);
+  int64_t bytes_written = GetShapeSizeRecursive(root_shape);
 
   absl::Duration compute_time = ComputeTime(*device_info_, flops, num_threads);
   absl::Duration write_time = WriteTime(*device_info_, bytes_written);
@@ -141,8 +176,11 @@ GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForFusion(
       compute_time, memory_access_time,
       GpuPerformanceModelOptions::PriorityFusion());
 
-  return EstimateRunTimeData{flops, bytes_written, num_threads, write_time,
-                             exec_time};
+  VLogResult(flops, bytes_read, bytes_written, num_threads, compute_time,
+             read_time, write_time, exec_time);
+
+  return EstimateRunTimeData{flops,      bytes_written, num_threads, read_time,
+                             write_time, compute_time,  exec_time};
 }
 
 EstimateRunTimeData
@@ -155,7 +193,9 @@ GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForInstruction(
 
   auto fusion_analysis = AnalyzeFusion(*producer, *device_info_);
 
-  return EstimateRunTimeForFusion(fusion_analysis);
+  bool is_coalesced = IsReadCoalescedHeuristic(
+      fusion_analysis.GetEmitterFusionKind(), producer);
+  return EstimateRunTimeForFusion(fusion_analysis, is_coalesced);
 }
 
 EstimateRunTimeData
@@ -164,7 +204,9 @@ GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForProducerConsumer(
   auto fusion_analysis =
       AnalyzeProducerConsumerFusion(*producer, *consumer, *device_info_);
 
-  return EstimateRunTimeForFusion(fusion_analysis);
+  bool is_coalesced = IsReadCoalescedHeuristic(
+      fusion_analysis.GetEmitterFusionKind(), producer, consumer);
+  return EstimateRunTimeForFusion(fusion_analysis, is_coalesced);
 }
 
 /*static*/

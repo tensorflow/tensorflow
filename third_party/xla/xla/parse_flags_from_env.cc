@@ -32,8 +32,8 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
+#include "xla/tsl/util/command_line_flags.h"
 #include "tsl/platform/logging.h"
-#include "tsl/util/command_line_flags.h"
 
 namespace xla {
 
@@ -210,7 +210,7 @@ bool ParseFlagsFromEnvAndIgnoreUnknown(
     }
   }
 
-  return tsl::Flags::Parse(&env_argv->argc, &env_argv->argv[0], flag_list);
+  return tsl::Flags::Parse(&env_argv->argc, env_argv->argv.data(), flag_list);
 }
 
 bool DieIfEnvHasUnknownFlagsLeft(absl::string_view envvar) {

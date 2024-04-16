@@ -72,8 +72,8 @@ class DirectPluginOpKernelContext : public PluginOpKernelContext {
                                 void* create_func_args,
                                 void (*delete_func)(void*)) override;
 
-  PluginCoordinationServiceAgent* GetPluginCoordinationServiceAgent()
-      const override {
+  std::unique_ptr<PluginCoordinationServiceAgent>
+  GetPluginCoordinationServiceAgent() const override {
     return CreatePluginCoordinationServiceAgent(
         ctx_->coordination_service_agent());
   }

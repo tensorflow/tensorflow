@@ -99,7 +99,7 @@ Status GetComputationCacheEntry(
 }
 
 // Builds an InputBuffers object that describes the inputs to the computation.
-xla::StatusOr<xla::ShapeTree<xla::MaybeOwningDeviceMemory>> BuildInputBuffers(
+absl::StatusOr<xla::ShapeTree<xla::MaybeOwningDeviceMemory>> BuildInputBuffers(
     OpKernelContext* context, const std::vector<VariableInfo>& variables,
     const xla::Shape& input_host_shape, xla::Backend* backend,
     int device_ordinal, se::Stream* stream) {
@@ -182,7 +182,7 @@ xla::StatusOr<xla::ShapeTree<xla::MaybeOwningDeviceMemory>> BuildInputBuffers(
 
   // Assigns the buffers of 'tensor' as computation input 'i'. Allocates fresh
   // buffers for zero-element tensors where required.
-  auto assign_input = [&](int i, const Tensor& tensor) -> xla::Status {
+  auto assign_input = [&](int i, const Tensor& tensor) -> absl::Status {
     XlaTensor* xla_tensor = XlaTensor::FromTensor(&tensor);
 
     // Size 0 tensors have no backing XlaTensor, but may still need to have

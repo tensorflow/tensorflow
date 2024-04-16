@@ -80,7 +80,7 @@ XlaOp ComputeSums(XlaOp operand, XlaOp init_value,
                   absl::Span<const int64_t> stride,
                   const TensorFormat& data_format) {
   XlaBuilder* b = operand.builder();
-  return b->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+  return b->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape operand_shape, b->GetShape(operand));
     TF_ASSIGN_OR_RETURN(Shape init_shape, b->GetShape(init_value));
     PrimitiveType accumulation_type = init_shape.element_type();
@@ -140,7 +140,7 @@ XlaOp MaxPool(XlaOp operand, absl::Span<const int64_t> kernel_size,
               absl::Span<const int64_t> stride, Padding padding,
               const TensorFormat& data_format) {
   XlaBuilder* b = operand.builder();
-  return b->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+  return b->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape operand_shape, b->GetShape(operand));
     PrimitiveType dtype = operand_shape.element_type();
     auto max_computation = CreateScalarMaxComputation(dtype, b);
@@ -156,7 +156,7 @@ XlaOp AvgPool(XlaOp operand, absl::Span<const int64_t> kernel_size,
               const TensorFormat& data_format,
               const bool counts_include_padding) {
   XlaBuilder* b = operand.builder();
-  return b->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+  return b->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape operand_shape, b->GetShape(operand));
     PrimitiveType dtype = operand_shape.element_type();
     auto init_value = Zero(b, dtype);
@@ -202,7 +202,7 @@ XlaOp AvgPoolGrad(XlaOp out_backprop, absl::Span<const int64_t> gradients_size,
                   const TensorFormat& data_format,
                   const bool counts_include_padding) {
   XlaBuilder* b = out_backprop.builder();
-  return b->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+  return b->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     const int num_dims = kernel_size.size();
     const int num_gradients = gradients_size.size();
     if (num_gradients != num_dims) {

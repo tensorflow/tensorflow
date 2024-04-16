@@ -104,7 +104,7 @@ inline bool CopyHostToDevice(OpKernelContext* context, void* dst,
                              const void* src, uint64 bytes) {
   auto stream = context->op_device_context()->stream();
   se::DeviceMemoryBase wrapped_dst(dst);
-  return stream->ThenMemcpy(&wrapped_dst, src, bytes).ok();
+  return stream->Memcpy(&wrapped_dst, src, bytes).ok();
 }
 
 // A set of initialized handles to the underlying Cuda libraries used by
@@ -653,7 +653,7 @@ static inline Status HeevdImpl(BufSizeFnT bufsize, SolverFnT solver,
   uint64_t work_size_in_bytes = static_cast<uint64_t>(lwork) * sizeof(Scalar);
   se::DeviceMemoryBase dev_workspace_ptr(dev_workspace.mutable_data(),
                                          work_size_in_bytes);
-  stream->ThenMemZero(&dev_workspace_ptr, work_size_in_bytes);
+  TF_RETURN_IF_ERROR(stream->MemZero(&dev_workspace_ptr, work_size_in_bytes));
 #endif
   /* Launch the solver kernel. */
   TF_RETURN_IF_CUSOLVER_ERROR(

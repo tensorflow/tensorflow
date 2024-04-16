@@ -16,16 +16,10 @@ limitations under the License.
 #include "xla/service/gpu/tree_reduction_rewriter.h"
 
 #include <optional>
-#include <utility>
 
 #include "absl/strings/string_view.h"
-#include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/service/hlo_module_config.h"
-#include "xla/service/hlo_parser.h"
-#include "xla/statusor.h"
-#include "xla/tests/filecheck.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_test_base.h"
-#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/test.h"
 
 namespace xla {

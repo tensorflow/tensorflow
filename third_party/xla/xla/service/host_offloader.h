@@ -19,7 +19,9 @@
 #include <memory>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/hlo_alias_analysis.h"
 #include "xla/service/hlo_pass_interface.h"
 
@@ -42,24 +44,34 @@ class HostOffloader : public HloModulePass {
   absl::string_view name() const override { return "host-offloader"; }
 
   using HloPassInterface::Run;
-  StatusOr<bool> Run(
+  absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
+  static absl::Span<const HloOpcode> GetAllowedPositionOpcodes() {
+    return kAllowedPositionOpcodes;
+  }
 
  private:
   const int64_t kHostMemorySpaceColor;
   std::unique_ptr<HloAliasAnalysis> alias_analysis_;
-  absl::flat_hash_set<HloInstruction*> expected_reload_annotations_;
+  absl::flat_hash_set<HloInstruction*> found_host_to_device_annotations_;
+  absl::flat_hash_set<HloInstruction*> expected_host_to_device_annotations_;
   absl::flat_hash_set<HloInstruction*> custom_calls_to_remove_;
   absl::flat_hash_set<HloInstruction*> broadcasts_to_replace_;
   absl::flat_hash_set<HloPosition> positions_to_move_to_host_memory_;
+  absl::flat_hash_set<HloInstruction*> annotations_for_copy_to_host_to_insert_;
+  absl::flat_hash_set<HloInstruction*>
+      annotations_for_copy_to_device_to_insert_;
+  std::unique_ptr<CallGraph> call_graph_;
 
   // Positions of all HloValues of the given HloBuffer will be added to
   // positions_to_move_to_host_memory_.
   void AddAllPositionsToBeMovedToHostMemory(const HloBuffer& unique_buffer);
 
-  Status HandlePipelineForwardCustomCall(HloInstruction* custom_call);
-  Status HandlePipelineBackwardCustomCall(HloInstruction* custom_call);
+  absl::StatusOr<bool> TryParameterStreaming(HloInstruction* custom_call);
+  absl::StatusOr<bool> TryOutputStreaming(HloInstruction* custom_call);
+  Status HandleMoveToHostCustomCall(HloInstruction* custom_call);
+  Status HandleMoveToDeviceCustomCall(HloInstruction* custom_call);
 
   // Handle memory-only offloading where the data is written to the host via a
   // dynamic-update-slice and is read back via a dynamic-slice.
@@ -75,6 +87,14 @@ class HostOffloader : public HloModulePass {
   Status MemoryOnlyOffloadInsertCopies(HloInstruction* custom_call);
 
   Status DynamifySlice(HloInstruction* slice);
+
+  static constexpr std::array kAllowedPositionOpcodes = {
+      HloOpcode::kBitcast,
+      HloOpcode::kGetTupleElement,
+      HloOpcode::kOptimizationBarrier,
+      HloOpcode::kParameter,
+      HloOpcode::kTuple,
+      HloOpcode::kWhile};
 };
 
 }  // namespace xla

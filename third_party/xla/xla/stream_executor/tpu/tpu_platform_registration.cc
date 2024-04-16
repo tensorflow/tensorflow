@@ -17,7 +17,7 @@ limitations under the License.
 #include "xla/stream_executor/tpu/tpu_platform.h"
 
 #if defined(PLATFORM_GOOGLE)
-REGISTER_MODULE_INITIALIZER(tpu_platform,
-                            tensorflow::tpu::RegisterTpuPlatform());
+STREAM_EXECUTOR_REGISTER_MODULE_INITIALIZER(
+    tpu_platform, tensorflow::tpu::RegisterTpuPlatform());
 
 #endif

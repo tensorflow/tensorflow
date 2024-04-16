@@ -24,15 +24,16 @@ limitations under the License.
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
 #if !defined(PLATFORM_WINDOWS)
 #include <link.h>
 #include <sys/sysmacros.h>
 #include <unistd.h>
 #endif
+
 #include <sys/stat.h>
 
-#include <algorithm>
-#include <memory>
+#include <string>
 #include <vector>
 
 #include "absl/container/inlined_vector.h"

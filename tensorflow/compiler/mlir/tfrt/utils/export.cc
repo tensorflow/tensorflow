@@ -37,7 +37,8 @@ namespace tensorflow {
 
 absl::Status ExportFunctionDefs(
     mlir::ModuleOp module,
-    absl::AnyInvocable<absl::Status(tensorflow::FunctionDef)> callback) {
+    absl::AnyInvocable<absl::Status(tensorflow::FunctionDef)> callback,
+    bool export_tf_original_func_name) {
   tsl::profiler::TraceMe traceme([&]() {
     return tsl::profiler::TraceMeEncode(
         "ExportFunctionDefs",
@@ -58,7 +59,7 @@ absl::Status ExportFunctionDefs(
     }
   }
   tensorflow::GraphExportConfig configs;
-  configs.export_original_tf_func_name = true;
+  configs.export_original_tf_func_name = export_tf_original_func_name;
 
   for (auto func : module.getOps<mlir::func::FuncOp>()) {
     tensorflow::FunctionDef function_def;

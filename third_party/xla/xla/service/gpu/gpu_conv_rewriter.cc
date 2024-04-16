@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/gpu_conv_rewriter.h"
 
+#include <cstdint>
 #include <cstdlib>
 #include <memory>
 #include <numeric>
@@ -24,17 +25,24 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
+#include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/permutation_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/util.h"
 #include "xla/window_util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/status.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -42,6 +50,30 @@ namespace gpu {
 namespace {
 using ConvolutionMatch = std::optional<
     std::tuple<Window, ConvolutionDimensionNumbers, HloInstruction*>>;
+
+// Determine whether conv2d is equal to conv1d.
+bool MaybeConv1dToConv2d(HloInstruction* conv) {
+  if (conv->window().dimensions().size() != 2) {
+    return false;
+  }
+  if (conv->operand(1)->opcode() != HloOpcode::kReshape) {
+    return false;
+  }
+  auto filter = conv->operand(1);
+  std::optional<ShapeUtil::ShapeEqualityDescriptor> reshape_degenerate =
+      filter->ReshapeMerelyInsertsOrDeletes1SizedDimensions();
+  if (reshape_degenerate.has_value() &&
+      reshape_degenerate->deleted_dimensions.empty() &&
+      reshape_degenerate->inserted_dimensions.size() == 1) {
+    auto dnums = conv->convolution_dimension_numbers();
+    for (auto dim : dnums.kernel_spatial_dimensions()) {
+      if (dim == reshape_degenerate->inserted_dimensions[0]) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
 
 bool CanImplementAsGpuForwardConv(HloInstruction* conv) {
   const ConvolutionDimensionNumbers& dnums =
@@ -145,14 +177,18 @@ ConvolutionMatch MatchBackwardFilter(HloInstruction* conv) {
   // convolutions have very small kernel dimensions, while in the backward pass
   // "kernel dimensions" are large. If kernel dimensions are smaller than the
   // output dimensions, return foward conv; otherwise proceed with backward
-  // filter conv.
-  bool exists_small_kernel_dimension = false;
+  // filter conv. But for conv1d, it is not same. Due to conv1d always reshape
+  // 1D-filter to 2D-filter, even backward or forward will exist one small
+  // kernel dimension. We should handle this special case.
+  int small_kernel_dimension_num = 0;
   for (int i = 0; i < kernel_spatial_dims.size(); ++i) {
-    exists_small_kernel_dimension |=
-        (conv->operand(1)->shape().dimensions(kernel_spatial_dims[i]) <=
-         conv->shape().dimensions(output_spatial_dims[i]));
+    if (conv->operand(1)->shape().dimensions(kernel_spatial_dims[i]) <=
+        conv->shape().dimensions(output_spatial_dims[i])) {
+      small_kernel_dimension_num += 1;
+    }
   }
-  if ((kernel_spatial_dims.empty() || exists_small_kernel_dimension) &&
+  if ((kernel_spatial_dims.empty() || small_kernel_dimension_num > 1 ||
+       (!MaybeConv1dToConv2d(conv) && small_kernel_dimension_num == 1)) &&
       !window_util::HasWindowDilation(conv->window())) {
     VLOG(1) << conv->ToString()
             << " is a regular forward convolution. No need "
@@ -313,10 +349,18 @@ ConvolutionMatch MatchBackwardInput(HloInstruction* conv) {
       reverse_filter->opcode() == HloOpcode::kReverse &&
       absl::c_is_permutation(dnums.kernel_spatial_dimensions(),
                              reverse_filter->dimensions());
+  // For conv1d which reshape to conv2d, filter reverse pattern is
+  // reshape(reverse(filter)). It seems we can reuse conv2d backward input
+  // pattern matcher, but after algsimp pass, this pattern will change to
+  // reverse(reshape(filter)) and fail to match. So matching conv1d backward
+  // input need different processing logic.
+  bool is_reversed_conv1d_filter =
+      MaybeConv1dToConv2d(conv) &&
+      reverse_filter->operand(0)->opcode() == HloOpcode::kReverse;
   bool is_1x1_filter =
       absl::c_all_of(conv->window().dimensions(),
                      [](const WindowDimension& d) { return d.size() == 1; });
-  if (!is_reversed_filter &&
+  if (!is_reversed_filter && !is_reversed_conv1d_filter &&
       !(window_util::HasBaseDilation(conv->window()) &&
         (reverse_filter->IsConstant() || is_1x1_filter))) {
     VLOG(1) << "Can't match to backwards convolution. Either filter is not "
@@ -488,6 +532,10 @@ ConvolutionMatch MatchBackwardInput(HloInstruction* conv) {
   // One reverse is subsumed by the cuDNN call.
   if (rhs->opcode() == HloOpcode::kReverse) {
     rhs = rhs->mutable_operand(0);
+  } else if (is_reversed_conv1d_filter) {
+    auto src = rhs->mutable_operand(0)->mutable_operand(0);
+    rhs = conv->parent()->AddInstruction(
+        HloInstruction::CreateReshape(rhs->shape(), src));
   }
   if (conv->feature_group_count() == 1) {
     return std::make_tuple(new_window, dnums, rhs);

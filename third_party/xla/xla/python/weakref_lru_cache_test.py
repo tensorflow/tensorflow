@@ -111,6 +111,41 @@ class WeakrefLRUCacheTest(absltest.TestCase):
     cache(wrkey, "arg2")
     self.assertLen(cache.cache_keys(), 2)
 
+  def testCrashingKey(self):
+    class WRKey:
+      pass
+
+    class CrashingKey:
+      # A key that raises exceptions if eq or hash is called.
+
+      def __eq__(self, other):
+        raise ValueError("eq")
+
+      def __hash__(self):
+        raise ValueError("hash")
+
+    cache = xla_client.weakref_lru_cache(lambda: None, lambda x, y: y, 2048)
+    wrkey = WRKey()
+    with self.assertRaises(ValueError):
+      for _ in range(100):
+        cache(wrkey, CrashingKey())
+
+  def testPrintingStats(self):
+    class WRKey:
+      pass
+
+    cache = xla_client.weakref_lru_cache(lambda: None, lambda x, y: y, 2048)
+    wrkey = WRKey()
+    for i in range(10):
+      cache(wrkey, i)
+    for i in range(5):
+      cache(wrkey, i)
+
+    self.assertEqual(
+        repr(cache.cache_info()),
+        "WeakrefLRUCache(hits=5, misses=10, maxsize=2048, currsize=10)",
+    )
+
 
 if __name__ == "__main__":
   absltest.main()

@@ -46,7 +46,7 @@ func.func @main(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {
 }})";
 
 // Compiles an MLIR module on specified devices.
-StatusOr<std::unique_ptr<LoadedExecutable>> CompileOnDevices(
+absl::StatusOr<std::unique_ptr<LoadedExecutable>> CompileOnDevices(
     Client* client, Compiler* compiler, absl::string_view mlir_module_str,
     absl::Span<Device* const> devices, bool replicated) {
   mlir::MLIRContext context;

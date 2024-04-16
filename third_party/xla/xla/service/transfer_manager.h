@@ -16,19 +16,24 @@ limitations under the License.
 #ifndef XLA_SERVICE_TRANSFER_MANAGER_H_
 #define XLA_SERVICE_TRANSFER_MANAGER_H_
 
-#include <map>
-#include <set>
-#include <vector>
+#include <cstdint>
+#include <functional>
+#include <memory>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/literal.h"
-#include "xla/service/executable.h"
+#include "xla/service/maybe_owning_device_memory.h"
 #include "xla/service/shaped_buffer.h"
+#include "xla/shape.h"
+#include "xla/shape_tree.h"
+#include "xla/shape_util.h"
+#include "xla/status.h"
 #include "xla/statusor.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/types.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -72,7 +77,7 @@ class TransferManager {
   //
   // Optionally caller can specify platform-specific transfer metadata that
   // tells the actual implementation to do something special.
-  StatusOr<Literal> TransferLiteralFromDevice(
+  absl::StatusOr<Literal> TransferLiteralFromDevice(
       se::Stream* stream, const ShapedBuffer& device_buffer,
       const TransferMetadata* transfer_metadata = nullptr);
 
@@ -166,7 +171,7 @@ class TransferManager {
       const se::DeviceMemoryBase& dest,
       const TransferMetadata* transfer_metadata = nullptr);
 
-  StatusOr<Literal> TransferArrayFromDevice(
+  absl::StatusOr<Literal> TransferArrayFromDevice(
       se::Stream* stream, const Shape& shape,
       const se::DeviceMemoryBase& source,
       const TransferMetadata* transfer_metadata = nullptr);
@@ -223,7 +228,7 @@ class TransferManager {
   // devices that have tiled memory architectures.
   // The default implementation always picks a default (major-to-minor) layout.
   // Fails if 'shape' cannot be represented by the device.
-  virtual StatusOr<Shape> ChooseCompactLayoutForShape(
+  virtual absl::StatusOr<Shape> ChooseCompactLayoutForShape(
       const Shape& host_shape) const;
 
   // For the given shape, chooses a layout for infeed. The returned shape
@@ -236,7 +241,7 @@ class TransferManager {
   // Allocates a ScopedShapedBuffer which can hold data with the given on-host
   // shape. The on-device shape may be different as indicated by
   // HostShapeToDeviceShape.
-  StatusOr<ScopedShapedBuffer> AllocateScopedShapedBuffer(
+  absl::StatusOr<ScopedShapedBuffer> AllocateScopedShapedBuffer(
       const Shape& on_host_shape, se::DeviceMemoryAllocator* allocator,
       int device_ordinal,
       DeviceShapeRepresentationFn shape_representation_fn = nullptr);
@@ -283,7 +288,7 @@ class TransferManager {
 
   // Returns the transfer manager singleton pointer if it is available for the
   // given platform, or an error status if it is not.
-  static StatusOr<TransferManager*> GetForPlatform(
+  static absl::StatusOr<TransferManager*> GetForPlatform(
       const se::Platform* platform);
 
   // Writes the given device-memory pointers in 'elements' to the given region
@@ -292,6 +297,16 @@ class TransferManager {
   virtual Status WriteSingleTupleIndexTable(
       se::Stream* stream, absl::Span<const se::DeviceMemoryBase> elements,
       const Shape& shape, se::DeviceMemoryBase* region) = 0;
+
+  // Returns whether subbyte types (types less than 1 byte, e.g. U4) should
+  // have multiple values packed into a single byte on the device. Subbyte
+  // bytes are never packed on the host. By default, returns false, so a byte
+  // can only hold one value, but subclasses can override this.
+  //
+  // If overridden to return true, subclasses should pack and unpack in their
+  // overridden implementations of TransferLiteralToDeviceAsync and
+  // TransferLiteralFromDevice respectively.
+  virtual bool PackSubbyteTypes() const { return false; }
 
  private:
   // The mutex that guards the platform-to-transfer manager map.

@@ -25,7 +25,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/runtime/sequential_thunk.h"
-#include "xla/service/gpu/thunk.h"
+#include "xla/service/gpu/runtime/thunk.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "tsl/platform/errors.h"
@@ -100,7 +100,8 @@ absl::Status WhileThunk::ExecuteOnStream(const ExecuteParams& params) {
     TF_RETURN_IF_ERROR(condition_thunk_sequence_->ExecuteOnStream(params));
 
     // Copy the result of condition computation and break the loop if 'false'.
-    stream.ThenMemcpy(condition_result, condition_result_data, sizeof(bool));
+    TF_RETURN_IF_ERROR(
+        stream.Memcpy(condition_result, condition_result_data, sizeof(bool)));
 
     if (absl::Status blocked = stream.BlockHostUntilDone(); !blocked.ok()) {
       return absl::InternalError(absl::StrFormat(

@@ -76,19 +76,22 @@ class EventPool {
   // such as cudaStreamWaitEvent capture the state of the event at the time of
   // the host-side call and are not affected by a later host-side
   // cudaEventRecord.
-  StatusOr<Handle> ThenAllocateAndRecordEvent(se::Stream* stream);
+  absl::StatusOr<Handle> ThenAllocateAndRecordEvent(se::Stream* stream);
 
   // Version of ThenAllocateAndRecordEvent split into two phases; this is
   // sometimes helpful if we want to avoid failures by preallocating events.
-  StatusOr<Handle> AllocateEvent(se::StreamExecutor* executor);
+  absl::StatusOr<Handle> AllocateEvent(se::StreamExecutor* executor);
   void ThenRecordEvent(se::Stream* stream, EventPool::Handle& handle);
 
  private:
   const bool allow_reuse_;
 
-  absl::Mutex mu_;
-  std::stack<std::unique_ptr<se::Event>> free_events_ ABSL_GUARDED_BY(mu_);
-  uint64_t next_sequence_number_ ABSL_GUARDED_BY(mu_);
+  absl::Mutex mu_free_events_;
+  std::stack<std::unique_ptr<se::Event>> free_events_
+      ABSL_GUARDED_BY(mu_free_events_);
+
+  absl::Mutex mu_sequence_number_;
+  uint64_t next_sequence_number_ ABSL_GUARDED_BY(mu_sequence_number_);
 };
 
 }  // namespace xla

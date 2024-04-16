@@ -18,18 +18,16 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/python/ifrt/executable.h"
+#include "xla/python/ifrt/executable_serdes.h"
+#include "xla/python/ifrt/program.h"
 #include "xla/python/ifrt/serdes.h"
 
 namespace xla {
 namespace ifrt {
-
-// Abstract program.
-struct Program : llvm::RTTIExtends<Program, Serializable> {
-  static char ID;  // NOLINT
-};
 
 // Abstract options for compiling a program and load it as `LoadedExecutable`.
 // Ideally, compile options should be present in the program being compiled to
@@ -38,16 +36,6 @@ struct Program : llvm::RTTIExtends<Program, Serializable> {
 //
 // TODO(hyeontaek): Make an new `LoadOptions` that is specific for loading.
 struct CompileOptions : llvm::RTTIExtends<CompileOptions, Serializable> {
-  static char ID;  // NOLINT
-};
-
-// Abstract options for deserializing an `Executable` and load it as
-// `LoadedExecutable`. This option structure is to express legacy compilation
-// options that are not included in the program.
-//
-// TODO(hyeontaek): Make an new `LoadOptions` that is specific for loading.
-struct DeserializeExecutableOptions
-    : llvm::RTTIExtends<DeserializeExecutableOptions, DeserializeOptions> {
   static char ID;  // NOLINT
 };
 
@@ -65,15 +53,17 @@ class Compiler : public llvm::RTTIExtends<Compiler, llvm::RTTIRoot> {
  public:
   // Compiles `mlir_module` and returns a `LoadedExecutable`.
   // TODO(hyeontaek): Move executable loading to `Client`.
-  virtual StatusOr<std::unique_ptr<LoadedExecutable>> Compile(
+  virtual absl::StatusOr<std::unique_ptr<LoadedExecutable>> Compile(
       std::unique_ptr<Program> program,
       std::unique_ptr<CompileOptions> options) = 0;
 
   // Deserializes a serialized executable as produced by
   // `LoadedExecutable::Serialize()`. The compatibility of `serialized` is
   // implementation specific.
-  // TODO(hyeontaek): Move executable loading to `Client`.
-  virtual StatusOr<std::unique_ptr<LoadedExecutable>>
+  // TODO(hyeontaek): Move executable loading to `Client`. Then, the user can
+  // use standard IFRT deserialization instead of this custom deserialization
+  // function.
+  virtual absl::StatusOr<std::unique_ptr<LoadedExecutable>>
   DeserializeLoadedExecutable(
       absl::string_view serialized,
       std::unique_ptr<DeserializeExecutableOptions> options) = 0;

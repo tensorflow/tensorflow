@@ -30,7 +30,7 @@ namespace data {
 
 class TestContext {
  public:
-  static StatusOr<std::unique_ptr<TestContext>> Create();
+  static absl::StatusOr<std::unique_ptr<TestContext>> Create();
   virtual ~TestContext() = default;
 
   OpKernelContext* op_ctx() const { return op_ctx_.get(); }

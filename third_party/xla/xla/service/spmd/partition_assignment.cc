@@ -55,7 +55,7 @@ NoopPartitioning::NoopPartitioning(int64_t num_partitions)
           << num_partitions;
 }
 
-StatusOr<bool> NoopPartitioning::Run(HloModule* module) const {
+absl::StatusOr<bool> NoopPartitioning::Run(HloModule* module) const {
   VLOG(2) << "No-op algorithm was called to partition module: "
           << module->name();
   return false;
@@ -86,7 +86,7 @@ PartitionAssignment::ChoosePartitioningAlgorithm(
   return PartitioningAlgorithm::CreateNoopPartitioning(num_partitions());
 }
 
-StatusOr<bool> PartitionAssignment::Run(
+absl::StatusOr<bool> PartitionAssignment::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   VLOG(2) << "Running partition assignment on module " << module->name();

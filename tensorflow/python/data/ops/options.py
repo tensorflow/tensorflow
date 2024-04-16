@@ -229,6 +229,18 @@ class AutotuneOptions(options_lib.OptionsBase):
       docstring="When autotuning is enabled (through `autotune`), determines "
       "the algorithm to use.")
 
+  initial_parallelism = options_lib.create_option(
+      name="initial_parallelism",
+      ty=int,
+      docstring=(
+          "The initial parallelism to use for parallel transformations before"
+          " autotune has a chance to run. A higher value can help with quick"
+          " startup, but may cause the ram_budget to temporarily be exceeded."
+          " Memory-sensitive datasets should consider setting this to `1` to"
+          " avoid running out of memory. Defaults to 16."
+      ),
+  )
+
   def _to_proto(self):
     pb = dataset_options_pb2.AutotuneOptions()
     if self.enabled is not None:
@@ -240,6 +252,8 @@ class AutotuneOptions(options_lib.OptionsBase):
     if self.autotune_algorithm is not None:
       pb.autotune_algorithm = AutotuneAlgorithm._to_proto(  # pylint: disable=protected-access
           self.autotune_algorithm)
+    if self.initial_parallelism is not None:
+      pb.initial_parallelism = self.initial_parallelism
     return pb
 
   def _from_proto(self, pb):
@@ -252,6 +266,8 @@ class AutotuneOptions(options_lib.OptionsBase):
     if pb.WhichOneof("optional_autotune_algorithm") is not None:
       self.autotune_algorithm = AutotuneAlgorithm._from_proto(  # pylint: disable=protected-access
           pb.autotune_algorithm)
+    if pb.WhichOneof("optional_initial_parallelism") is not None:
+      self.initial_parallelism = pb.initial_parallelism
 
   def _set_mutable(self, mutable):
     """Change the mutability value to `mutable` on this options and children."""

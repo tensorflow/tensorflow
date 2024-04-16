@@ -51,7 +51,7 @@ Status MapAccumulateGrad(const AttrSlice& attrs, FunctionDef* ret) {
         "MapAccumulateGrad",
         {"theta", "x", "u", "y", "dy"},
         {{"g", grad}, {"T", "$T"}, {"K", k}}}});
-  return OkStatus();
+  return absl::OkStatus();
 }
 REGISTER_OP_GRADIENT("MapAccumulate", MapAccumulateGrad);
 

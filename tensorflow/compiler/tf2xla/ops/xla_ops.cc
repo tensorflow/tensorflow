@@ -1365,7 +1365,7 @@ version: Tracks changes the semantics of the op, to support backwards
   the op carries a StableHLO module with compatibility guarantees. From version
   5, XLACallModule can include `stablehlo.custom_call` op to execute tf
   functions. From version 6 the op supports the `disabled_checks` attribute.
-  See more versioning details at https://github.com/search?q=repo%3Atensorflow%2Ftensorflow+path%3Axla_call_module+%22int+VERSION_MAXIMUM_SUPPORTED%22&type=code.
+  See more versioning details at https://github.com/search?q=repo%3Atensorflow%2Ftensorflow+path%3Axla_call_module+%22int+kVersionMaximumSupported%22&type=code.
 module: A serialized computation, a text or bytecode representation of
   an mlir.Module. The return type must be a tuple if and only if the `Sout` is
   a list with 0 or more than 1 elements. The length of `Tout` and

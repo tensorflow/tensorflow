@@ -67,7 +67,7 @@ bool LeafVectorsAreConsistent(const std::vector<ShardingStrategy>& one,
 
 // NOLINTBEGIN(readability/fn_size)
 // TODO(zhuohan): Decompose this function into smaller pieces
-StatusOr<std::tuple<StrategyMap, StrategyGroups, AssociativeDotPairs>>
+absl::StatusOr<std::tuple<StrategyMap, StrategyGroups, AssociativeDotPairs>>
 BuildStrategyAndCost(const HloInstructionSequence& sequence,
                      const HloModule* module,
                      const absl::flat_hash_map<const HloInstruction*, int64_t>&
@@ -202,7 +202,7 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
 
           std::vector<std::optional<HloSharding>> input_shardings_optional(
               {output_spec, std::nullopt, std::nullopt});
-          std::vector<std::vector<double>> resharding_cost =
+          std::pair<ReshardingCosts, ReshardingCosts> resharding_costs =
               GenerateReshardingCostsAndMissingShardingsForAllOperands(
                   ins, output_spec, strategy_map, cluster_env, call_graph,
                   input_shardings_optional);
@@ -213,7 +213,8 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
 
           strategy_group->strategies.push_back(ShardingStrategy(
               {name, output_spec, compute_cost, communication_cost, memory_cost,
-               std::move(resharding_cost), input_shardings_optional}));
+               std::move(resharding_costs.first),
+               std::move(resharding_costs.second), input_shardings_optional}));
         }
         break;
       }
@@ -258,14 +259,15 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
             }
             std::vector<std::optional<HloSharding>> input_shardings_optional(
                 {std::nullopt, input_spec});
-            std::vector<std::vector<double>> resharding_cost =
+            std::pair<ReshardingCosts, ReshardingCosts> resharding_costs =
                 GenerateReshardingCostsAndMissingShardingsForAllOperands(
                     ins, output_spec, strategy_map, cluster_env, call_graph,
                     input_shardings_optional);
 
             strategy_group->strategies.push_back(ShardingStrategy(
                 {name, output_spec, compute_cost, communication_cost,
-                 memory_cost, std::move(resharding_cost),
+                 memory_cost, std::move(resharding_costs.first),
+                 std::move(resharding_costs.second),
                  input_shardings_optional}));
           }
         }
@@ -275,17 +277,13 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
         break;
       }
       case HloOpcode::kBroadcast: {
-        // For an unknown reason, we do not generate partially replicated
-        // strategies for >1D broadcast ops. This can be changed if we find that
-        // our search isn't exhaustive enough for certain ops.
         strategy_group =
             CreateAllStrategiesGroup(
                 ins, ins->shape(), instruction_id, strategy_groups, cluster_env,
                 strategy_map, option, replicated_penalty, batch_dim_map,
                 call_graph, only_allow_divisible,
                 /* create_replicated_strategies */ true,
-                /* create_partially_replicated_strategies */
-                (ins->shape().rank() == 1))
+                /* create_partially_replicated_strategies */ true)
                 .value();
         break;
       }
@@ -324,15 +322,21 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
           std::string name = ToStringSimple(output_spec);
           double compute_cost = 0, communication_cost = 0;
           double memory_cost = GetBytes(ins->shape()) / output_spec.NumTiles();
-          auto resharding_costs = ReshardingCostVector(
-              src_strategy_group, operand->shape(), input_spec, cluster_env);
+          std::vector<double> communication_resharding_costs =
+              CommunicationReshardingCostVector(src_strategy_group,
+                                                operand->shape(), input_spec,
+                                                cluster_env);
+          std::vector<double> memory_resharding_costs =
+              MemoryReshardingCostVector(src_strategy_group, operand->shape(),
+                                         input_spec, cluster_env);
           strategy_group->strategies.push_back(
               ShardingStrategy({name,
                                 output_spec,
                                 compute_cost,
                                 communication_cost,
                                 memory_cost,
-                                {resharding_costs},
+                                {communication_resharding_costs},
+                                {memory_resharding_costs},
                                 {input_spec}}));
         }
         break;
@@ -385,13 +389,32 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
           // Find output shardings.
           switch (opcode) {
             case HloOpcode::kSlice: {
+              // When solve_nd_sharding_iteratively is true, in some cases, we
+              // can have 1D shardings where the total number of tiles is larger
+              // than the number of elements in the partial mesh (and is
+              // actually equal to the number of devices in the original
+              // mesh). Below, we use the correct mesh depending on the number
+              // of elements in the 1D sharding.
               bool is_1d_sharding =
                   VectorGreaterThanOneElementCount(
                       input_spec.tile_assignment().dimensions()) == 1;
-              output_spec = PropagateDimwiseShardingSlice(
-                  input_spec, operand->shape(), ins->shape(),
-                  is_1d_sharding ? cluster_env.device_mesh_1d_
-                                 : cluster_env.device_mesh_);
+              if (is_1d_sharding &&
+                  input_spec.TotalNumTiles() ==
+                      cluster_env.device_mesh_1d_.num_elements()) {
+                output_spec = PropagateDimwiseShardingSlice(
+                    input_spec, operand->shape(), ins->shape(),
+                    cluster_env.device_mesh_1d_);
+              } else if (is_1d_sharding) {
+                CHECK_EQ(input_spec.TotalNumTiles(),
+                         cluster_env.original_device_mesh_1d_.num_elements());
+                output_spec = PropagateDimwiseShardingSlice(
+                    input_spec, operand->shape(), ins->shape(),
+                    cluster_env.original_device_mesh_1d_);
+              } else {
+                output_spec = PropagateDimwiseShardingSlice(
+                    input_spec, operand->shape(), ins->shape(),
+                    cluster_env.device_mesh_);
+              }
               break;
             }
             case HloOpcode::kPad:
@@ -428,7 +451,7 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
           std::string name = ToStringSimple(*output_spec);
           double compute_cost = 0, communication_cost = 0;
           double memory_cost = GetBytes(ins->shape()) / output_spec->NumTiles();
-          std::vector<std::vector<double>> resharding_costs =
+          std::pair<ReshardingCosts, ReshardingCosts> resharding_costs =
               GenerateReshardingCostsAndMissingShardingsForAllOperands(
                   ins, *output_spec, strategy_map, cluster_env, call_graph,
                   input_shardings);
@@ -439,7 +462,8 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
                                 compute_cost,
                                 communication_cost,
                                 memory_cost,
-                                std::move(resharding_costs),
+                                std::move(resharding_costs.first),
+                                std::move(resharding_costs.second),
                                 {input_spec}}));
         }
 
@@ -739,6 +763,8 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
                                 strategy_group, replicated_penalty);
         break;
       }
+      case HloOpcode::kRecv:
+      case HloOpcode::kRecvDone:
       case HloOpcode::kSend: {
         strategy_group = CreateTupleStrategyGroup(instruction_id);
         strategy_group->childs.reserve(ins->shape().tuple_shapes_size());

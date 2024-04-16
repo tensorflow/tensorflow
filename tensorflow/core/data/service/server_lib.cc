@@ -195,7 +195,7 @@ void WorkerGrpcDataServer::MaybeStartAlternativeDataTransferServer(
                << s;
     return;
   }
-  s = transfer_server_->Start();
+  s = transfer_server_->Start(config_);
   if (!s.ok()) {
     LOG(ERROR) << "failed to start " << config_.data_transfer_protocol()
                << " server for worker " << config_.worker_address() << ": "
@@ -212,7 +212,7 @@ void WorkerGrpcDataServer::MaybeStartAlternativeDataTransferServer(
       str_util::StringReplace(config_.data_transfer_address(), kPortPlaceholder,
                               absl::StrCat(transfer_server_->Port()),
                               /*replace_all=*/false));
-  StatusOr<std::string> compatibility_info =
+  absl::StatusOr<std::string> compatibility_info =
       transfer_server_->GetCompatibilityInfo();
   if (!compatibility_info.ok()) {
     LOG(ERROR)

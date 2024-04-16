@@ -1014,6 +1014,11 @@ def _MirrorPadGradGrad(op: ops.Operation, grad):
   return [gen_array_ops.mirror_pad(grad, op.inputs[1], mode=mode), None]
 
 
+ops.NotDifferentiable("FakeQuantWithMinMaxArgsGradient")
+ops.NotDifferentiable("FakeQuantWithMinMaxVarsGradient")
+ops.NotDifferentiable("FakeQuantWithMinMaxVarsPerChannelGradient")
+
+
 @ops.RegisterGradient("QuantizeAndDequantize")
 def _QuantizeAndDequantizeGrad(_, grad):
   return grad

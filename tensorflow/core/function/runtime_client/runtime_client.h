@@ -70,7 +70,7 @@ class Runtime {
     TF,
   };
 
-  StatusOr<FunctionDef> GetFunctionProto(StringPiece name);
+  absl::StatusOr<FunctionDef> GetFunctionProto(StringPiece name);
 
   // TODO(mdan): Enforce creation or rename to SetFunction.
   Status CreateFunction(const FunctionDef& fdef);
@@ -85,7 +85,7 @@ class Runtime {
   Status TransformFunction(StringPiece name, StringPiece pipeline_name,
                            Dialect dialect = Dialect::TFG);
 
-  StatusOr<ReturnValues> CallFunction(
+  absl::StatusOr<ReturnValues> CallFunction(
       StringPiece name, absl::Span<AbstractTensorHandle* const> args);
 
  private:

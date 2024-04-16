@@ -107,7 +107,7 @@ class DynamicPadderTest : public HloTestBase {
     return module;
   }
 
-  StatusOr<bool> RunPadder(
+  absl::StatusOr<bool> RunPadder(
       bool slice_dynamic_output = false,
       OpSupportsDynamismHandler op_supports_dynamism_handler =
           OpHasDynamismSupport,

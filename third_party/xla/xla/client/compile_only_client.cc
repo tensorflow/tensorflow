@@ -24,7 +24,7 @@ limitations under the License.
 
 namespace xla {
 
-StatusOr<std::unique_ptr<HloModuleConfig>>
+absl::StatusOr<std::unique_ptr<HloModuleConfig>>
 CompileOnlyClient::CreateModuleConfig(
     const ProgramShape& program_shape,
     absl::Span<const Shape* const> argument_shapes,
@@ -33,7 +33,7 @@ CompileOnlyClient::CreateModuleConfig(
                                                execution_options);
 }
 
-StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
+absl::StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
 CompileOnlyClient::CompileAheadOfTime(
     const absl::Span<const AotXlaComputationInstance> computations,
     const AotCompilationOptions& options,

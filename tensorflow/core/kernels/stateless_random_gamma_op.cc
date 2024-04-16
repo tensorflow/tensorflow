@@ -200,7 +200,7 @@ struct StatelessRandomGammaFunctor<CPUDevice, T> {
 
 namespace {
 
-StatusOr<std::tuple<int64_t, int64_t, int64_t> > GetParams(
+absl::StatusOr<std::tuple<int64_t, int64_t, int64_t>> GetParams(
     const Tensor& alpha_t, const TensorShape& samples_shape) {
   if (!TensorShapeUtils::EndsWith(samples_shape, alpha_t.shape())) {
     return errors::InvalidArgument(

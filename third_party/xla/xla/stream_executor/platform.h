@@ -26,8 +26,6 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/device_options.h"
-#include "xla/stream_executor/platform/port.h"
 
 namespace stream_executor {
 
@@ -44,8 +42,7 @@ std::string StreamPriorityToString(StreamPriority priority);
 // StreamExecutorConfig encapsulates the set of options for constructing a
 // StreamExecutor for a given platform.
 struct StreamExecutorConfig {
-  // Sets members to defaults: -1 for ordinal (must be changed), and default
-  // PluginConfig and DeviceOptions.
+  // Sets members to defaults: -1 for ordinal (must be changed).
   StreamExecutorConfig();
 
   // Simple ordinal-setting constructor.
@@ -57,12 +54,9 @@ struct StreamExecutorConfig {
 
   // The ordinal of the device to be managed by the returned StreamExecutor.
   int ordinal;
-
-  // The DeviceOptions for the returned StreamExecutor.
-  DeviceOptions device_options;
 };
 
-// Abstract base class for a platform registered with the MultiPlatformManager.
+// Abstract base class for a platform registered with the PlatformManager.
 class Platform {
  public:
   virtual ~Platform();
@@ -103,7 +97,7 @@ class Platform {
   // initialized before obtaining StreamExecutor objects.  The interpretation of
   // the platform_options argument is implementation specific.  This method may
   // return an error if unrecognized options are provided.  If using
-  // MultiPlatformManager, this method will be called automatically by
+  // PlatformManager, this method will be called automatically by
   // InitializePlatformWithId/InitializePlatformWithName.
   virtual absl::Status Initialize(
       const std::map<std::string, std::string>& platform_options);

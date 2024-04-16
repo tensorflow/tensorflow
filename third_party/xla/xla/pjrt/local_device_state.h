@@ -175,7 +175,8 @@ class LocalDeviceState {
   //    runtime and cannot perform GPU operations itself. On GPU, callbacks
   //    execute in a separate thread.
   // b) ThenDoHostCallback waits for the callback to complete.
-  void ThenExecuteCallback(se::Stream* stream, std::function<void()> callback);
+  absl::Status ThenExecuteCallback(se::Stream* stream,
+                                   std::function<void()> callback);
 
   // Helpers for releasing values on a worker thread at the tail of a stream on
   // a worker thread. Copies `object`, and destroys the copy when the tail of
@@ -184,8 +185,8 @@ class LocalDeviceState {
   // device callback, so it is safe if the destructor frees device resource
   // (e.g., GPU objects).
   template <typename T>
-  void ThenRelease(se::Stream* stream, T&& object) {
-    ThenExecuteCallback(
+  absl::Status ThenRelease(se::Stream* stream, T&& object) {
+    return ThenExecuteCallback(
         stream, [object = std::forward<T>(object)]() { /* releases object */ });
   }
 
@@ -223,12 +224,14 @@ class LocalDeviceState {
   int next_device_to_host_stream_ ABSL_GUARDED_BY(mu_) = 0;
   int next_device_to_device_stream_ ABSL_GUARDED_BY(mu_) = 0;
   int next_external_ready_event_stream_ ABSL_GUARDED_BY(mu_) = 0;
-  std::stack<std::unique_ptr<se::Stream>> usage_stream_pool_
-      ABSL_GUARDED_BY(mu_);
 
   std::random_device prng_seed_device_ ABSL_GUARDED_BY(mu_);
   std::mt19937 prng_seed_generator_ ABSL_GUARDED_BY(mu_);
   std::uniform_int_distribution<> prng_seed_distribution_ ABSL_GUARDED_BY(mu_);
+
+  absl::Mutex stream_pool_mu_;
+  std::stack<std::unique_ptr<se::Stream>> usage_stream_pool_
+      ABSL_GUARDED_BY(stream_pool_mu_);
 
   // Callback map pairs callback stream with a device stream and is used for
   // running short host-side callbacks after device side events, without

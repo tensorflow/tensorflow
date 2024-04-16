@@ -17,7 +17,7 @@ limitations under the License.
 
 namespace xla {
 
-StatusOr<bool> OptimizationBarrierExpander::Run(
+absl::StatusOr<bool> OptimizationBarrierExpander::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   std::vector<HloInstruction*> barriers;

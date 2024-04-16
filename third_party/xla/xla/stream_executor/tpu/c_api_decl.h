@@ -67,7 +67,6 @@ typedef struct SE_PlatformId {
   void* id;  // aka stream_executor::Platform::Id
 } SE_PlatformId;
 typedef struct SE_StreamExecutorConfig SE_StreamExecutorConfig;
-typedef struct SE_DeviceOptions SE_DeviceOptions;
 typedef TF_Status* (*SE_StatusCallback)(void*);
 
 typedef struct SE_DeviceMemoryBase {
@@ -322,6 +321,7 @@ typedef struct XLA_HloModuleConfig {
   TpuSerializedProto static_device_assignment;
   bool has_entry_computation_layout;
   XLA_ComputationLayout entry_computation_layout;
+  BoolList allow_spmd_sharding_propagation_to_parameters;
   BoolList allow_spmd_sharding_propagation_to_output;
 } XLA_HloModuleConfig;
 

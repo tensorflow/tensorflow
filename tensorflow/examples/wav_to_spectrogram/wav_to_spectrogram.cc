@@ -93,5 +93,5 @@ tensorflow::Status WavToSpectrogram(const tensorflow::string& input_wav,
   TF_RETURN_IF_ERROR(
       session->Run({{"brightness_placeholder", brightness_tensor}}, {},
                    {"output_image"}, nullptr));
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }

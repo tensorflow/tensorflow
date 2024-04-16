@@ -39,10 +39,9 @@ namespace xla {
 
 /* static */ TestAllocator* LocalClientTestBase::allocator_;
 
-StatusOr<se::OwningDeviceMemory> TestAllocator::Allocate(int device_ordinal,
-                                                         uint64_t size,
-                                                         bool retry_on_failure,
-                                                         int64_t memory_space) {
+absl::StatusOr<se::OwningDeviceMemory> TestAllocator::Allocate(
+    int device_ordinal, uint64_t size, bool retry_on_failure,
+    int64_t memory_space) {
   VLOG(2) << "Allocate(" << device_ordinal << ", " << size << ")";
   {
     absl::MutexLock lock(&count_mutex_);
@@ -173,14 +172,14 @@ ScopedShapedBuffer LocalClientTestBase::ExecuteLocallyOrDie(
       .value();
 }
 
-StatusOr<ScopedShapedBuffer> LocalClientTestBase::ExecuteLocally(
+absl::StatusOr<ScopedShapedBuffer> LocalClientTestBase::ExecuteLocally(
     const XlaComputation& computation,
     absl::Span<const ShapedBuffer* const> arguments) {
   return ExecuteLocally(computation, arguments, DefaultExecutableBuildOptions(),
                         DefaultExecutableRunOptions());
 }
 
-StatusOr<ScopedShapedBuffer> LocalClientTestBase::ExecuteLocally(
+absl::StatusOr<ScopedShapedBuffer> LocalClientTestBase::ExecuteLocally(
     const XlaComputation& computation,
     absl::Span<const ShapedBuffer* const> arguments,
     const ExecutableBuildOptions& build_options,
@@ -208,12 +207,12 @@ StatusOr<ScopedShapedBuffer> LocalClientTestBase::ExecuteLocally(
   return std::move(ret);
 }
 
-StatusOr<std::unique_ptr<VerifiedHloModule>>
+absl::StatusOr<std::unique_ptr<VerifiedHloModule>>
 LocalClientTestBase::ParseAndReturnVerifiedModule(absl::string_view hlo_text) {
   return ParseAndReturnVerifiedModule(hlo_text, HloModuleConfig());
 }
 
-StatusOr<std::unique_ptr<VerifiedHloModule>>
+absl::StatusOr<std::unique_ptr<VerifiedHloModule>>
 LocalClientTestBase::ParseAndReturnVerifiedModule(
     absl::string_view hlo_text, const HloModuleConfig& config) {
   auto module = std::make_unique<VerifiedHloModule>(

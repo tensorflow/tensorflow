@@ -62,8 +62,8 @@ func.func @collapse_scatter_dims(%dst: tensor<3x3xf32>,
 
 // CHECK:         %[[IND_:.*]] = tensor.collapse_shape %[[IND]] {{\[\[}}0, 1], [2]] : tensor<2x1x2xi32> into tensor<2x2xi32>
 // CHECK:         %[[UPD_:.*]] = tensor.collapse_shape %[[UPD]] {{\[\[}}0, 1], [2], [3]] : tensor<2x1x1x3xf32> into tensor<2x1x3xf32>
-// CHECK:         "mhlo.scatter"(%[[DST]], %[[IND_]], %[[UPD_]]) ({
-// CHECK:           update_window_dims = [1, 2],
+// CHECK:         "mhlo.scatter"(%[[DST]], %[[IND_]], %[[UPD_]])
+// CHECK-SAME:      update_window_dims = [1, 2],
 // CHECK-SAME:      scatter_dims_to_operand_dims = [0, 1],
 // CHECK-SAME:      index_vector_dim = 1
 
@@ -91,7 +91,7 @@ func.func @move_index_vector_dim(%dst: tensor<3x3xf32>,
 // CHECK-SAME:      %[[IND:.*]]: tensor<2x1xi32>,
 // CHECK-SAME:      %[[UPD:.*]]: tensor<1x3x3xf32>
 
-// CHECK:         %[[IND_:.*]] = "mhlo.transpose"(%[[IND]]) {permutation = dense<[1, 0]> : tensor<2xi64>} : (tensor<2x1xi32>) -> tensor<1x2xi32>
+// CHECK:         %[[IND_:.*]] = "mhlo.transpose"(%[[IND]]) <{permutation = dense<[1, 0]> : tensor<2xi64>}> : (tensor<2x1xi32>) -> tensor<1x2xi32>
 // CHECK:         "mhlo.scatter"(%[[DST]], %[[IND_]], %[[UPD]])
 // CHECK:           update_window_dims = [1, 2],
 // CHECK-SAME:      scatter_dims_to_operand_dims = [0, 1],
@@ -121,21 +121,21 @@ func.func @transform_updates_and_operands_using_scatter_dims(%dst: tensor<3x4x5x
 // CHECK-SAME:      %[[IND:.*]]: tensor<2x2xi32>,
 // CHECK-SAME:      %[[UPD:.*]]: tensor<2x1x1x3xf32>) -> tensor<3x4x5xf32> {
 
-// CHECK:         %[[DST_:.*]] = "mhlo.transpose"(%[[DST]]) {
+// CHECK:         %[[DST_:.*]] = "mhlo.transpose"(%[[DST]]) <{
 // CHECK-SAME:      permutation = dense<[2, 0, 1]> : tensor<3xi64>
-// CHECK-SAME:    } : (tensor<3x4x5xf32>) -> tensor<5x3x4xf32>
-// CHECK:         %[[UPD_:.*]] = "mhlo.transpose"(%[[UPD]]) {
+// CHECK-SAME:    }> : (tensor<3x4x5xf32>) -> tensor<5x3x4xf32>
+// CHECK:         %[[UPD_:.*]] = "mhlo.transpose"(%[[UPD]]) <{
 // CHECK-SAME:      permutation = dense<[0, 3, 1, 2]> : tensor<4xi64>
-// CHECK-SAME:    } : (tensor<2x1x1x3xf32>) -> tensor<2x3x1x1xf32>
+// CHECK-SAME:    }> : (tensor<2x1x1x3xf32>) -> tensor<2x3x1x1xf32>
 
 // CHECK:         %[[NEW_OP:.*]] = "mhlo.scatter"(%[[DST_]], %[[IND]], %[[UPD_]])
-// CHECK:           update_window_dims = [1, 2, 3],
+// CHECK-SAME:       update_window_dims = [1, 2, 3],
 // CHECK-SAME:      scatter_dims_to_operand_dims = [0, 1],
 // CHECK-SAME:      index_vector_dim = 1
 
-// CHECK-NEXT:    "mhlo.transpose"(%[[NEW_OP:.*]]) {
+// CHECK:        "mhlo.transpose"(%[[NEW_OP:.*]]) <{
 // CHECK-SAME:      permutation = dense<[1, 2, 0]> : tensor<3xi64>
-// CHECK-SAME:    } : (tensor<5x3x4xf32>) -> tensor<3x4x5xf32>
+// CHECK-SAME:    }> : (tensor<5x3x4xf32>) -> tensor<3x4x5xf32>
 
 // -----
 
@@ -161,12 +161,12 @@ func.func @make_scatter_dims_leading_in_updates(%dst: tensor<3xf32>,
 // CHECK-SAME:      %[[IND:.*]]: tensor<1x1xi32>,
 // CHECK-SAME:      %[[UPD:.*]]: tensor<2x1xf32>
 
-// CHECK:         %[[UPD_:.*]] = "mhlo.transpose"(%[[UPD]]) {
+// CHECK:         %[[UPD_:.*]] = "mhlo.transpose"(%[[UPD]]) <{
 // CHECK-SAME:      permutation = dense<[1, 0]> : tensor<2xi64>
-// CHECK-SAME:    } : (tensor<2x1xf32>) -> tensor<1x2xf32>
+// CHECK-SAME:    }> : (tensor<2x1xf32>) -> tensor<1x2xf32>
 
 // CHECK:         "mhlo.scatter"(%[[DST]], %[[IND]], %[[UPD_]]
-// CHECK:           update_window_dims = [1],
+// CHECK-SAME:      update_window_dims = [1],
 // CHECK-SAME:      scatter_dims_to_operand_dims = [0],
 // CHECK-SAME:      index_vector_dim = 1
 
@@ -197,8 +197,8 @@ func.func @zero_dim_scatter_indices(%dst: tensor<4x4xf32>,
 // CHECK-SAME:      [0, 1]] : tensor<2xi32> into tensor<1x2xi32>
 // CHECK:         %[[UPD_:.*]] = tensor.expand_shape %[[UPD]] [
 // CHECK-SAME:      [0, 1], [2]] : tensor<3x3xf32> into tensor<1x3x3xf32>
-// CHECK:         "mhlo.scatter"(%[[DST]], %[[IND_]], %[[UPD_]]) ({
-// CHECK:           update_window_dims = [1, 2],
+// CHECK:         "mhlo.scatter"(%[[DST]], %[[IND_]], %[[UPD_]])
+// CHECK-SAME:      update_window_dims = [1, 2],
 // CHECK-SAME:      scatter_dims_to_operand_dims = [0, 1]
 // CHECK-SAME:      index_vector_dim = 1
 

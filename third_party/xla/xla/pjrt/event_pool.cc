@@ -25,7 +25,7 @@ namespace xla {
 
 EventPool::Handle::~Handle() {
   if (pool_ && event_) {
-    absl::MutexLock lock(&pool_->mu_);
+    absl::MutexLock lock(&pool_->mu_free_events_);
     pool_->free_events_.push(std::move(event_));
   }
 }
@@ -33,13 +33,13 @@ EventPool::Handle::~Handle() {
 EventPool::EventPool(bool allow_reuse)
     : allow_reuse_(allow_reuse), next_sequence_number_(1) {}
 
-StatusOr<EventPool::Handle> EventPool::AllocateEvent(
+absl::StatusOr<EventPool::Handle> EventPool::AllocateEvent(
     se::StreamExecutor* executor) {
   Handle event;
 
   if (allow_reuse_) {
     event.pool_ = this;
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(&mu_free_events_);
     if (!free_events_.empty()) {
       event.event_ = std::move(free_events_.top());
       free_events_.pop();
@@ -53,12 +53,12 @@ StatusOr<EventPool::Handle> EventPool::AllocateEvent(
 }
 
 void EventPool::ThenRecordEvent(se::Stream* stream, EventPool::Handle& handle) {
-  absl::MutexLock lock(&mu_);
-  stream->ThenRecordEvent(handle.event_.get());
+  absl::MutexLock lock(&mu_sequence_number_);
+  stream->RecordEvent(handle.event_.get()).IgnoreError();
   handle.sequence_number_ = next_sequence_number_++;
 }
 
-StatusOr<EventPool::Handle> EventPool::ThenAllocateAndRecordEvent(
+absl::StatusOr<EventPool::Handle> EventPool::ThenAllocateAndRecordEvent(
     se::Stream* stream) {
   TF_ASSIGN_OR_RETURN(EventPool::Handle handle,
                       AllocateEvent(stream->parent()));

@@ -22,11 +22,13 @@ limitations under the License.
 
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/service/instruction_fusion.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
+using CodegenDecision = FusionDecision;
 
 // Tells if f(a+b) == f(a) + f(b).
 bool IsDistributiveOverAddition(const HloInstruction& hlo);
@@ -45,6 +47,10 @@ bool IsTritonSupportedDataType(PrimitiveType, const se::GpuComputeCapability&);
 
 // Checks elementwise operation against all supported by Triton GEMM codegen.
 bool IsTritonSupportedElementwise(HloOpcode, PrimitiveType);
+
+// Checks instruction against requirements of triton emitter.
+CodegenDecision IsTritonSupportedInstruction(
+    const HloInstruction& instr, const se::GpuComputeCapability& gpu_version);
 
 }  // namespace gpu
 }  // namespace xla

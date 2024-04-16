@@ -329,7 +329,7 @@ absl::flat_hash_set<tstring> SelectOptimizations(
   return optimizations;
 }
 
-StatusOr<std::string> GetDatasetNode(const GraphDef& graph_def) {
+absl::StatusOr<std::string> GetDatasetNode(const GraphDef& graph_def) {
   // Symbolic `_Retval` node indicates which node corresponds to the dataset.
   for (const auto& node : graph_def.node()) {
     if (node.op() == kRetvalOp) {
@@ -341,7 +341,7 @@ StatusOr<std::string> GetDatasetNode(const GraphDef& graph_def) {
                        graph_def.ShortDebugString()));
 }
 
-StatusOr<NodeDef> GetDatasetNodeDef(const GraphDef& graph_def) {
+absl::StatusOr<NodeDef> GetDatasetNodeDef(const GraphDef& graph_def) {
   TF_ASSIGN_OR_RETURN(std::string dataset_node_name, GetDatasetNode(graph_def));
   for (const auto& node : graph_def.node()) {
     if (node.name() == dataset_node_name) {

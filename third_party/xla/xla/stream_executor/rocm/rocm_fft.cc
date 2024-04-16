@@ -27,7 +27,7 @@ limitations under the License.
 #include "xla/stream_executor/platform/port.h"
 #include "xla/stream_executor/plugin_registry.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
-#include "xla/stream_executor/stream_executor_internal.h"
+#include "xla/stream_executor/stream_executor_interface.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/logging.h"
 
@@ -424,7 +424,7 @@ bool ROCMFft::DoFftInternal(Stream *stream, fft::Plan *plan, FuncT hipfftExec,
     if (allocator) {
       auto allocated = allocator->AllocateBytes(input.size());
       if (allocated.ok()) {
-        if (stream->ThenMemcpy(&allocated.value(), input, input.size()).ok()) {
+        if (stream->Memcpy(&allocated.value(), input, input.size()).ok()) {
           input_maybe_copy = DeviceMemory<InputT>(allocated.value());
         } else {
           LOG(ERROR) << "failed to copy input buffer for rocFFT.";
@@ -509,7 +509,7 @@ void initialize_rocfft() {
     absl::Status status =
         PluginRegistry::Instance()->RegisterFactory<PluginRegistry::FftFactory>(
             rocm::kROCmPlatformId, "rocFFT",
-            [](internal::StreamExecutorInterface *parent) -> fft::FftSupport * {
+            [](StreamExecutorInterface *parent) -> fft::FftSupport * {
               gpu::GpuExecutor *rocm_executor =
                   dynamic_cast<gpu::GpuExecutor *>(parent);
               if (rocm_executor == nullptr) {
@@ -529,5 +529,6 @@ void initialize_rocfft() {
 
 }  // namespace stream_executor
 
-REGISTER_MODULE_INITIALIZER(register_rocfft,
-                            { stream_executor::initialize_rocfft(); });
+STREAM_EXECUTOR_REGISTER_MODULE_INITIALIZER(register_rocfft, {
+  stream_executor::initialize_rocfft();
+});

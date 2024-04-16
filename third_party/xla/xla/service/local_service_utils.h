@@ -28,7 +28,7 @@ limitations under the License.
 namespace xla {
 // Validates the computation argument layouts, and returns the corresponding
 // HloModuleConfig.
-StatusOr<std::unique_ptr<HloModuleConfig>> GetHloModuleConfig(
+absl::StatusOr<std::unique_ptr<HloModuleConfig>> GetHloModuleConfig(
     const XlaComputation& computation,
     absl::Span<const Shape* const> argument_layouts,
     const ExecutableBuildOptions& build_options,

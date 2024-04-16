@@ -88,7 +88,7 @@ void TpuCompileSucceededAssertOp::Compute(OpKernelContext* ctx) {
   }
 }
 
-REGISTER_MODULE_INITIALIZER(register_tpu_compile_op_kernel, {
+STREAM_EXECUTOR_REGISTER_MODULE_INITIALIZER(register_tpu_compile_op_kernel, {
   VLOG(1) << "Register TpuCompileOp kernel.";
   REGISTER_KERNEL_BUILDER(Name("TPUCompile").Device(DEVICE_CPU), TpuCompileOp);
   REGISTER_KERNEL_BUILDER(Name("_TPUCompileMlir").Device(DEVICE_CPU),

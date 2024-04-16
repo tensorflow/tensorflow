@@ -180,7 +180,7 @@ static Status TF_MUST_USE_RESULT BuildDenseSpec(
       }
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ValidateStridedSliceOp(
@@ -437,7 +437,7 @@ Status ValidateStridedSliceOp(
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ValidateStridedSliceOp(
@@ -465,7 +465,7 @@ Status ValidateStridedSliceOp(
                             partial_processing_shape.DebugString(), " and ",
                             partial_final_shape.DebugString());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 StridedSliceAssignBCast::StridedSliceAssignBCast(

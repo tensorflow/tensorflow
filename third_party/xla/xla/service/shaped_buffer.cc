@@ -67,7 +67,7 @@ ShapedBuffer& ShapedBuffer::operator=(ShapedBuffer&& s) {
 
 ShapedBuffer::~ShapedBuffer() {}
 
-StatusOr<ShapedBuffer> ShapedBuffer::SubShapedBuffer(
+absl::StatusOr<ShapedBuffer> ShapedBuffer::SubShapedBuffer(
     const ShapeIndex& index) const {
   TF_ASSIGN_OR_RETURN(const Shape* device_sub_shape,
                       ShapeUtil::TryGetSubshape(on_device_shape(), index));

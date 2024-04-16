@@ -400,7 +400,7 @@ void InitializeSignatures(
 
 }  // namespace
 
-StatusOr<SplitResults> SplitFunction(
+absl::StatusOr<SplitResults> SplitFunction(
     const FunctionDef& function,
     const absl::flat_hash_set<absl::string_view>& nodes_in_first_function,
     int64_t num_captured_inputs, const FunctionLibraryDefinition& library) {

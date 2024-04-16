@@ -15,8 +15,8 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_FUSIONS_CUSTOM_H_
 #define XLA_SERVICE_GPU_FUSIONS_CUSTOM_H_
 
+#include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "xla/service/gpu/fusions/fusion_emitter.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emitter_context.h"
@@ -31,13 +31,13 @@ namespace gpu {
 class CustomFusion : public FusionInterface {
  public:
   absl::StatusOr<FusionEmissionResult> Emit(
-      IrEmitterContext& ir_emitter_context, mlir::lmhlo::FusionOp fusion_op,
+      IrEmitterContext& ir_emitter_context,
       const HloFusionInstruction& fusion) const final;
 };
 
 // Emitter for custom fusions implementing address computation. An address
 // computation contains a custom call hero, with at least one of its operands
-// comes from a static contiguous slice. E.g. operand `%cast` of `%gemm` coming
+// coming from a static contiguous slice. E.g. operand `%cast` of `%gemm` coming
 // from `%slice`:
 // %address_computation {
 //   %p0 = f32[2, 1024, 1024]
@@ -57,7 +57,7 @@ class AddressComputationFusion : public FusionInterface {
       : analysis_(analysis) {}
 
   absl::StatusOr<FusionEmissionResult> Emit(
-      IrEmitterContext& ir_emitter_context, mlir::lmhlo::FusionOp fusion_op,
+      IrEmitterContext& ir_emitter_context,
       const HloFusionInstruction& fusion) const final;
 
  private:

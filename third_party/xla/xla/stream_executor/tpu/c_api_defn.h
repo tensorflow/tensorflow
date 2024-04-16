@@ -16,7 +16,8 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_TPU_C_API_DEFN_H_
 #define XLA_STREAM_EXECUTOR_TPU_C_API_DEFN_H_
 
-#include "xla/stream_executor/device_options.h"
+#include <memory>
+
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -39,9 +40,8 @@ struct SE_StreamExecutor {
 };
 
 struct SE_Stream {
-  explicit SE_Stream(stream_executor::StreamExecutor* parent)
-      : stream(parent) {}
-  stream_executor::Stream stream;
+  explicit SE_Stream(stream_executor::StreamExecutor* parent) {}
+  std::unique_ptr<stream_executor::Stream> stream;
 };
 
 struct SE_Event {
@@ -51,10 +51,6 @@ struct SE_Event {
 
 struct SE_StreamExecutorConfig {
   stream_executor::StreamExecutorConfig config;
-};
-
-struct SE_DeviceOptions {
-  stream_executor::DeviceOptions options;
 };
 
 // Ignored -- these are just used to enforce the interface types

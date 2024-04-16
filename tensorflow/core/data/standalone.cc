@@ -82,7 +82,7 @@ Iterator::Iterator(IteratorBase* iterator, IteratorContext* ctx,
   if (DatasetBaseIterator* dataset_iterator =
           dynamic_cast<DatasetBaseIterator*>(iterator_.get())) {
     tf_dataz_metrics_collector_ = std::make_shared<TfDatazMetricsCollector>(
-        *Env::Default(), dataset_iterator);
+        *Env::Default(), dataset_iterator, ctx_->model());
     TfDatazMetricsRegistry::Register(tf_dataz_metrics_collector_);
     EnsureIteratorMemoryLoggerStarted();
   }
@@ -98,7 +98,7 @@ Status Iterator::GetNext(std::vector<Tensor>* outputs, bool* end_of_input) {
   return iterator_->GetNext(ctx_.get(), outputs, end_of_input);
 }
 
-StatusOr<std::vector<Tensor>> Iterator::Save() {
+absl::StatusOr<std::vector<Tensor>> Iterator::Save() {
   VariantTensorDataWriter writer;
   TF_RETURN_IF_ERROR(iterator_->Save(serialization_ctx_.get(), &writer));
   std::vector<std::unique_ptr<VariantTensorData>> data;

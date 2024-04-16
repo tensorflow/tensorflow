@@ -19,9 +19,12 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/log/log.h"
 #include "absl/numeric/bits.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Type.h"
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/layout_util.h"
@@ -33,11 +36,15 @@ limitations under the License.
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/model/indexing_analysis.h"
+#include "xla/service/gpu/model/indexing_map.h"
 #include "xla/service/gpu/parallel_loop_emitter.h"
 #include "xla/service/llvm_ir/fused_ir_emitter.h"
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/status.h"
+#include "tsl/platform/macros.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -139,6 +146,8 @@ std::pair<bool /*enabled*/, int> RowVectorizationEnabled(
                         num_big_inputs);
 }
 
+}  // namespace
+
 LaunchDimensionsConfig ComputeLoopFusionConfig(
     const HloFusionAnalysis& analysis) {
   int unroll_factor = 1;
@@ -209,17 +218,36 @@ LaunchDimensionsConfig ComputeLoopFusionConfig(
   return launch_config;
 }
 
-}  // namespace
-
 LoopFusion::LoopFusion(const HloFusionAnalysis& analysis)
     : analysis_(analysis), config_(ComputeLoopFusionConfig(analysis)) {}
 
 std::optional<IndexingMap> LoopFusion::ComputeThreadIdToOutputIndexing(
     int64_t root_index, mlir::MLIRContext* ctx) const {
   auto launch_dims = launch_dimensions();
-  const auto& shape = analysis_.fusion_roots()[root_index]->shape();
-  return GetDefaultThreadIdToOutputIndexingMap(
-      launch_dims, config_.unroll_factor, shape, ctx);
+  return GetDefaultThreadIdIndexingMap(launch_dims, config_.unroll_factor,
+                                       GetElementShape(analysis_), ctx);
+}
+
+std::optional<IndexingMap> LoopFusion::ComputeThreadIdToInputIndexing(
+    int64_t root_index, int64_t hero_operand_index,
+    mlir::MLIRContext* ctx) const {
+  std::optional<IndexingMap> thread_id_to_output_indexing =
+      ComputeThreadIdToOutputIndexing(root_index, ctx);
+  if (!thread_id_to_output_indexing.has_value()) {
+    return std::nullopt;
+  }
+  const HloInstruction* fusion_root = analysis_.fusion_roots()[root_index];
+  auto output_to_input_indexing =
+      ComputeOutputToInputIndexing(fusion_root, /*output_id=*/0, ctx);
+  IndexingMapSet output_to_input_indexing_set =
+      output_to_input_indexing.indexing_maps[hero_operand_index];
+  // Since we are computing the indexing for a non-fusion op, there is only one
+  // indexing map per operand.
+  CHECK_EQ(output_to_input_indexing_set.size(), 1);
+  IndexingMap thread_id_to_input_indexing_map = ComposeIndexingMaps(
+      *thread_id_to_output_indexing, *output_to_input_indexing_set.begin());
+  thread_id_to_input_indexing_map.Simplify(GetIndexingMapForInstruction);
+  return thread_id_to_input_indexing_map;
 }
 
 absl::Status LoopFusion::EmitKernel(IrEmitterContext& ir_emitter_context,

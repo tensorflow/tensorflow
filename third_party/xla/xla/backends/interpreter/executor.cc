@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/functional/any_invocable.h"
+#include "absl/log/log.h"
 #include "xla/status_macros.h"
 
 namespace stream_executor {
@@ -38,56 +39,41 @@ void XlaInterpreterExecutor::Deallocate(DeviceMemoryBase *mem) {
   delete[] static_cast<char *>(mem->opaque());
 }
 
-bool XlaInterpreterExecutor::Memcpy(Stream *stream, void *host_dst,
-                                    const DeviceMemoryBase &dev_src,
-                                    uint64_t size) {
+absl::Status XlaInterpreterExecutor::Memcpy(Stream *stream, void *host_dst,
+                                            const DeviceMemoryBase &dev_src,
+                                            uint64_t size) {
   AsExecutorStream(stream)->EnqueueTask([this, host_dst, dev_src, size]() {
     // Ignore errors.
-    tsl::Status ok = SynchronousMemcpy(host_dst, dev_src, size);
+    absl::Status ok = SynchronousMemcpy(host_dst, dev_src, size);
   });
-  tsl::Status status = AsExecutorStream(stream)->BlockUntilDone();
-  if (status.ok()) {
-    return true;
-  }
-
-  // TODO(b/199316985): Return 'tsl::Status' instead of 'bool', so we don't need
-  // to throw away error information here.
-  LOG(WARNING) << "Memcpy: error on stream: " << status;
-  return false;
+  return AsExecutorStream(stream)->BlockUntilDone();
 }
 
-bool XlaInterpreterExecutor::Memcpy(Stream *stream, DeviceMemoryBase *dev_dst,
-                                    const void *host_src, uint64_t size) {
+absl::Status XlaInterpreterExecutor::Memcpy(Stream *stream,
+                                            DeviceMemoryBase *dev_dst,
+                                            const void *host_src,
+                                            uint64_t size) {
   AsExecutorStream(stream)->EnqueueTask([this, dev_dst, host_src, size]() {
     // Ignore errors.
-    tsl::Status ok = SynchronousMemcpy(dev_dst, host_src, size);
+    absl::Status ok = SynchronousMemcpy(dev_dst, host_src, size);
   });
-  tsl::Status status = AsExecutorStream(stream)->BlockUntilDone();
-  if (status.ok()) {
-    return true;
-  }
-
-  // TODO(b/199316985): Return 'tsl::Status' instead of 'bool', so we don't need
-  // to throw away error information here.
-  LOG(WARNING) << "Memcpy: error on stream: " << status;
-  return false;
+  return AsExecutorStream(stream)->BlockUntilDone();
 }
 
-tsl::Status XlaInterpreterExecutor::SynchronousMemcpy(DeviceMemoryBase *dev_dst,
-                                                      const void *host_src,
-                                                      uint64_t size) {
+absl::Status XlaInterpreterExecutor::SynchronousMemcpy(
+    DeviceMemoryBase *dev_dst, const void *host_src, uint64_t size) {
   memcpy(dev_dst->opaque(), host_src, size);
-  return ::tsl::OkStatus();
+  return absl::OkStatus();
 }
 
-tsl::Status XlaInterpreterExecutor::SynchronousMemcpy(
+absl::Status XlaInterpreterExecutor::SynchronousMemcpy(
     void *host_dst, const DeviceMemoryBase &dev_src, uint64_t size) {
   memcpy(host_dst, dev_src.opaque(), size);
-  return ::tsl::OkStatus();
+  return absl::OkStatus();
 }
 
 bool XlaInterpreterExecutor::HostCallback(
-    Stream *stream, absl::AnyInvocable<tsl::Status() &&> callback) {
+    Stream *stream, absl::AnyInvocable<absl::Status() &&> callback) {
   AsExecutorStream(stream)->EnqueueTaskWithStatus(std::move(callback));
   return true;
 }
@@ -96,7 +82,7 @@ bool XlaInterpreterExecutor::CreateStreamDependency(Stream *dependent,
                                                     Stream *other) {
   AsExecutorStream(dependent)->EnqueueTaskWithStatus(
       [other]() { return other->BlockHostUntilDone(); });
-  tsl::Status status = AsExecutorStream(dependent)->BlockUntilDone();
+  absl::Status status = AsExecutorStream(dependent)->BlockUntilDone();
   if (status.ok()) {
     return true;
   }
@@ -107,11 +93,11 @@ bool XlaInterpreterExecutor::CreateStreamDependency(Stream *dependent,
   return false;
 }
 
-tsl::Status XlaInterpreterExecutor::BlockHostUntilDone(Stream *stream) {
+absl::Status XlaInterpreterExecutor::BlockHostUntilDone(Stream *stream) {
   return AsExecutorStream(stream)->BlockUntilDone();
 }
 
-tsl::StatusOr<std::unique_ptr<DeviceDescription>>
+absl::StatusOr<std::unique_ptr<DeviceDescription>>
 XlaInterpreterExecutor::CreateDeviceDescription(int device_ordinal) {
   internal::DeviceDescriptionBuilder builder;
 

@@ -381,7 +381,7 @@ std::string HloAliasAnalysis::ToString() const {
 }
 
 /* static */
-StatusOr<std::unique_ptr<HloAliasAnalysis>> HloAliasAnalysis::Run(
+absl::StatusOr<std::unique_ptr<HloAliasAnalysis>> HloAliasAnalysis::Run(
     const HloModule* module,
     const HloDataflowAnalysis::CanShareBuffer& can_share_buffer) {
   VLOG(2) << "HloAliasAnalysis::Run on module " << module->name();

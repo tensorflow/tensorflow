@@ -10,7 +10,8 @@ load(
 )
 
 package(
-    default_visibility = ["//visibility:public"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = ["//xla:internal"],
 )
 
 build_test(
@@ -31,8 +32,8 @@ xla_cc_binary(
         "//xla/service:cpu_plugin",
         "//xla/service:gpu_plugin",
         "//xla/service:interpreter_plugin",
+        "//xla/tsl/util:command_line_flags",
         "@local_tsl//tsl/platform:platform_port",
-        "@local_tsl//tsl/util:command_line_flags",
     ] + if_cuda(["//xla/stream_executor/cuda:cublas_plugin"]),
 )
 
@@ -40,7 +41,6 @@ cc_library(
     name = "hlo_bisect_state",
     srcs = ["hlo_bisect_state.cc"],
     hdrs = ["hlo_bisect_state.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:literal",
         "//xla:status",
@@ -77,7 +77,6 @@ cc_library(
     testonly = True,
     srcs = ["hlo_bisect_utils.cc"],
     hdrs = ["hlo_bisect_utils.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":hlo_bisect_state",
         "//xla:error_spec",

@@ -23,6 +23,20 @@ allprojects {
 }
 ```
 
+add nightly snapshots to dependencies (or edit as needed) to your build.gradle
+
+```groovy
+...
+dependencies {
+    ...
+    implementation 'org.tensorflow:tensorflow-lite:0.0.0-nightly-SNAPSHOT'
+    implementation 'org.tensorflow:tensorflow-lite-gpu:0.0.0-nightly-SNAPSHOT'
+    implementation 'org.tensorflow:tensorflow-lite-support:0.0.0-nightly-SNAPSHOT'
+    ...
+}
+...
+```
+
 ## Build TensorFlow Lite locally
 
 In some cases, you might wish to use a local build of TensorFlow Lite. For
@@ -123,7 +137,7 @@ in the `.tf_configure.bazelrc` file in the root folder:
 
 ```shell
 build --action_env ANDROID_NDK_HOME="/usr/local/android/android-ndk-r25b"
-build --action_env ANDROID_NDK_API_LEVEL="26"
+build --action_env ANDROID_NDK_API_LEVEL="21"
 build --action_env ANDROID_BUILD_TOOLS_VERSION="30.0.3"
 build --action_env ANDROID_SDK_API_LEVEL="30"
 build --action_env ANDROID_SDK_HOME="/usr/local/android/android-sdk-linux"

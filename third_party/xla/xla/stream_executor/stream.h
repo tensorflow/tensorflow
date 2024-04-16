@@ -21,34 +21,31 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_STREAM_H_
 #define XLA_STREAM_EXECUTOR_STREAM_H_
 
-#include <complex>
 #include <cstdint>
-#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
-#include <type_traits>
 #include <utility>
 #include <variant>
 #include <vector>
 
+#include "absl/base/attributes.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/functional/any_invocable.h"
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
-#include "xla/stream_executor/blas.h"
+#include "absl/types/span.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/fft.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
-#include "xla/stream_executor/numeric_options.h"
 #include "xla/stream_executor/platform.h"
-#include "xla/stream_executor/platform/port.h"
 #include "xla/stream_executor/stream_executor_pimpl.h"
 #include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 #include "tsl/platform/thread_annotations.h"
 
 namespace stream_executor {
@@ -62,21 +59,6 @@ template <typename ElemT>
 class DeviceMemory;
 
 class StreamExecutor;
-
-namespace detail {
-
-// Helper to return if `T` is the same type as `First` or any or `Rest`.
-template <typename T>
-constexpr bool is_any_of() {
-  return false;
-}
-
-template <typename T, typename First, typename... Rest>
-constexpr bool is_any_of() {
-  return std::is_same_v<T, First> || is_any_of<T, Rest...>();
-}
-
-}  // namespace detail
 
 // Represents a stream of dependent computations on a GPU device.
 //
@@ -129,14 +111,15 @@ class Stream {
 
   // Initialize the stream. This must be performed before entraining any other
   // operations.
-  Stream &Init() TF_LOCKS_EXCLUDED(mu_);
+  absl::Status Initialize(
+      std::optional<std::variant<StreamPriority, int>> priority = std::nullopt);
 
   // Get or create a sub-stream from this stream. If there is any sub-stream in
   // the pool that can be reused then just return this sub-stream.  Otherwise
   // create a new sub-stream.
   //
   // TODO(b/112196569): The semantics of failed sub-streams is error-prone.
-  Stream *GetOrCreateSubStream() TF_LOCKS_EXCLUDED(mu_);
+  absl::StatusOr<Stream *> GetOrCreateSubStream() TF_LOCKS_EXCLUDED(mu_);
 
   // Return the sub-stream back to the host stream so that it can be reused
   // later. Sub-streams that are !ok() will not be reused.
@@ -189,220 +172,78 @@ class Stream {
   // Checks that a stream does not wait for itself, and it is up to the
   // user to guarantee that a stream does not come to wait on itself in a
   // cyclic manner; in that case, behavior is undefined.
-  //
-  // N.B. Base recursion case for the variadic ThenWaitFor.
-  Stream &ThenWaitFor(Stream *other);
+  absl::Status WaitFor(Stream *other);
 
   // Waits for an event object to be set.
-  // Note that ThenRecordEvent must have been called on the event before
+  // Note that RecordEvent must have been called on the event before
   // you call this function; otherwise the event will be considered complete
   // and this wait will do nothing.
-  Stream &ThenWaitFor(Event *event);
+  absl::Status WaitFor(Event *event);
 
   // Inserts the specified event into the end of this stream. Once the stream
   // has processed all events prior to the insertion point, the event will be
   // marked as completed.
   // The stream does not take ownership of event - meaning that event's lifetime
   // must extend past the point at which it is marked complete!
-  Stream &ThenRecordEvent(Event *event);
-
-  /////////////////
-  // BLAS support
-
-  template <typename InputType, typename OutputType>
-  absl::Status ThenBlasGemm(blas::Transpose transa, blas::Transpose transb,
-                            uint64_t m, uint64 n, uint64 k,
-                            const DeviceMemory<InputType> &a, int lda,
-                            const DeviceMemory<InputType> &b, int ldb,
-                            DeviceMemory<OutputType> *c, int ldc,
-                            const NumericOptions &numeric_options,
-                            blas::CallContext context) {
-    InputType alpha{1.0};
-    InputType beta{0.0};
-    blas::BlasSupport *blas = parent()->AsBlas();
-    if (!blas) {
-      return absl::InternalError(
-          "Attempting to perform BLAS operation using "
-          "StreamExecutor without BLAS support");
-    }
-    return blas->BlasGemm(this, transa, transb, m, n, k, alpha, a, lda, b, ldb,
-                          beta, c, ldc, numeric_options, context);
-  }
-
-  // TODO(reedwm): Update all callers to pass correct NumericOptions.
-  template <typename InputType, typename OutputType, typename ConstantType>
-  absl::Status ThenBlasGemm(blas::Transpose transa, blas::Transpose transb,
-                            uint64_t m, uint64 n, uint64 k, ConstantType alpha,
-                            const DeviceMemory<InputType> &a, int lda,
-                            const DeviceMemory<InputType> &b, int ldb,
-                            ConstantType beta, DeviceMemory<OutputType> *c,
-                            int ldc, blas::CallContext context) {
-    blas::BlasSupport *blas = parent()->AsBlas();
-    if (!blas) {
-      return absl::InternalError(
-          "Attempting to perform BLAS operation using "
-          "StreamExecutor without BLAS support");
-    }
-
-    return blas->BlasGemm(this, transa, transb, m, n, k, alpha, a, lda, b, ldb,
-                          beta, c, ldc, NumericOptions{}, context);
-  }
-
-  template <typename InputType, typename OutputType>
-  absl::Status ThenBlasGemmWithAlgorithm(
-      blas::Transpose transa, blas::Transpose transb, uint64_t m, uint64 n,
-      uint64_t k, const DeviceMemory<InputType> &a, int lda,
-      const DeviceMemory<InputType> &b, int ldb, DeviceMemory<OutputType> *c,
-      int ldc, blas::ComputationType computation_type,
-      blas::AlgorithmType algorithm, blas::ProfileResult *output_profile_result,
-      blas::CallContext context) {
-    OutputType alpha{1};
-    OutputType beta{0};
-    return ThenBlasGemmWithAlgorithm(transa, transb, m, n, k, alpha, a, lda, b,
-                                     ldb, beta, c, ldc, computation_type,
-                                     algorithm, NumericOptions{},
-                                     output_profile_result, context);
-  }
-
-  template <typename InputType, typename OutputType, typename ConstantType>
-  absl::Status ThenBlasGemmWithAlgorithm(
-      blas::Transpose transa, blas::Transpose transb, uint64_t m, uint64 n,
-      uint64_t k, ConstantType alpha, const DeviceMemory<InputType> &a, int lda,
-      const DeviceMemory<InputType> &b, int ldb, ConstantType beta,
-      DeviceMemory<OutputType> *c, int ldc,
-      blas::ComputationType computation_type, blas::AlgorithmType algorithm,
-      const NumericOptions &numeric_options,
-      blas::ProfileResult *output_profile_result, blas::CallContext context) {
-    TF_RETURN_IF_ERROR(
-        CheckTypesForExtendedBlas<InputType, OutputType, ConstantType>(
-            computation_type));
-
-    blas::BlasSupport *blas = parent()->AsBlas();
-    if (!blas) {
-      return absl::InternalError(
-          "Attempting to perform BLAS operation using "
-          "StreamExecutor without BLAS support");
-    }
-
-    void *alpha_ptr = &alpha;
-    void *beta_ptr = &beta;
-    float alpha_storage, beta_storage;
-    UpcastHalfToFloat<ConstantType>(&alpha_ptr, &beta_ptr, &alpha_storage,
-                                    &beta_storage);
-
-    absl::Status st = blas->DoBlasGemmWithAlgorithm(
-        this, transa, transb, m, n, k, alpha_ptr, a,
-        blas::ToDataType<InputType>::value, lda, b,
-        blas::ToDataType<InputType>::value, ldb, beta_ptr, c,
-        blas::ToDataType<OutputType>::value, ldc, computation_type, algorithm,
-        numeric_options, output_profile_result, context);
-
-    if (output_profile_result) {
-      // The error is recorded in the profile.
-      return absl::OkStatus();
-    }
-    return st;
-  }
-
-  template <typename T>
-  using DeviceMemorySlice = absl::Span<DeviceMemory<T> *const>;
-
-  template <typename InputType, typename OutputType, typename ConstantType>
-  absl::Status ThenBlasGemmStridedBatched(
-      blas::Transpose transa, blas::Transpose transb, uint64_t m, uint64 n,
-      uint64_t k, ConstantType alpha, const DeviceMemory<InputType> &a, int lda,
-      int64_t stride_a, const DeviceMemory<InputType> &b, int ldb,
-      int64_t stride_b, ConstantType beta, DeviceMemory<OutputType> *c, int ldc,
-      int64_t stride_c, int batch_count, const NumericOptions &numeric_options,
-      blas::CallContext context) {
-    static_assert(
-        detail::is_any_of<InputType, int8_t, float, Eigen::half,
-                          Eigen::bfloat16, double, std::complex<float>,
-                          std::complex<double>>(),
-        "Unsupported input type");
-    static_assert(std::is_same_v<ConstantType, InputType> ||
-                      (detail::is_any_of<InputType, int8_t, Eigen::half,
-                                         Eigen::bfloat16>() &&
-                       std::is_same_v<ConstantType, float>),
-                  "Mismatched input and alpha/beta types");
-    blas::BlasSupport *blas = parent()->AsBlas();
-    if (!blas) {
-      return absl::InternalError(
-          "Attempting to perform BLAS operation using "
-          "StreamExecutor without BLAS support");
-    }
-
-    void *alpha_ptr = &alpha;
-    void *beta_ptr = &beta;
-    float alpha_storage, beta_storage;
-    UpcastHalfToFloat<ConstantType>(&alpha_ptr, &beta_ptr, &alpha_storage,
-                                    &beta_storage);
-
-    return blas->DoBlasGemmStridedBatched(
-        this, transa, transb, m, n, k, blas::ToDataType<InputType>::value,
-        alpha_ptr, a, lda, stride_a, b, ldb, stride_b, beta_ptr, c, ldc,
-        stride_c, batch_count, numeric_options, context);
-  }
+  absl::Status RecordEvent(Event *event);
 
   // Entrain onto the stream: a memcpy to a host destination from a GPU source
   // of the given target size. host_dst must be a pointer to host memory
-  // allocated by StreamExecutor::HostMemoryAllocate or otherwise allocated and
-  // then registered with StreamExecutor::HostMemoryRegister.
-  Stream &ThenMemcpy(void *host_dst, const DeviceMemoryBase &gpu_src,
-                     uint64_t size);
+  // allocated by StreamExecutor::HostMemoryAllocate.
+  absl::Status Memcpy(void *host_dst, const DeviceMemoryBase &gpu_src,
+                      uint64_t size);
 
   // Entrain onto the stream: a memcpy to a GPU destination from a host source
   // of the given target size. host_src must be a pointer to host memory
-  // allocated by StreamExecutor::HostMemoryAllocate or otherwise allocated and
-  // then registered with StreamExecutor::HostMemoryRegister.
-  Stream &ThenMemcpy(DeviceMemoryBase *gpu_dst, const void *host_src,
-                     uint64_t size);
+  // allocated by StreamExecutor::HostMemoryAllocate.
+  absl::Status Memcpy(DeviceMemoryBase *gpu_dst, const void *host_src,
+                      uint64_t size);
 
   // Alternative interface for memcpying from device to host that takes an
   // array slice. Checks that the destination size can accommodate the host
   // slice size.
   template <typename T>
-  Stream &ThenMemcpyD2H(const DeviceMemory<T> &gpu_src,
-                        absl::Span<T> host_dst) {
+  absl::Status MemcpyD2H(const DeviceMemory<T> &gpu_src,
+                         absl::Span<T> host_dst) {
     auto host_size = host_dst.size() * sizeof(T);
-    CHECK(gpu_src.size() == 0 || host_size >= gpu_src.size());
-    return ThenMemcpy(host_dst.begin(), gpu_src, host_size);
+    if (gpu_src.size() == 0 || host_size >= gpu_src.size()) {
+      return Memcpy(host_dst.begin(), gpu_src, host_size);
+    }
+    return absl::InternalError("Bad source size.");
   }
 
   // Alternative interface for memcpying from host to device that takes an
   // array slice. Checks that the destination size can accommodate the host
   // slice size.
   template <typename T>
-  Stream &ThenMemcpyH2D(absl::Span<const T> host_src,
-                        DeviceMemory<T> *gpu_dst) {
+  absl::Status MemcpyH2D(absl::Span<const T> host_src,
+                         DeviceMemory<T> *gpu_dst) {
     auto host_size = host_src.size() * sizeof(T);
-    CHECK(gpu_dst->size() == 0 || gpu_dst->size() >= host_size);
-    return ThenMemcpy(gpu_dst, host_src.begin(), host_size);
+    if (gpu_dst->size() == 0 || gpu_dst->size() >= host_size) {
+      return Memcpy(gpu_dst, host_src.begin(), host_size);
+    }
+    return absl::InternalError("Bad destination size.");
   }
 
   // Entrain onto the stream: a memcpy to a GPU destination from a GPU source
   // of the given target size. gpu_src/dst must be pointers to GPU memory and
   // peer access must be enabled between their owning StreamExecutors.
-  Stream &ThenMemcpy(DeviceMemoryBase *gpu_dst, const DeviceMemoryBase &gpu_src,
-                     uint64_t size);
-
-  // Calls to the device-to-device copy overload of ThenMemcpy -- useful for
-  // ensuring that the host pointer isn't getting confused accidentally with a
-  // device pointer if you're not doing metaprogramming against the API.
-  Stream &ThenMemcpyD2D(DeviceMemoryBase *gpu_dst,
-                        const DeviceMemoryBase &gpu_src, uint64_t size) {
-    return ThenMemcpy(gpu_dst, gpu_src, size);
+  absl::Status Memcpy(DeviceMemoryBase *gpu_dst,
+                      const DeviceMemoryBase &gpu_src, uint64_t size);
+  absl::Status MemcpyD2D(DeviceMemoryBase *gpu_dst,
+                         const DeviceMemoryBase &gpu_src, uint64_t size) {
+    return Memcpy(gpu_dst, gpu_src, size);
   }
 
   // Entrain onto the stream: a memset of zero at a GPU location of size bytes.
   // The location must not be null.
-  Stream &ThenMemZero(DeviceMemoryBase *location, uint64_t size);
+  absl::Status MemZero(DeviceMemoryBase *location, uint64_t size);
 
   // Entrain onto the stream: a memset of a 32-bit pattern at a GPU location of
   // size bytes, where bytes must be evenly 32-bit sized (i.e. evenly divisible
   // by 4). The location must not be null.
-  Stream &ThenMemset32(DeviceMemoryBase *location, uint32_t pattern,
-                       uint64_t size);
+  absl::Status Memset32(DeviceMemoryBase *location, uint32_t pattern,
+                        uint64_t size);
 
   // (Synchronously) block the host code waiting for the operations
   // entrained on the stream (enqueued to this point in program
@@ -414,16 +255,16 @@ class Stream {
 
   // Returns the (opaque) platform-specific backing object. Ownership is not
   // transferred to the caller.
-  internal::StreamInterface *implementation() { return implementation_.get(); }
+  StreamInterface *implementation() { return implementation_.get(); }
 
   // Entrains onto the stream a callback to the host (from the device).
-  // Behaves as ThenDoHostCallbackWithStatus below, but the callback should
+  // Behaves as DoHostCallbackWithStatus below, but the callback should
   // never fail or its failure is inconsequential.
   //
   // This is kept for backward compatibility. Future code should use
-  // ThenDoHostCallbackWithStatus and explicitly return a success status.
+  // DoHostCallbackWithStatus and explicitly return a success status.
   // TODO(b/112125301): Eventually remove this method.
-  Stream &ThenDoHostCallback(absl::AnyInvocable<void() &&> callback);
+  absl::Status DoHostCallback(absl::AnyInvocable<void() &&> callback);
 
   // Entrains onto the stream a callback to the host (from the device).
   // Host callbacks block/occupy the stream just as device functions
@@ -431,13 +272,9 @@ class Stream {
   // Whether the callback return status affects the result of BlockHostUntilDone
   // is platform-dependent.
   //
-  // Behavior is undefined when synchronizing using OpenCL user events.
-  // Behavior is undefined if host callbacks call device routines or insert
-  // them into any stream.
-  //
-  // On certain platforms, ThenDoHostCallback is expected to have significant
+  // On certain platforms, DoHostCallback is expected to have significant
   // negative effects on performance.
-  Stream &ThenDoHostCallbackWithStatus(
+  absl::Status DoHostCallbackWithStatus(
       absl::AnyInvocable<absl::Status() &&> callback);
 
   // Returns the StreamExecutor (parent object) associated with this stream.
@@ -455,57 +292,9 @@ class Stream {
     return parent()->GetDeviceDescription().rocm_compute_capability();
   }
 
-  // Returns a debugging string "[stream=0x...,impl=0x...]".
-  std::string DebugStreamPointers() const;
-
-  void SetPriority(StreamPriority priority);
-  void SetPriority(int priority);
-
   std::variant<StreamPriority, int> priority() const;
 
  private:
-  // Checks whether types match before a call to extended BLAS version.
-  template <typename ABType, typename CType, typename ScaleType>
-  absl::Status CheckTypesForExtendedBlas(
-      blas::ComputationType computation_type) {
-    static_assert(
-        detail::is_any_of<ABType, Eigen::half, Eigen::bfloat16, float, double,
-                          int8_t, std::complex<float>, std::complex<double>>(),
-        "The only buffer types supported are: Eigen::half, float, "
-        "double, int8, std::complex<float> and std::complex<double>");
-    static_assert(
-        std::is_same_v<ScaleType, CType> ||
-            (std::is_same_v<ScaleType, float> &&
-             detail::is_any_of<CType, Eigen::half, Eigen::bfloat16>()),
-        "Mismatched alpha/beta and output types");
-
-    bool valid_computation_type = [computation_type] {
-      switch (computation_type) {
-        case blas::ComputationType::kF16:
-          return std::is_same_v<CType, Eigen::half>;
-        case blas::ComputationType::kF32:
-          return detail::is_any_of<CType, Eigen::half, Eigen::bfloat16, float,
-                                   std::complex<float>>();
-        case blas::ComputationType::kF64:
-          return detail::is_any_of<CType, double, std::complex<double>>();
-        case blas::ComputationType::kI32:
-          return std::is_same_v<CType, int32_t>;
-        case blas::ComputationType::kF16AsF32:   // fall-through
-        case blas::ComputationType::kBF16AsF32:  // fall-through
-        case blas::ComputationType::kTF32AsF32:
-          return detail::is_any_of<CType, float, std::complex<float>>();
-      }
-    }();
-
-    if (!valid_computation_type) {
-      return absl::InternalError(absl::StrCat(
-          "Invalid computation type ",
-          blas::ComputationTypeString(computation_type), " for output type: ",
-          blas::DataTypeString(blas::ToDataType<CType>::value)));
-    }
-    return absl::OkStatus();
-  }
-
   bool InErrorState() const TF_LOCKS_EXCLUDED(mu_) {
     absl::ReaderMutexLock lock(&mu_);
     return !status_.ok();
@@ -525,16 +314,11 @@ class Stream {
 
   // The platform-dependent implementation that the StreamExecutor interface
   // delegates to.
-  std::unique_ptr<internal::StreamInterface> implementation_;
+  std::unique_ptr<StreamInterface> implementation_;
 
   // mutex that guards the allocation / error state flags.
   // Mutable so that it can be obtained via const reader lock.
   mutable absl::Mutex mu_;
-
-  // Whether Init() was successfully called to allocate this stream on the
-  // underlying platform. It simply flips from 0 to 1 with a sanity check.
-  // See StreamExecutor::AllocateStream.
-  bool allocated_ ABSL_GUARDED_BY(mu_);
 
   // The last error (if any) of all method calls.
   absl::Status status_ ABSL_GUARDED_BY(mu_);
@@ -544,29 +328,6 @@ class Stream {
   // be reused.
   std::vector<std::pair<std::unique_ptr<Stream>, bool>> sub_streams_
       ABSL_GUARDED_BY(mu_);
-
-  // Non-extended BLAS interface requires alpha/beta to be floats when input
-  // type is Eigen::half. However, for consistency purposes it is convenient
-  // for the interface to accept Eigen::half.
-  template <typename T>
-  void UpcastHalfToFloat(void **alpha_ptr, void **beta_ptr,
-                         float *alpha_storage, float *beta_storage) {
-    if (std::is_same<T, Eigen::half>::value) {
-      *alpha_storage =
-          static_cast<float>(*reinterpret_cast<Eigen::half *>(*alpha_ptr));
-      *beta_storage =
-          static_cast<float>(*reinterpret_cast<Eigen::half *>(*beta_ptr));
-      *alpha_ptr = alpha_storage;
-      *beta_ptr = beta_storage;
-    } else if (std::is_same<T, Eigen::bfloat16>::value) {
-      *alpha_storage =
-          static_cast<float>(*reinterpret_cast<Eigen::bfloat16 *>(*alpha_ptr));
-      *beta_storage =
-          static_cast<float>(*reinterpret_cast<Eigen::bfloat16 *>(*beta_ptr));
-      *alpha_ptr = alpha_storage;
-      *beta_ptr = beta_storage;
-    }
-  }
 
   Stream(const Stream &) = delete;
   void operator=(const Stream &) = delete;

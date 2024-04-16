@@ -2,11 +2,12 @@
 #    Tests for LLVM-based CPU backend for XLA.
 
 load("//xla:xla.bzl", "xla_cc_test")
-load("@local_tsl//tsl:tsl.bzl", "tsl_copts")
-load("@local_tsl//tsl:tsl.default.bzl", "filegroup")
+load("//xla/tsl:tsl.bzl", "tsl_copts")
+load("//xla/tsl:tsl.default.bzl", "filegroup")
 
 package(
-    default_visibility = ["//visibility:public"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = [":friends"],
     licenses = ["notice"],
 )
 
@@ -24,14 +25,12 @@ filegroup(
         "**/*.cc",
         "**/*.h",
     ]),
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
     name = "cpu_codegen_test",
     testonly = True,
     hdrs = ["cpu_codegen_test.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla/service:cpu_plugin",
         "//xla/tests:llvm_irgen_test_base",
@@ -51,8 +50,8 @@ xla_cc_test(
         "//xla/service:platform_util",
         "//xla/service/cpu:cpu_compiler",
         "//xla/stream_executor",
-        "//xla/stream_executor:multi_platform_manager",
         "//xla/stream_executor:platform",
+        "//xla/stream_executor:platform_manager",
         "//xla/tests:hlo_test_base",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
@@ -68,8 +67,12 @@ xla_cc_test(
     srcs = ["cpu_dyn_shape_test.cc"],
     deps = [
         ":cpu_codegen_test",
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/ir:hlo",
         "//xla/service/cpu:cpu_compiler",
         "//xla/service/cpu:test_header_helper",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:test_main",
     ],
 )
@@ -78,9 +81,12 @@ xla_cc_test(
     name = "cpu_fusion_test",
     srcs = ["cpu_fusion_test.cc"],
     deps = [
+        "//xla:error_spec",
         "//xla:literal",
+        "//xla:literal_util",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
+        "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/service:cpu_plugin",
         "//xla/service/cpu:cpu_instruction_fusion",
@@ -96,7 +102,9 @@ xla_cc_test(
     srcs = ["cpu_bytesizeof_test.cc"],
     deps = [
         "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
         "//xla/service/llvm_ir:llvm_util",
+        "@llvm-project//llvm:ir_headers",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_main",
     ],
@@ -108,9 +116,10 @@ xla_cc_test(
     deps = [
         ":cpu_codegen_test",
         "//xla:array2d",
+        "//xla:literal_util",
         "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
-        "//xla/tests:filecheck",
         "@local_tsl//tsl/platform:test",
     ],
 )
@@ -121,14 +130,21 @@ xla_cc_test(
     deps = [
         ":cpu_codegen_test",
         "//xla:literal",
+        "//xla:literal_util",
         "//xla:shape_util",
+        "//xla:status",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/service:buffer_assignment",
+        "//xla/service:hlo_ordering",
+        "//xla/service:logical_buffer",
         "//xla/service/llvm_ir:alias_analysis",
+        "//xla/service/llvm_ir:ir_array",
         "//xla/service/llvm_ir:llvm_util",
         "//xla/tests:filecheck",
         "@llvm-project//llvm:Core",
+        "@llvm-project//llvm:Support",
+        "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_main",
     ],
@@ -139,9 +155,14 @@ xla_cc_test(
     srcs = ["cpu_intrinsic_test.cc"],
     deps = [
         ":cpu_codegen_test",
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/service/cpu:cpu_compiler",
+        "//xla/tests:hlo_test_base",
         "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:ARMCodeGen",  # fixdeps: keep
         "@llvm-project//llvm:Target",
         "@llvm-project//llvm:X86CodeGen",  # fixdeps: keep
@@ -157,11 +178,13 @@ xla_cc_test(
     tags = ["no_mac_arm64"],
     deps = [
         ":cpu_codegen_test",
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/service/cpu:cpu_compiler",
         "//xla/service/cpu:test_header_helper",
         "//xla/tests:test_utils",
-        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_main",
     ],
@@ -175,6 +198,7 @@ xla_cc_test(
         "//xla/hlo/ir:hlo",
         "//xla/service/cpu:cpu_compiler",
         "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:ARMCodeGen",  # fixdeps: keep
         "@llvm-project//llvm:Target",
         "@llvm-project//llvm:X86CodeGen",  # fixdeps: keep
@@ -188,16 +212,7 @@ xla_cc_test(
     srcs = ["tree_reduction_rewriter_test.cc"],
     deps = [
         ":cpu_codegen_test",
-        "//xla:statusor",
-        "//xla/hlo/ir:hlo",
-        "//xla/service:hlo_module_config",
-        "//xla/service:hlo_parser",
         "//xla/service/cpu:cpu_compiler",
-        "//xla/tests:filecheck",
-        "//xla/tests:hlo_test_base",
-        "//xla/tests:llvm_irgen_test_base",
-        "@local_tsl//tsl/lib/core:status_test_util",
-        "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_main",
     ],
@@ -207,9 +222,10 @@ xla_cc_test(
     name = "cpu_infeed_test",
     srcs = ["cpu_infeed_test.cc"],
     deps = [
+        "//xla:error_spec",
         "//xla:literal",
+        "//xla:literal_util",
         "//xla:shape_util",
-        "//xla:statusor",
         "//xla:test_helpers",
         "//xla:xla_data_proto_cc",
         "//xla/client:global_data",
@@ -231,9 +247,11 @@ xla_cc_test(
     srcs = ["cpu_literal_caching_test.cc"],
     deps = [
         ":cpu_codegen_test",
-        "//xla/service:hlo_parser",
+        "//xla/hlo/ir:hlo",
         "//xla/service/cpu:cpu_compiler",
         "//xla/service/cpu:test_header_helper",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test_main",
     ],
 )
@@ -245,6 +263,8 @@ xla_cc_test(
         ":cpu_codegen_test",
         "//xla/service/cpu:cpu_compiler",
         "//xla/service/cpu:test_header_helper",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test_main",
     ],
 )
@@ -256,6 +276,8 @@ xla_cc_test(
         ":cpu_codegen_test",
         "//xla/service/cpu:cpu_compiler",
         "//xla/service/cpu:test_header_helper",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test_main",
     ],
 )
@@ -265,12 +287,12 @@ xla_cc_test(
     srcs = ["cpu_spmd_compile_test.cc"],
     deps = [
         ":cpu_codegen_test",
-        "//xla/hlo/utils:hlo_query",
+        "//xla:debug_options_flags",
+        "//xla/service:executable",
         "//xla/service:hlo_module_config",
-        "//xla/service:hlo_parser",
         "//xla/service/cpu:cpu_compiler",
         "//xla/service/cpu:test_header_helper",
-        "//xla/tests:hlo_test_base",
+        "@com_google_absl//absl/status:statusor",
         "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_main",
@@ -282,10 +304,17 @@ xla_cc_test(
     srcs = ["cpu_topk_test.cc"],
     deps = [
         ":cpu_codegen_test",
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
         "//xla/client:xla_builder",
+        "//xla/client:xla_computation",
         "//xla/client/lib:sorting",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:hlo_module_config",
         "//xla/service/cpu:cpu_compiler",
         "//xla/service/cpu:test_header_helper",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test_main",
     ],
 )
@@ -295,9 +324,15 @@ xla_cc_test(
     srcs = ["cpu_vectorization_test.cc"],
     deps = [
         ":cpu_codegen_test",
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/service/cpu:cpu_compiler",
+        "//xla/tests:hlo_test_base",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:ARMCodeGen",  # fixdeps: keep
         "@llvm-project//llvm:Target",
         "@llvm-project//llvm:X86CodeGen",  # fixdeps: keep
@@ -312,8 +347,11 @@ xla_cc_test(
     deps = [
         ":cpu_codegen_test",
         "//xla/service/cpu:cpu_compiler",
+        "//xla/tests:literal_test_util",
+        "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:ARMCodeGen",  # fixdeps: keep
         "@llvm-project//llvm:X86CodeGen",  # fixdeps: keep
+        "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test_main",
     ],
 )

@@ -13,16 +13,19 @@
 # limitations under the License.
 # ==============================================================================
 """Defines a wrapper class for overridden python method definitions."""
+
 from collections.abc import Callable, Collection, Mapping, Sequence
-from typing import Optional
+import functools
+import traceback
+from typing import Optional, TypeVar
 
 from absl import logging
 
+from tensorflow.compiler.mlir.quantization.stablehlo import quantization_config_pb2 as stablehlo_quant_config_pb2
 from tensorflow.compiler.mlir.quantization.tensorflow import exported_model_pb2
 from tensorflow.compiler.mlir.quantization.tensorflow import quantization_options_pb2
 from tensorflow.compiler.mlir.quantization.tensorflow.calibrator import calibration_algorithm
 from tensorflow.compiler.mlir.quantization.tensorflow.calibrator import calibration_statistics_pb2
-from tensorflow.compiler.mlir.quantization.tensorflow.calibrator import pywrap_calibration
 from tensorflow.compiler.mlir.quantization.tensorflow.python import pywrap_function_lib
 from tensorflow.compiler.mlir.quantization.tensorflow.python import representative_dataset as rd
 from tensorflow.compiler.mlir.quantization.tensorflow.python import save_model
@@ -39,9 +42,15 @@ from tensorflow.python.saved_model import loader_impl
 from tensorflow.python.trackable import autotrackable
 from tensorflow.python.types import core
 
+
 # Name of the saved model assets directory.
 _ASSETS_DIR = 'assets'
 _ASSETS_EXTRA_DIR = 'assets.extra'
+
+# Type variable for a type that is not `None`. This represents a return value of
+# methods in `PyFunctionLibrary` that should not be `None`, as `None` represents
+# that the execution was unsucessful, transfored as `std::nullopt_t` from c++.
+NotNoneT = TypeVar('NotNoneT')
 
 
 def _get_saver_def_or_none(
@@ -500,29 +509,115 @@ def _run_graph_for_calibration(
   logging.info('Calibration step complete.')
 
 
-def _get_min_max_from_calibrator(
-    node_id: bytes,
-    calib_opts: quantization_options_pb2.CalibrationOptions,
-) -> tuple[float, float]:
-  """Calculate min and max from statistics using calibration options.
+def _run_calibration(
+    saved_model_path: str,
+    signature_keys: Sequence[str],
+    tags: Collection[str],
+    force_graph_mode_calibration: bool,
+    representative_dataset_file_map: Mapping[
+        str, quantization_options_pb2.RepresentativeDatasetFile
+    ],
+) -> bool:
+  """Runs calibration and adds calibration statistics to exported model.
 
   Args:
-    node_id: bytes of node id.
-    calib_opts: Calibration options used for calculating min and max.
+    saved_model_path: Path to the SavedModel to run calibration.
+    signature_keys: List of signature keys corresponding to SignatureDefs to run
+      calibration on.
+    tags: A set of tags that identify the MetaGraphDef.
+    force_graph_mode_calibration: If True, runs the calibration in graph mode.
+    representative_dataset_file_map: Signature key ->
+      `RepresentativeDatasetFile` mapping for running the calibration step. Each
+      dataset file stores the representative dataset for the function matching
+      the signature key.
 
   Returns:
-    (min_value, max_value): Min and max calculated using calib_opts.
-
-  Raises:
-    ValueError: Unsupported calibration method is given.
+    `True` upon successfully running calibration.
   """
-  statistics: calibration_statistics_pb2.CalibrationStatistics = (
-      pywrap_calibration.get_statistics_from_calibrator(node_id)
+  repr_dataset_map = rd.TfRecordRepresentativeDatasetLoader(
+      representative_dataset_file_map
+  ).load()
+
+  # Uses the representative dataset to collect statistics for calibration.
+  # After this operation, min & max values are stored separately in a global
+  # CalibratorSingleton instance.
+  _run_graph_for_calibration(
+      saved_model_path,
+      signature_keys,
+      tags,
+      repr_dataset_map,
+      force_graph_mode_calibration,
   )
-  min_value, max_value = calibration_algorithm.get_min_max_value(
-      statistics, calib_opts
+
+  # Dummy value to indicate successful run, as `None` would indicate error. See
+  # comments in `NotNoneT`.
+  return True
+
+
+def _call_and_return_none_on_error(
+    func: Callable[[], NotNoneT], error_msg: str
+) -> Optional[NotNoneT]:
+  """Calls `func` and returns `None` on error.
+
+  This is used to gracefully return the 'error status' represented as `None`, as
+  raising exceptions from `PyFunctionLibrary` methods crashes the program.
+
+  Args:
+    func: The function to run. The function should be a callable returning a
+      non-None value.
+    error_msg: The error message to log upon error. Used for debugging purposes.
+
+  Returns:
+    `None` if the function raises an exception. The return value of `func`
+    otherwise.
+  """
+  try:
+    return func()
+  except Exception as ex:  # pylint: disable=broad-exception-caught; Required for graceful failing with pybind11.
+    # Prints the exception traceback for debuggability.
+    traceback.print_exception(ex)
+    # Additional error log for debuggability.
+    logging.error(error_msg)
+    return None
+
+
+def _save_model_and_copy_assets(
+    exported_model: exported_model_pb2.ExportedModel,
+    src_saved_model_path: str,
+    dst_saved_model_path: str,
+    signature_def_map: Mapping[str, meta_graph_pb2.SignatureDef],
+    tags: Collection[str],
+) -> bool:
+  """Saves the model and copies the assets from the source model.
+
+  Args:
+    exported_model: ExportedModel to save.
+    src_saved_model_path: Path to the source SavedModel. This will be used to
+      copy the asset files to `dst_saved_model_path`.
+    dst_saved_model_path: Destination path to save the exported model.
+    signature_def_map: Signature key -> SignatureDef mapping.
+    tags: Tags to attach to the saved MetaGraphDef.
+
+  Returns:
+    `True` upon successfully saving the model.
+  """
+  save_model.save_model_v1(
+      exported_model.graph_def,
+      dst_saved_model_path,
+      signature_def_map,
+      tags,
+      init_op_name=exported_model.init_node_name,
+      saver_def=_get_saver_def_or_none(exported_model),
+      checkpoint_dir=exported_model.checkpoint_dir,
+      function_aliases=exported_model.function_aliases,
+      asset_file_defs=exported_model.asset_file_defs,
   )
-  return min_value, max_value
+
+  _copy_assets(src_saved_model_path, dst_saved_model_path)
+
+  # Dummy value to indicate successful run, as `None` would indicate error. See
+  # comments in `NotNoneT`.
+  return True
 
 
 class PyFunctionLibrary(pywrap_function_lib.PyFunctionLibrary):
@@ -540,7 +635,7 @@ class PyFunctionLibrary(pywrap_function_lib.PyFunctionLibrary):
       src_saved_model_path: str,
       tags: set[str],
       serialized_signature_def_map: dict[str, bytes],
-  ) -> None:
+  ) -> Optional[bool]:
     # LINT.ThenChange(py_function_lib.h:save_exported_model)
     """Saves `ExportedModel` to `dst_saved_model_path` as a SavedModel.
 
@@ -551,6 +646,10 @@ class PyFunctionLibrary(pywrap_function_lib.PyFunctionLibrary):
         copy the asset files to `dst_saved_model_path`.
       tags: Tags to attach to the saved MetaGraphDef.
       serialized_signature_def_map: Signature key -> serialized SignatureDef.
+
+    Returns:
+      `True` upon successful execution. `None` when an error is raised
+      internally.
     """
     exported_model = exported_model_pb2.ExportedModel.FromString(
         exported_model_serialized
@@ -563,19 +662,20 @@ class PyFunctionLibrary(pywrap_function_lib.PyFunctionLibrary):
           serialized_signature_def
       )
 
-    save_model.save_model_v1(
-        exported_model.graph_def,
-        dst_saved_model_path,
-        signature_def_map,
-        tags,
-        init_op_name=exported_model.init_node_name,
-        saver_def=_get_saver_def_or_none(exported_model),
-        checkpoint_dir=exported_model.checkpoint_dir,
-        function_aliases=exported_model.function_aliases,
-        asset_file_defs=exported_model.asset_file_defs,
+    return _call_and_return_none_on_error(
+        func=functools.partial(
+            _save_model_and_copy_assets,
+            exported_model,
+            src_saved_model_path,
+            dst_saved_model_path,
+            signature_def_map,
+            tags,
+        ),
+        error_msg=(
+            f'Failed to save model "{dst_saved_model_path}",'
+            f' signature_def_map: {signature_def_map}, tags: {tags}.'
+        ),
     )
-
-    _copy_assets(src_saved_model_path, dst_saved_model_path)
 
   # TODO: b/311097139 - Extract calibration related functions into a separate
   # file.
@@ -585,10 +685,9 @@ class PyFunctionLibrary(pywrap_function_lib.PyFunctionLibrary):
       saved_model_path: str,
       signature_keys: list[str],
       tags: set[str],
-      calibration_options_serialized: bytes,
       force_graph_mode_calibration: bool,
       representative_dataset_file_map_serialized: dict[str, bytes],
-  ) -> None:
+  ) -> Optional[bool]:
     # LINT.ThenChange(py_function_lib.h:run_calibration)
     """Runs calibration and adds calibration statistics to exported model.
 
@@ -597,7 +696,6 @@ class PyFunctionLibrary(pywrap_function_lib.PyFunctionLibrary):
       signature_keys: List of signature keys corresponding to SignatureDefs to
         run calibration on.
       tags: A set of tags that identify the MetaGraphDef.
-      calibration_options_serialized: Serialized `CalibrationOptions`.
       force_graph_mode_calibration: If True, runs the calibration in graph mode.
       representative_dataset_file_map_serialized: Signature key ->
         `RepresentativeDatasetFile` mapping for running the calibration step.
@@ -605,10 +703,9 @@ class PyFunctionLibrary(pywrap_function_lib.PyFunctionLibrary):
         matching the signature key.
 
     Returns:
-      Updated exported model (serialized) where the collected calibration
-      statistics are added to `CustomerAggregator` nodes at the `min` and `max`
-      attributes.
+      The error message if the function raises and exception. `None` otherwise.
     """
+    # Deserialize `RepresentativeDatasetFile` values.
     dataset_file_map = {}
     for (
         signature_key,
@@ -620,19 +717,19 @@ class PyFunctionLibrary(pywrap_function_lib.PyFunctionLibrary):
           )
       )
 
-    repr_dataset_map = rd.TfRecordRepresentativeDatasetLoader(
-        dataset_file_map=dataset_file_map
-    ).load()
-
-    # Uses the representative dataset to collect statistics for calibration.
-    # After this operation, min & max values are stored separately in a global
-    # CalibratorSingleton instance.
-    _run_graph_for_calibration(
-        saved_model_path,
-        signature_keys,
-        tags,
-        repr_dataset_map,
-        force_graph_mode_calibration,
+    return _call_and_return_none_on_error(
+        func=functools.partial(
+            _run_calibration,
+            saved_model_path,
+            signature_keys,
+            tags,
+            force_graph_mode_calibration,
+            dataset_file_map,
+        ),
+        error_msg=(
+            f'Failed to run calibration on model "{saved_model_path}",'
+            f' signature_keys: {signature_keys}, tags: {tags}.'
+        ),
     )
 
   # LINT.IfChange(get_calibration_min_max_value)
@@ -640,7 +737,7 @@ class PyFunctionLibrary(pywrap_function_lib.PyFunctionLibrary):
       self,
       calibration_statistics_serialized: bytes,
       calibration_options_serialized: bytes,
-  ) -> tuple[float, float]:
+  ) -> Optional[tuple[float, float]]:
     """Calculates min and max values from statistics.
 
     Args:
@@ -650,17 +747,26 @@ class PyFunctionLibrary(pywrap_function_lib.PyFunctionLibrary):
         how the min / max should be calculated.
 
     Returns:
-      (min_value, max_value): Min and max calculated using calib_opts.
-
-    Raises:
-      ValueError: Unsupported calibration method is given.
+      (min_value, max_value): Min and max calculated using calib_opts. `None`
+      upon error.
     """
     # LINT.ThenChange(py_function_lib.h:get_calibration_min_max_value)
-    return calibration_algorithm.get_min_max_value(
-        calibration_statistics_pb2.CalibrationStatistics.FromString(
-            calibration_statistics_serialized
+
+    # Deserialize values passed from c++.
+    statistics = calibration_statistics_pb2.CalibrationStatistics.FromString(
+        calibration_statistics_serialized
+    )
+    options = stablehlo_quant_config_pb2.CalibrationOptions.FromString(
+        calibration_options_serialized
+    )
+
+    return _call_and_return_none_on_error(
+        functools.partial(
+            calibration_algorithm.get_min_max_value,
+            statistics,
+            options,
         ),
-        quantization_options_pb2.CalibrationOptions.FromString(
-            calibration_options_serialized
+        error_msg=(
+            f'Retrieving calibrated min / max failed. Options: {options}.'
         ),
     )

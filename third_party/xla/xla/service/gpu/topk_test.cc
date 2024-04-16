@@ -21,12 +21,12 @@ limitations under the License.
 #include <string_view>
 #include <tuple>
 #include <utility>
-#include <vector>
 
+#include <gtest/gtest.h>
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
-#include "xla/error_spec.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -39,10 +39,7 @@ limitations under the License.
 #include "xla/service/topk_rewriter.h"
 #include "xla/shape_util.h"
 #include "xla/status.h"
-#include "xla/statusor.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/tests/verified_hlo_module.h"
-#include "xla/types.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {

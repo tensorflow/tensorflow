@@ -18,7 +18,7 @@ cc_library(
     hdrs = ["coordination_client.h"],
     # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
-        "@local_tsl//tsl/distributed_runtime/coordination:coordination_client",
+        "@local_xla//xla/tsl/distributed_runtime/coordination:coordination_client",
     ],
 )
 
@@ -29,7 +29,7 @@ cc_library(
     ],
     # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
-        "@local_tsl//tsl/distributed_runtime/coordination:coordination_service_rpc_handler",
+        "@local_xla//xla/tsl/distributed_runtime/coordination:coordination_service_rpc_handler",
     ],
 )
 
@@ -38,7 +38,7 @@ cc_library(
     hdrs = ["coordination_service_error_util.h"],
     # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
-        "@local_tsl//tsl/distributed_runtime/coordination:coordination_service_error_util",
+        "@local_xla//xla/tsl/distributed_runtime/coordination:coordination_service_error_util",
     ],
 )
 
@@ -49,17 +49,18 @@ cc_library(
     # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
         "//tensorflow/core:framework_lite",
-        "//tensorflow/core/platform:env",
-        "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:macros",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:thread_annotations",
         "//tensorflow/core/profiler/lib:traceme",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
-        "@local_tsl//tsl/distributed_runtime/coordination:coordination_service_agent",
+        "@local_tsl//tsl/protobuf:coordination_service_proto_cc",
+        "@local_xla//xla/tsl/distributed_runtime/coordination:coordination_service_agent",
     ],
 )
 
@@ -74,14 +75,16 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
-        "//tensorflow/core/platform:statusor",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
-        "@local_tsl//tsl/distributed_runtime:call_options",
-        "@local_tsl//tsl/distributed_runtime/coordination:coordination_client",
-        "@local_tsl//tsl/distributed_runtime/coordination:coordination_service_agent",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/protobuf:coordination_config_proto_cc",
         "@local_tsl//tsl/protobuf:coordination_service_proto_cc",
+        "@local_xla//xla/tsl/distributed_runtime:call_options",
+        "@local_xla//xla/tsl/distributed_runtime/coordination:coordination_client",
+        "@local_xla//xla/tsl/distributed_runtime/coordination:coordination_service_agent",
     ],
 )
 

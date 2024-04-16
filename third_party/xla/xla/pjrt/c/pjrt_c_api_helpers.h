@@ -22,7 +22,9 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
+#include "xla/pjrt/c/pjrt_c_api_profiler_extension.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_future.h"
@@ -37,15 +39,15 @@ ABSL_CONST_INIT extern const absl::string_view kHloWithConfigFormat;
 
 // Return error status if not success and frees the PJRT_Error returned by
 // `expr`.
-#define RETURN_STATUS_IF_PJRT_ERROR(expr, c_api)                        \
-  do {                                                                  \
-    PJRT_Error* error = (expr);                                         \
-    std::unique_ptr<PJRT_Error, pjrt::PJRT_ErrorDeleter> _error(        \
-        error, pjrt::MakeErrorDeleter(c_api));                          \
-    xla::Status _status = pjrt::PjrtErrorToStatus(_error.get(), c_api); \
-    if (!_status.ok()) {                                                \
-      return _status;                                                   \
-    }                                                                   \
+#define RETURN_STATUS_IF_PJRT_ERROR(expr, c_api)                         \
+  do {                                                                   \
+    PJRT_Error* error = (expr);                                          \
+    std::unique_ptr<PJRT_Error, pjrt::PJRT_ErrorDeleter> _error(         \
+        error, pjrt::MakeErrorDeleter(c_api));                           \
+    absl::Status _status = pjrt::PjrtErrorToStatus(_error.get(), c_api); \
+    if (!_status.ok()) {                                                 \
+      return _status;                                                    \
+    }                                                                    \
   } while (false)
 
 using PJRT_ClientDeleter = std::function<void(PJRT_Client*)>;
@@ -107,11 +109,12 @@ absl::string_view GetPjrtErrorMessage(const PJRT_Error* error,
 
 PJRT_Error_Code GetErrorCode(const PJRT_Error* error, const PJRT_Api* api);
 
-xla::Status PjrtErrorToStatus(const PJRT_Error* error, const PJRT_Api* api);
+absl::Status PjrtErrorToStatus(const PJRT_Error* error, const PJRT_Api* api);
 
 absl::StatusCode PjrtErrorToStatusCode(const PJRT_Error* error,
                                        const PJRT_Api* api);
 
+absl::StatusCode PjrtErrorCodeToStatusCode(PJRT_Error_Code code);
 PJRT_Error_Code StatusCodeToPjrtErrorCode(absl::StatusCode code);
 
 // Conversion helper from xla::PrimitiveType to PJRT_Buffer_Type.
@@ -132,15 +135,14 @@ xla::PjRtClient::HostBufferSemantics ConvertFromPjRtHostBufferSemantics(
 
 // Create and return a `PjRtFuture`  which will be set when `c_event` is ready.
 // This also deletes `c_event` when the `PjRtFuture` is set.
-xla::PjRtFuture<xla::Status> ConvertCEventToCppFuture(PJRT_Event* c_event,
-                                                      const PJRT_Api* c_api);
+xla::PjRtFuture<> ConvertCEventToCppFuture(PJRT_Event* c_event,
+                                           const PJRT_Api* c_api);
 
 // The data of returned variable-length PJRT_NamedValue list is backed by
 // `cpp_value_map`, so `cpp_value_map` must outlive the returned list. It will
 // raise errors for unsupported PjRtValueType.
-xla::StatusOr<std::vector<PJRT_NamedValue>> ConvertToPjRtNamedValueList(
-    const absl::flat_hash_map<std::string, xla::PjRtValueType>& cpp_value_map,
-    int api_minor_version);
+absl::StatusOr<std::vector<PJRT_NamedValue>> ConvertToPjRtNamedValueList(
+    const absl::flat_hash_map<std::string, xla::PjRtValueType>& cpp_value_map);
 
 absl::flat_hash_map<std::string, xla::PjRtValueType>
 ConvertFromPjRtNamedValueList(const PJRT_NamedValue* c_value_list,
@@ -149,23 +151,27 @@ ConvertFromPjRtNamedValueList(const PJRT_NamedValue* c_value_list,
 // Validates that all entries in value_map have a matching name and type in
 // expected_name_and_type. expected_name_and_type may contain extra entries
 // not in value_map without error.
-xla::Status ValidateCreateOptions(
+absl::Status ValidateCreateOptions(
     const absl::flat_hash_map<std::string, xla::PjRtValueType>& value_map,
     const absl::flat_hash_map<std::string, PJRT_NamedValue_Type>&
         expected_name_and_types);
+
+// Returns attributes for plugin that uses XLA compiler. The attributes have the
+// lifetime of the process.
+const std::vector<PJRT_NamedValue>& GetXlaPluginCAttributes();
 
 // Helper function for checking the actual C API argument struct size is greater
 // than or equal to the expected size. The actual struct size can be larger if
 // it comes from a forwards-compatible caller built at a later version than this
 // check. Returns a non-OK status if the expected is smaller.
-xla::Status ActualStructSizeIsGreaterOrEqual(absl::string_view struct_name,
-                                             size_t expected_size,
-                                             size_t actual_size);
+absl::Status ActualStructSizeIsGreaterOrEqual(absl::string_view struct_name,
+                                              size_t expected_size,
+                                              size_t actual_size);
 
 absl::string_view GetPlatformVersion(PJRT_Client* client, const PJRT_Api* api);
 absl::string_view GetPlatformName(PJRT_Client* client, const PJRT_Api* api);
 
-xla::StatusOr<PJRT_TopologyDescription*> GetTopologyDescription(
+absl::StatusOr<PJRT_TopologyDescription*> GetTopologyDescription(
     PJRT_Client* client, const PJRT_Api* api);
 
 // Releases `chunk`.
@@ -245,12 +251,12 @@ struct BufferMemoryLayoutData {
   std::vector<int64_t> tile_dims;
   std::vector<size_t> tile_dim_sizes;
 };
-xla::StatusOr<BufferMemoryLayoutData> ConvertToBufferMemoryLayoutData(
+absl::StatusOr<BufferMemoryLayoutData> ConvertToBufferMemoryLayoutData(
     const xla::Layout& cpp_layout);
-xla::StatusOr<BufferMemoryLayoutData> ConvertToBufferMemoryLayoutData(
+absl::StatusOr<BufferMemoryLayoutData> ConvertToBufferMemoryLayoutData(
     absl::Span<int64_t const> byte_strides);
 
-xla::StatusOr<xla::Layout> ConvertToLayout(
+absl::StatusOr<xla::Layout> ConvertToLayout(
     const PJRT_Buffer_MemoryLayout_Tiled& c_tiled);
 
 PJRT_Buffer_Type GetElementType(const PJRT_Api* api, PJRT_Buffer* buffer);
@@ -259,10 +265,10 @@ absl::Span<const int64_t> GetDimensions(const PJRT_Api* api,
 PJRT_Buffer_MemoryLayout GetMemoryLayout(const PJRT_Api* api,
                                          PJRT_Buffer* buffer);
 
-xla::StatusOr<xla::Shape> BuildXlaShapeFromC(PJRT_Buffer_Type element_type,
-                                             const int64_t* dims,
-                                             size_t num_dims,
-                                             PJRT_Buffer_MemoryLayout* layout);
+absl::StatusOr<xla::Shape> BuildXlaShapeFromC(PJRT_Buffer_Type element_type,
+                                              const int64_t* dims,
+                                              size_t num_dims,
+                                              PJRT_Buffer_MemoryLayout* layout);
 
 absl::string_view PlatformName(const PJRT_Api* api,
                                const PJRT_TopologyDescription* topo_desc);
@@ -271,6 +277,46 @@ absl::Span<PJRT_DeviceDescription* const> DeviceDescriptions(
 
 absl::StatusOr<xla::CompiledMemoryStats> GetCompiledMemoryStats(
     const PJRT_Api* api, PJRT_Executable* executable);
+
+// Creates a PJRT_Profiler_Extension and adds a producer trace with
+// the given name. The created PJRT_Profiler_Extension will be used in argument
+// structs to pass the producer traceme context id to add a corresponding
+// consumer trace in the API implementation.
+PJRT_Profiler_Extension CreatePjrtProfilerExtension(
+    absl::string_view traceme_name);
+
+// Traverses an extension chain to find an extension struct with type
+// `type`. `in` can either be a PJRT_Api* or a pointer to an Args struct --
+// anything with an `extension_start` field. The ExtType template parameter
+// specifies the C extension type of the returned struct, if found (i.e. a
+// specific extension struct that is layout-compatible with
+// PJRT_Extension_Base).
+template <typename ExtType, typename InputType>
+ExtType* FindExtension(InputType* in, PJRT_Extension_Type type) {
+  PJRT_Extension_Base* ext = in->extension_start;
+  while (ext != nullptr) {
+    if (ext->type == type) {
+      return reinterpret_cast<ExtType*>(ext);
+    }
+    ext = ext->next;
+  }
+  // 'type' wasn't found in extension chain
+  return nullptr;
+}
+
+// Gets a traceme context id attached to PJRT_Profiler_Extension.
+// Returns -1 if there is no PJRT_Profiler_Extension in args.
+template <typename InputType>
+int64_t GetTracemeContextId(InputType* args) {
+  PJRT_Profiler_Extension* profiler_extension =
+      FindExtension<PJRT_Profiler_Extension>(
+          args, PJRT_Extension_Type::PJRT_Extension_Type_Profiler);
+  int64_t traceme_context_id = -1;
+  if (profiler_extension != nullptr) {
+    traceme_context_id = profiler_extension->traceme_context_id;
+  }
+  return traceme_context_id;
+}
 
 }  // namespace pjrt
 

@@ -23,7 +23,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/quantization/ir/Passes.h"
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantizeUtils.h"
-#include "tensorflow/compiler/mlir/lite/quantization/ir/UniformSupport.h"
 
 using namespace mlir;
 using namespace mlir::quantfork;

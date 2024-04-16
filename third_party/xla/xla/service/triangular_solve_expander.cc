@@ -38,7 +38,7 @@ namespace {
 // Get the diagonal blocks of the coefficient matrix
 XlaOp DiagonalBlocks(XlaOp a, int64_t block_size) {
   XlaBuilder* builder = a.builder();
-  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+  return builder->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(a));
     int ndims = shape.rank();
     int64_t n = ShapeUtil::GetDimension(shape, -1);
@@ -129,7 +129,7 @@ XlaOp SolveWithInvertedDiagonalBlocks(XlaOp a, XlaOp b, XlaOp inv_diag_blocks,
                                       bool transpose_a, bool conjugate_a,
                                       PrecisionConfig::Precision precision) {
   XlaBuilder* builder = a.builder();
-  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+  return builder->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape blocks_shape, builder->GetShape(inv_diag_blocks));
     TF_ASSIGN_OR_RETURN(Shape b_shape, builder->GetShape(b));
     int64_t block_size = ShapeUtil::GetDimension(blocks_shape, -1);
@@ -238,7 +238,7 @@ XlaOp TriangularSolveExpander::InvertDiagonalBlocks(
     XlaOp diag_blocks, bool lower_triangular,
     PrecisionConfig::Precision precision) {
   XlaBuilder* builder = diag_blocks.builder();
-  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+  return builder->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     // Input is a batch of square lower triangular square matrices. Its shape is
     // (..., size, size). We resize this to (num_blocks, size, size).
     TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(diag_blocks));
@@ -366,7 +366,7 @@ XlaOp TriangularSolveExpander::SolveByInvertingDiagonalBlocks(
     bool conjugate_a, bool unit_diagonal,
     PrecisionConfig::Precision precision) {
   XlaBuilder* builder = a.builder();
-  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+  return builder->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
     const int64_t ndims = a_shape.rank();
     int64_t k = ShapeUtil::GetDimension(a_shape, -1);
@@ -410,7 +410,7 @@ XlaOp TriangularSolveExpander::SolveDirectly(
     bool conjugate_a, bool unit_diagonal,
     PrecisionConfig::Precision precision) {
   XlaBuilder* builder = a.builder();
-  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+  return builder->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
     TF_ASSIGN_OR_RETURN(Shape b_shape, builder->GetShape(b));
     int64_t m = ShapeUtil::GetDimension(b_shape, -2);
@@ -467,7 +467,7 @@ XlaOp TriangularSolveExpander::BuildTriangularSolve(
     bool conjugate_a, bool unit_diagonal, int64_t block_size,
     PrecisionConfig::Precision precision) {
   XlaBuilder* builder = a.builder();
-  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+  return builder->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
     TF_ASSIGN_OR_RETURN(Shape b_shape, builder->GetShape(b));
     if (a_shape.rank() != b_shape.rank()) {
@@ -551,7 +551,7 @@ bool TriangularSolveExpander::InstructionMatchesPattern(
   return instruction->opcode() == HloOpcode::kTriangularSolve;
 }
 
-StatusOr<HloInstruction*> TriangularSolveExpander::ExpandInstruction(
+absl::StatusOr<HloInstruction*> TriangularSolveExpander::ExpandInstruction(
     HloInstruction* instruction) {
   const TriangularSolveOptions& options =
       instruction->triangular_solve_options();

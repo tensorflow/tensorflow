@@ -35,10 +35,10 @@ class PluginCoordinationServiceAgent {
   virtual Status InsertKeyValue(std::string_view key,
                                 std::string_view value) = 0;
 
-  virtual StatusOr<std::string> GetKeyValue(std::string_view key) = 0;
-  virtual StatusOr<std::string> GetKeyValue(std::string_view key,
-                                            absl::Duration timeout) = 0;
-  virtual StatusOr<std::string> TryGetKeyValue(std::string_view key) = 0;
+  virtual absl::StatusOr<std::string> GetKeyValue(std::string_view key) = 0;
+  virtual absl::StatusOr<std::string> GetKeyValue(std::string_view key,
+                                                  absl::Duration timeout) = 0;
+  virtual absl::StatusOr<std::string> TryGetKeyValue(std::string_view key) = 0;
 
   virtual Status DeleteKeyValue(std::string_view key) = 0;
 };

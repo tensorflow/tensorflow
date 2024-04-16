@@ -1,3 +1,5 @@
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+
 # Description: Operations defined for Cloud TPUs
 load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
 load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
@@ -6,7 +8,6 @@ load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
 load("//tensorflow:tensorflow.default.bzl", "tf_py_strict_test", "tf_python_pybind_extension")
 load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
 load("//tensorflow/python/tpu:tpu.bzl", "internal_create_sanitizer_settings", "tpu_py_strict_test")
-load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 
 # Do not add anymore paths here. You do not need to be in the visibility list
 # to use TPU symbols. They are accessible from tf.contrib.tpu in TF 1.x and
@@ -26,7 +27,7 @@ visibility = [
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = visibility + ["//tensorflow/tools/pip_package/v2:__subpackages__"],
+    default_visibility = visibility + ["//tensorflow/tools/pip_package:__subpackages__"],
     licenses = ["notice"],
 )
 
@@ -785,6 +786,42 @@ tf_py_strict_test(
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/platform:client_testlib",
         "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+pytype_strict_library(
+    name = "tpu_embedding_v3_checkpoint_adapter",
+    srcs = ["tpu_embedding_v3_checkpoint_adapter.py"],
+    deps = [
+        ":tpu_embedding_v3_utils",
+        "//tensorflow/core/tpu/kernels:sparse_core_layout_proto_py",
+        "//tensorflow/python/checkpoint:checkpoint_adapter",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:errors",
+        "//tensorflow/python/framework:tensor",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:manip_ops",
+        "//tensorflow/python/ops:variables",
+        "//tensorflow/python/trackable:base",
+        "//tensorflow/python/training:py_checkpoint_reader",
+        "//tensorflow/python/util/protobuf",
+        "@absl_py//absl/logging",
+    ],
+)
+
+tf_py_strict_test(
+    name = "tpu_embedding_v3_checkpoint_adapter_test",
+    srcs = ["tpu_embedding_v3_checkpoint_adapter_test.py"],
+    deps = [
+        ":tpu_embedding_v3_checkpoint_adapter",
+        "//tensorflow/core/tpu/kernels:sparse_core_layout_proto_py",
+        "//tensorflow/python/compat:v2_compat",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/platform:client_testlib",
+        "@absl_py//absl/logging",
     ],
 )
 

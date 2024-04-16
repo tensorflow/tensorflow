@@ -15,107 +15,34 @@ limitations under the License.
 
 #include "xla/service/generic_transfer_manager.h"
 
+#include <cstddef>
 #include <cstdint>
+#include <cstring>
+#include <functional>
 #include <memory>
-#include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
-#include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/primitive_util.h"
+#include "xla/service/shaped_buffer.h"
 #include "xla/service/transfer_manager.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status.h"
 #include "xla/status_macros.h"
+#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/event.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/types.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 
 namespace xla {
-
-namespace {
-
-// Transfer a memory block of the given size from the device source into the
-// 'destination' buffer.
-//
-// size is the size to transfer to destination in bytes.
-Status TransferBufferFromDevice(se::Stream* stream,
-                                const se::DeviceMemoryBase& source,
-                                int64_t size, void* destination) {
-  if (source.size() < size) {
-    return absl::FailedPreconditionError(absl::StrFormat(
-        "Source allocation on device not large enough for data transfer: "
-        "%d < %d",
-        source.size(), size));
-  }
-  stream->ThenMemcpy(destination, source, size);
-  return OkStatus();
-}
-
-// Transfer a memory block of the given size from 'source' buffer to the given
-// destination of the device.
-//
-// size is the size to transfer from source in bytes.
-Status TransferBufferToDevice(se::Stream* stream, int64_t size,
-                              const void* source,
-                              se::DeviceMemoryBase* destination) {
-  if (destination->size() < size) {
-    return absl::FailedPreconditionError(absl::StrFormat(
-        "Destination allocation on device not large enough for data transfer: "
-        "%d < %d",
-        destination->size(), size));
-  }
-  stream->ThenMemcpy(destination, source, size);
-  return OkStatus();
-}
-
-// Transfers a buffer of packed int4 values from the device to the host, then
-// unpacks them on the host. 'source' is a buffer with (num_elements+1)/2 bytes
-// where each byte stores two int4 values. 'destination' is a buffer with
-// num_elements bytes, where a single int4 value will be written to each byte
-// in the lower 4 bits.
-Status TransferInt4ArrayFromDevice(se::Stream* stream,
-                                   const se::DeviceMemoryBase& source,
-                                   int64_t num_elements, void* destination) {
-  int64_t packed_size = (num_elements + 1) / 2;
-  auto packed_dst_data = std::make_unique<std::vector<char>>(packed_size);
-  TF_RETURN_IF_ERROR(TransferBufferFromDevice(stream, source, packed_size,
-                                              packed_dst_data->data()));
-  stream->ThenDoHostCallback([destination, num_elements,
-                              moved_dst_data = std::move(packed_dst_data)]() {
-    UnpackInt4(*moved_dst_data,
-               absl::MakeSpan(static_cast<char*>(destination), num_elements));
-  });
-  return OkStatus();
-}
-
-// Packs an array of int4 values then transfers the packed buffer from the host
-// to the device. 'source' is a buffer with num_elements bytes, where the lower
-// 4 bits of each byte stores an int4 value. 'destination' is a buffer with
-// (num_elements+1)/2 bytes, where two int4 values will be written into each
-// byte.
-Status TransferInt4ArrayToDevice(se::Stream* stream, int64_t num_elements,
-                                 const void* source,
-                                 se::DeviceMemoryBase* destination) {
-  auto packed_src_data = std::make_unique<std::vector<char>>(
-      CeilOfRatio(num_elements, int64_t{2}));
-  PackInt4(absl::MakeSpan(static_cast<const char*>(source), num_elements),
-           absl::MakeSpan(*packed_src_data));
-  TF_RETURN_IF_ERROR(TransferBufferToDevice(
-      stream, packed_src_data->size(), packed_src_data->data(), destination));
-  // Ensure the buffer is transferred before we destroy it
-  stream->ThenDoHostCallback([keep_alive = std::move(packed_src_data)] {});
-  return OkStatus();
-}
-
-}  // namespace
 
 GenericTransferManager::GenericTransferManager(se::Platform::Id platform_id,
                                                size_t pointer_size)
@@ -138,9 +65,10 @@ Status GenericTransferManager::WriteSingleTupleIndexTable(
   TF_RETURN_IF_ERROR(TransferBufferToDevice(
       stream, GetByteSizeRequirement(shape), element_pointers->data(), region));
   // Ensure the buffer is transferred before we destroy element_pointers.
-  stream->ThenDoHostCallback([element_pointers{std::move(element_pointers)}]() {
-    /* holds reference to element_pointers in closure */
-  });
+  TF_RETURN_IF_ERROR(
+      stream->DoHostCallback([element_pointers{std::move(element_pointers)}]() {
+        /* holds reference to element_pointers in closure */
+      }));
   return OkStatus();
 }
 
@@ -201,10 +129,13 @@ void GenericTransferManager::TransferLiteralFromDevice(
   if ((transfer_metadata != nullptr) &&
       tensorflow::down_cast<const LiteralFromDeviceMetadata*>(transfer_metadata)
           ->callback_is_host_callback_safe) {
-    stream->ThenDoHostCallback([done = std::move(done), stream] {
+    auto status = stream->DoHostCallback([done = std::move(done), stream] {
       done(stream->ok() ? OkStatus()
                         : Internal("`TransferLiteralFromDevice` failed"));
     });
+    if (!status.ok()) {
+      LOG(ERROR) << "`DoHostCallback` failed: " << status;
+    }
   } else {
     done(stream->BlockHostUntilDone());
   }
@@ -262,7 +193,8 @@ Status GenericTransferManager::TransferLiteralToDeviceAsync(
                 subliteral.Relayout(device_subshape.layout()));
             TF_RETURN_IF_ERROR(TransferBuffer(relaid_out->untyped_data()));
             // Ensure the buffer is transferred before we destroy it.
-            stream->ThenDoHostCallback([keep_alive = std::move(relaid_out)] {});
+            TF_RETURN_IF_ERROR(stream->DoHostCallback(
+                [keep_alive = std::move(relaid_out)] {}));
           }
         }
         return OkStatus();
@@ -286,9 +218,61 @@ Status GenericTransferManager::ResetDevices(
       "Device reset is not yet supported on this platform (b/30481585)");
 }
 
+Status GenericTransferManager::TransferBufferFromDevice(
+    se::Stream* stream, const se::DeviceMemoryBase& source, int64_t size,
+    void* destination) {
+  if (source.size() < size) {
+    return absl::FailedPreconditionError(absl::StrFormat(
+        "Source allocation on device not large enough for data transfer: "
+        "%d < %d",
+        source.size(), size));
+  }
+  return stream->Memcpy(destination, source, size);
+}
+
+Status GenericTransferManager::TransferBufferToDevice(
+    se::Stream* stream, int64_t size, const void* source,
+    se::DeviceMemoryBase* destination) {
+  if (destination->size() < size) {
+    return absl::FailedPreconditionError(absl::StrFormat(
+        "Destination allocation on device not large enough for data transfer: "
+        "%d < %d",
+        destination->size(), size));
+  }
+  return stream->Memcpy(destination, source, size);
+}
+
+Status GenericTransferManager::TransferInt4ArrayFromDevice(
+    se::Stream* stream, const se::DeviceMemoryBase& source,
+    int64_t num_elements, void* destination) {
+  int64_t packed_size = (num_elements + 1) / 2;
+  auto packed_dst_data = std::make_unique<std::vector<char>>(packed_size);
+  TF_RETURN_IF_ERROR(TransferBufferFromDevice(stream, source, packed_size,
+                                              packed_dst_data->data()));
+  TF_RETURN_IF_ERROR(stream->DoHostCallback([destination, num_elements,
+                                             packed_dst_data =
+                                                 std::move(packed_dst_data)]() {
+    UnpackInt4(*packed_dst_data,
+               absl::MakeSpan(static_cast<char*>(destination), num_elements));
+  }));
+  return OkStatus();
+}
+
+Status GenericTransferManager::TransferInt4ArrayToDevice(
+    se::Stream* stream, int64_t num_elements, const void* source,
+    se::DeviceMemoryBase* destination) {
+  auto packed_src_data = std::make_unique<std::vector<char>>(
+      CeilOfRatio(num_elements, int64_t{2}));
+  PackInt4(absl::MakeSpan(static_cast<const char*>(source), num_elements),
+           absl::MakeSpan(*packed_src_data));
+  TF_RETURN_IF_ERROR(TransferBufferToDevice(
+      stream, packed_src_data->size(), packed_src_data->data(), destination));
+  return stream->DoHostCallback([keep_alive = std::move(packed_src_data)] {});
+}
+
 int64_t GenericTransferManager::GetByteSizeRequirement(
     const Shape& shape) const {
-  if (shape.is_static() || shape.IsTuple()) {
+  if (shape.IsTuple() || shape.is_static()) {
     return ShapeUtil::ByteSizeOf(shape, pointer_size_);
   }
   int64_t metadata_size = sizeof(int32_t) * shape.dimensions_size();
@@ -304,4 +288,5 @@ Shape GenericTransferManager::HostShapeToDeviceShape(
   }
   return device_shape;
 }
+
 }  // namespace xla

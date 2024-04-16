@@ -133,7 +133,6 @@ filegroup(
         "gpu_managed_allocator.h",
         "gpu_process_state.h",
         "gpu_util.h",
-        "gpu_virtual_mem_allocator.h",
         "//tensorflow/core/common_runtime:gpu_runtime_headers",
         "//tensorflow/core/common_runtime/device:device_runtime_headers",
         "@local_tsl//tsl/framework:bfc_allocator.h",
@@ -159,7 +158,6 @@ tf_cuda_library(
         "@local_config_cuda//cuda:cudnn_header",
         "@local_xla//xla/stream_executor/cuda:cuda_platform",
         "@local_xla//xla/stream_executor/gpu:gpu_stream",
-        ":gpu_virtual_mem_allocator",
     ],
     defines = if_linux_x86_64(["TF_PLATFORM_LINUX_X86_64"]),
     features = ["-layering_check"],
@@ -253,45 +251,11 @@ tf_cuda_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        ":gpu_virtual_mem_allocator",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/common_runtime:bfc_allocator",
         "//tensorflow/core/common_runtime/device:device_mem_allocator",
-    ],
-)
-
-tf_cuda_library(
-    name = "gpu_virtual_mem_allocator",
-    srcs = [
-        "gpu_virtual_mem_allocator.cc",
-    ],
-    hdrs = [
-        "gpu_virtual_mem_allocator.h",
-    ],
-    copts = tf_copts(),
-    cuda_deps = [
-        "@local_xla//xla/stream_executor/gpu:gpu_driver_header",
-        "@local_xla//xla/stream_executor/gpu:gpu_types_header",
-    ],
-    features = [
-        "-layering_check",
-        "parse_headers",
-    ],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":gpu_id",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core/framework:allocator",
-        "//tensorflow/core/platform:stream_executor",
-        "//tensorflow/core/profiler/lib:traceme",
-        "@com_google_absl//absl/strings:str_format",
-        "@local_xla//xla/stream_executor",
-        "@local_xla//xla/stream_executor:platform",
     ],
 )
 
@@ -390,6 +354,7 @@ tf_cuda_cc_test(
         "//tensorflow/core/common_runtime:core_cpu_internal",
         "//tensorflow/core/common_runtime:direct_session_internal",
         "//tensorflow/core/kernels:ops_util",
+        "@local_xla//xla/stream_executor:platform_manager",
         "@local_xla//xla/stream_executor/gpu:gpu_init",
     ],
 )
@@ -474,31 +439,14 @@ tf_cuda_cc_test(
     ],
 )
 
-tf_cc_test(
-    name = "gpu_virtual_mem_allocator_test",
-    size = "small",
-    srcs = ["gpu_virtual_mem_allocator_test.cc"],
-    features = ["-layering_check"],
-    tags = tf_cuda_tests_tags(),
-    deps = [
-        ":gpu_virtual_mem_allocator",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
-        "//tensorflow/core/framework:allocator",
-        "//tensorflow/core/platform:stream_executor",
-        "@local_xla//xla/stream_executor/gpu:gpu_init",
-        "@local_xla//xla/stream_executor/integrations:device_mem_allocator",
-    ],
-)
-
 cc_library(
     name = "gpu_serving_device_selector",
     srcs = ["gpu_serving_device_selector.cc"],
     hdrs = ["gpu_serving_device_selector.h"],
     features = ["-layering_check"],
     deps = [
-        "//tensorflow/core/common_runtime:serving_device_selector",
+        ":gpu_scheduling_metrics_storage",
+        "//tensorflow/core/framework:resource_base",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:fixed_array",
         "@com_google_absl//absl/container:node_hash_map",
@@ -507,6 +455,7 @@ cc_library(
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
+        "@local_tsl//tsl/framework:serving_device_selector",
     ],
 )
 
@@ -515,10 +464,19 @@ tf_cc_test(
     size = "small",
     srcs = ["gpu_serving_device_selector_test.cc"],
     deps = [
+        ":gpu_scheduling_metrics_storage",
         ":gpu_serving_device_selector",
-        "//tensorflow/core/common_runtime:serving_device_selector",
-        "//tensorflow/core/common_runtime:serving_device_selector_policies",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/framework:serving_device_selector",
+        "@local_tsl//tsl/framework:serving_device_selector_policies",
     ],
+)
+
+cc_library(
+    name = "gpu_scheduling_metrics_storage",
+    srcs = ["gpu_scheduling_metrics_storage.cc"],
+    hdrs = ["gpu_scheduling_metrics_storage.h"],
+    visibility = ["//visibility:public"],
+    deps = ["@local_tsl//tsl/framework:real_time_in_memory_metric"],
 )

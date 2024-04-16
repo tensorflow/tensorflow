@@ -45,6 +45,7 @@ limitations under the License.
 
 #include <stddef.h>
 
+#include <cstdint>
 #include <functional>
 #include <initializer_list>
 #include <map>
@@ -54,8 +55,7 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "absl/synchronization/mutex.h"
-#include "xla/stream_executor/platform/port.h"
+#include "absl/types/span.h"
 #include "tsl/platform/logging.h"
 
 namespace stream_executor {
@@ -76,7 +76,7 @@ class KernelArgsPackedArrayBase;  // defined in kernel.h
 // files at build time, but can also be specified manually.
 class KernelLoaderSpec {
  public:
-  virtual ~KernelLoaderSpec() {}
+  virtual ~KernelLoaderSpec() = default;
 
   // Returns the kernel name to load out of the program.
   const std::string &kernel_name() const { return kernel_name_; }
@@ -120,15 +120,13 @@ class CudaPtxInMemory : public KernelLoaderSpec {
   //
   // Warning: the string backing the provided absl::string_view ptx must outlive
   // this instance.
-  CudaPtxInMemory(absl::string_view ptx, absl::string_view kernel_name,
-                  bool ptx_compressed = false);
+  CudaPtxInMemory(absl::string_view ptx, absl::string_view kernel_name);
 
   // Multiple-PTX-version constructor. Adds each item in spec_list to this
   // object. Note that the PTX can be compressed, which is indicated by the
   // argument ptx_compressed.
   CudaPtxInMemory(const std::initializer_list<PtxSpec> &spec_list,
-                  absl::string_view kernel_name, bool ptx_compressed = false);
-  ~CudaPtxInMemory() override {}
+                  absl::string_view kernel_name);
 
   // Add the PTX implementation described by ptx_spec to this object. On
   // collision (i.e., if a version with the same compute_capability already
@@ -139,41 +137,20 @@ class CudaPtxInMemory : public KernelLoaderSpec {
   // lowest-valued compute capability. For example, if PTX written to CC2.0,
   // 3.0, and 3.5 are all available, the version for CC2.0 will be set. Returns
   // nullptr on failed lookup (if any version is not available).
-  // When the ptx is compressed, returns the decompressed ptx.
   const char *default_text() const;
-
-  // Similar to default_text().
-  // When the ptx is compressed, returns the decompressed ptx.
-  const char *original_default_text() const;
 
   // Returns pointer to the ptx for the requested compute capability.
   // Returns nullptr on failed lookup (if the requested version is not
   // available).
-  // When the ptx is compressed, returns the decompressed ptx.
   const char *text(int compute_capability_major,
                    int compute_capability_minor) const;
-
-  // Similar to text().
-  // When the ptx is compressed, returns the original compressed ptx.
-  const char *original_text(int compute_capability_major,
-                            int compute_capability_minor) const;
-
-  // Decompresses the PTX string using bzip2.
-  static std::string DecompressPtx(const char *ptx);
 
  private:
   // PTX translation unit text contents in memory. The key is of as a tuple
   // "<cc_major>,<cc_minor>", i.e., "2,0", "3,0", "3,5". Because CC's
   // represented in this way have a clear sorting order, map::begin() will give
   // the lowest-numbered version available, i.e. the default.
-  std::map<std::tuple<int, int>, const char *,
-           bool (*)(const std::tuple<int, int> &, const std::tuple<int, int> &)>
-      ptx_by_compute_capability_;
-
-  // Stores all decompressed ptx strings, with original ptx string as keys.
-  // It is marked as mutable for lazy decompression.
-  mutable std::map<const char *, std::string> decompressed_ptx_;
-  mutable absl::Mutex mu_;
+  std::map<std::tuple<int, int>, const char *> ptx_by_compute_capability_;
 
   // Defines the minimum compute capability possible. Used when PTX has no
   // compute capability specified (in the single-PTX constructor).
@@ -186,16 +163,35 @@ class CudaPtxInMemory : public KernelLoaderSpec {
 // Kernel loader specification for a CUBIN blob that resides in memory.
 class CudaCubinInMemory : public KernelLoaderSpec {
  public:
-  CudaCubinInMemory(const char *bytes, absl::string_view kernel_name);
-  ~CudaCubinInMemory() override {}
+  CudaCubinInMemory(absl::Span<const uint8_t> cubin_bytes,
+                    absl::string_view kernel_name);
 
-  const char *bytes() const { return bytes_; }
+  absl::Span<const uint8_t> cubin_bytes() const { return cubin_bytes_; }
 
  private:
-  const char *bytes_;
+  absl::Span<const uint8_t> cubin_bytes_;
 
   CudaCubinInMemory(const CudaCubinInMemory &) = delete;
   void operator=(const CudaCubinInMemory &) = delete;
+};
+
+class LlvmHostKernel : public KernelLoaderSpec {
+ public:
+  LlvmHostKernel(absl::string_view ir, absl::string_view entrypoint,
+                 absl::string_view kernel_name,
+                 absl::Span<std::string> options);
+
+  absl::string_view ir() const { return ir_; }
+  absl::string_view entrypoint() const { return entrypoint_; }
+  absl::Span<const std::string> options() const { return options_; }
+
+ private:
+  std::string ir_;
+  std::string entrypoint_;
+  std::vector<std::string> options_;
+
+  LlvmHostKernel(const LlvmHostKernel &) = delete;
+  void operator=(const LlvmHostKernel &) = delete;
 };
 
 // Describes how to load a kernel on any subset of a number of target platforms.
@@ -222,6 +218,7 @@ class MultiKernelLoaderSpec {
     return cuda_cubin_in_memory_ != nullptr;
   }
   bool has_cuda_ptx_in_memory() const { return cuda_ptx_in_memory_ != nullptr; }
+  bool has_llvm_host_kernel() const { return llvm_host_kernel_ != nullptr; }
 
   // Accessors for platform variant kernel load specifications.
   // Precondition: corresponding has_* is true.
@@ -237,6 +234,10 @@ class MultiKernelLoaderSpec {
     CHECK(has_cuda_ptx_in_memory());
     return *cuda_ptx_in_memory_;
   }
+  const LlvmHostKernel &llvm_host_kernel() const {
+    CHECK(has_llvm_host_kernel());
+    return *llvm_host_kernel_;
+  }
   // Builder-pattern-like methods for use in initializing a
   // MultiKernelLoaderSpec. Each of these should be used at most once for a
   // single MultiKernelLoaderSpec object. See file comment for example usage.
@@ -246,10 +247,14 @@ class MultiKernelLoaderSpec {
   // mangled by the compiler if it is not declared in an extern "C" scope.
   MultiKernelLoaderSpec *AddInProcessSymbol(void *symbol,
                                             absl::string_view kernel_name);
-  MultiKernelLoaderSpec *AddCudaCubinInMemory(const char *cubin_bytes,
-                                              absl::string_view kernel_name);
+  MultiKernelLoaderSpec *AddCudaCubinInMemory(
+      absl::Span<const uint8_t> cubin_bytes, absl::string_view kernel_name);
   MultiKernelLoaderSpec *AddCudaPtxInMemory(absl::string_view ptx,
                                             absl::string_view kernel_name);
+  MultiKernelLoaderSpec *AddLlvmHostKernel(absl::string_view ir,
+                                           absl::string_view entrypoint,
+                                           absl::string_view kernel_name,
+                                           absl::Span<std::string> options);
 
   const KernelArgsPacking &kernel_args_packing() const {
     return kernel_args_packing_;
@@ -262,6 +267,8 @@ class MultiKernelLoaderSpec {
       cuda_cubin_in_memory_;  // Binary CUDA program in memory.
   std::shared_ptr<CudaPtxInMemory>
       cuda_ptx_in_memory_;  // PTX text that resides in memory.
+  std::shared_ptr<LlvmHostKernel>
+      llvm_host_kernel_;  // LLVM kernel for host execution.
 
   // Number of parameters that the kernel takes. (This is nicer to have in a
   // constexpr than having to determine it from the types via template

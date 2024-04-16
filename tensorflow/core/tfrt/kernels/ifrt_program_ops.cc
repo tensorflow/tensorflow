@@ -35,7 +35,6 @@ namespace tfrt_stub {
 
 IfrtCallOp::IfrtCallOp(tensorflow::OpKernelConstruction* ctx) : OpKernel(ctx) {
   OP_REQUIRES_OK(ctx, ctx->GetAttr("program_id", &program_id_));
-  OP_REQUIRES_OK(ctx, ctx->GetAttr("variable_names", &variable_names_));
   OP_REQUIRES_OK(ctx,
                  ctx->GetAttr("variable_arg_indices", &variable_arg_indices_));
 }
@@ -56,8 +55,7 @@ void IfrtCallOp::Compute(tensorflow::OpKernelContext* ctx) {
   }
 
   absl::StatusOr<std::vector<Tensor>> results =
-      executable_->Execute(inputs, absl::MakeSpan(variable_names_),
-                           absl::MakeSpan(variable_arg_indices_));
+      executable_->Execute(inputs, absl::MakeSpan(variable_arg_indices_));
   OP_REQUIRES(ctx, results.ok(), results.status());
 
   tensorflow::OpOutputList outputs(ctx, 0, results->size());

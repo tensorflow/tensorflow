@@ -169,57 +169,57 @@ Status TfDataTypeFormDlDataType(const DLDataType& dtype,
             "Only DLPack bools of bitwidth 8 are supported, got: ", dtype.bits);
       }
       *tf_dtype = TF_DataType::TF_BOOL;
-      return OkStatus();
+      return absl::OkStatus();
 
     case DLDataTypeCode::kDLUInt:
       switch (dtype.bits) {
         case 8:
           *tf_dtype = TF_DataType::TF_UINT8;
-          return OkStatus();
+          return absl::OkStatus();
         case 16:
           *tf_dtype = TF_DataType::TF_UINT16;
-          return OkStatus();
+          return absl::OkStatus();
         case 32:
           *tf_dtype = TF_DataType::TF_UINT32;
-          return OkStatus();
+          return absl::OkStatus();
         case 64:
           *tf_dtype = TF_DataType::TF_UINT64;
-          return OkStatus();
+          return absl::OkStatus();
         default:
           return tensorflow::errors::InvalidArgument("Unsupported UInt bits: ",
                                                      dtype.bits);
       }
-      return OkStatus();
+      return absl::OkStatus();
     case DLDataTypeCode::kDLInt:
       switch (dtype.bits) {
         case 8:
           *tf_dtype = TF_DataType::TF_INT8;
-          return OkStatus();
+          return absl::OkStatus();
         case 16:
           *tf_dtype = TF_DataType::TF_INT16;
-          return OkStatus();
+          return absl::OkStatus();
         case 32:
           *tf_dtype = TF_DataType::TF_INT32;
-          return OkStatus();
+          return absl::OkStatus();
         case 64:
           *tf_dtype = TF_DataType::TF_INT64;
-          return OkStatus();
+          return absl::OkStatus();
         default:
           return tensorflow::errors::InvalidArgument("Unsupported Int bits: ",
                                                      dtype.bits);
       }
-      return OkStatus();
+      return absl::OkStatus();
     case DLDataTypeCode::kDLFloat:
       switch (dtype.bits) {
         case 16:
           *tf_dtype = TF_DataType::TF_HALF;
-          return OkStatus();
+          return absl::OkStatus();
         case 32:
           *tf_dtype = TF_DataType::TF_FLOAT;
-          return OkStatus();
+          return absl::OkStatus();
         case 64:
           *tf_dtype = TF_DataType::TF_DOUBLE;
-          return OkStatus();
+          return absl::OkStatus();
         default:
           return tensorflow::errors::InvalidArgument("Unsupported Float bits: ",
                                                      dtype.bits);
@@ -229,7 +229,7 @@ Status TfDataTypeFormDlDataType(const DLDataType& dtype,
       switch (dtype.bits) {
         case 16:
           *tf_dtype = TF_DataType::TF_BFLOAT16;
-          return OkStatus();
+          return absl::OkStatus();
         default:
           return tensorflow::errors::InvalidArgument(
               "Unsupported BFloat bits: ", dtype.bits);
@@ -239,10 +239,10 @@ Status TfDataTypeFormDlDataType(const DLDataType& dtype,
       switch (dtype.bits) {
         case 64:
           *tf_dtype = TF_DataType::TF_COMPLEX64;
-          return OkStatus();
+          return absl::OkStatus();
         case 128:
           *tf_dtype = TF_DataType::TF_COMPLEX128;
-          return OkStatus();
+          return absl::OkStatus();
         default:
           return tensorflow::errors::InvalidArgument(
               "Unsupported Complex bits: ", dtype.bits);

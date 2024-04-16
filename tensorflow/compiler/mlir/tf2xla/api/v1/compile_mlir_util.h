@@ -147,7 +147,7 @@ Status PopulateResultIOInfo(
 // If enable_op_fallback is set to false, graph is legalized only if the graph
 // analysis for the graph is successful. Otherwise, an error is returned.
 ABSL_DEPRECATED("Use v2/legalize_tf.h::LegalizeMlirToHlo instead.")
-StatusOr<std::string> CompileMlirToXlaHlo(
+absl::StatusOr<std::string> CompileMlirToXlaHlo(
     mlir::ModuleOp module_op, llvm::ArrayRef<TensorOrResourceShape> arg_shapes,
     llvm::StringRef device_type, bool use_tuple_args, bool enable_op_fallback,
     bool use_return_tuple, bool use_resource_updates_for_aliases,
@@ -163,7 +163,7 @@ StatusOr<std::string> CompileMlirToXlaHlo(
 // If lower_to_xla_hlo is true then compiles down into XLA HLO, generates all
 // accompanying metadata and stores them in CompilationResult.
 ABSL_DEPRECATED("Use v2/legalize_tf.h::LegalizeMlirToHlo instead.")
-StatusOr<std::string> CompileSerializedMlirToXlaHlo(
+absl::StatusOr<std::string> CompileSerializedMlirToXlaHlo(
     llvm::StringRef mlir_module_string, llvm::ArrayRef<TensorShape> arg_shapes,
     llvm::StringRef device_type, bool use_tuple_args, bool enable_op_fallback,
     const XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns,
@@ -191,7 +191,7 @@ Status CompileGraphToXlaHlo(
 // Compiles a TensorFlow Graph into XLA HLO, generates all accompanying metadata
 // and stores them in CompilationResult.
 ABSL_DEPRECATED(
-    "Use v1/compile_tf_graph.h::CompileTensorflowGraphToHloinstead.")
+    "Use v1/compile_tf_graph.h::CompileTensorflowGraphToHlo instead.")
 Status CompileGraphToXlaHlo(
     const Graph& graph, llvm::ArrayRef<XlaArgument> args,
     llvm::ArrayRef<std::string> control_rets, llvm::StringRef device_type,
@@ -206,14 +206,17 @@ Status CompileGraphToXlaHlo(
 // XlaBuilder. This function adds HLO to a larger HLO computation, so
 // HLO-level inputs are supplied, and HLO-level outputs are produced.
 // xla_params is the HLO-level inputs and returns is the HLO-level outputs.
+// If unconditionally_use_output_shapes is true then the unregistered
+// attribute _output_shapes is always used to set the output shapes of the ops.
 ABSL_DEPRECATED(
-    "Use v1/compile_tf_graph.h::CompileTensorflowGraphToHloinstead.")
+    "Use v1/compile_tf_graph.h::CompileTensorflowGraphToHlo instead.")
 Status BuildHloFromGraph(
     const Graph& graph, xla::XlaBuilder& builder,
     mlir::MLIRContext& mlir_context, llvm::ArrayRef<xla::XlaOp> xla_params,
-    std::vector<xla::XlaOp>& returns, llvm::ArrayRef<XlaArgument> args,
-    llvm::ArrayRef<std::string> control_rets, llvm::StringRef device_type,
-    const FunctionLibraryDefinition& flib_def, const GraphDebugInfo& debug_info,
+    std::vector<xla::XlaOp>& returns, bool unconditionally_use_output_shapes,
+    llvm::ArrayRef<XlaArgument> args, llvm::ArrayRef<std::string> control_rets,
+    llvm::StringRef device_type, const FunctionLibraryDefinition& flib_def,
+    const GraphDebugInfo& debug_info,
     llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
         custom_legalization_passes = {});
 

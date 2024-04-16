@@ -1,13 +1,15 @@
-load("//xla/tests:build_defs.bzl", "xla_test")
 load("@local_config_cuda//cuda:build_defs.bzl", "cuda_library")
-load("//xla:xla.bzl", "xla_cc_test")
-load("//xla/stream_executor:build_defs.bzl", "if_gpu_is_configured")
-load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured", "rocm_library")
+load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
 load("@local_tsl//tsl/platform:build_config_root.bzl", "tf_gpu_tests_tags")
 load("@local_tsl//tsl/platform/default:cuda_build_defs.bzl", "if_cuda_is_configured")
+load("//xla:xla.bzl", "xla_cc_test")
+load("//xla/service/gpu:build_defs.bzl", "gpu_kernel_library")
+load("//xla/stream_executor:build_defs.bzl", "if_gpu_is_configured")
+load("//xla/tests:build_defs.bzl", "xla_test")
 
 package(
-    default_visibility = ["//visibility:public"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = ["//visibility:private"],
     licenses = ["notice"],
 )
 
@@ -20,7 +22,7 @@ cc_library(
     name = "custom_kernel_fusion",
     srcs = ["custom_kernel_fusion.cc"],
     hdrs = ["custom_kernel_fusion.h"],
-    visibility = ["//visibility:public"],
+    visibility = [":friends"],
     deps = [
         ":custom_kernel",
         "//xla:status",
@@ -40,7 +42,7 @@ cc_library(
     name = "custom_kernel_fusion_pattern",
     srcs = ["custom_kernel_fusion_pattern.cc"],
     hdrs = ["custom_kernel_fusion_pattern.h"],
-    visibility = ["//visibility:public"],
+    visibility = [":friends"],
     deps = [
         "//xla:statusor",
         "//xla/hlo/ir:hlo",
@@ -59,7 +61,7 @@ cc_library(
     name = "custom_kernel",
     srcs = ["custom_kernel.cc"],
     hdrs = ["custom_kernel.h"],
-    visibility = ["//visibility:public"],
+    visibility = [":friends"],
     deps = [
         "//xla/stream_executor",
         "@com_google_absl//absl/strings:str_format",
@@ -70,7 +72,7 @@ cc_library(
 # a single dependency.
 cc_library(
     name = "custom_fusion_library",
-    visibility = ["//visibility:public"],
+    visibility = [":friends"],
     deps = [":cutlass_gemm_fusion"],
 )
 
@@ -78,7 +80,6 @@ cc_library(
     name = "cutlass_gemm_fusion",
     srcs = ["cutlass_gemm_fusion.cc"],
     hdrs = ["cutlass_gemm_fusion.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":custom_kernel",
         ":custom_kernel_fusion",
@@ -104,6 +105,8 @@ xla_test(
     name = "cutlass_gemm_fusion_test",
     srcs = ["cutlass_gemm_fusion_test.cc"],
     backends = ["gpu"],
+    # TODO(b/332820384): Enable when it passes on H100.
+    disabled_backends = ["gpu_h100"],
     tags = ["no_rocm"],
     deps = [
         ":custom_kernel_fusion_pattern",
@@ -130,7 +133,6 @@ cc_library(
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
         "TENSORFLOW_USE_ROCM=1",
     ]),
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:shape_util",
         "//xla:types",
@@ -147,42 +149,22 @@ cc_library(
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:statusor",
-    ] + if_cuda_is_configured([
-        ":topk_kernel_cuda",
-    ]) + if_rocm_is_configured([
-        ":topk_kernel_rocm",
+    ] + if_gpu_is_configured([
+        ":topk_kernel_gpu",
     ]),
 )
 
-cuda_library(
-    name = "topk_kernel_cuda",
-    srcs = if_cuda_is_configured([
+gpu_kernel_library(
+    name = "topk_kernel_gpu",
+    srcs = if_gpu_is_configured([
         "topk_kernel_bfloat16.cu.cc",
         "topk_kernel_float.cu.cc",
         "topk_kernel.cu.h",
     ]),
-    hdrs = if_cuda_is_configured(["topk_kernel_common.h"]),
+    hdrs = if_gpu_is_configured(["topk_kernel_common.h"]),
     compatible_with = [],
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:types",
-        "//xla/stream_executor/gpu:gpu_types_header",
-        "@local_tsl//tsl/lib/math:math_util",
-    ],
-)
-
-rocm_library(
-    name = "topk_kernel_rocm",
-    srcs = if_rocm_is_configured([
-        "topk_kernel_bfloat16.cu.cc",
-        "topk_kernel_float.cu.cc",
-        "topk_kernel.cu.h",
-    ]),
-    hdrs = if_rocm_is_configured(["topk_kernel_common.h"]),
-    compatible_with = [],
-    local_defines = if_rocm_is_configured(["TENSORFLOW_USE_ROCM=1"]),
-    deps = [
         "//xla/stream_executor/gpu:gpu_types_header",
         "@local_tsl//tsl/lib/math:math_util",
     ],
@@ -197,7 +179,7 @@ xla_cc_test(
         "//xla:types",
         "//xla:xla_data_proto_cc",
         "//xla/stream_executor",  # build_cleaner: keep
-        "//xla/stream_executor:multi_platform_manager",
+        "//xla/stream_executor:platform_manager",
         "//xla/stream_executor/gpu:gpu_init",
         "//xla/stream_executor/gpu:gpu_stream_header",
         "//xla/stream_executor/gpu:gpu_timer_header",
@@ -220,7 +202,7 @@ cc_library(
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
         "TENSORFLOW_USE_ROCM=1",
     ]),
-    visibility = ["//visibility:public"],
+    visibility = [":friends"],
     deps = [
         ":custom_kernel",
         "//xla:statusor",
@@ -232,10 +214,8 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:statusor",
-    ] + if_cuda_is_configured([
-        ":topk_kernel_cuda",
-    ]) + if_rocm_is_configured([
-        ":topk_kernel_rocm",
+    ] + if_gpu_is_configured([
+        ":topk_kernel_gpu",
     ]),
 )
 
@@ -249,8 +229,8 @@ xla_test(
         "//xla:xla_data_proto_cc",
         "//xla/service:platform_util",
         "//xla/stream_executor",
-        "//xla/stream_executor:multi_platform_manager",
         "//xla/stream_executor:platform",
+        "//xla/stream_executor:platform_manager",
         "//xla/stream_executor/cuda:cuda_platform",
         "@com_google_absl//absl/random",
         "@com_google_absl//absl/strings",
@@ -274,7 +254,6 @@ cc_library(
         ["cutlass_gemm_custom_kernel_stub.cc"],
     ),
     hdrs = ["cutlass_gemm_custom_kernel.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":custom_kernel",
         ":cutlass_gemm",
@@ -284,6 +263,7 @@ cc_library(
         "//xla/stream_executor",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -297,8 +277,8 @@ xla_test(
         ":cutlass_gemm_custom_kernel",
         "//xla:xla_data_proto_cc",
         "//xla/stream_executor",
-        "//xla/stream_executor:multi_platform_manager",
         "//xla/stream_executor:platform",
+        "//xla/stream_executor:platform_manager",
         "//xla/stream_executor/cuda:cuda_platform",
         "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:path",
@@ -317,8 +297,8 @@ cc_binary(
         "//xla:xla_data_proto_cc",
         "//xla/service:gpu_plugin",
         "//xla/stream_executor",
-        "//xla/stream_executor:multi_platform_manager",
         "//xla/stream_executor:platform",
+        "//xla/stream_executor:platform_manager",
         "//xla/stream_executor/cuda:cuda_platform",
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
@@ -336,7 +316,6 @@ cc_library(
     name = "cutlass_gemm",
     srcs = ["cutlass_gemm.cc"],
     hdrs = ["cutlass_gemm.h"],
-    visibility = ["//visibility:public"],
     deps = ["@local_tsl//tsl/platform:logging"],
 )
 
@@ -344,7 +323,6 @@ cuda_library(
     name = "cutlass_gemm_adaptor",
     hdrs = if_cuda_is_configured(["cutlass_gemm_adaptor.cu.h"]),
     copts = ["-Wno-unknown-attributes"],  # __grid_constant__ is not supported by clang
-    visibility = ["//visibility:public"],
     deps = if_cuda_is_configured([
         ":cutlass_gemm",
         "@cutlass_archive//:cutlass",
@@ -355,7 +333,6 @@ cuda_library(
     name = "cutlass_gemm_epilogue",
     # TODO(ezhulenev): Update to regular hdrs after fixing CUTLASS headers.
     textual_hdrs = if_cuda_is_configured(["cutlass_gemm_epilogue.cu.h"]),
-    visibility = ["//visibility:public"],
     deps = if_cuda_is_configured(["@cutlass_archive//:cutlass"]),
 )
 
@@ -368,7 +345,6 @@ cuda_library(
 
 cc_library(
     name = "cutlass_gemm_kernels",
-    visibility = ["//visibility:public"],
     deps = [
         ":cutlass_gemm_kernel_bf16xbf16_to_bf16",
         ":cutlass_gemm_kernel_bf16xbf16_to_bf16_sm80",
@@ -387,7 +363,6 @@ cuda_library(
     name = "cutlass_gemm_kernel_bf16xbf16_to_bf16",
     srcs = if_cuda_is_configured(["cutlass_gemm_kernel_bf16xbf16_to_bf16.cu.cc"]),
     copts = ["-Wno-unknown-attributes -mllvm -unroll-threshold=100000"],
-    visibility = ["//visibility:public"],
     deps = if_cuda_is_configured([
         ":cutlass_gemm_adaptor",
         "@cutlass_archive//:cutlass",
@@ -399,7 +374,6 @@ cuda_library(
     name = "cutlass_gemm_kernel_bf16xbf16_to_bf16_sm80",
     srcs = if_cuda_is_configured(["cutlass_gemm_kernel_bf16xbf16_to_bf16_sm80.cu.cc"]),
     copts = ["-Wno-unknown-attributes -mllvm -unroll-threshold=100000"],
-    visibility = ["//visibility:public"],
     deps = if_cuda_is_configured([
         ":cutlass_gemm_adaptor",
         "@cutlass_archive//:cutlass",
@@ -411,7 +385,6 @@ cuda_library(
     name = "cutlass_gemm_kernel_bf16xbf16_to_bf16_sm90",
     srcs = if_cuda_is_configured(["cutlass_gemm_kernel_bf16xbf16_to_bf16_sm90.cu.cc"]),
     copts = ["-Wno-ctad-maybe-unsupported -Wno-unknown-attributes -mllvm -unroll-threshold=100000"],
-    visibility = ["//visibility:public"],
     deps = if_cuda_is_configured([
         ":cutlass_gemm_adaptor",
         ":cutlass_gemm_epilogue",
@@ -424,7 +397,6 @@ cuda_library(
     name = "cutlass_gemm_kernel_f32xf32_to_f32",
     srcs = if_cuda_is_configured(["cutlass_gemm_kernel_f32xf32_to_f32.cu.cc"]),
     copts = ["-Wno-unknown-attributes"],
-    visibility = ["//visibility:public"],
     deps = if_cuda_is_configured([
         ":cutlass_gemm_adaptor",
         "@cutlass_archive//:cutlass",

@@ -21,15 +21,15 @@ limitations under the License.
 
 namespace xla {
 
-// CollectivePermuteDecomposer is a pass that converts asynchronous
-// CollectivePermute operations without any cycle in the (source, target)
-// relationship to Send/Recv. We currently restrict this transformation to
-// CollectivePermuteStart with one input and without any context data.
+// CollectivePermuteDecomposer is a pass that (1) converts CollectivePermute
+// operations without any cycle in their (source, target) relationship to
+// Send/Recv, and (2) annotates the Send/Recv for pipelining with a frontend
+// frontend attribute. We currently restrict the decomposition to
+// CollectivePermute with one input and without any context data.
 //
 // before transformation:
-//     start = (<rt>, <rt>) collective-permute-start(data),
+//     cp = (<rt>, <rt>) collective-permute(data),
 //       source_target_pairs={...}
-//     done = <rt> collective-permute-done(start)
 //
 // after transformation:
 //    after-all = token[] after-all()
@@ -41,7 +41,16 @@ namespace xla {
 //    recv-done = (<rt>, token[]) recv-done(recv), channel_id=0
 //    send-done = token[] send-done(send), channel_id=0,
 //      control-predecessors={recv-done}
-//    done = <rt> get-tuple-element(recv-done), index=0
+//    cp = <rt> get-tuple-element(recv-done), index=0
+//
+// For pipelining, we first make pipelining decision on CollectivePermute
+// operations, and then record the decision on the decomposed Send/Recv via
+// frontend attributes. We currently only pipeline CollectivePermute operations
+// that send loop input data. As a simple heuristics, we pick the first
+// encountered pipelineable CollectivePermute for pipelining. Then, if there is
+// another pipelineable CollectivePermute that forms a forward or backward
+// cycle with the first CollectivePermute, we mark both CollectivePermute
+// for pipelining. Otherwise, we only mark one CollectivePermute for pipelining.
 //
 class CollectivePermuteDecomposer : public HloModulePass {
  public:
@@ -54,7 +63,7 @@ class CollectivePermuteDecomposer : public HloModulePass {
   using HloPassInterface::Run;
   // Runs CollectivePermuteDecomposer pass on computations in 'module'.
   // Returns whether the 'module' was changed.
-  StatusOr<bool> Run(
+  absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 

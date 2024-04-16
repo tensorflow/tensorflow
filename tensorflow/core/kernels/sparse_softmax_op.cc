@@ -87,9 +87,10 @@ class SparseSoftmaxOp : public OpKernel {
     gtl::InlinedVector<int64_t, 4> dims(rank);
     std::iota(dims.begin(), dims.end(), 0);
     // { 0, ..., rank-1 }.
-    const ArraySlice<int64_t> kReorderDims(dims);
+    const absl::Span<const int64_t> kReorderDims(dims);
     // All but the last dim -- the class dimension to be max-reduced along.
-    const ArraySlice<int64_t> kGroupByDims = kReorderDims.subspan(0, rank - 1);
+    const absl::Span<const int64_t> kGroupByDims =
+        kReorderDims.subspan(0, rank - 1);
     st.Reorder<T>(kReorderDims);
     int count = 0;
 

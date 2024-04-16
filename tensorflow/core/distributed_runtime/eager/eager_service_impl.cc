@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -27,6 +28,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/types/optional.h"
 #include "tensorflow/c/eager/immediate_execution_distributed_manager.h"
+#include "xla/tsl/distributed_runtime/preemption/preemption_notifier.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/common_runtime/eager/context_distributed_manager.h"
@@ -51,7 +53,6 @@ limitations under the License.
 #include "tensorflow/core/platform/stringprintf.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
-#include "tsl/distributed_runtime/preemption/preemption_notifier.h"
 #include "tsl/protobuf/coordination_config.pb.h"
 namespace tensorflow {
 namespace eager {
@@ -129,8 +130,8 @@ Status GetEagerOperationAndNumRetvals(const Operation& operation,
                                      eager_executor, remote_func_params));
 
   {
-    profiler::TraceMe activity("EagerService:RemoteTensorHandleInternal",
-                               profiler::TraceMeLevel::kVerbose);
+    tsl::profiler::TraceMe activity("EagerService:RemoteTensorHandleInternal",
+                                    tsl::profiler::TraceMeLevel::kVerbose);
     for (const auto& input : operation.op_inputs()) {
       tensorflow::TensorHandle* handle;
       if (input.has_remote_handle()) {
@@ -281,6 +282,27 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
     return tensorflow::errors::Internal(
         "invalid eager env_ or env_->rendezvous_mgr.");
   }
+  if (request->clear_existing_contexts()) {
+    // Cleanup state from WorkerEnv
+    for (auto* device : env_->device_mgr->ListDevices()) {
+      device->ClearResourceMgr();
+    }
+    env_->rendezvous_mgr->CleanupAll();
+    env_->collective_executor_mgr->CleanupAll();
+    TF_RETURN_IF_ERROR(env_->session_mgr->DeleteAllSessions());
+
+    // Cleanup existing contexts if any.
+    std::unordered_map<uint64, ServerContext*> tmp_contexts;
+    {
+      mutex_lock l(contexts_mu_);
+      if (!contexts_.empty()) {
+        std::swap(tmp_contexts, contexts_);
+      }
+    }
+    for (auto& context : tmp_contexts) {
+      context.second->Unref();
+    }
+  }
 
   tsl::core::RefCountPtr<RemoteRendezvous> r =
       env_->rendezvous_mgr->Find(request->context_id());
@@ -395,7 +417,7 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
         tsl::PreemptionNotifier::CreatePreemptionNotifier("sigterm",
                                                           Env::Default());
     preemption_notifier->WillBePreemptedAtAsync(
-        [coord_agent](StatusOr<absl::Time> time_or_status) {
+        [coord_agent](absl::StatusOr<absl::Time> time_or_status) {
           if (time_or_status.ok()) {
             const auto coord_task = coord_agent->GetOwnTask().value();
             Status s = coord_agent->InsertKeyValue(
@@ -673,12 +695,12 @@ Status EagerServiceImpl::ExecuteOp(CallOptions* call_opts,
 Status EagerServiceImpl::Enqueue(CallOptions* call_opts,
                                  const EnqueueRequest* request,
                                  EnqueueResponse* response, uint64 stream_id) {
-  profiler::TraceMe activity(
+  tsl::profiler::TraceMe activity(
       [&] {
         return absl::StrCat(
             "EagerService:Enqueue#debug_str=", request->DebugString(), "#");
       },
-      profiler::TraceMeLevel::kInfo);
+      tsl::profiler::TraceMeLevel::kInfo);
   ServerContext* context = nullptr;
   TF_RETURN_IF_ERROR(GetServerContext(request->context_id(), &context));
   core::ScopedUnref context_unref(context);
@@ -753,8 +775,6 @@ Status EagerServiceImpl::KeepAlive(const KeepAliveRequest* request,
 
 Status EagerServiceImpl::CloseContext(const CloseContextRequest* request,
                                       CloseContextResponse* response) {
-  VLOG(1) << "Executing EagerService::CloseContext for context "
-          << request->context_id();
   ServerContext* context = nullptr;
   if (!GetServerContext(request->context_id(), &context).ok()) {
     // Swallow the error here.

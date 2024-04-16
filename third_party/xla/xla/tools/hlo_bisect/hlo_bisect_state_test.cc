@@ -43,7 +43,7 @@ class TestBugSearch : public BugCheckerInterface {
  public:
   TestBugSearch(std::initializer_list<HloOpcode> opcodes) : opcodes_(opcodes) {}
 
-  StatusOr<bool> Run(const HloModule& module) override {
+  absl::StatusOr<bool> Run(const HloModule& module) override {
     auto has_opcode = [&](HloOpcode opcode) {
       return absl::c_any_of(module.entry_computation()->instructions(),
                             [opcode](const HloInstruction* instr) {
@@ -173,7 +173,7 @@ TEST_F(HloBisectStateTest, TrimByOutputsLostBug) {
   class CustomBugSearch : public TestBugSearch {
    public:
     CustomBugSearch() : TestBugSearch({HloOpcode::kConstant}) {}
-    StatusOr<bool> Run(const HloModule& module) override {
+    absl::StatusOr<bool> Run(const HloModule& module) override {
       TF_ASSIGN_OR_RETURN(bool has_constants, TestBugSearch::Run(module));
       int program_size = module.entry_computation()->instruction_count();
       return program_size == 5 && !has_constants;

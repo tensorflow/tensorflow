@@ -707,6 +707,9 @@ void LaunchConvBackpropFilterOpImpl(
         "with cuDNN on Ampere GPUs or later."));
     return;
   }
+  auto* blas = stream->parent()->AsBlas();
+  OP_REQUIRES(context, blas != nullptr,
+              absl::InternalError("No BLAS for stream."));
 
   bool is_grouped_convolution = filter_shape.dim_size(3) != dims.in_depth;
   if (!is_grouped_convolution && dims.filter_size(1) == 1 &&
@@ -737,8 +740,8 @@ void LaunchConvBackpropFilterOpImpl(
     auto c_ptr = AsDeviceMemory(filter_backprop->template flat<T>().data(),
                                 filter_backprop->template flat<T>().size());
 
-    OP_REQUIRES_OK(context, stream->ThenBlasGemm(
-                                se::blas::Transpose::kNoTranspose,
+    OP_REQUIRES_OK(
+        context, blas->BlasGemm(stream, se::blas::Transpose::kNoTranspose,
                                 se::blas::Transpose::kTranspose, n, m, k, a_ptr,
                                 n, b_ptr, m, &c_ptr, n, GetNumericOptions(),
                                 se::blas::CallContext::kNone));
@@ -760,8 +763,8 @@ void LaunchConvBackpropFilterOpImpl(
     auto c_ptr = AsDeviceMemory(filter_backprop->template flat<T>().data(),
                                 filter_backprop->template flat<T>().size());
 
-    OP_REQUIRES_OK(context, stream->ThenBlasGemm(
-                                se::blas::Transpose::kNoTranspose,
+    OP_REQUIRES_OK(
+        context, blas->BlasGemm(stream, se::blas::Transpose::kNoTranspose,
                                 se::blas::Transpose::kTranspose, n, m, k, b_ptr,
                                 n, a_ptr, m, &c_ptr, n, GetNumericOptions(),
                                 se::blas::CallContext::kNone));

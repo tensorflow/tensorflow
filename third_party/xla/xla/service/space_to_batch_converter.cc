@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/log.h"
 #include "absl/types/span.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
@@ -118,11 +119,12 @@ class ConvolutionVisitor {
 
   // Propagates space-to-batch on the op, and returns a bool that indicates if
   // the users of the op need to be propagated through.
-  StatusOr<bool> Propagate(HloInstruction* consumer, HloInstruction* producer);
+  absl::StatusOr<bool> Propagate(HloInstruction* consumer,
+                                 HloInstruction* producer);
 
   // Splits the given spatial dimension on the activations and returns the
   // new instructions, and the dimension permutation of the new shape.
-  StatusOr<std::pair<HloInstruction*, std::vector<int64_t>>> SplitSpace(
+  absl::StatusOr<std::pair<HloInstruction*, std::vector<int64_t>>> SplitSpace(
       HloInstruction* activations, ConvolutionDimensionNumbers& dim_numbers,
       int64_t& activations_batch_dim, int64_t high_padding, int64_t low_padding,
       int64_t spatial_split_size, int64_t num_splits,
@@ -130,7 +132,7 @@ class ConvolutionVisitor {
       bool is_backprop = false, bool is_rhs = false);
 
   // Performs the actual dimension splitting.
-  StatusOr<HloInstruction*> PerformSplitSpace(
+  absl::StatusOr<HloInstruction*> PerformSplitSpace(
       HloInstruction* activations,
       absl::Span<const int64_t> spatial_dimensions_to_split,
       int64_t activations_batch_dim, int64_t spatial_split_size,
@@ -140,22 +142,22 @@ class ConvolutionVisitor {
   // merges the batch(es).
   // The input activations dimensions are ... B, B0, S0, B1, S1, ... Bn, Sn, ...
   // The output dimensions will be ..., B, S0, S1,.. Sn, ...
-  StatusOr<HloInstruction*> TransposeAndMergeBatch(
+  absl::StatusOr<HloInstruction*> TransposeAndMergeBatch(
       HloInstruction* activations,
       absl::Span<const int64_t> final_split_spatial_dim_positioning,
       int64_t activations_batch_dim, int64_t old_batch_size);
 
   // Helper function for the SplitSpace function above. Handles padding and
   // reshaping to generate space-to-batched shape.
-  StatusOr<HloInstruction*> PadAndSplitSpace(
+  absl::StatusOr<HloInstruction*> PadAndSplitSpace(
       HloInstruction* activations,
       absl::Span<const int64_t> spatial_dimensions_to_split,
       int64_t activations_batch_dim, int64_t high_padding, int64_t low_padding,
       int64_t spatial_split_size, int64_t num_splits);
 
   // Perform space-to-batch propagation on constants.
-  StatusOr<HloInstruction*> PropagateOnConstant(HloInstruction* consumer,
-                                                HloInstruction* producer);
+  absl::StatusOr<HloInstruction*> PropagateOnConstant(HloInstruction* consumer,
+                                                      HloInstruction* producer);
 
   // Perform space-to-batch propagation on the convolution. Assumes the
   // activations were already space-to-batched.
@@ -189,7 +191,7 @@ class ConvolutionVisitor {
 
   // Generates masked output with valid data. This is useful when larger shapes
   // are generated due to space-to-batch.
-  StatusOr<HloInstruction*> SelectValidPortion(
+  absl::StatusOr<HloInstruction*> SelectValidPortion(
       HloInstruction* new_instr, HloInstruction* old_instr,
       HloInstruction* select_val, int64_t new_batch_dim,
       absl::Span<const int64_t> new_space_dims, int64_t old_batch_dim,
@@ -201,7 +203,7 @@ class ConvolutionVisitor {
   };
 
   // Performs tranposition so that space dimension follows the batch dimension.
-  StatusOr<SpaceNextToBatchDetails> BringSpaceNextToBatch(
+  absl::StatusOr<SpaceNextToBatchDetails> BringSpaceNextToBatch(
       HloInstruction* activations, ConvolutionDimensionNumbers& dim_numbers,
       int64_t& activations_batch_dim,
       std::vector<int64_t>* spatial_dimensions_to_split,
@@ -209,29 +211,29 @@ class ConvolutionVisitor {
 
   // Decreases the spatial dimension size in an already space-to-batched shape
   // so that the new size is new_spatial_dim_size.
-  StatusOr<HloInstruction*> ChangeSpatialSizeOnSpaceToBatchedShape(
+  absl::StatusOr<HloInstruction*> ChangeSpatialSizeOnSpaceToBatchedShape(
       HloInstruction* activations, int64_t batch_dimension,
       int64_t old_batch_size,
       absl::Span<const int64_t> spatial_dimensions_to_split,
       int64_t new_spatial_dim_size, bool increase_spatial_size = false);
 
   // Turns B, S0, S1, ..., Sn into B, B0, S0, B1, S1,... Bn, Sn.
-  StatusOr<HloInstruction*> SplitAndTransposeMergedBatch(
+  absl::StatusOr<HloInstruction*> SplitAndTransposeMergedBatch(
       HloInstruction* activations, int64_t batch_dimension,
       int64_t old_batch_size, absl::Span<const int64_t> spatial_dimensions);
 
   // Function that converts spaced-to-batch shape back to the original.
-  StatusOr<HloInstruction*> BatchToSpace(HloInstruction* old_instr);
+  absl::StatusOr<HloInstruction*> BatchToSpace(HloInstruction* old_instr);
 
   // Duplicates elements at boundaries.
-  StatusOr<HloInstruction*> HaloDuplicateWithSlice(
+  absl::StatusOr<HloInstruction*> HaloDuplicateWithSlice(
       HloInstruction* activations,
       absl::Span<const int64_t> spatial_dimensions_to_split,
       int64_t activations_batch_dim, int64_t low_padding, int64_t halo_size,
       HloInstruction* pad_val = nullptr);
 
   // Runs the visitor on a computation.
-  StatusOr<bool> Run();
+  absl::StatusOr<bool> Run();
 
   // Returns whether any convolution ops were rewritten.
   const bool changed() const { return changed_; }
@@ -507,7 +509,7 @@ bool ConvolutionVisitor::IsThisBackPropFilterConv(HloInstruction* convolution) {
   return true;
 }
 
-StatusOr<HloInstruction*> ConvolutionVisitor::HaloDuplicateWithSlice(
+absl::StatusOr<HloInstruction*> ConvolutionVisitor::HaloDuplicateWithSlice(
     HloInstruction* activations,
     absl::Span<const int64_t> spatial_dimensions_to_split,
     int64_t activations_batch_dim, int64_t low_padding, int64_t halo_size,
@@ -545,7 +547,7 @@ StatusOr<HloInstruction*> ConvolutionVisitor::HaloDuplicateWithSlice(
     std::vector<int64_t> strides(rank, 1);
     HloInstruction* padding =
         pad_val == nullptr
-            ? computation_->AddInstruction(HloInstruction::CreateConstant(
+            ? activations->AddInstruction(HloInstruction::CreateConstant(
                   LiteralUtil::Zero(activations->shape().element_type())))
             : pad_val;
 
@@ -558,8 +560,10 @@ StatusOr<HloInstruction*> ConvolutionVisitor::HaloDuplicateWithSlice(
       end_indices[remapped_batch_dimension] = batch_size - 1;
       end_indices[spatial_dimension_to_split] = spatial_split_size;
 
-      TF_ASSIGN_OR_RETURN(first_slice, MakeSliceHlo(activations, start_indices,
-                                                    end_indices, strides));
+      TF_ASSIGN_OR_RETURN(first_slice,
+                          MakeSliceHlo(activations, start_indices, end_indices,
+                                       strides, &activations->metadata(),
+                                       &activations->frontend_attributes()));
       VLOG(1) << "first slice " << first_slice->ToString();
 
       PaddingConfig padding_config =
@@ -568,7 +572,9 @@ StatusOr<HloInstruction*> ConvolutionVisitor::HaloDuplicateWithSlice(
           ->set_edge_padding_low(1);
 
       TF_ASSIGN_OR_RETURN(first_slice,
-                          MakePadHlo(first_slice, padding, padding_config));
+                          MakePadHlo(first_slice, padding, padding_config,
+                                     &first_slice->metadata(),
+                                     &first_slice->frontend_attributes()));
     }
 
     HloInstruction* halo_region = nullptr;
@@ -579,17 +585,20 @@ StatusOr<HloInstruction*> ConvolutionVisitor::HaloDuplicateWithSlice(
 
       start_indices_halo[remapped_batch_dimension] = 1;
       end_indices_halo[spatial_dimension_to_split] = halo_size - low_padding;
-
-      TF_ASSIGN_OR_RETURN(halo_region,
-                          MakeSliceHlo(activations, start_indices_halo,
-                                       end_indices_halo, strides));
+      TF_ASSIGN_OR_RETURN(
+          halo_region,
+          MakeSliceHlo(activations, start_indices_halo, end_indices_halo,
+                       strides, &activations->metadata(),
+                       &activations->frontend_attributes()));
       VLOG(1) << "halo_region " << halo_region->ToString();
       PaddingConfig padding_config_halo =
           MakeNoPaddingConfig(halo_region->shape().dimensions_size());
       padding_config_halo.mutable_dimensions(remapped_batch_dimension)
           ->set_edge_padding_high(1);
-      TF_ASSIGN_OR_RETURN(
-          halo_region, MakePadHlo(halo_region, padding, padding_config_halo));
+      TF_ASSIGN_OR_RETURN(halo_region,
+                          MakePadHlo(halo_region, padding, padding_config_halo,
+                                     &halo_region->metadata(),
+                                     &halo_region->frontend_attributes()));
     }
 
     if ((halo_size == 0 && low_padding != 0) || low_padding < 0) {
@@ -606,22 +615,27 @@ StatusOr<HloInstruction*> ConvolutionVisitor::HaloDuplicateWithSlice(
         end_indices_activations_cut[spatial_dimension_to_split] =
             spatial_split_size;
       }
-
       TF_ASSIGN_OR_RETURN(
           activations, MakeSliceHlo(activations, start_indices_activations_cut,
-                                    end_indices_activations_cut, strides));
+                                    end_indices_activations_cut, strides,
+                                    &activations->metadata(),
+                                    &activations->frontend_attributes()));
     }
 
     if (first_slice != nullptr) {
-      TF_ASSIGN_OR_RETURN(activations,
-                          MakeConcatHlo({first_slice, activations},
-                                        spatial_dimension_to_split));
+      TF_ASSIGN_OR_RETURN(
+          activations,
+          MakeConcatHlo({first_slice, activations}, spatial_dimension_to_split,
+                        &activations->metadata(),
+                        &activations->frontend_attributes()));
     }
 
     if (halo_region != nullptr) {
-      TF_ASSIGN_OR_RETURN(activations,
-                          MakeConcatHlo({activations, halo_region},
-                                        spatial_dimension_to_split));
+      TF_ASSIGN_OR_RETURN(
+          activations,
+          MakeConcatHlo({activations, halo_region}, spatial_dimension_to_split,
+                        &activations->metadata(),
+                        &activations->frontend_attributes()));
     }
   }
 
@@ -636,7 +650,7 @@ StatusOr<HloInstruction*> ConvolutionVisitor::HaloDuplicateWithSlice(
   return activations;
 }
 
-StatusOr<ConvolutionVisitor::SpaceNextToBatchDetails>
+absl::StatusOr<ConvolutionVisitor::SpaceNextToBatchDetails>
 ConvolutionVisitor::BringSpaceNextToBatch(
     HloInstruction* activations, ConvolutionDimensionNumbers& dim_numbers,
     int64_t& activations_batch_dim,
@@ -741,7 +755,8 @@ ConvolutionVisitor::BringSpaceNextToBatch(
   return SpaceNextToBatchDetails{activations, transpose_dims};
 }
 
-StatusOr<HloInstruction*> ConvolutionVisitor::SplitAndTransposeMergedBatch(
+absl::StatusOr<HloInstruction*>
+ConvolutionVisitor::SplitAndTransposeMergedBatch(
     HloInstruction* activations, int64_t batch_dimension,
     int64_t old_batch_size, absl::Span<const int64_t> spatial_dimensions) {
   CHECK_EQ(batch_dimension + 1, spatial_dimensions[0]);
@@ -792,7 +807,7 @@ StatusOr<HloInstruction*> ConvolutionVisitor::SplitAndTransposeMergedBatch(
   return batch_split_activations;
 }
 
-StatusOr<HloInstruction*>
+absl::StatusOr<HloInstruction*>
 ConvolutionVisitor::ChangeSpatialSizeOnSpaceToBatchedShape(
     HloInstruction* activations, int64_t batch_dimension,
     int64_t old_batch_size, absl::Span<const int64_t> spatial_dimensions,
@@ -847,13 +862,15 @@ ConvolutionVisitor::ChangeSpatialSizeOnSpaceToBatchedShape(
       padding_config.mutable_dimensions(spatial_dimension)
           ->set_edge_padding_low(0);
     }
-    HloInstruction* padding = computation_->AddInstruction(
+    HloInstruction* padding = activations->AddInstruction(
         HloInstruction::CreateConstant(LiteralUtil::Zero(
             batch_space_collapsed_reshape->shape().element_type())));
 
     TF_ASSIGN_OR_RETURN(
         batch_space_collapsed_reshape,
-        MakePadHlo(batch_space_collapsed_reshape, padding, padding_config));
+        MakePadHlo(batch_space_collapsed_reshape, padding, padding_config,
+                   &batch_space_collapsed_reshape->metadata(),
+                   &batch_space_collapsed_reshape->frontend_attributes()));
   } else {
     std::vector<int64_t> start_indices(rank, 0),
         end_indices(batch_space_collapsed_reshape->shape().dimensions().begin(),
@@ -863,13 +880,13 @@ ConvolutionVisitor::ChangeSpatialSizeOnSpaceToBatchedShape(
       end_indices[spatial_dimension] =
           new_spatial_dim_size * ctrl_.number_of_splits;
     }
-
     // This is the slice from halo padding.
-    TF_ASSIGN_OR_RETURN(batch_space_collapsed_reshape,
-                        MakeSliceHlo(batch_space_collapsed_reshape,
-                                     start_indices, end_indices, strides));
+    TF_ASSIGN_OR_RETURN(
+        batch_space_collapsed_reshape,
+        MakeSliceHlo(batch_space_collapsed_reshape, start_indices, end_indices,
+                     strides, &batch_space_collapsed_reshape->metadata(),
+                     &batch_space_collapsed_reshape->frontend_attributes()));
   }
-
   TF_ASSIGN_OR_RETURN(
       HloInstruction * activations_new,
       PerformSplitSpace(batch_space_collapsed_reshape, spatial_dimensions,
@@ -881,7 +898,7 @@ ConvolutionVisitor::ChangeSpatialSizeOnSpaceToBatchedShape(
   return activations_new;
 }
 
-StatusOr<bool> ConvolutionVisitor::Run() {
+absl::StatusOr<bool> ConvolutionVisitor::Run() {
   for (auto conv : conv_visitor_list_) {
     // If we expect to see an unpropagatable op, space-to-batch may not be
     // beneficial.
@@ -893,6 +910,7 @@ StatusOr<bool> ConvolutionVisitor::Run() {
     }
     if (convs_to_visit_.count(conv) > 0) {
       TF_CHECK_OK(PerformSpaceToBatchOnConvolution(conv));
+      changed_ = true;
     }
   }
   conv_visitor_list_.clear();
@@ -1464,8 +1482,9 @@ void ConvolutionVisitor::PropagateOnBroadcast(HloInstruction* consumer,
   for (auto j : dimensions) {
     broadcast_dims.push_back(DimLookUp(permute_dims, j));
   }
-  auto new_broadcast = MakeBroadcastHlo(consumer->mutable_operand(0),
-                                        broadcast_dims, final_shape_dims);
+  auto new_broadcast = MakeBroadcastHlo(
+      consumer->mutable_operand(0), broadcast_dims, final_shape_dims,
+      &consumer->metadata(), &consumer->frontend_attributes());
   VLOG(1) << "Created broadcast " << new_broadcast->ToString();
 
   if (batch_is_broadcasted) {
@@ -1770,8 +1789,8 @@ bool ConvolutionVisitor::SupportedOpForPropagation(HloInstruction* consumer,
   return false;
 }
 
-StatusOr<bool> ConvolutionVisitor::Propagate(HloInstruction* consumer,
-                                             HloInstruction* producer) {
+absl::StatusOr<bool> ConvolutionVisitor::Propagate(HloInstruction* consumer,
+                                                   HloInstruction* producer) {
   auto computation = consumer->parent();
   if (IsTrivialElementwise(consumer)) {
     auto dim_map_val = instr_to_dim_map_[producer];
@@ -1870,11 +1889,12 @@ StatusOr<bool> ConvolutionVisitor::Propagate(HloInstruction* consumer,
               pivot_space_size - new_dimensions[space_dim]);
           padding_config.mutable_dimensions(space_dim)->set_edge_padding_low(0);
           HloInstruction* padding =
-              computation_->AddInstruction(HloInstruction::CreateConstant(
+              consumer->AddInstruction(HloInstruction::CreateConstant(
                   LiteralUtil::Zero(reshape->shape().element_type())));
-
-          TF_ASSIGN_OR_RETURN(HloInstruction * padded_operand,
-                              MakePadHlo(reshape, padding, padding_config));
+          TF_ASSIGN_OR_RETURN(
+              HloInstruction * padded_operand,
+              MakePadHlo(reshape, padding, padding_config, &reshape->metadata(),
+                         &reshape->frontend_attributes()));
 
           TF_ASSIGN_OR_RETURN(
               operand_to_use,
@@ -2069,7 +2089,7 @@ StatusOr<bool> ConvolutionVisitor::Propagate(HloInstruction* consumer,
 
     auto pad_val =
         is_select_and_scatter
-            ? computation_->AddInstruction(
+            ? consumer->AddInstruction(
                   HloInstruction::CreateConstant(LiteralUtil::MinValue(
                       consumer->operand(2)->shape().element_type())))
             : init_val;
@@ -2156,10 +2176,11 @@ StatusOr<bool> ConvolutionVisitor::Propagate(HloInstruction* consumer,
               new_shape, select_comp->ComputeProgramShape(), new_win,
               second_operand->shape(), init_val->shape(),
               scatter_comp->ComputeProgramShape()));
-      new_consumer =
-          computation_->AddInstruction(HloInstruction::CreateSelectAndScatter(
+      new_consumer = computation_->AddInstruction(
+          HloInstruction::CreateSelectAndScatter(
               new_select_and_scatter_shape, first_operand, select_comp, new_win,
-              second_operand, init_val, scatter_comp));
+              second_operand, init_val, scatter_comp),
+          &consumer->metadata(), &consumer->frontend_attributes());
       // Replace operand 0.
       TF_CHECK_OK(
           new_consumer->ReplaceOperandWithDifferentShape(0, first_operand));
@@ -2187,7 +2208,9 @@ StatusOr<bool> ConvolutionVisitor::Propagate(HloInstruction* consumer,
         // This is the slice from halo padding.
         TF_ASSIGN_OR_RETURN(
             HloInstruction * bottom,
-            MakeSliceHlo(new_consumer, start_indices, end_indices, strides));
+            MakeSliceHlo(new_consumer, start_indices, end_indices, strides,
+                         &consumer->metadata(),
+                         &consumer->frontend_attributes()));
 
         std::vector<int64_t> start_indices_top(rank, 0),
             end_indices_top(new_consumer->shape().dimensions().begin(),
@@ -2197,44 +2220,61 @@ StatusOr<bool> ConvolutionVisitor::Propagate(HloInstruction* consumer,
         start_indices_top[new_batch_dim] = 1;
 
         // This is the original area from where halo pad was extracted.
-        TF_ASSIGN_OR_RETURN(HloInstruction * top,
-                            MakeSliceHlo(new_consumer, start_indices_top,
-                                         end_indices_top, strides));
+        TF_ASSIGN_OR_RETURN(
+            HloInstruction * top,
+            MakeSliceHlo(new_consumer, start_indices_top, end_indices_top,
+                         strides, &consumer->metadata(),
+                         &consumer->frontend_attributes()));
 
-        HloInstruction* default_fill =
-            MakeBroadcastHlo(init_val, {}, top->shape().dimensions());
+        HloInstruction* default_fill = MakeBroadcastHlo(
+            init_val, {}, top->shape().dimensions(), &init_val->metadata(),
+            &init_val->frontend_attributes());
 
         // Compare to see if the bottom area was changed.
         TF_ASSIGN_OR_RETURN(
             HloInstruction * bottom_compare,
-            MakeCompareHlo(ComparisonDirection::kNe, bottom, default_fill));
+            // TODO(hanrach): Verify that this is the correct metadata
+            MakeCompareHlo(ComparisonDirection::kNe, bottom, default_fill,
+                           &bottom->metadata(),
+                           &bottom->frontend_attributes()));
 
         // Take out only the changed values.
         TF_ASSIGN_OR_RETURN(
             HloInstruction * bottom_taken,
-            MakeSelectHlo(bottom_compare, bottom, default_fill));
+            MakeSelectHlo(bottom_compare, bottom, default_fill, nullptr,
+                          &bottom_compare->metadata(),
+                          &bottom_compare->frontend_attributes()));
 
         // Compare to see if the top area was changed.
         TF_ASSIGN_OR_RETURN(
             HloInstruction * top_compare,
-            MakeCompareHlo(ComparisonDirection::kNe, top, default_fill));
+            MakeCompareHlo(ComparisonDirection::kNe, top, default_fill,
+                           &top->metadata(), &top->frontend_attributes()));
 
         // Take out only the changed values.
         TF_ASSIGN_OR_RETURN(HloInstruction * top_taken,
-                            MakeSelectHlo(top_compare, top, bottom_taken));
+                            MakeSelectHlo(top_compare, top, bottom_taken,
+                                          nullptr, &top_compare->metadata(),
+                                          &top_compare->frontend_attributes()));
 
         // This makes checks if the area was updated by both overlaps.
-        TF_ASSIGN_OR_RETURN(
-            HloInstruction * both_compare,
-            MakeBinaryHlo(HloOpcode::kAnd, top_compare, bottom_compare));
+        TF_ASSIGN_OR_RETURN(HloInstruction * both_compare,
+                            MakeBinaryHlo(HloOpcode::kAnd, top_compare,
+                                          bottom_compare, &consumer->metadata(),
+                                          &consumer->frontend_attributes()));
 
         // If it was, add them up.
-        TF_ASSIGN_OR_RETURN(HloInstruction * both_added,
-                            MakeBinaryHlo(HloOpcode::kAdd, top, bottom));
+        TF_ASSIGN_OR_RETURN(
+            HloInstruction * both_added,
+            MakeBinaryHlo(HloOpcode::kAdd, top, bottom, &consumer->metadata(),
+                          &consumer->frontend_attributes()));
 
         // Pad the final result to the original shape.
-        TF_ASSIGN_OR_RETURN(HloInstruction * final_selection,
-                            MakeSelectHlo(both_compare, both_added, top_taken));
+        TF_ASSIGN_OR_RETURN(
+            HloInstruction * final_selection,
+            MakeSelectHlo(both_compare, both_added, top_taken, nullptr,
+                          &both_compare->metadata(),
+                          &both_compare->frontend_attributes()));
 
         PaddingConfig padding_config =
             MakeNoPaddingConfig(final_selection->shape().dimensions_size());
@@ -2242,13 +2282,16 @@ StatusOr<bool> ConvolutionVisitor::Propagate(HloInstruction* consumer,
             ->set_edge_padding_low(1);
         padding_config.mutable_dimensions(new_space_dim)
             ->set_edge_padding_high(new_space_size);
-        HloInstruction* padding =
-            computation_->AddInstruction(HloInstruction::CreateConstant(
-                LiteralUtil::Zero(final_selection->shape().element_type())));
+        HloInstruction* padding = computation_->AddInstruction(
+            HloInstruction::CreateConstant(
+                LiteralUtil::Zero(final_selection->shape().element_type())),
+            &consumer->metadata(), &consumer->frontend_attributes());
 
         TF_ASSIGN_OR_RETURN(
             final_selection,
-            MakePadHlo(final_selection, padding, padding_config));
+            MakePadHlo(final_selection, padding, padding_config,
+                       &final_selection->metadata(),
+                       &final_selection->frontend_attributes()));
 
         tsl::core::Bitmap b(batch_size * (new_space_size + halo_size));
         for (int k = 0; k < batch_size * (new_space_size + halo_size); ++k) {
@@ -2264,7 +2307,8 @@ StatusOr<bool> ConvolutionVisitor::Propagate(HloInstruction* consumer,
         auto arg_literal = LiteralUtil::CreateR1(b);
         VLOG(4) << "Slice mask created: arg literal " << arg_literal.ToString();
         HloInstruction* slice_mask = computation_->AddInstruction(
-            HloInstruction::CreateConstant(std::move(arg_literal)));
+            HloInstruction::CreateConstant(std::move(arg_literal)),
+            &consumer->metadata(), &consumer->frontend_attributes());
 
         std::vector<int64_t> slice_mask_reshape_dims(2);
         slice_mask_reshape_dims[0] = batch_size;
@@ -2277,11 +2321,14 @@ StatusOr<bool> ConvolutionVisitor::Propagate(HloInstruction* consumer,
         // Broadcast the mask in all dimensions.
         HloInstruction* shape_mask = MakeBroadcastHlo(
             slice_mask_reshaped, {new_batch_dim, new_space_dim},
-            final_selection->shape().dimensions());
+            final_selection->shape().dimensions(), &slice_mask->metadata(),
+            &slice_mask->frontend_attributes());
 
         TF_ASSIGN_OR_RETURN(
             new_consumer,
-            MakeSelectHlo(shape_mask, new_consumer, final_selection));
+            MakeSelectHlo(shape_mask, new_consumer, final_selection, nullptr,
+                          &shape_mask->metadata(),
+                          &shape_mask->frontend_attributes()));
       }
 
       auto previous_shape =
@@ -2291,19 +2338,21 @@ StatusOr<bool> ConvolutionVisitor::Propagate(HloInstruction* consumer,
                       previous_shape.dimensions().end()),
           strides(previous_shape.rank(), 1);
 
-      TF_ASSIGN_OR_RETURN(
-          new_consumer,
-          MakeSliceHlo(new_consumer, start_indices, end_indices, strides));
+      TF_ASSIGN_OR_RETURN(new_consumer,
+                          MakeSliceHlo(new_consumer, start_indices, end_indices,
+                                       strides, &consumer->metadata(),
+                                       &consumer->frontend_attributes()));
 
     } else {
       auto reduce_comp = consumer->to_apply();
       TF_ASSIGN_OR_RETURN(auto new_reduce_window_shape,
                           ShapeInference::InferReduceWindowShape(
                               new_shape, init_val->shape(), new_win));
-      new_consumer =
-          computation_->AddInstruction(HloInstruction::CreateReduceWindow(
-              new_reduce_window_shape, first_operand, init_val, new_win,
-              reduce_comp));
+      new_consumer = computation_->AddInstruction(
+          HloInstruction::CreateReduceWindow(new_reduce_window_shape,
+                                             first_operand, init_val, new_win,
+                                             reduce_comp),
+          &consumer->metadata(), &consumer->frontend_attributes());
       // Replace operand 0.
       TF_CHECK_OK(
           new_consumer->ReplaceOperandWithDifferentShape(0, first_operand));
@@ -2325,7 +2374,7 @@ StatusOr<bool> ConvolutionVisitor::Propagate(HloInstruction* consumer,
   return true;
 }
 
-StatusOr<HloInstruction*> ConvolutionVisitor::SelectValidPortion(
+absl::StatusOr<HloInstruction*> ConvolutionVisitor::SelectValidPortion(
     HloInstruction* new_instr, HloInstruction* old_instr,
     HloInstruction* select_val, int64_t new_batch_dim,
     absl::Span<const int64_t> new_space_dims, int64_t old_batch_dim,
@@ -2381,7 +2430,8 @@ StatusOr<HloInstruction*> ConvolutionVisitor::SelectValidPortion(
   auto arg_literal = LiteralUtil::CreateR1(b);
   VLOG(4) << "Slice mask created: arg literal " << arg_literal.ToString();
   HloInstruction* slice_mask = computation_->AddInstruction(
-      HloInstruction::CreateConstant(std::move(arg_literal)));
+      HloInstruction::CreateConstant(std::move(arg_literal)),
+      &old_instr->metadata(), &old_instr->frontend_attributes());
 
   std::vector<int64_t> slice_mask_reshape_dims(1 + spatial_dim_count,
                                                new_space_size);
@@ -2395,19 +2445,25 @@ StatusOr<HloInstruction*> ConvolutionVisitor::SelectValidPortion(
   broadcast_dims.insert(broadcast_dims.begin(), new_batch_dim);
   // Broadcast the mask in all dimensions of the activations.
   HloInstruction* shape_mask = MakeBroadcastHlo(
-      slice_mask_reshaped, broadcast_dims, new_instr->shape().dimensions());
+      slice_mask_reshaped, broadcast_dims, new_instr->shape().dimensions(),
+      &slice_mask_reshaped->metadata(),
+      &slice_mask_reshaped->frontend_attributes());
 
   VLOG(1) << "Shape mask made " << shape_mask->ToString();
 
-  HloInstruction* zeroes =
-      MakeBroadcastHlo(select_val, {}, new_instr->shape().dimensions());
+  HloInstruction* zeroes = MakeBroadcastHlo(
+      select_val, {}, new_instr->shape().dimensions(), &select_val->metadata(),
+      &select_val->frontend_attributes());
 
-  TF_ASSIGN_OR_RETURN(new_instr, MakeSelectHlo(shape_mask, new_instr, zeroes));
+  TF_ASSIGN_OR_RETURN(new_instr,
+                      MakeSelectHlo(shape_mask, new_instr, zeroes, nullptr,
+                                    &shape_mask->metadata(),
+                                    &shape_mask->frontend_attributes()));
 
   return new_instr;
 }
 
-StatusOr<HloInstruction*> ConvolutionVisitor::BatchToSpace(
+absl::StatusOr<HloInstruction*> ConvolutionVisitor::BatchToSpace(
     HloInstruction* old_instr) {
   if (batch_to_space_map_.count(old_instr)) {
     CHECK_NE(batch_to_space_map_[old_instr], nullptr);
@@ -2471,7 +2527,8 @@ StatusOr<HloInstruction*> ConvolutionVisitor::BatchToSpace(
   // This slicing is getting rid of the padding we added to evenly divide space.
   TF_ASSIGN_OR_RETURN(
       HloInstruction * output_slice,
-      MakeSliceHlo(reshape, start_indices, end_indices, strides));
+      MakeSliceHlo(reshape, start_indices, end_indices, strides,
+                   &reshape->metadata(), &reshape->frontend_attributes()));
   VLOG(1) << "Batch to space slice " << output_slice->ToString();
   std::vector<int64_t> transpose_dims(permute_dims);
   TF_ASSIGN_OR_RETURN(HloInstruction * output_transpose,
@@ -2624,8 +2681,10 @@ Status ConvolutionVisitor::PropagateOnConv(HloInstruction* convolution) {
   activations_new = retval.instr;
   std::vector<int64_t> trans_dims = retval.transpose_dims;
   CHECK(!trans_dims.empty());
-  auto select_val = computation_->AddInstruction(HloInstruction::CreateConstant(
-      LiteralUtil::Zero(activations_new->shape().element_type())));
+  auto select_val = computation_->AddInstruction(
+      HloInstruction::CreateConstant(
+          LiteralUtil::Zero(activations_new->shape().element_type())),
+      &convolution->metadata(), &convolution->frontend_attributes());
 
   TF_ASSIGN_OR_RETURN(
       activations_new,
@@ -2789,8 +2848,10 @@ Status ConvolutionVisitor::PropagateOnConcat(HloInstruction* concat) {
   for (int64_t i = 0; i < concat->operand_count(); ++i) {
     new_operands[i] = old_to_new_instrs_[concat->mutable_operand(i)];
   }
-  TF_ASSIGN_OR_RETURN(HloInstruction * new_concat,
-                      MakeConcatHlo(new_operands, new_concat_dim));
+  TF_ASSIGN_OR_RETURN(
+      HloInstruction * new_concat,
+      MakeConcatHlo(new_operands, new_concat_dim, &concat->metadata(),
+                    &concat->frontend_attributes()));
   old_to_new_instrs_[concat] = new_concat;
   // Set mappings from operand 0.
   instr_to_dim_map_[concat] =
@@ -2839,7 +2900,9 @@ Status ConvolutionVisitor::PropagateOnPad(HloInstruction* pad) {
   HloInstruction* padding = pad->mutable_operand(1);
 
   TF_ASSIGN_OR_RETURN(auto new_pad,
-                      MakePadHlo(first_operand, padding, padding_config));
+                      MakePadHlo(first_operand, padding, padding_config,
+                                 &first_operand->metadata(),
+                                 &first_operand->frontend_attributes()));
 
   old_to_new_instrs_[pad] = new_pad;
   // Set mappings from operand 0.
@@ -2872,8 +2935,10 @@ Status ConvolutionVisitor::PropagateOnSlice(HloInstruction* slice) {
     limits[i] = slice->slice_limits(old_dim);
   }
 
-  TF_ASSIGN_OR_RETURN(auto new_slice,
-                      MakeSliceHlo(operand, starts, limits, strides));
+  TF_ASSIGN_OR_RETURN(
+      auto new_slice,
+      MakeSliceHlo(operand, starts, limits, strides, &operand->metadata(),
+                   &operand->frontend_attributes()));
 
   old_to_new_instrs_[slice] = new_slice;
   // Set mappings from operand 0.
@@ -2885,7 +2950,7 @@ Status ConvolutionVisitor::PropagateOnSlice(HloInstruction* slice) {
   return OkStatus();
 }
 
-StatusOr<HloInstruction*> ConvolutionVisitor::TransposeAndMergeBatch(
+absl::StatusOr<HloInstruction*> ConvolutionVisitor::TransposeAndMergeBatch(
     HloInstruction* activations,
     absl::Span<const int64_t> final_split_spatial_dim_positioning,
     int64_t activations_batch_dim, int64_t old_batch_size) {
@@ -2927,7 +2992,7 @@ StatusOr<HloInstruction*> ConvolutionVisitor::TransposeAndMergeBatch(
   return batch_collapsed_reshape;
 }
 
-StatusOr<HloInstruction*> ConvolutionVisitor::PerformSplitSpace(
+absl::StatusOr<HloInstruction*> ConvolutionVisitor::PerformSplitSpace(
     HloInstruction* activations,
     absl::Span<const int64_t> spatial_dimensions_to_split,
     int64_t activations_batch_dim, int64_t spatial_split_size,
@@ -2973,7 +3038,7 @@ StatusOr<HloInstruction*> ConvolutionVisitor::PerformSplitSpace(
       activations_batch_dim, old_batch_size);
 }
 
-StatusOr<HloInstruction*> ConvolutionVisitor::PadAndSplitSpace(
+absl::StatusOr<HloInstruction*> ConvolutionVisitor::PadAndSplitSpace(
     HloInstruction* activations,
     absl::Span<const int64_t> spatial_dimensions_to_split,
     int64_t activations_batch_dim, int64_t high_padding, int64_t low_padding,
@@ -2992,11 +3057,14 @@ StatusOr<HloInstruction*> ConvolutionVisitor::PadAndSplitSpace(
       padding_config.mutable_dimensions(spatial_dimension_to_split)
           ->set_edge_padding_low(low_padding);
     }
-    HloInstruction* padding =
-        computation_->AddInstruction(HloInstruction::CreateConstant(
-            LiteralUtil::Zero(activations->shape().element_type())));
+    HloInstruction* padding = computation_->AddInstruction(
+        HloInstruction::CreateConstant(
+            LiteralUtil::Zero(activations->shape().element_type())),
+        &activations->metadata(), &activations->frontend_attributes());
     TF_ASSIGN_OR_RETURN(activations,
-                        MakePadHlo(activations, padding, padding_config));
+                        MakePadHlo(activations, padding, padding_config,
+                                   &activations->metadata(),
+                                   &activations->frontend_attributes()));
   }
   VLOG(1) << "Initial padded activations shape "
           << activations->shape().ToString() << " old_batch_size "
@@ -3007,7 +3075,7 @@ StatusOr<HloInstruction*> ConvolutionVisitor::PadAndSplitSpace(
                            num_splits);
 }
 
-StatusOr<std::pair<HloInstruction*, std::vector<int64_t>>>
+absl::StatusOr<std::pair<HloInstruction*, std::vector<int64_t>>>
 ConvolutionVisitor::SplitSpace(
     HloInstruction* activations, ConvolutionDimensionNumbers& dim_numbers,
     int64_t& activations_batch_dim, int64_t high_padding, int64_t low_padding,
@@ -3029,7 +3097,7 @@ ConvolutionVisitor::SplitSpace(
   return std::make_pair(new_activations, transpose_dims);
 }
 
-StatusOr<HloInstruction*> ConvolutionVisitor::PropagateOnConstant(
+absl::StatusOr<HloInstruction*> ConvolutionVisitor::PropagateOnConstant(
     HloInstruction* consumer, HloInstruction* producer) {
   CHECK(old_to_new_instrs_.contains(producer));
   HloInstruction* new_producer = old_to_new_instrs_[producer];
@@ -3309,9 +3377,10 @@ Status ConvolutionVisitor::PropagateOnBackpropFilterConv(
   }
 
   spatial_dimension_to_split = spatial_dimensions_to_split[0];
-
-  auto select_val = computation_->AddInstruction(HloInstruction::CreateConstant(
-      LiteralUtil::Zero(activations_new->shape().element_type())));
+  auto select_val = computation_->AddInstruction(
+      HloInstruction::CreateConstant(
+          LiteralUtil::Zero(activations_new->shape().element_type())),
+      &activations_new->metadata(), &activations_new->frontend_attributes());
 
   if (!activations_locally_space_to_batched) {
     // Select activations correctly by masking additional space.
@@ -3458,7 +3527,9 @@ Status ConvolutionVisitor::PropagateOnBackpropFilterConv(
 
   TF_ASSIGN_OR_RETURN(
       activations_new,
-      MakeConcatHlo(absl::MakeSpan(activations_chunks), new_spatial_dimension));
+      MakeConcatHlo(absl::MakeSpan(activations_chunks), new_spatial_dimension,
+                    &activations_old->metadata(),
+                    &activations_old->frontend_attributes()));
 
   // Reshape the kernel with additional spatial dim.
   std::vector<int64_t> kernel_sizes(kernel_new->shape().dimensions().begin(),
@@ -3707,8 +3778,6 @@ Status ConvolutionVisitor::PerformSpaceToBatchOnConvolution(
   }
   VLOG(1) << "Handling conv " << convolution->ToString();
 
-  changed_ = false;
-
   ConvolutionDimensionNumbers dim_numbers =
       convolution->convolution_dimension_numbers();
 
@@ -3717,7 +3786,6 @@ Status ConvolutionVisitor::PerformSpaceToBatchOnConvolution(
   int64_t activations_batch_dim = dim_numbers.input_batch_dimension();
 
   auto activations = convolution->mutable_operand(0);
-
   VLOG(1) << "spatial size " << c.spatial_size;
 
   // A very primitive cost model to thwart propagations on tiny shapes.
@@ -3864,7 +3932,8 @@ Status ConvolutionVisitor::PerformSpaceToBatchOnConvolution(
           activations, /*rhs=*/convolution->mutable_operand(1),
           convolution->feature_group_count(), convolution->batch_group_count(),
           new_window, new_dim_numbers, convolution->precision_config(),
-          /*preferred_element_type=*/convolution->shape().element_type()));
+          /*preferred_element_type=*/convolution->shape().element_type(),
+          &convolution->metadata(), &convolution->frontend_attributes()));
   convolution->SetupDerivedInstruction(new_conv);
 
   // If the activations were to be batch-to-spaced again, simply use the
@@ -3886,8 +3955,10 @@ Status ConvolutionVisitor::PerformSpaceToBatchOnConvolution(
 
   const int64_t output_batch_dim = new_dim_numbers.output_batch_dimension();
 
-  auto select_val = computation_->AddInstruction(HloInstruction::CreateConstant(
-      LiteralUtil::Zero(new_conv->shape().element_type())));
+  auto select_val = computation_->AddInstruction(
+      HloInstruction::CreateConstant(
+          LiteralUtil::Zero(new_conv->shape().element_type())),
+      &convolution->metadata(), &convolution->frontend_attributes());
 
   TF_ASSIGN_OR_RETURN(
       new_conv,
@@ -3913,14 +3984,13 @@ Status ConvolutionVisitor::PerformSpaceToBatchOnConvolution(
   }
   TF_CHECK_OK(PropagateOnUsers(original_conv));
 
-  changed_ = true;
 
   return OkStatus();
 }
 
 }  // namespace
 
-StatusOr<bool> SpaceToBatchConverter::Run(
+absl::StatusOr<bool> SpaceToBatchConverter::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   XLA_VLOG_LINES(

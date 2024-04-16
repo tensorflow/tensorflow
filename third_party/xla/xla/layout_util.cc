@@ -69,6 +69,7 @@ absl::string_view BoolToString(bool b) { return b ? "true" : "false"; }
     absl::Span<const Tile> tiles, int64_t tail_padding_alignment_in_elements,
     PrimitiveType index_primitive_type, PrimitiveType pointer_primitive_type,
     int64_t element_size_in_bits, int64_t memory_space,
+    absl::Span<const SplitConfig> split_configs,
     std::optional<Shape> physical_shape,
     int64_t dynamic_shape_metadata_prefix_bytes) {
   Layout layout;
@@ -101,6 +102,9 @@ absl::string_view BoolToString(bool b) { return b ? "true" : "false"; }
   layout.set_pointer_primitive_type(pointer_primitive_type);
   layout.set_element_size_in_bits(element_size_in_bits);
   layout.set_memory_space(memory_space);
+  for (const SplitConfig& split_config : split_configs) {
+    layout.add_split_configs(split_config);
+  }
   if (physical_shape != std::nullopt) {
     *layout.mutable_physical_shape() = *std::move(physical_shape);
   }
@@ -346,7 +350,7 @@ Layout CreateDefaultLayoutForRank(int64_t rank) {
       TF_RETURN_IF_ERROR(ShapeUtil::ValidateShape(layout.physical_shape()));
       TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
           layout.physical_shape(),
-          [&](const Shape& subshape, const ShapeIndex& index) {
+          [&](const Shape& subshape, const ShapeIndex& index) -> absl::Status {
             if (subshape.has_layout() &&
                 subshape.layout().has_physical_shape()) {
               return InvalidArgument(
@@ -408,6 +412,11 @@ Layout CreateDefaultLayoutForRank(int64_t rank) {
           DimLevelType_Name(dim_level_type), dim_unique ? "" : ", non-unique",
           dim_ordered ? "" : ", non-ordered", shape.ShortDebugString());
     }
+  }
+
+  if (layout.element_size_in_bits() < 0) {
+    return InvalidArgument("layout element_size_in_bits field is negative: %d",
+                           layout.element_size_in_bits());
   }
 
   return OkStatus();
@@ -511,6 +520,18 @@ Layout CreateDefaultLayoutForRank(int64_t rank) {
     // Tuple shape: all subshapes must have a layout.
     return absl::c_all_of(shape.tuple_shapes(),
                           [](const Shape& s) { return HasLayout(s); });
+  } else if (!shape.IsArray()) {
+    // Opaque, token types etc. ignore layout.
+    return true;
+  }
+  return shape.has_layout();
+}
+
+/* static */ bool LayoutUtil::HasAnyLayout(const Shape& shape) {
+  if (shape.IsTuple()) {
+    // Tuple shape: all subshapes must have a layout.
+    return absl::c_any_of(shape.tuple_shapes(),
+                          [](const Shape& s) { return HasAnyLayout(s); });
   } else if (!shape.IsArray()) {
     // Opaque, token types etc. ignore layout.
     return true;
@@ -766,6 +787,42 @@ bool LayoutUtil::ValidateDimLevel(DimLevelType dim_level_type, bool dim_unique,
     stride *= dims[i];
   }
   return true;
+}
+
+/*static*/ int64_t LayoutUtil::MaxSplitSize(const Shape& shape, int64_t dim) {
+  CHECK(shape.IsArray()) << ShapeUtil::HumanString(shape);
+  if (!shape.has_layout()) {
+    return shape.dimensions(dim);
+  }
+  const SplitConfig* split_config = nullptr;
+  for (const SplitConfig& config : shape.layout().split_configs()) {
+    if (Major(shape.layout(), config.dimension()) == dim) {
+      split_config = &config;
+      break;
+    }
+  }
+  if (split_config != nullptr) {
+    int64_t max_split_size = 0;
+    int64_t last_split_index = 0;
+    for (int split_index : split_config->split_indices()) {
+      int64_t split_size = split_index - last_split_index;
+      max_split_size = std::max(split_size, max_split_size);
+      last_split_index = split_index;
+    }
+    max_split_size =
+        std::max(max_split_size, shape.dimensions(dim) - last_split_index);
+    return max_split_size;
+  }
+  return shape.dimensions(dim);
+}
+
+/*static*/ int64_t LayoutUtil::MaxElementsInPerSplit(const Shape& shape) {
+  CHECK(shape.IsArray()) << ShapeUtil::HumanString(shape);
+  int64_t max_elements_in = 1;
+  for (int dim = 0; dim < shape.rank(); ++dim) {
+    max_elements_in *= MaxSplitSize(shape, dim);
+  }
+  return max_elements_in;
 }
 
 }  // namespace xla

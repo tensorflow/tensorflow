@@ -16,8 +16,9 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_ALIAS_PASSTHROUGH_PARAMS_H_
 #define XLA_SERVICE_GPU_ALIAS_PASSTHROUGH_PARAMS_H_
 
-#include <memory>
-
+#include "absl/container/flat_hash_set.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/hlo_pass_interface.h"
 

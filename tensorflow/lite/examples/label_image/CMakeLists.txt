@@ -21,7 +21,7 @@ populate_source_vars("${TFLITE_SOURCE_DIR}/examples/label_image"
   FILTER "_test\\.cc$"
 )
 list(APPEND TFLITE_LABEL_IMAGE_SRCS
-  ${TSL_SOURCE_DIR}/tsl/util/stats_calculator.cc
+  ${XLA_SOURCE_DIR}/xla/tsl/util/stats_calculator.cc
   ${TFLITE_SOURCE_DIR}/profiling/memory_info.cc
   ${TFLITE_SOURCE_DIR}/profiling/profile_summarizer.cc
   ${TFLITE_SOURCE_DIR}/profiling/profile_summary_formatter.cc
@@ -55,6 +55,11 @@ if(TFLITE_ENABLE_GPU)
     ${TFLITE_SOURCE_DIR}/tools/delegates/gpu_delegate_provider.cc
   )
 endif()  # TFLITE_ENABLE_GPU
+
+if(TFLITE_ENABLE_EXTERNAL_DELEGATE)
+  list(APPEND TFLITE_LABEL_IMAGE_SRCS
+          ${TFLITE_SOURCE_DIR}/tools/delegates/external_delegate_provider.cc)
+endif()
 
 add_executable(label_image
   ${TFLITE_LABEL_IMAGE_SRCS}

@@ -381,6 +381,23 @@ mlirMhloTypeExtensionsGetBoundsSize(MlirAttribute attr);
 MLIR_CAPI_EXPORTED int64_t
 mlirMhloTypeExtensionsGetBoundsElem(MlirAttribute attr, intptr_t pos);
 
+//
+// SparsityDescriptor
+//
+// Creates a SparseDescriptor attribute with the given sparsity configurations.
+MLIR_CAPI_EXPORTED MlirAttribute mlirMhloSparsityDescriptorGet(
+    MlirContext ctx, int64_t dimension, int64_t n, int64_t m);
+
+// Returns true if the given attribute is a SparsityDescriptor attribute.
+MLIR_CAPI_EXPORTED bool mlirMhloAttributeIsASparsityDescriptor(
+    MlirAttribute attr);
+
+// Returns the dimension and N:M sparsity configurations.
+MLIR_CAPI_EXPORTED int64_t
+mlirMhloSparsityDescriptorGetDimension(MlirAttribute attr);
+MLIR_CAPI_EXPORTED int64_t mlirMhloSparsityDescriptorGetN(MlirAttribute attr);
+MLIR_CAPI_EXPORTED int64_t mlirMhloSparsityDescriptorGetM(MlirAttribute attr);
+
 #ifdef __cplusplus
 }
 #endif

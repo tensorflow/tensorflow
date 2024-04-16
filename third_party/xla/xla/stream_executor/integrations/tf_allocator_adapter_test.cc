@@ -67,18 +67,17 @@ TEST(MultiDeviceAdapter, UsesCorrectAllocator) {
   TF_ASSERT_OK_AND_ASSIGN(auto* platform,
                           xla::PlatformUtil::GetDefaultPlatform());
   TF_ASSERT_OK_AND_ASSIGN(std::vector<se::StreamExecutor*> executors,
-                          xla::PlatformUtil::GetStreamExecutors(platform));
-  se::Stream stream(executors[0]);
-  stream.Init();
+                          xla::PlatformUtil::GetStreamExecutors(platform))
+  TF_ASSERT_OK_AND_ASSIGN(auto stream, executors[0]->CreateStream());
 
   std::vector<se::MultiDeviceAdapter::AllocatorInfo> infos;
-  infos.emplace_back(std::make_unique<TestAllocator>(0x1000), &stream,
+  infos.emplace_back(std::make_unique<TestAllocator>(0x1000), stream.get(),
                      /*memory_space=*/0, /*device_ordinal=*/0);
-  infos.emplace_back(std::make_unique<TestAllocator>(0x2000), &stream,
+  infos.emplace_back(std::make_unique<TestAllocator>(0x2000), stream.get(),
                      /*memory_space=*/0, /*device_ordinal=*/1);
-  infos.emplace_back(std::make_unique<TestAllocator>(0x3000), &stream,
+  infos.emplace_back(std::make_unique<TestAllocator>(0x3000), stream.get(),
                      /*memory_space=*/1, /*device_ordinal=*/0);
-  infos.emplace_back(std::make_unique<TestAllocator>(0x4000), &stream,
+  infos.emplace_back(std::make_unique<TestAllocator>(0x4000), stream.get(),
                      /*memory_space=*/1, /*device_ordinal=*/1);
   std::unique_ptr<se::DeviceMemoryAllocator> allocator =
       std::make_unique<se::MultiDeviceAdapter>(platform, std::move(infos));

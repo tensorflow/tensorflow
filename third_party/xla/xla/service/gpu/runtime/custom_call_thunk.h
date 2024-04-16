@@ -17,21 +17,18 @@ limitations under the License.
 #define XLA_SERVICE_GPU_RUNTIME_CUSTOM_CALL_THUNK_H_
 
 #include <cstddef>
-#include <cstdint>
 #include <functional>
 #include <optional>
 #include <string>
-#include <variant>
 #include <vector>
 
-#include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/call_frame.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/custom_call_status.h"
-#include "xla/service/gpu/thunk.h"
+#include "xla/service/gpu/runtime/thunk.h"
 #include "xla/shape.h"
 #include "xla/status.h"
 
@@ -122,6 +119,11 @@ class CustomCallThunk : public Thunk {
   // custom calls that access called computation can only be linked statically.
   const HloComputation* called_computation_ = nullptr;
 };
+
+// Converts MLIR dictionary attribute attached to a custom call operation to a
+// custom call thunk attributes that are forwarded to the FFI handler.
+absl::StatusOr<CustomCallThunk::AttributesMap> BuildAttributesMap(
+    mlir::DictionaryAttr dict);
 
 }  // namespace gpu
 }  // namespace xla

@@ -19,6 +19,7 @@ limitations under the License.
 #include <vector>
 
 #include "llvm/IR/IRBuilder.h"
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/fusions/fusion_emitter.h"
@@ -26,6 +27,7 @@ limitations under the License.
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/launch_dimensions.h"
+#include "xla/service/gpu/model/indexing_map.h"
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/status.h"
 #include "xla/statusor.h"
@@ -75,10 +77,7 @@ class InPlaceDynamicUpdateSliceFusion : public KernelFusionEmitterBase {
 
   std::optional<IndexingMap> ComputeThreadIdToInputIndexing(
       int64_t root_index, int64_t hero_operand_index,
-      mlir::MLIRContext* ctx) const override {
-    // TODO(b/319081342): Implement this.
-    return std::nullopt;
-  }
+      mlir::MLIRContext* ctx) const override;
 
  protected:
   absl::Status EmitKernel(IrEmitterContext& ir_emitter_context,

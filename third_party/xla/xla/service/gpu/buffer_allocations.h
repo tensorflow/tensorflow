@@ -26,10 +26,8 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/status.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
-#include "xla/stream_executor/stream_executor.h"
 
 namespace xla {
 namespace gpu {
@@ -85,6 +83,9 @@ class BufferAllocations {
 
   se::DeviceMemoryAllocator* memory_allocator() const {
     return memory_allocator_;
+  }
+  ExternalAllocations* external_allocations() const {
+    return external_allocations_;
   }
   int device_ordinal() const { return device_ordinal_; }
 

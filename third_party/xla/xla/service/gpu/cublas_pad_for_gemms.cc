@@ -25,14 +25,15 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/literal_util.h"
-#include "xla/service/gpu/gemm_rewriter_triton.h"
+#include "xla/service/gpu/gemm_fusion.h"
 #include "xla/service/gpu/ir_emission_utils.h"
+#include "xla/service/gpu/triton_support.h"
 #include "xla/shape.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/util.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/status.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -179,7 +180,7 @@ static std::vector<HloDotInstruction*> GetRelevantDots(
                 ->config()
                 .debug_options()
                 .xla_gpu_enable_triton_gemm() &&
-            CanTritonHandleGEMM(*dot, gpu_compute_capability) &&
+            IsTritonSupportedInstruction(*dot, gpu_compute_capability) &&
             ShouldTritonHandleGEMM(*dot, gpu_compute_capability))) {
         gemms.push_back(dot);
       }

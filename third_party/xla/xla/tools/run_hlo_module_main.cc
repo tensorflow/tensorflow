@@ -26,11 +26,11 @@ limitations under the License.
 #include "xla/service/hlo_runner.h"
 #include "xla/service/platform_util.h"
 #include "xla/tools/run_hlo_module.h"
+#include "xla/tsl/util/command_line_flags.h"
 #include "tsl/platform/init_main.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/test.h"
-#include "tsl/util/command_line_flags.h"
 
 namespace {
 const char* const kUsage = R"(
@@ -127,6 +127,12 @@ int main(int argc, char** argv) {
           "iterations", &opts.iterations,
           "The number of times to run the module. Each iteration will be run "
           "with different input data."),
+      tsl::Flag(
+          "isolate_instructions", &opts.isolate_instructions,
+          "Rather than executing the entire module at once, run every "
+          "instruction individually, including the top-level and control-flow "
+          "dependent computations (e.g. inside conditions, calls). Skip "
+          "instructions inside fused computations etc."),
       tsl::Flag("different_random_seeds", &different_random_seeds,
                 "Whether each iteration should use a different random seed for "
                 "the HloModuleConfig."),
@@ -174,7 +180,7 @@ int main(int argc, char** argv) {
     if (iteration_count != 1) {
       std::cerr << "\n=== Iteration " << i << "\n";
     }
-    xla::Status result = xla::RunAndCompare(
+    absl::Status result = xla::RunAndCompare(
         hlo_filename, &test_runner, reference_runner.get(), engine.get(), opts,
         /*iteration_literals_proto=*/nullptr,
         /*reference_module_modifier_hook=*/{},
@@ -194,8 +200,7 @@ int main(int argc, char** argv) {
   }
 
   if (!reference_platform_name.empty()) {
-    std::cerr << failure_count << "/" << iteration_count
-              << " runs miscompared.\n";
+    std::cerr << failure_count << "/" << iteration_count << " runs failed.\n";
   }
 
   return failure_count == 0 ? 0 : -1;

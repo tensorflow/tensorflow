@@ -28,6 +28,7 @@ limitations under the License.
 #include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/c/builtin_op_data.h"
+#include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/string_type.h"
 
@@ -187,6 +188,13 @@ TEST_F(FlatbufferConversionsTest, TestConvertTensorTypeFloat16) {
   EXPECT_EQ(kTfLiteOk,
             ConvertTensorType(TensorType_FLOAT16, &type, &mock_reporter_));
   EXPECT_EQ(kTfLiteFloat16, type);
+}
+
+TEST_F(FlatbufferConversionsTest, TestConvertTensorTypeBFloat16) {
+  TfLiteType type;
+  EXPECT_EQ(kTfLiteOk,
+            ConvertTensorType(TensorType_BFLOAT16, &type, &mock_reporter_));
+  EXPECT_EQ(kTfLiteBFloat16, type);
 }
 
 TEST_F(FlatbufferConversionsTest, TestConvertTensorTypeInt4) {

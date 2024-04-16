@@ -17,7 +17,9 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "tsl/platform/types.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
+#include "tsl/profiler/utils/timestamp_utils.h"
 #include "tsl/profiler/utils/xplane_schema.h"
 #include "tsl/profiler/utils/xplane_utils.h"
 
@@ -43,7 +45,7 @@ void MergeHostPlanesAndSortLines(tensorflow::profiler::XSpace* space) {
 }  // namespace
 
 void PostProcessSingleHostXSpace(tensorflow::profiler::XSpace* space,
-                                 uint64 start_time_ns) {
+                                 uint64 start_time_ns, uint64 stop_time_ns) {
   VLOG(3) << "Post processing local profiler XSpace.";
   // Post processing the collected XSpace without hold profiler lock.
   // 1. Merge all host planes and sorts lines by name.
@@ -51,7 +53,10 @@ void PostProcessSingleHostXSpace(tensorflow::profiler::XSpace* space,
   // 2. Normalize all timestamps by shifting timeline to profiling start time.
   // NOTE: this have to be done before sorting XSpace due to timestamp overflow.
   NormalizeTimestamps(space, start_time_ns);
-  // 3. Sort each plane of the XSpace
+  // 3. Add information regarding profiling start_time_ns_ and stop_time_ns_ to
+  // taskEnv.
+  SetSessionTimestamps(start_time_ns, stop_time_ns, *space);
+  // 4. Sort each plane of the XSpace
   SortXSpace(space);
 }
 

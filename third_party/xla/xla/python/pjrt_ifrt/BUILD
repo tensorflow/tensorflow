@@ -1,6 +1,7 @@
-load("//xla:xla.bzl", "xla_cc_test")
-load("@local_tsl//tsl:tsl.default.bzl", "get_compatible_with_portable")
 load("@local_tsl//tsl/platform:build_config.bzl", "tf_proto_library")
+load("//xla:xla.bzl", "xla_cc_test")
+load("//xla/tsl:tsl.bzl", "internal_visibility")
+load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
 
 package_group(
     name = "friends",
@@ -20,15 +21,16 @@ package_group(
 )
 
 package(
-    default_visibility = ["//visibility:public"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = internal_visibility([
+        ":friends",
+        ":internal",
+    ]),
 )
 
-exports_files(
-    [
-        "BUILD",
-    ],
-    visibility = ["//visibility:public"],
-)
+exports_files([
+    "BUILD",
+])
 
 # TODO(hyeontaek): Move this target out of pjrt_ifrt.
 cc_library(
@@ -42,7 +44,6 @@ cc_library(
         "xla_sharding.h",
     ],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
     deps = [
         ":xla_compiler_proto_cc",
         "//xla:util",
@@ -67,21 +68,18 @@ tf_proto_library(
     srcs = ["xla_host_callback.proto"],
     cc_api_version = 2,
     protodeps = ["//xla:xla_data_proto"],
-    visibility = ["//visibility:public"],
 )
 
 tf_proto_library(
     name = "xla_compiler_proto",
     srcs = ["xla_compiler.proto"],
     protodeps = ["//xla/pjrt:compile_options_proto"],
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
     name = "xla_program_serdes",
     srcs = ["xla_program_serdes.cc"],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
     deps = [
         ":xla_ifrt",
         "//xla/mlir_hlo:mhlo_passes",
@@ -122,15 +120,13 @@ tf_proto_library(
     srcs = ["xla_sharding.proto"],
     protodeps = [
         "//xla:xla_data_proto",
-        "//xla/python/ifrt:types_proto",
+        "//xla/python/ifrt:device_proto",
     ],
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
     name = "xla_sharding_serdes",
     srcs = ["xla_sharding_serdes.cc"],
-    visibility = ["//visibility:public"],
     deps = [
         ":xla_ifrt",
         ":xla_sharding_proto_cc",
@@ -138,6 +134,11 @@ cc_library(
         "//xla/python/ifrt",
         "//xla/python/ifrt:serdes",
         "//xla/python/ifrt:sharding_serdes",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@llvm-project//llvm:Support",
+        "@local_tsl//tsl/platform:statusor",
     ],
     alwayslink = True,
 )
@@ -149,10 +150,14 @@ xla_cc_test(
         ":xla_ifrt",
         ":xla_sharding_serdes",
         "//xla/hlo/ir:hlo",
+        "//xla/python/ifrt",
+        "//xla/python/ifrt:serdes",
         "//xla/python/ifrt:sharding_serdes",
         "//xla/python/ifrt:sharding_test_util",
         "@com_google_absl//absl/functional:bind_front",
+        "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -161,7 +166,6 @@ cc_library(
     name = "xla_executable_impl_test_lib",
     testonly = True,
     srcs = ["xla_executable_impl_test_lib.cc"],
-    visibility = ["//visibility:public"],
     deps = [
         ":xla_ifrt",
         "//xla/pjrt:mlir_to_hlo",
@@ -222,7 +226,6 @@ cc_library(
         "pjrt_tuple.h",
     ],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
     deps = [
         ":xla_ifrt",
         "//xla:literal",
@@ -237,6 +240,7 @@ cc_library(
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt:pjrt_executable",
         "//xla/pjrt:pjrt_future",
+        "//xla/pjrt:pjrt_layout",
         "//xla/pjrt:utils",
         "//xla/python/ifrt",
         "//xla/service:hlo_proto_cc",
@@ -266,7 +270,6 @@ cc_library(
     name = "tfrt_cpu_client_test_lib",
     testonly = True,
     srcs = ["tfrt_cpu_client_test_lib.cc"],
-    visibility = ["//visibility:public"],
     deps = [
         ":pjrt_ifrt",
         "//xla/pjrt/cpu:cpu_client",

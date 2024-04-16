@@ -49,7 +49,7 @@ void SinkNontupleRoot(HloComputation* computation) {
 
 }  // namespace
 
-StatusOr<bool> RootInstructionSinker::Run(
+absl::StatusOr<bool> RootInstructionSinker::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   TF_RET_CHECK(module->has_schedule());

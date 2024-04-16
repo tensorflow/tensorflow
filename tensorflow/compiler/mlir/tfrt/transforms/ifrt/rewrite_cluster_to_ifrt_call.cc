@@ -37,10 +37,10 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/host_runtime/tfrt_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_structs.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tfrt_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/host_runtime/tpu_metadata_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.h"
@@ -190,9 +190,15 @@ class RewriteClusterToIfrtCallPass
         return signalPassFailure();
       }
 
+      auto metadata_attr =
+          ifrt_program->getAttrOfType<mlir::StringAttr>(kMetadataTextAttrName);
+      if (!metadata_attr) {
+        return signalPassFailure();
+      }
+      ifrt_call_op->setAttr(kMetadataTextAttrName, metadata_attr);
+
       // TODO(b/304839793): populate variable names after adding a variable
       // hoisting pass.
-      ifrt_call_op.setVariableNamesAttr(builder.getArrayAttr({}));
       ifrt_call_op.setVariableArgIndicesAttr(builder.getI32ArrayAttr({}));
       ifrt_call_op.setProgramId(program_id);
 
@@ -228,6 +234,10 @@ class RewriteClusterToIfrtCallPass
     cloned_ifrt_program->setAttr("tfrt_ifrt_serving.program_id",
                                  builder.getI64IntegerAttr(program_id));
 
+    // Make clonet ifrt program public so that it does not get dropped by
+    // inliner.
+    cloned_ifrt_program.setPublic();
+
     builder.setInsertionPoint(cluster_func);
 
     mlir::TF::IfrtCallOp ifrt_call_op = builder.create<mlir::TF::IfrtCallOp>(
@@ -236,9 +246,12 @@ class RewriteClusterToIfrtCallPass
 
     // TODO(b/304839793): populate variable names after adding a variable
     // hoisting pass.
-    ifrt_call_op.setVariableNamesAttr(builder.getArrayAttr({}));
     ifrt_call_op.setVariableArgIndicesAttr(builder.getI32ArrayAttr({}));
     ifrt_call_op.setProgramId(program_id);
+    // Additionally attach tpu_compile_metadata to IfrtCallOp. Some subsequent
+    // pass such as SinkVariableAsNamedArrayPass relies on this attribute.
+    ifrt_call_op->setAttr(kMetadataTextAttrName,
+                          builder.getStringAttr(serialized_metadata));
 
     cluster_func->replaceAllUsesWith(ifrt_call_op.getResults());
     cluster_func->erase();

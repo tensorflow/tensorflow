@@ -341,6 +341,9 @@ namespace tf_executor {
 // Creates a pass to chain control outputs of while loop body.
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateTFExecutorConvertControlToDataOutputsPass();
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateTFExecutorConvertControlToDataOutputsPass(
+    bool composite_tpuexecute_side_effects);
 
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateTFExecutorCheckControlDependenciesPass();
@@ -442,13 +445,6 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreateReplicateToIslandPass(
 // using the replica id attribute.
 std::unique_ptr<OperationPass<func::FuncOp>>
 CreateReplicaIDToDeviceOrdinalPass();
-
-// Creates a pass that adds pipelining to a graph that contains device
-// accelerated embeddings. The EmbeddingSequencingPass is a temporary fallback
-// while developing full pipelining capabilities.
-std::unique_ptr<OperationPass<ModuleOp>> CreateEmbeddingSequencingPass();
-std::unique_ptr<OperationPass<ModuleOp>> CreateEmbeddingPipeliningPass();
-std::unique_ptr<OperationPass<func::FuncOp>> CreateEmbeddingProgramKeyPass();
 
 // Creates a pass that creates `tf_executor.island` from a single
 // `tf_device.parallel_execute` island.

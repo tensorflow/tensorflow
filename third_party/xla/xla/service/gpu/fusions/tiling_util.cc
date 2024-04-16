@@ -131,7 +131,8 @@ llvm::Value* EmitBlockId(llvm::IRBuilder<>* builder, int32_t num_blocks,
       EmitCallToTargetIntrinsic(TargetIntrinsicID::kBlockIdx, {}, {}, builder);
   if (num_blocks != 0) {
     llvm_ir::AddRangeMetadata(0, num_blocks,
-                              llvm::cast<llvm::Instruction>(block_id));
+                              llvm::cast<llvm::Instruction>(block_id),
+                              builder->GetInsertBlock()->getModule());
   }
   auto ret = builder->CreateIntCast(block_id, index_ty, /*isSigned=*/true);
   ret->setName("block.id.x");
@@ -147,7 +148,8 @@ llvm::Value* EmitThreadId(llvm::IRBuilder<>* builder, int64_t threads_per_block,
   // defined by (num_thread_y, num_thread_x) from thread_id.
   llvm::CallInst* thread_id =
       EmitCallToTargetIntrinsic(TargetIntrinsicID::kThreadIdx, {}, {}, builder);
-  llvm_ir::AddRangeMetadata(0, threads_per_block, thread_id);
+  llvm_ir::AddRangeMetadata(0, threads_per_block, thread_id,
+                            builder->GetInsertBlock()->getModule());
   auto ret = builder->CreateIntCast(thread_id, index_ty, /*isSigned=*/true);
   ret->setName("thread.id.x");
   return ret;

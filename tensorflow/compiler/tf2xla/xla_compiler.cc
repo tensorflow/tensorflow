@@ -66,6 +66,7 @@ limitations under the License.
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph_debug_info.pb.h"
+#include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/node_builder.h"
@@ -105,11 +106,11 @@ Status CheckSignature(const DataTypeVector& types,
 
 // Uses the _Arg and _Retval nodes in the graph to determine an OpSharding for
 // each argument and return value.
-StatusOr<
+absl::StatusOr<
     std::pair<std::map<int, xla::OpSharding>, std::map<int, xla::OpSharding>>>
 ComputeArgAndRetvalShardings(const Graph& graph) {
   auto get_sharding_for_node =
-      [](const Node* n) -> StatusOr<std::optional<xla::OpSharding>> {
+      [](const Node* n) -> absl::StatusOr<std::optional<xla::OpSharding>> {
     TF_ASSIGN_OR_RETURN(
         auto sharding,
         ParseShardingFromDevice(*n, std::numeric_limits<int32>::max(),
@@ -751,56 +752,25 @@ Status XlaCompiler::CompileSingleOp(
     const XlaCompiler::CompileOptions& compile_options,
     const XlaCompiler::SingleOpCompileArgument& single_op_compile_argument,
     absl::Span<const Argument> args, XlaCompiler::CompilationResult* result) {
-  const std::vector<DataType>& result_dtypes =
-      single_op_compile_argument.output_dtypes;
   const NodeDef& node_def = single_op_compile_argument.node_def;
   TF_ASSIGN_OR_RETURN(
       auto graph,
       CreateSingleOpGraph(node_def, args,
                           single_op_compile_argument.output_dtypes));
 
-  auto compile_with_old_bridge = [&]() {
-    *result = {};
-    return ADD_SOURCE_LOCATION(CompileGraph(compile_options, node_def.name(),
-                                            std::move(graph), args, result));
-  };
-
-  const ConfigProto* config = &(single_op_compile_argument.config_proto);
-  auto bridge_rollout = GetMlirBridgeRolloutState(
-      config ? std::optional<ConfigProto>(*config) : std::nullopt);
-  if (bridge_rollout ==
-          ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_DISABLED ||
-      node_def.op() == "VarIsInitializedOp" ||
-      (bridge_rollout !=
-           ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_ENABLED &&
-       options_.device_type.type_string() != DEVICE_TPU_XLA_JIT)) {
-    return compile_with_old_bridge();
+  *result = {};
+  Status status = ADD_SOURCE_LOCATION(CompileGraph(
+      compile_options, node_def.name(), std::move(graph), args, result));
+  if (status.ok()) {
+    tensorflow::metrics::IncrementPhase2XlaCompilerCounter(
+        tensorflow::metrics::Phase2XlaCompilerMetric::
+            kCompileSingleOpXlaBuilderSuccess);
+  } else {
+    tensorflow::metrics::IncrementPhase2XlaCompilerCounter(
+        tensorflow::metrics::Phase2XlaCompilerMetric::
+            kCompileSingleOpXlaBuilderFailure);
   }
-
-  GraphDebugInfo debug_info;
-  std::vector<std::string> control_rets;
-  if (result_dtypes.empty()) {
-    control_rets.push_back(node_def.name());
-  }
-
-  bool mlir_enabled = (bridge_rollout ==
-                       ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_ENABLED);
-  VLOG(1) << "Attempting MLIR bridge."
-          << (mlir_enabled ? " MLIR is explicitly enabled." : "");
-  auto mlir_result = CompileGraphToXlaHlo(
-      *graph, mlir::SpanToArrayRef<XlaCompiler::Argument>(args), control_rets,
-      options_.device_type.type_string(), compile_options.use_tuple_arg,
-      /*analyse_graph=*/!mlir_enabled, *options_.flib_def, debug_info,
-      options_.shape_determination_fns, result);
-
-  if (mlir_result.ok() || mlir_enabled) {
-    return mlir_result;
-  }
-
-  VLOG(1) << "Failed second phase of the MLIR bridge. Will "
-             "retry with the old bridge. MLIR bridge compilation status: "
-          << mlir_result;
-  return compile_with_old_bridge();
+  return status;
 }
 
 Status XlaCompiler::CompileFunction(
@@ -907,8 +877,14 @@ Status XlaCompiler::CompileFunction(
         options.use_tuple_arg, /*analyse_graph=*/false, *options_.flib_def,
         debug_info, options_.shape_determination_fns, result);
     if (mlir_result.ok()) {
+      tensorflow::metrics::IncrementPhase2XlaCompilerCounter(
+          tensorflow::metrics::Phase2XlaCompilerMetric::
+              kCompileFunctionMlirSuccess);
       VLOG(1) << "MLIR bridge was successfull";
     } else {
+      tensorflow::metrics::IncrementPhase2XlaCompilerCounter(
+          tensorflow::metrics::Phase2XlaCompilerMetric::
+              kCompileFunctionMlirFailure);
       VLOG(1) << "MLIR failed, no fallback";
       return mlir_result;
     }
@@ -917,6 +893,9 @@ Status XlaCompiler::CompileFunction(
     auto status =
         CompileGraph(options, function_id, std::move(graph), args, result);
     if (!status.ok()) {
+      tensorflow::metrics::IncrementPhase2XlaCompilerCounter(
+          tensorflow::metrics::Phase2XlaCompilerMetric::
+              kCompileFunctionXlaBuilderFailure);
       ::tsl::errors::AppendToMessage(
           &status, "tf2xla conversion failed while converting ", function_id,
           ". Run with TF_DUMP_GRAPH_PREFIX=/path/to/dump/dir and "
@@ -925,8 +904,10 @@ Status XlaCompiler::CompileFunction(
       return status;
     }
   }
+  tensorflow::metrics::IncrementPhase2XlaCompilerCounter(
+      tensorflow::metrics::Phase2XlaCompilerMetric::
+          kCompileFunctionXlaBuilderSuccess);
   VLOG(1) << "====================================================";
-
   cache_[{function_id, arg_vector}] = *result;
   return absl::OkStatus();
 }
@@ -1796,7 +1777,7 @@ Status XlaCompiler::SetNodeToken(const string& node_name, const xla::XlaOp op) {
   return absl::OkStatus();
 }
 
-StatusOr<xla::XlaOp> XlaCompiler::GetNodeToken(const string& node_name) {
+absl::StatusOr<xla::XlaOp> XlaCompiler::GetNodeToken(const string& node_name) {
   if (node_token_mapping_stack_.empty()) {
     return errors::FailedPrecondition(
         "Calling GetNodeToken() when node_token_mapping_stack_ is "

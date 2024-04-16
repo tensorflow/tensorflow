@@ -23,6 +23,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 
 namespace mlir {
@@ -78,6 +79,12 @@ bool IsStorageTypeI32(QuantizedType quantized_type);
 
 bool IsExpressedTypeF32(QuantizedType quantized_type);
 
+// Given a value, extract the `ElementType`.
+// `value` should be a non-null `TensorType`.
+inline Type GetElementType(const Value value) {
+  return value.getType().cast<TensorType>().getElementType();
+}
+
 // Returns true iff `type` is a uniform quantized type whose storage type is
 // 8-bit integer and expressed type is f32.
 bool IsI8F32UniformQuantizedType(Type type);
@@ -103,6 +110,9 @@ bool IsQuantizedTensorType(Type type);
 
 // Returns true if all operands and results are quantized.
 bool IsOpFullyQuantized(Operation* op);
+
+// Returns true iff none among operand and result tensors are quantized.
+bool IsOpNotQuantized(Operation* op);
 
 }  // namespace quant
 }  // namespace mlir

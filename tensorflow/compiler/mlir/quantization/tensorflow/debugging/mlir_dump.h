@@ -31,12 +31,10 @@ void EnableIrPrinting(mlir::PassManager &pm,
 // The dumped mlir files with be under a directory determined by
 // the TF_QUANT_MLIR_DUMP_PREFIX env variable. The PassManager will dump to a
 // new file for each pass. The file name will have the format
-// {file_name_prefix}_{dump_counter}_{pass_name}_{func_name}_{before|after}.mlir.
+// {file_name_prefix}_{pass_number}_{pass_name}_{before|after}.mlir.
 // * `file_name_prefix` is from input.
-// * `dump_counter` increments from 1 for each time the PassManager dumps.
+// * `pass_number` increments from 1 for each pass.
 // * `pass_name` is the name of the pass.
-// * `func_name` is the function name if the pass applies to a function.
-//   Otherwise this is empty.
 // * `before|after` indicates whether the dump occurs before or after the pass.
 absl::Status MaybeEnableIrPrinting(mlir::PassManager &pm,
                                    absl::string_view file_name_prefix);

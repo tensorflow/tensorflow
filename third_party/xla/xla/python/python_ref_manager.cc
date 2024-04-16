@@ -15,21 +15,26 @@ limitations under the License.
 
 #include "xla/python/python_ref_manager.h"
 
+#include <atomic>
 #include <deque>
 #include <memory>
 #include <utility>
+#include <vector>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/synchronization/mutex.h"
+#include "absl/types/span.h"
+#include "third_party/nanobind/include/nanobind/nanobind.h"
 
 namespace xla {
 
-namespace py = pybind11;
+namespace nb = nanobind;
 
 PythonRefManager::ManagedPyObjects::ManagedPyObjects(
-    PythonRefManager* manager, absl::Span<pybind11::object> objects)
+    PythonRefManager* manager, absl::Span<nb::object> objects)
     : manager_(manager) {
   objects_.reserve(objects.size());
-  for (pybind11::object& object : objects) {
+  for (nb::object& object : objects) {
     objects_.push_back(std::move(object));
   }
 }
@@ -41,21 +46,28 @@ PythonRefManager::ManagedPyObjects::~ManagedPyObjects() {
 }
 
 std::shared_ptr<PythonRefManager::ManagedPyObjects>
-PythonRefManager::ManageReference(py::object object) {
+PythonRefManager::ManageReference(nb::object object) {
   return std::make_shared<ManagedPyObjects>(this,
-                                            absl::Span<py::object>(&object, 1));
+                                            absl::Span<nb::object>(&object, 1));
 }
 
 std::shared_ptr<PythonRefManager::ManagedPyObjects>
-PythonRefManager::ManageReferences(absl::Span<py::object> objects) {
+PythonRefManager::ManageReferences(absl::Span<nb::object> objects) {
   return std::make_shared<ManagedPyObjects>(this, objects);
 }
 
-void PythonRefManager::AddGarbage(absl::Span<py::object> garbage) {
+void PythonRefManager::AddGarbage(nb::object garbage) {
   absl::MutexLock lock(&mu_);
   // We want to collect arbitrary python garbage (e.g., buffers) aggressively.
   garbage_count_.fetch_add(100, std::memory_order_relaxed);
-  for (py::object& o : garbage) {
+  python_garbage_.push_back(std::move(garbage));
+}
+
+void PythonRefManager::AddGarbage(absl::Span<nb::object> garbage) {
+  absl::MutexLock lock(&mu_);
+  // We want to collect arbitrary python garbage (e.g., buffers) aggressively.
+  garbage_count_.fetch_add(100, std::memory_order_relaxed);
+  for (nb::object& o : garbage) {
     python_garbage_.push_back(std::move(o));
   }
 }
@@ -68,14 +80,13 @@ void PythonRefManager::AddGarbage(
   // process.
   garbage_count_.fetch_add(1, std::memory_order_relaxed);
   for (const auto& o : garbage) {
-    python_garbage_.push_back(py::reinterpret_steal<py::object>(
-        reinterpret_cast<PyObject*>(o.first)));
+    python_garbage_.push_back(nb::steal(reinterpret_cast<PyObject*>(o.first)));
   }
 }
 
 void PythonRefManager::CollectGarbage() {
   // TODO(phawkins): we should CHECK(PyGILState_Check());
-  std::deque<pybind11::object> garbage;
+  std::deque<nanobind::object> garbage;
   {
     absl::MutexLock lock(&mu_);
     garbage_count_ = 0;

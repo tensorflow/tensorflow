@@ -43,7 +43,7 @@ namespace xla {
 // together. Instructions will be combined until the threshold for output byte
 // size or instruction count is reached.
 template <typename K>
-StatusOr<bool> CombineInstructionsByKey(
+absl::StatusOr<bool> CombineInstructionsByKey(
     HloComputation* computation,
     absl::FunctionRef<std::optional<K>(const HloInstruction*)> key_fn,
     absl::FunctionRef<Status(absl::Span<HloInstruction* const>)> combine_fn,

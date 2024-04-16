@@ -1,7 +1,6 @@
 load("//xla:xla.bzl", "xla_cc_test")
 
 package(
-    default_visibility = ["//visibility:public"],
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
 )
@@ -10,13 +9,13 @@ cc_library(
     name = "sharding_conversions",
     srcs = ["sharding_conversions.cc"],
     hdrs = ["sharding_conversions.h"],
-    visibility = ["//visibility:public"],
+    visibility = ["//xla/python/ifrt:friends"],
     deps = [
-        "//xla:statusor",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/python/ifrt/ir",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
@@ -30,7 +29,6 @@ xla_cc_test(
     deps = [
         ":sharding_conversions",
         "//xla:shape_util",
-        "//xla:statusor",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/ir:tile_assignment",
@@ -38,9 +36,11 @@ xla_cc_test(
         "//xla/python/ifrt:sharding_test_util",
         "//xla/python/ifrt/ir",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:status_matchers",
         "@local_tsl//tsl/platform:statusor",
     ],

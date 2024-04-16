@@ -24,6 +24,10 @@ namespace cpu {
 
 bool CpuFloatSupport::IsSupported(const HloInstruction& hlo) const {
   switch (hlo.opcode()) {
+    // oneDNN rewritable ops
+    case HloOpcode::kDot:
+      return LowPrecisionType() == BF16 &&
+             OneDnnMatMulRewriter::ShouldRewrite(&hlo);
     // Collective ops.
     case HloOpcode::kAllGather:
     case HloOpcode::kAllReduce:
@@ -32,9 +36,6 @@ bool CpuFloatSupport::IsSupported(const HloInstruction& hlo) const {
     case HloOpcode::kAllToAll:
     case HloOpcode::kCollectivePermute:
     case HloOpcode::kReduceScatter:
-    case HloOpcode::kDot:
-      return LowPrecisionType() == BF16 &&
-             OneDnnMatMulRewriter::ShouldRewrite(&hlo) && DotSupported(hlo);
     // Data movement only ops.
     case HloOpcode::kBroadcast:
     case HloOpcode::kConcatenate:
@@ -56,18 +57,6 @@ bool CpuFloatSupport::IsSupported(const HloInstruction& hlo) const {
     default:
       return false;
   }
-}
-
-bool CpuFloatSupport::DotSupported(const HloInstruction& hlo) const {
-  bool supported = true;
-  const Shape& lhs_shape = hlo.operand(0)->shape();
-  const Shape& rhs_shape = hlo.operand(1)->shape();
-  if (lhs_shape.rank() == rhs_shape.rank() && lhs_shape.rank() == 2) {
-    // If first dim size is 1, it may be removed by a later pass which makes it
-    // unsupported case.
-    supported &= lhs_shape.dimensions(0) != 1;
-  }
-  return supported;
 }
 
 }  // namespace cpu

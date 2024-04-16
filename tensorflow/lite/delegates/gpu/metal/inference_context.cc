@@ -48,10 +48,10 @@ namespace {
 
 // returns true if actual memory for this storage type is buffer
 bool IsBufferBased(const GpuInfo& gpu_info, const TensorStorageType& type) {
-  const bool a7_gen_gpu =
-      gpu_info.IsApple() && gpu_info.apple_info.IsA7GenerationGpu();
-  if (!a7_gen_gpu && (type == TensorStorageType::TEXTURE_2D ||
-                      type == TensorStorageType::SINGLE_TEXTURE_2D)) {
+  const bool family_apple1 =
+      gpu_info.IsApple() && gpu_info.apple_info.IsFamilyApple1();
+  if (!family_apple1 && (type == TensorStorageType::TEXTURE_2D ||
+                         type == TensorStorageType::SINGLE_TEXTURE_2D)) {
     return true;
   }
   return type == TensorStorageType::BUFFER ||

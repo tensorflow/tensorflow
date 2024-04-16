@@ -1,9 +1,10 @@
-load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
-load("//tsl:tsl.default.bzl", "get_compatible_with_portable")
-load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
+load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
+load("@local_xla//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
     features = [
         # Required since headers are not self-contained.
@@ -24,13 +25,11 @@ config_setting(
     define_values = {
         "tensorflow_mkldnn_contraction_kernel": "0",
     },
-    visibility = ["//visibility:public"],
 )
 
 bzl_library(
     name = "build_defs",
     srcs = ["build_defs.bzl"],
-    visibility = ["//visibility:public"],
 )
 
 # Add
@@ -45,7 +44,6 @@ bool_flag(
 config_setting(
     name = "disable_onednn_contraction_kernel_config",
     flag_values = {":disable_onednn_contraction_kernel": "True"},
-    visibility = ["//visibility:public"],
 )
 
 # Depending on a build configuration this target provides custom kernel for Eigen
@@ -77,7 +75,6 @@ cc_library(
     name = "eigen_contraction_kernel",
     hdrs = ["eigen_contraction_kernel.h"],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
     deps = select({
         ":no_mkldnn_contraction_kernel": [":eigen_contraction_kernel_no_mkl"],
         ":disable_onednn_contraction_kernel_config": [":eigen_contraction_kernel_no_mkl"],
@@ -91,21 +88,20 @@ cc_library(
     hdrs = ["eigen_contraction_kernel.h"],
     defines = select({
         ":disable_onednn_contraction_kernel_config": [],
-        "//tsl:android_x86": [],
-        "//tsl:arm_any": [
+        "@local_xla//xla/tsl:android_x86": [],
+        "@local_xla//xla/tsl:arm_any": [
             "TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL",
         ],
-        "//tsl:fuchsia_x86_64": [],
-        "//tsl:ios": [],
-        "//tsl:linux_ppc64le": [],
-        "//tsl:linux_s390x": [],
-        "//tsl:macos_arm64": [],
+        "@local_xla//xla/tsl:fuchsia_x86_64": [],
+        "@local_xla//xla/tsl:ios": [],
+        "@local_xla//xla/tsl:linux_ppc64le": [],
+        "@local_xla//xla/tsl:linux_s390x": [],
+        "@local_xla//xla/tsl:macos_arm64": [],
         "//conditions:default": [
             "TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL",
             "TENSORFLOW_USE_MKLDNN_CONTRACTION_KERNEL",
         ],
     }),
-    visibility = ["//visibility:public"],
     deps = [
         "//tsl/framework/fixedpoint",
         "//tsl/platform:dynamic_annotations",
@@ -113,13 +109,13 @@ cc_library(
         "@eigen_archive//:eigen3",
     ] + select({
         ":disable_onednn_contraction_kernel_config": [],
-        "//tsl:android_x86": [],
-        "//tsl:arm_any": [],
-        "//tsl:fuchsia_x86_64": [],
-        "//tsl:ios": [],
-        "//tsl:linux_ppc64le": [],
-        "//tsl:linux_s390x": [],
-        "//tsl:macos_arm64": [],
+        "@local_xla//xla/tsl:android_x86": [],
+        "@local_xla//xla/tsl:arm_any": [],
+        "@local_xla//xla/tsl:fuchsia_x86_64": [],
+        "@local_xla//xla/tsl:ios": [],
+        "@local_xla//xla/tsl:linux_ppc64le": [],
+        "@local_xla//xla/tsl:linux_s390x": [],
+        "@local_xla//xla/tsl:macos_arm64": [],
         "//conditions:default": ["@onednn//:mkl_dnn"],
     }),
 )
@@ -131,7 +127,6 @@ exports_files(
         "eigen_contraction_kernel.cc",
         "eigen_contraction_kernel.h",
     ],
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
@@ -139,11 +134,10 @@ cc_library(
     srcs = ["eigen_contraction_kernel.cc"],
     hdrs = ["eigen_contraction_kernel.h"],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
     # Somehow the following code works with fixedpoint, but not here.
     # visibility = [
     #     "//tensorflow:__subpackages__",
-    #     "//tsl:internal",
+    #     "@local_xla//xla/tsl:internal",
     # ],
     deps = [
         "//tsl/framework/fixedpoint",
@@ -160,7 +154,6 @@ filegroup(
     srcs = [
         "eigen_contraction_kernel.h",
     ],
-    visibility = ["//visibility:public"],
 )
 
 # Maintain the same name as other directories until a principled refactor is done, as these files
@@ -170,5 +163,4 @@ filegroup(
     srcs = [
         "eigen_contraction_kernel.cc",
     ],
-    visibility = ["//visibility:public"],
 )

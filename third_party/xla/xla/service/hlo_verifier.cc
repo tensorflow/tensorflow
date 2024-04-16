@@ -16,6 +16,8 @@ limitations under the License.
 #include "xla/service/hlo_verifier.h"
 
 #include <algorithm>
+#include <cstddef>
+#include <cstdint>
 #include <iterator>
 #include <map>
 #include <memory>
@@ -27,10 +29,16 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -39,21 +47,24 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/layout.h"
+#include "xla/layout_util.h"
 #include "xla/permutation_util.h"
 #include "xla/primitive_util.h"
 #include "xla/service/collective_ops_utils.h"
-#include "xla/service/pattern_matcher.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/shape_inference.h"
+#include "xla/shape.h"
+#include "xla/shape_layout.h"
 #include "xla/shape_util.h"
+#include "xla/status.h"
 #include "xla/status_macros.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
-
-namespace m = match;
-
 namespace {
 
 bool IsCallerInstruction(HloInstruction* hlo) {
@@ -194,12 +205,15 @@ Status ShapeVerifier::HandleCopy(HloInstruction* copy) {
 }
 
 Status ShapeVerifier::HandleDot(HloInstruction* dot) {
+  auto sparsity = Cast<HloDotInstruction>(dot)->sparsity();
+  TF_RETURN_IF_ERROR(
+      CheckOperandCount(dot, HloDotInstruction::kOperands + sparsity.size()));
   TF_ASSIGN_OR_RETURN(
       const Shape expected,
       ShapeInference::InferDotOpShape(
           dot->operand(0)->shape(), dot->operand(1)->shape(),
           dot->dot_dimension_numbers(),
-          /*preferred_element_type=*/dot->shape().element_type()));
+          /*preferred_element_type=*/dot->shape().element_type(), sparsity));
   if (auto nibble_count =
           absl::c_count(dot->precision_config().operand_precision(),
                         PrecisionConfig::PACKED_NIBBLE)) {
@@ -219,6 +233,24 @@ Status ShapeVerifier::HandleDot(HloInstruction* dot) {
             "%s.",
             dot->operand(1)->ToString());
       }
+    }
+  }
+  for (int i = 0; i < sparsity.size(); ++i) {
+    const SparsityDescriptor& descriptor = sparsity[i];
+    TF_RET_CHECK(descriptor.index() == 0 || descriptor.index() == 1);
+    TF_ASSIGN_OR_RETURN(const Shape expected_metadata_shape,
+                        ShapeInference::InferSparseDotMetadataShape(
+                            dot->operand(descriptor.index())->shape(),
+                            dot->dot_dimension_numbers(), descriptor));
+    const Shape actual_metadata_shape =
+        dot->operand(HloDotInstruction::kOperands + i)->shape();
+    if (!ShapeUtil::Compatible(actual_metadata_shape,
+                               expected_metadata_shape)) {
+      return Internal(
+          "Expected sparse dot metadata to have shape equal to %s, actual "
+          "shape is %s:\n%s",
+          StringifyShape(expected_metadata_shape),
+          StringifyShape(actual_metadata_shape), dot->ToString());
     }
   }
   return CheckShape(dot, expected);
@@ -299,25 +331,10 @@ Status ShapeVerifier::HandleOptimizationBarrier(HloInstruction* hlo) {
   return CheckShape(hlo, hlo->operand(0)->shape());
 }
 
-bool ShapeVerifier::ShapesSame(
-    const Shape& a, const Shape& b, bool minor_to_major_only,
-    bool ignore_memory_space, bool ignore_tiles,
-    bool ignore_trailing_padding_alignment_in_elements) {
+bool ShapeVerifier::ShapesSame(const Shape& a, const Shape& b,
+                               Shape::Equal equal) {
   if (!opts_.layout_sensitive) {
     return ShapeUtil::Compatible(a, b);
-  }
-  Shape::Equal equal;
-  if (ignore_memory_space) {
-    equal.IgnoreMemorySpaceInLayout();
-  }
-  if (minor_to_major_only) {
-    equal.MinorToMajorOnlyInLayout();
-  }
-  if (ignore_tiles) {
-    equal.IgnoreTilesInLayout();
-  }
-  if (ignore_trailing_padding_alignment_in_elements) {
-    equal.IgnoreTailPaddingAlignmentInElements();
   }
   return equal(a, b);
 }
@@ -777,6 +794,15 @@ Status CheckDuplicatedSourceOrTarget(HloInstruction* hlo,
 
 }  // namespace
 
+Status ShapeVerifier::HandleCollectiveBroadcast(HloInstruction* hlo) {
+  std::vector<const Shape*> operand_shapes;
+  for (const HloInstruction* operand : hlo->operands()) {
+    operand_shapes.push_back(&operand->shape());
+  }
+  return CheckShape(
+      hlo, ShapeInference::InferCollectiveBroadcastShape(operand_shapes));
+}
+
 Status ShapeVerifier::HandleCollectivePermute(HloInstruction* hlo) {
   TF_ASSIGN_OR_RETURN(
       CollectiveOpGroupMode group_mode,
@@ -1142,11 +1168,12 @@ Status ShapeVerifier::HandleBitcast(HloInstruction* bitcast) {
           (ShapeUtil::ArrayDataSize(output_shape) ==
            ShapeUtil::ArrayDataSize(operand_shape)))) {
       return Internal(
-          "Bitcast cannot have different shape sizes of output (%d) and "
+          "%s: Bitcast cannot have different shape sizes of output (%d) and "
           "operand "
           "(%d) (%s) (%s)",
-          opts_.shape_size(output_shape), opts_.shape_size(operand_shape),
-          output_shape.ToString(true), operand_shape.ToString(true));
+          bitcast->ToString(), opts_.shape_size(output_shape),
+          opts_.shape_size(operand_shape), output_shape.ToString(true),
+          operand_shape.ToString(true));
     }
   }
   return OkStatus();
@@ -1612,8 +1639,7 @@ Status ShapeVerifier::HandleCopyDone(HloInstruction* copy_done) {
   const Shape& dest_shape = ShapeUtil::GetTupleElementShape(operand_shape, 0);
   const Shape& src_shape = ShapeUtil::GetTupleElementShape(operand_shape, 1);
   if (!ShapesSame(dest_shape, src_shape,
-                  /*minor_to_major_only=*/false,
-                  /*ignore_memory_space=*/true)) {
+                  Shape::Equal().IgnoreMemorySpaceInLayout())) {
     return Internal(
         "Source and destination buffers in CopyDone arguments need to be the "
         "same shape found %s and %s\n%s",
@@ -1733,7 +1759,8 @@ Status CheckMixedPrecisionOperands(const HloInstruction* instruction) {
       for (auto operand : instruction->operands()) {
         TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
             operand->shape(),
-            [&](const Shape& subshape, const ShapeIndex& index) {
+            [&](const Shape& subshape,
+                const ShapeIndex& index) -> absl::Status {
               if (!ShapeUtil::ElementIsFloating(subshape)) {
                 return OkStatus();
               }
@@ -1838,18 +1865,27 @@ Status ShapeVerifier::CheckShape(const HloInstruction* instruction,
       case HloOpcode::kSend:
       case HloOpcode::kSendDone:
       case HloOpcode::kTuple:
-      case HloOpcode::kWhile:
-        return ShapesSame(instruction->shape(), inferred_shape,
-                          only_compare_minor_to_major_in_layout);
-      case HloOpcode::kDynamicUpdateSlice:
-        // For DynamicUpdateSlice it has an "in-place" update semantics, but
-        // inside of fusions memory space propagation doesn't propagate the
-        // memory spaces all the way, causing possible mismatches. Relax the
-        // constraint in that condition.
-        return ShapesSame(instruction->shape(), inferred_shape,
-                          only_compare_minor_to_major_in_layout,
-                          /*ignore_memory_space=*/
-                          instruction->parent()->IsFusionComputation());
+      case HloOpcode::kWhile: {
+        Shape::Equal equal;
+        if (only_compare_minor_to_major_in_layout) {
+          equal.MinorToMajorOnlyInLayout();
+        }
+        return ShapesSame(instruction->shape(), inferred_shape, equal);
+      }
+      case HloOpcode::kDynamicUpdateSlice: {
+        Shape::Equal equal;
+        if (only_compare_minor_to_major_in_layout) {
+          equal.MinorToMajorOnlyInLayout();
+        }
+        if (instruction->parent()->IsFusionComputation()) {
+          // For DynamicUpdateSlice it has an "in-place" update semantics, but
+          // inside of fusions memory space propagation doesn't propagate the
+          // memory spaces all the way, causing possible mismatches. Relax the
+          // constraint in that condition.
+          equal.IgnoreMemorySpaceInLayout();
+        }
+        return ShapesSame(instruction->shape(), inferred_shape, equal);
+      }
 
       // We allow arbitrary layout and f32->bf16 transformations on all other
       // instructions, although this may be made more strict pending discussion
@@ -1873,8 +1909,9 @@ Status ShapeVerifier::CheckShape(const HloInstruction* instruction,
   return OkStatus();
 }
 
-Status ShapeVerifier::CheckShape(const HloInstruction* instruction,
-                                 const StatusOr<Shape>& inferred_shape_status) {
+Status ShapeVerifier::CheckShape(
+    const HloInstruction* instruction,
+    const absl::StatusOr<Shape>& inferred_shape_status) {
   if (!inferred_shape_status.ok()) {
     Status s = inferred_shape_status.status();
     tsl::errors::AppendToMessage(&s, ", for instruction ",
@@ -1922,9 +1959,10 @@ Status ShapeVerifier::VerifyEntryComputationLayout(const HloModule& module) {
   // let's not check that.
   if (!ShapesSame(computation->root_instruction()->shape(),
                   result_layout.shape(),
-                  /*minor_to_major_only=*/false, /*ignore_memory_space=*/false,
-                  /*ignore_tiles=*/true,
-                  /*ignore_trailing_padding_alignment_in_elements=*/true)) {
+                  Shape::Equal()
+                      .IgnoreTilesInLayout()
+                      .IgnoreTailPaddingAlignmentInElements()
+                      .IgnoreMemorySpaceInLayout())) {
     return Internal(
         "Shape of the root instruction of entry computation (%s) should be "
         "compatible to one specified in module's entry computation layout (%s)",
@@ -1946,10 +1984,10 @@ Status ShapeVerifier::VerifyEntryComputationLayout(const HloModule& module) {
     // TPU layout assignment doesn't set the tiles on entry_computation_layout,
     // so let's not check that.
     if (!ShapesSame(parameter->shape(), layout.parameter_shape(i),
-                    /*minor_to_major_only=*/false,
-                    /*ignore_memory_space=*/false,
-                    /*ignore_tiles=*/true,
-                    /*ignore_trailing_padding_alignment_in_elements=*/true)) {
+                    Shape::Equal()
+                        .IgnoreTilesInLayout()
+                        .IgnoreTailPaddingAlignmentInElements()
+                        .IgnoreMemorySpaceInLayout())) {
       return Internal(
           "Shape of the entry computation parameter %d is %s should be "
           "compatible to the one specified in module's entry computation "
@@ -1972,17 +2010,21 @@ std::string ComputationsToString(
 
 // Verifies various invariants about the structure of the HLO:
 //
-// (1) each instruction has a non-null parent() set to the HloComputation
-// which
-//     contains it.
+// (1) each instruction is non-null and has a non-null parent() set to the
+// HloComputation which contains it.
 //
-// (2) each computation has a non-null parent() set to the HloModule which
-//     contains it.
+// (2) each computation is non-null and has a non-null parent() set to the
+// HloModule which contains it.
 //
-// (3) the operands of each instruction are in the same computation as the
-//     instruction.
+// (3) the operands of each instruction are non-null and are in the same
+// computation as the instruction.
 Status VerifyHloStructure(HloModule* module) {
   for (const HloComputation* computation : module->computations()) {
+    if (computation == nullptr) {
+      return Internal("Computation in module %s is a null pointer",
+                      module->name());
+    }
+
     if (computation->parent() == nullptr) {
       return Internal("Computation %s has a null parent pointer",
                       computation->name());
@@ -1993,6 +2035,10 @@ Status VerifyHloStructure(HloModule* module) {
     }
 
     for (const HloInstruction* instruction : computation->instructions()) {
+      if (instruction == nullptr) {
+        return Internal("Instruction in computation %s is a null pointer",
+                        computation->name());
+      }
       if (instruction->parent() == nullptr) {
         return Internal("Instruction %s has a null parent pointer",
                         instruction->name());
@@ -2013,6 +2059,17 @@ Status VerifyHloStructure(HloModule* module) {
     for (const HloInstruction* instruction : computation->instructions()) {
       for (int i = 0; i < instruction->operand_count(); ++i) {
         const HloInstruction* operand = instruction->operand(i);
+        if (operand == nullptr) {
+          return Internal(
+              "Operand %d (out of %d) of instruction: %s is a null pointer", i,
+              instruction->operand_count(), instruction->name());
+        }
+        if (operand->parent() == nullptr) {
+          return Internal(
+              "Operand %d (out of %d) of instruction: %s has a null pointer "
+              "parent",
+              i, instruction->operand_count(), instruction->name());
+        }
         if (operand->parent() != instruction->parent()) {
           return Internal(
               "Operand %d (%s) of instruction %s is in a different "
@@ -2041,22 +2098,6 @@ bool ShapeContainsToken(const Shape& shape) {
   return contains_token;
 }
 
-// Verifies that all types entering and exiting the entry computation are
-// legal.
-Status VerifyEntryAndExitShapes(const HloModule& module) {
-  // Tokens cannot be passed as entry parameters.
-  // TODO(b/80000000): Remove this constraint.
-  for (int i = 0; i < module.entry_computation()->num_parameters(); ++i) {
-    HloInstruction* param =
-        module.entry_computation()->parameter_instruction(i);
-    if (ShapeContainsToken(param->shape())) {
-      return Internal("Entry parameter %d is or contains a token shape: %s", i,
-                      ShapeUtil::HumanString(param->shape()));
-    }
-  }
-  return OkStatus();
-}
-
 // Checks if the given two instructions share the same channel id.
 Status CheckSameChannel(const HloInstruction* instr1,
                         const HloInstruction* instr2) {
@@ -2071,7 +2112,7 @@ Status CheckSameChannel(const HloInstruction* instr1,
 }
 
 // Checks if the given two instructions have the same is_host_transfer
-// attribute value. Intsructions must be send/recv instructions or their
+// attribute value. Instructions must be send/recv instructions or their
 // 'done' variant.
 Status CheckSameIsHostTransfer(const HloInstruction* instr1,
                                const HloInstruction* instr2) {
@@ -2233,8 +2274,40 @@ Status VerifyChannels(const HloModule& module) {
   absl::flat_hash_map<int64_t, std::vector<const HloInstruction*>>
       channel_instructions;
 
-  // Send/Recv instruction must have a single user: the corresponding
-  // SendDone/RecvDone. with matching channel.
+  // For Async operations, we need to make sure:
+  // (1) AsyncStart and AsyncDone are used in pairs
+  // (2) AsynStart and Asyndone are connected, that is, an AsynDone has an
+  //     AsyncStart as its only operand, and an AsynStart has an AsyncDone as
+  //     its only user
+  // (3) the channel ID used by a pair of Async operations is unique
+  //
+  // Send and SendDone, Recv and RecvDone are such pairs of Async operations.
+  // Different from other Async operations, a channel ID can be used by one
+  // Send-SendDone pair and one Recv-RecvDone pair. As such, we verify the
+  // above three invariants for Send/Recv related instructions with adjustment
+  // to (3):
+  // (3*) the channel ID used by a pair of Send-SendDone can be shared by at
+  //       most one pair of Recv-RecvDone.
+  //
+  // Currently, the GPU compiler can decomposed collective-permute into a group
+  // of instructions with a pair of Send-SendDone and a pair of Recv-RecvDone
+  // that use the same channel ID. When a while-body contains such instructions,
+  // the GPU compiler can also peel off Send and Recv, and statically order
+  // SendDone/RecvDone inside the while-body before Send/Recv. This breaks
+  // invariants (2) and (3*) for the pipelined Send/Recv case. We verify the
+  // following for a group of instructions using the same channel ID but don't
+  // satisfy invariants (1)(2)(3*):
+  // (4) All instructions in the group are annotated with frontend attributes.
+  //     We avoid verifying the content of such a frontend attribute to avoid
+  //     making the general HLO instruction verifier depend on the compiler pass
+  //     that performs the transformation.
+  // (5) the group should contain equal number uses of each Send/Recv related
+  //     instructions.
+  //
+  // Comparing the verification of unpipelined Send/Recv with the verification
+  // of pipelined, what we missing verifying is that the direct connection
+  // between Send/Recv and SendDone/RecvDone through operands.
+  //
   for (const HloComputation* computation : module.computations()) {
     for (const HloInstruction* instruction : computation->instructions()) {
       auto channel_instr = DynCast<HloChannelInstruction>(instruction);
@@ -2245,29 +2318,55 @@ Status VerifyChannels(const HloModule& module) {
 
       switch (instruction->opcode()) {
         case HloOpcode::kSend: {
-          TF_RET_CHECK(instruction->users().size() == 1);
-          const HloInstruction* send_done = instruction->users().front();
-          TF_RET_CHECK(send_done->opcode() == HloOpcode::kSendDone);
-          TF_RETURN_IF_ERROR(CheckSameChannel(instruction, send_done));
-          TF_RETURN_IF_ERROR(CheckSameIsHostTransfer(instruction, send_done));
+          bool pipelined = true;
+          if (instruction->users().size() == 1) {
+            const HloInstruction* send_user = instruction->users().front();
+            if (send_user->opcode() == HloOpcode::kSendDone) {
+              TF_RETURN_IF_ERROR(CheckSameChannel(instruction, send_user));
+              TF_RETURN_IF_ERROR(
+                  CheckSameIsHostTransfer(instruction, send_user));
+              pipelined = false;
+            }
+          }
+          // Pipelined Send should be annotated with frontend attributes.
+          TF_RET_CHECK(pipelined == false ||
+                       !instruction->frontend_attributes().map().empty());
           break;
         }
         case HloOpcode::kRecv: {
-          TF_RET_CHECK(instruction->users().size() == 1);
-          const HloInstruction* recv_done = instruction->users().front();
-          TF_RET_CHECK(recv_done->opcode() == HloOpcode::kRecvDone);
-          TF_RETURN_IF_ERROR(CheckSameChannel(instruction, recv_done));
-          TF_RETURN_IF_ERROR(CheckSameIsHostTransfer(instruction, recv_done));
+          bool pipelined = true;
+          if (instruction->users().size() == 1) {
+            const HloInstruction* recv_user = instruction->users().front();
+            if (recv_user->opcode() == HloOpcode::kRecvDone) {
+              TF_RETURN_IF_ERROR(CheckSameChannel(instruction, recv_user));
+              TF_RETURN_IF_ERROR(
+                  CheckSameIsHostTransfer(instruction, recv_user));
+              pipelined = false;
+            }
+          }
+          // Pipelined Recv should be annotated with frontend attributes.
+          TF_RET_CHECK(pipelined == false ||
+                       !instruction->frontend_attributes().map().empty());
           break;
         }
-        case HloOpcode::kSendDone:
+        case HloOpcode::kSendDone: {
           TF_RET_CHECK(instruction->operands().size() == 1);
-          TF_RET_CHECK(instruction->operand(0)->opcode() == HloOpcode::kSend);
+          const HloInstruction* send_done_operand = instruction->operand(0);
+          // If the operand is not a Send, the Send-done is pipelined and should
+          // have frontend attributes.
+          TF_RET_CHECK(send_done_operand->opcode() == HloOpcode::kSend ||
+                       !instruction->frontend_attributes().map().empty());
           break;
-        case HloOpcode::kRecvDone:
+        }
+        case HloOpcode::kRecvDone: {
           TF_RET_CHECK(instruction->operands().size() == 1);
-          TF_RET_CHECK(instruction->operand(0)->opcode() == HloOpcode::kRecv);
+          const HloInstruction* recv_done_operand = instruction->operand(0);
+          // If the operand is not a Recv, the Recv-done is pipelined and should
+          // have frontend attributes.
+          TF_RET_CHECK(recv_done_operand->opcode() == HloOpcode::kRecv ||
+                       !instruction->frontend_attributes().map().empty());
           break;
+        }
         default:
           break;
       }
@@ -2280,33 +2379,50 @@ Status VerifyChannels(const HloModule& module) {
     const HloInstruction* first = instructions[0];
     auto sendrecv = DynCast<HloSendRecvInstruction>(first);
     if (sendrecv) {
-      absl::flat_hash_set<HloOpcode> opcodes;
-      bool maybe_send_recv_pipeline = false;
+      // Check that all instructions are Send/Recv related and count the
+      // appearance of each opcode in the group.
+      absl::flat_hash_map<HloOpcode, int> opcode_to_count;
       for (const HloInstruction* instr : instructions) {
-        if (opcodes.insert(instr->opcode()).second == false) {
-          // A channel is used by multiple instructions with the same opcode.
-          // This is only allows for pipelining Send and Recv, assuming such
-          // instructions have non-empty frontend attributes.
-          if (DynCast<HloSendInstruction>(instr) ||
-              DynCast<HloRecvInstruction>(instr)) {
-            maybe_send_recv_pipeline =
-                (!instr->frontend_attributes().map().empty());
-          }
+        auto it = opcode_to_count.find(instr->opcode());
+        if (it != opcode_to_count.end()) {
+          it->second++;
+        } else {
+          opcode_to_count[instr->opcode()] = 1;
         }
-        auto cast = DynCast<HloSendRecvInstruction>(instr);
-        TF_RET_CHECK(cast != nullptr)
+        TF_RET_CHECK(DynCast<HloSendRecvInstruction>(instr) != nullptr)
             << "channel " << pair.first
             << " is used for different types of channel instructions";
       }
+
+      int count = opcode_to_count.begin()->second;
+      bool consistent_count =
+          absl::c_all_of(opcode_to_count, [count](const auto& opcode_count) {
+            return opcode_count.second == count;
+          });
+      // A pipelined group of Send/Recv should all have frontend attributes.
+      bool maybe_pipelined =
+          absl::c_all_of(instructions, [](const HloInstruction* inst) {
+            return !inst->frontend_attributes().map().empty();
+          });
+
       if (sendrecv->is_host_transfer()) {
-        TF_RET_CHECK(instructions.size() == 2)
+        TF_RET_CHECK(consistent_count && count == 1 && instructions.size() == 2)
             << "channel " << pair.first
             << " is used for multiple host send/recv instructions";
       } else {
-        if (!maybe_send_recv_pipeline) {
-          TF_RET_CHECK(instructions.size() == opcodes.size())
+        if (consistent_count && count == 1) {
+          TF_RET_CHECK(instructions.size() == opcode_to_count.size())
               << "channel " << pair.first
               << " is used for multiple send/recv instructions";
+        } else {
+          TF_RET_CHECK(maybe_pipelined) << "channel " << pair.first
+                                        << " is used for multiple send/recv "
+                                           "instructions but not pipelined";
+          TF_RET_CHECK(consistent_count && opcode_to_count.size() % 2 == 0)
+              << "channel " << pair.first
+              << " is pipelined. Not all Send/Recv related instructions are"
+                 " used the same number of times or channel is used for other "
+                 "instructions";
         }
       }
     } else {
@@ -2709,10 +2825,18 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
             operand_shape.rank() == result_shape.rank() &&
             operand_shape.has_layout()) {
           const Layout& operand_layout = operand_shape.layout();
-          Layout::Equal equal_predicate = Layout::Equal();
+          Layout::Equal equal_predicate =
+              Layout::Equal().IgnoreTiles().IgnoreMemorySpace();
           if (instruction->opcode() == HloOpcode::kConvert) {
             // Convert instructions can change element_size_in_bits
             equal_predicate.IgnoreElementSize();
+          } else if (instruction->opcode() == HloOpcode::kDynamicSlice ||
+                     instruction->opcode() == HloOpcode::kDynamicUpdateSlice ||
+                     instruction->opcode() == HloOpcode::kCopy) {
+            TF_RETURN_IF_ERROR(HostOffloadInstructionCanChangeMemorySpace(
+                instruction, operand_layout.memory_space(),
+                result_layout.memory_space()));
+            equal_predicate.IgnoreMemorySpace();
           }
           TF_RET_CHECK(equal_predicate(result_layout, operand_layout))
               << "Instruction shouldn't change layouts "
@@ -2746,6 +2870,39 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
     return OkStatus();
   }
 
+  // Verifies whether a given `instruction` is permitted to change the layout
+  // memory space from `operand_memory_space` to `result_memory_space`.
+  // Returns OkStatus() if the instruction's layout changes are valid;
+  // otherwise, returns an appropriate error status.
+  static Status HostOffloadInstructionCanChangeMemorySpace(
+      const HloInstruction* instruction, const int64_t operand_memory_space,
+      const int64_t result_memory_space) {
+    TF_RET_CHECK(!(operand_memory_space == Layout::kGenericFastMemorySpace &&
+                   result_memory_space != Layout::kGenericFastMemorySpace) ||
+                 (operand_memory_space != Layout::kGenericFastMemorySpace &&
+                  result_memory_space == Layout::kGenericFastMemorySpace))
+        << "Instruction shouldn't change layout memory space between generic "
+           "fast memory space and others for instruction: "
+        << instruction->ToString();
+
+    if (instruction->opcode() == HloOpcode::kDynamicSlice) {
+      TF_RET_CHECK(!(operand_memory_space == Layout::kDefaultMemorySpace &&
+                     result_memory_space == Layout::kHostMemorySpace))
+          << "DynamicSlice instruction shouldn't change layout memory "
+          << "space from device to host: " << instruction->ToString();
+    } else if (instruction->opcode() == HloOpcode::kDynamicUpdateSlice) {
+      TF_RET_CHECK(!(operand_memory_space == Layout::kHostMemorySpace &&
+                     result_memory_space == Layout::kDefaultMemorySpace))
+          << "DynamicUpdateSlice instruction shouldn't change layout "
+          << "memory space from host to device: " << instruction->ToString();
+    } else if (instruction->opcode() != HloOpcode::kCopy) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Instruction shouldn't change layout memory space: ",
+                       instruction->ToString()));
+    }
+    return OkStatus();
+  }
+
   absl::flat_hash_map<std::string, const HloInstruction*> instructions_by_name_;
   const HloVerifierOpts& opts_;
   std::optional<int64_t> num_devices_;
@@ -2753,14 +2910,14 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
 
 }  // namespace
 
-StatusOr<bool> HloVerifier::Run(
+absl::StatusOr<bool> HloVerifier::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   auto disabled = module->config().debug_options().xla_disable_hlo_passes();
   if (std::find(disabled.begin(), disabled.end(), name()) != disabled.end()) {
     return false;
   }
-  auto status_or_changed = [&]() -> StatusOr<bool> {
+  auto status_or_changed = [&]() -> absl::StatusOr<bool> {
     TF_RET_CHECK(!module->name().empty());
 
     if (module->entry_computation()->IsFusionComputation()) {
@@ -2785,7 +2942,6 @@ StatusOr<bool> HloVerifier::Run(
     }
 
     TF_RETURN_IF_ERROR(shape_verifier->VerifyEntryComputationLayout(*module));
-    TF_RETURN_IF_ERROR(VerifyEntryAndExitShapes(*module));
 
     // If the module has a schedule, it must be valid.
     if (module->has_schedule()) {
@@ -2864,12 +3020,6 @@ void MetadataTracker::HandleMetadata(const OpMetadata& metadata) {
   }
   if (metadata.source_line() != 0) {
     ++has_source_line_count_;
-  }
-  if (metadata.creation_pass_id() != 0) {
-    ++has_creation_pass_id_count_;
-  }
-  if (metadata.logical_creation_pass_id() != 0) {
-    ++has_logical_creation_pass_id_count_;
   }
   if (metadata.size_of_generated_code_in_bytes() != 0) {
     ++has_size_of_generated_code_in_bytes_count_;

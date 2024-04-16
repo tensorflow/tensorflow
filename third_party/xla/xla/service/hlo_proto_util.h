@@ -41,18 +41,18 @@ HloProto MakeHloProto(const HloModule& module);
 // The HLO module could be a pre-optimizations (default) or post-optimizations
 // module, which affects how the HLO module is verified, e.g., mixed-precision
 // is allowed in post-optimizations HLOs.
-StatusOr<std::unique_ptr<HloModule>> CreateModuleFromProto(
+absl::StatusOr<std::unique_ptr<HloModule>> CreateModuleFromProto(
     const HloModuleProto& proto, const HloModuleConfig& module_config,
     bool is_module_post_optimizations = false);
 
 // Returns the shapes of the parameters of the entry computation. Shape pointers
 // refer to shapes inside of the given HloProto.
-StatusOr<std::vector<const ShapeProto*>> EntryComputationParameterShapes(
+absl::StatusOr<std::vector<const ShapeProto*>> EntryComputationParameterShapes(
     const HloProto& hlo_proto);
 
 // Returns the shape of the output of the entry computation. The shape pointer
 // refers to the output shape inside of the given HloProto.
-StatusOr<const ShapeProto*> EntryComputationOutputShape(
+absl::StatusOr<const ShapeProto*> EntryComputationOutputShape(
     const HloProto& hlo_proto);
 
 }  // namespace xla

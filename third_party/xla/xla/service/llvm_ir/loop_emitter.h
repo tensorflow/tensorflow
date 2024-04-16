@@ -34,7 +34,7 @@ namespace llvm_ir {
 // The function has to emit code to compute this value and return the resulting
 // llvm::Value*.
 using ElementGenerator =
-    std::function<StatusOr<llvm::Value*>(const IrArray::Index& index)>;
+    std::function<absl::StatusOr<llvm::Value*>(const IrArray::Index& index)>;
 using BodyEmitter = std::function<Status(const IrArray::Index& index)>;
 
 // Creates the body emitter from target arrays.

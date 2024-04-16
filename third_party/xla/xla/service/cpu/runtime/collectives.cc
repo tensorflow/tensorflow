@@ -26,11 +26,19 @@
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
+#include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "xla/executable_run_options.h"
 #include "xla/runtime/custom_call.h"
 #include "xla/runtime/custom_call_registry.h"
 #include "xla/runtime/executable.h"
+#include "xla/runtime/memref_view.h"
 #include "xla/service/cpu/cpu_runtime.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"

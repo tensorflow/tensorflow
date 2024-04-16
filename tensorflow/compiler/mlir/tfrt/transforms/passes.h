@@ -130,11 +130,6 @@ void CreateTfToTfrtPipeline(mlir::OpPassManager& pm,
 Status CreateTfExecutorToTfrtPipeline(mlir::PassManager& pm,
                                       const TfrtPipelineOptions& options);
 
-// Creates a pipeline of passes that lowers MLIR TF Executor dialect to TF
-// dialect for CoreRT purposes.
-Status CreateTFExecutorToTFPipeline(mlir::PassManager& pm,
-                                    const TfrtPipelineOptions& options);
-
 // TODO(deqiangc): refactor below helpers once mlrt is OSSed.
 void CreateTFExecutorToTFPreInvariantOptimizationPipelineHelper(
     mlir::OpPassManager& pm, const TfrtPipelineOptions& options);

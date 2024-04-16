@@ -34,25 +34,26 @@ class PlatformUtil {
   // This is needed to differentiate if for given platform like GPU or CPU
   // there are multiple implementations. For example, GPU platform may be
   // cuda(Nvidia) or rocm(AMD)
-  static StatusOr<std::string> CanonicalPlatformName(
+  static absl::StatusOr<std::string> CanonicalPlatformName(
       const std::string& platform_name);
 
   // Returns the platforms present on the system and supported by XLA.
   //
   // Note that, even if a platform is present with zero devices, if we *do* have
   // compilation support for it, it will be returned in this sequence.
-  static StatusOr<std::vector<se::Platform*>> GetSupportedPlatforms();
+  static absl::StatusOr<std::vector<se::Platform*>> GetSupportedPlatforms();
 
   // Convenience function which returns the default supported platform for
   // tests. If exactly one supported platform is present, then this platform is
   // the default platform. If exactly two platforms are present and one of them
   // is the interpreter platform, then the other platform is the default
   // platform. Otherwise returns an error.
-  static StatusOr<se::Platform*> GetDefaultPlatform();
+  static absl::StatusOr<se::Platform*> GetDefaultPlatform();
 
   // Returns the platform according to the given name. Returns error if there is
   // no such platform.
-  static StatusOr<se::Platform*> GetPlatform(const std::string& platform_name);
+  static absl::StatusOr<se::Platform*> GetPlatform(
+      const std::string& platform_name);
 
   // Returns a vector of StreamExecutors for the given platform.
   // If populated, only the devices in allowed_devices will have
@@ -60,7 +61,7 @@ class PlatformUtil {
   // initialized and returned.
   //
   // If the platform has no visible devices, a not-found error is returned.
-  static StatusOr<std::vector<se::StreamExecutor*>> GetStreamExecutors(
+  static absl::StatusOr<std::vector<se::StreamExecutor*>> GetStreamExecutors(
       se::Platform* platform,
       const std::optional<std::set<int>>& allowed_devices = std::nullopt);
 

@@ -474,10 +474,9 @@ inline Value mapMhloOpToStdScalarOp<mhlo::ReducePrecisionOp>(
   mlir::ImplicitLocOpBuilder b(loc, *builder);
 
   // Integer and float types for casting and constant generation.
-  auto floatType =
-      argTypes.front().cast<TensorType>().getElementType().cast<FloatType>();
+  auto floatType = getElementTypeOrSelf(argTypes.front()).cast<FloatType>();
   int64_t nbits = floatType.getWidth();
-  auto intType = mlir::IntegerType::get(loc.getContext(), floatType.getWidth());
+  auto intType = mlir::IntegerType::get(loc.getContext(), nbits);
 
   Value xAsInt = b.create<arith::BitcastOp>(intType, adaptor.getOperand());
 
@@ -1082,7 +1081,12 @@ inline Value mapMhloOpToStdScalarOp<mhlo::LogisticOp>(
   Value expNegX = mapMhloOpToStdScalarOp<mhlo::ExpOp>(loc, resultTypes,
                                                       resultTypes, {{negX}}, b);
 
-  Value oneFloat = b->create<arith::ConstantOp>(loc, b->getF32FloatAttr(1.0));
+  Type type = getElementTypeOrSelf(resultTypes[0]);
+  Value oneFloat =
+      type.isa<ComplexType>()
+          ? b->create<arith::ConstantOp>(loc, b->getF32FloatAttr(1.0))
+          : getConstantOrSplat(b, loc, resultTypes[0],
+                               FloatAttr::get(type, 1.0f));
   Value one = mapConvertOpToStdScalarOp(loc, resultTypes, resultTypes,
                                         {oneFloat.getType()}, {{oneFloat}}, b);
   Value oneAddExprNegX = mapMhloOpToStdScalarOp<mhlo::AddOp>(
@@ -1159,7 +1163,7 @@ inline Value mapMhloOpToStdScalarOp<mhlo::PowOp>(Location loc,
   // The accum is correct when the rhs is non-negative. When rhs is
   // negative, we return 0 for integer, with the exception of lhs values of 1
   // and -1 which have integer results for negative exponents. Specifically, the
-  // calulation is the following:
+  // calculation is the following:
   //
   // - Return accum if the rhs is not negative.
   // - Return 1 or -1 depending on the parity of rhs when the lhs is -1.
@@ -1309,9 +1313,11 @@ struct MhloOpToStdScalarOp {
                                  ArrayRef<Type> argTypes, ValueRange args,
                                  OpBuilder* b) {
     static_assert(!std::is_same<MhloOpTy, mhlo::ConvertOp>::value);
-    return mapOpOfType<MhloOpTy>(
-        op.getLoc(), resultTypes, argTypes,
-        typename MhloOpTy::Adaptor(args, op->getAttrDictionary()), b);
+    typename MhloOpTy::Adaptor adaptor(args, op->getAttrDictionary(),
+                                       op->getPropertiesStorage(),
+                                       op->getRegions());
+    return mapOpOfType<MhloOpTy>(op.getLoc(), resultTypes, argTypes, adaptor,
+                                 b);
   }
   // Overload for mhlo::ConvertOp.
   static Value mapOpWithArgTypes(mhlo::ConvertOp op, ArrayRef<Type> resultTypes,
@@ -1326,14 +1332,17 @@ struct MhloOpToStdScalarOp {
   static Value mapOpOfType(Location loc, ArrayRef<Type> resultTypes,
                            ArrayRef<Type> argTypes,
                            typename MhloOpTy::Adaptor adaptor, OpBuilder* b) {
-    if (std::is_same<MhloOpTy, mhlo::ConvertOp>::value) {
-      // Note: this assumes that the caller is passing result/arg types with
-      // appropriate signedness.
-      return impl::mapConvertOpToStdScalarOp(
-          loc, resultTypes, resultTypes, argTypes, adaptor.getOperands(), b);
-    }
     return impl::mapMhloOpToStdScalarOp<MhloOpTy>(loc, resultTypes, argTypes,
                                                   adaptor, b);
+  }
+
+  static Value mapConvertOpToStdScalarOp(Location loc,
+                                         ArrayRef<Type> targetTypes,
+                                         ArrayRef<Type> resultTypes,
+                                         ArrayRef<Type> argTypes,
+                                         ValueRange args, OpBuilder* b) {
+    return impl::mapConvertOpToStdScalarOp(loc, targetTypes, resultTypes,
+                                           argTypes, args, b);
   }
 };
 

@@ -18,13 +18,11 @@ limitations under the License.
 #include <memory>
 #include <optional>
 
-#include "absl/types/span.h"
+#include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/fusions/fusion_emitter.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
-#include "xla/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -50,24 +48,6 @@ class FusionInfo {
 
  private:
   const HloFusionAnalysis& analysis_;
-};
-
-class LmhloFusionInfo : public FusionInfo {
- public:
-  LmhloFusionInfo(const HloFusionAnalysis& analysis,
-                  mlir::lmhlo::FusionOp fusion_op,
-                  absl::Span<const BufferAllocation* const> allocations)
-      : FusionInfo(analysis),
-        fusion_op_(fusion_op),
-        allocations_(allocations) {}
-
-  bool CanEmitDynamicUpdateSliceInPlace() const override;
-  std::optional<absl::StatusOr<std::unique_ptr<FusionInterface>>>
-  GetCopyFusion() const override;
-
- private:
-  mlir::lmhlo::FusionOp fusion_op_;
-  absl::Span<const BufferAllocation* const> allocations_;
 };
 
 class HloFusionInfo : public FusionInfo {
@@ -111,7 +91,7 @@ class PreBufferAssignmentFusionInfo : public FusionInfo {
 // Returns the emitter for the given fusion. Returns nullopt if the fusion
 // type is not yet supported.
 absl::StatusOr<std::unique_ptr<FusionInterface>> GetFusionEmitter(
-    const FusionInfo& fusion_info);
+    const FusionInfo& fusion_info, bool is_emission_phase = false);
 
 }  // namespace gpu
 }  // namespace xla

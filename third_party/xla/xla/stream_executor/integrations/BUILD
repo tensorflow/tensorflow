@@ -1,11 +1,12 @@
+load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load("//xla:xla.bzl", "xla_cc_test")
 load("//xla/stream_executor:build_defs.bzl", "stream_executor_friends")
-load("@local_tsl//tsl:tsl.bzl", "if_google", "set_external_visibility")
-load("@local_tsl//tsl:tsl.default.bzl", "filegroup")
-load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
+load("//xla/tsl:tsl.bzl", "if_google", "internal_visibility")
+load("//xla/tsl:tsl.default.bzl", "filegroup")
 
 package(
-    default_visibility = ["//visibility:public"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = internal_visibility([":friends"]),
     licenses = ["notice"],
 )
 
@@ -28,7 +29,7 @@ filegroup(
         "device_host_allocator.h",
         "device_mem_allocator.h",
     ],
-    visibility = ["//visibility:public"],
+    visibility = internal_visibility(["//tensorflow/core:__pkg__"]),
 )
 
 #===--------------------------------------------------------------------------------------------===#
@@ -42,7 +43,6 @@ cc_library(
     name = "tf_allocator_adapter",
     srcs = ["tf_allocator_adapter.cc"],
     hdrs = ["tf_allocator_adapter.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla/stream_executor",
         "//xla/stream_executor:device_memory",
@@ -65,7 +65,6 @@ cc_library(
         "device_host_allocator.h",
         "device_mem_allocator.h",
     ],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla/stream_executor",
         "//xla/stream_executor:memory_allocation",

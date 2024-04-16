@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/manifest_checking_test.h"
 #include "xla/tests/test_utils.h"
+#include "xla/types.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/lib/core/bitmap.h"
 #include "tsl/platform/ml_dtypes.h"
@@ -93,14 +94,14 @@ class ClientLibraryTestBase : public ManifestCheckingTest {
   // Convenience methods for building and running a computation with the member
   // execution options. Modify execution_options_ in your test if you want to
   // customize the options.
-  StatusOr<std::unique_ptr<GlobalData>> Execute(
+  absl::StatusOr<std::unique_ptr<GlobalData>> Execute(
       XlaBuilder* builder, absl::Span<GlobalData* const> arguments);
 
-  StatusOr<Literal> ExecuteAndTransfer(
+  absl::StatusOr<Literal> ExecuteAndTransfer(
       XlaBuilder* builder, absl::Span<GlobalData* const> arguments,
       const Shape* shape_with_output_layout = nullptr);
 
-  StatusOr<Literal> ExecuteAndTransfer(
+  absl::StatusOr<Literal> ExecuteAndTransfer(
       const XlaComputation& computation,
       absl::Span<GlobalData* const> arguments,
       const Shape* shape_with_output_layout = nullptr);
@@ -108,7 +109,7 @@ class ClientLibraryTestBase : public ManifestCheckingTest {
   // This executes the computation via the reference client (which connects a
   // interpreter backend). The result is used as the expected value of the
   // computation.
-  StatusOr<Literal> ExecuteAndTransferReference(
+  absl::StatusOr<Literal> ExecuteAndTransferReference(
       const XlaComputation& computation,
       absl::Span<GlobalData* const> arguments,
       const Shape* shape_with_output_layout = nullptr);
@@ -192,7 +193,7 @@ class ClientLibraryTestBase : public ManifestCheckingTest {
   // Build and run the computation and return the result as a literal.
   // shape_with_layout indicates the result layout to request when calling
   // Execute.
-  StatusOr<Literal> ComputeAndTransfer(
+  absl::StatusOr<Literal> ComputeAndTransfer(
       XlaBuilder* builder, absl::Span<GlobalData* const> arguments,
       const Shape* shape_with_layout = nullptr);
 
@@ -275,14 +276,14 @@ class ClientLibraryTestBase : public ManifestCheckingTest {
   // server, then stores into "data_handle" the global handle for that
   // parameter. When the use_bfloat16 flag is set but the literal has F32
   // elements, the literal will be converted to BF16 before being transferred.
-  StatusOr<std::unique_ptr<GlobalData>> CreateParameterAndTransferLiteral(
+  absl::StatusOr<std::unique_ptr<GlobalData>> CreateParameterAndTransferLiteral(
       int64_t parameter_number, const Literal& literal, const std::string& name,
       XlaBuilder* builder, XlaOp* data_handle);
 
   // As above, but the caller can specify the device that the literal is
   // transferred to. If device_handle is nullptr, the literal will be
   // transferred to the default device.
-  StatusOr<std::unique_ptr<GlobalData>> CreateParameterAndTransferLiteral(
+  absl::StatusOr<std::unique_ptr<GlobalData>> CreateParameterAndTransferLiteral(
       int64_t parameter_number, const Literal& literal, const std::string& name,
       const DeviceHandle* device_handle, XlaBuilder* builder,
       XlaOp* data_handle);
@@ -410,7 +411,7 @@ class ClientLibraryTestBase : public ManifestCheckingTest {
   // Executes the computation and calculates the expected reference value using
   // the reference client. Returns two literals in the order of (expected,
   // actual).
-  StatusOr<std::pair<Literal, Literal>> ComputeValueAndReference(
+  absl::StatusOr<std::pair<Literal, Literal>> ComputeValueAndReference(
       XlaBuilder* builder, absl::Span<const Literal> arguments);
 
   // Converts an f32 literal to bf16 if use_bfloat16_ is true.
@@ -444,6 +445,10 @@ class ClientLibraryTestBase : public ManifestCheckingTest {
 
   // Arguments to be passed to the computation when it runs.
   std::vector<Literal> arguments_;
+
+  template <typename T>
+  static constexpr inline bool is_floating_or_complex_v =
+      std::disjunction_v<is_specialized_floating_point<T>, is_complex<T>>;
 };
 
 template <typename NativeT>
@@ -459,17 +464,7 @@ template <typename NativeT>
 void ClientLibraryTestBase::ComputeAndCompareR0(
     XlaBuilder* builder, NativeT expected,
     absl::Span<GlobalData* const> arguments, ErrorSpec error) {
-  static_assert(std::is_same<NativeT, float>::value ||
-                    std::is_same<NativeT, double>::value ||
-                    std::is_same<NativeT, bfloat16>::value ||
-                    std::is_same<NativeT, half>::value ||
-                    std::is_same<NativeT, tsl::float8_e5m2>::value ||
-                    std::is_same<NativeT, tsl::float8_e5m2fnuz>::value ||
-                    std::is_same<NativeT, tsl::float8_e4m3fn>::value ||
-                    std::is_same<NativeT, tsl::float8_e4m3b11>::value ||
-                    std::is_same<NativeT, tsl::float8_e4m3fnuz>::value ||
-                    std::is_same<NativeT, complex64>::value ||
-                    std::is_same<NativeT, complex128>::value,
+  static_assert(is_floating_or_complex_v<NativeT>,
                 "Float or complex type required when specifying an ErrorSpec");
   Literal expected_literal = LiteralUtil::CreateR0<NativeT>(expected);
   ClientLibraryTestBase::ComputeAndCompareLiteral(builder, expected_literal,
@@ -489,17 +484,7 @@ template <typename NativeT>
 void ClientLibraryTestBase::ComputeAndCompareR1(
     XlaBuilder* builder, absl::Span<const NativeT> expected,
     absl::Span<GlobalData* const> arguments, ErrorSpec error) {
-  static_assert(std::is_same<NativeT, float>::value ||
-                    std::is_same<NativeT, double>::value ||
-                    std::is_same<NativeT, bfloat16>::value ||
-                    std::is_same<NativeT, half>::value ||
-                    std::is_same<NativeT, tsl::float8_e5m2>::value ||
-                    std::is_same<NativeT, tsl::float8_e5m2fnuz>::value ||
-                    std::is_same<NativeT, tsl::float8_e4m3fn>::value ||
-                    std::is_same<NativeT, tsl::float8_e4m3b11>::value ||
-                    std::is_same<NativeT, tsl::float8_e4m3fnuz>::value ||
-                    std::is_same<NativeT, complex64>::value ||
-                    std::is_same<NativeT, complex128>::value,
+  static_assert(is_floating_or_complex_v<NativeT>,
                 "Float or complex type required when specifying an ErrorSpec");
   Literal expected_literal = LiteralUtil::CreateR1<NativeT>(expected);
   ClientLibraryTestBase::ComputeAndCompareLiteral(builder, expected_literal,
@@ -520,17 +505,7 @@ template <typename NativeT>
 void ClientLibraryTestBase::ComputeAndCompareR2(
     XlaBuilder* builder, const Array2D<NativeT>& expected,
     absl::Span<GlobalData* const> arguments, ErrorSpec error) {
-  static_assert(std::is_same<NativeT, float>::value ||
-                    std::is_same<NativeT, double>::value ||
-                    std::is_same<NativeT, bfloat16>::value ||
-                    std::is_same<NativeT, half>::value ||
-                    std::is_same<NativeT, tsl::float8_e5m2>::value ||
-                    std::is_same<NativeT, tsl::float8_e5m2fnuz>::value ||
-                    std::is_same<NativeT, tsl::float8_e4m3fn>::value ||
-                    std::is_same<NativeT, tsl::float8_e4m3b11>::value ||
-                    std::is_same<NativeT, tsl::float8_e4m3fnuz>::value ||
-                    std::is_same<NativeT, complex64>::value ||
-                    std::is_same<NativeT, complex128>::value,
+  static_assert(is_floating_or_complex_v<NativeT>,
                 "Float or complex type required when specifying an ErrorSpec");
   Literal expected_literal =
       LiteralUtil::CreateR2FromArray2D<NativeT>(expected);
@@ -552,17 +527,7 @@ template <typename NativeT>
 void ClientLibraryTestBase::ComputeAndCompareR3(
     XlaBuilder* builder, const Array3D<NativeT>& expected,
     absl::Span<GlobalData* const> arguments, ErrorSpec error) {
-  static_assert(std::is_same<NativeT, float>::value ||
-                    std::is_same<NativeT, double>::value ||
-                    std::is_same<NativeT, bfloat16>::value ||
-                    std::is_same<NativeT, half>::value ||
-                    std::is_same<NativeT, tsl::float8_e5m2>::value ||
-                    std::is_same<NativeT, tsl::float8_e5m2fnuz>::value ||
-                    std::is_same<NativeT, tsl::float8_e4m3fn>::value ||
-                    std::is_same<NativeT, tsl::float8_e4m3b11>::value ||
-                    std::is_same<NativeT, tsl::float8_e4m3fnuz>::value ||
-                    std::is_same<NativeT, complex64>::value ||
-                    std::is_same<NativeT, complex128>::value,
+  static_assert(is_floating_or_complex_v<NativeT>,
                 "Float or complex type required when specifying an ErrorSpec");
   Literal expected_literal =
       LiteralUtil::CreateR3FromArray3D<NativeT>(expected);
@@ -584,17 +549,7 @@ template <typename NativeT>
 void ClientLibraryTestBase::ComputeAndCompareR4(
     XlaBuilder* builder, const Array4D<NativeT>& expected,
     absl::Span<GlobalData* const> arguments, ErrorSpec error) {
-  static_assert(std::is_same<NativeT, float>::value ||
-                    std::is_same<NativeT, double>::value ||
-                    std::is_same<NativeT, bfloat16>::value ||
-                    std::is_same<NativeT, half>::value ||
-                    std::is_same<NativeT, tsl::float8_e5m2>::value ||
-                    std::is_same<NativeT, tsl::float8_e5m2fnuz>::value ||
-                    std::is_same<NativeT, tsl::float8_e4m3fn>::value ||
-                    std::is_same<NativeT, tsl::float8_e4m3b11>::value ||
-                    std::is_same<NativeT, tsl::float8_e4m3fnuz>::value ||
-                    std::is_same<NativeT, complex64>::value ||
-                    std::is_same<NativeT, complex128>::value,
+  static_assert(is_floating_or_complex_v<NativeT>,
                 "Float or complex type required when specifying an ErrorSpec");
   Literal expected_literal =
       LiteralUtil::CreateR4FromArray4D<NativeT>(expected);
@@ -615,17 +570,7 @@ template <typename NativeT>
 void ClientLibraryTestBase::ComputeAndCompare(
     XlaBuilder* builder, const Array<NativeT>& expected,
     absl::Span<GlobalData* const> arguments, ErrorSpec error) {
-  static_assert(std::is_same<NativeT, float>::value ||
-                    std::is_same<NativeT, double>::value ||
-                    std::is_same<NativeT, bfloat16>::value ||
-                    std::is_same<NativeT, half>::value ||
-                    std::is_same<NativeT, tsl::float8_e5m2>::value ||
-                    std::is_same<NativeT, tsl::float8_e5m2fnuz>::value ||
-                    std::is_same<NativeT, tsl::float8_e4m3fn>::value ||
-                    std::is_same<NativeT, tsl::float8_e4m3b11>::value ||
-                    std::is_same<NativeT, tsl::float8_e4m3fnuz>::value ||
-                    std::is_same<NativeT, complex64>::value ||
-                    std::is_same<NativeT, complex128>::value,
+  static_assert(is_floating_or_complex_v<NativeT>,
                 "Float or complex type required when specifying an ErrorSpec");
   Literal expected_literal = LiteralUtil::CreateFromArray<NativeT>(expected);
   ClientLibraryTestBase::ComputeAndCompareLiteral(builder, expected_literal,

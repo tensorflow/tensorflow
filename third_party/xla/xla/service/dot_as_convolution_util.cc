@@ -132,7 +132,7 @@ bool SpatialIsContracting(int64_t lhs_spatial_size, int64_t rhs_spatial_size,
   return dims;
 }
 
-StatusOr<std::unique_ptr<HloInstruction>>
+absl::StatusOr<std::unique_ptr<HloInstruction>>
 CreateShardedConvForDotGeneralConvolution(
     const HloInstruction& conv, const DotConvolutionDimsInfo& dot_dnums,
     HloInstruction* sharded_lhs_hlo, HloInstruction* sharded_rhs_hlo) {

@@ -1,8 +1,13 @@
-load("//xla:xla.bzl", "xla_cc_test")
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
+load("//xla:xla.bzl", "xla_cc_test")
+load("//xla/tsl:tsl.bzl", "internal_visibility")
 
 package(
-    default_visibility = ["//visibility:public"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = internal_visibility([
+        "//learning/brain/mlir:tensorflow_friends",
+        "//learning/brain/mlir:xla_friends",
+    ]),
     licenses = ["notice"],
 )
 
@@ -10,15 +15,33 @@ cc_library(
     name = "attribute_importer",
     srcs = ["attribute_importer.cc"],
     hdrs = ["attribute_importer.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:shape_util",
-        "//xla:statusor",
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/mlir_hlo",
         "//xla/service:hlo_proto_cc",
+        "@com_google_absl//absl/status:statusor",
         "@llvm-project//mlir:IR",
+    ],
+)
+
+cc_library(
+    name = "custom_call_importer",
+    srcs = ["custom_call_importer.cc"],
+    hdrs = ["custom_call_importer.h"],
+    deps = [
+        "//xla:status",
+        "//xla:statusor",
+        "//xla:util",
+        "//xla/hlo/ir:hlo",
+        "//xla/mlir_hlo",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:AsmParser",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:Support",
     ],
 )
 
@@ -26,7 +49,6 @@ cc_library(
     name = "stack_location_utils",
     srcs = ["stack_location_utils.cc"],
     hdrs = ["stack_location_utils.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla/hlo/ir:hlo",
         "//xla/service:hlo_proto_cc",
@@ -44,18 +66,17 @@ cc_library(
         "hlo_function_importer.h",
         "hlo_module_importer.h",
     ],
-    visibility = ["//visibility:public"],
     deps = [
         ":attribute_importer",
+        ":custom_call_importer",
         ":hlo_utils",
         ":location_importer",
         "//xla:comparison_util",
-        "//xla:permutation_util",
-        "//xla:printer",
+        "//xla:literal",
         "//xla:protobuf_util",
+        "//xla:shape_layout",
         "//xla:shape_util",
         "//xla:status",
-        "//xla:status_macros",
         "//xla:statusor",
         "//xla:util",
         "//xla:xla_data_proto_cc",
@@ -64,14 +85,19 @@ cc_library(
         "//xla/mlir_hlo",
         "//xla/service:hlo_proto_cc",
         "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/types:optional",
+        "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:AsmParser",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:SideEffectInterfaces",
         "@llvm-project//mlir:SparseTensorDialect",
+        "@llvm-project//mlir:Support",
+        "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:statusor",
     ],
 )
@@ -80,7 +106,6 @@ cc_library(
     name = "hlo_to_mlir_hlo",
     srcs = ["hlo_to_mlir_hlo.cc"],
     hdrs = ["hlo_to_mlir_hlo.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":hlo_module_importer",
         "//xla:status",
@@ -94,7 +119,6 @@ cc_library(
     srcs = ["hlo_utils.cc"],
     hdrs = ["hlo_utils.h"],
     includes = ["include"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:literal",
         "//xla:shape_util",
@@ -102,10 +126,9 @@ cc_library(
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
+        "//xla/mlir/utils:type_util",
         "//xla/mlir_hlo",
         "//xla/mlir_hlo:convert_op_folder",
-        "//xla/mlir_hlo:lhlo",
-        "//xla/service/llvm_ir:llvm_util",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:SparseTensorDialect",
@@ -134,7 +157,6 @@ cc_library(
     name = "location_importer",
     srcs = ["location_importer.cc"],
     hdrs = ["location_importer.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "stack_location_utils",
         "//xla/hlo/ir:hlo",
@@ -146,7 +168,6 @@ cc_library(
     name = "translate",
     srcs = ["translate.cc"],
     hdrs = ["translate.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":hlo_to_mlir_hlo",
         "//xla:status",
@@ -163,7 +184,6 @@ cc_library(
     name = "translate_registration",
     testonly = True,
     srcs = ["translate_registration.cc"],
-    visibility = ["//visibility:public"],
     deps = [
         ":translate",
         "@llvm-project//mlir:IR",

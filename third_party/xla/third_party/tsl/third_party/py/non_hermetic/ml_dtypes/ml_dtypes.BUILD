@@ -49,7 +49,7 @@ pybind_extension(
         ":float8",
         ":int4",
         "@eigen_archive//:eigen3",
-        "@org_tensorflow//third_party/py/numpy:headers",
+        "@local_tsl//third_party/py/numpy:headers",
     ],
 )
 

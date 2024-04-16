@@ -28,7 +28,7 @@ const TFNPD_Api* TfnpdApi();
 void SetTfnpdApi(const TFNPD_Api* api);
 
 typedef const TFNPD_Api* (*TFNPDInitPluginFn)(TFNPD_PluginParams*, TF_Status*);
-tsl::StatusOr<TFNPD_PluginParams> InitNextPluggableDevicePlugin(
+absl::StatusOr<TFNPD_PluginParams> InitNextPluggableDevicePlugin(
     TFNPDInitPluginFn init_fn);
 
 }  // namespace tensorflow

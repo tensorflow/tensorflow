@@ -22,6 +22,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/test.h"
 #include "xla/tests/hlo_test_base.h"
@@ -372,6 +373,7 @@ TEST_F(HloCreationUtilsTest, MaybeMakeTupleTuplizesMultipleOperands) {
   Literal expected_result = LiteralUtil::MakeTuple({&input1, &input0});
   EXPECT_EQ(result_literal, expected_result);
 }
+
 TEST_F(HloCreationUtilsTest, DynamicUpdateSliceVectorStartIndices) {
   auto module = CreateNewVerifiedModule("dus-creation-test");
   // arg:
@@ -483,6 +485,20 @@ TEST_F(HloCreationUtilsTest, ReduceWindow) {
       module->compute_computation_layout();
   EXPECT_EQ(module->entry_computation()->root_instruction()->shape(),
             expected_output_shape);
+}
+
+TEST_F(HloCreationUtilsTest, DynamicBroadcastShape) {
+  HloInstruction* param;
+  HloComputation* entry_computation;
+
+  auto module = CreateModuleWithProgramShape(F32, /*input_shape_dims=*/{10},
+                                             /*output_shape_dims=*/{10}, &param,
+                                             &entry_computation);
+  param->mutable_shape()->set_dynamic_dimension(0, true);
+
+  HloInstruction* one_constant = MakeScalarLike(param, 1.0f);
+  // Broadcasts should always have a static shape that is inferred.
+  EXPECT_TRUE(one_constant->shape().is_static());
 }
 
 }  // namespace

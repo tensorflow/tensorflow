@@ -65,7 +65,10 @@ def TF_CustomAggregatorOp : TF_Op<"CustomAggregator", [Pure]> {
   );
 
   let results = (outs
-    TensorOf<[TF_Float32]>:$output
+    TensorOf<[TF_Float32]>:$output,
+    TensorOf<[TF_Float32]>:$min,
+    TensorOf<[TF_Float32]>:$max,
+    TensorOf<[TF_Int64]>:$histogram
   );
 }
 

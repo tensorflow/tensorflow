@@ -29,6 +29,7 @@ limitations under the License.
 #include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/PatternMatch.h"
+#include "mlir/IR/Value.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
@@ -52,9 +53,9 @@ struct SelectAndScatterExpanderPattern
                                 PatternRewriter& rewriter) const override {
     // Capture original values with variables
     ImplicitLocOpBuilder builder(sas.getLoc(), rewriter);
-    TypedValue<TensorType> operand = sas.getOperand();
+    TypedValue<RankedTensorType> operand = sas.getOperand();
     llvm::ArrayRef<int64_t> operandShape = operand.getType().getShape();
-    TypedValue<TensorType> source = sas.getSource();
+    TypedValue<RankedTensorType> source = sas.getSource();
     Value initValue = sas.getInitValue();
     Region& select = sas.getSelect();
     Region& scatter = sas.getScatter();

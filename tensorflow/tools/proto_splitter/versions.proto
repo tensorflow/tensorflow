@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package proto_splitter;
+package tensorflow.proto_splitter;
 
 option cc_enable_arenas = true;
 

@@ -113,6 +113,10 @@ tf_module {
     argspec: "args=[\'batch_size\', \'row_shape\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "distributed_save"
+    argspec: "args=[\'dataset\', \'path\', \'data_service_address\', \'compression\'], varargs=None, keywords=None, defaults=[\'AUTO\'], "
+  }
+  member_method {
     name: "enable_debug_mode"
     argspec: "args=[], varargs=None, keywords=None, defaults=None"
   }
@@ -127,6 +131,10 @@ tf_module {
   member_method {
     name: "from_variant"
     argspec: "args=[\'variant\', \'structure\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_model_proto"
+    argspec: "args=[\'iterator\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "get_next_as_optional"

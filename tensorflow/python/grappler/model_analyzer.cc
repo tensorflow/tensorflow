@@ -38,7 +38,7 @@ Status ModelAnalyzer::GenerateReport(bool debug, bool assume_valid_feeds,
     PrintNodeInfo(node, properties, debug, os);
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void ModelAnalyzer::PrintNodeInfo(const NodeDef* node,

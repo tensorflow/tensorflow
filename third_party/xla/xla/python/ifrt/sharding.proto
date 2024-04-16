@@ -1,4 +1,4 @@
-/* Copyright 2023 The OpenXLA Authors.
+/* Copyright 2024 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,38 +17,10 @@ syntax = "proto3";
 
 package xla.ifrt;
 
-import "xla/python/ifrt/types.proto";
+import "xla/python/ifrt/serdes.proto";
 
-// Wire format for `SingleDeviceSharding`.
-message SingleDeviceShardingProto {
-  // Serialization and deserialization are expected to ensure that device ids
-  // are stable across proto construction and consumption.
-  int32 device_id = 1;
-  optional string memory_kind = 2;
-}
-
-// Wire format for `OpaqueSharding`.
-message OpaqueShardingProto {
-  DeviceListProto devices = 1;
-  optional string memory_kind = 2;
-}
-
-// Wire format for `ConcreteSharding`.
-message ConcreteShardingProto {
-  DeviceListProto devices = 1;
-  optional string memory_kind = 4;
-  oneof shape_or_dynamic_shape {
-    ShapeProto shape = 2;
-    DynamicShapeProto dynamic_shape = 5;
-  }
-  repeated ShapeProto shard_shapes = 3;
-  repeated DynamicShapeProto shard_dynamic_shapes = 6;
-}
-
-// Wire format for `ConcreteEvenSharding`.
-message ConcreteEvenShardingProto {
-  DeviceListProto devices = 1;
-  optional string memory_kind = 4;
-  ShapeProto shape = 2;
-  ShapeProto shard_shape = 3;
+// Wire format for `Sharding`. A suitable serializer and deserializer
+// implementation must be registered.
+message ShardingProto {
+  xla.ifrt.Serialized serialized_sharding = 1;
 }

@@ -127,13 +127,14 @@ class TestLatencyEstimator : public LatencyEstimator {
   static constexpr TimeCost kHighCost = 5000.0;
 };
 
-StatusOr<bool> RunScheduler(
+absl::StatusOr<bool> RunScheduler(
     HloModule* module, SchedulerConfig sched_config = GetDefaultSchedConfig(),
     std::unique_ptr<LatencyEstimator> latency_estimator =
         std::make_unique<ApproximateLatencyEstimator>()) {
   AsyncCollectiveCreator::CollectiveCreatorConfig config{
       /*convert_all_reduce=*/HloPredicateTrue,
       /*convert_all_gather=*/HloPredicateTrue,
+      /*convert_collective_broadcast=*/HloPredicateTrue,
       /*convert_collective_permute=*/HloPredicateTrue};
   TF_ASSIGN_OR_RETURN(bool value,
                       AsyncCollectiveCreator(std::move(config)).Run(module));
@@ -165,12 +166,12 @@ StatusOr<bool> RunScheduler(
 
 class LatencyHidingSchedulerTest : public HloTestBase {
  public:
-  StatusOr<std::unique_ptr<HloModule>> ParseHloText(
+  absl::StatusOr<std::unique_ptr<HloModule>> ParseHloText(
       absl::string_view hlo_string) {
     TF_ASSIGN_OR_RETURN(
         auto hlo_module,
         ParseAndReturnVerifiedModule(hlo_string, GetModuleConfigForTest()));
-    return StatusOr<std::unique_ptr<HloModule>>(std::move(hlo_module));
+    return absl::StatusOr<std::unique_ptr<HloModule>>(std::move(hlo_module));
   }
 };
 
@@ -2895,12 +2896,12 @@ TEST_F(LatencyHidingSchedulerTest, RerunWithSmallerMemoryLimit) {
   std::vector<HloInstruction*> original_instruction_sequence =
       module_schedule.sequence(entry_computation).instructions();
   auto sched_config = GetDefaultSchedConfig();
-  sched_config.memory_limit = 140;
+  sched_config.memory_limit = 110;
   sched_config.rerun = 1;
   EXPECT_TRUE(RunScheduler(hlo_module.get(), sched_config).ok());
   // LatencyHidingScheduler runs an additional "rerun" iteration because the
-  // peak memory usage after the first run was 152 bytes (> 140 bytes), so it
-  // sets the new limit to 126 and obtains a peak memory usage of 104 bytes at
+  // peak memory usage after the first run was 136 bytes (> 110 bytes), so it
+  // sets the new limit to 99 and obtains a peak memory usage of 88 bytes at
   // the end of the rerun. In the first run, collective-permute overlaps the
   // slice op, whereas in the rerun, it does not overlap anything.
   std::vector<HloInstruction*> new_instruction_sequence =

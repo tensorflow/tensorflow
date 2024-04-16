@@ -311,7 +311,7 @@ TensorFlowDialect::TensorFlowDialect(MLIRContext *context)
       >();
   addOperations<
 #define GET_OP_LIST
-#include "tensorflow/compiler/mlir/tensorflow/ir/tfrt_ops.cc.inc"
+#include "tensorflow/compiler/mlir/tensorflow/ir/host_runtime/tfrt_ops.cc.inc"
       >();
   addInterfaces<TFInlinerInterface, TFConstantFoldInterface>();
   fallback_effect_op_interface_ =

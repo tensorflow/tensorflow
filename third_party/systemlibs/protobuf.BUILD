@@ -1,10 +1,10 @@
-load("@rules_proto//proto:defs.bzl", "proto_library")
 load(
     "@com_google_protobuf//:protobuf.bzl",
     "cc_proto_library",
     "proto_gen",
     "py_proto_library",
 )
+load("@rules_proto//proto:defs.bzl", "proto_library")
 
 licenses(["notice"])
 

@@ -66,7 +66,7 @@ tensorflow::Status Monitor(const char* service_addr, int duration_ms,
                                               monitoring_level,
                                               display_timestamp, result));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 tensorflow::Status ProfilerSessionWrapper::Start(
@@ -87,12 +87,12 @@ tensorflow::Status ProfilerSessionWrapper::Stop(tensorflow::string* result) {
     tsl::profiler::ConvertXSpaceToTraceEventsString(xspace, result);
     TF_RETURN_IF_ERROR(status);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 tensorflow::Status ProfilerSessionWrapper::ExportToTensorBoard() {
   if (!session_ || logdir_.empty()) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   tensorflow::profiler::XSpace xspace;
   tensorflow::Status status;

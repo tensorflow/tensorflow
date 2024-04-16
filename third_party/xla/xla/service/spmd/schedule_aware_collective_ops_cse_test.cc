@@ -30,7 +30,7 @@ namespace {
 
 class CollectiveOpsCseTest : public HloTestBase {
  public:
-  StatusOr<std::unique_ptr<HloModule>> RunPass(
+  absl::StatusOr<std::unique_ptr<HloModule>> RunPass(
       absl::string_view hlo_module, int64_t distance_threshold = 100) {
     TF_ASSIGN_OR_RETURN(auto module, ParseAndReturnVerifiedModule(
                                          hlo_module, GetModuleConfigForTest()));
@@ -38,7 +38,7 @@ class CollectiveOpsCseTest : public HloTestBase {
     pipeline.AddPass<ScheduleAwareCollectiveOpsCSE>(distance_threshold,
                                                     /*for_replicas=*/false);
     TF_RETURN_IF_ERROR(pipeline.Run(module.get()).status());
-    return StatusOr<std::unique_ptr<HloModule>>(std::move(module));
+    return absl::StatusOr<std::unique_ptr<HloModule>>(std::move(module));
   }
 };
 

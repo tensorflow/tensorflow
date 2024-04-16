@@ -329,73 +329,6 @@ def ReplicaIDToDeviceOrdinalPass : Pass<"tf-replica-id-to-device-ordinal", "mlir
   }];
 }
 
-def EmbeddingPipeliningPass : Pass<"tf-embedding-pipelining", "mlir::ModuleOp"> {
-  let summary = "Rewrite graph for embedding pipelining";
-  let constructor = "TFDevice::CreateEmbeddingPipeliningPass()";
-    let description = [{
-    For architectures that support accelerated embedding lookups, this pass will
-    rewrite the graph to use pipelining for better device utilization.
-  }];
-}
-
-def EmbeddingProgramKeyPass : Pass<"tf-embedding-program-key", "mlir::func::FuncOp"> {
-  let summary = "Sets the program key for embedding ops.";
-  let constructor = "TFDevice::CreateEmbeddingProgramKeyPass()";
-    let description = [{
-    Passes in the program key to embedding ops. Will move the embedding ops
-    after a _TPUCompileMlir op if there is no predecessor _TPUCompileMlir op.
-    Both the embedding op and compile op are assumed to be wrapped in separate
-    tf_device.launch() ops. This is because the embedding op is head outside
-    compiled and the compile op is wrapped in launch to execute on host
-    during TPURewritePass.
-
-    For example, the tf.OpA with the `mini_batch_splits` attribute will be
-    moved after _TPUCompileMlir and the first input will use the
-    _TPUCompileMlir program output:
-
-    ```mlir
-    "tf_device.launch"() ({
-     %cst_0 = "tf.Const"() {value = dense<""> : tensor<1x!tf_type.string>} : () -> tensor<1x!tf_type.string>
-     "tf.OpA"(%cst_0) { mini_batch_splits = ""} : (tensor<1x!tf_type.string>) -> ()
-     tf_device.return
-   }) {device = "/job:localhost/replica:0/task:0/device:CPU:0"} : () -> ()
-   %0:2 = "tf_device.launch"() ({
-     %compilation_status, %program = "tf._TPUCompileMlir"() { metadata = "...", mlir_module = "..." } : () -> (tensor<!tf_type.string>, tensor<3x!tf_type.string>)
-     tf_device.return %compilation_status, %program : tensor<!tf_type.string>, tensor<3x!tf_type.string>
-   }) {device = "/job:localhost/replica:0/task:0/device:CPU:0"} : () -> (tensor<!tf_type.string>, tensor<3x!tf_type.string>)
-   ```
-
-   becomes:
-
-   ```mlir
-     %0:2 = "tf_device.launch"() ({
-       %compilation_status, %program = "tf._TPUCompileMlir"() {metadata = "...", mlir_module = "..."} : () -> (tensor<!tf_type.string>, tensor<3x!tf_type.string>)
-       tf_device.return %compilation_status, %program : tensor<!tf_type.string>, tensor<3x!tf_type.string>
-     }) {device = "/job:localhost/replica:0/task:0/device:CPU:0"} : () -> (tensor<!tf_type.string>, tensor<3x!tf_type.string>)
-     "tf_device.launch"() ({
-       %cst = "tf.Const"() {value = dense<""> : tensor<1x!tf_type.string>} : () -> tensor<1x!tf_type.string>
-       "tf.OpA"(%0#1) {mini_batch_splits = ""} : (tensor<3x!tf_type.string>) -> ()
-       tf_device.return
-     }) {device = "/job:localhost/replica:0/task:0/device:CPU:0"} : () -> ()
-   ```
-  }];
-
-  let dependentDialects = [
-    "mhlo::MhloDialect",
-    "tf_device::TensorFlowDeviceDialect"
-  ];
-}
-
-def EmbeddingSequencingPass : Pass<"tf-embedding-sequencing", "mlir::ModuleOp"> {
-  let summary = "Rewrite graph for sequential execution of embeddings";
-  let constructor = "TFDevice::CreateEmbeddingSequencingPass()";
-    let description = [{
-    This is a strictly sequential and formally correct fallback option for the
-    embedding pipelining pass intended for debugging during pipelining
-    development.
-  }];
-}
-
 def ConvertReadonlyReferenceVariablesToResourceVariablesPass :
   Pass<"tf-readonly-references-to-resources", "mlir::func::FuncOp"> {
   let summary = "Convert readonly reference variables to resource variables.";
@@ -516,6 +449,13 @@ def ExecutorConvertControlToDataOutputsPass : Pass<"tf-executor-convert-control-
   }];
 
   let constructor = "tf_executor::CreateTFExecutorConvertControlToDataOutputsPass()";
+
+  let options = [
+    Option<"composite_tpuexecute_side_effects_", "composite-tpuexecute-side-effects", "bool",
+           /*default=*/"false",
+           "Enables certain TPUExecute ops to run in parallel if they only "
+           "operate on resources that live on composite devices.">
+  ];
 }
 
 def ExecutorUpdateControlDependenciesPass : Pass<"tf-executor-update-control-dependencies", "ModuleOp"> {
@@ -844,48 +784,48 @@ def DecomposeReduceDatasetPass : Pass<"tf-decompose-reduce-dataset", "mlir::func
         f = @__reduce_func_1, f._tf_data_function = true,
         output_shapes = [#tf_type.shape<>],
         output_types = [i64], use_inter_op_parallelism = true, _xla_compile_device_type="TPU"} :
-	  (tensor<!tf_type.variant>, tensor<i64>) -> (tensor<i64>)
+          (tensor<!tf_type.variant>, tensor<i64>) -> (tensor<i64>)
       func.return
-   }
-   ```
+    }
+    ```
 
-   with the following reduction function:
+    with the following reduction function:
 
-   ```mlir
-   func.func private @__reduce_func_1(%arg0: tensor<i64> {tf._user_specified_name = "args_0"},
-     %arg1: tensor<32xf32> {tf._user_specified_name = "args_1"}) -> (tensor<i64>)
-     attributes {tf._tf_data_function = true, tf.signature.is_stateful} {
-       %0 = "tf.JustPretend"(%arg1) : (tensor<32xf32>) -> (tensor<i64>)
-       func.return %0 : tensor<i64>
-   }
-   ```
+    ```mlir
+    func.func private @__reduce_func_1(%arg0: tensor<i64> {tf._user_specified_name = "args_0"},
+      %arg1: tensor<32xf32> {tf._user_specified_name = "args_1"}) -> (tensor<i64>)
+      attributes {tf._tf_data_function = true, tf.signature.is_stateful} {
+        %0 = "tf.JustPretend"(%arg1) : (tensor<32xf32>) -> (tensor<i64>)
+        func.return %0 : tensor<i64>
+    }
+    ```
 
-   will be transformed into:
+    will be transformed into:
 
-   ```mlir
-   func.func @single_state_single_dataset_type_no_arguments(%arg0: tensor<!tf_type.variant>, %arg1: tensor<i64>) {
-    %0 = "tf.AnonymousIteratorV3"() {output_shapes = [#tf_type.shape<32>], output_types = [f32]} : () -> tensor<!tf_type.resource>
-    "tf.MakeIterator"(%arg0, %0) : (tensor<!tf_type.variant>, tensor<!tf_type.resource>) -> ()
-    %cst = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
-    %1:2 = "tf.WhileRegion"(%cst, %arg1) ({
-    ^bb0(%arg2: tensor<i1>, %arg3: tensor<i64>):
-      "tf.Yield"(%arg2) : (tensor<i1>) -> ()
-    }, {
-    ^bb0(%arg2: tensor<i1>, %arg3: tensor<i64>):
-      %2 = "tf.IteratorGetNextAsOptional"(%0) {output_shapes = [#tf_type.shape<32>], output_types = [f32]} : (tensor<!tf_type.resource>) -> tensor<!tf_type.variant>
-      %3 = "tf.OptionalHasValue"(%2) : (tensor<!tf_type.variant>) -> tensor<i1>
-      %4 = "tf.IfRegion"(%3) ({
-        %5 = "tf.OptionalGetValue"(%2) : (tensor<!tf_type.variant>) -> tensor<32xf32>
-        %6 = func.call @__reduce_func_1(%arg3, %5) {_xla_compile_device_type = "TPU"} : (tensor<i64>, tensor<32xf32>) -> tensor<i64>
-        "tf.Yield"(%6) : (tensor<i64>) -> ()
+    ```mlir
+    func.func @single_state_single_dataset_type_no_arguments(%arg0: tensor<!tf_type.variant>, %arg1: tensor<i64>) {
+      %0 = "tf.AnonymousIteratorV3"() {output_shapes = [#tf_type.shape<32>], output_types = [f32]} : () -> tensor<!tf_type.resource>
+      "tf.MakeIterator"(%arg0, %0) : (tensor<!tf_type.variant>, tensor<!tf_type.resource>) -> ()
+      %cst = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
+      %1:2 = "tf.WhileRegion"(%cst, %arg1) ({
+      ^bb0(%arg2: tensor<i1>, %arg3: tensor<i64>):
+        "tf.Yield"(%arg2) : (tensor<i1>) -> ()
       }, {
-        "tf.Yield"(%arg3) : (tensor<i64>) -> ()
-      }) {_lower_using_switch_merge = true, is_stateless = false} : (tensor<i1>) -> tensor<i64>
-      "tf.Yield"(%3, %4) : (tensor<i1>, tensor<i64>) -> ()
-    }) {_lower_using_switch_merge = true, is_stateless = false, parallel_iterations = 10 : i64} : (tensor<i1>, tensor<i64>) -> (tensor<i1>, tensor<i64>)
-    return
-  }
-  ```
+      ^bb0(%arg2: tensor<i1>, %arg3: tensor<i64>):
+        %2 = "tf.IteratorGetNextAsOptional"(%0) {output_shapes = [#tf_type.shape<32>], output_types = [f32]} : (tensor<!tf_type.resource>) -> tensor<!tf_type.variant>
+        %3 = "tf.OptionalHasValue"(%2) : (tensor<!tf_type.variant>) -> tensor<i1>
+        %4 = "tf.IfRegion"(%3) ({
+          %5 = "tf.OptionalGetValue"(%2) : (tensor<!tf_type.variant>) -> tensor<32xf32>
+          %6 = func.call @__reduce_func_1(%arg3, %5) {_xla_compile_device_type = "TPU"} : (tensor<i64>, tensor<32xf32>) -> tensor<i64>
+          "tf.Yield"(%6) : (tensor<i64>) -> ()
+        }, {
+          "tf.Yield"(%arg3) : (tensor<i64>) -> ()
+        }) {_lower_using_switch_merge = true, is_stateless = false} : (tensor<i1>) -> tensor<i64>
+        "tf.Yield"(%3, %4) : (tensor<i1>, tensor<i64>) -> ()
+      }) {_lower_using_switch_merge = true, is_stateless = false, parallel_iterations = 10 : i64} : (tensor<i1>, tensor<i64>) -> (tensor<i1>, tensor<i64>)
+      return
+    }
+    ```
   }];
 
   let constructor = "TF::CreateDecomposeReduceDatasetPass()";
@@ -2199,14 +2139,14 @@ def HoistLoopInvariantPass : Pass<"tf-hoist-loop-invariant", "mlir::func::FuncOp
       brevity)
       ```mlir
         func.func @hoist_loop_invariant(%arg0, %arg1) {
-	  %var = "tf.VarHandleOp"() {container="", shared_name="var_name", device = "/device:CPU:0"}
+          %var = "tf.VarHandleOp"() {container="", shared_name="var_name", device = "/device:CPU:0"}
           %results:2 = "tf.WhileRegion"(%arg0, %arg1) ({
           ^bb0(%arg2, %arg3):
             %0 = "tf.OpA"() {is_stateless = true}
             "tf.Yield"(%0)
           }, {
           ^bb0(%arg2, %arg3):
-	    %1 = "tf.ReadVariableOp"(%var)
+            %1 = "tf.ReadVariableOp"(%var)
             %2 = "tf.OpB"(%1) {is_stateless = true}
             %3 = "tf.OpC"(%arg2, %2) {is_stateless = true}
             %4 = "tf.OpD"(%arg3, %2) {is_stateless = true}
@@ -2218,8 +2158,8 @@ def HoistLoopInvariantPass : Pass<"tf-hoist-loop-invariant", "mlir::func::FuncOp
       would be transformed to
       ```mlir
        func.func @hoist_loop_invariant(%arg0, %arg1) {
-	  %var = "tf.VarHandleOp"() {container="", shared_name="var_name", device = "/device:CPU:0"}
-	  %1 = "tf.ReadVariableOp"(%var)
+          %var = "tf.VarHandleOp"() {container="", shared_name="var_name", device = "/device:CPU:0"}
+          %1 = "tf.ReadVariableOp"(%var)
           %2 = "tf.OpB"(%1) {is_stateless = true}
           %results:2 = "tf.WhileRegion"(%arg0, %arg1) ({
           ^bb0(%arg2, %arg3):

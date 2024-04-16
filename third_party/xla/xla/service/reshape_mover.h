@@ -51,14 +51,15 @@ class ReshapeMover : public HloModulePass {
   absl::string_view name() const override { return "reshape-mover"; }
 
   using HloPassInterface::Run;
-  StatusOr<bool> Run(
+  absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
-  StatusOr<bool> TryReshapeMoveOnCandidates(HloInstructionSet* candidates);
-  StatusOr<bool> SinkRearrangeOperands(HloInstruction* instruction);
-  StatusOr<HloInstruction*> ApplyInverseRearrange(
+  absl::StatusOr<bool> TryReshapeMoveOnCandidates(
+      HloInstructionSet* candidates);
+  absl::StatusOr<bool> SinkRearrangeOperands(HloInstruction* instruction);
+  absl::StatusOr<HloInstruction*> ApplyInverseRearrange(
       const HloInstruction* rearrange, HloInstruction* operand);
   bool IsReshapeMoveCandidate(HloInstruction* instruction);
   const HloInstruction* FirstNontrivialRearrange(

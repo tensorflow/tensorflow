@@ -27,10 +27,12 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
-#include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
+#include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
+#include "tensorflow/compiler/mlir/quantization/common/func.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/context.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
@@ -46,37 +48,34 @@ class QuantizationTestBase : public Test {
   QuantizationTestBase()
       : ctx_(stablehlo::CreateMlirContextForQuantization()),
         builder_(ctx_.get()) {
-    ctx_->loadDialect<arith::ArithDialect, mlir::stablehlo::StablehloDialect,
-                      func::FuncDialect, TF::TensorFlowDialect,
-                      tf_saved_model::TensorFlowSavedModelDialect,
-                      tf_executor::TensorFlowExecutorDialect,
-                      quant::QuantizationDialect,
-                      quantfork::QuantizationForkDialect>();
+    ctx_->loadDialect<
+        arith::ArithDialect, mlir::stablehlo::StablehloDialect,
+        func::FuncDialect, TF::TensorFlowDialect, TFL::TensorFlowLiteDialect,
+        tf_saved_model::TensorFlowSavedModelDialect,
+        tf_executor::TensorFlowExecutorDialect, quant::QuantizationDialect,
+        quantfork::QuantizationForkDialect>();
   }
 
-  // Parses `module_op_str` to create a `ModuleOp`. Checks whether the created
-  // module op is valid.
+  // Parses `module_op_str` to create a `ModuleOp`.
   OwningOpRef<ModuleOp> ParseModuleOpString(
       const absl::string_view module_op_str) {
-    auto module_op_ref = parseSourceString<ModuleOp>(module_op_str, ctx_.get());
-    EXPECT_TRUE(module_op_ref);
-    return module_op_ref;
+    return parseSourceString<ModuleOp>(module_op_str, ctx_.get());
   }
 
-  // Gets the function with the given name from the module.
-  func::FuncOp GetFunctionFromModule(ModuleOp module,
-                                     absl::string_view function_name) {
-    SymbolTable symbol_table(module);
-    return symbol_table.lookup<func::FuncOp>(function_name);
-  }
+  // Convenience function that returns the first operation of type `OpT` from
+  // the `@main` function in `module_op`. Useful when testing with a text
+  // representation of a `ModuleOp` containing a single function `@main`.
+  // Returns `failure` iff there is no `@main` or no such operation is found in
+  // `@main`.
+  template <typename OpT>
+  FailureOr<OpT> FindFirstOpFromMainFunc(ModuleOp module_op) {
+    func::FuncOp main_func_op = FindMainFuncOp(module_op);
+    if (main_func_op == nullptr) return failure();
 
-  // Returns the first operation with the given type in the function.
-  template <typename OpType>
-  OpType FindOperationOfType(func::FuncOp function) {
-    for (auto op : function.getBody().getOps<OpType>()) {
-      return op;
-    }
-    return nullptr;
+    auto ops = main_func_op.getOps<OpT>();
+    if (ops.empty()) return failure();
+
+    return *ops.begin();
   }
 
   std::unique_ptr<MLIRContext> ctx_;

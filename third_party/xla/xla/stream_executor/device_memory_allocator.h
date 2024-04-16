@@ -16,11 +16,14 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_DEVICE_MEMORY_ALLOCATOR_H_
 #define XLA_STREAM_EXECUTOR_DEVICE_MEMORY_ALLOCATOR_H_
 
+#include <cstddef>
 #include <cstdint>
+#include <initializer_list>
 #include <map>
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
@@ -28,6 +31,7 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/platform.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/status.h"
 
 namespace stream_executor {
 
@@ -70,13 +74,6 @@ class ScopedDeviceMemory {
   //
   // Precondition: memory was allocated by the stream executor `parent`.
   ScopedDeviceMemory(StreamExecutor *parent, DeviceMemoryBase value);
-
-  // Constructor overload that places a literal array into device memory.
-  //
-  // Relies on the allocation function exposed by the stream executor `parent`,
-  // which will be also used for deallocating the memory
-  ScopedDeviceMemory(StreamExecutor *parent,
-                     std::initializer_list<ElemT> values);
 
   // Moves ownership of the memory from other to the constructed
   // object.

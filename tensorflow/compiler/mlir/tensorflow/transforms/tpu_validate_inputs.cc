@@ -74,6 +74,7 @@ bool IsTpuRegularOp(Operation* op) {
             TypeID::get<TF::TPUPartitionedOutputV2Op>(),
             TypeID::get<TF::TPUReplicateMetadataOp>(),
             TypeID::get<mlir::tf_executor::FetchOp>(),
+            TypeID::get<TF::OutfeedEnqueueTupleOp>(),
         };
     return ops_set;
   }();

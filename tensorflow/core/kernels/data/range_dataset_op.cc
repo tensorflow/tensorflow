@@ -14,17 +14,22 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/range_dataset_op.h"
 
+#include <cstdlib>
 #include <functional>
+#include <optional>
 #include <string>
 #include <utility>
 
 #include "absl/memory/memory.h"
+#include "absl/status/status.h"
+#include "tensorflow/core/data/global_shuffle_utils.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/data/split_utils.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tsl/platform/mutex.h"
 #include "tsl/platform/types.h"
 
 namespace tensorflow {
@@ -186,6 +191,10 @@ class RangeDatasetOp::Dataset : public DatasetBase {
         output_dtypes_(output_dtypes),
         replicate_on_split_(replicate_on_split) {}
 
+  absl::Status RandomIndexingCompatible() const override {
+    return absl::OkStatus();
+  }
+
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
       const string& prefix) const override {
     return std::make_unique<Iterator>(Iterator::Params{
@@ -228,6 +237,11 @@ class RangeDatasetOp::Dataset : public DatasetBase {
 
   Status Get(OpKernelContext* ctx, int64 index,
              std::vector<Tensor>* out_tensors) const override {
+    return Get(AnyContext(ctx), index, out_tensors);
+  }
+
+  Status Get(AnyContext ctx, int64 index,
+             std::vector<Tensor>* out_tensors) const override {
     TF_RETURN_IF_ERROR(CheckRandomAccessCompatible(index));
     return ConvertOutputTypes(output_dtypes(), out_tensors,
                               start_ + (index * step_));
@@ -257,7 +271,8 @@ class RangeDatasetOp::Dataset : public DatasetBase {
   class Iterator : public DatasetIterator<Dataset> {
    public:
     explicit Iterator(const Params& params)
-        : DatasetIterator<Dataset>(params) {}
+        : DatasetIterator<Dataset>(params),
+          global_shuffle_iterator_(dataset()) {}
 
     bool SymbolicCheckpointCompatible() const override { return true; }
 
@@ -275,6 +290,10 @@ class RangeDatasetOp::Dataset : public DatasetBase {
     Status GetNextInternal(IteratorContext* ctx,
                            std::vector<Tensor>* out_tensors,
                            bool* end_of_sequence) override {
+      if (ctx->index_mapper() != nullptr) {
+        return global_shuffle_iterator_.GetNext(ctx, out_tensors,
+                                                end_of_sequence);
+      }
       int64_t value;
       if (split_provider_ != nullptr) {
         Tensor split;
@@ -318,6 +337,9 @@ class RangeDatasetOp::Dataset : public DatasetBase {
 
     Status RestoreInternal(IteratorContext* ctx,
                            IteratorStateReader* reader) override {
+      if (ctx->restored_element_count().has_value()) {
+        return global_shuffle_iterator_.Restore(ctx);
+      }
       if (reader->Contains(prefix(), kHasSplitProvider)) {
         TF_RETURN_IF_ERROR(split_provider_->Restore(
             [this](const std::string& key) {
@@ -339,6 +361,7 @@ class RangeDatasetOp::Dataset : public DatasetBase {
    private:
     std::unique_ptr<RangeCounter> counter_;
     std::shared_ptr<SplitProvider> split_provider_;
+    GlobalShuffleIterator global_shuffle_iterator_;
   };
 
   const int64_t start_;

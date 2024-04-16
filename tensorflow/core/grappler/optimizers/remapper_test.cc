@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/grappler/devices.h"
 #include "tensorflow/core/grappler/grappler_item.h"
+#include "tensorflow/core/grappler/utils/graph_view.h"
 #include "tensorflow/core/grappler/utils/grappler_test.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
@@ -2950,6 +2951,97 @@ TEST_F(RemapperFuseFusedConvWithFusedActivation, Conv3D_BF16) {
     GTEST_SKIP() << "Intel oneDNN with bfloat16 is not supported, skipping "
                     "RemapperFuseFusedConvWithFusedActivation with bfloat16.";
   RunTest<3, DT_BFLOAT16>();
+}
+
+class RemapperControlDependencyPatternMatcher : public RemapperTest {
+ public:
+  template <DataType DTYPE>
+  void RunTest() {
+    if (!IsMKLEnabled()) GTEST_SKIP() << "Test only applicable to oneDNN.";
+    using ::tensorflow::ops::Placeholder;
+
+    tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+
+    // Input 0
+    auto input0_shape = ops::Placeholder::Shape({1});
+    auto input0 = Placeholder(s.WithOpName("input_0"), DTYPE, input0_shape);
+    auto input0_t = GenerateTensorWithSetRandom<DTYPE>({1});
+
+    // Input 1
+    auto input1_shape = ops::Placeholder::Shape({1});
+    auto input1 = Placeholder(s.WithOpName("input_1"), DTYPE, input1_shape);
+    auto input1_t = GenerateTensorWithSetRandom<DTYPE>({1});
+
+    auto add0 = ops::Add(s.WithOpName("add_0"), input0, input1);
+    auto add1 = ops::Add(s.WithOpName("add_1"), input0, input1);
+
+    // Adding two control dependencies to the const.
+    float leakyrelu_alpha = 0.18;
+    typedef typename EnumToDataType<DTYPE>::Type CType;
+    auto const1 = ops::Const<CType>(
+        s.WithOpName("alpha").WithControlDependencies(
+            std::vector<Operation>{add0.operation, add1.operation}),
+        leakyrelu_alpha);
+
+    auto sub = ops::Subtract(s.WithOpName("sub_0"), input0, input1);
+    auto mul = ops::Mul(s.WithOpName("mul_0"), const1, sub);
+    auto max = ops::Maximum(s.WithOpName("max_0"), mul, sub);
+    auto softplus = ops::Softplus(s.WithOpName("softplus"), max);
+
+    GrapplerItem item;
+    item.fetch = {"fetch"};
+    item.feed = {{"input_0", input0_t}, {"input_1", input1_t}};
+    TF_ASSERT_OK(s.ToGraphDef(&item.graph));
+
+    // Place all nodes on CPU.
+    for (int i = 0; i < item.graph.node_size(); ++i) {
+      item.graph.mutable_node(i)->set_device("/device:CPU:0");
+    }
+
+    Remapper optimizer(RewriterConfig::ON);
+    GraphDef output;
+    TF_ASSERT_OK(optimizer.Optimize(nullptr, item, &output));
+
+    Status status;
+    utils::MutableGraphView graph_view(&output, &status);
+
+    const int num_nodes = output.node_size();
+
+    int found = 0;
+    for (int i = 0; i < num_nodes; i++) {
+      auto* node = graph_view.GetNode(i)->node();
+
+      // Check if the node is LeakyRelu.
+      if (node->name() == "max_0") {
+        // Checks to see if the LeakyRelu fusion happened.
+        EXPECT_EQ(node->op(), "LeakyRelu");
+        EXPECT_EQ(node->attr().at("alpha").f(), leakyrelu_alpha);
+
+        ASSERT_EQ(node->input_size(), 3);
+        EXPECT_EQ(node->input(0), "sub_0");
+        // Check to see if the fused LeakyRelu op has an incoming
+        // control edges from the parent nodes of const1, i.e. add_0, add_1.
+        // ^ in the name of the node also indicates a control fan input.
+        auto* node_view = graph_view.GetNode(i);
+        EXPECT_EQ(node_view->NumControllingFanins(), 2);
+        // The sequence of control inputs could be different.
+        if (node->input(1).compare("^add_0")) {
+          if (node->input(2).compare("^add_1")) found++;
+        } else if (node->input(1).compare("^add_1")) {
+          if (node->input(2).compare("^add_0")) found++;
+        }
+      }
+    }
+    EXPECT_EQ(found, 1);
+  }
+};
+
+TEST_F(RemapperControlDependencyPatternMatcher, F32) { RunTest<DT_FLOAT>(); }
+TEST_F(RemapperControlDependencyPatternMatcher, BF16) {
+  if (!IsMKLEnabled() || !IsDataTypeSupportedByOneDNNOnThisCPU(DT_BFLOAT16))
+    GTEST_SKIP() << "Intel oneDNN with bfloat16 is not supported, skipping "
+                    "RemapperControlDependencyPatternMatcher with bfloat16.";
+  RunTest<DT_BFLOAT16>();
 }
 
 }  // namespace grappler

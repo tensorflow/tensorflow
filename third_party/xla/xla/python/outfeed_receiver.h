@@ -69,10 +69,10 @@ class OutfeedReceiver {
   // Returns error status if the outfeed shape is different than the
   // previously used shape for the same consumer_id or the consumer id is
   // invalid.
-  StatusOr<XlaOp> AddOutfeedToBuilder(XlaBuilder* builder, XlaOp token,
-                                      uint32_t consumer_id,
-                                      std::vector<XlaOp> arrays,
-                                      uint32_t device_idx);
+  absl::StatusOr<XlaOp> AddOutfeedToBuilder(XlaBuilder* builder, XlaOp token,
+                                            uint32_t consumer_id,
+                                            std::vector<XlaOp> arrays,
+                                            uint32_t device_idx);
 
  private:
   std::unique_ptr<OutfeedReceiverImpl> p_impl_;

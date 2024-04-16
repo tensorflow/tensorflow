@@ -21,12 +21,11 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/strings/str_cat.h"
-#include "absl/strings/str_join.h"
 #include "xla/layout.h"
 #include "xla/printer.h"
+#include "xla/shape.h"
+#include "xla/shape_layout.h"
 #include "xla/shape_util.h"
-#include "xla/statusor.h"
-#include "xla/types.h"
 
 namespace xla {
 
@@ -54,18 +53,20 @@ bool ComputationLayout::LayoutIsSet() const {
 }
 
 bool ComputationLayout::AnyLayoutSet() const {
-  return absl::c_any_of(parameter_layouts_,
-                        [](const ShapeLayout& s) { return s.LayoutIsSet(); }) ||
-         result_layout_.LayoutIsSet();
+  return absl::c_any_of(
+             parameter_layouts_,
+             [](const ShapeLayout& s) { return s.AnyLayoutIsSet(); }) ||
+         result_layout_.AnyLayoutIsSet();
 }
 
-StatusOr<std::vector<Layout>> ComputationLayout::FlattenedParameterLayouts()
-    const {
+absl::StatusOr<std::vector<Layout>>
+ComputationLayout::FlattenedParameterLayouts() const {
   std::vector<Layout> result;
   for (int i = 0; i < parameter_count(); ++i) {
     TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
         parameter_shape(i),
-        [this, &result](const Shape& subshape, const ShapeIndex& index) {
+        [this, &result](const Shape& subshape,
+                        const ShapeIndex& index) -> absl::Status {
           if (subshape.IsTuple()) {
             return OkStatus();
           }
@@ -88,12 +89,13 @@ StatusOr<std::vector<Layout>> ComputationLayout::FlattenedParameterLayouts()
   return result;
 }
 
-StatusOr<std::vector<Layout>> ComputationLayout::FlattenedResultLayouts()
+absl::StatusOr<std::vector<Layout>> ComputationLayout::FlattenedResultLayouts()
     const {
   std::vector<Layout> result;
   TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
       result_shape(),
-      [this, &result](const Shape& subshape, const ShapeIndex& index) {
+      [this, &result](const Shape& subshape,
+                      const ShapeIndex& index) -> absl::Status {
         if (subshape.IsTuple()) {
           return OkStatus();
         }

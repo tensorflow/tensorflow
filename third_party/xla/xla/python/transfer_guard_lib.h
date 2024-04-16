@@ -20,8 +20,9 @@ limitations under the License.
 #include <string>
 
 // placeholder for index annotation headers
-#include "pybind11/pybind11.h"  // from @pybind11
-#include "xla/status.h"
+#include "absl/functional/function_ref.h"
+#include "absl/status/status.h"
+#include "third_party/nanobind/include/nanobind/nanobind.h"
 
 namespace jax {
 
@@ -75,23 +76,23 @@ enum class TransferGuardAction {
 // Guards a host-to-device transfer. formatter is called to describe the
 // transfer in a log message or error status.
 // REQUIRES: Python GIL.
-xla::Status ApplyTransferGuardToHostToDevice(
+absl::Status ApplyTransferGuardToHostToDevice(
     absl::FunctionRef<std::string()> formatter);
 
 // Guards a device-to-device transfer. formatter is called to describe the
 // transfer in a log message or error status.
 // REQUIRES: Python GIL.
-xla::Status ApplyTransferGuardToDeviceToDevice(
+absl::Status ApplyTransferGuardToDeviceToDevice(
     absl::FunctionRef<std::string()> formatter);
 
 // Guards a device-to-host transfer. formatter is called to describe the
 // transfer in a log message or error status.
 // REQUIRES: Python GIL.
-xla::Status ApplyTransferGuardToDeviceToHost(
+absl::Status ApplyTransferGuardToDeviceToHost(
     absl::FunctionRef<std::string()> formatter);
 
 // The function to call in `xla.cc` to add the bindings for this module.
-void BuildTransferGuardSubmodule(pybind11::module& m);
+void BuildTransferGuardSubmodule(nanobind::module_& m);
 
 }  // namespace jax
 

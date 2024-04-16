@@ -495,6 +495,19 @@ bool IsOpTypeAllowedTf2XlaPreferred(const TypeID& type_id) {
   return ops->contains(type_id);
 }
 
+const llvm::DenseSet<mlir::TypeID>& DynamicTensorflowOps() {
+  // The static variable is a pointer in order to avoid destruction upon thread
+  // termination.
+  static const llvm::DenseSet<mlir::TypeID>* ops =
+      new llvm::DenseSet<mlir::TypeID>{
+          TypeID::get<mlir::TF::DynamicPartitionOp>(),
+          TypeID::get<mlir::TF::UniqueOp>(),
+          TypeID::get<mlir::TF::WhereOp>(),
+          TypeID::get<mlir::TF::XlaSetDynamicDimensionSizeOp>(),
+      };
+  return *ops;
+}
+
 }  // namespace
 
 bool HasTf2XlaFallback(const TypeID& type_id) {
@@ -518,6 +531,10 @@ bool IsOpAllowedTf2xlaFallback(const TypeID& type_id) {
 
 bool IsOpAllowedTf2xlaPreferred(const TypeID& type_id) {
   return IsOpTypeAllowedTf2XlaPreferred(type_id);
+}
+
+bool IsDynamicPadderOp(const TypeID& type_id) {
+  return DynamicTensorflowOps().contains(type_id);
 }
 
 }  // namespace mhlo

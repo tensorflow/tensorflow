@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <utility>
 
+#include "xla/debug_options_flags.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/tests/hlo_test_base.h"
@@ -51,26 +52,13 @@ TEST_F(GpuUnrollingTest, UnrollDefaultTimes) {
   CompileAndVerifyIr(std::move(hlo_module),
                      R"(
 ; CHECK-LABEL: @{{[a-z_]*}}fusion
-; CHECK: load float
-; CHECK: load float
-; CHECK: fadd
-; CHECK: store float
-; CHECK: load float
-; CHECK: load float
-; CHECK: fadd
-; CHECK: store float
-; CHECK: load float
-; CHECK: load float
-; CHECK: fadd
-; CHECK: store float
-; CHECK: load float
-; CHECK: load float
-; CHECK: fadd
-; CHECK: store float
-; CHECK-NOT: fadd
-; CHECK: }
+; CHECK-NOT: load float
+; CHECK-NOT: store float
+; CHECK: load <4 x float>
+; CHECK: load <4 x float>
+; CHECK: store <4 x float>
       )",
-                     /*match_optimized_ir=*/false);
+                     /*match_optimized_ir=*/true);
 }
 
 TEST_F(GpuUnrollingTest, UnrollUnfusedAdd) {
@@ -91,26 +79,13 @@ TEST_F(GpuUnrollingTest, UnrollUnfusedAdd) {
   CompileAndVerifyIr(std::move(hlo_module),
                      R"(
 ; CHECK-LABEL: @wrapped_add
-; CHECK: load float
-; CHECK: load float
-; CHECK: fadd
-; CHECK: store float
-; CHECK: load float
-; CHECK: load float
-; CHECK: fadd
-; CHECK: store float
-; CHECK: load float
-; CHECK: load float
-; CHECK: fadd
-; CHECK: store float
-; CHECK: load float
-; CHECK: load float
-; CHECK: fadd
-; CHECK: store float
-; CHECK-NOT: fadd
-; CHECK: }
+; CHECK-NOT: load float
+; CHECK-NOT: store float
+; CHECK: load <4 x float>
+; CHECK: load <4 x float>
+; CHECK: store <4 x float>
       )",
-                     /*match_optimized_ir=*/false);
+                     /*match_optimized_ir=*/true);
 }
 
 TEST_F(GpuUnrollingTest, DisabledUnrollUnfusedSine) {
@@ -244,37 +219,14 @@ TEST_F(GpuUnrollingTest, UnrollMultiOutputFusion) {
   CompileAndVerifyIr(std::move(hlo_module),
                      R"(
 ; CHECK-LABEL: @{{[a-z_]*}}fusion
-; CHECK: load float
-; CHECK: load float
 ; CHECK-NOT: load float
-; CHECK-NOT: load float
-; CHECK: fadd
-; CHECK: load float
-; CHECK: load float
-; CHECK-NOT: load float
-; CHECK-NOT: load float
-; CHECK: fmul
-; CHECK: store float
-; CHECK: store float
 ; CHECK-NOT: store float
-; CHECK-NOT: store float
-; CHECK: load float
-; CHECK: load float
-; CHECK-NOT: load float
-; CHECK-NOT: load float
-; CHECK: fadd
-; CHECK: load float
-; CHECK: load float
-; CHECK-NOT: load float
-; CHECK-NOT: load float
-; CHECK: fmul
-; CHECK: store float
-; CHECK: store float
-; CHECK-NOT: store float
-; CHECK-NOT: store float
-; CHECK: }
+; CHECK: load <4 x float>
+; CHECK: load <4 x float>
+; CHECK: store <4 x float>
+; CHECK: store <4 x float>
       )",
-                     /*match_optimized_ir=*/false);
+                     /*match_optimized_ir=*/true);
 }
 
 }  // namespace

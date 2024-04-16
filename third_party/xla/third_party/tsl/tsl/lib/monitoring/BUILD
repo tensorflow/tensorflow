@@ -1,19 +1,39 @@
-load("//tsl:tsl.bzl", "set_external_visibility")
-load("//tsl:tsl.default.bzl", "filegroup")
 load(
     "@local_tsl//tsl/platform:rules_cc.bzl",
     "cc_library",
 )
+load("@local_xla//xla/tsl:tsl.bzl", "internal_visibility")
+load("@local_xla//xla/tsl:tsl.default.bzl", "filegroup")
 
 package(
-    default_visibility = ["//visibility:public"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = internal_visibility([
+        "//learning/brain/google/data:__subpackages__",
+        "//learning/brain/google/monitoring:__subpackages__",
+        # tensorflow/core:lib effectively exposes all targets under tensorflow/core/lib/**
+        "//tensorflow/core:__pkg__",
+        # tensorflow/core/platform:monitoring depends on this package
+        "//tensorflow/core/platform:__subpackages__",
+        # tensorflow/compiler/xla/pjrt:metrics depends on this package
+        "@local_xla//xla/pjrt:__subpackages__",
+        "@local_xla//xla/service/gpu:__subpackages__",
+        # tensorflow/compiler/mlir/tfrt:tf_jitrt depends on this package
+        "//tensorflow/compiler/mlir/tfrt:__subpackages__",
+        "@local_xla//xla/stream_executor:__subpackages__",
+        "@local_xla//xla/hlo/experimental:__subpackages__",
+        "//tensorflow/core/lib/monitoring:__subpackages__",
+        "@local_xla//xla/service:__subpackages__",
+        "//tsl/framework:__subpackages__",
+        "@local_xla//xla/tsl/distributed_runtime:__subpackages__",
+        "//tensorflow/compiler/mlir/tf2xla:__subpackages__",
+        "//tensorflow_serving/model_servers:__subpackages__",
+    ]),
     licenses = ["notice"],
 )
 
 cc_library(
     name = "counter",
     hdrs = ["counter.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":collection_registry",
         ":metric_def",
@@ -32,7 +52,6 @@ cc_library(
     hdrs = [
         "gauge.h",
     ],
-    visibility = ["//visibility:public"],
     deps = [
         ":collection_registry",
         ":metric_def",
@@ -49,7 +68,6 @@ cc_library(
     name = "sampler",
     srcs = ["sampler.cc"],
     hdrs = ["sampler.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":collection_registry",
         ":metric_def",
@@ -69,7 +87,6 @@ cc_library(
     hdrs = [
         "types.h",
     ],
-    visibility = ["//visibility:public"],
     deps = [
         "//tsl/platform:types",
     ],
@@ -78,7 +95,9 @@ cc_library(
 cc_library(
     name = "metric_def",
     hdrs = ["metric_def.h"],
-    visibility = ["//visibility:public"],
+    visibility = internal_visibility([
+        "//tensorflow/core:__subpackages__",
+    ]),
     deps = [
         ":types",
         "//tsl/platform:stringpiece",
@@ -91,7 +110,10 @@ cc_library(
     name = "collection_registry",
     srcs = ["collection_registry.cc"],
     hdrs = ["collection_registry.h"],
-    visibility = ["//visibility:public"],
+    visibility = internal_visibility([
+        "//tensorflow/core:__subpackages__",
+        "//tensorflow_serving/model_servers:__pkg__",
+    ]),
     deps = [
         ":collected_metrics",
         ":metric_def",
@@ -113,7 +135,6 @@ cc_library(
     hdrs = [
         "collected_metrics.h",
     ],
-    visibility = ["//visibility:public"],
     deps = [
         ":metric_def",
         ":types",
@@ -139,7 +160,6 @@ cc_library(
     testonly = 1,
     srcs = ["cell_reader-inl.cc"],
     hdrs = ["cell_reader-inl.h"],
-    visibility = ["//visibility:public"],
     #visibility = ["//visibility:private"],
     deps = [
         ":collected_metrics",
@@ -159,7 +179,6 @@ cc_library(
     name = "percentile_sampler",
     srcs = ["percentile_sampler.cc"],
     hdrs = ["percentile_sampler.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":collection_registry",
         ":metric_def",
@@ -193,7 +212,6 @@ cc_library(
     hdrs = [
         "timed.h",
     ],
-    visibility = ["//visibility:public"],
     deps = [
         "//tsl/platform:env_time",
         "//tsl/platform:types",
@@ -214,7 +232,10 @@ filegroup(
         "timed.h",
         "types.h",
     ],
-    visibility = ["//visibility:public"],
+    visibility = internal_visibility([
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/core/lib/monitoring:__pkg__",
+    ]),
 )
 
 filegroup(
@@ -232,7 +253,10 @@ filegroup(
         "timed.h",
         "types.h",
     ],
-    visibility = ["//visibility:public"],
+    visibility = internal_visibility([
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/core/lib/monitoring:__pkg__",
+    ]),
 )
 
 filegroup(
@@ -249,5 +273,8 @@ filegroup(
         "test_utils.h",
         "types.h",
     ],
-    visibility = ["//visibility:public"],
+    visibility = internal_visibility([
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/core/lib/monitoring:__pkg__",
+    ]),
 )

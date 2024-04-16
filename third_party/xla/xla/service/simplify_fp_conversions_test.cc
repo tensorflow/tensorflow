@@ -36,32 +36,6 @@ using ::tsl::testing::IsOkAndHolds;
 
 using SimplifyFPConversionsTest = HloTestBase;
 
-// This marks all ops in `module` as user-provided, meaning the
-// simplifier won't remove any of the converts
-static void InitializeCreationPassIds(HloModule* module) {
-  constexpr int kUserSuppliedOpCreationPassId = -1;
-  for (HloComputation* computation : module->computations()) {
-    for (HloInstruction* instruction : computation->instructions()) {
-      instruction->set_creation_pass_id(kUserSuppliedOpCreationPassId);
-      instruction->set_logical_creation_pass_id(kUserSuppliedOpCreationPassId);
-    }
-  }
-}
-
-// This marks all converts ops in `module` as being created by the
-// optimization pass `creation_pass_id`.
-static void SetCreationPassIdInAllConvertOps(HloModule* module,
-                                             int creation_pass_id) {
-  for (HloComputation* computation : module->computations()) {
-    for (HloInstruction* instruction : computation->instructions()) {
-      if (instruction->opcode() == HloOpcode::kConvert) {
-        instruction->set_creation_pass_id(creation_pass_id);
-        instruction->set_logical_creation_pass_id(creation_pass_id);
-      }
-    }
-  }
-}
-
 TEST_F(SimplifyFPConversionsTest, DoesNotChangeSingleConvert) {
   const absl::string_view kModuleStr = R"(
     HloModule test
@@ -74,10 +48,8 @@ TEST_F(SimplifyFPConversionsTest, DoesNotChangeSingleConvert) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleStr));
-  InitializeCreationPassIds(module.get());
 
-  SimplifyFPConversions simplifier{
-      SimplifyFPConversions::Scope::kSimplifyAllConversions};
+  SimplifyFPConversions simplifier;
   EXPECT_THAT(simplifier.Run(module.get()), IsOkAndHolds(false));
 }
 
@@ -94,58 +66,11 @@ TEST_F(SimplifyFPConversionsTest, SimplifiesF32ToBF16ToF32) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleStr));
-  InitializeCreationPassIds(module.get());
 
-  SimplifyFPConversions simplifier{
-      SimplifyFPConversions::Scope::kSimplifyAllConversions};
+  SimplifyFPConversions simplifier;
   EXPECT_THAT(simplifier.Run(module.get()), IsOkAndHolds(true));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Tuple(op::Parameter(0)));
-}
-
-TEST_F(SimplifyFPConversionsTest, SimplifiesCompilerGeneratedF32ToBF16ToF32) {
-  const absl::string_view kModuleStr = R"(
-    HloModule test
-
-    ENTRY entry {
-      p0 = f32[2,3] parameter(0)
-      c0 = bf16[2,3] convert(p0)
-      c1 = f32[2,3] convert(c0)
-      ROOT ret = (f32[2,3]) tuple(c1)
-    }
-  )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
-  InitializeCreationPassIds(module.get());
-
-  constexpr int kRandomCreationPassId = 42;
-  SetCreationPassIdInAllConvertOps(module.get(), kRandomCreationPassId);
-
-  SimplifyFPConversions simplifier{
-      SimplifyFPConversions::Scope::kOnlySimplifyCompilerGeneratedConversions};
-  EXPECT_THAT(simplifier.Run(module.get()), IsOkAndHolds(true));
-  EXPECT_THAT(module->entry_computation()->root_instruction(),
-              op::Tuple(op::Parameter(0)));
-}
-
-TEST_F(SimplifyFPConversionsTest, DoesNotChangeUserInsertedConverts) {
-  const absl::string_view kModuleStr = R"(
-    HloModule test
-
-    ENTRY entry {
-      p0 = f32[2,3] parameter(0)
-      c0 = bf16[2,3] convert(p0)
-      c1 = f32[2,3] convert(c0)
-      ROOT ret = (f32[2,3]) tuple(c1)
-    }
-  )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
-  InitializeCreationPassIds(module.get());
-
-  SimplifyFPConversions simplifier{
-      SimplifyFPConversions::Scope::kOnlySimplifyCompilerGeneratedConversions};
-  EXPECT_THAT(simplifier.Run(module.get()), IsOkAndHolds(false));
 }
 
 TEST_F(SimplifyFPConversionsTest, SimplifiesF64ToF16ToF32ToBF16) {
@@ -162,10 +87,8 @@ TEST_F(SimplifyFPConversionsTest, SimplifiesF64ToF16ToF32ToBF16) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleStr));
-  InitializeCreationPassIds(module.get());
 
-  SimplifyFPConversions simplifier{
-      SimplifyFPConversions::Scope::kSimplifyAllConversions};
+  SimplifyFPConversions simplifier;
   EXPECT_THAT(simplifier.Run(module.get()), IsOkAndHolds(true));
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),

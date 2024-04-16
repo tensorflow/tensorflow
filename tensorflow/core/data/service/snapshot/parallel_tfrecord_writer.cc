@@ -35,6 +35,7 @@ limitations under the License.
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/path.h"
+#include "tsl/platform/random.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/threadpool.h"
 #include "tsl/profiler/lib/traceme.h"
@@ -162,8 +163,11 @@ ParallelTFRecordWriter::GetNextRecord(const std::string& filename)
   }
 
   std::vector<Tensor> record = std::move(buffer_.front());
+  ByteSize estimated_size = EstimatedSize(record);
+  LOG_EVERY_N_SEC(INFO, 1) << "Writing TFRecord of " << estimated_size
+                           << " to file " << filename << "*.";
   ++file_stats_[filename].num_records;
-  file_stats_[filename].estimated_size += EstimatedSize(record);
+  file_stats_[filename].estimated_size += estimated_size;
   buffer_.pop_front();
   ready_to_push_.SignalAll();
   return record;
@@ -185,7 +189,8 @@ absl::Status ParallelTFRecordWriter::DeleteEmptyFile(
 }
 
 absl::StatusOr<std::string> ParallelTFRecordWriter::GetUniqueFile() const {
-  std::string filename = absl::StrCat(file_prefix_, "__shard__");
+  std::string filename = absl::StrCat(file_prefix_, "__shard__",
+                                      absl::Hex(tsl::random::New64()), "_");
   if (!env_->CreateUniqueFileName(&filename, ".tfrecord")) {
     return absl::InternalError(
         absl::StrCat("Failed to write file ", filename,

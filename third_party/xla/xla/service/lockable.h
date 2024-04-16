@@ -73,7 +73,13 @@ class Lockable {
   };
 
   Lockable() = default;
+
   explicit Lockable(T value) : value_(std::move(value)) {
+    VLOG(2) << "Constructed " << LockableName::ToString(value_);
+  }
+
+  template <typename... Args>
+  explicit Lockable(Args&&... args) : value_(std::forward<Args>(args)...) {
     VLOG(2) << "Constructed " << LockableName::ToString(value_);
   }
 

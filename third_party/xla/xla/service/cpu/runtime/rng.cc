@@ -20,6 +20,8 @@
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "xla/executable_run_options.h"
+#include "xla/runtime/memref_view.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace cpu {

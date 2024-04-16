@@ -171,7 +171,7 @@ class Service : public ServiceInterface {
 
   // Create a Hlo module config for the given program shape and arguments.
   // aot_options is optional; if not given a default is used.
-  StatusOr<std::unique_ptr<HloModuleConfig>> CreateModuleConfig(
+  absl::StatusOr<std::unique_ptr<HloModuleConfig>> CreateModuleConfig(
       const ProgramShape& program_shape,
       absl::Span<const Shape* const> argument_shapes,
       const ExecutionOptions* execution_options,
@@ -186,19 +186,19 @@ class Service : public ServiceInterface {
  private:
   // A private overload for Service itself, used by other methods within this
   // class.
-  StatusOr<std::unique_ptr<HloModuleConfig>> CreateModuleConfig(
+  absl::StatusOr<std::unique_ptr<HloModuleConfig>> CreateModuleConfig(
       const ProgramShape& program_shape,
       absl::Span<const ShapedBuffer* const> arguments,
       const ExecutionOptions& execution_options,
       const AotCompilationOptions* aot_options = nullptr);
 
   // Prepare the executors for executing parallel.
-  StatusOr<std::vector<se::StreamExecutor*>> GetExecutors(
+  absl::StatusOr<std::vector<se::StreamExecutor*>> GetExecutors(
       const ExecutionOptions& execution_options, int64_t requests_size,
       int64_t request_index) const;
 
   // Prepare the arguments for executing parallel.
-  StatusOr<std::vector<std::vector<const ShapedBuffer*>>> GetArguments(
+  absl::StatusOr<std::vector<std::vector<const ShapedBuffer*>>> GetArguments(
       const ExecutionOptions& execution_options,
       absl::Span<const GlobalDataHandle* const> arguments) const;
 
@@ -214,7 +214,7 @@ class Service : public ServiceInterface {
   // the corresponding allocations for every replica. The function also verifies
   // that each allocation matches the execution platform and device ordinal of
   // the corresponding replica.
-  StatusOr<std::vector<std::vector<const ShapedBuffer*>>>
+  absl::StatusOr<std::vector<std::vector<const ShapedBuffer*>>>
   ResolveAndValidateArguments(
       absl::Span<const GlobalDataHandle* const> arguments,
       absl::Span<se::StreamExecutor* const> stream_executors) const;
@@ -225,7 +225,7 @@ class Service : public ServiceInterface {
   // If device_allocator is not null, the compiler may use it to allocate temp
   // buffers, which the compiler is responsible for freeing.  The allocator
   // given here need not match the allocator used when running the executable.
-  StatusOr<std::unique_ptr<Executable>> BuildExecutable(
+  absl::StatusOr<std::unique_ptr<Executable>> BuildExecutable(
       const HloModuleProto& module_proto,
       std::unique_ptr<HloModuleConfig> module_config, Backend* backend,
       se::StreamExecutor* executor, const Compiler::CompileOptions& options,
@@ -233,7 +233,7 @@ class Service : public ServiceInterface {
 
   // Same as BuildExecutable() above, but builds a list of Executables for the
   // given computations that may interact with each other.
-  StatusOr<std::vector<std::unique_ptr<Executable>>> BuildExecutables(
+  absl::StatusOr<std::vector<std::unique_ptr<Executable>>> BuildExecutables(
       const std::vector<const HloModuleProto*>& module_protos,
       std::vector<std::unique_ptr<HloModuleConfig>> module_configs,
       Backend* backend, std::vector<std::vector<se::StreamExecutor*>> executors,
@@ -243,17 +243,19 @@ class Service : public ServiceInterface {
   // Same as BuildExecutable() above, but builds a list of
   // AotCompilationResult(s), which can be persisted to later load Executable
   // objects.
-  StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>> BuildAotResults(
-      const std::vector<const HloModuleProto*>& module_protos,
-      std::vector<std::unique_ptr<HloModuleConfig>> module_configs,
-      Backend* backend, std::vector<std::vector<se::StreamExecutor*>> executors,
-      const Compiler::CompileOptions& options, bool run_backend_only = false);
+  absl::StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
+  BuildAotResults(const std::vector<const HloModuleProto*>& module_protos,
+                  std::vector<std::unique_ptr<HloModuleConfig>> module_configs,
+                  Backend* backend,
+                  std::vector<std::vector<se::StreamExecutor*>> executors,
+                  const Compiler::CompileOptions& options,
+                  bool run_backend_only = false);
 
   // Runs the given executable with the given arguments and register the result
   // in the allocation tracker. The handle of the result from the tracker is
   // returned. If the parameter "profile" is not null, it points to an
   // ExecutionProfile object which will be filled in with profile data.
-  StatusOr<GlobalDataHandle> ExecuteAndRegisterResult(
+  absl::StatusOr<GlobalDataHandle> ExecuteAndRegisterResult(
       Executable* executable,
       absl::Span<const std::vector<const ShapedBuffer*>> arguments,
       Backend* backend, const DeviceHandle& device_handle,
@@ -262,7 +264,8 @@ class Service : public ServiceInterface {
   // Runs the given executables with the given arguments and register the result
   // from each executable in the allocation tracker. The handles of the result
   // from the tracker are returned.
-  StatusOr<std::vector<GlobalDataHandle>> ExecuteParallelAndRegisterResult(
+  absl::StatusOr<std::vector<GlobalDataHandle>>
+  ExecuteParallelAndRegisterResult(
       absl::Span<Executable* const> executables,
       absl::Span<const std::vector<std::vector<const ShapedBuffer*>>> arguments,
       Backend* backend, absl::Span<const DeviceHandle> device_handles,
@@ -271,7 +274,7 @@ class Service : public ServiceInterface {
   // Returns the stream executors assigned to the replicas represented by the
   // given device handle. Each device_handle is a virtual replicated device that
   // represents a set of physical devices for the replicas.
-  StatusOr<std::vector<se::StreamExecutor*>> Replicas(
+  absl::StatusOr<std::vector<se::StreamExecutor*>> Replicas(
       const Backend& backend, const DeviceHandle& device_handle) const;
 
   // Returns the device handle that represents the replicated device for a

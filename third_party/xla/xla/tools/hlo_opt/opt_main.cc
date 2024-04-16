@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/tools/hlo_module_loader.h"
 #include "xla/tools/hlo_opt/opt_lib.h"
 #include "xla/tools/run_hlo_module.h"
+#include "xla/tsl/util/command_line_flags.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/init_main.h"
@@ -48,7 +49,6 @@ limitations under the License.
 #include "tsl/platform/path.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
-#include "tsl/util/command_line_flags.h"
 
 namespace {
 const char* const kUsage = R"(
@@ -94,8 +94,8 @@ std::string GetHloPath(const HloOptConfig& opts, int argc, char** argv) {
   return argv[1];
 }
 
-StatusOr<std::string> GetHloContents(const HloOptConfig& opts, int argc,
-                                     char** argv) {
+absl::StatusOr<std::string> GetHloContents(const HloOptConfig& opts, int argc,
+                                           char** argv) {
   std::string hlo_path = GetHloPath(opts, argc, argv);
   if (hlo_path == "-") {
     std::string input;
@@ -109,7 +109,7 @@ StatusOr<std::string> GetHloContents(const HloOptConfig& opts, int argc,
   return data;
 }
 
-StatusOr<std::vector<std::unique_ptr<HloModule>>> GetModules(
+absl::StatusOr<std::vector<std::unique_ptr<HloModule>>> GetModules(
     const HloOptConfig& opts, int argc, char** argv) {
   TF_ASSIGN_OR_RETURN(std::string module_data,
                       GetHloContents(opts, argc, argv));
@@ -148,8 +148,8 @@ StatusOr<std::vector<std::unique_ptr<HloModule>>> GetModules(
   return out;
 }
 
-StatusOr<std::string> TranslateToStage(int argc, char** argv,
-                                       const HloOptConfig& opts) {
+absl::StatusOr<std::string> TranslateToStage(int argc, char** argv,
+                                             const HloOptConfig& opts) {
   TF_ASSIGN_OR_RETURN(OptProvider * provider,
                       OptProvider::ProviderForPlatform(opts.platform));
 
@@ -209,7 +209,8 @@ int main(int argc, char** argv) {
                 "\t\t\t * llvm : LLVM IR\n"
                 "\t\t\t * ptx : PTX dump\n"
                 "\t\t\t * buffer-assignment: Buffer Assignment\n"
-                "\t\t\t * hlo-backend: HLO after backend passes\n"),
+                "\t\t\t * hlo-backend: HLO after backend passes\n"
+                "\t\t\t * html: HTML dump\n"),
       tsl::Flag("list-stages", &opts.list_stages,
                 "Print all supported stages for a given platform and exit"),
       tsl::Flag("split-input-file", &opts.split_input_file,
@@ -229,7 +230,7 @@ int main(int argc, char** argv) {
     LOG(QFATAL) << kUsageString;
   }
 
-  xla::Status s = xla::RunOpt(argc, argv, opts);
+  absl::Status s = xla::RunOpt(argc, argv, opts);
   if (!s.ok()) {
     std::cerr << s;
     return 1;

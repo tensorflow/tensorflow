@@ -92,8 +92,8 @@ class XlaHelpers {
   static xla::XlaOp ConvertElementType(xla::XlaOp operand,
                                        const DataType new_element_type);
 
-  typedef std::function<StatusOr<xla::Shape>(const TensorShape&, DataType, bool,
-                                             XlaLayoutPreference)>
+  typedef std::function<absl::StatusOr<xla::Shape>(const TensorShape&, DataType,
+                                                   bool, XlaLayoutPreference)>
       ShapeRepresentationFn;
 };
 

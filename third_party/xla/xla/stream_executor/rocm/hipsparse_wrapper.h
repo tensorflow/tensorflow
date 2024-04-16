@@ -46,8 +46,8 @@ namespace wrap {
 #else
 
 #define HIPSPARSE_API_WRAPPER(__name)                                          \
-  struct DynLoadShim__##__name {                                               \
-    static const char* kName;                                                  \
+  static struct DynLoadShim__##__name {                                        \
+    constexpr static const char* kName = #__name;                              \
     using FuncPtrT = std::add_pointer<decltype(::__name)>::type;               \
     static void* GetDsoHandle() {                                              \
       auto s =                                                                 \
@@ -56,8 +56,8 @@ namespace wrap {
     }                                                                          \
     static FuncPtrT LoadOrDie() {                                              \
       void* f;                                                                 \
-      auto s = tsl::Env::Default()                                             \
-          -> GetSymbolFromLibrary(GetDsoHandle(), kName, &f);                  \
+      auto s = tsl::Env::Default()->GetSymbolFromLibrary(GetDsoHandle(),       \
+                                                         kName, &f);           \
       CHECK(s.ok()) << "could not find " << kName                              \
                     << " in miopen DSO; dlerror: " << s.message();             \
       return reinterpret_cast<FuncPtrT>(f);                                    \
@@ -70,8 +70,7 @@ namespace wrap {
     hipsparseStatus_t operator()(Args... args) {                               \
       return DynLoad()(args...);                                               \
     }                                                                          \
-  } __name;                                                                    \
-  const char* DynLoadShim__##__name::kName = #__name;
+  } __name;
 
 #endif
 
@@ -128,7 +127,7 @@ namespace wrap {
   __macro(hipsparseDcsru2csr_bufferSizeExt)     \
   __macro(hipsparseDcsru2csr)                   \
   __macro(hipsparseScsru2csr_bufferSizeExt)     \
-  __macro(hipsparseScsru2csr)                   \  
+  __macro(hipsparseScsru2csr)                   \
   __macro(hipsparseSpMM_bufferSize)             \
   __macro(hipsparseSpMM)                        \
   __macro(hipsparseZcsru2csr_bufferSizeExt)     \

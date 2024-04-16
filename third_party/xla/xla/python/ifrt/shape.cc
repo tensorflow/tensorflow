@@ -25,7 +25,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
-#include "xla/python/ifrt/types.pb.h"
+#include "xla/python/ifrt/shape.pb.h"
 #include "xla/status.h"
 #include "xla/statusor.h"
 #include "xla/util.h"
@@ -49,7 +49,7 @@ overloaded(Ts...) -> overloaded<Ts...>;
 
 }  // namespace
 
-StatusOr<Shape> Shape::FromProto(const ShapeProto& proto) {
+absl::StatusOr<Shape> Shape::FromProto(const ShapeProto& proto) {
   Shape::Dimensions dims;
   dims.reserve(proto.dims_size());
   for (int64_t dim : proto.dims()) {
@@ -83,7 +83,7 @@ std::string Shape::DebugString() const {
   return absl::StrCat("[", absl::StrJoin(dims_, ","), "]");
 }
 
-StatusOr<BoundedDynamicShapeTag> BoundedDynamicShapeTag::FromProto(
+absl::StatusOr<BoundedDynamicShapeTag> BoundedDynamicShapeTag::FromProto(
     const BoundedDynamicShapeTagProto& proto) {
   BoundedDynamicShapeTag::DynamicDimensions dynamic_dims;
   dynamic_dims.reserve(proto.is_dynamic_dims_size());
@@ -102,10 +102,11 @@ BoundedDynamicShapeTagProto BoundedDynamicShapeTag::ToProto() const {
   return proto;
 }
 
-StatusOr<DynamicShape> DynamicShape::Create(Shape shape, DynamicShapeTag tag) {
+absl::StatusOr<DynamicShape> DynamicShape::Create(Shape shape,
+                                                  DynamicShapeTag tag) {
   TF_RETURN_IF_ERROR(std::visit(
       overloaded{
-          [&](const BoundedDynamicShapeTag& tag) {
+          [&](const BoundedDynamicShapeTag& tag) -> absl::Status {
             if (tag.DynamicDims().size() != shape.dims().size()) {
               return InvalidArgument(
                   "Shape and tag must have the same number of dimensions.");
@@ -117,7 +118,7 @@ StatusOr<DynamicShape> DynamicShape::Create(Shape shape, DynamicShapeTag tag) {
   return DynamicShape(std::move(shape), std::move(tag));
 }
 
-StatusOr<Shape> DynamicShape::GetPaddedShape() const {
+absl::StatusOr<Shape> DynamicShape::GetPaddedShape() const {
   return std::visit(
       overloaded{
           [this](BoundedDynamicShapeTag tag) { return shape_; },
@@ -135,7 +136,8 @@ bool DynamicShape::IsDynamicDim(int dimension) const {
       tag_);
 }
 
-StatusOr<DynamicShape> DynamicShape::FromProto(const DynamicShapeProto& proto) {
+absl::StatusOr<DynamicShape> DynamicShape::FromProto(
+    const DynamicShapeProto& proto) {
   TF_ASSIGN_OR_RETURN(Shape shape, Shape::FromProto(proto.shape()));
   if (proto.has_bounded_dynamic_shape_tag()) {
     TF_ASSIGN_OR_RETURN(

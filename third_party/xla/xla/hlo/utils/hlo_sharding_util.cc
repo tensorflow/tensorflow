@@ -185,7 +185,7 @@ bool IsSubTilingOrEqualSharding(const Shape& potential_sharded_shape,
   // Compare the start offsets and the end offset of the tiles for each device.
   auto& potential_ta = potential_subsharding.tile_assignment().array();
   absl::Status ok_if_no_violation = potential_ta.EachStatus(
-      [&](absl::Span<const int64_t> indices, int64_t device) {
+      [&](absl::Span<const int64_t> indices, int64_t device) -> absl::Status {
         auto sharding_offset = get_sharding_offsets(device);
         for (int j = 0; j < tiled_data_rank; ++j) {
           const int32_t subsharding_offset_j =
@@ -211,6 +211,27 @@ bool IsSubTilingOrEqualSharding(const Shape& potential_sharded_shape,
   return ok_if_no_violation.ok();
 }
 
+static bool IsLeafShardingMoreSpecific(const HloSharding& lhs,
+                                       const HloSharding& rhs) {
+  DCHECK(!lhs.IsTuple());
+  DCHECK(!rhs.IsTuple());
+  // Manual sharding is more specific than tile maximal sharding.
+  if (lhs.IsManualLeaf() && rhs.IsTileMaximalLeaf()) {
+    return true;
+  }
+  if (lhs.IsManualLeaf() || rhs.IsManualLeaf()) {
+    return false;
+  }
+  if (!rhs.IsTileMaximalLeaf()) {
+    return lhs.NumTilesLeaf() > rhs.NumTilesLeaf();
+  }
+  // If we are not replicated then only tiled (not tile maximal) shardings
+  // can improve us.
+  // If we are replicated then any non-replicated sharding can improve us.
+  return !(rhs.IsReplicatedLeaf() ? lhs.IsReplicatedLeaf()
+                                  : lhs.IsTileMaximalLeaf());
+}
+
 bool IsShardingMoreSpecific(const HloSharding& lhs, const HloSharding& rhs) {
   CHECK_EQ(lhs.IsTuple(), rhs.IsTuple()) << lhs << " <> " << rhs;
   if (lhs.IsTuple()) {
@@ -231,23 +252,7 @@ bool IsShardingMoreSpecific(const HloSharding& lhs, const HloSharding& rhs) {
     }
     return is_better;
   }
-  // Manual sharding is more specific than tile maximal sharding.
-  if (lhs.IsManual() && rhs.IsTileMaximal()) {
-    return true;
-  }
-  if (lhs.IsManual() || rhs.IsManual()) {
-    return false;
-  }
-  if (!rhs.IsTileMaximal()) {
-    return lhs.NumTiles() > rhs.NumTiles();
-  } else if (!rhs.IsReplicated()) {
-    // If we are not replicated then only tiled (not tile maximal) shardings
-    // can improve us.
-    return !lhs.IsTileMaximal();
-  } else {
-    // If we are replicated then any non-replicated sharding can improve us.
-    return !lhs.IsReplicated();
-  }
+  return IsLeafShardingMoreSpecific(lhs, rhs);
 }
 
 bool MergeSharding(const HloSharding& to_merge, HloSharding* dst,
@@ -266,7 +271,7 @@ bool MergeSharding(const HloSharding& to_merge, HloSharding* dst,
       !dst->HasPartialReplication() ||
       to_merge.tile_assignment().num_elements() !=
           dst->tile_assignment().num_elements()) {
-    return IsShardingMoreSpecific(*dst, to_merge);
+    goto check_if_more_specific;
   }
 
   if (MergeShardingIfCompatible(
@@ -275,7 +280,8 @@ bool MergeSharding(const HloSharding& to_merge, HloSharding* dst,
           dst)) {
     return true;
   }
-  return IsShardingMoreSpecific(*dst, to_merge);
+check_if_more_specific:
+  return IsLeafShardingMoreSpecific(*dst, to_merge);
 }
 
 bool MergeShardingIfCompatible(const HloSharding& to_merge,
@@ -479,8 +485,9 @@ bool MergeShardingIfCompatible(const HloSharding& to_merge,
     };
     // Try to find the intersection of to_merge and dst replication groups, in
     // order to determine the merged tile assignment.
-    Status compatible = new_tile_array.EachStatus(
-        [&](absl::Span<const int64_t> indices, int64_t* device) {
+    Status compatible =
+        new_tile_array.EachStatus([&](absl::Span<const int64_t> indices,
+                                      int64_t* device) -> absl::Status {
           DimensionVector to_merge_index(
               to_merge.tile_assignment().num_dimensions());
           DimensionVector dst_index(dst->tile_assignment().num_dimensions());
@@ -1807,7 +1814,7 @@ HloSharding GatherOutputOrScatterUpdateShardingFromIndicesParallelDimensions(
                                      indices_sharding.metadata());
 }
 
-StatusOr<std::pair<std::unique_ptr<HloInstruction>, HloOpcode>>
+absl::StatusOr<std::pair<std::unique_ptr<HloInstruction>, HloOpcode>>
 IdentityValueAndHloOpcodeForScatterReduceComputation(
     const HloScatterInstruction& scatter) {
   auto computation = scatter.to_apply();
@@ -2324,8 +2331,8 @@ absl::InlinedVector<int64_t, 1> GetScatterParallelUpdateDims(
 }
 
 absl::InlinedVector<int64_t, 1> GetGatherOperandPassthroughOperandDims(
-    const Shape& operand_shape, const HloSharding& operand_sharding,
-    const HloInstruction& hlo, absl::Span<const int64_t> slice_sizes) {
+    const Shape& operand_shape, const HloInstruction& hlo,
+    absl::Span<const int64_t> slice_sizes) {
   const auto& dnums = hlo.gather_dimension_numbers();
   std::vector<int64_t> collapsed_slice_dims(
       dnums.collapsed_slice_dims().begin(), dnums.collapsed_slice_dims().end());
@@ -2356,8 +2363,7 @@ absl::InlinedVector<int64_t, 1> GetScatterOperandPassthroughOperandDims(
 
 absl::InlinedVector<int64_t, 1> GetGatherOperandPassthroughOutputDims(
     const Shape& output_shape, const Shape& operand_shape,
-    const HloSharding& operand_sharding, const HloInstruction& hlo,
-    absl::Span<const int64_t> slice_sizes) {
+    const HloInstruction& hlo, absl::Span<const int64_t> slice_sizes) {
   const auto& dnums = hlo.gather_dimension_numbers();
   std::vector<int64_t> collapsed_slice_dims(
       dnums.collapsed_slice_dims().begin(), dnums.collapsed_slice_dims().end());
@@ -3008,7 +3014,8 @@ bool IsSortOperandShardingMovable(const HloInstruction* sort_operand,
   auto tile_assignment_dims = sharding.tile_assignment().dimensions();
   const int rank = sort_operand->shape().rank();
   for (int64_t dim = 0; dim < rank; ++dim) {
-    if (dim == sort_dim || tile_assignment_dims[dim] != 1) {
+    if (dim == sort_dim || tile_assignment_dims[dim] != 1 ||
+        sort_operand->shape().dimensions(dim) == 1) {
       continue;
     }
     return true;
@@ -3056,10 +3063,49 @@ Shape UntileLeafShape(const HloSharding& sharding, const Shape& shape) {
   if (sharding.IsTileMaximal() || sharding.IsManual() || sharding.IsUnknown()) {
     return shape;
   }
+  if (!shape.IsArray()) {
+    return shape;
+  }
   Shape result_shape = shape;
-  for (int64_t i = 0; i < sharding.TiledDataRank(); ++i) {
+  // sharding.TiledDataRank() == i < shape.rank() is not always true?
+  for (int64_t i = 0; i < sharding.TiledDataRank() && i < shape.rank(); ++i) {
     result_shape.set_dimensions(
         i, shape.dimensions(i) * sharding.tile_assignment().dim(i));
+  }
+  return result_shape;
+}
+
+Shape TileShape(const HloSharding& sharding, const Shape& shape) {
+  if (!sharding.IsTuple()) {
+    return TileLeafShape(sharding, shape);
+  }
+  Shape result_shape = shape;
+  ShapeUtil::ForEachMutableSubshape(
+      &result_shape,
+      [&shape, &sharding](Shape* subshape, const ShapeIndex& index) {
+        if (!ShapeUtil::IsLeafIndex(shape, index)) {
+          return;
+        }
+        const HloSharding& subshape_sharding =
+            sharding.GetSubSharding(shape, index);
+        *subshape = TileLeafShape(subshape_sharding, *subshape);
+      });
+
+  return result_shape;
+}
+
+Shape TileLeafShape(const HloSharding& sharding, const Shape& shape) {
+  if (sharding.IsTileMaximal() || sharding.IsManual() || sharding.IsUnknown()) {
+    return shape;
+  }
+  if (!shape.IsArray()) {
+    return shape;
+  }
+  Shape result_shape = shape;
+  for (int64_t i = 0; i < sharding.TiledDataRank() && i < shape.rank(); ++i) {
+    CHECK_EQ(shape.dimensions(i) % sharding.tile_assignment().dim(i), 0);
+    result_shape.set_dimensions(
+        i, shape.dimensions(i) / sharding.tile_assignment().dim(i));
   }
   return result_shape;
 }

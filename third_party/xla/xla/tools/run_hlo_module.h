@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/hlo_runner.h"
+#include "xla/status.h"
 #include "xla/tools/run_hlo_module.pb.h"
 #include "tsl/platform/status.h"
 
@@ -55,6 +56,7 @@ struct RunHloModuleOptions {
   std::string input_literals_file;
   bool random_init_input_literals{true};
   bool force_fake_data{false};
+  bool isolate_instructions{false};
 };
 
 // Runs test_module on the platform with the name

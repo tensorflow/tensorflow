@@ -51,7 +51,7 @@ void InitializeLLVMCommandLineOptions(const T& options) {
       VLOG(2) << s;
     }
     llvm::cl::ParseCommandLineOptions(static_cast<int>(fake_argv.size()),
-                                      &fake_argv[0]);
+                                      fake_argv.data());
   }
 }
 

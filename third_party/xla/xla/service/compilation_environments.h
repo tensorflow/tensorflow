@@ -47,7 +47,7 @@ namespace xla {
 class CompilationEnvironments {
  public:
   using ProcessNewEnvFn =
-      std::function<StatusOr<std::unique_ptr<tsl::protobuf::Message>>(
+      std::function<absl::StatusOr<std::unique_ptr<tsl::protobuf::Message>>(
           std::unique_ptr<tsl::protobuf::Message>)>;
 
   CompilationEnvironments() = default;
@@ -56,8 +56,8 @@ class CompilationEnvironments {
   ~CompilationEnvironments() = default;
 
   // Deserializes the given CompilationEnvironments proto.
-  static StatusOr<std::unique_ptr<CompilationEnvironments>> CreateFromProto(
-      const CompilationEnvironmentsProto& proto);
+  static absl::StatusOr<std::unique_ptr<CompilationEnvironments>>
+  CreateFromProto(const CompilationEnvironmentsProto& proto);
 
   // Whenever an environment is added to CompilationEnvironments, even when
   // GetEnv() adds a lazily initialized one, it is passed to the function

@@ -46,11 +46,6 @@ CreateExtractOutsideCompilationPass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateXlaClusterFormationPass();
 
-// Create a pass that rewrites entry functions with `_xla_compile_device` into a
-// `tf.StatefulPartitionedCall` to the original function.
-std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-CreateXlaOutlineEntryFunctionsPass();
-
 // Creates a pass that marks unsupported ops in device cluster for outside
 // compilation.
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
@@ -60,6 +55,12 @@ CreateMarkOpsForOutsideCompilationPass();
 // whose value is broacast to all replicas.
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 CreateHoistBroadcastReadPass();
+
+// Creates a pass that moves broadcasts from TF host ops to XLA code, encoded as
+// XlaAllReduces. This enables use of the device network for broadcasts, which
+// is faster.
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+CreateXlaBroadcastPass();
 
 #define GEN_PASS_REGISTRATION
 #define GEN_PASS_DECL_MARKOPSFOROUTSIDECOMPILATIONPASS

@@ -29,6 +29,9 @@ REGISTER_OP_NO_GRADIENT("OnesLike");
 REGISTER_OP_NO_GRADIENT("Const");
 REGISTER_OP_NO_GRADIENT("EditDistance");
 REGISTER_OP_NO_GRADIENT("StopGradient");
+REGISTER_OP_NO_GRADIENT("FakeQuantWithMinMaxArgsGradient");
+REGISTER_OP_NO_GRADIENT("FakeQuantWithMinMaxVarsGradient");
+REGISTER_OP_NO_GRADIENT("FakeQuantWithMinMaxVarsPerChannelGradient");
 
 Status ReshapeGrad(const AttrSlice& attrs, FunctionDef* g) {
   // clang-format off
@@ -46,7 +49,7 @@ Status ReshapeGrad(const AttrSlice& attrs, FunctionDef* g) {
         {{"dshape"}, "ZerosLike", {"shape"}, {{"T", DT_INT32}}},
       });
   // clang-format on
-  return OkStatus();
+  return absl::OkStatus();
 }
 REGISTER_OP_GRADIENT("Reshape", ReshapeGrad);
 REGISTER_OP_GRADIENT("ExpandDims", ReshapeGrad);
@@ -66,7 +69,7 @@ Status SqueezeGrad(const AttrSlice& attrs, FunctionDef* g) {
         {{"dx"}, "Reshape", {"dy", "x_shape"}, {{"T", "$T"}}},
       });
   // clang-format on
-  return OkStatus();
+  return absl::OkStatus();
 }
 REGISTER_OP_GRADIENT("Squeeze", SqueezeGrad);
 
@@ -85,7 +88,7 @@ Status IdentityGrad(const AttrSlice& attrs, FunctionDef* g) {
       });
   // clang-format on
   VLOG(1) << "IdentityGrad " << DebugString(*g);
-  return OkStatus();
+  return absl::OkStatus();
 }
 REGISTER_OP_GRADIENT("Identity", IdentityGrad);
 
@@ -111,7 +114,7 @@ Status PackGrad(const AttrSlice& attrs, FunctionDef* g) {
       {{"dx", "dx:output"}});
   // clang-format on
   VLOG(1) << "PackGrad " << DebugString(*g);
-  return OkStatus();
+  return absl::OkStatus();
 }
 REGISTER_OP_GRADIENT("Pack", PackGrad);
 
@@ -135,7 +138,7 @@ Status UnpackGrad(const AttrSlice& attrs, FunctionDef* g) {
       });
   // clang-format on
   VLOG(1) << "UnpackGrad " << DebugString(*g);
-  return OkStatus();
+  return absl::OkStatus();
 }
 REGISTER_OP_GRADIENT("Unpack", UnpackGrad);
 
@@ -210,7 +213,7 @@ Status ConcatGradHelper(const AttrSlice& attrs, FunctionDef* g,
     // clang-format on
   }
   VLOG(1) << "ConcatGrad " << DebugString(*g);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ConcatGrad(const AttrSlice& attrs, FunctionDef* g) {
@@ -240,7 +243,7 @@ Status SplitGrad(const AttrSlice& attrs, FunctionDef* g) {
       });
   // clang-format on
   VLOG(1) << "SplitGrad " << DebugString(*g);
-  return OkStatus();
+  return absl::OkStatus();
 }
 REGISTER_OP_GRADIENT("Split", SplitGrad);
 
@@ -261,7 +264,7 @@ Status SplitVGrad(const AttrSlice& attrs, FunctionDef* g) {
       });
   // clang-format on
   VLOG(1) << "SplitVGrad " << DebugString(*g);
-  return OkStatus();
+  return absl::OkStatus();
 }
 REGISTER_OP_GRADIENT("SplitV", SplitVGrad);
 
@@ -288,7 +291,7 @@ Status ArrayToListGrad(const AttrSlice& attrs, FunctionDef* g) {
       });
   // clang-format on
   VLOG(1) << "ArrayToListGrad " << DebugString(*g);
-  return OkStatus();
+  return absl::OkStatus();
 }
 REGISTER_OP_GRADIENT("_ArrayToList", ArrayToListGrad);
 
@@ -308,7 +311,7 @@ Status ListToArrayGrad(const AttrSlice& attrs, FunctionDef* g) {
       });
   // clang-format on
   VLOG(1) << "ListToArrayGrad " << DebugString(*g);
-  return OkStatus();
+  return absl::OkStatus();
 }
 REGISTER_OP_GRADIENT("_ListToArray", ListToArrayGrad);
 
@@ -331,7 +334,7 @@ Status FillGrad(const AttrSlice& attrs, FunctionDef* g) {
           {{"dx"}, "Sum", {"dy", "r"}, {{"T", "$T"}}},
       });
   VLOG(1) << "FillGrad " << DebugString(*g);
-  return OkStatus();
+  return absl::OkStatus();
 }
 REGISTER_OP_GRADIENT("Fill", FillGrad);
 
@@ -350,7 +353,7 @@ Status TransposeGrad(const AttrSlice& attrs, FunctionDef* g) {
           {{"dp"}, "ZerosLike", {"p"}, {{"T", DT_INT32}}},
       });
   VLOG(1) << "TransposeGrad " << DebugString(*g);
-  return OkStatus();
+  return absl::OkStatus();
 }
 REGISTER_OP_GRADIENT("Transpose", TransposeGrad);
 
@@ -371,7 +374,7 @@ Status GatherNdGrad(const AttrSlice& attrs, FunctionDef* g) {
         {{"dindices"}, "ZerosLike", {"indices"}, {{"T", "$Tindices"}}},
       });
   // clang-format on
-  return OkStatus();
+  return absl::OkStatus();
 }
 REGISTER_OP_GRADIENT("GatherNd", GatherNdGrad);
 
@@ -390,7 +393,7 @@ Status ConjugateTransposeGrad(const AttrSlice& attrs, FunctionDef* g) {
           {{"dp"}, "ZerosLike", {"p"}, {{"T", DT_INT32}}},
       });
   VLOG(1) << "ConjugateTransposeGrad " << DebugString(*g);
-  return OkStatus();
+  return absl::OkStatus();
 }
 REGISTER_OP_GRADIENT("ConjugateTranspose", ConjugateTransposeGrad);
 
@@ -408,7 +411,7 @@ Status ReverseGrad(const AttrSlice& attrs, FunctionDef* g) {
           {{"dd"}, "ZerosLike", {"d"}, {{"T", DT_BOOL}}},
       });
   VLOG(1) << "ReverseGrad " << DebugString(*g);
-  return OkStatus();
+  return absl::OkStatus();
 }
 REGISTER_OP_GRADIENT("Reverse", ReverseGrad);
 
@@ -432,7 +435,7 @@ Status ReverseV2Grad(const AttrSlice& attrs, FunctionDef* g) {
           {{"dd"}, "ZerosLike", {"d"}, {{"T", "$Tidx"}}},
       });
   VLOG(1) << "ReverseGrad " << DebugString(*g);
-  return OkStatus();
+  return absl::OkStatus();
 }
 REGISTER_OP_GRADIENT("ReverseV2", ReverseV2Grad);
 
@@ -467,7 +470,7 @@ Status SliceGrad(const AttrSlice& attrs, FunctionDef* g) {
        {{"begin_grad"}, "ZerosLike", {"begin"}, {{"T", DT_INT32}}},
        {{"size_grad"}, "ZerosLike", {"size"}, {{"T", DT_INT32}}}});
   VLOG(1) << "SliceGrad " << DebugString(*g);
-  return OkStatus();
+  return absl::OkStatus();
 }
 REGISTER_OP_GRADIENT("Slice", SliceGrad);
 
@@ -504,7 +507,7 @@ Status StridedSliceGrad(const AttrSlice& attrs, FunctionDef* g) {
         {{"stride_grad"}, "ZerosLike", {"stride"}, {{"T", DT_INT32}}}}});
 
   VLOG(1) << "StridedSliceGrad " << DebugString(*g);
-  return OkStatus();
+  return absl::OkStatus();
 }
 REGISTER_OP_GRADIENT("StridedSlice", StridedSliceGrad);
 
@@ -546,7 +549,7 @@ Status StridedSliceGradGrad(const AttrSlice& attrs, FunctionDef* g) {
           {"shrink_axis_mask", "$shrink_axis_mask"}}}}});
 
   VLOG(1) << "StridedSliceGrad " << DebugString(*g);
-  return OkStatus();
+  return absl::OkStatus();
 }
 REGISTER_OP_GRADIENT("StridedSliceGrad", StridedSliceGradGrad);
 
@@ -572,7 +575,7 @@ Status BroadcastToGrad(const AttrSlice& attrs, FunctionDef* g) {
       {{"T: type"}, {"Tidx: {int32, int64}"}},
       // Nodes
       nodes);
-  return OkStatus();
+  return absl::OkStatus();
 }
 REGISTER_OP_GRADIENT("BroadcastTo", BroadcastToGrad);
 

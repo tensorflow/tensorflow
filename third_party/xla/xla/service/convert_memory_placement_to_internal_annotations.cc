@@ -28,7 +28,7 @@
 
 namespace xla {
 
-StatusOr<bool> ConvertMemoryPlacementToInternalAnnotations::Run(
+absl::StatusOr<bool> ConvertMemoryPlacementToInternalAnnotations::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
@@ -41,13 +41,16 @@ StatusOr<bool> ConvertMemoryPlacementToInternalAnnotations::Run(
         if (it == frontend_attributes.map().end()) {
           continue;
         }
+        // XLA currently does not differentiate between pinned and unpinned host
+        // memory.
         const bool is_to_host_case =
-            it->second == host_memory_offload_annotations::kMemoryTargetHost;
+            (it->second ==
+                 host_memory_offload_annotations::kMemoryTargetPinnedHost ||
+             it->second ==
+                 host_memory_offload_annotations::kMemoryTargetUnpinnedHost);
         const bool is_to_device_case =
             (it->second ==
-                 host_memory_offload_annotations::kMemoryTargetDeviceTpu ||
-             it->second ==
-                 host_memory_offload_annotations::kMemoryTargetDeviceGpu);
+             host_memory_offload_annotations::kMemoryTargetDevice);
         if (!is_to_host_case && !is_to_device_case) {
           continue;
         }
@@ -76,10 +79,6 @@ StatusOr<bool> ConvertMemoryPlacementToInternalAnnotations::Run(
         } else if (is_to_device_case) {
           VLOG(1) << "Process backward case: " << instruction->ToString();
           HloInstruction* custom_call_operand = instruction->mutable_operand(0);
-          if (custom_call_operand->users().size() != 1) {
-            VLOG(1) << "Skip because operand is used by more than one user";
-            continue;
-          }
           HloInstruction* new_result =
               c->AddInstruction(HloInstruction::CreateCustomCall(
                   custom_call_operand->shape(), {custom_call_operand},

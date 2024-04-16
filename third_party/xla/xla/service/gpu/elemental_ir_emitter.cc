@@ -15,24 +15,32 @@ limitations under the License.
 
 #include "xla/service/gpu/elemental_ir_emitter.h"
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
 // IWYU pragma: no_include "llvm/IR/Attributes.gen.inc"
 // IWYU pragma: no_include "llvm/IR/Intrinsics.gen.inc"
+#include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "llvm/IR/Attributes.h"
 #include "llvm/IR/BasicBlock.h"
+#include "llvm/IR/Constants.h"
 #include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Type.h"
 #include "llvm/Support/ModRef.h"
+#include "llvm/TargetParser/Triple.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/layout.h"
-#include "xla/literal.h"
+#include "xla/service/elemental_ir_emitter.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/ir_emitter_nested.h"
@@ -40,7 +48,7 @@ limitations under the License.
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/service/llvm_ir/math_ops.h"
-#include "xla/statusor.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -95,29 +103,6 @@ absl::StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitDeviceMathCall(
     result = FPCast(result, b()->getHalfTy());
   }
   return result;
-}
-
-absl::StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitLlvmIntrinsicMathCall(
-    const std::string& callee_name, absl::Span<llvm::Value* const> operands,
-    absl::Span<const PrimitiveType> input_types, PrimitiveType output_type) {
-  // llvm intrinsics differentiate between half/float/double functions via
-  // the suffixes ".f16", ".f32" and ".f64".
-  std::string munged_callee = callee_name;
-  switch (output_type) {
-    case F16:
-      StrAppend(&munged_callee, ".f16");
-      break;
-    case F32:
-      StrAppend(&munged_callee, ".f32");
-      break;
-    case F64:
-      StrAppend(&munged_callee, ".f64");
-      break;
-    default:
-      return Unimplemented("Bad type for llvm intrinsic math call: %s",
-                           PrimitiveType_Name(output_type));
-  }
-  return EmitMathCall(munged_callee, operands, input_types, output_type);
 }
 
 absl::StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitMathCall(
@@ -318,8 +303,8 @@ absl::StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitTanh(
                 value->getType(), "tanh");
 }
 
-StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitErf(PrimitiveType prim_type,
-                                                      llvm::Value* value) {
+absl::StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitErf(
+    PrimitiveType prim_type, llvm::Value* value) {
   if (prim_type == F64) {
     return EmitDeviceMathCall(TargetDeviceFunctionID::kErf, {value},
                               {prim_type}, prim_type);
@@ -345,31 +330,6 @@ absl::StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitCbrt(
     PrimitiveType prim_type, llvm::Value* value) {
   return EmitDeviceMathCall(TargetDeviceFunctionID::kCbrt, {value}, {prim_type},
                             prim_type);
-}
-
-llvm::Value* GpuElementalIrEmitter::EmitThreadId() {
-  llvm::Value* block_id = IntCast(
-      EmitCallToTargetIntrinsic(TargetIntrinsicID::kBlockIdx, {}, {}, b()),
-      b()->getIntNTy(128), /*isSigned=*/true, "block.id");
-  llvm::Value* thread_id_in_block = IntCast(
-      EmitCallToTargetIntrinsic(TargetIntrinsicID::kThreadIdx, {}, {}, b()),
-      b()->getIntNTy(128), /*isSigned=*/true, "thread.id");
-  llvm::Value* threads_per_block = IntCast(
-      EmitCallToTargetIntrinsic(TargetIntrinsicID::kBlockDimx, {}, {}, b()),
-      b()->getIntNTy(128), /*isSigned=*/true, "threads_per_block");
-  return NSWAdd(NSWMul(block_id, threads_per_block), thread_id_in_block);
-}
-
-absl::StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitF32ToBF16(
-    llvm::Value* f32_value) {
-  // sm_80 and up has an instruction to convert f32 into bf16.
-  if (ir_emitter_context_.cuda_compute_capability().IsAtLeast(
-          se::CudaComputeCapability::AMPERE)) {
-    return BitCast(
-        FPTrunc(BitCast(f32_value, b()->getFloatTy()), b()->getBFloatTy()),
-        b()->getInt16Ty());
-  }
-  return ElementalIrEmitter::EmitF32ToBF16(f32_value);
 }
 
 absl::StatusOr<std::vector<llvm::Value*>>

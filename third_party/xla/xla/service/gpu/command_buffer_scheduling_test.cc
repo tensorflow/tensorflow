@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -24,6 +25,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/service/hlo_parser.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/tests/filecheck.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/verified_hlo_module.h"
@@ -39,11 +41,8 @@ class CommandBufferSchedulingTest : public HloTestBase {
   // Use CUDA 12.3 version for testing as it has all the features we rely on.
   static constexpr int32_t kCudaVersion = 12030;
 
-  const auto& gpu_comp() {
-    return backend()
-        .default_stream_executor()
-        ->GetDeviceDescription()
-        .gpu_compute_capability();
+  const se::DeviceDescription& device_desc() {
+    return backend().default_stream_executor()->GetDeviceDescription();
   }
 
   DebugOptions GetDebugOptionsForTest() override {
@@ -51,6 +50,7 @@ class CommandBufferSchedulingTest : public HloTestBase {
     debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::FUSION);
     debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::CONDITIONALS);
     debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::COLLECTIVES);
+    debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::CUDNN);
     debug_options.set_xla_gpu_graph_min_graph_size(2);
     return debug_options;
   }
@@ -101,7 +101,7 @@ TEST_F(CommandBufferSchedulingTest, SingleCommandBuffer) {
 // CHECK: })";
 
   RunAndFilecheckHloRewrite(
-      hlo, CommandBufferScheduling(gpu_comp(), kCudaVersion, kCudaVersion),
+      hlo, CommandBufferScheduling(device_desc(), kCudaVersion, kCudaVersion),
       expected, [](HloModule* module) {
         EXPECT_TRUE(module->has_schedule());
         TF_CHECK_OK(module->schedule().Verify());
@@ -179,7 +179,7 @@ TEST_F(CommandBufferSchedulingTest, MultipleCommandBuffers) {
 // CHECK:  })";
 
   RunAndFilecheckHloRewrite(
-      hlo, CommandBufferScheduling(gpu_comp(), kCudaVersion, kCudaVersion),
+      hlo, CommandBufferScheduling(device_desc(), kCudaVersion, kCudaVersion),
       expected, [](HloModule* module) {
         EXPECT_TRUE(module->has_schedule());
         TF_CHECK_OK(module->schedule().Verify());
@@ -214,11 +214,11 @@ TEST_F(CommandBufferSchedulingTest, AllReduceStartFollowedByDone) {
     CHECK: ENTRY %main (a: s32[4]) -> s32[4] {
     CHECK:   %[[A:.+]] = s32[4]{0} parameter(0)
     CHECK:   ROOT %[[CALL:.+]] = s32[4]{0} call(%[[A]]),
-    CHECL:     to_apply=%command_buffer
+    CHECK:     to_apply=%command_buffer
     CHECK: })";
 
   RunAndFilecheckHloRewrite(
-      hlo, CommandBufferScheduling(gpu_comp(), kCudaVersion, kCudaVersion),
+      hlo, CommandBufferScheduling(device_desc(), kCudaVersion, kCudaVersion),
       expected, [](HloModule* module) {
         EXPECT_TRUE(module->has_schedule());
         TF_CHECK_OK(module->schedule().Verify());
@@ -249,11 +249,11 @@ TEST_F(CommandBufferSchedulingTest, AllGatherStartFollowedByDone) {
     CHECK: ENTRY %main (a: s32[2]) -> s32[4] {
     CHECK:   %[[A:.+]] = s32[2]{0} parameter(0)
     CHECK:   ROOT %[[CALL:.+]] = s32[4]{0} call(%[[A]]),
-    CHECL:     to_apply=%command_buffer
+    CHECK:     to_apply=%command_buffer
     CHECK: })";
 
   RunAndFilecheckHloRewrite(
-      hlo, CommandBufferScheduling(gpu_comp(), kCudaVersion, kCudaVersion),
+      hlo, CommandBufferScheduling(device_desc(), kCudaVersion, kCudaVersion),
       expected, [](HloModule* module) {
         EXPECT_TRUE(module->has_schedule());
         TF_CHECK_OK(module->schedule().Verify());
@@ -290,11 +290,162 @@ TEST_F(CommandBufferSchedulingTest, ReduceScatterStartFollowedByDone) {
     CHECK: ENTRY %main (a: s32[4]) -> s32[2] {
     CHECK:   %[[A:.+]] = s32[4]{0} parameter(0)
     CHECK:   ROOT %[[CALL:.+]] = s32[2]{0} call(%[[A]]),
-    CHECL:     to_apply=%command_buffer
+    CHECK:     to_apply=%command_buffer
     CHECK: })";
 
   RunAndFilecheckHloRewrite(
-      hlo, CommandBufferScheduling(gpu_comp(), kCudaVersion, kCudaVersion),
+      hlo, CommandBufferScheduling(device_desc(), kCudaVersion, kCudaVersion),
+      expected, [](HloModule* module) {
+        EXPECT_TRUE(module->has_schedule());
+        TF_CHECK_OK(module->schedule().Verify());
+      });
+}
+
+TEST_F(CommandBufferSchedulingTest, AllReduceStartFollowedByBitcast) {
+  const char* hlo = R"(
+    HloModule TestModule, is_scheduled=true
+
+    %add (p0: s32[4], p1: s32[4]) -> s32[4] {
+      %p0 = s32[4] parameter(0)
+      %p1 = s32[4] parameter(1)
+      ROOT %add = s32[4] add(s32[4] %p0, s32[4] %p1)
+    }
+
+    ENTRY %main (a: s32[4]) -> s32[4] {
+      %a = s32[4] parameter(0)
+      %start = s32[4]{0} all-reduce-start(s32[4]{0} %a),
+        replica_groups={{0,1}}, to_apply=%add,
+        backend_config={"collective_backend_config": {"is_sync":true,"no_parallel_custom_call":false}}
+      %bitcast = s32[4] bitcast(s32[4]{0} %a)
+      ROOT %done = s32[4]{0} all-reduce-done(s32[4]{0} %start)
+    })";
+
+  const char* expected = R"(
+    CHECK: %command_buffer ([[P0:.+]]: s32[4]) -> s32[4] {
+    CHECK:   %[[P0]] = s32[4]{0} parameter(0)
+    CHECK:   %[[START:.+]] = s32[4]{0} all-reduce-start(%[[P0]])
+    CHECK:   %[[BITCAST:.+]] = s32[4]{0} bitcast(%[[P0]])
+    CHECK:   ROOT %[[DONE:.+]] = s32[4]{0} all-reduce-done(%[[START]])
+    CHECK: }
+
+    CHECK: ENTRY %main (a: s32[4]) -> s32[4] {
+    CHECK:   %[[A:.+]] = s32[4]{0} parameter(0)
+    CHECK:   ROOT %[[CALL:.+]] = s32[4]{0} call(%[[A]]),
+    CHECK:     to_apply=%command_buffer
+    CHECK: })";
+
+  RunAndFilecheckHloRewrite(
+      hlo, CommandBufferScheduling(device_desc(), kCudaVersion, kCudaVersion),
+      expected, [](HloModule* module) {
+        EXPECT_TRUE(module->has_schedule());
+        TF_CHECK_OK(module->schedule().Verify());
+      });
+}
+
+TEST_F(CommandBufferSchedulingTest, AllReduceStartFollowedAllReduceStart) {
+  const char* hlo = R"(
+    HloModule TestModule, is_scheduled=true
+
+    %add (p0: s32[4], p1: s32[4]) -> s32[4] {
+      %p0 = s32[4] parameter(0)
+      %p1 = s32[4] parameter(1)
+      ROOT %add = s32[4] add(s32[4] %p0, s32[4] %p1)
+    }
+
+    ENTRY %main (a: s32[4]) -> s32[4] {
+      %a = s32[4] parameter(0)
+      %start1 = s32[4]{0} all-reduce-start(s32[4]{0} %a),
+        replica_groups={{0,1}}, to_apply=%add,
+        backend_config={"collective_backend_config": {"is_sync":true,"no_parallel_custom_call":false}}
+      %start2 = s32[4]{0} all-reduce-start(s32[4]{0} %a),
+        replica_groups={{0,1}}, to_apply=%add,
+        backend_config={"collective_backend_config": {"is_sync":true,"no_parallel_custom_call":false}}
+      %done1 = s32[4]{0} all-reduce-done(s32[4]{0} %start1)
+      ROOT %done2 = s32[4]{0} all-reduce-done(s32[4]{0} %start2)
+    })";
+
+  const char* expected = R"(
+    CHECK: %command_buffer ([[P0:.+]]: s32[4]) -> s32[4] {
+    CHECK:   %[[P0]] = s32[4]{0} parameter(0)
+    CHECK:   %[[START1:.+]] = s32[4]{0} all-reduce-start(%[[P0]])
+    CHECK:   %[[START2:.+]] = s32[4]{0} all-reduce-start(%[[P0]])
+    CHECK:   %[[DONE1:.+]] = s32[4]{0} all-reduce-done(%[[START1]])
+    CHECK:   ROOT %[[DONE2:.+]] = s32[4]{0} all-reduce-done(%[[START2]])
+    CHECK: }
+
+    CHECK: ENTRY %main (a: s32[4]) -> s32[4] {
+    CHECK:   %[[A:.+]] = s32[4]{0} parameter(0)
+    CHECK:   ROOT %[[CALL:.+]] = s32[4]{0} call(%[[A]]),
+    CHECK:     to_apply=%command_buffer
+    CHECK: })";
+
+  RunAndFilecheckHloRewrite(
+      hlo, CommandBufferScheduling(device_desc(), kCudaVersion, kCudaVersion),
+      expected, [](HloModule* module) {
+        EXPECT_TRUE(module->has_schedule());
+        TF_CHECK_OK(module->schedule().Verify());
+      });
+}
+
+TEST_F(CommandBufferSchedulingTest, DoNotCaptureUnmatchedAsyncDone) {
+  const char* hlo = R"(
+    HloModule TestModule, is_scheduled=true
+
+    %fused_computation(param_0: s32[], param_1: s32[]) -> s32[] {
+      %p0 = s32[] parameter(0)
+      %p1 = s32[] parameter(1)
+      ROOT %add = s32[] add(s32[] %p0, s32[] %p1)
+    }
+
+    %fused_computation.1(param_0: s32[], param_1: s32[]) -> s32[] {
+      %p0 = s32[] parameter(0)
+      %p1 = s32[] parameter(1)
+      ROOT %add = s32[] add(s32[] %p0, s32[] %p1)
+    }
+
+    %add (p0: s32[4], p1: s32[4]) -> s32[4] {
+      %p0 = s32[4] parameter(0)
+      %p1 = s32[4] parameter(1)
+      ROOT %add = s32[4] add(s32[4] %p0, s32[4] %p1)
+    }
+
+    ENTRY %main (a: s32[4], b:s32[]) -> s32[] {
+      %a = s32[4] parameter(0)
+      %b = s32[] parameter(1)
+      %start1 = s32[4]{0} all-reduce-start(s32[4]{0} %a),
+        replica_groups={{0,1}}, to_apply=%add,
+        backend_config={"collective_backend_config": {"is_sync":true,"no_parallel_custom_call":false}}
+      %c = s32[] custom-call(), custom_call_target="target"
+      %start2 = s32[4]{0} all-reduce-start(s32[4]{0} %a),
+        replica_groups={{0,1}}, to_apply=%add,
+        backend_config={"collective_backend_config": {"is_sync":true,"no_parallel_custom_call":false}}
+      %done1 = s32[4]{0} all-reduce-done(s32[4]{0} %start1)
+      %done2 = s32[4]{0} all-reduce-done(s32[4]{0} %start2)
+      %fusion = s32[] fusion(s32[] %b, s32[] %c), kind=kLoop, calls=%fused_computation
+      ROOT %fusion.1 = s32[] fusion(s32[] %b, s32[] %c), kind=kLoop, calls=%fused_computation.1
+    })";
+
+  const char* expected = R"(
+    CHECK: %command_buffer ([[P0:.+]]: s32[], [[P1:.+]]: s32[]) -> s32[] {
+    CHECK:   %[[P0]] = s32[] parameter(0)
+    CHECK:   %[[P1]] = s32[] parameter(1)
+    CHECK:   %fusion.2 = s32[] fusion(%[[P0]], %[[P1]]), kind=kLoop, calls=%fused_computation
+    CHECK:   ROOT %fusion.3 = s32[] fusion(%[[P0]], %[[P1]]), kind=kLoop, calls=%fused_computation.1
+    CHECK: }
+
+    CHECK: ENTRY %main (a: s32[4], b: s32[]) -> s32[] {
+    CHECK:   %[[A:.+]] = s32[4]{0} parameter(0)
+    CHECK:   %[[B:.+]] = s32[] parameter(1)
+    CHECK:   %[[START1:.+]] = s32[4]{0} all-reduce-start(%[[A]])
+    CHECK:   %[[C:.+]] = s32[] custom-call()
+    CHECK:   %[[START2:.+]] = s32[4]{0} all-reduce-start(%[[A]])
+    CHECK:   %[[DONE1:.+]] = s32[4]{0} all-reduce-done(%[[START1]])
+    CHECK:   %[[DONE2:.+]] = s32[4]{0} all-reduce-done(%[[START2]])
+    CHECK:   %call = s32[] call(%b, %c), to_apply=%command_buffer
+    CHECK: })";
+
+  RunAndFilecheckHloRewrite(
+      hlo, CommandBufferScheduling(device_desc(), kCudaVersion, kCudaVersion),
       expected, [](HloModule* module) {
         EXPECT_TRUE(module->has_schedule());
         TF_CHECK_OK(module->schedule().Verify());
@@ -351,8 +502,8 @@ TEST_F(CommandBufferSchedulingTest, CollectCommandBufferSequence) {
   }
   EXPECT_EQ(seq.size(), 10);
 
-  CommandBufferScheduling::CommandBufferConfig config;
-  config.insert(DebugOptions::FUSION);
+  CommandBufferScheduling::CommandBufferConfig config{{DebugOptions::FUSION},
+                                                      device_desc()};
 
   std::vector<HloInstructionSequence> command_buffer_sequences =
       CommandBufferScheduling::CollectCommandBufferSequences(seq, config);
@@ -541,7 +692,7 @@ TEST_F(CommandBufferSchedulingTest, ForwardControlDependencies) {
     CHECK: })";
 
   RunAndFilecheckHloRewrite(
-      hlo, CommandBufferScheduling(gpu_comp(), kCudaVersion, kCudaVersion),
+      hlo, CommandBufferScheduling(device_desc(), kCudaVersion, kCudaVersion),
       expected, [](HloModule* module) {
         EXPECT_TRUE(module->has_schedule());
         TF_CHECK_OK(module->schedule().Verify());
@@ -581,7 +732,7 @@ TEST_F(CommandBufferSchedulingTest, ForwardControlDependenciesToParams) {
     CHECK: })";
 
   RunAndFilecheckHloRewrite(
-      hlo, CommandBufferScheduling(gpu_comp(), kCudaVersion, kCudaVersion),
+      hlo, CommandBufferScheduling(device_desc(), kCudaVersion, kCudaVersion),
       expected, [](HloModule* module) {
         EXPECT_TRUE(module->has_schedule());
         TF_CHECK_OK(module->schedule().Verify());
@@ -660,7 +811,7 @@ TEST_F(CommandBufferSchedulingTest, WhileNotCommand) {
     CHECK: })";
 
   RunAndFilecheckHloRewrite(
-      hlo, CommandBufferScheduling(gpu_comp(), kCudaVersion, kCudaVersion),
+      hlo, CommandBufferScheduling(device_desc(), kCudaVersion, kCudaVersion),
       expected, [](HloModule* module) {
         EXPECT_TRUE(module->has_schedule());
         TF_CHECK_OK(module->schedule().Verify());
@@ -722,7 +873,7 @@ TEST_F(CommandBufferSchedulingTest, While) {
     CHECK: })";
 
   RunAndFilecheckHloRewrite(
-      hlo, CommandBufferScheduling(gpu_comp(), kCudaVersion, kCudaVersion),
+      hlo, CommandBufferScheduling(device_desc(), kCudaVersion, kCudaVersion),
       expected, [](HloModule* module) {
         EXPECT_TRUE(module->has_schedule());
         TF_CHECK_OK(module->schedule().Verify());
@@ -798,8 +949,62 @@ TEST_F(CommandBufferSchedulingTest, Conditional) {
     CHECK: })";
 
   RunAndFilecheckHloRewrite(
-      hlo, CommandBufferScheduling(gpu_comp(), kCudaVersion, kCudaVersion),
+      hlo, CommandBufferScheduling(device_desc(), kCudaVersion, kCudaVersion),
       expected, [](HloModule* module) {
+        EXPECT_TRUE(module->has_schedule());
+        TF_CHECK_OK(module->schedule().Verify());
+      });
+}
+
+TEST_F(CommandBufferSchedulingTest, CuDnnFusionGraphCaptureWorks) {
+  const std::string kHloText = R"(
+HloModule m, is_scheduled=true
+
+fusion0 {
+  p0 = f32[64,64] parameter(0)
+  p1 = f32[64,64] parameter(1)
+  ROOT d = f32[64,64] dot(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+fusion1 {
+  p0 = f32[64,64] parameter(0)
+  p1 = f32[64,64] parameter(1)
+  ROOT d = f32[64,64] dot(p0, p1),
+    lhs_contracting_dims={0}, rhs_contracting_dims={1}
+}
+
+fusion_a {
+  p0 = f32[64,64] parameter(0)
+  p1 = f32[64,64] parameter(1)
+  ROOT a = f32[64,64] add(p0, p1)
+}
+
+ENTRY e {
+  p0 = f32[64,64] parameter(0)
+  p1 = f32[64,64] parameter(1)
+  d0 = f32[64,64] fusion(p0, p1), kind=kCustom,
+    calls=fusion0,
+    backend_config={"fusion_backend_config": {"kind":"__cudnn$fusion"}}
+  a = f32[64,64] fusion(d0, d0), kind=kLoop, calls=fusion_a
+  ROOT d1 = f32[64,64] fusion(a, p1), kind=kCustom,
+    calls=fusion1,
+    backend_config={"fusion_backend_config": {"kind":"__cudnn$fusion"}}
+})";
+
+  const std::string kExpected = R"(
+; CHECK: ENTRY
+; CHECK-NEXT: parameter
+; CHECK-NEXT: parameter
+; CHECK-NEXT: ROOT
+; CHECK-SAME: call(
+; CHECK-SAME: to_apply=%command_buffer
+})";
+
+  RunAndFilecheckHloRewrite(
+      kHloText,
+      CommandBufferScheduling(device_desc(), kCudaVersion, kCudaVersion),
+      kExpected, [](HloModule* module) {
         EXPECT_TRUE(module->has_schedule());
         TF_CHECK_OK(module->schedule().Verify());
       });

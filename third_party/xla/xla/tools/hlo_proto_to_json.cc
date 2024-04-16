@@ -30,19 +30,19 @@ limitations under the License.
 
 #include "xla/service/hlo.pb.h"
 #include "xla/statusor.h"
+#include "xla/tsl/util/command_line_flags.h"
 #include "xla/util.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/init_main.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/status.h"
-#include "tsl/util/command_line_flags.h"
 
 using std::string;
 
 namespace xla {
 namespace tools {
 
-StatusOr<std::string> ToJson(const tsl::protobuf::Message& message) {
+absl::StatusOr<std::string> ToJson(const tsl::protobuf::Message& message) {
   std::string json_output;
   tsl::protobuf::util::JsonPrintOptions json_options;
   json_options.add_whitespace = true;

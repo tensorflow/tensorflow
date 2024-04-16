@@ -16,13 +16,23 @@ limitations under the License.
 #include "xla/service/gpu/ir_emitter_context.h"
 
 #include <algorithm>
-#include <iterator>
+#include <cstdint>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/strings/string_view.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/IR/Constant.h"
+#include "llvm/IR/Constants.h"
+#include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/GlobalValue.h"
+#include "llvm/IR/GlobalVariable.h"
+#include "llvm/IR/IRBuilder.h"
+#include "llvm/Support/Alignment.h"
+#include "llvm/TargetParser/Triple.h"
 #include "xla/service/gpu/gpu_constants.h"
+#include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 
 namespace xla {
@@ -66,6 +76,9 @@ void IrEmitterContext::emit_constant(int64_t num_elements,
                                                 content.span().size()));
   }();
 
+  // Explicitly set global addrspace for SPIR backend.
+  int addrspace =
+      llvm::Triple(llvm_module_->getTargetTriple()).isSPIR() ? 1 : 0;
   // These globals will be looked up by name by GpuExecutable so we need to
   // give them an external linkage.  Not all of their uses are visible in
   // the LLVM IR so we can't give then a linkage that merely preserves their
@@ -79,7 +92,7 @@ void IrEmitterContext::emit_constant(int64_t num_elements,
       llvm::GlobalValue::ExternalLinkage,
       /*Initializer=*/initializer, symbol_name,
       /*TLMode=*/llvm::GlobalValue::NotThreadLocal,
-      /*AddressSpace=*/0,
+      /*AddressSpace=*/addrspace,
       /*isExternallyInitialized=*/false);
   global_for_const->setAlignment(llvm::Align(kConstantBufferAlignBytes));
   llvm_module_->insertGlobalVariable(global_for_const);

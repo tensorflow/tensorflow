@@ -16,7 +16,6 @@ limitations under the License.
 
 #include <stdint.h>
 
-#include <cstddef>
 #include <iostream>
 #include <memory>
 #include <optional>
@@ -24,20 +23,27 @@ limitations under the License.
 #include <utility>
 
 #include "google/protobuf/text_format.h"
+#include "llvm/ADT/StringRef.h"
+#include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Func/Transforms/FuncConversions.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
-#include "mlir/IR/BuiltinDialect.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/DialectRegistry.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/host_runtime/tfrt_ops.h.inc"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_tf_dialect_op.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tfrt/constants.h"
 #include "tensorflow/compiler/mlir/tfrt/ir/mlrt/mlrt_dialect.h"
 #include "tensorflow/compiler/mlir/tfrt/ir/mlrt/mlrt_ops.h"
@@ -51,6 +57,7 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/tfrt/fallback/fallback_state.h"
 #include "tensorflow/core/tfrt/fallback/op_kernel_runner_cache.h"
+#include "tsl/platform/status.h"
 
 namespace tensorflow {
 namespace mlrt_compiler {
@@ -322,6 +329,56 @@ class GetResourceOpConversion final
   }
 };
 
+// Convert tf_mlrt.TFIfrtLoadVariableOp to tf_mlrt.IfrtLoadVariableOp
+class TFIfrtLoadVariableOpConversion
+    : public mlir::OpConversionPattern<tf_mlrt::TFIfrtLoadVariableOp> {
+ public:
+  TFIfrtLoadVariableOpConversion(mlir::MLIRContext *context,
+                                 mlir::TypeConverter *type_converter)
+      : mlir::OpConversionPattern<tf_mlrt::TFIfrtLoadVariableOp>(context),
+        type_converter_(*type_converter) {}
+
+  mlir::LogicalResult matchAndRewrite(
+      tf_mlrt::TFIfrtLoadVariableOp op, OpAdaptor adaptor,
+      mlir::ConversionPatternRewriter &rewriter) const override {
+    llvm::SmallVector<mlir::Type, 4> result_types;
+    for (auto type : op->getResultTypes()) {
+      if (failed(type_converter_.convertType(type, result_types)))
+        return mlir::failure();
+    }
+
+    auto new_op = rewriter.create<tf_mlrt::IfrtLoadVariableOp>(
+        op.getLoc(), result_types, adaptor.getOperands()[0],
+        op.getDeviceShardingConfigProtoTextAttr(), op.getNameAttr());
+    rewriter.replaceOp(op, new_op);
+
+    return mlir::success();
+  }
+
+ private:
+  mlir::TypeConverter &type_converter_;
+};
+
+// Convert tf.IfrtRestoreVariableOp to tf_mlrt.IfrtRestoreVariableOp
+class IfrtRestoreVariableOpConversion
+    : public mlir::OpConversionPattern<mlir::TF::IfrtRestoreVariableOp> {
+ public:
+  using OpConversionPattern::OpConversionPattern;
+
+  mlir::LogicalResult matchAndRewrite(
+      mlir::TF::IfrtRestoreVariableOp op, OpAdaptor adaptor,
+      mlir::ConversionPatternRewriter &rewriter) const override {
+    auto new_op = rewriter.create<tf_mlrt::IfrtRestoreVariableOp>(
+        op.getLoc(), adaptor.getOperands()[0], adaptor.getOperands()[1],
+        adaptor.getOperands()[2],
+        adaptor.getOperands().slice(3, adaptor.getOperands().size() - 3),
+        op.getRestoredDtypes());
+    rewriter.replaceOp(op, new_op);
+
+    return mlir::success();
+  }
+};
+
 std::optional<std::string> DecodeLongName(mlir::Location loc) {
   if (auto name_loc = loc.dyn_cast<mlir::NameLoc>()) {
     return name_loc.getName().str();
@@ -400,6 +457,18 @@ class ExecuteOpConversion final : public mlir::ConversionPattern {
       mlir::ConversionPatternRewriter &rewriter) const override {
     // TODO(b/173017701): Avoid fallback for ops within XLA GPU clusters.
     if (!UseFallback(op)) return mlir::failure();
+
+    if (auto const_op = llvm::dyn_cast<mlir::TF::ConstOp>(op)) {
+      tensorflow::TensorProto tensor_proto;
+      auto status = ConvertToTensorProto(const_op.getValue(), &tensor_proto);
+      if (!status.ok())
+        return const_op.emitError(tsl::NullTerminatedMessage(status));
+
+      rewriter.replaceOpWithNewOp<tf_mlrt::ConstOp>(
+          op, rewriter.getType<tf_mlrt::TFTensorType>(),
+          tensor_proto.SerializeAsString());
+      return mlir::success();
+    }
 
     // The assign_op_key pass should have ran.
     if (!op->hasAttr(tensorflow::tfrt_compiler::kOpKeyAttrName))
@@ -1131,6 +1200,7 @@ class TfToMlrtConversionPass
     target.addIllegalDialect<mlir::TF::TensorFlowDialect>();
 
     target.addIllegalOp<tf_mlrt::TFAsyncWhileOp>();
+    target.addIllegalOp<tf_mlrt::TFIfrtLoadVariableOp>();
     target.addIllegalOp<tf_mlrt::TFAwaitOp>();
     target.addIllegalOp<tf_mlrt::TFPromiseOp>();
     target.addIllegalOp<tf_mlrt::TFMapFnOp>();
@@ -1163,23 +1233,24 @@ class TfToMlrtConversionPass
           return true;
         });
 
-    // LINT.IfChange(fallback_allow_list)
+    // LINT.IfChange
     // Order the list of added ops alphabetically.
     patterns.add<WhileOpConversion>(&context, &type_converter_, &symbol_table);
     patterns.add<AsyncOpConversion, GetResourceOpConversion,
-                 SetResourceOpConversion, TFAwaitOpConversion,
-                 TFPromiseOpConversion>(&context);
+                 SetResourceOpConversion, IfrtRestoreVariableOpConversion,
+                 TFAwaitOpConversion, TFPromiseOpConversion>(&context);
     patterns.add<BatchFunctionOpConversion, CaseOpConversion, CondOpConversion,
                  TFAsyncWhileOpConversion, TFMapFnOpConversion>(type_converter_,
                                                                 &context);
     patterns.add<ExecuteOpConversion>(&context, &symbol_table, &type_converter_,
                                       &execute_op_registry_, &op_kernel_cache_,
                                       &fallback_state_);
-    patterns.add<TFCallOpConversion<mlir::TF::PartitionedCallOp>,
+    patterns.add<TFIfrtLoadVariableOpConversion,
+                 TFCallOpConversion<mlir::TF::PartitionedCallOp>,
                  TFCallOpConversion<mlir::TF::StatefulPartitionedCallOp>,
                  TFCallOpConversion<mlir::TF::LegacyCallOp>>(&context,
                                                              &type_converter_);
-    // LINT.ThenChange(util.cc:fallback_allow_list)
+    // LINT.ThenChange(util.cc)
 
     mlir::populateFunctionOpInterfaceTypeConversionPattern<mlir::func::FuncOp>(
         patterns, type_converter_);

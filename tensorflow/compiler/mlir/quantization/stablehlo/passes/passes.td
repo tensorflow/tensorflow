@@ -34,6 +34,7 @@ def LiftQuantizableSpotsAsFunctionsPass : Pass<"stablehlo-lift-quantizable-spots
     that disperse values. (ex: convolution, dot_general)
   }];
   let dependentDialects = [
+      "mlir::func::FuncDialect",
       "mlir::stablehlo::StablehloDialect",
       "TF::TensorFlowDialect",
   ];
@@ -61,7 +62,15 @@ def QuantizeCompositeFunctionsPass : Pass<"stablehlo-quantize-composite-function
         "Whether to enable per-channel quantized weights.">,
     Option<"mlir_dump_file_name_", "mlir-dump-file-name",
         "std::optional<std::string>", /*default=*/"std::nullopt",
-        "MLIR dump file name.">
+        "MLIR dump file name.">,
+    Option<"enable_weight_only_",
+        "enable-weight-only",
+        "bool", /*default=*/"false",
+        "Whether to produce weight-only quantized op for convolution and dot_general op.">,
+    Option<"merge_fusion_with_dequantize_",
+        "merge-fusion-with-dequantize",
+        "bool", /*default=*/"false",
+        "Whether to merge quantized conv/dot_general fusion with subsequent dequantize.">,
   ];
   let dependentDialects = [
     "mlir::arith::ArithDialect",
@@ -72,7 +81,7 @@ def QuantizeCompositeFunctionsPass : Pass<"stablehlo-quantize-composite-function
   ];
 }
 
-def PrepareQuantizePass : Pass<"stablehlo-prepare-quantize", "mlir::func::FuncOp"> {
+def PrepareQuantizePass : Pass<"stablehlo-prepare-quantize", "mlir::ModuleOp"> {
   let summary = "Prepare StableHLO dialect for static range quantization by converting quantfork.stats into quantfork.qcast and dcast ops.";
   let options = [
     Option<"enable_per_channel_quantized_weight_",
@@ -92,6 +101,16 @@ def PrepareQuantizePass : Pass<"stablehlo-prepare-quantize", "mlir::func::FuncOp
 
 def QuantizePass : Pass<"stablehlo-quantize", "mlir::ModuleOp"> {
   let summary = "Applies static-range quantization on ops by converting quantfork.qcast, quantfork.dcast, and float op into uniform quantized ops .";
+  let options = [
+    Option<"enable_per_channel_quantized_weight_",
+        "enable-per-channel-quantized-weight",
+        "bool", /*default=*/"true",
+        "Whether to enable per-channel quantized weights.">,
+    Option<"enable_weight_only_",
+        "enable-weight-only",
+        "bool", /*default=*/"false",
+        "Whether to produce weight-only quantized op for convolution and dot_general op.">,
+  ];
   let dependentDialects = [
     "mlir::stablehlo::StablehloDialect",
     "mlir::quant::QuantizationDialect",
@@ -104,6 +123,21 @@ def PostQuantizePass : Pass<"stablehlo-post-quantize", "mlir::func::FuncOp"> {
   let dependentDialects = [
     "mlir::stablehlo::StablehloDialect",
     "mlir::quantfork::QuantizationForkDialect",
+  ];
+}
+
+def XlaCallModuleToCallPass : Pass<"stablehlo-xla-call-module-to-call", "ModuleOp"> {
+  let summary = "Convert XlaCallModuleOp to func.call op";
+  let dependentDialects = [
+    "TF::TensorFlowDialect",
+  ];
+}
+
+def MergeFusionWithDequantizePass : Pass<"stablehlo-merge-fusion-with-dequantize", "mlir::ModuleOp"> {
+  let summary = "Merge quantized conv/dot_general fusion with subsequent dequantize.";
+  let dependentDialects = [
+    "chlo::ChloDialect",
+    "mlir::stablehlo::StablehloDialect",
   ];
 }
 
@@ -130,4 +164,67 @@ def ConvertXlaCallModuleOpToBfloat16Pass : Pass<"stablehlo-convert-xla-call-modu
 def OptimizeGraphPass : Pass<"optimize-graph", "ModuleOp"> {
   let summary = "Optimize the sub-optimal patterns after quantization.";
   let dependentDialects = ["mlir::stablehlo::StablehloDialect",];
+}
+
+def NchwConvolutionToNhwcPass : Pass<"stablehlo-nchw-convolution-to-nhwc", "mlir::func::FuncOp"> {
+  let summary = "Converts stablehlo.convolution op of NCHW format to -> NHWC.";
+  let description = [{
+    Matches `ConvolutionOp`s with NCHW format and converts it to NHWC
+    format by inserting `TransposeOp`s to input, filter, and output tensors.
+    In terms of dimension numbers, this matches
+    `[b, f, 0, 1]x[o, i, 0, 1]->[b, f, 0, 1]` format and converts it to
+    `[b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f]` format.
+
+    This pass is useful to convert models that conventionally use the NCHW
+    format to target hardwares that are more NHWC-friendly.
+  }];
+  let dependentDialects = ["mlir::stablehlo::StablehloDialect"];
+}
+
+def DeferActivationTransposePass : Pass<"stablehlo-defer-activation-transpose", "mlir::func::FuncOp"> {
+  let summary = "Merges stablehlo.transpose for activations.";
+  let description = [{
+    Defers activation transposes (e.g. LHS of `stablehlo.add`) to the output and
+    optionally inserts `stablehlo.transpose`s to match the shape of operands.
+    This is useful when recursively pushing down the extra `stablehlo.transpose`
+    inserted to activation tensors after running `NchwConvolutionToNhwcPass`.
+
+    Currently only converts limited cases that appear in NCHW->NHWC 2D
+    convolution conversion, to avoid introducing unwanted pessimizations.
+  }];
+  let dependentDialects = ["mlir::stablehlo::StablehloDialect"];
+}
+
+def InsertWeightParamPass : Pass<"stablehlo-insert-weight-param", "mlir::func::FuncOp"> {
+  let summary = "Insert quantization parameters of weights for weight-only quantization and dynamic range quantization.";
+  let dependentDialects = [
+      "mlir::stablehlo::StablehloDialect",
+      "TF::TensorFlowDialect",
+      "mlir::quant::QuantizationDialect",
+      "mlir::quantfork::QuantizationForkDialect",
+  ];
+}
+
+def FoldConstantTransposePass : Pass<"stablehlo-fold-constant-transpose", "mlir::func::FuncOp"> {
+  let summary = "Folds stablehlo.constant -> stablehlo.transpose patterns.";
+  let description = [{
+    Finds patterns where a `stablehlo.constant` is directly followed by a
+    `stablehlo.transpose` and folds them into a single `stablehlo.constant`.
+    This is considered an aggressive optimization, but it is useful to eliminate
+    `stablehlo.constant`->`stablehlo.transpose` patterns which are often
+    by-products of other shape conversion optimizations, such as NCHW->NHWC
+    convolution conversion.
+  }];
+  let dependentDialects = ["mlir::stablehlo::StablehloDialect"];
+}
+
+def RemoveShardingCustomCallPass : Pass<"stablehlo-remove-sharding-custom-call", "mlir::func::FuncOp"> {
+  let summary = "Removes `stablehlo.custom_call @Sharding`";
+  let description = [{
+    Finds `stablehlo.custom_call @Sharding` and removes all instances of them,
+    replacing the usages by its operand. This is used where sharding doesn't
+    make much sense or sharding custom calls are incompatible, e.g. on-device
+    targets.
+  }];
+  let dependentDialects = ["mlir::stablehlo::StablehloDialect"];
 }

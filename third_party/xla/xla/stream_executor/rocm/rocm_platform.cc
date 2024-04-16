@@ -112,7 +112,6 @@ ROCmPlatform::DescriptionForDevice(int ordinal) const {
 absl::StatusOr<StreamExecutor*> ROCmPlatform::ExecutorForDevice(int ordinal) {
   StreamExecutorConfig config;
   config.ordinal = ordinal;
-  config.device_options = DeviceOptions::Default();
   return GetExecutor(config);
 }
 
@@ -131,8 +130,8 @@ absl::StatusOr<StreamExecutor*> ROCmPlatform::GetExecutor(
 absl::StatusOr<std::unique_ptr<StreamExecutor>>
 ROCmPlatform::GetUncachedExecutor(const StreamExecutorConfig& config) {
   auto executor = std::make_unique<StreamExecutor>(
-      this, std::make_unique<GpuExecutor>(), config.ordinal);
-  auto init_status = executor->Init(config.device_options);
+      this, std::make_unique<GpuExecutor>(config.ordinal));
+  auto init_status = executor->Init();
   if (!init_status.ok()) {
     return absl::Status{
         absl::StatusCode::kInternal,
@@ -147,16 +146,16 @@ ROCmPlatform::GetUncachedExecutor(const StreamExecutorConfig& config) {
 }  // namespace gpu
 
 static void InitializeROCmPlatform() {
-  // Disabling leak checking, MultiPlatformManager does not destroy its
+  // Disabling leak checking, PlatformManager does not destroy its
   // registered platforms.
-  auto status = MultiPlatformManager::PlatformWithName("ROCM");
+  auto status = PlatformManager::PlatformWithName("ROCM");
   if (!status.ok()) {
     std::unique_ptr<gpu::ROCmPlatform> platform(new gpu::ROCmPlatform);
-    TF_CHECK_OK(MultiPlatformManager::RegisterPlatform(std::move(platform)));
+    TF_CHECK_OK(PlatformManager::RegisterPlatform(std::move(platform)));
   }
 }
 
 }  // namespace stream_executor
 
-REGISTER_MODULE_INITIALIZER(rocm_platform,
-                            stream_executor::InitializeROCmPlatform());
+STREAM_EXECUTOR_REGISTER_MODULE_INITIALIZER(
+    rocm_platform, stream_executor::InitializeROCmPlatform());

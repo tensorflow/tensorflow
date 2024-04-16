@@ -17,13 +17,17 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_LLVM_GPU_BACKEND_GPU_BACKEND_LIB_H_
 #define XLA_SERVICE_GPU_LLVM_GPU_BACKEND_GPU_BACKEND_LIB_H_
 
+#include <cstdint>
+#include <functional>
 #include <string>
-#include <utility>
+#include <vector>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Target/TargetMachine.h"
-#include "xla/statusor.h"
+#include "mlir/Dialect/LLVMIR/NVVMDialect.h"  // from @llvm-project
 #include "xla/stream_executor/device_description.h"
 #include "xla/types.h"
 #include "xla/xla.pb.h"
@@ -57,6 +61,9 @@ absl::StatusOr<std::string> CompileToPtx(
 }  // namespace nvptx
 
 namespace amdgpu {
+// Get path to libdevice file.
+std::string LibDevicePath(std::string gcn_arch_name,
+                          const std::string& rocdl_dir_path);
 // Compiles the argument module and returns it with LLVM AMDGPU backend.
 // rocdl_dir_path is the parent directory of ROCm-Device-Libs bitcode libraries.
 // The contents of the module may be changed.

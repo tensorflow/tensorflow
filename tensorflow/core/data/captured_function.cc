@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/data/stats_utils.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/cancellation.h"
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function_handle_cache.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -385,7 +386,7 @@ class BorrowedArgsCallFrame : public CallFrameBase {
 }  // namespace
 
 Status MakeIteratorFromInputElement(
-    IteratorContext* ctx, const IteratorBase* parent,
+    IteratorContext* ctx, const DatasetBaseIterator* parent,
     const std::vector<Tensor>& input_element, int64_t thread_index,
     const InstantiatedCapturedFunction& inst_captured_func, StringPiece prefix,
     std::unique_ptr<IteratorBase>* out_iterator) {
@@ -395,15 +396,18 @@ Status MakeIteratorFromInputElement(
 }
 
 Status MakeIteratorFromInputElement(
-    IteratorContext* ctx, const IteratorBase* parent,
+    IteratorContext* ctx, const DatasetBaseIterator* parent,
     const std::vector<Tensor>& input_element, int64_t thread_index,
     const InstantiatedCapturedFunction& inst_captured_func, StringPiece prefix,
     std::unique_ptr<IteratorBase>* out_iterator,
     const std::shared_ptr<model::Node>& node) {
   std::vector<Tensor> return_values;
 
-  TF_RETURN_IF_ERROR(inst_captured_func.RunWithBorrowedArgs(
-      ctx, input_element, &return_values, node));
+  auto status = inst_captured_func.RunWithBorrowedArgs(ctx, input_element,
+                                                       &return_values, node);
+  if (!status.ok()) {
+    return parent->AddErrorContext(status);
+  }
 
   if (!(return_values.size() == 1 && return_values[0].dtype() == DT_VARIANT &&
         TensorShapeUtils::IsScalar(return_values[0].shape()))) {
@@ -817,12 +821,12 @@ Status InstantiatedCapturedFunction::Run(
 
   OwnedArgsCallFrame frame(std::move(args), &captured_func_->captured_inputs(),
                            ret_types_);
-  profiler::TraceMe activity(
+  tsl::profiler::TraceMe activity(
       [&] {
-        return profiler::TraceMeEncode("InstantiatedCapturedFunction::Run",
-                                       {{"id", f_opts.step_id}});
+        return tsl::profiler::TraceMeEncode("InstantiatedCapturedFunction::Run",
+                                            {{"id", f_opts.step_id}});
       },
-      profiler::TraceMeLevel::kInfo);
+      tsl::profiler::TraceMeLevel::kInfo);
   if (node) {
     // Resource usage for function execution is gathered from the executor.
     // TODO(jsimsa): Factor out common code for Run, RunAsync, and
@@ -880,13 +884,13 @@ Status InstantiatedCapturedFunction::RunWithBorrowedArgs(
 
   BorrowedArgsCallFrame frame(args, &captured_func_->captured_inputs(),
                               ret_types_);
-  profiler::TraceMe activity(
+  tsl::profiler::TraceMe activity(
       [&] {
-        return profiler::TraceMeEncode(
+        return tsl::profiler::TraceMeEncode(
             "InstantiatedCapturedFunction::RunWithBorrowedArgs",
             {{"id", f_opts.step_id}});
       },
-      profiler::TraceMeLevel::kInfo);
+      tsl::profiler::TraceMeLevel::kInfo);
   if (was_recording) node->record_stop(EnvTime::NowNanos());
   if (node) {
     // Resource usage for function execution is gathered from the executor.
@@ -927,13 +931,13 @@ Status InstantiatedCapturedFunction::RunInstantiated(
 
   BorrowedArgsCallFrame frame(args, &captured_func_->captured_inputs(),
                               ret_types_);
-  profiler::TraceMe activity(
+  tsl::profiler::TraceMe activity(
       [&] {
-        return profiler::TraceMeEncode(
+        return tsl::profiler::TraceMeEncode(
             "InstantiatedCapturedFunction::RunInstantiated",
             {{"id", f_opts.step_id}});
       },
-      profiler::TraceMeLevel::kInfo);
+      tsl::profiler::TraceMeLevel::kInfo);
   TF_RETURN_IF_ERROR(lib_->RunSync(std::move(f_opts), f_handle_, &frame));
   return frame.ConsumeRetvals(rets);
 }
@@ -1023,12 +1027,12 @@ void InstantiatedCapturedFunction::RunAsync(
       },
       std::move(done), ctx, std::move(stats_collector), std::placeholders::_1);
 
-  profiler::TraceMe activity(
+  tsl::profiler::TraceMe activity(
       [&] {
-        return profiler::TraceMeEncode("InstantiatedCapturedFunction::RunAsync",
-                                       {{"id", f_opts.step_id}});
+        return tsl::profiler::TraceMeEncode(
+            "InstantiatedCapturedFunction::RunAsync", {{"id", f_opts.step_id}});
       },
-      profiler::TraceMeLevel::kInfo);
+      tsl::profiler::TraceMeLevel::kInfo);
   // Stop the usage collection before calling `Run()` because `callback` may
   // be executed synchronously, and so the `node->record_start()` call within
   // `callback` would violate nesting.

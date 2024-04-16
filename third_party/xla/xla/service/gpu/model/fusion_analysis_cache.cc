@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/service/gpu/model/fusion_analysis_cache.h"
 
-#include <optional>
 #include <utility>
 
 #include "absl/synchronization/mutex.h"

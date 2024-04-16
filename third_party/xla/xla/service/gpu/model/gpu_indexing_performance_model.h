@@ -25,6 +25,7 @@ limitations under the License.
 #include "xla/service/gpu/model/gpu_performance_model_base.h"
 #include "xla/service/gpu/model/hlo_op_profiles.h"
 #include "xla/service/hlo_cost_analysis.h"
+#include "xla/shape.h"
 #include "xla/stream_executor/device_description.h"
 
 namespace xla {
@@ -44,7 +45,7 @@ class GpuPerformanceModelWithIndexingAnalysis : public GpuPerformanceModelBase {
         mlir_context_(mlir_context) {}
 
   EstimateRunTimeData EstimateRunTimeForFusion(
-      const HloFusionAnalysis& fusion_analysis);
+      const HloFusionAnalysis& fusion_analysis, bool is_coalesced = true);
 
   EstimateRunTimeData EstimateRunTimeForInstruction(
       const HloInstruction* producer);
@@ -60,6 +61,8 @@ class GpuPerformanceModelWithIndexingAnalysis : public GpuPerformanceModelBase {
   // Returns an estimate how many FLOPs will be used to produce one element of
   // the output.
   int64_t FlopsPerElement(const HloInstruction* instr) const;
+
+  int64_t GetShapeSizeRecursive(const Shape& shape) const;
 
   const HloOpProfiles::HloOpProfile* hlo_op_profile_;
   const se::DeviceDescription* device_info_;

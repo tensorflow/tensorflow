@@ -4,23 +4,26 @@
 #   The libraries in this package are not allowed to have ANY dependencies
 #   to other TF components outside of TSL.
 
-load("//tsl:tsl.bzl", "set_external_visibility")
-load("//tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
-load(
-    "//tsl/platform:build_config_root.bzl",
-    "if_static",
-)
 load(
     "@local_tsl//tsl/platform:rules_cc.bzl",
     "cc_library",
 )
+load("@local_xla//xla/tsl:tsl.bzl", "internal_visibility")
+load("@local_xla//xla/tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
 load(
     "//tsl/platform:build_config.bzl",
     "tsl_cc_test",
 )
+load(
+    "//tsl/platform:build_config_root.bzl",
+    "if_static",
+)
 
 package(
-    default_visibility = ["//visibility:public"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = [
+        "//visibility:public",
+    ],
     licenses = ["notice"],
 )
 
@@ -37,7 +40,6 @@ filegroup(
         "tracking_allocator.h",
         "type_traits.h",
     ],
-    visibility = ["//visibility:public"],
 )
 
 # Files needed for core:mobile_srcs_no_runtime.
@@ -56,7 +58,6 @@ filegroup(
         "tracking_allocator.h",
         "type_traits.h",
     ],
-    visibility = ["//visibility:public"],
 )
 
 # Files needed for core:mobile_srcs_only_runtime.
@@ -69,7 +70,6 @@ filegroup(
         "metrics.cc",
         "metrics.h",
     ],
-    visibility = ["//visibility:public"],
 )
 
 filegroup(
@@ -82,14 +82,13 @@ filegroup(
         "tracking_allocator.h",
         "type_traits.h",
     ],
-    visibility = ["//visibility:public"],
+    visibility = internal_visibility(["//tensorflow/core:__subpackages__"]),
 )
 
 # Files needed for tf2xla build.
 filegroup(
     name = "xla_cpu_runtime_hdrs",
     srcs = ["fixedpoint_types.h"],
-    visibility = ["//visibility:public"],
 )
 
 # Individual targets. These should be preferred over tensorflow/core:framework
@@ -155,7 +154,11 @@ cc_library(
         "cpu_allocator_impl.cc",
         "tracking_allocator.h",
     ],
-    visibility = ["//visibility:public"],
+    visibility = internal_visibility([
+        "@local_xla//xla:__subpackages__",
+        "//tensorflow/core:__subpackages__",
+        "//tsl:__subpackages__",
+    ]),
     deps = [
         ":numeric_types",
         ":type_traits",
@@ -228,7 +231,6 @@ cc_library(
         "device_id.h",
         "device_id_manager.h",
     ],
-    visibility = ["//visibility:public"],
     deps = [
         "//tsl/lib/gtl:int_type",
     ] + if_static([
@@ -243,7 +245,6 @@ cc_library(
         "device_id.h",
         "device_id_manager.h",
     ],
-    visibility = ["//visibility:public"],
     deps = [
         ":device_type",
         "//tsl/lib/gtl:int_type",
@@ -265,7 +266,6 @@ cc_library(
     hdrs = [
         "device_id_utils.h",
     ],
-    visibility = ["//visibility:public"],
     deps = [
         ":device_id_impl",
         ":device_type",
@@ -273,10 +273,10 @@ cc_library(
         "//tsl/platform:status",
         "//tsl/platform:statusor",
         "//tsl/platform:str_util",
-        "//tsl/util:device_name_utils",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@local_xla//xla/tsl/util:device_name_utils",
     ],
 )
 
@@ -286,13 +286,15 @@ filegroup(
         "device_id.h",
         "device_id_manager.h",
     ],
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
     name = "numeric_types",
     hdrs = ["numeric_types.h"],
-    visibility = ["//visibility:public"],
+    visibility = internal_visibility([
+        "//tensorflow/compiler:__subpackages__",
+        "//tensorflow/core:__subpackages__",
+    ]),
     deps = [
         ":fixedpoint_types",
         "//tsl/platform:types",
@@ -313,7 +315,6 @@ cc_library(
     name = "metrics",
     srcs = ["metrics.cc"],
     hdrs = ["metrics.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//tsl/lib/monitoring:counter",
     ],
@@ -332,7 +333,9 @@ cc_library(
 cc_library(
     name = "type_traits",
     hdrs = ["type_traits.h"],
-    visibility = ["//visibility:public"],
+    visibility = internal_visibility([
+        "//tensorflow/core/framework:__pkg__",
+    ]),
     deps = [
         ":numeric_types",
         "//tsl/platform:types",
@@ -344,7 +347,7 @@ filegroup(
     srcs = [
         "cancellation.h",
     ],
-    visibility = ["//visibility:public"],
+    visibility = internal_visibility(["//tensorflow/core:__subpackages__"]),
 )
 
 cc_library(
@@ -371,11 +374,39 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "serving_device_selector",
+    srcs = ["serving_device_selector.cc"],
+    hdrs = ["serving_device_selector.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tsl/platform:logging",
+        "@com_google_absl//absl/container:fixed_array",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "serving_device_selector_policies",
+    srcs = ["serving_device_selector_policies.cc"],
+    hdrs = ["serving_device_selector_policies.h"],
+    features = ["-layering_check"],
+    deps = [
+        ":serving_device_selector",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+cc_library(
+    name = "real_time_in_memory_metric",
+    hdrs = ["real_time_in_memory_metric.h"],
+)
+
 tsl_cc_test(
     name = "cancellation_test",
     size = "small",
     srcs = ["cancellation_test.cc"],
-    visibility = ["//visibility:public"],
     deps = [
         ":cancellation",
         "//tsl/platform:env",
@@ -401,7 +432,12 @@ exports_files(
         "shared_counter.h",
         "tracking_allocator.h",
     ],
-    visibility = ["//visibility:public"],
+    visibility = internal_visibility([
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/core/common_runtime:__pkg__",
+        "//tensorflow/core/common_runtime/gpu:__pkg__",
+        "//tensorflow/core/framework:__pkg__",
+    ]),
 )
 
 # Files whose users still need to be migrated from core:framework to the
@@ -415,7 +451,6 @@ exports_files(
         "numeric_types.h",
         "type_traits.h",
     ],
-    visibility = ["//visibility:public"],
 )
 
 tsl_cc_test(
@@ -423,7 +458,6 @@ tsl_cc_test(
     srcs = [
         "device_id_utils_test.cc",
     ],
-    visibility = ["//visibility:public"],
     deps = [
         ":device_id_impl",
         ":device_id_utils",
@@ -431,6 +465,16 @@ tsl_cc_test(
         "//tsl/platform:status_matchers",
         "//tsl/platform:test_main",
         "//tsl/protobuf:error_codes_proto_impl_cc",
-        "//tsl/util:device_name_utils",
+        "@local_xla//xla/tsl/util:device_name_utils",
+    ],
+)
+
+tsl_cc_test(
+    name = "real_time_in_memory_metric_test",
+    srcs = ["real_time_in_memory_metric_test.cc"],
+    deps = [
+        ":real_time_in_memory_metric",
+        "//tsl/platform:test",
+        "//tsl/platform:test_main",
     ],
 )

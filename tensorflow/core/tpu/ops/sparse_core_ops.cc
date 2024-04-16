@@ -60,7 +60,7 @@ REGISTER_OP("XlaSparseDenseMatmul")
       c->set_output(2, c->UnknownShapeOfRank(1));
       c->set_output(3, c->UnknownShapeOfRank(1));
       c->set_output(4, c->UnknownShapeOfRank(1));
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("XlaSparseDenseMatmulWithCsrInput")
@@ -93,7 +93,7 @@ REGISTER_OP("XlaSparseDenseMatmulWithCsrInput")
           c->ReplaceDim(c->input(4), 0, c->MakeDim(input_size), &output_shape));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 0, &rank));
       c->set_output(0, output_shape);
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("XlaSparseDenseMatmulGradWithSgdAndCsrInput")
@@ -111,7 +111,7 @@ REGISTER_OP("XlaSparseDenseMatmulGradWithSgdAndCsrInput")
     .Attr("table_name: string")
     .SetShapeFn([](shape_inference::InferenceContext* c) -> Status {
       c->set_output(0, c->input(6));
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("XlaSparseDenseMatmulGradWithAdagradAndCsrInput")
@@ -132,7 +132,7 @@ REGISTER_OP("XlaSparseDenseMatmulGradWithAdagradAndCsrInput")
     .SetShapeFn([](shape_inference::InferenceContext* c) -> Status {
       c->set_output(0, c->input(6));
       c->set_output(1, c->input(7));
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("XlaSparseDenseMatmulGradWithAdagradMomentumAndCsrInput")
@@ -161,7 +161,7 @@ REGISTER_OP("XlaSparseDenseMatmulGradWithAdagradMomentumAndCsrInput")
       c->set_output(0, c->input(6));
       c->set_output(1, c->input(7));
       c->set_output(2, c->input(8));
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("XlaSparseDenseMatmulGradWithAdamAndCsrInput")
@@ -189,7 +189,7 @@ REGISTER_OP("XlaSparseDenseMatmulGradWithAdamAndCsrInput")
       c->set_output(0, c->input(6));
       c->set_output(1, c->input(7));
       c->set_output(2, c->input(8));
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("XlaSparseDenseMatmulGradWithFtrlAndCsrInput")
@@ -218,7 +218,7 @@ REGISTER_OP("XlaSparseDenseMatmulGradWithFtrlAndCsrInput")
       c->set_output(0, c->input(6));
       c->set_output(1, c->input(7));
       c->set_output(2, c->input(8));
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("XlaSparseCoreSgd")
@@ -231,7 +231,7 @@ REGISTER_OP("XlaSparseCoreSgd")
     .SetIsStateful()
     .SetShapeFn([](shape_inference::InferenceContext* c) -> Status {
       c->set_output(0, c->input(3));
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("XlaSparseCoreAdagrad")
@@ -247,7 +247,7 @@ REGISTER_OP("XlaSparseCoreAdagrad")
     .SetShapeFn([](shape_inference::InferenceContext* c) -> Status {
       c->set_output(0, c->input(4));
       c->set_output(1, c->input(3));
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("XlaSparseCoreAdagradMomentum")
@@ -271,7 +271,7 @@ REGISTER_OP("XlaSparseCoreAdagradMomentum")
       c->set_output(0, c->input(7));
       c->set_output(1, c->input(5));
       c->set_output(2, c->input(6));
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("XlaSparseCoreAdam")
@@ -295,7 +295,7 @@ REGISTER_OP("XlaSparseCoreAdam")
       c->set_output(0, c->input(0));
       c->set_output(1, c->input(5));
       c->set_output(2, c->input(4));
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("XlaSparseCoreFtrl")
@@ -319,7 +319,7 @@ REGISTER_OP("XlaSparseCoreFtrl")
       c->set_output(0, c->input(0));
       c->set_output(1, c->input(1));
       c->set_output(2, c->input(2));
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("GlobalIterId")
@@ -327,7 +327,7 @@ REGISTER_OP("GlobalIterId")
     .SetIsStateful()
     .SetShapeFn([](shape_inference::InferenceContext* c) -> Status {
       c->set_output(0, c->Scalar());
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 }  // namespace tensorflow

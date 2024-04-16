@@ -31,7 +31,8 @@ namespace ifrt_serving {
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateRewriteClusterToIfrtCallPass();
 
-// Creates a pass that lowers ReadVariableOp to IfrtLoadVariableOp.
+// Creates a pass that sinks variable tensor argument to `tf.IfrtCall` as named
+// arrays and lowers `tf.ReadVariableOp` to `tf.IfrtLoadVariableOp`.
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateSinkVariableAsNamedArrayPass();
 
@@ -42,6 +43,19 @@ CreateTfRestoreSplittingPass();
 // Creates a pass that merges `tf.RestoreV2` ops.
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 CreateTfRestoreMergingPass();
+
+// Creates a pass that propagates inputs of no-op identity ops to their outputs.
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+CreateTfIdentityPropagationPass();
+
+// Creates a pass that prunes unused `tf.RestoreV2` ops.
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+CreateTfRestorePruningPass();
+
+// Creates a pass that lower `tf.RestoreVariableOp` to
+// `tf.IfrtRestoreVariableOp`.
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+CreateLowerToIfrtRestoreVariablePass();
 
 #define GEN_PASS_REGISTRATION
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/passes.h.inc"  // IWYU pragma: keep

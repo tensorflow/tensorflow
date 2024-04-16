@@ -17,7 +17,9 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/fusions/fusion_emitter.h"
 #include "xla/service/gpu/ir_emitter_context.h"
@@ -38,7 +40,7 @@ class MemcpyFusion : public FusionInterface {
         dsts_(std::move(dsts)) {}
 
   absl::StatusOr<FusionEmissionResult> Emit(
-      IrEmitterContext& ir_emitter_context, mlir::lmhlo::FusionOp fusion_op,
+      IrEmitterContext& ir_emitter_context,
       const HloFusionInstruction& fusion) const final;
 
  private:

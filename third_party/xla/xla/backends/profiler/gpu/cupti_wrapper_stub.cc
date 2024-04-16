@@ -20,92 +20,88 @@ limitations under the License.
 namespace xla {
 namespace profiler {
 
-// This is an implementation of CuptiWrapper that implements all load bearing
-// APIs as no-op. This is a stub that keeps XLA profiler functional, but all
-// collected profiles will be empty.
-
-CUptiResult CuptiWrapper::ActivityDisable(CUpti_ActivityKind kind) {
+CUptiResult CuptiWrapperStub::ActivityDisable(CUpti_ActivityKind kind) {
   return CUPTI_SUCCESS;
 }
 
-CUptiResult CuptiWrapper::ActivityEnable(CUpti_ActivityKind kind) {
+CUptiResult CuptiWrapperStub::ActivityEnable(CUpti_ActivityKind kind) {
   return CUPTI_SUCCESS;
 }
 
-CUptiResult CuptiWrapper::ActivityFlushAll(uint32_t flag) {
+CUptiResult CuptiWrapperStub::ActivityFlushAll(uint32_t flag) {
   return CUPTI_SUCCESS;
 }
 
-CUptiResult CuptiWrapper::ActivityGetNextRecord(uint8_t* buffer,
-                                                size_t valid_buffer_size_bytes,
-                                                CUpti_Activity** record) {
+CUptiResult CuptiWrapperStub::ActivityGetNextRecord(
+    uint8_t* buffer, size_t valid_buffer_size_bytes, CUpti_Activity** record) {
   return CUPTI_ERROR_MAX_LIMIT_REACHED;
 }
 
-CUptiResult CuptiWrapper::ActivityGetNumDroppedRecords(CUcontext context,
-                                                       uint32_t stream_id,
-                                                       size_t* dropped) {
+CUptiResult CuptiWrapperStub::ActivityGetNumDroppedRecords(CUcontext context,
+                                                           uint32_t stream_id,
+                                                           size_t* dropped) {
   *dropped = 0;
   return CUPTI_SUCCESS;
 }
 
-CUptiResult CuptiWrapper::ActivityConfigureUnifiedMemoryCounter(
+CUptiResult CuptiWrapperStub::ActivityConfigureUnifiedMemoryCounter(
     CUpti_ActivityUnifiedMemoryCounterConfig* config, uint32_t count) {
   return CUPTI_SUCCESS;
 }
 
-CUptiResult CuptiWrapper::ActivityRegisterCallbacks(
+CUptiResult CuptiWrapperStub::ActivityRegisterCallbacks(
     CUpti_BuffersCallbackRequestFunc func_buffer_requested,
     CUpti_BuffersCallbackCompleteFunc func_buffer_completed) {
   return CUPTI_SUCCESS;
 }
 
-CUptiResult CuptiWrapper::GetDeviceId(CUcontext context, uint32_t* deviceId) {
+CUptiResult CuptiWrapperStub::GetDeviceId(CUcontext context,
+                                          uint32_t* deviceId) {
   return cuptiGetDeviceId(context, deviceId);
 }
 
-CUptiResult CuptiWrapper::GetTimestamp(uint64_t* timestamp) {
+CUptiResult CuptiWrapperStub::GetTimestamp(uint64_t* timestamp) {
   return cuptiGetTimestamp(timestamp);
 }
 
-CUptiResult CuptiWrapper::Finalize() { return CUPTI_SUCCESS; }
+CUptiResult CuptiWrapperStub::Finalize() { return CUPTI_SUCCESS; }
 
-CUptiResult CuptiWrapper::EnableCallback(uint32_t enable,
-                                         CUpti_SubscriberHandle subscriber,
-                                         CUpti_CallbackDomain domain,
-                                         CUpti_CallbackId cbid) {
+CUptiResult CuptiWrapperStub::EnableCallback(uint32_t enable,
+                                             CUpti_SubscriberHandle subscriber,
+                                             CUpti_CallbackDomain domain,
+                                             CUpti_CallbackId cbid) {
   return CUPTI_SUCCESS;
 }
 
-CUptiResult CuptiWrapper::EnableDomain(uint32_t enable,
-                                       CUpti_SubscriberHandle subscriber,
-                                       CUpti_CallbackDomain domain) {
+CUptiResult CuptiWrapperStub::EnableDomain(uint32_t enable,
+                                           CUpti_SubscriberHandle subscriber,
+                                           CUpti_CallbackDomain domain) {
   return CUPTI_SUCCESS;
 }
 
-CUptiResult CuptiWrapper::Subscribe(CUpti_SubscriberHandle* subscriber,
-                                    CUpti_CallbackFunc callback,
-                                    void* userdata) {
+CUptiResult CuptiWrapperStub::Subscribe(CUpti_SubscriberHandle* subscriber,
+                                        CUpti_CallbackFunc callback,
+                                        void* userdata) {
   return CUPTI_SUCCESS;
 }
 
-CUptiResult CuptiWrapper::Unsubscribe(CUpti_SubscriberHandle subscriber) {
+CUptiResult CuptiWrapperStub::Unsubscribe(CUpti_SubscriberHandle subscriber) {
   return CUPTI_SUCCESS;
 }
 
-CUptiResult CuptiWrapper::GetResultString(CUptiResult result,
-                                          const char** str) {
+CUptiResult CuptiWrapperStub::GetResultString(CUptiResult result,
+                                              const char** str) {
   return cuptiGetResultString(result, str);
 }
 
-CUptiResult CuptiWrapper::GetContextId(CUcontext context,
-                                       uint32_t* context_id) {
+CUptiResult CuptiWrapperStub::GetContextId(CUcontext context,
+                                           uint32_t* context_id) {
   return cuptiGetContextId(context, context_id);
 }
 
-CUptiResult CuptiWrapper::GetStreamIdEx(CUcontext context, CUstream stream,
-                                        uint8_t per_thread_stream,
-                                        uint32_t* stream_id) {
+CUptiResult CuptiWrapperStub::GetStreamIdEx(CUcontext context, CUstream stream,
+                                            uint8_t per_thread_stream,
+                                            uint32_t* stream_id) {
   return cuptiGetStreamIdEx(context, stream, per_thread_stream, stream_id);
 }
 

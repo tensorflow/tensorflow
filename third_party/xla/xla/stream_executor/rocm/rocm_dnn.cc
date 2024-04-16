@@ -43,12 +43,12 @@ limitations under the License.
 #include "xla/stream_executor/scratch_allocator.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/util/determinism.h"
+#include "xla/tsl/util/env_var.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/hash.h"
 #include "tsl/platform/logging.h"
-#include "tsl/util/determinism.h"
-#include "tsl/util/env_var.h"
 
 namespace {
 
@@ -2292,7 +2292,9 @@ bool CreateRnnWorkspace(Stream* stream, miopenHandle_t miopen_handle,
 
       return false;
     }
-    stream->ThenMemZero(workspace, workspace_size_in_bytes);
+    if (!stream->MemZero(workspace, workspace_size_in_bytes).ok()) {
+      return false;
+    }
   } else {
     *workspace = DeviceMemory<uint8>();
   }
@@ -2370,7 +2372,8 @@ absl::Status MIOpenSupport::DoRnnForwardImpl(
         LOG(ERROR) << "Fail to allocate RNN reserve space";
         return absl::InternalError("AllocateBytes for RNN failed");
       }
-      stream->ThenMemZero(&reserve_space, reserve_space_size_in_bytes);
+      TF_RETURN_IF_ERROR(
+          stream->MemZero(&reserve_space, reserve_space_size_in_bytes));
     }
   }
 
@@ -2378,7 +2381,10 @@ absl::Status MIOpenSupport::DoRnnForwardImpl(
 
   TF_ASSIGN_OR_RETURN(
       std::optional<GpuTimer> timer,
-      GpuTimer::CreateIfNeeded(AsGpuStream(stream), is_profiling));
+      GpuTimer::CreateIfNeeded(
+          stream,
+          output_profile_result && output_profile_result->warmup_run_executed(),
+          is_profiling));
 
   // make the forward call
   if (!is_training) {
@@ -2488,23 +2494,29 @@ absl::Status MIOpenSupport::DoRnnBackwardImpl(
   auto size_data = input_desc.seq_length() * input_desc.batch_size() *
                    input_desc.data_size();
   if ((size_data > 0) && (input_backprop_data->opaque() != nullptr))
-    stream->ThenMemZero(input_backprop_data, size_data * type_size);
+    TF_RETURN_IF_ERROR(
+        stream->MemZero(input_backprop_data, size_data * type_size));
 
   size_data = input_h_desc.num_layers() * input_h_desc.batch_size() *
               input_h_desc.data_size();
   if ((size_data > 0) && (input_h_backprop_data->opaque() != nullptr))
-    stream->ThenMemZero(input_h_backprop_data, size_data * type_size);
+    TF_RETURN_IF_ERROR(
+        stream->MemZero(input_h_backprop_data, size_data * type_size));
 
   size_data = input_c_desc.num_layers() * input_c_desc.batch_size() *
               input_c_desc.data_size();
   if ((size_data > 0) && (input_c_backprop_data->opaque() != nullptr))
-    stream->ThenMemZero(input_c_backprop_data, size_data * type_size);
+    TF_RETURN_IF_ERROR(
+        stream->MemZero(input_c_backprop_data, size_data * type_size));
 
   const bool is_profiling = output_profile_result != nullptr;
 
   TF_ASSIGN_OR_RETURN(
       std::optional<GpuTimer> timer,
-      GpuTimer::CreateIfNeeded(AsGpuStream(stream), is_profiling));
+      GpuTimer::CreateIfNeeded(
+          stream,
+          output_profile_result && output_profile_result->warmup_run_executed(),
+          is_profiling));
 
   // make the backward data call
   auto status = wrap::miopenRNNBackwardData(
@@ -2533,7 +2545,8 @@ absl::Status MIOpenSupport::DoRnnBackwardImpl(
 
   if (params_backprop_data != nullptr) {
     // Clear the dw to zeros.
-    stream->ThenMemZero(params_backprop_data, params_backprop_data->size());
+    TF_RETURN_IF_ERROR(
+        stream->MemZero(params_backprop_data, params_backprop_data->size()));
     // make the backward weight call
     status = wrap::miopenRNNBackwardWeights(
         miopen.handle() /*handle*/, rnn_desc.handle() /*rnnDesc*/,
@@ -3183,7 +3196,8 @@ class RocmConvRunner : public dnn::ConvRunner {
     return {{algo_id_, false, workspace_size_}};
   }
 
-  absl::Status operator()(Stream* stream, dnn::ProfileResult* profile_result,
+  absl::Status operator()(Stream* stream,
+                          dnn::ProfileResult* output_profile_result,
                           DeviceMemoryBase scratch_memory,
                           DeviceMemoryBase input_data,
                           DeviceMemoryBase filter_data,
@@ -3194,10 +3208,13 @@ class RocmConvRunner : public dnn::ConvRunner {
     // Beta is the scaling factor for output.
     float beta = 0.0;
 
-    const bool is_profiling = profile_result != nullptr;
-    TF_ASSIGN_OR_RETURN(
-        std::optional<GpuTimer> timer,
-        GpuTimer::CreateIfNeeded(AsGpuStream(stream), is_profiling));
+    const bool is_profiling = output_profile_result != nullptr;
+    TF_ASSIGN_OR_RETURN(std::optional<GpuTimer> timer,
+                        GpuTimer::CreateIfNeeded(
+                            stream,
+                            output_profile_result &&
+                                output_profile_result->warmup_run_executed(),
+                            is_profiling));
 
     miopenStatus_t status = miopenStatusSuccess;
     switch (kind_) {
@@ -3268,11 +3285,11 @@ class RocmConvRunner : public dnn::ConvRunner {
       if (status == miopenStatusSuccess) {
         TF_ASSIGN_OR_RETURN(absl::Duration elapsed,
                             timer->GetElapsedDuration());
-        profile_result->set_elapsed_time_in_ms(
+        output_profile_result->set_elapsed_time_in_ms(
             absl::ToDoubleMilliseconds(elapsed));
         dnn::AlgorithmDesc algotype(algo_id_, false);
-        profile_result->set_algorithm(algotype);
-        profile_result->set_scratch_size(scratch_memory.size());
+        output_profile_result->set_algorithm(algotype);
+        output_profile_result->set_scratch_size(scratch_memory.size());
       }
     }
 
@@ -4099,11 +4116,15 @@ absl::Status ROCmFusedMatmulRunner::gemm(Stream* stream,
   blas::Transpose tb =
       _trans_b ? blas::Transpose::kTranspose : blas::Transpose::kNoTranspose;
 
-  return stream->ThenBlasGemm<T, T>(
-      tb, ta, _n, _m, _k, static_cast<DeviceMemory<T>>(b_data), _ldb,
-      static_cast<DeviceMemory<T>>(a_data), _lda,
-      static_cast<DeviceMemory<T>*>(&c_data), _ldc, NumericOptions{},
-      blas::CallContext::kNone);
+  auto* blas = stream->parent()->AsBlas();
+  if (blas == nullptr) {
+    return absl::InternalError("No Blas support for stream");
+  }
+  return blas->BlasGemm<T, T>(stream, tb, ta, _n, _m, _k,
+                              static_cast<DeviceMemory<T>>(b_data), _ldb,
+                              static_cast<DeviceMemory<T>>(a_data), _lda,
+                              static_cast<DeviceMemory<T>*>(&c_data), _ldc,
+                              NumericOptions{}, blas::CallContext::kNone);
 }
 
 template <typename T>
@@ -4676,7 +4697,7 @@ void initialize_miopen() {
     absl::Status status =
         PluginRegistry::Instance()->RegisterFactory<PluginRegistry::DnnFactory>(
             rocm::kROCmPlatformId, "MIOpen",
-            [](internal::StreamExecutorInterface* parent) -> dnn::DnnSupport* {
+            [](StreamExecutorInterface* parent) -> dnn::DnnSupport* {
               gpu::GpuExecutor* rocm_executor =
                   dynamic_cast<gpu::GpuExecutor*>(parent);
               if (rocm_executor == nullptr) {
@@ -4703,5 +4724,6 @@ void initialize_miopen() {
 
 }  // namespace stream_executor
 
-REGISTER_MODULE_INITIALIZER(register_miopen,
-                            { stream_executor::initialize_miopen(); });
+STREAM_EXECUTOR_REGISTER_MODULE_INITIALIZER(register_miopen, {
+  stream_executor::initialize_miopen();
+});

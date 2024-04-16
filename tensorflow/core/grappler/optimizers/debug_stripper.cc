@@ -70,7 +70,7 @@ Status DebugStripper::Optimize(Cluster* cluster, const GrapplerItem& item,
       }
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // end namespace grappler

@@ -93,6 +93,16 @@ TEST(AttributeMapTest, UnCheckedAttributeMapAccessor) {
     EXPECT_EQ(str, result);
     EXPECT_FALSE(TfLiteAttributeMapGetStringAttr(attr, 2, &result));
   }
+  {
+    TfLiteAttributeMapSetBoolAttr(
+        attr, kTfLiteBufferAttrKeyCurrentHostCoherencyState, true);
+    bool result = false;
+    EXPECT_TRUE(TfLiteAttributeMapGetBoolAttr(
+        attr, kTfLiteBufferAttrKeyCurrentHostCoherencyState, &result));
+    EXPECT_TRUE(result);
+    EXPECT_FALSE(TfLiteAttributeMapGetBoolAttr(
+        attr, kTfLiteBufferAttrKeyPreferredHostCoherencyState, &result));
+  }
   TfLiteAttributeMapDelete(attr);
 }
 
@@ -120,6 +130,13 @@ TEST(AttributeMapTest, UnCheckedAttributeMapCustomAccessor) {
     EXPECT_TRUE(TfLiteAttributeMapGetCustomStringAttr(attr, "foo", &result));
     EXPECT_EQ(str, result);
     EXPECT_FALSE(TfLiteAttributeMapGetCustomStringAttr(attr, "bar", &result));
+  }
+  {
+    TfLiteAttributeMapSetCustomBoolAttr(attr, "foo", true);
+    bool result = false;
+    EXPECT_TRUE(TfLiteAttributeMapGetCustomBoolAttr(attr, "foo", &result));
+    EXPECT_TRUE(result);
+    EXPECT_FALSE(TfLiteAttributeMapGetCustomBoolAttr(attr, "bar", &result));
   }
   TfLiteAttributeMapDelete(attr);
 }

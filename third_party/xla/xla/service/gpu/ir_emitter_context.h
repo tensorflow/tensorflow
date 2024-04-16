@@ -16,22 +16,42 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_IR_EMITTER_CONTEXT_H_
 #define XLA_SERVICE_GPU_IR_EMITTER_CONTEXT_H_
 
+#include <cstdint>
+#include <memory>
 #include <string>
+#include <utility>
 #include <variant>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/strings/string_view.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Module.h"
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/kernel_reuse_cache.h"
+#include "xla/service/gpu/runtime/nccl_collective_thunk.h"
 #include "xla/service/name_uniquer.h"
 #include "xla/stream_executor/device_description.h"
 
 namespace xla {
 namespace gpu {
+// Maps async start ops to their async events so we can emit done thunk
+// sharing events with corresponding start thunk. Async events may be null if
+// the start op is degenerate (so not emitted). For Send and Recv, this maps
+// <isRecv, channel_id> to the asyn events, as multiple Recv and Recv-done or
+// multiple Send and Send-done may map to the same async events and a Recv-done
+// or Send-done operand may not be its corresponding Recv or Send, when a
+// Send-Recv chain inside a loop is pipelined.
+using CollectivesAsyncEvents =
+    absl::flat_hash_map<std::variant<mlir::Operation*, const HloInstruction*,
+                                     std::pair<bool, uint64_t>>,
+                        std::shared_ptr<NcclCollectiveThunk::AsyncEvents>>;
 
 // IrEmitterContext encapsulates common (mutable and immutable) data structures
 // used by both IrEmitterNested and IrEmitterUnnested, such as the buffer
@@ -43,14 +63,13 @@ class IrEmitterContext {
                    std::string platform_name,
                    const se::DeviceDescription& gpu_device_info,
                    mlir::MLIRContext* mlir_context, llvm::Module* llvm_module,
-                   bool emit_ir_from_hlo, bool emit_kernels)
+                   bool emit_kernels)
       : hlo_module_(hlo_module),
         buffer_assignment_(buffer_assignment),
         platform_name_(std::move(platform_name)),
         gpu_device_info_(gpu_device_info),
         mlir_context_(mlir_context),
         llvm_module_(llvm_module),
-        emit_ir_from_hlo_(emit_ir_from_hlo),
         emit_kernels_(emit_kernels) {}
   // Disallow copy and assign.
   IrEmitterContext(const IrEmitterContext&) = delete;
@@ -84,14 +103,6 @@ class IrEmitterContext {
 
   std::vector<GpuExecutable::ConstantInfo>& constants() { return constants_; }
 
-  absl::Span<const BufferAllocation* const> allocations() const {
-    return allocations_;
-  }
-
-  void set_allocations(absl::Span<const BufferAllocation* const> allocations) {
-    allocations_ = allocations;
-  }
-
   // Emit a constant with a given number of element, given byte size of the
   // element, given symbol name and content.
   void emit_constant(int64_t num_elements, int64_t bytes_per_element,
@@ -103,27 +114,24 @@ class IrEmitterContext {
   }
 
   KernelReuseCache& kernel_cache() { return kernel_cache_; }
+  CollectivesAsyncEvents& collectives_async_events() {
+    return collectives_async_events_;
+  }
 
-  bool emit_ir_from_hlo() const { return emit_ir_from_hlo_; }
   bool emit_kernels() const { return emit_kernels_; }
 
  private:
   const HloModule* hlo_module_;
   const BufferAssignment* buffer_assignment_;
-
-  // Stores pointer to buffer allocations in the order of the LMHLO entry args.
-  // LMHLO-based emitters need the ordering to locate the buffer allocation.
-  // This should be removed once LMHLO-based emitters are removed.
-  absl::Span<const BufferAllocation* const> allocations_;
-
   std::string platform_name_;
   const se::DeviceDescription& gpu_device_info_;
   mlir::MLIRContext* mlir_context_;
   llvm::Module* llvm_module_;
   NameUniquer name_uniquer_;
   std::vector<GpuExecutable::ConstantInfo> constants_;
-  const bool emit_ir_from_hlo_;
   KernelReuseCache kernel_cache_;
+
+  CollectivesAsyncEvents collectives_async_events_;
 
   // We should not emit kernels when loading thunks from a compilation result.
   const bool emit_kernels_;

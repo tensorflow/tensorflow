@@ -34,7 +34,7 @@ using xla::llvm_ir::IrArray;
 namespace xla {
 namespace cpu {
 
-StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitAtan2(
+absl::StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitAtan2(
     PrimitiveType prim_type, llvm::Value* lhs, llvm::Value* rhs,
     absl::string_view /*name*/) {
   std::string function_name;
@@ -71,8 +71,8 @@ StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitAtan2(
   return result;
 }
 
-StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitTanh(PrimitiveType prim_type,
-                                                       llvm::Value* value) {
+absl::StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitTanh(
+    PrimitiveType prim_type, llvm::Value* value) {
   bool cast_result_to_fp16 = false;
   std::string function_name;
   switch (prim_type) {
@@ -106,8 +106,8 @@ StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitTanh(PrimitiveType prim_type,
   return result;
 }
 
-StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitErf(PrimitiveType prim_type,
-                                                      llvm::Value* value) {
+absl::StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitErf(
+    PrimitiveType prim_type, llvm::Value* value) {
   if (prim_type == F64) {
     std::string function_name = "erf";
     // Create a function declaration.

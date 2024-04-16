@@ -18,7 +18,6 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/tf2xla/mlir_xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/side_effect_util.h"
@@ -28,7 +27,6 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "xla/client/sharding_builder.h"
 #include "xla/client/xla_builder.h"
-#include "xla/primitive_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/side_effect_util.h"
@@ -58,7 +56,6 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"  // IWYU pragma: keep
-#include "tsl/platform/macros.h"
 
 namespace tensorflow {
 
@@ -87,7 +84,7 @@ Status MakeXlaShapes(gtl::ArraySlice<TensorShape> shapes,
   // Remove the dummy output from the vector that will be used to copy real
   // outputs from host to device.
   xla_shapes->pop_back();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // This TensorFlow pseudo-op is used to record host-side computation.
@@ -313,7 +310,7 @@ class HostComputeOp : public XlaOpKernel {
       }
     } while (modified);
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status InferOutputShapes(XlaOpKernelContext* ctx,
@@ -400,7 +397,7 @@ class HostComputeOp : public XlaOpKernel {
           "Shape inference for HostCompute ", ctx->op_kernel().name(),
           " failed: inference graph has no send from host node");
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   DataTypeVector input_dtypes_;
@@ -523,8 +520,9 @@ class RecvFromHostOp : public XlaOpKernel {
     xla::XlaOp result = xla::RecvFromHost(token, xla_shape, channel);
     // xla::RecvFromHost returns a tuple of (received data, token).
     ctx->SetOutput(0, xla::GetTupleElement(result, 0));
-    OP_REQUIRES_OK(
-        ctx, compiler->SetNodeToken(name(), xla::GetTupleElement(result, 1)));
+    OP_REQUIRES_OK(ctx,
+                   compiler->SetNodeToken(original_node_name_,
+                                          xla::GetTupleElement(result, 1)));
   }
 
  private:

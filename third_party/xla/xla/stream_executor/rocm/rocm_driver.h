@@ -24,12 +24,13 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
+#include "tsl/platform/logging.h"
 
 namespace stream_executor {
 namespace gpu {
 // Formats hipError_t to output prettified values into a log stream.
 // Error summaries taken from:
-string ToString(hipError_t result);
+std::string ToString(hipError_t result);
 
 // GpuContext wraps the device_ordinal and hipCtx_t handle.
 class GpuContext {

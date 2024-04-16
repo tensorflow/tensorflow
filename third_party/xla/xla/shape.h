@@ -44,6 +44,7 @@ class Shape {
   Shape(const Shape&);
   Shape(Shape&&);
   Shape& operator=(const Shape&);
+  Shape& operator=(Shape&&);
 
   // Construct a shape from a ShapeProto.
   explicit Shape(const ShapeProto& shape_proto);
@@ -128,6 +129,11 @@ class Shape {
   // Returns true if the given dimension is dynamically-sized.
   bool is_dynamic_dimension(int dimension) const {
     return dynamic_dimensions_[dimension];
+  }
+
+  // Returns true if the given dimension is statically-sized.
+  bool is_static_dimension(int dimension) const {
+    return !dynamic_dimensions_[dimension];
   }
 
   // Sets whether or not the given dimension is dynamically-sized.
@@ -370,6 +376,7 @@ class ProgramShape {
   ProgramShape(const ProgramShape&);
   ProgramShape(ProgramShape&&);
   ProgramShape& operator=(const ProgramShape&);
+  ProgramShape& operator=(ProgramShape&&);
 
   // Creates a ProgramShape from a ProgramShapeProto protobuf.
   explicit ProgramShape(const ProgramShapeProto& program_shape_proto);

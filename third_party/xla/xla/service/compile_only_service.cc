@@ -33,14 +33,14 @@ limitations under the License.
 
 namespace xla {
 
-/* static */ StatusOr<std::unique_ptr<CompileOnlyService>>
+/* static */ absl::StatusOr<std::unique_ptr<CompileOnlyService>>
 CompileOnlyService::NewService(se::Platform* platform) {
   ServiceOptions default_options;
   default_options.set_platform(platform);
   return NewService(default_options);
 }
 
-/* static */ StatusOr<std::unique_ptr<CompileOnlyService>>
+/* static */ absl::StatusOr<std::unique_ptr<CompileOnlyService>>
 CompileOnlyService::NewService(const ServiceOptions& options) {
   se::Platform* platform = options.platform();
   if (platform == nullptr) {
@@ -58,7 +58,7 @@ CompileOnlyService::CompileOnlyService(const ServiceOptions& options,
                                        Compiler* compiler)
     : Service(options, /*execute_backend=*/nullptr), compiler_(compiler) {}
 
-StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
+absl::StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
 CompileOnlyService::CompileAheadOfTime(
     absl::Span<const AotXlaComputationInstance> computations,
     const AotCompilationOptions& options,

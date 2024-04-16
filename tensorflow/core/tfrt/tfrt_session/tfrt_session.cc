@@ -115,7 +115,7 @@ class TfrtSessionInterOpThreadPools {
     thread_pools_.at(index) = thread_pool;
   }
 
-  StatusOr<ThreadPoolInterfaceWrapper*> GetThreadPool(int index) {
+  absl::StatusOr<ThreadPoolInterfaceWrapper*> GetThreadPool(int index) {
     if (index < 0 || index >= thread_pools_.size())
       return errors::InvalidArgument("Invalid thread pool index ", index);
     return thread_pools_[index];
@@ -464,6 +464,10 @@ class TfrtSession : public tensorflow::Session {
   Status ListDevices(std::vector<DeviceAttributes>* response) override {
     return errors::Unimplemented("TfrtSession::ListDevices is Unimplemented.");
   }
+  Status LocalDeviceManager(const DeviceMgr** output) override {
+    *output = &graph_executor_->fallback_state().device_manager();
+    return absl::OkStatus();
+  }
 
  private:
   tfrt::HostContext* GetHostContext() {
@@ -580,7 +584,7 @@ class TfrtSessionFactory::ThreadPoolManager {
  public:
   // Updates the thread pools based on the given `SessionOptions`. Returns a
   // `TfrtSessionInterOpThreadPools` that can be used to create a `TfrtSession`.
-  StatusOr<TfrtSessionInterOpThreadPools> UpdateAndGetInterOpThreadPools(
+  absl::StatusOr<TfrtSessionInterOpThreadPools> UpdateAndGetInterOpThreadPools(
       const SessionOptions& options) {
     if (options.config.inter_op_parallelism_threads() > 0) {
       LOG(WARNING) << "TFRT session does not support positive "
@@ -603,15 +607,6 @@ class TfrtSessionFactory::ThreadPoolManager {
         const ThreadPoolOptionProto& pool_options = it.value();
         auto pool_index = it.index();
         auto num_threads = pool_options.num_threads();
-
-        // For the current use cases the first thread pool is always the default
-        // thread pool. We add this check here to verify the assumption. We can
-        // remove this check once the code stablizes, since it is semantically
-        // meaningful to use non-default thread pool as the first thread pool.
-        if (pool_index == 0 && num_threads != 0) {
-          return errors::InvalidArgument(
-              "The first thread pool must have num_threads = 0");
-        }
 
         if (num_threads != 0) {
           TF_ASSIGN_OR_RETURN(
@@ -679,7 +674,7 @@ class TfrtSessionFactory::ThreadPoolManager {
   // Returns a `ThreadPoolInterfaceWrapper` that wraps the thread pool with the
   // name in `pool_options`. Creates and stores a new thread pool if an existing
   // one can't be found.
-  StatusOr<ThreadPoolInterfaceWrapper*> GetOrCreateThreadPool(
+  absl::StatusOr<ThreadPoolInterfaceWrapper*> GetOrCreateThreadPool(
       Env* env, const ThreadPoolOptionProto& pool_options, int pool_index) {
     const int32_t num_threads = pool_options.num_threads();
     CHECK_GT(num_threads, 0);
@@ -760,13 +755,9 @@ void TfrtSessionFactory::RegisterInitializer(RuntimeInitializer initializer) {
 Status TfrtSessionFactory::InitializeLocked(const TfrtSessionOptions& options) {
   mutex_.AssertHeld();
   if (options.use_tpu) {
-    // TODO(b/319186082): Update callers to set `use_tpu` alongside other.
-    // options, instead of separately, and remove this check.
-    DCHECK(runtime_);
     DCHECK(!options.backend_compiler);
-    device_target_ = TfrtDeviceInfraTarget::kBridgeFallback;
+    device_target_ = TfrtDeviceInfraTarget::kTpurt;
     tpu_use_tpu_runner_ = true;
-    return OkStatus();
   } else if (options.backend_compiler) {
     backend_compiler_ = options.backend_compiler;
   }
@@ -836,6 +827,7 @@ tfrt_stub::Runtime* TfrtSessionFactory::GetRuntime() {
 Status InitializeTfrtSession(const TfrtSessionOptions& options) {
   DCHECK(session_factory != nullptr);
   absl::MutexLock lock(&session_factory->mutex_);
+  DCHECK(!session_factory->IsInitialized());
   return UpdateTfrtSessionOptionsLocked(options);
 }
 

@@ -18,10 +18,19 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_CUDA_CUDA_DRIVER_H_
 #define XLA_STREAM_EXECUTOR_CUDA_CUDA_DRIVER_H_
 
+#include <algorithm>
+#include <cstdint>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "absl/container/node_hash_map.h"
-#include "absl/memory/memory.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
+#include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
 
 namespace stream_executor {

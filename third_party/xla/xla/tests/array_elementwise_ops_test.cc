@@ -16,6 +16,7 @@ limitations under the License.
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstddef>
 #include <functional>
 #include <limits>
 #include <memory>
@@ -27,20 +28,24 @@ limitations under the License.
 
 #include "absl/base/casts.h"
 #include "absl/types/span.h"
+#include "ml_dtypes/include/float8.h"  // from @ml_dtypes
 #include "xla/array2d.h"
 #include "xla/array3d.h"
 #include "xla/array4d.h"
 #include "xla/client/global_data.h"
 #include "xla/client/local_client.h"
 #include "xla/client/xla_builder.h"
+#include "xla/comparison_util.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
+#include "xla/primitive_util.h"
 #include "xla/statusor.h"
 #include "xla/test.h"
 #include "xla/tests/client_library_test_base.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/test_macros.h"
 #include "xla/types.h"
+#include "tsl/platform/ml_dtypes.h"
 
 #if TENSORFLOW_USE_ROCM
 #include "rocm/rocm_config.h"
@@ -1293,14 +1298,140 @@ XLA_TEST_F(ArrayElementwiseOpTest, CompareEqF32s) {
   ComputeAndCompareR1<bool>(&builder, {false, false, true, false, false}, {});
 }
 
-XLA_TEST_F(ArrayElementwiseOpTest, CompareEqF32sTO) {
-  SetFastMathDisabled(true);
-  XlaBuilder builder(TestName());
-  auto lhs = ConstantR1<float>(&builder, {-2.5f, 25.5f, 2.25f, NAN, 6.0f});
-  auto rhs = ConstantR1<float>(&builder, {10.0f, 5.0f, 2.25f, NAN, NAN});
-  EqTotalOrder(lhs, rhs);
+template <typename T>
+class TotalOrderTest : public ClientLibraryTestBase {
+ public:
+  void DoIt(ComparisonDirection direction) {
+    this->SetFastMathDisabled(true);
+    XlaBuilder builder(this->TestName());
+    std::vector<T> values = {
+        static_cast<T>(0.0f),
+        std::numeric_limits<T>::min(),
+        static_cast<T>(1.0f),
+        std::numeric_limits<T>::max(),
+    };
+    if constexpr (std::numeric_limits<T>::has_denorm) {
+      auto denorm = static_cast<float>(std::numeric_limits<T>::denorm_min());
+      if (denorm >= std::numeric_limits<float>::min()) {
+        values.push_back(std::numeric_limits<T>::denorm_min());
+      }
+    }
+    if constexpr (std::is_same_v<T, float> || std::is_same_v<T, double>) {
+      values.push_back(std::fabs(std::numeric_limits<float>::quiet_NaN()));
+    }
+    if constexpr (std::numeric_limits<T>::has_infinity) {
+      values.push_back(std::numeric_limits<T>::infinity());
+    }
+#if defined(XLA_TEST_BACKEND_CPU) || defined(XLA_TEST_BACKEND_GPU) || \
+    defined(XLA_TEST_BACKEND_INTERPRETER)
+    if constexpr (std::numeric_limits<T>::has_quiet_NaN) {
+      values.push_back(Eigen::numext::abs(std::numeric_limits<T>::quiet_NaN()));
+    }
+#endif
+    values.reserve(values.size() * 2);
+    for (size_t i = 0, n = values.size(); i < n; ++i) {
+      auto value = values[i];
+      auto neg = -value;
+      if (Eigen::numext::signbit(neg) != Eigen::numext::signbit(value)) {
+        values.push_back(neg);
+      }
+    }
+    std::vector<T> lhs_data;
+    std::vector<T> rhs_data;
+    lhs_data.reserve(values.size() * values.size());
+    rhs_data.reserve(values.size() * values.size());
+    for (T lhs_value : values) {
+      for (T rhs_value : values) {
+        lhs_data.push_back(lhs_value);
+        rhs_data.push_back(rhs_value);
+      }
+    }
+    absl::InlinedVector<bool, 10> results;
+    results.reserve(lhs_data.size());
+    Comparison comparison(direction, primitive_util::NativeToPrimitiveType<T>(),
+                          Comparison::Order::kTotal);
+    for (size_t i = 0; i < lhs_data.size(); ++i) {
+      results.push_back(comparison.Compare(lhs_data[i], rhs_data[i]));
+    }
+    auto lhs = ConstantR1<T>(&builder, lhs_data);
+    auto rhs = ConstantR1<T>(&builder, rhs_data);
+    switch (direction) {
+      case ComparisonDirection::kEq:
+        EqTotalOrder(lhs, rhs);
+        break;
+      case ComparisonDirection::kNe:
+        NeTotalOrder(lhs, rhs);
+        break;
+      case ComparisonDirection::kGt:
+        GtTotalOrder(lhs, rhs);
+        break;
+      case ComparisonDirection::kGe:
+        GeTotalOrder(lhs, rhs);
+        break;
+      case ComparisonDirection::kLt:
+        LtTotalOrder(lhs, rhs);
+        break;
+      case ComparisonDirection::kLe:
+        LeTotalOrder(lhs, rhs);
+        break;
+    }
 
-  ComputeAndCompareR1<bool>(&builder, {false, false, true, true, false}, {});
+    this->ComputeAndCompareR1<bool>(&builder, results, {});
+  }
+};
+
+using Types = ::testing::Types<tsl::float8_e4m3fnuz, tsl::float8_e4m3b11fnuz,
+                               tsl::float8_e5m2, tsl::float8_e5m2fnuz,
+#if !defined(XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT16)
+                               Eigen::half,
+#endif
+#if !defined(XLA_BACKEND_DOES_NOT_SUPPORT_BFLOAT16)
+                               Eigen::bfloat16,
+#endif
+#if !defined(XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT64)
+                               double,
+#endif
+                               float>;
+
+TYPED_TEST_SUITE(TotalOrderTest, Types);
+
+TYPED_TEST(TotalOrderTest, Eq) { this->DoIt(ComparisonDirection::kEq); }
+TYPED_TEST(TotalOrderTest, Ne) { this->DoIt(ComparisonDirection::kNe); }
+TYPED_TEST(TotalOrderTest, Le) { this->DoIt(ComparisonDirection::kLe); }
+TYPED_TEST(TotalOrderTest, Lt) { this->DoIt(ComparisonDirection::kLt); }
+TYPED_TEST(TotalOrderTest, Ge) { this->DoIt(ComparisonDirection::kGe); }
+TYPED_TEST(TotalOrderTest, Gt) { this->DoIt(ComparisonDirection::kGt); }
+TYPED_TEST(TotalOrderTest, LargeMagnitudeVsNaN) {
+  using T = TypeParam;
+  if constexpr (!std::numeric_limits<T>::has_quiet_NaN) {
+    GTEST_SKIP();
+  }
+  this->SetFastMathDisabled(true);
+
+  XlaBuilder builder(this->TestName());
+  std::vector<T> values = {
+      static_cast<T>(0.0f),
+      std::numeric_limits<T>::min(),
+      static_cast<T>(1.0f),
+      std::numeric_limits<T>::max(),
+  };
+  if constexpr (std::numeric_limits<T>::has_infinity) {
+    values.push_back(std::numeric_limits<T>::infinity());
+  }
+  for (size_t i = 0, n = values.size(); i < n; ++i) {
+    auto value = values[i];
+    auto neg = -value;
+    if (Eigen::numext::signbit(neg) != Eigen::numext::signbit(value)) {
+      values.push_back(neg);
+    }
+  }
+  auto lhs = ConstantR1<T>(&builder, values);
+  auto rhs = ConstantR1<T>(
+      &builder,
+      std::vector<T>(values.size(), std::numeric_limits<T>::quiet_NaN()));
+  LtTotalOrder(lhs, rhs);
+  TF_ASSERT_OK_AND_ASSIGN(auto result, this->ComputeAndTransfer(&builder, {}));
+  EXPECT_TRUE(result.IsAll(0) || result.IsAll(1)) << result.ToString();
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, CompareEqZeroElementF32s) {
@@ -1320,23 +1451,6 @@ XLA_TEST_F(ArrayElementwiseOpTest, CompareGeF32s) {
   Ge(lhs, rhs);
 
   ComputeAndCompareR1<bool>(&builder, {false, true, true, false, false}, {});
-}
-
-XLA_TEST_F(ArrayElementwiseOpTest, CompareGeF32sTO) {
-  SetFastMathDisabled(true);
-  XlaBuilder builder(TestName());
-  // For portability, need to represent NAN using the following call.
-  // The C++ standard does not specify if quiet_NaN() sets the sign bit of
-  // its result. The call to std::fabs will ensure that it is not set.
-  auto kNaN = std::fabs(std::numeric_limits<float>::quiet_NaN());
-  auto lhs =
-      ConstantR1<float>(&builder, {-2.5f, 25.5f, 2.25f, kNaN, 6.0f, 6.0f});
-  auto rhs =
-      ConstantR1<float>(&builder, {10.0f, 5.0f, 1.0f, 10.0f, kNaN, -kNaN});
-  GeTotalOrder(lhs, rhs);
-
-  ComputeAndCompareR1<bool>(&builder, {false, true, true, true, false, true},
-                            {});
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, CompareGtF32s) {

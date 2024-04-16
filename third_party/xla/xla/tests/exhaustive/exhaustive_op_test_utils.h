@@ -204,12 +204,12 @@ class ExhaustiveOpTestBase : public ClientLibraryTestBase {
                check_valid_range);
   }
 
-  StatusOr<Literal> RunComputationHelper(const XlaComputation& comp,
-                                         const Literal& literal) {
+  absl::StatusOr<Literal> RunComputationHelper(const XlaComputation& comp,
+                                               const Literal& literal) {
     return RunComputation(comp, {&literal});
   }
 
-  StatusOr<Literal> RunComputationHelper(
+  absl::StatusOr<Literal> RunComputationHelper(
       const XlaComputation& comp, const std::array<Literal, N>& literals) {
     std::array<const Literal*, N> lit_ptrs;
     for (int i = 0; i < N; ++i) {
@@ -237,7 +237,7 @@ class ExhaustiveOpTestBase : public ClientLibraryTestBase {
   // plain Client API, which is used by ClientLibraryTestBase.  This is because
   // the plain Client API results does more memcpys to/from Literals, and that's
   // slow given that we're touching a lot of data here.
-  StatusOr<Literal> RunComputation(
+  absl::StatusOr<Literal> RunComputation(
       const XlaComputation& computation,
       absl::Span<const Literal* const> input_literals) {
     // Copy debug options from ClientLibraryTestBase.  In particular, we're

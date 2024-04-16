@@ -31,7 +31,7 @@ namespace ifrt {
 
 char PjRtCompiler::ID = 0;
 
-StatusOr<std::unique_ptr<LoadedExecutable>> PjRtCompiler::Compile(
+absl::StatusOr<std::unique_ptr<LoadedExecutable>> PjRtCompiler::Compile(
     std::unique_ptr<Program> program, std::unique_ptr<CompileOptions> options) {
   DCHECK(this);
   const auto* xla_program = llvm::dyn_cast<XlaProgram>(program.get());
@@ -46,7 +46,7 @@ StatusOr<std::unique_ptr<LoadedExecutable>> PjRtCompiler::Compile(
       std::move(xla_compile_options->loaded_host_callbacks));
 }
 
-StatusOr<std::unique_ptr<LoadedExecutable>>
+absl::StatusOr<std::unique_ptr<LoadedExecutable>>
 PjRtCompiler::DeserializeLoadedExecutable(
     absl::string_view serialized,
     std::unique_ptr<DeserializeExecutableOptions> options) {

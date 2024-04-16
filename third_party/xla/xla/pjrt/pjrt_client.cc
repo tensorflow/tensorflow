@@ -43,23 +43,23 @@ StatusOr<std::uintptr_t> PjRtClient::UnsafeBufferPointer(PjRtBuffer* buffer) {
   return absl::bit_cast<std::uintptr_t>(ptr);
 }
 
-PjRtFuture<Status> PjRtBuffer::CopyRawToHostFuture(
-    PjRtFuture<StatusOr<void*>> dst, int64_t offset, int64_t transfer_size) {
-  auto promise = PjRtFuture<Status>::CreatePromise();
+PjRtFuture<> PjRtBuffer::CopyRawToHostFuture(PjRtFuture<StatusOr<void*>> dst,
+                                             int64_t offset,
+                                             int64_t transfer_size) {
+  auto promise = PjRtFuture<>::CreatePromise();
   dst.OnReady(
       [this, promise, offset, transfer_size](StatusOr<void*> dst) mutable {
         if (dst.ok()) {
           CopyRawToHost(*dst, offset, transfer_size)
               .OnReady([promise = std::move(promise)](Status status) mutable {
-                promise.Set(status);
+                promise.Set(std::move(status));
               });
         } else {
           promise.Set(dst.status());
         }
       });
-  return PjRtFuture<Status>(std::move(promise));
+  return PjRtFuture<>(std::move(promise));
 }
-
 
 std::string CompiledMemoryStats::DebugString() const {
   return absl::Substitute(
@@ -68,9 +68,17 @@ std::string CompiledMemoryStats::DebugString() const {
       "argument_size_in_bytes=$1, "
       "output_size_in_bytes=$2, "
       "alias_size_in_bytes=$3, "
-      "temp_size_in_bytes=$4)",
+      "temp_size_in_bytes=$4, "
+      "host_generated_code_size_in_bytes=$5, "
+      "host_argument_size_in_bytes=$6, "
+      "host_output_size_in_bytes=$7, "
+      "host_alias_size_in_bytes=$8, "
+      "host_temp_size_in_bytes=$9)",
       generated_code_size_in_bytes, argument_size_in_bytes,
-      output_size_in_bytes, alias_size_in_bytes, temp_size_in_bytes);
+      output_size_in_bytes, alias_size_in_bytes, temp_size_in_bytes,
+      host_generated_code_size_in_bytes, host_argument_size_in_bytes,
+      host_output_size_in_bytes, host_alias_size_in_bytes,
+      host_temp_size_in_bytes);
 }
 
 // Defining the first virtual non-pure method, which is usually the virtual

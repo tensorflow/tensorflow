@@ -16,11 +16,10 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/status/status.h"
 #include "xla/python/profiler/internal/python_hooks.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
-#include "tsl/platform/macros.h"
-#include "tsl/platform/status.h"
 #include "tsl/profiler/lib/profiler_interface.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
@@ -60,7 +59,7 @@ absl::Status PythonTracer::Start() {  // TENSORFLOW_STATUS_OK
   VLOG(1) << __FUNCTION__;
   recording_ = true;
   PythonHooks::GetSingleton()->Start(options_);
-  return tsl::OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status PythonTracer::Stop() {  // TENSORFLOW_STATUS_OK
@@ -70,7 +69,7 @@ absl::Status PythonTracer::Stop() {  // TENSORFLOW_STATUS_OK
   VLOG(1) << __FUNCTION__;
   context_ = PythonHooks::GetSingleton()->Stop();
   recording_ = false;
-  return tsl::OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status PythonTracer::CollectData(  // TENSORFLOW_STATUS_OK
@@ -80,7 +79,7 @@ absl::Status PythonTracer::CollectData(  // TENSORFLOW_STATUS_OK
     context_->Finalize(space);
     context_.reset();
   }
-  return tsl::OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace

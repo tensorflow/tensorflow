@@ -36,7 +36,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
-StatusOr<HloInstruction*> FlattenAndTransposeUpdates(
+absl::StatusOr<HloInstruction*> FlattenAndTransposeUpdates(
     HloInstruction* updates, absl::Span<const int64_t> update_window_dims,
     absl::Span<const int64_t> inserted_window_dims,
     int64_t scatter_indices_size) {
@@ -92,7 +92,7 @@ std::vector<int64_t> MakeUpdatePermutation(
 
 // Transforms the scatter_updates field of scatter. scatter_indices_size is the
 // size of the scatter dimension in scatter_indices.
-StatusOr<std::vector<HloInstruction*>> TransformScatterUpdates(
+absl::StatusOr<std::vector<HloInstruction*>> TransformScatterUpdates(
     HloScatterInstruction* scatter,
     const std::vector<int64_t>& update_permutation,
     int64_t scatter_indices_size) {
@@ -128,7 +128,7 @@ ScatterDimensionNumbers MakeScatterDimensionNumbers(
 
 }  // namespace
 
-StatusOr<HloInstruction*> ScatterSimplifier::ExpandInstruction(
+absl::StatusOr<HloInstruction*> ScatterSimplifier::ExpandInstruction(
     HloInstruction* inst) {
   auto* scatter = Cast<HloScatterInstruction>(inst);
 
@@ -202,26 +202,28 @@ StatusOr<HloInstruction*> ScatterSimplifier::ExpandInstruction(
   return MaybeMakeTuple(result_items);
 }
 
-bool ScatterSimplifier::InstructionMatchesPattern(HloInstruction* inst) {
-  if (auto* scatter = DynCast<HloScatterInstruction>(inst)) {
-    const auto& dims = scatter->scatter_dimension_numbers();
+bool ScatterSimplifier::IsSimplifiedScatter(
+    const HloScatterInstruction* scatter) {
+  const auto& dims = scatter->scatter_dimension_numbers();
 
-    bool nonstandard_index_vector_dim =
-        dims.index_vector_dim() !=
-        scatter->scatter_indices()->shape().rank() - 1;
-    int64_t num_scatter_dims =
-        scatter->scatter_updates().front()->shape().rank() -
-        dims.update_window_dims().size();
-    bool scatter_indices_reordered =
-        !IsIdentityPermutation(dims.scatter_dims_to_operand_dims());
-    bool scatter_dim_not_first =
-        absl::c_linear_search(dims.update_window_dims(), 0);
+  bool nonstandard_index_vector_dim =
+      dims.index_vector_dim() != scatter->scatter_indices()->shape().rank() - 1;
+  int64_t num_scatter_dims =
+      scatter->scatter_updates().front()->shape().rank() -
+      dims.update_window_dims().size();
+  bool scatter_indices_reordered =
+      !IsIdentityPermutation(dims.scatter_dims_to_operand_dims());
+  bool scatter_dim_not_first =
+      absl::c_linear_search(dims.update_window_dims(), 0);
 
-    return nonstandard_index_vector_dim || num_scatter_dims > 1 ||
+  return !(nonstandard_index_vector_dim || num_scatter_dims > 1 ||
            scatter_indices_reordered || scatter_dim_not_first ||
-           !dims.inserted_window_dims().empty();
-  }
-  return false;
+           !dims.inserted_window_dims().empty());
+}
+
+bool ScatterSimplifier::InstructionMatchesPattern(HloInstruction* inst) {
+  auto* scatter = DynCast<HloScatterInstruction>(inst);
+  return scatter && !IsSimplifiedScatter(scatter);
 }
 
 }  // namespace xla

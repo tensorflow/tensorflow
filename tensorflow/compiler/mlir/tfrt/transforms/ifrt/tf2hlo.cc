@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v2/legalize_tf.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/ifrt_constants.h"
+#include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/ifrt_types.h"
 #include "tensorflow/compiler/tf2xla/layout_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
@@ -48,7 +49,7 @@ limitations under the License.
 #include "xla/service/computation_placer.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/shape.h"
-#include "xla/stream_executor/multi_platform_manager.h"
+#include "xla/stream_executor/platform_manager.h"
 #include "xla/translate/hlo_to_mhlo/hlo_to_mlir_hlo.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/function.pb.h"
@@ -127,6 +128,7 @@ absl::StatusOr<tensorflow::tpu::TPUCompileMetadataProto> GetCompileMetadata(
 
   // Create a default device assignment if one is not given by the model.
   if (!metadata.has_device_assignment()) {
+    // TODO(b/316068010): integrate core selection.
     TF_ASSIGN_OR_RETURN(
         auto device_assignment,
         ifrt_client.GetDefaultDeviceAssignment(
@@ -159,7 +161,7 @@ absl::StatusOr<Tf2HloResult> CompileTfToHlo(
 
   TF_ASSIGN_OR_RETURN(
       auto* platform,
-      stream_executor::MultiPlatformManager::PlatformWithName("Host"));
+      stream_executor::PlatformManager::PlatformWithName("Host"));
   TF_ASSIGN_OR_RETURN(
       auto* client, xla::ClientLibrary::GetOrCreateCompileOnlyClient(platform));
 

@@ -5,10 +5,6 @@ load(
     "if_rocm_is_configured",
 )
 load(
-    "@local_tsl//tsl:tsl.bzl",
-    "tsl_copts",
-)
-load(
     "@local_tsl//tsl/platform:build_config_root.bzl",
     "if_static",
     "tf_exec_properties",
@@ -16,6 +12,10 @@ load(
 load(
     "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
+)
+load(
+    "//xla/tsl:tsl.bzl",
+    "tsl_copts",
 )
 
 def xla_py_proto_library(**_kwargs):
@@ -65,7 +65,7 @@ _XLA_SHARED_OBJECT_SENSITIVE_DEPS = if_static(extra_deps = [], otherwise = [
     Label("//xla/stream_executor/gpu:gpu_stream"),
     Label("//xla/stream_executor/rocm:all_runtime"),
     Label("//xla/stream_executor/rocm:stream_executor_rocm"),
-    "@local_tsl//tsl/util:determinism",
+    "//xla/tsl/util:determinism",
 ])
 
 def xla_cc_binary(deps = [], copts = tsl_copts(), **kwargs):

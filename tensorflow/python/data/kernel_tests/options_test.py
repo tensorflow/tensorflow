@@ -80,6 +80,19 @@ class OptionsTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertTrue(self._get_options(ds).autotune.enabled)
 
   @combinations.generate(test_base.default_test_combinations())
+  def testOptionsTwiceSameOptionWithMap(self):
+    options1 = options_lib.Options()
+    options1.framework_type = ["seqio"]
+    options2 = options_lib.Options()
+    options2.framework_type = ["tfgrain"]
+    ds = dataset_ops.Dataset.range(5)
+    ds = ds.with_options(options1)
+    ds = ds.map(lambda x: x + 1)
+    ds = ds.with_options(options2)
+    self.assertDatasetProduces(ds, [1, 2, 3, 4, 5])
+    self.assertLen(self._get_options(ds).framework_type, 2)
+
+  @combinations.generate(test_base.default_test_combinations())
   def testOptionsMergeOptionsFromMultipleInputs(self):
     options1 = options_lib.Options()
     options1.autotune.enabled = True

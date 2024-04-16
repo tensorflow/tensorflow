@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -162,9 +163,27 @@ LaunchDimensions GpuPerformanceModelBase::EstimateFusionLaunchDimensions(
 }
 
 /*static*/
+int64_t GpuPerformanceModelBase::GetOperandBytesAccessed(
+    const GpuHloCostAnalysis* cost_analysis, const HloInstruction* instr,
+    const HloInstruction* operand) {
+  // When called for a consumer-producer fusion, the operand can be from a
+  // different instruction. GpuHloCostAnalysis can't fail gravefully in this
+  // case, so we need an explicit check.
+  if (!instr->IsUserOf(operand)) {
+    return 0;
+  }
+
+  return cost_analysis->operand_bytes_accessed(*instr,
+                                               instr->operand_index(operand));
+}
+
+/*static*/
 float GpuPerformanceModelBase::GetOperandUtilization(
     const GpuHloCostAnalysis* cost_analysis, const HloInstruction* instr,
     const HloInstruction* operand) {
+  // When called for a consumer-producer fusion, the operand can be from a
+  // different instruction. GpuHloCostAnalysis can't fail gravefully in this
+  // case, so we need an explicit check.
   if (!instr->IsUserOf(operand)) {
     return 0.f;
   }
@@ -203,17 +222,17 @@ float GpuPerformanceModelBase::GetCommonUtilization(
 }
 
 /*static*/
-float GpuPerformanceModelBase::GetSharedUtilization(
+int64_t GpuPerformanceModelBase::GetSharedOperandBytesAccessed(
     const GpuHloCostAnalysis* cost_analysis, const HloInstruction* producer,
     const HloInstruction* consumer, const HloInstruction* operand) {
   float producer_utilization_by_consumer =
       GetOperandUtilization(cost_analysis, consumer, producer);
 
-  float operand_utilization_by_producer =
-      GetOperandUtilization(cost_analysis, producer, operand);
+  int64_t bytes_accessed_by_producer =
+      GetOperandBytesAccessed(cost_analysis, producer, operand);
 
-  float operand_utilization_by_consumer =
-      GetOperandUtilization(cost_analysis, consumer, operand);
+  int64_t bytes_accessed_by_consumer =
+      GetOperandBytesAccessed(cost_analysis, consumer, operand);
 
   float common_utilization =
       producer->IsUserOf(operand)
@@ -221,8 +240,13 @@ float GpuPerformanceModelBase::GetSharedUtilization(
                                  producer->operand_index(operand), consumer)
           : 0.f;
 
-  return producer_utilization_by_consumer * operand_utilization_by_producer +
-         operand_utilization_by_consumer - common_utilization;
+  int64_t operand_size = cost_analysis->GetShapeSize(operand->shape());
+  int64_t common_bytes_accessed =
+      std::llround(operand_size * common_utilization);
+
+  return std::llround(bytes_accessed_by_producer *
+                      producer_utilization_by_consumer) +
+         bytes_accessed_by_consumer - common_bytes_accessed;
 }
 
 /*static*/
@@ -347,6 +371,33 @@ absl::Duration GpuPerformanceModelBase::CombineComputeAndMemoryAccessTime(
   return compute_time + memory_access_time -
          std::min(compute_time, memory_access_time) *
              config.memory_compute_parallelism;
+}
+
+/*static*/
+void GpuPerformanceModelBase::VLogOperandRead(const HloInstruction* operand,
+                                              int64_t n_bytes_total,
+                                              int64_t n_bytes_net,
+                                              bool coalesced) {
+  VLOG(8) << "operand " << operand->name()
+          << ", n_bytes_total: " << n_bytes_total
+          << ", n_bytes_net: " << n_bytes_net << ", coalesced: " << coalesced;
+}
+
+/*static*/
+void GpuPerformanceModelBase::VLogResult(
+    int64_t flops, int64_t bytes_read, int64_t bytes_written,
+    int64_t num_threads, absl::Duration compute_time, absl::Duration read_time,
+    absl::Duration write_time, absl::Duration exec_time) {
+  if (VLOG_IS_ON(8)) {
+    LOG(INFO) << "FLOPs: " << flops;
+    LOG(INFO) << "Bytes read: " << bytes_read;
+    LOG(INFO) << "Bytes written: " << bytes_written;
+    LOG(INFO) << "Num threads: " << num_threads;
+    LOG(INFO) << "Compute time: " << compute_time;
+    LOG(INFO) << "Input read time: " << read_time;
+    LOG(INFO) << "Output write time: " << write_time;
+    LOG(INFO) << "Exec time: " << exec_time;
+  }
 }
 
 }  // namespace gpu

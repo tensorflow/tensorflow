@@ -16,6 +16,7 @@
 
 #include <cstdint>
 
+#include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "xla/executable_run_options.h"
 #include "xla/runtime/memref_view.h"

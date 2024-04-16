@@ -53,6 +53,46 @@ bool IsBuiltWithNvcc() {
 #endif
 }
 
+bool IsAArch32Available() {
+#if TF_LLVM_AARCH32_AVAILABLE
+  return true;
+#else
+  return false;
+#endif
+}
+
+bool IsAArch64Available() {
+#if TF_LLVM_AARCH64_AVAILABLE
+  return true;
+#else
+  return false;
+#endif
+}
+
+bool IsPowerPCAvailable() {
+#if TF_LLVM_POWERPC_AVAILABLE
+  return true;
+#else
+  return false;
+#endif
+}
+
+bool IsSystemZAvailable() {
+#if TF_LLVM_S390X_AVAILABLE
+  return true;
+#else
+  return false;
+#endif
+}
+
+bool IsX86Available() {
+#if TF_LLVM_X86_AVAILABLE
+  return true;
+#else
+  return false;
+#endif
+}
+
 bool GpuSupportsHalfMatMulAndConv() {
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
     (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)

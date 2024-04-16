@@ -122,10 +122,6 @@ LogicalResult ConstantFoldFallbackHook(
     inputs.push_back(input.cast<ElementsAttr>());
   }
 
-  // Avoid overlapping folds with the same context.
-  // TODO(jpienaar): Avoid using global context & mutex here.
-  static auto* mu = new tensorflow::mutex();
-  tensorflow::mutex_lock l(*mu);
   SmallVector<Attribute> constants;
   LogicalResult status = EvaluateOperation(inst, inputs, constants);
   results.assign(constants.begin(), constants.end());

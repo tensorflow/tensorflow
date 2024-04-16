@@ -30,7 +30,7 @@ limitations under the License.
 
 namespace xla {
 
-StatusOr<std::unique_ptr<HloModule>> PrepareReferenceModule(
+absl::StatusOr<std::unique_ptr<HloModule>> PrepareReferenceModule(
     const HloModule& test_module, HloRunnerInterface* test_runner,
     const std::function<void(HloModuleConfig*)>& config_modifier_hook,
     const std::function<Status(const HloModule&, HloRunnerInterface*,

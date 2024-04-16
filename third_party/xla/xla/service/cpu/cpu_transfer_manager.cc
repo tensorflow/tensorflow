@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/statusor.h"
 #include "xla/stream_executor/host/host_platform_id.h"
+#include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/types.h"
 #include "xla/util.h"
@@ -61,7 +62,7 @@ Status CpuTransferManager::ReadDynamicShapes(se::Stream* stream,
                                               device_shape);
   }
   TF_ASSIGN_OR_RETURN(auto platform,
-                      se::MultiPlatformManager::PlatformWithId(PlatformId()));
+                      se::PlatformManager::PlatformWithId(PlatformId()));
   TF_ASSIGN_OR_RETURN(auto compiler, Compiler::GetForPlatform(platform));
   return ReadDynamicShapesOnCpu(device_buffer, device_shape,
                                 compiler->ShapeSizeBytesFunction());

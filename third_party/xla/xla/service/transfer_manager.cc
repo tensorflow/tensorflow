@@ -15,23 +15,31 @@ limitations under the License.
 
 #include "xla/service/transfer_manager.h"
 
+#include <cstdint>
 #include <functional>
 #include <memory>
-#include <string>
 #include <utility>
+#include <vector>
 
+#include "absl/base/const_init.h"
 #include "absl/cleanup/cleanup.h"
-#include "absl/strings/str_cat.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/synchronization/mutex.h"
+#include "xla/literal.h"
 #include "xla/service/compiler.h"
 #include "xla/service/maybe_owning_device_memory.h"
+#include "xla/service/shaped_buffer.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/status.h"
 #include "xla/status_macros.h"
-#include "xla/types.h"
+#include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/util.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/notification.h"
-
-using absl::StrCat;
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -45,7 +53,7 @@ TransferManager::GetPlatformTransferManagers() {
   return r;
 }
 
-StatusOr<Literal> TransferManager::TransferLiteralFromDevice(
+absl::StatusOr<Literal> TransferManager::TransferLiteralFromDevice(
     se::Stream* stream, const ShapedBuffer& device_buffer,
     const TransferMetadata* transfer_metadata) {
   Literal literal(device_buffer.on_host_shape());
@@ -58,8 +66,8 @@ Status TransferManager::TransferLiteralFromDevice(
     se::Stream* stream, const ShapedBuffer& device_buffer,
     const MutableBorrowingLiteral& literal,
     const TransferMetadata* transfer_metadata) {
-  se::Stream* substream = stream->GetOrCreateSubStream();
-  substream->ThenWaitFor(stream);
+  TF_ASSIGN_OR_RETURN(se::Stream * substream, stream->GetOrCreateSubStream());
+  TF_RETURN_IF_ERROR(substream->WaitFor(stream));
   absl::Cleanup cleanup = [&]() { stream->ReturnSubStream(substream); };
 
   Status ret;
@@ -82,15 +90,15 @@ Status TransferManager::TransferLiteralToDevice(
   // Implement the synchronous version by waiting on the asynchronous version.
   // Use a substream so that if we are called from a HostCallback we don't
   // deadlock.
-  se::Stream* substream = stream->GetOrCreateSubStream();
-  substream->ThenWaitFor(stream);
+  TF_ASSIGN_OR_RETURN(se::Stream * substream, stream->GetOrCreateSubStream());
+  TF_RETURN_IF_ERROR(substream->WaitFor(stream));
   absl::Cleanup cleanup = [&]() { stream->ReturnSubStream(substream); };
   TF_RETURN_IF_ERROR(TransferLiteralToDeviceAsync(
       substream, literal, device_buffer, transfer_metadata));
   return substream->BlockHostUntilDone();
 }
 
-StatusOr<Literal> TransferManager::TransferArrayFromDevice(
+absl::StatusOr<Literal> TransferManager::TransferArrayFromDevice(
     se::Stream* stream, const Shape& shape, const se::DeviceMemoryBase& source,
     const TransferMetadata* transfer_metadata) {
   TF_RET_CHECK(shape.IsArray());
@@ -111,8 +119,8 @@ Status TransferManager::TransferArrayToDevice(
   // Implement the synchronous version by waiting on the asynchronous version.
   // Use a substream so that if we are called from a HostCallback we don't
   // deadlock.
-  se::Stream* substream = stream->GetOrCreateSubStream();
-  substream->ThenWaitFor(stream);
+  TF_ASSIGN_OR_RETURN(se::Stream * substream, stream->GetOrCreateSubStream());
+  TF_RETURN_IF_ERROR(substream->WaitFor(stream));
   absl::Cleanup cleanup = [&]() { stream->ReturnSubStream(substream); };
   TF_RETURN_IF_ERROR(
       TransferArrayToDeviceAsync(substream, literal, dest, transfer_metadata));
@@ -141,7 +149,8 @@ Status TransferManager::ReadDynamicShapes(se::Stream* stream,
   TF_ASSIGN_OR_RETURN(auto compiler,
                       Compiler::GetForPlatform(stream->parent()->platform()));
   TF_RETURN_IF_ERROR(device_buffer->buffers().ForEachElementWithStatus(
-      [&](const ShapeIndex& index, const se::DeviceMemoryBase& buffer) {
+      [&](const ShapeIndex& index,
+          const se::DeviceMemoryBase& buffer) -> absl::Status {
         const Shape& buffer_shape =
             ShapeUtil::GetSubshape(*device_shape, index);
         if (buffer_shape.IsTuple()) {
@@ -193,7 +202,7 @@ Status TransferManager::ReadDynamicShapes(se::Stream* stream,
   (*managers)[platform_id].creation_function = creation_function;
 }
 
-/* static */ StatusOr<TransferManager*> TransferManager::GetForPlatform(
+/* static */ absl::StatusOr<TransferManager*> TransferManager::GetForPlatform(
     const se::Platform* platform) {
   absl::MutexLock lock(&TransferManager::platform_transfer_manager_mutex_);
   auto* managers = GetPlatformTransferManagers();
@@ -288,7 +297,7 @@ Status TransferManager::WriteRootTupleIndexTable(
                                     &device_memory);
 }
 
-StatusOr<ScopedShapedBuffer> TransferManager::AllocateScopedShapedBuffer(
+absl::StatusOr<ScopedShapedBuffer> TransferManager::AllocateScopedShapedBuffer(
     const Shape& on_host_shape, se::DeviceMemoryAllocator* allocator,
     int device_ordinal, DeviceShapeRepresentationFn shape_representation_fn) {
   if (!LayoutUtil::HasLayout(on_host_shape)) {
@@ -323,7 +332,7 @@ StatusOr<ScopedShapedBuffer> TransferManager::AllocateScopedShapedBuffer(
   return std::move(shaped_buffer);
 }
 
-StatusOr<Shape> TransferManager::ChooseCompactLayoutForShape(
+absl::StatusOr<Shape> TransferManager::ChooseCompactLayoutForShape(
     const Shape& host_shape) const {
   return LayoutUtil::GetWithDefaultLayout(host_shape);
 }

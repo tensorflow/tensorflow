@@ -15,71 +15,43 @@ limitations under the License.
 
 #include "xla/translate/mhlo_to_hlo/type_to_shape.h"
 
+#include <algorithm>
+#include <cstdint>
 #include <numeric>
 #include <optional>
-#include <string>
 #include <tuple>
+#include <utility>
 #include <vector>
 
+#include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/SparseTensor/IR/Enums.h"  // from @llvm-project
 #include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"  // from @llvm-project
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
+#include "xla/mlir/utils/type_util.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
-#include "xla/primitive_util.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/statusor.h"
 #include "xla/xla_data.pb.h"
 
 using ::int64_t;
-using mlir::IntegerType;
 using mlir::MemRefType;
 using mlir::RankedTensorType;
 using mlir::ShapedType;
 using mlir::VectorType;
 using mlir::mhlo::TypeExtensionsAttr;
 using xla::PrimitiveType;
-using xla::ShapeUtil;
 
 namespace xla {
 
-PrimitiveType TypeToPrimitiveType(mlir::Type type) {
-  if (type.isFloat8E5M2()) {
-    return PrimitiveType::F8E5M2;
-  } else if (type.isFloat8E4M3FN()) {
-    return PrimitiveType::F8E4M3FN;
-  } else if (type.isFloat8E4M3B11FNUZ()) {
-    return PrimitiveType::F8E4M3B11FNUZ;
-  } else if (type.isFloat8E4M3FNUZ()) {
-    return PrimitiveType::F8E4M3FNUZ;
-  } else if (type.isFloat8E5M2FNUZ()) {
-    return PrimitiveType::F8E5M2FNUZ;
-  } else if (type.isBF16()) {
-    return PrimitiveType::BF16;
-  } else if (type.isF16()) {
-    return PrimitiveType::F16;
-  } else if (type.isF32()) {
-    return PrimitiveType::F32;
-  } else if (type.isF64()) {
-    return PrimitiveType::F64;
-  } else if (auto complex_type = type.dyn_cast<mlir::ComplexType>()) {
-    mlir::Type element_ty = complex_type.getElementType();
-    return primitive_util::ComplexType(TypeToPrimitiveType(element_ty));
-  } else if (auto integer_type = type.dyn_cast<mlir::IntegerType>()) {
-    bool is_unsigned = integer_type.isUnsigned();
-    if (integer_type.getWidth() == 1) {
-      return PrimitiveType::PRED;
-    }
-    return is_unsigned ? primitive_util::UnsignedIntegralTypeForBitWidth(
-                             integer_type.getWidth())
-                       : primitive_util::SignedIntegralTypeForBitWidth(
-                             integer_type.getWidth());
-  }
-  return PrimitiveType::PRIMITIVE_TYPE_INVALID;
-}
 
 std::optional<std::tuple<DimLevelType, bool, bool>> ConvertDimLevelType(
     mlir::sparse_tensor::LevelType lt) {
@@ -104,7 +76,7 @@ std::optional<std::tuple<DimLevelType, bool, bool>> ConvertDimLevelType(
 }
 
 Shape TypeToShape(mlir::Type type) {
-  PrimitiveType ptype = TypeToPrimitiveType(type);
+  PrimitiveType ptype = ConvertMlirTypeToPrimitiveType(type);
   if (ptype != PrimitiveType::PRIMITIVE_TYPE_INVALID)
     return ShapeUtil::MakeShape(ptype, {});
 
@@ -117,7 +89,7 @@ Shape TypeToShape(mlir::Type type) {
     llvm::SmallVector<int64_t, 4> span(v.getShape().begin(),
                                        v.getShape().end());
     mlir::Type element_type = v.getElementType();
-    PrimitiveType primitive_type = TypeToPrimitiveType(element_type);
+    PrimitiveType primitive_type = ConvertMlirTypeToPrimitiveType(element_type);
     if (primitive_type != PrimitiveType::PRIMITIVE_TYPE_INVALID)
       return ShapeUtil::MakeShape(primitive_type, span);
   } else if (auto m = type.dyn_cast<mlir::MemRefType>()) {
@@ -130,7 +102,7 @@ Shape TypeToShape(mlir::Type type) {
       element_type = v.getElementType();
       span.insert(span.end(), v.getShape().begin(), v.getShape().end());
     }
-    PrimitiveType primitive_type = TypeToPrimitiveType(element_type);
+    PrimitiveType primitive_type = ConvertMlirTypeToPrimitiveType(element_type);
     if (primitive_type == PrimitiveType::PRIMITIVE_TYPE_INVALID) return {};
     // For the primitive type case, the shape of the memref is similar to the
     // vector type case (i.e., it is, modulo the layout, the same dimensions
@@ -190,7 +162,8 @@ Shape TypeToShape(mlir::Type type) {
       }
     }
 
-    PrimitiveType primitive_type = TypeToPrimitiveType(t.getElementType());
+    PrimitiveType primitive_type =
+        ConvertMlirTypeToPrimitiveType(t.getElementType());
     if (primitive_type == PrimitiveType::PRIMITIVE_TYPE_INVALID) return {};
 
     if (auto sparse = mlir::sparse_tensor::getSparseTensorEncoding(type)) {
@@ -238,7 +211,8 @@ Shape TypeToShape(mlir::Type type) {
     }
     return ShapeUtil::MakeTupleShape(shapes);
 
-  } else if (type.isa<mlir::mhlo::TokenType>()) {
+  } else if (type.isa<mlir::mhlo::TokenType>() ||
+             type.isa<mlir::stablehlo::TokenType>()) {
     return ShapeUtil::MakeTokenShape();
   } else if (auto bundle_type = type.dyn_cast<mlir::mhlo::AsyncBundleType>()) {
     auto tuple_type =

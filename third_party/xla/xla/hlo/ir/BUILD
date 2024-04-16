@@ -2,9 +2,11 @@
 #   XLA’s HLO Intermediate Representation implementation.
 
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
+load("//xla/tsl:tsl.bzl", "internal_visibility")
 
 package(
-    default_visibility = ["//visibility:public"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = internal_visibility([":friends"]),
     licenses = ["notice"],
 )
 
@@ -53,7 +55,6 @@ cc_library(
         "hlo_sharding.h",
         "hlo_sharding_metadata.h",
     ],
-    visibility = ["//visibility:public"],
     deps = [
         ":ptrvec",
         ":tile_assignment",
@@ -93,6 +94,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:cord",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/lib/gtl:iterator_range",
         "@local_tsl//tsl/lib/gtl:map_util",
@@ -111,7 +113,6 @@ cc_library(
     name = "hlo_module_group",
     srcs = ["hlo_module_group.cc"],
     hdrs = ["hlo_module_group.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":hlo",
         "//xla/service:hlo_proto_cc",
@@ -124,7 +125,6 @@ cc_library(
     name = "hlo_reachability",
     srcs = ["hlo_reachability.cc"],
     hdrs = ["hlo_reachability.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":hlo",
         "//xla:types",
@@ -135,9 +135,19 @@ cc_library(
 )
 
 cc_library(
+    name = "hlo_dfs_reachability",
+    srcs = ["hlo_dfs_reachability.cc"],
+    hdrs = ["hlo_dfs_reachability.h"],
+    deps = [
+        ":hlo",
+        "@com_google_absl//absl/algorithm:container",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_library(
     name = "ptrvec",
     hdrs = ["ptrvec.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "@com_google_absl//absl/log:check",
         "@local_tsl//tsl/platform:logging",
@@ -162,7 +172,6 @@ cc_library(
     name = "tile_assignment",
     srcs = ["tile_assignment.cc"],
     hdrs = ["tile_assignment.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:array",
         "//xla:printer",

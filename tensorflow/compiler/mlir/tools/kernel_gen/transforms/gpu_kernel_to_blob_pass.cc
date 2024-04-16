@@ -39,7 +39,7 @@ limitations under the License.
 #include "tsl/platform/cuda_libdevice_path.h"
 
 #if GOOGLE_CUDA
-#include "xla/stream_executor/gpu/asm_compiler.h"
+#include "xla/stream_executor/cuda/cuda_asm_compiler.h"
 #elif TENSORFLOW_USE_ROCM
 #include "xla/stream_executor/gpu/asm_compiler.h"
 #include "tensorflow/core/platform/rocm_rocdl_path.h"
@@ -81,7 +81,7 @@ class GpuKernelToBlobPass
     return signalPassFailure();
   }
 
-  tensorflow::StatusOr<std::vector<uint8_t>> GetGpuBinaryBlob(
+  absl::StatusOr<std::vector<uint8_t>> GetGpuBinaryBlob(
       gpu::GPUModuleOp gpu_module) {
     if (architectures_.empty()) {
       return tensorflow::errors::Internal(
@@ -176,8 +176,8 @@ class GpuKernelToBlobPass
       // Compile PTX code with ptxas if requested and possible and fall back to
       // a compute image, otherwise.
       if (!is_compute_profile) {
-        auto gpu_asm = tensorflow::se::CompileGpuAsm(cc_major, cc_minor,
-                                                     ptx.c_str(), gpu_asm_opts);
+        auto gpu_asm = tensorflow::se::CompileGpuAsmUsingPtxAs(
+            cc_major, cc_minor, ptx.c_str(), gpu_asm_opts);
         if (gpu_asm.ok()) {
           images.push_back(
               {absl::StrCat("sm_", arch), std::move(gpu_asm.value())});
@@ -216,7 +216,7 @@ class GpuKernelToBlobPass
   }
 
  private:
-  tensorflow::StatusOr<std::pair<bool, int>> ParseCudaArch(
+  absl::StatusOr<std::pair<bool, int>> ParseCudaArch(
       const std::string& arch_str) {
     absl::string_view consumable_arch(arch_str);
     bool is_compute_profile;

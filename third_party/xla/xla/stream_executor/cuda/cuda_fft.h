@@ -20,12 +20,14 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_CUDA_CUDA_FFT_H_
 #define XLA_STREAM_EXECUTOR_CUDA_CUDA_FFT_H_
 
+#include <cstddef>
 #include <cstdint>
 
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "third_party/gpus/cuda/include/cufft.h"
 #include "xla/stream_executor/fft.h"
 #include "xla/stream_executor/platform/port.h"
-#include "xla/stream_executor/plugin_registry.h"
 #include "xla/stream_executor/scratch_allocator.h"
 
 namespace stream_executor {

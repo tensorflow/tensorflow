@@ -22,7 +22,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/Support/raw_ostream.h"
-#include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
+#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_config.h"
 
 namespace mlir {
 namespace TFL {
@@ -99,6 +99,9 @@ struct PassConfig {
   // When set to true, StableHLO Quantizer is run. The full configuration for
   // the quantizer is at `TocoFlags::quantization_config`.
   bool enable_stablehlo_quantizer = false;
+
+  // Enables the attempt to directly lower composites into tflite ops.
+  bool enable_composite_direct_lowering = false;
 };
 
 inline llvm::raw_ostream& operator<<(llvm::raw_ostream& os,

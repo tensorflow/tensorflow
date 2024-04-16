@@ -60,7 +60,6 @@ TEST_F(HloMetadataTest, MetadataPropagation) {
                          ->root_instruction();
   EXPECT_THAT(instruction->metadata().op_type(), StrEq("add"));
   EXPECT_THAT(instruction->metadata().op_name(), StrEq("my_sum_op"));
-  EXPECT_NE(instruction->metadata().logical_creation_pass_id(), 0);
 }
 
 TEST_F(HloMetadataTest, MetadataClearing) {

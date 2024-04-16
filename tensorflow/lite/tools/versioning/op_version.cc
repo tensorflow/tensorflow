@@ -173,6 +173,13 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
           reinterpret_cast<TfLiteFullyConnectedParams*>(op_sig.builtin_data);
       TFLITE_DCHECK(fully_connected_params != nullptr);
 
+      if (op_sig.inputs.at(0).type == kTfLiteFloat32 &&
+          op_sig.inputs.at(1).type == kTfLiteInt8 &&
+          op_sig.outputs.at(0).type == kTfLiteFloat32 &&
+          op_sig.ext_options.fully_connected.is_per_channel_quantized) {
+        return 12;
+      }
+
       if (op_sig.inputs.at(0).type == kTfLiteInt16 &&
           op_sig.inputs.at(1).type == kTfLiteInt8 &&
           op_sig.outputs.at(0).type == kTfLiteInt16) {
@@ -1038,8 +1045,11 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       }
       return 2;
     case BuiltinOperator_CAST:
-      if (op_sig.inputs.at(0).type == kTfLiteInt4 &&
-          op_sig.outputs.at(0).type == kTfLiteFloat32) {
+      if (op_sig.inputs.at(0).type == kTfLiteBFloat16 ||
+          op_sig.outputs.at(0).type == kTfLiteBFloat16) {
+        return 7;
+      } else if (op_sig.inputs.at(0).type == kTfLiteInt4 &&
+                 op_sig.outputs.at(0).type == kTfLiteFloat32) {
         return 6;
       } else if (op_sig.inputs.at(0).type == kTfLiteFloat64 ||
                  op_sig.outputs.at(0).type == kTfLiteFloat64 ||

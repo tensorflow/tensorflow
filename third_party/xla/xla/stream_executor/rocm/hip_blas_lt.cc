@@ -110,6 +110,14 @@ static absl::StatusOr<hipblasLtEpilogue_t> AsHipblasLtEpilogue(
       return HIPBLASLT_EPILOGUE_RELU_BIAS;
     case gpu::BlasLt::Epilogue::kGELU:
       return HIPBLASLT_EPILOGUE_GELU;
+#if TF_ROCM_VERSION >= 60000
+    case gpu::BlasLt::Epilogue::kGELUWithAux:
+      return HIPBLASLT_EPILOGUE_GELU_AUX;
+    case gpu::BlasLt::Epilogue::kBiasThenGELU:
+      return HIPBLASLT_EPILOGUE_GELU_BIAS;
+    case gpu::BlasLt::Epilogue::kBiasThenGELUWithAux:
+      return HIPBLASLT_EPILOGUE_GELU_AUX_BIAS;
+#endif
     default:
       return absl::InternalError("Unsupported epilogue: " +
                                  std::to_string((int)epilogue));
@@ -279,9 +287,10 @@ auto BlasLt::GetMatmulPlan(const gpu::GemmConfig& cfg, Epilogue epilogue) const
 
   auto compute_type = cfg.compute_type;
   if (!compute_type) {  // obtain compute_type unless provided by the user
-    TF_ASSIGN_OR_RETURN(compute_type, gpu::GetBlasComputationType(
-                                          lhs_layout.dtype, output_layout.dtype,
-                                          cfg.compute_precision));
+    TF_ASSIGN_OR_RETURN(compute_type,
+                        gpu::GetBlasComputationType(
+                            cfg.precision_algorithm, lhs_layout.dtype,
+                            output_layout.dtype, cfg.compute_precision));
   }
 
   if (lhs_layout.order == gpu::MatrixLayout::Order::kRowMajor) {
@@ -303,6 +312,30 @@ auto BlasLt::GetMatmulPlan(const gpu::GemmConfig& cfg, Epilogue epilogue) const
   TF_ASSIGN_OR_RETURN(auto b_desc, MatrixLayout::Create(rhs_layout));
   TF_ASSIGN_OR_RETURN(auto c_desc, MatrixLayout::Create(c_layout));
   TF_ASSIGN_OR_RETURN(auto d_desc, MatrixLayout::Create(output_layout));
+
+#if TF_ROCM_VERSION >= 60000
+  // Currently, the default bias data type in hipblasLt is the same with output
+  // data type for fp8 matmul, which is different from cublasLt. This is a
+  // workaround to match cublasLt behavior.
+  if (epilogue == gpu::BlasLt::Epilogue::kBias) {
+    auto a_dtype = a_desc.type();
+    auto b_dtype = b_desc.type();
+
+    auto bias_dtype = d_desc.type();
+    if ((a_dtype == HIP_R_8F_E4M3_FNUZ || a_dtype == HIP_R_8F_E5M2_FNUZ) &&
+        (b_dtype == HIP_R_8F_E4M3_FNUZ || b_dtype == HIP_R_8F_E5M2_FNUZ)) {
+      auto d_dtype = d_desc.type();
+      if (d_dtype == HIP_R_32F) {
+        bias_dtype = HIP_R_16BF;
+      }
+
+      if (bias_dtype != d_dtype) {
+        TF_RETURN_IF_ERROR(SetAttr(
+            op_desc.get(), HIPBLASLT_MATMUL_DESC_BIAS_DATA_TYPE, bias_dtype));
+      }
+    }
+  }
+#endif  // TF_ROCM_VERSION >= 60000
 
   // std::make_unique won't work with brace initialization in C++17 ;(
   return std::make_unique<MatmulPlan>(*this, std::move(op_desc),
@@ -359,7 +392,9 @@ absl::Status BlasLt::MatmulPlan::DoMatmul(
     blas::ProfileResult* profile_result) const {
   TF_ASSIGN_OR_RETURN(
       std::optional<gpu::GpuTimer> timer,
-      gpu::GpuTimer::CreateIfNeeded(gpu::AsGpuStream(stream), profile_result));
+      gpu::GpuTimer::CreateIfNeeded(
+          stream, profile_result && profile_result->warmup_run_executed(),
+          profile_result));
 
   void* workspace = nullptr;
   if (algorithm.workspace_size > 0) {
@@ -380,10 +415,27 @@ absl::Status BlasLt::MatmulPlan::DoMatmul(
           op_desc_.get(), HIPBLASLT_MATMUL_DESC_BIAS_POINTER, bias.opaque()));
     }
 
+#if TF_ROCM_VERSION >= 60000
+    if (a_scale != nullptr) {
+      TF_RETURN_IF_ERROR(SetAttr(op_desc_.get(),
+                                 HIPBLASLT_MATMUL_DESC_A_SCALE_POINTER,
+                                 a_scale.opaque()));
+    }
+    if (b_scale != nullptr) {
+      TF_RETURN_IF_ERROR(SetAttr(op_desc_.get(),
+                                 HIPBLASLT_MATMUL_DESC_B_SCALE_POINTER,
+                                 b_scale.opaque()));
+    }
+    if (c_scale != nullptr || d_scale != nullptr) {
+      return absl::InternalError(
+          "hipblaslt does not support c_scale or d_scale.");
+    }
+#else
     if ((a_scale != nullptr) || (b_scale != nullptr) || (c_scale != nullptr) ||
         (d_scale != nullptr)) {
       return absl::InternalError("hipblaslt does not support scale");
     }
+#endif
 
     if (d_amax != nullptr) {
       return absl::InternalError("hipblaslt does not support amax");
@@ -407,10 +459,18 @@ absl::Status BlasLt::MatmulPlan::DoMatmul(
     }
   }
 
+  typedef struct __attribute__((packed, aligned(8))) _rocblaslt_matmul_algo {
+    uint8_t data[8] = {0};
+    bool fallback = false;
+    size_t max_workspace_bytes = 0;
+  } rocblaslt_matmul_algo;
+
   if (profile_result != nullptr) {
     TF_ASSIGN_OR_RETURN(absl::Duration elapsed, timer->GetElapsedDuration());
     // set algorithm ID to be unique (otherwise it gets kDefaultAlgorithm ID)
-    profile_result->set_algorithm(reinterpret_cast<blas::AlgorithmType>(palgo));
+    auto roc_algo = (const rocblaslt_matmul_algo*)palgo;
+    auto pindex = (int*)roc_algo->data;
+    profile_result->set_algorithm(static_cast<blas::AlgorithmType>(*pindex));
     profile_result->set_is_valid(true);
     profile_result->set_elapsed_time_in_ms(absl::ToDoubleMilliseconds(elapsed));
   }
@@ -421,6 +481,17 @@ namespace {
 
 template <hipDataType>
 struct HipToNativeT;
+
+#if TF_ROCM_VERSION >= 60000
+template <>
+struct HipToNativeT<HIP_R_8F_E4M3_FNUZ> {
+  using type = tsl::float8_e4m3fnuz;
+};
+template <>
+struct HipToNativeT<HIP_R_8F_E5M2_FNUZ> {
+  using type = tsl::float8_e5m2fnuz;
+};
+#endif  // TF_ROCM_VERSION >= 60000
 
 template <>
 struct HipToNativeT<HIP_R_16BF> {
@@ -472,6 +543,23 @@ absl::Status BlasLt::MatmulPlan::ExecuteOnStream(
         c_scale, d_scale, d_amax, algorithm, scratch_allocator,           \
         profile_result);                                                  \
   }
+
+#if TF_ROCM_VERSION >= 60000
+  TYPED_MATMUL(float, HIP_R_8F_E4M3_FNUZ, HIP_R_8F_E4M3_FNUZ, HIP_R_16F,
+               HIP_R_16F)
+  TYPED_MATMUL(float, HIP_R_8F_E4M3_FNUZ, HIP_R_8F_E4M3_FNUZ, HIP_R_32F,
+               HIP_R_32F)
+
+  TYPED_MATMUL(float, HIP_R_8F_E4M3_FNUZ, HIP_R_8F_E5M2_FNUZ, HIP_R_16F,
+               HIP_R_16F)
+  TYPED_MATMUL(float, HIP_R_8F_E4M3_FNUZ, HIP_R_8F_E5M2_FNUZ, HIP_R_32F,
+               HIP_R_32F)
+
+  TYPED_MATMUL(float, HIP_R_8F_E5M2_FNUZ, HIP_R_8F_E4M3_FNUZ, HIP_R_16F,
+               HIP_R_16F)
+  TYPED_MATMUL(float, HIP_R_8F_E5M2_FNUZ, HIP_R_8F_E4M3_FNUZ, HIP_R_32F,
+               HIP_R_32F)
+#endif
 
   // Other data types:
   TYPED_MATMUL(float, HIP_R_16BF, HIP_R_16BF, HIP_R_16BF, HIP_R_16BF)

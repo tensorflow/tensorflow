@@ -35,6 +35,24 @@ def CreateOp: TensorflowMlrt_Op<"createop", []> {
   let assemblyFormat = "attr-dict";
 }
 
+def ConstOp: TensorflowMlrt_Op<"constop", []> {
+  let summary = "The tf_mlrt ConstOp";
+
+  let description = [{
+    The ConstOp creates a constant tensorflow::Tensor from serialized proto.
+  }];
+
+  let arguments = (ins
+    StrAttr:$tensor_proto
+  );
+
+  let results = (outs
+    TFTensorType:$result
+  );
+
+  let assemblyFormat = "attr-dict";
+}
+
 def ExecuteOp : TensorflowMlrt_Op<"executeop", []> {
   let summary = "The Fallback ExecuteOp";
   let description = [{
@@ -427,7 +445,7 @@ def AsyncWhileOp : TensorflowMlrt_Op<"async_while", [Pure]> {
   }];
 }
 
-def IfrtLoadVariableOp: TensorflowMlrt_Op<"ifrt_load_variable", []> {
+def IfrtLoadVariableOp: TensorflowMlrt_Op<"ifrt_load_variable", [Pure]> {
   let summary = "Loads a variable tensor as an IFRT array for mlrt";
 
   let description = [{
@@ -443,6 +461,9 @@ def IfrtLoadVariableOp: TensorflowMlrt_Op<"ifrt_load_variable", []> {
 
     `tf.IfrtLoadVariableOp` converts the tensor into an IFRT array based on device and sharding
     configuration specified in `VariableDeviceShardingConfigProto`.
+
+    This op returns a scalar string tensor as a key for user to look for the loaded array
+    and a future containing the restored tensor.
   }];
 
   let arguments = (ins
@@ -450,7 +471,38 @@ def IfrtLoadVariableOp: TensorflowMlrt_Op<"ifrt_load_variable", []> {
     StrAttr:$device_sharding_config_proto_text,
     StrAttr:$name
   );
+
+  let results = (outs
+    TFTensorType:$array_key,
+    MlrtFutureType: $tensor_future
+  );
 }
 
+def IfrtRestoreVariableOp: TensorflowMlrt_Op<"ifrt_restore_variable", []> {
+  let summary = "Restore variable tensors";
+  let description = [{
+    This is the MLRT version of tf.IfrtRestoreVariableOp.
+
+    This Op is similar to a combination of RestoreV2 and AssignVariable Op, but
+    this Op's execution is asynchronous.
+
+    This Op is specific to MLRT runtime and is not a stable interface for
+    serialization.
+
+    This Op will restore the tensors asynchronously and allow the runtime to look
+    for them.
+    The runtime shall handle the possibility that the tensors are not ready when requested
+    because the tensors are loaded asynchronously.
+
+  }];
+
+  let arguments = (ins
+    TFTensorType:$prefix,
+    TFTensorType:$tensor_names,
+    TFTensorType:$shape_and_slices,
+    Variadic<TFTensorType>:$var_handles,
+    TypeArrayAttr: $restored_dtypes
+  );
+}
 
 #endif

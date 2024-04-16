@@ -136,7 +136,7 @@ std::optional<std::vector<ReplicaGroup>> FoldReplicaGroups(
 
 }  // namespace
 
-StatusOr<bool> AllReduceFolder::Run(
+absl::StatusOr<bool> AllReduceFolder::Run(
     HloModule *module,
     const absl::flat_hash_set<absl::string_view> &execution_threads) {
   if (hlo_query::ContainsLayoutConstrainedAllReduce(*module)) {

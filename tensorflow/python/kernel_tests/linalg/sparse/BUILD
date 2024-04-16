@@ -1,6 +1,6 @@
 # Tests of TensorFlow sparse linear algebra kernels using the Python API.
 
-load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test")
+load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "tf_py_strict_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -104,6 +104,30 @@ cuda_py_strict_test(
     name = "csr_sparse_matrix_dense_mat_mul_grad_test",
     size = "medium",
     srcs = ["csr_sparse_matrix_dense_mat_mul_grad_test.py"],
+    main = "csr_sparse_matrix_dense_mat_mul_grad_test.py",
+    shard_count = 50,
+    tags = [
+        "no_cuda_asan",  # TODO(b/190824595)
+    ],
+    deps = [
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:gradient_checker",
+        "//tensorflow/python/ops/linalg/sparse:sparse_csr_matrix_grad",
+        "//tensorflow/python/ops/linalg/sparse:sparse_csr_matrix_ops",
+        "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/python/platform:tf_logging",
+    ],
+)
+
+tf_py_strict_test(
+    name = "csr_sparse_matrix_dense_mat_mul_onednn_grad_test",
+    size = "medium",
+    srcs = ["csr_sparse_matrix_dense_mat_mul_grad_test.py"],
+    env = {
+        "TF_ENABLE_ONEDNN_SPMM": "1",
+    },
     main = "csr_sparse_matrix_dense_mat_mul_grad_test.py",
     shard_count = 50,
     tags = [

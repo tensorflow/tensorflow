@@ -19,10 +19,11 @@ limitations under the License.
 #include <stdint.h>
 
 #include <memory>
+#include <utility>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "absl/synchronization/mutex.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -33,7 +34,7 @@ limitations under the License.
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_pass_interface.h"
 #include "xla/service/instruction_fusion.h"
-#include "xla/statusor.h"
+#include "xla/stream_executor/device_description.h"
 #include "tsl/platform/threadpool.h"
 
 namespace xla {
@@ -72,6 +73,10 @@ class GpuPriorityFusion : public InstructionFusion {
  private:
   HloInstruction* FuseInstruction(HloInstruction* fusion_instruction,
                                   HloInstruction* producer) override;
+
+  // Consumes a unit of compiler fuel and returns true if we should
+  // continue with the transformation.
+  bool ConsumeFuel(HloInstruction* producer, HloInstruction* consumer);
 
   tsl::thread::ThreadPool* thread_pool_;
   se::DeviceDescription device_info_;

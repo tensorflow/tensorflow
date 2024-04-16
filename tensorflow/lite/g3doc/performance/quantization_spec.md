@@ -191,7 +191,7 @@ FULLY_CONNECTED
   Input 1 (Weight):
     data_type  : int8
     range      : [-127, 127]
-    granularity: per-tensor
+    granularity: per-axis (dim = 0)
     restriction: zero_point = 0
   Input 2 (Bias):
     data_type  : int32

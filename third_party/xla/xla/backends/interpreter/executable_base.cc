@@ -38,7 +38,7 @@ InterpreterExecutableBase::InterpreterExecutableBase(
     : Executable(std::move(hlo_module), /*hlo_profile_printer_data=*/nullptr,
                  /*hlo_profile_index_map=*/nullptr) {}
 
-StatusOr<ExecutionOutput> InterpreterExecutableBase::ExecuteAsyncOnStream(
+absl::StatusOr<ExecutionOutput> InterpreterExecutableBase::ExecuteAsyncOnStream(
     const ServiceExecutableRunOptions* run_options,
     std::vector<ExecutionInput> arguments,
     HloExecutionProfile* hlo_execution_profile) {
@@ -150,14 +150,15 @@ StatusOr<ExecutionOutput> InterpreterExecutableBase::ExecuteAsyncOnStream(
   return std::move(result);
 }
 
-StatusOr<ExecutionOutput>
+absl::StatusOr<ExecutionOutput>
 InterpreterExecutableBase::AllocateOutputMemoryWithInputReuse(
     const Shape& shape, const HloInputOutputAliasConfig& alias_config,
     se::DeviceMemoryAllocator* allocator,
     std::vector<ExecutionInput>* arguments, se::Stream* stream) {
   TF_RETURN_IF_ERROR(alias_config.ForEachAliasWithStatus(
       [&](const ShapeIndex& output_index,
-          std::optional<HloInputOutputAliasConfig::Alias> alias) {
+          std::optional<HloInputOutputAliasConfig::Alias> alias)
+          -> absl::Status {
         if (alias && alias->must_alias()) {
           VLOG(1) << alias->ToString();
           const MaybeOwningDeviceMemory& original_input =

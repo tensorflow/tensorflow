@@ -78,6 +78,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/service_config.pb.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/threadpool.h"
 
@@ -268,6 +269,8 @@ Status DataServiceDispatcherImpl::Start() {
   TF_RETURN_IF_ERROR(journal_writer_.value()->EnsureInitialized());
   TF_RETURN_IF_ERROR(RestoreSnapshots());
   started_ = true;
+  LOG(INFO) << "Started tf.data service dispatcher with config "
+            << config_.DebugString();
   return absl::OkStatus();
 }
 
@@ -407,7 +410,7 @@ void DataServiceDispatcherImpl::ReportProcessingTimesFromActiveTasks(
         task->iteration->iteration_id, worker_address,
         absl::Nanoseconds(processing_time_nsec));
     if (!auto_scaler_status.ok()) {
-      LOG_EVERY_N(WARNING, 20)
+      LOG_EVERY_N_SEC(WARNING, 300)
           << "Failed to report processing time for Iteration "
           << task->iteration->iteration_id << " and worker address "
           << worker_address
@@ -451,6 +454,7 @@ Status DataServiceDispatcherImpl::WorkerHeartbeat(
                          request->current_tasks().cend());
     const std::vector<ActiveTask> active_tasks(request->active_tasks().begin(),
                                                request->active_tasks().end());
+    // TODO(b/249286501): Skip this if the user does not enable auto-scaling.
     ReportProcessingTimesFromActiveTasks(active_tasks,
                                          request->worker_address());
     TF_RETURN_IF_ERROR(
@@ -620,7 +624,8 @@ Status DataServiceDispatcherImpl::GetOrRegisterDataset(
   return absl::OkStatus();
 }
 
-StatusOr<std::optional<std::string>> DataServiceDispatcherImpl::FindDataset(
+absl::StatusOr<std::optional<std::string>>
+DataServiceDispatcherImpl::FindDataset(
     const GetOrRegisterDatasetRequest& request)
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   std::shared_ptr<const Dataset> existing_dataset;

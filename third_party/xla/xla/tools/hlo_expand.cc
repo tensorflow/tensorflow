@@ -27,8 +27,8 @@ limitations under the License.
 #include "xla/service/sharding_propagation.h"
 #include "xla/service/spmd/stateful_rng_spmd_partitioner.h"
 #include "xla/service/triangular_solve_expander.h"
+#include "xla/tsl/util/command_line_flags.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/util/command_line_flags.h"
 
 namespace xla {
 
@@ -61,7 +61,8 @@ void AddPassesToPipeline(HloExpandConfig& config, HloPassPipeline& pipeline,
   if (config.spmd_expander) {
     pipeline.AddPass<ShardingPropagation>(
         /*is_spmd=*/true, /*propagate_metadata=*/false,
-        hlo_module_config.allow_spmd_sharding_propagation_to_output());
+        hlo_module_config.allow_spmd_sharding_propagation_to_output(),
+        hlo_module_config.allow_spmd_sharding_propagation_to_parameters());
     pipeline.AddPass<spmd::StatefulRngSpmdPartitioner>(
         hlo_module_config.num_partitions(), hlo_module_config.replica_count(),
         hlo_module_config.debug_options()

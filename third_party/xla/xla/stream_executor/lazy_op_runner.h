@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_STREAM_EXECUTOR_LAZY_OP_RUNNER_H_
 
 #include <atomic>
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -29,6 +30,7 @@ limitations under the License.
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/stream.h"
 #include "tsl/platform/statusor.h"
+#include "tsl/protobuf/dnn.pb.h"
 
 namespace stream_executor {
 namespace dnn {
@@ -236,13 +238,17 @@ struct NormOp {
   using Signature = NormSignature;
 
   struct Config {
+    NormKind kind;
     double epsilon;
-    const TensorDescriptor& input_descriptor;
+    const TensorDescriptor& x_descriptor;
     const TensorDescriptor& scale_descriptor;
-    const TensorDescriptor& bias_descriptor;
-    const TensorDescriptor& output_descriptor;
-    std::optional<dnn::TensorDescriptor> expectation_descriptor;
-    std::optional<dnn::TensorDescriptor> norm_factor_descriptor;
+    const TensorDescriptor& y_or_dx_descriptor;
+    std::optional<TensorDescriptor> bias_descriptor;
+    std::optional<TensorDescriptor> dy_descriptor;
+    std::optional<TensorDescriptor> expectation_descriptor;
+    std::optional<TensorDescriptor> norm_factor_descriptor;
+    std::optional<TensorDescriptor> dscale_descriptor;
+    std::optional<TensorDescriptor> dbias_descriptor;
   };
 
   static absl::StatusOr<std::unique_ptr<const OpRunner<Signature>>>
@@ -250,10 +256,11 @@ struct NormOp {
                           Stream* stream) {
     TF_ASSIGN_OR_RETURN(auto dnn, internal::GetDnnFromStream(stream));
     return dnn->NormRunnerFromDesc(
-        stream, desc, config.epsilon, config.input_descriptor,
-        config.scale_descriptor, config.bias_descriptor,
-        config.output_descriptor, config.expectation_descriptor,
-        config.norm_factor_descriptor);
+        stream, desc, config.kind, config.epsilon, config.x_descriptor,
+        config.scale_descriptor, config.y_or_dx_descriptor,
+        config.bias_descriptor, config.dy_descriptor,
+        config.expectation_descriptor, config.norm_factor_descriptor,
+        config.dscale_descriptor, config.dbias_descriptor);
   }
 };
 

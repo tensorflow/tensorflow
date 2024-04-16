@@ -14,6 +14,15 @@ program.
 > to change it capriciously, but it may change. Some possible future changes are
 > described below.
 
+> **Caution** The HLO-visible names of functions registered with the custom-call
+> macros API do not respect C++ namespaces. As a result, accidental collisions
+> from functions registered by different libraries are entirely possible! The
+> API will reject such duplicate registrations, but to avoid issues in large
+> projects the safest option is to either fully namespace-qualify all references
+> to the functions in both the `XLA_REGISTER_CUSTOM_CALL` registration macros
+> and custom call target references or to use C-style namespacing directly in
+> the function name.
+
 ## Create a custom call on CPU
 
 You can create an HLO instruction that represents a custom call via XLA's client

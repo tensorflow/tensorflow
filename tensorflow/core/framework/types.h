@@ -74,10 +74,10 @@ struct DeviceName<Eigen::GpuDevice> {
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 typedef gtl::InlinedVector<MemoryType, 4> MemoryTypeVector;
-typedef gtl::ArraySlice<MemoryType> MemoryTypeSlice;
+typedef absl::Span<const MemoryType> MemoryTypeSlice;
 
 typedef gtl::InlinedVector<DataType, 4> DataTypeVector;
-typedef gtl::ArraySlice<DataType> DataTypeSlice;
+typedef absl::Span<const DataType> DataTypeSlice;
 
 typedef gtl::InlinedVector<DeviceType, 4> DeviceTypeVector;
 typedef gtl::InlinedVector<std::pair<DeviceType, int32>, 4>

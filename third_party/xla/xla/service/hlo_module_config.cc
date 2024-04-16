@@ -85,6 +85,9 @@ std::string HloModuleConfig::compilation_cache_key() const {
     StrAppend(&key, device_type());
   }
   StrAppend(&key, "::alias_passthrough_params=", alias_passthrough_params_);
+  StrAppend(&key, "::allow_spmd_sharding_propagation_to_parameters={",
+            absl::StrJoin(allow_spmd_sharding_propagation_to_parameters_, ","),
+            "}");
   StrAppend(&key, "::allow_spmd_sharding_propagation_to_output={",
             absl::StrJoin(allow_spmd_sharding_propagation_to_output_, ","),
             "}");
@@ -147,7 +150,7 @@ static void AssignProtoDotConfig(
     for (int64_t val : list_vector) {
       list.add_vals(val);
     }
-    proto.mutable_dot_config()->insert({key, std::move(list)});
+    proto.mutable_dot_config()->try_emplace(key, std::move(list));
   }
 }
 
@@ -195,7 +198,7 @@ static void AssignProtoPhaseOrderingConfig(
     pair.output_shape_index.assign(output_idx.begin(), output_idx.end());
     cfg_pairs.push_back(pair);
   }
-  config.set_shardable_value_update_pairs(cfg_pairs);
+  config.set_shardable_value_update_pairs(std::move(cfg_pairs));
 }
 
 static void AssignStructFusionConfig(HloModuleConfig& config,
@@ -255,7 +258,7 @@ static void AssignStructPhaseOrderingConfig(HloModuleConfig& config,
   *config.mutable_phase_ordering_config() = std::move(module_config);
 }
 
-StatusOr<HloModuleConfigProto> HloModuleConfig::ToProto() const {
+absl::StatusOr<HloModuleConfigProto> HloModuleConfig::ToProto() const {
   HloModuleConfigProto proto;
   if (has_entry_computation_layout()) {
     *proto.mutable_entry_computation_layout() =
@@ -303,6 +306,9 @@ StatusOr<HloModuleConfigProto> HloModuleConfig::ToProto() const {
   AssignProtoPhaseOrderingConfig(proto, phase_ordering_config_);
   proto.set_phase_index(phase_index_);
 
+  for (bool value : allow_spmd_sharding_propagation_to_parameters_) {
+    proto.add_allow_spmd_sharding_propagation_to_parameters(value);
+  }
   for (bool value : allow_spmd_sharding_propagation_to_output_) {
     proto.add_allow_spmd_sharding_propagation_to_output(value);
   }
@@ -318,8 +324,8 @@ StatusOr<HloModuleConfigProto> HloModuleConfig::ToProto() const {
   return proto;
 }
 
-StatusOr<std::unique_ptr<HloModuleConfig>> HloModuleConfig::CreateFromProto(
-    const HloModuleConfigProto& proto) {
+absl::StatusOr<std::unique_ptr<HloModuleConfig>>
+HloModuleConfig::CreateFromProto(const HloModuleConfigProto& proto) {
   auto config = std::make_unique<HloModuleConfig>();
 
   if (proto.has_entry_computation_layout()) {
@@ -370,6 +376,9 @@ StatusOr<std::unique_ptr<HloModuleConfig>> HloModuleConfig::CreateFromProto(
       proto.memory_space_assignment_config().end());
   AssignStructPhaseOrderingConfig(*config, proto);
   config->phase_index_ = proto.phase_index();
+  config->allow_spmd_sharding_propagation_to_parameters_.assign(
+      proto.allow_spmd_sharding_propagation_to_parameters().begin(),
+      proto.allow_spmd_sharding_propagation_to_parameters().end());
   config->allow_spmd_sharding_propagation_to_output_.assign(
       proto.allow_spmd_sharding_propagation_to_output().begin(),
       proto.allow_spmd_sharding_propagation_to_output().end());

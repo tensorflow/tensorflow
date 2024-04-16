@@ -17,13 +17,14 @@ limitations under the License.
 #include "xla/client/client_library.h"
 #include "xla/client/xla_builder.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/platform_manager.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/test.h"
 
 namespace xla {
 namespace {
-StatusOr<XlaComputation> BuildComputation() {
+absl::StatusOr<XlaComputation> BuildComputation() {
   XlaBuilder b("computation");
   Shape scalar_s32 = ShapeUtil::MakeShape(S32, {});
   XlaOp infeed = InfeedWithToken(CreateToken(&b), scalar_s32);
@@ -36,7 +37,7 @@ StatusOr<XlaComputation> BuildComputation() {
 void CompileAndExecute(
     LocalExecutable* executable, int device_ordinal, LocalClient* client,
     absl::Mutex* results_mutex,
-    std::vector<std::pair<int, StatusOr<ScopedShapedBuffer>>>* results) {
+    std::vector<std::pair<int, absl::StatusOr<ScopedShapedBuffer>>>* results) {
   xla::ExecutableRunOptions execute_options;
   execute_options.set_intra_op_thread_pool(
       client->backend().eigen_intra_op_thread_pool_device());
@@ -45,7 +46,7 @@ void CompileAndExecute(
       xla::ClientLibrary::GetXlaService(client->platform())
           ->backend()
           .memory_allocator());
-  StatusOr<ScopedShapedBuffer> result =
+  absl::StatusOr<ScopedShapedBuffer> result =
       executable->Run(absl::Span<const ShapedBuffer* const>(), execute_options);
   {
     absl::MutexLock lock(results_mutex);
@@ -57,7 +58,7 @@ void TestWithDeviceCount(const int device_count) {
   // Run `device_count` copies of the XLA program built by BuildComputation.
   TF_ASSERT_OK_AND_ASSIGN(
       se::Platform* const platform,
-      stream_executor::MultiPlatformManager::PlatformWithName("Host"));
+      stream_executor::PlatformManager::PlatformWithName("Host"));
   xla::LocalClientOptions client_options;
   client_options.set_platform(platform);
   TF_ASSERT_OK_AND_ASSIGN(
@@ -71,7 +72,7 @@ void TestWithDeviceCount(const int device_count) {
   std::unique_ptr<LocalExecutable> executable = std::move(executables[0]);
   std::vector<tsl::Thread*> threads;
   absl::Mutex results_mutex;
-  std::vector<std::pair<int, StatusOr<ScopedShapedBuffer>>> results;
+  std::vector<std::pair<int, absl::StatusOr<ScopedShapedBuffer>>> results;
   tsl::Env* env = tsl::Env::Default();
   for (int device_ordinal = 0; device_ordinal < device_count;
        device_ordinal++) {

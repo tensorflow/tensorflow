@@ -16,7 +16,10 @@ limitations under the License.
 #include "xla/stream_executor/blas.h"
 
 #include <cstdint>
+#include <ostream>
+#include <string>
 
+#include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
 #include "xla/stream_executor/device_memory.h"
 

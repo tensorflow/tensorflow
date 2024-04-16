@@ -1,6 +1,7 @@
-load("//xla:xla.bzl", "xla_cc_test")
-load("@local_tsl//tsl:tsl.default.bzl", "get_compatible_with_portable")
 load("@local_tsl//tsl/platform:build_config.bzl", "tf_proto_library")
+load("//xla:xla.bzl", "xla_cc_test")
+load("//xla/tsl:tsl.bzl", "internal_visibility")
+load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
 
 package_group(
     name = "friends",
@@ -20,15 +21,16 @@ package_group(
 )
 
 package(
-    default_visibility = ["//visibility:public"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = internal_visibility([
+        ":friends",
+        ":internal",
+    ]),
 )
 
-exports_files(
-    [
-        "BUILD",
-    ],
-    visibility = ["//visibility:public"],
-)
+exports_files([
+    "BUILD",
+])
 
 cc_library(
     name = "ifrt",
@@ -44,6 +46,9 @@ cc_library(
         "index.cc",
         "index_domain.cc",
         "memory.cc",
+        "program.cc",
+        # TODO(hyeontaek): Move this SerDes out of `ifrt` target once `Compiler::DeserializeLoadedExecutable()` is split into executable deserialization and executable loading, and thus the method can be removed.
+        "executable_serdes.cc",
         "shape.cc",
         "sharding.cc",
         "tuple.cc",
@@ -61,21 +66,29 @@ cc_library(
         "index.h",
         "index_domain.h",
         "memory.h",
+        "program.h",
+        # TODO(hyeontaek): Move this SerDes out of `ifrt` target once `Compiler::DeserializeLoadedExecutable()` is split into executable deserialization and executable loading, and thus the method can be removed.
+        "executable_serdes.h",
         "shape.h",
         "sharding.h",
         "tuple.h",
         "value.h",
     ],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
     deps = [
+        ":device_proto_cc",
+        ":dtype_proto_cc",
         ":serdes",
-        ":types_proto_cc",
+        ":shape_proto_cc",
+        ":sharding_proto_cc",
         "//xla:status",
         "//xla:statusor",
         "//xla:util",
+        "//xla/hlo/ir:hlo",
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt:pjrt_common",
+        "//xla/pjrt:pjrt_executable",
+        "//xla/pjrt:pjrt_layout",
         "//xla/python/ifrt/ir",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
@@ -83,7 +96,10 @@ cc_library(
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/container:node_hash_set",
         "@com_google_absl//absl/functional:function_ref",
+        "@com_google_absl//absl/hash",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
@@ -157,7 +173,7 @@ xla_cc_test(
     srcs = ["shape_test.cc"],
     deps = [
         ":ifrt",
-        ":types_proto_cc",
+        ":shape_proto_cc",
         "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:status_matchers",
@@ -186,7 +202,6 @@ cc_library(
     testonly = True,
     srcs = ["test_util.cc"],
     hdrs = ["test_util.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":ifrt",
         "//xla:statusor",
@@ -205,7 +220,6 @@ cc_library(
     testonly = True,
     srcs = ["sharding_test_util.cc"],
     hdrs = ["sharding_test_util.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":ifrt",
         ":mock",
@@ -219,7 +233,6 @@ cc_library(
     name = "no_impl_test_main",
     testonly = True,
     srcs = ["no_impl_test_main.cc"],
-    visibility = ["//visibility:public"],
     deps = [
         "@com_google_googletest//:gtest",
     ],
@@ -229,7 +242,6 @@ cc_library(
     name = "array_impl_test_lib",
     testonly = True,
     srcs = ["array_impl_test_lib.cc"],
-    visibility = ["//visibility:public"],
     deps = [
         ":ifrt",
         ":test_util",
@@ -254,7 +266,6 @@ cc_library(
     name = "client_impl_test_lib",
     testonly = True,
     srcs = ["client_impl_test_lib.cc"],
-    visibility = ["//visibility:public"],
     deps = [
         ":ifrt",
         ":test_util",
@@ -277,7 +288,6 @@ cc_library(
     name = "tuple_impl_test_lib",
     testonly = True,
     srcs = ["tuple_impl_test_lib.cc"],
-    visibility = ["//visibility:public"],
     deps = [
         ":ifrt",
         ":test_util",
@@ -304,14 +314,15 @@ cc_library(
     testonly = True,
     srcs = ["mock.cc"],
     hdrs = ["mock.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":ifrt",
         "//xla:literal",
         "//xla:test",
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt:pjrt_device_description",
+        "//xla/pjrt:pjrt_layout",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
@@ -326,7 +337,6 @@ cc_library(
     srcs = ["serdes.cc"],
     hdrs = ["serdes.h"],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
     deps = [
         ":serdes_proto_cc",
         "@com_google_absl//absl/base:core_headers",
@@ -348,6 +358,7 @@ xla_cc_test(
         ":serdes",
         ":serdes_proto_cc",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Support",
@@ -360,21 +371,33 @@ xla_cc_test(
 tf_proto_library(
     name = "serdes_proto",
     srcs = ["serdes.proto"],
-    visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "program_serdes",
+    srcs = ["program_serdes.cc"],
+    hdrs = ["program_serdes.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":ifrt",
+        ":serdes",
+        "//xla:util",
+        "@com_google_absl//absl/status:statusor",
+        "@llvm-project//llvm:Support",
+    ],
 )
 
 cc_library(
     name = "sharding_serdes",
     srcs = ["sharding_serdes.cc"],
-    hdrs = ["sharding_serdes.h"],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
     deps = [
         ":ifrt",
         ":serdes",
-        ":sharding_proto_cc",
-        "//xla:statusor",
+        ":sharding_serdes_proto_cc",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
         "@llvm-project//llvm:Support",
         "@local_tsl//tsl/platform:statusor",
     ],
@@ -397,14 +420,102 @@ xla_cc_test(
 )
 
 tf_proto_library(
-    name = "types_proto",
-    srcs = ["types.proto"],
-    visibility = ["//visibility:public"],
+    name = "device_proto",
+    srcs = ["device.proto"],
+)
+
+xla_cc_test(
+    name = "device_test",
+    size = "small",
+    srcs = ["device_test.cc"],
+    deps = [
+        ":device_proto_cc",
+        ":ifrt",
+        ":sharding_test_util",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:env",
+        "@local_tsl//tsl/platform:platform_port",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+tf_proto_library(
+    name = "dtype_proto",
+    srcs = ["dtype.proto"],
+)
+
+xla_cc_test(
+    name = "dtype_test",
+    size = "small",
+    srcs = ["dtype_test.cc"],
+    deps = [
+        ":dtype_proto_cc",
+        ":ifrt",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:test",
+    ],
+)
+
+tf_proto_library(
+    name = "shape_proto",
+    srcs = ["shape.proto"],
 )
 
 tf_proto_library(
     name = "sharding_proto",
     srcs = ["sharding.proto"],
-    protodeps = [":types_proto"],
-    visibility = ["//visibility:public"],
+    protodeps = [":serdes_proto"],
+)
+
+tf_proto_library(
+    name = "sharding_serdes_proto",
+    srcs = ["sharding_serdes.proto"],
+    protodeps = [
+        ":device_proto",
+        ":shape_proto",
+    ],
+)
+
+cc_library(
+    name = "plugin_program",
+    srcs = ["plugin_program.cc"],
+    hdrs = ["plugin_program.h"],
+    deps = [
+        ":ifrt",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_library(
+    name = "plugin_program_serdes",
+    srcs = ["plugin_program_serdes.cc"],
+    deps = [
+        ":plugin_program",
+        ":serdes",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@llvm-project//llvm:Support",
+    ],
+    alwayslink = True,
+)
+
+xla_cc_test(
+    name = "plugin_program_serdes_test",
+    srcs = ["plugin_program_serdes_test.cc"],
+    deps = [
+        ":plugin_program",
+        ":plugin_program_serdes",
+        ":serdes",
+        ":serdes_proto_cc",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/lib/core:status_test_util",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/protobuf:error_codes_proto_impl_cc",
+        "@local_tsl//tsl/protobuf:status_proto_cc",
+    ],
 )

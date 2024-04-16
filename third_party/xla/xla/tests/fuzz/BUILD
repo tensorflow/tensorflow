@@ -6,7 +6,6 @@ cc_library(
     name = "hlo_test_lib",
     testonly = True,
     srcs = ["hlo_test_lib.cc"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:error_spec",
         "//xla/tests:hlo_test_base",

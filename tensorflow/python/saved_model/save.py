@@ -278,7 +278,7 @@ class _SaveableView(object):
       options: A SaveOptions instance.
     """
     self.augmented_graph_view = augmented_graph_view
-    self._options = options
+    self.options = options
 
     (self._trackable_objects, self.node_paths, self.node_ids,
      self._slot_variables, self.object_names) = (
@@ -419,9 +419,8 @@ class _SaveableView(object):
     for node_id in _dependency_sorted_node_ids(self):
       obj = self.nodes[node_id]
       tensors = obj._export_to_saved_model_graph(  # pylint: disable=protected-access
-          object_map=object_map,
-          tensor_map=tensor_map,
-          options=self._options)
+          object_map=object_map, tensor_map=tensor_map, options=self.options
+      )
       if isinstance(obj, asset.Asset):
         _add_asset_info(obj, asset_info, tensor_map[obj.asset_path])
       if tensors:
@@ -1039,6 +1038,9 @@ def _fill_meta_graph_def(
 
   meta_graph_def.graph_def.CopyFrom(graph_def)
   meta_graph_def.meta_info_def.tags.append(tag_constants.SERVING)
+  if saveable_view.options.extra_tags:
+    for tag in saveable_view.options.extra_tags:
+      meta_graph_def.meta_info_def.tags.append(tag)
   meta_graph_def.meta_info_def.tensorflow_version = versions.__version__
   meta_graph_def.meta_info_def.tensorflow_git_version = (
       versions.__git_version__)

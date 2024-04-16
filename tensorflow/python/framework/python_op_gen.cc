@@ -52,6 +52,7 @@ limitations under the License.
 #include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/python/framework/python_op_gen_annotator.h"
+#include "tsl/platform/protobuf.h"
 
 namespace tensorflow {
 namespace {
@@ -674,7 +675,7 @@ string ShapeToPython(const TensorShapeProto& shape) {
 }
 
 string TensorToPython(const TensorProto& proto) {
-  return proto.ShortDebugString();
+  return tsl::LegacyUnredactedShortDebugString(proto);
 }
 
 string AttrListToPython(const AttrValue& value,

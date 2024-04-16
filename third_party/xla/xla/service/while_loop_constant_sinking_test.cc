@@ -18,7 +18,6 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/test.h"
 #include "xla/tests/hlo_test_base.h"
-#include "tsl/lib/core/status_test_util.h"
 
 namespace xla {
 namespace {
@@ -56,8 +55,17 @@ ENTRY entry {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          WhileLoopConstantSinking{}.Run(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      WhileLoopConstantSinking(/*sink_broadcast_of_constants=*/false,
+                               /*sink_only_scalar_constants=*/true)
+          .Run(module.get()));
+  ASSERT_FALSE(changed);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      changed, WhileLoopConstantSinking(/*sink_broadcast_of_constants=*/false,
+                                        /*sink_only_scalar_constants=*/false)
+                   .Run(module.get()));
   ASSERT_TRUE(changed);
 
   auto* while_body = module->GetComputationWithName("body");

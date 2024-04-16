@@ -69,6 +69,7 @@ limitations under the License.
 #define TENSORFLOW_TSL_PLATFORM_STATUSOR_H_
 
 #include "absl/base/attributes.h"
+#include "absl/base/macros.h"
 #include "absl/status/statusor.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/macros.h"
@@ -82,9 +83,15 @@ limitations under the License.
 #include "tsl/platform/default/statusor.h"  // IWYU pragma: export
 #endif
 
+// TODO: b/323943471 - This macro should eventually be provided by Abseil.
+#ifndef ABSL_DEPRECATE_AND_INLINE
+#define ABSL_DEPRECATE_AND_INLINE()
+#endif
+
 namespace tsl {
 
-using absl::StatusOr;
+template <typename T>
+using StatusOr ABSL_DEPRECATE_AND_INLINE() = absl::StatusOr<T>;
 
 }  // namespace tsl
 

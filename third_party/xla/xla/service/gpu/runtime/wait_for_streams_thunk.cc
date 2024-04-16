@@ -20,7 +20,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
-#include "xla/service/gpu/thunk.h"
+#include "xla/service/gpu/runtime/thunk.h"
 #include "tsl/platform/errors.h"
 
 namespace xla::gpu {
@@ -39,7 +39,7 @@ absl::Status WaitForStreamsThunk::ExecuteOnStream(const ExecuteParams& params) {
     TF_ASSIGN_OR_RETURN(se::Stream * wait_on_stream,
                         Thunk::GetStreamForExecution(stream_id, params));
 
-    stream->ThenWaitFor(wait_on_stream);
+    TF_RETURN_IF_ERROR(stream->WaitFor(wait_on_stream));
   }
   return absl::OkStatus();
 }
