@@ -32,16 +32,16 @@ inline double GigaFlopsPerSecondPerCore(const OpMetrics& metrics) {
   // flops and time_ps are accumulated across all occurrences on all cores.
   // time_ps is used instead of self_time_ps because flops for an op includes
   // the flops executed by children (nested) ops.
-  return tsl::profiler::SafeDivide(metrics.flops(),
-                                   PicoToNano(metrics.time_ps()));
+  return tsl::profiler::SafeDivide(
+      metrics.flops(), tsl::profiler::PicoToNano(metrics.time_ps()));
 }
 
 inline double GigaModelFlopsPerSecondPerCore(const OpMetrics& metrics) {
   // flops and time_ps are accumulated across all occurrences on all cores.
   // time_ps is used instead of self_time_ps because flops for an op includes
   // the flops executed by children (nested) ops.
-  return tsl::profiler::SafeDivide(metrics.model_flops(),
-                                   PicoToNano(metrics.time_ps()));
+  return tsl::profiler::SafeDivide(
+      metrics.model_flops(), tsl::profiler::PicoToNano(metrics.time_ps()));
 }
 
 // Return ByteAccessed for memory_space and operation_type.
@@ -78,7 +78,7 @@ inline double GigaBytesPerSecondPerCore(
   // includes the bytes accessed by children (nested) ops.
   return tsl::profiler::SafeDivide(
       BytesAccessedPerCore(metrics, memory_space, operation_type),
-      PicoToNano(metrics.time_ps()));
+      tsl::profiler::PicoToNano(metrics.time_ps()));
 }
 
 inline double GibiBytesPerSecondPerCore(
