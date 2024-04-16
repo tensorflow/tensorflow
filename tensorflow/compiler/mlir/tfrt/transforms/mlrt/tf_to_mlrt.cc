@@ -536,7 +536,7 @@ class ExecuteOpConversion final : public mlir::ConversionPattern {
           node_def.device(), op->getNumOperands(),
           [&](tensorflow::AttrValueMap *attr_value_map) {
             *attr_value_map = node_def.attr();
-            return OkStatus();
+            return absl::OkStatus();
           },
           fallback_state_.device_manager(),
           fallback_state_.process_function_library_runtime());
