@@ -75,10 +75,43 @@ ResourceValueAndSubtype GetResourceWriteResult(
 // Checks if resource is read by TPU cluster.
 bool ClusterFuncHasResourceRead(tf_device::ClusterFuncOp cluster_func,
                                 Value resource) {
-  for (Operation* resource_user : resource.getUsers())
-    if (auto read = dyn_cast<TF::ReadVariableOp>(resource_user))
-      for (Operation* read_user : read.getValue().getUsers())
+  for (Operation* resource_user : resource.getUsers()) {
+    if (auto read = dyn_cast<TF::ReadVariableOp>(resource_user)) {
+      // llvm::errs() << "ReadVariableOp: ";
+      // read.dump();
+      for (Operation* read_user : read.getValue().getUsers()) {
+        // llvm::errs() << "read_user: ";
+        // read_user->dump();
         if (read_user == cluster_func) return true;
+        if (auto replicate = dyn_cast<tf_device::ReplicateOp>(read_user)) {
+          return true;
+          // for (auto replicate_operand : replicate.getOperands()) {
+          //   llvm::errs() << "replicate_operand1: \n";
+          //   replicate_operand.dump();
+          // }
+          // for (auto replicate_input : replicate.getReplicatedInputs()) {
+          //   llvm::errs() << "replicate_input: \n";
+          //   replicate_input.dump();
+          // }
+          // for (auto packed_input : replicate.getPackedInputs()) {
+          //   llvm::errs() << "packed_input: \n";
+          //   packed_input.dump();
+          // }
+          // for (auto block_argument :
+          //                        replicate.GetReplicatedBlockArguments()) {
+          //   llvm::errs() << "replicate_block_argument: \n";
+          //   for (auto& use : block_argument.getUses()) {
+          //     llvm::errs() << "use of owner: \n";
+          //     use.getOwner()->dump();
+          //   }
+          //   for (auto blocker_users : block_argument.getUsers()) {
+          //     blocker_users->dump();
+          //   }
+          // }
+        }
+      }
+    }
+  }
 
   return false;
 }
