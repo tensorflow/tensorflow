@@ -44,6 +44,7 @@ struct Interval {
   void Print(std::ostream& out) const;
 
   bool IsPoint() const { return lower == upper; }
+  int64_t NumElements() const { return upper - lower + 1; }
 
   bool Contains(int64_t value) const {
     return value >= lower && value <= upper;
@@ -369,6 +370,9 @@ H AbslHashValue(H h, const IndexingMap& indexing_map) {
                     indexing_map.GetRTVars(),
                     indexing_map.GetConstraintsCount());
 }
+
+int64_t FloorDiv(int64_t dividend, int64_t divisor);
+int64_t CeilDiv(int64_t dividend, int64_t divisor);
 
 }  // namespace gpu
 }  // namespace xla

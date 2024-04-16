@@ -372,7 +372,7 @@ TEST_F(CoalescingTest, VariadicReduceViaLoopEmitter) {
   // Operands 1, 2: (d0)[s0] -> ((d0 floordiv 4) * 40 + d0 mod 4 + s0 * 4)
   //  for s0 in [0, 9].
   EXPECT_THAT(IsReadCoalescedPerOperand(ir),
-              ElementsAre(true, true, true, true));
+              ElementsAre(false, false, true, true));
 }
 
 TEST_F(CoalescingTest, VariadicReduceViaReductionEmitter) {
