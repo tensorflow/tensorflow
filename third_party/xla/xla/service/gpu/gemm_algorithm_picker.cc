@@ -96,6 +96,7 @@ class GemmAutotuner {
   std::unique_ptr<se::RedzoneAllocator> redzone_allocator_;
   se::Stream* stream_ = nullptr;
   bool deterministic_ops_ = false;
+  size_t solutions_limit_ = 0;
   int64_t rng_state_ = 0;
 
  public:
@@ -114,6 +115,7 @@ class GemmAutotuner {
     const DebugOptions& debug_options =
         gemm->GetModule()->config().debug_options();
     deterministic_ops_ = debug_options.xla_gpu_deterministic_ops();
+    solutions_limit_ = debug_options.xla_gpu_autotune_max_solutions();
 
     TF_ASSIGN_OR_RETURN(auto gemm_config, GemmConfig::For(gemm));
 
@@ -237,14 +239,6 @@ class GemmAutotuner {
                                 &algorithms);
 
     AutotuneResult best_algorithm;
-#if TENSORFLOW_USE_ROCM        // Blas gemm algorithms can be empty for ROCM
-    if (algorithms.empty()) {  // nothing to autotune
-      LOG(WARNING) << "No solutions found: skipping autotuning for ROCM..";
-      best_algorithm.mutable_gemm()->set_algorithm(se::blas::kDefaultAlgorithm);
-      return best_algorithm;
-    }
-#endif
-
     auto tuned_func = [&](const se::blas::AlgorithmType& algorithm)
         -> absl::StatusOr<se::blas::ProfileResult> {
       // Do a warm-up run first, without a profile result. RunGemm swallows
@@ -307,7 +301,10 @@ class GemmAutotuner {
     results.reserve(algorithms.size());
     std::optional<int64_t> reference_algorithm;
 
-    for (const AlgoT& algorithm : algorithms) {
+    auto num = algorithms.size();
+    if (solutions_limit_ > 0) num = std::min(num, solutions_limit_);
+    for (size_t i = 0; i < num; i++) {
+      const AlgoT& algorithm = algorithms[i];
       // Make sure the output buffer always has the same value if we use
       // the bias parameter.
       if (autotune_config_.should_reinit_output_buffer() && beta != 0) {

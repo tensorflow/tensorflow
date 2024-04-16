@@ -459,10 +459,18 @@ absl::Status BlasLt::MatmulPlan::DoMatmul(
     }
   }
 
+  typedef struct __attribute__((packed, aligned(8))) _rocblaslt_matmul_algo {
+    uint8_t data[8] = {0};
+    bool fallback = false;
+    size_t max_workspace_bytes = 0;
+  } rocblaslt_matmul_algo;
+
   if (profile_result != nullptr) {
     TF_ASSIGN_OR_RETURN(absl::Duration elapsed, timer->GetElapsedDuration());
     // set algorithm ID to be unique (otherwise it gets kDefaultAlgorithm ID)
-    profile_result->set_algorithm(reinterpret_cast<blas::AlgorithmType>(palgo));
+    auto roc_algo = (const rocblaslt_matmul_algo*)palgo;
+    auto pindex = (int*)roc_algo->data;
+    profile_result->set_algorithm(static_cast<blas::AlgorithmType>(*pindex));
     profile_result->set_is_valid(true);
     profile_result->set_elapsed_time_in_ms(absl::ToDoubleMilliseconds(elapsed));
   }
