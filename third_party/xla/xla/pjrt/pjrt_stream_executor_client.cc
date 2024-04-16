@@ -1095,7 +1095,8 @@ PjRtStreamExecutorClient::CreateErrorBuffer(absl::Status error,
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer>>
 PjRtStreamExecutorClient::BufferFromHostLiteral(const LiteralSlice& literal,
-                                                PjRtDevice* device) {
+                                                PjRtDevice* device,
+                                                const Layout* device_layout) {
   tsl::profiler::TraceMe traceme(
       "PjRtStreamExecutorClient::BufferFromHostLiteral");
   VLOG(1) << "PjRtStreamExecutorClient::BufferFromHostLiteral: shape: "
@@ -1158,9 +1159,11 @@ PjRtStreamExecutorClient::BufferFromHostLiteral(const LiteralSlice& literal,
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer>>
 PjRtStreamExecutorClient::BufferFromHostLiteral(const LiteralSlice& literal,
-                                                PjRtMemorySpace* memory_space) {
+                                                PjRtMemorySpace* memory_space,
+                                                const Layout* device_layout) {
   if (memory_space->devices().size() == 1) {
-    return BufferFromHostLiteral(literal, memory_space->devices()[0]);
+    return BufferFromHostLiteral(literal, memory_space->devices()[0],
+                                 device_layout);
   }
   return absl::UnimplementedError(absl::StrCat(
       "BufferFromHostLiteral with PjRtMemorySpace is not implemented on "

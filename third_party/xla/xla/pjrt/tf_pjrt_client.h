@@ -300,8 +300,10 @@ class TfPjRtClient : public PjRtClient {
         std::move(on_done_with_host_buffer), device, device_layout));
   }
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostLiteral(
-      const LiteralSlice& literal, PjRtDevice* device) override {
-    return WrapBuffer(wrapped_->BufferFromHostLiteral(literal, device));
+      const LiteralSlice& literal, PjRtDevice* device,
+      const Layout* device_layout) override {
+    return WrapBuffer(
+        wrapped_->BufferFromHostLiteral(literal, device, device_layout));
   }
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateViewOfDeviceBuffer(
       void* device_ptr, const Shape& shape, PjRtDevice* device,

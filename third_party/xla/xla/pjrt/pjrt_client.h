@@ -894,30 +894,51 @@ class PjRtClient {
   // the caller should, for example, wait for GetReadyFuture().Await()
   // completes on the return value before letting literal go out of scope.
   virtual absl::StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostLiteral(
-      const LiteralSlice& literal, PjRtDevice* device) = 0;
+      const LiteralSlice& literal, PjRtDevice* device,
+      const Layout* device_layout) {
+    if (!device_layout) {
+      return absl::UnimplementedError(absl::StrCat(
+          "BufferFromHostLiteral with a non-null device_layout parameter is "
+          "not implemented on platform: ",
+          platform_name()));
+    }
+    return BufferFromHostLiteral(literal, device,
+                                 /* device_layout */ nullptr);
+  }
+
+  virtual absl::StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostLiteral(
+      const LiteralSlice& literal, PjRtDevice* device);
 
   // TODO(b/277820585): remove BufferFromHostLiteral with PjRtDevice after the
   // migration is done.
   virtual absl::StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostLiteral(
-      const LiteralSlice& literal, PjRtMemorySpace* memory_space) {
-    return tsl::errors::Unimplemented(
-        "BufferFromHostLiteral with PjRtMemorySpace is not implemented on "
-        "platform: ",
-        platform_name());
+      const LiteralSlice& literal, PjRtMemorySpace* memory_space,
+      const Layout* device_layout) {
+    if (!device_layout) {
+      return absl::UnimplementedError(absl::StrCat(
+          "BufferFromHostLiteral with a non-null device_layout parameter is "
+          "not implemented on platform: ",
+          platform_name()));
+    }
+    return BufferFromHostLiteral(literal, memory_space,
+                                 /* device_layout */ nullptr);
   }
+
+  virtual absl::StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostLiteral(
+      const LiteralSlice& literal, PjRtMemorySpace* memory_space);
 
   // Creates a PjRtBuffer that is a non-owned view of an on-device
   // buffer (typically allocated by another library).
-  // on_delete_callback is called when the PjRtBuffer is done with the on-device
-  // buffer. The buffer may be mutated, for example, if the buffer is donated
-  // to an Execute operation.
+  // on_delete_callback is called when the PjRtBuffer is done with the
+  // on-device buffer. The buffer may be mutated, for example, if the buffer
+  // is donated to an Execute operation.
   //
-  // `stream`, if specified, is a platform-specific stream handle that should
-  // contain the work or events needed to materialize the on-device
+  // `stream`, if specified, is a platform-specific stream handle that
+  // should contain the work or events needed to materialize the on-device
   // buffer. CreateViewOfDeviceBuffer will append an event to `stream` that
   // indicates when the returned buffer is ready to use. This is intended to
-  // support dlpack on GPU and is not expected to be supported on all hardware
-  // platforms.
+  // support dlpack on GPU and is not expected to be supported on all
+  // hardware platforms.
   virtual absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateViewOfDeviceBuffer(
       void* device_ptr, const Shape& shape, PjRtDevice* device,
       std::function<void()> on_delete_callback,

@@ -1014,7 +1014,8 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuClient::BufferFromHostBuffer(
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer>>
 TfrtCpuClient::BufferFromHostLiteral(const LiteralSlice& literal,
-                                     PjRtDevice* device) {
+                                     PjRtDevice* device,
+                                     const Layout* device_layout) {
   tsl::profiler::TraceMe traceme("TfrtCpuClient::BufferFromHostLiteral");
   VLOG(1) << "TfrtCpuClient::BufferFromHostLiteral: shape: "
           << literal.shape().DebugString()
@@ -1034,9 +1035,11 @@ TfrtCpuClient::BufferFromHostLiteral(const LiteralSlice& literal,
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer>>
 TfrtCpuClient::BufferFromHostLiteral(const LiteralSlice& literal,
-                                     PjRtMemorySpace* memory_space) {
+                                     PjRtMemorySpace* memory_space,
+                                     const Layout* device_layout) {
   CHECK_EQ(memory_space->devices().size(), 1);
-  return BufferFromHostLiteral(literal, memory_space->devices()[0]);
+  return BufferFromHostLiteral(literal, memory_space->devices()[0],
+                               device_layout);
 }
 
 TfrtCpuBuffer::TfrtCpuBuffer(
