@@ -97,6 +97,7 @@ cc_library(
         "@llvm-project//mlir:AffineDialect",
         "@llvm-project//mlir:AffineUtils",
         "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:ComplexDialect",
         "@llvm-project//mlir:DataLayoutInterfaces",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",

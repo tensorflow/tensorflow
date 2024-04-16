@@ -39,6 +39,7 @@ limitations under the License.
 #include "mlir/Dialect/Affine/IR/AffineOps.h"  // from @llvm-project
 #include "mlir/Dialect/Affine/LoopUtils.h"  // from @llvm-project
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
+#include "mlir/Dialect/Complex/IR/Complex.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/IR/SCF.h"  // from @llvm-project
@@ -169,8 +170,7 @@ static auto& kUnsupportedOps =
 
 bool IsUnsupportedConstant(const HloInstruction* instr) {
   return instr->opcode() == HloOpcode::kConstant &&
-         (!ShapeUtil::IsEffectiveScalar(instr->shape()) ||
-          primitive_util::IsComplexType(instr->shape().element_type()));
+         !ShapeUtil::IsEffectiveScalar(instr->shape());
 }
 
 bool IsUnsupportedTuple(const HloInstruction* instr) {
@@ -790,6 +790,12 @@ absl::StatusOr<SmallVector<Value>> HloToMlir(
         if (result_element_type != element_mlir_type) {
           value_attr = value_attr.mapValues(
               result_element_type, [](const llvm::APInt& i) { return i; });
+        }
+        if (primitive_util::IsComplexType(element_type)) {
+          return {{builder.create<mlir::complex::ConstantOp>(
+              element_mlir_type,
+              mlir::cast<mlir::ArrayAttr>(
+                  value_attr.getValues<mlir::Attribute>()[0]))}};
         }
         auto val = mlir::cast<mlir::TypedAttr>(
             value_attr.getValues<mlir::Attribute>()[0]);
