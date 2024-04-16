@@ -17,8 +17,9 @@ syntax = "proto3";
 
 package xla.ifrt;
 
-// Data type kinds. Mirrors `xla::ifrt::DType`.
+// Proto equivalent of C++ `DType`.
 message DTypeProto {
+  // LINT.IfChange(DTypeProtoKind)
   enum Kind {
     KIND_UNSPECIFIED = 0;
 
@@ -69,5 +70,6 @@ message DTypeProto {
     // collision.
     KIND_STRING = 99;
   }
+  // LINT.ThenChange()
   Kind kind = 1;
 }

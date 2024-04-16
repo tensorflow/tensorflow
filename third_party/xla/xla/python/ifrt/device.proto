@@ -17,7 +17,7 @@ syntax = "proto3";
 
 package xla.ifrt;
 
-// Wire format for `DeviceList`.
+// Proto equivalent of C++ `DeviceList`.
 message DeviceListProto {
   // Serialization and deserialization are expected to ensure that device ids
   // are stable across proto construction and consumption.

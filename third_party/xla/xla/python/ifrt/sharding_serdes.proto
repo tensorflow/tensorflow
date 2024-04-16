@@ -20,7 +20,7 @@ package xla.ifrt;
 import "xla/python/ifrt/device.proto";
 import "xla/python/ifrt/shape.proto";
 
-// Wire format for `SingleDeviceSharding`.
+// Proto equivalent of C++ `SingleDeviceSharding`.
 message SingleDeviceShardingProto {
   // Serialization and deserialization are expected to ensure that device ids
   // are stable across proto construction and consumption.
@@ -28,13 +28,13 @@ message SingleDeviceShardingProto {
   optional string memory_kind = 2;
 }
 
-// Wire format for `OpaqueSharding`.
+// Proto equivalent of C++ `OpaqueSharding`.
 message OpaqueShardingProto {
   DeviceListProto devices = 1;
   optional string memory_kind = 2;
 }
 
-// Wire format for `ConcreteSharding`.
+// Proto equivalent of C++ `ConcreteSharding`.
 message ConcreteShardingProto {
   DeviceListProto devices = 1;
   optional string memory_kind = 4;
@@ -46,7 +46,7 @@ message ConcreteShardingProto {
   repeated DynamicShapeProto shard_dynamic_shapes = 6;
 }
 
-// Wire format for `ConcreteEvenSharding`.
+// Proto equivalent of C++ `ConcreteEvenSharding`.
 message ConcreteEvenShardingProto {
   DeviceListProto devices = 1;
   optional string memory_kind = 4;
