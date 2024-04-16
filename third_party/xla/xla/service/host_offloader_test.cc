@@ -1954,6 +1954,54 @@ ENTRY main {
   EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
 }
 
+TEST_F(HostOffloaderTest, TupleParameterStreaming) {
+  const std::string& hlo_string = R"(
+HloModule ParameterStreaming, entry_computation_layout={((s32[2,1]{1,0:T(2,128)}, s32[2,1]{1,0:T(2,128)S(5)}))->s32[2,1]{1,0:T(2,128)}}
+
+ENTRY main {
+  param_tuple = (s32[2,1], s32[2,1]) parameter(0)
+  x = get-tuple-element(param_tuple), index=0
+  y_host = get-tuple-element(param_tuple), index=1
+  y = s32[2,1] custom-call(y_host), custom_call_target="MoveToDevice"
+  ROOT crs = s32[2,1] add(x, y)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  EXPECT_TRUE(changed);
+
+  // Look for the following pattern:
+  // param0: tuple(x   ,   y)
+  //              /         \
+  // get-tuple-element  get-tuple-element
+  //             \      |
+  //              \    copy
+  //               \   /
+  //                add
+  HloInstruction* param;
+  HloInstruction* gte_x;
+  HloInstruction* gte_y;
+  HloInstruction* copy;
+  HloInstruction* add;
+  auto parameter_pattern = m::Parameter(&param, 0);
+  ASSERT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Add(
+          &add, m::GetTupleElement(&gte_x, parameter_pattern),
+          m::Copy(&copy, m::GetTupleElement(&gte_y, parameter_pattern)))));
+  TestShapeHasMemorySpace(param->shape().tuple_shapes(0),
+                          Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(gte_x->shape(), Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(add->shape(), Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(copy->shape(), Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(param->shape().tuple_shapes(1),
+                          kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(gte_y->shape(), kHostMemorySpaceColor);
+}
+
 TEST_F(HostOffloaderTest, OutputStreaming) {
   const std::string& hlo_string = R"(
     HloModule ParameterStreaming, entry_computation_layout={(s32[2,1]{1,0:T(2,128)}, s32[2,1]{1,0:T(2,128)})->(s32[2,1]{1,0:T(2,128)S(5)}, s32[2,1]{1,0:T(2,128)})}

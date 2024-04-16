@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status.h"
+#include "xla/status_macros.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
@@ -558,12 +559,21 @@ absl::StatusOr<bool> HostOffloader::TryParameterStreaming(
         value->defining_position().instruction;
     if (defining_instruction->opcode() == HloOpcode::kParameter) {
       if (defining_instruction->parent() == entry_computation) {
-        const Shape& param_shape =
-            entry_computation->parent()
-                ->entry_computation_layout()
-                .parameter_shape(defining_instruction->parameter_number());
-        CHECK(param_shape.has_layout());
-        if (param_shape.layout().memory_space() == kHostMemorySpaceColor) {
+        const Shape* param_shape =
+            &entry_computation->parent()
+                 ->entry_computation_layout()
+                 .parameter_shape(defining_instruction->parameter_number());
+        if (param_shape->IsTuple()) {
+          // Fetch the memory space annotation from the tuple element's layout.
+          TF_RET_CHECK(value->index().size() == 1)
+              << value->index().size()
+              << " != 1: nested parameter tuples aren't supported";
+          int tuple_index = value->index()[0];
+          TF_RET_CHECK(tuple_index < param_shape->tuple_shapes_size());
+          param_shape = &param_shape->tuple_shapes(tuple_index);
+        }
+        TF_RET_CHECK(param_shape->has_layout());
+        if (param_shape->layout().memory_space() == kHostMemorySpaceColor) {
           is_defined_by_entry_param_with_host_memory_space = true;
         }
       }
