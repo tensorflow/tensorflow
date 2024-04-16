@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/data/serialization_utils.h"
 #include "tensorflow/core/framework/dataset.h"
@@ -76,9 +77,10 @@ constexpr char kIncompleteCacheErrorMessage[] =
     "should use `dataset.take(k).cache().repeat()` instead.";
 }  // namespace
 
-class PartialCache {
+class DatasetRandomAccessCache {
  public:
-  explicit PartialCache(const DatasetBase* dataset) : input_(dataset) {}
+  explicit DatasetRandomAccessCache(const DatasetBase* dataset)
+      : input_(dataset) {}
 
   // Extends the temporary cache up to a given index and then updates
   // out_tensors with the element at that index.
@@ -133,6 +135,43 @@ class PartialCache {
 
   const DatasetBase* input_;  // Not owned.
   core::RefCountPtr<IteratorResource> iter_resource_;
+  std::vector<std::vector<Tensor>> cache_;
+};
+
+// Caches dataset elements when global shuffling is enabled.
+// TODO(b/325112575): Support save/load.
+class IteratorRandomAccessCache {
+ public:
+  explicit IteratorRandomAccessCache(const DatasetBase* input)
+      : input_(input) {}
+
+  absl::Status Get(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
+                   bool* end_of_sequence) {
+    TF_ASSIGN_OR_RETURN(size_t element_position,
+                        ctx->index_mapper()(element_count_++));
+    if (element_position < cache_.size() && !cache_[element_position].empty()) {
+      *out_tensors = cache_[element_position];
+      *end_of_sequence = false;
+      return absl::OkStatus();
+    }
+
+    absl::Status status =
+        input_->Get(AnyContext(ctx), element_position, out_tensors);
+    if (absl::IsOutOfRange(status)) {
+      *end_of_sequence = true;
+      return absl::OkStatus();
+    }
+
+    if (element_position >= cache_.size()) {
+      cache_.resize(element_position + 1);
+    }
+    cache_[element_position] = *out_tensors;
+    return absl::OkStatus();
+  }
+
+ private:
+  int64_t element_count_ = 0;
+  const DatasetBase* input_ = nullptr;
   std::vector<std::vector<Tensor>> cache_;
 };
 
@@ -736,6 +775,7 @@ class CacheDatasetOp::MemoryDatasetBase : public DatasetBase {
         input_(input),
         cache_(std::move(cache)) {
     input_->Ref();
+    random_indexing_compatible_ = input_->RandomIndexingCompatible();
   }
 
   ~MemoryDatasetBase() override { input_->Unref(); }
@@ -781,10 +821,11 @@ class CacheDatasetOp::MemoryDatasetBase : public DatasetBase {
       return errors::OutOfRange("Index out of range [0, ", cardinality,
                                 "):", index);
     }
-    if (!partial_cache_) {
-      partial_cache_ = std::make_unique<PartialCache>(input_);
+    if (!dataset_random_access_cache_) {
+      dataset_random_access_cache_ =
+          std::make_unique<DatasetRandomAccessCache>(input_);
     }
-    return partial_cache_->Get(ctx, index, out_tensors);
+    return dataset_random_access_cache_->Get(ctx, index, out_tensors);
   }
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
@@ -794,6 +835,10 @@ class CacheDatasetOp::MemoryDatasetBase : public DatasetBase {
 
   Status CheckExternalState() const override {
     return input_->CheckExternalState();
+  }
+
+  absl::Status RandomIndexingCompatible() const override {
+    return random_indexing_compatible_;
   }
 
  protected:
@@ -811,6 +856,14 @@ class CacheDatasetOp::MemoryDatasetBase : public DatasetBase {
                            std::vector<Tensor>* out_tensors,
                            bool* end_of_sequence) override {
       mutex_lock l(mu_);
+      if (ctx->index_mapper() != nullptr) {
+        if (!iterator_random_access_cache_) {
+          iterator_random_access_cache_ =
+              std::make_unique<IteratorRandomAccessCache>(dataset()->input_);
+        }
+        return iterator_random_access_cache_->Get(ctx, out_tensors,
+                                                  end_of_sequence);
+      }
       return iterator_->GetNext(ctx, out_tensors, end_of_sequence);
     }
 
@@ -1015,12 +1068,16 @@ class CacheDatasetOp::MemoryDatasetBase : public DatasetBase {
     mutex mu_;
     MemoryCache* cache_ TF_GUARDED_BY(mu_);  // not owned.
     std::unique_ptr<IteratorBase> iterator_ TF_GUARDED_BY(mu_);
+    std::unique_ptr<IteratorRandomAccessCache> iterator_random_access_cache_
+        TF_GUARDED_BY(mu_);
   };  // MemoryIterator
 
   mutable mutex mu_;
   const DatasetBase* const input_;
   const std::shared_ptr<MemoryCache> cache_;
-  mutable std::unique_ptr<PartialCache> partial_cache_ TF_GUARDED_BY(mu_);
+  mutable std::unique_ptr<DatasetRandomAccessCache> dataset_random_access_cache_
+      TF_GUARDED_BY(mu_);
+  absl::Status random_indexing_compatible_ = absl::OkStatus();
 };  // MemoryDatasetBase
 
 // This version of memory dataset has an exclusive ownership of the memory cache
