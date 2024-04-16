@@ -60,7 +60,7 @@ def clean_dep(target):
     # Label() call appears, e.g. @local_tsl or tsl.
     # TODO(ddunleavy): update this during and after go/moving-tsl-into-xla-lsc
     label = Label(target)
-    not_yet_moved = ["concurrency", "distributed_runtime", "framework", "lib", "platform", "profiler", "protobuf"]
+    not_yet_moved = ["concurrency", "framework", "lib", "platform", "profiler", "protobuf"]
 
     if any([label.package.startswith("tsl/" + dirname) for dirname in not_yet_moved]):
         return "@local_tsl//" + label.package + ":" + label.name
