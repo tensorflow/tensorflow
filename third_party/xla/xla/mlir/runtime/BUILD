@@ -6,7 +6,6 @@ package_group(
         # "//third_party/mlir_edge/tpgen/...",
         # # TODO(ezhulenev): Clean up dependencies that are leftovers from Autofusion project.
         # "@tf_runtime//...",
-        # "//third_party/tf_runtime_google/...",
         # copybara:uncomment_end(google-only)
         "//tensorflow/compiler/mlir/tfrt/...",
         "//xla/mlir/...",
