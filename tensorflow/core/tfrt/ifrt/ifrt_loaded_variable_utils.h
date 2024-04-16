@@ -50,8 +50,7 @@ absl::Status LoadRestoredTensorAsIfrtLoadedVariable(
     ifrt_serving::IfrtRestoreTensorRegistry& ifrt_restore_tensor_registry,
     ifrt_serving::IfrtLoadedVariableRegistry& ifrt_loaded_variable_registry,
     tfrt::ConcurrentWorkQueue* checkpoint_loader_queue,
-    const VariableDeviceShardingConfigProto& sharding_config,
-    mlrt::Promise* restored_tensor_promise);
+    const VariableDeviceShardingConfigProto& sharding_config);
 
 }  // namespace ifrt_serving
 }  // namespace tensorflow

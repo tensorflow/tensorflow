@@ -86,31 +86,17 @@ TEST(ShardingUtilsTest, ShardTensorToIfrtLoadedVariableNotFoundWrongName) {
       xla::ifrt::Future<absl::StatusOr<tensorflow::Tensor>>::CreatePromise();
   auto future = xla::ifrt::Future<absl::StatusOr<tensorflow::Tensor>>(promise);
 
-  auto tensor_promise =
-      mlrt::Promise::Allocate<tensorflow::tfrt_stub::FallbackTensor>();
-  auto tensor_future = tensor_promise.GetFuture();
-  absl::StatusOr<tensorflow::tfrt_stub::FallbackTensor>
-      expected_restored_tensor;
-  std::move(tensor_future)
-      .Then([&expected_restored_tensor](
-                absl::StatusOr<tensorflow::tfrt_stub::FallbackTensor> tensor) {
-        expected_restored_tensor = tensor;
-        return;
-      });
   TF_ASSERT_OK(
       restored_tensor_registry.TryRegister("var_x_wrong", std::move(future)));
   promise.Set(input_tensor);
   TF_ASSERT_OK(LoadRestoredTensorAsIfrtLoadedVariable(
       variable_handle, client, thread_pool, restored_tensor_registry,
-      loaded_variable_registry, restore_work_queue.get(), sharding_config,
-      &tensor_promise));
+      loaded_variable_registry, restore_work_queue.get(), sharding_config));
   TF_ASSERT_OK_AND_ASSIGN(
       auto v,
       loaded_variable_registry.GetLoadedVariable(GetRuntimeNameFromVarHandle(
           variable_handle.scalar<ResourceHandle>()())));
   EXPECT_THAT(v.array.Await().status(), StatusIs(absl::StatusCode::kNotFound));
-  EXPECT_THAT(expected_restored_tensor.status(),
-              StatusIs(absl::StatusCode::kNotFound));
 }
 
 TEST(ShardingUtilsTest, ShardTensorToIfrtLoadedVariableSucceed) {
@@ -143,32 +129,18 @@ TEST(ShardingUtilsTest, ShardTensorToIfrtLoadedVariableSucceed) {
       xla::ifrt::Future<absl::StatusOr<tensorflow::Tensor>>::CreatePromise();
   auto future = xla::ifrt::Future<absl::StatusOr<tensorflow::Tensor>>(promise);
 
-  auto tensor_promise =
-      mlrt::Promise::Allocate<tensorflow::tfrt_stub::FallbackTensor>();
-  auto tensor_future = tensor_promise.GetFuture();
-  absl::StatusOr<tensorflow::tfrt_stub::FallbackTensor>
-      expected_restored_tensor;
-  std::move(tensor_future)
-      .Then([&expected_restored_tensor](
-                absl::StatusOr<tensorflow::tfrt_stub::FallbackTensor> tensor) {
-        expected_restored_tensor = tensor;
-        return;
-      });
-
   TF_ASSERT_OK(restored_tensor_registry.TryRegister(
       GetRuntimeNameFromVarHandle(variable_handle.scalar<ResourceHandle>()()),
       std::move(future)));
   TF_ASSERT_OK(LoadRestoredTensorAsIfrtLoadedVariable(
       variable_handle, client, thread_pool, restored_tensor_registry,
-      loaded_variable_registry, restore_work_queue.get(), sharding_config,
-      &tensor_promise));
+      loaded_variable_registry, restore_work_queue.get(), sharding_config));
   promise.Set(input_tensor);
   TF_ASSERT_OK_AND_ASSIGN(
       auto v,
       loaded_variable_registry.GetLoadedVariable(GetRuntimeNameFromVarHandle(
           variable_handle.scalar<ResourceHandle>()())));
   TF_ASSERT_OK_AND_ASSIGN(auto assembled_array, v.array.Await());
-  EXPECT_THAT(expected_restored_tensor->tensor(), TensorEq(input_tensor));
 
   EXPECT_TRUE(v.dtype_and_shape.shape.IsSameSize(TensorShape({2, 2})));
   EXPECT_EQ(v.dtype_and_shape.dtype, DT_INT32);

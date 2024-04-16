@@ -97,8 +97,7 @@ absl::Status LoadRestoredTensorAsIfrtLoadedVariable(
     ifrt_serving::IfrtRestoreTensorRegistry& ifrt_restore_tensor_registry,
     ifrt_serving::IfrtLoadedVariableRegistry& ifrt_loaded_variable_registry,
     tfrt::ConcurrentWorkQueue* checkpoint_loader_queue,
-    const VariableDeviceShardingConfigProto& sharding_config,
-    mlrt::Promise* restored_tensor_promise) {
+    const VariableDeviceShardingConfigProto& sharding_config) {
   if (variable_handle_tensor.dtype() != DT_RESOURCE) {
     return absl::InvalidArgumentError(
         absl::StrCat("variable_handle_tensor is ",
@@ -137,17 +136,12 @@ absl::Status LoadRestoredTensorAsIfrtLoadedVariable(
       [ifrt_client = ifrt_client, &thread_pool = thread_pool,
        checkpoint_loader_queue = checkpoint_loader_queue,
        sharding_config = sharding_config,
-       loaded_variable_promise = std::move(loaded_variable_promise),
-       restored_tensor_promise = restored_tensor_promise](
+       loaded_variable_promise = std::move(loaded_variable_promise)](
           absl::StatusOr<tensorflow::Tensor> restored_tensor) mutable {
         if (!restored_tensor.ok()) {
           loaded_variable_promise.Set(restored_tensor.status());
-          std::move(*restored_tensor_promise)
-              .SetError(restored_tensor.status());
           return;
         }
-        std::move(*restored_tensor_promise)
-            .Set<tensorflow::tfrt_stub::FallbackTensor>(*restored_tensor);
 
         // Transfer tensor to array in a separate thread.
         checkpoint_loader_queue->AddTask(

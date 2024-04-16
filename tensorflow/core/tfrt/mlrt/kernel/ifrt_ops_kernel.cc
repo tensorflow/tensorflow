@@ -291,15 +291,29 @@ absl::Status MlrtIfrtLoadVariableKernel::InvokeHelper() {
       mlrt::Promise::Allocate<tensorflow::tfrt_stub::FallbackTensor>();
   auto tensor_future = tensor_promise.GetFuture();
 
+  ifrt_serving::IfrtRestoreTensorRegistry& ifrt_restore_tensor_registry =
+      (*ifrt_model_context)->GetRestoreTensorRegistry();
+
   TF_RETURN_IF_ERROR(ifrt_serving::LoadRestoredTensorAsIfrtLoadedVariable(
       variable_tensor(), (*ifrt_model_context)->GetClient(),
-      (*ifrt_model_context)->GetThreadPool(),
-      (*ifrt_model_context)->GetRestoreTensorRegistry(),
+      (*ifrt_model_context)->GetThreadPool(), ifrt_restore_tensor_registry,
       (*ifrt_model_context)->GetLoadedVariableRegistry(),
-      (*ifrt_model_context)->checkpoint_loader_queue(), sharding_config,
-      &tensor_promise));
+      (*ifrt_model_context)->checkpoint_loader_queue(), sharding_config));
   std::string runtime_name =
       ifrt_serving::GetRuntimeNameFromVarHandle(variable_resource_handle());
+  xla::ifrt::Future<absl::StatusOr<tensorflow::Tensor>> restored_tensor_future =
+      ifrt_restore_tensor_registry.Get(runtime_name);
+  restored_tensor_future.OnReady(
+      [tensor_promise = std::move(tensor_promise)](
+          absl::StatusOr<tensorflow::Tensor> restored_tensor) mutable {
+        if (!restored_tensor.ok()) {
+          std::move(tensor_promise).SetError(restored_tensor.status());
+          return;
+        }
+        std::move(tensor_promise)
+            .Set<tensorflow::tfrt_stub::FallbackTensor>(
+                tensorflow::tfrt_stub::FallbackTensor(*restored_tensor));
+      });
   // Return the name as the key
   tensorflow::Tensor key_tensor(tensorflow::DT_STRING, {});
   key_tensor.scalar<tsl::tstring>()() = runtime_name;
