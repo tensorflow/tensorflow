@@ -40,6 +40,7 @@ tools/toolchains/java/BUILD:
 tools/toolchains/python/BUILD:
 tools/toolchains/remote/BUILD:
 tools/toolchains/remote_config/BUILD:
+tools/toolchains/win/20240424/BUILD:
 tools/toolchains/win/BUILD:
 tools/toolchains/win/bazel_211/BUILD:
 tools/toolchains/win/tf_win_05022023/BUILD:
