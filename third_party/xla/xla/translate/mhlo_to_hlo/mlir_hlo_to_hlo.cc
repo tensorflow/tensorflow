@@ -640,9 +640,22 @@ static void ExtractShardingsFromFunction(
       (*ret_shardings)[i] = xla::ConvertSharding(sharding.getValue());
 }
 
-// Creates a tuple sharding with the given shardings if at least one is present.
-//
+void AppendTupleShardingElements(xla::OpSharding* result,
+                                 const xla::OpSharding& tuple_sharding) {
+  if (tuple_sharding.type() == xla::OpSharding::TUPLE) {
+    for (const xla::OpSharding& element : tuple_sharding.tuple_shardings()) {
+      AppendTupleShardingElements(result, element);
+    }
+  } else {
+    *result->add_tuple_shardings() = tuple_sharding;
+  }
+}
+
+// Creates a tuple sharding with `tuple_shardings` if at least one is present.
 // Adds replicated shardings for any missing tuple shardings.
+//
+// The tuple xla::Shape can be nested, while xla::OpSharding stores a flattened
+// list of shardings for the leaves of a tuple shape.
 std::optional<xla::OpSharding> CreateTupleSharding(
     llvm::ArrayRef<std::optional<xla::OpSharding>> tuple_shardings) {
   if (tuple_shardings.empty() ||
@@ -653,7 +666,7 @@ std::optional<xla::OpSharding> CreateTupleSharding(
   sharding.set_type(xla::OpSharding::TUPLE);
   for (const std::optional<xla::OpSharding>& tuple_sharding : tuple_shardings) {
     if (tuple_sharding) {
-      *sharding.add_tuple_shardings() = *tuple_sharding;
+      AppendTupleShardingElements(&sharding, *tuple_sharding);
     } else {
       xla::OpSharding fallback_sharding;
       fallback_sharding.set_type(xla::OpSharding::REPLICATED);
@@ -3214,16 +3227,23 @@ LogicalResult ConvertToHloModule::Lower(
       xla::XlaScopedShardingAssignment scoped_sharding(builder,
                                                        ret_tuple_sharding);
       *return_value = xla::Tuple(builder, returns);
-    } else if (num_return_values == 1) {
+    } else {
       xla::XlaOp operand;
       if (failed(GetXlaOp(inst->getOperand(0), value_map, &operand, inst)))
         return failure();
 
       if (ret_tuple_sharding) {
-        auto tuple = Tuple(builder, {operand});
-        builder->SetSharding(*ret_shardings[0]);
-        *return_value = GetTupleElement(tuple, 0);
-        builder->ClearSharding();
+        xla::XlaOp tuple;
+        {
+          xla::XlaScopedShardingAssignment scoped_sharding(builder,
+                                                           ret_tuple_sharding);
+          tuple = Tuple(builder, {operand});
+        }
+        {
+          xla::XlaScopedShardingAssignment scoped_sharding(builder,
+                                                           *ret_shardings[0]);
+          *return_value = GetTupleElement(tuple, 0);
+        }
       } else {
         *return_value = operand;
       }
