@@ -385,10 +385,11 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
         "//tensorflow/core:framework",
         "//tensorflow/core/platform:errors",
-        "//tensorflow/core/platform:statusor",
         "//tensorflow/dtensor/cc:dstatus",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
     ],
     alwayslink = 1,
 )
