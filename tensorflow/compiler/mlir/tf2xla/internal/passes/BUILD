@@ -134,7 +134,6 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:tpu_rewrite_device_util",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tf_pass_inc_gen",
         "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings",
@@ -391,22 +390,6 @@ cc_library(
         "@llvm-project//mlir:Rewrite",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
-    ],
-)
-
-tf_cc_test(
-    name = "tpu_cluster_formation_test",
-    srcs = ["tpu_cluster_formation_test.cc"],
-    deps = [
-        ":clustering_passes",
-        "//tensorflow/compiler/mlir/tf2xla/transforms:test_utils",
-        "//tensorflow/core/lib/monitoring:cell_reader",
-        "@com_google_googletest//:gtest_main",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:Support",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
