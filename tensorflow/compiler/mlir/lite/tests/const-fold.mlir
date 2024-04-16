@@ -181,6 +181,46 @@ func.func @elementwise_unary_ops() -> (tensor<f32>, tensor<f32>, tensor<f32>, te
   func.return %7, %8, %9, %10, %11, %12, %13 : tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>
 }
 
+// CHECK-LABEL: @max_with_neg_f32_max_val
+// CHECK-SAME: (%[[ARG0:.+]]: tensor<f32>)
+func.func @max_with_neg_f32_max_val(%arg0 : tensor<f32>) -> (tensor<f32>, tensor<f32>) {
+  %neg_f32_max = arith.constant dense<-3.40282347E+38> : tensor<f32>
+  %0 = "tfl.maximum"(%arg0, %neg_f32_max) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+  %1 = "tfl.maximum"(%neg_f32_max, %arg0) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+  func.return %0, %1 : tensor<f32>, tensor<f32>
+  // CHECK: return %[[ARG0]], %[[ARG0]]
+}
+
+// CHECK-LABEL: @min_with_f32_max_val
+// CHECK-SAME: (%[[ARG0:.+]]: tensor<f32>)
+func.func @min_with_f32_max_val(%arg0 : tensor<f32>) -> (tensor<f32>, tensor<f32>) {
+  %f32_max = arith.constant dense<3.40282347E+38> : tensor<f32>
+  %0 = "tfl.minimum"(%arg0, %f32_max) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+  %1 = "tfl.minimum"(%f32_max, %arg0) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+  func.return %0, %1 : tensor<f32>, tensor<f32>
+  // CHECK: return %[[ARG0]], %[[ARG0]]
+}
+
+// CHECK-LABEL: @max_with_neg_f64_max_val
+// CHECK-SAME: (%[[ARG0:.+]]: tensor<f64>)
+func.func @max_with_neg_f64_max_val(%arg0 : tensor<f64>) -> (tensor<f64>, tensor<f64>) {
+  %neg_f64_max = arith.constant dense<-1.7976931348623157E+308> : tensor<f64>
+  %0 = "tfl.maximum"(%arg0, %neg_f64_max) : (tensor<f64>, tensor<f64>) -> tensor<f64>
+  %1 = "tfl.maximum"(%neg_f64_max, %arg0) : (tensor<f64>, tensor<f64>) -> tensor<f64>
+  func.return %0, %1 : tensor<f64>, tensor<f64>
+  // CHECK: return %[[ARG0]], %[[ARG0]]
+}
+
+// CHECK-LABEL: @min_with_f64_max_val
+// CHECK-SAME: (%[[ARG0:.+]]: tensor<f64>)
+func.func @min_with_f64_max_val(%arg0 : tensor<f64>) -> (tensor<f64>, tensor<f64>) {
+  %f64_max = arith.constant dense<1.7976931348623157E+308> : tensor<f64>
+  %0 = "tfl.minimum"(%arg0, %f64_max) : (tensor<f64>, tensor<f64>) -> tensor<f64>
+  %1 = "tfl.minimum"(%f64_max, %arg0) : (tensor<f64>, tensor<f64>) -> tensor<f64>
+  func.return %0, %1 : tensor<f64>, tensor<f64>
+  // CHECK: return %[[ARG0]], %[[ARG0]]
+}
+
 // CHECK-LABEL: @mul_int
 func.func @mul_int() -> (tensor<i32>, tensor<4xi32>, tensor<4xi32>, tensor<4xi32>) {
   %0 = arith.constant dense<8> : tensor<i32>
