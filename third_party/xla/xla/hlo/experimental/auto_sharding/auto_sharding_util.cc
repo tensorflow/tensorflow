@@ -1272,10 +1272,9 @@ std::vector<int64_t> GetTensorDimToMeshDim(
   }
 }
 
-Shape ComputeIntermediateShape(const HloSharding& src_sharding,
-                               const HloSharding& dst_sharding,
-                               const Shape& shape,
-                               const Array<int64_t>& device_mesh) {
+absl::StatusOr<Shape> ComputeIntermediateShape(
+    const HloSharding& src_sharding, const HloSharding& dst_sharding,
+    const Shape& shape, const Array<int64_t>& device_mesh) {
   int64_t src_n_dim = NumTileDimensions(src_sharding);
 
   const HloSharding* sharding_1d;
@@ -1293,8 +1292,10 @@ Shape ComputeIntermediateShape(const HloSharding& src_sharding,
     if (sharding_1d->tile_assignment().dim(i) == 1) {
       inter_shape_dims.push_back(shape.dimensions(i));
     } else {
-      CHECK(shape.dimensions(i) % device_mesh.dim(0) == 0)
-          << "Only support even partition";
+      // TODO(b/333750146): Support this case instead of bailing here
+      if (shape.dimensions(i) % device_mesh.dim(0) != 0) {
+        return absl::InternalError("Indivisible tensor dims");
+      }
       inter_shape_dims.push_back(device_mesh.dim(0));
       inter_shape_dims.push_back(shape.dimensions(i) / device_mesh.dim(0));
     }
@@ -1318,29 +1319,33 @@ HloInstruction* ReshardTensor(HloInstruction* tensor,
 
   HloInstruction* replace_with = nullptr;
   if (src_n_dim != dst_n_dim && src_n_dim != -1 && dst_n_dim != -1) {
-    Shape inter_shape = ComputeIntermediateShape(src_sharding, dst_sharding,
-                                                 shape, device_mesh);
+    absl::StatusOr<Shape> inter_shape = ComputeIntermediateShape(
+        src_sharding, dst_sharding, shape, device_mesh);
+    if (inter_shape.ok()) {
+      std::optional<HloSharding> src_inter_sharding =
+          hlo_sharding_util::ReshapeSharding(shape, *inter_shape, src_sharding);
+      std::optional<HloSharding> dst_inter_sharding =
+          hlo_sharding_util::ReshapeSharding(shape, *inter_shape, dst_sharding);
+      if (!src_inter_sharding.has_value() || !dst_inter_sharding.has_value()) {
+        src_inter_sharding = HloSharding::Replicate();
+        dst_inter_sharding = HloSharding::Replicate();
+        LOG(WARNING) << "Invalid mixed mesh shape resharding.";
+      }
 
-    std::optional<HloSharding> src_inter_sharding =
-        hlo_sharding_util::ReshapeSharding(shape, inter_shape, src_sharding);
-    std::optional<HloSharding> dst_inter_sharding =
-        hlo_sharding_util::ReshapeSharding(shape, inter_shape, dst_sharding);
-    if (!src_inter_sharding.has_value() || !dst_inter_sharding.has_value()) {
-      src_inter_sharding = HloSharding::Replicate();
-      dst_inter_sharding = HloSharding::Replicate();
-      LOG(WARNING) << "Invalid mixed mesh shape resharding.";
+      HloInstruction* src_inter = computation->AddInstruction(
+          HloInstruction::CreateReshape(*inter_shape, tensor));
+      src_inter->set_sharding(*src_inter_sharding);
+
+      HloInstruction* dst_inter = computation->AddInstruction(
+          HloInstruction::CreateReshape(*inter_shape, src_inter));
+      dst_inter->set_sharding(*dst_inter_sharding);
+
+      replace_with = computation->AddInstruction(
+          HloInstruction::CreateReshape(shape, dst_inter));
+    } else {
+      replace_with = computation->AddInstruction(
+          HloInstruction::CreateReshape(shape, tensor));
     }
-
-    HloInstruction* src_inter = computation->AddInstruction(
-        HloInstruction::CreateReshape(inter_shape, tensor));
-    src_inter->set_sharding(*src_inter_sharding);
-
-    HloInstruction* dst_inter = computation->AddInstruction(
-        HloInstruction::CreateReshape(inter_shape, src_inter));
-    dst_inter->set_sharding(*dst_inter_sharding);
-
-    replace_with = computation->AddInstruction(
-        HloInstruction::CreateReshape(shape, dst_inter));
   } else {
     replace_with = computation->AddInstruction(
         HloInstruction::CreateReshape(shape, tensor));

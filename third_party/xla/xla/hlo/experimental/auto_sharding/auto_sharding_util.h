@@ -12,7 +12,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
 #ifndef XLA_HLO_EXPERIMENTAL_AUTO_SHARDING_AUTO_SHARDING_UTIL_H_
 #define XLA_HLO_EXPERIMENTAL_AUTO_SHARDING_AUTO_SHARDING_UTIL_H_
 
@@ -455,10 +454,9 @@ int64_t NumTileDimensions(const HloSharding& spec);
 
 // When fixing mixed mesh resharding (see below), compute the correct
 // intermediate shape in order to insert copies.
-Shape ComputeIntermediateShape(const HloSharding& src_sharding,
-                               const HloSharding& dst_sharding,
-                               const Shape& shape,
-                               const Array<int64_t>& device_mesh);
+absl::StatusOr<Shape> ComputeIntermediateShape(
+    const HloSharding& src_sharding, const HloSharding& dst_sharding,
+    const Shape& shape, const Array<int64_t>& device_mesh);
 
 // Forcibly set the sharding of the operand of inst.
 // Also fix the resharding between 1d and 2d logical mesh.

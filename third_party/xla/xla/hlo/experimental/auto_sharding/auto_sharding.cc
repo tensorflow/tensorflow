@@ -128,25 +128,27 @@ double ComputeMemoryReshardingCost(const Shape& shape,
                              shape, device_mesh.num_elements(), dst_sharding));
 
   if (src_n_dim != dst_n_dim && src_n_dim != -1 && dst_n_dim != -1) {
-    Shape inter_shape = ComputeIntermediateShape(src_sharding, dst_sharding,
-                                                 shape, device_mesh);
+    absl::StatusOr<Shape> inter_shape = ComputeIntermediateShape(
+        src_sharding, dst_sharding, shape, device_mesh);
+    if (inter_shape.ok()) {
+      std::optional<HloSharding> src_inter_sharding =
+          hlo_sharding_util::ReshapeSharding(shape, *inter_shape, src_sharding);
+      std::optional<HloSharding> dst_inter_sharding =
+          hlo_sharding_util::ReshapeSharding(shape, *inter_shape, dst_sharding);
+      if (!src_inter_sharding.has_value() || !dst_inter_sharding.has_value()) {
+        src_inter_sharding = HloSharding::Replicate();
+        dst_inter_sharding = HloSharding::Replicate();
+      }
 
-    std::optional<HloSharding> src_inter_sharding =
-        hlo_sharding_util::ReshapeSharding(shape, inter_shape, src_sharding);
-    std::optional<HloSharding> dst_inter_sharding =
-        hlo_sharding_util::ReshapeSharding(shape, inter_shape, dst_sharding);
-    if (!src_inter_sharding.has_value() || !dst_inter_sharding.has_value()) {
-      src_inter_sharding = HloSharding::Replicate();
-      dst_inter_sharding = HloSharding::Replicate();
+      result = std::max(
+          result,
+          static_cast<double>(std::max(
+              GetShardedInstructionSize(
+                  *inter_shape, device_mesh.num_elements(), src_inter_sharding),
+              GetShardedInstructionSize(*inter_shape,
+                                        device_mesh.num_elements(),
+                                        dst_inter_sharding))));
     }
-
-    result = std::max(
-        result,
-        static_cast<double>(std::max(
-            GetShardedInstructionSize(inter_shape, device_mesh.num_elements(),
-                                      src_inter_sharding),
-            GetShardedInstructionSize(inter_shape, device_mesh.num_elements(),
-                                      dst_inter_sharding))));
   }
   return result - src_sharded_bytes;
 }
@@ -3656,7 +3658,6 @@ absl::StatusOr<AutoShardingResult> AutoShardingImplementation::RunAutoSharding(
     }
   }
   VLOG(10) << hlo_live_range->ToString();
-  VLOG(10) << spmd::PrintLivenessSet(liveness_set);
   XLA_VLOG_LINES(10, spmd::PrintLivenessSet(liveness_set));
   const HloInstructionSequence& sequence =
       hlo_live_range->flattened_instruction_sequence();
