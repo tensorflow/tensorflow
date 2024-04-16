@@ -174,6 +174,213 @@ diff --ruN a/stablehlo/stablehlo/CMakeLists.txt b/stablehlo/stablehlo/CMakeLists
  add_subdirectory(integrations)
  add_subdirectory(reference)
  add_subdirectory(tests)
+diff --ruN a/stablehlo/stablehlo/dialect/Version.h b/stablehlo/stablehlo/dialect/Version.h
+--- stablehlo/stablehlo/dialect/Version.h
++++ stablehlo/stablehlo/dialect/Version.h
+@@ -38,7 +38,7 @@
+   static FailureOr<Version> fromString(llvm::StringRef versionRef);
+ 
+   /// Return a Version representing the current VHLO dialect version.
+-  static Version getCurrentVersion() { return Version(0, 19, 8); }
++  static Version getCurrentVersion() { return Version(0, 20, 0); }
+ 
+   /// Return a Version representing the minimum supported VHLO dialect version.
+   static Version getMinimumVersion() { return Version(0, 9, 0); }
+diff --ruN a/stablehlo/stablehlo/dialect/VhloAttrs.td b/stablehlo/stablehlo/dialect/VhloAttrs.td
+--- stablehlo/stablehlo/dialect/VhloAttrs.td
++++ stablehlo/stablehlo/dialect/VhloAttrs.td
+@@ -144,6 +144,13 @@
+   let assemblyFormat = "`<` custom<EscapedString>($value) `>`";
+ }
+ 
++// Corresponds to Function SymbolRef from the StableHLO spec.
++def VHLO_SymbolRefAttrV1 : VHLO_AttrDef<"SymbolRefV1", "0.20.0", "current"> {
++  let mnemonic = "symbolref_v1";
++  let parameters = (ins StringRefParameter<"">:$value);
++  let assemblyFormat = "`<` custom<EscapedString>($value) `>`";
++}
++
+ // Corresponds to TensorConstant from the StableHLO spec.
+ def VHLO_TensorDataV1 : AttrParameter<"::llvm::ArrayRef<char>", ""> {
+   let allocator = "$_dst = $_allocator.copyInto($_self);";
+diff --ruN a/stablehlo/stablehlo/dialect/VhloBytecode.cpp b/stablehlo/stablehlo/dialect/VhloBytecode.cpp
+--- stablehlo/stablehlo/dialect/VhloBytecode.cpp
++++ stablehlo/stablehlo/dialect/VhloBytecode.cpp
+@@ -34,6 +34,7 @@
+ #include "mlir/Support/LogicalResult.h"
+ #include "stablehlo/dialect/Base.h"  // for readEnumAttribute
+ #include "stablehlo/dialect/VhloOps.h"
++#include "third_party/stablehlo/stablehlo/dialect/VhloOps.h"
+ 
+ //===----------------------------------------------------------------------===//
+ // Debug Trace Helpers
+@@ -175,6 +176,11 @@
+   ///     bounds : svarint[]
+   ///   }
+   kTypeExtensionsV1Attr = 18,
++
++  ///   SymbolRefV1Attr {
++  ///     value: string
++  ///   }
++  kSymbolRefV1Attr = 19,
+ };
+ 
+ /// This enum contains marker codes used to indicate which type is
+@@ -384,6 +390,7 @@
+   RngDistributionV1Attr readRngDistributionV1Attr(
+       DialectBytecodeReader &reader) const;
+   StringV1Attr readStringV1Attr(DialectBytecodeReader &reader) const;
++  SymbolRefV1Attr readSymbolRefV1Attr(DialectBytecodeReader &reader) const;
+   TensorV1Attr readTensorV1Attr(DialectBytecodeReader &reader) const;
+   TransposeV1Attr readTransposeV1Attr(DialectBytecodeReader &reader) const;
+   TypeV1Attr readTypeV1Attr(DialectBytecodeReader &reader) const;
+@@ -409,6 +416,7 @@
+   void write(RngAlgorithmV1Attr attr, DialectBytecodeWriter &writer) const;
+   void write(RngDistributionV1Attr attr, DialectBytecodeWriter &writer) const;
+   void write(StringV1Attr attr, DialectBytecodeWriter &writer) const;
++  void write(SymbolRefV1Attr attr, DialectBytecodeWriter &writer) const;
+   void write(TensorV1Attr attr, DialectBytecodeWriter &writer) const;
+   void write(TransposeV1Attr attr, DialectBytecodeWriter &writer) const;
+   void write(TypeV1Attr attr, DialectBytecodeWriter &writer) const;
+@@ -489,6 +497,8 @@
+       return readRngDistributionV1Attr(reader);
+     case vhlo_encoding::kStringV1Attr:
+       return readStringV1Attr(reader);
++    case vhlo_encoding::kSymbolRefV1Attr:
++      return readSymbolRefV1Attr(reader);
+     case vhlo_encoding::kTensorV1Attr:
+       return readTensorV1Attr(reader);
+     case vhlo_encoding::kTransposeV1Attr:
+@@ -513,8 +523,8 @@
+             ComparisonTypeV1Attr, CustomCallApiVersionV1Attr, DictionaryV1Attr,
+             FftTypeV1Attr, FloatV1Attr, IntegerV1Attr, OutputOperandAliasV1Attr,
+             PrecisionV1Attr, RngAlgorithmV1Attr, RngDistributionV1Attr,
+-            StringV1Attr, TensorV1Attr, TransposeV1Attr, TypeV1Attr,
+-            TypeExtensionsV1Attr>([&](auto attr) {
++            StringV1Attr, SymbolRefV1Attr, TensorV1Attr, TransposeV1Attr,
++            TypeV1Attr, TypeExtensionsV1Attr>([&](auto attr) {
+         LOG_WRITE_CALL;
+         write(attr, writer);
+         return success();
+@@ -844,6 +854,24 @@
+ void VhloBytecodeInterface::write(StringV1Attr attr,
+                                   DialectBytecodeWriter &writer) const {
+   writer.writeVarInt(vhlo_encoding::kStringV1Attr);
++  writer.writeOwnedString(attr.getValue());
++}
++
++//===----------------------------------------------------------------------===//
++// SymbolRefV1Attr
++//===----------------------------------------------------------------------===//
++
++SymbolRefV1Attr VhloBytecodeInterface::readSymbolRefV1Attr(
++    DialectBytecodeReader &reader) const {
++  LOG_READ_CALL;
++  StringRef string;
++  if (failed(reader.readString(string))) return SymbolRefV1Attr();
++  return SymbolRefV1Attr::get(getContext(), string);
++}
++
++void VhloBytecodeInterface::write(SymbolRefV1Attr attr,
++                                  DialectBytecodeWriter &writer) const {
++  writer.writeVarInt(vhlo_encoding::kSymbolRefV1Attr);
+   writer.writeOwnedString(attr.getValue());
+ }
+ 
+diff --ruN a/stablehlo/stablehlo/dialect/VhloDialect.td b/stablehlo/stablehlo/dialect/VhloDialect.td
+--- stablehlo/stablehlo/dialect/VhloDialect.td
++++ stablehlo/stablehlo/dialect/VhloDialect.td
+@@ -37,6 +37,7 @@
+       0.17.0: Allow reduce operations to promote to higher bitwidth.
+       0.18.0: Introduce `UniformQuantizedPerAxisType` type.
+       0.19.0: Introduce `composite` operation.
++      0.20.0: Introduce `symbolref` attribute.
+   }];
+ 
+   let useDefaultAttributePrinterParser = 0;
+diff --ruN a/stablehlo/stablehlo/dialect/VhloOps.cpp b/stablehlo/stablehlo/dialect/VhloOps.cpp
+--- stablehlo/stablehlo/dialect/VhloOps.cpp
++++ stablehlo/stablehlo/dialect/VhloOps.cpp
+@@ -18,6 +18,7 @@
+ 
+ #include <cstdint>
+ 
++#include "llvm/Support/Debug.h"
+ #include "llvm/ADT/STLExtras.h"
+ #include "llvm/ADT/SmallVector.h"
+ #include "llvm/ADT/StringExtras.h"
+@@ -38,7 +39,9 @@
+ #include "mlir/Support/LogicalResult.h"
+ #include "stablehlo/dialect/AssemblyFormat.h"
+ #include "stablehlo/dialect/VhloBytecode.h"
++#include "stablehlo/dialect/VhloOps.h"
+ #include "stablehlo/dialect/VhloTypes.h"
++#include "third_party/stablehlo/stablehlo/dialect/VhloOps.h"
+ 
+ namespace mlir {
+ namespace vhlo {
+@@ -365,5 +368,28 @@
+   return verifyConstraint_0_17_0(op, targetVersion);
+ }
+ 
++LogicalResult CustomCallOpV1::validateConstraint(mlir::Operation* op,
++                                                 Version targetVersion) {
++  if (targetVersion < Version(0, 20, 0)) return success();
++  if (auto array = dyn_cast<ArrayV1Attr>(getCalledComputations())) {
++    return success(llvm::all_of(array.getValue(), [](Attribute attr) {
++      return isa<SymbolRefV1Attr>(attr);
++    }));
++  }
++  return failure();
++}
++
++LogicalResult CallOpV1::validateConstraint(mlir::Operation* op,
++                                           Version targetVersion) {
++  return success(targetVersion < Version(0, 20, 0) ||
++                 isa<SymbolRefV1Attr>(getCallee()));
++}
++
++LogicalResult CompositeOpV1::validateConstraint(mlir::Operation* op,
++                                           Version targetVersion) {
++  return success(targetVersion < Version(0, 20, 0) ||
++                 isa<SymbolRefV1Attr>(getDecomposition()));
++}
++
+ }  // namespace vhlo
+ }  // namespace mlir
+diff --ruN a/stablehlo/stablehlo/dialect/VhloOps.td b/stablehlo/stablehlo/dialect/VhloOps.td
+--- stablehlo/stablehlo/dialect/VhloOps.td
++++ stablehlo/stablehlo/dialect/VhloOps.td
+@@ -209,7 +209,8 @@
+ // TODO(#425): CallOp is not part of the StableHLO spec.
+ // We're planning to look into it as part of the work on speccing
+ // Module/Func/Call/Return ops in StableHLO.
+-def VHLO_CallOpV1 : VHLO_Op<"call_v1", "0.9.0", "current"> {
++def VHLO_CallOpV1 : VHLO_Op<"call_v1", "0.9.0", "current",
++    [DeclareOpInterfaceMethods<VHLO_VersionedOpConstraintInterface>]> {
+   let arguments = (ins VHLO_AnyAttr:$callee, Variadic<VHLO_AnyType>:$operands);
+   let results = (outs Variadic<VHLO_AnyType>:$results);
+ }
+@@ -285,7 +286,8 @@
+   let results = (outs VHLO_AnyType:$result);
+ }
+ 
+-def VHLO_CompositeOpV1 : VHLO_Op<"composite_v1", "0.19.0", "current"> {
++def VHLO_CompositeOpV1 : VHLO_Op<"composite_v1", "0.19.0", "current",
++    [DeclareOpInterfaceMethods<VHLO_VersionedOpConstraintInterface>]> {
+   let arguments = (ins
+     Variadic<VHLO_AnyType>:$inputs,
+     VHLO_AnyAttr:$name,
+@@ -384,7 +386,8 @@
+ // TODO(#740): output_operand_aliases is not part of the spec.
+ // CustomCallOp has proven to be one of the trickiest ops to fully spec.
+ // We're aiming to address all these todos by the release of StableHLO v1.0.
+-def VHLO_CustomCallOpV1 : VHLO_Op<"custom_call_v1", "0.9.0", "current"> {
++def VHLO_CustomCallOpV1 : VHLO_Op<"custom_call_v1", "0.9.0", "current",
++    [DeclareOpInterfaceMethods<VHLO_VersionedOpConstraintInterface>]> {
+   let arguments = (ins
+     Variadic<VHLO_AnyType>:$inputs,
+     VHLO_AnyAttr:$call_target_name,
 diff --ruN a/stablehlo/stablehlo/experimental/BUILD.bazel b/stablehlo/stablehlo/experimental/BUILD.bazel
 --- stablehlo/stablehlo/experimental/BUILD.bazel
 +++ stablehlo/stablehlo/experimental/BUILD.bazel
@@ -2563,6 +2770,45 @@ diff --ruN a/stablehlo/stablehlo/experimental/transforms/StablehloRefineShapes.c
 +}  // namespace experimental
 +}  // namespace stablehlo
 +}  // namespace mlir
+diff --ruN a/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.mlir b/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.mlir
+--- stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.mlir
++++ stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.mlir
+@@ -434,7 +434,7 @@
+ func.func @default_composite(%arg0: tensor<f32>) -> tensor<f32> {
+   //               CHECK: "vhlo.composite_v1"(%arg0) <{
+   //          CHECK-SAME:   composite_attributes = #vhlo.dict_v1<{}>
+-  //          CHECK-SAME:   decomposition = #vhlo.string_v1<"composite_target">
++  //          CHECK-SAME:   decomposition = #vhlo.symbolref_v1<"composite_target">
+   //          CHECK-SAME:   name = #vhlo.string_v1<"stablehlo.composite_target">
+   //          CHECK-SAME:   version = #vhlo.integer_v1<0 : i64>
+   //          CHECK-SAME: }> : (!vhlo.tensor_v1<!vhlo.f32_v1>) -> !vhlo.tensor_v1<!vhlo.f32_v1>
+@@ -1056,7 +1056,7 @@
+ func.func @op_composite(%arg0: tensor<f32>) -> tensor<f32> {
+   //               CHECK: "vhlo.composite_v1"(%arg0) <{
+   //          CHECK-SAME:   composite_attributes = #vhlo.dict_v1<{#vhlo.string_v1<"my_int"> = #vhlo.integer_v1<1 : i64>, #vhlo.string_v1<"my_string"> = #vhlo.string_v1<"foo">}>
+-  //          CHECK-SAME:   decomposition = #vhlo.string_v1<"composite_target">
++  //          CHECK-SAME:   decomposition = #vhlo.symbolref_v1<"composite_target">
+   //          CHECK-SAME:   name = #vhlo.string_v1<"stablehlo.composite_target">
+   //          CHECK-SAME:   version = #vhlo.integer_v1<1 : i32>
+   //          CHECK-SAME: }> : (!vhlo.tensor_v1<!vhlo.f32_v1>) -> !vhlo.tensor_v1<!vhlo.f32_v1>
+@@ -1181,7 +1181,7 @@
+   // CHECK-SAME:   api_version = #vhlo<api_version_v1 API_VERSION_STATUS_RETURNING>,
+   // CHECK-SAME:   backend_config = #vhlo.string_v1<"\08\03\1A\02">,
+   // CHECK-SAME:   call_target_name = #vhlo.string_v1<"foo">,
+-  // CHECK-SAME:   called_computations = #vhlo.array_v1<[#vhlo.string_v1<"foo">]>,
++  // CHECK-SAME:   called_computations = #vhlo.array_v1<[#vhlo.symbolref_v1<"foo">]>,
+   // CHECK-SAME:   has_side_effect = #vhlo.bool_v1<true>,
+   // CHECK-SAME:   operand_layouts = #vhlo.array_v1<[#vhlo.tensor_v1<dense<> : tensor<0xindex>>]>,
+   // CHECK-SAME:   output_operand_aliases = #vhlo.array_v1<[
+@@ -2439,7 +2439,7 @@
+ //       CHECK: function_type = #vhlo.type_v1<!vhlo.func_v1<(!vhlo.token_v1) -> !vhlo.token_v1>>
+ // CHECK-LABEL: "type_token_caller"
+ func.func @type_token_caller(%arg0: !stablehlo.token) -> !stablehlo.token {
+-  // CHECK:      "vhlo.call_v1"(%arg0) <{callee = #vhlo.string_v1<"type_token_callee">}
++  // CHECK:      "vhlo.call_v1"(%arg0) <{callee = #vhlo.symbolref_v1<"type_token_callee">}
+   // CHECK-SAME: (!vhlo.token_v1) -> !vhlo.token_v1
+   %0 = func.call @type_token_callee(%arg0) : (!stablehlo.token) -> !stablehlo.token
+   return %0 : !stablehlo.token
 diff --ruN a/stablehlo/stablehlo/transforms/StablehloAggressiveSimplification.cpp b/stablehlo/stablehlo/transforms/StablehloAggressiveSimplification.cpp
 --- stablehlo/stablehlo/transforms/StablehloAggressiveSimplification.cpp
 +++ stablehlo/stablehlo/transforms/StablehloAggressiveSimplification.cpp
@@ -2575,4 +2821,347 @@ diff --ruN a/stablehlo/stablehlo/transforms/StablehloAggressiveSimplification.cp
            // using one argument implies using the whole argument pair
            const auto pairNo = blockArg.getArgNumber() % numOperandPairs;
            usedArgs.set(pairNo);
+diff --ruN a/stablehlo/stablehlo/transforms/StablehloLegalizeToVhlo.cpp b/stablehlo/stablehlo/transforms/StablehloLegalizeToVhlo.cpp
+--- stablehlo/stablehlo/transforms/StablehloLegalizeToVhlo.cpp
++++ stablehlo/stablehlo/transforms/StablehloLegalizeToVhlo.cpp
+@@ -185,7 +185,8 @@
+     }
+   }
+   if (auto attr = dyn_cast<FlatSymbolRefAttr>(stablehloAttr)) {
+-    return convertGeneric(attr.getAttr(), typeConverter);
++    return vhlo::SymbolRefV1Attr::get(attr.getContext(),
++                                      attr.getAttr().getValue());
+   }
+   if (auto attr = dyn_cast<StringAttr>(stablehloAttr)) {
+     if (!isa<NoneType>(attr.getType())) {
+@@ -366,25 +367,6 @@
+   return specialSuccess();
+ }
+ 
+-SpecialResult convertCustomCallCalledComputations(
+-    const ConversionPattern& pattern, Attribute stablehloAttr,
+-    SmallVector<NamedAttribute>& vhloAttrs) {
+-  auto attr = dyn_cast<ArrayAttr>(stablehloAttr);
+-  if (!attr) return specialFailure();
+-
+-  SmallVector<Attribute> vhloElementAttrs;
+-  for (auto stablehloElementAttr : attr) {
+-    auto vhloElementAttr = convertSymbol(pattern, stablehloElementAttr);
+-    if (!vhloElementAttr) return specialFailure();
+-    vhloElementAttrs.push_back(vhloElementAttr);
+-  }
+-
+-  vhloAttrs.emplace_back(
+-      StringAttr::get(pattern.getContext(), "called_computations"),
+-      vhlo::ArrayV1Attr::get(pattern.getContext(), vhloElementAttrs));
+-  return specialSuccess();
+-}
+-
+ SpecialResult convertDotDimensionNumbers(
+     const ConversionPattern& pattern, Attribute stablehloAttr,
+     SmallVector<NamedAttribute>& vhloAttrs) {
+@@ -418,16 +400,6 @@
+   vhloAttrs.emplace_back(
+       StringAttr::get(pattern.getContext(), "rhs_contracting_dimensions"),
+       vhloRhsContractingDimensions);
+-  return specialSuccess();
+-}
+-
+-SpecialResult convertFuncCallee(const ConversionPattern& pattern,
+-                                Attribute stablehloAttr,
+-                                SmallVector<NamedAttribute>& vhloAttrs) {
+-  auto vhloAttr = convertSymbol(pattern, stablehloAttr);
+-  if (!vhloAttr) return specialFailure();
+-  vhloAttrs.emplace_back(StringAttr::get(pattern.getContext(), "callee"),
+-                         vhloAttr);
+   return specialSuccess();
+ }
+ 
+@@ -533,9 +505,6 @@
+   if constexpr (std::is_same<StablehloOpTy, stablehlo::CustomCallOp>::value) {
+     if (stablehloName == "api_version")
+       return convertCustomCallApiVersion(pattern, stablehloAttr, vhloAttrs);
+-    if (stablehloName == "called_computations")
+-      return convertCustomCallCalledComputations(pattern, stablehloAttr,
+-                                                 vhloAttrs);
+   }
+   if constexpr (std::is_same<StablehloOpTy, stablehlo::DotGeneralOp>::value) {
+     if (stablehloName == "dot_dimension_numbers")
+@@ -555,10 +524,6 @@
+   if constexpr (std::is_same<StablehloOpTy, stablehlo::ScatterOp>::value) {
+     if (stablehloName == "scatter_dimension_numbers")
+       return convertScatterDimensionNumbers(pattern, stablehloAttr, vhloAttrs);
+-  }
+-  if constexpr (std::is_same<StablehloOpTy, func::CallOp>::value) {
+-    if (stablehloName == "callee")
+-      return convertFuncCallee(pattern, stablehloAttr, vhloAttrs);
+   }
+   return notSpecial();
+ }
+diff --ruN a/stablehlo/stablehlo/transforms/VhloLegalizeToStablehlo.cpp b/stablehlo/stablehlo/transforms/VhloLegalizeToStablehlo.cpp
+--- stablehlo/stablehlo/transforms/VhloLegalizeToStablehlo.cpp
++++ stablehlo/stablehlo/transforms/VhloLegalizeToStablehlo.cpp
+@@ -140,6 +140,9 @@
+   }
+   if (auto attr = dyn_cast<vhlo::StringV1Attr>(vhloAttr)) {
+     return StringAttr::get(attr.getContext(), attr.getValue());
++  }
++  if (auto attr = dyn_cast<vhlo::SymbolRefV1Attr>(vhloAttr)) {
++    return FlatSymbolRefAttr::get(attr.getContext(), attr.getValue());
+   }
+   if (auto attr = dyn_cast<vhlo::TensorV1Attr>(vhloAttr)) {
+     auto builtinType =
+@@ -277,20 +280,6 @@
+       stablehloOutputSpatialDimensions);
+ }
+ 
+-Attribute convertCustomCallCalledComputations(
+-    Attribute vhloAttr, const TypeConverter* typeConverter) {
+-  if (auto vhloArrayAttr = dyn_cast<vhlo::ArrayV1Attr>(vhloAttr)) {
+-    SmallVector<Attribute> stablehloAttrs;
+-    for (auto vhloAttr : vhloArrayAttr.getValue()) {
+-      auto stablehloAttr = convertSymbol(vhloAttr, typeConverter);
+-      if (!stablehloAttr) return {};
+-      stablehloAttrs.push_back(stablehloAttr);
+-    }
+-    return ArrayAttr::get(vhloAttr.getContext(), stablehloAttrs);
+-  }
+-  return {};
+-}
+-
+ Attribute convertDotDimensionNumbers(vhlo::DotGeneralOpV1 vhloOp,
+                                      const TypeConverter* typeConverter) {
+   SmallVector<int64_t> stablehloLhsBatchingDimensions,
+@@ -483,25 +472,6 @@
+       if (!vhloBooleanAttr) return specialFailure();
+       if (!vhloBooleanAttr.getValue()) return specialSuccess();
+       stablehloAttr = UnitAttr::get(pattern.getContext());
+-    }
+-  }
+-  if constexpr (std::is_same<VhloOpTy, vhlo::CustomCallOpV1>::value) {
+-    if (vhloName == "called_computations") {
+-      stablehloAttr = convertCustomCallCalledComputations(
+-          vhloAttr, pattern.getTypeConverter());
+-      if (!stablehloAttr) return specialFailure();
+-    }
+-  }
+-  if constexpr (std::is_same<VhloOpTy, vhlo::CompositeOpV1>::value) {
+-    if (vhloName == "decomposition") {
+-      stablehloAttr = convertSymbol(vhloAttr, pattern.getTypeConverter());
+-      if (!stablehloAttr) return specialFailure();
+-    }
+-  }
+-  if constexpr (std::is_same<VhloOpTy, vhlo::CallOpV1>::value) {
+-    if (vhloName == "callee") {
+-      stablehloAttr = convertFuncCallee(vhloAttr, pattern.getTypeConverter());
+-      if (!stablehloAttr) return specialFailure();
+     }
+   }
+   if (stablehloAttr) {
+diff --ruN a/stablehlo/stablehlo/transforms/VhloToVersion.cpp b/stablehlo/stablehlo/transforms/VhloToVersion.cpp
+--- stablehlo/stablehlo/transforms/VhloToVersion.cpp
++++ stablehlo/stablehlo/transforms/VhloToVersion.cpp
+@@ -37,6 +37,9 @@
+ #include "stablehlo/dialect/VhloOps.h"
+ #include "stablehlo/dialect/VhloTypes.h"
+ #include "stablehlo/transforms/Passes.h"
++#include "third_party/llvm/llvm-project/llvm/include/llvm/ADT/SmallVector.h"
++#include "third_party/llvm/llvm-project/mlir/include/mlir/IR/Attributes.h"
++#include "third_party/stablehlo/stablehlo/dialect/VhloOps.h"
+ 
+ #define DEBUG_TYPE "compat-passes"
+ 
+@@ -296,6 +299,132 @@
+ /// Upgrade and Downgrade Definitions ///
+ /////////////////////////////////////////
+ 
++StringV1Attr convert(SymbolRefV1Attr attr) {
++  return StringV1Attr::get(attr.getContext(), attr.getValue());
++}
++SymbolRefV1Attr convert(StringV1Attr attr) {
++  return SymbolRefV1Attr::get(attr.getContext(), attr.getValue());
++}
++
++template <typename OpType, typename SourceAttr, typename TargetAttr>
++struct AttributeConversionPattern : public OpConversionPattern<OpType> {
++  using OpConversionPattern<OpType>::OpConversionPattern;
++  virtual SmallVector<StringRef> getAttributeNames(OpType op) const = 0;
++
++  FailureOr<SmallVector<SourceAttr>> matchArrayOfSource(Attribute attr) const {
++    vhlo::ArrayV1Attr arrayAttr = dyn_cast<ArrayV1Attr>(attr);
++    if (!arrayAttr) return failure();
++    SmallVector<SourceAttr> elements;
++    for (Attribute attr : arrayAttr.getValue()) {
++      SourceAttr element = dyn_cast<SourceAttr>(attr);
++      if (!element) return failure();
++      elements.push_back(element);
++    }
++    return elements;
++  }
++
++  LogicalResult convertAttribute(ConversionPatternRewriter& rewriter, OpType op,
++                                 StringRef attrName) const {
++    Attribute attr = op->getAttr(attrName);
++
++    // Support the following:
++    //   Array<SourceAttr> -> Array<TargetAttr>
++    //   SourceAttr -> TargetAttr
++    if (auto array = matchArrayOfSource(attr); succeeded(array)) {
++      SmallVector<Attribute> newAttrs;
++      for (SourceAttr sourceAttr : *array) {
++        TargetAttr targetAttr = convert(sourceAttr);
++        if (!targetAttr) return failure();
++        newAttrs.push_back(targetAttr);
++      }
++      rewriter.modifyOpInPlace(op, [&]() {
++        op->setAttr(attrName, ArrayV1Attr::get(op.getContext(), newAttrs));
++      });
++      return success();
++    }
++    if (auto sourceAttr = dyn_cast<SourceAttr>(attr)) {
++      TargetAttr targetAttr = convert(sourceAttr);
++      if (!targetAttr) return failure();
++      rewriter.modifyOpInPlace(op,
++                               [&]() { op->setAttr(attrName, targetAttr); });
++      return success();
++    }
++    return failure();
++  }
++
++  LogicalResult matchAndRewrite(
++      OpType op, typename OpType::Adaptor /*adaptor*/,
++      ConversionPatternRewriter& rewriter) const override {
++    for (auto attrName : getAttributeNames(op)) {
++      if (failed(convertAttribute(rewriter, op, attrName))) {
++        LLVM_DEBUG(llvm::dbgs() << "Failed attr conversion for: " << attrName
++                                << "of" << op << '\n');
++        return failure();
++      }
++    }
++    return success();
++  }
++};
++
++///////////////////////////
++// v0.20.0
++// SymbolRefV1 <-> StringV1
++///////////////////////////
++
++struct CustomCallOpSymbolRefUpgradePattern
++    : public AttributeConversionPattern<CustomCallOpV1, StringV1Attr,
++                                        SymbolRefV1Attr> {
++  using AttributeConversionPattern::AttributeConversionPattern;
++  SmallVector<StringRef> getAttributeNames(CustomCallOpV1 op) const final {
++    return {op.getCalledComputationsAttrName().getValue()};
++  }
++};
++
++struct CustomCallOpSymbolRefDowngradePattern
++    : public AttributeConversionPattern<CustomCallOpV1, SymbolRefV1Attr,
++                                        StringV1Attr> {
++  using AttributeConversionPattern::AttributeConversionPattern;
++  SmallVector<StringRef> getAttributeNames(CustomCallOpV1 op) const final {
++    return {op.getCalledComputationsAttrName().getValue()};
++  }
++};
++
++struct CallOpSymbolRefUpgradePattern
++    : public AttributeConversionPattern<CallOpV1, StringV1Attr,
++                                        SymbolRefV1Attr> {
++  using AttributeConversionPattern::AttributeConversionPattern;
++  SmallVector<StringRef> getAttributeNames(CallOpV1 op) const final {
++    return {op.getCalleeAttrName().getValue()};
++  }
++};
++
++struct CallOpSymbolRefDowngradePattern
++    : public AttributeConversionPattern<CallOpV1, SymbolRefV1Attr,
++                                        StringV1Attr> {
++  using AttributeConversionPattern::AttributeConversionPattern;
++  SmallVector<StringRef> getAttributeNames(CallOpV1 op) const final {
++    return {op.getCalleeAttrName().getValue()};
++  }
++};
++
++struct CompositeOpSymbolRefUpgradePattern
++    : public AttributeConversionPattern<CompositeOpV1, StringV1Attr,
++                                        SymbolRefV1Attr> {
++  using AttributeConversionPattern::AttributeConversionPattern;
++  SmallVector<StringRef> getAttributeNames(CompositeOpV1 op) const final {
++  return {op.getDecompositionAttrName().getValue()};
++  }
++};
++
++struct CompositeOpSymbolRefDowngradePattern
++    : public AttributeConversionPattern<CompositeOpV1, SymbolRefV1Attr,
++                                        StringV1Attr> {
++  using AttributeConversionPattern::AttributeConversionPattern;
++  SmallVector<StringRef> getAttributeNames(CompositeOpV1 op) const final {
++    return {op.getDecompositionAttrName().getValue()};
++  }
++};
++
+ }  // namespace
+ }  // namespace vhlo
+ 
+@@ -303,8 +432,13 @@
+ void populateVhloToVersionPatterns(RewritePatternSet* patterns,
+                                    TypeConverter* converter,
+                                    MLIRContext* context) {
+-  // Currently empty because we're starting from a clean slate in v0.9.0 and
+-  // changes so far are additive.
++  // Add SymbolRef to VHLO in 0.20.0
++  patterns->add<vhlo::CustomCallOpSymbolRefUpgradePattern,
++                vhlo::CustomCallOpSymbolRefDowngradePattern>(context);
++  patterns->add<vhlo::CallOpSymbolRefUpgradePattern,
++                vhlo::CallOpSymbolRefDowngradePattern>(context);
++  patterns->add<vhlo::CompositeOpSymbolRefUpgradePattern,
++                vhlo::CompositeOpSymbolRefDowngradePattern>(context);
+ }
+ 
+ }  // namespace stablehlo
+diff --ruN a/stablehlo/stablehlo/transforms/VhloToVersionPatterns.td b/stablehlo/stablehlo/transforms/VhloToVersionPatterns.td
+--- stablehlo/stablehlo/transforms/VhloToVersionPatterns.td
++++ stablehlo/stablehlo/transforms/VhloToVersionPatterns.td
+@@ -0,0 +1,40 @@
++/* Copyright 2022 The StableHLO Authors.
++
++Licensed under the Apache License, Version 2.0 (the "License");
++you may not use this file except in compliance with the License.
++You may obtain a copy of the License at
++
++    http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing, software
++distributed under the License is distributed on an "AS IS" BASIS,
++WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++See the License for the specific language governing permissions and
++limitations under the License.
++==============================================================================*/
++
++include "mlir/IR/OpBase.td"
++include "stablehlo/dialect/VhloOps.td"
++
++class StableHLO_ConstantLike<string value> : NativeCodeCall<
++    "::mlir::stablehlo::getConstantLike($_builder, $_loc, " # value # ", $0)">;
++
++def ComplexElementType : Type<
++  CPred<"isa<ComplexType>(cast<ShapedType>($_self).getElementType())">,
++  "Complex element type">;
++
++class DowngradePattern<string version> : Pat<>
++
++Variadic<VHLO_AnyType>:$inputs,
++    VHLO_AnyAttr:$name,
++    VHLO_AnyAttr:$composite_attributes,
++    VHLO_AnyAttr:$decomposition,
++    VHLO_AnyAttr:$version
++
++def : Pat<(VHLO_CompositeOpV1 $inputs $name, $composite_attributes, StringAttrV1:$decomposition, $version),
++          (VHLO_CompositeOpV1 $v)>;
++
++// CustomCall_v20 --> CustomCall_v19
++//  called_computation : SymbolRefV1
++//  called_computation : StringAttrV1
++
 
