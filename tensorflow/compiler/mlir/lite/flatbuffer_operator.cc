@@ -448,7 +448,7 @@ Status mlir::CustomOptionsToAttributes(
       "custom_option",
       mlir::TFL::ConstBytesAttr::get(builder.getContext(), content)));
 
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 // TODO(zichuanwei@): Populate Builtin_options_2 manual for now, should
