@@ -87,6 +87,21 @@ void InitializeStateForValue(
   cached->second = next_state_index;
 }
 
+bool HasPerAxisQuantizedOperand(Operation* op) {
+  for (int i = 0; i < op->getNumOperands(); ++i) {
+    if (auto dq_op = dyn_cast_or_null<quantfork::DequantizeCastOp>(
+            op->getOperand(i).getDefiningOp())) {
+      auto type = dq_op.getArg().getType().cast<TensorType>().getElementType();
+      if (auto per_axis_qtype =
+              QuantizedType::getQuantizedElementType(type)
+                  .dyn_cast_or_null<quant::UniformQuantizedPerAxisType>()) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 }  // namespace
 
 void QuantizationDriver::InitializeArgState(const BlockArgument arg,
@@ -791,11 +806,18 @@ bool QuantizationDriver::PropagateParamsAndReturnIfChanged() {
       // quantization for the quantized kernel. If the quantized dimension
       // changes, the following logic no longer works as the same `params`
       // shouldn't be used for both input and output quantization params.
-      // E.g. TransposeOp's propagation is handled in
-      // `PropagateTransposedQuantDim` in PrepareQuantize.
+      // E.g. During TransposeOp's quantization propagation in
+      // PrepareQuantize, if the quantization is per-axis and the
+      // QuantizedDimension is transposed, then the output q-dq params must
+      // reflect the new QuantizedDimension. So, check and skip the
+      // propagation if any of the operands has a per-axis quantized type param
+      // and `RequiredSameQuantizedAxes` set to false.
+      // Currently, these lines of code are only applicable to TFL_TransposeOp
+      // and the output q-dq propagation for this Op is performed in
+      // `PropagateTransposedPerAxisQuantDim`.
       if (is_qdq_conversion_ &&
           !scale_spec->required_same_quantized_axes_func()) {
-        continue;
+        if (HasPerAxisQuantizedOperand(op)) continue;
       }
 
       // Use the final state to set all the operands' parameters.
