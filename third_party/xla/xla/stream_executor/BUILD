@@ -376,7 +376,7 @@ cc_library(
 
 #===--------------------------------------------------------------------------------------------===#
 # StreamExecutor internal implementation (visible to StreamExecutor platform implementations)
-#===--------------------------------------------------------------------------------------------===#'
+#===--------------------------------------------------------------------------------------------===#
 
 # This header-only library is an internal implementation detail of StreamExecutor (to break
 # dependency cycles between internal libraries). All StreamExecutor clients should depend on a
