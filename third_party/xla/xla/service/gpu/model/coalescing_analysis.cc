@@ -262,19 +262,19 @@ void AssignValuesToOuterLoopIVs(IndexingMap* indexing_map) {
   }
   MLIRContext* mlir_context = indexing_map->GetMLIRContext();
   llvm::SmallVector<AffineExpr, 2> symbol_replacements;
-  for (const RangeVar& range_var : indexing_map->GetRangeVars()) {
-    symbol_replacements.push_back(
-        getAffineConstantExpr(range_var.range.lower, mlir_context));
+  for (int64_t symbol_id = 0; symbol_id < indexing_map->GetRangeVarsCount() - 1;
+       ++symbol_id) {
+    symbol_replacements.push_back(getAffineConstantExpr(
+        indexing_map->GetRangeVar(symbol_id).range.lower, mlir_context));
   }
-  symbol_replacements.push_back(mlir::getAffineSymbolExpr(
-      indexing_map->GetRangeVarsCount() - 1, mlir_context));
+  symbol_replacements.push_back(mlir::getAffineSymbolExpr(0, mlir_context));
 
   AffineMap thread_x_to_input_no_dim_symbols =
       indexing_map->GetAffineMap().replaceDimsAndSymbols(
           {}, symbol_replacements, indexing_map->GetDimVarsCount(), 1);
   *indexing_map = IndexingMap{thread_x_to_input_no_dim_symbols,
                               indexing_map->GetDimVars(),
-                              indexing_map->GetRangeVars(),
+                              {indexing_map->GetRangeVars().back()},
                               {}};
   indexing_map->Simplify(GetIndexingMapForInstruction);
   indexing_map->RemoveUnusedSymbols();

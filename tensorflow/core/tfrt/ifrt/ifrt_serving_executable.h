@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TFRT_IFRT_IFRT_SERVING_EXECUTABLE_H_
 #define TENSORFLOW_CORE_TFRT_IFRT_IFRT_SERVING_EXECUTABLE_H_
 
+#include <algorithm>
 #include <memory>
 #include <string>
 #include <utility>
@@ -118,12 +119,22 @@ class IfrtServingExecutable {
   };
 
   struct CachedExecutableBundle {
-    std::shared_ptr<xla::ifrt::LoadedExecutable> ifrt_executable;
+    std::unique_ptr<xla::ifrt::LoadedExecutable> ifrt_executable;
     tensorflow::tpu::TPUCompileMetadataProto compile_metadata;
     // TODO(b/322541827): change from std::shared_ptr to std::unique_ptr once
     // we avoid copy use of CachedExectableBundle.
-    std::vector<std::shared_ptr<TfHostCallback>> host_callbacks;
+    std::vector<std::unique_ptr<TfHostCallback>> host_callbacks;
+
+    CachedExecutableBundle() = default;
+    // Move only
+    CachedExecutableBundle(CachedExecutableBundle&& other) = default;
+    CachedExecutableBundle& operator=(CachedExecutableBundle&& other) = default;
+    CachedExecutableBundle(const CachedExecutableBundle& other) = delete;
+    CachedExecutableBundle& operator=(const CachedExecutableBundle& other) =
+        delete;
   };
+
+  using SharedCachedExecutableBundle = std::shared_ptr<CachedExecutableBundle>;
 
   std::string model_name_;
   std::string signature_name_;
@@ -141,8 +152,8 @@ class IfrtServingExecutable {
   tensorflow::XlaHelpers::ShapeRepresentationFn shape_representation_fn_;
 
   mutable absl::Mutex mutex_;
-  absl::flat_hash_map<Key,
-                      xla::ifrt::Future<absl::StatusOr<CachedExecutableBundle>>>
+  absl::flat_hash_map<
+      Key, xla::ifrt::Future<absl::StatusOr<SharedCachedExecutableBundle>>>
       executable_bundles_ ABSL_GUARDED_BY(mutex_);
 
   // Asynchronously load the restored variable tensors to Ifrt array.
@@ -157,9 +168,9 @@ class IfrtServingExecutable {
       const xla::ifrt::DeviceList& device_list,
       const xla::OpSharding& sharding);
 
-  xla::ifrt::Future<absl::StatusOr<CachedExecutableBundle>>
+  xla::ifrt::Future<absl::StatusOr<SharedCachedExecutableBundle>>
   LookUpOrCreateExecutable(absl::Span<const DtypeAndShape> dtypes_and_shapes);
-  absl::StatusOr<IfrtServingExecutable::CachedExecutableBundle>
+  absl::StatusOr<IfrtServingExecutable::SharedCachedExecutableBundle>
   CreateExecutableSynchronously(
       absl::Span<const DtypeAndShape> dtypes_and_shapes);
 

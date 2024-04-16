@@ -9777,10 +9777,15 @@ absl::Status CudnnGraph::Execute(Stream& stream,
   std::unordered_map<std::shared_ptr<cudnn_frontend::graph::Tensor_attributes>,
                      void*>
       tensor_to_ptr_map;
+  absl::Span<DeviceMemoryBase> operands_without_workspace = operands;
+  DeviceMemoryBase workspace;
+  if (graph_.get_workspace_size() != 0) {
+    workspace = operands.back();
+    CHECK_EQ(graph_.get_workspace_size(), workspace.size());
+    operands_without_workspace = operands.first(operands.size() - 1);
+  }
   int operand_number = 0;
-
-  CHECK_EQ(graph_.get_workspace_size(), 0);
-  for (DeviceMemoryBase operand : operands) {
+  for (DeviceMemoryBase operand : operands_without_workspace) {
     const cudnn_frontend::graph::Tensor_attributes attr =
         cudnn_frontend::graph::Tensor_attributes().set_uid(
             CuDnnTensorUID(operand_number));
@@ -9795,7 +9800,7 @@ absl::Status CudnnGraph::Execute(Stream& stream,
       dnn_support.cudnn_
           ->GetHandle(ExtractGpuExecutor(stream.parent()), &stream)
           .handle(),
-      tensor_to_ptr_map, /*workspace=*/nullptr));
+      tensor_to_ptr_map, workspace.opaque()));
   return absl::OkStatus();
 }
 

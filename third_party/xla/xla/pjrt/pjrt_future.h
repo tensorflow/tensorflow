@@ -281,26 +281,29 @@ class PjRtFutureBase : public PjRtFutureMoveControl<
 }  // namespace internal
 
 // PjRtFuture<T> is a simple future that is returned by PjRt APIs that
-// enqueue asynchronous work, reporting a value of type T (frequently T=Status)
-// when the work is complete.
+// enqueue asynchronous work, reporting a value of type T when the work is
+// complete.
 //
 // PjRtFuture can be used by the client to wait for work to complete, either via
 // a blocking call or a callback.
 //
 // The implementation wraps a tsl::AsyncValueRef<T>, but we prefer to
-// encapsulate the AVR rather than returning it directly for two reasons.
+// encapsulate the AVR rather than returning it directly for three reasons.
 //
-// First, we want to retain portability in case a future implementation moves
+// First, in contrast to AsyncValueRef which has a smart-pointer semantics,
+// future has more of a value semantics, i.e. future of a move-only type also
+// is a move-only type. You can think of a move-only (unique) future as a box to
+// pass a value of type T between asynchronous producer/consumer: you can open
+// the box once to put the value into it and you can open the box only once to
+// take the value out of it. For copyable types PjRtFuture<T> is a copyable
+// type, although all copies share the same underlying value.
+//
+// Second, we want to retain portability in case a future implementation moves
 // away from AsyncValueRef ---- we don't want clients to call arbitrary
 // AsyncValueRef APIs.
 //
-// Second, we want to export different semantics, for example we support
+// Third, we want to export different semantics, for example we support
 // integration between blocking and profiling (e.g., TraceMe).
-//
-// There are two ways to construct a PjRtFuture, one used by clients that
-// natively use TSL concurrency library, which already have import APIs for
-// constructing AsyncValueRefs; and another that avoids exposing TSL APIs and
-// can be used by non-TSL clients.
 template <class T>
 class PjRtFuture : public internal::PjRtFutureBase<T> {
   using Base = internal::PjRtFutureBase<T>;
@@ -391,22 +394,41 @@ class PjRtFuture : public internal::PjRtFutureBase<T> {
   // The client should avoid any potentially re-entrant API calls within the
   // callback, for example by using the callback to enqueue work on a
   // client-owned threadpool.
-  void OnReady(absl::AnyInvocable<void(T) &&> callback) {
+  template <typename F, std::enable_if_t<std::is_invocable_v<F, const T&> &&
+                                         !Base::is_unique()>* = nullptr>
+  void OnReady(F&& f) & {
     CHECK(Base::IsValid());
     Base::promise().AndThen(
-        [promise = Base::promise(), callback = std::move(callback)]() mutable {
+        [promise = Base::promise(), f = std::forward<F>(f)]() mutable {
           DCHECK(promise.IsConcrete());
-          if constexpr (std::is_copy_constructible_v<T>) {
-            std::move(callback)(*promise);
-            return;
+          f(*promise);
+        });
+  }
+
+  // Registers callback to be called once the promise is ready, with the final
+  // value.
+  //
+  // callback may be called on an internal system thread or the calling thread.
+  // The client should avoid any potentially re-entrant API calls within the
+  // callback, for example by using the callback to enqueue work on a
+  // client-owned threadpool.
+  template <typename F,
+            std::enable_if_t<Base::is_unique()
+                                 ? std::is_invocable_v<F, T>
+                                 : std::is_invocable_v<F, const T&>>* = nullptr>
+  void OnReady(F&& f) && {
+    CHECK(Base::IsValid());
+    Base::promise().AndThen(
+        [promise = Base::promise(), f = std::forward<F>(f)]() mutable {
+          DCHECK(promise.IsConcrete());
+          if constexpr (Base::is_unique()) {
+            f(std::move(*promise));
+          } else {
+            // We can't move from the promise to the caller because for
+            // non-unique futures we can have multiple copies of the PjRtFuture
+            // sharing the same underlying promise object.
+            f(*promise);
           }
-          // For non-copyable types, we have no ways to check the number of
-          // waiters but we have to move the data into the consumer callback.
-          // Registering two callbacks will lead to double-move of the data. It
-          // is users' responsibility to make sure only one waiter is
-          // registered.
-          // TODO(yunlongl): Implement `PjRtUniqueFuture`.
-          std::move(callback)(std::move(*promise));
         });
   }
 };
