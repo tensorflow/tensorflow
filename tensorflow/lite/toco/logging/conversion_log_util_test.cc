@@ -21,10 +21,11 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/memory/memory.h"
+#include "third_party/protobuf/repeated_ptr_field.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/lite/toco/model.h"
 #include "tensorflow/lite/toco/model_flags.pb.h"
+#include "tensorflow/lite/toco/toco_port.h"
 
 namespace toco {
 namespace {
