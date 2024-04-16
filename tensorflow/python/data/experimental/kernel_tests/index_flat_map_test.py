@@ -132,10 +132,9 @@ class IndexFlatMapTest(test_base.DatasetTestBase, parameterized.TestCase):
 class IndexFlatMapCheckpointTest(
     checkpoint_test_base.CheckpointTestBase, parameterized.TestCase):
 
-  # TODO(b/325112575): Support the graph mode.
   @combinations.generate(
       combinations.times(
-          test_base.eager_only_combinations(),
+          test_base.default_test_combinations(),
           checkpoint_test_base.default_test_combinations(),
           combinations.combine(symbolic_checkpoint=[True, False])))
   def test_index_flat_map(
@@ -144,12 +143,11 @@ class IndexFlatMapCheckpointTest(
       symbolic_checkpoint: bool):
 
     input_data = ["0 1", "2 3 4 5", "6 7", "8"]
-    metadata = _get_metadata(input_data)
 
     def _build_dataset() -> dataset_ops.Dataset:
       dataset = dataset_ops.Dataset.from_tensor_slices(input_data)
       dataset = index_flat_map_op.index_flat_map(
-          dataset, _split, _get_index_map_func(metadata))
+          dataset, _split, _get_index_map_func(_get_metadata(input_data)))
       options = options_lib.Options()
       options.experimental_symbolic_checkpoint = symbolic_checkpoint
       return dataset.with_options(options)
@@ -158,7 +156,7 @@ class IndexFlatMapCheckpointTest(
 
   @combinations.generate(
       combinations.times(
-          test_base.eager_only_combinations(),
+          test_base.default_test_combinations(),
           checkpoint_test_base.default_test_combinations(),
           combinations.combine(
               reshuffle_each_iteration=[True, False],
@@ -170,12 +168,11 @@ class IndexFlatMapCheckpointTest(
       symbolic_checkpoint: bool):
 
     input_data = ["0 1", "2 3 4 5", "6 7", "8"]
-    metadata = _get_metadata(input_data)
 
     def _build_dataset() -> dataset_ops.Dataset:
       dataset = dataset_ops.Dataset.from_tensor_slices(input_data)
       dataset = index_flat_map_op.index_flat_map(
-          dataset, _split, _get_index_map_func(metadata))
+          dataset, _split, _get_index_map_func(_get_metadata(input_data)))
       dataset = dataset.apply(cardinality_lib.assert_cardinality(9))
       dataset = global_shuffle_op._global_shuffle(
           dataset, seed=42, reshuffle_each_iteration=reshuffle_each_iteration)

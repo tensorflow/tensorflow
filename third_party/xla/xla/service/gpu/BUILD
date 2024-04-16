@@ -5823,6 +5823,7 @@ cc_library(
     hdrs = ["stream_attribute_annotator.h"],
     deps = [
         ":backend_configs_cc",
+        ":gpu_fusible",
         "//xla:comparison_util",
         "//xla:status",
         "//xla:statusor",
