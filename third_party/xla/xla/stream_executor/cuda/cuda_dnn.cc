@@ -6348,6 +6348,7 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionOperationGraph(
     const std::optional<double> dropout_rate, const bool is_causal_mask) {
   using cudnn_frontend::graph::Tensor_attributes;
 
+#if CUDNN_VERSION >= 8904
   if (VLOG_IS_ON(4)) {
     VLOG(4) << "\n bmm1_lhs(q): " << q_descriptor.ToString()
             << "\n bmm1_rhs(k): " << k_descriptor.ToString()
@@ -6473,6 +6474,10 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionOperationGraph(
     VLOG(4) << "\b flash attention operation graph: " << graph;
   }
   return cudnnGraph;
+#else
+  return absl::UnimplementedError(
+      "Cudnn flash attention only supported with Cudnn >= 8.9.4");
+#endif
 }
 
 absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionBackwardOperationGraph(
@@ -6487,6 +6492,7 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionBackwardOperationGraph(
     std::optional<double> dropout_rate, std::optional<int64_t> seed,
     double scale, bool use_dropout = false, bool use_mask = false,
     bool use_bias = false, bool use_causal_mask = false) {
+#if CUDNN_VERSION >= 8904
   if (VLOG_IS_ON(4)) {
     VLOG(4) << "\n bmm1_grad_gemm1_rhs(q): " << q_desc.ToString()
             << "\n bmm1_grad_gemm2_rhs(k): " << k_desc.ToString()
@@ -6643,6 +6649,10 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionBackwardOperationGraph(
   }
 
   return cudnnGraph;
+#else
+  return absl::UnimplementedError(
+      "Cudnn flash attention only supported with Cudnn >= 8.9.4");
+#endif
 }
 
 absl::Status CudnnSupport::DoPrepareForConvolution(
