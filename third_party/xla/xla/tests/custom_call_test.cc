@@ -361,41 +361,54 @@ XLA_TEST_F(CustomCallClientAPITest, IllegalCustomCallTarget) {
 //===----------------------------------------------------------------------===//
 
 namespace {
-// Helper function to get data pointer from buffer
+// Helper functions to get data pointers from buffers
 template <typename NativeType, typename BufferType>
 static NativeType* DataPointer(BufferType& buffer) {
   return reinterpret_cast<NativeType*>(buffer.data.opaque());
 }
+template <typename NativeType, typename BufferType>
+static NativeType* DataPointer(ffi::Result<BufferType>& buffer) {
+  return reinterpret_cast<NativeType*>(buffer->data.opaque());
+}
+
+// TODO(abanas): The following three usings are a workaround, delete when
+// ResultBuffer is implemented as its own class
+using ResultBufferBase = ffi::Result<ffi::BufferBase>;
+template <PrimitiveType dtype, size_t rank = xla::ffi::internal::kDynamicRank>
+using ResultBuffer = ffi::Result<ffi::Buffer<dtype, rank>>;
+template <PrimitiveType dtype>
+using ResultBufferR0 = ResultBuffer<dtype, 0>;
 
 using R0F32Buffer = typename ffi::BufferR0<PrimitiveType::F32>;
 using F32Buffer = typename ffi::Buffer<PrimitiveType::F32>;
+using R0F32ResultBuffer = ResultBufferR0<PrimitiveType::F32>;
+using F32ResultBuffer = ResultBuffer<PrimitiveType::F32>;
+using BufferBase = ffi::BufferBase;
 
-static absl::Status AlwaysSucceed(ffi::BufferBase) { return absl::OkStatus(); }
+// Custom kernels definitions and registrations
+static absl::Status AlwaysSucceed(ResultBufferBase) { return absl::OkStatus(); }
 
-XLA_FFI_DEFINE_HANDLER(
-    kAlwaysSucceed, AlwaysSucceed,
-    ffi::Ffi::Bind().Arg<ffi::BufferBase>()  // unused out buffer
+XLA_FFI_DEFINE_HANDLER(kAlwaysSucceed, AlwaysSucceed,
+                       ffi::Ffi::Bind().Ret<BufferBase>()  // unused out buffer
 );
 
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$always_succeed",
                          "Host", kAlwaysSucceed);
 
-static absl::Status AlwaysFail(ffi::BufferBase, int32_t value) {
+static absl::Status AlwaysFail(ResultBufferBase, int32_t value) {
   return absl::InternalError(absl::StrCat("Failed: ", value));
 }
 
-// TODO(abanas): When Result<T> is supported, change output buffers in all
-// bindings to use it (e.g. .Arg<ffi::BufferBase> -> .Result<ffi::BufferBase>)
 XLA_FFI_DEFINE_HANDLER(kAlwaysFail, AlwaysFail,
                        ffi::Ffi::Bind()
-                           .Arg<ffi::BufferBase>()  // unused out buffer
+                           .Ret<BufferBase>()       // unused out buffer
                            .Attr<int32_t>("value")  // value
 );
 
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$always_fail", "Host",
                          kAlwaysFail);
 
-static absl::Status FfiR0F32Add2(R0F32Buffer in, R0F32Buffer out) {
+static absl::Status FfiR0F32Add2(R0F32Buffer in, R0F32ResultBuffer out) {
   auto in_data = DataPointer<float>(in);
   auto out_data = DataPointer<float>(out);
   *out_data = *in_data + 2.0f;
@@ -405,16 +418,15 @@ static absl::Status FfiR0F32Add2(R0F32Buffer in, R0F32Buffer out) {
 XLA_FFI_DEFINE_HANDLER(kFfiR0F32Add2, FfiR0F32Add2,
                        ffi::Ffi::Bind()
                            .Arg<R0F32Buffer>()  // in
-                           .Arg<R0F32Buffer>()  // out
+                           .Ret<R0F32Buffer>()  // out
 );
 
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$FfiR0F32Add2",
                          "Host", kFfiR0F32Add2);
 
 // This represents a kernel that is valid only for F32 and F64 types
-static absl::Status FfiR0FAdd2BufferBase(ffi::BufferBase in,
-                                         ffi::BufferBase out) {
-  if (in.dtype != out.dtype) {
+static absl::Status FfiR0FAdd2BufferBase(BufferBase in, ResultBufferBase out) {
+  if (in.dtype != out->dtype) {
     return absl::InternalError("Input and output dtypes mismatch");
   }
 
@@ -440,15 +452,16 @@ static absl::Status FfiR0FAdd2BufferBase(ffi::BufferBase in,
 
 XLA_FFI_DEFINE_HANDLER(kFfiR0FAdd2BufferBase, FfiR0FAdd2BufferBase,
                        ffi::Ffi::Bind()
-                           .Arg<ffi::BufferBase>()  // in
-                           .Arg<ffi::BufferBase>()  // out
+                           .Arg<BufferBase>()  // in
+                           .Ret<BufferBase>()  // out
 );
 
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(),
                          "__xla_test$$FfiR0FAdd2BufferBase", "Host",
                          kFfiR0FAdd2BufferBase);
 
-static absl::Status FfiR0F32AddN(R0F32Buffer in, R0F32Buffer out, float n) {
+static absl::Status FfiR0F32AddN(R0F32Buffer in, R0F32ResultBuffer out,
+                                 float n) {
   auto in_data = DataPointer<float>(in);
   auto out_data = DataPointer<float>(out);
   *out_data = *in_data + n;
@@ -458,13 +471,13 @@ static absl::Status FfiR0F32AddN(R0F32Buffer in, R0F32Buffer out, float n) {
 XLA_FFI_DEFINE_HANDLER(kFfiR0F32AddN, FfiR0F32AddN,
                        ffi::Ffi::Bind()
                            .Arg<R0F32Buffer>()  // in
-                           .Arg<R0F32Buffer>()  // out
+                           .Ret<R0F32Buffer>()  // out
                            .Attr<float>("n"));
 
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$FfiR0F32AddN",
                          "Host", kFfiR0F32AddN);
 
-static absl::Status FfiR0F32AddNPointer(R0F32Buffer in, R0F32Buffer out,
+static absl::Status FfiR0F32AddNPointer(R0F32Buffer in, R0F32ResultBuffer out,
                                         float* n) {
   auto in_data = DataPointer<float>(in);
   auto out_data = DataPointer<float>(out);
@@ -475,13 +488,13 @@ static absl::Status FfiR0F32AddNPointer(R0F32Buffer in, R0F32Buffer out,
 XLA_FFI_DEFINE_HANDLER(kFfiR0F32AddNPointer, FfiR0F32AddNPointer,
                        ffi::Ffi::Bind()
                            .Arg<R0F32Buffer>()  // in
-                           .Arg<R0F32Buffer>()  // out
+                           .Ret<R0F32Buffer>()  // out
                            .Attr<ffi::Pointer<float>>("n"));
 
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$FfiR0F32AddNPointer",
                          "Host", kFfiR0F32AddNPointer);
 
-static absl::Status FfiF32ReduceSum(F32Buffer in, R0F32Buffer out) {
+static absl::Status FfiF32ReduceSum(F32Buffer in, R0F32ResultBuffer out) {
   auto in_data = DataPointer<float>(in);
   auto out_data = DataPointer<float>(out);
 
@@ -498,13 +511,13 @@ static absl::Status FfiF32ReduceSum(F32Buffer in, R0F32Buffer out) {
 XLA_FFI_DEFINE_HANDLER(kFfiF32ReduceSum, FfiF32ReduceSum,
                        ffi::Ffi::Bind()
                            .Arg<F32Buffer>()    // in
-                           .Arg<R0F32Buffer>()  // out
+                           .Ret<R0F32Buffer>()  // out
 );
 
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$FfiF32ReduceSum",
                          "Host", kFfiF32ReduceSum);
 
-static absl::Status FfiF32Add1ToValues(F32Buffer in, F32Buffer out) {
+static absl::Status FfiF32Add1ToValues(F32Buffer in, F32ResultBuffer out) {
   auto in_data = DataPointer<float>(in);
   auto out_data = DataPointer<float>(out);
 
@@ -512,7 +525,7 @@ static absl::Status FfiF32Add1ToValues(F32Buffer in, F32Buffer out) {
   const auto in_size =
       absl::c_accumulate(in.dimensions, 1, std::multiplies<int>());
   const auto out_size =
-      absl::c_accumulate(out.dimensions, 1, std::multiplies<int>());
+      absl::c_accumulate(out->dimensions, 1, std::multiplies<int>());
   if (in_size != out_size) {
     return absl::InternalError("Input and output sizes mismatch");
   }
@@ -527,14 +540,15 @@ static absl::Status FfiF32Add1ToValues(F32Buffer in, F32Buffer out) {
 XLA_FFI_DEFINE_HANDLER(kFfiF32Add1ToValues, FfiF32Add1ToValues,
                        ffi::Ffi::Bind()
                            .Arg<F32Buffer>()  // in
-                           .Arg<F32Buffer>()  // out
+                           .Ret<F32Buffer>()  // out
 );
 
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$FfiF32Add1ToValues",
                          "Host", kFfiF32Add1ToValues);
 
 static absl::Status FfiF32TupleSwap(R0F32Buffer in0, R0F32Buffer in1,
-                                    R0F32Buffer out0, R0F32Buffer out1) {
+                                    R0F32ResultBuffer out0,
+                                    R0F32ResultBuffer out1) {
   auto in_data0 = DataPointer<float>(in0);
   auto in_data1 = DataPointer<float>(in1);
   auto out_data0 = DataPointer<float>(out0);
@@ -548,8 +562,8 @@ XLA_FFI_DEFINE_HANDLER(kFfiF32TupleSwap, FfiF32TupleSwap,
                        ffi::Ffi::Bind()
                            .Arg<R0F32Buffer>()  // in0
                            .Arg<R0F32Buffer>()  // in1
-                           .Arg<R0F32Buffer>()  // out0
-                           .Arg<R0F32Buffer>()  // out1
+                           .Ret<R0F32Buffer>()  // out0
+                           .Ret<R0F32Buffer>()  // out1
 );
 
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$FfiF32TupleSwap",
@@ -581,7 +595,12 @@ XLA_TEST_F(FfiCustomCallTest, FfiUnknownTarget) {
       /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI));
 
   auto status = BuildAndExecute({}).status();
-  EXPECT_EQ(status.code(), absl::StatusCode::kUnimplemented) << status;
+  // NOTE: In the current CPU implementation, the 'kInternal' status code is
+  // returned when the target is not found. This behavior differs from that of
+  // the GPU, which returns 'kUnimplemented' in such case. When the CPU adopts
+  // the thunks runtime, the status code will be unified across both backends.
+  EXPECT_EQ(status.code(), absl::StatusCode::kInternal);
+  EXPECT_THAT(status.message(), HasSubstr("No registered implementation"));
 }
 
 XLA_TEST_F(FfiCustomCallTest, FfiReportsFailure) {
@@ -641,10 +660,15 @@ XLA_TEST_F(FfiCustomCallTest, FfiWrongNumberOfArguments) {
       /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI));
 
   auto status = BuildAndExecute({}).status();
-  EXPECT_EQ(status.code(), absl::StatusCode::kInvalidArgument) << status;
+  // NOTE: In the current CPU implementation, the 'kInternal' status code is
+  // returned when the argument is invalid. This behavior differs from that of
+  // the GPU, which returns 'kInvalidArgument' in such case. When the CPU adopts
+  // the thunks runtime, the status code will be unified across both backends.
+  EXPECT_EQ(status.code(), absl::StatusCode::kInternal);
+  EXPECT_THAT(status.message(), HasSubstr("Wrong number of arguments"));
 }
 
-XLA_TEST_F(FfiCustomCallTest, FfiWrongTypeOfArguments) {
+XLA_TEST_F(FfiCustomCallTest, FfiWrongRankOfArgument) {
   Array2D<float> array(2, 2);
   array(0, 0) = 1.0f;
   array(0, 1) = 2.0f;
@@ -658,7 +682,28 @@ XLA_TEST_F(FfiCustomCallTest, FfiWrongTypeOfArguments) {
       /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI));
 
   auto status = BuildAndExecute({}).status();
-  EXPECT_EQ(status.code(), absl::StatusCode::kInvalidArgument) << status;
+  // NOTE: In the current CPU implementation, the 'kInternal' status code is
+  // returned when the argument is invalid. This behavior differs from that of
+  // the GPU, which returns 'kInvalidArgument' in such case. When the CPU adopts
+  // the thunks runtime, the status code will be unified across both backends.
+  EXPECT_EQ(status.code(), absl::StatusCode::kInternal);
+  EXPECT_THAT(status.message(), HasSubstr("Wrong buffer rank"));
+}
+
+XLA_TEST_F(FfiCustomCallTest, FfiWrongDTypeOfArgument) {
+  auto constant = builder_.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int>(42)));
+  builder_.AddInstruction(HloInstruction::CreateCustomCall(
+      r2f32_, {constant}, "__xla_test$$FfiR0F32Add2", "",
+      /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI));
+
+  auto status = BuildAndExecute({}).status();
+  // NOTE: In the current CPU implementation, the 'kInternal' status code is
+  // returned when the argument is invalid. This behavior differs from that of
+  // the GPU, which returns 'kInvalidArgument' in such case. When the CPU adopts
+  // the thunks runtime, the status code will be unified across both backends.
+  EXPECT_EQ(status.code(), absl::StatusCode::kInternal);
+  EXPECT_THAT(status.message(), HasSubstr("Wrong buffer dtype"));
 }
 
 XLA_TEST_F(FfiCustomCallTest, FfiHandleTypedBuffers) {
@@ -700,7 +745,8 @@ XLA_TEST_F(FfiCustomCallTest, FfiHandleBufferBaseDouble) {
   auto constant = builder_.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<double>(42.0f)));
   builder_.AddInstruction(HloInstruction::CreateCustomCall(
-      r0f32_, {constant}, "__xla_test$$FfiR0FAdd2BufferBase", "",
+      ShapeUtil::MakeShape(F64, {}), {constant},
+      "__xla_test$$FfiR0FAdd2BufferBase", "",
       /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI));
 
   TF_ASSERT_OK_AND_ASSIGN(auto result, BuildAndExecute({}));
