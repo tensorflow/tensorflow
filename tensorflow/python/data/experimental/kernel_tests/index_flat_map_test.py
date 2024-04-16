@@ -113,6 +113,20 @@ class IndexFlatMapTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertDatasetProduces(dataset, list(range(dataset_range)))
 
   @combinations.generate(test_base.default_test_combinations())
+  def test_offset_out_of_range(self):
+
+    def _index_map_func(_) -> tuple[int, int]:
+      return (0, 1000)
+
+    input_data = ["0 1", "2 3 4 5", "6 7", "8"]
+    dataset = dataset_ops.Dataset.from_tensor_slices(input_data)
+    dataset = index_flat_map_op.index_flat_map(dataset, _split, _index_map_func)
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        "invalid `index_map_fn` which returns offset 1000"):
+      self.getDatasetOutput(dataset)
+
+  @combinations.generate(test_base.default_test_combinations())
   def test_invalid_map_fn(self):
 
     def _index_map_func(_) -> str:
@@ -121,8 +135,7 @@ class IndexFlatMapTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     input_data = ["0 1", "2 3 4 5", "6 7", "8"]
     dataset = dataset_ops.Dataset.from_tensor_slices(input_data)
-    dataset = index_flat_map_op.index_flat_map(
-        dataset, _split, _index_map_func)
+    dataset = index_flat_map_op.index_flat_map(dataset, _split, _index_map_func)
     with self.assertRaisesRegex(
         errors.InvalidArgumentError,
         "expected to return two int values"):

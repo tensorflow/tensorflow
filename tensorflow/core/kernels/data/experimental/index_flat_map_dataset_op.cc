@@ -89,15 +89,21 @@ absl::StatusOr<size_t> GetValue(const Tensor& tensor) {
 }
 
 // Returns the `offset`-th element from `tensors`.
-std::vector<Tensor> GetSlice(const std::vector<Tensor>& tensors,
-                             size_t offset) {
+absl::StatusOr<std::vector<Tensor>> GetSlice(const std::vector<Tensor>& tensors,
+                                             size_t offset) {
   std::vector<Tensor> result;
   for (size_t i = 0; i < tensors.size(); ++i) {
     if (tensors[i].dims() == 0) {  // Scalar.
       result.push_back(tensors[i]);
-    } else {
-      result.push_back(MaybeCopySubSlice(tensors[i], offset));
+      continue;
     }
+    if (offset > tensors[i].dim_size(0)) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "`index_flat_map` got invalid `index_map_fn` which returns offset ",
+          offset, ", but the input element has ", tensors[i].dim_size(0),
+          " elements: ", tensors[i].DebugString()));
+    }
+    result.push_back(MaybeCopySubSlice(tensors[i], offset));
   }
   return result;
 }
@@ -264,7 +270,8 @@ class IndexFlatMapDatasetOp::Dataset::Iterator
         }
         input_element_count_ = next_input_index;
       }
-      *out_tensors = GetSlice(input_unflattened_tensors_, offset);
+      TF_ASSIGN_OR_RETURN(*out_tensors,
+                          GetSlice(input_unflattened_tensors_, offset));
       ++element_count_;
     } else {
       // TODO(b/325112575): Make it easier to return multiple values from
@@ -279,7 +286,7 @@ class IndexFlatMapDatasetOp::Dataset::Iterator
       if (*end_of_sequence) {
         return absl::OkStatus();
       }
-      *out_tensors = GetSlice(mapped_tensors, offset);
+      TF_ASSIGN_OR_RETURN(*out_tensors, GetSlice(mapped_tensors, offset));
     }
     return absl::OkStatus();
   }
