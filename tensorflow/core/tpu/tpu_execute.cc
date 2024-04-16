@@ -113,7 +113,7 @@ absl::Status FixTupleTableAsync(se::Stream* stream,
       [&](const xla::Shape& element_shape,
           const xla::ShapeIndex& index) -> Status {
         if (!element_shape.IsTuple()) {
-          return OkStatus();
+          return absl::OkStatus();
         }
         std::vector<se::DeviceMemoryBase> elements;
         xla::ShapeIndex element_index = index;
@@ -183,7 +183,7 @@ absl::Status UpdateDynamicInputs(
         [&](const xla::Shape& compile_time_shape,
             const xla::ShapeIndex& index) -> Status {
           if (compile_time_shape.IsTuple() || compile_time_shape.is_static()) {
-            return OkStatus();
+            return absl::OkStatus();
           }
 
           const xla::Shape& runtime_shape =
@@ -251,7 +251,7 @@ absl::Status UpdateDynamicInputs(
           *mutable_input_mem =
               xla::MaybeOwningDeviceMemory(std::move(new_input));
           element_modified = true;
-          return OkStatus();
+          return absl::OkStatus();
         }));
     if (element_modified) {
       // The input location has been modified, need to fix tuple table to
@@ -261,7 +261,7 @@ absl::Status UpdateDynamicInputs(
                                             &runtime_input, transfer_manager));
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void TPUCancelExecution(int device_ordinal) {
@@ -416,7 +416,7 @@ absl::StatusOr<xla::ExecutionOutput> TPUExecute(
     stream_executor::Stream* stream,
     stream_executor::Stream* host_to_device_stream,
     const XLA_TpuProgram* tpu_program) {
-  profiler::TraceMe traceme("TPUExecute", 2);
+  tsl::profiler::TraceMe traceme("TPUExecute", 2);
   TF_RET_CHECK(tpu::TpuPlatformInterface::GetRegisteredPlatform() != nullptr);
   TF_RET_CHECK(tpu_program != nullptr);
   const int device_ordinal = node_context->device_ordinal();
