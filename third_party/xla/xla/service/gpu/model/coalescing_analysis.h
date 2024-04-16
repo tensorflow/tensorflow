@@ -23,6 +23,7 @@ limitations under the License.
 #include "xla/service/gpu/fusions/fusion_emitter.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/hlo_traversal.h"
+#include "xla/service/gpu/model/indexing_map.h"
 
 namespace xla {
 namespace gpu {

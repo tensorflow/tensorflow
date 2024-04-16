@@ -129,7 +129,7 @@ tensorflow::Tensor CreateScalarStringTensor(absl::string_view str) {
 // Create the tensor for the bound input, which can be a variable or an asset.
 //
 // TODO(chky): For V2 models, the bound input can also be a resource.
-StatusOr<tensorflow::Tensor> CreateTensorFromBoundInput(
+absl::StatusOr<tensorflow::Tensor> CreateTensorFromBoundInput(
     mlir::Operation* bound_input, absl::string_view saved_model_dir) {
   // Assets are files in the saved model directory. We pass their filenames to
   // functions so that they can be used.
@@ -144,7 +144,7 @@ StatusOr<tensorflow::Tensor> CreateTensorFromBoundInput(
       "Failed to create captured tensors: unknown bound input type.");
 }
 
-StatusOr<InitializersAndSignatures> GetInitializersAndSignatures(
+absl::StatusOr<InitializersAndSignatures> GetInitializersAndSignatures(
     mlir::ModuleOp module, absl::string_view saved_model_dir) {
   InitializersAndSignatures result;
 
@@ -224,7 +224,7 @@ StatusOr<InitializersAndSignatures> GetInitializersAndSignatures(
   return result;
 }
 
-StatusOr<tensorflow::MetaGraphDef> ReadSavedModel(
+absl::StatusOr<tensorflow::MetaGraphDef> ReadSavedModel(
     absl::string_view saved_model_dir,
     const std::unordered_set<std::string>& tags) {
   LOG(INFO) << "TFRT reading v1 savedmodel: " << saved_model_dir;
@@ -243,7 +243,7 @@ StatusOr<tensorflow::MetaGraphDef> ReadSavedModel(
   return std::move(meta_graph_def);
 }
 
-StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportSavedModel(
+absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportSavedModel(
     mlir::MLIRContext* context, const tensorflow::MetaGraphDef& meta_graph_def,
     const FallbackState& fallback_state, std::string saved_model_dir,
     bool import_user_signatures, bool run_placer_grappler_on_functions,
