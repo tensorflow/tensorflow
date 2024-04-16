@@ -3389,6 +3389,17 @@ HloGatherInstruction::HloGatherInstruction(
   return std::move(printer).ToString();
 }
 
+/*static*/ void HloGatherInstruction::set_gather_slice_sizes(
+    absl::Span<const int64_t> slice_sizes) {
+  gather_slice_sizes_.clear();
+  absl::c_copy(slice_sizes, std::back_inserter(gather_slice_sizes_));
+}
+
+/*static*/ void HloGatherInstruction::set_gather_dimension_numbers(
+    const GatherDimensionNumbers& dnums) {
+  gather_dimension_numbers_ = std::make_unique<GatherDimensionNumbers>(dnums);
+}
+
 /*static*/ void HloGatherInstruction::PrintGatherDimensionNumbers(
     Printer* printer, const GatherDimensionNumbers& dim_numbers) {
   printer->Append("offset_dims={");

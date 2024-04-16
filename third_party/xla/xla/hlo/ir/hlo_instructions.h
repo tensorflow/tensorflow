@@ -2255,6 +2255,10 @@ class HloGatherInstruction : public HloInstruction {
   static void PrintGatherDimensionNumbers(
       Printer* printer, const GatherDimensionNumbers& dim_numbers);
 
+  void set_gather_slice_sizes(absl::Span<const int64_t> slice_sizes);
+
+  void set_gather_dimension_numbers(const GatherDimensionNumbers& dnums);
+
   static bool ClassOf(const HloInstruction* hlo) {
     return hlo->opcode() == HloOpcode::kGather;
   }
