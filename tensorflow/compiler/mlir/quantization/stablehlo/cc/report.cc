@@ -18,6 +18,8 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/strings/str_cat.h"
+#include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -26,12 +28,14 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/quantization/common/lift_as_function_call.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tsl/platform/protobuf.h"  // IWYU pragma: keep
 
 namespace mlir::quant::stablehlo {
 namespace {
 
 using ::stablehlo::quantization::QuantizationResult;
 using ::stablehlo::quantization::QuantizationResults;
+using ::tsl::protobuf::TextFormat;
 
 // Given a `quantized_func_name` that starts with `kQuantizedFuncPrefix`,
 // converts `kQuantizedFuncPrefix` to `kCompositeFuncPrefix`.
@@ -133,6 +137,19 @@ QuantizationResults QuantizationReport::CollectResultsFromModuleOp(
 
 void QuantizationReport::AddQuantizationResult(QuantizationResult&& result) {
   *quantization_results_.add_results() = std::move(result);
+}
+
+std::string QuantizationReport::ToString() const {
+  std::string results_str{};
+  TextFormat::PrintToString(quantization_results_, &results_str);
+
+  return absl::StrCat("===== Quantization Report =====\n\n", results_str,
+                      "\n===== Quantization Report End =====\n\n");
+}
+
+void QuantizationReport::Print() const {
+  llvm::outs() << ToString();
+  llvm::outs().flush();  // Show the report immediately.
 }
 
 }  // namespace mlir::quant::stablehlo

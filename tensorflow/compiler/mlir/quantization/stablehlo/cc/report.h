@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_QUANTIZATION_STABLEHLO_CC_REPORT_H_
 #define TENSORFLOW_COMPILER_MLIR_QUANTIZATION_STABLEHLO_CC_REPORT_H_
 
+#include <string>
+
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 
@@ -41,6 +43,12 @@ class QuantizationReport {
       const {
     return quantization_results_;
   }
+
+  // Returns a human-readable string representation of this report.
+  std::string ToString() const;
+
+  // Prints a human-readable report to stdout.
+  void Print() const;
 
  private:
   ::stablehlo::quantization::QuantizationResults CollectResultsFromModuleOp(

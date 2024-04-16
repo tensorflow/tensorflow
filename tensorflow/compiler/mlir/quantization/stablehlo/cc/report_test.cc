@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/report.h"
 
+#include <string>
 #include <utility>
 
 #include <gmock/gmock.h>
@@ -23,6 +24,7 @@ limitations under the License.
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/quantization/common/test_base.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
+#include "tsl/platform/protobuf.h"  // IWYU pragma: keep
 
 namespace mlir::quant::stablehlo {
 namespace {
@@ -34,6 +36,7 @@ using ::stablehlo::quantization::QuantizationResults;
 using ::testing::IsEmpty;
 using ::testing::SizeIs;
 using ::testing::StrEq;
+using ::tsl::protobuf::TextFormat;
 
 using QuantizationReportTest = ::mlir::quant::QuantizationTestBase;
 
@@ -182,6 +185,27 @@ TEST_F(QuantizationReportTest,
   EXPECT_THAT(non_quantized_result.quantizable_unit().name(),
               StrEq("composite_dot_general_fn_1"));
   EXPECT_TRUE(non_quantized_result.method().has_no_quantization());
+}
+
+TEST_F(QuantizationReportTest, ToString) {
+  QuantizationResult result{};
+  QuantizableUnit& quantizable_unit = *result.mutable_quantizable_unit();
+  quantizable_unit.set_name("quantized_my_function");
+
+  Method& method = *result.mutable_method();
+  method.mutable_no_quantization();
+
+  QuantizationReport report{};
+  report.AddQuantizationResult(std::move(result));
+
+  // Check that the report string is equivalent to the textproto representation
+  // of the `QuantizationResults`.
+  std::string result_str{};
+  TextFormat::PrintToString(report.GetQuantizationResults(), &result_str);
+
+  EXPECT_THAT(report.ToString(), testing::HasSubstr("Quantization Report"));
+  EXPECT_THAT(report.ToString(), testing::HasSubstr(result_str));
+  EXPECT_THAT(report.ToString(), testing::HasSubstr("Quantization Report End"));
 }
 
 }  // namespace
