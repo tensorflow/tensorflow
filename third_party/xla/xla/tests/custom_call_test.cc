@@ -999,5 +999,25 @@ XLA_TEST_F(FfiCustomCallTest, FfiTupleOutput) {
   EXPECT_EQ(result, expected);
 }
 
+XLA_TEST_F(FfiCustomCallTest, FfiTupleInput) {
+  const char* const kModuleStr = R"(
+    HloModule m
+
+    ENTRY test {
+      c0 = (f32[], f32[]) constant((7.0, 42.0))
+      ROOT custom-call = (f32[], f32[]) custom-call(c0), custom_call_target="__xla_test$$FfiF32TupleSwap", api_version=API_VERSION_TYPED_FFI
+    })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+
+  Literal arg0 = LiteralUtil::CreateR0<float>(7.f);
+  Literal arg1 = LiteralUtil::CreateR0<float>(42.f);
+
+  Literal expected = LiteralUtil::MakeTuple({&arg1, &arg0});
+  TF_ASSERT_OK_AND_ASSIGN(auto result, Execute(std::move(module), {}));
+  EXPECT_EQ(result, expected);
+}
+
 }  // namespace
 }  // namespace xla
