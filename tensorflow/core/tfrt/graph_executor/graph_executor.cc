@@ -208,7 +208,7 @@ tensorflow::Status RunMlrtFunction(
     outputs->push_back(std::move(mlrt_output.Get<FallbackTensor>().tensor()));
   }
 
-  return tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 absl::StatusOr<std::unique_ptr<RequestInfo>> CreateRequestInfo(
@@ -320,7 +320,7 @@ tensorflow::Status GraphExecutionRunOnFunction(
   // will add TraceMeProducer and TraceMeConsumer to connect async tasks.
   tsl::profiler::TraceMe traceme(
       [request_id, signature_name, &options, symbol_uids] {
-        return tensorflow::profiler::TraceMeEncode(
+        return tsl::profiler::TraceMeEncode(
             "TfrtModelRun",
             {{"_r", 1},
              {"id", request_id},
@@ -664,7 +664,7 @@ tensorflow::Status GraphExecutor::Run(
   absl::Duration elapsed_duration = end - now;
   loaded_client_graph.latency_sampler()->Add(
       absl::ToDoubleMicroseconds(elapsed_duration));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 tensorflow::Status GraphExecutor::Extend(const GraphDef& graph) {
@@ -880,7 +880,7 @@ tensorflow::Status GraphExecutor::InitBef(
   TF_RETURN_IF_ERROR(
       RunRuntimeInitializer(exec_ctx, bef_file, kResourceInitFunction));
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 tensorflow::Status GraphExecutor::InitBytecode(
@@ -913,7 +913,7 @@ tensorflow::Status GraphExecutor::InitBytecode(
         &loaded_graph->sync_resource_state()));
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::StatusOr<std::reference_wrapper<GraphExecutor::LoadedClientGraph>>
@@ -1095,7 +1095,7 @@ Status GraphExecutor::LoadedClientGraph::UpdateCost(
     // add a test kernel that examines the cost.
     executable_context_ = std::move(new_executable_context);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 GraphExecutor::LoadedClientGraph::LoadedClientGraph(
@@ -1129,7 +1129,7 @@ GraphExecutor::LoadedClientGraph::LoadedClientGraph(
                                    tsl::core::RefCountPtr<Rendezvous>* r) {
               *r = tsl::core::RefCountPtr<Rendezvous>(
                   new IntraProcessRendezvous(device_mgr));
-              return OkStatus();
+              return absl::OkStatus();
             }}),
       latency_sampler_(latency_sampler) {
   const auto& options = graph_executor_->options().cost_analysis_options;
