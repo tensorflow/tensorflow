@@ -55,8 +55,8 @@ class MockArray : public llvm::RTTIExtends<MockArray, Array> {
 
   // LINT.IfChange
   MOCK_METHOD(Client*, client, (), (const, final));
-  MOCK_METHOD(Future<Status>, GetReadyFuture, (), (const, final));
-  MOCK_METHOD(Future<Status>, Delete, (), (final));
+  MOCK_METHOD(Future<>, GetReadyFuture, (), (const, final));
+  MOCK_METHOD(Future<>, Delete, (), (final));
   MOCK_METHOD(bool, IsDeleted, (), (const, final));
   MOCK_METHOD(std::string, DebugString, (), (const, final));
 
@@ -72,7 +72,7 @@ class MockArray : public llvm::RTTIExtends<MockArray, Array> {
               (final));
   MOCK_METHOD(absl::StatusOr<tsl::RCReference<Array>>, FullyReplicatedShard,
               (ArrayCopySemantics semantics), (final));
-  MOCK_METHOD(Future<Status>, CopyToHostBuffer,
+  MOCK_METHOD(Future<>, CopyToHostBuffer,
               (void* data,
                std::optional<absl::Span<const int64_t>> byte_strides,
                ArrayCopySemantics semantics),

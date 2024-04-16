@@ -473,7 +473,7 @@ Future<BackendInterface::Response> IfrtBackend::HandleCopyToHostBufferRequest(
   }
 
   // TODO(b/282757875): Consider other ArrayCopySemantics.
-  Future<absl::Status> copy_status =
+  Future<> copy_status =
       (*array)->CopyToHostBuffer(mem_region->zeroth_element(), byte_strides,
                                  ArrayCopySemantics::kAlwaysCopy);
 
@@ -631,7 +631,8 @@ BackendInterface::Response IfrtBackend::HandleDeleteArrayRequest(
   uint64_t future_handle = handle_generator_.New();
   {
     absl::MutexLock lock(&futures_mutex_);
-    futures_.insert({future_handle, std::move(deletion_future)});
+    futures_.insert(
+        {future_handle, std::move(deletion_future).ToStatusFuture()});
   }
 
   auto ifrt_resp = NewIfrtResponse(request->request_metadata().op_id());
@@ -915,8 +916,8 @@ BackendInterface::Response IfrtBackend::HandleLoadedExecutableExecuteRequest(
   {
     absl::MutexLock lock(&futures_mutex_);
     execute_response->set_status_handle(handle_generator_.New());
-    futures_.insert(
-        {execute_response->status_handle(), std::move(result.status)});
+    futures_.insert({execute_response->status_handle(),
+                     std::move(result.status).ToStatusFuture()});
   }
 
   // Register output arrays. At this point, we should never early return because

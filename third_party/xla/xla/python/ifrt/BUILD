@@ -91,6 +91,7 @@ cc_library(
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt:pjrt_common",
         "//xla/pjrt:pjrt_executable",
+        "//xla/pjrt:pjrt_future",
         "//xla/pjrt:pjrt_layout",
         "//xla/python/ifrt/ir",
         "@com_google_absl//absl/algorithm:container",
@@ -134,6 +135,7 @@ xla_cc_test(
     srcs = ["future_test.cc"],
     deps = [
         ":ifrt",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/lib/core:status_test_util",

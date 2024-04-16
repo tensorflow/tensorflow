@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_PYTHON_IFRT_ARRAY_H_
 #define XLA_PYTHON_IFRT_ARRAY_H_
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -116,7 +117,7 @@ class Array : public llvm::RTTIExtends<Array, Value> {
   // an API that lets users query the alignment requirement of the specific
   // implementation.
   ABSL_MUST_USE_RESULT
-  virtual Future<Status> CopyToHostBuffer(
+  virtual Future<> CopyToHostBuffer(
       void* data, std::optional<absl::Span<const int64_t>> byte_strides,
       ArrayCopySemantics semantics) = 0;
 

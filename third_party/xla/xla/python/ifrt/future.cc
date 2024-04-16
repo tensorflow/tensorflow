@@ -21,6 +21,8 @@ limitations under the License.
 
 #include "absl/base/thread_annotations.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/types/span.h"
+#include "xla/pjrt/pjrt_future.h"
 #include "xla/status.h"
 
 namespace xla {
@@ -61,41 +63,8 @@ Future<Status> JoinFutures(absl::Span<Future<Status>> futures) {
   return future;
 }
 
-// TODO(b/333538339): Use Future<> with implicit Status in IFRT APIs. For now
-// this is a workaround to convert between different error semantics.S
-Future<Status> JoinFutures(absl::Span<Future<void>> futures) {
-  if (futures.empty()) {
-    return Future<Status>(OkStatus());
-  } else if (futures.size() == 1) {
-    return futures.front().ToStatusFuture();
-  }
-  // State shared by `PjRtFuture` onready callbacks.
-  struct CombinedStatus {
-    explicit CombinedStatus(int initial_count)
-        : count(initial_count), promise(Future<Status>::CreatePromise()) {}
-    std::atomic<int> count;
-    absl::Mutex mu;
-    Status status ABSL_GUARDED_BY(&mu);
-    Promise<Status> promise;
-  };
-  auto combined_status = std::make_shared<CombinedStatus>(futures.size());
-  Future<Status> future(combined_status->promise);
-  for (auto& fut : futures) {
-    fut.OnReady([combined_status](Status s) {
-      if (!s.ok()) {
-        absl::MutexLock lock(&combined_status->mu);
-        combined_status->status.Update(std::move(s));
-      }
-      const int pre_dec_count =
-          combined_status->count.fetch_add(-1, std::memory_order_acq_rel);
-      CHECK_GE(pre_dec_count, 1);
-      if (pre_dec_count == 1) {
-        absl::MutexLock lock(&combined_status->mu);
-        combined_status->promise.Set(std::move(combined_status->status));
-      }
-    });
-  }
-  return future;
+Future<> JoinFutures(absl::Span<Future<>> futures) {
+  return ::xla::JoinFutures(futures);
 }
 
 }  // namespace ifrt

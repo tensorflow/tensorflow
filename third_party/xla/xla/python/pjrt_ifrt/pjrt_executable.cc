@@ -575,9 +575,9 @@ PjRtLoadedExecutable::Execute(absl::Span<tsl::RCReference<Array>> args,
 
     pjrt_outputs.push_back(std::move(single_device_pjrt_results));
     if (returned_future_supported) {
-      result.status = std::move(returned_pjrt_future)->ToStatusFuture();
+      result.status = *std::move(returned_pjrt_future);
     } else {
-      result.status = Future<Status>(OkStatus());
+      result.status = Future<>(OkStatus());
     }
   } else {
     std::optional<std::vector<PjRtFuture<>>> returned_pjrt_futures;
@@ -592,7 +592,7 @@ PjRtLoadedExecutable::Execute(absl::Span<tsl::RCReference<Array>> args,
     if (returned_future_supported) {
       result.status = JoinFutures(absl::MakeSpan(*returned_pjrt_futures));
     } else {
-      result.status = Future<Status>(OkStatus());
+      result.status = Future<>(OkStatus());
     }
   }
 

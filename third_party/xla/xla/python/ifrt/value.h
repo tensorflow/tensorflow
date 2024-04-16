@@ -44,7 +44,7 @@ class Value : public tsl::ReferenceCounted<Value>,
 
   // Returns a future that becomes ready when the buffer is computed or has an
   // error.
-  virtual Future<Status> GetReadyFuture() const = 0;
+  virtual Future<> GetReadyFuture() const = 0;
 
   // Deletes the value from the devices. The operation may be asynchronous. The
   // returned future will have the result of the deletion on the devices, and
@@ -52,7 +52,7 @@ class Value : public tsl::ReferenceCounted<Value>,
   // Implementations that do not track the completion of the deletion operation
   // may make the future immediately ready with an OK status.
   // TODO(phawkins): decide if we want Delete() to be idempotent.
-  virtual Future<Status> Delete() = 0;
+  virtual Future<> Delete() = 0;
 
   // Returns whether the value has been enqueued for deletion from the devices.
   virtual bool IsDeleted() const = 0;

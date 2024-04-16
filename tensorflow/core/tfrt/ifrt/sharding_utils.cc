@@ -616,7 +616,7 @@ absl::StatusOr<tensorflow::Tensor> MakeTensorFromArray(
             b.index_domain.origin().elements().end());
       });
 
-  std::vector<xla::ifrt::Future<absl::Status>> arrays_copy_status;
+  std::vector<xla::ifrt::Future<>> arrays_copy_status;
   std::vector<tensorflow::Tensor> input_tensors;
   input_tensors.reserve(index_domain_device_arrays.size());
   arrays_copy_status.reserve(index_domain_device_arrays.size());
@@ -626,7 +626,7 @@ absl::StatusOr<tensorflow::Tensor> MakeTensorFromArray(
                         ToTensorDataType(array->dtype()));
     tensorflow::Tensor tensor(dtype, tensor_shape);
     input_tensors.push_back(tensor);
-    xla::ifrt::Future<absl::Status> copy_status =
+    xla::ifrt::Future<> copy_status =
         array->CopyToHostBuffer(tensor.data(), /*byte_strides=*/{},
                                 xla::ifrt::ArrayCopySemantics::kAlwaysCopy);
     copy_status.OnReady([tensor](absl::Status status) {

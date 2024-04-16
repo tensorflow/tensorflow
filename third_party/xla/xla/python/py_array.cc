@@ -1470,8 +1470,10 @@ Status PyHostValue::CopyToHostAsync(std::optional<Shape>& dynamic_shape_holder,
   // better about an efficient layout for the host buffer. It will be useful
   // to revisit the semantics of PjRtBuffer::ToLiteral() to see if it is
   // desirable for the runtime to choose the layout.
-  ready_ = ifrt_array->CopyToHostBuffer(value_.mutable_data(), strides,
-                                        ifrt::ArrayCopySemantics::kReuseInput);
+  ready_ = ifrt_array
+               ->CopyToHostBuffer(value_.mutable_data(), strides,
+                                  ifrt::ArrayCopySemantics::kReuseInput)
+               .ToStatusFuture();
   // Make sure the destination of the copy remains alive until the copy is done.
   value_.inc_ref();
   ready_.OnReady([array{value_.ptr()}](Status status) {

@@ -232,11 +232,10 @@ absl::StatusOr<PyExecuteResults> ExecuteShardedOnLocalDevicesInternal(
     // attach_status_to_results is only supposed to be true when the computation
     // has tokens.
     if (attach_status_to_results) {
-      result_status = PjRtFuture<>::FromStatusFuture(result.status);
+      result_status = result.status;
     }
     if (returned_futures.has_value()) {
-      returned_futures->resize(num_computations, PjRtFuture<>::FromStatusFuture(
-                                                     std::move(result.status)));
+      returned_futures->resize(num_computations, std::move(result.status));
     }
   }
 

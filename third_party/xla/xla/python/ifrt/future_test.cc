@@ -18,6 +18,7 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/status_matchers.h"
@@ -55,7 +56,7 @@ TEST(FutureTest, JoinOneFailingFuture) {
   Future<Status> future = JoinFutures(absl::MakeSpan(futures));
 
   ASSERT_FALSE(future.IsReady());
-  promise.Set(InvalidArgument("Some error"));
+  promise.Set(absl::InvalidArgumentError("Some error"));
   EXPECT_THAT(future.Await(), StatusIs(absl::StatusCode::kInvalidArgument,
                                        HasSubstr("Some error")));
 }
@@ -95,7 +96,7 @@ TEST(FutureTest, JoinAllFailingFutures) {
 
   ASSERT_FALSE(future.IsReady());
   for (Promise<Status>& promise : promises) {
-    promise.Set(InvalidArgument("Some error"));
+    promise.Set(absl::InvalidArgumentError("Some error"));
   }
   EXPECT_THAT(future.Await(), StatusIs(absl::StatusCode::kInvalidArgument,
                                        HasSubstr("Some error")));
@@ -120,7 +121,7 @@ TEST_P(JoinAllOkFuturesExceptForOneTest, JoinAllOkFuturesExceptForOne) {
   ASSERT_FALSE(future.IsReady());
   for (int i = 0; i < kNumFutures; ++i) {
     if (i == failing_future_idx) {
-      promises[i].Set(InvalidArgument("Some error"));
+      promises[i].Set(absl::InvalidArgumentError("Some error"));
     } else {
       promises[i].Set(OkStatus());
     }

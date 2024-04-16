@@ -437,7 +437,8 @@ LoadedExecutable::Execute(absl::Span<tsl::RCReference<xla::ifrt::Array>> args,
 
   // Populate the execution status future. `CheckFuture` deletes the server-side
   // futures after its completion.
-  result.status = rpc_helper_->CheckFuture(response->status_handle());
+  result.status = Future<>::FromStatusFuture(
+      rpc_helper_->CheckFuture(response->status_handle()));
 
   // Create output arrays. The cleanup logic ensures that all handles are
   // properly cleaned up on early return.

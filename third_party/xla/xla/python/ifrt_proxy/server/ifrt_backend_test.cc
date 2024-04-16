@@ -608,7 +608,7 @@ TEST_F(IfrtBackendHandlerTest, CopyToHostSuccess) {
   const std::optional<absl::Span<const int64_t>> expected_byte_strides =
       absl::Span<const int64_t>(expected_byte_strides_vec);
   EXPECT_CALL(*array, CopyToHostBuffer(_, expected_byte_strides, _))
-      .WillOnce(Return(Future<absl::Status>(absl::OkStatus())));
+      .WillOnce(Return(Future<>(absl::OkStatus())));
 
   TF_ASSERT_OK_AND_ASSIGN(auto response, CallBackend(std::move(ifrt_request)));
   // Given the above shape, dtype, and compact byte_strides, the size of the
@@ -768,9 +768,8 @@ TEST_F(IfrtBackendHandlerTest,
        CheckArrayReadyRequestRelaysTheResultFromBackend) {
   auto mock_array = tsl::MakeRef<xla::ifrt::MockArray>();
   EXPECT_CALL(*mock_array, GetReadyFuture())
-      .WillOnce(Return(Future<absl::Status>(absl::OkStatus())))
-      .WillOnce(
-          Return(Future<absl::Status>(absl::UnknownError("injected error"))));
+      .WillOnce(Return(Future<>(absl::OkStatus())))
+      .WillOnce(Return(Future<>(absl::UnknownError("injected error"))));
   TF_ASSERT_OK_AND_ASSIGN(auto array_handle,
                           MakeTestArray(std::move(mock_array)));
 
@@ -807,7 +806,7 @@ TEST_F(IfrtBackendHandlerTest, DeleteArraySuccess) {
   tsl::RCReference<xla::ifrt::MockArray> mock_array =
       tsl::MakeRef<xla::ifrt::MockArray>();
   EXPECT_CALL(*mock_array, Delete())
-      .WillOnce(Return(Future<absl::Status>(absl::OkStatus())));
+      .WillOnce(Return(Future<>(absl::OkStatus())));
   TF_ASSERT_OK_AND_ASSIGN(auto array_handle,
                           MakeTestArray(std::move(mock_array)));
 
@@ -1086,8 +1085,7 @@ TEST_F(IfrtBackendHandlerTest, LoadedExecutableExecute) {
                      std::optional<DeviceList> devices)
                      -> absl::StatusOr<LoadedExecutable::ExecuteResult> {
             return LoadedExecutable::ExecuteResult{
-                .status =
-                    Future<absl::Status>(absl::InternalError("injected error")),
+                .status = Future<>(absl::InternalError("injected error")),
                 .outputs = outputs,
             };
           }));

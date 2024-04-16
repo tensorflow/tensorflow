@@ -176,7 +176,7 @@ class LoadedExecutable
   // Result from an execution.
   struct ExecuteResult {
     // Resulting status of the execution.
-    Future<Status> status;
+    Future<> status;
     // Output arrays.
     std::vector<tsl::RCReference<Array>> outputs;
   };
