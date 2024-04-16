@@ -4,9 +4,9 @@ load("//third_party:repo.bzl", "tf_vendored")
 
 # buildifier: disable=function-docstring
 # buildifier: disable=unnamed-macro
-def workspace():
+def workspace(tsl_name = "tsl"):
     # Declares @local_tsl
-    tf_vendored(name = "tsl", relpath = "third_party/tsl")
+    tf_vendored(name = tsl_name, relpath = "third_party/tsl")
 
 # Alias so it can be loaded without assigning to a different symbol to prevent
 # shadowing previous loads and trigger a buildifier warning.
