@@ -53,7 +53,7 @@ package_group(
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:LICENSE"],
-    default_visibility = [":anything_but_tf"],
+    default_visibility = ["//visibility:public"],
     licenses = ["notice"],
 )
 
