@@ -82,6 +82,21 @@ func.func @main(%arg0: tensor<2xui64>) -> (tensor<2xui64> {mhlo.sharding = "{dev
 
 // -----
 
+// CHECK-LABEL: ENTRY %main.{{.*}} (Arg_0.1: u64[2]) -> (u64[2], u32[512,4])
+func.func @main(%arg0: tensor<2xui64>) -> (tensor<2xui64>, tensor<512x4xui32>) {
+  // CHECK-NEXT: %Arg_0.1 = u64[2] parameter(0)
+  // CHECK-NEXT: %rng-bit-generator.2 = (u64[2], u32[512,4]) rng-bit-generator(u64[2] %Arg_0.1), algorithm=rng_default, sharding={{\{}}{replicated}, {replicated}}
+  // CHECK-NEXT: %get-tuple-element.3 = u64[2] get-tuple-element((u64[2], u32[512,4]) %rng-bit-generator.2), index=0, sharding={replicated}
+  // CHECK-NEXT: %add.5 = u64[2] add(u64[2] %get-tuple-element.3, u64[2] %get-tuple-element.3)
+  // CHECK-NEXT: %get-tuple-element.4 = u32[512,4] get-tuple-element((u64[2], u32[512,4]) %rng-bit-generator.2), index=1, sharding={replicated}
+  // CHECK-NEXT: ROOT %tuple.6 = (u64[2], u32[512,4]) tuple(u64[2] %add.5, u32[512,4] %get-tuple-element.4)
+  %output_state, %output = "mhlo.rng_bit_generator"(%arg0) <{rng_algorithm = #mhlo.rng_algorithm<DEFAULT>}> {mhlo.sharding = "{replicated}"} : (tensor<2xui64>) -> (tensor<2xui64>, tensor<512x4xui32>)
+  %0 = mhlo.add %output_state, %output_state : tensor<2xui64>
+  return %0, %output : tensor<2xui64>, tensor<512x4xui32>
+}
+
+// -----
+
 // CHECK-LABEL: HloModule main
 
 // CHECK:      %region_0.2 (Arg_.3: s32[]) -> s32[] {

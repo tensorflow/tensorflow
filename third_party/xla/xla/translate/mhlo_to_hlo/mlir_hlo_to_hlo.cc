@@ -882,13 +882,17 @@ bool SimplyReturnedOp(mlir::Operation* op) {
 
 void BuildGetTupleElementsForTupleResults(mlir::Operation* op, xla::XlaOp tuple,
                                           OpLoweringContext ctx) {
-  const std::optional<xla::OpSharding>& tuple_sharding =
-      ctx.builder->sharding();
-  if (tuple_sharding.has_value()) {
-    assert(op->getNumResults() == tuple_sharding->tuple_shardings_size());
+  const std::optional<xla::OpSharding>& sharding = ctx.builder->sharding();
+  if (sharding.has_value()) {
+    bool is_tuple_sharding = sharding->type() == xla::OpSharding::TUPLE;
+    assert(!is_tuple_sharding ||
+           op->getNumResults() == sharding->tuple_shardings_size());
     for (auto [index, result] : llvm::enumerate(op->getResults())) {
+      // If `sharding` is not a tuple sharding, then every `get-tuple-element`
+      // gets the same sharding.
       xla::XlaScopedShardingAssignment scoped_sharding(
-          ctx.builder, tuple_sharding->tuple_shardings(index));
+          ctx.builder,
+          is_tuple_sharding ? sharding->tuple_shardings(index) : sharding);
       (*ctx.values)[result] = xla::GetTupleElement(tuple, index);
     }
   } else {
