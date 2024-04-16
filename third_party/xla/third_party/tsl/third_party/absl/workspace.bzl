@@ -39,6 +39,7 @@ def repo():
     tf_http_archive(
         name = "com_google_absl",
         sha256 = ABSL_SHA256,
+        patch_file = ["//third_party/absl:downgrade_absl_to_cpp_17.patch"],
         build_file = "//third_party/absl:com_google_absl.BUILD",
         system_build_file = "//third_party/absl:system.BUILD",
         system_link_files = SYS_LINKS,

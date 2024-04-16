@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "third_party/protobuf/text_format.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/ifrt_types.h"
 #include "xla/python/ifrt/future.h"
 #include "xla/xla_data.pb.h"
@@ -387,6 +388,16 @@ absl::Status MlrtIfrtLoadVariableKernel::InvokeHelper() {
     return absl::FailedPreconditionError(
         "LoadVariableOp: failed to fetch IfrtModelContext: ");
   }
+
+  ifrt_serving::VariableDeviceShardingConfigProto sharding_config;
+  absl::string_view sharding_config_text = "";  // sharding_config_proto_text();
+
+  if (!tensorflow::protobuf::TextFormat::ParseFromString(
+          std::string(sharding_config_text), &sharding_config)) {  // NOLINT
+    return absl::InvalidArgumentError(
+        absl::StrCat("Attribute: ", sharding_config_text, " cannot be parsed"));
+  }
+
   auto tensor_promise =
       mlrt::Promise::Allocate<tensorflow::tfrt_stub::FallbackTensor>();
   auto tensor_future = tensor_promise.GetFuture();

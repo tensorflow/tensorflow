@@ -47,7 +47,6 @@ struct RunHloModuleOptions {
   float abs_error_bound{1e-3};
   float rel_error_bound{1e-3};
   std::string input_format;
-  std::string input_module;
   bool use_buffer_assignment_from_proto{false};
   // The format and the usage of the option is platform-dependent.
   std::string input_compilation_environments;

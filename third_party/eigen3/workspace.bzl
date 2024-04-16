@@ -14,6 +14,7 @@ def repo():
     tf_http_archive(
         name = "eigen_archive",
         build_file = "//third_party/eigen3:eigen_archive.BUILD",
+        patch_file = ["//third_party/eigen3:eigen_reduce_cpp20_version.patch"],
         sha256 = EIGEN_SHA256,
         strip_prefix = "eigen-{commit}".format(commit = EIGEN_COMMIT),
         urls = tf_mirror_urls("https://gitlab.com/libeigen/eigen/-/archive/{commit}/eigen-{commit}.tar.gz".format(commit = EIGEN_COMMIT)),

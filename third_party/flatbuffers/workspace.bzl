@@ -17,6 +17,7 @@ def repo():
         sha256 = _FLATBUFFERS_SHA256,
         urls = tf_mirror_urls("https://github.com/google/flatbuffers/archive/%s.tar.gz" % _FLATBUFFERS_GIT_COMMIT),
         build_file = "//third_party/flatbuffers:flatbuffers.BUILD",
+        patch_file = ["//third_party/flatbuffers:suppress_cpp20_std_span.patch"],
         system_build_file = "//third_party/flatbuffers:BUILD.system",
         link_files = {
             "//third_party/flatbuffers:build_defs.bzl": "build_defs.bzl",

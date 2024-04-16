@@ -292,6 +292,9 @@ def _tf_repositories():
         name = "com_github_googlecloudplatform_google_cloud_cpp",
         sha256 = "ff82045b9491f0d880fc8e5c83fd9542eafb156dcac9ff8c6209ced66ed2a7f0",
         strip_prefix = "google-cloud-cpp-1.17.1",
+        patch_file = [
+            "//third_party/systemlibs:google_cloud_cpp_int_types_fix.patch",
+        ],
         repo_mapping = {
             "@com_github_curl_curl": "@curl",
             "@com_github_nlohmann_json": "@nlohmann_json_lib",
@@ -434,6 +437,7 @@ def _tf_repositories():
         patch_file = [
             "//third_party/grpc:generate_cc_env_fix.patch",
             "//third_party/grpc:register_go_toolchain.patch",
+            "//third_party/grpc:cast_memory_order_to_int.patch",
         ],
         system_link_files = {
             "//third_party/systemlibs:BUILD": "bazel/BUILD",
@@ -868,6 +872,7 @@ def _tf_repositories():
     tf_http_archive(
         name = "riegeli",
         sha256 = "1d216d5c97fa60632143d209a1bb48c2a83788efdb876902e7bbc06396d5ee1f",
+        patch_file = ["//third_party:riegeli_forbid_three_way_comparison_cpp20_feature.patch"],
         strip_prefix = "riegeli-5d75119232cd4f6db8dfa69a1503289f050e9643",
         urls = tf_mirror_urls("https://github.com/google/riegeli/archive/5d75119232cd4f6db8dfa69a1503289f050e9643.zip"),
     )
@@ -875,7 +880,10 @@ def _tf_repositories():
     tf_http_archive(
         name = "riegeli_py",
         sha256 = "1d216d5c97fa60632143d209a1bb48c2a83788efdb876902e7bbc06396d5ee1f",
-        patch_file = ["//third_party:riegeli_fix.patch"],
+        patch_file = [
+            "//third_party:riegeli_fix.patch",
+            "//third_party:riegeli_forbid_three_way_comparison_cpp20_feature.patch",
+        ],
         strip_prefix = "riegeli-5d75119232cd4f6db8dfa69a1503289f050e9643",
         urls = tf_mirror_urls("https://github.com/google/riegeli/archive/5d75119232cd4f6db8dfa69a1503289f050e9643.zip"),
     )

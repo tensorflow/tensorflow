@@ -1,0 +1,52 @@
+diff --git a/ci/linux_clang-latest_libcxx_asan_bazel.sh b/ci/linux_clang-latest_libcxx_asan_bazel.sh
+index f9c146b0..96ca63ec 100755
+--- a/ci/linux_clang-latest_libcxx_asan_bazel.sh
++++ b/ci/linux_clang-latest_libcxx_asan_bazel.sh
+@@ -25,7 +25,7 @@ if [[ -z ${ABSEIL_ROOT:-} ]]; then
+ fi
+ 
+ if [[ -z ${STD:-} ]]; then
+-  STD="c++14 c++17 c++20"
++  STD="c++14 c++17"
+ fi
+ 
+ if [[ -z ${COMPILATION_MODE:-} ]]; then
+diff --git a/ci/linux_clang-latest_libcxx_bazel.sh b/ci/linux_clang-latest_libcxx_bazel.sh
+index 38b2d744..8e9b2424 100755
+--- a/ci/linux_clang-latest_libcxx_bazel.sh
++++ b/ci/linux_clang-latest_libcxx_bazel.sh
+@@ -25,7 +25,7 @@ if [[ -z ${ABSEIL_ROOT:-} ]]; then
+ fi
+ 
+ if [[ -z ${STD:-} ]]; then
+-  STD="c++14 c++17 c++20"
++  STD="c++14 c++17"
+ fi
+ 
+ if [[ -z ${COMPILATION_MODE:-} ]]; then
+diff --git a/ci/linux_clang-latest_libcxx_tsan_bazel.sh b/ci/linux_clang-latest_libcxx_tsan_bazel.sh
+index 34d7940e..1a6cafa6 100755
+--- a/ci/linux_clang-latest_libcxx_tsan_bazel.sh
++++ b/ci/linux_clang-latest_libcxx_tsan_bazel.sh
+@@ -25,7 +25,7 @@ if [[ -z ${ABSEIL_ROOT:-} ]]; then
+ fi
+ 
+ if [[ -z ${STD:-} ]]; then
+-  STD="c++14 c++17 c++20"
++  STD="c++14 c++17"
+ fi
+ 
+ if [[ -z ${COMPILATION_MODE:-} ]]; then
+diff --git a/ci/linux_gcc-latest_libstdcxx_bazel.sh b/ci/linux_gcc-latest_libstdcxx_bazel.sh
+index 091acb33..2bf36035 100755
+--- a/ci/linux_gcc-latest_libstdcxx_bazel.sh
++++ b/ci/linux_gcc-latest_libstdcxx_bazel.sh
+@@ -25,7 +25,7 @@ if [[ -z ${ABSEIL_ROOT:-} ]]; then
+ fi
+ 
+ if [[ -z ${STD:-} ]]; then
+-  STD="c++14 c++17 c++20"
++  STD="c++14 c++17"
+ fi
+ 
+ if [[ -z ${COMPILATION_MODE:-} ]]; then

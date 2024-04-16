@@ -382,8 +382,8 @@ build:android --cxxopt=-std=c++17
 build:android --host_cxxopt=-std=c++17
 build:ios --cxxopt=-std=c++17
 build:ios --host_cxxopt=-std=c++17
-build:linux --cxxopt=-std=c++17
-build:linux --host_cxxopt=-std=c++17
+build:linux --cxxopt=-std=c++20
+build:linux --host_cxxopt=-std=c++20
 build:macos --cxxopt=-std=c++17
 build:macos --host_cxxopt=-std=c++17
 build:windows --cxxopt=/std:c++17
@@ -792,7 +792,7 @@ test:macos_x86_wheel_test --config=macos_x86_wheel_test_filters -- //tensorflow/
 test:linux_cpu_pycpp_test_filters --test_tag_filters=-no_oss,-oss_excluded,-oss_serial,-gpu,-tpu,-benchmark-test,-v1only
 test:linux_cpu_pycpp_test_filters --build_tag_filters=-no_oss,-oss_excluded,-oss_serial,-gpu,-tpu,-benchmark-test,-v1only
 test:linux_cpu_pycpp_test_filters --test_lang_filters=cc,py --test_size_filters=small,medium
-test:linux_cpu_pycpp_test --config=linux_cpu_pycpp_test_filters -- //tensorflow/... -//tensorflow/python/integration_testing/... -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/core/tpu/... -//tensorflow/lite/... -//tensorflow/tools/toolchains/...
+test:linux_cpu_pycpp_test --config=linux_cpu_pycpp_test_filters -- //tensorflow/... -//tensorflow/python/integration_testing/... -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/core/tpu/... -//tensorflow/lite/... -//tensorflow/tools/toolchains/... -//tensorflow/java/...
 # CUDA PYCPP:
 test:linux_cuda_pycpp_test_filters --test_tag_filters=-no_oss,-oss_excluded,-oss_serial,-benchmark-test,-v1only,gpu,-no_gpu,-no_gpu_presubmit,-no_cuda11
 test:linux_cuda_pycpp_test_filters --build_tag_filters=-no_oss,-oss_excluded,-oss_serial,-benchmark-test,-v1only,gpu,-no_gpu,-no_gpu_presubmit,-no_cuda11

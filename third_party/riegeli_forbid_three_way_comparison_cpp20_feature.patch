@@ -1,0 +1,220 @@
+diff --git a/riegeli/base/compare.h b/riegeli/base/compare.h
+index bfc2311b..f18ae12f 100644
+--- a/riegeli/base/compare.h
++++ b/riegeli/base/compare.h
+@@ -18,9 +18,10 @@
+ #include <type_traits>
+ 
+ #include "absl/meta/type_traits.h"
+-#if !__cpp_impl_three_way_comparison
+ #include "absl/types/compare.h"
+-#endif
++// #if !__cpp_impl_three_way_comparison
++// #include "absl/types/compare.h"
++// #endif
+ 
+ // Emulate C++20 `operator<=>` machinery for earlier C++ versions.
+ 
+@@ -28,22 +29,24 @@ namespace riegeli {
+ 
+ // `PartialOrdering` is `std::partial_ordering` in C++20 or
+ // `absl::partial_ordering` in earlier C++ versions.
+-#if __cpp_impl_three_way_comparison
+-using PartialOrdering = decltype(0.0 <=> 0.0);
+-#else
++// #if __cpp_impl_three_way_comparison
++// using PartialOrdering = decltype(0.0 <=> 0.0);
++// #else
++// using PartialOrdering = absl::partial_ordering;
++// #endif
+ using PartialOrdering = absl::partial_ordering;
+-#endif
+ 
+ // `WeakOrdering` is not provided because it cannot be implemented without
+ // conditionally including `<compare>`.
+ 
+ // `StrongOrdering` is `std::strong_ordering` in C++20 or
+ // `absl::strong_ordering` in earlier C++ versions.
+-#if __cpp_impl_three_way_comparison
+-using StrongOrdering = decltype(0 <=> 0);
+-#else
++// #if __cpp_impl_three_way_comparison
++// using StrongOrdering = decltype(0 <=> 0);
++// #else
++// using StrongOrdering = absl::strong_ordering;
++// #endif
+ using StrongOrdering = absl::strong_ordering;
+-#endif
+ 
+ // Define `friend auto RIEGELI_COMPARE` instead of C++20
+ // `friend auto operator<=>`.
+@@ -52,11 +55,12 @@ using StrongOrdering = absl::strong_ordering;
+ //
+ // It is meant to be called by `Compare(a, b)`, not directly as
+ // `RIEGELI_COMPARE(a, b)`.
+-#if __cpp_impl_three_way_comparison
+-#define RIEGELI_COMPARE operator<=>
+-#else
++// #if __cpp_impl_three_way_comparison
++// #define RIEGELI_COMPARE operator<=>
++// #else
++// #define RIEGELI_COMPARE RiegeliCompare
++// #endif
+ #define RIEGELI_COMPARE RiegeliCompare
+-#endif
+ 
+ // `IsOrdering<T>::value` is `true` if values of type `T` can be assumed to
+ // indicate an ordering: they are comparable with literal 0.
+@@ -158,7 +162,7 @@ inline StrongOrdering AsStrongOrdering(T ordering) {
+                         : StrongOrdering::equal;
+ }
+ 
+-#if !__cpp_impl_three_way_comparison
++// #if !__cpp_impl_three_way_comparison
+ 
+ // Definitions of `RIEGELI_COMPARE` which in C++20 are provided automatically.
+ 
+@@ -204,11 +208,11 @@ inline StrongOrdering RIEGELI_COMPARE(T* a, T* b) {
+                  : StrongOrdering::equal;
+ }
+ 
+-#endif
++// #endif
+ 
+ namespace compare_internal {
+ 
+-#if !__cpp_impl_three_way_comparison
++// #if !__cpp_impl_three_way_comparison
+ 
+ template <typename A, typename B, typename Enable = void>
+ struct HasEqual : std::false_type {};
+@@ -219,22 +223,26 @@ struct HasEqual<A, B,
+                                       std::declval<const B&>())>>
+     : std::true_type {};
+ 
+-#endif
++// #endif
+ 
+ template <typename A, typename B, typename Enable = void>
+ struct HasCompare : std::false_type {};
+ 
+ template <typename A, typename B>
+ struct HasCompare<A, B,
+-                  absl::void_t<decltype(
+-#if __cpp_impl_three_way_comparison
+-                      std::declval<const A&>() <=> std::declval<const B&>()
+-#else
+-                      RIEGELI_COMPARE(std::declval<const A&>(),
+-                                      std::declval<const B&>())
+-#endif
+-                          )>> : std::true_type {
+-};
++    absl::void_t<decltype(
++      RIEGELI_COMPARE(std::declval<const A&>(),
++      std::declval<const B&>()))>> : std::true_type {};
++// struct HasCompare<A, B,
++//                   absl::void_t<decltype(
++// #if __cpp_impl_three_way_comparison
++//                       std::declval<const A&>() <=> std::declval<const B&>()
++// #else
++//                       RIEGELI_COMPARE(std::declval<const A&>(),
++//                       std::declval<const B&>())
++// #endif
++//                           )>> : std::true_type {
++// };
+ 
+ template <typename T, typename Enable = void>
+ struct IsDedicatedOrdering : std::false_type {};
+@@ -248,14 +256,16 @@ template <typename T, typename Enable = void>
+ struct HasCompareWithLiteral0 : std::false_type {};
+ 
+ template <typename T>
+-struct HasCompareWithLiteral0<T, absl::void_t<decltype(
+-#if __cpp_impl_three_way_comparison
+-                                     0 <=> std::declval<T>()
+-#else
+-                                     RIEGELI_COMPARE(0, std::declval<T>())
+-#endif
+-                                         )>> : std::true_type {
+-};
++struct HasCompareWithLiteral0<T,
++  absl::void_t<decltype(RIEGELI_COMPARE(0, std::declval<T>()))>> : std::true_type {};
++// struct HasCompareWithLiteral0<T, absl::void_t<decltype(
++// #if __cpp_impl_three_way_comparison
++//                                      0 <=> std::declval<T>()
++// #else
++//                                      RIEGELI_COMPARE(0, std::declval<T>())
++// #endif
++//                                          )>> : std::true_type {
++// };
+ 
+ }  // namespace compare_internal
+ 
+@@ -263,11 +273,11 @@ struct HasCompareWithLiteral0<T, absl::void_t<decltype(
+ template <typename A, typename B,
+           std::enable_if_t<compare_internal::HasCompare<A, B>::value, int> = 0>
+ inline auto Compare(const A& a, const B& b) {
+-#if __cpp_impl_three_way_comparison
+-  return a <=> b;
+-#else
++// #if __cpp_impl_three_way_comparison
++//   return a <=> b;
++// #else
+   return RIEGELI_COMPARE(a, b);
+-#endif
++// #endif
+ }
+ 
+ // Call `NegateOrdering(ordering)` instead of C++20 `0 <=> ordering`.
+@@ -282,11 +292,11 @@ template <typename Ordering,
+                   compare_internal::HasCompareWithLiteral0<Ordering>>::value,
+               int> = 0>
+ inline Ordering NegateOrdering(Ordering ordering) {
+-#if __cpp_impl_three_way_comparison
+-  return 0 <=> ordering;
+-#else
++// #if __cpp_impl_three_way_comparison
++//   return 0 <=> ordering;
++// #else
+   return RIEGELI_COMPARE(0, ordering);
+-#endif
++// #endif
+ }
+ 
+ template <typename Ordering,
+@@ -313,7 +323,7 @@ inline Ordering NegateOrdering(Ordering ordering) {
+ template <typename T>
+ class WithEqual {
+  public:
+-#if !__cpp_impl_three_way_comparison
++// #if !__cpp_impl_three_way_comparison
+   template <
+       typename Other,
+       std::enable_if_t<compare_internal::HasEqual<T, Other>::value, int> = 0>
+@@ -337,7 +347,7 @@ class WithEqual {
+   friend bool operator!=(const Other& a, const T& b) {
+     return !(b == a);
+   }
+-#endif
++// #endif
+ };
+ 
+ // For types which support comparison, derive `T` from `WithCompare<T>`. and
+@@ -353,7 +363,7 @@ class WithEqual {
+ template <typename T>
+ class WithCompare : public WithEqual<T> {
+  public:
+-#if !__cpp_impl_three_way_comparison
++// #if !__cpp_impl_three_way_comparison
+   template <
+       typename Other,
+       std::enable_if_t<compare_internal::HasCompare<T, Other>::value, int> = 0>
+@@ -419,7 +429,7 @@ class WithCompare : public WithEqual<T> {
+   friend bool operator>=(const Other& a, const T& b) {
+     return 0 >= RIEGELI_COMPARE(b, a);
+   }
+-#endif
++// #endif
+ };
+ 
+ }  // namespace riegeli

@@ -1,0 +1,26 @@
+diff --git a/google/cloud/iam_policy.h b/google/cloud/iam_policy.h
+index 45051d88b9..9004ebd33b 100644
+--- a/google/cloud/iam_policy.h
++++ b/google/cloud/iam_policy.h
+@@ -34,7 +34,7 @@ inline namespace GOOGLE_CLOUD_CPP_NS {
+  *     about ETags.
+  */
+ struct IamPolicy {
+-  std::int32_t version;
++  int32_t version;
+   IamBindings bindings;
+   std::string etag;
+ };
+diff --git a/google/cloud/storage/internal/hash_validator_impl.h b/google/cloud/storage/internal/hash_validator_impl.h
+index dbb387ea6e..07d9d2dade 100644
+--- a/google/cloud/storage/internal/hash_validator_impl.h
++++ b/google/cloud/storage/internal/hash_validator_impl.h
+@@ -63,7 +63,7 @@ class Crc32cHashValidator : public HashValidator {
+   Result Finish() && override;
+ 
+  private:
+-  std::uint32_t current_{0};
++  uint32_t current_{0};
+   std::string received_hash_;
+ };
+ 

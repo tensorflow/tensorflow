@@ -1,0 +1,61 @@
+diff --git a/include/flatbuffers/stl_emulation.h b/include/flatbuffers/stl_emulation.h
+index 5f19eaf8..68b9a648 100644
+--- a/include/flatbuffers/stl_emulation.h
++++ b/include/flatbuffers/stl_emulation.h
+@@ -47,14 +47,15 @@
+   // See: https://en.cppreference.com/w/cpp/utility/feature_test
+   #if defined(__cplusplus) && __cplusplus >= 202002L \
+       || (defined(_MSVC_LANG) && _MSVC_LANG >= 202002L)
+-    #define FLATBUFFERS_USE_STD_SPAN 1
++    // #define FLATBUFFERS_USE_STD_SPAN 1  // TODO: b/328238952 - Uncomment upon bug is resolved
++    #define FLATBUFFERS_USE_STD_SPAN 0
+   #endif
+ #endif // FLATBUFFERS_USE_STD_SPAN
+ 
+-#if defined(FLATBUFFERS_USE_STD_SPAN)
+-  #include <array>
+-  #include <span>
+-#else
++// #if defined(FLATBUFFERS_USE_STD_SPAN)
++//   #include <array>
++//   #include <span>
++// #else
+   // Disable non-trivial ctors if FLATBUFFERS_SPAN_MINIMAL defined.
+   #if !defined(FLATBUFFERS_TEMPLATES_ALIASES)
+     #define FLATBUFFERS_SPAN_MINIMAL
+@@ -62,7 +63,7 @@
+     // Enable implicit construction of a span<T,N> from a std::array<T,N>.
+     #include <array>
+   #endif
+-#endif // defined(FLATBUFFERS_USE_STD_SPAN)
++// #endif // defined(FLATBUFFERS_USE_STD_SPAN)
+ 
+ // This header provides backwards compatibility for older versions of the STL.
+ namespace flatbuffers {
+@@ -279,12 +280,12 @@ FLATBUFFERS_CONSTEXPR_CPP11 bool operator==(const Optional<T>& lhs, const Option
+ 
+ 
+ // Very limited and naive partial implementation of C++20 std::span<T,Extent>.
+-#if defined(FLATBUFFERS_USE_STD_SPAN)
+-  inline constexpr std::size_t dynamic_extent = std::dynamic_extent;
+-  template<class T, std::size_t Extent = std::dynamic_extent>
+-  using span = std::span<T, Extent>;
++// #if defined(FLATBUFFERS_USE_STD_SPAN)
++//   inline constexpr std::size_t dynamic_extent = std::dynamic_extent;
++//   template<class T, std::size_t Extent = std::dynamic_extent>
++//   using span = std::span<T, Extent>;
+ 
+-#else // !defined(FLATBUFFERS_USE_STD_SPAN)
++// #else // !defined(FLATBUFFERS_USE_STD_SPAN)
+ FLATBUFFERS_CONSTEXPR std::size_t dynamic_extent = static_cast<std::size_t>(-1);
+ 
+ // Exclude this code if MSVC2010 or non-STL Android is active.
+@@ -469,7 +470,7 @@ class span FLATBUFFERS_FINAL_CLASS {
+   pointer const data_;
+   size_type count_;
+ };
+-#endif  // defined(FLATBUFFERS_USE_STD_SPAN)
++// #endif  // defined(FLATBUFFERS_USE_STD_SPAN)
+ 
+ #if !defined(FLATBUFFERS_SPAN_MINIMAL)
+ template<class ElementType, std::size_t Extent>

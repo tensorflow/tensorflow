@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/flags/flag.h"  // IWYU pragma: keep
 #include "absl/status/status.h"
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/experimental/next_pluggable_device/c_api.h"

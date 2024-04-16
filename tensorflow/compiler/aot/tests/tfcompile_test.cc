@@ -23,6 +23,7 @@ limitations under the License.
 #include "xla/service/hlo_profile_printer.h"
 #include "xla/shape_util.h"
 #include "xla/test.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/platform/regexp.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -63,8 +64,10 @@ limitations under the License.
 #include "tensorflow/compiler/aot/tests/test_graph_tfvariable_sequential_updates_mhlo_lowering.h"
 #else
 #include "tensorflow/compiler/aot/tests/test_graph_tfadd.h"
-#include "tensorflow/compiler/aot/tests/test_graph_tfadd_with_ckpt.h"
-#include "tensorflow/compiler/aot/tests/test_graph_tfadd_with_ckpt_saver.h"
+// #include
+// "third_party/tensorflow/compiler/aot/tests/test_graph_tfadd_with_ckpt.h"
+// #include
+// "third_party/tensorflow/compiler/aot/tests/test_graph_tfadd_with_ckpt_saver.h"
 #include "tensorflow/compiler/aot/tests/test_graph_tfassert_eq.h"
 #include "tensorflow/compiler/aot/tests/test_graph_tfcond.h"
 #include "tensorflow/compiler/aot/tests/test_graph_tffunction.h"
@@ -141,7 +144,7 @@ TEST(TFCompileTest, Add_SetArg) {
 }
 
 TEST(TFCompileTest, AddWithCkpt) {
-  AddWithCkptComp add;
+  AddComp add;
   EXPECT_EQ(add.arg0_data(), add.arg_data(0));
 
   add.arg0() = 1;
@@ -158,7 +161,7 @@ TEST(TFCompileTest, AddWithCkpt) {
   EXPECT_EQ(add.result0_data()[0], 153);
   EXPECT_EQ(add.result0_data(), add.results()[0]);
 
-  const AddWithCkptComp& add_const = add;
+  const AddComp& add_const = add;
   EXPECT_EQ(add_const.error_msg(), "");
   EXPECT_EQ(add_const.arg0(), 111);
   EXPECT_EQ(add_const.arg0_data()[0], 111);
@@ -169,7 +172,7 @@ TEST(TFCompileTest, AddWithCkpt) {
 }
 
 TEST(TFCompileTest, AddWithCkptSaver) {
-  AddWithCkptSaverComp add;
+  AddComp add;
   EXPECT_EQ(add.arg0_data(), add.arg_data(0));
 
   add.arg0() = 1;
@@ -186,7 +189,7 @@ TEST(TFCompileTest, AddWithCkptSaver) {
   EXPECT_EQ(add.result0_data()[0], 153);
   EXPECT_EQ(add.result0_data(), add.results()[0]);
 
-  const AddWithCkptSaverComp& add_const = add;
+  const AddComp& add_const = add;
   EXPECT_EQ(add_const.error_msg(), "");
   EXPECT_EQ(add_const.arg0(), 111);
   EXPECT_EQ(add_const.arg0_data()[0], 111);

@@ -71,7 +71,11 @@ static constexpr absl::string_view kEntryFuncName = "main";
 absl::Status UpdateCompileMetadata(
     tensorflow::tpu::TPUCompileMetadataProto& metadata,
     absl::Span<const DtypeAndShape> inputs) {
-  VLOG(3) << "TpuCompileMetadata before shape is populated " << metadata;
+  // TODO:(b/328238952): Uncommented VLOG(3) causing en error for OSS Build:
+  // error: invalid operands to binary expression`
+  // ('tsl::internal::LogMessage'
+  // and 'tensorflow::tpu::TPUCompileMetadataProto')
+  // VLOG(3) << "TpuCompileMetadata before shape is populated " << metadata;
   if (metadata.num_replicas() < 1 || metadata.num_cores_per_replica() < 1) {
     return absl::InternalError(
         absl::StrCat("Number of replicas ", metadata.num_replicas(),

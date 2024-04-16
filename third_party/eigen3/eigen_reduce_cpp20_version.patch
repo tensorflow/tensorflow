@@ -1,0 +1,18 @@
+diff --git a/Eigen/src/Core/util/Macros.h b/Eigen/src/Core/util/Macros.h
+index 4d10eecd0..4ae107412 100644
+--- a/Eigen/src/Core/util/Macros.h
++++ b/Eigen/src/Core/util/Macros.h
+@@ -686,9 +686,13 @@
+ // The macro EIGEN_COMP_CXXVER defines the c++ version expected by the compiler.
+ // For instance, if compiling with gcc and -std=c++17, then EIGEN_COMP_CXXVER
+ // is defined to 17.
++/* TODO: b/328238952 - Uncomment when TF OSS will contain GLIBC_v2.34
++ *  and GLIBCXX v3.4.29
+ #if EIGEN_CPLUSPLUS >= 202002L
+ #define EIGEN_COMP_CXXVER 20
+ #elif EIGEN_CPLUSPLUS >= 201703L
++*/
++#if EIGEN_CPLUSPLUS >= 201703L
+ #define EIGEN_COMP_CXXVER 17
+ #elif EIGEN_CPLUSPLUS >= 201402L
+ #define EIGEN_COMP_CXXVER 14

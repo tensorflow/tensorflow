@@ -28,12 +28,12 @@ limitations under the License.
 #include "tensorflow/core/platform/file_system_helper.h"
 #include "tensorflow/core/protobuf/saved_model.pb.h"
 #include "tensorflow/tools/proto_splitter/cc/max_size.h"
+#include "tsl/platform/platform.h"
 // TODO(b/291933687), TODO(b/291001524)
 #if !defined(PLATFORM_WINDOWS) && !defined(__APPLE__)
 #include "tensorflow/tools/proto_splitter/cc/saved_model_splitter.h"
 #include "tensorflow/tools/proto_splitter/merge.h"
 #endif
-#define IS_OSS false
 namespace tensorflow {
 namespace image_format {
 
@@ -117,7 +117,7 @@ absl::StatusOr<std::tuple<std::string, bool>> WriteSavedModelToString(
 #endif
 }
 
-#if !IS_OSS
+#if !(TSL_IS_IN_OSS)
 // TODO(b/311769337): Define the function unconditionally after tf oss
 // dependency is updated to protobuf v22.x.
 absl::StatusOr<std::tuple<absl::Cord, bool>> WriteSavedModelToCord(
