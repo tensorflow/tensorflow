@@ -280,7 +280,7 @@ upper_tabs:
         - title: "Convert TensorFlow models"
           path: /lite/models/convert/convert_models
         - title: "Convert JAX models"
-          path: /lite/examples/jax_conversion/overview
+          path: /lite/examples/jax_conversion/jax_conversion_overview
           status: nightly
         - title: "Colab for JAX to TFLite"
           path: /lite/examples/jax_conversion/jax_to_tflite
