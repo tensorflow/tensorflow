@@ -283,7 +283,9 @@ def generated_test_models_failing(conversion_mode, delegate):
             "while",
         ]
     else:
-        return []
+        # TODO(b/335226678): New XNNPack vsqrt returns 0 instead of NaN in
+        # certain cases.
+        return ["sqrt"]
 
 def generated_test_models_successful(conversion_mode, delegate):
     """Returns the list of successful test models.

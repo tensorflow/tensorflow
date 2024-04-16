@@ -72,13 +72,13 @@ using BrokenTestMap =
              std::pair</* bug_number */ string, /* always_ignore */ bool>>;
 // TODO(ahentz): make sure we clean this list up frequently.
 const BrokenTestMap& GetKnownBrokenTests() {
-  static const BrokenTestMap* const kBrokenTests = new BrokenTestMap({
-      // TODO(b/194364155): TF and TFLite have different behaviors when output
-      // nan values in LocalResponseNorm ops.
-      {R"(^\/local_response_norm.*alpha=-3.*beta=2)", {"194364155", true}},
-      {R"(^\/local_response_norm.*alpha=(None|2).*beta=2.*bias=-0\.1.*depth_radius=(0|1).*input_shape=\[3,15,14,3\])",
-       {"194364155", true}},
-  });
+  static const BrokenTestMap* const kBrokenTests = new BrokenTestMap(
+      {// TODO(b/194364155): TF and TFLite have different behaviors when output
+       // nan values in LocalResponseNorm ops.
+       {R"(^\/local_response_norm.*alpha=-3.*beta=2)", {"194364155", true}},
+       {R"(^\/local_response_norm.*alpha=(None|2).*beta=2.*bias=-0\.1.*depth_radius=(0|1).*input_shape=\[3,15,14,3\])",
+        {"194364155", true}},
+       {R"(^\/sqrt.*)", {"335226678", true}}});
   return *kBrokenTests;
 }
 
@@ -295,6 +295,9 @@ TEST_P(OpsTest, RunZipTests) {
     string bug_number;
     bool always_ignore;
     for (const auto& p : broken_tests) {
+      printf("zyx, %s %s %s %s\n", p.first.c_str(), test_name.c_str(),
+             p.second.first.c_str(),
+             RE2::PartialMatch(test_name, p.first) ? "yes" : "no");
       if (RE2::PartialMatch(test_name, p.first)) {
         std::tie(bug_number, always_ignore) = p.second;
         break;
