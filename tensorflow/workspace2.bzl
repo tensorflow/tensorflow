@@ -6,6 +6,7 @@ load("@bazel_skylib//lib:versions.bzl", "versions")
 
 # Import external repository rules.
 load("@bazel_tools//tools/build_defs/repo:java.bzl", "java_import_external")
+load("@local_xla//:workspace2.bzl", "xla_workspace2")
 load("@rules_jvm_external//:defs.bzl", "maven_install")
 load("@tf_runtime//:dependencies.bzl", "tfrt_dependencies")
 load("//tensorflow/tools/def_file_filter:def_file_filter_configure.bzl", "def_file_filter_configure")
@@ -39,7 +40,6 @@ load("//third_party/implib_so:workspace.bzl", implib_so = "repo")
 load("//third_party/jpeg:workspace.bzl", jpeg = "repo")
 load("//third_party/kissfft:workspace.bzl", kissfft = "repo")
 load("//third_party/libprotobuf_mutator:workspace.bzl", libprotobuf_mutator = "repo")
-load("//third_party/llvm:setup.bzl", "llvm_setup")
 load("//third_party/nasm:workspace.bzl", nasm = "repo")
 load("//third_party/nccl:nccl_configure.bzl", "nccl_configure")
 load("//third_party/opencl_headers:workspace.bzl", opencl_headers = "repo")
@@ -453,18 +453,6 @@ def _tf_repositories():
         sha256 = "b35a74dbc9cd2fef9e4d56222761d61daf7e551510e6cd1a86f0789b548d074e",
         strip_prefix = "linenoise-4ce393a66b10903a0ef52edf9775ed526a17395f",
         urls = tf_mirror_urls("https://github.com/antirez/linenoise/archive/4ce393a66b10903a0ef52edf9775ed526a17395f.tar.gz"),
-    )
-
-    llvm_setup(name = "llvm-project")
-
-    # Intel openMP that is part of LLVM sources.
-    tf_http_archive(
-        name = "llvm_openmp",
-        build_file = "//third_party/llvm_openmp:BUILD",
-        patch_file = ["//third_party/llvm_openmp:openmp_switch_default_patch.patch"],
-        sha256 = "d19f728c8e04fb1e94566c8d76aef50ec926cd2f95ef3bf1e0a5de4909b28b44",
-        strip_prefix = "openmp-10.0.1.src",
-        urls = tf_mirror_urls("https://github.com/llvm/llvm-project/releases/download/llvmorg-10.0.1/openmp-10.0.1.src.tar.xz"),
     )
 
     tf_http_archive(
@@ -920,6 +908,8 @@ def _tf_repositories():
     )
 
 def workspace():
+    xla_workspace2()
+
     # Check the bazel version before executing any repository rules, in case
     # those rules rely on the version we require here.
     versions.check("1.0.0")

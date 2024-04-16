@@ -86,6 +86,10 @@ install_deps()
 # restriction that load() statements need to be at the top of .bzl files.
 # E.g. we can not retrieve a new repository with http_archive and then load()
 # a macro from that repository in the same file.
+load("@//tensorflow:workspace4.bzl", "tf_workspace4")
+
+tf_workspace4()
+
 load("@//tensorflow:workspace3.bzl", "tf_workspace3")
 
 tf_workspace3()
