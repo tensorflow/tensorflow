@@ -172,7 +172,6 @@ tf_cc_test(
     srcs = ["calibration_statistics_collector_test.cc"],
     deps = [
         ":calibration_statistics_collector_average_min_max",
-        ":calibration_statistics_collector_base",
         ":calibration_statistics_collector_histogram",
         ":calibration_statistics_collector_min_max",
         ":calibration_statistics_proto_cc",
@@ -211,7 +210,6 @@ tf_kernel_library(
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/platform:errors",
         "@com_google_absl//absl/status",
         "@local_tsl//tsl/platform:errors",
     ],
@@ -262,5 +260,50 @@ tf_python_pybind_extension(
         "@com_google_absl//absl/strings:str_format",
         "@pybind11",
         "@pybind11_protobuf//pybind11_protobuf:native_proto_caster",
+    ],
+)
+
+tf_kernel_library(
+    name = "calibration_statistics_saver_op",
+    srcs = ["calibration_statistics_saver_op.cc"],
+    compatible_with = get_compatible_with_portable(),
+    visibility = [
+        "//tensorflow:__pkg__",
+        "//tensorflow/compiler/mlir/quantization/tensorflow/python:__pkg__",
+    ],
+    deps = [
+        ":calibration_statistics_collector_average_min_max",
+        ":calibration_statistics_collector_base",
+        ":calibration_statistics_collector_histogram",
+        ":calibration_statistics_collector_min_max",
+        "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:logging",
+        "@com_google_absl//absl/base:nullability",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:env",
+    ],
+)
+
+tf_cc_test(
+    name = "calibration_statistics_saver_op_test",
+    srcs = ["calibration_statistics_saver_op_test.cc"],
+    deps = [
+        ":calibration_statistics_proto_cc",
+        ":calibration_statistics_saver_op",
+        "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "@com_google_googletest//:gtest",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:status",
+        "@local_tsl//tsl/platform:status_matchers",
     ],
 )

@@ -113,7 +113,7 @@ void CalibratorSingleton::AssignIfNotExists(
     case CalibrationOptions::CALIBRATION_METHOD_HISTOGRAM_MSE_SYMMETRIC:
     case CalibrationOptions::CALIBRATION_METHOD_HISTOGRAM_MSE_MAX_FREQUENCY:
       instance.id_to_collector_[id_str] =
-          std::make_unique<CalibrationStatisticsCollectorHistogram>(calib_opts);
+          std::make_unique<CalibrationStatisticsCollectorHistogram>();
       break;
     case CalibrationOptions::CALIBRATION_METHOD_MIN_MAX:
     default:
