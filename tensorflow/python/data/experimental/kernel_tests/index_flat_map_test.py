@@ -14,7 +14,7 @@
 # ==============================================================================
 """Tests for the index flat map dataset."""
 
-from typing import Any, Callable, Union
+from typing import Any, Callable, Optional, Union
 
 from absl.testing import parameterized
 
@@ -78,8 +78,18 @@ class IndexFlatMapTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertEqual(output,
                      [b"0", b"1", b"2", b"3", b"4", b"5", b"6", b"7", b"8"])
 
-  @combinations.generate(test_base.default_test_combinations())
-  def test_global_shuffle(self):
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(
+              repetitions=[1, 3],
+              seed=[None, 42],
+              reshuffle_each_iteration=[True, False])))
+  def test_global_shuffle(
+      self,
+      repetitions: int,
+      seed: Optional[int],
+      reshuffle_each_iteration: bool):
     input_data = ["0 1", "2 3 4 5", "6 7", "8"]
     metadata = _get_metadata(input_data)
 
@@ -87,11 +97,15 @@ class IndexFlatMapTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = index_flat_map_op.index_flat_map(
         dataset, _split, _get_index_map_func(metadata))
     dataset = dataset.apply(cardinality_lib.assert_cardinality(9))
-    dataset = global_shuffle_op._global_shuffle(dataset)
+    if repetitions > 1:
+      dataset = dataset.repeat(repetitions)
+    dataset = global_shuffle_op._global_shuffle(
+        dataset, seed=seed, reshuffle_each_iteration=reshuffle_each_iteration)
 
     dataset_output = self.getDatasetOutput(
         dataset, requires_initialization=True)
-    expected = [b"0", b"1", b"2", b"3", b"4", b"5", b"6", b"7", b"8"]
+    expected = [
+        b"0", b"1", b"2", b"3", b"4", b"5", b"6", b"7", b"8"] * repetitions
     self.assertCountEqual(dataset_output, expected)
     self.assertNotEqual(dataset_output, expected)
 
@@ -149,10 +163,13 @@ class IndexFlatMapCheckpointTest(
       combinations.times(
           test_base.default_test_combinations(),
           checkpoint_test_base.default_test_combinations(),
-          combinations.combine(symbolic_checkpoint=[True, False])))
+          combinations.combine(
+              repetitions=[1, 3],
+              symbolic_checkpoint=[True, False])))
   def test_index_flat_map(
       self,
       verify_fn: Callable[..., None],
+      repetitions: int,
       symbolic_checkpoint: bool):
 
     input_data = ["0 1", "2 3 4 5", "6 7", "8"]
@@ -161,22 +178,27 @@ class IndexFlatMapCheckpointTest(
       dataset = dataset_ops.Dataset.from_tensor_slices(input_data)
       dataset = index_flat_map_op.index_flat_map(
           dataset, _split, _get_index_map_func(_get_metadata(input_data)))
+      dataset = dataset.apply(cardinality_lib.assert_cardinality(9))
+      if repetitions > 1:
+        dataset = dataset.repeat(repetitions)
       options = options_lib.Options()
       options.experimental_symbolic_checkpoint = symbolic_checkpoint
       return dataset.with_options(options)
 
-    verify_fn(self, _build_dataset, num_outputs=9)
+    verify_fn(self, _build_dataset, num_outputs=9 * repetitions)
 
   @combinations.generate(
       combinations.times(
           test_base.default_test_combinations(),
           checkpoint_test_base.default_test_combinations(),
           combinations.combine(
+              repetitions=[1, 3],
               reshuffle_each_iteration=[True, False],
               symbolic_checkpoint=[True, False])))
   def test_global_shuffle(
       self,
       verify_fn: Callable[..., None],
+      repetitions: list[int],
       reshuffle_each_iteration: bool,
       symbolic_checkpoint: bool):
 
@@ -187,6 +209,8 @@ class IndexFlatMapCheckpointTest(
       dataset = index_flat_map_op.index_flat_map(
           dataset, _split, _get_index_map_func(_get_metadata(input_data)))
       dataset = dataset.apply(cardinality_lib.assert_cardinality(9))
+      if repetitions > 1:
+        dataset = dataset.repeat(repetitions)
       dataset = global_shuffle_op._global_shuffle(
           dataset, seed=42, reshuffle_each_iteration=reshuffle_each_iteration)
 
@@ -197,7 +221,7 @@ class IndexFlatMapCheckpointTest(
     verify_fn(
         self,
         _build_dataset,
-        num_outputs=9,
+        num_outputs=9 * repetitions,
         assert_items_equal=reshuffle_each_iteration)
 
 
