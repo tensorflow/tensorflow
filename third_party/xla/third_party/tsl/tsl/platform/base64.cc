@@ -63,7 +63,7 @@ inline uint32 Convert(char x) {
   return static_cast<uint32>(z);
 }
 
-Status DecodeThreeChars(const char* codes, char* result) {
+absl::Status DecodeThreeChars(const char* codes, char* result) {
   const uint32 packed = (Convert(codes[0]) << 18) | (Convert(codes[1]) << 12) |
                         (Convert(codes[2]) << 6) | (Convert(codes[3]));
   // Convert() return value has upper 25 bits set if input is invalid.
@@ -74,19 +74,19 @@ Status DecodeThreeChars(const char* codes, char* result) {
   result[0] = static_cast<char>(packed >> 16);
   result[1] = static_cast<char>(packed >> 8);
   result[2] = static_cast<char>(packed);
-  return OkStatus();
+  return absl::OkStatus();
 }
 }  // namespace
 
 template <typename T>
-Status Base64Decode(StringPiece data, T* decoded) {
+absl::Status Base64Decode(StringPiece data, T* decoded) {
   if (decoded == nullptr) {
     return errors::Internal("'decoded' cannot be nullptr.");
   }
 
   if (data.empty()) {
     decoded->clear();
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // This decoding procedure will write 3 * ceil(data.size() / 4) bytes to be
@@ -138,16 +138,16 @@ Status Base64Decode(StringPiece data, T* decoded) {
   current += remain - 1;
 
   decoded->assign(buffer.get(), current - buffer.get());
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <typename T>
-Status Base64Encode(StringPiece source, T* encoded) {
+absl::Status Base64Encode(StringPiece source, T* encoded) {
   return Base64Encode(source, false, encoded);
 }
 
 template <typename T>
-Status Base64Encode(StringPiece source, bool with_padding, T* encoded) {
+absl::Status Base64Encode(StringPiece source, bool with_padding, T* encoded) {
   const char* const base64_chars = kBase64UrlSafeChars;
   if (encoded == nullptr) {
     return errors::Internal("'encoded' cannot be nullptr.");
@@ -196,7 +196,7 @@ Status Base64Encode(StringPiece source, bool with_padding, T* encoded) {
   }
 
   encoded->assign(buffer.get(), current - buffer.get());
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template Status Base64Decode<std::string>(StringPiece data,
