@@ -52,7 +52,10 @@ class LowerToLLVMPass : public impl::LowerToLLVMPassBase<LowerToLLVMPass> {
 
   void runOnOperation() override {
     // Populate type conversions.
-    mlir::LLVMTypeConverter type_converter(getOperation().getContext());
+    mlir::LowerToLLVMOptions llvm_opts(&getContext(),
+                                       mlir::DataLayout(getOperation()));
+    mlir::LLVMTypeConverter type_converter(getOperation().getContext(),
+                                           llvm_opts);
     mlir::LLVMConversionTarget target(*getOperation().getContext());
 
     // Populate patterns.

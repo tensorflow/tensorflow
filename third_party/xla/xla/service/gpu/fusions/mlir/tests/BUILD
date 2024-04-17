@@ -16,6 +16,7 @@ xla_cc_binary(
         "@llvm-project//mlir:AffineDialect",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:ComplexDialect",
+        "@llvm-project//mlir:DLTIDialect",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:FuncExtensions",
         "@llvm-project//mlir:GPUDialect",

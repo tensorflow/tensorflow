@@ -43,6 +43,7 @@ limitations under the License.
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/IR/ValueRange.h"  // from @llvm-project
+#include "mlir/Interfaces/DataLayoutInterfaces.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -137,10 +138,9 @@ mlir::LLVM::GEPOp CreateGep(mlir::Operation* op,
   rewriter.setInsertionPoint(op);
   Value index = rewriter.create<mlir::affine::AffineApplyOp>(
       tensor.getLoc(), linearize_map, indices);
-  auto index_ty =
-      ShapeUtil::ElementsIn(byte_shape) < std::numeric_limits<int32_t>::max()
-          ? rewriter.getI32Type()
-          : rewriter.getI64Type();
+  auto index_ty = rewriter.getIntegerType(
+      mlir::DataLayout::closest(rewriter.getInsertionBlock()->getParentOp())
+          .getTypeSizeInBits(index.getType()));
   index = rewriter.create<mlir::arith::IndexCastUIOp>(tensor.getLoc(), index_ty,
                                                       index);
 

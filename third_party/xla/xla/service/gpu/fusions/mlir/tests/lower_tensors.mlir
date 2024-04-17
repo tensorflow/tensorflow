@@ -1,6 +1,6 @@
 // RUN: mlir_fusions_opt %s -split-input-file -xla-gpu-lower-tensors | FileCheck %s
 
-module {
+module attributes {dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<index, 32 : i32>>} {
   func.func private @add(%arg0: f32, %arg1: f32) -> f32 {
     %sum = arith.addf %arg0, %arg1 : f32
     func.return %sum : f32
@@ -72,7 +72,7 @@ module {
 // CHECK:      @layout(%[[ARG0:.*]]: !llvm.ptr,
 // CHECK-SAME:     %[[X:.*]]: index, %[[Y:.*]]: index
 // CHECK:        %[[IDX:.*]] = affine.apply #[[MAP]](%[[X]], %[[Y]])
-// CHECK:        %[[IDX_CAST:.*]] = arith.index_castui %[[IDX]] : index to i32
+// CHECK:        %[[IDX_CAST:.*]] = arith.index_castui %[[IDX]] : index to i64
 // CHECK:        %[[PTR:.*]] = llvm.getelementptr inbounds %[[ARG0]][%[[IDX_CAST]]]
 // CHECK:        llvm.load %[[PTR]]
 
@@ -110,7 +110,7 @@ module {
 // CHECK-DAG:   %[[C1:.*]] = arith.constant 1 : index
 // CHECK-DAG:   %[[C2:.*]] = arith.constant 2 : index
 // CHECK:       scf.for %[[I:.*]] = %[[C0]] to %[[C2]] step %[[C1]] {
-// CHECK:         %[[CAST:.*]] = arith.index_castui %[[I]] : index to i32
+// CHECK:         %[[CAST:.*]] = arith.index_castui %[[I]] : index to i64
 // CHECK:         %[[PTR:.*]] = llvm.getelementptr inbounds %[[ARG0]][%[[CAST]]]
 // CHECK:         llvm.store {{.*}}, %[[PTR]]
 // CHECK:       %[[INBOUNDS:.*]] = arith.cmpi
