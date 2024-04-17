@@ -1008,11 +1008,12 @@ absl::Status IrEmitterUnnested::EmitFusedMHAThunk(
   if (has_activation) {
     output_shapes.push_back(ShapeUtil::GetSubshape(instr->shape(), {2}));
   }
-
+  TF_ASSIGN_OR_RETURN(const auto mask_type,
+                      AsCudnnFmhaMaskKind(config.mask_type()));
   GpufMHADescriptor descriptor = {kind,
                                   config,
                                   config.is_flash_attention(),
-                                  config.is_causal_mask(),
+                                  mask_type,
                                   lhs_bmm1->shape(),
                                   rhs_bmm1->shape(),
                                   rhs_bmm2->shape(),
@@ -1157,12 +1158,13 @@ absl::Status IrEmitterUnnested::EmitFusedMHABackwardThunk(
     d_bias_shape = ShapeUtil::GetSubshape(instr->shape(), {output_index++});
   }
   TF_RET_CHECK(output_index == instr->shape().tuple_shapes().size());
-
+  TF_ASSIGN_OR_RETURN(const auto mask_type,
+                      AsCudnnFmhaMaskKind(config.mask_type()));
   GpufMHABackwardDescriptor descriptor = {
       kind,
       config,
       is_flash_attention,
-      config.is_causal_mask(),
+      mask_type,
       bmm1_grad_gemm1_rhs_shape,
       bmm1_grad_gemm2_rhs_shape,
       bmm2_grad_gemm1_lhs_shape,

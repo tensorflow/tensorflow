@@ -6345,7 +6345,8 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionOperationGraph(
     const std::optional<dnn::TensorDescriptor> mask_descriptor,
     const std::optional<dnn::TensorDescriptor> stats_descriptor,
     const float scale, const bool use_dropout,
-    const std::optional<double> dropout_rate, const bool is_causal_mask) {
+    const std::optional<double> dropout_rate,
+    const dnn::FMHAMaskKind mask_type) {
   using cudnn_frontend::graph::Tensor_attributes;
 
 #if CUDNN_VERSION >= 8904
@@ -6401,10 +6402,12 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionOperationGraph(
           .set_uid(CudnnfMHAUid::V_ID));
 
   // Setting sdpa, and is_inference
+  bool is_causal = mask_type == dnn::FMHAMaskKind::CAUSAL ||
+                   mask_type == dnn::FMHAMaskKind::PADDING_CAUSAL;
   cudnn_frontend::graph::SDPA_attributes sdpa_options;
   sdpa_options.set_name("flash_attention")
       .set_is_inference(stats_descriptor == std::nullopt)
-      .set_causal_mask(is_causal_mask)
+      .set_causal_mask(is_causal)
       .set_attn_scale(scale);
 
   // Setting bias
@@ -6490,8 +6493,8 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionBackwardOperationGraph(
     const dnn::TensorDescriptor& dv_desc,
     const std::optional<dnn::TensorDescriptor> bias_descriptor,
     std::optional<double> dropout_rate, std::optional<int64_t> seed,
-    double scale, bool use_dropout = false, bool use_mask = false,
-    bool use_bias = false, bool use_causal_mask = false) {
+    double scale, bool use_dropout, bool use_mask, bool use_bias,
+    dnn::FMHAMaskKind mask_type) {
 #if CUDNN_VERSION >= 8904
   if (VLOG_IS_ON(4)) {
     VLOG(4) << "\n bmm1_grad_gemm1_rhs(q): " << q_desc.ToString()
@@ -6572,11 +6575,12 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionBackwardOperationGraph(
                        .set_stride(p_reduction_strides)
                        .set_uid(CudnnfMHAUid::P_ID)
                        .set_data_type(cudnn_frontend::DataType_t::FLOAT));
-
+  bool is_causal = mask_type == dnn::FMHAMaskKind::CAUSAL ||
+                   mask_type == dnn::FMHAMaskKind::PADDING_CAUSAL;
   auto sdpa_backward_options =
       cudnn_frontend::graph::SDPA_backward_attributes()
           .set_name("flash_attention_backward")
-          .set_causal_mask(use_causal_mask)
+          .set_causal_mask(is_causal)
           .set_attn_scale(scale)
           .set_compute_data_type(cudnn_frontend::DataType_t::FLOAT);
 
@@ -6591,7 +6595,6 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionBackwardOperationGraph(
                          .set_uid(CudnnfMHAUid::BIAS_ID));
     sdpa_backward_options.set_bias(bias_tensor);
   }
-
   // Setting seed and offset
   if (use_dropout) {
     DCHECK(dropout_rate != std::nullopt);
@@ -8473,7 +8476,7 @@ CudnnSupport::FusedMHARunnerFromDesc(
     std::optional<dnn::TensorDescriptor> mask_descriptor,
     std::optional<dnn::TensorDescriptor> bias_descriptor, double scale,
     std::optional<double> dropout_rate, std::optional<int64_t> seed,
-    bool is_flash_attention, bool is_causal_mask) {
+    bool is_flash_attention, dnn::FMHAMaskKind mask_type) {
 #if CUDNN_VERSION >= 8800
   auto cudnn = cudnn_->GetHandle(parent_, stream);
   bool use_dropout = dropout_rate && *dropout_rate > 0.0;
@@ -8489,7 +8492,7 @@ CudnnSupport::FusedMHARunnerFromDesc(
             /*o_descriptor=*/output_descriptor, bias_descriptor,
             mask_descriptor, /*stats_descriptor=*/activation_descriptor,
             /*scale=*/static_cast<float>(scale), use_dropout, dropout_rate,
-            is_causal_mask));
+            mask_type));
 
     std::vector<int64_t> intermediate_bmm2_lhs_dims =
         intermediate_bmm2_lhs_descriptor.GetCudnnCompatibleDimensions(true);
@@ -8591,7 +8594,7 @@ CudnnSupport::FusedMHABackwardRunnerFromDesc(
     std::optional<dnn::TensorDescriptor> fwd_output_descriptor,
     std::optional<dnn::TensorDescriptor> bias_descriptor, double scale,
     std::optional<double> dropout_rate, std::optional<int64_t> seed,
-    bool is_flash_attention, bool is_causal_mask) {
+    bool is_flash_attention, dnn::FMHAMaskKind mask_type) {
 #if CUDNN_VERSION >= 8800
   auto cudnn = cudnn_->GetHandle(parent_, stream);
 
@@ -8608,7 +8611,7 @@ CudnnSupport::FusedMHABackwardRunnerFromDesc(
             d_bmm1_lhs_descriptor, d_bmm1_rhs_descriptor, d_bmm2_rhs_descriptor,
             bias_descriptor, dropout_rate, seed, scale, use_dropout,
             /*use_mask*/ mask_descriptor != std::nullopt,
-            /*use_bias*/ bias_descriptor != std::nullopt, is_causal_mask));
+            /*use_bias*/ bias_descriptor != std::nullopt, mask_type));
 
     std::vector<int64_t> p_dims =
         bmm2_grad_gemm1_lhs_descriptor.GetCudnnCompatibleDimensions(false);
@@ -8621,9 +8624,9 @@ CudnnSupport::FusedMHABackwardRunnerFromDesc(
             CudnnfMHAUid::V_ID,  CudnnfMHAUid::dO_ID, CudnnfMHAUid::dQ_ID,
             CudnnfMHAUid::dK_ID, CudnnfMHAUid::dV_ID, std::nullopt,
             std::nullopt,        std::nullopt,        CudnnfMHAUid::O_ID};
-    if (bias_descriptor) {
-      uids.push_back(CudnnfMHAUid::BIAS_ID);
-    }
+    uids.emplace_back(bias_descriptor.has_value()
+                          ? std::optional<CudnnfMHAUid>(CudnnfMHAUid::BIAS_ID)
+                          : std::nullopt);
     TF_ASSIGN_OR_RETURN(
         auto runner, CudnnGraphRunner<dnn::FusedMHABackwardSignature>::Create(
                          parent_, cudnn_.get(), graph, dropout_rng_seed,

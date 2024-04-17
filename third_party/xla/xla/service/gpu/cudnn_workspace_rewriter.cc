@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/gpu_fused_mha_runner.h"
 #include "xla/service/gpu/ir_emission_utils.h"
+#include "xla/service/gpu/stream_executor_util.h"
 #include "xla/stream_executor/cuda/cuda_dnn.h"
 #include "xla/stream_executor/cuda/cudnn_frontend_helpers.h"
 #include "xla/util.h"
@@ -102,11 +103,12 @@ absl::StatusOr<se::gpu::CudnnGraph> HloCustomCallToCuDnnGraph(
     Shape q_shape = custom_call->operand(0)->shape();
     Shape k_shape = custom_call->operand(1)->shape();
     Shape v_shape = custom_call->operand(2)->shape();
-
+    TF_ASSIGN_OR_RETURN(CudnnfMHAMaskKind cudnn_mask_type,
+                        AsCudnnFmhaMaskKind(config.mask_type()));
     GpufMHADescriptor descriptor = {kind,
                                     config,
                                     config.is_flash_attention(),
-                                    config.is_causal_mask(),
+                                    cudnn_mask_type,
                                     q_shape,
                                     k_shape,
                                     v_shape,
@@ -120,6 +122,9 @@ absl::StatusOr<se::gpu::CudnnGraph> HloCustomCallToCuDnnGraph(
     TF_ASSIGN_OR_RETURN(GpufMHAConfig fmha_config,
                         GpufMHAConfig::For(descriptor));
     TF_ASSIGN_OR_RETURN(
+        se::dnn::FMHAMaskKind dnn_mask_type,
+        GetDNNFmhaMaskKindFromCudnnFmhaMaskKind(fmha_config.mask_type));
+    TF_ASSIGN_OR_RETURN(
         se::gpu::CudnnGraph graph,
         se::gpu::GetCudnnFlashAttentionOperationGraph(
             dnn_support, fmha_config.lhs_bmm1, fmha_config.rhs_bmm1,
@@ -127,7 +132,7 @@ absl::StatusOr<se::gpu::CudnnGraph> HloCustomCallToCuDnnGraph(
             fmha_config.mask, fmha_config.activation,
             static_cast<float>(*fmha_config.fmha_scale),
             fmha_config.dropout_rate && *fmha_config.dropout_rate > 0.0,
-            fmha_config.dropout_rate, fmha_config.is_causal_mask));
+            fmha_config.dropout_rate, dnn_mask_type));
     return std::move(graph);
   } else {
     TF_ASSIGN_OR_RETURN(
@@ -184,12 +189,13 @@ absl::StatusOr<se::gpu::CudnnGraph> HloCustomCallToCuDnnGraph(
     std::optional<Shape> d_s_shape;
     std::optional<Shape> d_bias_shape;
     TF_RET_CHECK(output_index == custom_call->shape().tuple_shapes().size());
-
+    TF_ASSIGN_OR_RETURN(CudnnfMHAMaskKind cudnn_mask_type,
+                        AsCudnnFmhaMaskKind(config.mask_type()));
     GpufMHABackwardDescriptor descriptor = {
         kind,
         config,
         is_flash_attention,
-        config.is_causal_mask(),
+        cudnn_mask_type,
         bmm1_grad_gemm1_rhs_shape,
         bmm1_grad_gemm2_rhs_shape,
         bmm2_grad_gemm1_lhs_shape,
@@ -211,6 +217,9 @@ absl::StatusOr<se::gpu::CudnnGraph> HloCustomCallToCuDnnGraph(
     TF_ASSIGN_OR_RETURN(GpufMHABackwardConfig fmha_config,
                         GpufMHABackwardConfig::For(descriptor));
     TF_ASSIGN_OR_RETURN(
+        se::dnn::FMHAMaskKind dnn_mask_type,
+        GetDNNFmhaMaskKindFromCudnnFmhaMaskKind(fmha_config.mask_type));
+    TF_ASSIGN_OR_RETURN(
         se::gpu::CudnnGraph graph,
         se::gpu::GetCudnnFlashAttentionBackwardOperationGraph(
             dnn_support, fmha_config.bmm1_grad_gemm1_rhs,
@@ -221,7 +230,7 @@ absl::StatusOr<se::gpu::CudnnGraph> HloCustomCallToCuDnnGraph(
             fmha_config.seed, *fmha_config.fmha_scale,
             fmha_config.dropout_rate && *fmha_config.dropout_rate > 0.0,
             fmha_config.mask != std::nullopt, fmha_config.bias != std::nullopt,
-            fmha_config.is_causal_mask));
+            dnn_mask_type));
     return std::move(graph);
   }
 }
