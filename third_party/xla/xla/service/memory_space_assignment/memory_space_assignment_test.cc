@@ -53,6 +53,7 @@ limitations under the License.
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_value.h"
 #include "xla/service/instruction_hoister.h"
+#include "xla/service/memory_space_assignment/algorithm.h"
 #include "xla/service/memory_space_assignment/allocation.h"
 #include "xla/service/memory_space_assignment/buffer_interval_comparator.h"
 #include "xla/service/memory_space_assignment/cost_analysis.h"
@@ -125,9 +126,7 @@ StatusOr<MessageType> ParseTextProto(const std::string& text_proto) {
 
 class TestBufferIntervalComparator : public BufferIntervalComparator {
  public:
-  explicit TestBufferIntervalComparator(
-      GlobalDecreasingSizeBestFitHeap<HloValue>::BufferIntervalCompare
-          compare_method)
+  explicit TestBufferIntervalComparator(MsaBufferIntervalCompare compare_method)
       : BufferIntervalComparator(), compare_method_(compare_method) {}
 
   ~TestBufferIntervalComparator() override = default;
@@ -145,8 +144,7 @@ class TestBufferIntervalComparator : public BufferIntervalComparator {
   }
 
  private:
-  GlobalDecreasingSizeBestFitHeap<HloValue>::BufferIntervalCompare
-      compare_method_;
+  MsaBufferIntervalCompare compare_method_;
 };
 
 class MemorySpaceAssignmentTestBase : public HloTestBase {
