@@ -97,13 +97,23 @@ class InsertWeightParamPattern
       return false;
     }
     Operation* user = operand.getOwner();
-    return IsWeightOnlyQuantizableOp(*user);
+    if (isa<TF::XlaCallModuleOp>(user)) {
+      auto call_op = cast<TF::XlaCallModuleOp>(user);
+      const StringRef function_name = GetEntryFunctionName(call_op);
+      const bool is_conv_or_dot = function_name.contains("conv") ||
+                                  function_name.contains("dot_general");
+      const bool has_quant_trait = HasQuantizableTrait(call_op);
+      return is_conv_or_dot && has_quant_trait;
+    }
+    return false;
   }
 
   void rewrite(Operation* op, PatternRewriter& rewriter) const override {
     Operation* quantizable_op = *op->getUsers().begin();
     DenseFPElementsAttr attr;
-    matchPattern(op->getResult(0), m_Constant(&attr));
+    if (!matchPattern(op->getResult(0), m_Constant(&attr))) {
+      return;
+    }
     auto quant_type =
         quant::GetUniformQuantizedTypeForWeight(
             attr, /*symmetric=*/false, /*num_bits=*/8, /*is_signed=*/true,

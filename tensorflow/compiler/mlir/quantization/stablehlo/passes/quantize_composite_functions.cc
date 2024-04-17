@@ -55,8 +55,10 @@ class QuantizeCompositeFunctionsPass
       QuantizeCompositeFunctionsPass>::QuantizeCompositeFunctionsPassBase;
 
   explicit QuantizeCompositeFunctionsPass(
-      const bool enable_per_channel_quantized_weight) {
+      const bool enable_per_channel_quantized_weight,
+      const bool enable_weight_only) {
     enable_per_channel_quantized_weight_ = enable_per_channel_quantized_weight;
+    enable_weight_only_ = enable_weight_only;
   }
 
  private:
@@ -78,10 +80,9 @@ void QuantizeCompositeFunctionsPass::runOnOperation() {
   // Change this to user-given bit width once we have custom configuration.
   options.bit_width_ = 8;
 
-  // Insert quantization parameters for weights for ops with `weight_only_ptq`
-  // attribute.
-  pm.addNestedPass<func::FuncOp>(createInsertWeightParamPass());
-
+  if (enable_weight_only_) {
+    pm.addNestedPass<func::FuncOp>(createInsertWeightParamPass());
+  }
   // PrepareQuantizePass uses SymbolTable to fetch relevant GEMM ops for
   // determining quantization attributes. This requires module-level context.
   pm.addPass(createPrepareQuantizePass(options));
@@ -89,7 +90,7 @@ void QuantizeCompositeFunctionsPass::runOnOperation() {
   QuantizePassOptions quantize_options;
   quantize_options.enable_per_channel_quantized_weight_ =
       enable_per_channel_quantized_weight_;
-
+  quantize_options.enable_weight_only_ = enable_weight_only_;
   // QuantizePass modifies FuncOps referenced outside of its given scope
   // and therefore requires a module-level context.
   pm.addPass(createQuantizePass(quantize_options));
