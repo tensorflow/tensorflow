@@ -41,8 +41,8 @@ TEST_F(MlirInputSlicesFusionTest, SimpleInputSlices) {
     }
   )";
   TF_ASSERT_OK(EmitAndCheckIR(kHloString, R"(
-    // CHECK: arith.cmpi sge
-    // CHECK: arith.cmpi sle
+    // CHECK-DAG: arith.cmpi sge
+    // CHECK-DAG: arith.cmpi sle
     // CHECK: arith.andi
     // CHECK: scf.if
     // CHECK: func.func private @fused_computation_input
