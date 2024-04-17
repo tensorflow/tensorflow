@@ -198,12 +198,6 @@ void AddNonReplicatedBridgeClusteringPipelinePasses(OpPassManager& pm) {
   pm.addNestedPass<FuncOp>(mlir::createCanonicalizerPass());
   // Decompose resource ops.
   pm.addPass(mlir::TFDevice::CreateDecomposeResourceOpsInClusterPass());
-  // TODO(b/267193636): Remove this flag when outside compilation
-  // for generic pipeline is landed.
-  if (tensorflow::GetMlirCommonFlags()
-          ->tf_mlir_enable_generic_outside_compilation) {
-    pm.addPass(mlir::TF::CreateTFFunctionalControlFlowToRegions());
-  }
   // Run another shape inference pass because resource decomposition might have
   // created new partial types. Also, after dropping `shape_invariant` attribute
   // from While/WhileRegion ops within cluster would lead to more precise
@@ -218,17 +212,6 @@ void AddNonReplicatedBridgeClusteringPipelinePasses(OpPassManager& pm) {
   // Lift resource operations out of device computation. This step needs to be
   // done after inlining.
   pm.addPass(mlir::TFDevice::CreateResourceOpLiftingPass());
-  // TODO(b/267193636): Remove this flag when outside compilation
-  // for generic pipeline is landed.
-  if (tensorflow::GetMlirCommonFlags()
-          ->tf_mlir_enable_generic_outside_compilation) {
-    pm.addPass(
-        tensorflow::tf2xla::internal::CreateMarkOpsForOutsideCompilationPass());
-    pm.addPass(tensorflow::tf2xla::internal::
-                   CreateExtractHeadTailOutsideCompilationPass());
-    pm.addPass(
-        tensorflow::tf2xla::internal::CreateExtractOutsideCompilationPass());
-  }
   // Outline clusters into cluster functions.
   pm.addPass(mlir::TFDevice::CreateClusterOutliningPass());
   // Verifies clustering has conformed with the expected invariants
