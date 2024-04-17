@@ -210,20 +210,9 @@ class GemmAutotuner {
 
   absl::StatusOr<AutotuneResult> TuneGpuBlas(const HloInstruction* gemm,
                                              const GemmConfig& gemm_config) {
-    int64_t workspace_size =
-        std::visit(VariantVisitor{[](const se::CudaComputeCapability& cc) {
-                                    return cc.IsAtLeastHopper()
-                                               ? GemmConfig::kHopperWorkspace
-                                               : GemmConfig::kDefaultWorkspace;
-                                  },
-                                  [](const se::RocmComputeCapability&) {
-                                    return GemmConfig::kDefaultWorkspace;
-                                  }},
-                   autotune_config_.GetGpuComputeCapability());
-
-    TF_ASSIGN_OR_RETURN(
-        auto workspace_buffer,
-        CreateBuffer(ShapeUtil::MakeShape(S8, {workspace_size})));
+    TF_ASSIGN_OR_RETURN(auto workspace_shape,
+                        ShapeUtil::TryGetSubshape(gemm->shape(), {1}));
+    TF_ASSIGN_OR_RETURN(auto workspace_buffer, CreateBuffer(*workspace_shape));
 
     std::vector<se::blas::AlgorithmType> algorithms;
     TF_ASSIGN_OR_RETURN(GemmConfig::DescriptorsTuple desc,
