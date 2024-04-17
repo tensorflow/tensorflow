@@ -948,5 +948,108 @@ body {
   VerifyP2P2GroupChain(module.get(), ".0", ".1");
 }
 
+TEST_F(P2PSchedulePreparationTest, Unpipelined2SeparatedChainTransformed) {
+  const char* const kModuleStr = R"(
+  HloModule test
+
+cond {
+    param = (u32[], u32[2]) parameter(0)
+    count = get-tuple-element(%param), index=0
+    ub = u32[] constant(11)
+    ROOT result = pred[] compare(count, ub), direction=LT
+ }
+
+body {
+    param = (u32[], u32[2]) parameter(0)
+    count = get-tuple-element(param), index=0
+    send-data = u32[2] get-tuple-element(param), index=1
+
+    after-all.0.n = token[] after-all()
+    recv.0 = (u32[2], u32[], token[]) recv(after-all.0.n), channel_id=1,
+      frontend_attributes={
+        _xla_send_recv_source_target_pairs="{{3,0}}",
+        _xla_send_recv_pipeline="0"
+      }
+    send.0 = (u32[2], u32[], token[]) send(send-data, after-all.0.n),
+      channel_id=1,
+      frontend_attributes={
+        _xla_send_recv_source_target_pairs="{{3,0}}",
+        _xla_send_recv_pipeline="0"
+      }
+    recv-done.0 = (u32[2], token[]) recv-done(recv.0), channel_id=1,
+      frontend_attributes={
+        _xla_send_recv_pipeline="0"
+      }
+    send-done.0 = token[] send-done(send.0), channel_id=1,
+      frontend_attributes={
+        _xla_send_recv_pipeline="0"
+      }
+
+    after-all.1 = token[] after-all()
+    recv.1 = (u32[2], u32[], token[]) recv(after-all.1), channel_id=2,
+      frontend_attributes={
+        _xla_send_recv_source_target_pairs="{{0,1},{1,2}}"
+      }
+    send.1 = (u32[2], u32[], token[]) send(send-data, after-all.1),
+      channel_id=2,
+      frontend_attributes={
+        _xla_send_recv_source_target_pairs="{{0,1},{1,2}}"
+      }
+    recv-done.1 = (u32[2], token[]) recv-done(recv.1), channel_id=2
+    send-done.1 = token[] send-done(send.1), channel_id=2
+
+    recv-data.0 = u32[2] get-tuple-element(recv-done.0), index=0
+    recv-data.1 = u32[2] get-tuple-element(recv-done.1), index=0
+
+    replica = u32[] replica-id()
+    constant0 = u32[] constant(0)
+    compare0 = pred[] compare(replica, constant0), direction=EQ
+    compare = pred[2] broadcast(compare0), dimensions={}
+    recv-data = u32[2] select(compare, recv-data.0, recv-data.1)
+
+    c1 = u32[] constant(1)
+    new_count = u32[] add(count, c1)
+
+    r = u32[2] broadcast(c1), dimensions={}
+    s = u32[2] add(r, recv-data)
+
+    ROOT result = (u32[], u32[2]) tuple(new_count, s)
+  }
+
+  ENTRY test_computation {
+    c0 = u32[] constant(0)
+    c1 = u32[] constant(1)
+    r = u32[] replica-id()
+    a = u32[] add(c1, r)
+    init = u32[2] broadcast(a), dimensions={}
+    while_init = (u32[], u32[2]) tuple(c0, init)
+    while_result = (u32[], u32[2]) while(while_init), body=body, condition=cond,
+      backend_config={"known_trip_count":{"n":"11"}}
+    ROOT recv-data = u32[2] get-tuple-element(while_result), index=1
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnUnverifiedModule((kModuleStr)));
+  P2PSchedulePreparation preparation;
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, preparation.Run(module.get()));
+  EXPECT_TRUE(changed);
+
+  VerifyUnpipelinedP2P(module.get(), ".0");
+  VerifyUnpipelinedP2P(module.get(), ".1");
+  // Verify the two chains are ordered, that is, either the chain-0 goes before
+  // or after chain-1.
+  HloInstruction* recv0 = FindInstruction(module.get(), "recv.0");
+  if (!recv0->control_predecessors().empty()) {
+    HloInstruction* send_done1 = FindInstruction(module.get(), "send-done.1");
+    EXPECT_EQ(recv0->control_predecessors()[0], send_done1);
+  } else {
+    HloInstruction* recv1 = FindInstruction(module.get(), "recv.1");
+    HloInstruction* send_done0 = FindInstruction(module.get(), "send-done.0");
+    EXPECT_TRUE(!recv1->control_predecessors().empty());
+    EXPECT_EQ(recv1->control_predecessors()[0], send_done0);
+  }
+}
+
 }  // namespace
 }  // namespace xla
