@@ -422,7 +422,7 @@ LoadedExecutable::Execute(absl::Span<tsl::RCReference<xla::ifrt::Array>> args,
   TF_ASSIGN_OR_RETURN(*req->mutable_execute_options(), options.ToProto());
   if (devices.has_value()) {
     for (const auto* device : *devices) {
-      req->add_device_ids(device->id());
+      req->add_device_ids(device->Id().value());
     }
   }
 

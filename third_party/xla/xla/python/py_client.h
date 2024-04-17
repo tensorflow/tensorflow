@@ -125,16 +125,16 @@ class PyClient {
   absl::StatusOr<nb_class_ptr<PyDevice>> DeviceFromLocalHardwareId(
       int local_hardware_id);
 
-  // Returns the PyDevice associated with the given PjRtDevice.
-  nb_class_ptr<PyDevice> GetPyDevice(PjRtDevice* device);
+  // Returns the PyDevice associated with the given ifrt::Device.
+  nb_class_ptr<PyDevice> GetPyDevice(ifrt::Device* device);
 
-  // Returns the PyMemorySpace associated with the given PjRtMemorySpace.
-  nb_class_ptr<PyMemorySpace> GetPyMemorySpace(PjRtMemorySpace* memory_space);
+  // Returns the PyMemorySpace associated with the given ifrt::Memory.
+  nb_class_ptr<PyMemorySpace> GetPyMemorySpace(ifrt::Memory* memory_space);
 
   // Returns a vector of live PyArray objects. PyArray objects may share
   // PjRtBuffers, so there may be duplicates of the same underlying device
   // buffer.
-  std::vector<nanobind::object> LiveBuffersOnDevice(PjRtDevice* device);
+  std::vector<nanobind::object> LiveBuffersOnDevice(ifrt::Device* device);
 
   nanobind::list LiveExecutables();
 
@@ -143,7 +143,7 @@ class PyClient {
 
   static absl::StatusOr<nanobind::object> BufferFromPyval(
       nb_class_ptr<PyClient> client, nanobind::handle argument,
-      PjRtDevice* device, bool force_copy,
+      ifrt::Device* device, bool force_copy,
       ifrt::Client::HostBufferSemantics host_buffer_semantics);
 
   static absl::StatusOr<nb_class_ptr<PyLoadedExecutable>> CompileIfrtProgram(
@@ -243,7 +243,7 @@ class PyClient {
   PyArray_Storage* arrays_ = nullptr;
 
   absl::flat_hash_map<ifrt::Device*, nb_class_ptr<PyDevice>> devices_;
-  absl::flat_hash_map<PjRtMemorySpace*, nb_class_ptr<PyMemorySpace>>
+  absl::flat_hash_map<ifrt::Memory*, nb_class_ptr<PyMemorySpace>>
       memory_spaces_;
 };
 

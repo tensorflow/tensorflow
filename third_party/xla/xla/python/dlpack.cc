@@ -41,9 +41,11 @@ limitations under the License.
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
+#include "xla/python/ifrt/device.h"
 #include "xla/python/nb_class_ptr.h"
 #include "xla/python/pjrt_ifrt/pjrt_array.h"
 #include "xla/python/pjrt_ifrt/pjrt_client.h"
+#include "xla/python/pjrt_ifrt/pjrt_device.h"
 #include "xla/python/py_array.h"
 #include "xla/python/py_client.h"
 #include "xla/python/python_ref_manager.h"
@@ -478,8 +480,14 @@ absl::StatusOr<nb::object> DLPackManagedTensorToBuffer(
 }
 
 absl::StatusOr<nb::object> DLPackManagedTensorToBuffer(
-    const nb::capsule& tensor, PjRtDevice* device,
+    const nb::capsule& tensor, ifrt::Device* ifrt_device,
     nb_class_ptr<PyClient> client, std::optional<std::intptr_t> stream) {
+  ifrt::PjRtDevice* device =
+      llvm::dyn_cast_or_null<ifrt::PjRtDevice>(ifrt_device);
+  if (device == nullptr) {
+    throw XlaRuntimeError(
+        "DLPack is supported for PjRt-compatible backends only.");
+  }
   if (std::string_view(tensor.name()) != kDlTensorCapsuleName) {
     return InvalidArgument(
         "DLPack tensor must be a capsule with name \"dltensor\", got \"%s\". "
@@ -515,11 +523,12 @@ absl::StatusOr<nb::object> DLPackManagedTensorToBuffer(
   if (dlmt->deleter) {
     on_delete_callback = [dlmt]() { dlmt->deleter(dlmt); };
   }
-  TF_ASSIGN_OR_RETURN(auto pjrt_buffer,
-                      device->client()->CreateViewOfDeviceBuffer(
-                          static_cast<char*>(dlmt->dl_tensor.data) +
-                              dlmt->dl_tensor.byte_offset,
-                          shape, device, on_delete_callback, stream));
+  TF_ASSIGN_OR_RETURN(
+      auto pjrt_buffer,
+      device->pjrt_device()->client()->CreateViewOfDeviceBuffer(
+          static_cast<char*>(dlmt->dl_tensor.data) +
+              dlmt->dl_tensor.byte_offset,
+          shape, device->pjrt_device(), on_delete_callback, stream));
   // We have taken ownership of the array inside the capsule; make sure the
   // capsule it cannot be used again.
   PyCapsule_SetName(tensor.ptr(), "used_dltensor");

@@ -130,8 +130,9 @@ absl::StatusOr<std::vector<xla::ifrt::Device*>> GetAssignedDevices(
          computation_idx < device_assignment.computation_count();
          computation_idx++) {
       auto device_id = device_assignment(replica_idx, computation_idx);
-      TF_ASSIGN_OR_RETURN(xla::ifrt::Device * device,
-                          ifrt_client.LookupDevice(device_id));
+      TF_ASSIGN_OR_RETURN(
+          xla::ifrt::Device * device,
+          ifrt_client.LookupDevice(xla::ifrt::DeviceId(device_id)));
       devices.push_back(device);
     }
   }

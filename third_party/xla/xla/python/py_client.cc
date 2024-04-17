@@ -120,7 +120,7 @@ PyClient::PyClient(std::shared_ptr<ifrt::Client> ifrt_client)
   for (ifrt::Device* device : client->ifrt_client()->devices()) {
     client->devices_[device] = make_nb_class<PyDevice>(client, device);
 
-    for (PjRtMemorySpace* memory : device->memory_spaces()) {
+    for (ifrt::Memory* memory : device->Memories()) {
       auto& py_memory = client->memory_spaces_[memory];
       if (py_memory.get() == nullptr) {
         py_memory = make_nb_class<PyMemorySpace>(client, memory);
@@ -144,7 +144,7 @@ nb_class_ptr<PyDevice> PyClient::GetPyDevice(ifrt::Device* device) {
 }
 
 nb_class_ptr<PyMemorySpace> PyClient::GetPyMemorySpace(
-    PjRtMemorySpace* memory_space) {
+    ifrt::Memory* memory_space) {
   auto& py_memory = memory_spaces_[memory_space];
   if (py_memory.get() == nullptr) {
     py_memory = make_nb_class<PyMemorySpace>(
@@ -157,7 +157,7 @@ std::vector<nb_class_ptr<PyDevice>> PyClient::Devices() {
   std::vector<nb_class_ptr<PyDevice>> devices;
   auto span = ifrt_client_->devices();
   devices.reserve(span.size());
-  for (PjRtDevice* device : span) {
+  for (ifrt::Device* device : span) {
     devices.push_back(GetPyDevice(device));
   }
   return devices;
@@ -174,7 +174,7 @@ std::vector<nb_class_ptr<PyDevice>> PyClient::LocalDevices() {
 
 absl::StatusOr<nb_class_ptr<PyDevice>> PyClient::DeviceFromLocalHardwareId(
     int local_hardware_id) {
-  TF_ASSIGN_OR_RETURN(PjRtDevice * device,
+  TF_ASSIGN_OR_RETURN(ifrt::Device * device,
                       ifrt_client_->LookupAddressableDevice(local_hardware_id));
   return GetPyDevice(device);
 }
@@ -276,7 +276,7 @@ absl::Status PyClient::Defragment() {
 }
 
 /* static */ absl::StatusOr<nb::object> PyClient::BufferFromPyval(
-    nb_class_ptr<PyClient> client, nb::handle argument, PjRtDevice* device,
+    nb_class_ptr<PyClient> client, nb::handle argument, ifrt::Device* device,
     bool force_copy, ifrt::Client::HostBufferSemantics host_buffer_semantics) {
   if (device == nullptr) {
     TF_RET_CHECK(!client->ifrt_client_->addressable_devices().empty());
@@ -308,8 +308,8 @@ absl::Status PyClient::Defragment() {
   TF_RETURN_IF_ERROR(
       jax::ApplyTransferGuardToHostToDevice(transfer_guard_formatter));
 
-  TF_ASSIGN_OR_RETURN(PjRtDevice * found_device,
-                      client->ifrt_client_->LookupDevice(device->id()));
+  TF_ASSIGN_OR_RETURN(ifrt::Device * found_device,
+                      client->ifrt_client_->LookupDevice(device->Id()));
   if (found_device != device) {
     return InvalidArgument("Cannot copy value to device '%s' with '%s' backend",
                            device->DebugString(),
@@ -476,7 +476,7 @@ namespace {
 struct HeapProfileKey {
   Traceback* traceback;
   int64_t size;
-  PjRtDevice* device;
+  xla::PjRtDevice* device;
   bool operator==(const HeapProfileKey& other) const;
 };
 
@@ -647,8 +647,7 @@ XLA_REGISTER_CUSTOM_CALL_TARGET_WITH_SYM(
   PyClient* c = nb::inst_ptr<PyClient>(self);
   absl::flat_hash_map<ifrt::Device*, nb_class_ptr<PyDevice>> devices;
   std::swap(devices, c->devices_);
-  absl::flat_hash_map<PjRtMemorySpace*, nb_class_ptr<PyMemorySpace>>
-      memory_spaces;
+  absl::flat_hash_map<ifrt::Memory*, nb_class_ptr<PyMemorySpace>> memory_spaces;
   std::swap(memory_spaces, c->memory_spaces_);
   return 0;
 }

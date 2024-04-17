@@ -54,6 +54,7 @@ limitations under the License.
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/executable.h"
+#include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/tuple.h"
@@ -73,44 +74,42 @@ namespace xla {
 
 namespace {
 
-class PjRtCompileOnlyDevice : public PjRtDevice {
+class CompileOnlyDevice
+    : public llvm::RTTIExtends<CompileOnlyDevice, ifrt::Device> {
  public:
-  explicit PjRtCompileOnlyDevice(const PjRtDeviceDescription* description)
+  explicit CompileOnlyDevice(const PjRtDeviceDescription* description)
       : description_(std::move(description)) {}
 
-  const PjRtDeviceDescription& description() const override {
-    return *description_;
-  }
+  const PjRtDeviceDescription& description() const { return *description_; }
 
-  PjRtClient* client() const override { return nullptr; }
+  ifrt::Client* client() const override { return nullptr; }
   bool IsAddressable() const override { return false; }
-  int local_hardware_id() const override {
-    return local_hardware_id_typed().value();
+  ifrt::DeviceId Id() const override {
+    return ifrt::DeviceId(description_->id());
   }
 
-  PjRtLocalDeviceId local_device_id() const override {
-    return PjRtLocalDeviceId(local_hardware_id_typed().value());
+  int ProcessIndex() const override { return description_->process_index(); }
+
+  absl::string_view Kind() const override {
+    return description_->device_kind();
   }
 
-  PjRtLocalHardwareId local_hardware_id_typed() const override {
-    return PjRtLocalHardwareId(-1);
+  absl::string_view ToString() const override {
+    return description_->ToString();
   }
 
-  std::unique_ptr<ScopedAsyncTrackingEvent> CreateAsyncTrackingEvent(
-      absl::string_view description) const override {
-    return nullptr;
+  absl::string_view DebugString() const override {
+    return description_->DebugString();
   }
-  absl::Status TransferToInfeed(const LiteralSlice& literal) override {
-    return Unimplemented("TransferToInfeed is not supported");
+
+  absl::Span<ifrt::Memory* const> Memories() const override { return {}; }
+  absl::StatusOr<ifrt::Memory*> DefaultMemory() const override {
+    return Unimplemented("DefaultMemory is not supported");
   }
-  absl::Status TransferFromOutfeed(MutableBorrowingLiteral literal) override {
-    return Unimplemented("TransferFromOutfeed is not supported");
-  }
-  absl::Span<PjRtMemorySpace* const> memory_spaces() const override {
-    return {};
-  }
-  absl::StatusOr<PjRtMemorySpace*> default_memory_space() const override {
-    return Unimplemented("default_memory_space is not supported");
+
+  const absl::flat_hash_map<std::string, PjRtDeviceAttribute>& Attributes()
+      const {
+    return description_->Attributes();
   }
 
  private:
@@ -146,7 +145,7 @@ class CompileOnlyIfRtClient final
         descriptions_(topology_->DeviceDescriptions()) {
     for (auto& description : descriptions_) {
       owned_devices_.push_back(
-          std::make_unique<PjRtCompileOnlyDevice>(description.get()));
+          std::make_unique<CompileOnlyDevice>(description.get()));
       devices_.push_back(owned_devices_.back().get());
     }
   }
@@ -206,7 +205,8 @@ class CompileOnlyIfRtClient final
     return Unimplemented(
         "GetDefaultDeviceAssignment not available with compile-only client.");
   }
-  absl::StatusOr<ifrt::Device*> LookupDevice(int device_id) const override {
+  absl::StatusOr<ifrt::Device*> LookupDevice(
+      ifrt::DeviceId device_id) const override {
     return Unimplemented(
         "LookupDevice not available with compile-only client.");
   }
@@ -239,8 +239,8 @@ class CompileOnlyIfRtClient final
   InvalidIfrtCompiler default_compiler_;
   std::shared_ptr<PjRtTopologyDescription> topology_;
   std::vector<std::unique_ptr<const PjRtDeviceDescription>> descriptions_;
-  std::vector<std::unique_ptr<PjRtCompileOnlyDevice>> owned_devices_;
-  std::vector<PjRtDevice*> devices_;
+  std::vector<std::unique_ptr<CompileOnlyDevice>> owned_devices_;
+  std::vector<ifrt::Device*> devices_;
 };
 
 char CompileOnlyIfRtClient::ID = 0;  // NOLINT

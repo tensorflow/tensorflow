@@ -32,7 +32,6 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/pjrt/host_callback.h"
-#include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_future.h"
@@ -48,7 +47,9 @@ limitations under the License.
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/pjrt_ifrt/pjrt_array.h"
 #include "xla/python/pjrt_ifrt/pjrt_client.h"
+#include "xla/python/pjrt_ifrt/pjrt_device.h"
 #include "xla/python/pjrt_ifrt/pjrt_host_callback.h"
+#include "xla/python/pjrt_ifrt/pjrt_memory.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -59,6 +60,7 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 #include "tsl/concurrency/ref_count.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {
@@ -329,9 +331,14 @@ PjRtLoadedExecutable::CreateInternal(
     const std::optional<xla::HloSharding>& result_hlo_sharding,
     const std::optional<std::vector<absl::string_view>>& result_memory_kinds,
     std::vector<tsl::RCReference<LoadedHostCallback>> loaded_host_callbacks) {
-  DeviceList devices(
-      DeviceList::Devices(pjrt_loaded_executable->addressable_devices().begin(),
-                          pjrt_loaded_executable->addressable_devices().end()));
+  DeviceList::Devices ds;
+  ds.reserve(pjrt_loaded_executable->addressable_devices().size());
+  for (xla::PjRtDevice* device :
+       pjrt_loaded_executable->addressable_devices()) {
+    TF_ASSIGN_OR_RETURN(Device * ifrt_device, client->LookupPjRtDevice(device));
+    ds.push_back(ifrt_device);
+  }
+  DeviceList devices(std::move(ds));
   if (devices.empty()) {
     return InvalidArgument("At least one device is required");
   }
@@ -444,17 +451,26 @@ PjRtLoadedExecutable::CreateInternal(
     }
   }
 
+  std::vector<Device*> addressable_devices;
+  addressable_devices.reserve(
+      pjrt_loaded_executable->addressable_devices().size());
+  for (xla::PjRtDevice* device :
+       pjrt_loaded_executable->addressable_devices()) {
+    TF_ASSIGN_OR_RETURN(Device * ifrt_device, client->LookupPjRtDevice(device));
+    addressable_devices.push_back(ifrt_device);
+  }
+
   return std::unique_ptr<LoadedExecutable>(new PjRtLoadedExecutable(
       client, std::move(pjrt_loaded_executable), std::move(devices),
-      std::move(loaded_host_callbacks), std::move(host_send_and_recv_callbacks),
-      std::move(output_dtypes), std::move(output_shapes),
-      std::move(output_shardings)));
+      std::move(addressable_devices), std::move(loaded_host_callbacks),
+      std::move(host_send_and_recv_callbacks), std::move(output_dtypes),
+      std::move(output_shapes), std::move(output_shardings)));
 }
 
 PjRtLoadedExecutable::PjRtLoadedExecutable(
     PjRtCompatibleClient* client,
     std::shared_ptr<xla::PjRtLoadedExecutable> pjrt_loaded_executable,
-    DeviceList devices,
+    DeviceList devices, std::vector<Device*> addressable_devices,
     std::vector<tsl::RCReference<LoadedHostCallback>> all_loaded_host_callbacks,
     std::vector<PjRtHostSendAndRecvLoadedHostCallback*>
         host_send_recv_callbacks,
@@ -463,6 +479,7 @@ PjRtLoadedExecutable::PjRtLoadedExecutable(
     : client_(client),
       pjrt_loaded_executable_(std::move(pjrt_loaded_executable)),
       devices_(std::move(devices)),
+      addressable_devices_(std::move(addressable_devices)),
       all_loaded_host_callbacks_(
           std::make_shared<std::vector<tsl::RCReference<LoadedHostCallback>>>(
               std::move(all_loaded_host_callbacks))),
@@ -508,22 +525,25 @@ PjRtLoadedExecutable::Execute(absl::Span<tsl::RCReference<Array>> args,
   }
 
   const bool portable_execution = devices.has_value();
-  Device* portable_execution_device = devices_.front();
+  PjRtDevice* portable_execution_device =
+      static_cast<PjRtDevice*>(devices_.front());
   if (portable_execution) {
     if (devices->size() != 1) {
       return InvalidArgument(
           "Only single-shard portable execution is supported");
     }
-    portable_execution_device = devices->front();
+    portable_execution_device = static_cast<PjRtDevice*>(devices->front());
   }
 
   if (portable_execution) {
     if (!argument_handles[0].empty()) {
-      portable_execution_device = argument_handles[0][0]->device();
+      TF_ASSIGN_OR_RETURN(
+          portable_execution_device,
+          client_->LookupPjRtDevice(argument_handles[0][0]->device()));
     } else {
       // Cannot infer the device from the input.
       // TODO(hyeontaek): Probably we should take devices as an argument?
-      portable_execution_device = devices_.front();
+      portable_execution_device = static_cast<PjRtDevice*>(devices_.front());
     }
   }
 
@@ -570,8 +590,9 @@ PjRtLoadedExecutable::Execute(absl::Span<tsl::RCReference<Array>> args,
     TF_ASSIGN_OR_RETURN(
         std::vector<std::unique_ptr<PjRtBuffer>> single_device_pjrt_results,
         pjrt_loaded_executable_->ExecutePortable(
-            argument_handles.front(), portable_execution_device, opts,
-            returned_pjrt_future, /*fill_future=*/returned_future_supported));
+            argument_handles.front(), portable_execution_device->pjrt_device(),
+            opts, returned_pjrt_future,
+            /*fill_future=*/returned_future_supported));
 
     pjrt_outputs.push_back(std::move(single_device_pjrt_results));
     if (returned_future_supported) {
@@ -631,13 +652,15 @@ PjRtLoadedExecutable::Execute(absl::Span<tsl::RCReference<Array>> args,
     const MemoryKind first_memory_kind =
         MakeMemoryKindFromPjRtBuffer(pjrt_outputs[0][i].get());
     const MemoryKind canonical_first_memory_kind =
-        CanonicalizeMemoryKind(first_memory_kind, pjrt_outputs[0][i]->device());
+        CanonicalizeMemoryKindWithPjRtDevice(first_memory_kind,
+                                             pjrt_outputs[0][i]->device());
     for (int j = 0; j < num_computations; ++j) {
       if (j > 0) {
         if (auto memory_kind =
                 MakeMemoryKindFromPjRtBuffer(pjrt_outputs[j][i].get());
             canonical_first_memory_kind !=
-            CanonicalizeMemoryKind(memory_kind, pjrt_outputs[j][i]->device())) {
+            CanonicalizeMemoryKindWithPjRtDevice(
+                memory_kind, pjrt_outputs[j][i]->device())) {
           return FailedPrecondition(
               "Memory kind mismatch between PjRtBuffers. Got one buffer with "
               "memory kind '%s' and another with memory_kind '%s'",

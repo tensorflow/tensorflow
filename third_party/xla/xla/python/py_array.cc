@@ -66,6 +66,7 @@ limitations under the License.
 #include "xla/python/nb_helpers.h"
 #include "xla/python/nb_numpy.h"
 #include "xla/python/pjrt_ifrt/pjrt_array.h"
+#include "xla/python/pjrt_ifrt/pjrt_device.h"
 #include "xla/python/pjrt_ifrt/xla_sharding.h"
 #include "xla/python/py_client.h"
 #include "xla/python/py_device.h"
@@ -881,10 +882,16 @@ StatusOr<nb::object> CudaArrayInterfaceToBuffer(const nb::dict& cai,
   Shape shape = ShapeUtil::MakeShapeWithDenseLayout(element_type, dimensions,
                                                     minor_to_major);
   std::function<void()> on_delete_callback = []() {};
+  auto* pjrt_device =
+      llvm::dyn_cast_or_null<ifrt::PjRtDevice>(device->device());
+  if (pjrt_device == nullptr) {
+    return InvalidArgument(
+        "This operation is implemented for a PjRt-compatible backend only.");
+  }
   TF_ASSIGN_OR_RETURN(
       auto pjrt_buffer,
       device->client()->pjrt_client()->CreateViewOfDeviceBuffer(
-          static_cast<char*>(data_ptr), shape, device->device(),
+          static_cast<char*>(data_ptr), shape, pjrt_device->pjrt_device(),
           on_delete_callback,
           stream <= 2 ? std::nullopt : std::make_optional(stream)));
   auto* ifrt_client =

@@ -44,7 +44,6 @@ limitations under the License.
 #include "xla/python/pjrt_ifrt/pjrt_client.h"
 #include "xla/python/pjrt_ifrt/pjrt_host_callback.h"
 #include "xla/status.h"
-#include "xla/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/concurrency/ref_count.h"
@@ -296,7 +295,7 @@ class PjRtLoadedExecutable final
   }
   absl::Span<Device* const> addressable_devices() const override {
     DCHECK(this);
-    return pjrt_loaded_executable_->addressable_devices();
+    return addressable_devices_;
   }
 
   absl::StatusOr<
@@ -320,7 +319,7 @@ class PjRtLoadedExecutable final
   PjRtLoadedExecutable(
       PjRtCompatibleClient* client,
       std::shared_ptr<xla::PjRtLoadedExecutable> pjrt_loaded_executable,
-      DeviceList devices,
+      DeviceList devices, std::vector<Device*> addressable_devices,
       std::vector<tsl::RCReference<LoadedHostCallback>>
           all_loaded_host_callbacks,
       std::vector<PjRtHostSendAndRecvLoadedHostCallback*>
@@ -331,6 +330,7 @@ class PjRtLoadedExecutable final
   PjRtCompatibleClient* client_;
   std::shared_ptr<xla::PjRtLoadedExecutable> pjrt_loaded_executable_;
   DeviceList devices_;
+  std::vector<Device*> addressable_devices_;
   std::shared_ptr<std::vector<tsl::RCReference<LoadedHostCallback>>>
       all_loaded_host_callbacks_;
   std::vector<PjRtHostSendAndRecvLoadedHostCallback*> host_send_recv_callbacks_;

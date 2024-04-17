@@ -16,26 +16,42 @@ limitations under the License.
 #ifndef XLA_PYTHON_PJRT_IFRT_PJRT_CLIENT_H_
 #define XLA_PYTHON_PJRT_IFRT_PJRT_CLIENT_H_
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
 #include <string>
-#include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/inlined_vector.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/Support/ExtensibleRTTI.h"
+#include "xla/literal.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_compiler.h"
+#include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
+#include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/dtype.h"
+#include "xla/python/ifrt/shape.h"
+#include "xla/python/ifrt/sharding.h"
+#include "xla/python/ifrt/tuple.h"
+#include "xla/python/ifrt/value.h"
 #include "xla/python/pjrt_ifrt/pjrt_compiler.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/concurrency/ref_count.h"
+#include "tsl/platform/logging.h"
 
 namespace xla {
 namespace ifrt {
 
 class PjRtCompatibleArray;
+class PjRtDevice;
+class PjRtMemory;
 
 // PjRt-compatible `Client` interface.
 class PjRtCompatibleClient
@@ -53,6 +69,10 @@ class PjRtCompatibleClient
       std::shared_ptr<PjRtBuffer> pjrt_buffer) = 0;
   virtual absl::StatusOr<tsl::RCReference<PjRtCompatibleArray>> CreatePjRtArray(
       Shape shape, PjRtBuffers pjrt_buffers) = 0;
+  virtual absl::StatusOr<PjRtDevice*> LookupPjRtDevice(
+      xla::PjRtDevice* pjrt_device) const = 0;
+  virtual absl::StatusOr<PjRtMemory*> LookupPjRtMemory(
+      xla::PjRtMemorySpace* pjrt_memory) const = 0;
 
   static char ID;  // NOLINT
 };
@@ -78,7 +98,7 @@ class PjRtClient final
 
   // Client implementation.
 
-  ~PjRtClient() override = default;
+  ~PjRtClient() override;
 
   absl::StatusOr<tsl::RCReference<Array>> MakeArrayFromHostBuffer(
       const void* data, DType dtype, Shape shape,
@@ -125,11 +145,11 @@ class PjRtClient final
   }
   absl::Span<Device* const> devices() const override {
     DCHECK(this);
-    return pjrt_client_->devices();
+    return devices_;
   }
   absl::Span<Device* const> addressable_devices() const override {
     DCHECK(this);
-    return pjrt_client_->addressable_devices();
+    return addressable_devices_;
   }
   int process_index() const override { return pjrt_client_->process_index(); }
   absl::StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
@@ -138,16 +158,10 @@ class PjRtClient final
     return pjrt_client_->GetDefaultDeviceAssignment(num_replicas,
                                                     num_partitions);
   }
-  absl::StatusOr<Device*> LookupDevice(int device_id) const override {
-    DCHECK(this);
-    return pjrt_client_->LookupDevice(device_id);
-  }
+  absl::StatusOr<Device*> LookupDevice(DeviceId device_id) const override;
 
   absl::StatusOr<Device*> LookupAddressableDevice(
-      int local_hardware_id) const override {
-    DCHECK(this);
-    return pjrt_client_->LookupAddressableDevice(local_hardware_id);
-  }
+      int local_hardware_id) const override;
 
   Compiler* GetDefaultCompiler() override {
     DCHECK(this);
@@ -161,14 +175,33 @@ class PjRtClient final
       DType dtype, absl::Span<const int64_t> dims,
       Device* device) const override;
 
+  absl::StatusOr<PjRtDevice*> LookupPjRtDevice(
+      xla::PjRtDevice* pjrt_device) const override;
+  absl::StatusOr<PjRtMemory*> LookupPjRtMemory(
+      xla::PjRtMemorySpace* pjrt_memory) const override;
+
+  // Transfer the given literal to the infeed queue.
+  absl::Status TransferToInfeed(PjRtDevice* device,
+                                const LiteralSlice& literal);
+
+  // Transfer and return a value of the given shape from the outfeed queue.
+  absl::Status TransferFromOutfeed(PjRtDevice* device,
+                                   MutableBorrowingLiteral literal);
+
   static char ID;  // NOLINT
 
  private:
-  explicit PjRtClient(std::shared_ptr<xla::PjRtClient> pjrt_client)
-      : pjrt_client_(std::move(pjrt_client)), default_compiler_(this) {}
+  explicit PjRtClient(std::shared_ptr<xla::PjRtClient> pjrt_client);
 
   std::shared_ptr<xla::PjRtClient> pjrt_client_;
   PjRtCompiler default_compiler_;
+
+  std::vector<Device*> devices_;
+  std::vector<Device*> addressable_devices_;
+  absl::flat_hash_map<xla::PjRtDevice*, std::unique_ptr<PjRtDevice>>
+      device_map_;
+  absl::flat_hash_map<xla::PjRtMemorySpace*, std::unique_ptr<PjRtMemory>>
+      memory_map_;
 };
 
 }  // namespace ifrt

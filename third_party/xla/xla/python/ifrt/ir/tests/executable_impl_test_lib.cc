@@ -294,7 +294,7 @@ module {
     exec_build_options.set_use_spmd_partitioning(true);
     xla::DeviceAssignment device_assignment(1, 2);
     for (auto [logical, device_id] : llvm::enumerate(GetDeviceIds(devices))) {
-      device_assignment(0, logical) = device_id;
+      device_assignment(0, logical) = device_id.value();
     }
     exec_build_options.set_device_assignment(device_assignment);
   }

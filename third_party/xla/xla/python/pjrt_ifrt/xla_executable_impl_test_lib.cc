@@ -19,9 +19,13 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/python/ifrt/client.h"
+#include "xla/python/ifrt/compiler.h"
+#include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/test_util.h"
 #include "xla/python/pjrt_ifrt/xla_compiler.h"
 #include "tsl/lib/core/status_test_util.h"
@@ -58,7 +62,7 @@ absl::StatusOr<std::unique_ptr<LoadedExecutable>> CompileOnDevices(
   ExecutableBuildOptions& build_options =
       compile_options->compile_options.executable_build_options;
   for (Device* device : devices) {
-    build_options.set_device_ordinal(device->id());
+    build_options.set_device_ordinal(device->Id().value());
     if (replicated) {
       DeviceAssignment device_assignment(/*replica_count=*/devices.size(),
                                          /*computation_count=*/1);

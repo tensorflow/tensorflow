@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/compiler.h"
+#include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/tuple.h"
 #include "xla/python/ifrt/value.h"
 #include "xla/statusor.h"
@@ -148,7 +149,7 @@ class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
   // being used by JAX or will be replaced with explicit device assignment.
   virtual absl::StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const = 0;
-  virtual absl::StatusOr<Device*> LookupDevice(int device_id) const = 0;
+  virtual absl::StatusOr<Device*> LookupDevice(DeviceId device_id) const = 0;
   virtual absl::StatusOr<Device*> LookupAddressableDevice(
       int local_hardware_id) const = 0;
 
