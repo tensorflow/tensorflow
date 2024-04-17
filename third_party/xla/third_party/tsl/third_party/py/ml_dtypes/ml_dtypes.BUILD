@@ -30,6 +30,21 @@ cc_library(
         ".",
         "ml_dtypes",
     ],
+    deps = [
+        ":intn",
+    ],
+)
+
+cc_library(
+    name = "intn",
+    hdrs = ["include/intn.h"],
+    include_prefix = "ml_dtypes",
+    # Internal headers are all relative to . but other packages
+    # include these headers with the  prefix.
+    includes = [
+        ".",
+        "ml_dtypes",
+    ],
 )
 
 pybind_extension(
@@ -48,6 +63,7 @@ pybind_extension(
     deps = [
         ":float8",
         ":int4",
+        ":intn",
         "@eigen_archive//:eigen3",
         "@local_tsl//third_party/py/numpy:headers",
     ],
