@@ -18,6 +18,8 @@ limitations under the License.
 #include <utility>
 
 #include "absl/synchronization/notification.h"
+#include "absl/time/time.h"
+#include "tensorflow/lite/logger.h"
 #include "tensorflow/lite/minimal_logging.h"
 #include "tensorflow/lite/profiling/memory_info.h"
 

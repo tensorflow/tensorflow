@@ -20,6 +20,9 @@ limitations under the License.
 #include <sstream>
 #include <string>
 
+#include "tensorflow/core/util/stat_summarizer_options.h"
+#include "tensorflow/core/util/stats_calculator.h"
+
 namespace tflite {
 namespace profiling {
 

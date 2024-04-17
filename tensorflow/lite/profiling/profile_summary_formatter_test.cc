@@ -18,9 +18,10 @@ limitations under the License.
 #include <memory>
 #include <string>
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/match.h"
+#include "tensorflow/core/util/stat_summarizer_options.h"
+#include "tensorflow/core/util/stats_calculator.h"
 
 namespace tflite {
 namespace profiling {

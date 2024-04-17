@@ -34,7 +34,9 @@ cc_test(
     name = "profiler_test",
     srcs = ["profiler_test.cc"],
     deps = [
+        ":profile_buffer",
         ":profiler",
+        "//tensorflow/lite/core/api",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -202,6 +204,7 @@ cc_test(
     srcs = ["profile_summary_formatter_test.cc"],
     deps = [
         ":profile_summary_formatter",
+        "//tensorflow/core/util:stats_calculator_portable",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
     ],
@@ -219,8 +222,9 @@ cc_library(
         ":profile_summary_formatter",
         "//tensorflow/core/util:stats_calculator_portable",
         "//tensorflow/lite:framework",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core:framework_stable",
-        "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/core/api",
     ],
 )
 
@@ -262,6 +266,8 @@ cc_test(
     srcs = ["subgraph_tensor_profiler_test.cc"],
     deps = [
         ":subgraph_tensor_profiler",
+        "//tensorflow/lite/core:subgraph",
+        "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:subgraph_test_util",
         "@com_google_googletest//:gtest_main",
@@ -276,11 +282,13 @@ cc_test(
         ":profile_summarizer",
         ":profiler",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core:framework",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels:subgraph_test_util",
         "//tensorflow/lite/kernels:test_util",
+        "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest_main",
     ],
 )

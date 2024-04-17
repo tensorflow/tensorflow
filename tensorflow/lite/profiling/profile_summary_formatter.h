@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "tensorflow/core/util/stat_summarizer_options.h"
 #include "tensorflow/core/util/stats_calculator.h"
 
 namespace tflite {
