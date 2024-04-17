@@ -17,7 +17,6 @@ limitations under the License.
 #define XLA_PJRT_HOST_MEMORY_SPACES_H_
 
 #include <string>
-#include <vector>
 
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -33,44 +32,9 @@ class UnpinnedHostMemorySpace : public PjRtMemorySpace {
   static constexpr absl::string_view kKind = "unpinned_host";
   static const int kKindId;
 
-  UnpinnedHostMemorySpace(int id, PjRtClient* client);
+  UnpinnedHostMemorySpace(int id, PjRtDevice* device);
 
-  PjRtClient* client() const override { return client_; }
-
-  absl::Span<PjRtDevice* const> devices() const override { return devices_; }
-
-  int id() const override { return id_; }
-
-  absl::string_view kind() const override { return kKind; }
-
-  int kind_id() const override { return kKindId; }
-
-  absl::string_view DebugString() const override { return debug_string_; }
-
-  absl::string_view ToString() const override { return to_string_; }
-
-  void AttachDevice(PjRtDevice* device) { devices_.push_back(device); }
-
- private:
-  int id_;
-  PjRtClient* client_;
-  std::vector<PjRtDevice*> devices_;
-  std::string debug_string_;
-  std::string to_string_;
-};
-
-// Represents the pinned host memory accessible to a `PjRtDevice`.
-// A "pinned" host memory space accommodates host buffers that are mapped to a
-// virtual memory of the attached `PjRtDevice`. The `PjRtDevice` may have the
-// capability to direct-memory-access (DMA) the buffers in this memory space.
-class PinnedHostMemorySpace : public PjRtMemorySpace {
- public:
-  static constexpr absl::string_view kKind = "pinned_host";
-  static const int kKindId;
-
-  PinnedHostMemorySpace(int id, PjRtClient* client);
-
-  PjRtClient* client() const override { return client_; }
+  PjRtClient* client() const override { return device_->client(); }
 
   absl::Span<PjRtDevice* const> devices() const override {
     return absl::Span<PjRtDevice* const>(&device_, device_ != nullptr ? 1 : 0);
@@ -86,11 +50,42 @@ class PinnedHostMemorySpace : public PjRtMemorySpace {
 
   absl::string_view ToString() const override { return to_string_; }
 
-  void AttachDevice(PjRtDevice* device) { device_ = device; }
+ private:
+  int id_;
+  PjRtDevice* device_ = nullptr;
+  std::string debug_string_;
+  std::string to_string_;
+};
+
+// Represents the pinned host memory accessible to a `PjRtDevice`.
+// A "pinned" host memory space accommodates host buffers that are mapped to a
+// virtual memory of the attached `PjRtDevice`. The `PjRtDevice` may have the
+// capability to direct-memory-access (DMA) the buffers in this memory space.
+class PinnedHostMemorySpace : public PjRtMemorySpace {
+ public:
+  static constexpr absl::string_view kKind = "pinned_host";
+  static const int kKindId;
+
+  PinnedHostMemorySpace(int id, PjRtDevice* device);
+
+  PjRtClient* client() const override { return device_->client(); }
+
+  absl::Span<PjRtDevice* const> devices() const override {
+    return absl::Span<PjRtDevice* const>(&device_, device_ != nullptr ? 1 : 0);
+  }
+
+  int id() const override { return id_; }
+
+  absl::string_view kind() const override { return kKind; }
+
+  int kind_id() const override { return kKindId; }
+
+  absl::string_view DebugString() const override { return debug_string_; }
+
+  absl::string_view ToString() const override { return to_string_; }
 
  private:
   int id_;
-  PjRtClient* client_ = nullptr;
   PjRtDevice* device_ = nullptr;
   std::string debug_string_;
   std::string to_string_;
