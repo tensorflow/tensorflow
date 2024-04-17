@@ -124,6 +124,7 @@ inline absl::Status ToAbslStatus(const ::absl::Status& s) { return s; }
 #ifdef _WIN32
 const char* NullTerminatedMessage(const absl::Status& status);
 #else
+ABSL_DEPRECATE_AND_INLINE()
 inline const char* NullTerminatedMessage(const absl::Status& status) {
   return absl::StatusMessageAsCStr(status);
 }
