@@ -14,11 +14,12 @@ limitations under the License.
 
 #include "xla/hlo/transforms/hlo_constant_splitter.h"
 
-#include <iterator>
 #include <utility>
 #include <vector>
 
+#include "llvm/ADT/STLExtras.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -42,8 +43,8 @@ bool IsSupportedConstantExpression(const HloInstruction* instruction) {
 // Perform duplication of a certain constant expression and replace the
 // original expression for a specific user.
 absl::StatusOr<bool> DuplicateConstantExpressionPerUser(
-    HloComputation* computation, HloInstruction* to_clone,
-    HloInstruction* user) {
+    HloComputation* computation, HloInstruction* to_clone, HloInstruction* user,
+    int operand_number) {
   absl::InlinedVector<std::pair<const HloInstruction*, int>, 8> worklist(
       1, std::make_pair(to_clone, 0));
   absl::InlinedVector<const HloInstruction*, 8> to_clone_vec;
@@ -85,7 +86,8 @@ absl::StatusOr<bool> DuplicateConstantExpressionPerUser(
         i->CloneWithNewOperands(i->shape(), new_operand_vector));
     cloned_instructions_map[i] = cloned_instr;
     if (i == to_clone) {
-      TF_RETURN_IF_ERROR(to_clone->ReplaceUseWith(user, cloned_instr));
+      TF_RETURN_IF_ERROR(
+          to_clone->ReplaceUseWith(user, operand_number, cloned_instr));
       changed = true;
     }
   }
@@ -184,10 +186,17 @@ absl::StatusOr<bool> HloConstantSplitter::Run(
           users.push_back(user);
         }
       }
+      // Duplicate the expression for each use (not just user).
       for (auto* u : users) {
-        TF_ASSIGN_OR_RETURN(bool duplicated, DuplicateConstantExpressionPerUser(
-                                                 computation, instruction, u));
-        changed |= duplicated;
+        for (auto [operand_num, operand] : llvm::enumerate(u->operands())) {
+          if (operand != instruction) {
+            continue;
+          }
+          TF_ASSIGN_OR_RETURN(bool duplicated,
+                              DuplicateConstantExpressionPerUser(
+                                  computation, instruction, u, operand_num));
+          changed |= duplicated;
+        }
       }
     }
   }

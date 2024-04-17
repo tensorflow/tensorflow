@@ -58,6 +58,47 @@ TEST_F(HloConstantSplitterTest, SplitConstants) {
   }
 }
 
+TEST_F(HloConstantSplitterTest, SplitConstantPerUseBySameUser) {
+  const char* module_str = R"(
+    HloModule test_module
+
+    ENTRY entry_computation {
+      constant = f32[4,4] constant(94.1934)
+      dot = f32[4,4] dot(constant, constant)
+      add = f32[4,4] add(constant, dot)
+      ROOT root = (f32[4,4], f32[4,4]) tuple(constant, add)
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(module_str));
+  TF_ASSERT_OK(HloConstantSplitter().Run(module.get()).status());
+
+  // Check that every constant has at most one use.
+  int64_t const_count = 0;
+  for (HloComputation* computation : module->computations()) {
+    for (HloInstruction* instruction : computation->instructions()) {
+      if (instruction->opcode() == HloOpcode::kConstant) {
+        const_count++;
+        EXPECT_LE(instruction->user_count(), 1);
+        if (instruction->user_count() == 0) {
+          continue;
+        }
+        bool seen_use = false;
+        for (HloInstruction* use : instruction->users().front()->operands()) {
+          if (use == instruction) {
+            EXPECT_FALSE(seen_use);
+            seen_use = true;
+          }
+        }
+      }
+    }
+  }
+
+  // Check the number of constants
+  EXPECT_EQ(const_count, 5);
+}
+
 TEST_F(HloConstantSplitterTest, PreservingConstantsWithZeroUsers) {
   const char* module_str = R"(
     HloModule test_module

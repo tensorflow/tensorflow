@@ -24,6 +24,8 @@ cc_library(
     deps = [
         "//xla/hlo/ir:hlo",
         "//xla/service:hlo_pass",
+        "@llvm-project//llvm:Support",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
