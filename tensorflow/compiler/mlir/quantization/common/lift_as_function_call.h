@@ -43,6 +43,10 @@ constexpr StringRef kCompositeFuncPrefix = "composite_";
 inline constexpr StringRef kOriginalStablehloEntryFunctionAttrName =
     "_original_entry_function";
 
+// Name of the string attribute attached to `XlaCallModuleOp`, which is the
+// textproto representation of `Method`.
+inline constexpr StringRef kQuantizationMethodAttr = "_quantization_method";
+
 // FunctionCallOpType to be generated as the function call operator when
 // function lifting will happen.
 enum FunctionCallOpType { TFPartitionedCallOp = 0, TFXlaCallModuleOp = 1 };
