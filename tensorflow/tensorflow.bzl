@@ -107,7 +107,7 @@ def clean_dep(target):
     """
 
     # A repo-relative label is resolved relative to the file in which the
-    # Label() call appears, i.e. @local_tsl.
+    # Label() call appears, i.e. @tsl.
     return str(Label(target))
 
 cc_header_only_library = _cc_header_only_library
