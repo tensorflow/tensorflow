@@ -42,6 +42,10 @@ namespace mlir::quant {
 
 constexpr char kAttrMapAttribute[] = "attr_map";
 
+// Name of the string attribute attached to `XlaCallModuleOp`, which is the
+// textproto representation of `Method`.
+inline constexpr StringRef kQuantizationMethodAttr = "_quantization_method";
+
 // Permutation from the NHWC tensor format to NCHW. This is an inverse
 // permutation of `kNchwToNhwcPermutation`.
 inline constexpr std::array<int64_t, 4> kNhwcToNchwPermutation = {0, 3, 1, 2};
@@ -247,6 +251,16 @@ absl::StatusOr<bool> IsDotGeneralFullyConnected(
 // or `std::nullopt` if the given op is not per-channel quantizable.
 std::optional<int64_t> GetDotGeneralQuantizationDim(
     ::mlir::stablehlo::DotGeneralOp dot_general_op);
+
+// Checks if the `Method` attatched to the given op has `WeightOnlyPtq`.
+bool HasWeightOnlyPtqMethod(Operation& op);
+
+// Checks if an op is a `tf.XlaCallModule` op, contains 'conv' or 'dot_general'
+// in its name and has `Method` with `WeightOnlyPtq`.
+bool IsWeightOnlyQuantizableOp(const Operation& op);
+
+// Checks if a `StringRef` contains 'conv' or 'dot_general'.
+bool ContainsConvOrDot(StringRef str);
 
 }  // namespace mlir::quant
 

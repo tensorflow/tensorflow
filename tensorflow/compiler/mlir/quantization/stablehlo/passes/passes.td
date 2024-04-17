@@ -63,10 +63,6 @@ def QuantizeCompositeFunctionsPass : Pass<"stablehlo-quantize-composite-function
     Option<"mlir_dump_file_name_", "mlir-dump-file-name",
         "std::optional<std::string>", /*default=*/"std::nullopt",
         "MLIR dump file name.">,
-    Option<"enable_weight_only_",
-        "enable-weight-only",
-        "bool", /*default=*/"false",
-        "Whether to produce weight-only quantized op for convolution and dot_general op.">,
     Option<"merge_fusion_with_dequantize_",
         "merge-fusion-with-dequantize",
         "bool", /*default=*/"false",
@@ -106,10 +102,6 @@ def QuantizePass : Pass<"stablehlo-quantize", "mlir::ModuleOp"> {
         "enable-per-channel-quantized-weight",
         "bool", /*default=*/"true",
         "Whether to enable per-channel quantized weights.">,
-    Option<"enable_weight_only_",
-        "enable-weight-only",
-        "bool", /*default=*/"false",
-        "Whether to produce weight-only quantized op for convolution and dot_general op.">,
   ];
   let dependentDialects = [
     "mlir::stablehlo::StablehloDialect",

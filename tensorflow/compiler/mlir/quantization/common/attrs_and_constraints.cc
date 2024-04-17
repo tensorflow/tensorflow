@@ -34,12 +34,16 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/quantization/common/uniform_quantized_types.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/xla_call_module_attrs.h"
+#include "tsl/platform/protobuf.h"
 
 namespace mlir::quant {
 
 using ::mlir::stablehlo::DotGeneralOp;
+using ::stablehlo::quantization::Method;
+using ::tsl::protobuf::TextFormat;
 
 bool HasStaticShape(Value value) {
   auto shaped_type = value.getType().dyn_cast<ShapedType>();
@@ -172,6 +176,31 @@ std::optional<int64_t> GetDotGeneralQuantizationDim(
       IsDotGeneralFullyConnected(dot_general_op).value();
   if (!is_per_axis_quantizable) return std::nullopt;
   return filter_rank - 1;
+}
+
+bool HasWeightOnlyPtqMethod(Operation& op) {
+  if (auto quantization_method_txtpb =
+          op.getAttrOfType<StringAttr>(kQuantizationMethodAttr)) {
+    Method method;
+    if (TextFormat::ParseFromString(quantization_method_txtpb.getValue().str(),
+                                    &method)) {
+      return method.has_weight_only_ptq();
+    }
+  }
+  return false;
+}
+
+bool IsWeightOnlyQuantizableOp(const Operation& op) {
+  if (auto call_op = dyn_cast<TF::XlaCallModuleOp>(op)) {
+    StringRef entry_function_name = GetEntryFunctionName(call_op);
+    return ContainsConvOrDot(entry_function_name) &&
+           HasWeightOnlyPtqMethod(*call_op);
+  }
+  return false;
+}
+
+bool ContainsConvOrDot(StringRef str) {
+  return str.contains("conv") || str.contains("dot_general");
 }
 
 }  // namespace mlir::quant
