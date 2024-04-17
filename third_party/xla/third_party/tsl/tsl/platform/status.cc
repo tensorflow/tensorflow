@@ -155,16 +155,13 @@ std::vector<StackFrame> GetStackTrace(const ::tsl::Status& status) {
 
 }  // namespace errors
 
-const absl::string_view kEmptyString = "";
-
-const char* NullTerminatedMessage(const Status& status) {
-  auto message = status.message();
-  if (message.empty()) {
-    return kEmptyString.data();
-  }
-  return message.data();
+// NB: This Windows-only implementation is exists only to avoid a linker error.
+// Remove if this is resolved.
+#ifdef _WIN32
+const char* NullTerminatedMessage(const absl::Status& status) {
+  return absl::StatusMessageAsCStr(status);
 }
-
+#endif
 
 std::string* TfCheckOpHelperOutOfLine(const ::tsl::Status& v, const char* msg) {
   std::string r("Non-OK-status: ");
