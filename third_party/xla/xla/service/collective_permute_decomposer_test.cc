@@ -229,6 +229,9 @@ TEST_F(CollectivePermuteDecomposerTest, Pipeline1) {
   HloInstruction* send_done = FindInstruction(module.get(), "send-done");
   EXPECT_THAT(send_done->ToString(),
               HasSubstr("_xla_send_recv_pipeline=\"0\""));
+
+  EXPECT_FALSE(recv_done->control_predecessors().empty());
+  EXPECT_EQ(recv_done->control_predecessors()[0], send);
 }
 
 TEST_F(CollectivePermuteDecomposerTest, ForwardPipeline2) {
