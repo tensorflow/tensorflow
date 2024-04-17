@@ -65,6 +65,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_loaded_variable_registry.h"
+#include "tensorflow/core/tfrt/ifrt/ifrt_restore_tensor_registry.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_tensor_utils.h"
 #include "tensorflow/core/tfrt/ifrt/sharding_utils.h"
 #include "tensorflow/core/tfrt/ifrt/tf_host_callback.h"
@@ -79,7 +80,7 @@ namespace {
 absl::StatusOr<std::vector<DtypeAndShape>> BuildDtypeAndShape(
     absl::Span<const tensorflow::Tensor> inputs,
     absl::Span<const int> variable_arg_indices,
-    const IfrtLoadedVariableRegistry& ifrt_loaded_variable_registry) {
+    const IfrtRestoreTensorRegistry& ifrt_restore_tensor_registry) {
   std::vector<DtypeAndShape> dtypes_and_shapes;
   dtypes_and_shapes.reserve(inputs.size());
 
@@ -88,10 +89,10 @@ absl::StatusOr<std::vector<DtypeAndShape>> BuildDtypeAndShape(
     if (variable_index < variable_arg_indices.size() &&
         i == variable_arg_indices[variable_index]) {
       // Get already loaded variable tensor.
-      TF_ASSIGN_OR_RETURN(auto loaded_variable,
-                          ifrt_loaded_variable_registry.GetLoadedVariable(
+      TF_ASSIGN_OR_RETURN(auto dtype_and_shape,
+                          ifrt_restore_tensor_registry.GetDtypeAndShape(
                               inputs[i].scalar<tsl::tstring>()()));
-      dtypes_and_shapes.push_back(loaded_variable.dtype_and_shape);
+      dtypes_and_shapes.push_back(dtype_and_shape);
 
       variable_index++;
     } else {
@@ -424,7 +425,7 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
 
   TF_ASSIGN_OR_RETURN(std::vector<DtypeAndShape> dtypes_and_shapes,
                       BuildDtypeAndShape(inputs, variable_arg_indices,
-                                         ifrt_loaded_variable_registry_));
+                                         ifrt_restore_tensor_registry_));
   TF_ASSIGN_OR_RETURN(
       CachedExecutableBundle executable_bundle,
       LookUpOrCreateExecutable(absl::MakeSpan(dtypes_and_shapes)).Await());

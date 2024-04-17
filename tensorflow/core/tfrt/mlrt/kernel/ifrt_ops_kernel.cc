@@ -61,27 +61,6 @@ namespace tf_mlrt {
 
 namespace {
 
-absl::StatusOr<ifrt_serving::DtypeAndShape> GetDtypeAndShape(
-    const ResourceHandle& variable) {
-  std::vector<DtypeAndPartialTensorShape> dtype_and_partial_shapes =
-      variable.dtypes_and_shapes();
-
-  if (dtype_and_partial_shapes.size() != 1) {
-    return absl::InvalidArgumentError(absl::StrCat(
-        "Expected 1 dtype and shape, got ", dtype_and_partial_shapes.size()));
-  }
-  ifrt_serving::DtypeAndShape dtype_and_shape;
-  if (!dtype_and_partial_shapes.front().shape.AsTensorShape(
-          &dtype_and_shape.shape)) {
-    return absl::InvalidArgumentError(
-        absl::StrCat("Failed to convert partial shape to full tensor shape: ",
-                     dtype_and_partial_shapes.front().shape.DebugString()));
-  }
-
-  dtype_and_shape.dtype = dtype_and_partial_shapes.front().dtype;
-  return dtype_and_shape;
-}
-
 struct MlrtIfrtRestoreVariableKernel : mlrt::KernelFrame {
   using KernelFrame::KernelFrame;
 
@@ -189,11 +168,22 @@ void MlrtIfrtRestoreVariableKernel::Invoke() {
         xla::ifrt::Future<absl::StatusOr<tensorflow::Tensor>>::CreatePromise();
     auto future =
         xla::ifrt::Future<absl::StatusOr<tensorflow::Tensor>>(promise);
-
-    std::string runtime_name = ifrt_serving::GetRuntimeNameFromVarHandle(
-        var_handles()[i].tensor().scalar<ResourceHandle>()());
-    if (auto status =
-            ifrt_restore_tensor_registry.TryRegister(runtime_name, future);
+    const ResourceHandle& var_handle =
+        var_handles()[i].tensor().scalar<ResourceHandle>()();
+    absl::StatusOr<ifrt_serving::DtypeAndShape> dtype_and_shape =
+        ifrt_serving::GetDtypeAndShape(var_handle);
+    if (!dtype_and_shape.ok()) {
+      // TODO(b/330360798) Refactor Invoke() to have less usage on
+      // execution_context().Fail.
+      execution_context().Fail(dtype_and_shape.status());
+      return;
+    }
+    std::string runtime_name =
+        ifrt_serving::GetRuntimeNameFromVarHandle(var_handle);
+    ifrt_serving::IfrtRestoreTensorRegistry::RestoredTensorInfo
+        restored_tensor_info = {*std::move(dtype_and_shape), std::move(future)};
+    if (auto status = ifrt_restore_tensor_registry.TryRegister(
+            runtime_name, restored_tensor_info);
         !status.ok()) {
       // Propagate errors so that if already-registered futures are being waited
       // on, they can be unblocked.
@@ -236,7 +226,7 @@ class MlrtIfrtLoadVariableKernel : public mlrt::KernelFrame {
 
   static constexpr char kName[] = "tf_mlrt.ifrt_load_variable";
 
-  const tensorflow::Tensor& variable_tensor() const {
+  const tensorflow::Tensor& variable_handler_tensor() const {
     DCHECK_GE(arguments().size(), 1);
     const tensorflow::Tensor& ret =
         arguments()[0].Get<tensorflow::tfrt_stub::FallbackTensor>().tensor();
@@ -244,10 +234,6 @@ class MlrtIfrtLoadVariableKernel : public mlrt::KernelFrame {
     return ret;
   }
 
-  const ResourceHandle& variable_resource_handle() const {
-    const auto& tensor = variable_tensor();
-    return tensor.scalar<ResourceHandle>()();
-  }
   absl::string_view sharding_config_proto_text() const {
     DCHECK_EQ(attributes().size(), 2);
     return attributes().GetAs<mlrt::bc::String>(0).Get();
@@ -294,15 +280,17 @@ absl::Status MlrtIfrtLoadVariableKernel::InvokeHelper() {
   ifrt_serving::IfrtRestoreTensorRegistry& ifrt_restore_tensor_registry =
       (*ifrt_model_context)->GetRestoreTensorRegistry();
 
+  std::string runtime_name = ifrt_serving::GetRuntimeNameFromVarHandle(
+      variable_handler_tensor().scalar<ResourceHandle>()());
+
   TF_RETURN_IF_ERROR(ifrt_serving::LoadRestoredTensorAsIfrtLoadedVariable(
-      variable_tensor(), (*ifrt_model_context)->GetClient(),
+      runtime_name, (*ifrt_model_context)->GetClient(),
       (*ifrt_model_context)->GetThreadPool(), ifrt_restore_tensor_registry,
       (*ifrt_model_context)->GetLoadedVariableRegistry(),
       (*ifrt_model_context)->checkpoint_loader_queue(), sharding_config));
-  std::string runtime_name =
-      ifrt_serving::GetRuntimeNameFromVarHandle(variable_resource_handle());
   xla::ifrt::Future<absl::StatusOr<tensorflow::Tensor>> restored_tensor_future =
-      ifrt_restore_tensor_registry.Get(runtime_name);
+      ifrt_restore_tensor_registry.GetRestoredTensor(runtime_name);
+
   restored_tensor_future.OnReady(
       [tensor_promise = std::move(tensor_promise)](
           absl::StatusOr<tensorflow::Tensor> restored_tensor) mutable {

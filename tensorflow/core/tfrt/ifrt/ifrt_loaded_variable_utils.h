@@ -22,16 +22,17 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "xla/python/ifrt/client.h"
 #include "tensorflow/core/framework/resource_handle.h"
-#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_config.pb.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_loaded_variable_registry.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_restore_tensor_registry.h"
-#include "tensorflow/core/tfrt/mlrt/interpreter/future.h"
 #include "tsl/platform/threadpool.h"
 #include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime
 
 namespace tensorflow {
 namespace ifrt_serving {
+
+absl::StatusOr<ifrt_serving::DtypeAndShape> GetDtypeAndShape(
+    const ResourceHandle& resource_handle);
 
 // Returns the runtime name from the resource handle. The name will be concat of
 // handle's container name and handle's name.
@@ -44,7 +45,7 @@ std::string GetRuntimeNameFromVarHandle(const ResourceHandle& handle);
 // can look for the actual loaded variable value in
 // `ifrt_loaded_variable_registry`.
 absl::Status LoadRestoredTensorAsIfrtLoadedVariable(
-    const tensorflow::Tensor& variable_handle_tensor,
+    absl::string_view runtime_name,
     std::shared_ptr<xla::ifrt::Client> ifrt_client,
     const tsl::thread::ThreadPool& thread_pool,
     ifrt_serving::IfrtRestoreTensorRegistry& ifrt_restore_tensor_registry,

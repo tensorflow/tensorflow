@@ -38,8 +38,6 @@ limitations under the License.
 #include "tensorflow/core/tfrt/ifrt/ifrt_config.pb.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_loaded_variable_registry.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_restore_tensor_registry.h"
-#include "tensorflow/core/tfrt/mlrt/interpreter/future.h"
-#include "tensorflow/core/tfrt/utils/fallback_tensor.h"
 #include "tsl/concurrency/ref_count.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/env.h"
@@ -86,17 +84,17 @@ TEST(ShardingUtilsTest, ShardTensorToIfrtLoadedVariableNotFoundWrongName) {
       xla::ifrt::Future<absl::StatusOr<tensorflow::Tensor>>::CreatePromise();
   auto future = xla::ifrt::Future<absl::StatusOr<tensorflow::Tensor>>(promise);
 
-  TF_ASSERT_OK(
-      restored_tensor_registry.TryRegister("var_x_wrong", std::move(future)));
+  IfrtRestoreTensorRegistry::RestoredTensorInfo restored_tensor_info = {
+      GetDtypeAndShape(variable_handle.scalar<ResourceHandle>()()).value(),
+      future};
+  TF_ASSERT_OK(restored_tensor_registry.TryRegister("var_x_wrong",
+                                                    restored_tensor_info));
   promise.Set(input_tensor);
-  TF_ASSERT_OK(LoadRestoredTensorAsIfrtLoadedVariable(
-      variable_handle, client, thread_pool, restored_tensor_registry,
-      loaded_variable_registry, restore_work_queue.get(), sharding_config));
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto v,
-      loaded_variable_registry.GetLoadedVariable(GetRuntimeNameFromVarHandle(
-          variable_handle.scalar<ResourceHandle>()())));
-  EXPECT_THAT(v.array.Await().status(), StatusIs(absl::StatusCode::kNotFound));
+  EXPECT_THAT(
+      LoadRestoredTensorAsIfrtLoadedVariable(
+          "var_x", client, thread_pool, restored_tensor_registry,
+          loaded_variable_registry, restore_work_queue.get(), sharding_config),
+      StatusIs(absl::StatusCode::kNotFound));
 }
 
 TEST(ShardingUtilsTest, ShardTensorToIfrtLoadedVariableSucceed) {
@@ -129,21 +127,20 @@ TEST(ShardingUtilsTest, ShardTensorToIfrtLoadedVariableSucceed) {
       xla::ifrt::Future<absl::StatusOr<tensorflow::Tensor>>::CreatePromise();
   auto future = xla::ifrt::Future<absl::StatusOr<tensorflow::Tensor>>(promise);
 
-  TF_ASSERT_OK(restored_tensor_registry.TryRegister(
-      GetRuntimeNameFromVarHandle(variable_handle.scalar<ResourceHandle>()()),
-      std::move(future)));
+  IfrtRestoreTensorRegistry::RestoredTensorInfo restored_tensor_info = {
+      GetDtypeAndShape(variable_handle.scalar<ResourceHandle>()()).value(),
+      future};
+
+  TF_ASSERT_OK(
+      restored_tensor_registry.TryRegister("var_x", restored_tensor_info));
   TF_ASSERT_OK(LoadRestoredTensorAsIfrtLoadedVariable(
-      variable_handle, client, thread_pool, restored_tensor_registry,
+      "var_x", client, thread_pool, restored_tensor_registry,
       loaded_variable_registry, restore_work_queue.get(), sharding_config));
   promise.Set(input_tensor);
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto v,
-      loaded_variable_registry.GetLoadedVariable(GetRuntimeNameFromVarHandle(
-          variable_handle.scalar<ResourceHandle>()())));
+  TF_ASSERT_OK_AND_ASSIGN(auto v,
+                          loaded_variable_registry.GetLoadedVariable("var_x"));
   TF_ASSERT_OK_AND_ASSIGN(auto assembled_array, v.array.Await());
 
-  EXPECT_TRUE(v.dtype_and_shape.shape.IsSameSize(TensorShape({2, 2})));
-  EXPECT_EQ(v.dtype_and_shape.dtype, DT_INT32);
   TF_ASSERT_OK_AND_ASSIGN(auto disassembled_arrays,
                           assembled_array->DisassembleIntoSingleDeviceArrays(
                               xla::ifrt::ArrayCopySemantics::kAlwaysCopy));

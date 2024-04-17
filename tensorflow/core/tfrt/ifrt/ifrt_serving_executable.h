@@ -46,6 +46,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_loaded_variable_registry.h"
+#include "tensorflow/core/tfrt/ifrt/ifrt_restore_tensor_registry.h"
 #include "tensorflow/core/tfrt/ifrt/tf_host_callback.h"
 #include "tsl/concurrency/ref_count.h"
 #include "tsl/platform/threadpool.h"
@@ -61,6 +62,7 @@ class IfrtServingExecutable {
       std::shared_ptr<xla::ifrt::Client> client,
       const tsl::thread::ThreadPool* thread_pool,
       const IfrtLoadedVariableRegistry* ifrt_loaded_variable_registry,
+      const IfrtRestoreTensorRegistry* ifrt_restore_tensor_registry,
       tensorflow::StaticDeviceMgr* device_mgr,
       tensorflow::XlaHelpers::ShapeRepresentationFn shape_representation_fn)
       : model_name_(std::string(model_name)),
@@ -69,6 +71,7 @@ class IfrtServingExecutable {
         ifrt_client_(std::move(client)),
         thread_pool_(*thread_pool),
         ifrt_loaded_variable_registry_(*ifrt_loaded_variable_registry),
+        ifrt_restore_tensor_registry_(*ifrt_restore_tensor_registry),
         device_mgr_(device_mgr),
         shape_representation_fn_(std::move(shape_representation_fn)) {}
 
@@ -129,6 +132,7 @@ class IfrtServingExecutable {
   const tsl::thread::ThreadPool& thread_pool_;
 
   const IfrtLoadedVariableRegistry& ifrt_loaded_variable_registry_;
+  const IfrtRestoreTensorRegistry& ifrt_restore_tensor_registry_;
   tensorflow::StaticDeviceMgr* device_mgr_;  // Not owned. For host callback.
   tensorflow::XlaHelpers::ShapeRepresentationFn shape_representation_fn_;
 

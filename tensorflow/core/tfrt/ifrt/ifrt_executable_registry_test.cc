@@ -41,6 +41,7 @@ limitations under the License.
 #include "tensorflow/core/platform/resource_loader.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_loaded_variable_registry.h"
+#include "tensorflow/core/tfrt/ifrt/ifrt_restore_tensor_registry.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_serving_executable.h"
 #include "tensorflow/core/tfrt/ifrt/tf_host_callback.h"
 #include "tsl/platform/env.h"
@@ -79,13 +80,14 @@ CreateIfrtServingExecutable(mlir::MLIRContext& context) {
                       xla::ifrt::test_util::GetClient());
 
   IfrtLoadedVariableRegistry ifrt_loaded_variable_registry;
+  IfrtRestoreTensorRegistry ifrt_restore_tensor_registry;
   TF_ASSIGN_OR_RETURN(std::unique_ptr<tensorflow::StaticDeviceMgr> device_mgr,
                       CreateTfStaticDeviceMgr());
 
   return std::make_unique<IfrtServingExecutable>(
       "test", "main", std::move(mlir_module), client, &GetThreadPool(),
-      &ifrt_loaded_variable_registry, device_mgr.get(),
-      tensorflow::IdentityShapeRepresentationFn());
+      &ifrt_loaded_variable_registry, &ifrt_restore_tensor_registry,
+      device_mgr.get(), tensorflow::IdentityShapeRepresentationFn());
 }
 
 TEST(IfrtExecutableRegistry, Basic) {

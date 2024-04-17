@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/ifrt_types.h"
 #include "xla/hlo/ir/hlo_sharding.h"
@@ -32,12 +33,9 @@ limitations under the License.
 #include "tensorflow/core/framework/resource_handle.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
-#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_loaded_variable_registry.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_restore_tensor_registry.h"
 #include "tensorflow/core/tfrt/ifrt/sharding_utils.h"
-#include "tensorflow/core/tfrt/mlrt/interpreter/future.h"
-#include "tensorflow/core/tfrt/utils/fallback_tensor.h"
 #include "tsl/concurrency/ref_count.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
@@ -63,6 +61,8 @@ absl::StatusOr<tsl::RCReference<xla::ifrt::Array>> LoadIfrtVariable(
       thread_pool);
 }
 
+}  // namespace
+
 absl::StatusOr<ifrt_serving::DtypeAndShape> GetDtypeAndShape(
     const ResourceHandle& resource_handle) {
   const std::vector<DtypeAndPartialTensorShape>& dtype_and_partial_shapes =
@@ -84,31 +84,20 @@ absl::StatusOr<ifrt_serving::DtypeAndShape> GetDtypeAndShape(
   return dtype_and_shape;
 }
 
-}  // namespace
-
 std::string GetRuntimeNameFromVarHandle(const ResourceHandle& handle) {
   return absl::StrCat(handle.container(), "__", handle.name());
 }
 
 absl::Status LoadRestoredTensorAsIfrtLoadedVariable(
-    const tensorflow::Tensor& variable_handle_tensor,
+    absl::string_view runtime_name,
     std::shared_ptr<xla::ifrt::Client> ifrt_client,
     const tsl::thread::ThreadPool& thread_pool,
     ifrt_serving::IfrtRestoreTensorRegistry& ifrt_restore_tensor_registry,
     ifrt_serving::IfrtLoadedVariableRegistry& ifrt_loaded_variable_registry,
     tfrt::ConcurrentWorkQueue* checkpoint_loader_queue,
     const VariableDeviceShardingConfigProto& sharding_config) {
-  if (variable_handle_tensor.dtype() != DT_RESOURCE) {
-    return absl::InvalidArgumentError(
-        absl::StrCat("variable_handle_tensor is ",
-                     DataTypeString(variable_handle_tensor.dtype()),
-                     " but expected DT_RESOURCE"));
-  }
-  const ResourceHandle& handle =
-      variable_handle_tensor.scalar<ResourceHandle>()();
-  std::string runtime_name = GetRuntimeNameFromVarHandle(handle);
   xla::ifrt::Future<absl::StatusOr<tensorflow::Tensor>> restored_tensor_future =
-      ifrt_restore_tensor_registry.Get(runtime_name);
+      ifrt_restore_tensor_registry.GetRestoredTensor(runtime_name);
   if (!restored_tensor_future.IsValid()) {
     return absl::InternalError(absl::StrCat(
         "LoadVariableOp: failed to fetch variable tensor: ", runtime_name));
@@ -120,8 +109,9 @@ absl::Status LoadRestoredTensorAsIfrtLoadedVariable(
       xla::ifrt::Future<absl::StatusOr<tsl::RCReference<xla::ifrt::Array>>>(
           loaded_variable_promise);
 
-  TF_ASSIGN_OR_RETURN(ifrt_serving::DtypeAndShape dtype_and_shape,
-                      GetDtypeAndShape(handle));
+  TF_ASSIGN_OR_RETURN(
+      absl::StatusOr<ifrt_serving::DtypeAndShape> dtype_and_shape,
+      ifrt_restore_tensor_registry.GetDtypeAndShape(runtime_name));
   // TODO(b/330360798) Load variable on devices from the result of core
   // selection.
   TF_RETURN_IF_ERROR(ifrt_loaded_variable_registry.TryRegisterLoadedVariable(
@@ -129,8 +119,7 @@ absl::Status LoadRestoredTensorAsIfrtLoadedVariable(
       [&]() -> absl::StatusOr<
                 ifrt_serving::IfrtLoadedVariableRegistry::LoadedVariable> {
         return ifrt_serving::IfrtLoadedVariableRegistry::LoadedVariable(
-            {.dtype_and_shape = dtype_and_shape,
-             .array = loaded_variable_future});
+            {.array = loaded_variable_future});
       }));
   restored_tensor_future.OnReady(
       [ifrt_client = ifrt_client, &thread_pool = thread_pool,
