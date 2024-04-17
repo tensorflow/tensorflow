@@ -65,7 +65,7 @@ bool HasStaticShapeAtDims(Value value, ArrayRef<int> dims);
 // Whether `value` has known rank of `rank`. Returns false when it is not a
 // `ShapedType` or its rank is unknown.
 inline bool HasRankOf(Value value, const int64_t rank) {
-  auto shaped_type = value.getType().dyn_cast_or_null<ShapedType>();
+  auto shaped_type = dyn_cast_or_null<ShapedType>(value.getType());
   return shaped_type && shaped_type.hasRank() && shaped_type.getRank() == rank;
 }
 
@@ -215,7 +215,7 @@ Operation* FindOperandOfType(Operation* op) {
 // Returns the function attribute for the given call op which is lifted for
 // quantization.
 inline FlatSymbolRefAttr GetFuncAttr(TF::PartitionedCallOp call_op) {
-  return call_op.getFAttr().template dyn_cast<FlatSymbolRefAttr>();
+  return dyn_cast<FlatSymbolRefAttr>(call_op.getFAttr());
 }
 
 inline FlatSymbolRefAttr GetFuncAttr(TF::XlaCallModuleOp call_op) {

@@ -36,9 +36,9 @@ struct ClampWithBroadcastConvert : public OpRewritePattern<ClampOp> {
 
   LogicalResult matchAndRewrite(ClampOp op,
                                 PatternRewriter &rewriter) const override {
-    auto operandType = op.getOperand().getType().dyn_cast<RankedTensorType>();
-    auto maxType = op.getMax().getType().dyn_cast<RankedTensorType>();
-    auto minType = op.getMin().getType().dyn_cast<RankedTensorType>();
+    auto operandType = dyn_cast<RankedTensorType>(op.getOperand().getType());
+    auto maxType = dyn_cast<RankedTensorType>(op.getMax().getType());
+    auto minType = dyn_cast<RankedTensorType>(op.getMin().getType());
     // Unrancked types are not supported.
     if (!operandType || !maxType || !minType) return failure();
     // Does not support operand with dynamic dimensions for now.

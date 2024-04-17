@@ -64,7 +64,7 @@ std::optional<Value> FindOpKernelContext(Operation *op) {
     return std::nullopt;
   }
   Value ctx = func.getArgument(0);
-  if (!ctx.getType().isa<OpKernelContextType>()) {
+  if (!isa<OpKernelContextType>(ctx.getType())) {
     return std::nullopt;
   }
   return ctx;
@@ -114,7 +114,7 @@ struct DeallocOpConverter : public OpConversionPattern<memref::DeallocOp> {
     if (!ctx) return failure();
 
     // Operand with no layout is expected.
-    auto operand_memref_type = dealloc.getMemref().getType().cast<MemRefType>();
+    auto operand_memref_type = cast<MemRefType>(dealloc.getMemref().getType());
     if (!operand_memref_type.getLayout().isIdentity()) {
       return failure();
     }

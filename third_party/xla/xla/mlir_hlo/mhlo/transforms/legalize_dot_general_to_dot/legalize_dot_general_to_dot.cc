@@ -44,8 +44,8 @@ struct DotGeneralToDot : public OpRewritePattern<DotGeneralOp> {
                                 PatternRewriter& rewriter) const override {
     auto lhs = dot.getLhs();
     auto rhs = dot.getRhs();
-    auto lhsTy = lhs.getType().cast<ShapedType>();
-    auto rhsTy = rhs.getType().cast<ShapedType>();
+    auto lhsTy = cast<ShapedType>(lhs.getType());
+    auto rhsTy = cast<ShapedType>(rhs.getType());
 
     int64_t lhsRank = lhsTy.getRank();
     int64_t rhsRank = rhsTy.getRank();

@@ -92,13 +92,13 @@ bool IsCompatibleTypeWithTFLCastOp(Type type) {
     return true;
 
   // Complex<F<32>> is allowed.
-  if (elemType.isa<ComplexType>() &&
-      elemType.cast<ComplexType>().getElementType().isF32())
+  if (isa<ComplexType>(elemType) &&
+      cast<ComplexType>(elemType).getElementType().isF32())
     return true;
 
   // QUINT8 and UI8 are allowed.
-  if (elemType.isa<TF::Quint8Type>() ||
-      (elemType.isInteger(8) && elemType.cast<IntegerType>().isUnsigned()))
+  if (isa<TF::Quint8Type>(elemType) ||
+      (elemType.isInteger(8) && cast<IntegerType>(elemType).isUnsigned()))
     return true;
 
   return false;

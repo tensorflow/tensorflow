@@ -52,7 +52,7 @@ StatusOr<SmallVector<ArgumentConstraint>> GetArgumentsConstraints(
     if (!attr) return ArgumentConstraint::kResolved;
 
     // Otherwise try to parse constraint from the string attribute.
-    auto str = attr.dyn_cast_or_null<StringAttr>();
+    auto str = dyn_cast_or_null<StringAttr>(attr);
     if (!str)
       return InvalidArgumentError(
           StrCat("unexpected ", kArgumentConstraintAttrName, " attribute"));
@@ -81,7 +81,7 @@ StatusOr<ArgumentConstraint> ResolveArgumentConstraint(
   if (constraint == ArgumentConstraint::kResolved) return constraint;
 
   // Operand must be a shaped type: memref or tensor.
-  auto shaped = type.dyn_cast<ShapedType>();
+  auto shaped = dyn_cast<ShapedType>(type);
   if (!shaped)
     return InvalidArgumentError(
         StrCat("unsupported operand type: ", debugString(type)));

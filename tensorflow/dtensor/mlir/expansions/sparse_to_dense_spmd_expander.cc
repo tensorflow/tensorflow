@@ -35,7 +35,7 @@ StatusOr<mlir::Operation*> SparseToDenseSPMDExpander::ExpandOp(
   auto op_result = op->getResult(0);
 
   const auto element_type =
-      op_result.getType().cast<mlir::TensorType>().getElementType();
+      cast<mlir::TensorType>(op_result.getType()).getElementType();
   op_result.setType(mlir::RankedTensorType::get(local_shape, element_type));
   // No-op
   return op;

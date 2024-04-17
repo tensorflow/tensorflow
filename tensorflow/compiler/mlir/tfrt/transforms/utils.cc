@@ -34,7 +34,7 @@ limitations under the License.
 namespace tensorflow {
 
 bool IsResourceArgument(mlir::Value value) {
-  auto arg = value.dyn_cast<mlir::BlockArgument>();
+  auto arg = dyn_cast<mlir::BlockArgument>(value);
   if (!arg) return false;
 
   auto func = llvm::cast<mlir::func::FuncOp>(arg.getOwner()->getParentOp());
@@ -44,7 +44,7 @@ bool IsResourceArgument(mlir::Value value) {
 
 bool IsResultVariable(const mlir::Value &original_operand,
                       const mlir::Value &operand) {
-  if (original_operand.isa<mlir::OpResult>()) {
+  if (isa<mlir::OpResult>(original_operand)) {
     auto defining_op = original_operand.getDefiningOp();
 
     // TODO(b/174753886): When device assignment is properly done, we
@@ -99,7 +99,7 @@ bool IsSessionInitializer(mlir::func::FuncOp op) {
   if (!session_initializer_op) return false;
 
   for (auto sym_ref : session_initializer_op.getInitializers()) {
-    if (op.getSymName() == sym_ref.cast<mlir::FlatSymbolRefAttr>().getValue())
+    if (op.getSymName() == cast<mlir::FlatSymbolRefAttr>(sym_ref).getValue())
       return true;
   }
 

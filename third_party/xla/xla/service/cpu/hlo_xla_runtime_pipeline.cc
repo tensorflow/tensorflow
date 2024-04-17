@@ -81,7 +81,7 @@ mlir::bufferization::OneShotBufferizationOptions GetBufferizationOptions(
                                       mlir::Attribute memorySpace,
                                       const BufferizationOptions& options) {
     return mlir::bufferization::getMemRefTypeWithStaticIdentityLayout(
-        value.getType().cast<mlir::TensorType>(), memorySpace);
+        cast<mlir::TensorType>(value.getType()), memorySpace);
   };
   return options;
 }

@@ -31,8 +31,8 @@ void GetExecuteOpAttrsCommon(
 
   mlir::Builder builder(context);
   for (auto iter : op_attr_array) {
-    auto key_value = iter.cast<mlir::ArrayAttr>().getValue();
-    llvm::StringRef key = key_value[0].cast<mlir::StringAttr>().getValue();
+    auto key_value = cast<mlir::ArrayAttr>(iter).getValue();
+    llvm::StringRef key = cast<mlir::StringAttr>(key_value[0]).getValue();
     mlir::Attribute value = key_value[1];
     op_attrs->push_back({key, value});
   }

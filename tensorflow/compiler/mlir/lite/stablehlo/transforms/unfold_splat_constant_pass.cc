@@ -59,8 +59,7 @@ class UnfoldSplatConstantPass
  private:
   void UnfoldSplatConstant(mlir::OpBuilder* op_builder,
                            mhlo::ConstantOp const_op) const {
-    auto splat_elements_attr =
-        const_op.getValue().dyn_cast<SplatElementsAttr>();
+    auto splat_elements_attr = dyn_cast<SplatElementsAttr>(const_op.getValue());
     if (!splat_elements_attr) {
       return;
     }
@@ -68,8 +67,8 @@ class UnfoldSplatConstantPass
       return;
     }
     auto element_type = splat_elements_attr.getType().getElementType();
-    if (element_type.isa<ComplexType>() ||
-        element_type.isa<quant::QuantizedType>()) {
+    if (isa<ComplexType>(element_type) ||
+        isa<quant::QuantizedType>(element_type)) {
       return;
     }
     op_builder->setInsertionPoint(const_op);

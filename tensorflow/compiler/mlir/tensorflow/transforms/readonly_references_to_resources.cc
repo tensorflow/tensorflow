@@ -91,7 +91,7 @@ StringRef GetNodeNameFromClassAttrOrSharedNameAttr(Operation *op) {
 
   StringRef result;
   for (Attribute class_attr : classes_attr) {
-    StringRef node_name = class_attr.cast<StringAttr>().getValue();
+    StringRef node_name = cast<StringAttr>(class_attr).getValue();
     if (!node_name.starts_with(kLocationPrefix)) {
       continue;
     }
@@ -150,8 +150,8 @@ void ConvertReadonlyReferenceVariablesToResourceVariablesPass::
   for (VariableV2Op variable_v2_op : variable_v2s_to_replace) {
     builder.setInsertionPoint(variable_v2_op);
     ShapedType shaped_type =
-        variable_v2_op.getResult().getType().cast<ShapedType>();
-    TensorType tensor_type = DropRefType(shaped_type).cast<TensorType>();
+        cast<ShapedType>(variable_v2_op.getResult().getType());
+    TensorType tensor_type = cast<TensorType>(DropRefType(shaped_type));
     StringAttr device_attr =
         variable_v2_op->getAttrOfType<StringAttr>("device");
     if (!device_attr) device_attr = builder.getStringAttr("");

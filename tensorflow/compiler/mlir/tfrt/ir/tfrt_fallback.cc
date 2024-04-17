@@ -47,12 +47,12 @@ Type FallbackDialect::parseType(DialectAsmParser &parser) const {
 
 /// Print a type registered to this dialect.
 void FallbackDialect::printType(Type type, DialectAsmPrinter &os) const {
-  if (type.isa<TFTensorType>()) {
+  if (isa<TFTensorType>(type)) {
     os << "tf_tensor";
     return;
   }
 
-  if (type.isa<TFAllocatorType>()) {
+  if (isa<TFAllocatorType>(type)) {
     os << "tf_allocator";
     return;
   }

@@ -65,7 +65,7 @@ class DTensorLayoutToXlaShardingOpPass
 mlir::LogicalResult RemoveDTensorLayoutAfterConstOrBlockArgPattern::match(
     DTensorLayout layout_op) const {
   auto input = layout_op.getInput();
-  if (input.isa<mlir::BlockArgument>()) {
+  if (isa<mlir::BlockArgument>(input)) {
     return mlir::success();
   }
   mlir::Operation* input_op = input.getDefiningOp();

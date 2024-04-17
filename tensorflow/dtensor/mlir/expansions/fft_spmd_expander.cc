@@ -74,7 +74,7 @@ bool IsDistributedFFTN(int num_transform_axes, const Layout& layout) {
 bool IsComplexFFT(mlir::Value input) {
   auto data_type =
       mlir::dyn_cast<mlir::TensorType>(input.getType()).getElementType();
-  return data_type.isa<mlir::ComplexType>();
+  return isa<mlir::ComplexType>(data_type);
 }
 
 Status IsProperFFTLength(mlir::Operation* op,

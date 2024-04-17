@@ -403,7 +403,7 @@ class XlaCallModuleOp : public XlaOpKernel {
         mlir::TypeRange input_types(custom_call->getOperandTypes());
         if (custom_call_has_token_input_output) {
           if (input_types.empty() ||
-              !input_types.front().isa<mlir::mhlo::TokenType>()) {
+              !isa<mlir::mhlo::TokenType>(input_types.front())) {
             return absl::InvalidArgumentError(absl::StrCat(
                 "stablehlo.custom_call with has_token_input_output = true is "
                 "expected to take !stablehlo.token as the first argument, but "
@@ -422,7 +422,7 @@ class XlaCallModuleOp : public XlaOpKernel {
         mlir::TypeRange result_types(custom_call->getResultTypes());
         if (custom_call_has_token_input_output) {
           if (result_types.empty() ||
-              !result_types.front().isa<mlir::mhlo::TokenType>()) {
+              !isa<mlir::mhlo::TokenType>(result_types.front())) {
             return absl::InvalidArgumentError(absl::StrCat(
                 "stablehlo.custom_call with has_token_input_output = true is "
                 "expected to return !stablehlo.token as the first result, but "

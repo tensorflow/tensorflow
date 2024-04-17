@@ -51,8 +51,8 @@ void AnnotateFunctionArgRetvalGlobalShapes(mlir::func::FuncOp function,
     const auto& argument_type = argument_type_and_index.value();
     // Extract TensorType from element of resource type to allow setting proper
     // global shape of resource types.
-    if (auto resource_type = mlir::getElementTypeOrSelf(argument_type)
-                                 .dyn_cast<mlir::TF::ResourceType>()) {
+    if (auto resource_type = dyn_cast<mlir::TF::ResourceType>(
+            mlir::getElementTypeOrSelf(argument_type))) {
       auto subtype = resource_type.getSubtypes();
       if (subtype.size() == 1) {
         // subtype returns a Array of TensorType -- if it contains more than one

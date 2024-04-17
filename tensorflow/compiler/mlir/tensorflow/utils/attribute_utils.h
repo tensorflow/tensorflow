@@ -167,7 +167,7 @@ class IdentityNOp;
 // as an attribute.
 template <typename AttrT>
 bool GetValueAsConstant(Value val, AttrT &attr) {
-  while (auto result = val.dyn_cast<OpResult>()) {
+  while (auto result = dyn_cast<OpResult>(val)) {
     Operation *op = result.getOwner();
     if (!isa<IdentityOp>(op) && !isa<IdentityNOp>(op)) break;
     val = op->getOperand(result.getResultNumber());

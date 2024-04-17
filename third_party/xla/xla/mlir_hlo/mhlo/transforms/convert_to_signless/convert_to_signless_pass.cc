@@ -86,12 +86,12 @@ class ConvertConstantToSignless
       arith::ConstantOp constantOp, arith::ConstantOpAdaptor adaptor,
       ConversionPatternRewriter& rewriter) const override {
     // We only care about unsigned integers
-    if (!adaptor.getValue().isa<DenseIntElementsAttr>()) return failure();
+    if (!isa<DenseIntElementsAttr>(adaptor.getValue())) return failure();
 
     auto values = llvm::to_vector(
-        adaptor.getValue().cast<DenseIntElementsAttr>().getValues<APInt>());
+        cast<DenseIntElementsAttr>(adaptor.getValue()).getValues<APInt>());
     Type type = typeConverter->convertType(constantOp.getType());
-    auto shapedType = type.dyn_cast<ShapedType>();
+    auto shapedType = dyn_cast<ShapedType>(type);
     auto newValues = DenseIntElementsAttr::get(
         shapedType, values);
 

@@ -20,5 +20,5 @@ MlirType mlirMhloTokenTypeGet(MlirContext ctx) {
 }
 
 bool mlirMhloTypeIsAToken(MlirType type) {
-  return unwrap(type).isa<mlir::mhlo::TokenType>();
+  return isa<mlir::mhlo::TokenType>(unwrap(type));
 }

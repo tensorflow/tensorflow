@@ -96,14 +96,14 @@ class ConvertToLLVMCallOpPattern : public ConvertOpToLLVMPattern<OpTy> {
       Location loc, Type size_ty, Type element_ty,
       std::optional<ArrayAttr> attr,
       ConversionPatternRewriter *rewriter) const {
-    assert(size_ty.isa<IntegerType>() && "expect integer size type");
-    assert(element_ty.isa<IntegerType>() && "expect integer element type");
+    assert(isa<IntegerType>(size_ty) && "expect integer size type");
+    assert(isa<IntegerType>(element_ty) && "expect integer element type");
     return ConvertArrayAttrToStackAllocatedArray(
         loc, size_ty, element_ty, attr, rewriter, [&](Attribute attr) {
           return rewriter->create<LLVM::ConstantOp>(
               loc, element_ty,
               rewriter->getIntegerAttr(element_ty,
-                                       attr.cast<IntegerAttr>().getInt()));
+                                       cast<IntegerAttr>(attr).getInt()));
         });
   }
 };
@@ -227,7 +227,7 @@ class TFDeallocOpConverter : public ConvertToLLVMCallOpPattern<TFDeallocOp> {
       TFDeallocOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
     // TODO(herhut) Support unranked memrefs.
-    if (!op.getMemref().getType().isa<MemRefType>()) return failure();
+    if (!isa<MemRefType>(op.getMemref().getType())) return failure();
     MemRefDescriptor memref(adaptor.getMemref());
 
     Value allocated_bytes_ptr = memref.allocatedPtr(rewriter, op.getLoc());
@@ -429,7 +429,7 @@ class ReportErrorOpConverter
     std::string err_str;
     llvm::raw_string_ostream err_stream(err_str);
     err_stream << message;
-    if (!loc.isa<UnknownLoc>()) {
+    if (!isa<UnknownLoc>(loc)) {
       err_stream << " at ";
       loc.print(err_stream);
     }
@@ -465,16 +465,16 @@ class NullMemRefOpConverter : public ConvertOpToLLVMPattern<NullMemRefOp> {
     MLIRContext *ctx = null_memref_op.getContext();
     mlir::Operation *op = null_memref_op.getOperation();
 
-    auto shaped_result_type = null_memref_op.getType().cast<BaseMemRefType>();
+    auto shaped_result_type = cast<BaseMemRefType>(null_memref_op.getType());
     auto mem_space =
-        shaped_result_type.getMemorySpace().dyn_cast_or_null<IntegerAttr>();
+        dyn_cast_or_null<IntegerAttr>(shaped_result_type.getMemorySpace());
     unsigned address_space =
         static_cast<unsigned>(mem_space ? mem_space.getInt() : 0);
     LLVM::LLVMPointerType llvm_ptr_type =
         LLVM::LLVMPointerType::get(ctx, address_space);
 
     Value zero = createIndexAttrConstant(rewriter, loc, getIndexType(), 0);
-    if (auto result_type = null_memref_op.getType().dyn_cast<MemRefType>()) {
+    if (auto result_type = dyn_cast<MemRefType>(null_memref_op.getType())) {
       // Set all dynamic sizes to 1 and compute fake strides.
       SmallVector<Value, 4> dyn_sizes(
           result_type.getNumDynamicDims(),
@@ -497,7 +497,7 @@ class NullMemRefOpConverter : public ConvertOpToLLVMPattern<NullMemRefOp> {
       return success();
     }
 
-    auto result_type = null_memref_op.getType().cast<UnrankedMemRefType>();
+    auto result_type = cast<UnrankedMemRefType>(null_memref_op.getType());
     Type llvm_result_type = type_converter.convertType(result_type);
 
     auto desc =
@@ -506,7 +506,7 @@ class NullMemRefOpConverter : public ConvertOpToLLVMPattern<NullMemRefOp> {
 
     // Extract address space and element type.
     auto targetType =
-        null_memref_op.getResult().getType().cast<UnrankedMemRefType>();
+        cast<UnrankedMemRefType>(null_memref_op.getResult().getType());
     unsigned addressSpace =
         *getTypeConverter()->getMemRefAddressSpace(targetType);
 
@@ -549,7 +549,7 @@ class IsValidMemRefOpConverter
     MemRefDescriptor desc(adaptor.getArg());
 
     // Compare every size in the descriptor to 0 to check num_elements == 0.
-    int64_t rank = op.getArg().getType().cast<MemRefType>().getRank();
+    int64_t rank = cast<MemRefType>(op.getArg().getType()).getRank();
     Value is_empty_shape = rewriter.create<LLVM::ConstantOp>(
         loc, rewriter.getI1Type(), rewriter.getBoolAttr(false));
     Value zero = createIndexAttrConstant(rewriter, loc, getIndexType(), 0);

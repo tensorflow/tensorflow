@@ -619,7 +619,7 @@ struct AggregateAttrEncoding : public CustomCallAttrEncoding {
 
   mlir::LogicalResult Match(mlir::SymbolTable &, std::string_view,
                             mlir::Attribute attr) const final {
-    return mlir::success(attr.isa<AttrType>());
+    return mlir::success(isa<AttrType>(attr));
   }
 
   mlir::FailureOr<Encoded> Encode(mlir::SymbolTable &sym_table, Globals &g,
@@ -629,7 +629,7 @@ struct AggregateAttrEncoding : public CustomCallAttrEncoding {
     // Extract aggregate attributes from the user-defined attributes.
     llvm::SmallVector<mlir::NamedAttribute> attrs;
     for (auto &bind : attrdef.bindings)
-      attrs.emplace_back(bind(attr.cast<AttrType>(), b));
+      attrs.emplace_back(bind(cast<AttrType>(attr), b));
 
     // Encode extracted attributes as an aggregate.
     auto type_id = TypeID::get<Tagged<RuntimeType>>();

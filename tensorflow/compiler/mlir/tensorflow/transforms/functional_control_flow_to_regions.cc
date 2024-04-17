@@ -101,7 +101,7 @@ YieldOp CreateCall(Operation* op, func::FuncOp func, Region& caller_region,
 
 // Converts the condition for an IfOp/WhileOp to a boolean value.
 Value ConvertConditionToBoolean(Operation* op, Value cond) {
-  if (auto ranked_type = cond.getType().dyn_cast<RankedTensorType>())
+  if (auto ranked_type = dyn_cast<RankedTensorType>(cond.getType()))
     if (ranked_type.getRank() == 0 &&
         ranked_type.getElementType().isSignlessInteger(1))
       return cond;

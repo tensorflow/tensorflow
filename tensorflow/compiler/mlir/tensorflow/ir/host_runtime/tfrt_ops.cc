@@ -45,10 +45,10 @@ _TfrtGetResourceOp::GetResourceHandleValueAndIdList(
 
   for (const auto &iter : llvm::enumerate(getResults())) {
     auto index = iter.index();
-    if (getElementTypeOrSelf(iter.value().getType()).isa<TF::ResourceType>()) {
+    if (isa<TF::ResourceType>(getElementTypeOrSelf(iter.value().getType()))) {
       resource_vec.push_back(GetResourceHandleValueAndIdBase(
-          getContainer()[index].cast<mlir::StringAttr>().getValue(),
-          getSharedName()[index].cast<mlir::StringAttr>().getValue(), device,
+          cast<mlir::StringAttr>(getContainer()[index]).getValue(),
+          cast<mlir::StringAttr>(getSharedName()[index]).getValue(), device,
           getResults()[index], resource_handle_id_map, next_id));
     }
   }
@@ -100,16 +100,16 @@ mlir::LogicalResult IfrtCallOp::verify() {
   }
 
   for (mlir::Value arg : getArgs()) {
-    if (mlir::getElementTypeOrSelf(arg.getType())
-            .isa<mlir::TF::ResourceType>()) {
+    if (isa<mlir::TF::ResourceType>(
+            mlir::getElementTypeOrSelf(arg.getType()))) {
       return emitOpError()
              << "does not support passing '!tf.resource' values as arguments";
     }
   }
 
   for (mlir::Value result : getResults()) {
-    if (mlir::getElementTypeOrSelf(result.getType())
-            .isa<mlir::TF::ResourceType>()) {
+    if (isa<mlir::TF::ResourceType>(
+            mlir::getElementTypeOrSelf(result.getType()))) {
       return emitOpError()
              << "does not support returning '!tf.resource' values as results";
     }
@@ -118,12 +118,12 @@ mlir::LogicalResult IfrtCallOp::verify() {
   // Verify variable_arg_indices is sorted in ascending order.
   int64_t prev_index = -1;
   for (auto arg_index_attr : getVariableArgIndicesAttr()) {
-    if (!arg_index_attr.isa_and_nonnull<mlir::IntegerAttr>()) {
+    if (!isa_and_nonnull<mlir::IntegerAttr>(arg_index_attr)) {
       return emitOpError() << "variable_arg_indices must be an integer";
     }
 
     int64_t index =
-        arg_index_attr.dyn_cast<mlir::IntegerAttr>().getValue().getSExtValue();
+        dyn_cast<mlir::IntegerAttr>(arg_index_attr).getValue().getSExtValue();
     if (index < 0) {
       return emitOpError() << "variable_arg_indices must be positive";
     }

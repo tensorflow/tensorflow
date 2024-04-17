@@ -47,8 +47,8 @@ TEST(CallingConventionTest, DefaultCallingConvention) {
   auto converted = calling_convention(signature);
 
   EXPECT_EQ(converted.getNumInputs(), 2);
-  EXPECT_TRUE(converted.getInput(0).isa<ExecutionContextType>());
-  EXPECT_TRUE(converted.getInput(1).isa<IntegerType>());
+  EXPECT_TRUE(isa<ExecutionContextType>(converted.getInput(0)));
+  EXPECT_TRUE(isa<IntegerType>(converted.getInput(1)));
 }
 
 TEST(CallingConventionTest, DefaultCallingConventionWithTypeConverter) {
@@ -68,8 +68,8 @@ TEST(CallingConventionTest, DefaultCallingConventionWithTypeConverter) {
   auto converted = calling_convention(signature);
 
   EXPECT_EQ(converted.getNumInputs(), 2);
-  EXPECT_TRUE(converted.getInput(0).isa<ExecutionContextType>());
-  EXPECT_TRUE(converted.getInput(1).isa<MemRefType>());
+  EXPECT_TRUE(isa<ExecutionContextType>(converted.getInput(0)));
+  EXPECT_TRUE(isa<MemRefType>(converted.getInput(1)));
 }
 
 TEST(CallingConventionTest, ResultsToOutsCallingConvention) {
@@ -89,8 +89,8 @@ TEST(CallingConventionTest, ResultsToOutsCallingConvention) {
   auto converted = calling_convention(signature);
 
   EXPECT_EQ(converted.getNumInputs(), 2);
-  EXPECT_TRUE(converted.getInput(0).isa<ExecutionContextType>());
-  EXPECT_TRUE(converted.getInput(1).isa<MemRefType>());
+  EXPECT_TRUE(isa<ExecutionContextType>(converted.getInput(0)));
+  EXPECT_TRUE(isa<MemRefType>(converted.getInput(1)));
 
   EXPECT_EQ(converted.getNumResults(), 0);
 }

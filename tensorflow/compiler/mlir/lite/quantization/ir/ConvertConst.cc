@@ -80,7 +80,7 @@ LogicalResult QuantizedConstRewrite::matchAndRewrite(
   }
 
   // Is the constant value a type expressed in a way that we support?
-  if (!value.isa<FloatAttr, DenseElementsAttr, SparseElementsAttr>()) {
+  if (!isa<FloatAttr, DenseElementsAttr, SparseElementsAttr>(value)) {
     return failure();
   }
 

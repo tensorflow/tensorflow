@@ -142,10 +142,10 @@ bool checkWhetherGraphHasValidStaticLookupTables(ModuleOp module) {
 
     // Only allow string -> int64 and int64 -> string mappings due to kernel
     // capability.
-    if (!((key_dtype.isa<TF::StringType>() && value_dtype.isa<IntegerType>() &&
-           value_dtype.cast<IntegerType>().getWidth() == 64) ||
-          (value_dtype.isa<TF::StringType>() && key_dtype.isa<IntegerType>() &&
-           key_dtype.cast<IntegerType>().getWidth() == 64))) {
+    if (!((isa<TF::StringType>(key_dtype) && isa<IntegerType>(value_dtype) &&
+           cast<IntegerType>(value_dtype).getWidth() == 64) ||
+          (isa<TF::StringType>(value_dtype) && isa<IntegerType>(key_dtype) &&
+           cast<IntegerType>(key_dtype).getWidth() == 64))) {
       return false;
     }
 

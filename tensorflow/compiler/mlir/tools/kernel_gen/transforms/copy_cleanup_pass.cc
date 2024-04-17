@@ -135,7 +135,7 @@ void RemoveCopyIfTargetIsFunctionArg(func::FuncOp func) {
   Block &body = func.getBody().front();
   for (auto &op : llvm::reverse(body.without_terminator())) {
     if (auto copy = dyn_cast<memref::CopyOp>(op)) {
-      auto block_arg = copy.getTarget().dyn_cast<BlockArgument>();
+      auto block_arg = dyn_cast<BlockArgument>(copy.getTarget());
       if (!block_arg) break;
       if (!isa<func::FuncOp>(block_arg.getOwner()->getParentOp()) ||
           !block_arg.hasOneUse())

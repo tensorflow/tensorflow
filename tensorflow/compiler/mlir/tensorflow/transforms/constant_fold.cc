@@ -47,7 +47,7 @@ static bool IsFoldedByDefaultPolicy(Operation* inst) {
   auto get_size = [&](TypeRange types) {
     int64_t size = 0;
     for (auto t : types) {
-      auto tensor_type = t.cast<TensorType>();
+      auto tensor_type = cast<TensorType>(t);
       // Ignore types with undefined bit widths.
       if (!tensor_type.getElementType().isIntOrFloat()) continue;
       if (!tensor_type.hasStaticShape()) {
@@ -93,7 +93,7 @@ LogicalResult ConstantFoldFallbackHook(
   // propagation.
   bool has_empty_numerical_results =
       llvm::all_of(inst->getResultTypes(), [](Type ty) {
-        ShapedType shaped_ty = ty.cast<ShapedType>();
+        ShapedType shaped_ty = cast<ShapedType>(ty);
         Type element_ty = shaped_ty.getElementType();
         return shaped_ty.hasStaticShape() && shaped_ty.getNumElements() == 0 &&
                element_ty.isIntOrFloat();
@@ -103,7 +103,7 @@ LogicalResult ConstantFoldFallbackHook(
       // addressed.
       inst->isRegistered()) {
     for (Type ty : inst->getResultTypes()) {
-      auto shaped_ty = ty.cast<ShapedType>();
+      auto shaped_ty = cast<ShapedType>(ty);
       results.push_back(
           DenseElementsAttr::get(shaped_ty, llvm::ArrayRef<Attribute>()));
     }
@@ -112,14 +112,14 @@ LogicalResult ConstantFoldFallbackHook(
 
   // Returns directly if any of the operands is not an elements attributes.
   if (std::any_of(operands.begin(), operands.end(), [](Attribute attr) {
-        return !attr || !attr.isa<ElementsAttr>();
+        return !attr || !isa<ElementsAttr>(attr);
       }))
     return failure();
 
   SmallVector<ElementsAttr, 4> inputs;
   inputs.reserve(operands.size());
   for (auto input : operands) {
-    inputs.push_back(input.cast<ElementsAttr>());
+    inputs.push_back(cast<ElementsAttr>(input));
   }
 
   SmallVector<Attribute> constants;

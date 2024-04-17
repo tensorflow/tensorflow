@@ -44,7 +44,7 @@ ValueConstraint Merge(ValueConstraint a, ValueConstraint b) {
 
 LogicalResult IsStaticallyResolved(Value value, ValueConstraint constraint) {
   // Resolve constraints inferred from the tensor type.
-  if (auto tensor = value.getType().dyn_cast<TensorType>()) {
+  if (auto tensor = dyn_cast<TensorType>(value.getType())) {
     if (constraint == ValueConstraint::kRank && tensor.hasRank())
       return success();
     if (constraint == ValueConstraint::kShape && tensor.hasStaticShape())
@@ -710,7 +710,7 @@ void EmitValueConstraintsRemarks(const ValuesConstraintSet &constraints) {
 void EmitInputsConstraintsRemarks(func::FuncOp func,
                                   const ValuesConstraintSet &constraints) {
   constraints.Walk([&](Value value, ValueConstraint constraint) {
-    if (auto arg = value.dyn_cast<BlockArgument>())
+    if (auto arg = dyn_cast<BlockArgument>(value))
       if (arg.getOwner() == &func.getBody().front())
         func.emitRemark(llvm::formatv("input #{0} constrained to: {1}",
                                       arg.getArgNumber(), constraint));

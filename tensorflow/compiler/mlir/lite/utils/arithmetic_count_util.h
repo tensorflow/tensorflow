@@ -27,7 +27,7 @@ class ArithmeticCountUtilHelper {
   static bool GetFirstOutputCount(mlir::Operation* op, int64_t* count) {
     auto output = op->getResult(0);
     auto output_type =
-        output.getType().dyn_cast_or_null<mlir::RankedTensorType>();
+        dyn_cast_or_null<mlir::RankedTensorType>(output.getType());
     if (!output_type || !output_type.hasStaticShape()) return false;
 
     *count = output_type.getNumElements();
@@ -38,7 +38,7 @@ class ArithmeticCountUtilHelper {
     int64_t total_count = 0;
     for (auto input : op->getOperands()) {
       auto input_type =
-          input.getType().dyn_cast_or_null<mlir::RankedTensorType>();
+          dyn_cast_or_null<mlir::RankedTensorType>(input.getType());
       if (!input_type || !input_type.hasStaticShape()) {
         return false;
       }
@@ -54,12 +54,12 @@ class ArithmeticCountUtilHelper {
                                                            int64_t* count) {
     auto weight = op->getOperand(1);
     auto weight_type =
-        weight.getType().dyn_cast_or_null<mlir::RankedTensorType>();
+        dyn_cast_or_null<mlir::RankedTensorType>(weight.getType());
     if (weight_type == nullptr || !weight_type.hasStaticShape()) return false;
 
     auto output = op->getResult(0);
     auto output_type =
-        output.getType().dyn_cast_or_null<mlir::RankedTensorType>();
+        dyn_cast_or_null<mlir::RankedTensorType>(output.getType());
     if (output_type == nullptr || !output_type.hasStaticShape()) return false;
 
     int64_t cols = 1;
@@ -72,8 +72,7 @@ class ArithmeticCountUtilHelper {
 
     auto bias = op->getOperand(2);
     if (bias) {
-      auto bias_type =
-          bias.getType().dyn_cast_or_null<mlir::RankedTensorType>();
+      auto bias_type = dyn_cast_or_null<mlir::RankedTensorType>(bias.getType());
       if (bias_type && bias_type.hasStaticShape()) {
         *count += output_type.getNumElements();
       }

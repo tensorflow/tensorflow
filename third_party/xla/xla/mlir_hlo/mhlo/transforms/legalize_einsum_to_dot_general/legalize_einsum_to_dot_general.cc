@@ -68,8 +68,8 @@ struct EinsumToDotGeneralPattern : public OpRewritePattern<EinsumOp> {
       index++;
     }
 
-    auto lhsType = einsum.getLhs().getType().cast<RankedTensorType>();
-    auto rhsType = einsum.getRhs().getType().cast<RankedTensorType>();
+    auto lhsType = cast<RankedTensorType>(einsum.getLhs().getType());
+    auto rhsType = cast<RankedTensorType>(einsum.getRhs().getType());
     assert(static_cast<int64_t>(lhsTokens.size()) == lhsType.getRank());
     assert(static_cast<int64_t>(rhsTokens.size()) == rhsType.getRank());
 

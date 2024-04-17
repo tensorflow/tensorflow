@@ -120,8 +120,8 @@ AffineMap ParseAffineMap(absl::string_view serialized_affine_map,
                          MLIRContext* context) {
   std::string full_affine_map_string =
       absl::StrCat("affine_map<", serialized_affine_map, ">");
-  return mlir::parseAttribute(full_affine_map_string, context)
-      .cast<mlir::AffineMapAttr>()
+  return cast<mlir::AffineMapAttr>(
+             mlir::parseAttribute(full_affine_map_string, context))
       .getValue();
 }
 
@@ -133,8 +133,8 @@ AffineExpr ParseAffineExpr(absl::string_view serialized_affine_expr,
       "affine_map<(d0, d1, d2, d3, d4, d5, d6, d7, d8, d9)"
       "[s0, s1, s2, s3, s4, s5, s6, s7, s8, s9] -> (",
       serialized_affine_expr, ")>");
-  return mlir::parseAttribute(full_affine_map_string, context)
-      .cast<mlir::AffineMapAttr>()
+  return cast<mlir::AffineMapAttr>(
+             mlir::parseAttribute(full_affine_map_string, context))
       .getValue()
       .getResult(0);
 }

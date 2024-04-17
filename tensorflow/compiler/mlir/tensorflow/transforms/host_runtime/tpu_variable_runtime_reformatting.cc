@@ -73,7 +73,7 @@ struct TPUVariableRuntimeReformattingPass
 // provided, it will be used to store the identity nodes skipped.
 Value SkipIdentity(Value v, bool allow_other_use,
                    llvm::SmallPtrSet<Operation*, 4>* skipped = nullptr) {
-  while (auto result = v.dyn_cast<OpResult>()) {
+  while (auto result = dyn_cast<OpResult>(v)) {
     if (!(allow_other_use || v.hasOneUse())) break;
     auto op = result.getDefiningOp();
     if (!llvm::isa<TF::IdentityOp, TF::IdentityNOp>(op)) {
@@ -108,10 +108,10 @@ AnnotateCompileOpAndGetExecuteArgToWhileArgsMapping(
   for (auto index_and_arg : llvm::enumerate(execute.getArgs())) {
     auto arg = SkipIdentity(index_and_arg.value(), /*allow_other_use=*/false);
     if (!arg.hasOneUse() ||
-        !getElementTypeOrSelf(arg.getType()).isa<TF::ResourceType>()) {
+        !isa<TF::ResourceType>(getElementTypeOrSelf(arg.getType()))) {
       continue;
     }
-    auto block_arg = arg.dyn_cast<BlockArgument>();
+    auto block_arg = dyn_cast<BlockArgument>(arg);
     if (!block_arg || block_arg.getOwner() != &replicate.GetBody()) continue;
     assert(replicate_arg_to_execute_arg.count(block_arg.getArgNumber()) == 0 &&
            "Found duplicate use of a resource in the execute op.");
@@ -131,13 +131,13 @@ AnnotateCompileOpAndGetExecuteArgToWhileArgsMapping(
   // variables (arguments of `replicate`), and must be pass-throughs from while
   // operands.
   for (const auto& mirrored_index : mirrored_variable_indices_attr) {
-    int64_t replicate_arg = mirrored_index.cast<IntegerAttr>().getInt();
+    int64_t replicate_arg = cast<IntegerAttr>(mirrored_index).getInt();
     // Check if the mirrored variable is an input to `execute`.
     auto it = replicate_arg_to_execute_arg.find(replicate_arg);
     if (it == replicate_arg_to_execute_arg.end()) continue;
     // Get the data type of the resource.
-    auto subtypes = getElementTypeOrSelf(execute.getOperand(it->second))
-                        .cast<TF::ResourceType>()
+    auto subtypes = cast<TF::ResourceType>(
+                        getElementTypeOrSelf(execute.getOperand(it->second)))
                         .getSubtypes();
     if (subtypes.size() != 1) continue;
     auto data_type = getElementTypeOrSelf(subtypes[0]);
@@ -198,14 +198,14 @@ AnnotateCompileOpAndGetExecuteArgToWhileArgsMapping(
   llvm::sort(mapping, llvm::less_first());
   // Populate the `retval_index_for_sharding` field of the argument metadate.
   for (auto entry : llvm::enumerate(execute.getDeviceVarReadsIndices())) {
-    int64_t arg_index = entry.value().cast<IntegerAttr>().getInt();
+    int64_t arg_index = cast<IntegerAttr>(entry.value()).getInt();
     auto arg_metadata = metadata.mutable_args(arg_index);
     if (arg_metadata->enable_xla_sharding() ==
         ::tensorflow::tpu::TPUCompileMetadataProto_Arg::ALLOWED) {
-      int64_t ret_index = execute.getDeviceVarUpdatesIndices()
-                              .getValue()[entry.index()]
-                              .cast<IntegerAttr>()
-                              .getInt();
+      int64_t ret_index =
+          cast<IntegerAttr>(
+              execute.getDeviceVarUpdatesIndices().getValue()[entry.index()])
+              .getInt();
       arg_metadata->set_retval_index_for_sharding(ret_index);
     }
   }
@@ -379,12 +379,12 @@ bool HandleReplicateOp(TF::WhileRegionOp while_op,
 
   for (auto it : device_map) {
     auto device_alias = it.getName().strref();
-    auto device_list = it.getValue().cast<ArrayAttr>();
+    auto device_list = cast<ArrayAttr>(it.getValue());
     llvm::SmallVector<StringRef, 4> device_list_for_alias;
     device_list_for_alias.reserve(device_list.size());
 
     for (auto device : device_list)
-      device_list_for_alias.emplace_back(device.cast<StringAttr>().getValue());
+      device_list_for_alias.emplace_back(cast<StringAttr>(device).getValue());
 
     devices.insert({device_alias, device_list_for_alias});
   }

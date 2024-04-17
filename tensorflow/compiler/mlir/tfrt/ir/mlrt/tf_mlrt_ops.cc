@@ -74,7 +74,7 @@ mlir::Type TensorflowMlrtDialect::parseType(
 // Print a type registered to this dialect.
 void TensorflowMlrtDialect::printType(mlir::Type type,
                                       mlir::DialectAsmPrinter &os) const {
-  if (type.isa<TFTensorType>()) {
+  if (isa<TFTensorType>(type)) {
     os << "tensor";
     return;
   }

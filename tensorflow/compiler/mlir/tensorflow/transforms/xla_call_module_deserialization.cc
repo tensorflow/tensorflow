@@ -156,8 +156,8 @@ LogicalResult SymbolizeCustomCallCalledIndex(
           return WalkResult::interrupt();
         }
 
-        auto called_index_attr = backend_config.get(kCalledIndexAttrName)
-                                     .dyn_cast_or_null<IntegerAttr>();
+        auto called_index_attr = dyn_cast_or_null<IntegerAttr>(
+            backend_config.get(kCalledIndexAttrName));
         if (!called_index_attr) {
           op->emitOpError()
               << "is missing attribute '" << kCalledIndexAttrName << "'";

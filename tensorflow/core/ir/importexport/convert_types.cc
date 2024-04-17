@@ -127,7 +127,7 @@ Status ConvertScalarTypeToDataType(Type type, DataType* dtype) {
   } else if (type.isFloat8E5M2()) {
     *dtype = ::tensorflow::DT_FLOAT8_E5M2;
     return ::tensorflow::OkStatus();
-  } else if (auto itype = type.dyn_cast<IntegerType>()) {
+  } else if (auto itype = dyn_cast<IntegerType>(type)) {
     switch (itype.getWidth()) {
       case 1:
         *dtype = tensorflow::DT_BOOL;
@@ -156,7 +156,7 @@ Status ConvertScalarTypeToDataType(Type type, DataType* dtype) {
         return Unimplemented(
             absl::StrCat("Converting ", debugString(type), " to DataType"));
     }
-  } else if (auto complex_type = type.dyn_cast<ComplexType>()) {
+  } else if (auto complex_type = dyn_cast<ComplexType>(type)) {
     auto etype = complex_type.getElementType();
     if (etype.isF32()) {
       *dtype = tensorflow::DT_COMPLEX64;
@@ -182,7 +182,7 @@ Status ConvertScalarTypeToDataType(Type type, DataType* dtype) {
 }
 
 Status ConvertToDataType(Type type, DataType* dtype) {
-  if (auto stype = type.dyn_cast<ShapedType>()) {
+  if (auto stype = dyn_cast<ShapedType>(type)) {
     TF_RETURN_IF_ERROR(
         ConvertScalarTypeToDataType(stype.getElementType(), dtype));
   } else {

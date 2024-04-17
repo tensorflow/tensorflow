@@ -113,7 +113,7 @@ Status CreateSplitOp(const int num_split, const int split_dimension,
   // Correctly set output shapes of split op output if input shape is statically
   // known.
   mlir::Type output_type;
-  auto input_type = src_input.getType().cast<mlir::TensorType>();
+  auto input_type = cast<mlir::TensorType>(src_input.getType());
 
   if (input_type.hasRank()) {
     if (input_type.getShape()[split_dimension] == mlir::ShapedType::kDynamic) {
@@ -680,7 +680,7 @@ mlir::StringAttr GetUniqueControlflowFnName(const std::string& prefix,
 
 Status SetBuilderInsertionAfterValue(mlir::Value value,
                                      mlir::OpBuilder& builder) {
-  if (value.isa<mlir::OpResult>()) {
+  if (isa<mlir::OpResult>(value)) {
     builder.setInsertionPointAfterValue(value);
     return absl::OkStatus();
   }
@@ -719,7 +719,7 @@ Status PrintTensor(mlir::Value value, const std::string& format_string = "%s") {
 Status ExtractConstStringVectorFromValue(
     mlir::Value value, llvm::SmallVectorImpl<std::string>& out_vector) {
   value = GetForwardedDTensorLayoutInput(value);
-  if (value.isa<mlir::BlockArgument>())
+  if (isa<mlir::BlockArgument>(value))
     return errors::Internal("Unable get constant value from block argument.");
   mlir::DenseStringElementsAttr attr;
   if (!matchPattern(value, m_Constant(&attr))) {
@@ -736,7 +736,7 @@ Status ExtractConstStringVectorFromValue(
 
 StatusOr<std::string> ExtractConstScalarStringFromValue(mlir::Value value) {
   value = GetForwardedDTensorLayoutInput(value);
-  if (value.isa<mlir::BlockArgument>())
+  if (isa<mlir::BlockArgument>(value))
     return errors::Internal("Unable get constant value from block argument.");
   mlir::DenseStringElementsAttr attr;
   if (!matchPattern(value, m_Constant(&attr))) {

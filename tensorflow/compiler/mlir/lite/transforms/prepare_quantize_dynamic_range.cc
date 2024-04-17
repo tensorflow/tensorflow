@@ -193,7 +193,7 @@ class PrepareDynamicRangeQuantizableOp
           continue;
         }
 
-        if (attr.dyn_cast<DenseFPElementsAttr>().size() >=
+        if (dyn_cast<DenseFPElementsAttr>(attr).size() >=
             quant_specs_.minimum_elements_for_weights) {
           continue;
         }
@@ -205,7 +205,7 @@ class PrepareDynamicRangeQuantizableOp
             "supported. The operand ")
             << const_op->getName().getStringRef().str() << " at index " << qi
             << " was not quantized because it has "
-            << attr.dyn_cast<DenseFPElementsAttr>().size()
+            << dyn_cast<DenseFPElementsAttr>(attr).size()
             << " elements which is fewer than the "
                "`minimum_elements_for_weights` threshold of "
             << quant_specs_.minimum_elements_for_weights;
@@ -232,8 +232,7 @@ class PrepareDynamicRangeQuantizableOp
     }
 
     // Get types
-    TensorType old_result_type =
-        op.getResult().getType().template dyn_cast<TensorType>();
+    TensorType old_result_type = dyn_cast<TensorType>(op.getResult().getType());
     FloatType quantized_type = FloatType::getF16(op.getContext());
     ShapedType new_result_type = old_result_type.clone(quantized_type);
 
@@ -287,27 +286,27 @@ class PrepareDynamicRangeQuantizableOp
     DenseFPElementsAttr attr;
     if (!matchPattern(op->getResult(0), m_Constant(&attr))) return false;
 
-    if (attr.dyn_cast<DenseFPElementsAttr>().size() <
+    if (dyn_cast<DenseFPElementsAttr>(attr).size() <
         quant_specs_.minimum_elements_for_weights) {
       op->emitRemark("Quantization is skipped for ")
           << quantize_op->getName().getStringRef().str() << " because it has "
-          << attr.dyn_cast<DenseFPElementsAttr>().size()
+          << dyn_cast<DenseFPElementsAttr>(attr).size()
           << " elements which is fewer than the threshold("
           << quant_specs_.minimum_elements_for_weights << " elements).";
       return false;
     }
 
     if (op_with_per_axis_support) {
-      quant_type = quant::GetUniformQuantizedPerAxisTypeForWeight(
-                       attr, affine_user.GetQuantizationDimIndex(),
-                       /*symmetric=*/true, bit_width, is_signed,
-                       is_narrow_range, is_legacy_float)
-                       .template dyn_cast<quant::QuantizedType>();
+      quant_type = dyn_cast<quant::QuantizedType>(
+          quant::GetUniformQuantizedPerAxisTypeForWeight(
+              attr, affine_user.GetQuantizationDimIndex(),
+              /*symmetric=*/true, bit_width, is_signed, is_narrow_range,
+              is_legacy_float));
     } else {
-      quant_type = quant::GetUniformQuantizedTypeForWeight(
-                       attr, is_narrow_range && is_signed, bit_width, is_signed,
-                       is_narrow_range, is_legacy_float)
-                       .template dyn_cast<quant::QuantizedType>();
+      quant_type = dyn_cast<quant::QuantizedType>(
+          quant::GetUniformQuantizedTypeForWeight(
+              attr, is_narrow_range && is_signed, bit_width, is_signed,
+              is_narrow_range, is_legacy_float));
     }
     return insertQDQ(rewriter, op, quant_type, quant_op);
   }
@@ -346,7 +345,7 @@ class PrepareDynamicRangeQuantizableOp
   bool getQuantizableOps(arith::ConstantOp op,
                          QuantizationUnits& quantizable_ops) const {
     // Non-float tensors do not need quantization.
-    auto type = op.getType().dyn_cast<ShapedType>();
+    auto type = dyn_cast<ShapedType>(op.getType());
     if (!type || !type.getElementType().isF32()) return false;
 
     Value value = op.getResult();
@@ -419,16 +418,14 @@ class PrepareDynamicRangeQuantizableOp
 
       // Get types
       Type old_result_type = op.getResult().getType();
-      ShapedType new_result_type =
-          cast_op.getType().template dyn_cast<ShapedType>();
+      ShapedType new_result_type = dyn_cast<ShapedType>(cast_op.getType());
 
       // Proceeds only if the casting is to float16
       if (!new_result_type.getElementType().isF16()) continue;
 
       // Cast values
       std::vector<Eigen::half> new_values;
-      DenseFPElementsAttr value_attr =
-          op.getValue().cast<DenseFPElementsAttr>();
+      DenseFPElementsAttr value_attr = cast<DenseFPElementsAttr>(op.getValue());
       new_values.reserve(value_attr.getNumElements());
 
       constexpr float kMaxFloat16Value = 65504.f;

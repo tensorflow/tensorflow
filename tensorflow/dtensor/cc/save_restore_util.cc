@@ -158,7 +158,7 @@ SaveOpSpecs BuildPerDeviceSave(
             builder
                 .create<mlir::TF::AddOp>(
                     prefix.getLoc(),
-                    prefix.getType().dyn_cast<mlir::RankedTensorType>(), prefix,
+                    dyn_cast<mlir::RankedTensorType>(prefix.getType()), prefix,
                     StringScalarConst(builder, prefix.getLoc(),
                                       DeviceSuffix(device_id, total_devices)))
                 .getZ();

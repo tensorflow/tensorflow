@@ -26,7 +26,7 @@ bool TFGraphDialect::IsAdd(TFOp op) const {
 
   if (op_name == add_v2_) return true;
   if (op_name == add_)
-    return !op->getAttrOfType<TypeAttr>("T").getValue().isa<StringType>();
+    return !isa<StringType>(op->getAttrOfType<TypeAttr>("T").getValue());
   return false;
 }
 

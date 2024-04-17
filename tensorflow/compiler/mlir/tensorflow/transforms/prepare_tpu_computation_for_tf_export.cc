@@ -80,7 +80,7 @@ class RewriteXlaHostComputeMlir
     shape_attrs.reserve(op.getNumResults());
     for (Type ty : op.getResultTypes()) {
       shape_attrs.push_back(
-          TF::ShapeAttr::get(rewriter.getContext(), ty.cast<ShapedType>()));
+          TF::ShapeAttr::get(rewriter.getContext(), cast<ShapedType>(ty)));
     }
 
     // Clone the `host_func` in the `host_mlir_module` attribute if it exists

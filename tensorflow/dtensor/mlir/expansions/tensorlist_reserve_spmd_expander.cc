@@ -38,9 +38,9 @@ StatusOr<mlir::Operation*> TensorListReserveSPMDExpander::ExpandOp(
       llvm::dyn_cast<mlir::TF::TensorListReserveOp>(op);
   mlir::OpBuilder builder(op);
 
-  mlir::Type element_type = GetSubtypeOrSelf(op->getOpResult(0))
-                                .cast<mlir::TensorType>()
-                                .getElementType();
+  mlir::Type element_type =
+      cast<mlir::TensorType>(GetSubtypeOrSelf(op->getOpResult(0)))
+          .getElementType();
 
   mlir::RankedTensorType new_output_type = mlir::RankedTensorType::get(
       {}, mlir::TF::VariantType::get(

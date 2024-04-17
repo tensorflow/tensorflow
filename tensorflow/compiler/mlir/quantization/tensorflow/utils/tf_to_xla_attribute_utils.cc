@@ -34,8 +34,7 @@ Value GetDimValue(OpBuilder &builder, Location loc, Value shape_value,
   return builder.create<TF::StridedSliceOp>(
       loc,
       RankedTensorType::get(
-          {},
-          shape_value.getType().template cast<ShapedType>().getElementType()),
+          {}, cast<ShapedType>(shape_value.getType()).getElementType()),
       /*input=*/shape_value,
       /*begin=*/Create1DConstValue<int32_t>(builder, loc, {dim}),
       /*end=*/Create1DConstValue<int32_t>(builder, loc, {dim + 1}),
@@ -109,14 +108,14 @@ Value PadForDynamicShapedInputSamePadding(
         CreateConstValue<int64_t>(builder, loc, {rank}, shape));
   };
 
-  ShapedType filter_shape = filter.getType().template cast<ShapedType>();
+  ShapedType filter_shape = cast<ShapedType>(filter.getType());
   Value input_shape_value = builder.create<TF::ShapeOp>(
       loc, RankedTensorType::get({num_dims}, builder.getI32Type()), input);
   auto scalar_to_rank1 = [&](Value value) { return reshape_op(value, {1}); };
   for (int i : llvm::seq<int>(1, num_dims - 1)) {
     Value input_size_i = GetDimValue(builder, loc, input_shape_value, i);
-    const int stride_i = strides[i].cast<IntegerAttr>().getInt();
-    const int dilation_i = dilations[i].cast<IntegerAttr>().getInt();
+    const int stride_i = cast<IntegerAttr>(strides[i]).getInt();
+    const int dilation_i = cast<IntegerAttr>(dilations[i]).getInt();
     const int filter_i = filter_shape.getDimSize(i - 1);
     Value pad_i_low, pad_i_high;
     GetSamePaddingValues(builder, loc, input_size_i, filter_i, dilation_i,
@@ -154,7 +153,7 @@ Value CalculatePaddingAndPadIfNeeded(OpBuilder &builder, Location loc,
                                      StringAttr conv_padding,
                                      ArrayAttr explicit_paddings,
                                      Value &padding, int num_dims) {
-  ShapedType input_shape = input.getType().template cast<ShapedType>();
+  ShapedType input_shape = cast<ShapedType>(input.getType());
   SmallVector<int64_t> spatial_dims(num_dims - 2);
   absl::c_iota(spatial_dims, 1);
   bool has_dynamic_spatial_dim = absl::c_any_of(
@@ -166,7 +165,7 @@ Value CalculatePaddingAndPadIfNeeded(OpBuilder &builder, Location loc,
         conv_padding, padding, num_dims);
   }
 
-  ShapedType filter_shape = filter.getType().template cast<ShapedType>();
+  ShapedType filter_shape = cast<ShapedType>(filter.getType());
   SmallVector<int32_t> padding_values(2 * num_dims, 0);
   if (conv_padding.strref().equals("EXPLICIT")) {
     if (explicit_paddings.size() != 2 * num_dims) {
@@ -178,16 +177,16 @@ Value CalculatePaddingAndPadIfNeeded(OpBuilder &builder, Location loc,
     }
     for (int i : spatial_dims) {
       padding_values[2 * i] =
-          explicit_paddings[2 * i].cast<IntegerAttr>().getInt();
+          cast<IntegerAttr>(explicit_paddings[2 * i]).getInt();
       padding_values[2 * i + 1] =
-          explicit_paddings[2 * i + 1].cast<IntegerAttr>().getInt();
+          cast<IntegerAttr>(explicit_paddings[2 * i + 1]).getInt();
     }
   } else if (conv_padding.strref().equals("SAME")) {
     for (int i : spatial_dims) {
       int input_size = input_shape.getDimSize(i);
       int filter_size = filter_shape.getDimSize(i - 1);
-      int stride_i = strides[i].cast<IntegerAttr>().getInt();
-      int dilation_i = dilations[i].cast<IntegerAttr>().getInt();
+      int stride_i = cast<IntegerAttr>(strides[i]).getInt();
+      int dilation_i = cast<IntegerAttr>(dilations[i]).getInt();
       int out_size = tflite::ComputeOutSize(kTfLitePaddingSame, input_size,
                                             filter_size, stride_i, dilation_i);
 
@@ -243,7 +242,7 @@ Value CalculatePaddingAndPadIfNeeded(OpBuilder &builder, Location loc,
 //
 // packed_value = bitwise_or(packed_low, packed_high)
 Value PackOperand(OpBuilder &builder, Location loc, Value value, int pack_dim) {
-  ShapedType value_type = value.getType().cast<ShapedType>();
+  ShapedType value_type = cast<ShapedType>(value.getType());
   const int rank = value_type.getRank();
 
   SmallVector<int64_t> packed_shape(value_type.getShape().begin(),

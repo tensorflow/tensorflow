@@ -92,10 +92,10 @@ struct DTensorTpuAddResourceDeviceAttribute
     mlir::WalkResult walk_result =
         module.walk([](mlir::TF::TPUExecuteOp tpu_execute) {
           for (mlir::Value tpu_input : tpu_execute.getOperands()) {
-            if (tpu_input.isa<mlir::BlockArgument>() &&
+            if (isa<mlir::BlockArgument>(tpu_input) &&
                 IsResourceType(tpu_input))
               AddPlaceholderDeviceAttributeToResource(
-                  tpu_input.cast<mlir::BlockArgument>(), tpu_execute);
+                  cast<mlir::BlockArgument>(tpu_input), tpu_execute);
 
             mlir::Operation* input_op = tpu_input.getDefiningOp();
             auto read_variable_op =
@@ -103,7 +103,7 @@ struct DTensorTpuAddResourceDeviceAttribute
             if (!read_variable_op) continue;
 
             AddPlaceholderDeviceAttributeToResource(
-                read_variable_op.getResource().cast<mlir::BlockArgument>(),
+                cast<mlir::BlockArgument>(read_variable_op.getResource()),
                 tpu_execute);
           }
 
@@ -113,9 +113,9 @@ struct DTensorTpuAddResourceDeviceAttribute
             if (assign_variable == nullptr) continue;
 
             AddPlaceholderDeviceAttributeToResource(
-                llvm::cast<mlir::TF::AssignVariableOp>(assign_variable)
-                    .getResource()
-                    .cast<mlir::BlockArgument>(),
+                cast<mlir::BlockArgument>(
+                    llvm::cast<mlir::TF::AssignVariableOp>(assign_variable)
+                        .getResource()),
                 tpu_execute);
           }
 

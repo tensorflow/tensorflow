@@ -37,8 +37,8 @@ namespace {
 // LINT.IfChange(mlrt_attributes)
 bool CanBeInlined(mlir::Attribute attr, absl::string_view data) {
   // FlatSymbolRefAttr is a special case as we are emitting it as integer.
-  return attr.isa<mlir::IntegerAttr, mlir::FloatAttr,
-                  mlir::FlatSymbolRefAttr>() &&
+  return isa<mlir::IntegerAttr, mlir::FloatAttr, mlir::FlatSymbolRefAttr>(
+             attr) &&
          data.size() <= sizeof(uint32_t);
 }
 // LINT.ThenChange(../../../../../core/tfrt/mlrt/interpreter/attribute_span.h:mlrt_attributes)
@@ -64,7 +64,7 @@ std::optional<std::string> EncodeListOfInteger(mlir::ArrayAttr array) {
   mlir::Type type;
 
   for (int i = 0; i < array.size(); ++i) {
-    if (auto integer_attr = array[i].dyn_cast<mlir::IntegerAttr>()) {
+    if (auto integer_attr = dyn_cast<mlir::IntegerAttr>(array[i])) {
       if (type && integer_attr.getType() != type) return std::nullopt;
       type = integer_attr.getType();
       llvm::APInt value = integer_attr.getValue();
@@ -85,7 +85,7 @@ std::optional<std::string> EncodeListOfSymbolRef(
   auto ctor = bc::New<bc::Vector<uint32_t>>(&allocator, array.size());
 
   for (int i = 0; i < array.size(); ++i) {
-    if (auto symbol_ref = array[i].dyn_cast<mlir::FlatSymbolRefAttr>()) {
+    if (auto symbol_ref = dyn_cast<mlir::FlatSymbolRefAttr>(array[i])) {
       ctor.ConstructAt(i, module_context.GetFunctionId(symbol_ref.getValue()));
     } else {
       return std::nullopt;
@@ -117,7 +117,7 @@ std::optional<std::string> EncodeListOfString(mlir::ArrayAttr array) {
   auto ctor = bc::New<bc::Vector<bc::String>>(&allocator, array.size());
 
   for (int i = 0; i < array.size(); ++i) {
-    if (auto string_attr = array[i].dyn_cast<mlir::StringAttr>()) {
+    if (auto string_attr = dyn_cast<mlir::StringAttr>(array[i])) {
       ctor.ConstructAt(i, string_attr.getValue().str());
     } else {
       return std::nullopt;

@@ -67,7 +67,7 @@ void TensorDeviceCopyConversionPass::runOnOperation() {
         (isa<TF::TPUExecuteOp, TF::TPUExecuteAndUpdateVariablesOp>(def_op))) {
       return true;
     }
-    if (BlockArgument block_arg = arg.dyn_cast<BlockArgument>()) {
+    if (BlockArgument block_arg = dyn_cast<BlockArgument>(arg)) {
       // Skip the folding logic if the block argument is not from the function
       // arguments. This can happen when the argument is from a while loop.
       if (block_arg.getParentRegion() != &func_op.getRegion()) {

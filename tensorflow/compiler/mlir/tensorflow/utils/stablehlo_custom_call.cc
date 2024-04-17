@@ -63,7 +63,7 @@ FailureOr<SymbolRefAttr> GetTfFuncCustomCallFuncName(
     return failure();
   }
 
-  if (auto attr = f.dyn_cast<FlatSymbolRefAttr>()) {
+  if (auto attr = dyn_cast<FlatSymbolRefAttr>(f)) {
     return attr;
   }
 

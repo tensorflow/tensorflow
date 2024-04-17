@@ -42,7 +42,7 @@ absl::StatusOr<std::string> EncodeTensorflowAttribute(
     return std::move(*result);
   }
 
-  if (auto dense_attr = attr.dyn_cast<mlir::DenseElementsAttr>()) {
+  if (auto dense_attr = dyn_cast<mlir::DenseElementsAttr>(attr)) {
     auto element_type = dense_attr.getElementType();
 
     tensorflow::DataType dtype;
@@ -95,7 +95,7 @@ absl::StatusOr<std::string> EncodeTensorflowAttribute(
   }
 
   // Handle dtype attrs
-  if (auto type_attr = attr.dyn_cast<mlir::TypeAttr>()) {
+  if (auto type_attr = dyn_cast<mlir::TypeAttr>(attr)) {
     tensorflow::DataType dtype;
     TF_RETURN_IF_ERROR(
         tensorflow::ConvertToDataType(type_attr.getValue(), &dtype));
@@ -105,7 +105,7 @@ absl::StatusOr<std::string> EncodeTensorflowAttribute(
   }
 
   // Handle shape attrs
-  if (auto shape_attr = attr.dyn_cast<mlir::TF::ShapeAttr>()) {
+  if (auto shape_attr = dyn_cast<mlir::TF::ShapeAttr>(attr)) {
     llvm::ArrayRef<int64_t> shape;
     if (!shape_attr.getUnranked()) {
       auto shape_or = shape_attr.getValue();
@@ -131,7 +131,7 @@ absl::StatusOr<std::string> EncodeTensorflowAttribute(
   }
 
   // Handle attribute arrays.
-  if (auto array_attr = attr.dyn_cast<mlir::ArrayAttr>()) {
+  if (auto array_attr = dyn_cast<mlir::ArrayAttr>(attr)) {
     mlrt::bc::Buffer buffer;
     mlrt::bc::Allocator allocator(&buffer);
     auto ctor = mlrt::bc::New<mlrt::bc::Vector<tensorflow::DataType>>(
@@ -139,7 +139,7 @@ absl::StatusOr<std::string> EncodeTensorflowAttribute(
 
     int i;
     for (i = 0; i < array_attr.size(); ++i) {
-      if (auto type_attr = array_attr[i].dyn_cast<mlir::TypeAttr>()) {
+      if (auto type_attr = dyn_cast<mlir::TypeAttr>(array_attr[i])) {
         tensorflow::DataType dtype;
         TF_RETURN_IF_ERROR(
             tensorflow::ConvertToDataType(type_attr.getValue(), &dtype));

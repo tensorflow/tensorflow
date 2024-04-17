@@ -49,7 +49,7 @@ TEST(DialectUtilityTest, TestLookupControlDependency) {
   Value copy = ret_op.getOperand(0);
   Value ctl = LookupControlDependency(copy);
   ASSERT_TRUE(ctl);
-  OpResult ctl_result = ctl.dyn_cast<OpResult>();
+  OpResult ctl_result = dyn_cast<OpResult>(ctl);
   ASSERT_TRUE(ctl_result);
   EXPECT_EQ(ctl_result.getResultNumber(), 1);
   EXPECT_EQ(copy, ctl_result.getOwner()->getResult(0));
@@ -58,7 +58,7 @@ TEST(DialectUtilityTest, TestLookupControlDependency) {
   Value arg = ctl_result.getOwner()->getOperand(0);
   Value arg_ctl = LookupControlDependency(arg);
   ASSERT_TRUE(arg_ctl);
-  BlockArgument ctl_arg = arg_ctl.dyn_cast<BlockArgument>();
+  BlockArgument ctl_arg = dyn_cast<BlockArgument>(arg_ctl);
   ASSERT_TRUE(ctl_arg);
   EXPECT_EQ(ctl_arg.getArgNumber(), 1);
   EXPECT_EQ(arg, ctl_arg.getOwner()->getArgument(0));
@@ -84,7 +84,7 @@ TEST(DialectUtilityTest, TestLookupDataValue) {
   Value ctl = ret_op.getOperand(1);
   std::optional<Value> produce = LookupDataValue(ctl);
   ASSERT_TRUE(produce);
-  OpResult produce_result = produce->dyn_cast<OpResult>();
+  OpResult produce_result = dyn_cast<OpResult>(*produce);
   ASSERT_TRUE(produce_result);
   ASSERT_EQ(produce_result.getResultNumber(), 0);
   ASSERT_EQ(produce_result.getOwner()->getName().getStringRef(), "tfg.Produce");
@@ -93,7 +93,7 @@ TEST(DialectUtilityTest, TestLookupDataValue) {
   Value arg_ctl = produce_result.getOwner()->getOperand(0);
   std::optional<Value> arg = LookupDataValue(arg_ctl);
   ASSERT_TRUE(arg);
-  BlockArgument arg_arg = arg->dyn_cast<BlockArgument>();
+  BlockArgument arg_arg = dyn_cast<BlockArgument>(*arg);
   ASSERT_TRUE(arg_arg);
   ASSERT_EQ(arg_arg.getArgNumber(), 0);
   ASSERT_EQ(arg_arg.getOwner()->getArgument(1), arg_ctl);

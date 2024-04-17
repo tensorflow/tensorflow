@@ -80,7 +80,7 @@ std::optional<xla_cpu::ReductionKind> MatchReductionComputation(
     return xla_cpu::ReductionKind::ALL_REDUCE_MAX;
   }
 
-  auto type = computation->getOperandTypes().front().dyn_cast<ShapedType>();
+  auto type = dyn_cast<ShapedType>(computation->getOperandTypes().front());
   if (!type || !type.getElementType().isInteger(1)) {
     return std::nullopt;
   }
@@ -97,7 +97,7 @@ std::optional<xla_cpu::ReductionKind> MatchReductionComputation(
 
 // Returns a `tensor.empty` with the same shape as `tensor`.
 Value CreateEmptyLike(OpBuilder& b, Location loc, Value tensor) {
-  auto ty = tensor.getType().cast<ShapedType>();
+  auto ty = cast<ShapedType>(tensor.getType());
   auto sizes = tensor::getMixedSizes(b, loc, tensor);
   return b.create<tensor::EmptyOp>(loc, sizes, ty.getElementType());
 }
@@ -197,7 +197,7 @@ class AllToAllLowering : public OpRewritePattern<mhlo::AllToAllOp> {
 
       dsts.push_back(rewriter.create<tensor::EmptyOp>(
           op.getLoc(), getAsOpFoldResult(sizes),
-          op->getResultTypes()[0].cast<ShapedType>().getElementType()));
+          cast<ShapedType>(op->getResultTypes()[0]).getElementType()));
     }
 
     rewriter.replaceOpWithNewOp<xla_cpu::AllToAllOp>(
@@ -243,7 +243,7 @@ class InfeedLowering : public OpRewritePattern<mhlo::InfeedOp> {
 
     llvm::SmallVector<Value> dsts;
     for (const auto& type : op.getResultTypes()) {
-      if (auto ranked_type = type.dyn_cast<RankedTensorType>()) {
+      if (auto ranked_type = dyn_cast<RankedTensorType>(type)) {
         dsts.push_back(b.create<tensor::EmptyOp>(
             op.getLoc(), ranked_type.getShape(), ranked_type.getElementType()));
       } else {
@@ -267,7 +267,7 @@ class OutfeedLowering : public OpRewritePattern<mhlo::OutfeedOp> {
     SmallVector<Attribute> result_types;
     for (auto operand : op.getInputs()) {
       result_types.push_back(
-          TypeAttr::get(operand.getType().cast<ShapedType>().getElementType()));
+          TypeAttr::get(cast<ShapedType>(operand.getType()).getElementType()));
     }
     rewriter.create<xla_cpu::OutfeedOp>(
         op.getLoc(), std::nullopt, op.getInputs(), op.getOutfeedConfigAttr(),
@@ -327,9 +327,9 @@ class ConvolutionLowering : public OpRewritePattern<mhlo::ConvolutionOp> {
                                 PatternRewriter& rewriter) const override {
     ImplicitLocOpBuilder b(op.getLoc(), rewriter);
 
-    auto input_shape = op.getLhs().getType().dyn_cast<ShapedType>();
-    auto kernel_shape = op.getRhs().getType().dyn_cast<ShapedType>();
-    auto output_shape = op.getResult().getType().dyn_cast<ShapedType>();
+    auto input_shape = dyn_cast<ShapedType>(op.getLhs().getType());
+    auto kernel_shape = dyn_cast<ShapedType>(op.getRhs().getType());
+    auto output_shape = dyn_cast<ShapedType>(op.getResult().getType());
 
     auto dnums = op.getDimensionNumbers();
     auto reversals = op.getWindowReversal();

@@ -137,7 +137,7 @@ void RemoveUnusedArgumentsPass::runOnOperation() {
     // SymbolUserOpInterface doesn't tell us which attributes contain
     // the symbols, so we have to scan through all of them.
     for (auto attr : op->getAttrs()) {
-      if (auto sym = attr.getValue().dyn_cast<FlatSymbolRefAttr>()) {
+      if (auto sym = dyn_cast<FlatSymbolRefAttr>(attr.getValue())) {
         Operation* func = mlir::SymbolTable::lookupNearestSymbolFrom(op, sym);
         if (func) {
           do_not_touch.insert(func);

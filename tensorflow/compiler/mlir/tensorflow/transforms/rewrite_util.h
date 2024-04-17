@@ -27,13 +27,13 @@ namespace TF {
 template <typename T>
 DenseElementsAttr GetScalarOfType(Type ty, T raw_value) {
   RankedTensorType scalar_ty = RankedTensorType::get({}, ty);
-  if (auto float_ty = ty.dyn_cast<FloatType>()) {
+  if (auto float_ty = dyn_cast<FloatType>(ty)) {
     FloatAttr attr = FloatAttr::get(float_ty, raw_value);
     return DenseElementsAttr::get(scalar_ty, attr);
-  } else if (auto int_ty = ty.dyn_cast<IntegerType>()) {
+  } else if (auto int_ty = dyn_cast<IntegerType>(ty)) {
     IntegerAttr attr = IntegerAttr::get(int_ty, raw_value);
     return DenseElementsAttr::get(scalar_ty, attr);
-  } else if (auto complex_ty = ty.dyn_cast<ComplexType>()) {
+  } else if (auto complex_ty = dyn_cast<ComplexType>(ty)) {
     Type complex_element_ty = complex_ty.getElementType();
     if (complex_element_ty.isF32()) {
       return DenseElementsAttr::get(
@@ -50,13 +50,13 @@ DenseElementsAttr GetScalarOfType(Type ty, T raw_value) {
 // to `raw_value`.
 template <typename T>
 bool IsConstantValueOf(Value value, T raw_value) {
-  auto element_type = value.getType().cast<ShapedType>().getElementType();
-  if (element_type.isa<FloatType>()) {
+  auto element_type = cast<ShapedType>(value.getType()).getElementType();
+  if (isa<FloatType>(element_type)) {
     DenseFPElementsAttr float_attr;
     if (matchPattern(value, m_Constant(&float_attr)) && float_attr.isSplat() &&
         float_attr.getSplatValue<APFloat>().isExactlyValue(raw_value))
       return true;
-  } else if (element_type.isa<IntegerType>()) {
+  } else if (isa<IntegerType>(element_type)) {
     DenseIntElementsAttr int_attr;
     if (matchPattern(value, m_Constant(&int_attr)) && int_attr.isSplat() &&
         int_attr.getSplatValue<APInt>() == raw_value)

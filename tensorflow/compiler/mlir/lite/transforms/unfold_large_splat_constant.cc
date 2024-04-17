@@ -61,8 +61,7 @@ class UnfoldLargeSplatConstantPass
  private:
   void MaybeUnfoldLargeSplatConstant(mlir::OpBuilder* op_builder,
                                      mlir::arith::ConstantOp const_op) const {
-    auto splat_elements_attr =
-        const_op.getValue().dyn_cast<SplatElementsAttr>();
+    auto splat_elements_attr = dyn_cast<SplatElementsAttr>(const_op.getValue());
     if (!splat_elements_attr) {
       return;
     }

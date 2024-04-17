@@ -115,7 +115,7 @@ class GenericTypeConvert : public ConversionPattern {
 
 static bool isIllegalType(Type type) {
   if (auto shapedType = dyn_cast<ShapedType>(type)) {
-    return shapedType.getElementType().isa<ComplexType>();
+    return isa<ComplexType>(shapedType.getElementType());
   }
   return false;
 }

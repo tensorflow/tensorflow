@@ -62,20 +62,20 @@ class DequantizeConverter : public OpRewritePattern<SrcOp> {
     bool allTypesFp = true;
     bool allTypesQuantizedOrInt = true;
     for (auto operand : op->getOperands()) {
-      ShapedType type = operand.getType().template dyn_cast<ShapedType>();
+      ShapedType type = dyn_cast<ShapedType>(operand.getType());
       if (!type) continue;
-      allTypesFp &= !type.getElementType().isa<quant::QuantizedType>();
+      allTypesFp &= !isa<quant::QuantizedType>(type.getElementType());
       allTypesQuantizedOrInt &=
-          (type.getElementType().isa<quant::QuantizedType>() ||
-           type.getElementType().isa<IntegerType>());
+          (isa<quant::QuantizedType>(type.getElementType()) ||
+           isa<IntegerType>(type.getElementType()));
     }
 
     for (auto result : op->getResults()) {
-      ShapedType type = result.getType().template cast<ShapedType>();
-      allTypesFp &= !type.getElementType().isa<quant::QuantizedType>();
+      ShapedType type = cast<ShapedType>(result.getType());
+      allTypesFp &= !isa<quant::QuantizedType>(type.getElementType());
       allTypesQuantizedOrInt &=
-          (type.getElementType().isa<quant::QuantizedType>() ||
-           type.getElementType().isa<IntegerType>());
+          (isa<quant::QuantizedType>(type.getElementType()) ||
+           isa<IntegerType>(type.getElementType()));
     }
 
     // If all quantized or floating point then types are consistent.

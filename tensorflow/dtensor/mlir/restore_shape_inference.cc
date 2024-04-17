@@ -81,9 +81,7 @@ mlir::LogicalResult BackwardShapeInferenceToRestoreOp(mlir::ModuleOp module,
     // the type to the operand element type.
     mlir::RankedTensorType new_type = mlir::RankedTensorType::get(
         GetShapeOfValue(new_cast_op.getResult()).value(),
-        new_cast_op.getOperand()
-            .getType()
-            .cast<mlir::TensorType>()
+        cast<mlir::TensorType>(new_cast_op.getOperand().getType())
             .getElementType());
 
     // Recursively shape inference to the input of the cast op with the
@@ -120,7 +118,7 @@ mlir::LogicalResult BackwardShapeInferenceToRestoreOp(mlir::ModuleOp module,
     auto new_recv_op = builder->create<mlir::TF::DTensorRecv>(
         recv_op.getLoc(), type, builder->getStringAttr(recv_op.getKey()),
         mlir::TF::ShapeAttr::get(builder->getContext(),
-                                 type.dyn_cast<mlir::TensorType>()),
+                                 dyn_cast<mlir::TensorType>(type)),
         mlir::dtensor::MeshAttr::get(builder->getContext(), recv_op.getMesh()));
 
     recv_op.replaceAllUsesWith(new_recv_op.getOutput());

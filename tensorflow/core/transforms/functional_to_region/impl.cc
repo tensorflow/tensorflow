@@ -383,7 +383,7 @@ LogicalResult ConvertCaseLikeOp<CaseLikeOp, CaseLikeRegionOp>::matchAndRewrite(
   }
   ArrayAttr region_attrs = nullptr;
   if (!llvm::all_of(preserved_attrs, [](Attribute attr) {
-        return AreRegionAttrsEmpty(attr.cast<RegionAttr>());
+        return AreRegionAttrsEmpty(cast<RegionAttr>(attr));
       }))
     region_attrs = rewriter.getArrayAttr(preserved_attrs);
 

@@ -101,7 +101,7 @@ mlir::LogicalResult ExtractMeshFromBlockArgumentWhile(
     }
     return mlir::success();
   } else if (auto func_block_arg =
-                 while_op_operand.dyn_cast<mlir::BlockArgument>()) {
+                 dyn_cast<mlir::BlockArgument>(while_op_operand)) {
     // The while op operand is a block argument of the function, then follow the
     // same routine of getting mesh from function argument.
     auto function_op = mlir::dyn_cast_or_null<mlir::func::FuncOp>(
@@ -183,7 +183,7 @@ mlir::LogicalResult ExtractMeshFromOperand(
 
   // If `operand` is a block argument then extract mesh from `tf._mesh`
   // attribute of the corresponding function argument.
-  if (auto block_arg = operand_value.dyn_cast<mlir::BlockArgument>()) {
+  if (auto block_arg = dyn_cast<mlir::BlockArgument>(operand_value)) {
     if (mlir::failed(ExtractMeshFromBlockArgument(block_arg, out)))
       return mlir::failure();
 
@@ -193,7 +193,7 @@ mlir::LogicalResult ExtractMeshFromOperand(
         auto producer_values = it->getSecond();
         std::optional<Mesh> operand_mesh;
         for (mlir::Value producer_value : producer_values) {
-          if (auto arg = producer_value.dyn_cast<mlir::BlockArgument>()) {
+          if (auto arg = dyn_cast<mlir::BlockArgument>(producer_value)) {
             std::optional<Mesh> mesh;
             if (mlir::failed(ExtractMeshFromBlockArgument(arg, &mesh)))
               return mlir::failure();
@@ -206,7 +206,7 @@ mlir::LogicalResult ExtractMeshFromOperand(
                 producer_value.getDefiningOp()
                     ->getParentOfType<mlir::tf_device::ClusterOp>();
             auto output_from_producing_op = input_cluster.getResult(
-                producer_value.cast<mlir::OpResult>().getResultNumber());
+                cast<mlir::OpResult>(producer_value).getResultNumber());
 
             std::optional<Mesh> mesh;
             if (mlir::failed(

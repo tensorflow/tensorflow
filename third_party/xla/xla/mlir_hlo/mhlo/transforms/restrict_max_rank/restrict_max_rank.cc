@@ -66,9 +66,9 @@ struct RewriteReshapeTransposeReshape : public OpRewritePattern<TransposeOp> {
   LogicalResult matchAndRewrite(TransposeOp op,
                                 PatternRewriter &rewriter) const override {
     Value result = op.getResult();
-    TensorType resultTy = result.getType().cast<TensorType>();
+    TensorType resultTy = cast<TensorType>(result.getType());
     Value operand = op.getOperand();
-    TensorType operandTy = operand.getType().cast<TensorType>();
+    TensorType operandTy = cast<TensorType>(operand.getType());
     if (!operandTy.hasStaticShape() || !resultTy.hasStaticShape())
       return rewriter.notifyMatchFailure(op,
                                          "transpose op has non-static types");
@@ -92,7 +92,7 @@ struct RewriteReshapeTransposeReshape : public OpRewritePattern<TransposeOp> {
                                          "user of the result is not reshape");
 
     Value input = defOp.getOperand();
-    auto inputTy = input.getType().cast<TensorType>();
+    auto inputTy = cast<TensorType>(input.getType());
     auto outputTy = userOp.getType();
     if (!inputTy.hasStaticShape() || !outputTy.hasStaticShape())
       return rewriter.notifyMatchFailure(
@@ -151,7 +151,7 @@ struct RewriteReshapeTransposeReshape : public OpRewritePattern<TransposeOp> {
     // first dimension.
     for (int dim = spatialDims - 1; dim >= 0; dim--) {
       // 1) Reshape to split the particular spatial dimension.
-      auto inputTy = input.getType().cast<TensorType>();
+      auto inputTy = cast<TensorType>(input.getType());
       auto intermediateShape = llvm::to_vector<4>(inputTy.getShape());
       int64_t dimIdx = 1 + dim;
       intermediateShape[dimIdx] /= blockSizes[dim];

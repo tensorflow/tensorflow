@@ -42,9 +42,9 @@ namespace {
 using ::mlir::tf_saved_model::kTfSavedModelIndexPathAttr;
 
 llvm::StringRef ProcessIndexPath(mlir::ArrayAttr index_path) {
-  if (index_path.size() == 1 && index_path[0].isa<mlir::StringAttr>()) {
+  if (index_path.size() == 1 && isa<mlir::StringAttr>(index_path[0])) {
     // TODO(chky): Support cases where index_path is not a single string.
-    return index_path[0].cast<mlir::StringAttr>().getValue();
+    return cast<mlir::StringAttr>(index_path[0]).getValue();
   }
   return "";
 }
@@ -93,7 +93,7 @@ Status MapFunctionSignaturesFromTFSavedModelMLIR(
               i, kTfSavedModelIndexPathAttr)) {
         input_names.push_back(ProcessIndexPath(input_index_path));
         auto statusor_spec =
-            ProcessTensorSpec(func_type.getInput(i).cast<mlir::TensorType>());
+            ProcessTensorSpec(cast<mlir::TensorType>(func_type.getInput(i)));
         if (!statusor_spec.ok()) {
           status = std::move(statusor_spec).status();
           return mlir::WalkResult::interrupt();
@@ -121,7 +121,7 @@ Status MapFunctionSignaturesFromTFSavedModelMLIR(
               i, kTfSavedModelIndexPathAttr)) {
         output_names.push_back(ProcessIndexPath(output_index_path));
         auto statusor_spec =
-            ProcessTensorSpec(func_type.getResult(i).cast<mlir::TensorType>());
+            ProcessTensorSpec(cast<mlir::TensorType>(func_type.getResult(i)));
         if (!statusor_spec.ok()) {
           status = std::move(statusor_spec).status();
           return mlir::WalkResult::interrupt();

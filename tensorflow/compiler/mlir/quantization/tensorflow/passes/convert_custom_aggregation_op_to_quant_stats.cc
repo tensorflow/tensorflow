@@ -75,8 +75,8 @@ class ConvertCustomAggregationOpToQuantStats
 
   LogicalResult matchAndRewrite(TF::CustomAggregatorOp op,
                                 PatternRewriter &rewriter) const override {
-    FloatAttr min = op->getAttr("min").dyn_cast_or_null<FloatAttr>();
-    FloatAttr max = op->getAttr("max").dyn_cast_or_null<FloatAttr>();
+    FloatAttr min = dyn_cast_or_null<FloatAttr>(op->getAttr("min"));
+    FloatAttr max = dyn_cast_or_null<FloatAttr>(op->getAttr("max"));
 
     // When there are no min and max attributes, remove op.
     if (min == nullptr || max == nullptr) {

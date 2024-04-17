@@ -191,7 +191,7 @@ struct TFInlinerInterface : public DialectInlinerInterface {
   Operation *materializeCallConversion(OpBuilder &builder, Value input,
                                        Type result_type,
                                        Location conversion_loc) const final {
-    if (!result_type.isa<TensorType>() || !input.getType().isa<TensorType>())
+    if (!isa<TensorType>(result_type) || !isa<TensorType>(input.getType()))
       return nullptr;
     return builder.create<TF::CastOp>(conversion_loc, result_type, input,
                                       /*truncate=*/builder.getBoolAttr(false));

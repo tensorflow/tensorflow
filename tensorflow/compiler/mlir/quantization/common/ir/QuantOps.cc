@@ -49,20 +49,20 @@ OpFoldResult StorageCastOp::fold(FoldAdaptor) {
 
 /// The quantization specification should match the expressed type.
 static bool isValidQuantizationSpec(Attribute quantSpec, Type expressed) {
-  if (auto typeAttr = quantSpec.dyn_cast<TypeAttr>()) {
+  if (auto typeAttr = dyn_cast<TypeAttr>(quantSpec)) {
     Type spec = typeAttr.getValue();
-    if (spec.isa<TensorType, VectorType>()) return false;
+    if (isa<TensorType, VectorType>(spec)) return false;
 
     // The spec should be either a quantized type which is compatible to the
     // expressed type, or a primitive type which is as same as the
     // (element type of) the expressed type.
-    if (auto quantizedType = spec.dyn_cast<QuantizedType>())
+    if (auto quantizedType = dyn_cast<QuantizedType>(spec))
       return quantizedType.isCompatibleExpressedType(expressed);
 
-    if (auto tensorType = expressed.dyn_cast<TensorType>())
+    if (auto tensorType = dyn_cast<TensorType>(expressed))
       return spec == tensorType.getElementType();
 
-    if (auto vectorType = expressed.dyn_cast<VectorType>())
+    if (auto vectorType = dyn_cast<VectorType>(expressed))
       return spec == vectorType.getElementType();
   }
   return false;
@@ -97,13 +97,13 @@ LogicalResult QuantizeRegionOp::verify() {
 }
 
 LogicalResult StatisticsOp::verify() {
-  auto tensorArg = getArg().getType().dyn_cast<TensorType>();
+  auto tensorArg = dyn_cast<TensorType>(getArg().getType());
   if (!tensorArg) return emitOpError("arg needs to be tensor type.");
 
   // Verify layerStats attribute.
   {
     auto layerStatsType = getLayerStats().getShapedType();
-    if (!layerStatsType.getElementType().isa<FloatType>()) {
+    if (!isa<FloatType>(layerStatsType.getElementType())) {
       return emitOpError("layerStats must have a floating point element type");
     }
     if (layerStatsType.getRank() != 1 || layerStatsType.getDimSize(0) != 2) {
@@ -120,7 +120,7 @@ LogicalResult StatisticsOp::verify() {
                         std::multiplies<int64_t>());
 
     auto axisStatsType = getAxisStats()->getShapedType();
-    if (!axisStatsType.getElementType().isa<FloatType>()) {
+    if (!isa<FloatType>(axisStatsType.getElementType())) {
       return emitOpError("axisStats must have a floating point element type");
     }
     if (axisStatsType.getRank() != 2 || axisStatsType.getDimSize(1) != 2 ||

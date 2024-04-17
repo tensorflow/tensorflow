@@ -71,7 +71,7 @@ class EmbedTFFrameworkPass
       }
       FunctionType func_type = op.getFunctionType();
       return func_type.getNumInputs() > 0 &&
-             func_type.getInput(0).isa<OpKernelContextType>();
+             isa<OpKernelContextType>(func_type.getInput(0));
     });
     target.addDynamicallyLegalOp<cf::AssertOp, memref::AllocOp,
                                  memref::DeallocOp>(IsNotInsideTfEntryFunction);

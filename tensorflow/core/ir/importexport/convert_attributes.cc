@@ -55,11 +55,11 @@ namespace {
 // Converts a location to the debug information for the node def.
 Status ConvertLocation(Location inst_loc,
                        NodeDef::ExperimentalDebugInfo* debug_info) {
-  if (auto call_site = inst_loc.dyn_cast<CallSiteLoc>()) {
-    if (auto name_loc = call_site.getCallee().dyn_cast<NameLoc>()) {
+  if (auto call_site = dyn_cast<CallSiteLoc>(inst_loc)) {
+    if (auto name_loc = dyn_cast<NameLoc>(call_site.getCallee())) {
       debug_info->add_original_node_names(name_loc.getName().data());
     }
-  } else if (auto fused = inst_loc.dyn_cast<FusedLoc>()) {
+  } else if (auto fused = dyn_cast<FusedLoc>(inst_loc)) {
     auto locations = fused.getLocations();
     if (locations.size() <= 1)
       return InvalidArgument("Expected experimental debug info.");
@@ -107,7 +107,7 @@ Status ConvertAttribute(FlatSymbolRefAttr attr, AttrValue* value) {
 
 Status ConvertAttribute(FuncAttr attr, bool remove_ref_type, AttrValue* value) {
   TF_RETURN_IF_ERROR(
-      ConvertAttribute(attr.getName().cast<FlatSymbolRefAttr>(), value));
+      ConvertAttribute(cast<FlatSymbolRefAttr>(attr.getName()), value));
   TF_RETURN_IF_ERROR(ConvertAttributes(attr.getAttrs().getValue(),
                                        /*attrs_to_ignore=*/{}, remove_ref_type,
                                        value->mutable_func()->mutable_attr()));
@@ -141,13 +141,13 @@ Status ConvertAttribute(const ArrayAttr& attr, bool remove_ref_type,
                         AttrValue* value) {
   auto* list = value->mutable_list();
   for (Attribute a : attr.getValue()) {
-    if (auto attr = a.dyn_cast<BoolAttr>()) {
+    if (auto attr = dyn_cast<BoolAttr>(a)) {
       list->add_b(attr.getValue());
-    } else if (auto attr = a.dyn_cast<IntegerAttr>()) {
+    } else if (auto attr = dyn_cast<IntegerAttr>(a)) {
       list->add_i(attr.getInt());
-    } else if (auto attr = a.dyn_cast<FloatAttr>()) {
+    } else if (auto attr = dyn_cast<FloatAttr>(a)) {
       list->add_f(attr.getValueAsDouble());
-    } else if (auto attr = a.dyn_cast<StringAttr>()) {
+    } else if (auto attr = dyn_cast<StringAttr>(a)) {
       AttrValue nested_value;
       TF_RETURN_IF_ERROR(ConvertAttribute(attr, &nested_value));
       switch (nested_value.value_case()) {
@@ -163,29 +163,29 @@ Status ConvertAttribute(const ArrayAttr& attr, bool remove_ref_type,
         default:
           return Unimplemented("Unhandled nested attribute!");
       }
-    } else if (auto attr = a.dyn_cast<ElementsAttr>()) {
+    } else if (auto attr = dyn_cast<ElementsAttr>(a)) {
       TensorProto tensor;
       TF_RETURN_IF_ERROR(ConvertToTensorProto(attr, &tensor));
       *list->add_tensor() = tensor;
-    } else if (auto attr = a.dyn_cast<FlatSymbolRefAttr>()) {
+    } else if (auto attr = dyn_cast<FlatSymbolRefAttr>(a)) {
       AttrValue attr_val;
       TF_RETURN_IF_ERROR(ConvertAttribute(attr, &attr_val));
       *list->add_func() = attr_val.func();
-    } else if (auto attr = a.dyn_cast<FuncAttr>()) {
+    } else if (auto attr = dyn_cast<FuncAttr>(a)) {
       AttrValue attr_val;
       TF_RETURN_IF_ERROR(ConvertAttribute(attr, remove_ref_type, &attr_val));
       *list->add_func() = attr_val.func();
-    } else if (auto attr = a.dyn_cast<TypeAttr>()) {
+    } else if (auto attr = dyn_cast<TypeAttr>(a)) {
       AttrValue attr_val;
       // For type attributes, we only propagate the element type.
       Type elt_type = attr.getValue();
-      if (auto shaped_type = elt_type.dyn_cast<ShapedType>()) {
+      if (auto shaped_type = dyn_cast<ShapedType>(elt_type)) {
         elt_type = shaped_type.getElementType();
       }
       TF_RETURN_IF_ERROR(
           ConvertAttribute(elt_type, remove_ref_type, &attr_val));
       list->add_type(attr_val.type());
-    } else if (auto attr = a.dyn_cast<ShapeAttr>()) {
+    } else if (auto attr = dyn_cast<ShapeAttr>(a)) {
       AttrValue attr_val;
       TF_RETURN_IF_ERROR(ConvertAttribute(attr, &attr_val));
       *list->add_shape() = attr_val.shape();
@@ -200,17 +200,17 @@ Status ConvertAttribute(const ArrayAttr& attr, bool remove_ref_type,
 
 absl::StatusOr<AttrValue> ConvertAttribute(Attribute attr) {
   AttrValue value;
-  if (auto symbol_ref = attr.dyn_cast<SymbolRefAttr>()) {
+  if (auto symbol_ref = dyn_cast<SymbolRefAttr>(attr)) {
     TF_RETURN_IF_ERROR(
-        ConvertAttribute(symbol_ref.cast<FlatSymbolRefAttr>(), &value));
+        ConvertAttribute(cast<FlatSymbolRefAttr>(symbol_ref), &value));
     return value;
   }
-  if (auto func_attr = attr.dyn_cast<FuncAttr>()) {
+  if (auto func_attr = dyn_cast<FuncAttr>(attr)) {
     TF_RETURN_IF_ERROR(
         ConvertAttribute(func_attr, /*remove_ref_type=*/false, &value));
     return value;
   }
-  if (attr.isa<AffineMapAttr>())
+  if (isa<AffineMapAttr>(attr))
     return Unimplemented("AffineMap attribute unimplemented");
   TF_RETURN_IF_ERROR(
       llvm::TypeSwitch<Attribute, Status>(attr)
@@ -251,11 +251,11 @@ Status ConvertAttributes(ArrayRef<NamedAttribute> attrs,
       name = mangling_util::DemangleAttributeName(name);
     }
     TF_ASSIGN_OR_RETURN(AttrValue value, ConvertAttribute(attr));
-    if (attr.isa<SymbolRefAttr>()) {
+    if (isa<SymbolRefAttr>(attr)) {
       func_call_attrs[std::string(name)] = value;
       continue;
     }
-    if (attr.isa<FuncAttr>()) {
+    if (isa<FuncAttr>(attr)) {
       func_call_attrs[std::string(name)] = value;
       continue;
     }
@@ -479,7 +479,7 @@ Status ConvertHandleData(ArrayAttr handle_data_arr,
                          tensorflow::OpDef::ArgDef* arg) {
   if (!handle_data_arr) return {};
   for (auto handle_data_attr : handle_data_arr.getAsRange<TypeAttr>()) {
-    TensorType handle_type = handle_data_attr.getValue().dyn_cast<TensorType>();
+    TensorType handle_type = dyn_cast<TensorType>(handle_data_attr.getValue());
     if (!handle_type) {
       return InvalidArgument("Expected an array of tensor types, but got ",
                              debugString(handle_data_arr));

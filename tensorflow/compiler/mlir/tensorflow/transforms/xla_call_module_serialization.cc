@@ -66,8 +66,8 @@ FailureOr<ArrayAttr> DesymbolizeCustomCallCalledIndex(ModuleOp module) {
                         << "'";
       return WalkResult::interrupt();
     }
-    auto called_func = backend_config.get(kCalledFuncAttrName)
-                           .dyn_cast_or_null<SymbolRefAttr>();
+    auto called_func = dyn_cast_or_null<SymbolRefAttr>(
+        backend_config.get(kCalledFuncAttrName));
     if (!called_func) {
       op->emitOpError() << "is missing attribute '" << kCalledFuncAttrName
                         << "'";

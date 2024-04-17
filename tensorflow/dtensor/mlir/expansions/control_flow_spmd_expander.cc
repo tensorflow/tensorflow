@@ -79,7 +79,7 @@ StatusOr<mlir::Operation*> IfRegionSPMDExpander::ExpandOp(mlir::Operation* op) {
 
       result.setType(mlir::RankedTensorType::get(
           layout.LocalShapeFromGlobalShape(*global_shape),
-          result.getType().cast<mlir::TensorType>().getElementType()));
+          cast<mlir::TensorType>(result.getType()).getElementType()));
     }
   }
   return op;

@@ -504,7 +504,7 @@ Status ImportGenericFunction(
     }
     TF_ASSIGN_OR_RETURN(Value result, value_manager.GetValueOrCreatePlaceholder(
                                           (Twine("^") + ret_val.second).str()));
-    if (!result.getType().isa<ControlType>())
+    if (!isa<ControlType>(result.getType()))
       return InvalidArgument("failed to map returned value ", ret_val.second,
                              ", isn't a control output");
     ret_vals[func.ret_size() + position->second] = result;

@@ -60,8 +60,7 @@ struct ComputeReshapeShapeConversion
     Value negOne = rewriter.create<arith::ConstantIndexOp>(loc, -1);
     auto indexType = rewriter.getIndexType();
     auto numElements = adaptor.getOperands()[0];
-    auto targetShapeType =
-        adaptor.getOperands()[1].getType().cast<ShapedType>();
+    auto targetShapeType = cast<ShapedType>(adaptor.getOperands()[1].getType());
     auto extentType =
         shape::getExtentTensorType(ctx, targetShapeType.getDimSize(0));
 
@@ -127,8 +126,7 @@ struct CstrReshapableConversion
     Value zero = rewriter.create<arith::ConstantIndexOp>(loc, 0);
     Value one = rewriter.create<arith::ConstantIndexOp>(loc, 1);
     auto numElements = adaptor.getOperands()[0];
-    auto targetShapeType =
-        adaptor.getOperands()[1].getType().cast<ShapedType>();
+    auto targetShapeType = cast<ShapedType>(adaptor.getOperands()[1].getType());
     auto extentType =
         shape::getExtentTensorType(ctx, targetShapeType.getDimSize(0));
 

@@ -39,7 +39,7 @@ absl::StatusOr<ArgumentConstraint> ResolveArgumentConstraint(
 inline bool SupportsValueSpecialization(mlir::Type type) {
   // TODO(ezhulenev): Add support for sinking `memref` values once the value
   // specialization will support it.
-  mlir::TensorType tensor = type.dyn_cast<mlir::TensorType>();
+  mlir::TensorType tensor = dyn_cast<mlir::TensorType>(type);
   return tensor && (tensor.getRank() == 0 || tensor.getRank() == 1) &&
          (tensor.getElementType().isInteger(32) ||
           tensor.getElementType().isInteger(64));

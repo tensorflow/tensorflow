@@ -71,7 +71,7 @@ SmallVector<Value> EnsureFlatMemrefs(ValueRange values,
                                      ImplicitLocOpBuilder& b) {
   SmallVector<Value> out;
   for (Value value : values) {
-    auto ty = value.getType().dyn_cast<MemRefType>();
+    auto ty = dyn_cast<MemRefType>(value.getType());
     if (!ty || ty.getLayout().isIdentity()) {
       out.push_back(value);
     } else {
@@ -148,7 +148,7 @@ class AllReduceLowering : public OpRewritePattern<xla_cpu::AllReduceOp> {
 
   LogicalResult matchAndRewrite(xla_cpu::AllReduceOp op,
                                 PatternRewriter& rewriter) const override {
-    if (!op.getOperandTypes().front().isa<MemRefType>()) {
+    if (!isa<MemRefType>(op.getOperandTypes().front())) {
       return failure();
     }
 
@@ -207,7 +207,7 @@ class CollectivePermuteLowering
 
   LogicalResult matchAndRewrite(xla_cpu::CollectivePermuteOp op,
                                 PatternRewriter& rewriter) const override {
-    if (!op.getOperandTypes().front().isa<MemRefType>()) {
+    if (!isa<MemRefType>(op.getOperandTypes().front())) {
       return failure();
     }
 
@@ -274,7 +274,7 @@ class RngBitGeneratorLowering
   LogicalResult matchAndRewrite(xla_cpu::RngBitGeneratorOp op,
                                 PatternRewriter& rewriter) const override {
     auto algorithm =
-        op.getRngAlgorithmAttr().cast<mhlo::RngAlgorithmAttr>().getValue();
+        cast<mhlo::RngAlgorithmAttr>(op.getRngAlgorithmAttr()).getValue();
     op->removeAttr("rng_algorithm");
 
     CreateCallForDpsCollectiveOp(op.getOperation(), custom_calls_,
@@ -308,7 +308,7 @@ class InfeedLowering : public OpRewritePattern<xla_cpu::InfeedOp> {
 
     // For infeed with empty tuples, bufferizer does not run, thus the token is
     // left as the only operand. Remove it.
-    if (operands.back().getType().isa<mlir::mhlo::TokenType>()) {
+    if (isa<mlir::mhlo::TokenType>(operands.back().getType())) {
       assert(operands.size() == 1 && "Expect token only with empty tuples");
       operands.pop_back();
     }

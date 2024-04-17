@@ -169,7 +169,7 @@ void QuantizeVariablesPass::QuantizeVariable(
   for (VarHandleOp var_handle_op : var_handle_ops) {
     builder.setInsertionPoint(var_handle_op);
     auto output_type = UnrankedTensorType::get(TF::ResourceType::get(
-        {ref_qtype.cast<TensorType>()}, builder.getContext()));
+        {cast<TensorType>(ref_qtype)}, builder.getContext()));
     auto new_var_handle_op = builder.create<VarHandleOp>(
         var_handle_op.getLoc(), output_type, var_handle_op.getContainer(),
         var_handle_op.getSharedName());

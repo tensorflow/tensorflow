@@ -269,7 +269,7 @@ mlir::Operation* EmitCollectiveReduceScatter(
     const mlir::DenseIntElementsAttr& group_assignment, int32 scatter_dimension,
     int32 key_base, mlir::Value device_id, int32 host_group_size,
     const mlir::StringRef device_type) {
-  mlir::TensorType input_type = input.getType().dyn_cast<mlir::TensorType>();
+  mlir::TensorType input_type = dyn_cast<mlir::TensorType>(input.getType());
 
   const bool need_transpose = scatter_dimension != 0;
   std::vector<int64> perm_for_transpose;
@@ -282,9 +282,9 @@ mlir::Operation* EmitCollectiveReduceScatter(
     auto pre_transpose_op =
         EmitTransposeOp(builder, loc, input, perm_for_transpose);
     input = pre_transpose_op->getResult(0);
-    input_type = input.getType().dyn_cast<mlir::TensorType>();
+    input_type = dyn_cast<mlir::TensorType>(input.getType());
     // Compute transposed output type for CollectiveReduceScatter
-    auto output_shape = output_type.dyn_cast<mlir::TensorType>().getShape();
+    auto output_shape = dyn_cast<mlir::TensorType>(output_type).getShape();
     std::vector<int64> transposed_shape(output_shape.begin(),
                                         output_shape.end());
     for (int i = 0; i < output_shape.size(); i++) {
@@ -338,8 +338,8 @@ mlir::Operation* EmitCollectiveAllToAll(
   // data correctly. An example relayout that requires this is [y, unsharded, x]
   // -> [y, x, unsharded].
   const mlir::TensorType input_type =
-      input.getType().dyn_cast<mlir::TensorType>();
-  auto input_shape = input_type.dyn_cast<mlir::TensorType>().getShape();
+      dyn_cast<mlir::TensorType>(input.getType());
+  auto input_shape = dyn_cast<mlir::TensorType>(input_type).getShape();
 
   // TODO(trevor-m): One of the transpose pairs created when requires_transpose
   // is true can be combined with the transpose in permute_data() that lies on
@@ -478,7 +478,7 @@ mlir::Operation* EmitCollectiveGather(
   auto shape = group_assignment.getType().getShape();
   const int32 group_size = shape[1];
   const mlir::TensorType input_type =
-      input.getType().dyn_cast<mlir::TensorType>();
+      dyn_cast<mlir::TensorType>(input.getType());
   auto input_shape = input_type.getShape();
   auto dim_0_shape = input_shape[0];
   std::vector<int64> output_shape = {input_shape.begin(), input_shape.end()};
@@ -758,9 +758,9 @@ mlir::LogicalResult LowerAllGatherOpToCollective(
   const std::string device_type = device_type_or_status.value();
 
   const mlir::RankedTensorType input_type =
-      all_gather.getInput().getType().dyn_cast<mlir::RankedTensorType>();
+      dyn_cast<mlir::RankedTensorType>(all_gather.getInput().getType());
   const mlir::RankedTensorType output_type =
-      all_gather.getOutput().getType().dyn_cast<mlir::RankedTensorType>();
+      dyn_cast<mlir::RankedTensorType>(all_gather.getOutput().getType());
 
   if (!input_type)
     return all_gather.emitOpError() << "input type is not a RankedTensorType";
@@ -901,9 +901,9 @@ mlir::LogicalResult LowerAllGatherOp(mlir::TF::DTensorAllGatherOp all_gather) {
   }
 
   const mlir::RankedTensorType input_type =
-      all_gather.getInput().getType().dyn_cast<mlir::RankedTensorType>();
+      dyn_cast<mlir::RankedTensorType>(all_gather.getInput().getType());
   const mlir::RankedTensorType output_type =
-      all_gather.getOutput().getType().dyn_cast<mlir::RankedTensorType>();
+      dyn_cast<mlir::RankedTensorType>(all_gather.getOutput().getType());
 
   if (!input_type)
     return all_gather.emitOpError() << "input type is not a RankedTensorType";
@@ -1048,7 +1048,7 @@ mlir::LogicalResult LowerAllGatherOp(mlir::TF::DTensorAllGatherOp all_gather) {
   // position in the tensor, only one task in the reduction group can have a 1.
   // This is sufficient.
   const mlir::TensorType type =
-      update_result.getType().dyn_cast<mlir::TensorType>();
+      dyn_cast<mlir::TensorType>(update_result.getType());
   absl::string_view reduce_type = kReduceOpAdd;
   if (type && type.getElementType().isInteger(1)) reduce_type = kReduceOpAny;
   mlir::TF::DTensorAllReduceOp all_reduce =
@@ -1090,7 +1090,7 @@ mlir::LogicalResult LowerAllScatterOp(
   // sharding_spec[j]=i and this is a dimension with split and 0 otherwise.
 
   mlir::RankedTensorType output_type =
-      all_scatter.getOutput().getType().dyn_cast<mlir::RankedTensorType>();
+      dyn_cast<mlir::RankedTensorType>(all_scatter.getOutput().getType());
   if (!output_type)
     return all_scatter.emitOpError() << "input must have static rank";
 

@@ -165,12 +165,12 @@ class StableHloQuantizationPattern : public OpRewritePattern<RootOpT> {
       inputs.reserve(candidate_op->getNumOperands());
       for (auto operand : candidate_op->getOperands()) {
         Type operand_type = operand.getType();
-        if (operand_type.isa<NoneType>()) {
+        if (isa<NoneType>(operand_type)) {
           inputs.push_back(operand);
           continue;
         }
 
-        auto ele_type = operand.getType().cast<TensorType>().getElementType();
+        auto ele_type = cast<TensorType>(operand.getType()).getElementType();
         if (auto dq_op =
                 dyn_cast_or_null<DequantizeOpT>(operand.getDefiningOp())) {
           inputs.push_back(dq_op.getOperand());
@@ -197,13 +197,13 @@ class StableHloQuantizationPattern : public OpRewritePattern<RootOpT> {
         Type result_type = result.getType();
         // Add this to the test coverage once we create test ops with none type
         // results.
-        if (result_type.isa<NoneType>()) {
+        if (isa<NoneType>(result_type)) {
           outputs_replaced.insert({result, enumerated_result.index()});
           output_types.push_back(result_type);
           continue;
         }
         Type result_ele_type =
-            result.getType().cast<TensorType>().getElementType();
+            cast<TensorType>(result.getType()).getElementType();
         // If the user is the QuantizeOp, it must be the only user.
         if (result.hasOneUse() && isa<QuantizeOpT>(*result.user_begin())) {
           auto user = cast<QuantizeOpT>(*result.user_begin());

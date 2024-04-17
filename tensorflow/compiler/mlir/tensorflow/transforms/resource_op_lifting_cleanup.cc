@@ -32,7 +32,7 @@ namespace mlir {
 namespace {
 
 bool IsResource(Value value) {
-  return getElementTypeOrSelf(value.getType()).isa<TF::ResourceType>();
+  return isa<TF::ResourceType>(getElementTypeOrSelf(value.getType()));
 }
 
 // Checks if a cast op is casting a resource -> resource.
@@ -182,7 +182,7 @@ void EliminateUnusedResultsForIfCase(Operation *op,
     if (cloned == func) continue;
     // Patch up the op attribute to point to the new function.
     for (NamedAttribute attr : op->getAttrs()) {
-      auto symref = attr.getValue().dyn_cast<FlatSymbolRefAttr>();
+      auto symref = dyn_cast<FlatSymbolRefAttr>(attr.getValue());
       if (!symref) continue;
       if (symref.getValue() != func.getName()) continue;
       op->setAttr(attr.getName(),
@@ -301,7 +301,7 @@ LogicalResult ForwardCommonArgToOutput(Operation *op,
     std::optional<int> common_arg_index;
     for (func::FuncOp func : branches) {
       auto ret = func.front().getTerminator();
-      auto block_arg = ret->getOperand(result_idx).dyn_cast<BlockArgument>();
+      auto block_arg = dyn_cast<BlockArgument>(ret->getOperand(result_idx));
       if (!block_arg) {
         return op->emitOpError("result #")
                << result_idx << " not tied to function argument for branch @"

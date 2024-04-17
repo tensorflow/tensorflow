@@ -33,7 +33,7 @@ namespace mlir {
 namespace {
 
 bool isUnitTensor(Value value) {
-  if (auto tensorTy = value.getType().dyn_cast<RankedTensorType>()) {
+  if (auto tensorTy = dyn_cast<RankedTensorType>(value.getType())) {
     return tensorTy.getRank() == 0;
   }
   return false;
@@ -73,8 +73,7 @@ struct RegionOpPattern : public OpRewritePattern<T> {
         for (auto [index, arg] : unitTensors(block.getArguments())) {
           b.setInsertionPointToStart(&block);
           // Change the argument type to a scalar, but repack it into a tensor.
-          arg.setType(
-              arg.getType().template cast<RankedTensorType>().getElementType());
+          arg.setType(cast<RankedTensorType>(arg.getType()).getElementType());
           auto converted = b.create<tensor::FromElementsOp>(
               RankedTensorType::get({}, arg.getType()), arg);
           arg.replaceAllUsesExcept(converted, converted.getOperation());
@@ -94,7 +93,7 @@ struct RegionOpPattern : public OpRewritePattern<T> {
     llvm::SmallVector<Value> results = result->getResults();
     for (auto [index, opResult] : unitTensors(results)) {
       // Fix the result type in the SCF op (it's actually a scalar now).
-      auto oldType = opResult.getType().template cast<RankedTensorType>();
+      auto oldType = cast<RankedTensorType>(opResult.getType());
       opResult.setType(oldType.getElementType());
 
       // Convert the scalar back to a tensor in the output.

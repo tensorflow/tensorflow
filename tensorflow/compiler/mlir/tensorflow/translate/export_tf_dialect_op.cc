@@ -183,7 +183,7 @@ Status PopulateDerivedAttributes(mlir::Operation* inst, llvm::StringRef name,
     auto values = inst->getResults();
     auto begin = values.begin();
     auto end = values.begin();
-    while (end != values.end() && (*end).getType().isa<mlir::ShapedType>())
+    while (end != values.end() && isa<mlir::ShapedType>((*end).getType()))
       end++;
     if (begin != end) {
       mlir::TF::ResultShapeRange output_shapes = {

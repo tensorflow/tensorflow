@@ -116,7 +116,7 @@ StatusOr<mlir::Operation*> SliceSPMDExpander::ExpandOp(mlir::Operation* op) {
   // The dyn_cast will never be nullptr as it is checked in
   // GetLayoutFromOperands.
   auto input_type =
-      slice_op.getInput().getType().dyn_cast<mlir::RankedTensorType>();
+      dyn_cast<mlir::RankedTensorType>(slice_op.getInput().getType());
   if (!input_type)
     return errors::InvalidArgument(
         "rank of input tensor must be statically known for slice op.");
@@ -172,10 +172,9 @@ StatusOr<mlir::Operation*> SliceSPMDExpander::ExpandOp(mlir::Operation* op) {
   auto loc = op->getLoc();
   // Both begin and size need to be the same type, so we must match the new
   // size input with the type of begin.
-  if (!slice_op.getBegin().getType().isa<mlir::ShapedType>())
+  if (!isa<mlir::ShapedType>(slice_op.getBegin().getType()))
     return errors::Internal("type of begin is not a ShapedType");
-  mlir::ShapedType type =
-      slice_op.getBegin().getType().cast<mlir::ShapedType>();
+  mlir::ShapedType type = cast<mlir::ShapedType>(slice_op.getBegin().getType());
   if (type.getElementType().isInteger(32))
     new_size = IntConst(
         builder, loc, llvm::SmallVector<int32, 4>(sizes.begin(), sizes.end()));

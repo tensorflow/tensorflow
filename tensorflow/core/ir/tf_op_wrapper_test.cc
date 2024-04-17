@@ -84,7 +84,7 @@ TEST(TFOpWrapper, ControlOperands) {
   EXPECT_EQ(ctls.size(), 2u);
 
   OperandRange::iterator ctl_it = llvm::find_if(operands, [](Value operand) {
-    return operand.getType().isa<ControlType>();
+    return isa<ControlType>(operand.getType());
   });
   EXPECT_NE(ctl_it, operands.end());
   EXPECT_EQ(data.end(), ctl_it);
@@ -184,7 +184,7 @@ TEST(TFOpWrapper, ValueControlRet) {
   // Value with ControlType will be the same.
   EXPECT_EQ(ret_range[2], const_op.controlRet());
 
-  for (Value v : ret_range) EXPECT_TRUE(v.getType().isa<ControlType>());
+  for (Value v : ret_range) EXPECT_TRUE(isa<ControlType>(v.getType()));
 }
 
 }  // namespace

@@ -139,7 +139,7 @@ LogicalResult EncapsulateFuncAndSerialize(const std::string& module_name,
     assert(uses && "expected to be able to collect symbol uses");
     for (SymbolTable::SymbolUse use : *uses) {
       func::FuncOp referenced_func = entry_module_table.lookup<func::FuncOp>(
-          use.getSymbolRef().cast<FlatSymbolRefAttr>().getValue());
+          cast<FlatSymbolRefAttr>(use.getSymbolRef()).getValue());
 
       // Skip Symbols that do not map to a function.
       if (!referenced_func) continue;

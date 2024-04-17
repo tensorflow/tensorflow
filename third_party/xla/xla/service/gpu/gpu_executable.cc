@@ -1082,7 +1082,7 @@ absl::Status GpuExecutable::SetUpMlirAllocation(
         }
       }
       allocations->at(i).set_entry_computation_parameter(
-          param_attr.cast<mlir::IntegerAttr>().getInt(), shape_index,
+          cast<mlir::IntegerAttr>(param_attr).getInt(), shape_index,
           static_cast<bool>(func.getArgAttr(i, "lmhlo.output_index")));
     }
     // TODO(timshen): this information is redundant. This is here only for
@@ -1096,7 +1096,7 @@ absl::Status GpuExecutable::SetUpMlirAllocation(
       // Reconstruct a shape index from output_index.
       ShapeIndex shape_index;
       for (const llvm::APInt& element :
-           output_index_attr.cast<mlir::DenseIntElementsAttr>()) {
+           cast<mlir::DenseIntElementsAttr>(output_index_attr)) {
         shape_index.push_back(element.getSExtValue());
       }
       auto& o = (*output_info)[shape_index];
@@ -1107,7 +1107,7 @@ absl::Status GpuExecutable::SetUpMlirAllocation(
         if (func.getArgAttr(i, "lmhlo.must_alias")) {
           kind = HloInputOutputAliasConfig::kMustAlias;
         }
-        o.alias_config.emplace(param_attr.cast<mlir::IntegerAttr>().getInt(),
+        o.alias_config.emplace(cast<mlir::IntegerAttr>(param_attr).getInt(),
                                ShapeIndex{}, kind);
       }
       if (func.getArgument(i).use_empty()) {

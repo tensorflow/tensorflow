@@ -218,7 +218,7 @@ StatusOr<mlir::Operation*> ReduceSPMDExpander::ExpandOp(mlir::Operation* op) {
   // Generate an error message for TPU int64.
   if (input_layout->mesh().is_tpu_mesh()) {
     if (auto tensor_type =
-            op->getOperand(0).getType().dyn_cast<mlir::TensorType>()) {
+            dyn_cast<mlir::TensorType>(op->getOperand(0).getType())) {
       if (tensor_type.getElementType().isInteger(64)) {
         return errors::InvalidArgument(
             "ReduceOp on TPU does not support int64 as dtype.");

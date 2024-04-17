@@ -82,7 +82,7 @@ class ShapeInferenceTest : public ::testing::Test {
 
       EXPECT_EQ(op.getNumResults() - 1, info.size());
       for (int i = 0; i < op.getNumResults() - 1; ++i) {
-        ShapedType shape = op.getResultTypes()[i].cast<ShapedType>();
+        ShapedType shape = cast<ShapedType>(op.getResultTypes()[i]);
         EXPECT_EQ(shape.hasRank(), info[i].hasRank());
         if (shape.hasRank()) EXPECT_EQ(shape.getShape(), info[i].getDims());
         if (check_type)
@@ -114,7 +114,7 @@ TEST_F(ShapeInferenceTest, TestShapeAndTypeInference) {
   // `value` attr contains the tensor information and it's a DenseElementAttr.
   auto op_result_as_shape_fn = [](InferenceContext &ic,
                                   OpResult op_result) -> ShapeHandle {
-    auto rt = op_result.getType().dyn_cast<RankedTensorType>();
+    auto rt = dyn_cast<RankedTensorType>(op_result.getType());
     if (!rt || rt.getRank() != 1 || !rt.hasStaticShape()) return {};
 
     std::vector<DimensionHandle> dims(rt.getDimSize(0), ic.UnknownDim());
@@ -136,7 +136,7 @@ TEST_F(ShapeInferenceTest, TestShapeAndTypeInference) {
     // `InferReturnTypeComponentsForTFOp`uses this callback to get the type
     // information.
     auto result_element_type_fn = [&](int idx) -> Type {
-      return op.getResult(idx).getType().cast<ShapedType>().getElementType();
+      return cast<ShapedType>(op.getResult(idx).getType()).getElementType();
     };
 
     // We use TFG operation so that we don't need to provide
@@ -178,7 +178,7 @@ TEST_F(ShapeInferenceTest, TestShapeAndTypeInference) {
   all_results.clear();
   for (Operation &op : block.without_terminator()) {
     auto result_element_type_fn = [&](int idx) -> Type {
-      return op.getResult(idx).getType().cast<ShapedType>().getElementType();
+      return cast<ShapedType>(op.getResult(idx).getType()).getElementType();
     };
 
     SmallVector<ShapedTypeComponents> results;

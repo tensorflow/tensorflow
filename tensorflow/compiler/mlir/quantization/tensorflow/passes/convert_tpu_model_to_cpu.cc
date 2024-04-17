@@ -92,7 +92,7 @@ class ReplaceTpuPartitionedCallOpWithPartitionedCallOp
  private:
   LogicalResult matchAndRewrite(TF::TPUPartitionedCallOp call_op,
                                 PatternRewriter& rewriter) const override {
-    auto f_attr = call_op.getFAttr().dyn_cast<FlatSymbolRefAttr>();
+    auto f_attr = dyn_cast<FlatSymbolRefAttr>(call_op.getFAttr());
     auto module_op = call_op->getParentOfType<ModuleOp>();
     SymbolTable symbol_table(module_op);
 

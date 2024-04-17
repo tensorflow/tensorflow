@@ -39,7 +39,7 @@ StatusOr<mlir::Operation*> OptionalGetValueSPMDExpander::ExpandOp(
 
   for (int i = 0; i < original_op->getNumResults(); ++i) {
     mlir::TensorType global_output_type =
-        original_op.getResult(i).getType().cast<mlir::TensorType>();
+        cast<mlir::TensorType>(original_op.getResult(i).getType());
     TF_ASSIGN_OR_RETURN(
         mlir::TensorType local_type,
         LocalTypeFromGlobalType(output_layouts[i], global_output_type));

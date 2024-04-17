@@ -45,14 +45,14 @@ inline LogicalResult HasIntegerArrayWithSize(func::FuncOp* func,
                                              const DictionaryAttr& attrs,
                                              const std::string& attr_name,
                                              int N) {
-  ArrayAttr array_attr = attrs.get(attr_name).dyn_cast_or_null<ArrayAttr>();
+  ArrayAttr array_attr = dyn_cast_or_null<ArrayAttr>(attrs.get(attr_name));
   if (array_attr == nullptr || array_attr.size() != N) {
     return func->emitWarning()
            << "'" << attr_name << "' attribute for " << kMaxUnpooling
            << " must be set and has size of " << N;
   }
   for (Attribute integer_attr : array_attr.getValue()) {
-    IntegerAttr value = integer_attr.dyn_cast<IntegerAttr>();
+    IntegerAttr value = dyn_cast<IntegerAttr>(integer_attr);
     if (!value) {
       return func->emitWarning()
              << "'" << attr_name << "' attribute for " << kMaxUnpooling
@@ -66,7 +66,7 @@ inline LogicalResult GetIntegerArraySafe(
     func::FuncOp* func, const DictionaryAttr& attrs,
     const std::string& attr_name, llvm::SmallVectorImpl<int32_t>* results,
     int N) {
-  ArrayAttr array_attr = attrs.get(attr_name).dyn_cast_or_null<ArrayAttr>();
+  ArrayAttr array_attr = dyn_cast_or_null<ArrayAttr>(attrs.get(attr_name));
   if (array_attr == nullptr || array_attr.size() != N) {
     return func->emitError()
            << "'" << attr_name << "' attribute for " << kMaxUnpooling
@@ -75,7 +75,7 @@ inline LogicalResult GetIntegerArraySafe(
   results->reserve(N);
 
   for (Attribute integer_attr : array_attr.getValue()) {
-    IntegerAttr value = integer_attr.dyn_cast<IntegerAttr>();
+    IntegerAttr value = dyn_cast<IntegerAttr>(integer_attr);
     if (!value) {
       return func->emitError()
              << "'" << attr_name << "' attribute for " << kMaxUnpooling
@@ -132,7 +132,7 @@ LogicalResult ConvertMaxUnpoolingFunc::VerifySignature() {
   }
 
   // Retrieves padding.
-  auto padding = attrs.get("padding").dyn_cast_or_null<StringAttr>();
+  auto padding = dyn_cast_or_null<StringAttr>(attrs.get("padding"));
   if (!padding) {
     return func_.emitWarning() << "'padding' attribute for " << kMaxUnpooling
                                << " is not set or not a string";
@@ -166,7 +166,7 @@ LogicalResult ConvertMaxUnpoolingFunc::CreateCustomOptions(
   pool_params.stride_width = strides[1];
 
   // Retrieves padding.
-  auto padding = attrs.get("padding").dyn_cast_or_null<StringAttr>();
+  auto padding = dyn_cast_or_null<StringAttr>(attrs.get("padding"));
   if (!padding) {
     return func_.emitError() << "'padding' attribute for " << kMaxUnpooling
                              << " is not set or not a string";
@@ -225,21 +225,21 @@ LogicalResult ConvertDenseImageWarpFunc::VerifySignature() {
 
   // Check types and shapes.
   auto image_type =
-      func_.getFunctionType().getInput(0).dyn_cast_or_null<RankedTensorType>();
+      dyn_cast_or_null<RankedTensorType>(func_.getFunctionType().getInput(0));
   if (!image_type || !image_type.getElementType().isF32() ||
       image_type.getRank() != 4) {
     return func_.emitWarning() << "Image should be a 4D float tensor";
   }
 
   auto flow_type =
-      func_.getFunctionType().getInput(1).dyn_cast_or_null<RankedTensorType>();
+      dyn_cast_or_null<RankedTensorType>(func_.getFunctionType().getInput(1));
   if (!flow_type || !flow_type.getElementType().isF32() ||
       flow_type.getRank() != 4) {
     return func_.emitWarning() << "Flow should be a 4D float tensor";
   }
 
   auto output_type =
-      func_.getFunctionType().getResult(0).dyn_cast_or_null<RankedTensorType>();
+      dyn_cast_or_null<RankedTensorType>(func_.getFunctionType().getResult(0));
   if (!output_type || !output_type.getElementType().isF32() ||
       output_type.getRank() != 4) {
     return func_.emitWarning() << "Output should be a 4D float tensor";

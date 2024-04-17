@@ -58,12 +58,12 @@ namespace xla {
 namespace {
 
 static mlir::Attribute ArrayToElements(mlir::Attribute attr) {
-  if (auto array = attr.dyn_cast<mlir::DenseI64ArrayAttr>()) {
+  if (auto array = dyn_cast<mlir::DenseI64ArrayAttr>(attr)) {
     return mlir::DenseIntElementsAttr::get(
         mlir::RankedTensorType::get(array.size(), array.getElementType()),
         array.asArrayRef());
   }
-  if (auto array = attr.dyn_cast<mlir::DenseBoolArrayAttr>()) {
+  if (auto array = dyn_cast<mlir::DenseBoolArrayAttr>(attr)) {
     return mlir::DenseIntElementsAttr::get(
         mlir::RankedTensorType::get(array.size(), array.getElementType()),
         array.asArrayRef());

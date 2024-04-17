@@ -90,7 +90,7 @@ struct ConvertUint8QConstOp : public RewritePattern {
     }
 
     mlir::DenseElementsAttr src_dense_attr =
-        tfl_qconst_op.getValue().cast<DenseElementsAttr>();
+        cast<DenseElementsAttr>(tfl_qconst_op.getValue());
 
     double type_range_min =
         static_cast<double>(output_element_type.getStorageTypeMin() -

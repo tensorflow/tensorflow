@@ -55,22 +55,22 @@ bool SplatElementsAttrHasValue(SplatElementsAttr attr, float v) {
     IF_SPLAT_VALUE_IS(tensorflow::DT_DOUBLE, v);
   } else if (type.isBF16()) {
     IF_SPLAT_VALUE_IS(tensorflow::DT_BFLOAT16, v);
-  } else if (type.isa<ComplexType>()) {
-    ComplexType complex_type = type.cast<ComplexType>();
+  } else if (isa<ComplexType>(type)) {
+    ComplexType complex_type = cast<ComplexType>(type);
     if (complex_type.getElementType().isF32()) {
       IF_SPLAT_VALUE_IS(tensorflow::DT_COMPLEX64, v);
     } else if (complex_type.getElementType().isF64()) {
       IF_SPLAT_VALUE_IS(tensorflow::DT_COMPLEX128, v);
     }
-  } else if (type.isa<tf_type::Qint8Type>()) {
+  } else if (isa<tf_type::Qint8Type>(type)) {
     IF_SPLAT_VALUE_IS(tensorflow::DT_QINT8, v);
-  } else if (type.isa<tf_type::Qint16Type>()) {
+  } else if (isa<tf_type::Qint16Type>(type)) {
     IF_SPLAT_VALUE_IS(tensorflow::DT_QINT16, v);
-  } else if (type.isa<tf_type::Qint32Type>()) {
+  } else if (isa<tf_type::Qint32Type>(type)) {
     IF_SPLAT_VALUE_IS(tensorflow::DT_QINT32, v);
-  } else if (type.isa<tf_type::Quint8Type>()) {
+  } else if (isa<tf_type::Quint8Type>(type)) {
     IF_SPLAT_VALUE_IS(tensorflow::DT_QUINT8, v);
-  } else if (type.isa<tf_type::Quint16Type>()) {
+  } else if (isa<tf_type::Quint16Type>(type)) {
     IF_SPLAT_VALUE_IS(tensorflow::DT_QUINT16, v);
   }
 #undef IF_SPLAT_VALUE_IS
@@ -82,7 +82,7 @@ bool SplatElementsAttrHasValue(SplatElementsAttr attr, float v) {
 bool OpCatHelper::IsAggregate(TFOp op) {
   if (dialect_->IsAdd(op)) {
     auto attr = op->getAttrOfType<TypeAttr>("T");
-    return !attr || !attr.getValue().isa<StringType>();
+    return !attr || !isa<StringType>(attr.getValue());
   }
   const tensorflow::OpDef *op_def = nullptr;
   tensorflow::Status status = tensorflow::OpRegistry::Global()->LookUpOpDef(
@@ -93,7 +93,7 @@ bool OpCatHelper::IsAggregate(TFOp op) {
 bool OpCatHelper::IsCommutative(TFOp op) {
   if (dialect_->IsAdd(op)) {
     auto attr = op->getAttrOfType<TypeAttr>("T");
-    return !attr || !attr.getValue().isa<StringType>();
+    return !attr || !isa<StringType>(attr.getValue());
   }
   const tensorflow::OpDef *op_def = nullptr;
   tensorflow::Status status = tensorflow::OpRegistry::Global()->LookUpOpDef(

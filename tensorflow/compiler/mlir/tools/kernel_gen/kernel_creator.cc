@@ -91,7 +91,7 @@ bool IsSmallAlloc(Value alloc) {
   constexpr unsigned kMaximumSizeInBytes = 64;
   constexpr unsigned kMaxRankOfAllocatedMemRef = 1;
 
-  auto type = alloc.getType().dyn_cast<mlir::ShapedType>();
+  auto type = dyn_cast<mlir::ShapedType>(alloc.getType());
   if (!type || !alloc.getDefiningOp<mlir::memref::AllocOp>()) return false;
   if (!type.hasStaticShape()) {
     // Check if the dynamic shape dimension of the alloc is produced by RankOp

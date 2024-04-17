@@ -99,7 +99,7 @@ StatusOr<mlir::Operation*> Expand(mlir::Operation* op) {
       mlir::Value zero_scalar,
       CreateZeroScalarConst(
           builder, location,
-          device_id.getType().cast<mlir::TensorType>().getElementType()));
+          cast<mlir::TensorType>(device_id.getType()).getElementType()));
 
   mlir::TF::NotEqualOp not_equal = builder.create<mlir::TF::NotEqualOp>(
       location, device_id, zero_scalar,

@@ -35,7 +35,7 @@ namespace runtime {
 static bool IsRtConstraintAttr(mlir::Attribute attr) {
   // If attribute is not defined it means that there is no constraint
   if (!attr) return true;
-  auto str = attr.dyn_cast_or_null<mlir::StringAttr>();
+  auto str = dyn_cast_or_null<mlir::StringAttr>(attr);
   absl::StatusOr<ArgumentConstraint> constraint =
       ParseArgumentConstraint(str.getValue());
   return constraint.ok();
@@ -83,7 +83,7 @@ mlir::LogicalResult RuntimeDialect::verifyOperationAttribute(
 
   // Custom call attribute can be defined only on a function declaration.
   if (attribute.getName() == "rt.custom_call") {
-    if (!(attribute.getValue().isa<mlir::StringAttr>())) {
+    if (!(isa<mlir::StringAttr>(attribute.getValue()))) {
       return op->emitOpError() << "requires " << attribute.getName()
                                << " to only accept string value";
     }
@@ -111,7 +111,7 @@ mlir::LogicalResult RuntimeDialect::verifyOperationAttribute(
 
   // Trace annotation should implement an attribute interface.
   if (attribute.getName() == "rt.trace") {
-    if (!attribute.getValue().isa<TraceAnnotationAttrInterface>()) {
+    if (!isa<TraceAnnotationAttrInterface>(attribute.getValue())) {
       return op->emitOpError() << " requires " << attribute.getName()
                                << " to be a trace annotation attribute";
     }

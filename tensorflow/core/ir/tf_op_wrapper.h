@@ -38,7 +38,7 @@ class ControlRetIterator final
                                    ValueIteratorT, Value>::mapped_iterator_base;
 
   Value mapElement(Value value) const {
-    return value.getType().isa<tf_type::ControlType>()
+    return isa<tf_type::ControlType>(value.getType())
                ? value
                : tfg::LookupControlDependency(value);
   }

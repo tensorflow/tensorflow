@@ -85,20 +85,20 @@ Shape TypeToShape(mlir::Type type) {
     mlir::emitError(mlir::UnknownLoc::get(context))
         << "lowering should have been handled by primitive type lowering for "
         << debugString(type);
-  } else if (auto v = type.dyn_cast<mlir::VectorType>()) {
+  } else if (auto v = dyn_cast<mlir::VectorType>(type)) {
     llvm::SmallVector<int64_t, 4> span(v.getShape().begin(),
                                        v.getShape().end());
     mlir::Type element_type = v.getElementType();
     PrimitiveType primitive_type = ConvertMlirTypeToPrimitiveType(element_type);
     if (primitive_type != PrimitiveType::PRIMITIVE_TYPE_INVALID)
       return ShapeUtil::MakeShape(primitive_type, span);
-  } else if (auto m = type.dyn_cast<mlir::MemRefType>()) {
+  } else if (auto m = dyn_cast<mlir::MemRefType>(type)) {
     llvm::SmallVector<int64_t, 6> span(m.getShape().begin(),
                                        m.getShape().end());
     mlir::Type element_type = m.getElementType();
     // Treat a memref of a vector as if it was a memref of primitive type with
     // the vector dimensions at the end.
-    if (auto v = element_type.dyn_cast<mlir::VectorType>()) {
+    if (auto v = dyn_cast<mlir::VectorType>(element_type)) {
       element_type = v.getElementType();
       span.insert(span.end(), v.getShape().begin(), v.getShape().end());
     }
@@ -136,12 +136,12 @@ Shape TypeToShape(mlir::Type type) {
                                              m.getShape().end());
     return ::xla::ShapeUtil::MakeShapeWithDenseLayout(
         primitive_type, dimensions, minor_to_major);
-  } else if (auto t = type.dyn_cast<mlir::RankedTensorType>()) {
+  } else if (auto t = dyn_cast<mlir::RankedTensorType>(type)) {
     // TODO(jpienaar): This is only handling the base case with primitive
     // element type.
     int64_t rank = t.getRank();
     llvm::SmallVector<int64_t, 4> bounds;
-    if (auto extn = t.getEncoding().dyn_cast_or_null<TypeExtensionsAttr>()) {
+    if (auto extn = dyn_cast_or_null<TypeExtensionsAttr>(t.getEncoding())) {
       bounds = llvm::to_vector<4>(extn.getBounds());
     } else {
       bounds.assign(rank, ShapedType::kDynamic);
@@ -203,7 +203,7 @@ Shape TypeToShape(mlir::Type type) {
     }
 
     return ShapeUtil::MakeShape(primitive_type, shape, is_dynamic);
-  } else if (auto tuple_type = type.dyn_cast<mlir::TupleType>()) {
+  } else if (auto tuple_type = dyn_cast<mlir::TupleType>(type)) {
     llvm::SmallVector<Shape, 4> shapes;
     shapes.reserve(tuple_type.size());
     for (mlir::Type sub_type : tuple_type.getTypes()) {
@@ -211,10 +211,10 @@ Shape TypeToShape(mlir::Type type) {
     }
     return ShapeUtil::MakeTupleShape(shapes);
 
-  } else if (type.isa<mlir::mhlo::TokenType>() ||
-             type.isa<mlir::stablehlo::TokenType>()) {
+  } else if (isa<mlir::mhlo::TokenType>(type) ||
+             isa<mlir::stablehlo::TokenType>(type)) {
     return ShapeUtil::MakeTokenShape();
-  } else if (auto bundle_type = type.dyn_cast<mlir::mhlo::AsyncBundleType>()) {
+  } else if (auto bundle_type = dyn_cast<mlir::mhlo::AsyncBundleType>(type)) {
     auto tuple_type =
         mlir::TupleType::get(type.getContext(), bundle_type.getTypes());
     return TypeToShape(tuple_type);

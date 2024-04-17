@@ -121,9 +121,9 @@ class ConstFakeQuantPerAxisRewrite
     min.reserve(fqOp.getMin().size());
     max.reserve(fqOp.getMax().size());
     for (auto m : fqOp.getMin())
-      min.push_back(m.cast<FloatAttr>().getValueAsDouble());
+      min.push_back(cast<FloatAttr>(m).getValueAsDouble());
     for (auto m : fqOp.getMax())
-      max.push_back(m.cast<FloatAttr>().getValueAsDouble());
+      max.push_back(cast<FloatAttr>(m).getValueAsDouble());
 
     return fakeQuantAttrsToType(fqOp.getLoc(), fqOp.getNumBits(),
                                 fqOp.getAxis(), min, max, fqOp.getNarrowRange(),

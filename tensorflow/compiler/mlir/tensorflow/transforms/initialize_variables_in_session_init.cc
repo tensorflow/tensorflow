@@ -99,8 +99,7 @@ func::FuncOp GetOrCreateSessionInitFunc(ModuleOp module) {
     // tf_saved_model.initializer_type attribute was introduced.
     SymbolTable symbol_table(module);
     return symbol_table.lookup<func::FuncOp>(
-        session_init_op.getInitializers()[0]
-            .cast<FlatSymbolRefAttr>()
+        cast<FlatSymbolRefAttr>(session_init_op.getInitializers()[0])
             .getValue());
   } else {
     return CreateSessionInitFunc(module);

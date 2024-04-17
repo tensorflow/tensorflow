@@ -27,12 +27,12 @@ namespace TF {
 // Verifies an reduction op's `input` and reduction `dims`.
 LogicalResult VerifyReductionInputAndDims(Value input, Value dims,
                                           Location loc) {
-  auto dims_type = dims.getType().dyn_cast<RankedTensorType>();
+  auto dims_type = dyn_cast<RankedTensorType>(dims.getType());
   if (!dims_type) return success();
   if (dims_type.getRank() > 1)
     return emitError(loc, "dimensions can only be 0D or 1D tensor");
 
-  auto input_type = input.getType().dyn_cast<RankedTensorType>();
+  auto input_type = dyn_cast<RankedTensorType>(input.getType());
   if (!input_type) return success();
   int64_t rank = input_type.getRank();
 

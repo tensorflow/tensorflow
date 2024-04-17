@@ -81,8 +81,8 @@ static std::string GetDevice(Operation *op) {
     SmallVector<std::pair<StringRef, Attribute>, 4> attrs;
     execute_op.getOpAttrs(&attrs);
     for (std::pair<StringRef, Attribute> entry : attrs) {
-      if (entry.first == kDeviceAttr && entry.second.isa<StringAttr>()) {
-        device = entry.second.cast<StringAttr>().getValue().str();
+      if (entry.first == kDeviceAttr && isa<StringAttr>(entry.second)) {
+        device = cast<StringAttr>(entry.second).getValue().str();
         break;
       }
     }
@@ -94,7 +94,7 @@ static std::string GetDevice(Operation *op) {
 // Return the device of the given value.
 static std::string GetDevice(mlir::Value value, func::FuncOp parent_func_op) {
   std::string device = "";
-  if (BlockArgument block_arg = value.dyn_cast<BlockArgument>()) {
+  if (BlockArgument block_arg = dyn_cast<BlockArgument>(value)) {
     if (StringAttr device_attr = parent_func_op.getArgAttrOfType<StringAttr>(
             block_arg.getArgNumber(), kTFRTDeviceAttr)) {
       device = device_attr.getValue().str();
@@ -140,10 +140,10 @@ void CrossDeviceTransferPass::runOnOperation() {
 
     for (mlir::Value arg : op->getOperands()) {
       // Do not transfer non-TensorHandle values.
-      if (!arg.getType().isa<tfrt::corert::TensorHandleType>()) continue;
+      if (!isa<tfrt::corert::TensorHandleType>(arg.getType())) continue;
 
       // Do not transfer the result of corert.transfer op.
-      if (OpResult op_result = arg.dyn_cast<OpResult>()) {
+      if (OpResult op_result = dyn_cast<OpResult>(arg)) {
         Operation *defining_op = arg.getDefiningOp();
         if (llvm::isa<tfrt::corert::TransferOp>(defining_op)) continue;
       }

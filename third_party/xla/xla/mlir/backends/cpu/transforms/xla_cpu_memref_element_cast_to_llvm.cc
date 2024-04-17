@@ -47,11 +47,11 @@ struct MemRefElementCastOpLowering
   LogicalResult matchAndRewrite(
       xla_cpu::MemRefElementCastOp cast_op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
-    auto target_memref_ty = cast_op.getDst().getType().cast<MemRefType>();
+    auto target_memref_ty = cast<MemRefType>(cast_op.getDst().getType());
 
     const LLVMTypeConverter &type_converter = *getTypeConverter();
-    auto target_desc_ty = type_converter.convertType(target_memref_ty)
-                              .dyn_cast_or_null<LLVM::LLVMStructType>();
+    auto target_desc_ty = dyn_cast_or_null<LLVM::LLVMStructType>(
+        type_converter.convertType(target_memref_ty));
     if (!target_desc_ty) {
       return failure();
     }
@@ -62,7 +62,7 @@ struct MemRefElementCastOpLowering
 
     SmallVector<Value> desc_fields;
     MemRefDescriptor::unpack(rewriter, loc, adaptor.getSrc(),
-                             src_type.cast<MemRefType>(), desc_fields);
+                             cast<MemRefType>(src_type), desc_fields);
 
     // Create descriptor.
     auto dst_desc = MemRefDescriptor::pack(rewriter, loc, type_converter,

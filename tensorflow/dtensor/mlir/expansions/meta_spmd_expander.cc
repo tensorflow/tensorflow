@@ -244,8 +244,8 @@ namespace {
 Status VerifyPaddedDimensionNotSharded(const Layout& layout,
                                        mlir::Value pad_input,
                                        mlir::Value pad_output) {
-  auto input_type = pad_input.getType().dyn_cast<mlir::RankedTensorType>();
-  auto output_type = pad_output.getType().dyn_cast<mlir::RankedTensorType>();
+  auto input_type = dyn_cast<mlir::RankedTensorType>(pad_input.getType());
+  auto output_type = dyn_cast<mlir::RankedTensorType>(pad_output.getType());
   if (!input_type || !output_type)
     return errors::InvalidArgument(
         "pad op input/output should have statically known shape for SPMD.");
@@ -435,7 +435,7 @@ StatusOr<mlir::Operation*> TileSPMDExpander::ExpandOp(mlir::Operation* op) {
   auto multiples_const = IntConst(builder, location, local_tile_multiples);
 
   auto global_output_type =
-      tile_op.getResult().getType().cast<mlir::TensorType>();
+      cast<mlir::TensorType>(tile_op.getResult().getType());
   TF_ASSIGN_OR_RETURN(
       auto local_type,
       LocalTypeFromGlobalType(output_layout.value(), global_output_type));
@@ -458,7 +458,7 @@ StatusOr<llvm::DenseMap<int, Layout>> TileSPMDExpander::ComputeLayoutForward(
   auto tile_op = llvm::cast<mlir::TF::TileOp>(op);
 
   auto output_ranked_type =
-      tile_op.getOutput().getType().dyn_cast<mlir::RankedTensorType>();
+      dyn_cast<mlir::RankedTensorType>(tile_op.getOutput().getType());
   if (!output_ranked_type || !output_ranked_type.hasStaticShape()) {
     return errors::InvalidArgument(
         llvm::formatv(
@@ -503,7 +503,7 @@ StatusOr<llvm::DenseMap<int, Layout>> TileSPMDExpander::ComputeLayoutBackward(
 
   // Retrieve operand/output shapes of tile op.
   auto input_ranked_type =
-      tile_op.getInput().getType().dyn_cast<mlir::RankedTensorType>();
+      dyn_cast<mlir::RankedTensorType>(tile_op.getInput().getType());
   if (!input_ranked_type || !input_ranked_type.hasStaticShape()) {
     return errors::InvalidArgument(
         llvm::formatv(
@@ -516,11 +516,9 @@ StatusOr<llvm::DenseMap<int, Layout>> TileSPMDExpander::ComputeLayoutBackward(
   llvm::DenseMap<int, Layout> input_layouts(op->getNumOperands());
 
   // `multiples` operand is always set to have replicated layout.
-  input_layouts[1] =
-      Layout::ReplicatedOnMesh(mesh, tile_op.getMultiples()
-                                         .getType()
-                                         .cast<mlir::RankedTensorType>()
-                                         .getRank());
+  input_layouts[1] = Layout::ReplicatedOnMesh(
+      mesh,
+      cast<mlir::RankedTensorType>(tile_op.getMultiples().getType()).getRank());
 
   llvm::SmallVector<int64_t, 4> static_multiple;
   auto status =
@@ -1043,9 +1041,9 @@ StatusOr<mlir::Operation*> OneHotSPMDExpander::ExpandOp(mlir::Operation* op) {
     mlir::TF::SliceOp selected_sharding_at_dimension = builder.create<
         mlir::TF::SliceOp>(
         one_hot_op.getLoc(),
-        mlir::RankedTensorType::get({1, 1}, mesh_coordinates.getType()
-                                                .cast<mlir::TensorType>()
-                                                .getElementType()),
+        mlir::RankedTensorType::get(
+            {1, 1}, cast<mlir::TensorType>(mesh_coordinates.getType())
+                        .getElementType()),
         /*input=*/mesh_coordinates,
         /*begin=*/IntConst(builder, one_hot_op.getLoc(), {0, mesh_dim_index}),
         /*size=*/IntConst(builder, one_hot_op.getLoc(), {1, 1}));

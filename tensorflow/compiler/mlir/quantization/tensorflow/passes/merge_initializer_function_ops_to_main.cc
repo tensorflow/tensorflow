@@ -153,7 +153,7 @@ LogicalResult ValidateInitFunc(func::FuncOp init_func_op) {
 
   FetchOp fetch_op = graph_op.GetFetch();
   for (const Value fetch : fetch_op.getFetches()) {
-    if (!fetch.getType().isa<tf_executor::ControlType>()) {
+    if (!isa<tf_executor::ControlType>(fetch.getType())) {
       fetch_op.emitError(absl::StrFormat(
           "Validation failed for the initializer function: %s. "
           "All initializer function's fetches should be "

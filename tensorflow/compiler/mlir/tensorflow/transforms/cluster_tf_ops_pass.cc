@@ -124,7 +124,7 @@ std::optional<llvm::StringMap<FunctionMetadata>> GetFunctionMetadatas(
 
       // If the value is defined as an argument of the func_op, adds it to
       // the argument list of the function that uses this op.
-      if (BlockArgument block_arg = value.dyn_cast<BlockArgument>()) {
+      if (BlockArgument block_arg = dyn_cast<BlockArgument>(value)) {
         if (StringAttr attr = func_op.getArgAttrOfType<StringAttr>(
                 block_arg.getArgNumber(), kTFDeviceAttr)) {
           value_device = attr.getValue().str();

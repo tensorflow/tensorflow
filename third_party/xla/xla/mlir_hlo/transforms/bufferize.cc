@@ -41,21 +41,21 @@ struct BufferizeConstantOp : public OpConversionPattern<arith::ConstantOp> {
       ConversionPatternRewriter &rewriter) const final {
     // We only need to bufferize tensor constants.
     Location loc = op.getLoc();
-    auto resultType = op.getType().dyn_cast<RankedTensorType>();
+    auto resultType = dyn_cast<RankedTensorType>(op.getType());
     int64_t resultRank = resultType.getRank();
     if (!resultType || !resultType.hasStaticShape() || resultRank > 1)
       return failure();
 
     auto elementType = resultType.getElementType();
     auto memrefType = MemRefType::get(resultType.getShape(), elementType);
-    auto elementsAttr = op.getValue().cast<DenseElementsAttr>();
+    auto elementsAttr = cast<DenseElementsAttr>(op.getValue());
 
     // arith.constant doesn't handle scalar complex types.
     // TODO(kramerb): Should this use materializeConstant instead?
     auto makeConstant = [&](Attribute attr, Type type) -> Value {
       if (complex::ConstantOp::isBuildableWith(attr, type))
         return rewriter.create<complex::ConstantOp>(loc, type,
-                                                    attr.cast<ArrayAttr>());
+                                                    cast<ArrayAttr>(attr));
       return rewriter.create<arith::ConstantOp>(loc, cast<TypedAttr>(attr));
     };
 

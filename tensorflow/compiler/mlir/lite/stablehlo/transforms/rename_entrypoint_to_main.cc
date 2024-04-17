@@ -61,7 +61,7 @@ class RenameEntrypointToMainPass
       //   }
       // clang-format on
       for (auto attr : session_initializer.getInitializers()) {
-        auto sym_attr = attr.dyn_cast<FlatSymbolRefAttr>();
+        auto sym_attr = dyn_cast<FlatSymbolRefAttr>(attr);
         if (!sym_attr) break;
         entrypoints.erase(sym_attr.getValue());
       }

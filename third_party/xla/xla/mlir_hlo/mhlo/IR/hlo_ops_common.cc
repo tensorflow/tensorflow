@@ -31,7 +31,7 @@ namespace hlo {
 // Verifies the source target pairs attached to collective permute.
 LogicalResult verifyCollectivePermuteSourceTargetPairs(
     Operation *op, DenseIntElementsAttr attr) {
-  auto type = attr.getType().cast<RankedTensorType>();
+  auto type = cast<RankedTensorType>(attr.getType());
   if (type.getRank() != 2)
     return op->emitError() << "expect source_target_pairs attribute to be of "
                               "rank 2, but got rank "
@@ -73,8 +73,8 @@ LogicalResult verifyReduceScatter(Operation *op, TypeRange operandTypes,
   }
 
   for (auto it : llvm::zip(operandTypes, resultTypes)) {
-    auto operandType = std::get<0>(it).cast<ShapedType>();
-    auto resultType = std::get<1>(it).cast<ShapedType>();
+    auto operandType = cast<ShapedType>(std::get<0>(it));
+    auto resultType = cast<ShapedType>(std::get<1>(it));
     if (!operandType.hasRank() || !resultType.hasRank()) continue;
     if (operandType.getRank() != resultType.getRank())
       return op->emitOpError() << "operand and result should have same rank";

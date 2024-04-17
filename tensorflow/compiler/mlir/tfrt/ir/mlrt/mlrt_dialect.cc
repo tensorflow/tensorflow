@@ -73,17 +73,17 @@ mlir::Type MlrtDialect::parseType(mlir::DialectAsmParser &parser) const {
 // Print a type registered to this dialect.
 void MlrtDialect::printType(mlir::Type type,
                             mlir::DialectAsmPrinter &os) const {
-  if (type.isa<FutureType>()) {
+  if (isa<FutureType>(type)) {
     os << "future";
     return;
   }
 
-  if (type.isa<PromiseType>()) {
+  if (isa<PromiseType>(type)) {
     os << "promise";
     return;
   }
 
-  if (type.isa<AsyncHandleType>()) {
+  if (isa<AsyncHandleType>(type)) {
     os << "async_handle";
     return;
   }

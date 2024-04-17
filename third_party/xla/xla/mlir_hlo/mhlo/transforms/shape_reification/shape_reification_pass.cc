@@ -52,7 +52,7 @@ struct ShapeReificationPattern : public OpRewritePattern<shape::ShapeOfOp> {
                                             reifications))) {
       return failure();
     }
-    Value shape = reifications[op.getArg().cast<OpResult>().getResultNumber()];
+    Value shape = reifications[cast<OpResult>(op.getArg()).getResultNumber()];
 
     // Insert cast, if needed.
     if (shape.getType() != op.getType()) {

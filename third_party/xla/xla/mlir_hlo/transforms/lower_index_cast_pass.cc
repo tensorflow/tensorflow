@@ -40,7 +40,7 @@ struct IndexCastConverter : public OpRewritePattern<T> {
  public:
   using OpRewritePattern<T>::OpRewritePattern;
   LogicalResult matchAndRewrite(T op, PatternRewriter &rewriter) const final {
-    auto resultTy = op.getType().template dyn_cast<RankedTensorType>();
+    auto resultTy = dyn_cast<RankedTensorType>(op.getType());
     if (!resultTy) return failure();
 
     SmallVector<Value> dynamicExtents =

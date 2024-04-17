@@ -58,7 +58,7 @@ static mlir::LogicalResult FilterTfgSpecificArgResultAttributes(
     llvm::SmallVector<mlir::DictionaryAttr> &output_attrs) {
   for (auto it : llvm::zip(
            types, array_attr.template getAsRange<mlir::DictionaryAttr>())) {
-    if (std::get<0>(it).isa<tfg::ControlType>()) continue;
+    if (isa<tfg::ControlType>(std::get<0>(it))) continue;
     output_types.push_back(std::get<0>(it));
 
     mlir::NamedAttrList list;
@@ -80,7 +80,7 @@ static mlir::LogicalResult ReformatOpAttributes(
             mlir::tfg::TFGraphDialect::getDeviceAttrKey())) {
       tensorflow::DeviceNameUtils::ParsedName parsed_name;
       if (!tensorflow::DeviceNameUtils::ParseFullName(
-              attr.getValue().cast<mlir::StringAttr>().getValue().str(),
+              cast<mlir::StringAttr>(attr.getValue()).getValue().str(),
               &parsed_name))
         return mlir::failure();
       if (!parsed_name.has_type) {
@@ -106,7 +106,7 @@ static mlir::LogicalResult ReformatOpAttributes(
 static void FilterOutBlockArgControlDep(
     ValueRange operands, llvm::SmallVectorImpl<Value> &filtered) {
   for (Value value : operands)
-    if (!value.isa<mlir::BlockArgument>()) filtered.push_back(value);
+    if (!isa<mlir::BlockArgument>(value)) filtered.push_back(value);
 }
 
 // Split the tfg.NextIteration into tf_executor::NextIterationSourceOp and
@@ -218,7 +218,7 @@ class ConvertGraphFuncOp : public OpConversionPattern<tfg::GraphFuncOp> {
     Block &block = graph_func.getBody().front();
     for (auto iter = block.args_begin(), end_iter = block.args_end();
          iter != end_iter; ++iter) {
-      if (!iter->getType().isa<tfg::ControlType>())
+      if (!isa<tfg::ControlType>(iter->getType()))
         iter->replaceAllUsesWith(func.getBody().getArgument(idx++));
     }
 
@@ -412,9 +412,9 @@ class ConvertGeneralOp : public ConversionPattern {
     for (Value value : operands) {
       // Because of the property of graph region, the control operands may
       // not have been converted to tf_executor::ControlType.
-      if (value.getType().isa<tfg::ControlType>() ||
-          value.getType().isa<tf_executor::ControlType>()) {
-        if (!value.isa<BlockArgument>())
+      if (isa<tfg::ControlType>(value.getType()) ||
+          isa<tf_executor::ControlType>(value.getType())) {
+        if (!isa<BlockArgument>(value))
           island_control_operands.push_back(value);
       } else {
         inner_op_operands.push_back(value);

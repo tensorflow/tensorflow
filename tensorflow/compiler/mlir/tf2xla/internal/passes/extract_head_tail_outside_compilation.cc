@@ -78,7 +78,7 @@ bool HasOutsideCompilationAttribute(Operation* op) {
 // Finds op that created a given value. If the value is a BlockArgument, this
 // returns the owner of the Block.
 Operation* GetOpOfValue(Value value) {
-  if (auto block_arg = value.dyn_cast<BlockArgument>())
+  if (auto block_arg = dyn_cast<BlockArgument>(value))
     return block_arg.getOwner()->getParentOp();
 
   return value.getDefiningOp();

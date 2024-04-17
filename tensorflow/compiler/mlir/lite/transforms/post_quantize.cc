@@ -233,8 +233,8 @@ struct FoldTransposeOp : public OpRewritePattern<TransposeOp> {
     DenseIntElementsAttr perm_tensor;
     if (!matchPattern(op.getPerm(), m_Constant(&perm_tensor))) return failure();
 
-    if (!(getElementTypeOrSelf(op.getOutput().getType()))
-             .isa<quant::UniformQuantizedType>())
+    if (!isa<quant::UniformQuantizedType>(
+            (getElementTypeOrSelf(op.getOutput().getType()))))
       return failure();
 
     ElementsAttr input_tensor = qconst_op.getValue();
@@ -244,7 +244,7 @@ struct FoldTransposeOp : public OpRewritePattern<TransposeOp> {
     assert(perm_tensor.getType().getNumElements() == num_dimensions);
 
     ArrayRef<int64_t> input_shape = input_tensor.getShapedType().getShape();
-    auto output_type = op.getOutput().getType().cast<ShapedType>();
+    auto output_type = cast<ShapedType>(op.getOutput().getType());
 
     SmallVector<int32_t, 4> perm;
     SmallVector<int64_t, 4> output_shape;
@@ -265,9 +265,9 @@ struct FoldTransposeOp : public OpRewritePattern<TransposeOp> {
     auto result_type =
         RankedTensorType::get(output_shape, output_type.getElementType());
     auto values_type = RankedTensorType::get(
-        output_shape, output_type.getElementType()
-                          .cast<quant::UniformQuantizedType>()
-                          .getStorageType());
+        output_shape,
+        cast<quant::UniformQuantizedType>(output_type.getElementType())
+            .getStorageType());
     rewriter.replaceOpWithNewOp<QConstOp>(
         op, TypeAttr::get(result_type),
         DenseIntElementsAttr::get(values_type, new_values));
@@ -289,18 +289,18 @@ struct FoldReshapeOp : public OpRewritePattern<ReshapeOp> {
     if (qconst_op == nullptr) return failure();
 
     auto dense_elements =
-        qconst_op.getValue().dyn_cast_or_null<DenseElementsAttr>();
+        dyn_cast_or_null<DenseElementsAttr>(qconst_op.getValue());
     if (dense_elements == nullptr) return failure();
 
     // Handle per tensor cases only.
-    if (!(getElementTypeOrSelf(op.getType()))
-             .isa<quant::UniformQuantizedType>()) {
+    if (!isa<quant::UniformQuantizedType>(
+            (getElementTypeOrSelf(op.getType())))) {
       return failure();
     }
 
     // Remove identity reshape with both static result and input shape.
-    auto result_type = op.getType().cast<ShapedType>();
-    auto input_type = op.getInput().getType().cast<ShapedType>();
+    auto result_type = cast<ShapedType>(op.getType());
+    auto input_type = cast<ShapedType>(op.getInput().getType());
 
     // Constant folding
     // If the result type isn't static, tries to derive the result type from
@@ -318,9 +318,9 @@ struct FoldReshapeOp : public OpRewritePattern<ReshapeOp> {
           RankedTensorType::get(shape_data, input_type.getElementType());
     }
     auto values_type = RankedTensorType::get(
-        result_type.getShape(), result_type.getElementType()
-                                    .cast<quant::UniformQuantizedType>()
-                                    .getStorageType());
+        result_type.getShape(),
+        cast<quant::UniformQuantizedType>(result_type.getElementType())
+            .getStorageType());
 
     DenseElementsAttr reshaped_elements = dense_elements.reshape(values_type);
     rewriter.replaceOpWithNewOp<QConstOp>(op, TypeAttr::get(result_type),

@@ -70,7 +70,7 @@ class AssetSinkingPass : public impl::AssetSinkingPassBase<AssetSinkingPass> {
     SymbolTable symbol_table(module);
     for (auto initializer : init_op.getInitializers()) {
       auto func = symbol_table.lookup<func::FuncOp>(
-          initializer.cast<FlatSymbolRefAttr>().getValue());
+          cast<FlatSymbolRefAttr>(initializer).getValue());
       RewriteFunction(symbol_table, func);
     }
 

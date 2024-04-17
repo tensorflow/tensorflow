@@ -61,11 +61,11 @@ Type TFFrameworkDialect::parseType(DialectAsmParser &parser) const {
 
 /// Print a type registered to this dialect.
 void TFFrameworkDialect::printType(Type type, DialectAsmPrinter &os) const {
-  if (type.isa<OpKernelContextType>()) {
+  if (isa<OpKernelContextType>(type)) {
     os << "op_kernel_context";
     return;
   }
-  if (type.isa<JITCallableType>()) {
+  if (isa<JITCallableType>(type)) {
     os << "jit_callable";
     return;
   }

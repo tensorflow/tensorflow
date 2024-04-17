@@ -205,9 +205,9 @@ StatusOr<std::unique_ptr<NodeDef>> Exporter::GetArgumentNode(
 
   node_def->set_op(FunctionLibraryDefinition::kArgOp);
 
-  mlir::TensorType arg_type = arg.getType().cast<mlir::TensorType>();
+  mlir::TensorType arg_type = cast<mlir::TensorType>(arg.getType());
   if (auto resource_type =
-          arg_type.getElementType().dyn_cast<mlir::TF::ResourceType>()) {
+          dyn_cast<mlir::TF::ResourceType>(arg_type.getElementType())) {
     llvm::ArrayRef<mlir::TensorType> subtypes = resource_type.getSubtypes();
     if (!subtypes.empty()) {
       AttrValue handle_dtypes_attr;
@@ -266,7 +266,7 @@ StatusOr<std::unique_ptr<NodeDef>> Exporter::GetReturnNode(
   node_def->set_op(FunctionLibraryDefinition::kRetOp);
   DataType dtype;
   TF_RETURN_IF_ERROR(ConvertToDataType(
-      operand.getType().cast<mlir::TensorType>().getElementType(), &dtype));
+      cast<mlir::TensorType>(operand.getType()).getElementType(), &dtype));
   AttrValue type_attr;
   type_attr.set_type(dtype);
   (*node_def->mutable_attr())["T"] = type_attr;
@@ -290,7 +290,7 @@ StatusOr<std::unique_ptr<NodeDef>> Exporter::GetReturnNode(
 
 Status Exporter::AddEdgeBetweenNodes(Value src, Node* dst_node,
                                      unsigned dst_index) {
-  if (auto input_result = src.dyn_cast<mlir::OpResult>()) {
+  if (auto input_result = dyn_cast<mlir::OpResult>(src)) {
     auto* input_inst = GetIslandInnerOpOrSelf(input_result.getOwner());
     // Replaces the input node with NextIteration sink if it is a NextIteration
     // source.
@@ -302,7 +302,7 @@ Status Exporter::AddEdgeBetweenNodes(Value src, Node* dst_node,
     auto node_it = nodes_.find(input_inst);
     TF_RET_CHECK(node_it != nodes_.end())
         << "Use of OpResult encountered before def!";
-    if (input_result.getType().isa<mlir::tf_executor::ControlType>()) {
+    if (isa<mlir::tf_executor::ControlType>(input_result.getType())) {
       graph_->AddControlEdge(node_it->second, dst_node,
                              /*allow_duplicates=*/true);
     } else {
@@ -312,7 +312,7 @@ Status Exporter::AddEdgeBetweenNodes(Value src, Node* dst_node,
     return OkStatus();
   }
 
-  auto input_arg = src.cast<BlockArgument>();
+  auto input_arg = cast<BlockArgument>(src);
   auto input_node_it = args_.find(input_arg);
   TF_RET_CHECK(input_node_it != args_.end())
       << "Use of BlockArgument encounted before def!";
@@ -327,7 +327,7 @@ Status Exporter::AddEdge(Operation* inst) {
   if (auto fetch = llvm::dyn_cast<mlir::tf_executor::FetchOp>(inst)) {
     for (auto operand_and_idx : llvm::enumerate(fetch.getOperands())) {
       Value operand = operand_and_idx.value();
-      if (operand.getType().isa<mlir::tf_executor::ControlType>()) break;
+      if (isa<mlir::tf_executor::ControlType>(operand.getType())) break;
 
       auto* dst_node = returns_[fetch][operand_and_idx.index()];
       TF_RETURN_IF_ERROR(AddEdgeBetweenNodes(operand, dst_node, 0));
@@ -447,7 +447,7 @@ Status Exporter::AddFetchNode(FuncOp function, mlir::tf_executor::FetchOp fetch,
                               llvm::ArrayRef<llvm::StringRef> names) {
   auto& return_nodes = returns_[fetch];
   for (auto operand_and_idx : llvm::enumerate(fetch.getOperands())) {
-    if (operand_and_idx.value().getType().isa<mlir::tf_executor::ControlType>())
+    if (isa<mlir::tf_executor::ControlType>(operand_and_idx.value().getType()))
       break;
 
     TF_ASSIGN_OR_RETURN(
@@ -467,7 +467,7 @@ Status Exporter::GetControlRetNodes(
     mlir::tf_executor::FetchOp fetch,
     absl::flat_hash_set<Node*>* control_ret_nodes) {
   for (Value fetch_operand : fetch.getOperands()) {
-    if (fetch_operand.getType().isa<mlir::tf_executor::ControlType>()) {
+    if (isa<mlir::tf_executor::ControlType>(fetch_operand.getType())) {
       Operation* defining_op =
           GetIslandInnerOpOrSelf(fetch_operand.getDefiningOp());
       auto node_it = nodes_.find(defining_op);
@@ -509,14 +509,16 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
   auto dict_attr =
       function->getAttrOfType<mlir::DictionaryAttr>(kEntryFuncAttr);
   if (dict_attr) {
-    TF_RET_CHECK(dict_attr.get("inputs").isa<mlir::StringAttr>())
+    TF_RET_CHECK(isa<mlir::StringAttr>(dict_attr.get("inputs")))
         << "inputs missing in entry function attribute";
-    TF_RET_CHECK(dict_attr.get("outputs").isa<mlir::StringAttr>())
+    TF_RET_CHECK(isa<mlir::StringAttr>(dict_attr.get("outputs")))
         << "outputs missing in entry function attribute";
-    dict_attr.get("inputs").cast<mlir::StringAttr>().getValue().split(
-        input_names, ',', /*MaxSplit=*/-1, /*KeepEmpty=*/false);
-    dict_attr.get("outputs").cast<mlir::StringAttr>().getValue().split(
-        output_names, ',', /*MaxSplit=*/-1, /*KeepEmpty=*/false);
+    cast<mlir::StringAttr>(dict_attr.get("inputs"))
+        .getValue()
+        .split(input_names, ',', /*MaxSplit=*/-1, /*KeepEmpty=*/false);
+    cast<mlir::StringAttr>(dict_attr.get("outputs"))
+        .getValue()
+        .split(output_names, ',', /*MaxSplit=*/-1, /*KeepEmpty=*/false);
   }
 
   auto graph = std::make_unique<Graph>(OpRegistry::Global());
@@ -582,7 +584,7 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
     int index = it.index();
     auto arg = it.value();
     mlir::Type type = arg.getType();
-    if (!type.isa<mlir::TensorType>()) {
+    if (!isa<mlir::TensorType>(type)) {
       return errors::InvalidArgument(
           "FuncOps arguments must have tensor types. Found ",
           mlir::debugString(type), " in function ", function.getName().str());
@@ -607,8 +609,8 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
   // Adds nodes for operations.
   for (Operation& inst : graph_op.GetBody()) {
     for (auto type : inst.getResultTypes())
-      if (!type.isa<mlir::TensorType, mlir::tf_executor::ControlType,
-                    mlir::tf_executor::TokenType>())
+      if (!isa<mlir::TensorType, mlir::tf_executor::ControlType,
+               mlir::tf_executor::TokenType>(type))
         return errors::InvalidArgument(
             "Values must be of tensor type, TensorFlow control type, or "
             "TensorFlow token type. Found ",

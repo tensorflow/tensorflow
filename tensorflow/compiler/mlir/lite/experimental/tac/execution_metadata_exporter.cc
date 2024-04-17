@@ -82,8 +82,7 @@ std::optional<std::vector<float>> GetPerDeviceCosts(
   for (const auto& kv : hardware_map) {
     auto cost_attr = device_costs_attr.getNamed(kv.first);
     if (!cost_attr.has_value()) return std::nullopt;
-    float cost = cost_attr->getValue()
-                     .dyn_cast_or_null<mlir::FloatAttr>()
+    float cost = dyn_cast_or_null<mlir::FloatAttr>(cost_attr->getValue())
                      .getValueAsDouble();
     device_costs[kv.second] = cost;
   }

@@ -115,7 +115,7 @@ class BufferReuseAnalysis {
       // Find reuse candidates for the regarded allocation.
       SmallVector<int32_t, 2> local_reuse_candidates;
       for (BlockArgument old_buffer : arguments) {
-        if (!old_buffer.getType().isa<BaseMemRefType>()) continue;
+        if (!isa<BaseMemRefType>(old_buffer.getType())) continue;
 
         // Lifetime criterion: Only reuse buffers that are no longer used on
         // first reuse, i.e. they are no longer alive.
@@ -177,15 +177,15 @@ class BufferReuseAnalysis {
   std::vector<Value> get_buffer_arguments(func::FuncOp &f) {
     std::vector<Value> buffer_arguments;
     for (BlockArgument arg : f.getArguments()) {
-      if (arg.getType().isa<BaseMemRefType>()) buffer_arguments.push_back(arg);
+      if (isa<BaseMemRefType>(arg.getType())) buffer_arguments.push_back(arg);
     }
     return buffer_arguments;
   }
 
   bool can_reuse_locally(Operation *op, Value old_buffer, Value new_buffer) {
     // For now, we support only memrefs with the same memory layout.
-    auto old_buffer_ty = old_buffer.getType().dyn_cast<MemRefType>();
-    auto new_buffer_ty = old_buffer.getType().dyn_cast<MemRefType>();
+    auto old_buffer_ty = dyn_cast<MemRefType>(old_buffer.getType());
+    auto new_buffer_ty = dyn_cast<MemRefType>(old_buffer.getType());
     if (!old_buffer_ty || !new_buffer_ty ||
         old_buffer_ty.getLayout() != new_buffer_ty.getLayout())
       return false;
@@ -205,7 +205,7 @@ class BufferReuseAnalysis {
         // Allow dropping dimensions but no permutations.
         int64_t i = -1;
         for (AffineExpr expr : map.getResults()) {
-          auto dim_expr = expr.dyn_cast<AffineDimExpr>();
+          auto dim_expr = dyn_cast<AffineDimExpr>(expr);
           if (!dim_expr || dim_expr.getPosition() <= i) return false;
           i = dim_expr.getPosition();
         }

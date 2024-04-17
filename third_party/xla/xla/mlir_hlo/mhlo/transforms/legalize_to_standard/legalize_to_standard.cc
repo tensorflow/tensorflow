@@ -48,8 +48,8 @@ class CompareIConvert : public OpRewritePattern<mhlo::CompareOp> {
                                 PatternRewriter &rewriter) const override {
     auto lhs = op.getLhs();
     auto rhs = op.getRhs();
-    auto lhsType = lhs.getType().cast<TensorType>();
-    auto rhsType = rhs.getType().cast<TensorType>();
+    auto lhsType = cast<TensorType>(lhs.getType());
+    auto rhsType = cast<TensorType>(rhs.getType());
 
     // Broadcasting not supported by this rewrite.
     if (lhsType.getShape() != rhsType.getShape()) return failure();
@@ -96,14 +96,14 @@ class CompareFConvert : public OpRewritePattern<mhlo::CompareOp> {
                                 PatternRewriter &rewriter) const override {
     auto lhs = op.getLhs();
     auto rhs = op.getRhs();
-    auto lhsType = lhs.getType().cast<TensorType>();
-    auto rhsType = rhs.getType().cast<TensorType>();
+    auto lhsType = cast<TensorType>(lhs.getType());
+    auto rhsType = cast<TensorType>(rhs.getType());
 
     // Broadcasting not supported by this rewrite.
     if (lhsType.getShape() != rhsType.getShape()) return failure();
 
-    if (!lhsType.getElementType().isa<FloatType>() ||
-        !rhsType.getElementType().isa<FloatType>())
+    if (!isa<FloatType>(lhsType.getElementType()) ||
+        !isa<FloatType>(rhsType.getElementType()))
       return failure();
 
     std::optional<arith::CmpFPredicate> comparePredicate = std::nullopt;
@@ -146,7 +146,7 @@ class ConvertIotaOp : public OpRewritePattern<mhlo::IotaOp> {
 
   LogicalResult matchAndRewrite(mhlo::IotaOp op,
                                 PatternRewriter &rewriter) const override {
-    auto outputType = op.getType().cast<ShapedType>();
+    auto outputType = cast<ShapedType>(op.getType());
     auto outputSize = outputType.getNumElements();
     auto dimension = op.getIotaDimension();
     auto maxDimSize = outputType.getDimSize(dimension);
@@ -154,7 +154,7 @@ class ConvertIotaOp : public OpRewritePattern<mhlo::IotaOp> {
     auto elementType = outputType.getElementType();
     int bitwidth;
 
-    auto complexTy = elementType.dyn_cast<ComplexType>();
+    auto complexTy = dyn_cast<ComplexType>(elementType);
     Type intOrFloatTy = elementType;
     if (complexTy) intOrFloatTy = complexTy.getElementType();
 

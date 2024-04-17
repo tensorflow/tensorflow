@@ -97,8 +97,8 @@ TEST(ConvertTypeToTensorTypeTest, ConvertStringTensor) {
   ASSERT_TRUE(value_or_status.ok());
   auto attr = value_or_status.value();
 
-  EXPECT_TRUE(attr.isa<mlir::DenseStringElementsAttr>());
-  auto string_attr = attr.cast<mlir::DenseStringElementsAttr>();
+  EXPECT_TRUE(isa<mlir::DenseStringElementsAttr>(attr));
+  auto string_attr = cast<mlir::DenseStringElementsAttr>(attr);
   auto string_values = string_attr.getRawStringData();
   ASSERT_EQ(string_values.size(), 4);
   EXPECT_EQ(string_values[0], mlir::StringRef("one"));
@@ -191,7 +191,7 @@ TEST_F(ConvertTensorTest, Simple) {
 }
 
 bool IsSplat(mlir::ElementsAttr attr) {
-  return attr.cast<mlir::DenseElementsAttr>().isSplat();
+  return cast<mlir::DenseElementsAttr>(attr).isSplat();
 }
 
 TEST(ConvertTensorProtoTest, SplatTensor) {

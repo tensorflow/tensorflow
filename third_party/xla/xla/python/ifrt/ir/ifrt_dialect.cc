@@ -91,7 +91,7 @@ mlir::LogicalResult IfrtDialect::verifyOperationAttribute(
       return op->emitOpError() << "has `" << kIfrtFunctionAttrName
                                << "` attr but is not a function";
     }
-    if (!attr.getValue().isa<mlir::UnitAttr>()) {
+    if (!isa<mlir::UnitAttr>(attr.getValue())) {
       return op->emitOpError() << "has `" << kIfrtFunctionAttrName
                                << "` attr that is not a UnitAttr";
     }
@@ -107,7 +107,7 @@ mlir::LogicalResult IfrtDialect::verifyRegionArgAttribute(
       return op->emitOpError() << "has `" << kIfrtDonatedArgAttrName
                                << "` arg attr but is not a function";
     }
-    if (!attr.getValue().isa<mlir::UnitAttr>()) {
+    if (!isa<mlir::UnitAttr>(attr.getValue())) {
       return op->emitOpError() << "has `" << kIfrtDonatedArgAttrName
                                << "` arg attr that is not a UnitAttr";
     }

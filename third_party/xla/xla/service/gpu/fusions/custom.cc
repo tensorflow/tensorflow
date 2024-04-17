@@ -559,7 +559,7 @@ absl::StatusOr<FusionEmissionResult> EmitCustomCall(
       if (!backend_config_str.empty()) {
         mlir::Attribute attr = mlir::parseAttribute(
             backend_config_str, ir_emitter_context.mlir_context());
-        if (auto dict = attr.dyn_cast_or_null<mlir::DictionaryAttr>()) {
+        if (auto dict = dyn_cast_or_null<mlir::DictionaryAttr>(attr)) {
           TF_ASSIGN_OR_RETURN(attributes, BuildAttributesMap(dict));
           break;
         }

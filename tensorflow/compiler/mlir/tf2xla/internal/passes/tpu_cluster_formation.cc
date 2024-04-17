@@ -142,7 +142,7 @@ LogicalResult CollectMetadata(Block* block, MetadataMap* metadata_map) {
       return metadata_op.emitError() << kBadReplicateInfoAttrMsg;
 
     auto replication_info_attr_str =
-        replication_info_attr.dyn_cast<StringAttr>();
+        dyn_cast<StringAttr>(replication_info_attr);
     if (!replication_info_attr_str ||
         replication_info_attr_str.getValue().empty())
       return metadata_op.emitError() << kBadReplicateInfoAttrMsg;
@@ -991,17 +991,15 @@ LogicalResult FormClustersInBlock(
     // Determine `num_replicas`.
     auto num_replicas_attr =
         cluster_metadata->getSecond().get(kNumReplicasAttr);
-    if (!num_replicas_attr || !num_replicas_attr.isa<mlir::IntegerAttr>())
+    if (!num_replicas_attr || !isa<mlir::IntegerAttr>(num_replicas_attr))
       return cluster.emitError()
              << "requires '" << kNumReplicasAttr << "' int attribute";
-    int num_replicas = num_replicas_attr.cast<mlir::IntegerAttr>().getInt();
+    int num_replicas = cast<mlir::IntegerAttr>(num_replicas_attr).getInt();
 
     // Determine `num_cores_per_replica`.
     int num_cores_per_replica = 1;
-    auto num_cores_per_replica_attr =
-        cluster_metadata->getSecond()
-            .get(kNumCoresPerReplicaAttr)
-            .dyn_cast_or_null<mlir::IntegerAttr>();
+    auto num_cores_per_replica_attr = dyn_cast_or_null<mlir::IntegerAttr>(
+        cluster_metadata->getSecond().get(kNumCoresPerReplicaAttr));
     if (num_cores_per_replica_attr)
       num_cores_per_replica = num_cores_per_replica_attr.getInt();
     if (failed(ReplicateCluster(cluster, num_replicas, num_cores_per_replica)))

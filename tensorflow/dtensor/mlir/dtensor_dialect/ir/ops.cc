@@ -144,9 +144,9 @@ static void printLayoutAttr(LayoutAttr attr, DialectAsmPrinter &os) {
 void DTensorDialect::printAttribute(Attribute attr,
                                     DialectAsmPrinter &os) const {
   // Cast into correct attribute and print
-  if (auto mesh_attr = attr.dyn_cast<MeshAttr>()) printMeshAttr(mesh_attr, os);
+  if (auto mesh_attr = dyn_cast<MeshAttr>(attr)) printMeshAttr(mesh_attr, os);
 
-  if (auto layout_attr = attr.dyn_cast<LayoutAttr>())
+  if (auto layout_attr = dyn_cast<LayoutAttr>(attr))
     printLayoutAttr(layout_attr, os);
 }
 }  // namespace dtensor

@@ -179,7 +179,7 @@ bool QuantizationDriver::SetConstantResultParams(Operation* op) {
         /*num_bits=*/8, is_signed_,
         /*narrow_range=*/is_weight, legacy_float_scale_);
   }
-  if (const auto quant_type = final_type.dyn_cast_or_null<QuantizedType>();
+  if (const auto quant_type = dyn_cast_or_null<QuantizedType>(final_type);
       quant_type != nullptr) {
     return SetResultParams(op, /*result_index=*/0, quant_type);
   }
@@ -225,7 +225,7 @@ QuantizedType QuantizationDriver::GetBiasParams(
     if (bias_op != nullptr) {
       Type bias_type = bias_op->getResult(0).getType();
       if (bias_type != builder_.getNoneType()) {
-        const int bias_rank = bias_type.dyn_cast<ShapedType>().getRank();
+        const int bias_rank = dyn_cast<ShapedType>(bias_type).getRank();
         adjusted_quant_dim = bias_rank > 1 ? bias_rank - 1 : 0;
       }
     }
@@ -489,12 +489,12 @@ QuantizedType QuantizationDriver::GetQuantParamsForSameScaleConstraint(
 void QuantizationDriver::PreprocessConstantOps() {
   fn_.walk([&](arith::ConstantOp cst) {
     // Non-float tensors are neither weights nor require quantization.
-    const auto type = cst.getType().dyn_cast<ShapedType>();
-    if (!type || !type.getElementType().isa<FloatType>()) return;
+    const auto type = dyn_cast<ShapedType>(cst.getType());
+    if (!type || !isa<FloatType>(type.getElementType())) return;
 
     // Skip if the value is NaN or INF.
     // Otherwise the illegal scale/zp will be calculated.
-    auto float_attr = cst.getValueAttr().dyn_cast<DenseFPElementsAttr>();
+    auto float_attr = dyn_cast<DenseFPElementsAttr>(cst.getValueAttr());
     if (float_attr && (float_attr.getValues<APFloat>().empty() ||
                        !float_attr.getValues<APFloat>()[0].isFinite())) {
       return;
@@ -620,7 +620,7 @@ bool QuantizationDriver::ShouldCheckBiasScale(
   auto affine_op = dyn_cast<AffineQuantizedOpInterface>(op);
   auto bias_op = op->getOperand(bias_index).getDefiningOp<arith::ConstantOp>();
   if (!affine_op || !bias_op || input_indices.size() != 2) return false;
-  if (!bias_op.getValue().isa<DenseFPElementsAttr>()) return false;
+  if (!isa<DenseFPElementsAttr>(bias_op.getValue())) return false;
   filter_index = affine_op.GetAffineOperandIndex();
   if (!op->getOperand(filter_index).getDefiningOp<arith::ConstantOp>()) {
     return false;
@@ -658,12 +658,12 @@ bool QuantizationDriver::SetBiasParamsWithAdjustments(
   QuantState filter_state = GetOperandQuantState(op, filter_index);
   auto bias_op = op->getOperand(bias_index).getDefiningOp<arith::ConstantOp>();
   const double input_scale =
-      input_state.params.cast<UniformQuantizedType>().getScale();
+      cast<UniformQuantizedType>(input_state.params).getScale();
 
-  auto bias_values = bias_op.getValue().cast<DenseFPElementsAttr>();
+  auto bias_values = cast<DenseFPElementsAttr>(bias_op.getValue());
   // Restrict maximum absolute value of bias within INT_MAX / 2, to make some
   // room for accumulator.
-  if (auto bias_quantized_type = params.dyn_cast<UniformQuantizedType>();
+  if (auto bias_quantized_type = dyn_cast<UniformQuantizedType>(params);
       bias_quantized_type != nullptr) {
     double bias_half_range = 0.0f;
     for (auto bias : bias_values.getValues<APFloat>()) {
@@ -691,7 +691,7 @@ bool QuantizationDriver::SetBiasParamsWithAdjustments(
     }
 
     const auto filter_quantized_type =
-        filter_state.params.cast<UniformQuantizedType>();
+        cast<UniformQuantizedType>(filter_state.params);
     changed |= SetOperandParams(
         op, filter_index,
         UniformQuantizedType::getChecked(
@@ -703,10 +703,10 @@ bool QuantizationDriver::SetBiasParamsWithAdjustments(
             filter_quantized_type.getStorageTypeMax()),
         /*override=*/true);
   } else if (auto bias_quantized_type =
-                 params.dyn_cast<quant::UniformQuantizedPerAxisType>();
+                 dyn_cast<quant::UniformQuantizedPerAxisType>(params);
              bias_quantized_type != nullptr) {
     const auto filter_quantized_type =
-        filter_state.params.cast<quant::UniformQuantizedPerAxisType>();
+        cast<quant::UniformQuantizedPerAxisType>(filter_state.params);
     std::vector<double> new_bias_scales = bias_quantized_type.getScales().vec();
     std::vector<double> new_filter_scales =
         filter_quantized_type.getScales().vec();
@@ -822,21 +822,21 @@ bool QuantizationDriver::PropagateParamsAndReturnIfChanged() {
 
       // Use the final state to set all the operands' parameters.
       for (int i = 0; i < op->getNumOperands(); ++i) {
-        if (auto type = op->getOperand(i).getType().dyn_cast<ShapedType>()) {
+        if (auto type = dyn_cast<ShapedType>(op->getOperand(i).getType())) {
           // Without this check, it will accidentally propagate the quantization
           // information by the shared non-float tensors.
-          if (type.getElementType().isa<FloatType>())
+          if (isa<FloatType>(type.getElementType()))
             changed |= SetOperandParams(op, i, params);
         }
       }
 
       // Use the final state to set all the results' parameters.
       for (int i = 0; i < op->getNumResults(); ++i)
-        if (auto type = op->getResult(i).getType().dyn_cast<ShapedType>();
+        if (auto type = dyn_cast<ShapedType>(op->getResult(i).getType());
             type != nullptr) {
           // Without this check, it will accidentally propagate the quantization
           // information by the shared non-float-tensors.
-          if (type.getElementType().isa<FloatType>())
+          if (isa<FloatType>(type.getElementType()))
             changed |= SetResultParams(op, i, params);
         }
     }

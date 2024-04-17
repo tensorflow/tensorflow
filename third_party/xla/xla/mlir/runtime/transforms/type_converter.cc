@@ -47,60 +47,60 @@ using absl::StrFormat;
 static std::unique_ptr<Type> ConvertCanonicalType(
     mlir::Type type, const TypeConverter& convert) {
   // ExecutionContextType -> ExecutionContextOperandType (both in xla::runtime).
-  if (auto ctx = type.dyn_cast<ExecutionContextType>())
+  if (auto ctx = dyn_cast<ExecutionContextType>(type))
     return std::make_unique<ExecutionContextOperandType>();
 
   // OpaqueType -> OpaqueOperandType (both in xla::runtime).
-  if (auto ctx = type.dyn_cast<OpaqueType>())
+  if (auto ctx = dyn_cast<OpaqueType>(type))
     return std::make_unique<OpaqueOperandType>();
 
   // mlir::async::TokenType -> xla::runtime::AsyncTokenType
-  if (type.isa<mlir::async::TokenType>())
+  if (isa<mlir::async::TokenType>(type))
     return std::make_unique<AsyncTokenType>();
 
   // mlir::async::ValueType -> xla::runtime::AsyncValueType
-  if (auto value = type.dyn_cast<mlir::async::ValueType>()) {
+  if (auto value = dyn_cast<mlir::async::ValueType>(type)) {
     if (auto value_type = convert.Convert(value.getValueType());
         value_type.ok())
       return std::make_unique<AsyncValueType>(std::move(*value_type));
   }
 
   // mlir::{IndexType, IntegerType, FloatType} -> xla::runtime::ScalarType
-  if (type.isa<mlir::IndexType, mlir::IntegerType, mlir::FloatType>()) {
+  if (isa<mlir::IndexType, mlir::IntegerType, mlir::FloatType>(type)) {
     if (auto dtype = TypeConverter::ConvertElementType(type); dtype.ok())
       return std::make_unique<ScalarType>(*dtype);
   }
 
   // mlir::RankedTensorType -> xla::runtime::RankedTensorType
-  if (auto tensor = type.dyn_cast<mlir::RankedTensorType>()) {
+  if (auto tensor = dyn_cast<mlir::RankedTensorType>(type)) {
     if (auto dtype = TypeConverter::ConvertElementType(tensor.getElementType());
         dtype.ok())
       return std::make_unique<RankedTensorType>(tensor.getShape(), *dtype);
   }
 
   // mlir::UnrankedTensorType -> xla::runtime::UnrankedTensorType
-  if (auto tensor = type.dyn_cast<mlir::UnrankedTensorType>()) {
+  if (auto tensor = dyn_cast<mlir::UnrankedTensorType>(type)) {
     if (auto dtype = TypeConverter::ConvertElementType(tensor.getElementType());
         dtype.ok())
       return std::make_unique<UnrankedTensorType>(*dtype);
   }
 
   // mlir::MemrefType -> xla::runtime::MemrefType
-  if (auto memref = type.dyn_cast<mlir::MemRefType>()) {
+  if (auto memref = dyn_cast<mlir::MemRefType>(type)) {
     if (auto dtype = TypeConverter::ConvertElementType(memref.getElementType());
         dtype.ok())
       return std::make_unique<MemrefType>(memref.getShape(), *dtype);
   }
 
   // mlir::UnrankedMemrefType -> xla::runtime::UnrankedMemrefType
-  if (auto memref = type.dyn_cast<mlir::UnrankedMemRefType>()) {
+  if (auto memref = dyn_cast<mlir::UnrankedMemRefType>(type)) {
     if (auto dtype = TypeConverter::ConvertElementType(memref.getElementType());
         dtype.ok())
       return std::make_unique<UnrankedMemrefType>(*dtype);
   }
 
   // mlir::TupleType -> xla::runtime::TupleType
-  if (auto tuple = type.dyn_cast<mlir::TupleType>()) {
+  if (auto tuple = dyn_cast<mlir::TupleType>(type)) {
     llvm::SmallVector<std::unique_ptr<Type>> conv_elems;
     llvm::transform(tuple, std::back_inserter(conv_elems),
                     [&convert](mlir::Type type) {
@@ -126,7 +126,7 @@ static std::unique_ptr<Type> ConvertCanonicalType(
   if (type.isF32()) return PrimitiveType::F32;
   if (type.isF64()) return PrimitiveType::F64;
   if (type.isInteger(1)) return PrimitiveType::PRED;
-  if (auto int_type = type.dyn_cast<mlir::IntegerType>()) {
+  if (auto int_type = dyn_cast<mlir::IntegerType>(type)) {
     unsigned int width = int_type.getWidth();
     if (auto primitive_type =
             int_type.isUnsigned()
@@ -136,7 +136,7 @@ static std::unique_ptr<Type> ConvertCanonicalType(
       return primitive_type;
     }
   }
-  if (auto complex_type = type.dyn_cast<mlir::ComplexType>()) {
+  if (auto complex_type = dyn_cast<mlir::ComplexType>(type)) {
     auto element_type = complex_type.getElementType();
     TF_ASSIGN_OR_RETURN(auto element_primitive_type,
                         ConvertElementType(element_type));

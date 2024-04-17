@@ -719,9 +719,9 @@ struct DynamicReshapeToExpandAndCollapseShape final
   using OpRewritePattern::OpRewritePattern;
   LogicalResult matchAndRewrite(mhlo::DynamicReshapeOp op,
                                 PatternRewriter &rewriter) const override {
-    auto operandTy = op.getOperand().getType().dyn_cast<RankedTensorType>();
+    auto operandTy = dyn_cast<RankedTensorType>(op.getOperand().getType());
     if (!operandTy) return failure();
-    auto resultTy = op.getType().dyn_cast<RankedTensorType>();
+    auto resultTy = dyn_cast<RankedTensorType>(op.getType());
     if (!resultTy) return failure();
 
     // Handle degenerate scalar expand case.
@@ -838,7 +838,7 @@ std::optional<Value> simplifyBroadcast(ShapeComponentAnalysis &analysis,
     // 1 dimensions are filtered above, recreate the constant.
     if (!shapeAndRankForDim[i].first) {
       auto one = builder->getIntegerAttr(
-          shapes[0].getType().cast<RankedTensorType>().getElementType(), 1);
+          cast<RankedTensorType>(shapes[0].getType()).getElementType(), 1);
       elements.push_back(builder->create<arith::ConstantOp>(loc, one));
       continue;
     }

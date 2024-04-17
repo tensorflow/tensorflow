@@ -40,7 +40,7 @@ bool IsArrayWithUnspecifiedSharding(mlir::Type type) {
   if (array_type == nullptr) {
     return false;
   }
-  return array_type.getShardingAttr().isa<IfrtUnspecifiedShardingAttr>();
+  return isa<IfrtUnspecifiedShardingAttr>(array_type.getShardingAttr());
 }
 
 class IfrtVerifyShardingSpecifiedPass

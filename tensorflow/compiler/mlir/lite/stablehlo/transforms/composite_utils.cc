@@ -65,8 +65,8 @@ bool GetI32VectorFromDenseI64CompositeAttr(
 
 bool IsSupportedNchwUpsampleBlinear(
     Value input, Value output, const DenseIntElementsAttr& output_size_attr) {
-  auto input_shape = input.getType().cast<ShapedType>().getShape();
-  auto output_shape = output.getType().cast<ShapedType>().getShape();
+  auto input_shape = cast<ShapedType>(input.getType()).getShape();
+  auto output_shape = cast<ShapedType>(output.getType()).getShape();
 
   // Only support 4D tensor.
   if (input_shape.size() != 4 || output_shape.size() != 4) {
@@ -89,7 +89,7 @@ bool IsSupportedNchwUpsampleBlinear(
 
 ShapedType GetNhwcReturnTypeFromNchw(Operation* old_op) {
   auto composite_result_shape =
-      old_op->getResults().front().getType().cast<ShapedType>().getShape();
+      cast<ShapedType>(old_op->getResults().front().getType()).getShape();
   std::array<int64_t, 4> output_shape;
   // NHWC <- NCHW
   output_shape[0] = composite_result_shape[0];
@@ -97,7 +97,7 @@ ShapedType GetNhwcReturnTypeFromNchw(Operation* old_op) {
   output_shape[2] = composite_result_shape[3];
   output_shape[3] = composite_result_shape[1];
 
-  auto input_type = old_op->getOperand(0).getType().cast<ShapedType>();
+  auto input_type = cast<ShapedType>(old_op->getOperand(0).getType());
 
   return RankedTensorType::get(output_shape, input_type.getElementType());
 }

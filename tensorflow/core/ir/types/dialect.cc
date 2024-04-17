@@ -274,7 +274,7 @@ static void RawFullTypeAttrPrint(FullTypeAttr tfattr, AsmPrinter& printer) {
   if (!tfattr.getArgs().empty()) {
     printer << "<";
     llvm::interleaveComma(tfattr.getArgs(), printer, [&](Attribute arg) {
-      if (auto t = arg.dyn_cast<FullTypeAttr>())
+      if (auto t = dyn_cast<FullTypeAttr>(arg))
         RawFullTypeAttrPrint(t, printer);
       else
         printer << "<<INVALID ARG>>";
@@ -320,7 +320,7 @@ Attribute FuncAttr::parse(AsmParser& parser, Type type) {
     parser.emitError(loc) << "expected symbol while parsing tf.func attribute";
     return {};
   }
-  if (auto func_name_str = name.dyn_cast<StringAttr>()) {
+  if (auto func_name_str = dyn_cast<StringAttr>(name)) {
     if (!func_name_str.getValue().empty()) {
       parser.emitError(loc)
           << "expected empty string or symbol while parsing tf.func "
@@ -329,20 +329,20 @@ Attribute FuncAttr::parse(AsmParser& parser, Type type) {
     }
     name = SymbolRefAttr::get(parser.getContext(), "");
   }
-  if (!name.isa<SymbolRefAttr>()) {
+  if (!isa<SymbolRefAttr>(name)) {
     parser.emitError(loc) << "expected symbol while parsing tf.func attribute";
     return {};
   }
   if (failed(parser.parseComma())) return {};
   loc = parser.getCurrentLocation();
-  if (failed(parser.parseAttribute(dict)) || !dict.isa<DictionaryAttr>()) {
+  if (failed(parser.parseAttribute(dict)) || !isa<DictionaryAttr>(dict)) {
     parser.emitError(loc)
         << "expected Dictionary attribute while parsing tf.func attribute";
     return {};
   }
   if (failed(parser.parseGreater())) return {};
-  return FuncAttr::get(parser.getContext(), name.cast<SymbolRefAttr>(),
-                       dict.cast<DictionaryAttr>());
+  return FuncAttr::get(parser.getContext(), cast<SymbolRefAttr>(name),
+                       cast<DictionaryAttr>(dict));
 }
 
 void PlaceholderAttr::print(AsmPrinter& os) const {
@@ -455,7 +455,7 @@ namespace {
 // Returns the shape of the given value if it's ranked; returns std::nullopt
 // otherwise.
 std::optional<ArrayRef<int64_t>> GetShape(Value value) {
-  auto shaped_type = value.getType().cast<ShapedType>();
+  auto shaped_type = cast<ShapedType>(value.getType());
   if (shaped_type.hasRank()) return shaped_type.getShape();
   return std::nullopt;
 }
@@ -516,13 +516,13 @@ bool TensorFlowType::classof(Type type) {
   return llvm::isa<TFTypeDialect>(type.getDialect());
 }
 bool TensorFlowRefType::classof(Type type) {
-  return type.isa<
+  return isa<
 #define HANDLE_TF_TYPE(tftype, enumerant, name)
 #define HANDLE_TF_REF_TYPE(tftype, enumerant, name) tftype##Type,
 #define HANDLE_LAST_TF_TYPE(tftype, enumerant, name) tftype##Type
 // NOLINTNEXTLINE
 #include "tensorflow/core/ir/types/types.def"
-      >();
+      >(type);
 }
 
 TensorFlowType TensorFlowRefType::get(Type type) {
@@ -540,7 +540,7 @@ TensorFlowType TensorFlowRefType::get(Type type) {
     return Float8E4M3FNRefType::get(ctx);
   } else if (type.isFloat8E5M2()) {
     return Float8E5M2RefType::get(ctx);
-  } else if (auto complex_type = type.dyn_cast<ComplexType>()) {
+  } else if (auto complex_type = dyn_cast<ComplexType>(type)) {
     Type etype = complex_type.getElementType();
     if (etype.isF32()) {
       return Complex64RefType::get(ctx);
@@ -548,7 +548,7 @@ TensorFlowType TensorFlowRefType::get(Type type) {
       return Complex128RefType::get(ctx);
     }
     llvm_unreachable("unexpected complex type");
-  } else if (auto itype = type.dyn_cast<IntegerType>()) {
+  } else if (auto itype = dyn_cast<IntegerType>(type)) {
     switch (itype.getWidth()) {
       case 1:
         return BoolRefType::get(ctx);
@@ -583,30 +583,33 @@ TensorFlowType TensorFlowRefType::get(Type type) {
 
 Type TensorFlowRefType::RemoveRef() {
   MLIRContext* ctx = getContext();
-  if (isa<HalfRefType>()) return FloatType::getF16(ctx);
-  if (isa<FloatRefType>()) return FloatType::getF32(ctx);
-  if (isa<DoubleRefType>()) return FloatType::getF64(ctx);
-  if (isa<Bfloat16RefType>()) return FloatType::getBF16(ctx);
-  if (isa<Float8E4M3FNType>()) return FloatType::getFloat8E4M3FN(ctx);
-  if (isa<Float8E5M2Type>()) return FloatType::getFloat8E5M2(ctx);
-  if (isa<BoolRefType>()) return IntegerType::get(ctx, 1);
-  if (isa<Int4RefType>()) return IntegerType::get(ctx, 4, IntegerType::Signed);
-  if (isa<Int8RefType>()) return IntegerType::get(ctx, 8);
-  if (isa<Int16RefType>()) return IntegerType::get(ctx, 16);
-  if (isa<Int32RefType>()) return IntegerType::get(ctx, 32);
-  if (isa<Int64RefType>()) return IntegerType::get(ctx, 64);
-  if (isa<Uint4RefType>())
+  if (isa<HalfRefType>(*this)) return FloatType::getF16(ctx);
+  if (isa<FloatRefType>(*this)) return FloatType::getF32(ctx);
+  if (isa<DoubleRefType>(*this)) return FloatType::getF64(ctx);
+  if (isa<Bfloat16RefType>(*this)) return FloatType::getBF16(ctx);
+  if (isa<Float8E4M3FNType>(*this)) return FloatType::getFloat8E4M3FN(ctx);
+  if (isa<Float8E5M2Type>(*this)) return FloatType::getFloat8E5M2(ctx);
+  if (isa<BoolRefType>(*this)) return IntegerType::get(ctx, 1);
+  if (isa<Int4RefType>(*this))
+    return IntegerType::get(ctx, 4, IntegerType::Signed);
+  if (isa<Int8RefType>(*this)) return IntegerType::get(ctx, 8);
+  if (isa<Int16RefType>(*this)) return IntegerType::get(ctx, 16);
+  if (isa<Int32RefType>(*this)) return IntegerType::get(ctx, 32);
+  if (isa<Int64RefType>(*this)) return IntegerType::get(ctx, 64);
+  if (isa<Uint4RefType>(*this))
     return IntegerType::get(ctx, 4, IntegerType::Unsigned);
-  if (isa<Uint8RefType>())
+  if (isa<Uint8RefType>(*this))
     return IntegerType::get(ctx, 8, IntegerType::Unsigned);
-  if (isa<Uint16RefType>())
+  if (isa<Uint16RefType>(*this))
     return IntegerType::get(ctx, 16, IntegerType::Unsigned);
-  if (isa<Uint32RefType>())
+  if (isa<Uint32RefType>(*this))
     return IntegerType::get(ctx, 32, IntegerType::Unsigned);
-  if (isa<Uint64RefType>())
+  if (isa<Uint64RefType>(*this))
     return IntegerType::get(ctx, 64, IntegerType::Unsigned);
-  if (isa<Complex64RefType>()) return ComplexType::get(FloatType::getF32(ctx));
-  if (isa<Complex128RefType>()) return ComplexType::get(FloatType::getF64(ctx));
+  if (isa<Complex64RefType>(*this))
+    return ComplexType::get(FloatType::getF32(ctx));
+  if (isa<Complex128RefType>(*this))
+    return ComplexType::get(FloatType::getF64(ctx));
 #define HANDLE_TF_TYPE(tftype, enumerant, name) \
   if (isa<tftype##RefType>()) return tftype##Type::get(ctx);
 
@@ -617,32 +620,31 @@ Type TensorFlowRefType::RemoveRef() {
 }
 
 bool TensorFlowTypeWithSubtype::classof(Type type) {
-  return type.isa<ResourceType, VariantType>();
+  return isa<ResourceType, VariantType>(type);
 }
 
 Type TensorFlowTypeWithSubtype::RemoveSubtypes() {
   MLIRContext* ctx = getContext();
-  if (isa<VariantType>()) return VariantType::get(ctx);
-  if (isa<ResourceType>()) return ResourceType::get(ctx);
+  if (isa<VariantType>(*this)) return VariantType::get(ctx);
+  if (isa<ResourceType>(*this)) return ResourceType::get(ctx);
   llvm_unreachable("unexpected tensorflow type with subtypes kind");
 }
 
 TensorFlowTypeWithSubtype TensorFlowTypeWithSubtype::clone(
     ArrayRef<TensorType> new_subtypes) {
   MLIRContext* ctx = getContext();
-  if (isa<VariantType>())
-    return VariantType::get(new_subtypes, ctx)
-        .cast<TensorFlowTypeWithSubtype>();
-  if (isa<ResourceType>())
-    return ResourceType::get(new_subtypes, ctx)
-        .cast<TensorFlowTypeWithSubtype>();
+  if (isa<VariantType>(*this))
+    return cast<TensorFlowTypeWithSubtype>(VariantType::get(new_subtypes, ctx));
+  if (isa<ResourceType>(*this))
+    return cast<TensorFlowTypeWithSubtype>(
+        ResourceType::get(new_subtypes, ctx));
   llvm_unreachable("unexpected tensorflow type with subtypes kind");
 }
 
 ArrayRef<TensorType> TensorFlowTypeWithSubtype::GetSubtypes() {
-  if (auto variant_type = dyn_cast<VariantType>())
+  if (auto variant_type = dyn_cast<VariantType>(*this))
     return variant_type.getSubtypes();
-  if (auto resource_type = dyn_cast<ResourceType>())
+  if (auto resource_type = dyn_cast<ResourceType>(*this))
     return resource_type.getSubtypes();
   llvm_unreachable("unexpected tensorflow type with subtypes kind");
 }
@@ -659,8 +661,8 @@ bool BroadcastCompatible(TypeRange lhs, TypeRange rhs) {
     auto rhs_type = DropRefType(std::get<1>(types));
 
     // This should be true for all TF ops:
-    auto lhs_tt = lhs_type.dyn_cast<TensorType>();
-    auto rhs_tt = rhs_type.dyn_cast<TensorType>();
+    auto lhs_tt = dyn_cast<TensorType>(lhs_type);
+    auto rhs_tt = dyn_cast<TensorType>(rhs_type);
     if (!lhs_tt || !rhs_tt) {
       if (lhs_type != rhs_type) return false;
       continue;
@@ -673,8 +675,8 @@ bool BroadcastCompatible(TypeRange lhs, TypeRange rhs) {
     auto rhs_et = rhs_tt.getElementType();
     if (lhs_et != rhs_et) {
       // If either does not have subtypes, then the element types don't match.
-      auto lhs_wst = lhs_et.dyn_cast<TensorFlowTypeWithSubtype>();
-      auto rhs_wst = rhs_et.dyn_cast<TensorFlowTypeWithSubtype>();
+      auto lhs_wst = dyn_cast<TensorFlowTypeWithSubtype>(lhs_et);
+      auto rhs_wst = dyn_cast<TensorFlowTypeWithSubtype>(rhs_et);
       if (!lhs_wst || !rhs_wst) return false;
 
       // Consider the subtype of variant types.
@@ -689,8 +691,8 @@ bool BroadcastCompatible(TypeRange lhs, TypeRange rhs) {
       }
     }
 
-    auto lhs_rt = lhs_type.dyn_cast<RankedTensorType>();
-    auto rhs_rt = rhs_type.dyn_cast<RankedTensorType>();
+    auto lhs_rt = dyn_cast<RankedTensorType>(lhs_type);
+    auto rhs_rt = dyn_cast<RankedTensorType>(rhs_type);
     if (!lhs_rt || !rhs_rt) return true;
     SmallVector<int64_t, 4> shape;
     return OpTrait::util::getBroadcastedShape(lhs_rt.getShape(),
@@ -721,8 +723,8 @@ Type GetCastCompatibleType(Type a, Type b, bool may_ignore_ref_type_a) {
   // Fast path if everything is equal.
   if (a == b) return b;
 
-  auto a_tt = a.dyn_cast<TensorType>();
-  auto b_tt = b.dyn_cast<TensorType>();
+  auto a_tt = dyn_cast<TensorType>(a);
+  auto b_tt = dyn_cast<TensorType>(b);
 
   // If only one of a or b is a tensor type, they are incompatible.
   if (static_cast<bool>(a_tt) ^ static_cast<bool>(b_tt)) return nullptr;
@@ -732,7 +734,7 @@ Type GetCastCompatibleType(Type a, Type b, bool may_ignore_ref_type_a) {
   if (!a_tt && !b_tt) {
     // Remove ref types.
     if (may_ignore_ref_type_a) {
-      if (auto ref_type = a.dyn_cast<TensorFlowRefType>()) {
+      if (auto ref_type = dyn_cast<TensorFlowRefType>(a)) {
         a = ref_type.RemoveRef();
         if (a == b) return a;
       }
@@ -741,8 +743,8 @@ Type GetCastCompatibleType(Type a, Type b, bool may_ignore_ref_type_a) {
 
     // If either is not a type that contain subtypes then the types are not cast
     // compatible.
-    auto a_wst = a.dyn_cast<TensorFlowTypeWithSubtype>();
-    auto b_wst = b.dyn_cast<TensorFlowTypeWithSubtype>();
+    auto a_wst = dyn_cast<TensorFlowTypeWithSubtype>(a);
+    auto b_wst = dyn_cast<TensorFlowTypeWithSubtype>(b);
     if (!a_wst || !b_wst) return nullptr;
 
     // For Variant types we are more permissive right now and accept all pairs
@@ -752,8 +754,8 @@ Type GetCastCompatibleType(Type a, Type b, bool may_ignore_ref_type_a) {
     // one, so we should only assign it one when we know the subtype. Then we
     // can be more constrained and check subtypes for cast compatibility as
     // well.
-    if (a.isa<VariantType>()) return a;
-    if (b.isa<VariantType>()) return b;
+    if (isa<VariantType>(a)) return a;
+    if (isa<VariantType>(b)) return b;
 
     // For Resource types, we recursively check the subtypes for cast
     // compatibility, if possible. Otherwise treat them as compatible.
@@ -768,7 +770,7 @@ Type GetCastCompatibleType(Type a, Type b, bool may_ignore_ref_type_a) {
           GetCastCompatibleType(std::get<0>(subtypes), std::get<1>(subtypes),
                                 /*may_ignore_ref_type_a=*/false);
       if (!refined_st) return nullptr;
-      refined_subtypes.push_back(refined_st.cast<TensorType>());
+      refined_subtypes.push_back(cast<TensorType>(refined_st));
     }
 
     return ResourceType::get(refined_subtypes, a.getContext());
@@ -833,13 +835,13 @@ static Type GetDefaultTypeOf(TensorFlowRefType type) {
 template <typename ComposedType>
 Type DropTypeHelper(Type ty) {
   Type element_ty = getElementTypeOrSelf(ty);
-  auto composed_type = element_ty.dyn_cast<ComposedType>();
+  auto composed_type = dyn_cast<ComposedType>(element_ty);
   if (!composed_type) return ty;
 
   Type default_ty = GetDefaultTypeOf(composed_type);
-  if (auto ranked_ty = ty.dyn_cast<RankedTensorType>()) {
+  if (auto ranked_ty = dyn_cast<RankedTensorType>(ty)) {
     return RankedTensorType::get(ranked_ty.getShape(), default_ty);
-  } else if (ty.dyn_cast<UnrankedTensorType>()) {
+  } else if (dyn_cast<UnrankedTensorType>(ty)) {
     return UnrankedTensorType::get(default_ty);
   } else {
     return default_ty;
@@ -867,7 +869,7 @@ Attribute TensorProtoAttr::parse(AsmParser& parser, Type type) {
     parser.emitError(parser.getNameLoc(), "Hex string doesn't start with `0x`");
     return nullptr;
   }
-  auto shapedType = type.dyn_cast<ShapedType>();
+  auto shapedType = dyn_cast<ShapedType>(type);
   if (!shapedType) return nullptr;
 
   std::string bytes_data = absl::HexStringToBytes(data.substr(2));

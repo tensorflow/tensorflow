@@ -237,7 +237,7 @@ void CreateAndReturnQuantizedBiasPattern(
   if (succeeded(bcast_op)) {
     Value bcast_op_result = (*bcast_op)->getResult(0);
     auto bcast_op_result_type =
-        bcast_op_result.getType().cast<RankedTensorType>();
+        cast<RankedTensorType>(bcast_op_result.getType());
     const ArrayRef<int64_t> bcast_shape = bcast_op_result_type.getShape();
     const TensorType new_bcast_op_result_type = bcast_op_result_type.cloneWith(
         bcast_shape, accumulation_quantized_element_type);
@@ -245,7 +245,7 @@ void CreateAndReturnQuantizedBiasPattern(
   }
 
   const auto add_op_result_type =
-      add_op_result.getType().cast<RankedTensorType>();
+      cast<RankedTensorType>(add_op_result.getType());
   const ArrayRef<int64_t> add_op_shape = add_op_result_type.getShape();
   // For quantized bias add case, lhs, rhs, and result have the same types.
   const TensorType new_add_op_result_type = add_op_result_type.cloneWith(
@@ -318,7 +318,7 @@ void RewriteGemmStyleOp(func::FuncOp entry_func_op, PatternRewriter& rewriter,
 
   Value gemm_style_op_result = gemm_style_op->getResult(0);
   const auto gemm_style_op_result_type =
-      gemm_style_op_result.getType().cast<RankedTensorType>();
+      cast<RankedTensorType>(gemm_style_op_result.getType());
   const ArrayRef<int64_t> gemm_style_shape =
       gemm_style_op_result_type.getShape();
 
@@ -326,12 +326,12 @@ void RewriteGemmStyleOp(func::FuncOp entry_func_op, PatternRewriter& rewriter,
   TensorType new_gemm_style_op_result_type;
 
   const double input_scale =
-      getElementTypeOrSelf(input_type).cast<UniformQuantizedType>().getScale();
+      cast<UniformQuantizedType>(getElementTypeOrSelf(input_type)).getScale();
 
   if (enable_per_channel_quantized_weight) {
-    ArrayRef<double> filter_scales = getElementTypeOrSelf(filter_type)
-                                         .cast<UniformQuantizedPerAxisType>()
-                                         .getScales();
+    ArrayRef<double> filter_scales =
+        cast<UniformQuantizedPerAxisType>(getElementTypeOrSelf(filter_type))
+            .getScales();
     std::vector<double> result_scales;
     result_scales.reserve(filter_scales.size());
 
@@ -340,8 +340,7 @@ void RewriteGemmStyleOp(func::FuncOp entry_func_op, PatternRewriter& rewriter,
     }
 
     const ArrayRef<int64_t> zero_points =
-        getElementTypeOrSelf(filter_type)
-            .cast<UniformQuantizedPerAxisType>()
+        cast<UniformQuantizedPerAxisType>(getElementTypeOrSelf(filter_type))
             .getZeroPoints();
 
     // `stablehlo.convolution` assumes the following format:
@@ -351,7 +350,7 @@ void RewriteGemmStyleOp(func::FuncOp entry_func_op, PatternRewriter& rewriter,
     // `stablehlo.dot_general` legalizable to `tfl.fully_connected` has a
     // filter rank of 2 with the last dimension as the channel dimension.
     const int64_t quantization_dimension =
-        filter_type.cast<ShapedType>().getShape().size() - 1;
+        cast<ShapedType>(filter_type).getShape().size() - 1;
     accumulation_quantized_element_type =
         CreateI32F32UniformQuantizedPerAxisType(
             gemm_style_op->getLoc(), *rewriter.getContext(), result_scales,
@@ -360,9 +359,9 @@ void RewriteGemmStyleOp(func::FuncOp entry_func_op, PatternRewriter& rewriter,
     new_gemm_style_op_result_type = gemm_style_op_result_type.cloneWith(
         gemm_style_shape, accumulation_quantized_element_type);
   } else {
-    const double filter_scale = getElementTypeOrSelf(filter_type)
-                                    .cast<UniformQuantizedType>()
-                                    .getScale();
+    const double filter_scale =
+        cast<UniformQuantizedType>(getElementTypeOrSelf(filter_type))
+            .getScale();
     const double result_scale = input_scale * filter_scale;
 
     accumulation_quantized_element_type = CreateI32F32UniformQuantizedType(
@@ -526,13 +525,13 @@ class QuantizeSingularOpPattern : public EntryFuncBodyQuantizationPattern {
 
       // Get the quantized tensor manipulation op's output type and update.
       const auto singular_op_result_type =
-          singular_op_result.getType().cast<RankedTensorType>();
+          cast<RankedTensorType>(singular_op_result.getType());
       const ArrayRef<int64_t> singular_op_shape =
           singular_op_result_type.getShape();
       const TensorType new_singular_op_result_type =
           singular_op_result_type.cloneWith(
               singular_op_shape,
-              getElementTypeOrSelf(operand_type).cast<UniformQuantizedType>());
+              cast<UniformQuantizedType>(getElementTypeOrSelf(operand_type)));
       singular_op_result.setType(new_singular_op_result_type);
 
       // Create requantization op and return.
@@ -712,13 +711,13 @@ class QuantizeOpWithRegionPattern
       inputs.reserve(op_with_region->getNumOperands());
       for (Value operand : op_with_region->getOperands()) {
         const Type operand_type = operand.getType();
-        if (operand_type.isa<NoneType>()) {
+        if (isa<NoneType>(operand_type)) {
           inputs.push_back(operand);
           continue;
         }
 
         const Type element_type =
-            operand.getType().cast<TensorType>().getElementType();
+            cast<TensorType>(operand.getType()).getElementType();
         if (auto dq_op = dyn_cast_or_null<quantfork::DequantizeCastOp>(
                 operand.getDefiningOp())) {
           inputs.push_back(dq_op.getOperand());
@@ -738,13 +737,13 @@ class QuantizeOpWithRegionPattern
       output_types.reserve(op_with_region->getNumResults());
       for (const Value result : op_with_region->getResults()) {
         const Type result_type = result.getType();
-        if (result_type.isa<NoneType>()) {
+        if (isa<NoneType>(result_type)) {
           outputs_replaced.push_back(result);
           output_types.push_back(result_type);
           continue;
         }
         const Type result_element_type =
-            result.getType().cast<TensorType>().getElementType();
+            cast<TensorType>(result.getType()).getElementType();
         // If the user is the QuantizeOp, it must be the only user.
         if (result.hasOneUse() &&
             isa<quantfork::QuantizeCastOp>(*result.user_begin())) {
@@ -777,8 +776,7 @@ class QuantizeOpWithRegionPattern
       }
 
       const Type operand_type = quantized_op->getOperandTypes()[0];
-      const Type element_type =
-          operand_type.cast<TensorType>().getElementType();
+      const Type element_type = cast<TensorType>(operand_type).getElementType();
       for (Region& region : quantized_op->getRegions()) {
         ReplaceTypesInNestedRegion(region, element_type);
       }
@@ -835,7 +833,7 @@ class QuantizeOpWithRegionPattern
   // Replaces element type of the given tensor type while preserving shape of
   // the given type. If the given type is not tensor type, just return itself.
   Type ReplaceElementType(const Type type, const Type element_type) const {
-    if (TensorType tensor_type = type.dyn_cast<TensorType>()) {
+    if (TensorType tensor_type = dyn_cast<TensorType>(type)) {
       return tensor_type.clone(element_type);
     }
     return type;
@@ -853,23 +851,23 @@ bool IsQuantizedCompositeFunction(func::CallOp call_op) {
 
   bool has_quantized_types = false;
   for (Value operand : call_op.getOperands()) {
-    if (const TensorType type = operand.getType().dyn_cast<TensorType>()) {
-      if (type.getElementType().isa<FloatType>()) {
+    if (const TensorType type = dyn_cast<TensorType>(operand.getType())) {
+      if (isa<FloatType>(type.getElementType())) {
         return false;
       }
-      if (type.getElementType()
-              .isa<UniformQuantizedType, UniformQuantizedPerAxisType>()) {
+      if (isa<UniformQuantizedType, UniformQuantizedPerAxisType>(
+              type.getElementType())) {
         has_quantized_types = true;
       }
     }
   }
   for (const Value result : call_op.getResults()) {
-    if (const auto type = result.getType().dyn_cast<TensorType>()) {
-      if (type.getElementType().isa<FloatType>()) {
+    if (const auto type = dyn_cast<TensorType>(result.getType())) {
+      if (isa<FloatType>(type.getElementType())) {
         return false;
       }
-      if (type.getElementType()
-              .isa<UniformQuantizedType, UniformQuantizedPerAxisType>()) {
+      if (isa<UniformQuantizedType, UniformQuantizedPerAxisType>(
+              type.getElementType())) {
         has_quantized_types = true;
       }
     }
@@ -898,7 +896,7 @@ bool IsConnectedWithQuantizedCompsiteFunction(Operation* same_scale_op) {
             ->has_same_scale_requirement) {
       for (const OpResult result : preceding_op->getResults()) {
         const Type element_type = getElementTypeOrSelf(result.getType());
-        if (element_type.isa<UniformQuantizedType>()) {
+        if (isa<UniformQuantizedType>(element_type)) {
           return true;
         }
       }
@@ -926,7 +924,7 @@ bool IsConnectedWithQuantizedCompsiteFunction(Operation* same_scale_op) {
               ->has_same_scale_requirement) {
         for (Value operand : following_op->getOperands()) {
           const Type element_type = getElementTypeOrSelf(operand.getType());
-          if (element_type.isa<UniformQuantizedType>()) {
+          if (isa<UniformQuantizedType>(element_type)) {
             return true;
           }
         }

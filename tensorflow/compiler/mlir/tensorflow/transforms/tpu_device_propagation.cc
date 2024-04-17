@@ -94,8 +94,8 @@ void PopulateDeviceForOpResults(
     op_to_update = op_to_update->getParentOp();
 
   for (Value result : op_to_update->getResults()) {
-    if (result.getType().isa<tf_executor::TokenType>()) continue;
-    if (result.getType().isa<tf_executor::ControlType>()) break;
+    if (isa<tf_executor::TokenType>(result.getType())) continue;
+    if (isa<tf_executor::ControlType>(result.getType())) break;
 
     value_to_device.insert({result, device});
   }
@@ -118,8 +118,8 @@ llvm::StringRef FindDeviceFromOperands(
   llvm::StringRef new_device;
   const bool is_switch = llvm::isa<tf_executor::SwitchOp>(op);
   for (Value operand : op.getOperands()) {
-    if (operand.getType().isa<tf_executor::TokenType>()) continue;
-    if (operand.getType().isa<tf_executor::ControlType>()) break;
+    if (isa<tf_executor::TokenType>(operand.getType())) continue;
+    if (isa<tf_executor::ControlType>(operand.getType())) break;
 
     if (is_switch &&
         llvm::isa_and_nonnull<tf_executor::LoopCondOp>(operand.getDefiningOp()))
@@ -230,7 +230,7 @@ void PropagateDevicesToResults(
   mlir::Builder builder(func.getOperation());
 
   for (OpOperand& operand : fetch.getOperation()->getOpOperands()) {
-    if (operand.get().getType().isa<tf_executor::ControlType>()) break;
+    if (isa<tf_executor::ControlType>(operand.get().getType())) break;
     auto it = value_to_device.find(operand.get());
     if (it != value_to_device.end()) {
       auto device_attr = func.getResultAttrOfType<StringAttr>(

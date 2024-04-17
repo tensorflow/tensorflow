@@ -95,7 +95,7 @@ struct RewriteShuffleReduce : mlir::OpRewritePattern<ShuffleReduceOp> {
   mlir::LogicalResult matchAndRewrite(
       ShuffleReduceOp op, mlir::PatternRewriter& rewriter) const override {
     int max_distance =
-        op->getAttr("max_distance").cast<mlir::IntegerAttr>().getInt();
+        cast<mlir::IntegerAttr>(op->getAttr("max_distance")).getInt();
     // TODO(jreiffers): Do this in a verifier.
     if (max_distance & (max_distance - 1) || max_distance >= WarpSize()) {
       return op->emitOpError("max_distance must be a power of 2 < WarpSize()");

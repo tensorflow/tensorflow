@@ -238,7 +238,7 @@ StatusOr<mlir::Operation*> ResourceSPMDExpander::ExpandOp(mlir::Operation* op) {
       TF_RETURN_WITH_CONTEXT(errors::Internal(
           "if both resource and value layout are set they must be equal"));
 
-    auto block_arg = input_resource_value.dyn_cast<mlir::BlockArgument>();
+    auto block_arg = dyn_cast<mlir::BlockArgument>(input_resource_value);
     auto enclosing_device_cluster =
         op->getParentOfType<mlir::tf_device::ClusterOp>();
 

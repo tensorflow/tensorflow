@@ -76,9 +76,8 @@ Value transposeReshape(Value arg, Location loc,
                             rewriter.getIntegerType(64));
 
   auto transposePermutationAttr =
-      DenseIntElementsAttr::get(transposePermutationType,
-                                llvm::ArrayRef(transposePermutation))
-          .cast<DenseIntElementsAttr>();
+      cast<DenseIntElementsAttr>(DenseIntElementsAttr::get(
+          transposePermutationType, llvm::ArrayRef(transposePermutation)));
 
   // Compute the resulting shape.
   llvm::SmallVector<int64_t, 5> transposedShape;
@@ -144,7 +143,7 @@ Value transposeReshape(Value arg, Location loc,
 
 Value processDotArg(Value arg, Location loc, ArrayRef<int64_t> contractDimsAttr,
                     bool outerDimsFirst, PatternRewriter &rewriter) {
-  auto shape = arg.getType().cast<ShapedType>().getShape();
+  auto shape = cast<ShapedType>(arg.getType()).getShape();
 
   llvm::SmallVector<bool, 5> isOuterDim;
   isOuterDim.resize(shape.size(), true);
@@ -197,7 +196,7 @@ struct GeneralDotConvert : public OpRewritePattern<DotGeneralOp> {
     auto opPrecisionConfig = op.getPrecisionConfig();
     if (opPrecisionConfig.has_value()) precisionConfig = *opPrecisionConfig;
 
-    auto resultTy = op.getType().cast<ShapedType>();
+    auto resultTy = cast<ShapedType>(op.getType());
 
     auto lhsContractingDims = dotNumbers.getLhsContractingDimensions();
     auto rhsContractingDims = dotNumbers.getRhsContractingDimensions();
@@ -205,8 +204,8 @@ struct GeneralDotConvert : public OpRewritePattern<DotGeneralOp> {
     auto lhs = op.getLhs();
     auto rhs = op.getRhs();
 
-    RankedTensorType lhsTy = lhs.getType().dyn_cast<RankedTensorType>();
-    RankedTensorType rhsTy = rhs.getType().dyn_cast<RankedTensorType>();
+    RankedTensorType lhsTy = dyn_cast<RankedTensorType>(lhs.getType());
+    RankedTensorType rhsTy = dyn_cast<RankedTensorType>(rhs.getType());
     if (!lhsTy || !rhsTy) return failure();
 
     // The MHLO dot operator directly supports a vector dot product
@@ -264,8 +263,8 @@ struct GeneralDotConvert : public OpRewritePattern<DotGeneralOp> {
         rhs, loc, rhsContractingDims, /*outerDimsFirst=*/false, rewriter));
 
     // Accept only static shaped types.
-    auto lhsShapeType = lhs.getType().dyn_cast_or_null<ShapedType>();
-    auto rhsShapeType = rhs.getType().dyn_cast_or_null<ShapedType>();
+    auto lhsShapeType = dyn_cast_or_null<ShapedType>(lhs.getType());
+    auto rhsShapeType = dyn_cast_or_null<ShapedType>(rhs.getType());
     if (!lhsShapeType || !rhsShapeType) return failure();
 
     // Generate new dot operator on expanded types.
@@ -293,7 +292,7 @@ struct GeneralDotConvert : public OpRewritePattern<DotGeneralOp> {
 
     auto getDynamicDims = [&](Value arg,
                               llvm::ArrayRef<int64_t> contractingDims) {
-      RankedTensorType ty = arg.getType().cast<RankedTensorType>();
+      RankedTensorType ty = cast<RankedTensorType>(arg.getType());
       int index = 0;
       for (auto contractingDim : contractingDims) {
         for (; index < contractingDim; index++) {

@@ -36,7 +36,7 @@ RankedTensorType GetRankedTensorTypeForOperand(Value operand);
 // given `rank`.
 inline bool IsOfRankedFloatTensorType(RankedTensorType type, int rank) {
   return type && type.getRank() == rank &&
-         type.getElementType().isa<FloatType>();
+         isa<FloatType>(type.getElementType());
 }
 
 // Returns true if the given `value` has the specified rank or has unranked

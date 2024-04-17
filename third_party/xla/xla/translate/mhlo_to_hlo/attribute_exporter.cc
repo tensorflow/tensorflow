@@ -61,7 +61,7 @@ ConvolutionDimensionNumbers ConvertConvDimensionNumbers(
 absl::StatusOr<std::vector<ReplicaGroup>> ConvertReplicaGroups(
     mlir::DenseIntElementsAttr input) {
   mlir::RankedTensorType type =
-      input.getType().dyn_cast<mlir::RankedTensorType>();
+      dyn_cast<mlir::RankedTensorType>(input.getType());
   if (!type || type.getRank() != 2 ||
       !type.getElementType().isInteger(/*width=*/64)) {
     return Internal("Execpted replica group to be a rank 2 tensor of i64");
@@ -90,7 +90,7 @@ absl::StatusOr<std::vector<std::pair<int64_t, int64_t>>> ConvertNx2Attribute(
   if (!optional_attr.has_value())
     return std::vector<std::pair<int64_t, int64_t>>{};
   mlir::DenseIntElementsAttr attr = *optional_attr;
-  auto type = attr.getType().dyn_cast<mlir::RankedTensorType>();
+  auto type = dyn_cast<mlir::RankedTensorType>(attr.getType());
   if (!type || type.getRank() != 2 || type.getShape()[1] != 2)
     return Internal("expected Nx2 attribute to be a tensor of shape Nx2");
   auto it = attr.getValues<int64_t>().begin();
@@ -184,7 +184,7 @@ absl::StatusOr<
 ConvertOutputOperandAliasing(mlir::ArrayAttr aliasArrayAttr) {
   std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>> aliasInfo;
   for (auto attr : aliasArrayAttr.getValue()) {
-    auto alias = attr.cast<mlir::mhlo::OutputOperandAliasAttr>();
+    auto alias = cast<mlir::mhlo::OutputOperandAliasAttr>(attr);
     ShapeIndex outputShapeIndex(alias.getOutputTupleIndices());
     ShapeIndex operandShapeIndex(alias.getOperandTupleIndices());
     aliasInfo.push_back(std::make_pair(
@@ -255,7 +255,7 @@ absl::StatusOr<std::vector<int64_t>> ConvertMlirArrayAttrToInt64Array(
   int rank = array.size();
   std::vector<int64_t> converted_array(rank);
   for (int i = 0; i < rank; i++) {
-    mlir::IntegerAttr attr = array[i].dyn_cast<mlir::IntegerAttr>();
+    mlir::IntegerAttr attr = dyn_cast<mlir::IntegerAttr>(array[i]);
     if (!attr) {
       return Internal("Type Error: Expected layout integer attribute");
     }

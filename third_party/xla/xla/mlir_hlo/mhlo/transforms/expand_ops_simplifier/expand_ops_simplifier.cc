@@ -162,7 +162,7 @@ struct SelectAndScatterExpanderPattern
 
     llvm::SmallVector<int64_t> concatenatedIotasDims;
     concatenatedIotasDims.reserve(
-        iotaIndices.front().getType().cast<ShapedType>().getRank());
+        cast<ShapedType>(iotaIndices.front().getType()).getRank());
     concatenatedIotasDims.insert(concatenatedIotasDims.end(),
                                  broadcastedIotaDims.begin(),
                                  broadcastedIotaDims.end());
@@ -189,8 +189,7 @@ struct SelectAndScatterExpanderPattern
     llvm::SmallVector<Type> scatterIns;
     llvm::SmallVector<Location> scatterLocs;
     scatterIns.push_back(RankedTensorType::get(
-        {},
-        broadcastedInitValue.getType().cast<ShapedType>().getElementType()));
+        {}, cast<ShapedType>(broadcastedInitValue.getType()).getElementType()));
     scatterIns.push_back(
         RankedTensorType::get({}, source.getType().getElementType()));
     scatterLocs.push_back(broadcastedInitValue.getLoc());

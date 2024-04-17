@@ -443,7 +443,7 @@ void InsertDummyIslandForFetch(FetchOp fetch) {
   control_fetches.reserve(data_fetches.capacity());
 
   for (auto value : fetch.getFetches()) {
-    if (value.getType().isa<ControlType>()) {
+    if (isa<ControlType>(value.getType())) {
       control_fetches.push_back(value);
     } else {
       data_fetches.push_back(value);

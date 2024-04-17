@@ -67,7 +67,7 @@ class LegalizeVariablesPass
     // If TFLite variable legalization is not allowed, then we skip this pass.
     if (auto legalize_tfl_variables_attr =
             module->getAttr(kLegalizeTflVariables)) {
-      if (!legalize_tfl_variables_attr.cast<BoolAttr>().getValue()) return;
+      if (!cast<BoolAttr>(legalize_tfl_variables_attr).getValue()) return;
     }
 
     RewritePatternSet patterns(&getContext());

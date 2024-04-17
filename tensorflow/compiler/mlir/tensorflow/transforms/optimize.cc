@@ -57,13 +57,13 @@ class SimplifyBroadcastReshape : public OpRewritePattern<BroadcastToOp> {
     auto reshape_op = llvm::dyn_cast_or_null<ReshapeOp>(user);
     if (!reshape_op) return failure();
 
-    auto reshape_type = reshape_op.getOutput().getType().cast<ShapedType>();
+    auto reshape_type = cast<ShapedType>(reshape_op.getOutput().getType());
 
     if (!reshape_type.hasStaticShape()) return failure();
     ArrayRef<int64_t> reshape_shape = reshape_type.getShape();
 
-    auto input_type = op.getInput().getType().cast<ShapedType>();
-    auto output_type = op.getOutput().getType().cast<ShapedType>();
+    auto input_type = cast<ShapedType>(op.getInput().getType());
+    auto output_type = cast<ShapedType>(op.getOutput().getType());
 
     if (!input_type.hasRank() || !output_type.hasRank()) return failure();
 

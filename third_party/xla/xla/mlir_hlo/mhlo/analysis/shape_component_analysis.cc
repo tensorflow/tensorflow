@@ -83,7 +83,7 @@ struct ShapeVisitor {
       // Skip irrelevant cases early.
       Value value = transitivelyRequestedInfo.value();
       Type ty = value.getType();
-      if (!ty.isIntOrIndexOrFloat() && !ty.isa<RankedTensorType>()) continue;
+      if (!ty.isIntOrIndexOrFloat() && !isa<RankedTensorType>(ty)) continue;
 
       // Handle shapes.
       if (transitivelyRequestedInfo.isShapeInfo()) {
@@ -101,7 +101,7 @@ struct ShapeVisitor {
           backwardTransposeShape(transpose);
         } else if (auto select = value.getDefiningOp<mhlo::SelectOp>()) {
           backwardSelectShape(select);
-        } else if (auto arg = value.dyn_cast<BlockArgument>()) {
+        } else if (auto arg = dyn_cast<BlockArgument>(value)) {
           backwardBlockArgumentShape(arg);
         } else if (value.getDefiningOp() &&
                    value.getDefiningOp()
@@ -114,7 +114,7 @@ struct ShapeVisitor {
       }
 
       // Skip irrelevant cases early.
-      auto rankedTy = ty.dyn_cast<RankedTensorType>();
+      auto rankedTy = dyn_cast<RankedTensorType>(ty);
       bool isPossiblyInterestingScalar = ty.isIntOrIndex();
       bool isPossiblyInterestingTensor =
           rankedTy && rankedTy.getRank() <= 1 && rankedTy.hasStaticShape();
@@ -245,7 +245,7 @@ struct ShapeVisitor {
 
   void backwardAssumingShape(Value op) {
     auto assumingOp = op.getDefiningOp<shape::AssumingOp>();
-    auto number = op.cast<OpResult>().getResultNumber();
+    auto number = cast<OpResult>(op).getResultNumber();
     forwardsWorklist.push_back(ShapeOrValueInfo::getShapeInfoOf(op));
     backwardsWorklist.push_back(ShapeOrValueInfo::getShapeInfoOf(
         cast<shape::AssumingYieldOp>(
@@ -254,7 +254,7 @@ struct ShapeVisitor {
   }
   void forwardAssumingShape(Value op) {
     auto assumingOp = op.getDefiningOp<shape::AssumingOp>();
-    auto number = op.cast<OpResult>().getResultNumber();
+    auto number = cast<OpResult>(op).getResultNumber();
     auto &dims = insert(ShapeOrValueInfo::getShapeInfoOf(op));
     dims = lookup(ShapeOrValueInfo::getShapeInfoOf(
         cast<shape::AssumingYieldOp>(
@@ -338,7 +338,7 @@ struct ShapeVisitor {
         ShapeOrValueInfo::getValueInfoOf(op.getOutputShape()));
   }
   void forwardDynamicReshapeShape(mhlo::DynamicReshapeOp op) {
-    auto rankedTy = op.getResult().getType().cast<RankedTensorType>();
+    auto rankedTy = cast<RankedTensorType>(op.getResult().getType());
     auto shapeDims =
         lookup(ShapeOrValueInfo::getValueInfoOf(op.getOutputShape()));
     auto &dims = insert(ShapeOrValueInfo::getShapeInfoOf(op));
@@ -370,7 +370,7 @@ struct ShapeVisitor {
   void forwardTransposeShape(mhlo::TransposeOp op) {
     auto &dims = insert(ShapeOrValueInfo::getShapeInfoOf(op));
     auto in = lookup(ShapeOrValueInfo::getShapeInfoOf(op.getOperand()));
-    auto elem = op.getPermutation().cast<DenseIntElementsAttr>();
+    auto elem = cast<DenseIntElementsAttr>(op.getPermutation());
     for (const auto &val : elem) dims.push_back(in[val.getZExtValue()]);
   }
   void backwardSelectShape(mhlo::SelectOp op) {
@@ -440,7 +440,7 @@ struct ShapeVisitor {
     forwardsWorklist.push_back(ShapeOrValueInfo::getShapeInfoOf(v));
   }
   void forwardUnknownShape(Value v) {
-    auto rankedTy = v.getType().dyn_cast<RankedTensorType>();
+    auto rankedTy = dyn_cast<RankedTensorType>(v.getType());
     if (!rankedTy) return;
     auto id = getAffineSymbolExpr(0, v.getContext());
     auto &dims = insert(ShapeOrValueInfo::getShapeInfoOf(v));
@@ -465,7 +465,7 @@ struct ShapeVisitor {
     backwardsWorklist.push_back(ShapeOrValueInfo::getShapeInfoOf(op.getArg()));
   }
   void forwardShapeOf(shape::ShapeOfOp op) {
-    auto rankedTy = op.getArg().getType().cast<RankedTensorType>();
+    auto rankedTy = cast<RankedTensorType>(op.getArg().getType());
     auto arg = lookup(ShapeOrValueInfo::getShapeInfoOf(op.getArg()));
     auto &dims = insert(ShapeOrValueInfo::getValueInfoOf(op));
     return dimsFromStaticShape(rankedTy, arg, &dims);
@@ -521,7 +521,7 @@ struct ShapeVisitor {
   void forwardDim(tensor::DimOp op) {
     auto &dims = insert(ShapeOrValueInfo::getValueInfoOf(op));
     if (auto index = op.getIndex().getDefiningOp<arith::ConstantOp>()) {
-      int64_t i = index.getValue().cast<IntegerAttr>().getInt();
+      int64_t i = cast<IntegerAttr>(index.getValue()).getInt();
       auto in = lookup(ShapeOrValueInfo::getShapeInfoOf(op.getSource()));
       if (i >= static_cast<int64_t>(in.size()) || i < 0)
         llvm::report_fatal_error("tensor dim out of bounds");
@@ -591,7 +591,7 @@ struct ShapeVisitor {
     assert(op.getIndices().size() == 1);
     if (auto index =
             op.getIndices().front().getDefiningOp<arith::ConstantOp>()) {
-      int64_t i = index.getValue().cast<IntegerAttr>().getInt();
+      int64_t i = cast<IntegerAttr>(index.getValue()).getInt();
       // We asssume this is in bounds.
       auto in = lookup(ShapeOrValueInfo::getValueInfoOf(op.getTensor()));
       dims.push_back({in[i].symbols, in[i].expr});
@@ -661,7 +661,7 @@ struct ShapeVisitor {
     }
     auto &dims = insert(ShapeOrValueInfo::getValueInfoOf(op));
     auto in = lookup(ShapeOrValueInfo::getValueInfoOf(op.getOperand()));
-    auto elem = op.getStartIndices().cast<DenseIntElementsAttr>();
+    auto elem = cast<DenseIntElementsAttr>(op.getStartIndices());
     auto i = (*elem.begin()).getZExtValue();
     if (i >= in.size()) {  // Bounds check.
       return forwardUnknown(op);
@@ -711,7 +711,7 @@ struct ShapeVisitor {
 
   // Return the size of the first dimension. Returns 1 for scalars.
   static int64_t dim0size(Type type) {
-    if (auto rankedType = type.dyn_cast<RankedTensorType>())
+    if (auto rankedType = dyn_cast<RankedTensorType>(type))
       return rankedType.getRank() == 0 ? 1 : rankedType.getDimSize(0);
     return 1;
   }

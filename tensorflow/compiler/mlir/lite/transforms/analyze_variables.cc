@@ -92,7 +92,7 @@ void AnalyzeVariablesPass::runOnOperation() {
     // Note: this might disable native variables in more than needed cases.
     // TODO(b/189370197): Enhance variable analysis.
     for (auto operand : op->getOperands()) {
-      if (getElementTypeOrSelf(operand.getType()).isa<TF::ResourceType>()) {
+      if (isa<TF::ResourceType>(getElementTypeOrSelf(operand.getType()))) {
         legalize_to_tfl = false;
         return WalkResult::interrupt();
       }

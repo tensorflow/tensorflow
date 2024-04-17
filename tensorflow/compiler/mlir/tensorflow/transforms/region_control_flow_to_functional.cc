@@ -508,10 +508,9 @@ LogicalResult RegionControlFlowToFunctional::ConvertWhileOp(
   // existing function as is.
   auto while_arg_matcher = [](Value first, Region& first_region, Value second,
                               Region& second_region) {
-    if (!first.isa<BlockArgument>() || !second.isa<BlockArgument>())
-      return false;
-    BlockArgument first_block_arg = first.cast<BlockArgument>();
-    BlockArgument second_block_arg = second.cast<BlockArgument>();
+    if (!isa<BlockArgument>(first) || !isa<BlockArgument>(second)) return false;
+    BlockArgument first_block_arg = cast<BlockArgument>(first);
+    BlockArgument second_block_arg = cast<BlockArgument>(second);
 
     // 2 block arguments will match if they are the same argument number, and
     // are block arguments of the corresponding containing regions.

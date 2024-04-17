@@ -136,7 +136,7 @@ struct HloCanonicalizeReductionPass
       if (dimsToReduce.empty()) return;
 
       // suppose reduce input is a ranked tensor
-      auto ty = op.getOperand(0).getType().dyn_cast<RankedTensorType>();
+      auto ty = dyn_cast<RankedTensorType>(op.getOperand(0).getType());
       if (!ty) return signalPassFailure();
       int rank = ty.getRank();
       int ndimsToReduce = dimsToReduce.size();
@@ -222,7 +222,7 @@ struct HloCanonicalizeReductionPass
       }
       SmallVector<Type> elementTypes{llvm::map_range(
           op.getBody().front().getTerminator()->getOperands(), [](Value v) {
-            return v.getType().cast<ShapedType>().getElementType();
+            return cast<ShapedType>(v.getType()).getElementType();
           })};
       auto newOp = b.create<ReduceOp>(loc, newOperands, op.getInitValues(),
                                       attr, elementTypes);

@@ -48,13 +48,13 @@ template <typename Op>
 LogicalResult BufferizeOp(Op op, RewriterBase &rewriter,
                           const bufferization::BufferizationOptions &options,
                           int64_t num_inputs) {
-  if (op.getOperands().front().getType().template isa<MemRefType>()) {
+  if (isa<MemRefType>(op.getOperands().front().getType())) {
     return success();
   }
   SmallVector<Value> new_operands;
   std::optional<Value> token = std::nullopt;
   for (auto operand : op.getOperands()) {
-    if (operand.getType().template isa<TokenType>()) {
+    if (isa<TokenType>(operand.getType())) {
       assert(operand == op.getOperands().back() &&
              "Expect token type only for last operand");
       assert(!token && "Expect at most only one token-typed operand");
@@ -156,8 +156,8 @@ LogicalResult AddDependencyOp::bufferize(
 }
 
 LogicalResult MemRefElementCastOp::verify() {
-  auto src_memref_ty = getSrc().getType().cast<MemRefType>();
-  auto dst_memref_ty = getDst().getType().cast<MemRefType>();
+  auto src_memref_ty = cast<MemRefType>(getSrc().getType());
+  auto dst_memref_ty = cast<MemRefType>(getDst().getType());
   if (src_memref_ty.getShape() != dst_memref_ty.getShape()) {
     return emitOpError() << "expects matching shapes";
   }

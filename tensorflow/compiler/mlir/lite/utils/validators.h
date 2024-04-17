@@ -70,21 +70,21 @@ bool TFIntListIsAllOnes(Attribute attr);
 // Returns true iff the given value is a float32 tensor.
 // is "DT_FLOAT".
 inline bool TFTypeIsFloat32Tensor(Value value) {
-  auto tensorType = value.getType().dyn_cast<TensorType>();
+  auto tensorType = dyn_cast<TensorType>(value.getType());
   if (!tensorType) return false;
   return tensorType.getElementType().isF32();
 }
 
 // Returns true iff the given value is a bf16 tensor.
 inline bool TFTypeIsBFloat16Tensor(Value value) {
-  auto tensorType = value.getType().dyn_cast<TensorType>();
+  auto tensorType = dyn_cast<TensorType>(value.getType());
   if (!tensorType) return false;
   return tensorType.getElementType().isBF16();
 }
 
 // Returns true iff the given value is a f16 tensor.
 inline bool TFTypeIsHalfTensor(Value value) {
-  auto tensorType = value.getType().dyn_cast<TensorType>();
+  auto tensorType = dyn_cast<TensorType>(value.getType());
   if (!tensorType) return false;
   return tensorType.getElementType().isF16();
 }

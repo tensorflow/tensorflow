@@ -30,9 +30,9 @@ template <typename OpTy>
 mlir::LogicalResult VerifyExecuteOpCommon(OpTy op) {
   auto op_attr_array = op.getOpAttrs().getValue();
   for (auto op_attr : op_attr_array) {
-    auto key_value = op_attr.template dyn_cast<mlir::ArrayAttr>();
+    auto key_value = dyn_cast<mlir::ArrayAttr>(op_attr);
     if (!key_value || key_value.getValue().size() != 2 ||
-        !key_value.getValue()[0].template isa<mlir::StringAttr>())
+        !isa<mlir::StringAttr>(key_value.getValue()[0]))
       return op.emitOpError() << "each op_attr should be a key-value pair, "
                                  "where the key is a string";
   }
@@ -47,10 +47,10 @@ mlir::LogicalResult VerifyFallbackExecuteOp(OpTy op) {
   // Verify function attributes.
   auto op_func_attr_array = op.getOpFuncAttrs().getValue();
   for (auto op_attr : op_func_attr_array) {
-    auto key_value = op_attr.template dyn_cast<mlir::ArrayAttr>();
+    auto key_value = dyn_cast<mlir::ArrayAttr>(op_attr);
     if (!key_value || key_value.getValue().size() != 2 ||
-        !key_value.getValue()[0].template isa<mlir::StringAttr>() ||
-        !key_value.getValue()[1].template isa<mlir::StringAttr>())
+        !isa<mlir::StringAttr>(key_value.getValue()[0]) ||
+        !isa<mlir::StringAttr>(key_value.getValue()[1]))
       return op.emitOpError() << "each op_func_attr should be a key-value "
                                  "pair, where both the key and the value are "
                                  "strings";
@@ -63,11 +63,11 @@ void PrintExecuteOpFuncAttribute(mlir::OpAsmPrinter &p, OpTy op) {
   auto op_func_attrs = op.getOpFuncAttrs();
   if (!op_func_attrs.empty()) {
     auto print_key_value = [&](mlir::Attribute attr) {
-      auto key_value = attr.cast<mlir::ArrayAttr>().getValue();
+      auto key_value = cast<mlir::ArrayAttr>(attr).getValue();
       auto key = key_value[0];
       auto value = key_value[1];
 
-      p << key.cast<mlir::StringAttr>().getValue();
+      p << cast<mlir::StringAttr>(key).getValue();
       p << " = ";
       p << value;
     };
@@ -84,11 +84,11 @@ void PrintExecuteOpCommon(mlir::OpAsmPrinter &p, OpTy op) {
   auto op_attrs = op.getOpAttrs();
   if (!op_attrs.empty()) {
     auto print_key_value = [&](mlir::Attribute attr) {
-      auto key_value = attr.cast<mlir::ArrayAttr>().getValue();
+      auto key_value = cast<mlir::ArrayAttr>(attr).getValue();
       auto key = key_value[0];
       auto value = key_value[1];
 
-      p << key.cast<mlir::StringAttr>().getValue();
+      p << cast<mlir::StringAttr>(key).getValue();
       p << " = ";
       p << value;
     };

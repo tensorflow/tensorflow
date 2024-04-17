@@ -66,7 +66,7 @@ LogicalResult AssignDevicesInRegion(const Dialect* tf_dialect,
       return WalkResult::advance();
     }
 
-    if (auto device_str_attr = device_attr.dyn_cast<StringAttr>()) {
+    if (auto device_str_attr = dyn_cast<StringAttr>(device_attr)) {
       if (device_str_attr.getValue().empty()) {
         op->setAttr(kDeviceAttr, launch.getDeviceAttr());
         return WalkResult::advance();

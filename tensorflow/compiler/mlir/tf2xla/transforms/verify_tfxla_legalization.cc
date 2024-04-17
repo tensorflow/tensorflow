@@ -90,17 +90,17 @@ static void IncrementCounterFor(tensorflow::monitoring::Counter<1>* counter,
 
 bool HasBounds(RankedTensorType type) {
   auto encoding =
-      type.getEncoding().dyn_cast_or_null<mlir::mhlo::TypeExtensionsAttr>();
+      dyn_cast_or_null<mlir::mhlo::TypeExtensionsAttr>(type.getEncoding());
   return (encoding && !encoding.getBounds().empty());
 }
 
 bool HasStaticShapeOrBounded(Value val) {
   auto type = val.getType();
-  if (type.isa<UnrankedTensorType>()) {
+  if (isa<UnrankedTensorType>(type)) {
     return false;
   }
-  if (type.isa<RankedTensorType>()) {
-    auto ranked_tensor = type.dyn_cast<RankedTensorType>();
+  if (isa<RankedTensorType>(type)) {
+    auto ranked_tensor = dyn_cast<RankedTensorType>(type);
     if (ranked_tensor.hasStaticShape()) {
       return true;
     }

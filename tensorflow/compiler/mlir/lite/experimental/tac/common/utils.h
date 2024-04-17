@@ -52,7 +52,7 @@ bool NotTFLQuantDequantizeOp(Operation* op);
 
 // Returns true if it is a shaped type of f32 elements.
 inline bool IsF32ShapedType(Type t) {
-  if (auto shaped_type = t.dyn_cast_or_null<ShapedType>()) {
+  if (auto shaped_type = dyn_cast_or_null<ShapedType>(t)) {
     return shaped_type.getElementType().isF32();
   }
   return false;

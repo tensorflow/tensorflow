@@ -68,7 +68,7 @@ struct TorchIndexSelectIsGather : public OpRewritePattern<TorchIndexSelectOp> {
 
     int64_t indexVectorDim = index.getType().getRank();
     auto indexTy = index.getType();
-    auto indexElementTy = indexTy.getElementType().dyn_cast<IntegerType>();
+    auto indexElementTy = dyn_cast<IntegerType>(indexTy.getElementType());
     if (!indexElementTy) {
       return rewriter.notifyMatchFailure(
           op, "index must have integer element type");

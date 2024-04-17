@@ -53,7 +53,7 @@ class VerifyQuantLegalization
 
 bool IsQuantType(Type type) {
   auto element_type = getElementTypeOrSelf(type);
-  return element_type.isa<quant::UniformQuantizedType>() ||
+  return isa<quant::UniformQuantizedType>(element_type) ||
          IsTFQintType(element_type);
 }
 

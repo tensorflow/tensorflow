@@ -39,13 +39,13 @@ struct GatherIsTorchIndexSelect : public OpRewritePattern<GatherOp> {
   LogicalResult matchAndRewrite(GatherOp gather,
                                 PatternRewriter &rewriter) const override {
     auto startIndices = gather.getStartIndices();
-    auto startIndicesTy = startIndices.getType().cast<ShapedType>();
+    auto startIndicesTy = cast<ShapedType>(startIndices.getType());
     if (!startIndicesTy.hasRank()) {
       return rewriter.notifyMatchFailure(gather, "unranked start_indices");
     }
 
     auto operand = gather.getOperand();
-    auto operandTy = operand.getType().cast<ShapedType>();
+    auto operandTy = cast<ShapedType>(operand.getType());
     if (!operandTy.hasRank()) {
       return rewriter.notifyMatchFailure(gather, "unranked operand");
     }
@@ -73,7 +73,7 @@ struct GatherIsTorchIndexSelect : public OpRewritePattern<GatherOp> {
       return rewriter.notifyMatchFailure(gather, "start_index_map != [0]");
     }
 
-    auto resultTy = gather.getResult().getType().dyn_cast<RankedTensorType>();
+    auto resultTy = dyn_cast<RankedTensorType>(gather.getResult().getType());
     if (!resultTy) {
       return rewriter.notifyMatchFailure(gather, "unranked result");
     }

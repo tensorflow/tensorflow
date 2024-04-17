@@ -92,7 +92,7 @@ class StablehloToOdmlTypeConverter : public vhlo::VhloTypeConverter {
       return attr;
 
     if (auto stablehlo_attr =
-            attr.dyn_cast_or_null<stablehlo::TypeExtensionsAttr>()) {
+            dyn_cast_or_null<stablehlo::TypeExtensionsAttr>(attr)) {
       return vhlo::TypeExtensionsV1Attr::get(stablehlo_attr.getContext(),
                                              stablehlo_attr.getBounds());
     }
@@ -118,7 +118,7 @@ class VhloToStablehloTypeConverter : public vhlo::VhloTypeConverter {
   }
 
   Attribute convertEncoding(Attribute attr) const final {
-    if (auto vhlo_attr = attr.dyn_cast_or_null<vhlo::TypeExtensionsV1Attr>()) {
+    if (auto vhlo_attr = dyn_cast_or_null<vhlo::TypeExtensionsV1Attr>(attr)) {
       return stablehlo::TypeExtensionsAttr::get(vhlo_attr.getContext(),
                                                 vhlo_attr.getBounds());
     }

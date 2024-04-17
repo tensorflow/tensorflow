@@ -82,7 +82,7 @@ llvm::SmallVector<mlir::Value> FindValueInCallees(
   llvm::SmallDenseSet<llvm::StringRef> callees;
   for (const auto &named_attr : caller->getAttrs()) {
     if (auto symbol_attr =
-            named_attr.getValue().dyn_cast<mlir::FlatSymbolRefAttr>()) {
+            dyn_cast<mlir::FlatSymbolRefAttr>(named_attr.getValue())) {
       auto symbol = symbol_attr.getValue();
 
       auto callee = symbol_table.lookup<mlir::func::FuncOp>(symbol);

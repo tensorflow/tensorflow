@@ -36,45 +36,45 @@ bool TFIntListIs1XY1(Operation *op, StringRef name, IntegerAttr *x,
   auto elements = attr.getValue();
   if (elements.size() != 4 ||
       std::any_of(elements.begin(), elements.end(),
-                  [](Attribute e) { return !e.isa<IntegerAttr>(); }))
+                  [](Attribute e) { return !isa<IntegerAttr>(e); }))
     return false;
 
-  if (elements.front().cast<IntegerAttr>().getInt() != 1 ||
-      elements.back().cast<IntegerAttr>().getInt() != 1)
+  if (cast<IntegerAttr>(elements.front()).getInt() != 1 ||
+      cast<IntegerAttr>(elements.back()).getInt() != 1)
     return false;
 
   Builder b(op->getContext());
-  *x = b.getI32IntegerAttr(elements[1].cast<IntegerAttr>().getInt());
-  *y = b.getI32IntegerAttr(elements[2].cast<IntegerAttr>().getInt());
+  *x = b.getI32IntegerAttr(cast<IntegerAttr>(elements[1]).getInt());
+  *y = b.getI32IntegerAttr(cast<IntegerAttr>(elements[2]).getInt());
 
   return true;
 }
 
 // Returns true if the attribute is an integer list of the form [1, X, Y, 1].
 bool TFIntListIs1XY1(const Attribute attr) {
-  const auto &elements = attr.cast<ArrayAttr>().getValue();
+  const auto &elements = cast<ArrayAttr>(attr).getValue();
   if (elements.size() != 4 ||
       std::any_of(elements.begin(), elements.end(),
-                  [](Attribute e) { return !e.isa<IntegerAttr>(); }))
+                  [](Attribute e) { return !isa<IntegerAttr>(e); }))
     return false;
 
-  if (elements.front().cast<IntegerAttr>().getValue() != 1 ||
-      elements.back().cast<IntegerAttr>().getValue() != 1)
+  if (cast<IntegerAttr>(elements.front()).getValue() != 1 ||
+      cast<IntegerAttr>(elements.back()).getValue() != 1)
     return false;
   return true;
 }
 
 // Returns true if the attribute is an integer list of the form [1, 1, X, Y].
 bool TFIntListIs11XY(const Attribute attr) {
-  const auto &elements = attr.cast<ArrayAttr>().getValue();
+  const auto &elements = cast<ArrayAttr>(attr).getValue();
   if (elements.size() != 4 ||
       std::any_of(elements.begin(), elements.end(),
-                  [](Attribute e) { return !e.isa<IntegerAttr>(); }))
+                  [](Attribute e) { return !isa<IntegerAttr>(e); }))
     return false;
 
   const Attribute *data = elements.data();
-  if (data[0].cast<IntegerAttr>().getValue() != 1 ||
-      data[1].cast<IntegerAttr>().getValue() != 1)
+  if (cast<IntegerAttr>(data[0]).getValue() != 1 ||
+      cast<IntegerAttr>(data[1]).getValue() != 1)
     return false;
   return true;
 }
@@ -91,17 +91,17 @@ bool TFIntListIs1XYZ1(Operation *op, StringRef name, IntegerAttr *x,
   auto elements = attr.getValue();
   if (elements.size() != 5 ||
       std::any_of(elements.begin(), elements.end(),
-                  [](Attribute e) { return !e.isa<IntegerAttr>(); }))
+                  [](Attribute e) { return !isa<IntegerAttr>(e); }))
     return false;
 
-  if (elements.front().cast<IntegerAttr>().getInt() != 1 ||
-      elements.back().cast<IntegerAttr>().getInt() != 1)
+  if (cast<IntegerAttr>(elements.front()).getInt() != 1 ||
+      cast<IntegerAttr>(elements.back()).getInt() != 1)
     return false;
 
   Builder b(op->getContext());
-  *x = b.getI32IntegerAttr(elements[1].cast<IntegerAttr>().getInt());
-  *y = b.getI32IntegerAttr(elements[2].cast<IntegerAttr>().getInt());
-  *z = b.getI32IntegerAttr(elements[3].cast<IntegerAttr>().getInt());
+  *x = b.getI32IntegerAttr(cast<IntegerAttr>(elements[1]).getInt());
+  *y = b.getI32IntegerAttr(cast<IntegerAttr>(elements[2]).getInt());
+  *z = b.getI32IntegerAttr(cast<IntegerAttr>(elements[3]).getInt());
 
   return true;
 }
@@ -109,10 +109,10 @@ bool TFIntListIs1XYZ1(Operation *op, StringRef name, IntegerAttr *x,
 // Returns true if every element of the attribute is 1. All elements of `attr`
 // must be `IntegerAttr`.
 bool TFIntListIsAllOnes(const Attribute attr) {
-  const auto &elements = attr.cast<ArrayAttr>().getValue();
+  const auto &elements = cast<ArrayAttr>(attr).getValue();
 
   return !std::any_of(elements.begin(), elements.end(), [](Attribute e) {
-    return e.cast<IntegerAttr>().getValue() != 1;
+    return cast<IntegerAttr>(e).getValue() != 1;
   });
 }
 
@@ -133,7 +133,7 @@ bool IsDimensionsDegenerateExceptLastOne(ArrayRef<int64_t> elements_shape) {
 }
 
 bool IsDimensionsDegenerateExceptLastOne(TypedAttr val) {
-  if (auto ranked_type = val.getType().dyn_cast<RankedTensorType>()) {
+  if (auto ranked_type = dyn_cast<RankedTensorType>(val.getType())) {
     return IsDimensionsDegenerateExceptLastOne(ranked_type.getShape());
   }
   return false;

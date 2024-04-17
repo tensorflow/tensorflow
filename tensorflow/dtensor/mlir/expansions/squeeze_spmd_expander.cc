@@ -37,7 +37,7 @@ std::set<int64_t> GetSqueezeDims(mlir::Operation* op, int64_t rank) {
   if (array_attribute) {
     auto attr_list = array_attribute.getValue().vec();
     for (const auto& attr : attr_list) {
-      int64_t dim = attr.cast<mlir::IntegerAttr>().getValue().getSExtValue();
+      int64_t dim = cast<mlir::IntegerAttr>(attr).getValue().getSExtValue();
       // Offset the negative indices to positive range.
       squeeze_dims.insert((dim + rank) % rank);
     }

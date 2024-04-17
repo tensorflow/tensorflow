@@ -61,12 +61,12 @@ LogicalResult ReplacePartitionedOp(IntegerAttr num_cores_per_replica, T op) {
   }
 
   auto element_type = getElementTypeOrSelf(first_operand_type);
-  if (element_type.isa<TF::ResourceType>()) {
+  if (isa<TF::ResourceType>(element_type)) {
     first_operand_type =
-        element_type.cast<TF::ResourceType>().getSubtypes().front();
+        cast<TF::ResourceType>(element_type).getSubtypes().front();
   }
 
-  auto tensor_type = first_operand_type.dyn_cast_or_null<TensorType>();
+  auto tensor_type = dyn_cast_or_null<TensorType>(first_operand_type);
   if (!(tensor_type && tensor_type.hasRank())) {
     return op->emitError()
            << "cannot convert op with unranked or non-tensor input type "

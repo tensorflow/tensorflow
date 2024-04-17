@@ -236,13 +236,13 @@ void AddRewrittenCompositeOps(MLIRContext* context,
 }
 
 bool IsStringType(Type type) {
-  if (type.isa<mlir::TF::StringType>()) return true;
+  if (isa<mlir::TF::StringType>(type)) return true;
 
-  auto sub_type = type.dyn_cast<mlir::TF::TensorFlowTypeWithSubtype>();
+  auto sub_type = dyn_cast<mlir::TF::TensorFlowTypeWithSubtype>(type);
   if (!sub_type) return false;
 
   bool has_string = llvm::any_of(sub_type.GetSubtypes(), [](TensorType type) {
-    return type.getElementType().isa<mlir::TF::StringType>();
+    return isa<mlir::TF::StringType>(type.getElementType());
   });
   return has_string;
 }
@@ -288,7 +288,7 @@ bool IsSupportedOp(Operation& op,
 }
 
 bool IsVariant(Value value) {
-  return getElementTypeOrSelf(value.getType()).isa<mlir::TF::VariantType>();
+  return isa<mlir::TF::VariantType>(getElementTypeOrSelf(value.getType()));
 }
 
 bool HasOutsideCompiledAncestor(Operation* op) {

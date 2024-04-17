@@ -33,7 +33,7 @@ namespace mhlo {
 namespace {
 
 bool hasIntegralShapeType(Operation* op) {
-  auto stp = op->getOperand(0).getType().dyn_cast<ShapedType>();
+  auto stp = dyn_cast<ShapedType>(op->getOperand(0).getType());
   return stp && stp.getElementType().isIntOrIndex();
 }
 
@@ -54,7 +54,7 @@ SmallVector<utils::IteratorType, 3> getNParallelLoopsAttrs(
 
 Value getEmptySparseTensor(OpBuilder& b, Location loc, ShapedType type,
                            ArrayRef<Value> dynSizes) {
-  return b.create<bufferization::AllocTensorOp>(loc, type.cast<TensorType>(),
+  return b.create<bufferization::AllocTensorOp>(loc, cast<TensorType>(type),
                                                 dynSizes,
                                                 /*copy=*/Value(),
                                                 /*memory_space=*/IntegerAttr());
@@ -64,7 +64,7 @@ Value getEmptyTensor(OpBuilder& b, Location loc, ShapedType type,
                      ArrayRef<Value> dynSizes) {
   return b.create<tensor::EmptyOp>(loc, type.getShape(), type.getElementType(),
                                    dynSizes,
-                                   type.cast<RankedTensorType>().getEncoding());
+                                   cast<RankedTensorType>(type).getEncoding());
 }
 
 Value getEmptyTensorFor(OpBuilder& b, Location loc, ShapedType resultType,
@@ -129,7 +129,7 @@ Value postSparsify(Operation* op, Value semiring, Value result, OpBuilder* b) {
 
 bool allOperandsAreScalarTensors(Operation* op) {
   return llvm::all_of(op->getOperands(), [](Value operand) {
-    auto operandTy = operand.getType().dyn_cast<ShapedType>();
+    auto operandTy = dyn_cast<ShapedType>(operand.getType());
     return operandTy && operandTy.getRank() == 0;
   });
 }

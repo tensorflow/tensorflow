@@ -44,13 +44,13 @@ namespace {
 
 // Calculates the flatten types of a value.
 void flattenTupleType(Value value, llvm::SmallVectorImpl<Type> &types) {
-  if (!value.getType().isa<TupleType>()) {
+  if (!isa<TupleType>(value.getType())) {
     types.push_back(value.getType());
     return;
   }
 
   // This function doesn't handle nested tuple.
-  auto tupleType = value.getType().cast<TupleType>();
+  auto tupleType = cast<TupleType>(value.getType());
   types.append(tupleType.begin(), tupleType.end());
 }
 
@@ -59,18 +59,18 @@ void flattenTupleType(Value value, llvm::SmallVectorImpl<Type> &types) {
 // of the root TupleOp or given value if the type is not TupleType.
 Value createTupleValue(OpBuilder &builder, Location loc,
                        ValueRange flattenValues, Type tupleType) {
-  if (!tupleType.isa<TupleType>()) {
+  if (!isa<TupleType>(tupleType)) {
     assert(flattenValues.size() == 1);
     return flattenValues[0];
   }
 
-  assert(tupleType.cast<TupleType>().getTypes().size() == flattenValues.size());
+  assert(cast<TupleType>(tupleType).getTypes().size() == flattenValues.size());
   return builder.create<mhlo::TupleOp>(loc, flattenValues);
 }
 
 void flattenTupleValue(OpBuilder &builder, Location loc, Value value,
                        llvm::SmallVectorImpl<Value> &flattenedValues) {
-  auto tupleType = value.getType().dyn_cast<TupleType>();
+  auto tupleType = dyn_cast<TupleType>(value.getType());
   if (!tupleType) {
     flattenedValues.push_back(value);
     return;
@@ -89,9 +89,9 @@ struct FlattenCustomCallOp : public OpRewritePattern<CustomCallOp> {
   LogicalResult matchAndRewrite(CustomCallOp op,
                                 PatternRewriter &rewriter) const override {
     bool flattenResult =
-        op->getNumResults() == 1 && op->getResult(0).getType().isa<TupleType>();
+        op->getNumResults() == 1 && isa<TupleType>(op->getResult(0).getType());
     bool flattenOperands = llvm::any_of(op.getInputs(), [](Value operand) {
-      return operand.getType().isa<TupleType>();
+      return isa<TupleType>(operand.getType());
     });
 
     if (!flattenResult && !flattenOperands) return failure();
@@ -106,8 +106,8 @@ struct FlattenCustomCallOp : public OpRewritePattern<CustomCallOp> {
     } else {
       // Check for nested tuples.
       for (Type innerType :
-           op->getResult(0).getType().cast<TupleType>().getTypes())
-        if (innerType.isa<TupleType>()) return failure();
+           cast<TupleType>(op->getResult(0).getType()).getTypes())
+        if (isa<TupleType>(innerType)) return failure();
 
       for (auto result : op->getResults())
         flattenTupleType(result, flattenedResultTypes);

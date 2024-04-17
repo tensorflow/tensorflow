@@ -67,8 +67,8 @@ class LocationExtractor : public Location {
           new_call->set_name(loc.getName().str());
           // Add child as the source location.
           auto child_loc = loc.getChildLoc();
-          if (child_loc.isa<FileLineColLoc>()) {
-            auto typed_child_loc = child_loc.dyn_cast<FileLineColLoc>();
+          if (isa<FileLineColLoc>(child_loc)) {
+            auto typed_child_loc = dyn_cast<FileLineColLoc>(child_loc);
             ExtractFileLine(typed_child_loc, new_call->mutable_source());
           }
         })
@@ -83,7 +83,7 @@ class LocationExtractor : public Location {
           // Skip the first location if it stores information for propagating
           // op_type metadata.
           if (num_locs > 0) {
-            if (auto name_loc = locations[0].dyn_cast<mlir::NameLoc>()) {
+            if (auto name_loc = dyn_cast<mlir::NameLoc>(locations[0])) {
               if (name_loc.getName().strref().ends_with(":")) {
                 if (num_locs == 2) {
                   return LocationExtractor(locations[1]).Extract(error_data);

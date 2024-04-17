@@ -76,7 +76,7 @@ AnonymousIteratorV3Op CreateIterator(OpBuilder builder,
   llvm::SmallVector<Attribute, 2> type_attrs;
   for (Type type : dataset_types) {
     shape_attrs.push_back(
-        TF::ShapeAttr::get(builder.getContext(), type.cast<ShapedType>()));
+        TF::ShapeAttr::get(builder.getContext(), cast<ShapedType>(type)));
     type_attrs.push_back(TypeAttr::get(getElementTypeOrSelf(type)));
   }
 

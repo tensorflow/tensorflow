@@ -41,7 +41,7 @@ class FoldDeviceIndex : public mlir::OpRewritePattern<mlir::TF::DeviceIndexOp> {
     int32_t i = 0;
     mlir::ArrayAttr device_names = op.getDeviceNames();
     for (; i < device_names.size(); ++i) {
-      auto device_name = device_names[i].cast<mlir::StringAttr>().getValue();
+      auto device_name = cast<mlir::StringAttr>(device_names[i]).getValue();
       if (device_name == parsed_name.type) break;
     }
 

@@ -62,11 +62,11 @@ inline ConstBytesAttr CustomOption(OpBuilder* builder,
 }
 
 inline TensorType GetInputType(func::FuncOp func, int idx) {
-  return func.getFunctionType().getInput(idx).dyn_cast_or_null<TensorType>();
+  return dyn_cast_or_null<TensorType>(func.getFunctionType().getInput(idx));
 }
 
 inline TensorType GetResultType(func::FuncOp func, int idx) {
-  return func.getFunctionType().getResult(idx).dyn_cast_or_null<TensorType>();
+  return dyn_cast_or_null<TensorType>(func.getFunctionType().getResult(idx));
 }
 
 inline bool RankEquals(const TensorType& type, int rank) {
@@ -89,7 +89,7 @@ LogicalResult VerifyWhitespaceTokenizer(func::FuncOp func) {
   // * 2nd output is the inner offset;
   // * 3rd output is the outer offset.
   auto input_type = GetInputType(func, 0);
-  if (!input_type || !input_type.getElementType().isa<StringType>() ||
+  if (!input_type || !isa<StringType>(input_type.getElementType()) ||
       !input_type.hasRank()) {
     return func.emitError() << "Input should be a string tensor";
   }
@@ -107,7 +107,7 @@ LogicalResult VerifyWhitespaceTokenizer(func::FuncOp func) {
 
   auto value_type = GetResultType(func, 0);
   if (!RankEquals(value_type, 1) ||
-      !value_type.getElementType().isa<StringType>()) {
+      !isa<StringType>(value_type.getElementType())) {
     return func.emitError() << "1st output should be string tensor";
   }
   if (func.getNumResults() > 1) {
@@ -157,12 +157,12 @@ LogicalResult VerifyNgrams(func::FuncOp func) {
   int row_splits = func.getFunctionType().getInputs().size() - kRowSplits;
   if (row_splits == 0) {
     auto input_values = GetInputType(func, kValues);
-    if (!input_values || !input_values.getElementType().isa<StringType>()) {
+    if (!input_values || !isa<StringType>(input_values.getElementType())) {
       return func.emitError()
              << "Input " << kValues << " should be a string tensor";
     }
     auto output_values = GetResultType(func, kValues);
-    if (!output_values || !output_values.getElementType().isa<StringType>()) {
+    if (!output_values || !isa<StringType>(output_values.getElementType())) {
       return func.emitError()
              << "Output " << kValues << " should be a string tensor";
     }
@@ -175,13 +175,13 @@ LogicalResult VerifyNgrams(func::FuncOp func) {
   } else {
     auto input_values = GetInputType(func, kValues);
     if (!RankEquals(input_values, 1) ||
-        !input_values.getElementType().isa<StringType>()) {
+        !isa<StringType>(input_values.getElementType())) {
       return func.emitError()
              << "Input " << kValues << " should be a 1D string tensor";
     }
     auto output_values = GetResultType(func, kValues);
     if (!RankEquals(output_values, 1) ||
-        !output_values.getElementType().isa<StringType>()) {
+        !isa<StringType>(output_values.getElementType())) {
       return func.emitError()
              << "Output " << kValues << " should be a 1D string tensor";
     }
@@ -211,14 +211,14 @@ LogicalResult CreateNgramsCustomOption(func::FuncOp func, DictionaryAttr attrs,
   flexbuffers::Builder fbb;
   size_t start_map = fbb.StartMap();
 
-  auto width = attrs.get("width").dyn_cast_or_null<IntegerAttr>();
+  auto width = dyn_cast_or_null<IntegerAttr>(attrs.get("width"));
   if (!width) {
     return func.emitError() << "'width' attribute is not set or not an integer";
   }
   fbb.Int("width", width.getInt());
 
   auto string_separator =
-      attrs.get("string_separator").dyn_cast_or_null<StringAttr>();
+      dyn_cast_or_null<StringAttr>(attrs.get("string_separator"));
   if (!string_separator) {
     return func.emitError()
            << "'string_separator' attribute is not set or not a string";
@@ -229,14 +229,14 @@ LogicalResult CreateNgramsCustomOption(func::FuncOp func, DictionaryAttr attrs,
                                    string_separator.getValue().size());
   fbb.String("string_separator", string_separator_str);
 
-  auto axis = attrs.get("axis").dyn_cast_or_null<IntegerAttr>();
+  auto axis = dyn_cast_or_null<IntegerAttr>(attrs.get("axis"));
   if (!axis) {
     return func.emitError() << "'axis' attribute is not set or not an integer";
   }
   fbb.Int("axis", axis.getInt());
 
   auto reduction_type =
-      attrs.get("reduction_type").dyn_cast_or_null<StringAttr>();
+      dyn_cast_or_null<StringAttr>(attrs.get("reduction_type"));
   if (!reduction_type) {
     return func.emitError()
            << "'reduction_type' attribute is not set or not a string";
@@ -277,23 +277,22 @@ LogicalResult VerifySgnnProjection(func::FuncOp func, FuncAttr attr) {
     return func.emitError() << "Mismatched number of inputs and outputs.";
   }
   auto values_type = GetInputType(func, 0);
-  if (!values_type || !values_type.getElementType().isa<StringType>()) {
+  if (!values_type || !isa<StringType>(values_type.getElementType())) {
     return func.emitError() << "First input should be a string tensor";
   }
   auto row_splits_type = GetInputType(func, 1);
-  if (!row_splits_type ||
-      !row_splits_type.getElementType().isa<IntegerType>()) {
+  if (!row_splits_type || !isa<IntegerType>(row_splits_type.getElementType())) {
     return func.emitError() << "Second input should be an integer tensor";
   }
 
   auto hash_seed =
-      attr.getAttrs().get("hash_seed").dyn_cast_or_null<ArrayAttr>();
+      dyn_cast_or_null<ArrayAttr>(attr.getAttrs().get("hash_seed"));
   if (!hash_seed) {
     return func.emitError()
            << "'hash_seed' attribute is not set or not an array";
   }
   auto output_type = GetResultType(func, 0);
-  if (!output_type || !output_type.getElementType().isa<FloatType>() ||
+  if (!output_type || !isa<FloatType>(output_type.getElementType()) ||
       !RankEquals(output_type, 2)) {
     return func.emitError() << "Output should be a 2D float tensor.";
   }
@@ -302,7 +301,7 @@ LogicalResult VerifySgnnProjection(func::FuncOp func, FuncAttr attr) {
            << "Output 2nd dimension should be the num of hash seeds.";
   }
 
-  auto buckets = attr.getAttrs().get("buckets").dyn_cast_or_null<IntegerAttr>();
+  auto buckets = dyn_cast_or_null<IntegerAttr>(attr.getAttrs().get("buckets"));
   if (!buckets) {
     return func.emitError() << "'buckets' attribute is not set or not int";
   }
@@ -316,15 +315,15 @@ LogicalResult CreateSgnnProjectionCustomOption(
   flexbuffers::Builder fbb;
   size_t start_map = fbb.StartMap();
 
-  auto hash_seed = attrs.get("hash_seed").dyn_cast_or_null<ArrayAttr>();
+  auto hash_seed = dyn_cast_or_null<ArrayAttr>(attrs.get("hash_seed"));
   auto vector_start = fbb.StartVector("hash_seed");
   for (int i = 0; i < hash_seed.size(); i++) {
     fbb.Add(static_cast<int32_t>(
-        (hash_seed.getValue().data() + i)->dyn_cast<IntegerAttr>().getInt()));
+        dyn_cast<IntegerAttr>(*(hash_seed.getValue().data() + i)).getInt()));
   }
   fbb.EndVector(vector_start, /*typed=*/true, /*fixed=*/false);
 
-  auto buckets = attrs.get("buckets").dyn_cast_or_null<IntegerAttr>();
+  auto buckets = dyn_cast_or_null<IntegerAttr>(attrs.get("buckets"));
   fbb.Int("buckets", buckets.getInt());
 
   fbb.EndMap(start_map);

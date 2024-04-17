@@ -396,11 +396,11 @@ SerializedMlirStringAttrToMlirModuleTranslate(llvm::StringRef input,
   // an output parameter is provided for returning the number of chars read.
   size_t numRead;
   mlir::Attribute attr = mlir::parseAttribute(input, context, {}, &numRead);
-  if (!attr || !attr.isa<mlir::StringAttr>()) {
+  if (!attr || !isa<mlir::StringAttr>(attr)) {
     LOG(ERROR) << "Input is not parsable as a MLIR StringAttr.";
     return nullptr;
   }
-  auto str_attr = attr.cast<mlir::StringAttr>();
+  auto str_attr = cast<mlir::StringAttr>(attr);
 
   mlir::DialectRegistry registry;
   RegisterMlirInputDialects(registry);

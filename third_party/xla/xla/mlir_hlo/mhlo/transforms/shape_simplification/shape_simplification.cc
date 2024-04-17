@@ -183,7 +183,7 @@ struct ExtractFromBroadcastedTensorCanonicalizationPattern
     for (auto shape : broadcastOp.getShapes()) {
       auto shapeOfOp = shape.getDefiningOp<ShapeOfOp>();
       if (!shapeOfOp) return failure();
-      auto shapedType = shapeOfOp->getOperandTypes().front().cast<ShapedType>();
+      auto shapedType = cast<ShapedType>(shapeOfOp->getOperandTypes().front());
 
       // Abort on the existence of unranked shapes as they require more logic.
       if (!shapedType.hasRank()) return failure();

@@ -54,7 +54,7 @@ llvm::SmallVector<func::FuncOp> GetEntryFunctions(ModuleOp module) {
 LogicalResult GetCallees(SymbolUserOpInterface op, SymbolTable &symtab,
                          llvm::SmallVector<func::FuncOp> &callees) {
   for (auto attr : op->getAttrs()) {
-    auto sym = attr.getValue().dyn_cast<SymbolRefAttr>();
+    auto sym = dyn_cast<SymbolRefAttr>(attr.getValue());
     if (!sym) continue;
     auto callee = symtab.lookup<func::FuncOp>(sym.getRootReference());
     if (!callee) {

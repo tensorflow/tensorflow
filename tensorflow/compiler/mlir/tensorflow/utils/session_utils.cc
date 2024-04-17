@@ -32,7 +32,7 @@ std::string GetVariableName(TF::VarHandleOp var_handle_op) {
   // In some cases the shared_name attribute doesn't have the same
   // tensor name in the model, so we first try to use the location
   // then fallback to shared_name attribute.
-  if (auto loc = var_handle_op->getLoc().dyn_cast<NameLoc>())
+  if (auto loc = dyn_cast<NameLoc>(var_handle_op->getLoc()))
     return loc.getName().str();
   return var_handle_op.getSharedName().str();
 }

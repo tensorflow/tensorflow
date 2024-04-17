@@ -65,8 +65,8 @@ bool CanBeFolded(Operation* inst) {
   // This creates opaque variant constants which lose information and would
   // require "raising" later.
   for (const Type type : inst->getResultTypes()) {
-    if (const TensorType tensor_type = type.dyn_cast<TensorType>()) {
-      if (tensor_type.getElementType().isa<VariantType>()) {
+    if (const TensorType tensor_type = dyn_cast<TensorType>(type)) {
+      if (isa<VariantType>(tensor_type.getElementType())) {
         return false;
       }
     }

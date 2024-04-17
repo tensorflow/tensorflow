@@ -69,7 +69,7 @@ class ArithOp {
   }
 
   ArithOp indexCast(int32_t bitwidth) {
-    if (value.getType().isa<IntegerType>()) {
+    if (isa<IntegerType>(value.getType())) {
       Value cast = builder.create<arith::IndexCastOp>(
           loc, builder.getIndexType(), value);
       return ArithOp(builder, loc, cast);
@@ -187,7 +187,7 @@ std::pair<ArithOp, ArithOp> runThreeFry2xi32(ArithOp key0, ArithOp key1,
 // Extract and potentially reconstruct the i32 key-pair as necessary.
 std::pair<Value, Value> extractKey32(OpBuilder &builder, Location loc,
                                      Value store) {
-  ShapedType storeTy = store.getType().cast<ShapedType>();
+  ShapedType storeTy = cast<ShapedType>(store.getType());
   if (storeTy.getRank() != 1) return {nullptr, nullptr};
 
   Type storeETy = storeTy.getElementType();
@@ -217,7 +217,7 @@ std::pair<Value, Value> extractKey32(OpBuilder &builder, Location loc,
 
 // Extract and potentially reconstruct the i64 state as necessary.
 Value extractState64(OpBuilder &builder, Location loc, Value store) {
-  ShapedType storeTy = store.getType().cast<ShapedType>();
+  ShapedType storeTy = cast<ShapedType>(store.getType());
   if (storeTy.getRank() != 1) return nullptr;
 
   Type storeETy = storeTy.getElementType();
@@ -246,7 +246,7 @@ Value extractState64(OpBuilder &builder, Location loc, Value store) {
 }
 
 Value setState64(OpBuilder &b, Location loc, Value store, Value state) {
-  ShapedType storeTy = store.getType().cast<ShapedType>();
+  ShapedType storeTy = cast<ShapedType>(store.getType());
   if (storeTy.getRank() != 1) return nullptr;
 
   Type storeETy = storeTy.getElementType();
@@ -278,7 +278,7 @@ Value setState64(OpBuilder &b, Location loc, Value store, Value state) {
 
 Value reshapeToTarget(OpBuilder &builder, Location loc, ShapedType destTy,
                       Value src) {
-  auto srcTy = src.getType().cast<ShapedType>();
+  auto srcTy = cast<ShapedType>(src.getType());
   // Expand out to the target shape.
 
   auto reassociationIndices =
@@ -365,7 +365,7 @@ LogicalResult generateLinalgThreeFry32(OpBuilder &builder, Location loc,
   Value destRight = builder.create<tensor::EmptyOp>(
       loc, ArrayRef<int64_t>({count}), resultETy);
 
-  ShapedType destTy = destLeft.getType().cast<ShapedType>();
+  ShapedType destTy = cast<ShapedType>(destLeft.getType());
 
   SmallVector<AffineMap> indexingMaps(2, builder.getMultiDimIdentityMap(1));
   SmallVector<utils::IteratorType> iterators(1, utils::IteratorType::parallel);
@@ -446,7 +446,7 @@ LogicalResult generateLinalgThreeFry64(OpBuilder &builder, Location loc,
   // Generate a 1D tensor with for the random values.
   Value dest = builder.create<tensor::EmptyOp>(loc, ArrayRef<int64_t>({count}),
                                                resultETy);
-  ShapedType destTy = dest.getType().cast<ShapedType>();
+  ShapedType destTy = cast<ShapedType>(dest.getType());
 
   SmallVector<AffineMap> indexingMaps(1, builder.getMultiDimIdentityMap(1));
   SmallVector<utils::IteratorType> iterators(1, utils::IteratorType::parallel);
@@ -565,7 +565,7 @@ LogicalResult generateLinalgPhilox32(OpBuilder &builder, Location loc,
   Value dest3 = builder.create<tensor::EmptyOp>(loc, ArrayRef<int64_t>({count}),
                                                 resultETy);
 
-  ShapedType destTy = dest0.getType().cast<ShapedType>();
+  ShapedType destTy = cast<ShapedType>(dest0.getType());
 
   SmallVector<AffineMap> indexingMaps(4, builder.getMultiDimIdentityMap(1));
   SmallVector<utils::IteratorType> iterators(1, utils::IteratorType::parallel);
@@ -657,7 +657,7 @@ LogicalResult generateLinalgPhilox64(OpBuilder &builder, Location loc,
                                                 resultETy);
   Value dest1 = builder.create<tensor::EmptyOp>(loc, ArrayRef<int64_t>({count}),
                                                 resultETy);
-  ShapedType destTy = dest0.getType().cast<ShapedType>();
+  ShapedType destTy = cast<ShapedType>(dest0.getType());
 
   SmallVector<AffineMap> indexingMaps(2, builder.getMultiDimIdentityMap(1));
   SmallVector<utils::IteratorType> iterators(1, utils::IteratorType::parallel);

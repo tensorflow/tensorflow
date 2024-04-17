@@ -54,7 +54,7 @@ void UnbufferizePass::runOnOperation() {
   IRMapping mapping;
   llvm::SmallDenseSet<BlockArgument> insertedArgs;
   funcOp->walk([&](bufferization::ToTensorOp op) {
-    auto arg = op.getMemref().dyn_cast<BlockArgument>();
+    auto arg = dyn_cast<BlockArgument>(op.getMemref());
     if (!arg) return;
     Value newValue = mapping.lookupOrNull(arg);
     if (newValue == nullptr) {
@@ -70,7 +70,7 @@ void UnbufferizePass::runOnOperation() {
   SmallVector<Value> results;
   SmallVector<DictionaryAttr> resultAttrs;
   funcOp->walk([&](bufferization::MaterializeInDestinationOp op) {
-    auto arg = op.getDest().dyn_cast<BlockArgument>();
+    auto arg = dyn_cast<BlockArgument>(op.getDest());
     if (!arg) return;
     argsToErase.set(arg.getArgNumber());
     results.push_back(op.getSource());

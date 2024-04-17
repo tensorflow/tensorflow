@@ -154,7 +154,7 @@ struct CheckShapeAssertionsPass
 
     // input[0] (assert_what) : tensor<i1>
     auto assertWhatType =
-        op.getInputs()[0].getType().dyn_cast<mlir::ShapedType>();
+        dyn_cast<mlir::ShapedType>(op.getInputs()[0].getType());
     if (!assertWhatType || !assertWhatType.hasRank() ||
         assertWhatType.getRank() != 0 ||
         !assertWhatType.getElementType().isSignlessInteger() ||
@@ -165,7 +165,7 @@ struct CheckShapeAssertionsPass
     // input[1:] (error_message_inputs) : tensor<i32> or tensor<i64>
     for (int i = 0; i < nrErrorMessageInputs; ++i) {
       auto errorMessageInputType =
-          op.getInputs()[i + 1].getType().dyn_cast<mlir::ShapedType>();
+          dyn_cast<mlir::ShapedType>(op.getInputs()[i + 1].getType());
       if (!errorMessageInputType || !errorMessageInputType.hasRank() ||
           errorMessageInputType.getRank() != 0 ||
           !errorMessageInputType.getElementType().isSignlessInteger() ||
@@ -202,9 +202,7 @@ struct CheckShapeAssertionsPass
   }
 
   llvm::StringRef getErrorMessage(mlir::stablehlo::CustomCallOp op) const {
-    return op->getAttr(errorMessageAttrName)
-        .cast<mlir::StringAttr>()
-        .getValue();
+    return cast<mlir::StringAttr>(op->getAttr(errorMessageAttrName)).getValue();
   }
 
   std::string formatErrorMessage(
@@ -320,7 +318,7 @@ absl::Status ValidateStaticShapes(mlir::ModuleOp module) {
     // It's sufficient to only check results because operands either come from
     // results or from block arguments which are checked below.
     auto hasDynamicShape = [](mlir::Value value) {
-      auto shaped_type = value.getType().dyn_cast<mlir::ShapedType>();
+      auto shaped_type = dyn_cast<mlir::ShapedType>(value.getType());
       return shaped_type ? !shaped_type.hasStaticShape() : false;
     };
     bool opHasDynamicShapes = false;

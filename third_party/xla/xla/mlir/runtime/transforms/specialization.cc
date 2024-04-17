@@ -102,19 +102,19 @@ static StatusOr<mlir::Type> SpecializeOperandType(
   // Replace all symbolic dimensions with dynamic dimension.
   auto shape = SymbolicShapesResolver::Normalize(symbolic_shape);
 
-  if (auto memref = type.dyn_cast<mlir::MemRefType>()) {
+  if (auto memref = dyn_cast<mlir::MemRefType>(type)) {
     if (auto st = VerifyMemrefOperand(index, memref, *memref_arg); !st.ok())
       return st;
     return mlir::MemRefType::get(shape, memref.getElementType());
   }
 
-  if (auto tensor = type.dyn_cast<mlir::RankedTensorType>()) {
+  if (auto tensor = dyn_cast<mlir::RankedTensorType>(type)) {
     if (auto st = VerifyMemrefOperand(index, tensor, *memref_arg); !st.ok())
       return st;
     return mlir::RankedTensorType::get(shape, tensor.getElementType());
   }
 
-  if (auto tensor = type.dyn_cast<mlir::UnrankedTensorType>()) {
+  if (auto tensor = dyn_cast<mlir::UnrankedTensorType>(type)) {
     if (auto st = VerifyMemrefOperand(index, tensor, *memref_arg); !st.ok())
       return st;
     return mlir::RankedTensorType::get(shape, tensor.getElementType());
@@ -236,7 +236,7 @@ Status SpecializeFunction(mlir::FunctionOpInterface func,
     // We only support sinking of Tensor arguments into the function body.
     mlir::Type input =
         llvm::cast<mlir::FunctionType>(func.getFunctionType()).getInput(i);
-    mlir::TensorType tensor = input.dyn_cast<mlir::TensorType>();
+    mlir::TensorType tensor = dyn_cast<mlir::TensorType>(input);
     if (!tensor || !SupportsValueSpecialization(tensor)) {
       return InvalidArgumentError(StrCat(
           "non-sinkable operand was marked for sinking: ", debugString(input)));

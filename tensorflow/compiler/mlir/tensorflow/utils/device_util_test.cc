@@ -87,18 +87,18 @@ TEST(DeviceUtilTest, AddDeviceToOp) {
   ASSERT_EQ(devices_attr.size(), 3);
 
   // CPU device added with an empty metadata.
-  auto device_meta_0 = devices_attr.get(cpu0).dyn_cast<mlir::UnitAttr>();
+  auto device_meta_0 = dyn_cast<mlir::UnitAttr>(devices_attr.get(cpu0));
   ASSERT_NE(device_meta_0, nullptr);
 
   // GPU device successfully parsed compute capability from description.
   auto device_meta_1 =
-      devices_attr.get(gpu0).dyn_cast<mlir::TF::GpuDeviceMetadata>();
+      dyn_cast<mlir::TF::GpuDeviceMetadata>(devices_attr.get(gpu0));
   ASSERT_NE(device_meta_1, nullptr);
   ASSERT_EQ(device_meta_1.getCcMajor(), 7);
   ASSERT_EQ(device_meta_1.getCcMinor(), 0);
 
   // If description is empty GPU devices added with an empty metadata.
-  auto device_meta_2 = devices_attr.get(gpu1).dyn_cast<mlir::UnitAttr>();
+  auto device_meta_2 = dyn_cast<mlir::UnitAttr>(devices_attr.get(gpu1));
   ASSERT_NE(device_meta_2, nullptr);
 }
 

@@ -91,11 +91,11 @@ xla::PrimitiveType ConvertMlirTypeToPrimitiveType(mlir::Type type) {
     return xla::PrimitiveType::F32;
   } else if (type.isF64()) {
     return xla::PrimitiveType::F64;
-  } else if (auto complex_type = type.dyn_cast<mlir::ComplexType>()) {
+  } else if (auto complex_type = dyn_cast<mlir::ComplexType>(type)) {
     mlir::Type element_ty = complex_type.getElementType();
     return xla::primitive_util::ComplexType(
         ConvertMlirTypeToPrimitiveType(element_ty));
-  } else if (auto integer_type = type.dyn_cast<mlir::IntegerType>()) {
+  } else if (auto integer_type = dyn_cast<mlir::IntegerType>(type)) {
     bool is_unsigned = integer_type.isUnsigned();
     if (integer_type.getWidth() == 1) {
       return xla::PrimitiveType::PRED;

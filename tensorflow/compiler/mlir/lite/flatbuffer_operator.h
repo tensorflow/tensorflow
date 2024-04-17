@@ -65,7 +65,7 @@ class StablehloVhloTypeConverter : public mlir::vhlo::VhloTypeConverter {
       return attr;
 
     if (auto stablehloAttr =
-            attr.dyn_cast_or_null<mlir::stablehlo::TypeExtensionsAttr>()) {
+            dyn_cast_or_null<mlir::stablehlo::TypeExtensionsAttr>(attr)) {
       return mlir::vhlo::TypeExtensionsV1Attr::get(stablehloAttr.getContext(),
                                                    stablehloAttr.getBounds());
     }
@@ -88,7 +88,7 @@ class VhloToStablehloTypeConverter : public vhlo::VhloTypeConverter {
   }
 
   Attribute convertEncoding(Attribute attr) const final {
-    if (auto vhloAttr = attr.dyn_cast_or_null<vhlo::TypeExtensionsV1Attr>()) {
+    if (auto vhloAttr = dyn_cast_or_null<vhlo::TypeExtensionsV1Attr>(attr)) {
       return stablehlo::TypeExtensionsAttr::get(vhloAttr.getContext(),
                                                 vhloAttr.getBounds());
     }
@@ -296,8 +296,8 @@ static inline std::vector<T> GetVector(
     vhlo::TensorV1Attr elements,
     mlir::vhlo::VhloTypeConverter &vhlo_type_converter) {
   return GetOptionalVector<T>(mlir::DenseIntElementsAttr::getFromRawBuffer(
-      vhlo_type_converter.convertType(elements.getType())
-          .cast<mlir::ShapedType>(),
+      cast<mlir::ShapedType>(
+          vhlo_type_converter.convertType(elements.getType())),
       elements.getData()));
 }
 

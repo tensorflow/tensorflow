@@ -372,7 +372,7 @@ void promoteToStack(memref::DeallocOp dealloc) {
   auto alloc = dealloc.getMemref().getDefiningOp<memref::AllocOp>();
   OpBuilder b(alloc);
   auto alloca = b.create<memref::AllocaOp>(
-      alloc->getLoc(), alloc->getResultTypes()[0].cast<MemRefType>(),
+      alloc->getLoc(), cast<MemRefType>(alloc->getResultTypes()[0]),
       alloc.getAlignmentAttr());
   alloc->replaceAllUsesWith(ValueRange{alloca.getResult()});
   alloc->erase();

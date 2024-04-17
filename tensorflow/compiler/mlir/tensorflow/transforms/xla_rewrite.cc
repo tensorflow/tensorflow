@@ -44,8 +44,7 @@ void MoveResourceArgsToEnd(func::FuncOp callee) {
   // Copy the resource-type parameters to the end.
   for (unsigned i = 0; i < num_params; ++i) {
     BlockArgument param = callee.getArgument(i);
-    if (getElementTypeOrSelf(param.getType())
-            .template isa<TF::ResourceType>()) {
+    if (isa<TF::ResourceType>(getElementTypeOrSelf(param.getType()))) {
       removed_params.set(i);
       callee.getBody().addArgument(param.getType(), param.getLoc());
       param.replaceAllUsesWith(callee.getArguments().back());
@@ -65,7 +64,7 @@ void RewriteCall(tf_device::ClusterFuncOp cluster_func_op, SymbolTable &symtab,
   llvm::SmallVector<Value> non_resource_args, resource_args;
   bool has_resources = false, in_order = true;
   for (const Value &arg : cluster_func_op.getOperands()) {
-    if (!getElementTypeOrSelf(arg.getType()).template isa<TF::ResourceType>()) {
+    if (!isa<TF::ResourceType>(getElementTypeOrSelf(arg.getType()))) {
       non_resource_args.push_back(arg);
       if (has_resources) in_order = false;
     } else {

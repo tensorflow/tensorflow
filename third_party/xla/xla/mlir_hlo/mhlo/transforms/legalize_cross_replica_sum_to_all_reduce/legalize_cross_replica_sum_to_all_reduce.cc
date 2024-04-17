@@ -49,11 +49,9 @@ struct CrossReplicaSumToAllReducePattern
         /*use_global_device_ids=*/false);
 
     auto *block = rewriter.createBlock(&allReduceOp.getComputation());
-    auto elementType = RankedTensorType::get({}, allReduceOp.getResults()
-                                                     .front()
-                                                     .getType()
-                                                     .dyn_cast<TensorType>()
-                                                     .getElementType());
+    auto elementType = RankedTensorType::get(
+        {}, dyn_cast<TensorType>(allReduceOp.getResults().front().getType())
+                .getElementType());
     auto location = allReduceOp.getComputation().getLoc();
     block->addArguments({elementType, elementType}, {location, location});
 

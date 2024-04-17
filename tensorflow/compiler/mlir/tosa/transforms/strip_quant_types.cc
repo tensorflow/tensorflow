@@ -121,7 +121,7 @@ class GenericTypeConvert : public ConversionPattern {
 };
 
 static bool isIllegalType(Type type) {
-  if (type.isa<quant::QuantizedType>()) return true;
+  if (isa<quant::QuantizedType>(type)) return true;
   if (auto shapedType = dyn_cast<ShapedType>(type)) {
     return isIllegalType(shapedType.getElementType());
   }

@@ -21,9 +21,9 @@ namespace mlir {
 namespace quant {
 
 UnrankedTensorType CreateUnknownShapeFromElementType(Type tensor_type) {
-  if (!tensor_type.cast<TensorType>()) return UnrankedTensorType();
+  if (!cast<TensorType>(tensor_type)) return UnrankedTensorType();
   return UnrankedTensorType::get(
-      tensor_type.cast<TensorType>().getElementType());
+      cast<TensorType>(tensor_type).getElementType());
 }
 
 }  // namespace quant

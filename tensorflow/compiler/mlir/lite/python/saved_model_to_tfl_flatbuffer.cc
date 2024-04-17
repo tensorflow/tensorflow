@@ -80,7 +80,7 @@ Status HandleInputOutputArraysWithModule(
   if (!input_attr) {
     return errors::InvalidArgument("no inputs attribute found");
   }
-  auto input_names = input_attr.cast<mlir::StringAttr>().getValue();
+  auto input_names = cast<mlir::StringAttr>(input_attr).getValue();
   input_names.split(function_input_names, ",", /*MaxSplit=*/-1,
                     /*KeepEmpty=*/false);
   const int function_input_names_size = function_input_names.size();
@@ -106,7 +106,7 @@ Status HandleInputOutputArraysWithModule(
   if (!output_attr) {
     return errors::InvalidArgument("no outputs attribute found");
   }
-  auto output_names = output_attr.cast<mlir::StringAttr>().getValue();
+  auto output_names = cast<mlir::StringAttr>(output_attr).getValue();
   output_names.split(function_output_names, ",", /*MaxSplit=*/-1,
                      /*KeepEmpty=*/false);
   const int function_output_names_size = function_output_names.size();

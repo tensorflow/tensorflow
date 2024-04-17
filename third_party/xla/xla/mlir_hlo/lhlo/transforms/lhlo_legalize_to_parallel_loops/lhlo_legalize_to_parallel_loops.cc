@@ -55,7 +55,7 @@ Value applySingleResultLhloCode(Location loc, ValueRange operands,
   SmallVector<Value, 2> argBufs;
   for (auto argType : lhloBlock->getArgumentTypes()) {
     argBufs.push_back(
-        b->create<memref::AllocOp>(loc, argType.cast<MemRefType>()));
+        b->create<memref::AllocOp>(loc, cast<MemRefType>(argType)));
   }
   for (const auto& operand : llvm::enumerate(operands)) {
     b->create<memref::StoreOp>(loc, operand.value(), argBufs[operand.index()]);
@@ -116,7 +116,7 @@ MappedIvs mapWindowIvsToInput(OpTy op, Value operand, ValueRange ivs,
   auto padding = op.getPadding().value();
 
   auto loc = op.getLoc();
-  auto operandShape = operand.getType().template cast<MemRefType>().getShape();
+  auto operandShape = cast<MemRefType>(operand.getType()).getShape();
 
   // `in_bounds` is false when the mapped indices are in the padding area.
   mappedIvs.inBounds = b->create<mlir::arith::ConstantOp>(
@@ -154,7 +154,7 @@ scf::ParallelOp makeLoopOverShape(Location loc, Value shapedValue,
   Value zero = b->create<arith::ConstantIndexOp>(loc, 0);
   Value one = b->create<arith::ConstantIndexOp>(loc, 1);
 
-  ArrayRef<int64_t> shape = shapedValue.getType().cast<ShapedType>().getShape();
+  ArrayRef<int64_t> shape = cast<ShapedType>(shapedValue.getType()).getShape();
   SmallVector<Value, 2> lower, upper, step;
   for (const auto& dim : llvm::enumerate(shape)) {
     upper.push_back(
@@ -249,7 +249,7 @@ class ReduceOpConverter : public OpConversionPattern<lmhlo::ReduceOp> {
     Value out = reduceOp.getOut().front();
     SmallVector<Value, 2> parallelLower, parallelUpper, parallelStep;
     SmallVector<Value, 2> reduceLower, reduceUpper, reduceStep;
-    auto operandShape = operand.getType().cast<MemRefType>().getShape();
+    auto operandShape = cast<MemRefType>(operand.getType()).getShape();
     for (const auto& dim : llvm::enumerate(operandShape)) {
       const bool isReducingDim = reducingDims.count(dim.index());
 
@@ -442,7 +442,7 @@ class ReduceWindowOpConverter
     }
 
     Value input = reduceWindowOp.getInputs()[0];
-    auto inputType = input.getType().cast<MemRefType>();
+    auto inputType = cast<MemRefType>(input.getType());
 
     // Compute ivs in 'arg' buffer and whether these ivs are in pad area or not.
     MappedIvs mappedIvs = mapWindowIvsToInput(
@@ -555,7 +555,7 @@ class SelectAndScatterOpConverter
     Value one = b->create<arith::ConstantIndexOp>(loc, 1);
 
     auto elementType =
-        sAndSOp.getOut().getType().cast<MemRefType>().getElementType();
+        cast<MemRefType>(sAndSOp.getOut().getType()).getElementType();
     auto rank = loopOverSrc.getNumLoops();
 
     // `iter_args` = [iv_1, ..., iv_N, selected_value, is_initialized]

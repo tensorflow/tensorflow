@@ -248,12 +248,12 @@ void ConvertToTensorShapeProto(ArrayRef<int64_t> shape,
 }
 
 PartialTensorShape ConvertTypeToTensorShape(const Type& type) {
-  if (type.isa<UnrankedTensorType>()) {
+  if (isa<UnrankedTensorType>(type)) {
     // An empty PartialTensorShape indicates an unranked tensor.
     return PartialTensorShape();
   }
 
-  if (auto tensor_type = type.dyn_cast<RankedTensorType>()) {
+  if (auto tensor_type = dyn_cast<RankedTensorType>(type)) {
     TensorShapeProto tensor_shape_proto;
     ConvertToTensorShapeProto(ConvertMlirShapeToTF(tensor_type.getShape()),
                               &tensor_shape_proto);
@@ -266,11 +266,11 @@ PartialTensorShape ConvertTypeToTensorShape(const Type& type) {
 }
 
 ShapeAttr ConvertTypeToTensorShapeAttr(const Type& type) {
-  if (type.isa<UnrankedTensorType>()) {
+  if (isa<UnrankedTensorType>(type)) {
     return ShapeAttr::get(type.getContext(), std::nullopt);
   }
 
-  if (auto tensor_type = type.dyn_cast<RankedTensorType>()) {
+  if (auto tensor_type = dyn_cast<RankedTensorType>(type)) {
     return ShapeAttr::get(
         type.getContext(),
         llvm::ArrayRef(ConvertMlirShapeToTF(tensor_type.getShape())));
@@ -439,10 +439,10 @@ Status ConvertToTensorProto(const ElementsAttr attr, TensorProto* output) {
   output->set_dtype(output_dtype);
   ConvertToTensorShapeProto(shape, output->mutable_tensor_shape());
 
-  if (auto tensor_attr = attr.dyn_cast<mlir::tf_type::TensorProtoAttr>())
+  if (auto tensor_attr = dyn_cast<mlir::tf_type::TensorProtoAttr>(attr))
     return ConvertTensorProtoAttr(tensor_attr, output);
 
-  auto dense_attr = attr.dyn_cast<DenseElementsAttr>();
+  auto dense_attr = dyn_cast<DenseElementsAttr>(attr);
   if (!dense_attr) return InvalidArgument("Unsupported elements attr");
 
   switch (output_dtype) {
@@ -508,7 +508,7 @@ Status ConvertToTensorProto(const ElementsAttr attr, TensorProto* output) {
                              output->mutable_tensor_content());
       break;
     case tensorflow::DT_STRING:
-      ConvertStringElementsAttr(dense_attr.cast<DenseStringElementsAttr>(),
+      ConvertStringElementsAttr(cast<DenseStringElementsAttr>(dense_attr),
                                 output->mutable_string_val());
       break;
     case tensorflow::DT_UINT8:

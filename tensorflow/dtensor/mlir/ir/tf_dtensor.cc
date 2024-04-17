@@ -37,14 +37,13 @@ namespace {
 
 RankedTensorType GetRankedTensorType(mlir::Value val) {
   mlir::Type type = val.getType();
-  if (auto type_with_subtype =
-          mlir::getElementTypeOrSelf(val)
-              .dyn_cast<mlir::TF::TensorFlowTypeWithSubtype>()) {
+  if (auto type_with_subtype = dyn_cast<mlir::TF::TensorFlowTypeWithSubtype>(
+          mlir::getElementTypeOrSelf(val))) {
     if (type_with_subtype.GetSubtypes().size() == 1) {
       type = type_with_subtype.GetSubtypes().front();
     }
   }
-  return type.dyn_cast_or_null<RankedTensorType>();
+  return dyn_cast_or_null<RankedTensorType>(type);
 }
 }  // namespace
 
@@ -110,7 +109,7 @@ mlir::LogicalResult DTensorAllGatherOp::verify() {
   }
 
   RankedTensorType input_type =
-      op.getInput().getType().dyn_cast<RankedTensorType>();
+      dyn_cast<RankedTensorType>(op.getInput().getType());
   if (!input_type) return mlir::success();
 
   if (input_type.getRank() != input_layout.rank())
@@ -119,7 +118,7 @@ mlir::LogicalResult DTensorAllGatherOp::verify() {
            << " is not equal to input rank " << input_type.getRank();
 
   RankedTensorType output_type =
-      op.getOutput().getType().dyn_cast<RankedTensorType>();
+      dyn_cast<RankedTensorType>(op.getOutput().getType());
   if (!output_type) return mlir::success();
 
   if (output_type.getRank() != output_layout.rank())
@@ -166,7 +165,7 @@ mlir::LogicalResult DTensorAllScatterOp::verify() {
   }
 
   RankedTensorType input_type =
-      op.getInput().getType().dyn_cast<RankedTensorType>();
+      dyn_cast<RankedTensorType>(op.getInput().getType());
   if (!input_type) return mlir::success();
 
   if (input_type.getRank() != input_layout.rank())
@@ -175,7 +174,7 @@ mlir::LogicalResult DTensorAllScatterOp::verify() {
            << " is not equal to input rank " << input_type.getRank();
 
   RankedTensorType output_type =
-      op.getOutput().getType().dyn_cast<RankedTensorType>();
+      dyn_cast<RankedTensorType>(op.getOutput().getType());
   if (!output_type) return mlir::success();
 
   if (output_type.getRank() != output_layout.rank())
@@ -237,7 +236,7 @@ mlir::LogicalResult DTensorAllToAllOp::verify() {
   }
 
   RankedTensorType input_type =
-      op.getInput().getType().dyn_cast<RankedTensorType>();
+      dyn_cast<RankedTensorType>(op.getInput().getType());
   if (!input_type) return mlir::success();
 
   if (input_type.getRank() != input_layout.rank())
@@ -246,7 +245,7 @@ mlir::LogicalResult DTensorAllToAllOp::verify() {
            << " is not equal to input rank " << input_type.getRank();
 
   RankedTensorType output_type =
-      op.getOutput().getType().dyn_cast<RankedTensorType>();
+      dyn_cast<RankedTensorType>(op.getOutput().getType());
   if (!output_type) return mlir::success();
 
   if (output_type.getRank() != output_layout.rank())

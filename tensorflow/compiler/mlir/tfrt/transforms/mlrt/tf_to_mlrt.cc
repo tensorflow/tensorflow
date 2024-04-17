@@ -380,11 +380,11 @@ class IfrtRestoreVariableOpConversion
 };
 
 std::optional<std::string> DecodeLongName(mlir::Location loc) {
-  if (auto name_loc = loc.dyn_cast<mlir::NameLoc>()) {
+  if (auto name_loc = dyn_cast<mlir::NameLoc>(loc)) {
     return name_loc.getName().str();
   }
 
-  if (auto fused_loc = loc.dyn_cast<mlir::FusedLoc>()) {
+  if (auto fused_loc = dyn_cast<mlir::FusedLoc>(loc)) {
     std::string fused_name;
     for (auto l : fused_loc.getLocations()) {
       if (auto n = DecodeLongName(l)) {
@@ -1027,7 +1027,7 @@ class TfToMlrtConversionPass
     type_converter_.addConversion(
         [=](mlir::TensorType type) -> std::optional<mlir::Type> {
           // Ref types are not supported in both compiler and runtime.
-          if (type.getElementType().isa<mlir::TF::TensorFlowRefType>())
+          if (isa<mlir::TF::TensorFlowRefType>(type.getElementType()))
             return std::nullopt;
           return tf_mlrt::TFTensorType::get(context);
         });
@@ -1037,8 +1037,8 @@ class TfToMlrtConversionPass
            mlir::ValueRange inputs, mlir::Location loc) -> mlir::Value {
       if (inputs.size() != 1) return mlir::Value();
 
-      if (inputs[0].getType().isa<mlrt::compiler::FutureType>()) {
-        if (desired_type.isa<tf_mlrt::TFTensorType>()) {
+      if (isa<mlrt::compiler::FutureType>(inputs[0].getType())) {
+        if (isa<tf_mlrt::TFTensorType>(desired_type)) {
           return builder.create<tf_mlrt::AwaitOp>(loc, desired_type, inputs[0]);
         }
 

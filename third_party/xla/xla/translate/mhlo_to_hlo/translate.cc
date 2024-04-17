@@ -99,7 +99,7 @@ Status ConvertMlirHloToHloViaBuilder(mlir::ModuleOp module,
             ->mutable_instructions(i)
             ->mutable_parameter_replication()
             ->add_replicated_at_leaf_buffers(
-                b.cast<mlir::BoolAttr>().getValue());
+                cast<mlir::BoolAttr>(b).getValue());
 
   auto hlo_module = computation.proto();
   hlo_proto->mutable_hlo_module()->Swap(&hlo_module);

@@ -227,7 +227,7 @@ LogicalResult tryLowerTo1DOr2DReduction(
   Value initVal = op.getInitValues().front();
   SmallVector<Type> elementTypes{llvm::map_range(
       op.getBody().front().getTerminator()->getOperands(),
-      [](Value v) { return v.getType().cast<ShapedType>().getElementType(); })};
+      [](Value v) { return cast<ShapedType>(v.getType()).getElementType(); })};
   auto reductionOp = rewriter.create<ReduceOp>(loc, intermResult, initVal,
                                                reductionDimAttr, elementTypes);
   rewriter.inlineRegionBefore(op.getBody(), reductionOp.getBody(),
@@ -235,7 +235,7 @@ LogicalResult tryLowerTo1DOr2DReduction(
   intermResult = reductionOp->getResults().front();
 
   // Restore the expected shape by dynamic reshape, if required.
-  auto resultTy = op->getResultTypes().front().cast<RankedTensorType>();
+  auto resultTy = cast<RankedTensorType>(op->getResultTypes().front());
   if (requiresDynamicReshape) {
     assert(resultShape && "expect to have reified the result shape");
     intermResult = rewriter.create<DynamicReshapeOp>(
@@ -245,7 +245,7 @@ LogicalResult tryLowerTo1DOr2DReduction(
   // Othwerise, restore the expected shape by shape expansion, if required.
   int64_t resultRank = resultTy.getRank();
   int64_t intermResultRank =
-      intermResult.getType().cast<RankedTensorType>().getRank();
+      cast<RankedTensorType>(intermResult.getType()).getRank();
   bool requiresExpand =
       !requiresDynamicReshape && resultRank != intermResultRank;
   if (requiresExpand) {
@@ -276,11 +276,11 @@ struct GroupReductionDimensionsPattern : public OpRewritePattern<ReduceOp> {
       return failure();
     Value arg = op.getInputs().front();
     // Only apply to non-sparse tensors.
-    if (auto rtp = arg.getType().cast<RankedTensorType>();
+    if (auto rtp = cast<RankedTensorType>(arg.getType());
         rtp.getEncoding() != nullptr)
       return failure();
 
-    auto argTy = arg.getType().cast<RankedTensorType>();
+    auto argTy = cast<RankedTensorType>(arg.getType());
 
     // Sort reduction dimensions, which is not an invariant of the op.
     SmallVector<int64_t> orderedReductionDims =

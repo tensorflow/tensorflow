@@ -21,17 +21,17 @@ namespace TFL {
 
 FloatAttr ExtractSingleElementAsFloat(ElementsAttr attr) {
   if (attr.getShapedType().getNumElements() != 1 ||
-      !attr.getShapedType().getElementType().isa<FloatType>()) {
+      !isa<FloatType>(attr.getShapedType().getElementType())) {
     return {};
   }
   return attr.getSplatValue<FloatAttr>();
 }
 
 FloatAttr GetSingleElementAsFloatOrSelf(Attribute attr) {
-  if (auto m = attr.dyn_cast_or_null<ElementsAttr>()) {
+  if (auto m = dyn_cast_or_null<ElementsAttr>(attr)) {
     return ExtractSingleElementAsFloat(m);
   } else {
-    return attr.dyn_cast_or_null<FloatAttr>();
+    return dyn_cast_or_null<FloatAttr>(attr);
   }
 }
 

@@ -110,7 +110,7 @@ LogicalResult ConvertTFDilatedConvOp<Conv2dOpTy>::matchAndRewrite(
   }
 
   // Allow dynamic width and height dimensions only.
-  auto result_ty = op.getResult().getType().template cast<TensorType>();
+  auto result_ty = cast<TensorType>(op.getResult().getType());
   if (!result_ty.hasRank() || result_ty.getRank() != 4 ||
       result_ty.isDynamicDim(0) || result_ty.isDynamicDim(3)) {
     return rewriter.notifyMatchFailure(
@@ -187,8 +187,7 @@ LogicalResult ConvertTFDilatedConvOp<Conv2dOpTy>::matchAndRewrite(
     // Make sure that the axis in `expand_op` is constant.
     if (auto const_op =
             llvm::dyn_cast<TF::ConstOp>(expand_op.getDim().getDefiningOp())) {
-      expand_axis = (*const_op.getValue()
-                          .cast<DenseElementsAttr>()
+      expand_axis = (*cast<DenseElementsAttr>(const_op.getValue())
                           .getValues<APInt>()
                           .begin())
                         .getSExtValue();
@@ -208,7 +207,7 @@ LogicalResult ConvertTFDilatedConvOp<Conv2dOpTy>::matchAndRewrite(
       return rewriter.notifyMatchFailure(
           squeeze_op, "squeeze dims should have exactly 1 dimension specified");
     }
-    int64_t squeeze_axis = squeeze_dims[0].cast<IntegerAttr>().getInt();
+    int64_t squeeze_axis = cast<IntegerAttr>(squeeze_dims[0]).getInt();
     if (squeeze_axis < 0) {
       // Always squeeze 4D input to 3D input.
       squeeze_axis += 4;
@@ -318,7 +317,7 @@ LogicalResult ConvertTFDilatedConvOp<Conv2dOpTy>::matchAndRewrite(
   }
 
   if (expand_op) {
-    if (stb_op.getInput().getType().dyn_cast<RankedTensorType>() == nullptr) {
+    if (dyn_cast<RankedTensorType>(stb_op.getInput().getType()) == nullptr) {
       return rewriter.notifyMatchFailure(
           stb_op, "SpaceToBatchND op's input should have RankedTensorType");
     }
@@ -400,8 +399,7 @@ LogicalResult ConvertTFDilatedConvOp<Conv2dOpTy>::matchAndRewrite(
     // Connect `expand_op` with the input of `stb_op`.
     expand_op.setOperand(0, stb_op.getInput());
     // Calculate the shape for expand.
-    auto input_shape =
-        stb_op.getInput().getType().cast<ShapedType>().getShape();
+    auto input_shape = cast<ShapedType>(stb_op.getInput().getType()).getShape();
     SmallVector<int64_t, 4> expand_shape(input_shape.begin(),
                                          input_shape.end());
     expand_shape.insert(expand_shape.begin() + expand_axis, 1);
@@ -412,7 +410,7 @@ LogicalResult ConvertTFDilatedConvOp<Conv2dOpTy>::matchAndRewrite(
 
     // Update the conv op's output shape.
     auto bts_output_shape =
-        bts_op.getOutput().getType().cast<ShapedType>().getShape();
+        cast<ShapedType>(bts_op.getOutput().getType()).getShape();
     SmallVector<int64_t, 4> conv_result_shape(bts_output_shape.begin(),
                                               bts_output_shape.end());
     conv_result_shape.insert(conv_result_shape.begin() + expand_axis, 1);

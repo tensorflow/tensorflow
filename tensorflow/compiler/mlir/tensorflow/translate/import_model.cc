@@ -1228,7 +1228,7 @@ absl::StatusOr<mlir::Type> ImporterBase::InferOutputType(
         TF_ASSIGN_OR_RETURN(
             auto etype, ConvertToMlirTensorType(shape_proto, dtype, &builder));
         return mlir::UnrankedTensorType::get(mlir::TF::ResourceType::get(
-            {etype.cast<TensorType>()}, builder.getContext()));
+            {cast<TensorType>(etype)}, builder.getContext()));
       } else {
         return mlir::UnrankedTensorType::get(
             mlir::TF::ResourceType::get(builder.getContext()));
@@ -2000,7 +2000,7 @@ mlir::Operation* ImporterBase::CreateOperation(
         record_resource = [&](mlir::Type type) {
           type.walk([&](mlir::Type t) {
             if (resource) return mlir::WalkResult::interrupt();
-            if (type.isa<mlir::TF::ResourceType>()) {
+            if (isa<mlir::TF::ResourceType>(type)) {
               resource = true;
               return mlir::WalkResult::interrupt();
             }
@@ -3187,10 +3187,10 @@ void StructuredValueLinearizer::RecursivelyFindLeaves(
          << " at index path: <value>";
       for (auto path_element : current_index_path_) {
         os << ".";
-        if (auto integer = path_element.dyn_cast<mlir::IntegerAttr>()) {
+        if (auto integer = dyn_cast<mlir::IntegerAttr>(path_element)) {
           os << integer.getValue();
         } else {
-          auto str = path_element.cast<mlir::StringAttr>();
+          auto str = cast<mlir::StringAttr>(path_element);
           os << str.getValue();
         }
       }

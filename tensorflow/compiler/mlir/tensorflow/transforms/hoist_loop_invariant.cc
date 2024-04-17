@@ -135,7 +135,7 @@ void HoistLoopInvariantPass::runOnOperation() {
 
   // Skip the pass if the function inputs contain any resource.
   for (const auto &type : func.getArgumentTypes()) {
-    if (getElementTypeOrSelf(type).isa<ResourceType>()) return;
+    if (isa<ResourceType>(getElementTypeOrSelf(type))) return;
   }
 
   llvm::DenseSet<ResourceHandle> read_only_vars = GetReadOnlyVariables(func);

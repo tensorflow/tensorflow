@@ -81,7 +81,7 @@ class InsertWeightParamPattern
     if (op->getNumResults() != 1) {
       return failure();
     }
-    auto type = op->getResult(0).getType().cast<TensorType>();
+    auto type = cast<TensorType>(op->getResult(0).getType());
     if (!type || !type.getElementType().isF32()) {
       return failure();
     }
@@ -115,10 +115,9 @@ class InsertWeightParamPattern
       return;
     }
     auto quant_type =
-        quant::GetUniformQuantizedTypeForWeight(
+        dyn_cast<quant::QuantizedType>(quant::GetUniformQuantizedTypeForWeight(
             attr, /*symmetric=*/false, /*num_bits=*/8, /*is_signed=*/true,
-            /*narrow_range=*/false, /*legacy_float_scale=*/false)
-            .template dyn_cast<quant::QuantizedType>();
+            /*narrow_range=*/false, /*legacy_float_scale=*/false));
     if (!quant_type) {
       return;
     }

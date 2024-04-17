@@ -280,7 +280,7 @@ class CommuteTransposeWithEwiseOps : public RewritePattern {
     }
 
     auto other_input_type =
-        cst_arg->getResult(0).getType().cast<RankedTensorType>();
+        cast<RankedTensorType>(cst_arg->getResult(0).getType());
 
     Operation *tposed_const;
     if (other_input_type.getNumElements() == 1) {

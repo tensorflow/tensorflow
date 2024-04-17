@@ -181,7 +181,7 @@ class GpuCompileAndExecuteOpConversion
     if (!xla_function) {
       return op->emitWarning("failed to find 'function' attribute");
     }
-    auto func_attr = xla_function.dyn_cast<mlir::FlatSymbolRefAttr>();
+    auto func_attr = dyn_cast<mlir::FlatSymbolRefAttr>(xla_function);
     if (!func_attr || func_attr.getValue().empty()) {
       return op->emitWarning("failed to find a non-empty 'function' attribute");
     }
@@ -512,7 +512,7 @@ class FallbackConstOpConversion
       mlir::ConversionPatternRewriter &rewriter) const override {
     // Some data types are handled separately using a fast path.
     if (IsSupportedTfrtNumericDType(op.getDtype()) ||
-        op.getDtype().isa<mlir::TF::StringType>())
+        isa<mlir::TF::StringType>(op.getDtype()))
       return failure();
 
     // For other data types that do not have a fast path (eg. quantized types),
@@ -757,7 +757,7 @@ class CoreRTConstDenseTensorOpConversion
 
     auto new_op = rewriter.create<tfrt::corert::ConstDenseTensorOp>(
         op.getLoc(), corert_converter_.tensor_handle_type(),
-        op.getValue().cast<DenseElementsAttr>());
+        cast<DenseElementsAttr>(op.getValue()));
     rewriter.replaceOp(op, new_op->getResult(0));
     return success();
   }
@@ -870,10 +870,9 @@ class CoreRTConstStringTensorOpConversion
   LogicalResult matchAndRewrite(
       mlir::TF::ConstOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {  // NOLINT
-    if (!op.getDtype().isa<mlir::TF::StringType>()) return failure();
+    if (!isa<mlir::TF::StringType>(op.getDtype())) return failure();
 
-    DenseStringElementsAttr attr =
-        op.getValue().cast<DenseStringElementsAttr>();
+    DenseStringElementsAttr attr = cast<DenseStringElementsAttr>(op.getValue());
 
     llvm::SmallVector<Attribute, 4> values;
     values.reserve(attr.getNumElements());
@@ -1067,7 +1066,7 @@ class TFRTCaseOpConversion : public mlir::OpConversionPattern<TF::CaseOp> {
 
     mlir::Value index_operand = adaptor.getOperands()[0];
     // TODO(b/182233401): Support TF tensor; remove the conversion op here.
-    if (index_operand.getType().isa<tfrt::fallback::TFTensorType>()) {
+    if (isa<tfrt::fallback::TFTensorType>(index_operand.getType())) {
       // TODO(b/182232457): Support other devices.
       index_operand =
           rewriter
@@ -1079,7 +1078,7 @@ class TFRTCaseOpConversion : public mlir::OpConversionPattern<TF::CaseOp> {
                   tfrt_compiler::GetDefaultCpuDeviceName())
               .getResult(0);
     }
-    if (!index_operand.getType().isa<tfrt::corert::TensorHandleType>())
+    if (!isa<tfrt::corert::TensorHandleType>(index_operand.getType()))
       return op.emitError(
           "branch index operand is expected to be a TensorHandle.");
     mlir::Value index_value =
@@ -1101,7 +1100,7 @@ class TFRTCaseOpConversion : public mlir::OpConversionPattern<TF::CaseOp> {
 
 static mlir::Value GetPredicate(mlir::Operation *op, mlir::Value cond_operand,
                                 mlir::ConversionPatternRewriter &rewriter) {
-  if (!cond_operand.getType().isa<tfrt::fallback::TFTensorType>()) {
+  if (!isa<tfrt::fallback::TFTensorType>(cond_operand.getType())) {
     cond_operand = tfrt_compiler::ConvertCoreRTTensorHandleToFallbackTensor(
         op->getLoc(), tfrt_compiler::GetDefaultCpuDeviceName(), cond_operand,
         rewriter);
@@ -1721,7 +1720,7 @@ class TfToTfrtConversionPass
     auto return_op =
         llvm::cast<tfrt::compiler::ReturnOp>(block.getTerminator());
     auto chain = return_op->getOperand(0);
-    assert(chain.getType().isa<tfrt::compiler::ChainType>());
+    assert(isa<tfrt::compiler::ChainType>(chain.getType()));
     dangling_values.push_back(chain);
 
     mlir::OpBuilder builder(return_op);

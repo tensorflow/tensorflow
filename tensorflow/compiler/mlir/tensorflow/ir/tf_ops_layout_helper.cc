@@ -60,7 +60,7 @@ ArrayAttr ShuffleArrayAttr(ArrayAttr attr, ArrayRef<int64_t> permutation,
 
 // Shuffle ranked tensor dimensions according to the permutation.
 Type ShuffleRankedTensorType(Type type, ArrayRef<int64_t> permutation) {
-  if (auto ranked_type = type.dyn_cast<RankedTensorType>()) {
+  if (auto ranked_type = dyn_cast<RankedTensorType>(type)) {
     ArrayRef<int64_t> shape = ranked_type.getShape();
     assert(permutation.size() == shape.size());
 

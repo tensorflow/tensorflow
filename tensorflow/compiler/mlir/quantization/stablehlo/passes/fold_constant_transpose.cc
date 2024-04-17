@@ -127,12 +127,12 @@ class FoldTransposedConstantOp
     if (!const_op) return failure();
 
     // Only support float tensors.
-    auto tensor_type = const_op.getType().dyn_cast_or_null<TensorType>();
+    auto tensor_type = dyn_cast_or_null<TensorType>(const_op.getType());
     if (!tensor_type || !tensor_type.getElementType().isF32()) {
       return failure();
     }
 
-    return success(const_op.getValue().isa_and_nonnull<DenseFPElementsAttr>());
+    return success(isa_and_nonnull<DenseFPElementsAttr>(const_op.getValue()));
   }
 
   void rewrite(mlir::stablehlo::TransposeOp op,
@@ -140,7 +140,7 @@ class FoldTransposedConstantOp
     auto const_op =
         cast<mlir::stablehlo::ConstantOp>(op.getOperand().getDefiningOp());
 
-    const auto value_attr = const_op.getValue().cast<DenseFPElementsAttr>();
+    const auto value_attr = cast<DenseFPElementsAttr>(const_op.getValue());
     const ArrayRef<int64_t> original_shape =
         value_attr.getShapedType().getShape();
 

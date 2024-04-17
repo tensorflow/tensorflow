@@ -189,7 +189,7 @@ void DedupeAndHoistConstantPass::RunOnGraphOrFuncOp(Operation* op) {
   op->walk([&](Operation* inner_op) {
     if (inner_op->getName().getIdentifier() != tfg_const) return;
 
-    ElementsAttr val = inner_op->getAttr(value_id).cast<ElementsAttr>();
+    ElementsAttr val = cast<ElementsAttr>(inner_op->getAttr(value_id));
     if (val.getNumElements() > max_size_) return;
     constant_ops[inner_op].push_back(inner_op);
   });

@@ -66,9 +66,9 @@ struct PushDownDequantize : public OpRewritePattern<DequantizeOp> {
     // Only push down the dequantize op when the output is smaller, so that it
     // can have smaller memory usage.
     auto input_type =
-        dequantize_op.getOutput().getType().dyn_cast<RankedTensorType>();
+        dyn_cast<RankedTensorType>(dequantize_op.getOutput().getType());
     auto output_type =
-        passthrough_op->getResult(0).getType().dyn_cast<RankedTensorType>();
+        dyn_cast<RankedTensorType>(passthrough_op->getResult(0).getType());
     if (!input_type || !output_type ||
         get_num_elements(input_type) <= get_num_elements(output_type)) {
       return failure();
@@ -85,7 +85,7 @@ struct PushDownDequantize : public OpRewritePattern<DequantizeOp> {
 
     // Set the input type of the passthrough op and pull it up.
     Type new_output_type;
-    if (input_element_type.isa<quant::QuantizedType>()) {
+    if (isa<quant::QuantizedType>(input_element_type)) {
       new_output_type = QuantizedType::getQuantizedElementType(
                             dequantize_op.getInput().getType())
                             .castFromExpressedType(output_type);
