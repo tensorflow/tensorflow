@@ -278,7 +278,7 @@ void CloneEmptyIfWithPredicate(mlir::TF::IfRegionOp if_region, const Mesh& mesh,
   // DTensorSend op sends the predicate to `mesh` cluster with replicated
   // layout.
   mlir::TensorType predicate_tensor_type =
-      if_region.getCond().getType().cast<mlir::TensorType>();
+      cast<mlir::TensorType>(if_region.getCond().getType());
   const std::string send_recv_key =
       absl::StrCat(kSendRecvKeyPrefix, *num_send_recvs);
   *num_send_recvs += 1;
@@ -341,7 +341,7 @@ mlir::LogicalResult VerifyClusterInputOutput(
   mlir::LogicalResult result = mlir::success();
   mlir::visitUsedValuesDefinedAbove(
       cluster.getBody(), cluster.getBody(), [&](mlir::OpOperand* input) {
-        if (!input->get().isa<mlir::BlockArgument>()) {
+        if (!isa<mlir::BlockArgument>(input->get())) {
           result = cluster.emitOpError(
               "found nested tf_device.Cluster op with inputs. Nested cluster "
               "must use send/recv instead.");

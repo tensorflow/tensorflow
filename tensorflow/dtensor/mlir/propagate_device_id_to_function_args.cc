@@ -69,7 +69,7 @@ llvm::SmallVector<FunctionToChangeInfo, 4> FindFunctionsToRewrite(
       symbol = call_op.getF();
     } else {
       auto symbol_ref = llvm::dyn_cast<mlir::TF::PartitionedCallOp>(op).getF();
-      if (!symbol_ref.isa<mlir::FlatSymbolRefAttr>()) return;
+      if (!isa<mlir::FlatSymbolRefAttr>(symbol_ref)) return;
       symbol = symbol_ref.getRootReference().getValue();
     }
 

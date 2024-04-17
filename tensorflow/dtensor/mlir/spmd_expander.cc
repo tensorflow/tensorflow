@@ -177,7 +177,7 @@ Status SPMDExpanderBase::ExpandOpAndSetLayout(mlir::Operation* op,
   global_output_shapes.reserve(op->getNumResults());
   for (auto output_value : op->getResults()) {
     auto maybe_ranked =
-        output_value.getType().dyn_cast<mlir::RankedTensorType>();
+        dyn_cast<mlir::RankedTensorType>(output_value.getType());
     // Do not extract global shape if the shape isn't statically known.
     //
     // This is a bit subtle and relies on the check of static shape of output

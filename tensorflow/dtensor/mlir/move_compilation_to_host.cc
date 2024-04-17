@@ -140,10 +140,9 @@ mlir::LogicalResult CreateSendRecvOpsToTransferProgramKey(
     mlir::Block* fn_block = recv_select_fn.addEntryBlock();
     mlir::OpBuilder fn_builder = mlir::OpBuilder::atBlockEnd(fn_block);
     auto recv = fn_builder.create<mlir::TF::_HostRecvOp>(
-        compile_op->getLoc(),
-        compilation_key.getType().cast<mlir::TensorType>(), device_key_map[i],
-        compile_op_launch.getDevice(), /*send_device_incarnation=*/0,
-        local_devices[i]);
+        compile_op->getLoc(), cast<mlir::TensorType>(compilation_key.getType()),
+        device_key_map[i], compile_op_launch.getDevice(),
+        /*send_device_incarnation=*/0, local_devices[i]);
     recv->setAttr("device", builder.getStringAttr(local_devices[i]));
 
     fn_builder.create<mlir::func::ReturnOp>(recv_select_fn.getLoc(),

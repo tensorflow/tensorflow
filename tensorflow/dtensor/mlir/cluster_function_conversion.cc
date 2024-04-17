@@ -80,7 +80,7 @@ mlir::LogicalResult AttachRetvalLayouts(
     // operations. In that case, query the input layouts for function callsite
     // operations for layout information.
     if (!result_layout) {
-      if (auto block_arg = operand.dyn_cast<mlir::BlockArgument>()) {
+      if (auto block_arg = dyn_cast<mlir::BlockArgument>(operand)) {
         auto layout_or_status = ExtractLayoutFromOperand(
             sp_call_op.getOperand(block_arg.getArgNumber()));
         if (!layout_or_status.ok())
