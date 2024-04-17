@@ -321,3 +321,22 @@ module {
 
 // CHECK: llvm.mlir.global private @{{.*}}() {addr_space = 3 : i32} : !llvm.array<10 x struct<(f32, f32)>>
 // CHECK: @shared_complex
+
+// -----
+
+module {
+  func.func @i4_load_store(%arg: tensor<10xi4>, %i: index, %j: index) -> tensor<10xi4> {
+    %v = tensor.extract %arg[%i] : tensor<10xi4>
+    %r = tensor.insert %v into %arg[%j] : tensor<10xi4>
+    return %r : tensor<10xi4>
+  }
+}
+
+// CHECK: @i4_load_store
+// CHECK: llvm.getelementptr
+// CHECK-SAME: -> !llvm.ptr, i8
+// CHECK: llvm.load
+// CHECK: llvm.getelementptr
+// CHECK-SAME: -> !llvm.ptr, i8
+// CHECK: llvm.load
+// CHECK: llvm.store
