@@ -781,7 +781,7 @@ absl::StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromProto(
 
 absl::StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProtoWithConfig(
     const HloModuleProtoWithConfig& proto, bool prohibit_empty_literal) {
-  auto hlo_module_proto = proto.hlo_module();
+  const auto& hlo_module_proto = proto.hlo_module();
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModuleConfig> config_ptr,
                       HloModuleConfig::CreateFromProto(proto.config()));
   return HloModule::CreateFromProto(hlo_module_proto, *config_ptr,

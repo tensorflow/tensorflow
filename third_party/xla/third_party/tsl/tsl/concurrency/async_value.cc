@@ -16,54 +16,20 @@ limitations under the License.
 #include "tsl/concurrency/async_value.h"
 
 #include <atomic>
+#include <cstdint>
 #include <cstdlib>
-#include <functional>
+#include <limits>
 #include <utility>
-#include <vector>
 
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/synchronization/blocking_counter.h"
+#include "absl/types/span.h"
 #include "tsl/concurrency/async_value_ref.h"
+#include "tsl/concurrency/ref_count.h"
+#include "tsl/platform/logging.h"
 
 namespace tsl {
-
-namespace internal {
-
-void* AlignedAlloc(size_t alignment, size_t size) {
-  size = (size + alignment - 1) / alignment * alignment;
-#ifdef _WIN32
-  // MSVC runtime doesn't support aligned_alloc(). See
-  // https://developercommunity.visualstudio.com/t/c17-stdaligned-alloc%E7%BC%BA%E5%A4%B1/468021#T-N473365
-  return _aligned_malloc(size, alignment);
-#elif defined(__ANDROID__) || defined(OS_ANDROID)
-  return memalign(alignment, size);
-#else
-  // posix_memalign requires that the requested alignment be at least
-  // alignof(void*). In this case, fall back on malloc which should return
-  // memory aligned to at least the size of a pointer.
-  if (alignment <= alignof(void*)) return std::malloc(size);
-  void* ptr = nullptr;
-  if (posix_memalign(&ptr, alignment, size) != 0)
-    return nullptr;
-  else
-    return ptr;
-#endif
-}
-
-void AlignedFree(void* ptr) {
-#ifdef _WIN32
-  // _aligned_alloc() must be paired with _aligned_free().
-  //
-  // Attempting to use free() with a pointer returned by _aligned_malloc()
-  // results in runtime issues that are hard to debug.
-  _aligned_free(ptr);
-#else
-  free(ptr);
-#endif
-}
-
-}  // namespace internal
 
 // This is a singly linked list of nodes waiting for notification, hanging off
 // of AsyncValue.  When the value becomes available or if an error occurs, the
@@ -83,9 +49,8 @@ class NotifierListNode {
 uint16_t AsyncValue::CreateTypeInfoAndReturnTypeIdImpl(
     const TypeInfo& type_info) {
   size_t type_id = GetTypeInfoTableSingleton()->emplace_back(type_info) + 1;
-  // Detect overflow.
-  assert(type_id < std::numeric_limits<uint16_t>::max() &&
-         "Too many different AsyncValue types.");
+  DCHECK(type_id < std::numeric_limits<uint16_t>::max())
+      << "Too many different AsyncValue types.";
   return type_id;
 }
 
@@ -99,7 +64,7 @@ std::atomic<size_t> AsyncValue::total_allocated_async_values_;
 
 const AsyncValue::TypeInfo& AsyncValue::GetTypeInfo() const {
   TypeInfoTable* type_info_table = AsyncValue::GetTypeInfoTableSingleton();
-  assert(type_id_ != 0);
+  DCHECK_NE(type_id_, 0);
   return (*type_info_table)[type_id_ - 1];
 }
 
@@ -108,17 +73,17 @@ const AsyncValue::TypeInfo& AsyncValue::GetTypeInfo() const {
 // need to change our state and clear out the notifications. The current state
 // must be unavailable (i.e. kUnconstructed or kConstructed).
 void AsyncValue::NotifyAvailable(State available_state) {
-  assert((kind() == Kind::kConcrete || kind() == Kind::kIndirect) &&
-         "Should only be used by ConcreteAsyncValue or IndirectAsyncValue");
+  DCHECK((kind() == Kind::kConcrete || kind() == Kind::kIndirect))
+      << "Should only be used by ConcreteAsyncValue or IndirectAsyncValue";
 
-  assert(available_state == State::kConcrete ||
+  DCHECK(available_state == State::kConcrete ||
          available_state == State::kError);
 
   // Mark the value as available, ensuring that new queries for the state see
   // the value that got filled in.
   auto old_value = waiters_and_state_.exchange(
       WaitersAndState(nullptr, available_state), std::memory_order_acq_rel);
-  assert(old_value.state() == State::kUnconstructed ||
+  DCHECK(old_value.state() == State::kUnconstructed ||
          old_value.state() == State::kConstructed);
 
   RunWaiters(old_value.waiter());
@@ -158,7 +123,7 @@ void AsyncValue::EnqueueWaiter(absl::AnyInvocable<void()> waiter,
     // so, just run the waiter.
     if (old_value.state() == State::kConcrete ||
         old_value.state() == State::kError) {
-      assert(old_value.waiter() == nullptr);
+      DCHECK(old_value.waiter() == nullptr);
       node->notification_();
       delete node;
       return;
@@ -169,16 +134,16 @@ void AsyncValue::EnqueueWaiter(absl::AnyInvocable<void()> waiter,
 
   // compare_exchange_weak succeeds. The old_value must be in either
   // kUnconstructed or kConstructed state.
-  assert(old_value.state() == State::kUnconstructed ||
+  DCHECK(old_value.state() == State::kUnconstructed ||
          old_value.state() == State::kConstructed);
 }
 
 void AsyncValue::SetError(absl::Status status) {
-  assert(!status.ok());
+  DCHECK(!status.ok());
   if (kind() == Kind::kConcrete) {
     GetTypeInfo().set_error(this, std::move(status));
   } else {
-    assert(kind() == Kind::kIndirect);
+    DCHECK(kind() == Kind::kIndirect);
     auto error_av = MakeErrorAsyncValueRef(std::move(status));
     static_cast<IndirectAsyncValue*>(this)->ForwardTo(std::move(error_av));
   }
@@ -187,17 +152,17 @@ void AsyncValue::SetError(absl::Status status) {
 // Mark this IndirectAsyncValue as forwarding to the specified value.  This
 // gives the IndirectAsyncValue a +1 reference.
 void IndirectAsyncValue::ForwardTo(RCReference<AsyncValue> value) {
-  assert(IsUnavailable());
+  DCHECK(IsUnavailable());
 
   auto s = value->state();
   if (s == State::kConcrete || s == State::kError) {
-    assert(!value_ && "IndirectAsyncValue::ForwardTo is called more than once");
+    DCHECK(!value_) << "IndirectAsyncValue::ForwardTo is called more than once";
     auto* concrete_value = value.release();
     if (concrete_value->kind() == Kind::kIndirect) {
       auto* indirect_value = static_cast<IndirectAsyncValue*>(concrete_value);
       concrete_value = indirect_value->value_;
-      assert(concrete_value != nullptr);
-      assert(concrete_value->kind() == Kind::kConcrete);
+      DCHECK(concrete_value != nullptr);
+      DCHECK(concrete_value->kind() == Kind::kConcrete);
       concrete_value->AddRef();
       indirect_value->DropRef();
     }

@@ -26,7 +26,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace tfcompile {
-using xla::StatusOr;
+using absl::StatusOr;
 
 // Represents a set of protocol buffers embedded into an object file and
 // describes how to access them at runtime.

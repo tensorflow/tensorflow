@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status.h"
+#include "xla/status_macros.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
@@ -558,12 +559,21 @@ absl::StatusOr<bool> HostOffloader::TryParameterStreaming(
         value->defining_position().instruction;
     if (defining_instruction->opcode() == HloOpcode::kParameter) {
       if (defining_instruction->parent() == entry_computation) {
-        const Shape& param_shape =
-            entry_computation->parent()
-                ->entry_computation_layout()
-                .parameter_shape(defining_instruction->parameter_number());
-        CHECK(param_shape.has_layout());
-        if (param_shape.layout().memory_space() == kHostMemorySpaceColor) {
+        const Shape* param_shape =
+            &entry_computation->parent()
+                 ->entry_computation_layout()
+                 .parameter_shape(defining_instruction->parameter_number());
+        if (param_shape->IsTuple()) {
+          // Fetch the memory space annotation from the tuple element's layout.
+          TF_RET_CHECK(value->index().size() == 1)
+              << value->index().size()
+              << " != 1: nested parameter tuples aren't supported";
+          int tuple_index = value->index()[0];
+          TF_RET_CHECK(tuple_index < param_shape->tuple_shapes_size());
+          param_shape = &param_shape->tuple_shapes(tuple_index);
+        }
+        TF_RET_CHECK(param_shape->has_layout());
+        if (param_shape->layout().memory_space() == kHostMemorySpaceColor) {
           is_defined_by_entry_param_with_host_memory_space = true;
         }
       }
@@ -593,20 +603,32 @@ absl::StatusOr<bool> HostOffloader::TryParameterStreaming(
     if (callers.size() > 1) {
       return absl::InvalidArgumentError(
           "Expected to be called only by one caller");
-    } else if (callers.size() == 1) {
-      auto* caller = callers[0];
-      if (caller->opcode() == HloOpcode::kWhile &&
-          use->opcode() == HloOpcode::kTuple && use->IsRoot()) {
-        // Do not replace the while loop parameter with the moved data. Because
-        // of the nature of while loops, since the data started on the host, it
-        // must end on the host. Only the while loop body's root should not use
-        // copy_to_device since it's on host at the loop entry.
-        continue;
-      }
     }
-
-    TF_RETURN_IF_ERROR(
-        operand_of_load_annotation->ReplaceUseWith(use, copy_to_device));
+    if (callers.size() == 1 && callers[0]->opcode() == HloOpcode::kWhile &&
+        use->opcode() == HloOpcode::kTuple && use->IsRoot()) {
+      // Need some special filtering for while body's root instruction.
+      for (int i = 0; i < use->operands().size(); i++) {
+        if (use->operands()[i] == operand_of_load_annotation) {
+          if (operand_of_load_annotation->opcode() ==
+                  HloOpcode::kGetTupleElement &&
+              operand_of_load_annotation->operand(0)->opcode() ==
+                  HloOpcode::kParameter &&
+              operand_of_load_annotation->tuple_index() == i) {
+            // A special case where move-to-device is put into the result
+            // tuple element at the same index as where the move-to-device
+            // gets the data from. In this case, while loop's result tuple
+            // should not use move-to-device since at loop entry it's still
+            // on host.
+            continue;
+          }
+          TF_RETURN_IF_ERROR(operand_of_load_annotation->ReplaceUseWith(
+              use, i, copy_to_device));
+        }
+      }
+    } else {
+      TF_RETURN_IF_ERROR(
+          operand_of_load_annotation->ReplaceUseWith(use, copy_to_device));
+    }
   }
 
   AddAllPositionsToBeMovedToHostMemory(unique_buffer);

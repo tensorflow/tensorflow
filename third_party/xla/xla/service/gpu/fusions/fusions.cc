@@ -22,6 +22,8 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/match.h"
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -29,6 +31,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/layout_util.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/fusions/concatenate.h"
 #include "xla/service/gpu/fusions/concatenate_mlir.h"
 #include "xla/service/gpu/fusions/copy.h"
@@ -54,7 +57,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status.h"
-#include "xla/statusor.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
@@ -129,7 +131,7 @@ bool HloFusionInfo::CanEmitDynamicUpdateSliceInPlace() const {
 }
 
 absl::StatusOr<std::unique_ptr<FusionInterface>> GetFusionEmitter(
-    const FusionInfo& fusion_info) {
+    const FusionInfo& fusion_info, bool is_emission_phase) {
   const auto& analysis = fusion_info.analysis();
   const FusionBackendConfig& backend_config = analysis.fusion_backend_config();
 
@@ -155,19 +157,22 @@ absl::StatusOr<std::unique_ptr<FusionInterface>> GetFusionEmitter(
     }
 
     static int num_mlir_emitters = 0;
-    // This kernel can be emitted with MLIR, but we need to check if there are
-    // limits to how many kernels can be emitted.
-    ++num_mlir_emitters;
-    if (num_mlir_emitters <= opts.xla_gpu_skip_mlir_kernels()) {
-      VLOG(5) << "Skipping MLIR emission because initial skips were requested.";
-      return false;
-    }
+    if (is_emission_phase) {
+      // This kernel can be emitted with MLIR, but we need to check if there are
+      // limits to how many kernels can be emitted.
+      ++num_mlir_emitters;
+      if (num_mlir_emitters <= opts.xla_gpu_skip_mlir_kernels()) {
+        VLOG(5)
+            << "Skipping MLIR emission because initial skips were requested.";
+        return false;
+      }
 
-    int n_emitted = num_mlir_emitters - opts.xla_gpu_skip_mlir_kernels();
-    if (opts.xla_gpu_max_mlir_kernels() > 0 &&
-        n_emitted > opts.xla_gpu_max_mlir_kernels()) {
-      VLOG(5) << "Skipping MLIR emission because max_mlir_emitters was set.";
-      return false;
+      int n_emitted = num_mlir_emitters - opts.xla_gpu_skip_mlir_kernels();
+      if (opts.xla_gpu_max_mlir_kernels() > 0 &&
+          n_emitted > opts.xla_gpu_max_mlir_kernels()) {
+        VLOG(5) << "Skipping MLIR emission because max_mlir_emitters was set.";
+        return false;
+      }
     }
     VLOG(5) << "Emitting with MLIR.";
     return true;

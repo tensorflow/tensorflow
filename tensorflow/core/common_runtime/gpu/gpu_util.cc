@@ -172,7 +172,7 @@ void GPUUtil::SetProtoFromGPU(const Tensor& tensor, Device* dev,
   char* buf = nullptr;
   const int64_t total_bytes = is_dead ? 0 : tensor.TotalBytes();
   if (total_bytes > 0) {
-    profiler::ScopedAnnotation annotation("SetProtoFromGPU");
+    tsl::profiler::ScopedAnnotation annotation("SetProtoFromGPU");
     alloc =
         GPUProcessState::singleton()->GetGpuHostAllocator(/*options=*/{}, 0);
     buf = static_cast<char*>(
@@ -351,7 +351,7 @@ void GPUUtil::CopyGPUTensorToCPU(Device* gpu_device,
     auto literal = std::make_unique<xla::MutableBorrowingLiteral>();
     auto status = tensorflow::HostTensorToMutableBorrowingLiteral(
         cpu_tensor, literal.get());
-    xla::PjRtFuture<Status> future =
+    xla::PjRtFuture<> future =
         pjrt_tensor_buffer->pjrt_buffer()->ToLiteral(literal.get());
     future.OnReady([literal = std::move(literal),
                     done](const tensorflow::Status& status) { done(status); });

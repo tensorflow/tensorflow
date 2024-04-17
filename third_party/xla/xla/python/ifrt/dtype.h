@@ -36,6 +36,7 @@ namespace ifrt {
 // * Add kString.
 class DType {
  public:
+  // LINT.IfChange
   enum Kind {
     // Invalid data type.
     kInvalid = 0,
@@ -89,6 +90,7 @@ class DType {
     // collision.
     kString = 99,
   };
+  // LINT.ThenChange(dtype.proto:DTypeProtoKind)
 
   explicit DType(Kind kind) : kind_(kind) {}
   DType(const DType&) = default;

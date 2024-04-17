@@ -298,7 +298,8 @@ mlrt::bc::Buffer CreateExecutableForIfrtLoadVariableOp(
     {
       auto kernel_ctor = kernels_ctor.ConstructAt(kernel_index);
       kernel_ctor.set_code(kernels.Use("tf_mlrt.ifrt_load_variable"));
-      kernel_ctor.construct_results(1).Assign({regs.Use("output_tensor")});
+      kernel_ctor.construct_results(2).Assign(
+          {regs.Use("output_tensor"), regs.Def("dummy_future")});
       kernel_ctor.construct_arguments(1).Assign({regs.Use("variable_handle")});
       kernel_ctor.construct_attributes(2).Assign(
           {attributes.GetHandle("sharding_config"),
@@ -310,7 +311,8 @@ mlrt::bc::Buffer CreateExecutableForIfrtLoadVariableOp(
     if (redundant_ifrt_load_variable_op) {
       auto kernel_ctor = kernels_ctor.ConstructAt(kernel_index);
       kernel_ctor.set_code(kernels.Use("tf_mlrt.ifrt_load_variable"));
-      kernel_ctor.construct_results(1).Assign({regs.Def("dummy")});
+      kernel_ctor.construct_results(2).Assign(
+          {regs.Def("dummy"), regs.Def("dummy_future2")});
       kernel_ctor.construct_attributes(2).Assign(
           {attributes.GetHandle("sharding_config"),
            attributes.GetHandle("variable_name")});

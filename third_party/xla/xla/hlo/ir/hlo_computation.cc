@@ -50,6 +50,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/lib/gtl/iterator_range.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
@@ -168,10 +169,10 @@ HloComputation::~HloComputation() {
     CHECK(async_start_->async_wrapped_computation() == this);
     async_start_->ClearCalledComputations();
   }
+  Cleanup();
   for (const auto& i : instructions_) {
     delete i.inst();
   }
-  Cleanup();
 }
 
 void HloComputation::SetInstruction(HloInstruction* instruction,
@@ -211,6 +212,18 @@ HloInstruction* HloComputation::AddInstruction(
     std::unique_ptr<HloInstruction> instruction, const OpMetadata* metadata) {
   if (metadata != nullptr) {
     instruction->set_metadata(*metadata);
+  }
+  return AddInstruction(std::move(instruction));
+}
+
+HloInstruction* HloComputation::AddInstruction(
+    std::unique_ptr<HloInstruction> instruction, const OpMetadata* metadata,
+    const FrontendAttributes* frontend_attributes) {
+  if (metadata != nullptr) {
+    instruction->set_metadata(*metadata);
+  }
+  if (frontend_attributes != nullptr) {
+    instruction->set_frontend_attributes(*frontend_attributes);
   }
   return AddInstruction(std::move(instruction));
 }
@@ -461,19 +474,55 @@ Status HloComputation::RemoveInstructionImpl(HloInstruction* instruction,
   to_be_deleted_.back()->DetachFromOperandsAndUsers();
   // Clear all operands to avoid Null operands.
   to_be_deleted_.back()->RemoveAllOperands();
-  // These require non-trivial cleanup for their called computations,
-  // which is invoked in the ops destructor.
-  if (!to_be_deleted_.back()->IsAsynchronous() &&
-      !to_be_deleted_.back()->IsFused()) {
-    to_be_deleted_.back()->ClearCalledComputations();
-  }
+  to_be_deleted_.back()->ClearCalledComputations();
   to_be_deleted_.back()->MarkAsDead();
   // TODO(jeff): should we set info->opcode to something?
   info->inst_ =
       nullptr;  // Leave a hole: this is no longer part of "instructions()"
   instruction->index_in_parent_ = ~0u;
   instruction_count_--;
+  DCHECK_EQ(instructions_.size() - to_be_deleted_.size(), instruction_count())
+      << "instructions_.size(): " << instructions_.size()
+      << ", to_be_deleted_.size(): " << to_be_deleted_.size();
   return OkStatus();
+}
+
+void HloComputation::Cleanup() {
+  if (to_be_deleted_.empty()) return;
+
+  // Given that there are instructions to be deleted, there must be at least one
+  // instruction not marked for deletion. Otherwise we have deleted *all*
+  // instructions, which is probably a bug.
+  DCHECK_GT(instruction_count(), 0);
+
+  // Perform a stable compaction with the erase-remove idiom. We have to open
+  // code it (instead of using std::erase(std::remove_if)) because we must
+  // update the reverse mapping.
+  auto is_marked_for_removal = [](const HloInstructionInfo& info) {
+    return info.inst() == nullptr;
+  };
+  auto marked_it = absl::c_find_if(instructions_, is_marked_for_removal);
+  DCHECK(marked_it < instructions_.end());
+  for (auto it = marked_it + 1; it < instructions_.end(); ++it) {
+    if (is_marked_for_removal(*it)) continue;
+    // Update reverse mapping and overwrite the 'marked' entry.
+    HloInstruction* unmarked_instruction = it->inst();
+    unmarked_instruction->index_in_parent_ =
+        std::distance(instructions_.begin(), marked_it);
+    *marked_it++ = std::move(*it);
+  }
+
+  DCHECK(marked_it < instructions_.end());
+  DCHECK_EQ(std::distance(marked_it, instructions_.end()),
+            to_be_deleted_.size());
+  DCHECK_EQ(instructions_.size() - to_be_deleted_.size(), instruction_count())
+      << "instructions_.size(): " << instructions_.size()
+      << ", to_be_deleted_.size(): " << to_be_deleted_.size();
+  for (HloInstruction* marked_instruction : to_be_deleted_) {
+    delete marked_instruction;
+  }
+  to_be_deleted_.clear();
+  instructions_.resize(instruction_count());
 }
 
 void HloComputation::set_root_instruction(HloInstruction* new_root_instruction,

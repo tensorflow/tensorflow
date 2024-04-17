@@ -39,6 +39,7 @@ limitations under the License.
 #include "mlir/Dialect/Affine/IR/AffineOps.h"  // from @llvm-project
 #include "mlir/Dialect/Affine/LoopUtils.h"  // from @llvm-project
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
+#include "mlir/Dialect/Complex/IR/Complex.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/IR/SCF.h"  // from @llvm-project
@@ -167,15 +168,9 @@ static auto& kUnsupportedOps =
                                         HloOpcode::kStochasticConvert,
                                         HloOpcode::kCall};
 
-static auto& kUnimplementedOps =
-    *new absl::flat_hash_set<HloOpcode>{HloOpcode::kMap};
-
 bool IsUnsupportedConstant(const HloInstruction* instr) {
   return instr->opcode() == HloOpcode::kConstant &&
-         (!ShapeUtil::IsEffectiveScalar(instr->shape()) ||
-          primitive_util::IsUnsignedIntegralType(
-              instr->shape().element_type()) ||
-          primitive_util::IsComplexType(instr->shape().element_type()));
+         !ShapeUtil::IsEffectiveScalar(instr->shape());
 }
 
 bool IsUnsupportedTuple(const HloInstruction* instr) {
@@ -194,17 +189,6 @@ bool IsUnsupportedTuple(const HloInstruction* instr) {
     return true;
   }
 
-  // All tuple elements must have bitcast-compatible dimensions (element types
-  // may differ).
-  auto first_shape = instr->shape().tuple_shapes(0);
-  for (int i = 1; i < instr->operand_count(); ++i) {
-    const auto& tuple_shape = instr->shape().tuple_shapes(i);
-    if (!ShapeUtil::EqualIgnoringElementType(tuple_shape, first_shape) &&
-        !ShapeUtil::IsReshapeOrTransposeBitcast(tuple_shape, first_shape,
-                                                /*ignore_element_type=*/true)) {
-      return true;
-    }
-  }
   return false;
 }
 
@@ -773,7 +757,6 @@ absl::StatusOr<SmallVector<Value>> HloToMlir(
     const CallTargetProvider& call_target_provider,
     ImplicitLocOpBuilder& builder) {
   CHECK(!kUnsupportedOps.contains(instr->opcode())) << instr->ToShortString();
-  CHECK(!kUnimplementedOps.contains(instr->opcode())) << instr->ToShortString();
 
   auto element_type = instr->shape().element_type();
   mlir::Type element_mlir_type;
@@ -802,9 +785,20 @@ absl::StatusOr<SmallVector<Value>> HloToMlir(
                         builder);
     case HloOpcode::kConstant:
       if (ShapeUtil::IsEffectiveScalar(instr->shape())) {
+        TF_ASSIGN_OR_RETURN(auto value_attr, CreateDenseElementsAttrFromLiteral(
+                                                 instr->literal(), builder));
+        if (result_element_type != element_mlir_type) {
+          value_attr = value_attr.mapValues(
+              result_element_type, [](const llvm::APInt& i) { return i; });
+        }
+        if (primitive_util::IsComplexType(element_type)) {
+          return {{builder.create<mlir::complex::ConstantOp>(
+              element_mlir_type,
+              mlir::cast<mlir::ArrayAttr>(
+                  value_attr.getValues<mlir::Attribute>()[0]))}};
+        }
         auto val = mlir::cast<mlir::TypedAttr>(
-            CreateDenseElementsAttrFromLiteral(instr->literal(), builder)
-                ->getValues<mlir::Attribute>()[0]);
+            value_attr.getValues<mlir::Attribute>()[0]);
         return {{builder.create<ConstantOp>(val).getResult()}};
       }
       return absl::UnimplementedError(
@@ -964,6 +958,11 @@ absl::StatusOr<SmallVector<Value>> HloToMlir(
       return MapElementwiseOp<mhlo::Log1pOp>(arg_types, operands, builder);
     case HloOpcode::kLogistic:
       return MapElementwiseOp<mhlo::LogisticOp>(arg_types, operands, builder);
+    case HloOpcode::kMap: {
+      auto mapper = call_target_provider(
+          instr->called_computations().front()->root_instruction());
+      return builder.create<PureCallOp>(mapper, operands).getResults();
+    }
     case HloOpcode::kMaximum:
       return MapElementwiseOp<mhlo::MaxOp>(arg_types, operands, builder);
     case HloOpcode::kMinimum:
@@ -985,16 +984,14 @@ absl::StatusOr<SmallVector<Value>> HloToMlir(
       return MapHloOp<mhlo::RealOp>(element_mlir_type, arg_types, operands,
                                     builder);
     case HloOpcode::kReducePrecision: {
-      mlir::NamedAttribute exponent_bits(
-          builder.getStringAttr("exponent_bits"),
-          builder.getI32IntegerAttr(instr->exponent_bits()));
-      mlir::NamedAttribute mantissa_bits(
-          builder.getStringAttr("mantissa_bits"),
-          builder.getI32IntegerAttr(instr->mantissa_bits()));
-      return MapHloOp<mhlo::ReducePrecisionOp>(
-          operands.front().getType(), arg_types, operands, builder,
-          mlir::DictionaryAttr::get(builder.getContext(),
-                                    {exponent_bits, mantissa_bits}));
+      mhlo::ReducePrecisionOp::Properties properties;
+      properties.exponent_bits =
+          builder.getI32IntegerAttr(instr->exponent_bits());
+      properties.mantissa_bits =
+          builder.getI32IntegerAttr(instr->mantissa_bits());
+      return MapHloOp<mhlo::ReducePrecisionOp>(operands.front().getType(),
+                                               arg_types, operands, builder,
+                                               nullptr, properties);
     }
     case HloOpcode::kRemainder:
       return MapElementwiseOp<mhlo::RemOp>(arg_types, operands, builder);
@@ -1074,7 +1071,6 @@ bool IsHloOpSupported(const HloInstruction* instr,
   }
 
   return !(kUnsupportedOps.contains(instr->opcode()) ||
-           kUnimplementedOps.contains(instr->opcode()) ||
            IsUnsupportedConstant(instr) || IsUnsupportedTuple(instr) ||
            IsUnsupportedGather(instr));
 }
@@ -1188,16 +1184,15 @@ absl::StatusOr<SmallVector<Value>> SubgraphToMlir(
 
   auto provide_operand =
       [&](const HloInstruction* instr, int index,
-          ValueRange indices) -> absl::StatusOr<SmallVector<Value>> {
+          ValueRange operand_indices) -> absl::StatusOr<SmallVector<Value>> {
     auto* operand = instr->operand(index);
     if (subgraph.instructions.contains(operand)) {
-      return emit_instr(operand, indices);
+      return emit_instr(operand, operand_indices);
     }
     return ConvertToSignless(
-        ProvideParameter(subgraph, instr, index, indices, call_target_provider,
-                         this_fn, builder),
+        ProvideParameter(subgraph, instr, index, operand_indices,
+                         call_target_provider, this_fn, builder),
         builder);
-    return results;
   };
 
   emit_instr = [&](const HloInstruction* instr,
@@ -1236,8 +1231,21 @@ absl::StatusOr<SmallVector<Value>> SubgraphToMlir(
     return entry;
   };
 
-  for (const auto* root : subgraph.roots) {
-    TF_ASSIGN_OR_RETURN(auto root_results, emit_instr(root, indices));
+  TF_RET_CHECK(subgraph.roots.size() == subgraph.root_indexing.size())
+      << "roots and root_indexing must have the same size in "
+      << subgraph.ToString();
+  for (const auto [root, indexing] :
+       llvm::zip(subgraph.roots, subgraph.root_indexing)) {
+    TF_RET_CHECK(indexing.getNumDims() + indexing.getNumSymbols() ==
+                 indices.size())
+        << "Incorrect number of indices (got " << indices.size()
+        << ", expected " << indexing.getNumDims() << " dims and "
+        << indexing.getNumSymbols() << "symbols) in " << subgraph.ToString();
+    int num_dims = indexing.getNumDims();
+    auto root_indices =
+        ApplyAffineMap(indexing, /*dims=*/indices.take_front(num_dims),
+                       /*symbols=*/indices.drop_front(num_dims), builder);
+    TF_ASSIGN_OR_RETURN(auto root_results, emit_instr(root, root_indices));
     results.append(root_results.begin(), root_results.end());
   }
   return results;
@@ -1365,6 +1373,9 @@ mlir::Value ClampIndex(mlir::Value index, bool is_unsigned, int64_t high,
   }
 
   if (is_unsigned) {
+    if (index.getType().isUnsignedInteger()) {
+      index = ConvertToSignless({index}, b).front();
+    }
     if (index.getType() != b.getIndexType()) {
       index = b.create<arith::IndexCastUIOp>(b.getIndexType(), index);
     }

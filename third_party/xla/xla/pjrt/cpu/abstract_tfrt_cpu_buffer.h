@@ -109,9 +109,9 @@ class AbstractTfrtCpuBuffer : public PjRtBuffer {
 
   absl::StatusOr<size_t> GetOnDeviceSizeInBytes() const override;
 
-  PjRtFuture<Status> CopyRawToHost(void* dst, int64_t offset,
-                                   int64_t transfer_size) override {
-    return PjRtFuture<Status>(Unimplemented("CopyRawToHost not implemented"));
+  PjRtFuture<> CopyRawToHost(void* dst, int64_t offset,
+                             int64_t transfer_size) override {
+    return PjRtFuture<>(Unimplemented("CopyRawToHost not implemented"));
   }
 
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> CopyToMemorySpace(
@@ -124,14 +124,15 @@ class AbstractTfrtCpuBuffer : public PjRtBuffer {
   bool IsDeleted() override;
 
   void CopyToRemoteDevice(
-      PjRtFuture<StatusOr<std::string>> serialized_descriptor,
+      PjRtFuture<absl::StatusOr<std::string>> serialized_descriptor,
       RemoteSendCallback on_done) override {
     on_done(Unimplemented("CopyToRemoteDevice not implemented."),
             /*sends_were_enqueued=*/false);
   }
 
   void CopyToRemoteDeviceScattered(
-      PjRtFuture<StatusOr<std::vector<std::string>>> serialized_descriptors,
+      PjRtFuture<absl::StatusOr<std::vector<std::string>>>
+          serialized_descriptors,
       std::vector<RemoteSendCallback> callbacks,
       const xla::PjRtBuffer::ScatterDetails& scatter_details) override {
     for (const auto& on_done : callbacks) {
@@ -140,7 +141,7 @@ class AbstractTfrtCpuBuffer : public PjRtBuffer {
     }
   }
 
-  PjRtFuture<Status> GetReadyFuture() override;
+  PjRtFuture<> GetReadyFuture() override;
 
   bool IsOnCpu() const override { return true; }
 
@@ -245,8 +246,8 @@ class AbstractTfrtCpuBuffer : public PjRtBuffer {
  protected:
   virtual absl::string_view buffer_name() const = 0;
 
-  PjRtFuture<Status> ToLiteralHelper(MutableLiteralBase* literal,
-                                     AsyncWorkRunner* async_work_runner);
+  PjRtFuture<> ToLiteralHelper(MutableLiteralBase* literal,
+                               AsyncWorkRunner* async_work_runner);
 
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> CopyToDeviceAcrossClients(
       PjRtDevice* dst_device);

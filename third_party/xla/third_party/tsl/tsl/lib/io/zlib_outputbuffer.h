@@ -53,7 +53,7 @@ class ZlibOutputBuffer : public WritableFile {
 
   // Initializes some state necessary for the output buffer. This call is
   // required before any other operation on the buffer.
-  Status Init();
+  absl::Status Init();
 
   // Adds `data` to the compression pipeline.
   //
@@ -63,14 +63,14 @@ class ZlibOutputBuffer : public WritableFile {
   // to file when the buffer is full.
   //
   // To immediately write contents to file call `Flush()`.
-  Status Append(StringPiece data) override;
+  absl::Status Append(StringPiece data) override;
 
 #if defined(TF_CORD_SUPPORT)
-  Status Append(const absl::Cord& cord) override;
+  absl::Status Append(const absl::Cord& cord) override;
 #endif
 
   // Deflates any cached input and writes all output to file.
-  Status Flush() override;
+  absl::Status Flush() override;
 
   // Compresses any cached input and writes all output to file. This must be
   // called before the destructor to avoid any data loss.
@@ -80,21 +80,21 @@ class ZlibOutputBuffer : public WritableFile {
   //
   // After calling this, any further calls to `Write()`, `Flush()` or `Close()`
   // will fail.
-  Status Close() override;
+  absl::Status Close() override;
 
   // Returns the name of the underlying file.
-  Status Name(StringPiece* result) const override;
+  absl::Status Name(StringPiece* result) const override;
 
   // Deflates any cached input, writes all output to file and syncs it.
-  Status Sync() override;
+  absl::Status Sync() override;
 
   // Returns the write position in the underlying file. The position does not
   // reflect buffered, un-flushed data.
-  Status Tell(int64_t* position) override;
+  absl::Status Tell(int64_t* position) override;
 
  private:
   WritableFile* file_;  // Not owned
-  Status init_status_;
+  absl::Status init_status_;
   size_t input_buffer_capacity_;
   size_t output_buffer_capacity_;
 
@@ -136,14 +136,14 @@ class ZlibOutputBuffer : public WritableFile {
   //
   // Note: This method does not flush contents to file.
   // Returns non-ok status if writing contents to file fails.
-  Status DeflateBuffered(int flush_mode);
+  absl::Status DeflateBuffered(int flush_mode);
 
   // Appends contents of `z_stream_output_` to `file_`.
   // Returns non-OK status if writing to file fails.
-  Status FlushOutputBufferToFile();
+  absl::Status FlushOutputBufferToFile();
 
   // Calls `deflate()` and returns DataLoss Status if it failed.
-  Status Deflate(int flush);
+  absl::Status Deflate(int flush);
 
   static bool IsSyncOrFullFlush(uint8 flush_mode) {
     return flush_mode == Z_SYNC_FLUSH || flush_mode == Z_FULL_FLUSH;

@@ -17,18 +17,19 @@ syntax = "proto3";
 
 package xla.ifrt;
 
-// Wire format for `Shape`. Currently support static shapes with all dimension
-// sizes greater than or equal to 0.
+// Proto equivalent of C++ `Shape`. Currently support static shapes with all
+// dimension sizes greater than or equal to 0.
 message ShapeProto {
   repeated int64 dims = 1;
 }
 
-// Wire format for `BoundedDynamicShapeTag`.
+// Proto equivalent of C++ `BoundedDynamicShapeTag`.
 message BoundedDynamicShapeTagProto {
   repeated bool is_dynamic_dims = 1;
 }
 
-// Wire format for `DynamicShape`. Currently only support bounded dynamic shape.
+// Proto equivalent of C++ `DynamicShape`. Currently only support bounded
+// dynamic shape.
 message DynamicShapeProto {
   ShapeProto shape = 1;
   oneof tag {

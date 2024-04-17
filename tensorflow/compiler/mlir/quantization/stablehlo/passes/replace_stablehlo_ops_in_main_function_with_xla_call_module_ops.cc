@@ -20,6 +20,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -488,7 +489,7 @@ void ReplaceStablehloOpsInMainFunctionWithXlaCallModuleOpsPass::
   func::FuncOp main_func = FindMainFuncOp(module_op);
   if (!main_func) return;
 
-  // To handle the case where `main` function has tf.StatefulPartitionedCallOp,
+  // In case the model has tf.StatefulPartitionedCallOp or tf.PartitionedCallOp,
   // we recursively find called functions and process StableHLO ops in them.
   SmallVector<func::FuncOp> func_ops;
   func_ops.push_back(main_func);
@@ -499,6 +500,10 @@ void ReplaceStablehloOpsInMainFunctionWithXlaCallModuleOpsPass::
     if (!main_func) continue;
 
     SymbolTable symbol_table(module_op);
+    for (auto call_op : main_func.getOps<TF::PartitionedCallOp>()) {
+      func_ops.push_back(dyn_cast_or_null<func::FuncOp>(symbol_table.lookup(
+          call_op.getFAttr().cast<FlatSymbolRefAttr>().getValue())));
+    }
     for (auto call_op : main_func.getOps<TF::StatefulPartitionedCallOp>()) {
       func_ops.push_back(
           dyn_cast_or_null<func::FuncOp>(symbol_table.lookup(call_op.getF())));

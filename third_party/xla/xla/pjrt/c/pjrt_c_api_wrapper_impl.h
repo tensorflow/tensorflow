@@ -25,6 +25,7 @@ limitations under the License.
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
@@ -41,7 +42,7 @@ limitations under the License.
 #include "tsl/platform/casts.h"
 
 struct PJRT_Error {
-  xla::Status status;
+  absl::Status status;
 };
 
 struct PJRT_TopologyDescription {
@@ -177,12 +178,15 @@ struct PJRT_Buffer {
 };
 
 struct PJRT_Event {
-  xla::PjRtFuture<xla::Status> future;
+  xla::PjRtFuture<> future;
+  // TODO(b/333538339): It's safe to Await() on PjRtFuture<> multiple times,
+  // remove this workaround.
+  //
   // Set and stored upon future.Await(), as PjRtFuture only allows its result to
   // be queried through Await() and Await() can only safely be called once. This
   // variable allows C API users to check for error status any time after
   // Await() has been called.
-  std::optional<xla::Status> status;
+  std::optional<absl::Status> status;
 };
 
 struct PJRT_SerializedExecutable {
@@ -263,6 +267,7 @@ PJRT_Error* PJRT_Device_MemoryStats(PJRT_Device_MemoryStats_Args* args);
 
 PJRT_Error* PJRT_Memory_Id(PJRT_Memory_Id_Args* args);
 PJRT_Error* PJRT_Memory_Kind(PJRT_Memory_Kind_Args* args);
+PJRT_Error* PJRT_Memory_Kind_Id(PJRT_Memory_Kind_Id_Args* args);
 PJRT_Error* PJRT_Memory_DebugString(PJRT_Memory_DebugString_Args* args);
 PJRT_Error* PJRT_Memory_ToString(PJRT_Memory_ToString_Args* args);
 PJRT_Error* PJRT_Memory_AddressableByDevices(
@@ -367,7 +372,7 @@ PJRT_Error* PJRT_Compile(PJRT_Compile_Args* args);
 
 #define PJRT_RETURN_IF_ERROR(expr)                                \
   do {                                                            \
-    xla::Status _status = (expr);                                 \
+    absl::Status _status = (expr);                                \
     if (!_status.ok()) {                                          \
       PJRT_Error* _c_status = new PJRT_Error{std::move(_status)}; \
       return _c_status;                                           \

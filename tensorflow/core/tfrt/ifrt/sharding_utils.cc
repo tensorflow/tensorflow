@@ -371,11 +371,12 @@ CreateArrayFromHostTensorForSingleDevice(xla::ifrt::Client& ifrt_client,
       });
 }
 
-StatusOr<tsl::RCReference<xla::ifrt::Array>> MakeAssembledArrayFromHostBuffer(
-    xla::ifrt::Client& ifrt_client, const tensorflow::Tensor& input_tensor,
-    const xla::HloSharding& hlo_sharding,
-    const xla::ifrt::DeviceList& device_list,
-    const tsl::thread::ThreadPool& thread_pool) {
+absl::StatusOr<tsl::RCReference<xla::ifrt::Array>>
+MakeAssembledArrayFromHostBuffer(xla::ifrt::Client& ifrt_client,
+                                 const tensorflow::Tensor& input_tensor,
+                                 const xla::HloSharding& hlo_sharding,
+                                 const xla::ifrt::DeviceList& device_list,
+                                 const tsl::thread::ThreadPool& thread_pool) {
   // TODO(b/316959894): use xla::HloSharding to identifying sharding axis.
   auto sharding = xla::ifrt::HloSharding::Create(
       device_list, xla::ifrt::MemoryKind(), hlo_sharding);
@@ -615,7 +616,7 @@ absl::StatusOr<tensorflow::Tensor> MakeTensorFromArray(
             b.index_domain.origin().elements().end());
       });
 
-  std::vector<xla::ifrt::Future<absl::Status>> arrays_copy_status;
+  std::vector<xla::ifrt::Future<>> arrays_copy_status;
   std::vector<tensorflow::Tensor> input_tensors;
   input_tensors.reserve(index_domain_device_arrays.size());
   arrays_copy_status.reserve(index_domain_device_arrays.size());
@@ -625,7 +626,7 @@ absl::StatusOr<tensorflow::Tensor> MakeTensorFromArray(
                         ToTensorDataType(array->dtype()));
     tensorflow::Tensor tensor(dtype, tensor_shape);
     input_tensors.push_back(tensor);
-    xla::ifrt::Future<absl::Status> copy_status =
+    xla::ifrt::Future<> copy_status =
         array->CopyToHostBuffer(tensor.data(), /*byte_strides=*/{},
                                 xla::ifrt::ArrayCopySemantics::kAlwaysCopy);
     copy_status.OnReady([tensor](absl::Status status) {

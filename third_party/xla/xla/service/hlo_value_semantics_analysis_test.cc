@@ -262,8 +262,8 @@ TEST_F(HloValueSemanticsAnalysisTest, HandleConditional) {
 
     branch1 {
       fparam = f32[4] parameter(0)
-      %async-start = ((f32[4]), f32[4], s32[]) custom-call-start(f32[4] fparam), async_execution_thread="parallel_thread", custom_call_target="foo"
-      %async-done = f32[4] custom-call-done(((f32[4]), f32[4], s32[]) %async-start)
+      %async-start = ((f32[4]), f32[4], s32[]) abs-start(f32[4] fparam), async_execution_thread="parallel_thread"
+      %async-done = f32[4] abs-done(((f32[4]), f32[4], s32[]) %async-start)
       ROOT tuple = (f32[4], f32[4]) tuple(fparam, %async-done)
     }
 
@@ -634,8 +634,8 @@ TEST_F(EinsumDepthAnalysisTest, HandleConditional) {
 
     branch1 {
       fparam = f32[4] parameter(0)
-      %async-start = ((f32[4]), f32[4], s32[]) custom-call-start(f32[4] fparam), async_execution_thread="parallel_thread", custom_call_target="foo"
-      ROOT %async-done = f32[4] custom-call-done(((f32[4]), f32[4], s32[]) %async-start)
+      %async-start = ((f32[4]), f32[4], s32[]) abs-start(f32[4] fparam), async_execution_thread="parallel_thread"
+      ROOT %async-done = f32[4] abs-done(((f32[4]), f32[4], s32[]) %async-start)
     }
 
     branch2 {

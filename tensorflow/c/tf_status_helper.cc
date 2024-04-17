@@ -22,7 +22,8 @@ limitations under the License.
 
 namespace tsl {
 
-void Set_TF_Status_from_Status(TF_Status* tf_status, const Status& status) {
+void Set_TF_Status_from_Status(TF_Status* tf_status,
+                               const absl::Status& status) {
   TF_SetStatus(tf_status, TSLCodeFromStatusCode(status.code()),
                tsl::NullTerminatedMessage(status));
   status.ForEachPayload(
@@ -33,13 +34,13 @@ void Set_TF_Status_from_Status(TF_Status* tf_status, const Status& status) {
       });
 }
 
-Status StatusFromTF_Status(const TF_Status* tf_status) {
-  Status status(StatusCodeFromTSLCode(TF_GetCode(tf_status)),
-                TF_Message(tf_status));
+absl::Status StatusFromTF_Status(const TF_Status* tf_status) {
+  absl::Status status(StatusCodeFromTSLCode(TF_GetCode(tf_status)),
+                      TF_Message(tf_status));
   TF_ForEachPayload(
       tf_status,
       [](const char* key, const char* value, void* capture) {
-        Status* status = static_cast<Status*>(capture);
+        absl::Status* status = static_cast<absl::Status*>(capture);
         status->SetPayload(key, absl::Cord(absl::string_view(value)));
       },
       &status);

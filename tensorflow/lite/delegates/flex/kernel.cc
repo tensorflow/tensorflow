@@ -247,7 +247,7 @@ class OpNode {
     // completion. See b/304799442 for more context.
     (*nodedef_.mutable_attr())["use_inter_op_parallelism"].set_b(false);
 
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   tensorflow::Status BuildOpKernelRunner(
@@ -258,12 +258,12 @@ class OpNode {
                             name_, inputs_.Size(), /*attr_builder=*/
                             [this](tensorflow::AttrValueMap* attr_value_map) {
                               *attr_value_map = nodedef_.attr();
-                              return ::tensorflow::OkStatus();
+                              return absl::OkStatus();
                             },
                             *eager_context->pflr(),
                             eager_context->local_device_mgr()->HostCPU()));
 
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   tensorflow::Status BuildOpKernelInputs(
@@ -298,7 +298,7 @@ class OpNode {
       run_state->input_tf_tensor_values[i].tensor =
           &run_state->input_tf_tensors[i];
     }
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   // Returns whether an output tensor should be preserved in the buffer map by
@@ -375,7 +375,7 @@ class OpNode {
         }
       }
     }
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
  private:

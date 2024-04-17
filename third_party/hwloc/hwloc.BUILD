@@ -50,7 +50,7 @@ expand_template(
     name = "include_hwloc_autogen_config_h",
     out = "include/hwloc/autogen/config.h",
     substitutions = select({
-        "@local_tsl//tsl:linux_x86_64": _INCLUDE_HWLOC_AUTOIGEN_CONFIG_H_LINUX_SUBS,
+        "@local_xla//xla/tsl:linux_x86_64": _INCLUDE_HWLOC_AUTOIGEN_CONFIG_H_LINUX_SUBS,
         "//conditions:default": _INCLUDE_HWLOC_AUTOIGEN_CONFIG_H_COMMON_SUBS,
     }),
     template = "include/hwloc/autogen/config.h.in",
@@ -259,21 +259,21 @@ cc_library(
         "include/private/private.h",
         "include/private/xml.h",
     ] + select({
-        "@local_tsl//tsl:linux_x86_64": [
+        "@local_xla//xla/tsl:linux_x86_64": [
             "hwloc/topology-linux.c",
             "hwloc/topology-x86.c",
             "include/hwloc/linux.h",
             "include/private/cpuid-x86.h",
         ],
-        "@local_tsl//tsl:linux_aarch64": [
+        "@local_xla//xla/tsl:linux_aarch64": [
             "hwloc/topology-linux.c",
             "include/hwloc/linux.h",
         ],
-        "@local_tsl//tsl:linux_ppc64le": [
+        "@local_xla//xla/tsl:linux_ppc64le": [
             "hwloc/topology-linux.c",
             "include/hwloc/linux.h",
         ],
-        "@local_tsl//tsl:freebsd": [
+        "@local_xla//xla/tsl:freebsd": [
             "hwloc/topology-freebsd.c",
             "hwloc/topology-x86.c",
             "include/private/cpuid-x86.h",

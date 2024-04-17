@@ -65,7 +65,7 @@ class TestCustomDevice : public CustomDevice {
   }
 
   // Pins `op` to `device`.
-  StatusOr<bool> ShallPinToThisDevice(
+  absl::StatusOr<bool> ShallPinToThisDevice(
       const ImmediateExecutionOperation* op) override {
     return errors::Unimplemented("No preference in custom device pinning.");
   }

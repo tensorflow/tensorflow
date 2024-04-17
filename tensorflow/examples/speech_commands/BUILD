@@ -314,7 +314,12 @@ tf_cc_binary(
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:tensorflow",
+        "@com_google_absl//absl/status",
+        "@local_tsl//tsl/platform:status",
+        "@local_tsl//tsl/platform:types",
+        "@local_xla//xla/tsl/util:command_line_flags",
     ],
 )
 
@@ -371,6 +376,7 @@ cc_library(
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:tensorflow",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -382,8 +388,10 @@ tf_cc_test(
     ],
     deps = [
         ":recognize_commands",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
@@ -403,6 +411,9 @@ cc_library(
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:tensorflow",
+        "//tensorflow/core/platform:numbers",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -418,7 +429,6 @@ tf_cc_test(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
     ],
 )
 
@@ -435,6 +445,9 @@ tf_cc_binary(
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/status",
+        "@local_tsl//tsl/platform:types",
     ],
 )
 

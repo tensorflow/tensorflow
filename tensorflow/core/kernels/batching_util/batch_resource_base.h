@@ -45,6 +45,20 @@ limitations under the License.
 namespace tensorflow {
 namespace serving {
 
+// Options used to create a batch resource.
+struct BatchResourceOptions {
+  int32_t num_batch_threads;
+  int32_t max_batch_size;
+  int32_t batch_timeout_micros;
+  int32_t max_enqueued_batches;
+  std::vector<int32_t> allowed_batch_sizes;
+  int32_t low_priority_max_batch_size;
+  int32_t low_priority_batch_timeout_micros;
+  int32_t low_priority_max_enqueued_batches;
+  std::vector<int32_t> low_priority_allowed_batch_sizes;
+  MixedPriorityBatchingPolicy mixed_priority_batching_policy;
+};
+
 // Base class for resource that encapsulating the state and logic for batching
 // tensors.
 class BatchResourceBase : public ResourceBase {

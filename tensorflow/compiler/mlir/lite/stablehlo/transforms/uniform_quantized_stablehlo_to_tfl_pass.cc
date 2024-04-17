@@ -64,6 +64,7 @@ using ::mlir::quant::CreateI8F32UniformQuantizedType;
 using ::mlir::quant::FindOperandOfType;
 using ::mlir::quant::FindUserOfType;
 using ::mlir::quant::GetElementType;
+using ::mlir::quant::IsDotGeneralFullyConnected;
 using ::mlir::quant::IsI32F32UniformQuantizedPerAxisType;
 using ::mlir::quant::IsI32F32UniformQuantizedType;
 using ::mlir::quant::IsI8F32UniformQuantizedPerAxisType;
@@ -441,8 +442,7 @@ class RewriteQuantizedDotGeneralOpToTflFullyConnectedOrBatchMatmulOp
   LogicalResult match(stablehlo::DotGeneralOp op) const override {
     const stablehlo::DotDimensionNumbersAttr dot_dimension_nums =
         op.getDotDimensionNumbers();
-    const bool is_batch_matmul =
-        !dot_dimension_nums.getLhsBatchingDimensions().empty();
+    const bool is_batch_matmul = !IsDotGeneralFullyConnected(op).value();
     const Type elem_type = GetElementType(op.getResult());
     const bool has_i32_output = IsI32F32UniformQuantizedType(elem_type) ||
                                 IsI32F32UniformQuantizedPerAxisType(elem_type);
@@ -479,8 +479,7 @@ class RewriteQuantizedDotGeneralOpToTflFullyConnectedOrBatchMatmulOp
         IsI32F32UniformQuantizedPerAxisType(output_type);
     const stablehlo::DotDimensionNumbersAttr dot_dimension_nums =
         op.getDotDimensionNumbers();
-    const bool is_batch_matmul =
-        !dot_dimension_nums.getLhsBatchingDimensions().empty();
+    const bool is_batch_matmul = !IsDotGeneralFullyConnected(op).value();
 
     if (is_batch_matmul) {
       RewriteDotGeneralToTflBatchMatmulOp(op, rewriter, dot_dimension_nums,

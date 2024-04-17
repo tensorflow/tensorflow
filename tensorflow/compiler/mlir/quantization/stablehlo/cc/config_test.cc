@@ -198,7 +198,7 @@ TEST(ExpandPresetsTest, ExpandStaticRangePtqPresetDefault) {
 
   const QuantizationSpec& spec = new_config.specs().specs(0);
   EXPECT_THAT(spec.matcher().function_name().regex(),
-              StrEq("^.*(conv|dot|gather).*"));
+              StrEq("^.*(dot_general|gather).*"));
   EXPECT_TRUE(spec.method().has_static_range_ptq());
 }
 
@@ -272,6 +272,19 @@ TEST(ExpandPresetsTest, ExpandStaticRangePtqPresetThenAppendExplicitSpecs) {
   EXPECT_THAT(third_spec.matcher().function_name().regex(),
               StrEq("composite_dot_general_fn_1"));
   EXPECT_TRUE(third_spec.method().has_no_quantization());
+}
+
+TEST(ExpandPresetsTest, ExpandWeightOnlyPtqPresetDefault) {
+  QuantizationConfig config{};
+  *config.mutable_weight_only_ptq_preset() = WeightOnlyPtqPreset();
+
+  const QuantizationConfig new_config = ExpandPresets(config);
+  ASSERT_THAT(new_config.specs().specs(), SizeIs(1));
+
+  const QuantizationSpec& spec = new_config.specs().specs(0);
+  EXPECT_THAT(spec.matcher().function_name().regex(),
+              StrEq("^.*(conv|dot_general).*"));
+  EXPECT_TRUE(spec.method().has_weight_only_ptq());
 }
 
 }  // namespace

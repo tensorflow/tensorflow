@@ -116,5 +116,56 @@ TEST(ConversionTest, StableDelegateLoaderSettings) {
             kDelegateName);
 }
 
+TEST(ConversionTest, CompilationCachingSettings) {
+  // Define the fields to be tested.
+  const std::string kCacheDir = "TEST_CACHE_DIR";
+  const std::string kModelToken = "TEST_MODEL_TOKEN";
+
+  // Create the proto settings.
+  proto::TFLiteSettings input_settings;
+  auto* compilation_caching_settings =
+      input_settings.mutable_compilation_caching_settings();
+  compilation_caching_settings->set_cache_dir(kCacheDir);
+  compilation_caching_settings->set_model_token(kModelToken);
+  flatbuffers::FlatBufferBuilder flatbuffers_builder;
+
+  // Convert.
+  auto output_settings = ConvertFromProto(input_settings, &flatbuffers_builder);
+
+  // Verify the conversion results.
+  const auto* output_compilation_caching_settings =
+      output_settings->compilation_caching_settings();
+  ASSERT_NE(output_compilation_caching_settings, nullptr);
+  EXPECT_EQ(output_compilation_caching_settings->cache_dir()->str(), kCacheDir);
+  EXPECT_EQ(output_compilation_caching_settings->model_token()->str(),
+            kModelToken);
+}
+
+TEST(ConversionTest, ArmNNSettings) {
+  // Define the fields to be tested.
+  const std::string kBackends = "TEST_BACKENDS";
+  const bool kFastmath = true;
+  const std::string kAdditionalParameters = "TEST_ADDITIONAL_PARAMETERS";
+
+  // Create the proto settings.
+  proto::TFLiteSettings input_settings;
+  auto* armnn_settings = input_settings.mutable_armnn_settings();
+  armnn_settings->set_backends(kBackends);
+  armnn_settings->set_fastmath(kFastmath);
+  armnn_settings->set_additional_parameters(kAdditionalParameters);
+  flatbuffers::FlatBufferBuilder flatbuffers_builder;
+
+  // Convert.
+  auto output_settings = ConvertFromProto(input_settings, &flatbuffers_builder);
+
+  // Verify the conversion results.
+  const auto* output_armnn_settings = output_settings->armnn_settings();
+  ASSERT_NE(output_armnn_settings, nullptr);
+  EXPECT_EQ(output_armnn_settings->backends()->str(), kBackends);
+  EXPECT_EQ(output_armnn_settings->fastmath(), kFastmath);
+  EXPECT_EQ(output_armnn_settings->additional_parameters()->str(),
+            kAdditionalParameters);
+}
+
 }  // namespace
 }  // namespace tflite

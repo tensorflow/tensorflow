@@ -172,50 +172,54 @@ void PopulateOpMetricsNode(
   metrics->set_raw_time(op_metrics.time_ps());
   metrics->set_raw_flops(op_metrics.model_flops());
   metrics->set_occurrences(op_metrics.occurrences());
-  metrics->set_avg_time_ps(
-      SafeDivide(op_metrics.time_ps(), op_metrics.occurrences()));
+  metrics->set_avg_time_ps(tsl::profiler::SafeDivide(op_metrics.time_ps(),
+                                                     op_metrics.occurrences()));
 
-  double flops_utilization = SafeDivide(GigaFlopsPerSecondPerCore(op_metrics),
-                                        peak_gigaflops_per_second_per_core);
+  double flops_utilization =
+      tsl::profiler::SafeDivide(GigaFlopsPerSecondPerCore(op_metrics),
+                                peak_gigaflops_per_second_per_core);
   // The UI expects flops_utilization = flop_util / time_fraction. See:
   // https://github.com/tensorflow/profiler/blob/master/frontend/app/common/utils/utils.ts
-  const double time_fraction = SafeDivide(op_metrics.time_ps(), total_time_ps);
+  const double time_fraction =
+      tsl::profiler::SafeDivide(op_metrics.time_ps(), total_time_ps);
   metrics->set_flops(flops_utilization * time_fraction);
 
   // Capture both on-chip and off-chip memory utilization.
   const double hbm_gibibytes_per_second =
-      GigaToGibi(GigaBytesPerSecondPerCore(op_metrics,
-                                           MemorySpace::MEMORY_SPACE_HBM,
-                                           OpMetrics::MemoryAccessed::READ)) +
-      GigaToGibi(GigaBytesPerSecondPerCore(op_metrics,
-                                           MemorySpace::MEMORY_SPACE_HBM,
-                                           OpMetrics::MemoryAccessed::WRITE));
-  const double hbm_bw_utilization = SafeDivide(
+      tsl::profiler::GigaToGibi(
+          GigaBytesPerSecondPerCore(op_metrics, MemorySpace::MEMORY_SPACE_HBM,
+                                    OpMetrics::MemoryAccessed::READ)) +
+      tsl::profiler::GigaToGibi(
+          GigaBytesPerSecondPerCore(op_metrics, MemorySpace::MEMORY_SPACE_HBM,
+                                    OpMetrics::MemoryAccessed::WRITE));
+  const double hbm_bw_utilization = tsl::profiler::SafeDivide(
       hbm_gibibytes_per_second,
       peak_mem_gibibytes_per_second_per_core[MemBwType::MEM_BW_TYPE_HBM_RW]);
   metrics->add_bandwidth_utils(hbm_bw_utilization);
-  double hbm_bytes =
-      GibiToGiga(hbm_gibibytes_per_second) * PicoToNano(op_metrics.time_ps());
+  double hbm_bytes = tsl::profiler::GibiToGiga(hbm_gibibytes_per_second) *
+                     tsl::profiler::PicoToNano(op_metrics.time_ps());
 
-  const double sram_rd_gibibytes_per_second = GigaToGibi(
+  const double sram_rd_gibibytes_per_second = tsl::profiler::GigaToGibi(
       GigaBytesPerSecondPerCore(op_metrics, MemorySpace::MEMORY_SPACE_ON_CHIP,
                                 OpMetrics::MemoryAccessed::READ));
-  const double sram_rd_bw_utilization = SafeDivide(
+  const double sram_rd_bw_utilization = tsl::profiler::SafeDivide(
       sram_rd_gibibytes_per_second,
       peak_mem_gibibytes_per_second_per_core[MemBwType::MEM_BW_TYPE_SRAM_RD]);
   metrics->add_bandwidth_utils(sram_rd_bw_utilization);
-  double sram_rd_bytes = GibiToGiga(sram_rd_gibibytes_per_second) *
-                         PicoToNano(op_metrics.time_ps());
+  double sram_rd_bytes =
+      tsl::profiler::GibiToGiga(sram_rd_gibibytes_per_second) *
+      tsl::profiler::PicoToNano(op_metrics.time_ps());
 
-  const double sram_wr_gibibytes_per_second = GigaToGibi(
+  const double sram_wr_gibibytes_per_second = tsl::profiler::GigaToGibi(
       GigaBytesPerSecondPerCore(op_metrics, MemorySpace::MEMORY_SPACE_ON_CHIP,
                                 OpMetrics::MemoryAccessed::WRITE));
-  const double sram_wr_bw_utilization = SafeDivide(
+  const double sram_wr_bw_utilization = tsl::profiler::SafeDivide(
       sram_wr_gibibytes_per_second,
       peak_mem_gibibytes_per_second_per_core[MemBwType::MEM_BW_TYPE_SRAM_WR]);
   metrics->add_bandwidth_utils(sram_wr_bw_utilization);
-  double sram_wr_bytes = GibiToGiga(sram_wr_gibibytes_per_second) *
-                         PicoToNano(op_metrics.time_ps());
+  double sram_wr_bytes =
+      tsl::profiler::GibiToGiga(sram_wr_gibibytes_per_second) *
+      tsl::profiler::PicoToNano(op_metrics.time_ps());
 
   metrics->add_raw_bytes_accessed_array(hbm_bytes);
   metrics->add_raw_bytes_accessed_array(sram_rd_bytes);

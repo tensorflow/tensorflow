@@ -2326,13 +2326,15 @@ ShapeInference::InferScalarBroadcastShape(absl::Span<const Shape> shapes) {
         "Arguments to triangular solve must have equal rank; got %s and %s.",
         b.ToString(), a.ToString());
   }
-  if (a.dimensions(a.rank() - 2) != a.dimensions(a.rank() - 1)) {
+  if (!CompatibleDimensionSizes(a.dimensions(a.rank() - 2),
+                                a.dimensions(a.rank() - 1))) {
     return InvalidArgument(
         "The two minor dimensions of 'a' must have equal size, got %s.",
         a.ToString());
   }
-  if (a.dimensions(a.rank() - 1) !=
-      b.dimensions(b.rank() - (options.left_side() ? 2 : 1))) {
+  if (!CompatibleDimensionSizes(
+          a.dimensions(a.rank() - 1),
+          b.dimensions(b.rank() - (options.left_side() ? 2 : 1)))) {
     return InvalidArgument(
         "The shared dimension of 'a' and 'b' does not match, got shapes %s and "
         "%s",
@@ -2370,9 +2372,10 @@ ShapeInference::InferScalarBroadcastShape(absl::Span<const Shape> shapes) {
         "The 'a' argument to Cholesky must have rank >= 2, got shape %s",
         a.ToString());
   }
-  if (a.dimensions(a.rank() - 2) != a.dimensions(a.rank() - 1)) {
+  if (!CompatibleDimensionSizes(a.dimensions(a.rank() - 2),
+                                a.dimensions(a.rank() - 1))) {
     return InvalidArgument(
-        "The two minor dimensions of 'a' must have equal size, got %s.",
+        "The two minor dimensions of 'a' must have compatible size, got %s.",
         a.ToString());
   }
   return a;
@@ -2391,9 +2394,12 @@ ShapeInference::InferScalarBroadcastShape(absl::Span<const Shape> shapes) {
     TF_RETURN_IF_ERROR(ExpectArray(*operand_shape, "operand of all-gather"));
 
     Shape output_shape = *operand_shape;
-    output_shape.set_dimensions(
-        all_gather_dimension,
-        shard_count * output_shape.dimensions(all_gather_dimension));
+    int64_t output_shape_dimension =
+        output_shape.dimensions(all_gather_dimension);
+    output_shape.set_dimensions(all_gather_dimension,
+                                IsUnboundedDynamicSize(output_shape_dimension)
+                                    ? Shape::kUnboundedSize
+                                    : shard_count * output_shape_dimension);
     output_shapes.push_back(output_shape);
   }
   if (output_shapes.size() == 1) {
@@ -2458,8 +2464,10 @@ ShapeInference::InferScalarBroadcastShape(absl::Span<const Shape> shapes) {
     }
 
     Shape output_shape = *operand_shape;
-    output_shape.set_dimensions(scatter_dimension,
-                                scatter_dim_input_size / shard_count);
+    output_shape.set_dimensions(
+        scatter_dimension, output_shape.is_dynamic_dimension(scatter_dimension)
+                               ? Shape::kUnboundedSize
+                               : scatter_dim_input_size / shard_count);
     output_shapes.push_back(output_shape);
   }
 
@@ -2525,6 +2533,7 @@ ShapeInference::InferScalarBroadcastShape(absl::Span<const Shape> shapes) {
 
   return InferVariadicOpShape(HloOpcode::kTuple, operand_shapes);
 }
+
 /* static */ absl::StatusOr<Shape>
 ShapeInference::InferCollectiveBroadcastShape(
     absl::Span<const Shape* const> operand_shapes) {
@@ -3037,7 +3046,8 @@ ShapeInference::InferCollectivePermuteDoneShape(const Shape& operand_shape) {
       return InvalidArgument("Negative size index to dynamic slice: %d.",
                              slice_dim_size);
     }
-    if (slice_dim_size > input_dim_size) {
+    if (!IsUnboundedDynamicSize(input_dim_size) &&
+        slice_dim_size > input_dim_size) {
       return InvalidArgument(
           "Slice dim size %d greater than dynamic slice dimension: %d.",
           slice_dim_size, input_dim_size);
@@ -3161,7 +3171,7 @@ ShapeInference::InferCollectivePermuteDoneShape(const Shape& operand_shape) {
   for (int64_t dim = 0; dim < operand_shape.rank(); ++dim) {
     const int64_t input_dim_size = operand_shape.dimensions(dim);
     const int64_t update_dim_size = update_shape.dimensions(dim);
-    if (update_dim_size < 0) {
+    if (!IsUnboundedDynamicSize(update_dim_size) && update_dim_size < 0) {
       return InvalidArgument(
           "Size index %d to dynamic update slice must be >= 0.",
           update_dim_size);

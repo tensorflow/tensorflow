@@ -35,15 +35,16 @@ class Client;
 
 class Memory : public xla::ifrt::Memory {
  public:
-  Memory(int id, std::string memory_space_kind, std::string debug_string,
-         std::string to_string)
+  Memory(int id, std::string memory_space_kind, int kind_id,
+         std::string debug_string, std::string to_string)
       : id_(id),
         memory_space_kind_(std::move(memory_space_kind)),
+        kind_id_(kind_id),
         debug_string_(std::move(debug_string)),
         to_string_(std::move(to_string)) {}
 
   // Not copyable or movable: IFRT expects `string_view` from
-  // `memory_space_kind()` to be stable throughout the client's lifetime.
+  // `kind()` to be stable throughout the client's lifetime.
   Memory(const Memory& other) = delete;
   Memory& operator=(const Memory& other) = delete;
 
@@ -55,9 +56,8 @@ class Memory : public xla::ifrt::Memory {
 
   int id() const override { return id_; }
 
-  absl::string_view memory_space_kind() const override {
-    return memory_space_kind_;
-  }
+  absl::string_view kind() const override { return memory_space_kind_; }
+  int kind_id() const override { return kind_id_; }
 
   absl::string_view DebugString() const override { return debug_string_; }
 
@@ -69,6 +69,7 @@ class Memory : public xla::ifrt::Memory {
   int id_;
   std::vector<xla::ifrt::Device*> devices_;
   std::string memory_space_kind_;
+  int kind_id_;
   std::string debug_string_;
   std::string to_string_;
 };

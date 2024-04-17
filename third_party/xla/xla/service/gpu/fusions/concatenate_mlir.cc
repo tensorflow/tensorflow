@@ -19,7 +19,6 @@ limitations under the License.
 #include <iterator>
 #include <optional>
 
-#include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -31,18 +30,15 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/IR/ValueRange.h"  // from @llvm-project
-#include "mlir/Interfaces/DataLayoutInterfaces.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/fusions/concatenate.h"
 #include "xla/service/gpu/fusions/mlir/computation_partitioner.h"
 #include "xla/service/gpu/fusions/mlir/elemental_hlo_to_mlir.h"
-#include "xla/service/gpu/fusions/mlir/ir/xla_gpu_ops.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/model/indexing_analysis.h"
 #include "xla/service/gpu/model/indexing_map.h"
-#include "tsl/platform/errors.h"
 
 namespace xla {
 namespace gpu {
@@ -72,10 +68,12 @@ MlirConcatenateFusion::ComputeThreadIdToInputIndexing(
                                        ctx);
 }
 
-std::vector<const HloInstruction*>
-MlirConcatenateFusion::GetInstructionsWithCustomCodegen(
-    const HloFusionInstruction& fusion) const {
-  return analysis_.fusion_heroes();
+std::optional<mlir_converter::EpilogueSpecification>
+MlirConcatenateFusion::GetEpilogue(const HloFusionInstruction& fusion,
+                                   mlir::MLIRContext* mlir_context) const {
+  return mlir_converter::EpilogueSpecification::FromIdentityIndexing(
+      analysis_.fusion_heroes().front(), analysis_.fusion_roots().front(),
+      mlir_context);
 }
 
 absl::Status MlirConcatenateFusion::EmitEntryFunction(

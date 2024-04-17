@@ -33,6 +33,8 @@ limitations under the License.
 #include "third_party/nanobind/include/nanobind/nanobind.h"
 #include "xla/pjrt/exceptions.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_future.h"
+#include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/future.h"
@@ -96,6 +98,7 @@ struct PyArray_Storage {
   nb_class_ptr<PyClient> py_client;
   std::optional<nb_traceback> traceback;
   tsl::RCReference<ifrt::Array> ifrt_array;
+  nanobind::object fully_replicated_array = nanobind::none();
 
   // optional field, used only in python
   std::vector<PyArray> py_arrays;
@@ -287,7 +290,6 @@ class PyArray : public nanobind::object {
       std::vector<nanobind::object> objs);
 
  private:
-  absl::StatusOr<PyArray> FetchSingleShard(std::string_view api);
   absl::StatusOr<PyArray> AssertUnsharded(std::string_view api);
 
   void CheckAndRearrange();

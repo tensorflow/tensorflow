@@ -55,7 +55,7 @@ void DequantizeOpQuantizePerAxisImpl(
       const ExpressedT dequantized_res = op(dequantized_input);
       *output_data = Quantize<StorageT, ExpressedT>(
           dequantized_res, output_zero_points[quantization_index],
-          static_cast<ExpressedT>(1 / output_scales[quantization_index]),
+          static_cast<ExpressedT>(1) / output_scales[quantization_index],
           quantization_min, quantization_max);
       output_data += strides[depth];
       input_data += strides[depth];
@@ -117,7 +117,7 @@ void DequantizeOpQuantizePerTensor(F& func, const Tensor& input,
       output.quantized_per_tensor_element_type().ScaleAs<expressed_type>();
   const StorageT* input_data = input.GetDataAs<storage_type>();
   StorageT* output_data = output.GetDataAs<storage_type>();
-  const ExpressedT inv_scale = static_cast<ExpressedT>(1 / output_scale);
+  const ExpressedT inv_scale = static_cast<ExpressedT>(1) / output_scale;
   for (DimensionSize i = 0; i < num_elements;
        ++i, ++input_data, ++output_data) {
     const ExpressedT dequantized_input =

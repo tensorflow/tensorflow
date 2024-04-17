@@ -1081,16 +1081,13 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexUnaryOp(
       return EmitComposeComplex(op, real_result, imag_result);
     }
     case HloOpcode::kCos:
-    case HloOpcode::kSin:
-    case HloOpcode::kTan: {
+    case HloOpcode::kSin: {
       // If the argument is z = x + i*y, let
       //   sinh(y) = (exp(y) - exp(-y)) / 2
       //   cosh(y) = (exp(y) + exp(-y)) / 2 ,
       // then
       //   sin(x + i*y) = sin(x)*cosh(y) + i*cos(x)*sinh(y)
       //   cos(x + i*y) = cos(x)*cosh(y) - i*sin(x)*sinh(y)
-      //   tan(x + i*y) = (sin(x)*cos(x) + i*sinh(y)*cosh(y)) /
-      //                    (cos(x)^2 + sinh(y)^2).
       auto x = EmitExtractReal(operand_value);
       auto y = EmitExtractImag(operand_value);
       auto type = y->getType();
@@ -1103,14 +1100,6 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexUnaryOp(
       auto cosh_y = FAdd(half_exp_y, half_exp_neg_y);
       llvm::Value* real_result = nullptr;
       llvm::Value* imag_result = nullptr;
-      if (op->opcode() == HloOpcode::kTan) {
-        auto num_real = FMul(sin_x, cos_x);
-        auto num_imag = FMul(sinh_y, cosh_y);
-        auto denom = FAdd(FMul(cos_x, cos_x), FMul(sinh_y, sinh_y));
-        auto denom_inv = FDiv(llvm::ConstantFP::get(type, 1.0), denom);
-        real_result = FMul(num_real, denom_inv);
-        imag_result = FMul(num_imag, denom_inv);
-      }
       if (op->opcode() == HloOpcode::kSin) {
         real_result = FMul(sin_x, cosh_y);
         imag_result = FMul(cos_x, sinh_y);
@@ -1121,6 +1110,8 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexUnaryOp(
       }
       return EmitComposeComplex(op, real_result, imag_result);
     }
+    case HloOpcode::kTan:
+      // tan(x+yi) = -i*tanh(-y + xi)
     case HloOpcode::kTanh: {
       /*
       tanh=(exp(x)-exp(-x)) / (exp(x)+exp(-x))
@@ -1153,12 +1144,15 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexUnaryOp(
               (e^(2a)+e^(-2a)+2*[cos(2b)])
              =(e^(2a)-e^(-2a) + i*2*sin(2b)) / (e^(2a) + e^(-2a) + 2*cos(2b))
       */
-      llvm::Value* a = EmitExtractReal(operand_value);
-      llvm::Value* b = EmitExtractImag(operand_value);
+      bool op_is_tan = op->opcode() == HloOpcode::kTan;
+      llvm::Value* a0 = EmitExtractReal(operand_value);
+      llvm::Value* b0 = EmitExtractImag(operand_value);
+      llvm::Type* type = a0->getType();
+      llvm::Value* neg_one = llvm::ConstantFP::get(type, -1.0);
 
-      llvm::Type* type = a->getType();
+      auto a = op_is_tan ? FMul(neg_one, b0) : a0;
+      auto b = op_is_tan ? a0 : b0;
 
-      llvm::Value* neg_one = llvm::ConstantFP::get(type, -1.F);
       llvm::Value* two_a = FAdd(a, a);
       llvm::Value* neg_2a = FMul(neg_one, two_a);
 
@@ -1178,7 +1172,7 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexUnaryOp(
       // = 2cos(b)^2. This gives us the ability to be more precise when the
       // denominator is close to zero.
       TF_ASSIGN_OR_RETURN(llvm::Value * cos_b, EmitCos(component_type, b));
-      llvm::Value* four = llvm::ConstantFP::get(type, 4.F);
+      llvm::Value* four = llvm::ConstantFP::get(type, 4.0);
       llvm::Value* cos_b_sq = FMul(cos_b, cos_b);
       llvm::Value* two_cos_2b_p2 = FMul(cos_b_sq, four);
 
@@ -1187,16 +1181,16 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexUnaryOp(
       TF_ASSIGN_OR_RETURN(llvm::Value * sin_b, EmitSin(component_type, b));
       llvm::Value* imag_numerator = FMul(four, FMul(cos_b, sin_b));
 
-      // Expm1(x) is about x for small values of x, but exp_sum_m2 is about x^2
-      // for small value of x. As a result, due to floating point precision
-      // issues, x^2 is a better approximation than Expm1(x) + Expm1(x) for
-      // small values of x.
-      llvm::Value* a_sqr = FMul(a, a);
-      llvm::Value* use_approx_cutoff = llvm::ConstantFP::get(type, 1e-8);
-      llvm::Value* use_approx = FCmpOLT(a_sqr, use_approx_cutoff);
+      // About "x^2 is a better approximation than Expm1(x) + Expm1(x)
+      // for small values of x": this statement is not
+      // accurate. Previously, Expm1(x) implementation had accuracy
+      // issues for small x (where it was supposed to stand out in
+      // accuracy!), but after resolving these issues (see
+      // openxla/xla#10376), using precomputed exp_2a_m1 and
+      // exp_neg_2a_m1 is accurate enough and we'll save a few
+      // instructions.
 
-      llvm::Value* exp_sum_m2 =
-          Select(use_approx, a_sqr, FAdd(exp_2a_m1, exp_neg_2a_m1));
+      auto exp_sum_m2 = FAdd(exp_2a_m1, exp_neg_2a_m1);
       llvm::Value* denom = FAdd(exp_sum_m2, two_cos_2b_p2);
 
       // As `a` grows toward +inf and -inf, the real numerator will grow towards
@@ -1242,7 +1236,7 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexUnaryOp(
             b_->getFastMathFlags().noInfs())) {
         llvm::Value* abs_a = llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::fabs,
                                                           {a}, {type}, b_);
-        llvm::Value* zero = llvm::ConstantFP::get(type, 0.F);
+        llvm::Value* zero = llvm::ConstantFP::get(type, 0.0);
         llvm::Value* nan = llvm::ConstantFP::getNaN(type);
 
         llvm::Value* a_is_inf = FCmpOEQ(abs_a, inf);
@@ -1262,7 +1256,8 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexUnaryOp(
         imag = Select(imag_is_zero, zero, imag);
       }
 
-      return EmitComposeComplex(op, real, imag);
+      return op_is_tan ? EmitComposeComplex(op, imag, FMul(neg_one, real))
+                       : EmitComposeComplex(op, real, imag);
     }
     case HloOpcode::kAbs: {
       return EmitComplexAbs(component_type, operand_value);

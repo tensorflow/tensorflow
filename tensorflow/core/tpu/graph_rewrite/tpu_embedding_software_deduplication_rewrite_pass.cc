@@ -36,7 +36,7 @@ namespace {
 
 // Check the number of outputs for RecvActivationsNode or for number of inputs
 // For SendGradientsNode.
-xla::Status CheckNumInputsOrOutputs(
+absl::Status CheckNumInputsOrOutputs(
     const int32 num_input_or_outputs, const std::string& attribute_name,
     const std::string& node_name,
     const tpu::TPUEmbeddingConfiguration& tpu_embedding_config) {

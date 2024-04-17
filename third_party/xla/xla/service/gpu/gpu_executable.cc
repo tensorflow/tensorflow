@@ -355,8 +355,8 @@ class ResourceRequests : public Thunk::ResourceRequests {
       if (b.key.devices().size() > a.key.devices().size()) return false;
 
       // If cliques have the same size prefer cliques with smaller stream id.
-      if (a.key.stream_id() < b.key.stream_id()) return true;
-      if (b.key.stream_id() < a.key.stream_id()) return false;
+      if (a.key.stream_id().value() < b.key.stream_id().value()) return true;
+      if (b.key.stream_id().value() < a.key.stream_id().value()) return false;
 
       // Prefer cliques with smaller id (comes earlier in execution order).
       return a.id < b.id;

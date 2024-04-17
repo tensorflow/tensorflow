@@ -781,7 +781,7 @@ cc_library(
         "//tensorflow/core/distributed_runtime/rpc:grpc_util",
         "//tensorflow/core/lib/core:threadpool",
         "//tensorflow/core/platform:coding",
-        "@local_tsl//tsl/distributed_runtime/rpc:grpc_call",
+        "@local_xla//xla/tsl/distributed_runtime/rpc:grpc_call",
     ] + tf_grpc_cc_dependencies(),
 )
 

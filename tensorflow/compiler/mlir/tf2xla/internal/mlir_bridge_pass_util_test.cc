@@ -164,58 +164,10 @@ TEST(IsSupportedByReplicatedBridge, ReplicatedGraph) {
       IsSupportedByReplicatedBridge(graph, /*function_library=*/nullptr));
 }
 
-TEST(IsSupportedByReplicatedBridge, SingleCoreTpuGraph) {
-  const FunctionDef& fd = test::function::XTimesTwo();
-  FunctionDefLibrary flib;
-  *flib.add_function() = fd;
-  FunctionLibraryDefinition flib_def(OpRegistry::Global(), flib);
-  Graph graph(flib_def);
-  graph.SetConstructionContext(ConstructionContext::kEagerRuntime);
-  tensorflow::set_tf2_execution(true);
-
-  ConfigProto config = ConfigProto();
-  Scope root = Scope::NewRootScope().ExitOnError();
-
-  Output a = ops::_Arg(root.WithOpName("A"), DT_FLOAT, 0);
-  std::vector<NodeBuilder::NodeOut> inputs({NodeBuilder::NodeOut(a.node())});
-
-  Node* call;
-  NameAttrList f_name_attr;
-  f_name_attr.set_name(fd.signature().name());
-  TF_ASSERT_OK(
-      NodeBuilder("B", "StatefulPartitionedCall", &root.graph()->flib_def())
-          .Input(inputs)
-          .Attr("Tin", {DT_FLOAT})
-          .Attr("Tout", {DT_FLOAT})
-          .Attr("f", f_name_attr)
-          .Finalize(root.graph(), &call));
-  call->AddAttr(std::string(kCompileDeviceTypeAttr), kTpuDevice);
-
-  TF_ASSERT_OK(root.ToGraph(&graph));
-
-  EXPECT_TRUE(
-      IsSupportedByReplicatedBridge(graph, /*function_library=*/nullptr));
-}
-
 TEST(IsSupportedByReplicatedBridge, ReplicatedModule) {
   const char* const code = R"mlir(
 func.func @entry_func_1(%arg0: tensor<i32>) -> tensor<i32> attributes {tf.entry_function = {}} {
   %0 = "tf.Identity"(%arg0) {_tpu_replicate = "cluster"} : (tensor<i32>) -> (tensor<i32>)
-  func.return %0 : tensor<i32>
-}
-)mlir";
-  mlir::MLIRContext context;
-  context.loadDialect<mlir::func::FuncDialect, mlir::TF::TensorFlowDialect>();
-  mlir::OwningOpRef<mlir::ModuleOp> module =
-      mlir::parseSourceString<mlir::ModuleOp>(code, &context);
-  ASSERT_TRUE(module);
-  EXPECT_TRUE(IsSupportedByReplicatedBridge(*module));
-}
-
-TEST(IsSupportedByReplicatedBridge, SingleCoreTpuModule) {
-  const char* const code = R"mlir(
-func.func @entry_func_1(%arg0: tensor<i32>) -> tensor<i32> attributes {tf.entry_function = {}} {
-  %0 = "tf.Identity"(%arg0) {_xla_compile_device_type = "TPU"} : (tensor<i32>) -> (tensor<i32>)
   func.return %0 : tensor<i32>
 }
 )mlir";

@@ -169,6 +169,25 @@ cc_library(
     ],
 )
 
+# PJRT CPU plugin.
+xla_cc_binary(
+    name = "pjrt_c_api_cpu_plugin.so",
+    linkopts = [
+        "-Wl,--version-script,$(location :pjrt_c_api_cpu_version_script.lds)",
+        "-Wl,--no-undefined",
+    ],
+    linkshared = True,
+    tags = [
+        "noasan",
+        "nomsan",
+        "notsan",
+    ],
+    deps = [
+        ":pjrt_c_api_cpu",
+        ":pjrt_c_api_cpu_version_script.lds",
+    ],
+)
+
 cc_library(
     name = "pjrt_c_api_gpu_internal",
     srcs = ["pjrt_c_api_gpu_internal.cc"],

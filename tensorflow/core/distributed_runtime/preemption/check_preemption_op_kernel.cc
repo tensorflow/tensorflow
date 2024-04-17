@@ -16,12 +16,12 @@ limitations under the License.
 #include <string>
 
 #include "absl/strings/string_view.h"
+#include "xla/tsl/distributed_runtime/coordination/coordination_service_agent.h"
 #include "tensorflow/core/distributed_runtime/error_payloads.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tsl/distributed_runtime/coordination/coordination_service_agent.h"
 
 namespace tensorflow {
 

@@ -44,3 +44,8 @@ message CalibrationStatistics {
   AverageMinMaxStatistics average_min_max_statistics = 2;
   HistogramStatistics histogram_statistics = 3;
 }
+
+message CalibrationStatisticsMap {
+  // A map from the id of CustomAggregator op to its collected statistics.
+  map<string, CalibrationStatistics> statistics = 1;
+}

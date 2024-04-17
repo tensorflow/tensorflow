@@ -2331,8 +2331,8 @@ absl::InlinedVector<int64_t, 1> GetScatterParallelUpdateDims(
 }
 
 absl::InlinedVector<int64_t, 1> GetGatherOperandPassthroughOperandDims(
-    const Shape& operand_shape, const HloSharding& operand_sharding,
-    const HloInstruction& hlo, absl::Span<const int64_t> slice_sizes) {
+    const Shape& operand_shape, const HloInstruction& hlo,
+    absl::Span<const int64_t> slice_sizes) {
   const auto& dnums = hlo.gather_dimension_numbers();
   std::vector<int64_t> collapsed_slice_dims(
       dnums.collapsed_slice_dims().begin(), dnums.collapsed_slice_dims().end());
@@ -2363,8 +2363,7 @@ absl::InlinedVector<int64_t, 1> GetScatterOperandPassthroughOperandDims(
 
 absl::InlinedVector<int64_t, 1> GetGatherOperandPassthroughOutputDims(
     const Shape& output_shape, const Shape& operand_shape,
-    const HloSharding& operand_sharding, const HloInstruction& hlo,
-    absl::Span<const int64_t> slice_sizes) {
+    const HloInstruction& hlo, absl::Span<const int64_t> slice_sizes) {
   const auto& dnums = hlo.gather_dimension_numbers();
   std::vector<int64_t> collapsed_slice_dims(
       dnums.collapsed_slice_dims().begin(), dnums.collapsed_slice_dims().end());

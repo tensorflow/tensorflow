@@ -84,6 +84,7 @@ def heap_profile(client: Client) -> bytes:
   ...
 
 def make_cpu_client(
+    asynchronous: bool = ...,
     distributed_client: Optional[DistributedRuntimeClient] = ...,
     node_id: int = ...,
     num_nodes: int = ...,

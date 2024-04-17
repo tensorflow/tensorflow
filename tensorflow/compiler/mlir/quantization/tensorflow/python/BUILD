@@ -51,10 +51,11 @@ cc_library(
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantize_passes",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantize_preprocess",
+        "//tensorflow/compiler/mlir/quantization/tensorflow/calibrator:calibration_statistics_saver_op",  # Required for CalibrationStatisticsSaver op registration.
         "//tensorflow/compiler/mlir/quantization/tensorflow/calibrator:custom_aggregator_op",  # Required for CustomAggregator op registration.
         "//tensorflow/compiler/mlir/quantization/tensorflow/cc:convert_asset_args",
         "//tensorflow/compiler/mlir/quantization/tensorflow/cc:run_passes",
-        "//tensorflow/compiler/mlir/quantization/tensorflow/debugging:dump_tensor_op",
+        "//tensorflow/compiler/mlir/quantization/tensorflow/debugging:dump_tensor_op",  # Required for DumpTensor op registration.
         "//tensorflow/compiler/mlir/tensorflow:mlir_import_options",
         "//tensorflow/compiler/mlir/tensorflow:translate_lib",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tf_dialect_passes",
@@ -108,7 +109,6 @@ pytype_strict_library(
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_py",
         "//tensorflow/compiler/mlir/quantization/tensorflow/calibrator:calibration_algorithm",
         "//tensorflow/compiler/mlir/quantization/tensorflow/calibrator:calibration_statistics_proto_py",
-        "//tensorflow/compiler/mlir/quantization/tensorflow/calibrator:pywrap_calibration",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/client:session",
         "//tensorflow/python/eager:context",
@@ -120,7 +120,6 @@ pytype_strict_library(
         "//tensorflow/python/saved_model:loader",
         "//tensorflow/python/trackable:autotrackable",
         "//tensorflow/python/types:core",
-        "//third_party/py/numpy",
         "@absl_py//absl/logging",
     ],
 )
@@ -129,13 +128,7 @@ tf_py_strict_test(
     name = "py_function_lib_py_test",
     srcs = ["py_function_lib_test.py"],
     main = "py_function_lib_test.py",
-    deps = [
-        ":py_function_lib_py",
-        ":pywrap_function_lib",
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/compiler/mlir/quantization/tensorflow:exported_model_proto_py",
-        "//tensorflow/python/platform:client_testlib",
-    ],
+    deps = ["//tensorflow/python/platform:client_testlib"],
 )
 
 cc_library(
@@ -220,6 +213,7 @@ tf_python_pybind_extension(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/protobuf:for_core_protos_cc",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:string_view",
         "@pybind11",
     ],
@@ -276,13 +270,11 @@ pytype_strict_library(
         "//tensorflow/python/framework:importer",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/lib/io:file_io",
-        "//tensorflow/python/ops:variables",
         "//tensorflow/python/saved_model:builder",
         "//tensorflow/python/saved_model:constants",
         "//tensorflow/python/saved_model:loader",
         "//tensorflow/python/saved_model:tag_constants",
         "//tensorflow/python/training:saver",
-        "//tensorflow/python/training:training_lib",
         "@absl_py//absl/logging",
     ],
 )
@@ -421,7 +413,6 @@ tf_py_strict_test(
         "//tensorflow/python/saved_model:save",
         "//tensorflow/python/saved_model:tag_constants",
         "//tensorflow/python/trackable:autotrackable",
-        "@absl_py//absl/testing:parameterized",
     ],
 )
 

@@ -22,11 +22,15 @@ limitations under the License.
 #include <utility>
 
 #include "absl/base/attributes.h"
+#include "absl/container/inlined_vector.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "tsl/concurrency/async_value.h"
 #include "tsl/concurrency/ref_count.h"
 #include "tsl/platform/logging.h"
+#include "tsl/platform/mem.h"
 
 namespace tsl {
 
@@ -92,31 +96,31 @@ class AsyncValueRef {
 
   template <typename Derived, internal::DerivedFrom<Derived, T>* = nullptr>
   bool Isa() const {
-    return value_ && value_->IsType<Derived>();
+    // Isa is successful if:
+    //   (1) This is no-op cast even if concrete payload has different type.
+    //   (2) Type id of a concrete payload matches Derived type id.
+    //   (3) Payload is for a special case of ErrorAsyncValue.
+    return value_ && (std::is_same_v<Derived, T> ||                     // (1)
+                      value_->IsType<Derived>() ||                      // (2)
+                      value_->IsType<DummyValueForErrorAsyncValue>());  // (3)
   }
 
   template <typename Derived, internal::DerivedFrom<Derived, T>* = nullptr>
   AsyncValueRef<Derived> Cast() const {
-    DCHECK(value_) << "Async value must be not null";
-    DCHECK((std::is_same_v<Derived, T> || value_->IsType<Derived>()));
+    DCHECK(DynCast<Derived>()) << "Illegal async value cast";
     return AsyncValueRef<Derived>(value_);
   }
 
   template <typename Derived, internal::DerivedFrom<Derived, T>* = nullptr>
   AsyncValueRef<Derived> DynCast() const {
     DCHECK(value_) << "Async value must be not null";
-    if (std::is_same_v<Derived, T> || value_->IsType<Derived>()) {
-      return AsyncValueRef<Derived>(value_);
-    }
-    return AsyncValueRef<Derived>(nullptr);
+    return Isa<Derived>() ? AsyncValueRef<Derived>(value_)
+                          : AsyncValueRef<Derived>(nullptr);
   }
 
   template <typename Derived, internal::DerivedFrom<Derived, T>* = nullptr>
   AsyncValueRef<Derived> DynCastOrNull() const {
-    if (std::is_same_v<Derived, T> || (value_ && value_->IsType<Derived>())) {
-      return AsyncValueRef<Derived>(value_);
-    }
-    return AsyncValueRef<Derived>(nullptr);
+    return value_ ? DynCast<Derived>(value_) : AsyncValueRef<Derived>(nullptr);
   }
 
   T* operator->() const { return &get(); }
@@ -232,31 +236,31 @@ class AsyncValuePtr {
 
   template <typename Derived, internal::DerivedFrom<Derived, T>* = nullptr>
   bool Isa() const {
-    return value_ && value_->IsType<Derived>();
+    // Isa is successful if:
+    //   (1) This is no-op cast even if concrete payload has different type.
+    //   (2) Type id of a concrete payload matches Derived type id.
+    //   (3) Payload is for a special case of ErrorAsyncValue.
+    return value_ && (std::is_same_v<Derived, T> ||                     // (1)
+                      value_->IsType<Derived>() ||                      // (2)
+                      value_->IsType<DummyValueForErrorAsyncValue>());  // (3)
   }
 
   template <typename Derived, internal::DerivedFrom<Derived, T>* = nullptr>
   AsyncValuePtr<Derived> Cast() const {
-    DCHECK(value_) << "Async value must be not null";
-    DCHECK((std::is_same_v<Derived, T> || value_->IsType<Derived>()));
+    DCHECK(DynCast<Derived>()) << "Illegal async value cast";
     return AsyncValuePtr<Derived>(value_);
   }
 
   template <typename Derived, internal::DerivedFrom<Derived, T>* = nullptr>
   AsyncValuePtr<Derived> DynCast() const {
     DCHECK(value_) << "Async value must be not null";
-    if (std::is_same_v<Derived, T> || value_->IsType<Derived>()) {
-      return AsyncValuePtr<Derived>(value_);
-    }
-    return AsyncValuePtr<Derived>(nullptr);
+    return Isa<Derived>() ? AsyncValuePtr<Derived>(value_)
+                          : AsyncValuePtr<Derived>(nullptr);
   }
 
   template <typename Derived, internal::DerivedFrom<Derived, T>* = nullptr>
   AsyncValuePtr<Derived> DynCastOrNull() const {
-    if (std::is_same_v<Derived, T> || (value_ && value_->IsType<Derived>())) {
-      return AsyncValuePtr<Derived>(value_);
-    }
-    return AsyncValuePtr<Derived>(nullptr);
+    return value_ ? DynCast<Derived>(value_) : AsyncValuePtr<Derived>(nullptr);
   }
 
   bool IsAvailable() const { return value_->IsAvailable(); }
@@ -365,6 +369,40 @@ RCReference<ErrorAsyncValue> MakeErrorAsyncValueRef(std::string_view message);
 RCReference<IndirectAsyncValue> MakeIndirectAsyncValue();
 
 //===----------------------------------------------------------------------===//
+// Functions for awaiting on the async values.
+//===----------------------------------------------------------------------===//
+
+template <typename T>
+void BlockUntilReady(const AsyncValueRef<T>& ref) {
+  BlockUntilReady(ref.GetAsyncValue());
+}
+
+template <typename T>
+void BlockUntilReady(const AsyncValuePtr<T>& ptr) {
+  BlockUntilReady(ptr.value());
+}
+
+template <typename T>
+void RunWhenReady(absl::Span<const AsyncValueRef<T>> refs,
+                  absl::AnyInvocable<void()> callee) {
+  absl::InlinedVector<AsyncValue*, 8> values(refs.size());
+  for (size_t i = 0; i < refs.size(); ++i) {
+    values[i] = refs[i].GetAsyncValue();
+  }
+  RunWhenReady(values, std::move(callee));
+}
+
+template <typename T>
+void RunWhenReady(absl::Span<const AsyncValuePtr<T>> ptrs,
+                  absl::AnyInvocable<void()> callee) {
+  absl::InlinedVector<AsyncValue*, 8> values(ptrs.size());
+  for (size_t i = 0; i < ptrs.size(); ++i) {
+    values[i] = ptrs[i].value();
+  }
+  RunWhenReady(values, std::move(callee));
+}
+
+//===----------------------------------------------------------------------===//
 // LLVM-style type casting library for async value refs and ptrs.
 //===----------------------------------------------------------------------===//
 
@@ -429,8 +467,7 @@ T* PlacementConstruct(void* buf, Args&&... args) {
 
 template <typename T, typename... Args>
 T* AllocateAndConstruct(Args&&... args) {
-  // TODO(ezhulenev): `port::AlignedMalloc` has a different order of arguments!
-  void* buf = internal::AlignedAlloc(alignof(T), sizeof(T));
+  void* buf = port::AlignedMalloc(sizeof(T), alignof(T));
   return PlacementConstruct<T, Args...>(buf, std::forward<Args>(args)...);
 }
 

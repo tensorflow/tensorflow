@@ -12,7 +12,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "third_party/amd/include/TritonAMDGPUToLLVM/Passes.h"
+// TODO(ROCm): Enable and include ROCm Triton passes when ROCm Triton is
+// included in build.
+// #include "third_party/amd/include/TritonAMDGPUToLLVM/Passes.h"
 #include "mlir/Conversion/ArithToLLVM/ArithToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/ControlFlowToLLVM/ControlFlowToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/IndexToLLVM/IndexToLLVM.h"  // from @llvm-project
@@ -23,6 +25,7 @@ limitations under the License.
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/hlo_module_config.h"
 #include "tsl/platform/rocm_rocdl_path.h"
+#include "triton/Conversion/TritonGPUToLLVM/Passes.h"
 #include "triton/Conversion/TritonToTritonGPU/TritonToTritonGPUPass.h"
 #include "triton/Dialect/Triton/Transforms/Passes.h"
 #include "triton/Dialect/TritonGPU/Transforms/Passes.h"
@@ -88,11 +91,11 @@ absl::Status CreateTritonPipeline(
 
   // Based on make_llir() in
   // @triton//:third_party/nvidia/backend/compiler.py
-  pm.addPass(mt::gpu::createDecomposeUnsupportedConversionsPass());
+  // pm.addPass(mt::gpu::createDecomposeUnsupportedConversionsPass());
   pm.addPass(mlir::createConvertSCFToCFPass());
   pm.addPass(mlir::createConvertIndexToLLVMPass());
   pm.addPass(mt::gpu::createAllocateSharedMemoryPass());
-  pm.addPass(mt::createConvertTritonAMDGPUToLLVMPass());
+  // pm.addPass(mt::createConvertTritonAMDGPUToLLVMPass());
   pm.addPass(mlir::createArithToLLVMConversionPass());
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());

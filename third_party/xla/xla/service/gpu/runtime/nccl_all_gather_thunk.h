@@ -56,7 +56,7 @@ class NcclAllGatherStartThunk : public NcclCollectiveThunk {
  protected:
   absl::Status RunNcclCollective(const ExecuteParams& params,
                                  se::Stream& stream,
-                                 NcclApi::NcclCommHandle comm) override;
+                                 NcclCommHandleWrapper comm_wrapper) override;
 
  private:
   const NcclAllGatherConfig config_;

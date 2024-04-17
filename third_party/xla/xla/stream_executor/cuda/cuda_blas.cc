@@ -1429,7 +1429,7 @@ void initialize_cublas() {
   absl::Status status =
       PluginRegistry::Instance()->RegisterFactory<PluginRegistry::BlasFactory>(
           kCudaPlatformId, "cuBLAS",
-          [](::stream_executor::internal::StreamExecutorInterface *parent)
+          [](::stream_executor::StreamExecutorInterface *parent)
               -> blas::BlasSupport * {
             gpu::GpuExecutor *cuda_executor =
                 dynamic_cast<gpu::GpuExecutor *>(parent);

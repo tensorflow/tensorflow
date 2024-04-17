@@ -200,8 +200,14 @@ class CommandBufferCmd {
   // Returns true if command implemented as a nested command buffer.
   virtual bool IsNestedCommandBuffer() const { return false; }
 
-  // Returns a command execution scope computed from the command stream id and
-  // the default command buffer execution scope.
+  // Returns a command execution scope created from the specified
+  // 'execution_stream_id'.
+  se::CommandBuffer::ExecutionScopeId GetExecutionScope(
+      const RecordParams& record_params,
+      ExecutionStreamId execution_stream_id) const;
+
+  // Return the execution scope created from the execution stream id of the
+  // thunk which is lowered to current command.
   se::CommandBuffer::ExecutionScopeId GetExecutionScope(
       const RecordParams& record_params) const;
 
@@ -844,6 +850,28 @@ class CustomCallCmd : public CommandBufferCmd {
 
   std::vector<std::optional<Slice>> operands_;
   std::vector<std::optional<Slice>> results_;
+};
+
+//===----------------------------------------------------------------------===//
+// BarrierCmd insert a barrier from the execution scope created from the
+// 'from_stream_id' to the execution scope created from the
+// 'execution_stream_id', e.g. Async operator lowered to command buffer requires
+// a barrier from the launching stream to the async operator's execution stream.
+//===----------------------------------------------------------------------===//
+
+class BarrierCmd : public CommandBufferCmd {
+ public:
+  BarrierCmd(ExecutionStreamId execution_stream_id,
+             ExecutionStreamId from_stream_id);
+
+  absl::Status Record(const Thunk::ExecuteParams& execute_params,
+                      const RecordParams& record_params,
+                      se::CommandBuffer* command_buffer) override;
+
+  BufferUsageVector buffers() override;
+
+ private:
+  ExecutionStreamId from_stream_id_;
 };
 
 //===----------------------------------------------------------------------===//

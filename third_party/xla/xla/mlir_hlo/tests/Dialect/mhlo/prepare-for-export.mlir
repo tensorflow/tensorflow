@@ -22,6 +22,25 @@ func.func @splat_constant_complex_float() -> tensor<128x1014x508xcomplex<f64>> {
 
 // -----
 
+// CHECK-LABEL: @while_without_implicit_capture
+func.func @while_without_implicit_capture(%arg0: tensor<i64>) -> tensor<i64> {
+  // CHECK: mhlo.while
+  // CHECK-SAME: (%[[ARG1:.*]] = %arg0, %[[ARG2:.*]] = %arg0)
+  // CHECK-SAME: {mhlo.sharding = "{{\{}}{replicated},{replicated}}"}
+  %0:2 = "mhlo.while"(%arg0, %arg0) ({
+  ^bb0(%arg1: tensor<i64>, %arg2: tensor<i64>):
+    %1 = "mhlo.compare"(%arg1, %arg2) {comparison_direction = #mhlo<comparison_direction LT>} : (tensor<i64>, tensor<i64>) -> tensor<i1>
+    "mhlo.return"(%1) : (tensor<i1>) -> ()
+  },  {
+  ^bb0(%arg1: tensor<i64>, %arg2: tensor<i64>):
+    %2 = mhlo.add %arg1, %arg1 : tensor<i64>
+    "mhlo.return"(%2, %arg2) : (tensor<i64>, tensor<i64>) -> ()
+  }) {mhlo.sharding = "{{replicated},{replicated}}"} : (tensor<i64>, tensor<i64>) -> (tensor<i64>, tensor<i64>)
+  func.return %0#0 : tensor<i64>
+}
+
+// -----
+
 // CHECK-LABEL: @while_with_implicit_arg_capture
 func.func @while_with_implicit_arg_capture(%arg0: tensor<i64>) -> tensor<i64> {
   // CHECK: mhlo.while

@@ -2,8 +2,8 @@ load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm_is_configured",
 )
-load("@local_tsl//tsl:tsl.bzl", "internal_visibility")
 load("//xla:xla.bzl", "xla_cc_test")
+load("//xla/tsl:tsl.bzl", "internal_visibility")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -79,6 +79,7 @@ cc_library(
     ] + if_rocm_is_configured([
         "@local_config_rocm//rocm:rocm_headers",
         "@llvm-project//llvm:AMDGPUCodeGen",
+        "@llvm-project//llvm:AMDGPUAsmParser",
     ]),
 )
 

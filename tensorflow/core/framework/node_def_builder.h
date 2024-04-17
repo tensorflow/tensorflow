@@ -81,7 +81,7 @@ class NodeDefBuilder {
   NodeDefBuilder& Input(const NodeOut& src);
 
   // For inputs that take a list of tensors.
-  NodeDefBuilder& Input(gtl::ArraySlice<NodeOut> src_list);
+  NodeDefBuilder& Input(absl::Span<const NodeOut> src_list);
 
   // To create inputs in tests, see fake_input.h.
   NodeDefBuilder& Input(FakeInputFunctor fake_input);
@@ -108,23 +108,23 @@ class NodeDefBuilder {
   NodeDefBuilder& Attr(StringPiece name, const Tensor& value);
   NodeDefBuilder& Attr(StringPiece name, const TensorProto& value);
   NodeDefBuilder& Attr(StringPiece name, const NameAttrList& value);
-  NodeDefBuilder& Attr(StringPiece name, gtl::ArraySlice<StringPiece> value);
-  NodeDefBuilder& Attr(StringPiece name, gtl::ArraySlice<const char*> value);
-  NodeDefBuilder& Attr(StringPiece name, gtl::ArraySlice<string> value);
-  NodeDefBuilder& Attr(StringPiece name, gtl::ArraySlice<tstring> value);
-  NodeDefBuilder& Attr(StringPiece name, gtl::ArraySlice<int32> value);
-  NodeDefBuilder& Attr(StringPiece name, gtl::ArraySlice<int64_t> value);
-  NodeDefBuilder& Attr(StringPiece name, gtl::ArraySlice<float> value);
-  NodeDefBuilder& Attr(StringPiece name, gtl::ArraySlice<bool> value);
+  NodeDefBuilder& Attr(StringPiece name, absl::Span<const StringPiece> value);
+  NodeDefBuilder& Attr(StringPiece name, absl::Span<const char* const> value);
+  NodeDefBuilder& Attr(StringPiece name, absl::Span<const string> value);
+  NodeDefBuilder& Attr(StringPiece name, absl::Span<const tstring> value);
+  NodeDefBuilder& Attr(StringPiece name, absl::Span<const int32> value);
+  NodeDefBuilder& Attr(StringPiece name, absl::Span<const int64_t> value);
+  NodeDefBuilder& Attr(StringPiece name, absl::Span<const float> value);
+  NodeDefBuilder& Attr(StringPiece name, absl::Span<const bool> value);
   NodeDefBuilder& Attr(StringPiece name, const std::vector<bool>& value);
-  NodeDefBuilder& Attr(StringPiece name, gtl::ArraySlice<DataType> value);
-  NodeDefBuilder& Attr(StringPiece name, gtl::ArraySlice<TensorShape> value);
+  NodeDefBuilder& Attr(StringPiece name, absl::Span<const DataType> value);
+  NodeDefBuilder& Attr(StringPiece name, absl::Span<const TensorShape> value);
   NodeDefBuilder& Attr(StringPiece name,
-                       gtl::ArraySlice<PartialTensorShape> value);
+                       absl::Span<const PartialTensorShape> value);
   NodeDefBuilder& Attr(StringPiece name,
-                       gtl::ArraySlice<TensorShapeProto> value);
-  NodeDefBuilder& Attr(StringPiece name, gtl::ArraySlice<Tensor> value);
-  NodeDefBuilder& Attr(StringPiece name, gtl::ArraySlice<NameAttrList> value);
+                       absl::Span<const TensorShapeProto> value);
+  NodeDefBuilder& Attr(StringPiece name, absl::Span<const Tensor> value);
+  NodeDefBuilder& Attr(StringPiece name, absl::Span<const NameAttrList> value);
 
   template <class T>
   NodeDefBuilder& Attr(StringPiece name, std::initializer_list<T> value) {
@@ -159,7 +159,7 @@ class NodeDefBuilder {
   void SingleInput(const OpDef::ArgDef* input_arg, StringPiece src_node,
                    int src_index, DataType dt);
   void ListInput(const OpDef::ArgDef* input_arg,
-                 gtl::ArraySlice<NodeOut> src_list);
+                 absl::Span<const NodeOut> src_list);
 
   // Add "src_node:src_index" to the list of inputs in the node_def_.
   void AddInput(StringPiece src_node, int src_index);

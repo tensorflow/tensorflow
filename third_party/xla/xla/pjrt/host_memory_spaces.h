@@ -17,8 +17,10 @@ limitations under the License.
 #define XLA_PJRT_HOST_MEMORY_SPACES_H_
 
 #include <string>
+#include <vector>
 
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/pjrt/pjrt_client.h"
 
 namespace xla {
@@ -28,7 +30,8 @@ namespace xla {
 // not mapped to any virtual memory of the attached `PjRtDevice`.
 class UnpinnedHostMemorySpace : public PjRtMemorySpace {
  public:
-  static constexpr absl::string_view kMemorySpaceKind = "unpinned_host";
+  static constexpr absl::string_view kKind = "unpinned_host";
+  static const int kKindId;
 
   UnpinnedHostMemorySpace(int id, PjRtClient* client);
 
@@ -38,9 +41,9 @@ class UnpinnedHostMemorySpace : public PjRtMemorySpace {
 
   int id() const override { return id_; }
 
-  absl::string_view memory_space_kind() const override {
-    return kMemorySpaceKind;
-  }
+  absl::string_view kind() const override { return kKind; }
+
+  int kind_id() const override { return kKindId; }
 
   absl::string_view DebugString() const override { return debug_string_; }
 
@@ -62,7 +65,8 @@ class UnpinnedHostMemorySpace : public PjRtMemorySpace {
 // capability to direct-memory-access (DMA) the buffers in this memory space.
 class PinnedHostMemorySpace : public PjRtMemorySpace {
  public:
-  static constexpr absl::string_view kMemorySpaceKind = "pinned_host";
+  static constexpr absl::string_view kKind = "pinned_host";
+  static const int kKindId;
 
   PinnedHostMemorySpace(int id, PjRtClient* client);
 
@@ -74,9 +78,9 @@ class PinnedHostMemorySpace : public PjRtMemorySpace {
 
   int id() const override { return id_; }
 
-  absl::string_view memory_space_kind() const override {
-    return kMemorySpaceKind;
-  }
+  absl::string_view kind() const override { return kKind; }
+
+  int kind_id() const override { return kKindId; }
 
   absl::string_view DebugString() const override { return debug_string_; }
 
@@ -85,10 +89,6 @@ class PinnedHostMemorySpace : public PjRtMemorySpace {
   void AttachDevice(PjRtDevice* device) { device_ = device; }
 
  private:
-  // This is for TfrtTpuDevice::AttachMemorySpace.
-  // TODO(yunlongl): Clean up host memory spaces so that this won't be needed.
-  friend class TfrtTpuDevice;
-
   int id_;
   PjRtClient* client_ = nullptr;
   PjRtDevice* device_ = nullptr;

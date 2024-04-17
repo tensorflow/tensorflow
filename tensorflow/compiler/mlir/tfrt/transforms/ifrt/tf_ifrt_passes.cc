@@ -73,6 +73,7 @@ void AddClusterToIfrtRuntimeOpsPassPipeline(OpPassManager& pm,
   pm.addNestedPass<mlir::func::FuncOp>(CreateTfIdentityPropagationPass());
 
   pm.addNestedPass<mlir::func::FuncOp>(CreateTfRestoreSplittingPass());
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
   pm.addNestedPass<mlir::func::FuncOp>(CreateTfRestorePruningPass());
   pm.addNestedPass<mlir::func::FuncOp>(CreateTfRestoreMergingPass());
 

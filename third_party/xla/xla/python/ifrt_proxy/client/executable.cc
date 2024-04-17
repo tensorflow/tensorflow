@@ -47,7 +47,7 @@
 #include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/host_callback.h"
 #include "xla/python/ifrt/shape.h"
-#include "xla/python/ifrt/sharding_serdes.h"
+#include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt_proxy/client/array.h"
 #include "xla/python/ifrt_proxy/client/host_buffer.h"
 #include "xla/python/ifrt_proxy/client/rpc_helper.h"
@@ -437,7 +437,8 @@ LoadedExecutable::Execute(absl::Span<tsl::RCReference<xla::ifrt::Array>> args,
 
   // Populate the execution status future. `CheckFuture` deletes the server-side
   // futures after its completion.
-  result.status = rpc_helper_->CheckFuture(response->status_handle());
+  result.status = Future<>::FromStatusFuture(
+      rpc_helper_->CheckFuture(response->status_handle()));
 
   // Create output arrays. The cleanup logic ensures that all handles are
   // properly cleaned up on early return.
@@ -455,7 +456,7 @@ LoadedExecutable::Execute(absl::Span<tsl::RCReference<xla::ifrt::Array>> args,
     TF_ASSIGN_OR_RETURN(DType dtype, DType::FromProto(output.dtype()));
     TF_ASSIGN_OR_RETURN(Shape shape, Shape::FromProto(output.shape()));
     TF_ASSIGN_OR_RETURN(auto sharding,
-                        FromShardingProto(lookup_device, output.sharding()));
+                        Sharding::FromProto(lookup_device, output.sharding()));
     result.outputs.push_back(tsl::MakeRef<Array>(
         client(), rpc_helper_, dtype, std::move(shape), std::move(sharding),
         ArrayHandle{output.array_handle()}));

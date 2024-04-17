@@ -192,7 +192,7 @@ MemoryKind MakeMemoryKindFromPjRtBuffer(PjRtBuffer* pjrt_buffer) {
   if (pjrt_buffer->memory_space() == nullptr) {
     return MemoryKind();
   }
-  return MemoryKind(pjrt_buffer->memory_space()->memory_space_kind());
+  return MemoryKind(pjrt_buffer->memory_space()->kind());
 }
 
 absl::StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
@@ -345,19 +345,19 @@ PjRtArray::DisassembleIntoSingleDeviceArrays(ArrayCopySemantics semantics) {
   return result;
 }
 
-Future<Status> PjRtArray::CopyToHostBuffer(
+Future<> PjRtArray::CopyToHostBuffer(
     void* data, std::optional<absl::Span<const int64_t>> byte_strides,
     ArrayCopySemantics semantics) {
   DCHECK(this);
   if (sharding_->devices().size() != 1) {
-    return Future<Status>(
+    return Future<>(
         InvalidArgument("Only single-shard is implemented, but got %d",
                         sharding_->devices().size()));
   }
 
   auto dtype = ToPrimitiveType(dtype_);
   if (!dtype.ok()) {
-    return Future<Status>(std::move(dtype).status());
+    return Future<>(std::move(dtype).status());
   }
 
   PjRtBuffer* pjrt_buffer = pjrt_buffers_.front().get();
@@ -374,7 +374,7 @@ Future<Status> PjRtArray::CopyToHostBuffer(
     // TODO(b/314805296): Use the new dynamic shape here.
     logical_dims = pjrt_buffer->logical_dimensions();
     if (!logical_dims.ok()) {
-      return Future<Status>(std::move(logical_dims).status());
+      return Future<>(std::move(logical_dims).status());
     }
     dims = *logical_dims;
   }
@@ -384,7 +384,7 @@ Future<Status> PjRtArray::CopyToHostBuffer(
     auto xla_shape =
         MakeShapeWithTrivialByteStrides(*dtype, dims, *byte_strides);
     if (!xla_shape.ok()) {
-      return Future<Status>(std::move(xla_shape).status());
+      return Future<>(std::move(xla_shape).status());
     }
     literal = std::make_unique<xla::MutableBorrowingLiteral>(
         static_cast<char*>(data), *xla_shape);
@@ -394,8 +394,8 @@ Future<Status> PjRtArray::CopyToHostBuffer(
         static_cast<char*>(data), xla_shape);
   }
   auto* literal_ptr = literal.get();
-  auto promise = Future<Status>::CreatePromise();
-  Future<Status> future(promise);
+  auto promise = Future<>::CreatePromise();
+  Future<> future(promise);
   // TODO(hyeontaek): Handle semantics == kDonateInput.
   pjrt_buffer->ToLiteral(literal_ptr)
       .OnReady([literal = std::move(literal),
@@ -411,7 +411,7 @@ absl::StatusOr<PjRtMemorySpace*> GetMemorySpaceFromMemoryKind(
     ifrt::Device* device, ifrt::MemoryKind memory_kind) {
   PjRtMemorySpace* memory_space = nullptr;
   for (PjRtMemorySpace* ms : device->memory_spaces()) {
-    if (ms->memory_space_kind() == memory_kind.memory_kind()) {
+    if (ms->kind() == memory_kind.memory_kind()) {
       memory_space = ms;
       break;
     }
@@ -422,7 +422,7 @@ absl::StatusOr<PjRtMemorySpace*> GetMemorySpaceFromMemoryKind(
         memory_kind.DebugString(),
         absl::StrJoin(device->memory_spaces(), ", ",
                       [](std::string* out, PjRtMemorySpace* ms) {
-                        absl::StrAppend(out, ms->memory_space_kind());
+                        absl::StrAppend(out, ms->kind());
                       }));
   }
   return memory_space;
@@ -453,7 +453,7 @@ absl::StatusOr<tsl::RCReference<Array>> PjRtArray::Reshard(
     bool memories_supported = pjrt_buffers_[i]->memory_space() != nullptr;
     bool memory_kind_equal =
         new_sharding_has_memory_kind && memories_supported &&
-        pjrt_buffers_[i]->memory_space()->memory_space_kind() ==
+        pjrt_buffers_[i]->memory_space()->kind() ==
             canonicalized_sharding_memory_kind.memory_kind();
 
     // No need for data transfer.
@@ -521,12 +521,12 @@ absl::StatusOr<tsl::RCReference<Array>> PjRtArray::Reshard(
       shape_);
 }
 
-Future<Status> PjRtArray::GetReadyFuture() const {
+Future<> PjRtArray::GetReadyFuture() const {
   DCHECK(this);
   if (pjrt_buffers_.size() == 1) {
     return pjrt_buffers_.front()->GetReadyFuture();
   }
-  std::vector<Future<Status>> futures;
+  std::vector<Future<>> futures;
   futures.reserve(pjrt_buffers_.size());
   for (auto& buf : pjrt_buffers_) {
     futures.push_back(buf->GetReadyFuture());
@@ -534,13 +534,13 @@ Future<Status> PjRtArray::GetReadyFuture() const {
   return JoinFutures(absl::MakeSpan(futures));
 }
 
-Future<Status> PjRtArray::Delete() {
+Future<> PjRtArray::Delete() {
   DCHECK(this);
   for (auto& buffer : pjrt_buffers_) {
     buffer->Delete();
   }
   // TODO(hyeontaek): Return a correct future.
-  return Future<Status>(OkStatus());
+  return Future<>(OkStatus());
 }
 
 bool PjRtArray::IsDeleted() const {

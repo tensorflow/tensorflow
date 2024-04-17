@@ -81,6 +81,7 @@ limitations under the License.
 #include "xla/status.h"
 #include "xla/status_macros.h"
 #include "xla/statusor.h"
+#include "xla/xla_data.pb.h"
 #if GOOGLE_CUDA
 #include "xla/stream_executor/cuda/cuda_driver.h"
 #endif
@@ -616,6 +617,11 @@ Status PyArray::set_arrays(nb::object obj) {
 }
 
 StatusOr<PyArray> PyArray::FullyReplicatedShard() {
+  auto& cached = GetStorage().fully_replicated_array;
+  if (!cached.is_none()) {
+    return nb::cast<PyArray>(cached);
+  }
+
   if (ifrt_array() == nullptr) {
     return InvalidArgument(
         "FullyReplicatedShard() called on deleted or donated buffer");
@@ -624,9 +630,11 @@ StatusOr<PyArray> PyArray::FullyReplicatedShard() {
   TF_ASSIGN_OR_RETURN(auto fully_replicated_ifrt_shard,
                       ifrt_array()->FullyReplicatedShard(
                           ifrt::ArrayCopySemantics::kReuseInput));
-  return MakeFromSingleDeviceArray(py_client(), traceback(),
-                                   std::move(fully_replicated_ifrt_shard),
-                                   weak_type(), committed(), result_status());
+  auto array = MakeFromSingleDeviceArray(
+      py_client(), traceback(), std::move(fully_replicated_ifrt_shard),
+      weak_type(), committed(), result_status());
+  cached = array;
+  return nb::cast<PyArray>(cached);
 }
 
 Status PyArray::BlockUntilReady() const {
@@ -650,22 +658,6 @@ StatusOr<size_t> PyArray::GetOnDeviceSizeInBytes() {
   return shard_size * nb::len(nb::object(sharding().attr("device_set")));
 }
 
-StatusOr<PyArray> PyArray::FetchSingleShard(std::string_view api) {
-  if (ifrt_array() == nullptr) {
-    return InvalidArgument("%s( called on deleted or donated buffer", api);
-  }
-
-  if (llvm::isa<ifrt::SingleDeviceSharding>(&ifrt_array()->sharding())) {
-    return *this;
-  }
-
-  auto& py_arrays = py_arrays_cached();
-  if (py_arrays.empty() || py_arrays[0].shape() != shape()) {
-    return InvalidArgument("%s() is supported only for unsharded arrays.", api);
-  }
-  return py_arrays[0];
-}
-
 absl::Status PyArray::BlockUntilResultStatusIsReady() {
   auto& result_status = GetStorage().result_status;
   // If the result_status future is not valid, this result did not come directly
@@ -682,8 +674,7 @@ absl::Status PyArray::BlockUntilResultStatusIsReady() {
 }
 
 StatusOr<nb::object> PyArray::SingleDeviceArrayToNumpyArray() {
-  TF_ASSIGN_OR_RETURN(auto arr,
-                      FetchSingleShard("SingleDeviceArrayToNumpyArray"));
+  TF_ASSIGN_OR_RETURN(auto arr, FullyReplicatedShard());
   auto result = arr.GetStorage().host_value.AsNumPyArray(
       arr.GetStorage().dynamic_shape, arr.ifrt_array());
   TF_RETURN_IF_ERROR(arr.BlockUntilResultStatusIsReady());
@@ -691,8 +682,7 @@ StatusOr<nb::object> PyArray::SingleDeviceArrayToNumpyArray() {
 }
 
 Status PyArray::CopySingleDeviceArrayToHostAsync() {
-  TF_ASSIGN_OR_RETURN(auto arr,
-                      FetchSingleShard("CopySingleDeviceArrayToHostAsync"));
+  TF_ASSIGN_OR_RETURN(auto arr, FullyReplicatedShard());
   return arr.GetStorage().host_value.CopyToHostAsync(
       arr.GetStorage().dynamic_shape, arr.ifrt_array());
 }
@@ -1085,6 +1075,8 @@ StatusOr<PyArray> PyArray::BatchedDevicePut(
 
   ifrt::MemoryKind dst_memory_kind = CreateIfRtMemoryKindFromSharding(sharding);
 
+  std::vector<DevicePutResultFn> device_put_fns;
+  device_put_fns.reserve(xs.size());
   size_t i = 0;
   for (auto& x : xs) {
     if (PyArray::IsPyArray(x)) {
@@ -1095,16 +1087,27 @@ StatusOr<PyArray> PyArray::BatchedDevicePut(
           jax::ApplyTransferGuardToHostToDevice(transfer_guard_formatter));
     }
     TF_ASSIGN_OR_RETURN(
-        DevicePutResult on_device,
+        device_put_fns.emplace_back(),
         DevicePut(x, dst_devices[i]->client()->ifrt_client(),
                   dst_devices[i]->device(), options, dst_memory_kind));
-    ifrt_arrays.push_back(std::move(on_device.ifrt_array));
+    ++i;
+  }
+  std::vector<DevicePutResult> device_puts;
+  device_puts.reserve(device_put_fns.size());
+  {
+    nb::gil_scoped_release gil_release;
+    for (auto& device_put_fn : device_put_fns) {
+      TF_ASSIGN_OR_RETURN(auto device_put, std::move(device_put_fn)());
+      device_puts.push_back(std::move(device_put));
+    }
+  }
+  for (auto& device_put : device_puts) {
+    ifrt_arrays.push_back(std::move(device_put.ifrt_array));
     devices.push_back(ifrt_arrays.back()->sharding().devices().front());
     shapes.push_back(ifrt_arrays.back()->shape());
-    if (on_device.owning_pybuffer) {
-      owning_pylist.append(on_device.owning_pybuffer);
+    if (device_put.owning_pybuffer) {
+      owning_pylist.append(device_put.owning_pybuffer);
     }
-    ++i;
   }
 
   // TODO(phawkins): it's highly suspicious to me that owning_pylist isn't
@@ -1467,8 +1470,10 @@ Status PyHostValue::CopyToHostAsync(std::optional<Shape>& dynamic_shape_holder,
   // better about an efficient layout for the host buffer. It will be useful
   // to revisit the semantics of PjRtBuffer::ToLiteral() to see if it is
   // desirable for the runtime to choose the layout.
-  ready_ = ifrt_array->CopyToHostBuffer(value_.mutable_data(), strides,
-                                        ifrt::ArrayCopySemantics::kReuseInput);
+  ready_ = ifrt_array
+               ->CopyToHostBuffer(value_.mutable_data(), strides,
+                                  ifrt::ArrayCopySemantics::kReuseInput)
+               .ToStatusFuture();
   // Make sure the destination of the copy remains alive until the copy is done.
   value_.inc_ref();
   ready_.OnReady([array{value_.ptr()}](Status status) {

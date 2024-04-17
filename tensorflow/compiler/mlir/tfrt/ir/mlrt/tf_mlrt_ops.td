@@ -462,7 +462,8 @@ def IfrtLoadVariableOp: TensorflowMlrt_Op<"ifrt_load_variable", [Pure]> {
     `tf.IfrtLoadVariableOp` converts the tensor into an IFRT array based on device and sharding
     configuration specified in `VariableDeviceShardingConfigProto`.
 
-    This op returns a scalar string tensor as a key for user to look for the loaded array.
+    This op returns a scalar string tensor as a key for user to look for the loaded array
+    and a future containing the restored tensor.
   }];
 
   let arguments = (ins
@@ -472,7 +473,8 @@ def IfrtLoadVariableOp: TensorflowMlrt_Op<"ifrt_load_variable", [Pure]> {
   );
 
   let results = (outs
-    TFTensorType:$array_key
+    TFTensorType:$array_key,
+    MlrtFutureType: $tensor_future
   );
 }
 

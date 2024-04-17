@@ -668,10 +668,13 @@ bool ROCMBlas::GetBlasGemmAlgorithms(
         ret != rocblas_status_success) {
       return ret;
     }
-    out_algorithms->resize(num_sols);
+    out_algorithms->resize(num_sols + 1);
+    (*out_algorithms)[0] = blas::kDefaultAlgorithm;
     for (rocblas_int i = 0; i < num_sols; i++) {
-      (*out_algorithms)[i] = solutions_[i];
+      (*out_algorithms)[i + 1] = solutions_[i];
     }
+    // Sort the list solutions by IDs
+    std::sort(out_algorithms->begin() + 1, out_algorithms->end());
     return rocblas_status_success;
   };
 
@@ -1237,8 +1240,7 @@ void initialize_rocblas() {
         PluginRegistry::Instance()
             ->RegisterFactory<PluginRegistry::BlasFactory>(
                 rocm::kROCmPlatformId, "rocBLAS",
-                [](internal::StreamExecutorInterface *parent)
-                    -> blas::BlasSupport * {
+                [](StreamExecutorInterface *parent) -> blas::BlasSupport * {
                   gpu::GpuExecutor *rocm_executor =
                       dynamic_cast<gpu::GpuExecutor *>(parent);
                   if (rocm_executor == nullptr) {

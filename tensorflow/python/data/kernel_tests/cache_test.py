@@ -18,11 +18,13 @@ import os
 from os import path
 import shutil
 import tempfile
+from typing import Optional
 
 from absl.testing import parameterized
 import numpy as np
 from tensorflow.python.checkpoint import checkpoint as trackable_utils
 from tensorflow.python.checkpoint import checkpoint_management
+from tensorflow.python.data.experimental.ops import global_shuffle_op
 from tensorflow.python.data.experimental.ops import random_access
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
@@ -691,6 +693,39 @@ class CacheRandomAccessTest(test_base.DatasetTestBase, parameterized.TestCase):
     # will cache through the requested index. In this case, random access
     # with caching will cache through index 11.
     self.verifyRandomAccessInfiniteCardinality(dataset, expected)
+
+
+class CacheGlobalShuffleTest(test_base.DatasetTestBase, parameterized.TestCase):
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(
+              dataset_range=[10],
+              repetitions=[1, 2],
+              seed=[None, 42],
+              reshuffle_each_iteration=[True, False])))
+  def test(
+      self,
+      dataset_range: int,
+      repetitions: int,
+      seed: Optional[int],
+      reshuffle_each_iteration: bool):
+    dataset = dataset_ops.Dataset.range(dataset_range)
+    dataset = dataset.cache()
+    dataset = dataset.prefetch(buffer_size=dataset_ops.AUTOTUNE)
+    if repetitions > 1:
+      dataset = dataset.repeat(repetitions)
+    dataset = global_shuffle_op._global_shuffle(
+        dataset, seed=seed, reshuffle_each_iteration=reshuffle_each_iteration)
+
+    expected = list(range(0, dataset_range)) * repetitions
+    dataset_output = self.getDatasetOutput(
+        dataset, requires_initialization=True)
+    self.assertCountEqual(dataset_output, expected)
+    self.assertNotEqual(dataset_output, expected)
+    self.assertLen(dataset_output, self.evaluate(dataset.cardinality()))
+
 
 if __name__ == "__main__":
   test.main()

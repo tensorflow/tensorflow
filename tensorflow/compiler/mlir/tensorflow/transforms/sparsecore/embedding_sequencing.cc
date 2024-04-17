@@ -413,8 +413,7 @@ LogicalResult FindForwardPassOps(OpBuilder& builder,
       if (is_non_variable && is_variable) {
         loop_body_func.emitOpError()
             << "resource input " << argument.getArgNumber()
-            << " is used both as a varible and not "
-            << " a variable";
+            << " is used both as a varible and not a variable";
         return LogicalResult::failure();
       }
       if (is_variable && use_in_forward)
@@ -772,7 +771,7 @@ LogicalResult ExtractOpsAsFunc(
 }
 
 void EmbeddingSequencingPass::runOnOperation() {
-  VLOG(3) << "EmbeddingSequencingPass::runOnOperation()";
+  LOG(INFO) << "EmbeddingSequencingPass::runOnOperation()";
   ModuleOp module = getOperation();
 
   llvm::SetVector<Operation*> forward_pass_ops;
@@ -803,6 +802,8 @@ void EmbeddingSequencingPass::runOnOperation() {
   // If there are no forward pass ops, there is no SC, so we end early.
   if (forward_pass_ops.empty()) {
     if (backward_pass_ops.empty()) {
+      LOG(INFO) << "No unprocessed embedding ops found - skipping embedding "
+                << "sequencing rewrite.";
       return;
     } else {
       (*backward_pass_ops.begin())->emitOpError()
@@ -810,7 +811,7 @@ void EmbeddingSequencingPass::runOnOperation() {
       return signalPassFailure();
     }
   }
-  VLOG(1) << "Embedding sequencing rewrite enabled.";
+  LOG(INFO) << "Embedding sequencing rewrite enabled.";
 
   // Ensure that all ops are in the same region, and have the same replication
   // info.
@@ -860,18 +861,17 @@ void EmbeddingSequencingPass::runOnOperation() {
   TF::WhileOp while_op = nullptr;
   result = FindOwningWhileOp(loop_body_func, module, &while_op);
   if (failed(result)) {
-    VLOG(1) << "WhileOp not found: assuming external loop.";
+    LOG(INFO) << "WhileOp not found: assuming external loop.";
   } else {
     // Override the WhileOp parallel_iterations if requested by flag.
     int parallel_iterations_flag = tensorflow::GetBuildXlaOpsPassFlags()
                                        ->tf_xla_embedding_parallel_iterations;
     if (parallel_iterations_flag > 0) {
-      VLOG(1) << "Setting WhileOp parallel_iterations_flag to "
-              << parallel_iterations_flag;
+      LOG(INFO) << "Setting WhileOp parallel_iterations_flag to "
+                << parallel_iterations_flag;
       while_op.setParallelIterations(parallel_iterations_flag);
     } else {
-      VLOG(1) << "Using original WhileOp parallel_iterations = "
-              << while_op.getParallelIterations();
+      LOG(INFO) << "Using original WhileOp parallel_iteration";
     }
   }
 
@@ -898,11 +898,11 @@ void EmbeddingSequencingPass::runOnOperation() {
   if (failed(result)) return signalPassFailure();
   merged_set.insert(non_tpu_ops.begin(), non_tpu_ops.end());
 
-  VLOG(2) << "Forwards pass " << forward_pass_ops.size()
-          << " ops, backwards pass " << backward_pass_ops.size()
-          << " ops, core " << core_tpu_ops.size()
-          << " ops. Total = " << merged_set.size() << " of "
-          << GetNumOps(loop_body_func) << ".\n";
+  LOG(INFO) << "Forwards pass " << forward_pass_ops.size()
+            << " ops, backwards pass " << backward_pass_ops.size()
+            << " ops, core " << core_tpu_ops.size()
+            << " ops. Total = " << merged_set.size() << " of "
+            << GetNumOps(loop_body_func) << ".\n";
 
   builder.setInsertionPointAfter(*non_tpu_ops.begin());
   Operation* non_tpu_caller = nullptr;
@@ -936,7 +936,7 @@ void EmbeddingSequencingPass::runOnOperation() {
   metadata_op->erase();
   compilation_op->erase();
 
-  VLOG(3) << "EmbeddingSequencingPass::runOnOperation done.";
+  LOG(INFO) << "EmbeddingSequencingPass::runOnOperation done.";
 }
 
 }  // namespace

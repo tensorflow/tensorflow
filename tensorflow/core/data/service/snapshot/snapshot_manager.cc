@@ -228,12 +228,12 @@ absl::Status SnapshotManager::WriteOnDiskSkeleton()
 
 absl::Status SnapshotManager::WriteOnDiskMetadata(
     const SnapshotRequest& request) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-  TF_RETURN_IF_ERROR(WriteTextProto(env_, SnapshotMetadataFilePath(path_),
-                                    request.metadata()));
-  TF_RETURN_IF_ERROR(WriteStringToFile(env_, DatasetSpecFilePath(path_),
-                                       request.metadata().element_spec()));
-  TF_RETURN_IF_ERROR(
-      WriteBinaryProto(env_, DatasetDefFilePath(path_), request.dataset()));
+  TF_RETURN_IF_ERROR(AtomicallyWriteTextProto(SnapshotMetadataFilePath(path_),
+                                              request.metadata(), env_));
+  TF_RETURN_IF_ERROR(AtomicallyWriteStringToFile(
+      DatasetSpecFilePath(path_), request.metadata().element_spec(), env_));
+  TF_RETURN_IF_ERROR(AtomicallyWriteBinaryProto(DatasetDefFilePath(path_),
+                                                request.dataset(), env_));
   return absl::OkStatus();
 }
 

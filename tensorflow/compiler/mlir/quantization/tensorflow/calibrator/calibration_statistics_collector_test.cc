@@ -123,7 +123,7 @@ TEST(HistogramStatisticsCollectorTest, SingleBatchSimple) {
   CalibrationOptions calib_opts;
   calib_opts.set_calibration_method(
       CalibrationOptions::CALIBRATION_METHOD_HISTOGRAM_MSE_MAX_FREQUENCY);
-  auto collector = CalibrationStatisticsCollectorHistogram(calib_opts);
+  auto collector = CalibrationStatisticsCollectorHistogram();
 
   collector.Collect(
       /*min=*/1.f, /*max=*/16.f, /*histogram=*/{1, 0, 3, 5, 7, 6, 5, 0});
@@ -141,7 +141,7 @@ TEST(HistogramStatisticsCollectorTest, AggregateSameBatchSize) {
   CalibrationOptions calib_opts;
   calib_opts.set_calibration_method(
       CalibrationOptions::CALIBRATION_METHOD_HISTOGRAM_MSE_MAX_FREQUENCY);
-  auto collector = CalibrationStatisticsCollectorHistogram(calib_opts);
+  auto collector = CalibrationStatisticsCollectorHistogram();
 
   collector.Collect(
       /*min=*/1.f, /*max=*/16.f, /*histogram=*/{1, 0, 3, 5, 7, 6, 5, 1});
@@ -168,7 +168,7 @@ TEST(HistogramStatisticsCollectorTest, AggregateSmallerBatchSizeExpandLeft) {
   CalibrationOptions calib_opts;
   calib_opts.set_calibration_method(
       CalibrationOptions::CALIBRATION_METHOD_HISTOGRAM_MSE_MAX_FREQUENCY);
-  auto collector = CalibrationStatisticsCollectorHistogram(calib_opts);
+  auto collector = CalibrationStatisticsCollectorHistogram();
 
   collector.Collect(
       /*min=*/1.f, /*max=*/16.f, /*histogram=*/{1, 0, 3, 5, 7, 6, 5, 1});
@@ -195,7 +195,7 @@ TEST(HistogramStatisticsCollectorTest, AggregateSmallerBatchSizeExpandRight) {
   CalibrationOptions calib_opts;
   calib_opts.set_calibration_method(
       CalibrationOptions::CALIBRATION_METHOD_HISTOGRAM_MSE_MAX_FREQUENCY);
-  auto collector = CalibrationStatisticsCollectorHistogram(calib_opts);
+  auto collector = CalibrationStatisticsCollectorHistogram();
 
   collector.Collect(
       /*min=*/1.f, /*max=*/16.f, /*histogram=*/{1, 0, 3, 5, 7, 6, 5, 1});
@@ -222,7 +222,7 @@ TEST(HistogramStatisticsCollectorTest, AggregateTinyBinWidth) {
   CalibrationOptions calib_opts;
   calib_opts.set_calibration_method(
       CalibrationOptions::CALIBRATION_METHOD_HISTOGRAM_MSE_MAX_FREQUENCY);
-  auto collector = CalibrationStatisticsCollectorHistogram(calib_opts);
+  auto collector = CalibrationStatisticsCollectorHistogram();
 
   collector.Collect(
       /*min=*/1.f, /*max=*/16.f, /*histogram=*/{1, 0, 3, 5, 7, 6, 5, 1});
@@ -249,7 +249,7 @@ TEST(HistogramStatisticsCollectorTest, AggregateLargerBatchSizeExpandLeft) {
   CalibrationOptions calib_opts;
   calib_opts.set_calibration_method(
       CalibrationOptions::CALIBRATION_METHOD_HISTOGRAM_MSE_MAX_FREQUENCY);
-  auto collector = CalibrationStatisticsCollectorHistogram(calib_opts);
+  auto collector = CalibrationStatisticsCollectorHistogram();
 
   collector.Collect(
       /*min=*/1.f, /*max=*/16.f, /*histogram=*/{1, 0, 3, 5, 7, 6, 5, 1});
@@ -276,7 +276,7 @@ TEST(HistogramStatisticsCollectorTest, AggregateLargerBatchSizeExpandRight) {
   CalibrationOptions calib_opts;
   calib_opts.set_calibration_method(
       CalibrationOptions::CALIBRATION_METHOD_HISTOGRAM_MSE_MAX_FREQUENCY);
-  auto collector = CalibrationStatisticsCollectorHistogram(calib_opts);
+  auto collector = CalibrationStatisticsCollectorHistogram();
 
   collector.Collect(
       /*min=*/1.f, /*max=*/16.f, /*histogram=*/{1, 0, 3, 5, 7, 6, 5, 1});

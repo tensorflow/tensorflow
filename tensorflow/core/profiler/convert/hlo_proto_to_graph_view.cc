@@ -64,10 +64,10 @@ void CleanUpHloModuleForGraphviz(HloModule* hlo_module) {
   }
 }
 
-StatusOr<std::string> Plot(std::unique_ptr<HloModule> module,
-                           const std::string& node_name, int graph_width,
-                           const HloRenderOptions& render_options,
-                           const RenderedGraphFormat& format) {
+absl::StatusOr<std::string> Plot(std::unique_ptr<HloModule> module,
+                                 const std::string& node_name, int graph_width,
+                                 const HloRenderOptions& render_options,
+                                 const RenderedGraphFormat& format) {
   if (node_name.empty()) {
     // This should not happen.
     return InvalidArgument("node_name should not be empty");
@@ -81,7 +81,7 @@ StatusOr<std::string> Plot(std::unique_ptr<HloModule> module,
                      node_name, "."));
   }
   // Generate the graph and print the resulting string.
-  StatusOr<std::string> graph_handle;
+  absl::StatusOr<std::string> graph_handle;
 
   CleanUpHloModuleForGraphviz(module.get());
   if (comp) {
@@ -112,7 +112,8 @@ static constexpr int kDefaultMergeFusion = 0;
 
 }  // namespace
 
-StatusOr<GraphViewerParams> ParseGraphViewerParams(const ToolOptions& options) {
+absl::StatusOr<GraphViewerParams> ParseGraphViewerParams(
+    const ToolOptions& options) {
   GraphViewerParams params;
   std::optional<std::string> type = GetParam<std::string>(options, "type");
   if (!type.has_value()) {
@@ -167,7 +168,7 @@ xla::RenderedGraphFormat GetRenderFormat(const std::string& format_string) {
   }
 }
 
-StatusOr<std::string> ConvertHloProtoToGraph(
+absl::StatusOr<std::string> ConvertHloProtoToGraph(
     const HloProto& hlo_proto, const std::string& node_name, int graph_width,
     const HloRenderOptions& render_options, const RenderedGraphFormat& format) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
@@ -176,8 +177,8 @@ StatusOr<std::string> ConvertHloProtoToGraph(
               format);
 }
 
-StatusOr<std::string> ConvertHloProtoToStringView(const HloProto& hlo_proto,
-                                                  bool verbose, bool metadata) {
+absl::StatusOr<std::string> ConvertHloProtoToStringView(
+    const HloProto& hlo_proto, bool verbose, bool metadata) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
                       ConvertHloProtoToModule(hlo_proto));
   HloPrintOptions options;
@@ -189,7 +190,8 @@ StatusOr<std::string> ConvertHloProtoToStringView(const HloProto& hlo_proto,
   return hlo_module->ToString(options);
 }
 
-std::function<StatusOr<std::string>(absl::string_view)>* url_renderer = nullptr;
+std::function<absl::StatusOr<std::string>(absl::string_view)>* url_renderer =
+    nullptr;
 
 // Precondition: (url_renderer != nullptr || format != kUrl).
 //
@@ -205,7 +207,7 @@ absl::Status CheckPrecondition(xla::RenderedGraphFormat format) {
   return absl::OkStatus();
 }
 
-StatusOr<std::string> RenderGraphView(
+absl::StatusOr<std::string> RenderGraphView(
     const xla::HloComputation& computation, absl::string_view label,
     const xla::DebugOptions& debug_options, xla::RenderedGraphFormat format,
     xla::HloRenderOptions hlo_render_options) {
@@ -222,7 +224,7 @@ StatusOr<std::string> RenderGraphView(
   return WrapDotInFormat(rendered_dot.value(), format);
 }
 
-StatusOr<std::string> RenderGraphNeighborhoodAround(
+absl::StatusOr<std::string> RenderGraphNeighborhoodAround(
     const xla::HloInstruction& node, int radius,
     xla::RenderedGraphFormat format, xla::HloRenderOptions hlo_render_options,
     const absl::flat_hash_set<const xla::HloInstruction*>& boundary) {
@@ -238,8 +240,8 @@ StatusOr<std::string> RenderGraphNeighborhoodAround(
   return WrapDotInFormat(rendered_dot.value(), format);
 }
 
-StatusOr<std::string> WrapDotInFormat(std::string dot,
-                                      xla::RenderedGraphFormat format) {
+absl::StatusOr<std::string> WrapDotInFormat(std::string dot,
+                                            xla::RenderedGraphFormat format) {
   switch (format) {
     case xla::RenderedGraphFormat::kUrl:
       if (url_renderer == nullptr) {
@@ -346,15 +348,16 @@ std::string WrapDotInHtml(std::string dot) {
 }
 
 void RegisterGraphvizURLRenderer(
-    std::function<StatusOr<std::string>(absl::string_view)> renderer) {
+    std::function<absl::StatusOr<std::string>(absl::string_view)> renderer) {
   if (url_renderer != nullptr) {
     LOG(WARNING) << "Multiple calls to RegisterGraphToURLRenderer. Last call "
                     "wins, but because order of initialization in C++ is "
                     "nondeterministic, this may not be what you want.";
   }
   delete url_renderer;
-  url_renderer = new std::function<StatusOr<std::string>(absl::string_view)>(
-      std::move(renderer));
+  url_renderer =
+      new std::function<absl::StatusOr<std::string>(absl::string_view)>(
+          std::move(renderer));
 }
 
 }  // namespace profiler

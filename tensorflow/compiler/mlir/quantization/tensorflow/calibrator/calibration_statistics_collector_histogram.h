@@ -29,15 +29,11 @@ limitations under the License.
 namespace tensorflow {
 namespace calibrator {
 
-using ::stablehlo::quantization::CalibrationOptions;
 
 class CalibrationStatisticsCollectorHistogram
     : public CalibrationStatisticsCollectorBase {
  public:
-  explicit CalibrationStatisticsCollectorHistogram(
-      const CalibrationOptions& calib_opts) {
-    ClearData();
-  }
+  explicit CalibrationStatisticsCollectorHistogram() { ClearData(); }
 
   void ClearData() override;
 

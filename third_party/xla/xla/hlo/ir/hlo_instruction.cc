@@ -2088,7 +2088,7 @@ void HloInstruction::SetupDerivedInstruction(
     // compatible because copying it between differently shaped instructions
     // can produce invalid shardings.
     derived_instruction->set_sharding(*sharding_);
-  } else {
+  } else if (!ShapeUtil::CompatibleKind(shape_, derived_instruction->shape())) {
     derived_instruction->clear_sharding();
   }
   derived_instruction->set_metadata(*metadata_);

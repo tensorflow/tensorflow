@@ -59,12 +59,13 @@ static string GenTestString(int copies = 1) {
   return result;
 }
 
-Status TestMultipleWritesWriteFile(size_t compress_input_buf_size,
-                                   size_t compress_output_buf_size,
-                                   int num_writes, bool with_flush,
-                                   int num_copies, bool corrupt_compressed_file,
-                                   string& fname, string& data,
-                                   string& expected_result) {
+absl::Status TestMultipleWritesWriteFile(size_t compress_input_buf_size,
+                                         size_t compress_output_buf_size,
+                                         int num_writes, bool with_flush,
+                                         int num_copies,
+                                         bool corrupt_compressed_file,
+                                         string& fname, string& data,
+                                         string& expected_result) {
   Env* env = Env::Default();
 
   fname = testing::TmpDir() + "/snappy_buffers_test";
@@ -120,15 +121,16 @@ Status TestMultipleWritesWriteFile(size_t compress_input_buf_size,
     fname = corrupt_fname;
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status TestMultipleWrites(size_t compress_input_buf_size,
-                          size_t compress_output_buf_size,
-                          size_t uncompress_input_buf_size,
-                          size_t uncompress_output_buf_size, int num_writes = 1,
-                          bool with_flush = false, int num_copies = 1,
-                          bool corrupt_compressed_file = false) {
+absl::Status TestMultipleWrites(size_t compress_input_buf_size,
+                                size_t compress_output_buf_size,
+                                size_t uncompress_input_buf_size,
+                                size_t uncompress_output_buf_size,
+                                int num_writes = 1, bool with_flush = false,
+                                int num_copies = 1,
+                                bool corrupt_compressed_file = false) {
   Env* env = Env::Default();
 
   string expected_result;
@@ -159,10 +161,10 @@ Status TestMultipleWrites(size_t compress_input_buf_size,
     TF_RETURN_IF_ERROR(in.Reset());
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status TestMultipleWritesInputStream(
+absl::Status TestMultipleWritesInputStream(
     size_t compress_input_buf_size, size_t compress_output_buf_size,
     size_t uncompress_input_buf_size, size_t uncompress_output_buf_size,
     int num_writes = 1, bool with_flush = false, int num_copies = 1,
@@ -197,7 +199,7 @@ Status TestMultipleWritesInputStream(
     }
     TF_RETURN_IF_ERROR(snappy_input_stream.Reset());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void TestTellWriteFile(size_t compress_input_buf_size,
@@ -322,7 +324,7 @@ TEST(SnappyBuffers, SmallUncompressInputBuffer) {
     fprintf(stderr, "skipping compression tests\n");
     return;
   }
-  Status status = TestMultipleWrites(10000, 10000, 10, 10000, 2, true);
+  absl::Status status = TestMultipleWrites(10000, 10000, 10, 10000, 2, true);
   CHECK_EQ(status.code(), error::Code::RESOURCE_EXHAUSTED);
   CheckPrefixSuffix(
       status.message(),
@@ -346,7 +348,7 @@ TEST(SnappyBuffers, CorruptBlock) {
     fprintf(stderr, "skipping compression tests\n");
     return;
   }
-  Status status =
+  absl::Status status =
       TestMultipleWrites(10000, 10000, 700, 10000, 2, true, 1, true);
   CHECK_EQ(status.code(), error::Code::DATA_LOSS);
   CheckPrefixSuffix(status.message(), "Failed to read ",
@@ -358,7 +360,7 @@ TEST(SnappyBuffers, CorruptBlockInputStream) {
     fprintf(stderr, "skipping compression tests\n");
     return;
   }
-  Status status =
+  absl::Status status =
       TestMultipleWritesInputStream(10000, 10000, 700, 10000, 2, true, 1, true);
   CHECK_EQ(status.code(), error::Code::DATA_LOSS);
   CheckPrefixSuffix(status.message(), "Failed to read ",
@@ -379,8 +381,8 @@ TEST(SnappyBuffers, CorruptBlockLargeInputStream) {
     fprintf(stderr, "skipping compression tests\n");
     return;
   }
-  Status status = TestMultipleWritesInputStream(10000, 10000, 2000, 10000, 2,
-                                                true, 1, true);
+  absl::Status status = TestMultipleWritesInputStream(10000, 10000, 2000, 10000,
+                                                      2, true, 1, true);
   CHECK_EQ(status.code(), error::Code::DATA_LOSS);
   CheckPrefixSuffix(status.message(), "Failed to read ",
                     " bytes from file. Possible data corruption.");

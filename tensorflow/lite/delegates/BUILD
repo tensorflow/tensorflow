@@ -80,6 +80,9 @@ cc_library(
     copts = tflite_copts(),
     deps = [
         "//tensorflow/lite:framework",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/api:error_reporter",
     ],
 )
 
@@ -105,22 +108,10 @@ cc_test(
     deps = [
         ":delegate_test_util",
         ":interpreter_utils",
-        ":utils",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite:kernel_api",
-        "//tensorflow/lite:string",
-        "//tensorflow/lite:util",
-        "//tensorflow/lite:version",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:builtin_ops",
-        "//tensorflow/lite/kernels:kernel_util",
-        "//tensorflow/lite/kernels/internal:compatibility",
-        "//tensorflow/lite/schema:schema_conversion_utils",
-        "//tensorflow/lite/schema:schema_fbs",
-        "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest_main",
-        "@eigen_archive//:eigen3",
-        "@flatbuffers",
     ],
 )
 

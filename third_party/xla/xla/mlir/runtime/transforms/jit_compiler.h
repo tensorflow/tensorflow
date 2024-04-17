@@ -25,6 +25,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/cord.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/ArrayRef.h"
@@ -189,8 +190,9 @@ class JitCompiler {
       absl::Span<const std::string_view> exported);
 
   absl::Status Error(std::string_view error) {
-    // TODO(ezhulenev): Pass diagnstic as a status payload.
-    return absl::InternalError(absl::StrCat(error, ":\n", diagnostic_));
+    absl::Status interr = absl::InternalError(error);
+    interr.SetPayload("__jit_compiler_internal_error", absl::Cord(diagnostic_));
+    return interr;
   }
 
   Options opts_;

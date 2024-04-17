@@ -448,11 +448,18 @@ cc_library(
         "//tensorflow:android": ["-lm"],
         "//conditions:default": [],
     }) + ["-ldl"],  # opencl_wrapper calls dlopen()
+    local_defines = select({
+        # copybara:uncomment_begin(google-only)
+        # "//tools/cc_target_os:linux-google": ["__LINUX_GOOGLE__"],
+        # copybara:uncomment_end
+        "//conditions:default": [],
+    }),
     deps = [
         "//tensorflow/lite/delegates/gpu/common:status",
         "@com_google_absl//absl/strings",
         "@opencl_headers",
         "//tensorflow/lite/delegates/gpu/cl/" + if_google("google", "default") + ":qcom_wrapper",
+        "//tensorflow/lite/tools:logging",
     ] + select({
         # copybara:uncomment_begin(google-only)
         # "//tools/cc_target_os:linux-google": ["//third_party/opencl_icd_loader"],

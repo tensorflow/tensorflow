@@ -18,11 +18,18 @@ package_group(
 tf_cc_binary(
     name = "odml-converter",
     srcs = ["odml_converter_main.cc"],
-    visibility = ["//tensorflow/compiler/mlir/lite/stablehlo/odml_converter:__subpackages__"],  # Prototype phase.
+    visibility = [
+        "//tensorflow/compiler/mlir/lite/stablehlo/odml_converter:__subpackages__",
+        "//third_party/odml/infra:__subpackages__",
+    ],  # Prototype phase.
     deps = [
         ":all_passes",
         "//tensorflow/compiler/mlir:init_mlir",
+        "//tensorflow/compiler/mlir/lite:tensorflow_lite",
+        "//tensorflow/compiler/mlir/lite/stablehlo:legalize_stablehlo_to_vhlo_pass",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:MlirOptLib",
         "@llvm-project//mlir:Support",

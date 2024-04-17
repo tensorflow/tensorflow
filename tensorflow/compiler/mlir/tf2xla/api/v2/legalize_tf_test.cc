@@ -57,6 +57,10 @@ static constexpr char kCompilationTimeStreamzName[] =
 static constexpr char kFullBridge[] = "full_bridge";
 static constexpr char kCompilationStatusStreamzName[] =
     "/tensorflow/core/tf2xla/api/v2/phase2_compilation_status";
+static const char kMlirWithFallbackModeSuccess[] =
+    "kMlirWithFallbackModeSuccess";
+static const char kMlirWithFallbackModeFailure[] =
+    "kMlirWithFallbackModeFailure";
 static const char kOldBridgeMlirFilteredFailure[] =
     "kOldBridgeMlirFilteredFailure";
 static const char kOldBridgeWithFallbackModeFailure[] =
@@ -97,7 +101,7 @@ static constexpr char kUnsupportedMlirBridgeModuleStr[] = R"(
   }
 })";
 
-tsl::StatusOr<XlaCompiler::CompilationResult> CompileMlirModule(
+absl::StatusOr<XlaCompiler::CompilationResult> CompileMlirModule(
     const char* mlir_module_str,
     ConfigProto::Experimental::MlirBridgeRollout rollout_state) {
   MlirToHloArgs mlir_to_hlo_args;
@@ -139,7 +143,7 @@ TEST(LegalizeTFTest, RecordsStreamzForSuccessfulLegalizeWithMlirBridge) {
           ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_UNSPECIFIED));
 
   // May have been filtered so check for lack of failure instead of success.
-  EXPECT_EQ(compilation_status.Delta(kOldBridgeMlirFilteredSuccess), 0);
+  EXPECT_EQ(compilation_status.Delta(kMlirWithFallbackModeFailure), 0);
 }
 
 TEST(LegalizeTFTest, MatMul) {
@@ -233,6 +237,8 @@ TEST(LegalizeTFTest, RecordsStreamzForFailedLegalizeWithMlirBridge) {
       ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_UNSPECIFIED);
 
   EXPECT_FALSE(result.ok());
+  EXPECT_EQ(compilation_status.Delta(kMlirWithFallbackModeSuccess), 0);
+  EXPECT_EQ(compilation_status.Delta(kMlirWithFallbackModeFailure), 1);
   EXPECT_EQ(compilation_status.Delta(kMlirCombinedMlirFailure), 1);
 }
 
@@ -285,7 +291,7 @@ TEST(LegalizeTFTest, RecordsStreamzForNoMlirFallback) {
   std::vector<std::unique_ptr<mlir::Pass>> custom_legalization_passes;
 
   // This doesn't actually compile correctly.
-  tsl::StatusOr<XlaCompiler::CompilationResult> compile_result =
+  absl::StatusOr<XlaCompiler::CompilationResult> compile_result =
       LegalizeMlirToHlo(function_to_hlo_args, metadata_proto, use_tuple_args,
                         /*device_type=*/"XLA_CPU_JIT",
                         custom_legalization_passes,

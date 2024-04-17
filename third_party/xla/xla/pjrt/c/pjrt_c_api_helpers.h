@@ -39,15 +39,15 @@ ABSL_CONST_INIT extern const absl::string_view kHloWithConfigFormat;
 
 // Return error status if not success and frees the PJRT_Error returned by
 // `expr`.
-#define RETURN_STATUS_IF_PJRT_ERROR(expr, c_api)                        \
-  do {                                                                  \
-    PJRT_Error* error = (expr);                                         \
-    std::unique_ptr<PJRT_Error, pjrt::PJRT_ErrorDeleter> _error(        \
-        error, pjrt::MakeErrorDeleter(c_api));                          \
-    xla::Status _status = pjrt::PjrtErrorToStatus(_error.get(), c_api); \
-    if (!_status.ok()) {                                                \
-      return _status;                                                   \
-    }                                                                   \
+#define RETURN_STATUS_IF_PJRT_ERROR(expr, c_api)                         \
+  do {                                                                   \
+    PJRT_Error* error = (expr);                                          \
+    std::unique_ptr<PJRT_Error, pjrt::PJRT_ErrorDeleter> _error(         \
+        error, pjrt::MakeErrorDeleter(c_api));                           \
+    absl::Status _status = pjrt::PjrtErrorToStatus(_error.get(), c_api); \
+    if (!_status.ok()) {                                                 \
+      return _status;                                                    \
+    }                                                                    \
   } while (false)
 
 using PJRT_ClientDeleter = std::function<void(PJRT_Client*)>;
@@ -109,7 +109,7 @@ absl::string_view GetPjrtErrorMessage(const PJRT_Error* error,
 
 PJRT_Error_Code GetErrorCode(const PJRT_Error* error, const PJRT_Api* api);
 
-xla::Status PjrtErrorToStatus(const PJRT_Error* error, const PJRT_Api* api);
+absl::Status PjrtErrorToStatus(const PJRT_Error* error, const PJRT_Api* api);
 
 absl::StatusCode PjrtErrorToStatusCode(const PJRT_Error* error,
                                        const PJRT_Api* api);
@@ -135,8 +135,8 @@ xla::PjRtClient::HostBufferSemantics ConvertFromPjRtHostBufferSemantics(
 
 // Create and return a `PjRtFuture`  which will be set when `c_event` is ready.
 // This also deletes `c_event` when the `PjRtFuture` is set.
-xla::PjRtFuture<xla::Status> ConvertCEventToCppFuture(PJRT_Event* c_event,
-                                                      const PJRT_Api* c_api);
+xla::PjRtFuture<> ConvertCEventToCppFuture(PJRT_Event* c_event,
+                                           const PJRT_Api* c_api);
 
 // The data of returned variable-length PJRT_NamedValue list is backed by
 // `cpp_value_map`, so `cpp_value_map` must outlive the returned list. It will
@@ -151,7 +151,7 @@ ConvertFromPjRtNamedValueList(const PJRT_NamedValue* c_value_list,
 // Validates that all entries in value_map have a matching name and type in
 // expected_name_and_type. expected_name_and_type may contain extra entries
 // not in value_map without error.
-xla::Status ValidateCreateOptions(
+absl::Status ValidateCreateOptions(
     const absl::flat_hash_map<std::string, xla::PjRtValueType>& value_map,
     const absl::flat_hash_map<std::string, PJRT_NamedValue_Type>&
         expected_name_and_types);
@@ -164,9 +164,9 @@ const std::vector<PJRT_NamedValue>& GetXlaPluginCAttributes();
 // than or equal to the expected size. The actual struct size can be larger if
 // it comes from a forwards-compatible caller built at a later version than this
 // check. Returns a non-OK status if the expected is smaller.
-xla::Status ActualStructSizeIsGreaterOrEqual(absl::string_view struct_name,
-                                             size_t expected_size,
-                                             size_t actual_size);
+absl::Status ActualStructSizeIsGreaterOrEqual(absl::string_view struct_name,
+                                              size_t expected_size,
+                                              size_t actual_size);
 
 absl::string_view GetPlatformVersion(PJRT_Client* client, const PJRT_Api* api);
 absl::string_view GetPlatformName(PJRT_Client* client, const PJRT_Api* api);

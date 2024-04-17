@@ -19,7 +19,7 @@ package xla.ifrt;
 
 import "xla/python/ifrt/serdes.proto";
 
-// Wire format for `Sharding`. A suitable serializer and deserializer
+// Proto equivalent of C++ `Sharding`. A suitable serializer and deserializer
 // implementation must be registered.
 message ShardingProto {
   xla.ifrt.Serialized serialized_sharding = 1;

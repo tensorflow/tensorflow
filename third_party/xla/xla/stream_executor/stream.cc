@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <utility>
@@ -33,7 +34,7 @@ limitations under the License.
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/stream_executor/stream_executor_internal.h"
+#include "xla/stream_executor/stream_executor_interface.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/stacktrace.h"
@@ -41,10 +42,31 @@ limitations under the License.
 namespace stream_executor {
 
 Stream::Stream(StreamExecutor *parent)
-    : parent_(parent),
-      implementation_(parent->implementation()->GetStreamImplementation()),
-      allocated_(false),
-      status_(absl::InternalError("Uninitialized stream")) {}
+    : parent_(parent), implementation_(nullptr), status_(absl::OkStatus()) {}
+
+absl::Status Stream::Initialize(
+    std::optional<std::variant<StreamPriority, int>> priority) {
+  absl::MutexLock lock(&mu_);
+  if (implementation_ != nullptr) {
+    return absl::InternalError(
+        "stream appears to already have been initialized");
+  }
+  implementation_ = parent_->implementation()->GetStreamImplementation();
+  if (priority.has_value()) {
+    if (std::holds_alternative<StreamPriority>(*priority)) {
+      implementation_->SetPriority(std::get<StreamPriority>(*priority));
+    } else {
+      implementation_->SetPriority(std::get<int>(*priority));
+    }
+  }
+
+  if (parent_->AllocateStream(this)) {
+    // Successful initialization!
+    return absl::OkStatus();
+  }
+
+  return absl::InternalError("failed to allocate stream during initialization");
+}
 
 Stream::~Stream() {
   // Ensure the stream is completed.
@@ -54,17 +76,9 @@ Stream::~Stream() {
                  << status;
   }
 
-  if (allocated_) {
+  if (implementation_ != nullptr) {
     parent_->DeallocateStream(this);
   }
-}
-
-void Stream::SetPriority(StreamPriority priority) {
-  implementation_->SetPriority(priority);
-}
-
-void Stream::SetPriority(int priority) {
-  implementation_->SetPriority(priority);
 }
 
 std::variant<StreamPriority, int> Stream::priority() const {
@@ -86,27 +100,6 @@ absl::Status Stream::RefreshStatus() {
     CheckStatus(status);
   }
   return status;
-}
-
-absl::Status Stream::Initialize() {
-  absl::MutexLock lock(&mu_);
-  if (allocated_) {
-    return absl::InternalError(
-        "stream appears to already have been initialized");
-  }
-  if (status_.ok()) {
-    return absl::InternalError(
-        "stream should be in !ok() state pre-initialization");
-  }
-
-  if (parent_->AllocateStream(this)) {
-    // Successful initialization!
-    allocated_ = true;
-    status_ = absl::OkStatus();
-    return absl::OkStatus();
-  }
-
-  return absl::InternalError("failed to allocate stream during initialization");
 }
 
 absl::Status Stream::RecordEvent(Event *event) {

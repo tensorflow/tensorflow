@@ -174,7 +174,7 @@ tensorflow::Status RunBytecodeInitializers(
         /*sync_resource_state=*/nullptr));
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 tensorflow::Status RunBefInitializers(
@@ -228,7 +228,7 @@ tensorflow::Status RunBefInitializers(
   TF_RETURN_IF_ERROR(
       RunRuntimeInitializer(exec_ctx, bef_file, "_tfrt_resource_init"));
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 tensorflow::Status IsInputSpecsCorrect(
@@ -249,7 +249,7 @@ tensorflow::Status IsInputSpecsCorrect(
         << " input shape is wrong, expected : " << expected_input_spec.shape
         << ", actual: " << inputs[i].shape();
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 tensorflow::Status CheckInputSpecs(
@@ -259,7 +259,7 @@ tensorflow::Status CheckInputSpecs(
     absl::Span<const tensorflow::Tensor> input_tensors) {
   if (!run_options.validate_input_specs &&
       !run_options.validate_input_specs_dry_run) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   auto status = IsInputSpecsCorrect(signature_name, signature, input_tensors);
@@ -278,7 +278,7 @@ tensorflow::Status CheckInputSpecs(
         << "TFRT input specs validation failed, " << error_string;
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 tensorflow::Status PreprocessSignature(
@@ -341,7 +341,7 @@ tensorflow::Status PreprocessSignature(
     output_tensor_names.push_back(tensor_info.name());
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 bool AotPackageExists(absl::string_view saved_model_dir) {
@@ -436,20 +436,18 @@ void UpdateCompileOptions(SavedModel::Options& options) {
 
 }  // namespace
 
-tensorflow::StatusOr<std::unique_ptr<SavedModel>>
-SavedModelImpl::LoadSavedModel(Options options,
-                               absl::string_view saved_model_dir,
-                               const std::unordered_set<std::string>& tags) {
+absl::StatusOr<std::unique_ptr<SavedModel>> SavedModelImpl::LoadSavedModel(
+    Options options, absl::string_view saved_model_dir,
+    const std::unordered_set<std::string>& tags) {
   TF_ASSIGN_OR_RETURN(auto meta_graph_def,
                       ReadSavedModel(saved_model_dir, tags));
   return LoadSavedModel(std::move(options), std::move(meta_graph_def),
                         saved_model_dir);
 }
 
-tensorflow::StatusOr<std::unique_ptr<SavedModel>>
-SavedModelImpl::LoadSavedModel(Options options,
-                               tensorflow::MetaGraphDef meta_graph_def,
-                               absl::string_view saved_model_dir) {
+absl::StatusOr<std::unique_ptr<SavedModel>> SavedModelImpl::LoadSavedModel(
+    Options options, tensorflow::MetaGraphDef meta_graph_def,
+    absl::string_view saved_model_dir) {
   LOG(INFO) << "TFRT loading v1 savedmodel: " << saved_model_dir;
   tfrt::metrics::AddTFRTVersionMetric();
 
@@ -770,7 +768,10 @@ tensorflow::Status SavedModelImpl::Run(
         /*visited_feed_tensor_names=*/nullptr, input_tensors,
         output_tensor_names));
 
-    return graph_executor_->Run(run_options, input_tensors, output_tensor_names,
+    auto run_opt = run_options;
+    run_opt.name = name;
+
+    return graph_executor_->Run(run_opt, input_tensors, output_tensor_names,
                                 /*target_tensor_names=*/{}, outputs);
   }
 
@@ -900,10 +901,10 @@ tensorflow::Status SavedModelImpl::RunMultipleSignatures(
     cur += len;
     DCHECK_LE(std::distance(flat_outputs.begin(), cur), flat_outputs.size());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-tensorflow::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
+absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
 SavedModelImpl::ImportSubgraph(
     mlir::MLIRContext* context, absl::string_view name,
     const tensorflow::GraphImportConfig::InputArrays& input_nodes,
@@ -951,7 +952,7 @@ using JoinedSignature = SavedModelImpl::JoinedSignature;
 // the order of inputs for the joined signature would be different from the
 // original order. For outputs, overlapping is fine so we only flatten it in the
 // original order.
-StatusOr<JoinedSignature> JoinSignatures(
+absl::StatusOr<JoinedSignature> JoinSignatures(
     absl::Span<const std::string> names, const SignatureMap& signature_map,
     const tensorflow::protobuf::Map<std::string, tensorflow::SignatureDef>&
         signature_def_map) {
@@ -1026,7 +1027,7 @@ StatusOr<JoinedSignature> JoinSignatures(
 }  // namespace
 
 // TODO(b/216379787): Reuse `GraphExecutor::LoadClientGraph()`.
-StatusOr<std::reference_wrapper<const SavedModelImpl::LoadingResult>>
+absl::StatusOr<std::reference_wrapper<const SavedModelImpl::LoadingResult>>
 SavedModelImpl::LoadJoinedSignature(const JoinedSignature& joined_signature) {
   // Step 1: Import the combined subgraph from proto to an MLIR module.
   mlir::DialectRegistry registry;
@@ -1098,7 +1099,7 @@ SavedModelImpl::LoadJoinedSignature(const JoinedSignature& joined_signature) {
   return {*loading_result_ptr};
 }
 
-StatusOr<std::reference_wrapper<const SavedModelImpl::LoadingResult>>
+absl::StatusOr<std::reference_wrapper<const SavedModelImpl::LoadingResult>>
 SavedModelImpl::GetOrCreateLoadingResult(const RunOptions& run_options,
                                          absl::Span<const std::string> names) {
   const auto joined_name = absl::StrJoin(names, kSignatureJoiningDelimiter);

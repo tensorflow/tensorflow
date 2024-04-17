@@ -110,7 +110,6 @@ FusedMHABackwardThunk::FusedMHABackwardThunk(
     BufferAllocation::Slice d_output, BufferAllocation::Slice scratch,
     BufferAllocation::Slice d_bmm1_lhs, BufferAllocation::Slice d_bmm1_rhs,
     BufferAllocation::Slice d_bmm2_rhs, BufferAllocation::Slice d_s,
-    BufferAllocation::Slice softmax_sum, BufferAllocation::Slice d_Q_accum,
     BufferAllocation::Slice mask, BufferAllocation::Slice d_bias,
     BufferAllocation::Slice fwd_output, BufferAllocation::Slice bias,
     BufferAllocation::Slice seqlen_q, BufferAllocation::Slice seqlen_k)
@@ -125,8 +124,6 @@ FusedMHABackwardThunk::FusedMHABackwardThunk(
       d_bmm1_rhs_buffer_(d_bmm1_rhs),
       d_bmm2_rhs_buffer_(d_bmm2_rhs),
       d_s_buffer_(d_s),
-      softmax_sum_buffer_(softmax_sum),
-      d_Q_accum_buffer_(d_Q_accum),
       mask_buffer_(mask),
       d_bias_buffer_(d_bias),
       fwd_output_buffer_(fwd_output),
@@ -182,10 +179,6 @@ absl::Status FusedMHABackwardThunk::ExecuteOnStream(
 
   std::optional<se::DeviceMemoryBase> d_s_buffer =
       AssignBufferIfNotNull(buffer_allocations, d_s_buffer_);
-  std::optional<se::DeviceMemoryBase> softmax_sum_buffer =
-      AssignBufferIfNotNull(buffer_allocations, softmax_sum_buffer_);
-  std::optional<se::DeviceMemoryBase> d_Q_accum_buffer =
-      AssignBufferIfNotNull(buffer_allocations, d_Q_accum_buffer_);
   std::optional<se::DeviceMemoryBase> mask_buffer =
       AssignBufferIfNotNull(buffer_allocations, mask_buffer_);
   std::optional<se::DeviceMemoryBase> d_bias_buffer =
@@ -206,9 +199,8 @@ absl::Status FusedMHABackwardThunk::ExecuteOnStream(
       config_, bmm1_grad_gemm1_rhs_buffer, bmm1_grad_gemm2_rhs_buffer,
       bmm2_grad_gemm1_lhs_buffer, bmm2_grad_gemm2_rhs_buffer, d_output_buffer,
       scratch_buffer, d_bmm1_lhs_buffer, d_bmm1_rhs_buffer, d_bmm2_rhs_buffer,
-      d_s_buffer, softmax_sum_buffer, d_Q_accum_buffer, mask_buffer,
-      d_bias_buffer, fwd_output_buffer, bias_buffer, seqlen_q_buffer,
-      seqlen_k_buffer, params.stream, opts));
+      d_s_buffer, mask_buffer, d_bias_buffer, fwd_output_buffer, bias_buffer,
+      seqlen_q_buffer, seqlen_k_buffer, params.stream, opts));
   if (!params.stream->ok()) {
     return Internal("FusedMHABackwardThunk::ExecuteOnStream failed.");
   }

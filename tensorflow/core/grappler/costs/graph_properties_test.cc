@@ -324,7 +324,7 @@ class ConstTensorSkipTestCase {
               << ", expected: " << expected_;
     // Build a graph with Const --> Identity --> Detect.
     GrapplerItem item;
-    const gtl::ArraySlice<int64_t> shape_array_slice(shape_);
+    const absl::Span<const int64_t> shape_array_slice(shape_);
     Tensor const_tensor_value(data_type_, TensorShape(shape_array_slice));
     // Fill the const tensor value based on data type.
     switch (data_type_) {

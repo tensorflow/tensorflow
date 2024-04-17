@@ -14,12 +14,16 @@ limitations under the License.
 ==============================================================================*/
 
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/init_mlir.h"
+#include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/odml_converter/passes.h"
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 
 const char* art = R"(
   ___  ___  __  __ _       ___                     _
@@ -33,9 +37,12 @@ int main(int argc, char* argv[]) {
   llvm::errs() << art << "\n";
 
   mlir::odml::registerODMLConverterPasses();
+  mlir::odml::registerLegalizeStablehloToVhloPass();
 
   mlir::DialectRegistry registry;
-  registry.insert<mlir::func::FuncDialect, mlir::stablehlo::StablehloDialect>();
+  registry.insert<mlir::func::FuncDialect, mlir::stablehlo::StablehloDialect,
+                  mlir::TFL::TFLDialect, mlir::arith::ArithDialect,
+                  mlir::TF::TensorFlowDialect>();
 
   return failed(
       mlir::MlirOptMain(argc, argv, "ODML Converter Driver\n", registry));

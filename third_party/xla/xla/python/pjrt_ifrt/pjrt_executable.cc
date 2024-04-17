@@ -566,7 +566,7 @@ PjRtLoadedExecutable::Execute(absl::Span<tsl::RCReference<Array>> args,
   std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> pjrt_outputs;
   ExecuteResult result;
   if (portable_execution) {
-    std::optional<PjRtFuture<Status>> returned_pjrt_future;
+    std::optional<PjRtFuture<>> returned_pjrt_future;
     TF_ASSIGN_OR_RETURN(
         std::vector<std::unique_ptr<PjRtBuffer>> single_device_pjrt_results,
         pjrt_loaded_executable_->ExecutePortable(
@@ -577,10 +577,10 @@ PjRtLoadedExecutable::Execute(absl::Span<tsl::RCReference<Array>> args,
     if (returned_future_supported) {
       result.status = *std::move(returned_pjrt_future);
     } else {
-      result.status = Future<Status>(OkStatus());
+      result.status = Future<>(OkStatus());
     }
   } else {
-    std::optional<std::vector<PjRtFuture<Status>>> returned_pjrt_futures;
+    std::optional<std::vector<PjRtFuture<>>> returned_pjrt_futures;
     if (returned_future_supported) {
       returned_pjrt_futures.emplace();
     }
@@ -592,7 +592,7 @@ PjRtLoadedExecutable::Execute(absl::Span<tsl::RCReference<Array>> args,
     if (returned_future_supported) {
       result.status = JoinFutures(absl::MakeSpan(*returned_pjrt_futures));
     } else {
-      result.status = Future<Status>(OkStatus());
+      result.status = Future<>(OkStatus());
     }
   }
 

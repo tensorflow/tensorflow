@@ -175,7 +175,7 @@ MockClient::MockClient(std::unique_ptr<xla::ifrt::Client> delegated)
     return delegated_->GetDefaultCompiler();
   });
   ON_CALL(*this, GetTopologyForDevices)
-      .WillByDefault([this](absl::Span<xla::ifrt::Device* const> devices) {
+      .WillByDefault([this](const xla::ifrt::DeviceList& devices) {
         return delegated_->GetTopologyForDevices(devices);
       });
   ON_CALL(*this, GetDefaultLayoutForDevice)

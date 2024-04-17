@@ -1,9 +1,9 @@
 # Automatic sharding annotation
 
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
-load("@local_tsl//tsl:tsl.default.bzl", "get_compatible_with_libtpu_portable")
 load("@local_tsl//tsl/platform:build_config.bzl", "tf_proto_library")
 load("//xla:xla.bzl", "auto_sharding_deps", "auto_sharding_solver_deps", "xla_cc_binary", "xla_cc_test")
+load("//xla/tsl:tsl.default.bzl", "get_compatible_with_libtpu_portable")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -95,7 +95,11 @@ cc_library(
 
 cc_library(
     name = "auto_sharding_solver",
-    srcs = ["auto_sharding_solver.cc"],
+    srcs = [
+        "auto_sharding_memory.cc",
+        "auto_sharding_solver.cc",
+    ],
+    hdrs = ["auto_sharding_memory.h"],
     compatible_with = get_compatible_with_libtpu_portable(),
     deps = [
         ":auto_sharding_proto_cc",
@@ -116,6 +120,7 @@ cc_library(
         "@com_google_ortools//ortools/linear_solver:linear_solver_cc_proto",
         "@local_tsl//tsl/platform:fingerprint",
         "@local_tsl//tsl/platform:hash",
+        "@local_tsl//tsl/platform:protobuf",
         "@local_tsl//tsl/platform:types",
     ] + auto_sharding_solver_deps(),
 )
@@ -270,6 +275,7 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:status",
     ],
 )
@@ -299,6 +305,7 @@ xla_cc_binary(
 tf_proto_library(
     name = "auto_sharding_proto",
     srcs = ["auto_sharding.proto"],
+    visibility = ["//visibility:public"],
 )
 
 build_test(
@@ -344,7 +351,10 @@ xla_cc_test(
 
 xla_cc_test(
     name = "auto_sharding_solver_test",
-    srcs = ["auto_sharding_solver_test.cc"],
+    srcs = [
+        "auto_sharding_memory_test.cc",
+        "auto_sharding_solver_test.cc",
+    ],
     tags = [
         # Disabled until autosharding is fully supported in OSS,
         # https://github.com/openxla/xla/issues/7248.

@@ -247,7 +247,7 @@ void BaseRemoteRendezvous::SameWorkerRecvDone(
     return;
   }
 
-  profiler::ScopedMemoryDebugAnnotation op_annotation(
+  tsl::profiler::ScopedMemoryDebugAnnotation op_annotation(
       "SameWorkerRecvDone", step_id_, "dynamic", in.dtype(),
       [&in]() { return in.shape().DebugString(); });
   AllocatorAttributes attr = recv_args.alloc_attrs;
@@ -298,7 +298,8 @@ void BaseRemoteRendezvous::RecvAsync(const ParsedKey& parsed,
   DCHECK(is_initialized()) << "RecvAsync called when uninitialized (key: "
                            << parsed.FullKey() << ").";
 
-  profiler::ScopedMemoryDebugAnnotation op_annotation("RecvAsync", step_id_);
+  tsl::profiler::ScopedMemoryDebugAnnotation op_annotation("RecvAsync",
+                                                           step_id_);
   // Are src and dst in the same worker?
   // At this point parsed.dst must be a local device asserted by the previous
   // call to ValidateDevices.

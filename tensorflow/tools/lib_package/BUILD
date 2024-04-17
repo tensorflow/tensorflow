@@ -72,7 +72,7 @@ pkg_tar(
         "//tensorflow/c:headers",
     ],
     package_dir = "include/",
-    strip_prefix = "/external/local_tsl",
+    strip_prefix = "/external/local_xla",
     # Mark as "manual" till
     # https://github.com/bazelbuild/bazel/issues/2352
     # and https://github.com/bazelbuild/bazel/issues/1580
@@ -160,7 +160,7 @@ genrule(
             "@com_github_googlecloudplatform_google_cloud_cpp//:LICENSE",
         ],
     }) + select({
-        "@local_tsl//tsl:with_numa_support": [
+        "@local_xla//xla/tsl:with_numa_support": [
             "@hwloc//:COPYING",
         ],
         "//conditions:default": [],
@@ -203,7 +203,7 @@ genrule(
             "@com_github_googlecloudplatform_google_cloud_cpp//:LICENSE",
         ],
     }) + select({
-        "@local_tsl//tsl:with_numa_support": [
+        "@local_xla//xla/tsl:with_numa_support": [
             "@hwloc//:COPYING",
         ],
         "//conditions:default": [],

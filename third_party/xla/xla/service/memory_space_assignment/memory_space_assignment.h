@@ -281,33 +281,6 @@ class PresetAssignments {
   std::string instruction_schedule_str_;
 };
 
-// A class for turning a copy start time and end time into slice start times.
-class SlicedPrefetchStartTimePicker {
- public:
-  // Returns the amount of time elapsed in the instruction schedule between
-  // (exclusive_start_time, exclusive_end_time).
-  using ElapsedTimeFn = std::add_pointer<float(
-      int64_t exclusive_start_time, int64_t exclusive_end_time) const>::type;
-
-  // Returns true if the instructions at lhs_time and rhs_time are in the same
-  // computation.
-  using SameComputationParentFn =
-      std::add_pointer<bool(int64_t lhs_time, int64_t rhs_time) const>::type;
-
-  // Picks slice start times, given the num_slices, prefetch_start_time, and
-  // prefetch_end_time. The returned times are exclusive.
-  //
-  // REQUIRES:
-  // - The instructions following each start time are guaranateed to be in the
-  //   same computation.
-  // - The returned times sorted.
-  // - The first returned time is equal to prefetch_start_time.
-  static std::vector<int64_t> Pick(
-      int64_t num_slices, int64_t exclusive_prefetch_start_time,
-      int64_t prefetch_end_time, absl::AnyInvocable<ElapsedTimeFn> elapsed_fn,
-      absl::AnyInvocable<SameComputationParentFn> has_same_parent_fn);
-};
-
 // MemorySpaceAssignment assigns memory spaces (default or alternate) to each
 // instruction in the module. It will greedily try placing as as many values in
 // the alternate memory space as possible. It uses the heap simulator to
@@ -495,8 +468,7 @@ class MemorySpaceAssignment {
                            const HloAliasAnalysis& alias_analysis);
 
   // Finds an AllocationSequence for placing buffers in alternate memory using
-  // the AlternateMemoryBestFitHeap algorithm. Must be set before Process() is
-  // called.
+  // the MsaAlgorithm algorithm. Must be set before Process() is called.
   virtual Status FindAllocationSequence(const HloLiveRange& hlo_live_range,
                                         const HloAliasAnalysis& alias_analysis);
 
@@ -572,82 +544,6 @@ class MemorySpaceAssignment {
   // to modify and fix the schedule.
   absl::flat_hash_map<int64_t, std::vector<HloInstruction*>> schedule_after_;
   absl::flat_hash_map<int64_t, std::vector<HloInstruction*>> schedule_before_;
-};
-
-// A BufferIntervalComparator that utilizes MemoryBoundedness as its primary
-// sorting criteria.
-//
-// This comparator caches HloValues -> latest use time.
-class MemoryBoundednessBufferIntervalComparator
-    : public BufferIntervalComparator {
- public:
-  MemoryBoundednessBufferIntervalComparator(
-      const CostAnalysis& cost_analysis,
-      CostAnalysis::Cache* cost_analysis_cache);
-
-  MemoryBoundednessBufferIntervalComparator(
-      const CostAnalysis& cost_analysis,
-      CostAnalysis::Cache* cost_analysis_cache,
-      MsaSortOrderOverrides msa_sort_order_overrides);
-
-  ~MemoryBoundednessBufferIntervalComparator() override = default;
-
-  std::string DescribeComparisonCriteria() const override;
-  std::string CriteriaToString(
-      const MsaBufferInterval& buffer_interval) override;
-  bool LessThan(const MsaBufferInterval& lhs,
-                const MsaBufferInterval& rhs) override;
-
- private:
-  // See the value returned by DescribeComparisonCriteria() for the meaning of
-  // each tuple element.
-  using ComparisonTuple = std::tuple<int64_t, float, int64_t, int64_t, int64_t,
-                                     int64_t, BufferValue::Id>;
-
-  ComparisonTuple GetTuple(const MsaBufferInterval& buffer_interval);
-  int64_t GetLatestUseTime(const MsaBufferInterval& buffer_interval);
-  absl::flat_hash_map<const HloValue*, int64_t> buffer_to_latest_use_;
-  const CostAnalysis& cost_analysis_;
-  CostAnalysis::Cache* cost_analysis_cache_;
-
-  // Config to override alternate memory assignment sorting order for filtered
-  // buffers.
-  MsaSortOrderOverrides msa_sort_order_overrides_;
-};
-
-// The default BufferIntervalComparator used for cross-program prefetching.
-//
-// This class caches HloValue -> {latest use, cumulative use size }.
-class DefaultCrossProgramPrefetchBufferIntervalComparator
-    : public BufferIntervalComparator {
- public:
-  explicit DefaultCrossProgramPrefetchBufferIntervalComparator(
-      const HloLiveRange& hlo_live_range);
-
-  ~DefaultCrossProgramPrefetchBufferIntervalComparator() override = default;
-
-  std::string DescribeComparisonCriteria() const override;
-  std::string CriteriaToString(
-      const MsaBufferInterval& buffer_interval) override;
-  bool LessThan(const MsaBufferInterval& lhs,
-                const MsaBufferInterval& rhs) override;
-
- private:
-  // See the value returned by DescribeComparisonCriteria() for the meaning of
-  // each tuple element.
-  using ComparisonTuple =
-      std::tuple<int64_t, int64_t, int64_t, BufferValue::Id>;
-
-  struct AdditionalSortData {
-    int64_t latest_use = 0;
-    int64_t cumulative_use_size = 0;
-  };
-
-  ComparisonTuple GetTuple(const MsaBufferInterval& buffer_interval);
-
-  absl::flat_hash_map<const HloValue*, AdditionalSortData>
-      additional_sort_data_;
-  const HloLiveRange& hlo_live_range_;
 };
 
 // A struct representing an asynchronous copy with its logical start and end
@@ -815,16 +711,14 @@ class AsynchronousCopyResource {
 
 // This class inherits from GlobalDecreasingSizeBestFitHeap with a notion of
 // maximum size.
-class AlternateMemoryBestFitHeap
-    : public GlobalDecreasingSizeBestFitHeap<HloValue> {
+class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
  public:
   using AllocationValue = MemorySpaceAssignment::AllocationValue;
   using HloPositionOrUse = std::variant<HloPosition, HloUse>;
 
-  AlternateMemoryBestFitHeap(AllocationSequence* allocations,
-                             const Options& options,
-                             const HloAliasAnalysis& alias_analysis,
-                             const HloLiveRange& hlo_live_range);
+  MsaAlgorithm(AllocationSequence* allocations, const Options& options,
+               const HloAliasAnalysis& alias_analysis,
+               const HloLiveRange& hlo_live_range);
 
   // Allocates a buffer in preferred memory with whole program lifetime and
   // enables prefetching prefetch_candidate from default memory across program
@@ -850,8 +744,7 @@ class AlternateMemoryBestFitHeap
   // Given colocated intervals, populates allocation_values with the
   // corresponding AllocationValue objects.
   virtual void CreateAllocationValuesFromColocatedIntervals(
-      absl::Span<const AlternateMemoryBestFitHeap::BufferInterval* const>
-          colocated_intervals,
+      absl::Span<const MsaBufferInterval* const> colocated_intervals,
       std::vector<MemorySpaceAssignment::AllocationValue>& allocation_values);
 
   // Go through all the uses in the AllocationValues and find the aliasing
@@ -1252,8 +1145,7 @@ class AlternateMemoryBestFitHeap
 
   // Goes through the colocated intervals and adds any required assignment.
   void AddRequiredAssignmentsForColocatedIntervals(
-      absl::Span<const AlternateMemoryBestFitHeap::BufferInterval* const>
-          colocated_intervals);
+      absl::Span<const MsaBufferInterval* const> colocated_intervals);
 
   // Propagates aliased required assignment for a given position.
   void AddAliasedRequiredAssignment(const HloInstruction* instruction,

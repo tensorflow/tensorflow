@@ -158,7 +158,7 @@ class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
 
   // Returns a topology description for that covers the provided devices.
   virtual absl::StatusOr<std::shared_ptr<const xla::PjRtTopologyDescription>>
-  GetTopologyForDevices(absl::Span<Device* const> devices) const = 0;
+  GetTopologyForDevices(const DeviceList& devices) const = 0;
 
   // Returns the default layout on `device` for a buffer with `dtype` and
   // single-shard dimensions `dims`.

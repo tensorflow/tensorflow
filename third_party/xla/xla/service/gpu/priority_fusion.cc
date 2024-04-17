@@ -42,6 +42,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/dump.h"
 #include "xla/service/fusion_queue.h"
+#include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/fusion_process_dump.pb.h"
 #include "xla/service/gpu/gpu_fusible.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
@@ -50,6 +51,7 @@ limitations under the License.
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/service/gpu/model/gpu_performance_model.h"
 #include "xla/service/gpu/model/gpu_performance_model_base.h"
+#include "xla/service/gpu/triton_fusion_analysis.h"
 #include "xla/service/hlo_graph_dumper.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/shape.h"
@@ -129,12 +131,15 @@ class GpuPriorityFusionQueue {
       const se::DeviceDescription* device_info,
       FusionProcessDumpProto* fusion_process_dump,
       tsl::thread::ThreadPool* thread_pool,
-      HloFusionAnalysisCache& fusion_analysis_cache)
+      HloFusionAnalysisCache& fusion_analysis_cache,
+      bool triton_softmax_priority_fusion_enabled)
       : computation_(computation),
         cost_analysis_(cost_analysis_options, device_info),
         fusion_process_dump_(fusion_process_dump),
         thread_pool_(thread_pool),
-        fusion_analysis_cache_(fusion_analysis_cache) {
+        fusion_analysis_cache_(fusion_analysis_cache),
+        triton_softmax_priority_fusion_enabled_(
+            triton_softmax_priority_fusion_enabled) {
     VLOG(2) << "Running full HLO cost analysis for " << computation_->name();
     TF_CHECK_OK(computation_->Accept(&cost_analysis_));
 
@@ -409,7 +414,37 @@ class GpuPriorityFusionQueue {
                                     run_times.time_fused);
   }
 
+  FusionDecision CanFuseTriton(HloInstruction* producer,
+                               HloInstruction* consumer) {
+    if (!triton_softmax_priority_fusion_enabled_) {
+      return "triton softmax fusion is not enabled";
+    }
+
+    if (IsTritonSoftmaxFusion(*producer)) {
+      if (!IsFusible(*consumer)) {
+        return "the consumer is not fusible";
+      }
+    } else {
+      if (!IsFusible(*producer)) {
+        return "the producer is not fusible";
+      }
+    }
+
+    // TODO(b/316143118): Replace TritonFusionAnalysis with SymbolicTileAnalysis
+    // once symbolic analysis is ready.
+    if (!TritonFusionAnalysis::ExecuteForProducerConsumer(*producer, *consumer)
+             .ok()) {
+      return "triton codegen can't handle the fusion";
+    }
+
+    return {};
+  }
+
   FusionDecision CanFuse(HloInstruction* producer, HloInstruction* consumer) {
+    if (IsTritonSoftmaxFusion(*producer) || IsTritonSoftmaxFusion(*consumer)) {
+      return CanFuseTriton(producer, consumer);
+    }
+
     if (!IsFusible(*producer)) {
       return "the producer is not fusible";
     }
@@ -597,6 +632,8 @@ class GpuPriorityFusionQueue {
 
   GpuPerformanceModelCache gpu_performance_model_cache_;
 
+  bool triton_softmax_priority_fusion_enabled_;
+
   bool dump_fusion_visualization_;
 };
 
@@ -678,6 +715,11 @@ absl::StatusOr<bool> GpuPriorityFusion::Run(
         module->ToString(HloPrintOptions::ShortParsable()));
   }
 
+  bool triton_softmax_priority_fusion_enabled =
+      module->config()
+          .debug_options()
+          .xla_gpu_enable_triton_softmax_priority_fusion();
+
   int changed = false;
   for (auto* computation :
        GetNonFusionComputations(module, execution_threads)) {
@@ -685,7 +727,8 @@ absl::StatusOr<bool> GpuPriorityFusion::Run(
 
     auto fusion_queue = std::make_unique<GpuPriorityFusionQueue>(
         computation, cost_analysis_options_, &device_info_,
-        fusion_process_dump_.get(), thread_pool_, fusion_analysis_cache_);
+        fusion_process_dump_.get(), thread_pool_, fusion_analysis_cache_,
+        triton_softmax_priority_fusion_enabled);
 
     while (fusion_queue->DequeueNextProducer()) {
       auto producer = fusion_queue->current_producer();
@@ -792,6 +835,11 @@ HloInstruction* GpuPriorityFusion::FuseInstruction(
     HloInstruction* fusion_instruction, HloInstruction* producer) {
   HloInstruction* result = fusion_instruction;
   if (producer->opcode() == HloOpcode::kFusion) {
+    if (IsTritonSoftmaxFusion(*producer)) {
+      TF_CHECK_OK(fusion_instruction->set_backend_config(
+          *producer->backend_config<GpuBackendConfig>()));
+    }
+
     fusion_instruction->MergeFusionInstruction(producer);
   } else {
     result = InstructionFusion::FuseInstruction(fusion_instruction, producer);

@@ -321,7 +321,7 @@ void HorizontalLoopFusionImpl::FusionCandidates::Initialize(
   // the fused instructions to have the same number/type of outputs and also the
   // same output shape. We did a sort here so the fusion candidates is
   // populating a continuous span.
-  std::sort(
+  std::stable_sort(
       fusible_instrs_.begin(), fusible_instrs_.end(),
       [&](const HloInstruction* a, const HloInstruction* b) {
         if (GetUniqueOutputTypeOfFusible(*a) !=

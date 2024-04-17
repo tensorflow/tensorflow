@@ -77,6 +77,18 @@ absl::StatusOr<NcclApi::NcclCommHandle> Thunk::CollectiveCliques::GetComm(
   return *communicator;
 }
 
+absl::StatusOr<bool> Thunk::CollectiveCliques::is_local_clique(
+    const NcclCliqueKey& clique_key) const {
+  // Check that we locked access to a clique for `clique_key`.
+  auto clique = cliques_map_.find(clique_key);
+  if (clique == cliques_map_.end()) {
+    return absl::NotFoundError(absl::StrCat("No clique found for clique key: ",
+                                            clique_key.ToString()));
+  }
+
+  return (*clique->second)->IsLocal();
+}
+
 absl::StatusOr<size_t> Thunk::CollectiveCliques::num_communicators(
     const NcclCliqueKey& clique_key) const {
   // Check that we locked access to a clique for `clique_key`.
@@ -339,9 +351,9 @@ Thunk::ThunkInfo Thunk::ThunkInfo::WithProfileAnnotation(
   thunk_info.profile_annotation = instr->name();
   auto gpu_backend_config = instr->backend_config<GpuBackendConfig>();
   if (gpu_backend_config.ok()) {
-    thunk_info.execution_stream_id =
-        std::max(kDefaultExecutionStreamId.value(),
-                 gpu_backend_config->operation_queue_id());
+    thunk_info.execution_stream_id = std::max<uint64_t>(
+        kDefaultExecutionStreamId.value(),
+        static_cast<uint64_t>(gpu_backend_config->operation_queue_id()));
   }
   return thunk_info;
 }

@@ -261,7 +261,7 @@ void XlaDeviceContext::CopyDeviceTensorToCPU(const Tensor* device_tensor,
   transfer_manager_->TransferLiteralFromDevice(
       device_to_host_stream.get(), xla_tensor->shaped_buffer(), literal,
       [this, ref, xla_tensor, done, device_to_host_stream,
-       device_allows_sync_on_completion](xla::Status status) {
+       device_allows_sync_on_completion](absl::Status status) {
         Status done_status = status;
         VLOG(2) << "Transfer from device as literal: "
                 << xla_tensor->shaped_buffer().ToString();

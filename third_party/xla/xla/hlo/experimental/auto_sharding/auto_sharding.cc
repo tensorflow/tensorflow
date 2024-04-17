@@ -128,25 +128,27 @@ double ComputeMemoryReshardingCost(const Shape& shape,
                              shape, device_mesh.num_elements(), dst_sharding));
 
   if (src_n_dim != dst_n_dim && src_n_dim != -1 && dst_n_dim != -1) {
-    Shape inter_shape = ComputeIntermediateShape(src_sharding, dst_sharding,
-                                                 shape, device_mesh);
+    absl::StatusOr<Shape> inter_shape = ComputeIntermediateShape(
+        src_sharding, dst_sharding, shape, device_mesh);
+    if (inter_shape.ok()) {
+      std::optional<HloSharding> src_inter_sharding =
+          hlo_sharding_util::ReshapeSharding(shape, *inter_shape, src_sharding);
+      std::optional<HloSharding> dst_inter_sharding =
+          hlo_sharding_util::ReshapeSharding(shape, *inter_shape, dst_sharding);
+      if (!src_inter_sharding.has_value() || !dst_inter_sharding.has_value()) {
+        src_inter_sharding = HloSharding::Replicate();
+        dst_inter_sharding = HloSharding::Replicate();
+      }
 
-    std::optional<HloSharding> src_inter_sharding =
-        hlo_sharding_util::ReshapeSharding(shape, inter_shape, src_sharding);
-    std::optional<HloSharding> dst_inter_sharding =
-        hlo_sharding_util::ReshapeSharding(shape, inter_shape, dst_sharding);
-    if (!src_inter_sharding.has_value() || !dst_inter_sharding.has_value()) {
-      src_inter_sharding = HloSharding::Replicate();
-      dst_inter_sharding = HloSharding::Replicate();
+      result = std::max(
+          result,
+          static_cast<double>(std::max(
+              GetShardedInstructionSize(
+                  *inter_shape, device_mesh.num_elements(), src_inter_sharding),
+              GetShardedInstructionSize(*inter_shape,
+                                        device_mesh.num_elements(),
+                                        dst_inter_sharding))));
     }
-
-    result = std::max(
-        result,
-        static_cast<double>(std::max(
-            GetShardedInstructionSize(inter_shape, device_mesh.num_elements(),
-                                      src_inter_sharding),
-            GetShardedInstructionSize(inter_shape, device_mesh.num_elements(),
-                                      dst_inter_sharding))));
   }
   return result - src_sharded_bytes;
 }
@@ -2253,12 +2255,14 @@ Status SetHloShardingPostProcessing(
                "but get instruction: "
             << inst->ToString() << ", strategy : " << stra.ToString();
         if (stra.input_shardings[0].has_value()) {
-          FixMixedMeshShapeResharding(inst, 0, stra.input_shardings[0].value(),
-                                      device_mesh, resharding_cache);
+          TF_RETURN_IF_ERROR(FixMixedMeshShapeResharding(
+              inst, 0, stra.input_shardings[0].value(), device_mesh,
+              resharding_cache));
         }
         if (stra.input_shardings[1].has_value()) {
-          FixMixedMeshShapeResharding(inst, 1, stra.input_shardings[1].value(),
-                                      device_mesh, resharding_cache);
+          TF_RETURN_IF_ERROR(FixMixedMeshShapeResharding(
+              inst, 1, stra.input_shardings[1].value(), device_mesh,
+              resharding_cache));
         }
       }
     } else if (inst->opcode() == HloOpcode::kOutfeed ||
@@ -2342,9 +2346,9 @@ Status SetHloShardingPostProcessing(
                                               strategy_map, cost_graph, s_val);
               if (stra.input_shardings.size() > i &&
                   stra.input_shardings[i].has_value()) {
-                FixMixedMeshShapeResharding(inst, i,
-                                            stra.input_shardings[i].value(),
-                                            device_mesh, resharding_cache);
+                TF_RETURN_IF_ERROR(FixMixedMeshShapeResharding(
+                    inst, i, stra.input_shardings[i].value(), device_mesh,
+                    resharding_cache));
               }
             }
             break;
@@ -2356,9 +2360,9 @@ Status SetHloShardingPostProcessing(
                                               strategy_map, cost_graph, s_val);
               CHECK_EQ(stra.input_shardings.size(), 1);
               CHECK(stra.input_shardings[0].has_value());
-              FixMixedMeshShapeResharding(inst, i,
-                                          stra.input_shardings[0].value(),
-                                          device_mesh, resharding_cache);
+              TF_RETURN_IF_ERROR(FixMixedMeshShapeResharding(
+                  inst, i, stra.input_shardings[0].value(), device_mesh,
+                  resharding_cache));
             }
             break;
           }
@@ -2377,8 +2381,9 @@ Status SetHloShardingPostProcessing(
                 dst_shardings[i] = stra.input_shardings[0].value();
               }
             }
-            FixMixedMeshShapeReshardingGetTupleElementWithTupleOutput(
-                inst, dst_shardings, device_mesh);
+            TF_RETURN_IF_ERROR(
+                FixMixedMeshShapeReshardingGetTupleElementWithTupleOutput(
+                    inst, dst_shardings, device_mesh));
             break;
           }
 
@@ -2400,15 +2405,15 @@ Status SetHloShardingPostProcessing(
           continue;
         }
         if (inst->opcode() == HloOpcode::kGetTupleElement) {
-          FixMixedMeshShapeReshardingGetTupleElement(
-              inst, inst->sharding(), device_mesh, preserve_shardings);
+          TF_RETURN_IF_ERROR(FixMixedMeshShapeReshardingGetTupleElement(
+              inst, inst->sharding(), device_mesh, preserve_shardings));
         } else {
           for (size_t i = 0; i < inst->operand_count(); ++i) {
             if (stra.input_shardings.size() > i &&
                 stra.input_shardings[i].has_value()) {
-              FixMixedMeshShapeResharding(inst, i,
-                                          stra.input_shardings[i].value(),
-                                          device_mesh, resharding_cache);
+              TF_RETURN_IF_ERROR(FixMixedMeshShapeResharding(
+                  inst, i, stra.input_shardings[i].value(), device_mesh,
+                  resharding_cache));
             }
           }
         }
@@ -3653,7 +3658,6 @@ absl::StatusOr<AutoShardingResult> AutoShardingImplementation::RunAutoSharding(
     }
   }
   VLOG(10) << hlo_live_range->ToString();
-  VLOG(10) << spmd::PrintLivenessSet(liveness_set);
   XLA_VLOG_LINES(10, spmd::PrintLivenessSet(liveness_set));
   const HloInstructionSequence& sequence =
       hlo_live_range->flattened_instruction_sequence();
@@ -4097,7 +4101,7 @@ absl::StatusOr<bool> AutoSharding::Run(
 
   size_t num_meshes = mesh_shapes.size();
   std::vector<std::unique_ptr<HloModule>> modules(num_meshes);
-  std::vector<StatusOr<AutoShardingResult>> changed(
+  std::vector<absl::StatusOr<AutoShardingResult>> changed(
       num_meshes, AutoShardingResult::kModuleUnchanged);
   std::vector<double> objective_values(num_meshes, -1);
 

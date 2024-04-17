@@ -53,10 +53,10 @@
 #include "xla/python/ifrt/host_callback.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/mock.h"
+#include "xla/python/ifrt/program.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
-#include "xla/python/ifrt/sharding_serdes.h"
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
 #include "xla/python/ifrt_proxy/common/types.pb.h"
 #include "xla/python/ifrt_proxy/server/host_buffer.h"
@@ -298,7 +298,7 @@ class IfrtBackendHandlerTest : public testing::Test {
       TF_ASSIGN_OR_RETURN(auto* device, mock_client_->LookupDevice(1));
       TF_ASSIGN_OR_RETURN(
           *make_array->mutable_sharding(),
-          ToShardingProto(*SingleDeviceSharding::Create(device, MemoryKind())));
+          SingleDeviceSharding::Create(device, MemoryKind())->ToProto());
     }
     TF_ASSIGN_OR_RETURN(auto make_array_response,
                         CallBackend(std::move(ifrt_request)));
@@ -374,7 +374,8 @@ TEST_F(IfrtBackendHandlerTest, Init) {
     EXPECT_CALL(memory, devices())
         .WillRepeatedly(Return(mock_memory_devices[i]));
     EXPECT_CALL(memory, id()).WillRepeatedly(Return(i));
-    EXPECT_CALL(memory, memory_space_kind()).WillRepeatedly(Return("mock"));
+    EXPECT_CALL(memory, kind()).WillRepeatedly(Return("mock"));
+    EXPECT_CALL(memory, kind_id()).WillRepeatedly(Return(i));
   }
 
   std::vector<std::vector<Memory*>> device_memories;
@@ -448,11 +449,13 @@ TEST_F(IfrtBackendHandlerTest, Init) {
                       memories {
                         id: 0
                         memory_space_kind: "mock"
+                        kind_id: 0
                         device_ids: [ 0 ]
                       }
                       memories {
                         id: 1
                         memory_space_kind: "mock"
+                        kind_id: 1
                         device_ids: [ 1 ]
                       }
                     }
@@ -518,7 +521,7 @@ TEST_F(IfrtBackendHandlerTest, MakeArrayFromHostBufferSuccess) {
     TF_ASSERT_OK_AND_ASSIGN(auto* device, mock_client_->LookupDevice(1));
     TF_ASSERT_OK_AND_ASSIGN(
         *make_array->mutable_sharding(),
-        ToShardingProto(*SingleDeviceSharding::Create(device, MemoryKind())));
+        SingleDeviceSharding::Create(device, MemoryKind())->ToProto());
   }
 
   const Shape expected_shape({5, 3, 4});
@@ -553,7 +556,7 @@ TEST_F(IfrtBackendHandlerTest, AssembleArrayFromSingleDeviceArrays) {
         *ifrt_request
              ->mutable_assemble_array_from_single_device_arrays_request()
              ->mutable_sharding(),
-        ToShardingProto(*SingleDeviceSharding::Create(device, MemoryKind())));
+        SingleDeviceSharding::Create(device, MemoryKind())->ToProto());
   }
 
   std::vector<tsl::RCReference<xla::ifrt::MockArray>> single_device_arrays;
@@ -605,7 +608,7 @@ TEST_F(IfrtBackendHandlerTest, CopyToHostSuccess) {
   const std::optional<absl::Span<const int64_t>> expected_byte_strides =
       absl::Span<const int64_t>(expected_byte_strides_vec);
   EXPECT_CALL(*array, CopyToHostBuffer(_, expected_byte_strides, _))
-      .WillOnce(Return(Future<absl::Status>(absl::OkStatus())));
+      .WillOnce(Return(Future<>(absl::OkStatus())));
 
   TF_ASSERT_OK_AND_ASSIGN(auto response, CallBackend(std::move(ifrt_request)));
   // Given the above shape, dtype, and compact byte_strides, the size of the
@@ -667,7 +670,7 @@ TEST_F(IfrtBackendHandlerTest, ReshardSuccess) {
   TF_ASSERT_OK_AND_ASSIGN(auto* device, mock_client_->LookupDevice(1));
   TF_ASSERT_OK_AND_ASSIGN(
       *ifrt_request->mutable_reshard_request()->mutable_sharding(),
-      ToShardingProto(*SingleDeviceSharding::Create(device, MemoryKind())));
+      SingleDeviceSharding::Create(device, MemoryKind())->ToProto());
 
   TF_ASSERT_OK_AND_ASSIGN(auto response, CallBackend(std::move(ifrt_request)));
 
@@ -744,7 +747,7 @@ TEST_F(IfrtBackendHandlerTest, ReshardFailsWhenTheBackendFails) {
   TF_ASSERT_OK_AND_ASSIGN(auto* device, mock_client_->LookupDevice(1));
   TF_ASSERT_OK_AND_ASSIGN(
       *ifrt_request->mutable_reshard_request()->mutable_sharding(),
-      ToShardingProto(*SingleDeviceSharding::Create(device, MemoryKind())));
+      SingleDeviceSharding::Create(device, MemoryKind())->ToProto());
 
   EXPECT_THAT(CallBackend(std::move(ifrt_request)),
               StatusIs(absl::StatusCode::kUnknown, StrEq("injected error")));
@@ -765,9 +768,8 @@ TEST_F(IfrtBackendHandlerTest,
        CheckArrayReadyRequestRelaysTheResultFromBackend) {
   auto mock_array = tsl::MakeRef<xla::ifrt::MockArray>();
   EXPECT_CALL(*mock_array, GetReadyFuture())
-      .WillOnce(Return(Future<absl::Status>(absl::OkStatus())))
-      .WillOnce(
-          Return(Future<absl::Status>(absl::UnknownError("injected error"))));
+      .WillOnce(Return(Future<>(absl::OkStatus())))
+      .WillOnce(Return(Future<>(absl::UnknownError("injected error"))));
   TF_ASSERT_OK_AND_ASSIGN(auto array_handle,
                           MakeTestArray(std::move(mock_array)));
 
@@ -804,7 +806,7 @@ TEST_F(IfrtBackendHandlerTest, DeleteArraySuccess) {
   tsl::RCReference<xla::ifrt::MockArray> mock_array =
       tsl::MakeRef<xla::ifrt::MockArray>();
   EXPECT_CALL(*mock_array, Delete())
-      .WillOnce(Return(Future<absl::Status>(absl::OkStatus())));
+      .WillOnce(Return(Future<>(absl::OkStatus())));
   TF_ASSERT_OK_AND_ASSIGN(auto array_handle,
                           MakeTestArray(std::move(mock_array)));
 
@@ -1083,8 +1085,7 @@ TEST_F(IfrtBackendHandlerTest, LoadedExecutableExecute) {
                      std::optional<DeviceList> devices)
                      -> absl::StatusOr<LoadedExecutable::ExecuteResult> {
             return LoadedExecutable::ExecuteResult{
-                .status =
-                    Future<absl::Status>(absl::InternalError("injected error")),
+                .status = Future<>(absl::InternalError("injected error")),
                 .outputs = outputs,
             };
           }));
@@ -1117,7 +1118,7 @@ TEST_F(IfrtBackendHandlerTest, LoadedExecutableExecute) {
               )pb"))));
   TF_ASSERT_OK_AND_ASSIGN(
       auto sharding_proto,
-      ToShardingProto(*SingleDeviceSharding::Create(&device, MemoryKind())));
+      SingleDeviceSharding::Create(&device, MemoryKind())->ToProto());
   for (const auto& output :
        response->loaded_executable_execute_response().outputs()) {
     EXPECT_THAT(output.sharding(), EquivToProto(sharding_proto));

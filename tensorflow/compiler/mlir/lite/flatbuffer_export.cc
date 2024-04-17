@@ -120,6 +120,7 @@ limitations under the License.
 #include "tsl/platform/status.h"
 #include "tsl/platform/tstring.h"
 
+using absl::StatusOr;
 using llvm::dyn_cast;
 using llvm::formatv;
 using llvm::isa;
@@ -143,7 +144,6 @@ using tensorflow::OpOrArgLocNameMapper;
 using tensorflow::OpOrArgNameMapper;
 using tensorflow::Status;
 using tflite::flex::IsAllowlistedFlexOp;
-using xla::StatusOr;
 
 template <typename T>
 using BufferOffset = flatbuffers::Offset<T>;

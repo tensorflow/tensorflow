@@ -2,7 +2,7 @@
 # Cloud file system implementation.
 
 load(
-    "@local_tsl//tsl:tsl.bzl",
+    "@local_xla//xla/tsl:tsl.bzl",
     "tsl_copts",
 )
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")

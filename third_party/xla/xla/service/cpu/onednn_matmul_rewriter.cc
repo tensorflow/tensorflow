@@ -56,13 +56,41 @@ inline Status ValidateDotDimensionNumbers(
   return OkStatus();
 }
 
+// Whether the element type of instr is compatible with oneDNN kernels.
+// TODO(intel-tf): Restict compatible types based on instruction kind.
+inline bool CompatibleElementType(const HloInstruction* instr) {
+  PrimitiveType element_type = instr->shape().element_type();
+  return element_type == BF16 || element_type == F32 || element_type == F16;
+}
+
+// Type conversion from and to any of F16, BF16 and FP32.
+// TODO(intel-tf): Support more types when enabled.
+template <typename Pattern>
+inline auto SupportedConvert(Pattern pattern) {
+  auto supported_convert = [](const HloInstruction* instr) -> bool {
+    return CompatibleElementType(instr) &&
+           CompatibleElementType(instr->operand(0));
+  };
+  return m::Convert(pattern).WithPredicate(supported_convert);
+}
+
+template <typename Pattern>
+inline auto SupportedConvert(HloInstruction** convert, Pattern pattern) {
+  auto supported_convert = [](const HloInstruction* instr) -> bool {
+    return CompatibleElementType(instr) &&
+           CompatibleElementType(instr->operand(0));
+  };
+  return m::Convert(convert, pattern).WithPredicate(supported_convert);
+}
+
 template <typename Pattern>
 auto ElementwiseSafeIntermediate(HloInstruction** instr, Pattern pattern) {
-  return m::AnyOf<HloInstruction>(m::Broadcast(instr, pattern.WithOneUser()),
-                                  m::Slice(instr, pattern.WithOneUser()),
-                                  m::Bitcast(instr, pattern.WithOneUser()),
-                                  m::Reshape(instr, pattern.WithOneUser()),
-                                  pattern);
+  return m::AnyOf<HloInstruction>(
+      m::Broadcast(instr, pattern.WithOneUser()),
+      m::Slice(instr, pattern.WithOneUser()),
+      m::Bitcast(instr, pattern.WithOneUser()),
+      m::Reshape(instr, pattern.WithOneUser()),
+      SupportedConvert(instr, pattern.WithOneUser()), pattern);
 }
 
 inline auto OneDnnMatmulInstr(HloInstruction** instr) {
@@ -137,35 +165,65 @@ inline auto BcastConstScalarNear(double value) {
   return m::Broadcast(ConstScalarNear(value));
 }
 
-auto GELUActivation(HloInstruction* instr, HloInstruction** src) {
+// Associativity and commutativity properties of multiply results in various
+// patterns for an equivalent computation. This function tries to capture most
+// of the variations for a computation a * b * c. For example, patterns could be
+// any of (a * b) * c or a * (b * c), along with the variations resulting from
+// commutative patterns.
+template <typename PatternA, typename PatternB, typename PatternC>
+inline auto MultiplyMultiplyAnyOrder(PatternA a, PatternB b, PatternC c) {
+  return m::AnyOf<HloInstruction>(
+      m::MultiplyAnyOrder(a, m::MultiplyAnyOrder(b, c)),
+      m::MultiplyAnyOrder(b, m::MultiplyAnyOrder(a, c)),
+      m::MultiplyAnyOrder(c, m::MultiplyAnyOrder(a, b)));
+}
+
+bool GELUActivation(HloInstruction* instr, HloInstruction** src) {
   // Attempt to match GELU_TANH activation
   // (https://arxiv.org/abs/1606.08415), where:
   // gelu_tanh(x) = x * cdf(x)
   // cdf(x) = 0.5 * (1 + tanh(sqrt(2 / pi) * (x + 0.044715 * x**3))
+  //                     \--------- errf_approximate term -------/
+
   HloInstruction* errf;
-  return Match(instr, m::MultiplyAnyOrder(
-                          m::Op(src),
-                          m::MultiplyAnyOrder(
-                              BcastConstScalar(0.5),
-                              m::AddAnyOrder(BcastConstScalar(1.0),
-                                             m::Op(&errf).WithOneUser())))) &&
-         Match(errf,
-               m::Tanh(m::MultiplyAnyOrder(
-                           BcastConstScalarNear(sqrt(M_2_PI)),
-                           m::AddAnyOrder(
-                               m::Op().Is(*src),
-                               m::MultiplyAnyOrder(
-                                   BcastConstScalarNear(0.044715),
-                                   m::MultiplyAnyOrder(
-                                       m::Op().Is(*src),
-                                       m::MultiplyAnyOrder(m::Op().Is(*src),
-                                                           m::Op().Is(*src))
-                                           .WithOneUser())
-                                       .WithOneUser())
-                                   .WithOneUser())
-                               .WithOneUser())
-                           .WithOneUser())
-                   .WithOneUser());
+
+  // The expression 0.5 * x * (1 + errf) as common pattern for GELU exact and
+  // approximate activations.
+  auto common_pattrn = MultiplyMultiplyAnyOrder(
+      BcastConstScalar(0.5), m::Op(src),
+      m::AddAnyOrder(BcastConstScalar(1.0), m::Op(&errf).WithOneUser()));
+
+  bool matched = Match(instr, common_pattrn);
+  if (matched) {
+    // The subexpression 0.044715 * x**3 appears in GELU approximate activation.
+    // However, it is often optimized by other HLO passes into an expression of
+    // 0.044715 * x * (x * x). Since there are three consecutive multiplies,
+    // there could be a large number of patterns. We try to capture some of
+    // those:
+    //
+    //      1. (0.044715 * x) * x * x
+    //      2. 0.044715 * (x * x) * x
+    //
+    // Note each of the above could in turn have various patterns due to
+    // associativity and commutativity properties of multiply.
+    auto subexpr_pattern = m::AnyOf<HloInstruction>(
+        MultiplyMultiplyAnyOrder(
+            m::MultiplyAnyOrder(BcastConstScalarNear(0.044715),
+                                m::Op().Is(*src)),
+            m::Op().Is(*src), m::Op().Is(*src)),
+        MultiplyMultiplyAnyOrder(
+            BcastConstScalarNear(0.044715),
+            m::Multiply(m::Op().Is(*src), m::Op().Is(*src)), m::Op().Is(*src)));
+
+    auto errf_apprx_pattern =
+        m::Tanh(m::MultiplyAnyOrder(
+                    BcastConstScalarNear(sqrt(M_2_PI)),
+                    m::AddAnyOrder(m::Op().Is(*src), subexpr_pattern)
+                        .WithOneUser()))
+            .WithOneUser();
+    matched = Match(errf, errf_apprx_pattern);
+  }
+  return matched;
 }
 
 // OneDNN matmul can fuse add operation with automatic broadcasting along the
@@ -239,33 +297,6 @@ inline bool IsOperandFusible(HloInstruction* operand, HloInstruction* dot) {
 
 inline bool IsRowMajor(const Shape& shape) {
   return LayoutUtil::IsMonotonicWithDim0Major(shape.layout());
-}
-
-// Whether the element type of instr is compatible with oneDNN kernels.
-// TODO(intel-tf): Restict compatible types based on instruction kind.
-inline bool CompatibleElementType(const HloInstruction* instr) {
-  PrimitiveType element_type = instr->shape().element_type();
-  return element_type == BF16 || element_type == F32 || element_type == F16;
-}
-
-// Type conversion from and to any of BF16, F16 and FP32.
-// TODO(intel-tf): Support more types when enabled.
-template <typename Pattern>
-inline auto SupportedConvert(Pattern pattern) {
-  auto supported_convert = [](const HloInstruction* instr) -> bool {
-    return CompatibleElementType(instr) &&
-           CompatibleElementType(instr->operand(0));
-  };
-  return m::Convert(pattern).WithPredicate(supported_convert);
-}
-
-template <typename Pattern>
-inline auto SupportedConvert(HloInstruction** convert, Pattern pattern) {
-  auto supported_convert = [](const HloInstruction* instr) -> bool {
-    return CompatibleElementType(instr) &&
-           CompatibleElementType(instr->operand(0));
-  };
-  return m::Convert(convert, pattern).WithPredicate(supported_convert);
 }
 
 template <typename Pattern>
@@ -713,10 +744,10 @@ class OneDnnMatMulRewriteVisitor : public DfsHloRewriteVisitor {
   }
 };
 
-class OneDnnMatMulReorderVisitor : public DfsHloRewriteVisitor {
+class OneDnnPostRewriteVisitor : public DfsHloRewriteVisitor {
  public:
-  OneDnnMatMulReorderVisitor(int intra_op_parallelism,
-                             const tsl::thread::ThreadPool* compile_threadpool)
+  OneDnnPostRewriteVisitor(int intra_op_parallelism,
+                           const tsl::thread::ThreadPool* compile_threadpool)
       : intra_op_parallelism_(intra_op_parallelism > 0
                                   ? intra_op_parallelism
                                   : tsl::port::MaxParallelism()),
@@ -733,108 +764,130 @@ class OneDnnMatMulReorderVisitor : public DfsHloRewriteVisitor {
                                       threadpool_handle_->NumThreads()));
     }
 
-    evaluator_.set_custom_call_handler(
-        [this](const HloInstruction* custom_call_instr,
-               absl::Span<const Literal*> operands) -> StatusOr<Literal> {
-          TF_ASSIGN_OR_RETURN(
-              auto backend_config,
-              custom_call_instr->backend_config<BackendConfig>());
-          auto& matmul_config = backend_config.onednn_matmul_config();
-
-          auto output = Literal::CreateFromShape(custom_call_instr->shape());
-
-          int64_t nargs = operands.size() + 3;
-          std::vector<void*> args;
-          args.push_back(&nargs);
-
-          ExecutableRunOptions run_options;
-          run_options.set_intra_op_thread_pool(threadpool_device_.get());
-          args.push_back(&run_options);  // No ExecutableRunOptions.
-
-          // OneDnnMatMulConfig
-          std::string config;
-          matmul_config.SerializeToString(&config);
-          args.push_back(config.data());
-
-          std::vector<MemrefInfoHandler> minfo_ptrs(operands.size());
-          std::transform(operands.begin(), operands.end(), minfo_ptrs.begin(),
-                         CreateMemrefInfoFromLiteral);
-          for (auto& minfo_ptr : minfo_ptrs) {
-            args.push_back(static_cast<void*>(minfo_ptr.get()));
-          }
-
-          auto result_ptr = CreateMemrefInfoFromLiteral(&output);
-          __xla_cpu_runtime_OneDnnMatMulReorder(result_ptr.get(), args.data());
-
-          return output;
-        });
+#ifndef ENABLE_ONEDNN_OPENMP
+    // Set oneDNN concurrency settings (which is thread-local)
+    tsl::OneDnnThreadPool::set_onednn_max_threads(intra_op_parallelism_);
+#endif
   }
 
   Status HandleCustomCall(HloInstruction* custom_call) override {
     HloInstruction* matmul;
     if (Match(custom_call, OneDnnMatmulInstr(&matmul))) {
-      TF_ASSIGN_OR_RETURN(auto backend_config,
-                          matmul->backend_config<BackendConfig>());
-      auto& matmul_config = backend_config.onednn_matmul_config();
-
-      auto operands = custom_call->operands();
-      auto input = operands[0];
-      auto weight = operands[1];  // assuming weights is the second operand
-
-      auto input_shape = input->shape();
-      auto weight_shape = weight->shape();
-      if (weight_shape.rank() != 2) {
-        // pre-pack only 2D weights
-        return DefaultAction(custom_call);
-      }
-
-      auto bias_shape =
-          absl::c_count(matmul_config.fused_ops(), OneDnnMatMulConfig::BIAS) > 0
-              ? operands.at(2)->shape()
-              : Shape();
-
-      auto output_shape = custom_call->shape();
-
-#ifndef ENABLE_ONEDNN_OPENMP
-      // set oneDNN cuncurrency settings (which is thread-local)
-      tsl::OneDnnThreadPool::set_onednn_max_threads(intra_op_parallelism_);
-#endif
-      auto new_weight_shape = OneDnnMatMulOptWeightsShape(
-          input_shape, weight_shape, bias_shape, output_shape, &matmul_config);
-
-      auto cmpt = custom_call->parent();
-      std::vector<HloInstruction*> new_operands{
-          cmpt->AddInstruction(
-              HloInstruction::CreateConstant(Literal(input_shape))),
-          weight,
-          cmpt->AddInstruction(
-              HloInstruction::CreateConstant(Literal(output_shape))),
-      };
-
-      if (ShapeUtil::IsInitialized(bias_shape)) {
-        new_operands.push_back(cmpt->AddInstruction(
-            HloInstruction::CreateConstant(Literal(bias_shape))));
-      }
-
-      HloInstruction* reorder_call =
-          custom_call->AddInstruction(HloInstruction::CreateCustomCall(
-              new_weight_shape, new_operands, "__onednn$matmul_reorder"));
-
-      reorder_call->CopyBackendConfigFrom(custom_call);
-
-      Literal result;
-
-      if (evaluator_.TryEvaluate(reorder_call, &result, true)) {
-        HloInstruction* reordered_weight = custom_call->AddInstruction(
-            HloInstruction::CreateConstant(std::move(result)));
-        return custom_call->ReplaceOperandWithDifferentShape(1,
-                                                             reordered_weight);
-
-      } else {
-        return DefaultAction(custom_call);
-      }
+      return HandleCustomCallInternal<dnnl::matmul::primitive_desc>(
+          custom_call);
     }
+
     return DefaultAction(custom_call);
+  }
+
+  template <typename PrimDesc>
+  Status HandleCustomCallInternal(HloInstruction* custom_call) {
+    auto scratch_add = AddScratch<PrimDesc>(custom_call);
+    if (scratch_add.ok()) {
+      custom_call = *scratch_add;
+    } else {
+      VLOG(2) << scratch_add.status();
+    }
+    auto weights_prepack = PrepackWeights<PrimDesc>(custom_call);
+    if (!weights_prepack.ok()) {
+      VLOG(2) << weights_prepack.status();
+    }
+    return OkStatus();
+  }
+
+  template <typename>
+  Status SetWeightsPrepack(HloInstruction*, bool);
+
+  template <typename>
+  Status SetUserScratch(HloInstruction*, bool);
+
+  template <typename>
+  bool GetWeightsPrepack(HloInstruction*);
+
+  template <typename>
+  bool GetUserScratch(HloInstruction*);
+
+  // Add scratch for matmul by changing the result of custom-call to
+  // tuple(result, scratch)
+  template <typename PrimDesc>
+  StatusOr<HloInstruction*> AddScratch(HloInstruction* custom_call) {
+    if (GetUserScratch<PrimDesc>(custom_call)) {
+      return custom_call;
+    }
+    TF_RETURN_IF_ERROR(SetUserScratch<PrimDesc>(custom_call, true));
+    auto prim_desc = CreateOneDnnPrimDesc<PrimDesc>(custom_call);
+    int64_t scratch_size = prim_desc->scratchpad_desc().get_size();
+    Shape scratch_shape = ShapeUtil::MakeShape(U8, {scratch_size});
+    Shape tuple_shape =
+        ShapeUtil::MakeTupleShape({custom_call->shape(), scratch_shape});
+    auto new_custom_call = custom_call->AddInstruction(
+        custom_call->CloneWithNewShape(tuple_shape));
+    HloInstruction* gte =
+        new_custom_call->AddInstruction(HloInstruction::CreateGetTupleElement(
+            custom_call->shape(), new_custom_call, 0));
+    auto status = ReplaceInstruction(custom_call, gte);
+    if (!status.ok()) {
+      TF_RETURN_IF_ERROR(SetUserScratch<PrimDesc>(custom_call, false));
+      return absl::CancelledError("Adding scratch is unsuccessful.");
+    }
+    return new_custom_call;
+  }
+
+  template <typename PrimDesc>
+  StatusOr<HloInstruction*> PrepackWeights(HloInstruction* custom_call) {
+    if (GetWeightsPrepack<PrimDesc>(custom_call)) {
+      return custom_call;
+    }
+    auto weights = custom_call->operand(1);
+    if (weights->user_count() > 1) {
+      return absl::FailedPreconditionError(
+          "Cannot prepack weights. There is more than one consumer.");
+    }
+    auto weights_shape = weights->shape();
+    Literal weights_literal;
+    if (!(weights_shape.rank() == 2 &&
+          evaluator_.TryEvaluate(weights, &weights_literal))) {
+      return absl::CancelledError(
+          "Cannot prepack weights. Not constant 2D weights.");
+    }
+    auto plain_weights_md = ShapeToMemDesc(weights_shape);
+    if constexpr (std::is_same<PrimDesc, dnnl::matmul::primitive_desc>::value) {
+      TF_ASSIGN_OR_RETURN(auto backend_config,
+                          custom_call->backend_config<BackendConfig>());
+      TRANSPOSE_LAST_TWO_DIMS_IF(
+          backend_config.onednn_matmul_config().transpose_b(),
+          plain_weights_md);
+    }
+    TF_RETURN_IF_ERROR(SetWeightsPrepack<PrimDesc>(custom_call, true));
+    auto prim_desc = CreateOneDnnPrimDesc<PrimDesc>(custom_call);
+    auto packed_weights_md = prim_desc->weights_desc();
+    auto packed_weights_shape = MemDescToXlaShapeFlattened(packed_weights_md);
+    auto packed_weights_literal = Literal(packed_weights_shape);
+    ReorderWeight(plain_weights_md, weights_literal.untyped_data(),
+                  packed_weights_md, packed_weights_literal.untyped_data());
+    HloInstruction* reordered_weight = custom_call->AddInstruction(
+        HloInstruction::CreateConstant(std::move(packed_weights_literal)));
+    auto status =
+        custom_call->ReplaceOperandWithDifferentShape(1, reordered_weight);
+    if (!status.ok()) {
+      TF_RETURN_IF_ERROR(SetWeightsPrepack<PrimDesc>(custom_call, false));
+      return absl::CancelledError(
+          "Cannot replace plain weights with prepacked weights.");
+    } else {
+      return custom_call;
+    }
+  }
+
+  void ReorderWeight(const dnnl::memory::desc& src_md, void* src_buf,
+                     const dnnl::memory::desc& dst_md, void* dst_buf) {
+    auto onednn_threadpool = CreateOneDnnThreadPool(threadpool_device_.get());
+    dnnl::engine cpu_engine(dnnl::engine::kind::cpu, 0);
+    auto onednn_stream = MakeOneDnnStream(cpu_engine, onednn_threadpool.get());
+    auto src_mem = dnnl::memory(src_md, cpu_engine, src_buf);
+    auto dst_mem = dnnl::memory(dst_md, cpu_engine, dst_buf);
+    dnnl::reorder reorder_prim{src_mem, dst_mem};
+    reorder_prim.execute(onednn_stream, src_mem, dst_mem);
+    onednn_stream.wait();
   }
 
  private:
@@ -844,6 +897,43 @@ class OneDnnMatMulReorderVisitor : public DfsHloRewriteVisitor {
   std::unique_ptr<Eigen::ThreadPoolDevice> threadpool_device_;
 };
 
+#define EMIT_GET_BACKEND_CONFIG_SPECIALIZATION(GETTER, PRIM_DESC, CONFIG,  \
+                                               FIELD)                      \
+  template <>                                                              \
+  inline bool OneDnnPostRewriteVisitor::GETTER<PRIM_DESC>(HloInstruction * \
+                                                          custom_call) {   \
+    auto backend_config = custom_call->backend_config<BackendConfig>();    \
+    return backend_config.ok() ? backend_config->CONFIG().FIELD() : false; \
+  }
+
+EMIT_GET_BACKEND_CONFIG_SPECIALIZATION(GetUserScratch,
+                                       dnnl::matmul::primitive_desc,
+                                       onednn_matmul_config, user_scratchpad);
+EMIT_GET_BACKEND_CONFIG_SPECIALIZATION(GetWeightsPrepack,
+                                       dnnl::matmul::primitive_desc,
+                                       onednn_matmul_config, weights_prepacked);
+
+#define EMIT_SET_BACKEND_CONFIG_SPECIALIZATION(SETTER, PRIM_DESC, CONFIG_TYPE, \
+                                               CONFIG, FIELD)                  \
+  template <>                                                                  \
+  inline Status OneDnnPostRewriteVisitor::SETTER<PRIM_DESC>(                   \
+      HloInstruction * custom_call, bool value) {                              \
+    TF_ASSIGN_OR_RETURN(auto backend_config,                                   \
+                        custom_call->backend_config<BackendConfig>());         \
+    CONFIG_TYPE* config = backend_config.mutable_##CONFIG();                   \
+    config->set_##FIELD(value);                                                \
+    return custom_call->set_backend_config(backend_config);                    \
+  }
+
+EMIT_SET_BACKEND_CONFIG_SPECIALIZATION(SetWeightsPrepack,
+                                       dnnl::matmul::primitive_desc,
+                                       OneDnnMatMulConfig, onednn_matmul_config,
+                                       weights_prepacked);
+EMIT_SET_BACKEND_CONFIG_SPECIALIZATION(SetUserScratch,
+                                       dnnl::matmul::primitive_desc,
+                                       OneDnnMatMulConfig, onednn_matmul_config,
+                                       user_scratchpad);
+
 StatusOr<bool> OneDnnMatMulRewriter::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
@@ -851,8 +941,8 @@ StatusOr<bool> OneDnnMatMulRewriter::Run(
   TF_ASSIGN_OR_RETURN(auto result,
                       visitor.RunOnModule(module, execution_threads));
 
-  OneDnnMatMulReorderVisitor reorder_visitor(intra_op_parallelism_,
-                                             compile_threadpool_);
+  OneDnnPostRewriteVisitor reorder_visitor(intra_op_parallelism_,
+                                           compile_threadpool_);
   TF_ASSIGN_OR_RETURN(auto result2,
                       reorder_visitor.RunOnModule(module, execution_threads));
 

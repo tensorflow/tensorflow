@@ -126,6 +126,7 @@ DeviceMemory<GpuSemaphoreState> GpuTimer::GpuSemaphore::device() {
     LOG(WARNING)
         << "Skipping the delay kernel, measurement accuracy will be reduced";
   }
+#ifdef GOOGLE_CUDA
   if (use_delay_kernel && ShouldLaunchDelayKernel()) {
     // Check the assumption that this device supports unified addressing,
     // otherwise skip the delay kernel
@@ -155,6 +156,7 @@ DeviceMemory<GpuSemaphoreState> GpuTimer::GpuSemaphore::device() {
           GpuSemaphoreState::Release));
     }
   }
+#endif  // GOOGLE_CUDA
   // The start event goes after the delay kernel in the stream
   TF_RETURN_IF_ERROR(GpuDriver::RecordEvent(parent->gpu_context(), start_event,
                                             stream->gpu_stream()));

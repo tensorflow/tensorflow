@@ -118,11 +118,11 @@ struct ArithmeticTypeI4Test : testing::Test {};
 
 TYPED_TEST_SUITE(ArithmeticTypeI4Test, ArithmeticTypeList);
 
-TYPED_TEST(ArithmeticTypeI4Test, InPlaceArithmetic) {
+TYPED_TEST(ArithmeticTypeI4Test, Arithmetic) {
   // Every test relies on the equality comparisons working. We test all the 4
   // bit integral values.
-  for (int i = -8; i < 8; ++i) {
-    for (int j = -8; j < 8; ++j) {
+  for (TypeParam i = -8; i < 8; ++i) {
+    for (TypeParam j = -8; j < 8; ++j) {
       EXPECT_EQ(I4(i) == j, i == j);
       EXPECT_EQ(i == I4(j), i == j);
       EXPECT_EQ(I4(i) != j, i != j);
@@ -138,35 +138,18 @@ TYPED_TEST(ArithmeticTypeI4Test, InPlaceArithmetic) {
     }
   }
   I4 val(0);
-  EXPECT_EQ(val += 1, 1);
-  EXPECT_EQ(val, 1);
-  EXPECT_EQ(val *= 2, 2);
-  EXPECT_EQ(val, 2);
-  EXPECT_EQ(val /= 2, 1);
-  EXPECT_EQ(val, 1);
-  EXPECT_EQ(val -= 4, -3);
-  EXPECT_EQ(val, -3);
-  EXPECT_EQ(val %= 2, -1);
-  EXPECT_EQ(val, -1);
-  EXPECT_EQ(val = I4(7), 7);
-  EXPECT_EQ(val, 7);
-  EXPECT_EQ(val &= 2, 2);
-  EXPECT_EQ(val, 2);
-  EXPECT_EQ(val |= 1, 3);
-  EXPECT_EQ(val, 3);
-  EXPECT_EQ(val ^= 7, 4);
-  EXPECT_EQ(val, 4);
-  EXPECT_EQ(val >>= 1, 2);
-  EXPECT_EQ(val, 2);
-  EXPECT_EQ(val <<= 1, 4);
-  EXPECT_EQ(val, 4);
-}
-
-TYPED_TEST(ArithmeticTypeI4Test, Arithmetic) {
   const TypeParam one = TypeParam(1);
   const TypeParam two = TypeParam(2);
   const TypeParam three = TypeParam(3);
   const TypeParam four = TypeParam(4);
+  EXPECT_EQ(val += one, 1);
+  EXPECT_EQ(val, 1);
+  EXPECT_EQ(val *= two, 2);
+  EXPECT_EQ(val, 2);
+  EXPECT_EQ(val /= two, 1);
+  EXPECT_EQ(val, 1);
+  EXPECT_EQ(val -= four, -3);
+  EXPECT_EQ(val, -3);
   const I4 i4_three(3);
   EXPECT_EQ(i4_three + one, four);
   EXPECT_EQ(i4_three - one, two);
@@ -180,8 +163,10 @@ struct IntegralTypeI4Test : testing::Test {};
 TYPED_TEST_SUITE(IntegralTypeI4Test, IntegralTypeList);
 
 TYPED_TEST(IntegralTypeI4Test, Arithmetic) {
+  const TypeParam minus_one = TypeParam(-1);
   const TypeParam one = TypeParam(1);
   const TypeParam two = TypeParam(2);
+  const TypeParam three = TypeParam(3);
   const TypeParam four = TypeParam(4);
   const TypeParam six = TypeParam(6);
   const TypeParam seven = TypeParam(7);
@@ -192,6 +177,21 @@ TYPED_TEST(IntegralTypeI4Test, Arithmetic) {
   EXPECT_EQ(i4_three ^ four, seven);
   EXPECT_EQ(i4_three << one, six);
   EXPECT_EQ(i4_three >> one, one);
+  I4 val(-3);
+  EXPECT_EQ(val %= two, minus_one);
+  EXPECT_EQ(val, -1);
+  EXPECT_EQ(val = I4(7), seven);
+  EXPECT_EQ(val, 7);
+  EXPECT_EQ(val &= two, two);
+  EXPECT_EQ(val, 2);
+  EXPECT_EQ(val |= one, three);
+  EXPECT_EQ(val, 3);
+  EXPECT_EQ(val ^= seven, four);
+  EXPECT_EQ(val, 4);
+  EXPECT_EQ(val >>= one, two);
+  EXPECT_EQ(val, 2);
+  EXPECT_EQ(val <<= one, four);
+  EXPECT_EQ(val, 4);
 }
 
 }  // namespace
