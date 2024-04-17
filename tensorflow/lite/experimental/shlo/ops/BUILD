@@ -7,6 +7,40 @@ package(
 )
 
 cc_library(
+    name = "dot_general",
+    srcs = ["dot_general.cc"],
+    hdrs = ["dot_general.h"],
+    deps = [
+        "//tensorflow/lite/experimental/shlo:data_type",
+        "//tensorflow/lite/experimental/shlo:dispatch",
+        "//tensorflow/lite/experimental/shlo:shape",
+        "//tensorflow/lite/experimental/shlo:quantize",
+        "//tensorflow/lite/experimental/shlo:tensor",
+        "@com_google_absl//absl/status",
+    ],
+)
+
+cc_test(
+    name = "dot_general_test",
+    srcs = ["dot_general_test.cc"],
+    linkopts = shlo_ref_linkopts(),
+    deps = [
+        ":benchmark_util",
+        ":dot_general",
+        ":test_util",
+        "//tensorflow/lite/experimental/shlo:bf16",
+        "//tensorflow/lite/experimental/shlo:data_type",
+        "//tensorflow/lite/experimental/shlo:shape",
+        "//tensorflow/lite/experimental/shlo:status_matcher",
+        "//tensorflow/lite/experimental/shlo:tensor",
+        "//tensorflow/lite/experimental/shlo:tensor_matcher",
+        "//tensorflow/lite/experimental/shlo:tensor_with_data",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "benchmark_util",
     testonly = True,
     hdrs = ["benchmark_util.h"],
