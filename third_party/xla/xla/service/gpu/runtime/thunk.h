@@ -49,6 +49,31 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+// Execution stream id allows to specify what Gpu stream Thunk should be using
+// for launching device work (kernels, library calls, etc.). By default all
+// thunks use stream #0, which is the default compute stream of an XLA
+// executable.
+//
+// Stream synchronizations are explicit and represented as WaitForStreams thunk
+// in a ThunkSequence. When ThunkSequence converted to CommandBuffer, execution
+// streams mapped to concurrent execution scopes and barriers between them.
+//
+// IMPORTANT: Async execution semantics and execution stream id
+//
+// For async thunks (i.e. thunks corresponding to `all-reduce-start` and
+// `all-reduce-done`) execution stream id means NOT a stream where the async
+// operation must execute, but a stream that async operation must be
+// synchronized with:
+//
+//   - Start operation must wait for the completion of all launched work on the
+//     execution stream id (usually by adding a stream wait) and after that
+//     launch async work on implementation defined extra stream (can be borrowed
+//     from a pool)
+//
+//   - Corresponding Done operation must synchronize execution stream id with
+//     an implementation defined stream that is running async work, again
+//     usually by adding a stream wait.
+//
 TSL_LIB_GTL_DEFINE_INT_TYPE(ExecutionStreamId, uint64_t);
 
 // Thunk acts as the bridge between IrEmitter and GpuExecutable. It stores the
