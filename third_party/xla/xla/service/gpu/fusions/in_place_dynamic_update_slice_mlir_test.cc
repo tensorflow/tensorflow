@@ -179,6 +179,29 @@ TEST_F(MlirInPlaceDynamicUpdateSliceFusionTest, OutOfBoundDUS) {
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
 }
 
+TEST_F(MlirInPlaceDynamicUpdateSliceFusionTest, BitcastDus) {
+  auto kHloString = R"(
+    HloModule module
+
+    fused_computation {
+      in = f32[20,30] parameter(0)
+      updates = f32[5,6] parameter(1)
+      i0 = s32[] parameter(2)
+      i1 = s32[] parameter(3)
+      updated = f32[20,30] dynamic-update-slice(in, updates, i0, i1)
+      ROOT bitcast = f32[600] bitcast(updated)
+    }
+    ENTRY entry {
+      in = f32[20,30] parameter(0)
+      updates = f32[5,6] parameter(1)
+      i0 = s32[] constant(2)
+      i1 = s32[] constant(3)
+      ROOT fusion = f32[600] fusion(in, updates, i0, i1), kind=kLoop, calls=fused_computation
+    }
+  )";
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

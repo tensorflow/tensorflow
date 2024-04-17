@@ -158,6 +158,13 @@ absl::Status MlirInPlaceDynamicUpdateSliceFusion::EmitEntryFunction(
         auto updated_value =
             ProvideParameter(dus_subgraph, dus_instr, kDUSUpdateIndex,
                              input_indices, call_targets, entry_function, b)[0];
+        // Handle bitcasts under the DUS.
+        if (dus_instr->shape() != fusion.shape()) {
+          update_indices = ApplyAffineMap(
+              GetBitcastMap(dus_instr->shape(), fusion.shape(), b.getContext())
+                  .GetAffineMap(),
+              update_indices, {}, b);
+        }
         auto insert = b.create<InsertOp>(updated_value, output_tensors[0],
                                          update_indices);
 
