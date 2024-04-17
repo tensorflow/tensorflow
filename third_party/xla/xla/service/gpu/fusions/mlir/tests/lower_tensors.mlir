@@ -309,3 +309,15 @@ module {
 // CHECK-NEXT: %[[RES_SHIFT:.*]] = llvm.shl %[[RES_WIDE]], %{{.*}}
 // CHECK-NEXT: %[[NEW:.*]] = llvm.or %[[NEW_MASKED]], %[[RES_SHIFT]]
 // CHECK-NEXT: llvm.cmpxchg %[[BASE]], %[[VAR]], %[[NEW]]
+
+// -----
+
+module {
+  func.func @shared_complex() -> tensor<10xcomplex<f32>> {
+    %shared = xla_gpu.allocate_shared : tensor<10xcomplex<f32>>
+    return %shared : tensor<10xcomplex<f32>>
+  }
+}
+
+// CHECK: llvm.mlir.global private @{{.*}}() {addr_space = 3 : i32} : !llvm.array<10 x struct<(f32, f32)>>
+// CHECK: @shared_complex

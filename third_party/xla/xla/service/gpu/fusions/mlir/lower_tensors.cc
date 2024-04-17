@@ -251,7 +251,14 @@ struct RewriteAllocateShared : mlir::OpRewritePattern<AllocateSharedOp> {
     auto module = op->getParentOfType<mlir::ModuleOp>();
     auto shaped_ty = op.getResult().getType().cast<mlir::ShapedType>();
     constexpr int kGPUSharedMemoryAddrSpace = 3;
-    auto array_ty = mlir::LLVM::LLVMArrayType::get(shaped_ty.getElementType(),
+    mlir::Type element_type = shaped_ty.getElementType();
+    if (auto complex_ty = mlir::dyn_cast<mlir::ComplexType>(element_type)) {
+      element_type = mlir::LLVM::LLVMStructType::getLiteral(
+          getContext(),
+          {complex_ty.getElementType(), complex_ty.getElementType()});
+    }
+
+    auto array_ty = mlir::LLVM::LLVMArrayType::get(element_type,
                                                    shaped_ty.getNumElements());
 
     std::string name;
