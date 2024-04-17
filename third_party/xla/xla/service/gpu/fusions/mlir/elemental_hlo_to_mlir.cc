@@ -1055,13 +1055,11 @@ bool IsHloOpSupported(const HloInstruction* instr,
                       se::CudaComputeCapability compute_capability) {
   auto is_unsupported_type = [](const HloInstruction* instr) {
     auto e = instr->shape().element_type();
-    // TODO(akuegel): Fix remaining issues with complex.
     // TODO(jreiffers): Support fp8.
     // TODO(jreiffers): Support int4.
     return (primitive_util::IsIntegralType(e) &&
             primitive_util::BitWidth(e) > 1 &&
             primitive_util::BitWidth(e) < 8) ||
-           primitive_util::IsComplexType(e) ||
            (primitive_util::IsFloatingPointType(e) &&
             primitive_util::BitWidth(e) < 16);
   };
