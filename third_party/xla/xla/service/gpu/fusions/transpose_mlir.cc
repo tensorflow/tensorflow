@@ -283,7 +283,6 @@ absl::Status MlirTransposeFusion::EmitReadFromShMemMlir(
   auto output_indexing = *ComputeThreadIdToOutputIndexing(0, mlir_context);
   auto shmem_output_indexing =
       GetSharedMemoryReadIndexingMap(output_indexing, permutation_[2]);
-  std::cerr << "output indexing: " << output_indexing.ToString() << "\n";
   auto result_tensors = EmitThreadLoopNest(
       builder, output_tensor_args, output_indexing,
       [&](ValueRange output_tensors, ValueRange dim_values,
