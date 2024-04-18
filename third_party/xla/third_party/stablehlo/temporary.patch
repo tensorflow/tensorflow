@@ -2575,6 +2575,15 @@ diff --ruN a/stablehlo/stablehlo/reference/Ops.cpp b/stablehlo/stablehlo/referen
  
  #include "llvm/ADT/APFloat.h"
  #include "llvm/ADT/APInt.h"
+@@ -223,7 +224,7 @@
+           /*padding=*/
+           getDenseIntElementsAttr(
+               IntegerType::get(lhs.getType().getContext(), 64), paddingVector,
+-              SmallVector<int64_t>(padding.size(), 2)),
++              SmallVector<int64_t>({lhs.getRank() - 2, 2})),
+           lhsDilation, rhsDilation, windowReversal, inputBatchDimension,
+           inputFeatureDimension, ArrayRef<int64_t>(inputSpatialDimensions),
+           kernelInputFeatureDimension, kernelOutputFeatureDimension,
 @@ -1428,23 +1429,23 @@
                          inputSpatialDimensions.end());
    lhsPermutation.push_back(inputFeatureDimension);
@@ -2636,4 +2645,445 @@ diff --ruN a/stablehlo/stablehlo/reference/Ops.cpp b/stablehlo/stablehlo/referen
        result.set(resultIndex, dotProduct.get(*dotProductIt));
      }
    }
+diff --ruN a/stablehlo/stablehlo/testdata/conv_general_dilated_conv1d_lhs_float32_2_3_10__rhs_float32_3_3_5__windowstrides__1___padding___0_0_3336387849681708224.mlir b/stablehlo/stablehlo/testdata/conv_general_dilated_conv1d_lhs_float32_2_3_10__rhs_float32_3_3_5__windowstrides__1___padding___0_0_3336387849681708224.mlir
+--- stablehlo/stablehlo/testdata/conv_general_dilated_conv1d_lhs_float32_2_3_10__rhs_float32_3_3_5__windowstrides__1___padding___0_0_3336387849681708224.mlir
++++ stablehlo/stablehlo/testdata/conv_general_dilated_conv1d_lhs_float32_2_3_10__rhs_float32_3_3_5__windowstrides__1___padding___0_0_3336387849681708224.mlir
+@@ -1,4 +1,4 @@
+-// RUN-DISABLED: stablehlo-opt -inline %s | stablehlo-translate --interpret
++// RUN: stablehlo-opt -inline %s | stablehlo-translate --interpret
+ // RUN: stablehlo-translate --serialize --target=current %s | stablehlo-translate --deserialize | stablehlo-opt > %t.0
+ // RUN: stablehlo-opt %s > %t.1
+ // RUN: diff %t.0 %t.1
+diff --ruN a/stablehlo/stablehlo/testdata/conv_general_dilated_conv_tranpose1d_same_padding_lhs_float32_1_16_2__rhs_float32_3_2_2__windowstrid-2801039169040378295.mlir b/stablehlo/stablehlo/testdata/conv_general_dilated_conv_tranpose1d_same_padding_lhs_float32_1_16_2__rhs_float32_3_2_2__windowstrid-2801039169040378295.mlir
+--- stablehlo/stablehlo/testdata/conv_general_dilated_conv_tranpose1d_same_padding_lhs_float32_1_16_2__rhs_float32_3_2_2__windowstrid-2801039169040378295.mlir
++++ stablehlo/stablehlo/testdata/conv_general_dilated_conv_tranpose1d_same_padding_lhs_float32_1_16_2__rhs_float32_3_2_2__windowstrid-2801039169040378295.mlir
+@@ -1,4 +1,4 @@
+-// RUN-DISABLED: stablehlo-opt -inline %s | stablehlo-translate --interpret
++// RUN: stablehlo-opt -inline %s | stablehlo-translate --interpret
+ // RUN: stablehlo-translate --serialize --target=current %s | stablehlo-translate --deserialize | stablehlo-opt > %t.0
+ // RUN: stablehlo-opt %s > %t.1
+ // RUN: diff %t.0 %t.1
+diff --ruN a/stablehlo/stablehlo/testdata/conv_general_dilated_conv_tranpose1d_valid_padding_lhs_float32_1_16_2__rhs_float32_3_2_2__windowstri-8415303397313720110.mlir b/stablehlo/stablehlo/testdata/conv_general_dilated_conv_tranpose1d_valid_padding_lhs_float32_1_16_2__rhs_float32_3_2_2__windowstri-8415303397313720110.mlir
+--- stablehlo/stablehlo/testdata/conv_general_dilated_conv_tranpose1d_valid_padding_lhs_float32_1_16_2__rhs_float32_3_2_2__windowstri-8415303397313720110.mlir
++++ stablehlo/stablehlo/testdata/conv_general_dilated_conv_tranpose1d_valid_padding_lhs_float32_1_16_2__rhs_float32_3_2_2__windowstri-8415303397313720110.mlir
+@@ -1,4 +1,4 @@
+-// RUN-DISABLED: stablehlo-opt -inline %s | stablehlo-translate --interpret
++// RUN: stablehlo-opt -inline %s | stablehlo-translate --interpret
+ // RUN: stablehlo-translate --serialize --target=current %s | stablehlo-translate --deserialize | stablehlo-opt > %t.0
+ // RUN: stablehlo-opt %s > %t.1
+ // RUN: diff %t.0 %t.1
+diff --ruN a/stablehlo/stablehlo/testdata/conv_general_dilated_conv_tranpose2d_same_padding_lhs_float32_1_16_16_2__rhs_float32_2_3_2_2__window-296817466026258822.mlir b/stablehlo/stablehlo/testdata/conv_general_dilated_conv_tranpose2d_same_padding_lhs_float32_1_16_16_2__rhs_float32_2_3_2_2__window-296817466026258822.mlir
+--- stablehlo/stablehlo/testdata/conv_general_dilated_conv_tranpose2d_same_padding_lhs_float32_1_16_16_2__rhs_float32_2_3_2_2__window-296817466026258822.mlir
++++ stablehlo/stablehlo/testdata/conv_general_dilated_conv_tranpose2d_same_padding_lhs_float32_1_16_16_2__rhs_float32_2_3_2_2__window-296817466026258822.mlir
+@@ -1,4 +1,4 @@
+-// RUN-DISABLED: stablehlo-opt -inline %s | stablehlo-translate --interpret
++// RUN: stablehlo-opt -inline %s | stablehlo-translate --interpret
+ // RUN: stablehlo-translate --serialize --target=current %s | stablehlo-translate --deserialize | stablehlo-opt > %t.0
+ // RUN: stablehlo-opt %s > %t.1
+ // RUN: diff %t.0 %t.1
+diff --ruN a/stablehlo/stablehlo/testdata/conv_general_dilated_conv_tranpose2d_valid_padding_lhs_float32_1_16_16_2__rhs_float32_2_3_2_2__windo216554503587864094.mlir b/stablehlo/stablehlo/testdata/conv_general_dilated_conv_tranpose2d_valid_padding_lhs_float32_1_16_16_2__rhs_float32_2_3_2_2__windo216554503587864094.mlir
+--- stablehlo/stablehlo/testdata/conv_general_dilated_conv_tranpose2d_valid_padding_lhs_float32_1_16_16_2__rhs_float32_2_3_2_2__windo216554503587864094.mlir
++++ stablehlo/stablehlo/testdata/conv_general_dilated_conv_tranpose2d_valid_padding_lhs_float32_1_16_16_2__rhs_float32_2_3_2_2__windo216554503587864094.mlir
+@@ -1,4 +1,4 @@
+-// RUN-DISABLED: stablehlo-opt -inline %s | stablehlo-translate --interpret
++// RUN: stablehlo-opt -inline %s | stablehlo-translate --interpret
+ // RUN: stablehlo-translate --serialize --target=current %s | stablehlo-translate --deserialize | stablehlo-opt > %t.0
+ // RUN: stablehlo-opt %s > %t.1
+ // RUN: diff %t.0 %t.1
+diff --ruN a/stablehlo/stablehlo/testdata/conv_general_dilated_depthwise1d_dilated_lhs_float32_2_3_9__rhs_float32_12_1_3__windowstrides__1___p4726467912149865720.mlir b/stablehlo/stablehlo/testdata/conv_general_dilated_depthwise1d_dilated_lhs_float32_2_3_9__rhs_float32_12_1_3__windowstrides__1___p4726467912149865720.mlir
+--- stablehlo/stablehlo/testdata/conv_general_dilated_depthwise1d_dilated_lhs_float32_2_3_9__rhs_float32_12_1_3__windowstrides__1___p4726467912149865720.mlir
++++ stablehlo/stablehlo/testdata/conv_general_dilated_depthwise1d_dilated_lhs_float32_2_3_9__rhs_float32_12_1_3__windowstrides__1___p4726467912149865720.mlir
+@@ -1,4 +1,4 @@
+-// RUN-DISABLED: stablehlo-opt -inline %s | stablehlo-translate --interpret
++// RUN: stablehlo-opt -inline %s | stablehlo-translate --interpret
+ // RUN: stablehlo-translate --serialize --target=current %s | stablehlo-translate --deserialize | stablehlo-opt > %t.0
+ // RUN: stablehlo-opt %s > %t.1
+ // RUN: diff %t.0 %t.1
+diff --ruN a/stablehlo/stablehlo/testdata/conv_general_dilated_depthwise1d_lhs_float32_2_3_9__rhs_float32_12_1_3__windowstrides__1___padding__2025442285785167829.mlir b/stablehlo/stablehlo/testdata/conv_general_dilated_depthwise1d_lhs_float32_2_3_9__rhs_float32_12_1_3__windowstrides__1___padding__2025442285785167829.mlir
+--- stablehlo/stablehlo/testdata/conv_general_dilated_depthwise1d_lhs_float32_2_3_9__rhs_float32_12_1_3__windowstrides__1___padding__2025442285785167829.mlir
++++ stablehlo/stablehlo/testdata/conv_general_dilated_depthwise1d_lhs_float32_2_3_9__rhs_float32_12_1_3__windowstrides__1___padding__2025442285785167829.mlir
+@@ -1,4 +1,4 @@
+-// RUN-DISABLED: stablehlo-opt -inline %s | stablehlo-translate --interpret
++// RUN: stablehlo-opt -inline %s | stablehlo-translate --interpret
+ // RUN: stablehlo-translate --serialize --target=current %s | stablehlo-translate --deserialize | stablehlo-opt > %t.0
+ // RUN: stablehlo-opt %s > %t.1
+ // RUN: diff %t.0 %t.1
+diff --ruN a/stablehlo/stablehlo/testdata/conv_general_dilated_depthwise2d_dilated_lhs_float32_2_3_9_9__rhs_float32_12_1_3_3__windowstrides__1-5299255563318388077.mlir b/stablehlo/stablehlo/testdata/conv_general_dilated_depthwise2d_dilated_lhs_float32_2_3_9_9__rhs_float32_12_1_3_3__windowstrides__1-5299255563318388077.mlir
+--- stablehlo/stablehlo/testdata/conv_general_dilated_depthwise2d_dilated_lhs_float32_2_3_9_9__rhs_float32_12_1_3_3__windowstrides__1-5299255563318388077.mlir
++++ stablehlo/stablehlo/testdata/conv_general_dilated_depthwise2d_dilated_lhs_float32_2_3_9_9__rhs_float32_12_1_3_3__windowstrides__1-5299255563318388077.mlir
+@@ -1,4 +1,4 @@
+-// RUN-DISABLED: stablehlo-opt -inline %s | stablehlo-translate --interpret
++// RUN: stablehlo-opt -inline %s | stablehlo-translate --interpret
+ // RUN: stablehlo-translate --serialize --target=current %s | stablehlo-translate --deserialize | stablehlo-opt > %t.0
+ // RUN: stablehlo-opt %s > %t.1
+ // RUN: diff %t.0 %t.1
+diff --ruN a/stablehlo/stablehlo/testdata/conv_general_dilated_depthwise2d_lhs_float32_2_3_9_9__rhs_float32_12_1_3_3__windowstrides__1_1__padd-5494580149111736437.mlir b/stablehlo/stablehlo/testdata/conv_general_dilated_depthwise2d_lhs_float32_2_3_9_9__rhs_float32_12_1_3_3__windowstrides__1_1__padd-5494580149111736437.mlir
+--- stablehlo/stablehlo/testdata/conv_general_dilated_depthwise2d_lhs_float32_2_3_9_9__rhs_float32_12_1_3_3__windowstrides__1_1__padd-5494580149111736437.mlir
++++ stablehlo/stablehlo/testdata/conv_general_dilated_depthwise2d_lhs_float32_2_3_9_9__rhs_float32_12_1_3_3__windowstrides__1_1__padd-5494580149111736437.mlir
+@@ -1,4 +1,4 @@
+-// RUN-DISABLED: stablehlo-opt -inline %s | stablehlo-translate --interpret
++// RUN: stablehlo-opt -inline %s | stablehlo-translate --interpret
+ // RUN: stablehlo-translate --serialize --target=current %s | stablehlo-translate --deserialize | stablehlo-opt > %t.0
+ // RUN: stablehlo-opt %s > %t.1
+ // RUN: diff %t.0 %t.1
+diff --ruN a/stablehlo/stablehlo/testdata/conv_general_dilated_dilations_lhs_float32_2_3_9_10__rhs_float32_3_3_4_5__windowstrides__1_1__paddin-940783895638600378.mlir b/stablehlo/stablehlo/testdata/conv_general_dilated_dilations_lhs_float32_2_3_9_10__rhs_float32_3_3_4_5__windowstrides__1_1__paddin-940783895638600378.mlir
+--- stablehlo/stablehlo/testdata/conv_general_dilated_dilations_lhs_float32_2_3_9_10__rhs_float32_3_3_4_5__windowstrides__1_1__paddin-940783895638600378.mlir
++++ stablehlo/stablehlo/testdata/conv_general_dilated_dilations_lhs_float32_2_3_9_10__rhs_float32_3_3_4_5__windowstrides__1_1__paddin-940783895638600378.mlir
+@@ -1,4 +1,4 @@
+-// RUN-DISABLED: stablehlo-opt -inline %s | stablehlo-translate --interpret
++// RUN: stablehlo-opt -inline %s | stablehlo-translate --interpret
+ // RUN: stablehlo-translate --serialize --target=current %s | stablehlo-translate --deserialize | stablehlo-opt > %t.0
+ // RUN: stablehlo-opt %s > %t.1
+ // RUN: diff %t.0 %t.1
+diff --ruN a/stablehlo/stablehlo/testdata/conv_general_dilated_dilations_lhs_float32_2_3_9_10__rhs_float32_3_3_4_5__windowstrides__1_1__paddin7803468828575064957.mlir b/stablehlo/stablehlo/testdata/conv_general_dilated_dilations_lhs_float32_2_3_9_10__rhs_float32_3_3_4_5__windowstrides__1_1__paddin7803468828575064957.mlir
+--- stablehlo/stablehlo/testdata/conv_general_dilated_dilations_lhs_float32_2_3_9_10__rhs_float32_3_3_4_5__windowstrides__1_1__paddin7803468828575064957.mlir
++++ stablehlo/stablehlo/testdata/conv_general_dilated_dilations_lhs_float32_2_3_9_10__rhs_float32_3_3_4_5__windowstrides__1_1__paddin7803468828575064957.mlir
+@@ -1,4 +1,4 @@
+-// RUN-DISABLED: stablehlo-opt -inline %s | stablehlo-translate --interpret
++// RUN: stablehlo-opt -inline %s | stablehlo-translate --interpret
+ // RUN: stablehlo-translate --serialize --target=current %s | stablehlo-translate --deserialize | stablehlo-opt > %t.0
+ // RUN: stablehlo-opt %s > %t.1
+ // RUN: diff %t.0 %t.1
+diff --ruN a/stablehlo/stablehlo/testdata/conv_general_dilated_dilations_lhs_float32_2_3_9_10__rhs_float32_3_3_4_5__windowstrides__1_1__paddin8362069580368565836.mlir b/stablehlo/stablehlo/testdata/conv_general_dilated_dilations_lhs_float32_2_3_9_10__rhs_float32_3_3_4_5__windowstrides__1_1__paddin8362069580368565836.mlir
+--- stablehlo/stablehlo/testdata/conv_general_dilated_dilations_lhs_float32_2_3_9_10__rhs_float32_3_3_4_5__windowstrides__1_1__paddin8362069580368565836.mlir
++++ stablehlo/stablehlo/testdata/conv_general_dilated_dilations_lhs_float32_2_3_9_10__rhs_float32_3_3_4_5__windowstrides__1_1__paddin8362069580368565836.mlir
+@@ -1,4 +1,4 @@
+-// RUN-DISABLED: stablehlo-opt -inline %s | stablehlo-translate --interpret
++// RUN: stablehlo-opt -inline %s | stablehlo-translate --interpret
+ // RUN: stablehlo-translate --serialize --target=current %s | stablehlo-translate --deserialize | stablehlo-opt > %t.0
+ // RUN: stablehlo-opt %s > %t.1
+ // RUN: diff %t.0 %t.1
+diff --ruN a/stablehlo/stablehlo/testdata/conv_general_dilated_dimension_numbers_lhs_float32_2_3_9_10__rhs_float32_4_5_3_3__windowstrides__1_1-8327739261064575227.mlir b/stablehlo/stablehlo/testdata/conv_general_dilated_dimension_numbers_lhs_float32_2_3_9_10__rhs_float32_4_5_3_3__windowstrides__1_1-8327739261064575227.mlir
+--- stablehlo/stablehlo/testdata/conv_general_dilated_dimension_numbers_lhs_float32_2_3_9_10__rhs_float32_4_5_3_3__windowstrides__1_1-8327739261064575227.mlir
++++ stablehlo/stablehlo/testdata/conv_general_dilated_dimension_numbers_lhs_float32_2_3_9_10__rhs_float32_4_5_3_3__windowstrides__1_1-8327739261064575227.mlir
+@@ -1,4 +1,4 @@
+-// RUN-DISABLED: stablehlo-opt -inline %s | stablehlo-translate --interpret
++// RUN: stablehlo-opt -inline %s | stablehlo-translate --interpret
+ // RUN: stablehlo-translate --serialize --target=current %s | stablehlo-translate --deserialize | stablehlo-opt > %t.0
+ // RUN: stablehlo-opt %s > %t.1
+ // RUN: diff %t.0 %t.1
+diff --ruN a/stablehlo/stablehlo/testdata/conv_general_dilated_dimension_numbers_lhs_float32_2_9_10_3__rhs_float32_4_5_3_3__windowstrides__1_1-6479296361709234045.mlir b/stablehlo/stablehlo/testdata/conv_general_dilated_dimension_numbers_lhs_float32_2_9_10_3__rhs_float32_4_5_3_3__windowstrides__1_1-6479296361709234045.mlir
+--- stablehlo/stablehlo/testdata/conv_general_dilated_dimension_numbers_lhs_float32_2_9_10_3__rhs_float32_4_5_3_3__windowstrides__1_1-6479296361709234045.mlir
++++ stablehlo/stablehlo/testdata/conv_general_dilated_dimension_numbers_lhs_float32_2_9_10_3__rhs_float32_4_5_3_3__windowstrides__1_1-6479296361709234045.mlir
+@@ -1,4 +1,4 @@
+-// RUN-DISABLED: stablehlo-opt -inline %s | stablehlo-translate --interpret
++// RUN: stablehlo-opt -inline %s | stablehlo-translate --interpret
+ // RUN: stablehlo-translate --serialize --target=current %s | stablehlo-translate --deserialize | stablehlo-opt > %t.0
+ // RUN: stablehlo-opt %s > %t.1
+ // RUN: diff %t.0 %t.1
+diff --ruN a/stablehlo/stablehlo/testdata/conv_general_dilated_dtype_precision_lhs_float32_2_3_9_10__rhs_float32_3_3_4_5__windowstrides__1_1__-1572008590406220780.mlir b/stablehlo/stablehlo/testdata/conv_general_dilated_dtype_precision_lhs_float32_2_3_9_10__rhs_float32_3_3_4_5__windowstrides__1_1__-1572008590406220780.mlir
+--- stablehlo/stablehlo/testdata/conv_general_dilated_dtype_precision_lhs_float32_2_3_9_10__rhs_float32_3_3_4_5__windowstrides__1_1__-1572008590406220780.mlir
++++ stablehlo/stablehlo/testdata/conv_general_dilated_dtype_precision_lhs_float32_2_3_9_10__rhs_float32_3_3_4_5__windowstrides__1_1__-1572008590406220780.mlir
+@@ -1,4 +1,4 @@
+-// RUN-DISABLED: stablehlo-opt -inline %s | stablehlo-translate --interpret
++// RUN: stablehlo-opt -inline %s | stablehlo-translate --interpret
+ // RUN: stablehlo-translate --serialize --target=current %s | stablehlo-translate --deserialize | stablehlo-opt > %t.0
+ // RUN: stablehlo-opt %s > %t.1
+ // RUN: diff %t.0 %t.1
+diff --ruN a/stablehlo/stablehlo/testdata/conv_general_dilated_dtype_precision_lhs_float32_2_3_9_10__rhs_float32_3_3_4_5__windowstrides__1_1__-4848375839726769119.mlir b/stablehlo/stablehlo/testdata/conv_general_dilated_dtype_precision_lhs_float32_2_3_9_10__rhs_float32_3_3_4_5__windowstrides__1_1__-4848375839726769119.mlir
+--- stablehlo/stablehlo/testdata/conv_general_dilated_dtype_precision_lhs_float32_2_3_9_10__rhs_float32_3_3_4_5__windowstrides__1_1__-4848375839726769119.mlir
++++ stablehlo/stablehlo/testdata/conv_general_dilated_dtype_precision_lhs_float32_2_3_9_10__rhs_float32_3_3_4_5__windowstrides__1_1__-4848375839726769119.mlir
+@@ -1,4 +1,4 @@
+-// RUN-DISABLED: stablehlo-opt -inline %s | stablehlo-translate --interpret
++// RUN: stablehlo-opt -inline %s | stablehlo-translate --interpret
+ // RUN: stablehlo-translate --serialize --target=current %s | stablehlo-translate --deserialize | stablehlo-opt > %t.0
+ // RUN: stablehlo-opt %s > %t.1
+ // RUN: diff %t.0 %t.1
+diff --ruN a/stablehlo/stablehlo/testdata/conv_general_dilated_dtype_precision_lhs_float32_2_3_9_10__rhs_float32_3_3_4_5__windowstrides__1_1__-6463715315589295392.mlir b/stablehlo/stablehlo/testdata/conv_general_dilated_dtype_precision_lhs_float32_2_3_9_10__rhs_float32_3_3_4_5__windowstrides__1_1__-6463715315589295392.mlir
+--- stablehlo/stablehlo/testdata/conv_general_dilated_dtype_precision_lhs_float32_2_3_9_10__rhs_float32_3_3_4_5__windowstrides__1_1__-6463715315589295392.mlir
++++ stablehlo/stablehlo/testdata/conv_general_dilated_dtype_precision_lhs_float32_2_3_9_10__rhs_float32_3_3_4_5__windowstrides__1_1__-6463715315589295392.mlir
+@@ -1,4 +1,4 @@
+-// RUN-DISABLED: stablehlo-opt -inline %s | stablehlo-translate --interpret
++// RUN: stablehlo-opt -inline %s | stablehlo-translate --interpret
+ // RUN: stablehlo-translate --serialize --target=current %s | stablehlo-translate --deserialize | stablehlo-opt > %t.0
+ // RUN: stablehlo-opt %s > %t.1
+ // RUN: diff %t.0 %t.1
+diff --ruN a/stablehlo/stablehlo/testdata/conv_general_dilated_dtype_precision_lhs_float32_2_3_9_10__rhs_float32_3_3_4_5__windowstrides__1_1__-7128650963837464321.mlir b/stablehlo/stablehlo/testdata/conv_general_dilated_dtype_precision_lhs_float32_2_3_9_10__rhs_float32_3_3_4_5__windowstrides__1_1__-7128650963837464321.mlir
+--- stablehlo/stablehlo/testdata/conv_general_dilated_dtype_precision_lhs_float32_2_3_9_10__rhs_float32_3_3_4_5__windowstrides__1_1__-7128650963837464321.mlir
++++ stablehlo/stablehlo/testdata/conv_general_dilated_dtype_precision_lhs_float32_2_3_9_10__rhs_float32_3_3_4_5__windowstrides__1_1__-7128650963837464321.mlir
+@@ -1,4 +1,4 @@
+-// RUN-DISABLED: stablehlo-opt -inline %s | stablehlo-translate --interpret
++// RUN: stablehlo-opt -inline %s | stablehlo-translate --interpret
+ // RUN: stablehlo-translate --serialize --target=current %s | stablehlo-translate --deserialize | stablehlo-opt > %t.0
+ // RUN: stablehlo-opt %s > %t.1
+ // RUN: diff %t.0 %t.1
+diff --ruN a/stablehlo/stablehlo/testdata/conv_general_dilated_group_counts_lhs_float32_2_6_9_10__rhs_float32_6_3_4_5__windowstrides__1_1__pad-2212136815070163245.mlir b/stablehlo/stablehlo/testdata/conv_general_dilated_group_counts_lhs_float32_2_6_9_10__rhs_float32_6_3_4_5__windowstrides__1_1__pad-2212136815070163245.mlir
+--- stablehlo/stablehlo/testdata/conv_general_dilated_group_counts_lhs_float32_2_6_9_10__rhs_float32_6_3_4_5__windowstrides__1_1__pad-2212136815070163245.mlir
++++ stablehlo/stablehlo/testdata/conv_general_dilated_group_counts_lhs_float32_2_6_9_10__rhs_float32_6_3_4_5__windowstrides__1_1__pad-2212136815070163245.mlir
+@@ -1,4 +1,4 @@
+-// RUN-DISABLED: stablehlo-opt -inline %s | stablehlo-translate --interpret
++// RUN: stablehlo-opt -inline %s | stablehlo-translate --interpret
+ // RUN: stablehlo-translate --serialize --target=current %s | stablehlo-translate --deserialize | stablehlo-opt > %t.0
+ // RUN: stablehlo-opt %s > %t.1
+ // RUN: diff %t.0 %t.1
+diff --ruN a/stablehlo/stablehlo/testdata/conv_general_dilated_group_counts_lhs_float32_4_3_9_10__rhs_float32_6_3_4_5__windowstrides__1_1__pad2141518546713332984.mlir b/stablehlo/stablehlo/testdata/conv_general_dilated_group_counts_lhs_float32_4_3_9_10__rhs_float32_6_3_4_5__windowstrides__1_1__pad2141518546713332984.mlir
+--- stablehlo/stablehlo/testdata/conv_general_dilated_group_counts_lhs_float32_4_3_9_10__rhs_float32_6_3_4_5__windowstrides__1_1__pad2141518546713332984.mlir
++++ stablehlo/stablehlo/testdata/conv_general_dilated_group_counts_lhs_float32_4_3_9_10__rhs_float32_6_3_4_5__windowstrides__1_1__pad2141518546713332984.mlir
+@@ -1,4 +1,4 @@
+-// RUN-DISABLED: stablehlo-opt -inline %s | stablehlo-translate --interpret
++// RUN: stablehlo-opt -inline %s | stablehlo-translate --interpret
+ // RUN: stablehlo-translate --serialize --target=current %s | stablehlo-translate --deserialize | stablehlo-opt > %t.0
+ // RUN: stablehlo-opt %s > %t.1
+ // RUN: diff %t.0 %t.1
+diff --ruN a/stablehlo/stablehlo/testdata/conv_general_dilated_padding_lhs_float32_2_3_9_10__rhs_float32_3_3_4_5__windowstrides__1_1__padding_-5318452038191342786.mlir b/stablehlo/stablehlo/testdata/conv_general_dilated_padding_lhs_float32_2_3_9_10__rhs_float32_3_3_4_5__windowstrides__1_1__padding_-5318452038191342786.mlir
+--- stablehlo/stablehlo/testdata/conv_general_dilated_padding_lhs_float32_2_3_9_10__rhs_float32_3_3_4_5__windowstrides__1_1__padding_-5318452038191342786.mlir
++++ stablehlo/stablehlo/testdata/conv_general_dilated_padding_lhs_float32_2_3_9_10__rhs_float32_3_3_4_5__windowstrides__1_1__padding_-5318452038191342786.mlir
+@@ -1,4 +1,4 @@
+-// RUN-DISABLED: stablehlo-opt -inline %s | stablehlo-translate --interpret
++// RUN: stablehlo-opt -inline %s | stablehlo-translate --interpret
+ // RUN: stablehlo-translate --serialize --target=current %s | stablehlo-translate --deserialize | stablehlo-opt > %t.0
+ // RUN: stablehlo-opt %s > %t.1
+ // RUN: diff %t.0 %t.1
+diff --ruN a/stablehlo/stablehlo/testdata/conv_general_dilated_padding_lhs_float32_2_3_9_10__rhs_float32_3_3_4_5__windowstrides__1_1__padding_5050050053143756869.mlir b/stablehlo/stablehlo/testdata/conv_general_dilated_padding_lhs_float32_2_3_9_10__rhs_float32_3_3_4_5__windowstrides__1_1__padding_5050050053143756869.mlir
+--- stablehlo/stablehlo/testdata/conv_general_dilated_padding_lhs_float32_2_3_9_10__rhs_float32_3_3_4_5__windowstrides__1_1__padding_5050050053143756869.mlir
++++ stablehlo/stablehlo/testdata/conv_general_dilated_padding_lhs_float32_2_3_9_10__rhs_float32_3_3_4_5__windowstrides__1_1__padding_5050050053143756869.mlir
+@@ -1,4 +1,4 @@
+-// RUN-DISABLED: stablehlo-opt -inline %s | stablehlo-translate --interpret
++// RUN: stablehlo-opt -inline %s | stablehlo-translate --interpret
+ // RUN: stablehlo-translate --serialize --target=current %s | stablehlo-translate --deserialize | stablehlo-opt > %t.0
+ // RUN: stablehlo-opt %s > %t.1
+ // RUN: diff %t.0 %t.1
+diff --ruN a/stablehlo/stablehlo/testdata/conv_general_dilated_preferred_lhs_float32_2_3_9_10__rhs_float32_3_3_4_5__windowstrides__1_1__paddin-8230831430534381289.mlir b/stablehlo/stablehlo/testdata/conv_general_dilated_preferred_lhs_float32_2_3_9_10__rhs_float32_3_3_4_5__windowstrides__1_1__paddin-8230831430534381289.mlir
+--- stablehlo/stablehlo/testdata/conv_general_dilated_preferred_lhs_float32_2_3_9_10__rhs_float32_3_3_4_5__windowstrides__1_1__paddin-8230831430534381289.mlir
++++ stablehlo/stablehlo/testdata/conv_general_dilated_preferred_lhs_float32_2_3_9_10__rhs_float32_3_3_4_5__windowstrides__1_1__paddin-8230831430534381289.mlir
+@@ -1,4 +1,4 @@
+-// RUN-DISABLED: stablehlo-opt -inline %s | stablehlo-translate --interpret
++// RUN: stablehlo-opt -inline %s | stablehlo-translate --interpret
+ // RUN: stablehlo-translate --serialize --target=current %s | stablehlo-translate --deserialize | stablehlo-opt > %t.0
+ // RUN: stablehlo-opt %s > %t.1
+ // RUN: diff %t.0 %t.1
+diff --ruN a/stablehlo/stablehlo/testdata/conv_general_dilated_preferred_lhs_float32_2_3_9_10__rhs_float32_3_3_4_5__windowstrides__1_1__paddin2430556623423240398.mlir b/stablehlo/stablehlo/testdata/conv_general_dilated_preferred_lhs_float32_2_3_9_10__rhs_float32_3_3_4_5__windowstrides__1_1__paddin2430556623423240398.mlir
+--- stablehlo/stablehlo/testdata/conv_general_dilated_preferred_lhs_float32_2_3_9_10__rhs_float32_3_3_4_5__windowstrides__1_1__paddin2430556623423240398.mlir
++++ stablehlo/stablehlo/testdata/conv_general_dilated_preferred_lhs_float32_2_3_9_10__rhs_float32_3_3_4_5__windowstrides__1_1__paddin2430556623423240398.mlir
+@@ -1,4 +1,4 @@
+-// RUN-DISABLED: stablehlo-opt -inline %s | stablehlo-translate --interpret
++// RUN: stablehlo-opt -inline %s | stablehlo-translate --interpret
+ // RUN: stablehlo-translate --serialize --target=current %s | stablehlo-translate --deserialize | stablehlo-opt > %t.0
+ // RUN: stablehlo-opt %s > %t.1
+ // RUN: diff %t.0 %t.1
+diff --ruN a/stablehlo/stablehlo/testdata/conv_general_dilated_preferred_lhs_int32_2_3_9_10__rhs_int32_3_3_4_5__windowstrides__1_1__padding___-7077764382968112509.mlir b/stablehlo/stablehlo/testdata/conv_general_dilated_preferred_lhs_int32_2_3_9_10__rhs_int32_3_3_4_5__windowstrides__1_1__padding___-7077764382968112509.mlir
+--- stablehlo/stablehlo/testdata/conv_general_dilated_preferred_lhs_int32_2_3_9_10__rhs_int32_3_3_4_5__windowstrides__1_1__padding___-7077764382968112509.mlir
++++ stablehlo/stablehlo/testdata/conv_general_dilated_preferred_lhs_int32_2_3_9_10__rhs_int32_3_3_4_5__windowstrides__1_1__padding___-7077764382968112509.mlir
+@@ -1,4 +1,4 @@
+-// RUN-DISABLED: stablehlo-opt -inline %s | stablehlo-translate --interpret
++// RUN: stablehlo-opt -inline %s | stablehlo-translate --interpret
+ // RUN: stablehlo-translate --serialize --target=current %s | stablehlo-translate --deserialize | stablehlo-opt > %t.0
+ // RUN: stablehlo-opt %s > %t.1
+ // RUN: diff %t.0 %t.1
+diff --ruN a/stablehlo/stablehlo/testdata/conv_general_dilated_preferred_lhs_int32_2_3_9_10__rhs_int32_3_3_4_5__windowstrides__1_1__padding___8425439145703732762.mlir b/stablehlo/stablehlo/testdata/conv_general_dilated_preferred_lhs_int32_2_3_9_10__rhs_int32_3_3_4_5__windowstrides__1_1__padding___8425439145703732762.mlir
+--- stablehlo/stablehlo/testdata/conv_general_dilated_preferred_lhs_int32_2_3_9_10__rhs_int32_3_3_4_5__windowstrides__1_1__padding___8425439145703732762.mlir
++++ stablehlo/stablehlo/testdata/conv_general_dilated_preferred_lhs_int32_2_3_9_10__rhs_int32_3_3_4_5__windowstrides__1_1__padding___8425439145703732762.mlir
+@@ -1,4 +1,4 @@
+-// RUN-DISABLED: stablehlo-opt -inline %s | stablehlo-translate --interpret
++// RUN: stablehlo-opt -inline %s | stablehlo-translate --interpret
+ // RUN: stablehlo-translate --serialize --target=current %s | stablehlo-translate --deserialize | stablehlo-opt > %t.0
+ // RUN: stablehlo-opt %s > %t.1
+ // RUN: diff %t.0 %t.1
+diff --ruN a/stablehlo/stablehlo/testdata/conv_general_dilated_rhs_oob_after_dilation_lhs_float32_2_3_9_10__rhs_float32_3_3_4_5__windowstrides2604570134889024577.mlir b/stablehlo/stablehlo/testdata/conv_general_dilated_rhs_oob_after_dilation_lhs_float32_2_3_9_10__rhs_float32_3_3_4_5__windowstrides2604570134889024577.mlir
+--- stablehlo/stablehlo/testdata/conv_general_dilated_rhs_oob_after_dilation_lhs_float32_2_3_9_10__rhs_float32_3_3_4_5__windowstrides2604570134889024577.mlir
++++ stablehlo/stablehlo/testdata/conv_general_dilated_rhs_oob_after_dilation_lhs_float32_2_3_9_10__rhs_float32_3_3_4_5__windowstrides2604570134889024577.mlir
+@@ -1,4 +1,4 @@
+-// RUN-DISABLED: stablehlo-opt -inline %s | stablehlo-translate --interpret
++// RUN: stablehlo-opt -inline %s | stablehlo-translate --interpret
+ // RUN: stablehlo-translate --serialize --target=current %s | stablehlo-translate --deserialize | stablehlo-opt > %t.0
+ // RUN: stablehlo-opt %s > %t.1
+ // RUN: diff %t.0 %t.1
+diff --ruN a/stablehlo/stablehlo/testdata/conv_general_dilated_rhs_oob_after_pading_lhs_float32_1_3_2_2__rhs_float32_64_3_7_7__windowstrides__5476883256254674781.mlir b/stablehlo/stablehlo/testdata/conv_general_dilated_rhs_oob_after_pading_lhs_float32_1_3_2_2__rhs_float32_64_3_7_7__windowstrides__5476883256254674781.mlir
+--- stablehlo/stablehlo/testdata/conv_general_dilated_rhs_oob_after_pading_lhs_float32_1_3_2_2__rhs_float32_64_3_7_7__windowstrides__5476883256254674781.mlir
++++ stablehlo/stablehlo/testdata/conv_general_dilated_rhs_oob_after_pading_lhs_float32_1_3_2_2__rhs_float32_64_3_7_7__windowstrides__5476883256254674781.mlir
+@@ -1,4 +1,4 @@
+-// RUN-DISABLED: stablehlo-opt -inline %s | stablehlo-translate --interpret
++// RUN: stablehlo-opt -inline %s | stablehlo-translate --interpret
+ // RUN: stablehlo-translate --serialize --target=current %s | stablehlo-translate --deserialize | stablehlo-opt > %t.0
+ // RUN: stablehlo-opt %s > %t.1
+ // RUN: diff %t.0 %t.1
+diff --ruN a/stablehlo/stablehlo/testdata/conv_general_dilated_rhs_oob_lhs_float32_2_3_9_10__rhs_float32_3_3_10_5__windowstrides__1_1__padding-7028470013130116023.mlir b/stablehlo/stablehlo/testdata/conv_general_dilated_rhs_oob_lhs_float32_2_3_9_10__rhs_float32_3_3_10_5__windowstrides__1_1__padding-7028470013130116023.mlir
+--- stablehlo/stablehlo/testdata/conv_general_dilated_rhs_oob_lhs_float32_2_3_9_10__rhs_float32_3_3_10_5__windowstrides__1_1__padding-7028470013130116023.mlir
++++ stablehlo/stablehlo/testdata/conv_general_dilated_rhs_oob_lhs_float32_2_3_9_10__rhs_float32_3_3_10_5__windowstrides__1_1__padding-7028470013130116023.mlir
+@@ -1,4 +1,4 @@
+-// RUN-DISABLED: stablehlo-opt -inline %s | stablehlo-translate --interpret
++// RUN: stablehlo-opt -inline %s | stablehlo-translate --interpret
+ // RUN: stablehlo-translate --serialize --target=current %s | stablehlo-translate --deserialize | stablehlo-opt > %t.0
+ // RUN: stablehlo-opt %s > %t.1
+ // RUN: diff %t.0 %t.1
+diff --ruN a/stablehlo/stablehlo/testdata/conv_general_dilated_rhs_oob_same_padding_lhs_float32_1_1_16_1__rhs_float32_4_1_1_2__windowstrides__-5378230060959849233.mlir b/stablehlo/stablehlo/testdata/conv_general_dilated_rhs_oob_same_padding_lhs_float32_1_1_16_1__rhs_float32_4_1_1_2__windowstrides__-5378230060959849233.mlir
+--- stablehlo/stablehlo/testdata/conv_general_dilated_rhs_oob_same_padding_lhs_float32_1_1_16_1__rhs_float32_4_1_1_2__windowstrides__-5378230060959849233.mlir
++++ stablehlo/stablehlo/testdata/conv_general_dilated_rhs_oob_same_padding_lhs_float32_1_1_16_1__rhs_float32_4_1_1_2__windowstrides__-5378230060959849233.mlir
+@@ -1,4 +1,4 @@
+-// RUN-DISABLED: stablehlo-opt -inline %s | stablehlo-translate --interpret
++// RUN: stablehlo-opt -inline %s | stablehlo-translate --interpret
+ // RUN: stablehlo-translate --serialize --target=current %s | stablehlo-translate --deserialize | stablehlo-opt > %t.0
+ // RUN: stablehlo-opt %s > %t.1
+ // RUN: diff %t.0 %t.1
+diff --ruN a/stablehlo/stablehlo/testdata/conv_general_dilated_tf_conversion_path_1d_lhs_float32_1_28_1__rhs_float32_3_1_16__windowstrides__1_-3327288011231887622.mlir b/stablehlo/stablehlo/testdata/conv_general_dilated_tf_conversion_path_1d_lhs_float32_1_28_1__rhs_float32_3_1_16__windowstrides__1_-3327288011231887622.mlir
+--- stablehlo/stablehlo/testdata/conv_general_dilated_tf_conversion_path_1d_lhs_float32_1_28_1__rhs_float32_3_1_16__windowstrides__1_-3327288011231887622.mlir
++++ stablehlo/stablehlo/testdata/conv_general_dilated_tf_conversion_path_1d_lhs_float32_1_28_1__rhs_float32_3_1_16__windowstrides__1_-3327288011231887622.mlir
+@@ -1,4 +1,4 @@
+-// RUN-DISABLED: stablehlo-opt -inline %s | stablehlo-translate --interpret
++// RUN: stablehlo-opt -inline %s | stablehlo-translate --interpret
+ // RUN: stablehlo-translate --serialize --target=current %s | stablehlo-translate --deserialize | stablehlo-opt > %t.0
+ // RUN: stablehlo-opt %s > %t.1
+ // RUN: diff %t.0 %t.1
+diff --ruN a/stablehlo/stablehlo/testdata/conv_general_dilated_tf_conversion_path_1d_lhs_float32_1_28_1__rhs_float32_3_1_16__windowstrides__1_-3622729120410096886.mlir b/stablehlo/stablehlo/testdata/conv_general_dilated_tf_conversion_path_1d_lhs_float32_1_28_1__rhs_float32_3_1_16__windowstrides__1_-3622729120410096886.mlir
+--- stablehlo/stablehlo/testdata/conv_general_dilated_tf_conversion_path_1d_lhs_float32_1_28_1__rhs_float32_3_1_16__windowstrides__1_-3622729120410096886.mlir
++++ stablehlo/stablehlo/testdata/conv_general_dilated_tf_conversion_path_1d_lhs_float32_1_28_1__rhs_float32_3_1_16__windowstrides__1_-3622729120410096886.mlir
+@@ -1,4 +1,4 @@
+-// RUN-DISABLED: stablehlo-opt -inline %s | stablehlo-translate --interpret
++// RUN: stablehlo-opt -inline %s | stablehlo-translate --interpret
+ // RUN: stablehlo-translate --serialize --target=current %s | stablehlo-translate --deserialize | stablehlo-opt > %t.0
+ // RUN: stablehlo-opt %s > %t.1
+ // RUN: diff %t.0 %t.1
+diff --ruN a/stablehlo/stablehlo/testdata/conv_general_dilated_tf_conversion_path_1d_lhs_float32_1_28_1__rhs_float32_3_1_16__windowstrides__1_-6986955039250405512.mlir b/stablehlo/stablehlo/testdata/conv_general_dilated_tf_conversion_path_1d_lhs_float32_1_28_1__rhs_float32_3_1_16__windowstrides__1_-6986955039250405512.mlir
+--- stablehlo/stablehlo/testdata/conv_general_dilated_tf_conversion_path_1d_lhs_float32_1_28_1__rhs_float32_3_1_16__windowstrides__1_-6986955039250405512.mlir
++++ stablehlo/stablehlo/testdata/conv_general_dilated_tf_conversion_path_1d_lhs_float32_1_28_1__rhs_float32_3_1_16__windowstrides__1_-6986955039250405512.mlir
+@@ -1,4 +1,4 @@
+-// RUN-DISABLED: stablehlo-opt -inline %s | stablehlo-translate --interpret
++// RUN: stablehlo-opt -inline %s | stablehlo-translate --interpret
+ // RUN: stablehlo-translate --serialize --target=current %s | stablehlo-translate --deserialize | stablehlo-opt > %t.0
+ // RUN: stablehlo-opt %s > %t.1
+ // RUN: diff %t.0 %t.1
+diff --ruN a/stablehlo/stablehlo/testdata/conv_general_dilated_tf_conversion_path_1d_lhs_float32_1_28_1__rhs_float32_3_1_16__windowstrides__1_-9029857704645127306.mlir b/stablehlo/stablehlo/testdata/conv_general_dilated_tf_conversion_path_1d_lhs_float32_1_28_1__rhs_float32_3_1_16__windowstrides__1_-9029857704645127306.mlir
+--- stablehlo/stablehlo/testdata/conv_general_dilated_tf_conversion_path_1d_lhs_float32_1_28_1__rhs_float32_3_1_16__windowstrides__1_-9029857704645127306.mlir
++++ stablehlo/stablehlo/testdata/conv_general_dilated_tf_conversion_path_1d_lhs_float32_1_28_1__rhs_float32_3_1_16__windowstrides__1_-9029857704645127306.mlir
+@@ -1,4 +1,4 @@
+-// RUN-DISABLED: stablehlo-opt -inline %s | stablehlo-translate --interpret
++// RUN: stablehlo-opt -inline %s | stablehlo-translate --interpret
+ // RUN: stablehlo-translate --serialize --target=current %s | stablehlo-translate --deserialize | stablehlo-opt > %t.0
+ // RUN: stablehlo-opt %s > %t.1
+ // RUN: diff %t.0 %t.1
+diff --ruN a/stablehlo/stablehlo/testdata/conv_general_dilated_tf_conversion_path_2d_lhs_float32_1_1_28_28__rhs_float32_3_3_1_16__windowstride-2949258448720886117.mlir b/stablehlo/stablehlo/testdata/conv_general_dilated_tf_conversion_path_2d_lhs_float32_1_1_28_28__rhs_float32_3_3_1_16__windowstride-2949258448720886117.mlir
+--- stablehlo/stablehlo/testdata/conv_general_dilated_tf_conversion_path_2d_lhs_float32_1_1_28_28__rhs_float32_3_3_1_16__windowstride-2949258448720886117.mlir
++++ stablehlo/stablehlo/testdata/conv_general_dilated_tf_conversion_path_2d_lhs_float32_1_1_28_28__rhs_float32_3_3_1_16__windowstride-2949258448720886117.mlir
+@@ -1,4 +1,4 @@
+-// RUN-DISABLED: stablehlo-opt -inline %s | stablehlo-translate --interpret
++// RUN: stablehlo-opt -inline %s | stablehlo-translate --interpret
+ // RUN: stablehlo-translate --serialize --target=current %s | stablehlo-translate --deserialize | stablehlo-opt > %t.0
+ // RUN: stablehlo-opt %s > %t.1
+ // RUN: diff %t.0 %t.1
+diff --ruN a/stablehlo/stablehlo/testdata/conv_general_dilated_tf_conversion_path_2d_lhs_float32_1_1_28_28__rhs_float32_3_3_1_16__windowstride-3150713558304940791.mlir b/stablehlo/stablehlo/testdata/conv_general_dilated_tf_conversion_path_2d_lhs_float32_1_1_28_28__rhs_float32_3_3_1_16__windowstride-3150713558304940791.mlir
+--- stablehlo/stablehlo/testdata/conv_general_dilated_tf_conversion_path_2d_lhs_float32_1_1_28_28__rhs_float32_3_3_1_16__windowstride-3150713558304940791.mlir
++++ stablehlo/stablehlo/testdata/conv_general_dilated_tf_conversion_path_2d_lhs_float32_1_1_28_28__rhs_float32_3_3_1_16__windowstride-3150713558304940791.mlir
+@@ -1,4 +1,4 @@
+-// RUN-DISABLED: stablehlo-opt -inline %s | stablehlo-translate --interpret
++// RUN: stablehlo-opt -inline %s | stablehlo-translate --interpret
+ // RUN: stablehlo-translate --serialize --target=current %s | stablehlo-translate --deserialize | stablehlo-opt > %t.0
+ // RUN: stablehlo-opt %s > %t.1
+ // RUN: diff %t.0 %t.1
+diff --ruN a/stablehlo/stablehlo/testdata/conv_general_dilated_tf_conversion_path_2d_lhs_float32_1_1_28_28__rhs_float32_3_3_1_16__windowstride-4268834939663085007.mlir b/stablehlo/stablehlo/testdata/conv_general_dilated_tf_conversion_path_2d_lhs_float32_1_1_28_28__rhs_float32_3_3_1_16__windowstride-4268834939663085007.mlir
+--- stablehlo/stablehlo/testdata/conv_general_dilated_tf_conversion_path_2d_lhs_float32_1_1_28_28__rhs_float32_3_3_1_16__windowstride-4268834939663085007.mlir
++++ stablehlo/stablehlo/testdata/conv_general_dilated_tf_conversion_path_2d_lhs_float32_1_1_28_28__rhs_float32_3_3_1_16__windowstride-4268834939663085007.mlir
+@@ -1,4 +1,4 @@
+-// RUN-DISABLED: stablehlo-opt -inline %s | stablehlo-translate --interpret
++// RUN: stablehlo-opt -inline %s | stablehlo-translate --interpret
+ // RUN: stablehlo-translate --serialize --target=current %s | stablehlo-translate --deserialize | stablehlo-opt > %t.0
+ // RUN: stablehlo-opt %s > %t.1
+ // RUN: diff %t.0 %t.1
+diff --ruN a/stablehlo/stablehlo/testdata/conv_general_dilated_tf_conversion_path_2d_lhs_float32_1_1_28_28__rhs_float32_3_3_1_16__windowstride-4823547473556881342.mlir b/stablehlo/stablehlo/testdata/conv_general_dilated_tf_conversion_path_2d_lhs_float32_1_1_28_28__rhs_float32_3_3_1_16__windowstride-4823547473556881342.mlir
+--- stablehlo/stablehlo/testdata/conv_general_dilated_tf_conversion_path_2d_lhs_float32_1_1_28_28__rhs_float32_3_3_1_16__windowstride-4823547473556881342.mlir
++++ stablehlo/stablehlo/testdata/conv_general_dilated_tf_conversion_path_2d_lhs_float32_1_1_28_28__rhs_float32_3_3_1_16__windowstride-4823547473556881342.mlir
+@@ -1,4 +1,4 @@
+-// RUN-DISABLED: stablehlo-opt -inline %s | stablehlo-translate --interpret
++// RUN: stablehlo-opt -inline %s | stablehlo-translate --interpret
+ // RUN: stablehlo-translate --serialize --target=current %s | stablehlo-translate --deserialize | stablehlo-opt > %t.0
+ // RUN: stablehlo-opt %s > %t.1
+ // RUN: diff %t.0 %t.1
+diff --ruN a/stablehlo/stablehlo/testdata/conv_general_dilated_tf_conversion_path_2d_lhs_float32_1_1_28_28__rhs_float32_3_3_1_16__windowstride6887804375295982821.mlir b/stablehlo/stablehlo/testdata/conv_general_dilated_tf_conversion_path_2d_lhs_float32_1_1_28_28__rhs_float32_3_3_1_16__windowstride6887804375295982821.mlir
+--- stablehlo/stablehlo/testdata/conv_general_dilated_tf_conversion_path_2d_lhs_float32_1_1_28_28__rhs_float32_3_3_1_16__windowstride6887804375295982821.mlir
++++ stablehlo/stablehlo/testdata/conv_general_dilated_tf_conversion_path_2d_lhs_float32_1_1_28_28__rhs_float32_3_3_1_16__windowstride6887804375295982821.mlir
+@@ -1,4 +1,4 @@
+-// RUN-DISABLED: stablehlo-opt -inline %s | stablehlo-translate --interpret
++// RUN: stablehlo-opt -inline %s | stablehlo-translate --interpret
+ // RUN: stablehlo-translate --serialize --target=current %s | stablehlo-translate --deserialize | stablehlo-opt > %t.0
+ // RUN: stablehlo-opt %s > %t.1
+ // RUN: diff %t.0 %t.1
+diff --ruN a/stablehlo/stablehlo/testdata/conv_general_dilated_tf_conversion_path_2d_lhs_float32_1_28_28_1__rhs_float32_3_3_1_16__windowstride-5370080226275098061.mlir b/stablehlo/stablehlo/testdata/conv_general_dilated_tf_conversion_path_2d_lhs_float32_1_28_28_1__rhs_float32_3_3_1_16__windowstride-5370080226275098061.mlir
+--- stablehlo/stablehlo/testdata/conv_general_dilated_tf_conversion_path_2d_lhs_float32_1_28_28_1__rhs_float32_3_3_1_16__windowstride-5370080226275098061.mlir
++++ stablehlo/stablehlo/testdata/conv_general_dilated_tf_conversion_path_2d_lhs_float32_1_28_28_1__rhs_float32_3_3_1_16__windowstride-5370080226275098061.mlir
+@@ -1,4 +1,4 @@
+-// RUN-DISABLED: stablehlo-opt -inline %s | stablehlo-translate --interpret
++// RUN: stablehlo-opt -inline %s | stablehlo-translate --interpret
+ // RUN: stablehlo-translate --serialize --target=current %s | stablehlo-translate --deserialize | stablehlo-opt > %t.0
+ // RUN: stablehlo-opt %s > %t.1
+ // RUN: diff %t.0 %t.1
+diff --ruN a/stablehlo/stablehlo/testdata/conv_general_dilated_tf_conversion_path_2d_lhs_float32_1_28_28_1__rhs_float32_3_3_1_16__windowstride3500806609840728678.mlir b/stablehlo/stablehlo/testdata/conv_general_dilated_tf_conversion_path_2d_lhs_float32_1_28_28_1__rhs_float32_3_3_1_16__windowstride3500806609840728678.mlir
+--- stablehlo/stablehlo/testdata/conv_general_dilated_tf_conversion_path_2d_lhs_float32_1_28_28_1__rhs_float32_3_3_1_16__windowstride3500806609840728678.mlir
++++ stablehlo/stablehlo/testdata/conv_general_dilated_tf_conversion_path_2d_lhs_float32_1_28_28_1__rhs_float32_3_3_1_16__windowstride3500806609840728678.mlir
+@@ -1,4 +1,4 @@
+-// RUN-DISABLED: stablehlo-opt -inline %s | stablehlo-translate --interpret
++// RUN: stablehlo-opt -inline %s | stablehlo-translate --interpret
+ // RUN: stablehlo-translate --serialize --target=current %s | stablehlo-translate --deserialize | stablehlo-opt > %t.0
+ // RUN: stablehlo-opt %s > %t.1
+ // RUN: diff %t.0 %t.1
+diff --ruN a/stablehlo/stablehlo/testdata/conv_general_dilated_tf_conversion_path_2d_lhs_float32_1_28_28_1__rhs_float32_3_3_1_16__windowstride5787494791845602941.mlir b/stablehlo/stablehlo/testdata/conv_general_dilated_tf_conversion_path_2d_lhs_float32_1_28_28_1__rhs_float32_3_3_1_16__windowstride5787494791845602941.mlir
+--- stablehlo/stablehlo/testdata/conv_general_dilated_tf_conversion_path_2d_lhs_float32_1_28_28_1__rhs_float32_3_3_1_16__windowstride5787494791845602941.mlir
++++ stablehlo/stablehlo/testdata/conv_general_dilated_tf_conversion_path_2d_lhs_float32_1_28_28_1__rhs_float32_3_3_1_16__windowstride5787494791845602941.mlir
+@@ -1,4 +1,4 @@
+-// RUN-DISABLED: stablehlo-opt -inline %s | stablehlo-translate --interpret
++// RUN: stablehlo-opt -inline %s | stablehlo-translate --interpret
+ // RUN: stablehlo-translate --serialize --target=current %s | stablehlo-translate --deserialize | stablehlo-opt > %t.0
+ // RUN: stablehlo-opt %s > %t.1
+ // RUN: diff %t.0 %t.1
+diff --ruN a/stablehlo/stablehlo/testdata/conv_general_dilated_tf_conversion_path_2d_lhs_float32_1_28_28_1__rhs_float32_3_3_1_16__windowstride6312536791243051545.mlir b/stablehlo/stablehlo/testdata/conv_general_dilated_tf_conversion_path_2d_lhs_float32_1_28_28_1__rhs_float32_3_3_1_16__windowstride6312536791243051545.mlir
+--- stablehlo/stablehlo/testdata/conv_general_dilated_tf_conversion_path_2d_lhs_float32_1_28_28_1__rhs_float32_3_3_1_16__windowstride6312536791243051545.mlir
++++ stablehlo/stablehlo/testdata/conv_general_dilated_tf_conversion_path_2d_lhs_float32_1_28_28_1__rhs_float32_3_3_1_16__windowstride6312536791243051545.mlir
+@@ -1,4 +1,4 @@
+-// RUN-DISABLED: stablehlo-opt -inline %s | stablehlo-translate --interpret
++// RUN: stablehlo-opt -inline %s | stablehlo-translate --interpret
+ // RUN: stablehlo-translate --serialize --target=current %s | stablehlo-translate --deserialize | stablehlo-opt > %t.0
+ // RUN: stablehlo-opt %s > %t.1
+ // RUN: diff %t.0 %t.1
+diff --ruN a/stablehlo/stablehlo/testdata/conv_general_dilated_tf_conversion_path_2d_lhs_float32_1_28_28_1__rhs_float32_3_3_1_16__windowstride8472832706066243053.mlir b/stablehlo/stablehlo/testdata/conv_general_dilated_tf_conversion_path_2d_lhs_float32_1_28_28_1__rhs_float32_3_3_1_16__windowstride8472832706066243053.mlir
+--- stablehlo/stablehlo/testdata/conv_general_dilated_tf_conversion_path_2d_lhs_float32_1_28_28_1__rhs_float32_3_3_1_16__windowstride8472832706066243053.mlir
++++ stablehlo/stablehlo/testdata/conv_general_dilated_tf_conversion_path_2d_lhs_float32_1_28_28_1__rhs_float32_3_3_1_16__windowstride8472832706066243053.mlir
+@@ -1,4 +1,4 @@
+-// RUN-DISABLED: stablehlo-opt -inline %s | stablehlo-translate --interpret
++// RUN: stablehlo-opt -inline %s | stablehlo-translate --interpret
+ // RUN: stablehlo-translate --serialize --target=current %s | stablehlo-translate --deserialize | stablehlo-opt > %t.0
+ // RUN: stablehlo-opt %s > %t.1
+ // RUN: diff %t.0 %t.1
+diff --ruN a/stablehlo/stablehlo/testdata/conv_general_dilated_tf_conversion_path_3d_lhs_float32_1_4_28_28_1__rhs_float32_2_3_3_1_16__windowst-8282934958224398022.mlir b/stablehlo/stablehlo/testdata/conv_general_dilated_tf_conversion_path_3d_lhs_float32_1_4_28_28_1__rhs_float32_2_3_3_1_16__windowst-8282934958224398022.mlir
+--- stablehlo/stablehlo/testdata/conv_general_dilated_tf_conversion_path_3d_lhs_float32_1_4_28_28_1__rhs_float32_2_3_3_1_16__windowst-8282934958224398022.mlir
++++ stablehlo/stablehlo/testdata/conv_general_dilated_tf_conversion_path_3d_lhs_float32_1_4_28_28_1__rhs_float32_2_3_3_1_16__windowst-8282934958224398022.mlir
+@@ -1,4 +1,4 @@
+-// RUN-DISABLED: stablehlo-opt -inline %s | stablehlo-translate --interpret
++// RUN: stablehlo-opt -inline %s | stablehlo-translate --interpret
+ // RUN: stablehlo-translate --serialize --target=current %s | stablehlo-translate --deserialize | stablehlo-opt > %t.0
+ // RUN: stablehlo-opt %s > %t.1
+ // RUN: diff %t.0 %t.1
+diff --ruN a/stablehlo/stablehlo/testdata/conv_general_dilated_tf_conversion_path_3d_lhs_float32_1_4_28_28_1__rhs_float32_2_3_3_1_16__windowst3167308923230843499.mlir b/stablehlo/stablehlo/testdata/conv_general_dilated_tf_conversion_path_3d_lhs_float32_1_4_28_28_1__rhs_float32_2_3_3_1_16__windowst3167308923230843499.mlir
+--- stablehlo/stablehlo/testdata/conv_general_dilated_tf_conversion_path_3d_lhs_float32_1_4_28_28_1__rhs_float32_2_3_3_1_16__windowst3167308923230843499.mlir
++++ stablehlo/stablehlo/testdata/conv_general_dilated_tf_conversion_path_3d_lhs_float32_1_4_28_28_1__rhs_float32_2_3_3_1_16__windowst3167308923230843499.mlir
+@@ -1,4 +1,4 @@
+-// RUN-DISABLED: stablehlo-opt -inline %s | stablehlo-translate --interpret
++// RUN: stablehlo-opt -inline %s | stablehlo-translate --interpret
+ // RUN: stablehlo-translate --serialize --target=current %s | stablehlo-translate --deserialize | stablehlo-opt > %t.0
+ // RUN: stablehlo-opt %s > %t.1
+ // RUN: diff %t.0 %t.1
+diff --ruN a/stablehlo/stablehlo/testdata/conv_general_dilated_tf_conversion_path_3d_lhs_float32_1_4_28_28_1__rhs_float32_2_3_3_1_16__windowst6072174321640638276.mlir b/stablehlo/stablehlo/testdata/conv_general_dilated_tf_conversion_path_3d_lhs_float32_1_4_28_28_1__rhs_float32_2_3_3_1_16__windowst6072174321640638276.mlir
+--- stablehlo/stablehlo/testdata/conv_general_dilated_tf_conversion_path_3d_lhs_float32_1_4_28_28_1__rhs_float32_2_3_3_1_16__windowst6072174321640638276.mlir
++++ stablehlo/stablehlo/testdata/conv_general_dilated_tf_conversion_path_3d_lhs_float32_1_4_28_28_1__rhs_float32_2_3_3_1_16__windowst6072174321640638276.mlir
+@@ -1,4 +1,4 @@
+-// RUN-DISABLED: stablehlo-opt -inline %s | stablehlo-translate --interpret
++// RUN: stablehlo-opt -inline %s | stablehlo-translate --interpret
+ // RUN: stablehlo-translate --serialize --target=current %s | stablehlo-translate --deserialize | stablehlo-opt > %t.0
+ // RUN: stablehlo-opt %s > %t.1
+ // RUN: diff %t.0 %t.1
+diff --ruN a/stablehlo/stablehlo/testdata/conv_general_dilated_tf_conversion_path_3d_lhs_float32_1_4_28_28_1__rhs_float32_2_3_3_1_16__windowst8524424959485066052.mlir b/stablehlo/stablehlo/testdata/conv_general_dilated_tf_conversion_path_3d_lhs_float32_1_4_28_28_1__rhs_float32_2_3_3_1_16__windowst8524424959485066052.mlir
+--- stablehlo/stablehlo/testdata/conv_general_dilated_tf_conversion_path_3d_lhs_float32_1_4_28_28_1__rhs_float32_2_3_3_1_16__windowst8524424959485066052.mlir
++++ stablehlo/stablehlo/testdata/conv_general_dilated_tf_conversion_path_3d_lhs_float32_1_4_28_28_1__rhs_float32_2_3_3_1_16__windowst8524424959485066052.mlir
+@@ -1,4 +1,4 @@
+-// RUN-DISABLED: stablehlo-opt -inline %s | stablehlo-translate --interpret
++// RUN: stablehlo-opt -inline %s | stablehlo-translate --interpret
+ // RUN: stablehlo-translate --serialize --target=current %s | stablehlo-translate --deserialize | stablehlo-opt > %t.0
+ // RUN: stablehlo-opt %s > %t.1
+ // RUN: diff %t.0 %t.1
+diff --ruN a/stablehlo/stablehlo/testdata/conv_general_dilated_window_strides_lhs_float32_2_3_9_10__rhs_float32_3_3_4_5__windowstrides__2_3__p-3051008093469972974.mlir b/stablehlo/stablehlo/testdata/conv_general_dilated_window_strides_lhs_float32_2_3_9_10__rhs_float32_3_3_4_5__windowstrides__2_3__p-3051008093469972974.mlir
+--- stablehlo/stablehlo/testdata/conv_general_dilated_window_strides_lhs_float32_2_3_9_10__rhs_float32_3_3_4_5__windowstrides__2_3__p-3051008093469972974.mlir
++++ stablehlo/stablehlo/testdata/conv_general_dilated_window_strides_lhs_float32_2_3_9_10__rhs_float32_3_3_4_5__windowstrides__2_3__p-3051008093469972974.mlir
+@@ -1,4 +1,4 @@
+-// RUN-DISABLED: stablehlo-opt -inline %s | stablehlo-translate --interpret
++// RUN: stablehlo-opt -inline %s | stablehlo-translate --interpret
+ // RUN: stablehlo-translate --serialize --target=current %s | stablehlo-translate --deserialize | stablehlo-opt > %t.0
+ // RUN: stablehlo-opt %s > %t.1
+ // RUN: diff %t.0 %t.1
 
