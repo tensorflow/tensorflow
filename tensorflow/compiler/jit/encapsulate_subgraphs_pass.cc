@@ -427,7 +427,7 @@ int Encapsulator::Subgraph::GetResultIndexForEdge(const Edge* edge) const {
 
 Node* Encapsulator::Subgraph::MakeNodeImage(const Graph* graph_in, Node* node) {
   if (!graph_) {
-    graph_.reset(new Graph(graph_in->op_registry()));
+    graph_ = std::make_unique<Graph>(graph_in->op_registry());
     graph_->set_versions(graph_in->versions());
   }
 
@@ -1017,7 +1017,7 @@ Status Encapsulator::MakePrunedGraphCopyAndInline(
     absl::flat_hash_map<const Node*, Node*>* node_images,
     FunctionLibraryDefinition* library) {
   // First copy all ancestor nodes of sink_nodes into a new graph.
-  pruned_graph->reset(new Graph(library));
+  *pruned_graph = std::make_unique<Graph>(library);
   (*pruned_graph)->set_versions(graph.versions());
   ReverseDFSFrom(graph, sink_nodes,
                  /*enter=*/nullptr,

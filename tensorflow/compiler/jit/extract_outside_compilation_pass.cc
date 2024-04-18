@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/jit/extract_outside_compilation_pass.h"
 
+#include <memory>
+
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
@@ -990,7 +992,7 @@ Status ConstructHostGraph(
     const string& xla_cluster_name, const string& outside_compilation_attr_name,
     const std::vector<string>& outside_compilation_host_graphs,
     FunctionLibraryDefinition* fld, std::unique_ptr<Graph>* host_graph) {
-  host_graph->reset(new Graph(fld));
+  *host_graph = std::make_unique<Graph>(fld);
 
   // Create sequencer node in host graph.
   NodeDefBuilder sequencer_builder(absl::StrCat(xla_cluster_name, "_sequencer"),
