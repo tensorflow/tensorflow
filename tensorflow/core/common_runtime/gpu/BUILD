@@ -477,6 +477,5 @@ cc_library(
     name = "gpu_scheduling_metrics_storage",
     srcs = ["gpu_scheduling_metrics_storage.cc"],
     hdrs = ["gpu_scheduling_metrics_storage.h"],
-    visibility = ["//visibility:public"],
     deps = ["@local_tsl//tsl/framework:real_time_in_memory_metric"],
 )
