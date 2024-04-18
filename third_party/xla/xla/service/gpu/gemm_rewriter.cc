@@ -2151,8 +2151,24 @@ class GemmWorkspaceRewriteVisitor : public DfsHloRewriteVisitor {
       : gpu_version_(gpu_version) {}
 
   absl::Status HandleCustomCall(HloInstruction *instr) override {
-    if (instr->custom_call_target() != kGemmCallTarget ||
-        !instr->shape().IsArray()) {
+    bool has_aux_output = false;
+    if (instr->custom_call_target() == kCublasLtMatmulCallTarget ||
+        instr->custom_call_target() == kCublasLtMatmulF8CallTarget) {
+      TF_ASSIGN_OR_RETURN(const auto gpu_config,
+                          instr->backend_config<xla::gpu::GpuBackendConfig>());
+      xla::gpu::GemmBackendConfig config = gpu_config.gemm_backend_config();
+      xla::gpu::GemmBackendConfig_Epilogue epilogue = config.epilogue();
+      TF_ASSIGN_OR_RETURN(
+          has_aux_output,
+          xla::gpu::gpublas_lt::EpilogueHasAuxiliaryOutput(epilogue));
+
+      if (!((has_aux_output && instr->shape().IsTuple() &&
+             instr->shape().tuple_shapes_size() == 2) ||
+            (!has_aux_output && instr->shape().IsArray()))) {
+        return absl::OkStatus();
+      }
+    } else if (instr->custom_call_target() != kGemmCallTarget ||
+               !instr->shape().IsArray()) {
       return absl::OkStatus();
     }
 
@@ -2173,14 +2189,18 @@ class GemmWorkspaceRewriteVisitor : public DfsHloRewriteVisitor {
     //
     // TODO(ezhulenev): This is not based on any measurement, just a common
     // sense, we should tweak it to find the minimal workspace size.
-    int64_t operands_byte_size = 0;
-    for (auto &operand : instr->operands()) {
-      operands_byte_size += ShapeUtil::ByteSizeOf(operand->shape());
+    if (instr->custom_call_target() == kGemmCallTarget) {
+      int64_t operands_byte_size = 0;
+      for (auto &operand : instr->operands()) {
+        operands_byte_size += ShapeUtil::ByteSizeOf(operand->shape());
+      }
+      workspace = std::min(workspace, operands_byte_size);
     }
-    workspace = std::min(workspace, operands_byte_size);
 
     // Append workspace buffer to instruction outputs.
-    std::vector<Shape> output_shapes = {instr->shape()};
+    std::vector<Shape> output_shapes = instr->shape().IsArray()
+                                           ? std::vector<Shape>{instr->shape()}
+                                           : instr->shape().tuple_shapes();
     output_shapes.emplace_back(ShapeUtil::MakeShape(S8, {workspace}));
     Shape output_shape = ShapeUtil::MakeTupleShape(output_shapes);
 
@@ -2194,9 +2214,22 @@ class GemmWorkspaceRewriteVisitor : public DfsHloRewriteVisitor {
       custom_call->set_output_to_operand_aliasing({{{0}, {2, {}}}});
     }
 
-    HloInstruction *get_output = instr->AddInstruction(
-        HloInstruction::CreateGetTupleElement(new_call, 0));
-    return ReplaceInstruction(instr, get_output);
+    if (has_aux_output) {
+      for (auto user : instr->users()) {
+        auto user_get_tuple =
+            dynamic_cast<HloGetTupleElementInstruction *>(user);
+        TF_RET_CHECK(user_get_tuple);
+        HloInstruction *get_output =
+            instr->AddInstruction(HloInstruction::CreateGetTupleElement(
+                new_call, user_get_tuple->tuple_index()));
+        TF_RETURN_IF_ERROR(ReplaceInstruction(user_get_tuple, get_output));
+      }
+      return absl::OkStatus();
+    } else {
+      HloInstruction *get_output = instr->AddInstruction(
+          HloInstruction::CreateGetTupleElement(new_call, 0));
+      return ReplaceInstruction(instr, get_output);
+    }
   }
 
  private:

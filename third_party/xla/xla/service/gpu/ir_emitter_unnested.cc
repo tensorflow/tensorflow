@@ -685,7 +685,7 @@ absl::Status IrEmitterUnnested::EmitCublasLtMatmulThunk(
       bool has_aux_output,
       xla::gpu::gpublas_lt::EpilogueHasAuxiliaryOutput(epilogue));
   xla::ShapeIndex output_index =
-      has_aux_output ? xla::ShapeIndex{0} : xla::ShapeIndex{};
+      instr->shape().IsTuple() ? xla::ShapeIndex{0} : xla::ShapeIndex{};
 
   TF_ASSIGN_OR_RETURN(BufferAllocation::Slice a,
                       GetAllocationSliceForHlo(instr->operand(0)));
@@ -711,6 +711,16 @@ absl::Status IrEmitterUnnested::EmitCublasLtMatmulThunk(
     TF_ASSIGN_OR_RETURN(aux, GetAllocationSliceForHlo(instr, {1}));
   }
 
+  std::optional<BufferAllocation::Slice> workspace_buffer;
+  if (instr->shape().IsTuple() &&
+      (instr->shape().tuple_shapes_size() - has_aux_output - 1)) {
+    TF_RET_CHECK((has_aux_output && instr->shape().tuple_shapes_size() == 3) ||
+                 (!has_aux_output && instr->shape().tuple_shapes_size() == 2));
+    TF_ASSIGN_OR_RETURN(workspace_buffer,
+                        GetAllocationSliceForHlo(
+                            instr, {instr->shape().tuple_shapes_size() - 1}));
+  }
+
   TF_ASSIGN_OR_RETURN(
       auto gemm_config,
       GemmConfig::For(static_cast<const HloInstruction*>(instr)));
@@ -727,7 +737,7 @@ absl::Status IrEmitterUnnested::EmitCublasLtMatmulThunk(
   auto thunk = std::make_unique<CublasLtMatmulThunk>(
       Thunk::ThunkInfo::WithProfileAnnotation(instr), std::move(gemm_config),
       blas_lt_epilogue, algorithm, a, b, c, d, bias, aux, a_scale, b_scale,
-      c_scale, d_scale, d_amax);
+      c_scale, d_scale, d_amax, workspace_buffer);
   AddThunkToThunkSequence(std::move(thunk));
   return absl::OkStatus();
 }
@@ -746,6 +756,10 @@ absl::Status IrEmitterUnnested::EmitCublasLtMatmulThunkF8(
   bool has_damax = instr->shape().IsTuple();
   xla::ShapeIndex output_index =
       has_damax ? xla::ShapeIndex{0} : xla::ShapeIndex{};
+
+  TF_ASSIGN_OR_RETURN(
+      bool has_aux_output,
+      xla::gpu::gpublas_lt::EpilogueHasAuxiliaryOutput(epilogue));
 
   TF_ASSIGN_OR_RETURN(BufferAllocation::Slice a,
                       GetAllocationSliceForHlo(instr->operand(0)));
@@ -801,13 +815,23 @@ absl::Status IrEmitterUnnested::EmitCublasLtMatmulThunkF8(
           : 0;
 
   BufferAllocation::Slice aux;  // Not used.
+  TF_RET_CHECK(!has_aux_output);
+  std::optional<BufferAllocation::Slice> workspace_buffer;
+  if (instr->shape().IsTuple() &&
+      (instr->shape().tuple_shapes_size() - has_aux_output - 1)) {
+    TF_RET_CHECK((has_aux_output && instr->shape().tuple_shapes_size() == 3) ||
+                 (!has_aux_output && instr->shape().tuple_shapes_size() == 2));
+    TF_ASSIGN_OR_RETURN(workspace_buffer,
+                        GetAllocationSliceForHlo(
+                            instr, {instr->shape().tuple_shapes_size() - 1}));
+  }
 
   TF_ASSIGN_OR_RETURN(se::gpu::BlasLt::Epilogue blas_lt_epilogue,
                       gpublas_lt::AsBlasLtEpilogue(epilogue));
   auto thunk = std::make_unique<CublasLtMatmulThunk>(
       Thunk::ThunkInfo::WithProfileAnnotation(instr), std::move(gemm_config),
       blas_lt_epilogue, algorithm, a, b, c, d, bias, aux, a_scale, b_scale,
-      c_scale, d_scale, d_amax);
+      c_scale, d_scale, d_amax, workspace_buffer);
   AddThunkToThunkSequence(std::move(thunk));
   return absl::OkStatus();
 }

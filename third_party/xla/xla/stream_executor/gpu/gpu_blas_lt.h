@@ -146,29 +146,28 @@ struct BlasLt {
 
   struct MatmulPlan {
     template <typename A, typename B, typename C, typename D, typename Scale>
-    absl::Status DoMatmul(Stream* stream,
-                          const HostOrDeviceScalar<Scale>& alpha,
-                          const DeviceMemory<A>& a, const DeviceMemory<B>& b,
-                          const HostOrDeviceScalar<Scale>& beta,
-                          const DeviceMemory<C>& c, DeviceMemory<D>& d,
-                          const MatmulAlgorithm& algorithm,
-                          ScratchAllocator& scratch_allocator,
-                          const DeviceMemory<C>& bias = {},
-                          const DeviceMemoryBase& aux = DeviceMemory<uint8_t>{},
-                          const DeviceMemory<Scale>& a_scale = {},
-                          const DeviceMemory<Scale>& b_scale = {},
-                          const DeviceMemory<Scale>& c_scale = {},
-                          const DeviceMemory<Scale>& d_scale = {},
-                          const DeviceMemory<Scale>& d_amax = {},
-                          blas::ProfileResult* profile_result = nullptr) const {
+    absl::Status DoMatmul(
+        Stream* stream, const HostOrDeviceScalar<Scale>& alpha,
+        const DeviceMemory<A>& a, const DeviceMemory<B>& b,
+        const HostOrDeviceScalar<Scale>& beta, const DeviceMemory<C>& c,
+        DeviceMemory<D>& d, const MatmulAlgorithm& algorithm,
+        const DeviceMemory<C>& bias = {},
+        const DeviceMemoryBase& aux = DeviceMemory<uint8_t>{},
+        const DeviceMemory<Scale>& a_scale = {},
+        const DeviceMemory<Scale>& b_scale = {},
+        const DeviceMemory<Scale>& c_scale = {},
+        const DeviceMemory<Scale>& d_scale = {},
+        const DeviceMemory<Scale>& d_amax = {},
+        std::optional<DeviceMemoryBase> workspace = std::nullopt,
+        blas::ProfileResult* profile_result = nullptr) const {
       TF_RETURN_IF_ERROR(ValidateInputs(
           blas::ToDataType<Scale>::value, alpha.on_device(), beta.on_device(),
           blas::ToDataType<A>::value, blas::ToDataType<B>::value,
           blas::ToDataType<C>::value, blas::ToDataType<D>::value));
 
       return DoMatmul(stream, alpha.opaque(), a, b, beta.opaque(), c, d,
-                      algorithm, scratch_allocator, bias, aux, a_scale, b_scale,
-                      c_scale, d_scale, d_amax, profile_result);
+                      algorithm, bias, aux, a_scale, b_scale, c_scale, d_scale,
+                      d_amax, workspace, profile_result);
     }
 
     template <typename A, typename B, typename C, typename D, typename Scale>
@@ -178,13 +177,11 @@ struct BlasLt {
                           const HostOrDeviceScalar<Scale>& beta,
                           const DeviceMemory<C>& c, DeviceMemory<D>& d,
                           const MatmulAlgorithm& algorithm,
-                          ScratchAllocator& scratch_allocator,
                           const DeviceMemory<C>& bias = {},
                           const DeviceMemoryBase& aux = DeviceMemory<uint8_t>{},
                           blas::ProfileResult* profile_result = nullptr) const {
-      return DoMatmul(stream, alpha, a, b, beta, c, d, algorithm,
-                      scratch_allocator, bias, aux, {}, {}, {}, {}, {},
-                      profile_result);
+      return DoMatmul(stream, alpha, a, b, beta, c, d, algorithm, bias, aux, {},
+                      {}, {}, {}, {}, profile_result);
     }
 
     virtual absl::Status ExecuteOnStream(
@@ -195,7 +192,7 @@ struct BlasLt {
         DeviceMemoryBase a_scale_buffer, DeviceMemoryBase b_scale_buffer,
         DeviceMemoryBase c_scale_buffer, DeviceMemoryBase d_scale_buffer,
         DeviceMemoryBase d_amax_buffer, const MatmulAlgorithm& algorithm,
-        ScratchAllocator& scratch_allocator,
+        std::optional<DeviceMemoryBase> workspace,
         blas::ProfileResult* profile_result = nullptr) const = 0;
 
     // Returns a list of supported algorithms for DoMatmul. The algorithms are
@@ -219,8 +216,8 @@ struct BlasLt {
                           DeviceMemoryBase c_scale, DeviceMemoryBase d_scale,
                           DeviceMemoryBase d_amax,
                           const MatmulAlgorithm& algorithm,
-                          ScratchAllocator& scratch_allocator,
-                          blas::ProfileResult* profile_result) const {
+                          std::optional<DeviceMemoryBase> workspace,
+                          blas::ProfileResult* profile_result = nullptr) const {
       Scale salpha;
       if constexpr (std::is_same_v<Scale, xla::complex64> ||
                     std::is_same_v<Scale, xla::complex128>) {
@@ -234,11 +231,10 @@ struct BlasLt {
       return DoMatmul(
           stream, HostOrDeviceScalar<Scale>(salpha), DeviceMemory<A>(a),
           DeviceMemory<B>(b), HostOrDeviceScalar<Scale>(sbeta),
-          DeviceMemory<C>(c), output, algorithm, scratch_allocator,
-          DeviceMemory<C>(bias), aux, DeviceMemory<Scale>(a_scale),
-          DeviceMemory<Scale>(b_scale), DeviceMemory<Scale>(c_scale),
-          DeviceMemory<Scale>(d_scale), DeviceMemory<Scale>(d_amax),
-          profile_result);
+          DeviceMemory<C>(c), output, algorithm, DeviceMemory<C>(bias), aux,
+          DeviceMemory<Scale>(a_scale), DeviceMemory<Scale>(b_scale),
+          DeviceMemory<Scale>(c_scale), DeviceMemory<Scale>(d_scale),
+          DeviceMemory<Scale>(d_amax), workspace, profile_result);
     }
 
     // used internally by template DoMatmul function to validate inputs
@@ -251,11 +247,11 @@ struct BlasLt {
         Stream* stream, const void* alpha, DeviceMemoryBase a,
         DeviceMemoryBase b, const void* beta, DeviceMemoryBase c,
         DeviceMemoryBase d, const MatmulAlgorithm& algorithm,
-        ScratchAllocator& scratch_allocator, DeviceMemoryBase bias,
-        DeviceMemoryBase aux, DeviceMemoryBase a_scale,
+        DeviceMemoryBase bias, DeviceMemoryBase aux, DeviceMemoryBase a_scale,
         DeviceMemoryBase b_scale, DeviceMemoryBase c_scale,
         DeviceMemoryBase d_scale, DeviceMemoryBase d_amax,
-        blas::ProfileResult* profile_result) const = 0;
+        std::optional<DeviceMemoryBase> workspace,
+        blas::ProfileResult* profile_result = nullptr) const = 0;
   };  // class MatmulPlan
 
   using MatmulPlanPtr = std::unique_ptr<MatmulPlan>;

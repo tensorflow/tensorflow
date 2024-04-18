@@ -112,7 +112,7 @@ class BlasLt : public gpu::BlasLt {
         DeviceMemoryBase a_scale_buffer, DeviceMemoryBase b_scale_buffer,
         DeviceMemoryBase c_scale_buffer, DeviceMemoryBase d_scale_buffer,
         DeviceMemoryBase d_amax_buffer, const MatmulAlgorithm& algorithm,
-        ScratchAllocator& scratch_allocator,
+        std::optional<DeviceMemoryBase> workspace,
         blas::ProfileResult* profile_result = nullptr) const override;
 
     absl::StatusOr<std::vector<MatmulAlgorithm>> GetAlgorithms(
@@ -128,11 +128,11 @@ class BlasLt : public gpu::BlasLt {
                           DeviceMemoryBase b, const void* beta,
                           DeviceMemoryBase c, DeviceMemoryBase d,
                           const MatmulAlgorithm& algorithm,
-                          ScratchAllocator& scratch_allocator,
                           DeviceMemoryBase bias, DeviceMemoryBase aux,
                           DeviceMemoryBase a_scale, DeviceMemoryBase b_scale,
                           DeviceMemoryBase c_scale, DeviceMemoryBase d_scale,
                           DeviceMemoryBase d_amax,
+                          std::optional<DeviceMemoryBase> workspace,
                           blas::ProfileResult* profile_result) const override;
 
    private:
