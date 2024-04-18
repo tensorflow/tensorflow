@@ -115,12 +115,6 @@ class StreamExecutor {
   DeviceMemory<T> AllocateArray(uint64_t element_count,
                                 int64_t memory_space = 0);
 
-  // As AllocateArray(), but returns a ScopedDeviceMemory<T>.
-  template <typename T>
-  ScopedDeviceMemory<T> AllocateOwnedArray(uint64_t element_count) {
-    return ScopedDeviceMemory<T>(this, AllocateArray<T>(element_count));
-  }
-
   // Convenience wrapper that allocates space for a single element of type T in
   // device memory.
   template <typename T>
@@ -131,7 +125,7 @@ class StreamExecutor {
   // As AllocateScalar(), but returns a ScopedDeviceMemory<T>.
   template <typename T>
   ScopedDeviceMemory<T> AllocateOwnedScalar() {
-    return AllocateOwnedArray<T>(1);
+    return ScopedDeviceMemory<T>(this, AllocateArray<T>(1));
   }
 
   // An untyped version of GetSymbol.
