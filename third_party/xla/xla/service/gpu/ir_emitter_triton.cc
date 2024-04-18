@@ -2682,15 +2682,17 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
       log_stream.emplace(path, err, llvm::sys::fs::OF_None);
       if (err) {
         log_stream.reset();
+        LOG(ERROR) << err.message();
+      } else {
+        pm.getContext()->disableMultithreading();
+        auto print_always = [](mlir::Pass*, mlir::Operation*) { return true; };
+        pm.enableIRPrinting(/*shouldPrintBeforePass=*/print_always,
+                            /*shouldPrintAfterPass=*/print_always,
+                            /*printModuleScope=*/true,
+                            /*printAfterOnlyOnChange=*/false,
+                            /*printAfterOnlyOnFailure=*/true, *log_stream,
+                            /*opPrintingFlags=*/{});
       }
-      pm.getContext()->disableMultithreading();
-      auto print_always = [](mlir::Pass*, mlir::Operation*) { return true; };
-      pm.enableIRPrinting(/*shouldPrintBeforePass=*/print_always,
-                          /*shouldPrintAfterPass=*/print_always,
-                          /*printModuleScope=*/true,
-                          /*printAfterOnlyOnChange=*/false,
-                          /*printAfterOnlyOnFailure=*/true, *log_stream,
-                          /*opPrintingFlags=*/{});
     } else {
       LOG(ERROR) << "--xla_gpu_dump_llvmir is set, but neither the environment "
                  << "variable TEST_UNDECLARED_OUTPUTS_DIR nor the flag "
