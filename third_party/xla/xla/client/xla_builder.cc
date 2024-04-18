@@ -1069,13 +1069,13 @@ absl::StatusOr<std::vector<XlaOp>> ExtractDimensionSizesAndPadOnesToLeft(
     XlaBuilder* builder, XlaOp op, size_t num_dims, int pad_count) {
   TF_ASSIGN_OR_RETURN(const Shape* op_shape, builder->GetShapePtr(op));
   std::vector<XlaOp> op_dims(
-      pad_count, ConstantR1(builder, absl::Span<const int32_t>({1})));
+      pad_count, ConstantR1<int32_t>(/*builder=*/builder, /*values=*/{1}));
   for (size_t i = 0; i < num_dims; i++) {
     op_dims.push_back(
         op_shape->is_static_dimension(i)
-            ? ConstantR1(builder,
-                         absl::Span<const int32_t>(
-                             {static_cast<int32_t>(op_shape->dimensions(i))}))
+            ? ConstantR1<int32_t>(
+                  /*builder=*/builder,
+                  /*values=*/{static_cast<int32_t>(op_shape->dimensions(i))})
             : Reshape(GetDimensionSize(op, i), {1}));
   }
   return op_dims;
@@ -1095,9 +1095,9 @@ absl::StatusOr<XlaOp> BroadcastScalarToOutputShapeWithUnbounded(
   for (size_t i = 0; i < output_shape.rank(); i++) {
     output_sizes[i] =
         output_shape.is_static_dimension(i)
-            ? ConstantR1(builder,
-                         absl::Span<const int32_t>({static_cast<int32_t>(
-                             output_shape.dimensions(i))}))
+            ? ConstantR1<int32_t>(
+                  /*builder=*/builder,
+                  /*values=*/{static_cast<int32_t>(output_shape.dimensions(i))})
             : Reshape(GetDimensionSize(output, i), {1});
   }
   return DynamicBroadcastInDim(
