@@ -567,6 +567,29 @@ void QuantizeEntryFuncOp(
   entry_func_op.setSymName(quantized_function_name);
 }
 
+// Replaces `xla_call_module_op` with a newly created `func::CallOp`, where the
+// callee is `callee_func_op`. The existence of `kQuantizationMethodAttr` in
+// `xla_call_module_op` should be guaranteed.
+void ReplaceXlaCallModuleOpWithNewCallOp(TF::XlaCallModuleOp xla_call_module_op,
+                                         func::FuncOp callee_func_op,
+                                         PatternRewriter& rewriter) {
+  OpBuilder::InsertionGuard insertion_guard(rewriter);
+
+  // Create a new `CallOp` that calls `callee_func_op`.
+  rewriter.setInsertionPoint(xla_call_module_op);
+  auto call_op =
+      rewriter.create<func::CallOp>(xla_call_module_op.getLoc(), callee_func_op,
+                                    xla_call_module_op.getArgs());
+
+  // Transfer the `kQuantizationMethodAttr` attribute to the `CallOp`,
+  // indicating what `Method` has been applied to the quantized unit.
+  call_op->setAttr(
+      kQuantizationMethodAttr,
+      xla_call_module_op->getAttrOfType<StringAttr>(kQuantizationMethodAttr));
+
+  rewriter.replaceOp(xla_call_module_op, call_op);
+}
+
 // Replaces a quantized `xla_call_module_op` with a `func::CallOp`. The callee
 // is expected to remain unquantized (thus having a signature mismatch), and it
 // is also quantized accordingly.
@@ -582,10 +605,8 @@ void ReplaceQuantizedXlaCallModuleOpWithQuantizedCallOp(
   QuantizeEntryFuncOp(ctx, rewriter, xla_call_module_op, entry_func_op,
                       body_rewrite_pattern, quantization_method);
 
-  // Replace the XlaCallModuleOp with a new CallOp.
-  rewriter.setInsertionPoint(xla_call_module_op);
-  rewriter.replaceOpWithNewOp<func::CallOp>(xla_call_module_op, entry_func_op,
-                                            xla_call_module_op.getArgs());
+  ReplaceXlaCallModuleOpWithNewCallOp(xla_call_module_op, entry_func_op,
+                                      rewriter);
 }
 
 // Pattern that mainly does two things:
