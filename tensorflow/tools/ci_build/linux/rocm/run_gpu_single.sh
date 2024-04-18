@@ -72,6 +72,8 @@ if [ -f /usertools/rocm.bazelrc ]; then
              --action_env=TF_ENABLE_ONEDNN_OPTS=0 \
              --test_env=TF_TESTS_PER_GPU=$TF_TESTS_PER_GPU \
              --test_env=TF_GPU_COUNT=$TF_GPU_COUNT \
+	           -- \
+	           //tensorflow/... \
              -//tensorflow/dtensor/python/tests:multi_client_test_2gpus \
              -//tensorflow/dtensor/python/tests:multi_client_test_nccl_2gpus \
              -//tensorflow/python/distribute/experimental:multi_worker_mirrored_strategy_test_2gpus
