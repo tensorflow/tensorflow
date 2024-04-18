@@ -206,6 +206,7 @@ cc_library(
         "transforms/deduplicate_if_result_pass.cc",
         "transforms/fuse_tpu_compile_and_execute_ops.cc",
         "transforms/insert_tensor_copy.cc",
+        "transforms/lower_bound_batch_threads.cc",
         "transforms/lower_saved_model.cc",
         "transforms/merge_tf_if_ops.cc",
         "transforms/optimize.cc",

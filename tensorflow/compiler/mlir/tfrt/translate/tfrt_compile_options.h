@@ -136,6 +136,13 @@ struct TfrtCompileOptions {
   // expensive.
   uint64_t cost_threshold = 1;
 
+  // The minimum number of batch threads. This number provides a lower bound on
+  // the number of batch threads on top of what is specified in the model. If
+  // the number of batch threads is too small (e.g. smaller than the number of
+  // parallel hardware accelerator available), it can lead to under utilization
+  // of resources.
+  int64_t min_num_batch_threads = 1;
+
   // If true, streams with inter data depenedencies will be preferred to be
   // merged for inline execution.
   bool merge_inter_dependent_streams = true;
