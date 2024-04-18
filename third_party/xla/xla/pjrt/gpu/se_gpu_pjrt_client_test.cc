@@ -544,17 +544,21 @@ TEST(GpuTopology, FromProto) {
   ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
       R"pb(
         device_ids: [ 3, 2, 1 ]
+        platform_version: "platform_version"
       )pb",
       &msg));
 
   std::unique_ptr<const GpuTopology> gpu_topology = GpuTopology::FromProto(msg);
   EXPECT_THAT(gpu_topology->device_ids(), ElementsAre(3, 2, 1));
+  EXPECT_THAT(gpu_topology->platform_version(), "platform_version");
 }
 
 TEST(GpuTopology, ToProto) {
-  GpuTopology gpu_topology({3, 2, 1});
+  GpuTopology gpu_topology(/*gpu_device_ids=*/{3, 2, 1},
+                           /*platform_version=*/"platform_version");
   GpuTopologyProto msg = gpu_topology.ToProto();
   EXPECT_THAT(msg.device_ids(), ElementsAre(3, 2, 1));
+  EXPECT_THAT(msg.platform_version(), "platform_version");
 }
 
 TEST(StreamExecutorGpuClientTest, DistributedInit) {

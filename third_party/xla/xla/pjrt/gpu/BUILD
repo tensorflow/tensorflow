@@ -214,6 +214,7 @@ cc_library(
     hdrs = ["gpu_topology.h"],
     deps = [
         ":gpu_topology_proto_cc",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
 

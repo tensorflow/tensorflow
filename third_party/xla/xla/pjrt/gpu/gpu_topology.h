@@ -19,13 +19,15 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "xla/pjrt/gpu/gpu_topology.pb.h"
 
 namespace xla {
 class GpuTopology {
  public:
-  explicit GpuTopology(const std::vector<int>& gpu_device_ids)
-      : devices_ids_(gpu_device_ids) {}
+  explicit GpuTopology(const std::vector<int>& gpu_device_ids,
+                       absl::string_view platform_version)
+      : devices_ids_(gpu_device_ids), platform_version_(platform_version) {}
 
   int number_of_devices() const { return devices_ids_.size(); }
   const std::vector<int>& device_ids() const { return devices_ids_; }
@@ -34,8 +36,11 @@ class GpuTopology {
       const GpuTopologyProto& proto);
   GpuTopologyProto ToProto() const;
 
+  std::string platform_version() const { return platform_version_; }
+
  private:
   const std::vector<int> devices_ids_;
+  const std::string platform_version_;
 };
 
 }  // namespace xla
