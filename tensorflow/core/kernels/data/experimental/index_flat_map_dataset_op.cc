@@ -256,50 +256,56 @@ class IndexFlatMapDatasetOp::Dataset::Iterator
                                std::vector<Tensor>* out_tensors,
                                bool* end_of_sequence) override
       ABSL_LOCKS_EXCLUDED(mu_) {
+    if (ctx->index_mapper()) {
+      return Get(ctx, out_tensors, end_of_sequence);
+    }
+
     absl::MutexLock l(&mu_);
-    *end_of_sequence = false;
-    if (ctx->index_mapper() == nullptr) {
-      absl::StatusOr<std::tuple<size_t, size_t>> next_input_index_and_offset =
-          GetUnflattenedIndex(ctx, element_count_);
-      TF_RETURN_IF_ERROR(next_input_index_and_offset.status());
-      const auto [next_input_index, offset] = *next_input_index_and_offset;
-      // When all the values of the current input element have been read,
-      // advances to the next input element. Otherwise, returns an element from
-      // the current `input_unflattened_tensors_`.
-      if (next_input_index > input_element_count_ ||
-          input_unflattened_tensors_.empty()) {
-        input_unflattened_tensors_.clear();
-        TF_RETURN_IF_ERROR(GetMappedTensorsFromInput(
-            ctx, &input_unflattened_tensors_, end_of_sequence));
-        if (*end_of_sequence) {
-          return absl::OkStatus();
-        }
-        input_element_count_ = next_input_index;
-      }
-      TF_ASSIGN_OR_RETURN(*out_tensors,
-                          GetSlice(input_unflattened_tensors_, offset));
-      ++element_count_;
-    } else {
-      const int64_t cardinality = dataset()->Cardinality();
-      if (cardinality < 0) {
-        return absl::FailedPreconditionError(absl::StrCat(
-            "Global shuffling requires finite cardinality. Got cardinality ",
-            cardinality, " for dataset ", dataset()->DebugString(), "."));
-      }
-      // TODO(b/325112575): Make it easier to return multiple values from
-      // IndexMapperFn.
-      size_t offset = 0;
-      IteratorContext ctx_with_index_mapper =
-          GetContextWithIndexMapper(ctx, offset);
-      std::vector<Tensor> mapped_tensors;
+    absl::StatusOr<std::tuple<size_t, size_t>> next_input_index_and_offset =
+        GetUnflattenedIndex(ctx, element_count_);
+    TF_RETURN_IF_ERROR(next_input_index_and_offset.status());
+    const auto [next_input_index, offset] =
+        *std::move(next_input_index_and_offset);
+    // When all the values of the current input element have been read,
+    // advances to the next input element. Otherwise, returns an element from
+    // the current `input_unflattened_tensors_`.
+    if (next_input_index > input_element_count_ ||
+        input_unflattened_tensors_.empty()) {
+      input_unflattened_tensors_.clear();
       TF_RETURN_IF_ERROR(GetMappedTensorsFromInput(
-          &ctx_with_index_mapper, &mapped_tensors, end_of_sequence));
-      ctx->MergeCheckpoint(ctx_with_index_mapper.checkpoint());
+          ctx, &input_unflattened_tensors_, end_of_sequence));
       if (*end_of_sequence) {
         return absl::OkStatus();
       }
-      TF_ASSIGN_OR_RETURN(*out_tensors, GetSlice(mapped_tensors, offset));
+      input_element_count_ = next_input_index;
     }
+    TF_ASSIGN_OR_RETURN(*out_tensors,
+                        GetSlice(input_unflattened_tensors_, offset));
+    ++element_count_;
+    return absl::OkStatus();
+  }
+
+  absl::Status Get(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
+                   bool* end_of_sequence) ABSL_LOCKS_EXCLUDED(mu_) {
+    const int64_t cardinality = dataset()->Cardinality();
+    if (cardinality < 0) {
+      return absl::FailedPreconditionError(absl::StrCat(
+          "Global shuffling requires finite cardinality. Got cardinality ",
+          cardinality, " for dataset ", dataset()->DebugString(), "."));
+    }
+
+    absl::MutexLock l(&mu_);
+    size_t offset = 0;
+    IteratorContext ctx_with_index_mapper =
+        GetContextWithIndexMapper(ctx, offset);
+    std::vector<Tensor> mapped_tensors;
+    TF_RETURN_IF_ERROR(GetMappedTensorsFromInput(
+        &ctx_with_index_mapper, &mapped_tensors, end_of_sequence));
+    ctx->MergeCheckpoint(ctx_with_index_mapper.checkpoint());
+    if (*end_of_sequence) {
+      return absl::OkStatus();
+    }
+    TF_ASSIGN_OR_RETURN(*out_tensors, GetSlice(mapped_tensors, offset));
     return absl::OkStatus();
   }
 
