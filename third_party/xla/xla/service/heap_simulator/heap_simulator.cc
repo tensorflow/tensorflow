@@ -939,7 +939,9 @@ void GlobalDecreasingSizeBestFitHeap<BufferType>::SlicedBufferInterval::Slice(
         full_buffer_interval_.need_allocation});
   }
 
-  CHECK_EQ(size_total, full_buffer_interval_.size);
+  CHECK_EQ(size_total, full_buffer_interval_.size)
+      << " slice sizes: {" << absl::StrJoin(slice_sizes_sorted_by_offset, ", ")
+      << "};";
 }
 
 template <typename BufferType>
@@ -1868,9 +1870,8 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::SlicedAllocationFinder::Find()
   if (preferred_offset_ >= 0) {
     ChunksSortedBySliceTime chunks = FindForOffset(preferred_offset_);
     if (!chunks.empty()) {
-      VLOG(1) << "SlicedAllocationFinder found chunks: "
-              << "{ " << absl::StrJoin(chunks, ", ", absl::StreamFormatter())
-              << " }";
+      VLOG(1) << "SlicedAllocationFinder found chunks: " << "{ "
+              << absl::StrJoin(chunks, ", ", absl::StreamFormatter()) << " }";
       return chunks;
     }
   }
@@ -1902,9 +1903,8 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::SlicedAllocationFinder::Find()
     VLOG(3) << "SlicedAllocationFinder::Find() searching " << root->ToString();
     ChunksSortedBySliceTime chunks = FindInRoot(*root);
     if (!chunks.empty()) {
-      VLOG(1) << "SlicedAllocationFinder found chunks: "
-              << "{ " << absl::StrJoin(chunks, ", ", absl::StreamFormatter())
-              << " }";
+      VLOG(1) << "SlicedAllocationFinder found chunks: " << "{ "
+              << absl::StrJoin(chunks, ", ", absl::StreamFormatter()) << " }";
       return chunks;
     }
   }
