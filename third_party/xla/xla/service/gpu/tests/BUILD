@@ -768,7 +768,7 @@ xla_cc_test(
 )
 
 lit_test_suite(
-    name = "all_tests",
+    name = "hlo_lit_tests",
     srcs = enforce_glob(
         [
             "add_preds.hlo",
@@ -814,7 +814,12 @@ lit_test_suite(
     ]),
     cfg = "//xla:lit.cfg.py",
     data = [
-        ":test_utilities",
+        "//xla/tools/hlo_opt:gpu_specs/a100_80.txtpb",
+        "//xla/tools/hlo_opt:gpu_specs/a6000.txtpb",
+        "//xla/tools/hlo_opt:gpu_specs/h100.txtpb",
+        "//xla/tools/hlo_opt:gpu_specs/mi200.txtpb",
+        "//xla/tools/hlo_opt:gpu_specs/p100.txtpb",
+        "//xla/tools/hlo_opt:gpu_specs/v100.txtpb",
     ],
     default_tags = tf_cuda_tests_tags(),
     tags_override = {
@@ -829,20 +834,17 @@ lit_test_suite(
     ],
 )
 
-filegroup(
-    name = "test_utilities",
-    testonly = True,
-    data = [
-        "//xla/tools:hlo-opt",
-        "//xla/tools/hlo_opt:gpu_specs/a100_80.txtpb",
-        "//xla/tools/hlo_opt:gpu_specs/a6000.txtpb",
-        "//xla/tools/hlo_opt:gpu_specs/h100.txtpb",
-        "//xla/tools/hlo_opt:gpu_specs/mi200.txtpb",
-        "//xla/tools/hlo_opt:gpu_specs/p100.txtpb",
-        "//xla/tools/hlo_opt:gpu_specs/v100.txtpb",
-        "@llvm-project//llvm:FileCheck",
-    ],
-)
+# copybara:uncomment_begin(triton-opt tool doesn't build in OSS)
+# lit_test_suite(
+#     name = "mlir_lit_tests",
+#     srcs = glob(["*.mlir"]),
+#     cfg = "//xla:lit.cfg.py",
+#     tools = [
+#         "@llvm-project//llvm:FileCheck",
+#         "@triton//:triton-opt",
+#     ],
+# )
+# copybara:uncomment_end
 
 xla_cc_test(
     name = "kernel_launch_test",
