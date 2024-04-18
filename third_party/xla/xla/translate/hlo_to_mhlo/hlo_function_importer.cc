@@ -42,6 +42,7 @@ limitations under the License.
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
@@ -97,6 +98,8 @@ namespace {
 constexpr char kFrontendAttributesAttr[] = "mhlo.frontend_attributes";
 constexpr char kShardingAttr[] = "mhlo.sharding";
 constexpr char kParameterReplicationAttr[] = "mhlo.parameter_replication";
+constexpr char kShardingRoundTrippingStringAttr[] = "xla.sdy.sharding";
+constexpr char kShardonnayMeshesAttr[] = "xla.sdy.meshes";
 
 // Note: This sanitization function causes an irreversible many-to-one mapping
 // and any solution to mitigate this would cause issues with the reverse
@@ -454,6 +457,19 @@ absl::StatusOr<FuncOp> HloFunctionImporter::ImportAsFunc(
     if (parameter->has_sharding()) {
       function.setArgAttr(entry.index(), kShardingAttr,
                           ConvertSharding(parameter->sharding(), builder_));
+      // Add the Shardonnay sharding attribute.
+      // TODO(bartchr): Kokoro failure if I use the `proto2:map` type, which
+      // one should I use instead?
+      const auto& inst_map = parameter->frontend_attributes().map();
+      if (auto it = inst_map.find(kShardingRoundTrippingStringAttr);
+          it != inst_map.end()) {
+        function.setArgAttr(
+            entry.index(), kFrontendAttributesAttr,
+            mlir::DictionaryAttr::get(
+                context_,
+                {NamedAttribute(builder_->getStringAttr(it->first),
+                                builder_->getStringAttr(it->second))}));
+      }
     }
     if (parameter->frontend_attributes().map_size() > 0) {
       function.setArgAttr(
@@ -2145,6 +2161,16 @@ HloFunctionImporter::ImportInstructionWithLayout(
       mlir::Operation * op,
       ImportInstructionImpl(instruction, operands, func_builder, mode));
   if (op == nullptr) return op;
+
+  // TODO(bartchr): Kokoro failure if I use the `proto2:map` type, which one
+  // should I use instead?
+  const auto& inst_map = instruction->frontend_attributes().map();
+  if (auto it = inst_map.find(kShardonnayMeshesAttr); it != inst_map.end()) {
+    // Add the Shardonnay mesh ops as attributes to the module.
+    assert(mlir::isa<mlir::ModuleOp>(op));
+    op->setAttr(builder_->getStringAttr(it->first),
+                builder_->getStringAttr(it->second));
+  }
 
   // See MlirToHloConversionOptions for more about layouts.
   //
