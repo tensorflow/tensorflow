@@ -84,7 +84,7 @@ bool ProcessInputOrOutputLayout(ShapeLayout* shape_layout,
 
 }  // namespace
 
-StatusOr<bool> SubByteNormalization::Run(
+absl::StatusOr<bool> SubByteNormalization::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

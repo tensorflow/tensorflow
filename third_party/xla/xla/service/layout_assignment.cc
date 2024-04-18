@@ -718,7 +718,7 @@ Status LayoutAssignment::AddMandatoryConstraints(
                 instruction->parameter_number());
         // Allow some paramter/result layouts to be unset in the entry
         // computation.
-        if (parameter_layout.LayoutIsSet()) {
+        if (parameter_layout.AnyLayoutIsSet()) {
           // Parameter layouts must match the respective layout in
           // ComputationLayout, if there is one.
           Shape param_shape = parameter_layout.shape();
@@ -942,7 +942,7 @@ Status LayoutAssignment::AddMandatoryConstraints(
   } else if (reverse_computation_order_ ||
              (constraints->computation()->IsEntryComputation() &&
               entry_computation_layout_->AnyLayoutSet() &&
-              entry_computation_layout_->result_layout().LayoutIsSet()) ||
+              entry_computation_layout_->result_layout().AnyLayoutIsSet()) ||
              current_priority_ > LayoutConstraint::kBeginningPriority) {
     const ShapeLayout* result_layout = constraints->ResultLayout();
     if (result_layout != nullptr) {
@@ -1055,7 +1055,8 @@ Status CheckParameterLayout(HloInstruction* parameter,
       computation_layout.parameter_layout(parameter->parameter_number());
   return ShapeUtil::ForEachSubshapeWithStatus(
       parameter_layout.shape(),
-      [&](const Shape& subshape, const ShapeIndex& shape_index) {
+      [&](const Shape& subshape,
+          const ShapeIndex& shape_index) -> absl::Status {
         if (!ShapeUtil::IsLeafIndex(parameter_layout.shape(), shape_index) ||
             !subshape.has_layout()) {
           return OkStatus();
@@ -2540,7 +2541,8 @@ Status LayoutAssignment::PropagateComputationLayouts(
     bool needs_assign = false;
     TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
         param_layout->shape(),
-        [&](const Shape& subshape, const ShapeIndex& shape_index) {
+        [&](const Shape& subshape,
+            const ShapeIndex& shape_index) -> absl::Status {
           if (!ShapeUtil::IsLeafIndex(param_layout->shape(), shape_index)) {
             return OkStatus();
           }
@@ -2550,8 +2552,8 @@ Status LayoutAssignment::PropagateComputationLayouts(
           }
           const auto& computed_subshape = ShapeUtil::GetSubshape(
               computed_computation_layout.parameter_shape(i), shape_index);
-          if (!Layout::Equal().IgnoreMemorySpace()(
-                  subshape.layout(), computed_subshape.layout())) {
+          if (!Layout::Equal().MinorToMajorOnly()(subshape.layout(),
+                                                  computed_subshape.layout())) {
             return Internal(
                 "Assigned parameter shape %s does not match layout of "
                 "computation shape: %s",

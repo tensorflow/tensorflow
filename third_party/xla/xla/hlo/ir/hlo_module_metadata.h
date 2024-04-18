@@ -65,7 +65,7 @@ class HloModuleMetadata {
   }
   Status set_custom_metadata(const ::tsl::protobuf::Message& message);
 
-  StatusOr<int64_t> current_pass_id() {
+  absl::StatusOr<int64_t> current_pass_id() {
     TF_ASSIGN_OR_RETURN(HloPassMetadata * pass_metadata,
                         GetCurrentHloPassMetadata());
     return pass_metadata->pass_id();
@@ -113,7 +113,7 @@ class HloModuleMetadata {
   // Gets mutable metadata for the currently running pass. If passes are nested,
   // finds the deepest one still running. Returns NotFound if metadata for the
   // currently running pass cannot be found.
-  StatusOr<HloPassMetadata*> GetCurrentHloPassMetadata();
+  absl::StatusOr<HloPassMetadata*> GetCurrentHloPassMetadata();
 
   Status MutateCurrentHloPassMetadata(
       absl::FunctionRef<void(HloPassMetadata*)> mutator);

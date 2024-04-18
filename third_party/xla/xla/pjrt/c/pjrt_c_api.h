@@ -76,7 +76,7 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Extension_Base, next);
 // Changes include:
 // * Adding a new field to the PJRT_Api or argument structs
 // * Renaming a method or argument (doesn't affect ABI)
-#define PJRT_API_MINOR 47
+#define PJRT_API_MINOR 48
 
 // The plugin should set the major_version and minor_version of
 // PJRT_Api.pjrt_api_version to be the `PJRT_API_MAJOR` and `PJRT_API_MINOR` in
@@ -652,11 +652,24 @@ typedef enum {
   PJRT_HostBufferSemantics_kImmutableUntilTransferCompletes,
 
   // The PjRtBuffer may alias `data` internally and the runtime may use the
-  // `data` contents as long as the buffer is alive. The caller promises to
-  // keep `data` alive and not to mutate its contents as long as the buffer is
-  // alive; to notify the caller that the buffer may be freed, the runtime
-  // will call `done_with_host_buffer` when the PjRtBuffer is freed.
-  PJRT_HostBufferSemantics_kZeroCopy,
+  // `data` contents as long as the buffer is alive. The runtime promises not
+  // to mutate contents of the buffer (i.e. it will not use it for aliased
+  // output buffers). The caller promises to keep `data` alive and not to mutate
+  // its contents as long as the buffer is alive; to notify the caller that the
+  // buffer may be freed, the runtime will call `done_with_host_buffer` when the
+  // PjRtBuffer is freed.
+  PJRT_HostBufferSemantics_kImmutableZeroCopy,
+
+  // The PjRtBuffer may alias `data` internally and the runtime may use the
+  // `data` contents as long as the buffer is alive. The runtime is allowed
+  // to mutate contents of the buffer (i.e. use it for aliased output
+  // buffers). The caller promises to keep `data` alive and not to mutate its
+  // contents as long as the buffer is alive (otherwise it could be a data
+  // race with the runtime); to notify the caller that the buffer may be
+  // freed, the runtime will call `on_done_with_host_buffer` when the
+  // PjRtBuffer is freed. On non-CPU platforms this acts identically to
+  // kImmutableUntilTransferCompletes.
+  PJRT_HostBufferSemantics_kMutableZeroCopy,
 } PJRT_HostBufferSemantics;
 
 typedef enum {
@@ -1026,13 +1039,24 @@ struct PJRT_Memory_Kind_Args {
   PJRT_Extension_Base* extension_start;
   PJRT_Memory* memory;
   // `memory_kind` has same lifetime as `memory`.
-  const char* memory_kind;  // out
-  size_t memory_kind_size;  // out
+  const char* kind;  // out
+  size_t kind_size;  // out
 };
-PJRT_DEFINE_STRUCT_TRAITS(PJRT_Memory_Kind_Args, memory_kind_size);
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Memory_Kind_Args, kind_size);
 
 // A platform-dependent string that uniquely identifies the kind of the memory.
 typedef PJRT_Error* PJRT_Memory_Kind(PJRT_Memory_Kind_Args* args);
+
+struct PJRT_Memory_Kind_Id_Args {
+  size_t struct_size;
+  PJRT_Extension_Base* extension_start;
+  PJRT_Memory* memory;
+  int kind_id;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Memory_Kind_Id_Args, kind_id);
+
+// A platform-dependent ID that uniquely identifies the kind of the memory.
+typedef PJRT_Error* PJRT_Memory_Kind_Id(PJRT_Memory_Kind_Id_Args* args);
 
 struct PJRT_Memory_DebugString_Args {
   size_t struct_size;
@@ -2176,6 +2200,8 @@ typedef struct {
   _PJRT_API_STRUCT_FIELD(PJRT_Client_TopologyDescription);
 
   _PJRT_API_STRUCT_FIELD(PJRT_Executable_GetCompiledMemoryStats);
+
+  _PJRT_API_STRUCT_FIELD(PJRT_Memory_Kind_Id);
 } PJRT_Api;
 
 enum {

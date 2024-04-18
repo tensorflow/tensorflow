@@ -235,9 +235,9 @@ Status RemoteTensorHandleData::OpIdAndOutputNum(const bool wait_until_ready,
 Status RemoteTensorHandleData::WaitReady(const char* caller) const {
   tf_shared_lock l(mu_);
   if (!is_ready_) {
-    profiler::TraceMe activity(
+    tsl::profiler::TraceMe activity(
         [caller] { return absl::StrCat(caller, " WaitReady"); },
-        profiler::TraceMeLevel::kInfo);
+        tsl::profiler::TraceMeLevel::kInfo);
     DVLOG(3) << "WaitReady: " << caller << " " << this;
     mu_.Await(Condition(&is_ready_));
   }

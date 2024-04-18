@@ -67,6 +67,7 @@ cc_library(
     hdrs = ["hlo_matchers.h"],
     deps = [
         "//xla:test",
+        "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/service:hlo_parser",
         "@com_google_absl//absl/strings",
@@ -80,8 +81,10 @@ xla_cc_test(
         ":hlo_matchers",
         "//xla:literal_util",
         "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

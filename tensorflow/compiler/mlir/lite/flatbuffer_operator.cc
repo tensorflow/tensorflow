@@ -58,9 +58,9 @@ limitations under the License.
 
 namespace {
 
+using ::absl::StatusOr;
 using ::tensorflow::Status;
 using ::tensorflow::errors::InvalidArgument;
-using ::xla::StatusOr;
 
 StatusOr<mlir::StringAttr> GetPaddingAttr(TfLitePadding pad_params,
                                           mlir::Builder builder,
@@ -448,7 +448,7 @@ Status mlir::CustomOptionsToAttributes(
       "custom_option",
       mlir::TFL::ConstBytesAttr::get(builder.getContext(), content)));
 
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 // TODO(zichuanwei@): Populate Builtin_options_2 manual for now, should

@@ -77,7 +77,7 @@ BENCHMARK(BM_IsFinite<DataType::kF32>)
 
 // IsFinite will be the same regardless of quantization parameters, so only
 // benchmark one combination.
-BENCHMARK(BM_IsFiniteQuantized<DataType::kSI32, DataType::kF32>)
+BENCHMARK(BM_IsFiniteQuantized<DataType::kSI16, DataType::kF32>)
     ->RangeMultiplier(2)
     ->Range(KiB(8), KiB(64));
 

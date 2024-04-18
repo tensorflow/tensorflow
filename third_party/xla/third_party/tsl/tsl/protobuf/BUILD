@@ -1,6 +1,6 @@
 # Placeholder: load py_proto_library
 load(
-    "//tsl:tsl.bzl",
+    "@local_xla//xla/tsl:tsl.bzl",
     "if_google",
     "internal_visibility",
 )
@@ -13,7 +13,7 @@ package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = internal_visibility([
         "//tensorflow/core:__subpackages__",
-        "//tsl:internal",
+        "@local_xla//xla/tsl:internal",
         "//tensorflow_models:__subpackages__",
     ]),
     features = if_google(["-parse_headers"]),

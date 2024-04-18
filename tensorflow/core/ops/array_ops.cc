@@ -1322,18 +1322,6 @@ REGISTER_OP("Snapshot")
     .Attr("T: type")
     .SetShapeFn(shape_inference::UnchangedShape);
 
-#ifdef INTEL_MKL
-REGISTER_OP("_MklIdentity")
-    .Input("input: T")
-    .Input("mkl_input: uint8")
-    .Output("output: T")
-    .Output("mkl_output: uint8")
-    .Attr("T: type")
-    .SetShapeFn(shape_inference::UnchangedShape)
-    .Doc(R"Doc( Mkl implementation of IdentityOp
-)Doc");
-#endif
-
 REGISTER_OP("IdentityN")
     .Input("input: T")
     .Output("output: T")
@@ -1418,21 +1406,6 @@ REGISTER_OP("Reshape")
     .SetShapeFn([](InferenceContext* c) {
       return SetOutputShapeForReshape(c);
     });
-
-#ifdef INTEL_MKL
-REGISTER_OP("_MklReshape")
-    .Input("tensor: T")
-    .Input("shape: Tshape")
-    .Input("mkl_tensor: uint8")
-    .Input("mkl_shape: uint8")
-    .Output("output: T")
-    .Output("mkl_output: uint8")
-    .Attr("T: type")
-    .Attr("Tshape: {int32, int64} = DT_INT32")
-    .SetShapeFn([](InferenceContext* c) { return SetOutputShapeForReshape(c); })
-    .Doc(R"Doc( MKL implementation of ReshapeOp.
-)Doc");
-#endif  // INTEL_MKL
 
 // --------------------------------------------------------------------------
 REGISTER_OP("InvertPermutation")
@@ -1727,21 +1700,6 @@ REGISTER_OP("Slice")
     .Attr("T: type")
     .Attr("Index: {int32,int64}")
     .SetShapeFn(shape_inference::SliceShape);
-
-#ifdef INTEL_MKL
-REGISTER_OP("_MklSlice")
-    .Input("input: T")
-    .Input("begin: Index")
-    .Input("size: Index")
-    .Input("mkl_input: uint8")
-    .Input("mkl_begin: uint8")
-    .Input("mkl_size: uint8")
-    .Output("output: T")
-    .Output("mkl_output: uint8")
-    .Attr("T: type")
-    .Attr("Index: {int32,int64}")
-    .SetShapeFn(shape_inference::SliceShape);
-#endif
 
 REGISTER_OP("StridedSlice")
     .Input("input: T")

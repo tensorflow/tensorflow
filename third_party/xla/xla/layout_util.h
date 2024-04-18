@@ -163,6 +163,7 @@ class LayoutUtil {
   // Returns whether the given shape has a layout. For tuple shapes, true is
   // returned only if all elements have layouts.
   static bool HasLayout(const Shape& shape);
+  static bool HasAnyLayout(const Shape& shape);
 
   // Returns whether all Shapes within the given ProgramShape have layouts.
   static bool HasLayout(const ProgramShape& program_shape);

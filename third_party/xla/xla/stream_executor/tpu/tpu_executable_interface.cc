@@ -101,7 +101,8 @@ TpuExecutableInterface::AllocateOutputMemoryWithInputReuse(
 
   TF_RETURN_IF_ERROR(alias_config.ForEachAliasWithStatus(
       [&](const ShapeIndex& output_index,
-          std::optional<HloInputOutputAliasConfig::Alias> alias) {
+          std::optional<HloInputOutputAliasConfig::Alias> alias)
+          -> absl::Status {
         if (alias && alias->must_alias()) {
           VLOG(1) << alias->ToString();
           const MaybeOwningDeviceMemory& original_input =

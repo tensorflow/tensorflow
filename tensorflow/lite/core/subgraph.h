@@ -576,6 +576,12 @@ class Subgraph {
       int64_t* custom_initial_data_offset_in_file,
       int64_t* custom_initial_data_size) const;
 
+  // Returns true if the subgraph has delegates applied.
+  bool HasDelegates();
+
+  // Returns true if the subgraph has been fully delegated.
+  bool IsFullyDelegated() const;
+
  private:
 #ifndef DOXYGEN_SKIP
   friend class tflite::impl::InterpreterBuilder;
@@ -866,12 +872,6 @@ class Subgraph {
   // The old execution plan and nodes are restored. The graph is invokable
   // afterwards.
   TfLiteStatus RemoveAllDelegates();
-
-  // Returns true if the subgraph has delegates applied.
-  bool HasDelegates();
-
-  // Returns true if the subgraph has been fully delegated.
-  bool IsFullyDelegated() const;
 
   // Cleanups up data reserved for the given node. Does not remove the {node,
   // registration} pair from nodes_and_registrations_.

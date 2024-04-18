@@ -25,9 +25,9 @@ limitations under the License.
 #include <sstream>
 #include <string>
 #include <utility>
-#include <variant>
 #include <vector>
 
+#include "absl/base/optimization.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallBitVector.h"
@@ -60,16 +60,6 @@ using mlir::AffineSymbolExpr;
 using mlir::getAffineBinaryOpExpr;
 using mlir::getAffineConstantExpr;
 using mlir::MLIRContext;
-
-int64_t FloorDiv(int64_t dividend, int64_t divisor) {
-  return dividend / divisor -
-         (((dividend >= 0) != (divisor >= 0) && dividend % divisor) ? 1 : 0);
-}
-
-int64_t CeilDiv(int64_t dividend, int64_t divisor) {
-  return dividend / divisor +
-         (((dividend >= 0) == (divisor >= 0) && dividend % divisor) ? 1 : 0);
-}
 
 class AffineExprSimplifier {
  public:
@@ -625,6 +615,16 @@ SmallVector<AffineExpr, 4> MapSymbolsToComposedSymbolsList(
 
 }  // namespace
 
+int64_t FloorDiv(int64_t dividend, int64_t divisor) {
+  return dividend / divisor -
+         (((dividend >= 0) != (divisor >= 0) && dividend % divisor) ? 1 : 0);
+}
+
+int64_t CeilDiv(int64_t dividend, int64_t divisor) {
+  return dividend / divisor +
+         (((dividend >= 0) == (divisor >= 0) && dividend % divisor) ? 1 : 0);
+}
+
 std::string Interval::ToString() const {
   std::stringstream ss;
   Print(ss);
@@ -742,6 +742,12 @@ void IndexingMap::AddConstraint(mlir::AffineExpr expr, Interval range) {
     Interval& current_range = GetMutableSymbolBound(symbol_expr.getPosition());
     current_range = Intersect(current_range, range);
     return;
+  }
+  if (auto constant_expr = mlir::dyn_cast<AffineConstantExpr>(expr)) {
+    if (constant_expr.getValue() >= range.lower &&
+        constant_expr.getValue() <= range.upper) {
+      return;
+    }
   }
   if (SimplifyConstraintRange(&expr, &range)) {
     AddConstraint(expr, range);
@@ -1339,28 +1345,57 @@ bool IndexingMap::RescaleSymbols() {
   return !to_delete.empty();
 }
 
-// Returns either:
-// 1. an AffineExpr if the RTVar folds entirely into a constant expression
-// 2. an updated RTVar if some partial optimization was possible
-// 3. an unchanged RTVar if no optimization was possible
-static std::variant<AffineExpr, RTVar> OptimizeRTVar(
-    RTVar rt_var, MLIRContext* mlir_context,
+// The return type of `OptimizeRTVar` below
+struct RTVarOptimizationResult {
+  // An affine expr which maps the old RTVar to the new, optimized RTVar:
+  // `()[sk] -> s'k` (with k being `symbol_index` in the `OptimizeRTVar` call).
+  // If `expr` doesn't depend on `sk` it means the RTVar could be optimized
+  // away completely and the value of `rt_var` can be ignored.
+  AffineExpr remapped_symbol;
+
+  // The new, optimized RTVar
+  RTVar rt_var;
+};
+
+namespace {
+// Tries to optimize the given RTVar by removing some parts (or entirety) of
+// the dependent HLO graph:
+//
+// 1. If no optimization is possible it returns `{sk, rt_var}` - the
+// identity expr and the unchanged rt_var.
+//
+// 2. If full optimization is possible, it returns
+// `{const, rt_var}` - an affine expr that does not anymore depend
+// on `sk` and an arbitrary rt_var.
+//
+// 3. if partial optimization is possible, it returns
+// `{()[sk] -> f(sk), rt_var_new }` - an affine expression that maps from the
+// old RTVar to the new RTVar, and the new RTVar itself. The new RTVar now
+// references some HLO subgraph of the old RTVar's HLO.
+RTVarOptimizationResult OptimizeRTVar(
+    RTVar rt_var, int64_t symbol_index, MLIRContext* mlir_context,
     IndexingMap::IndexingMapProvider indexing_map_provider) {
+  const auto symbol = getAffineSymbolExpr(symbol_index, mlir_context);
+  auto result_expr = symbol;
+
   while (true) {
     if (auto constant_expr = DynCast<HloConstantInstruction>(rt_var.hlo)) {
       if (rt_var.map.isConstant()) {
         const auto idx = rt_var.map.getConstantResults();
-        return getAffineConstantExpr(
-            constant_expr->literal().GetIntegralAsS64(idx).value(),
-            mlir_context);
+        result_expr = result_expr.replace(
+            symbol, getAffineConstantExpr(
+                        constant_expr->literal().GetIntegralAsS64(idx).value(),
+                        mlir_context));
       }
-      return rt_var;
+      return {result_expr, rt_var};
     }
 
     if (auto iota_expr = DynCast<HloIotaInstruction>(rt_var.hlo)) {
       auto iota_dimension = iota_expr->iota_dimension();
       CHECK(iota_dimension < rt_var.map.getNumResults());
-      return rt_var.map.getResults()[iota_dimension];
+      return {
+          result_expr.replace(symbol, rt_var.map.getResults()[iota_dimension]),
+          rt_var};
     }
 
     auto is_indexing_transformation = [](const HloInstruction* instr) {
@@ -1381,9 +1416,68 @@ static std::variant<AffineExpr, RTVar> OptimizeRTVar(
       continue;
     }
 
-    return rt_var;
+    if (rt_var.hlo->opcode() == HloOpcode::kNegate) {
+      rt_var.hlo = rt_var.hlo->operand(0);
+      result_expr = result_expr.replace(symbol, -symbol);
+      continue;
+    }
+
+    if (rt_var.hlo->opcode() == HloOpcode::kAdd ||
+        rt_var.hlo->opcode() == HloOpcode::kSubtract ||
+        rt_var.hlo->opcode() == HloOpcode::kMultiply ||
+        rt_var.hlo->opcode() == HloOpcode::kDivide) {
+      const auto apply_op = [&](const AffineExpr& lhs,
+                                const AffineExpr& rhs) -> AffineExpr {
+        switch (rt_var.hlo->opcode()) {
+          case HloOpcode::kAdd:
+            return lhs + rhs;
+          case HloOpcode::kSubtract:
+            return lhs - rhs;
+          case HloOpcode::kMultiply:
+            return lhs * rhs;
+          case HloOpcode::kDivide:
+            return lhs.floorDiv(rhs);
+          default:
+            ABSL_UNREACHABLE();
+        }
+      };
+
+      auto lhs = OptimizeRTVar(
+          RTVar{rt_var.feasible_values, rt_var.hlo->operand(0), rt_var.map},
+          symbol_index, mlir_context, indexing_map_provider);
+
+      if (!lhs.remapped_symbol.isFunctionOfSymbol(symbol_index)) {
+        // This means that lhs is constant-like and we can eliminate the
+        // operand.
+        result_expr =
+            result_expr.replace(symbol, apply_op(lhs.remapped_symbol, symbol));
+
+        // We continue optimizing the `rhs` operand
+        rt_var.hlo = rt_var.hlo->operand(1);
+        continue;
+      }
+
+      auto rhs = OptimizeRTVar(
+          RTVar{rt_var.feasible_values, rt_var.hlo->operand(1), rt_var.map},
+          symbol_index, mlir_context, indexing_map_provider);
+
+      if (!rhs.remapped_symbol.isFunctionOfSymbol(symbol_index)) {
+        // This means that rhs is constant-like and we can eliminate the
+        // operand.
+        result_expr =
+            result_expr.replace(symbol, apply_op(symbol, rhs.remapped_symbol));
+
+        // We can also take advantage of the optimization already done for lhs:
+        result_expr = result_expr.replace(symbol, lhs.remapped_symbol);
+        rt_var = lhs.rt_var;
+        continue;
+      }
+    }
+
+    return {result_expr, rt_var};
   }
 }
+}  // namespace
 
 bool IndexingMap::ReplaceConstantRTVars(
     IndexingMap::IndexingMapProvider indexing_map_provider) {
@@ -1393,44 +1487,43 @@ bool IndexingMap::ReplaceConstantRTVars(
 
   for (auto index = 0; index < rt_vars_.size(); ++index) {
     auto& rt_var = rt_vars_[index];
-    auto result =
-        OptimizeRTVar(rt_var, GetMLIRContext(), indexing_map_provider);
-
-    // If we got an RTVar back, then we just replace it and move on.
-    if (std::holds_alternative<RTVar>(result)) {
-      rt_var = std::get<RTVar>(std::move(result));
-      continue;
-    }
-
-    // But if we received an AffineExpr we can eliminate the RTVar from
-    // all expressions in the indexing map.
-    auto folded_expr = std::get<AffineExpr>(std::move(result));
 
     // range_vars and rt_vars share the symbol space, with the rt_vars coming
     // after the range_vars.
     auto symbol_index = range_vars_.size() + index;
-    affine_map_ = affine_map_.replace(
-        {{mlir::getAffineSymbolExpr(symbol_index, GetMLIRContext()),
-          folded_expr}});
+    auto rt_var_symbol = getAffineSymbolExpr(symbol_index, GetMLIRContext());
 
-    llvm::DenseMap<AffineExpr, AffineExpr> replacements;
+    RTVarOptimizationResult result = OptimizeRTVar(
+        rt_var, symbol_index, GetMLIRContext(), indexing_map_provider);
 
-    for (const auto& [constraint, interval] : constraints_) {
-      auto modified_constraint = constraint.replace(
-          mlir::getAffineSymbolExpr(symbol_index, GetMLIRContext()),
-          folded_expr);
+    if (result.remapped_symbol != rt_var_symbol) {
+      affine_map_ =
+          affine_map_.replace({{rt_var_symbol, result.remapped_symbol}});
 
-      if (constraint == modified_constraint) continue;
-      replacements[constraint] = modified_constraint;
+      llvm::DenseMap<AffineExpr, AffineExpr> replacements;
+
+      for (const auto& [constraint, interval] : constraints_) {
+        auto modified_constraint =
+            constraint.replace(rt_var_symbol, result.remapped_symbol);
+
+        if (constraint == modified_constraint) continue;
+        replacements[constraint] = modified_constraint;
+      }
+
+      for (const auto& [old_expr, new_expr] : replacements) {
+        auto interval = constraints_.at(old_expr);
+        constraints_.erase(old_expr);
+        constraints_[new_expr] = interval;
+      }
     }
 
-    for (const auto& [old_expr, new_expr] : replacements) {
-      auto interval = constraints_.at(old_expr);
-      constraints_.erase(old_expr);
-      constraints_[new_expr] = interval;
+    if (result.remapped_symbol.isFunctionOfSymbol(symbol_index)) {
+      // If we still depend on the rt_var, then we update it.
+      rt_var = std::move(result.rt_var);
+    } else {
+      // Otherwise we schedule the rt_var for removal.
+      to_delete.emplace_back(index);
     }
-
-    to_delete.emplace_back(index);
   }
 
   for (auto index : llvm::reverse(to_delete)) {

@@ -15,7 +15,7 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_TPU_TPU_EVENT_H_
 #define XLA_STREAM_EXECUTOR_TPU_TPU_EVENT_H_
 
-#include "xla/stream_executor/stream_executor_internal.h"
+#include "xla/stream_executor/event_interface.h"
 #include "xla/stream_executor/tpu/c_api_decl.h"
 #include "xla/stream_executor/tpu/tpu_api.h"
 #include "xla/stream_executor/tpu/tpu_executor_api.h"
@@ -23,12 +23,10 @@ limitations under the License.
 namespace stream_executor {
 namespace tpu {
 
-class TpuEvent : public ::stream_executor::internal::EventInterface {
+class TpuEvent : public EventInterface {
  public:
   explicit TpuEvent(SE_Event* event) : event_(event) {}
-  ~TpuEvent() override {
-    stream_executor::tpu::ExecutorApiFn()->TpuEvent_FreeFn(event_);
-  }
+  ~TpuEvent() override { ExecutorApiFn()->TpuEvent_FreeFn(event_); }
 
  private:
   SE_Event* event_;

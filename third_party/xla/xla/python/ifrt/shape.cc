@@ -25,7 +25,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
-#include "xla/python/ifrt/types.pb.h"
+#include "xla/python/ifrt/shape.pb.h"
 #include "xla/status.h"
 #include "xla/statusor.h"
 #include "xla/util.h"
@@ -106,7 +106,7 @@ absl::StatusOr<DynamicShape> DynamicShape::Create(Shape shape,
                                                   DynamicShapeTag tag) {
   TF_RETURN_IF_ERROR(std::visit(
       overloaded{
-          [&](const BoundedDynamicShapeTag& tag) {
+          [&](const BoundedDynamicShapeTag& tag) -> absl::Status {
             if (tag.DynamicDims().size() != shape.dims().size()) {
               return InvalidArgument(
                   "Shape and tag must have the same number of dimensions.");

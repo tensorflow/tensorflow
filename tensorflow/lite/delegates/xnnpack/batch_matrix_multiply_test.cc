@@ -25,7 +25,7 @@ limitations under the License.
 namespace tflite {
 namespace xnnpack {
 
-class DISABLED_BatchMatrixMultiplyTest : public testing::Test {
+class BatchMatrixMultiplyTest : public testing::Test {
  public:
   // std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
   auto get_delegate(int num_threads = 1) {
@@ -52,158 +52,221 @@ class DISABLED_BatchMatrixMultiplyTest : public testing::Test {
   std::mt19937 rng_ = std::mt19937(random_device_());
 };
 
-TEST_F(DISABLED_BatchMatrixMultiplyTest, 3D) {
+TEST_F(BatchMatrixMultiplyTest, 3D) {
   const auto batch = shape_rng();
   const auto height = shape_rng();
-  const auto input1_channels = channels_rng();
+  const auto input_channels = channels_rng();
   const auto output_channels = channels_rng();
   auto xnnpack_delegate = get_delegate();
 
   BatchMatrixMultiplyTester()
-      .Input1Shape({batch, height, input1_channels})
-      .Input2Shape({batch, input1_channels, output_channels})
+      .InputADims({batch, height, input_channels})
+      .InputBDims({batch, input_channels, output_channels})
       .Test(xnnpack_delegate.get());
 }
 
-TEST_F(DISABLED_BatchMatrixMultiplyTest, BroadcastOne3D) {
-  const auto batch = shape_rng();
+// TODO(b/332675940): This test is currently disabled since the TFLite default
+// implementation of `BatchMatMul` can't handle per-channel quantized inputs.
+TEST_F(BatchMatrixMultiplyTest,
+       DISABLED_DynamicallyQuantizedPerChannelWeights2D) {
   const auto height = shape_rng();
-  const auto input1_channels = channels_rng();
+  const auto input_channels = channels_rng();
   const auto output_channels = channels_rng();
   auto xnnpack_delegate = get_delegate();
 
   BatchMatrixMultiplyTester()
-      .Input1Shape({batch, height, input1_channels})
-      .Input2Shape({1, input1_channels, output_channels})
-      .Test(xnnpack_delegate.get());
-
-  BatchMatrixMultiplyTester()
-      .Input1Shape({1, height, input1_channels})
-      .Input2Shape({batch, input1_channels, output_channels})
+      .InputADims({height, input_channels})
+      .InputBDims({input_channels, output_channels})
+      .InputBQuant(BatchMatrixMultiplyTester::kChannel)
       .Test(xnnpack_delegate.get());
 }
 
-TEST_F(DISABLED_BatchMatrixMultiplyTest, BroadcastImplicit3D) {
-  const auto batch = shape_rng();
+// TODO(b/332675940): This test is currently disabled since the TFLite default
+// implementation of `BatchMatMul` can't handle per-channel quantized inputs.
+TEST_F(BatchMatrixMultiplyTest,
+       DISABLED_DynamicallyQuantizedPerChannelWeights2DTransposeB) {
   const auto height = shape_rng();
-  const auto input1_channels = channels_rng();
+  const auto input_channels = channels_rng();
   const auto output_channels = channels_rng();
   auto xnnpack_delegate = get_delegate();
 
   BatchMatrixMultiplyTester()
-      .Input1Shape({batch, height, input1_channels})
-      .Input2Shape({input1_channels, output_channels})
-      .Test(xnnpack_delegate.get());
-
-  BatchMatrixMultiplyTester()
-      .Input1Shape({height, input1_channels})
-      .Input2Shape({batch, input1_channels, output_channels})
+      .InputADims({height, input_channels})
+      .InputBDims({output_channels, input_channels})
+      .InputBQuant(BatchMatrixMultiplyTester::kChannel)
+      .TransposeB(true)
       .Test(xnnpack_delegate.get());
 }
 
-TEST_F(DISABLED_BatchMatrixMultiplyTest, 4D) {
+TEST_F(BatchMatrixMultiplyTest, DynamicallyQuantizedPerTensorWeights3D) {
+  const auto batch = shape_rng();
+  const auto height = shape_rng();
+  const auto input_channels = channels_rng();
+  const auto output_channels = channels_rng();
+  auto xnnpack_delegate = get_delegate();
+
+  BatchMatrixMultiplyTester()
+      .InputADims({batch, height, input_channels})
+      .InputBDims({batch, input_channels, output_channels})
+      .InputBQuant(BatchMatrixMultiplyTester::kTensor)
+      .Test(xnnpack_delegate.get());
+}
+
+TEST_F(BatchMatrixMultiplyTest,
+       DynamicallyQuantizedPerTensorWeights3DTransposeB) {
+  const auto batch = shape_rng();
+  const auto height = shape_rng();
+  const auto input_channels = channels_rng();
+  const auto output_channels = channels_rng();
+  auto xnnpack_delegate = get_delegate();
+
+  BatchMatrixMultiplyTester()
+      .InputADims({batch, height, input_channels})
+      .InputBDims({batch, output_channels, input_channels})
+      .InputBQuant(BatchMatrixMultiplyTester::kTensor)
+      .TransposeB(true)
+      .Test(xnnpack_delegate.get());
+}
+
+TEST_F(BatchMatrixMultiplyTest, BroadcastOne3D) {
+  const auto batch = shape_rng();
+  const auto height = shape_rng();
+  const auto input_channels = channels_rng();
+  const auto output_channels = channels_rng();
+  auto xnnpack_delegate = get_delegate();
+
+  BatchMatrixMultiplyTester()
+      .InputADims({batch, height, input_channels})
+      .InputBDims({1, input_channels, output_channels})
+      .Test(xnnpack_delegate.get());
+
+  BatchMatrixMultiplyTester()
+      .InputADims({1, height, input_channels})
+      .InputBDims({batch, input_channels, output_channels})
+      .Test(xnnpack_delegate.get());
+}
+
+TEST_F(BatchMatrixMultiplyTest, BroadcastImplicit3D) {
+  const auto batch = shape_rng();
+  const auto height = shape_rng();
+  const auto input_channels = channels_rng();
+  const auto output_channels = channels_rng();
+  auto xnnpack_delegate = get_delegate();
+
+  BatchMatrixMultiplyTester()
+      .InputADims({batch, height, input_channels})
+      .InputBDims({input_channels, output_channels})
+      .Test(xnnpack_delegate.get());
+
+  BatchMatrixMultiplyTester()
+      .InputADims({height, input_channels})
+      .InputBDims({batch, input_channels, output_channels})
+      .Test(xnnpack_delegate.get());
+}
+
+TEST_F(BatchMatrixMultiplyTest, 4D) {
   const auto outer_batch = shape_rng();
   const auto inner_batch = shape_rng();
   const auto height = shape_rng();
-  const auto input1_channels = channels_rng();
+  const auto input_channels = channels_rng();
   const auto output_channels = channels_rng();
   auto xnnpack_delegate = get_delegate();
 
   BatchMatrixMultiplyTester()
-      .Input1Shape({outer_batch, inner_batch, height, input1_channels})
-      .Input2Shape({outer_batch, inner_batch, input1_channels, output_channels})
+      .InputADims({outer_batch, inner_batch, height, input_channels})
+      .InputBDims({outer_batch, inner_batch, input_channels, output_channels})
       .Test(xnnpack_delegate.get());
 }
 
-TEST_F(DISABLED_BatchMatrixMultiplyTest, BroadcastOne4D) {
+TEST_F(BatchMatrixMultiplyTest, BroadcastOne4D) {
   const auto outer_batch = shape_rng();
   const auto inner_batch = shape_rng();
   const auto height = shape_rng();
-  const auto input1_channels = channels_rng();
+  const auto input_channels = channels_rng();
   const auto output_channels = channels_rng();
   auto xnnpack_delegate = get_delegate();
 
   BatchMatrixMultiplyTester()
-      .Input1Shape({1, inner_batch, height, input1_channels})
-      .Input2Shape({outer_batch, inner_batch, input1_channels, output_channels})
+      .InputADims({1, inner_batch, height, input_channels})
+      .InputBDims({outer_batch, inner_batch, input_channels, output_channels})
       .Test(xnnpack_delegate.get());
   BatchMatrixMultiplyTester()
-      .Input1Shape({outer_batch, inner_batch, height, input1_channels})
-      .Input2Shape({1, inner_batch, input1_channels, output_channels})
+      .InputADims({outer_batch, inner_batch, height, input_channels})
+      .InputBDims({1, inner_batch, input_channels, output_channels})
       .Test(xnnpack_delegate.get());
   BatchMatrixMultiplyTester()
-      .Input1Shape({outer_batch, 1, height, input1_channels})
-      .Input2Shape({outer_batch, inner_batch, input1_channels, output_channels})
+      .InputADims({outer_batch, 1, height, input_channels})
+      .InputBDims({outer_batch, inner_batch, input_channels, output_channels})
       .Test(xnnpack_delegate.get());
   BatchMatrixMultiplyTester()
-      .Input1Shape({outer_batch, inner_batch, height, input1_channels})
-      .Input2Shape({outer_batch, 1, input1_channels, output_channels})
+      .InputADims({outer_batch, inner_batch, height, input_channels})
+      .InputBDims({outer_batch, 1, input_channels, output_channels})
       .Test(xnnpack_delegate.get());
   BatchMatrixMultiplyTester()
-      .Input1Shape({1, 1, height, input1_channels})
-      .Input2Shape({outer_batch, inner_batch, input1_channels, output_channels})
+      .InputADims({1, 1, height, input_channels})
+      .InputBDims({outer_batch, inner_batch, input_channels, output_channels})
       .Test(xnnpack_delegate.get());
   BatchMatrixMultiplyTester()
-      .Input1Shape({outer_batch, inner_batch, height, input1_channels})
-      .Input2Shape({1, 1, input1_channels, output_channels})
+      .InputADims({outer_batch, inner_batch, height, input_channels})
+      .InputBDims({1, 1, input_channels, output_channels})
       .Test(xnnpack_delegate.get());
 }
 
-TEST_F(DISABLED_BatchMatrixMultiplyTest, BroadcastImplicit4D) {
+TEST_F(BatchMatrixMultiplyTest, BroadcastImplicit4D) {
   const auto outer_batch = shape_rng();
   const auto inner_batch = shape_rng();
   const auto height = shape_rng();
-  const auto input1_channels = channels_rng();
+  const auto input_channels = channels_rng();
   const auto output_channels = channels_rng();
   auto xnnpack_delegate = get_delegate();
 
   BatchMatrixMultiplyTester()
-      .Input1Shape({inner_batch, height, input1_channels})
-      .Input2Shape({outer_batch, inner_batch, input1_channels, output_channels})
+      .InputADims({inner_batch, height, input_channels})
+      .InputBDims({outer_batch, inner_batch, input_channels, output_channels})
       .Test(xnnpack_delegate.get());
   BatchMatrixMultiplyTester()
-      .Input1Shape({outer_batch, inner_batch, height, input1_channels})
-      .Input2Shape({inner_batch, input1_channels, output_channels})
+      .InputADims({outer_batch, inner_batch, height, input_channels})
+      .InputBDims({inner_batch, input_channels, output_channels})
       .Test(xnnpack_delegate.get());
   BatchMatrixMultiplyTester()
-      .Input1Shape({height, input1_channels})
-      .Input2Shape({outer_batch, inner_batch, input1_channels, output_channels})
+      .InputADims({height, input_channels})
+      .InputBDims({outer_batch, inner_batch, input_channels, output_channels})
       .Test(xnnpack_delegate.get());
   BatchMatrixMultiplyTester()
-      .Input1Shape({outer_batch, inner_batch, height, input1_channels})
-      .Input2Shape({input1_channels, output_channels})
+      .InputADims({outer_batch, inner_batch, height, input_channels})
+      .InputBDims({input_channels, output_channels})
       .Test(xnnpack_delegate.get());
 }
 
-TEST_F(DISABLED_BatchMatrixMultiplyTest, 4D_AdjY) {
+TEST_F(BatchMatrixMultiplyTest, 4D_TransposeB) {
   const auto outer_batch = shape_rng();
   const auto inner_batch = shape_rng();
   const auto height = shape_rng();
-  const auto input1_channels = channels_rng();
+  const auto input_channels = channels_rng();
   const auto output_channels = channels_rng();
   auto xnnpack_delegate = get_delegate();
 
   BatchMatrixMultiplyTester()
-      .Input1Shape({outer_batch, inner_batch, height, input1_channels})
-      .Input2Shape({outer_batch, inner_batch, output_channels, input1_channels})
-      .AdjY(true)
+      .InputADims({outer_batch, inner_batch, height, input_channels})
+      .InputBDims({outer_batch, inner_batch, output_channels, input_channels})
+      .TransposeB(true)
       .Test(xnnpack_delegate.get());
 }
 
-TEST_F(DISABLED_BatchMatrixMultiplyTest, MultiThreading) {
+TEST_F(BatchMatrixMultiplyTest, MultiThreading) {
   const auto batch = shape_rng();
   const auto height = shape_rng();
-  const auto input1_channels = channels_rng();
+  const auto input_channels = channels_rng();
   const auto output_channels = channels_rng();
   auto xnnpack_delegate = get_delegate(/*num_threads=*/2);
 
   BatchMatrixMultiplyTester()
-      .Input1Shape({batch, height, input1_channels})
-      .Input2Shape({batch, input1_channels, output_channels})
+      .InputADims({batch, height, input_channels})
+      .InputBDims({batch, input_channels, output_channels})
       .Test(xnnpack_delegate.get());
 }
 
-TEST_F(DISABLED_BatchMatrixMultiplyTest, WeightsCache) {
+TEST_F(BatchMatrixMultiplyTest, WeightsCache) {
   TfLiteXNNPackDelegateOptions delegate_options =
       TfLiteXNNPackDelegateOptionsDefault();
   std::unique_ptr<TfLiteXNNPackDelegateWeightsCache,
@@ -219,12 +282,12 @@ TEST_F(DISABLED_BatchMatrixMultiplyTest, WeightsCache) {
 
   const auto batch = shape_rng();
   const auto height = shape_rng();
-  const auto input1_channels = channels_rng();
+  const auto input_channels = channels_rng();
   const auto output_channels = channels_rng();
 
   BatchMatrixMultiplyTester()
-      .Input1Shape({batch, height, input1_channels})
-      .Input2Shape({batch, input1_channels, output_channels})
+      .InputADims({batch, height, input_channels})
+      .InputBDims({batch, input_channels, output_channels})
       .WeightsCache(weights_cache.get())
       .Test(xnnpack_delegate.get());
 }

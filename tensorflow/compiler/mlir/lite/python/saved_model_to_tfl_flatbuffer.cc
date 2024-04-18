@@ -124,7 +124,7 @@ Status HandleInputOutputArraysWithModule(
                                      ") does not exist in the given graph");
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ConvertSavedModelToTFLiteFlatBuffer(

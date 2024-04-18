@@ -131,7 +131,7 @@ std::unique_ptr<OpQuantSpec> GetStableHloOpQuantSpec(Operation* op) {
   return spec;
 }
 
-std::unique_ptr<OpQuantScaleSpec> GetStableHloQuantScaleSpec(Operation* op) {
+std::unique_ptr<OpQuantScaleSpec> GetStableHloQuantConstraints(Operation* op) {
   auto scale_spec = std::make_unique<OpQuantScaleSpec>();
   if (llvm::isa<mlir::stablehlo::BroadcastInDimOp,
                 mlir::stablehlo::ConcatenateOp,
@@ -141,6 +141,10 @@ std::unique_ptr<OpQuantScaleSpec> GetStableHloQuantScaleSpec(Operation* op) {
                 mlir::stablehlo::ReshapeOp, mlir::stablehlo::SelectOp,
                 mlir::stablehlo::SliceOp, mlir::stablehlo::TransposeOp>(op)) {
     scale_spec->has_same_scale_requirement = true;
+  }
+  if (llvm::isa<mlir::stablehlo::DynamicSliceOp, mlir::stablehlo::GatherOp,
+                mlir::stablehlo::PadOp, mlir::stablehlo::SliceOp>(op)) {
+    scale_spec->has_same_operand_and_result_type_requirement = true;
   }
   return scale_spec;
 }
@@ -165,7 +169,7 @@ bool IsOpQuantizableStableHlo(Operation* op) {
     return false;
   }
 
-  if (GetStableHloQuantScaleSpec(op)->has_same_scale_requirement) {
+  if (GetStableHloQuantConstraints(op)->has_same_scale_requirement) {
     return true;
   }
 

@@ -88,7 +88,7 @@ xla::Shape GetTPUInfeedLayout(const xla::Shape& shape) {
 absl::StatusOr<Tensor> TransposeTensor(OpKernelContext* ctx,
                                        const Tensor& input_tensor,
                                        const xla::Shape& xla_shape) {
-  profiler::TraceMe trace_me("TransposeTensor", /*level=*/2);
+  tsl::profiler::TraceMe trace_me("TransposeTensor", /*level=*/2);
   const int64_t rank = xla_shape.rank();
   std::vector<int32_t> permutation(rank);
   std::vector<int64_t> transposed_shapes(rank);
@@ -154,7 +154,7 @@ Status GetInfeedShapeWithLayout(OpKernelConstruction* ctx,
       *output_shape->mutable_layout() =
           GetTPUInfeedLayout(*output_shape).layout();
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   auto layout_func = [](const xla::Shape& shape) -> xla::Layout {
@@ -247,7 +247,7 @@ Status AutoTransposeAndLinearize(OpKernelContext* ctx,
       break;
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // PrelinearizeOp is used to linearize one tensor to the device format.
@@ -475,7 +475,7 @@ Status TpuInfeedEnqueueOp::DoWork(OpKernelContext* ctx, int device_ordinal) {
       transfer_op_->TransferLiteralToInfeed(device_ordinal, literal));
   VLOG(1) << "TpuInfeedEnqueueOp completes. iter_id="
           << ctx->frame_iter().iter_id << " device_ordinal=" << device_ordinal;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 TpuInfeedEnqueueTupleOp::TpuInfeedEnqueueTupleOp(
@@ -551,7 +551,7 @@ Status TpuInfeedEnqueueTupleOp::DoWork(OpKernelContext* ctx,
   VLOG(1) << "TpuInfeedEnqueueTupleOp completes. iter_id="
           << ctx->frame_iter().iter_id << " device_ordinal=" << device_ordinal;
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 InfeedEnqueuePrelinearizedBufferOp::InfeedEnqueuePrelinearizedBufferOp(
@@ -568,7 +568,7 @@ Status InfeedEnqueuePrelinearizedBufferOp::DoWork(OpKernelContext* ctx,
   TF_RETURN_IF_ERROR(
       transfer_op_->TransferBuffersToInfeed(device_ordinal, wrapper->buffers));
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // These ops execute on either the TPU device or the CPU device. When running on

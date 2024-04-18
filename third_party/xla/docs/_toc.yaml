@@ -16,6 +16,8 @@ toc:
       path: /xla/shapes
     - title: Aliasing
       path: /xla/aliasing
+    - title: Indexing Analysis
+      path: /xla/indexing
     - title: Tiled layout
       path: /xla/tiled_layout
     - title: Writing custom calls

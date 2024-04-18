@@ -1141,7 +1141,7 @@ def _create_local_cuda_repository(repository_ctx):
         ],
     ))
 
-    check_cuda_libs_script = repository_ctx.path(Label("@org_tensorflow//third_party/gpus:check_cuda_libs.py"))
+    check_cuda_libs_script = repository_ctx.path(Label("@local_tsl//third_party/gpus:check_cuda_libs.py"))
     cuda_libs = _find_libs(repository_ctx, check_cuda_libs_script, cuda_config)
     cuda_lib_srcs = []
     cuda_lib_outs = []
@@ -1534,7 +1534,7 @@ remote_cuda_configure = repository_rule(
     attrs = {
         "environ": attr.string_dict(),
         "_find_cuda_config": attr.label(
-            default = Label("@org_tensorflow//third_party/gpus:find_cuda_config.py"),
+            default = Label("@local_tsl//third_party/gpus:find_cuda_config.py"),
         ),
     },
 )
@@ -1544,7 +1544,7 @@ cuda_configure = repository_rule(
     environ = _ENVIRONS + [_TF_CUDA_CONFIG_REPO],
     attrs = {
         "_find_cuda_config": attr.label(
-            default = Label("@org_tensorflow//third_party/gpus:find_cuda_config.py"),
+            default = Label("@local_tsl//third_party/gpus:find_cuda_config.py"),
         ),
     },
 )

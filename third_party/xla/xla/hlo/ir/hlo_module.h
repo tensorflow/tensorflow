@@ -51,7 +51,7 @@ limitations under the License.
 namespace xla {
 
 using LayoutCanonicalizationCallback =
-    std::function<StatusOr<std::pair<std::vector<Shape>, Shape>>(
+    std::function<absl::StatusOr<std::pair<std::vector<Shape>, Shape>>(
         const HloModule& module)>;
 
 // Helper class to maintain a copy-on-write storage of an object of the
@@ -451,25 +451,25 @@ class HloModule {
 
   // Convert an HloModule to or from a proto.
   HloModuleProto ToProto() const;
-  static StatusOr<std::unique_ptr<HloModule>> CreateFromProto(
+  static absl::StatusOr<std::unique_ptr<HloModule>> CreateFromProto(
       const HloModuleProto& proto, const HloModuleConfig& module_config,
       bool prohibit_empty_literal = true);
 
   // Convert an HloModule to or from a proto that includes module configuration
-  StatusOr<HloModuleProtoWithConfig> ToProtoWithConfig() const;
-  static StatusOr<std::unique_ptr<HloModule>> CreateFromProtoWithConfig(
+  absl::StatusOr<HloModuleProtoWithConfig> ToProtoWithConfig() const;
+  static absl::StatusOr<std::unique_ptr<HloModule>> CreateFromProtoWithConfig(
       const HloModuleProtoWithConfig& proto,
       bool prohibit_empty_literal = true);
 
   // Creates and returns an HloModuleConfig with an appropriate program shape
   // for the HLO module in the given proto.
-  static StatusOr<HloModuleConfig> CreateModuleConfigFromProto(
+  static absl::StatusOr<HloModuleConfig> CreateModuleConfigFromProto(
       const HloModuleProto& module, const DebugOptions& debug_options,
       const ExecutionOptions* execution_options = nullptr);
 
   // Creates and returns an HloModuleConfig with an appropriate program shape
   // for the HLO module in the given proto.
-  static StatusOr<HloModuleConfig> CreateModuleConfigFromShape(
+  static absl::StatusOr<HloModuleConfig> CreateModuleConfigFromShape(
       const ProgramShape& program_shape, const DebugOptions& debug_options,
       const ExecutionOptions* execution_options = nullptr);
 

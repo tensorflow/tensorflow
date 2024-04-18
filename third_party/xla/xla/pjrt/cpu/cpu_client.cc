@@ -76,12 +76,12 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/compiler.h"
 #include "xla/service/computation_placer.h"
-#include "xla/service/cpu/buffer_desc.h"
 #include "xla/service/cpu/collectives_interface.h"
 #include "xla/service/cpu/cpu_compiler.h"
 #include "xla/service/cpu/cpu_executable.h"
 #include "xla/service/cpu/cpu_executable_run_options.h"
 #include "xla/service/cpu/cpu_xfeed.h"
+#include "xla/service/cpu/simple_orc_jit.h"
 #include "xla/service/custom_call_status.h"
 #include "xla/service/dump.h"
 #include "xla/service/executable.h"
@@ -93,7 +93,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status.h"
-#include "xla/statusor.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
@@ -271,7 +270,8 @@ absl::string_view TfrtCpuDeviceDescription::ToString() const {
 /*static*/ TfrtCpuTopologyDescription TfrtCpuTopologyDescription::Create(
     PjRtPlatformId platform_id, absl::string_view platform_name,
     absl::string_view platform_version,
-    absl::Span<const std::unique_ptr<TfrtCpuDevice>> devices) {
+    absl::Span<const std::unique_ptr<TfrtCpuDevice>> devices,
+    absl::Span<const std::string> machine_attributes) {
   std::vector<CpuTopology::CpuDevice> cpu_devices;
   cpu_devices.reserve(devices.size());
   for (auto& device : devices) {
@@ -279,7 +279,14 @@ absl::string_view TfrtCpuDeviceDescription::ToString() const {
         {device->id(), device->process_index(), device->local_hardware_id()});
   }
   return TfrtCpuTopologyDescription(platform_id, platform_name,
-                                    platform_version, cpu_devices);
+                                    platform_version, cpu_devices,
+                                    machine_attributes);
+}
+
+absl::StatusOr<Layout> TfrtCpuTopologyDescription::GetDefaultLayout(
+    PrimitiveType element_type, absl::Span<const int64_t> dims) const {
+  Shape shape = ShapeUtil::MakeShape(element_type, dims);
+  return LayoutUtil::GetWithDefaultLayout(shape).layout();
 }
 
 absl::StatusOr<std::string> TfrtCpuTopologyDescription::Serialize() const {
@@ -360,7 +367,7 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetTfrtCpuClient(
 
   return std::unique_ptr<PjRtClient>(std::make_unique<TfrtCpuClient>(
       /*process_index=*/options.node_id, std::move(devices),
-      std::move(options.collectives), num_threads));
+      std::move(options.collectives), num_threads, options.asynchronous));
 }
 
 static tsl::ThreadOptions GetThreadOptions() {
@@ -373,7 +380,8 @@ static tsl::ThreadOptions GetThreadOptions() {
 
 TfrtCpuClient::TfrtCpuClient(
     int process_index, std::vector<std::unique_ptr<TfrtCpuDevice>> devices,
-    std::shared_ptr<cpu::CollectivesInterface> collectives, size_t num_threads)
+    std::shared_ptr<cpu::CollectivesInterface> collectives, size_t num_threads,
+    bool asynchronous)
     : process_index_(process_index),
       owned_devices_(std::move(devices)),
       computation_placer_(std::make_unique<ComputationPlacer>()),
@@ -392,7 +400,9 @@ TfrtCpuClient::TfrtCpuClient(
       transpose_cache_(1024),
       collectives_(std::move(collectives)),
       topology_(TfrtCpuTopologyDescription::Create(
-          platform_id(), platform_name(), platform_version(), owned_devices_)) {
+          platform_id(), platform_name(), platform_version(), owned_devices_,
+          cpu::DetectMachineAttributes())),
+      asynchronous_(asynchronous) {
   for (const std::unique_ptr<TfrtCpuDevice>& device : owned_devices_) {
     devices_.push_back(device.get());
     CHECK(id_to_device_.insert({device->id(), device.get()}).second)
@@ -935,15 +945,15 @@ static std::vector<tsl::RCReference<tsl::AsyncValue>> CopyAsyncValues(
   return avs;
 }
 
-PjRtFuture<absl::Status> TfrtCpuBuffer::ToLiteral(MutableLiteralBase* literal) {
+PjRtFuture<> TfrtCpuBuffer::ToLiteral(MutableLiteralBase* literal) {
   return ToLiteralHelper(literal, client()->async_work_runner());
 }
 
-PjRtFuture<absl::Status> TfrtCpuBuffer::LazyToLiteral(
+PjRtFuture<> TfrtCpuBuffer::LazyToLiteral(
     absl::AnyInvocable<absl::StatusOr<MutableLiteralBase*>() &&> generator) {
   auto buffer = std::move(generator)();
   if (!buffer.ok()) {
-    return PjRtFuture<Status>(buffer.status());
+    return PjRtFuture<>(buffer.status());
   }
   return ToLiteralHelper(buffer.value(), client()->async_work_runner());
 }
@@ -1002,10 +1012,12 @@ TfrtCpuExecutable::TfrtCpuExecutable(
       addressable_devices_(std::move(addressable_devices)) {
   auto hlo_cost_analysis =
       std::make_unique<HloCostAnalysis>(cpu::CpuExecutable::ShapeSizeBytes);
-  // Cache to avoid std::map lookup in flop_count() on critical path.
-  // The magic constant 1000 is determined by correlating computation with flop
-  // estimate. It is a crude heuristic to find computation less than the thread
-  // context switch time (~5us).
+  CHECK_OK(cpu_executable_->module().entry_computation()->Accept(
+      hlo_cost_analysis.get()));
+  // Cache to avoid std::map lookup in flop_count() on critical path. The magic
+  // constant 1000 is determined by correlating computation with flop estimate.
+  // It is a crude heuristic to find computation less than the thread context
+  // switch time (~5us).
   cheap_computation_ = hlo_cost_analysis->flop_count() < 1000;
 
   const auto& computation_layout =
@@ -1136,17 +1148,6 @@ Status TfrtCpuExecutable::CheckBufferCompatibilities(
     }
   }
   return OkStatus();
-}
-
-// Create a descriptor table for XLA Runtime from a buffer table.
-static std::vector<xla::cpu::BufferDesc> MakeXLARuntimeDescriptorTable(
-    absl::Span<const std::shared_ptr<MaybeOwningCpuMemory>> buffer_table) {
-  std::vector<xla::cpu::BufferDesc> descriptor_table;
-  descriptor_table.reserve(buffer_table.size());
-  for (const auto& buf : buffer_table) {
-    descriptor_table.emplace_back(buf->data(), buf->size());
-  }
-  return descriptor_table;
 }
 
 absl::StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
@@ -1333,7 +1334,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
     input_deps.push_back(std::move(last_collective_launch_event));
   }
 
-  bool execute_inline = cheap_computation_;
+  bool execute_inline = cheap_computation_ || !client_->asynchronous_;
 
   // Overwrite `execute_inline` if it is specified in the ExecuteOptions.
   if (options.execution_mode == ExecuteOptions::ExecutionMode::kAsynchronous) {
@@ -1354,15 +1355,9 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
     XlaCustomCallStatus status;
 
     // Call generated function.
-    if (cpu_executable->IsXlaRuntime()) {
-      Status status = cpu_executable->ExecuteXlaRuntime(
-          MakeXLARuntimeDescriptorTable(buffer_table), &run_options);
-      if (!status.ok()) return status;
-    } else {
-      cpu_executable->compute_function()(result_buffer, &run_options, nullptr,
-                                         buffer_pointers.data(), &status,
-                                         nullptr);
-    }
+    cpu_executable->compute_function()(result_buffer, &run_options, nullptr,
+                                       buffer_pointers.data(), &status,
+                                       nullptr);
 
     for (auto& donation_transaction : donation_transactions) {
       std::move(donation_transaction).Commit();
@@ -1409,6 +1404,16 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
             }
           }
 
+          // Commit donation transactions early before execution to prevent a
+          // tricky deadlock case when we have both donated args and python host
+          // callbacks: `~TfrtCpuBuffer()` will wait for all pending donations
+          // to be committed, while it may be holding the python GIL. However,
+          // when the computation contains python callbacks, they also need the
+          // python GIL, which leads to a deadlock.
+          for (auto& donation_transaction : donation_transactions) {
+            std::move(donation_transaction).Commit();
+          }
+
           // Set denormal and rounding behavior to match the default TF
           // ThreadPool behavior.
           tsl::port::ScopedFlushDenormal flush;
@@ -1416,24 +1421,11 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
 
           // Call generated function.
           std::optional<absl::string_view> error_message;
-          if (cpu_executable->IsXlaRuntime()) {
-            Status s = cpu_executable->ExecuteXlaRuntime(
-                MakeXLARuntimeDescriptorTable(buffer_table), &run_options);
-            if (!s.ok()) {
-              // TODO(kramerb): Propagate custom call error messages.
-              error_message = "XLA Runtime execution failed";
-            }
-          } else {
-            XlaCustomCallStatus status;
-            cpu_executable->compute_function()(result_buffer, &run_options,
-                                               nullptr, buffer_pointers.data(),
-                                               &status, nullptr);
-            error_message = xla::CustomCallStatusGetMessage(&status);
-          }
-
-          for (auto& donation_transaction : donation_transactions) {
-            std::move(donation_transaction).Commit();
-          }
+          XlaCustomCallStatus status;
+          cpu_executable->compute_function()(result_buffer, &run_options,
+                                             nullptr, buffer_pointers.data(),
+                                             &status, nullptr);
+          error_message = xla::CustomCallStatusGetMessage(&status);
 
           if (error_message) {
             // CPU computation fails with an error.
@@ -1476,18 +1468,17 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
         result_shape, std::move(tracked_device_buffer), client_, device);
     res.push_back(std::move(tfrt_output_buffer));
   }
-  std::optional<PjRtFuture<Status>> future;
+  std::optional<PjRtFuture<>> future;
   if (fill_future) {
-    auto done_event = tsl::MakeUnconstructedAsyncValueRef<Status>();
-    execute_event.AndThen(
-        [done_event = done_event.CopyRef(), event = execute_event.CopyRef()]() {
-          Status s;
-          if (auto* error = event.GetErrorIfPresent()) {
-            s = Internal("Compute error: %s", error->message());
-          }
-          done_event.emplace(std::move(s));
-        });
-    future = PjRtFuture<Status>(std::move(done_event));
+    PjRtFuture<>::Promise promise = PjRtFuture<>::CreatePromise();
+    execute_event.AndThen([promise, event = execute_event.CopyRef()]() mutable {
+      if (auto* error = event.GetErrorIfPresent()) {
+        promise.Set(Internal("Compute error: %s", error->message()));
+      } else {
+        promise.Set();
+      }
+    });
+    future = PjRtFuture<>(std::move(promise));
   }
   return Result({/*future=*/std::move(future), /*buffers=*/std::move(res)});
 }
@@ -1530,7 +1521,7 @@ absl::StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>
 TfrtCpuExecutable::Execute(
     absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
     const ExecuteOptions& options,
-    std::optional<std::vector<PjRtFuture<Status>>>& returned_futures) {
+    std::optional<std::vector<PjRtFuture<>>>& returned_futures) {
   tsl::profiler::TraceMe traceme("TfrtCpuExecutable::Execute");
   if (device_assignment_ == nullptr) {
     return InvalidArgument("Execute expects a non-null device_assignment");
@@ -1652,8 +1643,8 @@ TfrtCpuExecutable::Execute(
 absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
 TfrtCpuExecutable::ExecuteSharded(
     absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
-    const ExecuteOptions& options,
-    std::optional<PjRtFuture<Status>>& returned_future, bool fill_future) {
+    const ExecuteOptions& options, std::optional<PjRtFuture<>>& returned_future,
+    bool fill_future) {
   tsl::profiler::TraceMe traceme("TfrtCpuExecutable::ExecuteSharded");
   if (device_assignment_ == nullptr) {
     return InvalidArgument("ExecuteShard expects a non-null device_assignment");
@@ -1683,8 +1674,8 @@ TfrtCpuExecutable::ExecuteSharded(
 absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
 TfrtCpuExecutable::ExecutePortable(
     absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
-    const ExecuteOptions& options,
-    std::optional<PjRtFuture<Status>>& returned_future, bool fill_future) {
+    const ExecuteOptions& options, std::optional<PjRtFuture<>>& returned_future,
+    bool fill_future) {
   tsl::profiler::TraceMe traceme("TfrtCpuExecutable::ExecutePortable");
   if (device_assignment_ != nullptr) {
     return InvalidArgument("ExecutePortable gets a non-portable executable");

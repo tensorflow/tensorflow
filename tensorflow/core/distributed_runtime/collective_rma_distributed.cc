@@ -153,7 +153,7 @@ void CollectiveRemoteAccessDistributed::RecvFromPeer(
     }
     AllocatorAttributes cpu_attr;
     cpu_attr.set_gpu_compatible(true);
-    profiler::ScopedMemoryDebugAnnotation op_annotation(
+    tsl::profiler::ScopedMemoryDebugAnnotation op_annotation(
         "CollectiveRemoteAccessDistributed::RecvFromPeer"
         "::recv_buf_callback",
         step_id_, "dynamic", to_tensor->dtype(),

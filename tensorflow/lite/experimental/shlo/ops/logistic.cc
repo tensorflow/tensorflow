@@ -59,10 +59,11 @@ absl::Status Prepare(LogisticOp& op, const Tensor& input, Tensor& output) {
 absl::Status Evaluate(LogisticOp& op, const Tensor& input, Tensor& output) {
   Logistic logistic;
   if (input.IsPerTensorQuantized()) {
-    DISPATCH_QUANTIZED(detail::DequantizeOpQuantizePerTensor,
-                       input.quantized_tensor_element_type().StorageType(),
-                       input.quantized_tensor_element_type().ExpressedType(),
-                       logistic, input, output)
+    DISPATCH_QUANTIZED(
+        detail::DequantizeOpQuantizePerTensor,
+        input.quantized_per_tensor_element_type().StorageType(),
+        input.quantized_per_tensor_element_type().ExpressedType(), logistic,
+        input, output)
   } else if (IsFloatTensor(input)) {
     DISPATCH_FLOAT(detail::EvaluateNoQuantization, input.tensor_element_type(),
                    logistic, input, output);

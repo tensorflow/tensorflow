@@ -71,9 +71,9 @@ class DistributedRuntimeClient {
     // is reported by the coordinator, or we have not heard from the coordinator
     // recently. `coordinator_reported_failure` is true in the former case.
     // Exposed so tests can override this behavior to something non-fatal.
-    std::function<void(xla::Status, bool coordinator_reported_failure)>
+    std::function<void(absl::Status, bool coordinator_reported_failure)>
         missed_heartbeat_callback =
-            [](xla::Status status, bool coordinator_reported_failure) {
+            [](absl::Status status, bool coordinator_reported_failure) {
               if (coordinator_reported_failure) {
                 LOG(QFATAL)
                     << "Terminating process because the coordinator detected "
@@ -104,12 +104,12 @@ class DistributedRuntimeClient {
   // connected.
   // Not thread-safe, i.e., calls to Connect()/Shutdown() must be serialized by
   // some other means.
-  virtual xla::Status Connect() = 0;
+  virtual absl::Status Connect() = 0;
 
   // Reports to the master that the client is ready to shutdown, and blocks
   // until all clients are ready to shutdown or the shutdown timeout expires.
   // Not thread-safe.
-  virtual xla::Status Shutdown() = 0;
+  virtual absl::Status Shutdown() = 0;
 
   // The following APIs are thread-safe.
 
@@ -127,17 +127,17 @@ class DistributedRuntimeClient {
   virtual absl::StatusOr<std::vector<std::pair<std::string, std::string>>>
   KeyValueDirGet(std::string_view key) = 0;
 
-  virtual xla::Status KeyValueSet(std::string_view key,
-                                  std::string_view value) = 0;
+  virtual absl::Status KeyValueSet(std::string_view key,
+                                   std::string_view value) = 0;
 
   // Delete the key-value. If the key is a directory, recursively clean
   // up all key-values under the directory.
-  virtual xla::Status KeyValueDelete(std::string_view key) = 0;
+  virtual absl::Status KeyValueDelete(std::string_view key) = 0;
 
   // Blocks until all nodes are at the barrier or the barrier times out.
   // `barrier_id` should be unique across barriers.
-  virtual xla::Status WaitAtBarrier(std::string barrier_id,
-                                    absl::Duration timeout) = 0;
+  virtual absl::Status WaitAtBarrier(std::string barrier_id,
+                                     absl::Duration timeout) = 0;
 
   // Returns pointer to coordination service agent, or InternalError if the
   // client does not use coordination service.

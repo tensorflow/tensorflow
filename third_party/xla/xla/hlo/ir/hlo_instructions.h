@@ -67,7 +67,6 @@ class HloDimensionsInstruction : public HloInstruction {
       case HloOpcode::kReduce:
       case HloOpcode::kReverse:
       case HloOpcode::kSort:
-      case HloOpcode::kTopK:
       case HloOpcode::kTranspose:
         return true;
       default:
@@ -300,6 +299,7 @@ class HloAsyncStartInstruction : public HloAsyncInstruction {
       absl::string_view async_execution_thread = kMainExecutionThread);
 
   ~HloAsyncStartInstruction() override;
+  void ClearCalledComputations() override;
   // When an async instruction is being destructed, remove it from the vector of
   // pointers of its called computation, to avoid referencing freed memory.
   void ClearAsyncComputationInstruction();
@@ -349,11 +349,11 @@ class HloCopyStartInstruction : public HloInstruction {
 
   // Each cross program prefetched buffer has a unique index. The indices are
   // assigned contiguously starting from zero in
-  // AlternateMemoryBestFitHeap::AllocateCrossProgramPrefetchBuffer. This value
-  // is used during codegen to determine which buffer is being speculated at
-  // runtime. One possible implementation is to initialize an array with boolean
-  // values indicating whether the cross program prefetch succeeds or fails for
-  // each buffer.
+  // MsaAlgorithm::AllocateCrossProgramPrefetchBuffer. This value is used during
+  // codegen to determine which buffer is being speculated at runtime. One
+  // possible implementation is to initialize an array with boolean values
+  // indicating whether the cross program prefetch succeeds or fails for each
+  // buffer.
   std::optional<int> cross_program_prefetch_index_;
 };
 

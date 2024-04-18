@@ -148,7 +148,7 @@ TpuCompilationCacheInterface::~TpuCompilationCacheInterface() {
 
 Status TpuCompilationCacheInterface::MarkEntryForEviction(
     int64_t subgraph_uid) {
-  profiler::TraceMe key_release_traceme(
+  tsl::profiler::TraceMe key_release_traceme(
       "TPU compilation cache possibly evict uid",
       /*level=*/2);
   CompiledSubgraph* deleted_entry = nullptr;
@@ -195,8 +195,9 @@ Status TpuCompilationCacheInterface::MarkEntryForEviction(
 }
 
 Status TpuCompilationCacheInterface::Release(int64_t subgraph_uid) {
-  profiler::TraceMe key_release_traceme("TPU compilation cache release uid",
-                                        /*level=*/2);
+  tsl::profiler::TraceMe key_release_traceme(
+      "TPU compilation cache release uid",
+      /*level=*/2);
 
   CompiledSubgraph* deleted_entry = nullptr;
   {
@@ -287,7 +288,7 @@ CompilationRefHolder* TpuCompilationCacheInterface::MakePerStepRefHolder() {
 }
 
 void TpuCompilationCacheInterface::DiscardEntryRefs(
-    gtl::ArraySlice<CompiledSubgraph*> entries) {
+    absl::Span<CompiledSubgraph* const> entries) {
   std::vector<CompiledSubgraph*> removed_entries;
   {
     absl::MutexLock lock(&mu_);
@@ -415,7 +416,7 @@ Status TpuCompilationCacheInterface::CompileIfKeyAbsentHelper(
     const std::function<Status(TpuProgramGroupInterface*)>& compile_function) {
   CompiledSubgraph* entry = nullptr;
 
-  profiler::TraceMe subgraph_lookup_traceme(
+  tsl::profiler::TraceMe subgraph_lookup_traceme(
       "TPU compilation cache subgraph lookup",
       /*level=*/2);
 
@@ -567,7 +568,7 @@ Status TpuCompilationCacheInterface::Lookup(
     std::unique_ptr<CompilationCacheEntryRef>* entry) {
   entry->reset();
 
-  profiler::TraceMe proto_lookup_traceme(
+  tsl::profiler::TraceMe proto_lookup_traceme(
       "TPU compilation cache proto lookup by uid",
       /*level=*/2);
 
@@ -592,8 +593,9 @@ Status TpuCompilationCacheInterface::Lookup(
     std::unique_ptr<CompilationCacheEntryRef>* entry) {
   entry->reset();
 
-  profiler::TraceMe proto_lookup_traceme("TPU compilation cache proto lookup",
-                                         /*level=*/2);
+  tsl::profiler::TraceMe proto_lookup_traceme(
+      "TPU compilation cache proto lookup",
+      /*level=*/2);
 
   absl::MutexLock lock(&mu_);
   const auto iter = entries_by_proto_key_.find(proto_key);

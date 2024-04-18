@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_option.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_strategy.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_util.h"
+#include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_schedule.h"
@@ -2150,6 +2151,62 @@ ENTRY %entry {
   TF_ASSERT_OK_AND_ASSIGN(bool changed, AutoSharding(option).Run(module.get()));
   VLOG(0) << module->ToString();
   EXPECT_TRUE(changed);
+}
+
+TEST_F(AutoShardingTest, BufferDonorConfigPreservation) {
+  constexpr absl::string_view kHloString = R"(
+HloModule Module, buffer_donor={ (0, {0}), (0, {1}) }
+
+ENTRY entry {
+  %p = (f32[], f32[]) parameter(0)
+  %p0 = f32[] get-tuple-element((f32[], f32[]) %p), index=0
+  %p1 = f32[] get-tuple-element((f32[], f32[]) %p), index=1
+  ROOT %out = (f32[], f32[]) tuple(%p0, %p1)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(kHloString));
+  AutoShardingOption option;
+  option.enable = true;
+  option.device_mesh_shape = {2, 2};
+  // Creating an explicit copy here to ensure that it is not modified during
+  // auto-sharding
+  const HloBufferDonorConfig buffer_donor_config_before =
+      module->buffer_donor_config();
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, AutoSharding(option).Run(module.get()));
+  EXPECT_TRUE(changed);
+  const HloBufferDonorConfig& buffer_donor_config_after =
+      module->buffer_donor_config();
+  EXPECT_EQ(buffer_donor_config_before.ToString(),
+            buffer_donor_config_after.ToString());
+}
+
+TEST_F(AutoShardingTest, InputOutputAliasConfigPreservation) {
+  constexpr absl::string_view kHloString = R"(
+HloModule Module, input_output_alias={ {0}: (0, {0}, must-alias), {1}: (0, {1}) }
+
+ENTRY entry {
+  %p = (f32[], f32[]) parameter(0)
+  %p0 = f32[] get-tuple-element((f32[], f32[]) %p), index=0
+  %p1 = f32[] get-tuple-element((f32[], f32[]) %p), index=1
+  ROOT %out = (f32[], f32[]) tuple(%p0, %p1)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(kHloString));
+  AutoShardingOption option;
+  option.enable = true;
+  option.device_mesh_shape = {2, 2};
+  // Creating an explicit copy here to ensure that it is not modified during
+  // auto-sharding
+  const HloInputOutputAliasConfig input_output_alias_config_before =
+      module->input_output_alias_config();
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, AutoSharding(option).Run(module.get()));
+  EXPECT_TRUE(changed);
+  const HloInputOutputAliasConfig& input_output_alias_config_after =
+      module->input_output_alias_config();
+  EXPECT_EQ(input_output_alias_config_before.ToString(),
+            input_output_alias_config_after.ToString());
 }
 
 }  // namespace

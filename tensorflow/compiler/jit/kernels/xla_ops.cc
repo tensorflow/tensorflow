@@ -921,13 +921,13 @@ void XlaRunOp::Compute(OpKernelContext* ctx) {
   absl::StatusOr<std::vector<xla::ExecutionInput>> execution_inputs;
   std::map<int, const Tensor*> snapshot_ptrs;
   {
-    tensorflow::profiler::TraceMe hlo_module_activity(
+    tsl::profiler::TraceMe hlo_module_activity(
         [&] {
           return absl::StrCat(
               "Populate Inputs (",
               closure.compilation_result()->xla_input_shapes.size(), ")");
         },
-        tensorflow::profiler::TraceMeLevel::kInfo);
+        tsl::profiler::TraceMeLevel::kInfo);
 
     for (const auto& [variable_index, variable_tensor] :
          closure.resource_var_snapshots()) {
@@ -957,11 +957,11 @@ void XlaRunOp::Compute(OpKernelContext* ctx) {
       closure.executable(), ctx, allocator.get());
   OP_REQUIRES(ctx, execution_output.ok(), execution_output.status());
 
-  tensorflow::profiler::TraceMe hlo_module_activity(
+  tsl::profiler::TraceMe hlo_module_activity(
       [&] {
         return absl::StrCat("Populate Outputs (", ctx->num_outputs(), ")");
       },
-      tensorflow::profiler::TraceMeLevel::kInfo);
+      tsl::profiler::TraceMeLevel::kInfo);
 
   absl::StatusOr<std::vector<VariableInfo>> variable_infos = GatherVariableInfo(
       ctx, *closure.compilation_result(), closure.num_constant_args());

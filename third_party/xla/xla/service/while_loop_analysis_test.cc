@@ -43,11 +43,11 @@ namespace {
 
 class WhileLoopAnalysisTest : public HloTestBase {
  protected:
-  [[nodiscard]] StatusOr<int64_t> MakeWhileLoopAndGetTripCount(
+  [[nodiscard]] absl::StatusOr<int64_t> MakeWhileLoopAndGetTripCount(
       int init, int limit, int step, ComparisonDirection dir);
 };
 
-StatusOr<int64_t> WhileLoopAnalysisTest::MakeWhileLoopAndGetTripCount(
+absl::StatusOr<int64_t> WhileLoopAnalysisTest::MakeWhileLoopAndGetTripCount(
     int init, int limit, int step, ComparisonDirection dir) {
   std::string hlo_string_template = R"(
   HloModule ModuleWithWhile

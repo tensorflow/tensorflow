@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/lite/experimental/shlo/ops/popcnt.h"
 
+#include <cstdint>
+#include <limits>
 #include <string>
 #include <type_traits>
 
@@ -22,6 +24,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/numeric/bits.h"
 #include "tensorflow/lite/experimental/shlo/data_type.h"
+#include "tensorflow/lite/experimental/shlo/i4.h"
 #include "tensorflow/lite/experimental/shlo/ops/test_util.h"
 #include "tensorflow/lite/experimental/shlo/ops/unary_elementwise_test_util.h"
 #include "tensorflow/lite/experimental/shlo/shape.h"
@@ -48,9 +51,34 @@ namespace {
 struct Popcnt {
   template <class T>
   T operator()(T v) const {
-    return absl::popcount(static_cast<std::make_unsigned_t<T>>(v));
+    if constexpr (std::is_same_v<I4, T>) {
+      return I4(absl::popcount(static_cast<uint8_t>(v & 0xf)));
+    } else {
+      return absl::popcount(static_cast<std::make_unsigned_t<T>>(v));
+    }
   }
 } popcnt_ref;
+
+using PopcntTypes = ::testing::Types<int32_t, int16_t, int8_t, I4>;
+
+template <class T>
+struct PopcntFunctorTest : ::testing::Test {};
+
+TYPED_TEST_SUITE(PopcntFunctorTest, PopcntTypes);
+
+TYPED_TEST(PopcntFunctorTest, GivesCorrectResults) {
+  int64_t bit_count = 8 * sizeof(TypeParam);
+  if constexpr (std::is_same_v<I4, TypeParam>) {
+    bit_count = 4;
+  }
+  EXPECT_EQ(popcnt_ref(std::numeric_limits<TypeParam>::lowest()), 1);
+  EXPECT_EQ(popcnt_ref(static_cast<TypeParam>(-1)), bit_count);
+  EXPECT_EQ(popcnt_ref(static_cast<TypeParam>(0)), 0);
+  EXPECT_EQ(popcnt_ref(static_cast<TypeParam>(1)), 1);
+  EXPECT_EQ(popcnt_ref(static_cast<TypeParam>(2)), 1);
+  EXPECT_EQ(popcnt_ref(static_cast<TypeParam>(3)), 2);
+  EXPECT_EQ(popcnt_ref(std::numeric_limits<TypeParam>::max()), bit_count - 1);
+}
 
 INSTANTIATE_TYPED_TEST_SUITE_P(Popcnt, UnaryElementwiseOpShapePropagationTest,
                                PopcntOp, TestParamNames);

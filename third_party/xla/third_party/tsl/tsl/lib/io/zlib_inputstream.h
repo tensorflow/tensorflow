@@ -66,15 +66,15 @@ class ZlibInputStream : public InputStreamInterface {
   // ABORTED:      If inflate() fails, we return the error code with the
   //               error message in `z_stream_->msg`.
   // others:       If reading from stream failed.
-  Status ReadNBytes(int64_t bytes_to_read, tstring* result) override;
+  absl::Status ReadNBytes(int64_t bytes_to_read, tstring* result) override;
 
 #if defined(TF_CORD_SUPPORT)
-  Status ReadNBytes(int64_t bytes_to_read, absl::Cord* result) override;
+  absl::Status ReadNBytes(int64_t bytes_to_read, absl::Cord* result) override;
 #endif
 
   int64_t Tell() const override;
 
-  Status Reset() override;
+  absl::Status Reset() override;
 
  private:
   void InitZlibBuffer();
@@ -103,10 +103,10 @@ class ZlibInputStream : public InputStreamInterface {
   // Returns OutOfRange error if NO data could be read from stream. Note that
   // this won't return an OutOfRange if there wasn't sufficient data in stream
   // to completely fill up z_stream_input_.
-  Status ReadFromStream();
+  absl::Status ReadFromStream();
 
   // Calls `inflate()` and returns DataLoss Status if it failed.
-  Status Inflate();
+  absl::Status Inflate();
 
   // Starts reading bytes at `next_unread_byte_` till either `bytes_to_read`
   // bytes have been read or `z_stream_->next_out` is reached.

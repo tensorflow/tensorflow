@@ -96,6 +96,7 @@ class GemmAutotuner {
   std::unique_ptr<se::RedzoneAllocator> redzone_allocator_;
   se::Stream* stream_ = nullptr;
   bool deterministic_ops_ = false;
+  size_t solutions_limit_ = 0;
   int64_t rng_state_ = 0;
 
  public:
@@ -114,6 +115,7 @@ class GemmAutotuner {
     const DebugOptions& debug_options =
         gemm->GetModule()->config().debug_options();
     deterministic_ops_ = debug_options.xla_gpu_deterministic_ops();
+    solutions_limit_ = debug_options.xla_gpu_autotune_max_solutions();
 
     TF_ASSIGN_OR_RETURN(auto gemm_config, GemmConfig::For(gemm));
 
@@ -193,6 +195,7 @@ class GemmAutotuner {
           c_scale_buffer, d_scale_buffer, d_amax_buffer, algorithm,
           scratch_allocator));
       se::blas::ProfileResult profile_result;
+      profile_result.set_warmup_run_executed(true);
       TF_RETURN_IF_ERROR(plan->ExecuteOnStream(
           stream_, lhs_buffer_, rhs_buffer_, output_buffer_, output_buffer_,
           bias_buffer, aux_buffer, a_scale_buffer, b_scale_buffer,
@@ -207,20 +210,9 @@ class GemmAutotuner {
 
   absl::StatusOr<AutotuneResult> TuneGpuBlas(const HloInstruction* gemm,
                                              const GemmConfig& gemm_config) {
-    int64_t workspace_size =
-        std::visit(VariantVisitor{[](const se::CudaComputeCapability& cc) {
-                                    return cc.IsAtLeastHopper()
-                                               ? GemmConfig::kHopperWorkspace
-                                               : GemmConfig::kDefaultWorkspace;
-                                  },
-                                  [](const se::RocmComputeCapability&) {
-                                    return GemmConfig::kDefaultWorkspace;
-                                  }},
-                   autotune_config_.GetGpuComputeCapability());
-
-    TF_ASSIGN_OR_RETURN(
-        auto workspace_buffer,
-        CreateBuffer(ShapeUtil::MakeShape(S8, {workspace_size})));
+    TF_ASSIGN_OR_RETURN(auto workspace_shape,
+                        ShapeUtil::TryGetSubshape(gemm->shape(), {1}));
+    TF_ASSIGN_OR_RETURN(auto workspace_buffer, CreateBuffer(*workspace_shape));
 
     std::vector<se::blas::AlgorithmType> algorithms;
     TF_ASSIGN_OR_RETURN(GemmConfig::DescriptorsTuple desc,
@@ -236,17 +228,19 @@ class GemmAutotuner {
                                 &algorithms);
 
     AutotuneResult best_algorithm;
-#if TENSORFLOW_USE_ROCM        // Blas gemm algorithms can be empty for ROCM
-    if (algorithms.empty()) {  // nothing to autotune
-      LOG(WARNING) << "No solutions found: skipping autotuning for ROCM..";
-      best_algorithm.mutable_gemm()->set_algorithm(se::blas::kDefaultAlgorithm);
-      return best_algorithm;
-    }
-#endif
-
     auto tuned_func = [&](const se::blas::AlgorithmType& algorithm)
         -> absl::StatusOr<se::blas::ProfileResult> {
+      // Do a warm-up run first, without a profile result. RunGemm swallows
+      // error codes when profile_result is passed, as it is in the measurement
+      // below, but not otherwise. It is, therefore, consistent to ignore the
+      // error code here.
+      static_cast<void>(RunGemm(gemm_config, lhs_buffer_, rhs_buffer_,
+                                output_buffer_, workspace_buffer,
+                                deterministic_ops_, stream_, algorithm));
       se::blas::ProfileResult profile_result;
+      // Allow GpuTimer to use its delay kernel implementation to improve
+      // accuracy.
+      profile_result.set_warmup_run_executed(true);
       // We expect GemmWithAlgorithm to fail sometimes -- in fact, it will fail
       // for all algorithms if we're targeting < sm_50. But because we pass a
       // non-null ProfileResult, DoGemmWithAlgorithm should always return true,
@@ -296,7 +290,10 @@ class GemmAutotuner {
     results.reserve(algorithms.size());
     std::optional<int64_t> reference_algorithm;
 
-    for (const AlgoT& algorithm : algorithms) {
+    auto num = algorithms.size();
+    if (solutions_limit_ > 0) num = std::min(num, solutions_limit_);
+    for (size_t i = 0; i < num; i++) {
+      const AlgoT& algorithm = algorithms[i];
       // Make sure the output buffer always has the same value if we use
       // the bias parameter.
       if (autotune_config_.should_reinit_output_buffer() && beta != 0) {

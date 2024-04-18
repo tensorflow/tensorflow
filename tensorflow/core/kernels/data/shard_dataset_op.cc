@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/global_shuffle_utils.h"
@@ -34,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/stringprintf.h"
 #include "tensorflow/core/util/batch_util.h"
+#include "tsl/platform/statusor.h"
 #include "tsl/platform/thread_annotations.h"
 
 namespace tensorflow {
@@ -258,8 +260,9 @@ class ShardDatasetOp::Dataset : public DatasetBase {
       int64_t num_shards = dataset()->num_shards_;
       int64_t shard_index = dataset()->index_;
       return [parent_index_mapper, num_shards,
-              shard_index](size_t element_position) -> size_t {
-        size_t output_index = parent_index_mapper(element_position);
+              shard_index](size_t element_position) -> absl::StatusOr<size_t> {
+        TF_ASSIGN_OR_RETURN(size_t output_index,
+                            parent_index_mapper(element_position));
         return output_index * num_shards + shard_index;
       };
     }

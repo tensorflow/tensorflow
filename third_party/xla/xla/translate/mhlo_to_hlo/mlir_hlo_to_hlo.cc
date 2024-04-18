@@ -70,6 +70,7 @@ limitations under the License.
 #include "xla/hlo/ir/dynamic_parameter_binding.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/mlir/utils/error_util.h"
@@ -193,7 +194,7 @@ absl::StatusOr<xla::Literal> CreateArrayLiteralFromAttr(mlir::ElementsAttr attr,
 
   xla::Shape shape = xla::TypeToShape(dense_attr.getType());
 
-  return xla::primitive_util::PrimitiveTypeSwitch<StatusOr<xla::Literal>>(
+  return xla::primitive_util::PrimitiveTypeSwitch<absl::StatusOr<xla::Literal>>(
       [&](auto primitive_type_constant) -> absl::StatusOr<xla::Literal> {
         if constexpr (xla::primitive_util::IsArrayType(
                           primitive_type_constant)) {
@@ -639,6 +640,63 @@ static void ExtractShardingsFromFunction(
       (*ret_shardings)[i] = xla::ConvertSharding(sharding.getValue());
 }
 
+void AppendTupleShardingElements(xla::OpSharding* result,
+                                 const xla::OpSharding& tuple_sharding) {
+  if (tuple_sharding.type() == xla::OpSharding::TUPLE) {
+    for (const xla::OpSharding& element : tuple_sharding.tuple_shardings()) {
+      AppendTupleShardingElements(result, element);
+    }
+  } else {
+    *result->add_tuple_shardings() = tuple_sharding;
+  }
+}
+
+// Creates a tuple sharding with `tuple_shardings` if at least one is present.
+// Adds replicated shardings for any missing tuple shardings.
+//
+// The tuple xla::Shape can be nested, while xla::OpSharding stores a flattened
+// list of shardings for the leaves of a tuple shape.
+std::optional<xla::OpSharding> CreateTupleSharding(
+    llvm::ArrayRef<std::optional<xla::OpSharding>> tuple_shardings) {
+  if (tuple_shardings.empty() ||
+      !SomeOptionalShardingsAreSet(tuple_shardings)) {
+    return std::nullopt;
+  }
+  xla::OpSharding sharding;
+  sharding.set_type(xla::OpSharding::TUPLE);
+  for (const std::optional<xla::OpSharding>& tuple_sharding : tuple_shardings) {
+    if (tuple_sharding) {
+      AppendTupleShardingElements(&sharding, *tuple_sharding);
+    } else {
+      xla::OpSharding fallback_sharding;
+      fallback_sharding.set_type(xla::OpSharding::REPLICATED);
+      *sharding.add_tuple_shardings() = fallback_sharding;
+    }
+  }
+
+  return sharding;
+}
+
+// Returns the flattened result shardings of the given `op_sharding`, i.e.,
+// either:
+// - an empty vector if `op_sharding` is `std::nullopt`.
+// - the tuple shardings in `op_sharding` if it has type TUPLE.
+// - otherwise, returns a vector with `op_sharding` itself.
+llvm::SmallVector<std::optional<xla::OpSharding>> GetResultShardings(
+    std::optional<xla::OpSharding> op_sharding) {
+  if (!op_sharding) {
+    return {};
+  }
+  llvm::SmallVector<std::optional<xla::OpSharding>> res_shardings;
+  if (op_sharding->type() == xla::OpSharding::TUPLE) {
+    res_shardings.assign(op_sharding->tuple_shardings().begin(),
+                         op_sharding->tuple_shardings().end());
+  } else {
+    res_shardings.push_back(op_sharding);
+  }
+  return res_shardings;
+}
+
 namespace mlir {
 namespace {
 class ConvertToHloModule {
@@ -688,7 +746,9 @@ class ConvertToHloModule {
       mlir::Region* region, xla::XlaComputation* func,
       std::optional<llvm::ArrayRef<mlir::Value>> implicit_operands =
           std::nullopt,
-      bool ensure_single_arg = false);
+      bool ensure_single_arg = false,
+      llvm::ArrayRef<std::optional<xla::OpSharding>> arg_shardings = {},
+      llvm::ArrayRef<std::optional<xla::OpSharding>> ret_shardings = {});
 
   // Lower a single `Block` to a `XlaComputation`
   LogicalResult LowerBasicBlockAsFunction(
@@ -835,13 +895,17 @@ bool SimplyReturnedOp(mlir::Operation* op) {
 
 void BuildGetTupleElementsForTupleResults(mlir::Operation* op, xla::XlaOp tuple,
                                           OpLoweringContext ctx) {
-  const std::optional<xla::OpSharding>& tuple_sharding =
-      ctx.builder->sharding();
-  if (tuple_sharding.has_value()) {
-    assert(op->getNumResults() == tuple_sharding->tuple_shardings_size());
+  const std::optional<xla::OpSharding>& sharding = ctx.builder->sharding();
+  if (sharding.has_value()) {
+    bool is_tuple_sharding = sharding->type() == xla::OpSharding::TUPLE;
+    assert(!is_tuple_sharding ||
+           op->getNumResults() == sharding->tuple_shardings_size());
     for (auto [index, result] : llvm::enumerate(op->getResults())) {
+      // If `sharding` is not a tuple sharding, then every `get-tuple-element`
+      // gets the same sharding.
       xla::XlaScopedShardingAssignment scoped_sharding(
-          ctx.builder, tuple_sharding->tuple_shardings(index));
+          ctx.builder,
+          is_tuple_sharding ? sharding->tuple_shardings(index) : sharding);
       (*ctx.values)[result] = xla::GetTupleElement(tuple, index);
     }
   } else {
@@ -2627,11 +2691,17 @@ LogicalResult ExportXlaOp(UnaryEinsumOp op, OpLoweringContext ctx) {
 LogicalResult ExportXlaOp(WhileOp op, OpLoweringContext ctx) {
   xla::XlaComputation condition;
   xla::XlaComputation body;
+  // If the results of the while op have a sharding, we use those shardings for
+  // the corresponding arguments and return shardings in the body and condition.
+  llvm::SmallVector<std::optional<xla::OpSharding>> res_shardings =
+      GetResultShardings(ctx.builder->sharding());
+  assert(res_shardings.empty() || res_shardings.size() == op->getNumResults());
   if (failed(ctx.converter->LowerRegionAsComputation(
-          &op.getBody(), &body, std::nullopt, /*ensure_single_arg*/ true)) ||
+          &op.getBody(), &body, std::nullopt, /*ensure_single_arg=*/true,
+          /*arg_shardings=*/res_shardings, /*ret_shardings=*/res_shardings)) ||
       failed(ctx.converter->LowerRegionAsComputation(
           &op.getCond(), &condition, std::nullopt,
-          /*ensure_single_arg*/ true))) {
+          /*ensure_single_arg=*/true, /*arg_shardings=*/res_shardings))) {
     return failure();
   }
 
@@ -3117,6 +3187,8 @@ LogicalResult ConvertToHloModule::Lower(
         CreateArrayLiteralFromAttr(const_attr, shape_or->layout());
     if (!literal_or.ok())
       return inst->emitError(literal_or.status().ToString());
+    xla::XlaScopedShardingAssignment scoped_sharding(
+        builder, CreateOpShardingFromAttribute(inst));
     auto constant = xla::ConstantLiteral(builder, literal_or.value());
     value_map[inst->getResult(0)] = constant;
 
@@ -3127,8 +3199,8 @@ LogicalResult ConvertToHloModule::Lower(
     // Construct the return value for the function. If there is a single value
     // returned, then return it directly, else create a tuple and return.
     unsigned num_return_values = inst->getNumOperands();
-    const bool has_ret_shardings =
-        !ret_shardings.empty() && SomeOptionalShardingsAreSet(ret_shardings);
+    std::optional<xla::OpSharding> ret_tuple_sharding =
+        CreateTupleSharding(ret_shardings);
     if ((return_tuple_ && is_entry_function) || num_return_values != 1) {
       std::vector<xla::XlaOp> returns(num_return_values);
       for (OpOperand& ret : inst->getOpOperands()) {
@@ -3138,7 +3210,7 @@ LogicalResult ConvertToHloModule::Lower(
           return failure();
 
         returns[index] = operand;
-        if (!is_entry_function || !has_ret_shardings) continue;
+        if (!is_entry_function || !ret_tuple_sharding) continue;
 
         xla::Shape return_shape = xla::TypeToShape(ret.get().getType());
         absl::StatusOr<xla::XlaOp> reshape =
@@ -3152,33 +3224,26 @@ LogicalResult ConvertToHloModule::Lower(
         returns[index] = reshape.value();
       }
 
-      if (has_ret_shardings) {
-        xla::OpSharding sharding;
-        sharding.set_type(xla::OpSharding::TUPLE);
-        for (auto& ret_sharding : ret_shardings)
-          if (ret_sharding) {
-            *sharding.add_tuple_shardings() = *ret_sharding;
-          } else {
-            xla::OpSharding fallback_sharding;
-            fallback_sharding.set_type(xla::OpSharding::REPLICATED);
-            *sharding.add_tuple_shardings() = fallback_sharding;
-          }
-
-        builder->SetSharding(sharding);
-      }
-
+      xla::XlaScopedShardingAssignment scoped_sharding(builder,
+                                                       ret_tuple_sharding);
       *return_value = xla::Tuple(builder, returns);
-      builder->ClearSharding();
-    } else if (num_return_values == 1) {
+    } else {
       xla::XlaOp operand;
       if (failed(GetXlaOp(inst->getOperand(0), value_map, &operand, inst)))
         return failure();
 
-      if (has_ret_shardings) {
-        auto tuple = Tuple(builder, {operand});
-        builder->SetSharding(*ret_shardings[0]);
-        *return_value = GetTupleElement(tuple, 0);
-        builder->ClearSharding();
+      if (ret_tuple_sharding) {
+        xla::XlaOp tuple;
+        {
+          xla::XlaScopedShardingAssignment scoped_sharding(builder,
+                                                           ret_tuple_sharding);
+          tuple = Tuple(builder, {operand});
+        }
+        {
+          xla::XlaScopedShardingAssignment scoped_sharding(builder,
+                                                           *ret_shardings[0]);
+          *return_value = GetTupleElement(tuple, 0);
+        }
       } else {
         *return_value = operand;
       }
@@ -3423,20 +3488,20 @@ LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
         xla::Parameter(builder, 0, input_shape, "arg_tuple", leaf_replication);
     builder->ClearSharding();
 
-    bool set_tuple_element_sharding =
-        !arg_shardings.empty() && SomeOptionalShardingsAreSet(arg_shardings);
     for (BlockArgument& arg : block->getArguments()) {
-      if (set_tuple_element_sharding &&
-          arg_shardings[arg.getArgNumber()].has_value()) {
-        builder->SetSharding(*arg_shardings[arg.getArgNumber()]);
-      }
+      xla::XlaScopedShardingAssignment scoped_sharding(
+          builder, arg_shardings.empty() ? std::nullopt
+                                         : arg_shardings[arg.getArgNumber()]);
       lowering[arg] = xla::GetTupleElement(tuple, arg.getArgNumber());
-      builder->ClearSharding();
     }
   } else {
     if (ensure_single_arg) {
       // Applicable for mhlo.IfOp or mhlo.CaseOp or mhlo.WhileOp.
       llvm::SmallVector<xla::Shape, 4> arg_shapes;
+
+      // The arguments of `block` are ignored if `implicit_operands` is set,
+      // therefore `arg_shardings` should be empty in that case.
+      assert(arg_shardings.empty() || !implicit_operands);
 
       auto args_size = block->getNumArguments();
       if (implicit_operands) args_size = implicit_operands->size();
@@ -3451,6 +3516,10 @@ LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
       }
 
       if (args_size > 1) {
+        xla::XlaScopedShardingAssignment scoped_sharding(
+            builder, arg_shardings.empty()
+                         ? std::nullopt
+                         : CreateTupleSharding(arg_shardings));
         auto tuple = xla::Parameter(builder, 0,
                                     xla::ShapeUtil::MakeTupleShape(arg_shapes),
                                     "arg_tuple");
@@ -3461,14 +3530,22 @@ LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
             lowering[implicit_operand] =
                 xla::GetTupleElement(tuple, arg_index++);
         } else {
-          for (BlockArgument& arg : block->getArguments())
-            lowering[arg] = xla::GetTupleElement(tuple, arg.getArgNumber());
+          for (BlockArgument& arg : block->getArguments()) {
+            auto num = arg.getArgNumber();
+            xla::XlaScopedShardingAssignment scoped_sharding(
+                builder,
+                arg_shardings.empty() ? std::nullopt : arg_shardings[num]);
+            lowering[arg] = xla::GetTupleElement(tuple, num);
+          }
         }
       } else if (args_size == 1) {
         if (implicit_operands) {
           lowering[(*implicit_operands)[0]] =
               xla::Parameter(builder, 0, arg_shapes[0], "Arg_");
         } else {
+          xla::XlaScopedShardingAssignment scoped_sharding(
+              builder,
+              arg_shardings.empty() ? std::nullopt : arg_shardings.front());
           lowering[block->getArgument(0)] =
               xla::Parameter(builder, 0, arg_shapes[0], "Arg_");
         }
@@ -3483,9 +3560,8 @@ LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
       for (BlockArgument& arg : block->getArguments()) {
         auto num = arg.getArgNumber();
         xla::Shape shape = xla::TypeToShape(arg.getType());
-        if (!arg_shardings.empty() && arg_shardings[num]) {
-          builder->SetSharding(*arg_shardings[num]);
-        }
+        xla::XlaScopedShardingAssignment scoped_sharding(
+            builder, arg_shardings.empty() ? std::nullopt : arg_shardings[num]);
         if (!fe_attrs.empty() && fe_attrs[num]) {
           // Populates frontend attributes for parameters only for the entry
           // functions with no tuple args.
@@ -3500,7 +3576,6 @@ LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
               std::vector<bool>(entry_args_same_across_replicas[num],
                                 xla::ShapeUtil::GetLeafCount(shape)));
         }
-        builder->ClearSharding();
         builder->ClearFrontendAttributes();
       }
     }
@@ -3526,19 +3601,21 @@ LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
 LogicalResult ConvertToHloModule::LowerRegionAsComputation(
     mlir::Region* region, xla::XlaComputation* func,
     std::optional<llvm::ArrayRef<mlir::Value>> implicit_operands,
-    bool ensure_single_arg) {
+    bool ensure_single_arg,
+    llvm::ArrayRef<std::optional<xla::OpSharding>> arg_shardings,
+    llvm::ArrayRef<std::optional<xla::OpSharding>> ret_shardings) {
   std::unique_ptr<xla::XlaBuilder> builder =
       module_builder_.CreateSubBuilder(absl::StrCat("region_", region_id_++));
   return LowerBasicBlockAsFunction(&region->front(), builder.get(),
                                    /*is_entry_function=*/false,
                                    /*ensure_single_arg*/ ensure_single_arg,
                                    /*entry_args_same_across_replicas=*/{},
-                                   /*arg_shardings=*/{}, /*ret_shardings=*/{},
+                                   arg_shardings, ret_shardings,
                                    /*fe_attrs=*/{}, func, implicit_operands);
 }
 
 // Runs the PrepareForExport pass on the ModuleOp.
-xla::Status PrepareForExport(mlir::ModuleOp module) {
+absl::Status PrepareForExport(mlir::ModuleOp module) {
   bool hasShapeOps = false;
   module.walk([&](Operation* op) {
     hasShapeOps |= isa<shape::ShapeDialect>(op->getDialect());
@@ -3562,9 +3639,10 @@ xla::Status PrepareForExport(mlir::ModuleOp module) {
 
 }  // namespace
 
-xla::Status ConvertMlirHloToHlo(mlir::ModuleOp module, xla::HloProto* hlo_proto,
-                                bool use_tuple_args, bool return_tuple,
-                                MlirToHloConversionOptions options) {
+absl::Status ConvertMlirHloToHlo(mlir::ModuleOp module,
+                                 xla::HloProto* hlo_proto, bool use_tuple_args,
+                                 bool return_tuple,
+                                 MlirToHloConversionOptions options) {
   // To support the ongoing migration of XLA's compiler interface from MHLO
   // to StableHLO, we've inserted this fallback to provide support for backends
   // which are converting incoming ModuleOps directly to HLO.
@@ -3637,10 +3715,10 @@ xla::Status ConvertMlirHloToHlo(mlir::ModuleOp module, xla::HloProto* hlo_proto,
   return absl::OkStatus();
 }
 
-xla::Status BuildHloFromMlirHlo(mlir::Block& block, xla::XlaBuilder& builder,
-                                llvm::ArrayRef<xla::XlaOp> xla_params,
-                                std::vector<xla::XlaOp>& returns,
-                                MlirToHloConversionOptions options) {
+absl::Status BuildHloFromMlirHlo(mlir::Block& block, xla::XlaBuilder& builder,
+                                 llvm::ArrayRef<xla::XlaOp> xla_params,
+                                 std::vector<xla::XlaOp>& returns,
+                                 MlirToHloConversionOptions options) {
   auto module = block.getParentOp()->getParentOfType<mlir::ModuleOp>();
   TF_RETURN_IF_ERROR(PrepareForExport(module));
   ConvertToHloModule converter(module, builder,

@@ -165,7 +165,7 @@ class TfrtSession : public tensorflow::Session {
       TF_EXCLUSIVE_LOCKS_REQUIRED(session_state_lock_) {
     if (graph.node_size() == 0) {
       LOG(ERROR) << "Ignoring empty graph.";
-      return OkStatus();
+      return absl::OkStatus();
     }
     if (session_state_ == SessionState::kCreated) {
       return errors::AlreadyExists(
@@ -256,7 +256,7 @@ class TfrtSession : public tensorflow::Session {
             std::move(graph), std::move(kernel_registry)));
 
     session_state_ = SessionState::kCreated;
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status Extend(const GraphDef& graph) override {
@@ -339,7 +339,7 @@ class TfrtSession : public tensorflow::Session {
       DCHECK(output_tensor_names.empty()) << "No outputs in Run()";
     }
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status Run(const std::vector<std::pair<std::string, Tensor>>& inputs,
@@ -387,7 +387,7 @@ class TfrtSession : public tensorflow::Session {
     *out_handle = next_callable_handle_++;
     assert(callables_.find(*out_handle) == callables_.end());
     callables_[*out_handle] = {callable_options};
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   /// \brief Invokes the subgraph named by `handle` with the given options and
@@ -453,13 +453,13 @@ class TfrtSession : public tensorflow::Session {
     if (it == callables_.end())
       return errors::InvalidArgument("No such callable handle: ", handle);
     callables_.erase(it);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status Close() override {
     absl::MutexLock lock(&session_state_lock_);
     session_state_ = SessionState::kClosed;
-    return OkStatus();
+    return absl::OkStatus();
   }
   Status ListDevices(std::vector<DeviceAttributes>* response) override {
     return errors::Unimplemented("TfrtSession::ListDevices is Unimplemented.");
@@ -505,7 +505,7 @@ class TfrtSession : public tensorflow::Session {
     if (session_state_ == SessionState::kClosed) {
       return errors::Cancelled("Session has been closed.");
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   struct Callable {
@@ -740,8 +740,8 @@ class InitializerRegistry {
 
   absl::Status RunInitializer(tfrt_stub::Runtime* runtime) {
     LOG(INFO) << "Running Initializer within TfrtSessionFactory.";
-    TF_RETURN_IF_ERROR(initializer_ ? initializer_(runtime) : OkStatus());
-    return OkStatus();
+    TF_RETURN_IF_ERROR(initializer_ ? initializer_(runtime) : absl::OkStatus());
+    return absl::OkStatus();
   }
 
  private:
@@ -756,7 +756,7 @@ Status TfrtSessionFactory::InitializeLocked(const TfrtSessionOptions& options) {
   mutex_.AssertHeld();
   if (options.use_tpu) {
     DCHECK(!options.backend_compiler);
-    device_target_ = TfrtDeviceInfraTarget::kBridgeFallback;
+    device_target_ = TfrtDeviceInfraTarget::kTpurt;
     tpu_use_tpu_runner_ = true;
   } else if (options.backend_compiler) {
     backend_compiler_ = options.backend_compiler;
@@ -770,7 +770,7 @@ Status TfrtSessionFactory::InitializeLocked(const TfrtSessionOptions& options) {
     runtime_ = owned_runtime_.get();
   }
   enable_mlrt_ = options.enable_mlrt;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 bool TfrtSessionFactory::AcceptsOptions(const SessionOptions& options) {
@@ -811,7 +811,7 @@ Status TfrtSessionFactory::NewSession(const SessionOptions& options,
   *out_session = new TfrtSession(
       options, runtime_, device_target_, tpu_use_tpu_runner_,
       std::move(inter_op_thread_pools), enable_mlrt_, backend_compiler);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 namespace {

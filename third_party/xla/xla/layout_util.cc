@@ -350,7 +350,7 @@ Layout CreateDefaultLayoutForRank(int64_t rank) {
       TF_RETURN_IF_ERROR(ShapeUtil::ValidateShape(layout.physical_shape()));
       TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
           layout.physical_shape(),
-          [&](const Shape& subshape, const ShapeIndex& index) {
+          [&](const Shape& subshape, const ShapeIndex& index) -> absl::Status {
             if (subshape.has_layout() &&
                 subshape.layout().has_physical_shape()) {
               return InvalidArgument(
@@ -412,6 +412,11 @@ Layout CreateDefaultLayoutForRank(int64_t rank) {
           DimLevelType_Name(dim_level_type), dim_unique ? "" : ", non-unique",
           dim_ordered ? "" : ", non-ordered", shape.ShortDebugString());
     }
+  }
+
+  if (layout.element_size_in_bits() < 0) {
+    return InvalidArgument("layout element_size_in_bits field is negative: %d",
+                           layout.element_size_in_bits());
   }
 
   return OkStatus();
@@ -515,6 +520,18 @@ Layout CreateDefaultLayoutForRank(int64_t rank) {
     // Tuple shape: all subshapes must have a layout.
     return absl::c_all_of(shape.tuple_shapes(),
                           [](const Shape& s) { return HasLayout(s); });
+  } else if (!shape.IsArray()) {
+    // Opaque, token types etc. ignore layout.
+    return true;
+  }
+  return shape.has_layout();
+}
+
+/* static */ bool LayoutUtil::HasAnyLayout(const Shape& shape) {
+  if (shape.IsTuple()) {
+    // Tuple shape: all subshapes must have a layout.
+    return absl::c_any_of(shape.tuple_shapes(),
+                          [](const Shape& s) { return HasAnyLayout(s); });
   } else if (!shape.IsArray()) {
     // Opaque, token types etc. ignore layout.
     return true;

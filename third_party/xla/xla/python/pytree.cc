@@ -50,6 +50,7 @@ limitations under the License.
 #include "third_party/nanobind/include/nanobind/stl/vector.h"  // IWYU pragma: keep
 #include "xla/pjrt/exceptions.h"
 #include "xla/python/nb_class_ptr.h"
+#include "xla/python/pytree.pb.h"
 #include "tsl/platform/logging.h"
 
 namespace xla {

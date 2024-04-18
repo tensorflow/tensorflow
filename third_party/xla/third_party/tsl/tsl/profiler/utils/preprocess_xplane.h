@@ -26,6 +26,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/hash/hash.h"
+#include "absl/log/log.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
@@ -461,8 +462,101 @@ class TpuModuleLineMutatorFactory : public XplaneEventMutatorFactory {
   };
 };
 
-// Preprocess the given XSpace to support legacy traces. It converts old context
-// events and stats into new ones according to go/xprof-traceme2-semantics.
+// Line mutator for threadpool line.
+// Threadpool Line Mutator create a kThreadpoolListenerRegion from StartRegion
+// to StopRegion events, and propagates the context information from the
+// StartRegion to the newly added event.
+class ThreadpoolLineMutatorFactory : public XplaneEventMutatorFactory {
+ public:
+  static std::unique_ptr<XplaneEventMutatorFactory> CreateFactory() {
+    return absl::WrapUnique(new ThreadpoolLineMutatorFactory());
+  }
+
+  std::vector<std::unique_ptr<XplaneEventMutator>> CreateMutators(
+      XPlaneBuilder* xplane) const override {
+    std::vector<std::unique_ptr<XplaneEventMutator>> mutators;
+    mutators.emplace_back(std::make_unique<ThreadpoolLineMutator>(xplane));
+    return mutators;
+  }
+
+ private:
+  ThreadpoolLineMutatorFactory() = default;
+
+  class ThreadpoolLineMutator : public XplaneEventMutator {
+   public:
+    explicit ThreadpoolLineMutator(XPlaneBuilder* xplane)
+        : XplaneEventMutator(nullptr), xplane_(xplane) {
+      start_region_metadata_ =
+          xplane_->GetEventMetadata(kThreadpoolListenerStartRegion);
+      stop_region_metadata_ =
+          xplane_->GetEventMetadata(kThreadpoolListenerStopRegion);
+      thread_pool_metadata_ =
+          xplane_->GetOrCreateEventMetadata(kThreadpoolListenerRegion);
+      consumer_ = xplane_->GetOrCreateStatMetadata(
+          GetStatTypeStr(StatType::kConsumerId));
+      consumer_type_ = xplane_->GetOrCreateStatMetadata(
+          GetStatTypeStr(StatType::kConsumerType));
+    }
+
+    void Mutate(XEventBuilder* event_builder) override {
+      CHECK(false);  // Crash OK
+    }
+
+    void MutateEventsInLine(XLineBuilder* line) override {
+      if (start_region_metadata_ == nullptr ||
+          stop_region_metadata_ == nullptr) {
+        // Skip mutations for xplanes that do not have region markers. These
+        // include device_planes, or situations where the threadpool_listeners
+        // did not start or were not present.
+        return;
+      }
+      int64_t start_region_timestamp_ps = 0;
+      int64_t region_id;
+      struct EventMetadata {
+        int64_t start_region_timestamp_ps;
+        int64_t region_id;
+        int64_t end_region_timestamp_ps;
+      };
+
+      std::vector<EventMetadata> event_metadata;
+      line->ForEachEvent([&](const XEventBuilder& event) {
+        if (event.MetadataId() == start_region_metadata_->id()) {
+          auto consumer_id = event.GetStat(*consumer_);
+          if (!consumer_id) return;
+          start_region_timestamp_ps = event.TimestampPs();
+          region_id = event.IntOrUintValue(*consumer_id);
+        } else if (event.MetadataId() == stop_region_metadata_->id() &&
+                   start_region_timestamp_ps != 0) {
+          EventMetadata metadata;
+          metadata.start_region_timestamp_ps = start_region_timestamp_ps;
+          metadata.region_id = region_id;
+          metadata.end_region_timestamp_ps = event.TimestampPs();
+          event_metadata.emplace_back(metadata);
+        }
+      });
+      for (const auto& event_metadata : event_metadata) {
+        XEventBuilder region = line->AddEvent(*thread_pool_metadata_);
+        region.SetTimestampPs(event_metadata.start_region_timestamp_ps);
+        region.SetEndTimestampPs(event_metadata.end_region_timestamp_ps);
+        region.SetOrAddStatValue(*consumer_, event_metadata.region_id);
+        region.SetOrAddStatValue(
+            *consumer_type_,
+            static_cast<int64_t>(ContextType::kThreadpoolEvent));
+      }
+    }
+
+   private:
+    XStatMetadata* consumer_;
+    XStatMetadata* consumer_type_;
+    XPlaneBuilder* xplane_;
+    XEventMetadata* start_region_metadata_;
+    XEventMetadata* stop_region_metadata_;
+    XEventMetadata* thread_pool_metadata_;
+  };
+};
+// Preprocess the given XSpace to support legacy traces. It converts old
+// context events and stats into new ones according to
+// go/xprof-traceme2-semantics.
 void PreprocessXSpace(XSpace* space);
 void PreprocessXPlane(XPlane* plane);
 

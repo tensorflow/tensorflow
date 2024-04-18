@@ -59,7 +59,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/string_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.h"
-#include "tensorflow/core/lib/monitoring/counter.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
@@ -96,8 +95,6 @@ constexpr llvm::StringRef kNoReplicationCluster = "__no_replication_cluster";
 constexpr llvm::StringRef kBadReplicateInfoAttrMsg =
     "requires '_replication_info' string attribute";
 
-constexpr char kUseMlirBridge[] = "kUseMlirBridge";
-
 // Mapping for `_replication_info` attribute to TPUReplicateMetadata attributes.
 using MetadataMap = llvm::SmallDenseMap<llvm::StringRef, NamedAttrList, 8>;
 
@@ -107,15 +104,6 @@ using OpSetVector = llvm::SmallSetVector<Operation*, 8>;
 
 // Mapping for `_replication_info` attribute to ops of a cluster.
 using ClusterMap = llvm::SmallDenseMap<llvm::StringRef, OpSetVector, 8>;
-
-auto* jit_compile_single_core_tpu_count =
-    tensorflow::monitoring::Counter<1>::New(
-        /* metric name */
-        "/tensorflow/core/jit_compile_single_core_tpu_count",
-        /* metric description */
-        "Tracks if single core tpu support goes through the first "
-        "phase of the MLIR bridge",
-        /* metric field */ "use_mlir_bridge");
 
 #define GEN_PASS_DEF_TPUCLUSTERFORMATIONPASS
 #include "tensorflow/compiler/mlir/tf2xla/internal/passes/clustering_passes.h.inc"
@@ -943,7 +931,7 @@ void SetNoReplicationClusterAttrs(mlir::tf_device::ClusterOp cluster,
 LogicalResult FormClustersInBlock(
     Block* block,
     const mlir::TF::SideEffectAnalysis::Info& side_effect_analysis,
-    bool strict_clusters, bool& has_replication_in_module) {
+    bool strict_clusters) {
   MetadataMap metadata_map;
   LogicalResult result = CollectMetadata(block, &metadata_map);
   if (failed(result)) return result;
@@ -956,8 +944,7 @@ LogicalResult FormClustersInBlock(
         if (!llvm::hasSingleElement(region))
           return op.emitOpError("Expected single block region");
         if (failed(FormClustersInBlock(&region.front(), side_effect_analysis,
-                                       strict_clusters,
-                                       has_replication_in_module)))
+                                       strict_clusters)))
           return mlir::failure();
       }
     }
@@ -998,7 +985,6 @@ LogicalResult FormClustersInBlock(
         block, cluster_ops, results, cluster_successor_ops.getArrayRef());
 
     if (!has_replication) {
-      has_replication_in_module = false;
       SetNoReplicationClusterAttrs(cluster, device_type, device);
       continue;
     }
@@ -1034,12 +1020,12 @@ LogicalResult FormClustersInBlock(
 LogicalResult FormClustersInFunction(
     mlir::func::FuncOp func,
     const mlir::TF::SideEffectAnalysis::Info& side_effect_analysis,
-    bool strict_clusters, bool& has_replication_in_module) {
+    bool strict_clusters) {
   if (!llvm::hasSingleElement(func))
     return func.emitOpError("Expecting a single block function");
 
   if (failed(FormClustersInBlock(&func.front(), side_effect_analysis,
-                                 strict_clusters, has_replication_in_module)))
+                                 strict_clusters)))
     return mlir::failure();
 
   // Remove TPUReplicatedInput and TPUReplicatedOutput nodes.
@@ -1091,17 +1077,12 @@ void TPUClusterFormationPass::runOnOperation() {
   });
 
   auto& side_effect_analysis = getAnalysis<mlir::TF::SideEffectAnalysis>();
-  bool has_replication_in_module = true;
   for (auto func : getOperation().getOps<mlir::func::FuncOp>())
     if (!func.isExternal() &&
         failed(FormClustersInFunction(
             func, side_effect_analysis.GetAnalysisForFunc(func),
-            strict_clusters_, has_replication_in_module)))
+            strict_clusters_)))
       return signalPassFailure();
-
-  if (!has_replication_in_module) {
-    jit_compile_single_core_tpu_count->GetCell(kUseMlirBridge)->IncrementBy(1);
-  }
 }
 }  // anonymous namespace
 

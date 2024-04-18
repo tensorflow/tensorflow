@@ -32,12 +32,13 @@ using ContextType ABSL_DEPRECATE_AND_INLINE() =
     tsl::profiler::ContextType;  // NOLINT
 
 ABSL_DEPRECATE_AND_INLINE()
-inline const char* GetContextTypeString(ContextType context_type) {
+inline const char* GetContextTypeString(
+    tsl::profiler::ContextType context_type) {
   return tsl::profiler::GetContextTypeString(context_type);
 }
 
 ABSL_DEPRECATE_AND_INLINE()
-inline ContextType GetSafeContextType(uint32_t context_type) {
+inline tsl::profiler::ContextType GetSafeContextType(uint32_t context_type) {
   return tsl::profiler::GetSafeContextType(context_type);
 }
 

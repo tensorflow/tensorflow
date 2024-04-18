@@ -13460,8 +13460,8 @@ TEST_P(SpmdPartitioningTest, CustomCallShardingRegistration) {
         const HloInstruction* instruction) const override {
       return true;
     }
-    xla::Status Partition(spmd::SpmdPartitioningVisitor* partitioner,
-                          HloInstruction* hlo) const override {
+    absl::Status Partition(spmd::SpmdPartitioningVisitor* partitioner,
+                           HloInstruction* hlo) const override {
       if (hlo->shape().rank() <= 2) {
         return partitioner->DefaultAction(hlo);
       }

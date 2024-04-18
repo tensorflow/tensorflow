@@ -77,6 +77,22 @@ message OverviewPageAnalysis {
   double sc_outfeed_time_ms_avg = 21;
   // Sparse core idle time in ms average.
   double sc_idle_time_ms_avg = 22;
+  // Max FW VDD Core PL1 power metrics in watts.
+  double fw_max_vdd_core_pl1_power_watts = 23;
+  // Max FW VDD Core PL2 power metrics in watts.
+  double fw_max_vdd_core_pl2_power_watts = 24;
+  // Max FW VDD Core PL3 power metrics in watts.
+  double fw_max_vdd_core_pl3_power_watts = 25;
+  // Max FW VDD Core PL4 power metrics in watts.
+  double fw_max_vdd_core_pl4_power_watts = 26;
+  // Max FW HBM PL1 power metrics in watts.
+  double fw_max_hbm_pl1_power_watts = 27;
+  // Max FW HBM PL2 power metrics in watts.
+  double fw_max_hbm_pl2_power_watts = 28;
+  // Max FW HBM PL3 power metrics in watts.
+  double fw_max_hbm_pl3_power_watts = 29;
+  // Max FW HBM PL4 power metrics in watts.
+  double fw_max_hbm_pl4_power_watts = 30;
   // END-INTERNAL
 }
 

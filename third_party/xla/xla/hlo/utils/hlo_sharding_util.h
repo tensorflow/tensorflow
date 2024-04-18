@@ -323,8 +323,8 @@ absl::InlinedVector<int64_t, 1> GetScatterParallelUpdateDims(
 
 // Returns the operand pass-through dimensions for gather operand.
 absl::InlinedVector<int64_t, 1> GetGatherOperandPassthroughOperandDims(
-    const Shape& operand_shape, const HloSharding& operand_sharding,
-    const HloInstruction& hlo, absl::Span<const int64_t> slice_sizes);
+    const Shape& operand_shape, const HloInstruction& hlo,
+    absl::Span<const int64_t> slice_sizes);
 
 // Returns the operand pass-through dimensions for scatter operand(s).
 absl::InlinedVector<int64_t, 1> GetScatterOperandPassthroughOperandDims(
@@ -333,8 +333,7 @@ absl::InlinedVector<int64_t, 1> GetScatterOperandPassthroughOperandDims(
 
 absl::InlinedVector<int64_t, 1> GetGatherOperandPassthroughOutputDims(
     const Shape& output_shape, const Shape& operand_shape,
-    const HloSharding& operand_sharding, const HloInstruction& hlo,
-    absl::Span<const int64_t> slice_sizes);
+    const HloInstruction& hlo, absl::Span<const int64_t> slice_sizes);
 
 absl::InlinedVector<int64_t, 1> GetScatterOperandPassthroughUpdateDims(
     const Shape& update_shape, const Shape& operand_shape,

@@ -30,12 +30,9 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/TypeSwitch.h"
 #include "mlir/AsmParser/AsmParser.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
-#include "mlir/IR/Operation.h"  // from @llvm-project
-#include "xla/ffi/api/c_api.h"
 #include "xla/ffi/ffi_api.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -60,6 +57,7 @@ limitations under the License.
 #include "xla/service/gpu/runtime/gemm_thunk.h"
 #include "xla/service/gpu/runtime/kernel_thunk.h"
 #include "xla/service/gpu/runtime/thunk.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status.h"
@@ -122,7 +120,7 @@ absl::StatusOr<BufferAllocation::Slice> GetOperandSlice(
     if (!IsContiguousSlice(slice_instr->operand(0)->shape(),
                            slice_instr->shape())) {
       return absl::InternalError(
-          "DynamicAddressComputationFusion only handles contiguous slices "
+          "AddressComputationFusion only handles contiguous slices "
           "currently");
     }
 
@@ -239,7 +237,7 @@ absl::StatusOr<BufferAllocation::Slice> GetResultSlice(
                                ->update()
                                ->shape())) {
       return absl::InternalError(
-          "DynamicAddressComputationFusion only handles contiguous slices "
+          "AddressComputationFusion only handles contiguous slices "
           "currently");
     }
   }
@@ -736,28 +734,6 @@ absl::StatusOr<FusionEmissionResult> AddressComputationFusion::Emit(
   if (maybe_custom_call_adaptor == std::nullopt) {
     return absl::InternalError(
         "AddressComputationFusion requires a CustomCall hero");
-  }
-
-  const auto& custom_call = *static_cast<const HloCustomCallInstruction*>(
-      &maybe_custom_call_adaptor->instruction());
-  // TODO(vuson): these Emit* are mostly duplicated from ir_emitter_unnested
-  if (IsLegacyCublasMatmul(custom_call)) {
-    return EmitGemm(ir_emitter_context, adaptor, fusion, custom_call);
-  }
-
-  return EmitCustomCall(ir_emitter_context, adaptor, fusion, custom_call);
-}
-
-absl::StatusOr<FusionEmissionResult> DynamicAddressComputationFusion::Emit(
-    IrEmitterContext& ir_emitter_context,
-    const HloFusionInstruction& fusion) const {
-  const HloFusionAdaptor& adaptor = analysis_.fusion();
-  auto maybe_custom_call_adaptor = HloFindIf(
-      adaptor.GetRoots(), adaptor,
-      [](auto node) { return node.opcode() == HloOpcode::kCustomCall; });
-  if (maybe_custom_call_adaptor == std::nullopt) {
-    return absl::InternalError(
-        "DynamicAddressComputationFusion requires a CustomCall hero");
   }
 
   const auto& custom_call = *static_cast<const HloCustomCallInstruction*>(

@@ -52,6 +52,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/kernels/batching_util/batch_scheduler.h"
+#include "tensorflow/core/kernels/batching_util/batch_scheduler_utils.h"
 #include "tensorflow/core/kernels/batching_util/concat_split_util.h"
 #include "tensorflow/core/kernels/batching_util/input_split_metadata.h"
 #include "tensorflow/core/kernels/batching_util/threadsafe_status.h"
@@ -501,7 +502,9 @@ BatchResourceBase::GetBatcherQueueOptions(
       disable_padding, /*low_priority_max_batch_size=*/0,
       /*low_priority_batch_timeout_micros=*/0,
       /*low_priority_max_enqueued_batches=*/0,
-      /*low_priority_allowed_batch_sizes=*/{});
+      /*low_priority_allowed_batch_sizes=*/{},
+      /*mixed_priority_batching_policy*/
+      MixedPriorityBatchingPolicy::kLowPriorityPaddingWithMaxBatchSize);
 }
 
 /*static*/ BatchResourceBase::BatcherT::QueueOptions
@@ -513,7 +516,8 @@ BatchResourceBase::GetBatcherQueueOptions(
     int32_t low_priority_max_batch_size,
     int32_t low_priority_batch_timeout_micros,
     int32_t low_priority_max_enqueued_batches,
-    const std::vector<int32>& low_priority_allowed_batch_sizes) {
+    const std::vector<int32>& low_priority_allowed_batch_sizes,
+    MixedPriorityBatchingPolicy mixed_priority_batching_policy) {
   BatcherT::QueueOptions batcher_queue_options;
   batcher_queue_options.input_batch_size_limit = max_batch_size;
   batcher_queue_options.max_enqueued_batches = max_enqueued_batches;
@@ -542,6 +546,8 @@ BatchResourceBase::GetBatcherQueueOptions(
   }
   batcher_queue_options.low_priority_queue_options.allowed_batch_sizes =
       low_priority_allowed_batch_sizes;
+  batcher_queue_options.mixed_priority_batching_policy =
+      mixed_priority_batching_policy;
   batcher_queue_options.enable_large_batch_splitting =
       enable_large_batch_splitting;
   if (enable_large_batch_splitting) {
@@ -635,18 +641,8 @@ int BatchResourceBase::RoundToLowestAllowedBatchSize(
                                   .allowed_batch_sizes
                             : allowed_batch_sizes_;
 
-  if (batcher_queue_options_.disable_padding || allowed_batch_sizes.empty()) {
-    return batch_size;
-  }
-  for (int allowed_size : allowed_batch_sizes) {
-    if (allowed_size >= batch_size) {
-      return allowed_size;
-    }
-  }
-  LOG(ERROR) << "Batch size " << batch_size
-             << " is greater than largest allowed size; "
-                "ignoring allowed sizes constraint.";
-  return batch_size;
+  return GetNextAllowedBatchSize(batch_size, allowed_batch_sizes,
+                                 batcher_queue_options_.disable_padding);
 }
 
 Status BatchResourceBase::ConcatInputTensors(

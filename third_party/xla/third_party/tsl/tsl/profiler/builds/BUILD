@@ -1,4 +1,4 @@
-load("//tsl:tsl.bzl", "internal_visibility")
+load("@local_xla//xla/tsl:tsl.bzl", "internal_visibility")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],

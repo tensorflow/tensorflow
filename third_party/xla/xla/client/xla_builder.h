@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <deque>
-#include <functional>
 #include <initializer_list>
 #include <map>
 #include <memory>
@@ -400,6 +399,10 @@ class XlaBuilder {
   // Returns the shape of the given op.
   virtual absl::StatusOr<const Shape*> GetShapePtr(XlaOp op) const;
 
+  // Returns the OpSharding of the given op. If "op" has no sharding, return
+  // std::nullopt.
+  absl::StatusOr<std::optional<OpSharding>> GetOpSharding(XlaOp op) const;
+
   // Returns the (inferred) result for the current computation's shape. This
   // assumes the root instruction is the last added instruction.
   absl::StatusOr<ProgramShape> GetProgramShape() const;
@@ -471,14 +474,18 @@ class XlaBuilder {
   }
 
   // Looks up the HloInstruction and sets the frontend attribute "attribute" to
-  // "value".
+  // "value". If the attribute already existed, then its value is updated.
   //
-  // If the attribute already existed then its value is updated.
-  //
-  // Note: the attribute is only added to the HloInstruction, not to the
-  // builder.
+  // The attribute is only added to the HloInstruction, not to the builder.
   Status SetInstructionFrontendAttribute(XlaOp op, std::string attribute,
                                          std::string value);
+
+  // Looks up the HloInstruction and sets the sharding. If the sharding already
+  // existed, then its value is updated.
+  //
+  // The sharding is only added to the HloInstruction, not to the builder.
+  Status SetInstructionSharding(XlaOp op,
+                                const std::optional<OpSharding>& sharding);
 
   // Returns shapes for the operands.
   absl::StatusOr<std::vector<Shape>> GetOperandShapes(
@@ -1713,7 +1720,7 @@ class XlaBuilder {
   //
   // TODO(hinsu): Return const pointer within StatusOr and use
   // absl::implicit_cast at callsites. This requires implicit_cast support in
-  // xla::StatusOr similar to absl::StatusOr.
+  // absl::StatusOr similar to absl::StatusOr.
   template <typename InstructionType>
   StatusOr<InstructionType> LookUpInstructionInternal(XlaOp op) const {
     TF_RETURN_IF_ERROR(CheckOpBuilder(op));

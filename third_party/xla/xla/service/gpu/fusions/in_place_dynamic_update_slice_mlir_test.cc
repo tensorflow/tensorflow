@@ -14,11 +14,14 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/service/gpu/fusions/in_place_dynamic_update_slice_mlir.h"
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/error_spec.h"
 #include "xla/service/gpu/fusions/mlir_emitter_test_base.h"
+#include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/model/indexing_test_utils.h"
 #include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -173,6 +176,29 @@ TEST_F(MlirInPlaceDynamicUpdateSliceFusionTest, OutOfBoundDUS) {
     // CHECK:       %[[INSERT:.*]] = tensor.insert %[[UPDATE:.*]] into %arg4[%[[ADD0]], %[[ADD1]]]
     // CHECK:       return %[[INSERT]]
   )"));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
+}
+
+TEST_F(MlirInPlaceDynamicUpdateSliceFusionTest, BitcastDus) {
+  auto kHloString = R"(
+    HloModule module
+
+    fused_computation {
+      in = f32[20,30] parameter(0)
+      updates = f32[5,6] parameter(1)
+      i0 = s32[] parameter(2)
+      i1 = s32[] parameter(3)
+      updated = f32[20,30] dynamic-update-slice(in, updates, i0, i1)
+      ROOT bitcast = f32[600] bitcast(updated)
+    }
+    ENTRY entry {
+      in = f32[20,30] parameter(0)
+      updates = f32[5,6] parameter(1)
+      i0 = s32[] constant(2)
+      i1 = s32[] constant(3)
+      ROOT fusion = f32[600] fusion(in, updates, i0, i1), kind=kLoop, calls=fused_computation
+    }
+  )";
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
 }
 

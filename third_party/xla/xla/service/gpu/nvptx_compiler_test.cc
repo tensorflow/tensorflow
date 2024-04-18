@@ -26,6 +26,8 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/backend.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/gpu/gpu_constants.h"
+#include "xla/service/gpu/gpu_hlo_schedule.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/util.h"
@@ -59,10 +61,22 @@ class NVPTXCompilerTest : public HloTestBase {
  public:
   absl::StatusOr<std::unique_ptr<BufferAssignment>> AssignBuffers(
       HloModule* module) {
-    Backend& test_backend = backend();
-    NVPTXCompiler compiler;
-    return compiler.AssignBuffers(module,
-                                  test_backend.default_stream_executor());
+    constexpr uint64_t pointer_size = 4;
+    const se::DeviceDescription& gpu_device_info =
+        backend().default_stream_executor()->GetDeviceDescription();
+    TF_RETURN_IF_ERROR(
+        ScheduleGpuModule(module, pointer_size, gpu_device_info).status());
+
+    auto buffer_size_bytes_function =
+        [this](const BufferValue& buffer_value) -> int64_t {
+      return GetSizeOfShape(buffer_value.shape(), pointer_size);
+    };
+
+    return BufferAssigner::Run(
+        module, std::make_unique<SequentialHloOrdering>(module->schedule()),
+        buffer_size_bytes_function,
+        /*color_alignment=*/
+        [](LogicalBuffer::Color) { return kXlaAllocatedBufferAlignBytes; });
   }
 };
 

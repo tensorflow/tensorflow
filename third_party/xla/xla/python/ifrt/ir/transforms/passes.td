@@ -62,7 +62,7 @@ For example, the following:
 
 ```mlir
 #device = #ifrt<devices[0,1]>
-#sharding = #ifrt.sharding<2x1 to [0] on 2>
+#sharding = #ifrt.sharding_param<2x1 to [0] on 2>
 module attributes {ifrt.devices = #device} {
   func.func @main(
       %arg0: tensor<2x2xi32> {ifrt.sharding = #sharding,
@@ -79,7 +79,7 @@ will be transformed into:
 ```mlir
 // The function's input and output shapes are now local.
 #device = #ifrt<devices[0,1]>
-#sharding = #ifrt.sharding<2x1 to [0] on 2>
+#sharding = #ifrt.sharding_param<2x1 to [0] on 2>
 module attributes {ifrt.devices = #device} {
   func.func @main(
       %arg0: tensor<1x2xi32> {ifrt.sharding = #sharding,
@@ -106,5 +106,17 @@ them. The duplicated callee `FuncOp` will not be removed.
 
   let constructor = "CreateIfrtDuplicatedCalleeEliminationPass()";
 }
+
+def IfrtVerifyShardingSpecifiedPass :
+    Pass<"ifrt-verify-sharding-specified", "mlir::ModuleOp"> {
+  let summary = "Verify that all `!ifrt.array` have sharding specified.";
+  let description = [{
+Verify that each `!ifrt.array` has sharding attribute that is not of type
+`!ifrt.sharding_unspecified`.
+  }];
+
+  let constructor = "CreateIfrtVerifyShardingSpecifiedPass()";
+}
+
 
 #endif  // XLA_PYTHON_IFRT_IR_TRANSFORMS_PASSES_TD_

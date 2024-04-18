@@ -205,9 +205,9 @@ void CompleteName(const DeviceNameUtils::ParsedName& parsed_basename,
 }  // namespace
 
 /* static */
-Status DeviceNameUtils::CanonicalizeDeviceName(StringPiece fullname,
-                                               StringPiece basename,
-                                               string* canonical_name) {
+absl::Status DeviceNameUtils::CanonicalizeDeviceName(StringPiece fullname,
+                                                     StringPiece basename,
+                                                     string* canonical_name) {
   *canonical_name = "";
   ParsedName parsed_basename;
   if (!ParseFullName(basename, &parsed_basename)) {
@@ -225,12 +225,12 @@ Status DeviceNameUtils::CanonicalizeDeviceName(StringPiece fullname,
   if (ParseLocalName(fullname, &parsed_name)) {
     CompleteName(parsed_basename, &parsed_name);
     *canonical_name = ParsedNameToString(parsed_name);
-    return OkStatus();
+    return absl::OkStatus();
   }
   if (ParseFullName(fullname, &parsed_name)) {
     CompleteName(parsed_basename, &parsed_name);
     *canonical_name = ParsedNameToString(parsed_name);
-    return OkStatus();
+    return absl::OkStatus();
   }
   return errors::InvalidArgument("Could not parse ", fullname,
                                  " into a device "
@@ -341,9 +341,10 @@ bool DeviceNameUtils::IsCompleteSpecification(const ParsedName& pattern,
 }
 
 namespace {
-Status MergeDevNamesImpl(DeviceNameUtils::ParsedName* target,
-                         const DeviceNameUtils::ParsedName& other,
-                         bool allow_soft_placement, bool override_conflicts) {
+absl::Status MergeDevNamesImpl(DeviceNameUtils::ParsedName* target,
+                               const DeviceNameUtils::ParsedName& other,
+                               bool allow_soft_placement,
+                               bool override_conflicts) {
   const auto& ParsedNameToString = DeviceNameUtils::ParsedNameToString;
   if (other.has_job) {
     if (target->has_job && target->job != other.job) {
@@ -393,7 +394,7 @@ Status MergeDevNamesImpl(DeviceNameUtils::ParsedName* target,
       } else {
         target->has_id = false;
         target->has_type = false;
-        return OkStatus();
+        return absl::OkStatus();
       }
     } else {
       target->has_type = other.has_type;
@@ -412,7 +413,7 @@ Status MergeDevNamesImpl(DeviceNameUtils::ParsedName* target,
         target->id = other.id;
       } else {
         target->has_id = false;
-        return OkStatus();
+        return absl::OkStatus();
       }
     } else {
       target->has_id = other.has_id;
@@ -420,22 +421,22 @@ Status MergeDevNamesImpl(DeviceNameUtils::ParsedName* target,
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
 
 /* static */
-Status DeviceNameUtils::MergeDevNames(ParsedName* target,
-                                      const ParsedName& other,
-                                      bool allow_soft_placement) {
+absl::Status DeviceNameUtils::MergeDevNames(ParsedName* target,
+                                            const ParsedName& other,
+                                            bool allow_soft_placement) {
   return MergeDevNamesImpl(target, other, allow_soft_placement,
                            /*override_conflicts=*/false);
 }
 
 /* static */
-Status DeviceNameUtils::MergeOverrideDevNames(ParsedName* target,
-                                              const ParsedName& other) {
+absl::Status DeviceNameUtils::MergeOverrideDevNames(ParsedName* target,
+                                                    const ParsedName& other) {
   return MergeDevNamesImpl(target, other, /*allow_soft_placement=*/true,
                            /*override_conflicts=*/true);
 }
@@ -604,7 +605,7 @@ std::vector<string> DeviceNameUtils::GetLocalNamesForDeviceMappings(
   }
 }
 
-/*static*/ Status DeviceNameUtils::DeviceNameToCpuDeviceName(
+/*static*/ absl::Status DeviceNameUtils::DeviceNameToCpuDeviceName(
     const string& device_name, string* host_device_name) {
   DeviceNameUtils::ParsedName device;
   if (!DeviceNameUtils::ParseFullName(device_name, &device)) {
@@ -615,7 +616,7 @@ std::vector<string> DeviceNameUtils::GetLocalNamesForDeviceMappings(
   device.id = 0;
   device.has_id = true;
   *host_device_name = DeviceNameUtils::ParsedNameToString(device);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 std::ostream& operator<<(std::ostream& os,

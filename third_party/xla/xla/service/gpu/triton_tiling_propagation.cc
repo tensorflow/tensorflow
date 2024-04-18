@@ -943,9 +943,24 @@ DimOrderMapOrError GetPropagatedDimOrders(const HloInstruction& hlo,
     if (!std::holds_alternative<DotProperties>(properties)) {
       return "Concatenations for now are only supported in GEMM fusions.";
     }
-    auto dim = LogicalIndexOfLabeledDimension(
-        hlo.shape(), src_dim_order,
-        std::get<DotProperties>(properties).noncontracting_dimension);
+
+    int64_t noncontracting_dim_label =
+        std::get<DotProperties>(properties).noncontracting_dimension;
+    const FragmentOrders& src_dim_fragments_orders =
+        src_dim_order.DimFragmentsOrders();
+
+    auto noncontracting_dim_fragment_order_it =
+        src_dim_fragments_orders.find(noncontracting_dim_label);
+    if (noncontracting_dim_fragment_order_it !=
+        src_dim_fragments_orders.end()) {
+      if (noncontracting_dim_fragment_order_it->second.size() > 1) {
+        return "Concatenations on split non-contracting dimensions are "
+               "unsupported.";
+      }
+    }
+
+    auto dim = LogicalIndexOfLabeledDimension(hlo.shape(), src_dim_order,
+                                              noncontracting_dim_label);
     if (!dim.has_value() || dim.value() != hlo.concatenate_dimension()) {
       return "Unsupported concatenation.";
     }

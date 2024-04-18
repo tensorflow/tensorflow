@@ -598,6 +598,7 @@ message DebugOptions {
   bool xla_gpu_enable_triton_softmax_fusion = 220;
 
   bool xla_gpu_enable_priority_fusion = 221;
+  bool xla_gpu_enable_triton_softmax_priority_fusion = 286;
 
   // File to write autotune results to. It will be a binary file unless the name
   // ends with .txt or .textproto. Warning: The results are written at every
@@ -729,7 +730,17 @@ message DebugOptions {
   // 3: + Nontrivial noncontracting dimension reshapes/transposes.
   int32 xla_gpu_cudnn_gemm_fusion_level = 285;
 
-  // Next id: 286
+  // This instructs the runtime whether to use
+  // memcpy for p2p communication when source and
+  // target are located within a node(nvlink).
+  bool xla_gpu_use_memcpy_local_p2p = 287;
+
+  // If non-zero, limits the number of solutions to be used by GEMM autotuner.
+  // This might be useful if underlying math library returns too many GEMM
+  // solutions.
+  int64 xla_gpu_autotune_max_solutions = 288;
+
+  // Next id: 289
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

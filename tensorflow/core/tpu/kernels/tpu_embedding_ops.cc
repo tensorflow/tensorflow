@@ -480,7 +480,7 @@ class SplitDedupDataOp : public XlaOpKernel {
     const xla::XlaOp& input_tuple = ctx->Input(0);
     xla::XlaBuilder* builder = ctx->builder();
 
-    StatusOr<xla::Shape> tuple_shape = builder->GetShape(input_tuple);
+    absl::StatusOr<xla::Shape> tuple_shape = builder->GetShape(input_tuple);
     OP_REQUIRES_OK(ctx, tuple_shape.status());
 
     const int num_tuple_elements = tuple_shape->tuple_shapes_size();
@@ -683,7 +683,7 @@ class MergeDedupDataOp : public XlaOpKernel {
     }
 
     // `integer_tensor` should be a 1-D tensor.
-    StatusOr<xla::Shape> integer_tensor_shape =
+    absl::StatusOr<xla::Shape> integer_tensor_shape =
         ctx->builder()->GetShape(integer_tensor);
     OP_REQUIRES_OK(ctx, integer_tensor_shape.status());
     OP_REQUIRES(ctx, integer_tensor_shape->rank() == 1,
@@ -693,7 +693,7 @@ class MergeDedupDataOp : public XlaOpKernel {
     const int64_t num_integers = integer_tensor_shape->dimensions(0);
 
     // `float_tensor` should be a 1-D tensor.
-    StatusOr<xla::Shape> float_tensor_shape =
+    absl::StatusOr<xla::Shape> float_tensor_shape =
         ctx->builder()->GetShape(float_tensor);
     OP_REQUIRES_OK(ctx, float_tensor_shape.status());
     OP_REQUIRES(ctx, float_tensor_shape->rank() == 1,

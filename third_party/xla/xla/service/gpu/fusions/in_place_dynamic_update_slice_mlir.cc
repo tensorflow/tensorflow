@@ -94,10 +94,13 @@ MlirInPlaceDynamicUpdateSliceFusion::ComputeThreadIdToInputIndexing(
                                        update_shape, mlir_context);
 }
 
-std::vector<const HloInstruction*>
-MlirInPlaceDynamicUpdateSliceFusion::GetInstructionsWithCustomCodegen(
-    const HloFusionInstruction& fusion) const {
-  return dus_ops_;
+std::optional<mlir_converter::EpilogueSpecification>
+MlirInPlaceDynamicUpdateSliceFusion::GetEpilogue(
+    const HloFusionInstruction& fusion, mlir::MLIRContext* mlir_context) const {
+  // We don't actually support epilogues for DUS, but this is how we tell
+  // the base class that we don't want it to generate code for the DUS.
+  return mlir_converter::EpilogueSpecification::FromIdentityIndexing(
+      dus_ops_.front(), analysis_.fusion_roots().front(), mlir_context);
 }
 
 absl::Status MlirInPlaceDynamicUpdateSliceFusion::EmitEntryFunction(
@@ -155,6 +158,13 @@ absl::Status MlirInPlaceDynamicUpdateSliceFusion::EmitEntryFunction(
         auto updated_value =
             ProvideParameter(dus_subgraph, dus_instr, kDUSUpdateIndex,
                              input_indices, call_targets, entry_function, b)[0];
+        // Handle bitcasts under the DUS.
+        if (dus_instr->shape() != fusion.shape()) {
+          update_indices = ApplyAffineMap(
+              GetBitcastMap(dus_instr->shape(), fusion.shape(), b.getContext())
+                  .GetAffineMap(),
+              update_indices, {}, b);
+        }
         auto insert = b.create<InsertOp>(updated_value, output_tensors[0],
                                          update_indices);
 

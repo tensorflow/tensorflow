@@ -28,13 +28,16 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/custom_call_target_registry.h"
 #include "xla/service/gpu/address_computation_fusion_rewriter.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/service/service_executable_run_options.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tests/hlo_test_base.h"
+#include "xla/xla.pb.h"
+#include "xla/xla_data.pb.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
@@ -831,9 +834,9 @@ TEST_F(AddressComputationFusionTest, SlicedOperandAliasingOutput) {
 }
 
 static absl::Status Memcpy(se::Stream* stream, ffi::BufferBase src,
-                           ffi::BufferBase dst) {
+                           ffi::Result<ffi::BufferBase> dst) {
   return stream->MemcpyD2D(
-      &dst.data, src.data,
+      &dst->data, src.data,
       absl::c_accumulate(src.dimensions, 1.0, std::multiplies<int64_t>()) *
           sizeof(float));
 }
@@ -842,7 +845,7 @@ XLA_FFI_DEFINE_HANDLER(kMemcpy, Memcpy,
                        ffi::Ffi::Bind()
                            .Ctx<ffi::Stream>()
                            .Arg<ffi::BufferBase>()  // src
-                           .Arg<ffi::BufferBase>()  // dst
+                           .Ret<ffi::BufferBase>()  // dst
 );
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$memcpy", PLATFORM,
                          kMemcpy);
@@ -880,14 +883,14 @@ TEST_F(AddressComputationFusionTest, CustomCallSimple) {
                                       error_spec, /*run_hlo_passes=*/false));
 }
 
-static absl::Status SubBuffers(se::Stream* stream, ffi::BufferBase src0,
-                               ffi::BufferBase src1, ffi::BufferBase src2,
-                               ffi::BufferBase src3, ffi::BufferBase src4,
-                               ffi::BufferBase src5, ffi::BufferBase src6,
-                               ffi::BufferBase src7, ffi::BufferBase dst0,
-                               ffi::BufferBase dst1, ffi::BufferBase dst2,
-                               ffi::BufferBase dst3, ffi::BufferBase dst4,
-                               ffi::BufferBase dst5, ffi::BufferBase dst6) {
+static absl::Status SubBuffers(
+    se::Stream* stream, ffi::BufferBase src0, ffi::BufferBase src1,
+    ffi::BufferBase src2, ffi::BufferBase src3, ffi::BufferBase src4,
+    ffi::BufferBase src5, ffi::BufferBase src6, ffi::BufferBase src7,
+    ffi::Result<ffi::BufferBase> dst0, ffi::Result<ffi::BufferBase> dst1,
+    ffi::Result<ffi::BufferBase> dst2, ffi::Result<ffi::BufferBase> dst3,
+    ffi::Result<ffi::BufferBase> dst4, ffi::Result<ffi::BufferBase> dst5,
+    ffi::Result<ffi::BufferBase> dst6) {
   //  src0:  param 0 at tuple index {0}, shape f32[128]
   //  src1:  param 0 at tuple index {1}, shape f32[256]
   //  src2:  param 1 at tuple index {0}, shape f32[1024]
@@ -906,21 +909,21 @@ static absl::Status SubBuffers(se::Stream* stream, ffi::BufferBase src0,
   //  dst6:  result at tuple index {5}, shape f32[96]
 
   TF_RETURN_IF_ERROR(
-      stream->MemcpyD2D(&dst0.data, src3.data, 8 * sizeof(float)));
+      stream->MemcpyD2D(&dst0->data, src3.data, 8 * sizeof(float)));
   TF_RETURN_IF_ERROR(
-      stream->MemcpyD2D(&dst1.data, src0.data, 128 * sizeof(float)));
+      stream->MemcpyD2D(&dst1->data, src0.data, 128 * sizeof(float)));
   TF_RETURN_IF_ERROR(
-      stream->MemcpyD2D(&dst2.data, src1.data, 256 * sizeof(float)));
+      stream->MemcpyD2D(&dst2->data, src1.data, 256 * sizeof(float)));
   TF_RETURN_IF_ERROR(
-      stream->MemcpyD2D(&dst3.data, src2.data, 1024 * sizeof(float)));
+      stream->MemcpyD2D(&dst3->data, src2.data, 1024 * sizeof(float)));
   TF_RETURN_IF_ERROR(
-      stream->MemcpyD2D(&dst4.data, src4.data, 4 * 8 * sizeof(float)));
+      stream->MemcpyD2D(&dst4->data, src4.data, 4 * 8 * sizeof(float)));
   TF_RETURN_IF_ERROR(
-      stream->MemcpyD2D(&dst5.data, src7.data, 3 * 128 * sizeof(float)));
+      stream->MemcpyD2D(&dst5->data, src7.data, 3 * 128 * sizeof(float)));
   TF_RETURN_IF_ERROR(
-      stream->MemcpyD2D(&dst6.data, src6.data, 64 * sizeof(float)));
+      stream->MemcpyD2D(&dst6->data, src6.data, 64 * sizeof(float)));
   stream_executor::DeviceMemoryBase slice =
-      dst6.data.GetByteSlice(64 * sizeof(float), 32 * sizeof(float));
+      dst6->data.GetByteSlice(64 * sizeof(float), 32 * sizeof(float));
   TF_RETURN_IF_ERROR(stream->MemcpyD2D(&slice, src6.data, 32 * sizeof(float)));
   return absl::OkStatus();
 }
@@ -936,13 +939,13 @@ XLA_FFI_DEFINE_HANDLER(kSubBuffers, SubBuffers,
                            .Arg<ffi::BufferBase>()  // src5
                            .Arg<ffi::BufferBase>()  // src6
                            .Arg<ffi::BufferBase>()  // src7
-                           .Arg<ffi::BufferBase>()  // dst0
-                           .Arg<ffi::BufferBase>()  // dst1
-                           .Arg<ffi::BufferBase>()  // dst2
-                           .Arg<ffi::BufferBase>()  // dst3
-                           .Arg<ffi::BufferBase>()  // dst4
-                           .Arg<ffi::BufferBase>()  // dst5
-                           .Arg<ffi::BufferBase>()  // dst6
+                           .Ret<ffi::BufferBase>()  // dst0
+                           .Ret<ffi::BufferBase>()  // dst1
+                           .Ret<ffi::BufferBase>()  // dst2
+                           .Ret<ffi::BufferBase>()  // dst3
+                           .Ret<ffi::BufferBase>()  // dst4
+                           .Ret<ffi::BufferBase>()  // dst5
+                           .Ret<ffi::BufferBase>()  // dst6
 );
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$subbuffers",
                          PLATFORM, kSubBuffers);
@@ -2539,14 +2542,14 @@ TEST_F(AddressComputationFusionTest, DynamicCustomCallWithTuple) {
                                       error_spec, /*run_hlo_passes=*/false));
 }
 
-static absl::Status SubBuffers2(se::Stream* stream, ffi::BufferBase src0,
-                                ffi::BufferBase src1, ffi::BufferBase src2,
-                                ffi::BufferBase src3, ffi::BufferBase src4,
-                                ffi::BufferBase src5, ffi::BufferBase src6,
-                                ffi::BufferBase dst0, ffi::BufferBase dst1,
-                                ffi::BufferBase dst2, ffi::BufferBase dst3,
-                                ffi::BufferBase dst4, ffi::BufferBase dst5,
-                                ffi::BufferBase dst6) {
+static absl::Status SubBuffers2(
+    se::Stream* stream, ffi::BufferBase src0, ffi::BufferBase src1,
+    ffi::BufferBase src2, ffi::BufferBase src3, ffi::BufferBase src4,
+    ffi::BufferBase src5, ffi::BufferBase src6,
+    ffi::Result<ffi::BufferBase> dst0, ffi::Result<ffi::BufferBase> dst1,
+    ffi::Result<ffi::BufferBase> dst2, ffi::Result<ffi::BufferBase> dst3,
+    ffi::Result<ffi::BufferBase> dst4, ffi::Result<ffi::BufferBase> dst5,
+    ffi::Result<ffi::BufferBase> dst6) {
   //  src0:  param 0 at tuple index {0}, shape f32[128]
   //  src1:  param 0 at tuple index {1}, shape f32[256]
   //  src2:  param 1 at tuple index {0}, shape f32[1024]
@@ -2564,19 +2567,19 @@ static absl::Status SubBuffers2(se::Stream* stream, ffi::BufferBase src0,
   //  dst6:  result at tuple index {4, 1}, shape f32[3,128]
 
   TF_RETURN_IF_ERROR(
-      stream->MemcpyD2D(&dst0.data, src3.data, 8 * sizeof(float)));
+      stream->MemcpyD2D(&dst0->data, src3.data, 8 * sizeof(float)));
   TF_RETURN_IF_ERROR(
-      stream->MemcpyD2D(&dst1.data, src0.data, 128 * sizeof(float)));
+      stream->MemcpyD2D(&dst1->data, src0.data, 128 * sizeof(float)));
   TF_RETURN_IF_ERROR(
-      stream->MemcpyD2D(&dst2.data, src1.data, 256 * sizeof(float)));
+      stream->MemcpyD2D(&dst2->data, src1.data, 256 * sizeof(float)));
   TF_RETURN_IF_ERROR(
-      stream->MemcpyD2D(&dst3.data, src2.data, 1024 * sizeof(float)));
+      stream->MemcpyD2D(&dst3->data, src2.data, 1024 * sizeof(float)));
   TF_RETURN_IF_ERROR(
-      stream->MemcpyD2D(&dst4.data, src4.data, 4 * 8 * sizeof(float)));
+      stream->MemcpyD2D(&dst4->data, src4.data, 4 * 8 * sizeof(float)));
   TF_RETURN_IF_ERROR(
-      stream->MemcpyD2D(&dst5.data, src6.data, 5 * 128 * sizeof(float)));
+      stream->MemcpyD2D(&dst5->data, src6.data, 5 * 128 * sizeof(float)));
   TF_RETURN_IF_ERROR(
-      stream->MemcpyD2D(&dst6.data, src5.data, 3 * 128 * sizeof(float)));
+      stream->MemcpyD2D(&dst6->data, src5.data, 3 * 128 * sizeof(float)));
   return absl::OkStatus();
 }
 
@@ -2590,13 +2593,13 @@ XLA_FFI_DEFINE_HANDLER(kSubBuffers2, SubBuffers2,
                            .Arg<ffi::BufferBase>()  // src4
                            .Arg<ffi::BufferBase>()  // src5
                            .Arg<ffi::BufferBase>()  // src6
-                           .Arg<ffi::BufferBase>()  // dst0
-                           .Arg<ffi::BufferBase>()  // dst1
-                           .Arg<ffi::BufferBase>()  // dst2
-                           .Arg<ffi::BufferBase>()  // dst3
-                           .Arg<ffi::BufferBase>()  // dst4
-                           .Arg<ffi::BufferBase>()  // dst5
-                           .Arg<ffi::BufferBase>()  // dst6
+                           .Ret<ffi::BufferBase>()  // dst0
+                           .Ret<ffi::BufferBase>()  // dst1
+                           .Ret<ffi::BufferBase>()  // dst2
+                           .Ret<ffi::BufferBase>()  // dst3
+                           .Ret<ffi::BufferBase>()  // dst4
+                           .Ret<ffi::BufferBase>()  // dst5
+                           .Ret<ffi::BufferBase>()  // dst6
 );
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$subbuffers2",
                          PLATFORM, kSubBuffers2);

@@ -1,0 +1,136 @@
+diff --git a/include/triton/Dialect/NVGPU/IR/NVGPUOps.td b/include/triton/Dialect/NVGPU/IR/NVGPUOps.td
+--- a/include/triton/Dialect/NVGPU/IR/NVGPUOps.td
++++ b/include/triton/Dialect/NVGPU/IR/NVGPUOps.td
+@@ -87,6 +87,15 @@ def NVGPU_WGMMAOp : NVGPU_Op<"wgmma", []
+   let assemblyFormat = "$opA `,` $opB (`,` $opC^)? attr-dict `:` functional-type(operands, $res)";
+ }
+ 
++def NVGPU_SparseWGMMAOp : NVGPU_Op<"wgmma_sp", []> {
++  let arguments = (ins WGMMA_OperandType:$opA, I32:$metaA, WGMMA_OperandType:$opB, LLVM_AnyStruct:$opC,
++                   I32Attr:$m, I32Attr:$n, I32Attr:$k,
++                   WGMMA_EltTypeAttr:$eltTypeC, WGMMA_EltTypeAttr:$eltTypeA, WGMMA_EltTypeAttr:$eltTypeB,
++                   WGMMA_LayoutAttr:$layoutA, WGMMA_LayoutAttr:$layoutB);
++  let results = (outs LLVM_AnyStruct:$res);
++  let assemblyFormat = "$opA `meta` $metaA `,` $opB `,` $opC attr-dict `:` functional-type(operands, $res)";
++}
++
+ def NVGPU_LoadDSmemOp : NVGPU_Op<"load_dsmem", [MemoryEffects<[MemRead]>]> {
+   let arguments = (ins LLVM_AnyPointer:$addr, I32:$ctaId, I32Attr:$bitwidth, I32Attr:$vec);
+   let builders = [
+diff --git a/test/SparseDot/test_wgmma_sp.mlir b/test/SparseDot/test_wgmma_sp.mlir
+new file mode 100644
+--- /dev/null
++++ b/test/SparseDot/test_wgmma_sp.mlir
+@@ -0,0 +1,14 @@
++// RUN: triton-opt %s -split-input-file --convert-nv-gpu-to-llvm | FileCheck %s
++
++module attributes {"triton_gpu.num-warps" = 4 : i32} {
++  tt.func @wgmma_sp(%descA: i64, %metaA: i32, %descB: i64, %acc: !llvm.struct<(f32, f32, f32, f32, f32, f32, f32, f32)>) {
++    // CHECK: @wgmma_sp(%[[LHS:.*]]: i64, %[[META:.*]]: i32, %[[RHS:.*]]: i64,
++    // CHECK: llvm.inline_asm has_side_effects asm_dialect = att operand_attrs = []
++    // CHECK-SAME: "wgmma.mma_async.sp.sync.aligned.m64n16k32.f32.bf16.bf16 {$0,$1,$2,$3,$4,$5,$6,$7}, $16, $17, $18, 0, 1, 1, 1, 0, 0;"
++    // CHECK-SAME: "=f,=f,=f,=f,=f,=f,=f,=f,0,1,2,3,4,5,6,7,l,l,r" %0, %1, %2, %3, %4, %5, %6, %7, %[[LHS]], %[[RHS]], %[[META]]
++    %acc0 = nvgpu.wgmma_sp %descA meta %metaA, %descB, %acc
++    {eltTypeA = 5 : i32, eltTypeB = 5 : i32, eltTypeC = 7 : i32, layoutA = 0 : i32, layoutB = 1 : i32, m = 64 : i32, n = 16 : i32, k = 32 : i32} :
++    (i64, i32, i64, !llvm.struct<(f32, f32, f32, f32, f32, f32, f32, f32)>) -> !llvm.struct<(f32, f32, f32, f32, f32, f32, f32, f32)>
++    tt.return
++  }
++}
+diff --git a/third_party/nvidia/lib/NVGPUToLLVM/NVGPUToLLVMPass.cpp b/third_party/nvidia/lib/NVGPUToLLVM/NVGPUToLLVMPass.cpp
+--- a/third_party/nvidia/lib/NVGPUToLLVM/NVGPUToLLVMPass.cpp
++++ b/third_party/nvidia/lib/NVGPUToLLVM/NVGPUToLLVMPass.cpp
+@@ -688,6 +688,84 @@ public:
+   }
+ };
+ 
++class SparseWGMMAOpPattern
++    : public NVGPUOpPatternBase<ttn::SparseWGMMAOp, SparseWGMMAOpPattern> {
++public:
++  using Base = NVGPUOpPatternBase<ttn::SparseWGMMAOp, SparseWGMMAOpPattern>;
++  using Base::Base;
++
++  std::vector<std::string> getOutputConstraints(ttn::SparseWGMMAOp op) const {
++    auto outputStructType = op.getType().cast<LLVM::LLVMStructType>();
++    uint32_t numOutputRegs = outputStructType.getBody().size();
++    std::string output =
++        outputStructType.getBody().front().isF32() ? "=f" : "=r";
++    return std::vector<std::string>(numOutputRegs, output);
++  }
++
++  OperandsAndConstraints getOperandsAndConstraints(
++      ttn::SparseWGMMAOp op) const {
++    return {{op.getOpC(), "0"}, {op.getOpA(), "l"}, {op.getOpB(), "l"},
++            {op.getMetaA(), "r"}};
++  }
++
++  std::string getPtxAsm(ttn::SparseWGMMAOp op) const {
++    using namespace ttn;
++    auto opA = op.getOpA();
++    auto opB = op.getOpB();
++    auto m = op.getM();
++    auto n = op.getN();
++    auto k = op.getK();
++    auto eltTypeC = op.getEltTypeC();
++    auto eltTypeA = op.getEltTypeA();
++    auto eltTypeB = op.getEltTypeB();
++    auto layoutA = op.getLayoutA();
++    auto layoutB = op.getLayoutB();
++
++    // Only f16/bf16 variant is supported.
++    bool supported =
++        eltTypeC == WGMMAEltType::f32 &&
++        ((eltTypeA == WGMMAEltType::f16 && eltTypeB == WGMMAEltType::f16) ||
++         (eltTypeA == WGMMAEltType::bf16 && eltTypeB == WGMMAEltType::bf16)) &&
++        (m == 64 && 8 <= n && n <= 256 && n % 8 == 0 && k == 32);
++    assert(supported && "Sparse WGMMA type or shape is not supported");
++
++    // Operands
++    uint32_t asmOpIdx = 0;
++    std::string args = "";
++
++    // Output and operand C
++    uint32_t numCRegs =
++        op.getType().cast<LLVM::LLVMStructType>().getBody().size();
++    args += "{";
++    for (uint32_t i = 0; i < numCRegs; ++i) {
++      args += "$" + std::to_string(asmOpIdx++) + (i == numCRegs - 1 ? "" : ",");
++    }
++    args += "}, ";
++    asmOpIdx += numCRegs;
++
++    // Operands A and B (must be `desc`)
++    args += "$" + std::to_string(asmOpIdx++) + ", ";
++    args += "$" + std::to_string(asmOpIdx++) + ", ";
++
++    // Metadata for A
++    args += "$" + std::to_string(asmOpIdx++) + ", 0, ";
++
++    // `scale-d`, `imm-scale-a`, and `imm-scale-b` are 1 by default
++    args += "1, 1, 1";
++
++    // `trans-a` and `trans-b`
++    args += ", " + std::to_string(layoutA == WGMMALayout::col);
++    args += ", " + std::to_string(layoutB == WGMMALayout::row);
++
++    auto ptxAsm = "wgmma.mma_async.sp.sync.aligned"
++                  ".m" + std::to_string(m) + "n" + std::to_string(n) + "k" +
++                  std::to_string(k) + "." + stringifyEnum(eltTypeC).str() +
++                  "." + stringifyEnum(eltTypeA).str() + "." +
++                  stringifyEnum(eltTypeB).str() + " " + args + ";";
++    return ptxAsm;
++  }
++};
++
+ class ConvertNVGPUToLLVM : public ConvertNVGPUToLLVMBase<ConvertNVGPUToLLVM> {
+ 
+ public:
+@@ -711,7 +789,8 @@ public:
+ 
+     patterns.add<FenceAsyncSharedOpPattern, StoreMatrixOpPattern,
+                  ClusterArriveOpPattern, LoadDSmemOpPattern, WGMMAOpPattern,
+-                 WGMMAWaitGroupOpPattern, StoreDSmemOpPattern>(context);
++                 WGMMAWaitGroupOpPattern, StoreDSmemOpPattern,
++                 SparseWGMMAOpPattern>(context);
+ 
+     if (applyPatternsAndFoldGreedily(mod, std::move(patterns)).failed())
+       signalPassFailure();

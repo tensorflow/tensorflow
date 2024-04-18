@@ -1,0 +1,591 @@
+diff --git a/lib/Conversion/TritonToTritonGPU/TritonToTritonGPUPass.cpp b/lib/Conversion/TritonToTritonGPU/TritonToTritonGPUPass.cpp
+--- a/lib/Conversion/TritonToTritonGPU/TritonToTritonGPUPass.cpp
++++ b/lib/Conversion/TritonToTritonGPU/TritonToTritonGPUPass.cpp
+@@ -277,6 +277,89 @@ struct TritonDotPattern : public OpConve
+   }
+ };
+ 
++struct TritonSparseDotPattern
++    : public OpConversionPattern<triton::gpu::SparseDotOp> {
++  using OpConversionPattern<triton::gpu::SparseDotOp>::OpConversionPattern;
++
++  LogicalResult matchAndRewrite(
++      triton::gpu::SparseDotOp op, OpAdaptor adaptor,
++      ConversionPatternRewriter &rewriter) const override {
++    RankedTensorType origType = op.getType().cast<RankedTensorType>();
++    auto origShape = origType.getShape();
++    auto typeConverter = getTypeConverter<TritonGPUTypeConverter>();
++    int numWarps = typeConverter->getNumWarps();
++    int threadsPerWarp = typeConverter->getThreadsPerWarp();
++    int numCTAs = typeConverter->getNumCTAs();
++
++    auto rank = origShape.size();
++    auto numElements = product<int64_t>(origShape);
++    SmallVector<unsigned> retSizePerThread(rank, 1);
++    if (numElements / (numWarps * threadsPerWarp) >= 4) {
++      retSizePerThread[rank - 1] = 2;
++      retSizePerThread[rank - 2] = 2;
++    }
++    if (numElements / (numWarps * threadsPerWarp) >= 16) {
++      retSizePerThread[rank - 1] = 4;
++      retSizePerThread[rank - 2] = 4;
++    }
++    SmallVector<unsigned> retOrder(rank);
++    for (unsigned i = 0; i < rank; ++i)
++      retOrder[i] = rank - 1 - i;
++    Attribute dEncoding = triton::gpu::BlockedEncodingAttr::get(
++        getContext(), origShape, retSizePerThread, retOrder, numWarps,
++        threadsPerWarp, numCTAs);
++    RankedTensorType retType =
++        RankedTensorType::get(origShape, origType.getElementType(), dEncoding);
++
++    // a & b must be of smem layout
++    auto aType = adaptor.getA().getType().cast<RankedTensorType>();
++    auto bType = adaptor.getB().getType().cast<RankedTensorType>();
++    Type aEltType = aType.getElementType();
++    Type bEltType = bType.getElementType();
++    Attribute aEncoding = aType.getEncoding();
++    Attribute bEncoding = bType.getEncoding();
++    if (!aEncoding || !bEncoding)
++      return failure();
++    Value a = adaptor.getA();
++    Value b = adaptor.getB();
++    Value c = adaptor.getC();
++    if (!aEncoding.isa<triton::gpu::DotOperandEncodingAttr>()) {
++      Attribute encoding = triton::gpu::DotOperandEncodingAttr::get(
++          getContext(), 0, dEncoding, aEltType);
++      auto dstType =
++          RankedTensorType::get(aType.getShape(), aEltType, encoding);
++      a = rewriter.create<triton::gpu::ConvertLayoutOp>(a.getLoc(), dstType, a);
++    }
++    if (!bEncoding.isa<triton::gpu::DotOperandEncodingAttr>()) {
++      Attribute encoding = triton::gpu::DotOperandEncodingAttr::get(
++          getContext(), 1, dEncoding, bEltType);
++      auto dstType =
++          RankedTensorType::get(bType.getShape(), bEltType, encoding);
++      b = rewriter.create<triton::gpu::ConvertLayoutOp>(b.getLoc(), dstType, b);
++    }
++    c = rewriter.create<triton::gpu::ConvertLayoutOp>(c.getLoc(), retType, c);
++
++    // aMeta must be of smem layout
++    auto aMetaType = adaptor.getAMeta().getType().cast<RankedTensorType>();
++    Attribute aMetaEncoding = aMetaType.getEncoding();
++    if (!aMetaEncoding) return failure();
++    Value aMeta = adaptor.getAMeta();
++    if (!aMetaEncoding.isa<triton::gpu::SparseDotMetaEncodingAttr>()) {
++      Attribute encoding =
++          triton::gpu::SparseDotMetaEncodingAttr::get(getContext(), dEncoding);
++      auto dstType = RankedTensorType::get(
++          aMetaType.getShape(), aMetaType.getElementType(), encoding);
++      aMeta = rewriter.create<triton::gpu::ConvertLayoutOp>(aMeta.getLoc(),
++                                                            dstType, aMeta);
++    }
++
++    addNamedAttrs(rewriter.replaceOpWithNewOp<triton::gpu::SparseDotOp>(
++                      op, retType, a, b, c, aMeta),
++                  adaptor.getAttributes());
++    return success();
++  }
++};
++
+ struct TritonCatPattern : public OpConversionPattern<triton::CatOp> {
+   using OpConversionPattern::OpConversionPattern;
+ 
+@@ -550,6 +633,7 @@ void populateTritonPatterns(TritonGPUTyp
+       GenericOpPattern<triton::AtomicRMWOp>, GenericOpPattern<ReturnOp>,
+       GenericOpPattern<triton::CallOp>, TritonFuncOpPattern>(typeConverter,
+                                                              context);
++  patterns.insert<TritonSparseDotPattern>(typeConverter, context);
+ }
+ 
+ //
+@@ -788,6 +872,12 @@ public:
+                  IntegerAttr::get(
+                      i32_ty, llvm::APInt(32, computeCapability.getValue())));
+ 
++    // Only transform sparse dot op with undefined layout.
++    target.addDynamicallyLegalOp<triton::gpu::SparseDotOp>(
++        [](triton::gpu::SparseDotOp op) {
++          return op.getAMeta().getType().getEncoding() != nullptr;
++        });
++
+     if (failed(applyPartialConversion(mod, target, std::move(patterns))))
+       return signalPassFailure();
+ 
+diff --git a/lib/Dialect/TritonGPU/Transforms/AccelerateMatmul.cpp b/lib/Dialect/TritonGPU/Transforms/AccelerateMatmul.cpp
+--- a/lib/Dialect/TritonGPU/Transforms/AccelerateMatmul.cpp
++++ b/lib/Dialect/TritonGPU/Transforms/AccelerateMatmul.cpp
+@@ -42,8 +42,9 @@ static int getMMAVersionSafe(int compute
+   return 0;
+ }
+ 
++template <typename DotType>
+ SmallVector<unsigned>
+-warpsPerTileV2(tt::DotOp dotOp, const ArrayRef<int64_t> shape, int numWarps) {
++warpsPerTileV2(DotType dotOp, const ArrayRef<int64_t> shape, int numWarps) {
+   auto rank = shape.size();
+   // Early exit for batched matmul
+   if (rank == 3)
+@@ -56,14 +57,14 @@ warpsPerTileV2(tt::DotOp dotOp, const Ar
+   auto slices = multiRootGetSlice(dotOp, {filter}, {filter});
+   bool hasChainedDot = false;
+   for (Operation *op : slices) {
+-    if (isa<tt::DotOp>(op) && (op != dotOp)) {
+-      auto chainedDot = cast<tt::DotOp>(op);
++    if (isa<DotType>(op) && (op != dotOp)) {
++      auto chainedDot = cast<DotType>(op);
+       auto resTy = chainedDot.getResult().getType();
+       if (resTy.getRank() != rank) {
+         continue;
+       }
+       if (auto mmaEncoding =
+-              resTy.getEncoding().dyn_cast<NvidiaMmaEncodingAttr>()) {
++              resTy.getEncoding().template dyn_cast<NvidiaMmaEncodingAttr>()) {
+         return ttg::getWarpsPerCTA(mmaEncoding);
+       }
+       hasChainedDot = true;
+@@ -101,12 +102,13 @@ warpsPerTileV2(tt::DotOp dotOp, const Ar
+   return ret;
+ }
+ 
+-SmallVector<unsigned, 2>
+-warpsPerTileV3(tt::DotOp dotOp, const ArrayRef<int64_t> shape, int numWarps,
+-               const SmallVector<unsigned, 3> &instrShape) {
++template <typename DotType>
++SmallVector<unsigned, 2> warpsPerTileV3(
++    DotType dotOp, const ArrayRef<int64_t> shape, int numWarps,
++    const SmallVector<unsigned, 3> &instrShape) {
+   SetVector<Operation *> slices;
+   mlir::getForwardSlice(dotOp.getResult(), &slices);
+-  if (llvm::find_if(slices, [](Operation *op) { return isa<tt::DotOp>(op); }) !=
++  if (llvm::find_if(slices, [](Operation *op) { return isa<DotType>(op); }) !=
+       slices.end())
+     return {(unsigned)numWarps, 1};
+ 
+@@ -175,9 +177,10 @@ public:
+       : mlir::RewritePattern(tt::DotOp::getOperationName(), 2, context),
+         computeCapability(computeCapability) {}
+ 
+-  static SmallVector<unsigned, 3>
+-  getWarpsPerTile(tt::DotOp dotOp, const ArrayRef<int64_t> shape, int version,
+-                  int numWarps, const SmallVector<unsigned, 3> &instrShape) {
++  template <typename DotType>
++  static SmallVector<unsigned, 3> getWarpsPerTile(
++      DotType dotOp, const ArrayRef<int64_t> shape, int version, int numWarps,
++      const SmallVector<unsigned, 3> &instrShape) {
+     switch (version) {
+     case 2:
+       return warpsPerTileV2(dotOp, shape, numWarps);
+@@ -337,6 +340,97 @@ public:
+     return success();
+   }
+ };
++
++class SparseBlockedToMMA : public mlir::RewritePattern {
++ public:
++  using SparseDotOp = mlir::triton::gpu::SparseDotOp;
++  using SparseDotMetaEncodingAttr =
++      mlir::triton::gpu::SparseDotMetaEncodingAttr;
++
++  SparseBlockedToMMA(mlir::MLIRContext *context, int computeCapability)
++      : mlir::RewritePattern(SparseDotOp::getOperationName(), 2, context),
++        computeCapability(computeCapability) {}
++
++  mlir::LogicalResult matchAndRewrite(
++      mlir::Operation *op, mlir::PatternRewriter &rewriter) const override {
++    auto dotOp = cast<SparseDotOp>(op);
++    auto ctx = op->getContext();
++    Value a = dotOp.getA();
++    Value b = dotOp.getB();
++
++    // Check data-types and SM compatibility
++    RankedTensorType oldRetType = dotOp.getType();
++    if (!oldRetType.getEncoding() ||
++        oldRetType.getEncoding().isa<ttg::NvidiaMmaEncodingAttr>())
++      return failure();
++
++    assert(computeCapability >= 80 &&
++           "SparseDot is supported on Ampere and higher");
++    int versionMajor = computeCapability < 90 ? 2 : 3;
++
++    // get MMA encoding for the given number of warps
++    auto retShapePerCTA = ttg::getShapePerCTA(oldRetType);
++    auto mod = op->getParentOfType<mlir::ModuleOp>();
++    int numWarps = ttg::TritonGPUDialect::getNumWarps(mod);
++    auto CTALayout = ttg::getCTALayout(oldRetType.getEncoding());
++
++    auto instrShape = mmaVersionToInstrShape(
++        versionMajor, retShapePerCTA, a.getType().cast<TensorOrMemDesc>());
++    auto warpsPerTile = BlockedToMMA::getWarpsPerTile(
++        dotOp, retShapePerCTA, versionMajor, numWarps, instrShape);
++    ttg::NvidiaMmaEncodingAttr mmaEnc =
++        ttg::NvidiaMmaEncodingAttr::get(ctx, versionMajor, /*versionMinor=*/0,
++                                        warpsPerTile, CTALayout, instrShape);
++    auto newRetType = RankedTensorType::get(
++        oldRetType.getShape(), oldRetType.getElementType(), mmaEnc);
++
++    // convert accumulator
++    auto oldAcc = dotOp.getOperand(2);
++    auto newAcc = rewriter.create<ttg::ConvertLayoutOp>(oldAcc.getLoc(),
++                                                        newRetType, oldAcc);
++
++    if (versionMajor == 2) {
++      // convert A operand
++      auto oldAType = a.getType().cast<RankedTensorType>();
++      auto newAEncoding = ttg::DotOperandEncodingAttr::get(
++          ctx, 0, mmaEnc, oldAType.getElementType());
++      auto newAType = RankedTensorType::get(
++          oldAType.getShape(), oldAType.getElementType(), newAEncoding);
++      a = rewriter.create<ttg::ConvertLayoutOp>(a.getLoc(), newAType, a);
++
++      // convert B operand
++      auto oldBType = b.getType().cast<RankedTensorType>();
++      auto newBEncoding = ttg::DotOperandEncodingAttr::get(
++          ctx, 1, mmaEnc, oldBType.getElementType());
++      auto newBType = RankedTensorType::get(
++          oldBType.getShape(), oldBType.getElementType(), newBEncoding);
++      b = rewriter.create<ttg::ConvertLayoutOp>(b.getLoc(), newBType, b);
++    } else {
++      a = BlockedToMMA::getMMAv3Operand(a, rewriter, 0);
++      b = BlockedToMMA::getMMAv3Operand(b, rewriter, 1);
++    }
++
++    // convert metadata
++    Value meta = dotOp.getAMeta();
++    auto oldMetaType = meta.getType().cast<RankedTensorType>();
++    auto newMetaType = RankedTensorType::get(
++        oldMetaType.getShape(), oldMetaType.getElementType(),
++        SparseDotMetaEncodingAttr::get(ctx, mmaEnc));
++    meta =
++        rewriter.create<ttg::ConvertLayoutOp>(meta.getLoc(), newMetaType, meta);
++
++    // convert dot instruction
++    auto newDot = rewriter.create<SparseDotOp>(dotOp.getLoc(), newRetType, a, b,
++                                               newAcc, meta);
++
++    rewriter.replaceOpWithNewOp<ttg::ConvertLayoutOp>(op, oldRetType,
++                                                      newDot.getResult());
++    return success();
++  }
++
++ private:
++  int computeCapability;
++};
+ } // namespace
+ 
+ static Value promoteOperand(OpBuilder &builder, Location loc, Value operand,
+@@ -397,6 +491,7 @@ public:
+ 
+     mlir::RewritePatternSet patterns(context);
+     patterns.add<::BlockedToMMA>(context, computeCapability);
++    patterns.add<::SparseBlockedToMMA>(context, computeCapability);
+     if (applyPatternsAndFoldGreedily(m, std::move(patterns)).failed()) {
+       signalPassFailure();
+     }
+diff --git a/lib/Dialect/TritonGPU/Transforms/Pipeliner/MatmulLoopPipeline.cpp b/lib/Dialect/TritonGPU/Transforms/Pipeliner/MatmulLoopPipeline.cpp
+--- a/lib/Dialect/TritonGPU/Transforms/Pipeliner/MatmulLoopPipeline.cpp
++++ b/lib/Dialect/TritonGPU/Transforms/Pipeliner/MatmulLoopPipeline.cpp
+@@ -47,6 +47,10 @@ struct PipelinedOpInfo {
+   bool loadIsMMAV3 = false;
+ };
+ 
++bool isDotOp(Operation* op) {
++  return isa<tt::DotOp, ttg::SparseDotOp>(op);
++}
++
+ } // namespace
+ 
+ static bool isMMAv3Dot(Operation *op) {
+@@ -163,22 +167,28 @@ getSharedEncIfAllUsersAreDotEnc(Value va
+     } else {
+       if (!isa<ttg::LocalLoadOp, ttg::ConvertLayoutOp>(user))
+         return std::nullopt;
+-      auto dotOpEnc = user->getResult(0)
+-                          .getType()
+-                          .cast<TensorOrMemDesc>()
+-                          .getEncoding()
+-                          .dyn_cast<ttg::DotOperandEncodingAttr>();
+-      if (!dotOpEnc)
++      auto enc =
++          user->getResult(0).getType().cast<TensorOrMemDesc>().getEncoding();
++      if (isa<ttg::DotOperandEncodingAttr>(enc)) {
++        auto srcTy = val.getType().cast<TensorOrMemDesc>();
++        auto CTALayout = ttg::getCTALayout(srcTy.getEncoding());
++        auto order = ttg::getOrder(srcTy.getEncoding());
++        unsigned bitWidth = srcTy.getElementType().getIntOrFloatBitWidth();
++        tempAttr = ttg::SharedEncodingAttr::get(
++            val.getContext(), cast<ttg::DotOperandEncodingAttr>(enc),
++            srcTy.getShape(), ttg::getOrder(srcTy.getEncoding()),
++            ttg::getCTALayout(srcTy.getEncoding()),
++            srcTy.getElementType().getIntOrFloatBitWidth(),
++            /*needTrans=*/false);
++      } else if (isa<ttg::SparseDotMetaEncodingAttr>(enc)) {
++        auto srcTy = val.getType().cast<TensorOrMemDesc>();
++        tempAttr = ttg::SharedEncodingAttr::get(
++            val.getContext(), /*vec=*/1, /*perPhase=*/1, /*maxPhase=*/1,
++            ttg::getOrder(srcTy.getEncoding()),
++            ttg::getCTALayout(srcTy.getEncoding()));
++      } else {
+         return std::nullopt;
+-      auto srcTy = val.getType().cast<TensorOrMemDesc>();
+-      auto CTALayout = ttg::getCTALayout(srcTy.getEncoding());
+-      auto order = ttg::getOrder(srcTy.getEncoding());
+-      unsigned bitWidth = srcTy.getElementType().getIntOrFloatBitWidth();
+-      tempAttr = ttg::SharedEncodingAttr::get(
+-          val.getContext(), dotOpEnc, srcTy.getShape(),
+-          ttg::getOrder(srcTy.getEncoding()),
+-          ttg::getCTALayout(srcTy.getEncoding()),
+-          srcTy.getElementType().getIntOrFloatBitWidth(), /*needTrans=*/false);
++      }
+     }
+     // Check that the shared encodings needed by the users are compatible.
+     if (!tempAttr || (attr != nullptr && attr != tempAttr))
+@@ -311,7 +321,7 @@ loadOpsToDistanceAndUse(scf::ForOp forOp
+       };
+ 
+   for (Operation &op : forOp.getBody()->without_terminator()) {
+-    if (!isa<tt::DotOp>(op))
++    if (!isDotOp(&op))
+       continue;
+     dfs(&op, 0, &op);
+   }
+@@ -385,7 +395,7 @@ collectOpsToPipeline(scf::ForOp forOp,
+   // loads.
+   for (auto &[loadOp, distAndUse] : loadOpToDistAndUse) {
+     PipelinedOpInfo loadInfo;
+-    if (isa<tt::DotOp>(distAndUse.second)) {
++    if (isDotOp(distAndUse.second)) {
+       if (loadIsMMAv3(loadOp)) {
+         loadInfo.loadIsMMAV3 = true;
+         loadInfo.sharedEncoding =
+@@ -743,7 +753,7 @@ bool mlir::triton::preProcessLoopAndGetS
+     int useStage = opToInfo[info.use].stage;
+     int numBuffers = useStage - defStage;
+ 
+-    if (hasMMAV3 && isa<tt::DotOp>(info.use)) {
++    if (hasMMAV3 && isDotOp(info.use)) {
+       // For MMAv3, we need an extra buffer as this is assumed in the wgmma
+       // pipelining post-processing.
+       numBuffers++;
+diff --git a/lib/Dialect/TritonGPU/Transforms/ReduceDataDuplication.cpp b/lib/Dialect/TritonGPU/Transforms/ReduceDataDuplication.cpp
+--- a/lib/Dialect/TritonGPU/Transforms/ReduceDataDuplication.cpp
++++ b/lib/Dialect/TritonGPU/Transforms/ReduceDataDuplication.cpp
+@@ -36,6 +36,10 @@ public:
+       auto srcEncoding = srcType.getEncoding();
+       if (srcEncoding.isa<triton::gpu::SharedEncodingAttr>())
+         return;
++      if (dstType.getEncoding().isa<triton::gpu::SparseDotMetaEncodingAttr>()) {
++        replaceSparseMetaEncoding(cvtOp);
++        return;
++      }
+       auto dstDotOp =
+           dstType.getEncoding().dyn_cast<triton::gpu::DotOperandEncodingAttr>();
+       if (!dstDotOp)
+@@ -74,6 +78,27 @@ public:
+       cvtOp.erase();
+     });
+   }
++
++ private:
++  void replaceSparseMetaEncoding(triton::gpu::ConvertLayoutOp cvtOp) {
++    auto srcType = cvtOp.getOperand().getType().cast<RankedTensorType>();
++    auto srcEncoding = srcType.getEncoding();
++    auto sharedLayout = triton::gpu::SharedEncodingAttr::get(
++        cvtOp.getContext(), 8, 1, 1, triton::gpu::getOrder(srcEncoding),
++        triton::gpu::getCTALayout(srcEncoding));
++
++    auto dstType = cvtOp.getType().cast<RankedTensorType>();
++    auto tmpType = triton::MemDescType::get(
++        dstType.getShape(), dstType.getElementType(), sharedLayout);
++
++    OpBuilder builder(cvtOp);
++    auto tmp = builder.create<triton::gpu::LocalAllocOp>(
++        cvtOp.getLoc(), tmpType, cvtOp.getSrc());
++    auto newConvert = builder.create<triton::gpu::LocalLoadOp>(
++        cvtOp.getLoc(), dstType, tmp);
++    cvtOp.replaceAllUsesWith(newConvert.getResult());
++    cvtOp.erase();
++  }
+ };
+ 
+ std::unique_ptr<Pass> mlir::triton::gpu::createReduceDataDuplicationPass() {
+diff --git a/lib/Dialect/TritonNvidiaGPU/Transforms/FenceInsertion.cpp b/lib/Dialect/TritonNvidiaGPU/Transforms/FenceInsertion.cpp
+--- a/lib/Dialect/TritonNvidiaGPU/Transforms/FenceInsertion.cpp
++++ b/lib/Dialect/TritonNvidiaGPU/Transforms/FenceInsertion.cpp
+@@ -45,7 +45,7 @@ public:
+       return;
+     ModuleOp mod = getOperation();
+     mod.walk([&](Operation *op) {
+-      if (!isa<tt::DotOp, ttng::DotAsyncOp>(op))
++      if (!isa<tt::DotOp, ttng::DotAsyncOp, ttg::SparseDotOp>(op))
+         return WalkResult::advance();
+       OpBuilder builder(op);
+       auto a = op->getOperand(0);
+@@ -83,7 +83,7 @@ private:
+     static DenseSet<std::pair<Operation *, unsigned>> trace;
+     auto op = operand.getDefiningOp();
+     // avoid redundant insertion
+-    if (op && isa<tt::DotOp, ttng::DotAsyncOp>(op))
++    if (op && isa<tt::DotOp, ttng::DotAsyncOp, ttg::SparseDotOp>(op))
+       return false;
+     // reach convertlayout
+     if (op && isa<ttg::LocalAllocOp>(op) &&
+diff --git a/test/SparseDot/add_layout.mlir b/test/SparseDot/add_layout.mlir
+new file mode 100644
+--- /dev/null
++++ b/test/SparseDot/add_layout.mlir
+@@ -0,0 +1,15 @@
++// RUN: triton-opt %s -split-input-file -convert-triton-to-tritongpu | FileCheck %s
++
++// CHECK-COUNT-4: #triton_gpu.blocked
++module attributes {"triton_gpu.num-warps" = 4 : i32} {
++  tt.func @sparse_dot() {
++    %A = arith.constant dense<1.00e+00> : tensor<64x32xf16>
++    %meta = arith.constant dense<0x3333> : tensor<64x4xi16>
++    %B = arith.constant dense<2.00e+00> : tensor<64x64xf16>
++    %C = arith.constant dense<0.00e+00> : tensor<64x64xf32>
++    // CHECK-COUNT-4: triton_gpu.convert_layout
++    // CHECK: triton_gpu.sparse_dot {{.+}} #triton_gpu.sparse_dot_meta
++    %D = triton_gpu.sparse_dot %A, %B, %C, %meta : tensor<64x32xf16> meta tensor<64x4xi16> * tensor<64x64xf16> -> tensor<64x64xf32>
++    tt.return
++  }
++}
+diff --git a/test/SparseDot/ttg_accelerate_matmul.mlir b/test/SparseDot/ttg_accelerate_matmul.mlir
+new file mode 100644
+--- /dev/null
++++ b/test/SparseDot/ttg_accelerate_matmul.mlir
+@@ -0,0 +1,27 @@
++// RUN: ENABLE_MMA_V3=1 triton-opt %s -split-input-file -tritongpu-accelerate-matmul=compute-capability=90 | FileCheck %s
++// RUN: triton-opt %s -split-input-file -tritongpu-accelerate-matmul=compute-capability=80 | FILECHECK_OPTS= FileCheck %s --check-prefix=CHECK-80
++
++#blocked = #triton_gpu.blocked<{sizePerThread = [1, 1], threadsPerWarp = [8, 4], warpsPerCTA = [4, 1], order = [1, 0], CTAsPerCGA = [1, 1], CTASplitNum = [1, 1], CTAOrder = [1, 0]}>
++// CHECK: #[[MMA:.+]] = #triton_gpu.nvidia_mma<{versionMajor = 3, versionMinor = 0, warpsPerCTA = [4, 1], instrShape = [16, 64, 16]}>
++// CHECK-80: #[[MMA:.+]] = #triton_gpu.nvidia_mma<{versionMajor = 2, versionMinor = 0, warpsPerCTA = [2, 2], instrShape = [16, 8]}>
++#lhs = #triton_gpu.dot_op<{opIdx = 0, parent = #blocked}>
++#rhs = #triton_gpu.dot_op<{opIdx = 1, parent = #blocked}>
++module attributes {"triton_gpu.num-warps" = 4 : i32} {
++  tt.func @sparse_dot(%A: tensor<64x32xf16, #lhs>, %B: tensor<64x64xf16, #rhs>, %meta: tensor<64x4xi16, #blocked>) -> tensor<64x64xf32, #blocked> {
++    %C = arith.constant dense<0.000000e+00> : tensor<64x64xf32, #blocked>
++    // CHECK-DAG: %[[LHS:.+]] = triton_gpu.local_alloc {{.+}} : (tensor<64x32xf16, #triton_gpu.dot_op<{opIdx = 0, parent = #blocked}>>) -> !tt.memdesc<64x32xf16, #{{.+}}>
++    // CHECK-DAG: %[[RHS:.+]] = triton_gpu.local_alloc {{.+}} : (tensor<64x64xf16, #triton_gpu.dot_op<{opIdx = 1, parent = #blocked}>>) -> !tt.memdesc<64x64xf16, #{{.+}}>
++    // CHECK-DAG: %[[ACC:.+]] = triton_gpu.convert_layout {{.+}} : tensor<64x64xf32, #blocked> -> tensor<64x64xf32, #[[MMA]]>
++    // CHECK-DAG: %[[META:.+]] = triton_gpu.convert_layout {{.+}} : tensor<64x4xi16, #blocked> -> tensor<64x4xi16, #triton_gpu.sparse_dot_meta<{parent = #[[MMA]]}>>
++    // CHECK: %[[OUT:.+]] = triton_gpu.sparse_dot %[[LHS]], %[[RHS]], %[[ACC]], %[[META]] : {{.+}} -> tensor<64x64xf32, #[[MMA]]>
++    // CHECK-80-DAG: %[[LHS:.+]] = triton_gpu.convert_layout {{.+}} : {{.+}} -> tensor<64x32xf16, #triton_gpu.dot_op<{opIdx = 0, parent = #[[MMA]], kWidth = 2}>>
++    // CHECK-80-DAG: %[[RHS:.+]] = triton_gpu.convert_layout {{.+}} : {{.+}} -> tensor<64x64xf16, #triton_gpu.dot_op<{opIdx = 1, parent = #[[MMA]], kWidth = 2}>>
++    // CHECK-80-DAG: %[[ACC:.+]] = triton_gpu.convert_layout {{.+}} : {{.+}} -> tensor<64x64xf32, #[[MMA]]>
++    // CHECK-80-DAG: %[[META:.+]] = triton_gpu.convert_layout {{.+}} : {{.+}} -> tensor<64x4xi16, #triton_gpu.sparse_dot_meta<{parent = #[[MMA]]}>>
++    // CHECK-80: %[[OUT:.+]] = triton_gpu.sparse_dot %[[LHS]], %[[RHS]], %[[ACC]], %[[META]] : {{.+}} -> tensor<64x64xf32, #[[MMA]]>
++    %D = triton_gpu.sparse_dot %A, %B, %C, %meta : tensor<64x32xf16, #lhs> meta tensor<64x4xi16, #blocked> * tensor<64x64xf16, #rhs> -> tensor<64x64xf32, #blocked>
++    // CHECK: triton_gpu.convert_layout %[[OUT]] : tensor<64x64xf32, #[[MMA]]> -> tensor<64x64xf32, #blocked>
++    // CHECK-80: triton_gpu.convert_layout %[[OUT]] : tensor<64x64xf32, #[[MMA]]> -> tensor<64x64xf32, #blocked>
++    tt.return %D : tensor<64x64xf32, #blocked>
++  }
++}
+diff --git a/test/SparseDot/ttg_fence_insertion.mlir b/test/SparseDot/ttg_fence_insertion.mlir
+new file mode 100644
+--- /dev/null
++++ b/test/SparseDot/ttg_fence_insertion.mlir
+@@ -0,0 +1,18 @@
++// RUN: ENABLE_MMA_V3=1 triton-opt %s -split-input-file -triton-nvidia-gpu-fence-insertion | FileCheck %s
++
++#blocked = #triton_gpu.blocked<{sizePerThread = [1, 1], threadsPerWarp = [8, 4], warpsPerCTA = [4, 1], order = [1, 0]}>
++#mma = #triton_gpu.nvidia_mma<{versionMajor = 3, versionMinor = 0, warpsPerCTA = [4, 1], instrShape = [16, 64, 16]}>
++#lhs = #triton_gpu.dot_op<{opIdx = 0, parent = #mma}>
++#rhs = #triton_gpu.dot_op<{opIdx = 1, parent = #mma}>
++#shared = #triton_gpu.shared<{vec = 8, perPhase = 1, maxPhase = 8, order = [1, 0], hasLeadingOffset = true}>
++module attributes {"triton_gpu.num-warps" = 4 : i32} {
++  tt.func public @sparse_dot_fence(%A: tensor<64x32xf16, #lhs>, %B: tensor<64x64xf16, #rhs>, %meta: tensor<64x4xi16, #blocked>) {
++    %C = arith.constant dense<0.000000e+00> : tensor<64x64xf32, #mma>
++    %0 = triton_gpu.local_alloc %A : (tensor<64x32xf16, #lhs>) -> !tt.memdesc<64x32xf16, #shared>
++    %1 = triton_gpu.local_alloc %B : (tensor<64x64xf16, #rhs>) -> !tt.memdesc<64x64xf16, #shared>
++    %2 = triton_gpu.convert_layout %meta : tensor<64x4xi16, #blocked> -> tensor<64x4xi16, #triton_gpu.sparse_dot_meta<{parent = #mma}>>
++    // CHECK: triton_nvidia_gpu.fence_async_shared
++    %3 = triton_gpu.sparse_dot %0, %1, %C, %2 : !tt.memdesc<64x32xf16, #shared> meta tensor<64x4xi16, #triton_gpu.sparse_dot_meta<{parent = #mma}>> * !tt.memdesc<64x64xf16, #shared> -> tensor<64x64xf32, #mma>
++    tt.return
++  }
++}
+diff --git a/test/SparseDot/ttg_loop_pipeline.mlir b/test/SparseDot/ttg_loop_pipeline.mlir
+new file mode 100644
+--- /dev/null
++++ b/test/SparseDot/ttg_loop_pipeline.mlir
+@@ -0,0 +1,61 @@
++// RUN: triton-opt %s -split-input-file -tritongpu-pipeline=num-stages=3 | FileCheck %s
++
++#blocked = #triton_gpu.blocked<{sizePerThread = [1, 4], threadsPerWarp = [8, 4], warpsPerCTA = [4, 1], order = [1, 0]}>
++#sliced = #triton_gpu.slice<{parent=#blocked, dim=0}>
++#mma = #triton_gpu.nvidia_mma<{versionMajor = 2, warpsPerCTA = [4, 1]}>
++#dot_operand_a = #triton_gpu.dot_op<{opIdx = 0, parent = #mma, kWidth=2}>
++#dot_operand_b = #triton_gpu.dot_op<{opIdx = 1, parent = #mma, kWidth=2}>
++#dot_meta_enc = #triton_gpu.sparse_dot_meta<{parent=#mma}>
++
++module attributes {"triton_gpu.num-warps" = 4 : i32} {
++  tt.func @sparse_dot_loop(%lb : index, %ub : index, %step : index,
++        %A : !tt.ptr<f16> {tt.divisibility = 16 : i32},
++        %B : !tt.ptr<f16> {tt.divisibility = 16 : i32},
++        %A_meta : !tt.ptr<i16> {tt.divisibility = 16 : i32}) -> tensor<128x128xf32, #mma> {
++    // CHECK-COUNT-6: triton_gpu.async_copy_global_to_local
++    // CHECK: triton_gpu.async_wait {{.+}}, {{.+}} {num = 3 : i32}
++    %a_ptr_splat = tt.splat %A : !tt.ptr<f16> -> tensor<128x32x!tt.ptr<f16>, #blocked>
++    %a_tmp0 = tt.make_range {end = 32: i32, start = 0: i32} : tensor<32xi32, #sliced>
++    %a_tmp1 = tt.expand_dims %a_tmp0 {axis = 0 : i32} : tensor<32xi32, #sliced> -> tensor<1x32xi32, #blocked>
++    %a_offs = tt.broadcast %a_tmp1 : tensor<1x32xi32, #blocked> -> tensor<128x32xi32, #blocked>
++    %a_ptr_init = tt.addptr %a_ptr_splat, %a_offs : tensor<128x32x!tt.ptr<f16>, #blocked>, tensor<128x32xi32, #blocked>
++
++    %b_ptr_splat = tt.splat %B : !tt.ptr<f16> -> tensor<64x128x!tt.ptr<f16>, #blocked>
++    %b_tmp0 = tt.make_range {end = 128: i32, start = 0: i32} : tensor<128xi32, #sliced>
++    %b_tmp1 = tt.expand_dims %b_tmp0 {axis = 0 : i32} : tensor<128xi32, #sliced> -> tensor<1x128xi32, #blocked>
++    %b_offs = tt.broadcast %b_tmp1 : tensor<1x128xi32, #blocked> -> tensor<64x128xi32, #blocked>
++    %b_ptr_init = tt.addptr %b_ptr_splat, %b_offs : tensor<64x128x!tt.ptr<f16>, #blocked>, tensor<64x128xi32, #blocked>
++
++    %meta_ptr_splat = tt.splat %A_meta : !tt.ptr<i16> -> tensor<128x4x!tt.ptr<i16>, #blocked>
++    %meta_tmp0 = tt.make_range {end = 4: i32, start = 0: i32} : tensor<4xi32, #sliced>
++    %meta_tmp1 = tt.expand_dims %meta_tmp0 {axis = 0 : i32} : tensor<4xi32, #sliced> -> tensor<1x4xi32, #blocked>
++    %meta_offs = tt.broadcast %meta_tmp1 : tensor<1x4xi32, #blocked> -> tensor<128x4xi32, #blocked>
++    %meta_ptr_init = tt.addptr %meta_ptr_splat, %meta_offs : tensor<128x4x!tt.ptr<i16>, #blocked>, tensor<128x4xi32, #blocked>
++
++    %a_off = arith.constant dense<4> : tensor<128x32xi32, #blocked>
++    %b_off = arith.constant dense<4> : tensor<64x128xi32, #blocked>
++    %meta_off = arith.constant dense<4> : tensor<128x4xi32, #blocked>
++    %c_init = arith.constant dense<0.00e+00> : tensor<128x128xf32, #mma>
++
++    // CHECK: scf.for
++    %loop:4 = scf.for %iv = %lb to %ub step %step iter_args(%a_ptr = %a_ptr_init, %b_ptr = %b_ptr_init, %c = %c_init, %meta_ptr = %meta_ptr_init)
++        -> (tensor<128x32x!tt.ptr<f16>, #blocked>, tensor<64x128x!tt.ptr<f16>, #blocked>, tensor<128x128xf32, #mma>, tensor<128x4x!tt.ptr<i16>, #blocked>) {
++      // CHECK-COUNT-3: triton_gpu.local_load
++      // CHECK: triton_gpu.sparse_dot
++      // CHECK-COUNT-3: triton_gpu.async_copy_global_to_local
++      %a_ = tt.load %a_ptr {cache = 1 : i32, evict = 1 : i32, isVolatile = false} : tensor<128x32xf16, #blocked>
++      %a = triton_gpu.convert_layout %a_ : tensor<128x32xf16, #blocked> -> tensor<128x32xf16, #dot_operand_a>
++      %b_ = tt.load %b_ptr {cache = 1 : i32, evict = 1 : i32, isVolatile = false} : tensor<64x128xf16, #blocked>
++      %b = triton_gpu.convert_layout %b_ : tensor<64x128xf16, #blocked> -> tensor<64x128xf16, #dot_operand_b>
++      %meta_ = tt.load %meta_ptr {cache = 1 : i32, evict = 1 : i32, isVolatile = false} : tensor<128x4xi16, #blocked>
++      %meta = triton_gpu.convert_layout %meta_ : tensor<128x4xi16, #blocked> -> tensor<128x4xi16, #dot_meta_enc>
++      %d = triton_gpu.sparse_dot %a, %b, %c, %meta : tensor<128x32xf16, #dot_operand_a> meta tensor<128x4xi16, #dot_meta_enc> * tensor<64x128xf16, #dot_operand_b> -> tensor<128x128xf32, #mma>
++
++      %a_ptr_next = tt.addptr %a_ptr, %a_off : tensor<128x32x!tt.ptr<f16>, #blocked>, tensor<128x32xi32, #blocked>
++      %b_ptr_next = tt.addptr %b_ptr, %b_off : tensor<64x128x!tt.ptr<f16>, #blocked>, tensor<64x128xi32, #blocked>
++      %meta_ptr_next = tt.addptr %meta_ptr, %meta_off : tensor<128x4x!tt.ptr<i16>, #blocked>, tensor<128x4xi32, #blocked>
++      scf.yield %a_ptr_next, %b_ptr_next, %d, %meta_ptr_next : tensor<128x32x!tt.ptr<f16>, #blocked>, tensor<64x128x!tt.ptr<f16>, #blocked>, tensor<128x128xf32, #mma>, tensor<128x4x!tt.ptr<i16>, #blocked>
++    }
++    tt.return %loop#2: tensor<128x128xf32, #mma>
++  }
++}
+diff --git a/test/SparseDot/ttg_reduce_data_duplication.mlir b/test/SparseDot/ttg_reduce_data_duplication.mlir
+new file mode 100644
+--- /dev/null
++++ b/test/SparseDot/ttg_reduce_data_duplication.mlir
+@@ -0,0 +1,13 @@
++// RUN: triton-opt %s -split-input-file -tritongpu-reduce-data-duplication | FileCheck %s
++
++#blocked = #triton_gpu.blocked<{sizePerThread = [1, 1], threadsPerWarp = [8, 4], warpsPerCTA = [4, 1], order = [1, 0]}>
++#mma = #triton_gpu.nvidia_mma<{versionMajor = 2, versionMinor = 0, warpsPerCTA = [2, 2], instrShape = [16, 8]}>
++// CHECK: #[[SHARED:.+]] = #triton_gpu.shared
++module attributes {"triton_gpu.num-warps" = 4 : i32} {
++  tt.func @sparse_dot_metadata(%meta: tensor<64x4xi16, #blocked>) {
++    // CHECK: %[[META:.+]] = triton_gpu.local_alloc {{.+}} : (tensor<64x4xi16, #blocked>) -> !tt.memdesc<64x4xi16, #[[SHARED]]>
++    // CHECK: triton_gpu.local_load %[[META]] : !tt.memdesc<64x4xi16, #[[SHARED]]> -> tensor<64x4xi16, #triton_gpu.sparse_dot_meta<{parent = #mma}>>
++    %0 = triton_gpu.convert_layout %meta : tensor<64x4xi16, #blocked> -> tensor<64x4xi16, #triton_gpu.sparse_dot_meta<{parent = #mma}>>
++    tt.return
++  }
++}

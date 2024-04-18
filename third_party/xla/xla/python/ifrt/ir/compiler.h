@@ -25,6 +25,7 @@ limitations under the License.
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "xla/python/ifrt/compiler.h"
+#include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/statusor.h"
 
@@ -46,7 +47,7 @@ struct IfrtIRCompileOptions
     : llvm::RTTIExtends<IfrtIRCompileOptions, CompileOptions> {
   IfrtIRCompileOptions() = default;
   explicit IfrtIRCompileOptions(
-      std::vector<int> device_assignments,
+      std::vector<DeviceId> device_assignments,
       absl::flat_hash_map<std::string, LoadedExecutable*> loaded_exec_binding =
           {},
       std::shared_ptr<absl::flat_hash_map<
@@ -58,7 +59,7 @@ struct IfrtIRCompileOptions
 
   // Map from logical device ids in MLIR module to runtime device ids obtained
   // from IFRT client.
-  std::vector<int> device_assignments;
+  std::vector<DeviceId> device_assignments;
 
   // Map from `getSymName()` of declared LoadedExecutableOp in the `mlir_module`
   // to pre-compiled LoadedExecutable instance. The LoadedExecutables must

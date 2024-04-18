@@ -21,6 +21,7 @@ limitations under the License.
 #include <set>
 #include <string>
 
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/compiler.h"

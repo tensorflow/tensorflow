@@ -16,19 +16,35 @@ limitations under the License.
 #include "xla/tools/hlo_control_flow_flattening.h"
 
 #include <algorithm>
-#include <functional>
+#include <cstdint>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/literal.h"
 #include "xla/literal_util.h"
+#include "xla/service/call_graph.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/hlo_dce.h"
 #include "xla/service/tuple_util.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
+#include "xla/status.h"
+#include "xla/util.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -371,7 +387,8 @@ Status HloControlFlowFlattening::RemoveSendDone(
   return OkStatus();
 }
 
-Status HloControlFlowFlattening::RemoveCollective(HloInstruction* hlo) const {
+absl::StatusOr<HloInstruction*> HloControlFlowFlattening::RemoveCollective(
+    HloInstruction* hlo) const {
   HloComputation* computation = hlo->parent();
   HloInstruction* custom_call =
       computation->AddInstruction(HloInstruction::CreateCustomCall(
@@ -387,7 +404,7 @@ Status HloControlFlowFlattening::RemoveCollective(HloInstruction* hlo) const {
   std::string original_op_name(hlo->name());
   TF_RETURN_IF_ERROR(computation->ReplaceInstruction(hlo, custom_call));
   custom_call->SetAndSanitizeName(original_op_name);
-  return OkStatus();
+  return custom_call;
 }
 
 Status HloControlFlowFlattening::RemoveId(HloInstruction* hlo) const {
@@ -467,12 +484,12 @@ absl::StatusOr<bool> HloControlFlowFlattening::Run(
                  instruction->opcode() == HloOpcode::kAsyncStart) {
             HloInstruction* operand = instruction->mutable_operand(0);
             VLOG(1) << "Remove " << instruction->name();
-            TF_RETURN_IF_ERROR(RemoveCollective(instruction));
+            TF_RETURN_IF_ERROR(RemoveCollective(instruction).status());
             instruction = operand;
           }
         } else {
           VLOG(1) << "Remove " << instruction->name();
-          TF_RETURN_IF_ERROR(RemoveCollective(instruction));
+          TF_RETURN_IF_ERROR(RemoveCollective(instruction).status());
         }
         changed = true;
       } else if (remove_comm_ &&

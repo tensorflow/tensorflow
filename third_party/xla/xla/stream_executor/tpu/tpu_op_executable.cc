@@ -49,7 +49,7 @@ TpuOpExecutable::TpuOpExecutable(
       core_program_(core_program),
       outside_compilation_params_(outside_compilation_params) {}
 
-xla::Status TpuOpExecutable::LoadProgramAndEnqueueToStream(
+absl::Status TpuOpExecutable::LoadProgramAndEnqueueToStream(
     const xla::ServiceExecutableRunOptions& run_options,
     absl::Span<const se::DeviceMemoryBase> arguments,
     se::DeviceMemoryBase result,

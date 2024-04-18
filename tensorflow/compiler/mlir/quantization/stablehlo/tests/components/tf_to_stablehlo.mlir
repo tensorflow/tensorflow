@@ -114,7 +114,7 @@ func.func @func_conv_batchnorm_relu6_dynamic(%arg_0: tensor<?x3x4x3xf32>) -> (te
 // This test makes sure functions with tf._noinline=true is not inlined.
 
 module {
-  func.func @partitioned_call(%arg0: tensor<1x2x2x3xf32>) -> (tensor<1x2x2x3xf32>) {
+  func.func @stateful_partitioned_call(%arg0: tensor<1x2x2x3xf32>) -> (tensor<1x2x2x3xf32>) {
     %0 = "tf.StatefulPartitionedCall"(%arg0) <{
       config = "", config_proto = "", executor_type = "", f = @some_func
     }> {
@@ -139,7 +139,7 @@ module {
 
 module {
   func.func @partitioned_call(%arg0: tensor<1x2x2x3xf32>) -> (tensor<1x2x2x3xf32>) {
-    %0 = "tf.StatefulPartitionedCall"(%arg0) <{
+    %0 = "tf.PartitionedCall"(%arg0) <{
       config = "", config_proto = "", executor_type = "", f = @some_func
     }> {
       _collective_manager_ids = [], device = ""
@@ -153,6 +153,6 @@ module {
 }
 
 // CHECK: module
-// CHECK-NOT: tf.StatefulPartitionedCall
+// CHECK-NOT: tf.PartitionedCall
 // CHECK-NOT: some_func
 // CHECK-NOT: func.call

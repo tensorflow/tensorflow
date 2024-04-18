@@ -68,7 +68,7 @@ Status HandleElementToSlice<tstring>(const Tensor& element, tstring* src,
   } else {
     std::copy_n(src, num_values, dest);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <>
@@ -81,7 +81,7 @@ Status HandleElementToSlice<Variant>(const Tensor& element, Variant* src,
   } else {
     std::copy_n(src, num_values, dest);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <>
@@ -90,7 +90,7 @@ Status HandleElementToSlice<ResourceHandle>(const Tensor& /* element */,
                                             ResourceHandle* dest,
                                             int64_t num_values) {
   std::copy_n(src, num_values, dest);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <>
@@ -98,7 +98,7 @@ Status HandleElementToSlice<Eigen::half>(const Tensor& /* element */,
                                          Eigen::half* src, Eigen::half* dest,
                                          int64_t num_values) {
   std::copy_n(src, num_values, dest);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <typename T>

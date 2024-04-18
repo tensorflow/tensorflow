@@ -1,10 +1,10 @@
 # Description:
 #    Libraries for helping construct LLVM IR for XLA backends.
 
-load("@local_tsl//tsl:tsl.bzl", "internal_visibility")
-load("@local_tsl//tsl:tsl.default.bzl", "filegroup")
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load("//xla:xla.bzl", "xla_cc_test")
+load("//xla/tsl:tsl.bzl", "internal_visibility")
+load("//xla/tsl:tsl.default.bzl", "filegroup")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -50,11 +50,9 @@ xla_cc_test(
     name = "alias_analysis_test",
     srcs = ["alias_analysis_test.cc"],
     deps = [
-        ":alias_analysis",
         "//xla/service:custom_call_status_public_headers",
         "//xla/service:custom_call_target_registry",
         "//xla/service/cpu/tests:cpu_codegen_test",
-        "//xla/tests:filecheck",
         "@local_tsl//tsl/platform:test",
     ],
 )

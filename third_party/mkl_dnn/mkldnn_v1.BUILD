@@ -1,7 +1,7 @@
 load("@bazel_skylib//rules:expand_template.bzl", "expand_template")
-load("@local_tsl//tsl:tsl.bzl", "tf_openmp_copts")
+load("@local_tsl//third_party/mkl_dnn:build_defs.bzl", "if_mkldnn_openmp")
+load("@local_xla//xla/tsl:tsl.bzl", "tf_openmp_copts")
 load("@local_xla//xla/tsl/mkl:build_defs.bzl", "if_mkl", "if_mkl_ml")
-load("@org_tensorflow//third_party/mkl_dnn:build_defs.bzl", "if_mkldnn_openmp")
 
 exports_files(["LICENSE"])
 
@@ -76,7 +76,7 @@ expand_template(
     name = "dnnl_config_h",
     out = "include/oneapi/dnnl/dnnl_config.h",
     substitutions = select({
-        "@org_tensorflow//third_party/mkl_dnn:build_with_mkldnn_openmp": _DNNL_RUNTIME_OMP,
+        "@local_tsl//third_party/mkl_dnn:build_with_mkldnn_openmp": _DNNL_RUNTIME_OMP,
         "//conditions:default": _DNNL_RUNTIME_THREADPOOL,
     }),
     template = "include/oneapi/dnnl/dnnl_config.h.in",
@@ -102,7 +102,7 @@ expand_template(
 )
 
 _COPTS_LIST = select({
-    "@local_tsl//tsl:windows": [],
+    "@local_xla//xla/tsl:windows": [],
     "//conditions:default": ["-fexceptions"],
 }) + [
     "-UUSE_MKL",
@@ -171,9 +171,9 @@ cc_library(
     includes = _INCLUDES_LIST,
     # TODO(penpornk): Use lrt_if_needed from tensorflow.bzl instead.
     linkopts = select({
-        "@local_tsl//tsl:linux_aarch64": ["-lrt"],
-        "@local_tsl//tsl:linux_x86_64": ["-lrt"],
-        "@local_tsl//tsl:linux_ppc64le": ["-lrt"],
+        "@local_xla//xla/tsl:linux_aarch64": ["-lrt"],
+        "@local_xla//xla/tsl:linux_x86_64": ["-lrt"],
+        "@local_xla//xla/tsl:linux_ppc64le": ["-lrt"],
         "//conditions:default": [],
     }),
     textual_hdrs = _TEXTUAL_HDRS_LIST,

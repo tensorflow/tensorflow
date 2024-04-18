@@ -66,8 +66,8 @@ absl::Status Evaluate(MultiplyOp& op, const Tensor& lhs, const Tensor& rhs,
   } else if (IsQuantizedPerTensorTensor(lhs)) {
     Multiply<DataType::kF32> multiply;
     DISPATCH_QUANTIZED(detail::DequantizeOpQuantizePerTensor,
-                       lhs.quantized_tensor_element_type().StorageType(),
-                       lhs.quantized_tensor_element_type().ExpressedType(),
+                       lhs.quantized_per_tensor_element_type().StorageType(),
+                       lhs.quantized_per_tensor_element_type().ExpressedType(),
                        multiply, lhs, rhs, output)
   }
   return absl::FailedPreconditionError(

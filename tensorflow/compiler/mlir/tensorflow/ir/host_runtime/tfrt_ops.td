@@ -109,7 +109,8 @@ def TF_IfrtLoadVariableOp : TF_Op<"IfrtLoadVariable", [Pure]> {
     configuration specified in `VariableDeviceShardingConfigProto`.
 
     This op returns a scalar string tensor containing the loaded variable name, which can be
-    used as a key to look for the loaded IFRT array in runtime.
+    used as a key to look for the loaded IFRT array in runtime and a restored tensor, which
+    maybe lowered to a future by runtime.
   }];
 
   let arguments = (ins
@@ -119,7 +120,8 @@ def TF_IfrtLoadVariableOp : TF_Op<"IfrtLoadVariable", [Pure]> {
   );
 
   let results = (outs
-    TF_StrTensor:$array_key
+    TF_StrTensor:$array_key,
+    TF_Tensor: $tensor_future
   );
 
   TF_DerivedOperandTypeListAttr Tin = TF_DerivedOperandTypeListAttr<0>;

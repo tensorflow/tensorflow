@@ -36,10 +36,12 @@ tf_cc_tests(
     ),
     deps = [
         ":renderers",
+        "//tensorflow/c/experimental/ops/gen/common",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/platform:types",
     ],
 )

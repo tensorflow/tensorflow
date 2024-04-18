@@ -1203,8 +1203,8 @@ tf_python_pybind_extension(
         "//tensorflow/python/lib/core:py_exception_registry_hdr",
         "//tensorflow/python/lib/core:safe_pyobject_ptr_required_hdrs",
         "//tensorflow/python/util:util_hdr",
-        "@local_tsl//tsl/distributed_runtime:pywrap_required_hdrs",
-        "@local_tsl//tsl/distributed_runtime/coordination:pywrap_required_hdrs",
+        "@local_xla//xla/tsl/distributed_runtime:pywrap_required_hdrs",
+        "@local_xla//xla/tsl/distributed_runtime/coordination:pywrap_required_hdrs",
         "@local_xla//xla/tsl/python/lib/core:numpy_hdr",
     ],
     dynamic_deps = [":_pywrap_tensorflow_internal.so"] + select({

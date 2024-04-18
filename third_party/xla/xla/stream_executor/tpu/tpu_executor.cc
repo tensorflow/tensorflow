@@ -29,7 +29,7 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/event.h"
-#include "xla/stream_executor/stream_executor_internal.h"
+#include "xla/stream_executor/stream_executor_interface.h"
 #include "xla/stream_executor/tpu/c_api_conversions.h"
 #include "xla/stream_executor/tpu/c_api_decl.h"
 #include "xla/stream_executor/tpu/status_helper.h"
@@ -45,15 +45,14 @@ namespace stream_executor {
 namespace tpu {
 
 namespace {
-using xla::Status;
+using absl::Status;
 }  // namespace
 
 TpuExecutor::~TpuExecutor() { ExecutorApiFn()->TpuExecutor_FreeFn(executor_); }
 
-Status TpuExecutor::Init(int device_ordinal) {
+Status TpuExecutor::Init() {
   StatusHelper status;
-  ExecutorApiFn()->TpuExecutor_InitFn(executor_, device_ordinal,
-                                      status.c_status);
+  ExecutorApiFn()->TpuExecutor_InitFn(executor_, status.c_status);
   return status.status();
 }
 
@@ -141,8 +140,7 @@ Status TpuExecutor::WaitForEvent(Stream* stream,
 // responsible for deallocating the internal value when they are destroyed.
 
 // Called by Stream::Stream
-std::unique_ptr<::stream_executor::internal::StreamInterface>
-TpuExecutor::GetStreamImplementation() {
+std::unique_ptr<StreamInterface> TpuExecutor::GetStreamImplementation() {
   SE_Stream* tpu_stream = ExecutorApiFn()->TpuStream_NewFn(executor_);
   auto ptr = std::make_unique<tensorflow::tpu::TpuStream>(tpu_stream);
   tpu_platform().mutex().Lock();
@@ -152,8 +150,7 @@ TpuExecutor::GetStreamImplementation() {
 }
 
 // Called by Event::Event
-std::unique_ptr<::stream_executor::internal::EventInterface>
-TpuExecutor::CreateEventImplementation() {
+std::unique_ptr<EventInterface> TpuExecutor::CreateEventImplementation() {
   SE_Event* tpu_event = ExecutorApiFn()->TpuEvent_NewFn(executor_);
   auto ptr = std::make_unique<TpuEvent>(tpu_event);
   tpu_platform().InsertEvent(ptr.get(), tpu_event);
@@ -270,12 +267,6 @@ Status TpuExecutor::SynchronousMemcpy(
   ExecutorApiFn()->TpuExecutor_SynchronousMemcpyToHostFn(
       executor_, host_dst, &se_base, size, status.c_status);
   return status.status();
-}
-
-Status TpuExecutor::SynchronousMemcpyDeviceToDevice(
-    ::stream_executor::DeviceMemoryBase* device_dst,
-    const ::stream_executor::DeviceMemoryBase& device_src, uint64_t size) {
-  return absl::UnimplementedError("This operation not supported on TPU");
 }
 
 bool TpuExecutor::MemcpyDeviceToDevice(

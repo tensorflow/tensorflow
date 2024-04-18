@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
+#include "mlir/Dialect/Complex/IR/Complex.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
@@ -25,6 +26,7 @@ limitations under the License.
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
@@ -103,41 +105,52 @@ struct RewriteShuffleReduce : mlir::OpRewritePattern<ShuffleReduceOp> {
     mlir::ValueRange values = op.getOperands();
     for (int distance = max_distance; distance > 0; distance /= 2) {
       namespace ml = mlir::LLVM;
-      auto shuffle = [&](mlir::Value v) {
+      auto shuffle_32 = [&](mlir::Value v) {
         return b
             .create<mlir::gpu::ShuffleOp>(v, distance, WarpSize(),
                                           mlir::gpu::ShuffleMode::DOWN)
             .getShuffleResult();
       };
 
-      llvm::SmallVector<mlir::Value> args = values;
-      for (auto value : values) {
-        // Shuffle within the warps.
+      auto shuffle_int_or_float = [&](mlir::Value value) {
         auto ty = value.getType();
         int bit_width = ty.getIntOrFloatBitWidth();
-
         if (bit_width == 32) {
-          value = shuffle(value);
-        } else {
-          int n_shuffles = CeilOfRatio(bit_width, 32);
-          auto int_ty = b.getIntegerType(bit_width);
-          auto padded_int_ty = b.getIntegerType(n_shuffles * 32);
-          value = b.create<mlir::arith::BitcastOp>(int_ty, value);
-          value = b.create<mlir::arith::ExtUIOp>(padded_int_ty, value);
-          auto vector_type = ml::getVectorType(b.getI32Type(), n_shuffles);
-          value = b.create<ml::BitcastOp>(vector_type, value);
-          mlir::Value result_vec = b.create<ml::UndefOp>(vector_type);
-          for (int i = 0; i < n_shuffles; ++i) {
-            auto idx = b.create<mlir::arith::ConstantIntOp>(i, 32);
-            result_vec = b.create<ml::InsertElementOp>(
-                result_vec, shuffle(b.create<ml::ExtractElementOp>(value, idx)),
-                idx);
-          }
-          value = b.create<ml::BitcastOp>(padded_int_ty, result_vec);
-          value = b.create<mlir::arith::TruncIOp>(int_ty, value);
-          value = b.create<mlir::arith::BitcastOp>(ty, value);
+          return shuffle_32(value);
         }
-        args.push_back(value);
+        int n_shuffles = CeilOfRatio(bit_width, 32);
+        auto int_ty = b.getIntegerType(bit_width);
+        auto padded_int_ty = b.getIntegerType(n_shuffles * 32);
+        value = b.create<mlir::arith::BitcastOp>(int_ty, value);
+        value = b.create<mlir::arith::ExtUIOp>(padded_int_ty, value);
+        auto vector_type = ml::getVectorType(b.getI32Type(), n_shuffles);
+        value = b.create<ml::BitcastOp>(vector_type, value);
+        mlir::Value result_vec = b.create<ml::UndefOp>(vector_type);
+        for (int i = 0; i < n_shuffles; ++i) {
+          auto idx = b.create<mlir::arith::ConstantIntOp>(i, 32);
+          result_vec = b.create<ml::InsertElementOp>(
+              result_vec,
+              shuffle_32(b.create<ml::ExtractElementOp>(value, idx)), idx);
+        }
+        value = b.create<ml::BitcastOp>(padded_int_ty, result_vec);
+        value = b.create<mlir::arith::TruncIOp>(int_ty, value);
+        value = b.create<ml::BitcastOp>(ty, value);
+        return value;
+      };
+
+      auto shuffle = [&](mlir::Value value) -> mlir::Value {
+        if (value.getType().isa<mlir::ComplexType>()) {
+          return b.create<mlir::complex::CreateOp>(
+              value.getType(),
+              shuffle_int_or_float(b.create<mlir::complex::ReOp>(value)),
+              shuffle_int_or_float(b.create<mlir::complex::ImOp>(value)));
+        }
+        return shuffle_int_or_float(value);
+      };
+
+      llvm::SmallVector<mlir::Value> args = values;
+      for (auto value : values) {
+        args.push_back(shuffle(value));
       }
       values = b.create<mlir::func::CallOp>(op.getReducerAttr().getAttr(),
                                             op.getResultTypes(), args)

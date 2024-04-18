@@ -91,7 +91,8 @@ HloInputOutputAliasProto HloInputOutputAliasConfig::ToProto() const {
   return result;
 }
 
-StatusOr<HloInputOutputAliasConfig> HloInputOutputAliasConfig::CreateFromProto(
+absl::StatusOr<HloInputOutputAliasConfig>
+HloInputOutputAliasConfig::CreateFromProto(
     Shape output_shape, const HloInputOutputAliasProto& proto) {
   HloInputOutputAliasConfig result(std::move(output_shape));
   for (const HloInputOutputAliasProto::AliasEntryProto& entry :
@@ -278,7 +279,7 @@ HloBufferDonorProto HloBufferDonorConfig::ToProto() const {
   return result;
 }
 
-StatusOr<HloBufferDonorConfig> HloBufferDonorConfig::CreateFromProto(
+absl::StatusOr<HloBufferDonorConfig> HloBufferDonorConfig::CreateFromProto(
     const HloBufferDonorProto& proto) {
   HloBufferDonorConfig result;
   for (const HloBufferDonorProto::BufferDonorEntryProto& entry :

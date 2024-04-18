@@ -65,7 +65,7 @@ HloInstruction* CloneHelper(const HloInstruction* instruction,
 
 }  // namespace
 
-StatusOr<bool> WhileLoopConstantSinking::TrySinkingConstantsIntoWhileLoop(
+absl::StatusOr<bool> WhileLoopConstantSinking::TrySinkingConstantsIntoWhileLoop(
     HloInstruction* while_instr) {
   HloComputation* while_cond = while_instr->while_condition();
   HloComputation* while_body = while_instr->while_body();
@@ -133,7 +133,7 @@ StatusOr<bool> WhileLoopConstantSinking::TrySinkingConstantsIntoWhileLoop(
   return changed;
 }
 
-StatusOr<bool> WhileLoopConstantSinking::Run(
+absl::StatusOr<bool> WhileLoopConstantSinking::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   VLOG(2) << "HLO module before WhileLoopConstantSinking:";

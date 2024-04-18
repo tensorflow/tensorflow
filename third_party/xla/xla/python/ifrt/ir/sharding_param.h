@@ -20,11 +20,13 @@ limitations under the License.
 #include <string>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/Hashing.h"
 #include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/OpImplementation.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -67,8 +69,6 @@ namespace ifrt {
 //   in axis-0.
 //
 // See `support` directory for conversions with other sharding annotations.
-//
-// TODO(b/271129892): Should we support maximal sharding here?
 class ShardingParam {
  public:
   // Represents a permutation of mesh dimensions from minor to major.
@@ -99,6 +99,20 @@ class ShardingParam {
   absl::Status verify() const;
   mlir::LogicalResult verify(
       llvm::function_ref<mlir::InFlightDiagnostic()> emit_error) const;
+
+  // Verifies if the sharding can be applied to the array.
+  mlir::LogicalResult CanApplyTo(
+      llvm::function_ref<mlir::InFlightDiagnostic()> emitError,
+      mlir::RankedTensorType shape, llvm::ArrayRef<int> device_ids) const;
+
+  absl::StatusOr<llvm::SmallVector<int64_t>> GlobalShapeFromLocalShape(
+      llvm::ArrayRef<int64_t> local_shape) const;
+
+  absl::StatusOr<llvm::SmallVector<int64_t>> LocalShapeFromGlobalShape(
+      llvm::ArrayRef<int64_t> global_shape) const;
+
+  // Returns the number of devices the array is sharded over.
+  int NumDevices() const;
 
   llvm::ArrayRef<int64_t> dim_shards() const { return dim_shards_; }
   const MinorToMajor& minor_to_major() const { return minor_to_major_; }

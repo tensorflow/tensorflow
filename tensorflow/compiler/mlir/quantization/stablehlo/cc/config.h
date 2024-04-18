@@ -41,6 +41,10 @@ QuantizationConfig PopulateDefaults(
 //   - No-op.
 QuantizationConfig ExpandPresets(const QuantizationConfig& config);
 
+// Returns whether a given QuantizationSpecs has the given quantization method.
+bool HasQuantizationMethod(const QuantizationSpecs& specs,
+                           Method::MethodCase method_case);
+
 }  // namespace stablehlo::quantization
 
 #endif  // TENSORFLOW_COMPILER_MLIR_QUANTIZATION_STABLEHLO_CC_CONFIG_H_

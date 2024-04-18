@@ -257,7 +257,7 @@ func.func @slice(%t : tensor<3xi32>) -> tensor<1xi32> {
 
 func.func @dynamic_broadcast_return(%t : tensor<?x?xf32>, %shape : tensor<2xi32>) -> tensor<?x?xf32> {
   // CHECK: memref.copy
-  %bcast = "mhlo.dynamic_broadcast_in_dim"(%t, %shape) {broadcast_dimensions = dense<[0, 1]> : tensor<2xi64>} : (tensor<?x?xf32>, tensor<2xi32>) -> tensor<?x?xf32>
+  %bcast = "mhlo.dynamic_broadcast_in_dim"(%t, %shape) <{broadcast_dimensions = dense<[0, 1]> : tensor<2xi64>}> : (tensor<?x?xf32>, tensor<2xi32>) -> tensor<?x?xf32>
   func.return %bcast : tensor<?x?xf32>
 }
 

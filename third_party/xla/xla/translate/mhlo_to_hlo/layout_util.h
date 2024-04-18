@@ -65,7 +65,7 @@ typedef std::function<absl::StatusOr<xla::Shape>(
 LayoutPreferenceFn UseNoPreferenceLayoutFn();
 
 // Rewrites the layout of xla_shape if there is tiled sharding.
-xla::Status RewriteLayoutWithShardedShape(
+absl::Status RewriteLayoutWithShardedShape(
     const std::optional<xla::HloSharding>& sharding, bool use_fast_memory,
     const LayoutPreferenceFn& layout_preference_fn,
     const ShapeRepresentationFn& shape_representation_fn,

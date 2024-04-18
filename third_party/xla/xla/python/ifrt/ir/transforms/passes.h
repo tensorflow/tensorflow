@@ -39,6 +39,9 @@ std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>> CreateSpmdExpansionPass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateIfrtDuplicatedCalleeEliminationPass();
 
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+CreateIfrtVerifyShardingSpecifiedPass();
+
 // Generated definitions. This should be placed after all Pass creations.
 #define GEN_PASS_REGISTRATION
 #include "xla/python/ifrt/ir/transforms/passes.h.inc"  // IWYU pragma: export

@@ -66,7 +66,7 @@ static bool IsOrContainsIllegalInstr(const HloInstruction* instr) {
 
 /*static*/ std::atomic<int64_t> HloConstantFolding::slow_op_counter_{0};
 
-StatusOr<bool> HloConstantFolding::Run(
+absl::StatusOr<bool> HloConstantFolding::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   // Limit the constant folding to 0 iterations to skip folding loops. This
@@ -231,7 +231,7 @@ StatusOr<bool> HloConstantFolding::Run(
 
       VLOG(4) << "Constant folded: " << instruction->ToString();
       dead_instructions.push_back(instruction);
-      HloInstruction* new_constant = computation->AddInstruction(
+      HloInstruction* new_constant = instruction->AddInstruction(
           HloInstruction::CreateConstant(std::move(result)));
       if (new_constant->shape().has_layout()) {
         // Update element_size_in_bits on the new instruction's layout. Literals

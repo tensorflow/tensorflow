@@ -465,8 +465,7 @@ IndexingMap ComputeOutputToInputPadOpIndexingImpl(
       AffineMap::get(output_rank, /*symbolCount=*/0, exprs, mlir_context),
       std::move(dim_vars),
       /*range_vars = */ {},
-      /*rt_vars = */ {},
-      absl::MakeSpan(constraints)};
+      /*rt_vars = */ {}, absl::MakeSpan(constraints)};
 }
 
 HloInstructionIndexing ComputeOutputToInputPadOpIndexing(
@@ -714,8 +713,9 @@ HloInstructionIndexing ComputeOutputToInputConvolutionOpIndexing(
     kernel_exprs[dnums.kernel_spatial_dimensions(i)] =
         getAffineSymbolExpr(i, mlir_context);
   }
-  kernel_exprs[dnums.kernel_output_feature_dimension()] =
+  AffineExpr dim_expr =
       getAffineDimExpr(dnums.output_feature_dimension(), mlir_context);
+  kernel_exprs[dnums.kernel_output_feature_dimension()] = dim_expr;
 
   // Build initial symbol ranges.
   std::vector<RangeVar> input_symbols = input_spatial_indexing.GetRangeVars();
@@ -737,10 +737,12 @@ HloInstructionIndexing ComputeOutputToInputConvolutionOpIndexing(
   // With multiple feature groups, the input feature dimension is equally split.
   if (convolution->feature_group_count() > 1) {
     AffineExpr& input_feature = input_exprs[dnums.input_feature_dimension()];
-    AffineExpr dim_expr =
-        getAffineDimExpr(dnums.output_feature_dimension(), mlir_context);
-    input_feature =
-        dim_expr.floorDiv(input_group_size) * input_group_size + input_feature;
+    int64_t output_group_size =
+        output_shape.dimensions(dnums.output_feature_dimension());
+    int64_t feature_group_size =
+        output_group_size / convolution->feature_group_count();
+    input_feature = dim_expr.floorDiv(feature_group_size) * input_group_size +
+                    input_feature;
   }
 
   // With multiple batch groups, the input batch dimension is equally split.
@@ -1385,7 +1387,10 @@ bool FuseProducerConsumerOutputToInputIndexing(
 HloInstructionIndexing ComputeOutputToInputIndexing(const HloInstruction* instr,
                                                     int output_id,
                                                     MLIRContext* ctx) {
-  if (HloInstruction::IsOpElementwise(instr->opcode())) {
+  if (HloInstruction::IsOpElementwise(instr->opcode()) ||
+      instr->opcode() == HloOpcode::kMap) {
+    // Note: map has a `dimensions` attribute, but it does nothing. See
+    // b/65689298.
     return ComputeOutputToInputCwiseOpIndexing(instr, ctx);
   }
   if (instr->opcode() == HloOpcode::kBitcast) {
@@ -1451,7 +1456,10 @@ HloInstructionIndexing ComputeOutputToInputIndexing(const HloInstruction* instr,
 HloInstructionIndexing ComputeInputToOutputIndexing(const HloInstruction* instr,
                                                     int input_id,
                                                     MLIRContext* ctx) {
-  if (HloInstruction::IsOpElementwise(instr->opcode())) {
+  if (HloInstruction::IsOpElementwise(instr->opcode()) ||
+      instr->opcode() == HloOpcode::kMap) {
+    // Note: map has a `dimensions` attribute, but it does nothing. See
+    // b/65689298.
     return ComputeInputToOutputCwiseOpIndexing(instr, ctx);
   }
   if (instr->opcode() == HloOpcode::kBitcast) {
@@ -1498,6 +1506,7 @@ IndexingMap ComputeEpilogueInputToOutputIndexing(
         user, user->operand_index(instr), mlir_context);
     root_indexing = root_indexing * *user_indexing.indexing_maps[0].begin();
     root_indexing.Simplify(GetIndexingMapForInstruction);
+    root_indexing.RemoveUnusedSymbols();
     instr = user;
   }
   return root_indexing;

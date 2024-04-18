@@ -14,6 +14,8 @@
 """Workspace for MLIR HLO."""
 # buildifier: disable=load-on-top
 
+# buildifier: disable=load-on-top
+
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
 SKYLIB_VERSION = "1.3.0"

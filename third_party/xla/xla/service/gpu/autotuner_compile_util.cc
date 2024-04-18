@@ -120,6 +120,9 @@ AutotunerCompileUtil::ProfileExecutable(
   std::vector<ExecutionInput> execution_inputs =
       ExecutionInputsFromBuffers(input_buffers, input_shapes);
   ExecutionProfile profile;
+  // Flag that a warm-up run was executed so that GpuTimer can use the, more
+  // accurate, delay kernel implementation.
+  profile.set_warmup_run_executed(true);
   TF_ASSIGN_OR_RETURN(
       ExecutionOutput execution_output,
       Execute(*executable, std::move(execution_inputs), &profile));

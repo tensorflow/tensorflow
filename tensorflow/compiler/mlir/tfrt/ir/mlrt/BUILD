@@ -88,9 +88,7 @@ td_library(
         "tf_mlrt_tpu_ops.td",
     ],
     includes = ["."],
-    visibility = [
-        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
-    ],
+    visibility = ["//visibility:private"],
     deps = [
         ":mlrt_td_files",
         ":tf_mlrt_td_files",

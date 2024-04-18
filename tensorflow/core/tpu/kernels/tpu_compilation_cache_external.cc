@@ -96,7 +96,7 @@ CompiledSubgraph* TpuCompilationCacheExternal::InitializeEntry(
   {
     mu_.Unlock();
     {
-      profiler::TraceMe compile_programs_traceme(
+      tsl::profiler::TraceMe compile_programs_traceme(
           "TPU compilation cache compile",
           /*level=*/2);
       initialization_status = initialize_program(&tpu_program_group);

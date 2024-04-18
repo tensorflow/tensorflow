@@ -527,9 +527,9 @@ std::optional<WindowedEinsumConfig> GetWindowedEinsumConfiguration(
     }
     constexpr int kAggressiveness = 3;
     std::optional<HloSharding> original_ideal_sharding =
-        ShardingPropagation::GetShardingFromUser(*to_loop_over, *original_hlo,
-                                                 kAggressiveness,
-                                                 /*is_spmd=*/true, call_graph);
+        ShardingPropagation::GetShardingFromUser(
+            *to_loop_over, *original_hlo, kAggressiveness,
+            /*is_spmd=*/true, call_graph, /*sharding_helper=*/nullptr);
     // Default to perform collective matmul if GetShardingFromUser() couldn't
     // determine the sharding.
     if (!original_ideal_sharding) {
@@ -542,7 +542,7 @@ std::optional<WindowedEinsumConfig> GetWindowedEinsumConfiguration(
       std::optional<HloSharding> from_user =
           ShardingPropagation::GetShardingFromUser(
               *to_loop_over, *user, kAggressiveness,
-              /*is_spmd=*/true, call_graph);
+              /*is_spmd=*/true, call_graph, /*sharding_helper=*/nullptr);
       // Could't determine sharding. Skip to next one and pretend it wouldn't
       // share the resharding.
       if (!from_user) {

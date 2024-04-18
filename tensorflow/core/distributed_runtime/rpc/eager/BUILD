@@ -40,7 +40,7 @@ cc_library(
         "//tensorflow/core/platform:error_payloads",
         "//tensorflow/core/protobuf:eager_service_proto_cc",
         "//tensorflow/core/protobuf:for_core_protos_cc",
-        "@local_tsl//tsl/distributed_runtime:call_options",
+        "@local_xla//xla/tsl/distributed_runtime:call_options",
     ] + tf_grpc_cc_dependencies(),
 )
 
@@ -57,8 +57,8 @@ cc_library(
         "//tensorflow/core/distributed_runtime/rpc:grpc_util",
         "//tensorflow/core/distributed_runtime/rpc:grpc_worker_cache",
         "//tensorflow/core/protobuf:eager_service_proto_cc",
-        "@local_tsl//tsl/distributed_runtime/rpc:async_service_interface",
-        "@local_tsl//tsl/distributed_runtime/rpc:grpc_call",
+        "@local_xla//xla/tsl/distributed_runtime/rpc:async_service_interface",
+        "@local_xla//xla/tsl/distributed_runtime/rpc:grpc_call",
     ] + tf_grpc_cc_dependencies(),
 )
 

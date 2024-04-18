@@ -248,14 +248,14 @@ tf_cuda_library(
             "@com_google_absl//absl/strings",
             "@com_google_absl//absl/synchronization",
             "@com_google_absl//absl/time",
-            "@local_tsl//tsl/distributed_runtime/coordination:coordination_service",
-            "@local_tsl//tsl/distributed_runtime/coordination:coordination_service_agent",
-            "@local_tsl//tsl/distributed_runtime/coordination:coordination_service_impl",
-            "@local_tsl//tsl/distributed_runtime/preemption:preemption_notifier",
             "@local_tsl//tsl/platform:mutex",
             "@local_tsl//tsl/platform:statusor",
             "@local_xla//xla/pjrt:pjrt_stream_executor_client",
             "@local_xla//xla/pjrt/gpu:se_gpu_pjrt_client",
+            "@local_xla//xla/tsl/distributed_runtime/coordination:coordination_service",
+            "@local_xla//xla/tsl/distributed_runtime/coordination:coordination_service_agent",
+            "@local_xla//xla/tsl/distributed_runtime/coordination:coordination_service_impl",
+            "@local_xla//xla/tsl/distributed_runtime/preemption:preemption_notifier",
         ],
     }) + if_google(
         # TODO(b/282068262): PJRT pulls in TFRT components that are incompatible with ARM platform.

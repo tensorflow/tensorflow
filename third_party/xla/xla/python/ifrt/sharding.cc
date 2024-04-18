@@ -29,14 +29,19 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "absl/types/span.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/index.h"
 #include "xla/python/ifrt/index_domain.h"
+#include "xla/python/ifrt/ir/sharding_param.h"
 #include "xla/python/ifrt/memory.h"
+#include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/shape.h"
-#include "xla/statusor.h"
 #include "xla/util.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {
@@ -158,6 +163,23 @@ char OpaqueSharding::ID = 0;
 char ConcreteSharding::ID = 0;
 char ConcreteEvenSharding::ID = 0;
 char ShardingParamSharding::ID = 0;
+
+char DeserializeShardingOptions::ID = 0;
+
+absl::StatusOr<std::unique_ptr<Sharding>> Sharding::FromProto(
+    DeviceList::LookupDeviceFunc lookup_device,
+    const ShardingProto& sharding_proto) {
+  return Deserialize<Sharding>(
+      sharding_proto.serialized_sharding(),
+      std::make_unique<DeserializeShardingOptions>(std::move(lookup_device)));
+}
+
+absl::StatusOr<ShardingProto> Sharding::ToProto() const {
+  ShardingProto sharding_proto;
+  TF_ASSIGN_OR_RETURN(*sharding_proto.mutable_serialized_sharding(),
+                      Serialize(const_cast<Sharding&>(*this)));
+  return sharding_proto;
+}
 
 std::ostream& operator<<(std::ostream& os, const Sharding& sharding) {
   return os << sharding.DebugString();

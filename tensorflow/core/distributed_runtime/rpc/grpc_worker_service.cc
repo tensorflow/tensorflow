@@ -23,6 +23,8 @@ limitations under the License.
 #include "grpcpp/alarm.h"
 #include "grpcpp/server_builder.h"
 #include "absl/container/flat_hash_map.h"
+#include "xla/tsl/distributed_runtime/rpc/async_service_interface.h"
+#include "xla/tsl/distributed_runtime/rpc/grpc_call.h"
 #include "tensorflow/core/common_runtime/buf_rendezvous.h"
 #include "tensorflow/core/common_runtime/copy_tensor.h"
 #include "tensorflow/core/common_runtime/device.h"
@@ -54,8 +56,6 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/scoped_memory_debug_annotation.h"
 #include "tensorflow/core/protobuf/transport_options.pb.h"
 #include "tensorflow/core/protobuf/worker.pb.h"
-#include "tsl/distributed_runtime/rpc/async_service_interface.h"
-#include "tsl/distributed_runtime/rpc/grpc_call.h"
 #include "tsl/protobuf/rpc_options.pb.h"
 
 namespace tensorflow {
@@ -532,7 +532,7 @@ void GrpcWorker::GrpcRecvTensorAsync(CallOptions* opts,
         AllocatorAttributes alloc_attrs;
         alloc_attrs.set_gpu_compatible(true);
         alloc_attrs.set_on_host(true);
-        profiler::ScopedMemoryDebugAnnotation op_annotation(
+        tsl::profiler::ScopedMemoryDebugAnnotation op_annotation(
             "GrpcWorker::RecvTensorAsync::consumer_callback",
             request->step_id(), "dynamic", val.dtype(),
             [shape = val.shape()]() { return shape.DebugString(); });
@@ -669,7 +669,7 @@ void GrpcWorker::RecvBufAsync(CallOptions* opts, const RecvBufRequest* request,
           AllocatorAttributes cpu_attr;
           cpu_attr.set_gpu_compatible(true);
           cpu_attr.set_nic_compatible(true);
-          profiler::ScopedMemoryDebugAnnotation op_annotation(
+          tsl::profiler::ScopedMemoryDebugAnnotation op_annotation(
               "GrpcWorker::RecvBufAsync::consumer_callback", request->step_id(),
               "dynamic", hook->prod_value->dtype(),
               [hook]() { return hook->prod_value->shape().DebugString(); });

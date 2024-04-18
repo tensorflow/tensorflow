@@ -15,9 +15,7 @@
 #include "xla/python/ifrt_proxy/common/types.h"
 
 #include <cstdint>
-#include <memory>
 #include <string>
-#include <utility>
 #include <variant>
 #include <vector>
 
@@ -26,105 +24,13 @@
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "llvm/Support/Casting.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/python/ifrt/array.h"
-#include "xla/python/ifrt/device.h"
-#include "xla/python/ifrt/dtype.h"
-#include "xla/python/ifrt/serdes.h"
-#include "xla/python/ifrt/shape.h"
-#include "xla/python/ifrt/sharding.h"
-#include "xla/python/ifrt/sharding_serdes.h"
 #include "xla/python/ifrt_proxy/common/types.pb.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {
 namespace proxy {
-
-DType FromDTypeProto(proto::DType dtype_proto) {
-  switch (dtype_proto) {
-    case proto::DType::DTYPE_PRED:
-      return DType(DType::Kind::kPred);
-    case proto::DType::DTYPE_TOKEN:
-      return DType(DType::Kind::kToken);
-#define CASE(X)                 \
-  case proto::DType::DTYPE_##X: \
-    return DType(DType::Kind::k##X);
-      CASE(S4);
-      CASE(S8);
-      CASE(S16);
-      CASE(S32);
-      CASE(S64);
-      CASE(U4);
-      CASE(U8);
-      CASE(U16);
-      CASE(U32);
-      CASE(U64);
-      CASE(F16);
-      CASE(F32);
-      CASE(F64);
-      CASE(BF16);
-      CASE(C64);
-      CASE(C128);
-      CASE(F8E4M3FN);
-      CASE(F8E4M3B11FNUZ);
-      CASE(F8E4M3FNUZ);
-      CASE(F8E5M2);
-      CASE(F8E5M2FNUZ);
-#undef CASE
-    default:
-      return DType(DType::Kind::kInvalid);
-  }
-}
-
-proto::DType ToDTypeProto(DType dtype) {
-  switch (dtype.kind()) {
-    case DType::Kind::kPred:
-      return proto::DType::DTYPE_PRED;
-    case DType::Kind::kToken:
-      return proto::DType::DTYPE_TOKEN;
-#define CASE(X)           \
-  case DType::Kind::k##X: \
-    return proto::DType::DTYPE_##X;
-      CASE(S4);
-      CASE(S8);
-      CASE(S16);
-      CASE(S32);
-      CASE(S64);
-      CASE(U4);
-      CASE(U8);
-      CASE(U16);
-      CASE(U32);
-      CASE(U64);
-      CASE(F16);
-      CASE(F32);
-      CASE(F64);
-      CASE(BF16);
-      CASE(C64);
-      CASE(C128);
-      CASE(F8E4M3FN);
-      CASE(F8E4M3B11FNUZ);
-      CASE(F8E4M3FNUZ);
-      CASE(F8E5M2);
-      CASE(F8E5M2FNUZ);
-#undef CASE
-    default:
-      return proto::DType::DTYPE_UNSPECIFIED;
-  }
-}
-
-Shape FromShapeProto(const proto::Shape& shape_proto) {
-  return Shape(shape_proto.dimensions());
-}
-
-proto::Shape ToShapeProto(const Shape& shape) {
-  proto::Shape shape_proto;
-  for (int64_t dim : shape.dims()) {
-    shape_proto.add_dimensions(dim);
-  }
-  return shape_proto;
-}
 
 absl::StatusOr<xla::PjRtValueType> FromVariantProto(
     const proto::Variant& variant_proto) {
@@ -161,24 +67,6 @@ absl::StatusOr<proto::Variant> ToVariantProto(const xla::PjRtValueType& value) {
     return absl::UnimplementedError("Unknown xla::PjRtValueType type");
   }
   return variant;
-}
-
-absl::StatusOr<std::shared_ptr<const Sharding>> FromShardingProto(
-    DeviceList::LookupDeviceFunc lookup_device,
-    const proto::Sharding& sharding_proto) {
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<Serializable> sharding,
-                      Deserialize(sharding_proto.serialized_sharding(),
-                                  std::make_unique<DeserializeShardingOptions>(
-                                      std::move(lookup_device))));
-  return std::shared_ptr<const Sharding>(
-      llvm::cast<Sharding>(sharding.release()));
-}
-
-absl::StatusOr<proto::Sharding> ToShardingProto(const Sharding& sharding) {
-  proto::Sharding sharding_proto;
-  TF_ASSIGN_OR_RETURN(*sharding_proto.mutable_serialized_sharding(),
-                      Serialize(const_cast<Sharding&>(sharding)));
-  return sharding_proto;
 }
 
 proto::ArrayCopySemantics ToArrayCopySemanticsProto(ArrayCopySemantics s) {

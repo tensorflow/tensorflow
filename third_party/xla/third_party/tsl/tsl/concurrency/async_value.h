@@ -22,16 +22,15 @@ limitations under the License.
 #include <cstdint>
 #include <iostream>
 #include <memory>
-#include <string>
 #include <type_traits>
 #include <utility>
 
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
-#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "tsl/concurrency/concurrent_vector.h"
 #include "tsl/concurrency/ref_count.h"
+#include "tsl/platform/mem.h"
 
 namespace tsl {
 
@@ -44,11 +43,6 @@ class ConcreteAsyncValue;
 
 template <typename T>
 constexpr bool kMaybeBase = std::is_class<T>::value && !std::is_final<T>::value;
-
-// TODO(ezhulenev): Switch to `tsl::port::Aligned(Malloc|Free)` once TFRT will
-// be able to properly depend on TSL in the open source build.
-void* AlignedAlloc(size_t alignment, size_t size);
-void AlignedFree(void* ptr);
 
 }  // namespace internal
 
@@ -258,11 +252,12 @@ class AsyncValue {
   // -----------------------------------------------------------
   // Implementation details follow.  Clients should ignore them.
 
+  friend class IndirectAsyncValue;
+
   // Utility template for tag dispatching.
   template <typename T>
   struct TypeTag {};
 
-  friend class IndirectAsyncValue;
   template <typename T>
   AsyncValue(Kind kind, State state, bool is_refcounted, TypeTag<T>)
       : refcount_(1),
@@ -389,10 +384,12 @@ class AsyncValue {
 
   std::atomic<WaitersAndState> waiters_and_state_;
 
-  // We assume (and static_assert) that this is the offset of
-  // ConcreteAsyncValue::data_, which is the same as the offset of
-  // ConcreteAsyncValue::error_.
-  static constexpr int kDataOffset = 16;
+  // We assume (and static_assert) that this is the offset of ConcreteAsyncValue
+  // data payload so that we can always get a pointer to the start of payload
+  // from an async value pointer. We use alignas attribute to guarantee that the
+  // data payload stored at exactly this offset. It means that types that have
+  // larger alignment requirement are not compatible with AsyncValues.
+  static constexpr int kDataOffset = 64;
 
  private:
   // Information about a ConcreteAsyncValue<T> subclass.
@@ -541,14 +538,18 @@ class ConcreteAsyncValue : public AsyncValue {
   explicit ConcreteAsyncValue(ConstructedPayload payload, Args&&... args)
       : AsyncValue(Kind::kConcrete, State::kConstructed, payload.is_refcounted,
                    TypeTag<T>()),
-        data_store_{TypeTag<T>(), std::forward<Args>(args)...} {}
+        data_store_{TypeTag<T>(), std::forward<Args>(args)...} {
+    VerifyOffsets();
+  }
 
   // Make a ConcreteAsyncValue with kConcrete state.
   template <typename... Args>
   explicit ConcreteAsyncValue(ConcretePayload payload, Args&&... args)
       : AsyncValue(Kind::kConcrete, State::kConcrete, payload.is_refcounted,
                    TypeTag<T>()),
-        data_store_{TypeTag<T>(), std::forward<Args>(args)...} {}
+        data_store_{TypeTag<T>(), std::forward<Args>(args)...} {
+    VerifyOffsets();
+  }
 
   ~ConcreteAsyncValue() { Destroy(); }
 
@@ -693,7 +694,7 @@ class ConcreteAsyncValue : public AsyncValue {
   using DataStoreT =
       std::conditional_t<std::is_base_of_v<KeepAsyncValuePayloadOnError, T>,
                          DataAndError, DataOrError>;
-  DataStoreT data_store_;
+  alignas(AsyncValue::kDataOffset) DataStoreT data_store_;
 
   void Destroy() { data_store_.Destroy(state()); }
   bool HasData() const { return data_store_.HasData(state()); }
@@ -701,12 +702,8 @@ class ConcreteAsyncValue : public AsyncValue {
   static void VerifyOffsets() {
     static_assert(offsetof(ConcreteAsyncValue<T>, data_store_.data_) ==
                       AsyncValue::kDataOffset,
-                  "Offset of ConcreteAsyncValue::data_ is assumed to be "
-                  "AsyncValue::kDataOffset == 16");
-    static_assert(offsetof(ConcreteAsyncValue<T>, data_store_.error_) ==
-                      AsyncValue::kDataOffset,
-                  "Offset of ConcreteAsyncValue::error_ is assumed to be "
-                  "AsyncValue::kDataOffset == 16");
+                  "Offset of ConcreteAsyncValue data payload is assumed to be "
+                  "AsyncValue::kDataOffset == 64");
   }
 
   static const uint16_t concrete_type_id_;
@@ -975,12 +972,12 @@ inline void AsyncValue::Destroy() {
     // explicit check and instead make ~IndirectAsyncValue go through the
     // GetTypeInfo().destructor case below.
     static_cast<IndirectAsyncValue*>(this)->~IndirectAsyncValue();
-    if (was_ref_counted) internal::AlignedFree(this);
+    if (was_ref_counted) port::AlignedFree(this);
     return;
   }
 
   GetTypeInfo().destructor(this);
-  if (was_ref_counted) internal::AlignedFree(this);
+  if (was_ref_counted) port::AlignedFree(this);
 }
 
 inline bool AsyncValue::IsUnique() const {

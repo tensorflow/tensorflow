@@ -12,6 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <cstdint>
 #include <memory>
 #include <utility>
 
@@ -35,6 +36,7 @@ limitations under the License.
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/quantization/common/lift_as_function_call.h"
 #include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_utils.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/calibration/calibration_parameters.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/tf_quant_ops.h"
@@ -268,14 +270,21 @@ class AddCustomAggregationOp : public RewritePattern {
                   calib_opts_.calibration_parameters().max_percentile())),
       };
 
+      int32_t num_bins = GetNumBins(calib_opts_.calibration_method());
+      SmallVector<Type, 4> output_types{
+          value.getType(),
+          RankedTensorType::get({}, rewriter.getF32Type()),
+          RankedTensorType::get({}, rewriter.getF32Type()),
+          RankedTensorType::get({num_bins}, rewriter.getI64Type()),
+      };
+
       // Insert custom aggregation op between operand and operator.
       rewriter.setInsertionPointAfterValue(value);
       Operation *aggregator_op = rewriter.create<TF::CustomAggregatorOp>(
-          op->getLoc(), value.getType(), value, attributes);
+          op->getLoc(), output_types, value, attributes);
 
       Value aggregator_op_result = aggregator_op->getOpResult(0);
-      value.replaceAllUsesWith(aggregator_op_result);
-      aggregator_op->replaceUsesOfWith(aggregator_op_result, value);
+      value.replaceAllUsesExcept(aggregator_op_result, aggregator_op);
     }
 
     return success();

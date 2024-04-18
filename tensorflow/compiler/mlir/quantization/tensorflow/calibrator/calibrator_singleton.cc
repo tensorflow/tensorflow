@@ -60,40 +60,27 @@ void CalibratorSingleton::ClearData(absl::string_view id) {
   instance.id_to_collector_[id_str].reset(nullptr);
 }
 
-void CalibratorSingleton::Report(absl::string_view id,
-                                 absl::Span<float> data_span,
+void CalibratorSingleton::Report(absl::string_view id, const Tensor& min_tensor,
+                                 const Tensor& max_tensor,
+                                 const Tensor& histogram_tensor,
                                  const CalibrationOptions& calib_opts) {
-  absl::MutexLock lock(&lock_);
-
-  CalibratorSingleton& instance = GetInstance();
-
-  const std::string id_str{id};
-  AssignIfNotExists(id_str, calib_opts);
-  instance.id_to_collector_[id_str]->Collect(data_span);
+  const float min_value = min_tensor.scalar<float>()();
+  const float max_value = max_tensor.scalar<float>()();
+  auto histogram_flat = histogram_tensor.flat<int64_t>();
+  absl::Span<const int64_t> histogram_data =
+      absl::MakeSpan(histogram_flat.data(), histogram_flat.size());
+  Report(id, min_value, max_value, histogram_data, calib_opts);
 }
 
-void CalibratorSingleton::Report(absl::string_view id,
-                                 const std::vector<float>& data_vec,
+void CalibratorSingleton::Report(absl::string_view id, float min, float max,
+                                 absl::Span<const int64_t> histogram,
                                  const CalibrationOptions& calib_opts) {
   absl::MutexLock lock(&lock_);
 
   CalibratorSingleton& instance = GetInstance();
-
   const std::string id_str{id};
   AssignIfNotExists(id_str, calib_opts);
-  instance.id_to_collector_[id_str]->Collect(data_vec);
-}
-
-void CalibratorSingleton::Report(absl::string_view id,
-                                 const Tensor& data_tensor,
-                                 const CalibrationOptions& calib_opts) {
-  absl::MutexLock lock(&lock_);
-
-  CalibratorSingleton& instance = GetInstance();
-
-  const std::string id_str{id};
-  AssignIfNotExists(id_str, calib_opts);
-  instance.id_to_collector_[id_str]->Collect(data_tensor);
+  instance.id_to_collector_[id_str]->Collect(min, max, histogram);
 }
 
 std::optional<CalibrationStatistics> CalibratorSingleton::GetStatistics(
@@ -111,37 +98,27 @@ std::optional<CalibrationStatistics> CalibratorSingleton::GetStatistics(
   return instance.id_to_collector_[id_str]->GetStatistics();
 }
 
-int64_t CalibratorSingleton::IssueNewId() {
-  CalibratorSingleton& instance = GetInstance();
-  return instance.next_id_++;
-}
-
 void CalibratorSingleton::AssignIfNotExists(
     std::string id_str, const CalibrationOptions& calib_opts) {
   CalibratorSingleton& instance = GetInstance();
+  if (instance.id_to_collector_[id_str]) return;
 
-  if (!instance.id_to_collector_[id_str]) {
-    CalibrationOptions::CalibrationMethod calib_method =
-        calib_opts.calibration_method();
-
-    switch (calib_method) {
-      case CalibrationOptions::CALIBRATION_METHOD_AVERAGE_MIN_MAX:
-        instance.id_to_collector_[id_str] =
-            std::make_unique<CalibrationStatisticsCollectorAverageMinMax>();
-        break;
-      case CalibrationOptions::CALIBRATION_METHOD_HISTOGRAM_PERCENTILE:
-      case CalibrationOptions::CALIBRATION_METHOD_HISTOGRAM_MSE_BRUTEFORCE:
-      case CalibrationOptions::CALIBRATION_METHOD_HISTOGRAM_MSE_SYMMETRIC:
-      case CalibrationOptions::CALIBRATION_METHOD_HISTOGRAM_MSE_MAX_FREQUENCY:
-        instance.id_to_collector_[id_str] =
-            std::make_unique<CalibrationStatisticsCollectorHistogram>(
-                calib_opts);
-        break;
-      case CalibrationOptions::CALIBRATION_METHOD_MIN_MAX:
-      default:
-        instance.id_to_collector_[id_str] =
-            std::make_unique<CalibrationStatisticsCollectorMinMax>();
-    }
+  switch (calib_opts.calibration_method()) {
+    case CalibrationOptions::CALIBRATION_METHOD_AVERAGE_MIN_MAX:
+      instance.id_to_collector_[id_str] =
+          std::make_unique<CalibrationStatisticsCollectorAverageMinMax>();
+      break;
+    case CalibrationOptions::CALIBRATION_METHOD_HISTOGRAM_PERCENTILE:
+    case CalibrationOptions::CALIBRATION_METHOD_HISTOGRAM_MSE_BRUTEFORCE:
+    case CalibrationOptions::CALIBRATION_METHOD_HISTOGRAM_MSE_SYMMETRIC:
+    case CalibrationOptions::CALIBRATION_METHOD_HISTOGRAM_MSE_MAX_FREQUENCY:
+      instance.id_to_collector_[id_str] =
+          std::make_unique<CalibrationStatisticsCollectorHistogram>();
+      break;
+    case CalibrationOptions::CALIBRATION_METHOD_MIN_MAX:
+    default:
+      instance.id_to_collector_[id_str] =
+          std::make_unique<CalibrationStatisticsCollectorMinMax>();
   }
 }
 

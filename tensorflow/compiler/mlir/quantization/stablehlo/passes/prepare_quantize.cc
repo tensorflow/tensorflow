@@ -140,7 +140,7 @@ void PrepareQuantizePass::runOnOperation() {
   MLIRContext* ctx = module_op.getContext();
 
   auto func_op_quant_spec = GetStableHloOpQuantSpec;
-  auto func_op_quant_scale_spec = GetStableHloQuantScaleSpec;
+  auto func_op_quant_scale_spec = GetStableHloQuantConstraints;
 
   for (auto func_op : module_op.getOps<func::FuncOp>()) {
     // The function might contain more stats ops than required, and it will

@@ -24,7 +24,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
-#include "xla/python/ifrt/types.pb.h"
+#include "xla/python/ifrt/shape.pb.h"
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
 
@@ -85,12 +85,27 @@ TEST(ShapeTest, NonZeroDimsNumElements) {
   }
 }
 
+TEST(ShapeTest, ToFromProto) {
+  {
+    Shape shape({});
+    ShapeProto proto = shape.ToProto();
+    TF_ASSERT_OK_AND_ASSIGN(Shape shape_copy, shape.FromProto(proto));
+    EXPECT_EQ(shape_copy, shape);
+  }
+  {
+    Shape shape({1, 2});
+    ShapeProto proto = shape.ToProto();
+    TF_ASSERT_OK_AND_ASSIGN(Shape shape_copy, shape.FromProto(proto));
+    EXPECT_EQ(shape_copy, shape);
+  }
+}
+
 TEST(BoundedDynamicShapeTagDeathTest, NoDynamicDim) {
   EXPECT_DEATH(BoundedDynamicShapeTag tag({false, false}),
                "At least one dimension needs to be dynamically sized");
 }
 
-TEST(BoundedDynamicShapeTagTest, FromToProto) {
+TEST(BoundedDynamicShapeTagTest, ToFromProto) {
   BoundedDynamicShapeTag tag({true, false});
   BoundedDynamicShapeTagProto proto = tag.ToProto();
   TF_ASSERT_OK_AND_ASSIGN(BoundedDynamicShapeTag tag_copy,
@@ -148,7 +163,7 @@ TEST(DynamicShapeTest, GetPaddedShape) {
   EXPECT_EQ(padded_shape, shape);
 }
 
-TEST(DynamicShapeTest, FromToProto) {
+TEST(DynamicShapeTest, ToFromProto) {
   TF_ASSERT_OK_AND_ASSIGN(
       DynamicShape shape,
       DynamicShape::Create(Shape({2, 4}),

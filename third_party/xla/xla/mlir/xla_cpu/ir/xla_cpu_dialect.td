@@ -27,8 +27,6 @@ def XlaCpuDialect : Dialect {
     CPU runtime.
   }];
   let cppNamespace = "::mlir::xla_cpu";
-
-  let usePropertiesForAttributes = 0;
 }
 
 #endif  // XLA_MLIR_XLA_CPU_DIALECT_TD_

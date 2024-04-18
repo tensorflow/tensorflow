@@ -182,7 +182,28 @@ int64_t HloCostAnalysis::FusionParameterReadBytes(
     switch (user->opcode()) {
       case HloOpcode::kFusion: {
         for (int64_t idx : user->OperandIndices(hlo)) {
-          size += FusionParameterReadBytes(user->fused_parameter(idx));
+          auto nested_size =
+              FusionParameterReadBytes(user->fused_parameter(idx));
+          const HloInstruction* root_instruction =
+              user->fused_instructions_computation()->root_instruction();
+          // We define the nested fusion as simple if the parameter directly
+          // feeds the root.
+          const bool fusion_is_simple =
+              user->fused_parameter(idx) == root_instruction->operand(0);
+          const auto& fusion_users = user->users();
+          auto is_slice = [](const HloInstruction* hlo) {
+            return hlo->opcode() == HloOpcode::kSlice ||
+                   hlo->opcode() == HloOpcode::kDynamicSlice;
+          };
+          // If the nested fusion is simple and the user is a slice,
+          // we only load that portion of the parameter.
+          // TODO(b/332998529): deal with nested fusions more generally.
+          if (fusion_is_simple && fusion_users.size() == 1 &&
+              is_slice(fusion_users[0])) {
+            size += GetShapeSize(fusion_users[0]->shape());
+          } else {
+            size += nested_size;
+          }
         }
         break;
       }
@@ -1416,8 +1437,8 @@ int64_t HloCostAnalysis::GetBytesWritten(
   return bytes_written;
 }
 
-StatusOr<HloCostAnalysis::Properties> HloCostAnalysis::ProcessSubcomputation(
-    HloComputation* computation) {
+absl::StatusOr<HloCostAnalysis::Properties>
+HloCostAnalysis::ProcessSubcomputation(HloComputation* computation) {
   auto visitor = CreateNestedCostAnalysis();
   visitor->ReserveVisitStates(computation->instruction_count());
   TF_RETURN_IF_ERROR(computation->Accept(visitor.get()));

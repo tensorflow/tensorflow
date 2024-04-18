@@ -13,12 +13,12 @@ load(
     "cc_library",
 )
 load(
-    "//tsl:tsl.bzl",
+    "@local_xla//xla/tsl:tsl.bzl",
     "if_not_fuchsia",
     "internal_visibility",
     "tsl_copts",
 )
-load("//tsl:tsl.default.bzl", "get_compatible_with_portable")
+load("@local_xla//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
 load(
     "//tsl/platform:build_config.bzl",
     "tf_cuda_libdevice_path_deps",
@@ -578,7 +578,7 @@ filegroup(
         "threadpool_interface.h",
         "tracing.h",
     ] + select({
-        "//tsl:fuchsia": tf_google_mobile_srcs_no_runtime(),
+        "@local_xla//xla/tsl:fuchsia": tf_google_mobile_srcs_no_runtime(),
         "//conditions:default": [
             "file_system_helper.cc",
             "tracing.cc",
@@ -1296,7 +1296,7 @@ cc_library(
     srcs = ["test_main.cc"],
     copts = tsl_copts(),
     linkopts = select({
-        "//tsl:windows": [],
+        "@local_xla//xla/tsl:windows": [],
         "//conditions:default": ["-lm"],
     }),
     deps = [

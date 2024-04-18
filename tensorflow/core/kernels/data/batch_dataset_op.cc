@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/global_shuffle_utils.h"
@@ -34,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/platform/stringprintf.h"
 #include "tensorflow/core/util/batch_util.h"
 #include "tsl/platform/mutex.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace data {
@@ -257,11 +259,11 @@ class BatchDatasetOp::Dataset : public DatasetBase {
         IndexMapperFn parent_index_mapper) const override {
       int64_t batch_size = dataset()->batch_size_;
       return [parent_index_mapper,
-              batch_size](size_t element_position) -> size_t {
+              batch_size](size_t element_position) -> absl::StatusOr<size_t> {
         size_t batch_element_position = element_position / batch_size;
         size_t input_element_offset = element_position % batch_size;
-        size_t shuffled_element_position =
-            parent_index_mapper(batch_element_position);
+        TF_ASSIGN_OR_RETURN(size_t shuffled_element_position,
+                            parent_index_mapper(batch_element_position));
         return shuffled_element_position * batch_size + input_element_offset;
       };
     }

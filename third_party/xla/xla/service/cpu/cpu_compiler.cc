@@ -1114,28 +1114,6 @@ absl::StatusOr<std::unique_ptr<HloModule>> CpuCompiler::RunHloPasses(
   return std::move(module);
 }
 
-absl::StatusOr<std::unique_ptr<BufferAssignment>> CpuCompiler::AssignBuffers(
-    HloModule* module, const se::StreamExecutor* /*stream_exec*/) {
-  // Select an order for emitting the HLO instructions for each computation.
-  // Using this sequence enables tighter buffer liveness analysis and reduced
-  // memory usage (as compared to using DependencyHloOrdering).
-  TF_ASSIGN_OR_RETURN(HloSchedule schedule,
-                      ScheduleModule(module, BufferSizeBytesFunction(),
-                                     ComputationSchedulerToModuleScheduler(
-                                         DFSMemoryScheduler)));
-  TF_RETURN_IF_ERROR(module->set_schedule(std::move(schedule)));
-
-  // Run buffer allocation on the HLO graph.
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<BufferAssignment> assignment,
-      BufferAssigner::Run(
-          module, std::make_unique<SequentialHloOrdering>(module->schedule()),
-          BufferSizeBytesFunction(), memory_alignment,
-          /*allocate_buffers_for_constants=*/true));
-
-  return std::move(assignment);
-}
-
 namespace {
 
 // Post-compilation callback functor for use by SimpleOrcJIT.

@@ -30,8 +30,10 @@ limitations under the License.
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
+#include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/compiler.h"
+#include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/tuple.h"
 #include "xla/python/ifrt/value.h"
 #include "xla/statusor.h"
@@ -147,7 +149,7 @@ class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
   // being used by JAX or will be replaced with explicit device assignment.
   virtual absl::StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const = 0;
-  virtual absl::StatusOr<Device*> LookupDevice(int device_id) const = 0;
+  virtual absl::StatusOr<Device*> LookupDevice(DeviceId device_id) const = 0;
   virtual absl::StatusOr<Device*> LookupAddressableDevice(
       int local_hardware_id) const = 0;
 
@@ -157,7 +159,14 @@ class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
 
   // Returns a topology description for that covers the provided devices.
   virtual absl::StatusOr<std::shared_ptr<const xla::PjRtTopologyDescription>>
-  GetTopologyForDevices(absl::Span<Device* const> devices) const = 0;
+  GetTopologyForDevices(const DeviceList& devices) const = 0;
+
+  // Returns the default layout on `device` for a buffer with `dtype` and
+  // single-shard dimensions `dims`.
+  // TODO(hyeontaek): Change the API to take `Shape` and `Sharding` instead of
+  // single-shard dimensions and device.
+  virtual absl::StatusOr<std::unique_ptr<PjRtLayout>> GetDefaultLayoutForDevice(
+      DType dtype, absl::Span<const int64_t> dims, Device* device) const = 0;
 
   static char ID;  // NOLINT
 };

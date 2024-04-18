@@ -73,7 +73,7 @@ struct TableBuilder::Rep {
   Options index_block_options;
   WritableFile* file;
   uint64 offset;
-  Status status;
+  absl::Status status;
   BlockBuilder data_block;
   BlockBuilder index_block;
   string last_key;
@@ -218,9 +218,9 @@ void TableBuilder::WriteRawBlock(const StringPiece& block_contents,
   }
 }
 
-Status TableBuilder::status() const { return rep_->status; }
+absl::Status TableBuilder::status() const { return rep_->status; }
 
-Status TableBuilder::Finish() {
+absl::Status TableBuilder::Finish() {
   Rep* r = rep_;
   Flush();
   assert(!r->closed);
