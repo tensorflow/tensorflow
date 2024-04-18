@@ -421,6 +421,7 @@ PyClient::CompileIfrtProgram(
     TF_ASSIGN_OR_RETURN(ifrt_loaded_executable,
                         client->ifrt_client_->GetDefaultCompiler()->Compile(
                             std::move(ifrt_program), std::move(ifrt_options)));
+    TF_RETURN_IF_ERROR(ifrt_loaded_executable->GetReadyFuture().Await());
     TF_ASSIGN_OR_RETURN(fingerprint, ifrt_loaded_executable->Fingerprint());
   }
   auto traceback = Traceback::Get();
