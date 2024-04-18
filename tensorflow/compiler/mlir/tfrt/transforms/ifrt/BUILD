@@ -15,6 +15,7 @@ package_group(
         "//tensorflow/core/tfrt/saved_model/tests/...",
     ] + if_google([
         "//learning/brain/tfrt/cpp_tests/...",
+        "//learning/serving/servables/tfrt/...",
         "//learning/pathways/serving/runtime/...",
         "//learning/pathways/serving/tests/...",
         "//learning/brain/tfrt/mlir/mlrt/application/pathways/compiler/...",

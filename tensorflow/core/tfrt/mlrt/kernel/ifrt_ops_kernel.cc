@@ -143,6 +143,8 @@ void MlrtIfrtRestoreVariableKernel::Invoke() {
 
   auto& params = context().params();
   SetUpParams(runner, input_tf_tensor_values, params);
+  // Use persistent device instead of the per request device.
+  params.device = context().fallback_request_state().device_manager().HostCPU();
 
   struct AsyncState {
     explicit AsyncState(
