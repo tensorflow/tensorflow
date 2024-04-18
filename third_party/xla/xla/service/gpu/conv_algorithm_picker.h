@@ -144,14 +144,11 @@ class GpuConvAlgorithmPicker : public HloModulePass {
 
   // Pick the best algorithm for CUDA platform.
   absl::StatusOr<AutotuneResult> PickBestAlgorithmNoCacheCuda(
-      const HloCustomCallInstruction* instr,
-      std::optional<AutotuneCacheKey> instruction_info,
-      const AutotuneRuntimeArguments& runtime_arguments);
+      const HloCustomCallInstruction* instr);
 #endif
 
   absl::StatusOr<AutotuneResult> PickBestAlgorithmNoCacheRocm(
-      const HloCustomCallInstruction* instr,
-      se::DeviceMemoryAllocator* allocator);
+      const HloCustomCallInstruction* instr);
 
  private:
   AutotuneConfig config_;
