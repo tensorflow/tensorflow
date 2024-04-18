@@ -2881,11 +2881,14 @@ LogicalResult DynamicReshapeOp::verify() {
   // Check for unranked dynamism. Unranked dynamism is not supported by
   // StableHLO (hlo::verifyDynamicReshapeOp will fail) and we can't verify
   // anything statically in that case anyway.
+  auto operandType = getOperand().getType().cast<ShapedType>();
   auto resultType = getResult().getType().cast<ShapedType>();
   auto outputShapeType = getOutputShape().getType().cast<ShapedType>();
-  if (!resultType.hasRank() || !outputShapeType.hasStaticShape())
+  if (!operandType.hasRank() || !resultType.hasRank() ||
+      !outputShapeType.hasStaticShape())
     return success();
-  return hlo::verifyDynamicReshapeOp(getLoc(), getOutputShape(), getResult());
+  return hlo::verifyDynamicReshapeOp(getLoc(), getOperand(), getOutputShape(),
+                                     getResult());
 }
 
 LogicalResult DynamicReshapeOp::reifyReturnTypeShapes(
