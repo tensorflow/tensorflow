@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <cstdint>
-#include <limits>
 #include <memory>
 #include <string>
 #include <tuple>
@@ -313,6 +312,31 @@ struct RewriteCall : mlir::OpRewritePattern<mlir::func::CallOp> {
   }
 };
 
+mlir::LLVM::GlobalOp CreateGlobalOp(mlir::Attribute value,
+                                    const std::string& name_prefix,
+                                    mlir::ShapedType shaped_ty,
+                                    mlir::ModuleOp module, bool is_constant,
+                                    int addr_space,
+                                    mlir::ImplicitLocOpBuilder& b) {
+  mlir::Type element_type = shaped_ty.getElementType();
+  // Needed to support complex element type.
+  mlir::LLVMTypeConverter converter(b.getContext());
+  auto llvm_element_type = converter.convertType(element_type);
+  auto array_ty = mlir::LLVM::LLVMArrayType::get(llvm_element_type,
+                                                 shaped_ty.getNumElements());
+  std::string name;
+  int index = 0;
+  do {
+    name = absl::StrCat(name_prefix, index);
+    ++index;
+  } while (module.lookupSymbol(name));
+  b.setInsertionPointToStart(module.getBody());
+  return b.create<mlir::LLVM::GlobalOp>(
+      array_ty, is_constant,
+      /*linkage=*/mlir::LLVM::Linkage::Private, name, value, /*alignment=*/0,
+      addr_space);
+}
+
 struct RewriteAllocateShared : mlir::OpRewritePattern<AllocateSharedOp> {
   using OpRewritePattern::OpRewritePattern;
 
@@ -321,29 +345,45 @@ struct RewriteAllocateShared : mlir::OpRewritePattern<AllocateSharedOp> {
     auto module = op->getParentOfType<mlir::ModuleOp>();
     auto shaped_ty = op.getResult().getType().cast<mlir::ShapedType>();
     constexpr int kGPUSharedMemoryAddrSpace = 3;
-    mlir::Type element_type = shaped_ty.getElementType();
-    if (auto complex_ty = mlir::dyn_cast<mlir::ComplexType>(element_type)) {
-      element_type = mlir::LLVM::LLVMStructType::getLiteral(
-          getContext(),
-          {complex_ty.getElementType(), complex_ty.getElementType()});
+    mlir::ImplicitLocOpBuilder b(op.getLoc(), rewriter);
+
+    auto global =
+        CreateGlobalOp(mlir::Attribute{}, "shared_", shaped_ty, module,
+                       /*is_constant=*/false, kGPUSharedMemoryAddrSpace, b);
+
+    rewriter.setInsertionPoint(op);
+    auto addr = rewriter.create<mlir::LLVM::AddressOfOp>(op.getLoc(), global);
+    rewriter.replaceOpWithNewOp<mlir::UnrealizedConversionCastOp>(
+        op, op.getResult().getType(),
+        rewriter
+            .create<mlir::LLVM::AddrSpaceCastOp>(
+                op.getLoc(), mlir::LLVM::LLVMPointerType::get(op.getContext()),
+                addr)
+            .getResult());
+    return success();
+  }
+};
+
+struct RewriteNonScalarConstants
+    : mlir::OpRewritePattern<mlir::arith::ConstantOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  mlir::LogicalResult matchAndRewrite(
+      mlir::arith::ConstantOp op,
+      mlir::PatternRewriter& rewriter) const override {
+    auto shaped_ty = mlir::dyn_cast<mlir::ShapedType>(op.getValue().getType());
+    // We only need to rewrite non-scalar constants.
+    if (!shaped_ty || shaped_ty.getNumElements() < 2) {
+      return rewriter.notifyMatchFailure(
+          op, "the op is an effective scalar constant");
     }
 
-    auto array_ty = mlir::LLVM::LLVMArrayType::get(element_type,
-                                                   shaped_ty.getNumElements());
-
-    std::string name;
-    int index = 0;
-    do {
-      name = absl::StrCat("shared_", index);
-      ++index;
-    } while (module.lookupSymbol(name));
-
-    rewriter.setInsertionPointToStart(module.getBody());
-    auto global = rewriter.create<mlir::LLVM::GlobalOp>(
-        op.getLoc(), array_ty, /*isConstant=*/false,
-        /*linkage=*/mlir::LLVM::Linkage::Private, name,
-        /*value=*/mlir::Attribute{},
-        /*alignment=*/0, kGPUSharedMemoryAddrSpace);
+    constexpr int kGPUGlobalMemoryAddrSpace = 0;
+    mlir::ImplicitLocOpBuilder b(op.getLoc(), rewriter);
+    auto module = op->getParentOfType<mlir::ModuleOp>();
+    auto global =
+        CreateGlobalOp(op.getValue(), "global_cst_", shaped_ty, module,
+                       /*is_constant=*/true, kGPUGlobalMemoryAddrSpace, b);
 
     rewriter.setInsertionPoint(op);
     auto addr = rewriter.create<mlir::LLVM::AddressOfOp>(op.getLoc(), global);
@@ -508,9 +548,9 @@ class LowerTensorsPass : public impl::LowerTensorsPassBase<LowerTensorsPass> {
  public:
   void runOnOperation() override {
     mlir::RewritePatternSet tensor_patterns(&getContext());
-    tensor_patterns
-        .add<RewriteAllocateShared, RewriteSyncThreads, RewriteTensorExtract,
-             RewriteTensorInsert, RewriteAtomicRMW>(&getContext());
+    tensor_patterns.add<RewriteAllocateShared, RewriteNonScalarConstants,
+                        RewriteSyncThreads, RewriteTensorExtract,
+                        RewriteTensorInsert, RewriteAtomicRMW>(&getContext());
     if (mlir::failed(mlir::applyPatternsAndFoldGreedily(
             getOperation(), std::move(tensor_patterns)))) {
       signalPassFailure();
@@ -533,8 +573,9 @@ class LowerTensorsPass : public impl::LowerTensorsPassBase<LowerTensorsPass> {
       while (auto gep = addr.getDefiningOp<mlir::LLVM::GEPOp>()) {
         addr = gep.getBase();
       }
-      if (addr.getDefiningOp<mlir::LLVM::AddrSpaceCastOp>()) {
-        // Shared memory - no need to annotate anything.
+      if (addr.getDefiningOp<mlir::LLVM::AddrSpaceCastOp>() ||
+          addr.getDefiningOp<mlir::LLVM::AddressOfOp>()) {
+        // Shared memory or global constant - no need to annotate anything.
         return;
       }
       if (auto base = mlir::dyn_cast<mlir::BlockArgument>(addr)) {

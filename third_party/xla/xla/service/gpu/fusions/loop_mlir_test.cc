@@ -264,7 +264,9 @@ TEST_F(MlirLoopFusionTest, ComplexOps) {
       %p1 = f32[2]{0} parameter(1)
       %p2 = c64[2]{0} parameter(2)
       %complex = c64[2] complex(%p0, %p1)
-      ROOT %add = c64[2] add(%complex, %p2)
+      %add = c64[2] add(%complex, %p2)
+      %cst = c64[2]{0} constant({(2.0, 0.0), (0.0, 2.0)})
+      ROOT %mul = c64[2] multiply(%add, %cst)
     }
     ENTRY entry_computation {
       p0 = f32[2] parameter(0)
@@ -276,16 +278,19 @@ TEST_F(MlirLoopFusionTest, ComplexOps) {
   TF_ASSERT_OK(EmitAndCheckIR(kHloString, R"(
     // CHECK: func.func @fused_computation
     // CHECK-NEXT: gpu.thread_id
-    // CHECK-NEXT: pure_call @fused_computation_add
+    // CHECK-NEXT: pure_call @fused_computation_mul
     // CHECK-NEXT: tensor.insert
     // CHECK-NEXT: return
 
-    // CHECK: func.func private @fused_computation_add
+    // CHECK: func.func private @fused_computation_mul
+    // CHECK-NEXT: arith.constant
     // CHECK-NEXT: tensor.extract
     // CHECK-NEXT: tensor.extract
     // CHECK-NEXT: complex.create
     // CHECK-NEXT: tensor.extract
     // CHECK-NEXT: complex.add
+    // CHECK-NEXT: tensor.extract
+    // CHECK-NEXT: complex.mul
   )"));
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
 }

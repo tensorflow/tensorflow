@@ -136,6 +136,27 @@ module {
 // -----
 
 module {
+  func.func @extract_from_constant(%arg0: tensor<2x1xf32>,
+      %arg1: index, %arg2: index) -> f32 {
+    %cst = arith.constant dense<[[1.000000e+00], [2.000000e+00]]> : tensor<2x1xf32>
+    %extracted = tensor.extract %arg0[%arg1, %arg2] : tensor<2x1xf32>
+    %extracted_0 = tensor.extract %cst[%arg1, %arg2] : tensor<2x1xf32>
+    %0 = arith.addf %extracted, %extracted_0 : f32
+    return %0 : f32
+  }
+}
+// CHECK: llvm.mlir.global private constant @global_cst_0(dense<[
+// CHECK-SAME: [1.000000e+00], [2.000000e+00]]> : tensor<2x1xf32>) {addr_space = 0 : i32} : !llvm.array<2 x f32>
+// CHECK: @extract_from_constant
+// CHECK: %[[ADDR_OF:.*]] = llvm.mlir.addressof @global_cst_0 : !llvm.ptr
+// CHECK: %[[GEP:.*]] = llvm.getelementptr inbounds %[[ADDR_OF]][%{{.*}}] : (!llvm.ptr, i64) -> !llvm.ptr, f32
+// CHECK: %[[LOAD:.*]] = llvm.load %[[GEP]] : !llvm.ptr -> f32
+// CHECK: %[[ADD:.*]] = arith.addf %{{.*}}, %[[LOAD]] : f32
+// CHECK: return %[[ADD]] : f32
+
+// -----
+
+module {
   func.func @complex_tensor_insert(
       %arg0: tensor<10xcomplex<f32>>) -> tensor<10xcomplex<f32>> {
     %c1 = arith.constant 1 : index

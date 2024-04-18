@@ -168,11 +168,6 @@ static auto& kUnsupportedOps =
                                         HloOpcode::kStochasticConvert,
                                         HloOpcode::kCall};
 
-bool IsUnsupportedConstant(const HloInstruction* instr) {
-  return instr->opcode() == HloOpcode::kConstant &&
-         !ShapeUtil::IsEffectiveScalar(instr->shape());
-}
-
 bool IsUnsupportedTuple(const HloInstruction* instr) {
   if (instr->opcode() != HloOpcode::kTuple) {
     return false;
@@ -783,14 +778,16 @@ absl::StatusOr<SmallVector<Value>> HloToMlir(
     case HloOpcode::kConcatenate:
       return EmitConcat(instr, result_element_type, indices, operand_provider,
                         builder);
-    case HloOpcode::kConstant:
+    case HloOpcode::kConstant: {
+      TF_ASSIGN_OR_RETURN(auto value_attr, CreateDenseElementsAttrFromLiteral(
+                                               instr->literal(), builder));
+      // Convert to signless if needed.
+      if (result_element_type != element_mlir_type) {
+        value_attr = value_attr.mapValues(
+            result_element_type, [](const llvm::APInt& i) { return i; });
+      }
+
       if (ShapeUtil::IsEffectiveScalar(instr->shape())) {
-        TF_ASSIGN_OR_RETURN(auto value_attr, CreateDenseElementsAttrFromLiteral(
-                                                 instr->literal(), builder));
-        if (result_element_type != element_mlir_type) {
-          value_attr = value_attr.mapValues(
-              result_element_type, [](const llvm::APInt& i) { return i; });
-        }
         if (primitive_util::IsComplexType(element_type)) {
           return {{builder.create<mlir::complex::ConstantOp>(
               element_mlir_type,
@@ -801,8 +798,9 @@ absl::StatusOr<SmallVector<Value>> HloToMlir(
             value_attr.getValues<mlir::Attribute>()[0]);
         return {{builder.create<ConstantOp>(val).getResult()}};
       }
-      return absl::UnimplementedError(
-          absl::StrCat("Unimplemented: ", instr->ToShortString()));
+      auto constant = builder.create<ConstantOp>(value_attr).getResult();
+      return {{builder.create<mlir::tensor::ExtractOp>(constant, indices)}};
+    }
     case HloOpcode::kConvolution:
       return EmitConvolution(instr, result_element_type, indices,
                              operand_provider, builder);
@@ -1065,8 +1063,7 @@ bool IsHloOpSupported(const HloInstruction* instr,
   }
 
   return !(kUnsupportedOps.contains(instr->opcode()) ||
-           IsUnsupportedConstant(instr) || IsUnsupportedTuple(instr) ||
-           IsUnsupportedGather(instr));
+           IsUnsupportedTuple(instr) || IsUnsupportedGather(instr));
 }
 
 bool IsHloConversionSupported(const HloComputation* computation,
