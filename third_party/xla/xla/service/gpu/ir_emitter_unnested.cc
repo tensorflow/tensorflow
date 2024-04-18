@@ -2921,6 +2921,9 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
       if (instr->custom_call_target() == "__gpu$xla.gpu.triton") {
         return EmitTritonCustomCall(custom_call);
       }
+      if (instr->custom_call_target() == kNopCustomCallTarget) {
+        return absl::OkStatus();
+      }
       return EmitCustomCallThunk(custom_call);
     }
     case HloOpcode::kFusion: {

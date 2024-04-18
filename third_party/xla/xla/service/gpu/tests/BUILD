@@ -1080,3 +1080,15 @@ xla_cc_test(
         "@local_tsl//tsl/platform:test_main",
     ],
 )
+
+xla_cc_test(
+    name = "nop_custom_call_test",
+    srcs = ["nop_custom_call_test.cc"],
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        "//xla:xla_proto_cc",
+        "//xla/service:gpu_plugin",
+        "//xla/tests:hlo_test_base",
+        "@local_tsl//tsl/platform:test_main",
+    ],
+)
