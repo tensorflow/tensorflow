@@ -122,12 +122,6 @@ class StreamExecutor {
     return AllocateArray<T>(1);
   }
 
-  // As AllocateScalar(), but returns a ScopedDeviceMemory<T>.
-  template <typename T>
-  ScopedDeviceMemory<T> AllocateOwnedScalar() {
-    return ScopedDeviceMemory<T>(this, AllocateArray<T>(1));
-  }
-
   // An untyped version of GetSymbol.
   absl::StatusOr<DeviceMemoryBase> GetUntypedSymbol(
       const std::string& symbol_name, ModuleHandle module_handle);

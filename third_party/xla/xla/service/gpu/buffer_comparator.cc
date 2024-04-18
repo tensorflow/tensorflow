@@ -60,8 +60,8 @@ static absl::StatusOr<bool> DeviceCompare(se::Stream* stream,
                                           void* kernel_symbol) {
   se::StreamExecutor* executor = stream->parent();
 
-  se::ScopedDeviceMemory<uint64_t> out_param =
-      executor->AllocateOwnedScalar<uint64_t>();
+  se::ScopedDeviceMemory<uint64_t> out_param(
+      executor, executor->AllocateScalar<uint64_t>());
 
   TF_RETURN_IF_ERROR(stream->MemZero(out_param.ptr(), sizeof(uint64_t)));
   if (current.size() != expected.size()) {
