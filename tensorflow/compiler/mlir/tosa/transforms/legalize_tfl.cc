@@ -2001,7 +2001,7 @@ LogicalResult ConvertTFLBatchMatMulOp::matchAndRewrite(
     output_ety = result_ty.getElementType();
   }
 
-  auto matmul =
+  Value matmul =
       CreateOpAndInfer<tosa::MatMulOp>(
           rewriter, op->getLoc(), UnrankedTensorType::get(output_ety), lhs, rhs)
           .getResult();
