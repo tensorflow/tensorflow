@@ -38,58 +38,40 @@ enum class DataType {
   kF32,
 };
 
+template <class T>
+struct DefaultStorageDescription {
+  using Type = T;
+  static constexpr Type kMinValue = std::numeric_limits<Type>::lowest();
+  static constexpr Type kMaxValue = std::numeric_limits<Type>::max();
+};
+
 // Storage provides the corresponding C++ type for the given DataType.
 template <DataType data_type>
 struct Storage {};
 
 template <>
-struct Storage<DataType::kI1> {
-  using Type = bool;
-  static constexpr Type kMinValue = std::numeric_limits<Type>::lowest();
-  static constexpr Type kMaxValue = std::numeric_limits<Type>::max();
-};
+struct Storage<DataType::kI1> : DefaultStorageDescription<bool> {};
+
 template <>
-struct Storage<DataType::kSI4> {
-  using Type = I4;
-  static constexpr Type kMinValue = std::numeric_limits<Type>::lowest();
-  static constexpr Type kMaxValue = std::numeric_limits<Type>::max();
-};
+struct Storage<DataType::kSI4> : DefaultStorageDescription<I4> {};
+
 template <>
-struct Storage<DataType::kSI8> {
-  using Type = int8_t;
-  static constexpr Type kMinValue = std::numeric_limits<Type>::lowest();
-  static constexpr Type kMaxValue = std::numeric_limits<Type>::max();
-};
+struct Storage<DataType::kSI8> : DefaultStorageDescription<int8_t> {};
+
 template <>
-struct Storage<DataType::kSI16> {
-  using Type = int16_t;
-  static constexpr Type kMinValue = std::numeric_limits<Type>::lowest();
-  static constexpr Type kMaxValue = std::numeric_limits<Type>::max();
-};
+struct Storage<DataType::kSI16> : DefaultStorageDescription<int16_t> {};
+
 template <>
-struct Storage<DataType::kSI32> {
-  using Type = int32_t;
-  static constexpr Type kMinValue = std::numeric_limits<Type>::lowest();
-  static constexpr Type kMaxValue = std::numeric_limits<Type>::max();
-};
+struct Storage<DataType::kSI32> : DefaultStorageDescription<int32_t> {};
+
 template <>
-struct Storage<DataType::kBF16> {
-  using Type = BF16;
-  static constexpr Type kMinValue = std::numeric_limits<Type>::lowest();
-  static constexpr Type kMaxValue = std::numeric_limits<Type>::max();
-};
+struct Storage<DataType::kBF16> : DefaultStorageDescription<BF16> {};
+
 template <>
-struct Storage<DataType::kF16> {
-  using Type = F16;
-  static constexpr Type kMinValue = std::numeric_limits<Type>::lowest();
-  static constexpr Type kMaxValue = std::numeric_limits<Type>::max();
-};
+struct Storage<DataType::kF16> : DefaultStorageDescription<F16> {};
+
 template <>
-struct Storage<DataType::kF32> {
-  using Type = float;
-  static constexpr Type kMinValue = std::numeric_limits<Type>::lowest();
-  static constexpr Type kMaxValue = std::numeric_limits<Type>::max();
-};
+struct Storage<DataType::kF32> : DefaultStorageDescription<float> {};
 
 template <DataType data_type>
 using StorageType = typename Storage<data_type>::Type;
@@ -135,7 +117,6 @@ constexpr int64_t SizeOf(DataType data_type) {
       return SizeOf<DataType::kF16>();
     case DataType::kF32:
       return SizeOf<DataType::kF32>();
-      break;
   }
 }
 
