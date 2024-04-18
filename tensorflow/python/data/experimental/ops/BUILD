@@ -218,6 +218,7 @@ py_strict_library(
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:structured_function",
         "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:tensor_spec",
         "//tensorflow/python/ops:experimental_dataset_ops_gen",

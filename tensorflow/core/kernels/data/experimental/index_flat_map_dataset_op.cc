@@ -52,6 +52,7 @@ constexpr const char kMapFuncOtherArgs[] = "map_func_other_args";
 constexpr const char kIndexMapFn[] = "index_map_func";
 constexpr const char kIndexMapFuncTargs[] = "Tindex_map_func_args";
 constexpr const char kIndexMapFuncOtherArgs[] = "index_map_func_other_args";
+constexpr const char kOutputCardinality[] = "output_cardinality";
 constexpr const char kOutputTypes[] = "output_types";
 constexpr const char kOutputShapes[] = "output_shapes";
 constexpr const char kElementCount[] = "element_count";
@@ -129,12 +130,13 @@ class IndexFlatMapDatasetOp::Dataset : public DatasetBase {
   Dataset(OpKernelContext* ctx, const DatasetBase* input,
           std::unique_ptr<CapturedFunction> captured_map_func,
           std::unique_ptr<CapturedFunction> captured_index_map_func,
-          const DataTypeVector& output_types,
+          const int64_t output_cardinality, const DataTypeVector& output_types,
           const std::vector<PartialTensorShape>& output_shapes)
       : DatasetBase(DatasetContext(ctx)),
         input_(input),
         captured_map_func_(std::move(captured_map_func)),
         captured_index_map_func_(std::move(captured_index_map_func)),
+        output_cardinality_(output_cardinality),
         output_types_(output_types),
         output_shapes_(output_shapes) {
     input_->Ref();
@@ -153,8 +155,7 @@ class IndexFlatMapDatasetOp::Dataset : public DatasetBase {
   }
 
   int64_t CardinalityInternal(CardinalityOptions options) const override {
-    // TODO(b/325112575): Implement this.
-    return kUnknownCardinality;
+    return output_cardinality_;
   }
 
   absl::Status InputDatasets(
@@ -191,6 +192,9 @@ class IndexFlatMapDatasetOp::Dataset : public DatasetBase {
     TF_RETURN_IF_ERROR(captured_index_map_func_->AddToGraph(
         ctx, b, &index_map_func_other_args, &index_map_func_other_args_types));
 
+    Node* output_cardinality;
+    TF_RETURN_IF_ERROR(b->AddScalar(output_cardinality_, &output_cardinality));
+
     AttrValue map_func_attr;
     b->BuildAttrValue(captured_map_func_->func(), &map_func_attr);
 
@@ -208,7 +212,8 @@ class IndexFlatMapDatasetOp::Dataset : public DatasetBase {
     return b->AddDataset(
         this,
         /*inputs=*/
-        {std::make_pair(0, input_graph_node)},
+        {std::make_pair(0, input_graph_node),
+         std::make_pair(3, output_cardinality)},
         /*list_inputs=*/
         {std::make_pair(1, map_func_other_args),
          std::make_pair(2, index_map_func_other_args)},
@@ -225,6 +230,7 @@ class IndexFlatMapDatasetOp::Dataset : public DatasetBase {
   const DatasetBase* const input_;
   const std::unique_ptr<CapturedFunction> captured_map_func_;
   const std::unique_ptr<CapturedFunction> captured_index_map_func_;
+  const int64_t output_cardinality_;
   const DataTypeVector output_types_;
   const std::vector<PartialTensorShape> output_shapes_;
 };
@@ -274,6 +280,12 @@ class IndexFlatMapDatasetOp::Dataset::Iterator
                           GetSlice(input_unflattened_tensors_, offset));
       ++element_count_;
     } else {
+      const int64_t cardinality = dataset()->Cardinality();
+      if (cardinality < 0) {
+        return absl::FailedPreconditionError(absl::StrCat(
+            "Global shuffling requires finite cardinality. Got cardinality ",
+            cardinality, " for dataset ", dataset()->DebugString(), "."));
+      }
       // TODO(b/325112575): Make it easier to return multiple values from
       // IndexMapperFn.
       size_t offset = 0;
@@ -437,9 +449,14 @@ void IndexFlatMapDatasetOp::MakeDataset(OpKernelContext* ctx,
   OP_REQUIRES_OK(ctx, CapturedFunction::Create(ctx, index_map_func_metadata_,
                                                kIndexMapFuncOtherArgs,
                                                &captured_index_map_func));
+
+  int64_t output_cardinality;
+  OP_REQUIRES_OK(
+      ctx, ParseScalarArgument(ctx, kOutputCardinality, &output_cardinality));
+
   *output = new Dataset(ctx, input, std::move(captured_map_func),
-                        std::move(captured_index_map_func), output_types_,
-                        output_shapes_);
+                        std::move(captured_index_map_func), output_cardinality,
+                        output_types_, output_shapes_);
 }
 
 std::unique_ptr<IteratorBase>

@@ -23541,6 +23541,10 @@ op {
     name: "index_map_func_other_args"
     type_list_attr: "Tindex_map_func_args"
   }
+  input_arg {
+    name: "output_cardinality"
+    type: DT_INT64
+  }
   output_arg {
     name: "handle"
     type: DT_VARIANT

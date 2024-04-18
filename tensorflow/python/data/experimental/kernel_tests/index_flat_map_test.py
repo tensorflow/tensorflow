@@ -18,7 +18,6 @@ from typing import Any, Callable, Optional, Union
 
 from absl.testing import parameterized
 
-from tensorflow.python.data.experimental.ops import cardinality as cardinality_lib
 from tensorflow.python.data.experimental.ops import global_shuffle_op
 from tensorflow.python.data.experimental.ops import index_flat_map_op
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
@@ -95,8 +94,9 @@ class IndexFlatMapTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     dataset = dataset_ops.Dataset.from_tensor_slices(input_data)
     dataset = index_flat_map_op.index_flat_map(
-        dataset, _split, _get_index_map_func(metadata))
-    dataset = dataset.apply(cardinality_lib.assert_cardinality(9))
+        dataset, _split, _get_index_map_func(metadata), output_cardinality=9)
+    self.assertEqual(self.evaluate(dataset.cardinality()), 9)
+
     if repetitions > 1:
       dataset = dataset.repeat(repetitions)
     dataset = global_shuffle_op._global_shuffle(
@@ -155,6 +155,20 @@ class IndexFlatMapTest(test_base.DatasetTestBase, parameterized.TestCase):
         "expected to return two int values"):
       self.getDatasetOutput(dataset)
 
+  @combinations.generate(test_base.default_test_combinations())
+  def test_unknown_cardinality(self):
+    input_data = ["0 1", "2 3 4 5", "6 7", "8"]
+    dataset = dataset_ops.Dataset.from_tensor_slices(input_data)
+
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        "`global_shuffle` requires the input dataset to have a non-empty "
+        "finite cardinality."):
+      dataset = index_flat_map_op.index_flat_map(
+          dataset, _split, _get_index_map_func(_get_metadata(input_data)))
+      dataset = global_shuffle_op._global_shuffle(dataset)
+      self.getDatasetOutput(dataset, requires_initialization=True)
+
 
 class IndexFlatMapCheckpointTest(
     checkpoint_test_base.CheckpointTestBase, parameterized.TestCase):
@@ -178,7 +192,6 @@ class IndexFlatMapCheckpointTest(
       dataset = dataset_ops.Dataset.from_tensor_slices(input_data)
       dataset = index_flat_map_op.index_flat_map(
           dataset, _split, _get_index_map_func(_get_metadata(input_data)))
-      dataset = dataset.apply(cardinality_lib.assert_cardinality(9))
       if repetitions > 1:
         dataset = dataset.repeat(repetitions)
       options = options_lib.Options()
@@ -207,8 +220,10 @@ class IndexFlatMapCheckpointTest(
     def _build_dataset() -> dataset_ops.Dataset:
       dataset = dataset_ops.Dataset.from_tensor_slices(input_data)
       dataset = index_flat_map_op.index_flat_map(
-          dataset, _split, _get_index_map_func(_get_metadata(input_data)))
-      dataset = dataset.apply(cardinality_lib.assert_cardinality(9))
+          dataset,
+          _split,
+          _get_index_map_func(_get_metadata(input_data)),
+          output_cardinality=9)
       if repetitions > 1:
         dataset = dataset.repeat(repetitions)
       dataset = global_shuffle_op._global_shuffle(
