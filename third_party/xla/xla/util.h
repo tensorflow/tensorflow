@@ -802,14 +802,78 @@ Status EraseElementFromVector(std::vector<T>* container, const T& value) {
 // two int4 values. 'input' should have num_elements bytes; 'output' should have
 // (num_elements+1)/2 bytes. The high-order four bits of each byte in 'input'
 // are ignored.
-void PackInt4(absl::Span<const char> input, absl::Span<char> output);
+template <size_t kBitsPerElement>
+void PackIntN(absl::Span<const char> input, absl::Span<char> output) {
+  constexpr auto kElementsPerByte = 8 / kBitsPerElement;
+  const size_t aligned_inputs = input.size() / kElementsPerByte;
+  for (size_t i = 0; i < aligned_inputs; ++i) {
+    char byte = 0;
+    for (size_t j = 0; j < kElementsPerByte; ++j) {
+      byte |=
+          (input[i * kElementsPerByte + j] & LsbMask<uint8_t>(kBitsPerElement))
+          << (kBitsPerElement * (kElementsPerByte - j - 1));
+    }
+    output[i] = byte;
+  }
+  if (size_t remainder = input.size() % kElementsPerByte; remainder != 0) {
+    char byte = 0;
+    for (size_t j = 0; j < remainder; ++j) {
+      byte |= (input[aligned_inputs * kElementsPerByte + j] &
+               LsbMask<uint8_t>(kBitsPerElement))
+              << (kBitsPerElement * (kElementsPerByte - j - 1));
+    }
+    output[aligned_inputs] = byte;
+  }
+}
+
+inline void PackIntN(int bits_per_element, absl::Span<const char> input,
+                     absl::Span<char> output) {
+  if (bits_per_element == 2) {
+    PackIntN<2>(input, output);
+  } else if (bits_per_element == 4) {
+    PackIntN<4>(input, output);
+  } else {
+    LOG(FATAL) << "Invalid bits_per_element: " << bits_per_element;
+  }
+}
 
 // Takes a sequence of packed int4 values, such that every byte stores two
 // int4 values, and unpacks them so every byte stores one int4 value in the
 // low-order four bits. 'input' should have (num_elements+1)/2 bytes; 'output'
 // should have num_elements bytes. The high-order 4-bits in each output are
 // zero.
-void UnpackInt4(absl::Span<const char> input, absl::Span<char> output);
+template <size_t kBitsPerElement>
+void UnpackIntN(absl::Span<const char> input, absl::Span<char> output) {
+  constexpr auto kElementsPerByte = 8 / kBitsPerElement;
+  const size_t aligned_outputs = output.size() / kElementsPerByte;
+  for (size_t i = 0; i < aligned_outputs; ++i) {
+    const char byte = input[i];
+    for (int j = 0; j < kElementsPerByte; ++j) {
+      output[i * kElementsPerByte + j] =
+          (byte >> (kBitsPerElement * (kElementsPerByte - j - 1))) &
+          LsbMask<uint8_t>(kBitsPerElement);
+    }
+  }
+  if (size_t remainder = output.size() % kElementsPerByte; remainder != 0) {
+    const char byte = input[aligned_outputs];
+    for (size_t j = 0; j < remainder; ++j) {
+      output[aligned_outputs * kElementsPerByte + j] =
+          (byte >> (kBitsPerElement * (kElementsPerByte - j - 1))) &
+          LsbMask<uint8_t>(kBitsPerElement);
+    }
+  }
+}
+
+inline void UnpackIntN(int bits_per_element, absl::Span<const char> input,
+                       absl::Span<char> output) {
+  if (bits_per_element == 2) {
+    UnpackIntN<2>(input, output);
+  } else if (bits_per_element == 4) {
+    UnpackIntN<4>(input, output);
+  } else {
+    LOG(FATAL) << "Invalid bits_per_element: " << bits_per_element;
+  }
+}
 
 class HloInstruction;
 class HloModule;

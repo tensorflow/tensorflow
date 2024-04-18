@@ -173,9 +173,9 @@ ENTRY entry {
   c1 = s32[] constant(12)
   c2 = s32[] constant(5)
   p0 = s32[] parameter(0)
-  s = s32[] subtract(p0, c0)
-  a = s32[] add(s, c1)
-  s2 = s32[] subtract(c2, a)
+  sub = s32[] subtract(p0, c0)
+  a = s32[] add(sub, c1)
+  sub2 = s32[] subtract(c2, a)
 }
 )";
   auto module =

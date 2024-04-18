@@ -93,6 +93,11 @@ constexpr PrimitiveType NativeToPrimitiveType<bool>() {
 
 // Unsigned integer
 template <>
+constexpr PrimitiveType NativeToPrimitiveType<u2>() {
+  return U2;
+}
+
+template <>
 constexpr PrimitiveType NativeToPrimitiveType<u4>() {
   return U4;
 }
@@ -118,6 +123,11 @@ constexpr PrimitiveType NativeToPrimitiveType<uint64_t>() {
 }
 
 // Signed integer
+template <>
+constexpr PrimitiveType NativeToPrimitiveType<s2>() {
+  return S2;
+}
+
 template <>
 constexpr PrimitiveType NativeToPrimitiveType<s4>() {
   return S4;
@@ -214,6 +224,11 @@ struct PrimitiveTypeToNative<PRED> {
 
 // Unsigned integer
 template <>
+struct PrimitiveTypeToNative<U2> {
+  using type = u2;
+};
+
+template <>
 struct PrimitiveTypeToNative<U4> {
   using type = u4;
 };
@@ -239,6 +254,11 @@ struct PrimitiveTypeToNative<U64> {
 };
 
 // Signed integer
+template <>
+struct PrimitiveTypeToNative<S2> {
+  using type = s2;
+};
+
 template <>
 struct PrimitiveTypeToNative<S4> {
   using type = s4;
@@ -349,11 +369,13 @@ constexpr bool IsComplexType(PrimitiveType type) {
 }
 
 constexpr bool IsSignedIntegralType(PrimitiveType type) {
-  return type == S4 || type == S8 || type == S16 || type == S32 || type == S64;
+  return type == S2 || type == S4 || type == S8 || type == S16 || type == S32 ||
+         type == S64;
 }
 
 constexpr bool IsUnsignedIntegralType(PrimitiveType type) {
-  return type == U4 || type == U8 || type == U16 || type == U32 || type == U64;
+  return type == U2 || type == U4 || type == U8 || type == U16 || type == U32 ||
+         type == U64;
 }
 
 constexpr bool IsIntegralType(PrimitiveType type) {
@@ -368,6 +390,8 @@ template <typename R, typename F>
 constexpr R IntegralTypeSwitch(F&& f, PrimitiveType type) {
   if (ABSL_PREDICT_TRUE(IsIntegralType(type))) {
     switch (type) {
+      case S2:
+        return std::forward<F>(f)(PrimitiveTypeConstant<PrimitiveType::S2>());
       case S4:
         return std::forward<F>(f)(PrimitiveTypeConstant<PrimitiveType::S4>());
       case S8:
@@ -378,6 +402,8 @@ constexpr R IntegralTypeSwitch(F&& f, PrimitiveType type) {
         return std::forward<F>(f)(PrimitiveTypeConstant<PrimitiveType::S32>());
       case S64:
         return std::forward<F>(f)(PrimitiveTypeConstant<PrimitiveType::S64>());
+      case U2:
+        return std::forward<F>(f)(PrimitiveTypeConstant<PrimitiveType::U2>());
       case U4:
         return std::forward<F>(f)(PrimitiveTypeConstant<PrimitiveType::U4>());
       case U8:
@@ -546,6 +572,8 @@ inline constexpr int ByteWidth(PrimitiveType type) {
 
 constexpr PrimitiveType UnsignedIntegralTypeForBitWidth(int64_t src_bitwidth) {
   switch (src_bitwidth) {
+    case 2:
+      return xla::U2;
     case 4:
       return xla::U4;
     case 8:
@@ -752,6 +780,21 @@ inline bool FitsInIntegralType(int64_t x, PrimitiveType ty) {
                std::numeric_limits<NativeT>::max() >= x;
       },
       ty);
+}
+
+constexpr bool IsSubByteNonPredType(PrimitiveType type) {
+  return IsArrayType(type) && type != PRED &&
+         primitive_util::BitWidth(type) < 8;
+}
+
+inline void PackIntN(PrimitiveType input_type, absl::Span<const char> input,
+                     absl::Span<char> output) {
+  xla::PackIntN(primitive_util::BitWidth(input_type), input, output);
+}
+
+inline void UnpackIntN(PrimitiveType input_type, absl::Span<const char> input,
+                       absl::Span<char> output) {
+  xla::UnpackIntN(primitive_util::BitWidth(input_type), input, output);
 }
 
 }  // namespace primitive_util

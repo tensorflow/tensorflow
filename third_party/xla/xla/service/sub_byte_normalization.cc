@@ -46,8 +46,8 @@ bool UpdateLayout(Layout* layout, PrimitiveType type,
     case SubByteNormalization::REMOVE_ELEMENT_SIZE:
       return set_element_size(0);
     case SubByteNormalization::SET_ELEMENT_SIZE:
-      if (primitive_util::Is4BitType(type)) {
-        return set_element_size(4);
+      if (primitive_util::IsSubByteNonPredType(type)) {
+        return set_element_size(primitive_util::BitWidth(type));
       } else {
         return set_element_size(0);
       }

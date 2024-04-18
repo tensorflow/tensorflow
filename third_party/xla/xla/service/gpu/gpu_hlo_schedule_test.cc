@@ -618,7 +618,7 @@ TEST_F(GpuHloScheduleTest, LHSSendRecvPairs2) {
     sum = u32[] add(replica, c10)
     sum2 = u32[] add(sum, count)
     conv = f32[] convert(sum2)
-    s1 = f32[1, 1024, 1024] broadcast(conv), dimensions={}
+    bc1 = f32[1, 1024, 1024] broadcast(conv), dimensions={}
 
     after-all-1 = token[] after-all()
     recv-1 = (f32[1, 1024, 1024], u32[], token[]) recv(after-all-1), channel_id=2,
@@ -633,10 +633,10 @@ TEST_F(GpuHloScheduleTest, LHSSendRecvPairs2) {
     send-done-1 = token[] send-done(send-1), channel_id=2
     recv-data-1 = f32[1, 1024, 1024] get-tuple-element(recv-done-1), index=0
 
-    s2 = f32[1, 1024, 1024] add(recv-data-0, s1)
-    s = f32[1, 1024, 1024] add(recv-data-1, s2)
+    add2 = f32[1, 1024, 1024] add(recv-data-0, bc1)
+    add = f32[1, 1024, 1024] add(recv-data-1, add2)
 
-    ROOT result = (u32[], f32[1, 1024, 1024]) tuple(new_count, s)
+    ROOT result = (u32[], f32[1, 1024, 1024]) tuple(new_count, add)
   }
 
   ENTRY test_computation {

@@ -86,16 +86,16 @@ void ConvertEndianShort(char* bytes, int64_t size) {
 }
 
 bool LiteralProtoHasValues(const LiteralProto& proto) {
-  return proto.preds_size() || !proto.s4s().empty() || !proto.u4s().empty() ||
-         !proto.s8s().empty() || !proto.u8s().empty() || proto.s32s_size() ||
-         proto.s64s_size() || proto.u32s_size() || proto.u64s_size() ||
-         proto.f32s_size() || proto.f64s_size() || proto.c64s_size() ||
-         proto.c128s_size() || proto.tuple_literals_size() ||
-         !proto.f16s().empty() || !proto.bf16s().empty() ||
-         !proto.u16s().empty() || !proto.s16s().empty() ||
+  return !proto.s2s().empty() || !proto.s4s().empty() || !proto.s8s().empty() ||
+         !proto.s16s().empty() || proto.s32s_size() || proto.s64s_size() ||
+         !proto.u2s().empty() || !proto.u4s().empty() || !proto.u8s().empty() ||
+         !proto.u16s().empty() || proto.u32s_size() || proto.u64s_size() ||
          !proto.f8e5m2s().empty() || !proto.f8e4m3fns().empty() ||
          !proto.f8e4m3b11fnuzs().empty() || !proto.f8e5m2fnuzs().empty() ||
-         !proto.f8e4m3fnuzs().empty();
+         !proto.f8e4m3fnuzs().empty() || !proto.f16s().empty() ||
+         !proto.bf16s().empty() || proto.f32s_size() || proto.f64s_size() ||
+         proto.c64s_size() || proto.c128s_size() || proto.preds_size() ||
+         proto.tuple_literals_size();
 }
 
 // Lazy getter for the interned scalar shape in static storage. We reuse this
@@ -1847,12 +1847,15 @@ bool LiteralBase::Piece::EqualElements(const LiteralBase::Piece& other) const {
     CHECK(LayoutUtil::IsDenseArray(subshape()))
         << __func__ << " is only supported for dense arrays: " << subshape();
     CHECK_EQ(size_bytes_dense(), other.size_bytes_dense());
-    if (primitive_util::Is4BitType(subshape().element_type())) {
+    if (primitive_util::IsSubByteNonPredType(subshape().element_type())) {
+      CHECK(!primitive_util::IsFloatingPointType(subshape().element_type()));
       auto one_array = buffer();
       auto two_array = other.buffer();
+      const int bits_per_element =
+          primitive_util::BitWidth(subshape().element_type());
+      const uint8_t mask = LsbMask<uint8_t>(bits_per_element);
       for (int64_t i = 0; i < size_bytes_dense(); ++i) {
-        if ((one_array[i] & uint8_t{0xf}) != (two_array[i] & uint8_t{0xf}))
-          return false;
+        if ((one_array[i] & mask) != (two_array[i] & mask)) return false;
       }
       return true;
     }
@@ -2175,13 +2178,9 @@ void LiteralBase::Piece::WriteToProto(LiteralProto* proto) const {
     case PRED:
       CopyToRepeatedField(proto->mutable_preds(), data<bool>());
       break;
-    case S4:
-      *proto->mutable_s4s() = std::string(
-          reinterpret_cast<const char*>(data<s4>().data()), size_bytes_dense());
-      break;
-    case S8:
-      proto->set_s8s(static_cast<const signed char*>(data<int8_t>().data()),
-                     element_count());
+    case U2:
+      *proto->mutable_u2s() = std::string(
+          reinterpret_cast<const char*>(data<u2>().data()), size_bytes_dense());
       break;
     case U4:
       *proto->mutable_u4s() = std::string(
@@ -2191,18 +2190,6 @@ void LiteralBase::Piece::WriteToProto(LiteralProto* proto) const {
       proto->set_u8s(static_cast<const unsigned char*>(data<uint8_t>().data()),
                      element_count());
       break;
-    case U32:
-      CopyToRepeatedField(proto->mutable_u32s(), data<uint32_t>());
-      break;
-    case U64:
-      CopyToRepeatedField(proto->mutable_u64s(), data<uint64_t>());
-      break;
-    case S32:
-      CopyToRepeatedField(proto->mutable_s32s(), data<int32_t>());
-      break;
-    case S64:
-      CopyToRepeatedField(proto->mutable_s64s(), data<int64_t>());
-      break;
     case U16:
       *proto->mutable_u16s() =
           std::string(reinterpret_cast<const char*>(data<uint16_t>().data()),
@@ -2210,6 +2197,24 @@ void LiteralBase::Piece::WriteToProto(LiteralProto* proto) const {
       if (!kLittleEndian) {
         ConvertEndianShort(proto->mutable_u16s());
       }
+      break;
+    case U32:
+      CopyToRepeatedField(proto->mutable_u32s(), data<uint32_t>());
+      break;
+    case U64:
+      CopyToRepeatedField(proto->mutable_u64s(), data<uint64_t>());
+      break;
+    case S2:
+      *proto->mutable_s2s() = std::string(
+          reinterpret_cast<const char*>(data<s2>().data()), size_bytes_dense());
+      break;
+    case S4:
+      *proto->mutable_s4s() = std::string(
+          reinterpret_cast<const char*>(data<s4>().data()), size_bytes_dense());
+      break;
+    case S8:
+      proto->set_s8s(static_cast<const signed char*>(data<int8_t>().data()),
+                     element_count());
       break;
     case S16:
       *proto->mutable_s16s() =
@@ -2219,21 +2224,11 @@ void LiteralBase::Piece::WriteToProto(LiteralProto* proto) const {
         ConvertEndianShort(proto->mutable_s16s());
       }
       break;
-    case F16:
-      *proto->mutable_f16s() =
-          std::string(reinterpret_cast<const char*>(data<half>().data()),
-                      size_bytes_dense());
-      if (!kLittleEndian) {
-        ConvertEndianShort(proto->mutable_f16s());
-      }
+    case S32:
+      CopyToRepeatedField(proto->mutable_s32s(), data<int32_t>());
       break;
-    case BF16:
-      *proto->mutable_bf16s() =
-          std::string(reinterpret_cast<const char*>(data<bfloat16>().data()),
-                      size_bytes_dense());
-      if (!kLittleEndian) {
-        ConvertEndianShort(proto->mutable_bf16s());
-      }
+    case S64:
+      CopyToRepeatedField(proto->mutable_s64s(), data<int64_t>());
       break;
     case F8E5M2:
       *proto->mutable_f8e5m2s() = std::string(
@@ -2259,6 +2254,22 @@ void LiteralBase::Piece::WriteToProto(LiteralProto* proto) const {
       *proto->mutable_f8e4m3fnuzs() = std::string(
           reinterpret_cast<const char*>(data<tsl::float8_e4m3fnuz>().data()),
           size_bytes_dense());
+      break;
+    case F16:
+      *proto->mutable_f16s() =
+          std::string(reinterpret_cast<const char*>(data<half>().data()),
+                      size_bytes_dense());
+      if (!kLittleEndian) {
+        ConvertEndianShort(proto->mutable_f16s());
+      }
+      break;
+    case BF16:
+      *proto->mutable_bf16s() =
+          std::string(reinterpret_cast<const char*>(data<bfloat16>().data()),
+                      size_bytes_dense());
+      if (!kLittleEndian) {
+        ConvertEndianShort(proto->mutable_bf16s());
+      }
       break;
     case F32:
       CopyToRepeatedField(proto->mutable_f32s(), data<float>());
@@ -2329,38 +2340,24 @@ Status LiteralBase::Piece::CopyFromProto(const LiteralProto& proto) {
     case PRED:
       TF_RETURN_IF_ERROR(CopyFromRepeatedField(data<bool>(), proto.preds()));
       break;
+    case S2: {
+      const std::string& s(proto.s2s());
+      TF_RET_CHECK(data<s2>().size() * sizeof(s2) == s.size());
+      memcpy(untyped_data(), s.data(), s.size());
+      break;
+    }
     case S4: {
       const std::string& s(proto.s4s());
       TF_RET_CHECK(data<s4>().size() * sizeof(s4) == s.size());
       memcpy(untyped_data(), s.data(), s.size());
-    } break;
+      break;
+    }
     case S8: {
       auto s8_data = data<int8_t>();
       TF_RET_CHECK(proto.s8s().size() == s8_data.size());
       std::copy(proto.s8s().begin(), proto.s8s().end(), s8_data.begin());
-    } break;
-    case U4: {
-      const std::string& s(proto.u4s());
-      TF_RET_CHECK(data<u4>().size() * sizeof(u4) == s.size());
-      memcpy(untyped_data(), s.data(), s.size());
-    } break;
-    case U8: {
-      auto u8_data = data<uint8_t>();
-      TF_RET_CHECK(proto.u8s().size() == u8_data.size());
-      std::copy(proto.u8s().begin(), proto.u8s().end(), u8_data.begin());
-    } break;
-    case S32:
-      TF_RETURN_IF_ERROR(CopyFromRepeatedField(data<int32_t>(), proto.s32s()));
       break;
-    case S64:
-      TF_RETURN_IF_ERROR(CopyFromRepeatedField(data<int64_t>(), proto.s64s()));
-      break;
-    case U32:
-      TF_RETURN_IF_ERROR(CopyFromRepeatedField(data<uint32_t>(), proto.u32s()));
-      break;
-    case U64:
-      TF_RETURN_IF_ERROR(CopyFromRepeatedField(data<uint64_t>(), proto.u64s()));
-      break;
+    }
     case S16: {
       const std::string& s(proto.s16s());
       TF_RET_CHECK(data<int16_t>().size() * sizeof(int16_t) == s.size());
@@ -2368,7 +2365,32 @@ Status LiteralBase::Piece::CopyFromProto(const LiteralProto& proto) {
       if (!kLittleEndian) {
         ConvertEndianShort(reinterpret_cast<char*>(untyped_data()), s.size());
       }
-    } break;
+      break;
+    }
+    case S32:
+      TF_RETURN_IF_ERROR(CopyFromRepeatedField(data<int32_t>(), proto.s32s()));
+      break;
+    case S64:
+      TF_RETURN_IF_ERROR(CopyFromRepeatedField(data<int64_t>(), proto.s64s()));
+      break;
+    case U2: {
+      const std::string& s(proto.u2s());
+      TF_RET_CHECK(data<u2>().size() * sizeof(u2) == s.size());
+      memcpy(untyped_data(), s.data(), s.size());
+      break;
+    }
+    case U4: {
+      const std::string& s(proto.u4s());
+      TF_RET_CHECK(data<u4>().size() * sizeof(u4) == s.size());
+      memcpy(untyped_data(), s.data(), s.size());
+      break;
+    }
+    case U8: {
+      auto u8_data = data<uint8_t>();
+      TF_RET_CHECK(proto.u8s().size() == u8_data.size());
+      std::copy(proto.u8s().begin(), proto.u8s().end(), u8_data.begin());
+      break;
+    }
     case U16: {
       const std::string& s(proto.u16s());
       TF_RET_CHECK(data<uint16_t>().size() * sizeof(uint16_t) == s.size());
@@ -2376,41 +2398,53 @@ Status LiteralBase::Piece::CopyFromProto(const LiteralProto& proto) {
       if (!kLittleEndian) {
         ConvertEndianShort(reinterpret_cast<char*>(untyped_data()), s.size());
       }
-    } break;
+      break;
+    }
+    case U32:
+      TF_RETURN_IF_ERROR(CopyFromRepeatedField(data<uint32_t>(), proto.u32s()));
+      break;
+    case U64:
+      TF_RETURN_IF_ERROR(CopyFromRepeatedField(data<uint64_t>(), proto.u64s()));
+      break;
     case F8E5M2: {
       const std::string& s(proto.f8e5m2s());
       TF_RET_CHECK(data<tsl::float8_e5m2>().size() * sizeof(tsl::float8_e5m2) ==
                    s.size());
       memcpy(untyped_data(), s.data(), s.size());
-    } break;
+      break;
+    }
     case F8E4M3FN: {
       const std::string& s(proto.f8e4m3fns());
       TF_RET_CHECK(data<tsl::float8_e4m3fn>().size() *
                        sizeof(tsl::float8_e4m3fn) ==
                    s.size());
       memcpy(untyped_data(), s.data(), s.size());
-    } break;
+      break;
+    }
     case F8E4M3B11FNUZ: {
       const std::string& s(proto.f8e4m3b11fnuzs());
       TF_RET_CHECK(data<tsl::float8_e4m3b11>().size() *
                        sizeof(tsl::float8_e4m3b11) ==
                    s.size());
       memcpy(untyped_data(), s.data(), s.size());
-    } break;
+      break;
+    }
     case F8E5M2FNUZ: {
       const std::string& s(proto.f8e5m2fnuzs());
       TF_RET_CHECK(data<tsl::float8_e5m2fnuz>().size() *
                        sizeof(tsl::float8_e5m2fnuz) ==
                    s.size());
       memcpy(untyped_data(), s.data(), s.size());
-    } break;
+      break;
+    }
     case F8E4M3FNUZ: {
       const std::string& s(proto.f8e4m3fnuzs());
       TF_RET_CHECK(data<tsl::float8_e4m3fnuz>().size() *
                        sizeof(tsl::float8_e4m3fnuz) ==
                    s.size());
       memcpy(untyped_data(), s.data(), s.size());
-    } break;
+      break;
+    }
     case F16: {
       const std::string& s(proto.f16s());
       TF_RET_CHECK(data<half>().size() * sizeof(half) == s.size());
@@ -2418,8 +2452,8 @@ Status LiteralBase::Piece::CopyFromProto(const LiteralProto& proto) {
       if (!kLittleEndian) {
         ConvertEndianShort(reinterpret_cast<char*>(untyped_data()), s.size());
       }
-    } break;
-
+      break;
+    }
     case BF16: {
       const std::string& s(proto.bf16s());
       TF_RET_CHECK(data<bfloat16>().size() * sizeof(bfloat16) == s.size());
@@ -2427,7 +2461,8 @@ Status LiteralBase::Piece::CopyFromProto(const LiteralProto& proto) {
       if (!kLittleEndian) {
         ConvertEndianShort(reinterpret_cast<char*>(untyped_data()), s.size());
       }
-    } break;
+      break;
+    }
     case F32:
       TF_RETURN_IF_ERROR(CopyFromRepeatedField(data<float>(), proto.f32s()));
       break;

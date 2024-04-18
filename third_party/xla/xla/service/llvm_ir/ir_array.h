@@ -266,14 +266,10 @@ class IrArray {
   // The optional name is useful for debugging when looking at
   // the emitted LLVM IR.
   //
-  // For int4 values, 'is_high_order_bits' must be non-null and this function
-  // sets '*is_high_order_bits' to a boolean value indicating whether the 4-bit
-  // value resides in the high-order or low- order bits of the byte that the
-  // address points to.
+  // `bit_offset` contains the offset of the element inside the address.
   llvm::Value* EmitArrayElementAddress(
       const Index& index, llvm::IRBuilder<>* b, absl::string_view name = "",
-      bool use_linear_index = true,
-      llvm::Value** is_high_order_bits = nullptr) const;
+      bool use_linear_index = true, llvm::Value** bit_offset = nullptr) const;
 
   // Attach metadata this IrArray instance knows about to "instruction".
   void AnnotateLoadStoreInstructionWithMetadata(
@@ -361,7 +357,7 @@ class IrArray {
   // Like EmitArrayElementAddress, but always uses a linear index.
   llvm::Value* EmitLinearArrayElementAddress(
       const Index& index, llvm::IRBuilder<>* b, absl::string_view name = "",
-      llvm::Value** is_high_order_bits = nullptr) const;
+      llvm::Value** bit_offset = nullptr) const;
 
   // Address of the base of the array as an LLVM Value.
   llvm::Value* base_ptr_;

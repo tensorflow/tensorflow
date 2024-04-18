@@ -116,7 +116,7 @@ absl::StatusOr<bool> MoveConvertPrecisionOps(HloComputation* comp) {
 
     // Currently int4 is not supported in most ops so moving the convert is not
     // safe.
-    if (primitive_util::Is4BitType(src_ty)) {
+    if (primitive_util::IsSubByteNonPredType(src_ty)) {
       continue;
     }
 
@@ -169,7 +169,7 @@ absl::StatusOr<bool> MoveConvertPrecisionOps(HloComputation* comp) {
     if (primitive_util::BitWidth(src_ty) <= primitive_util::BitWidth(dst_ty)) {
       continue;
     }
-    if (primitive_util::Is4BitType(dst_ty)) {
+    if (primitive_util::IsSubByteNonPredType(dst_ty)) {
       continue;
     }
 

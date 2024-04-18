@@ -22,6 +22,7 @@ limitations under the License.
 #include <string>
 #include <type_traits>
 
+#include "absl/strings/str_cat.h"
 #include "Eigen/Core"  // from @eigen_archive  // IWYU pragma: export
 #include "tsl/platform/ml_dtypes.h"  // IWYU pragma: export
 
@@ -59,21 +60,33 @@ template <typename T>
 inline constexpr bool is_specialized_integral_v =
     is_specialized_integral<T>::value;
 
+using u2 = tsl::uint2;
+using s2 = tsl::int2;
 using u4 = tsl::uint4;
 using s4 = tsl::int4;
+
+template <class T>
+struct is_intN : std::false_type {};
+template <int kN, typename UnderlyingType>
+struct is_intN<::ml_dtypes::intN<kN, UnderlyingType>> : std::true_type {};
+
+template <typename T>
+inline constexpr bool is_intN_v = is_intN<T>::value;
 
 }  // namespace xla
 
 // Extend ml_dtypes to allow absl::String functions.
 namespace ml_dtypes {
-template <typename Sink>
-void AbslStringify(Sink& sink, const xla::s4& i) {
-  sink.Append(std::to_string(static_cast<int32_t>(i)));
-}
 
-template <typename Sink>
-void AbslStringify(Sink& sink, const xla::u4& i) {
-  sink.Append(std::to_string(static_cast<uint32_t>(i)));
+template <typename Sink, typename T,
+          std::enable_if_t<xla::is_intN_v<T>, int> = 0>
+void AbslStringify(Sink& sink, const T& i) {
+  static_assert(xla::is_specialized_integral_v<T>);
+  if constexpr (std::numeric_limits<T>::is_signed) {
+    sink.Append(absl::StrCat(static_cast<int32_t>(i)));
+  } else {
+    sink.Append(absl::StrCat(static_cast<uint32_t>(i)));
+  }
 }
 }  // namespace ml_dtypes
 
@@ -84,37 +97,33 @@ namespace se = ::stream_executor;  // NOLINT(misc-unused-alias-decls)
 
 // std::make_signed_t is “behavior undefined” for custom types, so provide a
 // general util to make signed/unsigned for both primitive and custom types.
-template <typename T>
+template <typename T, typename = void>
 struct make_specialized_unsigned {
   using type = std::make_unsigned_t<T>;
 };
 
-template <>
-struct make_specialized_unsigned<xla::s4> {
-  using type = xla::u4;
-};
-
-template <>
-struct make_specialized_unsigned<xla::u4> {
-  using type = xla::u4;
+template <typename T>
+struct make_specialized_unsigned<T, typename std::enable_if_t<is_intN_v<T>>> {
+  static_assert(std::is_integral_v<typename T::underlying_type>);
+  using type =
+      ::ml_dtypes::intN<T::bits,
+                        std::make_unsigned_t<typename T::underlying_type>>;
 };
 
 template <typename T>
 using make_specialized_unsigned_t = typename make_specialized_unsigned<T>::type;
 
-template <typename T>
+template <typename T, typename = void>
 struct make_specialized_signed {
   using type = std::make_signed_t<T>;
 };
 
-template <>
-struct make_specialized_signed<xla::s4> {
-  using type = xla::s4;
-};
-
-template <>
-struct make_specialized_signed<xla::u4> {
-  using type = xla::s4;
+template <typename T>
+struct make_specialized_signed<T, typename std::enable_if_t<is_intN_v<T>>> {
+  static_assert(std::is_integral_v<typename T::underlying_type>);
+  using type =
+      ::ml_dtypes::intN<T::bits,
+                        std::make_signed_t<typename T::underlying_type>>;
 };
 
 template <typename T>

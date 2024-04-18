@@ -1893,8 +1893,8 @@ AlgebraicSimplifierVisitor::TryRemoveUpcastAndDowncastSurroundingBinaryOp(
   const PrimitiveType bin_op_type = bin_op_instr->shape().element_type();
   if (!primitive_util::IsIntegralType(final_type) ||
       !primitive_util::IsIntegralType(bin_op_type) ||
-      primitive_util::Is4BitType(final_type) ||
-      primitive_util::Is4BitType(bin_op_type) ||
+      primitive_util::IsSubByteNonPredType(final_type) ||
+      primitive_util::IsSubByteNonPredType(bin_op_type) ||
       (primitive_util::IsSignedIntegralType(final_type) !=
        primitive_util::IsSignedIntegralType(bin_op_type)) ||
       (primitive_util::IsUnsignedIntegralType(final_type) !=

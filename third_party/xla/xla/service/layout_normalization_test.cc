@@ -636,10 +636,10 @@ HloModule module
 
 ENTRY main {
   input = f32[3,4,32]{1,0,2} parameter(0)
-  s1 = s32[] parameter(1)
-  s2 = s32[] parameter(2)
-  s3 = s32[] parameter(3)
-  ROOT out = f32[1,4,32]{1,0,2} dynamic-slice(input, s1, s2, s3), dynamic_slice_sizes={1,4,32}, metadata={op_name="test"}
+  p1 = s32[] parameter(1)
+  p2 = s32[] parameter(2)
+  p3 = s32[] parameter(3)
+  ROOT out = f32[1,4,32]{1,0,2} dynamic-slice(input, p1, p2, p3), dynamic_slice_sizes={1,4,32}, metadata={op_name="test"}
 }
   )";
   CheckLayoutNormalization(hlo, R"(
@@ -653,10 +653,10 @@ HloModule module
 
 ENTRY main {
   input = f32[1,4,32]{1,0,2} parameter(0)
-  s1 = s32[] parameter(1)
-  s2 = s32[] parameter(2)
-  s3 = s32[] parameter(3)
-  ROOT out = f32[1,4,32]{1,0,2} dynamic-slice(input, s1, s2, s3), dynamic_slice_sizes={1,4,32}, metadata={op_name="test"}
+  p1 = s32[] parameter(1)
+  p2 = s32[] parameter(2)
+  p3 = s32[] parameter(3)
+  ROOT out = f32[1,4,32]{1,0,2} dynamic-slice(input, p1, p2, p3), dynamic_slice_sizes={1,4,32}, metadata={op_name="test"}
 }
   )";
   CheckLayoutNormalization(hlo, R"(

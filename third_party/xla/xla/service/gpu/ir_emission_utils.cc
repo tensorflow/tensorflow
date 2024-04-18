@@ -546,9 +546,10 @@ Shape GetShape(mlir::Value value) {
   } else {
     LOG(FATAL) << "Unexpected value type to get shape for";
   }
-  if (primitive_util::Is4BitType(shape.element_type())) {
+  if (primitive_util::IsSubByteNonPredType(shape.element_type())) {
     // 4-bit types are always packed on the GPU
-    shape.mutable_layout()->set_element_size_in_bits(4);
+    shape.mutable_layout()->set_element_size_in_bits(
+        primitive_util::BitWidth(shape.element_type()));
   }
   return shape;
 }
@@ -858,11 +859,13 @@ absl::StatusOr<DenseDataIntermediate> LiteralToXlaFormat(
   }
 
   int64_t byte_size = literal.size_bytes();
-  if (primitive_util::Is4BitType(element_type)) {
-    std::vector<uint8_t> output(CeilOfRatio(byte_size, int64_t{2}));
+  if (primitive_util::IsSubByteNonPredType(element_type)) {
+    auto bit_width = primitive_util::BitWidth(element_type);
+    std::vector<uint8_t> output(CeilOfRatio<int64_t>(byte_size, 8 / bit_width));
     absl::Span<char> output_span =
         absl::MakeSpan(reinterpret_cast<char*>(output.data()), output.size());
-    PackInt4(
+    PackIntN(
+        bit_width,
         absl::MakeSpan(reinterpret_cast<const char*>(literal.untyped_data()),
                        byte_size),
         output_span);

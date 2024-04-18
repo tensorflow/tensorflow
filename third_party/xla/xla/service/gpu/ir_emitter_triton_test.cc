@@ -2641,11 +2641,11 @@ TEST_F(TritonGemmLevel2Test, NestedSlicingWorks) {
   const std::string kHloText = R"(
 ENTRY e {
   p1 = f32[6,24] parameter(1)
-  s1 = f32[5,20] slice(p1), slice={[1:6], [3:23]}
-  n1 = f32[5,20] negate(s1)
-  s2 = f32[3,7] slice(n1), slice={[1:4], [13:20]}
+  slice1 = f32[5,20] slice(p1), slice={[1:6], [3:23]}
+  n1 = f32[5,20] negate(slice1)
+  slice2 = f32[3,7] slice(n1), slice={[1:4], [13:20]}
   p0 = f32[7,37] parameter(0)
-  ROOT d = f32[3,37] dot(s2, p0),
+  ROOT d = f32[3,37] dot(slice2, p0),
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })";
 

@@ -75,7 +75,8 @@ constexpr size_t kSmallDataTransferByteSize = 102400;  // 100 KiB
 
 // Unpacks and copies the int4 data at 'input' into the literal at the given
 // ShapeIndex.
-void UnpackInt4ToLiteral(const MaybeOwningCpuMemory& input,
+void UnpackIntNToLiteral(PrimitiveType input_element_type,
+                         const MaybeOwningCpuMemory& input,
                          MutableLiteralBase* literal,
                          const ShapeIndex& shape_index) {
   absl::Span<const char> input_span{static_cast<const char*>(input.data()),
@@ -84,7 +85,7 @@ void UnpackInt4ToLiteral(const MaybeOwningCpuMemory& input,
       ShapeUtil::GetSubshape(literal->shape(), shape_index)));
   absl::Span<char> output_span{
       static_cast<char*>(literal->untyped_data(shape_index)), output_size};
-  UnpackInt4(input_span, output_span);
+  primitive_util::UnpackIntN(input_element_type, input_span, output_span);
 }
 
 void CopyCpuBufferToLiteral(const Shape& device_shape,
@@ -93,8 +94,9 @@ void CopyCpuBufferToLiteral(const Shape& device_shape,
   if (!device_shape.IsTuple()) {
     const std::shared_ptr<MaybeOwningCpuMemory>& b =
         device_buffer->Buffers()[0];
-    if (primitive_util::Is4BitType(device_shape.element_type())) {
-      UnpackInt4ToLiteral(*b, literal, /*shape_index=*/{});
+    if (primitive_util::IsSubByteNonPredType(device_shape.element_type())) {
+      UnpackIntNToLiteral(device_shape.element_type(), *b, literal,
+                          /*shape_index=*/{});
     } else {
       std::memcpy(literal->untyped_data(), b->data(),
                   ShapeUtil::ByteSizeOf(device_shape));
@@ -105,8 +107,8 @@ void CopyCpuBufferToLiteral(const Shape& device_shape,
     for (int i = 0; i < num_leaves; ++i) {
       const std::shared_ptr<MaybeOwningCpuMemory>& b =
           device_buffer->Buffers()[i];
-      if (primitive_util::Is4BitType(device_shape.element_type())) {
-        UnpackInt4ToLiteral(*b, literal, {i});
+      if (primitive_util::IsSubByteNonPredType(device_shape.element_type())) {
+        UnpackIntNToLiteral(device_shape.element_type(), *b, literal, {i});
       } else {
         std::memcpy(
             literal->untyped_data({i}), b->data(),
@@ -674,8 +676,9 @@ AbstractTfrtCpuBuffer::BufferFromHostBufferHelper(
     TransposePlanCache* transpose_cache) {
   bool has_default_layout =
       !byte_strides || HasMajorToMinorLayout(type, dims, *byte_strides);
-  // Int4 arrays are unpacked on host and packed on device.
-  bool is_int4 = primitive_util::Is4BitType(type);
+  const int bit_width = primitive_util::BitWidth(type);
+  // Packed arrays are unpacked on host and packed on device.
+  bool is_packed = primitive_util::IsSubByteNonPredType(type);
 
   // If the input buffer has a default layout and is sufficiently aligned, we
   // can simply point to the input array's data without any further copies. At
@@ -691,7 +694,7 @@ AbstractTfrtCpuBuffer::BufferFromHostBufferHelper(
       host_buffer_semantics == HostBufferSemantics::kMutableZeroCopy;
 
   bool can_use_zero_copy =
-      has_default_layout && !is_int4 && is_aligned_data &&
+      has_default_layout && !is_packed && is_aligned_data &&
       (immutable_zero_copy_semantics || mutable_zero_copy_semantics);
 
   absl::InlinedVector<std::shared_ptr<MaybeOwningCpuMemory>, 4> buffers;
@@ -718,12 +721,12 @@ AbstractTfrtCpuBuffer::BufferFromHostBufferHelper(
 
   } else {
     size_t dst_byte_size =
-        is_int4 ? CeilOfRatio(byte_size, size_t{2}) : byte_size;
+        is_packed ? CeilOfRatio<size_t>(byte_size, 8 / bit_width) : byte_size;
     TF_ASSIGN_OR_RETURN(std::shared_ptr<MaybeOwningCpuMemory> device_buffer,
                         MaybeOwningCpuMemory::AllocateShared(dst_byte_size));
     auto dst_data_ptr = device_buffer->data();
     buffers.push_back(device_buffer);
-    if (!has_default_layout || is_int4) {
+    if (!has_default_layout || is_packed) {
       // If the input array does not have a major-to-minor layout, transpose it
       // into major-to-minor layout. Currently we choose to always do this
       // synchronously.
@@ -741,7 +744,7 @@ AbstractTfrtCpuBuffer::BufferFromHostBufferHelper(
         absl::MutexLock lock(transpose_mu);
         TF_ASSIGN_OR_RETURN(transpose, transpose_cache->GetOrCreate(options));
       }
-      if (!is_int4) {
+      if (!is_packed) {
         transpose->Execute(data, dst_data_ptr);
       } else {
         // First transpose the unpacked data into a new temporary buffer, then
@@ -753,7 +756,7 @@ AbstractTfrtCpuBuffer::BufferFromHostBufferHelper(
         absl::Span<const char> src_data_span(data_transposed.get(), byte_size);
         absl::Span<char> dst_data_span(static_cast<char*>(dst_data_ptr),
                                        dst_byte_size);
-        PackInt4(src_data_span, dst_data_span);
+        PackIntN(bit_width, src_data_span, dst_data_span);
       }
       if (on_done_with_host_buffer) {
         std::move(on_done_with_host_buffer)();

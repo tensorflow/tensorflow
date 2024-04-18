@@ -1368,7 +1368,8 @@ bool IsZeroCopyableCpuBuffer(const PjRtBuffer* buf) {
                             HasDefaultLayout(GetXlaLayoutUnsafe(buf->layout()));
   // On CPU for non-int4 values, we can return the value in a zero-copy way.
   // For int4 values, we must copy in order to unpack the array.
-  return buf->IsOnCpu() && !primitive_util::Is4BitType(buf->element_type()) &&
+  return buf->IsOnCpu() &&
+         !primitive_util::IsSubByteNonPredType(buf->element_type()) &&
          has_default_layout;
 }
 }  // namespace

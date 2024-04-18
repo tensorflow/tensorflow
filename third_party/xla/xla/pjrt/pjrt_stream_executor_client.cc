@@ -850,11 +850,12 @@ PjRtStreamExecutorClient::BufferFromHostBuffer(
     TF_ASSIGN_OR_RETURN(transpose, transpose_cache_.GetOrCreate(options));
   }
 
-  bool should_pack =
-      primitive_util::Is4BitType(type) && transfer_manager->PackSubbyteTypes();
+  bool should_pack = primitive_util::IsSubByteNonPredType(type) &&
+                     transfer_manager->PackSubbyteTypes();
   int64_t packed_size;
   if (should_pack) {
-    packed_size = CeilOfRatio<int64_t>(size, 2);
+    packed_size =
+        CeilOfRatio<int64_t>(size, 8 / primitive_util::BitWidth(type));
   } else {
     packed_size = size;
   }
@@ -886,16 +887,19 @@ PjRtStreamExecutorClient::BufferFromHostBuffer(
     if (transpose) {
       transpose->Execute(data, staging_buffer.get());
       if (should_pack) {
-        PackInt4(absl::MakeConstSpan(
-                     static_cast<const char*>(staging_buffer.get()), size),
-                 absl::MakeSpan(static_cast<char*>(staging_buffer.get()),
-                                packed_size));
+        primitive_util::PackIntN(
+            type,
+            absl::MakeConstSpan(static_cast<const char*>(staging_buffer.get()),
+                                size),
+            absl::MakeSpan(static_cast<char*>(staging_buffer.get()),
+                           packed_size));
       }
     } else {
       if (should_pack) {
-        PackInt4(absl::MakeConstSpan(static_cast<const char*>(data), size),
-                 absl::MakeSpan(static_cast<char*>(staging_buffer.get()),
-                                packed_size));
+        primitive_util::PackIntN(
+            type, absl::MakeConstSpan(static_cast<const char*>(data), size),
+            absl::MakeSpan(static_cast<char*>(staging_buffer.get()),
+                           packed_size));
       } else {
         std::memcpy(staging_buffer.get(), data, size);
       }
@@ -945,7 +949,8 @@ PjRtStreamExecutorClient::BufferFromHostBuffer(
             if (transpose) {
               transpose->Execute(data, staging_buffer.get());
               if (should_pack) {
-                PackInt4(
+                primitive_util::PackIntN(
+                    type,
                     absl::MakeConstSpan(
                         static_cast<const char*>(staging_buffer.get()), size),
                     absl::MakeSpan(static_cast<char*>(staging_buffer.get()),
@@ -953,7 +958,8 @@ PjRtStreamExecutorClient::BufferFromHostBuffer(
               }
             } else {
               if (should_pack) {
-                PackInt4(
+                primitive_util::PackIntN(
+                    type,
                     absl::MakeConstSpan(static_cast<const char*>(data), size),
                     absl::MakeSpan(static_cast<char*>(staging_buffer.get()),
                                    packed_size));
