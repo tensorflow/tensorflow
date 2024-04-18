@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/service/gpu/autotuner_compile_util.h"
 #include "xla/service/gpu/autotuner_util.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/gpu_conv_runner.h"
@@ -124,18 +125,14 @@ class GpuConvAlgorithmPicker : public HloModulePass {
   // information such as input/output buffers in order to run. It can be
   // constructed from the autotuned instruction by FromInstruction.
   struct AutotuneRuntimeArguments {
-    const Shape result_shape;
     const HloModuleConfig hlo_module_config;
-    std::vector<se::DeviceMemoryBase> operand_buffers;
-    std::vector<se::DeviceMemoryBase> result_buffers;
-    se::RedzoneAllocator* input_output_allocator;
+    RedzoneBuffers rz_buffers;
     const GpuConvConfig gpu_conv_config;
     std::optional<std::string> canonical_hlo;
 
     static absl::StatusOr<AutotuneRuntimeArguments> FromInstruction(
-        const HloCustomCallInstruction* instr,
-        se::DeviceMemoryAllocator* allocator, se::StreamExecutor* stream,
-        se::RedzoneAllocator* input_output_allocator);
+        const HloCustomCallInstruction* instr, const AutotuneConfig& config,
+        const DebugOptions& debug_options);
   };
 
   absl::StatusOr<AutotuneResult> AutotuneOneConvRunner(

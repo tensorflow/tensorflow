@@ -1544,6 +1544,7 @@ cc_library(
         ":matmul_utils",
         ":stream_executor_util",
         ":variant_visitor",
+        ":autotuner_compile_util",
         ":autotuner_util",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
@@ -1637,6 +1638,7 @@ cc_library(
         "//xla/service:shaped_buffer",
         "//xla/stream_executor",
         "//xla/stream_executor/gpu:gpu_stream_header",
+        "//xla/stream_executor/gpu:redzone_allocator",
         "//xla:executable_run_options",
         "//xla:shape_util",
         "//xla:statusor",
@@ -1868,6 +1870,7 @@ cc_library(
         "TENSORFLOW_USE_ROCM=1",
     ]),
     deps = if_gpu_is_configured([
+        ":autotuner_compile_util",
         ":autotuner_util",
         ":backend_configs_cc",
         ":buffer_comparator",

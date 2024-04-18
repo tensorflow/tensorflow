@@ -773,27 +773,15 @@ absl::StatusOr<std::vector<AutotuneResult>> GemmFusionAutotunerImpl::Profile(
   }
   TF_ASSIGN_OR_RETURN(se::Stream* const stream,
                       allocator->GetStream(stream_exec->device_ordinal()));
-  TF_ASSIGN_OR_RETURN(
-      se::RedzoneAllocator rz_allocator,
-      AutotunerUtil::CreateRedzoneAllocator(config_, debug_options_));
 
   const HloInstruction& root = *fusion_computation->root_instruction();
   BufferComparator comparator(root.shape(),
                               fusion_computation->parent()->config());
 
-  std::vector<se::DeviceMemoryBase> inputs;
-  inputs.reserve(fusion_computation->parameter_instructions().size());
-  std::vector<Shape> input_shapes;
-  input_shapes.reserve(inputs.size());
-  int64_t rng_state = 0;
-  for (const HloInstruction* param :
-       fusion_computation->parameter_instructions()) {
-    TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase param_buffer,
-                        AutotunerUtil::CreateBuffer(
-                            rz_allocator, param->shape(), config_, rng_state));
-    inputs.push_back(param_buffer);
-    input_shapes.push_back(param->shape());
-  }
+  TF_ASSIGN_OR_RETURN(auto rz_buffers,
+                      RedzoneBuffers::FromInstruction(
+                          *fusion_computation->FusionInstruction(), config_,
+                          debug_options_, RedzoneBuffers::kAllInputs));
 
   const int log_every_n = GetLogEveryN();
   std::vector<AutotuneResult> results;
@@ -804,9 +792,11 @@ absl::StatusOr<std::vector<AutotuneResult>> GemmFusionAutotunerImpl::Profile(
 
     std::optional<ProfilingOutput> profiling_output;
     if (IsAutotuningEnabled()) {
-      TF_ASSIGN_OR_RETURN(profiling_output, compile_util.ProfileExecutable(
-                                                candidate.executable.get(),
-                                                stream, inputs, input_shapes));
+      TF_ASSIGN_OR_RETURN(
+          profiling_output,
+          compile_util.ProfileExecutable(candidate.executable.get(), stream,
+                                         rz_buffers.input_buffers(),
+                                         rz_buffers.input_shapes()));
       if (std::holds_alternative<CuBlasConfig>(candidate.config) &&
           config_.should_check_correctness()) {
         reference_buffer = std::move(profiling_output->output);
@@ -838,7 +828,7 @@ absl::StatusOr<std::vector<AutotuneResult>> GemmFusionAutotunerImpl::Profile(
         !std::holds_alternative<CuBlasConfig>(candidate.config)) {
       TF_ASSIGN_OR_RETURN(
           se::RedzoneAllocator::RedzoneCheckStatus rz_check_status,
-          rz_allocator.CheckRedzones());
+          rz_buffers.RedzoneAllocator().CheckRedzones());
       if (!rz_check_status.ok()) {
         LOG(ERROR) << "Red zone modified";
         res.mutable_failure()->set_kind(AutotuneResult::REDZONE_MODIFIED);
