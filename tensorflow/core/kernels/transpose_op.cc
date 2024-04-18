@@ -134,7 +134,7 @@ void TransposeOp::Compute(OpKernelContext* ctx) {
               errors::InvalidArgument("perm must be rank 1, got shape ",
                                       perm.shape().DebugString()));
   // Validation for negative values inside `perm`.
-  auto perm_vector = perm.vec<int>();
+  auto perm_vector = perm.vec<Tperm>();
   auto perm_size = perm.NumElements();
   for (int i = 0; i < perm_size; ++i) {
     OP_REQUIRES(ctx, perm_vector(i) >= 0, 
