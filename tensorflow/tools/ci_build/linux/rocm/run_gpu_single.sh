@@ -71,7 +71,10 @@ if [ -f /usertools/rocm.bazelrc ]; then
              --action_env=TF_PYTHON_VERSION=$PYTHON_VERSION \
              --action_env=TF_ENABLE_ONEDNN_OPTS=0 \
              --test_env=TF_TESTS_PER_GPU=$TF_TESTS_PER_GPU \
-             --test_env=TF_GPU_COUNT=$TF_GPU_COUNT
+             --test_env=TF_GPU_COUNT=$TF_GPU_COUNT \
+             -//tensorflow/dtensor/python/tests:multi_client_test_2gpus \
+             -//tensorflow/dtensor/python/tests:multi_client_test_nccl_2gpus \
+             -//tensorflow/python/distribute/experimental:multi_worker_mirrored_strategy_test_2gpus
 else
 	# Legacy style: run configure then build
 	yes "" | $PYTHON_BIN_PATH configure.py
