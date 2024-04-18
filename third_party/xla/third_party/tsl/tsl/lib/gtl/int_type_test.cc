@@ -20,6 +20,7 @@ limitations under the License.
 #include <memory>
 #include <unordered_map>
 
+#include <gtest/gtest.h>
 #include "tsl/platform/test.h"
 #include "tsl/platform/types.h"
 
