@@ -33,6 +33,7 @@ enum class DataType {
   kSI8,
   kSI16,
   kSI32,
+  kSI64,
   kBF16,
   kF16,
   kF32,
@@ -63,6 +64,9 @@ struct Storage<DataType::kSI16> : DefaultStorageDescription<int16_t> {};
 
 template <>
 struct Storage<DataType::kSI32> : DefaultStorageDescription<int32_t> {};
+
+template <>
+struct Storage<DataType::kSI64> : DefaultStorageDescription<int64_t> {};
 
 template <>
 struct Storage<DataType::kBF16> : DefaultStorageDescription<BF16> {};
@@ -111,6 +115,8 @@ constexpr int64_t SizeOf(DataType data_type) {
       return SizeOf<DataType::kSI16>();
     case DataType::kSI32:
       return SizeOf<DataType::kSI32>();
+    case DataType::kSI64:
+      return SizeOf<DataType::kSI64>();
     case DataType::kBF16:
       return SizeOf<DataType::kBF16>();
     case DataType::kF16:
@@ -137,6 +143,9 @@ constexpr const char* ToString(DataType t) {
       break;
     case DataType::kSI32:
       return "SI32";
+      break;
+    case DataType::kSI64:
+      return "SI64";
       break;
     case DataType::kBF16:
       return "BF16";
