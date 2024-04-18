@@ -107,17 +107,10 @@ class ScratchAllocator : public se::ScratchAllocator {
   int64_t TotalAllocatedBytes() { return total_allocated_bytes_; }
 
   static int64_t GetDefaultMemoryLimitInBytes() {
-<<<<<<< HEAD
-      int64_t value;
-      TF_CHECK_OK(tsl::ReadInt64FromEnvVar("TF_CUDNN_WORKSPACE_LIMIT_IN_MB", 
-                1LL << 12, &value));
-      return value * (1LL << 20);
-=======
     int64_t value;
     TF_CHECK_OK(tsl::ReadInt64FromEnvVar("TF_CUDNN_WORKSPACE_LIMIT_IN_MB",
                                          1LL << 12, &value));
     return value * (1LL << 20);
->>>>>>> upstream/master
   }
 
   absl::StatusOr<se::DeviceMemory<uint8_t>> AllocateBytes(

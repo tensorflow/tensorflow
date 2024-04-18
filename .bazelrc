@@ -681,13 +681,9 @@ test:release_linux_base --test_summary=short
 
 # Use the Clang toolchain to compile
 build:release_cpu_linux --config=release_linux_base
-<<<<<<< HEAD
 # GPU Toolchain is defined here for the CPU release config
 # This isn't very flexible and not needed
 # build:release_cpu_linux --crosstool_top="@sigbuild-r2.16-clang_config_cuda//crosstool:toolchain"
-=======
-build:release_cpu_linux --crosstool_top="@sigbuild-r2.17-clang_config_cuda//crosstool:toolchain"
->>>>>>> upstream/master
 
 build:release_gpu_linux --config=release_cpu_linux
 build:release_cpu_linux --config=release_cpu_linux_base
