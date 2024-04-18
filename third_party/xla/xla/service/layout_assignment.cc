@@ -495,9 +495,11 @@ Status LayoutAssignment::SetInstructionLayout(const Shape& shape_with_layout,
 
   if (!ShapeUtil::Compatible(shape_with_layout, instruction->shape())) {
     return FailedPrecondition(
-        "Instruction %s of shape %s cannot be assigned incompatible layout %s",
+        "Instruction %s of shape %s cannot be assigned incompatible layout %s, "
+        "instruction: %s",
         instruction->name(), ShapeUtil::HumanString(instruction->shape()),
-        ShapeUtil::HumanStringWithLayout(shape_with_layout));
+        ShapeUtil::HumanStringWithLayout(shape_with_layout),
+        instruction->ToString());
   }
 
   // Create a BufferLayoutConstraint for each array shape in the output of the
