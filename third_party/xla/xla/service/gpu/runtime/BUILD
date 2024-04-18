@@ -6,7 +6,7 @@ load("//xla/tests:build_defs.bzl", "xla_test")
 load("//xla/tsl:tsl.bzl", "if_google", "if_nccl", "nvtx_headers")
 load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
 
-load("@local_tsl//tsl:tsl.bzl", "if_cuda_or_rocm")
+load("//xla/tsl:tsl.bzl", "if_cuda_or_rocm")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
