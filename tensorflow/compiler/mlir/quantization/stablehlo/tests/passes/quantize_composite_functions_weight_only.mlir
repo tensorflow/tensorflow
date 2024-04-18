@@ -19,7 +19,7 @@ module attributes {tf_saved_model.semantics} {
 
 // CHECK-LABEL: quantize_dot_general_fn
 // CHECK-SAME: %[[ARG0:.+]]: tensor<1x2xf32>
-// CHECK: %[[CST:.+]] = stablehlo.constant() {value = dense<127> : tensor<2x3xi8>} : () -> tensor<2x3x!quant.uniform<i8:f32, 0.0011764706349840352:-128>>
+// CHECK: %[[CST:.+]] = stablehlo.constant() <{value = dense<127> : tensor<2x3xi8>}> : () -> tensor<2x3x!quant.uniform<i8:f32, 0.0011764706349840352:-128>>
 // CHECK: %[[CALL:.+]] = call @quantized_dot_general_fn(%[[ARG0]], %[[CST]]) {_quantization_method = "weight_only_ptq { }"} : (tensor<1x2xf32>, tensor<2x3x!quant.uniform<i8:f32, 0.0011764706349840352:-128>>) -> tensor<1x3xf32>
 // CHECK: return %[[CALL]]
 
@@ -49,7 +49,7 @@ module attributes {tf_saved_model.semantics} {
 
 // CHECK-LABEL: quantize_conv_fn
 // CHECK-SAME: %[[ARG0:.+]]: tensor<1x3x4x3xf32>
-// CHECK: %[[CST:.+]] = stablehlo.constant() {value = dense<127> : tensor<2x3x3x2xi8>} : () -> tensor<2x3x3x2x!quant.uniform<i8:f32, 0.0011764706349840352:-128>>
+// CHECK: %[[CST:.+]] = stablehlo.constant() <{value = dense<127> : tensor<2x3x3x2xi8>}> : () -> tensor<2x3x3x2x!quant.uniform<i8:f32, 0.0011764706349840352:-128>>
 // CHECK: %[[CALL:.+]] = call @quantized_conv_fn(%[[ARG0]], %[[CST]]) {_quantization_method = "weight_only_ptq { }"} : (tensor<1x3x4x3xf32>, tensor<2x3x3x2x!quant.uniform<i8:f32, 0.0011764706349840352:-128>>) -> tensor<1x3x4x2xf32>
 // CHECK: return %[[CALL]]
 

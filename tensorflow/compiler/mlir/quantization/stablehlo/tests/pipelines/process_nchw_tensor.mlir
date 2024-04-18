@@ -100,8 +100,9 @@ func.func @nchw_conv_with_bias_add_max_pool(%arg0: tensor<1x2x5x5xf32>) -> tenso
 // CHECK: %[[CONV:.+]] = stablehlo.convolution(%[[TRANSPOSE_0]], %[[WEIGHT_CONST]]) dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f], window = {pad = {{\[\[}}1, 1], [1, 1]]} {batch_group_count = 1 : i64, feature_group_count = 1 : i64} : (tensor<1x5x5x2xf32>, tensor<3x3x2x4xf32>) -> tensor<1x5x5x4xf32>
 // CHECK: %[[ADD:.+]] = stablehlo.add %[[CONV]], %[[BIAS_CONST]] : tensor<1x5x5x4xf32>
 // CHECK: %[[REDUCE_WINDOW_MAX:.+]] = "stablehlo.reduce_window"(%[[ADD]], %[[INIT_VALUE_CONST:.+]])
+// CHECK: <{window_dimensions = array<i64: 1, 2, 2, 1>, window_strides = array<i64: 1, 2, 2, 1>}>
 // CHECK: stablehlo.maximum
-// CHECK: {window_dimensions = array<i64: 1, 2, 2, 1>, window_strides = array<i64: 1, 2, 2, 1>} : (tensor<1x5x5x4xf32>, tensor<f32>) -> tensor<1x2x2x4xf32>
+// CHECK: (tensor<1x5x5x4xf32>, tensor<f32>) -> tensor<1x2x2x4xf32>
 // CHECK: %[[TRANSPOSE_1:.+]] = stablehlo.transpose %[[REDUCE_WINDOW_MAX]], dims = [0, 3, 1, 2] : (tensor<1x2x2x4xf32>) -> tensor<1x4x2x2xf32>
 // CHECK: return %[[TRANSPOSE_1]]
 

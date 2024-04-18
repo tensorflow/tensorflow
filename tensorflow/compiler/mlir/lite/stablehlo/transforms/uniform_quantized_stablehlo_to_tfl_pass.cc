@@ -1335,12 +1335,13 @@ class RewriteQuantizedConvolutionOp
 
   // Returns the stride amount for the height and width, respectively.
   std::pair<int64_t, int64_t> GetStrides(stablehlo::ConvolutionOp op) const {
-    DenseI64ArrayAttr window_strides_attr = op.getWindowStridesAttr();
-    if (!window_strides_attr) {
+    std::optional<ArrayRef<int64_t>> window_strides_attr =
+        op.getWindowStrides();
+    if (!window_strides_attr.has_value()) {
       return {1, 1};  // Default values.
     }
 
-    auto window_strides_attr_value = window_strides_attr.asArrayRef();
+    auto window_strides_attr_value = window_strides_attr.value();
     // It is guaranteed from the spec that it has two values:
     // https://github.com/openxla/stablehlo/blob/main/docs/spec.md#convolution.
     return {window_strides_attr_value[0], window_strides_attr_value[1]};
@@ -1349,12 +1350,12 @@ class RewriteQuantizedConvolutionOp
   // Returns the dilation amount for the height and width, respectively.
   std::pair<int64_t, int64_t> GetDilationFactors(
       stablehlo::ConvolutionOp op) const {
-    DenseI64ArrayAttr lhs_dilation_attr = op.getLhsDilationAttr();
-    if (!lhs_dilation_attr) {
+    std::optional<ArrayRef<int64_t>> lhs_dilation_attr = op.getLhsDilation();
+    if (!lhs_dilation_attr.has_value()) {
       return {1, 1};  // Default values.
     }
 
-    auto lhs_dilation_attr_value = lhs_dilation_attr.asArrayRef();
+    auto lhs_dilation_attr_value = lhs_dilation_attr.value();
     // It is guaranteed from the spec that it has two values:
     // https://github.com/openxla/stablehlo/blob/main/docs/spec.md#convolution.
     return {lhs_dilation_attr_value[0], lhs_dilation_attr_value[1]};

@@ -47,7 +47,7 @@ func.func private @composite_dot_general_fn_1(%arg0: tensor<1x1024xf32>, %arg1: 
 }
 // CHECK-NO-UNPACK-LABEL: func.func @main_no_unpack
 // CHECK-NO-UNPACK-SAME: (%[[ARG_0:.+]]: tensor<1x1024xf32>) -> tensor<1x3xf32>
-// CHECK-NO-UNPACK-DAG: %[[CONST:.+]] = stablehlo.constant() {value = dense<{{.*}}> : tensor<1024x3xi8>} : () -> tensor<1024x3x!quant.uniform<i8<-127:127>:f32:1, {{.*}}>>
+// CHECK-NO-UNPACK-DAG: %[[CONST:.+]] = stablehlo.constant() <{value = dense<{{.*}}> : tensor<1024x3xi8>}> : () -> tensor<1024x3x!quant.uniform<i8<-127:127>:f32:1, {{.*}}>>
 // CHECK-NO-UNPACK: %[[QUANTIZE_0:.+]] = stablehlo.uniform_quantize %[[ARG_0]] : (tensor<1x1024xf32>) -> tensor<1x1024x!quant.uniform<i8:f32, {{.*}}>>
 // CHECK-NO-UNPACK: %[[DOT:.+]] = stablehlo.dot_general %[[QUANTIZE_0]], %[[CONST]]
 // CHECK-NO-UNPACK: %[[QUANTIZE_1:.+]] = stablehlo.uniform_quantize %[[DOT]] : (tensor<1x3x!quant.uniform<i32:f32:1, {{.*}}>>) -> tensor<1x3x!quant.uniform<i8:f32, {{.*}}>>
