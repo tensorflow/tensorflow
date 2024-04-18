@@ -12,12 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+import os
 import re
 from typing import Mapping, Optional, Sequence
 
 from absl.testing import parameterized
 import numpy as np
 
+from google.protobuf import text_format
 from tensorflow.compiler.mlir.quantization.common.python import testing
 from tensorflow.compiler.mlir.quantization.stablehlo import quantization_config_pb2 as qc
 from tensorflow.compiler.mlir.quantization.stablehlo.python import quantization
@@ -907,6 +909,72 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         0.4,
     )
 
+  def test_save_quantization_report_file(self):
+    """Tests that the quantization report file is created.
+
+    Also test that it is populated with textproto of `QuantizationResults`.
+    """
+    input_shape = (1, 16)
+    filter_shape = (16, 3)
+    self._create_matmul_model(
+        input_shape,
+        filter_shape,
+        self._input_saved_model_path,
+    )
+
+    rng = np.random.default_rng(seed=42)
+
+    def data_gen() -> repr_dataset.RepresentativeDataset:
+      for _ in range(100):
+        yield {
+            'input_tensor': rng.uniform(
+                low=0.0, high=1.0, size=input_shape
+            ).astype(np.float32)
+        }
+
+    dataset_path = self.create_tempfile('tfrecord').full_path
+    path_map = {'serving_default': dataset_path}
+    repr_dataset.TfRecordRepresentativeDatasetSaver(path_map).save(
+        {'serving_default': data_gen()}
+    )
+
+    report_file_path = self.create_tempfile('report.txtpb').full_path
+    config = qc.QuantizationConfig(
+        static_range_ptq_preset=qc.StaticRangePtqPreset(
+            representative_datasets=[
+                qc.RepresentativeDatasetConfig(
+                    tf_record=qc.TfRecordFile(path=dataset_path)
+                )
+            ]
+        ),
+        tf_saved_model=qc.TfSavedModelConfig(tags=[tag_constants.SERVING]),
+        report_file_path=report_file_path,
+    )
+    quantization.quantize_saved_model(
+        self._input_saved_model_path,
+        self._output_saved_model_path,
+        config,
+    )
+
+    # Test the contents of the report file, which is a textproto of
+    # `QuantizationResults`.
+    self.assertTrue(os.path.exists(report_file_path))
+    with open(report_file_path, 'r') as f:
+      quantization_results_textpb = f.read()
+
+    results = qc.QuantizationResults()
+    text_format.Parse(quantization_results_textpb, results)
+
+    self.assertProtoEquals(
+        expected_message_maybe_ascii=r"""
+        results {
+          quantizable_unit { name: "composite_dot_general_fn_1" }
+          method { static_range_ptq {} }
+        }
+        """,
+        message=results,
+    )
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class CalibrationOptionsTest(quantize_model_test_base.QuantizedModelTest):
@@ -1356,6 +1424,58 @@ class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
 
     # Check add is not quantized.
     self.assertTrue(re.search(r'stablehlo.add.*f32>', module_str), module_str)
+
+  def test_save_quantization_report_file(self):
+    """Tests that the quantization report file is created.
+
+    Also test that it is populated with textproto of `QuantizationResults`.
+    """
+
+    input_shape = (1, 3, 4, 3)
+    filter_shape = (2, 3, 3, 2)
+    self._create_conv2d_model(
+        input_shape,
+        filter_shape,
+        self._input_saved_model_path,
+    )
+
+    report_file_path = self.create_tempfile('report.txtpb').full_path
+    config = qc.QuantizationConfig(
+        weight_only_ptq_preset=qc.WeightOnlyPtqPreset(),
+        tf_saved_model=qc.TfSavedModelConfig(tags=[tag_constants.SERVING]),
+        report_file_path=report_file_path,
+    )
+    quantization.quantize_saved_model(
+        self._input_saved_model_path,
+        self._output_saved_model_path,
+        config,
+    )
+
+    # Test the contents of the report file, which is a textproto of
+    # `QuantizationResults`.
+    self.assertTrue(os.path.exists(report_file_path))
+    with open(report_file_path, 'r') as f:
+      quantization_results_textpb = f.read()
+
+    results = qc.QuantizationResults()
+    text_format.Parse(quantization_results_textpb, results)
+
+    self.assertProtoEquals(
+        expected_message_maybe_ascii=r"""
+        results {
+          quantizable_unit { name: "composite_conv_fn_1" }
+          method {
+            weight_only_ptq {
+              input_quantized_types {
+                key: 1
+                value { dimension_specs {} }
+              }
+            }
+          }
+        }
+        """,
+        message=results,
+    )
 
 
 if __name__ == '__main__':
