@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <cstring>
 
+#include "tensorflow/lite/kernels/internal/compatibility.h"
+
 namespace tflite {
 
 RuntimeShape::~RuntimeShape() {
