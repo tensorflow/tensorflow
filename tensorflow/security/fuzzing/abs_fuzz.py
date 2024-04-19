@@ -13,10 +13,11 @@
 # limitations under the License.
 # ==============================================================================
 """This is a Python API fuzzer for tf.raw_ops.Abs."""
+
 import atheris
 with atheris.instrument_imports():
   import sys
-  from python_fuzzing import FuzzingHelper
+  from tensorflow.security.fuzzing.python_fuzzing import FuzzingHelper
   import tensorflow as tf
 
 

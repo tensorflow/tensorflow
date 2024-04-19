@@ -16,7 +16,7 @@
 import atheris
 with atheris.instrument_imports():
   import sys
-  from python_fuzzing import FuzzingHelper
+  from tensorflow.security.fuzzing.python_fuzzing import FuzzingHelper
   import tensorflow as tf
 
 
@@ -43,7 +43,8 @@ def TestOneInput(input_bytes):
   binary_output = fh.get_bool()
   minlength = fh.get_int()
   maxlength = fh.get_int()
-  name = fh.get_string()
+  name = "sparse_count_sparse_output"
+
   try:
     _, _, _, = tf.raw_ops.SparseCountSparseOutput(
         indices=indices,

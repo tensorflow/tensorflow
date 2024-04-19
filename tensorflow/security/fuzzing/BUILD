@@ -67,6 +67,9 @@ tf_py_fuzz_target(
         "noautofuzz",
         "notap",
     ],  # Run in OSS only.
+    deps = [
+        "//tensorflow:tensorflow_py_no_contrib",
+    ],
 )
 
 tf_py_fuzz_target(
