@@ -2022,6 +2022,9 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
           !ParseAttributes(attrs, allow_attributes)) {
         return nullptr;
       }
+      if (shape.has_value()) {
+        return builder->AddInstruction(HloInstruction::CreateReplicaId(*shape));
+      }
       return builder->AddInstruction(HloInstruction::CreateReplicaId());
     }
     case HloOpcode::kPartitionId: {
@@ -2029,6 +2032,10 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
            !ParseOperands(&operands, builder, /*expected_size=*/0)) ||
           !ParseAttributes(attrs, allow_attributes)) {
         return nullptr;
+      }
+      if (shape.has_value()) {
+        return builder->AddInstruction(
+            HloInstruction::CreatePartitionId(*shape));
       }
       return builder->AddInstruction(HloInstruction::CreatePartitionId());
     }

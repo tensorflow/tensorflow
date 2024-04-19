@@ -7087,7 +7087,7 @@ TEST_P(SpmdPartitioningTest, ManualPartitionId) {
 HloModule module
 
 ENTRY entry {
-  ROOT %lhs = s32[] partition-id(), sharding={manual}
+  ROOT %lhs = u32[] partition-id(), sharding={manual}
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
