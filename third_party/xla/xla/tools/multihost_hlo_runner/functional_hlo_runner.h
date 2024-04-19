@@ -377,13 +377,13 @@ class FunctionalHloRunner {
   // arguments might be invalid when arguments are destructed.
   static absl::StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>
   CopyArgumentsToDevice(PjRtClient& client,
-                        absl::Span<PjRtDevice* const> addressable_devices,
+                        const PjRtLoadedExecutable* executable,
                         const PerDeviceLiteralVecType& arguments,
                         bool log_input);
 
   static absl::StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>
   CopyArgumentsToDevice(PjRtClient& client,
-                        absl::Span<PjRtDevice* const> addressable_devices,
+                        const PjRtLoadedExecutable* executable,
                         const LiteralVec& argument_literals,
                         const PerDeviceIndexVecType& argument_indices,
                         bool log_input);
