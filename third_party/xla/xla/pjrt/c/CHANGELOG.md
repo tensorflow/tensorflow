@@ -1,13 +1,16 @@
 # PJRT C API changelog
 
-## 0.48
+## 0.49
+* Added ``PJRT_Extension_Type::PJRT_Extension_Type_Stream``.
+
+## 0.48 (Apr 10, 2024)
 * Added ``PjRtCApiMemorySpace::kind_id`` for uniquely identifying memory space kinds.
 * Renamed memory space kind to ``PjRtCApiMemorySpace::memory_space_kind`` to
   ``PjRtCApiMemorySpace::kind``.
 * Added new host buffer semantics enum
   ``PJRT_HostBufferSemantics_kMutableZeroCopy``
 
-## 0.47
+## 0.47 (Mar 29, 2024)
 * Added ``PJRT_Extension_Type::PJRT_Extension_Type_Custom_Partitioner``.
 * Renamed host buffer semantics enum from ``PJRT_HostBufferSemantics_kZeroCopy``
   to ``PJRT_HostBufferSemantics_kImmutableZeroCopy``.
