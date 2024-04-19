@@ -120,9 +120,10 @@ absl::Status MlirConcatenateFusion::EmitEntryFunction(
           mlir_converter::ApplyAffineMap(thread_id_to_input_map.GetAffineMap(),
                                          dim_values, symbol_values, builder);
 
-      auto result_scalars = mlir_converter::ProvideParameter(
-          root_computation.FindSubgraph(concat), concat, operand_index,
-          input_indices, call_targets, entry_function, builder);
+      auto result_scalar = mlir_converter::ProvideParameter(
+          root_computation, concat, operand_index, input_indices, call_targets,
+          entry_function, builder);
+      llvm::SmallVector<Value> result_scalars{result_scalar};
       auto output_indices =
           mlir_converter::ApplyAffineMap(thread_id_to_output_map.GetAffineMap(),
                                          dim_values, symbol_values, builder);

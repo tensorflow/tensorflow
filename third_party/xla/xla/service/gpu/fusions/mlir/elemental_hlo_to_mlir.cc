@@ -19,6 +19,7 @@ limitations under the License.
 #include <functional>
 #include <iterator>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -35,13 +36,11 @@ limitations under the License.
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/Support/MathExtras.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"  // from @llvm-project
 #include "mlir/Dialect/Affine/LoopUtils.h"  // from @llvm-project
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Complex/IR/Complex.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/IR/SCF.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/IR/AffineExpr.h"  // from @llvm-project
@@ -100,14 +99,10 @@ using mlir::OpBuilder;
 using mlir::Value;
 using mlir::ValueRange;
 using mlir::arith::AndIOp;
-using mlir::arith::CmpFOp;
-using mlir::arith::CmpFPredicate;
 using mlir::arith::CmpIOp;
 using mlir::arith::CmpIPredicate;
 using mlir::arith::ConstantIndexOp;
 using mlir::arith::ConstantOp;
-using mlir::arith::SelectOp;
-using mlir::scf::ForOp;
 using mlir::scf::IfOp;
 using mlir::scf::YieldOp;
 
@@ -1122,17 +1117,22 @@ bool IsHloConversionSupported(const HloFusionAdaptor& fusion,
       });
 }
 
-SmallVector<Value> ProvideParameter(
-    const PartitionedComputation::Subgraph& caller, const HloInstruction* instr,
-    int operand_index, ValueRange indices,
-    const CallTargetProvider& call_target_provider, mlir::func::FuncOp this_fn,
-    ImplicitLocOpBuilder& builder) {
+Value ProvideParameter(const PartitionedComputation& computation,
+                       const HloInstruction* instr, int operand_index,
+                       ValueRange indices,
+                       const CallTargetProvider& call_target_provider,
+                       mlir::func::FuncOp this_fn,
+                       ImplicitLocOpBuilder& builder,
+                       const PartitionedComputation::Subgraph* caller) {
   auto* operand = instr->operand(operand_index);
 
-  const auto& injected_values = caller.injected_values;
+  if (!caller) {
+    caller = &computation.FindSubgraph(instr);
+  }
+  const auto& injected_values = caller->injected_values;
   if (auto it = injected_values.find(operand); it != injected_values.end()) {
     auto injected_param_values =
-        this_fn.getArguments().take_back(caller.injected_values.size());
+        this_fn.getArguments().take_back(caller->injected_values.size());
     return {{injected_param_values[it->second]}};
   }
 
@@ -1140,20 +1140,26 @@ SmallVector<Value> ProvideParameter(
   SmallVector<Value> operands(
       this_fn.getArguments().take_front(instr->parent()->num_parameters()));
   absl::c_copy(indices, std::back_inserter(operands));
-  return builder.create<PureCallOp>(callee, operands).getResults();
+  auto results = builder.create<PureCallOp>(callee, operands).getResults();
+  if (results.size() == 1) {
+    return results[0];
+  }
+  auto callee_subgraph = computation.FindSubgraph(operand);
+  auto it = absl::c_find(callee_subgraph.roots, operand);
+  CHECK(it != callee_subgraph.roots.end());
+  return results[std::distance(callee_subgraph.roots.begin(), it)];
 }
 
 SmallVector<Value> ProvideParameterRange(
-    const PartitionedComputation::Subgraph& caller, const HloInstruction* instr,
+    const PartitionedComputation& computation, const HloInstruction* instr,
     int start, int num, ValueRange indices,
     const CallTargetProvider& call_target_provider, mlir::func::FuncOp this_fn,
     ImplicitLocOpBuilder& builder) {
   SmallVector<Value> scalars;
+  scalars.reserve(num);
   for (int i = 0; i < num; ++i) {
-    auto scalar = ProvideParameter(caller, instr, i + start, indices,
-                                   call_target_provider, this_fn, builder);
-    CHECK_EQ(scalar.size(), 1);
-    scalars.push_back(scalar.front());
+    scalars.push_back(ProvideParameter(computation, instr, i + start, indices,
+                                       call_target_provider, this_fn, builder));
   }
   return scalars;
 }
@@ -1161,6 +1167,7 @@ SmallVector<Value> ProvideParameterRange(
 namespace {
 
 absl::StatusOr<SmallVector<Value>> SubgraphToMlir(
+    const PartitionedComputation& computation,
     const PartitionedComputation::Subgraph& subgraph,
     mlir::func::FuncOp this_fn, const CallTargetProvider& call_target_provider,
     ValueRange parameters, ValueRange indices, ImplicitLocOpBuilder& builder) {
@@ -1181,8 +1188,8 @@ absl::StatusOr<SmallVector<Value>> SubgraphToMlir(
       return emit_instr(operand, operand_indices);
     }
     return ConvertToSignless(
-        ProvideParameter(subgraph, instr, index, operand_indices,
-                         call_target_provider, this_fn, builder),
+        {ProvideParameter(computation, instr, index, operand_indices,
+                          call_target_provider, this_fn, builder, &subgraph)},
         builder);
   };
 
@@ -1271,9 +1278,10 @@ absl::Status SubgraphToMlirFunction(
       computation.computation().num_parameters());
   int num_injected_values = subgraph.injected_values.size();
   auto indices = indices_and_injected_values.drop_back(num_injected_values);
-  TF_ASSIGN_OR_RETURN(auto results,
-                      SubgraphToMlir(subgraph, func, call_target_provider,
-                                     parameters, indices, builder));
+  TF_ASSIGN_OR_RETURN(
+      auto results,
+      SubgraphToMlir(computation, subgraph, func, call_target_provider,
+                     parameters, indices, builder));
 
   // We have been converting signed types to signless types. To match the
   // function signature, we have to convert back to signed types.

@@ -160,9 +160,9 @@ mlir::Value EmitScatterComputation(
   auto reducer =
       call_targets(scatter->called_computations()[0]->root_instruction());
   if (scatter->unique_indices()) {
-    auto operand_elem = ProvideParameter(root_computation.FindSubgraph(scatter),
-                                         scatter, kScatterOperandIndex, indices,
-                                         call_targets, entry_function, b)[0];
+    auto operand_elem =
+        ProvideParameter(root_computation, scatter, kScatterOperandIndex,
+                         indices, call_targets, entry_function, b);
     auto reduced_val = mlir_converter::InlineBlock(
         b, reducer.getBody().front(), {operand_elem, update_elem})[0];
 
@@ -203,7 +203,6 @@ absl::Status MlirScatterFusion::EmitEntryFunction(
 
   const auto& root_computation = computations.FindPartitionedComputation(
       fusion.fused_instructions_computation());
-  const auto& scatter_subgraph = root_computation.FindSubgraph(scatter);
   mlir::ImplicitLocOpBuilder b(entry_function.getLoc(), entry_function);
   b.setInsertionPointToStart(entry_function.addEntryBlock());
 
@@ -218,11 +217,9 @@ absl::Status MlirScatterFusion::EmitEntryFunction(
         auto update_tensor_indices =
             ApplyAffineMap(thread_id_to_update_map.GetAffineMap(), dim_values,
                            symbol_values, b);
-        auto update_elem =
-            ProvideParameter(scatter_subgraph, scatter, kScatterUpdateIndex,
-                             update_tensor_indices, call_targets,
-                             entry_function, b)
-                .front();
+        auto update_elem = ProvideParameter(
+            root_computation, scatter, kScatterUpdateIndex,
+            update_tensor_indices, call_targets, entry_function, b);
 
         // Extract slice offsets from scatter_indices operand, compute if the
         // whole slice of scatter_update operand will fit into the output.
@@ -236,8 +233,8 @@ absl::Status MlirScatterFusion::EmitEntryFunction(
             SmallVector<Value, 4> indices_tensor_indices = {
                 update_tensor_indices.front(), b.create<ConstantIndexOp>(i)};
             extracted_index = ProvideParameter(
-                scatter_subgraph, scatter, kScatterIndicesIndex,
-                indices_tensor_indices, call_targets, entry_function, b)[0];
+                root_computation, scatter, kScatterIndicesIndex,
+                indices_tensor_indices, call_targets, entry_function, b);
             if (extracted_index.getType() != b.getIndexType()) {
               extracted_index = b.create<mlir::arith::IndexCastOp>(
                   b.getIndexType(), extracted_index);

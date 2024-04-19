@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/service/gpu/fusions/in_place_dynamic_update_slice_mlir.h"
 
+#include <optional>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/error_spec.h"
@@ -113,11 +115,11 @@ TEST_F(MlirInPlaceDynamicUpdateSliceFusionTest, SimpleDUS) {
     // CHECK:       %[[INPUT_INDEX_0:.*]] = affine.apply #[[MAP_1]]()[%[[THREAD_ID]]]
     // CHECK:       %[[INPUT_INDEX_1:.*]] = affine.apply #[[MAP_2]]()[%[[THREAD_ID]]]
     // CHECK:       %[[I0:.*]] = xla_gpu.pure_call @fused_computation_i0
+    // CHECK:       %[[I1:.*]] = xla_gpu.pure_call @fused_computation_i1
     // CHECK:       %[[IDX0:.*]] = arith.index_cast %[[I0]]
     // CHECK:       %[[MIN0:.*]] = arith.minsi %[[IDX0]], %[[C_15]]
     // CHECK:       %[[MAX0:.*]] = arith.maxsi %[[MIN0]], %[[C_0]]
     // CHECK:       %[[ADD0:.*]] = arith.addi %[[INPUT_INDEX_0]], %[[MAX0]]
-    // CHECK:       %[[I1:.*]] = xla_gpu.pure_call @fused_computation_i1
     // CHECK:       %[[IDX1:.*]] = arith.index_cast %[[I1]]
     // CHECK:       %[[MIN1:.*]] = arith.minsi %[[IDX1]], %[[C_24]]
     // CHECK:       %[[MAX1:.*]] = arith.maxsi %[[MIN1]], %[[C_0]]
@@ -163,11 +165,11 @@ TEST_F(MlirInPlaceDynamicUpdateSliceFusionTest, OutOfBoundDUS) {
     // CHECK:       %[[INPUT_INDEX_0:.*]] = affine.apply #[[MAP_1]]()[%[[THREAD_ID]]]
     // CHECK:       %[[INPUT_INDEX_1:.*]] = affine.apply #[[MAP_2]]()[%[[THREAD_ID]]]
     // CHECK:       %[[I0:.*]] = xla_gpu.pure_call @fused_computation_i0
+    // CHECK:       %[[I1:.*]] = xla_gpu.pure_call @fused_computation_i1
     // CHECK:       %[[IDX0:.*]] = arith.index_cast %[[I0]]
     // CHECK:       %[[MIN0:.*]] = arith.minsi %[[IDX0]], %[[C_5]]
     // CHECK:       %[[MAX0:.*]] = arith.maxsi %[[MIN0]], %[[C_0]]
     // CHECK:       %[[ADD0:.*]] = arith.addi %[[INPUT_INDEX_0]], %[[MAX0]]
-    // CHECK:       %[[I1:.*]] = xla_gpu.pure_call @fused_computation_i1
     // CHECK:       %[[IDX1:.*]] = arith.index_cast %[[I1]]
     // CHECK:       %[[MIN1:.*]] = arith.minsi %[[IDX1]], %[[C_5]]
     // CHECK:       %[[MAX1:.*]] = arith.maxsi %[[MIN1]], %[[C_0]]
@@ -200,6 +202,57 @@ TEST_F(MlirInPlaceDynamicUpdateSliceFusionTest, BitcastDus) {
     }
   )";
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
+}
+
+TEST_F(MlirInPlaceDynamicUpdateSliceFusionTest, OperandSubgraphWithTwoRoots) {
+  auto kHloString = R"(
+    HloModule in_place_dus
+
+    dus_fusion {
+      param_0.8 = f32[512,512]{1,0} parameter(0)
+      param_1.10 = f32[128,128]{1,0} parameter(1)
+      param_3.32 = s32[] parameter(3)
+      two = s32[] constant(2)
+      param_3_mod_2 = s32[] remainder(param_3.32, two)
+      one = s32[] constant(1)
+      param_3_plus_one = s32[] add(param_3_mod_2, one)
+      param_2.32 = s32[] parameter(2)
+      param_2_plus_one = s32[] add(param_2.32, one)
+      ROOT dynamic-update-slice.5.1 = f32[512,512]{1,0} dynamic-update-slice(param_0.8, param_1.10, param_2_plus_one, param_3_plus_one)
+    }
+    ENTRY entry {
+      p0 = f32[512,512]{1,0} parameter(0)
+      p1 = f32[128,128]{1,0} parameter(1)
+      p2 = s32[] parameter(2)
+      p3 = s32[] parameter(3)
+      ROOT dus = f32[512,512]{1,0} fusion(p0, p1, p2, p3), kind=kLoop, calls=dus_fusion
+    }
+  )";
+  TF_ASSERT_OK(EmitAndCheckIR(kHloString, R"(
+    // CHECK:     func.func @fused_computation(
+    // CHECK-SAME:  %[[ARG0:[^:]+]]: tensor<512x512xf32>
+    // CHECK-SAME:  , %[[ARG1:[^:]+]]: tensor<128x128xf32>
+    // CHECK-SAME:  , %[[ARG2:[^:]+]]: tensor<i32>
+    // CHECK-SAME:  , %[[ARG3:[^:]+]]: tensor<i32>
+    // CHECK-SAME:  , %[[ARG4:[^:]+]]: tensor<512x512xf32>
+    // CHECK-DAG:   %[[C_384:.*]] = arith.constant 384
+    // CHECK-DAG:   %[[C_0:.*]] = arith.constant 0
+    // CHECK:       %[[THREAD_ID:.*]] = gpu.thread_id  x
+    // CHECK:       %[[BLOCK_ID:.*]] = gpu.block_id  x
+    // CHECK:       %[[I0:.*]], %[[I1:.*]] = xla_gpu.pure_call @dus_fusion_param_2_plus_one_param_3_plus_one
+    // CHECK:       %[[IDX0:.*]] = arith.index_cast %[[I0]]
+    // CHECK:       %[[MIN0:.*]] = arith.minsi %[[IDX0]], %[[C_384]]
+    // CHECK:       %[[MAX0:.*]] = arith.maxsi %[[MIN0]], %[[C_0]]
+    // CHECK:       %[[ADD0:.*]] = arith.addi %[[BLOCK_ID]], %[[MAX0]]
+    // CHECK:       %[[IDX1:.*]] = arith.index_cast %[[I1]]
+    // CHECK:       %[[MIN1:.*]] = arith.minsi %[[IDX1]], %[[C_384]]
+    // CHECK:       %[[MAX1:.*]] = arith.maxsi %[[MIN1]], %[[C_0]]
+    // CHECK:       %[[ADD1:.*]] = arith.addi %[[THREAD_ID]], %[[MAX1]]
+    // CHECK:       %[[UPDATE:.*]] = xla_gpu.pure_call @dus_fusion_param_1_10
+    // CHECK:       %[[INSERT:.*]] = tensor.insert %[[UPDATE:.*]] into %[[ARG4]][%[[ADD0]], %[[ADD1]]]
+    // CHECK:       return %[[INSERT]]
+  )"));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-6}));
 }
 
 }  // namespace
