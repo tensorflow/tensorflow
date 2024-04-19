@@ -66,8 +66,7 @@ absl::StatusOr<StreamExecutor*> HostPlatform::GetExecutor(
 
 absl::StatusOr<std::unique_ptr<StreamExecutor>>
 HostPlatform::GetUncachedExecutor(const StreamExecutorConfig& config) {
-  auto executor = std::make_unique<StreamExecutor>(
-      this, std::make_unique<HostExecutor>(config.ordinal));
+  auto executor = std::make_unique<HostExecutor>(this, config.ordinal);
   auto init_status = executor->Init();
   if (!init_status.ok()) {
     return absl::InternalError(absl::StrFormat(

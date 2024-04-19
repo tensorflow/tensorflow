@@ -204,18 +204,12 @@ absl::Status Stream::WaitFor(Event *event) {
 
 absl::Status Stream::Memcpy(void *host_dst, const DeviceMemoryBase &gpu_src,
                             uint64_t size) {
-  if (parent_->Memcpy(this, host_dst, gpu_src, size)) {
-    return absl::OkStatus();
-  }
-  return absl::InternalError("failed to memcpy");
+  return parent_->Memcpy(this, host_dst, gpu_src, size);
 }
 
 absl::Status Stream::Memcpy(DeviceMemoryBase *gpu_dst, const void *host_src,
                             uint64_t size) {
-  if (parent_->Memcpy(this, gpu_dst, host_src, size)) {
-    return absl::OkStatus();
-  }
-  return absl::InternalError("failed to memcpy");
+  return parent_->Memcpy(this, gpu_dst, host_src, size);
 }
 
 absl::Status Stream::Memcpy(DeviceMemoryBase *gpu_dst,

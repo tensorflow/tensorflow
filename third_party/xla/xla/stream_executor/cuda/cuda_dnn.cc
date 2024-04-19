@@ -6789,8 +6789,7 @@ class CudnnLegacyConvRunner : public dnn::ConvRunner {
                           DeviceMemoryBase output_data) const override {
     auto algo = MakeAlgorithmDesc();
 
-    if (static_cast<StreamExecutorInterface*>(parent_) !=
-        stream->parent()->implementation()) {
+    if (parent_ != stream->parent()) {
       return tsl::errors::Internal(
           "CudnnLegacyConvRunner cached across multiple StreamExecutors.");
     }
@@ -7198,8 +7197,7 @@ class CudnnExecutionPlanRunner<void(Args...)>
   absl::Status operator()(Stream* stream, dnn::ProfileResult* profile_result,
                           DeviceMemoryBase scratch_memory,
                           Args... inputs) const override {
-    if (static_cast<StreamExecutorInterface*>(parent_) !=
-        stream->parent()->implementation()) {
+    if (parent_ != stream->parent()) {
       return tsl::errors::Internal(
           "CudnnExecutionPlanRunner cached across multiple StreamExecutors.");
     }
@@ -7404,8 +7402,7 @@ class CudnnGraphRunner<void(Args...)> : public dnn::OpRunner<void(Args...)> {
   absl::Status operator()(Stream* stream, dnn::ProfileResult* profile_result,
                           DeviceMemoryBase scratch_memory,
                           Args... inputs) const override {
-    if (static_cast<StreamExecutorInterface*>(parent_) !=
-        stream->parent()->implementation()) {
+    if (parent_ != stream->parent()) {
       return tsl::errors::Internal(
           "CudnnExecutionPlanRunner cached across multiple StreamExecutors.");
     }
@@ -7874,8 +7871,7 @@ class CudnnLegacyFusedConvRunner : public dnn::FusedConvRunner {
                           DeviceMemoryBase side_input_data,
                           DeviceMemoryBase bias_data,
                           DeviceMemoryBase output_data) const override {
-    if (static_cast<StreamExecutorInterface*>(parent_) !=
-        stream->parent()->implementation()) {
+    if (parent_ != stream->parent()) {
       return tsl::errors::Internal(
           "CudnnLegacyFusedConvRunner cached across multiple "
           "StreamExecutors.");
