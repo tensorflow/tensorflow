@@ -4266,7 +4266,6 @@ absl::Status MIOpenSupport::DoPoolForward(
   bool do_backward = false;
   uint8* workspace = nullptr;
   size_t workspace_size = 0;
-  ScopedDeviceMemory<uint8> wsp_mem;
   if (m_pooling_cache_enabled && element_type == dnn::DataType::kFloat) {
     do_backward = true;
     auto status = wrap::miopenPoolingGetWorkSpaceSizeV2(
@@ -4287,7 +4286,9 @@ absl::Status MIOpenSupport::DoPoolForward(
         // reusing the same buffer
         workspace = reinterpret_cast<uint8*>(pdesc->workspace.ptr()->opaque());
       } else {
-        wsp_mem = stream->parent()->AllocateOwnedArray<uint8>(workspace_size);
+        ScopedDeviceMemory<uint8> wsp_mem(
+            stream->parent(),
+            stream->parent()->AllocateArray<uint8>(workspace_size));
         workspace = reinterpret_cast<uint8*>(wsp_mem.ptr()->opaque());
         m_pooling_cache.insert(input_data.opaque(), input_dimensions,
                                output_dimensions, pooling_dimensions,
