@@ -43,6 +43,7 @@ limitations under the License.
 #include "tsl/platform/path.h"
 #include "tsl/platform/regexp.h"
 #include "tsl/platform/status.h"
+#include "tsl/profiler/lib/scoped_annotation.h"
 
 namespace xla {
 
@@ -406,6 +407,10 @@ static bool IsTrivial(const HloComputation& computation) {
 static std::vector<std::string> DumpHloModuleImpl(
     const HloModule& module, const BufferAssignment* buffer_assn,
     string_view prefix, string_view suffix, const CanonicalDebugOptions& opts) {
+  tsl::profiler::ScopedAnnotation annotation([&] {
+    return absl::StrFormat("XlaDumpHloModule:#module=%s,program_id=%d#",
+                           module.name(), module.unique_id());
+  });
   std::string filename = FilenameFor(module, prefix, suffix);
 
   std::vector<std::optional<std::string>> file_paths;

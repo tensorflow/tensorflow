@@ -352,6 +352,10 @@ absl::Status NVPTXCompiler::AddCustomKernelReplacementPasses(
 absl::Status NVPTXCompiler::RunCudnnFusionCompilerPass(
     HloModule* module, se::StreamExecutor* stream_exec,
     Thunk::BinaryMap* dnn_compiled_graphs) {
+  tsl::profiler::ScopedAnnotation annotation([&] {
+    return absl::StrFormat("XlaCompileCudnnFusion:#module=%s,program_id=%d#",
+                           module->name(), module->unique_id());
+  });
   CuDnnFusionCompiler cudnn_compiler(*stream_exec, *dnn_compiled_graphs);
   return cudnn_compiler.Run(module).status();
 }
@@ -643,6 +647,9 @@ NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
       absl::StrCat("NVPTXCompiler::CompileGpuAsmOrGetCachedResult for ",
                    module_name),
       !options.is_autotuning_compilation);
+  tsl::profiler::ScopedAnnotation annotation([&] {
+    return absl::StrFormat("XlaCompileGpuAsm:#module=%s#", module_name);
+  });
   tsl::profiler::TraceMe activity("PTX->CUBIN",
                                   tsl::profiler::TraceMeLevel::kInfo);
   CompilationCacheValue* cache_value = nullptr;
