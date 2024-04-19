@@ -265,8 +265,15 @@ TEST(OutfeedReceiverTest, DifferentShapeForConsumerIdError) {
   absl::StatusOr<XlaOp> send1 = outfeed_receiver->AddOutfeedToBuilder(
       &builder, send0, consumer_id0, {data1}, 0);
   EXPECT_FALSE(send1.ok());
-  EXPECT_THAT(send1.status().ToString(),
-              testing::HasSubstr("does not match previous shape element_type"));
+  EXPECT_THAT(
+      send1.status().ToString(),
+      testing::ContainsRegex(
+#if defined(PLATFORM_WINDOWS)
+          "does not match previous shape \\w*/*\\w* *\\n?element_type"));
+#else
+          "does not match previous shape (go/\\w+[ "
+          "]+\\n)?element_type"));
+#endif
 }
 
 TEST(OutfeedReceiverTest, InvalidConsumerIdError) {
