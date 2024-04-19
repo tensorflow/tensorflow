@@ -155,7 +155,7 @@ TEST_F(IrArrayTest, EmitArrayElementAddressInt4) {
   // is also computed to calculate bit_offset.
   const char* filecheck_pattern = R"(
     CHECK: define void @test_function(ptr %[[ptr:[0-9]+]], i32 %[[idx:[0-9]+]]) {
-    CHECK: %[[rem:[0-9]+]] = srem i32 %[[idx]], 2
+    CHECK: %[[rem:[0-9]+]] = urem i32 %[[idx]], 2
     CHECK: %[[div:[0-9]+]] = udiv i32 %[[idx]], 2
     CHECK: getelementptr inbounds i8, ptr %[[ptr]], i32 %[[div]]
   )";
@@ -220,9 +220,9 @@ TEST_F(IrArrayTest, EmitReadArrayElementInt4) {
     CHECK: define void @test_function(ptr %[[ptr:[0-9]+]], i32 %[[idx0:[0-9]+]]) {
 
     COM: Calculate the address.
-    CHECK: %[[srem:[0-9]+]] = srem i32 %[[idx0]], 2
+    CHECK: %[[urem:[0-9]+]] = urem i32 %[[idx0]], 2
     CHECK: %[[addr:[0-9]+]] = udiv i32 %[[idx0]], 2
-    CHECK: %[[mul:[0-9]+]] = mul i32 %[[srem]], 4
+    CHECK: %[[mul:[0-9]+]] = mul i32 %[[urem]], 4
     CHECK: %[[sub:[0-9]+]] = sub i32 4, %[[mul]]
     CHECK: %[[trunc:[0-9]+]] = trunc i32 %[[sub]] to i8
     CHECK: %[[gep:[0-9]+]] = getelementptr inbounds i8, ptr %[[ptr]], i32 %[[addr]]
@@ -257,9 +257,9 @@ TEST_F(IrArrayTest, EmitWriteArrayElementInt4) {
     CHECK: define void @test_function(ptr %[[ptr:[0-9]+]], i32 %[[idx0:[0-9]+]], i4 %[[val:[0-9]+]]) {
 
     COM: Calculate the address.
-    CHECK: %[[srem:[0-9]+]] = srem i32 %[[idx0]], 2
+    CHECK: %[[urem:[0-9]+]] = urem i32 %[[idx0]], 2
     CHECK: %[[addr:[0-9]+]] = udiv i32 %[[idx0]], 2
-    CHECK: %[[mul:[0-9]+]] = mul i32 %[[srem]], 4
+    CHECK: %[[mul:[0-9]+]] = mul i32 %[[urem]], 4
     CHECK: %[[sub:[0-9]+]] = sub i32 4, %[[mul]]
     CHECK: %[[trunc:[0-9]+]] = trunc i32 %[[sub]] to i8
     CHECK: %[[gep:[0-9]+]] = getelementptr inbounds i8, ptr %[[ptr]], i32 %[[addr]]

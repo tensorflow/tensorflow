@@ -513,7 +513,7 @@ llvm::Value* IrArray::EmitArrayElementAddress(const IrArray::Index& index,
   }
 
   if (primitive_util::IsSubByteNonPredType(shape_.element_type())) {
-    // Int4 arrays require the use of a linear index, because the GEP
+    // Subbyte types require the use of a linear index, because the GEP
     // multi-indexing logic below does not properly handle packed subbyte types.
     IrArray::Index linear_index = index;
     if (!index.LinearValidOnShape(shape_)) {
@@ -576,14 +576,14 @@ llvm::Value* IrArray::EmitLinearArrayElementAddress(
     }
   }
 
-  // Handle int4 case by dividing index by 2. Int4 arrays are represented in
-  // LLVM IR as an array of i8 value where each i8 value stores two int4
-  // numbers.
+  // Handle sub-bytes by dividing index by the number of elements per byte.
+  // Arrays are represented in LLVM IR as an array of i8 value where each i8
+  // value stores multiple values.
   llvm::Type* index_type = index.linear()->getType();
   auto bit_width = primitive_util::BitWidth(shape_.element_type());
   llvm::Value* elements_per_byte =
       llvm::ConstantInt::get(index_type, 8 / bit_width);
-  llvm::Value* remainder = b->CreateSRem(index.linear(), elements_per_byte);
+  llvm::Value* remainder = b->CreateURem(index.linear(), elements_per_byte);
   llvm::Value* byte_offset = b->CreateUDiv(index.linear(), elements_per_byte);
 
   CHECK_NE(bit_offset, nullptr);
