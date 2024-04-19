@@ -76,6 +76,7 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/gpu/redzone_allocator.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tools/hlo_decomposer.h"
@@ -768,8 +769,11 @@ absl::StatusOr<std::vector<AutotuneResult>> GemmFusionAutotunerImpl::Profile(
     return Internal("Failed to synchronize GPU for autotuning.");
   }
   se::DeviceMemoryAllocator* allocator = config_.GetAllocator();
+  std::unique_ptr<se::DeviceMemoryAllocator> owned_allocator;
   if (allocator == nullptr) {
-    allocator = stream_exec->GetAllocator();
+    owned_allocator =
+        std::make_unique<se::StreamExecutorMemoryAllocator>(stream_exec);
+    allocator = owned_allocator.get();
   }
   TF_ASSIGN_OR_RETURN(se::Stream* const stream, config_.GetStream());
 
