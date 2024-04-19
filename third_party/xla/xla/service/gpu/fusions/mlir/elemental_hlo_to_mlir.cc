@@ -1046,17 +1046,6 @@ absl::StatusOr<SmallVector<Value>> HloToMlir(
 
 bool IsHloOpSupported(const HloInstruction* instr,
                       se::CudaComputeCapability compute_capability) {
-  auto is_unsupported_type = [](const HloInstruction* instr) {
-    auto e = instr->shape().element_type();
-    // TODO(jreiffers): Support fp8.
-    return (primitive_util::IsFloatingPointType(e) &&
-            primitive_util::BitWidth(e) < 16);
-  };
-  if (is_unsupported_type(instr) ||
-      absl::c_any_of(instr->operands(), is_unsupported_type)) {
-    return false;
-  }
-
   return !(kUnsupportedOps.contains(instr->opcode()) ||
            IsUnsupportedTuple(instr) || IsUnsupportedGather(instr));
 }
