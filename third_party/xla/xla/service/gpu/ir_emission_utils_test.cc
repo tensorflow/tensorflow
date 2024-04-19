@@ -356,11 +356,9 @@ ENTRY entry {
       module->entry_computation()->GetInstructionWithName("t");
   HloInstruction* fusion =
       module->entry_computation()->GetInstructionWithName("fusion");
-  EXPECT_EQ(
-      &FindNonTrivialHero(*r, ProducerConsumerFusion(
-                                  HloFusionAdaptor::ForInstruction(transpose),
-                                  HloFusionAdaptor::ForInstruction(fusion))),
-      transpose);
+  auto fusion_adaptor =
+      HloFusionAdaptor::ForProducerConsumer(transpose, fusion);
+  EXPECT_EQ(&FindNonTrivialHero(*r, *fusion_adaptor), transpose);
 }
 
 TEST_F(IrEmissionUtilsTest, FindNonTrivialHeroInsideFusion) {
@@ -391,11 +389,8 @@ ENTRY entry {
                                   .front();
   HloInstruction* fusion =
       module->entry_computation()->GetInstructionWithName("fusion");
-  EXPECT_EQ(
-      &FindNonTrivialHero(
-          *r, ProducerConsumerFusion(HloFusionAdaptor::ForInstruction(fusion),
-                                     HloFusionAdaptor::ForInstruction(r))),
-      transpose);
+  auto fusion_adaptor = HloFusionAdaptor::ForProducerConsumer(fusion, r);
+  EXPECT_EQ(&FindNonTrivialHero(*r, *fusion_adaptor), transpose);
 }
 
 TEST_F(IrEmissionUtilsTest, TransposeReachableViaTrivialAndNontrivialOps) {

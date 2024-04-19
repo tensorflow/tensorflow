@@ -592,10 +592,11 @@ CoalescingAnalysis::CoalescingAnalysis(
     const HloFusionAnalysis& fusion_analysis,
     KernelFusionInterface* fusion_interface, MLIRContext* mlir_context,
     bool use_heuristic) {
-  ProducerConsumerFusion fusion_adaptor(producer, consumer);
-  if (!use_heuristic &&
-      ComputeCoalescingForAllOperands(fusion_adaptor, operands, fusion_analysis,
-                                      fusion_interface, mlir_context)) {
+  auto fusion_adaptor =
+      HloFusionAdaptor::ForProducerConsumer(producer, consumer);
+  if (!use_heuristic && ComputeCoalescingForAllOperands(
+                            *fusion_adaptor, operands, fusion_analysis,
+                            fusion_interface, mlir_context)) {
     return;
   }
   // If ComputeCoalescingForAllOperands fails, fallback to using the heuristic.
