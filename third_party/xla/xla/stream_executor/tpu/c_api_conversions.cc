@@ -235,6 +235,12 @@ SE_DeviceMemoryAllocator ToC(
   return se_allocator;
 }
 
+stream_executor::DeviceMemoryAllocator* FromC(
+    const SE_DeviceMemoryAllocator& c_allocator) {
+  return reinterpret_cast<stream_executor::DeviceMemoryAllocator*>(
+      c_allocator.ctx);
+}
+
 SE_MaybeOwningDeviceMemory ToC(stream_executor::OwningDeviceMemory* mem) {
   SE_MaybeOwningDeviceMemory se_mem;
   se_mem.device_ordinal = mem->device_ordinal();
