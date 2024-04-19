@@ -509,11 +509,7 @@ PjRtFuture<> StreamExecutorGpuClient::CopyRawSubBufferToHost(
   DCHECK(buffer);
   PjRtStreamExecutorDevice* device = buffer->device();
   LocalDeviceState* local_device = device->local_device_state();
-  // Always borrow a stream to avoid potential deadlocks enqueueing transfers
-  // that might be required in order to compute the inputs for computations
-  // that have already been enqueued. Such cycles can occur when there are
-  // cross-host data dependencies.
-  auto stream = local_device->BorrowStreamFromPool();
+  se::Stream* stream = local_device->GetDeviceToHostStream();
 
   PjRtStreamExecutorBuffer::ScopedHold hold(buffer->GetBufferWithUsageHold());
   if (!hold.ok()) {
@@ -531,7 +527,7 @@ PjRtFuture<> StreamExecutorGpuClient::CopyRawSubBufferToHost(
                         "invalid offset %lld, transfer size %lld",
                         device_memory.size(), offset, transfer_size));
   }
-  WaitForBufferDefinitionEventsOnStream(*device_buffer, stream.get());
+  WaitForBufferDefinitionEventsOnStream(*device_buffer, stream);
   absl::StatusOr<EventPool::Handle> event_or =
       local_device->event_pool().AllocateEvent(stream->parent());
   if (!event_or.ok()) {
@@ -586,22 +582,16 @@ PjRtFuture<> StreamExecutorGpuClient::CopyRawSubBufferToHost(
 
   auto usage_event =
       std::make_shared<BufferSequencingEvent>(this->thread_pool());
-  local_device->event_pool().ThenRecordEvent(stream.get(), event_or.value());
-  usage_event->SetSequencingEvent(std::move(event_or).value(), stream.get());
+  local_device->event_pool().ThenRecordEvent(stream, event_or.value());
+  usage_event->SetSequencingEvent(std::move(event_or).value(), stream);
   // This usage hold will prevent device_buffer from being deleted before
   // the transfer is complete.
-  hold.ConvertUsageHold(stream.get(), std::move(usage_event),
+  hold.ConvertUsageHold(stream, std::move(usage_event),
                         /*reference_held=*/false);
 
   auto promise = PjRtFuture<>::CreatePromise();
-  auto stream_ptr = stream.get();
   auto callback_status = local_device->ThenExecuteCallback(
-      stream_ptr,
-      [promise, free_stream = stream.release(), local_device]() mutable {
-        auto stream = std::unique_ptr<se::Stream>(free_stream);
-        local_device->ReturnStreamToPool(std::move(stream));
-        promise.Set();
-      });
+      stream, [promise]() mutable { promise.Set(); });
   if (!callback_status.ok()) {
     return PjRtFuture<>(callback_status);
   }
