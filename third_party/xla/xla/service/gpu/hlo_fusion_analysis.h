@@ -49,9 +49,8 @@ class HloFusionAnalysis {
   // Precomputed information about inputs (arguments) and outputs (roots) of the
   // fusion.
   struct InputOutputInfo {
-    bool has_4_bit_input;
-    bool has_4_bit_output;
     int smallest_input_dtype_bits;
+    int smallest_output_dtype_bits;
   };
 
   static HloFusionAnalysis Create(FusionBackendConfig backend_config,

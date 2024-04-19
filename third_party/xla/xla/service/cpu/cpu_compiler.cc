@@ -642,13 +642,13 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   }
 
   {
-    // Int4Packer must be run before the rest of the pipeline since it
+    // SubbytePacker must be run before the rest of the pipeline since it
     // modifies the layout of the entry computation inputs/outputs, which is
     // passed to LayoutAssignment.
-    HloPassPipeline int4_packer_pipeline("Int4Packer pipeline");
-    int4_packer_pipeline.AddPass<SubByteNormalization>(
+    HloPassPipeline subbyte_packer_pipeline("SubbytePacker pipeline");
+    subbyte_packer_pipeline.AddPass<SubByteNormalization>(
         SubByteNormalization::SET_ELEMENT_SIZE);
-    TF_RETURN_IF_ERROR(int4_packer_pipeline.Run(module).status());
+    TF_RETURN_IF_ERROR(subbyte_packer_pipeline.Run(module).status());
   }
 
   HloPassPipeline pipeline("HLO passes through layout assignment");

@@ -167,18 +167,18 @@ LaunchDimensionsConfig ComputeLoopFusionConfig(
   }
   // CHECK that unroll_factor is a power-of-2, as needed by the logic below.
   CHECK(absl::has_single_bit(static_cast<uint64_t>(unroll_factor)));
-  if (analysis.input_output_info().has_4_bit_output && unroll_factor == 1) {
-    // Ensure a single thread writes to a byte containing two int4 values by
-    // setting unroll_factor to 2. unroll_factor is always a power of 2, so
-    // setting it to 2 here ensures unroll_factor is even when there are 4-bit
-    // outputs. Setting unroll_factor is safe even if there are an odd number of
-    // elements, as the parallel loop emitter will insert a bounds check in this
-    // case to ensure the out-of-bounds element is not computed and written.
-    // Setting unroll_factor is safe even if MayPreventVectorization returns
-    // false, as the MayPreventVectorization check is an optimization, not a
-    // correctness requirement.
-    unroll_factor = 2;
-  }
+  // Ensure a single thread writes to a byte containing multiple values by
+  // setting unroll_factor to an appropriate number. Setting unroll_factor is
+  // safe even if the new unroll_factor doesn't divide the number of elements,
+  // as the parallel loop emitter will insert a bounds check in this case to
+  // ensure the out-of-bounds element is not computed and written. Setting
+  // unroll_factor is safe even if MayPreventVectorization returns false, as
+  // the MayPreventVectorization check is an optimization, not a correctness
+  // requirement.
+  unroll_factor = std::max(
+      unroll_factor,
+      CeilOfRatio(8, analysis.input_output_info().smallest_output_dtype_bits));
+  CHECK(absl::has_single_bit(static_cast<uint64_t>(unroll_factor)));
   VLOG(2) << "Unroll factor: " << unroll_factor;
 
   bool row_vectorized;

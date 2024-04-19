@@ -797,11 +797,10 @@ Status EraseElementFromVector(std::vector<T>* container, const T& value) {
   return OkStatus();
 }
 
-// Takes a sequence of unpacked int4 values, such that every byte stores one
-// int4 value in the low-order four bits, and packs them so every byte stores
-// two int4 values. 'input' should have num_elements bytes; 'output' should have
-// (num_elements+1)/2 bytes. The high-order four bits of each byte in 'input'
-// are ignored.
+// Takes a sequence of unpacked n-bit values, such that every byte stores one
+// value in the low-order bits, and packs them so every byte stores as many
+// which will fit. `output` should have ceil((input.size()*kBitsPerElement)/8)
+// bytes. The high-order bits of each byte in `input` are ignored.
 template <size_t kBitsPerElement>
 void PackIntN(absl::Span<const char> input, absl::Span<char> output) {
   constexpr auto kElementsPerByte = 8 / kBitsPerElement;
@@ -837,11 +836,11 @@ inline void PackIntN(int bits_per_element, absl::Span<const char> input,
   }
 }
 
-// Takes a sequence of packed int4 values, such that every byte stores two
-// int4 values, and unpacks them so every byte stores one int4 value in the
-// low-order four bits. 'input' should have (num_elements+1)/2 bytes; 'output'
-// should have num_elements bytes. The high-order 4-bits in each output are
-// zero.
+// Takes a sequence of packed values, such that every byte stores multiple
+// values, and unpacks them so every byte stores one value in the low-order
+// bits. `input` should have
+// ceil(output.size()*8/kBitsPerElement) bytes. The high-order bits in each
+// output are zero.
 template <size_t kBitsPerElement>
 void UnpackIntN(absl::Span<const char> input, absl::Span<char> output) {
   constexpr auto kElementsPerByte = 8 / kBitsPerElement;

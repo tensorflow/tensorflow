@@ -207,7 +207,7 @@ absl::Status IrEmitterUnnested::EmitConstant(
   int element_bytes =
       primitive_util::ByteWidth(instr->literal().shape().element_type());
   TF_RET_CHECK(content.span().size() % element_bytes == 0);
-  // Treat int4 constant as int8 constant with half the number of elements.
+  // Treat packed constants as a byte constant.
   int num_elements = content.span().size() / element_bytes;
 
   std::string global_name = llvm_ir::ConstantHloToGlobalName(*instr);

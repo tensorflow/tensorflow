@@ -114,8 +114,8 @@ absl::StatusOr<bool> MoveConvertPrecisionOps(HloComputation* comp) {
       continue;
     }
 
-    // Currently int4 is not supported in most ops so moving the convert is not
-    // safe.
+    // Currently packed types are not supported in most ops so moving the
+    // convert is not safe.
     if (primitive_util::IsSubByteNonPredType(src_ty)) {
       continue;
     }

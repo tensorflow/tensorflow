@@ -73,7 +73,7 @@ using ::xla::runtime::CpuEvent;
 
 constexpr size_t kSmallDataTransferByteSize = 102400;  // 100 KiB
 
-// Unpacks and copies the int4 data at 'input' into the literal at the given
+// Unpacks and copies the packed data at `input` into the literal at the given
 // ShapeIndex.
 void UnpackIntNToLiteral(PrimitiveType input_element_type,
                          const MaybeOwningCpuMemory& input,

@@ -1366,8 +1366,8 @@ bool IsZeroCopyableCpuBuffer(const PjRtBuffer* buf) {
   // device.
   bool has_default_layout = buf->layout() == nullptr ||
                             HasDefaultLayout(GetXlaLayoutUnsafe(buf->layout()));
-  // On CPU for non-int4 values, we can return the value in a zero-copy way.
-  // For int4 values, we must copy in order to unpack the array.
+  // On CPU for values >= 8 bits, we can return the value in a zero-copy way.
+  // For sub-byte values, we must copy in order to unpack the array.
   return buf->IsOnCpu() &&
          !primitive_util::IsSubByteNonPredType(buf->element_type()) &&
          has_default_layout;
@@ -1386,8 +1386,8 @@ StatusOr<nb::object> PyHostValue::AsNumPyArray(
   if (arr != nullptr) {
     auto* pjrt_buffer = arr->pjrt_buffers().front().get();
     TF_RET_CHECK(!pjrt_buffer->IsTuple());
-    // On CPU for non-int4 values, we can return the value in a zero-copy way.
-    // For int4 values, we must copy in order to unpack the array.
+    // On CPU for values >= 8 bits, we can return the value in a zero-copy way.
+    // For sub-byte values, we must copy in order to unpack the array.
     if (IsZeroCopyableCpuBuffer(pjrt_buffer)) {
       TF_ASSIGN_OR_RETURN(const auto* shape,
                           XlaDynamicShape(ifrt_array, dynamic_shape_holder));

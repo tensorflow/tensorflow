@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/service/gpu/model/indexing_map.h"
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/status.h"
+#include "xla/util.h"
 
 namespace xla {
 namespace gpu {
@@ -45,7 +46,8 @@ class InputSlicesFusion : public KernelFusionEmitterBase {
  public:
   explicit InputSlicesFusion(const HloFusionAnalysis& analysis)
       : analysis_(analysis),
-        unroll_factor_(analysis.input_output_info().has_4_bit_output ? 2 : 1) {}
+        unroll_factor_(CeilOfRatio(
+            8, analysis.input_output_info().smallest_output_dtype_bits)) {}
   LaunchDimensions launch_dimensions() const override;
 
   std::optional<IndexingMap> ComputeThreadIdToOutputIndexing(
