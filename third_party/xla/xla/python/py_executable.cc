@@ -78,7 +78,7 @@ absl::Status PyShardedToken::Await() {
 
 PyLoadedExecutable::PyLoadedExecutable(
     nb_class_ptr<PyClient> client,
-    std::unique_ptr<ifrt::LoadedExecutable> ifrt_loaded_executable,
+    std::shared_ptr<ifrt::LoadedExecutable> ifrt_loaded_executable,
     std::optional<nb_traceback> traceback,
     std::optional<std::string> fingerprint)
     : client_(std::move(client)),
