@@ -1,1 +1,27 @@
 Auto generated patch. Do not edit or delete it, even if empty.
+diff -ruN --strip-trailing-cr a/lldb/source/Expression/IRExecutionUnit.cpp b/lldb/source/Expression/IRExecutionUnit.cpp
+--- a/lldb/source/Expression/IRExecutionUnit.cpp
++++ b/lldb/source/Expression/IRExecutionUnit.cpp
+@@ -431,9 +431,7 @@
+     }
+ 
+     m_failed_lookups.clear();
+-    ss.PutCString(
+-        "\nHint: The expression tried to call a function that is not present "
+-        "in the target, perhaps because it was optimized out by the compiler.");
++
+     error.SetErrorString(ss.GetString());
+ 
+     return;
+diff -ruN --strip-trailing-cr a/lldb/test/API/lang/cpp/constructors/TestCppConstructors.py b/lldb/test/API/lang/cpp/constructors/TestCppConstructors.py
+--- a/lldb/test/API/lang/cpp/constructors/TestCppConstructors.py
++++ b/lldb/test/API/lang/cpp/constructors/TestCppConstructors.py
+@@ -47,7 +47,7 @@
+         self.expect(
+             "expr ClassWithDeletedDefaultCtor().value",
+             error=True,
+-            substrs=["Couldn't look up symbols:", "function missing"],
++            substrs=["Couldn't look up symbols:"],
+         )
+ 
+     @skipIfWindows  # Can't find operator new.
