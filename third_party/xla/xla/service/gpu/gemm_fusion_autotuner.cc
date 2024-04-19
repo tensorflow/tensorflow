@@ -771,8 +771,7 @@ absl::StatusOr<std::vector<AutotuneResult>> GemmFusionAutotunerImpl::Profile(
   if (allocator == nullptr) {
     allocator = stream_exec->GetAllocator();
   }
-  TF_ASSIGN_OR_RETURN(se::Stream* const stream,
-                      allocator->GetStream(stream_exec->device_ordinal()));
+  TF_ASSIGN_OR_RETURN(se::Stream* const stream, config_.GetStream());
 
   const HloInstruction& root = *fusion_computation->root_instruction();
   BufferComparator comparator(root.shape(),
