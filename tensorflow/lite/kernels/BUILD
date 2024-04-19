@@ -7,7 +7,7 @@ load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "cc_library_with
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
-        "//tensorflow/lite:anything_but_tf",
+        "//visibility:public",
     ],
     licenses = ["notice"],
 )
