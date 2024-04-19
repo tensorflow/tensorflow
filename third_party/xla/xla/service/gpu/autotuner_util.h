@@ -108,6 +108,17 @@ class AutotuneConfig {
     return require_complete_aot_autotune_results_;
   }
 
+  AutotuneConfig(const AutotuneConfig& right)
+      : config_(right.config_),
+        autotune_level_(right.autotune_level_),
+        should_crash_on_check_failure_(right.should_crash_on_check_failure_),
+        exhaustive_tiling_search_(right.exhaustive_tiling_search_),
+        require_complete_aot_autotune_results_(
+            right.require_complete_aot_autotune_results_) {
+    if (right.stream_ != nullptr) {
+      stream_ = std::move(GetExecutor()->CreateStream().value());
+    }
+  }
   AutotuneConfig(const std::variant<DeviceConfig, DevicelessConfig>& config,
                  const DebugOptions& debug_options)
       : config_(config),
@@ -141,7 +152,11 @@ class AutotuneConfig {
 
   absl::StatusOr<se::Stream*> GetStream() const {
     CHECK(std::holds_alternative<DeviceConfig>(config_));
-    return GetAllocator()->GetStream(GetExecutor()->device_ordinal());
+    if (stream_ != nullptr) {
+      return stream_.get();
+    }
+    stream_ = std::move(GetExecutor()->CreateStream().value());
+    return stream_.get();
   }
 
   const se::GpuComputeCapability& GetGpuComputeCapability() const {
@@ -163,6 +178,7 @@ class AutotuneConfig {
   bool should_crash_on_check_failure_;
   bool exhaustive_tiling_search_;
   bool require_complete_aot_autotune_results_;
+  mutable std::unique_ptr<stream_executor::Stream> stream_;
 };
 
 using AutotuneNoCacheFn = std::function<absl::StatusOr<AutotuneResult>()>;
