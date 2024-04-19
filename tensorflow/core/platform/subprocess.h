@@ -17,7 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_PLATFORM_SUBPROCESS_H_
 
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/tsl/platform/subprocess.h"
+#include "tsl/platform/subprocess.h"
 
 namespace tensorflow {
 using tsl::ACTION_CLOSE;

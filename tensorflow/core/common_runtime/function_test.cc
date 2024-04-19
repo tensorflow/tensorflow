@@ -17,9 +17,12 @@ limitations under the License.
 
 #include <atomic>
 #include <functional>
+#include <memory>
 #include <utility>
 
+#include <gtest/gtest.h>
 #include "absl/memory/memory.h"
+#include "absl/status/status.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_split.h"
 #include "tensorflow/cc/ops/array_ops_internal.h"
@@ -36,8 +39,10 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
+#include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function_testlib.h"
+#include "tensorflow/core/framework/graph_debug_info.pb.h"
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -70,7 +75,7 @@ Status GetOpSig(const string& op, const OpDef** sig) {
 
 void HasError(const Status& s, const error::Code code, StringPiece substr) {
   EXPECT_EQ(s.code(), code) << s;
-  EXPECT_TRUE(absl::StrContains(s.error_message(), substr))
+  EXPECT_TRUE(absl::StrContains(s.message(), substr))
       << s << ", expected substring " << substr;
 }
 
@@ -170,11 +175,12 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
         device_mgr_.get(), Env::Default(), &options.config,
         TF_GRAPH_DEF_VERSION, lib_def_.get(), opts, /*thread_pool=*/nullptr,
         /*parent=*/nullptr, /*session_metadata=*/nullptr,
-        Rendezvous::Factory{
-            [](const int64_t, const DeviceMgr* device_mgr, Rendezvous** r) {
-              *r = new IntraProcessRendezvous(device_mgr);
-              return OkStatus();
-            }}));
+        Rendezvous::Factory{[](const int64_t, const DeviceMgr* device_mgr,
+                               tsl::core::RefCountPtr<Rendezvous>* r) {
+          *r = tsl::core::RefCountPtr<Rendezvous>(
+              new IntraProcessRendezvous(device_mgr));
+          return absl::OkStatus();
+        }}));
     flr0_ = pflr_->GetFLR("/job:localhost/replica:0/task:0/cpu:0");
     flr1_ = pflr_->GetFLR("/job:localhost/replica:0/task:0/cpu:1");
     flr2_ = pflr_->GetFLR("/job:localhost/replica:0/task:0/cpu:2");
@@ -204,7 +210,7 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
     for (size_t i = 0; i < rets.size(); ++i) {
       *rets[i] = out[i];
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status Instantiate(FunctionLibraryRuntime* flr, const string& name,
@@ -248,10 +254,10 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
     if (!status.ok()) return status;
 
     Status status2 = Run(flr, handle, opts, args, std::move(rets));
-    EXPECT_TRUE(errors::IsNotFound(status2))
+    EXPECT_TRUE(absl::IsNotFound(status2))
         << "Actual status: " << status2.ToString();
-    EXPECT_TRUE(absl::StrContains(status2.error_message(), "Handle"));
-    EXPECT_TRUE(absl::StrContains(status2.error_message(), "not found"));
+    EXPECT_TRUE(absl::StrContains(status2.message(), "Handle"));
+    EXPECT_TRUE(absl::StrContains(status2.message(), "not found"));
 
     return status;
   }
@@ -274,7 +280,7 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
       return status;
     }
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status InstantiateAndRunViaCallFrameInterface(FunctionLibraryRuntime* flr,
@@ -307,9 +313,9 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
     if (!status.ok()) return status;
 
     Status status2 = Run(flr, handle, opts, args, std::move(rets));
-    EXPECT_TRUE(errors::IsNotFound(status2));
-    EXPECT_TRUE(absl::StrContains(status2.error_message(), "Handle"));
-    EXPECT_TRUE(absl::StrContains(status2.error_message(), "not found"));
+    EXPECT_TRUE(absl::IsNotFound(status2));
+    EXPECT_TRUE(absl::StrContains(status2.message(), "Handle"));
+    EXPECT_TRUE(absl::StrContains(status2.message(), "not found"));
 
     return status;
   }
@@ -385,6 +391,10 @@ TEST_F(FunctionLibraryRuntimeTest, InstantiationStackTraceCopying) {
     }
 
     StackFrame LastUserFrame() const override { return StackFrame{}; }
+
+    std::vector<StackFrame> GetUserFrames(int limit) const override {
+      return {};
+    }
   };
 
   FunctionDef func = test::function::XTimesTwo();
@@ -439,7 +449,7 @@ class ConsumeArgumentCallFrame : public CallFrameInterface {
   Status SetRetval(int index, const Tensor& val) override {
     CHECK_EQ(index, 0);
     *retval_ = val;
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:
@@ -625,7 +635,7 @@ TEST_F(FunctionLibraryRuntimeTest, StateHandle) {
       // Attrs
       {},
       // Nodes
-      {FDH::Const<int32>("shape", gtl::ArraySlice<int32>({1})),
+      {FDH::Const<int32>("shape", absl::Span<const int32>({1})),
        FDH::Const<int32>("minval", 0),
        FDH::Const<int32>("maxval", 10),
        // A stateful node.
@@ -1118,7 +1128,7 @@ TEST_F(FunctionLibraryRuntimeTest, ExpandInlineFunctionsAndKeepCallerNode) {
     auto a = ops::_Arg(s.WithOpName("a"), DT_FLOAT, 0);
     auto b = test::function::Call(&s, "b", "AddAndMul", {a});
     TF_RETURN_IF_ERROR(s.ToGraph(g->get()));
-    return OkStatus();
+    return absl::OkStatus();
   };
 
   const string input_node = "Func/b/input/_0";
@@ -1206,7 +1216,7 @@ TEST_F(FunctionLibraryRuntimeTest, ExpandInlineFunctionsAndPlaceInlinedNodes) {
     for (Node* node : (*g)->op_nodes()) {
       if (node->name() == "b") node->set_requested_device(call_device);
     }
-    return OkStatus();
+    return absl::OkStatus();
   };
 
   const string input_node = "Func/b/input/_0";
@@ -2016,6 +2026,43 @@ TEST_F(FunctionLibraryRuntimeTest, RunAllKernelsInline) {
     Tensor result;
     TF_ASSERT_OK(Run(flr0_, handle, opts, {}, {&result}));
     EXPECT_EQ(result.scalar<bool>()(), inline_option);
+  }
+}
+
+TEST_F(FunctionLibraryRuntimeTest, FullTypeForInt32) {
+  auto T = DT_INT32;
+  FunctionDef int32_func = FDH::Define(
+      // Name
+      "DoubleInt32",
+      // Args
+      {"x: int32"},
+      // Return values
+      {"z: int32"},
+      // Attrs
+      {},
+      // Nodes
+      {// z = Add<T>(x, x)
+       {{"z"}, "Add", {"x", "x"}, {{"T", T}}}});
+  Init({int32_func});
+
+  auto x = test::AsTensor<int32>({1, 2, 3, 4});
+  auto y = test::AsTensor<float>({1.0, 2.0, 3.0, 4.0});
+  Tensor z;
+
+  FunctionLibraryRuntime::Handle handle;
+  TF_CHECK_OK(Instantiate(flr0_, "DoubleInt32", {}, &handle));
+
+  const FunctionBody* fb = flr0_->GetFunctionBody(handle);
+  for (const Node* node : fb->arg_nodes) {
+    if (node->name() == "x") {
+      ASSERT_TRUE(node->def().has_experimental_type());
+      FullTypeDef ft = node->def().experimental_type();
+      EXPECT_EQ(ft.type_id(), TFT_PRODUCT);
+      ASSERT_EQ(ft.args_size(), 1);
+      EXPECT_EQ(ft.args(0).type_id(), TFT_SHAPE_TENSOR);
+      ASSERT_EQ(ft.args(0).args_size(), 1);
+      EXPECT_EQ(ft.args(0).args(0).type_id(), TFT_INT32);
+    }
   }
 }
 

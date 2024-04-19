@@ -14,7 +14,6 @@
 # ==============================================================================
 """Get task states test for parameter server strategy in TF2."""
 
-import threading
 import time
 
 from tensorflow.core.lib.core import error_codes_pb2
@@ -22,50 +21,18 @@ from tensorflow.python.compat import v2_compat
 from tensorflow.python.distribute import multi_process_runner
 from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import parameter_server_strategy_v2
-from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
+from tensorflow.python.distribute.cluster_resolver import cluster_resolver as cluster_resolver_lib
 from tensorflow.python.distribute.coordinator import cluster_coordinator
+from tensorflow.python.distribute.coordinator import utils
 from tensorflow.python.eager import context
 from tensorflow.python.eager import test
 from tensorflow.python.framework import errors
 from tensorflow.python.training import server_lib
 
 _PULL_FREQ_IN_SEC = 2
-_COORDINATION_ERROR_PAYLOAD_KEY = "type.googleapis.com/tensorflow.CoordinationServiceError"
-
-
-# TODO(b/249134783): This should be in a common util since it may also be used
-# by the main code.
-class RepeatedTimer(object):
-  """Threaded Repeated Timer from http://shortn/_3hMZTFr1Iv."""
-
-  def __init__(self, interval, function, *args):
-    self._timer = None
-    self.interval = interval
-    self.function = function
-    self.args = args
-    self.start_time = time.time()
-    self.is_running = False
-    self.start()
-
-  def _get_duration_sec(self):
-    return int(time.time() - self.start_time)
-
-  def _run(self):
-    self.is_running = False
-    self.start()
-    self.function(*self.args)
-
-  def start(self):
-    if not self.is_running:
-      self._timer = threading.Timer(self.interval, self._run)
-      self._timer.start()
-      self.is_running = True
-
-  def stop(self):
-    duration = self._get_duration_sec()
-    self._timer.cancel()
-    self.is_running = False
-    return duration
+_COORDINATION_ERROR_PAYLOAD_KEY = (
+    "type.googleapis.com/tensorflow.CoordinationServiceError"
+)
 
 
 class GetTaskStatesTest(object):  # pylint: disable=missing-docstring
@@ -79,13 +46,14 @@ class GetTaskStatesTest(object):  # pylint: disable=missing-docstring
     self._cluster_def["chief"] = [
         "localhost:%d" % multi_worker_test_base.pick_unused_port()
     ]
-    cluster_resolver = SimpleClusterResolver(
+    cluster_resolver = cluster_resolver_lib.SimpleClusterResolver(
         server_lib.ClusterSpec(self._cluster_def), rpc_layer="grpc")
 
     context.context().configure_coordination_service(
         service_type="standalone",
         service_leader="/job:ps/replica:0/task:0",
-        heartbeat_timeout_in_ms=_PULL_FREQ_IN_SEC * 1000)
+        heartbeat_timeout_in_ms=_PULL_FREQ_IN_SEC * 1000,
+        allow_new_incarnation_to_reconnect=True)
     self.strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
         cluster_resolver)
     self.cluster_coord = cluster_coordinator.ClusterCoordinator(self.strategy)
@@ -94,7 +62,7 @@ class GetTaskStatesTest(object):  # pylint: disable=missing-docstring
     self.num_ps = num_ps
 
     self.states = None
-    self.polling_thread = RepeatedTimer(
+    self.polling_thread = utils.RepeatedTimer(
         interval=_PULL_FREQ_IN_SEC, function=self.get_task_states)
 
   def tearDown(self):
@@ -128,6 +96,31 @@ class GetTaskStatesTest(object):  # pylint: disable=missing-docstring
     self._cluster.start_task("worker", 0)
     context.context().update_server_def(context.get_server_def())
     time.sleep(_PULL_FREQ_IN_SEC * 2)
+    for state in self.states:
+      self.assertIsNone(state)
+
+  def testPSPreempted(self):
+    self._cluster.kill_task("ps", 1)
+    time.sleep(_PULL_FREQ_IN_SEC * 2)
+    self.assertLen(self.states, self.num_workers + self.num_ps)
+    state_ix = self.num_workers + 1
+    self.assertIsInstance(self.states[state_ix], errors.UnavailableError)
+    self.assertIn("/job:ps/replica:0/task:1", self.states[state_ix]._message)
+    self.assertEqual(self.states[state_ix]._error_code,
+                     error_codes_pb2.UNAVAILABLE)
+    # Simulate the restart of all the tasks.
+    self._cluster.kill_task("ps", 0)
+    for index in range(2, self.num_ps):
+      self._cluster.kill_task("ps", index)
+    for index in range(self.num_workers):
+      self._cluster.kill_task("worker", index)
+    for index in range(self.num_ps):
+      self._cluster.start_task("ps", index)
+    for index in range(self.num_workers):
+      self._cluster.start_task("worker", index)
+    context.context().update_server_def(context.get_server_def())
+    time.sleep(_PULL_FREQ_IN_SEC * 2)
+    self.assertLen(self.states, self.num_workers + self.num_ps)
     for state in self.states:
       self.assertIsNone(state)
 

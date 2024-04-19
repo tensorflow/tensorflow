@@ -58,6 +58,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* output;
   TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 0, &output));
 
+  output->allocation_type = kTfLiteArenaRwPersistent;
   const int kBytesRequired = sizeof(int32_t);
   TfLiteTensorRealloc(kBytesRequired, output);
   output->bytes = kBytesRequired;

@@ -21,7 +21,7 @@ populate_source_vars("${TFLITE_SOURCE_DIR}/examples/label_image"
   FILTER "_test\\.cc$"
 )
 list(APPEND TFLITE_LABEL_IMAGE_SRCS
-  ${TF_SOURCE_DIR}/tsl/util/stats_calculator.cc
+  ${XLA_SOURCE_DIR}/xla/tsl/util/stats_calculator.cc
   ${TFLITE_SOURCE_DIR}/profiling/memory_info.cc
   ${TFLITE_SOURCE_DIR}/profiling/profile_summarizer.cc
   ${TFLITE_SOURCE_DIR}/profiling/profile_summary_formatter.cc
@@ -36,6 +36,7 @@ list(APPEND TFLITE_LABEL_IMAGE_SRCS
 if(TFLITE_ENABLE_XNNPACK)
   list(APPEND TFLITE_LABEL_IMAGE_SRCS
     ${TFLITE_SOURCE_DIR}/tools/delegates/xnnpack_delegate_provider.cc
+    ${TFLITE_SOURCE_DIR}/core/acceleration/configuration/c/xnnpack_plugin.cc
   )
 else()
   set(TFLITE_LABEL_IMAGE_CC_OPTIONS "-DTFLITE_WITHOUT_XNNPACK")
@@ -55,10 +56,22 @@ if(TFLITE_ENABLE_GPU)
   )
 endif()  # TFLITE_ENABLE_GPU
 
+if(TFLITE_ENABLE_EXTERNAL_DELEGATE)
+  list(APPEND TFLITE_LABEL_IMAGE_SRCS
+          ${TFLITE_SOURCE_DIR}/tools/delegates/external_delegate_provider.cc)
+endif()
+
 add_executable(label_image
-  EXCLUDE_FROM_ALL
   ${TFLITE_LABEL_IMAGE_SRCS}
 )
+if(TFLITE_ENABLE_LABEL_IMAGE)
+  set_target_properties(label_image PROPERTIES EXCLUDE_FROM_ALL FALSE)
+  if(TFLITE_ENABLE_INSTALL)
+    install(TARGETS label_image)
+  endif()  # TFLITE_ENABLE_INSTALL
+else()
+  set_target_properties(label_image PROPERTIES EXCLUDE_FROM_ALL TRUE)
+endif()  # TFLITE_ENABLE_LABEL_IMAGE
 target_compile_options(label_image
   PRIVATE
     ${TFLITE_LABEL_IMAGE_CC_OPTIONS}

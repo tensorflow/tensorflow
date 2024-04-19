@@ -29,12 +29,11 @@ objc_library(
     srcs = ["coreml_executor.mm"],
     hdrs = ["coreml_executor.h"],
     copts = ["-std=c++17"],
-    features = ["-layering_check"],
     sdk_frameworks = [
         "CoreML",
         "Foundation",
     ],
-    deps = [":mlmodel_proto_cc"],
+    deps = ["@coremltools//:mlmodel_cc_proto"],
 )
 
 cc_library(
@@ -59,7 +58,6 @@ objc_library(
         ":mlmodel_proto_cc",
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:minimal_logging",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/delegates:utils",
         "//tensorflow/lite/delegates/coreml/builders:op_builder",
@@ -83,7 +81,6 @@ objc_library(
         ":coreml_executor",
         ":mlmodel_proto_cc",
         "//tensorflow/lite:kernel_api",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/delegates/coreml/builders:op_builder",
         "//tensorflow/lite/kernels:kernel_util",

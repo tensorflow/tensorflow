@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -47,8 +48,8 @@ namespace tfg {
 // of an operation or a block operand if a function argument) and store the
 // result in the provided name string. The `control_ty` is the instance of the
 // `ControlType` to compare against and detect a control dependency case.
-static tensorflow::StatusOr<std::string> GetValueName(Value operand,
-                                                      Type control_ty) {
+static absl::StatusOr<std::string> GetValueName(Value operand,
+                                                Type control_ty) {
   bool is_control = (operand.getType() == control_ty);
   OpResult op_result = operand.dyn_cast<OpResult>();
   if (!op_result) {
@@ -60,7 +61,8 @@ static tensorflow::StatusOr<std::string> GetValueName(Value operand,
     std::string name;
     if (is_control) name = "^";
     DictionaryAttr arg_attrs = function_interface_impl::getArgAttrDict(
-        block_operand.getParentBlock()->getParentOp(), arg_num - is_control);
+        FunctionOpInterface(block_operand.getParentBlock()->getParentOp()),
+        arg_num - is_control);
     if (!arg_attrs)
       return InvalidArgument("Missing attribute for argument #", arg_num);
     StringAttr arg_name = arg_attrs.getAs<StringAttr>("tfg.name");
@@ -141,7 +143,7 @@ static Status ExportArgDef(OpDef::ArgDef *arg, DictionaryAttr arg_attrs,
   return ::tensorflow::OkStatus();
 }
 
-tensorflow::StatusOr<FunctionDef> ConvertGenericFunctionToFunctionDef(
+absl::StatusOr<FunctionDef> ConvertGenericFunctionToFunctionDef(
     GraphFuncOp func_op) {
   if (!func_op.getGeneric())
     return InvalidArgument(
@@ -234,7 +236,7 @@ tensorflow::StatusOr<FunctionDef> ConvertGenericFunctionToFunctionDef(
   auto return_op = llvm::cast<tfg::ReturnOp>(
       func_op.SingleBlock::getBody()->getTerminator());
   ArrayAttr results_attr = func_op.getAllResultAttrs();
-  for (auto &indexed_result : llvm::enumerate(return_op->getOperands())) {
+  for (const auto &indexed_result : llvm::enumerate(return_op->getOperands())) {
     int res_num = indexed_result.index();
     if (res_num >= results_attr.size())
       return InvalidArgument("Can't export function ", func_op.getName().str(),

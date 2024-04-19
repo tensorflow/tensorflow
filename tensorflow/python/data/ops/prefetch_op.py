@@ -15,6 +15,7 @@
 """The implementation of `tf.data.Dataset.prefetch`."""
 
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import debug_mode
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import gen_dataset_ops
@@ -22,7 +23,7 @@ from tensorflow.python.ops import gen_dataset_ops
 
 def _prefetch(input_dataset, buffer_size, name=None):  # pylint: disable=unused-private-name
   """See `Dataset.prefetch()` for details."""
-  if dataset_ops.DEBUG_MODE:
+  if debug_mode.DEBUG_MODE:
     return input_dataset
   return _PrefetchDataset(input_dataset, buffer_size, name=name)
 
@@ -46,5 +47,6 @@ class _PrefetchDataset(dataset_ops.UnaryUnchangedStructureDataset):
           input_dataset._variant_tensor,
           buffer_size=self._buffer_size,
           slack_period=slack_period,
+          legacy_autotune=(buffer_size == dataset_ops.AUTOTUNE),
           **self._common_args)
     super().__init__(input_dataset, variant_tensor)

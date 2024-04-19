@@ -27,7 +27,7 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
-#include "tensorflow/tsl/lib/monitoring/cell_reader-inl.h"
+#include "tsl/lib/monitoring/cell_reader-inl.h"
 // NOLINTBEGIN(misc-unused-using-decls)
 namespace tensorflow {
 namespace monitoring {

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <string>
+#include <utility>
 
 namespace tflite {
 namespace interop {
@@ -42,8 +43,9 @@ struct Variant {
   }
 
   // Getter. Disabled if the type is not supported in the variant.
+  // Returns nullptr if requested type doesn't match the actual value type.
   template <typename T>
-  const T& Get() const = delete;
+  const T* Get() const = delete;
 
   // Setter. Disabled if the type is not supported in the variant.
   template <typename T>
@@ -64,10 +66,11 @@ struct Variant {
     int i;
     size_t s;
     const char* c;
+    bool b;
   } val;
 
   // Tracking bit used for equality comparison.
-  enum { kInvalid, kInt, kSizeT, kString } type;
+  enum { kInvalid, kInt, kSizeT, kString, kBool } type;
 };
 
 // Copyable.
@@ -84,16 +87,24 @@ inline Variant& Variant::operator=(Variant v) {
 
 // Accessor specializations.
 template <>
-inline const int& Variant::Get<int>() const {
-  return val.i;
+inline const int* Variant::Get<int>() const {
+  if (type != kInt) return nullptr;
+  return &val.i;
 }
 template <>
-inline const size_t& Variant::Get<size_t>() const {
-  return val.s;
+inline const size_t* Variant::Get<size_t>() const {
+  if (type != kSizeT) return nullptr;
+  return &val.s;
 }
 template <>
-inline const char* const& Variant::Get<const char*>() const {
-  return val.c;
+inline const char* const* Variant::Get<const char*>() const {
+  if (type != kString) return nullptr;
+  return &val.c;
+}
+template <>
+inline const bool* Variant::Get<bool>() const {
+  if (type != kBool) return nullptr;
+  return &val.b;
 }
 template <>
 inline void Variant::Set(int v) {
@@ -109,6 +120,11 @@ template <>
 inline void Variant::Set(const char* v) {
   val.c = v;
   type = kString;
+}
+template <>
+inline void Variant::Set(bool v) {
+  val.b = v;
+  type = kBool;
 }
 
 }  // namespace interop

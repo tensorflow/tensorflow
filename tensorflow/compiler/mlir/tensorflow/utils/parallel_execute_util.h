@@ -20,7 +20,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 
 namespace mlir {
-namespace TFTPU {
+namespace TF {
 
 // TODO(b/243076653): Once the ParallelExecute is added do not remove it. This
 //   means BuildSingletonParallelExecuteOp will be used in one location, and
@@ -35,7 +35,7 @@ tf_device::ParallelExecuteOp BuildParallelExecuteOp(
 LogicalResult RemoveSingletonParallelExecuteOp(
     tf_device::ParallelExecuteOp parallel_execute, OpBuilder* builder);
 
-}  // namespace TFTPU
+}  // namespace TF
 }  // namespace mlir
 
 #endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_PARALLEL_EXECUTE_UTIL_H_

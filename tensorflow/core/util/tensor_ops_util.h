@@ -17,7 +17,7 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -65,7 +65,7 @@ Status ZerosLikeTensor(OpKernelContext* ctx, const Tensor& x, Tensor* out) {
           "Trying to compute zeros_like for unsupported dtype ",
           DataTypeString(out->dtype()));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <typename Device>
@@ -73,11 +73,11 @@ Status BinaryAddTensors(OpKernelContext* ctx, const Tensor& a, const Tensor& b,
                         Tensor* out) {
   if (a.dtype() == DT_INVALID) {
     *out = b;
-    return OkStatus();
+    return absl::OkStatus();
   }
   if (b.dtype() == DT_INVALID) {
     *out = a;
-    return OkStatus();
+    return absl::OkStatus();
   }
   if (a.dtype() != b.dtype()) {
     return errors::InvalidArgument(
@@ -120,7 +120,7 @@ Status BinaryAddTensors(OpKernelContext* ctx, const Tensor& a, const Tensor& b,
       return errors::InvalidArgument("Trying to add unsupported dtype ",
                                      out->dtype());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

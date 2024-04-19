@@ -26,6 +26,7 @@ from tensorflow.python.framework import op_callbacks
 from tensorflow.python.framework import op_def_library_pybind
 from tensorflow.python.framework import op_def_registry
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import _pywrap_utils
@@ -368,7 +369,7 @@ def _CanExtractAttrsFastPath(op_def, keywords):
   # Check if all inputs are already tf.Tensor
   for input_arg in op_def.input_arg:
     value = keywords.get(input_arg.name, None)
-    if not isinstance(value, ops.Tensor):
+    if not isinstance(value, tensor.Tensor):
       return False
 
   # Check that attrs are not `func` or `list(func)` type.
@@ -452,7 +453,7 @@ def _ExtractInputsAndAttrs(op_type_name, op_def, allowed_list_attr_map,
           dtype = attrs[input_arg.type_attr]
         else:
           for t in values:
-            if isinstance(t, ops.Tensor):
+            if isinstance(t, tensor.Tensor):
               dtype = t.dtype
               break
 

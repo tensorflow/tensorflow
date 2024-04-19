@@ -20,7 +20,7 @@ limitations under the License.
 #include "tensorflow/core/platform/cpu_info.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_init.h"
+#include "xla/stream_executor/gpu/gpu_init.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #endif  // GOOGLE_CUDA
 

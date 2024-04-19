@@ -68,14 +68,14 @@ func.func @testIfCasts(%arg0: tensor<i1>, %arg1: tensor<!tf_type.variant<tensor<
 // CHECK:   [[PRED:%.+]] = tensor.extract [[TOBOOL]][] : tensor<i1>
 // CHECK:   cf.cond_br [[PRED]], ^bb1, ^bb2
 // CHECK: ^bb1:
-// CHECK:   [[CAST0:%.+]] = "tf.Cast"(%arg1) {Truncate = false} : (tensor<!tf_type.variant<tensor<f32>>>) -> tensor<!tf_type.variant>
+// CHECK:   [[CAST0:%.+]] = "tf.Cast"(%arg1) <{Truncate = false}> : (tensor<!tf_type.variant<tensor<f32>>>) -> tensor<!tf_type.variant>
 // CHECK:   [[THEN:%.+]] = call @testIfThen([[CAST0]]) : (tensor<!tf_type.variant>) -> tensor<!tf_type.variant>
-// CHECK:   [[CAST1:%.+]] = "tf.Cast"([[THEN]]) {Truncate = false} : (tensor<!tf_type.variant>) -> tensor<!tf_type.variant<tensor<f32>>>
+// CHECK:   [[CAST1:%.+]] = "tf.Cast"([[THEN]]) <{Truncate = false}> : (tensor<!tf_type.variant>) -> tensor<!tf_type.variant<tensor<f32>>>
 // CHECK:   cf.br ^bb3([[CAST1]] : tensor<!tf_type.variant<tensor<f32>>>)
 // CHECK: ^bb2:
-// CHECK:   [[CAST2:%.+]] = "tf.Cast"(%arg1) {Truncate = false} : (tensor<!tf_type.variant<tensor<f32>>>) -> tensor<!tf_type.variant>
+// CHECK:   [[CAST2:%.+]] = "tf.Cast"(%arg1) <{Truncate = false}> : (tensor<!tf_type.variant<tensor<f32>>>) -> tensor<!tf_type.variant>
 // CHECK:   [[ELSE:%.+]] = call @testIfElse([[CAST2]]) : (tensor<!tf_type.variant>) -> tensor<!tf_type.variant>
-// CHECK:   [[CAST3:%.+]] = "tf.Cast"([[ELSE]]) {Truncate = false} : (tensor<!tf_type.variant>) -> tensor<!tf_type.variant<tensor<f32>>>
+// CHECK:   [[CAST3:%.+]] = "tf.Cast"([[ELSE]]) <{Truncate = false}> : (tensor<!tf_type.variant>) -> tensor<!tf_type.variant<tensor<f32>>>
 // CHECK:   cf.br ^bb3([[CAST3]] : tensor<!tf_type.variant<tensor<f32>>>)
 // CHECK: ^bb3([[BBARG0:%.+]]: tensor<!tf_type.variant<tensor<f32>>>):
 // CHECK:   return [[BBARG0]] : tensor<!tf_type.variant<tensor<f32>>>
@@ -201,20 +201,20 @@ func.func @testWhileCasts(%arg0: tensor<!tf_type.variant<tensor<1x3xf32>>>) -> (
     cond = @testWhileCond, body = @testWhileBody, is_stateless = false
   } : (tensor<!tf_type.variant<tensor<1x3xf32>>>) -> (tensor<!tf_type.variant<tensor<*xf32>>>)
   func.return %0 : tensor<!tf_type.variant<tensor<*xf32>>>
-// CHECK:   [[CASTENTRY:%.+]] = "tf.Cast"(%arg0) {Truncate = false} : (tensor<!tf_type.variant<tensor<1x3xf32>>>) -> tensor<!tf_type.variant>
+// CHECK:   [[CASTENTRY:%.+]] = "tf.Cast"(%arg0) <{Truncate = false}> : (tensor<!tf_type.variant<tensor<1x3xf32>>>) -> tensor<!tf_type.variant>
 // CHECK:   cf.br ^bb1([[CASTENTRY]] : tensor<!tf_type.variant>)
 // CHECK: ^bb1([[CONDARG0:%.+]]: tensor<!tf_type.variant>):        // 2 preds: ^bb0, ^bb2
 // CHECK:   [[CONTINUE:%.+]] = call @testWhileCond([[CONDARG0]]) : (tensor<!tf_type.variant>) -> tensor<i1>
 // CHECK:   [[TOBOOL:%.+]] = "tf.ToBool"([[CONTINUE]]) : (tensor<i1>) -> tensor<i1>
 // CHECK:   [[PRED:%.+]] = tensor.extract [[TOBOOL]][] : tensor<i1>
-// CHECK:   [[CASTCONDARG0:%.+]] = "tf.Cast"([[CONDARG0]]) {Truncate = false} : (tensor<!tf_type.variant>) -> tensor<!tf_type.variant<tensor<1x?xf32>>>
+// CHECK:   [[CASTCONDARG0:%.+]] = "tf.Cast"([[CONDARG0]]) <{Truncate = false}> : (tensor<!tf_type.variant>) -> tensor<!tf_type.variant<tensor<1x?xf32>>>
 // CHECK:   cf.cond_br [[PRED]], ^bb2([[CASTCONDARG0]] : tensor<!tf_type.variant<tensor<1x?xf32>>>), ^bb3([[CASTCONDARG0]] : tensor<!tf_type.variant<tensor<1x?xf32>>>)
 // CHECK: ^bb2([[BODYARG0:%.+]]: tensor<!tf_type.variant<tensor<1x?xf32>>>):       // pred: ^bb1
 // CHECK:   [[WHILERET:%.+]] = call @testWhileBody([[BODYARG0]]) : (tensor<!tf_type.variant<tensor<1x?xf32>>>) -> tensor<!tf_type.variant<tensor<?x?xf32>>>
-// CHECK:   [[CASTWHILERET:%.+]] = "tf.Cast"([[WHILERET]]) {Truncate = false} : (tensor<!tf_type.variant<tensor<?x?xf32>>>) -> tensor<!tf_type.variant>
+// CHECK:   [[CASTWHILERET:%.+]] = "tf.Cast"([[WHILERET]]) <{Truncate = false}> : (tensor<!tf_type.variant<tensor<?x?xf32>>>) -> tensor<!tf_type.variant>
 // CHECK:   cf.br ^bb1([[CASTWHILERET]] : tensor<!tf_type.variant>)
 // CHECK: ^bb3([[EXITARG0:%.+]]: tensor<!tf_type.variant<tensor<1x?xf32>>>):       // pred: ^bb1
-// CHECK:   [[CASTEXITARG0:%.+]] = "tf.Cast"([[EXITARG0]]) {Truncate = false} : (tensor<!tf_type.variant<tensor<1x?xf32>>>) -> tensor<!tf_type.variant<tensor<*xf32>>>
+// CHECK:   [[CASTEXITARG0:%.+]] = "tf.Cast"([[EXITARG0]]) <{Truncate = false}> : (tensor<!tf_type.variant<tensor<1x?xf32>>>) -> tensor<!tf_type.variant<tensor<*xf32>>>
 // CHECK:   return [[CASTEXITARG0]] : tensor<!tf_type.variant<tensor<*xf32>>>
 
 }

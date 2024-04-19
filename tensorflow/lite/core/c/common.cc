@@ -15,94 +15,145 @@ limitations under the License.
 
 #include "tensorflow/lite/core/c/common.h"
 
+#ifndef TF_LITE_STATIC_MEMORY
+#include <cstdlib>
+#endif  // TF_LITE_STATIC_MEMORY
+
+#include <cstring>
+#include <type_traits>
+#include <utility>
+
 #include "tensorflow/lite/core/c/c_api_types.h"
 #ifdef TF_LITE_TENSORFLOW_PROFILER
 #include "tensorflow/lite/tensorflow_profiler_logger.h"
 #endif
 
-#ifndef TF_LITE_STATIC_MEMORY
-#include <stdlib.h>
-#include <string.h>
-#endif  // TF_LITE_STATIC_MEMORY
+namespace {
 
-extern "C" {
-
-size_t TfLiteIntArrayGetSizeInBytes(int size) {
-  static TfLiteIntArray dummy;
-
-  size_t computed_size = sizeof(dummy) + sizeof(dummy.data[0]) * size;
+template <class T>
+size_t TfLiteVarArrayGetSizeInBytes(const int size) {
+  constexpr size_t data_size = sizeof(std::declval<T>().data[0]);
+  size_t computed_size = sizeof(T) + data_size * size;
 #if defined(_MSC_VER)
   // Context for why this is needed is in http://b/189926408#comment21
-  computed_size -= sizeof(dummy.data[0]);
+  computed_size -= data_size;
 #endif
   return computed_size;
 }
 
+template <class T, class U>
+int TfLiteVarArrayEqualsArray(const T* const a, const int b_size,
+                              const U* const b_data) {
+  static_assert(std::is_same<decltype(a->data[0]), const U&>::value,
+                "TfLiteVarArrayEqualsArray can only compare same type arrays");
+  if (a == nullptr) {
+    return b_size == 0;
+  }
+  if (a->size != b_size) {
+    return 0;
+  }
+  return !memcmp(a->data, b_data, a->size * sizeof(a->data[0]));
+}
+
+template <class T>
+int TfLiteVarArrayEqual(const T* const a, const T* const b) {
+  // This goes first because null arrays must compare equal.
+  if (a == b) {
+    return 1;
+  }
+  if (a == nullptr || b == nullptr) {
+    return 0;
+  }
+  return TfLiteVarArrayEqualsArray(a, b->size, b->data);
+}
+
+#ifndef TF_LITE_STATIC_MEMORY
+
+template <class T>
+T* TfLiteVarArrayCreate(const int size) {
+  const size_t alloc_size = TfLiteVarArrayGetSizeInBytes<T>(size);
+  if (alloc_size <= 0) {
+    return nullptr;
+  }
+  T* ret = (T*)malloc(alloc_size);
+  if (!ret) {
+    return nullptr;
+  }
+  ret->size = size;
+  return ret;
+}
+
+template <class T>
+T* TfLiteVarArrayCopy(const T* const src) {
+  if (!src) {
+    return nullptr;
+  }
+  T* const ret = TfLiteVarArrayCreate<T>(src->size);
+  if (ret) {
+    memcpy(ret->data, src->data, src->size * sizeof(src->data[0]));
+  }
+  return ret;
+}
+
+#endif  // TF_LITE_STATIC_MEMORY
+
+template <class T>
+void TfLiteVarArrayFree(T* a) {
+  free(a);
+}
+
+}  // namespace
+
+extern "C" {
+
+size_t TfLiteIntArrayGetSizeInBytes(int size) {
+  return TfLiteVarArrayGetSizeInBytes<TfLiteIntArray>(size);
+}
+
 int TfLiteIntArrayEqual(const TfLiteIntArray* a, const TfLiteIntArray* b) {
-  if (a == b) return 1;
-  if (a == nullptr || b == nullptr) return 0;
-  return TfLiteIntArrayEqualsArray(a, b->size, b->data);
+  return TfLiteVarArrayEqual(a, b);
 }
 
 int TfLiteIntArrayEqualsArray(const TfLiteIntArray* a, int b_size,
                               const int b_data[]) {
-  if (a == nullptr) return (b_size == 0);
-  if (a->size != b_size) return 0;
-  int i = 0;
-  for (; i < a->size; i++)
-    if (a->data[i] != b_data[i]) return 0;
-  return 1;
+  return TfLiteVarArrayEqualsArray(a, b_size, b_data);
 }
 
 #ifndef TF_LITE_STATIC_MEMORY
 
 TfLiteIntArray* TfLiteIntArrayCreate(int size) {
-  size_t alloc_size = TfLiteIntArrayGetSizeInBytes(size);
-  if (alloc_size <= 0) return nullptr;
-  TfLiteIntArray* ret = (TfLiteIntArray*)malloc(alloc_size);
-  if (!ret) return ret;
-  ret->size = size;
-  return ret;
+  return TfLiteVarArrayCreate<TfLiteIntArray>(size);
 }
 
 TfLiteIntArray* TfLiteIntArrayCopy(const TfLiteIntArray* src) {
-  if (!src) return nullptr;
-  TfLiteIntArray* ret = TfLiteIntArrayCreate(src->size);
-  if (ret) {
-    memcpy(ret->data, src->data, src->size * sizeof(int));
-  }
-  return ret;
+  return TfLiteVarArrayCopy(src);
 }
 
-void TfLiteIntArrayFree(TfLiteIntArray* a) { free(a); }
+void TfLiteIntArrayFree(TfLiteIntArray* a) { TfLiteVarArrayFree(a); }
 
 #endif  // TF_LITE_STATIC_MEMORY
 
 int TfLiteFloatArrayGetSizeInBytes(int size) {
-  static TfLiteFloatArray dummy;
-
-  int computed_size = sizeof(dummy) + sizeof(dummy.data[0]) * size;
-#if defined(_MSC_VER)
-  // Context for why this is needed is in http://b/189926408#comment21
-  computed_size -= sizeof(dummy.data[0]);
-#endif
-  return computed_size;
+  return TfLiteVarArrayGetSizeInBytes<TfLiteFloatArray>(size);
 }
 
 #ifndef TF_LITE_STATIC_MEMORY
 
 TfLiteFloatArray* TfLiteFloatArrayCreate(int size) {
-  TfLiteFloatArray* ret =
-      (TfLiteFloatArray*)malloc(TfLiteFloatArrayGetSizeInBytes(size));
-  ret->size = size;
-  return ret;
+  return TfLiteVarArrayCreate<TfLiteFloatArray>(size);
 }
 
-void TfLiteFloatArrayFree(TfLiteFloatArray* a) { free(a); }
+TfLiteFloatArray* TfLiteFloatArrayCopy(const TfLiteFloatArray* src) {
+  return TfLiteVarArrayCopy(src);
+}
+
+void TfLiteFloatArrayFree(TfLiteFloatArray* a) { TfLiteVarArrayFree(a); }
 
 void TfLiteTensorDataFree(TfLiteTensor* t) {
-  if (t->allocation_type == kTfLiteDynamic ||
-      t->allocation_type == kTfLitePersistentRo) {
+  if (t->allocation_type == kTfLiteVariantObject && t->data.data) {
+    delete static_cast<VariantData*>(t->data.data);
+  } else if (t->allocation_type == kTfLiteDynamic ||
+             t->allocation_type == kTfLitePersistentRo) {
     if (t->data.raw) {
 #ifdef TF_LITE_TENSORFLOW_PROFILER
       tflite::PauseHeapMonitoring(/*pause=*/true);
@@ -207,11 +258,27 @@ TfLiteStatus TfLiteTensorCopy(const TfLiteTensor* src, TfLiteTensor* dst) {
   if (!src || !dst) return kTfLiteOk;
   if (src->bytes != dst->bytes) return kTfLiteError;
   if (src == dst) return kTfLiteOk;
-
   dst->type = src->type;
   if (dst->dims) TfLiteIntArrayFree(dst->dims);
   dst->dims = TfLiteIntArrayCopy(src->dims);
-  memcpy(dst->data.raw, src->data.raw, src->bytes);
+  if (src->allocation_type == kTfLiteVariantObject) {
+    // An edge case exists in control flow ops when they copy inputs to outputs
+    // before invoking any body, in this case the `dst` will not have its
+    // `allocation_type` set properly, so we handle here for now.
+    if (dst->allocation_type != kTfLiteVariantObject) {
+      TfLiteTensorDataFree(dst);
+      dst->allocation_type = kTfLiteVariantObject;
+    }
+    auto* dst_vd = static_cast<VariantData*>(dst->data.data);
+    auto* src_vd = static_cast<VariantData*>(src->data.data);
+
+    // `CloneTo` will handle the case when `dst_vd` is nullptr, so it is safe
+    // to `CloneTo` something which was "freed". Also, returning from `CloneTo`
+    // will implicitly cast to `VariantData`; don't need static cast here.
+    dst->data.data = src_vd->CloneTo(dst_vd);
+  } else {
+    memcpy(dst->data.raw, src->data.raw, src->bytes);
+  }
   dst->buffer_handle = src->buffer_handle;
   dst->data_is_stale = src->data_is_stale;
   dst->delegate = src->delegate;
@@ -219,11 +286,11 @@ TfLiteStatus TfLiteTensorCopy(const TfLiteTensor* src, TfLiteTensor* dst) {
   return kTfLiteOk;
 }
 
-void TfLiteTensorResizeMaybeCopy(size_t num_bytes, TfLiteTensor* tensor,
-                                 bool preserve_data) {
+TfLiteStatus TfLiteTensorResizeMaybeCopy(size_t num_bytes, TfLiteTensor* tensor,
+                                         bool preserve_data) {
   if (tensor->allocation_type != kTfLiteDynamic &&
       tensor->allocation_type != kTfLitePersistentRo) {
-    return;
+    return kTfLiteOk;
   }
 #ifdef TF_LITE_TENSORFLOW_PROFILER
   tflite::PauseHeapMonitoring(/*pause=*/true);
@@ -258,9 +325,15 @@ void TfLiteTensorResizeMaybeCopy(size_t num_bytes, TfLiteTensor* tensor,
   tflite::PauseHeapMonitoring(/*pause=*/false);
 #endif
   tensor->bytes = num_bytes;
+  if (tensor->data.data == nullptr && num_bytes != 0) {
+    // We are done allocating but tensor is pointing to null and a valid size
+    // was requested, so we error.
+    return kTfLiteError;
+  }
+  return kTfLiteOk;
 }
 
-void TfLiteTensorRealloc(size_t num_bytes, TfLiteTensor* tensor) {
+TfLiteStatus TfLiteTensorRealloc(size_t num_bytes, TfLiteTensor* tensor) {
   return TfLiteTensorResizeMaybeCopy(num_bytes, tensor, true);
 }
 #endif  // TF_LITE_STATIC_MEMORY
@@ -297,6 +370,8 @@ const char* TfLiteTypeGetName(TfLiteType type) {
       return "STRING";
     case kTfLiteFloat16:
       return "FLOAT16";
+    case kTfLiteBFloat16:
+      return "BFLOAT16";
     case kTfLiteFloat64:
       return "FLOAT64";
     case kTfLiteResource:
@@ -311,25 +386,128 @@ const char* TfLiteTypeGetName(TfLiteType type) {
 
 TfLiteDelegate TfLiteDelegateCreate() { return TfLiteDelegate{}; }
 
-struct TfLiteOpaqueDelegateStruct* TfLiteOpaqueDelegateCreate(
-    const TfLiteOpaqueDelegateBuilder* opaque_delegate_builder) {
-  if (!opaque_delegate_builder) return nullptr;
-
-  TfLiteDelegate* result = new TfLiteDelegate{};
-  result->opaque_delegate_builder = new TfLiteOpaqueDelegateBuilder{};
-  *(result->opaque_delegate_builder) = *opaque_delegate_builder;
-
-  return reinterpret_cast<struct TfLiteOpaqueDelegateStruct*>(result);
+// Returns a tensor data allocation strategy.
+TfLiteAllocationStrategy TfLiteTensorGetAllocationStrategy(
+    const TfLiteTensor* const t) {
+  switch (t->allocation_type) {
+    case kTfLiteMemNone:
+      return kTfLiteAllocationStrategyNone;
+    case kTfLiteMmapRo:
+      return kTfLiteAllocationStrategyMMap;
+    case kTfLiteArenaRw:
+      return kTfLiteAllocationStrategyArena;
+    case kTfLiteArenaRwPersistent:
+      return kTfLiteAllocationStrategyArena;
+    case kTfLiteDynamic:
+      return kTfLiteAllocationStrategyMalloc;
+    case kTfLitePersistentRo:
+      return kTfLiteAllocationStrategyUnknown;
+    case kTfLiteCustom:
+      return kTfLiteAllocationStrategyUnknown;
+    case kTfLiteVariantObject:
+      return kTfLiteAllocationStrategyNew;
+  }
+  return kTfLiteAllocationStrategyUnknown;
 }
 
-void TfLiteOpaqueDelegateDelete(
-    struct TfLiteOpaqueDelegateStruct* opaque_delegate) {
-  if (!opaque_delegate) return;
+// Returns how stable a tensor data buffer address is across runs.
+TfLiteRunStability TfLiteTensorGetBufferAddressStability(
+    const TfLiteTensor* const t) {
+  switch (t->allocation_type) {
+    case kTfLiteMemNone:
+      return kTfLiteRunStabilityAcrossRuns;
+    case kTfLiteMmapRo:
+      return kTfLiteRunStabilityAcrossRuns;
+    case kTfLiteArenaRw:
+      return kTfLiteRunStabilityUnstable;
+    case kTfLiteArenaRwPersistent:
+      return kTfLiteRunStabilityUnstable;
+    case kTfLiteDynamic:
+      return kTfLiteRunStabilitySingleRun;
+    case kTfLitePersistentRo:
+      return kTfLiteRunStabilitySingleRun;
+    case kTfLiteCustom:
+      return kTfLiteRunStabilityUnknown;
+    case kTfLiteVariantObject:
+      return kTfLiteRunStabilityAcrossRuns;
+  }
+  return kTfLiteRunStabilityUnknown;
+}
 
-  const TfLiteDelegate* tflite_delegate =
-      reinterpret_cast<const TfLiteDelegate*>(opaque_delegate);
-  delete tflite_delegate->opaque_delegate_builder;
-  delete tflite_delegate;
+// Returns how stable a tensor data values are across runs.
+TfLiteRunStability TfLiteTensorGetDataStability(const TfLiteTensor* const t) {
+  switch (t->allocation_type) {
+    case kTfLiteMemNone:
+      return kTfLiteRunStabilityAcrossRuns;
+    case kTfLiteMmapRo:
+      return kTfLiteRunStabilityAcrossRuns;
+    case kTfLiteArenaRw:
+      return kTfLiteRunStabilitySingleRun;
+    case kTfLiteArenaRwPersistent:
+      return kTfLiteRunStabilityAcrossRuns;
+    case kTfLiteDynamic:
+      return kTfLiteRunStabilitySingleRun;
+    case kTfLitePersistentRo:
+      return kTfLiteRunStabilitySingleRun;
+    case kTfLiteCustom:
+      return kTfLiteRunStabilityUnknown;
+    case kTfLiteVariantObject:
+      return kTfLiteRunStabilitySingleRun;
+  }
+  return kTfLiteRunStabilityUnknown;
+}
+
+// Returns the operation step when the data of a tensor is populated.
+//
+// Some operations can precompute their results before the evaluation step. This
+// makes the data available earlier for subsequent operations.
+TfLiteRunStep TfLiteTensorGetDataKnownStep(const TfLiteTensor* t) {
+  switch (t->allocation_type) {
+    case kTfLiteMemNone:
+      return kTfLiteRunStepInit;
+    case kTfLiteMmapRo:
+      return kTfLiteRunStepInit;
+    case kTfLiteArenaRw:
+      return kTfLiteRunStepEval;
+    case kTfLiteArenaRwPersistent:
+      return kTfLiteRunStepEval;
+    case kTfLiteDynamic:
+      return kTfLiteRunStepEval;
+    case kTfLitePersistentRo:
+      return kTfLiteRunStepPrepare;
+    case kTfLiteCustom:
+      return kTfLiteRunStepUnknown;
+    case kTfLiteVariantObject:
+      return kTfLiteRunStepEval;
+  }
+  return kTfLiteRunStepUnknown;
+}
+
+// Returns the operation steop when the shape of a tensor is computed.
+//
+// Some operations can precompute the shape of their results before the
+// evaluation step. This makes the shape available earlier for subsequent
+// operations.
+TfLiteRunStep TfLiteTensorGetShapeKnownStep(const TfLiteTensor* t) {
+  switch (t->allocation_type) {
+    case kTfLiteMemNone:
+      return kTfLiteRunStepInit;
+    case kTfLiteMmapRo:
+      return kTfLiteRunStepInit;
+    case kTfLiteArenaRw:
+      return kTfLiteRunStepPrepare;
+    case kTfLiteArenaRwPersistent:
+      return kTfLiteRunStepPrepare;
+    case kTfLiteDynamic:
+      return kTfLiteRunStepEval;
+    case kTfLitePersistentRo:
+      return kTfLiteRunStepPrepare;
+    case kTfLiteCustom:
+      return kTfLiteRunStepUnknown;
+    case kTfLiteVariantObject:
+      return kTfLiteRunStepEval;
+  }
+  return kTfLiteRunStepUnknown;
 }
 
 }  // extern "C"

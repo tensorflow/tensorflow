@@ -55,6 +55,9 @@ Outputs
   out0: int, shape=[] - first output
 )doc";
 
+  static const char* OpName() { return kOpName; }
+  static const char* Doc() { return kDoc; }
+
   // Attributes declaration (syntax: https://www.tensorflow.org/guide/create_op)
   static std::vector<std::string> Attrs() {
     return {"AType: {int32, float} = DT_INT32", "BType: type"};

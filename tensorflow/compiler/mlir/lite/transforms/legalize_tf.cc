@@ -21,6 +21,7 @@ limitations under the License.
 // constant folding opportunities from the extra ops can be exploited by the
 // constant folding support for the TensorFlow ops.
 
+#include <algorithm>
 #include <climits>
 #include <complex>
 #include <cstdint>
@@ -32,22 +33,23 @@ limitations under the License.
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/Threading.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
-#include "tensorflow/compiler/mlir/lite/quantization/ir/FakeQuantSupport.h"
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
-#include "tensorflow/compiler/mlir/lite/quantization/ir/UniformSupport.h"
-#include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/utils/attribute_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/constant_utils.h"
@@ -56,8 +58,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_a_m.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/lower_tf.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
-#include "tensorflow/compiler/xla/status.h"
-#include "tensorflow/compiler/xla/statusor.h"
+#include "xla/status.h"
+#include "xla/statusor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -91,28 +93,6 @@ class LegalizeTFPass : public impl::LegalizeTFPassBase<LegalizeTFPass> {
   void runOnOperation() override;
 };
 
-// Returns true if all tensor value in `values` has static shape and same shape.
-bool HasSameStaticShapes(Operation* op) {
-  auto values = op->getOperands();
-  int index = 0;
-  ArrayRef<int64_t> shape;
-  for (Value value : values) {
-    auto shaped_type = value.getType().dyn_cast<ShapedType>();
-    if (!shaped_type || !shaped_type.hasStaticShape()) {
-      return false;
-    }
-    if (index == 0) {
-      shape = shaped_type.getShape();
-    } else {
-      if (shape != shaped_type.getShape()) {
-        return false;
-      }
-    }
-    ++index;
-  }
-  return true;
-}
-
 // Util that casts 'val' to Int32 by adding a cast Op.
 Value CreateCastToInt32(Value val, Location loc, PatternRewriter& rewriter) {
   IntegerType new_ele_type = rewriter.getIntegerType(32);
@@ -125,6 +105,34 @@ Value CreateCastToInt32(Value val, Location loc, PatternRewriter& rewriter) {
   return rewriter.createOrFold<TF::CastOp>(
       loc, UnrankedTensorType::get(new_ele_type), val,
       rewriter.getBoolAttr(false));
+}
+
+// Utility function to-
+// 1. Create a tfl.const op with an int32_t values, from an MLIR Value, if the
+// `Value` can be matched to a Constant DenseIntElementsAttr.
+// This will make sure the dynamic dimensions are asigned to be `-1`
+// 2. In the default case, cast the `Value` to an int32_t.
+Value CreateInt32ConstOrCast(Value val, Location loc,
+                             PatternRewriter& rewriter) {
+  if (val.getType().cast<ShapedType>().hasStaticShape()) {
+    DenseElementsAttr shape_value_attr;
+    if (matchPattern(val, m_Constant(&shape_value_attr))) {
+      SmallVector<int32_t, 4> new_shape_array_i32;
+      auto shape_value_array = shape_value_attr.getValues<llvm::APInt>();
+      for (int32_t idx = 0; idx < shape_value_array.size(); ++idx) {
+        auto size = shape_value_array[idx].getSExtValue();
+        new_shape_array_i32.push_back(
+            ShapedType::isDynamic(size) ? -1 : static_cast<int32_t>(size));
+      }
+      return rewriter.create<arith::ConstantOp>(
+          loc, DenseIntElementsAttr::get(
+                   RankedTensorType::get(new_shape_array_i32.size(),
+                                         rewriter.getIntegerType(32)),
+                   new_shape_array_i32));
+    }
+  }
+
+  return CreateCastToInt32(val, loc, rewriter);
 }
 
 // Get shape of an operand or result, support both dynamic and static shape.
@@ -169,6 +177,9 @@ mlir::TFL::MirrorPaddingType GetTFLMirrorPaddingFromString(
 
 DECL_CONVERT_OP(Assert);
 DECL_CONVERT_OP(ConcatV2);
+DECL_CONVERT_OP(BatchMatMul);
+DECL_CONVERT_OP(BatchMatMulV2);
+DECL_CONVERT_OP(BatchMatMulV3);
 DECL_CONVERT_OP(MatMul);
 DECL_CONVERT_OP(MatrixDiagV2);
 DECL_CONVERT_OP(MatrixDiagV3);
@@ -222,6 +233,128 @@ LogicalResult ConvertTFConcatV2Op::matchAndRewrite(
   rewriter.replaceOpWithNewOp<ConcatenationOp>(
       op, output_type, values, axis_i32, fused_activation_function);
   return success();
+}
+
+template <typename BatchMatMulOpType>
+bool ConvertTFBatchMatMulOp2TFLFullyConnectedOp(Operation* bmm_op,
+                                                PatternRewriter& rewriter) {
+  // If `value` is produced by tf.Dequantize op, then return the Dequantize op's
+  // input. Otherwise return `value`.
+  auto get_real_input_value = [](Value value) -> Value {
+    Operation* defining_op = value.getDefiningOp();
+    if (auto dequantize = dyn_cast_or_null<TF::DequantizeOp>(defining_op)) {
+      return dequantize.getInput();
+    } else if (auto dequantize =
+                   dyn_cast_or_null<TFL::DequantizeOp>(defining_op)) {
+      return dequantize.getInput();
+    } else {
+      return value;
+    }
+  };
+
+  // Returns true if the TF::BatchMatMul operation can be converted to
+  // tfl.fully_connected.
+  auto can_convert_to_fully_connected =
+      [&](BatchMatMulOpType& batch_matmul_op) {
+        Value input_rhs = get_real_input_value(batch_matmul_op.getY());
+
+        DenseElementsAttr constant;
+        if (!matchPattern(input_rhs, m_Constant(&constant))) {
+          return false;
+        }
+
+        // The rhs matrix must be 2D for fully connected op.
+        return (constant.getType().getRank() == 2);
+      };
+
+  auto op = cast<BatchMatMulOpType>(bmm_op);
+
+  // Create a tfl.transpose op that performs ZX transpose on `input`.
+  auto create_z_x_transpose_op = [&](Value input) -> Value {
+    RankedTensorType input_type = input.getType().cast<RankedTensorType>();
+    const int input_rank = input_type.getRank();
+
+    // Create a 1D I32 tensor for representing the dimension permutation.
+    auto permuation_tensor_type =
+        RankedTensorType::get({input_rank}, rewriter.getIntegerType(32));
+    llvm::SmallVector<Attribute, 4> permute;
+    permute.reserve(input_rank);
+    // First create an identity permutation tensor.
+    for (int i = 0; i < input_rank; i++) {
+      permute.push_back(rewriter.getI32IntegerAttr(i));
+    }
+    // Swaps the last two dimension since the last two dimension will be mapped
+    // to X and Z dimension.
+    std::iter_swap(permute.begin() + input_rank - 1,
+                   permute.begin() + input_rank - 2);
+    auto permutation_tensor_op = rewriter.create<arith::ConstantOp>(
+        op->getLoc(), permuation_tensor_type,
+        DenseElementsAttr::get(permuation_tensor_type, permute));
+
+    auto input_shape = input_type.getShape();
+    llvm::SmallVector<int64_t, 4> permuted_shape(input_shape.begin(),
+                                                 input_shape.end());
+    // Swaps z dimension and x dimension to get permuted shape.
+    std::iter_swap(permuted_shape.begin() + input_rank - 1,
+                   permuted_shape.begin() + input_rank - 2);
+    return rewriter.create<TFL::TransposeOp>(
+        op->getLoc(),
+        RankedTensorType::get(permuted_shape, input_type.getElementType()),
+        input, permutation_tensor_op.getResult());
+  };
+
+  if (!can_convert_to_fully_connected(op)) {
+    return false;
+  }
+
+  Value input_lhs = get_real_input_value(op.getX());
+  Value input_rhs = get_real_input_value(op.getY());
+
+  Value legalized_lhs =
+      op.getAdjX() ? create_z_x_transpose_op(input_lhs) : input_lhs;
+
+  // The rhs need to be transposed if adj_y == false AND this matmul will be
+  // legalized to tfl.fully_connected
+  Value legalized_rhs =
+      !op.getAdjY() ? create_z_x_transpose_op(input_rhs) : input_rhs;
+
+  Type output_type = op.getResult().getType();
+  auto no_input = rewriter.create<TFL::NoValueOp>(
+      op->getLoc(), rewriter.getNoneType(), rewriter.getUnitAttr());
+  auto fc_op = rewriter.create<TFL::FullyConnectedOp>(
+      op->getLoc(), ArrayRef<Type>{output_type},
+      /*input=*/legalized_lhs, /*filter=*/legalized_rhs, /*bias=*/no_input,
+      /*fused_activation_function=*/rewriter.getStringAttr("NONE"),
+      /*weights_format=*/rewriter.getStringAttr("DEFAULT"),
+      /*keep_num_dims=*/rewriter.getBoolAttr(true),
+      /*asymmetric_quantize_inputs=*/mlir::BoolAttr());
+  rewriter.replaceOp(op, {fc_op.getResult(0)});
+
+  return true;
+}
+
+LogicalResult ConvertTFBatchMatMulOp::matchAndRewrite(
+    Operation* op, PatternRewriter& rewriter) const {
+  if (ConvertTFBatchMatMulOp2TFLFullyConnectedOp<TF::BatchMatMulOp>(op,
+                                                                    rewriter))
+    return success();
+  return failure();
+}
+
+LogicalResult ConvertTFBatchMatMulV2Op::matchAndRewrite(
+    Operation* op, PatternRewriter& rewriter) const {
+  if (ConvertTFBatchMatMulOp2TFLFullyConnectedOp<TF::BatchMatMulV2Op>(op,
+                                                                      rewriter))
+    return success();
+  return failure();
+}
+
+LogicalResult ConvertTFBatchMatMulV3Op::matchAndRewrite(
+    Operation* op, PatternRewriter& rewriter) const {
+  if (ConvertTFBatchMatMulOp2TFLFullyConnectedOp<TF::BatchMatMulV3Op>(op,
+                                                                      rewriter))
+    return success();
+  return failure();
 }
 
 LogicalResult ConvertTFMatMulOp::matchAndRewrite(
@@ -904,7 +1037,9 @@ void addPatterns(MLIRContext* context, RewritePatternSet& patterns,
 
   // Add the generated patterns to the list.
   populateWithGenerated(patterns);
-  patterns.add<ConvertTFConcatV2Op, ConvertTFMatMulOp, ConvertTFMatrixDiagV2Op,
+  patterns.add<ConvertTFConcatV2Op, ConvertTFBatchMatMulOp,
+               ConvertTFBatchMatMulV2Op, ConvertTFBatchMatMulV3Op,
+               ConvertTFMatMulOp, ConvertTFMatrixDiagV2Op,
                ConvertTFMatrixDiagV3Op, ConvertTFPackOp, ConvertTFSplitOp,
                ConvertTFSplitVOp, ConvertTFUnpackOp, ConvertTFConv3DOp,
                ConvertTFConv3DBackpropInputV2Op>(context);
@@ -960,9 +1095,9 @@ void LegalizeTFPass::runOnOperation() {
   addPatterns(context, stage1Patterns, this->preserve_assert_op_);
 
   FrozenRewritePatternSet stage1FrozenPatterns(std::move(stage1Patterns));
-  if (!applyPatterns(func, target, stage1FrozenPatterns))
+  if (!applyPatterns(func, target, stage1FrozenPatterns)) {
     return signalPassFailure();
-
+  }
   // Explict BroadcastTo addition for left-over broadcast-able ops.
   // The following pattern matchings should be done after the other legalization
   // rules in order not to add unnecessary BroadcastTo ops.
@@ -991,8 +1126,9 @@ void LegalizeTFPass::runOnOperation() {
                      ApplyExplicitBroadcasting<TF::SelectV2Op>>(context);
 
   FrozenRewritePatternSet stage2FrozenPatterns(std::move(stage2Patterns));
-  if (!applyPatterns(func, target, stage2FrozenPatterns))
+  if (!applyPatterns(func, target, stage2FrozenPatterns)) {
     return signalPassFailure();
+  }
 }
 
 }  // namespace

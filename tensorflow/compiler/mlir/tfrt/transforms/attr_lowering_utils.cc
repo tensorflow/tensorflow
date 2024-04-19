@@ -158,8 +158,8 @@ bool IsUnusedTfrtAttribute(llvm::StringRef name) {
   // TODO(b/180399811): Re-evaluate the usage of these attributes.
   static const char* const kUnusedAttributes[] = {
       "_output_shapes",
-      "result_segment_sizes",
-      "operand_segment_sizes",
+      "resultSegmentSizes",
+      "operandSegmentSizes",
   };
 
   for (auto attr : kUnusedAttributes) {

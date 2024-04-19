@@ -15,9 +15,14 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/kernels/if_while_utils.h"
 
+#include <functional>
+#include <optional>
+#include <utility>
+#include <vector>
+
 #include "tensorflow/compiler/tf2xla/const_analysis.h"
 #include "tensorflow/compiler/tf2xla/literal_util.h"
-#include "tensorflow/compiler/xla/literal.h"
+#include "xla/literal.h"
 
 namespace tensorflow {
 
@@ -42,15 +47,15 @@ absl::InlinedVector<int, 5> ConvertCompileTimeConstArgumentsToConst(
       // If we can infer the constant values of an inner computation's argument,
       // replace them with constants. If that fails, we fallback to infer the
       // bounds of the argument.
-      StatusOr<std::optional<Tensor>> maybe_constant =
+      absl::StatusOr<std::optional<Tensor>> maybe_constant =
           expression.ResolveConstant(ctx->compiler()->client());
-      StatusOr<std::optional<Tensor>> bounds =
+      absl::StatusOr<std::optional<Tensor>> bounds =
           expression.ResolveConstant(ctx->compiler()->client(), false,
                                      xla::ValueInferenceMode::kUpperBound);
       if ((maybe_constant.ok() && maybe_constant->has_value()) ||
           (bounds.ok() && bounds->has_value())) {
-        StatusOr<Tensor> values_are_dynamic =
-            expression.ResolveDynamism(ctx->compiler()->client());
+        absl::StatusOr<Tensor> values_are_dynamic =
+            expression.ResolveDynamism();
         bool all_values_are_static = false;
         if (values_are_dynamic.ok()) {
           xla::Literal literal =

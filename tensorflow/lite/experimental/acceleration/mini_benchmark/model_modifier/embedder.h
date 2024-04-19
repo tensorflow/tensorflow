@@ -23,7 +23,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "flatbuffers/reflection_generated.h"  // from @flatbuffers
-#include "tensorflow/lite/kernels/register.h"
+#include "tensorflow/lite/core/kernels/register.h"
 #include "tensorflow/lite/schema/reflection/schema_generated.h"
 
 namespace tflite {

@@ -15,7 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_NNAPI_NNAPI_DELEGATE_C_API_H_
 #define TENSORFLOW_LITE_DELEGATES_NNAPI_NNAPI_DELEGATE_C_API_H_
 
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -65,7 +65,7 @@ struct TFL_CAPI_EXPORT TfLiteNnapiDelegateOptions {
   // accelerated.
   int disallow_nnapi_cpu;
 
-  // Whether to allow fp32 compuation to be run in fp16. Default to 0 (false).
+  // Whether to allow fp32 computation to be run in fp16. Default to 0 (false).
   int allow_fp16;
 
   // Specifies the max number of partitions to delegate. A value <= 0 means

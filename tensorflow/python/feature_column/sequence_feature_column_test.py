@@ -17,8 +17,6 @@
 import os
 
 from absl.testing import parameterized
-# Should remove this in future since it use a keras component for unit test.
-from keras.feature_column import dense_features
 import numpy as np
 
 from tensorflow.python.client import session
@@ -126,15 +124,6 @@ def _assert_sparse_tensor_indices_shape(test_case, expected, actual):
 def _get_sequence_dense_tensor(column, features):
   return column.get_sequence_dense_tensor(
       fc.FeatureTransformationCache(features), None)
-
-
-def _get_sequence_dense_tensor_state(column, features):
-  state_manager = fc._StateManagerImpl(
-      dense_features.DenseFeatures(column), trainable=True)
-  column.create_state(state_manager)
-  dense_tensor, lengths = column.get_sequence_dense_tensor(
-      fc.FeatureTransformationCache(features), state_manager)
-  return dense_tensor, lengths, state_manager
 
 
 def _get_sparse_tensors(column, features):
@@ -375,142 +364,6 @@ class SequenceCategoricalColumnWithVocabularyListTest(
         self, expected, self.evaluate(id_weight_pair.id_tensor))
 
 
-@test_util.run_all_in_graph_and_eager_modes
-class SequenceEmbeddingColumnTest(
-    test.TestCase, parameterized.TestCase):
-
-  @parameterized.named_parameters(
-      {'testcase_name': '2D',
-       'inputs_args': {
-           # example 0, ids [2]
-           # example 1, ids [0, 1]
-           # example 2, ids []
-           # example 3, ids [1]
-           'indices': ((0, 0), (1, 0), (1, 1), (3, 0)),
-           'values': (2, 0, 1, 1),
-           'dense_shape': (4, 2)},
-       'expected': [
-           # example 0, ids [2]
-           [[7., 11.], [0., 0.]],
-           # example 1, ids [0, 1]
-           [[1., 2.], [3., 5.]],
-           # example 2, ids []
-           [[0., 0.], [0., 0.]],
-           # example 3, ids [1]
-           [[3., 5.], [0., 0.]]]},
-      {'testcase_name': '3D',
-       'inputs_args': {
-           # example 0, ids [[2]]
-           # example 1, ids [[0, 1], [2]]
-           # example 2, ids []
-           # example 3, ids [[1], [0, 2]]
-           'indices': ((0, 0, 0), (1, 0, 0), (1, 0, 1), (1, 1, 0),
-                       (3, 0, 0), (3, 1, 0), (3, 1, 1)),
-           'values': (2, 0, 1, 2, 1, 0, 2),
-           'dense_shape': (4, 2, 2)},
-       'expected': [
-           # example 0, ids [[2]]
-           [[7., 11.], [0., 0.]],
-           # example 1, ids [[0, 1], [2]]
-           [[2, 3.5], [7., 11.]],
-           # example 2, ids []
-           [[0., 0.], [0., 0.]],
-           # example 3, ids [[1], [0, 2]]
-           [[3., 5.], [4., 6.5]]]}
-      )
-  def test_get_sequence_dense_tensor(self, inputs_args, expected):
-    inputs = sparse_tensor.SparseTensorValue(**inputs_args)
-    vocabulary_size = 3
-    embedding_dimension = 2
-    embedding_values = (
-        (1., 2.),  # id 0
-        (3., 5.),  # id 1
-        (7., 11.)  # id 2
-    )
-
-    def _initializer(shape, dtype, partition_info=None):
-      self.assertAllEqual((vocabulary_size, embedding_dimension), shape)
-      self.assertEqual(dtypes.float32, dtype)
-      self.assertIsNone(partition_info)
-      return embedding_values
-
-    categorical_column = sfc.sequence_categorical_column_with_identity(
-        key='aaa', num_buckets=vocabulary_size)
-    embedding_column = fc.embedding_column(
-        categorical_column, dimension=embedding_dimension,
-        initializer=_initializer)
-
-    embedding_lookup, _, state_manager = _get_sequence_dense_tensor_state(
-        embedding_column, {'aaa': inputs})
-
-    variables = state_manager._layer.weights
-    self.evaluate(variables_lib.global_variables_initializer())
-    self.assertCountEqual(
-        ('embedding_weights:0',), tuple([v.name for v in variables]))
-    self.assertAllEqual(embedding_values, self.evaluate(variables[0]))
-    self.assertAllEqual(expected, self.evaluate(embedding_lookup))
-
-  @parameterized.named_parameters(
-      {'testcase_name': '2D',
-       'inputs_args': {
-           # example 0, ids [2]
-           # example 1, ids [0, 1]
-           'indices': ((0, 0), (1, 0), (1, 1)),
-           'values': (2, 0, 1),
-           'dense_shape': (2, 2)},
-       'expected_sequence_length': [1, 2]},
-      {'testcase_name': '3D',
-       'inputs_args': {
-           # example 0, ids [[2]]
-           # example 1, ids [[0, 1], [2]]
-           'indices': ((0, 0, 0), (1, 0, 0), (1, 0, 1), (1, 1, 0)),
-           'values': (2, 0, 1, 2),
-           'dense_shape': (2, 2, 2)},
-       'expected_sequence_length': [1, 2]}
-      )
-  def test_sequence_length(self, inputs_args, expected_sequence_length):
-    inputs = sparse_tensor.SparseTensorValue(**inputs_args)
-    vocabulary_size = 3
-
-    categorical_column = sfc.sequence_categorical_column_with_identity(
-        key='aaa', num_buckets=vocabulary_size)
-    embedding_column = fc.embedding_column(
-        categorical_column, dimension=2)
-
-    _, sequence_length, _ = _get_sequence_dense_tensor_state(
-        embedding_column, {'aaa': inputs})
-
-    sequence_length = self.evaluate(sequence_length)
-    self.assertAllEqual(expected_sequence_length, sequence_length)
-    self.assertEqual(np.int64, sequence_length.dtype)
-
-  def test_sequence_length_with_empty_rows(self):
-    """Tests _sequence_length when some examples do not have ids."""
-    vocabulary_size = 3
-    sparse_input = sparse_tensor.SparseTensorValue(
-        # example 0, ids []
-        # example 1, ids [2]
-        # example 2, ids [0, 1]
-        # example 3, ids []
-        # example 4, ids [1]
-        # example 5, ids []
-        indices=((1, 0), (2, 0), (2, 1), (4, 0)),
-        values=(2, 0, 1, 1),
-        dense_shape=(6, 2))
-    expected_sequence_length = [0, 1, 2, 0, 1, 0]
-
-    categorical_column = sfc.sequence_categorical_column_with_identity(
-        key='aaa', num_buckets=vocabulary_size)
-    embedding_column = fc.embedding_column(
-        categorical_column, dimension=2)
-
-    _, sequence_length, _ = _get_sequence_dense_tensor_state(
-        embedding_column, {'aaa': sparse_input})
-
-    self.assertAllEqual(
-        expected_sequence_length, self.evaluate(sequence_length))
-
-
 class SequenceSharedEmbeddingColumnTest(test.TestCase):
 
   def test_get_sequence_dense_tensor(self):
@@ -584,7 +437,7 @@ class SequenceSharedEmbeddingColumnTest(test.TestCase):
 
       self.evaluate(variables_lib.global_variables_initializer())
       global_vars = ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
-      self.assertItemsEqual(('aaa_bbb_shared_embedding:0',),
+      self.assertCountEqual(('aaa_bbb_shared_embedding:0',),
                             tuple([v.name for v in global_vars]))
       self.assertAllEqual(embedding_values, self.evaluate(global_vars[0]))
       self.assertAllEqual(

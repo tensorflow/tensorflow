@@ -687,8 +687,6 @@ TF_CALL_INTEGRAL_TYPES_NO_INT32(REGISTER_SCATTER_ND_ALL_GPU);
 TF_CALL_INTEGRAL_TYPES_NO_INT32(REGISTER_SCATTER_ND_MIN_MAX_GPU);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_SCATTER_ND_ALL_GPU);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_SCATTER_ND_MIN_MAX_GPU);
-TF_CALL_bfloat16(REGISTER_SCATTER_ND_ALL_GPU);
-TF_CALL_bfloat16(REGISTER_SCATTER_ND_MIN_MAX_GPU);
 TF_CALL_COMPLEX_TYPES(REGISTER_SCATTER_ND_ALL_GPU);
 
 #undef REGISTER_SCATTER_ND_ALL_GPU
@@ -865,7 +863,7 @@ Status PrepareAndValidateInputs(const TensorShape& params_shape,
   const int64_t safe_slice_dim = (*slice_dim < 1) ? 1 : *slice_dim;
   *num_updates = indices_shape.num_elements() / safe_slice_dim;
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <typename Device, typename Index>
@@ -906,7 +904,7 @@ Status DoScatterNdImpl(OpKernelContext* c, const Tensor& indices,
   }
 
   if (shape.num_elements() == 0) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   if (allocate) {
@@ -958,7 +956,7 @@ Status DoScatterNdImpl(OpKernelContext* c, const Tensor& indices,
             gtl::ArraySlice<Index>(&indices_flat(bad_i, 0), slice_dim), ", "),
         "] does not index into shape ", shape.DebugString());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <typename T, typename Index, scatter_nd_op::UpdateOp Op>
@@ -988,12 +986,9 @@ Status DoScatterNdOnCpu(OpKernelContext* c, const Tensor& indices,
   se::DeviceMemoryBase indices_ptr(
       const_cast<Tensor&>(indices).flat<Index>().data(),
       indices.flat<Index>().size() * sizeof(Index));
-  stream->ThenMemcpy(host_indices.flat<Index>().data(), indices_ptr,
-                     indices.NumElements() * sizeof(Index));
-  if (!stream) {
-    return errors::Internal("Failed to copy indices to host");
-  }
-
+  TF_RETURN_IF_ERROR(stream->Memcpy(host_indices.flat<Index>().data(),
+                                    indices_ptr,
+                                    indices.NumElements() * sizeof(Index)));
   // Copy 'updates' to host.
   Tensor host_updates;
   TF_RETURN_IF_ERROR(c->allocate_temp(updates.dtype(), updates.shape(),
@@ -1001,12 +996,8 @@ Status DoScatterNdOnCpu(OpKernelContext* c, const Tensor& indices,
   se::DeviceMemoryBase updates_ptr(
       const_cast<Tensor&>(updates).flat<T>().data(),
       updates.flat<T>().size() * sizeof(T));
-  stream->ThenMemcpy(host_updates.flat<T>().data(), updates_ptr,
-                     updates.NumElements() * sizeof(T));
-  if (!stream) {
-    return errors::Internal("Failed to copy updates to host");
-  }
-
+  TF_RETURN_IF_ERROR(stream->Memcpy(host_updates.flat<T>().data(), updates_ptr,
+                                    updates.NumElements() * sizeof(T)));
   // Create 'out' on host, copying from device if 'allocate' is false.
   Tensor host_out;
   TF_RETURN_IF_ERROR(
@@ -1019,11 +1010,8 @@ Status DoScatterNdOnCpu(OpKernelContext* c, const Tensor& indices,
     CHECK_NOTNULL(out);  // Crash OK
     se::DeviceMemoryBase out_ptr(out->flat<T>().data(),
                                  out->flat<T>().size() * sizeof(T));
-    stream->ThenMemcpy(host_out.flat<T>().data(), out_ptr,
-                       host_out.NumElements() * sizeof(T));
-    if (!stream) {
-      return errors::Internal("Failed to copy output to host");
-    }
+    TF_RETURN_IF_ERROR(stream->Memcpy(host_out.flat<T>().data(), out_ptr,
+                                      host_out.NumElements() * sizeof(T)));
   }
 
   TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
@@ -1033,11 +1021,8 @@ Status DoScatterNdOnCpu(OpKernelContext* c, const Tensor& indices,
   // Copy 'host_out' to device.
   se::DeviceMemoryBase out_ptr(out->flat<T>().data(),
                                out->flat<T>().size() * sizeof(T));
-  stream->ThenMemcpy(&out_ptr, host_out.flat<T>().data(),
-                     host_out.NumElements() * sizeof(T));
-  if (!stream) {
-    return errors::Internal("Failed to copy output to device");
-  }
+  TF_RETURN_IF_ERROR(stream->Memcpy(&out_ptr, host_out.flat<T>().data(),
+                                    host_out.NumElements() * sizeof(T)));
   // Block host, since 'host_out' cannot be destructed until the copy is done.
   TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
   return OkStatus();
@@ -1054,7 +1039,7 @@ Status DoScatterNd(OpKernelContext* c, const Tensor& indices,
                    bool allocate) {
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   if (std::is_same<Device, GPUDevice>::value &&
-      tensorflow::OpDeterminismRequired()) {
+      tensorflow::OpDeterminismRequired() && !DisableScatterOpDeterminism()) {
     return DoScatterNdOnCpu<T, Index, Op>(c, indices, updates, shape, out,
                                           allocate);
   }

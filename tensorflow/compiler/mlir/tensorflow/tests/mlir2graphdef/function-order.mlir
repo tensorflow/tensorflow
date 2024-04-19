@@ -4,10 +4,13 @@
 func.func @main() {
   tf_executor.graph {
     // CHECK: node {
-    // CHECK-NEXT: name: "tf.foo"
-    // CHECK-NEXT: op: "foo"
+    // CHECK-NEXT: name: "tf.PartitionedCall"
+    // CHECK-NEXT: op: "PartitionedCall"
+    // CHECK:   func {
+    // CHECK:     name: "foo"
+    // CHECK:   }
     // CHECK: }
-    %0:2 = tf_executor.island wraps "tf.foo"() {name = "tf.foo"} : () -> tensor<*xf32>
+    %0 = tf_executor.island wraps "tf.PartitionedCall"() {Tin = [], Tout = [], config = "", config_proto = "", device = "", executor_type = "", f = @foo, name = "Call_foo"} : () -> ()
     tf_executor.fetch
   }
   func.return
@@ -65,14 +68,17 @@ func.func @bar() {
 // CHECK-NEXT:       name: "foo"
 // CHECK-NEXT:     }
 // CHECK-NEXT:     node_def {
-// CHECK-NEXT:       name: "tf.bar"
-// CHECK-NEXT:       op: "bar"
+// CHECK-NEXT:       name: "tf.PartitionedCall"
+// CHECK-NEXT:       op: "PartitionedCall"
+// CHECK:            func {
+// CHECK:              name: "bar"
+// CHECK:            }
 // CHECK:          }
 // CHECK-NEXT:   }
 // CHECK:      }
 func.func @foo() {
   tf_executor.graph {
-    %0:2 = tf_executor.island wraps "tf.bar"() {name = "tf.bar"} : () -> tensor<*xf32>
+    %0 = tf_executor.island wraps "tf.PartitionedCall"() {Tin = [], Tout = [], config = "", config_proto = "", device = "", executor_type = "", f = @bar, name = "Call_bar"} : () -> ()
     tf_executor.fetch
   }
   func.return

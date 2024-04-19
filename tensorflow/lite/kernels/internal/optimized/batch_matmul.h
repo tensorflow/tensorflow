@@ -28,7 +28,8 @@ namespace optimized_ops {
 inline void BatchMatMul(const RuntimeShape& lhs_shape, const float* lhs_data,
                         const RuntimeShape& rhs_shape, const float* rhs_data,
                         const RuntimeShape& output_shape, float* output_data,
-                        CpuBackendContext* context) {
+                        CpuBackendContext* context,
+                        bool transpose_lhs = false) {
   using ::tflite::cpu_backend_gemm::Gemm;
   using ::tflite::cpu_backend_gemm::GemmParams;
   using ::tflite::cpu_backend_gemm::MatrixParams;
@@ -78,7 +79,11 @@ inline void BatchMatMul(const RuntimeShape& lhs_shape, const float* lhs_data,
   const int accum_depth = extended_lhs_shape.Dims(4);
 
   MatrixParams<float> lhs_params;
-  lhs_params.order = cpu_backend_gemm::Order::kRowMajor;
+  if (transpose_lhs) {
+    lhs_params.order = cpu_backend_gemm::Order::kColMajor;
+  } else {
+    lhs_params.order = cpu_backend_gemm::Order::kRowMajor;
+  }
   lhs_params.rows = lhs_rows;
   lhs_params.cols = accum_depth;
 
@@ -221,7 +226,8 @@ inline void BatchMatMul(const FullyConnectedParams& params,
                         const RuntimeShape& lhs_shape, const int8_t* lhs_data,
                         const RuntimeShape& rhs_shape, const int8_t* rhs_data,
                         const RuntimeShape& output_shape, int8_t* output_data,
-                        CpuBackendContext* context) {
+                        CpuBackendContext* context,
+                        bool transpose_lhs = false) {
   using ::tflite::cpu_backend_gemm::Gemm;
   using ::tflite::cpu_backend_gemm::GemmParams;
   using ::tflite::cpu_backend_gemm::MatrixParams;
@@ -281,7 +287,11 @@ inline void BatchMatMul(const FullyConnectedParams& params,
   TFLITE_DCHECK_LE(output_activation_min, output_activation_max);
 
   MatrixParams<int8_t> lhs_params;
-  lhs_params.order = cpu_backend_gemm::Order::kRowMajor;
+  if (transpose_lhs) {
+    lhs_params.order = cpu_backend_gemm::Order::kColMajor;
+  } else {
+    lhs_params.order = cpu_backend_gemm::Order::kRowMajor;
+  }
   lhs_params.rows = lhs_rows;
   lhs_params.cols = accum_depth;
   lhs_params.zero_point = -filter_offset;
@@ -327,7 +337,8 @@ inline void BatchMatMul(const FullyConnectedParams& params,
                         const RuntimeShape& lhs_shape, const int8_t* lhs_data,
                         const RuntimeShape& rhs_shape, const int8_t* rhs_data,
                         const RuntimeShape& output_shape, int32_t* output_data,
-                        CpuBackendContext* context) {
+                        CpuBackendContext* context,
+                        bool transpose_lhs = false) {
   using ::tflite::cpu_backend_gemm::Gemm;
   using ::tflite::cpu_backend_gemm::GemmParams;
   using ::tflite::cpu_backend_gemm::MatrixParams;
@@ -387,7 +398,11 @@ inline void BatchMatMul(const FullyConnectedParams& params,
   TFLITE_DCHECK_LE(output_activation_min, output_activation_max);
 
   MatrixParams<int8_t> lhs_params;
-  lhs_params.order = cpu_backend_gemm::Order::kRowMajor;
+  if (transpose_lhs) {
+    lhs_params.order = cpu_backend_gemm::Order::kColMajor;
+  } else {
+    lhs_params.order = cpu_backend_gemm::Order::kRowMajor;
+  }
   lhs_params.rows = lhs_rows;
   lhs_params.cols = accum_depth;
   lhs_params.zero_point = -weights_offset;

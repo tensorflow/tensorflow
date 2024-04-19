@@ -16,6 +16,8 @@ limitations under the License.
 // See docs in ../ops/io_ops.cc.
 
 #include <memory>
+
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/reader_base.h"
 #include "tensorflow/core/framework/reader_op_kernel.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -41,19 +43,19 @@ class TextLineReader : public ReaderBase {
     for (; line_number_ < skip_header_lines_; ++line_number_) {
       string line_contents;
       Status status = input_buffer_->ReadLine(&line_contents);
-      if (errors::IsOutOfRange(status)) {
+      if (absl::IsOutOfRange(status)) {
         // We ignore an end of file error when skipping header lines.
         // We will end up skipping this file.
-        return OkStatus();
+        return absl::OkStatus();
       }
       TF_RETURN_IF_ERROR(status);
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status OnWorkFinishedLocked() override {
     input_buffer_.reset(nullptr);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status ReadLocked(tstring* key, tstring* value, bool* produced,
@@ -65,9 +67,9 @@ class TextLineReader : public ReaderBase {
       *produced = true;
       return status;
     }
-    if (errors::IsOutOfRange(status)) {  // End of file, advance to the next.
+    if (absl::IsOutOfRange(status)) {  // End of file, advance to the next.
       *at_end = true;
-      return OkStatus();
+      return absl::OkStatus();
     } else {  // Some other reading error
       return status;
     }

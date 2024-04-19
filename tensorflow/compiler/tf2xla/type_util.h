@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_TF2XLA_TYPE_UTIL_H_
 #define TENSORFLOW_COMPILER_TF2XLA_TYPE_UTIL_H_
 
-#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/statusor.h"
@@ -34,7 +34,7 @@ Status DataTypeToPrimitiveType(DataType data_type, xla::PrimitiveType* type);
 // TensorFlow object in the first place, you most likely should preserve the
 // original TensorFlow type, rather than trying to convert an XLA type back into
 // a TensorFlow type.
-StatusOr<DataType> EncodePrimitiveTypeAsDataType(xla::PrimitiveType type);
+absl::StatusOr<DataType> EncodePrimitiveTypeAsDataType(xla::PrimitiveType type);
 
 }  // namespace tensorflow
 

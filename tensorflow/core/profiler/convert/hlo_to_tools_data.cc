@@ -20,7 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/string_view.h"
-#include "tensorflow/compiler/xla/service/hlo.pb.h"
+#include "xla/service/hlo.pb.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
@@ -36,16 +36,13 @@ namespace profiler {
 
 namespace {
 
-StatusOr<std::string> ConvertHloProtoToMemoryViewer(
+absl::StatusOr<std::string> ConvertHloProtoToMemoryViewer(
     const xla::HloProto& hlo_proto) {
   static constexpr int kSmallBufferSize = 16 * 1024;  // 16KB
   static constexpr int kMemorySpaceColor = 0;         // HBM
 
-  // heap_simulator_trace_id is set to -1. The profiler will get heap simulator
-  // trace based on memory space.
   auto result_or = ConvertHloProtoToPreprocessResult(
-      hlo_proto, kSmallBufferSize, /*heap_simulator_trace_id=*/-1,
-      kMemorySpaceColor);
+      hlo_proto, kSmallBufferSize, kMemorySpaceColor);
   if (!result_or.ok()) {
     return errors::Internal(
         "Failed to convert HLO proto to memory viewer result: ",
@@ -67,7 +64,7 @@ StatusOr<std::string> ConvertHloProtoToMemoryViewer(
   return json_output;
 }
 
-StatusOr<std::string> ConvertHloProtoToGraphViewer(
+absl::StatusOr<std::string> ConvertHloProtoToGraphViewer(
     const xla::HloProto& hlo_proto, const ToolOptions& options) {
   TF_ASSIGN_OR_RETURN(GraphViewerParams params,
                       ParseGraphViewerParams(options));
@@ -83,7 +80,7 @@ StatusOr<std::string> ConvertHloProtoToGraphViewer(
 
 }  // namespace
 
-StatusOr<std::string> ConvertHloProtoToToolData(
+absl::StatusOr<std::string> ConvertHloProtoToToolData(
     const SessionSnapshot& session_snapshot, const absl::string_view tool_name,
     const ToolOptions& options) {
   // <options> must provide a hlo module_name field to identify the HLO module.

@@ -6,7 +6,7 @@ tf_module {
   }
   member {
     name: "VariablePolicy"
-    mtype: "<class \'enum.EnumMeta\'>"
+    mtype: "<class \'enum.EnumType\'>"
   }
   member_method {
     name: "save"

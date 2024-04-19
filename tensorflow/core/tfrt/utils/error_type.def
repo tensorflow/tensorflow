@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+  /* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,16 +20,16 @@ limitations under the License.
 // first argument provided is a TFRT error code, the second is the corresponding
 // TF error code.
 
-ERROR_TYPE(kCancelled, CANCELLED)
-ERROR_TYPE(kUnknown, UNKNOWN)
-ERROR_TYPE(kInvalidArgument, INVALID_ARGUMENT)
-ERROR_TYPE(kDeadlineExceeded, DEADLINE_EXCEEDED)
-ERROR_TYPE(kNotFound, NOT_FOUND)
-ERROR_TYPE(kFailedPrecondition, FAILED_PRECONDITION)
-ERROR_TYPE(kOutOfRange, OUT_OF_RANGE)
-ERROR_TYPE(kUnimplemented, UNIMPLEMENTED)
-ERROR_TYPE(kDataLoss, DATA_LOSS)
-ERROR_TYPE(kAlreadyExists, ALREADY_EXISTS)
-ERROR_TYPE(kUnavailable, UNAVAILABLE)
+ERROR_TYPE(kCancelled, kCancelled)
+ERROR_TYPE(kUnknown, kUnknown)
+ERROR_TYPE(kInvalidArgument, kInvalidArgument)
+ERROR_TYPE(kDeadlineExceeded, kDeadlineExceeded)
+ERROR_TYPE(kNotFound, kNotFound)
+ERROR_TYPE(kFailedPrecondition, kFailedPrecondition)
+ERROR_TYPE(kOutOfRange, kOutOfRange)
+ERROR_TYPE(kUnimplemented, kUnimplemented)
+ERROR_TYPE(kDataLoss, kDataLoss)
+ERROR_TYPE(kAlreadyExists, kAlreadyExists)
+ERROR_TYPE(kUnavailable, kUnavailable)
 
 #undef ERROR_TYPE

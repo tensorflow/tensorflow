@@ -20,8 +20,6 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_device.h"
-#include "tfrt/gpu/device/gpu_config.h"  // from @tf_runtime
-#include "tfrt/gpu/gpu_types.h"  // from @tf_runtime
 #include "tfrt/tensor/tensor.h"  // from @tf_runtime
 
 namespace tensorflow {

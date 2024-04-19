@@ -33,7 +33,7 @@ class Device;
 class FunctionLibraryRuntime;
 class ProcessFunctionLibraryRuntime;
 struct SessionOptions;
-class StaticDeviceMgr;
+class DynamicDeviceMgr;
 
 namespace test {
 
@@ -67,13 +67,14 @@ class Benchmark {
   thread::ThreadPool* pool_ = nullptr;  // Not owned.
   Device* device_ = nullptr;            // Not owned.
   Rendezvous* rendez_ = nullptr;
-  std::unique_ptr<StaticDeviceMgr> device_mgr_;
+  std::unique_ptr<DynamicDeviceMgr> device_mgr_;
   std::unique_ptr<FunctionLibraryDefinition> flib_def_;
   std::unique_ptr<ProcessFunctionLibraryRuntime> pflr_;
   FunctionLibraryRuntime* flr_;  // Not owned.
   std::unique_ptr<Executor> exec_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(Benchmark);
+  Benchmark(const Benchmark&) = delete;
+  void operator=(const Benchmark&) = delete;
 };
 
 // Returns the rendezvous key associated with the given Send/Recv node.

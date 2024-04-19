@@ -38,11 +38,12 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
-#include "tensorflow/compiler/mlir/lite/quantization/ir/FakeQuantSupport.h"
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
-#include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
-#include "tensorflow/compiler/mlir/lite/quantization/quantization_traits.h"
-#include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
+#include "tensorflow/compiler/mlir/quantization/common/ir/FakeQuantSupport.h"
+#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_config.h"
+#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_traits.h"
+#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_utils.h"
+#include "tensorflow/compiler/mlir/quantization/common/uniform_quantized_types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/tools/optimize/operator_property.h"
@@ -62,9 +63,10 @@ constexpr const char* intermediate_attributes[] = {
     "effective_hidden_scale_intermediate"};
 
 // Calculates the minimum power of two that is not less than the value.
-inline double PowerOfTwoBound(double value) {
-  return std::pow(2, std::ceil(std::log2(value)));
-}
+double PowerOfTwoBound(double value);
+
+tensorflow::DataType GetQuantizedInferenceType(bool is_signed,
+                                               int activation_number_of_bits);
 
 // Returns the element type of LSTM's intermediate tensor designated by the
 // index.
@@ -84,9 +86,10 @@ using Q = quantfork::QuantizeCastOp;
 using DQ = quantfork::DequantizeCastOp;
 
 template <typename LstmOp>
-LogicalResult GetLstmProperty(
-    LstmOp op, operator_property::OpVariant* lstm_variant,
-    operator_property::OperatorProperty* op_property) {
+LogicalResult GetLstmProperty(LstmOp op,
+                              operator_property::OpVariant* lstm_variant,
+                              operator_property::OperatorProperty* op_property,
+                              int activation_number_of_bits = 8) {
   if (llvm::isa<TFL::LSTMOp>(op.getOperation())) {
     lstm_variant->op_code = tflite::BuiltinOperator_LSTM;
   } else if (llvm::isa<TFL::UnidirectionalSequenceLSTMOp>(op.getOperation())) {
@@ -103,7 +106,8 @@ LogicalResult GetLstmProperty(
   lstm_variant->use_layer_norm =
       !op.getForgetLayerNormCoefficients().getType().template isa<NoneType>();
 
-  *op_property = operator_property::GetOperatorProperty(*lstm_variant);
+  *op_property = operator_property::GetOperatorProperty(
+      *lstm_variant, activation_number_of_bits);
 
   // TODO(b/176258587) move this to operator_property.cc if this is needed in
   // other components, too.
@@ -308,12 +312,12 @@ class ConvertOpStatsToQDQs : public OpRewritePattern<SourceOp> {
           rewriter.getIntegerType(16), attr.getType().getElementType(), scale,
           /*zeroPoint=*/0, llvm::minIntN(10), -llvm::minIntN(10));
     } else {
-      quant_type =
-          quant::GetUniformQuantizedTypeForWeight(
-              attr, /*symmetric=*/true,
-              /*num_bits=*/tensor_property.number_of_bits, /*is_signed=*/true,
-              /*narrow_range=*/true, quant_specs_.legacy_float_scale)
-              .template dyn_cast<quant::UniformQuantizedType>();
+      quant_type = quant::GetUniformQuantizedTypeForWeight(
+                       attr, /*symmetric=*/true,
+                       /*num_bits=*/tensor_property.number_of_bits,
+                       /*is_signed=*/true,
+                       /*narrow_range=*/true, quant_specs_.legacy_float_scale)
+                       .template dyn_cast<quant::UniformQuantizedType>();
     }
     if (!quant_type) {
       const_op->emitError("Failed to get quantized type");
@@ -405,13 +409,14 @@ class ConvertLstmStatsToQDQs : public ConvertOpStatsToQDQs<SourceOp> {
  public:
   ConvertLstmStatsToQDQs(MLIRContext* context,
                          const quant::QuantizationSpecs& quant_specs)
-
-      : ConvertOpStatsToQDQs<SourceOp>(context, quant_specs) {}
+      : ConvertOpStatsToQDQs<SourceOp>(context, quant_specs),
+        activation_number_of_bits_(quant_specs.GetQuantizationTypeWidth()) {}
   LogicalResult matchAndRewrite(SourceOp op,
                                 PatternRewriter& rewriter) const override {
     operator_property::OpVariant lstm_variant;
     operator_property::OperatorProperty lstm_property;
-    if (failed(GetLstmProperty(op, &lstm_variant, &lstm_property))) {
+    if (failed(GetLstmProperty(op, &lstm_variant, &lstm_property,
+                               activation_number_of_bits_))) {
       return failure();
     }
 
@@ -491,6 +496,8 @@ class ConvertLstmStatsToQDQs : public ConvertOpStatsToQDQs<SourceOp> {
     }
     return success();
   }
+
+  int activation_number_of_bits_;
 };
 
 // Returns a function that returns the quantized type of a bias input.
@@ -499,9 +506,10 @@ class ConvertLstmStatsToQDQs : public ConvertOpStatsToQDQs<SourceOp> {
 inline quant::AccumulatorScaleFunc GetUniformQuantizedTypeForBiasWithScale(
     double scale) {
   return [=](const std::vector<quant::QuantParams>& quant_params,
-             bool legacy_float_scale) -> quant::QuantParams {
-    if (auto qtype = quant::GetUniformQuantizedTypeForBias(quant_params,
-                                                           legacy_float_scale)
+             const int adjusted_quant_dim,
+             const bool legacy_float_scale) -> quant::QuantParams {
+    if (auto qtype = quant::GetUniformQuantizedTypeForBias(
+                         quant_params, legacy_float_scale, adjusted_quant_dim)
                          .dyn_cast_or_null<UniformQuantizedType>()) {
       return quant::UniformQuantizedType::get(
           qtype.getFlags(), qtype.getStorageType(), qtype.getExpressedType(),
@@ -565,6 +573,91 @@ class ConvertSvdfStatsToQDQs : public ConvertOpStatsToQDQs<TFL::SVDFOp> {
     auto op_property = operator_property::GetOperatorProperty(op_variant);
     return ConvertOpStatsToQDQs<TFL::SVDFOp>::processInputs(
         op, op_variant, op_property, rewriter);
+  }
+};
+
+class PropagateTransposedPerAxisQuantDim
+    : public OpRewritePattern<TFL::TransposeOp> {
+ public:
+  explicit PropagateTransposedPerAxisQuantDim(MLIRContext* context)
+      : OpRewritePattern<TFL::TransposeOp>(context) {}
+  LogicalResult matchAndRewrite(TFL::TransposeOp transpose_op,
+                                PatternRewriter& rewriter) const override {
+    // Check if the quantization is per-axis
+    auto dq_op = dyn_cast_or_null<quantfork::DequantizeCastOp>(
+        transpose_op.getOperand(0).getDefiningOp());
+    if (!dq_op) return failure();
+    auto q_op = dyn_cast_or_null<quantfork::QuantizeCastOp>(
+        dq_op.getOperand().getDefiningOp());
+    if (!q_op) return failure();
+    auto qtype = dq_op.getArg().getType().cast<TensorType>().getElementType();
+    auto aqtype = dyn_cast_or_null<quant::UniformQuantizedPerAxisType>(qtype);
+    if (!aqtype) return failure();
+
+    // Return if the result of TransposeOp is already quantized
+    if (!transpose_op.getResult().hasOneUse()) return failure();
+    auto next_op = *transpose_op.getResult().getUsers().begin();
+    if (dyn_cast_or_null<quantfork::QuantizeCastOp>(next_op)) return failure();
+
+    auto input_type = transpose_op.getInput().getType().cast<ShapedType>();
+    auto perm_type = transpose_op.getPerm().getType().cast<ShapedType>();
+    if (input_type.hasStaticShape() && perm_type.hasStaticShape()) {
+      if (perm_type.getNumElements() != input_type.getRank()) {
+        return transpose_op.emitOpError(
+            "perm tensor elements size is not equal to input tensor rank");
+      }
+    }
+
+    // Get permutation axes of the TransposeOp
+    DenseIntElementsAttr perm;
+    if (!matchPattern(transpose_op.getPerm(), m_Constant(&perm))) {
+      return failure();
+    }
+
+    SmallVector<int64_t, 4> axes;
+    for (const auto& axis_int : perm.getValues<APInt>()) {
+      int64_t axis = axis_int.getSExtValue();
+      if (axis < 0) {
+        axis += input_type.getRank();
+      }
+      if (axis < 0 || (input_type.hasRank() && axis >= input_type.getRank())) {
+        return transpose_op.emitOpError("perm must be in [-rank, rank)");
+      }
+      if (std::count(axes.begin(), axes.end(), axis) > 0) {
+        return transpose_op.emitOpError("perm cannot have duplicated axis");
+      }
+      axes.push_back(axis);
+    }
+
+    // Find what the quantized dimension has been transposed to
+    int new_out_quant_dim = -1;
+    for (int i = 0; i < axes.size(); ++i) {
+      if (axes[i] == aqtype.getQuantizedDimension()) {
+        new_out_quant_dim = i;
+        break;
+      }
+    }
+    if (new_out_quant_dim == -1) {
+      return transpose_op.emitOpError(
+          "new quantization dimension not found in perm");
+    }
+
+    // Insert a QDQ pair with the new quantized dimension after TransposeOp
+    auto new_qtype = quant::CreateI8F32UniformQuantizedPerAxisType(
+        transpose_op.getLoc(), *rewriter.getContext(), aqtype.getScales(),
+        aqtype.getZeroPoints(), new_out_quant_dim, /*narrow_range=*/true);
+    auto new_tensor_type = RankedTensorType::getChecked(
+        transpose_op.getLoc(), transpose_op.getType().getShape(), new_qtype);
+    rewriter.setInsertionPointAfter(transpose_op);
+    auto new_q_op = rewriter.create<quantfork::QuantizeCastOp>(
+        transpose_op.getLoc(), new_tensor_type, q_op.getArg());
+    auto new_dq_op = rewriter.create<quantfork::DequantizeCastOp>(
+        new_q_op.getLoc(), transpose_op.getResult().getType(),
+        new_q_op.getResult());
+    transpose_op.getResult().replaceAllUsesWith(new_dq_op.getResult());
+    new_q_op.setOperand(transpose_op.getResult());
+
+    return success();
   }
 };
 

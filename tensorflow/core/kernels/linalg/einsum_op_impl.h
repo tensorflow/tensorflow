@@ -23,7 +23,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_split.h"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -90,7 +90,7 @@ struct EinsumHelper {
           " but got dimension ", input_dim);
     }
     (*label_to_dim_sizes)[label] = input_dim;
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Validate input dimensions and populate unnamed labels and their label
@@ -160,7 +160,7 @@ struct EinsumHelper {
     }
     if (!absl::c_linear_search(input_has_ellipsis, true) &&
         !output_has_ellipsis) {
-      return OkStatus();
+      return absl::OkStatus();
     }
     // Insert broadcasting dimensions in the output labels.
     auto it =
@@ -178,7 +178,7 @@ struct EinsumHelper {
     // Populate EinsumDimensionType for the new broadcasting labels.
     label_types->resize(num_named_labels + max_bcast_dims,
                         EinsumDimensionType::kBroadcasting);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Permutes the labels according to the given permutation.
@@ -194,7 +194,7 @@ struct EinsumHelper {
   // Returns a reshaped input Tensor. The underlying buffer is not copied.
   static Status CopyFrom(const Tensor& input, const TensorShape& shape,
                          Tensor* output) {
-    if (output->CopyFrom(input, shape)) return OkStatus();
+    if (output->CopyFrom(input, shape)) return absl::OkStatus();
     return errors::Internal(
         "Encountered error while reshaping a Tensor of shape ",
         input.shape().DebugString(), " to shape ", shape.DebugString());
@@ -222,7 +222,8 @@ struct EinsumHelper {
     }
     TensorShape transposed_shape;
     for (int i = 0; i < input.dims(); ++i) {
-      transposed_shape.AddDim(input.dim_size(permutation[i]));
+      TF_RETURN_IF_ERROR(
+          transposed_shape.AddDimWithStatus(input.dim_size(permutation[i])));
     }
     // For empty Tensors, just change the shape. E.g. we may need to transpose
     // from shape [1, 0, 5] to [5, 1, 0].
@@ -233,7 +234,7 @@ struct EinsumHelper {
         ctx->allocate_temp(DataTypeToEnum<T>::value, transposed_shape, output));
     const Device& device = ctx->eigen_device<Device>();
     TF_RETURN_IF_ERROR(DoTranspose(device, input, permutation, output));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // If there are repeated labels in either the input or output, then this
@@ -309,7 +310,7 @@ struct EinsumHelper {
             " while handling repeated indices. Up to rank 6 is supported.");
 #undef NDIMS_CASE
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Returns true if the input dimensions are already sorted in the order
@@ -382,7 +383,7 @@ struct EinsumHelper {
       int64_t dim = input_deduped.dim_size(label_idx);
       if (label_types[label] == EinsumDimensionType::kBroadcasting ||
           label_types[label] == EinsumDimensionType::kBatch) {
-        output_shape.AddDim(dim);
+        TF_RETURN_IF_ERROR(output_shape.AddDimWithStatus(dim));
       } else if (label_types[label] == EinsumDimensionType::kFree) {
         free_labels->push_back(label);
       }
@@ -391,8 +392,10 @@ struct EinsumHelper {
     if (*swap_free_and_contract)
       std::swap(reshape[EinsumDimensionType::kFree],
                 reshape[EinsumDimensionType::kContract]);
-    output_shape.AddDim(reshape[EinsumDimensionType::kFree]);
-    output_shape.AddDim(reshape[EinsumDimensionType::kContract]);
+    TF_RETURN_IF_ERROR(
+        output_shape.AddDimWithStatus(reshape[EinsumDimensionType::kFree]));
+    TF_RETURN_IF_ERROR(
+        output_shape.AddDimWithStatus(reshape[EinsumDimensionType::kContract]));
 
     if (reshape[EinsumDimensionType::kReduce] ==
         1) {  // No need to actually reduce.
@@ -410,7 +413,7 @@ struct EinsumHelper {
         const_cast<const Tensor&>(input_deduped)
             .shaped<T, 2>({output_size, reshape[kReduce]}),
         Eigen::array<Index, 1>({1}), Reducer());
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Reshapes a Tensor of shape [b0,b1...bk,N,M] to [prod(b0,b1...bk),N,M].
@@ -451,7 +454,8 @@ struct EinsumHelper {
     for (int i = 0; i < inputs.size(); ++i) {
       const int64_t free_axis =
           inputs[i].dims() - (swap_free_and_contract[i] ? 1 : 2);
-      output_shape.AddDim(inputs[i].dim_size(free_axis));
+      TF_RETURN_IF_ERROR(
+          output_shape.AddDimWithStatus(inputs[i].dim_size(free_axis)));
     }
     bool trans_x = swap_free_and_contract[0];
     bool trans_y = !swap_free_and_contract[1];
@@ -460,15 +464,16 @@ struct EinsumHelper {
     if (lhs.NumElements() == 0 || rhs.NumElements() == 0) {
       functor::SetZeroFunctor<Device, T> set_zero;
       set_zero(ctx->eigen_device<Device>(), output->flat<T>());
-      return OkStatus();
+      return absl::OkStatus();
     }
     Tensor output_reshaped;
     TF_RETURN_IF_ERROR(
         ReshapeToRank3(*output, bcast.output_batch_size(), &output_reshaped));
     LaunchBatchMatMul<Device, T>::Launch(ctx, lhs, rhs, /*adj_x=*/false,
                                          /*adj_y=*/false, trans_x, trans_y,
+                                         /*grad_x=*/false, /*grad_y=*/false,
                                          bcast, &output_reshaped);
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 
@@ -546,7 +551,8 @@ class EinsumOp : public OpKernel {
     for (int i = 0; i < num_inputs; ++i) {
       for (int label : free_labels[i]) {
         result_labels.push_back(label);
-        result_shape.AddDim(label_to_dim_sizes[label]);
+        OP_REQUIRES_OK(
+            ctx, result_shape.AddDimWithStatus(label_to_dim_sizes[label]));
       }
     }
 
@@ -649,9 +655,7 @@ namespace functor {
   DECLARE_GPU_SPEC(T, 5);    \
   DECLARE_GPU_SPEC(T, 6);
 
-DECLARE_GPU_SPECS(Eigen::half);
-DECLARE_GPU_SPECS(double);
-DECLARE_GPU_SPECS(float);
+TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPECS);
 // TODO(rocm): Enable once complex types are supported.
 #if GOOGLE_CUDA
 DECLARE_GPU_SPECS(complex64);

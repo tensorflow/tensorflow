@@ -13,14 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
 #include <string>
 #include <vector>
 
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/lib/slicing.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "xla/client/lib/slicing.h"
+#include "xla/client/xla_builder.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/util/tensor_format.h"
 
@@ -35,13 +36,13 @@ class DataFormatDimMapOp : public XlaOpKernel {
     OP_REQUIRES_OK(context, context->GetAttr("src_format", &src_format));
     string dst_format;
     OP_REQUIRES_OK(context, context->GetAttr("dst_format", &dst_format));
-    OP_REQUIRES(context, src_format.size() == 4 or src_format.size() == 5,
+    OP_REQUIRES(context, src_format.size() == 4 || src_format.size() == 5,
                 errors::InvalidArgument(
                     absl::StrCat("Source format must of length 4 or 5, "
                                  "received src_format = ",
                                  src_format)));
     OP_REQUIRES(
-        context, dst_format.size() == 4 or dst_format.size() == 5,
+        context, dst_format.size() == 4 || dst_format.size() == 5,
         errors::InvalidArgument(absl::StrCat(
             "Destination format must of length 4 or 5, received dst_format = ",
             dst_format)));
@@ -78,7 +79,8 @@ class DataFormatDimMapOp : public XlaOpKernel {
  private:
   std::vector<int32> dst_idx_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(DataFormatDimMapOp);
+  DataFormatDimMapOp(const DataFormatDimMapOp&) = delete;
+  void operator=(const DataFormatDimMapOp&) = delete;
 };
 
 REGISTER_XLA_OP(
@@ -177,7 +179,8 @@ class DataFormatVecPermuteOp : public XlaOpKernel {
   string src_format_;
   string dst_format_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(DataFormatVecPermuteOp);
+  DataFormatVecPermuteOp(const DataFormatVecPermuteOp&) = delete;
+  void operator=(const DataFormatVecPermuteOp&) = delete;
 };
 
 REGISTER_XLA_OP(

@@ -29,6 +29,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import map_fn
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import while_loop
 from tensorflow.python.platform import test
 
 
@@ -139,7 +140,7 @@ class WhileTest(xla_test.XLATestCase):
 
       def create_while_loop():
         iterations = array_ops.size(p, name="iterations")
-        r = control_flow_ops.while_loop(
+        r = while_loop.while_loop(
             lambda *_: True,
             lambda i, x: (i + 1, v * x), (0, 1.0),
             maximum_iterations=iterations,
@@ -174,7 +175,7 @@ class WhileTest(xla_test.XLATestCase):
       def mid_body_builder(iterations):
 
         def mid_body(i, x):
-          r = control_flow_ops.while_loop(
+          r = while_loop.while_loop(
               lambda *_: True,
               lambda i, x: (i + 1, v * x), (0, x),
               maximum_iterations=iterations,
@@ -185,14 +186,14 @@ class WhileTest(xla_test.XLATestCase):
 
       def outer_body(i, x):
         iterations = array_ops.size(p, name="iterations")
-        return (i + 1, x + control_flow_ops.while_loop(
+        return (i + 1, x + while_loop.while_loop(
             lambda *_: True,
             mid_body_builder(iterations), (0, x),
             maximum_iterations=iterations,
             name="mid")[1])
 
       def create_while_loop():
-        r = control_flow_ops.while_loop(
+        r = while_loop.while_loop(
             lambda *_: True,
             outer_body, (0, 1.0),
             maximum_iterations=5,

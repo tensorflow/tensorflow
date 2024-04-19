@@ -1,0 +1,310 @@
+// RUN: hlo-opt %s --platform=gpu --stage=llvm-before-optimizations --xla_gpu_target_config_filename=%S/../../../tools/hlo_opt/gpu_specs/%{GPU}.txtpb | FileCheck %s --check-prefixes=CHECK,CHECK-%{PTX}
+
+// Check that for "min" we are still using atomics (CAS loop).
+
+HloModule MinReduce, is_scheduled=true
+
+Min {
+  x.1 = f32[] parameter(0)
+  y.1 = f32[] parameter(1)
+  ROOT min.1 = f32[] minimum(x.1, y.1)
+}
+
+fused_computation {
+  param_0 = f32[300000]{0} parameter(0)
+  param_1 = f32[] parameter(1)
+  ROOT reduce.1 = f32[] reduce(f32[300000]{0} param_0, f32[] param_1), dimensions={0}, to_apply=Min
+}
+
+ENTRY reduce.1 {
+  parameter = f32[300000] parameter(0)
+  init_value = f32[] constant(0)
+  ROOT wrapped_reduce = f32[] fusion(f32[300000]{0} parameter, f32[] init_value), kind=kInput, calls=fused_computation
+}
+
+// CHECK-LABEL: entry:
+// CHECK-PTX:     %[[VAL_0:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range !4
+// CHECK-GCN:     %[[VAL_0:.*]] = call i32 @llvm.amdgcn.workgroup.id.x
+// CHECK:         %[[VAL_1:.*]] = zext i32 %[[VAL_0]] to i64
+// CHECK-PTX:     %[[VAL_2:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range !4
+// CHECK-GCN:     %[[VAL_2:.*]] = call i32 @llvm.amdgcn.workitem.id.x
+// CHECK:         %[[VAL_3:.*]] = zext i32 %[[VAL_2]] to i64
+// CHECK:         %[[VAL_4:.*]] = mul nuw nsw i64 %[[VAL_1]], 1
+// CHECK:         %[[VAL_5:.*]] = add nuw nsw i64 %[[VAL_4]], %[[VAL_3]]
+// CHECK:         %[[VAL_6:.*]] = icmp ult i64 %[[VAL_5]], 1
+// CHECK:         call void @llvm.assume(i1 %[[VAL_6]])
+// CHECK:         %[[VAL_7:.*]] = add nuw nsw i64 %[[VAL_5]], 0
+// CHECK:         %[[VAL_8:.*]] = icmp ult i64 %[[VAL_5]], 1
+// CHECK:         br i1 %[[VAL_8]], label %[[VAL_9:.*]], label %[[VAL_10:.*]]
+// CHECK:       wrapped_reduce.in_bounds-after:                   ; preds = %[[VAL_9]], %[[VAL_11:.*]]
+// CHECK:         ret void
+// CHECK:       wrapped_reduce.in_bounds-true:                    ; preds = %[[VAL_11]]
+// CHECK:         %[[VAL_12:.*]] = load float, ptr %[[VAL_13:.*]], align 4, !invariant.load !5
+// CHECK:         store float %[[VAL_12]], ptr %[[VAL_14:.*]], align 4
+// CHECK:         br label %[[VAL_10]]
+// CHECK:       entry:
+// CHECK:         %[[VAL_15:.*]] = alloca i32, align 4
+// CHECK:         %[[VAL_16:.*]] = alloca i32, align 4
+// CHECK:         %[[VAL_17:.*]] = alloca float, align 4
+// CHECK:         %[[VAL_18:.*]] = alloca float, align 4
+// CHECK:         %[[VAL_19:.*]] = alloca float, align 4
+// CHECK:         %[[VAL_20:.*]] = alloca float, align 4
+// CHECK:         %[[VAL_21:.*]] = alloca float, align 4
+// CHECK:         %[[VAL_22:.*]] = alloca float, align 4
+// CHECK:         %[[VAL_23:.*]] = alloca float, align 4
+// CHECK:         %[[VAL_24:.*]] = alloca float, align 4
+// CHECK:         %[[VAL_25:.*]] = alloca float, align 4
+// CHECK:         %[[VAL_26:.*]] = alloca float, align 4
+// CHECK:         %[[VAL_27:.*]] = alloca float, align 4
+// CHECK:         %[[VAL_28:.*]] = alloca float, align 4
+// CHECK:         %[[VAL_29:.*]] = alloca float, align 4
+// CHECK:         %[[VAL_30:.*]] = alloca float, align 4
+// CHECK:         %[[VAL_31:.*]] = alloca float, align 4
+// CHECK:         %[[VAL_32:.*]] = alloca float, align 4
+// CHECK:         %[[VAL_33:.*]] = alloca float, align 4
+// CHECK:         %[[VAL_34:.*]] = alloca float, align 4
+// CHECK:         %[[VAL_35:.*]] = alloca float, align 4
+// CHECK:         %[[VAL_36:.*]] = alloca float, align 4
+// CHECK:         %[[VAL_37:.*]] = alloca float, align 4
+// CHECK:         %[[VAL_38:.*]] = alloca float, align 4
+// CHECK:         %[[LOOP3_I_2:loop3.invar_address.*]] = alloca i32, align 4
+// CHECK:         %[[LOOP2_I_2:loop2.invar_address.*]] = alloca i32, align 4
+// CHECK:         %[[VAL_42:return_buffer.*]] = alloca float, align 4
+// CHECK:         %[[VAL_40:.*]] = alloca i32, align 4
+// CHECK:         %[[VAL_43:.*]] = alloca i32, align 4
+// CHECK:         %partial_reduction_result = alloca float, align 4
+// CHECK:         %reduction_input_address = alloca float, align 4
+// CHECK-PTX:     %[[VAL_47:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.ctaid.y(), !range !4
+// CHECK-GCN:     %[[VAL_47:.*]] = call i32 @llvm.amdgcn.workgroup.id.y
+// CHECK:         %[[VAL_48:.*]] = icmp eq i32 %[[VAL_47]], 0
+// CHECK:         br i1 %[[VAL_48]], label %[[VAL_49:.*]], label %[[VAL_50:.*]]
+// CHECK:       reduce-group-0-after:                             ; preds = %[[VAL_51:.*]], %[[VAL_52:.*]]
+// CHECK:         ret void
+// CHECK:       reduce-group-0-true:                              ; preds = %[[VAL_52]]
+// CHECK:         %[[VAL_53:.*]] = load float, ptr %[[VAL_54:.*]], align 4, !invariant.load !5
+// CHECK:         store float %[[VAL_53]], ptr %partial_reduction_result, align 4
+// CHECK-PTX:     %thread.id.x = call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range !6
+// CHECK-GCN:     %thread.id.x = call i32 @llvm.amdgcn.workitem.id.x
+// CHECK-PTX:     %block.id.x = call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range !7
+// CHECK-GCN:     %block.id.x = call i32 @llvm.amdgcn.workgroup.id.x
+// CHECK:         %thread.id.2 = urem i32 %thread.id.x, 1024
+// CHECK:         %lane_id = urem i32 %thread.id.x, 32
+// CHECK:         %[[VAL_63:.*]] = udiv i32 %block.id.x, 1
+// CHECK:         %[[VECTOR_OFFSET:.*]] = urem i32 %[[VAL_63]], 1
+// CHECK:         %[[VAL_63_2:.*]] = udiv i32 %block.id.x, 1
+// CHECK:         %[[VAL_64:.*]] = urem i32 %[[VAL_63_2]], 19
+// CHECK:         %[[VAL_65:.*]] = udiv i32 %block.id.x, 19
+// CHECK:         %[[VAL_66:.*]] = urem i32 %[[VAL_65]], 1
+// CHECK:         %[[VAL_67:.*]] = udiv i32 %block.id.x, 19
+// CHECK:         %[[VAL_68:.*]] = icmp eq i32 %[[VAL_64]], 18
+// CHECK:         %tile_bound.2 = select i1 %[[VAL_68]], i32 2544, i32 8192
+// CHECK:         %tile_origin.0 = mul i32 %[[VAL_67]], 1
+// CHECK:         %tile_origin.1 = mul i32 %[[VAL_66]], 1
+// CHECK:         %tile_origin.2 = mul i32 %[[VAL_64]], 8192
+// CHECK:         %tile_origin.3 = mul i32 %[[VECTOR_OFFSET]], 2
+// CHECK:         %[[VAL_81:.*]] = icmp eq i32 8192, %tile_bound.2
+// CHECK:         br i1 %[[VAL_81]], label %[[VAL_82:.*]], label %[[VAL_83:.*]]
+// CHECK:       is_full_tile-after:                               ; preds = %[[VAL_84:.*]], %[[VAL_85:.*]]
+// CHECK:         %[[VAL_86:.*]] = load float, ptr %partial_reduction_result, align 4
+// CHECK:         %[[VAL_87:.*]] = call float @llvm.nvvm.shfl.sync.down.f32(i32 -1, float %[[VAL_86]], i32 16, i32 31)
+// CHECK:         store float %[[VAL_87]], ptr %[[VAL_37]], align 4
+// CHECK:         call void @[[MIN:Min.*]](ptr %partial_reduction_result, ptr %[[VAL_37]], ptr %[[VAL_36]])
+// CHECK:         %[[VAL_88:.*]] = load float, ptr %[[VAL_36]], align 4
+// CHECK:         store float %[[VAL_88]], ptr %partial_reduction_result, align 4
+// CHECK:         %[[VAL_89:.*]] = load float, ptr %partial_reduction_result, align 4
+// CHECK:         %[[VAL_90:.*]] = call float @llvm.nvvm.shfl.sync.down.f32(i32 -1, float %[[VAL_89]], i32 8, i32 31)
+// CHECK:         store float %[[VAL_90]], ptr %[[VAL_35]], align 4
+// CHECK:         call void @[[MIN]](ptr %partial_reduction_result, ptr %[[VAL_35]], ptr %[[VAL_34]])
+// CHECK:         %[[VAL_91:.*]] = load float, ptr %[[VAL_34]], align 4
+// CHECK:         store float %[[VAL_91]], ptr %partial_reduction_result, align 4
+// CHECK:         %[[VAL_92:.*]] = load float, ptr %partial_reduction_result, align 4
+// CHECK:         %[[VAL_93:.*]] = call float @llvm.nvvm.shfl.sync.down.f32(i32 -1, float %[[VAL_92]], i32 4, i32 31)
+// CHECK:         store float %[[VAL_93]], ptr %[[VAL_33]], align 4
+// CHECK:         call void @[[MIN]](ptr %partial_reduction_result, ptr %[[VAL_33]], ptr %[[VAL_32]])
+// CHECK:         %[[VAL_94:.*]] = load float, ptr %[[VAL_32]], align 4
+// CHECK:         store float %[[VAL_94]], ptr %partial_reduction_result, align 4
+// CHECK:         %[[VAL_95:.*]] = load float, ptr %partial_reduction_result, align 4
+// CHECK:         %[[VAL_96:.*]] = call float @llvm.nvvm.shfl.sync.down.f32(i32 -1, float %[[VAL_95]], i32 2, i32 31)
+// CHECK:         store float %[[VAL_96]], ptr %[[VAL_31]], align 4
+// CHECK:         call void @[[MIN]](ptr %partial_reduction_result, ptr %[[VAL_31]], ptr %[[VAL_30]])
+// CHECK:         %[[VAL_97:.*]] = load float, ptr %[[VAL_30]], align 4
+// CHECK:         store float %[[VAL_97]], ptr %partial_reduction_result, align 4
+// CHECK:         %[[VAL_98:.*]] = load float, ptr %partial_reduction_result, align 4
+// CHECK:         %[[VAL_99:.*]] = call float @llvm.nvvm.shfl.sync.down.f32(i32 -1, float %[[VAL_98]], i32 1, i32 31)
+// CHECK:         store float %[[VAL_99]], ptr %[[VAL_29]], align 4
+// CHECK:         call void @[[MIN]](ptr %partial_reduction_result, ptr %[[VAL_29]], ptr %[[VAL_28]])
+// CHECK:         %[[VAL_100:.*]] = load float, ptr %[[VAL_28]], align 4
+// CHECK:         store float %[[VAL_100]], ptr %partial_reduction_result, align 4
+// CHECK:         %[[VAL_101:.*]] = udiv i32 %thread.id.2, 32
+// CHECK:         br i1 true, label %[[VAL_105:.*]], label %[[VAL_51]]
+// CHECK:       thread_in_bounds-after:
+// CHECK:         br label %[[VAL_50]]
+// CHECK:       is_full_tile-true:
+// CHECK:         store i32 0, ptr %[[VAL_43]], align 4
+// CHECK:         br label %[[VAL_107:.*]]
+// CHECK:       loop2.loop_header:                                ; preds = %[[VAL_108:.*]], %[[VAL_82]]
+// CHECK:         %[[VAL_109:.*]] = load i32, ptr %[[VAL_43]], align 4
+// CHECK:         %[[VAL_110:.*]] = icmp uge i32 %[[VAL_109]], 8
+// CHECK:         br i1 %[[VAL_110]], label %loop2.loop_exit, label %loop2.loop_body
+// CHECK:       loop2.loop_body:                                  ; preds = %[[VAL_107]]
+// CHECK:         %[[VAL_111:.*]] = add nuw nsw i32 %[[VAL_109]], 1
+// CHECK:         store i32 %[[VAL_111]], ptr %[[VAL_43]], align 4
+// CHECK:         %[[VAL_112:.*]] = icmp eq i32 %[[VAL_109]], 0
+// CHECK:         %[[OFFSET_2:.*]] = add i32 %loop2.indvar, %thread.id.2
+// CHECK:         store i32 0, ptr %loop3.invar_address, align 4
+// CHECK:         br label %loop3.loop_header
+// CHECK:       loop3.loop_header:
+// CHECK:         %loop3.indvar = load i32, ptr %loop3.invar_address, align 4
+// CHECK:         %[[LOOP3_OOB:.*]] = icmp uge i32 %loop3.indvar, 2
+// CHECK:         br i1 %[[LOOP3_OOB]], label %loop3.loop_exit, label %loop3.loop_body
+// CHECK:       loop3.loop_body:
+// CHECK:         %[[LOOP3_INC:.*]] = add nuw nsw i32 %loop3.indvar, 1
+// CHECK:         store i32 %[[LOOP3_INC]], ptr %loop3.invar_address, align 4
+// CHECK:         %[[START_0:.*]] = add i32 %tile_origin.0, 0
+// CHECK:         %[[START_1:.*]] = add i32 %tile_origin.1, 0
+// CHECK:         %[[START_2:.*]] = add i32 %tile_origin.2, %[[OFFSET_2]]
+// CHECK:         %[[START_3:.*]] = add i32 %tile_origin.3, %loop3.indvar
+// CHECK:         %[[VAL_113:.*]] = mul nuw nsw i32 %[[START_3]], 1
+// CHECK:         %[[VAL_114:.*]] = add nuw nsw i32 0, %[[VAL_113]]
+// CHECK:         %[[VAL_115:.*]] = mul nuw nsw i32 %[[START_2]], 2
+// CHECK:         %[[VAL_116:.*]] = add nuw nsw i32 %[[VAL_114]], %[[VAL_115]]
+// CHECK:         %[[VAL_119:.*]] = getelementptr inbounds [300000 x float], ptr %[[VAL_120:.*]], i32 0, i32 %[[VAL_116]]
+// CHECK:         %[[VAL_121:.*]] = load float, ptr %[[VAL_119]], align 4, !invariant.load !5
+// CHECK:         store float %[[VAL_121]], ptr %reduction_input_address, align 4
+// CHECK:         call void @[[MIN]](ptr %partial_reduction_result, ptr %reduction_input_address, ptr %[[VAL_42]])
+// CHECK:         %[[VAL_123:.*]] = load float, ptr %[[VAL_42]], align 4
+// CHECK:         store float %[[VAL_123]], ptr %partial_reduction_result, align 4
+// CHECK:         br label %loop3.loop_header
+// CHECK:       loop3.loop_exit:
+// CHECK:         br label %loop2.loop_header
+// CHECK:       loop2.loop_exit:
+// CHECK:         br label %is_full_tile-after
+// CHECK:       is_full_tile-false:
+// CHECK:         store i32 0, ptr %[[LOOP2_I_2]], align 4
+// CHECK:         br label %[[VAL_134:.*]]
+// CHECK:       loop2.loop_header4:
+// CHECK:         %[[VAL_136:.*]] = load i32, ptr %[[LOOP2_I_2]], align 4
+// CHECK:         %[[VAL_137:.*]] = icmp uge i32 %[[VAL_136]], 8
+// CHECK:         br i1 %[[VAL_137]], label %[[VAL_84]], label %[[VAL_138:.*]]
+// CHECK:       loop2.loop_body5:
+// CHECK:         %[[VAL_139:.*]] = add nuw nsw i32 %[[VAL_136]], 1
+// CHECK:         store i32 %[[VAL_139]], ptr %[[LOOP2_I_2]], align 4
+// CHECK:         %[[VAL_140:.*]] = icmp eq i32 %[[VAL_136]], 0
+// CHECK:         %[[VAL_141:.*]] = add i32 %[[VAL_136]], %thread.id.2
+// CHECK:         %[[VAL_144:.*]] = icmp ult i32 %[[VAL_141]], %tile_bound.2
+// CHECK:         br i1 %[[VAL_144]], label %x_in_tile-true, label %x_in_tile-after
+// CHECK:       x_in_tile-after:
+// CHECK:         br label %loop2.loop_header4
+// CHECK:       loop2.loop_exit3:
+// CHECK:         br label %is_full_tile-after
+// CHECK:       x_in_tile-true:                                   ; preds = %[[VAL_138]]
+// CHECK:         store i32 0, ptr %[[LOOP3_I_2]], align 4
+// CHECK:         br label %loop3.loop_header10
+// CHECK:      loop3.loop_header10:
+// CHECK:         %[[VAL_145:.*]] = load i32, ptr %[[LOOP3_I_2]], align 4
+// CHECK:         %[[VAL_146:.*]] = icmp uge i32 %[[VAL_145]], 2
+// CHECK:         br i1 %[[VAL_146]], label %loop3.loop_exit9, label %loop3.loop_body11
+// CHECK:      loop3.loop_body11:
+// CHECK:         %[[VAL_147:.*]] = add nuw nsw i32 %[[VAL_145]], 1
+// CHECK:         store i32 %[[VAL_147]], ptr %[[LOOP3_I_2]], align 4
+// CHECK:         %[[IDX0:.*]] = add i32 %tile_origin.0, 0
+// CHECK:         %[[IDX1:.*]] = add i32 %tile_origin.1, 0
+// CHECK:         %[[IDX2:.*]] = add i32 %tile_origin.2, %[[VAL_141]]
+// CHECK:         %[[IDX3:.*]] = add i32 %tile_origin.3, %[[VAL_145]]
+// CHECK:         %[[VAL_148:.*]] = mul nuw nsw i32 %[[IDX3]], 1
+// CHECK:         %[[VAL_149:.*]] = add nuw nsw i32 0, %[[VAL_148]]
+// CHECK:         %[[VAL_150:.*]] = mul nuw nsw i32 %[[IDX2]], 2
+// CHECK:         %[[VAL_151:.*]] = add nuw nsw i32 %[[VAL_149]], %[[VAL_150]]
+// CHECK:         %[[VAL_155:.*]] = getelementptr inbounds [300000 x float], ptr %[[VAL_120]], i32 0, i32 %[[VAL_151]]
+// CHECK:         %[[VAL_156:.*]] = load float, ptr %[[VAL_155]], align 4, !invariant.load !5
+// CHECK:         store float %[[VAL_156]], ptr %reduction_input_address, align 4
+// CHECK:         call void @[[MIN]](ptr %partial_reduction_result, ptr %reduction_input_address, ptr %[[VAL_38]])
+// CHECK:         %[[VAL_158:.*]] = load float, ptr %[[VAL_38]], align 4
+// CHECK:         store float %[[VAL_158]], ptr %partial_reduction_result, align 4
+// CHECK:         br label %loop3.loop_header10
+// CHECK:       loop3.loop_exit9:
+// CHECK:         br label %x_in_tile-after
+// CHECK:       thread_in_bounds-true:
+// CHECK:         %[[VAL_166:.*]] = icmp eq i32 %lane_id, 0
+// CHECK:         br i1 %[[VAL_166]], label %[[VAL_167:.*]], label %[[VAL_168:.*]]
+// CHECK:       intra_warp_reduce_write-after:                    ; preds = %[[VAL_167]], %[[VAL_105]]
+// CHECK:         call void @llvm.nvvm.barrier0()
+// CHECK:         %[[VAL_169:.*]] = icmp eq i32 %[[VAL_101]], 0
+// CHECK:         br i1 %[[VAL_169]], label %inter_warp_reduce-true, label %inter_warp_reduce-after
+// CHECK:       inter_warp_reduce-after:                          ; preds = %[[VAL_171:.*]], %[[VAL_168]]
+// CHECK:         br label %[[VAL_51]]
+// CHECK:       intra_warp_reduce_write-true:                     ; preds = %[[VAL_105]]
+// CHECK:         %[[VAL_172:.*]] = load float, ptr %partial_reduction_result, align 4
+// CHECK:         %[[VAL_173:.*]] = getelementptr inbounds [1 x [32 x float]], ptr addrspace(3) @shared_cache, i32 0, i32 0, i32 %[[VAL_101]]
+// CHECK:         %[[VAL_174:.*]] = addrspacecast ptr addrspace(3) %[[VAL_173]] to ptr
+// CHECK:         store float %[[VAL_172]], ptr %[[VAL_174]], align 4
+// CHECK:         br label %[[VAL_168]]
+// CHECK:       inter_warp_reduce-true:                           ; preds = %[[VAL_168]]
+// CHECK:         %[[VAL_175:.*]] = getelementptr inbounds [1 x [32 x float]], ptr addrspace(3) @shared_cache, i32 0, i32 0, i32 %lane_id
+// CHECK:         %[[VAL_176:.*]] = addrspacecast ptr addrspace(3) %[[VAL_175]] to ptr
+// CHECK:         store float %[[VAL_53]], ptr %[[VAL_27]], align 4
+// CHECK:         %[[VAL_177:.*]] = icmp ult i32 %thread.id.2, 32
+// CHECK:         %[[VAL_178:.*]] = select i1 %[[VAL_177]], ptr %[[VAL_176]], ptr %[[VAL_27]]
+// CHECK:         %[[VAL_179:.*]] = load float, ptr %[[VAL_178]], align 4
+// CHECK:         %[[VAL_180:.*]] = call float @llvm.nvvm.shfl.sync.down.f32(i32 -1, float %[[VAL_179]], i32 16, i32 31)
+// CHECK:         store float %[[VAL_180]], ptr %[[VAL_26]], align 4
+// CHECK:         call void @[[MIN]](ptr %[[VAL_178]], ptr %[[VAL_26]], ptr %[[VAL_25]])
+// CHECK:         %[[VAL_181:.*]] = load float, ptr %[[VAL_25]], align 4
+// CHECK:         store float %[[VAL_181]], ptr %[[VAL_178]], align 4
+// CHECK:         %[[VAL_182:.*]] = load float, ptr %[[VAL_178]], align 4
+// CHECK:         %[[VAL_183:.*]] = call float @llvm.nvvm.shfl.sync.down.f32(i32 -1, float %[[VAL_182]], i32 8, i32 31)
+// CHECK:         store float %[[VAL_183]], ptr %[[VAL_24]], align 4
+// CHECK:         call void @[[MIN]](ptr %[[VAL_178]], ptr %[[VAL_24]], ptr %[[VAL_23]])
+// CHECK:         %[[VAL_184:.*]] = load float, ptr %[[VAL_23]], align 4
+// CHECK:         store float %[[VAL_184]], ptr %[[VAL_178]], align 4
+// CHECK:         %[[VAL_185:.*]] = load float, ptr %[[VAL_178]], align 4
+// CHECK:         %[[VAL_186:.*]] = call float @llvm.nvvm.shfl.sync.down.f32(i32 -1, float %[[VAL_185]], i32 4, i32 31)
+// CHECK:         store float %[[VAL_186]], ptr %[[VAL_22]], align 4
+// CHECK:         call void @[[MIN]](ptr %[[VAL_178]], ptr %[[VAL_22]], ptr %[[VAL_21]])
+// CHECK:         %[[VAL_187:.*]] = load float, ptr %[[VAL_21]], align 4
+// CHECK:         store float %[[VAL_187]], ptr %[[VAL_178]], align 4
+// CHECK:         %[[VAL_188:.*]] = load float, ptr %[[VAL_178]], align 4
+// CHECK:         %[[VAL_189:.*]] = call float @llvm.nvvm.shfl.sync.down.f32(i32 -1, float %[[VAL_188]], i32 2, i32 31)
+// CHECK:         store float %[[VAL_189]], ptr %[[VAL_20]], align 4
+// CHECK:         call void @[[MIN]](ptr %[[VAL_178]], ptr %[[VAL_20]], ptr %[[VAL_19]])
+// CHECK:         %[[VAL_190:.*]] = load float, ptr %[[VAL_19]], align 4
+// CHECK:         store float %[[VAL_190]], ptr %[[VAL_178]], align 4
+// CHECK:         %[[VAL_191:.*]] = load float, ptr %[[VAL_178]], align 4
+// CHECK:         %[[VAL_192:.*]] = call float @llvm.nvvm.shfl.sync.down.f32(i32 -1, float %[[VAL_191]], i32 1, i32 31)
+// CHECK:         store float %[[VAL_192]], ptr %[[VAL_18]], align 4
+// CHECK:         call void @[[MIN]](ptr %[[VAL_178]], ptr %[[VAL_18]], ptr %[[VAL_17]])
+// CHECK:         %[[VAL_193:.*]] = load float, ptr %[[VAL_17]], align 4
+// CHECK:         store float %[[VAL_193]], ptr %[[VAL_178]], align 4
+// CHECK:         %[[VAL_194:.*]] = icmp eq i32 %thread.id.2, 0
+// CHECK:         br i1 %[[VAL_194]], label %[[VAL_195:.*]], label %[[VAL_171]]
+// CHECK:       reduction_write_output-after:
+// CHECK:         br label %inter_warp_reduce-after
+// CHECK:       reduction_write_output-true:
+// CHECK:         %[[VAL_200:.*]] = load float, ptr %[[VAL_178]], align 4
+// CHECK:         %[[VAL_201:.*]] = load i32, ptr %[[VAL_202:.*]], align 4
+// CHECK:         store i32 %[[VAL_201]], ptr %[[VAL_16]], align 4
+// CHECK:         br label %[[VAL_203:.*]]
+// CHECK:       atomic_op_loop_exit:                              ; preds = %[[VAL_204:.*]], %[[VAL_203]]
+// CHECK:         br label %[[VAL_171]]
+// CHECK:       atomic_op_loop_body:                              ; preds = %[[VAL_204]], %[[VAL_195]]
+// CHECK:         %[[VAL_205:.*]] = load i32, ptr %[[VAL_16]], align 4
+// CHECK:         store i32 %[[VAL_205]], ptr %[[VAL_15]], align 4
+// CHECK:         call void @[[MIN]](ptr %[[VAL_15]], ptr %[[VAL_178]], ptr %[[VAL_15]])
+// CHECK:         %[[VAL_206:.*]] = load i32, ptr %[[VAL_15]], align 4
+// CHECK:         %[[VAL_207:.*]] = icmp eq i32 %[[VAL_205]], %[[VAL_206]]
+// CHECK:         br i1 %[[VAL_207]], label %atomic_op_loop_exit, label %atomic_op_loop_cas
+// CHECK:       atomic_op_loop_cas:                               ; preds = %[[VAL_203]]
+// CHECK:         %[[VAL_208:.*]] = cmpxchg ptr %[[VAL_202]], i32 %[[VAL_205]], i32 %[[VAL_206]] seq_cst seq_cst, align 4
+// CHECK:         %[[VAL_209:.*]] = extractvalue { i32, i1 } %[[VAL_208]], 0
+// CHECK:         store i32 %[[VAL_209]], ptr %[[VAL_16]], align 4
+// CHECK:         %[[VAL_210:.*]] = extractvalue { i32, i1 } %[[VAL_208]], 1
+// CHECK:         br i1 %[[VAL_210]], label %atomic_op_loop_exit, label %atomic_op_loop_body
+// CHECK:       entry:
+// CHECK:         %[[VAL_211:.*]] = alloca float, align 4
+// CHECK:         %[[VAL_212:.*]] = load float, ptr %[[VAL_213:.*]], align 4
+// CHECK:         %[[VAL_214:.*]] = load float, ptr %[[VAL_215:.*]], align 4
+// CHECK:         %[[VAL_216:.*]] = call float @llvm.minimum.f32(float %[[VAL_212]], float %[[VAL_214]])
+// CHECK:         store float %[[VAL_216]], ptr %[[VAL_211]], align 4
+// CHECK:         %[[VAL_217:.*]] = load float, ptr %[[VAL_211]], align 4
+// CHECK:         store float %[[VAL_217]], ptr %[[VAL_218:.*]], align 4
+// CHECK:         ret void

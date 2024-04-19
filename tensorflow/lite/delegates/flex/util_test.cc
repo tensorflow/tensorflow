@@ -20,10 +20,11 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "tensorflow/c/tf_datatype.h"
 #include "tensorflow/core/framework/resource_handle.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
-#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/string_type.h"
 #include "tensorflow/lite/string_util.h"
 #include "tensorflow/lite/testing/util.h"
@@ -118,6 +119,7 @@ TEST(UtilTest, TypeConversionsFromTFLite) {
   EXPECT_EQ(TF_FLOAT, GetTensorFlowDataType(kTfLiteNoType));
   EXPECT_EQ(TF_FLOAT, GetTensorFlowDataType(kTfLiteFloat32));
   EXPECT_EQ(TF_HALF, GetTensorFlowDataType(kTfLiteFloat16));
+  EXPECT_EQ(TF_BFLOAT16, GetTensorFlowDataType(kTfLiteBFloat16));
   EXPECT_EQ(TF_DOUBLE, GetTensorFlowDataType(kTfLiteFloat64));
   EXPECT_EQ(TF_INT16, GetTensorFlowDataType(kTfLiteInt16));
   EXPECT_EQ(TF_INT32, GetTensorFlowDataType(kTfLiteInt32));
@@ -136,6 +138,7 @@ TEST(UtilTest, TypeConversionsFromTFLite) {
 
 TEST(UtilTest, TypeConversionsFromTensorFlow) {
   EXPECT_EQ(kTfLiteFloat16, GetTensorFlowLiteType(TF_HALF));
+  EXPECT_EQ(kTfLiteBFloat16, GetTensorFlowLiteType(TF_BFLOAT16));
   EXPECT_EQ(kTfLiteFloat32, GetTensorFlowLiteType(TF_FLOAT));
   EXPECT_EQ(kTfLiteFloat64, GetTensorFlowLiteType(TF_DOUBLE));
   EXPECT_EQ(kTfLiteInt16, GetTensorFlowLiteType(TF_INT16));
@@ -189,10 +192,10 @@ TEST(UtilTest, CreateTfTensorFromTfLiteTensorResourceOrVariant) {
   TfLiteTensor tensor;
   tensor.type = kTfLiteResource;
   EXPECT_EQ(CreateTfTensorFromTfLiteTensor(&tensor).status().code(),
-            tensorflow::error::INVALID_ARGUMENT);
+            absl::StatusCode::kInvalidArgument);
   tensor.type = kTfLiteVariant;
   EXPECT_EQ(CreateTfTensorFromTfLiteTensor(&tensor).status().code(),
-            tensorflow::error::INVALID_ARGUMENT);
+            absl::StatusCode::kInvalidArgument);
 }
 
 TEST(UtilTest, CreateTfTensorFromTfLiteTensorFloat) {
@@ -252,7 +255,7 @@ TEST(UtilTest, CreateTfTensorFromTfLiteTensorString) {
   std::string data_arr[] = {std::string("a_str\0ing", 9), "b_string"};
   tflite::DynamicBuffer buf;
   for (const auto& value : data_arr) {
-    buf.AddString(value.data(), value.length());
+    ASSERT_EQ(buf.AddString(value.data(), value.length()), kTfLiteOk);
   }
   buf.WriteToTensor(&tflite_tensor, nullptr);
 

@@ -16,6 +16,7 @@ limitations under the License.
 
 #include "tensorflow/c/experimental/ops/gen/common/view_util.h"
 #include "tensorflow/c/experimental/ops/gen/cpp/renderers/renderer.h"
+#include "tensorflow/c/experimental/ops/gen/cpp/renderers/renderer_context.h"
 #include "tensorflow/c/experimental/ops/gen/cpp/views/arg_view.h"
 #include "tensorflow/c/experimental/ops/gen/cpp/views/attr_view.h"
 #include "tensorflow/c/experimental/ops/gen/cpp/views/op_view.h"

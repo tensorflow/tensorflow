@@ -15,15 +15,16 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_CORE_ASYNC_TASK_INTERNAL_H_
 #define TENSORFLOW_LITE_CORE_ASYNC_TASK_INTERNAL_H_
 
+#include <atomic>
 #include <map>
 #include <memory>
 #include <string>
 
+#include "tensorflow/lite/core/async/async_kernel_internal.h"
+#include "tensorflow/lite/core/async/c/types.h"
+#include "tensorflow/lite/core/async/interop/c/types.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/core/c/common.h"
-#include "tensorflow/lite/core/async/async_kernel_internal.h"
-#include "tensorflow/lite/core/async/common.h"
-#include "tensorflow/lite/core/async/interop/c/types.h"
 
 // Forward declaration
 namespace tflite::async {
@@ -60,6 +61,10 @@ class ExecutionTask {
   TfLiteStatus SetBufferHandle(TfLiteIoType io_type, const char* name,
                                TfLiteBufferHandle handle);
 
+  // Same as SetBufferHandle above but uses tensor index. Callers need to make
+  // sure the index is valid.
+  TfLiteStatus SetBufferHandle(int tensor_index, TfLiteBufferHandle handle);
+
   // Returns the TfLiteSynchronization for input / output tensor `name`.
   // If there's tensor `name` is not found, returns nullptr.
   TfLiteSynchronization* GetSynchronization(TfLiteIoType io_type,
@@ -70,6 +75,11 @@ class ExecutionTask {
   // Sets the TfLiteSynchronization for input / output tensor `name`.
   // If there's tensor `name` is not found, do nothing.
   TfLiteStatus SetSynchronization(TfLiteIoType io_type, const char* name,
+                                  TfLiteSynchronization* sync);
+
+  // Same as TfLiteSynchronization above but uses tensor index. Callers need to
+  // make sure the index is valid.
+  TfLiteStatus SetSynchronization(int tensor_index,
                                   TfLiteSynchronization* sync);
 
   using TensorNameMapT = std::map<std::string, uint32_t>;
@@ -86,11 +96,20 @@ class ExecutionTask {
 
   // Returns the status of this task.
   // True if the task has been scheduled, false if idle.
-  bool Scheduled() const { return scheduled_; }
+  bool Scheduled() const { return scheduled_.load(); }
 
-  // Sets the status of this task. Whether it's been scheduled or in idle
+  // Exchanges the status of this task. Whether it's been scheduled or in idle
   // state.
-  void SetScheduled(bool scheduled) { scheduled_ = scheduled; }
+  // Returns the previous value of the task.
+  bool SetScheduled(bool scheduled) { return scheduled_.exchange(scheduled); }
+
+  // Returns the latest status of this task.
+  // Thread safe.
+  TfLiteStatus Status() const { return status_.load(); }
+
+  // Sets the status code for this task.
+  // Thread safe.
+  void SetStatus(TfLiteStatus status) { status_.store(status); }
 
   // Sets the delegate execution data for this task.
   void SetDelegateExecutionData(TfLiteAsyncKernel* kernel, void* data) {
@@ -119,10 +138,14 @@ class ExecutionTask {
 
   // The status of the task. Whether the task has been scheduled or not.
   // The bit is set when calling InvokeAsync to this task, and resets on Wait.
-  bool scheduled_ = false;
+  std::atomic_bool scheduled_ = false;
+
+  // The latest status of this task. Default value will be kTfLiteOk.
+  std::atomic<TfLiteStatus> status_ = kTfLiteOk;
 
   // Mapping from signature name to tensor index.
   // Not owned. Set and owned by AsyncSignatureRunner.
+  // Can be nullptr if the model does not have signature def.
   const TensorNameMapT* input_name_to_idx_ = nullptr;
   const TensorNameMapT* output_name_to_idx_ = nullptr;
 

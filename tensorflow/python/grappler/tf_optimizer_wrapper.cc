@@ -18,7 +18,8 @@ limitations under the License.
 #include <string>
 #include <unordered_map>
 
-#include "pybind11/pybind11.h"
+#include "pybind11/pybind11.h"  // from @pybind11
+#include "pybind11_protobuf/native_proto_caster.h"  // from @pybind11_protobuf
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
@@ -57,58 +58,84 @@ void DetectDevices(
   }
 }
 
+namespace {
+tensorflow::GraphDef TF_OptimizeGraph(
+    tensorflow::grappler::Cluster* cluster,
+    const std::string& serialized_config_proto,
+    const tensorflow::MetaGraphDef& metagraph, bool verbose,
+    const std::string& graph_id, bool strip_default_attributes) {
+  tensorflow::GraphDef out_graph;
+  {
+    py::gil_scoped_release gil_release;
+    tensorflow::ConfigProto config_proto;
+    if (!config_proto.ParseFromString(serialized_config_proto)) {
+      throw std::invalid_argument(
+          "The ConfigProto could not be parsed as a valid protocol "
+          "buffer");
+    }
+
+    tensorflow::grappler::ItemConfig item_config;
+    // This disables graph optimizations in the older graph optimizer,
+    // which tend to overlap / be redundant with those in Grappler.
+    item_config.apply_optimizations = false;
+    item_config.ignore_user_placement = false;
+    std::unique_ptr<tensorflow::grappler::GrapplerItem> grappler_item =
+        tensorflow::grappler::GrapplerItemFromMetaGraphDef(graph_id, metagraph,
+                                                           item_config);
+    if (!grappler_item) {
+      throw std::invalid_argument(
+          "Failed to import metagraph, check error log for more info.");
+    }
+
+    tensorflow::DeviceBase* cpu_device = nullptr;
+    tensorflow::grappler::MetaOptimizer optimizer(cpu_device, config_proto);
+
+    tsl::MaybeRaiseRegisteredFromStatusWithGIL(
+        optimizer.Optimize(cluster, *grappler_item, &out_graph));
+    if (strip_default_attributes) {
+      tensorflow::StripDefaultAttributes(*tensorflow::OpRegistry::Global(),
+                                         out_graph.mutable_node());
+    }
+    if (verbose) {
+      optimizer.PrintResult();
+    }
+  }
+  return out_graph;
+}
+}  // namespace
+
+// Here two bindings of `TF_OptimizeGraph` are introduced, one serializes the
+// `MetaGraphDef` to string when passing it to C++, another uses pybind's
+// protobuf interface, and enables its native proto caster feature
+// (https://github.com/pybind/pybind11_protobuf#c-native-vs-python-native-types)
+// to prevent serialization. This is necessary for grappler to support models
+// larger than 2GiB.
+// At the moment, the open source python API defaults to the serialized
+// implementation.
 PYBIND11_MODULE(_pywrap_tf_optimizer, m) {
-  m.def("TF_OptimizeGraph",
+  pybind11_protobuf::ImportNativeProtoCasters();
+  m.def("TF_OptimizeGraphSerialized",
         [](tensorflow::grappler::Cluster* cluster,
            const std::string& serialized_config_proto,
            const std::string& serialized_metagraph, bool verbose,
            const std::string& graph_id,
            bool strip_default_attributes) -> py::bytes {
           std::string out_graph_bytes;
+
           {
-            py::gil_scoped_release gil_release;
-            tensorflow::ConfigProto config_proto;
-            if (!config_proto.ParseFromString(serialized_config_proto)) {
-              throw std::invalid_argument(
-                  "The ConfigProto could not be parsed as a valid protocol "
-                  "buffer");
-            }
             tensorflow::MetaGraphDef metagraph;
             if (!metagraph.ParseFromString(serialized_metagraph)) {
               throw std::invalid_argument(
                   "The MetaGraphDef could not be parsed as a valid protocol "
                   "buffer");
             }
-
-            tensorflow::grappler::ItemConfig item_config;
-            // This disables graph optimizations in the older graph optimizer,
-            // which tend to overlap / be redundant with those in Grappler.
-            item_config.apply_optimizations = false;
-            item_config.ignore_user_placement = false;
-            std::unique_ptr<tensorflow::grappler::GrapplerItem> grappler_item =
-                tensorflow::grappler::GrapplerItemFromMetaGraphDef(
-                    graph_id, metagraph, item_config);
-            if (!grappler_item) {
-              throw std::invalid_argument(
-                  "Failed to import metagraph, check error log for more info.");
-            }
-
-            tensorflow::DeviceBase* cpu_device = nullptr;
-            tensorflow::GraphDef out_graph;
-            tensorflow::grappler::MetaOptimizer optimizer(cpu_device,
-                                                          config_proto);
-
-            MaybeRaiseRegisteredFromStatusWithGIL(
-                optimizer.Optimize(cluster, *grappler_item, &out_graph));
-            if (strip_default_attributes) {
-              tensorflow::StripDefaultAttributes(
-                  *tensorflow::OpRegistry::Global(), out_graph.mutable_node());
-            }
-            if (verbose) {
-              optimizer.PrintResult();
-            }
+            const tensorflow::GraphDef out_graph =
+                TF_OptimizeGraph(cluster, serialized_config_proto, metagraph,
+                                 verbose, graph_id, strip_default_attributes);
             out_graph_bytes = out_graph.SerializeAsString();
           }
           return py::bytes(std::move(out_graph_bytes));
         });
+
+  m.def("TF_OptimizeGraph", &TF_OptimizeGraph);
 }

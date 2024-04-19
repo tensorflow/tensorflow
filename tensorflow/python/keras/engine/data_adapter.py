@@ -27,14 +27,15 @@ from tensorflow.python.data.experimental.ops import cardinality
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.ops import options as options_lib
-from tensorflow.python.distribute import distribution_strategy_context as ds_context
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import input_lib
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
-from tensorflow.python.framework import ops
 from tensorflow.python.framework import smart_cond
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor
+from tensorflow.python.framework import tensor_conversion
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.engine import training_utils
@@ -46,8 +47,8 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import script_ops
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.types import data as data_types
 from tensorflow.python.util import nest
-from tensorflow.python.util.tf_export import keras_export
 
 
 class DataAdapter(object, metaclass=abc.ABCMeta):
@@ -564,7 +565,7 @@ class CompositeTensorDataAdapter(DataAdapter):
       return _is_scipy_sparse(v)
 
     def _is_tensor_or_composite(v):
-      if isinstance(v, (ops.Tensor, np.ndarray)):
+      if isinstance(v, (tensor.Tensor, np.ndarray)):
         return True
       return _is_composite(v)
 
@@ -701,7 +702,7 @@ class DatasetAdapter(DataAdapter):
 
   @staticmethod
   def can_handle(x, y=None):
-    return (isinstance(x, (dataset_ops.DatasetV1, dataset_ops.DatasetV2)) or
+    return (isinstance(x, (data_types.DatasetV1, data_types.DatasetV2)) or
             _is_distributed_dataset(x))
 
   def __init__(self,
@@ -1034,7 +1035,9 @@ def _process_tensorlike(inputs):
       dtype = None
       if issubclass(x.dtype.type, np.floating):
         dtype = backend.floatx()
-      return ops.convert_to_tensor_v2_with_dispatch(x, dtype=dtype)
+      return tensor_conversion.convert_to_tensor_v2_with_dispatch(
+          x, dtype=dtype
+      )
     elif _is_scipy_sparse(x):
       return _scipy_sparse_to_sparse_tensor(x)
     return x
@@ -1157,10 +1160,10 @@ class DataHandler(object):
         max_queue_size=max_queue_size,
         workers=workers,
         use_multiprocessing=use_multiprocessing,
-        distribution_strategy=ds_context.get_strategy(),
+        distribution_strategy=distribute_lib.get_strategy(),
         model=model)
 
-    strategy = ds_context.get_strategy()
+    strategy = distribute_lib.get_strategy()
 
     self._current_step = 0
     self._step_increment = self._steps_per_execution_value - 1
@@ -1416,8 +1419,9 @@ def _make_class_weight_map_fn(class_weight):
         "than the number of classes, found {}").format(class_weight)
     raise ValueError(error_msg)
 
-  class_weight_tensor = ops.convert_to_tensor_v2_with_dispatch(
-      [class_weight[int(c)] for c in class_ids])
+  class_weight_tensor = tensor_conversion.convert_to_tensor_v2_with_dispatch(
+      [class_weight[int(c)] for c in class_ids]
+  )
 
   def _class_weights_map_fn(*data):
     """Convert `class_weight` to `sample_weight`."""
@@ -1455,7 +1459,7 @@ def expand_1d(data):
 
   def _expand_single_1d_tensor(t):
     # Leaves `CompositeTensor`s as-is.
-    if (isinstance(t, ops.Tensor) and
+    if (isinstance(t, tensor.Tensor) and
         isinstance(t.shape, tensor_shape.TensorShape) and t.shape.rank == 1):
       return array_ops.expand_dims_v2(t, axis=-1)
     return t
@@ -1523,7 +1527,6 @@ def train_validation_split(arrays, validation_split):
   return train_arrays, val_arrays
 
 
-@keras_export("keras.utils.unpack_x_y_sample_weight", v1=[])
 def unpack_x_y_sample_weight(data):
   """Unpacks user-provided data tuple.
 
@@ -1585,7 +1588,6 @@ def unpack_x_y_sample_weight(data):
     raise ValueError(error_msg)
 
 
-@keras_export("keras.utils.pack_x_y_sample_weight", v1=[])
 def pack_x_y_sample_weight(x, y=None, sample_weight=None):
   """Packs user-provided data into a tuple.
 
@@ -1664,9 +1666,9 @@ def _get_tensor_types():
   try:
     import pandas as pd  # pylint: disable=g-import-not-at-top
 
-    return (ops.Tensor, np.ndarray, pd.Series, pd.DataFrame)
+    return (tensor.Tensor, np.ndarray, pd.Series, pd.DataFrame)
   except ImportError:
-    return (ops.Tensor, np.ndarray)
+    return (tensor.Tensor, np.ndarray)
 
 
 def _is_scipy_sparse(x):

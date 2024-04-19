@@ -31,8 +31,8 @@ limitations under the License.
 #include "tensorflow/core/protobuf/cluster.pb.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 #include "tensorflow/core/protobuf/tensorflow_server.pb.h"
-#include "tensorflow/tsl/lib/core/status_test_util.h"
-#include "tensorflow/tsl/protobuf/coordination_config.pb.h"
+#include "tsl/lib/core/status_test_util.h"
+#include "tsl/protobuf/coordination_config.pb.h"
 
 namespace tensorflow {
 namespace {
@@ -60,6 +60,8 @@ void ConfigCoordinationService(tensorflow::ServerDef* server_def,
   coord_config->set_shutdown_barrier_timeout_in_ms(
       absl::ToInt64Milliseconds(absl::Seconds(5)));
   coord_config->set_enable_health_check(enable_health_check);
+  // Allow restarted clients to reconnect.
+  coord_config->set_allow_new_incarnation_to_reconnect(true);
 }
 
 class SingleClientRecoverableJobsTest

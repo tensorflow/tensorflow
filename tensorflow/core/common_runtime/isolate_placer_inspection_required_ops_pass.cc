@@ -28,7 +28,7 @@ Status IsolatePlacerInspectionRequiredOpsPass::Run(
   if (options.graph == nullptr) {
     VLOG(1) << "Not running IsolatePlacerInspectionRequiredOpsPass because no "
                "graph is provided";
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   VLOG(1) << "IsolatePlacerInspectionRequiredOpsPass::Run";

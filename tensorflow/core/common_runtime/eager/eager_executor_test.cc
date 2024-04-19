@@ -20,9 +20,9 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/status_matchers.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/tsl/lib/core/status_test_util.h"
-#include "tensorflow/tsl/platform/status.h"
-#include "tensorflow/tsl/protobuf/error_codes.pb.h"
+#include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/status.h"
+#include "tsl/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 namespace {
@@ -44,8 +44,8 @@ class TestState {
 class TestEagerNode : public EagerNode {
  public:
   explicit TestEagerNode(TestState* state,
-                         Status prepare_return_status = OkStatus(),
-                         Status run_return_status = OkStatus())
+                         Status prepare_return_status = absl::OkStatus(),
+                         Status run_return_status = absl::OkStatus())
       : state_(state),
         prepare_return_status_(prepare_return_status),
         run_return_status_(run_return_status) {}
@@ -74,8 +74,8 @@ class TestEagerNode : public EagerNode {
 class TestAsyncEagerNode : public AsyncEagerNode {
  public:
   explicit TestAsyncEagerNode(TestState* state,
-                              Status prepare_return_status = OkStatus(),
-                              Status run_return_status = OkStatus())
+                              Status prepare_return_status = absl::OkStatus(),
+                              Status run_return_status = absl::OkStatus())
       : state_(state),
         prepare_return_status_(prepare_return_status),
         run_return_status_(run_return_status) {}
@@ -156,7 +156,7 @@ TEST(EagerExecutorTest, TestSyncExecutorFailPrepare) {
                                               errors::InvalidArgument("test"));
   auto status = sync_executor->AddOrExecute(std::move(node));
 
-  ASSERT_EQ(status.code(), tensorflow::error::INVALID_ARGUMENT);
+  ASSERT_EQ(status.code(), absl::StatusCode::kInvalidArgument);
   ASSERT_EQ(state->read_state(), TestState::State::kNotRun);
 }
 
@@ -165,7 +165,7 @@ TEST(EagerExecutorTest, TestSyncExecutorFailRun) {
       /*async=*/false, /*enable_streaming_enqueue=*/true);
 
   auto state = std::make_unique<TestState>();
-  auto node = std::make_unique<TestEagerNode>(state.get(), OkStatus(),
+  auto node = std::make_unique<TestEagerNode>(state.get(), absl::OkStatus(),
                                               errors::Internal("test"));
 
   auto status = sync_executor->AddOrExecute(std::move(node));
@@ -223,7 +223,7 @@ TEST(EagerExecutorTest, TestAsyncExecutorFailPrepare) {
 
   auto status = async_executor->AddOrExecute(std::move(node));
 
-  ASSERT_EQ(status.code(), tensorflow::error::INVALID_ARGUMENT);
+  ASSERT_EQ(status.code(), absl::StatusCode::kInvalidArgument);
   ASSERT_EQ(state->read_state(), TestState::State::kNotRun);
 }
 
@@ -232,7 +232,7 @@ TEST(EagerExecutorTest, TestAsyncExecutorFailRun) {
       /*async=*/true, /*enable_streaming_enqueue=*/true);
 
   auto state = std::make_unique<TestState>();
-  auto node = std::make_unique<TestEagerNode>(state.get(), OkStatus(),
+  auto node = std::make_unique<TestEagerNode>(state.get(), absl::OkStatus(),
                                               errors::Internal("test"));
 
   TF_ASSERT_OK(async_executor->AddOrExecute(std::move(node)));
@@ -250,7 +250,7 @@ TEST(EagerExecutorTest, TestAsyncExecutorFailPrepareWithAsyncNode) {
       state.get(), errors::InvalidArgument("test"));
   auto status = async_executor->AddOrExecute(std::move(node));
 
-  ASSERT_EQ(status.code(), tensorflow::error::INVALID_ARGUMENT);
+  ASSERT_EQ(status.code(), absl::StatusCode::kInvalidArgument);
   ASSERT_EQ(state->read_state(), TestState::State::kNotRun);
 }
 
@@ -259,8 +259,8 @@ TEST(EagerExecutorTest, TestAsyncExecutorFailRunWithAsyncNode) {
       /*async=*/true, /*enable_streaming_enqueue=*/true);
 
   auto state = std::make_unique<TestState>();
-  auto node = std::make_unique<TestAsyncEagerNode>(state.get(), OkStatus(),
-                                                   errors::Internal("test"));
+  auto node = std::make_unique<TestAsyncEagerNode>(
+      state.get(), absl::OkStatus(), errors::Internal("test"));
 
   TF_ASSERT_OK(async_executor->AddOrExecute(std::move(node)));
 

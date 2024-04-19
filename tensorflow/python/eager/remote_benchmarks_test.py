@@ -15,11 +15,11 @@
 r"""Benchmarks for remote worker eager execution.
 
 To run CPU benchmarks:
-  bazel run -c opt remote_benchmarks_test -- --benchmarks=.
+  bazel run -c opt remote_benchmarks_test -- --benchmark_filter=.
 
 To run GPU benchmarks:
   bazel run --config=cuda -c opt --copt="-mavx" remote_benchmarks_test -- \
-    --benchmarks=.
+    --benchmark_filter=.
 """
 
 import gc

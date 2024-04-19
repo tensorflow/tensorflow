@@ -26,6 +26,12 @@ std::vector<std::string> GetPerTableLoadOptimizationParametersOps();
 // Get the names of the RetrieveTPUEmbedding*Parameters ops.
 std::vector<std::string> GetPerTableRetrieveOptimizationParametersOps();
 
+// Type enum of elements in deduplication data tuple.
+enum DedupTupleElementType {
+  kInteger = 0,
+  kFloat = 1,
+};
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_TPU_OPS_TPU_EMBEDDING_OPS_H_

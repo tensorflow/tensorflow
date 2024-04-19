@@ -171,8 +171,8 @@ variables covered by these control flow statements into the respective ops.
 The examples below use a `while` loop, but the same notions extend to all
 control flow such as `if` and `for` statements.
 
-In the example below, `x` needs to become a loop variable of the
-corresponding `tf.while_loop':
+In the example below, `x` needs to become a loop variable of the corresponding
+`tf.while_loop`:
 
 ```
 while x > 0:
@@ -343,7 +343,7 @@ recognizes.
 
 AutoGraph assumes that variables that local functions close over may be used
 anywhere in the parent function, because in general it is possible to hide a
-function call in almost any Python statement). For this reason, these variables
+function call in almost any Python statement. For this reason, these variables
 are accounted within TensorFlow loops.
 
 For example, the following code correctly captures `a` in the TensorFlow loop
@@ -358,7 +358,7 @@ for i in tf.range(3):
 f()  # Prints 2
 ```
 
-An consequence is that these variables must be defined before the loop (see
+A consequence is that these variables must be defined before the loop (see
 Undefined and None values above). So the following code will raise an error,
 even if the variable is never used after the loop:
 
@@ -462,8 +462,8 @@ for i in tf.range(10):
 
 #### Python collections of fixed structure are allowed TensorFlow control flow
 
-An exception from the previous rule is made by Python collections that are
-static, that is, they don't grow in size for the duration of the computation.
+An exception to the previous rule is made by Python collections that are static,
+that is, they don't grow in size for the duration of the computation.
 
 Caution: Use functional programming style when manipulating static collections.
 
@@ -503,8 +503,8 @@ for i in tf.range(10):
     d[key] += i  # Problem -- accessing `dict` using non-constant key
 ```
 
-The code above will raises an "illegal capture" error. To remedy it, write it
-in functional programming style:
+The code above will raise an "illegal capture" error. To remedy it, write it in
+functional programming style:
 
 ```
 d = {'a': tf.constant(3)}
@@ -530,7 +530,7 @@ rank is dynamic.
 
 TensorFlow has optional static types and shapes: the shape of tensors may be
 static (e.g. `my_tensor.shape=(3, 3)` denotes a three by three matrix) or
-dynamic (e.g. `my_tensor.shape=(None, 3)` denotes a matrix with a dynamic
+dynamic (e.g. `my_tensor.shape=(None, 3)`) denotes a matrix with a dynamic
 number of rows and three columns. When the shapes are dynamic, you can still
 query it at runtime by using the `tf.shape()` function.
 

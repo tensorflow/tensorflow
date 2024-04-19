@@ -84,11 +84,10 @@ in a context where eager execution is not active. The exception is only raised
 when graph execution is active, for example inside a `@tf.function` with
 AutoGraph turned off.
 
-**When AutoGraph is on**, it can be caused by:
-  * placing a Tensor-dependent `break`, `continue` or `return` inside a Python
-    loop (see example below)
-  * attempting to use a `tf.Tensor` in a list comprehension, by iterating over
-    it or using it in a condition)
+**When AutoGraph is on**, it can be caused by: * placing a Tensor-dependent
+`break`, `continue` or `return` inside a Python loop (see example below) *
+attempting to use a `tf.Tensor` in a list comprehension, by iterating over it or
+using it in a condition
 
 A typical example of mixing Python and TF control flow in an incompatible way
 is:
@@ -156,7 +155,7 @@ exceptions, expect them to be wrapped by this exception.
 This error usually appears in the context of a conversion warning. It indicates
 that a lambda function could not be parsed (see [Limitations](limitations.md)).
 
-This type of errors can usually be avoided by creating lambda functions in
+This type of error can usually be avoided by creating lambda functions in
 separate simple assignments, for example:
 
 ```

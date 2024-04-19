@@ -18,7 +18,7 @@ limitations under the License.
 
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/tsl/lib/core/bits.h"
+#include "tsl/lib/core/bits.h"
 
 namespace tensorflow {
 

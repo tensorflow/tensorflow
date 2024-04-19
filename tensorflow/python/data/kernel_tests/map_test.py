@@ -14,9 +14,11 @@
 # ==============================================================================
 """Tests for `tf.data.Dataset.map()`."""
 import collections
+import dataclasses
 import functools
 import threading
 import time
+from typing import Callable
 import warnings
 
 from absl.testing import parameterized
@@ -24,9 +26,12 @@ import numpy as np
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.python import pywrap_sanitizers
 from tensorflow.python import tf2
 from tensorflow.python.checkpoint import checkpoint as trackable_utils
 from tensorflow.python.checkpoint import checkpoint_management
+from tensorflow.python.data.experimental.ops import cardinality
+from tensorflow.python.data.experimental.ops import global_shuffle_op
 from tensorflow.python.data.experimental.ops import random_access
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
@@ -41,9 +46,11 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import cond
+from tensorflow.python.ops import control_flow_case
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import map_fn
@@ -51,9 +58,11 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import script_ops
 from tensorflow.python.ops import sparse_ops
+from tensorflow.python.ops import stateless_random_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.ragged import ragged_concat_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
@@ -129,6 +138,59 @@ class Foo:
 
   def __init__(self):
     pass
+
+
+@dataclasses.dataclass
+class MyDataclass:
+  value1: tensor.Tensor
+  value2: tensor.Tensor
+
+  def __tf_flatten__(self):
+    metadata = tuple()
+    components = (self.value1, self.value2)
+    return metadata, components
+
+  @classmethod
+  def __tf_unflatten__(cls, metadata, components):
+    del metadata
+    return cls(value1=components[0], value2=components[1])
+
+
+@dataclasses.dataclass
+class MaskedTensor:
+  mask: bool
+  value: tensor.Tensor
+
+  def __tf_flatten__(self):
+    metadata = (self.mask,)
+    components = (self.value,)
+    return metadata, components
+
+  @classmethod
+  def __tf_unflatten__(cls, metadata, components):
+    mask = metadata[0]
+    value = components[0]
+    return MaskedTensor(mask=mask, value=value)
+
+
+@dataclasses.dataclass
+class NestedMaskedTensor:
+  mask: bool
+  value: MaskedTensor
+
+  def __tf_flatten__(self):
+    metadata = (self.mask,)
+    components = (self.value,)
+    return metadata, components
+
+  @classmethod
+  def __tf_unflatten__(cls, metadata, components):
+    mask = metadata[0]
+    value = components[0]
+    return NestedMaskedTensor(mask=mask, value=value)
+
+  def __eq__(self, other):
+    return self.mask == other.mask and self.value == other.value
 
 
 class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
@@ -544,6 +606,118 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
         dataset, expected_output=[i * 2 + i**2 for i in range(10)])
 
   @combinations.generate(_test_combinations())
+  def testMapDataclass(self, apply_map):
+    dataset = dataset_ops.Dataset.range(10)
+    dataset = apply_map(dataset, lambda x: MyDataclass(value1=x, value2=2 * x))
+    dataset = apply_map(dataset, lambda x: x.value1 + x.value2)
+    self.assertDatasetProduces(
+        dataset,
+        expected_output=[3 * x for x in range(10)],
+    )
+
+  @combinations.generate(_test_combinations())
+  def testMapMaskedTensor(self, apply_map):
+    dataset = dataset_ops.Dataset.range(10)
+    dataset = apply_map(dataset, lambda x: MaskedTensor(mask=True, value=x))
+    dataset = apply_map(dataset, lambda x: 3 * x.value)
+    self.assertDatasetProduces(
+        dataset,
+        expected_output=[3 * x for x in range(10)],
+    )
+
+  @combinations.generate(_test_combinations())
+  def testMapDataclassWithInputAndOutput(self, apply_map):
+    dataset = dataset_ops.Dataset.from_tensors(MyDataclass(value1=1, value2=2))
+    dataset = apply_map(dataset, lambda x: (x.value1 * 5, x.value2))
+    dataset = apply_map(
+        dataset, lambda x, y: MaskedTensor(mask=True, value=x + y)
+    )
+    dataset = apply_map(
+        dataset, lambda m: NestedMaskedTensor(mask=False, value=m)
+    )
+    self.assertDatasetProduces(
+        dataset,
+        expected_output=[
+            NestedMaskedTensor(
+                mask=False, value=MaskedTensor(mask=True, value=7)
+            )
+        ],
+    )
+
+  @combinations.generate(_test_combinations())
+  def testMapListOfDataclassObjects(self, apply_map):
+    dataset = dataset_ops.Dataset.range(10)
+
+    # Creates a list of dataclass objects.
+    dataset = apply_map(
+        dataset,
+        lambda x: [  # pylint: disable=g-long-lambda
+            MyDataclass(value1=x, value2=1),
+            MyDataclass(value1=2, value2=2 * x),
+        ],
+    )
+
+    # Takes a list of dataclass objects as input.
+    dataset = apply_map(dataset, lambda *x: x[0].value1 + x[1].value2)
+
+    self.assertDatasetProduces(
+        dataset,
+        expected_output=[3 * x for x in range(10)],
+    )
+
+  @combinations.generate(_test_combinations())
+  def testMapDictOfDataclassValues(self, apply_map):
+    dataset = dataset_ops.Dataset.range(10)
+
+    # Creates a dict of {str -> dataclass}.
+    dataset = apply_map(
+        dataset,
+        lambda x: {  # pylint: disable=g-long-lambda
+            "a": MyDataclass(value1=x, value2=1),
+            "b": MyDataclass(value1=2, value2=2 * x),
+        },
+    )
+    # Takes a dict of dataclass values as input.
+    dataset = apply_map(dataset, lambda x: x["a"].value1 + x["b"].value2)
+    self.assertDatasetProduces(
+        dataset,
+        expected_output=[3 * x for x in range(10)],
+    )
+
+  @combinations.generate(_test_combinations())
+  def testMapNestedMaskedTensorWithDataclassInput(self, apply_map):
+    dataset = dataset_ops.Dataset.range(10)
+    dataset = apply_map(dataset, lambda x: MaskedTensor(mask=True, value=x))
+    dataset = apply_map(
+        dataset,
+        # Takes a MaskedTensor as input.
+        lambda x: NestedMaskedTensor(mask=False, value=x),
+    )
+    dataset = apply_map(dataset, lambda x: 5 * x.value.value)
+    self.assertDatasetProduces(
+        dataset,
+        expected_output=[5 * x for x in range(10)],
+    )
+
+  @combinations.generate(_test_combinations())
+  def testMapNestedMaskedTensorWithDataclassOutput(self, apply_map):
+    dataset = dataset_ops.Dataset.range(10)
+    dataset = apply_map(
+        dataset,
+        lambda x: NestedMaskedTensor(  # pylint: disable=g-long-lambda
+            mask=False, value=MaskedTensor(mask=True, value=x)
+        ),
+    )
+
+    # Return a MaskedTensor as the return value.
+    dataset = apply_map(dataset, lambda x: x.value)
+    dataset = apply_map(dataset, lambda x: 7 * x.value)
+    self.assertDatasetProduces(
+        dataset,
+        expected_output=[7 * x for x in range(10)],
+    )
+
+  @combinations.generate(_test_combinations())
   def testMapNamedtuple(self, apply_map):
     # construct dataset of tuples
     labels = dataset_ops.Dataset.range(10)
@@ -628,7 +802,7 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
         return x // 2
 
       def defaults_two():
-        return control_flow_ops.cond(
+        return cond.cond(
             math_ops.equal(math_ops.mod(x, 2), 0),
             multiply,
             divide,
@@ -639,7 +813,7 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
                                math_ops.equal(y, 3)), defaults_two),
       ]
 
-      return control_flow_ops.case(
+      return control_flow_case.case(
           pred_fn_pairs, default=multiply, exclusive=True)
 
     def build_dataset(row, num):
@@ -672,7 +846,7 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
                                math_ops.equal(y, 3)), divide),
       ]
 
-      return control_flow_ops.case(
+      return control_flow_case.case(
           pred_fn_pairs, default=multiply, exclusive=True)
 
     def build_dataset(row, num):
@@ -702,7 +876,7 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
         return x // 2
 
       def defaults_two():
-        return control_flow_ops.cond(
+        return cond.cond(
             math_ops.equal(math_ops.mod(x, 2), 0),
             multiply,
             divide,
@@ -713,7 +887,7 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
                                math_ops.equal(y, 3)), defaults_two),
       ]
 
-      return control_flow_ops.case(
+      return control_flow_case.case(
           pred_fn_pairs, default=multiply, exclusive=True)
 
     row = np.arange(6)
@@ -1149,7 +1323,6 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
       sess.close()
       thread.join()
 
-
   # TODO(b/126553094): map doesnt work with variable defined inside function in
   # eager mode, possible Graph tensors leak out of the function building context
   # from function graph in eager mode as variables are created in init_scope.
@@ -1168,7 +1341,8 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
     if hasattr(dataset, "map_with_legacy_function"):
       # NOTE: In the legacy function, resource is captured by value.
       with self.assertRaisesWithPredicateMatch(
-          AttributeError, "'Tensor' object has no attribute 'assign_add'"):
+          AttributeError, ".*Tensor.* object has no attribute 'assign_add'"
+      ):
         dataset.map_with_legacy_function(func)
 
     dataset = dataset.map(func)
@@ -1238,9 +1412,9 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
     with self.cached_session(config=config):
 
       with ops.device("/device:CPU:0"):
-        a = variables.VariableV1(3.0)
+        a = variable_v1.VariableV1(3.0)
       with ops.device("/device:CPU:1"):
-        b = variables.VariableV1(5.0)
+        b = variable_v1.VariableV1(5.0)
 
       def func(_):
         nonlocal a, b
@@ -1337,18 +1511,29 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(test_base.eager_only_combinations())
   def testCheckpointLargeBuffer(self):
-    # Tensor of size 512M
-    dataset = dataset_ops.Dataset.from_tensors(
-        array_ops.ones((128, 1024, 1024), dtype=dtypes.float32))
-    dataset = dataset.repeat()
+    if (pywrap_sanitizers.is_asan_enabled() or
+        pywrap_sanitizers.is_tsan_enabled() or
+        pywrap_sanitizers.is_msan_enabled()):
+      self.skipTest("Skip to avoid OOM when using sanitizers.")
+    dataset = dataset_ops.Dataset.range(10).batch(2)
+    dataset = dataset.map(
+        # Create tensors of size 512M.
+        lambda seed: stateless_random_ops.stateless_random_uniform(
+            (128, 1024, 1024), seed, dtype=dtypes.float32
+        )
+    )
     # Set parallelism to 5 to exceed the 2GB protobuf limit
     dataset = dataset.map(lambda x: x * 2, num_parallel_calls=5)
     iterator = iter(dataset)
-    next(iterator)  # request an element to fill the parallel map buffer
+    next(iterator)  # Request an element to fill the parallel map buffer
+    time.sleep(1)  # Give buffers some time to fill
     ckpt = trackable_utils.Checkpoint(iterator=iterator)
     manager = checkpoint_management.CheckpointManager(
         ckpt, self.get_temp_dir(), max_to_keep=1)
     manager.save()
+    del dataset
+    del iterator
+    manager.restore_or_initialize()
 
   @combinations.generate(
       combinations.times(test_base.default_test_combinations(),
@@ -1357,6 +1542,22 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset_ops.Dataset.from_tensors(21).map(
         lambda x: x * 2, num_parallel_calls=num_parallel_calls, name="map")
     self.assertDatasetProduces(dataset, [42])
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(num_parallel_calls=[None, 1])))
+  def testStatusMessage(self, num_parallel_calls):
+    dataset = dataset_ops.Dataset.from_tensors(21).map(
+        lambda x: x // 0, num_parallel_calls=num_parallel_calls, name="map")
+    options = options_lib.Options()
+    options.experimental_optimization.apply_default_optimizations = False
+    dataset = dataset.with_options(options)
+    get_next = self.getNext(dataset)
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        r".*Error in user-defined function passed to .* transformation with "
+        r"iterator: Iterator::Root::.*"):
+      self.evaluate(get_next())
 
 
 class MapCheckpointTest(checkpoint_test_base.CheckpointTestBase,
@@ -1552,6 +1753,148 @@ class MapRandomAccessTest(test_base.DatasetTestBase, parameterized.TestCase):
       self.assertEqual(
           self.evaluate(random_access.at(dataset, index=i)),
           self.evaluate(math_ops.square(i)))
+
+
+class MapGlobalShuffleTest(test_base.DatasetTestBase, parameterized.TestCase):
+
+  @combinations.generate(
+      combinations.times(
+          test_base.v2_only_combinations(),
+          combinations.combine(
+              dataset_range=[100],
+              num_parallel_calls=[None, 2, dataset_ops.AUTOTUNE],
+              deterministic=[True, False])))
+  def testMapV2(  # V2 API preserves cardinality by default.
+      self, dataset_range: int, num_parallel_calls: int, deterministic: bool):
+    dataset = dataset_ops.Dataset.range(dataset_range)
+    dataset = dataset.map(
+        lambda x: x * 2,
+        num_parallel_calls=num_parallel_calls,
+        deterministic=deterministic)
+    dataset = dataset.prefetch(buffer_size=dataset_ops.AUTOTUNE)
+    dataset = global_shuffle_op._global_shuffle(dataset)
+    # Disables optimizations (e.g.: `map_parallelization`), to make sure we test
+    # both `Map` and `ParallelMap`.
+    # TODO(b/325112575): Support warm-start. With warm-start, prefetching uses
+    # the unintended IteratorContext here:
+    # https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/kernels/data/prefetch_dataset_op.cc#L197-L199.
+    options = options_lib.Options()
+    options.experimental_optimization.apply_default_optimizations = False
+    options.experimental_warm_start = False
+    dataset = dataset.with_options(options)
+
+    expected = list(range(0, dataset_range * 2, 2))
+    dataset_output = self.getDatasetOutput(
+        dataset, requires_initialization=True)
+    self.assertCountEqual(dataset_output, expected)
+    self.assertNotEqual(dataset_output, expected)
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(
+              dataset_range=[100],
+              num_parallel_calls=[None, 2, dataset_ops.AUTOTUNE],
+              deterministic=[True, False])))
+  def testMapV1AndV2(
+      self, dataset_range: int, num_parallel_calls: int, deterministic: bool):
+    dataset = dataset_ops.Dataset.range(dataset_range)
+    dataset_cardinality = dataset.cardinality()
+    dataset = dataset.map(
+        lambda x: x * 2,
+        num_parallel_calls=num_parallel_calls,
+        deterministic=deterministic)
+    dataset = dataset.apply(cardinality.assert_cardinality(dataset_cardinality))
+    dataset = dataset.prefetch(buffer_size=dataset_ops.AUTOTUNE)
+    dataset = global_shuffle_op._global_shuffle(dataset)
+
+    expected = list(range(0, dataset_range * 2, 2))
+    dataset_output = self.getDatasetOutput(
+        dataset, requires_initialization=True)
+    self.assertCountEqual(dataset_output, expected)
+    self.assertNotEqual(dataset_output, expected)
+
+
+class MapGlobalShuffleCheckpointTest(checkpoint_test_base.CheckpointTestBase,
+                                     parameterized.TestCase):
+
+  @combinations.generate(
+      combinations.times(
+          test_base.v2_only_combinations(),
+          checkpoint_test_base.default_test_combinations(),
+          combinations.combine(
+              dataset_range=[10],
+              num_parallel_calls=[None, 2, dataset_ops.AUTOTUNE],
+              reshuffle_each_iteration=[True, False],
+              symbolic_checkpoint=[True, False])))
+  def testMapV2(  # V2 API preserves cardinality by default.
+      self,
+      verify_fn: Callable[..., None],
+      dataset_range: int,
+      num_parallel_calls: int,
+      reshuffle_each_iteration: bool,
+      symbolic_checkpoint: bool):
+
+    def _build_dataset() -> dataset_ops.Dataset:
+      dataset = dataset_ops.Dataset.range(dataset_range)
+      dataset = dataset.map(
+          lambda x: x * 2,
+          num_parallel_calls=num_parallel_calls,
+          deterministic=True)
+      dataset = dataset.prefetch(buffer_size=dataset_ops.AUTOTUNE)
+      dataset = global_shuffle_op._global_shuffle(
+          dataset, seed=42, reshuffle_each_iteration=reshuffle_each_iteration)
+      options = options_lib.Options()
+      options.experimental_optimization.apply_default_optimizations = False
+      options.experimental_warm_start = False
+      options.experimental_symbolic_checkpoint = symbolic_checkpoint
+      return dataset.with_options(options)
+
+    verify_fn(
+        self,
+        _build_dataset,
+        num_outputs=dataset_range,
+        assert_items_equal=reshuffle_each_iteration)
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          checkpoint_test_base.default_test_combinations(),
+          combinations.combine(
+              dataset_range=[10],
+              num_parallel_calls=[None, 2, dataset_ops.AUTOTUNE],
+              reshuffle_each_iteration=[True, False],
+              symbolic_checkpoint=[True, False])))
+  def testMapV1AndV2(
+      self,
+      verify_fn: Callable[..., None],
+      dataset_range: int,
+      num_parallel_calls: int,
+      reshuffle_each_iteration: bool,
+      symbolic_checkpoint: bool):
+
+    def _build_dataset() -> dataset_ops.Dataset:
+      dataset = dataset_ops.Dataset.range(dataset_range)
+      dataset_cardinality = dataset.cardinality()
+      dataset = dataset.map(
+          lambda x: x * 2,
+          num_parallel_calls=num_parallel_calls,
+          deterministic=True)
+      dataset = dataset.apply(
+          cardinality.assert_cardinality(dataset_cardinality))
+      dataset = dataset.prefetch(buffer_size=dataset_ops.AUTOTUNE)
+      dataset = global_shuffle_op._global_shuffle(
+          dataset, seed=42, reshuffle_each_iteration=reshuffle_each_iteration)
+      options = options_lib.Options()
+      options.experimental_optimization.apply_default_optimizations = False
+      options.experimental_symbolic_checkpoint = symbolic_checkpoint
+      return dataset.with_options(options)
+
+    verify_fn(
+        self,
+        _build_dataset,
+        num_outputs=dataset_range,
+        assert_items_equal=reshuffle_each_iteration)
 
 
 if __name__ == "__main__":

@@ -15,7 +15,11 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_CC_SAVE_VARIABLES_H_
 #define TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_CC_SAVE_VARIABLES_H_
 
+#include <string>
+#include <vector>
+
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 
@@ -26,9 +30,9 @@ namespace quantization {
 // It finds variables that are initialized with "tf.AssignVariableOp" inside the
 // initializer function with type "restore_op". The "tf.Const"s used to
 // initialize the variables are saved. This function does not modify the
-// `module_op`.
-absl::Status SaveVariablesToCheckpoint(absl::string_view prefix,
-                                       mlir::ModuleOp module_op);
+// `module_op`. Returns a list of saved names of the saved variables.
+absl::StatusOr<std::vector<std::string>> SaveVariablesToCheckpoint(
+    absl::string_view prefix, mlir::ModuleOp module_op);
 
 }  // namespace quantization
 }  // namespace tensorflow

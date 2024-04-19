@@ -94,7 +94,9 @@ class ComparisonOpModel : public SingleOpModel {
                      CreateLessEqualOptions(builder_).Union());
         break;
       }
-      default: { FAIL() << "We shouldn't get here."; }
+      default: {
+        FAIL() << "We shouldn't get here.";
+      }
     }
   }
 };
@@ -126,6 +128,17 @@ TEST(ComparisonsTest, EqualInt) {
                           BuiltinOperator_EQUAL);
   model.PopulateTensor<int>(model.input1(), {-1, 9, 7, 3});
   model.PopulateTensor<int>(model.input2(), {1, 2, 7, 5});
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(model.GetOutput(), ElementsAre(false, false, true, false));
+  EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 1, 1, 4));
+}
+
+TEST(ComparisonsTest, EqualInt16) {
+  ComparisonOpModel model({1, 1, 1, 4}, {1, 1, 1, 4}, TensorType_INT16,
+                          BuiltinOperator_EQUAL);
+  model.PopulateTensor<int16_t>(model.input1(), {-1, 9, 7, 3});
+  model.PopulateTensor<int16_t>(model.input2(), {1, 2, 7, 5});
   ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(model.GetOutput(), ElementsAre(false, false, true, false));
@@ -334,6 +347,17 @@ TEST(ComparisonsTest, GreaterEqualInt) {
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 1, 1, 4));
 }
 
+TEST(ComparisonsTest, GreaterEqualInt16) {
+  ComparisonOpModel model({1, 1, 1, 4}, {1, 1, 1, 4}, TensorType_INT16,
+                          BuiltinOperator_GREATER_EQUAL);
+  model.PopulateTensor<int16_t>(model.input1(), {-1, 9, 7, 3});
+  model.PopulateTensor<int16_t>(model.input2(), {1, 2, 7, 5});
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(model.GetOutput(), ElementsAre(false, true, true, false));
+  EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 1, 1, 4));
+}
+
 TEST(ComparisonsTest, GreaterEqualBroadcast) {
   ComparisonOpModel model({1, 1, 1, 4}, {1, 1, 1, 1}, TensorType_INT32,
                           BuiltinOperator_GREATER_EQUAL);
@@ -357,7 +381,6 @@ TEST(ComparisonsTest, GreaterEqualBroadcastTwoD) {
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 1, 2, 4));
 }
 
-
 TEST(ComparisonsTest, LessFloat) {
   ComparisonOpModel model({1, 1, 1, 4}, {1, 1, 1, 4}, TensorType_FLOAT32,
                           BuiltinOperator_LESS);
@@ -374,6 +397,17 @@ TEST(ComparisonsTest, LessInt) {
                           BuiltinOperator_LESS);
   model.PopulateTensor<int>(model.input1(), {-1, 9, 7, 3});
   model.PopulateTensor<int>(model.input2(), {1, 2, 6, 5});
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(model.GetOutput(), ElementsAre(true, false, false, true));
+  EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 1, 1, 4));
+}
+
+TEST(ComparisonsTest, LessInt16) {
+  ComparisonOpModel model({1, 1, 1, 4}, {1, 1, 1, 4}, TensorType_INT16,
+                          BuiltinOperator_LESS);
+  model.PopulateTensor<int16_t>(model.input1(), {-1, 9, 7, 3});
+  model.PopulateTensor<int16_t>(model.input2(), {1, 2, 6, 5});
   ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(model.GetOutput(), ElementsAre(true, false, false, true));

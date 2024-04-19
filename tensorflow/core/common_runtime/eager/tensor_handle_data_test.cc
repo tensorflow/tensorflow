@@ -115,7 +115,7 @@ TEST(TensorHandleData, NonBlockingControlPoisonHandle) {
   LocalTensorHandleData handle_data(std::move(t));
   TF_EXPECT_OK(handle_data.IsPoisoned());
 
-  tensorflow::Status fake_failure_status(tensorflow::error::ABORTED,
+  tensorflow::Status fake_failure_status(absl::StatusCode::kAborted,
                                          "Fake failure.");
   handle_data.Poison(fake_failure_status);
 
@@ -127,14 +127,14 @@ TEST(TensorHandleData, BlockingControlPoisonHandle) {
   LocalTensorHandleData handle_data;
   TF_EXPECT_OK(handle_data.IsPoisoned());
 
-  tensorflow::Status fake_failure_status(tensorflow::error::ABORTED,
+  tensorflow::Status fake_failure_status(absl::StatusCode::kAborted,
                                          "Fake failure.");
   handle_data.Poison(fake_failure_status);
 
-  EXPECT_THAT(
-      handle_data.IsPoisoned(),
-      tensorflow::testing::StatusIs(fake_failure_status.code(),
-                                    fake_failure_status.error_message()));
+  EXPECT_THAT(handle_data.IsPoisoned(),
+              tensorflow::testing::StatusIs(
+                  fake_failure_status.code(),
+                  std::string(fake_failure_status.message())));
 }
 
 TEST(TensorHandleData, BlockingControlSetTensor) {

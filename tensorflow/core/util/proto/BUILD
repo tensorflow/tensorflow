@@ -1,5 +1,5 @@
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -71,8 +71,8 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:platform_base",
-        "//tensorflow/tsl/util/proto:proto_utils",
         "@com_google_absl//absl/strings",
+        "@local_xla//xla/tsl/util/proto:proto_utils",
     ],
 )
 

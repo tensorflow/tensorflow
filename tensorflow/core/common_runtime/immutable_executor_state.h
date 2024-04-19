@@ -155,7 +155,8 @@ class ImmutableExecutorState {
   // Shallow copies of the constant tensors used in the graph.
   std::vector<Tensor> const_tensors_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(ImmutableExecutorState);
+  ImmutableExecutorState(const ImmutableExecutorState&) = delete;
+  void operator=(const ImmutableExecutorState&) = delete;
 };
 
 }  // namespace tensorflow

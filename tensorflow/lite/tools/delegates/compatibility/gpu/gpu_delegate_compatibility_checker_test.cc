@@ -22,9 +22,16 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "tensorflow/core/platform/resource_loader.h"
 #include "tensorflow/lite/kernels/test_util.h"
+#include "tensorflow/lite/model_builder.h"
+#include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/tools/delegates/compatibility/protos/compatibility_result.pb.h"
 
 namespace tflite {
 namespace tools {
+
+#ifndef EXPECT_OK
+#define EXPECT_OK(x) EXPECT_TRUE(x.ok());
+#endif
 
 namespace {
 
@@ -59,9 +66,11 @@ TEST(GpuDelegateCompatibilityCheckerTest, CheckOnlineMode) {
 
   GpuDelegateCompatibilityChecker gpu_dcc;
   // Online mode is not supported by GPU DCC
-  EXPECT_THAT(gpu_dcc.checkModelCompatibilityOnline(fb_model.get(),
-                                                    &compatibility_result),
-              testing::status::StatusIs(absl::StatusCode::kUnimplemented));
+  EXPECT_EQ(
+      gpu_dcc
+          .checkModelCompatibilityOnline(fb_model.get(), &compatibility_result)
+          .code(),
+      absl::StatusCode::kUnimplemented);
 }
 
 TEST(GpuDelegateCompatibilityCheckerTest, CompatibleModelOfflineMode) {

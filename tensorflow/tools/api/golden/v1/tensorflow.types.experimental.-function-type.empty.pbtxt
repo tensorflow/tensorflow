@@ -1,0 +1,7 @@
+path: "tensorflow.types.experimental.FunctionType.empty"
+tf_class {
+  is_instance: "<class \'inspect._empty\'>"
+  member_method {
+    name: "__init__"
+  }
+}

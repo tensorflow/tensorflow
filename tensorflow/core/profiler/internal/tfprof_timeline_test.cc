@@ -13,8 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/profiler/internal/tfprof_stats.h"
-
+#include <memory>
 #include <utility>
 
 #include "tensorflow/core/lib/hash/hash.h"
@@ -22,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/profiler/internal/tfprof_constants.h"
+#include "tensorflow/core/profiler/internal/tfprof_stats.h"
 #include "tensorflow/core/profiler/internal/tfprof_utils.h"
 #include "tensorflow/core/profiler/tfprof_log.pb.h"
 #include "tensorflow/core/profiler/tfprof_options.h"
@@ -47,8 +47,8 @@ class TFProfTimelineTest : public ::testing::Test {
     TF_CHECK_OK(
         ReadProtoFile(Env::Default(), run_meta_path, run_meta_pb.get(), true));
 
-    tf_stats_.reset(new TFStats(std::move(graph_pb), std::move(run_meta_pb),
-                                nullptr, nullptr));
+    tf_stats_ = std::make_unique<TFStats>(
+        std::move(graph_pb), std::move(run_meta_pb), nullptr, nullptr);
     tf_stats_->BuildAllViews();
   }
 

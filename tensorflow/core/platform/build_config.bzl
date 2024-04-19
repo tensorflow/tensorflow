@@ -1,9 +1,7 @@
 """Provides a redirection point for platform specific implementations of starlark utilities."""
 
 load(
-    "//tensorflow/tsl/platform:build_config.bzl",
-    _if_llvm_aarch64_available = "if_llvm_aarch64_available",
-    _if_llvm_system_z_available = "if_llvm_system_z_available",
+    "@local_tsl//tsl/platform:build_config.bzl",
     _pyx_library = "pyx_library",
     _tf_additional_all_protos = "tf_additional_all_protos",
     _tf_additional_core_deps = "tf_additional_core_deps",
@@ -28,7 +26,6 @@ load(
     _tf_proto_library_cc = "tf_proto_library_cc",
     _tf_protobuf_compiler_deps = "tf_protobuf_compiler_deps",
     _tf_protobuf_deps = "tf_protobuf_deps",
-    _tf_protos_all = "tf_protos_all",
     _tf_protos_grappler = "tf_protos_grappler",
     _tf_protos_grappler_impl = "tf_protos_grappler_impl",
     _tf_protos_profiler_service = "tf_protos_profiler_service",
@@ -36,18 +33,16 @@ load(
     _tf_pyclif_proto_library = "tf_pyclif_proto_library",
     _tf_resource_deps = "tf_resource_deps",
     _tf_stream_executor_deps = "tf_stream_executor_deps",
-    _tf_testing_deps = "tf_testing_deps",
     _tf_windows_aware_platform_deps = "tf_windows_aware_platform_deps",
 )
 load(
     "//tensorflow/core/platform:build_config.default.bzl",
     _tf_additional_binary_deps = "tf_additional_binary_deps",
     _tf_dtensor_tpu_dependencies = "tf_dtensor_tpu_dependencies",
+    _tf_protos_all = "tf_protos_all",
     _tf_tpu_dependencies = "tf_tpu_dependencies",
 )
 
-if_llvm_aarch64_available = _if_llvm_aarch64_available
-if_llvm_system_z_available = _if_llvm_system_z_available
 pyx_library = _pyx_library
 tf_additional_all_protos = _tf_additional_all_protos
 tf_additional_binary_deps = _tf_additional_binary_deps
@@ -81,7 +76,6 @@ tf_py_clif_cc = _tf_py_clif_cc
 tf_pyclif_proto_library = _tf_pyclif_proto_library
 tf_resource_deps = _tf_resource_deps
 tf_stream_executor_deps = _tf_stream_executor_deps
-tf_testing_deps = _tf_testing_deps
 tf_windows_aware_platform_deps = _tf_windows_aware_platform_deps
 tf_tpu_dependencies = _tf_tpu_dependencies
 tf_dtensor_tpu_dependencies = _tf_dtensor_tpu_dependencies

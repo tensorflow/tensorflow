@@ -116,7 +116,8 @@ class ProtoTextOutput {
   // current deepest level of nesting.
   bool level_empty_ = true;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(ProtoTextOutput);
+  ProtoTextOutput(const ProtoTextOutput&) = delete;
+  void operator=(const ProtoTextOutput&) = delete;
 };
 
 inline void ProtoSpaceAndComments(Scanner* scanner) {

@@ -1,0 +1,38 @@
+op 	 {
+  name: "ConvertToCooTensor"
+  input_arg {
+    name: "indices_or_row_splits"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "values"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "weights"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "row_ids"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "col_ids"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "gains"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "sample_count"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "combiner"
+    type: "string"
+  }
+  is_stateful: true
+}

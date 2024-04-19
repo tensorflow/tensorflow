@@ -19,8 +19,8 @@ limitations under the License.
 #include <memory>
 
 #include "absl/memory/memory.h"
-#include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/service/shaped_buffer.h"
+#include "xla/client/local_client.h"
+#include "xla/service/shaped_buffer.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/lib/core/status.h"

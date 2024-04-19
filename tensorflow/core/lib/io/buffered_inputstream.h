@@ -18,7 +18,7 @@ limitations under the License.
 
 #include "tensorflow/core/lib/io/inputstream_interface.h"
 #include "tensorflow/core/platform/file_system.h"
-#include "tensorflow/tsl/lib/io/buffered_inputstream.h"
+#include "tsl/lib/io/buffered_inputstream.h"
 
 namespace tensorflow {
 namespace io {

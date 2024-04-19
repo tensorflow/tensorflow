@@ -148,6 +148,15 @@ TfLiteDelegatePtr GpuDelegateProvider::CreateTfLiteDelegate(
     }
     gpu_opts.max_delegated_partitions =
         params.Get<int>("max_delegated_partitions");
+#ifdef TFLITE_DEBUG_DELEGATE
+    gpu_opts.first_delegate_node_index =
+        params.Get<int>("first_delegate_node_index");
+    gpu_opts.last_delegate_node_index =
+        params.Get<int>("last_delegate_node_index");
+#endif  // TFLITE_DEBUG_DELEGATE
+#ifdef TFLITE_GPU_ENABLE_INVOKE_LOOP
+    gpu_opts.gpu_invoke_loop_times = params.Get<int>("gpu_invoke_loop_times");
+#endif  // TFLITE_GPU_ENABLE_INVOKE_LOOP
 
     // Serialization.
     std::string serialize_dir =

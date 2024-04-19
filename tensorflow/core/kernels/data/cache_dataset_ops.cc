@@ -14,11 +14,15 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/cache_dataset_ops.h"
 
+#include <atomic>
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/data/serialization_utils.h"
 #include "tensorflow/core/framework/dataset.h"
@@ -33,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/refcount.h"
+#include "tensorflow/core/util/tensor_bundle/naming.h"
 #include "tensorflow/core/util/tensor_bundle/tensor_bundle.h"
 
 namespace tensorflow {
@@ -72,9 +77,10 @@ constexpr char kIncompleteCacheErrorMessage[] =
     "should use `dataset.take(k).cache().repeat()` instead.";
 }  // namespace
 
-class PartialCache {
+class DatasetRandomAccessCache {
  public:
-  explicit PartialCache(const DatasetBase* dataset) : input_(dataset) {}
+  explicit DatasetRandomAccessCache(const DatasetBase* dataset)
+      : input_(dataset) {}
 
   // Extends the temporary cache up to a given index and then updates
   // out_tensors with the element at that index.
@@ -89,7 +95,7 @@ class PartialCache {
       TF_RETURN_IF_ERROR(ExtendTempCacheToIndex(index, ctx));
     }
     *out_tensors = cache_.at(index);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Returns the data which has been cached up to this point.
@@ -108,11 +114,12 @@ class PartialCache {
       }
       cache_.push_back(out_tensors);
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  StatusOr<core::RefCountPtr<IteratorResource>> GetIteratorResourceFromDataset(
-      OpKernelContext* ctx, const DatasetBase* dataset) {
+  absl::StatusOr<core::RefCountPtr<IteratorResource>>
+  GetIteratorResourceFromDataset(OpKernelContext* ctx,
+                                 const DatasetBase* dataset) {
     FunctionLibraryRuntime* flr;
     std::unique_ptr<DeviceMgr> device_mgr(nullptr);
     std::unique_ptr<FunctionLibraryDefinition> flib_def(nullptr);
@@ -128,6 +135,43 @@ class PartialCache {
 
   const DatasetBase* input_;  // Not owned.
   core::RefCountPtr<IteratorResource> iter_resource_;
+  std::vector<std::vector<Tensor>> cache_;
+};
+
+// Caches dataset elements when global shuffling is enabled.
+// TODO(b/325112575): Support save/load.
+class IteratorRandomAccessCache {
+ public:
+  explicit IteratorRandomAccessCache(const DatasetBase* input)
+      : input_(input) {}
+
+  absl::Status Get(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
+                   bool* end_of_sequence) {
+    TF_ASSIGN_OR_RETURN(size_t element_position,
+                        ctx->index_mapper()(element_count_++));
+    if (element_position < cache_.size() && !cache_[element_position].empty()) {
+      *out_tensors = cache_[element_position];
+      *end_of_sequence = false;
+      return absl::OkStatus();
+    }
+
+    absl::Status status =
+        input_->Get(AnyContext(ctx), element_position, out_tensors);
+    if (absl::IsOutOfRange(status)) {
+      *end_of_sequence = true;
+      return absl::OkStatus();
+    }
+
+    if (element_position >= cache_.size()) {
+      cache_.resize(element_position + 1);
+    }
+    cache_[element_position] = *out_tensors;
+    return absl::OkStatus();
+  }
+
+ private:
+  int64_t element_count_ = 0;
+  const DatasetBase* input_ = nullptr;
   std::vector<std::vector<Tensor>> cache_;
 };
 
@@ -173,11 +217,13 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType, params);
   }
 
-  int64_t CardinalityInternal() const override { return input_->Cardinality(); }
+  int64_t CardinalityInternal(CardinalityOptions options) const override {
+    return input_->Cardinality(options);
+  }
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status CheckExternalState() const override {
@@ -233,7 +279,7 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
     Status SaveInternal(SerializationContext* ctx,
                         IteratorStateWriter* writer) override {
       mutex_lock l(mu_);
-      TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kMode), mode_));
+      TF_RETURN_IF_ERROR(writer->WriteScalar(prefix(), kMode, mode_));
       return SaveInput(ctx, writer, iterator_);
     }
     Status RestoreInternal(IteratorContext* ctx,
@@ -241,7 +287,7 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
       mutex_lock l(mu_);
       {
         int64_t temp;
-        TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kMode), &temp));
+        TF_RETURN_IF_ERROR(reader->ReadScalar(prefix(), kMode, &temp));
         mode_ = static_cast<Mode>(temp);
       }
       if (mode_ == Mode::write &&
@@ -323,7 +369,7 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
         *end_of_sequence = false;
         TF_RETURN_IF_ERROR(EnsureLockFileExists(end_of_sequence));
         if (*end_of_sequence) {
-          return OkStatus();
+          return absl::OkStatus();
         }
         TF_RETURN_IF_ERROR(writer_->status());
         if (cur_index_ >= kMaxItems) {
@@ -342,7 +388,7 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
         if (*end_of_sequence && out_tensors->empty()) {
           TF_RETURN_IF_ERROR(Finish());
           cur_index_++;
-          return OkStatus();
+          return absl::OkStatus();
         }
         if (out_tensors->size() != dataset()->num_tensors_) {
           return errors::Internal(
@@ -360,7 +406,7 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
           TF_RETURN_IF_ERROR(Finish());
         }
         cur_index_++;
-        return OkStatus();
+        return absl::OkStatus();
       }
 
      protected:
@@ -374,12 +420,12 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
                           IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
         TF_RETURN_IF_ERROR(
-            writer->WriteScalar(full_name(kCurIndex), cur_index_));
+            writer->WriteScalar(prefix(), kCurIndex, cur_index_));
 
         if (iteration_completed_) {
           TF_RETURN_IF_ERROR(
-              writer->WriteScalar(full_name(kIterationCompleted), ""));
-          return OkStatus();
+              writer->WriteScalar(prefix(), kIterationCompleted, ""));
+          return absl::OkStatus();
         }
 
         // lockfile is created on the first call to GetNextInternal. The
@@ -402,8 +448,8 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
           lockfile_created_ = false;
         }
         TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
-        TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kShardId), shard_id_));
-        return OkStatus();
+        TF_RETURN_IF_ERROR(writer->WriteScalar(prefix(), kShardId, shard_id_));
+        return absl::OkStatus();
       }
 
       Status RestoreInternal(IteratorContext* ctx,
@@ -413,16 +459,16 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
         // TODO(b/78048575): Update this when saving size_t tensors directly
         // is supported.
         {
-          TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kCurIndex), &temp));
+          TF_RETURN_IF_ERROR(reader->ReadScalar(prefix(), kCurIndex, &temp));
           cur_index_ = static_cast<size_t>(temp);
           if (cur_index_ != temp) {
             return errors::Internal("Invalid value for cur_index ", temp);
           }
         }
 
-        if (reader->Contains(full_name(kIterationCompleted))) {
+        if (reader->Contains(prefix(), kIterationCompleted)) {
           iteration_completed_ = true;
-          return OkStatus();
+          return absl::OkStatus();
         }
 
         TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
@@ -430,7 +476,7 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
         // TODO(b/78048575): Update this when saving size_t tensors directly
         // is supported.
         {
-          TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kShardId), &temp));
+          TF_RETURN_IF_ERROR(reader->ReadScalar(prefix(), kShardId, &temp));
           shard_id_ = static_cast<size_t>(temp);
           if (shard_id_ != temp) {
             return errors::Internal("Invalid value for shard_id ", temp);
@@ -439,7 +485,7 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
         filename_ = strings::StrCat(dataset()->filename_, "_", shard_id_);
         lockfile_ = strings::StrCat(filename_, kLockFileSuffix);
         writer_ = std::make_unique<BundleWriter>(dataset()->env_, filename_);
-        return OkStatus();
+        return absl::OkStatus();
       }
 
      private:
@@ -447,10 +493,10 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
           TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         if (iteration_completed_) {
           *end_of_sequence = true;
-          return OkStatus();
+          return absl::OkStatus();
         }
         if (lockfile_created_) {
-          return OkStatus();
+          return absl::OkStatus();
         }
 
         // Perform rudimentary locking to help catch concurrent writes to the
@@ -502,7 +548,7 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
         // BundleWriter in another Session.
         writer_ = std::make_unique<BundleWriter>(dataset()->env_, filename_);
         lockfile_created_ = true;
-        return OkStatus();
+        return absl::OkStatus();
       }
 
       Status Finish() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
@@ -531,7 +577,7 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
           TF_RETURN_IF_ERROR(dataset()->env_->DeleteFile(
               strings::StrCat(dataset()->filename_, "_", i, kLockFileSuffix)));
         }
-        return OkStatus();
+        return absl::OkStatus();
       }
 
       mutex mu_;
@@ -565,7 +611,7 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
         TF_RETURN_IF_ERROR(reader_.status());
         if (!reader_.Valid()) {
           *end_of_sequence = true;
-          return OkStatus();
+          return absl::OkStatus();
         }
         out_tensors->clear();
         out_tensors->resize(dataset()->num_tensors_);
@@ -582,7 +628,7 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
           if (!reader_.Valid()) {
             out_tensors->clear();
             *end_of_sequence = true;
-            return OkStatus();
+            return absl::OkStatus();
           }
           StringPiece key = reader_.key();
           DCHECK_EQ(key, dataset()->FormatName(cur_index_, i));
@@ -590,7 +636,7 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
           TF_RETURN_IF_ERROR(reader_.status());
         }
         cur_index_++;
-        return OkStatus();
+        return absl::OkStatus();
       }
 
      protected:
@@ -604,8 +650,8 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
                           IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
         TF_RETURN_IF_ERROR(
-            writer->WriteScalar(full_name(kCurIndex), cur_index_));
-        return OkStatus();
+            writer->WriteScalar(prefix(), kCurIndex, cur_index_));
+        return absl::OkStatus();
       }
 
       Status RestoreInternal(
@@ -617,7 +663,7 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
           // is supported.
           int64_t temp;
           TF_RETURN_IF_ERROR(
-              iterator_state_reader->ReadScalar(full_name(kCurIndex), &temp));
+              iterator_state_reader->ReadScalar(prefix(), kCurIndex, &temp));
           cur_index_ = static_cast<size_t>(temp);
           if (cur_index_ != temp) {
             return errors::Internal("Invalid value for cur_index ", temp);
@@ -628,7 +674,7 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
         }
         reader_.Seek(dataset()->FormatName(cur_index_, 0));
         iterator_restored_ = true;
-        return OkStatus();
+        return absl::OkStatus();
       }
 
      private:
@@ -690,7 +736,7 @@ class CacheDatasetOp::FileDataset : public CacheDatasetOp::FileDatasetBase {
     Node* filename = nullptr;
     TF_RETURN_IF_ERROR(b->AddScalar(filename_, &filename));
     TF_RETURN_IF_ERROR(b->AddDataset(this, {input_graph, filename}, output));
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 
@@ -714,7 +760,7 @@ class CacheDatasetOp::FileDatasetV2 : public CacheDatasetOp::FileDatasetBase {
     TF_RETURN_IF_ERROR(b->AddTensor(resource_handle_, &resource_handle_node));
     TF_RETURN_IF_ERROR(b->AddDataset(
         this, {input_node, filename_node, resource_handle_node}, output));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:
@@ -729,6 +775,7 @@ class CacheDatasetOp::MemoryDatasetBase : public DatasetBase {
         input_(input),
         cache_(std::move(cache)) {
     input_->Ref();
+    random_indexing_compatible_ = input_->RandomIndexingCompatible();
   }
 
   ~MemoryDatasetBase() override { input_->Unref(); }
@@ -757,10 +804,6 @@ class CacheDatasetOp::MemoryDatasetBase : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType, params);
   }
 
-  int64_t CardinalityInternal() const override {
-    return input_->Cardinality();
-  };
-
   int64_t CardinalityInternal(CardinalityOptions options) const override {
     return input_->Cardinality(options);
   };
@@ -778,19 +821,24 @@ class CacheDatasetOp::MemoryDatasetBase : public DatasetBase {
       return errors::OutOfRange("Index out of range [0, ", cardinality,
                                 "):", index);
     }
-    if (!partial_cache_) {
-      partial_cache_ = std::make_unique<PartialCache>(input_);
+    if (!dataset_random_access_cache_) {
+      dataset_random_access_cache_ =
+          std::make_unique<DatasetRandomAccessCache>(input_);
     }
-    return partial_cache_->Get(ctx, index, out_tensors);
+    return dataset_random_access_cache_->Get(ctx, index, out_tensors);
   }
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status CheckExternalState() const override {
     return input_->CheckExternalState();
+  }
+
+  absl::Status RandomIndexingCompatible() const override {
+    return random_indexing_compatible_;
   }
 
  protected:
@@ -808,6 +856,14 @@ class CacheDatasetOp::MemoryDatasetBase : public DatasetBase {
                            std::vector<Tensor>* out_tensors,
                            bool* end_of_sequence) override {
       mutex_lock l(mu_);
+      if (ctx->index_mapper() != nullptr) {
+        if (!iterator_random_access_cache_) {
+          iterator_random_access_cache_ =
+              std::make_unique<IteratorRandomAccessCache>(dataset()->input_);
+        }
+        return iterator_random_access_cache_->Get(ctx, out_tensors,
+                                                  end_of_sequence);
+      }
       return iterator_->GetNext(ctx, out_tensors, end_of_sequence);
     }
 
@@ -822,7 +878,7 @@ class CacheDatasetOp::MemoryDatasetBase : public DatasetBase {
                         IteratorStateWriter* writer) override {
       mutex_lock l(mu_);
       if (cache_->IsCompleted()) {
-        TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kCacheCompleted), ""));
+        TF_RETURN_IF_ERROR(writer->WriteScalar(prefix(), kCacheCompleted, ""));
         TF_RETURN_IF_ERROR(
             WriteElementsToCheckpoint(writer, prefix(), cache_->data()));
       }
@@ -834,7 +890,7 @@ class CacheDatasetOp::MemoryDatasetBase : public DatasetBase {
       mutex_lock l(mu_);
       iterator_.reset();
       cache_->Reset();
-      if (reader->Contains(full_name(kCacheCompleted))) {
+      if (reader->Contains(prefix(), kCacheCompleted)) {
         std::vector<std::vector<Tensor>> temp_cache;
         TF_RETURN_IF_ERROR(
             ReadElementsFromCheckpoint(ctx, reader, prefix(), &temp_cache));
@@ -874,7 +930,7 @@ class CacheDatasetOp::MemoryDatasetBase : public DatasetBase {
             VLOG(2) << "Finalizing the cache because EOF has been reached.";
             cache_->Complete(std::move(temp_cache_));
           }
-          return OkStatus();
+          return absl::OkStatus();
         }
         RecordBufferEnqueue(ctx, *out_tensors);
         temp_cache_.emplace_back(*out_tensors);
@@ -883,7 +939,7 @@ class CacheDatasetOp::MemoryDatasetBase : public DatasetBase {
                      "expected input cardinality.";
           cache_->Complete(std::move(temp_cache_));
         }
-        return OkStatus();
+        return absl::OkStatus();
       }
 
      protected:
@@ -906,7 +962,7 @@ class CacheDatasetOp::MemoryDatasetBase : public DatasetBase {
       Status RestoreInternal(IteratorContext* ctx,
                              IteratorStateReader* reader) override {
         mutex_lock l(mu_);
-        if (!reader->Contains(full_name(kCacheCompleted))) {
+        if (!reader->Contains(prefix(), kCacheCompleted)) {
           TF_RETURN_IF_ERROR(
               ReadElementsFromCheckpoint(ctx, reader, prefix(), &temp_cache_));
         }
@@ -937,7 +993,7 @@ class CacheDatasetOp::MemoryDatasetBase : public DatasetBase {
         for (size_t i = 0; i < cache_->size(); ++i) {
           RecordBufferEnqueue(ctx, cache_->at(i));
         }
-        return OkStatus();
+        return absl::OkStatus();
       }
 
       Status GetNextInternal(IteratorContext* ctx,
@@ -950,10 +1006,10 @@ class CacheDatasetOp::MemoryDatasetBase : public DatasetBase {
                               cache_tensors.end());
           index_++;
           *end_of_sequence = false;
-          return OkStatus();
+          return absl::OkStatus();
         } else {
           *end_of_sequence = true;
-          return OkStatus();
+          return absl::OkStatus();
         }
       }
 
@@ -967,8 +1023,8 @@ class CacheDatasetOp::MemoryDatasetBase : public DatasetBase {
       Status SaveInternal(SerializationContext* ctx,
                           IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
-        TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kIndex), index_));
-        return OkStatus();
+        TF_RETURN_IF_ERROR(writer->WriteScalar(prefix(), kIndex, index_));
+        return absl::OkStatus();
       }
 
       Status RestoreInternal(IteratorContext* ctx,
@@ -978,12 +1034,12 @@ class CacheDatasetOp::MemoryDatasetBase : public DatasetBase {
           // kIndex will not be set if we are restoring from a checkpoint
           // written by a MemoryWriterIterator that has completed its cache.
           int64_t temp = cache_->size();
-          if (reader->Contains(full_name(kIndex))) {
-            TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kIndex), &temp));
+          if (reader->Contains(prefix(), kIndex)) {
+            TF_RETURN_IF_ERROR(reader->ReadScalar(prefix(), kIndex, &temp));
           }
           index_ = static_cast<size_t>(temp);
         }
-        return OkStatus();
+        return absl::OkStatus();
       }
 
      private:
@@ -1012,12 +1068,16 @@ class CacheDatasetOp::MemoryDatasetBase : public DatasetBase {
     mutex mu_;
     MemoryCache* cache_ TF_GUARDED_BY(mu_);  // not owned.
     std::unique_ptr<IteratorBase> iterator_ TF_GUARDED_BY(mu_);
+    std::unique_ptr<IteratorRandomAccessCache> iterator_random_access_cache_
+        TF_GUARDED_BY(mu_);
   };  // MemoryIterator
 
   mutable mutex mu_;
   const DatasetBase* const input_;
   const std::shared_ptr<MemoryCache> cache_;
-  mutable std::unique_ptr<PartialCache> partial_cache_ TF_GUARDED_BY(mu_);
+  mutable std::unique_ptr<DatasetRandomAccessCache> dataset_random_access_cache_
+      TF_GUARDED_BY(mu_);
+  absl::Status random_indexing_compatible_ = absl::OkStatus();
 };  // MemoryDatasetBase
 
 // This version of memory dataset has an exclusive ownership of the memory cache
@@ -1051,7 +1111,7 @@ class CacheDatasetOp::MemoryDataset : public CacheDatasetOp::MemoryDatasetBase {
     TF_RETURN_IF_ERROR(b->AddScalar(tstring(""), &filename_node));
     TF_RETURN_IF_ERROR(
         b->AddDataset(this, {input_node, filename_node}, output));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:
@@ -1100,7 +1160,7 @@ class CacheDatasetOp::MemoryDatasetV2
     TF_RETURN_IF_ERROR(b->AddTensor(handle, &resource_handle_node));
     TF_RETURN_IF_ERROR(b->AddDataset(
         this, {input_node, filename_node, resource_handle_node}, output));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:
@@ -1137,7 +1197,7 @@ void CacheDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
             ctx->resource_manager()->LookupOrCreate<MemoryCacheManager>(
                 container, name, &manager, [](MemoryCacheManager** manager) {
                   *manager = new MemoryCacheManager();
-                  return OkStatus();
+                  return absl::OkStatus();
                 }));
         handle = MakeResourceHandle<MemoryCacheManager>(ctx, container, name);
       } else {
@@ -1152,7 +1212,7 @@ void CacheDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
           ctx, ctx->resource_manager()->LookupOrCreate<MemoryCacheManager>(
                    container, name, &manager, [](MemoryCacheManager** manager) {
                      *manager = new MemoryCacheManager();
-                     return OkStatus();
+                     return absl::OkStatus();
                    }));
       auto handle =
           MakeResourceHandle<MemoryCacheManager>(ctx, container, name);

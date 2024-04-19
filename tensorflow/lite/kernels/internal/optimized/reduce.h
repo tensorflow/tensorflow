@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <limits>
+#include <vector>
 
 #include "ruy/profiler/instrumentation.h"  // from @ruy
 #include "tensorflow/lite/kernels/cpu_backend_threadpool.h"
@@ -407,6 +408,8 @@ bool QuantizedMeanOrSum(const T* input_data, int32_t input_zero_point,
                         const int* axis, const int num_axis_dimensions,
                         bool keep_dims, int* normalized_dims,
                         int* resolved_axis, U* temp_sum, bool compute_sum) {
+  const int32_t kMinValue = std::numeric_limits<T>::min();
+  const int32_t kMaxValue = std::numeric_limits<T>::max();
   ruy::profiler::ScopeLabel label(compute_sum ? "QuantizedSum"
                                               : "QuantizedMean");
   // Reset output data.
@@ -467,9 +470,9 @@ bool QuantizedMeanOrSum(const T* input_data, int32_t input_zero_point,
     if (compute_sum) {
       const float bias = -input_zero_point * scale * num_elements_in_axis;
       for (size_t idx = 0; idx < num_outputs; ++idx) {
-        const U value =
-            static_cast<U>(TfLiteRound(temp_sum[idx] * scale + bias)) +
-            output_zero_point;
+        U value = static_cast<U>(TfLiteRound(temp_sum[idx] * scale + bias)) +
+                  output_zero_point;
+        value = std::min(std::max(value, kMinValue), kMaxValue);
         output_data[idx] = static_cast<T>(value);
       }
     } else {

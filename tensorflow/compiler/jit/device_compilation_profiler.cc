@@ -27,7 +27,7 @@ limitations under the License.
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/tsl/platform/mutex.h"
+#include "tsl/platform/mutex.h"
 
 namespace tensorflow {
 namespace {
@@ -72,7 +72,7 @@ DeviceCompilationProfiler::~DeviceCompilationProfiler() {
   cluster_compile_stats_.clear();
 }
 
-StatusOr<DeviceCompilationProfiler::ClusterCompileStats>
+absl::StatusOr<DeviceCompilationProfiler::ClusterCompileStats>
 DeviceCompilationProfiler::GetCompileStats(const NameAttrList& function) const {
   mutex_lock lock(mu_);
 
@@ -166,6 +166,10 @@ bool DeviceCompilationProfiler::ShouldCompileCluster(
     return false;
   }
 
+  // TODO(b/255826209): Figure out if Lazy compilation is still needed given
+  // that we always compile a cluster the first time it is executed (explained
+  // below) regardless of compilation mode. If it is not, clean up the related
+  // logic.
   // We always compile a cluster the very first time it is executed.  This is an
   // optimistic guess that pays off for statically shaped TensorFlow graphs
   // (since they get the benefit of XLA right away without waiting for warmup)

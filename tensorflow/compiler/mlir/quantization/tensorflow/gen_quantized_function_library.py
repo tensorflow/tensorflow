@@ -22,6 +22,8 @@ from typing import Sequence
 from absl import app
 from absl import flags
 
+# TODO(b/263048929): Create a test for gen_quantized_function_library.
+
 _OUTPUT_FILE = flags.DEFINE_string('output_file', None, 'output file location')
 _SRCS = flags.DEFINE_string('src', None, 'source file locations')
 _NAMESPACE = flags.DEFINE_string('namespace', 'mlir::quant',
@@ -70,7 +72,10 @@ def _substitute_parameterization_template(module: str) -> str:
 
     try:
       value_list = ast.literal_eval(func_match.group(1))
-      func_template = string.Template(func_match.group(2))
+      # Escapes template $-based substitutions for attributes containing $.
+      # $$ is replaced with a single $.
+      func_template = string.Template(
+          func_match.group(2).replace('tfdtype$DT_', 'tfdtype$$DT_'))
     except Exception as e:  # pylint: disable=broad-except
       raise ValueError('The function template is in wrong format') from e
 

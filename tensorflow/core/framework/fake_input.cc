@@ -105,7 +105,7 @@ Status FakeInputImpl::AddInputToBuilder() {
       if (!status.ok()) {
         return errors::InvalidArgument(
             "Could not infer list of types for input '", arg_->name(),
-            "': ", status.error_message());
+            "': ", status.message());
       }
       SourceList(dts);
       return OkStatus();
@@ -131,8 +131,7 @@ Status FakeInputImpl::GetN(int* n) const {
     Status status = GetNodeAttr(*node_def_, arg_->number_attr(), n);
     if (!status.ok()) {
       return errors::InvalidArgument("Could not infer length of input '",
-                                     arg_->name(),
-                                     "': ", status.error_message());
+                                     arg_->name(), "': ", status.message());
     }
   }
   return OkStatus();
@@ -153,8 +152,7 @@ Status FakeInputImpl::GetDataType(DataType* dt) const {
         *dt = attr->default_value().type();
       } else {
         return errors::InvalidArgument("Could not infer type for input '",
-                                       arg_->name(),
-                                       "': ", status.error_message());
+                                       arg_->name(), "': ", status.message());
       }
     }
   } else {

@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_CLUSTER_OPS_BY_POLICY_H_
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_CLUSTER_OPS_BY_POLICY_H_
 
+#include <optional>
 #include <type_traits>
 
 #include "llvm/ADT/DenseMap.h"
@@ -92,7 +93,7 @@ class ValuesConstraintSet {
   void Walk(llvm::function_ref<void(Value, ValueConstraint)> walk) const;
 
   // Returns the constraint of the value if it exists, or None otherwise.
-  Optional<ValueConstraint> GetConstraint(Value value) const;
+  std::optional<ValueConstraint> GetConstraint(Value value) const;
   bool HasConstraint(Value value) const;
 
   // Merges all constrains from the other constraints set into this one.

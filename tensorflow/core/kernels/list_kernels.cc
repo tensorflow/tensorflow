@@ -27,7 +27,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -36,6 +36,11 @@ limitations under the License.
 #include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/framework/variant_op_registry.h"
 #include "tensorflow/core/platform/errors.h"
+
+#if !defined(PLUGGABLE_DEVICE_SUPPORTED_MACOS) && defined(__APPLE__) && \
+    !defined(ANDROID) && !defined(__ANDROID__) && !TARGET_OS_IOS
+#define PLUGGABLE_DEVICE_SUPPORTED_MACOS 1
+#endif
 
 namespace tensorflow {
 
@@ -46,7 +51,7 @@ Status TensorShapeFromTensor(const Tensor& t, PartialTensorShape* out) {
     if ((t.dtype() == DT_INT32 && t.scalar<int32>()() == -1) ||
         (t.dtype() == DT_INT64 && t.scalar<int64_t>()() == -1)) {
       *out = PartialTensorShape();
-      return OkStatus();
+      return absl::OkStatus();
     }
     return errors::InvalidArgument(
         "The only valid scalar shape tensor is the fully unknown shape "
@@ -75,7 +80,7 @@ Status GetElementShapeFromInput(OpKernelContext* c,
   // compatible and store the merged shape in `element_shape`.
   PartialTensorShape tmp = *element_shape;
   TF_RETURN_IF_ERROR(tmp.MergeWith(tensor_list.element_shape, element_shape));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status GetInputList(OpKernelContext* c, int index, const TensorList** list) {
@@ -90,7 +95,7 @@ Status GetInputList(OpKernelContext* c, int index, const TensorList** list) {
         c->input(index).scalar<Variant>()().DebugString(), "'");
   }
   *list = l;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ForwardInputOrCreateNewList(OpKernelContext* c, int32_t input_index,
@@ -115,7 +120,7 @@ Status ForwardInputOrCreateNewList(OpKernelContext* c, int32_t input_index,
       // Woohoo, forwarding succeeded!
       c->set_output(output_index, *output_tensor);
       *output_list = tmp_out;
-      return OkStatus();
+      return absl::OkStatus();
     }
   }
 
@@ -128,7 +133,7 @@ Status ForwardInputOrCreateNewList(OpKernelContext* c, int32_t input_index,
   output_tensor->scalar<Variant>()() = input_list.Copy();
 
   *output_list = output_tensor->scalar<Variant>()().get<TensorList>();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 class EmptyTensorList : public OpKernel {
@@ -441,6 +446,8 @@ class TensorListSetItem : public OpKernel {
  public:
   explicit TensorListSetItem(OpKernelConstruction* c) : OpKernel(c) {
     OP_REQUIRES_OK(c, c->GetAttr("element_dtype", &element_dtype_));
+    OP_REQUIRES_OK(c, c->GetAttr("resize_if_index_out_of_bounds",
+                                 &resize_if_index_out_of_bounds_));
   }
 
   void Compute(OpKernelContext* c) override {
@@ -455,11 +462,6 @@ class TensorListSetItem : public OpKernel {
         c, TensorShapeUtils::IsScalar(c->input(1).shape()),
         errors::InvalidArgument("Expected argument 1 to be a scalar. Received",
                                 c->input(1).DebugString()));
-    int32_t index = c->input(1).scalar<int32>()();
-    OP_REQUIRES(c, index < l->tensors().size(),
-                errors::InvalidArgument("Trying to modify element ", index,
-                                        " in a list with ", l->tensors().size(),
-                                        " elements."));
     const Tensor& value = c->input(2);
     OP_REQUIRES(c, l->element_shape.IsCompatibleWith(value.shape()),
                 errors::InvalidArgument(
@@ -469,11 +471,21 @@ class TensorListSetItem : public OpKernel {
                     " list shape: ", l->element_shape.DebugString()));
     TensorList* output_list = nullptr;
     OP_REQUIRES_OK(c, ForwardInputOrCreateNewList(c, 0, 0, *l, &output_list));
+    int32_t index = c->input(1).scalar<int32>()();
+    if (!resize_if_index_out_of_bounds_) {
+      OP_REQUIRES(c, index < l->tensors().size(),
+                  errors::InvalidArgument("Trying to modify element ", index,
+                                          " in a list with ",
+                                          l->tensors().size(), " elements."));
+    } else if (index >= l->tensors().size()) {
+      output_list->tensors().resize(index + 1, Tensor(DT_INVALID));
+    }
     output_list->tensors()[index] = value;
   }
 
  private:
   DataType element_dtype_;
+  bool resize_if_index_out_of_bounds_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("TensorListSetItem").Device(DEVICE_CPU),
@@ -491,7 +503,6 @@ REGISTER_KERNEL_BUILDER(Name("TensorListSetItem").Device(DEVICE_CPU),
 TF_CALL_GPU_ALL_TYPES(REGISTER_TENSOR_LIST_SET_ITEM_GPU);
 TF_CALL_int32(REGISTER_TENSOR_LIST_SET_ITEM_GPU);
 TF_CALL_int64(REGISTER_TENSOR_LIST_SET_ITEM_GPU);
-REGISTER_TENSOR_LIST_SET_ITEM_GPU(bfloat16)
 #undef REGISTER_TENSOR_LIST_SET_ITEM_GPU
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -506,7 +517,6 @@ REGISTER_TENSOR_LIST_SET_ITEM_GPU(bfloat16)
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_TENSOR_LIST_SET_ITEM_DEFAULT);
 TF_CALL_int32(REGISTER_TENSOR_LIST_SET_ITEM_DEFAULT);
 TF_CALL_int64(REGISTER_TENSOR_LIST_SET_ITEM_DEFAULT);
-REGISTER_TENSOR_LIST_SET_ITEM_DEFAULT(bfloat16)
 #undef REGISTER_TENSOR_LIST_SET_ITEM_DEFAULT
 
 class TensorListConcatLists : public OpKernel {
@@ -700,7 +710,7 @@ static Status TensorListDeviceCopy(
       TF_RETURN_IF_ERROR(copy(t, &to->tensors().back()));
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 #define REGISTER_LIST_COPY(DIRECTION)                                         \
@@ -713,6 +723,7 @@ REGISTER_LIST_COPY(VariantDeviceCopyDirection::DEVICE_TO_DEVICE);
 
 REGISTER_UNARY_VARIANT_DECODE_FUNCTION(TensorList, TensorList::kTypeName);
 
+#if !defined(PLUGGABLE_DEVICE_SUPPORTED_MACOS)
 #define REGISTER_TENSOR_LIST_OPS_DEFAULT(T)                                \
   REGISTER_KERNEL_BUILDER(Name("TensorListStack")                          \
                               .TypeConstraint<T>("element_dtype")          \
@@ -784,8 +795,8 @@ REGISTER_UNARY_VARIANT_DECODE_FUNCTION(TensorList, TensorList::kTypeName);
 
 TF_CALL_int32(REGISTER_TENSOR_LIST_OPS_DEFAULT);
 TF_CALL_int64(REGISTER_TENSOR_LIST_OPS_DEFAULT);
-TF_CALL_bfloat16(REGISTER_TENSOR_LIST_OPS_DEFAULT);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_TENSOR_LIST_OPS_DEFAULT);
 
 #undef REGISTER_TENSOR_LIST_OPS_DEFAULT
+#endif
 }  // namespace tensorflow

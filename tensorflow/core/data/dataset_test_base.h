@@ -133,7 +133,7 @@ class DatasetParams {
                 std::vector<PartialTensorShape> output_shapes,
                 string node_name);
 
-  virtual ~DatasetParams() {}
+  virtual ~DatasetParams() = default;
 
   // Returns the inputs (except the input datasets) as a tensor vector.
   virtual std::vector<Tensor> GetInputTensors() const = 0;
@@ -766,14 +766,13 @@ class DatasetOpsTestBase : public ::testing::Test {
 
   // Creates a new op kernel context.
   Status CreateDatasetContext(
-      OpKernel* const dateset_kernel,
-      gtl::InlinedVector<TensorValue, 4>* const inputs,
+      OpKernel* dateset_kernel, gtl::InlinedVector<TensorValue, 4>* inputs,
       std::unique_ptr<OpKernelContext::Params>* dataset_context_params,
       std::unique_ptr<OpKernelContext>* dataset_context);
 
   // Creates a new dataset.
   Status CreateDataset(OpKernel* kernel, OpKernelContext* context,
-                       DatasetBase** const dataset);
+                       DatasetBase** dataset);
 
   // Restores the state of the input iterator. It resets the iterator before
   // restoring it to make sure the input iterator does not hold any
@@ -786,7 +785,7 @@ class DatasetOpsTestBase : public ::testing::Test {
 
   // Fetches the dataset from the operation context.
   Status GetDatasetFromContext(OpKernelContext* context, int output_index,
-                               DatasetBase** const dataset);
+                               DatasetBase** dataset);
 
   // Runs an operation producing outputs.
   Status RunOpKernel(OpKernel* op_kernel, OpKernelContext* context);
@@ -814,7 +813,7 @@ class DatasetOpsTestBase : public ::testing::Test {
 
   // Creates a new iterator context for iterating the dataset.
   Status CreateIteratorContext(
-      OpKernelContext* const op_context,
+      OpKernelContext* op_context,
       std::unique_ptr<IteratorContext>* iterator_context);
 
   // Creates a new iterator context for iterating the dataset.

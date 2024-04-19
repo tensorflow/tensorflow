@@ -18,6 +18,10 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_CONV_3D_H_
 #define TENSORFLOW_CORE_KERNELS_CONV_3D_H_
 
+#include <array>
+
+#include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/ops_util.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/kernels/eigen_backward_cuboid_convolutions.h"
 #include "tensorflow/core/kernels/eigen_cuboid_convolution.h"
@@ -86,6 +90,39 @@ struct CuboidConvolutionBackwardFilter<CPUDevice, T> {
 };
 
 }  // namespace functor
+
+typedef Eigen::ThreadPoolDevice CPUDevice;
+
+template <typename Device, typename T>
+struct LaunchConv3DOp;
+
+template <typename T>
+struct LaunchConv3DOp<CPUDevice, T> {
+  static void launch(OpKernelContext* context, bool cudnn_use_autotune,
+                     const Tensor& input, const Tensor& filter,
+                     const std::array<int64, 3>& dilations,
+                     const std::array<int64, 3>& strides, const Padding padding,
+                     TensorFormat data_format, Tensor* output) {
+    OP_REQUIRES(context, data_format == FORMAT_NHWC,
+                absl::InvalidArgumentError("CPU implementation of Conv3D "
+                                           "currently only supports the NHWC "
+                                           "tensor format."));
+    OP_REQUIRES(
+        context, dilations[0] == 1 && dilations[1] == 1 && dilations[2] == 1,
+        absl::InvalidArgumentError("CPU implementation of Conv3D "
+                                   "currently only supports dilated rates "
+                                   "of 1."));
+    OP_REQUIRES(context, filter.dim_size(3) == input.dim_size(input.dims() - 1),
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Number of channels in filter (", filter.dim_size(3),
+                    ") must match last dimension of input (",
+                    input.dim_size(input.dims() - 1), ")")));
+    functor::CuboidConvolution<CPUDevice, T>()(
+        context->eigen_device<CPUDevice>(), output->tensor<T, 5>(),
+        input.tensor<T, 5>(), filter.tensor<T, 5>(), strides[2], strides[1],
+        strides[0], BrainPadding2EigenPadding(padding));
+  }
+};
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_KERNELS_CONV_3D_H_

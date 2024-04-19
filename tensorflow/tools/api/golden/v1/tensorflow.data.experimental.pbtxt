@@ -6,18 +6,14 @@ tf_module {
   }
   member {
     name: "AutoShardPolicy"
-    mtype: "<class \'enum.EnumMeta\'>"
+    mtype: "<class \'enum.EnumType\'>"
   }
   member {
     name: "AutotuneAlgorithm"
-    mtype: "<class \'enum.EnumMeta\'>"
+    mtype: "<class \'enum.EnumType\'>"
   }
   member {
     name: "AutotuneOptions"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "CheckpointInputPipelineHook"
     mtype: "<type \'type\'>"
   }
   member {
@@ -38,7 +34,7 @@ tf_module {
   }
   member {
     name: "ExternalStatePolicy"
-    mtype: "<class \'enum.EnumMeta\'>"
+    mtype: "<class \'enum.EnumType\'>"
   }
   member {
     name: "INFINITE_CARDINALITY"
@@ -141,6 +137,10 @@ tf_module {
     argspec: "args=[\'batch_size\', \'row_shape\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "distributed_save"
+    argspec: "args=[\'dataset\', \'path\', \'data_service_address\', \'compression\'], varargs=None, keywords=None, defaults=[\'AUTO\'], "
+  }
+  member_method {
     name: "enable_debug_mode"
     argspec: "args=[], varargs=None, keywords=None, defaults=None"
   }
@@ -155,6 +155,10 @@ tf_module {
   member_method {
     name: "from_variant"
     argspec: "args=[\'variant\', \'structure\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_model_proto"
+    argspec: "args=[\'iterator\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "get_next_as_optional"
@@ -203,6 +207,10 @@ tf_module {
   member_method {
     name: "map_and_batch_with_legacy_function"
     argspec: "args=[\'map_func\', \'batch_size\', \'num_parallel_batches\', \'drop_remainder\', \'num_parallel_calls\'], varargs=None, keywords=None, defaults=[\'None\', \'False\', \'None\'], "
+  }
+  member_method {
+    name: "pad_to_cardinality"
+    argspec: "args=[\'cardinality\', \'mask_key\'], varargs=None, keywords=None, defaults=[\'valid\'], "
   }
   member_method {
     name: "parallel_interleave"

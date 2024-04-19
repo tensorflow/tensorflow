@@ -25,6 +25,7 @@ REGISTER6(UnaryOp, CPU, "Round", functor::round, Eigen::half, float, double,
 REGISTER5(UnaryOp, GPU, "Round", functor::round, Eigen::half, float, double,
           int32, int64);
 #endif
+REGISTER(UnaryOp, GPU, "Round", functor::round, bfloat16);
 #endif
 
 }  // namespace tensorflow

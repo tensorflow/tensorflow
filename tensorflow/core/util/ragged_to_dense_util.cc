@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/util/ragged_to_dense_util.h"
 
+#include <algorithm>
+#include <vector>
+
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/framework/tensor_shape.h"

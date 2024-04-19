@@ -16,6 +16,7 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#include "tensorflow/core/kernels/numeric_options_utils.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
@@ -48,12 +49,15 @@ void TensorCuBlasGemm<T>::operator()(OpKernelContext* ctx, bool transa,
   auto a_ptr = AsDeviceMemory(a);
   auto b_ptr = AsDeviceMemory(b);
   auto c_ptr = AsDeviceMemory(c);
+  auto* stream = ctx->op_device_context()->stream();
+  auto* blas = stream->parent()->AsBlas();
+  OP_REQUIRES(ctx, blas != nullptr, absl::InternalError("No BLAS for stream."));
 
   OP_REQUIRES_OK(
-      ctx, ctx->op_device_context()->stream()->ThenBlasGemm(
-               trans[transa], trans[transb], m, n, k, static_cast<T>(alpha),
-               a_ptr, lda, b_ptr, ldb, static_cast<T>(beta), &c_ptr, ldc,
-               se::blas::kDefaultComputePrecision));
+      ctx, blas->BlasGemm(stream, trans[transa], trans[transb], m, n, k,
+                          static_cast<T>(alpha), a_ptr, lda, b_ptr, ldb,
+                          static_cast<T>(beta), &c_ptr, ldc,
+                          GetNumericOptions(), se::blas::CallContext::kNone));
 #else
   ctx->SetStatus(errors::InvalidArgument("CuBlasGemm needs CUDA."));
 #endif

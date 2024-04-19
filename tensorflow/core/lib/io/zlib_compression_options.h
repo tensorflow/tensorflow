@@ -17,7 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_LIB_IO_ZLIB_COMPRESSION_OPTIONS_H_
 
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/tsl/lib/io/zlib_compression_options.h"
+#include "tsl/lib/io/zlib_compression_options.h"
 
 namespace tensorflow {
 namespace io {

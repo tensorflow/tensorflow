@@ -27,4 +27,5 @@ message FingerprintDef {
   uint64 checkpoint_hash = 5;
   // Version specification of the fingerprint.
   VersionDef version = 6;
+  // TODO(b/290068219): add USM version when GA
 }

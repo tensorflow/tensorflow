@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_tf_dialect_op.h"
 
 #include <memory>
+#include <optional>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
@@ -28,7 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/export_utils.h"
 #include "tensorflow/compiler/mlir/utils/string_container_utils.h"
-#include "tensorflow/compiler/xla/status_macros.h"
+#include "xla/status_macros.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -65,13 +66,13 @@ Status SetTypeAttribute(absl::string_view name, ContainerT types,
 // attribute already exists then this will just retain the set value.
 template <typename ContainerT,
           typename = typename std::enable_if<std::is_same<
-              llvm::Optional<llvm::ArrayRef<int64_t>>,
+              std::optional<llvm::ArrayRef<int64_t>>,
               decltype(*std::declval<ContainerT>().begin())>::value>::type>
 void SetShapeAttribute(absl::string_view name, ContainerT shapes,
                        AttrValueMap* values) {
   AttrValue value;
   auto& shape_list = *value.mutable_list();
-  for (const llvm::Optional<llvm::ArrayRef<int64_t>>& shape : shapes) {
+  for (const std::optional<llvm::ArrayRef<int64_t>>& shape : shapes) {
     TensorShapeProto& tshape = *shape_list.add_shape();
     if (shape.has_value()) {
       for (int64_t dim : *shape) {
@@ -118,7 +119,7 @@ Status GetUnregisteredAttrs(
 
 // Collects all attribute names to ignore in an MLIR operation when exporting to
 // a TensorFlow NodeDef.
-StatusOr<absl::flat_hash_set<absl::string_view>> GetAttributesToIgnore(
+absl::StatusOr<absl::flat_hash_set<absl::string_view>> GetAttributesToIgnore(
     mlir::Operation* inst, mlir::DictionaryAttr derived_attrs,
     const tensorflow::OpRegistrationData* op_reg_data,
     bool ignore_unregistered_attrs) {
@@ -255,7 +256,7 @@ Status GetAttrValuesFromOperation(
   return OkStatus();
 }
 
-StatusOr<std::unique_ptr<NodeDef>> ConvertTFDialectOpToNodeDef(
+absl::StatusOr<std::unique_ptr<NodeDef>> ConvertTFDialectOpToNodeDef(
     mlir::Operation* inst, llvm::StringRef name,
     bool ignore_unregistered_attrs) {
   TF_ASSIGN_OR_RETURN(auto node_def, GetOperationNodeDef(inst, name));

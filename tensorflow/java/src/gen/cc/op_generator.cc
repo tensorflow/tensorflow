@@ -193,7 +193,7 @@ void RenderSecondaryFactoryMethod(const OpSpec& op, const Type& op_class,
   factory_doc.add_tag("return", "a new instance of " + op_class.name());
 
   writer->BeginMethod(factory, PUBLIC | STATIC, &factory_doc);
-  writer->Append(factory_statement.str().c_str()).Append(");").EndLine();
+  writer->Append(factory_statement.str()).Append(");").EndLine();
   writer->EndMethod();
 }
 

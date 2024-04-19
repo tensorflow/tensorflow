@@ -41,7 +41,8 @@ TfLiteStatus ResizeOutputImpl(TfLiteContext* context, const TfLiteTensor* dims,
     T data = GetTensorData<T>(dims)[i];
     if (data < 0) {
       TfLiteIntArrayFree(output_shape);
-      TF_LITE_KERNEL_LOG(context, "Fill dimensions must be >= 0", dims->type);
+      TF_LITE_KERNEL_LOG(context, "Fill dimensions must be >= 0 got %d",
+                         dims->type);
       return kTfLiteError;
     }
     output_shape->data[i] = data;
@@ -100,7 +101,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE_EQ(context, value->params.zero_point, 0);
   }
 
-  if (IsConstantTensor(dims)) {
+  if (IsConstantOrPersistentTensor(dims)) {
     TF_LITE_ENSURE_OK(context, ResizeOutput(context, dims, output));
   } else {
     SetTensorToDynamic(output);

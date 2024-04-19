@@ -27,23 +27,25 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "tensorflow/lite/acceleration/configuration/configuration_generated.h"
+#include "tensorflow/lite/core/acceleration/configuration/delegate_registry.h"
+#include "tensorflow/lite/core/acceleration/configuration/stable_delegate_registry.h"
 #include "tensorflow/lite/core/api/profiler.h"
 #include "tensorflow/lite/core/c/c_api.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/interpreter.h"
+#include "tensorflow/lite/core/interpreter_builder.h"
+#include "tensorflow/lite/core/kernels/register.h"
 #include "tensorflow/lite/core/subgraph.h"
-#include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
-#include "tensorflow/lite/experimental/acceleration/configuration/delegate_registry.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/call_register.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/constants.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/decode_jpeg_register.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/status_codes.h"
-#include "tensorflow/lite/interpreter_builder.h"
-#include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/logger.h"
 #include "tensorflow/lite/minimal_logging.h"
 #include "tensorflow/lite/mutable_op_resolver.h"
+#include "tensorflow/lite/tools/benchmark/register_custom_op.h"
 #include "tensorflow/lite/tools/model_loader.h"
 
 #ifndef TEMP_FAILURE_RETRY
@@ -78,7 +80,7 @@ inline bool HasTensorData(tools::ModelLoader* model_loader,
   // regardless of how the model is loaded.
   const TfLiteTensor* tensor = graph.tensor(index);
   return tensor->allocation != nullptr ||
-         (model_loader->IsLoadedFromFlatbufferBuilder() &&
+         (model_loader->type() == tools::ModelLoader::Type::kPipeModelLoader &&
           tensor->data.data != nullptr);
 }
 
@@ -198,25 +200,35 @@ MinibenchmarkStatus Validator::LoadDelegate() {
   if (!compute_settings_) {
     return kMinibenchmarkPreconditionNotMet;
   }
+  if (opaque_delegate_) {
+    // An opaque delegate is created already.
+    return kMinibenchmarkSuccess;
+  }
 
   // Create delegate plugin and delegate.
   Delegate which_delegate = Delegate_NONE;
-  bool is_stable_delegate = false;
+  bool is_stable_delegate_path_provided = false;
   auto tflite_settings = compute_settings_->tflite_settings();
   if (tflite_settings) {
     which_delegate = compute_settings_->tflite_settings()->delegate();
-    if (tflite_settings->stable_delegate_loader_settings() &&
-        tflite_settings->stable_delegate_loader_settings()->delegate_path()) {
-      is_stable_delegate = !tflite_settings->stable_delegate_loader_settings()
-                                ->delegate_path()
-                                ->str()
-                                .empty();
+    if (tflite_settings->stable_delegate_loader_settings()) {
+      is_stable_delegate_path_provided =
+          tflite_settings->stable_delegate_loader_settings()->delegate_path() &&
+          !tflite_settings->stable_delegate_loader_settings()
+               ->delegate_path()
+               ->str()
+               .empty();
     }
   }
   std::string delegate_name;
-  if (is_stable_delegate) {
-    // When a stable delegate shared library is provided, the stable delegate
-    // plugin loads symbols from the shared library to initialize the delegates.
+  if (is_stable_delegate_path_provided && which_delegate == Delegate_GPU) {
+    // Load GPU plugin from GpuModulePlugin when delegate_path is provided.
+    // This is a workaround before StableDelegate is supported.
+    delegate_name = "GpuModule";
+  } else if (is_stable_delegate_path_provided) {
+    // When a stable delegate shared library path is provided, the stable
+    // delegate plugin loads symbols from the shared library to initialize the
+    // delegates.
     delegate_name = "StableDelegate";
   } else {
     switch (which_delegate) {
@@ -232,6 +244,9 @@ MinibenchmarkStatus Validator::LoadDelegate() {
       case Delegate_XNNPACK:
         delegate_name = "XNNPack";
         break;
+      case Delegate_EDGETPU:
+        delegate_name = "EdgeTpu";
+        break;
       default:
         return kMinibenchmarkDelegateNotSupported;
     }
@@ -246,6 +261,47 @@ MinibenchmarkStatus Validator::LoadDelegate() {
   if (!(delegate_ = delegate_plugin_->Create())) {
     return kMinibenchmarkDelegateCreateFailed;
   }
+  return kMinibenchmarkSuccess;
+}
+
+MinibenchmarkStatus Validator::LoadOpaqueDelegate() {
+  if (!compute_settings_) {
+    return kMinibenchmarkPreconditionNotMet;
+  }
+
+  // Create delegate plugin and delegate.
+  bool is_stable_delegate_name_provided = false;
+  auto tflite_settings = compute_settings_->tflite_settings();
+  if (!tflite_settings) {
+    return kMinibenchmarkSuccess;
+  }
+  auto stable_delegate_settings =
+      tflite_settings->stable_delegate_loader_settings();
+  is_stable_delegate_name_provided =
+      stable_delegate_settings && stable_delegate_settings->delegate_name() &&
+      !stable_delegate_settings->delegate_name()->str().empty();
+  if (!is_stable_delegate_name_provided) {
+    // It is optional to have an opaque delegate.
+    return kMinibenchmarkSuccess;
+  }
+  // When a stable delegate name is provided, we load symbols from the stable
+  // delegate registry to initialize the delegates.
+  std::string delegate_name = stable_delegate_settings->delegate_name()->str();
+  TFLITE_LOG_PROD(TFLITE_LOG_INFO, "Running mini-benchmark on %s",
+                  delegate_name.c_str());
+
+  const TfLiteStableDelegate* stable_delegate =
+      delegates::StableDelegateRegistry::RetrieveStableDelegate(delegate_name);
+  if (!stable_delegate) {
+    TFLITE_LOG_PROD(TFLITE_LOG_ERROR,
+                    "Failed to load stable delegate plugin %s",
+                    delegate_name.c_str());
+    return kMinibenchmarkDelegatePluginNotFound;
+  }
+  const TfLiteOpaqueDelegatePlugin* delegate_plugin =
+      stable_delegate->delegate_plugin;
+  opaque_delegate_ = TfLiteOpaqueDelegatePtr(
+      delegate_plugin->create(tflite_settings), delegate_plugin->destroy);
   return kMinibenchmarkSuccess;
 }
 
@@ -276,10 +332,15 @@ MinibenchmarkStatus Validator::CreateInterpreter(int* delegate_error_out,
       "validation/decode_jpeg",
       ::tflite::acceleration::decode_jpeg_kernel::Register_DECODE_JPEG(), 1);
 
+  RegisterSelectedOps(resolver_.get());
+
   tflite::InterpreterBuilder builder(*model_loader_->GetModel(), *resolver_);
   // Add delegate if not running on CPU.
   if (delegate_ != nullptr) {
     builder.AddDelegate(delegate_.get());
+  }
+  if (opaque_delegate_ != nullptr) {
+    builder.AddDelegate(opaque_delegate_.get());
   }
   TfLiteStatus status = builder(&interpreter_);
   if (!interpreter_) {
@@ -319,9 +380,9 @@ MinibenchmarkStatus Validator::CreateInterpreter(int* delegate_error_out,
   }
 
   // Check if the model is actually going to execute on the delegate.
-  // For now just give a warning, with the exception of NNAPI SL mini benchmark.
-  // Can consider changing to error in other contexts.
-  // The logic is copy/pasted from benchmark_tflite_model.cc
+  // For now just give a warning, with the exception of NNAPI SL mini
+  // benchmark. Can consider changing to error in other contexts. The logic is
+  // copy/pasted from benchmark_tflite_model.cc
   // TODO(b/232085640): Replace this logic with Subgraph::IsFullyDelegated()
   // after making that function public.
   absl::flat_hash_set<int> checked_node_ids;
@@ -350,41 +411,46 @@ MinibenchmarkStatus Validator::CreateInterpreter(int* delegate_error_out,
   return kMinibenchmarkSuccess;
 }
 
-MinibenchmarkStatus Validator::RunValidation(Results* results_out) {
+Validator::Status Validator::RunValidation(Results* results_out) {
+  BenchmarkStage stage = BenchmarkStage_INITIALIZATION;
   if (!results_out) {
-    return kMinibenchmarkPreconditionNotMet;
+    return Validator::Status{kMinibenchmarkPreconditionNotMet, stage};
   }
   if (!model_loader_) {
-    return kMinibenchmarkModelReadFailed;
+    return Validator::Status{kMinibenchmarkModelReadFailed, stage};
   }
   if (!model_loader_->Init()) {
-    return kMinibenchmarkModelInitFailed;
+    return Validator::Status{kMinibenchmarkModelInitFailed, stage};
   }
 
-#define MB_RETURN_IF_ERROR(s)                 \
-  {                                           \
-    MinibenchmarkStatus c = (s);              \
-    if (c != kMinibenchmarkSuccess) return c; \
+#define MB_RETURN_IF_ERROR(s, bs)                                      \
+  {                                                                    \
+    MinibenchmarkStatus c = (s);                                       \
+    if (c != kMinibenchmarkSuccess) return Validator::Status{c, (bs)}; \
   }
 
   // The lifetime of the delegate must be at least as long as the lifetime of
   // any Interpreter.
   int64_t delegate_load_start_time_us = ElapsedTimeMicros();
-  MB_RETURN_IF_ERROR(LoadDelegate());
+  MB_RETURN_IF_ERROR(LoadOpaqueDelegate(), stage);
+  MB_RETURN_IF_ERROR(LoadDelegate(), stage);
   MB_RETURN_IF_ERROR(CreateInterpreter(&results_out->delegate_error,
-                                       &results_out->delegated_kernels));
+                                       &results_out->delegated_kernels),
+                     stage);
   int64_t delegate_load_end_time_us = ElapsedTimeMicros();
 
   ValidatorProfiler profiler;
+  stage = BenchmarkStage_INFERENCE;
+
   if (has_accuracy_validation_) {
-    MB_RETURN_IF_ERROR(CheckGoldenOutput(results_out));
+    MB_RETURN_IF_ERROR(CheckGoldenOutput(results_out), stage);
   }
 
   main_model_->SetProfiler(&profiler, 0);
   TfLiteStatus status = validation_entrypoint_->Invoke();
   main_model_->SetProfiler(nullptr, 0);
   if (status != kTfLiteOk) {
-    return kMinibenchmarkInvokeFailed;
+    MB_RETURN_IF_ERROR(kMinibenchmarkInvokeFailed, stage);
   }
 
   int model_output_size = main_model_->outputs().size();
@@ -446,7 +512,7 @@ MinibenchmarkStatus Validator::RunValidation(Results* results_out) {
     }
   }
 #undef MB_RETURN_IF_ERROR
-  return kMinibenchmarkSuccess;
+  return Validator::Status{kMinibenchmarkSuccess};
 }
 
 int64_t Validator::BootTimeMicros() { return ElapsedTimeMicros(); }

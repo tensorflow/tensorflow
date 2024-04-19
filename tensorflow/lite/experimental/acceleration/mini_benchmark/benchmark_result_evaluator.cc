@@ -16,7 +16,7 @@ limitations under the License.
 
 #include <memory>
 
-#include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
+#include "tensorflow/lite/acceleration/configuration/configuration_generated.h"
 
 namespace tflite {
 namespace acceleration {

@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/ir/importexport/convert_attributes.h"
 
 #include <string>
+#include <vector>
 
 #include "llvm/ADT/StringSet.h"
 #include "llvm/ADT/TypeSwitch.h"
@@ -24,7 +25,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
-#include "tensorflow/compiler/xla/status_macros.h"
+#include "xla/status_macros.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/framework/op_def.pb.h"
@@ -197,7 +198,7 @@ Status ConvertAttribute(const ArrayAttr& attr, bool remove_ref_type,
 }
 }  // namespace
 
-StatusOr<AttrValue> ConvertAttribute(Attribute attr) {
+absl::StatusOr<AttrValue> ConvertAttribute(Attribute attr) {
   AttrValue value;
   if (auto symbol_ref = attr.dyn_cast<SymbolRefAttr>()) {
     TF_RETURN_IF_ERROR(
@@ -264,6 +265,7 @@ Status ConvertAttributes(ArrayRef<NamedAttribute> attrs,
     // calls.
     std::vector<std::string> name_tokens =
         absl::StrSplit(name, '.', absl::SkipEmpty());
+    TF_RET_CHECK(!name_tokens.empty());
     TF_RET_CHECK(name_tokens.size() <= 2);
     auto it = func_call_attrs.find(name_tokens[0]);
     if (it == func_call_attrs.end())
@@ -303,8 +305,8 @@ Status SetShapeAttribute(absl::string_view name, ShapedType shaped_type,
 // Converts non func AttrValue proto into an MLIR attribute. Func attribute is
 // exclused in this function because the function might be renamed when the
 // function definition is imported.
-StatusOr<Attribute> ConvertNonFuncAttributeValue(const AttrValue& value,
-                                                 Builder& builder) {
+absl::StatusOr<Attribute> ConvertNonFuncAttributeValue(const AttrValue& value,
+                                                       Builder& builder) {
   switch (value.value_case()) {
     case AttrValue::kI:
       return builder.getI64IntegerAttr(value.i());
@@ -359,8 +361,7 @@ StatusOr<Attribute> ConvertNonFuncAttributeValue(const AttrValue& value,
         attrs.push_back(FuncAttr::get(builder.getContext(), func_attr.name(),
                                       builder.getDictionaryAttr(subattrs)));
       }
-      return builder.getArrayAttr(
-          llvm::makeArrayRef(attrs.begin(), attrs.end()));
+      return builder.getArrayAttr(llvm::ArrayRef(attrs.begin(), attrs.end()));
     }
     case AttrValue::VALUE_NOT_SET:
       return builder.getUnitAttr();
@@ -372,8 +373,8 @@ StatusOr<Attribute> ConvertNonFuncAttributeValue(const AttrValue& value,
   }
 }
 
-StatusOr<Attribute> ConvertAttributeValue(const AttrValue& value,
-                                          Builder& builder) {
+absl::StatusOr<Attribute> ConvertAttributeValue(const AttrValue& value,
+                                                Builder& builder) {
   switch (value.value_case()) {
     case AttrValue::kFunc: {
       NamedAttrList attrs;
@@ -392,7 +393,7 @@ StatusOr<Attribute> ConvertAttributeValue(const AttrValue& value,
   }
 }
 
-StatusOr<tf_type::FullTypeAttr> ConvertAttribute(
+absl::StatusOr<tf_type::FullTypeAttr> ConvertAttribute(
     const tensorflow::FullTypeDef& full_type, Builder& builder) {
   using FullTypeAttr = ::mlir::tf_type::FullTypeAttr;
 
@@ -420,7 +421,7 @@ StatusOr<tf_type::FullTypeAttr> ConvertAttribute(
                            attr);
 }
 
-StatusOr<tensorflow::FullTypeDef> ConvertAttribute(
+absl::StatusOr<tensorflow::FullTypeDef> ConvertAttribute(
     tf_type::FullTypeAttr full_type) {
   using FullTypeDef = tensorflow::FullTypeDef;
 
@@ -450,7 +451,7 @@ StatusOr<tensorflow::FullTypeDef> ConvertAttribute(
   return ret;
 }
 
-StatusOr<ArrayAttr> ConvertHandleData(
+absl::StatusOr<ArrayAttr> ConvertHandleData(
     Builder builder,
     const tensorflow::protobuf::RepeatedPtrField<
         tensorflow::ResourceHandleProto_DtypeAndShape>& handle_data) {

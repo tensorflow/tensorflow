@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/util/determinism.h"
 
-#include "pybind11/pybind11.h"
+#include "pybind11/pybind11.h"  // from @pybind11
 
 PYBIND11_MODULE(_pywrap_determinism, m) {
   m.def("enable", &tensorflow::EnableOpDeterminism);

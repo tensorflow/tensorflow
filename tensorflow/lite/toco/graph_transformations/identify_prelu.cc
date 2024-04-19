@@ -62,8 +62,6 @@ namespace toco {
     return ::tensorflow::OkStatus();
   }
 
-  // TODO(ycling): Both Add and Mul are commutative. Support the case where
-  // the position of operands are exchanged.
   const auto* mul_op = GetOpWithOutput(*model, add_op->inputs[1]);
   if (mul_op == nullptr || mul_op->type != OperatorType::kMul ||
       mul_op->inputs.size() != 2 ||

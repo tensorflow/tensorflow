@@ -1,0 +1,325 @@
+# Copyright 2023 The OpenXLA Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+load("//xla/python/ifrt_proxy/common:ifrt_proxy.bzl", "default_ifrt_proxy_visibility", "ifrt_proxy_cc_test")
+
+package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = default_ifrt_proxy_visibility,
+)
+
+cc_library(
+    name = "grpc_server",
+    srcs = ["grpc_server.cc"],
+    hdrs = ["grpc_server.h"],
+    deps = [
+        ":grpc_service_impl",
+        ":host_buffer",
+        ":ifrt_backend",
+        "//xla/python/ifrt",
+        "//xla/python/ifrt_proxy/common:grpc_credentials",
+        "//xla/python/ifrt_proxy/common:grpc_ifrt_service_cc_grpc_proto",
+        "@com_github_grpc_grpc//:grpc",
+        "@com_github_grpc_grpc//:grpc++",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+ifrt_proxy_cc_test(
+    name = "grpc_server_test",
+    srcs = ["grpc_server_test.cc"],
+    tags = ["no_aarch64"],  # TODO(b/326080238): Fix this.
+    deps = [
+        ":grpc_server",
+        "//xla/python/ifrt_proxy/common:grpc_ifrt_service_cc_grpc_proto",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:status_matchers",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:test",
+    ],
+)
+
+cc_library(
+    name = "grpc_service_impl",
+    srcs = ["grpc_service_impl.cc"],
+    hdrs = ["grpc_service_impl.h"],
+    deps = [
+        ":host_buffer",
+        ":ifrt_backend",
+        ":ifrt_session_handler",
+        ":version",
+        "//xla/pjrt/distributed:util",
+        "//xla/python/ifrt_proxy/common:grpc_ifrt_service_cc_grpc_proto",
+        "//xla/python/ifrt_proxy/common:grpc_ifrt_service_proto_cc",
+        "//xla/python/ifrt_proxy/common:ifrt_service_proto_cc",
+        "//xla/python/ifrt_proxy/common:proto_util",
+        "@com_github_grpc_grpc//:grpc++",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/cleanup",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/log:die_if_null",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+ifrt_proxy_cc_test(
+    name = "grpc_service_impl_test",
+    size = "small",
+    srcs = ["grpc_service_impl_test.cc"],
+    tags = ["no_aarch64"],  # TODO(b/326080238): Fix this.
+    deps = [
+        ":grpc_server",
+        ":grpc_service_impl",
+        ":host_buffer",
+        ":version",
+        "//xla/python/ifrt_proxy/client:grpc_host_buffer",
+        "//xla/python/ifrt_proxy/common:grpc_ifrt_service_cc_grpc_proto",
+        "//xla/python/ifrt_proxy/common:ifrt_service_proto_cc",
+        "@com_github_grpc_grpc//:grpc++",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:cord",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:status_matchers",
+        "@local_tsl//tsl/platform:test",
+    ],
+)
+
+cc_library(
+    name = "ifrt_session_handler",
+    srcs = ["ifrt_session_handler.cc"],
+    hdrs = ["ifrt_session_handler.h"],
+    deps = [
+        ":ifrt_backend",
+        "//xla/python/ifrt",
+        "//xla/python/ifrt_proxy/common:ifrt_service_proto_cc",
+        "//xla/python/ifrt_proxy/common:proto_util",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/synchronization",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+ifrt_proxy_cc_test(
+    name = "ifrt_session_handler_test",
+    srcs = ["ifrt_session_handler_test.cc"],
+    deps = [
+        ":ifrt_backend",
+        ":ifrt_session_handler",
+        "//xla/python/ifrt",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:status_matchers",
+    ],
+)
+
+cc_library(
+    name = "ifrt_backend",
+    srcs = ["ifrt_backend.cc"],
+    hdrs = ["ifrt_backend.h"],
+    deps = [
+        ":host_buffer",
+        ":host_callback",
+        ":version",
+        "//xla:shape_util",
+        "//xla:status_macros",
+        "//xla:xla_data_proto_cc",
+        "//xla/pjrt:pjrt_client",
+        "//xla/pjrt:pjrt_layout",
+        "//xla/python/ifrt",
+        "//xla/python/ifrt:program_serdes",
+        "//xla/python/ifrt:serdes",
+        "//xla/python/ifrt:sharding_serdes",
+        "//xla/python/ifrt_proxy/common:array_util",
+        "//xla/python/ifrt_proxy/common:common_serdes",
+        "//xla/python/ifrt_proxy/common:ifrt_service_proto_cc",
+        "//xla/python/ifrt_proxy/common:proto_util",
+        "//xla/python/ifrt_proxy/common:types",
+        "//xla/python/ifrt_proxy/common:types_proto_cc",
+        "//xla/python/pjrt_ifrt:xla_ifrt",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/cleanup",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/functional:bind_front",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:Support",
+        "@local_tsl//tsl/concurrency:ref_count",
+        "@local_tsl//tsl/platform:env",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:status_to_from_proto",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+ifrt_proxy_cc_test(
+    name = "ifrt_backend_test",
+    srcs = ["ifrt_backend_test.cc"],
+    deps = [
+        ":host_buffer",
+        ":host_callback",
+        ":ifrt_backend",
+        ":version",
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla:shape_util",
+        "//xla:status_macros",
+        "//xla:test",
+        "//xla:xla_data_proto_cc",
+        "//xla/pjrt:host_callback",
+        "//xla/pjrt:pjrt_common",
+        "//xla/pjrt:pjrt_device_description",
+        "//xla/pjrt:pjrt_layout",
+        "//xla/python/ifrt",
+        "//xla/python/ifrt:mock",
+        "//xla/python/ifrt:serdes",
+        "//xla/python/ifrt:sharding_serdes",
+        "//xla/python/ifrt_proxy/common:ifrt_service_proto_cc",
+        "//xla/python/ifrt_proxy/common:types",
+        "//xla/python/ifrt_proxy/common:types_proto_cc",
+        "//xla/python/pjrt_ifrt:xla_ifrt",
+        "//xla/service:computation_placer_hdr",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Support",
+        "@local_tsl//tsl/concurrency:ref_count",
+        "@local_tsl//tsl/platform:env",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:protobuf",
+        "@local_tsl//tsl/platform:status_matchers",
+        "@local_tsl//tsl/platform:status_to_from_proto",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/protobuf:error_codes_proto_impl_cc",
+        "@local_tsl//tsl/protobuf:status_proto_cc",
+    ],
+)
+
+cc_library(
+    name = "mock_ifrt_backend",
+    testonly = True,
+    hdrs = ["mock_ifrt_backend.h"],
+    deps = [
+        ":ifrt_backend",
+        "//xla/python/ifrt",
+        "//xla/python/ifrt_proxy/common:ifrt_service_proto_cc",
+        "@com_google_absl//absl/status",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_library(
+    name = "host_buffer",
+    srcs = ["host_buffer.cc"],
+    hdrs = ["host_buffer.h"],
+    deps = [
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+cc_library(
+    name = "host_callback",
+    srcs = ["host_callback.cc"],
+    hdrs = ["host_callback.h"],
+    deps = [
+        "//xla:shape_util",
+        "//xla/pjrt:host_callback",
+        "//xla/python/ifrt",
+        "//xla/python/ifrt_proxy/common:proto_util",
+        "//xla/python/pjrt_ifrt",
+        "//xla/python/pjrt_ifrt:xla_host_callback_proto_cc",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/functional:bind_front",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:Support",
+        "@local_tsl//tsl/concurrency:ref_count",
+        "@local_tsl//tsl/platform:errors",
+    ],
+)
+
+cc_library(
+    name = "version",
+    srcs = ["version.cc"],
+    hdrs = ["version.h"],
+    deps = [
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+ifrt_proxy_cc_test(
+    name = "version_test",
+    srcs = ["version_test.cc"],
+    deps = [
+        ":version",
+        "@com_google_absl//absl/status",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:status_matchers",
+    ],
+)
+
+ifrt_proxy_cc_test(
+    name = "host_buffer_test",
+    srcs = ["host_buffer_test.cc"],
+    deps = [
+        ":host_buffer",
+        "@com_google_absl//absl/status",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:status_matchers",
+    ],
+)

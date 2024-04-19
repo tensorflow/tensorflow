@@ -26,4 +26,9 @@ limitations under the License.
 // This value is currently shared with that of TensorFlow.
 #define TFLITE_VERSION_STRING TF_VERSION_STRING
 
+// TensorFlow Lite Extension APIs version.
+// This is the semantic version number for the custom op and delegate APIs.
+// This value is currently shared with that of TensorFlow Lite.
+#define TFLITE_EXTENSION_APIS_VERSION_STRING TFLITE_VERSION_STRING
+
 #endif  // TENSORFLOW_LITE_VERSION_H_

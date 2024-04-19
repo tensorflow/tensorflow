@@ -12,13 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Operations for clipping (gradient, weight) tensors to min/max values."""
+
+import numpy as np
+
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import math_ops
@@ -122,8 +125,7 @@ def clip_by_value(t, clip_value_min, clip_value_max,
   #     t, clip_value_min, clip_value_max, name=name)
 
 
-# TODO(scottzhu): switch to use new implementation in 2 weeks.
-# @ops.RegisterGradient("ClipByValue")
+@ops.RegisterGradient("ClipByValue")
 def _clip_by_value_grad(op, grad):
   """Returns grad of clip_by_value."""
   x = op.inputs[0]
@@ -137,15 +139,14 @@ def _clip_by_value_grad(op, grad):
   zeros = array_ops.zeros(gradshape, gdtype)
   xymask = math_ops.less(x, y)
   xzmask = math_ops.greater(x, z)
-  rx, ry = gen_array_ops.broadcast_gradient_args(sx, sy)
-  rx, rz = gen_array_ops.broadcast_gradient_args(sx, sz)
+  _, ry = gen_array_ops.broadcast_gradient_args(sx, sy)
+  _, rz = gen_array_ops.broadcast_gradient_args(sx, sz)
   xgrad = array_ops.where(math_ops.logical_or(xymask, xzmask), zeros, grad)
   ygrad = array_ops.where(xymask, grad, zeros)
   zgrad = array_ops.where(xzmask, grad, zeros)
-  gx = array_ops.reshape(math_ops.reduce_sum(xgrad, rx), sx)
   gy = array_ops.reshape(math_ops.reduce_sum(ygrad, ry), sy)
   gz = array_ops.reshape(math_ops.reduce_sum(zgrad, rz), sz)
-  return (gx, gy, gz)
+  return xgrad, gy, gz
 
 
 @tf_export("clip_by_norm")
@@ -195,10 +196,10 @@ def clip_by_norm(t, clip_norm, axes=None, name=None):
   Args:
     t: A `Tensor` or `IndexedSlices`.  This must be a floating point type.
     clip_norm: A 0-D (scalar) `Tensor` > 0. A maximum clipping value, also
-      floating point
-    axes: A 1-D (vector) `Tensor` of type int32 containing the dimensions
-      to use for computing the L2-norm. If `None` (the default), uses all
-      dimensions.
+      floating point.
+      Note: If a negative clip_norm is provided, it will be treated as zero.
+    axes: A 1-D (vector) `Tensor` of type int32 containing the dimensions to use
+      for computing the L2-norm. If `None` (the default), uses all dimensions.
     name: A name for the operation (optional).
 
   Returns:
@@ -213,6 +214,14 @@ def clip_by_norm(t, clip_norm, axes=None, name=None):
     values = ops.convert_to_tensor(
         t.values if isinstance(t, indexed_slices.IndexedSlices) else t,
         name="t")
+
+    if np.isscalar(clip_norm):
+      if clip_norm < 0:
+        clip_norm = 0
+    else:
+      clip_norm = math_ops.cast(
+          math_ops.maximum(clip_norm, 0), dtype=values.dtype
+      )
 
     # Calculate L2-norm, clip elements by ratio of clip_norm to L2-norm
     l2sum = math_ops.reduce_sum(values * values, axes, keepdims=True)
@@ -275,7 +284,8 @@ def global_norm(t_list, name=None):
         with ops.colocate_with(v):
           half_squared_norms.append(gen_nn_ops.l2_loss(v))
 
-    half_squared_norm = math_ops.reduce_sum(array_ops.stack(half_squared_norms))
+    half_squared_norm = math_ops.reduce_sum(
+        array_ops_stack.stack(half_squared_norms))
 
     norm = math_ops.sqrt(
         half_squared_norm *
@@ -368,7 +378,10 @@ def clip_by_global_norm(t_list, clip_norm, use_norm=None, name=None):
       else:
         with ops.colocate_with(v):
           values_clipped.append(
-              array_ops.identity(v * scale, name="%s_%d" % (name, i)))
+              array_ops.identity(
+                  v * math_ops.cast(scale, v.dtype), name="%s_%d" % (name, i)
+              )
+          )
 
     list_clipped = [
         indexed_slices.IndexedSlices(c_v, t.indices, t.dense_shape)

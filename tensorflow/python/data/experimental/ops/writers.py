@@ -19,6 +19,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import gen_experimental_dataset_ops
+from tensorflow.python.types import data as data_types
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
@@ -107,7 +108,7 @@ class TFRecordWriter:
       TypeError: if `dataset` is not a `tf.data.Dataset`.
       TypeError: if the elements produced by the dataset are not scalar strings.
     """
-    if not isinstance(dataset, dataset_ops.DatasetV2):
+    if not isinstance(dataset, data_types.DatasetV2):
       raise TypeError(
           f"Invalid `dataset.` Expected a `tf.data.Dataset` object but got "
           f"{type(dataset)}."

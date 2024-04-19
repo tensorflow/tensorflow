@@ -226,10 +226,10 @@ This command generates the following shared library in
 `bazel-bin/tensorflow/lite/delegates/flex`.
 
 Platform | Library name
--------- | ----------------------------
-Linux    | libtensorflowlite_flex.so
-macOS    | libtensorflowlite_flex.dylib
-Windows  | tensorflowlite_flex.dll
+-------- | ------------------------------
+Linux    | `libtensorflowlite_flex.so`
+macOS    | `libtensorflowlite_flex.dylib`
+Windows  | `tensorflowlite_flex.dll`
 
 Note that the necessary `TfLiteDelegate` will be installed automatically when
 creating the interpreter at runtime as long as the shared library is linked. It

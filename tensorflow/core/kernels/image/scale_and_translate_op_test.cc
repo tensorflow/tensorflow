@@ -30,7 +30,6 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/public/session.h"
-#include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
 using Eigen::Vector2f;
@@ -54,7 +53,7 @@ class TypedDynamicKernel : public DynamicKernel {
 
 template <typename KernelType>
 std::unique_ptr<const DynamicKernel> CreateKernel(const KernelType& kernel) {
-  return MakeUnique<TypedDynamicKernel<KernelType>>(kernel);
+  return std::make_unique<TypedDynamicKernel<KernelType>>(kernel);
 }
 
 std::unique_ptr<const DynamicKernel> Create(

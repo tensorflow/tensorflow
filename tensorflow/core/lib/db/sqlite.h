@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <mutex>
 
+#include "absl/log/check.h"
 #include "sqlite3.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -24,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
+#include "tsl/platform/status.h"
 
 /// TensorFlow SQLite Veneer
 ///
@@ -60,7 +62,7 @@ class SqliteTransaction;
 class TF_LOCKABLE Sqlite : public core::RefCounted {
  public:
   /// \brief Closes SQLite connection, which can take milliseconds.
-  virtual ~Sqlite();
+  ~Sqlite() override;
 
   /// \brief Opens SQLite database file.
   ///
@@ -129,7 +131,8 @@ class TF_LOCKABLE Sqlite : public core::RefCounted {
   sqlite3_stmt* const rollback_;
   bool is_in_transaction_ = false;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(Sqlite);
+  Sqlite(const Sqlite&) = delete;
+  void operator=(const Sqlite&) = delete;
 };
 
 /// \brief SQLite prepared statement.
@@ -374,7 +377,8 @@ class SqliteStatement {
   int bind_error_parameter_ = 0;
   uint64 size_ = 0;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(SqliteStatement);
+  SqliteStatement(const SqliteStatement&) = delete;
+  void operator=(const SqliteStatement&) = delete;
 };
 
 /// \brief Reentrant SQLite connection object lock
@@ -400,7 +404,8 @@ class TF_SCOPED_LOCKABLE SqliteLock {
  private:
   sqlite3_mutex* const mutex_;
   bool is_locked_ = true;
-  TF_DISALLOW_COPY_AND_ASSIGN(SqliteLock);
+  SqliteLock(const SqliteLock&) = delete;
+  void operator=(const SqliteLock&) = delete;
 };
 #define SqliteLock(x) static_assert(0, "sqlite_lock_decl_missing_name");
 
@@ -431,7 +436,8 @@ class TF_SCOPED_LOCKABLE SqliteTransaction {
   void Begin();
   Sqlite* const db_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(SqliteTransaction);
+  SqliteTransaction(const SqliteTransaction&) = delete;
+  void operator=(const SqliteTransaction&) = delete;
 };
 
 #define SQLITE_EXCLUSIVE_TRANSACTIONS_REQUIRED(...) \

@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_IR_IMPORTEXPORT_TESTS_ROUNDTRIP_ROUNDTRIP_H_
 #define TENSORFLOW_CORE_IR_IMPORTEXPORT_TESTS_ROUNDTRIP_ROUNDTRIP_H_
 
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/core/framework/graph.pb.h"
 
 namespace tensorflow {

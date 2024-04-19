@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/kernels/if_op.h"
 
+#include <vector>
+
 #include "tensorflow/compiler/tf2xla/const_analysis.h"
 #include "tensorflow/compiler/tf2xla/kernels/if_while_utils.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
@@ -22,8 +24,8 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_context.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/lib/dynamic_shaped_ops.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "xla/client/lib/dynamic_shaped_ops.h"
+#include "xla/client/xla_builder.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 
 namespace tensorflow {
@@ -52,7 +54,7 @@ XlaIfOp::XlaIfOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
 
 // Populates tensor array gradients for compiled branches, returns whether the
 // set of found tensor array gradients is non-empty.
-static StatusOr<bool> PopulateTensorArrayGradients(
+static absl::StatusOr<bool> PopulateTensorArrayGradients(
     XlaOpKernelContext* ctx, xla::XlaBuilder* b,
     absl::Span<XlaCompiler::Argument> arguments,
     XlaCompiler::CompilationResult* then_result,
@@ -179,7 +181,7 @@ static Status ValidateShapes(XlaOpKernelContext* ctx,
           "Mismatch in resource of then and else branch for resource ", i);
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // TODO(b/35949885): There is duplication here with the handling of the
@@ -276,8 +278,9 @@ void XlaIfOp::Compile(XlaOpKernelContext* ctx) {
       ctx, ctx->xla_context()->RecordCollectiveInfoFromNestedCompilationResult(
                else_result));
 
-  StatusOr<bool> has_tensor_array_gradients = PopulateTensorArrayGradients(
-      ctx, b, absl::MakeSpan(arguments), &then_result, &else_result);
+  absl::StatusOr<bool> has_tensor_array_gradients =
+      PopulateTensorArrayGradients(ctx, b, absl::MakeSpan(arguments),
+                                   &then_result, &else_result);
   OP_REQUIRES_OK(ctx, has_tensor_array_gradients.status());
 
   // Recompile the functions to update the argument shapes for tensor arrays.
@@ -324,7 +327,7 @@ void XlaIfOp::Compile(XlaOpKernelContext* ctx) {
   for (int i = 0; i < output_types_.size(); ++i) {
     xla::XlaOp output_handle = xla::GetTupleElement(outputs, i);
     if (VLOG_IS_ON(2)) {
-      StatusOr<xla::Shape> shape = b->GetShape(output_handle);
+      absl::StatusOr<xla::Shape> shape = b->GetShape(output_handle);
       VLOG(2) << "Setting output " << i << " with shape "
               << (shape.ok() ? shape->ToString() : "<unknown>");
     }

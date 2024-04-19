@@ -36,7 +36,7 @@ TEST(ParseTextFormatFromStringTest, ErrorOnInvalidSyntax) {
   protobuf::DescriptorProto output;
   Status status = ParseTextFormatFromString("name: foo", &output);
   EXPECT_EQ(status.code(), error::INVALID_ARGUMENT);
-  EXPECT_THAT(status.error_message(), ContainsRegex("foo"));
+  EXPECT_THAT(status.message(), ContainsRegex("foo"));
   EXPECT_FALSE(output.has_name());
 }
 
@@ -44,7 +44,7 @@ TEST(ParseTextFormatFromStringTest, ErrorOnUnknownFieldName) {
   protobuf::DescriptorProto output;
   Status status = ParseTextFormatFromString("badname: \"foo\"", &output);
   EXPECT_EQ(status.code(), error::INVALID_ARGUMENT);
-  EXPECT_THAT(status.error_message(), ContainsRegex("badname"));
+  EXPECT_THAT(status.message(), ContainsRegex("badname"));
   EXPECT_FALSE(output.has_name());
 }
 
@@ -56,7 +56,7 @@ TEST(ParseTextFormatFromStringTest, DiesOnNullOutputPointer) {
   // Under NDEBUG we don't die but should still return an error status.
   Status status = ParseTextFormatFromString("foo", nullptr);
   EXPECT_EQ(status.code(), error::INVALID_ARGUMENT);
-  EXPECT_THAT(status.error_message(), ContainsRegex("output.*non NULL"));
+  EXPECT_THAT(status.message(), ContainsRegex("output.*non NULL"));
 #endif
 }
 

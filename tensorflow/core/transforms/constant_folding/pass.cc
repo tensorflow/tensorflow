@@ -17,7 +17,9 @@ limitations under the License.
 
 #include <algorithm>
 #include <iterator>
+#include <memory>
 #include <numeric>
+#include <optional>
 #include <string>
 #include <tuple>
 #include <type_traits>
@@ -32,6 +34,7 @@ limitations under the License.
 #include "llvm/ADT/Twine.h"
 #include "mlir/Dialect/Traits.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -103,7 +106,7 @@ static Type GetDataTypeFromOp(OpBuilder &builder, Operation *op) {
 static FailureOr<TFOp> CreateConstantTensorOp(
     OpBuilder &builder, Location loc, StringRef name_prefix, Type type,
     ValueRange control_operands, TypedAttr tensor_value,
-    ArrayRef<NamedAttribute> other_attrs = llvm::None) {
+    ArrayRef<NamedAttribute> other_attrs = std::nullopt) {
   if (type.isa<VariantType>()) return failure();
   // TODO(chiahungduan): Reuse ConstOp Like
   // OperationFolder::tryGetOrCreateConstant.
@@ -195,14 +198,14 @@ static void AddControlOperand(Operation *op, Value control,
                               PatternRewriter &rewriter) {
   assert(control.getType().isa<ControlType>());
   if (llvm::is_contained(op->getOperands(), control)) return;
-  rewriter.startRootUpdate(op);
+  rewriter.startOpModification(op);
   op->insertOperands(op->getNumOperands(), control);
-  rewriter.finalizeRootUpdate(op);
+  rewriter.finalizeOpModification(op);
 }
 
 static FailureOr<TFOp> ReplaceOpWithConstantTensor(
     OpBuilder &builder, TFOp op, ElementsAttr value,
-    ArrayRef<StringRef> exclude_attrs = llvm::None) {
+    ArrayRef<StringRef> exclude_attrs = std::nullopt) {
   // New const op has the control dependency with op's non-control operands.
   SmallVector<Value> operands_controls;
   llvm::append_range(operands_controls,
@@ -319,7 +322,7 @@ static FailureOr<TFOp> ReplaceOpWithBroadcastTo(OpBuilder &builder, TFOp op,
   // Create a vector of control operands. We should not fail beyond this point
   // since GetControlDependency may create a control anchor (a new op).
   SmallVector<Value> control_operands;
-  for (auto &it : llvm::enumerate(op.getNonControlOperands())) {
+  for (const auto &it : llvm::enumerate(op.getNonControlOperands())) {
     int idx = it.index();
     Value v = it.value();
     if (idx == idx_to_replace) continue;
@@ -628,7 +631,7 @@ static bool IsValidConstShapeForMulConvPushDown(StringAttr data_format,
     }
 
     // TODO(chiahungduan): Symbolic shape equivalence is acceptable.
-    if (filter_shape.getShape() != llvm::makeArrayRef(broadcast_shape))
+    if (filter_shape.getShape() != llvm::ArrayRef(broadcast_shape))
       return false;
 
     // Only the last dimension could be larger than one, since broadcasting over
@@ -747,7 +750,7 @@ class EvaluateConstant : public FolderPatternBase<EvaluateConstant> {
         OperandControlRetRange(op->getOperands()));
 
     SmallVector<TFOp> const_ops(result.size());
-    for (auto &it : llvm::enumerate(result)) {
+    for (const auto &it : llvm::enumerate(result)) {
       TypedAttr attr = it.value();
       // Null values represent dead outputs. They can result from evaluating a
       // switch op.
@@ -775,13 +778,13 @@ class EvaluateConstant : public FolderPatternBase<EvaluateConstant> {
       const_op.setName(TFOp(op).nameAttr());
       rewriter.replaceOp(op, const_op->getResults());
     } else {
-      for (auto &it : llvm::enumerate(const_ops)) {
+      for (const auto &it : llvm::enumerate(const_ops)) {
         if (!it.value()) continue;
         for (OpOperand &use :
              llvm::make_early_inc_range(op->getResult(it.index()).getUses())) {
-          rewriter.startRootUpdate(use.getOwner());
+          rewriter.startOpModification(use.getOwner());
           use.set(it.value()->getResult(0));
-          rewriter.finalizeRootUpdate(use.getOwner());
+          rewriter.finalizeOpModification(use.getOwner());
         }
       }
       // All the non-control outputs are replaced with constant ops, except for
@@ -995,9 +998,9 @@ class MaterializeShapeNOp : public FolderPatternBase<MaterializeShapeNOp> {
 
       for (OpOperand &user :
            llvm::make_early_inc_range(op->getResult(it.index()).getUses())) {
-        rewriter.startRootUpdate(user.getOwner());
+        rewriter.startOpModification(user.getOwner());
         user.set((*const_op)->getResult(0));
-        rewriter.finalizeRootUpdate(user.getOwner());
+        rewriter.finalizeOpModification(user.getOwner());
       }
     }
 
@@ -1089,8 +1092,7 @@ class MaterializeBroadcastGradientArgsOp
       int reduction_indices = reduce_dims[j].size();
       ElementsAttr const_attr = CreateElementsAttrOfTypeValues(
           type_attr.getValue(), {reduction_indices},
-          llvm::makeArrayRef<int64_t>(reduce_dims[j].data(),
-                                      reduction_indices));
+          llvm::ArrayRef<int64_t>(reduce_dims[j].data(), reduction_indices));
       FailureOr<TFOp> const_op = CreateConstantTensorOp(
           rewriter, op->getLoc(), TFOp(op).name(), op->getResultTypes()[j],
           TFOp(op).controlRet(), const_attr);
@@ -1105,15 +1107,15 @@ class MaterializeBroadcastGradientArgsOp
 
     for (OpOperand &user :
          llvm::make_early_inc_range(op->getResult(0).getUses())) {
-      rewriter.startRootUpdate(user.getOwner());
+      rewriter.startOpModification(user.getOwner());
       user.set(const_values[0]);
-      rewriter.finalizeRootUpdate(user.getOwner());
+      rewriter.finalizeOpModification(user.getOwner());
     }
     for (OpOperand &user :
          llvm::make_early_inc_range(op->getResult(1).getUses())) {
-      rewriter.startRootUpdate(user.getOwner());
+      rewriter.startOpModification(user.getOwner());
       user.set(const_values[1]);
-      rewriter.finalizeRootUpdate(user.getOwner());
+      rewriter.finalizeOpModification(user.getOwner());
     }
 
     return success();
@@ -1181,7 +1183,7 @@ class MaterializeReductionIndices
 
     ElementsAttr const_attr = CreateElementsAttrOfTypeValues(
         indices_shape.getElementType(), {input_shape.getRank()},
-        llvm::makeArrayRef(elements));
+        llvm::ArrayRef(elements));
 
     FailureOr<TFOp> const_op = CreateConstantTensorOp(
         rewriter, indices->getLoc(), Twine(TFOp(op).name(), "/indices").str(),
@@ -1191,9 +1193,9 @@ class MaterializeReductionIndices
     if (TFOp(op).deviceAttr())
       (*const_op).setRequestedDevice(TFOp(op).deviceAttr());
 
-    rewriter.startRootUpdate(op);
+    rewriter.startOpModification(op);
     op->setOperand(1, (*const_op)->getResults()[0]);
-    rewriter.finalizeRootUpdate(op);
+    rewriter.finalizeOpModification(op);
 
     return success();
   }
@@ -1316,7 +1318,7 @@ class MergeNodeFoldingBase : public PropagationPatternBase<ConcreteType> {
   MergeNodeFoldingBase(StringRef op_name, OpPropertyHelper &helper)
       : PropagationPatternBase<ConcreteType>(op_name, helper),
         zero_dim_i32_tensor_type_(RankedTensorType::get(
-            llvm::None,
+            std::nullopt,
             IntegerType::get(helper.getDialect()->getContext(), 32))) {}
 
   LogicalResult matchAndRewrite(Operation *op,
@@ -1369,15 +1371,15 @@ class MergeNodeFoldingBase : public PropagationPatternBase<ConcreteType> {
 
       for (OpOperand &user :
            llvm::make_early_inc_range(op->getResults()[0].getUses())) {
-        rewriter.startRootUpdate(user.getOwner());
+        rewriter.startOpModification(user.getOwner());
         user.set((*const_out)->getResult(0));
-        rewriter.finalizeRootUpdate(user.getOwner());
+        rewriter.finalizeOpModification(user.getOwner());
       }
       for (OpOperand &user :
            llvm::make_early_inc_range(op->getResults()[1].getUses())) {
-        rewriter.startRootUpdate(user.getOwner());
+        rewriter.startOpModification(user.getOwner());
         user.set((*const_index)->getResult(0));
-        rewriter.finalizeRootUpdate(user.getOwner());
+        rewriter.finalizeOpModification(user.getOwner());
       }
 
       // Already found an avaiable input.
@@ -1892,16 +1894,17 @@ class MoveConstantsPastEnterOpBase
 
     FailureOr<TFOp> cloned_const_op = CreateConstantTensorOp(
         rewriter, op->getLoc(), TFOp(op).name(), *(input->result_type_begin()),
-        TFOp(op).controlRet(), input->getAttr("value"), input->getAttrs());
+        TFOp(op).controlRet(), cast<TypedAttr>(input->getAttr("value")),
+        input->getAttrs());
     if (failed(cloned_const_op)) return failure();
 
     (*cloned_const_op).setName(Twine(TFOp(op).name(), "/_enter"));
     if (!TFOp(op).device().empty())
       (*cloned_const_op).setRequestedDevice(TFOp(op).deviceAttr());
 
-    rewriter.startRootUpdate(op);
+    rewriter.startOpModification(op);
     op->getResults()[0].replaceAllUsesWith((*cloned_const_op)->getResults()[0]);
-    rewriter.finalizeRootUpdate(op);
+    rewriter.finalizeOpModification(op);
     return success();
   }
 };
@@ -1967,7 +1970,8 @@ class SimplifySwitchOp : public PropagationPatternBase<SimplifySwitchOp> {
         return;
 
       FailureOr<TFOp> failure_or_const_op = CreateConstantTensorOp(
-          rewriter, op->getLoc(), TFOp(op).name(), result.getType(), llvm::None,
+          rewriter, op->getLoc(), TFOp(op).name(), result.getType(),
+          std::nullopt,
           DenseElementsAttr::get(zero_dim_i1_tensor_type_, const_value));
       if (failed(failure_or_const_op)) return;
       TFOp const_op = *failure_or_const_op;
@@ -1984,9 +1988,9 @@ class SimplifySwitchOp : public PropagationPatternBase<SimplifySwitchOp> {
       for (OpOperand &user : llvm::make_early_inc_range(result.getUses())) {
         if (user.getOwner() == &(*anchor)) continue;
 
-        rewriter.startRootUpdate(user.getOwner());
+        rewriter.startOpModification(user.getOwner());
         user.set(const_op->getResult(0));
-        rewriter.finalizeRootUpdate(user.getOwner());
+        rewriter.finalizeOpModification(user.getOwner());
       }
       modified = true;
     };
@@ -2018,7 +2022,8 @@ class SimplifyReductionOp : public FolderPatternBase<SimplifyReductionOp> {
     Operation *reduction_indices = op->getOperand(1).getDefiningOp();
     if (!reduction_indices) return failure();
 
-    ShapedType indices_type = *(reduction_indices->result_type_begin());
+    ShapedType indices_type =
+        cast<ShapedType>(*(reduction_indices->result_type_begin()));
     if (indices_type.hasStaticShape() && indices_type.getNumElements() == 0) {
       Operation *identity_op = ReplaceReductionWithIdentity(rewriter, op);
       if (!identity_op) return failure();
@@ -2096,7 +2101,7 @@ class SimplifyReductionOp : public FolderPatternBase<SimplifyReductionOp> {
     std::iota(elements.begin(), elements.end(), 1);
     ElementsAttr const_attr = CreateElementsAttrOfTypeValues(
         builder.getIntegerType(32), {new_num_dimensions},
-        llvm::makeArrayRef(elements));
+        llvm::ArrayRef(elements));
     FailureOr<TFOp> const_op = CreateConstantTensorOp(
         builder, op->getLoc(), TFOp(op).name(),
         *(reduction_indices->result_type_begin()),
@@ -2590,14 +2595,14 @@ class ConstantPushDown : public ConstantPushDownBase<ConstantPushDown> {
       // X   +
       //    / \
       //   C   Y
-      rewriter.startRootUpdate(op);
+      rewriter.startOpModification(op);
       op->setOperand(0, x_value);
       op->setOperand(1, child_op->getResult(0));
-      rewriter.finalizeRootUpdate(op);
-      rewriter.startRootUpdate(child_op);
+      rewriter.finalizeOpModification(op);
+      rewriter.startOpModification(child_op);
       child_op->setOperand(0, const_op->getResult(0));
       child_op->setOperand(1, y_value);
-      rewriter.finalizeRootUpdate(child_op);
+      rewriter.finalizeOpModification(child_op);
     } else {
       // More complicated case: When there are non-commutative operations like
       // subtractions or divisions involved, we may have to rotate the tree
@@ -2687,9 +2692,9 @@ class PartialConstPropThroughIdentityN
         continue;
       }
 
-      rewriter.startRootUpdate(op);
+      rewriter.startOpModification(op);
       operand.set(value_to_forward);
-      rewriter.finalizeRootUpdate(op);
+      rewriter.finalizeOpModification(op);
 
       // Add the control dependency to the Identity/IdentityN. Note that it's
       // possible to have multiple operands defined by the same
@@ -2997,21 +3002,21 @@ class MulConvPushDown : public ConstantPatternBase<MulConvPushDown, FolderTrait,
 
     StringRef conv_node_name = TFOp(conv_node).name();
 
-    rewriter.startRootUpdate(conv_node);
+    rewriter.startOpModification(conv_node);
     TFOp(conv_node).setName(TFOp(op).nameAttr());
     if (conv_left_is_constant)
       conv_node->setOperand(0, op->getResult(0));
     else
       conv_node->setOperand(1, op->getResult(0));
-    rewriter.finalizeRootUpdate(conv_node);
+    rewriter.finalizeOpModification(conv_node);
 
-    rewriter.startRootUpdate(op);
+    rewriter.startOpModification(op);
     TFOp(op).setName(Twine(conv_node_name, "/merged_input"));
     if (left_child_is_constant)
       op->setOperand(1, conv_const_node->getResult(0));
     else
       op->setOperand(0, conv_const_node->getResult(0));
-    rewriter.finalizeRootUpdate(op);
+    rewriter.finalizeOpModification(op);
 
     return success();
   }
@@ -3145,14 +3150,14 @@ class PartialConcatConstFolding
 
       // Overwrite the first constant input with the result of the added
       // child node.
-      rewriter.startRootUpdate(op);
+      rewriter.startOpModification(op);
       op->setOperand(interval.first, new_op->getResult(0));
-      rewriter.finalizeRootUpdate(op);
+      rewriter.finalizeOpModification(op);
     }
 
     if (!inputs_to_delete.empty()) {
       OperationState state(op->getLoc(), op->getName());
-      for (auto &it : llvm::enumerate(non_control_operands)) {
+      for (const auto &it : llvm::enumerate(non_control_operands)) {
         if (inputs_to_delete.contains(it.index())) continue;
         state.addOperands(it.value());
       }
@@ -3268,12 +3273,12 @@ class ConstantPushDownBiasAdd
       return failure();
     }
 
-    rewriter.startRootUpdate(op);
+    rewriter.startOpModification(op);
     op->setOperand(1, leaf_to_swap);
-    rewriter.finalizeRootUpdate(op);
-    rewriter.startRootUpdate(add_child);
+    rewriter.finalizeOpModification(op);
+    rewriter.startOpModification(add_child);
     add_child->setOperand(input_to_swap, const_child->getResult(0));
-    rewriter.finalizeRootUpdate(add_child);
+    rewriter.finalizeOpModification(add_child);
 
     return success();
   }
@@ -3386,12 +3391,12 @@ class ConstantPushDownAdd : public ConstantPushDownBase<ConstantPushDownAdd> {
       return failure();
     }
 
-    rewriter.startRootUpdate(op);
+    rewriter.startOpModification(op);
     op->setOperand(const_index, leaf_to_swap);
-    rewriter.finalizeRootUpdate(op);
-    rewriter.startRootUpdate(add_child);
+    rewriter.finalizeOpModification(op);
+    rewriter.startOpModification(add_child);
     add_child->setOperand(input_to_swap, const_child->getResult(0));
-    rewriter.finalizeRootUpdate(add_child);
+    rewriter.finalizeOpModification(add_child);
 
     return success();
   }
@@ -3685,7 +3690,11 @@ void ConstantFolding::runOnOperation() {
     for (Operation &op : func.SingleBlock::getBody()->without_terminator()) {
       ops.push_back(&op);
     }
-    if (!applyOpPatternsAndFold(ops, final_patterns_, /*strict=*/true)) break;
+    bool changed = false;
+    GreedyRewriteConfig config;
+    config.strictMode = GreedyRewriteStrictness::ExistingAndNewOps;
+    (void)applyOpPatternsAndFold(ops, final_patterns_, config, &changed);
+    if (!changed) break;
   } while (iteration++ < max_iterations);
 
   // TODO(chiahungduan): This is used to avoid evaluating a node multiple times.

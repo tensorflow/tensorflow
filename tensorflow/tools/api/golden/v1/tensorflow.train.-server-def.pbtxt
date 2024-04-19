@@ -16,6 +16,12 @@ tf_proto {
       type: TYPE_STRING
     }
     field {
+      name: "replica"
+      number: 8
+      label: LABEL_OPTIONAL
+      type: TYPE_INT32
+    }
+    field {
       name: "task_index"
       number: 3
       label: LABEL_OPTIONAL

@@ -19,9 +19,9 @@ limitations under the License.
 #define EIGEN_USE_GPU
 #endif
 
-#include "third_party/eigen3/Eigen/Core"
-#include "third_party/eigen3/Eigen/SparseCore"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "Eigen/Core"  // from @eigen_archive
+#include "Eigen/SparseCore"  // from @eigen_archive
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_types.h"
@@ -85,12 +85,12 @@ class CSRMatMulOp : public OpKernel {
     bool adjoint_a;
     OP_REQUIRES_OK(c, c->GetAttr("adjoint_a", &adjoint_a));
     OP_REQUIRES(c, !(adjoint_a && transpose_a_),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "Only one of adjoint_a and transpose_a may be true."));
     bool adjoint_b;
     OP_REQUIRES_OK(c, c->GetAttr("adjoint_b", &adjoint_b));
     OP_REQUIRES(c, !(adjoint_b && transpose_b_),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "Only one of adjoint_b and transpose_b may be true."));
     OP_REQUIRES_OK(c, c->GetAttr("transpose_output", &transpose_output_));
     OP_REQUIRES_OK(c, c->GetAttr("conjugate_output", &conjugate_output_));
@@ -111,23 +111,24 @@ class CSRMatMulOp : public OpKernel {
                         const Tensor& dense_tensor_b, int* rank,
                         int64_t* batch_size) {
     if (sparse_matrix_a.dtype() != dense_tensor_b.dtype()) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Input types don't match.  a.dtype == ",
           DataTypeString(sparse_matrix_a.dtype()),
-          " vs. b.dtype == ", DataTypeString(dense_tensor_b.dtype()));
+          " vs. b.dtype == ", DataTypeString(dense_tensor_b.dtype())));
     }
     *rank = sparse_matrix_a.dims();
     // TODO(ebrevdo): Add support for broadcasting matmul.
     if (*rank != dense_tensor_b.dims()) {
-      return errors::InvalidArgument("Ranks of a and b must match, saw: ", rank,
-                                     " vs. ", dense_tensor_b.dims(), ".");
+      return absl::InvalidArgumentError(
+          absl::StrCat("Ranks of a and b must match, saw: ", *rank, " vs. ",
+                       dense_tensor_b.dims(), "."));
     }
     // A valid CSR SparseMatrix has rank 2 or rank 3.
     *batch_size = (*rank == 2) ? 1 : dense_tensor_b.dim_size(0);
     if (sparse_matrix_a.batch_size() != *batch_size) {
-      return errors::InvalidArgument("Batch sizes of a and b must match, saw: ",
-                                     sparse_matrix_a.batch_size(), " vs. ",
-                                     batch_size, ".");
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Batch sizes of a and b must match, saw: ",
+          sparse_matrix_a.batch_size(), " vs. ", *batch_size, "."));
     }
     const auto& a_dense_shape = sparse_matrix_a.dense_shape().vec<int64_t>();
     const int64_t a_inner_dim =
@@ -135,12 +136,12 @@ class CSRMatMulOp : public OpKernel {
     const int64_t b_inner_dim =
         dense_tensor_b.dim_size(this->transpose_b_ ? *rank - 1 : *rank - 2);
     if (a_inner_dim != b_inner_dim) {
-      return errors::InvalidArgument(
-          "Inner product dimensions of A and B do not agree.  Shapes are: ",
-          TensorShape(a_dense_shape), " vs. ",
-          dense_tensor_b.shape().DebugString());
+      return absl::InvalidArgumentError(
+          absl::StrCat("Inner product dimensions of A and B do not agree. ",
+                       "Shapes are: ", TensorShape(a_dense_shape).DebugString(),
+                       " vs. ", dense_tensor_b.shape().DebugString()));
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  public:
@@ -245,7 +246,9 @@ class CSRMatMulCPUOp : public CSRMatMulOp<CPUDevice, T> {
                         Tensor** output, Tensor* output_transposed,
                         Tensor** matmul_result) {
     TensorShape output_shape;
-    if (rank == 3) output_shape.AddDim(batch_size);
+    if (rank == 3) {
+      TF_RETURN_IF_ERROR(output_shape.AddDimWithStatus(batch_size));
+    }
 
     if (!transpose_output) {
       output_shape.AppendShape({num_rows, num_cols});
@@ -261,7 +264,7 @@ class CSRMatMulCPUOp : public CSRMatMulOp<CPUDevice, T> {
       TF_RETURN_IF_ERROR(ctx->allocate_output(0, output_shape, output));
       *matmul_result = output_transposed;
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Returns an Eigen::Ref expression of a sparse sub-matrix from the given
@@ -486,7 +489,7 @@ class CSRMatMulCPUOp : public CSRMatMulOp<CPUDevice, T> {
       TF_RETURN_IF_ERROR(
           DoMatrixTranspose(ctx->eigen_device<CPUDevice>(), input, output));
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 
@@ -531,13 +534,15 @@ class CSRMatMulGPUOp : public CSRMatMulOp<GPUDevice, T> {
     const int64_t b_slice_size = b_inner_dim * b_outer_dim;
 
     TensorShape c_shape;
-    if (rank == 3) c_shape.AddDim(batch_size);
+    if (rank == 3) {
+      OP_REQUIRES_OK(ctx, c_shape.AddDimWithStatus(batch_size));
+    }
     if (this->transpose_output_) {
-      c_shape.AddDim(b_outer_dim);
-      c_shape.AddDim(a_outer_dim);
+      OP_REQUIRES_OK(ctx, c_shape.AddDimWithStatus(b_outer_dim));
+      OP_REQUIRES_OK(ctx, c_shape.AddDimWithStatus(a_outer_dim));
     } else {
-      c_shape.AddDim(a_outer_dim);
-      c_shape.AddDim(b_outer_dim);
+      OP_REQUIRES_OK(ctx, c_shape.AddDimWithStatus(a_outer_dim));
+      OP_REQUIRES_OK(ctx, c_shape.AddDimWithStatus(b_outer_dim));
     }
 
     const int64_t c_matrix_lhs = c_shape.dim_size(row_dim);
@@ -647,10 +652,12 @@ class CSRMatMulGPUOp : public CSRMatMulOp<GPUDevice, T> {
     } else {
       TensorShape b_t_transposed_shape;
       if (rank == 3) {
-        b_t_transposed_shape.AddDim(batch_size);
+        OP_REQUIRES_OK(ctx, b_t_transposed_shape.AddDimWithStatus(batch_size));
       }
-      b_t_transposed_shape.AddDim(b_t.dim_size(row_dim + 1));
-      b_t_transposed_shape.AddDim(b_t.dim_size(row_dim));
+      OP_REQUIRES_OK(ctx, b_t_transposed_shape.AddDimWithStatus(
+                              b_t.dim_size(row_dim + 1)));
+      OP_REQUIRES_OK(
+          ctx, b_t_transposed_shape.AddDimWithStatus(b_t.dim_size(row_dim)));
       OP_REQUIRES_OK(ctx, ctx->allocate_temp(DataTypeToEnum<T>::value,
                                              b_t_transposed_shape, &b_t_input));
       const GPUDevice& d = ctx->eigen_device<GPUDevice>();
@@ -862,10 +869,14 @@ class CSRSparseMatrixMatMul<GPUDevice, T> {
           cusparseCreateDnMat(&matC, m, n, ldc, c.data(), GPUDataType<T>::type,
                               CUSPARSE_ORDER_COL));
 
+#if CUDA_VERSION >= 12000
+      cusparseSpMMAlg_t algo = CUSPARSE_SPMM_ALG_DEFAULT;
+#else
+      cusparseSpMMAlg_t algo = CUSPARSE_MM_ALG_DEFAULT;
+#endif
       size_t bufferSize = 0;
       TF_RETURN_IF_ERROR(cuda_sparse.SpMMBufferSize(
-          transA, transB, &alpha, matA, matB, &beta, matC,
-          CUSPARSE_MM_ALG_DEFAULT, &bufferSize));
+          transA, transB, &alpha, matA, matB, &beta, matC, algo, &bufferSize));
 
       Tensor buffer;
       TF_RETURN_IF_ERROR(ctx->allocate_temp(
@@ -873,7 +884,7 @@ class CSRSparseMatrixMatMul<GPUDevice, T> {
       DCHECK(buffer.flat<int8>().data() != nullptr);
 
       TF_RETURN_IF_ERROR(cuda_sparse.SpMM(transA, transB, &alpha, matA, matB,
-                                          &beta, matC, CUSPARSE_MM_ALG_DEFAULT,
+                                          &beta, matC, algo,
                                           buffer.flat<int8>().data()));
 
       TF_RETURN_IF_GPUSPARSE_ERROR(cusparseDestroyDnMat(matB));

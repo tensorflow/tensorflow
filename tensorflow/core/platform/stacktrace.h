@@ -17,7 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_PLATFORM_STACKTRACE_H_
 
 #include "tensorflow/core/platform/platform.h"  // IWYU pragma: export
-#include "tensorflow/tsl/platform/stacktrace.h"
+#include "tsl/platform/stacktrace.h"
 
 namespace tensorflow {
 // NOLINTBEGIN(misc-unused-using-decls)

@@ -54,7 +54,7 @@ struct ReduceDetails {
 // }
 // // Set output shape to reduction.reduced_shape.
 ReduceDetails SparseTensorReduceHelper(const SparseTensor &sp,
-                                       gtl::ArraySlice<int32> axes_slice,
+                                       absl::Span<const int32> axes_slice,
                                        bool keep_dims) {
   ReduceDetails reduction;
 
@@ -129,7 +129,7 @@ Status ValidateInputs(const Tensor *shape_t, const Tensor *reduction_axes_t) {
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 struct SumOp {
@@ -206,8 +206,8 @@ class SparseReduceOp : public OpKernel {
       }
     }
 
-    auto CoordinatesToFlatIndex = [](ArraySlice<int64_t> coords,
-                                     ArraySlice<int64_t> strides) -> int64 {
+    auto CoordinatesToFlatIndex = [](absl::Span<const int64_t> coords,
+                                     absl::Span<const int64_t> strides) -> int64 {
       if (strides.empty()) {  // Reduce all.
         return 0;
       }

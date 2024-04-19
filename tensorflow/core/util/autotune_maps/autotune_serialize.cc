@@ -21,17 +21,18 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
-#include "tensorflow/compiler/xla/status_macros.h"
-#include "tensorflow/compiler/xla/stream_executor/dnn.h"
-#include "tensorflow/compiler/xla/stream_executor/dnn.pb.h"
-#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_init.h"
+#include "xla/status_macros.h"
+#include "xla/stream_executor/dnn.h"
+#include "xla/stream_executor/gpu/gpu_init.h"
+#include "xla/stream_executor/platform_manager.h"
 #include "tensorflow/core/platform/str_util.h"
 #include "tensorflow/core/util/activation_mode.h"
 #include "tensorflow/core/util/autotune_maps/autotune_map.pb.h"
 #include "tensorflow/core/util/autotune_maps/conv_autotune_maps.h"
 #include "tensorflow/core/util/autotune_maps/conv_parameters.h"
 #include "tensorflow/core/util/autotune_maps/conv_parameters.pb.h"
-#include "tensorflow/tsl/lib/strings/proto_serialization.h"
+#include "tsl/lib/strings/proto_serialization.h"
+#include "tsl/protobuf/dnn.pb.h"
 
 namespace tensorflow {
 
@@ -100,15 +101,15 @@ Status PopulateConvMap(
   // Get the list of all GPU StreamExecutors.
   TF_ASSIGN_OR_RETURN(
       se::Platform * platform,
-      se::MultiPlatformManager::PlatformWithName(se::GpuPlatformName()));
-  std::vector<se::StreamExecutor *> stream_executors;
+      se::PlatformManager::PlatformWithName(se::GpuPlatformName()));
+  std::vector<std::string> device_descs;
   for (int i = 0; i < platform->VisibleDeviceCount(); i++) {
-    TF_ASSIGN_OR_RETURN(se::StreamExecutor * stream_exec,
-                        platform->ExecutorForDevice(i));
-    stream_executors.push_back(stream_exec);
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<se::DeviceDescription> device_desc,
+                        platform->DescriptionForDevice(i));
+    device_descs.push_back(device_desc->model_str());
   }
 
-  std::set<std::string> unmatched_device_ids;
+  std::set<std::string> unmatched_device_descs;
   for (const ConvMapProto::Entry &kv : m.kv_pairs()) {
     const ConvParametersProto &params_proto = kv.key();
     // Abort the loading process whenever there is an entry whose version number
@@ -134,9 +135,9 @@ Status PopulateConvMap(
             : absl::nullopt;
 
     bool devices_matched = false;
-    for (se::StreamExecutor *stream_exec : stream_executors) {
-      if (stream_exec->device_description_str() !=
-          params_proto.device_identifier()) {
+    for (int ordinal = 0; ordinal < device_descs.size(); ordinal++) {
+      const std::string &desc_str = device_descs[ordinal];
+      if (desc_str != params_proto.device_identifier()) {
         continue;
       }
       devices_matched = true;
@@ -151,21 +152,17 @@ Status PopulateConvMap(
       entry = AutotuneEntry<Op>(primary, fallback);
 #endif
 
-      autotune_map->Insert(ConvParameters(stream_exec, params_proto), entry);
+      autotune_map->Insert(ConvParameters(ordinal, params_proto), entry);
     }
 
     if (!devices_matched) {
-      unmatched_device_ids.insert(params_proto.device_identifier());
+      unmatched_device_descs.insert(params_proto.device_identifier());
     }
   }
 
-  if (!unmatched_device_ids.empty()) {
-    std::set<std::string> device_descs;
-    for (se::StreamExecutor *stream_exec : stream_executors) {
-      device_descs.insert(std::string(stream_exec->device_description_str()));
-    }
+  if (!unmatched_device_descs.empty()) {
     LOG(WARNING) << "Unmatched device id's from AoT autotuning data: "
-                 << str_util::Join(unmatched_device_ids, ", ")
+                 << str_util::Join(unmatched_device_descs, ", ")
                  << "; existing devices: "
                  << str_util::Join(device_descs, ", ");
   }
@@ -185,7 +182,7 @@ Status SerializeAutotuneMaps(std::string *output) {
                       ConvMapToProto(*FusedConvAutotuneMap::GetInstance()));
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   TF_RET_CHECK(tsl::SerializeToStringDeterministic(proto, output));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status LoadSerializedAutotuneMaps(absl::string_view s) {
@@ -204,7 +201,7 @@ Status LoadSerializedAutotuneMaps(absl::string_view s) {
                                      FusedConvAutotuneMap::GetInstance()));
   // TODO(b/189530096): Populate autotune maps for more ops.
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void ResetAutotuneMaps() {

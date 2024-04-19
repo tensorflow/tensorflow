@@ -25,9 +25,9 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
-#include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
-#include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
+#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_config.h"
+#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_utils.h"
 
 //===----------------------------------------------------------------------===//
 // The post-quantize Passes.
@@ -240,10 +240,10 @@ struct FoldTransposeOp : public OpRewritePattern<TransposeOp> {
     ElementsAttr input_tensor = qconst_op.getValue();
 
     assert(perm_tensor.getType().getRank() == 1);
-    const int num_dimensions = input_tensor.getType().getRank();
+    const int num_dimensions = input_tensor.getShapedType().getRank();
     assert(perm_tensor.getType().getNumElements() == num_dimensions);
 
-    ArrayRef<int64_t> input_shape = input_tensor.getType().getShape();
+    ArrayRef<int64_t> input_shape = input_tensor.getShapedType().getShape();
     auto output_type = op.getOutput().getType().cast<ShapedType>();
 
     SmallVector<int32_t, 4> perm;
@@ -258,7 +258,7 @@ struct FoldTransposeOp : public OpRewritePattern<TransposeOp> {
     }
 
     std::vector<Attribute> new_values;
-    new_values.reserve(input_tensor.getType().getNumElements());
+    new_values.reserve(input_tensor.getShapedType().getNumElements());
     std::vector<uint64_t> input_indices(num_dimensions);
     ComputePermutation(input_tensor, perm, output_shape, num_dimensions,
                        /*output_axis=*/0, &input_indices, &new_values);

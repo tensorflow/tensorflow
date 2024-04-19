@@ -15,8 +15,13 @@ limitations under the License.
 #include "tensorflow/core/tfrt/common/pjrt_util.h"
 
 #include <memory>
+#include <optional>
+#include <set>
+#include <utility>
 
-#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "xla/pjrt/pjrt_client.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/tfrt/common/global_state.h"
@@ -32,48 +37,57 @@ Status SetPjRtClientInTFGlobalResourceManager(
       rmgr->default_container(), kPjRtStateResourceName, &pjrt_state,
       [&](PjRtState** ret) {
         *ret = PjRtState::Create();
-        return OkStatus();
+        return absl::OkStatus();
       }));
   core::ScopedUnref pjrt_state_ref(pjrt_state);
   if (client == nullptr) {
     return errors::InvalidArgument("PJRT client is nullptr.");
   }
   TF_RETURN_IF_ERROR(pjrt_state->SetPjRtClient(device_type, std::move(client)));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status DeletePjRtClientFromTFGlobalResourceManagerIfResourceExists(
-    const DeviceType& device_type) {
+absl::StatusOr<xla::PjRtClient*> GetPjRtClient(const DeviceType& device_type) {
   ResourceMgr* rmgr = tfrt_global::GetTFGlobalResourceMgr();
   PjRtState* pjrt_state;
-  auto status = rmgr->Lookup(rmgr->default_container(), kPjRtStateResourceName,
-                             &pjrt_state);
-  if (!status.ok() && status.code() != error::NOT_FOUND) {
-    return errors::Internal(
-        "Failed to find PjRtState Resource when deleting PJRT client is "
-        "requested: ",
-        status.error_message());
-  }
-  // This method may be called before PJRT resource is created. It is OK to
-  // receive NOT_FOUND in the resource look up.
-  if (status.code() == error::NOT_FOUND) {
-    LOG(INFO) << "PjRtState Resource is not found in TF GlobalResourceManager.";
-    return OkStatus();
-  }
+  TF_RETURN_IF_ERROR(rmgr->LookupOrCreate<PjRtState>(
+      rmgr->default_container(), kPjRtStateResourceName, &pjrt_state,
+      [&](PjRtState** ret) {
+        *ret = PjRtState::Create();
+        return absl::OkStatus();
+      }));
   core::ScopedUnref pjrt_state_ref(pjrt_state);
-  TF_RETURN_IF_ERROR(pjrt_state->DeletePjRtClientIfExists(device_type));
-  return OkStatus();
+  return pjrt_state->GetPjRtClient(device_type);
 }
 
-StatusOr<xla::PjRtClient*> GetPjRtClientFromTFGlobalResourceManager(
-    const DeviceType& device_type) {
+absl::Status SetPjRtGpuClientCreationInfoInTFGlobalResourceManager(
+    std::unique_ptr<PjRtGpuClientCreationInfo> info) {
   ResourceMgr* rmgr = tfrt_global::GetTFGlobalResourceMgr();
   PjRtState* pjrt_state;
-  TF_RETURN_IF_ERROR(rmgr->Lookup(rmgr->default_container(),
-                                  kPjRtStateResourceName, &pjrt_state));
+  TF_RETURN_IF_ERROR(rmgr->LookupOrCreate<PjRtState>(
+      rmgr->default_container(), kPjRtStateResourceName, &pjrt_state,
+      [&](PjRtState** ret) {
+        *ret = PjRtState::Create();
+        return absl::OkStatus();
+      }));
   core::ScopedUnref pjrt_state_ref(pjrt_state);
-  TF_ASSIGN_OR_RETURN(auto pjrt_client, pjrt_state->GetPjRtClient(device_type));
-  return pjrt_client;
+  if (info == nullptr) {
+    return absl::InvalidArgumentError("PJRT client creation info is nullptr.");
+  }
+  TF_RETURN_IF_ERROR(pjrt_state->SetPjRtGpuClientCreationInfo(std::move(info)));
+  return absl::OkStatus();
 }
 
+absl::StatusOr<PjRtGpuClientCreationInfo*> GetPjRtGpuClientCreationInfo() {
+  ResourceMgr* rmgr = tfrt_global::GetTFGlobalResourceMgr();
+  PjRtState* pjrt_state;
+  TF_RETURN_IF_ERROR(rmgr->LookupOrCreate<PjRtState>(
+      rmgr->default_container(), kPjRtStateResourceName, &pjrt_state,
+      [&](PjRtState** ret) {
+        *ret = PjRtState::Create();
+        return absl::OkStatus();
+      }));
+  core::ScopedUnref pjrt_state_ref(pjrt_state);
+  return pjrt_state->GetPjRtGpuClientCreationInfo();
+}
 }  // namespace tensorflow

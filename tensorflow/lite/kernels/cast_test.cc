@@ -14,12 +14,19 @@ limitations under the License.
 ==============================================================================*/
 #include <stdint.h>
 
+#include <algorithm>
 #include <complex>
+#include <limits>
+#include <random>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/types/span.h"
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
+#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/c_api_types.h"
+#include "tensorflow/lite/kernels/cast_test_common.h"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
@@ -28,23 +35,48 @@ namespace {
 
 using ::testing::ElementsAreArray;
 
-class CastOpModel : public SingleOpModel {
- public:
-  CastOpModel(const TensorData& input, const TensorData& output) {
-    input_ = AddInput(input);
-    output_ = AddOutput(output);
-    SetBuiltinOp(BuiltinOperator_CAST, BuiltinOptions_CastOptions,
-                 CreateCastOptions(builder_).Union());
-    BuildInterpreter({GetShape(input_)});
+TEST(CastOpModel, CastInt4ToFloat) {
+  CastOpModel m({TensorType_INT4, {2, 3}}, {TensorType_FLOAT32, {2, 3}});
+  m.Set4BitInput({1, 2, 3, 4, 5, 6});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.ExtractVector<float>(m.output()),
+              ElementsAreArray({1.f, 2.f, 3.f, 4.f, 5.f, 6.f}));
+}
+
+TEST(CastOpModel, CastInt4ToFloatLarge) {
+  int num_elements = 40;
+  std::random_device random_device;
+  auto rng = std::mt19937(random_device());
+  std::uniform_int_distribution<int8_t> i8dist(-8, 7);
+  auto i8rng = [&] { return i8dist(rng); };
+  std::vector<int8_t> input(num_elements);
+  std::generate(input.begin(), input.end(), i8rng);
+  CastOpModel m({TensorType_INT4, {num_elements}},
+                {TensorType_FLOAT32, {num_elements}});
+  m.Set4BitInput(input);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  for (int i = 0; i < input.size(); ++i) {
+    EXPECT_EQ(m.ExtractVector<float>(m.output())[i], input[i]);
   }
+}
 
-  int input() const { return input_; }
-  int output() const { return output_; }
+TEST(CastOpModel, CastFloatToInt16Infinity) {
+  CastOpModel m({TensorType_FLOAT32, {2}}, {TensorType_INT16, {2}});
+  m.PopulateTensor<float>(m.input(), {std::numeric_limits<float>::infinity(),
+                                      -std::numeric_limits<float>::infinity()});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.ExtractVector<int16_t>(m.output()),
+              ElementsAreArray({32766, -32767}));
+}
 
- protected:
-  int input_;
-  int output_;
-};
+TEST(CastOpModel, CastFloatToInt32Infinity) {
+  CastOpModel m({TensorType_FLOAT32, {2}}, {TensorType_INT32, {2}});
+  m.PopulateTensor<float>(m.input(), {std::numeric_limits<float>::infinity(),
+                                      -std::numeric_limits<float>::infinity()});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.ExtractVector<int32_t>(m.output()),
+              ElementsAreArray({2147483520, -2147483520}));
+}
 
 TEST(CastOpModel, CastInt16ToFloat) {
   CastOpModel m({TensorType_INT16, {2, 3}}, {TensorType_FLOAT32, {2, 3}});
@@ -277,6 +309,32 @@ TEST(CastOpModel, CastInt16ToUInt16) {
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.ExtractVector<uint16_t>(m.output()),
               ElementsAreArray({10, 20, 30, 40, 50, 60}));
+}
+
+TEST(CastOpModel, CastConstInputCachingWorks) {
+  // This tests the implementation of a performance optimization. If that
+  // optimization is changed, this test will likely break/need to be updated.
+  //
+  // We are relying on the fact that casting a constant input can be cached and
+  // that the output tensor does not need to be updated on every call.
+  CastOpModel m({TensorType_INT8, {2, 3}},
+                std::vector<int8_t>{10, 20, 30, 40, 50, 60},
+                {TensorType_FLOAT32, {2, 3}});
+  EXPECT_EQ(m.GetOutputTensor(0)->allocation_type, kTfLiteArenaRwPersistent);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.ExtractVector<float>(m.output()),
+              ElementsAreArray({10, 20, 30, 40, 50, 60}));
+  // We are cheating here. If the values of the output tensor are cached then if
+  // we modify the cache and call the op again the output tensor values should
+  // not change.
+  float* output_data =
+      reinterpret_cast<float*>(m.GetOutputTensor(0)->data.data);
+  for (int i = 0; i < 6; ++i) {
+    ++output_data[i];
+  }
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.ExtractVector<float>(m.output()),
+              ElementsAreArray({11, 21, 31, 41, 51, 61}));
 }
 
 }  // namespace

@@ -1,5 +1,5 @@
-load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
+load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -35,7 +35,6 @@ cc_test(
     deps = [
         ":attribute_map",
         ":types",
-        "//tensorflow/lite/core/async/interop:attribute_keys",
         "@com_google_googletest//:gtest_main",
     ],
 )

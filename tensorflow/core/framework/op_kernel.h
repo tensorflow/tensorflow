@@ -219,7 +219,8 @@ class OpKernel {
   const bool is_deferred_;
   bool expensive_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(OpKernel);
+  OpKernel(const OpKernel&) = delete;
+  void operator=(const OpKernel&) = delete;
 };
 
 class AsyncOpKernel : public OpKernel {
@@ -365,7 +366,8 @@ class OpKernelConstruction {
   // Allow access from OpKernel ctor.
   friend class OpKernel;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(OpKernelConstruction);
+  OpKernelConstruction(const OpKernelConstruction&) = delete;
+  void operator=(const OpKernelConstruction&) = delete;
 };
 
 // TODO(mrry): Consider converting to a random_access_iterator, and upgrading
@@ -635,6 +637,9 @@ class OpKernelContext {
     // with parallel instances running on other devices.
     CollectiveExecutor* collective_executor = nullptr;
 
+    // Session configuration parameters. Can be nullptr.
+    const ConfigProto* session_config = nullptr;
+
     // The session state for this op.
     SessionState* session_state = nullptr;
 
@@ -706,6 +711,8 @@ class OpKernelContext {
 
   int64_t start_time_usecs() const { return params_->start_time_usecs; }
 
+  const ConfigProto* session_config() const { return params_->session_config; }
+
   // The deadline for the session to complete by. Empty if unspecified in
   // RunOptions.
   absl::optional<absl::Time> deadline() const { return params_->deadline; }
@@ -730,11 +737,16 @@ class OpKernelContext {
 
   // Input
 
-  // Returns an immutable input tensor. May only be used for non-Ref
+  // Returns an immutable input tensor by index. May only be used for non-Ref
   // inputs. For Ref inputs use mutable_input below.
   // REQUIRES: !IsRefType(input_dtype(index))
   // TODO(mrry): Convert this to return Status.
   const Tensor& input(int index) const;
+
+  // Returns an immutable input tensor in "tensor" by index. May only be used
+  // for non-Ref inputs. For Ref inputs use mutable_input below.
+  // REQUIRES: !IsRefType(input_dtype(index))
+  absl::StatusOr<const Tensor*> get_input(int index) const;
 
   // Returns the named immutable input tensor in "tensor", as defined
   // in the OpDef. May only be used for non-Ref inputs. For Ref inputs
@@ -892,11 +904,11 @@ class OpKernelContext {
   // not nullptr). If no inputs are forwarded, forwarded_input will be assigned
   // -1.
   Status forward_input_or_allocate_output(
-      gtl::ArraySlice<int> candidate_input_indices, int output_index,
+      absl::Span<const int> candidate_input_indices, int output_index,
       const TensorShape& output_shape, Tensor** output,
       int* forwarded_input = nullptr) TF_MUST_USE_RESULT;
   Status forward_input_or_allocate_output(
-      gtl::ArraySlice<StringPiece> candidate_input_names,
+      absl::Span<const StringPiece> candidate_input_names,
       StringPiece output_name, const TensorShape& output_shape,
       Tensor** output) TF_MUST_USE_RESULT;
 
@@ -904,12 +916,12 @@ class OpKernelContext {
   // If none of the given inputs can be forwarded, calls
   // allocate_temp() to allocate a new temporary buffer.
   Status forward_input_or_allocate_temp(
-      gtl::ArraySlice<int> candidate_input_indices, DataType type,
+      absl::Span<const int> candidate_input_indices, DataType type,
       const TensorShape& shape, const AllocatorAttributes& allocator_attr,
       Tensor* out_temp) TF_MUST_USE_RESULT;
 
   Status forward_input_or_allocate_temp(
-      gtl::ArraySlice<int> candidate_input_indices, DataType type,
+      absl::Span<const int> candidate_input_indices, DataType type,
       const TensorShape& shape, Tensor* out_temp) TF_MUST_USE_RESULT {
     return forward_input_or_allocate_temp(candidate_input_indices, type, shape,
                                           AllocatorAttributes(), out_temp);
@@ -1241,6 +1253,18 @@ class OpKernelContext {
 
   Allocator* get_allocator(AllocatorAttributes attr);
 
+  Params* params() const { return params_; }
+  void set_params(Params* params) { params_ = params; }
+
+  void ResetOutputs(int num_outputs = 0) {
+    for (TensorValue& value : outputs_) {
+      DCHECK(!value.is_ref());
+      delete value.tensor;
+      value.tensor = nullptr;
+    }
+    outputs_.resize(num_outputs);
+  }
+
  private:
   bool record_memory_consumption_ = false;
 
@@ -1301,7 +1325,8 @@ class OpKernelContext {
   friend void CheckNotInComputeAsync(OpKernelContext* ctx,
                                      const char* correct_macro_name);
 
-  TF_DISALLOW_COPY_AND_ASSIGN(OpKernelContext);
+  OpKernelContext(const OpKernelContext&) = delete;
+  void operator=(const OpKernelContext&) = delete;
 };
 
 template <>

@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/ir/importexport/mangling.h"
 
+#include <cstring>
+#include <string>
+
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/tensor.pb.h"
@@ -119,7 +122,7 @@ Status DemangleDataType(absl::string_view str, DataType* proto) {
   if (!DataType_Parse(std::string(pbtxt), proto)) {
     return FailedPrecondition("Could not parse TFDataType mangled proto");
   }
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace mangling_util

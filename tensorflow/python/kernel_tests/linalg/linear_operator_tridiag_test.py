@@ -16,6 +16,7 @@
 from tensorflow.python.framework import config
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import manip_ops
 from tensorflow.python.ops import math_ops
@@ -52,7 +53,7 @@ class _LinearOperatorTriDiagBase(object):
       superdiag = linear_operator_test_util.random_sign_uniform(
           shape[:-1], minval=1., maxval=2., dtype=dtype)
 
-    matrix_diagonals = array_ops.stack(
+    matrix_diagonals = array_ops_stack.stack(
         [superdiag, diag, subdiag], axis=-2)
     matrix = gen_array_ops.matrix_diag_v3(
         matrix_diagonals,
@@ -65,7 +66,7 @@ class _LinearOperatorTriDiagBase(object):
     if diagonals_format == 'sequence':
       diagonals = [superdiag, diag, subdiag]
     elif diagonals_format == 'compact':
-      diagonals = array_ops.stack([superdiag, diag, subdiag], axis=-2)
+      diagonals = array_ops_stack.stack([superdiag, diag, subdiag], axis=-2)
     elif diagonals_format == 'matrix':
       diagonals = matrix
 

@@ -126,8 +126,7 @@ absl::Status MeanStddevNormalizationAllBatchesTest(
           -ksqrt16, -ksqrt04, ksqrt04, ksqrt16,  // large mean, small variance
           -ksqrt16, -ksqrt04, ksqrt04, ksqrt16,  // large mean, large variance
       };
-      RETURN_IF_ERROR(PointWiseNear(expected_output, dst_tensor.data, eps))
-          << "Failed using precision " << ToString(precision);
+      RETURN_IF_ERROR(PointWiseNear(expected_output, dst_tensor.data, eps));
 
       TensorFloat32 dst_tensor_single_step;
       auto operation_single_step = CreateMeanStdDevNormalization(
@@ -139,8 +138,7 @@ absl::Status MeanStddevNormalizationAllBatchesTest(
                                        std::move(operation_single_step)),
                                    BHWC(9, 1, 1, 4), &dst_tensor_single_step));
       RETURN_IF_ERROR(
-          PointWiseNear(expected_output, dst_tensor_single_step.data, eps))
-          << "Failed using precision " << ToString(precision);
+          PointWiseNear(expected_output, dst_tensor_single_step.data, eps));
     }
   }
   return absl::OkStatus();
@@ -198,8 +196,7 @@ absl::Status MeanStddevNormalizationLargeVectorTest(
         expected_output[kVectorSize + i + 0] = +expected_elem;
         expected_output[kVectorSize + i + 1] = -expected_elem;
       }
-      RETURN_IF_ERROR(PointWiseNear(expected_output, dst_tensor.data, eps))
-          << "Failed using precision " << ToString(precision);
+      RETURN_IF_ERROR(PointWiseNear(expected_output, dst_tensor.data, eps));
 
       if (precision != CalculationsPrecision::F32) {
         TensorFloat32 dst_tensor_single_step;
@@ -212,8 +209,7 @@ absl::Status MeanStddevNormalizationLargeVectorTest(
                 std::move(operation_single_step)),
             BHWC(1, 1, 2, kVectorSize), &dst_tensor_single_step));
         RETURN_IF_ERROR(
-            PointWiseNear(expected_output, dst_tensor_single_step.data, eps))
-            << "Failed using precision " << ToString(precision);
+            PointWiseNear(expected_output, dst_tensor_single_step.data, eps));
       }
     }
   }

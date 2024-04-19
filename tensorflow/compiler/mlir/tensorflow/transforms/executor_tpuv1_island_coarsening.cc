@@ -18,12 +18,11 @@ limitations under the License.
 
 #include <algorithm>
 #include <iterator>
+#include <optional>
 #include <queue>
 #include <tuple>
 
 #include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/None.h"
-#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
@@ -71,8 +70,8 @@ struct TpuV1BridgeExecutorIslandCoarsening
 };
 
 // Returns name of TPU cluster, if op belongs to a TPU cluster. Otherwise,
-// returns `llvm::None`.
-llvm::Optional<llvm::StringRef> GetTpuClusterName(Operation* op) {
+// returns `std::nullopt`.
+std::optional<llvm::StringRef> GetTpuClusterName(Operation* op) {
   if (auto tpu_status = op->getAttrOfType<StringAttr>(kTpuStatusAttr)) {
     // Borrow cluster name from TPU status (for `TPUCompilationResult` op).
     return tpu_status.getValue();
@@ -80,7 +79,7 @@ llvm::Optional<llvm::StringRef> GetTpuClusterName(Operation* op) {
   auto device_type = op->getAttrOfType<StringAttr>(TF::kCompileDeviceTypeAttr);
   if (!device_type || device_type.getValue() != TF::kTpuDevice) {
     // Op does not belong to a TPU cluster.
-    return llvm::None;
+    return std::nullopt;
   }
   // Op belongs to a TPU cluster.
   if (auto replication_info =
@@ -192,7 +191,7 @@ void CollectCandidateIslands(
       continue;
     }
 
-    llvm::Optional<llvm::StringRef> result =
+    std::optional<llvm::StringRef> result =
         GetTpuClusterName(&candidate_wrapped_op);
     llvm::StringRef candidate_cluster_name;
     if (result.has_value()) {
@@ -296,7 +295,7 @@ LogicalResult MergeIsland(
   if (!island || !island.WrapsSingleOp()) return success();
   Operation& wrapped_op = island.GetBody().front();
 
-  llvm::Optional<llvm::StringRef> result = GetTpuClusterName(&wrapped_op);
+  std::optional<llvm::StringRef> result = GetTpuClusterName(&wrapped_op);
   if (!result.has_value()) return success();
   llvm::StringRef cluster_name = result.value();
 
@@ -391,7 +390,7 @@ bool is_valid_special_tpu_op(
         cluster_to_tpu_op_map) {
   for (IslandOp op : ops) {
     Operation* wrapped_op = &op.GetBody().front();
-    llvm::Optional<llvm::StringRef> wrapped_op_cluster_name =
+    std::optional<llvm::StringRef> wrapped_op_cluster_name =
         GetTpuClusterName(wrapped_op);
 
     bool op_has_inconsistent_cluster_name =
@@ -509,7 +508,7 @@ LogicalResult CollectSpecialTpuOps(
 
   if (visited_wrapped_ops.contains(&wrapped_op)) return success();
 
-  llvm::Optional<llvm::StringRef> result = GetTpuClusterName(&wrapped_op);
+  std::optional<llvm::StringRef> result = GetTpuClusterName(&wrapped_op);
   if (!result.has_value()) return success();
   llvm::StringRef cluster_name = result.value();
 
@@ -589,7 +588,7 @@ void EraseIdentityWithNoReplicationInfo(Block& graph_body) {
     IslandOp island = dyn_cast<IslandOp>(island_op);
     if (!island || island.WrapsSingleOp()) continue;
     for (Operation& op : llvm::make_early_inc_range(island.GetBody())) {
-      llvm::Optional<llvm::StringRef> cluster_name = GetTpuClusterName(&op);
+      std::optional<llvm::StringRef> cluster_name = GetTpuClusterName(&op);
       if (cluster_name.has_value()) continue;
       if (auto identity_op = llvm::dyn_cast_or_null<TF::IdentityOp>(op)) {
         auto identity_input = identity_op.getInput();
@@ -609,7 +608,7 @@ void TpuV1BridgeExecutorIslandCoarsening::runOnOperation() {
   DenseMap<StringRef, DenseSet<func::FuncOp>> tpu_funcs;
   for (func::FuncOp func_op : getOperation().getOps<func::FuncOp>()) {
     func_op.walk([&](Operation* op) {
-      llvm::Optional<llvm::StringRef> cluster_name_opt = GetTpuClusterName(op);
+      std::optional<llvm::StringRef> cluster_name_opt = GetTpuClusterName(op);
       if (cluster_name_opt.has_value()) {
         tpu_funcs[cluster_name_opt.value()].insert(func_op);
       }

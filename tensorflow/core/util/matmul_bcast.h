@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_UTIL_MATMUL_BCAST_H_
 #define TENSORFLOW_CORE_UTIL_MATMUL_BCAST_H_
 
+#include <algorithm>
+#include <memory>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -39,7 +42,7 @@ class MatMulBCast {
     const Vec y_resized(y.begin(), y.end() - 2);
 
     batch_bcast_ =
-        absl::make_unique<BCast>(std::move(x_resized), std::move(y_resized));
+        std::make_unique<BCast>(std::move(x_resized), std::move(y_resized));
     if (!batch_bcast_->IsValid()) {
       // Set broadcasting_required_ to true to make IsValid() return false;
       broadcasting_required_ = true;
@@ -66,9 +69,9 @@ class MatMulBCast {
   }
   bool IsBroadcastingRequired() const { return broadcasting_required_; }
 
-  const int64_t output_batch_size() const { return output_batch_size_; }
-  const int64_t x_batch_size() const { return x_batch_size_; }
-  const int64_t y_batch_size() const { return y_batch_size_; }
+  int64_t output_batch_size() const { return output_batch_size_; }
+  int64_t x_batch_size() const { return x_batch_size_; }
+  int64_t y_batch_size() const { return y_batch_size_; }
   const TensorShape& output_batch_shape() const { return output_batch_shape_; }
 
   // Returns the mapping from the flattened output batch indices to x's

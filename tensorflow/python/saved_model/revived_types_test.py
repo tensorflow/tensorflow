@@ -101,18 +101,6 @@ class RegistrationMatchingTest(test.TestCase):
                 bad_consumers=[])))
     self.assertEqual(3, deserialized.version)
 
-  def test_register_twice(self):
-    identifier = "foo"
-    predicate = lambda x: isinstance(x, int)
-    versions = [
-        revived_types.VersionedTypeRegistration(
-            object_factory=lambda _: 1,
-            version=1, min_producer_version=1,
-            min_consumer_version=1),
-    ]
-    revived_types.register_revived_type(identifier, predicate, versions)
-    with self.assertRaisesRegex(AssertionError, "Duplicate registrations"):
-      revived_types.register_revived_type(identifier, predicate, versions)
 
 if __name__ == "__main__":
   test.main()

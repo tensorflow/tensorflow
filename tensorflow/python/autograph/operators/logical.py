@@ -15,7 +15,7 @@
 """Logical boolean operators: not, and, or."""
 
 from tensorflow.python.framework import tensor_util
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import cond as tf_cond
 from tensorflow.python.ops import gen_math_ops
 
 
@@ -47,7 +47,7 @@ def and_(a, b):
 def _tf_lazy_and(cond, b):
   """Lazy-eval equivalent of "and" for Tensors."""
   # TODO(mdan): Enforce cond is scalar here?
-  return control_flow_ops.cond(cond, b, lambda: cond)
+  return tf_cond.cond(cond, b, lambda: cond)
 
 
 def _py_lazy_and(cond, b):
@@ -66,7 +66,7 @@ def or_(a, b):
 def _tf_lazy_or(cond, b):
   """Lazy-eval equivalent of "or" for Tensors."""
   # TODO(mdan): Enforce cond is scalar here?
-  return control_flow_ops.cond(cond, lambda: cond, b)
+  return tf_cond.cond(cond, lambda: cond, b)
 
 
 def _py_lazy_or(cond, b):

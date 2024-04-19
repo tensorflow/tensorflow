@@ -27,9 +27,9 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/strings/match.h"
+#include "tensorflow/lite/core/kernels/register.h"
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate_kernel.h"
 #include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/nnapi/NeuralNetworksTypes.h"
 #include "tensorflow/lite/tools/delegates/compatibility/common/delegate_compatibility_checker_util.h"
 #include "tensorflow/lite/tools/delegates/compatibility/common/online_helper_delegate.h"

@@ -37,6 +37,8 @@ Status InitializeDeviceAndLocality(const DeviceMgr* dev_mgr,
                             " for InitializeDeviceAndLocality");
   }
 
+  // In rare cases during cancellation, this lookup can lead to a SIGSEGV. The
+  // cancellation was caused by some other error. See b/301496136 for details.
   Status status = dev_mgr->LookupDevice(device_name, device);
   if (status.ok()) {
     CHECK(*device);

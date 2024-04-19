@@ -18,6 +18,7 @@
 // tf_executor.island, tf.Identity, and tf_executor.yield).
 
 // CHECK-LABEL: "func.func"
+// CHECK: sym_name = "island_one_op_all_locs_same"
 // CHECK:    "tf_executor.graph"() ({
 // CHECK-NEXT:      "tf_executor.island"() ({
 // CHECK-NEXT:        "tf.Identity"(%{{.*}}) : (tensor<f32>) -> tensor<f32> loc("identity@some_function")
@@ -26,7 +27,6 @@
 // CHECK-NEXT:      "tf_executor.fetch"(%{{.*}}) : (tensor<f32>) -> () loc(unknown)
 // CHECK-NEXT:    }) : () -> tensor<f32> loc(unknown)
 // CHECK-NEXT:    "func.return"(%{{.*}}) : (tensor<f32>) -> () loc(unknown)
-// CHECK-NEXT: sym_name = "island_one_op_all_locs_same"
 
 func.func @island_one_op_all_locs_same(%arg0: tensor<f32>) -> tensor<f32> {
   %0 = "tf_executor.graph"() ({
@@ -45,6 +45,7 @@ func.func @island_one_op_all_locs_same(%arg0: tensor<f32>) -> tensor<f32> {
 // don't have identical locations.
 
 // CHECK-LABEL: "func.func"
+// CHECK: sym_name = "island_one_op_all_locs_NOT_same"
 // CHECK:    "tf_executor.graph"() ({
 // CHECK-NEXT:      "tf_executor.island"() ({
 // CHECK-NEXT:        "tf.Identity"(%{{.*}}) : (tensor<f32>) -> tensor<f32> loc("identity@some_function")
@@ -53,7 +54,6 @@ func.func @island_one_op_all_locs_same(%arg0: tensor<f32>) -> tensor<f32> {
 // CHECK-NEXT:      "tf_executor.fetch"(%{{.*}}) : (tensor<f32>) -> () loc(unknown)
 // CHECK-NEXT:    }) : () -> tensor<f32> loc(unknown)
 // CHECK-NEXT:    "func.return"(%{{.*}}) : (tensor<f32>) -> () loc(unknown)
-// CHECK-NEXT: sym_name = "island_one_op_all_locs_NOT_same"
 
 func.func @island_one_op_all_locs_NOT_same(%arg0: tensor<f32>) -> tensor<f32> {
   %0 = "tf_executor.graph"() ({

@@ -105,6 +105,15 @@ class SnapshotTest(tf_record_test_base.TFRecordTestBase,
       for j in range(num_runs_per_fingerprint):
         run_dir = os.path.join(fingerprint_dir, fingerprint_dir_list[j])
         run_dirlist = sorted(os.listdir(run_dir))
+        # On a heavily loaded system all the snapshot shards may take a
+        # little time to get written out to the file system so allow
+        # up to 10s for this to happen while checking every 1s to see
+        # if it is finished
+        for k in range(10):
+          if len(run_dirlist) == num_snapshot_shards_per_run:
+            break
+          time.sleep(1)
+          run_dirlist = sorted(os.listdir(run_dir))
         self.assertLen(run_dirlist, num_snapshot_shards_per_run)
 
         file_counter = 0

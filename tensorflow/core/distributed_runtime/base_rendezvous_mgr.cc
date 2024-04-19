@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/hash/hash.h"
+#include "absl/status/status.h"
 #include "tensorflow/core/common_runtime/copy_tensor.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/framework/cancellation.h"
@@ -33,48 +34,37 @@ limitations under the License.
 
 namespace tensorflow {
 
-static void StartAbortRendevous(Rendezvous* rendez, const Status& s) {
-  rendez->StartAbort(s);
-  rendez->Unref();
+namespace {
+
+size_t HashCall(BaseRecvTensorCall* call) {
+  // Salt hash with "42" to avoid using the same hash function for the shard key
+  // and the hashtable contained within the the shard itself.
+  return absl::HashOf(call, 42);
 }
+
+}  // namespace
 
 BaseRendezvousMgr::BaseRendezvousMgr(const WorkerEnv* worker_env)
-    : worker_env_(worker_env) {}
+    : cache_(new RendezvousCache<BaseRemoteRendezvous>()),
+      worker_env_(worker_env) {}
 
-BaseRendezvousMgr::~BaseRendezvousMgr() {
-  for (auto& p : table_) {
-    auto rendez = p.second;
-    StartAbortRendevous(rendez, errors::Aborted("Shutdown"));
-  }
-}
+BaseRendezvousMgr::~BaseRendezvousMgr() = default;
 
-RemoteRendezvous* BaseRendezvousMgr::Find(int64_t step_id) {
+tsl::core::RefCountPtr<RemoteRendezvous> BaseRendezvousMgr::Find(
+    int64_t step_id) {
   return FindOrCreate(step_id);
 }
 
-BaseRemoteRendezvous* BaseRendezvousMgr::FindOrCreate(int64_t step_id) {
-  mutex_lock l(mu_);
-  auto iter = table_.find(step_id);
-  if (iter == table_.end()) {
-    auto rr = Create(step_id, worker_env_);
-    iter = table_.insert({step_id, rr}).first;
-  }
-  iter->second->Ref();
-  return iter->second;
+tsl::core::RefCountPtr<BaseRemoteRendezvous> BaseRendezvousMgr::FindOrCreate(
+    int64_t step_id) {
+  return cache_->FindOrCreate(
+      step_id, [this, step_id]() { return Create(step_id, worker_env_); });
 }
 
 void BaseRendezvousMgr::RecvLocalAsync(int64_t step_id,
                                        const Rendezvous::ParsedKey& parsed,
                                        Rendezvous::DoneCallback done) {
-  auto rendez = FindOrCreate(step_id);
-  auto done_cb = [rendez, done = std::move(done)](
-                     const Status& s, const Rendezvous::Args& send_args,
-                     const Rendezvous::Args& recv_args, const Tensor& v,
-                     bool dead) {
-    rendez->Unref();
-    done(s, send_args, recv_args, v, dead);
-  };
-  rendez->RecvLocalAsync(parsed, std::move(done_cb));
+  FindOrCreate(step_id)->RecvLocalAsync(parsed, std::move(done));
 }
 
 Status BaseRendezvousMgr::RecvLocal(int64_t step_id,
@@ -96,44 +86,22 @@ Status BaseRendezvousMgr::RecvLocal(int64_t step_id,
   return ret;
 }
 
-void BaseRendezvousMgr::Cleanup(int64_t step_id) {
-  Rendezvous* rendez = nullptr;
-  {
-    mutex_lock l(mu_);
-    auto iter = table_.find(step_id);
-    if (iter != table_.end()) {
-      rendez = iter->second;
-      table_.erase(iter);
-    }
-  }
-  if (rendez) {
-    StartAbortRendevous(rendez, errors::Aborted("Cleanup ", step_id));
-  }
-}
-
-void BaseRendezvousMgr::CleanupAll() {
-  mutex_lock l(mu_);
-  for (auto iter = table_.begin(); iter != table_.end(); iter++) {
-    iter->second->Unref();
-  }
-}
-
 BaseRemoteRendezvous::BaseRemoteRendezvous(const WorkerEnv* env,
                                            int64_t step_id)
     : env_(env),
       step_id_(step_id),
       num_shards_(env_->experimental_num_shards),
-      local_(NewLocalRendezvous(num_shards_)),
+      local_(this, num_shards_),
       session_(nullptr) {
   DCHECK_GT(env_->experimental_num_shards, 0);
 }
 
 BaseRemoteRendezvous::~BaseRemoteRendezvous() {
+  VLOG(5) << "BaseRemoteRendezvous::~BaseRemoteRendezvous() " << this;
   {
     mutex_lock l(calls_mu_);
     calls_.clear();
   }
-  local_->Unref();
 }
 
 // Returns true if "device_name" is a valid full name of local device
@@ -161,7 +129,7 @@ Status BaseRemoteRendezvous::Initialize(WorkerSession* session) {
     if (session_ != nullptr) {
       if (session_->worker_name() == session->worker_name()) {
         VLOG(1) << "Skipping rendezvous re-initialization.";
-        return OkStatus();
+        return absl::OkStatus();
       }
       Status s = errors::Internal(
           "Double init! Worker names would have changed from: ",
@@ -175,7 +143,7 @@ Status BaseRemoteRendezvous::Initialize(WorkerSession* session) {
   for (auto& call : deferred_calls) {
     RecvLocalAsyncInternal(call.parsed, std::move(call.done));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 WorkerSession* BaseRemoteRendezvous::session() {
@@ -208,7 +176,7 @@ Status BaseRemoteRendezvous::Send(const Rendezvous::ParsedKey& parsed,
   }
 
   // Buffers "val" and "device_context" in local_.
-  return local_->Send(parsed, args, val, is_dead);
+  return local_.Send(parsed, args, val, is_dead);
 }
 
 Status BaseRemoteRendezvous::ValidateDevices(const ParsedKey& parsed,
@@ -235,7 +203,7 @@ Status BaseRemoteRendezvous::ValidateDevices(const ParsedKey& parsed,
         "Invalid rendezvous key (dst): ", parsed.FullKey(), " @ ",
         sess->worker_name());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void BaseRemoteRendezvous::SameWorkerRecvDone(
@@ -250,7 +218,7 @@ void BaseRemoteRendezvous::SameWorkerRecvDone(
       (recv_args.alloc_attrs.on_host() || parsed.dst.type == "CPU");
   if (src_host && dst_host) {
     *out = in;
-    done(OkStatus());
+    done(absl::OkStatus());
     return;
   }
 
@@ -279,7 +247,7 @@ void BaseRemoteRendezvous::SameWorkerRecvDone(
     return;
   }
 
-  profiler::ScopedMemoryDebugAnnotation op_annotation(
+  tsl::profiler::ScopedMemoryDebugAnnotation op_annotation(
       "SameWorkerRecvDone", step_id_, "dynamic", in.dtype(),
       [&in]() { return in.shape().DebugString(); });
   AllocatorAttributes attr = recv_args.alloc_attrs;
@@ -330,19 +298,20 @@ void BaseRemoteRendezvous::RecvAsync(const ParsedKey& parsed,
   DCHECK(is_initialized()) << "RecvAsync called when uninitialized (key: "
                            << parsed.FullKey() << ").";
 
-  profiler::ScopedMemoryDebugAnnotation op_annotation("RecvAsync", step_id_);
+  tsl::profiler::ScopedMemoryDebugAnnotation op_annotation("RecvAsync",
+                                                           step_id_);
   // Are src and dst in the same worker?
   // At this point parsed.dst must be a local device asserted by the previous
   // call to ValidateDevices.
   if (IsImplicitLocalDevice(parsed.src) ||
       IsSameWorker(parsed.src, parsed.dst)) {
     // Recv the tensor from local_.
-    local_->RecvAsync(
+    local_.RecvAsync(
         parsed, recv_args,
         [this, parsed, done](
             const Status& status, const Rendezvous::Args& send_args,
             const Rendezvous::Args& recv_args, const Tensor& in, bool is_dead) {
-          VLOG(2) << "RemoteRendezvous Finished Recv " << this << " "
+          VLOG(2) << "RemoteRendezvous Finished Local Recv " << this << " "
                   << parsed.FullKey();
           Tensor* out = new Tensor;
           StatusCallback final_callback = [done, send_args, recv_args, out,
@@ -360,12 +329,24 @@ void BaseRemoteRendezvous::RecvAsync(const ParsedKey& parsed,
         });
     return;
   } else {
-    RecvFromRemoteAsync(parsed, recv_args, std::move(done));
+    // Keep current rendezvous alive while the recv is inflight.
+    this->Ref();
+    RecvFromRemoteAsync(parsed, recv_args,
+                        [this, parsed, done](const Status& status,
+                                             const Rendezvous::Args& send_args,
+                                             const Rendezvous::Args& recv_args,
+                                             const Tensor& in, bool is_dead) {
+                          VLOG(2) << "RemoteRendezvous Finished Remote Recv "
+                                  << this << " " << parsed.FullKey();
+                          done(status, send_args, recv_args, in, is_dead);
+                          this->Unref();
+                        });
   }
 }
 
 void BaseRemoteRendezvous::RecvLocalAsync(const ParsedKey& parsed,
                                           DoneCallback done) {
+  VLOG(2) << "RemoteRendezvous RecvLocal " << this << " " << parsed.FullKey();
   // Test whether the rendezvous is initialized using a shared lock, to avoid
   // the need for exclusive access in the common case.
   if (TF_PREDICT_FALSE(!is_initialized())) {
@@ -378,8 +359,7 @@ void BaseRemoteRendezvous::RecvLocalAsync(const ParsedKey& parsed,
       // rendezvous logic. At some point after Initialize() is called, a Tensor
       // is produced locally that will then be sent in response to the incoming
       // RPC.
-      DeferredCall call(parsed, std::move(done));
-      deferred_calls_.push_back(call);
+      deferred_calls_.emplace_back(parsed, std::move(done), GetNewRef(this));
       return;
     }
   }
@@ -393,7 +373,7 @@ void BaseRemoteRendezvous::RecvLocalAsyncInternal(const ParsedKey& parsed,
     done(s, Args(), Args(), Tensor(), false);
     return;
   }
-  local_->RecvAsync(parsed, Args(), std::move(done));
+  local_.RecvAsync(parsed, Args(), std::move(done));
 }
 
 void BaseRemoteRendezvous::StartAbort(const Status& s) {
@@ -403,11 +383,11 @@ void BaseRemoteRendezvous::StartAbort(const Status& s) {
   // aggregating errors across devices: this allows us to prefer our original
   // status message over any cancellation related errors.
   Status derived_status = s;
-  if (errors::IsCancelled(s) || errors::IsAborted(s)) {
+  if (absl::IsCancelled(s) || absl::IsAborted(s)) {
     derived_status = StatusGroup::MakeDerived(s);
   }
 
-  local_->StartAbort(derived_status);
+  local_.StartAbort(derived_status);
 
   bool status_ok = false;
   {
@@ -468,7 +448,7 @@ void BaseRemoteRendezvous::RegisterCall(BaseRecvTensorCall* call,
     }
   }
 
-  int hash = absl::Hash<void*>{}(call) % num_shards_;
+  int hash = HashCall(call) % num_shards_;
   bool buckets_found = false;
   bool already_cancelled = false;
   {
@@ -501,8 +481,8 @@ void BaseRemoteRendezvous::RegisterCall(BaseRecvTensorCall* call,
       }
       if (!already_cancelled) {
         it = calls_
-                 .emplace(cm,
-                          std::make_unique<PendingCalls>(token, 0, num_shards_))
+                 .emplace(cm, std::make_unique<PendingCalls>(
+                                  token, 0, num_shards_, GetNewRef(this)))
                  .first;
       }
     }
@@ -523,7 +503,7 @@ void BaseRemoteRendezvous::RegisterCall(BaseRecvTensorCall* call,
 
 void BaseRemoteRendezvous::DeregisterCall(BaseRecvTensorCall* call,
                                           const Rendezvous::Args& args) {
-  int hash = absl::Hash<void*>{}(call) % num_shards_;
+  int hash = HashCall(call) % num_shards_;
   auto cm = args.cancellation_manager;
   bool is_last_call = false;
   {
@@ -555,8 +535,9 @@ void BaseRemoteRendezvous::DeregisterCall(BaseRecvTensorCall* call,
   }
 }
 
-BaseRemoteRendezvous::DeferredCall::DeferredCall(const ParsedKey& parsed,
-                                                 DoneCallback done)
-    : parsed(parsed), done(std::move(done)) {}
+BaseRemoteRendezvous::DeferredCall::DeferredCall(
+    const ParsedKey& parsed, DoneCallback done,
+    tsl::core::RefCountPtr<Rendezvous> rendez)
+    : parsed(parsed), done(std::move(done)), rendezvous(std::move(rendez)) {}
 
 }  // end namespace tensorflow

@@ -77,7 +77,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   output->type = input->type;
 
-  if (!IsConstantTensor(size)) {
+  if (!IsConstantOrPersistentTensor(size)) {
     SetTensorToDynamic(output);
     return kTfLiteOk;
   }

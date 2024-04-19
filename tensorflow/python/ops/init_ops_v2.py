@@ -260,17 +260,22 @@ class Constant(Initializer):
     value: A Python scalar, list or tuple of values, or a N-dimensional numpy
       array. All elements of the initialized variable will be set to the
       corresponding value in the `value` argument.
-
+    support_partition: If true, the initizer supports passing partition
+        offset and partition shape arguments to variable creators. This is
+        particularly useful when initializing sharded variables where each
+        variable shard is initialized to a slice of constant initializer.
+      
   Raises:
     TypeError: If the input `value` is not one of the expected types.
   """
 
-  def __init__(self, value=0):
+  def __init__(self, value=0, support_partition=False):
     if not (np.isscalar(value) or isinstance(value, (list, tuple, np.ndarray))):
       raise TypeError(
           f"Invalid type for initial value: {type(value).__name__}. Expected "
           "Python scalar, list or tuple of values, or numpy.ndarray.")
     self.value = value
+    self.support_partition = support_partition
 
   def __call__(self, shape, dtype=None, **kwargs):
     """Returns a tensor object initialized as specified by the initializer.
@@ -285,7 +290,7 @@ class Constant(Initializer):
       TypeError: If the initializer cannot create a tensor of the requested
        dtype.
     """
-    self._validate_kwargs(kwargs, support_partition=False)
+    self._validate_kwargs(kwargs, support_partition=self.support_partition)
     if dtype is not None:
       dtype = dtypes.as_dtype(dtype)
     return constant_op.constant(self.value, dtype=dtype, shape=shape)

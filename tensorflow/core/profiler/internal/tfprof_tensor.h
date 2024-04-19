@@ -22,7 +22,10 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_TENSOR_H_
 #define TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_TENSOR_H_
 
+#include <memory>
+#include <sstream>
 #include <typeinfo>
+#include <utility>
 
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"

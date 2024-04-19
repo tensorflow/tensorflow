@@ -18,7 +18,7 @@ import weakref
 from absl.testing import parameterized
 import numpy as np
 
-from tensorflow.compiler.xla.service import hlo_pb2
+from xla.service import hlo_pb2
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op

@@ -24,7 +24,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/diag_op.h"
 
 #include <algorithm>
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -52,10 +52,10 @@ class DiagOp : public OpKernel {
         errors::InvalidArgument("Input must be at least rank 1, got 0"));
     TensorShape out_shape;
     for (int i = 0; i < num_dims; ++i) {
-      out_shape.AddDim(diagonal.dim_size(i));
+      OP_REQUIRES_OK(context, out_shape.AddDimWithStatus(diagonal.dim_size(i)));
     }
     for (int i = 0; i < num_dims; ++i) {
-      out_shape.AddDim(diagonal.dim_size(i));
+      OP_REQUIRES_OK(context, out_shape.AddDimWithStatus(diagonal.dim_size(i)));
     }
     Tensor* output_tensor = nullptr;
     OP_REQUIRES_OK(context,
@@ -92,7 +92,7 @@ class DiagPartOp : public OpKernel {
 
     TensorShape out_shape;
     for (int i = 0; i < out_dims; ++i) {
-      out_shape.AddDim(tensor.dim_size(i));
+      OP_REQUIRES_OK(context, out_shape.AddDimWithStatus(tensor.dim_size(i)));
     }
 
     Tensor* output = nullptr;

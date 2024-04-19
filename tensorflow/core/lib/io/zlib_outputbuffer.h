@@ -23,7 +23,7 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/tsl/lib/io/zlib_outputbuffer.h"
+#include "tsl/lib/io/zlib_outputbuffer.h"
 
 namespace tensorflow {
 namespace io {

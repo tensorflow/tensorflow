@@ -700,7 +700,7 @@ class WrapScreenOutputTest(test_util.TensorFlowTestCase):
     self.assertEqual("shorter wavelength", out.annotations[3])
     self.assertFalse(4 in out.annotations)
 
-    # Chec that the non-row-index field is present in output.
+    # Check that the non-row-index field is present in output.
     self.assertEqual("foo", out.annotations["metadata"])
 
     self.assertEqual(new_line_indices, [0, 1, 3])

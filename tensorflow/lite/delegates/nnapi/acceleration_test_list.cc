@@ -16,7 +16,7 @@ limitations under the License.
 
 namespace tflite {
 
-const char* const NnapiAccelerationTestParams::kAccelerationTestConfig =
+const char* const NnapiAccelerationTestParams::acceleration_test_config_ =
     R"(
 ## Every Test can be allowlisted or denylisted using a regexp on its test_id
 

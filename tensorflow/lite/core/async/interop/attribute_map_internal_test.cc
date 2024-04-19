@@ -17,7 +17,7 @@ limitations under the License.
 #include <cstdint>
 
 #include <gtest/gtest.h>
-#include "tensorflow/lite/core/async/interop/attribute_keys.h"
+#include "tensorflow/lite/core/async/interop/c/types.h"
 
 namespace tflite {
 namespace interop {
@@ -25,24 +25,24 @@ namespace {
 
 TEST(AttributeMapTest, TypeTest) {
   {
-    auto attrs = AttributeMap(kTfLiteBufferAttrMap);
+    auto attrs = AttributeMap(kTfLiteAttrMapTypeBuffer);
     EXPECT_TRUE(attrs.IsBufferAttributeMap());
     EXPECT_FALSE(attrs.IsSyncAttributeMap());
   }
 
   {
-    auto attrs = AttributeMap(kTfLiteSyncAttrMap);
+    auto attrs = AttributeMap(kTfLiteAttrMapTypeSync);
     EXPECT_TRUE(attrs.IsSyncAttributeMap());
     EXPECT_FALSE(attrs.IsBufferAttributeMap());
   }
 }
 
 TEST(AttributeMapTest, AccessorTest) {
-  auto attrs = AttributeMap(kTfLiteBufferAttrMap);
+  auto attrs = AttributeMap(kTfLiteAttrMapTypeBuffer);
   {
-    attrs.SetAttr(TfLiteBufferAttributeKey::kAlignment, size_t(8));
+    attrs.SetAttr(kTfLiteBufferAttrKeyAlignment, size_t(8));
     size_t result;
-    EXPECT_TRUE(attrs.GetAttr(TfLiteBufferAttributeKey::kAlignment, &result));
+    EXPECT_TRUE(attrs.GetAttr(kTfLiteBufferAttrKeyAlignment, &result));
     EXPECT_EQ(8, result);
   }
   {
@@ -55,17 +55,17 @@ TEST(AttributeMapTest, AccessorTest) {
 }
 
 TEST(AttributeMapTest, ReconcileFailDifferentTypes) {
-  auto attrs1 = AttributeMap(kTfLiteBufferAttrMap);
-  auto attrs2 = AttributeMap(kTfLiteSyncAttrMap);
-  auto attrs3 = AttributeMap(kTfLiteBufferAttrMap);
+  auto attrs1 = AttributeMap(kTfLiteAttrMapTypeBuffer);
+  auto attrs2 = AttributeMap(kTfLiteAttrMapTypeSync);
+  auto attrs3 = AttributeMap(kTfLiteAttrMapTypeBuffer);
   EXPECT_FALSE(
       attrs1.ReconcileAttributes(&attrs2, &attrs3, /*conflict=*/nullptr));
   EXPECT_FALSE(attrs1.CheckAttributeCoverage(&attrs2, &attrs3));
 }
 
 TEST(AttributeMapTest, NullptrTest) {
-  auto attrs1 = AttributeMap(kTfLiteBufferAttrMap);
-  auto attrs2 = AttributeMap(kTfLiteBufferAttrMap);
+  auto attrs1 = AttributeMap(kTfLiteAttrMapTypeBuffer);
+  auto attrs2 = AttributeMap(kTfLiteAttrMapTypeBuffer);
   EXPECT_FALSE(attrs1.ReconcileAttributes(/*other=*/nullptr, &attrs2,
                                           /*conflict=*/nullptr));
   EXPECT_FALSE(attrs1.ReconcileAttributes(&attrs2, /*merged=*/nullptr,
@@ -75,48 +75,48 @@ TEST(AttributeMapTest, NullptrTest) {
 }
 
 TEST(AttributeMapTest, ReconcileDifferentTypes) {
-  auto attrs1 = AttributeMap(kTfLiteBufferAttrMap);
-  auto attrs2 = AttributeMap(kTfLiteSyncAttrMap);
-  auto attrs3 = AttributeMap(kTfLiteBufferAttrMap);
+  auto attrs1 = AttributeMap(kTfLiteAttrMapTypeBuffer);
+  auto attrs2 = AttributeMap(kTfLiteAttrMapTypeSync);
+  auto attrs3 = AttributeMap(kTfLiteAttrMapTypeBuffer);
   EXPECT_FALSE(attrs1.ReconcileAttributes(&attrs2, &attrs3,
                                           /*conflict=*/nullptr));
 }
 
 TEST(AttributeMapTest, ReconcileTest) {
-  auto attrs1 = AttributeMap(kTfLiteBufferAttrMap);
-  attrs1.SetAttr(TfLiteBufferAttributeKey::kAlignment, size_t(8));
-  auto attrs2 = AttributeMap(kTfLiteBufferAttrMap);
-  attrs2.SetAttr(TfLiteBufferAttributeKey::kAlignment, size_t(4));
-  auto attrs3 = AttributeMap(kTfLiteSyncAttrMap);
-  auto attrs4 = AttributeMap(kTfLiteSyncAttrMap);
+  auto attrs1 = AttributeMap(kTfLiteAttrMapTypeBuffer);
+  attrs1.SetAttr(kTfLiteBufferAttrKeyAlignment, size_t(8));
+  auto attrs2 = AttributeMap(kTfLiteAttrMapTypeBuffer);
+  attrs2.SetAttr(kTfLiteBufferAttrKeyAlignment, size_t(4));
+  auto attrs3 = AttributeMap(kTfLiteAttrMapTypeSync);
+  auto attrs4 = AttributeMap(kTfLiteAttrMapTypeSync);
   EXPECT_TRUE(attrs1.ReconcileAttributes(&attrs2, &attrs3, &attrs4));
   EXPECT_TRUE(attrs3.IsBufferAttributeMap());
   EXPECT_TRUE(attrs4.IsBufferAttributeMap());
   size_t result;
-  EXPECT_TRUE(attrs3.GetAttr(TfLiteBufferAttributeKey::kAlignment, &result));
+  EXPECT_TRUE(attrs3.GetAttr(kTfLiteBufferAttrKeyAlignment, &result));
   EXPECT_EQ(8, result);
 }
 
 TEST(AttributeMapTest, CoverageTest) {
-  auto attrs1 = AttributeMap(kTfLiteBufferAttrMap);
-  attrs1.SetAttr(TfLiteBufferAttributeKey::kAlignment, size_t(8));
-  auto attrs2 = AttributeMap(kTfLiteBufferAttrMap);
-  attrs2.SetAttr(TfLiteBufferAttributeKey::kAlignment, size_t(4));
-  auto attrs3 = AttributeMap(kTfLiteSyncAttrMap);
+  auto attrs1 = AttributeMap(kTfLiteAttrMapTypeBuffer);
+  attrs1.SetAttr(kTfLiteBufferAttrKeyAlignment, size_t(8));
+  auto attrs2 = AttributeMap(kTfLiteAttrMapTypeBuffer);
+  attrs2.SetAttr(kTfLiteBufferAttrKeyAlignment, size_t(4));
+  auto attrs3 = AttributeMap(kTfLiteAttrMapTypeSync);
   EXPECT_TRUE(attrs1.CheckAttributeCoverage(&attrs2, &attrs3));
   EXPECT_TRUE(attrs3.IsBufferAttributeMap());
 }
 
 TEST(AttributeMapTest, CoverageFailedTest) {
-  auto attrs1 = AttributeMap(kTfLiteBufferAttrMap);
-  attrs1.SetAttr(TfLiteBufferAttributeKey::kAlignment, size_t(10));
-  auto attrs2 = AttributeMap(kTfLiteBufferAttrMap);
-  attrs2.SetAttr(TfLiteBufferAttributeKey::kAlignment, size_t(4));
-  auto conflict = AttributeMap(kTfLiteSyncAttrMap);
+  auto attrs1 = AttributeMap(kTfLiteAttrMapTypeBuffer);
+  attrs1.SetAttr(kTfLiteBufferAttrKeyAlignment, size_t(10));
+  auto attrs2 = AttributeMap(kTfLiteAttrMapTypeBuffer);
+  attrs2.SetAttr(kTfLiteBufferAttrKeyAlignment, size_t(4));
+  auto conflict = AttributeMap(kTfLiteAttrMapTypeSync);
   EXPECT_FALSE(attrs1.CheckAttributeCoverage(&attrs2, &conflict));
   EXPECT_TRUE(conflict.IsBufferAttributeMap());
   size_t result;
-  EXPECT_TRUE(conflict.GetAttr(TfLiteBufferAttributeKey::kAlignment, &result));
+  EXPECT_TRUE(conflict.GetAttr(kTfLiteBufferAttrKeyAlignment, &result));
   EXPECT_EQ(4, result);
 }
 

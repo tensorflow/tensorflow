@@ -16,14 +16,22 @@
 
 # pylint: disable=g-direct-tensorflow-import
 from tensorflow.compiler.tests import xla_test
+from tensorflow.python.framework import config
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
+from tensorflow.python.tpu import tpu
 # pylint: enable=g-direct-tensorflow-import
 
 
 class WhereOpTest(xla_test.XLATestCase):
+
+  def __init__(self, method_name="runTest"):
+    super(WhereOpTest, self).__init__(method_name)
+    if config.list_logical_devices("TPU"):
+      with self.session() as sess:
+        sess.run(tpu.initialize_system())
 
   def testWhere(self):
     """Test first form of where (return indices)."""

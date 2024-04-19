@@ -85,7 +85,8 @@ class OrderedCode {
  private:
   // This has only static methods, so disallow construction entirely
   OrderedCode();
-  TF_DISALLOW_COPY_AND_ASSIGN(OrderedCode);
+  OrderedCode(const OrderedCode&) = delete;
+  void operator=(const OrderedCode&) = delete;
 };
 
 }  // namespace strings

@@ -30,10 +30,9 @@ cc_library_with_tflite(
         "interpreter_test_jni.cc",
         "nnapi_delegate_test_jni.cc",
         "supported_features_jni.cc",
-        "test_init_jni.cc",
     ],
     tflite_deps = [
-        "//tensorflow/lite/core/shims:c_shims_test_util",
+        ":test_init_jni",
         "//tensorflow/lite/delegates/nnapi/java/src/main/native",
         "//tensorflow/lite/java/src/main/native",
         "//tensorflow/lite/java/src/main/native:jni_utils",
@@ -51,6 +50,22 @@ cc_library_with_tflite(
     alwayslink = 1,
 )
 
+cc_library_with_tflite(
+    name = "test_init_jni",
+    testonly = 1,
+    srcs = [
+        "test_init_jni.cc",
+    ],
+    tflite_deps = [
+        "//tensorflow/lite/java/src/main/native:jni_utils",
+        "//tensorflow/lite/c:test_util",
+    ],
+    deps = [
+        "//tensorflow/lite/java/jni",
+    ],
+    alwayslink = 1,
+)
+
 # Same as "native", but excluding dependencies on experimental features.
 cc_library_with_tflite(
     name = "native_stable",
@@ -60,7 +75,7 @@ cc_library_with_tflite(
         "test_init_jni.cc",
     ],
     tflite_deps = [
-        "//tensorflow/lite/core/shims:c_shims_test_util",
+        "//tensorflow/lite/c:test_util",
         "//tensorflow/lite/delegates/nnapi/java/src/main/native",
         "//tensorflow/lite/java/src/main/native:jni_utils",
         "//tensorflow/lite/java/src/main/native:native_stable",

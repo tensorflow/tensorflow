@@ -95,7 +95,8 @@ class FramePair {
   bool optical_flow_found_keypoint_[kMaxKeypoints];
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(FramePair);
+  FramePair(const FramePair&) = delete;
+  void operator=(const FramePair&) = delete;
 };
 
 }  // namespace tf_tracking

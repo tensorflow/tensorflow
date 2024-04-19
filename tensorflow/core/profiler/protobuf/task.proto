@@ -1,0 +1,38 @@
+// Describes a task that profiler traced.
+
+syntax = "proto2";
+
+package tensorflow.profiler;
+
+option cc_enable_arenas = true;
+
+// 'Task' contains information about a task that profiler traced.
+message Task {
+  // The most recent changelist number from the client that built the binary.
+  optional int32 changelist = 1;
+  // True if the client that built the binary was mint (no local changes).
+  optional bool clean_build = 2;
+  // Build time (in ns relative to the Unix epoch).
+  optional int64 build_time = 3;
+  // Build target for the binary.
+  optional string build_target = 4;
+  // The full command line used to invoke the task.
+  optional string command_line = 5;
+  // Start time of the task (in ns relative to the Unix epoch).
+  optional int64 start_time = 6;
+  // Task address specified by client at time of profiling request.
+  optional string task_address = 7;
+  // Profiling start walltime (in ns).
+  optional uint64 profile_time_ns = 8;
+  // Profiling duration (in ms).
+  optional uint32 profile_duration_ms = 9;
+  // Host trace level.
+  optional uint32 host_trace_level = 10;
+  // Hardware core frequency.
+  optional uint64 tensor_core_freq_hz = 11;
+  optional uint64 sparse_core_freq_hz = 12;
+  optional uint64 gtc_freq_hz = 13;
+  optional uint64 peak_memory_usage = 14;
+  optional double cpu_limit = 15;
+  optional double cpu_usage = 16;
+}

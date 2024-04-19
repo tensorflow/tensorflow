@@ -35,7 +35,7 @@ Status GraphAnalyzer::Run() {
   // The signature computation code would detect this too, but better
   // to report it up front than spend time computing all the graphs first.
   if (subgraph_size_ > Signature::kMaxGraphSize) {
-    return Status(error::INVALID_ARGUMENT,
+    return Status(absl::StatusCode::kInvalidArgument,
                   absl::StrFormat("Subgraphs of %d nodes are not supported, "
                                   "the maximal supported node count is %d.",
                                   subgraph_size_, Signature::kMaxGraphSize));
@@ -53,7 +53,7 @@ Status GraphAnalyzer::Run() {
     return st;
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status GraphAnalyzer::BuildMap() {
@@ -305,7 +305,7 @@ Status GraphAnalyzer::CollateResult() {
 
   result_.clear();  // Not needed after collation.
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 std::vector<string> GraphAnalyzer::DumpRawSubgraphs() {
@@ -333,9 +333,9 @@ Status GraphAnalyzer::OutputSubgraphs() {
   }
   std::cout << "Total: " << total << '\n';
   if (std::cout.fail()) {
-    return Status(error::DATA_LOSS, "Failed to write to stdout");
+    return Status(absl::StatusCode::kDataLoss, "Failed to write to stdout");
   } else {
-    return OkStatus();
+    return absl::OkStatus();
   }
 }
 

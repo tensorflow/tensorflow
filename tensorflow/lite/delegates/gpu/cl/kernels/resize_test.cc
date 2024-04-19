@@ -29,37 +29,37 @@ namespace {
 
 TEST_F(OpenCLOperationTest, ResizeBilinearAligned) {
   auto status = ResizeBilinearAlignedTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status.message();
 }
 
 TEST_F(OpenCLOperationTest, ResizeBilinearNonAligned) {
   auto status = ResizeBilinearNonAlignedTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status.message();
 }
 
 TEST_F(OpenCLOperationTest, ResizeBilinearWithoutHalfPixel) {
   auto status = ResizeBilinearWithoutHalfPixelTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status.message();
 }
 
 TEST_F(OpenCLOperationTest, ResizeBilinearWithHalfPixel) {
   auto status = ResizeBilinearWithHalfPixelTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status.message();
 }
 
 TEST_F(OpenCLOperationTest, ResizeNearest) {
   auto status = ResizeNearestTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status.message();
 }
 
 TEST_F(OpenCLOperationTest, ResizeNearestAlignCorners) {
   auto status = ResizeNearestAlignCornersTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status.message();
 }
 
 TEST_F(OpenCLOperationTest, ResizeNearestHalfPixelCenters) {
   auto status = ResizeNearestHalfPixelCentersTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status.message();
 }
 
 }  // namespace

@@ -24,8 +24,6 @@ namespace tensorflow {
 
 namespace {
 
-using errors::IsInvalidArgument;
-
 constexpr int32_t kInt32Min = std::numeric_limits<int32_t>::min();
 constexpr int32_t kInt32Max = std::numeric_limits<int32_t>::max();
 
@@ -67,7 +65,7 @@ TEST_F(UniformQuantizedAddOpTest, InvalidShape) {
   AddInputFromArray<float>(TensorShape({3}), {2, 3, 4});
   AddInputFromArray<int32>(TensorShape({3}), {-40, 0, 40});
 
-  EXPECT_TRUE(IsInvalidArgument(RunOpKernel()));
+  EXPECT_TRUE(absl::IsInvalidArgument(RunOpKernel()));
 }
 
 TEST_F(UniformQuantizedAddOpTest, PerChannelSameScale) {

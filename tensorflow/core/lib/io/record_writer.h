@@ -27,7 +27,7 @@ limitations under the License.
 #include "tensorflow/core/platform/cord.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/tsl/lib/io/record_writer.h"
+#include "tsl/lib/io/record_writer.h"
 
 namespace tensorflow {
 namespace io {

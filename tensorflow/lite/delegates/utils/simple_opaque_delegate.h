@@ -19,29 +19,30 @@ limitations under the License.
 // called during inference, similar to TFLite Kernels. Delegate owner should
 // implement this interface to build/prepare/invoke the delegated subgraph.
 // - SimpleOpaqueDelegateInterface:
-// This class wraps TFLiteOpaqueDelegateStruct and users need to implement the
+// This class wraps TFLiteOpaqueDelegate and users need to implement the
 // interface and then call
-// TfLiteOpaqueDelegateFactory::CreateSimpleDelegate(...) to get
-// TfLiteOpaqueDelegateStruct* that can be passed to
-// TfLiteInterpreterOptionsAddOpaqueDelegate and free it via
-// TfLiteOpaqueDelegateStruct::DeleteSimpleDelegate(...).
-// or call TfLiteOpaqueDelegateStruct::Create(...) to get a std::unique_ptr
-// TfLiteOpaqueDelegateStruct that can also be passed to
-// TfLiteInterpreterOptionsAddOpaqueDelegate, in which case TfLite interpereter
-// takes the memory ownership of the delegate.
+// TfLiteOpaqueDelegateFactory::CreateSimpleDelegate(...) to get a
+// TfLiteOpaqueDelegate* that can be passed to
+// TfLiteInterpreterOptionsAddDelegate and free it via
+// TfLiteOpaqueDelegateFactory::DeleteSimpleDelegate(...),
+// or call TfLiteOpaqueDelegateFactory::Create(...) to get a std::unique_ptr
+// to TfLiteOpaqueDelegate that can also be passed to
+// TfLiteInterpreterOptionsAddDelegate.
 #ifndef TENSORFLOW_LITE_DELEGATES_UTILS_SIMPLE_OPAQUE_DELEGATE_H_
 #define TENSORFLOW_LITE_DELEGATES_UTILS_SIMPLE_OPAQUE_DELEGATE_H_
 
-#include <memory>
+#include <stdint.h>
 
+#include <memory>
+#include <utility>
+
+#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/core/c/c_api_types.h"
 
 namespace tflite {
 
 using TfLiteOpaqueDelegateUniquePtr =
-    std::unique_ptr<struct TfLiteOpaqueDelegateStruct,
-                    void (*)(struct TfLiteOpaqueDelegateStruct*)>;
+    std::unique_ptr<TfLiteOpaqueDelegate, void (*)(TfLiteOpaqueDelegate*)>;
 
 // Users should inherit from this class and implement the interface below.
 // Each instance represents a single part of the graph (subgraph).
@@ -78,15 +79,14 @@ class SimpleOpaqueDelegateKernelInterface {
 // - Initialize
 // - Name
 // - CreateDelegateKernelInterface
-// - DelegateOptions
 class SimpleOpaqueDelegateInterface {
  public:
   virtual ~SimpleOpaqueDelegateInterface() = default;
 
   // Returns true if 'node' is supported by the delegate. False otherwise.
   virtual bool IsNodeSupportedByDelegate(
-      const TfLiteRegistrationExternal* registration_external,
-      const TfLiteOpaqueNode* node, TfLiteOpaqueContext* context) const = 0;
+      const TfLiteOperator* registration_external, const TfLiteOpaqueNode* node,
+      TfLiteOpaqueContext* context) const = 0;
 
   // Initialize the delegate before finding and replacing TfLite nodes with
   // delegate kernels, for example, retrieving some TFLite settings from
@@ -104,6 +104,32 @@ class SimpleOpaqueDelegateInterface {
   // Caller takes ownership of the returned object.
   virtual std::unique_ptr<SimpleOpaqueDelegateKernelInterface>
   CreateDelegateKernelInterface() = 0;
+
+  /// Optional method for supporting hardware buffers.
+  /// Copies the data from delegate buffer handle into raw memory of the given
+  /// `tensor`. Note that the delegate is allowed to allocate the raw bytes as
+  /// long as it follows the rules for kTfLiteDynamic tensors.
+  virtual TfLiteStatus CopyFromBufferHandle(TfLiteOpaqueContext* context,
+                                            TfLiteBufferHandle buffer_handle,
+                                            TfLiteOpaqueTensor* tensor) {
+    return kTfLiteError;
+  }
+
+  /// Optional method for supporting hardware buffers.
+  /// Copies the data from raw memory of the given `tensor` to delegate buffer
+  /// handle.
+  virtual TfLiteStatus CopyToBufferHandle(TfLiteOpaqueContext* context,
+                                          TfLiteBufferHandle buffer_handle,
+                                          const TfLiteOpaqueTensor* tensor) {
+    return kTfLiteError;
+  }
+
+  /// Optional method for supporting hardware buffers.
+  /// Frees the Delegate Buffer Handle. Note: This only frees the handle, but
+  /// this doesn't release the underlying resource (e.g. textures). The
+  /// resources are either owned by application layer or the delegate.
+  virtual void FreeBufferHandle(TfLiteOpaqueContext* context,
+                                TfLiteBufferHandle* handle) {}
 };
 
 // Factory class that provides static methods to deal with SimpleDelegate
@@ -115,15 +141,14 @@ class TfLiteOpaqueDelegateFactory {
   // A simple usage of the flags bit mask:
   // CreateSimpleDelegate(..., kTfLiteDelegateFlagsAllowDynamicTensors |
   // kTfLiteDelegateFlagsRequirePropagatedShapes)
-  static struct TfLiteOpaqueDelegateStruct* CreateSimpleDelegate(
+  static TfLiteOpaqueDelegate* CreateSimpleDelegate(
       std::unique_ptr<SimpleOpaqueDelegateInterface> simple_delegate,
       int64_t flags = kTfLiteDelegateFlagsNone);
 
   // Deletes 'delegate' the passed pointer must be the one returned from
   // CreateSimpleDelegate. This function will destruct the SimpleDelegate object
   // too.
-  static void DeleteSimpleDelegate(
-      struct TfLiteOpaqueDelegateStruct* opaque_delegate);
+  static void DeleteSimpleDelegate(TfLiteOpaqueDelegate* opaque_delegate);
 
   // A convenient function wrapping the above two functions and returning a
   // std::unique_ptr type for auto memory management.

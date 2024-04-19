@@ -21,7 +21,7 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/tsl/platform/ram_file_system.h"
+#include "tsl/platform/ram_file_system.h"
 
 namespace tensorflow {
 // NOLINTBEGIN(misc-unused-using-decls)

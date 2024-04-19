@@ -134,7 +134,8 @@ class Worker : public WorkerInterface {
                          MutableRunGraphResponseWrapper* response,
                          StatusCallback done);
 
-  TF_DISALLOW_COPY_AND_ASSIGN(Worker);
+  Worker(const Worker&) = delete;
+  void operator=(const Worker&) = delete;
 };
 
 }  // namespace tensorflow

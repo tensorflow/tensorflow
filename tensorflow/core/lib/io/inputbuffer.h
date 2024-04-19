@@ -21,7 +21,7 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/tsl/lib/io/inputbuffer.h"
+#include "tsl/lib/io/inputbuffer.h"
 
 namespace tensorflow {
 namespace io {

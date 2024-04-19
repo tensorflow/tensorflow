@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/metrics/error_collector_inst.h"
 
 #include <cstddef>
+#include <memory>
 #include <set>
 #include <string>
 #include <utility>
@@ -22,25 +23,35 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "llvm/Support/MemoryBuffer.h"
+#include "absl/status/statusor.h"
+#include "llvm/Support/SMLoc.h"
 #include "llvm/Support/SourceMgr.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/DialectRegistry.h"  // from @llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/FileUtilities.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/Support/TypeID.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/lite/metrics/error_collector.h"
 #include "tensorflow/compiler/mlir/lite/metrics/types_util.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/resource_loader.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/lite/python/metrics/converter_error_data.pb.h"
+#include "tsl/platform/statusor.h"
 
 namespace mlir {
 namespace TFL {
 namespace {
-using stream_executor::port::StatusOr;
+using tsl::StatusOr;
 
 // MockSuccessPass reports errors but doesn't fail.
 class MockSuccessPass
@@ -52,7 +63,7 @@ class MockSuccessPass
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(MockSuccessPass)
 
-  explicit MockSuccessPass() {}
+  explicit MockSuccessPass() = default;
 
  private:
   void runOnOperation() override {
@@ -73,7 +84,7 @@ class MockFailurePass
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(MockFailurePass)
 
-  explicit MockFailurePass() {}
+  explicit MockFailurePass() = default;
 
  private:
   void runOnOperation() override {
@@ -90,8 +101,8 @@ class MockFailurePass
   };
 };
 
-StatusOr<OwningOpRef<mlir::ModuleOp>> LoadModule(MLIRContext* context,
-                                                 const std::string& file_name) {
+absl::StatusOr<OwningOpRef<mlir::ModuleOp>> LoadModule(
+    MLIRContext* context, const std::string& file_name) {
   std::string error_message;
   auto file = openInputFile(file_name, &error_message);
   if (!file) {
@@ -109,13 +120,14 @@ TEST(ErrorCollectorTest, TessSuccessPass) {
       "tensorflow/compiler/mlir/lite/metrics/testdata/strided_slice.mlir");
   MLIRContext context;
   context.getOrLoadDialect<mlir::func::FuncDialect>();
-  context.allowUnregisteredDialects();
+  context.getOrLoadDialect<TF::TensorFlowDialect>();
   context.enableMultithreading();
 
   auto module = LoadModule(&context, input_file);
   EXPECT_EQ(module.ok(), true);
 
-  PassManager pm(&context, OpPassManager::Nesting::Implicit);
+  PassManager pm(module.value().get()->getName(),
+                 OpPassManager::Nesting::Implicit);
   pm.addPass(std::make_unique<MockSuccessPass>());
 
   pm.addInstrumentation(
@@ -131,18 +143,19 @@ TEST(ErrorCollectorTest, TessFailurePass) {
   using tflite::metrics::ConverterErrorData;
   MLIRContext context;
   context.getOrLoadDialect<mlir::func::FuncDialect>();
+  context.getOrLoadDialect<TF::TensorFlowDialect>();
   const std::string input_file =
       "tensorflow/compiler/mlir/lite/metrics/testdata/strided_slice.mlir";
   auto input_file_id = StringAttr::get(&context, input_file);
 
-  context.allowUnregisteredDialects();
   context.enableMultithreading();
 
   auto module =
       LoadModule(&context, tensorflow::GetDataDependencyFilepath(input_file));
   EXPECT_EQ(module.ok(), true);
 
-  PassManager pm(&context, OpPassManager::Nesting::Implicit);
+  PassManager pm(module.value().get()->getName(),
+                 OpPassManager::Nesting::Implicit);
   pm.addPass(std::make_unique<MockSuccessPass>());
   pm.addPass(std::make_unique<MockFailurePass>());
 
@@ -157,7 +170,7 @@ TEST(ErrorCollectorTest, TessFailurePass) {
   EXPECT_EQ(collected_errors.count(NewConverterErrorData(
                 "MockFailurePass",
                 "Failed at tf.Const op\nsee current operation: %0 = "
-                "\"tf.Const\"() {value = dense<1> : tensor<4xi32>} : () -> "
+                "\"tf.Const\"() <{value = dense<1> : tensor<4xi32>}> : () -> "
                 "tensor<4xi32>\nError code: ERROR_NEEDS_FLEX_OPS",
                 ConverterErrorData::ERROR_NEEDS_FLEX_OPS, "tf.Const",
                 mlir::FileLineColLoc::get(input_file_id, 2, 9))),
@@ -165,22 +178,23 @@ TEST(ErrorCollectorTest, TessFailurePass) {
   EXPECT_EQ(collected_errors.count(NewConverterErrorData(
                 "MockFailurePass",
                 "Failed at tf.Const op\nsee current operation: %1 = "
-                "\"tf.Const\"() {value = dense<0> : tensor<4xi32>} : () -> "
+                "\"tf.Const\"() <{value = dense<0> : tensor<4xi32>}> : () -> "
                 "tensor<4xi32>\nError code: ERROR_NEEDS_FLEX_OPS",
                 ConverterErrorData::ERROR_NEEDS_FLEX_OPS, "tf.Const",
                 mlir::FileLineColLoc::get(input_file_id, 2, 9))),
             1);
-  EXPECT_EQ(collected_errors.count(NewConverterErrorData(
-                "MockFailurePass",
-                "Failed at tf.StridedSlice op\nsee current operation: %2 = "
-                "\"tf.StridedSlice\"(%arg0, %1, %1, %0) {begin_mask = 11 : "
-                "i64, device = \"\", ellipsis_mask = 0 : i64, end_mask = 11 : "
-                "i64, new_axis_mask = 4 : i64, shrink_axis_mask = 0 : i64} : "
-                "(tensor<*xf32>, tensor<4xi32>, tensor<4xi32>, tensor<4xi32>) "
-                "-> tensor<*xf32>\nError code: ERROR_NEEDS_FLEX_OPS",
-                ConverterErrorData::ERROR_NEEDS_FLEX_OPS, "tf.StridedSlice",
-                mlir::FileLineColLoc::get(input_file_id, 4, 10))),
-            1);
+  EXPECT_EQ(
+      collected_errors.count(NewConverterErrorData(
+          "MockFailurePass",
+          "Failed at tf.StridedSlice op\nsee current operation: %2 = "
+          "\"tf.StridedSlice\"(%arg0, %1, %1, %0) <{begin_mask = 11 : "
+          "i64, ellipsis_mask = 0 : i64, end_mask = 11 : i64, new_axis_mask = "
+          "4 : i64, shrink_axis_mask = 0 : i64}> {device = \"\"} : "
+          "(tensor<*xf32>, tensor<4xi32>, tensor<4xi32>, tensor<4xi32>) "
+          "-> tensor<*xf32>\nError code: ERROR_NEEDS_FLEX_OPS",
+          ConverterErrorData::ERROR_NEEDS_FLEX_OPS, "tf.StridedSlice",
+          mlir::FileLineColLoc::get(input_file_id, 4, 10))),
+      1);
 
   // Check the location information.
   std::vector<std::string> locations;

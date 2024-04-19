@@ -181,6 +181,46 @@ func.func @elementwise_unary_ops() -> (tensor<f32>, tensor<f32>, tensor<f32>, te
   func.return %7, %8, %9, %10, %11, %12, %13 : tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>
 }
 
+// CHECK-LABEL: @max_with_neg_f32_max_val
+// CHECK-SAME: (%[[ARG0:.+]]: tensor<f32>)
+func.func @max_with_neg_f32_max_val(%arg0 : tensor<f32>) -> (tensor<f32>, tensor<f32>) {
+  %neg_f32_max = arith.constant dense<-3.40282347E+38> : tensor<f32>
+  %0 = "tfl.maximum"(%arg0, %neg_f32_max) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+  %1 = "tfl.maximum"(%neg_f32_max, %arg0) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+  func.return %0, %1 : tensor<f32>, tensor<f32>
+  // CHECK: return %[[ARG0]], %[[ARG0]]
+}
+
+// CHECK-LABEL: @min_with_f32_max_val
+// CHECK-SAME: (%[[ARG0:.+]]: tensor<f32>)
+func.func @min_with_f32_max_val(%arg0 : tensor<f32>) -> (tensor<f32>, tensor<f32>) {
+  %f32_max = arith.constant dense<3.40282347E+38> : tensor<f32>
+  %0 = "tfl.minimum"(%arg0, %f32_max) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+  %1 = "tfl.minimum"(%f32_max, %arg0) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+  func.return %0, %1 : tensor<f32>, tensor<f32>
+  // CHECK: return %[[ARG0]], %[[ARG0]]
+}
+
+// CHECK-LABEL: @max_with_neg_f64_max_val
+// CHECK-SAME: (%[[ARG0:.+]]: tensor<f64>)
+func.func @max_with_neg_f64_max_val(%arg0 : tensor<f64>) -> (tensor<f64>, tensor<f64>) {
+  %neg_f64_max = arith.constant dense<-1.7976931348623157E+308> : tensor<f64>
+  %0 = "tfl.maximum"(%arg0, %neg_f64_max) : (tensor<f64>, tensor<f64>) -> tensor<f64>
+  %1 = "tfl.maximum"(%neg_f64_max, %arg0) : (tensor<f64>, tensor<f64>) -> tensor<f64>
+  func.return %0, %1 : tensor<f64>, tensor<f64>
+  // CHECK: return %[[ARG0]], %[[ARG0]]
+}
+
+// CHECK-LABEL: @min_with_f64_max_val
+// CHECK-SAME: (%[[ARG0:.+]]: tensor<f64>)
+func.func @min_with_f64_max_val(%arg0 : tensor<f64>) -> (tensor<f64>, tensor<f64>) {
+  %f64_max = arith.constant dense<1.7976931348623157E+308> : tensor<f64>
+  %0 = "tfl.minimum"(%arg0, %f64_max) : (tensor<f64>, tensor<f64>) -> tensor<f64>
+  %1 = "tfl.minimum"(%f64_max, %arg0) : (tensor<f64>, tensor<f64>) -> tensor<f64>
+  func.return %0, %1 : tensor<f64>, tensor<f64>
+  // CHECK: return %[[ARG0]], %[[ARG0]]
+}
+
 // CHECK-LABEL: @mul_int
 func.func @mul_int() -> (tensor<i32>, tensor<4xi32>, tensor<4xi32>, tensor<4xi32>) {
   %0 = arith.constant dense<8> : tensor<i32>
@@ -450,6 +490,7 @@ func.func @transpose_no_fold(%arg0 : tensor<2xi32>) -> tensor<2x2xi32> {
   func.return %0 : tensor<2x2xi32>
 }
 
+
 // CHECK-LABEL: @transpose_1d
 // Basic 1D identity
 func.func @transpose_1d() -> tensor<3xi32> {
@@ -482,6 +523,17 @@ func.func @transpose_2d() -> tensor<2x2xi32> {
   // CHECK: return %[[CST]]
   %0 = "tfl.transpose"(%cst, %cst_perm) : (tensor<2x2xi32>, tensor<2xi32>) -> tensor<2x2xi32>
   func.return %0 : tensor<2x2xi32>
+}
+
+// CHECK-LABEL: @transpose_2d_splat
+func.func @transpose_2d_splat() -> tensor<3x2xi32> {
+  %cst = arith.constant dense<0> : tensor<2x3xi32>
+  %cst_perm = arith.constant dense<[1, 0]> : tensor<2xi32>
+
+  // CHECK: %[[CST:.*]] = arith.constant dense<0> : tensor<3x2xi32>
+  // CHECK: return %[[CST]]
+  %0 = "tfl.transpose"(%cst, %cst_perm) : (tensor<2x3xi32>, tensor<2xi32>) -> tensor<3x2xi32>
+  func.return %0 : tensor<3x2xi32>
 }
 
 // CHECK-LABEL: @transpose_2d_identity
@@ -837,7 +889,7 @@ func.func @ConstFoldStridedSlice(%arg0 : tensor<15600xf32>) -> tensor<15600xf32>
   %0 = "tfl.pseudo_const"() {value = dense<15600> : tensor<1xi32>} : () -> tensor<1xi32>
   %1 = "tfl.pseudo_const"() {value = dense<0> : tensor<1xi32>} : () -> tensor<1xi32>
   %2 = "tfl.pseudo_const"() {value = dense<1> : tensor<1xi32>} : () -> tensor<1xi32>
-  %3 = "tfl.strided_slice"(%arg0, %1, %0, %2) {begin_mask = 0 : i32, ellipsis_mask = 0 : i32, end_mask = 0 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 0 : i32} : (tensor<15600xf32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<15600xf32>
+  %3 = "tfl.strided_slice"(%arg0, %1, %0, %2) {begin_mask = 0 : i32, ellipsis_mask = 0 : i32, end_mask = 0 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 0 : i32, offset = false} : (tensor<15600xf32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<15600xf32>
   func.return %3 : tensor<15600xf32>
   // CHECK:  return %arg0
 }
@@ -846,7 +898,7 @@ func.func @ConstFoldStridedSliceMultiDims(%arg0 : tensor<10x10x10xf32>) -> tenso
   %0 = "tfl.pseudo_const"() {value = dense<[10, 10, 10]> : tensor<3xi32>} : () -> tensor<3xi32>
   %1 = "tfl.pseudo_const"() {value = dense<0> : tensor<3xi32>} : () -> tensor<3xi32>
   %2 = "tfl.pseudo_const"() {value = dense<1> : tensor<3xi32>} : () -> tensor<3xi32>
-  %3 = "tfl.strided_slice"(%arg0, %1, %0, %2) {begin_mask = 0 : i32, ellipsis_mask = 0 : i32, end_mask = 0 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 0 : i32} : (tensor<10x10x10xf32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<10x10x10xf32>
+  %3 = "tfl.strided_slice"(%arg0, %1, %0, %2) {begin_mask = 0 : i32, ellipsis_mask = 0 : i32, end_mask = 0 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 0 : i32, offset = false} : (tensor<10x10x10xf32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<10x10x10xf32>
   func.return %3 : tensor<10x10x10xf32>
   // CHECK:  return %arg0
 }
@@ -855,7 +907,7 @@ func.func @NotFoldStridedSlice(%arg0 : tensor<10x10x10xf32>) -> tensor<9x9x9xf32
   %0 = "tfl.pseudo_const"() {value = dense<[9, 9, 9]> : tensor<3xi32>} : () -> tensor<3xi32>
   %1 = "tfl.pseudo_const"() {value = dense<0> : tensor<3xi32>} : () -> tensor<3xi32>
   %2 = "tfl.pseudo_const"() {value = dense<1> : tensor<3xi32>} : () -> tensor<3xi32>
-  %3 = "tfl.strided_slice"(%arg0, %1, %0, %2) {begin_mask = 0 : i32, ellipsis_mask = 0 : i32, end_mask = 0 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 0 : i32} : (tensor<10x10x10xf32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<9x9x9xf32>
+  %3 = "tfl.strided_slice"(%arg0, %1, %0, %2) {begin_mask = 0 : i32, ellipsis_mask = 0 : i32, end_mask = 0 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 0 : i32, offset = false} : (tensor<10x10x10xf32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<9x9x9xf32>
   func.return %3 : tensor<9x9x9xf32>
   // CHECK: %[[STRIDED_SLICE:.*]] = "tfl.strided_slice"
   // CHECK:  return %[[STRIDED_SLICE]]

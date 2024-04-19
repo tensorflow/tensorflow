@@ -20,6 +20,7 @@ import numpy as np
 
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.ops.numpy_ops import np_array_ops
 from tensorflow.python.ops.numpy_ops import np_arrays
 from tensorflow.python.ops.numpy_ops import np_math_ops
@@ -124,6 +125,13 @@ class MathTest(test.TestCase, parameterized.TestCase):
                 ([[1, 2], [3, 4]], [3, 4, 6, 7])]
     return self._testBinaryOp(
         np_math_ops.vdot, np.vdot, 'vdot', operands=operands)
+
+  def testLcm(self):
+    a = np_array_ops.array(6, dtype=np.int8)
+    b = np_array_ops.array(22, dtype=np.int8)
+    res_tf = np_math_ops.lcm(a, b)
+    res_np = np.lcm(np.array(a), np.array(b))
+    self.assertEqual(res_tf, res_np)
 
   def _testUnaryOp(self, math_fun, np_fun, name):
 
@@ -343,15 +351,35 @@ class MathTest(test.TestCase, parameterized.TestCase):
     run_test(-1, -1000, num=5, endpoint=False)
 
   @parameterized.parameters([
-      'T', 'ndim', 'size', 'data', '__pos__', '__round__', 'tolist',
+      'T', 'ndim', 'size', 'data', '__pos__', '__round__', 'tolist', 'flatten',
       'transpose', 'reshape', 'ravel', 'clip', 'astype', 'max', 'mean', 'min'])
   def testNumpyMethodsOnTensor(self, np_method):
     a = ops.convert_to_tensor([1, 2])
     self.assertTrue(hasattr(a, np_method))
 
+  def testFlatten(self):
+    a1 = np.array([[[1, 2], [3, 4]], [[5, 6], [7, 8]]])
+    a2 = ops.convert_to_tensor(a1)
+    self.assertAllEqual(a1.flatten('C'), a2.flatten('C'))
+    self.assertAllEqual(a1.flatten('F'), a2.flatten('F'))
+    self.assertAllEqual(a1.flatten('C'), a2.flatten('A'))
+    self.assertAllEqual(a1.flatten('C'), a2.flatten('K'))
+    with self.assertRaises(ValueError):
+      a2.flatten('invalid')
+
+  def testIsInf(self):
+    x1 = ops.convert_to_tensor(-2147483648)
+    x2 = ops.convert_to_tensor(2147483647)
+    self.assertFalse(np_math_ops.isinf(x1))
+    self.assertFalse(np_math_ops.isinf(x2))
+    self.assertFalse(np_math_ops.isposinf(x1))
+    self.assertFalse(np_math_ops.isposinf(x2))
+    self.assertFalse(np_math_ops.isneginf(x1))
+    self.assertFalse(np_math_ops.isneginf(x2))
 
 if __name__ == '__main__':
+  tensor.enable_tensor_equality()
   ops.enable_eager_execution()
-  ops.enable_numpy_style_type_promotion()
+  ops.set_dtype_conversion_mode('legacy')
   np_math_ops.enable_numpy_methods_on_tensor()
   test.main()

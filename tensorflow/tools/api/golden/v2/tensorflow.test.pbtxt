@@ -8,6 +8,10 @@ tf_module {
     name: "TestCase"
     mtype: "<type \'type\'>"
   }
+  member {
+    name: "experimental"
+    mtype: "<type \'module\'>"
+  }
   member_method {
     name: "assert_equal_graph_def"
     argspec: "args=[\'expected\', \'actual\'], varargs=None, keywords=None, defaults=None"
@@ -47,6 +51,10 @@ tf_module {
   member_method {
     name: "is_built_with_xla"
     argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "is_cpu_target_available"
+    argspec: "args=[\'target\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "is_gpu_available"

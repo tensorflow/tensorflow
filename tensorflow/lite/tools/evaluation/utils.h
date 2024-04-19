@@ -53,7 +53,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
 #endif  // !defined(TFLITE_WITHOUT_XNNPACK)
 
-#include "tensorflow/lite/core/shims/c/common.h"
+#include "tensorflow/lite/c/common.h"
 
 namespace tflite {
 namespace evaluation {
@@ -105,7 +105,7 @@ TfLiteDelegatePtr CreateXNNPACKDelegate();
 TfLiteDelegatePtr CreateXNNPACKDelegate(
     const TfLiteXNNPackDelegateOptions* options);
 #endif  // !defined(TFLITE_WITHOUT_XNNPACK)
-TfLiteDelegatePtr CreateXNNPACKDelegate(int num_threads);
+TfLiteDelegatePtr CreateXNNPACKDelegate(int num_threads, bool force_fp16);
 
 TfLiteDelegatePtr CreateCoreMlDelegate();
 }  // namespace evaluation

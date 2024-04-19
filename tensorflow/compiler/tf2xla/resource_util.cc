@@ -21,8 +21,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/tf2xla/resource_operation_table.h"
-#include "tensorflow/compiler/xla/status_macros.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
+#include "xla/status_macros.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -32,7 +31,7 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-using stream_executor::port::StatusOr;
+using tsl::StatusOr;
 
 const char kIdentityNOp[] = "IdentityN";
 const char kIfOp[] = "If";
@@ -56,8 +55,8 @@ bool IsControlFlowV1Node(const Node* n) {
 }
 
 // TODO(ycao): Add this as Tensorflow Node method.
-StatusOr<absl::InlinedVector<const Edge*, 1>> OutputEdgesByIndex(const Node& n,
-                                                                 int idx) {
+absl::StatusOr<absl::InlinedVector<const Edge*, 1>> OutputEdgesByIndex(
+    const Node& n, int idx) {
   absl::InlinedVector<const Edge*, 1> res;
   if (idx >= n.num_outputs()) {
     return errors::InvalidArgument("Invalid out_edge index: ", idx, ", Node ",
@@ -105,7 +104,7 @@ Status PropagateFromArgOp(
 
   int index;
   TF_RETURN_IF_ERROR(GetNodeAttr(n.attrs(), "index", &index));
-  if (!resource_arg_indices.contains(index)) return OkStatus();
+  if (!resource_arg_indices.contains(index)) return absl::OkStatus();
 
   TF_RET_CHECK(function_name.has_value())
       << "ResourceUsageAnalysis does not support analyzing _Arg nodes "
@@ -123,7 +122,7 @@ Status PropagateFromArgOp(
     (*user_to_source)[o] = src_node_info;
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status UpdateResourceUsageFromFunctionBodyAnalysis(
@@ -177,7 +176,7 @@ Status UpdateResourceUsageFromFunctionBodyAnalysis(
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status PropagateThroughCallOp(
@@ -220,7 +219,7 @@ Status PropagateThroughCallOp(
   TF_RETURN_IF_ERROR(UpdateResourceUsageFromFunctionBodyAnalysis(
       n, function_name, *fbody, called_function_source_to_path, user_to_source,
       source_to_path));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Analyzes pass through values for Identity and IdentityN ops.
@@ -247,7 +246,7 @@ Status PropagateThroughIdentityOp(
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status AnalyzeResourceUsage(
@@ -314,7 +313,7 @@ Status AnalyzeResourceUsage(
                                          it.first->dst()->type_string());
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // anonymous namespace

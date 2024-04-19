@@ -22,7 +22,8 @@ enum ModelType : int32 {
   TF_CONCRETE_FUNCTIONS = 3,
   TF_GRAPH_DEF = 4,
   TF_SESSION = 5,
-  JAX = 6
+  JAX = 6,
+  PYTORCH = 7
 }
 
 // The environment during conversion.
@@ -35,6 +36,10 @@ table Environment {
 
   // Original model format.
   model_type:ModelType;
+
+  // Model identification hash.
+  model_hash:int64;
+
 }
 
 // The model optimization modes.
@@ -42,6 +47,8 @@ table Environment {
 // ones. The thousand part of the value represents the optimization technique
 // and the later part is to distinguish different modes of that technique.
 enum ModelOptimizationMode : int32 {
+  // 0 is reserved as a placeholder
+
   PTQ_FLOAT16 = 1001,
   PTQ_DYNAMIC_RANGE = 1002,
   PTQ_FULL_INTEGER = 1003,

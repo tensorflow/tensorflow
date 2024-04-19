@@ -15,14 +15,24 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tools/kernel_gen/tf_gpu_runtime_wrappers.h"
 
+#include <cassert>
+#include <cstdint>
 #include <string>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
-#include "tensorflow/compiler/xla/stream_executor/stream.h"
-#include "tensorflow/compiler/xla/stream_executor/stream_executor_internal.h"
+#include "xla/stream_executor/stream.h"
+#include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/refcount.h"
+#include "tensorflow/core/platform/status.h"
+
+#if GOOGLE_CUDA
+#include "third_party/gpus/cuda/include/cuda.h"
+#endif
 
 static void ReportInternalError(tensorflow::OpKernelContext *ctx,
                                 const std::string msg) {
@@ -31,7 +41,7 @@ static void ReportInternalError(tensorflow::OpKernelContext *ctx,
     return;
   }
   ctx->CtxFailureWithWarning(
-      tensorflow::Status{tensorflow::error::INTERNAL, msg});
+      tensorflow::Status{absl::StatusCode::kInternal, msg});
 }
 
 #if GOOGLE_CUDA
@@ -82,7 +92,7 @@ GPURuntimeCache::~GPURuntimeCache() {
 
 tensorflow::Status GPURuntimeCache::Create(GPURuntimeCache **dst) {
   *dst = new GPURuntimeCache;
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 std::string GPURuntimeCache::DebugString() const { return "GPU runtime cache"; }
@@ -99,6 +109,24 @@ GPURuntimeCache::GPUModule GPURuntimeCache::LookupOrLoadModule(void *data) {
 #endif
 
   return module;
+}
+
+GPURuntimeCache::GPUFunction GPURuntimeCache::LookupOrGetFunction(
+    GPUModule module, const char *kernel_name) {
+  tensorflow::mutex_lock lock(mu_);
+  GPUFunction &function =
+      gpu_function_by_module_and_name_[{module, kernel_name}];
+
+  if (!function) {
+#if GOOGLE_CUDA
+    GPU_REPORT_IF_ERROR(cuModuleGetFunction(&function, module, kernel_name));
+#endif
+#if TENSORFLOW_USE_ROCM
+    GPU_REPORT_IF_ERROR(hipModuleGetFunction(&function, module, kernel_name));
+#endif
+  }
+
+  return function;
 }
 
 // Implements a C wrapper around the TensorFlow runtime and CUDA (or ROCm)
@@ -133,13 +161,12 @@ extern "C" void _mlir_ciface_tf_launch_kernel(void *ctx, void *module_blob,
   // Get the GPU module.
   stream_executor::Stream *se_stream =
       op_kernel_ctx->op_device_context()->stream();
-  void *stream = se_stream->implementation()->GpuStreamHack();
+  void *stream = se_stream->platform_specific_handle().stream;
   GPURuntimeCache::GPUModule module = cache->LookupOrLoadModule(module_blob);
+  GPURuntimeCache::GPUFunction function =
+      cache->LookupOrGetFunction(module, kernel_name);
 
 #if GOOGLE_CUDA
-  CUfunction function;
-  GPU_REPORT_IF_ERROR_WITH_CTX(
-      cuModuleGetFunction(&function, module, kernel_name), op_kernel_ctx);
   GPU_REPORT_IF_ERROR_WITH_CTX(
       cuLaunchKernel(function, gridX, gridY, gridZ, blockX, blockY, blockZ,
                      /*sharedMemBytes=*/0, reinterpret_cast<CUstream>(stream),
@@ -147,9 +174,6 @@ extern "C" void _mlir_ciface_tf_launch_kernel(void *ctx, void *module_blob,
       op_kernel_ctx);
 #endif
 #if TENSORFLOW_USE_ROCM
-  hipFunction_t function;
-  GPU_REPORT_IF_ERROR_WITH_CTX(
-      hipModuleGetFunction(&function, module, kernel_name), op_kernel_ctx);
   GPU_REPORT_IF_ERROR_WITH_CTX(
       hipModuleLaunchKernel(
           function, gridX, gridY, gridZ, blockX, blockY, blockZ,

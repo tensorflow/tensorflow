@@ -1,0 +1,21 @@
+syntax = "proto3";
+
+package tensorflow;
+
+// OpRegOffset describes the location of an op registration (i.e. where
+// REGISTER_OP is called).
+message OpRegOffset {
+  // Name of the op.
+  string name = 1;
+  // Filepath of where the op is registered.
+  string filepath = 2;
+  // The start offset of the op registration in the file.
+  uint32 start = 3;
+  // The end offset of the op registration in the file.
+  uint32 end = 4;
+}
+
+// OpRegOffsets is a collection of OpRegOffset.
+message OpRegOffsets {
+  repeated OpRegOffset offsets = 1;
+}

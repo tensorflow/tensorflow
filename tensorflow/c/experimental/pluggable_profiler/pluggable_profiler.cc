@@ -25,7 +25,7 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/profiler/lib/profiler_factory.h"
 #include "tensorflow/core/profiler/lib/profiler_interface.h"
-#include "tensorflow/tsl/profiler/protobuf/profiler_options.pb.h"
+#include "tsl/profiler/protobuf/profiler_options.pb.h"
 
 namespace tensorflow {
 namespace profiler {

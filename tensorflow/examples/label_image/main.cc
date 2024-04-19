@@ -34,29 +34,44 @@ limitations under the License.
 // Note that, for GIF inputs, to reuse existing code, only single-frame ones
 // are supported.
 
+#include <algorithm>
 #include <fstream>
+#include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "tensorflow/cc/framework/ops.h"
+#include "tensorflow/cc/framework/scope.h"
+#include "tensorflow/cc/ops/array_ops.h"
 #include "tensorflow/cc/ops/const_op.h"
 #include "tensorflow/cc/ops/image_ops.h"
-#include "tensorflow/cc/ops/standard_ops.h"
+#include "tensorflow/cc/ops/math_ops.h"
+#include "tensorflow/cc/ops/nn_ops.h"
+#include "xla/tsl/util/command_line_flags.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/graph/default_device.h"
-#include "tensorflow/core/graph/graph_def_builder.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
-#include "tensorflow/core/lib/core/threadpool.h"
-#include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/file_system.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/path.h"
+#include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/session.h"
+#include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/command_line_flags.h"
+#include "tsl/platform/env.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/status.h"
+#include "tsl/platform/types.h"
 
 // These are all common classes it's handy to reference with no namespace.
 using tensorflow::Flag;
@@ -86,7 +101,7 @@ Status ReadLabelsFile(const string& file_name, std::vector<string>* result,
   while (result->size() % padding) {
     result->emplace_back();
   }
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 static Status ReadEntireFile(tensorflow::Env* env, const string& filename,
@@ -108,7 +123,7 @@ static Status ReadEntireFile(tensorflow::Env* env, const string& filename,
                                         data.size());
   }
   output->scalar<tstring>()() = tstring(data);
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 // Given an image file name, read in the data, try to decode it as an image,
@@ -167,8 +182,8 @@ Status ReadTensorFromImageFile(const string& file_name, const int input_height,
       root, dims_expander,
       Const(root.WithOpName("size"), {input_height, input_width}));
   // Subtract the mean and divide by the scale.
-  Div(root.WithOpName(output_name), Sub(root, resized, {input_mean}),
-      {input_std});
+  Div output_op(root.WithOpName(output_name), Sub(root, resized, {input_mean}),
+                {input_std});
 
   // This runs the GraphDef network definition that we've just constructed, and
   // returns the results in the output tensor.
@@ -179,7 +194,7 @@ Status ReadTensorFromImageFile(const string& file_name, const int input_height,
       tensorflow::NewSession(tensorflow::SessionOptions()));
   TF_RETURN_IF_ERROR(session->Create(graph));
   TF_RETURN_IF_ERROR(session->Run({inputs}, {output_name}, {}, out_tensors));
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 // Reads a model graph definition from disk, and creates a session object you
@@ -198,7 +213,7 @@ Status LoadGraph(const string& graph_file_name,
   if (!session_create_status.ok()) {
     return session_create_status;
   }
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 // Analyzes the output of the Inception graph to retrieve the highest scores and
@@ -209,7 +224,7 @@ Status GetTopLabels(const std::vector<Tensor>& outputs, int how_many_labels,
   using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
 
   string output_name = "top_k";
-  TopK(root.WithOpName(output_name), outputs[0], how_many_labels);
+  TopK top_k(root.WithOpName(output_name), outputs[0], how_many_labels);
   // This runs the GraphDef network definition that we've just constructed, and
   // returns the results in the output tensors.
   tensorflow::GraphDef graph;
@@ -225,7 +240,7 @@ Status GetTopLabels(const std::vector<Tensor>& outputs, int how_many_labels,
                                   {}, &out_tensors));
   *scores = out_tensors[0];
   *indices = out_tensors[1];
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 // Given the output of a model run, and the name of a file containing the labels
@@ -251,7 +266,7 @@ Status PrintTopLabels(const std::vector<Tensor>& outputs,
     const float score = scores_flat(pos);
     LOG(INFO) << labels[label_index] << " (" << label_index << "): " << score;
   }
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 // This is a testing function that returns whether the top label index is the
@@ -271,7 +286,7 @@ Status CheckTopLabel(const std::vector<Tensor>& outputs, int expected,
   } else {
     *is_expected = true;
   }
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 int main(int argc, char* argv[]) {

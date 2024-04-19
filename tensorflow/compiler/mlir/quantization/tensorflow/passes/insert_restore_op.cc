@@ -25,6 +25,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/constants.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -34,11 +35,9 @@ namespace mlir {
 namespace quant {
 namespace {
 
-using ::mlir::tf_saved_model::GetSessionInitializerOp;
+using ::mlir::tf_saved_model::GetInitializerFunction;
 using ::mlir::tf_saved_model::kTfSavedModelIndexPathAttr;
 using ::mlir::tf_saved_model::kTfSavedModelInitializerRestoreType;
-using ::mlir::tf_saved_model::kTfSavedModelInitializerTypeAttr;
-using ::mlir::tf_saved_model::SessionInitializerOp;
 
 // This pass creates a RestoreV2 op in the initializer function with
 // type "restore_op" that initializes variables from checkpoint. It finds
@@ -68,57 +67,22 @@ class InsertRestoreOpPass
   void runOnOperation() override;
 };
 
-// Gets the initializer function whose initializer_type attribute matches
-// `type`. Returns a null operation if it doesn't exist.
-func::FuncOp GetInitializerFunction(
-    SessionInitializerOp session_init_op, SymbolTable symbol_table,
-    StringRef type = kTfSavedModelInitializerRestoreType) {
-  auto session_init_symbols =
-      session_init_op.getInitializers().getAsValueRange<FlatSymbolRefAttr>();
-  if (session_init_symbols.empty()) {
-    LOG(INFO) << "No session initializers exist in 'initializers' attribute of "
-                 "SessionInitializerOp. No variables are saved to checkpoint.";
-    return {};
-  }
-
-  for (const auto init_sym : session_init_symbols) {
-    auto init_func_op = symbol_table.lookup<func::FuncOp>(init_sym);
-
-    if (auto init_type = init_func_op->getAttrOfType<StringAttr>(
-            kTfSavedModelInitializerTypeAttr);
-        init_type && init_type == type) {
-      return init_func_op;
-    }
-  }
-
-  return {};
-}
-
-// Finds `tf.AssignVariableOp(tf.VarHandleOp, tf.Const)` patterns and removes
-// `tf.AssignVariableOp`s and `tf.Const`s. Collects and returns the
-// `tf.VarHandleOp`s that are initialized by these `tf.AssignVariableOp`s.
-std::vector<TF::VarHandleOp> RemoveAssignVariableOpsAndConstOps(
+// Finds `tf.AssignVariableOp(tf.VarHandleOp, tf.Const)` patterns and returns
+// the `tf.VarHandleOp`s that are initialized by these `tf.AssignVariableOp`s.
+std::vector<TF::VarHandleOp> CollectVariableOps(
     func::FuncOp session_init_func) {
   std::vector<TF::VarHandleOp> var_handle_ops{};
 
   for (auto assign_variable_op : llvm::make_early_inc_range(
            session_init_func.getOps<TF::AssignVariableOp>())) {
     Value resource_operand = assign_variable_op.getOperand(0);
-    auto var_handle_op =
-        dyn_cast<TF::VarHandleOp>(resource_operand.getDefiningOp());
-    if (!var_handle_op) continue;
-
     Value assigned_value_operand = assign_variable_op.getOperand(1);
-    auto const_op =
-        dyn_cast<TF::ConstOp>(assigned_value_operand.getDefiningOp());
-    if (!const_op) continue;
 
-    var_handle_ops.emplace_back(var_handle_op);
-
-    assign_variable_op.erase();
-
-    if (const_op->use_empty()) {
-      const_op.erase();
+    if (auto var_handle_op =
+            dyn_cast<TF::VarHandleOp>(resource_operand.getDefiningOp());
+        var_handle_op &&
+        isa<TF::ConstOp>(assigned_value_operand.getDefiningOp())) {
+      var_handle_ops.emplace_back(var_handle_op);
     }
   }
 
@@ -144,7 +108,7 @@ BlockArgument InsertFilePrefixArgument(func::FuncOp func_op,
                                        OpBuilder& builder) {
   const auto filename_op_type = RankedTensorType::get(
       /*shape=*/{}, /*elementType=*/builder.getType<TF::StringType>());
-  const auto file_prefix_attr = builder.getStringAttr("file_prefix");
+  const auto file_prefix_attr = builder.getStringAttr(kTfFilePrefix);
   const auto arg_attrs = builder.getDictionaryAttr({builder.getNamedAttr(
       kTfSavedModelIndexPathAttr, builder.getArrayAttr({file_prefix_attr}))});
 
@@ -156,6 +120,24 @@ BlockArgument InsertFilePrefixArgument(func::FuncOp func_op,
   return func_op.getArgument(insert_idx);
 }
 
+// Creates a 1D string array constant for "tensor_names" input of `RestoreV2`
+// op. The `ConstOp` will be created at `builder`'s current insertion point.
+TF::ConstOp CreateTensorNamesConst(const ArrayRef<std::string> tensor_names,
+                                   OpBuilder& builder) {
+  const auto loc = NameLoc::get(builder.getStringAttr("tensor_names"));
+  return Create1DStringConst(tensor_names, loc, builder);
+}
+
+// Creates a 1D string array constant for "shape_and_slices" input of
+// `RestoreV2` op. The `ConstOp` will be created at `builder`'s current
+// insertion point. It will be filled with `size` empty strings.
+TF::ConstOp CreateShapeAndSlicesConst(const int size, OpBuilder& builder) {
+  const SmallVector<std::string> shape_and_slices_values(size, /*Value=*/"");
+
+  const auto loc = NameLoc::get(builder.getStringAttr("shape_and_slices"));
+  return Create1DStringConst(shape_and_slices_values, loc, builder);
+}
+
 // Creates a `tf.RestoreV2Op` that loads the variable values from the checkpoint
 // file. The loaded tensors will be used to initialize `tf.VarHandleOp`s via
 // `tf.AssignVariableOp`s.
@@ -165,6 +147,15 @@ void CreateRestoreV2Op(std::vector<TF::VarHandleOp>& target_var_handle_ops,
   SmallVector<std::string> tensor_names{};
   for (auto var_handle_op : target_var_handle_ops) {
     tensor_names.emplace_back(var_handle_op.getSharedName().str());
+    // Location must be set to the same name as the shared name. The Location is
+    // later tranlated to the op's name when exported to `GraphDef`. This is
+    // required to find the correct variable name to restore when it is
+    // imported back to MLIR. When importing the graph to MLIR, the name of the
+    // op is used to retrieve the tensor values of each variable. See
+    // `InitializeVariablesInSessionInitializer` for further details.
+    const auto loc = NameLoc::get(StringAttr::get(
+        var_handle_op.getContext(), var_handle_op.getSharedName()));
+    var_handle_op->setLoc(loc);
 
     // Ex) If VarHandleOp's type is tensor<!tf_type.resource<tensor<1xf32>>>,
     // then tensor<1xf32> is the subtype.
@@ -177,20 +168,15 @@ void CreateRestoreV2Op(std::vector<TF::VarHandleOp>& target_var_handle_ops,
   const BlockArgument filename_arg =
       InsertFilePrefixArgument(session_init_func, builder);
 
-  const auto tensor_names_loc =
-      NameLoc::get(builder.getStringAttr("tensor_names"));
-  auto tensor_names_const_op =
-      Create1DStringConst(tensor_names, tensor_names_loc, builder);
-
-  const auto shape_and_slices_loc =
-      NameLoc::get(builder.getStringAttr("shape_and_slices"));
-  auto shape_and_slices = Create1DStringConst(
-      /*str_values=*/{""}, shape_and_slices_loc, builder);
+  TF::ConstOp tensor_names_const =
+      CreateTensorNamesConst(tensor_names, builder);
+  TF::ConstOp shape_and_slices_const =
+      CreateShapeAndSlicesConst(tensor_names.size(), builder);
 
   auto restore_op = builder.create<TF::RestoreV2Op>(
       session_init_func.getLoc(),
       /*tensors=*/tensor_types,
-      /*prefix=*/filename_arg, tensor_names_const_op, shape_and_slices);
+      /*prefix=*/filename_arg, tensor_names_const, shape_and_slices_const);
 
   for (auto [idx, restore_result] : llvm::enumerate(restore_op.getResults())) {
     builder.create<TF::AssignVariableOp>(
@@ -203,15 +189,8 @@ void CreateRestoreV2Op(std::vector<TF::VarHandleOp>& target_var_handle_ops,
 void InsertRestoreOpPass::runOnOperation() {
   ModuleOp module_op = getOperation();
 
-  SessionInitializerOp session_init_op = GetSessionInitializerOp(module_op);
-  if (!session_init_op) {
-    LOG(INFO) << "SessionInitializerOp does not exist. RestoreV2 op will not "
-                 "be created.";
-    return;
-  }
-
-  func::FuncOp session_init_func =
-      GetInitializerFunction(session_init_op, SymbolTable{module_op});
+  func::FuncOp session_init_func = GetInitializerFunction(
+      module_op, /*initializer_type=*/kTfSavedModelInitializerRestoreType);
   if (!session_init_func) {
     LOG(INFO) << "No session initializer function with type 'restore_op'. "
                  "RestoreV2 op will not be created.";
@@ -219,7 +198,7 @@ void InsertRestoreOpPass::runOnOperation() {
   }
 
   std::vector<TF::VarHandleOp> target_var_handle_ops =
-      RemoveAssignVariableOpsAndConstOps(session_init_func);
+      CollectVariableOps(session_init_func);
   if (target_var_handle_ops.empty()) {
     LOG(INFO) << "There are no VarHandleOps to restore. RestoreV2 op will not "
                  "be created.";

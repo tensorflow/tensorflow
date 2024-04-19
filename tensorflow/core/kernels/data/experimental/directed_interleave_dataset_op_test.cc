@@ -57,7 +57,7 @@ class DirectedInterleaveDatasetParams : public DatasetParams {
       input_names->emplace_back(absl::StrCat(
           DirectedInterleaveDatasetOp::kDataInputDatasets, "_", i));
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status GetAttributes(AttributeVector* attr_vector) const override {
@@ -70,7 +70,7 @@ class DirectedInterleaveDatasetParams : public DatasetParams {
                               num_input_datasets_);
     attr_vector->emplace_back(DirectedInterleaveDatasetOp::kStopOnEmptyDataset,
                               stop_on_empty_dataset_);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   string dataset_type() const override {
@@ -439,7 +439,7 @@ TEST_F(DirectedInterleaveDatasetOpTest, InvalidArguments) {
       InvalidInputDatasetsDataType(), ZeroInputDatasetParams()};
   for (auto& dataset_params : invalid_params_vec) {
     EXPECT_EQ(Initialize(dataset_params).code(),
-              tensorflow::error::INVALID_ARGUMENT);
+              absl::StatusCode::kInvalidArgument);
   }
 }
 
@@ -450,7 +450,7 @@ TEST_F(DirectedInterleaveDatasetOpTest, InvalidSelectorValues) {
   std::vector<Tensor> next;
   EXPECT_EQ(
       iterator_->GetNext(iterator_ctx_.get(), &next, &end_of_sequence).code(),
-      tensorflow::error::INVALID_ARGUMENT);
+      absl::StatusCode::kInvalidArgument);
 }
 
 }  // namespace

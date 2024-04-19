@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/sequence_ops.h"
 
 #include <cmath>
+#include <type_traits>
 
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
@@ -91,7 +92,7 @@ class RangeOp : public OpKernel {
               "Requires start >= limit when delta < 0: ", start, "/", limit));
     }
     int64_t size;
-    if (std::is_integral<T>::value) {
+    if constexpr (std::is_integral<T>::value) {
       size = Eigen::divup(Eigen::numext::abs(limit - start),
                           Eigen::numext::abs(delta));
     } else {

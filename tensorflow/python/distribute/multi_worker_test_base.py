@@ -32,8 +32,8 @@ from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.distribute import distribute_coordinator as dc
 from tensorflow.python.distribute import multi_process_runner
-from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
-from tensorflow.python.distribute.cluster_resolver import TFConfigClusterResolver
+from tensorflow.python.distribute.cluster_resolver import cluster_resolver as cluster_resolver_lib
+from tensorflow.python.distribute.cluster_resolver import tfconfig_cluster_resolver
 from tensorflow.python.eager import context
 from tensorflow.python.eager import remote
 from tensorflow.python.framework import errors
@@ -199,7 +199,7 @@ class MultiProcessCluster(object):
     self._mpr_manager = multi_process_runner.manager()
 
     def task_function(start_events, finish_events):
-      cluster_resolver = TFConfigClusterResolver()
+      cluster_resolver = tfconfig_cluster_resolver.TFConfigClusterResolver()
       cluster_spec = cluster_resolver.cluster_spec()
       task_type = cluster_resolver.task_type
       task_id = cluster_resolver.task_id
@@ -341,7 +341,7 @@ def create_multi_process_cluster(num_workers,
       has_eval=has_eval)
 
   cluster = MultiProcessCluster(
-      SimpleClusterResolver(
+      cluster_resolver_lib.SimpleClusterResolver(
           server_lib.ClusterSpec(cluster_spec), rpc_layer=rpc_layer),
       stream_output=stream_output,
       collective_leader=collective_leader)

@@ -85,9 +85,9 @@ class GpuDeviceArrayOnHost {
     se::DeviceMemoryBase output_values_base{
         out_of_line_values_on_gpu_.flat<int8>().data(),
         static_cast<uint64>(total_bytes_)};
-    stream->ThenMemcpy(&output_values_base,
-                       out_of_line_values_on_host_.flat<int8>().data(),
-                       total_bytes_);
+    TF_RETURN_IF_ERROR(stream->Memcpy(
+        &output_values_base, out_of_line_values_on_host_.flat<int8>().data(),
+        total_bytes_));
     context_->device()
         ->tensorflow_accelerator_device_info()
         ->event_mgr->ThenExecute(stream,
@@ -114,7 +114,8 @@ class GpuDeviceArrayOnHost {
   Tensor out_of_line_values_on_host_;
   Tensor out_of_line_values_on_gpu_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(GpuDeviceArrayOnHost);
+  GpuDeviceArrayOnHost(const GpuDeviceArrayOnHost&) = delete;
+  void operator=(const GpuDeviceArrayOnHost&) = delete;
 };
 
 }  // namespace tensorflow

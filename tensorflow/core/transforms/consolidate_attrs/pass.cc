@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/transforms/consolidate_attrs/pass.h"
 
 #include <memory>
+#include <optional>
 #include <utility>
 
 #include "llvm/ADT/ScopeExit.h"
@@ -204,7 +205,8 @@ ArrayAttr ConsolidateAttributesPassImpl::reifyAndDropFunctionResultAttributes(
   SmallVector<Attribute> ret_attrs;
   // The result types are propagated to the data operands to `return`.
   auto ret_op = cast<ReturnOp>(func.getBody().front().getTerminator());
-  for (auto &it : llvm::enumerate(res_attrs.getAsRange<DictionaryAttr>())) {
+  for (const auto &it :
+       llvm::enumerate(res_attrs.getAsRange<DictionaryAttr>())) {
     NamedAttrList attrs(it.value());
     Value ret = ret_op.getOperand(it.index());
     Type ret_type = ret.getType();
@@ -245,7 +247,7 @@ class ReifyOperationOutputShapes : public RewritePattern {
         !IsArrayOfShapes(output_shapes))
       return failure();
 
-    rewriter.updateRootInPlace(op, [&] {
+    rewriter.modifyOpInPlace(op, [&] {
       op->removeAttr(output_shapes_id_);
       assert(output_shapes.size() == results.size());
       for (auto it :
@@ -321,14 +323,14 @@ class DropAttributes : public RewritePattern {
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
     if (!isa<OpTs...>(op)) return failure();
-    rewriter.startRootUpdate(op);
+    rewriter.startOpModification(op);
     if (!llvm::count_if(attr_ids_, [&](StringAttr attr_id) {
           return op->removeAttr(attr_id);
         })) {
-      rewriter.cancelRootUpdate(op);
+      rewriter.cancelOpModification(op);
       return failure();
     }
-    rewriter.finalizeRootUpdate(op);
+    rewriter.finalizeOpModification(op);
     return success();
   }
 
@@ -423,7 +425,7 @@ void PrepareAttributesForExportPassImpl::prepareFunctionAttributes(
     if (auto ranked = type.dyn_cast<RankedTensorType>()) {
       input_shapes.push_back(ShapeAttr::get(&getContext(), ranked.getShape()));
     } else {
-      input_shapes.push_back(ShapeAttr::get(&getContext(), llvm::None));
+      input_shapes.push_back(ShapeAttr::get(&getContext(), std::nullopt));
     }
   }
 
@@ -451,7 +453,7 @@ DictionaryAttr PrepareAttributesForExportPassImpl::prepareAttributesFor(
     auto shape = ShapeAttr::get(&getContext(),
                                 type.isa<RankedTensorType>()
                                     ? type.cast<RankedTensorType>().getShape()
-                                    : Optional<ArrayRef<int64_t>>());
+                                    : std::optional<ArrayRef<int64_t>>());
     attrs.set(output_shapes_id_, ArrayAttr::get(&getContext(), {shape}));
   }
   auto element_type = type.cast<TensorType>().getElementType();
@@ -522,7 +524,7 @@ struct MaterializeIfAttrs : public MaterializeAttrsPattern<IfLikeOp> {
               this->getArgumentElementTypesAttr(rewriter, op));
     attrs.set(op.getToutAttrName(),
               GetElementTypesAttr(rewriter, op.getOuts()));
-    rewriter.updateRootInPlace(
+    rewriter.modifyOpInPlace(
         op, [&] { op->setAttrs(attrs.getDictionary(op->getContext())); });
     return success();
   }
@@ -541,7 +543,7 @@ struct MaterializeCaseAttrs : public MaterializeAttrsPattern<CaseLikeOp> {
               this->getArgumentElementTypesAttr(rewriter, op));
     attrs.set(op.getToutAttrName(),
               GetElementTypesAttr(rewriter, op.getOuts()));
-    rewriter.updateRootInPlace(
+    rewriter.modifyOpInPlace(
         op, [&] { op->setAttrs(attrs.getDictionary(op->getContext())); });
     return success();
   }
@@ -555,7 +557,7 @@ struct MaterializeTAttr : public MaterializeAttrsPattern<WhileOrForLikeOp> {
   LogicalResult matchAndRewrite(WhileOrForLikeOp op,
                                 PatternRewriter &rewriter) const override {
     if (op.getT()) return failure();
-    rewriter.updateRootInPlace(op, [&] {
+    rewriter.modifyOpInPlace(op, [&] {
       op.setTAttr(this->getArgumentElementTypesAttr(rewriter, op));
     });
     return success();
@@ -584,10 +586,10 @@ class MaterializeOutputShapesBase : public RewritePattern {
       if (auto ranked = result.getType().dyn_cast<RankedTensorType>()) {
         shapes.push_back(ShapeAttr::get(op->getContext(), ranked.getShape()));
       } else {
-        shapes.push_back(ShapeAttr::get(op->getContext(), llvm::None));
+        shapes.push_back(ShapeAttr::get(op->getContext(), std::nullopt));
       }
     }
-    rewriter.updateRootInPlace(op, [&] {
+    rewriter.modifyOpInPlace(op, [&] {
       op->setAttr(attr_id_, rewriter.getArrayAttr(shapes));
       rewriteImpl(op, rewriter);
     });

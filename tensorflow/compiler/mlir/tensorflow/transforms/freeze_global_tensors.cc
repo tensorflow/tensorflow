@@ -13,23 +13,21 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <algorithm>
-#include <vector>
+#include <memory>
 
 #include "llvm/ADT/BitVector.h"
-#include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Casting.h"
-#include "llvm/Support/Debug.h"
 #include "mlir/Analysis/DataFlow/ConstantPropagationAnalysis.h"  // from @llvm-project
 #include "mlir/Analysis/DataFlow/DeadCodeAnalysis.h"  // from @llvm-project
-#include "mlir/Analysis/DataFlow/SparseAnalysis.h"  // from @llvm-project
+#include "mlir/Analysis/DataFlowFramework.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/IR/SymbolTable.h"  // from @llvm-project
+#include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/analysis/resource_dataflow.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
@@ -60,7 +58,7 @@ void FreezeGlobalTensorsPass::runOnOperation() {
   DataFlowSolver solver;
   solver.load<dataflow::DeadCodeAnalysis>();
   solver.load<dataflow::SparseConstantPropagation>();
-  solver.load<TF::ResourceDataflowAnalysis>();
+  TF::LoadResourceDataflowAnalysis(solver);
   if (failed(solver.initializeAndRun(module))) return signalPassFailure();
 
   DenseSet<GlobalTensorOp> remaining_global_tensor_ops;
@@ -92,8 +90,8 @@ void FreezeGlobalTensorsPass::runOnOperation() {
         continue;
 
       // Check that there is only a single global tensor associated with arg.
-      const TF::ResourceDataflowAnalysis::StateT *latticeElement =
-          solver.lookupState<TF::ResourceDataflowAnalysis::StateT>(val);
+      const TF::ResourceDataflowState *latticeElement =
+          solver.lookupState<TF::ResourceDataflowState>(val);
       if (!latticeElement || latticeElement->getValue().ops.size() != 1)
         continue;
 
@@ -135,12 +133,15 @@ void FreezeGlobalTensorsPass::runOnOperation() {
     for (BlockArgument val : func.getArguments()) {
       if (!freezeable[val]) continue;
 
-      const TF::ResourceDataflowAnalysis::StateT *latticeElement =
-          solver.lookupState<TF::ResourceDataflowAnalysis::StateT>(val);
+      const TF::ResourceDataflowState *latticeElement =
+          solver.lookupState<TF::ResourceDataflowState>(val);
       Operation *op = *latticeElement->getValue().ops.begin();
       GlobalTensorOp global_tensor = llvm::dyn_cast<GlobalTensorOp>(op);
       if (!global_tensor)
         continue;  // happens if the name is e.g. in a VarHandleOp.
+
+      if (!global_tensor.getValue())
+        continue;  // a value wasn't loaded for this tensor.
 
       SmallVector<TF::ReadVariableOp, 4> read_variable_ops_to_erase;
       frozen_global_tensors.insert(global_tensor);
@@ -161,7 +162,7 @@ void FreezeGlobalTensorsPass::runOnOperation() {
       // Replace the arg with a tf.Const op in the function body.
       builder.setInsertionPointToStart(&func.getBody().front());
       auto const_op = builder.create<TF::ConstOp>(global_tensor.getLoc(),
-                                                  global_tensor.getValue());
+                                                  *global_tensor.getValue());
       args_to_erase.set(val.getArgNumber());
       for (auto read_op : read_variable_ops_to_erase) {
         read_op.getResult().replaceAllUsesWith(const_op.getResult());

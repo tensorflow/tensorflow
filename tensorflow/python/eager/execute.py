@@ -19,8 +19,9 @@ from tensorflow.core.framework import tensor_pb2
 from tensorflow.python import pywrap_tfe
 from tensorflow.python.eager import core
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_conversion_registry
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.types import core as core_types
 from tensorflow.python.util import compat
 
 
@@ -56,9 +57,7 @@ def quick_execute(op_name, num_outputs, inputs, attrs, ctx, name=None):
       e.message += " name: " + name
     raise core._status_to_exception(e) from None
   except TypeError as e:
-    keras_symbolic_tensors = [
-        x for x in inputs if ops._is_keras_symbolic_tensor(x)
-    ]
+    keras_symbolic_tensors = [x for x in inputs if _is_keras_symbolic_tensor(x)]
     if keras_symbolic_tensors:
       raise core._SymbolicException(
           "Inputs to eager execution function cannot be Keras symbolic "
@@ -110,9 +109,7 @@ def execute_with_cancellation(op_name,
       e.message += " name: " + name
     raise core._status_to_exception(e) from None
   except TypeError as e:
-    keras_symbolic_tensors = [
-        x for x in inputs if ops._is_keras_symbolic_tensor(x)
-    ]
+    keras_symbolic_tensors = [x for x in inputs if _is_keras_symbolic_tensor(x)]
     if keras_symbolic_tensors:
       raise core._SymbolicException(
           "Inputs to eager execution function cannot be Keras symbolic "
@@ -224,11 +221,11 @@ def make_tensor(v, arg_name):
 
 def args_to_matching_eager(l, ctx, allowed_dtypes, default_dtype=None):
   """Convert sequence `l` to eager same-type Tensors."""
+  del ctx  # Unused
   if (not l) and (default_dtype is not None):
     return default_dtype, []  # List is empty; assume default dtype.
-  EagerTensor = ops.EagerTensor  # pylint: disable=invalid-name
   for x in l:
-    if not isinstance(x, EagerTensor):
+    if not isinstance(x, core_types.Value):
       break
   else:  # note: intentional for-else
     return l[0]._datatype_enum(), l  # pylint: disable=protected-access
@@ -236,7 +233,7 @@ def args_to_matching_eager(l, ctx, allowed_dtypes, default_dtype=None):
   # Is some input already a Tensor with a dtype?
   dtype = None
   for t in l:
-    if isinstance(t, EagerTensor):
+    if isinstance(t, core_types.Value):
       dtype = t.dtype
       break
 
@@ -251,7 +248,7 @@ def args_to_matching_eager(l, ctx, allowed_dtypes, default_dtype=None):
       # and see if it matches an allowed dtypes. Some ops like ConcatV2 may
       # not list allowed dtypes, in which case we should skip this.
       if dtype is None and allowed_dtypes:
-        tensor = ops.convert_to_tensor(t, ctx=ctx)
+        tensor = tensor_conversion_registry.convert(t)
         # If we did not match an allowed dtype, try again with the default
         # dtype. This could be because we have an empty tensor and thus we
         # picked the wrong type.
@@ -259,18 +256,19 @@ def args_to_matching_eager(l, ctx, allowed_dtypes, default_dtype=None):
           tensor = None
 
       if tensor is None:
-        tensor = ops.convert_to_tensor(
-            t, dtype, preferred_dtype=default_dtype, ctx=ctx)
+        tensor = tensor_conversion_registry.convert(
+            t, dtype, preferred_dtype=default_dtype
+        )
 
       ret.append(tensor)
       if dtype is None:
         dtype = tensor.dtype
   else:
-    ret = [ops.convert_to_tensor(t, dtype, ctx=ctx) for t in l]
+    ret = [tensor_conversion_registry.convert(t, dtype) for t in l]
 
   # TODO(slebedev): consider removing this as it leaks a Keras concept.
   # pylint: disable=protected-access
-  keras_symbolic_tensors = [x for x in ret if ops._is_keras_symbolic_tensor(x)]
+  keras_symbolic_tensors = [x for x in ret if _is_keras_symbolic_tensor(x)]
   if keras_symbolic_tensors:
     raise core._SymbolicException(
         "Using symbolic output of a Keras layer during eager execution "
@@ -280,13 +278,15 @@ def args_to_matching_eager(l, ctx, allowed_dtypes, default_dtype=None):
 
 
 def convert_to_mixed_eager_tensors(values, ctx):
-  v = [ops.convert_to_tensor(t, ctx=ctx) for t in values]
+  del ctx  # Unused
+  v = [tensor_conversion_registry.convert(t) for t in values]
   types = [t._datatype_enum() for t in v]  # pylint: disable=protected-access
   return types, v
 
 
 def args_to_mixed_eager_tensors(lists, ctx):
   """Converts a list of same-length lists of values to eager tensors."""
+  del ctx  # Unused
   assert len(lists) > 1
 
   # Generate an error if len(lists[i]) is not the same for all i.
@@ -304,20 +304,26 @@ def args_to_mixed_eager_tensors(lists, ctx):
     dtype = None
     # If any list has a Tensor, use that dtype
     for l in lists:
-      if isinstance(l[i], ops.EagerTensor):
+      if isinstance(l[i], core_types.Value):
         dtype = l[i].dtype
         break
     if dtype is None:
       # Convert the first one and use its dtype.
-      lists_ret[0].append(ops.convert_to_tensor(lists[0][i], ctx=ctx))
+      lists_ret[0].append(tensor_conversion_registry.convert(lists[0][i]))
       dtype = lists_ret[0][i].dtype
       for j in range(1, len(lists)):
         lists_ret[j].append(
-            ops.convert_to_tensor(lists[j][i], dtype=dtype, ctx=ctx))
+            tensor_conversion_registry.convert(lists[j][i], dtype=dtype)
+        )
     else:
       # Convert everything to the found dtype.
       for j in range(len(lists)):
         lists_ret[j].append(
-            ops.convert_to_tensor(lists[j][i], dtype=dtype, ctx=ctx))
+            tensor_conversion_registry.convert(lists[j][i], dtype=dtype)
+        )
     types.append(dtype.as_datatype_enum)
   return types, lists_ret
+
+
+def _is_keras_symbolic_tensor(x):
+  return hasattr(x, "graph") and getattr(x.graph, "name", None) == "keras_graph"

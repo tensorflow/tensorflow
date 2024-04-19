@@ -16,7 +16,7 @@
 """Operations for automatic batching and unbatching."""
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import tensor
 from tensorflow.python.ops import gen_batch_ops
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_batch_ops import *
@@ -92,14 +92,14 @@ def batch_function(num_batch_threads,
         return fn(*computation_args)
 
       computation = computation.get_concrete_function(*[
-          tensor_spec.TensorSpec(
+          tensor.TensorSpec(
               dtype=x.dtype, shape=x.shape, name="batch_" + str(i))
           for i, x in enumerate(args)
       ])
 
       with ops.name_scope("batch") as name:
         for a in args:
-          if not isinstance(a, ops.Tensor):
+          if not isinstance(a, tensor.Tensor):
             raise ValueError("All arguments to functions decorated with "
                              "`batch_function`  are supposed to be Tensors; "
                              f"found {a!r}.")

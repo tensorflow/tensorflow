@@ -29,8 +29,8 @@ namespace profiler {
 // Convert XSpace protos to a tool specific data.
 // Return the serialized string of tool specific data when the conversion is
 // successful, else return error status.
-StatusOr<std::string> ConvertMultiXSpacesToToolData(
-    const SessionSnapshot& session_snapshot, const absl::string_view tool_name,
+absl::StatusOr<std::string> ConvertMultiXSpacesToToolData(
+    const SessionSnapshot& session_snapshot, absl::string_view tool_name,
     const ToolOptions& options);
 
 }  // namespace profiler

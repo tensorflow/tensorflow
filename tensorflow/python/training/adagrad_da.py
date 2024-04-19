@@ -16,9 +16,9 @@
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_training_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.training import optimizer
-from tensorflow.python.training import training_ops
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -109,7 +109,7 @@ class AdagradDAOptimizer(optimizer.Optimizer):
     gg_acc = self.get_slot(var, "gradient_squared_accumulator")
     with ops.device(var.device):
       global_step = array_ops.identity(self._global_step_on_worker)
-    return training_ops.apply_adagrad_da(
+    return gen_training_ops.apply_adagrad_da(
         var,
         g_acc,
         gg_acc,
@@ -125,7 +125,7 @@ class AdagradDAOptimizer(optimizer.Optimizer):
     gg_acc = self.get_slot(var, "gradient_squared_accumulator")
     with ops.device(var.device):
       global_step = array_ops.identity(self._global_step_on_worker)
-    return training_ops.resource_apply_adagrad_da(
+    return gen_training_ops.resource_apply_adagrad_da(
         var.handle,
         g_acc.handle,
         gg_acc.handle,
@@ -141,7 +141,7 @@ class AdagradDAOptimizer(optimizer.Optimizer):
     gg_acc = self.get_slot(var, "gradient_squared_accumulator")
     with ops.device(var.device):
       global_step = array_ops.identity(self._global_step_on_worker)
-    return training_ops.sparse_apply_adagrad_da(
+    return gen_training_ops.sparse_apply_adagrad_da(
         var,
         g_acc,
         gg_acc,
@@ -158,7 +158,7 @@ class AdagradDAOptimizer(optimizer.Optimizer):
     gg_acc = self.get_slot(var, "gradient_squared_accumulator")
     with ops.device(var.device):
       global_step = array_ops.identity(self._global_step_on_worker)
-    return training_ops.resource_sparse_apply_adagrad_da(
+    return gen_training_ops.resource_sparse_apply_adagrad_da(
         var.handle,
         g_acc.handle,
         gg_acc.handle,

@@ -56,7 +56,7 @@ class FilterDatasetParams : public DatasetParams {
           absl::StrCat(FilterDatasetOp::kOtherArguments, "_", i));
     }
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status GetAttributes(AttributeVector* attr_vector) const override {
@@ -65,7 +65,7 @@ class FilterDatasetParams : public DatasetParams {
                     {"output_shapes", output_shapes_},
                     {"output_types", output_dtypes_},
                     {"metadata", ""}};
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   std::vector<FunctionDef> func_lib() const override { return func_lib_; }
@@ -272,7 +272,7 @@ TEST_P(ParameterizedInvalidPredicateFuncTest, InvalidPredicateFunc) {
   EXPECT_EQ(
       iterator_->GetNext(iterator_ctx_.get(), &out_tensors, &end_of_sequence)
           .code(),
-      tensorflow::error::INVALID_ARGUMENT);
+      absl::StatusCode::kInvalidArgument);
   EXPECT_TRUE(out_tensors.empty());
 }
 

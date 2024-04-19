@@ -157,7 +157,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_TYPES_EQ(context, op_context.off_value->type,
                           op_context.dtype);
 
-  if (!IsConstantTensor(op_context.depth)) {
+  if (!IsConstantOrPersistentTensor(op_context.depth)) {
     SetTensorToDynamic(op_context.output);
     return kTfLiteOk;
   }
@@ -169,7 +169,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   OneHotContext op_context{context, node};
 
   if (IsDynamicTensor(op_context.output)) {
-    ResizeOutputTensor(context, op_context);
+    TF_LITE_ENSURE_OK(context, ResizeOutputTensor(context, op_context));
   }
 
   switch (op_context.output->type) {

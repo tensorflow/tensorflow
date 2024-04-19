@@ -94,7 +94,7 @@ TEST(Grappler, DeviceTypeNotSet) {
   tensorflow::Status status = InitGraphPlugin(plugin_init);
   ASSERT_EQ(status.code(), tensorflow::error::FAILED_PRECONDITION);
   ASSERT_EQ(
-      status.error_message(),
+      status.message(),
       "'device_type' field in TP_OptimizerRegistrationParams must be set.");
 }
 
@@ -109,7 +109,7 @@ TEST(Grappler, OptimizeFuncNotSet) {
 
   tensorflow::Status status = InitGraphPlugin(plugin_init);
   ASSERT_EQ(status.code(), tensorflow::error::FAILED_PRECONDITION);
-  ASSERT_EQ(status.error_message(),
+  ASSERT_EQ(status.message(),
             "'optimize_func' field in TP_Optimizer must be set.");
 }
 

@@ -81,7 +81,8 @@ class OpSegment {
   mutable mutex mu_;
   SessionMap sessions_ TF_GUARDED_BY(mu_);
 
-  TF_DISALLOW_COPY_AND_ASSIGN(OpSegment);
+  OpSegment(const OpSegment&) = delete;
+  void operator=(const OpSegment&) = delete;
 };
 
 }  // end namespace tensorflow

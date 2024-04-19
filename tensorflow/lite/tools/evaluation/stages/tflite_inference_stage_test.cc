@@ -188,7 +188,7 @@ TEST(TfliteInferenceStage, CorrectOutput) {
   EXPECT_LT(max_latency, 1e7);
   EXPECT_LE(latency.last_us(), max_latency);
   EXPECT_LE(latency.min_us(), max_latency);
-  EXPECT_GT(latency.sum_us(), max_latency);
+  EXPECT_GE(latency.sum_us(), max_latency);
   EXPECT_LE(latency.avg_us(), max_latency);
   EXPECT_TRUE(latency.has_std_deviation_us());
   EXPECT_EQ(

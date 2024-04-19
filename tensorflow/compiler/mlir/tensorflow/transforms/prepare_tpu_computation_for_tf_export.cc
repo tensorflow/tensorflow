@@ -47,8 +47,8 @@ bool IsCommunicationOp(Operation* op) {
 // subcomputation in the TF/XLA bridge.
 bool SupportsCommunicationComputation(Operation* op) {
   return isa<TF::IfRegionOp, TF::WhileRegionOp, TF::CaseRegionOp,
-             TF::StatefulPartitionedCallOp, TF::PartitionedCallOp,
-             TF::LegacyCallOp>(op);
+             TF::XlaCallModuleOp, TF::StatefulPartitionedCallOp,
+             TF::PartitionedCallOp, TF::LegacyCallOp>(op);
 }
 
 #define GEN_PASS_DEF_PREPARETPUCOMPUTATIONFORTFEXPORTPASS
@@ -65,8 +65,17 @@ class RewriteXlaHostComputeMlir
  public:
   using OpRewritePattern<TF::_XlaHostComputeMlirOp>::OpRewritePattern;
 
-  LogicalResult matchAndRewrite(TF::_XlaHostComputeMlirOp op,
-                                PatternRewriter& rewriter) const override {
+  LogicalResult match(TF::_XlaHostComputeMlirOp op) const override {
+    if (op.getManualSharding()) {
+      // This rewrite does not support manual_sharding. It is expected that the
+      // _XlaHostComputeMlirOp registered as an MlirXlaOpKernel will handle this
+      // case later once the XlaBuilder graph reaches it.
+      return failure();
+    }
+    return success();
+  }
+  void rewrite(TF::_XlaHostComputeMlirOp op,
+               PatternRewriter& rewriter) const override {
     llvm::SmallVector<Attribute> shape_attrs;
     shape_attrs.reserve(op.getNumResults());
     for (Type ty : op.getResultTypes()) {
@@ -93,13 +102,14 @@ class RewriteXlaHostComputeMlir
       auto result_type =
           RankedTensorType::get({3}, rewriter.getType<TF::StringType>());
       auto dynamic_key =
-          rewriter.create<TF::_TPUCompileMlirPlaceholderProgramKeyOp>(
+          rewriter.create<TF::_XlaCompileMlirPlaceholderProgramKeyOp>(
               func.getLoc(), /*program=*/result_type, llvm::ArrayRef<Value>{});
 
       auto recv_at_host = rewriter.create<TF::_XlaRecvAtHostOp>(
           func.getLoc(), op.getOperandTypes(), /*dynamic_key=*/dynamic_key,
           op.getSendKeyAttr(),
-          /*device_ordinal=*/rewriter.getI64IntegerAttr(0));
+          /*device_ordinal=*/rewriter.getI64IntegerAttr(0),
+          rewriter.getStringAttr("TPU"));
       for (auto result :
            llvm::zip(cloned_func.getArguments(), recv_at_host->getResults())) {
         std::get<0>(result).replaceAllUsesWith(std::get<1>(result));
@@ -110,7 +120,8 @@ class RewriteXlaHostComputeMlir
           func.getLoc(),
           cloned_func.getBody().front().getTerminator()->getOperands(),
           /*dynamic_key=*/dynamic_key, op.getRecvKeyAttr(),
-          /*device_ordinal=*/rewriter.getI64IntegerAttr(0));
+          /*device_ordinal=*/rewriter.getI64IntegerAttr(0),
+          rewriter.getStringAttr("TPU"));
     }
 
     constexpr int64_t kDefaultCostEstimate = 1000000;
@@ -124,7 +135,6 @@ class RewriteXlaHostComputeMlir
         op.getRecvKeyAttr(),
         /*cost_estimate_ns=*/rewriter.getI64IntegerAttr(kDefaultCostEstimate),
         /*tpu_core=*/rewriter.getI64IntegerAttr(0));
-    return success();
   }
 };
 

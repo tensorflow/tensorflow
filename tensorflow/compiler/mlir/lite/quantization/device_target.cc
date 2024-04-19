@@ -23,9 +23,13 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
-#include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/lite/quantization/numerical_utils.h"
@@ -52,10 +56,10 @@ DeviceTarget::DeviceTarget(MLIRContext* ctx) : ctx_(ctx) {
   assert(qi8n_ == qi8n_);
 }
 
-Optional<KernelSpec> DeviceTarget::GetKernelSpec(
+std::optional<KernelSpec> DeviceTarget::GetKernelSpec(
     llvm::StringRef kernel, const KernelSpecs::Signature& signature) const {
   auto kernel_specs_it = specs_.find(kernel);
-  if (kernel_specs_it == specs_.end()) return llvm::None;
+  if (kernel_specs_it == specs_.end()) return std::nullopt;
   return kernel_specs_it->getValue().Find(signature);
 }
 

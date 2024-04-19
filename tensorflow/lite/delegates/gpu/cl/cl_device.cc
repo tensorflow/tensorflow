@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_split.h"
+#include "tensorflow/lite/delegates/gpu/cl/opencl_wrapper.h"
 #include "tensorflow/lite/delegates/gpu/cl/util.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/experimental/acceleration/compatibility/android_info.h"
@@ -61,6 +62,39 @@ void ParseQualcommOpenClCompilerVersion(
   result->major = (main_part[0] - '0') * 10 + (main_part[1] - '0');
   result->minor = (main_part[3] - '0') * 10 + (main_part[4] - '0');
   result->patch = (main_part[6] - '0') * 10 + (main_part[7] - '0');
+}
+
+static void ParsePowerVRDriverVersion(const std::string& cl_driver_version,
+                                      PowerVRInfo::DriverVersion& result) {
+  size_t position = cl_driver_version.find('@');
+  if (position == std::string::npos) {
+    return;
+  }
+
+  // string format: "*.**@*******" where * is digit
+  int main = 0;
+  size_t curpos = 0;
+  while (curpos < position && absl::ascii_isdigit(cl_driver_version[curpos])) {
+    main = main * 10 + cl_driver_version[curpos] - '0';
+    ++curpos;
+  }
+
+  ++curpos;
+  int minor = 0;
+  while (curpos < position) {
+    minor = minor * 10 + cl_driver_version[curpos] - '0';
+    ++curpos;
+  }
+
+  curpos = position + 1;
+  int id = 0;
+  while (curpos < cl_driver_version.length()) {
+    id = id * 10 + cl_driver_version[curpos] - '0';
+    ++curpos;
+  }
+  result.branch_main = main;
+  result.branch_minor = minor;
+  result.id = id;
 }
 
 template <>
@@ -225,12 +259,17 @@ GpuInfo GpuInfoFromDeviceID(cl_device_id id, cl_platform_id platform_id) {
     info.opencl_info.supports_fp16_rtn = false;
   }
 
-  if (info.IsPowerVR() && !info.opencl_info.supports_fp16) {
-    // PowerVR doesn't have full support of fp16 and so doesn't list this
-    // extension. But it can support fp16 in MADs and as buffers/textures types,
-    // so we will use it.
-    info.opencl_info.supports_fp16 = true;
-    info.opencl_info.supports_fp16_rtn = info.opencl_info.supports_fp32_rtn;
+  if (info.IsPowerVR()) {
+    if (!info.powervr_info.IsBetterThan(PowerVRGpu::kRogueGm9xxx)) {
+      // Some GPU older than RogueGe8xxx has accuracy issue with FP16.
+      info.opencl_info.supports_fp16 = false;
+    } else if (!info.opencl_info.supports_fp16) {
+      // PowerVR doesn't have full support of fp16 and so doesn't list this
+      // extension. But it can support fp16 in MADs and as buffers/textures
+      // types, so we will use it.
+      info.opencl_info.supports_fp16 = true;
+      info.opencl_info.supports_fp16_rtn = info.opencl_info.supports_fp32_rtn;
+    }
   }
 
   if (!info.opencl_info.supports_image3d_writes &&
@@ -271,7 +310,15 @@ GpuInfo GpuInfoFromDeviceID(cl_device_id id, cl_platform_id platform_id) {
   info.opencl_info.max_work_group_size_z = max_work_group_sizes.z;
   info.opencl_info.max_work_group_total_size =
       GetDeviceInfo<size_t>(id, CL_DEVICE_MAX_WORK_GROUP_SIZE);
-
+  info.opencl_info.dedicated_local_memory =
+      (GetDeviceInfo<cl_device_local_mem_type>(id, CL_DEVICE_LOCAL_MEM_TYPE) ==
+       CL_LOCAL);
+  if (info.IsCL30OrHigher()) {
+    info.opencl_info.preferred_work_group_size_multiple =
+        GetDeviceInfo<size_t>(id, CL_DEVICE_PREFERRED_WORK_GROUP_SIZE_MULTIPLE);
+  } else {
+    info.opencl_info.preferred_work_group_size_multiple = 0;
+  }
   info.opencl_info.base_addr_align_in_bits =
       GetDeviceInfo<cl_uint>(id, CL_DEVICE_MEM_BASE_ADDR_ALIGN);
   info.opencl_info.image_pitch_alignment = 0;
@@ -319,6 +366,9 @@ GpuInfo GpuInfoFromDeviceID(cl_device_id id, cl_platform_id platform_id) {
   if (info.IsAdreno()) {
     ParseQualcommOpenClCompilerVersion(info.opencl_info.driver_version,
                                        &info.adreno_info.cl_compiler_version);
+  } else if (info.IsPowerVR()) {
+    ParsePowerVRDriverVersion(info.opencl_info.driver_version,
+                              info.powervr_info.driver_version);
   }
   return info;
 }
@@ -416,6 +466,9 @@ absl::Status CreateDefaultGPUDevice(CLDevice* result) {
   }
 
   *result = CLDevice(devices[0], platform_id);
+
+  LoadOpenCLFunctionExtensions(platform_id);
+
   return absl::OkStatus();
 }
 

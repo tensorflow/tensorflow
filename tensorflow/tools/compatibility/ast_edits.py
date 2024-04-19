@@ -452,20 +452,23 @@ class _PastaEditVisitor(ast.NodeVisitor):
                      "script cannot handle these automatically." % full_name)
 
       reordered = function_reorders[full_name]
+      new_args = []
       new_keywords = []
       idx = 0
       for arg in node.args:
         if sys.version_info[:2] >= (3, 5) and isinstance(arg, ast.Starred):
           continue  # Can't move Starred to keywords
         keyword_arg = reordered[idx]
-        keyword = ast.keyword(arg=keyword_arg, value=arg)
-        new_keywords.append(keyword)
+        if keyword_arg:
+          new_keywords.append(ast.keyword(arg=keyword_arg, value=arg))
+        else:
+          new_args.append(arg)
         idx += 1
 
       if new_keywords:
         self.add_log(INFO, node.lineno, node.col_offset,
                      "Added keywords to args of function %r" % full_name)
-        node.args = []
+        node.args = new_args
         node.keywords = new_keywords + (node.keywords or [])
         return True
     return False

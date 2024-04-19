@@ -18,7 +18,9 @@ limitations under the License.
 
 #include <stdint.h>
 
-#include "tensorflow/lite/c/common.h"
+#include <cstddef>
+
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/delegates/gpu/delegate_options.h"
 
 #ifdef __cplusplus
@@ -32,11 +34,25 @@ extern "C" {
 // make use of the fastest available on a device.
 //
 // When `options` is set to `nullptr`, then default options are used.
+//
+// `TfLiteGpuDelegateV2Create` creates an instance for use with the synchronous
+// API.  `TfLiteGpuDelegateV2CreateAsync` creates an instance for use with the
+// asynchronous API.
 TFL_CAPI_EXPORT TfLiteDelegate* TfLiteGpuDelegateV2Create(
     const TfLiteGpuDelegateOptionsV2* options);
+#if defined(__ANDROID__)
+TFL_CAPI_EXPORT TfLiteDelegate* TfLiteGpuDelegateV2CreateAsync(
+    const TfLiteGpuDelegateOptionsV2* options);
+#endif
 
 // Destroys a delegate created with `TfLiteGpuDelegateV2Create` call.
 TFL_CAPI_EXPORT void TfLiteGpuDelegateV2Delete(TfLiteDelegate* delegate);
+
+TFL_CAPI_EXPORT TfLiteDelegate* tflite_plugin_create_delegate(
+    const char* const* options_keys, const char* const* options_values,
+    size_t num_options, void (*report_error)(const char*));
+
+TFL_CAPI_EXPORT void tflite_plugin_destroy_delegate(TfLiteDelegate* delegate);
 
 #ifdef __cplusplus
 }

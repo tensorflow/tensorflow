@@ -12,6 +12,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "mlir/Dialect/Func/Extensions/AllExtensions.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/IR/SCF.h"  // from @llvm-project
@@ -19,6 +20,7 @@ limitations under the License.
 #include "mlir/InitAllDialects.h"  // from @llvm-project
 #include "mlir/InitAllPasses.h"  // from @llvm-project
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"  // from @llvm-project
+#include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/init_mlir.h"
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
@@ -39,7 +41,9 @@ int main(int argc, char **argv) {
                   mlir::arith::ArithDialect, mlir::tf_type::TFTypeDialect,
                   mlir::quant::QuantizationDialect,
                   mlir::quantfork::QuantizationForkDialect,
-                  mlir::tf_executor::TensorFlowExecutorDialect>();
+                  mlir::tf_executor::TensorFlowExecutorDialect,
+                  mlir::stablehlo::StablehloDialect>();
+  mlir::func::registerAllExtensions(registry);
   return failed(
       mlir::MlirOptMain(argc, argv, "TF quant Pass Driver\n", registry));
 }

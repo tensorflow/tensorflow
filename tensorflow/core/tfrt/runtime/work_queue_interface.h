@@ -16,6 +16,9 @@ limitations under the License.
 #define TENSORFLOW_CORE_TFRT_RUNTIME_WORK_QUEUE_INTERFACE_H_
 
 #include <cstdint>
+#include <memory>
+#include <string>
+#include <utility>
 
 #include "tensorflow/core/platform/context.h"
 #include "tensorflow/core/platform/statusor.h"
@@ -53,7 +56,7 @@ class WorkQueueInterface : public tfrt::ConcurrentWorkQueue {
   // interface so that the interface is more composable. Per-request logic
   // should be handled separately.
   ABSL_DEPRECATED("Create the instance directly instead.")
-  virtual StatusOr<std::unique_ptr<WorkQueueInterface>> InitializeRequest(
+  virtual absl::StatusOr<std::unique_ptr<WorkQueueInterface>> InitializeRequest(
       int64_t request_id) const {
     return {nullptr};
   }
@@ -84,17 +87,17 @@ template <typename Callable>
 tfrt::TaskFunction WrapWork(int64_t id, absl::string_view name,
                             Callable&& work) {
   tensorflow::Context context(tensorflow::ContextKind::kThread);
-  return tfrt::TaskFunction([id, name = std::string(name),
+  tsl::profiler::TraceMeProducer producer(
+      [&]() { return absl::StrCat("producer_", name); },
+      tsl::profiler::ContextType::kTfrtExecutor);
+  return tfrt::TaskFunction([traceme_id = producer.GetContextId(),
+                             name = std::string(name),
                              context = std::move(context),
                              work = std::forward<Callable>(work)]() mutable {
-    // From TraceMeProducer in the function that launches graph execution, eg.
-    // SavedModelImpl::Run().
-    tensorflow::profiler::TraceMeConsumer activity(
-        [&]() {
-          return tensorflow::profiler::TraceMeEncode(name, {{"id", id}});
-        },
-        tensorflow::profiler::ContextType::kTfrtExecutor, id,
-        tensorflow::profiler::TraceMeLevel::kInfo);
+    tsl::profiler::TraceMeConsumer consumer(
+        [&]() { return absl::StrCat("consumer_", name); },
+        tsl::profiler::ContextType::kTfrtExecutor, traceme_id,
+        tsl::profiler::TraceMeLevel::kInfo);
     tensorflow::WithContext wc(context);
     std::forward<Callable>(work)();
   });

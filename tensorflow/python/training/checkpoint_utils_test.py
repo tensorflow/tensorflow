@@ -132,7 +132,6 @@ class CheckpointsTest(test.TestCase):
         [("useful_scope/var4", [9, 9]), ("var1", [1, 10]), ("var2", [10, 10]),
          ("var3", [100, 100])])
 
-
   def testInitFromCheckpoint(self):
     checkpoint_dir = self.get_temp_dir()
     with self.cached_session() as session:
@@ -315,7 +314,7 @@ class CheckpointsTest(test.TestCase):
         self.assertAllEqual(my1_values, v1)
         my2_values = session.run(my2_var_list)
         # Verify we created different number of partitions.
-        self.assertNotEquals(len(my2_values), len(v1))
+        self.assertNotEqual(len(my2_values), len(v1))
         # Verify the values were correctly initialized inspite of different
         # partitions.
         full_my2_values = np.concatenate(my2_values, axis=0)

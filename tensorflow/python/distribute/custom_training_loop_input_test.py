@@ -31,7 +31,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import control_flow_assert
 from tensorflow.python.ops import map_fn
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
@@ -340,8 +340,8 @@ class InputIterationTest(test.TestCase, parameterized.TestCase,
   def testDatasetAssertWithDynamicBatch(self, distribution):
     # Regression test for github issue 33517.
     def step_fn(data):
-      assert_op = control_flow_ops.Assert(math_ops.less_equal(
-          math_ops.reduce_max(data), 100.), [data])
+      assert_op = control_flow_assert.Assert(
+          math_ops.less_equal(math_ops.reduce_max(data), 100.), [data])
       with ops.control_dependencies([assert_op]):
         return math_ops.square(data)
 

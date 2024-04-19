@@ -19,12 +19,15 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <string>
+#include <vector>
 
+#include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/dispatcher_client.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/thread_annotations.h"
 
 namespace tensorflow {
 namespace data {
@@ -56,9 +59,14 @@ class DataServiceSplitProvider : public SplitProvider {
   const int64_t timeout_ms_;
 
   mutex mu_;
-  int64_t repetition_ = 0;
-  std::unique_ptr<DataServiceDispatcherClient> dispatcher_;
+  int64_t repetition_ TF_GUARDED_BY(mu_) = 0;
+  std::unique_ptr<DataServiceDispatcherClient> dispatcher_ TF_GUARDED_BY(mu_);
 };
+
+// Makes split providers for `dataset_def` and stores them in `split_providers`.
+Status CreateSplitProviders(
+    const DatasetDef& dataset_def,
+    std::vector<std::unique_ptr<SplitProvider>>& split_providers);
 
 }  // namespace data
 }  // namespace tensorflow

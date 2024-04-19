@@ -16,7 +16,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/xnnpack/transpose_conv_tester.h"
 
 #include <algorithm>
-#include <cassert>
+#include <array>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -28,10 +28,10 @@ limitations under the License.
 #include "fp16.h"  // from @FP16
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/core/c/builtin_op_data.h"
+#include "tensorflow/lite/core/kernels/register.h"
 #include "tensorflow/lite/core/model.h"
 #include "tensorflow/lite/delegates/xnnpack/test_util.h"
 #include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/schema/schema_conversion_utils.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/version.h"
@@ -83,13 +83,11 @@ void TransposeConvTester::Test(TfLiteDelegate* delegate) const {
   const int input_data_size =
       BatchSize() * InputHeight() * InputWidth() * InputChannels();
   float* default_input_data = default_interpreter->typed_input_tensor<float>(0);
-  std::generate(default_input_data, default_input_data + input_data_size,
-                std::ref(f32rng));
+  std::generate_n(default_input_data, input_data_size, std::ref(f32rng));
 
   float* xnnpack_input_data =
       delegate_interpreter->typed_input_tensor<float>(0);
-  std::copy(default_input_data, default_input_data + input_data_size,
-            xnnpack_input_data);
+  std::copy_n(default_input_data, input_data_size, xnnpack_input_data);
 
   ASSERT_EQ(default_interpreter->Invoke(), kTfLiteOk);
   ASSERT_EQ(delegate_interpreter->Invoke(), kTfLiteOk);
@@ -111,295 +109,331 @@ void TransposeConvTester::Test(TfLiteDelegate* delegate) const {
 std::vector<char> TransposeConvTester::CreateTfLiteModel() const {
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
-  auto f32rng = std::bind(std::uniform_real_distribution<float>(), rng);
+  auto range_rng = std::bind(
+      std::uniform_real_distribution<float>(-25.0f, 25.0f), std::ref(rng));
 
-  const std::vector<int32_t> input_shape = {BatchSize(), InputHeight(),
-                                            InputWidth(), InputChannels()};
-  const std::vector<int32_t> output_shape = {BatchSize(), OutputHeight(),
-                                             OutputWidth(), OutputChannels()};
+  /*************************** Define operator codes **************************/
+  flatbuffers::FlatBufferBuilder builder;
+  std::vector<flatbuffers::Offset<OperatorCode>> operator_codes{
+      {CreateOperatorCode(builder, BuiltinOperator_TRANSPOSE_CONV)}};
+  int dequantize_operator_code = -1;
+  switch (WeightsType()) {
+    case WeightsType::kFP32:
+      break;
+    case WeightsType::kFP16:
+    case WeightsType::kTensorWiseQuantizedInt8:
+    case WeightsType::kChannelWiseQuantizedInt8:
+      dequantize_operator_code = operator_codes.size();
+      operator_codes.emplace_back(
+          CreateOperatorCode(builder, BuiltinOperator_DEQUANTIZE));
+      break;
+  }
+  int densify_operator_code = -1;
+  if (SparseWeights()) {
+    densify_operator_code = operator_codes.size();
+    operator_codes.emplace_back(
+        CreateOperatorCode(builder, BuiltinOperator_DENSIFY));
+  }
+
+  /*********************** Generate filter and bias data **********************/
+  std::vector<float> filter_data(OutputChannels() * KernelHeight() *
+                                 KernelWidth() * InputChannels());
+  std::vector<float> bias_data(OutputChannels());
+  for (int32_t oc = 0; oc < OutputChannels(); oc++) {
+    // Use the same range of all-positive or all-negative values to generate
+    // all weights within the same output channel, but different ranges for
+    // different output channels. This ensures that no catastrophic
+    // cancellation occur, but test covers both positive and negative
+    // inputs.
+    const float range = range_rng();
+    const auto value_dist = std::uniform_real_distribution<float>(
+        std::min(range, 0.0f), std::max(range, 0.0f));
+    auto value_rng = std::bind(value_dist, std::ref(rng));
+    bias_data[oc] = value_rng();
+    for (int32_t ic = 0; ic < InputChannels(); ic++) {
+      for (int32_t y = 0; y < KernelHeight(); y++) {
+        for (int32_t x = 0; x < KernelWidth(); x++) {
+          const int32_t index =
+              ((oc * KernelHeight() + y) * KernelWidth() + x) *
+                  InputChannels() +
+              ic;
+          filter_data[index] = value_rng();
+        }
+      }
+    }
+  }
+
+  /************************ Define sparsity parameters ************************/
+  flatbuffers::Offset<SparsityParameters> filter_sparsity_params = 0;
   const std::vector<int32_t> filter_shape = {OutputChannels(), KernelHeight(),
                                              KernelWidth(), InputChannels()};
-  const std::vector<int32_t> bias_shape = {OutputChannels()};
+  if (SparseWeights()) {
+    // Sparse tensor in TFLite can be in different formats. Here we choose the
+    // simplest configuration that
+    //   1. all dimensions are dense,
+    //   2. in-order traversal, and
+    //   3. no block configuration.
+    const int dims_count = filter_shape.size();
+    std::vector<flatbuffers::Offset<DimensionMetadata>> dim_metadata(
+        dims_count);
+    std::vector<int> traversal_order(dims_count);
+    for (int i = 0; i < dims_count; i++) {
+      traversal_order[i] = i;
+      dim_metadata[i] = CreateDimensionMetadata(builder, DimensionType_DENSE,
+                                                filter_shape[i]);
+    }
+    filter_sparsity_params =
+        CreateSparsityParameters(builder, builder.CreateVector(traversal_order),
+                                 0, builder.CreateVector(dim_metadata));
+  }
 
-  flatbuffers::FlatBufferBuilder builder;
+  /****************************** Define buffers ******************************/
+  std::vector<flatbuffers::Offset<tflite::Buffer>> buffers{
+      {CreateBuffer(builder, builder.CreateVector({}))}};
+  tflite::TensorType quantized_filter_type = TensorType_FLOAT32;
+  flatbuffers::Offset<tflite::QuantizationParameters>
+      filter_quantization_params = 0;
+  int filter_buffer_id = 0, quantized_filter_buffer_id = 0;
+  switch (WeightsType()) {
+    case WeightsType::kFP32:
+      filter_buffer_id = buffers.size();
+      buffers.emplace_back(CreateBuffer(
+          builder, builder.CreateVector(
+                       reinterpret_cast<const uint8_t*>(filter_data.data()),
+                       sizeof(float) * filter_data.size())));
+      break;
+    case WeightsType::kFP16: {
+      std::vector<uint16_t> quantized_filter_data(filter_data.size());
+      std::transform(filter_data.begin(), filter_data.end(),
+                     quantized_filter_data.begin(), fp16_ieee_from_fp32_value);
 
-  std::vector<flatbuffers::Offset<OperatorCode>> operator_codes;
+      quantized_filter_buffer_id = buffers.size();
+      buffers.emplace_back(CreateBuffer(
+          builder,
+          builder.CreateVector(
+              reinterpret_cast<const uint8_t*>(quantized_filter_data.data()),
+              sizeof(uint16_t) * quantized_filter_data.size())));
 
-  std::vector<flatbuffers::Offset<tflite::Operator>> operators;
-  std::vector<flatbuffers::Offset<Tensor>> tensors;
+      quantized_filter_type = TensorType_FLOAT16;
+      break;
+    }
+    case WeightsType::kTensorWiseQuantizedInt8:
+    case WeightsType::kChannelWiseQuantizedInt8: {
+      std::vector<float> filter_scales;
+      std::vector<int64_t> filter_zero_points;
+      int32_t filter_quantized_dimension = 0;
 
-  // Buffer 0 is a sentinel as required by the schema, means "no buffer".
-  std::vector<flatbuffers::Offset<tflite::Buffer>> buffers = {
-      CreateBuffer(builder, builder.CreateVector({}))};
-  const int kNoBuffer = 0;
+      std::vector<int8_t> quantized_filter_data(filter_data.size());
+      if (WeightsType() == WeightsType::kChannelWiseQuantizedInt8) {
+        filter_quantized_dimension =
+            static_cast<int32_t>(filter_shape.size()) - 1;
+        const int32_t num_scales = filter_shape[filter_quantized_dimension];
+        filter_scales = GetInt8QuantizationScalePerChannel(
+            filter_data.data(), filter_quantized_dimension, filter_shape);
+        filter_zero_points.resize(num_scales, 0);
+        QuantizeInt8PerChannel(filter_scales.data(), filter_zero_points.data(),
+                               filter_quantized_dimension, filter_data.data(),
+                               quantized_filter_data.data(), filter_shape);
+      } else {
+        filter_scales.resize(1, GetInt8QuantizationScale(filter_data));
+        filter_zero_points.resize(1, 0);
+        std::transform(filter_data.begin(), filter_data.end(),
+                       quantized_filter_data.begin(),
+                       std::bind(QuantizeInt8, std::placeholders::_1, 0,
+                                 filter_scales[0]));
+      }
 
-  // Create a tensor containing the expected output shape.
-  const int buffer_index_output_shape = buffers.size();
+      quantized_filter_buffer_id = buffers.size();
+      buffers.emplace_back(CreateBuffer(
+          builder,
+          builder.CreateVector(
+              reinterpret_cast<const uint8_t*>(quantized_filter_data.data()),
+              sizeof(int8_t) * quantized_filter_data.size())));
+
+      quantized_filter_type = TensorType_INT8;
+      filter_quantization_params = CreateQuantizationParameters(
+          builder, /*min=*/0, /*max=*/0,
+          builder.CreateVector<float>(filter_scales),
+          builder.CreateVector<int64_t>(filter_zero_points),
+          /*details_type=*/QuantizationDetails_NONE,
+          /*details=*/0, filter_quantized_dimension);
+      break;
+    }
+  }
+  tflite::TensorType quantized_bias_type = TensorType_FLOAT32;
+  int bias_buffer_id = 0, quantized_bias_buffer_id = 0;
+  switch (BiasType()) {
+    case BiasType::kNone:
+      break;
+    case BiasType::kFP32:
+      bias_buffer_id = buffers.size();
+      buffers.emplace_back(CreateBuffer(
+          builder, builder.CreateVector(
+                       reinterpret_cast<const uint8_t*>(bias_data.data()),
+                       sizeof(float) * bias_data.size())));
+      break;
+    case BiasType::kFP16: {
+      std::vector<uint16_t> quantized_bias_data(bias_data.size());
+      std::transform(bias_data.begin(), bias_data.end(),
+                     quantized_bias_data.begin(), fp16_ieee_from_fp32_value);
+
+      quantized_bias_buffer_id = buffers.size();
+      buffers.emplace_back(CreateBuffer(
+          builder,
+          builder.CreateVector(
+              reinterpret_cast<const uint8_t*>(quantized_bias_data.data()),
+              sizeof(uint16_t) * quantized_bias_data.size())));
+
+      quantized_bias_type = TensorType_FLOAT16;
+      break;
+    }
+  }
+  const std::array<int32_t, 4> output_shape{
+      {BatchSize(), OutputHeight(), OutputWidth(), OutputChannels()}};
+  const int output_shape_buffer_id = buffers.size();
   buffers.emplace_back(CreateBuffer(
       builder, builder.CreateVector(
                    reinterpret_cast<const uint8_t*>(output_shape.data()),
                    sizeof(int32_t) * output_shape.size())));
 
-  std::vector<int32_t> output_shape_tensor_shape = {4};
-  const int tensor_index_output_shape = tensors.size();
-  tensors.emplace_back(
-      CreateTensorDirect(builder, &output_shape_tensor_shape, TensorType_INT32,
-                         /*buffer=*/buffer_index_output_shape));
-
-  // The last one (two) tensor(s) will be the float32 kernel (and bias if used).
-  if (FP16Weights()) {
-    const int kOpCodeIndexDequantize = operator_codes.size();
-    operator_codes.emplace_back(
-        CreateOperatorCode(builder, BuiltinOperator_DEQUANTIZE));
-
-    auto f16rng = std::bind(fp16_ieee_from_fp32_value, f32rng);
-
-    std::vector<uint16_t> filter_data(OutputChannels() * KernelHeight() *
-                                      KernelWidth() * InputChannels());
-
-    std::generate(filter_data.begin(), filter_data.end(), f16rng);
-
-    const int buffer_index_filter = buffers.size();
-    buffers.emplace_back(CreateBuffer(
-        builder, builder.CreateVector(
-                     reinterpret_cast<const uint8_t*>(filter_data.data()),
-                     sizeof(uint16_t) * filter_data.size())));
-
-    const int tensor_index_float16_filter = tensors.size();
-    tensors.emplace_back(CreateTensorDirect(builder, &filter_shape,
-                                            TensorType_FLOAT16,
-                                            /*buffer=*/buffer_index_filter));
-
-    const int kInvalidIndex = -1;
-    int tensor_index_float16_bias = kInvalidIndex;
-    if (UseBias()) {
-      std::vector<uint16_t> bias_data(OutputChannels());
-      std::generate(bias_data.begin(), bias_data.end(), f16rng);
-
-      const int buffer_index_bias = buffers.size();
-      buffers.emplace_back(CreateBuffer(
-          builder, builder.CreateVector(
-                       reinterpret_cast<const uint8_t*>(bias_data.data()),
-                       sizeof(uint16_t) * bias_data.size())));
-
-      tensor_index_float16_bias = tensors.size();
-      tensors.emplace_back(CreateTensorDirect(builder, &bias_shape,
-                                              TensorType_FLOAT16,
-                                              /*buffer=*/buffer_index_bias));
-    }
-
-    const int tensor_index_filter = tensors.size();
-    tensors.emplace_back(CreateTensorDirect(
-        builder, &filter_shape, TensorType_FLOAT32, /*buffer=*/kNoBuffer));
-
-    const std::vector<int32_t> dequantize_filter_inputs = {
-        tensor_index_float16_filter};
-    const std::vector<int32_t> dequantize_filter_outputs{tensor_index_filter};
-    operators.emplace_back(CreateOperatorDirect(
-        builder, /*opcode_index=*/kOpCodeIndexDequantize,
-        &dequantize_filter_inputs, &dequantize_filter_outputs));
-
-    assert(tensor_index_filter + 1 == tensors.size());
-
-    if (UseBias()) {
-      const int tensor_index_bias = tensors.size();
-      tensors.emplace_back(CreateTensorDirect(
-          builder, &bias_shape, TensorType_FLOAT32, /*buffer=*/kNoBuffer));
-
-      const std::vector<int32_t> dequantize_bias_inputs = {
-          tensor_index_float16_bias};
-      const std::vector<int32_t> dequantize_bias_outputs = {tensor_index_bias};
-      operators.emplace_back(CreateOperatorDirect(
-          builder, /*opcode_index=*/kOpCodeIndexDequantize,
-          &dequantize_bias_inputs, &dequantize_bias_outputs));
-
-      assert(tensor_index_bias + 1 == tensors.size());
-    }
-  } else if (INT8Weights() || INT8ChannelWiseWeights()) {
-    const int kOpCodeIndexDequantize = operator_codes.size();
-    operator_codes.emplace_back(
-        CreateOperatorCode(builder, BuiltinOperator_DEQUANTIZE));
-
-    std::vector<float> filter_data(OutputChannels() * KernelHeight() *
-                                   KernelWidth() * InputChannels());
-    std::generate(filter_data.begin(), filter_data.end(), f32rng);
-
-    std::vector<float> filter_scales;
-    std::vector<int64_t> filter_zero_points;
-    int32_t filter_quantized_dimension = 0;
-    std::vector<int8_t> quantized_filter_data(filter_data.size());
-    if (INT8Weights()) {
-      filter_scales.resize(1, GetInt8QuantizationScale(filter_data));
-      filter_zero_points.resize(1, 0);
-      std::transform(
-          filter_data.begin(), filter_data.end(), quantized_filter_data.begin(),
-          std::bind(QuantizeInt8, std::placeholders::_1, 0, filter_scales[0]));
-    } else {
-      filter_quantized_dimension =
-          static_cast<int32_t>(filter_shape.size()) - 1;
-      const int32_t num_scales = filter_shape[filter_quantized_dimension];
-      filter_scales = GetInt8QuantizationScalePerChannel(
-          filter_data.data(), filter_quantized_dimension, filter_shape);
-      filter_zero_points.resize(num_scales, 0);
-      QuantizeInt8PerChannel(filter_scales.data(), filter_zero_points.data(),
-                             filter_quantized_dimension, filter_data.data(),
-                             quantized_filter_data.data(), filter_shape);
-    }
-    const int buffer_index_filter = buffers.size();
-    buffers.emplace_back(CreateBuffer(
+  /****************************** Define tensors ******************************/
+  std::vector<flatbuffers::Offset<tflite::Tensor>> tensors;
+  int sparse_filter_tensor_id = -1;
+  if (SparseWeights()) {
+    sparse_filter_tensor_id = tensors.size();
+    tensors.emplace_back(CreateTensor(
         builder,
-        builder.CreateVector(
-            reinterpret_cast<const uint8_t*>(quantized_filter_data.data()),
-            sizeof(int8_t) * quantized_filter_data.size())));
-
-    const int tensor_index_int8_filter = tensors.size();
-    tensors.emplace_back(CreateTensorDirect(
-        builder, &filter_shape, TensorType_INT8,
-        /*buffer=*/buffer_index_filter, /*name=*/nullptr,
-        CreateQuantizationParameters(
-            builder, /*min=*/0, /*max=*/0,
-            builder.CreateVector<float>(filter_scales),
-            builder.CreateVector<int64_t>(filter_zero_points),
-            /*details_type=*/QuantizationDetails_NONE,
-            /*details=*/0, filter_quantized_dimension)));
-
-    const int tensor_index_filter = tensors.size();
-    tensors.emplace_back(CreateTensorDirect(
-        builder, &filter_shape, TensorType_FLOAT32, /*buffer=*/kNoBuffer));
-
-    const std::vector<int32_t> dequantize_filter_inputs = {
-        tensor_index_int8_filter};
-    const std::vector<int32_t> dequantize_filter_outputs{tensor_index_filter};
-    operators.emplace_back(CreateOperatorDirect(
-        builder, /*opcode_index=*/kOpCodeIndexDequantize,
-        &dequantize_filter_inputs, &dequantize_filter_outputs));
-
-    assert(tensor_index_filter + 1 == tensors.size());
-
-    if (UseBias()) {
-      std::vector<float> bias_data(OutputChannels());
-      std::generate(bias_data.begin(), bias_data.end(), f32rng);
-
-      const int buffer_index_bias = buffers.size();
-      buffers.emplace_back(CreateBuffer(
-          builder, builder.CreateVector(
-                       reinterpret_cast<const uint8_t*>(bias_data.data()),
-                       sizeof(float) * bias_data.size())));
-
-      tensors.emplace_back(CreateTensorDirect(builder, &bias_shape,
-                                              TensorType_FLOAT32,
-                                              /*buffer=*/buffer_index_bias));
-    }
-  } else {
-    std::vector<float> filter_data(OutputChannels() * KernelHeight() *
-                                   KernelWidth() * InputChannels());
-
-    std::generate(filter_data.begin(), filter_data.end(), f32rng);
-
-    const int buffer_index_filter = buffers.size();
-    buffers.emplace_back(CreateBuffer(
-        builder, builder.CreateVector(
-                     reinterpret_cast<const uint8_t*>(filter_data.data()),
-                     sizeof(float) * filter_data.size())));
-
-    if (SparseWeights()) {
-      const int dims_count = filter_shape.size();
-      std::vector<flatbuffers::Offset<DimensionMetadata>> dim_metadata(
-          dims_count);
-      std::vector<int> traversal_order(dims_count);
-      for (int dim = 0; dim < dims_count; dim++) {
-        traversal_order[dim] = dim;
-        dim_metadata[dim] = CreateDimensionMetadata(
-            builder, DimensionType_DENSE, filter_shape[dim]);
-      }
-      flatbuffers::Offset<SparsityParameters> sparsity_parameters =
-          CreateSparsityParameters(
-              builder, builder.CreateVector(traversal_order),
-              /*block_map=*/0, builder.CreateVector(dim_metadata));
-      const int tensor_index_filter_sparse = tensors.size();
-      tensors.emplace_back(CreateTensorDirect(
-          builder, &filter_shape, TensorType_FLOAT32,
-          /*buffer=*/buffer_index_filter, /*name=*/nullptr, /*quantization=*/0,
-          /*is_variable=*/false, /*sparsity=*/sparsity_parameters));
-
-      const int opcode_index_densify = operator_codes.size();
-      operator_codes.emplace_back(
-          CreateOperatorCode(builder, BuiltinOperator_DENSIFY));
-
-      const int future_tensor_index_filter = tensors.size();
-      const std::vector<int32_t> densify_filter_inputs = {
-          tensor_index_filter_sparse};
-      const std::vector<int32_t> densify_filter_outputs = {
-          future_tensor_index_filter};
-      operators.emplace_back(CreateOperatorDirect(
-          builder, /*opcode_index=*/opcode_index_densify,
-          &densify_filter_inputs, &densify_filter_outputs));
-
-      // The dense filter tensor is just about to be added.
-      assert(future_tensor_index_filter == tensors.size());
-    }
-
-    tensors.emplace_back(CreateTensorDirect(
-        builder, &filter_shape, TensorType_FLOAT32,
-        /*buffer=*/SparseWeights() ? kNoBuffer : buffer_index_filter));
-
-    if (UseBias()) {
-      std::vector<float> bias_data(OutputChannels());
-      std::generate(bias_data.begin(), bias_data.end(), f32rng);
-
-      const int buffer_index_bias = buffers.size();
-      buffers.emplace_back(CreateBuffer(
-          builder, builder.CreateVector(
-                       reinterpret_cast<const uint8_t*>(bias_data.data()),
-                       sizeof(float) * bias_data.size())));
-
-      tensors.emplace_back(CreateTensorDirect(builder, &bias_shape,
-                                              TensorType_FLOAT32,
-                                              /*buffer=*/buffer_index_bias));
-    }
+        builder.CreateVector<int32_t>(filter_shape.data(), filter_shape.size()),
+        /*type=*/quantized_filter_type,
+        /*buffer=*/std::max(filter_buffer_id, quantized_filter_buffer_id),
+        /*name=*/0, filter_quantization_params,
+        /*is_variable=*/false, filter_sparsity_params));
+  }
+  int quantized_filter_tensor_id = -1;
+  if (quantized_filter_type != TensorType_FLOAT32) {
+    quantized_filter_tensor_id = tensors.size();
+    tensors.emplace_back(CreateTensor(
+        builder,
+        builder.CreateVector<int32_t>(filter_shape.data(), filter_shape.size()),
+        /*type=*/quantized_filter_type,
+        /*buffer=*/SparseWeights() ? 0 : quantized_filter_buffer_id,
+        /*name=*/0, filter_quantization_params));
+  }
+  int quantized_bias_tensor_id = -1;
+  const std::vector<int32_t> bias_shape = {OutputChannels()};
+  if (quantized_bias_type != TensorType_FLOAT32) {
+    quantized_bias_tensor_id = tensors.size();
+    tensors.emplace_back(CreateTensor(
+        builder,
+        builder.CreateVector<int32_t>(bias_shape.data(), bias_shape.size()),
+        quantized_bias_type, /*buffer=*/quantized_bias_buffer_id));
   }
 
-  const int top_tensor = tensors.size() - 1;
-  const int tensor_index_filter = UseBias() ? top_tensor - 1 : top_tensor;
+  const int input_tensor_id = tensors.size();
+  const std::array<int32_t, 4> input_shape{
+      {BatchSize(), InputHeight(), InputWidth(), InputChannels()}};
+  tensors.emplace_back(CreateTensor(
+      builder,
+      builder.CreateVector<int32_t>(input_shape.data(), input_shape.size()),
+      TensorType_FLOAT32));
 
-  const int tensor_index_input = tensors.size();
+  const int filter_tensor_id = tensors.size();
+  tensors.emplace_back(CreateTensor(
+      builder,
+      builder.CreateVector<int32_t>(filter_shape.data(), filter_shape.size()),
+      TensorType_FLOAT32,
+      /*buffer=*/SparseWeights() ? 0 : filter_buffer_id));
+
+  const int bias_tensor_id = tensors.size();
+  tensors.emplace_back(CreateTensor(
+      builder,
+      builder.CreateVector<int32_t>(bias_shape.data(), bias_shape.size()),
+      TensorType_FLOAT32, bias_buffer_id));
+
+  const int output_tensor_id = tensors.size();
+  tensors.emplace_back(CreateTensor(
+      builder,
+      builder.CreateVector<int32_t>(output_shape.data(), output_shape.size()),
+      TensorType_FLOAT32));
+
+  const int output_shape_tensor_id = tensors.size();
+  const std::array<int32_t, 1> output_shape_shape{{4}};
   tensors.emplace_back(
-      CreateTensorDirect(builder, &input_shape, TensorType_FLOAT32));
+      CreateTensor(builder,
+                   builder.CreateVector<int32_t>(output_shape_shape.data(),
+                                                 output_shape_shape.size()),
+                   TensorType_INT32, output_shape_buffer_id));
 
-  std::vector<int32_t> op_inputs = {tensor_index_output_shape,
-                                    tensor_index_filter, tensor_index_input};
-  if (UseBias()) {
-    const int tensor_index_bias = top_tensor;
-    op_inputs.push_back(tensor_index_bias);
+  /***************************** Define operators *****************************/
+  std::vector<flatbuffers::Offset<tflite::Operator>> operators;
+  if (SparseWeights()) {
+    const std::array<int32_t, 1> densify_filter_inputs{
+        {sparse_filter_tensor_id}};
+    const std::array<int32_t, 1> densify_filter_outputs{
+        {quantized_filter_tensor_id >= 0 ? quantized_filter_tensor_id
+                                         : filter_tensor_id}};
+    operators.emplace_back(CreateOperator(
+        builder, /*opcode_index=*/densify_operator_code,
+        builder.CreateVector<int32_t>(densify_filter_inputs.data(),
+                                      densify_filter_inputs.size()),
+        builder.CreateVector<int32_t>(densify_filter_outputs.data(),
+                                      densify_filter_outputs.size())));
   }
 
-  const int tensor_index_output = tensors.size();
-  tensors.emplace_back(
-      CreateTensorDirect(builder, &output_shape, TensorType_FLOAT32));
+  if (quantized_filter_tensor_id >= 0) {
+    const std::array<int32_t, 1> dequantize_filter_inputs{
+        {quantized_filter_tensor_id}};
+    const std::array<int32_t, 1> dequantize_filter_outputs{{filter_tensor_id}};
+    operators.emplace_back(CreateOperator(
+        builder, /*opcode_index=*/dequantize_operator_code,
+        builder.CreateVector<int32_t>(dequantize_filter_inputs.data(),
+                                      dequantize_filter_inputs.size()),
+        builder.CreateVector<int32_t>(dequantize_filter_outputs.data(),
+                                      dequantize_filter_outputs.size())));
+  }
 
-  const std::vector<int32_t> op_outputs = {tensor_index_output};
+  if (quantized_bias_tensor_id >= 0) {
+    const std::array<int32_t, 1> dequantize_bias_inputs{
+        {quantized_bias_tensor_id}};
+    const std::array<int32_t, 1> dequantize_bias_outputs{{bias_tensor_id}};
+    operators.emplace_back(CreateOperator(
+        builder, /*opcode_index=*/dequantize_operator_code,
+        builder.CreateVector<int32_t>(dequantize_bias_inputs.data(),
+                                      dequantize_bias_inputs.size()),
+        builder.CreateVector<int32_t>(dequantize_bias_outputs.data(),
+                                      dequantize_bias_outputs.size())));
+  }
 
-  const int opcode_index_transpose_conv = operator_codes.size();
-  operator_codes.emplace_back(
-      CreateOperatorCode(builder, BuiltinOperator_TRANSPOSE_CONV));
-
-  flatbuffers::Offset<TransposeConvOptions> transpose_conv_options =
+  std::vector<int32_t> op_inputs{
+      {output_shape_tensor_id, filter_tensor_id, input_tensor_id}};
+  if (HasBias()) {
+    op_inputs.push_back(bias_tensor_id);
+  }
+  const std::array<int32_t, 1> op_outputs{{output_tensor_id}};
+  const flatbuffers::Offset<TransposeConvOptions> transpose_conv_options =
       CreateTransposeConvOptions(builder, Padding(), StrideWidth(),
                                  StrideHeight());
-  operators.emplace_back(CreateOperatorDirect(
-      builder, /*opcode_index=*/opcode_index_transpose_conv, &op_inputs,
-      &op_outputs, BuiltinOptions_TransposeConvOptions,
-      transpose_conv_options.Union()));
+  operators.emplace_back(CreateOperator(
+      builder, /*opcode_index=*/0,
+      builder.CreateVector<int32_t>(op_inputs.data(), op_inputs.size()),
+      builder.CreateVector<int32_t>(op_outputs.data(), op_outputs.size()),
+      BuiltinOptions_TransposeConvOptions, transpose_conv_options.Union()));
 
-  const std::vector<int32_t> subgraph_inputs = {tensor_index_input};
-  const std::vector<int32_t> subgraph_outputs = {tensor_index_output};
-  flatbuffers::Offset<SubGraph> subgraph = CreateSubGraphDirect(
-      builder, &tensors, &subgraph_inputs, &subgraph_outputs, &operators);
+  /****************************** Define subgraph *****************************/
+  const std::array<int32_t, 1> subgraph_inputs{{input_tensor_id}};
+  const std::array<int32_t, 1> subgraph_outputs{{output_tensor_id}};
+  const flatbuffers::Offset<SubGraph> subgraph = CreateSubGraph(
+      builder, builder.CreateVector(tensors.data(), tensors.size()),
+      builder.CreateVector<int32_t>(subgraph_inputs.data(),
+                                    subgraph_inputs.size()),
+      builder.CreateVector<int32_t>(subgraph_outputs.data(),
+                                    subgraph_outputs.size()),
+      builder.CreateVector(operators.data(), operators.size()));
 
-  flatbuffers::Offset<flatbuffers::String> description =
+  const flatbuffers::Offset<flatbuffers::String> description =
       builder.CreateString("TransposeConv model");
 
-  flatbuffers::Offset<Model> model_buffer = CreateModel(
+  const flatbuffers::Offset<Model> model_buffer = CreateModel(
       builder, TFLITE_SCHEMA_VERSION,
       builder.CreateVector(operator_codes.data(), operator_codes.size()),
       builder.CreateVector(&subgraph, 1), description,

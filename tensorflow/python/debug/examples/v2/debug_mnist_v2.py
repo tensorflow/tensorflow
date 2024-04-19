@@ -21,7 +21,7 @@ and nans) appear in nodes of the graph during training.
 import argparse
 import sys
 
-import absl
+from absl import app
 import tensorflow.compat.v2 as tf
 
 IMAGE_SIZE = 28
@@ -237,4 +237,4 @@ def main(_):
 
 if __name__ == "__main__":
   FLAGS, unparsed = parse_args()
-  absl.app.run(main=main, argv=[sys.argv[0]] + unparsed)
+  app.run(main=main, argv=[sys.argv[0]] + unparsed)

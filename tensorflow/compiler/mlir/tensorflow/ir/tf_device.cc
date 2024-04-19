@@ -16,17 +16,19 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 
 #include <algorithm>
-#include <cstddef>
+#include <cassert>
 #include <cstdint>
 #include <iterator>
+#include <optional>
 #include <utility>
 
 #include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/Optional.h"
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/SMLoc.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -36,14 +38,18 @@ limitations under the License.
 #include "mlir/IR/OpImplementation.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/UseDefLists.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Interfaces/CallInterfaces.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "mlir/Transforms/InliningUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace mlir {
@@ -61,23 +67,22 @@ struct TFInlinerInterface : public DialectInlinerInterface {
   // Analysis Hooks
   //===--------------------------------------------------------------------===//
 
-  // Allow all call operations to be inlined.
+  // Returns whether it's legal to inline a call to a function.
   bool isLegalToInline(Operation* call, Operation* callable,
                        bool wouldBeCloned) const final {
+    if (isa<ClusterFuncOp>(call)) return false;
     return true;
   }
 
   // Returns if its legal to inline 'src' region into the 'dest' region
   // attached to a TF Device operation.
   bool isLegalToInline(Region* dest, Region* src, bool wouldBeCloned,
-                       BlockAndValueMapping& valueMapping) const final {
+                       IRMapping& valueMapping) const final {
     return true;
   }
 
-  // Defines the legality of inlining TF Device operations.
-  bool isLegalToInline(Operation*, Region*, bool,
-                       BlockAndValueMapping&) const final {
-    // For now, enable inlining all operations.
+  // Defines the legality of inlining TF Device operations into a region.
+  bool isLegalToInline(Operation* call, Region*, bool, IRMapping&) const final {
     return true;
   }
 
@@ -128,6 +133,27 @@ TensorFlowDeviceDialect::TensorFlowDeviceDialect(MLIRContext* context)
 }
 
 //===----------------------------------------------------------------------===//
+// tf_device.cluster_func
+//===----------------------------------------------------------------------===//
+
+LogicalResult ClusterFuncOp::verifySymbolUses(
+    mlir::SymbolTableCollection& symbolTable) {
+  StringAttr func_attr = getFuncAttr().getRootReference();
+  func::FuncOp func =
+      symbolTable.lookupNearestSymbolFrom<func::FuncOp>(*this, func_attr);
+  if (!func) {
+    return emitError("'func' attribute refers to an undefined function: ")
+           << func_attr.getValue();
+  }
+  return success();
+}
+
+void ClusterFuncOp::setCalleeFromCallable(mlir::CallInterfaceCallable callee) {
+  SymbolRefAttr calleeAttr = callee.get<SymbolRefAttr>();
+  return setFuncAttr(cast<FlatSymbolRefAttr>(calleeAttr));
+}
+
+//===----------------------------------------------------------------------===//
 // tf_device.launch
 //===----------------------------------------------------------------------===//
 
@@ -147,7 +173,7 @@ LogicalResult ParallelExecuteOp::verify() {
   }
 
   int output_index = 0;
-  for (auto& region_and_index : llvm::enumerate(regions)) {
+  for (const auto& region_and_index : llvm::enumerate(regions)) {
     auto& region = region_and_index.value();
     auto* region_terminator = region.front().getTerminator();
 
@@ -289,7 +315,8 @@ ParseResult SetReplicateOpOperands(
 
   if (replicated_inputs.empty() && packed_inputs.empty()) return success();
 
-  for (auto replicated_input_and_idx : llvm::enumerate(replicated_inputs)) {
+  for (const auto& replicated_input_and_idx :
+       llvm::enumerate(replicated_inputs)) {
     const int32_t idx = replicated_input_and_idx.index();
     const auto& replicated_input = replicated_input_and_idx.value();
     // Check if replicated input matches `n`.
@@ -305,7 +332,7 @@ ParseResult SetReplicateOpOperands(
   }
 
   const int32_t num_replicated_block_args = replicated_inputs.size();
-  for (auto packed_input_and_idx : llvm::enumerate(packed_inputs)) {
+  for (const auto& packed_input_and_idx : llvm::enumerate(packed_inputs)) {
     const int32_t idx = packed_input_and_idx.index();
     const auto& packed_input = packed_input_and_idx.value();
 
@@ -321,7 +348,7 @@ ParseResult SetReplicateOpOperands(
 
 }  // namespace
 
-static constexpr char kOperandSegmentSizesAttr[] = "operand_segment_sizes";
+static constexpr char kOperandSegmentSizesAttr[] = "operandSegmentSizes";
 
 ParseResult ReplicateOp::parse(OpAsmParser& parser, OperationState& result) {
   llvm::SMLoc loc = parser.getCurrentLocation();
@@ -350,7 +377,7 @@ ParseResult ReplicateOp::parse(OpAsmParser& parser, OperationState& result) {
   }
   if (parser.parseRegion(body, packed_args)) return failure();
 
-  // Add derived `operand_segment_sizes` attribute based on parsed operands.
+  // Add derived `operandSegmentSizes` attribute based on parsed operands.
   if (!result.attributes.get(kOperandSegmentSizesAttr)) {
     int32_t num_replicated_inputs = replicated_inputs.size() * n;
     int32_t num_packed_inputs = packed_inputs.size();
@@ -386,7 +413,7 @@ void ReplicateOp::print(OpAsmPrinter& p) {
   //   packed_input
   //     %b as %block_arg1: type
   const int32_t n = this->getN();
-  const int32_t num_replicated_inputs = getOperandSegmentSizes()[0];
+  const int32_t num_replicated_inputs = getProperties().operandSegmentSizes[0];
   const int32_t num_replicated_block_args = num_replicated_inputs / n;
 
   if (getNumOperands()) {
@@ -409,7 +436,7 @@ void ReplicateOp::print(OpAsmPrinter& p) {
     p << ')';
   }
 
-  // Skip derived `operand_segment_sizes` attribute as custom print format of
+  // Skip derived `operandSegmentSizes` attribute as custom print format of
   // operands holds enough information to calculate these variadic operand list
   // lengths.
   p.printOptionalAttrDict(
@@ -433,7 +460,7 @@ LogicalResult VerifyCompatibleTypes(Type a, Type b) {
 
 void BuildReplicateOp(
     Builder* builder, OperationState* state, int n,
-    llvm::Optional<DictionaryAttr> devices,
+    std::optional<DictionaryAttr> devices,
     llvm::ArrayRef<std::pair<ValueRange, Type>> replicated_inputs,
     ValueRange packed_inputs, TypeRange replica_output_types) {
   DCHECK_GE(n, 2);
@@ -460,12 +487,12 @@ void BuildReplicateOp(
     block.addArgument(packed_input.getType(), state->location);
   }
 
-  // Add derived `operand_segment_sizes` attribute.
+  // Add derived `operandSegmentSizes` attribute.
   int32_t num_replicated_inputs = replicated_inputs.size() * n;
   int32_t num_packed_inputs = packed_inputs.size();
-  auto operand_segment_sizes =
+  auto operandSegmentSizes =
       builder->getDenseI32ArrayAttr({num_replicated_inputs, num_packed_inputs});
-  state->addAttribute(kOperandSegmentSizesAttr, operand_segment_sizes);
+  state->addAttribute(kOperandSegmentSizesAttr, operandSegmentSizes);
 
   for (const auto& output_type : replica_output_types)
     state->addTypes(llvm::SmallVector<Type, 8>(n, output_type));
@@ -501,9 +528,9 @@ LogicalResult ReplicateOp::verify() {
 
   Block& block = op.getBody().front();
 
-  auto operand_segment_sizes = op.getOperandSegmentSizes();
-  const int32_t num_replicated_inputs = operand_segment_sizes[0];
-  const int32_t num_packed_inputs = operand_segment_sizes[1];
+  auto operandSegmentSizes = op.getProperties().operandSegmentSizes;
+  const int32_t num_replicated_inputs = operandSegmentSizes[0];
+  const int32_t num_packed_inputs = operandSegmentSizes[1];
 
   if (num_replicated_inputs % n != 0)
     return op.emitOpError()
@@ -551,7 +578,7 @@ LogicalResult ReplicateOp::verify() {
            << " * " << terminator.getNumOperands() << ")";
 
   // Check replicated output types match return operand types.
-  for (auto operand_type_and_idx :
+  for (const auto& operand_type_and_idx :
        llvm::enumerate(terminator.getOperandTypes())) {
     Type operand_type = operand_type_and_idx.value();
     int32_t operand_idx = operand_type_and_idx.index();
@@ -570,7 +597,7 @@ void ReplicateOp::build(
         devices,
     llvm::ArrayRef<std::pair<ValueRange, Type>> replicated_inputs,
     ValueRange packed_inputs, TypeRange replica_output_types) {
-  llvm::Optional<DictionaryAttr> devices_attr;
+  std::optional<DictionaryAttr> devices_attr;
   if (!devices.empty()) {
     llvm::SmallVector<mlir::NamedAttribute, 1> device_list;
     device_list.reserve(devices.size());
@@ -589,7 +616,7 @@ void ReplicateOp::build(
 
 void ReplicateOp::build(
     OpBuilder& builder, OperationState& state, int n,
-    llvm::Optional<DictionaryAttr> devices,
+    std::optional<DictionaryAttr> devices,
     llvm::ArrayRef<std::pair<ValueRange, Type>> replicated_inputs,
     ValueRange packed_inputs, TypeRange replica_output_types) {
   BuildReplicateOp(&builder, &state, n, devices, replicated_inputs,

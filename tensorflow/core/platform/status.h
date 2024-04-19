@@ -20,14 +20,12 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/stack_frame.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/tsl/platform/status.h"
+#include "tsl/platform/status.h"
 
 namespace tensorflow {
 // NOLINTBEGIN(misc-unused-using-decls)
-using tsl::error_name;
 using tsl::FromAbslStatus;
 using tsl::OkStatus;
-using tsl::SourceLocation;
 using tsl::Status;
 using tsl::StatusCallback;
 using tsl::StatusGroup;
@@ -36,7 +34,7 @@ using tsl::TfCheckOpHelperOutOfLine;
 using tsl::ToAbslStatus;
 
 namespace errors {
-typedef tsl::errors::Code Code;
+using tsl::errors::Code;
 using tsl::errors::GetStackTrace;
 using tsl::errors::SetStackTrace;
 }  // namespace errors

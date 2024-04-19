@@ -48,7 +48,7 @@ void PrintNodeInfo(const NodeDef* node) {
     if (shape_status.ok()) {
       shape_description = PartialTensorShape(shape_proto).DebugString();
     } else {
-      shape_description = shape_status.error_message();
+      shape_description = shape_status.message();
     }
   }
   DataType dtype = DT_INVALID;
@@ -318,7 +318,7 @@ int ParseFlagsAndSummarizeGraph(int argc, char* argv[]) {
   Status load_status = LoadTextOrBinaryGraphFile(in_graph, &graph_def);
   if (!load_status.ok()) {
     LOG(ERROR) << "Loading graph '" << in_graph << "' failed with "
-               << load_status.error_message();
+               << load_status.message();
     LOG(ERROR) << usage;
     return -1;
   }
@@ -326,7 +326,7 @@ int ParseFlagsAndSummarizeGraph(int argc, char* argv[]) {
   Status summarize_result =
       SummarizeGraph(graph_def, in_graph, print_structure);
   if (!summarize_result.ok()) {
-    LOG(ERROR) << summarize_result.error_message() << "\n" << usage;
+    LOG(ERROR) << summarize_result.message() << "\n" << usage;
     return -1;
   }
 

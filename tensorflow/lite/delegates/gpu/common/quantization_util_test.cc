@@ -26,8 +26,8 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
-#include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/util.h"
+#include "tensorflow/lite/array.h"
+#include "tensorflow/lite/core/c/common.h"
 
 using ::testing::Eq;
 using ::testing::FloatNear;
@@ -36,14 +36,6 @@ using ::testing::Pointwise;
 namespace tflite {
 namespace gpu {
 namespace {
-
-std::unique_ptr<TfLiteIntArray, TfLiteIntArrayDeleter> BuildTfLiteIntArray(
-    const std::vector<int>& data) {
-  std::unique_ptr<TfLiteIntArray, TfLiteIntArrayDeleter> result(
-      TfLiteIntArrayCreate(data.size()));
-  std::copy(data.begin(), data.end(), result->data);
-  return result;
-}
 
 // TODO(b/158578883): this function is copied from the Micro codebase. Consider
 // moving to a shared location.
@@ -146,7 +138,7 @@ TfLiteTensor CreateFloatTensor(const float* data, TfLiteIntArray* dims,
 
 TEST(DequantizeInputs, Int8) {
   TfLiteContext context;
-  auto input_dims = BuildTfLiteIntArray({1, 3, 2, 1});
+  auto input_dims = BuildTfLiteArray({1, 3, 2, 1});
   std::vector<int8_t> data = {-3, -2, -1, 1, 2, 3};
   std::vector<float> dequantized_data(data.size());
 
@@ -171,7 +163,7 @@ TEST(DequantizeInputs, Int8) {
 
 TEST(DequantizeInputs, UInt8) {
   TfLiteContext context;
-  auto input_dims = BuildTfLiteIntArray({1, 3, 2, 1});
+  auto input_dims = BuildTfLiteArray({1, 3, 2, 1});
   std::vector<uint8_t> data = {0, 1, 2, 3, 4, 5};
   std::vector<float> dequantized_data(data.size());
 
@@ -196,7 +188,7 @@ TEST(DequantizeInputs, UInt8) {
 
 TEST(QuantizeOutputs, Int8) {
   TfLiteContext context;
-  auto input_dims = BuildTfLiteIntArray({1, 3, 2, 1});
+  auto input_dims = BuildTfLiteArray({1, 3, 2, 1});
   std::vector<float> data = {-0.3, -0.2, -0.1, 0.1, 0.2, 0.3};
   std::vector<int8_t> quantized_data(data.size());
   TfLiteTensor output = CreateFloatTensor(data.data(), input_dims.get(),
@@ -218,7 +210,7 @@ TEST(QuantizeOutputs, Int8) {
 
 TEST(QuantizeOutputs, UInt8) {
   TfLiteContext context;
-  auto input_dims = BuildTfLiteIntArray({1, 3, 2, 1});
+  auto input_dims = BuildTfLiteArray({1, 3, 2, 1});
   std::vector<float> data = {0.0, 0.1, 0.2, 0.3, 0.4, 0.5};
   std::vector<uint8_t> quantized_data(data.size());
   TfLiteTensor output = CreateFloatTensor(data.data(), input_dims.get(),

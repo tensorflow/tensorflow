@@ -24,6 +24,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_replace.h"
 #include "tensorflow/lite/delegates/gpu/common/flops_util.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
@@ -94,7 +95,7 @@ int GetDepthwiseConvWeightsSize(const DepthwiseConvolution2DAttributes& attr,
 bool IsElementwiseOneInput(const OperationType& op_type) {
   return op_type == OperationType::ABS || op_type == OperationType::COPY ||
          op_type == OperationType::COS || op_type == OperationType::ELU ||
-         op_type == OperationType::EXP ||
+         op_type == OperationType::EXP || op_type == OperationType::GELU ||
          op_type == OperationType::HARD_SWISH ||
          op_type == OperationType::LOG || op_type == OperationType::NEG ||
          op_type == OperationType::RSQRT || op_type == OperationType::SIGMOID ||
@@ -929,7 +930,8 @@ absl::Status TryThinPointwiseFuser(
         gpu_info.IsApple() || gpu_info.IsAMD())) {
     return absl::NotFoundError("ThinPointwiseFuser not suitable.");
   }
-  if (gpu_info.IsMali() && gpu_info.mali_info.IsMidgard()) {
+  // TODO(b/322801363): Add more precise checks for Mali
+  if (gpu_info.IsMali()) {
     return absl::NotFoundError("ThinPointwiseFuser not suitable.");
   }
   auto* node = graph.GetNode(first_node_id);

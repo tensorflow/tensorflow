@@ -107,7 +107,7 @@ Status PermutationHelper(const Tensor& perm, const int dims,
       reinterpret_cast<const volatile Tperm*>(Vperm.data());
   *permutation = std::vector<int32>(perm_begin, perm_begin + dims);
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 }  // namespace
 
@@ -149,13 +149,14 @@ void TransposeOp::Compute(OpKernelContext* ctx) {
   gtl::InlinedVector<bool, 8> bits(dims);
   bool is_identity = true;
   for (int i = 0; i < dims; ++i) {
-    const int32_t d = permutation[i];
+    int32_t d = permutation[i];
+    if (d < 0) d += dims;
     OP_REQUIRES(
         ctx, 0 <= d && d < dims,
         errors::InvalidArgument(d, " is out of range [0 .. ", dims, ")"));
     bits[d] = true;
     const auto dim_size = input.dim_size(d);
-    shape.AddDim(dim_size);
+    OP_REQUIRES_OK(ctx, shape.AddDimWithStatus(dim_size));
     if (d != i) {
       is_identity = false;
     }
@@ -187,7 +188,7 @@ void TransposeOp::Compute(OpKernelContext* ctx) {
 }
 
 Status TransposeCpuOp::DoTranspose(OpKernelContext* ctx, const Tensor& in,
-                                   gtl::ArraySlice<int32> perm, Tensor* out) {
+                                   absl::Span<const int32> perm, Tensor* out) {
   typedef Eigen::ThreadPoolDevice CPUDevice;
   return ::tensorflow::DoTranspose(ctx->eigen_device<CPUDevice>(), in, perm,
                                    out);
@@ -195,7 +196,7 @@ Status TransposeCpuOp::DoTranspose(OpKernelContext* ctx, const Tensor& in,
 
 Status ConjugateTransposeCpuOp::DoTranspose(OpKernelContext* ctx,
                                             const Tensor& in,
-                                            gtl::ArraySlice<int32> perm,
+                                            absl::Span<const int32> perm,
                                             Tensor* out) {
   typedef Eigen::ThreadPoolDevice CPUDevice;
   return ::tensorflow::DoConjugateTranspose(ctx->eigen_device<CPUDevice>(), in,
@@ -215,11 +216,13 @@ Status ConjugateTransposeCpuOp::DoTranspose(OpKernelContext* ctx,
                           ConjugateTransposeCpuOp);
 
 TF_CALL_ALL_TYPES(REGISTER)
+TF_CALL_float8_e5m2(REGISTER) TF_CALL_float8_e4m3fn(REGISTER)
 #undef REGISTER
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-Status TransposeGpuOp::DoTranspose(OpKernelContext* ctx, const Tensor& in,
-                                   gtl::ArraySlice<int32> perm, Tensor* out) {
+    Status TransposeGpuOp::DoTranspose(OpKernelContext* ctx, const Tensor& in,
+                                       gtl::ArraySlice<int32> perm,
+                                       Tensor* out) {
   typedef Eigen::GpuDevice GPUDevice;
   return ::tensorflow::DoTranspose(ctx->eigen_device<GPUDevice>(), in, perm,
                                    out);
@@ -245,6 +248,8 @@ Status ConjugateTransposeGpuOp::DoTranspose(OpKernelContext* ctx,
                               .HostMemory("perm"),    \
                           ConjugateTransposeGpuOp);
 TF_CALL_POD_TYPES(REGISTER);
+TF_CALL_float8_e5m2(REGISTER);
+TF_CALL_float8_e4m3fn(REGISTER);
 #undef REGISTER
 #endif
 

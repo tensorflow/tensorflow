@@ -91,12 +91,12 @@ class SampleCopier<int32, 4> {
   inline __device__ void operator()(
       int32* __restrict__ buf,
       const tensorflow::random::Array<int32, 4>& array) const {
-    int4 vec;
+    ::int4 vec;
     vec.x = array[0];
     vec.y = array[1];
     vec.z = array[2];
     vec.w = array[3];
-    int4* buf_vector = reinterpret_cast<int4*>(buf);
+    ::int4* buf_vector = reinterpret_cast<::int4*>(buf);
     *buf_vector = vec;
   }
 };

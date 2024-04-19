@@ -15,11 +15,12 @@ limitations under the License.
 #include <algorithm>
 #include <memory>
 #include <random>
+#include <string>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/flags/flag.h"
-#include "absl/flags/parse.h"
+#include "tensorflow/core/util/command_line_flags.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/delegates/hexagon/hexagon_delegate.h"
 #include "tensorflow/lite/interpreter.h"
@@ -32,18 +33,15 @@ limitations under the License.
 #include "tensorflow/lite/tools/benchmark/benchmark_utils.h"
 #include "tensorflow/lite/tools/logging.h"
 
-ABSL_FLAG(std::string, model_file_path, "", "Path to the test model file.");
-ABSL_FLAG(std::string, model_input_shapes, "",
-          "List of different input shapes for testing, the input will "
-          "resized for each one in order and tested. They Should be "
-          "separated by : and each shape has dimensions separated by ,");
-ABSL_FLAG(int, max_batch_size, -1,
-          "Maximum batch size for a single run by hexagon.");
-ABSL_FLAG(double, error_epsilon, 0.2,
-          "Maximum error allowed while diffing the output.");
-
 namespace tflite {
 namespace {
+struct batch_seq_config_test_flags {
+  std::string* model_file_path;
+  std::string* model_input_shapes;
+  int max_batch_size = -1;
+  float error_epsilon = 0.2;
+} batch_seq_config_test_flags_values;
+
 // Returns a randomly generated data of size 'num_elements'.
 std::vector<uint8_t> GetData(int num_elements) {
   std::vector<uint8_t> result(num_elements);
@@ -82,7 +80,8 @@ bool DiffOutput(const std::vector<float>& control,
 
 bool DiffOutput(const std::vector<float>& control,
                 const std::vector<float>& exp) {
-  return DiffOutput(control, exp, absl::GetFlag(FLAGS_error_epsilon));
+  return DiffOutput(control, exp,
+                    tflite::batch_seq_config_test_flags_values.error_epsilon);
 }
 }  // namespace
 
@@ -94,7 +93,7 @@ class TestModel {
   // interpreter.
   void Init() {
     model_ = tflite::FlatBufferModel::BuildFromFile(
-        absl::GetFlag(FLAGS_model_file_path).c_str());
+        tflite::batch_seq_config_test_flags_values.model_file_path->c_str());
     ASSERT_TRUE(model_ != nullptr);
 
     resolver_ = std::make_unique<ops::builtin::BuiltinOpResolver>();
@@ -170,8 +169,9 @@ class TestModel {
 
 std::vector<std::vector<int>> ParseInputShapes() {
   std::vector<string> str_input_shapes;
-  benchmark::util::SplitAndParse(absl::GetFlag(FLAGS_model_input_shapes), ':',
-                                 &str_input_shapes);
+  benchmark::util::SplitAndParse(
+      *tflite::batch_seq_config_test_flags_values.model_input_shapes, ':',
+      &str_input_shapes);
   std::vector<std::vector<int>> input_shapes(str_input_shapes.size());
   for (int i = 0; i < str_input_shapes.size(); ++i) {
     benchmark::util::SplitAndParse(str_input_shapes[i], ',', &input_shapes[i]);
@@ -185,9 +185,22 @@ TEST(HexagonDynamicBatch, MultipleResizes) {
   auto test_input_shapes = ParseInputShapes();
   auto default_model = std::make_unique<TestModel>();
   auto delegated_model = std::make_unique<TestModel>();
+  TFLITE_LOG(INFO)
+      << "model_file_path: "
+      << *tflite::batch_seq_config_test_flags_values.model_file_path << "\n";
+  TFLITE_LOG(INFO)
+      << "model_input_shapes: "
+      << *tflite::batch_seq_config_test_flags_values.model_input_shapes << "\n";
+  TFLITE_LOG(INFO) << "max_batch_size: "
+                   << tflite::batch_seq_config_test_flags_values.max_batch_size
+                   << "\n";
+  TFLITE_LOG(INFO) << "error_epsilon: "
+                   << tflite::batch_seq_config_test_flags_values.error_epsilon
+                   << "\n";
   default_model->Init();
   delegated_model->Init();
-  delegated_model->ApplyDelegate(absl::GetFlag(FLAGS_max_batch_size), {0}, {0});
+  delegated_model->ApplyDelegate(
+      tflite::batch_seq_config_test_flags_values.max_batch_size, {0}, {0});
   for (const auto& input_shape : test_input_shapes) {
     const auto input = GetData(NumElements(input_shape));
     default_model->Run(input_shape, input);
@@ -210,7 +223,41 @@ TEST(HexagonDynamicBatch, MultipleResizes) {
 
 int main(int argc, char** argv) {
   ::tflite::LogToStderr();
-  absl::ParseCommandLine(argc, argv);
+  std::string FLAGS_model_file_path;
+  std::string FLAGS_model_input_shapes;
+  int FLAGS_max_batch_size = -1;
+  float FLAGS_error_epsilon = 0.2;
+  std::vector<tensorflow::Flag> flags = {
+      tensorflow::Flag("model_file_path", &FLAGS_model_file_path,
+                       "Path to the test model file."),
+      tensorflow::Flag(
+          "model_input_shapes", &FLAGS_model_input_shapes,
+          "List of different input shapes for testing, the input will "
+          "resized for each one in order and tested. They Should be "
+          "separated by : and each shape has dimensions separated by ,"),
+      tensorflow::Flag("max_batch_size", &FLAGS_max_batch_size,
+                       "Maximum batch size for a single run by hexagon."),
+      tensorflow::Flag("error_epsilon", &FLAGS_error_epsilon,
+                       "Maximum error allowed while diffing the output."),
+  };
+  bool no_inputs = argc == 1;
+  bool success = tensorflow::Flags::Parse(&argc, argv, flags);
+  if (!success || no_inputs || (argc == 2 && !strcmp(argv[1], "--helpfull"))) {
+    fprintf(stderr, "%s", tensorflow::Flags::Usage(argv[0], flags).c_str());
+    return {};
+  } else if (FLAGS_model_file_path.empty() ||
+             FLAGS_model_input_shapes.empty()) {
+    fprintf(stderr, "%s", tensorflow::Flags::Usage(argv[0], flags).c_str());
+    return {};
+  }
+  tflite::batch_seq_config_test_flags_values.model_file_path =
+      &FLAGS_model_file_path;
+  tflite::batch_seq_config_test_flags_values.max_batch_size =
+      FLAGS_max_batch_size;
+  tflite::batch_seq_config_test_flags_values.model_input_shapes =
+      &FLAGS_model_input_shapes;
+  tflite::batch_seq_config_test_flags_values.error_epsilon =
+      FLAGS_error_epsilon;
   testing::InitGoogleTest();
 
   TfLiteHexagonInit();

@@ -16,13 +16,24 @@ limitations under the License.
 #include <fstream>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "xla/tsl/util/command_line_flags.h"
+#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/lib/io/path.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/core/public/session.h"
+#include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/command_line_flags.h"
+#include "tsl/platform/env.h"
+#include "tsl/platform/status.h"
+#include "tsl/platform/types.h"
 
 // These are all common classes it's handy to reference with no namespace.
 using tensorflow::Flag;
@@ -50,7 +61,7 @@ Status LoadGraph(const string& graph_file_name,
   if (!session_create_status.ok()) {
     return session_create_status;
   }
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 // Takes a file name, and loads a list of labels from it, one per line, and
@@ -66,7 +77,7 @@ Status ReadLabelsFile(const string& file_name, std::vector<string>* result) {
   while (std::getline(file, line)) {
     result->push_back(line);
   }
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 // Analyzes the output of the graph to retrieve the highest scores and

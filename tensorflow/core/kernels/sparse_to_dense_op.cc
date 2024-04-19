@@ -26,7 +26,7 @@ limitations under the License.
 #include <unordered_map>
 #include <utility>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -34,7 +34,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
-#include "tensorflow/core/util/ptr_util.h"
 #include "tensorflow/core/util/sparse/sparse_tensor.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -86,7 +85,7 @@ Status CheckSparseToDenseShapes(const Tensor& indices,
   if (!TensorShapeUtils::IsScalar(default_value.shape())) {
     return errors::InvalidArgument("default_value should be a scalar.");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // end namespace
@@ -125,7 +124,7 @@ class SparseToDense : public OpKernel {
       indices_shaped = &indices;
     } else {
       TensorShape ix_shape({num_elems, num_dims});
-      indices_shaped_holder = MakeUnique<Tensor>(DT_INT64, ix_shape);
+      indices_shaped_holder = std::make_unique<Tensor>(DT_INT64, ix_shape);
       indices_shaped = indices_shaped_holder.get();
       if (indices.dtype() == DT_INT64) {
         CHECK(indices_shaped_holder->CopyFrom(indices, ix_shape));
@@ -142,8 +141,8 @@ class SparseToDense : public OpKernel {
     std::unique_ptr<Tensor> sparse_values_b_holder;
 
     if (TensorShapeUtils::IsScalar(sparse_values.shape())) {
-      sparse_values_b_holder = MakeUnique<Tensor>(DataTypeToEnum<T>::value,
-                                                  TensorShape({num_elems}));
+      sparse_values_b_holder = std::make_unique<Tensor>(
+          DataTypeToEnum<T>::value, TensorShape({num_elems}));
       sparse_values_b = sparse_values_b_holder.get();
       sparse_values_b_holder->vec<T>().setConstant(sparse_values.scalar<T>()());
     } else {
@@ -241,15 +240,10 @@ class SparseToDenseGPU : public AsyncOpKernel {
     auto output_shape_data =
         AsDeviceMemory(output_shape_tensor.template flat<Index>().data(),
                        output_shape_tensor.template flat<Index>().size());
-    OP_REQUIRES_ASYNC(
+    OP_REQUIRES_OK_ASYNC(
         c,
-        stream
-            ->ThenMemcpy(&output_shape_data, output_shape_vec.data(),
-                         output_shape_tensor.NumElements() * sizeof(Index))
-            .ok(),
-        errors::InvalidArgument(
-            "failed to copy output_shape vector from host to "
-            "device in SparseToDenseOp"),
+        stream->Memcpy(&output_shape_data, output_shape_vec.data(),
+                       output_shape_tensor.NumElements() * sizeof(Index)),
         done);
 
     functor::LaunchSparseToDense<T, Index>()(
@@ -277,8 +271,8 @@ class SparseToDenseGPU : public AsyncOpKernel {
   REGISTER_GPU_KERNELS(type, int64_t);
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNELS_ALL);
-TF_CALL_INTEGRAL_TYPES(REGISTER_GPU_KERNELS_ALL)
-REGISTER_GPU_KERNELS_ALL(bool)
+TF_CALL_INTEGRAL_TYPES(REGISTER_GPU_KERNELS_ALL);
+REGISTER_GPU_KERNELS_ALL(bool);
 
 #undef REGISTER_GPU_KERNELS_ALL
 #undef REGISTER_GPU_KERNELS

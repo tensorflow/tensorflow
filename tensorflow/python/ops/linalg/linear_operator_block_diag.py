@@ -17,13 +17,15 @@
 from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_conversion
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops.linalg import linear_operator
-from tensorflow.python.ops.linalg import linear_operator_algebra
 from tensorflow.python.ops.linalg import linear_operator_util
+from tensorflow.python.ops.linalg import property_hint_util
 from tensorflow.python.util.tf_export import tf_export
 
 __all__ = ["LinearOperatorBlockDiag"]
@@ -275,12 +277,13 @@ class LinearOperatorBlockDiag(linear_operator.LinearOperator):
   def _shape_tensor(self):
     # Avoid messy broadcasting if possible.
     if self.shape.is_fully_defined():
-      return ops.convert_to_tensor_v2_with_dispatch(
-          self.shape.as_list(), dtype=dtypes.int32, name="shape")
+      return tensor_conversion.convert_to_tensor_v2_with_dispatch(
+          self.shape.as_list(), dtype=dtypes.int32, name="shape"
+      )
 
     domain_dimension = sum(self._block_domain_dimension_tensors())
     range_dimension = sum(self._block_range_dimension_tensors())
-    matrix_shape = array_ops.stack([range_dimension, domain_dimension])
+    matrix_shape = array_ops_stack.stack([range_dimension, domain_dimension])
 
     # Dummy Tensor of zeros.  Will never be materialized.
     zeros = array_ops.zeros(shape=self.operators[0].batch_shape_tensor())
@@ -289,6 +292,75 @@ class LinearOperatorBlockDiag(linear_operator.LinearOperator):
     batch_shape = array_ops.shape(zeros)
 
     return array_ops.concat((batch_shape, matrix_shape), 0)
+
+  def _linop_adjoint(self) -> "LinearOperatorBlockDiag":
+    # We take the adjoint of each block on the diagonal.
+    return LinearOperatorBlockDiag(
+        operators=[operator.adjoint() for operator in self.operators],
+        is_non_singular=self.is_non_singular,
+        is_self_adjoint=self.is_self_adjoint,
+        is_positive_definite=self.is_positive_definite,
+        is_square=True)
+
+  def _linop_cholesky(self) -> "LinearOperatorBlockDiag":
+    # We take the cholesky of each block on the diagonal.
+    return LinearOperatorBlockDiag(
+        operators=[operator.cholesky() for operator in self.operators],
+        is_non_singular=True,
+        is_self_adjoint=None,  # Let the operators passed in decide.
+        is_square=True)
+
+  def _linop_inverse(self) -> "LinearOperatorBlockDiag":
+    # We take the inverse of each block on the diagonal.
+    return LinearOperatorBlockDiag(
+        operators=[
+            operator.inverse() for operator in self.operators],
+        is_non_singular=self.is_non_singular,
+        is_self_adjoint=self.is_self_adjoint,
+        is_positive_definite=self.is_positive_definite,
+        is_square=True)
+
+  def _linop_matmul(
+      self,
+      left_operator: "LinearOperatorBlockDiag",
+      right_operator: linear_operator.LinearOperator,
+    ) -> linear_operator.LinearOperator:
+    if isinstance(right_operator, LinearOperatorBlockDiag):
+      return LinearOperatorBlockDiag(
+          operators=[
+              o1.matmul(o2) for o1, o2 in zip(
+                  left_operator.operators, right_operator.operators)],
+          is_non_singular=property_hint_util.combined_non_singular_hint(
+              left_operator, right_operator),
+          # In general, a product of self-adjoint positive-definite
+          # block diagonal matrices is not self-adjoint.
+          is_self_adjoint=None,
+          # In general, a product of positive-definite block diagonal
+          # matrices is not positive-definite.
+          is_positive_definite=None,
+          is_square=True)
+    return super()._linop_matmul(left_operator, right_operator)
+
+  def _linop_solve(
+      self,
+      left_operator: "LinearOperatorBlockDiag",
+      right_operator: linear_operator.LinearOperator,
+  ) -> linear_operator.LinearOperator:
+    if isinstance(right_operator, LinearOperatorBlockDiag):
+      return LinearOperatorBlockDiag(
+          operators=[
+              o1.solve(o2) for o1, o2 in zip(
+                  left_operator.operators, right_operator.operators)],
+          is_non_singular=property_hint_util.combined_non_singular_hint(
+              left_operator, right_operator),
+          # In general, a solve of self-adjoint positive-definite block diagonal
+          # matrices is not self-=adjoint.
+          is_self_adjoint=None,
+          # In general, a solve of positive-definite block diagonal matrices is
+          # not positive-definite.
+          is_positive_definite=None,
+          is_square=True)
+    return super()._linop_solve(left_operator, right_operator)
 
   # TODO(b/188080761): Add a more efficient implementation of `cond` that
   # constructs the condition number from the blockwise singular values.
@@ -356,7 +428,7 @@ class LinearOperatorBlockDiag(linear_operator.LinearOperator):
                   o1.domain_dimension, o2.range_dimension))
 
       with self._name_scope(name):  # pylint: disable=not-callable
-        return linear_operator_algebra.matmul(left_operator, right_operator)
+        return self._linop_matmul(left_operator, right_operator)
 
     with self._name_scope(name):  # pylint: disable=not-callable
       arg_dim = -1 if adjoint_arg else -2
@@ -365,12 +437,12 @@ class LinearOperatorBlockDiag(linear_operator.LinearOperator):
       if linear_operator_util.arg_is_blockwise(block_dimensions, x, arg_dim):
         for i, block in enumerate(x):
           if not isinstance(block, linear_operator.LinearOperator):
-            block = ops.convert_to_tensor_v2_with_dispatch(block)
+            block = tensor_conversion.convert_to_tensor_v2_with_dispatch(block)
             self._check_input_dtype(block)
             block_dimensions[i].assert_is_compatible_with(block.shape[arg_dim])
             x[i] = block
       else:
-        x = ops.convert_to_tensor_v2_with_dispatch(x, name="x")
+        x = tensor_conversion.convert_to_tensor_v2_with_dispatch(x, name="x")
         self._check_input_dtype(x)
         op_dimension = (self.range_dimension if adjoint
                         else self.domain_dimension)
@@ -441,7 +513,7 @@ class LinearOperatorBlockDiag(linear_operator.LinearOperator):
       if linear_operator_util.arg_is_blockwise(block_dimensions, x, -1):
         for i, block in enumerate(x):
           if not isinstance(block, linear_operator.LinearOperator):
-            block = ops.convert_to_tensor_v2_with_dispatch(block)
+            block = tensor_conversion.convert_to_tensor_v2_with_dispatch(block)
             self._check_input_dtype(block)
             block_dimensions[i].assert_is_compatible_with(block.shape[-1])
             x[i] = block
@@ -449,7 +521,7 @@ class LinearOperatorBlockDiag(linear_operator.LinearOperator):
         y_mat = self.matmul(x_mat, adjoint=adjoint)
         return [array_ops.squeeze(y, axis=-1) for y in y_mat]
 
-      x = ops.convert_to_tensor_v2_with_dispatch(x, name="x")
+      x = tensor_conversion.convert_to_tensor_v2_with_dispatch(x, name="x")
       self._check_input_dtype(x)
       op_dimension = (self.range_dimension if adjoint
                       else self.domain_dimension)
@@ -553,7 +625,7 @@ class LinearOperatorBlockDiag(linear_operator.LinearOperator):
                   o1.domain_dimension, o2.range_dimension))
 
       with self._name_scope(name):  # pylint: disable=not-callable
-        return linear_operator_algebra.solve(left_operator, right_operator)
+        return self._linop_solve(left_operator, right_operator)
 
     with self._name_scope(name):  # pylint: disable=not-callable
       block_dimensions = (self._block_domain_dimensions() if adjoint
@@ -566,12 +638,14 @@ class LinearOperatorBlockDiag(linear_operator.LinearOperator):
         split_rhs = rhs
         for i, block in enumerate(split_rhs):
           if not isinstance(block, linear_operator.LinearOperator):
-            block = ops.convert_to_tensor_v2_with_dispatch(block)
+            block = tensor_conversion.convert_to_tensor_v2_with_dispatch(block)
             self._check_input_dtype(block)
             block_dimensions[i].assert_is_compatible_with(block.shape[arg_dim])
             split_rhs[i] = block
       else:
-        rhs = ops.convert_to_tensor_v2_with_dispatch(rhs, name="rhs")
+        rhs = tensor_conversion.convert_to_tensor_v2_with_dispatch(
+            rhs, name="rhs"
+        )
         self._check_input_dtype(rhs)
         op_dimension = (self.domain_dimension if adjoint
                         else self.range_dimension)
@@ -641,7 +715,7 @@ class LinearOperatorBlockDiag(linear_operator.LinearOperator):
       if linear_operator_util.arg_is_blockwise(block_dimensions, rhs, -1):
         for i, block in enumerate(rhs):
           if not isinstance(block, linear_operator.LinearOperator):
-            block = ops.convert_to_tensor_v2_with_dispatch(block)
+            block = tensor_conversion.convert_to_tensor_v2_with_dispatch(block)
             self._check_input_dtype(block)
             block_dimensions[i].assert_is_compatible_with(block.shape[-1])
             rhs[i] = block
@@ -649,7 +723,9 @@ class LinearOperatorBlockDiag(linear_operator.LinearOperator):
         solution_mat = self.solve(rhs_mat, adjoint=adjoint)
         return [array_ops.squeeze(x, axis=-1) for x in solution_mat]
 
-      rhs = ops.convert_to_tensor_v2_with_dispatch(rhs, name="rhs")
+      rhs = tensor_conversion.convert_to_tensor_v2_with_dispatch(
+          rhs, name="rhs"
+      )
       self._check_input_dtype(rhs)
       op_dimension = (self.domain_dimension if adjoint
                       else self.range_dimension)

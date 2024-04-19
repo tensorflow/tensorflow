@@ -2773,7 +2773,7 @@ std::unique_ptr<Model> ImportTensorFlowGraphDef(
     StripZeroOutputIndexFromInputs(&node);
     auto status = internal::ImportTensorFlowNode(
         node, tf_import_flags, model_flags, model, converter_map);
-    CHECK(status.ok()) << status.error_message();
+    CHECK(status.ok()) << status.message();
   }
 
   ResolveModelFlags(model_flags, model);

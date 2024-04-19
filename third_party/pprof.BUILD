@@ -1,10 +1,10 @@
+load("@local_tsl//tsl/platform/default:build_config.bzl", "py_proto_library")
+
 package(
     default_visibility = ["//visibility:public"],
 )
 
 licenses(["notice"])  # MIT
-
-load("@com_google_protobuf//:protobuf.bzl", "py_proto_library")
 
 exports_files(["pprof/LICENSE"])
 

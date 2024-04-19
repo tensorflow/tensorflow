@@ -21,7 +21,7 @@ limitations under the License.
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/tf2xla/tf2xla.pb.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_defs.h"
-#include "tensorflow/compiler/xla/status_macros.h"
+#include "xla/status_macros.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/kernel_def.pb.h"
@@ -165,7 +165,8 @@ class CachedFunctionHandles {
   FunctionLibraryRuntime* flr_;
   std::map<string, FunctionLibraryRuntime::Handle> handles_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(CachedFunctionHandles);
+  CachedFunctionHandles(const CachedFunctionHandles&) = delete;
+  void operator=(const CachedFunctionHandles&) = delete;
 };
 
 // Struct for node's output edge info.
@@ -175,12 +176,12 @@ struct OutEdgeInfo {
 };
 
 // Replaces node `n` with a new node whose NodeDef is `node_def`.
-StatusOr<Node*> ReplaceNode(Graph* g, Node* n, const NodeDef& node_def);
+absl::StatusOr<Node*> ReplaceNode(Graph* g, Node* n, const NodeDef& node_def);
 
 // Helper function that builds an Identity node.
-StatusOr<Node*> BuildIdentityNode(Graph* graph, const string& node_name,
-                                  DataType dtype, const Node* input,
-                                  std::optional<string> requested_device);
+absl::StatusOr<Node*> BuildIdentityNode(Graph* graph, const string& node_name,
+                                        DataType dtype, const Node* input,
+                                        std::optional<string> requested_device);
 
 // For "If"/"While" nodes, if some of their inputs are Const nodes, rewrite
 // body functions to use the Const nodes instead of original _Arg nodes.
@@ -216,8 +217,9 @@ inline bool IsConstTraversableOpType(const Node* node) {
 }
 
 // Determines whether a loop body is invariant for the given argument index.
-StatusOr<bool> IsLoopInvariant(const FunctionBody* loop_body, int index,
-                               const FunctionLibraryDefinition* lookup_fld);
+absl::StatusOr<bool> IsLoopInvariant(
+    const FunctionBody* loop_body, int index,
+    const FunctionLibraryDefinition* lookup_fld);
 
 }  // namespace tensorflow
 

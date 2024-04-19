@@ -20,11 +20,11 @@ func.func @test_supported_lowering_of_tf_if_region1(%arg0: tensor<i1>, %arg1: te
   // CHECK-NEXT: %[[RES:.*]]:2 = scf.if %[[COND]] -> (tensor<*xf32>, tensor<4xf32>) {
   // CHECK-NEXT:   %[[CALL:.*]] = func.call @test_if_then1(%[[ARG1]]) : (tensor<4xf32>) -> tensor<4xf32>
   // CHECK-NEXT:   %[[ADD:.*]] = "tf.AddV2"(%[[CALL]], %[[CALL]]) : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
-  // CHECK-NEXT:   %[[CAST:.*]] = "tf.Cast"(%[[CALL]]) {Truncate = false} : (tensor<4xf32>) -> tensor<*xf32>
+  // CHECK-NEXT:   %[[CAST:.*]] = "tf.Cast"(%[[CALL]]) <{Truncate = false}> : (tensor<4xf32>) -> tensor<*xf32>
   // CHECK-NEXT:   scf.yield %[[CAST]], %[[ADD]] : tensor<*xf32>, tensor<4xf32>
   // CHECK-NEXT: } else {
   // CHECK-NEXT:   %[[CALL_0:.*]] = func.call @test_if_else1(%[[ARG1]]) : (tensor<4xf32>) -> tensor<4xf32>
-  // CHECK-NEXT:   %[[CAST_0:.*]] = "tf.Cast"(%[[CALL_0]]) {Truncate = false} : (tensor<4xf32>) -> tensor<*xf32>
+  // CHECK-NEXT:   %[[CAST_0:.*]] = "tf.Cast"(%[[CALL_0]]) <{Truncate = false}> : (tensor<4xf32>) -> tensor<*xf32>
   // CHECK-NEXT:   scf.yield %[[CAST_0]], %[[CALL_0]] : tensor<*xf32>, tensor<4xf32>
   // CHECK-NEXT: }
   // CHECK-NEXT: return %[[RES]]#0, %[[RES]]#1 : tensor<*xf32>, tensor<4xf32>
@@ -72,7 +72,7 @@ func.func @test_supported_lowering_of_tf_while_region(%arg0: tensor<f32>, %arg1:
   }) {is_stateless = false} : (tensor<f32>, tensor<*xf32>) -> (tensor<f32>, tensor<*xf32>)
   func.return %0#0 : tensor<f32>
 
-  // CHECK-NEXT: %[[CST:.*]] = "tf.Const"() {value = dense<1.000000e+00> : tensor<f32>} : () -> tensor<f32>
+  // CHECK-NEXT: %[[CST:.*]] = "tf.Const"() <{value = dense<1.000000e+00> : tensor<f32>}> : () -> tensor<f32>
   // CHECK-NEXT: %[[RES:.*]]:2 = scf.while (%[[ARG3:.*]] = %[[ARG0]], %[[ARG4:.*]] = %[[ARG2]]) : (tensor<f32>, tensor<*xf32>) -> (tensor<f32>, tensor<*xf32>) {
   // CHECK-NEXT:   %[[IDEN:.*]] = "tf.Identity"(%[[ARG3]]) : (tensor<f32>) -> tensor<f32>
   // CHECK-NEXT:   %[[ADD:.*]] = "tf.Add"(%[[ARG1]], %[[ARG3]]) : (tensor<f32>, tensor<f32>) -> tensor<f32>

@@ -19,7 +19,7 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/tsl/platform/cloud/now_seconds_env.h"
+#include "tsl/platform/cloud/now_seconds_env.h"
 
 namespace tensorflow {
 using tsl::NowSecondsEnv;  // NOLINT(misc-unused-using-decls)

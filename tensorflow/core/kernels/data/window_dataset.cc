@@ -70,15 +70,17 @@ class Window : public DatasetBase {
     return total_bytes;
   }
 
-  int64_t CardinalityInternal() const override { return elements_.size(); }
+  int64_t CardinalityInternal(CardinalityOptions options) const override {
+    return elements_.size();
+  }
 
   string DebugString() const override { return kWindow; }
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status CheckExternalState() const override { return OkStatus(); }
+  Status CheckExternalState() const override { return absl::OkStatus(); }
 
  protected:
   Status AsGraphDefInternal(SerializationContext* ctx,
@@ -101,7 +103,7 @@ class Window : public DatasetBase {
     }
     TF_RETURN_IF_ERROR(
         b->AddDataset(this, {}, {std::make_pair(0, input_nodes)}, {}, output));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:
@@ -119,23 +121,23 @@ class Window : public DatasetBase {
         *end_of_sequence = false;
         *out_tensors = dataset()->elements_[i_++];
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     Status SaveInternal(SerializationContext* ctx,
                         IteratorStateWriter* writer) override {
       mutex_lock l(mu_);
-      TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kCurIndex), i_));
-      return OkStatus();
+      TF_RETURN_IF_ERROR(writer->WriteScalar(prefix(), kCurIndex, i_));
+      return absl::OkStatus();
     }
 
     Status RestoreInternal(IteratorContext* ctx,
                            IteratorStateReader* reader) override {
       mutex_lock l(mu_);
       int64_t i;
-      TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kCurIndex), &i));
+      TF_RETURN_IF_ERROR(reader->ReadScalar(prefix(), kCurIndex, &i));
       i_ = size_t(i);
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     mutex mu_;
@@ -189,7 +191,7 @@ Status NewWindow(std::vector<std::vector<Tensor>> elements,
   *out_dataset = new Window(std::move(elements), std::move(output_types),
                             std::move(output_shapes));
   (*out_dataset)->Initialize(/*metadata=*/{});
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace data

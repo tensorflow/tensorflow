@@ -13,9 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/kernels/range_sampler.h"
+
 #include <vector>
 
-#include "tensorflow/core/kernels/range_sampler.h"
+#include "absl/status/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
@@ -72,7 +74,7 @@ class RangeSamplerTest : public ::testing::Test {
       a[i] = i;
     }
     for (int64_t i = 1; i < 10; i++) {
-      sampler_->Update(ArraySlice<int64_t>(a + i, 10 - i));
+      sampler_->Update(absl::Span<const int64_t>(a + i, 10 - i));
     }
   }
   std::unique_ptr<RangeSampler> sampler_;
@@ -157,32 +159,56 @@ TEST_F(RangeSamplerTest, FixedUnigramProbabilities) {
   Env* env = Env::Default();
   string fname = io::JoinPath(testing::TmpDir(), "vocab_file");
   TF_CHECK_OK(WriteStringToFile(env, fname, kVocabContent));
-  sampler_.reset(new FixedUnigramSampler(env, 9, fname, 0.8, 0, 1, 0));
+  FixedUnigramSampler* test_sampler = new FixedUnigramSampler(9, 0.8, 0, 1, 0);
+  TF_CHECK_OK(test_sampler->SetDistributionSampler(env, fname));
+  sampler_.reset(test_sampler);
   // 1^0.8+2^0.8+4^0.8+...+256^0.8=197.05
   for (int i = 0; i < 9; i++) {
     ASSERT_NEAR(sampler_->Probability(i), pow(2, i * 0.8) / 197.05, 1e-4);
   }
 }
+TEST_F(RangeSamplerTest, FixedUnigramNoExistingFilename) {
+  Env* env = Env::Default();
+  string fname = "NoExistingFile";
+  FixedUnigramSampler* test_sampler = new FixedUnigramSampler(9, 0.8, 0, 1, 0);
+  Status s = test_sampler->SetDistributionSampler(env, fname);
+  sampler_.reset(test_sampler);
+  EXPECT_TRUE(absl::IsNotFound(s)) << s;
+}
+TEST_F(RangeSamplerTest, FixedUnigramNoMatchingRangeWeights) {
+  Env* env = Env::Default();
+  string fname = io::JoinPath(testing::TmpDir(), "vocab_file");
+  TF_CHECK_OK(WriteStringToFile(env, fname, kVocabContent));
+  FixedUnigramSampler* test_sampler = new FixedUnigramSampler(8, 0.8, 0, 1, 0);
+  Status s = test_sampler->SetDistributionSampler(env, fname);
+  sampler_.reset(test_sampler);
+  EXPECT_TRUE(absl::IsInvalidArgument(s)) << s;
+}
 TEST_F(RangeSamplerTest, FixedUnigramChecksum) {
   Env* env = Env::Default();
   string fname = io::JoinPath(testing::TmpDir(), "vocab_file");
   TF_CHECK_OK(WriteStringToFile(env, fname, kVocabContent));
-  sampler_.reset(new FixedUnigramSampler(env, 9, fname, 0.8, 0, 1, 0));
+  FixedUnigramSampler* test_sampler = new FixedUnigramSampler(9, 0.8, 0, 1, 0);
+  TF_CHECK_OK(test_sampler->SetDistributionSampler(env, fname));
+  sampler_.reset(test_sampler);
   CheckProbabilitiesSumToOne();
 }
-
 TEST_F(RangeSamplerTest, FixedUnigramHistogram) {
   Env* env = Env::Default();
   string fname = io::JoinPath(testing::TmpDir(), "vocab_file");
   TF_CHECK_OK(WriteStringToFile(env, fname, kVocabContent));
-  sampler_.reset(new FixedUnigramSampler(env, 9, fname, 0.8, 0, 1, 0));
+  FixedUnigramSampler* test_sampler = new FixedUnigramSampler(9, 0.8, 0, 1, 0);
+  TF_CHECK_OK(test_sampler->SetDistributionSampler(env, fname));
+  sampler_.reset(test_sampler);
   CheckHistogram(1000, 0.05);
 }
 TEST_F(RangeSamplerTest, FixedUnigramProbabilitiesReserve1) {
   Env* env = Env::Default();
   string fname = io::JoinPath(testing::TmpDir(), "vocab_file");
   TF_CHECK_OK(WriteStringToFile(env, fname, kVocabContent));
-  sampler_.reset(new FixedUnigramSampler(env, 10, fname, 0.8, 1, 1, 0));
+  FixedUnigramSampler* test_sampler = new FixedUnigramSampler(10, 0.8, 1, 1, 0);
+  TF_CHECK_OK(test_sampler->SetDistributionSampler(env, fname));
+  sampler_.reset(test_sampler);
   ASSERT_NEAR(sampler_->Probability(0), 0, 1e-4);
   // 1^0.8+2^0.8+4^0.8+...+256^0.8=197.05
   for (int i = 1; i < 10; i++) {
@@ -193,7 +219,9 @@ TEST_F(RangeSamplerTest, FixedUnigramProbabilitiesReserve2) {
   Env* env = Env::Default();
   string fname = io::JoinPath(testing::TmpDir(), "vocab_file");
   TF_CHECK_OK(WriteStringToFile(env, fname, kVocabContent));
-  sampler_.reset(new FixedUnigramSampler(env, 11, fname, 0.8, 2, 1, 0));
+  FixedUnigramSampler* test_sampler = new FixedUnigramSampler(11, 0.8, 2, 1, 0);
+  TF_CHECK_OK(test_sampler->SetDistributionSampler(env, fname));
+  sampler_.reset(test_sampler);
   ASSERT_NEAR(sampler_->Probability(0), 0, 1e-4);
   ASSERT_NEAR(sampler_->Probability(1), 0, 1e-4);
   // 1^0.8+2^0.8+4^0.8+...+256^0.8=197.05
@@ -203,7 +231,9 @@ TEST_F(RangeSamplerTest, FixedUnigramProbabilitiesReserve2) {
 }
 TEST_F(RangeSamplerTest, FixedUnigramProbabilitiesFromVector) {
   std::vector<float> weights = {1, 2, 4, 8, 16, 32, 64, 128, 256};
-  sampler_.reset(new FixedUnigramSampler(9, weights, 0.8, 0, 1, 0));
+  FixedUnigramSampler* test_sampler = new FixedUnigramSampler(9, 0.8, 0, 1, 0);
+  TF_CHECK_OK(test_sampler->SetDistributionSampler(weights));
+  sampler_.reset(test_sampler);
   // 1^0.8+2^0.8+4^0.8+...+256^0.8=197.05
   for (int i = 0; i < 9; i++) {
     ASSERT_NEAR(sampler_->Probability(i), pow(2, i * 0.8) / 197.05, 1e-4);
@@ -211,17 +241,23 @@ TEST_F(RangeSamplerTest, FixedUnigramProbabilitiesFromVector) {
 }
 TEST_F(RangeSamplerTest, FixedUnigramChecksumFromVector) {
   std::vector<float> weights = {1, 2, 4, 8, 16, 32, 64, 128, 256};
-  sampler_.reset(new FixedUnigramSampler(9, weights, 0.8, 0, 1, 0));
+  FixedUnigramSampler* test_sampler = new FixedUnigramSampler(9, 0.8, 0, 1, 0);
+  TF_CHECK_OK(test_sampler->SetDistributionSampler(weights));
+  sampler_.reset(test_sampler);
   CheckProbabilitiesSumToOne();
 }
 TEST_F(RangeSamplerTest, FixedUnigramHistogramFromVector) {
   std::vector<float> weights = {1, 2, 4, 8, 16, 32, 64, 128, 256};
-  sampler_.reset(new FixedUnigramSampler(9, weights, 0.8, 0, 1, 0));
+  FixedUnigramSampler* test_sampler = new FixedUnigramSampler(9, 0.8, 0, 1, 0);
+  TF_CHECK_OK(test_sampler->SetDistributionSampler(weights));
+  sampler_.reset(test_sampler);
   CheckHistogram(1000, 0.05);
 }
 TEST_F(RangeSamplerTest, FixedUnigramProbabilitiesReserve1FromVector) {
   std::vector<float> weights = {1, 2, 4, 8, 16, 32, 64, 128, 256};
-  sampler_.reset(new FixedUnigramSampler(10, weights, 0.8, 1, 1, 0));
+  FixedUnigramSampler* test_sampler = new FixedUnigramSampler(10, 0.8, 1, 1, 0);
+  TF_CHECK_OK(test_sampler->SetDistributionSampler(weights));
+  sampler_.reset(test_sampler);
   ASSERT_NEAR(sampler_->Probability(0), 0, 1e-4);
   // 1^0.8+2^0.8+4^0.8+...+256^0.8=197.05
   for (int i = 1; i < 10; i++) {
@@ -230,7 +266,9 @@ TEST_F(RangeSamplerTest, FixedUnigramProbabilitiesReserve1FromVector) {
 }
 TEST_F(RangeSamplerTest, FixedUnigramProbabilitiesReserve2FromVector) {
   std::vector<float> weights = {1, 2, 4, 8, 16, 32, 64, 128, 256};
-  sampler_.reset(new FixedUnigramSampler(11, weights, 0.8, 2, 1, 0));
+  FixedUnigramSampler* test_sampler = new FixedUnigramSampler(11, 0.8, 2, 1, 0);
+  TF_CHECK_OK(test_sampler->SetDistributionSampler(weights));
+  sampler_.reset(test_sampler);
   ASSERT_NEAR(sampler_->Probability(0), 0, 1e-4);
   ASSERT_NEAR(sampler_->Probability(1), 0, 1e-4);
   // 1^0.8+2^0.8+4^0.8+...+256^0.8=197.05
@@ -283,7 +321,7 @@ TEST_F(RangeSamplerTest, Unique) {
 
   // Sample one batch and get the expected counts of all values
   sampler_->SampleBatchGetExpectedCount(&rnd, true, absl::MakeSpan(batch),
-                                        MutableArraySlice<float>(), all_values,
+                                        absl::Span<float>(), all_values,
                                         absl::MakeSpan(expected));
   // Check that all elements are unique
   std::set<int64_t> s(batch.begin(), batch.end());
@@ -291,9 +329,9 @@ TEST_F(RangeSamplerTest, Unique) {
 
   for (int trial = 0; trial < num_batches; trial++) {
     std::vector<float> trial_expected(range);
-    sampler_->SampleBatchGetExpectedCount(
-        &rnd, true, absl::MakeSpan(batch), MutableArraySlice<float>(),
-        all_values, absl::MakeSpan(trial_expected));
+    sampler_->SampleBatchGetExpectedCount(&rnd, true, absl::MakeSpan(batch),
+                                          absl::Span<float>(), all_values,
+                                          absl::MakeSpan(trial_expected));
     for (int i = 0; i < range; i++) {
       EXPECT_NEAR(expected[i], trial_expected[i], expected[i] * 0.5);
     }
@@ -320,8 +358,8 @@ TEST_F(RangeSamplerTest, Avoid) {
 
   // We expect to pick all elements of [0, 100) except the avoided two.
   sampler_->SampleBatchGetExpectedCountAvoid(
-      &rnd, true, absl::MakeSpan(batch), MutableArraySlice<float>(),
-      ArraySlice<int64_t>(), MutableArraySlice<float>(), avoided);
+      &rnd, true, absl::MakeSpan(batch), absl::Span<float>(),
+      absl::Span<const int64_t>(), absl::Span<float>(), avoided);
 
   int sum = 0;
   for (auto val : batch) {

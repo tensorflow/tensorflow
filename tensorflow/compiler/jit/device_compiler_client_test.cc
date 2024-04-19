@@ -36,8 +36,8 @@ TEST(GetExecutableOptionTest, Basic) {
   EXPECT_EQ(build_option.result_layout()->ToString(),
             xla_output_shape.ToString());
   EXPECT_EQ(build_option.alias_passthrough_params(), true);
-  EXPECT_EQ(build_option.debug_options().xla_detailed_logging_and_dumping(),
-            true);
+  EXPECT_EQ(build_option.debug_options().xla_detailed_logging(), true);
+  EXPECT_EQ(build_option.debug_options().xla_enable_dumping(), true);
 }
 
 TEST(GetExecutableOptionTest, DefaultDeviceOrdinal) {
@@ -58,6 +58,18 @@ TEST(GetExecutableOptionTest, DeviceOrdinalNotSet) {
       GetExecutableBuildOptions(options, result, /*default_device_ordinal=*/-1);
 
   EXPECT_EQ(build_option.device_ordinal(), -1);
+}
+
+TEST(GetExecutableOptionTest, DumpingWithoutDetailedLogging) {
+  XlaCompiler::Options options;
+  options.detailed_logging = false;
+  XlaCompiler::CompilationResult result;
+
+  auto build_option =
+      GetExecutableBuildOptions(options, result, /*default_device_ordinal=*/-1);
+
+  EXPECT_FALSE(build_option.debug_options().xla_detailed_logging());
+  EXPECT_TRUE(build_option.debug_options().xla_enable_dumping());
 }
 
 }  // namespace

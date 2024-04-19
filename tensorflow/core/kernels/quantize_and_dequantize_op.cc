@@ -89,6 +89,10 @@ class QuantizeAndDequantizeV2Op : public OpKernel {
     if (range_given_) {
       input_min_tensor = ctx->input(1);
       input_max_tensor = ctx->input(2);
+      OP_REQUIRES(ctx, input_min_tensor.dims() == 0,
+                  InvalidArgument("input_min must be a scalar."));
+      OP_REQUIRES(ctx, input_max_tensor.dims() == 0,
+                  InvalidArgument("input_max must be a scalar."));
       if (axis_ == -1) {
         auto min_val = input_min_tensor.scalar<T>()();
         auto max_val = input_max_tensor.scalar<T>()();
@@ -96,6 +100,14 @@ class QuantizeAndDequantizeV2Op : public OpKernel {
                     InvalidArgument("Invalid range: input_min ", min_val,
                                     " > input_max ", max_val));
       } else {
+        OP_REQUIRES(
+            ctx, TensorShapeUtils::IsVector(input_min_tensor.shape()),
+            InvalidArgument("Shape must be rank 1 for input_min_tensor when the"
+                            " axis is specified"));
+        OP_REQUIRES(
+            ctx, TensorShapeUtils::IsVector(input_max_tensor.shape()),
+            InvalidArgument("Shape must be rank 1 for input_max_tensor when the"
+                            " axis is specified"));
         OP_REQUIRES(
             ctx, input_min_tensor.dim_size(0) == depth,
             InvalidArgument("input_min_tensor has incorrect size, was ",
@@ -183,6 +195,14 @@ class QuantizeAndDequantizeV4GradientOp : public OpKernel {
                     "Input max tensor must have dimension 0 or 1. Received ",
                     input_max_tensor.dims(), "."));
     if (axis_ != -1) {
+      OP_REQUIRES(
+          ctx, TensorShapeUtils::IsVector(input_min_tensor.shape()),
+          InvalidArgument("Shape must be rank 1 for input_min_tensor when the"
+                          " axis is specified"));
+      OP_REQUIRES(
+          ctx, TensorShapeUtils::IsVector(input_max_tensor.shape()),
+          InvalidArgument("Shape must be rank 1 for input_max_tensor when the"
+                          " axis is specified"));
       OP_REQUIRES(ctx, input_min_tensor.dim_size(0) == depth,
                   InvalidArgument("min has incorrect size, expected ", depth,
                                   " was ", input_min_tensor.dim_size(0)));
@@ -249,7 +269,7 @@ class QuantizeAndDequantizeV3Op : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override {
     const Tensor& input = ctx->input(0);
-    OP_REQUIRES(ctx, axis_ < input.dims(),
+    OP_REQUIRES(ctx, -input.dims() <= axis_ && axis_ < input.dims(),
                 InvalidArgument(
                     "Axis requested is larger than input dimensions. Axis: ",
                     axis_, " Input Dimensions: ", input.dims()));
@@ -282,6 +302,14 @@ class QuantizeAndDequantizeV3Op : public OpKernel {
                     InvalidArgument("Invalid range: input_min ", min_val,
                                     " > input_max ", max_val));
       } else {
+        OP_REQUIRES(
+            ctx, TensorShapeUtils::IsVector(input_min_tensor.shape()),
+            InvalidArgument("Shape must be rank 1 for input_min_tensor when the"
+                            " axis is specified"));
+        OP_REQUIRES(
+            ctx, TensorShapeUtils::IsVector(input_max_tensor.shape()),
+            InvalidArgument("Shape must be rank 1 for input_max_tensor when the"
+                            " axis is specified"));
         OP_REQUIRES(
             ctx, input_min_tensor.dim_size(0) == depth,
             InvalidArgument("input_min_tensor has incorrect size, was ",

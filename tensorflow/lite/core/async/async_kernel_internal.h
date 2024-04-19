@@ -15,9 +15,11 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_CORE_ASYNC_ASYNC_KERNEL_INTERNAL_H_
 #define TENSORFLOW_LITE_CORE_ASYNC_ASYNC_KERNEL_INTERNAL_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <vector>
 
+#include "tensorflow/lite/core/async/c/types.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/core/c/common.h"
 
@@ -32,24 +34,25 @@ struct TfLiteAsyncKernel {
 
   // Buffer operations
   // ======================
-  // Registers the buffer to `handle`.
-  // `buffer` and `attrs` lifespan is not gauranteed after the function call.
+  // Registers the TfLiteBackendBuffer to `handle`.
+  // `buffer` and `attrs` lifespan is not guaranteed after the function call.
   // kernels should read the stored attributes instead of caching the
   // attribute map.
   // `io_type` specifies whether this buffer is used as an input buffer
   // or an output buffer. If a buffer is both used as input and output,
   // specify it as output. Not null.
-  // `attrs` describes the attributes of the buffer. It's gauranteed to be
-  // of kTfLiteBufferAttrMap type and not null.
+  // `attrs` describes the attributes of the buffer. It's guaranteed to be
+  // of kTfLiteAttrMapTypeBuffer type and not null.
   // `handle` is the buffer handle assigned by TfLite runtime to recognize
   // this piece of buffer.
   TfLiteStatus (*register_buffer)(TfLiteAsyncKernel* async_kernel,
-                                  TfLiteOpaqueContext* context, int32_t io_type,
+                                  TfLiteOpaqueContext* context,
+                                  TfLiteIoType io_type,
                                   const TfLiteBackendBuffer* buffer,
                                   const TfLiteAttributeMap* attrs,
                                   TfLiteBufferHandle handle) = nullptr;
 
-  // Registers a buffer slice from a previously registered memory.
+  // Registers a buffer slice from a previously registered TfLiteBackendBuffer.
   // `buffer` is the handle of the buffer pool previously registered.
   // `attrs` contains the information of the buffer slice.
   // `handle` is the buffer handle assigned by TfLite runtime to recognize
@@ -70,25 +73,35 @@ struct TfLiteAsyncKernel {
 
   // Reconciliations
   // ===================
-  // Inspects the buffer types supported by the backend.
+  // Inspects the buffer object types supported by the backend.
   // `io_type` specify whether the call returns supported input or output
   // buffer.
-  std::vector<const char*> (*supported_buffer_types)(
-      const TfLiteAsyncKernel* async_kernel, int32_t io_type) = nullptr;
+  // Note: the lifespan of returned *`type` strings should be tied to that
+  // of the backend delegate.
+  // Caller DOES NOT own returned types array.
+  void (*supported_buffer_types)(const TfLiteAsyncKernel* async_kernel,
+                                 TfLiteIoType io_type,
+                                 const char* const** types,
+                                 size_t* n_types) = nullptr;
 
   // Inspects the sync object types supported by the backend.
   // `io_type` specify whether the call returns supported input or output
   // sync object.
-  std::vector<const char*> (*supported_synchronizations)(
-      const TfLiteAsyncKernel* async_kernel, int32_t io_type) = nullptr;
+  // Note: the lifespan of returned *`type` strings should be tied to that
+  // of the backend delegate.
+  // Caller DOES NOT own returned types array.
+  void (*supported_synchronizations)(const TfLiteAsyncKernel* async_kernel,
+                                     TfLiteIoType io_type,
+                                     const char* const** types,
+                                     size_t* n_types) = nullptr;
 
   // Reconciles buffer or sync attributes for tensor at tensor_index.
   // Fills `merged` with reconciled attributes.
   // If `conflict` is provided, conflicting attributes will be provided there.
   // Returns true if there's no conflict.
   bool (*reconcile_restrictions)(
-      const TfLiteAsyncKernel* async_kernel, TfLiteOpaqueContext* context,
-      TfLiteOpaqueNode* node, int tensor_index,
+      const TfLiteAsyncKernel* async_kernel, const TfLiteOpaqueContext* context,
+      const TfLiteOpaqueNode* node, int tensor_index,
       const TfLiteAttributeMap* user_provided_attributes,
       TfLiteAttributeMap* merged, TfLiteAttributeMap* conflict) = nullptr;
 
@@ -102,6 +115,16 @@ struct TfLiteAsyncKernel {
                                  TfLiteOpaqueContext* context,
                                  TfLiteOpaqueNode* node, int tensor_index,
                                  const TfLiteAttributeMap* attrs) = nullptr;
+
+  // Set attributes to the buffer, backend kernel will validate the buffer.
+  TfLiteStatus (*set_buffer_attributes)(
+      TfLiteAsyncKernel* async_kernel, const TfLiteBackendBuffer* buffer,
+      const TfLiteAttributeMap* attrs) = nullptr;
+
+  // Get attributes from the buffer, backend kernel will validate the buffer.
+  TfLiteStatus (*get_buffer_attributes)(TfLiteAsyncKernel* async_kernel,
+                                        const TfLiteBackendBuffer* buffer,
+                                        TfLiteAttributeMap* attrs) = nullptr;
 
   // Prepares the kernel using the information from Set[In|Out]putAttributes
   // call above.

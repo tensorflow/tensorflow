@@ -12,6 +12,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <utility>
+#include <variant>
+
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/eager/abstract_function.h"
 #include "tensorflow/c/tf_tensor_internal.h"
@@ -52,12 +55,9 @@ AbstractTensorInterface* TensorHandle::Resolve(Status* status) {
       h_cpu->Unref();
       return nullptr;
     }
-    // TODO(b/153052876): Change TF_TensorFromTensor to just return an
-    // AbstractTensorInterface
-    TF_Tensor* tf_tensor = TF_TensorFromTensor(*t, status);
-    AbstractTensorInterface* retval = tf_tensor->tensor;
+
+    AbstractTensorInterface* retval = TensorInterfaceFromTensor(*t, status);
     h_cpu->Unref();
-    delete tf_tensor;
     return retval;
   } else if (Type() == LOCAL) {
     tensorflow::Tensor tensor;
@@ -90,11 +90,8 @@ AbstractTensorInterface* TensorHandle::Resolve(Status* status) {
         tensor = *src;
       }
     }
-    // TODO(b/153052876): Change TF_TensorFromTensor to just return an
-    // AbstractTensorInterface
-    TF_Tensor* tf_tensor = TF_TensorFromTensor(tensor, status);
-    AbstractTensorInterface* retval = tf_tensor->tensor;
-    delete tf_tensor;
+
+    AbstractTensorInterface* retval = TensorInterfaceFromTensor(tensor, status);
     return retval;
   } else {
     *status = errors::InvalidArgument(
@@ -167,7 +164,7 @@ Status EagerOperation::Execute(absl::Span<AbstractTensorHandle*> retvals,
   }
 
   // Run eager placement logic.
-  class Device* device = absl::get<class Device*>(Device());
+  class Device* device = std::get<class Device*>(Device());
   if (device == nullptr) {
     TF_RETURN_IF_ERROR(eager::MaybePinToResourceDevice(&device, *this));
   }

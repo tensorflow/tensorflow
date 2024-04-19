@@ -19,14 +19,10 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/c/tf_buffer.h"
-#include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/protobuf.h"  // IWYU pragma: keep
 #include "tensorflow/core/platform/status.h"
 
-namespace tsl {
-class Status;
-}
 namespace tensorflow {
-using tsl::Status;
 
 Status MessageToBuffer(const tensorflow::protobuf::MessageLite& in,
                        TF_Buffer* out);

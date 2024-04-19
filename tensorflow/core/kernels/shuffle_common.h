@@ -94,7 +94,7 @@ Status RandomShuffle(OpKernelContext* context, const Tensor& input,
       }
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

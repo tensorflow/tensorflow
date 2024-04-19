@@ -16,24 +16,24 @@ limitations under the License.
 #define TENSORFLOW_CORE_COMMON_RUNTIME_PROCESS_FUNCTION_LIBRARY_RUNTIME_H_
 
 #include <functional>
+#include <memory>
 #include <optional>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
-#include "absl/types/variant.h"
 #include "tensorflow/core/common_runtime/composite_device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/device_set.h"
-#include "tensorflow/core/common_runtime/optimized_function_graph_info.h"
 #include "tensorflow/core/common_runtime/stats_publisher_interface.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/platform.h"
+#include "tensorflow/core/platform/refcount.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/config.pb.h"
-#include "tensorflow/tsl/platform/notification.h"
-#include "tensorflow/tsl/platform/thread_annotations.h"
+#include "tsl/platform/thread_annotations.h"
 
 #if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/protobuf/remote_tensor_handle.pb.h"
@@ -84,11 +84,6 @@ class ProcessFunctionLibraryRuntime {
     // since the flr_map_ may have already been deleted. Explicitly releasing
     // flr_map_ here and checking flr_map_ in ReleaseHandle to avoid this.
     flr_map_.reset();
-    // Graph and stats publishers might have pending work in async threads that
-    // requires access to PFLR instance. Wait for completion before destructing.
-    for (const auto& n : stats_publisher_completed_) {
-      n->WaitForNotification();
-    }
   }
 
   // Sends `tensors_to_send` from `source_device` to `target_device` using
@@ -100,7 +95,7 @@ class ProcessFunctionLibraryRuntime {
   static Status SendTensors(const string& source_device,
                             const string& target_device,
                             const string& key_prefix, int64_t src_incarnation,
-                            gtl::ArraySlice<Tensor> tensors_to_send,
+                            absl::Span<const Tensor> tensors_to_send,
                             DeviceContext* device_context,
                             const std::vector<AllocatorAttributes>& alloc_attrs,
                             RendezvousInterface* rendezvous);
@@ -186,7 +181,7 @@ class ProcessFunctionLibraryRuntime {
   // Runs the function with given `handle`. Function could have been
   // instantiated on any device. More details in framework/function.h
   void Run(const FunctionLibraryRuntime::Options& opts,
-           FunctionLibraryRuntime::Handle handle, gtl::ArraySlice<Tensor> args,
+           FunctionLibraryRuntime::Handle handle, absl::Span<const Tensor> args,
            std::vector<Tensor>* rets,
            FunctionLibraryRuntime::DoneCallback done) const;
   void Run(const FunctionLibraryRuntime::Options& opts,
@@ -200,7 +195,8 @@ class ProcessFunctionLibraryRuntime {
 
   Status RunSync(const FunctionLibraryRuntime::Options& opts,
                  FunctionLibraryRuntime::Handle handle,
-                 gtl::ArraySlice<Tensor> args, std::vector<Tensor>* rets) const;
+                 absl::Span<const Tensor> args,
+                 std::vector<Tensor>* rets) const;
   Status RunSync(const FunctionLibraryRuntime::Options& opts,
                  FunctionLibraryRuntime::Handle handle,
                  CallFrameInterface* frame) const;
@@ -270,6 +266,8 @@ class ProcessFunctionLibraryRuntime {
   struct ComponentFunctionData {
     // The handle for the instantiated component function.
     FunctionLibraryRuntime::Handle handle;
+    // The name for the component function.
+    string name;
     // arg_indices.size() is the number of arguments to the component function.
     // The i-th argument of the component function comes from the
     // `arg_indices[i]`-th argument of the multi-device function.
@@ -295,12 +293,10 @@ class ProcessFunctionLibraryRuntime {
   struct MultiDeviceFunctionData {
     MultiDeviceFunctionData(const string& function_name,
                             const string& function_key, int num_outputs,
-                            FunctionLibraryDefinition&& lib_def,
                             DataTypeVector ret_types)
         : function_name_(function_name),
           function_key_(function_key),
           instantiation_counter_(1),
-          lib_def_(std::move(lib_def)),
           num_outputs_(num_outputs),
           ret_types_(std::move(ret_types)),
           is_cross_process_(false),
@@ -309,9 +305,6 @@ class ProcessFunctionLibraryRuntime {
     const string function_name_;
     const string function_key_;
     uint64 instantiation_counter_;
-    // A library that contains definitions of component functions and their
-    // transitive dependencies.
-    FunctionLibraryDefinition lib_def_;
     // Stored here to resize the output tensor vector when function is run.
     const int num_outputs_;
     DataTypeVector ret_types_;
@@ -399,26 +392,25 @@ class ProcessFunctionLibraryRuntime {
 
   void RunInternal(const FunctionLibraryRuntime::Options& opts,
                    FunctionLibraryRuntime::Handle handle,
-                   gtl::ArraySlice<FunctionArg> args,
+                   absl::Span<const FunctionArg> args,
                    std::vector<FunctionRet>* rets,
                    std::vector<std::unique_ptr<CleanUpItem>>* cleanup_items,
                    FunctionLibraryRuntime::DoneCallback done) const;
 
-  Status CreateRendezvous(FunctionLibraryRuntime::Options& opts,
-                          Rendezvous** created_rendezvous) const;
-
-  void CleanupCreatedRendezvous(const Rendezvous* created_rendezvous,
-                                const int64_t step_id) const;
+  Status CreateRendezvous(
+      FunctionLibraryRuntime::Options& opts,
+      tsl::core::RefCountPtr<Rendezvous>* created_rendezvous) const;
 
   FunctionLibraryRuntime::DoneCallback ApplyCleanUpToDoneCallback(
       std::vector<std::unique_ptr<CleanUpItem>>* items,
-      FunctionLibraryRuntime::DoneCallback done, const int64_t step_id,
-      const Rendezvous* rendezvous) const;
+      FunctionLibraryRuntime::DoneCallback done,
+      const FunctionLibraryRuntime::Options& opts,
+      tsl::core::RefCountPtr<Rendezvous> rendezvous) const;
 
   void CleanUp(std::vector<std::unique_ptr<CleanUpItem>>* items,
                FunctionLibraryRuntime::DoneCallback done) const;
 
-  static Status GetComponentArgs(gtl::ArraySlice<Tensor> args,
+  static Status GetComponentArgs(absl::Span<const Tensor> args,
                                  const ComponentFunctionData& comp_data,
                                  InternalArgs* comp_args);
 
@@ -453,8 +445,7 @@ class ProcessFunctionLibraryRuntime {
 
   void PublishSubgraphs(
       const std::string& function_name,
-      std::unique_ptr<std::unordered_map<string, std::unique_ptr<Graph>>>
-          subgraphs);
+      std::vector<core::RefCountPtr<FunctionRecord>>&& function_records);
 
   // Data structure holding information for a single instantiated remote
   // (to be executed on `target_device`) function.
@@ -532,7 +523,7 @@ class ProcessFunctionLibraryRuntime {
       mdevice_data_ TF_GUARDED_BY(mu_);
 
   std::unique_ptr<
-      std::unordered_map<Device*, std::unique_ptr<FunctionLibraryRuntime>>>
+      std::unordered_map<Device*, core::RefCountPtr<FunctionLibraryRuntime>>>
       flr_map_;
   int next_handle_ TF_GUARDED_BY(mu_);
   const SessionMetadata* const session_metadata_;
@@ -545,8 +536,6 @@ class ProcessFunctionLibraryRuntime {
   // Holds all stats publishers, one for publishing subgraphs of each
   // instantiated function.
   std::vector<std::unique_ptr<StatsPublisherInterface>> stats_publishers_
-      TF_GUARDED_BY(mu_);
-  std::vector<std::unique_ptr<tsl::Notification>> stats_publisher_completed_
       TF_GUARDED_BY(mu_);
 };
 

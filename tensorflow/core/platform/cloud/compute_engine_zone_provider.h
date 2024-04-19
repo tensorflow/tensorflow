@@ -18,7 +18,7 @@ limitations under the License.
 
 #include "tensorflow/core/platform/cloud/compute_engine_metadata_client.h"
 #include "tensorflow/core/platform/cloud/zone_provider.h"
-#include "tensorflow/tsl/platform/cloud/compute_engine_zone_provider.h"
+#include "tsl/platform/cloud/compute_engine_zone_provider.h"
 
 namespace tensorflow {
 using tsl::ComputeEngineZoneProvider;  // NOLINT(misc-unused-using-decls)

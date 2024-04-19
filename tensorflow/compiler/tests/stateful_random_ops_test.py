@@ -31,6 +31,7 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.kernel_tests.random import util as \
 random_test_util
 from tensorflow.python.ops import gen_stateful_random_ops
+from tensorflow.python.ops import random_ops_util
 from tensorflow.python.ops import stateful_random_ops as \
 random
 from tensorflow.python.ops import variables
@@ -60,8 +61,9 @@ def xla_device_name():
 
 
 ALGS = [
-    random.Algorithm.PHILOX.value, random.Algorithm.THREEFRY.value,
-    random.Algorithm.AUTO_SELECT.value
+    random_ops_util.Algorithm.PHILOX.value,
+    random_ops_util.Algorithm.THREEFRY.value,
+    random_ops_util.Algorithm.AUTO_SELECT.value,
 ]
 INTS = [dtypes.int32, dtypes.uint32, dtypes.int64, dtypes.uint64]
 FLOATS = [dtypes.bfloat16, dtypes.float32, dtypes.float64]
@@ -268,8 +270,8 @@ class StatefulRandomOpsTest(xla_test.XLATestCase, parameterized.TestCase):
   def testDistributionOfUniform(self, alg, dtype, seed):
     """Use Pearson's Chi-squared test to test for uniformity."""
     self.check_dtype(dtype)
-    three_fry = random.Algorithm.THREEFRY.value
-    auto_select = random.Algorithm.AUTO_SELECT.value
+    three_fry = random_ops_util.Algorithm.THREEFRY.value
+    auto_select = random_ops_util.Algorithm.AUTO_SELECT.value
     is_tpu = xla_device().device_type == "TPU"
     is_megacore = "megacore" in os.environ.get("TEST_TARGET", "").lower()
     # TODO(b/244649364): Investigate why these combinations fail.

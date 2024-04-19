@@ -22,6 +22,7 @@ limitations under the License.
 #include "mlir/Tools/mlir-translate/Translation.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_tf_dialect_op.h"
+#include "tsl/platform/protobuf.h"
 
 namespace mlir {
 static mlir::Operation* ExtractOnlyOp(mlir::ModuleOp module) {
@@ -61,7 +62,7 @@ static LogicalResult MlirToTfNodeDef(ModuleOp module,
     return failure();
   }
 
-  output << node_def_or.value()->DebugString();
+  output << tsl::LegacyUnredactedDebugString(*node_def_or.value());
   return success();
 }
 

@@ -18,7 +18,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
+#include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
@@ -64,7 +64,7 @@ static mlir::LogicalResult FilterTfgSpecificArgResultAttributes(
     mlir::NamedAttrList list;
     for (mlir::NamedAttribute attr : std::get<1>(it).getValue()) {
       // Skip if the attribute has "tfg" prefix.
-      if (attr.getName().getValue().startswith("tfg")) continue;
+      if (attr.getName().getValue().starts_with("tfg")) continue;
       list.append(attr);
     }
     output_attrs.push_back(list.getDictionary(context));

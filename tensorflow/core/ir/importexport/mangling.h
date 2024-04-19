@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_IR_IMPORTEXPORT_MANGLING_H_
 #define TENSORFLOW_CORE_IR_IMPORTEXPORT_MANGLING_H_
 
+#include <string>
+
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"

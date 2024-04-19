@@ -544,7 +544,7 @@ bool SchedulingPass(Cluster* cluster, std::unique_ptr<GraphMemory>* memory_ptr,
     Status s = (*memory_ptr)->InferStatically(cluster->GetDevices());
     if (!s.ok()) {
       memory_ptr->reset();
-      VLOG(1) << "Failed to infer memory usage: " << s.error_message();
+      VLOG(1) << "Failed to infer memory usage: " << s.message();
       return false;
     }
   }
@@ -581,7 +581,7 @@ bool SchedulingPass(Cluster* cluster, std::unique_ptr<GraphMemory>* memory_ptr,
                                         /*aggressive_shape_inference=*/false,
                                         /*include_tensor_values=*/false);
   if (!s.ok()) {
-    VLOG(1) << "Failed to infer shapes: " << s.error_message();
+    VLOG(1) << "Failed to infer shapes: " << s.message();
     return false;
   }
 
@@ -591,7 +591,7 @@ bool SchedulingPass(Cluster* cluster, std::unique_ptr<GraphMemory>* memory_ptr,
   Status initialized_topology = graph_topology.InitializeFromGraph(item->graph);
   if (!initialized_topology.ok()) {
     VLOG(1) << "Failed to initialize graph topology view: "
-            << initialized_topology.error_message();
+            << initialized_topology.message();
     return false;
   }
 
@@ -794,7 +794,7 @@ Status BuildSwapPair(NodeDef* node, int input_to_swap,
   (*swap_out_node->mutable_attr())["T"].set_type(input_type);
   *swap_pair = std::make_pair(swap_out_node, swap_in_node);
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 struct SwapInfo {
@@ -987,7 +987,7 @@ static bool IdentifySwappingCandidates(
     Status s = (*memory_ptr)->InferStatically(cluster->GetDevices());
     if (!s.ok()) {
       memory_ptr->reset();
-      VLOG(1) << "Failed to infer memory usage: " << s.error_message();
+      VLOG(1) << "Failed to infer memory usage: " << s.message();
       return false;
     }
   }
@@ -1313,7 +1313,7 @@ Status FindAssignNodesToRelax(const GraphDef& graph,
   }
   if (!found_send && devices.size() == 1) {
     nodes_to_relax->insert(assign_nodes.begin(), assign_nodes.end());
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   GraphTopologyView graph_view;
@@ -1373,7 +1373,7 @@ Status FindAssignNodesToRelax(const GraphDef& graph,
       }
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -1439,7 +1439,7 @@ Status MemoryOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   }
 
   optimized_graph->Swap(&optimized_item.graph);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // end namespace grappler

@@ -12,7 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""DTensor Checkpoint."""
+"""DTensor Checkpoint.
+
+Note that this module contains deprecated functionality, and the DTensor related
+checkpoint has been integrated with tf.train.Checkpoint. It can be used out of
+the box to save and restore dtensors.
+"""
 
 from typing import Dict, List, Optional
 import weakref
@@ -394,7 +399,8 @@ class DTrackableSaver(util.TrackableSaver):
     load_status = util.CheckpointLoadStatus(
         checkpoint,
         graph_view=self._graph_view,
-        feed_dict=file_prefix_feed_dict)
+        feed_dict=file_prefix_feed_dict,
+        options=options)
     return load_status
 
 

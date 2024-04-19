@@ -14,6 +14,7 @@
 # ==============================================================================
 """Tests tf.data service with local and remote workers."""
 
+import multiprocessing
 from absl.testing import parameterized
 
 from tensorflow.python.data.experimental.kernel_tests.service import multi_process_cluster
@@ -24,7 +25,6 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import errors
 
-import multiprocessing
 
 class LocalWorkersTest(data_service_test_base.TestBase, parameterized.TestCase):
   """Tests reading from local workers if `target_workers` is `local`."""
@@ -343,10 +343,11 @@ class LocalTaskGarbageCollectTest(data_service_test_base.TestBase,
     # reads from the same task as the first, which has been deleted.
     dataset = self._make_distributed_infinite_range_dataset(
         cluster, job_name="shared_job_name")
-    get_next = self.getNext(dataset)
     with self.assertRaisesRegex(errors.FailedPreconditionError,
                                 "which has been deleted."):
-      _ = self.evaluate(get_next())
+      get_next = self.getNext(dataset)
+      while True:
+        _ = self.evaluate(get_next())
 
   @combinations.generate(
       combinations.times(test_base.graph_only_combinations(),

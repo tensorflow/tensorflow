@@ -31,13 +31,15 @@ from tensorflow.python.framework import test_ops  # pylint: disable=unused-impor
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework import versions
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import array_ops_stack
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.ops import while_loop
 import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
 
@@ -404,7 +406,7 @@ class ImportGraphDefTest(test.TestCase):
     # Produce GraphDef containing while loop.
     graph = ops.Graph()
     with graph.as_default():
-      r = control_flow_ops.while_loop(lambda i: i < 10, lambda i: i + 1, [0])
+      r = while_loop.while_loop(lambda i: i < 10, lambda i: i + 1, [0])
       # Add an op that consumes the while loop output.
       math_ops.add(r, 1)
     graph_def = graph.as_graph_def()
@@ -421,7 +423,7 @@ class ImportGraphDefTest(test.TestCase):
     # Produce GraphDef containing while loop.
     graph = ops.Graph()
     with graph.as_default():
-      r = control_flow_ops.while_loop(lambda i: i < 10, lambda i: i + 1, [0])
+      r = while_loop.while_loop(lambda i: i < 10, lambda i: i + 1, [0])
     graph_def = graph.as_graph_def()
 
     # Import the GraphDef inside a cond and make sure it runs.
@@ -431,8 +433,8 @@ class ImportGraphDefTest(test.TestCase):
         return importer.import_graph_def(graph_def, return_elements=[r.name])[0]
 
       pred = array_ops.placeholder(dtypes.bool)
-      out = control_flow_ops.cond(pred, ImportFn,
-                                  lambda: constant_op.constant(1))
+      out = cond.cond(pred, ImportFn,
+                      lambda: constant_op.constant(1))
       with self.cached_session() as sess:
         self.assertEqual(sess.run(out, {pred: True}), 10)
         self.assertEqual(sess.run(out, {pred: False}), 1)
@@ -442,7 +444,7 @@ class ImportGraphDefTest(test.TestCase):
     # Produce GraphDef containing while loop.
     graph = ops.Graph()
     with graph.as_default():
-      r = control_flow_ops.while_loop(lambda i: i < 10, lambda i: i + 1, [0])
+      r = while_loop.while_loop(lambda i: i < 10, lambda i: i + 1, [0])
     graph_def = graph.as_graph_def()
 
     # Import the GraphDef inside another loop and make sure it runs.
@@ -451,8 +453,9 @@ class ImportGraphDefTest(test.TestCase):
       def ImportFn(_):
         return importer.import_graph_def(graph_def, return_elements=[r.name])[0]
 
-      out = control_flow_ops.while_loop(
-          lambda i: i < 2, ImportFn, [0],
+      out = while_loop.while_loop(
+          lambda i: i < 2,
+          ImportFn, [0],
           shape_invariants=[tensor_shape.TensorShape(None)])
       with self.cached_session() as sess:
         self.assertEqual(self.evaluate(out), 10)
@@ -938,7 +941,7 @@ class ImportGraphDefTest(test.TestCase):
   def testWithExtensionAndAttr(self):
     with ops.Graph().as_default() as g:
       c = constant_op.constant(5.0, dtype=dtypes.float32, name="c")
-      array_ops.stack([c, c], name="pack")
+      array_ops_stack.stack([c, c], name="pack")
     gdef = g.as_graph_def()
 
     with self.cached_session():

@@ -28,7 +28,6 @@ namespace dtensor {
 
 using shape_inference::InferenceContext;
 using shape_inference::ShapeHandle;
-using shape_inference::UnchangedShape;
 
 // Initializes global TPU's for mutli-client execution.
 //
@@ -45,7 +44,7 @@ REGISTER_OP("ConfigureAndInitializeGlobalTPU")
         TF_RETURN_IF_ERROR(c->WithRank(c->input(i), 0, &input));
       }
       c->set_output(0, c->Vector(c->UnknownDim()));
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("ShutdownTPUSystem")
@@ -59,7 +58,7 @@ REGISTER_OP("DTensorSetGlobalTPUArray")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle input;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &input));
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 }  // namespace dtensor

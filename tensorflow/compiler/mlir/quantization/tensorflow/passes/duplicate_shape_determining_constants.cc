@@ -12,13 +12,13 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <array>
 #include <iterator>
 #include <memory>
 
 #include "absl/algorithm/container.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -26,9 +26,11 @@ limitations under the License.
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
 // Required to use LLVM_DEBUG macro.
 #define DEBUG_TYPE "quant-duplicate-shape-determining-constants"
@@ -76,11 +78,13 @@ class DuplicateShapeDeterminingConstantsPass
   void runOnOperation() override;
 };
 
-// Returns True iff the otuput value of `op` is considered compile time constant
-// from the XLA compiler's perspective, even if it is not a `ConstOp`.
-bool IsOutputCompileTimeConstantEquivalent(Operation* op) {
+// Returns True iff the otuput value of `op` is either a compile time constant
+// or bounded from the XLA compiler's perspective, even if it is not a
+// `ConstOp`.
+bool IsOutputCompileTimeConstantOrBounded(Operation* op) {
   return llvm::isa_and_nonnull<TF::ShapeOp, TF::ShapeNOp, TF::RankOp,
-                               TF::SizeOp, TF::TensorArraySizeV3Op>(op);
+                               TF::SizeOp, TF::TensorArraySizeV3Op,
+                               TF::XlaSetBoundOp>(op);
 }
 
 // Recursively duplicate constants for `op_operands` upward.
@@ -123,7 +127,7 @@ void RecursivelyDuplicateConstantsForOperands(
                  << owning_op->getName().getStringRef()
                  << ", operand idx: " << curr_operand->getOperandNumber()
                  << ", loc: " << const_op_cloned->getLoc() << "\n");
-    } else if (IsOutputCompileTimeConstantEquivalent(defining_op)) {
+    } else if (IsOutputCompileTimeConstantOrBounded(defining_op)) {
       // Stop the recursion early when the output of the defining op is
       // considered compile-time constant from the XLA compiler's perspective.
       continue;
@@ -305,7 +309,10 @@ void DuplicateShapeDeterminingConstantsPass::runOnOperation() {
       CompileTimeConstantOperand<TF::SegmentSumV2Op, 2>,   // $num_segments
       CompileTimeConstantOperand<TF::SliceOp, 1, 2>,       // $begin, $size
       CompileTimeConstantOperand<TF::SparseToDenseOp, 1>,  // $output_shape
-      CompileTimeConstantOperand<TF::StackV2Op, 0>,        // $max_size
+      CompileTimeConstantOperand<TF::SplitOp, 0>,          // $split_dim
+      // $size_splits, $split_dim
+      CompileTimeConstantOperand<TF::SplitVOp, 1, 2>,
+      CompileTimeConstantOperand<TF::StackV2Op, 0>,  // $max_size
       // $num_samples
       CompileTimeConstantOperand<TF::StatelessMultinomialOp, 1>,
       // $shape, $begin, $end, $strides
@@ -347,6 +354,7 @@ void DuplicateShapeDeterminingConstantsPass::runOnOperation() {
       CompileTimeConstantOperand<TF::XlaRemoveDynamicDimensionSizeOp, 1>,
       // $window_dimensions, $window_strides, $padding
       CompileTimeConstantOperand<TF::XlaSelectAndScatterOp, 1, 2, 3>,
+      CompileTimeConstantOperand<TF::XlaSetBoundOp, 1>,  // $bound
       // $dim_index
       CompileTimeConstantOperand<TF::XlaSetDynamicDimensionSizeOp, 1>
       // go/keep-sorted end

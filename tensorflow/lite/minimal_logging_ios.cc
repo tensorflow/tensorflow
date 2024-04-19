@@ -33,6 +33,8 @@ int GetPlatformSeverity(LogSeverity severity) {
       return LOG_WARNING;
     case TFLITE_LOG_ERROR:
       return LOG_ERR;
+    // LOG_SILENT doesn't exist, Use LOG_DEBUG instead.
+    case TFLITE_LOG_SILENT:
     default:
       return LOG_DEBUG;
   }
@@ -50,19 +52,21 @@ LogSeverity MinimalLogger::minimum_log_severity_ = TFLITE_LOG_INFO;
 
 void MinimalLogger::LogFormatted(LogSeverity severity, const char* format,
                                  va_list args) {
-  // First log to iOS system logging API.
-  va_list args_copy;
-  va_copy(args_copy, args);
-  // TODO(b/123704468): Use os_log when available.
-  vsyslog(GetPlatformSeverity(severity), format, args_copy);
-  va_end(args_copy);
+  if (severity >= MinimalLogger::minimum_log_severity_) {
+    // First log to iOS system logging API.
+    va_list args_copy;
+    va_copy(args_copy, args);
+    // TODO(b/123704468): Use os_log when available.
+    vsyslog(GetPlatformSeverity(severity), format, args_copy);
+    va_end(args_copy);
 
-  // Also print to stderr for standard console applications.
-  fprintf(stderr, "%s: ", GetSeverityName(severity));
-  va_copy(args_copy, args);
-  vfprintf(stderr, format, args_copy);
-  va_end(args_copy);
-  fputc('\n', stderr);
+    // Also print to stderr for standard console applications.
+    fprintf(stderr, "%s: ", GetSeverityName(severity));
+    va_copy(args_copy, args);
+    vfprintf(stderr, format, args_copy);
+    va_end(args_copy);
+    fputc('\n', stderr);
+  }
 }
 
 }  // namespace logging_internal

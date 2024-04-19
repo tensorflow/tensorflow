@@ -241,7 +241,6 @@ TEST(ValidateGraphHasNoCycleTest, CycleFails) {
   // Need to construct graph explicitly, since GraphDefToGraph has its own
   // cycle validation routine.
   Graph graph(OpRegistry::Global());
-  GraphConstructorOptions opts;
 
   Node* a = AddNodeFromNodeDef(graph, "A", "FloatInput", 0);
   Node* c = AddNodeFromNodeDef(graph, "B", "Mul", 2);

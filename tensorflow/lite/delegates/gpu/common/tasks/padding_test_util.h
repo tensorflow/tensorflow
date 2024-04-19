@@ -23,6 +23,7 @@ namespace tflite {
 namespace gpu {
 
 absl::Status PaddingAppendWidthTest(TestExecutionEnvironment* env);
+absl::Status PaddingAppendWidthConstValuesTest(TestExecutionEnvironment* env);
 absl::Status PaddingPrependWidthTest(TestExecutionEnvironment* env);
 absl::Status PaddingAppendHeightTest(TestExecutionEnvironment* env);
 absl::Status PaddingPrependHeightTest(TestExecutionEnvironment* env);

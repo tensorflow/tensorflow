@@ -17,7 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_PLATFORM_RANDOM_H_
 
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/tsl/platform/random.h"
+#include "tsl/platform/random.h"
 
 namespace tensorflow {
 namespace random {

@@ -17,7 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_PLATFORM_REFCOUNT_H_
 
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/tsl/platform/refcount.h"
+#include "tsl/platform/refcount.h"
 
 namespace tensorflow {
 namespace core {

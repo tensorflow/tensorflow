@@ -22,7 +22,7 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
@@ -44,8 +44,8 @@ class CondWithManyIntermediatesBenchmark(test.Benchmark):
                      for _ in range(self.NUM_INTERMEDIATES))
 
     # Use a dynamic predicate to make sure the cond isn't constant folded.
-    return control_flow_ops.cond(math_ops.not_equal(x, -1),
-                                 branch_fn, lambda: 0.0)
+    return cond.cond(math_ops.not_equal(x, -1),
+                     branch_fn, lambda: 0.0)
 
   def _benchmark_defun(self):
     """Benchmarks cond in a defun."""

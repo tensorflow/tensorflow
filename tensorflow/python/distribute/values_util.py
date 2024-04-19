@@ -15,7 +15,6 @@
 """Utility functions used by values.py and ps_values.py."""
 
 from tensorflow.python.distribute import distribute_lib
-from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
@@ -179,8 +178,8 @@ def assign_on_each_device(var, assign_func, value, read_value):
 
 
 def on_read_assign_sub_cross_replica(var, value, read_value=True):
-  with ds_context.enter_or_assert_strategy(var.distribute_strategy):
-    if ds_context.in_cross_replica_context():
+  with distribute_lib.enter_or_assert_strategy(var.distribute_strategy):
+    if distribute_lib.in_cross_replica_context():
       if var.aggregation == vs.VariableAggregation.SUM:
         raise ValueError(
             "SyncOnReadVariable does not support `assign_sub` in "
@@ -191,8 +190,8 @@ def on_read_assign_sub_cross_replica(var, value, read_value=True):
 
 
 def on_read_assign_add_cross_replica(var, value, read_value=True):
-  with ds_context.enter_or_assert_strategy(var.distribute_strategy):
-    if ds_context.in_cross_replica_context():
+  with distribute_lib.enter_or_assert_strategy(var.distribute_strategy):
+    if distribute_lib.in_cross_replica_context():
       if var.aggregation == vs.VariableAggregation.SUM:
         raise ValueError(
             "SyncOnReadVariable does not support `assign_add` in "
@@ -204,8 +203,8 @@ def on_read_assign_add_cross_replica(var, value, read_value=True):
 
 def on_read_assign_cross_replica(var, value, read_value=True):
   """Return the value of the variable in cross replica context."""
-  with ds_context.enter_or_assert_strategy(var.distribute_strategy):
-    if ds_context.in_cross_replica_context():
+  with distribute_lib.enter_or_assert_strategy(var.distribute_strategy):
+    if distribute_lib.in_cross_replica_context():
       # To preserve the sum across save and restore, we have to divide the
       # total across all devices when restoring a variable that was summed
       # when saving.
@@ -283,7 +282,7 @@ def scatter_update(var, sparse_delta, use_locking=False, name=None):
 
 def get_current_replica_id_as_int():
   """Returns the current replica ID as an integer, or `None`."""
-  replica_context = ds_context.get_replica_context()
+  replica_context = distribute_lib.get_replica_context()
   if replica_context:
     replica_id = replica_context._replica_id  # pylint: disable=protected-access
     if not isinstance(replica_id, int):
@@ -309,7 +308,7 @@ def assign_sub_on_device(device, variable, tensor):
 
 
 def assert_replica_context(strategy):
-  replica_context = ds_context.get_replica_context()
+  replica_context = distribute_lib.get_replica_context()
   if not replica_context:
     raise RuntimeError(
         "Replica-local variables may only be assigned in a replica context.")

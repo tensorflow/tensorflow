@@ -143,7 +143,8 @@ class GrpcSession : public Session {
   Status CreateImpl(CallOptions* call_options, GraphDef graph);
   Status ExtendImpl(CallOptions* call_options, GraphDef graph);
 
-  TF_DISALLOW_COPY_AND_ASSIGN(GrpcSession);
+  GrpcSession(const GrpcSession&) = delete;
+  void operator=(const GrpcSession&) = delete;
 };
 
 }  // namespace tensorflow

@@ -31,7 +31,7 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/numa.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/tsl/profiler/lib/traceme.h"
+#include "tsl/profiler/lib/traceme.h"
 
 namespace tensorflow {
 

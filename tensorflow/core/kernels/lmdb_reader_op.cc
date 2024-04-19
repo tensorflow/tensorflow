@@ -18,109 +18,21 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 
 #include <sys/stat.h>
-#include "lmdb.h"
 
 namespace tensorflow {
 
 #define MDB_CHECK(val) CHECK_EQ(val, MDB_SUCCESS) << mdb_strerror(val)
 
-class LMDBReader : public ReaderBase {
- public:
-  LMDBReader(const string& node_name, Env* /*unused*/)
-      : ReaderBase(strings::StrCat("LMDBReader '", node_name, "'")),
-        mdb_env_(nullptr),
-        mdb_dbi_(0),
-        mdb_txn_(nullptr),
-        mdb_cursor_(nullptr) {}
-
-  Status OnWorkStartedLocked() override {
-    MDB_CHECK(mdb_env_create(&mdb_env_));
-    int flags = MDB_RDONLY | MDB_NOTLS | MDB_NOLOCK;
-
-    // Check if the LMDB filename is actually a file instead of a directory.
-    // If so, set appropriate flags so we can open it.
-    struct stat source_stat;
-    if (stat(current_work().c_str(), &source_stat) == 0 &&
-        (source_stat.st_mode & S_IFREG)) {
-      flags |= MDB_NOSUBDIR;
-    }
-
-    MDB_CHECK(mdb_env_open(mdb_env_, current_work().c_str(), flags, 0664));
-    MDB_CHECK(mdb_txn_begin(mdb_env_, nullptr, MDB_RDONLY, &mdb_txn_));
-    MDB_CHECK(mdb_dbi_open(mdb_txn_, nullptr, 0, &mdb_dbi_));
-
-    return OkStatus();
-  }
-
-  Status OnWorkFinishedLocked() override {
-    if (mdb_env_ != nullptr) {
-      if (mdb_cursor_) {
-        mdb_cursor_close(mdb_cursor_);
-        mdb_cursor_ = nullptr;
-      }
-      mdb_dbi_close(mdb_env_, mdb_dbi_);
-      mdb_txn_abort(mdb_txn_);
-      mdb_env_close(mdb_env_);
-      mdb_txn_ = nullptr;
-      mdb_dbi_ = 0;
-      mdb_env_ = nullptr;
-    }
-    return OkStatus();
-  }
-
-  Status ReadLocked(tstring* key, tstring* value, bool* produced,
-                    bool* at_end) override {
-    if (mdb_cursor_ == nullptr) {
-      MDB_CHECK(mdb_cursor_open(mdb_txn_, mdb_dbi_, &mdb_cursor_));
-      if (Seek(MDB_FIRST) == false) {
-        *at_end = true;
-        return OkStatus();
-      }
-    } else {
-      if (Seek(MDB_NEXT) == false) {
-        *at_end = true;
-        return OkStatus();
-      }
-    }
-    *key =
-        tstring(static_cast<const char*>(mdb_key_.mv_data), mdb_key_.mv_size);
-    *value = tstring(static_cast<const char*>(mdb_value_.mv_data),
-                     mdb_value_.mv_size);
-    *produced = true;
-    return OkStatus();
-  }
-
-  Status ResetLocked() override {
-    CHECK_EQ(Seek(MDB_FIRST), true);
-    return ReaderBase::ResetLocked();
-  }
-
- private:
-  bool Seek(MDB_cursor_op op) {
-    CHECK_NOTNULL(mdb_cursor_);
-    int mdb_status = mdb_cursor_get(mdb_cursor_, &mdb_key_, &mdb_value_, op);
-    if (mdb_status == MDB_NOTFOUND) {
-      return false;
-    } else {
-      MDB_CHECK(mdb_status);
-      return true;
-    }
-  }
-
-  MDB_env* mdb_env_;
-  MDB_dbi mdb_dbi_;
-
-  MDB_txn* mdb_txn_;
-  MDB_cursor* mdb_cursor_;
-  MDB_val mdb_key_, mdb_value_;
-};
-
 class LMDBReaderOp : public ReaderOpKernel {
  public:
   explicit LMDBReaderOp(OpKernelConstruction* context)
       : ReaderOpKernel(context) {
-    Env* env = context->env();
-    SetReaderFactory([this, env]() { return new LMDBReader(name(), env); });
+    OP_REQUIRES(
+        context, false,
+        errors::Unimplemented(
+            "LMDB support is removed from TensorFlow. This API will be deleted "
+            "in the next TensorFlow release. If you need LMDB support, please "
+            "file a GitHub issue."));
   }
 };
 

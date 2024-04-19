@@ -22,9 +22,8 @@ limitations under the License.
 #include "google/protobuf/any.pb.h"
 #include "absl/algorithm/container.h"
 #include "absl/base/call_once.h"
-#include "tensorflow/compiler/xla/stream_executor/gpu/asm_compiler.h"
-#include "tensorflow/compiler/xla/stream_executor/gpu/redzone_allocator.h"
-#include "tensorflow/core/platform/logger.h"
+#include "xla/stream_executor/gpu/asm_compiler.h"
+#include "xla/stream_executor/gpu/redzone_allocator.h"
 #include "tensorflow/core/protobuf/autotuning.pb.h"
 #include "tensorflow/core/protobuf/conv_autotuning.pb.h"
 #include "tensorflow/core/util/determinism.h"
@@ -32,6 +31,25 @@ limitations under the License.
 #include "tensorflow/core/util/proto/proto_utils.h"
 
 namespace tensorflow {
+
+using xla::AutotuningLog;
+using xla::ComputeCapability;
+using xla::CudnnVersion;
+
+bool IsBF16SupportedInOps(se::Stream* stream) {
+  if (!stream) {
+    return false;  // No stream: don't know whether it's supported.
+  }
+#if GOOGLE_CUDA
+  // Performant bfloat16 operations are supported for Ampere+ GPUs. For
+  // pre-Ampere GPUs, we cast inputs to float and outputs back to bfloat16.
+  return stream->GetCudaComputeCapability().IsAtLeast(
+      se::CudaComputeCapability::AMPERE);
+#elif TENSORFLOW_USE_ROCM
+  // So far, we return false meaning that the conversion to float is needed.
+  return false;
+#endif
+}
 
 bool RedzoneCheckDisabled() {
   const char* disable_rz_str = std::getenv("TF_DISABLE_RZ_CHECK");
@@ -58,18 +76,18 @@ se::DeviceMemoryBase WrapRedzoneBestEffort(se::RedzoneAllocator* rz_allocator,
 }
 
 void CheckRedzones(const se::RedzoneAllocator& rz_allocator,
-                   tensorflow::AutotuneResult* autotune_result) {
+                   xla::AutotuneResult* autotune_result) {
   if (RedzoneCheckDisabled()) {
     return;
   }
-  se::port::StatusOr<se::RedzoneAllocator::RedzoneCheckStatus> rz_status =
+  tsl::StatusOr<se::RedzoneAllocator::RedzoneCheckStatus> rz_status =
       rz_allocator.CheckRedzones();
   if (!rz_status.ok()) {
     static absl::once_flag failure_logged;
     absl::call_once(failure_logged, [&]() {
       LOG(WARNING) << "Failed to check cudnn convolutions for out-of-bounds "
                    << "reads and writes with an error message: '"
-                   << rz_status.status().error_message()
+                   << rz_status.status().message()
                    << "'; skipping this check. This only means that we won't "
                    << "check cudnn for out-of-bounds reads and writes. This "
                    << "message will only be printed once.";
@@ -108,10 +126,10 @@ bool EnableCublasLtGemm() {
 
 namespace {
 
-tensorflow::CudnnVersion GetCudnnVersion(se::StreamExecutor* stream_executor) {
-  tensorflow::CudnnVersion cudnn_version;
+CudnnVersion GetCudnnVersion(se::StreamExecutor* stream_executor) {
+  CudnnVersion cudnn_version;
   if (auto* dnn = stream_executor->AsDnn()) {
-    se::port::StatusOr<se::dnn::VersionInfo> version_or = dnn->GetVersion();
+    tsl::StatusOr<se::dnn::VersionInfo> version_or = dnn->GetVersion();
     if (version_or.ok()) {
       const auto& version = version_or.value();
       cudnn_version.set_major(version.major_version());
@@ -122,9 +140,8 @@ tensorflow::CudnnVersion GetCudnnVersion(se::StreamExecutor* stream_executor) {
   return cudnn_version;
 }
 
-tensorflow::ComputeCapability GetComputeCapability(
-    se::StreamExecutor* stream_executor) {
-  tensorflow::ComputeCapability cc_proto;
+ComputeCapability GetComputeCapability(se::StreamExecutor* stream_executor) {
+  ComputeCapability cc_proto;
   se::CudaComputeCapability cc =
       stream_executor->GetDeviceDescription().cuda_compute_capability();
   cc_proto.set_major(cc.major);
@@ -144,7 +161,7 @@ void LogConvAutotuneResults(se::dnn::ConvolutionKind kind,
                             const se::dnn::BatchDescriptor& output_desc,
                             const se::dnn::ConvolutionDescriptor& conv_desc,
                             se::StreamExecutor* stream_exec,
-                            absl::Span<const AutotuneResult> results) {
+                            absl::Span<const xla::AutotuneResult> results) {
   AutotuningLog log;
   {
     ConvolutionProto instr;
@@ -175,7 +192,6 @@ void LogConvAutotuneResults(se::dnn::ConvolutionKind kind,
     *log.add_results() = result;
   }
   VLOG(2) << log.DebugString();
-  Logger::GetSingleton()->LogProto(log);
 }
 
 void LogFusedConvForwardAutotuneResults(
@@ -187,7 +203,8 @@ void LogFusedConvForwardAutotuneResults(
     const se::dnn::BatchDescriptor& output_desc,
     const se::dnn::ConvolutionDescriptor& conv_desc, double conv_scale,
     double side_value_scale, se::dnn::ActivationMode activation_mode,
-    se::StreamExecutor* stream_exec, absl::Span<const AutotuneResult> results) {
+    se::StreamExecutor* stream_exec,
+    absl::Span<const xla::AutotuneResult> results) {
   AutotuningLog log;
   {
     ConvolutionProto instr;
@@ -222,7 +239,6 @@ void LogFusedConvForwardAutotuneResults(
     *log.add_results() = result;
   }
   VLOG(2) << log.DebugString();
-  Logger::GetSingleton()->LogProto(log);
 }
 
 void LogFusedMatmulAutotuneResults(
@@ -231,7 +247,8 @@ void LogFusedMatmulAutotuneResults(
     se::DeviceMemoryBase c_buffer, se::DeviceMemoryBase bias_buffer,
     bool trans_a, bool trans_b, uint32_t m, uint32_t n, uint32_t k, int32_t lda,
     int32_t ldb, int32_t ldc, se::dnn::ActivationMode activation_mode,
-    se::StreamExecutor* stream_exec, absl::Span<const AutotuneResult> results) {
+    se::StreamExecutor* stream_exec,
+    absl::Span<const xla::AutotuneResult> results) {
   AutotuningLog log;
   {
     MatmulProto instr;
@@ -267,14 +284,13 @@ void LogFusedMatmulAutotuneResults(
     *log.add_results() = result;
   }
   VLOG(2) << log.DebugString();
-  Logger::GetSingleton()->LogProto(log);
 }
 
 namespace {
 StatusOr<std::tuple<int, int>> BestCudnnConvAlgorithmIndices(
-    absl::Span<const AutotuneResult> results) {
-  auto compare_run_times = [](const AutotuneResult& lhs,
-                              const AutotuneResult& rhs) {
+    absl::Span<const xla::AutotuneResult> results) {
+  auto compare_run_times = [](const xla::AutotuneResult& lhs,
+                              const xla::AutotuneResult& rhs) {
     return proto_utils::FromDurationProto(lhs.run_time()) <
            proto_utils::FromDurationProto(rhs.run_time());
   };
@@ -314,7 +330,7 @@ StatusOr<std::tuple<int, int>> BestCudnnConvAlgorithmIndices(
 }  // namespace
 
 StatusOr<se::dnn::AlgorithmConfig> BestCudnnConvAlgorithm(
-    absl::Span<const AutotuneResult> results) {
+    absl::Span<const xla::AutotuneResult> results) {
   int idx;
   int idx_no_scratch;
   TF_ASSIGN_OR_RETURN(std::tie(idx, idx_no_scratch),
@@ -337,7 +353,7 @@ StatusOr<se::dnn::AlgorithmConfig> BestCudnnConvAlgorithm(
 
 template <typename Op>
 StatusOr<AutotuneEntry<Op>> BestCudnnConvAlgorithm(
-    absl::Span<const AutotuneResult> results,
+    absl::Span<const xla::AutotuneResult> results,
     std::vector<
         std::unique_ptr<const se::dnn::OpRunner<typename Op::Signature>>>
         runners) {
@@ -361,21 +377,21 @@ StatusOr<AutotuneEntry<Op>> BestCudnnConvAlgorithm(
 
 template StatusOr<AutotuneEntry<se::dnn::ConvOp>>
 BestCudnnConvAlgorithm<se::dnn::ConvOp>(
-    absl::Span<const AutotuneResult> results,
+    absl::Span<const xla::AutotuneResult> results,
     std::vector<
         std::unique_ptr<const se::dnn::OpRunner<se::dnn::ConvSignature>>>
         runners);
 
 template StatusOr<AutotuneEntry<se::dnn::FusedConvOp>>
 BestCudnnConvAlgorithm<se::dnn::FusedConvOp>(
-    absl::Span<const AutotuneResult> results,
+    absl::Span<const xla::AutotuneResult> results,
     std::vector<
         std::unique_ptr<const se::dnn::OpRunner<se::dnn::FusedConvSignature>>>
         runners);
 
 template StatusOr<AutotuneEntry<se::dnn::FusedMatmulOp>>
 BestCudnnConvAlgorithm<se::dnn::FusedMatmulOp>(
-    absl::Span<const AutotuneResult> results,
+    absl::Span<const xla::AutotuneResult> results,
     std::vector<
         std::unique_ptr<const se::dnn::OpRunner<se::dnn::FusedMatmulSignature>>>
         runners);

@@ -24,12 +24,11 @@ limitations under the License.
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/jit/shape_inference.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 
-using stream_executor::port::StatusOr;
+using tsl::StatusOr;
 
 namespace tensorflow {
 
@@ -58,7 +57,7 @@ Status AppendToListAttr(Node* n, const string& attr_name, const string& value) {
   n->ClearAttr(attr_name);
   attr_value.push_back(value);
   n->AddAttr(attr_name, attr_value);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Replaces attribute value.
@@ -105,7 +104,7 @@ Status PreprocessControlEdgesBetweenOutsideCompilations(
   for (auto e : edges_to_remove) {
     g->RemoveEdge(e);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Step 2 for `PreprocessEdgesBetweenOutsideCompilations`. See comments of
@@ -189,7 +188,7 @@ Status PreprocessDataEdgesBetweenOutsideCompilations(
       }
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Step 1 for `PostprocessEdgesBetweenOutsideCompilations`. See comments of
@@ -265,7 +264,7 @@ Status PostprocessDataEdgesBetweenOutsideCompilations(
     // Remove placeholder node.
     g->RemoveNode(n);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Step 2 for `PostprocessEdgesBetweenOutsideCompilations`. See comments of
@@ -298,7 +297,7 @@ Status PostprocessControlEdgesBetweenOutsideCompilations(
       }
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 }  // namespace
 
@@ -338,10 +337,11 @@ Status PerformStaticShapeInferenceBeforeEncapsulation(Graph* g) {
     n->AddAttr(kXlaInferredShapesAttrName, output_shapes);
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-StatusOr<std::unique_ptr<absl::flat_hash_map<string, std::vector<string>>>>
+absl::StatusOr<
+    std::unique_ptr<absl::flat_hash_map<string, std::vector<string>>>>
 OutsideCompilationClusterDependencies(
     const Graph* g, const string& outside_compilation_attr_name) {
   auto cluster_deps = std::make_unique<
@@ -401,7 +401,7 @@ Status PreprocessEdgesBetweenOutsideCompilations(
       g, outside_compilation_attr_name));
   TF_RETURN_IF_ERROR(PreprocessDataEdgesBetweenOutsideCompilations(
       g, outside_compilation_attr_name));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status PostprocessEdgesBetweenOutsideCompilations(
@@ -410,7 +410,7 @@ Status PostprocessEdgesBetweenOutsideCompilations(
       g, outside_compilation_attr_name));
   TF_RETURN_IF_ERROR(PostprocessControlEdgesBetweenOutsideCompilations(
       g, outside_compilation_attr_name));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

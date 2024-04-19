@@ -13,7 +13,10 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Python functions for directly manipulating TFRecord-formatted files."""
+"""Python functions for directly manipulating TFRecord-formatted files.
+
+API docstring: tensorflow.python_io
+"""
 
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import

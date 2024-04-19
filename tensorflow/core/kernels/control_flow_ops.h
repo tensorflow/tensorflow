@@ -43,7 +43,8 @@ class SwitchOp : public OpKernel {
   bool IsExpensive() override { return false; }
   ~SwitchOp() override {}
 
-  TF_DISALLOW_COPY_AND_ASSIGN(SwitchOp);
+  SwitchOp(const SwitchOp&) = delete;
+  void operator=(const SwitchOp&) = delete;
 };
 
 // An n-way switch op has two inputs and N outputs. It forwards the value of
@@ -58,7 +59,8 @@ class SwitchNOp : public OpKernel {
   bool IsExpensive() override { return false; }
   ~SwitchNOp() override {}
 
-  TF_DISALLOW_COPY_AND_ASSIGN(SwitchNOp);
+  SwitchNOp(const SwitchNOp&) = delete;
+  void operator=(const SwitchNOp&) = delete;
 };
 
 // A merge op has n inputs and two outputs. It forwards the value of the
@@ -71,7 +73,8 @@ class MergeOp : public OpKernel {
   bool IsExpensive() override { return false; }
   ~MergeOp() override {}
 
-  TF_DISALLOW_COPY_AND_ASSIGN(MergeOp);
+  MergeOp(const MergeOp&) = delete;
+  void operator=(const MergeOp&) = delete;
 };
 
 // An enter op has one input and one output. It creates or finds
@@ -84,7 +87,8 @@ class EnterOp : public OpKernel {
   bool IsExpensive() override { return false; }
   ~EnterOp() override {}
 
-  TF_DISALLOW_COPY_AND_ASSIGN(EnterOp);
+  EnterOp(const EnterOp&) = delete;
+  void operator=(const EnterOp&) = delete;
 };
 
 // An exit op has one input and one output. It exits the current
@@ -97,7 +101,8 @@ class ExitOp : public OpKernel {
   bool IsExpensive() override { return false; }
   ~ExitOp() override {}
 
-  TF_DISALLOW_COPY_AND_ASSIGN(ExitOp);
+  ExitOp(const ExitOp&) = delete;
+  void operator=(const ExitOp&) = delete;
 };
 
 // A next_iteration op has one input and one output. It makes its input
@@ -109,7 +114,8 @@ class NextIterationOp : public OpKernel {
   bool IsExpensive() override { return false; }
   ~NextIterationOp() override {}
 
-  TF_DISALLOW_COPY_AND_ASSIGN(NextIterationOp);
+  NextIterationOp(const NextIterationOp&) = delete;
+  void operator=(const NextIterationOp&) = delete;
 };
 
 // A LoopCond op has one input and one output. The input is a boolean
@@ -125,7 +131,8 @@ class LoopCondOp : public OpKernel {
 
   bool IsExpensive() override;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(LoopCondOp);
+  LoopCondOp(const LoopCondOp&) = delete;
+  void operator=(const LoopCondOp&) = delete;
 };
 
 }  // namespace tensorflow

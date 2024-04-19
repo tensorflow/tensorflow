@@ -16,7 +16,7 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/ThreadPool"
+#include "unsupported/Eigen/CXX11/ThreadPool"  // from @eigen_archive
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/grappler/optimizers/evaluation_utils.h"

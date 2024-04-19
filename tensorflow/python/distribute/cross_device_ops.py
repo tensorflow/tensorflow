@@ -20,6 +20,7 @@ import multiprocessing.dummy
 import multiprocessing.pool
 import threading
 
+import numpy as np
 import six
 
 from tensorflow.python.client import device_lib
@@ -37,6 +38,7 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import kernels
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -58,7 +60,8 @@ def check_destinations(destinations):
   """
   # Calling bool() on a ResourceVariable is not allowed.
   if isinstance(destinations,
-                (resource_variable_ops.BaseResourceVariable, ops.Tensor)):
+                (resource_variable_ops.BaseResourceVariable,
+                 tensor_lib.Tensor)):
     return bool(destinations.device)
   return bool(destinations)
 
@@ -67,9 +70,9 @@ def validate_destinations(destinations):
   """Validates the `destination` is one of expected types."""
   if not isinstance(
       destinations,
-      (value_lib.DistributedValues, ops.Tensor, indexed_slices.IndexedSlices,
-       ps_values.AggregatingVariable, six.string_types,
-       tpu_values.TPUMirroredVariable
+      (value_lib.DistributedValues, tensor_lib.Tensor,
+       indexed_slices.IndexedSlices, ps_values.AggregatingVariable,
+       six.string_types, tpu_values.TPUMirroredVariable
       )) and not resource_variable_ops.is_resource_variable(destinations):
     raise ValueError("destinations must be one of a `DistributedValues` object,"
                      " a tf.Variable object, or a device string.")
@@ -91,9 +94,9 @@ def reduce_non_distributed_value(reduce_op,
   # If the same value is present on all replicas then the PerReplica value will
   # be a single value. We also handle the case when `value` is a single value
   # and equal to 0.
-  # TODO:(b/138823479): handle the tensor value properly.
-  if not tensor_util.is_tf_type(value) and value == 0:
-    return 0
+  # TODO(b/138823479): handle the tensor value properly.
+  if not tensor_util.is_tf_type(value) and np.all(value == 0):
+    return np.zeros(value.shape, dtype=value.dtype)
   # If there is only a single value and the reduce op is MEAN,
   # that value should be on all destinations.
   if reduce_op == reduce_util.ReduceOp.MEAN:

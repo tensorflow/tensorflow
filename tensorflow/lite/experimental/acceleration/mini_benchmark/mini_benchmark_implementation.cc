@@ -21,7 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
-#include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
+#include "tensorflow/lite/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/fb_storage.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/mini_benchmark.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/status_codes.h"
@@ -547,6 +547,6 @@ std::unique_ptr<MiniBenchmark> CreateMiniBenchmarkImpl(
       new MiniBenchmarkImpl(settings, model_namespace, model_id));
 }
 
-TFLITE_REGISTER_MINI_BENCMARK_FACTORY_FUNCTION(Impl, CreateMiniBenchmarkImpl);
+TFLITE_REGISTER_MINI_BENCHMARK_FACTORY_FUNCTION(Impl, CreateMiniBenchmarkImpl);
 }  // namespace acceleration
 }  // namespace tflite

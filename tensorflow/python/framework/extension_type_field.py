@@ -23,6 +23,7 @@ from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import immutable_dict
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import type_spec
 from tensorflow.python.util import type_annotations
@@ -71,6 +72,16 @@ class Sentinel(object):
 
 
 _NoneType = type(None)
+
+
+def _issubclass(cls, clsinfo):
+  """Internal issubclass that doesn't raise TypeError."""
+  try:
+    return issubclass(cls, clsinfo)
+  except TypeError:
+    # issubclass with GenericAlias instances raises TypeError. For example,
+    # `issubclass(tuple[int], composite_tensor.CompositeTensor)`.
+    return False
 
 
 # ==============================================================================
@@ -144,9 +155,9 @@ def validate_field_value_type(value_type,
   if value_type in (int, float, str, bytes, bool, None, _NoneType,
                     dtypes.DType):
     return
-  elif (value_type in (ops.Tensor, tensor_shape.TensorShape) or
+  elif (value_type in (tensor.Tensor, tensor_shape.TensorShape) or
         (isinstance(value_type, type) and
-         issubclass(value_type, composite_tensor.CompositeTensor))):
+         _issubclass(value_type, composite_tensor.CompositeTensor))):
     if in_mapping_key:
       raise TypeError(f'Mapping had a key {value_type.__name__!r} with type '
                       f'{type(value_type).__name__!r}')
@@ -277,10 +288,10 @@ def _convert_value(value, expected_type, path,
   if expected_type is None:
     expected_type = _NoneType
 
-  if expected_type is ops.Tensor:
+  if expected_type is tensor.Tensor:
     return _convert_tensor(value, path, context)
   elif (isinstance(expected_type, type) and
-        issubclass(expected_type, composite_tensor.CompositeTensor)):
+        _issubclass(expected_type, composite_tensor.CompositeTensor)):
     return _convert_composite_tensor(value, expected_type, path, context)
   elif expected_type is tensor_shape.TensorShape:
     try:
@@ -314,13 +325,13 @@ def _convert_tensor(value, path, context):
   """Converts `value` to a `Tensor`."""
   if context == _ConversionContext.SPEC:
     if not (isinstance(value, type_spec.TypeSpec) and
-            value.value_type is ops.Tensor):
+            value.value_type is tensor.Tensor):
       raise TypeError(
           f'{"".join(path)}: expected a TensorSpec, got '
           f'{type(value).__name__!r}')
     return value
 
-  if not isinstance(value, ops.Tensor):
+  if not isinstance(value, tensor.Tensor):
     if context == _ConversionContext.DEFAULT:
       # TODO(edloper): Convert the value to a numpy array?  (Note: we can't just
       # use `np.array(value)`, since the default dtypes for TF and numpy are
@@ -338,7 +349,7 @@ def _convert_composite_tensor(value, expected_type, path, context):
   """Converts `value` to a value of type `expected_type`."""
   if context == _ConversionContext.SPEC:
     if not (isinstance(value, type_spec.TypeSpec) and
-            issubclass(value.value_type, expected_type)):
+            _issubclass(value.value_type, expected_type)):
       raise TypeError(f'{"".join(path)}: expected a TypeSpec for '
                       f'{expected_type.__name__!r}, got '
                       f'{type(value).__name__!r}')

@@ -28,13 +28,14 @@ limitations under the License.
 #include "tensorflow/compiler/aot/quantize.h"
 #include "tensorflow/compiler/tf2xla/tf2xla.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
-#include "tensorflow/compiler/xla/client/client_library.h"
-#include "tensorflow/compiler/xla/client/compile_only_client.h"
-#include "tensorflow/compiler/xla/client/xla_computation.h"
-#include "tensorflow/compiler/xla/service/cpu/cpu_compiler.h"
-#include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "xla/client/client_library.h"
+#include "xla/client/compile_only_client.h"
+#include "xla/client/xla_computation.h"
+#include "xla/service/cpu/cpu_compiler.h"
+#include "xla/statusor.h"
+#include "xla/stream_executor/platform_manager.h"
+#include "xla/util.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/io/path.h"
@@ -64,11 +65,11 @@ Status CompileXla(xla::CompileOnlyClient* client,
                   CompileResult* compile_result) {
   // Retrieves arg and result layouts from the computation.
   // TODO(toddw): Should we let the user choose the major/minor ordering?
-  xla::StatusOr<std::unique_ptr<xla::ProgramShape>> pshape_or =
+  absl::StatusOr<std::unique_ptr<xla::ProgramShape>> pshape_or =
       client->GetComputationShape(computation);
   if (!pshape_or.ok()) {
     return errors::Unknown("Couldn't get XLA program shape: ",
-                           pshape_or.status().error_message());
+                           pshape_or.status().message());
   }
   compile_result->program_shape = pshape_or.value()->ToProto();
   xla::ProgramShapeProto* pshape = &compile_result->program_shape;
@@ -87,19 +88,19 @@ Status CompileXla(xla::CompileOnlyClient* client,
   instance.argument_layouts = std::move(arg_layout_ptrs);
   xla::Shape result_shape(pshape->result());
   instance.result_layout = &result_shape;
-  xla::StatusOr<std::vector<std::unique_ptr<xla::AotCompilationResult>>>
+  absl::StatusOr<std::vector<std::unique_ptr<xla::AotCompilationResult>>>
       aot_or = client->CompileAheadOfTime({instance}, aot_opts);
   if (!aot_or.ok()) {
     return errors::Unknown("XLA compilation failed: ",
-                           aot_or.status().error_message());
+                           aot_or.status().message());
   }
   compile_result->aot =
-      xla::unique_ptr_static_cast<xla::cpu::CpuAotCompilationResult>(
+      xla::unique_ptr_down_cast<xla::cpu::CpuAotCompilationResult>(
           std::move(aot_or.value().back()));
   compile_result->entry_point = aot_opts.entry_point_name();
   compile_result->pointer_size =
       xla::CompileOnlyClient::PointerSizeForTriple(aot_opts.triple());
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -110,7 +111,7 @@ Status CompileGraph(GraphDef graph_def, const tf2xla::Config& config,
   // computation.
   // TODO(toddw): Should we let the user pick the XLA cpu vs. gpu client?
   se::Platform* cpu_platform =
-      se::MultiPlatformManager::PlatformWithName("Host").value();
+      se::PlatformManager::PlatformWithName("Host").value();
   xla::CompileOnlyClient* client =
       xla::ClientLibrary::GetOrCreateCompileOnlyClient(cpu_platform).value();
   xla::XlaComputation computation;
@@ -147,7 +148,7 @@ Status CompileGraph(GraphDef graph_def, const tf2xla::Config& config,
     // Serialize the HloSnapshot deterministically so that all the outputs of a
     // tf_library genrule are deterministic.
     const size_t size = module->ByteSizeLong();
-    auto serialized = absl::make_unique<char[]>(size);
+    auto serialized = std::make_unique<char[]>(size);
     TF_RET_CHECK(
         SerializeToBufferDeterministic(*module, serialized.get(), size));
     TF_RETURN_IF_ERROR(
@@ -181,30 +182,48 @@ static absl::once_flag targets_init;
 
 static void InitializeTargets() {
   // Initialize all LLVM targets so we can cross compile.
+#if TF_LLVM_AARCH32_AVAILABLE
+  LLVMInitializeARMTarget();
+  LLVMInitializeARMTargetInfo();
+  LLVMInitializeARMTargetMC();
+  LLVMInitializeARMAsmParser();
+  LLVMInitializeARMAsmPrinter();
+#endif
 #if TF_LLVM_AARCH64_AVAILABLE
   LLVMInitializeAArch64Target();
   LLVMInitializeAArch64TargetInfo();
   LLVMInitializeAArch64TargetMC();
+  LLVMInitializeAArch64AsmParser();
   LLVMInitializeAArch64AsmPrinter();
+#endif
+#if TF_LLVM_HEXAGON_AVAILABLE
+  LLVMInitializeHexagonTarget();
+  LLVMInitializeHexagonTargetInfo();
+  LLVMInitializeHexagonTargetMC();
+  LLVMInitializeHexagonAsmParser();
+  LLVMInitializeHexagonAsmPrinter();
+#endif
+#if TF_LLVM_POWERPC_AVAILABLE
+  LLVMInitializePowerPCTarget();
+  LLVMInitializePowerPCTargetInfo();
+  LLVMInitializePowerPCTargetMC();
+  LLVMInitializePowerPCAsmParser();
+  LLVMInitializePowerPCAsmPrinter();
 #endif
 #if TF_LLVM_S390X_AVAILABLE
   LLVMInitializeSystemZTarget();
   LLVMInitializeSystemZTargetInfo();
   LLVMInitializeSystemZTargetMC();
+  LLVMInitializeSystemZAsmParser();
   LLVMInitializeSystemZAsmPrinter();
 #endif
-  LLVMInitializeARMTarget();
-  LLVMInitializeARMTargetInfo();
-  LLVMInitializeARMTargetMC();
-  LLVMInitializeARMAsmPrinter();
-  LLVMInitializePowerPCTarget();
-  LLVMInitializePowerPCTargetInfo();
-  LLVMInitializePowerPCTargetMC();
-  LLVMInitializePowerPCAsmPrinter();
+#if TF_LLVM_X86_AVAILABLE
   LLVMInitializeX86Target();
   LLVMInitializeX86TargetInfo();
   LLVMInitializeX86TargetMC();
+  LLVMInitializeX86AsmParser();
   LLVMInitializeX86AsmPrinter();
+#endif
 }
 
 // Replaces {{tag.type tag.name}} in the error message with tag_name.
@@ -240,7 +259,7 @@ Status Main(const MainFlags& flags) {
       nodes.insert(fetch.id().node_name());
     }
     std::cout << absl::StrJoin(nodes, ",");
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Read and initialize the graph.
@@ -255,7 +274,7 @@ Status Main(const MainFlags& flags) {
       CompileGraph(std::move(graph_def), config, flags, &compile_result);
   if (!status.ok()) {
     return errors::CreateWithUpdatedMessage(
-        status, InterpolateErrorMessage(status.error_message()));
+        status, InterpolateErrorMessage(std::string(status.message())));
   }
 
   // Write output files.
@@ -268,6 +287,15 @@ Status Main(const MainFlags& flags) {
   codegen_opts.gen_name_to_index = flags.gen_name_to_index;
   codegen_opts.gen_program_shape = flags.gen_program_shape;
   codegen_opts.target_triple = flags.target_triple;
+  // Set the XLA Runtime bit if this is an HloLowering.
+  if (!flags.mlir_components.empty() && flags.mlir_components != "None") {
+    for (auto component : absl::StrSplit(flags.mlir_components, ',')) {
+      if (component == "HloLowering") {
+        codegen_opts.use_xla_runtime = true;
+      }
+    }
+  }
+
   if (flags.cpp_class.empty()) {
     return errors::InvalidArgument("Must specify --cpp_class");
   }
@@ -285,7 +313,7 @@ Status Main(const MainFlags& flags) {
   TF_RETURN_IF_ERROR(GenerateHeader(codegen_opts, config, compile_result,
                                     metadata_result, &header));
   TF_RETURN_IF_ERROR(WriteStringToFile(env, flags.out_header, header));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tfcompile

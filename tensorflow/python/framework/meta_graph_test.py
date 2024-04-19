@@ -24,13 +24,12 @@ from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import error_interpolation
 from tensorflow.python.framework import function
 from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
@@ -41,6 +40,7 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
+from tensorflow.python.ops import while_loop
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
 from tensorflow.python.training import queue_runner_impl
@@ -348,12 +348,12 @@ class ScopedMetaGraphTest(test.TestCase):
               random_ops.truncated_normal(
                   [28, 128], stddev=1.0 / math.sqrt(float(28))),
               name="weights")
-        # The use of control_flow_ops.cond here is purely for adding test
+        # The use of cond.cond here is purely for adding test
         # coverage the save and restore of control flow context (which doesn't
         # make any sense here from a machine learning perspective).  The typical
         # biases is a simple Variable without the conditions.
         biases1 = variables.Variable(
-            control_flow_ops.cond(
+            cond.cond(
                 math_ops.less(random.random(), 0.5),
                 lambda: array_ops.ones([128]), lambda: array_ops.zeros([128])),
             name="biases")
@@ -366,7 +366,7 @@ class ScopedMetaGraphTest(test.TestCase):
                 [128, 32], stddev=1.0 / math.sqrt(float(128))),
             name="weights")
 
-        # The use of control_flow_ops.while_loop here is purely for adding test
+        # The use of while_loop.while_loop here is purely for adding test
         # coverage the save and restore of control flow context (which doesn't
         # make any sense here from a machine learning perspective).  The typical
         # biases is a simple Variable without the conditions.
@@ -377,12 +377,10 @@ class ScopedMetaGraphTest(test.TestCase):
           biases2 += constant_op.constant(0.1, shape=[32])
           return it + 1, biases2
 
-        _, biases2 = control_flow_ops.while_loop(
-            loop_cond,
-            loop_body, [
-                constant_op.constant(0), variables.Variable(
-                    array_ops.zeros([32]), name="biases")
-            ])
+        _, biases2 = while_loop.while_loop(loop_cond, loop_body, [
+            constant_op.constant(0),
+            variables.Variable(array_ops.zeros([32]), name="biases")
+        ])
         hidden2 = nn_ops.relu(math_ops.matmul(hidden1, weights2) + biases2)
       # Linear
       with ops.name_scope("softmax_linear"):
@@ -525,7 +523,7 @@ class ScopedMetaGraphTest(test.TestCase):
       with ops.name_scope("export"):
         var = variables.Variable(0.)
         var_name = var.name
-        _, output = control_flow_ops.while_loop(
+        _, output = while_loop.while_loop(
             lambda i, x: i < 5,
             lambda i, x: (i + 1, x + math_ops.cast(i, dtypes.float32)),
             [0, var])
@@ -575,7 +573,7 @@ class ScopedMetaGraphTest(test.TestCase):
     # Create a simple while loop.
     with ops.Graph().as_default():
       var = variables.Variable(0.0)
-      _, output = control_flow_ops.while_loop(lambda i, x: i < 5,
+      _, output = while_loop.while_loop(lambda i, x: i < 5,
                                               lambda i, x: (i + 1, x * 2.0),
                                               [0, var])
       output_name = output.name
@@ -590,8 +588,7 @@ class ScopedMetaGraphTest(test.TestCase):
         meta_graph.import_scoped_meta_graph(meta_graph_def)
         return i + 1, ops.get_default_graph().get_tensor_by_name(output_name)
 
-      _, x = control_flow_ops.while_loop(lambda i, x: i < 2, body, [0, 0.0],
-                                         name="")
+      _, x = while_loop.while_loop(lambda i, x: i < 2, body, [0, 0.0], name="")
       with session.Session() as sess:
         self.evaluate(variables.global_variables_initializer())
         self.evaluate(x)
@@ -748,29 +745,6 @@ class ScopedMetaGraphTest(test.TestCase):
         test_dir, "exported_queue1.pbtxt", "exported_new_queue1.pbtxt")
     test_util.assert_meta_graph_protos_equal(self, orig_meta_graph,
                                              new_meta_graph)
-
-  def testExportDebugInfo(self):
-    graph1 = ops.Graph()
-    with graph1.as_default():
-      with ops.name_scope("hidden1/hidden2/hidden3"):
-        images = constant_op.constant(
-            1.0, dtypes.float32, shape=[3, 2], name="images")
-        weights1 = variables.Variable([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]],
-                                      name="weights")
-        biases1 = resource_variable_ops.ResourceVariable(
-            [0.1] * 3, name="biases")
-        nn_ops.relu(math_ops.matmul(images, weights1) + biases1, name="relu")
-    func_named_operations = []
-    for op in graph1.get_operations():
-      func_named_operations.append(("", op))
-    debug_info_def = error_interpolation.create_graph_debug_info_def(
-        func_named_operations)
-
-    # The unique file names in all the stack traces should be larger or equal
-    # than 1.
-    self.assertTrue(len(debug_info_def.files) >= 1)
-    # All the nodes from the exported graphdef are included.
-    self.assertEqual(len(debug_info_def.traces), len(graph1.get_operations()))
 
   # Verifies that we can export a subgraph in a nested name scope containing a
   # "hidden1/hidden2" and import it into "new_hidden1/new_hidden2" in a new
@@ -972,7 +946,8 @@ class MetaGraphWithVariableScopeTest(test.TestCase):
       self.assertEqual(len(ops.get_collection(ops.GraphKeys.LOCAL_VARIABLES)),
                        2)
       with self.assertRaisesRegex(
-          AttributeError, "'Tensor' object has no attribute 'initializer'"):
+          AttributeError, "has no attribute 'initializer'"
+      ):
         initializer = variables.local_variables_initializer()
 
 
@@ -1027,15 +1002,15 @@ class ExportImportAcrossScopesTest(test.TestCase):
     expected = meta_graph.export_scoped_meta_graph(graph=expected_graph)[0]
 
     if use_resource:
-      # Clear all shared_name attributes before comparing, since they are
-      # orthogonal to scopes and are not updated on export/import.
+      # Clear all shared_name and debug_name attributes before comparing, since
+      # they are orthogonal to scopes and are not updated on export/import.
       for meta_graph_def in [result, expected]:
         for node in meta_graph_def.graph_def.node:
-          shared_name_attr = "shared_name"
-          shared_name_value = node.attr.get(shared_name_attr, None)
-          if shared_name_value and shared_name_value.HasField("s"):
-            if shared_name_value.s:
-              node.attr[shared_name_attr].s = b""
+          for attr_to_remove in ["shared_name", "debug_name"]:
+            attr_value = node.attr.get(attr_to_remove, None)
+            if attr_value and attr_value.HasField("s"):
+              if attr_value.s:
+                node.attr[attr_to_remove].s = b""
 
     test_util.assert_meta_graph_protos_equal(self, expected, result)
 

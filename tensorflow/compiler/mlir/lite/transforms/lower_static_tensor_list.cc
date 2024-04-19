@@ -22,19 +22,19 @@ limitations under the License.
 
 #include <climits>
 #include <cstdint>
+#include <optional>
 #include <utility>
 
 #include "absl/container/inlined_vector.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/None.h"
-#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
+#include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Affine/Analysis/LoopAnalysis.h"  // from @llvm-project
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -55,6 +55,7 @@ limitations under the License.
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/UseDefLists.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
@@ -631,7 +632,7 @@ struct ConvertTensorListInitOp : public TensorListOpConverterBase<OpT> {
     // as specified by element_dtype.
     RankedTensorType zero_type =
         tensorflow::GetTypeFromTFTensorShape({}, element_dtype);
-    Attribute zero_attr = rewriter.getZeroAttr(zero_type);
+    auto zero_attr = rewriter.getZeroAttr(zero_type);
     auto zero = rewriter.create<arith::ConstantOp>(loc, zero_type, zero_attr);
 
     rewriter.replaceOpWithNewOp<TF::FillOp>(op, result_type, list_shape, zero);
@@ -1056,8 +1057,8 @@ struct ConvertReturn : public OpConversionPattern<func::ReturnOp> {
   LogicalResult matchAndRewrite(
       func::ReturnOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
-    rewriter.updateRootInPlace(op,
-                               [&] { op->setOperands(adaptor.getOperands()); });
+    rewriter.modifyOpInPlace(op,
+                             [&] { op->setOperands(adaptor.getOperands()); });
     return success();
   }
 };
@@ -1068,8 +1069,8 @@ struct ConvertYield : public OpConversionPattern<TF::YieldOp> {
   LogicalResult matchAndRewrite(
       TF::YieldOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
-    rewriter.updateRootInPlace(op,
-                               [&] { op->setOperands(adaptor.getOperands()); });
+    rewriter.modifyOpInPlace(op,
+                             [&] { op->setOperands(adaptor.getOperands()); });
     return success();
   }
 };
@@ -1099,7 +1100,7 @@ Type VariantToUnrankedTensorType(Type type, Value value) {
 }
 
 // Returns true if we can deduce the type is tensorlist.
-bool IsTensorListType(Type type, llvm::Optional<Value> value) {
+bool IsTensorListType(Type type, std::optional<Value> value) {
   TF::VariantType variant_ty =
       getElementTypeOrSelf(type).dyn_cast<TF::VariantType>();
   if (!variant_ty) {
@@ -1150,7 +1151,7 @@ llvm::SmallSet<int, 4> GetTensorListResultsIndex(func::FuncOp func) {
 
   for (const auto &result_and_idx :
        llvm::enumerate(func.getFunctionType().getResults())) {
-    if (IsTensorListType(result_and_idx.value(), llvm::None)) {
+    if (IsTensorListType(result_and_idx.value(), std::nullopt)) {
       set.insert(result_and_idx.index());
     }
   }
@@ -1211,7 +1212,7 @@ void UpdateFunctionAndRegionType(ConversionPatternRewriter &rewriter,
   // Change `func`'s argument type to `unranked_argument_types`. If its
   // return types contain a `DT_VARIANT`, change it to the unranked type
   // derived from the corresponding argument.
-  rewriter.updateRootInPlace(func, [&] {
+  rewriter.modifyOpInPlace(func, [&] {
     func.setType(FunctionType::get(func.getContext(), updated_argument_types,
                                    updated_result_types));
   });
@@ -1502,8 +1503,29 @@ struct ConvertWhileRegion : public OpConversionPattern<TF::WhileRegionOp> {
 
 #include "tensorflow/compiler/mlir/lite/transforms/generated_lower_static_tensor_list.inc"
 
+bool ModuleContainsTensorListOp(ModuleOp mod) {
+  auto res = mod->walk([&](mlir::Operation *op) -> WalkResult {
+    if (op->getName().getStringRef().contains("TensorList")) {
+      return WalkResult::interrupt();
+    }
+    return WalkResult::advance();
+  });
+  return res.wasInterrupted();
+}
+
 void LowerStaticTensorListPass::runOnOperation() {
   auto *context = &getContext();
+  ModuleOp module = getOperation();
+
+  // When allow_tensorlist_pass_through_ == false the target dynamic legal
+  // checks will cause this pass to fail if there are any variant type tensors
+  // in the graph. The graph should still be treated as valid as long as those
+  // variant tensors are not from tf-dialect tensorlist ops. Rather than change
+  // the dynamic legalization predicates
+  // (`is_legal` in `runOnOperation`) it is equivalent and more easily
+  // implemented to simply skip applying this pass if there are no tensorlist
+  // operations.
+  if (!ModuleContainsTensorListOp(module)) return;
 
   // TensorFlow operations that doesn't have operands and results of type
   // variant are legal. Here, we don't distinguish between variants encoding
@@ -1518,18 +1540,26 @@ void LowerStaticTensorListPass::runOnOperation() {
            llvm::all_of(op->getResultTypes(), is_not_variant);
   };
 
+  auto is_set_item_legal = [](Operation *op) {
+    return op->hasAttr("resize_if_index_out_of_bounds") &&
+           op->getAttr("resize_if_index_out_of_bounds")
+               .cast<mlir::BoolAttr>()
+               .getValue();
+  };
+
   ConversionTarget target(*context);
   target.addDynamicallyLegalDialect<TF::TensorFlowDialect>(is_legal);
   target.addIllegalOp<TF::EmptyTensorListOp, TF::TensorListFromTensorOp,
                       TF::TensorListGetItemOp, TF::TensorListLengthOp,
                       TF::TensorListPushBackOp, TF::TensorListReserveOp,
-                      TF::TensorListSetItemOp, TF::TensorListStackOp,
-                      TF::TensorListResizeOp, TF::TensorListConcatV2Op>();
+                      TF::TensorListStackOp, TF::TensorListResizeOp,
+                      TF::TensorListConcatV2Op>();
   // TODO(hinsu): Use TFLite constant op for constants.
   target.addLegalOp<arith::ConstantOp>();
   target.addLegalOp<func::FuncOp>();
   target.addDynamicallyLegalOp<func::ReturnOp>(is_legal);
   target.addDynamicallyLegalOp<TF::YieldOp>(is_legal);
+  target.addDynamicallyLegalOp<TF::TensorListSetItemOp>(is_set_item_legal);
   target.addLegalOp<TFL::CustomOp>();
   // Register fused LSTM/RNN ops as legal.
   target.addLegalOp<TFL::LSTMOp>();
@@ -1550,7 +1580,6 @@ void LowerStaticTensorListPass::runOnOperation() {
                ConvertTensorListReserve>(context,
                                          this->allow_tensorlist_pass_through_,
                                          this->default_to_single_batch_);
-  ModuleOp module = getOperation();
   if (!this->allow_tensorlist_pass_through_) {
     if (failed(applyPartialConversion(module, target, std::move(patterns)))) {
       module.emitError(

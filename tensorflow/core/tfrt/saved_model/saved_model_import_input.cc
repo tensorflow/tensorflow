@@ -14,6 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tfrt/saved_model/saved_model_import_input.h"
 
+#include <memory>
+#include <utility>
+
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/upgrade_graph.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
@@ -22,16 +25,16 @@ limitations under the License.
 namespace tensorflow {
 namespace tfrt_stub {
 
-StatusOr<TfrtSavedModelMLIRImportInput> TfrtSavedModelMLIRImportInput::Create(
+absl::StatusOr<TfrtSavedModelMLIRImportInput>
+TfrtSavedModelMLIRImportInput::Create(
     const FallbackState& fallback_state, const MetaGraphDef* meta_graph_def,
     const GraphDebugInfo& debug_info,
-    bool run_placer_grappler_on_nested_functions, bool enable_tfrt_gpu) {
+    bool run_placer_grappler_on_nested_functions) {
   DCHECK(meta_graph_def);
 
   TfrtGraphExecutionState::Options options;
   options.run_placer_grappler_on_functions =
       run_placer_grappler_on_nested_functions;
-  options.enable_tfrt_gpu = enable_tfrt_gpu;
   TF_ASSIGN_OR_RETURN(
       auto graph_execution_state,
       TfrtGraphExecutionState::Create(options, meta_graph_def->graph_def(),
@@ -47,7 +50,8 @@ TfrtSavedModelMLIRImportInput::TfrtSavedModelMLIRImportInput(
     : SavedModelMLIRImportInput(meta_graph_def, debug_info),
       graph_execution_state_(std::move(graph_execution_state)) {}
 
-StatusOr<const tensorflow::Graph*> TfrtSavedModelMLIRImportInput::GetSubGraph(
+absl::StatusOr<const tensorflow::Graph*>
+TfrtSavedModelMLIRImportInput::GetSubGraph(
     absl::string_view name, GraphImportConfig& graph_import_config) {
   LOG(INFO) << "TFRT importing savedmodel signature: " << name;
 

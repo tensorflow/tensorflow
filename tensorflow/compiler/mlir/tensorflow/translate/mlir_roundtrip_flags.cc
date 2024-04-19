@@ -27,9 +27,8 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
-#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
-#include "tensorflow/compiler/xla/status_macros.h"
+#include "xla/status_macros.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -63,6 +62,7 @@ std::string GraphImportConfig::str() const {
   ss << "\nenable_shape_inference: " << enable_shape_inference;
   ss << "\nunconditionally_use_set_output_shapes: "
      << unconditionally_use_set_output_shapes;
+  ss << "\nxla_compile_device_type: " << xla_compile_device_type;
 
   return ss.str();
 }
@@ -88,14 +88,14 @@ Status ParseInputArrayInfo(absl::string_view array_names,
                            GraphImportConfig::InputArrays* inputs) {
   std::vector<string> node_names;
   std::vector<string> node_dtypes;
-  std::vector<llvm::Optional<std::vector<int>>> node_shapes;
+  std::vector<std::optional<std::vector<int>>> node_shapes;
   TF_RETURN_IF_ERROR(ParseNodeNames(array_names, node_names));
   TF_RETURN_IF_ERROR(ParseNodeDataTypes(data_types, node_dtypes));
   TF_RETURN_IF_ERROR(ParseNodeShapes(shapes, node_shapes));
   return ParseInputArrayInfo(node_names, node_dtypes, node_shapes, inputs);
 }
 
-static StatusOr<std::vector<int>> ParseShapeStr(
+static absl::StatusOr<std::vector<int>> ParseShapeStr(
     absl::string_view node_shapes_str) {
   std::vector<int> dims;
   for (absl::string_view dim_str : absl::StrSplit(node_shapes_str, ',')) {
@@ -144,7 +144,7 @@ static Status HandleSubtype(absl::string_view subtype,
 Status ParseInputArrayInfo(
     const std::vector<string>& node_names,
     const std::vector<string>& node_dtypes,
-    const std::vector<llvm::Optional<std::vector<int>>>& node_shapes,
+    const std::vector<std::optional<std::vector<int>>>& node_shapes,
     GraphImportConfig::InputArrays* inputs) {
   std::vector<std::string> used_node_dtypes;
   if (node_dtypes.empty()) {
@@ -219,7 +219,7 @@ Status ParseInputArrayInfo(
 
 Status ParseNodeShapes(
     absl::string_view shapes_str,
-    std::vector<llvm::Optional<std::vector<int>>>& shapes_vector) {
+    std::vector<std::optional<std::vector<int>>>& shapes_vector) {
   shapes_vector.clear();
   if (!shapes_str.empty()) {
     std::vector<string> node_shapes_str = absl::StrSplit(shapes_str, ':');
@@ -241,12 +241,12 @@ Status ParseNodeNames(absl::string_view names_str,
   return OkStatus();
 }
 
-static StatusOr<std::vector<std::string>> ParseDTypesHelper(
+static absl::StatusOr<std::vector<std::string>> ParseDTypesHelper(
     absl::string_view data_types_str) {
   bool inside_subtype = false;
   int cur_pos = 0;
   std::vector<std::string> dtypes;
-  for (auto& it : llvm::enumerate(data_types_str)) {
+  for (const auto& it : llvm::enumerate(data_types_str)) {
     char c = it.value();
     int i = it.index();
     // Skip parsing the subtypes of a type

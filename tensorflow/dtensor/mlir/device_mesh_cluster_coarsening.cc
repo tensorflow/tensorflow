@@ -13,6 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <iterator>
+#include <memory>
+#include <optional>
+#include <utility>
+
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
@@ -23,6 +28,7 @@ limitations under the License.
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/IR/ValueRange.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
@@ -55,11 +61,13 @@ mlir::LogicalResult ShouldMergeClusters(mlir::tf_device::ClusterOp cluster_a,
 
   auto mesh_a_or_status = ExtractDeviceMeshFromOp(cluster_a.getOperation());
   if (!mesh_a_or_status.ok())
-    return cluster_a.emitOpError(mesh_a_or_status.status().error_message());
+    return cluster_a.emitOpError(
+        tsl::NullTerminatedMessage(mesh_a_or_status.status()));
 
   auto mesh_b_or_status = ExtractDeviceMeshFromOp(cluster_b.getOperation());
   if (!mesh_b_or_status.ok())
-    return cluster_b.emitOpError(mesh_b_or_status.status().error_message());
+    return cluster_b.emitOpError(
+        tsl::NullTerminatedMessage(mesh_b_or_status.status()));
 
   auto mesh_a = mesh_a_or_status.value();
   auto mesh_b = mesh_b_or_status.value();
@@ -158,7 +166,7 @@ GetMergedMeshClusterResults(mlir::tf_device::ClusterOp current_cluster,
 // Updates the users of `merging_cluster` so that they use values
 // from `merged_cluster` instead.
 void ReplaceOperandUsagesWithMergedClusterOutputs(
-    const llvm::SmallVectorImpl<mlir::Value>& values_to_replace,
+    mlir::ValueRange values_to_replace,
     mlir::tf_device::ClusterOp merged_cluster) {
   for (auto result :
        llvm::zip(values_to_replace, merged_cluster.getResults())) {
@@ -246,7 +254,7 @@ mlir::LogicalResult ClusterDeviceClusterOpsInBlock(mlir::OpBuilder* builder,
       block_ops.emplace_back(cluster);
   });
 
-  llvm::Optional<mlir::tf_device::ClusterOp> current_cluster;
+  std::optional<mlir::tf_device::ClusterOp> current_cluster;
   for (mlir::tf_device::ClusterOp cluster :
        llvm::make_early_inc_range(block_ops)) {
     if (!current_cluster.has_value()) {

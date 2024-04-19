@@ -22,12 +22,14 @@ limitations under the License.
 #define TENSORFLOW_LITE_UTIL_H_
 
 #include <stddef.h>
+#include <stdlib.h>
 
 #include <initializer_list>
 #include <memory>
 #include <string>
 #include <vector>
 
+#include "tensorflow/lite/array.h"
 #include "tensorflow/lite/core/c/common.h"
 
 namespace tflite {
@@ -55,25 +57,14 @@ TfLiteIntArray* ConvertVectorToTfLiteIntArray(const std::vector<int>& input);
 // Converts an array (of the given size) to a `TfLiteIntArray`. The caller
 // takes ownership of the returned pointer, and must make sure 'dims' has at
 // least 'ndims' elements.
-TfLiteIntArray* ConvertArrayToTfLiteIntArray(const int ndims, const int* dims);
+TfLiteIntArray* ConvertArrayToTfLiteIntArray(int ndims, const int* dims);
 
 // Checks whether a `TfLiteIntArray` and an int array have matching elements.
 // The caller must guarantee that 'b' has at least 'b_size' elements.
-bool EqualArrayAndTfLiteIntArray(const TfLiteIntArray* a, const int b_size,
+bool EqualArrayAndTfLiteIntArray(const TfLiteIntArray* a, int b_size,
                                  const int* b);
 
 size_t CombineHashes(std::initializer_list<size_t> hashes);
-
-struct TfLiteIntArrayDeleter {
-  void operator()(TfLiteIntArray* a) {
-    if (a) TfLiteIntArrayFree(a);
-  }
-};
-
-// Helper for Building TfLiteIntArray that is wrapped in a unique_ptr,
-// So that it is automatically freed when it goes out of the scope.
-std::unique_ptr<TfLiteIntArray, TfLiteIntArrayDeleter> BuildTfLiteIntArray(
-    const std::vector<int>& data);
 
 // Populates the size in bytes of a type into `bytes`. Returns kTfLiteOk for
 // valid types, and kTfLiteError otherwise.
@@ -115,8 +106,24 @@ inline bool IsResourceOrVariant(const TfLiteTensor* tensor) {
 // specified by the array dims (of length dims_size). Returns the status code
 // and bytes.
 TfLiteStatus BytesRequired(TfLiteType type, const int* dims, size_t dims_size,
-                           size_t* bytes, TfLiteContext context);
+                           size_t* bytes, TfLiteContext* context);
 
+// `unique_ptr` wrapper for `TfLiteTensor`s.
+struct TfLiteTensorDeleter {
+  void operator()(TfLiteTensor* t) {
+    if (t) {
+      TfLiteTensorFree(t);
+    }
+    free(t);
+  }
+};
+
+using TensorUniquePtr = std::unique_ptr<TfLiteTensor, TfLiteTensorDeleter>;
+TensorUniquePtr BuildTfLiteTensor();
+TensorUniquePtr BuildTfLiteTensor(TfLiteType type, const std::vector<int>& dims,
+                                  TfLiteAllocationType allocation_type);
+TensorUniquePtr BuildTfLiteTensor(TfLiteType type, IntArrayUniquePtr dims,
+                                  TfLiteAllocationType allocation_type);
 }  // namespace tflite
 
 #endif  // TENSORFLOW_LITE_UTIL_H_

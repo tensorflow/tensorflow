@@ -23,7 +23,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -192,6 +192,10 @@ REGISTER_KERNEL_BUILDER(
 REGISTER_KERNEL_BUILDER(
     Name("DepthToSpace").Device(DEVICE_GPU).TypeConstraint<Eigen::half>("T"),
     DepthToSpaceOp<GPUDevice, Eigen::half>);
+REGISTER_KERNEL_BUILDER(Name("DepthToSpace")
+                            .Device(DEVICE_GPU)
+                            .TypeConstraint<Eigen::bfloat16>("T"),
+                        DepthToSpaceOp<GPUDevice, Eigen::bfloat16>);
 REGISTER_KERNEL_BUILDER(
     Name("DepthToSpace").Device(DEVICE_GPU).TypeConstraint<qint8>("T"),
     DepthToSpaceOp<GPUDevice, qint8>);

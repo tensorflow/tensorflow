@@ -39,7 +39,8 @@ class ArgOp : public OpKernel {
   int index_;
   DataType dtype_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(ArgOp);
+  ArgOp(const ArgOp&) = delete;
+  void operator=(const ArgOp&) = delete;
 };
 
 class RetvalOp : public OpKernel {
@@ -54,7 +55,8 @@ class RetvalOp : public OpKernel {
   int index_;
   DataType dtype_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(RetvalOp);
+  RetvalOp(const RetvalOp&) = delete;
+  void operator=(const RetvalOp&) = delete;
 };
 
 class RemoteCallOp : public AsyncOpKernel {
@@ -81,7 +83,8 @@ class RemoteCallOp : public AsyncOpKernel {
   std::map<FunctionTarget, FunctionLibraryRuntime::Handle> handle_cache_
       TF_GUARDED_BY(mu_);
 
-  TF_DISALLOW_COPY_AND_ASSIGN(RemoteCallOp);
+  RemoteCallOp(const RemoteCallOp&) = delete;
+  void operator=(const RemoteCallOp&) = delete;
 };
 
 }  // namespace tensorflow

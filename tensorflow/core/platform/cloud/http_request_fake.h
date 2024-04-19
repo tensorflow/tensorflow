@@ -31,7 +31,7 @@ limitations under the License.
 #include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/tsl/platform/cloud/http_request_fake.h"
+#include "tsl/platform/cloud/http_request_fake.h"
 
 namespace tensorflow {
 // NOLINTBEGIN(misc-unused-using-decls)

@@ -27,8 +27,8 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/kernels/subgraph_test_util.h"
 #include "tensorflow/lite/testing/util.h"
@@ -71,7 +71,7 @@ TEST(DelegateDataTest, CheckFunctionDef) {
          std::set<std::string>* result) {
         result->insert("add_subgraph");
         result->insert("mul_subgraph");
-        return ::tensorflow::OkStatus();
+        return absl::OkStatus();
       };
 
   // Builds a TF Lite primary graph with two subgraphs.
@@ -216,7 +216,7 @@ TEST(DelegateDataTest, CheckFunctionDefWithOnlyMainGraph) {
          std::set<std::string>* result) {
         result->insert("add_subgraph");
         result->insert("mul_subgraph");
-        return ::tensorflow::OkStatus();
+        return absl::OkStatus();
       };
 
   // Builds a TF Lite primary graph with two subgraphs.

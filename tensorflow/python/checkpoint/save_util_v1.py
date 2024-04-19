@@ -47,9 +47,10 @@ def get_checkpoint_factories_and_keys(object_names, object_map=None):
     object_names: a dictionary that maps `Trackable` objects to auto-generated
       string names.
     object_map: a dictionary mapping `Trackable` to copied `Trackable` objects.
-      The copied objects are generated from `Trackable._map_resources()` which
-      copies the object into another graph. Generally only resource objects
-      (e.g. Variables, Tables) will be in this map.
+      The copied objects are generated from `Trackable.
+      _export_to_saved_model_graph()` which copies the object into another
+      graph. Generally only resource objects (e.g. Variables, Tables) will be
+      in this map.
 
   Returns:
     A tuple of (

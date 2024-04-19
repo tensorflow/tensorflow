@@ -14,12 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/runtime_fallback/kernel/tensor_util.h"
 
-#include "tensorflow/core/common_runtime/copy_tensor.h"
-#include "tensorflow/core/framework/device.h"
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_tensor.h"
 #include "tensorflow/core/runtime_fallback/runtime/kernel_utils.h"
-#include "tfrt/host_context/async_dispatch.h"  // from @tf_runtime
-#include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
 #include "tfrt/host_context/device.h"  // from @tf_runtime
 #include "tfrt/support/string_util.h"  // from @tf_runtime
 
@@ -29,21 +25,7 @@ namespace tfd {
 tfrt::AsyncValueRef<KernelFallbackTensor> TransferTensorToDevice(
     const tfrt::ExecutionContext& exec_ctx, const KernelFallbackTensor& tensor,
     const tfrt::Device& src_device, const tfrt::Device& dst_device) {
-  const bool is_same_device =
-      (&src_device == &dst_device) || (src_device.name() == dst_device.name());
-
-  // Note: source and destination CPU devices are expected to be on the same
-  // host. Currently TFRT doesn't support checking if a CPU is remote CPU,
-  // we may consider adding a remote CPU device type in the future.
-  const bool is_between_cpu_devices =
-      src_device.IsDeviceType(tfrt::CpuDevice::kDeviceType) &&
-      dst_device.IsDeviceType(tfrt::CpuDevice::kDeviceType);
-
-  const tensorflow::Tensor* src = tensor.GetTensor();
-
-  if (is_same_device || is_between_cpu_devices) {
-    return tfrt::MakeAvailableAsyncValueRef<KernelFallbackTensor>(*src);
-  }
+  const tensorflow::Tensor& src = *tensor.GetTensor();
 
   auto expected_src = GetTfDevice(exec_ctx, src_device);
   if (!expected_src) {
@@ -55,73 +37,9 @@ tfrt::AsyncValueRef<KernelFallbackTensor> TransferTensorToDevice(
   }
   tensorflow::Device* srcd = expected_src.get();
   tensorflow::Device* dstd = expected_dst.get();
-  const bool src_cpu = srcd->tensorflow_accelerator_device_info() == nullptr;
-  const bool dst_cpu = dstd->tensorflow_accelerator_device_info() == nullptr;
 
-  if (!dst_cpu && (src->dtype() != tensorflow::DT_VARIANT &&
-                   !tensorflow::DataTypeCanUseMemcpy(src->dtype()))) {
-    return tfrt::MakeErrorAsyncValueRef(
-        tfrt::StrCat("Can't copy Tensor with type ",
-                     tensorflow::DataTypeString(src->dtype()), " to device ",
-                     dstd->name(), "."));
-  }
-  tensorflow::AllocatorAttributes attr;
-  if (src->dtype() == tensorflow::DT_VARIANT) {
-    attr.set_on_host(true);
-  }
-  tensorflow::Tensor dst(dstd->GetAllocator(attr), src->dtype(), src->shape());
-  if (src->shape().num_elements() == 0) {
-    return tfrt::MakeAvailableAsyncValueRef<KernelFallbackTensor>(dst);
-  }
-
-  auto result = tfrt::MakeUnconstructedAsyncValueRef<KernelFallbackTensor>();
-  bool enqueued = tfrt::EnqueueBlockingWork(
-      exec_ctx.host(), [result = result.CopyRef(), src_cpu, dst_cpu, srcd, dstd,
-                        src = *src, dst = std::move(dst)]() mutable {
-        tensorflow::DeviceContext* src_device_context = nullptr;
-        if (!src_cpu) {
-          src_device_context =
-              srcd->tensorflow_accelerator_device_info()->default_context;
-        }
-        tensorflow::DeviceContext* dst_device_context = nullptr;
-        if (!dst_cpu) {
-          dst_device_context =
-              dstd->tensorflow_accelerator_device_info()->default_context;
-        }
-        // TODO(tfrt-devs): The Sync() call below may be more aggressive than
-        // necessary. It is based on knowledge of implementation details - that
-        // GPU devices are implemented using 3 streams - one for host->device
-        // copies, one for device->host copies and one for sending operations to
-        // the GPU. With that setup, Sync()ing across all 3 streams should be
-        // sufficient but more than necessary (since it waits for operations
-        // that might have nothing to do with this tensor to complete).
-        Status s = srcd->Sync();
-        if (!s.ok()) {
-          result.SetError(absl::InternalError(s.error_message()));
-          return;
-        }
-        tensorflow::Notification n;
-        tensorflow::Status status;
-        tensorflow::CopyTensor::ViaDMA(
-            "copy", src_device_context, dst_device_context, srcd, dstd,
-            tensorflow::AllocatorAttributes(),
-            tensorflow::AllocatorAttributes(), &src, &dst,
-            0 /*dev_to_dev_stream_index*/,
-            [&status, &n](const tensorflow::Status& s) {
-              status = s;
-              n.Notify();
-            });
-        n.WaitForNotification();
-        if (status.ok()) {
-          result.emplace(std::move(dst));
-        }
-      });
-
-  if (!enqueued) {
-    return tfrt::MakeErrorAsyncValueRef(
-        "Failed to enqueu blocking task to transfer tensor");
-  }
-  return result;
+  return TransferTensorToDevice<KernelFallbackTensor>(exec_ctx, src, srcd,
+                                                      dstd);
 }
 
 llvm::Expected<Device*> GetTfDevice(const tfrt::ExecutionContext& exec_ctx,
@@ -138,7 +56,7 @@ llvm::Expected<Device*> GetTfDevice(const tfrt::ExecutionContext& exec_ctx,
   Status s = eager_context_expected.get()->FindDeviceFromName(
       device.name().data(), &tf_device);
   if (!s.ok()) {
-    return tfrt::MakeStringError(s.error_message());
+    return tfrt::MakeStringError(s.message());
   }
   return tf_device;
 }

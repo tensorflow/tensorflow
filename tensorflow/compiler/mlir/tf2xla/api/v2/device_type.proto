@@ -1,0 +1,11 @@
+syntax = "proto2";
+
+package tensorflow.tf2xla.v2;
+
+// The requested device type to compile for.
+enum DeviceType {
+  DEVICE_TYPE_UNSPECIFIED = 0;
+  XLA_TPU_JIT = 1;
+  XLA_CPU_JIT = 2;
+  XLA_GPU_JIT = 3;
+}

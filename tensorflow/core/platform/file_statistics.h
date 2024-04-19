@@ -17,7 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_PLATFORM_FILE_STATISTICS_H_
 
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/tsl/platform/file_statistics.h"
+#include "tsl/platform/file_statistics.h"
 
 namespace tensorflow {
 using tsl::FileStatistics;  // NOLINT

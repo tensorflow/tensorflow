@@ -19,10 +19,10 @@ limitations under the License.
 #include <memory>
 #include <string>
 
-#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
-#include "tensorflow/tsl/framework/allocator.h"
-#include "tensorflow/tsl/framework/device_id.h"
-#include "tensorflow/tsl/platform/macros.h"
+#include "xla/stream_executor/stream_executor.h"
+#include "tsl/framework/allocator.h"
+#include "tsl/framework/device_id.h"
+#include "tsl/platform/macros.h"
 
 namespace tensorflow {
 
@@ -43,7 +43,8 @@ class GPUcudaMallocAllocator : public tsl::Allocator {
  private:
   se::StreamExecutor* stream_exec_;  // Not owned.
 
-  TF_DISALLOW_COPY_AND_ASSIGN(GPUcudaMallocAllocator);
+  GPUcudaMallocAllocator(const GPUcudaMallocAllocator&) = delete;
+  void operator=(const GPUcudaMallocAllocator&) = delete;
 };
 
 }  // namespace tensorflow

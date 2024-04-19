@@ -25,9 +25,11 @@ def make_topk_tests(options):
   """Make a set of tests to do topk."""
 
   test_parameters = [{
-      "input_dtype": [tf.float32, tf.int32],
+      "input_dtype": [tf.float32, tf.int32, tf.int16],
+      "input_k_dtype": [tf.int32, tf.int16],
       "input_shape": [[10], [5, 20]],
       "input_k": [None, 1, 3],
+      "output_index_dtype": [tf.int32, tf.int16],
   }]
 
   def build_graph(parameters):
@@ -35,25 +37,43 @@ def make_topk_tests(options):
     input_value = tf.compat.v1.placeholder(
         dtype=parameters["input_dtype"],
         name="input",
-        shape=parameters["input_shape"])
+        shape=parameters["input_shape"],
+    )
     if parameters["input_k"] is not None:
-      k = tf.compat.v1.placeholder(dtype=tf.int32, name="input_k", shape=[])
+      k = tf.compat.v1.placeholder(
+          dtype=parameters["input_k_dtype"], name="input_k", shape=[]
+      )
       inputs = [input_value, k]
     else:
-      k = tf.constant(3, name="k")
+      k = tf.constant(3, name="k", dtype=parameters["input_k_dtype"])
       inputs = [input_value]
-    out = tf.nn.top_k(input_value, k)
+    out = tf.nn.top_k(
+        input_value, k, index_type=parameters["output_index_dtype"]
+    )
     return inputs, [out[1]]
 
   def build_inputs(parameters, sess, inputs, outputs):
-    input_value = create_tensor_data(parameters["input_dtype"],
-                                     parameters["input_shape"])
+    input_value = create_tensor_data(
+        parameters["input_dtype"], parameters["input_shape"]
+    )
     if parameters["input_k"] is not None:
-      k = np.array(parameters["input_k"], dtype=np.int32)
+      k = np.array(
+          parameters["input_k"],
+          dtype=parameters["input_k_dtype"].as_numpy_dtype,
+      )
       return [input_value, k], sess.run(
-          outputs, feed_dict=dict(zip(inputs, [input_value, k])))
+          outputs, feed_dict=dict(zip(inputs, [input_value, k]))
+      )
     else:
       return [input_value], sess.run(
-          outputs, feed_dict=dict(zip(inputs, [input_value])))
+          outputs, feed_dict=dict(zip(inputs, [input_value]))
+      )
 
-  make_zip_of_tests(options, test_parameters, build_graph, build_inputs)
+  # TF currently does not support infering int16 scalar from tensor,
+  # i.e. input_k = None x input_k_dtype = int16 cases.
+  make_zip_of_tests(
+      options,
+      test_parameters,
+      build_graph,
+      build_inputs,
+  )

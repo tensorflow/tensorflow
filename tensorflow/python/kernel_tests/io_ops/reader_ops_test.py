@@ -17,8 +17,6 @@
 import collections
 import gzip
 import os
-import shutil
-import sys
 import threading
 import zlib
 
@@ -31,9 +29,6 @@ from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
-from tensorflow.python.training import coordinator
-from tensorflow.python.training import input as input_lib
-from tensorflow.python.training import queue_runner_impl
 from tensorflow.python.util import compat
 
 prefix_path = "tensorflow/core/lib"
@@ -744,96 +739,6 @@ class AsyncReaderTest(test.TestCase):
   @staticmethod
   def _RunSessionAndSave(sess, args, output):
     output.append(sess.run(args))
-
-
-class LMDBReaderTest(test.TestCase):
-
-  def setUp(self):
-    super(LMDBReaderTest, self).setUp()
-    # Copy database out because we need the path to be writable to use locks.
-    # The on-disk format of an LMDB file is different on big-endian machines,
-    # because LMDB is a memory-mapped database.
-    db_file = "data.mdb" if sys.byteorder == "little" else "data_bigendian.mdb"
-    path = os.path.join(prefix_path, "lmdb", "testdata", db_file)
-    self.db_path = os.path.join(self.get_temp_dir(), "data.mdb")
-    shutil.copy(path, self.db_path)
-
-  @test_util.run_deprecated_v1
-  def testReadFromFile(self):
-    reader = io_ops.LMDBReader(name="test_read_from_file")
-    queue = data_flow_ops.FIFOQueue(99, [dtypes.string], shapes=())
-    key, value = reader.read(queue)
-
-    self.evaluate(queue.enqueue([self.db_path]))
-    self.evaluate(queue.close())
-    for i in range(10):
-      k, v = self.evaluate([key, value])
-      self.assertAllEqual(compat.as_bytes(k), compat.as_bytes(str(i)))
-      self.assertAllEqual(
-          compat.as_bytes(v), compat.as_bytes(str(chr(ord("a") + i))))
-
-    with self.assertRaisesOpError("is closed and has insufficient elements "
-                                  "\\(requested 1, current size 0\\)"):
-      k, v = self.evaluate([key, value])
-
-  @test_util.run_deprecated_v1
-  def testReadFromSameFile(self):
-    with self.cached_session() as sess:
-      reader1 = io_ops.LMDBReader(name="test_read_from_same_file1")
-      reader2 = io_ops.LMDBReader(name="test_read_from_same_file2")
-      filename_queue = input_lib.string_input_producer(
-          [self.db_path], num_epochs=None)
-      key1, value1 = reader1.read(filename_queue)
-      key2, value2 = reader2.read(filename_queue)
-
-      coord = coordinator.Coordinator()
-      threads = queue_runner_impl.start_queue_runners(sess, coord=coord)
-      for _ in range(3):
-        for _ in range(10):
-          k1, v1, k2, v2 = self.evaluate([key1, value1, key2, value2])
-          self.assertAllEqual(compat.as_bytes(k1), compat.as_bytes(k2))
-          self.assertAllEqual(compat.as_bytes(v1), compat.as_bytes(v2))
-      coord.request_stop()
-      coord.join(threads)
-
-  @test_util.run_deprecated_v1
-  def testReadFromFolder(self):
-    reader = io_ops.LMDBReader(name="test_read_from_folder")
-    queue = data_flow_ops.FIFOQueue(99, [dtypes.string], shapes=())
-    key, value = reader.read(queue)
-
-    self.evaluate(queue.enqueue([self.db_path]))
-    self.evaluate(queue.close())
-    for i in range(10):
-      k, v = self.evaluate([key, value])
-      self.assertAllEqual(compat.as_bytes(k), compat.as_bytes(str(i)))
-      self.assertAllEqual(
-          compat.as_bytes(v), compat.as_bytes(str(chr(ord("a") + i))))
-
-    with self.assertRaisesOpError("is closed and has insufficient elements "
-                                  "\\(requested 1, current size 0\\)"):
-      k, v = self.evaluate([key, value])
-
-  @test_util.run_deprecated_v1
-  def testReadFromFileRepeatedly(self):
-    with self.cached_session() as sess:
-      reader = io_ops.LMDBReader(name="test_read_from_file_repeated")
-      filename_queue = input_lib.string_input_producer(
-          [self.db_path], num_epochs=None)
-      key, value = reader.read(filename_queue)
-
-      coord = coordinator.Coordinator()
-      threads = queue_runner_impl.start_queue_runners(sess, coord=coord)
-      # Iterate over the lmdb 3 times.
-      for _ in range(3):
-        # Go over all 10 records each time.
-        for j in range(10):
-          k, v = self.evaluate([key, value])
-          self.assertAllEqual(compat.as_bytes(k), compat.as_bytes(str(j)))
-          self.assertAllEqual(
-              compat.as_bytes(v), compat.as_bytes(str(chr(ord("a") + j))))
-      coord.request_stop()
-      coord.join(threads)
 
 
 if __name__ == "__main__":

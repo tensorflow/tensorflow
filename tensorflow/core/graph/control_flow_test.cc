@@ -60,18 +60,17 @@ TEST(ValidateControlFlowTest, InputsFromDifferentFrames) {
   std::vector<ControlFlowInfo> info;
   Status status = BuildControlFlowInfo(graph.get(), &info);
   EXPECT_FALSE(status.ok());
-  EXPECT_TRUE(absl::StrContains(status.error_message(),
-                                "has inputs from different frames"))
-      << status.error_message();
-  EXPECT_TRUE(absl::StrContains(status.error_message(),
-                                "{{node outer/body/inner/Merge}}"))
-      << status.error_message();
-  EXPECT_TRUE(absl::StrContains(status.error_message(),
-                                "{{node outer/body/inner/Enter}}"))
-      << status.error_message();
   EXPECT_TRUE(
-      absl::StrContains(status.error_message(), "{{node outer/Switch}}"))
-      << status.error_message();
+      absl::StrContains(status.message(), "has inputs from different frames"))
+      << status.message();
+  EXPECT_TRUE(
+      absl::StrContains(status.message(), "{{node outer/body/inner/Merge}}"))
+      << status.message();
+  EXPECT_TRUE(
+      absl::StrContains(status.message(), "{{node outer/body/inner/Enter}}"))
+      << status.message();
+  EXPECT_TRUE(absl::StrContains(status.message(), "{{node outer/Switch}}"))
+      << status.message();
 }
 
 TEST(ValidateControlFlowTest, MismatchedParentFrames) {
@@ -108,11 +107,10 @@ TEST(ValidateControlFlowTest, MismatchedParentFrames) {
   std::vector<ControlFlowInfo> info;
   status = BuildControlFlowInfo(graph.get(), &info);
   EXPECT_FALSE(status.ok());
-  EXPECT_TRUE(
-      absl::StrContains(status.error_message(), "Mismatched parent frames"))
-      << status.error_message();
-  EXPECT_TRUE(absl::StrContains(status.error_message(), "{{node Enter2}}"))
-      << status.error_message();
+  EXPECT_TRUE(absl::StrContains(status.message(), "Mismatched parent frames"))
+      << status.message();
+  EXPECT_TRUE(absl::StrContains(status.message(), "{{node Enter2}}"))
+      << status.message();
 }
 
 TEST(ValidateControlFlowTest, TwoLoopCond) {
@@ -134,13 +132,12 @@ TEST(ValidateControlFlowTest, TwoLoopCond) {
   Status status = BuildControlFlowInfo(graph.get(), &info);
   EXPECT_FALSE(status.ok());
   EXPECT_TRUE(
-      absl::StrContains(status.error_message(), "more than one LoopCond node"))
-      << status.error_message();
-  EXPECT_TRUE(
-      absl::StrContains(status.error_message(), "{{node sub/LoopCond}}"))
-      << status.error_message();
-  EXPECT_TRUE(absl::StrContains(status.error_message(), "{{node LoopCond}}"))
-      << status.error_message();
+      absl::StrContains(status.message(), "more than one LoopCond node"))
+      << status.message();
+  EXPECT_TRUE(absl::StrContains(status.message(), "{{node sub/LoopCond}}"))
+      << status.message();
+  EXPECT_TRUE(absl::StrContains(status.message(), "{{node LoopCond}}"))
+      << status.message();
 }
 
 }  // namespace

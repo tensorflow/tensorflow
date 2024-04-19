@@ -138,7 +138,7 @@ run_configure_for_cpu_build
 
 bazel build ${EXTRA_BUILD_FLAGS}  \
   --experimental_cc_shared_library \
-  --build_tag_filters=-no_pip,-no_windows,-no_oss,-gpu,-tpu \
+  --build_tag_filters=-no_pip,-no_windows,-windows_excluded,-no_oss,-oss_excluded,-gpu,-tpu \
   --output_filter=^$ \
   tensorflow/lite:framework tensorflow/lite/examples/minimal:minimal || exit $?
 
@@ -146,7 +146,7 @@ bazel build \
   --experimental_cc_shared_library \
   --config=release_cpu_windows ${EXTRA_BUILD_FLAGS} \
   --output_filter=^$ \
-  tensorflow/tools/pip_package:build_pip_package || exit $?
+  tensorflow/tools/pip_package:wheel || exit $?
 
 if [[ "$SKIP_TEST" == 1 ]]; then
   exit 0
@@ -155,29 +155,8 @@ fi
 # Create a python test directory to avoid package name conflict
 create_python_test_dir "${PY_TEST_DIR}"
 
-./bazel-bin/tensorflow/tools/pip_package/build_pip_package "$PWD/${PY_TEST_DIR}" ${EXTRA_PIP_FLAGS}
+cp ./bazel-bin/tensorflow/tools/pip_package/wheel_house/*.whl "$PWD/${PY_TEST_DIR}"
 
 if [[ "$TF_NIGHTLY" == 1 ]]; then
   exit 0
 fi
-
-# Running python tests on Windows needs pip package installed
-PIP_NAME=$(ls ${PY_TEST_DIR}/tensorflow*.whl)
-reinstall_tensorflow_pip ${PIP_NAME}
-
-# NUMBER_OF_PROCESSORS is predefined on Windows
-N_JOBS="${NUMBER_OF_PROCESSORS}"
-
-# Define no_tensorflow_py_deps=true so that every py_test has no deps anymore,
-# which will result testing system installed tensorflow
-bazel test --announce_rc --config=opt -k --test_output=errors \
-  --experimental_cc_shared_library \
-  ${EXTRA_TEST_FLAGS} \
-  --define=no_tensorflow_py_deps=true --test_lang_filters=py \
-  --test_tag_filters=-no_pip,-no_windows,-no_oss,-gpu,-tpu,-v1only \
-  --build_tag_filters=-no_pip,-no_windows,-no_oss,-gpu,-tpu --build_tests_only \
-  --test_size_filters=small,medium \
-  --jobs="${N_JOBS}" --test_timeout="300,450,1200,3600" \
-  --flaky_test_attempts=3 \
-  --output_filter=^$ \
-  ${TEST_TARGET}

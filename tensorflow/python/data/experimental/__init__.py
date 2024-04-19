@@ -25,7 +25,6 @@ See [Importing Data](https://tensorflow.org/guide/datasets) for an overview.
 @@AutoShardPolicy
 @@AutotuneAlgorithm
 @@AutotuneOptions
-@@CheckpointInputPipelineHook
 @@Counter
 @@CsvDataset
 @@DatasetInitializer
@@ -55,6 +54,7 @@ See [Importing Data](https://tensorflow.org/guide/datasets) for an overview.
 @@dense_to_ragged_batch
 @@dense_to_sparse_batch
 @@distribute
+@@distributed_save
 @@enable_debug_mode
 @@enumerate_dataset
 @@from_list
@@ -72,6 +72,7 @@ See [Importing Data](https://tensorflow.org/guide/datasets) for an overview.
 @@make_saveable_from_iterator
 @@map_and_batch
 @@map_and_batch_with_legacy_function
+@@pad_to_cardinality
 @@parallel_interleave
 @@parse_example_dataset
 @@prefetch_to_device
@@ -106,6 +107,7 @@ from tensorflow.python.data.experimental.ops.cardinality import INFINITE as INFI
 from tensorflow.python.data.experimental.ops.cardinality import UNKNOWN as UNKNOWN_CARDINALITY
 from tensorflow.python.data.experimental.ops.counter import Counter
 from tensorflow.python.data.experimental.ops.distribute import SHARD_HINT
+from tensorflow.python.data.experimental.ops.distributed_save_op import distributed_save
 from tensorflow.python.data.experimental.ops.enumerate_ops import enumerate_dataset
 from tensorflow.python.data.experimental.ops.error_ops import ignore_errors
 from tensorflow.python.data.experimental.ops.from_list import from_list
@@ -119,11 +121,11 @@ from tensorflow.python.data.experimental.ops.interleave_ops import parallel_inte
 from tensorflow.python.data.experimental.ops.interleave_ops import sample_from_datasets
 from tensorflow.python.data.experimental.ops.io import load
 from tensorflow.python.data.experimental.ops.io import save
-from tensorflow.python.data.experimental.ops.iterator_ops import CheckpointInputPipelineHook
 from tensorflow.python.data.experimental.ops.iterator_ops import make_saveable_from_iterator
 from tensorflow.python.data.experimental.ops.lookup_ops import DatasetInitializer
 from tensorflow.python.data.experimental.ops.lookup_ops import index_table_from_dataset
 from tensorflow.python.data.experimental.ops.lookup_ops import table_from_dataset
+from tensorflow.python.data.experimental.ops.pad_to_cardinality import pad_to_cardinality
 from tensorflow.python.data.experimental.ops.parsing_ops import parse_example_dataset
 from tensorflow.python.data.experimental.ops.prefetching_ops import copy_to_device
 from tensorflow.python.data.experimental.ops.prefetching_ops import prefetch_to_device
@@ -142,10 +144,10 @@ from tensorflow.python.data.experimental.ops.unique import unique
 from tensorflow.python.data.experimental.ops.writers import TFRecordWriter
 from tensorflow.python.data.ops.dataset_ops import AUTOTUNE
 from tensorflow.python.data.ops.dataset_ops import DatasetSpec as DatasetStructure
-from tensorflow.python.data.ops.dataset_ops import enable_debug_mode
 from tensorflow.python.data.ops.dataset_ops import from_variant
 from tensorflow.python.data.ops.dataset_ops import get_structure
 from tensorflow.python.data.ops.dataset_ops import to_variant
+from tensorflow.python.data.ops.debug_mode import enable_debug_mode
 from tensorflow.python.data.ops.iterator_ops import get_next_as_optional
 from tensorflow.python.data.ops.optional_ops import Optional
 from tensorflow.python.data.ops.optional_ops import OptionalSpec as OptionalStructure

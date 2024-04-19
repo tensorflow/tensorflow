@@ -15,6 +15,11 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_EAGER_EAGER_OPERATION_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_EAGER_EAGER_OPERATION_H_
 
+#include <optional>
+#include <string>
+#include <variant>
+#include <vector>
+
 #include "absl/container/inlined_vector.h"
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
@@ -28,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/managed_stack_trace.h"
@@ -71,7 +77,7 @@ class EagerOperation : public ImmediateExecutionOperation {
 
   void SetDevice(VariantDevice device) {
     device_ = device;
-    device_name_ = absl::visit(
+    device_name_ = std::visit(
         [](auto* device) { return device == nullptr ? "" : device->name(); },
         device);
     DeviceNameUtils::ParseFullName(device_name_, &device_parsed_name_);
@@ -101,7 +107,7 @@ class EagerOperation : public ImmediateExecutionOperation {
   Status SetAttrBool(const char* attr_name, bool value) override;
   Status SetAttrType(const char* attr_name, DataType value) override;
   Status SetAttrShape(const char* attr_name, const int64_t* dims,
-                      const int num_dims) override;
+                      int num_dims) override;
   Status SetAttrFunction(const char* attr_name,
                          const AbstractOperation* value) override;
   Status SetAttrFunctionName(const char* attr_name, const char* data,
@@ -134,19 +140,36 @@ class EagerOperation : public ImmediateExecutionOperation {
     stack_trace_ = stack_trace;
   }
 
-  absl::optional<ManagedStackTrace> GetStackTrace() override {
+  std::optional<ManagedStackTrace> GetStackTrace() override {
     return stack_trace_;
   }
 
-  Status Reset(const char* op, const char* device_name, bool remote,
-               EagerExecutor* executor,
-               const absl::optional<EagerFunctionParams> remote_func_params =
-                   absl::nullopt);
+  Status Reset(
+      const char* op, const char* device_name, bool remote,
+      EagerExecutor* executor,
+      absl::optional<EagerFunctionParams> eager_func_params = std::nullopt);
 
   bool is_function() const { return is_function_; }
   bool colocation_exempt() const { return colocation_exempt_; }
 
   tensorflow::EagerContext& EagerContext() const { return ctx_; }
+
+  const FunctionLibraryDefinition* FuncLibDef() const {
+    if (eager_func_params_.has_value() &&
+        eager_func_params_.value().func_lib_def_override) {
+      return eager_func_params_.value().func_lib_def_override;
+    } else {
+      return ctx_.FuncLibDef();
+    }
+  }
+
+  const FunctionDef* GetFunctionDef() const {
+    if (is_function_) {
+      return FuncLibDef()->Find(attrs_.op_name());
+    } else {
+      return nullptr;
+    }
+  }
 
   AttrBuilder* MutableAttrs() { return &attrs_; }
   const AttrBuilder& Attrs() const { return attrs_; }
@@ -165,6 +188,13 @@ class EagerOperation : public ImmediateExecutionOperation {
   }
 
   void UpdateInput(int i, TensorHandle* h);
+
+  // This is useful if we want the EagerOperation to point to a different
+  // function.
+  void UpdateName(const string& name) {
+    op_name_ = name.c_str();
+    attrs_.set_op_name(name);
+  }
 
   // Like TensorHandles, EagerOperations may be placed either on a virtual
   // CustomDevice or on a physical Device.
@@ -236,7 +266,7 @@ class EagerOperation : public ImmediateExecutionOperation {
   Status InferInputListAttrs(int num_inputs);
 
   void InferSingleTypeInputListAttrs(const OpDef::ArgDef& input_def,
-                                     const DataType dtype, int num_inputs);
+                                     DataType dtype, int num_inputs);
   void InferMixedTypeInputListAttrs(const OpDef::ArgDef& input_def,
                                     const std::vector<DataType>& dtypes);
 
@@ -271,13 +301,13 @@ class EagerOperation : public ImmediateExecutionOperation {
   // updated accordingly.
   VariantDevice device_;
 
-  absl::optional<ManagedStackTrace> stack_trace_;
+  std::optional<ManagedStackTrace> stack_trace_;
   bool is_function_;  // Conceptually const, but can't be because of Reset
   bool colocation_exempt_;
   CancellationManager* cancellation_manager_ = nullptr;  // Not owned.
   EagerExecutor* executor_;                              // Not owned.
 
-  absl::optional<EagerFunctionParams> eager_func_params_;
+  std::optional<EagerFunctionParams> eager_func_params_;
 
   // Inference information
   const tensorflow::OpDef* op_def_;  // op definition from protobuf

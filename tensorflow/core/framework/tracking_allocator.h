@@ -23,7 +23,7 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/tsl/framework/tracking_allocator.h"
+#include "tsl/framework/tracking_allocator.h"
 
 namespace tensorflow {
 

@@ -27,7 +27,6 @@ RUN patch -p1 < cuda-clang.patch
 
 RUN yes "" | ./configure
 
-RUN bazel build --config=opt tensorflow/tools/pip_package:build_pip_package \
-    --nodistinct_host_configuration
+RUN bazel build --config=opt tensorflow/tools/pip_package:build_pip_package
 
 RUN ./bazel-bin/tensorflow/tools/pip_package/build_pip_package /tf-wheel

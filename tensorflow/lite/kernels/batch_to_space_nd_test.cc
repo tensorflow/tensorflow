@@ -44,9 +44,17 @@ class BatchToSpaceNDOpModel : public SingleOpModel {
     PopulateTensor<int>(crops_, data);
   }
 
+  int input_tensor_id() { return input_; }
+
   template <typename T>
   std::vector<T> GetOutput() {
     return ExtractVector<T>(output_);
+  }
+
+  template <typename T>
+  std::vector<float> GetDequantizedOutput() {
+    return Dequantize<T>(ExtractVector<T>(output_), GetScale(output_),
+                         GetZeroPoint(output_));
   }
 
   int32_t GetOutputSize() { return GetTensorSize(output_); }
@@ -67,20 +75,20 @@ class BatchToSpaceNDOpModel : public SingleOpModel {
 //    m.Invoke();
 class BatchToSpaceNDOpConstModel : public BatchToSpaceNDOpModel {
  public:
-  BatchToSpaceNDOpConstModel(std::initializer_list<int> input_shape,
+  BatchToSpaceNDOpConstModel(const TensorData& input,
                              std::initializer_list<int> block_shape,
                              std::initializer_list<int> crops,
-                             const TensorType& type = TensorType_FLOAT32) {
+                             const TensorData& output) {
     int spatial_dims = static_cast<int>(block_shape.size());
-    input_ = AddInput({type, input_shape});
+    input_ = AddInput(input);
     block_shape_ = AddConstInput(TensorType_INT32, block_shape, {spatial_dims});
     crops_ = AddConstInput(TensorType_INT32, crops, {spatial_dims, 2});
-    output_ = AddOutput(type);
+    output_ = AddOutput(output);
 
     SetBuiltinOp(BuiltinOperator_BATCH_TO_SPACE_ND,
                  BuiltinOptions_BatchToSpaceNDOptions,
                  CreateBatchToSpaceNDOptions(builder_).Union());
-    BuildInterpreter({input_shape});
+    BuildInterpreter({GetShape(input_)});
   }
 };
 
@@ -94,23 +102,32 @@ class BatchToSpaceNDOpConstModel : public BatchToSpaceNDOpModel {
 //    m.Invoke();
 class BatchToSpaceNDOpDynamicModel : public BatchToSpaceNDOpModel {
  public:
-  BatchToSpaceNDOpDynamicModel(std::initializer_list<int> input_shape,
-                               const TensorType& type = TensorType_FLOAT32) {
-    input_ = AddInput({type, input_shape});
+  BatchToSpaceNDOpDynamicModel(const TensorData& input,
+                               const TensorData& output) {
+    input_ = AddInput(input);
     block_shape_ = AddInput(TensorType_INT32);
     crops_ = AddInput(TensorType_INT32);
-    output_ = AddOutput(type);
+    output_ = AddOutput(output);
 
-    int spatial_dims = static_cast<int>(input_shape.size()) - 2;
+    int spatial_dims = static_cast<int>(GetShape(input_).size()) - 2;
     SetBuiltinOp(BuiltinOperator_BATCH_TO_SPACE_ND,
                  BuiltinOptions_BatchToSpaceNDOptions,
                  CreateBatchToSpaceNDOptions(builder_).Union());
-    BuildInterpreter({input_shape, {spatial_dims}, {spatial_dims, 2}});
+    BuildInterpreter({GetShape(input_), {spatial_dims}, {spatial_dims, 2}});
   }
 };
 
+template <typename integer_type>
+float GetTolerance(float min, float max) {
+  float kQuantizedStep =
+      (max - min) / (std::numeric_limits<integer_type>::max() -
+                     std::numeric_limits<integer_type>::min());
+  return kQuantizedStep;
+}
+
 TEST(BatchToSpaceNDOpTest, SimpleConstTest) {
-  BatchToSpaceNDOpConstModel m({4, 2, 2, 1}, {2, 2}, {0, 0, 0, 0});
+  BatchToSpaceNDOpConstModel m({TensorType_FLOAT32, {4, 2, 2, 1}}, {2, 2},
+                               {0, 0, 0, 0}, {TensorType_FLOAT32});
   m.SetInput<float>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16});
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 4, 4, 1}));
@@ -120,8 +137,8 @@ TEST(BatchToSpaceNDOpTest, SimpleConstTest) {
 }
 
 TEST(BatchToSpaceNDOpTest, SimpleConstTestInt8) {
-  BatchToSpaceNDOpConstModel m({4, 2, 2, 1}, {2, 2}, {0, 0, 0, 0},
-                               TensorType_INT8);
+  BatchToSpaceNDOpConstModel m({TensorType_INT8, {4, 2, 2, 1}}, {2, 2},
+                               {0, 0, 0, 0}, {TensorType_INT8});
   m.SetInput<int8_t>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16});
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 4, 4, 1}));
@@ -131,7 +148,8 @@ TEST(BatchToSpaceNDOpTest, SimpleConstTestInt8) {
 }
 
 TEST(BatchToSpaceNDOpTest, BatchOneConstTest) {
-  BatchToSpaceNDOpConstModel m({1, 2, 2, 1}, {1, 1}, {0, 0, 0, 0});
+  BatchToSpaceNDOpConstModel m({TensorType_FLOAT32, {1, 2, 2, 1}}, {1, 1},
+                               {0, 0, 0, 0}, {TensorType_FLOAT32});
   m.SetInput<float>({1, 2, 3, 4});
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2, 2, 1}));
@@ -144,8 +162,8 @@ TEST(BatchToSpaceNDOpTest, SimpleConstTestInt8EmptyOutput) {
     return;
   }
 
-  BatchToSpaceNDOpConstModel m({4, 2, 2, 1}, {2, 2}, {0, 0, 2, 2},
-                               TensorType_INT8);
+  BatchToSpaceNDOpConstModel m({TensorType_INT8, {4, 2, 2, 1}}, {2, 2},
+                               {0, 0, 2, 2}, {TensorType_INT8});
   m.SetInput<int8_t>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16});
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 4, 0, 1}));
@@ -153,7 +171,8 @@ TEST(BatchToSpaceNDOpTest, SimpleConstTestInt8EmptyOutput) {
 }
 
 TEST(BatchToSpaceNDOpTest, SimpleDynamicTest) {
-  BatchToSpaceNDOpDynamicModel m({4, 2, 2, 1});
+  BatchToSpaceNDOpDynamicModel m({TensorType_FLOAT32, {4, 2, 2, 1}},
+                                 {TensorType_FLOAT32});
   m.SetInput<float>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16});
   m.SetBlockShape({2, 2});
   m.SetCrops({0, 0, 0, 0});
@@ -165,7 +184,8 @@ TEST(BatchToSpaceNDOpTest, SimpleDynamicTest) {
 }
 
 TEST(BatchToSpaceNDOpTest, SimpleDynamicTestInt8) {
-  BatchToSpaceNDOpDynamicModel m({4, 2, 2, 1}, TensorType_INT8);
+  BatchToSpaceNDOpDynamicModel m({TensorType_INT8, {4, 2, 2, 1}},
+                                 {TensorType_INT8});
   m.SetInput<int8_t>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16});
   m.SetBlockShape({2, 2});
   m.SetCrops({0, 0, 0, 0});
@@ -177,7 +197,8 @@ TEST(BatchToSpaceNDOpTest, SimpleDynamicTestInt8) {
 }
 
 TEST(BatchToSpaceNDOpTest, InvalidCropsDynamicTest) {
-  BatchToSpaceNDOpDynamicModel m({4, 2, 2, 1});
+  BatchToSpaceNDOpDynamicModel m({TensorType_FLOAT32, {4, 2, 2, 1}},
+                                 {TensorType_FLOAT32});
   m.SetInput<float>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16});
   m.SetBlockShape({2, 2});
   m.SetCrops({0, 0, -1, 0});
@@ -190,7 +211,8 @@ TEST(BatchToSpaceNDOpTest, SimpleDynamicTestInt8EmptyOutput) {
     return;
   }
 
-  BatchToSpaceNDOpDynamicModel m({4, 2, 2, 1}, TensorType_INT8);
+  BatchToSpaceNDOpDynamicModel m({TensorType_INT8, {4, 2, 2, 1}},
+                                 {TensorType_INT8});
   m.SetInput<int8_t>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16});
   m.SetBlockShape({2, 2});
   m.SetCrops({2, 2, 0, 0});
@@ -199,20 +221,25 @@ TEST(BatchToSpaceNDOpTest, SimpleDynamicTestInt8EmptyOutput) {
   EXPECT_THAT(m.GetOutput<int8_t>(), ::testing::IsEmpty());
 }
 
-#ifdef GTEST_HAS_DEATH_TEST
+#if GTEST_HAS_DEATH_TEST
 TEST(BatchToSpaceNDOpTest, InvalidShapeTest) {
-  EXPECT_DEATH(BatchToSpaceNDOpConstModel({3, 2, 2, 1}, {2, 2}, {0, 0, 0, 0}),
-               "Cannot allocate tensors");
+  EXPECT_DEATH(
+      BatchToSpaceNDOpConstModel({TensorType_FLOAT32, {3, 2, 2, 1}}, {2, 2},
+                                 {0, 0, 0, 0}, {TensorType_FLOAT32}),
+      "Cannot allocate tensors");
 }
 
 TEST(BatchToSpaceNDOpTest, InvalidCropsConstTest) {
-  EXPECT_DEATH(BatchToSpaceNDOpConstModel({3, 2, 2, 1}, {2, 2}, {0, 0, 0, -1}),
-               "crops.i. >= 0 was not true.");
+  EXPECT_DEATH(
+      BatchToSpaceNDOpConstModel({TensorType_FLOAT32, {3, 2, 2, 1}}, {2, 2},
+                                 {0, 0, 0, -1}, {TensorType_FLOAT32}),
+      "crops.i. >= 0 was not true.");
 }
 #endif
 
 TEST(BatchToSpaceNDOpTest, Simple3DConstTest) {
-  BatchToSpaceNDOpConstModel m({4, 4, 1}, {2}, {0, 0});
+  BatchToSpaceNDOpConstModel m({TensorType_FLOAT32, {4, 4, 1}}, {2}, {0, 0},
+                               {TensorType_FLOAT32});
   m.SetInput<float>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16});
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 8, 1}));
@@ -222,7 +249,8 @@ TEST(BatchToSpaceNDOpTest, Simple3DConstTest) {
 }
 
 TEST(BatchToSpaceNDOpTest, Simple3DConstTestWithCrops) {
-  BatchToSpaceNDOpConstModel m({4, 4, 1}, {2}, {1, 1});
+  BatchToSpaceNDOpConstModel m({TensorType_FLOAT32, {4, 4, 1}}, {2}, {1, 1},
+                               {TensorType_FLOAT32});
   m.SetInput<float>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16});
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 6, 1}));
@@ -230,8 +258,43 @@ TEST(BatchToSpaceNDOpTest, Simple3DConstTestWithCrops) {
               ElementsAreArray({9, 2, 10, 3, 11, 4, 13, 6, 14, 7, 15, 8}));
 }
 
+template <typename integer_dtype>
+void Simple3DConstTestWithCropsQuant() {
+  const float kMin = -1;
+  const float kMax =
+      std::numeric_limits<integer_dtype>::max() /
+      static_cast<float>(std::numeric_limits<integer_dtype>::max() + 1);
+  float kQuantizedTolerance = GetTolerance<integer_dtype>(-16.0f, 16.0f);
+  BatchToSpaceNDOpConstModel m(
+      {GetTensorType<integer_dtype>(), {4, 4, 1}, 16.0f * kMin, 16.0f * kMax},
+      {2}, {1, 1},
+      {GetTensorType<integer_dtype>(), {}, 16.0f * kMin, 16.0f * kMax});
+  m.QuantizeAndPopulate<integer_dtype>(
+      m.input_tensor_id(),
+      {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 6, 1}));
+  EXPECT_THAT(
+      m.GetDequantizedOutput<integer_dtype>(),
+      ElementsAreArray(ArrayFloatNear({9, 2, 10, 3, 11, 4, 13, 6, 14, 7, 15, 8},
+                                      kQuantizedTolerance)));
+}
+
+TEST(BatchToSpaceNDOpTest, Simple3DConstTestWithCropsUINT8) {
+  Simple3DConstTestWithCropsQuant<uint8_t>();
+}
+
+TEST(BatchToSpaceNDOpTest, Simple3DConstTestWithCropsINT8) {
+  Simple3DConstTestWithCropsQuant<int8_t>();
+}
+
+TEST(BatchToSpaceNDOpTest, Simple3DConstTestWithCropsINT16) {
+  Simple3DConstTestWithCropsQuant<int16_t>();
+}
+
 TEST(BatchToSpaceNDOpTest, Simple3DDynamicTest) {
-  BatchToSpaceNDOpDynamicModel m({4, 4, 1});
+  BatchToSpaceNDOpDynamicModel m({TensorType_FLOAT32, {4, 4, 1}},
+                                 {TensorType_FLOAT32});
   m.SetInput<float>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16});
   m.SetBlockShape({2});
   m.SetCrops({0, 0});
@@ -243,7 +306,8 @@ TEST(BatchToSpaceNDOpTest, Simple3DDynamicTest) {
 }
 
 TEST(BatchToSpaceNDOpTest, Simple3DDynamicTestWithCrops) {
-  BatchToSpaceNDOpDynamicModel m({4, 4, 1});
+  BatchToSpaceNDOpDynamicModel m({TensorType_FLOAT32, {4, 4, 1}},
+                                 {TensorType_FLOAT32});
   m.SetInput<float>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16});
   m.SetBlockShape({2});
   m.SetCrops({1, 1});
@@ -251,6 +315,41 @@ TEST(BatchToSpaceNDOpTest, Simple3DDynamicTestWithCrops) {
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 6, 1}));
   EXPECT_THAT(m.GetOutput<float>(),
               ElementsAreArray({9, 2, 10, 3, 11, 4, 13, 6, 14, 7, 15, 8}));
+}
+
+template <typename integer_dtype>
+void Simple3DDynamicTestWithCropsQuant() {
+  const float kMin = -1;
+  const float kMax =
+      std::numeric_limits<integer_dtype>::max() /
+      static_cast<float>(std::numeric_limits<integer_dtype>::max() + 1);
+  float kQuantizedTolerance = GetTolerance<integer_dtype>(-16.0, 16.0);
+  BatchToSpaceNDOpDynamicModel m(
+      {GetTensorType<integer_dtype>(), {4, 4, 1}, 16.0f * kMin, 16.0f * kMax},
+      {GetTensorType<integer_dtype>(), {}, 16.0f * kMin, 16.0f * kMax});
+  m.QuantizeAndPopulate<integer_dtype>(
+      m.input_tensor_id(),
+      {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16});
+  m.SetBlockShape({2});
+  m.SetCrops({1, 1});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 6, 1}));
+  EXPECT_THAT(
+      m.GetDequantizedOutput<integer_dtype>(),
+      ElementsAreArray(ArrayFloatNear({9, 2, 10, 3, 11, 4, 13, 6, 14, 7, 15, 8},
+                                      kQuantizedTolerance)));
+}
+
+TEST(BatchToSpaceNDOpTest, Simple3DDynamicTestWithCropsQuantUINT8) {
+  Simple3DDynamicTestWithCropsQuant<uint8_t>();
+}
+
+TEST(BatchToSpaceNDOpTest, Simple3DDynamicTestWithCropsQuantINT8) {
+  Simple3DDynamicTestWithCropsQuant<int8_t>();
+}
+
+TEST(BatchToSpaceNDOpTest, Simple3DDynamicTestWithCropsQuantINT16) {
+  Simple3DDynamicTestWithCropsQuant<int16_t>();
 }
 
 }  // namespace

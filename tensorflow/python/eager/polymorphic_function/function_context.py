@@ -36,7 +36,7 @@ class EagerContext(NamedTuple):
   xla_context_id: Any
 
 
-def make_function_context() -> function_cache.FunctionContext:
+def make_function_context(scope_type=None) -> function_cache.FunctionContext:
   """Generates a FunctionContext based on current contextual info."""
   ctx = context.context()
 
@@ -98,8 +98,16 @@ def make_function_context() -> function_cache.FunctionContext:
     variable_policy = None
 
   return function_cache.FunctionContext(
-      EagerContext(parent_graph, device_functions, colocation_stack,
-                   in_cross_replica_context, variable_policy, xla_context_id))
+      EagerContext(
+          parent_graph,
+          device_functions,
+          colocation_stack,
+          in_cross_replica_context,
+          variable_policy,
+          xla_context_id,
+      ),
+      scope_type,
+  )
 
 
 def _enclosing_xla_context():

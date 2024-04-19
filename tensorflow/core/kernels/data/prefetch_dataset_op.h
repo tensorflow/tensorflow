@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_KERNELS_DATA_PREFETCH_DATASET_OP_H_
 
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/model.h"
 #include "tensorflow/core/kernels/data/prefetch_autotuner.h"
 
 namespace tensorflow {
@@ -26,7 +27,7 @@ class PrefetchDatasetOp : public UnaryDatasetOpKernel {
  public:
   static constexpr const char* const kDatasetType = "Prefetch";
   static constexpr const char* const kInputDataset = "input_dataset";
-  static constexpr const char* const kBufferSize = "buffer_size";
+  static constexpr const char* const kBufferSize = model::kBufferSize;
   static constexpr const char* const kOutputTypes = "output_types";
   static constexpr const char* const kOutputShapes = "output_shapes";
   static constexpr const char* const kSlackPeriod = "slack_period";

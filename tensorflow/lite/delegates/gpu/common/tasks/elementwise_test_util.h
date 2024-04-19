@@ -30,6 +30,7 @@ absl::Status ExpTest(TestExecutionEnvironment* env);
 absl::Status FloorTest(TestExecutionEnvironment* env);
 absl::Status FloorDivTest(TestExecutionEnvironment* env);
 absl::Status FloorModTest(TestExecutionEnvironment* env);
+absl::Status GeluTest(TestExecutionEnvironment* env);
 absl::Status HardSwishTest(TestExecutionEnvironment* env);
 absl::Status LogTest(TestExecutionEnvironment* env);
 absl::Status NegTest(TestExecutionEnvironment* env);

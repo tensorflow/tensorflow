@@ -32,12 +32,14 @@ LogSeverity MinimalLogger::minimum_log_severity_ = TFLITE_LOG_INFO;
 
 void MinimalLogger::LogFormatted(LogSeverity severity, const char* format,
                                  va_list args) {
-  fprintf(stderr, "%s: ", GetSeverityName(severity));
+  if (severity >= MinimalLogger::minimum_log_severity_) {
+    fprintf(stderr, "%s: ", GetSeverityName(severity));
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wformat-nonliteral"
-  vfprintf(stderr, format, args);
+    vfprintf(stderr, format, args);
 #pragma clang diagnostic pop
-  fputc('\n', stderr);
+    fputc('\n', stderr);
+  }
 }
 
 }  // namespace logging_internal

@@ -14,7 +14,7 @@
 # ==============================================================================
 """Helper class for TF Python fuzzing."""
 
-import atheris_no_libfuzzer as atheris
+import atheris
 import tensorflow as tf
 
 _MIN_INT = -10000

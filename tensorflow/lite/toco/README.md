@@ -17,8 +17,8 @@ Usage information is given in these documents:
 Once an application developer has a trained TensorFlow model, the TensorFlow
 Lite Converter will accept
 that model and generate a TensorFlow Lite
-[FlatBuffer](https://google.github.io/flatbuffers/) file. The converter currently supports
-[SavedModels](https://www.tensorflow.org/guide/saved_model#using_savedmodel_with_estimators),
+[FlatBuffer](https://google.github.io/flatbuffers/) file. The converter
+currently supports [SavedModels](https://www.tensorflow.org/guide/saved_model),
 frozen graphs (models generated via
 [freeze_graph.py](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/tools/freeze_graph.py)),
 and `tf.Keras` model files.  The TensorFlow Lite FlatBuffer file can be shipped

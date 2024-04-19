@@ -86,24 +86,30 @@ TEST(OpStatsToPodStats, GpuPodStats) {
   const PodStatsRecord& record = pod_stats_db.pod_stats_record(0);
   EXPECT_EQ(kStepNum, record.step_num());
   EXPECT_EQ(kHostname, record.host_name());
-  EXPECT_NEAR(PicoToMicro(kStepTimePs), record.total_duration_us(), kMaxError);
+  EXPECT_NEAR(tsl::profiler::PicoToMicro(kStepTimePs),
+              record.total_duration_us(), kMaxError);
   const auto& breakdown = record.step_breakdown_us();
-  EXPECT_NEAR(PicoToMicro(kDeviceCompute32Ps + kDeviceCompute16Ps),
-              breakdown.at(kDeviceCompute), kMaxError);
-  EXPECT_NEAR(PicoToMicro(kDeviceToDevicePs + kDeviceWaitDevicePs),
-              breakdown.at(kDeviceToDevice), kMaxError);
-  EXPECT_NEAR(PicoToMicro(kDeviceCollectivePs),
-              breakdown.at(kDeviceCollectives), kMaxError);
-  EXPECT_NEAR(PicoToMicro(kHostComputePs), breakdown.at(kHostCompute),
-              kMaxError);
-  EXPECT_NEAR(PicoToMicro(kHostPreparePs), breakdown.at(kHostPrepare),
-              kMaxError);
   EXPECT_NEAR(
-      PicoToMicro(kHostWaitInputPs + kHostToDevicePs + kDeviceWaitHostPs),
-      breakdown.at(kInput), kMaxError);
-  EXPECT_NEAR(PicoToMicro(kDeviceToHostPs), breakdown.at(kOutput), kMaxError);
-  EXPECT_NEAR(PicoToMicro(kHostCompilePs), breakdown.at(kCompile), kMaxError);
-  EXPECT_NEAR(PicoToMicro(kUnknownTimePs), breakdown.at(kAllOthers), kMaxError);
+      tsl::profiler::PicoToMicro(kDeviceCompute32Ps + kDeviceCompute16Ps),
+      breakdown.at(kDeviceCompute), kMaxError);
+  EXPECT_NEAR(
+      tsl::profiler::PicoToMicro(kDeviceToDevicePs + kDeviceWaitDevicePs),
+      breakdown.at(kDeviceToDevice), kMaxError);
+  EXPECT_NEAR(tsl::profiler::PicoToMicro(kDeviceCollectivePs),
+              breakdown.at(kDeviceCollectives), kMaxError);
+  EXPECT_NEAR(tsl::profiler::PicoToMicro(kHostComputePs),
+              breakdown.at(kHostCompute), kMaxError);
+  EXPECT_NEAR(tsl::profiler::PicoToMicro(kHostPreparePs),
+              breakdown.at(kHostPrepare), kMaxError);
+  EXPECT_NEAR(tsl::profiler::PicoToMicro(kHostWaitInputPs + kHostToDevicePs +
+                                         kDeviceWaitHostPs),
+              breakdown.at(kInput), kMaxError);
+  EXPECT_NEAR(tsl::profiler::PicoToMicro(kDeviceToHostPs),
+              breakdown.at(kOutput), kMaxError);
+  EXPECT_NEAR(tsl::profiler::PicoToMicro(kHostCompilePs),
+              breakdown.at(kCompile), kMaxError);
+  EXPECT_NEAR(tsl::profiler::PicoToMicro(kUnknownTimePs),
+              breakdown.at(kAllOthers), kMaxError);
 
   EXPECT_EQ(GetGenericEventTypeStr(kDeviceCollectives), record.bottleneck());
 }

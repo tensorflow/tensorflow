@@ -33,15 +33,16 @@ limitations under the License.
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/str_split.h"
+#include "absl/strings/string_view.h"
 #include "ruy/profiler/profiler.h"  // from @ruy
 #include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/core/c/common.h"
+#include "tensorflow/lite/core/kernels/register.h"
 #include "tensorflow/lite/core/model.h"
 #include "tensorflow/lite/core/model_builder.h"
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
-#include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/op_resolver.h"
 #include "tensorflow/lite/optional_debug_tools.h"
 #include "tensorflow/lite/profiling/profile_summary_formatter.h"
@@ -103,7 +104,10 @@ class InterpreterStatePrinter : public BenchmarkListener {
     if (params_->Get<bool>("print_preinvoke_state")) {
       TFLITE_LOG(INFO) << "\n====Printing out TfLite interpreter pre-invoke "
                           "state begins====";
-      tflite::PrintInterpreterState(interpreter_);
+      tflite::PrintInterpreterState(
+          interpreter_, params_->Get<int32_t>("tensor_name_display_length"),
+          params_->Get<int32_t>("tensor_type_display_length"),
+          params_->Get<int32_t>("alloc_type_display_length"));
       TFLITE_LOG(INFO) << "====Printing out TfLite interpreter pre-invoke "
                           "state ends====\n";
     }
@@ -113,7 +117,10 @@ class InterpreterStatePrinter : public BenchmarkListener {
     if (params_->Get<bool>("print_postinvoke_state")) {
       TFLITE_LOG(INFO) << "\n====Printing out TfLite interpreter post-invoke "
                           "state begins====";
-      tflite::PrintInterpreterState(interpreter_);
+      tflite::PrintInterpreterState(
+          interpreter_, params_->Get<int32_t>("tensor_name_display_length"),
+          params_->Get<int32_t>("tensor_type_display_length"),
+          params_->Get<int32_t>("alloc_type_display_length"));
       TFLITE_LOG(INFO) << "====Printing out TfLite interpreter post-invoke "
                           "state ends====\n";
     }
@@ -258,14 +265,13 @@ TfLiteStatus PopulateInputLayerInfo(
   std::vector<std::string> shapes = Split(shapes_string, ':');
 
   if (names.size() != shapes.size()) {
-    TFLITE_LOG(ERROR) << "The number of items in"
-                      << " --input_layer_shape (" << shapes_string << ", with "
-                      << shapes.size() << " items)"
-                      << " must match the number of items in"
-                      << " --input_layer (" << names_string << ", with "
-                      << names.size() << " items)."
-                      << " For example --input_layer=input1,input2"
-                      << " --input_layer_shape=1,224,224,4:1,20";
+    TFLITE_LOG(ERROR)
+        << "The number of items in --input_layer_shape (" << shapes_string
+        << ", with " << shapes.size()
+        << " items) must match the number of items in --input_layer ("
+        << names_string << ", with " << names.size()
+        << " items). For example --input_layer=input1,input2 "
+           "--input_layer_shape=1,224,224,4:1,20";
     return kTfLiteError;
   }
 
@@ -374,8 +380,17 @@ BenchmarkParams BenchmarkTfLiteModel::DefaultParams() {
                           BenchmarkParam::Create<int32_t>(0));
   default_params.AddParam("disable_delegate_clustering",
                           BenchmarkParam::Create<bool>(false));
+  default_params.AddParam("enable_builtin_cast_constant_cache",
+                          BenchmarkParam::Create<bool>(false));
   default_params.AddParam("output_filepath",
                           BenchmarkParam::Create<std::string>(""));
+
+  default_params.AddParam("tensor_name_display_length",
+                          BenchmarkParam::Create<int32_t>(25));
+  default_params.AddParam("tensor_type_display_length",
+                          BenchmarkParam::Create<int32_t>(15));
+  default_params.AddParam("alloc_type_display_length",
+                          BenchmarkParam::Create<int32_t>(18));
 
   tools::ProvidedDelegateList delegate_providers(&default_params);
   delegate_providers.AddAllDelegateParams();
@@ -455,9 +470,25 @@ std::vector<Flag> BenchmarkTfLiteModel::GetFlags() {
           "Optimize memory usage for large tensors with sacrificing latency."),
       CreateFlag<bool>("disable_delegate_clustering", &params_,
                        "Disable delegate clustering."),
+      CreateFlag<bool>(
+          "enable_builtin_cast_constant_cache", &params_,
+          "Cache the output of the builtin cast operation when its input "
+          "is a constant tensor."),
       CreateFlag<std::string>(
           "output_filepath", &params_,
-          "File path to export outputs layer as binary data.")};
+          "File path to export outputs layer as binary data."),
+      CreateFlag<int32_t>(
+          "tensor_name_display_length", &params_,
+          "The number of characters to show for the tensor's name when "
+          "printing the interpeter's state, defaults to 25."),
+      CreateFlag<int32_t>(
+          "tensor_type_display_length", &params_,
+          "The number of characters to show for the tensor's type when "
+          "printing the interpeter's state, defaults to 15."),
+      CreateFlag<int32_t>(
+          "alloc_type_display_length", &params_,
+          "The number of characters to show for the tensor's allocation type "
+          "when printing the interpeter's state, defaults to 18.")};
 
   flags.insert(flags.end(), specific_flags.begin(), specific_flags.end());
 
@@ -502,8 +533,16 @@ void BenchmarkTfLiteModel::LogParams() {
                       "Optimize memory usage for large tensors", verbose);
   LOG_BENCHMARK_PARAM(bool, "disable_delegate_clustering",
                       "Disable delegate clustering", verbose);
+  LOG_BENCHMARK_PARAM(bool, "enable_builtin_cast_constant_cache",
+                      "Constant CAST output cache", verbose);
   LOG_BENCHMARK_PARAM(std::string, "output_filepath",
                       "File path to export outputs layer to", verbose);
+  LOG_BENCHMARK_PARAM(int32_t, "tensor_name_display_length",
+                      "Tensor name display length", verbose);
+  LOG_BENCHMARK_PARAM(int32_t, "tensor_type_display_length",
+                      "Tensor type display length", verbose);
+  LOG_BENCHMARK_PARAM(int32_t, "alloc_type_display_length",
+                      "Tensor allocation type display length", verbose);
 
   for (const auto& delegate_provider :
        tools::GetRegisteredDelegateProviders()) {
@@ -538,8 +577,22 @@ uint64_t BenchmarkTfLiteModel::ComputeInputBytes() {
 }
 
 int64_t BenchmarkTfLiteModel::MayGetModelFileSize() {
-  std::ifstream in_file(params_.Get<std::string>("graph"),
-                        std::ios::binary | std::ios::ate);
+  std::string fd_or_graph_path = params_.Get<std::string>("graph");
+  // Path can be one of the following:
+  // 1) File descriptor path: path must be in the format of
+  // "fd:%model_fd%:%model_offset%:%model_size%".
+  // 2) File path: path to the model file.
+  // Please see tensorflow/lite/tools/model_loader.h for more information.
+  std::vector<absl::string_view> parts = absl::StrSplit(fd_or_graph_path, ':');
+  if (!parts.empty() && parts[0] == "fd") {
+    int64_t model_size = -1;
+    if (parts.size() != 4 || !absl::SimpleAtoi(parts[3], &model_size)) {
+      TFLITE_LOG(ERROR) << "Failed to parse model file size: "
+                        << fd_or_graph_path;
+    }
+    return model_size;
+  }
+  std::ifstream in_file(fd_or_graph_path, std::ios::binary | std::ios::ate);
   return in_file.tellg();
 }
 
@@ -680,6 +733,8 @@ TfLiteStatus BenchmarkTfLiteModel::InitInterpreter() {
       params_.Get<int32_t>("optimize_memory_for_large_tensors"));
   options.SetDisableDelegateClustering(
       params_.Get<bool>("disable_delegate_clustering"));
+  options.SetCacheConstantCastOp(
+      params_.Get<bool>("enable_builtin_cast_constant_cache"));
 
   tflite::InterpreterBuilder builder(*model_, *resolver, &options);
   if (builder.SetNumThreads(num_threads) != kTfLiteOk) {
@@ -734,6 +789,41 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
 
   interpreter_->SetAllowFp16PrecisionForFp32(params_.Get<bool>("allow_fp16"));
 
+  auto interpreter_inputs = interpreter_->inputs();
+
+  if (!inputs_.empty()) {
+    TFLITE_TOOLS_CHECK_EQ(inputs_.size(), interpreter_inputs.size())
+        << "Inputs mismatch: Model inputs #:" << inputs_.size()
+        << " expected: " << interpreter_inputs.size();
+  }
+
+  // Check if the tensor names match, and log a warning if it doesn't.
+  for (int j = 0; j < inputs_.size(); ++j) {
+    const InputLayerInfo& input = inputs_[j];
+    int i = interpreter_inputs[j];
+    TfLiteTensor* t = interpreter_->tensor(i);
+    if (input.name != t->name) {
+      TFLITE_LOG(WARN) << "Tensor # " << i << " is named " << t->name
+                       << " but flags call it " << input.name;
+    }
+
+    if (t->type != kTfLiteString && input.shape.size() != t->dims->size) {
+      TFLITE_LOG(ERROR) << "Input tensor #" << i << " should have "
+                        << t->dims->size << " dimensions!";
+      return kTfLiteError;
+    }
+  }
+
+  // Resize all non-string tensors.
+  for (int j = 0; j < inputs_.size(); ++j) {
+    const InputLayerInfo& input = inputs_[j];
+    int i = interpreter_inputs[j];
+    TfLiteTensor* t = interpreter_->tensor(i);
+    if (t->type != kTfLiteString) {
+      interpreter_->ResizeInputTensor(i, input.shape);
+    }
+  }
+
   owned_delegates_.clear();
 
   // Contains all ids of TfLiteNodes that have been checked to see whether it's
@@ -744,6 +834,15 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
   TFLITE_MAY_LOG(INFO, (created_delegates.size() >= 2))
       << "Going to apply " << created_delegates.size()
       << " delegates one after another.";
+
+  // If created_delegates is empty, 'require_full_delegation' flag will not be
+  // checked, thus CPU fallback will happen. Adding check here to avoid
+  // fallback in this situation.
+  if (created_delegates.empty() &&
+      params_.Get<bool>("require_full_delegation")) {
+    TFLITE_LOG(ERROR) << "Disallowed CPU fallback detected.";
+    return kTfLiteError;
+  }
   for (auto& created_delegate : created_delegates) {
     const auto* delegate_provider = created_delegate.provider;
     TfLiteDelegate* delegate = created_delegate.delegate.get();
@@ -807,41 +906,6 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
     }
   }
 
-  auto interpreter_inputs = interpreter_->inputs();
-
-  if (!inputs_.empty()) {
-    TFLITE_TOOLS_CHECK_EQ(inputs_.size(), interpreter_inputs.size())
-        << "Inputs mismatch: Model inputs #:" << inputs_.size()
-        << " expected: " << interpreter_inputs.size();
-  }
-
-  // Check if the tensor names match, and log a warning if it doesn't.
-  for (int j = 0; j < inputs_.size(); ++j) {
-    const InputLayerInfo& input = inputs_[j];
-    int i = interpreter_inputs[j];
-    TfLiteTensor* t = interpreter_->tensor(i);
-    if (input.name != t->name) {
-      TFLITE_LOG(WARN) << "Tensor # " << i << " is named " << t->name
-                       << " but flags call it " << input.name;
-    }
-
-    if (t->type != kTfLiteString && input.shape.size() != t->dims->size) {
-      TFLITE_LOG(ERROR) << "Input tensor #" << i << " should have "
-                        << t->dims->size << " dimensions!";
-      return kTfLiteError;
-    }
-  }
-
-  // Resize all non-string tensors.
-  for (int j = 0; j < inputs_.size(); ++j) {
-    const InputLayerInfo& input = inputs_[j];
-    int i = interpreter_inputs[j];
-    TfLiteTensor* t = interpreter_->tensor(i);
-    if (t->type != kTfLiteString) {
-      interpreter_->ResizeInputTensor(i, input.shape);
-    }
-  }
-
   if (interpreter_->AllocateTensors() != kTfLiteOk) {
     TFLITE_LOG(ERROR) << "Failed to allocate tensors!";
     return kTfLiteError;
@@ -867,8 +931,10 @@ TfLiteStatus BenchmarkTfLiteModel::LoadModel() {
     TFLITE_LOG(ERROR) << "Failed to load model " << fd_or_graph_path;
     return kTfLiteError;
   }
-  model_ = tflite::FlatBufferModel::BuildFromModel(
-      model_loader_->GetModel()->GetModel());
+  model_ = tflite::FlatBufferModel::BuildFromBuffer(
+      reinterpret_cast<const char*>(
+          model_loader_->GetModel()->allocation()->base()),
+      model_loader_->GetModel()->allocation()->bytes());
   TFLITE_LOG(INFO) << "Loaded model " << fd_or_graph_path;
   return kTfLiteOk;
 }

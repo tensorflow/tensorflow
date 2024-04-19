@@ -2,6 +2,13 @@
 # The autotuning results can be serialized as a string, allowing you to save
 # and later restore them.
 
+# Placeholder: load py_proto_library
+load(
+    "//tensorflow:tensorflow.bzl",
+    "tf_cuda_library",
+    "tf_cuda_only_cc_test",
+)
+
 # TODO(ruochengw): Currently only supports contrib's fused_conv2d_bias_activation_op.
 # We plan to add more ops and move fused_conv2d_bias_activation_op back into core library.
 load(
@@ -12,16 +19,10 @@ load(
     "//tensorflow/core/platform:rules_cc.bzl",
     "cc_library",
 )
-load(
-    "//tensorflow:tensorflow.bzl",
-    "tf_cuda_library",
-    "tf_cuda_only_cc_test",
-)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow:__subpackages__"],
-    features = ["-layering_check"],
     licenses = ["notice"],
 )
 
@@ -43,7 +44,7 @@ tf_proto_library(
     cc_api_version = 2,
     protodeps = [
         "//tensorflow/core/framework:types_proto",
-        "//tensorflow/compiler/xla/stream_executor:dnn_proto",
+        "@local_tsl//tsl/protobuf:dnn_proto",
     ],
 )
 
@@ -72,9 +73,7 @@ cc_library(
         "conv_autotune_maps.h",
         "conv_parameters.h",
     ],
-    visibility = [
-        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
-    ],
+    visibility = ["//visibility:private"],
 )
 
 tf_cuda_library(
@@ -82,6 +81,9 @@ tf_cuda_library(
     srcs = ["conv_parameters.cc"],
     hdrs = [
         "conv_parameters.h",
+    ],
+    cuda_deps = [
+        "@local_tsl//tsl/lib/strings:proto_serialization",
     ],
     deps = [
         ":conv_parameters_proto_cc",
@@ -101,9 +103,12 @@ tf_proto_library(
     cc_api_version = 2,
     protodeps = [
         "//tensorflow/core/util/autotune_maps:conv_parameters_proto",
-        "//tensorflow/compiler/xla/stream_executor:dnn_proto",
+        "@local_tsl//tsl/protobuf:dnn_proto",
     ],
-    visibility = ["//waymo/ml/deploy/system/autotuning:__subpackages__"],
+    visibility = [
+        "//waymo/ml/deploy/benchmark:__subpackages__",
+        "//waymo/ml/deploy/system/autotuning:__subpackages__",
+    ],
 )
 
 # copybara:uncomment_begin(google-only)
@@ -130,14 +135,17 @@ tf_cuda_library(
         ":conv_autotune_maps",
         ":conv_parameters",
         ":conv_parameters_proto_cc",
-        "//tensorflow/compiler/xla:status_macros",
-        "//tensorflow/compiler/xla/stream_executor:dnn_proto_cc",
-        "//tensorflow/compiler/xla/stream_executor:lazy_op_runner",
-        "//tensorflow/compiler/xla/stream_executor:stream_executor_headers",
-        "//tensorflow/compiler/xla/stream_executor/gpu:gpu_init",
         "//tensorflow/core:framework",
         "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:str_util",
         "//tensorflow/core/platform:stream_executor",
+        "@local_tsl//tsl/lib/strings:proto_serialization",
+        "@local_tsl//tsl/protobuf:dnn_proto_cc",
+        "@local_xla//xla:status_macros",
+        "@local_xla//xla/stream_executor",
+        "@local_xla//xla/stream_executor:lazy_op_runner",
+        "@local_xla//xla/stream_executor:platform_manager",
+        "@local_xla//xla/stream_executor/gpu:gpu_init",
     ],
 )
 
@@ -145,16 +153,17 @@ tf_cuda_only_cc_test(
     name = "autotune_serialize_test",
     size = "small",
     srcs = ["autotune_serialize_test.cc"],
+    features = ["-layering_check"],
     tags = ["no_rocm"],
     deps = [
         ":autotune_serialize",
         ":conv_autotune_maps",
         ":conv_parameters",
         ":conv_parameters_proto_cc",
-        "//tensorflow/compiler/xla/stream_executor/gpu:gpu_driver_header",
-        "//tensorflow/compiler/xla/stream_executor/gpu:gpu_init",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/platform:status_matchers",
+        "@local_xla//xla/stream_executor/gpu:gpu_driver_header",
+        "@local_xla//xla/stream_executor/gpu:gpu_init",
     ],
 )

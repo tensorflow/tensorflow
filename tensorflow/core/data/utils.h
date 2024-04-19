@@ -15,7 +15,13 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_UTILS_H_
 #define TENSORFLOW_CORE_DATA_UTILS_H_
 
+#include <memory>
+#include <optional>
 #include <string>
+
+#include "absl/container/flat_hash_map.h"
+#include "absl/status/statusor.h"
+#include "tensorflow/core/protobuf/data_service.pb.h"
 
 namespace tensorflow {
 namespace data {
@@ -29,6 +35,25 @@ void IncrementThroughput(int64_t bytes);
 // Returns a modified file name that can be used to do implementation specific
 // file name manipulation/optimization.
 std::string TranslateFileName(const std::string& fname);
+
+// Returns the data transfer protocol to use if one is not specified by the
+// user.
+std::string DefaultDataTransferProtocol();
+
+// Returns a path pointing to the same file as `path` with a potential locality
+// optimization.
+std::string LocalityOptimizedPath(const std::string& path);
+
+// Returns `true` if tf.data service compression should be disabled at runtime
+// based on (1) the inputs or (2) the properties of the calling trainer.
+absl::StatusOr<bool> DisableCompressionAtRuntime(
+    const std::string& data_transfer_protocol, DeploymentMode deployment_mode);
+
+// Log filenames into TfDataLogger. Uses the same  TfDataFileLoggerClient at
+// every call. Thread safe.
+// TODO (shushanik) Implement streamz error reporting in case the logging is not
+// successful
+void LogFilenames(const std::vector<std::string>& files);
 
 }  // namespace data
 }  // namespace tensorflow

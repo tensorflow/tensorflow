@@ -27,7 +27,7 @@ limitations under the License.
 #include "tensorflow/core/lib/io/table_options.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/stringpiece.h"
-#include "tensorflow/tsl/lib/io/table_builder.h"
+#include "tsl/lib/io/table_builder.h"
 
 namespace tensorflow {
 namespace table {

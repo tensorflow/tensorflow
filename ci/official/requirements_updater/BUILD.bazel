@@ -1,0 +1,92 @@
+# Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
+load("@python//3.10:defs.bzl", compile_pip_requirements_3_10 = "compile_pip_requirements")
+load("@python//3.11:defs.bzl", compile_pip_requirements_3_11 = "compile_pip_requirements")
+load("@python//3.12:defs.bzl", compile_pip_requirements_3_12 = "compile_pip_requirements")
+load("@python//3.9:defs.bzl", compile_pip_requirements_3_9 = "compile_pip_requirements")
+load("@updater_config_repository//:updater_config_repository.bzl", "REQUIREMENTS_FILE_NAME")
+
+compile_pip_requirements_3_9(
+    name = "requirements_3_9",
+    extra_args = ["--allow-unsafe"],
+    requirements_in = REQUIREMENTS_FILE_NAME,
+    requirements_txt = "requirements_lock_3_9.txt",
+)
+
+compile_pip_requirements_3_10(
+    name = "requirements_3_10",
+    extra_args = ["--allow-unsafe"],
+    requirements_in = REQUIREMENTS_FILE_NAME,
+    requirements_txt = "requirements_lock_3_10.txt",
+)
+
+compile_pip_requirements_3_11(
+    name = "requirements_3_11",
+    extra_args = ["--allow-unsafe"],
+    requirements_in = REQUIREMENTS_FILE_NAME,
+    requirements_txt = "requirements_lock_3_11.txt",
+)
+
+compile_pip_requirements_3_12(
+    name = "requirements_3_12",
+    extra_args = ["--allow-unsafe"],
+    requirements_in = REQUIREMENTS_FILE_NAME,
+    requirements_txt = "requirements_lock_3_12.txt",
+)
+
+compile_pip_requirements_3_9(
+    name = "requirements_3_9_release",
+    extra_args = [
+        "--allow-unsafe",
+        "-P keras-nightly",
+        "-P tb-nightly",
+    ],
+    requirements_in = "requirements.in",
+    requirements_txt = "requirements_lock_3_9.txt",
+)
+
+compile_pip_requirements_3_10(
+    name = "requirements_3_10_release",
+    extra_args = [
+        "--allow-unsafe",
+        "-P keras-nightly",
+        "-P tb-nightly",
+    ],
+    requirements_in = "requirements.in",
+    requirements_txt = "requirements_lock_3_10.txt",
+)
+
+compile_pip_requirements_3_11(
+    name = "requirements_3_11_release",
+    extra_args = [
+        "--allow-unsafe",
+        "-P keras-nightly",
+        "-P tb-nightly",
+    ],
+    requirements_in = "requirements.in",
+    requirements_txt = "requirements_lock_3_11.txt",
+)
+
+compile_pip_requirements_3_12(
+    name = "requirements_3_12_release",
+    extra_args = [
+        "--allow-unsafe",
+        "-P keras-nightly",
+        "-P tb-nightly",
+    ],
+    requirements_in = "requirements.in",
+    requirements_txt = "requirements_lock_3_12.txt",
+)

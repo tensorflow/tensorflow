@@ -18,7 +18,7 @@ limitations under the License.
 #include <deque>
 #include <utility>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/shared_ptr_variant.h"
 #include "tensorflow/core/framework/variant.h"
@@ -113,7 +113,7 @@ class Mutex : public ResourceBase {
             delete cancelled;
           }
           if (local_locked) {  // Not cancelled.
-            fn_(OkStatus(),
+            fn_(absl::OkStatus(),
                 SharedLockReleaser{std::make_shared<LockReleaser>(this)});
           } else {
             fn_(errors::Cancelled("Lock acquisition cancelled."),
@@ -146,7 +146,7 @@ class MutexLockOp : public AsyncOpKernel {
                                       [c](Mutex** ptr) {
                                         *ptr = new Mutex(
                                             c, HandleFromInput(c, 0).name());
-                                        return OkStatus();
+                                        return absl::OkStatus();
                                       }),
         done);
 

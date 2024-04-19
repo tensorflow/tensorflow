@@ -20,20 +20,22 @@ limitations under the License.
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
-#include "tensorflow/compiler/xla/statusor.h"
+#include "xla/statusor.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
 
-using xla::StatusOr;
+using absl::StatusOr;
 
 namespace errors = tensorflow::errors;
 
 tflite::TensorType ConvertTypeToTensorType(mlir::Type type) {
   if (type.isF16()) {
     return tflite::TensorType_FLOAT16;
+  } else if (type.isBF16()) {
+    return tflite::TensorType_BFLOAT16;
   } else if (type.isF32()) {
     return tflite::TensorType_FLOAT32;
   } else if (type.isF64()) {
@@ -81,6 +83,8 @@ mlir::Type ConvertElementType(tflite::TensorType type, mlir::Builder builder) {
   switch (type) {
     case tflite::TensorType_FLOAT16:
       return builder.getF16Type();
+    case tflite::TensorType_BFLOAT16:
+      return builder.getBF16Type();
     case tflite::TensorType_FLOAT32:
       return builder.getF32Type();
     case tflite::TensorType_FLOAT64:
@@ -128,6 +132,8 @@ tensorflow::DataType TflTypeToTfType(tflite::TensorType type) {
       return tensorflow::DT_COMPLEX128;
     case tflite::TensorType_FLOAT16:
       return tensorflow::DT_HALF;
+    case tflite::TensorType_BFLOAT16:
+      return tensorflow::DT_BFLOAT16;
     case tflite::TensorType_FLOAT32:
       return tensorflow::DT_FLOAT;
     case tflite::TensorType_FLOAT64:
@@ -160,7 +166,7 @@ tensorflow::DataType TflTypeToTfType(tflite::TensorType type) {
   }
 }
 
-StatusOr<tflite::TensorType> TfTypeToTflType(tensorflow::DataType type) {
+absl::StatusOr<tflite::TensorType> TfTypeToTflType(tensorflow::DataType type) {
   switch (type) {
     case tensorflow::DT_BOOL:
       return tflite::TensorType_BOOL;
@@ -170,6 +176,8 @@ StatusOr<tflite::TensorType> TfTypeToTflType(tensorflow::DataType type) {
       return tflite::TensorType_COMPLEX128;
     case tensorflow::DT_HALF:
       return tflite::TensorType_FLOAT16;
+    case tensorflow::DT_BFLOAT16:
+      return tflite::TensorType_BFLOAT16;
     case tensorflow::DT_FLOAT:
       return tflite::TensorType_FLOAT32;
     case tensorflow::DT_DOUBLE:

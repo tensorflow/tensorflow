@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/eager/custom_device.h"
 
+#include <utility>
+#include <vector>
+
 #include "tensorflow/core/common_runtime/eager/custom_device_op_handler.h"
 
 namespace tensorflow {
@@ -44,7 +47,7 @@ Status CustomDeviceTensorHandle::NumElements(int64_t* num_elements) const {
     }
     *num_elements *= dim;
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 const char* CustomDeviceTensorHandle::DeviceType(Status* status) const {

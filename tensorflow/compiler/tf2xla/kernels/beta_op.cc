@@ -19,12 +19,12 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/lib/arithmetic.h"
-#include "tensorflow/compiler/xla/client/lib/constants.h"
-#include "tensorflow/compiler/xla/client/lib/loops.h"
-#include "tensorflow/compiler/xla/client/lib/math.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
-#include "tensorflow/compiler/xla/status_macros.h"
+#include "xla/client/lib/arithmetic.h"
+#include "xla/client/lib/constants.h"
+#include "xla/client/lib/loops.h"
+#include "xla/client/lib/math.h"
+#include "xla/client/xla_builder.h"
+#include "xla/status_macros.h"
 
 namespace tensorflow {
 namespace {
@@ -62,7 +62,7 @@ class BetaincOp : public XlaOpKernel {
 
     auto builder = ctx->builder();
     auto result =
-        builder->ReportErrorOrReturn([&]() -> StatusOr<xla::XlaOp> {
+        builder->ReportErrorOrReturn([&]() -> absl::StatusOr<xla::XlaOp> {
           TF_ASSIGN_OR_RETURN(
               auto a, BroadcastTo(ctx->Input(0), merged_shape.dim_sizes()));
           TF_ASSIGN_OR_RETURN(

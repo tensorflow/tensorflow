@@ -1,12 +1,12 @@
 """Macro that creates external repositories for remote config."""
 
-load("//third_party/py:python_configure.bzl", "local_python_configure", "remote_python_configure")
-load("//third_party/gpus:cuda_configure.bzl", "remote_cuda_configure")
-load("//third_party/nccl:nccl_configure.bzl", "remote_nccl_configure")
-load("//third_party/gpus:rocm_configure.bzl", "remote_rocm_configure")
-load("//third_party/tensorrt:tensorrt_configure.bzl", "remote_tensorrt_configure")
 load("//tensorflow/tools/toolchains/remote_config:containers.bzl", "containers")
+load("//third_party/gpus:cuda_configure.bzl", "remote_cuda_configure")
+load("//third_party/gpus:rocm_configure.bzl", "remote_rocm_configure")
+load("//third_party/nccl:nccl_configure.bzl", "remote_nccl_configure")
+load("//third_party/py:python_configure.bzl", "local_python_configure", "remote_python_configure")
 load("//third_party/remote_config:remote_platform_configure.bzl", "remote_platform_configure")
+load("//third_party/tensorrt:tensorrt_configure.bzl", "remote_tensorrt_configure")
 
 def _container_image_uri(container_name):
     container = containers[container_name]
@@ -43,7 +43,7 @@ def _tensorflow_rbe_config(name, compiler, python_versions, os, rocm_version = N
             "TF_CUDA_VERSION": cuda_version,
             "CUDNN_INSTALL_PATH": cudnn_install_path if cudnn_install_path != None else "/usr/lib/x86_64-linux-gnu",
             "TF_NEED_TENSORRT": "1",
-            "TF_TENSORRT_VERSION": tensorrt_version,
+            "TF_TENSORRT_VERSION": tensorrt_version if tensorrt_version != None else "",
             "TENSORRT_INSTALL_PATH": tensorrt_install_path if tensorrt_install_path != None else "/usr/lib/x86_64-linux-gnu",
             "GCC_HOST_COMPILER_PATH": compiler if not compiler.endswith("clang") else "",
             "GCC_HOST_COMPILER_PREFIX": compiler_prefix if compiler_prefix != None else "/usr/bin",
@@ -144,8 +144,8 @@ def _tensorflow_rbe_win_config(name, python_bin_path, container_name = "windows-
 
     remote_python_configure(
         name = "%s_config_python" % name,
-        environ = env,
         exec_properties = exec_properties,
+        environ = env,
         platform_constraint = "@%s_config_platform//:platform_constraint" % name,
     )
 

@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,6 +16,11 @@ limitations under the License.
 #define TENSORFLOW_LITE_MODEL_BUILDER_H_
 
 /// For documentation, see third_party/tensorflow/lite/core/model_builder.h.
-#include "tensorflow/lite/core/model_builder.h"  // IWYU pragma: export
+
+#include "tensorflow/lite/core/model_builder.h"
+
+namespace tflite {
+using FlatBufferModel = ::tflite::impl::FlatBufferModel;
+}  // namespace tflite
 
 #endif  // TENSORFLOW_LITE_MODEL_BUILDER_H_

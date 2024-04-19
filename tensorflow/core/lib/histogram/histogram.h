@@ -24,7 +24,7 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/tsl/lib/histogram/histogram.h"
+#include "tsl/lib/histogram/histogram.h"
 
 namespace tensorflow {
 

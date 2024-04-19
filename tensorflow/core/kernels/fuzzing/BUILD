@@ -1,5 +1,5 @@
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/core/kernels/fuzzing:tf_ops_fuzz_target_lib.bzl", "tf_ops_fuzz_target_lib", "tf_oss_fuzz_corpus", "tf_oss_fuzz_dict")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -20,14 +20,6 @@ cc_library(
 tf_ops_fuzz_target_lib("string_to_number")
 
 tf_oss_fuzz_corpus("string_to_number")
-
-tf_ops_fuzz_target_lib("string_split")
-
-tf_oss_fuzz_corpus("string_split")
-
-tf_ops_fuzz_target_lib("string_split_v2")
-
-tf_oss_fuzz_corpus("string_split_v2")
 
 tf_ops_fuzz_target_lib("encode_base64")
 

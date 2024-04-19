@@ -92,7 +92,10 @@ class EventsWriter {
   std::unique_ptr<WritableFile> recordio_file_;
   std::unique_ptr<io::RecordWriter> recordio_writer_;
   int num_outstanding_events_;
-  TF_DISALLOW_COPY_AND_ASSIGN(EventsWriter);
+#ifndef SWIG
+  EventsWriter(const EventsWriter&) = delete;
+  void operator=(const EventsWriter&) = delete;
+#endif
 };
 
 }  // namespace tensorflow

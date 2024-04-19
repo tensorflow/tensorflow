@@ -13,88 +13,64 @@
 # limitations under the License.
 # ==============================================================================
 
-# LINT.IfChange
-
 # C API for delegate plugins.
 
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
+load(
+    "//tensorflow/lite/core/shims:cc_library_with_tflite.bzl",
+    "cc_library_with_tflite_with_c_headers_test",
+)
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:private"],
     licenses = ["notice"],
 )
 
-cc_library(
+cc_library_with_tflite_with_c_headers_test(
     name = "delegate_plugin",
     hdrs = ["delegate_plugin.h"],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
-    deps = [
-        "//tensorflow/lite/core/experimental/acceleration/configuration/c:delegate_plugin",
+    generate_opaque_delegate_target = True,
+    tflite_deps = [
+        "//tensorflow/lite/acceleration/configuration/c:delegate_plugin",
     ],
+    visibility = ["//visibility:public"],
 )
 
-cc_library(
+cc_library_with_tflite_with_c_headers_test(
     name = "nnapi_plugin",
     hdrs = ["nnapi_plugin.h"],
+    tflite_deps = [
+        "//tensorflow/lite/acceleration/configuration/c:nnapi_plugin",
+    ],
     visibility = ["//visibility:public"],
-    deps = [
-        "//tensorflow/lite/core/experimental/acceleration/configuration/c:nnapi_plugin",
-    ],
 )
 
-test_suite(
-    name = "nnapi_plugin_test",
-    tests = [
-        "//tensorflow/lite/core/experimental/acceleration/configuration/c:nnapi_plugin_test",
-    ],
-)
-
-cc_library(
+cc_library_with_tflite_with_c_headers_test(
     name = "gpu_plugin",
     hdrs = ["gpu_plugin.h"],
+    tflite_deps = [
+        "//tensorflow/lite/acceleration/configuration/c:gpu_plugin",
+    ],
     visibility = ["//visibility:public"],
-    deps = [
-        "//tensorflow/lite/core/experimental/acceleration/configuration/c:gpu_plugin",
-    ],
 )
 
-# For non-Android platforms, this should be built with '--copt=-DCL_DELEGATE_NO_GL'.
-# On non-supported platforms (i.e. non-Android platforms if -DCL_DELEGATE_NO_GL wasn't specified),
-# the test srcs are set to the empty list, so the test will succeed without testing anything.
-test_suite(
-    name = "gpu_plugin_test",
-    tests = [
-        "//tensorflow/lite/core/experimental/acceleration/configuration/c:gpu_plugin_test",
-    ],
-)
-
-cc_library(
+cc_library_with_tflite_with_c_headers_test(
     name = "xnnpack_plugin",
     hdrs = ["xnnpack_plugin.h"],
+    tflite_deps = [
+        "//tensorflow/lite/acceleration/configuration/c:xnnpack_plugin",
+    ],
     visibility = ["//visibility:public"],
-    deps = [
-        "//tensorflow/lite/core/experimental/acceleration/configuration/c:xnnpack_plugin",
-    ],
 )
 
-test_suite(
-    name = "xnnpack_plugin_test",
-    tests = [
-        "//tensorflow/lite/core/experimental/acceleration/configuration/c:xnnpack_plugin_test",
-    ],
-)
-
-cc_library(
+cc_library_with_tflite_with_c_headers_test(
     name = "stable_delegate",
     hdrs = ["stable_delegate.h"],
-    visibility = [
-        "//tensorflow/lite:__subpackages__",
-        "@org_tensorflow_lite_support//tensorflow_lite_support:__subpackages__",
+    generate_opaque_delegate_target = True,
+    tflite_deps = [
+        "//tensorflow/lite/acceleration/configuration/c:stable_delegate",
     ],
-    deps = [
-        "//tensorflow/lite/core/experimental/acceleration/configuration/c:stable_delegate",
-    ],
+    visibility = ["//visibility:public"],
 )
-
-# LINT.ThenChange(BUILD)

@@ -21,7 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/literal.h"
+#include "xla/literal.h"
 
 namespace xla {
 XlaOp Relu(XlaOp x) { return Max(ScalarLike(x, 0), x); }

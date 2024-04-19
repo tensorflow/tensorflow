@@ -37,10 +37,14 @@ class BuiltinOpResolver : public MutableOpResolver {
   BuiltinOpResolver();
 };
 
-// This built-in op resolver enables XNNPACK by default for all data types.
+// This built-in op resolver enables XNNPACK by default for all types.
+// Unsigned quantized inference (QU8) can be disabled by setting
+// `enable_xnnpack_unsigned_quantized` to false. \warning Experimental
+// interface, subject to change.
 class BuiltinOpResolverWithXNNPACK : public BuiltinOpResolver {
  public:
-  BuiltinOpResolverWithXNNPACK();
+  explicit BuiltinOpResolverWithXNNPACK(
+      bool enable_xnnpack_unsigned_quantized = true);
 };
 
 // TfLite interpreter could apply a TfLite delegate by default. To completely

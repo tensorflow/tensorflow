@@ -60,7 +60,7 @@ def _validate_cluster_spec(cluster_spec,
   2) whether there is such a task type as `task_type` in the `cluster_spec`. The
      only exception is `evaluator`. In other words, it is still a valid
      configuration when `task_type` is `evaluator` but it doesn't appear in
-     `cluster_spec`. This is to be compatible with `TF_CONFIG` in Estimator.
+     `cluster_spec`.
   3) whether there is at most one "chief" job.
   4) whether there is at most one "evaluator" job.
   5) whether the `task_id` is smaller than the number of tasks for that
@@ -194,6 +194,10 @@ def coordination_leader(cluster_spec):
   # No need to set coordination service leader for local.
   if not cluster_spec.as_dict():
     return ""
+
+  # Use PS 0 if parameter servers are in the cluster
+  if "ps" in cluster_spec.jobs:
+    return "/job:ps/replica:0/task:0"
 
   # Use chief if chief is in the cluster.
   if "chief" in cluster_spec.jobs:

@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/tensorflow/utils/import_utils.h"
 
+#include <system_error>
+
 #include "llvm/Support/FileUtilities.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/ToolOutputFile.h"
@@ -33,7 +35,7 @@ inline llvm::StringRef StringViewToRef(absl::string_view view) {
 
 Status LoadProtoFromBuffer(absl::string_view input, protobuf::Message* proto) {
   // Attempt to parse as text.
-  if (ParseTextProto(input, "", proto).ok()) return OkStatus();
+  if (ParseTextProto(input, "", proto).ok()) return absl::OkStatus();
 
   // Else attempt to parse as binary.
   return LoadProtoFromBuffer(input, static_cast<protobuf::MessageLite*>(proto));
@@ -43,9 +45,9 @@ Status LoadProtoFromBuffer(absl::string_view input,
                            protobuf::MessageLite* proto) {
   // Attempt to parse as binary.
   protobuf::io::ArrayInputStream binary_stream(input.data(), input.size());
-  if (proto->ParseFromZeroCopyStream(&binary_stream)) return OkStatus();
+  if (proto->ParseFromZeroCopyStream(&binary_stream)) return absl::OkStatus();
 
-  LOG(ERROR) << "Error parsing Protobuf";
+  LOG(ERROR) << "Error parsing Protobuf: " << proto->GetTypeName();
   return errors::InvalidArgument("Could not parse input proto");
 }
 

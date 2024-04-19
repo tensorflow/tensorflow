@@ -22,14 +22,18 @@ limitations under the License.
 namespace tflite {
 
 std::vector<uint8_t> PackInt4ValuesDensely(std::vector<uint8_t> src_buffer) {
-  std::vector<uint8_t> packed_buffer((src_buffer.size() + 1) / 2);
+  auto num_elements = src_buffer.size();
+  auto packed_size = (num_elements + 1) / 2;
+  std::vector<uint8_t> packed_buffer((num_elements + 1) / 2);
 
-  for (int i = 0; i < src_buffer.size(); ++i) {
-    if (i % 2 == 0) {
-      packed_buffer.at(i / 2) = src_buffer[i];
-    } else {
-      packed_buffer.at(i / 2) |= src_buffer[i] << 4;
-    }
+  for (int i = 0; i < num_elements - 1; i += 2) {
+    packed_buffer[i / 2] = src_buffer[i] & 0x0F;
+    packed_buffer[i / 2] |= src_buffer[i + 1] << 4;
+  }
+
+  // Copy the final nibble if the buffer is odd-lengthed
+  if (num_elements % 2 != 0) {
+    packed_buffer[packed_size - 1] = src_buffer[num_elements - 1] & 0x0F;
   }
 
   return packed_buffer;

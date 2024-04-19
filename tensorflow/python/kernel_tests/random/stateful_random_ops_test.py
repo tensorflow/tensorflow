@@ -19,6 +19,7 @@ import re
 
 from absl.testing import parameterized
 import numpy as np
+
 from tensorflow.python.checkpoint import checkpoint as tracking_util
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
@@ -33,6 +34,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_random_ops
 from tensorflow.python.ops import gen_stateful_random_ops
 from tensorflow.python.ops import logging_ops
+from tensorflow.python.ops import random_ops_util
 from tensorflow.python.ops import stateful_random_ops as random
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -96,14 +98,14 @@ class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
         re.search(pattern, text),
         "Can't find pattern '%s' in text '%s'" % (pattern, text))
 
-  @parameterized.parameters(list(random.Algorithm))
+  @parameterized.parameters(list(random_ops_util.Algorithm))
   @test_util.run_v2_only
   def testBatchSeeds(self, alg):
     """Test for batch seeds."""
     shape = [2, 3]
     count = 6
     gen = random.Generator.from_seed(1234, alg=alg)
-    if alg == random.Algorithm.THREEFRY:
+    if alg == random_ops_util.Algorithm.THREEFRY:
       # We don't have CPU/GPU kernels for ThreeFry yet.
       return
     keys1 = gen._make_int64_keys(shape=shape)
@@ -124,7 +126,7 @@ class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
     for _ in range(3):
       f()
 
-  @parameterized.parameters(list(random.Algorithm))
+  @parameterized.parameters(list(random_ops_util.Algorithm))
   @test_util.run_v2_only
   @test_util.run_cuda_only
   def testCrossDeviceSplit(self, alg):
@@ -132,18 +134,18 @@ class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
     with ops.device("/device:CPU:0"):
       gen = random.Generator.from_seed(1234, alg=alg)  # gen is on CPU
       self.assertRegex("CPU", gen.state.device)
-    if alg == random.Algorithm.THREEFRY:
+    if alg == random_ops_util.Algorithm.THREEFRY:
       # We don't have CPU/GPU kernels for ThreeFry yet.
       return
     with ops.device(test_util.gpu_device_name()):
       gens = gen.split(count=10)  # gens are on GPU
       self.assertRegex("GPU", gens[0].state.device)
 
-  @parameterized.parameters(list(random.Algorithm))
+  @parameterized.parameters(list(random_ops_util.Algorithm))
   @test_util.run_v2_only
   def testSplitInFunction(self, alg):
     g = random.Generator.from_seed(1, alg=alg)
-    if alg == random.Algorithm.THREEFRY:
+    if alg == random_ops_util.Algorithm.THREEFRY:
       # We don't have CPU/GPU kernels for ThreeFry yet.
       return
     new_g = [None]  # using list as mutable cells
@@ -236,10 +238,21 @@ class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
     f(*args)
 
   @parameterized.parameters([
-      ("philox", random.Algorithm.PHILOX.value, random.Algorithm.PHILOX),
-      ("threefry", random.Algorithm.THREEFRY.value, random.Algorithm.THREEFRY),
-      ("auto_select", random.Algorithm.AUTO_SELECT.value,
-       random.Algorithm.AUTO_SELECT),
+      (
+          "philox",
+          random_ops_util.Algorithm.PHILOX.value,
+          random_ops_util.Algorithm.PHILOX,
+      ),
+      (
+          "threefry",
+          random_ops_util.Algorithm.THREEFRY.value,
+          random_ops_util.Algorithm.THREEFRY,
+      ),
+      (
+          "auto_select",
+          random_ops_util.Algorithm.AUTO_SELECT.value,
+          random_ops_util.Algorithm.AUTO_SELECT,
+      ),
   ])
   @test_util.run_v2_only
   def testAlg(self, name, int_id, enum_id):
@@ -248,7 +261,7 @@ class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
     g_by_enum = random.Generator.from_seed(1234, enum_id)
     self.assertEqual(g_by_name.algorithm, g_by_int.algorithm)
     self.assertEqual(g_by_name.algorithm, g_by_enum.algorithm)
-    if enum_id == random.Algorithm.THREEFRY:
+    if enum_id == random_ops_util.Algorithm.THREEFRY:
       # We don't have CPU/GPU kernels for ThreeFry yet.
       return
     shape = [3]
@@ -402,7 +415,7 @@ class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
     compare(True, True)
     compare(True, False)
 
-  @parameterized.parameters(list(random.Algorithm))
+  @parameterized.parameters(list(random_ops_util.Algorithm))
   @test_util.run_v2_only
   def testKey(self, alg):
     key = 1234

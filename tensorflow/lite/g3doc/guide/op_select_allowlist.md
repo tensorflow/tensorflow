@@ -81,11 +81,13 @@ supported by TensorFlow Lite runtime with the Select TensorFlow Ops feature.
 *   `raw_ops.Bucketize`
 *   `raw_ops.CTCBeamSearchDecoder`
 *   `raw_ops.CTCGreedyDecoder`
+*   `raw_ops.Case`
 *   `raw_ops.Cast`
 *   `raw_ops.Ceil`
 *   `raw_ops.CheckNumerics`
 *   `raw_ops.CheckNumericsV2`
 *   `raw_ops.Cholesky`
+*   `raw_ops.ClipByValue`
 *   `raw_ops.CombinedNonMaxSuppression`
 *   `raw_ops.Complex`
 *   `raw_ops.ComplexAbs`

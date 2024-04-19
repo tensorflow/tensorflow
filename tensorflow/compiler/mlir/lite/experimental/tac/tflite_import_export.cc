@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/lite/experimental/tac/tflite_import_export.h"
 
+#include <memory>
+#include <set>
 #include <string>
 
 #include "absl/status/status.h"

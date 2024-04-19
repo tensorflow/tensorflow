@@ -40,7 +40,7 @@ Status CheckLayoutIsSupported(const Layout& layout) {
     return errors::InvalidArgument("Large mesh rank size is not supported",
                                    layout.ToString());
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ValidateShapeAndGetNewShape(
@@ -70,7 +70,7 @@ Status ValidateShapeAndGetNewShape(
     }
     new_random_shape.emplace_back(op_dimension_size / dimension_sharding);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Get a device seed for this layout and device_id.
@@ -85,10 +85,9 @@ StatusOr<mlir::Value> GetDeviceSeed(const Layout& layout, mlir::Operation* op) {
   // to use as the attribute attached to the squeeze op.
   llvm::SmallVector<int32_t, 4> layout_dims;
   llvm::SmallSet<int32_t, 4> layout_dims_set;
-  for (const ShardingSpec& spec : layout.sharding_specs()) {
-    if (Layout::IsUnshardedSpec(spec)) continue;
-    layout_dims.emplace_back(
-        layout.mesh().GetMeshDimIndexWithName(spec.sharding_spec()));
+  for (const auto& spec : layout.sharding_spec_strs()) {
+    if (Layout::IsUnshardedDimension(spec)) continue;
+    layout_dims.emplace_back(layout.mesh().GetMeshDimIndexWithName(spec));
     layout_dims_set.insert(layout_dims.back());
   }
   llvm::sort(layout_dims);

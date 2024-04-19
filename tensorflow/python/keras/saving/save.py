@@ -22,7 +22,6 @@ from tensorflow.python.keras.saving.saved_model import load_context
 from tensorflow.python.keras.saving.saved_model import save as saved_model_save
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils.io_utils import path_to_string
-from tensorflow.python.util.tf_export import keras_export
 
 # pylint: disable=g-import-not-at-top
 try:
@@ -32,7 +31,6 @@ except ImportError:
 # pylint: enable=g-import-not-at-top
 
 
-@keras_export('keras.models.save_model')
 def save_model(model,
                filepath,
                overwrite=True,
@@ -150,7 +148,6 @@ def save_model(model,
                             signatures, options, save_traces)
 
 
-@keras_export('keras.models.load_model')
 def load_model(filepath, custom_objects=None, compile=True, options=None):  # pylint: disable=redefined-builtin
   """Loads a model saved via `model.save()`.
 

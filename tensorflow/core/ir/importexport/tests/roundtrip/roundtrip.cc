@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/ir/importexport/tests/roundtrip/roundtrip.h"
 
 #include <algorithm>
+#include <cmath>
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"

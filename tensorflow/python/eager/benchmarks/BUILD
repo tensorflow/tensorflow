@@ -1,4 +1,7 @@
-load("//tensorflow:tensorflow.default.bzl", "cuda_py_test")
+load(
+    "//tensorflow/tools/test:performance.bzl",
+    "cuda_py_benchmark_test",
+)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -6,7 +9,7 @@ package(
     licenses = ["notice"],
 )
 
-cuda_py_test(
+cuda_py_benchmark_test(
     name = "kpi_benchmark_test",
     size = "medium",
     srcs = ["kpi_benchmark_test.py"],
@@ -18,5 +21,7 @@ cuda_py_test(
     deps = [
         "//tensorflow:tensorflow_py_no_contrib",
         "//tensorflow/python/eager:benchmarks_test_base",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/profiler:trace",
     ],
 )

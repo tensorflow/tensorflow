@@ -202,8 +202,10 @@ Status GatherNdGrad(const Scope& scope, const Operation& op,
                     const std::vector<Output>& grad_inputs,
                     std::vector<Output>* grad_outputs) {
   auto ref = op.input(0);
-  auto ref_shape = Shape(scope, ref);
   auto indices = op.input(1);
+  Shape::Attrs shape_attrs;
+  shape_attrs.out_type_ = indices.type();
+  auto ref_shape = Shape(scope, ref, shape_attrs);
   grad_outputs->push_back(ScatterNd(scope, indices, grad_inputs[0], ref_shape));
   grad_outputs->push_back(NoGradient());
   return scope.status();

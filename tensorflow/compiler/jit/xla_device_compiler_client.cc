@@ -20,7 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "tensorflow/compiler/xla/client/local_client.h"
+#include "xla/client/local_client.h"
 
 namespace tensorflow {
 namespace {
@@ -35,7 +35,7 @@ std::vector<const xla::Shape*> GetShapePointers(
 }
 }  // namespace
 
-StatusOr<std::unique_ptr<xla::LocalExecutable>>
+absl::StatusOr<std::unique_ptr<xla::LocalExecutable>>
 XlaDeviceCompilerClient::BuildExecutable(
     const XlaCompiler::Options& options,
     const XlaCompiler::CompilationResult& result) {
@@ -52,8 +52,13 @@ XlaDeviceCompilerClient::BuildExecutable(
   return std::move(executables[0]);
 }
 
-StatusOr<std::string> XlaDeviceCompilerClient::SerializeExecutable(
+absl::StatusOr<std::string> XlaDeviceCompilerClient::SerializeExecutable(
     const xla::LocalExecutable& executable) {
+  if (executable.executable() == nullptr) {
+    return errors::FailedPrecondition(
+        "Executable not found for serialization.");
+  }
+
   VLOG(1)
       << "Exporting xla::LocalExecutable as an xla::AotCompilationResult and "
          "serializing it to string.";
@@ -66,7 +71,7 @@ StatusOr<std::string> XlaDeviceCompilerClient::SerializeExecutable(
   return exported.status();
 }
 
-StatusOr<std::string> XlaDeviceCompilerClient::BuildSerializedExecutable(
+absl::StatusOr<std::string> XlaDeviceCompilerClient::BuildSerializedExecutable(
     const XlaCompiler::Options& options,
     const XlaCompiler::CompilationResult& result) {
   VLOG(2) << "Compiling to xla::AotCompilationResult and serializing it";
@@ -83,7 +88,7 @@ StatusOr<std::string> XlaDeviceCompilerClient::BuildSerializedExecutable(
   return aot_results[0]->SerializeAsString();
 }
 
-StatusOr<std::unique_ptr<xla::LocalExecutable>>
+absl::StatusOr<std::unique_ptr<xla::LocalExecutable>>
 XlaDeviceCompilerClient::LoadExecutable(
     const XlaCompiler::Options& options,
     const XlaCompiler::CompilationResult& result,
@@ -97,6 +102,8 @@ XlaDeviceCompilerClient::LoadExecutable(
 }
 
 void XlaDeviceCompilerClient::WaitForProgramsToFinish() {
+  if (client_ == nullptr) return;
+
   for (auto* executor : client_->backend().stream_executors()) {
     bool ok = executor->SynchronizeAllActivity();
     if (!ok) {

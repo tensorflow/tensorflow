@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CC_FRAMEWORK_CC_OP_GEN_UTIL_H_
 #define TENSORFLOW_CC_FRAMEWORK_CC_OP_GEN_UTIL_H_
 
+#include <string>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -32,7 +33,7 @@ limitations under the License.
 namespace tensorflow {
 namespace cc_op {
 
-tsl::StatusOr<ApiDefMap> LoadOpsAndApiDefs(
+absl::StatusOr<ApiDefMap> LoadOpsAndApiDefs(
     OpList& ops, bool include_internal,
     const std::vector<string>& api_def_dirs);
 

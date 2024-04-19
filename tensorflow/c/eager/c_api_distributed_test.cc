@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <regex>  // NOLINT
+#include <string>
 
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/c_api_experimental.h"
@@ -314,11 +315,11 @@ class GraphErrorInjectionPass : public tensorflow::GraphOptimizationPass {
   tensorflow::Status Run(
       const tensorflow::GraphOptimizationPassOptions& options) override {
     if (!enabled_) {
-      return ::tensorflow::OkStatus();
+      return absl::OkStatus();
     }
     if (first_call_) {
       first_call_ = false;
-      return ::tensorflow::OkStatus();
+      return absl::OkStatus();
     }
     return tensorflow::errors::Internal("Graph pass runs for more than once!");
   }
@@ -430,8 +431,10 @@ class FunctionErrorInjectionPass : public tensorflow::FunctionOptimizationPass {
  public:
   FunctionErrorInjectionPass(string error_node, string error_device)
       : error_node_(error_node), error_device_(error_device) {}
-  tensorflow::Status Run(const tensorflow::DeviceSet& device_set,
+  tensorflow::Status Run(const std::string& function_name,
+                         const tensorflow::DeviceSet& device_set,
                          const tensorflow::ConfigProto& config_proto,
+                         const FunctionOptions& function_options,
                          std::unique_ptr<tensorflow::Graph>* graph,
                          tensorflow::FunctionLibraryDefinition* flib_def,
                          std::vector<std::string>* control_ret_node_names,
@@ -444,7 +447,7 @@ class FunctionErrorInjectionPass : public tensorflow::FunctionOptimizationPass {
         return tensorflow::errors::Internal("Injected graph pass error.");
       }
     }
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
  private:

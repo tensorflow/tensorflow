@@ -42,6 +42,25 @@ def make_space_to_batch_nd_tests(options):
           "constant_block_shape": [True, False],
           "constant_paddings": [True, False],
       },
+      {
+          "dtype": [tf.float32],
+          "input_shape": [[1, 4, 4, 1]],
+          "block_shape": [[2, 2]],
+          "paddings": [[[0, 0], [0, 0]]],
+          "constant_block_shape": [True],
+          "constant_paddings": [True],
+          "dynamic_range_quantize": [True, False],
+      },
+      {
+          "dtype": [tf.float32],
+          "input_shape": [[1, 4, 4, 1]],
+          "block_shape": [[2, 2]],
+          "paddings": [[[0, 0], [0, 0]]],
+          "constant_block_shape": [True],
+          "constant_paddings": [True],
+          "fully_quantize": [True],
+          "quant_16x8": [False, True],
+      },
       # Non-4D use case: 1 bath dimension, 3 spatial dimensions, 2 others.
       {
           "dtype": [tf.float32],
@@ -93,7 +112,12 @@ def make_space_to_batch_nd_tests(options):
 
   def build_inputs(parameters, sess, inputs, outputs):
     values = [
-        create_tensor_data(parameters["dtype"], parameters["input_shape"])
+        create_tensor_data(
+            parameters["dtype"],
+            parameters["input_shape"],
+            min_value=-1.0,
+            max_value=1.0,
+        )
     ]
     if not parameters["constant_block_shape"]:
       values.append(np.array(parameters["block_shape"]))

@@ -32,7 +32,7 @@ namespace toco {
   const auto switch_it = model->operators.begin() + op_index;
   const auto* switch_op = switch_it->get();
   if (switch_op->type != OperatorType::kSwitch) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   CHECK_EQ(switch_op->inputs.size(), 2);
@@ -44,7 +44,7 @@ namespace toco {
     AddMessageF(
         "Waiting for the boolean predicate of %s to be resolved to a constant",
         LogName(*switch_op));
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   // The predicate should be boolean, and should consist of a single value.
@@ -61,7 +61,7 @@ namespace toco {
   const bool predicate_value = predicate_data[0];
 
   // From the TensorFlow docs on .switch() in
-  // third_party/tensorflow/python/ops/control_flow_ops.py
+  // tensorflow/python/ops/control_flow_ops.py
   //
   //    If `pred` is false, the `data` input is forwarded to the first output.
   //    Otherwise, the data goes to the second output.
@@ -98,7 +98,7 @@ namespace toco {
         // of Switch nodes:
         if (other_op->type != OperatorType::kMerge) {
           return ::tensorflow::Status(
-              ::tensorflow::error::FAILED_PRECONDITION,
+              absl::StatusCode::kFailedPrecondition,
               ::absl::StrCat(
                   "Found ", HelpfulOperatorTypeName(*other_op),
                   " as non-selected output from Switch, but only "
@@ -132,7 +132,7 @@ namespace toco {
   AddMessageF("Removing already-resolved %s", LogName(*switch_op));
   DeleteOpAndArrays(model, switch_op);
   *modified = true;
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace toco

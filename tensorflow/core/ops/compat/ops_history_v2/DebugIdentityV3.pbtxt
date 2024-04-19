@@ -1,0 +1,67 @@
+op 	 {
+  name: "DebugIdentityV3"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "device_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "tensor_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "io_of_node"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "is_input"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "io_index"
+    type: "int"
+    default_value {
+      i: -1
+    }
+  }
+  attr {
+    name: "debug_urls"
+    type: "list(string)"
+    default_value {
+      list {
+      }
+    }
+  }
+  attr {
+    name: "gated_grpc"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  is_stateful: true
+  allows_uninitialized_input: true
+}

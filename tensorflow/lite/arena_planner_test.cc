@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdarg>
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
 #include <initializer_list>
 #include <memory>
 #include <set>
@@ -25,11 +26,12 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
-#include "tensorflow/core/platform/logging.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "tensorflow/lite/builtin_ops.h"
+#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/graph_info.h"
-#include "tensorflow/lite/testing/util.h"
 
 namespace tflite {
 
@@ -54,12 +56,14 @@ class TestOp {
  public:
   TestOp(std::initializer_list<int> inputs, std::initializer_list<int> outputs,
          std::initializer_list<int> temporaries,
-         int builtin_code = kTfLiteBuiltinAdd)
+         int builtin_code = kTfLiteBuiltinAdd,
+         int inplace_operator = kTfLiteInplaceOpInput0Shared)
       : inputs_(inputs),
         outputs_(outputs),
         temporaries_(temporaries),
-        registration_(TfLiteRegistration()) {
+        registration_{} {
     registration_.builtin_code = builtin_code;
+    registration_.inplace_operator = inplace_operator;
   }
 
   const std::vector<int>& inputs() const { return inputs_; }
@@ -408,16 +412,23 @@ TEST_F(ArenaPlannerTest, SimpleGraphWithTemporary) {
 }
 
 TEST_F(ArenaPlannerTest, SimpleGraphWithInplaceReshape) {
-  TestGraph graph({0, 1},
-                  {
-                      /* in, out, tmp */
-                      {{0}, {2}, {}},  // First op
-                      {{1}, {3}, {}},  // Second op
-                      // Third op, with in-place reshape.
-                      {{2, 3}, {4}, {}, kTfLiteBuiltinReshape},
-                      {{4}, {5}, {}}  // Fourth Op, output
-                  },
-                  {5});
+  TestGraph graph(
+      {0, 1},
+      {
+          /* in, out, tmp */
+          {{0}, {2}, {}},  // First op
+          {{1}, {3}, {}},  // Second op
+          // Third op, with in-place reshape.
+          {{2, 3},
+           {4},
+           {},
+           kTfLiteBuiltinReshape,
+           kTfLiteInplaceOpInput0Shared | kTfLiteInplaceOpDataUnmodified},
+          {{4}, {5}, {}}  // Fourth Op, output
+      },
+      {5});
+  (*graph.tensors())[2].bytes = 24;
+  (*graph.tensors())[4].bytes = 24;
   SetGraph(&graph);
   Execute(0, graph.nodes().size() - 1);
 
@@ -426,17 +437,39 @@ TEST_F(ArenaPlannerTest, SimpleGraphWithInplaceReshape) {
 }
 
 TEST_F(ArenaPlannerTest, SimpleGraphWithChainOfInplaceOps) {
-  TestGraph graph({0, 1},
-                  {
-                      /* in, out, tmp */
-                      {{0}, {2}, {}},
-                      {{2, 3}, {4}, {}, kTfLiteBuiltinReshape},
-                      {{4, 3}, {5}, {}, kTfLiteBuiltinExpandDims},
-                      {{5, 3}, {6}, {}, kTfLiteBuiltinSqueeze},
-                      {{6, 3}, {7}, {}, kTfLiteBuiltinReshape},
-                      {{7}, {8}, {}},
-                  },
-                  {8});
+  TestGraph graph(
+      {0, 1},
+      {
+          /* in, out, tmp */
+          {{0}, {2}, {}},
+          {{2, 3},
+           {4},
+           {},
+           kTfLiteBuiltinReshape,
+           kTfLiteInplaceOpInput0Shared | kTfLiteInplaceOpDataUnmodified},
+          {{4, 3},
+           {5},
+           {},
+           kTfLiteBuiltinExpandDims,
+           kTfLiteInplaceOpInput0Shared | kTfLiteInplaceOpDataUnmodified},
+          {{5, 3},
+           {6},
+           {},
+           kTfLiteBuiltinSqueeze,
+           kTfLiteInplaceOpInput0Shared | kTfLiteInplaceOpDataUnmodified},
+          {{6, 3},
+           {7},
+           {},
+           kTfLiteBuiltinReshape,
+           kTfLiteInplaceOpInput0Shared | kTfLiteInplaceOpDataUnmodified},
+          {{7}, {8}, {}},
+      },
+      {8});
+  (*graph.tensors())[2].bytes = 24;
+  (*graph.tensors())[4].bytes = 24;
+  (*graph.tensors())[5].bytes = 24;
+  (*graph.tensors())[6].bytes = 24;
+  (*graph.tensors())[7].bytes = 24;
   SetGraph(&graph);
   Execute(0, graph.nodes().size() - 1);
 
@@ -454,9 +487,15 @@ TEST_F(ArenaPlannerTest, SimpleGraphsWithReshapeInputOutput) {
       {/* in, out, tmp */
        {{0}, {2}, {}},
        // Reshape's input and output are not graph inputs or outputs.
-       {{2, 1}, {3}, {}, kTfLiteBuiltinReshape},
+       {{2, 1},
+        {3},
+        {},
+        kTfLiteBuiltinReshape,
+        kTfLiteInplaceOpInput0Shared | kTfLiteInplaceOpDataUnmodified},
        {{3}, {4}, {}}},
       {4});
+  (*graph.tensors())[2].bytes = 24;
+  (*graph.tensors())[3].bytes = 24;
   SetGraph(&graph);
   Execute(0, graph.nodes().size() - 1);
 
@@ -465,12 +504,16 @@ TEST_F(ArenaPlannerTest, SimpleGraphsWithReshapeInputOutput) {
 }
 
 TEST_F(ArenaPlannerTest, SimpleGraphsWithReshapeInputTensor) {
-  TestGraph graph(
-      {0, 1},
-      {                                           /* in, out, tmp */
-       {{0, 1}, {2}, {}, kTfLiteBuiltinReshape},  // First op is reshape
-       {{4}, {3}, {}}},
-      {3});
+  TestGraph graph({0, 1},
+                  {/* in, out, tmp */
+                   {{0, 1},
+                    {2},
+                    {},
+                    kTfLiteBuiltinReshape,
+                    kTfLiteInplaceOpInput0Shared |
+                        kTfLiteInplaceOpDataUnmodified},  // First op is reshape
+                   {{4}, {3}, {}}},
+                  {3});
   SetGraph(&graph);
   // Only arena allocated tensors have shared buffer.
   (*graph.tensors())[0].allocation_type = kTfLiteDynamic;
@@ -486,7 +529,12 @@ TEST_F(ArenaPlannerTest, SimpleGraphsWithReshapeOutputTensor) {
       {
           /* in, out, tmp */
           {{0}, {2}, {}},
-          {{2, 1}, {3}, {}, kTfLiteBuiltinReshape}  // Last op is reshape
+          {{2, 1},
+           {3},
+           {},
+           kTfLiteBuiltinReshape,
+           kTfLiteInplaceOpInput0Shared |
+               kTfLiteInplaceOpDataUnmodified},  // Last op is reshape
       },
       {3});
   SetGraph(&graph);
@@ -499,13 +547,16 @@ TEST_F(ArenaPlannerTest, SimpleGraphsWithReshapeOutputTensor) {
 }
 
 TEST_F(ArenaPlannerTest, SimpleGraphsWithReshapeDynamicInput) {
-  TestGraph graph(
-      {0, 1},
-      {
-          /* in, out, tmp */
-          {{0, 1}, {2}, {}, kTfLiteBuiltinReshape}  // First op is reshape
-      },
-      {2});
+  TestGraph graph({0, 1},
+                  {
+                      /* in, out, tmp */
+                      {{0, 1},
+                       {2},
+                       {},
+                       kTfLiteBuiltinReshape,
+                       kTfLiteInplaceOpDataUnmodified}  // First op is reshape
+                  },
+                  {2});
   SetGraph(&graph);
   // Only arena allocated tensors have shared buffer.
   (*graph.tensors())[0].allocation_type = kTfLiteDynamic;
@@ -513,6 +564,60 @@ TEST_F(ArenaPlannerTest, SimpleGraphsWithReshapeDynamicInput) {
 
   // Tensors 0 and 2 should have different offsets.
   EXPECT_NE(GetOffset(0), GetOffset(2));
+}
+
+TEST_F(ArenaPlannerTest, SimpleGraphsWithBroadcastingAddInPlace) {
+  TestGraph graph(
+      {0, 1},
+      {
+          /* in, out, tmp */
+          {{0, 1}, {3}, {}},
+          {{1, 2}, {4}, {}},
+          {{3, 4},
+           {5},
+           {},
+           kTfLiteBuiltinAdd,
+           kTfLiteInplaceOpInput0Shared | kTfLiteInplaceOpInput1Shared},
+          {{5}, {6}, {}},
+      },
+      {6});
+  // Only arena allocated tensors have shared buffer.
+  (*graph.tensors())[3].bytes = 8;   // shape [8]
+  (*graph.tensors())[4].bytes = 16;  // shape [2, 8]
+  (*graph.tensors())[5].bytes = 16;  // shape [2, 8]
+
+  SetGraph(&graph);
+  Execute(0, graph.nodes().size() - 1);
+
+  // Tensors 3 and 5 should have different offsets.
+  EXPECT_NE(GetOffset(3), GetOffset(5));
+  // Tensors 4 and 5 should have the same offsets.
+  EXPECT_EQ(GetOffset(4), GetOffset(5));
+}
+
+TEST_F(ArenaPlannerTest, SimpleGraphsWithBroadcastingAddNotInPlace) {
+  TestGraph graph(
+      {0, 1},
+      {
+          /* in, out, tmp */
+          {{0, 1}, {3}, {}},
+          {{1, 2}, {4}, {}},
+          {{3, 4}, {5}, {}, kTfLiteBuiltinAdd, kTfLiteInplaceOpInput0Shared},
+          {{5}, {6}, {}},
+      },
+      {6});
+  // Only arena allocated tensors have shared buffer.
+  (*graph.tensors())[3].bytes = 8;   // shape [8, 1]
+  (*graph.tensors())[4].bytes = 8;   // shape [1, 8]
+  (*graph.tensors())[5].bytes = 64;  // shape [7, 8]
+
+  SetGraph(&graph);
+  Execute(0, graph.nodes().size() - 1);
+
+  // Tensors 3 and 5 should have different offsets.
+  EXPECT_NE(GetOffset(3), GetOffset(5));
+  // Tensors 4 and 5 should have different offsets.
+  EXPECT_NE(GetOffset(4), GetOffset(5));
 }
 
 TEST_F(ArenaPlannerTest, SimpleGraphWithResetAllocationsAfter) {
@@ -596,6 +701,25 @@ TEST_F(ArenaPlannerTest, SimpleGraphWithOptionals) {
                       {{4, -1, 5}, {3}, {}}  // Third op, with optional
                   },
                   {3});
+  SetGraph(&graph);
+  Execute(0, graph.nodes().size() - 1);
+
+  // Alloc(+) and dealloc(-) order: +0 +1 +2 +4 +5 -2 +3 -4 -5
+  EXPECT_EQ(GetOffset(5), 12);
+  EXPECT_EQ(GetOffset(4), GetOffsetAfter(5));
+  EXPECT_EQ(GetOffset(3), GetOffsetAfter(4));
+  EXPECT_EQ(GetOffset(2), GetOffsetAfter(4));
+}
+
+TEST_F(ArenaPlannerTest, SimpleGraphWithOptionalOutput) {
+  TestGraph graph({0, -1, 1},
+                  {
+                      /* in, out, tmp */
+                      {{0, 1}, {2}, {}},     // First op
+                      {{2, 0}, {4, 5}, {}},  // Second op
+                      {{4, 5}, {3}, {}}      // Third op, with optional
+                  },
+                  {-1, 3});
   SetGraph(&graph);
   Execute(0, graph.nodes().size() - 1);
 
@@ -950,6 +1074,33 @@ TEST_F(ArenaPlannerTest, DebugTensors) {
   EXPECT_EQ(tensorOffsets.size(), 8);
 }
 
+TEST_F(ArenaPlannerTest, DebugTensorsInputReuse) {
+  TestGraph graph({0, 1},
+                  {
+                      /* in, out, tmp */
+                      {{0, 1}, {2, 3}, {}},
+                      {{2, 3}, {4}, {}, kTfLiteBuiltinMul},
+                      {{4, 2}, {5}, {}, kTfLiteBuiltinSub},
+                      {{5}, {6}, {}},
+                  },
+                  {6});
+
+  (*graph.tensors())[4].bytes = 200;
+  (*graph.tensors())[5].bytes = 200;
+
+  SetGraph(&graph, /*preserve_all_tensors=*/false);
+  Execute(0, graph.nodes().size() - 1);
+
+  // Output of mul node should be reused for output of sub node.
+  EXPECT_EQ(GetOffset(4), GetOffset(5));
+
+  SetGraph(&graph, /*preserve_all_tensors=*/true);
+  Execute(0, graph.nodes().size() - 1);
+
+  // Output of mul node should not be reused for output of sub node.
+  EXPECT_NE(GetOffset(4), GetOffset(5));
+}
+
 TEST_F(ArenaPlannerTest, SimpleProfilerTest) {
   gNumAlloc = 0;
   gNumDealloc = 0;
@@ -957,10 +1108,10 @@ TEST_F(ArenaPlannerTest, SimpleProfilerTest) {
   SetGraph(&graph);
   Execute(0, graph.nodes().size() - 1);
 
-  EXPECT_EQ(gNumAlloc, 2);
+  EXPECT_EQ(gNumAlloc, 1);
   EXPECT_EQ(gNumDealloc, 0);
   Destroy();
-  EXPECT_EQ(gNumDealloc, 2);
+  EXPECT_EQ(gNumDealloc, 1);
 }
 
 }  // namespace

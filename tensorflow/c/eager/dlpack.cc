@@ -78,6 +78,9 @@ DLDataType GetDlDataType(TF_DataType data_type, TF_Status* status) {
   dtype.lanes = 1;
   dtype.bits = TF_DataTypeSize(data_type) * 8;
   switch (data_type) {
+    case TF_DataType::TF_BOOL:
+      dtype.code = DLDataTypeCode::kDLBool;
+      break;
     case TF_DataType::TF_HALF:
     case TF_DataType::TF_FLOAT:
     case TF_DataType::TF_DOUBLE:
@@ -89,7 +92,6 @@ DLDataType GetDlDataType(TF_DataType data_type, TF_Status* status) {
     case TF_DataType::TF_INT64:
       dtype.code = DLDataTypeCode::kDLInt;
       break;
-    case TF_DataType::TF_BOOL:
     case TF_DataType::TF_UINT8:
     case TF_DataType::TF_UINT16:
     case TF_DataType::TF_UINT32:
@@ -161,55 +163,63 @@ absl::optional<std::string> DeviceNameFromDlContext(const DLDevice& ctx,
 Status TfDataTypeFormDlDataType(const DLDataType& dtype,
                                 TF_DataType* tf_dtype) {
   switch (dtype.code) {
+    case DLDataTypeCode::kDLBool:
+      if (dtype.bits != 8) {
+        return tensorflow::errors::InvalidArgument(
+            "Only DLPack bools of bitwidth 8 are supported, got: ", dtype.bits);
+      }
+      *tf_dtype = TF_DataType::TF_BOOL;
+      return absl::OkStatus();
+
     case DLDataTypeCode::kDLUInt:
       switch (dtype.bits) {
         case 8:
           *tf_dtype = TF_DataType::TF_UINT8;
-          return OkStatus();
+          return absl::OkStatus();
         case 16:
           *tf_dtype = TF_DataType::TF_UINT16;
-          return OkStatus();
+          return absl::OkStatus();
         case 32:
           *tf_dtype = TF_DataType::TF_UINT32;
-          return OkStatus();
+          return absl::OkStatus();
         case 64:
           *tf_dtype = TF_DataType::TF_UINT64;
-          return OkStatus();
+          return absl::OkStatus();
         default:
           return tensorflow::errors::InvalidArgument("Unsupported UInt bits: ",
                                                      dtype.bits);
       }
-      return OkStatus();
+      return absl::OkStatus();
     case DLDataTypeCode::kDLInt:
       switch (dtype.bits) {
         case 8:
           *tf_dtype = TF_DataType::TF_INT8;
-          return OkStatus();
+          return absl::OkStatus();
         case 16:
           *tf_dtype = TF_DataType::TF_INT16;
-          return OkStatus();
+          return absl::OkStatus();
         case 32:
           *tf_dtype = TF_DataType::TF_INT32;
-          return OkStatus();
+          return absl::OkStatus();
         case 64:
           *tf_dtype = TF_DataType::TF_INT64;
-          return OkStatus();
+          return absl::OkStatus();
         default:
           return tensorflow::errors::InvalidArgument("Unsupported Int bits: ",
                                                      dtype.bits);
       }
-      return OkStatus();
+      return absl::OkStatus();
     case DLDataTypeCode::kDLFloat:
       switch (dtype.bits) {
         case 16:
           *tf_dtype = TF_DataType::TF_HALF;
-          return OkStatus();
+          return absl::OkStatus();
         case 32:
           *tf_dtype = TF_DataType::TF_FLOAT;
-          return OkStatus();
+          return absl::OkStatus();
         case 64:
           *tf_dtype = TF_DataType::TF_DOUBLE;
-          return OkStatus();
+          return absl::OkStatus();
         default:
           return tensorflow::errors::InvalidArgument("Unsupported Float bits: ",
                                                      dtype.bits);
@@ -219,7 +229,7 @@ Status TfDataTypeFormDlDataType(const DLDataType& dtype,
       switch (dtype.bits) {
         case 16:
           *tf_dtype = TF_DataType::TF_BFLOAT16;
-          return OkStatus();
+          return absl::OkStatus();
         default:
           return tensorflow::errors::InvalidArgument(
               "Unsupported BFloat bits: ", dtype.bits);
@@ -229,10 +239,10 @@ Status TfDataTypeFormDlDataType(const DLDataType& dtype,
       switch (dtype.bits) {
         case 64:
           *tf_dtype = TF_DataType::TF_COMPLEX64;
-          return OkStatus();
+          return absl::OkStatus();
         case 128:
           *tf_dtype = TF_DataType::TF_COMPLEX128;
-          return OkStatus();
+          return absl::OkStatus();
         default:
           return tensorflow::errors::InvalidArgument(
               "Unsupported Complex bits: ", dtype.bits);
@@ -254,15 +264,18 @@ void DeallocatorWrapperFunc(void* data, size_t len, void* dlmt_vptr) {
 // data.
 bool IsValidStrideCompactRowMajorData(int64_t* shape_arr, int64_t* stride_arr,
                                       int ndim) {
-  if (ndim >= 1 && stride_arr[ndim - 1] != 1) {
-    return false;
-  }
-  for (int i = ndim - 2; i >= 0; --i) {
-    if (stride_arr[i] != shape_arr[i + 1] * stride_arr[i + 1]) {
-      return false;
+  bool valid = true;
+  int64_t expected_stride = 1;
+  for (int i = ndim - 1; i >= 0; --i) {
+    // Empty tensors are always compact regardless of strides.
+    if (shape_arr[i] == 0) return true;
+    // Note that dimensions with size=1 can have any stride.
+    if (shape_arr[i] != 1 && stride_arr[i] != expected_stride) {
+      valid = false;
     }
+    expected_stride *= shape_arr[i];
   }
-  return true;
+  return valid;
 }
 }  // namespace
 
@@ -349,6 +362,13 @@ TFE_TensorHandle* TFE_HandleFromDLPack(void* dlm, TF_Status* status,
   int num_dims = dl_tensor->ndim;
   const int64_t* dims = dl_tensor->shape;
   void* data = dl_tensor->data;
+
+  if (dl_tensor->byte_offset != 0) {
+    status->status = tensorflow::errors::InvalidArgument(
+        "Unsupported byte_offset (", dl_tensor->byte_offset,
+        ") from DLPack, must be zero");
+    return nullptr;
+  }
 
   size_t total_bytes = dl_tensor->dtype.bits / 8;
   for (int i = 0; i < num_dims; i++) {

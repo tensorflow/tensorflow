@@ -58,16 +58,14 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 
 bool UseCudnnWith16BitFloat(OpKernelContext* ctx, DataType dtype) {
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   if (dtype == DT_HALF) {
     return true;
   } else if (dtype == DT_BFLOAT16) {
     auto* stream = ctx->op_device_context()->stream();
-    if (!stream) return false;
-    return stream->GetCudaComputeCapability().IsAtLeast(
-        se::CudaComputeCapability::AMPERE);
+    return IsBF16SupportedInOps(stream);
   }
-#endif
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   return false;
 }
 
@@ -411,12 +409,14 @@ class DepthwiseConv2dNativeOp : public BinaryOp<T> {
       GetExplicitPaddingForDim(explicit_paddings_, data_format_, 'W', &pad_left,
                                &pad_right);
     }
-    OP_REQUIRES_OK(context, GetWindowedOutputSizeVerbose(
-                                input_rows, filter_rows, stride_, padding_,
-                                &out_rows, &pad_top, &pad_bottom));
-    OP_REQUIRES_OK(context, GetWindowedOutputSizeVerbose(
-                                input_cols, filter_cols, stride_, padding_,
-                                &out_cols, &pad_left, &pad_right));
+    OP_REQUIRES_OK(context,
+                   GetWindowedOutputSizeVerbose(
+                       input_rows, filter_rows, /*dilation_rate=*/1, stride_,
+                       padding_, &out_rows, &pad_top, &pad_bottom));
+    OP_REQUIRES_OK(context,
+                   GetWindowedOutputSizeVerbose(
+                       input_cols, filter_cols, /*dilation_rate=*/1, stride_,
+                       padding_, &out_cols, &pad_left, &pad_right));
     TensorShape out_shape;
     OP_REQUIRES_OK(context,
                    ShapeFromFormatWithStatus(data_format_, batch, out_rows,
@@ -519,7 +519,8 @@ class DepthwiseConv2dNativeOp : public BinaryOp<T> {
   bool cudnn_use_autotune_;
   DataType dtype_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(DepthwiseConv2dNativeOp);
+  DepthwiseConv2dNativeOp(const DepthwiseConv2dNativeOp&) = delete;
+  void operator=(const DepthwiseConv2dNativeOp&) = delete;
 };
 
 #define REGISTER_CPU_KERNEL(T)                                                 \

@@ -16,18 +16,17 @@ limitations under the License.
 #include <memory>
 
 #include "llvm/ADT/DenseSet.h"
-#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/Analysis/DataFlow/ConstantPropagationAnalysis.h"  // from @llvm-project
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/Block.h"  // from @llvm-project
+#include "mlir/Analysis/DataFlow/DeadCodeAnalysis.h"  // from @llvm-project
+#include "mlir/Analysis/DataFlowFramework.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/analysis/resource_dataflow.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
@@ -62,8 +61,8 @@ void MaybeCreateVarHandleForOp(Operation* op, DataFlowSolver& solver) {
     return;  // We're already directly after a VarHandleOp.
   }
 
-  const TF::ResourceDataflowAnalysis::StateT* state =
-      solver.lookupState<TF::ResourceDataflowAnalysis::StateT>(resource);
+  const TF::ResourceDataflowState* state =
+      solver.lookupState<TF::ResourceDataflowState>(resource);
   if (!state) {
     // Can't actually happen. Even for gaps in the dataflow, we'll receive
     // the initial state.
@@ -113,7 +112,7 @@ void LocalizeVarHandlesPass::runOnOperation() {
   DataFlowSolver solver;
   solver.load<dataflow::DeadCodeAnalysis>();
   solver.load<dataflow::SparseConstantPropagation>();
-  solver.load<TF::ResourceDataflowAnalysis>();
+  TF::LoadResourceDataflowAnalysis(solver);
   if (failed(solver.initializeAndRun(module))) return signalPassFailure();
 
   OpBuilder globalBuilder(module.getBodyRegion());

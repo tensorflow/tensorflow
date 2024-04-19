@@ -19,6 +19,8 @@ limitations under the License.
 #define TENSORFLOW_CORE_RUNTIME_FALLBACK_RUNTIME_KERNEL_UTILS_H_
 
 #include <memory>
+#include <utility>
+#include <vector>
 
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
@@ -135,7 +137,7 @@ class EagerContextResource {
     Status s = dynamic_cast<tensorflow::DynamicDeviceMgr*>(
                    ctx_.get()->local_device_mgr())
                    ->AddDevices(std::move(devices));
-    if (!s.ok()) return tfrt::MakeStringError(s.error_message());
+    if (!s.ok()) return tfrt::MakeStringError(s.message());
     ctx_.get()->InitPrioritizedDeviceTypeList();
     ctx_.get()->pflr()->InitializeDeviceAndFlr();
     return llvm::Error::success();

@@ -26,6 +26,7 @@ from tensorflow.python.framework import dtypes as dtypes_lib
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import importer
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -111,6 +112,21 @@ class ConstantTest(test.TestCase):
     self._testAll(np.empty((2, 0, 5)).astype(np.int64))
 
   @test_util.run_deprecated_v1
+  @test_util.disable_xla("b/183567451: XLA doesn't yet support int4")
+  def testInt4(self):
+    for dtype in [dtypes_lib.int4, dtypes_lib.uint4]:
+      np_dtype = dtype.as_numpy_dtype
+      self._testAll(
+          np.arange(dtype.min, dtype.max + 1)
+          .reshape([2, 4, 2])
+          .astype(np_dtype)
+      )
+      self._testAll(
+          (7 * np.random.normal(size=30)).reshape([2, 3, 5]).astype(np_dtype)
+      )
+      self._testAll(np.empty((2, 0, 5)).astype(np_dtype))
+
+  @test_util.run_deprecated_v1
   def testComplex64(self):
     self._testAll(
         (1 + 2j) * np.arange(-15, 15).reshape([2, 3, 5]).astype(np.complex64))
@@ -192,7 +208,7 @@ class ConstantTest(test.TestCase):
           shape=[2, 3, 5])
     self.assertEqual(c.get_shape(), [2, 3, 5])
 
-  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.assert_no_new_pyobjects_executing_eagerly()
   def testEagerMemory(self):
     """Tests PyObject refs are managed correctly when executing eagerly."""
     constant_op.constant([[1.]])
@@ -276,10 +292,12 @@ class ConstantTest(test.TestCase):
                                 "setting an array element with a sequence"):
       c = constant_op.constant([[1, 2], [3]], dtype=dtypes_lib.int32)
 
-    with self.assertRaisesRegex(ValueError, "Expected.*to be a dense tensor"):
+    with self.assertRaisesRegex(
+        ValueError, "(Expected.*to be a dense tensor|inhomogeneous shape)"):
       c = constant_op.constant([[1, 2], [3]])
 
-    with self.assertRaisesRegex(ValueError, "Expected.*to be a dense tensor"):
+    with self.assertRaisesRegex(
+        ValueError, "(Expected.*to be a dense tensor|inhomogeneous shape)"):
       c = constant_op.constant([[1, 2], [3], [4, 5]])
 
 
@@ -294,7 +312,7 @@ class AsTensorTest(test.TestCase):
   def testAsTensorForNonTensorInput(self):
     with ops.Graph().as_default():
       x = ops.convert_to_tensor(10.0)
-    self.assertTrue(isinstance(x, ops.Tensor))
+    self.assertTrue(isinstance(x, tensor.Tensor))
 
   def testAsTensorForShapeInput(self):
     with self.cached_session():
@@ -379,7 +397,7 @@ class IdentityOpTest(test.TestCase):
     with ops.Graph().as_default():
       x = constant_op.constant(2.0, shape=[6], name="input")
       id_op = array_ops.identity(x, name="id")
-    self.assertTrue(isinstance(id_op.op.inputs[0], ops.Tensor))
+    self.assertTrue(isinstance(id_op.op.inputs[0], tensor.Tensor))
     self.assertProtoEquals("name: 'id' op: 'Identity' input: 'input' "
                            "attr { key: 'T' value { type: DT_FLOAT } }",
                            id_op.op.node_def)
@@ -707,7 +725,7 @@ class FillTest(test.TestCase):
     with self.cached_session(use_gpu=use_gpu):
       tf_ans = array_ops.fill(dims, val, name="fill")
       out = self.evaluate(tf_ans)
-    self.assertAllClose(np_ans, out)
+    self.assertAllEqual(np_ans, out)
     # Fill does not set the shape.
     # self.assertShapeEqual(np_ans, tf_ans)
 
@@ -729,6 +747,13 @@ class FillTest(test.TestCase):
 
   def testFillInt64(self):
     np_ans = np.array([[-42] * 3] * 2).astype(np.int64)
+    self._compareAll([2, 3], np_ans[0][0], np_ans)
+
+  @test_util.disable_xla("b/183567451: XLA doesn't yet support int4")
+  def testFillInt4(self):
+    np_ans = np.array([[-6] * 3] * 2).astype(dtypes_lib.int4.as_numpy_dtype)
+    self._compareAll([2, 3], np_ans[0][0], np_ans)
+    np_ans = np.array([[11] * 3] * 2).astype(dtypes_lib.uint4.as_numpy_dtype)
     self._compareAll([2, 3], np_ans[0][0], np_ans)
 
   def testFillComplex64(self):

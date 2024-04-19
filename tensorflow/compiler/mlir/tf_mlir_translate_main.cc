@@ -13,7 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
 #include <unordered_set>
+#include <utility>
+#include <vector>
 
 #include "absl/strings/str_split.h"
 #include "llvm/Support/InitLLVM.h"

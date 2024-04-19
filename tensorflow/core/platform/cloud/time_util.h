@@ -17,7 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_PLATFORM_CLOUD_TIME_UTIL_H_
 
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/tsl/platform/cloud/time_util.h"
+#include "tsl/platform/cloud/time_util.h"
 
 namespace tensorflow {
 using tsl::ParseRfc3339Time;  // NOLINT(misc-unused-using-decls)

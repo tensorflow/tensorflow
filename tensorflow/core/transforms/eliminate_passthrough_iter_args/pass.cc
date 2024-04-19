@@ -15,17 +15,19 @@ limitations under the License.
 
 #include "tensorflow/core/transforms/eliminate_passthrough_iter_args/pass.h"
 
+#include <memory>
 #include <utility>
 
+#include "llvm/ADT/ADL.h"
 #include "llvm/ADT/BitVector.h"
-#include "llvm/ADT/EpochTracker.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Debug.h"
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
-#include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
+#include "mlir/IR/ValueRange.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/core/ir/ops.h"
 #include "tensorflow/core/ir/utility.h"
 #include "tensorflow/core/transforms/utils/utils.h"
@@ -45,7 +47,7 @@ template <typename RangeT>
 static SmallVector<llvm::detail::ValueOfRange<RangeT>> FilterByIndex(
     RangeT &&range, const llvm::BitVector &indices) {
   SmallVector<llvm::detail::ValueOfRange<RangeT>> result;
-  for (auto &it : llvm::enumerate(range))
+  for (const auto &it : llvm::enumerate(range))
     if (!indices.test(it.index())) result.push_back(it.value());
   return result;
 }
@@ -110,7 +112,7 @@ struct EliminatePassthroughIterArgs {
     // value and remove the argument. Insert the implicitly captured value into
     // the result list to replace the removed results from the original op.
     SmallVector<Value> results = llvm::to_vector(ValueRange(new_op.getOuts()));
-    for (auto &it : llvm::enumerate(indices)) {
+    for (const auto &it : llvm::enumerate(indices)) {
       unsigned idx = it.value() - it.index();
       Value data = op.getInit()[it.value()];
       results.insert(results.begin() + it.value(), data);

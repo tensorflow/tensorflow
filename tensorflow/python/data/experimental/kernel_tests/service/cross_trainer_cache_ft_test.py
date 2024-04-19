@@ -18,6 +18,7 @@ from absl.testing import parameterized
 
 from tensorflow.python.data.experimental.kernel_tests.service import test_base as data_service_test_base
 from tensorflow.python.data.experimental.ops import data_service_ops
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import combinations
 from tensorflow.python.platform import test
@@ -27,10 +28,8 @@ class CrossTrainerCacheFtTest(data_service_test_base.TestBase,
                               parameterized.TestCase):
   """Fault tolerance tests for tf.data service cross-trainer cache."""
 
-  # V2-only because in the V1 API, `map` does not preserve cardinality.
   @combinations.generate(
-      combinations.times(
-          combinations.combine(tf_api_version=2, mode=["eager", "graph"])))
+      combinations.times(test_base.default_test_combinations()))
   def testWorkerRestart(self):
     cluster = self._create_cluster(num_workers=1)
     dataset = dataset_ops.Dataset.range(10000000).repeat()
@@ -55,8 +54,7 @@ class CrossTrainerCacheFtTest(data_service_test_base.TestBase,
     self.assertEqual(elements, list(range(1, 101)))
 
   @combinations.generate(
-      combinations.times(
-          combinations.combine(tf_api_version=2, mode=["eager", "graph"])))
+      combinations.times(test_base.default_test_combinations()))
   def testDispatcherRestart(self):
     cluster = self._create_cluster(num_workers=1)
     dataset = dataset_ops.Dataset.range(10000000).repeat()

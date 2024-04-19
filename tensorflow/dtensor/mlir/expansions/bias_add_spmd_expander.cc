@@ -40,7 +40,7 @@ namespace {
 int get_c_dimension_idx(const Layout& layout, llvm::StringRef data_format) {
   // If format is "N...C", the bias is added to the last dimension.
   int c_dim_idx = layout.sharding_spec_strs().size() - 1;
-  if (data_format.startswith("NC")) {
+  if (data_format.starts_with("NC")) {
     // If format is "NC...", the bias is added to the 'C' dimension.
     c_dim_idx = layout.sharding_spec_strs().size() - 3;
   }
@@ -69,10 +69,8 @@ StatusOr<mlir::Operation*> BiasAddExpander::ExpandOp(mlir::Operation* op) {
 
   // Check if output is sharded more, change input layout to match output
   // layout.
-  int64_t num_input_shards =
-      input_layout.num_shards_for_dim(input_layout.dim(c_dim_idx));
-  int64_t num_output_shards =
-      output_layout.num_shards_for_dim(output_layout.dim(c_dim_idx));
+  int64_t num_input_shards = input_layout.num_shards_for_dim(c_dim_idx);
+  int64_t num_output_shards = output_layout.num_shards_for_dim(c_dim_idx);
 
   if (num_input_shards < num_output_shards) {
     mlir::Value output;

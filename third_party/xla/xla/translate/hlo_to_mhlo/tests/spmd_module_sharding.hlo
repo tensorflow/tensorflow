@@ -1,0 +1,133 @@
+# RUN: xla-translate -hlo-to-mlir-hlo %s | FileCheck %s
+
+# CHECK-LABEL: module @main attributes
+# CHECK-SAME: mhlo.spmd_output_sharding = "{devices=[1,2]0,1}"
+# CHECK-SAME: mhlo.spmd_parameters_shardings = ["{devices=[1,2]0,1}"]
+
+hlo_module       {
+  name: "main"
+  entry_computation_name: "main.3"
+  computations {
+    name: "main.3"
+    instructions {
+      name: "Arg_0.1"
+      opcode: "parameter"
+      shape {
+        element_type: F32
+        dimensions: 16
+        dimensions: 16
+        layout {
+          minor_to_major: 1
+          minor_to_major: 0
+        }
+        is_dynamic_dimension: false
+        is_dynamic_dimension: false
+      }
+      metadata {
+      }
+      id: 1
+      frontend_attributes {
+      }
+    }
+    instructions {
+      name: "custom-call.2"
+      opcode: "custom-call"
+      shape {
+        element_type: F32
+        dimensions: 16
+        dimensions: 16
+        layout {
+          minor_to_major: 1
+          minor_to_major: 0
+        }
+        is_dynamic_dimension: false
+        is_dynamic_dimension: false
+      }
+      metadata {
+        source_file: "within split at <stdin>:1 offset "
+        source_line: 3
+      }
+      custom_call_target: "Sharding"
+      id: 2
+      operand_ids: 1
+      sharding {
+        type: OTHER
+        tile_assignment_dimensions: 1
+        tile_assignment_dimensions: 2
+        tile_assignment_devices: 0
+        tile_assignment_devices: 1
+      }
+      frontend_attributes {
+      }
+      custom_call_api_version: API_VERSION_ORIGINAL
+    }
+    program_shape {
+      parameters {
+        element_type: F32
+        dimensions: 16
+        dimensions: 16
+        layout {
+          minor_to_major: 1
+          minor_to_major: 0
+        }
+        is_dynamic_dimension: false
+        is_dynamic_dimension: false
+      }
+      result {
+        element_type: F32
+        dimensions: 16
+        dimensions: 16
+        layout {
+          minor_to_major: 1
+          minor_to_major: 0
+        }
+        is_dynamic_dimension: false
+        is_dynamic_dimension: false
+      }
+      parameter_names: "Arg_0"
+    }
+    id: 3
+    root_id: 2
+  }
+  host_program_shape {
+    parameters {
+      element_type: F32
+      dimensions: 16
+      dimensions: 16
+      layout {
+        minor_to_major: 1
+        minor_to_major: 0
+      }
+      is_dynamic_dimension: false
+      is_dynamic_dimension: false
+    }
+    result {
+      element_type: F32
+      dimensions: 16
+      dimensions: 16
+      layout {
+        minor_to_major: 1
+        minor_to_major: 0
+      }
+      is_dynamic_dimension: false
+      is_dynamic_dimension: false
+    }
+    parameter_names: "Arg_0"
+  }
+  id: 3
+  entry_computation_id: 3
+  spmd_output_sharding {
+    type: OTHER
+    tile_assignment_dimensions: 1
+    tile_assignment_dimensions: 2
+    tile_assignment_devices: 0
+    tile_assignment_devices: 1
+  }
+  spmd_parameters_shardings {
+    type: OTHER
+    tile_assignment_dimensions: 1
+    tile_assignment_dimensions: 2
+    tile_assignment_devices: 0
+    tile_assignment_devices: 1
+  }
+}

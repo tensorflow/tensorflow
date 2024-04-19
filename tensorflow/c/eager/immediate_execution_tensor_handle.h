@@ -56,9 +56,6 @@ class ImmediateExecutionTensorHandle : public AbstractTensorHandle {
   // Returns a tensor for the handle. If tensor is remote, it will be copied.
   virtual AbstractTensorInterface* Resolve(Status* status) = 0;
 
-  // Return a copy of the handle.
-  virtual ImmediateExecutionTensorHandle* Copy() = 0;
-
   std::string DebugString() const override;
 
   // Returns a Boolean hint indicating whether callers should prefer
@@ -78,14 +75,6 @@ class ImmediateExecutionTensorHandle : public AbstractTensorHandle {
   // Included in the default implementation of DebugString.
   virtual Status SummarizeValue(std::string& summary) const;
 
-  // Release any underlying resources, including the interface object.
-  //
-  // WARNING: The destructor of this class is marked as protected to disallow
-  // clients from directly destroying this object since it may manage its own
-  // lifetime through ref counting. Thus this must be allocated on the heap and
-  // clients MUST call Release() in order to destroy an instance of this class.
-  virtual void Release() = 0;
-
   // For LLVM style RTTI.
   static bool classof(const AbstractTensorHandle* ptr) {
     return ptr->getKind() == kEager || ptr->getKind() == kTfrt;
@@ -101,7 +90,7 @@ namespace internal {
 struct ImmediateExecutionTensorHandleDeleter {
   void operator()(ImmediateExecutionTensorHandle* p) const {
     if (p != nullptr) {
-      p->Release();
+      p->Unref();
     }
   }
 };

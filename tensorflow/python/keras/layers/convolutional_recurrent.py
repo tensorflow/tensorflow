@@ -31,7 +31,6 @@ from tensorflow.python.keras.utils import conv_utils
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
-from tensorflow.python.util.tf_export import keras_export
 
 
 class ConvRNN2D(RNN):
@@ -693,7 +692,6 @@ class ConvLSTM2DCell(DropoutRNNCellMixin, Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-@keras_export('keras.layers.ConvLSTM2D')
 class ConvLSTM2D(ConvRNN2D):
   """2D Convolutional LSTM layer.
 

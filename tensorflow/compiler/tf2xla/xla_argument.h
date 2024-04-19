@@ -20,8 +20,8 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/compiler/tf2xla/host_compute_metadata.pb.h"
 #include "tensorflow/compiler/tf2xla/xla_resource.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
-#include "tensorflow/compiler/xla/hlo/ir/hlo_sharding.h"
+#include "xla/client/xla_builder.h"
+#include "xla/hlo/ir/hlo_sharding.h"
 #include "tensorflow/core/framework/tensor.h"
 
 namespace tensorflow {

@@ -32,10 +32,12 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/debug.pb.h"
 #include "tensorflow/core/protobuf/worker.pb.h"
+#include "tsl/platform/thread_annotations.h"
 
 namespace tsl {
 class CoordinationServiceAgent;
@@ -135,6 +137,9 @@ class GraphMgr {
     // Graph handle.
     string handle;
 
+    // Session configuration options for the graph.
+    ConfigProto session_config;
+
     std::unique_ptr<FunctionLibraryDefinition> lib_def;
     // Owns the FunctionLibraryRuntime objects needed to execute functions, one
     // per device.
@@ -194,7 +199,8 @@ class GraphMgr {
   Status DecorateAndPublishGraphForDebug(const DebugOptions& debug_options,
                                          Graph* graph, Device* device);
 
-  TF_DISALLOW_COPY_AND_ASSIGN(GraphMgr);
+  GraphMgr(const GraphMgr&) = delete;
+  void operator=(const GraphMgr&) = delete;
 };
 
 }  // end namespace tensorflow

@@ -51,6 +51,7 @@ REGISTER5(BinaryOp, GPU, "DivNoNan", functor::div_no_nan, Eigen::half, float,
 #endif
 REGISTER(BinaryOp, GPU, "Div", functor::div, bfloat16);
 REGISTER(BinaryOp, GPU, "RealDiv", functor::div, bfloat16);
+REGISTER(BinaryOp, GPU, "DivNoNan", functor::div_no_nan, bfloat16);
 
 // A special GPU kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel

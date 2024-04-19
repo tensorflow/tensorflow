@@ -35,7 +35,7 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -107,7 +107,8 @@ class SparseDenseBinaryOpShared : public OpKernel {
 
     // True iff (size(lhs) >= size(rhs)) and all dims in lhs is greater or equal
     // to dims in rhs (from right to left).
-    auto VecGreaterEq = [](ArraySlice<int64_t> lhs, ArraySlice<int64_t> rhs) {
+    auto VecGreaterEq = [](absl::Span<const int64_t> lhs,
+                           absl::Span<const int64_t> rhs) {
       if (lhs.size() < rhs.size()) return false;
       for (size_t i = 0; i < rhs.size(); ++i) {
         if (lhs[lhs.size() - 1 - i] < rhs[rhs.size() - 1 - i]) return false;
@@ -162,7 +163,7 @@ class SparseDenseBinaryOpShared : public OpKernel {
                                   "dense side with broadcasted shape"));       \
       dense_gathered_flat(i) = rhs_ref.coeff(idx);                             \
       if (op_is_div) {                                                         \
-        OP_REQUIRES(ctx, dense_gathered_flat(i) != 0,                          \
+        OP_REQUIRES(ctx, dense_gathered_flat(i) != T{0},                       \
                     errors::InvalidArgument(                                   \
                         "SparseDenseCwiseDiv cannot divide by zero,"           \
                         "but input dense tensor contains zero "));             \

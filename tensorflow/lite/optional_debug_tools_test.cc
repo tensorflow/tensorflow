@@ -18,10 +18,10 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "tensorflow/lite/core/interpreter.h"
+#include "tensorflow/lite/core/interpreter_builder.h"
+#include "tensorflow/lite/core/kernels/register.h"
+#include "tensorflow/lite/core/model_builder.h"
 #include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
-#include "tensorflow/lite/interpreter_builder.h"
-#include "tensorflow/lite/kernels/register.h"
-#include "tensorflow/lite/model_builder.h"
 
 namespace tflite {
 namespace {

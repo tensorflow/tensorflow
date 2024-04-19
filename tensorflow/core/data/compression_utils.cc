@@ -20,13 +20,11 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/framework/tensor.pb.h"
-#include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/framework/variant_op_registry.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/snappy.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -134,7 +132,7 @@ Status CompressElement(const std::vector<Tensor>& element,
   out->set_version(kCompressedElementVersion);
   VLOG(3) << "Compressed element from " << iov.NumBytes() << " bytes to "
           << out->data().size() << " bytes";
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status UncompressElement(const CompressedElement& compressed,
@@ -230,7 +228,7 @@ Status UncompressElement(const CompressedElement& compressed,
       nonmemcpyable_pos += metadata.uncompressed_bytes(0);
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 REGISTER_UNARY_VARIANT_DECODE_FUNCTION(CompressedElement,

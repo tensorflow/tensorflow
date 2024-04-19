@@ -22,7 +22,7 @@ limitations under the License.
 #define EIGEN_USE_GPU
 #endif
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -525,7 +525,7 @@ class CSRSparseMatrix {
           "CSRSparseMatrix::Validate: size(col_indices) = ",
           col_indices.dim_size(0), " != size(values) = ", values.dim_size(0));
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   struct Metadata {
@@ -648,7 +648,7 @@ Status ExtractVariantFromInput(OpKernelContext* ctx, int index,
   if (!(*value)->valid()) {
     return errors::InvalidArgument("Variant input ", index, " is not valid.");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

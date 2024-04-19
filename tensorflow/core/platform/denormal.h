@@ -17,7 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_PLATFORM_DENORMAL_H_
 
 #include "tensorflow/core/platform/macros.h"
-#include "tensorflow/tsl/platform/denormal.h"
+#include "tsl/platform/denormal.h"
 
 namespace tensorflow {
 namespace port {

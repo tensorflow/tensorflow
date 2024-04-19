@@ -27,6 +27,7 @@ namespace tensorflow {
 namespace {
 
 constexpr int kOptimizeCrossHostEdgesTheshold = 8;
+constexpr int kOptimizeCrossHostDataEdgesTheshold = 2;
 
 // A helper for rewriting nodes assigned to a virtual composite device.
 class ReplicateHelper {
@@ -39,7 +40,7 @@ class ReplicateHelper {
     }
     std::vector<Node*> replicated_nodes(num_allowed_devices, nullptr);
     replicated_nodes_map_.emplace(node, std::move(replicated_nodes));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Replicate the given node to an allowed device.
@@ -48,7 +49,7 @@ class ReplicateHelper {
                        int allowed_device_index, Graph* graph) {
     auto& replicated_nodes = replicated_nodes_map_.at(node);
     if (replicated_nodes[allowed_device_index] != nullptr) {
-      return OkStatus();
+      return absl::OkStatus();
     }
     const auto& device = allowed_devices.at(allowed_device_index);
     NodeDef node_def = node->def();
@@ -60,7 +61,7 @@ class ReplicateHelper {
       replicated_node->AddAttr("sub_index", allowed_device_index);
     }
     replicated_nodes[allowed_device_index] = replicated_node;
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Replace an edge (a regular device -> composite device) with
@@ -106,7 +107,7 @@ class ReplicateHelper {
       graph->AddEdge(src_replicated_nodes.at(i), edge->src_output(), dst,
                      edge->dst_input());
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Data edge: replace an edge (composite device -> a regular device) with
@@ -144,7 +145,7 @@ class ReplicateHelper {
           graph->AddControlEdge(replicated_node, dst,
                                 /*allow_duplicates=*/true);
         }
-        return OkStatus();
+        return absl::OkStatus();
       }
       if (edge->src()->type_string() == "_Arg") {
         // This happens when the dst node runs on a host CPU and
@@ -187,7 +188,7 @@ class ReplicateHelper {
             " assigned to ", dst_device);
       }
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:
@@ -245,7 +246,7 @@ Status ReplicateNodesAndEdges(const std::vector<string>& allowed_devices,
     cluster_nodes->erase(node);
     graph->RemoveNode(node);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -254,6 +255,9 @@ Status ReplicatePerReplicaNodesInFunctionGraph(
     const absl::flat_hash_map<string, const std::vector<string>*>&
         composite_devices,
     Graph* graph) {
+  VLOG(1) << "Starting ReplicatePerReplicaNodesInFunctionGraph";
+  VLOG(1) << "Graph #nodes " << graph->num_nodes() << " #edges "
+          << graph->num_edges();
   std::set<string> composite_device_names;
   for (const auto& it : composite_devices) {
     composite_device_names.insert(it.first);
@@ -275,7 +279,7 @@ Status ReplicatePerReplicaNodesInFunctionGraph(
 
   if (composite_device_to_cluster_nodes.empty()) {
     VLOG(1) << "No nodes with composiste device found.";
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   for (auto& it : composite_device_to_cluster_nodes) {
@@ -321,8 +325,13 @@ Status ReplicatePerReplicaNodesInFunctionGraph(
       graph, kOptimizeCrossHostEdgesTheshold));
   TF_RETURN_IF_ERROR(OptimizeCrossHostControlInputEdges(
       graph, kOptimizeCrossHostEdgesTheshold));
+  TF_RETURN_IF_ERROR(OptimizeCrossHostDataOutputEdges(
+      graph, kOptimizeCrossHostDataEdgesTheshold));
 
-  return OkStatus();
+  VLOG(1) << "Finished ReplicatePerReplicaNodesInFunctionGraph";
+  VLOG(1) << "Graph #nodes " << graph->num_nodes() << " #edges "
+          << graph->num_edges();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

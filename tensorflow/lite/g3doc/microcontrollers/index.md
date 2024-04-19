@@ -28,14 +28,14 @@ and delightful ways.
 
 ## Supported platforms
 
-TensorFlow Lite for Microcontrollers is written in C++ 11 and requires a 32-bit
+TensorFlow Lite for Microcontrollers is written in C++ 17 and requires a 32-bit
 platform. It has been tested extensively with many processors based on the
 [Arm Cortex-M Series](https://developer.arm.com/ip-products/processors/cortex-m)
 architecture, and has been ported to other architectures including
 [ESP32](https://www.espressif.com/en/products/hardware/esp32/overview). The
 framework is available as an Arduino library. It can also generate projects for
 development environments such as Mbed. It is open source and can be included in
-any C++ 11 project.
+any C++ 17 project.
 
 The following development boards are supported:
 
@@ -67,9 +67,6 @@ platform, as given below:
 *   [Micro speech](https://github.com/tensorflow/tflite-micro/blob/main/tensorflow/lite/micro/examples/micro_speech) -
     Captures audio with a microphone to detect the words "yes" and "no"
     *   [Tutorial using SparkFun Edge](https://codelabs.developers.google.com/codelabs/sparkfun-tensorflow/#0)
-*   [Magic wand](https://github.com/tensorflow/tflite-micro/blob/main/tensorflow/lite/micro/examples/magic_wand) -
-    Captures accelerometer data to classify three different physical gestures
-    *   [Tutorial using Arduino Nano 33 BLE Sense](https://codelabs.developers.google.com/codelabs/ai-magicwand/#0)
 *   [Person detection](https://github.com/tensorflow/tflite-micro/blob/main/tensorflow/lite/micro/examples/person_detection) -
     Captures camera data with an image sensor to detect the presence or absence
     of a person

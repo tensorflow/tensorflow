@@ -32,6 +32,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -281,7 +282,7 @@ class Tests(test.TestCase):
       m = resource_variable_ops.ResourceVariable(a_2_by_2)
       with self.assertRaisesRegex(TypeError,
                                   "Expected list for 'values' argument"):
-        _ = array_ops.stack(m, axis=1)
+        _ = array_ops_stack.stack(m, axis=1)
 
   def testGraphResourceVariableRaisesFallback(self):
     with ops.Graph().as_default():

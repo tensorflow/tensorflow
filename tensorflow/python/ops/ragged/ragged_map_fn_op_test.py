@@ -21,6 +21,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import map_fn as map_fn_lib
 from tensorflow.python.ops import math_ops as mo
 from tensorflow.python.ops import string_ops
@@ -30,6 +31,10 @@ from tensorflow.python.ops.ragged import ragged_map_ops
 from tensorflow.python.ops.ragged import ragged_math_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import googletest
+
+
+def _stack_mean_and_sum(x):
+  return array_ops_stack.stack([mo.reduce_mean(x), mo.reduce_sum(x)])
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -56,8 +61,7 @@ class RaggedMapOpTest(test_util.TensorFlowTestCase,
       ),
       # [d1, (d2)] -> [d1, 2]
       dict(
-          fn=lambda x: array_ops.stack([mo.reduce_mean(x), mo.reduce_sum(x)]),
-          # fn=self.stack_mean_and_sum,
+          fn=_stack_mean_and_sum,
           elems=[[1, 2, 3], [4, 5], [6, 7]],
           expected_output=[[2, 6], [4.5, 9], [6.5, 13]],
           elems_dtype=dtypes.float32,
@@ -242,7 +246,7 @@ class RaggedMapOpTest(test_util.TensorFlowTestCase,
     def _zip(foo):
       y_val, x_val = foo
       bar = array_ops.tile(y_val, array_ops.shape(x_val))
-      return array_ops.stack([bar, x_val], axis=1)
+      return array_ops_stack.stack([bar, x_val], axis=1)
 
     output = ragged_map_ops.map_fn(
         _zip, (y, x),

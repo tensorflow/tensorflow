@@ -23,6 +23,8 @@ import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 import org.tensorflow.lite.InterpreterApi.Options.TfLiteRuntime;
 
+// LINT.IfChange
+
 /** Unit tests for {@link org.tensorflow.lite.TensorFlowLite}. */
 @RunWith(JUnit4.class)
 public final class TensorFlowLiteTest {
@@ -115,3 +117,5 @@ public final class TensorFlowLiteTest {
     }
   }
 }
+
+// LINT.ThenChange(../../../../../../BUILD:TensorFlowLiteTestShardCount)

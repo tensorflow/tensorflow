@@ -17,7 +17,9 @@ limitations under the License.
 #define TENSORFLOW_CORE_TPU_KERNELS_TPU_RESHARD_VARIABLES_OP_UTIL_H_
 
 #include <memory>
+#include <vector>
 
+#include "tensorflow/compiler/jit/variable_info.h"
 #include "tensorflow/compiler/jit/xla_launch_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -40,7 +42,7 @@ Status GetComputationCacheEntry(
     std::unique_ptr<tpu::CompilationCacheEntryRef>* entry,
     tpu::CompilationCacheFetchTarget fetch_target);
 
-xla::StatusOr<xla::ShapeTree<xla::MaybeOwningDeviceMemory>> BuildInputBuffers(
+absl::StatusOr<xla::ShapeTree<xla::MaybeOwningDeviceMemory>> BuildInputBuffers(
     OpKernelContext* context, const std::vector<VariableInfo>& variables,
     const xla::Shape& input_host_shape, xla::Backend* backend,
     int device_ordinal, se::Stream* stream);

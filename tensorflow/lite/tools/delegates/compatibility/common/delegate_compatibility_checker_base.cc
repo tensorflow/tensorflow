@@ -22,7 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/tools/delegates/compatibility/common/delegate_compatibility_checker_util.h"
 

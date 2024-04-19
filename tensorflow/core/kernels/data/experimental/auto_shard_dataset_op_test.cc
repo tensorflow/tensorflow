@@ -55,7 +55,7 @@ class AutoShardDatasetParams : public DatasetParams {
     input_names->emplace_back(AutoShardDatasetOp::kInputDataset);
     input_names->emplace_back(AutoShardDatasetOp::kNumWorkers);
     input_names->emplace_back(AutoShardDatasetOp::kIndex);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status GetAttributes(AttributeVector* attr_vector) const override {
@@ -66,7 +66,7 @@ class AutoShardDatasetParams : public DatasetParams {
     attr_vector->emplace_back(AutoShardDatasetOp::kOutputTypes, output_dtypes_);
     attr_vector->emplace_back(AutoShardDatasetOp::kOutputShapes,
                               output_shapes_);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   string dataset_type() const override {
@@ -189,7 +189,7 @@ TEST_F(AutoShardDatasetOpTest, InvalidArguments) {
       AutoShardDatasetParams6(), AutoShardDatasetParams7()};
   for (const auto& dataset_params : invalid_dataset_params) {
     EXPECT_EQ(Initialize(dataset_params).code(),
-              tensorflow::error::INVALID_ARGUMENT);
+              absl::StatusCode::kInvalidArgument);
   }
 }
 

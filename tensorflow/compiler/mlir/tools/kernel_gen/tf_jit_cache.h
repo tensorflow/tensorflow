@@ -21,7 +21,11 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "mlir/ExecutionEngine/ExecutionEngine.h"  // from @llvm-project
+#include "tensorflow/core/framework/resource_base.h"
 #include "tensorflow/core/framework/resource_op_kernel.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/status.h"
+#include "tsl/platform/thread_annotations.h"
 
 namespace mlir {
 namespace kernel_gen {

@@ -20,8 +20,8 @@ from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import metrics as metrics_module
@@ -385,15 +385,15 @@ class SupervisedOutputTest(test.TestCase):
       self.assertTrue(outputter.metrics['metrics_1/update_op'].name.startswith(
           'mean/update_op'))
       self.assertIsInstance(
-          outputter.metrics['metrics_1/update_op'], ops.Tensor)
-      self.assertIsInstance(outputter.metrics['metrics_1/value'], ops.Tensor)
+          outputter.metrics['metrics_1/update_op'], tensor.Tensor)
+      self.assertIsInstance(outputter.metrics['metrics_1/value'], tensor.Tensor)
 
       self.assertEqual(outputter.metrics['metrics_2/value'],
                        metrics['metrics_2'][0])
       self.assertTrue(outputter.metrics['metrics_2/update_op'].name.startswith(
           'metric_op_wrapper'))
       self.assertIsInstance(
-          outputter.metrics['metrics_2/update_op'], ops.Tensor)
+          outputter.metrics['metrics_2/update_op'], tensor.Tensor)
 
 
 if __name__ == '__main__':

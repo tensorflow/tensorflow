@@ -41,7 +41,7 @@ FlatTensorFunction::~FlatTensorFunction() {
   Status status = ctx_->RemoveFunction(name_);
   if (!status.ok()) {
     LOG(ERROR) << "Failed to remove functiondef " << name_ << ". "
-               << status.error_message();
+               << status.message();
   }
 }
 

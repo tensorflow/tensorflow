@@ -16,7 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/xla_tensor.h"
 
 #include "tensorflow/compiler/tf2xla/shape_util.h"
-#include "tensorflow/compiler/xla/shape_util.h"
+#include "xla/shape_util.h"
 
 namespace tensorflow {
 
@@ -66,7 +66,7 @@ Status XlaTensor::AllocateShapedBuffer(DataType dtype,
   VLOG(4) << shaped_buffer.ToString();
 
   set_shaped_buffer(std::move(shaped_buffer));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void XlaTensor::WaitForDefinitionEventOnStream(se::Stream* stream) {
@@ -83,7 +83,7 @@ void XlaTensor::WaitForDefinitionEventOnStream(se::Stream* stream) {
     return;
   }
 
-  stream->ThenWaitFor(definition_event_.get());
+  stream->WaitFor(definition_event_.get()).IgnoreError();
   streams_defined_on_.push_back(stream);
 }
 

@@ -1,0 +1,357 @@
+// Protobuf messages for configuring StableHLO Quantizer.
+syntax = "proto3";
+
+package stablehlo.quantization;
+
+option cc_enable_arenas = true;
+
+// Represents a single TFRecord file. See
+// https://www.tensorflow.org/tutorials/load_data/tfrecord for details on the
+// TFRecord format.
+// Next ID: 2
+message TfRecordFile {
+  string path = 1;
+}
+
+// Configures a single representative dataset used to calibrate a single
+// function.
+// Next ID: 3
+message RepresentativeDatasetConfig {
+  oneof file {
+    // Represents representative dataset saved as a .tfrecord file format.
+    TfRecordFile tf_record = 1;
+  }
+
+  // [TF SavedModel] Identifies a SignatureDef which represents a single
+  // logical function in a graph.
+  optional string signature_key = 2;
+}
+
+// Preset config for static-range post-training quantization (PTQ).
+//
+// Minimal user input about representative datasets is required. Representative
+// datasets are required for static-range PTQ to retrieve quantization
+// statistics via calibration.
+//
+// This preset is equivalent to the following `QuantizationSpecs`:
+//
+// ```
+// specs {matcher {function_name {regex: ".*"}} method {static_range_ptq {}}}
+// specs {
+//   matcher {function_name {regex: "composite_conv.*"}}
+//   method {static_range_ptq {
+//     input_quantized_types {
+//       key: 1
+//       value {dimension_specs {dimension: 3}}}
+//   }}
+// }
+// ```
+//
+// This preset:
+//   * Applies per-channel quantization for weights (input index 1) of
+//     convolution quantizable unit family. The quantization dimension is 3, the
+//     channel dimension, which assumes the weight tensor is in NHWC format.
+//   * Applies static-range PTQ for all other ops.
+//
+// Next ID: 4
+message StaticRangePtqPreset {
+  // Configures representative dataset. Each item corresponds to a
+  // representative dataset used to calibrate a function.
+  // If `QuantizationConfig.calibration_options.representative_datasets` is also
+  // provided then this field will be ignored.
+  repeated RepresentativeDatasetConfig representative_datasets = 1;
+
+  // NOTE: This field will be deprecated.
+  // Granularity should be controlled using `Method`, deprecating this field
+  // once available.
+  //
+  // If set to true, enable channel-wise quantization for:
+  //   * Convolution ops: When the attached `Method` also specifies per-channel
+  //                      quantization.
+  //   * Non-convolution ops: All
+  //
+  // Default value: true
+  bool enable_per_channel_quantized_weight = 2 [deprecated = true];
+
+  // Whether to quantize all quantizable ops or only compute-heavy ops.
+  bool enable_full_int_quantization = 3;
+}
+
+// Applies int8 per-tensor weight-only post-training quantization for all
+// dot_general op.
+message WeightOnlyPtqPreset {}
+
+// Metadata specific to the input TensorFlow SavedModel, which may be required
+// to identify the specific MetaGraphDef to quantize, for example.
+// Next ID: 2
+message TfSavedModelConfig {
+  // Set of tags that uniquely identify the `MetaGraphDef` existing in the
+  // input SavedModel.
+  repeated string tags = 1;
+}
+
+// Configures the graph transformation pipeline for quantization.
+message PipelineConfig {
+  // When set to True, unpacks ops with uniform quantized types into operations
+  // without uniform quantized types (mostly i8 or i32). Useful when the target
+  // hardware performs better with integer ops.
+  // Default value: true
+  optional bool unpack_quantized_types = 1;
+
+  // When set to True, requantize op in the quantized fusion will merge with the
+  // subsequent dequantize op if present.
+  // Default value: false
+  // TODO: b/321729008 - re-consider default value after testing on prod model.
+  bool merge_fusion_with_dequantize = 2;
+}
+
+// Represents a single quantizable unit, a (nearly) minimum unit of work when
+// applying quantization. It may correspond to a single or multiple ops.
+// Next ID: 2
+message QuantizableUnit {
+  // Name of the `FuncOp` symbol corresponding to the "lifted function",
+  // representing a single quantizable unit. This value is guaranteed to be
+  // unique across a single `ModuleOp`.
+  string name = 1;
+}
+
+// Represents a quantization result of a single `QuantizableUnit`. It is
+// essentially a `(QuantizableUnit, Method)` pair, where the `Method`
+// corresponds to the quantization method eventually applied to the
+// `QuantizableUnit`.
+// Next ID: 3
+message QuantizationResult {
+  QuantizableUnit quantizable_unit = 1;
+  Method method = 2;
+}
+
+// A series of `QuantizationResult`s. See `QuantizationResult` for details.
+// Next ID: 2
+message QuantizationResults {
+  repeated QuantizationResult results = 1;
+}
+
+message QuantizedDimension {
+  int32 dimension = 1;  // Should be less than the rank of the quantized tensor.
+}
+
+// Corresponds to StableHLO's `QuantizedTensorElementType`. Type parameters such
+// as `QuantizationParameters` is omitted because they are determined during
+// quantization.
+// See https://github.com/openxla/stablehlo/blob/main/docs/spec.md#types for
+// details.
+//
+// Currently only supports specifying quantization granularity (e.g. for
+// per-channel quantization).
+// TODO: b/331144430 - Support specifying storage types.
+message QuantizedType {
+  // Specifies the granularity of quantization parameters for each dimension of
+  // a quantized tensor. If specified, per-channel quantization is applied. If
+  // not specified, per-tensor quantization is applied.
+  // TODO: Make it a `repeated` field to be able to express multi-channel /
+  // sub-channel quantization.
+  QuantizedDimension dimension_specs = 1;
+}
+
+// A quantization method representing "do not quantize". Mostly used for
+// denylisting quantizable units from quantization.
+message NoQuantization {}
+
+// Configurations for static-range post-training quantization method on a
+// quantizable unit.
+message StaticRangePtq {
+  // Operand index -> QuantizedType mapping. Operands that are not specified
+  // here will be quantized with best effort.
+  map<int32, QuantizedType> input_quantized_types = 1;
+}
+
+message WeightOnlyPtq {
+  // Operand index -> QuantizedType mapping. Operands that are not specified
+  // here will be quantized with best effort.
+  map<int32, QuantizedType> input_quantized_types = 1;
+}
+
+// Represents a matching method that matches quantizable units by lifted
+// functions' names.
+message FunctionNameMatcherSpec {
+  // Regular expression to match lifted functions' names. Underlying regex
+  // engine uses re2, which accepts a subset of PCRE. See
+  // https://github.com/google/re2/wiki/Syntax for details.
+  string regex = 1;
+}
+
+// Matcher specification for identifying quantizable units.
+message MatcherSpec {
+  // Matches lifted functions by their names.
+  FunctionNameMatcherSpec function_name = 1;
+}
+
+// Specifies how to quantize matched quantizable units.
+message Method {
+  oneof method {
+    NoQuantization no_quantization = 1;
+    StaticRangePtq static_range_ptq = 2;
+    WeightOnlyPtq weight_only_ptq = 3;
+  }
+}
+
+// A QuantizationSpec is essentially a (matcher spec, quantization method) pair,
+// where the matcher spec is used to identify quantizable units and the
+// quantization method specifies what type of quantization to apply on the
+// matched quantizable units.
+// Next ID: 3
+message QuantizationSpec {
+  // Configures matchers for identifying quantizable units. Matched quantizable
+  // units will be quantized according to `method`.
+  MatcherSpec matcher = 1;
+
+  // Specifies how to quantize the matched quantizable units.
+  Method method = 2;
+}
+
+// Quantization specifications. A simple wrapper around a sequence of
+// `QuantizationSpec`s so that specs can be easily passed around or represented
+// as a textproto.
+// Next ID: 2
+message QuantizationSpecs {
+  // List of `QuantizationSpec`s. Later spec in the sequence takes precedence.
+  //
+  // NOTE: Tie-breaking mechanism is not yet supported. Providing multiple
+  // `QuantizationSpec` with conflicting quantizable units may result in
+  // undefined behavior.
+  // TODO: b/307620778 - Support tie-breaking for conflicting specs.
+  repeated QuantizationSpec specs = 1;
+}
+
+// Configuration for quantization debugger.
+// The debugging model assumes it should be run on CPU based server, since the
+// model contains TF::DumpTensorOp.
+// NEXT ID: 4
+message DebuggerConfig {
+  // Type of quantization debugger. Depending on the type, inputs and outputs
+  // are wired differently.
+  // NEXT ID: 4
+  enum DebuggerType {
+    DEBUGGER_TYPE_UNSPECIFIED = 0;
+    // DEBUGGER_TYPE_WHOLE_MODEL creates two tf.Savedmodel - unquantized and
+    // quantized model with DumpTensor added to outputs of quantizable layers.
+    // The DumpTensor dumps entire value of its input to a specified file. When
+    // DEBUGGER_TYPE_WHOLE_MODEL is used unquantized_dump_model_path has to be
+    // specified.
+    DEBUGGER_TYPE_WHOLE_MODEL = 1;
+    // DEBUGGER_TYPE_INT_PER_LAYER creates a debugging model with both quantized
+    // and unquantized layers. The unquantized layer's input come from the
+    // previous quantized layer (Please note that this part is different part
+    // from DEBUGGER_TYPE_FLOAT_PER_LAYER). Each layer in the debugging model
+    // has a DumpTensor, and it is used to save the entire value of outputs from
+    // both the quantized and unquantized layer.
+    DEBUGGER_TYPE_INT_PER_LAYER = 2;
+    // DEBUGGER_TYPE_FLOAT_PER_LAYER creates a debugging model with both
+    // quantized and unquantized layers. The unquantized layer's input come from
+    // the previous unquantized layer (Please note that this part is different
+    // part from DEBUGGER_TYPE_INT_PER_LAYER). Each layer in the debugging model
+    // has a DumpTensor, and it is used to save the entire value of outputs from
+    // both the quantized and unquantized layer.
+    DEBUGGER_TYPE_FLOAT_PER_LAYER = 3;
+  }
+
+  DebuggerType debugger_type = 1;
+
+  // Path to save unquantized model with dump tensor ops attached.
+  // Used when debugger_type is WHOLE_MODEL.
+  string unquantized_dump_model_path = 2;
+
+  // Path to save debugger related logs. Defaults to '/tmp/dumps'.
+  string log_dir_path = 3;
+}
+
+// Defines various calibration options.
+// Next ID: 4
+message CalibrationOptions {
+  // Configurations for calibration methods.
+  // Next ID: 7
+  enum CalibrationMethod {
+    CALIBRATION_METHOD_UNSPECIFIED = 0;
+    // Use the min, max values of all sample datasets.
+    CALIBRATION_METHOD_MIN_MAX = 1;
+    // Use the average of min, max values in each sample dataset.
+    CALIBRATION_METHOD_AVERAGE_MIN_MAX = 2;
+    // Use the min/max percentile value of histogram.
+    CALIBRATION_METHOD_HISTOGRAM_PERCENTILE = 3;
+    // Use the histogram mid values that minimize MSE error.
+    // This is very slow algorithm because it computes all errors for all
+    // histogram mid value pairs. Therefore the value of num_bins is recommended
+    // to be 256 or less.
+    CALIBRATION_METHOD_HISTOGRAM_MSE_BRUTEFORCE = 4;
+    // Use the histogram mid values that minimize MSE error.
+    // This is an algorithm that finds the bin with the max frequency in the
+    // histogram and expands the range.
+    CALIBRATION_METHOD_HISTOGRAM_MSE_MAX_FREQUENCY = 5;
+    // Use the histogram mid values that minimize MSE error. This is an
+    // algorithm that starts with the center in thehistogram and expands the
+    // range.
+    CALIBRATION_METHOD_HISTOGRAM_MSE_SYMMETRIC = 6;
+  }
+
+  // Parameters required for calibration.
+  // Next ID: 4
+  message CalibrationParameters {
+    // The number of bins when histogram is initialized. It can be increased
+    // because histogram is dynamically expanded by sample inputs.
+    // initial_num_bins is 256 by default.
+    int32 initial_num_bins = 1;
+    // min_percentile is only used in HISTOGRAM_PERCENTILE.
+    // min_percentile is 0.001 by default.
+    float min_percentile = 2;
+    // max_percentile is only used in HISTOGRAM_PERCENTILE.
+    // max_percentile is 99.999 by default.
+    float max_percentile = 3;
+  }
+
+  // Determines how to calibrate.
+  // Default value: CALIBRATION_METHOD_MIN_MAX
+  CalibrationMethod calibration_method = 1;
+
+  // Defines the parameters required for calibration. Parameters such as the
+  // number of bins in the histogram and percentile belong to it.
+  // MIN_MAX and AVERAGE_MIN_MAX don't require this parameter and methods
+  // starting with HISTOGRAM require this parameter.
+  CalibrationParameters calibration_parameters = 2;
+
+  // Configures representative dataset. Each item corresponds to a
+  // representative dataset used to calibrate a function.
+  repeated RepresentativeDatasetConfig representative_datasets = 3;
+}
+
+// Quantization configuration for StableHLO Quantizer. This is the primary
+// message containing all configurable options.
+// Next ID: 8
+message QuantizationConfig {
+  // Config presets provide predefined popular or common quantization specs.
+  // Lightweight users may choose one of the presets for quick experiments. Each
+  // preset is completely represented by other fields in `QuantizationConfig`.
+  //
+  // When extra entries in `QuantizationSpecs` are provided along with a preset,
+  // then those entries will take precedence.
+  oneof preset {
+    // Performs best-effort static-range post-training quantization (PTQ).
+    StaticRangePtqPreset static_range_ptq_preset = 1;
+    WeightOnlyPtqPreset weight_only_ptq_preset = 7;
+  }
+
+  // TF SavedModel specific information for the input model.
+  TfSavedModelConfig tf_saved_model = 2;
+
+  // Configures the graph transformation pipeline for quantization.
+  PipelineConfig pipeline_config = 3;
+
+  QuantizationSpecs specs = 4;
+
+  // Configures the quantization debugger.
+  DebuggerConfig debugger_config = 5;
+
+  // Defines calibration options for quantization. This option is only used for
+  // activation of static range quantization (SRQ). Quantization calibration
+  // method is set to MIN_MAX by default.
+  CalibrationOptions calibration_options = 6;
+}

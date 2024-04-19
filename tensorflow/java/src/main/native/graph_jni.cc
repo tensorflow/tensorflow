@@ -163,7 +163,7 @@ JNIEXPORT jlongArray JNICALL Java_org_tensorflow_Graph_addGradients(
                      "expected %d, got %d dx handles", ny,
                      env->GetArrayLength(dx_handles));
     }
-    dx.reset(new TF_Output[ny]);
+    dx = std::make_unique<TF_Output[]>(ny);
     resolveOutputs(env, "dx", dx_handles, dx_indices, dx.get(), ny);
   }
   if (env->ExceptionCheck()) return nullptr;

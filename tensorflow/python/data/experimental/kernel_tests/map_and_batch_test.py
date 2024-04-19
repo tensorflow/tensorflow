@@ -33,7 +33,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import script_ops
@@ -381,7 +381,7 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
     def map_fn(x):
       previous_control_flow_v2_value = control_flow_util.ENABLE_CONTROL_FLOW_V2
       control_flow_util.ENABLE_CONTROL_FLOW_V2 = True
-      return_value = control_flow_ops.cond(x < 50, lambda: x + 1, lambda: x * x)
+      return_value = cond.cond(x < 50, lambda: x + 1, lambda: x * x)
       control_flow_util.ENABLE_CONTROL_FLOW_V2 = previous_control_flow_v2_value
       return return_value
 

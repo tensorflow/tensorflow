@@ -67,7 +67,7 @@ class MapAndBatchDatasetParams : public DatasetParams {
     input_names->emplace_back(MapAndBatchDatasetOp::kNumParallelCalls);
     input_names->emplace_back(MapAndBatchDatasetOp::kDropRemainder);
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status GetAttributes(AttributeVector* attr_vector) const override {
@@ -77,7 +77,7 @@ class MapAndBatchDatasetParams : public DatasetParams {
                     {"output_types", output_dtypes_},
                     {"preserve_cardinality", preserve_cardinality_},
                     {"metadata", ""}};
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   std::vector<FunctionDef> func_lib() const override { return func_lib_; }
@@ -410,13 +410,13 @@ ITERATOR_SAVE_AND_RESTORE_TEST_P(MapAndBatchDatasetOpTest,
 TEST_F(MapAndBatchDatasetOpTest, InvalidBatchSize) {
   auto dataset_params = InvalidBatchSizeMapAndBatchDatasetParams();
   EXPECT_EQ(Initialize(dataset_params).code(),
-            tensorflow::error::INVALID_ARGUMENT);
+            absl::StatusCode::kInvalidArgument);
 }
 
 TEST_F(MapAndBatchDatasetOpTest, InvalidNumParallel) {
   auto dataset_params = InvalidNumParallelCallsMapAndBatchDatasetParams();
   EXPECT_EQ(Initialize(dataset_params).code(),
-            tensorflow::error::INVALID_ARGUMENT);
+            absl::StatusCode::kInvalidArgument);
 }
 
 }  // namespace

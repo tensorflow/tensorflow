@@ -34,7 +34,7 @@ namespace {
 
 class StructureVerifierTest : public ::testing::Test {
  protected:
-  StructureVerifierTest() { verifier_.reset(new StructureVerifier()); }
+  StructureVerifierTest() { verifier_ = std::make_unique<StructureVerifier>(); }
   void SetGraph(const string& gdef_ascii) {
     CHECK(protobuf::TextFormat::ParseFromString(gdef_ascii, &graph_));
   }
@@ -46,7 +46,7 @@ Status Scalars(shape_inference::InferenceContext* c) {
   for (int i = 0; i < c->num_outputs(); ++i) {
     c->set_output(i, c->Scalar());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 REGISTER_OP("TestParams").Output("o: float").SetShapeFn(Scalars);
@@ -86,8 +86,7 @@ TEST_F(StructureVerifierTest, OpNotRegistered) {
       "node { name: 't2' op: 'TestMul' input: [ 'input:1', 't1' ] }");
   Status status = verifier_->Verify(graph_);
   EXPECT_TRUE(errors::IsNotFound(status));
-  EXPECT_TRUE(
-      absl::StrContains(status.error_message(), "Op type not registered"));
+  EXPECT_TRUE(absl::StrContains(status.message(), "Op type not registered"));
 }
 
 TEST_F(StructureVerifierTest, DuplicateNodeNames) {
@@ -96,8 +95,7 @@ TEST_F(StructureVerifierTest, DuplicateNodeNames) {
       "node { name: 'A' op: 'TestInput' }");
   Status status = verifier_->Verify(graph_);
   EXPECT_TRUE(errors::IsAlreadyExists(status));
-  EXPECT_TRUE(
-      absl::StrContains(status.error_message(), "Node already exists:"));
+  EXPECT_TRUE(absl::StrContains(status.message(), "Node already exists:"));
 }
 
 TEST_F(StructureVerifierTest, GraphWithInvalidCycle) {
@@ -107,9 +105,8 @@ TEST_F(StructureVerifierTest, GraphWithInvalidCycle) {
       "node { name: 't2' op: 'TestMul' input: [ 'input:1', 't1' ] }");
   Status status = verifier_->Verify(graph_);
   EXPECT_TRUE(errors::IsInvalidArgument(status));
-  EXPECT_TRUE(
-      absl::StrContains(status.error_message(),
-                        "The graph couldn't be sorted in topological order"));
+  EXPECT_TRUE(absl::StrContains(
+      status.message(), "The graph couldn't be sorted in topological order"));
 }
 
 }  // namespace

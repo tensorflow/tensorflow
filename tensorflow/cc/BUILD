@@ -2,7 +2,6 @@
 # TensorFlow is a computational framework, primarily for use in machine
 # learning applications.
 
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "cc_library_with_android_deps",
@@ -11,6 +10,7 @@ load(
     "transitive_hdrs",
 )
 load("//tensorflow:tensorflow.default.bzl", "filegroup", "tf_gen_op_wrappers_cc")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -189,6 +189,8 @@ cc_library_with_android_deps(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:ops",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -265,8 +267,8 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
-        "//third_party/eigen3",
         "@com_google_absl//absl/synchronization",
+        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -841,10 +843,10 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:op_gen_lib",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/tsl/platform:status",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/platform:status",
     ],
 )
 

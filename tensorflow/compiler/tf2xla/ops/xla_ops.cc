@@ -20,7 +20,7 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
@@ -42,7 +42,7 @@ Status UnchangedRank(shape_inference::InferenceContext* c) {
   } else {
     c->set_output(0, c->input(0));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 REGISTER_OP("XlaBroadcastHelper")
@@ -294,7 +294,7 @@ static Status XlaDotShapeFunction(shape_inference::InferenceContext* c) {
   }
 
   c->set_output(0, c->MakeShape(output_dims));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 REGISTER_OP("XlaDot")
@@ -398,7 +398,7 @@ REGISTER_OP("XlaDynamicSlice")
         return UnchangedRank(c);
       }
       c->set_output(0, size_indices_value);
-      return OkStatus();
+      return absl::OkStatus();
     })
     .Doc(R"doc(
 Wraps the XLA DynamicSlice operator, documented at
@@ -556,7 +556,7 @@ REGISTER_OP("XlaPad")
       }
 
       c->set_output(0, c->MakeShape(output_dims));
-      return OkStatus();
+      return absl::OkStatus();
     })
     .Doc(R"doc(
 Wraps the XLA Pad operator, documented at
@@ -587,7 +587,7 @@ REGISTER_OP("XlaRecv")
       shape_inference::ShapeHandle s;
       TF_RETURN_IF_ERROR(c->MakeShapeFromTensorShape(shape_attr, &s));
       c->set_output(0, s);
-      return OkStatus();
+      return absl::OkStatus();
     })
     .Doc(R"doc(
 Receives the named tensor from another XLA computation. Wraps the XLA Recv
@@ -630,7 +630,7 @@ REGISTER_OP("XlaReduce")
       } else {
         c->set_output(0, c->input(0));
       }
-      return OkStatus();
+      return absl::OkStatus();
     })
     .Doc(R"doc(
 Wraps the XLA Reduce operator, documented at
@@ -684,7 +684,7 @@ REGISTER_OP("XlaVariadicReduce")
           c->set_output(i, c->input(i));
         }
       }
-      return OkStatus();
+      return absl::OkStatus();
     })
     .Doc(R"doc(
 Wraps the variadic XLA Reduce operator.
@@ -768,7 +768,7 @@ REGISTER_OP("XlaVariadicReduceV2")
       for (int i = 0; i < nr_inputs; ++i) {
         c->set_output(i, output_shape);
       }
-      return OkStatus();
+      return absl::OkStatus();
     })
     .Doc(R"doc(
 Wraps the variadic XLA Reduce operator.
@@ -816,7 +816,7 @@ REGISTER_OP("XlaRngBitGenerator")
     .Input("shape: Tshape")
     .Output("output_key: uint64")
     .Output("output: dtype")
-    .Attr("dtype: {int32, int64, uint32, uint64} = DT_UINT64")
+    .Attr("dtype: {uint8, int8, int32, int64, uint32, uint64} = DT_UINT64")
     .Attr("Tshape: {int32, int64} = DT_INT32")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       shape_inference::ShapeHandle algorithm;
@@ -828,7 +828,7 @@ REGISTER_OP("XlaRngBitGenerator")
       shape_inference::ShapeHandle output;
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(2, &output));
       c->set_output(1, output);
-      return OkStatus();
+      return absl::OkStatus();
     })
     .Doc(R"doc(
 Stateless PRNG bit generator.
@@ -912,7 +912,7 @@ REGISTER_OP("XlaKeyValueSort")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       c->set_output(0, c->input(0));
       c->set_output(1, c->input(1));
-      return OkStatus();
+      return absl::OkStatus();
     })
     .Doc(R"doc(
 Wraps the XLA Sort operator, documented at
@@ -938,7 +938,7 @@ REGISTER_OP("XlaVariadicSort")
       std::vector<shape_inference::ShapeHandle> input_shapes;
       TF_RETURN_IF_ERROR(c->input("inputs", &input_shapes));
       TF_RETURN_IF_ERROR(c->set_output("outputs", input_shapes));
-      return OkStatus();
+      return absl::OkStatus();
     })
     .Doc(R"doc(
 Wraps the XLA Sort operator, documented at
@@ -1066,7 +1066,7 @@ REGISTER_OP("XlaSpmdFullToShardShape")
         dims.push_back(c->MakeDim(dim));
       }
       c->set_output(0, c->MakeShape(dims));
-      return OkStatus();
+      return absl::OkStatus();
     })
     .Doc(R"doc(
 An op used by XLA SPMD partitioner to switch from automatic partitioning to
@@ -1092,7 +1092,7 @@ REGISTER_OP("XlaSpmdShardToFullShape")
       shape_inference::ShapeHandle s;
       TF_RETURN_IF_ERROR(c->MakeShapeFromTensorShape(shape_attr, &s));
       c->set_output(0, s);
-      return OkStatus();
+      return absl::OkStatus();
     })
     .Doc(R"doc(
 An op used by XLA SPMD partitioner to switch from manual partitioning to
@@ -1119,7 +1119,7 @@ REGISTER_OP("XlaReplicaId")
     .Output("id: int32")
     .SetShapeFn([](shape_inference::InferenceContext* context) {
       context->set_output(0, context->MakeShape({}));
-      return OkStatus();
+      return absl::OkStatus();
     })
     .Doc("Replica ID.");
 
@@ -1212,7 +1212,7 @@ Status OptimizationBarrierShape(shape_inference::InferenceContext* c) {
   for (int i = 0; i < c->num_inputs(); ++i) {
     c->set_output(i, c->input(i));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 REGISTER_OP("XlaOptimizationBarrier")
@@ -1258,7 +1258,7 @@ REGISTER_OP("XlaCustomCall")
       shape_inference::ShapeHandle s;
       TF_RETURN_IF_ERROR(c->MakeShapeFromTensorShape(shape_attr, &s));
       c->set_output(0, s);
-      return OkStatus();
+      return absl::OkStatus();
     })
     .Doc(R"doc(
 Wraps the XLA CustomCall operator
@@ -1293,7 +1293,7 @@ REGISTER_OP("XlaCustomCallV2")
         TF_RETURN_IF_ERROR(c->MakeShapeFromTensorShape(shapes[i], &shape));
         c->set_output(i, shape);
       }
-      return OkStatus();
+      return absl::OkStatus();
     })
     .Doc(R"doc(
 Emits an HLO `CustomCall` operation with multiple outputs.
@@ -1323,7 +1323,12 @@ REGISTER_OP("XlaCallModule")
     .Attr("Sout: list(shape) >= 0")
     .Attr("Tout: list(type) >= 0")
     .Attr("Tin: list(type) >= 0")
-    .Attr("dim_args_spec: list(string) >= 0")
+    .Attr("dim_args_spec: list(string) = []")
+    .Attr("platforms: list(string) = []")
+    .Attr("function_list: list(func) = []")
+    .Attr("has_token_input_output: bool = false")
+    .Attr("disabled_checks: list(string) = []")
+    .SetIsStateful()
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       std::vector<shape_inference::ShapeHandle> args_shapes;
       TF_RETURN_IF_ERROR(c->input("args", &args_shapes));
@@ -1341,45 +1346,63 @@ REGISTER_OP("XlaCallModule")
                 << "] : " << c->DebugString(s);
         c->set_output(i, s);
       }
-      return OkStatus();
+      return absl::OkStatus();
     })
     .Doc(R"doc(
-Temporary op for experimenting with jax2tf.
+Invokes a StableHLO module.
 
-DO NOT USE THIS OP. It has no backwards compatibility guarantees. It is also
-very likely to change. This op will be used only in jax2tf under an
-experimental flag.
-
-This is an experimental op to allow a smooth evolution of jax2tf towards
-emitting and serializing StableHLO directly from JAX.
-
-The serialized module must return a tuple if and only if the Sout is an empty
-list or a list with more than 1 elements. The length of Tout and Sout must
-match. This op always returns a tuple of results, even if the module returns
-a single result.
-
-The handling of dynamic shapes is work-in-progress. At the moment, the
-JAX lowering for dynamic shapes will prepend one dimension parameter to the
-serialized module for each dimension whose value must be passed in.
-The "args" correspond to the non-dimension arguments. During compilation
-we compute the values of the dimension arguments based on the static shapes of
-the "args". In order to do this, we encode for each dimension argument a
-specification of how to compute its value, as a string, in the form
-"<arg_idx>.<axis_idx>".
-E.g., the specification "2.1" denotes the value args[2].shape[1].
+This op is used with JAX native serialization in a TensorFlow context with
+stability guarantees.
 
 args: A list of `Tensor` with possibly different types to be passed as arguments
-  to the HLO module. These are all non-dimension arguments. The dimension
-  arguments are computed at JIT time.
-version: Changes when we change the semantics of the op, to support backwards
-  compatibility. Version 1 carries an MHLO text or bytecode `module`. From
-  version 2, the op carries a StableHLO text or bytecode `module`.
+  to the `module`. These are the actual arguments and do not include the
+  platform argument (see `platforms`) nor the dimension arguments (see
+  `dim_args_spec`).
+version: Tracks changes the semantics of the op, to support backwards
+  compatibility. Minimum supported version is 2. From
+  version 2, the op carries a StableHLO text or bytecode `module`. From
+  version 3, the op also supports the `platforms` attribute. From version 4,
+  the op carries a StableHLO module with compatibility guarantees. From version
+  5, XLACallModule can include `stablehlo.custom_call` op to execute tf
+  functions. From version 6 the op supports the `disabled_checks` attribute.
+  See more versioning details at https://github.com/search?q=repo%3Atensorflow%2Ftensorflow+path%3Axla_call_module+%22int+kVersionMaximumSupported%22&type=code.
 module: A serialized computation, a text or bytecode representation of
-  an mlir.Module.
+  an mlir.Module. The return type must be a tuple if and only if the `Sout` is
+  a list with 0 or more than 1 elements. The length of `Tout` and
+  `Sout` must match. This op always returns a tuple of results, even if the
+  module returns a single result.
 Tout: List of output tensor data types.
 Sout: List of output tensor shapes.
-dim_args_spec: the specification for the dimension arguments, one for each
-  dimension argument. In absence of dynamic shapes this list is empty.
+platforms: the list of platforms supported by `module`. The list can contain
+  the strings "CPU", "CUDA", "ROCM", or "TPU". It is an error to compile
+  this op for a platform that does not appear in the list. This check can be
+  disabled using `disabled_checks`. If the list contains more than
+  one platform, then the `module` takes one additional 0-dimensional
+  integer-tensor parameter in the first position, encoding the index in
+  `platforms` of the current compilation platform. This parameter has value 0
+  if the plaform is not among `platforms` and the check has been disabled.
+  The list can be empty in old versions (earlier than 6) to denote that no
+  platform checking must be performed at loading time.
+dim_args_spec: this attribute is not supported anymore.
+function_list: This list contains the TensorFlow FunctionDefs that are used by
+  the XLACallModule. If the XLACallModule contains `stablehlo.custom_call`
+  operations, they can call TensorFlow graph functions outside of the
+  XLACallModule. This `function_list` attribute registers the dependency of the
+  XLACallModule on those functions. This attribute was added in version 5.
+has_token_input_output: If true, the embedded StableHLO module's main function
+  must take a `!stablehlo.token` as its first argument and returns a token as
+  its first result. This can be used in conjunction with the TF2XLA's side
+  effect mechanism in order to model side effects. This is used only in versions
+  prior to version 9. After that, the number and position of tokens among
+  the arguments and results are obtained from the main function type. This
+  allows us to support more than one token and not necessarily at the start.
+disabled_checks: A list of strings describing the safety checks that were
+  disabled at serialization time. This attribute was added in version 6.
+  For more details see
+  https://github.com/search?q=repo%3Agoogle%2Fjax+path%3Ajax_export+%22class+DisabledSafetyCheck%22&type=code.
+  This list, supplemented with a comma-separate list of directives specified
+  using the flag --tf_xla_call_module_disabled_checks,
+  is used at module loading time to skip the corresponding checks.
 )doc");
 
 }  // namespace

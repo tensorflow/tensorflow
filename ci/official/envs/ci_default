@@ -1,0 +1,69 @@
+# Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+# Note: this file gets sourced in utilities/setup.sh, which has "set -u"
+# (error on undefined variables). This ensures that (a) every TFCI variable
+# has an explicit default value, and (b) no script can accidentally use a
+# variable that doesn't exist. Please keep this list in alphabetical order.
+#
+# Find usage in scripts with e.g.:
+#   cd ci/official
+#   ls *.sh utilities/*.sh | xargs grep -H --color=always TFCI_ARG_HERE
+# You may also get an overview, e.g.:
+#   cd ci/official
+#   grep -o '^TFCI\w*' envs/ci_default | xargs -n 1 -I{} bash -c "echo; echo {}; grep -R -H --exclude-dir=envs --color=always '{}'"
+TFCI_ARTIFACT_FINAL_GCS_ENABLE=
+TFCI_ARTIFACT_FINAL_GCS_SA_PATH=
+TFCI_ARTIFACT_FINAL_GCS_URI=
+TFCI_ARTIFACT_FINAL_PYPI_ARGS=
+TFCI_ARTIFACT_FINAL_PYPI_ENABLE=
+TFCI_ARTIFACT_LATEST_GCS_URI=
+TFCI_ARTIFACT_STAGING_GCS_ENABLE=
+TFCI_ARTIFACT_STAGING_GCS_URI=
+TFCI_BAZEL_BAZELRC_ARGS=
+TFCI_BAZEL_COMMON_ARGS=
+TFCI_BAZEL_TARGET_SELECTING_CONFIG_PREFIX=
+TFCI_BUILD_PIP_PACKAGE_ARGS=
+TFCI_DOCKER_ARGS=
+TFCI_DOCKER_ENABLE=
+TFCI_DOCKER_IMAGE=
+TFCI_DOCKER_PULL_ENABLE=
+TFCI_DOCKER_REBUILD_ARGS=
+TFCI_DOCKER_REBUILD_ENABLE=
+TFCI_DOCKER_REBUILD_UPLOAD_ENABLE=
+TFCI_GIT_DIR=
+TFCI_INDEX_HTML_ENABLE=
+TFCI_LIB_SUFFIX=
+TFCI_MACOS_BAZEL_TEST_DIR_ENABLE=
+TFCI_MACOS_BAZEL_TEST_DIR_PATH=
+TFCI_MACOS_CROSS_COMPILE_ENABLE=
+TFCI_MACOS_CROSS_COMPILE_SDK_DEST=
+TFCI_MACOS_CROSS_COMPILE_SDK_SOURCE=
+TFCI_MACOS_INSTALL_BAZELISK_ENABLE=
+TFCI_MACOS_INSTALL_BAZELISK_URL=
+TFCI_MACOS_PYENV_INSTALL_ENABLE=
+TFCI_MACOS_TWINE_INSTALL_ENABLE=
+TFCI_MACOS_UPGRADE_PYENV_ENABLE=
+TFCI_NIGHTLY_UPDATE_VERSION_ENABLE=
+TFCI_NVIDIA_SMI_ENABLE=
+TFCI_OUTPUT_DIR=
+TFCI_PYCPP_SWAP_TO_BUILD_ENABLE=
+TFCI_PYTHON_VERIFY_PIP_INSTALL_ARGS=
+TFCI_PYTHON_VERSION=
+TFCI_WHL_AUDIT_ENABLE=
+TFCI_WHL_AUDIT_PLAT=
+TFCI_WHL_BAZEL_TEST_ENABLE=
+TFCI_WHL_IMPORT_TEST_ENABLE=1
+TFCI_WHL_SIZE_LIMIT=
+TFCI_WHL_SIZE_LIMIT_ENABLE=

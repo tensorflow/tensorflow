@@ -37,7 +37,9 @@ class BuiltinOpResolver;
 }  // namespace builtin
 }  // namespace ops
 
+namespace impl {
 class FlatBufferModel;
+}
 
 namespace interpreter_wrapper {
 class PythonErrorReporter;
@@ -109,12 +111,11 @@ class CalibrationWrapper {
   // CalibrationWrapper is not copyable or assignable. We avoid the use of
   // CalibrationWrapper() = delete here for SWIG compatibility.
   CalibrationWrapper(
-      std::unique_ptr<tflite::Interpreter> interpreter,
-      std::unique_ptr<tflite::ops::builtin::BuiltinOpResolver> resolver,
-      std::unique_ptr<tflite::interpreter_wrapper::PythonErrorReporter>
-          error_reporter,
-      std::unique_ptr<tflite::FlatBufferModel> model,
-      std::unique_ptr<tflite::optimize::calibration::CalibrationReader> reader,
+      std::unique_ptr<Interpreter> interpreter,
+      std::unique_ptr<ops::builtin::BuiltinOpResolver> resolver,
+      std::unique_ptr<interpreter_wrapper::PythonErrorReporter> error_reporter,
+      std::unique_ptr<impl::FlatBufferModel> model,
+      std::unique_ptr<optimize::calibration::CalibrationReader> reader,
       std::unique_ptr<std::string> model_str_);
 
   CalibrationWrapper(const CalibrationWrapper& rhs);
@@ -122,12 +123,11 @@ class CalibrationWrapper {
   PyObject* SetTensor(int index, PyObject* value);
   PyObject* SetTensor(int index, PyObject* value, std::string signature_key);
 
-  std::unique_ptr<tflite::Interpreter> interpreter_;
-  std::unique_ptr<tflite::interpreter_wrapper::PythonErrorReporter>
-      error_reporter_;
-  std::unique_ptr<tflite::ops::builtin::BuiltinOpResolver> resolver_;
-  std::unique_ptr<tflite::FlatBufferModel> model_;
-  std::unique_ptr<tflite::optimize::calibration::CalibrationReader> reader_;
+  std::unique_ptr<Interpreter> interpreter_;
+  std::unique_ptr<interpreter_wrapper::PythonErrorReporter> error_reporter_;
+  std::unique_ptr<ops::builtin::BuiltinOpResolver> resolver_;
+  std::unique_ptr<impl::FlatBufferModel> model_;
+  std::unique_ptr<optimize::calibration::CalibrationReader> reader_;
   std::unique_ptr<std::string> model_str_;
 };
 

@@ -14,11 +14,12 @@ Pod::Spec.new do |s|
                        DESC
 
   s.cocoapods_version = '>= ${TFL_MIN_COCOAPODS_VERSION}'
-  s.ios.deployment_target = '11.0'
+  s.ios.deployment_target = '12.0'
 
   s.module_name = 'TensorFlowLiteSelectTfOps'
   s.library = 'c++'
-  s.vendored_frameworks = 'Frameworks/TensorFlowLiteSelectTfOps.${TFL_VENDORED_BUNDLE_TYPE}'
+  s.vendored_frameworks = 'Frameworks/TensorFlowLiteSelectTfOps.xcframework'
+  s.resource_bundle = { 'TensorFlowLiteSelectTfOps' => 'Frameworks/TensorFlowLiteSelectTfOps.xcframework/PrivacyInfo.xcprivacy' }
   s.weak_frameworks = 'CoreML'
 
   # TODO(b/149803849): Remove this after adding support for simulators.

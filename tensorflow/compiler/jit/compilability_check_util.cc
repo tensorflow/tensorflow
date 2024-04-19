@@ -42,10 +42,10 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/resource_operation_table.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/service/graphcycles/graphcycles.h"
-#include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/compiler/xla/union_find.h"
-#include "tensorflow/compiler/xla/util.h"
+#include "xla/service/graphcycles/graphcycles.h"
+#include "xla/statusor.h"
+#include "xla/union_find.h"
+#include "xla/util.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
@@ -86,10 +86,10 @@ Status MakeCallNodeFromAttribute(const Node& node, const std::string& attr_name,
   TF_RETURN_IF_ERROR(GetNodeAttr(node.attrs(), attr_name, &name_attr));
   node_def->set_op(name_attr->name());
   *(node_def->mutable_attr()) = name_attr->attr();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-StatusOr<std::vector<NodeDef>> MakeCallNodesFromAttribute(
+absl::StatusOr<std::vector<NodeDef>> MakeCallNodesFromAttribute(
     const Node& node, absl::string_view attr_name,
     absl::string_view call_name) {
   std::vector<NameAttrList> attr_lists;
@@ -202,7 +202,7 @@ bool RecursiveCompilabilityChecker::HasXLAKernel(
 
   Status s = FindKernelDef(jit_device_type_, node.def(), nullptr, nullptr);
   if (!s.ok()) {
-    *uncompilable_reason = s.error_message();
+    *uncompilable_reason = s.message();
     return false;
   }
   return true;
@@ -235,7 +235,7 @@ bool RecursiveCompilabilityChecker::IsCompilableCase(
     NameAttrList* encapsulating_function,
     RecursiveCompilabilityChecker::UncompilableNodesMap* uncompilable_nodes)
     const {
-  StatusOr<std::vector<NodeDef>> calls =
+  absl::StatusOr<std::vector<NodeDef>> calls =
       MakeCallNodesFromAttribute(case_node, "branches", "branch");
   if (!calls.ok()) {
     VLOG(2) << "Rejecting node " << case_node.name() << ": "
@@ -660,7 +660,7 @@ Status GetBodyAndConstantsAndResources(FunctionLibraryRuntime* flr,
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 tensorflow::MemoryTypeVector GetInputMemoryTypes(

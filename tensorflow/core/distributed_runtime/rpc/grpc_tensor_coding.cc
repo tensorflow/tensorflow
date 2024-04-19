@@ -143,7 +143,8 @@ void EncodeTensorToByteBuffer(bool is_dead, const Tensor& val, bool require_ack,
     size_t exceeded_bytes = val.TotalBytes() - kProtoBufLimitBytes;
     LOG(FATAL) << "Cannot encode a Tensor that exceeds the 2GB protobuf limit. "
                   "Exceeded bytes: "
-               << exceeded_bytes;
+               << exceeded_bytes
+               << ", tensor shape: " << val.shape().AsProto().DebugString();
   }
 
   RecvTensorResponse response;

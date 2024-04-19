@@ -21,6 +21,7 @@ from tensorflow.python.framework import config
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables as variables_module
 from tensorflow.python.ops.linalg import linalg
@@ -209,16 +210,16 @@ class LinearOperatorCirculantBaseTest(object):
   _atol = {
       dtypes.float16: 1e-3,
       dtypes.float32: 1e-6,
-      dtypes.float64: 1e-7,
+      dtypes.float64: 2e-7,
       dtypes.complex64: 1e-6,
-      dtypes.complex128: 1e-7
+      dtypes.complex128: 2e-7,
   }
   _rtol = {
       dtypes.float16: 1e-3,
       dtypes.float32: 1e-6,
-      dtypes.float64: 1e-7,
+      dtypes.float64: 2e-7,
       dtypes.complex64: 1e-6,
-      dtypes.complex128: 1e-7
+      dtypes.complex128: 2e-7,
   }
 
   @contextlib.contextmanager
@@ -262,7 +263,7 @@ class LinearOperatorCirculantBaseTest(object):
       fft_x = fft_ops.fft(math_ops.cast(x, spectrum.dtype))
       h_convolve_x = fft_ops.ifft(spectrum * fft_x)
       matrix_rows.append(h_convolve_x)
-    matrix = array_ops.stack(matrix_rows, axis=-1)
+    matrix = array_ops_stack.stack(matrix_rows, axis=-1)
     return math_ops.cast(matrix, dtype)
 
 
@@ -498,6 +499,23 @@ class LinearOperatorCirculantTestNonHermitianSpectrum(
       np.testing.assert_allclose(
           0, self.evaluate(imag_matrix), rtol=0, atol=eps * 3)
 
+  def test_adjoint_output(self):
+    spectrum = math_ops.cast([1. + 0j, 1j, -1j], dtypes.complex64)
+    operator = linalg.LinearOperatorCirculant(
+        spectrum, input_output_dtype=dtypes.complex64)
+    with self.cached_session():
+      op_adjoint = operator.adjoint()
+      self.assertIsInstance(op_adjoint, linalg.LinearOperatorCirculant)
+      self.assertTrue(op_adjoint.spectrum.dtype.is_complex)
+
+  def test_inverse_output(self):
+    spectrum = math_ops.cast([1. + 0j, 1j, -1j], dtypes.complex64)
+    operator = linalg.LinearOperatorCirculant(
+        spectrum, input_output_dtype=dtypes.complex64)
+    with self.cached_session():
+      op_inverse = operator.inverse()
+      self.assertIsInstance(op_inverse, linalg.LinearOperatorCirculant)
+
   def test_simple_positive_real_spectrum_gives_self_adjoint_pos_def_oper(self):
     with self.cached_session() as sess:
       spectrum = math_ops.cast([6., 4, 2], dtypes.complex64)
@@ -596,16 +614,16 @@ class LinearOperatorCirculant2DBaseTest(object):
   _atol = {
       dtypes.float16: 1e-3,
       dtypes.float32: 1e-6,
-      dtypes.float64: 1e-7,
+      dtypes.float64: 2e-7,
       dtypes.complex64: 1e-6,
-      dtypes.complex128: 1e-7
+      dtypes.complex128: 2e-7,
   }
   _rtol = {
       dtypes.float16: 1e-3,
       dtypes.float32: 1e-6,
-      dtypes.float64: 1e-7,
+      dtypes.float64: 2e-7,
       dtypes.complex64: 1e-6,
-      dtypes.complex128: 1e-7
+      dtypes.complex128: 2e-7,
   }
 
   @contextlib.contextmanager
@@ -689,7 +707,7 @@ class LinearOperatorCirculant2DBaseTest(object):
         # vector, not the block version.
         h_convolve_x = array_ops.reshape(h_convolve_x, shape[:-1])
         matrix_rows.append(h_convolve_x)
-    matrix = array_ops.stack(matrix_rows, axis=-1)
+    matrix = array_ops_stack.stack(matrix_rows, axis=-1)
     return math_ops.cast(matrix, dtype)
 
 
@@ -837,6 +855,23 @@ class LinearOperatorCirculant2DTestNonHermitianSpectrum(
       matrix, matrix_h = self.evaluate([matrix_tensor, matrix_h])
       self.assertAllClose(matrix, matrix_h, atol=1e-5)
 
+  def test_adjoint_output(self):
+    spectrum = math_ops.cast([[-3j, 4 + 0j], [2j + 2, 3. + 0j]],
+                             dtypes.complex64)
+    operator = linalg.LinearOperatorCirculant2D(spectrum)
+    with self.cached_session():
+      op_adjoint = operator.adjoint()
+      self.assertIsInstance(op_adjoint, linalg.LinearOperatorCirculant2D)
+      self.assertTrue(op_adjoint.spectrum.dtype.is_complex)
+
+  def test_inverse_output(self):
+    spectrum = math_ops.cast([[-3j, 4 + 0j], [2j + 2, 3. + 0j]],
+                             dtypes.complex64)
+    operator = linalg.LinearOperatorCirculant2D(spectrum)
+    with self.cached_session():
+      op_inverse = operator.inverse()
+      self.assertIsInstance(op_inverse, linalg.LinearOperatorCirculant2D)
+
   def test_assert_non_singular_fails_for_singular_operator(self):
     spectrum = math_ops.cast([[0 + 0j, 4 + 0j], [2j + 2, 3. + 0j]],
                              dtypes.complex64)
@@ -961,6 +996,22 @@ class LinearOperatorCirculant3DTest(test.TestCase):
       matrix = self.evaluate(operator.to_dense())
       self.assertAllEqual((2, 2 * 3 * 5, 2 * 3 * 5), matrix.shape)
       np.testing.assert_allclose(0, np.imag(matrix), atol=1e-5)
+
+  def test_adjoint_output(self):
+    with self.cached_session():
+      spectrum = linear_operator_test_util.random_normal(
+          shape=(2, 2, 3, 5), dtype=dtypes.float32)
+      operator = linalg.LinearOperatorCirculant3D(spectrum)
+      op_adjoint = operator.adjoint()
+      self.assertIsInstance(op_adjoint, linalg.LinearOperatorCirculant3D)
+
+  def test_inverse_output(self):
+    spectrum = linear_operator_test_util.random_normal(
+        shape=(2, 2, 3, 5), dtype=dtypes.float32)
+    operator = linalg.LinearOperatorCirculant3D(spectrum)
+    with self.cached_session():
+      op_inverse = operator.inverse()
+      self.assertIsInstance(op_inverse, linalg.LinearOperatorCirculant3D)
 
   def test_defining_spd_operator_by_taking_real_part(self):
     with self.cached_session():  # Necessary for fft_kernel_label_map

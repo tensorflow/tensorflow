@@ -18,6 +18,8 @@ limitations under the License.
 
 #include <cstddef>
 #include <deque>
+#include <optional>
+#include <string>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/node_hash_map.h"
@@ -62,9 +64,8 @@ class TpuFingerprintLookup : public ResourceBase {
   bool RegisterIntermediateAndValuePair(uint64 intermediate, std::string value);
 
   // Look up fingerprint with key.
-  // Return absl::optional<::tensorflow::StringPiece>{} if
-  // not found.
-  absl::optional<::tensorflow::StringPiece> Lookup(uint64 key);
+  // Return std::nullopt if not found.
+  std::optional<::tensorflow::StringPiece> Lookup(uint64 key);
 
   size_t num_valid() {
     absl::MutexLock lock(&mu_);

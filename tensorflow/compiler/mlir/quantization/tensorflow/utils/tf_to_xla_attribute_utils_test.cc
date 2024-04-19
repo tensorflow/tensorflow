@@ -29,7 +29,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/utils.h"
+#include "tensorflow/compiler/mlir/quantization/common/attrs_and_constraints.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 
 namespace mlir::quant {

@@ -24,7 +24,7 @@ from typing import List, Tuple
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.python.client import session
-from tensorflow.python.framework import graph_util
+from tensorflow.python.framework import convert_to_constants
 from tensorflow.python.framework import ops as ops_lib
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import versions
@@ -228,9 +228,6 @@ def freeze_model(checkpoint_path: str,
     ValueError: If `meta_graph_def.signature_def[signature_def_key]` is
       missing or has empty outputs.
   """
-  if _pywrap_tfcompile_import_error:
-    raise _pywrap_tfcompile_import_error  # pylint: disable=raising-bad-type
-
   signature_def_map = meta_graph_def.signature_def
   if signature_def_key not in signature_def_map:
     raise ValueError(
@@ -281,7 +278,7 @@ def freeze_model(checkpoint_path: str,
     if restorer is not None:
       restorer.restore(sess, checkpoint_path)
     graph_def.CopyFrom(
-        graph_util.convert_variables_to_constants(
+        convert_to_constants.convert_variables_to_constants(
             sess,
             graph_def,
             output_node_names=[

@@ -193,7 +193,7 @@ struct ParsedTocoFlags {
   // WARNING: Experimental interface, subject to change
   Arg<bool> force_select_tf_ops = Arg<bool>(false);
   // WARNING: Experimental interface, subject to change
-  Arg<bool> unfold_batchmatmul = Arg<bool>(true);
+  Arg<bool> unfold_batchmatmul = Arg<bool>(false);
   // WARNING: Experimental interface, subject to change
   Arg<std::string> accumulation_type;
   // WARNING: Experimental interface, subject to change

@@ -1,0 +1,14 @@
+// RUN: hlo-opt %s --platform=gpu --stage=llvm-before-optimizations --xla_gpu_target_config_filename=%S/../../../tools/hlo_opt/gpu_specs/%{GPU}.txtpb | FileCheck %s
+
+HloModule TestModule, is_scheduled=true
+
+// CHECK-LABEL: entry:
+// CHECK:         %[[VAL_0:.*]] = load i128, ptr addrspace(1) @rng_state, align {{.*}}
+// CHECK:         %[[VAL_1:.*]] = add i128 %[[VAL_0]], 131072
+// CHECK:         store i128 %[[VAL_1]], ptr addrspace(1) @rng_state, align {{.*}}
+// CHECK:         %[[VAL_2:.*]] = getelementptr inbounds i64, ptr %[[VAL_3:.*]], i64 0
+// CHECK:         store i128 %[[VAL_0]], ptr %[[VAL_2]], align {{.*}}
+// CHECK:         ret void
+ENTRY Test {
+  ROOT %rng-get-and-update-state = u64[2]{0} rng-get-and-update-state(), delta=131072
+}

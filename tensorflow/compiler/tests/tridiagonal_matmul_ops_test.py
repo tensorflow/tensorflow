@@ -22,6 +22,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack  # pylint: disable=g-direct-tensorflow-import
 from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import stateless_random_ops as random
@@ -62,13 +63,13 @@ class TridiagonalMatMulOpsTest(xla_test.XLATestCase):
       diags_matrix_op = constant_op.constant(diags_matrix, dtype)
       rhs_op = constant_op.constant(rhs, dtype)
 
-      rhs_batch_op = array_ops.stack([rhs_op, 2 * rhs_op])
-      diags_compact_batch_op = array_ops.stack(
+      rhs_batch_op = array_ops_stack.stack([rhs_op, 2 * rhs_op])
+      diags_compact_batch_op = array_ops_stack.stack(
           [diags_compact_op, 2 * diags_compact_op])
-      diags_matrix_batch_op = array_ops.stack(
+      diags_matrix_batch_op = array_ops_stack.stack(
           [diags_matrix_op, 2 * diags_matrix_op])
       diags_sequence_batch_op = [
-          array_ops.stack([x, 2 * x]) for x in diags_sequence_op
+          array_ops_stack.stack([x, 2 * x]) for x in diags_sequence_op
       ]
 
       results = [

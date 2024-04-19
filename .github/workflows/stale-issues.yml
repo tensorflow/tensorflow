@@ -1,0 +1,83 @@
+# Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ============================================================================
+
+name: Close inactive issues
+on:
+  schedule:
+    - cron: "30 1 * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  close-issues:
+    # Don't do this in forks
+    if: github.repository == 'tensorflow/tensorflow'
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      pull-requests: write
+    steps:
+      - name: Awaiting response issues
+        uses: actions/stale@6f05e4244c9a0b2ed3401882b05d701dd0a7289b # v7.0.0
+        with:
+          #Comma separated list of labels that can be assigned to issues to exclude them from being marked as stale
+          exempt-issue-labels: 'override-stale'
+          #Comma separated list of labels that can be assigned to PRs to exclude them from being marked as stale
+          exempt-pr-labels: "override-stale"
+          #Limit the No. of API calls in one run default value is 30.
+          operations-per-run: 1000
+          days-before-issue-stale: 7
+          days-before-issue-close: 7
+          stale-issue-label: "stale"
+          # reason for closed the issue default value is not_planned
+          close-issue-reason: completed
+          # List of labels to remove when issues/PRs unstale. 
+          labels-to-remove-when-unstale: 'stat:awaiting response'
+          only-labels: "stat:awaiting response"
+          stale-issue-message: > 
+            This issue is stale because it has been open for 7 days with no activity.
+            It will be closed if no further activity occurs. Thank you.
+          close-issue-message: >
+            This issue was closed because it has been inactive for 7 days since being marked as stale.
+            Please reopen if you'd like to work on this further.
+          days-before-pr-stale: 14
+          days-before-pr-close: 14
+          stale-pr-message: "This PR is stale because it has been open for 14 days with no activity. It will be closed if no further activity occurs. Thank you."
+          close-pr-message: "This PR was closed because it has been inactive for 14 days since being marked as stale. Please reopen if you'd like to work on this further."
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Contribution issues
+        uses: actions/stale@6f05e4244c9a0b2ed3401882b05d701dd0a7289b # v7.0.0
+        with:
+          #Comma separated list of labels that can be assigned to issues to exclude them from being marked as stale
+          exempt-issue-labels: 'override-stale'
+          #Comma separated list of labels that can be assigned to PRs to exclude them from being marked as stale
+          exempt-pr-labels: "override-stale"
+          #Limit the No. of API calls in one run default value is 30.
+          operations-per-run: 1000
+          days-before-issue-stale: 180
+          days-before-issue-close: 365
+          stale-issue-label: "stale"
+          # reason for closed the issue default value is not_planned
+          close-issue-reason: completed
+          # List of labels to remove when issues/PRs unstale. 
+          labels-to-remove-when-unstale: "stat:contribution welcome,stat:good first issue"
+          any-of-labels: "stat:contribution welcome,stat:good first issue"
+          stale-issue-message: > 
+            This issue is stale because it has been open for 180 days with no activity.
+            It will be closed if no further activity occurs. Thank you.
+          close-issue-message: >
+            This issue was closed because it has been inactive for 1 year.
+          repo-token: ${{ secrets.GITHUB_TOKEN }}

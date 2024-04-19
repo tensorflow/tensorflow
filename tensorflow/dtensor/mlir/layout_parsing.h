@@ -16,14 +16,15 @@ limitations under the License.
 #ifndef TENSORFLOW_DTENSOR_MLIR_LAYOUT_PARSING_H_
 #define TENSORFLOW_DTENSOR_MLIR_LAYOUT_PARSING_H_
 
+#include <optional>
 #include <string>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/dtensor/cc/dstatus.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
@@ -33,18 +34,18 @@ namespace tensorflow {
 namespace dtensor {
 
 // Extracts `_layout` attribute from `op` and assert a single layout.
-StatusOr<absl::optional<Layout>> ExtractSingleLayoutFromOp(mlir::Operation* op);
+StatusOr<std::optional<Layout>> ExtractSingleLayoutFromOp(mlir::Operation* op);
 
 // Extracts `_layout` attribute from `op`, and returns an error is the layout
 // is missing.
 StatusOr<Layout> ExtractRequiredSingleLayoutFromOp(mlir::Operation* op);
 
 // Extracts `_layout` attribute from `op` and assert a single layout.
-StatusOr<absl::optional<Layout>> ExtractSingleLayoutFromOp(
+StatusOr<std::optional<Layout>> ExtractSingleLayoutFromOp(
     mlir::Operation* op, std::string attr_name);
 
 // Extracts `_layout` attribute from `op`.
-StatusOr<std::vector<absl::optional<Layout>>> ExtractLayoutFromOp(
+StatusOr<std::vector<std::optional<Layout>>> ExtractLayoutFromOp(
     mlir::Operation* op);
 
 // Extracts `_layout` attribute from `op` and returns an error if any are
@@ -52,11 +53,11 @@ StatusOr<std::vector<absl::optional<Layout>>> ExtractLayoutFromOp(
 StatusOr<std::vector<Layout>> ExtractRequiredLayoutFromOp(mlir::Operation* op);
 
 // Extract and deserialize a tensor layout from `attr_name`.
-StatusOr<std::vector<absl::optional<Layout>>> ExtractLayoutFromOp(
+StatusOr<std::vector<std::optional<Layout>>> ExtractLayoutFromOp(
     mlir::Operation* op, std::string attr_name);
 
 // Extracts '_layout' attribute from `operand`.
-StatusOr<absl::optional<Layout>> ExtractLayoutFromOperand(mlir::Value operand);
+StatusOr<std::optional<Layout>> ExtractLayoutFromOperand(mlir::Value operand);
 
 // Extracts '_layout' attribute from `operand` and returns an error if missing.
 StatusOr<Layout> ExtractRequiredLayoutFromOperand(mlir::Value operand);
@@ -80,11 +81,17 @@ void SetSingleLayoutOnOp(mlir::Operation* op, const Layout& layout);
 StatusOr<Mesh> ExtractDeviceMeshEnclosingCluster(mlir::Operation* op);
 
 // Extracts device mesh configuration from op's `_mesh` attribute.
-StatusOr<absl::optional<Mesh>> ExtractDeviceMeshFromOp(mlir::Operation* op);
+StatusOr<std::optional<Mesh>> ExtractDeviceMeshFromOp(mlir::Operation* op);
 
 // Extracts default layout information from function return attribute.
-StatusOr<absl::optional<Layout>> ExtractLayoutFromFunctionReturnAttr(
-    mlir::func::ReturnOp return_op, const int return_index);
+StatusOr<std::optional<Layout>> ExtractLayoutFromFunctionReturnAttr(
+    mlir::func::ReturnOp return_op, int return_index);
+
+// Extract element layouts from the iterator resource operand of an op that uses
+// that iterator (e.g. IteratorGetNext, OptionalGetValue, etc.). The layouts are
+// extracted from the `tf._element_layouts` attribute of that resource tensor.
+StatusOr<llvm::SmallVector<Layout, 4>> ExtractElementLayoutsFromOperand(
+    mlir::OpOperand& input_value);
 
 }  // namespace dtensor
 }  // namespace tensorflow

@@ -33,7 +33,7 @@ Status ShapeHandleToTensorShape(shape_inference::InferenceContext* context,
                                 const shape_inference::ShapeHandle& handle,
                                 PartialTensorShape* shape) {
   // The default is already unknown
-  if (!context->RankKnown(handle)) return OkStatus();
+  if (!context->RankKnown(handle)) return absl::OkStatus();
 
   std::vector<int64_t> dims(context->Rank(handle));
   for (int32_t i = 0, end = dims.size(); i < end; ++i) {
@@ -199,7 +199,7 @@ Status PropagateShapes(Graph* graph,
       }
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Store the shapes of the output tensors in a map
@@ -235,7 +235,7 @@ Status StoreOutputShapes(const Graph& graph, const ShapeRefiner& shape_refiner,
               << output.handle_shape.DebugString();
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -267,8 +267,8 @@ Status InferShapes(Graph* graph, const std::map<int, InferredShape>& arg_shapes,
   return StoreOutputShapes(*graph, shape_refiner, shape_info);
 }
 
-StatusOr<InferredShape> MergeInferredShapes(const InferredShape& a,
-                                            const InferredShape& b) {
+absl::StatusOr<InferredShape> MergeInferredShapes(const InferredShape& a,
+                                                  const InferredShape& b) {
   InferredShape result;
   TF_RETURN_IF_ERROR(a.shape.MergeWith(b.shape, &result.shape));
 

@@ -224,8 +224,10 @@ def _get_tensors_from_trackable(
                                                     local_name)
     tensor_dict[checkpoint_key] = maybe_tensor
 
+    # TODO(b/261786493): Delete this when DCheckpoint is removed.
     if isinstance(maybe_tensor, saveable_object_lib.SaveSpec):
-      maybe_tensor.name = local_name + maybe_tensor.name
+      maybe_tensor.name = checkpoint_key
+      maybe_tensor.slice_spec = ""
 
     if object_graph_proto is not None:
       object_graph_proto.nodes[trackable_data.node_id].attributes.add(

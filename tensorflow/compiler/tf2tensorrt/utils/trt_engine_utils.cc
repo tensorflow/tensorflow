@@ -109,6 +109,10 @@ Status SetupBindings(nvinfer1::ICudaEngine* cuda_engine, const Tensor& tensor,
       buffers[binding_index] = const_cast<uint8*>(tensor.flat<uint8>().data());
       break;
 #endif
+#if IS_TRT_VERSION_GE(8, 6, 0, 0)
+    case nvinfer1::DataType::kFP8:
+      return errors::Internal("FP8 inputs are not supported yet!");
+#endif
     default:
       return errors::Internal("Unknown TRT data type: ",
                               static_cast<int>(dtype));

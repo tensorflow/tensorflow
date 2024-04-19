@@ -17,11 +17,11 @@ limitations under the License.
 #define TENSORFLOW_CORE_KERNELS_CONV_2D_H_
 
 #include "absl/strings/string_view.h"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/kernels/eigen_backward_spatial_convolutions.h"
 #include "tensorflow/core/util/tensor_format.h"
-#include "tensorflow/tsl/framework/convolution/eigen_spatial_convolutions.h"
+#include "tsl/framework/convolution/eigen_spatial_convolutions.h"
 
 // Returns true if TF_CONV2D_USE_FP16_ACCUMULATE == 1, false otherwise.
 static bool Conv2dUseFp16Accumulate() {
@@ -356,6 +356,30 @@ struct MatMulConvFunctor {
   }
 };
 
+// Use float32 accumulation for float16 by default to deal with precision
+// accumulation issues.  To enable float16 accumulation, set the environment
+// variable TF_CONV2D_USE_FP16_ACCUMULATE.
+template <typename Device, typename OutputKernel>
+struct MatMulConvFunctor<Device, Eigen::half, OutputKernel> {
+  // Computes on device "d": out = in0 * in1, where * is matrix
+  // multiplication.
+  void operator()(
+      const Device& d, typename TTypes<Eigen::half, 2>::Tensor out,
+      typename TTypes<Eigen::half, 2>::ConstTensor in0,
+      typename TTypes<Eigen::half, 2>::ConstTensor in1,
+      const Eigen::array<Eigen::IndexPair<Eigen::DenseIndex>, 1>& dim_pair,
+      const OutputKernel& output_kernel = OutputKernel()) {
+    if (Conv2dUseFp16Accumulate()) {
+      out.device(d) = in0.contract(in1, dim_pair, output_kernel);
+    } else {
+      out.device(d) =
+          in0.cast<float>()
+              .contract(in1.template cast<float>(), dim_pair, output_kernel)
+              .template cast<Eigen::half>();
+    }
+  }
+};
+
 // Use float32 accumulation for bfloat16 to deal with precision accumulation
 // issues.
 template <typename Device, typename OutputKernel>
@@ -527,7 +551,7 @@ struct NCHWToNHWC {
 template <typename Device, typename T, bool conjugate = false>
 struct SwapDimension1And2InTensor3 {
   void operator()(const Device& d, const T* in,
-                  const gtl::ArraySlice<int64_t>& input_dims, T* out);
+                  const absl::Span<const int64_t>& input_dims, T* out);
 };
 
 // Converts a tensor from:
@@ -537,7 +561,7 @@ struct SwapDimension1And2InTensor3 {
 template <typename Device, typename T, bool conjugate = false>
 struct SwapDimension0And2InTensor3 {
   void operator()(const Device& d, const T* in,
-                  const gtl::ArraySlice<int64_t>& input_dims, T* out);
+                  const absl::Span<const int64_t>& input_dims, T* out);
 };
 
 // Transforms back filter from OIHW or OHWI to HWOI format to reverse effect of

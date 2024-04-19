@@ -60,7 +60,7 @@ void SameWorkerRecvDone(const DeviceMgr* device_mgr,
       }
     }
     *out = in;
-    done(OkStatus());
+    done(absl::OkStatus());
     return;
   }
 
@@ -88,7 +88,7 @@ void SameWorkerRecvDone(const DeviceMgr* device_mgr,
     return;
   }
 
-  profiler::ScopedMemoryDebugAnnotation op_annotation(
+  tsl::profiler::ScopedMemoryDebugAnnotation op_annotation(
       "SameWorkerRecvDone", 0, "dynamic", in.dtype(),
       [&in]() { return in.shape().DebugString(); });
   AllocatorAttributes attr = recv_args.alloc_attrs;
@@ -136,7 +136,7 @@ void IntraProcessRecvAsyncImpl(const DeviceMgr* device_mgr,
                                RendezvousInterface::DoneCallback done) {
   VLOG(1) << "IntraProcessRendezvous Recv " << local << " " << parsed.FullKey();
 
-  profiler::ScopedMemoryDebugAnnotation op_annotation("RecvAsync");
+  tsl::profiler::ScopedMemoryDebugAnnotation op_annotation("RecvAsync");
   // Recv the tensor from local_.
   local->RecvAsync(
       parsed, recv_args,
@@ -171,7 +171,9 @@ RefCountedIntraProcessRendezvous::RefCountedIntraProcessRendezvous(
     : device_mgr_(device_mgr),
       local_(this, /* num_shards= */ device_mgr->NumDevices()) {}
 
-RefCountedIntraProcessRendezvous::~RefCountedIntraProcessRendezvous() {}
+RefCountedIntraProcessRendezvous::~RefCountedIntraProcessRendezvous() {
+  VLOG(5) << "Destructor of IntraProcessRendezvous: " << this;
+}
 
 Status RefCountedIntraProcessRendezvous::Send(const ParsedKey& key,
                                               const Rendezvous::Args& args,
@@ -189,6 +191,7 @@ void RefCountedIntraProcessRendezvous::RecvAsync(const ParsedKey& key,
 }
 
 void RefCountedIntraProcessRendezvous::StartAbort(const Status& s) {
+  VLOG(1) << "IntraProcessRendezvous start Abort " << this;
   local_.StartAbort(s);
 }
 

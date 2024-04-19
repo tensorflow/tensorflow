@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <string>
 
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/function_optimization_registry.h"
@@ -28,7 +29,9 @@ class FailingFunctionPass : public FunctionOptimizationPass {
  public:
   static bool ran_;
 
-  Status Run(const DeviceSet& device_set, const ConfigProto& config_proto,
+  Status Run(const std::string& function_name, const DeviceSet& device_set,
+             const ConfigProto& config_proto,
+             const FunctionOptions& function_options,
              std::unique_ptr<Graph>* graph, FunctionLibraryDefinition* flib_def,
              std::vector<std::string>* control_ret_node_names,
              bool* control_rets_updated) override {
@@ -46,8 +49,11 @@ TEST(FunctionOptimizationPassRegistry, PassWithError) {
       std::make_unique<FailingFunctionPass>());
   DeviceSet device_set;
   ConfigProto config_proto;
+  FunctionOptimizationPass::FunctionOptions function_options;
   Status status = FunctionOptimizationPassRegistry::Global().Run(
-      device_set, config_proto, /*graph=*/nullptr, /*flib_def=*/nullptr,
+      "test_func", device_set, config_proto, function_options,
+      /*graph=*/nullptr,
+      /*flib_def=*/nullptr,
       /*control_ret_node_names=*/nullptr, /*control_rets_updated=*/nullptr);
 
   EXPECT_TRUE(errors::IsUnknown(status));

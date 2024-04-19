@@ -16,6 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PLATFORM_CASTS_H_
 #define TENSORFLOW_CORE_PLATFORM_CASTS_H_
 
-#include "tensorflow/tsl/platform/casts.h"
+#include "tsl/platform/casts.h"
 
 #endif  // TENSORFLOW_CORE_PLATFORM_CASTS_H_

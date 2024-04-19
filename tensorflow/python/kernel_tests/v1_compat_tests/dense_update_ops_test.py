@@ -17,7 +17,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import state_ops
-from tensorflow.python.ops import variables
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.platform import test as test_lib
 
 
@@ -32,7 +32,7 @@ class AssignOpTest(test_util.TensorFlowTestCase):
   # Thus, test is enabled only for V1.
   def testAssignNonStrictShapeChecking(self):
     data = array_ops.fill([1024, 1024], 0)
-    p = variables.VariableV1([1])
+    p = variable_v1.VariableV1([1])
     a = state_ops.assign(p, data, validate_shape=False)
     self.evaluate(a)
     self.assertAllEqual(p, self.evaluate(data))
@@ -45,14 +45,14 @@ class AssignOpTest(test_util.TensorFlowTestCase):
 
   @test_util.run_v1_only("Variables need initialization only in V1,")
   def testInitRequiredAssignAdd(self):
-    p = variables.VariableV1(array_ops.fill([1024, 1024], 1), dtypes.int32)
+    p = variable_v1.VariableV1(array_ops.fill([1024, 1024], 1), dtypes.int32)
     a = state_ops.assign_add(p, array_ops.fill([1024, 1024], 0))
     with self.assertRaisesOpError("use uninitialized"):
       self.evaluate(a)
 
   @test_util.run_v1_only("Variables need initialization only in V1.")
   def testInitRequiredAssignSub(self):
-    p = variables.VariableV1(array_ops.fill([1024, 1024], 1), dtypes.int32)
+    p = variable_v1.VariableV1(array_ops.fill([1024, 1024], 1), dtypes.int32)
     a = state_ops.assign_sub(p, array_ops.fill([1024, 1024], 0))
     with self.assertRaisesOpError("use uninitialized"):
       self.evaluate(a)

@@ -20,6 +20,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.linalg import linalg_impl as linalg
 from tensorflow.python.ops.linalg import linear_operator
 from tensorflow.python.ops.linalg import linear_operator_util
+from tensorflow.python.ops.linalg import property_hint_util
 from tensorflow.python.util.tf_export import tf_export
 
 __all__ = [
@@ -197,6 +198,25 @@ class LinearOperatorLowerTriangular(linear_operator.LinearOperator):
   def _matmul(self, x, adjoint=False, adjoint_arg=False):
     return math_ops.matmul(
         self._get_tril(), x, adjoint_a=adjoint, adjoint_b=adjoint_arg)
+
+  def _linop_matmul(
+      self,
+      left_operator: "LinearOperatorLowerTriangular",
+      right_operator: linear_operator.LinearOperator,
+    ) -> linear_operator.LinearOperator:
+    # instance check of linear_operator_diag.LinearOperatorDiag
+    if hasattr(right_operator, "_check_diag"):
+      return LinearOperatorLowerTriangular(
+          tril=left_operator.to_dense() * right_operator.diag,
+          is_non_singular=property_hint_util.combined_non_singular_hint(
+              right_operator, left_operator),
+          # This is safe to do since the Triangular matrix is only self-adjoint
+          # when it is a diagonal matrix, and hence commutes.
+          is_self_adjoint=property_hint_util.combined_commuting_self_adjoint_hint(
+              right_operator, left_operator),
+          is_positive_definite=None,
+          is_square=True)
+    return super()._linop_matmul(left_operator, right_operator)
 
   def _determinant(self):
     return math_ops.reduce_prod(self._get_diag(), axis=[-1])

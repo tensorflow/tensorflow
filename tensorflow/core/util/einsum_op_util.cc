@@ -16,6 +16,8 @@ limitations under the License.
 #include "tensorflow/core/util/einsum_op_util.h"
 
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_split.h"
@@ -42,7 +44,7 @@ Status ValidateEinsumEquation(const string& equation,
         "Expecting 1 or 2 input subscripts in equation '", equation,
         "' but got: ", input_subscripts->size());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Returns the EinsumDimensionType given whether the corresponding label is
@@ -133,7 +135,7 @@ Status ParseEinsumEquation(const string& equation, OperandLabels* input_labels,
                   (*input_label_counts)[1][label] == 0;
     (*label_types)[label] = GetDimensionType(removed, unique);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

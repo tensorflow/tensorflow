@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "pybind11/pybind11.h"
-#include "pybind11/pytypes.h"
+#include "pybind11/pybind11.h"  // from @pybind11
+#include "pybind11/pytypes.h"  // from @pybind11
 
 #ifndef TENSORFLOW_PYTHON_LIB_CORE_PYBIND11_LIB_H_
 #define TENSORFLOW_PYTHON_LIB_CORE_PYBIND11_LIB_H_

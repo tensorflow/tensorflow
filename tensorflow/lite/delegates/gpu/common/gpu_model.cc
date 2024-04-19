@@ -248,9 +248,7 @@ absl::Status ReserveGraphTensors(const CreateGpuModelInfo& create_info,
           tensor_desc.UpdateToSupportedStorageType(gpu_info, shape));
       if (gpu_info.IsApiMetal() &&
           storage_type == TensorStorageType::TEXTURE_2D) {
-        const bool a7_gen_gpu =
-            gpu_info.IsApple() && gpu_info.apple_info.IsA7GenerationGpu();
-        if (!a7_gen_gpu) {
+        if (!(gpu_info.IsApple() && gpu_info.apple_info.IsFamilyApple1())) {
           tensor_desc.SetUseBufferForWriteOnlyTexture2d(true);
         }
       }
@@ -294,7 +292,7 @@ absl::Status ConvertOperations(const GpuInfo& gpu_info,
     auto op_type = OperationTypeFromString(node.operation.type);
     if (op_type == OperationType::CONSTANT) {
       auto attr =
-          absl::any_cast<ConstTensorAttributes>(node.operation.attributes);
+          std::any_cast<ConstTensorAttributes>(node.operation.attributes);
       auto outputs = graph.FindOutputs(node.id);
       gpu_model->const_tensors[outputs[0]->id] =
           tensor_reserver->Get(outputs[0]->id);
@@ -666,16 +664,25 @@ absl::Status MergeElementwiseNodes(const GpuInfo& gpu_info,
 
 absl::Status MergeNodes(const GpuInfo& gpu_info, GpuModel* gpu_model) {
   absl::flat_hash_set<ValueId> ready_tensors;
+  absl::flat_hash_set<ValueId> output_tensors;
   for (const auto& input : gpu_model->input_ids_and_refs) {
     ready_tensors.insert(input.first);
+  }
+  for (const auto& output : gpu_model->output_ids_and_refs) {
+    output_tensors.insert(output.first);
   }
   auto& nodes = gpu_model->nodes;
   for (int i = 0; i < nodes.size(); ++i) {
     auto& node = nodes[i];
+    bool node_has_graph_output = false;
     for (const auto& out_id : node.outputs) {
       ready_tensors.insert(out_id);
+      if (output_tensors.find(out_id) != output_tensors.end()) {
+        node_has_graph_output = true;
+      }
     }
-    if (node.outputs.size() != 1) {
+    // Don't merge node if it has multiple outputs or a graph output.
+    if (node_has_graph_output || node.outputs.size() != 1) {
       continue;
     }
     std::vector<int> next_nodes;

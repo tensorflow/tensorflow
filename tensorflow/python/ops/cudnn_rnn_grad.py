@@ -18,7 +18,7 @@ from tensorflow.python.ops import gen_cudnn_rnn_ops
 
 
 @ops.RegisterGradient("CudnnRNN")
-def _cudnn_rnn_backward(op, *grads):
+def _cudnn_rnn_backward(op: ops.Operation, *grads):
   """Gradients for the CudnnRNN op."""
   if not op.get_attr("is_training"):
     raise ValueError(
@@ -44,7 +44,7 @@ def _cudnn_rnn_backward(op, *grads):
 
 
 @ops.RegisterGradient("CudnnRNNV2")
-def _cudnn_rnn_backward_v2(op, *grad):
+def _cudnn_rnn_backward_v2(op: ops.Operation, *grad):
   if not op.get_attr("is_training"):
     raise ValueError(
         "To use CudnnRNNV2 in gradients, is_training must be set to True.")
@@ -70,7 +70,7 @@ def _cudnn_rnn_backward_v2(op, *grad):
 
 
 @ops.RegisterGradient("CudnnRNNV3")
-def _cudnn_rnn_backwardv3(op, *grads):
+def _cudnn_rnn_backwardv3(op: ops.Operation, *grads):
   """Gradients for the CudnnRNNV3 op."""
   if not op.get_attr("is_training"):
     raise ValueError(

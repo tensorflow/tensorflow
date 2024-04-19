@@ -19,13 +19,14 @@ limitations under the License.
 #include <sstream>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #if GOOGLE_CUDA
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti_activity.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/cuda_runtime.h"
-#include "tensorflow/core/profiler/backends/gpu/cupti_collector.h"
+#include "xla/backends/profiler/gpu/cupti_collector.h"
 #endif  // GOOGLE_CUDA
 #include "tensorflow/core/common_runtime/direct_session.h"
 #include "tensorflow/core/framework/allocator.h"
@@ -44,11 +45,12 @@ limitations under the License.
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/profiler/lib/profiler_interface.h"
 #include "tensorflow/core/profiler/lib/profiler_session.h"
-#include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
+#include "tensorflow/core/profiler/utils/xplane_visitor.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/device_name_utils.h"
+#include "tsl/profiler/utils/tf_xplane_visitor.h"
 
 // TODO(b/186367334)
 #define CUPTI_NVBUG_3299481_WAR (10000 <= CUDA_VERSION && CUDA_VERSION < 11000)
@@ -72,7 +74,9 @@ std::unique_ptr<ProfilerInterface> CreateGpuTracer() {
 
 #else
 // We don't have device tracer for non-cuda case.
-std::unique_ptr<ProfilerInterface> CreateGpuTracer() { return nullptr; }
+std::unique_ptr<tsl::profiler::ProfilerInterface> CreateGpuTracer() {
+  return nullptr;
+}
 #endif
 
 namespace {
@@ -117,10 +121,10 @@ class DeviceTracerTest : public ::testing::Test {
 
  protected:
   void ExpectFailure(const Status& status, error::Code code) {
-    EXPECT_FALSE(status.ok()) << status.ToString();
+    EXPECT_FALSE(status.ok()) << status;
     if (!status.ok()) {
-      LOG(INFO) << "Status message: " << status.error_message();
-      EXPECT_EQ(code, status.code()) << status.ToString();
+      LOG(INFO) << "Status message: " << status.message();
+      EXPECT_EQ(code, status.code()) << status;
     }
   }
 
@@ -262,7 +266,7 @@ TEST_F(DeviceTracerTest, TraceToXSpace) {
   // memset.
   EXPECT_GE(device_plane->event_metadata_size(), 5);
   // Check if device capacity is serialized.
-  XPlaneVisitor plane = CreateTfXPlaneVisitor(device_plane);
+  XPlaneVisitor plane = tsl::profiler::CreateTfXPlaneVisitor(device_plane);
 
   // Check if the device events timestamps are set.
   int total_events = 0;
@@ -311,7 +315,7 @@ TEST_F(DeviceTracerTest, TraceToXSpace) {
   // memset.
   EXPECT_GE(device_plane->event_metadata_size(), 5);
   // Check if device capacity is serialized.
-  XPlaneVisitor plane = CreateTfXPlaneVisitor(device_plane);
+  XPlaneVisitor plane = tsl::profiler::CreateTfXPlaneVisitor(device_plane);
   EXPECT_TRUE(plane.GetStat(StatType::kDevCapClockRateKHz).has_value());
   EXPECT_TRUE(plane.GetStat(StatType::kDevCapCoreCount).has_value());
   EXPECT_TRUE(plane.GetStat(StatType::kDevCapMemoryBandwidth).has_value());
@@ -362,7 +366,8 @@ TEST_F(DeviceTracerTest, CudaRuntimeResource) {
       FindPlaneWithName(space, kCuptiDriverApiPlaneName);
   ASSERT_NE(cupti_host_plane, nullptr);
 
-  XPlaneVisitor host_plane = CreateTfXPlaneVisitor(cupti_host_plane);
+  XPlaneVisitor host_plane =
+      tsl::profiler::CreateTfXPlaneVisitor(cupti_host_plane);
   // Expect at least one XLine for CUPTI activity events. There may be an
   // additional line for CuptiTracerEventType Overhead.
   EXPECT_GE(host_plane.NumLines(), 1);
@@ -398,7 +403,8 @@ TEST_F(DeviceTracerTest, CudaRuntimeResource) {
 
   const XPlane* cupti_device_plane = FindPlaneWithName(space, GpuPlaneName(0));
   ASSERT_NE(cupti_device_plane, nullptr);
-  XPlaneVisitor device_plane = CreateTfXPlaneVisitor(cupti_device_plane);
+  XPlaneVisitor device_plane =
+      tsl::profiler::CreateTfXPlaneVisitor(cupti_device_plane);
 
   bool found_activity_memory_host = false;
   bool found_activity_memory_device = false;
@@ -435,13 +441,13 @@ TEST_F(DeviceTracerTest, CudaRuntimeResource) {
           if (addr == reinterpret_cast<size_t>(devptr) &&
               num_bytes == size_in_bytes) {
             found_activity_memory_device = true;
-            EXPECT_EQ(kind,
-                      GetMemoryKindName(CUPTI_ACTIVITY_MEMORY_KIND_DEVICE));
+            EXPECT_EQ(kind, xla::profiler::GetMemoryKindName(
+                                CUPTI_ACTIVITY_MEMORY_KIND_DEVICE));
           } else if (addr == reinterpret_cast<size_t>(hostptr) &&
                      num_bytes == size_in_bytes) {
             found_activity_memory_host = true;
-            EXPECT_EQ(kind,
-                      GetMemoryKindName(CUPTI_ACTIVITY_MEMORY_KIND_PINNED));
+            EXPECT_EQ(kind, xla::profiler::GetMemoryKindName(
+                                CUPTI_ACTIVITY_MEMORY_KIND_PINNED));
           }
         } else if (stat.Type() == StatType::kMemsetDetails) {
           CHECK(!found_activity_memset);
@@ -455,8 +461,8 @@ TEST_F(DeviceTracerTest, CudaRuntimeResource) {
               (void)absl::SimpleAtoi(name_value[1], &num_bytes);
               EXPECT_EQ(num_bytes, 8);
             } else if (absl::StartsWith(detail, "kind:")) {
-              EXPECT_EQ(name_value[1],
-                        GetMemoryKindName(CUPTI_ACTIVITY_MEMORY_KIND_DEVICE));
+              EXPECT_EQ(name_value[1], xla::profiler::GetMemoryKindName(
+                                           CUPTI_ACTIVITY_MEMORY_KIND_DEVICE));
             }
           }
         } else if (stat.Type() == StatType::kMemcpyDetails) {
@@ -471,11 +477,11 @@ TEST_F(DeviceTracerTest, CudaRuntimeResource) {
               (void)absl::SimpleAtoi(name_value[1], &num_bytes);
               EXPECT_EQ(num_bytes, 8);
             } else if (absl::StartsWith(detail, "kind_src:")) {
-              EXPECT_EQ(name_value[1],
-                        GetMemoryKindName(CUPTI_ACTIVITY_MEMORY_KIND_DEVICE));
+              EXPECT_EQ(name_value[1], xla::profiler::GetMemoryKindName(
+                                           CUPTI_ACTIVITY_MEMORY_KIND_DEVICE));
             } else if (absl::StartsWith(detail, "kind_dst:")) {
-              EXPECT_EQ(name_value[1],
-                        GetMemoryKindName(CUPTI_ACTIVITY_MEMORY_KIND_PINNED));
+              EXPECT_EQ(name_value[1], xla::profiler::GetMemoryKindName(
+                                           CUPTI_ACTIVITY_MEMORY_KIND_PINNED));
             }
           }
         }

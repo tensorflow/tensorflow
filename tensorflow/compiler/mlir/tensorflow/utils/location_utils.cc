@@ -26,7 +26,7 @@ mlir::Location GetLocationWithoutOpType(mlir::Location loc) {
     if (!locations.empty()) {
       // Skip locations for propagating op_type metadata.
       if (auto name_loc = locations[0].dyn_cast<mlir::NameLoc>()) {
-        if (name_loc.getName().strref().endswith(":")) {
+        if (name_loc.getName().strref().ends_with(":")) {
           if (locations.size() == 2)
             return locations[1];
           else if (locations.size() > 2)

@@ -16,7 +16,7 @@
 
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
-from tensorflow.python.eager import tape as tape_lib
+from tensorflow.python.eager import record
 from tensorflow.python.framework import composite_tensor_gradient
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -62,9 +62,10 @@ def custom_gradient(f=None):
   is NaN.  For example:
 
   ```python
-  x = tf.constant(100.)
-  y = log1pexp(x)
-  dy_dx = tf.gradients(y, x) # Will be NaN when evaluated.
+  with tf.GradientTape() as tape:
+    tape.watch(x)
+    y=log1pexp(x)
+  dy_dx = tape.gradient(y, x) # Will be NaN when evaluated.
   ```
 
   The gradient expression can be analytically simplified to provide numerical
@@ -92,9 +93,10 @@ def custom_gradient(f=None):
   dx_i/dx_i-1 * ... * dx_1/dx_0`.
 
   In this case the gradient of our current function defined as
-  `dx_i/dx_i-1 = (1 - 1 / (1 + e))`. The upstream gradient `upstream` would be
-  `dx_n/dx_n-1 * dx_n-1/dx_n-2 * ... * dx_i+1/dx_i`. The upstream gradient
-  multiplied by the current gradient is then passed downstream.
+  `dx_i/dx_i-1 = (exp(x_i) / (1 + exp(x_i))) = (1 - 1 / (1 + exp(x_i)))`. The
+  upstream gradient `upstream` would be `dx_n/dx_n-1 * dx_n-1/dx_n-2 * ... *
+  dx_i+1/dx_i`. The upstream gradient multiplied by the current gradient is
+  then passed downstream.
 
   In case the function takes multiple variables as input, the `grad`
   function must also return  the same number of variables.
@@ -254,32 +256,27 @@ def custom_gradient(f=None):
   [ResourceVariables](https://www.tensorflow.org/guide/migrate/tf1_vs_tf2#resourcevariables_instead_of_referencevariables).
 
   Args:
-    f: function `f(*x)` that returns a tuple `(y, grad_fn)` where:
-       - `x` is a sequence of (nested structures of) `Tensor` inputs to the
-         function.
-       - `y` is a (nested structure of) `Tensor` outputs of applying TensorFlow
-         operations in `f` to `x`.
-       - `grad_fn` is a function with the signature `g(*grad_ys)` which returns
-         a list of `Tensor`s the same size as (flattened) `x` - the derivatives
-         of `Tensor`s in `y` with respect to the `Tensor`s in `x`.  `grad_ys` is
-         a sequence of `Tensor`s the same size as (flattened) `y` holding the
-         initial value gradients for each `Tensor` in `y`.
-
-         In a pure mathematical sense, a vector-argument vector-valued function
-         `f`'s derivatives should be its Jacobian matrix `J`. Here we are
-         expressing the Jacobian `J` as a function `grad_fn` which defines how
-         `J` will transform a vector `grad_ys` when left-multiplied with it
-         (`grad_ys * J`, the vector-Jacobian product, or VJP). This functional
-         representation of a matrix is convenient to use for chain-rule
-         calculation (in e.g. the back-propagation algorithm).
-
-         If `f` uses `Variable`s (that are not part of the
-         inputs), i.e. through `get_variable`, then `grad_fn` should have
-         signature `g(*grad_ys, variables=None)`, where `variables` is a list of
-         the `Variable`s, and return a 2-tuple `(grad_xs, grad_vars)`, where
-         `grad_xs` is the same as above, and `grad_vars` is a `list<Tensor>`
-         with the derivatives of `Tensor`s in `y` with respect to the variables
-         (that is, grad_vars has one Tensor per variable in variables).
+    f: function `f(*x)` that returns a tuple `(y, grad_fn)` where: - `x` is a
+      sequence of (nested structures of) `Tensor` inputs to the function. - `y`
+      is a (nested structure of) `Tensor` outputs of applying TensorFlow
+      operations in `f` to `x`. - `grad_fn` is a function with the signature
+      `g(*grad_ys)` which returns a list of `Tensor`s the same size as
+      (flattened) `x` - the derivatives of `Tensor`s in `y` with respect to the
+      `Tensor`s in `x`.  `grad_ys` is a sequence of `Tensor`s the same size as
+      (flattened) `y` holding the initial value gradients for each `Tensor` in
+      `y`.  In a pure mathematical sense, a vector-argument vector-valued
+      function `f`'s derivatives should be its Jacobian matrix `J`. Here we are
+      expressing the Jacobian `J` as a function `grad_fn` which defines how `J`
+      will transform a vector `grad_ys` when left-multiplied with it (`grad_ys *
+      J`, the vector-Jacobian product, or VJP). This functional representation
+      of a matrix is convenient to use for chain-rule calculation (in e.g. the
+      back-propagation algorithm).  If `f` uses `Variable`s (that are not part
+      of the inputs), i.e. through `get_variable`, then `grad_fn` should have
+      signature `g(*grad_ys, variables=None)`, where `variables` is a list of
+      the `Variable`s, and return a 2-tuple `(grad_xs, grad_vars)`, where
+      `grad_xs` is the same as above, and `grad_vars` is a `list<Tensor>` with
+      the derivatives of `Tensor`s in `y` with respect to the variables (that
+      is, grad_vars has one Tensor per variable in variables).
 
   Returns:
     A function `h(x)` which returns the same value as `f(x)[0]` and whose
@@ -420,7 +417,7 @@ def _graph_mode_decorator(f, args, kwargs):
       v.ref() for v in current_var_scope.global_variables() +
       current_var_scope.local_variables()
   ])
-  with tape_lib.VariableWatcher() as variable_watcher:
+  with record.VariableWatcher() as variable_watcher:
     result, grad_fn = f(*args)
 
   flat_args = composite_tensor_gradient.get_flat_tensors_for_gradients(
@@ -527,7 +524,7 @@ def _graph_mode_decorator(f, args, kwargs):
   for i, t in enumerate(original_tensors):
     if t.dtype == dtypes.resource and hasattr(t, "_handle_data"):
       all_tensors[i]._handle_data = t._handle_data  # pylint: disable=protected-access
-  tape_lib.record_operation(
+  record.record_operation(
       f.__name__, all_tensors, original_tensors, tape_grad_fn)
   for ot, t in zip(original_tensors, all_tensors):
     handle_data_util.copy_handle_data(ot, t)
@@ -538,7 +535,7 @@ def _graph_mode_decorator(f, args, kwargs):
 
 def _eager_mode_decorator(f, args, kwargs):
   """Implement custom gradient decorator for eager mode."""
-  with tape_lib.VariableWatcher() as variable_watcher:
+  with record.VariableWatcher() as variable_watcher:
     result, grad_fn = f(*args, **kwargs)
   flat_args = composite_tensor_gradient.get_flat_tensors_for_gradients(
       nest.flatten(args))
@@ -593,8 +590,8 @@ def _eager_mode_decorator(f, args, kwargs):
           f"gradients, but returned {len(flat_grads)} instead.")
     return flat_grads + variable_grads
 
-  tape_lib.record_operation(f.__name__, flat_result, recorded_inputs,
-                            actual_grad_fn)
+  record.record_operation(f.__name__, flat_result, recorded_inputs,
+                          actual_grad_fn)
   flat_result = composite_tensor_gradient.replace_flat_tensors_for_gradients(
       nest.flatten(result), flat_result)
   return nest.pack_sequence_as(result, flat_result)
@@ -710,7 +707,7 @@ def recompute_grad(f):
   def inner(*args, **kwargs):
     """Inner function closure for calculating gradients."""
     current_var_scope = variable_scope.get_variable_scope()
-    with tape_lib.stop_recording():
+    with record.stop_recording():
       result = f(*args, **kwargs)
 
     def grad_wrapper(*wrapper_args, variables=None):

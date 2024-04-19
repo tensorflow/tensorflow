@@ -1,5 +1,5 @@
-load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
+load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -17,7 +17,7 @@ cc_library(
     copts = tflite_copts(),
     deps = [
         "//tensorflow/lite/core/c:common",
-        "//third_party/eigen3",
+        "@eigen_archive//:eigen3",
     ],
 )
 

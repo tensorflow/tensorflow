@@ -17,7 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_REQUEST_ID_H_
 
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/tsl/platform/random.h"
+#include "tsl/platform/random.h"
 
 namespace tensorflow {
 

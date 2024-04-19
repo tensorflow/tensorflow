@@ -17,7 +17,7 @@ package(
         "//tensorflow/core/lib/strings:__pkg__",
         # tensorflow/core/platform:tracing depends on hash
         "//tensorflow/core/platform:__subpackages__",
-        "//tensorflow/tsl/platform:__subpackages__",
+        "@local_tsl//tsl/platform:__subpackages__",
         # tensorflow/core/framework:tensor depends on hash
         "//tensorflow/core/framework:__pkg__",
         # For dependency on hash
@@ -33,7 +33,7 @@ cc_library(
         "//tensorflow/core/platform",
         "//tensorflow/core/platform:cord",
         "//tensorflow/core/platform:types",
-        "//tensorflow/tsl/lib/hash:crc32c",
+        "@local_tsl//tsl/lib/hash:crc32c",
     ],
 )
 
@@ -58,7 +58,7 @@ filegroup(
     name = "mobile_srcs_only_runtime",
     srcs = [
         "crc32c.h",
-        "//tensorflow/tsl/lib/hash:mobile_srcs_only_runtime",
+        "@local_tsl//tsl/lib/hash:mobile_srcs_only_runtime",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
@@ -68,7 +68,7 @@ filegroup(
     srcs = [
         "crc32c.h",
         "hash.h",
-        "//tensorflow/tsl/lib/hash:legacy_lib_hash_all_headers",
+        "@local_tsl//tsl/lib/hash:legacy_lib_hash_all_headers",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )

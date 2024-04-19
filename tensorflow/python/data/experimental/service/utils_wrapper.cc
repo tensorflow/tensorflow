@@ -16,14 +16,15 @@ limitations under the License.
 #include <string>
 
 #include "Python.h"
-#include "pybind11/pybind11.h"
+#include "pybind11/pybind11.h"  // from @pybind11
 #include "tensorflow/core/data/service/py_utils.h"
 #include "tensorflow/python/lib/core/pybind11_lib.h"
 
-PYBIND11_MODULE(_pywrap_utils, m) {
+PYBIND11_MODULE(_pywrap_utils_exp, m) {
   m.def("TF_DATA_DefaultProtocol",
         []() -> std::string { return tensorflow::data::DefaultProtocol(); });
-  m.def("TF_DATA_DefaultDataTransferProtocol", []() -> std::string {
-    return tensorflow::data::DefaultDataTransferProtocol();
+
+  m.def("TF_DATA_DisableCompressionAtRegistrationTime", []() -> bool {
+    return tensorflow::data::DisableCompressionAtRegistrationTime();
   });
 };

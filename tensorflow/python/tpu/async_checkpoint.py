@@ -138,6 +138,8 @@ class AsyncCheckpointSaverHook(basic_session_run_hooks.CheckpointSaverHook):
     graph = ops.get_default_graph()
     meta_graph_def = meta_graph.create_meta_graph_def(
         graph_def=graph.as_graph_def(add_shapes=True), saver_def=saver_def)
+    if self._summary_writer is None:
+      raise ValueError("Summary writer is not initialised")
     self._summary_writer.add_graph(graph)
     self._summary_writer.add_meta_graph(meta_graph_def)
     # The checkpoint saved here is the state at step "global_step".
@@ -184,6 +186,8 @@ class AsyncCheckpointSaverHook(basic_session_run_hooks.CheckpointSaverHook):
         l.before_save(session, step)
 
       self._get_saver().save(session, self._save_path, global_step=step)
+      if self._summary_writer is None:
+        raise ValueError("Summary writer is not initialised")
       self._summary_writer.add_session_log(
           event_pb2.SessionLog(
               status=event_pb2.SessionLog.CHECKPOINT,

@@ -17,7 +17,6 @@ limitations under the License.
 #define TF_TYPE_ATTRIBUTES
 
 include "mlir/IR/AttrTypeBase.td"
-include "mlir/IR/SubElementInterfaces.td"
 include "tensorflow/core/ir/types/dialect.td"
 include "mlir/IR/BuiltinAttributeInterfaces.td"
 
@@ -333,7 +332,7 @@ def TFType_FullTypeAttr : AttrDef<TFTypeDialect, "FullType"> {
 // FuncAttr
 //===----------------------------------------------------------------------===//
 
-def TFType_FuncAttr : TFType_Attr<"Func", [SubElementAttrInterface]> {
+def TFType_FuncAttr : TFType_Attr<"Func", []> {
   let mnemonic = "func";
   let summary = "Models the `AttrValue.value.func` proto attribute value as a "
     "pair of SymbolRef and DictionaryAttr";
@@ -347,10 +346,6 @@ def TFType_FuncAttr : TFType_Attr<"Func", [SubElementAttrInterface]> {
 
     where the first element is the `SymbolRefAttr` and the second element is the
     `DictionaryAttr`.
-
-    So that the symbol reference and any symbol references nested in the
-    `DictionaryAttr` are visible to symbol tables, this attribute implements the
-    `SubElementAttrInterface`.
   }];
 
   let parameters = (ins
@@ -415,7 +410,7 @@ def TFType_ShapeAttrDef : TFType_Attr<"Shape"> {
     // be >= 0 or `ShapedType::kDynamicDim`. The value of
     // `ShapedType::kDynamicDim` means the dimension is dynamic. Otherwise, the
     // dimension is static.
-    AttrBuilder<(ins "llvm::Optional<ArrayRef<int64_t>>":$dimensions)>,
+    AttrBuilder<(ins "std::optional<ArrayRef<int64_t>>":$dimensions)>,
     // Returns a Shape attribute from a TensorFlow ShapedType type.
     AttrBuilder<(ins "ShapedType":$shaped_type)>
   ];
@@ -430,7 +425,7 @@ def TFType_ShapeAttrDef : TFType_Attr<"Shape"> {
     int64_t getRank() const;
 
     // Returns the shape array if ranked, or None if unranked.
-    llvm::Optional<ArrayRef<int64_t>> getValue() const;
+    std::optional<ArrayRef<int64_t>> getValue() const;
   }];
   let hasCustomAssemblyFormat = 1;
 }

@@ -41,8 +41,9 @@ struct ExternalLib {
     void* handle = SharedLibrary::LoadLibrary(library.c_str());
 #endif  // defined(_WIN32)
     if (handle == nullptr) {
-      TFLITE_LOG(TFLITE_LOG_INFO, "Unable to load external delegate from : %s",
-                 library.c_str());
+      TFLITE_LOG(TFLITE_LOG_INFO,
+                 "Unable to load external delegate from : %s (%s)",
+                 library.c_str(), SharedLibrary::GetError());
     } else {
       create = reinterpret_cast<decltype(&tflite_plugin_create_delegate)>(
           SharedLibrary::GetLibrarySymbol(handle,

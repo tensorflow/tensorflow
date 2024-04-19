@@ -89,25 +89,19 @@ Softmax1x1::Softmax1x1(const OperationDef& definition, const GpuInfo& gpu_info,
                        const BHWC& shape)
     : GPUOperation(definition) {
   // work_group_size_.x must be power of 2 up to 1024
-  if (gpu_info.IsAdreno()) {
+  if (gpu_info.IsAdreno() && gpu_info.adreno_info.IsAdreno7xx()) {
     work_group_size_ = int3(512, 1, 1);
   } else if (gpu_info.IsMali()) {
     work_group_size_ = int3(1024, 1, 1);
   } else {
-    work_group_size_ = int3(256, 1, 1);
+    work_group_size_ = int3(128, 1, 1);
   }
   const int slices = DivideRoundUp(shape.c, 4);
   while (work_group_size_.x >= slices * 2) {
     work_group_size_.x /= 2;
   }
-  if (gpu_info.IsAdreno()) {
-    while (work_group_size_.x >= gpu_info.GetMaxWorkGroupSizeForX()) {
-      work_group_size_.x /= 2;
-    }
-  } else {
-    while (work_group_size_.x > gpu_info.GetMaxWorkGroupSizeForX()) {
-      work_group_size_.x /= 2;
-    }
+  while (work_group_size_.x >= gpu_info.GetMaxWorkGroupSizeForX()) {
+    work_group_size_.x /= 2;
   }
   code_ = GetSoftmaxKernelCode(definition_);
 }

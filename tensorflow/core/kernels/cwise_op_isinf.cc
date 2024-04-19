@@ -23,6 +23,7 @@ REGISTER4(UnaryOp, CPU, "IsInf", functor::isinf, float, Eigen::half, bfloat16,
 #if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 REGISTER3(UnaryOp, GPU, "IsInf", functor::isinf, float, Eigen::half, double);
 #endif
+REGISTER(UnaryOp, GPU, "IsInf", functor::isinf, bfloat16);
 #endif
 
 }  // namespace tensorflow

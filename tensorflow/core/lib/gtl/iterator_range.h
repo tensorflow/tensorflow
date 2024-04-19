@@ -25,7 +25,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_LIB_GTL_ITERATOR_RANGE_H_
 #define TENSORFLOW_CORE_LIB_GTL_ITERATOR_RANGE_H_
 
-#include "tensorflow/tsl/lib/gtl/iterator_range.h"
+#include "tsl/lib/gtl/iterator_range.h"
 
 namespace tensorflow {
 namespace gtl {

@@ -13,16 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <utility>
+#include <vector>
+
 #include "tensorflow/compiler/tf2xla/kernels/conv_op_helpers.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/lib/constants.h"
-#include "tensorflow/compiler/xla/client/lib/matrix.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
-#include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/util.h"
+#include "xla/client/lib/constants.h"
+#include "xla/client/lib/matrix.h"
+#include "xla/client/xla_builder.h"
+#include "xla/shape_util.h"
+#include "xla/util.h"
 #include "tensorflow/core/framework/kernel_shape_util.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/util/tensor_format.h"
@@ -116,12 +119,17 @@ class ExtractImagePatchesOp : public XlaOpKernel {
     kernel_shape[num_spatial_dims + 1] = kernel_size * depth;
     xla::Shape iota_kernel_shape =
         xla::ShapeUtil::MakeShape(xla::S32, {kernel_size, depth, kernel_size});
-    xla::XlaOp filter =
-        xla::Reshape(xla::ConvertElementType(
-                         xla::Eq(xla::Iota(builder, iota_kernel_shape, 0),
-                                 xla::Iota(builder, iota_kernel_shape, 2)),
-                         type),
-                     kernel_shape);
+    xla::XlaOp pred_intermediate = xla::Eq(xla::Iota(builder, iota_kernel_shape,
+                                                     /* iota_dimension= */ 0),
+                                           xla::Iota(builder, iota_kernel_shape,
+                                                     /* iota_dimension= */ 2));
+    // In some cases TPU implementations give different results than CPU and GPU
+    // when doing the conversion directly from pred to the final type. Add an
+    // extra conversion to S32 here solves this.
+    xla::XlaOp int_intermediate =
+        xla::ConvertElementType(pred_intermediate, xla::S32);
+    xla::XlaOp filter = xla::Reshape(
+        xla::ConvertElementType(int_intermediate, type), kernel_shape);
 
     xla::ConvolutionDimensionNumbers dims;
     std::vector<int64_t> window_strides(num_spatial_dims);
@@ -146,7 +154,7 @@ class ExtractImagePatchesOp : public XlaOpKernel {
 
       int64_t unused_output_size;
       OP_REQUIRES_OK(
-          ctx, GetWindowedOutputSizeVerboseV2(
+          ctx, GetWindowedOutputSizeVerbose(
                    input_shape.dim_size(dim), ksizes_[dim], rhs_dilation[i],
                    window_strides[i], padding_, &unused_output_size,
                    &padding[i].first, &padding[i].second));
@@ -175,7 +183,8 @@ class ExtractImagePatchesOp : public XlaOpKernel {
   Padding padding_;
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(ExtractImagePatchesOp);
+  ExtractImagePatchesOp(const ExtractImagePatchesOp&) = delete;
+  void operator=(const ExtractImagePatchesOp&) = delete;
 };
 
 // We don't support integers for the convolution for GPU used in the

@@ -53,7 +53,7 @@ namespace {
 Status ConvBackpropExtractAndVerifyDimension(
     StringPiece label, const TensorShape& input_shape,
     const TensorShape& filter_shape, const TensorShape& output_shape,
-    const gtl::ArraySlice<int32> dilations, const std::vector<int32>& strides,
+    const absl::Span<const int32> dilations, const std::vector<int32>& strides,
     Padding padding, int64_t padding_before, int64_t padding_after,
     int spatial_dim, int filter_spatial_dim,
     ConvBackpropSpatialDimension* dim) {
@@ -63,7 +63,7 @@ Status ConvBackpropExtractAndVerifyDimension(
   dim->stride = strides[spatial_dim];
   dim->dilation = dilations[spatial_dim];
   int64_t out_size = 0;
-  TF_RETURN_IF_ERROR(GetWindowedOutputSizeVerboseV2(
+  TF_RETURN_IF_ERROR(GetWindowedOutputSizeVerbose(
       dim->input_size, dim->filter_size, dim->dilation, dim->stride, padding,
       &out_size, &padding_before, &padding_after));
   if (dim->output_size != out_size) {
@@ -87,7 +87,7 @@ Status ConvBackpropExtractAndVerifyDimension(
           << ", pad_before = " << dim->pad_before
           << ", pad_after = " << dim->pad_after
           << ", dilation = " << dim->dilation << ", strides = " << dim->stride;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -95,7 +95,7 @@ Status ConvBackpropExtractAndVerifyDimension(
 Status ConvBackpropComputeDimensionsV2(
     StringPiece label, int num_spatial_dims, const TensorShape& input_shape,
     const TensorShape& filter_shape, const TensorShape& out_backprop_shape,
-    const gtl::ArraySlice<int32>& dilations, const std::vector<int32>& strides,
+    const absl::Span<const int32>& dilations, const std::vector<int32>& strides,
     Padding padding, absl::Span<const int64_t> explicit_paddings,
     TensorFormat data_format, ConvBackpropDimensions* dims) {
   // The + 2 in the following line is for the batch and feature dimensions.
@@ -154,7 +154,7 @@ Status ConvBackpropComputeDimensionsV2(
         strides, padding, padding_before, padding_after, image_dim, i,
         &dims->spatial_dims[i]));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ConvBackpropComputeDimensions(StringPiece label, int num_spatial_dims,

@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
 #include <vector>
 
 #include "llvm/ADT/ArrayRef.h"
@@ -59,7 +60,7 @@ void RemoveCopyIfTargetOnlyRead(func::FuncOp func) {
         }
         continue;
       }
-      if (auto effect_interface = cast<MemoryEffectOpInterface>(user)) {
+      if (auto effect_interface = dyn_cast<MemoryEffectOpInterface>(user)) {
         if (reader) {
           at_most_one_read = false;
         } else {

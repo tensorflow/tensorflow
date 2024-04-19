@@ -183,6 +183,12 @@ LogicalResult ConvertMaxUnpoolingFunc::CreateCustomOptions(
   pool_params.activation = kTfLiteActNone;
   pool_params.computed.padding = TfLitePaddingValues{0, 0, 0, 0};
 
+#if FLATBUFFERS_LITTLEENDIAN == 0
+  int32_t* p = reinterpret_cast<int32_t*>(&pool_params);
+  for (size_t i = 0; i < sizeof(TfLitePoolParams) / 4; i++, p++)
+    *p = flatbuffers::EndianSwap(*p);
+#endif
+
   custom_option_buffer.assign(reinterpret_cast<char*>(&pool_params),
                               sizeof(TfLitePoolParams));
   return success();

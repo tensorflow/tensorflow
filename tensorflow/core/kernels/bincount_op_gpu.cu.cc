@@ -42,9 +42,10 @@ struct BincountFunctor<GPUDevice, Tidx, T, false> {
                         typename TTypes<T, 1>::Tensor& output,
                         const Tidx num_bins) {
     if (weights.size() != 0) {
-      return errors::InvalidArgument(
-          "Weights should not be passed as it should be "
-          "handled by unsorted_segment_sum");
+      return errors::Unimplemented(
+          "Weights are not yet supported by the GPU implementation of Bincount."
+          " Please use unsorted_segment_sum instead or put Bincount inside"
+          " tf.function(jit_compile=True).");
     }
     if (output.size() == 0) {
       return OkStatus();

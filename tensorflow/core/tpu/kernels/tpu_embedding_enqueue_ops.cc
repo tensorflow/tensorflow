@@ -15,32 +15,37 @@ limitations under the License.
 
 #include "tensorflow/core/tpu/kernels/tpu_embedding_enqueue_ops.h"
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/types/span.h"
 #include "tensorflow/c/tf_tensor.h"
-#include "tensorflow/c/tf_tensor_internal.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/c_api_decl.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/status_helper.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
+#include "tensorflow/c/tf_tensor_helper.h"
+#include "xla/stream_executor/tpu/c_api_decl.h"
+#include "xla/stream_executor/tpu/status_helper.h"
+#include "xla/stream_executor/tpu/tpu_api.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
+#include "tsl/platform/tstring.h"
 
 namespace tensorflow {
 
 Status ValidateCombiners(absl::Span<const std::string> combiners) {
   for (const std::string& combiner : combiners) {
     if (combiner != "sum" && combiner != "mean" && combiner != "sqrtn") {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           "Invalid combiner: only \"sum\", \"mean\", and "
           "\"sqrtn\" are supported.");
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status GetValidatedModeOverride(const string& mode_override,
+Status GetValidatedModeOverride(const std::string& mode_override,
                                 tpu::TPUEmbeddingConfiguration::Mode* mode) {
   if (mode_override == "train") {
     *mode = tpu::TPUEmbeddingConfiguration::TRAINING;
@@ -52,7 +57,7 @@ Status GetValidatedModeOverride(const string& mode_override,
     return errors::InvalidArgument("Unsupported value ", mode_override,
                                    " specified for mode_override.");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 namespace {
@@ -117,7 +122,7 @@ class EnqueueTPUEmbeddingArbitraryTensorBatchOp : public OpKernel {
     const Tensor* mode_override;
     OP_REQUIRES_OK(ctx, ctx->input("mode_override", &mode_override));
 
-    const string& mode_value = mode_override->scalar<tstring>()();
+    const std::string& mode_value = mode_override->scalar<tsl::tstring>()();
     tpu::TPUEmbeddingConfiguration::Mode mode;
     OP_REQUIRES_OK(ctx, GetValidatedModeOverride(mode_value, &mode));
 
@@ -125,7 +130,7 @@ class EnqueueTPUEmbeddingArbitraryTensorBatchOp : public OpKernel {
     if (!device_ordinal_set_) {
       const Tensor* device_ordinal_tensor;
       OP_REQUIRES_OK(ctx, ctx->input("device_ordinal", &device_ordinal_tensor));
-      device_ordinal_ = device_ordinal_tensor->flat<int32>()(0);
+      device_ordinal_ = device_ordinal_tensor->flat<int32_t>()(0);
       device_ordinal_set_ = true;
     }
 
@@ -159,24 +164,21 @@ class EnqueueTPUEmbeddingArbitraryTensorBatchOp : public OpKernel {
 
     StatusHelper status;
     params.status = status.c_status;
-    params.status = status.c_status;
     params.fixed_state = fixed_state_;
     params.local_device_ordinal = device_ordinal_;
     params.mode = mode;
 
     {
-      tensorflow::profiler::TraceMe enqueue_batch_trace(
-          [] { return "EnqueueBatch"; },
-          tensorflow::profiler::TraceMeLevel::kInfo);
+      tsl::profiler::TraceMe enqueue_batch_trace(
+          [] { return "EnqueueBatch"; }, tsl::profiler::TraceMeLevel::kInfo);
       stream_executor::tpu::OpsApiFn()->TpuEmbeddingEngine_EnqueueTensorBatchFn(
           &params);
       OP_REQUIRES_OK(ctx, status.status());
     }
 
     {
-      tensorflow::profiler::TraceMe delete_tensors_trace(
-          [] { return "DeleteTensors"; },
-          tensorflow::profiler::TraceMeLevel::kInfo);
+      tsl::profiler::TraceMe delete_tensors_trace(
+          [] { return "DeleteTensors"; }, tsl::profiler::TraceMeLevel::kInfo);
 
       DeleteTensors(sample_indices_or_row_splits_tensors);
       DeleteTensors(embedding_indices_tensors);
@@ -196,7 +198,9 @@ class EnqueueTPUEmbeddingArbitraryTensorBatchOp : public OpKernel {
   bool device_ordinal_set_ = false;
   TpuEmbedding_TensorBatchFixedState* fixed_state_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(EnqueueTPUEmbeddingArbitraryTensorBatchOp);
+  EnqueueTPUEmbeddingArbitraryTensorBatchOp(
+      const EnqueueTPUEmbeddingArbitraryTensorBatchOp&) = delete;
+  void operator=(const EnqueueTPUEmbeddingArbitraryTensorBatchOp&) = delete;
 };
 
 #ifdef LIBTPU_ON_GCE

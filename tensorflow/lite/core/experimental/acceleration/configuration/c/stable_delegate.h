@@ -15,37 +15,11 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_CORE_EXPERIMENTAL_ACCELERATION_CONFIGURATION_C_STABLE_DELEGATE_H_
 #define TENSORFLOW_LITE_CORE_EXPERIMENTAL_ACCELERATION_CONFIGURATION_C_STABLE_DELEGATE_H_
 
-// C API types for TFLite delegates that implement stable delegate ABI.
+// This header file is no longer experimental.
+// Please use the non-experimental file instead.
 
-#include "tensorflow/lite/core/shims/c/experimental/acceleration/configuration/delegate_plugin.h"
+#include "tensorflow/lite/core/acceleration/configuration/c/stable_delegate.h"  // IWYU pragma: export
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-// Constant that identifies the TfLiteStableDelegate ABI version that the
-// delegate supports. This will get incremented if there are changes to the
-// struct. The version is in semver 2 format (see https://semver.org).
-#define TFL_STABLE_DELEGATE_ABI_VERSION "1.0.0"
-
-// Contains stable delegate metadata and implementation.
-typedef struct TfLiteStableDelegate {
-  // The struct ABI version this delegate supports in semver 2 format. It should
-  // be set to TFL_STABLE_DELEGATE_ABI_VERSION.
-  const char* delegate_abi_version;
-
-  // Uniquely identifies a delegate.
-  const char* delegate_name;
-
-  // Release version of this delegate.
-  const char* delegate_version;
-
-  // Provides the implementation of the delegate plugin.
-  const TfLiteOpaqueDelegatePlugin* delegate_plugin;
-} TfLiteStableDelegate;
-
-#ifdef __cplusplus
-};  // extern "C"
-#endif
+// IWYU pragma: private, include "third_party/tensorflow/lite/core/acceleration/configuration/c/stable_delegate.h"
 
 #endif  // TENSORFLOW_LITE_CORE_EXPERIMENTAL_ACCELERATION_CONFIGURATION_C_STABLE_DELEGATE_H_

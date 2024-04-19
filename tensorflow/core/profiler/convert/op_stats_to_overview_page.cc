@@ -15,7 +15,10 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/convert/op_stats_to_overview_page.h"
 
+#include <algorithm>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "google/protobuf/any.pb.h"
 #include "absl/strings/str_cat.h"
@@ -28,24 +31,27 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/overview_page.pb.h"
+#include "tensorflow/core/profiler/protobuf/power_metrics.pb.h"
 #include "tensorflow/core/profiler/protobuf/steps_db.pb.h"
 #include "tensorflow/core/profiler/protobuf/tf_function.pb.h"
 #include "tensorflow/core/profiler/utils/diagnostics.h"
-#include "tensorflow/core/profiler/utils/format_utils.h"
 #include "tensorflow/core/profiler/utils/hardware_type_utils.h"
 #include "tensorflow/core/profiler/utils/html_utils.h"
 #include "tensorflow/core/profiler/utils/kernel_stats_utils.h"
 #include "tensorflow/core/profiler/utils/math_utils.h"
 #include "tensorflow/core/profiler/utils/op_metrics_db_utils.h"
-#include "tensorflow/core/profiler/utils/tf_op_utils.h"
-#include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
+#include "tsl/profiler/utils/format_utils.h"
+#include "tsl/profiler/utils/tf_op_utils.h"
+#include "tsl/profiler/utils/tf_xplane_visitor.h"
 
 namespace tensorflow {
 namespace profiler {
 
 namespace {
+
+using tsl::profiler::OneDigit;
 
 // If the use of low-precision ops is less than this percentage threshold, a
 // statement of suggestion will be made.
@@ -86,7 +92,7 @@ void ComputeDeviceTips(HardwareType hardware_type,
                        OverviewPageRecommendation* re) {
   absl::string_view device_name = HardwareType_Name(hardware_type);
   absl::string_view timeline_name = device_name;
-  absl::string_view op_stats_toolname = "tensorflow_stats";
+  absl::string_view op_stats_toolname = "framework_op_stats";
   if (hardware_type == tensorflow::profiler::TPU) {
     timeline_name = "TPU core";
     op_stats_toolname = "op_profile";
@@ -187,12 +193,12 @@ OverviewPageAnalysis ComputeAnalysisResult(const OpStats& op_stats) {
     OverviewTfOp* op = analysis.add_top_device_ops();
     op->set_name(metrics->name());
     op->set_category(metrics->category());
-    op->set_self_time_fraction(
-        SafeDivide(metrics->self_time_ps(), total_device_time_ps));
+    op->set_self_time_fraction(tsl::profiler::SafeDivide(
+        metrics->self_time_ps(), total_device_time_ps));
     device_cumulative_fraction += op->self_time_fraction();
     op->set_cumulative_time_fraction(device_cumulative_fraction);
-    op->set_flop_rate(
-        SafeDivide(metrics->flops(), PicoToNano(metrics->time_ps())));
+    op->set_flop_rate(tsl::profiler::SafeDivide(
+        metrics->flops(), tsl::profiler::PicoToNano(metrics->time_ps())));
     auto iter = kernel_stats_by_op_name.find(op->name());
     if (iter != kernel_stats_by_op_name.end()) {
       op->set_is_op_tensorcore_eligible(
@@ -205,12 +211,12 @@ OverviewPageAnalysis ComputeAnalysisResult(const OpStats& op_stats) {
       op_stats.device_op_metrics_db().precision_stats().compute_32bit_ps();
   analysis.set_device_compute_16bit_percent(
       100.0 *
-      SafeDivide(
+      tsl::profiler::SafeDivide(
           op_stats.device_op_metrics_db().precision_stats().compute_16bit_ps(),
           total_device_compute_ps));
   analysis.set_device_compute_32bit_percent(
       100.0 *
-      SafeDivide(
+      tsl::profiler::SafeDivide(
           op_stats.device_op_metrics_db().precision_stats().compute_32bit_ps(),
           total_device_compute_ps));
 
@@ -239,29 +245,30 @@ OverviewPageAnalysis ComputeAnalysisResult(const OpStats& op_stats) {
   // {metrics.provenance(), metrics.name()} from
   // device_tf_op_metrics_db.metrics_db(), because metrics.provenance() there is
   // not set and metrics.name() can be either HLO-Op name or TF-Op name, which
-  // will confuse IsOutsideCompilationOp().
+  // will confuse tsl::profiler::IsOutsideCompilationOp().
   uint64 outside_compilation_device_op_time_ps = 0;
   for (const OpMetrics& metrics :
        op_stats.device_op_metrics_db().metrics_db()) {
-    if (!IsOutsideCompilationOp(metrics.provenance(), metrics.long_name()))
+    if (!tsl::profiler::IsOutsideCompilationOp(metrics.provenance(),
+                                               metrics.long_name()))
       continue;
     outside_compilation_device_op_time_ps += metrics.self_time_ps();
   }
   uint64 num_total_tf_ops = num_host_tf_ops + num_device_tf_ops;
   analysis.set_host_tf_op_percent(
-      100.0 * SafeDivide(num_host_tf_ops, num_total_tf_ops));
+      100.0 * tsl::profiler::SafeDivide(num_host_tf_ops, num_total_tf_ops));
   analysis.set_device_tf_op_percent(
-      100.0 * SafeDivide(num_device_tf_ops, num_total_tf_ops));
+      100.0 * tsl::profiler::SafeDivide(num_device_tf_ops, num_total_tf_ops));
   analysis.set_host_trace_level(op_stats.run_environment().host_trace_level());
   analysis.set_host_op_time_eager_percent(
-      100.0 *
-      SafeDivide(eager_host_op_time_ps, total_host_op_time_ps_exclude_idle));
+      100.0 * tsl::profiler::SafeDivide(eager_host_op_time_ps,
+                                        total_host_op_time_ps_exclude_idle));
   analysis.set_device_op_time_eager_percent(
-      100.0 * SafeDivide(eager_device_op_time_ps,
-                         total_device_op_time_ps_exclude_idle));
+      100.0 * tsl::profiler::SafeDivide(eager_device_op_time_ps,
+                                        total_device_op_time_ps_exclude_idle));
   analysis.set_device_op_time_outside_compilation_percent(
-      100.0 * SafeDivide(outside_compilation_device_op_time_ps,
-                         total_device_op_time_ps_exclude_idle));
+      100.0 * tsl::profiler::SafeDivide(outside_compilation_device_op_time_ps,
+                                        total_device_op_time_ps_exclude_idle));
   return analysis;
 }
 
@@ -298,6 +305,10 @@ OverviewPageRunEnvironment ComputeRunEnvironment(
   re.set_device_core_count(run_environment.device_core_count());
   re.set_replica_count(run_environment.replica_count());
   re.set_num_cores_per_replica(run_environment.num_cores_per_replica());
+  re.set_is_training(run_environment.is_training());
+  if (run_environment.has_power_metrics()) {
+    *re.mutable_power_metrics() = run_environment.power_metrics();
+  }
   *re.mutable_host_independent_job_info() =
       ToOverviewPageHostIndependentJobInfo(
           run_environment.host_independent_job_info());

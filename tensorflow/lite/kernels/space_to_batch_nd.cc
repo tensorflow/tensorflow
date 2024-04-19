@@ -104,8 +104,22 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_TYPES_EQ(context, op_context.input->type,
                           op_context.output->type);
 
-  if (!IsConstantTensor(op_context.block_shape) ||
-      !IsConstantTensor(op_context.paddings)) {
+  if (op_context.input->type == kTfLiteUInt8 ||
+      op_context.input->type == kTfLiteInt8 ||
+      op_context.input->type == kTfLiteInt16) {
+    TF_LITE_ENSURE_EQ(context, op_context.input->params.scale,
+                      op_context.output->params.scale);
+    TF_LITE_ENSURE_EQ(context, op_context.input->params.zero_point,
+                      op_context.output->params.zero_point);
+  }
+
+  if (op_context.input->type == kTfLiteInt16) {
+    TF_LITE_ENSURE_EQ(context, op_context.input->params.zero_point, 0);
+    TF_LITE_ENSURE_EQ(context, op_context.output->params.zero_point, 0);
+  }
+
+  if (!IsConstantOrPersistentTensor(op_context.block_shape) ||
+      !IsConstantOrPersistentTensor(op_context.paddings)) {
     SetTensorToDynamic(op_context.output);
     return kTfLiteOk;
   }
@@ -155,6 +169,15 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                                   op_context.output->params.zero_point);
       } else {
         TF_LITE_SPACE_TO_BATCH_ND(optimized_ops, int8_t,
+                                  op_context.output->params.zero_point);
+      }
+      break;
+    case kTfLiteInt16:
+      if (kernel_type == kReference) {
+        TF_LITE_SPACE_TO_BATCH_ND(reference_ops, int16_t,
+                                  op_context.output->params.zero_point);
+      } else {
+        TF_LITE_SPACE_TO_BATCH_ND(optimized_ops, int16_t,
                                   op_context.output->params.zero_point);
       }
       break;

@@ -47,7 +47,6 @@ using GpuDevice = Eigen::GpuDevice;
   template struct functor::MirrorPadGrad<GpuDevice, T, int64, 5>;
 
 TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_SPECS);
-TF_CALL_bfloat16(DEFINE_GPU_SPECS);
 #undef DEFINE_GPU_SPECS
 
 }  // namespace tensorflow

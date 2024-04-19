@@ -16,8 +16,11 @@ limitations under the License.
 
 #include <string>
 
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
+#include "tensorflow/lite/python/metrics/converter_error_data.pb.h"
 
 namespace mlir {
 namespace TFL {
@@ -81,7 +84,7 @@ class LocationExtractor : public Location {
           // op_type metadata.
           if (num_locs > 0) {
             if (auto name_loc = locations[0].dyn_cast<mlir::NameLoc>()) {
-              if (name_loc.getName().strref().endswith(":")) {
+              if (name_loc.getName().strref().ends_with(":")) {
                 if (num_locs == 2) {
                   return LocationExtractor(locations[1]).Extract(error_data);
                 } else if (num_locs > 2) {

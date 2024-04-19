@@ -14,6 +14,11 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/util/memmapped_file_system.h"
 
+#include <algorithm>
+#include <memory>
+#include <utility>
+#include <vector>
+
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/protobuf.h"
@@ -65,15 +70,15 @@ class RandomAccessFileFromMemmapped : public RandomAccessFile {
               char* scratch) const override {
     if (offset >= length_) {
       *result = StringPiece(scratch, 0);
-      return Status(error::OUT_OF_RANGE, "Read after file end");
+      return Status(absl::StatusCode::kOutOfRange, "Read after file end");
     }
     const uint64 region_left =
         std::min(length_ - offset, static_cast<uint64>(to_read));
     *result =
         StringPiece(reinterpret_cast<const char*>(data_) + offset, region_left);
-    return (region_left == to_read)
-               ? OkStatus()
-               : Status(error::OUT_OF_RANGE, "Read less bytes than requested");
+    return (region_left == to_read) ? absl::OkStatus()
+                                    : Status(absl::StatusCode::kOutOfRange,
+                                             "Read less bytes than requested");
   }
 
  private:
@@ -84,7 +89,7 @@ class RandomAccessFileFromMemmapped : public RandomAccessFile {
 
 }  // namespace
 
-MemmappedFileSystem::MemmappedFileSystem() {}
+MemmappedFileSystem::MemmappedFileSystem() = default;
 
 Status MemmappedFileSystem::FileExists(const string& fname,
                                        TransactionToken* token) {
@@ -93,7 +98,7 @@ Status MemmappedFileSystem::FileExists(const string& fname,
   }
   const auto dir_element = directory_.find(fname);
   if (dir_element != directory_.end()) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   return errors::NotFound(fname, " not found");
 }
@@ -108,10 +113,10 @@ Status MemmappedFileSystem::NewRandomAccessFile(
   if (dir_element == directory_.end()) {
     return errors::NotFound("Region ", filename, " is not found");
   }
-  result->reset(new RandomAccessFileFromMemmapped(
+  *result = std::make_unique<RandomAccessFileFromMemmapped>(
       GetMemoryWithOffset(dir_element->second.offset),
-      dir_element->second.length));
-  return OkStatus();
+      dir_element->second.length);
+  return absl::OkStatus();
 }
 
 Status MemmappedFileSystem::NewReadOnlyMemoryRegionFromFile(
@@ -124,10 +129,10 @@ Status MemmappedFileSystem::NewReadOnlyMemoryRegionFromFile(
   if (dir_element == directory_.end()) {
     return errors::NotFound("Region ", filename, " is not found");
   }
-  result->reset(new ReadOnlyMemoryRegionFromMemmapped(
+  *result = std::make_unique<ReadOnlyMemoryRegionFromMemmapped>(
       GetMemoryWithOffset(dir_element->second.offset),
-      dir_element->second.length));
-  return OkStatus();
+      dir_element->second.length);
+  return absl::OkStatus();
 }
 
 Status MemmappedFileSystem::GetFileSize(const string& filename,
@@ -140,7 +145,7 @@ Status MemmappedFileSystem::GetFileSize(const string& filename,
     return errors::NotFound("Region ", filename, " is not found");
   }
   *size = dir_element->second.length;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status MemmappedFileSystem::Stat(const string& fname, TransactionToken* token,
@@ -251,7 +256,7 @@ Status MemmappedFileSystem::InitializeFromFile(Env* env,
     }
     prev_element_offset = element_iter->offset();
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 bool MemmappedFileSystem::IsMemmappedPackageFilename(const string& filename) {
@@ -290,7 +295,7 @@ Status MemmappedEnv::GetFileSystemForFile(const string& fname,
           "MemmappedEnv is not initialized from a file.");
     }
     *result = memmapped_file_system_.get();
-    return OkStatus();
+    return absl::OkStatus();
   }
   return EnvWrapper::GetFileSystemForFile(fname, result);
 }

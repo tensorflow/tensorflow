@@ -53,14 +53,14 @@ class TestOptimizer : public CustomGraphOptimizer {
 
   Status Init(const tensorflow::RewriterConfig_CustomGraphOptimizer* config =
                   nullptr) override {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status Optimize(Cluster* cluster, const GrapplerItem& item,
                   GraphDef* optimized_graph) override {
     optimized_ = true;
     *optimized_graph = item.graph;
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:
@@ -83,7 +83,7 @@ class TestOptimizerWithParams : public TestOptimizer {
   Status Init(
       const tensorflow::RewriterConfig_CustomGraphOptimizer* config) override {
     CHECK(config != nullptr);
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 
@@ -107,7 +107,7 @@ class GrapplerItemPropertiesAccumulator : public CustomGraphOptimizer {
 
   Status Init(
       const tensorflow::RewriterConfig_CustomGraphOptimizer* config) override {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status Optimize(Cluster* cluster, const GrapplerItem& item,
@@ -116,7 +116,7 @@ class GrapplerItemPropertiesAccumulator : public CustomGraphOptimizer {
     if (optimization_options_) {
       optimization_options_->insert({item.id, item.optimization_options()});
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:
@@ -711,7 +711,7 @@ class SleepingOptimizer : public CustomGraphOptimizer {
 
   Status Init(
       const tensorflow::RewriterConfig_CustomGraphOptimizer* config) override {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status Optimize(Cluster* cluster, const GrapplerItem& item,
@@ -720,7 +720,7 @@ class SleepingOptimizer : public CustomGraphOptimizer {
     Env::Default()->SleepForMicroseconds(1000000);
     GRAPPLER_RETURN_IF_DEADLINE_EXCEEDED();
     optimized_graph->add_node();
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 
@@ -743,7 +743,7 @@ TEST_F(MetaOptimizerTest, OptimizerTimesOut) {
   GraphDef original = item.graph;
   const Status status =
       RunMetaOptimizer(std::move(item), config, nullptr, nullptr, &output);
-  EXPECT_EQ(status.error_message(), "meta_optimizer exceeded deadline.");
+  EXPECT_EQ(status.message(), "meta_optimizer exceeded deadline.");
   // Make sure the graph was reverted to the original regardless of when the
   // optimizer timed out.
   CompareGraphs(original, output);
@@ -766,7 +766,7 @@ TEST_F(MetaOptimizerTest, MetaOptimizerTimesOut) {
   const int original_node_size = item.graph.node_size();
   const Status status =
       RunMetaOptimizer(std::move(item), config, nullptr, nullptr, &output);
-  EXPECT_EQ(status.error_message(), "meta_optimizer exceeded deadline.");
+  EXPECT_EQ(status.message(), "meta_optimizer exceeded deadline.");
   // The meta optimizer should manage to finish one iteration.
   EXPECT_EQ(original_node_size + 1, output.node_size());
 }
@@ -898,7 +898,7 @@ TEST_F(MetaOptimizerTest, RunPostOptimizationVerifiersOnInvalidGraph) {
       optimizer_with_post_verifiers.Optimize(nullptr, item, &output);
   EXPECT_TRUE(errors::IsInvalidArgument(status));
   EXPECT_TRUE(absl::StrContains(
-      status.error_message(),
+      status.message(),
       "NodeDef expected inputs 'float' do not match 3 inputs specified"));
 }
 
@@ -971,9 +971,9 @@ TEST_F(MetaOptimizerTest, RunInterOptimizerVerifiersOnInvalidGraph) {
   MetaOptimizer optimizer_with_inter_verifiers(nullptr, config_proto);
   Status status =
       optimizer_with_inter_verifiers.Optimize(nullptr, item, &output);
-  EXPECT_EQ(status.code(), errors::Code::INVALID_ARGUMENT);
+  EXPECT_EQ(status.code(), absl::StatusCode::kInvalidArgument);
   EXPECT_TRUE(absl::StrContains(
-      status.error_message(),
+      status.message(),
       "NodeDef expected inputs 'float' do not match 3 inputs specified"));
 }
 
@@ -1201,14 +1201,14 @@ class TfDataTestOptimizer : public CustomGraphOptimizer {
 
   Status Init(
       const tensorflow::RewriterConfig_CustomGraphOptimizer* config) override {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status Optimize(Cluster* cluster, const GrapplerItem& item,
                   GraphDef* optimized_graph) override {
     ++count_;
     *optimized_graph = item.graph;
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:

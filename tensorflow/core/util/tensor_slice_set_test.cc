@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/util/tensor_slice_set.h"
 
+#include <utility>
 #include <vector>
+
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
