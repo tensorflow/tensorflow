@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <string>
 #include <utility>
 #include <variant>
@@ -147,15 +148,21 @@ class AutotuneConfig {
   se::DeviceMemoryAllocator* GetAllocator() const {
     CHECK(std::holds_alternative<DeviceConfig>(config_));
     auto& cf = std::get<DeviceConfig>(config_);
-    return cf.allocator ? cf.allocator : GetExecutor()->GetAllocator();
+    if (cf.allocator != nullptr) {
+      return cf.allocator;
+    }
+    if (allocator_ == nullptr) {
+      allocator_ =
+          std::make_unique<se::StreamExecutorMemoryAllocator>(GetExecutor());
+    }
+    return allocator_.get();
   }
 
   absl::StatusOr<se::Stream*> GetStream() const {
     CHECK(std::holds_alternative<DeviceConfig>(config_));
-    if (stream_ != nullptr) {
-      return stream_.get();
+    if (stream_ == nullptr) {
+      stream_ = std::move(GetExecutor()->CreateStream().value());
     }
-    stream_ = std::move(GetExecutor()->CreateStream().value());
     return stream_.get();
   }
 
@@ -179,6 +186,7 @@ class AutotuneConfig {
   bool exhaustive_tiling_search_;
   bool require_complete_aot_autotune_results_;
   mutable std::unique_ptr<stream_executor::Stream> stream_;
+  mutable std::unique_ptr<se::DeviceMemoryAllocator> allocator_;
 };
 
 using AutotuneNoCacheFn = std::function<absl::StatusOr<AutotuneResult>()>;
