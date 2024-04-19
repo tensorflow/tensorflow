@@ -49,10 +49,6 @@ CopyThunk::CopyThunk(BufferAllocation::Slice source_buffer,
       << " must be compatble with destination shape "
       << destination_shape_.ToString(true);
 
-  // TODO(ezhulenev): This is almost certainly wrong for many types of copies
-  // that change layout, however it works in a few tests. This implementation
-  // is copied from `xla/pjrt/cpu/abstract_tfrt_cpu_buffer.cc`. It seems to
-  // work only if destination is a row-major layout.
   if (source_shape_ != destination_shape_) {
     TransposePlan::Options options;
     options.elem_size_in_bytes =
@@ -83,10 +79,10 @@ absl::Status CopyThunk::Execute(const ExecuteParams& params) {
   VLOG(3) << absl::StreamFormat("Copy buffer: use_transpose=%s",
                                 transpose_plan_ ? "true" : "false");
   VLOG(3) << absl::StreamFormat(
-      " - src: %s in slice %s (%p)", source_shape_.ToString(true),
+      "  src: %s in slice %s (%p)", source_shape_.ToString(true),
       source_buffer_.ToString(), source_data.opaque());
   VLOG(3) << absl::StreamFormat(
-      " - dst: %s in slice %s (%p)", destination_shape_.ToString(true),
+      "  dst: %s in slice %s (%p)", destination_shape_.ToString(true),
       destination_buffer_.ToString(), destination_data.opaque());
 
   // TODO(ezhulenev): Add benchmarks for copy thunk and add support for

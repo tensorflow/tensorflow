@@ -52,29 +52,6 @@ filegroup(
     ]),
 )
 
-# Collection of XLA tests that support XLA:CPU thunk-based runtime. We keep
-# running them on TAP while we keep working on porting XLA:CPU to the new
-# runtime.
-#
-# XLA:CPU thunks enabled with:
-#   --test_env=XLA_FLAGS=--xla_cpu_use_thunk_runtime=true
-#
-test_suite(
-    name = "thunk_runtime_tests",
-    tests = [
-        "//xla/tests:array_elementwise_ops_test_cpu",
-        "//xla/tests:axpy_simple_test_cpu",
-        "//xla/tests:convert_test_cpu",
-        "//xla/tests:copy_test_cpu",
-        "//xla/tests:floor_ceil_test_cpu",
-        "//xla/tests:numerics_test_cpu",
-        "//xla/tests:reshape_test_cpu",
-        "//xla/tests:reverse_test_cpu",
-        "//xla/tests:unary_op_test_cpu",
-        "//xla/tests/exhaustive:exhaustive_binary_16_bit_test_cpu",
-    ],
-)
-
 cc_library(
     name = "test_header_helper",
     testonly = True,
@@ -641,6 +618,7 @@ cc_library(
         ":elemental_math_emitter",
         ":ir_emitter",
         "//xla:shape_util",
+        "//xla:util",
         "//xla/hlo/ir:hlo",
         "//xla/service:elemental_ir_emitter",
         "//xla/service/llvm_ir:fused_ir_emitter",
