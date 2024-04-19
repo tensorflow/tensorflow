@@ -1,1 +1,182 @@
 Auto generated patch. Do not edit or delete it, even if empty.
+diff -ruN --strip-trailing-cr a/clang/test/Driver/aix-toolchain-include.cpp b/clang/test/Driver/aix-toolchain-include.cpp
+--- a/clang/test/Driver/aix-toolchain-include.cpp
++++ b/clang/test/Driver/aix-toolchain-include.cpp
+@@ -5,28 +5,28 @@
+ // RUN:		--target=powerpc-ibm-aix \
+ // RUN:		-resource-dir=%S/Inputs/resource_dir \
+ // RUN:		--sysroot=%S/Inputs/basic_aix_tree \
+-// RUN:         -fopenmp \
++// RUN:		-fopenmp=libomp \
+ // RUN:   | FileCheck -check-prefixes=CHECK-INTERNAL-INCLUDE,CHECK-INTERNAL-INCLUDE-CXX %s
+ 
+ // RUN: %clangxx -### %s 2>&1 \
+ // RUN:		--target=powerpc64-ibm-aix \
+ // RUN:		-resource-dir=%S/Inputs/resource_dir \
+ // RUN:		--sysroot=%S/Inputs/basic_aix_tree \
+-// RUN:         -fopenmp \
++// RUN:		-fopenmp=libomp \
+ // RUN:   | FileCheck -check-prefixes=CHECK-INTERNAL-INCLUDE,CHECK-INTERNAL-INCLUDE-CXX %s
+ 
+ // RUN: %clang -### -xc %s 2>&1 \
+ // RUN:		--target=powerpc-ibm-aix \
+ // RUN:		-resource-dir=%S/Inputs/resource_dir \
+ // RUN:		--sysroot=%S/Inputs/basic_aix_tree \
+-// RUN:         -fopenmp \
++// RUN:		-fopenmp=libomp \
+ // RUN:   | FileCheck -check-prefix=CHECK-INTERNAL-INCLUDE %s
+ 
+ // RUN: %clang -### -xc %s 2>&1 \
+ // RUN:		--target=powerpc64-ibm-aix \
+ // RUN:		-resource-dir=%S/Inputs/resource_dir \
+ // RUN:		--sysroot=%S/Inputs/basic_aix_tree \
+-// RUN:         -fopenmp \
++// RUN:		-fopenmp=libomp \
+ // RUN:   | FileCheck -check-prefix=CHECK-INTERNAL-INCLUDE %s
+ 
+ // CHECK-INTERNAL-INCLUDE:      "-cc1"
+@@ -78,7 +78,7 @@
+ // RUN:		-resource-dir=%S/Inputs/resource_dir \
+ // RUN:		--sysroot=%S/Inputs/basic_aix_tree \
+ // RUN:		-nostdlibinc \
+-// RUN:         -fopenmp \
++// RUN:		-fopenmp=libomp \
+ // RUN:   | FileCheck -check-prefix=CHECK-NOSTDLIBINC-INCLUDE %s
+ 
+ // RUN: %clangxx -### %s 2>&1 \
+@@ -86,7 +86,7 @@
+ // RUN:		-resource-dir=%S/Inputs/resource_dir \
+ // RUN:		--sysroot=%S/Inputs/basic_aix_tree \
+ // RUN:		-nostdlibinc \
+-// RUN:         -fopenmp \
++// RUN:		-fopenmp=libomp \
+ // RUN:   | FileCheck -check-prefix=CHECK-NOSTDLIBINC-INCLUDE %s
+ 
+ // RUN: %clang -### -xc %s 2>&1 \
+@@ -94,7 +94,7 @@
+ // RUN:		-resource-dir=%S/Inputs/resource_dir \
+ // RUN:		--sysroot=%S/Inputs/basic_aix_tree \
+ // RUN:		-nostdlibinc \
+-// RUN:         -fopenmp \
++// RUN:		-fopenmp=libomp \
+ // RUN:   | FileCheck -check-prefix=CHECK-NOSTDLIBINC-INCLUDE %s
+ 
+ // RUN: %clang -### -xc %s 2>&1 \
+@@ -102,7 +102,7 @@
+ // RUN:		-resource-dir=%S/Inputs/resource_dir \
+ // RUN:		--sysroot=%S/Inputs/basic_aix_tree \
+ // RUN:		-nostdlibinc \
+-// RUN:         -fopenmp \
++// RUN:		-fopenmp=libomp \
+ // RUN:   | FileCheck -check-prefix=CHECK-NOSTDLIBINC-INCLUDE %s
+ 
+ // CHECK-NOSTDLIBINC-INCLUDE:	"-cc1"
+@@ -120,7 +120,7 @@
+ // RUN:		-resource-dir=%S/Inputs/resource_dir \
+ // RUN:		--sysroot=%S/Inputs/basic_aix_tree \
+ // RUN:		-nobuiltininc \
+-// RUN:         -fopenmp \
++// RUN:		-fopenmp=libomp \
+ // RUN:   | FileCheck -check-prefixes=CHECK-NOBUILTININC-INCLUDE,CHECK-NOBUILTININC-INCLUDE-CXX %s
+ 
+ // RUN: %clangxx -### %s 2>&1 \
+@@ -128,7 +128,7 @@
+ // RUN:		-resource-dir=%S/Inputs/resource_dir \
+ // RUN:		--sysroot=%S/Inputs/basic_aix_tree \
+ // RUN:		-nobuiltininc \
+-// RUN:         -fopenmp \
++// RUN:		-fopenmp=libomp \
+ // RUN:   | FileCheck -check-prefixes=CHECK-NOBUILTININC-INCLUDE,CHECK-NOBUILTININC-INCLUDE-CXX  %s
+ 
+ // RUN: %clang -### -xc %s 2>&1 \
+@@ -136,7 +136,7 @@
+ // RUN:		-resource-dir=%S/Inputs/resource_dir \
+ // RUN:		--sysroot=%S/Inputs/basic_aix_tree \
+ // RUN:		-nobuiltininc \
+-// RUN:         -fopenmp \
++// RUN:		-fopenmp=libomp \
+ // RUN:   | FileCheck -check-prefix=CHECK-NOBUILTININC-INCLUDE %s
+ 
+ // RUN: %clang -### -xc %s 2>&1 \
+@@ -144,7 +144,7 @@
+ // RUN:		-resource-dir=%S/Inputs/resource_dir \
+ // RUN:		--sysroot=%S/Inputs/basic_aix_tree \
+ // RUN:		-nobuiltininc \
+-// RUN:         -fopenmp \
++// RUN:		-fopenmp=libomp \
+ // RUN:   | FileCheck -check-prefix=CHECK-NOBUILTININC-INCLUDE %s
+ 
+ // CHECK-NOBUILTININC-INCLUDE:	"-cc1"
+@@ -162,7 +162,7 @@
+ // RUN:  -resource-dir=%S/Inputs/resource_dir \
+ // RUN:  --sysroot=%S/Inputs/basic_aix_tree \
+ // RUN:  -nostdinc++ \
+-// RUN:  -fopenmp \
++// RUN:  -fopenmp=libomp \
+ // RUN:   | FileCheck -check-prefix=CHECK-NOSTDINCXX-INCLUDE %s
+ 
+ // RUN: %clangxx -### %s 2>&1 \
+@@ -170,7 +170,7 @@
+ // RUN:  -resource-dir=%S/Inputs/resource_dir \
+ // RUN:  --sysroot=%S/Inputs/basic_aix_tree \
+ // RUN:  -nostdinc++ \
+-// RUN:  -fopenmp \
++// RUN:  -fopenmp=libomp \
+ // RUN:   | FileCheck -check-prefix=CHECK-NOSTDINCXX-INCLUDE  %s
+ 
+ // CHECK-NOSTDINCXX-INCLUDE:      "-cc1"
+diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp b/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp
+--- a/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp
++++ b/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp
+@@ -14442,18 +14442,11 @@
+     }
+     auto NumSignBits = ComputeNumSignBits(V, *DL, 0, AC, nullptr, DT);
+     unsigned BitWidth1 = OrigBitWidth - NumSignBits;
+-    bool IsSigned = !isKnownNonNegative(V, SimplifyQuery(*DL));
+-    if (IsSigned)
++    if (!isKnownNonNegative(V, SimplifyQuery(*DL)))
+       ++BitWidth1;
+     if (auto *I = dyn_cast<Instruction>(V)) {
+       APInt Mask = DB->getDemandedBits(I);
+       unsigned BitWidth2 = Mask.getBitWidth() - Mask.countl_zero();
+-      while (!IsSigned && BitWidth2 < OrigBitWidth) {
+-        APInt Mask = APInt::getBitsSetFrom(OrigBitWidth, BitWidth2 - 1);
+-        if (MaskedValueIsZero(V, Mask, SimplifyQuery(*DL)))
+-          break;
+-        BitWidth2 *= 2;
+-      }
+       BitWidth1 = std::min(BitWidth1, BitWidth2);
+     }
+     BitWidth = std::max(BitWidth, BitWidth1);
+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/SLPVectorizer/RISCV/unsigned-node-trunc-with-signed-users.ll b/llvm/test/Transforms/SLPVectorizer/RISCV/unsigned-node-trunc-with-signed-users.ll
+--- a/llvm/test/Transforms/SLPVectorizer/RISCV/unsigned-node-trunc-with-signed-users.ll
++++ b/llvm/test/Transforms/SLPVectorizer/RISCV/unsigned-node-trunc-with-signed-users.ll
+@@ -8,20 +8,18 @@
+ ; CHECK-NEXT:    [[GEP799:%.*]] = getelementptr inbounds i8, ptr [[P]], i64 16
+ ; CHECK-NEXT:    [[TMP1:%.*]] = load <2 x i16>, ptr [[P]], align 2
+ ; CHECK-NEXT:    [[TMP2:%.*]] = load <2 x i16>, ptr [[GEP799]], align 2
+-; CHECK-NEXT:    [[TMP3:%.*]] = zext <2 x i16> [[TMP1]] to <2 x i32>
+-; CHECK-NEXT:    [[TMP4:%.*]] = zext <2 x i16> [[TMP2]] to <2 x i32>
+-; CHECK-NEXT:    [[TMP7:%.*]] = sub nsw <2 x i32> [[TMP4]], [[TMP3]]
+-; CHECK-NEXT:    [[TMP8:%.*]] = add nsw <2 x i32> [[TMP7]], <i32 3329, i32 3329>
++; CHECK-NEXT:    [[TMP3:%.*]] = sub <2 x i16> [[TMP2]], [[TMP1]]
++; CHECK-NEXT:    [[TMP4:%.*]] = add <2 x i16> [[TMP3]], <i16 3329, i16 3329>
+ ; CHECK-NEXT:    [[TMP5:%.*]] = insertelement <2 x i32> poison, i32 [[ZEXT795]], i32 0
+ ; CHECK-NEXT:    [[TMP6:%.*]] = shufflevector <2 x i32> [[TMP5]], <2 x i32> poison, <2 x i32> zeroinitializer
+-; CHECK-NEXT:    [[TMP12:%.*]] = mul <2 x i32> [[TMP8]], [[TMP6]]
+-; CHECK-NEXT:    [[TMP9:%.*]] = zext <2 x i32> [[TMP12]] to <2 x i64>
++; CHECK-NEXT:    [[TMP7:%.*]] = trunc <2 x i32> [[TMP6]] to <2 x i16>
++; CHECK-NEXT:    [[TMP8:%.*]] = mul <2 x i16> [[TMP4]], [[TMP7]]
++; CHECK-NEXT:    [[TMP9:%.*]] = zext <2 x i16> [[TMP8]] to <2 x i64>
+ ; CHECK-NEXT:    [[TMP10:%.*]] = mul nuw nsw <2 x i64> [[TMP9]], <i64 5039, i64 5039>
+ ; CHECK-NEXT:    [[TMP11:%.*]] = lshr <2 x i64> [[TMP10]], <i64 24, i64 24>
+-; CHECK-NEXT:    [[TMP13:%.*]] = trunc <2 x i64> [[TMP11]] to <2 x i32>
+-; CHECK-NEXT:    [[TMP20:%.*]] = mul <2 x i32> [[TMP13]], <i32 62207, i32 62207>
+-; CHECK-NEXT:    [[TMP21:%.*]] = add <2 x i32> [[TMP20]], [[TMP12]]
+-; CHECK-NEXT:    [[TMP14:%.*]] = trunc <2 x i32> [[TMP21]] to <2 x i16>
++; CHECK-NEXT:    [[TMP12:%.*]] = trunc <2 x i64> [[TMP11]] to <2 x i16>
++; CHECK-NEXT:    [[TMP13:%.*]] = mul <2 x i16> [[TMP12]], <i16 -3329, i16 -3329>
++; CHECK-NEXT:    [[TMP14:%.*]] = add <2 x i16> [[TMP13]], [[TMP8]]
+ ; CHECK-NEXT:    [[TMP15:%.*]] = add <2 x i16> [[TMP14]], <i16 -3329, i16 -3329>
+ ; CHECK-NEXT:    [[TMP16:%.*]] = icmp slt <2 x i16> [[TMP15]], zeroinitializer
+ ; CHECK-NEXT:    [[TMP17:%.*]] = select <2 x i1> [[TMP16]], <2 x i16> [[TMP14]], <2 x i16> zeroinitializer
