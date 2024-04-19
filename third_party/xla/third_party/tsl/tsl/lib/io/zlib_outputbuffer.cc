@@ -155,7 +155,7 @@ absl::Status ZlibOutputBuffer::Append(StringPiece data) {
 
   size_t bytes_to_write = data.size();
 
-  if (static_cast<int32>(bytes_to_write) <= AvailableInputSpace()) {
+  if (bytes_to_write <= static_cast<size_t>(AvailableInputSpace())) {
     AddToInputBuffer(data);
     return absl::OkStatus();
   }
@@ -163,7 +163,7 @@ absl::Status ZlibOutputBuffer::Append(StringPiece data) {
   TF_RETURN_IF_ERROR(DeflateBuffered(zlib_options_.flush_mode));
 
   // At this point input stream should be empty.
-  if (static_cast<int32>(bytes_to_write) <= AvailableInputSpace()) {
+  if (bytes_to_write <= static_cast<size_t>(AvailableInputSpace())) {
     AddToInputBuffer(data);
     return absl::OkStatus();
   }
