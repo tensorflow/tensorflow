@@ -373,59 +373,176 @@ Status EighExpander::SortByEigenvalues(XlaOp& v, XlaOp& w) {
   return OkStatus();
 }
 
-// This is the cyclic Jacobi iteration.
+// import numpy as np
+
+// complex_array = lambda real, imag: real + 1j * imag
+
+// def sym_schur2x2(w_tl, w_tr, w_br):
+//     w_tl = np.diag(np.real(w_tl))
+//     w_tr = np.diag(w_tr)
+//     w_br = np.diag(np.real(w_br))
+//     is_complex = np.iscomplexobj(w_tl) or np.iscomplexobj(w_tr)
+//        or np.iscomplexobj(w_br)
+//     if is_complex:
+//         abs_tr = np.abs(w_tr)
+//         zeros_like_abs_tr = np.zeros_like(abs_tr)
+//         complex_abs_tr = abs_tr + 1j * zeros_like_abs_tr
+//         w = np.where(abs_tr == zeros_like_abs_tr,
+//                     np.ones_like(w_tr),
+//                     np.conj(w_tr) / complex_abs_tr)
 //
+//         w_tr = abs_tr
+//
+//     tau = (w_br - w_tl) / (2 * w_tr)
+//     t = np.sqrt(1 + np.square(tau))
+//     t = 1 / (tau + np.where(tau >= 0, t, -t))
+//
+//     kFudgeFactor = 0.1
+//     tiny = kFudgeFactor * np.finfo(float).eps * np.ones_like(w_tr)
+//     off_diag_is_tiny = np.abs(w_tr) <= tiny * np.minimum(np.abs(w_tl),
+//        np.abs(w_br))
+//     t = np.where(off_diag_is_tiny, np.zeros_like(t), t)
+//     c = 1 / np.sqrt(1 + np.square(t))
+//     s = t * c
+//
+//     rt1 = w_tl - t * w_tr
+//     rt2 = w_br + t * w_tr
+
+//     if is_complex:
+//         rt1 = rt1 + 1j * np.zeros_like(rt1)
+//         rt2 = rt2 + 1j * np.zeros_like(rt2)
+//         c = c + 1j * np.zeros_like(c)
+//         s = s * w + 1j * np.zeros_like(s)
+//
+//     return rt1, rt2, c, s
+//
+// def permute_cols_in_row(left, right):
+//     left_out = np.zeros_like(left)
+//     left_out[:, 0] = left[:, 0]
+//     left_out[:, 1] = right[:, 0]
+//     left_out[:, 2:] = left[:, 1:-1]
+//
+//     right_out = np.zeros_like(right)
+//     right_out[:, :-1] = right[:, 1:]
+//     right_out[:, -1] = left[:, -1]
+//
+//     return left_out, right_out
+//
+// def square_norm(x):
+//   return np.real(x * maybe_conjugate(x))
+//
+// def maybe_conjugate(x):
+//   if np.iscomplexobj(x):
+//     x = np.conj(x)
+//   return x
+//
+// def permute_rows_in_col(top, bottom):
+//    top_out = np.zeros_like(top)
+//    top_out[0] = top[0]
+//    top_out[1] = bottom[0]
+//    top_out[2:] = top[1:-1]
+//    bottom_out = np.zeros_like(bottom)
+//    bottom_out[:-1] = bottom[1:]
+//    bottom_out[-1] = top[-1]
+//    return top_out, bottom_out
+//
+// def auto_off_diag(x):
+//     n = x.shape[0]
+//     diag_mask = np.eye(n, dtype=bool)
+//     return x[~diag_mask].reshape(n, n-1)
+//
+// def sweep(w_tl, w_tr, w_bl, w_br, v_tl, v_tr, v_bl, v_br):
+//   eigh_2x2 = sym_schur2x2(w_tl, w_tr, w_br)
+//   rt1, rt2, c, s = eigh_2x2
+//   s = maybe_conjugate(s)
+//   # Rotation over Rows
+//   w_tl, w_tr, w_bl, w_br = (
+//     w_tl * c[:, None] - w_bl * s[:, None],
+//     w_tr * c[:, None] - w_br * s[:, None],
+//     w_tl * s[:, None] + w_bl * c[:, None],
+//     w_tr * s[:, None] + w_br * c[:, None],
+//   )
+//   # Rotation over cols
+//   w_tl, w_tr, w_bl, w_br = (
+//     w_tl * c[None, :] - w_tr * s[None, :],
+//     w_tl * s[None, :] + w_tr * c[None, :],
+//     w_bl * c[None, :] - w_br * s[None, :],
+//     w_bl * s[None, :] + w_br * c[None, :],
+//   )
+//
+//   w_tl, w_tr = permute_cols_in_row(w_tl, w_tr)
+//   w_bl, w_br = permute_cols_in_row(w_bl, w_br)
+//   w_tl, w_bl = permute_rows_in_col(w_tl, w_bl)
+//   w_tr, w_br = permute_rows_in_col(w_tr, w_br)
+//
+//   v_tl, v_tr, v_bl, v_br = (
+//     v_tl * c[:, None] - v_bl * s[:, None],
+//     v_tr * c[:, None] - v_br * s[:, None],
+//     v_tl * s[:, None] + v_bl * c[:, None],
+//     v_tr * s[:, None] + v_br * c[:, None],
+//   )
+//   v_tl, v_bl = permute_rows_in_col(v_tl, v_bl)
+//   v_tr, v_br = permute_rows_in_col(v_tr, v_br)
+//   return w_tl, w_tr, w_bl, w_br, v_tl, v_tr, v_bl, v_br
+//
+// # This is the cyclic Jacobi iteration.
 // def jacobi(A):
-//   n, _ = A.shape
+//   m, n = A.shape
+//   if m != n:
+//     raise RuntimeError("Eigendecomp input arg must be a square")
 //   tl = A[:n // 2, :n // 2]
 //   bl = A[n // 2:, :n // 2]
 //   tr = A[:n // 2, n // 2:]
 //   br = A[n // 2:, n // 2:]
 //   v_tl = np.eye(n // 2, dtype=A.dtype)
-//   v_tr = np.zeros((n // 2, n // 2), A.dtype)
-//   v_bl = np.zeros((n // 2, n // 2), A.dtype)
-//   v_br = np.eye(n // 2, dtype=A.dtype)
-//   frobenius_norm = np.sqrt(np.sum(np.square(tl) + np.square(tr) +
-//                            np.square(bl) + np.square(br)))
-//   diag_norm = np.sqrt(np.sum(np.square(np.diag(tl)) +
-//                              np.square(np.diag(br))))
-//    off_diag_norm = np.sqrt(frobenius_norm - diag_norm) * np.sqrt(
-//            frobenius_norm + diag_norm)
-//   while off_diag_norm > 1e-6 * frobenius_norm:
-//     for i in range(n - 1):
-//       c, s = sym_schur2x2(tl, tr, br)
-//        tl, tr, bl, br = (
-//          tl * c[:, None] - bl * s[:, None],
-//          tr * c[:, None] - br * s[:, None],
-//          tl * s[:, None] + bl * c[:, None],
-//          tr * s[:, None] + br * c[:, None],
-//        )
-//        tl, tr, bl, br = (
-//          tl * c[None, :] - tr * s[None, :],
-//          tl * s[None, :] + tr * c[None, :],
-//          bl * c[None, :] - br * s[None, :],
-//          bl * s[None, :] + br * c[None, :],
-//        )
-//        tl, bl = permute_rows_in_col(tl, bl)
-//        tr, br = permute_rows_in_col(tr, br)
-//        tl, tr = permute_cols_in_row(tl, tr)
-//        bl, br = permute_cols_in_row(bl, br)
-//        v_tl, v_tr, v_bl, v_br = (
-//          v_tl * c[:, None] - v_bl * s[:, None],
-//          v_tr * c[:, None] - v_br * s[:, None],
-//          v_tl * s[:, None] + v_bl * c[:, None],
-//          v_tr * s[:, None] + v_br * c[:, None],
-//        )
-//        v_tl, v_bl = permute_rovs_in_col(v_tl, v_bl)
-//        v_tr, v_br = permute_rovs_in_col(v_tr, v_br)
+//   v_br = np.copy(v_tl)
+//   v_tr = np.zeros(v_tl.shape, A.dtype)
+//   v_bl = np.copy(v_tr)
 //
-//     frobenius_norm = np.sqrt(np.sum(np.square(tl) + np.square(tr) +
-//                              np.square(bl) + np.square(br)))
-//     diag_norm = np.sqrt(np.sum(np.square(np.diag(tl)) +
-//                         np.square(np.diag(br))))
-//     off_diag_norm = np.sqrt(frobenius_norm - diag_norm) * np.sqrt(
-//             frobenius_norm + diag_norm)
-//   return A, V
+//   if n % 2:
+//     raise RuntimeError("NYI - odd ndims")
+//
+//   def condition(tl, tr, bl, br):
+//
+//     def compute_frobenius_norms(w_tl, w_tr, w_bl, w_br):
+//         square_norm = lambda x: np.real(x * x.conj())
+//         off_diag = lambda x: np.where(np.eye(x.shape[-1], dtype=bool), 0, x)
+//
+//         frobenius_sq_norm = square_norm(w_tl).sum() + \
+//                                     square_norm(w_tr).sum() + \
+//                                     square_norm(w_bl).sum() + \
+//                                     square_norm(w_br).sum()
+//         off_diagonal_sq_norm = square_norm(off_diag(w_tl)).sum() + \
+//                                         square_norm(w_tr).sum() + \
+//                                         square_norm(w_bl).sum() + \
+//                                         square_norm(off_diag(w_br)).sum()
+//
+//         return frobenius_sq_norm, off_diagonal_sq_norm
+//
+//     frobenius_sq_norm, off_diagonal_sq_norm = c
+//      compute_frobenius_norms(tl, tr, bl, br)
+//     tol = frobenius_sq_norm * 1e-6**2
+//     return tol < off_diagonal_sq_norm
+//
+//
+//   while condition(tl, tr, bl, br):
+//     for i in range(n - 1):
+//       tl, tr, bl, br, v_tl, v_tr, v_bl, v_br = sweep(tl, tr, bl, br, v_tl,
+//         v_tr, v_bl, v_br)
+//
+//   w = np.concatenate((np.diag(np.real(tl)), np.diag(np.real(br))), axis=0)
+//   v_top = np.concatenate((v_tl, v_tr), axis=A.ndim-1)
+//   v_bottom = np.concatenate((v_bl, v_br), axis=A.ndim-1)
+//   v = np.concatenate((v_top, v_bottom), axis=A.ndim-2)
+//   v = np.swapaxes(v, -1, -2)
+//   return w, v
+//
+// n = 4
+// A = np.ones([n, n]) + 1j * np.ones([n, n])
+// A = (A + A.conj().T) / 2
+// w, v = jacobi(A)
+// A_reconstructed = v @ np.diag(w) @ v.conj().T
+// np.allclose(A, A_reconstructed)
 XlaOp EighExpander::BuildEigh(XlaOp a, bool lower, int64_t max_iter, float tol,
                               bool sort_eigenvalues) {
   XlaBuilder* builder = a.builder();
