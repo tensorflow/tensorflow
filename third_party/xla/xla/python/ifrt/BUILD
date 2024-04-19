@@ -553,3 +553,66 @@ xla_cc_test(
         "@local_tsl//tsl/protobuf:status_proto_cc",
     ],
 )
+
+cc_library(
+    name = "io_callable_program",
+    srcs = ["io_callable_program.cc"],
+    hdrs = ["io_callable_program.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":ifrt",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+tf_proto_library(
+    name = "io_callable_program_proto",
+    srcs = ["io_callable_program.proto"],
+    protodeps = [
+        ":array_spec_proto",
+        ":device_proto",
+    ],
+)
+
+cc_library(
+    name = "io_callable_program_serdes",
+    srcs = ["io_callable_program_serdes.cc"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":array_spec_proto_cc",
+        ":ifrt",
+        ":io_callable_program",
+        ":io_callable_program_proto_cc",
+        ":program_serdes",
+        ":serdes",
+        ":sharding_proto_cc",
+        ":sharding_serdes",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@llvm-project//llvm:Support",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+    alwayslink = True,
+)
+
+xla_cc_test(
+    name = "io_callable_program_serdes_test",
+    srcs = ["io_callable_program_serdes_test.cc"],
+    deps = [
+        ":ifrt",
+        ":io_callable_program",
+        ":io_callable_program_serdes",
+        ":program_serdes",
+        ":serdes",
+        ":sharding_test_util",
+        "@com_google_absl//absl/functional:bind_front",
+        "@com_google_absl//absl/status",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Support",
+        "@local_tsl//tsl/lib/core:status_test_util",
+        "@local_tsl//tsl/platform:status_matchers",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:test",
+    ],
+)
