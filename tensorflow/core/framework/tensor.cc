@@ -895,7 +895,7 @@ Status Tensor::BitcastFrom(const Tensor& other, DataType dtype,
       RefIfNonNull(buf_);
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Notice that buf_ either points to a regular TensorBuffer or a SubBuffer.
@@ -999,7 +999,7 @@ Status Tensor::BuildTensor(DataType type, const TensorShape& shape,
       type, {}, return errors::InvalidArgument("Type not set"),
       return errors::InvalidArgument("Unexpected type: ", DataType_Name(type)));
   *out_tensor = Tensor(type, shape);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // NOTE(mrry): The default allocator for a Tensor (when none is specified) is
@@ -1545,7 +1545,7 @@ void Tensor::FillDescription(TensorDescription* description) const {
 }
 
 gtl::InlinedVector<int64_t, 4> Tensor::ComputeFlatInnerDims(
-    gtl::ArraySlice<int64_t> orig, int64_t num_out_dims) {
+    absl::Span<const int64_t> orig, int64_t num_out_dims) {
   gtl::InlinedVector<int64_t, 4> out_dims(num_out_dims, 0);
   int64_t offset = orig.size() - num_out_dims;
   for (int64_t out_dim = num_out_dims - 1; out_dim >= 0; --out_dim) {
@@ -1559,7 +1559,7 @@ gtl::InlinedVector<int64_t, 4> Tensor::ComputeFlatInnerDims(
 }
 
 gtl::InlinedVector<int64_t, 4> Tensor::ComputeFlatOuterDims(
-    gtl::ArraySlice<int64_t> orig, int64_t num_out_dims) {
+    absl::Span<const int64_t> orig, int64_t num_out_dims) {
   gtl::InlinedVector<int64_t, 4> out_dims(num_out_dims, 0);
   for (int64_t out_dim = 0; out_dim <= num_out_dims - 1; ++out_dim) {
     out_dims[out_dim] = out_dim >= orig.size() ? 1 : orig[out_dim];
