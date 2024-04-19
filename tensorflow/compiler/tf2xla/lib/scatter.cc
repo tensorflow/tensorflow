@@ -19,15 +19,18 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/log/log.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_join.h"
 #include "absl/types/span.h"
-#include "tensorflow/compiler/tf2xla/lib/util.h"
-#include "xla/client/lib/arithmetic.h"
 #include "xla/client/xla_builder.h"
-#include "xla/literal.h"
+#include "xla/client/xla_computation.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/util.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 
