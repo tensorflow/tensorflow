@@ -887,7 +887,7 @@ absl::Status GpuCommandBuffer::If(ExecutionScopeId execution_scope_id,
                                   StreamExecutor* executor,
                                   DeviceMemory<bool> predicate,
                                   Builder then_builder) {
-  DCHECK(executor->implementation() == parent_);
+  DCHECK(executor == parent_);
 
   TF_ASSIGN_OR_RETURN(SetIfConditionKernel * set_if_condition,
                       GetSetIfConditionKernel(executor));
@@ -909,7 +909,7 @@ absl::Status GpuCommandBuffer::IfElse(ExecutionScopeId execution_scope_id,
                                       DeviceMemory<bool> predicate,
                                       Builder then_builder,
                                       Builder else_builder) {
-  DCHECK(executor->implementation() == parent_);
+  DCHECK(executor == parent_);
 
   TF_ASSIGN_OR_RETURN(SetIfElseConditionKernel * set_if_else_condition,
                       GetSetIfElseConditionKernel(executor));
@@ -931,7 +931,7 @@ absl::Status GpuCommandBuffer::Case(ExecutionScopeId execution_scope_id,
                                     StreamExecutor* executor,
                                     DeviceMemory<int32_t> index,
                                     std::vector<Builder> branches) {
-  DCHECK(executor->implementation() == parent_);
+  DCHECK(executor == parent_);
 
   // TODO(ezhulenev): Relax this constraint, we can launch multiple back to back
   // kernels to update conditional handles in batches of size 8.
@@ -974,7 +974,7 @@ absl::Status GpuCommandBuffer::For(ExecutionScopeId execution_scope_id,
                                    int32_t num_iteration,
                                    DeviceMemory<int32_t> loop_counter,
                                    Builder body_builder) {
-  DCHECK(executor->implementation() == parent_);
+  DCHECK(executor == parent_);
 
   TF_ASSIGN_OR_RETURN(SetForConditionKernel * set_for_condition,
                       GetSetForConditionKernel(executor));
@@ -1009,7 +1009,7 @@ absl::Status GpuCommandBuffer::While(ExecutionScopeId execution_scope_id,
                                      DeviceMemory<bool> pred,
                                      ExecutionScopeBuilder cond_builder,
                                      Builder body_builder) {
-  DCHECK(executor->implementation() == parent_);
+  DCHECK(executor == parent_);
 
   TF_ASSIGN_OR_RETURN(SetWhileConditionKernel * set_while_condition,
                       GetSetWhileConditionKernel(executor));

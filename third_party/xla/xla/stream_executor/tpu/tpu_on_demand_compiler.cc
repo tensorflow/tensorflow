@@ -70,8 +70,7 @@ class TpuCompiler : public Compiler {
     StatusHelper status;
     ExecutorApiFn()->TpuCompiler_RunHloPassesFn(
         compiler_, &hlo_module,
-        static_cast<stream_executor::tpu::TpuExecutor*>(
-            executor->implementation())
+        static_cast<stream_executor::tpu::TpuExecutor*>(executor)
             ->se_executor(),
         &allocator, &result, status.c_status);
     if (!status.ok()) {
@@ -100,8 +99,7 @@ class TpuCompiler : public Compiler {
     StatusHelper status;
     ExecutorApiFn()->TpuCompiler_RunBackendFn(
         compiler_, &hlo_module,
-        static_cast<stream_executor::tpu::TpuExecutor*>(
-            executor->implementation())
+        static_cast<stream_executor::tpu::TpuExecutor*>(executor)
             ->se_executor(),
         &allocator, &result, status.c_status);
     if (!status.ok()) {
@@ -141,9 +139,9 @@ class TpuCompiler : public Compiler {
       se_lists_storage.emplace_back(stream_exec[i].size());
       se_lists[i].exec = se_lists_storage.back().data();
       for (int j = 0; j < stream_exec[i].size(); ++j) {
-        se_lists[i].exec[j] = static_cast<stream_executor::tpu::TpuExecutor*>(
-                                  stream_exec[i][j]->implementation())
-                                  ->se_executor();
+        se_lists[i].exec[j] =
+            static_cast<stream_executor::tpu::TpuExecutor*>(stream_exec[i][j])
+                ->se_executor();
       }
     }
 

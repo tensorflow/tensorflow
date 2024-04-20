@@ -55,7 +55,7 @@ void KernelMetadata::set_shared_memory_bytes(int shared_memory_bytes) {
 
 absl::StatusOr<std::unique_ptr<Kernel>> Kernel::Create(
     StreamExecutor *executor, const MultiKernelLoaderSpec &spec) {
-  TF_ASSIGN_OR_RETURN(auto kernel, executor->implementation()->CreateKernel());
+  TF_ASSIGN_OR_RETURN(auto kernel, executor->CreateKernel());
   TF_RETURN_IF_ERROR(executor->GetKernel(spec, kernel.get()));
   return kernel;
 }

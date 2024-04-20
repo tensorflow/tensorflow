@@ -26,8 +26,7 @@ namespace stream_executor {
 
 Event::Event(StreamExecutor* stream_exec)
     : stream_exec_(stream_exec),
-      implementation_(
-          stream_exec_->implementation()->CreateEventImplementation()) {}
+      implementation_(stream_exec_->CreateEventImplementation()) {}
 
 Event::~Event() {
   // Deal with nullptr implementation_, as this event may have been std::moved.
