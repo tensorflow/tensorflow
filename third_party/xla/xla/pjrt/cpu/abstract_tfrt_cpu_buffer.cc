@@ -822,7 +822,7 @@ AbstractAsyncHostToHostMemoryTransferManager::
   // Wait for in-flight transfers to finish.
   absl::Condition transfers_finished(
       +[](int* t) { return *t == 0; }, &transfers_in_flight_);
-  LOG(INFO) << "Waiting for in-flight transfers to finish.";
+  VLOG(2) << "Waiting for in-flight transfers to finish.";
   absl::MutexLock l(&mu_);
   mu_.Await(transfers_finished);
   for (auto& avref : avs_) {
@@ -832,7 +832,7 @@ AbstractAsyncHostToHostMemoryTransferManager::
           "Async transfer object was deleted before transfers completed."));
     }
   }
-  LOG(INFO) << "In-flight transfers finished.";
+  VLOG(2) << "In-flight transfers finished.";
 }
 
 size_t AbstractAsyncHostToHostMemoryTransferManager::buffer_size(
