@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/passes.h"
+#include "tensorflow/core/tfrt/ifrt/ifrt_model_context.h"
 #include "tensorflow/core/util/debug_data_dumper.h"
 
 namespace tensorflow {
@@ -62,8 +63,9 @@ void EnablePassIRPrinting(PassManager& pm, const std::string& dump_group_name,
   pm.enableTiming();
 }
 
-void AddClusterToIfrtRuntimeOpsPassPipeline(OpPassManager& pm,
-                                            llvm::StringRef module_name) {
+void AddClusterToIfrtRuntimeOpsPassPipeline(
+    OpPassManager& pm, IfrtModelContext& ifrt_model_context,
+    llvm::StringRef module_name) {
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::CreateExecutorDialectToFunctionalConversionPass());
 
@@ -93,13 +95,14 @@ void AddClusterToIfrtRuntimeOpsPassPipeline(OpPassManager& pm,
   pm.addPass(::tensorflow::CreateSinkInInvariantOpsPass());
 
   // Sink variable tensor as named array in IFRT.
-  pm.addPass(CreateSinkVariableAsNamedArrayPass());
+  pm.addPass(CreateSinkVariableAsNamedArrayPass(ifrt_model_context));
 }
 
 }  // namespace
 
 absl::Status RunClusterToIfrtRuntimeOpsPassPipeline(
-    mlir::ModuleOp module, llvm::StringRef module_name) {
+    mlir::ModuleOp module, IfrtModelContext& ifrt_model_context,
+    llvm::StringRef module_name) {
   mlir::StatusScopedDiagnosticHandler diag_handler(
       module.getContext(), /*propagate=*/false,
       /*filter_stack=*/!VLOG_IS_ON(1));
@@ -107,7 +110,8 @@ absl::Status RunClusterToIfrtRuntimeOpsPassPipeline(
   PassManager runtime_lowering(module.getContext());
   ::tensorflow::applyTensorflowAndCLOptions(runtime_lowering);
 
-  AddClusterToIfrtRuntimeOpsPassPipeline(runtime_lowering, module_name);
+  AddClusterToIfrtRuntimeOpsPassPipeline(runtime_lowering, ifrt_model_context,
+                                         module_name);
 
   if (VLOG_IS_ON(1)) {
     ::tensorflow::DumpMlirOpToFile(

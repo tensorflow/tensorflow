@@ -114,8 +114,8 @@ absl::Status CompileTensorflowForIfrtServing(
   tsl::profiler::TraceMe trace_me("CompileTensorflowForIfrtServing");
   mlir::Builder builder(module.getContext());
 
-  TF_RETURN_IF_ERROR(
-      RunClusterToIfrtRuntimeOpsPassPipeline(module, model_name));
+  TF_RETURN_IF_ERROR(RunClusterToIfrtRuntimeOpsPassPipeline(
+      module, ifrt_model_context, model_name));
 
   TF_ASSIGN_OR_RETURN(
       auto handles,

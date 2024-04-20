@@ -23,6 +23,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "tensorflow/core/tfrt/ifrt/ifrt_model_context.h"
 
 namespace tensorflow {
 namespace ifrt_serving {
@@ -35,6 +36,8 @@ CreateRewriteClusterToIfrtCallPass();
 // arrays and lowers `tf.ReadVariableOp` to `tf.IfrtLoadVariableOp`.
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateSinkVariableAsNamedArrayPass();
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+CreateSinkVariableAsNamedArrayPass(IfrtModelContext& ifrt_model_context);
 
 // Creates a pass that splits `tf.RestoreV2` ops.
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
@@ -66,7 +69,8 @@ void RegisterTfIfrtPasses();
 // Convert tf_device.cluster_func to tf.ifrt_program_call.
 // The callee function is converted to a ifrt_program.
 absl::Status RunClusterToIfrtRuntimeOpsPassPipeline(
-    mlir::ModuleOp module, llvm::StringRef module_name = llvm::StringRef());
+    mlir::ModuleOp module, IfrtModelContext& ifrt_model_context,
+    llvm::StringRef module_name = llvm::StringRef());
 
 }  // namespace ifrt_serving
 }  // namespace tensorflow

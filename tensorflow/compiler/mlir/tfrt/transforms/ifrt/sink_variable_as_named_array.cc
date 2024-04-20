@@ -49,6 +49,8 @@ limitations under the License.
 #include "tensorflow/core/platform/protobuf.h"  // IWYU pragma: keep
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_config.pb.h"
+#include "tensorflow/core/tfrt/ifrt/ifrt_model_context.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace ifrt_serving {
@@ -62,6 +64,9 @@ class SinkVariableAsNamedArrayPass
     : public impl::SinkVariableAsNamedArrayPassBase<
           SinkVariableAsNamedArrayPass> {
  public:
+  SinkVariableAsNamedArrayPass() = default;
+  explicit SinkVariableAsNamedArrayPass(IfrtModelContext* ifrt_model_context)
+      : ifrt_model_context_(ifrt_model_context) {}
   void runOnOperation() override {
     mlir::ModuleOp module = getOperation();
     mlir::OpBuilder builder(&getContext());
@@ -337,10 +342,20 @@ class SinkVariableAsNamedArrayPass
         }
       }
     } else {
-      // Default use first N devices.
+      if (ifrt_model_context_ == nullptr) {
+        return absl::FailedPreconditionError("IfrtModelContext is null.");
+      }
+      TF_ASSIGN_OR_RETURN(
+          xla::DeviceAssignment da,
+          ifrt_model_context_->GetClient()->GetDefaultDeviceAssignment(
+              metadata.num_replicas(), metadata.num_cores_per_replica()));
       device_ids.resize(metadata.num_replicas() *
                         metadata.num_cores_per_replica());
-      std::iota(device_ids.begin(), device_ids.end(), 0);
+      for (int i = 0; i < da.replica_count(); ++i) {
+        for (int j = 0; j < da.computation_count(); ++j) {
+          device_ids.push_back(da(i, j));
+        }
+      }
     }
 
     device_sharding_config.mutable_device_ids()->Assign(device_ids.begin(),
@@ -377,6 +392,7 @@ class SinkVariableAsNamedArrayPass
       return nullptr;
     }
   }
+  IfrtModelContext* ifrt_model_context_ = nullptr;
 };
 
 }  // namespace
@@ -384,6 +400,11 @@ class SinkVariableAsNamedArrayPass
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateSinkVariableAsNamedArrayPass() {
   return std::make_unique<SinkVariableAsNamedArrayPass>();
+}
+
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+CreateSinkVariableAsNamedArrayPass(IfrtModelContext& ifrt_model_context_) {
+  return std::make_unique<SinkVariableAsNamedArrayPass>(&ifrt_model_context_);
 }
 
 }  // namespace ifrt_serving
