@@ -34,7 +34,6 @@ limitations under the License.
 
 #include "absl/base/attributes.h"
 #include "absl/base/casts.h"
-#include "absl/base/config.h"
 #include "absl/functional/function_ref.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -48,10 +47,10 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/printer.h"
 #include "xla/shape.h"
+#include "xla/shape_tree.h"
 #include "xla/shape_util.h"
 #include "xla/status.h"
 #include "xla/status_macros.h"
-#include "xla/statusor.h"
 #include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -492,6 +491,12 @@ class LiteralBase {
   static Literal CreateFromShapeWithUndeterminedLeafArrays(const Shape& shape);
 
  protected:
+  class Piece;
+
+  // Recursively builds the subtree for the given piece and sets the subshapes
+  // of the given piece with the given shape.
+  void BuildPieceSubtree(const Shape& shape, Piece* piece);
+
   template <typename OutputIterator>
   Status SerializeWithShapeProto(const ShapeProto& proto,
                                  OutputIterator output) const;
@@ -1520,19 +1525,20 @@ class BorrowingLiteral : public LiteralBase {
 
   // 'src_buf_ptr' is not owned by this class and must outlive the
   // lifetime of this class. It points to an appropriately sized buffer with
-  // data interpretered as indicated by 'shape'.
+  // data interpreted as indicated by 'shape'.
   // This constructor is only used for array shapes.
   BorrowingLiteral(const char* src_buf_ptr, const Shape& shape);
+
   // Similar as above, except to be used for constructing non-nested tuples.
   BorrowingLiteral(absl::Span<const char* const> src_buf_ptrs,
                    const Shape& shape);
-  // TODO(b/79707221): adding constructors for nested tuples as well.
+
+  // Similar as above, except to be used for constructing literals with
+  // potentially nested tuples (same shape as `src_buf_ptrs`) with borrowed
+  // buffers for each shape index.
+  explicit BorrowingLiteral(ShapeTree<const char*> src_buf_ptrs);
 
  private:
-  // Recursively builds the subtree for the given piece and sets the subshapes
-  // of the given piece with the given shape.
-  void BuildPieceSubtree(const Shape& shape, Piece* piece);
-
   // Accessor for the root piece of this literal.
   const Piece& root_piece() const override { return root_piece_; };
   Piece root_piece_;

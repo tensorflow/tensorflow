@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/primitive_util.h"
 #include "xla/shape.h"
+#include "xla/shape_tree.h"
 #include "xla/shape_util.h"
 #include "xla/status.h"
 #include "xla/test.h"
@@ -2000,6 +2001,25 @@ TEST_F(LiteralUtilTest, BorrowingLiteralFromMultipleBufferPtrs) {
 
   EXPECT_EQ(
       literal_tuple.Get<int64_t>(/*multi_index=*/{2}, /*shape_index=*/{0}), 3);
+}
+
+TEST_F(LiteralUtilTest, BorrowingLiteralFromShapeTree) {
+  std::vector<float> data = {1.0, 2.0, 3.0};
+
+  Shape shape = ShapeUtil::MakeShape(PrimitiveType::F32, {3});
+  Shape tuple = ShapeUtil::MakeTupleShape({shape, shape});
+  Shape nested_tuple = ShapeUtil::MakeTupleShape({tuple, shape});
+
+  ShapeTree<const char*> ptr_tree(nested_tuple);
+  *ptr_tree.mutable_element({0, 0}) = reinterpret_cast<char*>(data.data());
+  *ptr_tree.mutable_element({0, 1}) = reinterpret_cast<char*>(data.data());
+  *ptr_tree.mutable_element({1}) = reinterpret_cast<char*>(data.data());
+
+  BorrowingLiteral literal(ptr_tree);
+
+  EXPECT_THAT(literal.data<float>({0, 0}), ElementsAre(1.0, 2.0, 3.0));
+  EXPECT_THAT(literal.data<float>({0, 1}), ElementsAre(1.0, 2.0, 3.0));
+  EXPECT_THAT(literal.data<float>({1}), ElementsAre(1.0, 2.0, 3.0));
 }
 
 TEST_F(LiteralUtilTest, LiteralMove) {
