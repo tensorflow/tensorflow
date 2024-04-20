@@ -115,11 +115,8 @@ class AutotuneConfig {
         should_crash_on_check_failure_(right.should_crash_on_check_failure_),
         exhaustive_tiling_search_(right.exhaustive_tiling_search_),
         require_complete_aot_autotune_results_(
-            right.require_complete_aot_autotune_results_) {
-    if (right.stream_ != nullptr) {
-      stream_ = std::move(GetExecutor()->CreateStream().value());
-    }
-  }
+            right.require_complete_aot_autotune_results_) {}
+
   AutotuneConfig(const std::variant<DeviceConfig, DevicelessConfig>& config,
                  const DebugOptions& debug_options)
       : config_(config),
@@ -160,10 +157,7 @@ class AutotuneConfig {
 
   absl::StatusOr<se::Stream*> GetStream() const {
     CHECK(std::holds_alternative<DeviceConfig>(config_));
-    if (stream_ == nullptr) {
-      stream_ = std::move(GetExecutor()->CreateStream().value());
-    }
-    return stream_.get();
+    return GetAllocator()->GetStream(GetExecutor()->device_ordinal());
   }
 
   const se::GpuComputeCapability& GetGpuComputeCapability() const {
@@ -185,7 +179,6 @@ class AutotuneConfig {
   bool should_crash_on_check_failure_;
   bool exhaustive_tiling_search_;
   bool require_complete_aot_autotune_results_;
-  mutable std::unique_ptr<stream_executor::Stream> stream_;
   mutable std::unique_ptr<se::DeviceMemoryAllocator> allocator_;
 };
 
