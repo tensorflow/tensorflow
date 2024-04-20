@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 
 #include "tensorflow/compiler/jit/variable_info.h"
+#include "tensorflow/core/framework/resource_var.h"
 
 namespace tensorflow {
 

@@ -13,8 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/common_runtime/next_pluggable_device/flags.h"
-
 #include "absl/flags/flag.h"
 
 ABSL_FLAG(bool, next_pluggable_device_use_c_api,
