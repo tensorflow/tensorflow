@@ -91,7 +91,7 @@ TEST(ShardingUtilsTest, ShardTensorToIfrtLoadedVariableNotFoundWrongName) {
                                                     restored_tensor_info));
   promise.Set(input_tensor);
   EXPECT_THAT(
-      LoadRestoredTensorAsIfrtLoadedVariable(
+      AsyncLoadRestoredTensorAsIfrtLoadedVariable(
           "var_x", client, thread_pool, restored_tensor_registry,
           loaded_variable_registry, restore_work_queue.get(), sharding_config),
       StatusIs(absl::StatusCode::kNotFound));
@@ -133,7 +133,7 @@ TEST(ShardingUtilsTest, ShardTensorToIfrtLoadedVariableSucceed) {
 
   TF_ASSERT_OK(
       restored_tensor_registry.TryRegister("var_x", restored_tensor_info));
-  TF_ASSERT_OK(LoadRestoredTensorAsIfrtLoadedVariable(
+  TF_ASSERT_OK(AsyncLoadRestoredTensorAsIfrtLoadedVariable(
       "var_x", client, thread_pool, restored_tensor_registry,
       loaded_variable_registry, restore_work_queue.get(), sharding_config));
   promise.Set(input_tensor);

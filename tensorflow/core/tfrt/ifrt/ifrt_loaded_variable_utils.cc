@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -88,14 +89,18 @@ std::string GetRuntimeNameFromVarHandle(const ResourceHandle& handle) {
   return absl::StrCat(handle.container(), "__", handle.name());
 }
 
-absl::Status LoadRestoredTensorAsIfrtLoadedVariable(
+absl::Status AsyncLoadRestoredTensorAsIfrtLoadedVariable(
     absl::string_view runtime_name,
     std::shared_ptr<xla::ifrt::Client> ifrt_client,
     const tsl::thread::ThreadPool& thread_pool,
-    ifrt_serving::IfrtRestoreTensorRegistry& ifrt_restore_tensor_registry,
+    const ifrt_serving::IfrtRestoreTensorRegistry& ifrt_restore_tensor_registry,
     ifrt_serving::IfrtLoadedVariableRegistry& ifrt_loaded_variable_registry,
     tfrt::ConcurrentWorkQueue* checkpoint_loader_queue,
     const VariableDeviceShardingConfigProto& sharding_config) {
+  if (ifrt_loaded_variable_registry.GetLoadedVariable(runtime_name).ok()) {
+    VLOG(1) << "Variable " << runtime_name << " has already been registered.";
+    return absl::OkStatus();
+  }
   xla::ifrt::Future<absl::StatusOr<tensorflow::Tensor>> restored_tensor_future =
       ifrt_restore_tensor_registry.GetRestoredTensor(runtime_name);
   if (!restored_tensor_future.IsValid()) {

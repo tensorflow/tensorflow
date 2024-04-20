@@ -113,6 +113,9 @@ def TF_IfrtLoadVariableOp : TF_Op<"IfrtLoadVariable", [Pure]> {
     maybe lowered to a future by runtime.
   }];
 
+  // TODO(b/330360798) Redefine the IfrtLoadVariableOp as it doesn't require the
+  // sharding info in the attribute. Consider adding an attribute `used_by_cpu`
+  // and use to for determining if the host tensor can be released.
   let arguments = (ins
     Arg<TF_Tensor, [{The variable tensor to be loaded}], []>:$variable,
     DefaultValuedStrAttr<StrAttr, "">:$device_sharding_config_proto_text,

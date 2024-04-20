@@ -44,11 +44,11 @@ std::string GetRuntimeNameFromVarHandle(const ResourceHandle& handle);
 // future of IFRT loaded variable in `ifrt_loaded_variable_registry`. The caller
 // can look for the actual loaded variable value in
 // `ifrt_loaded_variable_registry`.
-absl::Status LoadRestoredTensorAsIfrtLoadedVariable(
+absl::Status AsyncLoadRestoredTensorAsIfrtLoadedVariable(
     absl::string_view runtime_name,
     std::shared_ptr<xla::ifrt::Client> ifrt_client,
     const tsl::thread::ThreadPool& thread_pool,
-    ifrt_serving::IfrtRestoreTensorRegistry& ifrt_restore_tensor_registry,
+    const ifrt_serving::IfrtRestoreTensorRegistry& ifrt_restore_tensor_registry,
     ifrt_serving::IfrtLoadedVariableRegistry& ifrt_loaded_variable_registry,
     tfrt::ConcurrentWorkQueue* checkpoint_loader_queue,
     const VariableDeviceShardingConfigProto& sharding_config);

@@ -224,14 +224,9 @@ mlrt::bc::Buffer CreateExecutableForIfrtLoadVariableOp(
   mlrt::testing::AttributeTable attributes(
       executable_ctor.construct_attributes(4));
 
-  tensorflow::ifrt_serving::VariableDeviceShardingConfigProto sharding_config;
-  sharding_config.add_device_ids(0);
-  std::string serialized_sharding_config;
-  tsl::protobuf::TextFormat::Printer printer;
-  printer.SetSingleLineMode(true);
-  printer.PrintToString(sharding_config, &serialized_sharding_config);
-
-  attributes.Add("sharding_config", serialized_sharding_config);
+  // TODO(b/330360798) Redefine the IfrtLoadVariableOp as it doesn't require the
+  // sharding info in the attribute. Consider adding an attribute `used_by_cpu`
+  // and use to for determining if the host tensor can be released.
   attributes.Add("variable_name", kVariableRuntimeName);
 
   attributes.Add("var_handle_op_node_def",
@@ -302,9 +297,8 @@ mlrt::bc::Buffer CreateExecutableForIfrtLoadVariableOp(
       kernel_ctor.construct_results(2).Assign(
           {regs.Use("output_tensor"), regs.Def("dummy_future")});
       kernel_ctor.construct_arguments(1).Assign({regs.Use("variable_handle")});
-      kernel_ctor.construct_attributes(2).Assign(
-          {attributes.GetHandle("sharding_config"),
-           attributes.GetHandle("variable_name")});
+      kernel_ctor.construct_attributes(1).Assign(
+          {attributes.GetHandle("variable_name")});
       kernel_ctor.construct_last_uses(1).Assign(
           {redundant_ifrt_load_variable_op ? 0 : 1});
       kernel_index++;
@@ -314,9 +308,8 @@ mlrt::bc::Buffer CreateExecutableForIfrtLoadVariableOp(
       kernel_ctor.set_code(kernels.Use("tf_mlrt.ifrt_load_variable"));
       kernel_ctor.construct_results(2).Assign(
           {regs.Def("dummy"), regs.Def("dummy_future2")});
-      kernel_ctor.construct_attributes(2).Assign(
-          {attributes.GetHandle("sharding_config"),
-           attributes.GetHandle("variable_name")});
+      kernel_ctor.construct_attributes(1).Assign(
+          {attributes.GetHandle("variable_name")});
       kernel_ctor.construct_arguments(1).Assign({regs.Use("variable_handle")});
       kernel_ctor.construct_last_uses(1).Assign({1});
       kernel_index++;
@@ -428,11 +421,6 @@ TEST(KernelTest, IfrtLoadVariableOp) {
 
   TF_ASSERT_OK(execution_context.status());
 
-  TF_ASSERT_OK((*ifrt_model_context)
-                   ->GetLoadedVariableRegistry()
-                   .GetLoadedVariable(kVariableRuntimeName)
-                   .status());
-
   ExpectEqual(results[0].Get<tfrt_stub::FallbackTensor>().tensor(),
               AsScalar(tsl::tstring(kVariableRuntimeName)));
 }
@@ -530,11 +518,6 @@ TEST(KernelTest, DuplicateIfrtLoadVariableOpShallSucceed) {
   notification.WaitForNotification();
 
   TF_ASSERT_OK(execution_context.status());
-
-  TF_ASSERT_OK((*ifrt_model_context)
-                   ->GetLoadedVariableRegistry()
-                   .GetLoadedVariable(kVariableRuntimeName)
-                   .status());
 
   ExpectEqual(results[0].Get<tfrt_stub::FallbackTensor>().tensor(),
               AsScalar(tsl::tstring(kVariableRuntimeName)));

@@ -49,7 +49,6 @@ limitations under the License.
 #include "tensorflow/core/tfrt/mlrt/kernel/kernel.h"
 #include "tensorflow/core/tfrt/mlrt/kernel/kernel_runner_utils.h"
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/tstring.h"
 #include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime
 
@@ -263,16 +262,6 @@ absl::Status MlrtIfrtLoadVariableKernel::InvokeHelper() {
     return absl::FailedPreconditionError(
         "LoadVariableOp: failed to fetch IfrtModelContext: ");
   }
-
-  VariableDeviceShardingConfigProto sharding_config;
-  absl::string_view sharding_config_text = sharding_config_proto_text();
-
-  if (!tensorflow::protobuf::TextFormat::ParseFromString(sharding_config_text,
-                                                         &sharding_config)) {
-    return absl::InvalidArgumentError(
-        absl::StrCat("Attribute: ", sharding_config_text, " cannot be parsed"));
-  }
-
   auto tensor_promise =
       mlrt::Promise::Allocate<tensorflow::tfrt_stub::FallbackTensor>();
   auto tensor_future = tensor_promise.GetFuture();
@@ -283,11 +272,6 @@ absl::Status MlrtIfrtLoadVariableKernel::InvokeHelper() {
   std::string runtime_name = ifrt_serving::GetRuntimeNameFromVarHandle(
       variable_handler_tensor().scalar<ResourceHandle>()());
 
-  TF_RETURN_IF_ERROR(ifrt_serving::LoadRestoredTensorAsIfrtLoadedVariable(
-      runtime_name, (*ifrt_model_context)->GetClient(),
-      (*ifrt_model_context)->GetThreadPool(), ifrt_restore_tensor_registry,
-      (*ifrt_model_context)->GetLoadedVariableRegistry(),
-      (*ifrt_model_context)->checkpoint_loader_queue(), sharding_config));
   xla::ifrt::Future<absl::StatusOr<tensorflow::Tensor>> restored_tensor_future =
       ifrt_restore_tensor_registry.GetRestoredTensor(runtime_name);
 

@@ -93,6 +93,7 @@ CompileAndRegisterIfrtPrograms(absl::string_view model_name,
         ifrt_model_context.GetClient(), &ifrt_model_context.GetThreadPool(),
         &ifrt_model_context.GetLoadedVariableRegistry(),
         &ifrt_model_context.GetRestoreTensorRegistry(),
+        ifrt_model_context.checkpoint_loader_queue(),
         ifrt_model_context.GetDeviceMgr(),
         ifrt_model_context.GetShapeRepresentationFn());
 

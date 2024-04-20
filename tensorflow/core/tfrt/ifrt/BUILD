@@ -52,7 +52,9 @@ cc_library(
     srcs = ["ifrt_serving_executable.cc"],
     hdrs = ["ifrt_serving_executable.h"],
     deps = [
+        ":ifrt_config_proto_cc",
         ":ifrt_loaded_variable_registry",
+        ":ifrt_loaded_variable_utils",
         ":ifrt_restore_tensor_registry",
         ":ifrt_tensor_utils",
         ":sharding_utils",
@@ -92,6 +94,7 @@ cc_library(
         "@local_xla//xla/python/pjrt_ifrt",
         "@local_xla//xla/python/pjrt_ifrt:xla_ifrt",
         "@local_xla//xla/service:computation_placer_hdr",
+        "@tf_runtime//:hostcontext",
     ],
 )
 
@@ -242,6 +245,8 @@ cc_library(
         ":sharding_utils",
         "//tensorflow/compiler/mlir/tfrt/transforms/ifrt:ifrt_types",
         "//tensorflow/core:framework",
+        "//tensorflow/core/tfrt/mlrt/interpreter:future",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -421,6 +426,7 @@ tf_cc_test(
         "@local_xla//xla/python/pjrt_ifrt:tfrt_cpu_client_test_lib",
         "@tf_runtime//:basic_kernels_alwayslink",
         "@tf_runtime//:core_runtime_alwayslink",
+        "@tf_runtime//:hostcontext",
         "@tf_runtime//:test_kernels_alwayslink",
         "@tf_runtime//backends/cpu:core_runtime_alwayslink",
         "@tf_runtime//backends/cpu:tf_ops_alwayslink",
@@ -466,6 +472,7 @@ tf_cc_test(
         "@local_xla//xla/python/pjrt_ifrt:tfrt_cpu_client_test_lib",
         "@tf_runtime//:basic_kernels_alwayslink",
         "@tf_runtime//:core_runtime_alwayslink",
+        "@tf_runtime//:hostcontext",
         "@tf_runtime//:test_kernels_alwayslink",
         "@tf_runtime//backends/cpu:core_runtime_alwayslink",
         "@tf_runtime//backends/cpu:tf_ops_alwayslink",
