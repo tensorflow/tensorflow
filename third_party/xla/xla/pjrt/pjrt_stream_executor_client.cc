@@ -1040,7 +1040,12 @@ PjRtStreamExecutorClient::CreateUninitializedBuffer(
 
 StatusOr<std::unique_ptr<PjRtBuffer>>
 PjRtStreamExecutorClient::CreateErrorBuffer(Status error, const Shape& shape,
-                                            PjRtDevice* device) {
+                                            PjRtMemorySpace* memory) {
+  if (memory->client() != this) {
+    return absl::InvalidArgumentError(
+        "Memory space is not attached to this client");
+  }
+  auto* device = memory->devices()[0];
   VLOG(1) << "PjRtStreamExecutorClient::CreateErrorBuffer: shape: "
           << shape.ToString() << " device: " << device->DebugString()
           << " error: " << error;

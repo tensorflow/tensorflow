@@ -849,6 +849,9 @@ TfrtCpuClient::CreateViewOfDeviceBuffer(
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuClient::CreateErrorBuffer(
     Status error, const Shape& shape, PjRtDevice* device) {
+  if (device->client() != this) {
+    return absl::InvalidArgumentError("Device is not attached to this client");
+  }
   return std::make_unique<TfrtCpuBuffer>(
       shape,
       std::make_unique<TrackedTfrtCpuDeviceBuffer>(
@@ -858,6 +861,11 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuClient::CreateErrorBuffer(
               tsl::AsyncValueRef<CpuEvent>(
                   tsl::MakeErrorAsyncValueRef(std::move(error)))}),
       this, tensorflow::down_cast<TfrtCpuDevice*>(device));
+}
+
+absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuClient::CreateErrorBuffer(
+    Status error, const Shape& shape, PjRtMemorySpace* memory) {
+  return CreateErrorBuffer(std::move(error), shape, memory->devices()[0]);
 }
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer>>
