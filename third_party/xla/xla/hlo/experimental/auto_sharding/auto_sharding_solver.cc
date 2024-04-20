@@ -158,7 +158,7 @@ AutoShardingSolverResult SolveAndExtractSolution(
     const std::vector<std::vector<MPVariable*>>& s,
     const std::vector<std::vector<MPVariable*>>& e,
     const MPVariable* overbudget_var, const MPVariable* makespan_var,
-    MPSolver& solver);
+    absl::Time start_time, MPSolver& solver);
 
 double MinimumMemoryBudgetRequired(const AutoShardingSolverRequest& request) {
   double min_memory_budget_required_estimate = 0.0;
@@ -292,6 +292,7 @@ AutoShardingSolverRequest ScaleRequest(
 //    however.
 AutoShardingSolverResult CallORToolsSolver(
     const AutoShardingSolverRequest& unscaled_request) {
+  const absl::Time start_time = absl::Now();
   const AutoShardingSolverRequest& request = ScaleRequest(unscaled_request);
   const size_t num_edges = request.edges_size();
   const int num_workers = 32;
@@ -644,7 +645,7 @@ AutoShardingSolverResult CallORToolsSolver(
     VLOG(0) << "Max cost: " << request.max_cost().coeff();
   }
   auto result = SolveAndExtractSolution(request, s, e, overbudget_var,
-                                        makespan_var, *solver);
+                                        makespan_var, start_time, *solver);
   if (result.status.ok()) {
     const AutoShardingEvaluation evaluation =
         Evaluate(unscaled_request, result);
@@ -671,6 +672,9 @@ AutoShardingSolverResult CallORToolsSolver(
     LOG(INFO) << "Total Makespan: " << evaluation.total_makespan;
     LOG(INFO) << "Total Violations: " << evaluation.violation_codes.size();
   }
+  const absl::Time end_time = absl::Now();
+  const auto duration = end_time - start_time;
+  LOG(INFO) << "Solver took " << absl::ToInt64Milliseconds(duration) << " ms";
   return result;
 }
 
@@ -801,9 +805,8 @@ AutoShardingSolverResult SolveAndExtractSolution(
     const std::vector<std::vector<MPVariable*>>& s,
     const std::vector<std::vector<MPVariable*>>& e,
     const MPVariable* overbudget_var, const MPVariable* makespan_var,
-    MPSolver& solver) {
+    absl::Time start_time, MPSolver& solver) {
   int tiny_term_count = 0;
-  absl::Time start_time = absl::Now();
   absl::flat_hash_set<LivenessIdx> peak_times, small_times;
   if (request.memory_budget() > 0) {
     // Always enforce constraints that have a relatively small number of terms.
@@ -854,9 +857,6 @@ AutoShardingSolverResult SolveAndExtractSolution(
     LOG(INFO) << "Imposed " << peak_times.size() + small_times.size()
               << " memory constraints out of " << request.live_size();
   }
-  absl::Time end_time = absl::Now();
-  auto duration = end_time - start_time;
-  LOG(INFO) << "Solver took " << absl::ToInt64Milliseconds(duration) << " ms";
   LOG(INFO) << "Solver Status: " << status;
   LOG(INFO) << "Number of tiny terms: " << tiny_term_count;
 
