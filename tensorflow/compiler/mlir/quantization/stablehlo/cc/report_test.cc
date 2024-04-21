@@ -19,12 +19,17 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/quantization/common/test_base.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/io.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep
+#include "tsl/platform/status_matchers.h"
 
 namespace mlir::quant::stablehlo {
 namespace {
@@ -33,10 +38,14 @@ using ::stablehlo::quantization::Method;
 using ::stablehlo::quantization::QuantizableUnit;
 using ::stablehlo::quantization::QuantizationResult;
 using ::stablehlo::quantization::QuantizationResults;
+using ::stablehlo::quantization::io::ReadFileToString;
+using ::testing::HasSubstr;
 using ::testing::IsEmpty;
 using ::testing::SizeIs;
 using ::testing::StrEq;
+using ::testing::TempDir;
 using ::tsl::protobuf::TextFormat;
+using ::tsl::testing::IsOk;
 
 using QuantizationReportTest = ::mlir::quant::QuantizationTestBase;
 
@@ -265,9 +274,52 @@ TEST_F(QuantizationReportTest, ToString) {
   std::string result_str{};
   TextFormat::PrintToString(report.GetQuantizationResults(), &result_str);
 
-  EXPECT_THAT(report.ToString(), testing::HasSubstr("Quantization Report"));
-  EXPECT_THAT(report.ToString(), testing::HasSubstr(result_str));
-  EXPECT_THAT(report.ToString(), testing::HasSubstr("Quantization Report End"));
+  EXPECT_THAT(report.ToString(), HasSubstr("Quantization Report"));
+  EXPECT_THAT(report.ToString(), HasSubstr(result_str));
+  EXPECT_THAT(report.ToString(), HasSubstr("Quantization Report End"));
+}
+
+TEST_F(QuantizationReportTest, Save) {
+  constexpr absl::string_view kQuantizedDotGeneral = R"mlir(
+    func.func @main(%arg0: tensor<1x2xf32>) -> tensor<1x3xf32> {
+      %0 = stablehlo.constant() {value = dense<127> : tensor<2x3xi8>} : () -> tensor<2x3x!quant.uniform<i8<-127:127>:f32:1, {1.000000e+0,2.000000e+0,3.000000e+0}>>
+      %1 = stablehlo.uniform_quantize %arg0 : (tensor<1x2xf32>) -> tensor<1x2x!quant.uniform<i8:f32, 4.000000e+0>>
+      %2 = call @quantized_dot_general_fn(%1, %0) {_quantization_method = "static_range_ptq { }"} : (tensor<1x2x!quant.uniform<i8:f32, 4.000000e+0>>, tensor<2x3x!quant.uniform<i8<-127:127>:f32:1, {1.000000e+0,2.000000e+0,3.000000e+0}>>) -> tensor<1x3x!quant.uniform<i8:f32, 5.000000e+0>>
+      %3 = stablehlo.uniform_dequantize %2 : (tensor<1x3x!quant.uniform<i8:f32, 5.000000e+0>>) -> tensor<1x3xf32>
+      return %3 : tensor<1x3xf32>
+    }
+
+    func.func private @quantized_dot_general_fn(%arg0: tensor<1x2x!quant.uniform<i8:f32, 4.000000e+0>>, %arg1: tensor<2x3x!quant.uniform<i8<-127:127>:f32:1, {1.000000e+0,2.000000e+0,3.000000e+0}>>) -> tensor<1x3x!quant.uniform<i8:f32, 5.000000e+0>> {
+      %0 = stablehlo.dot_general %arg0, %arg1, contracting_dims = [1] x [0] : (tensor<1x2x!quant.uniform<i8:f32, 4.000000e+0>>, tensor<2x3x!quant.uniform<i8<-127:127>:f32:1, {1.000000e+0,2.000000e+0,3.000000e+0}>>) -> tensor<1x3x!quant.uniform<i32:f32:1, {6.000000e+0,7.000000e+0,8.000000e+0}>>
+      %1 = stablehlo.uniform_quantize %0 : (tensor<1x3x!quant.uniform<i32:f32:1, {6.000000e+0,7.000000e+0,8.000000e+0}>>) -> tensor<1x3x!quant.uniform<i8:f32, 5.000000e+0>>
+      return %1 : tensor<1x3x!quant.uniform<i8:f32, 5.000000e+0>>
+    }
+  )mlir";
+
+  const OwningOpRef<ModuleOp> module_op =
+      ParseModuleOpString(kQuantizedDotGeneral);
+  ASSERT_TRUE(module_op);
+
+  const QuantizationReport report(*module_op);
+
+  const std::string dst_file_path =
+      absl::StrCat(TempDir(), "/quantization_report.txtpb");
+  const absl::Status save_status = report.Save(dst_file_path);
+  ASSERT_THAT(save_status, IsOk());
+
+  const absl::StatusOr<std::string> file_data = ReadFileToString(dst_file_path);
+  ASSERT_THAT(file_data, IsOk());
+
+  // Test that the file data can be parsed as `QuantizationResults`.
+  QuantizationResults results{};
+  ASSERT_TRUE(TextFormat::ParseFromString(*file_data, &results));
+
+  // Check that `results` reflects the information of the quantized units
+  // properly.
+  ASSERT_THAT(results.results(), SizeIs(1));
+  EXPECT_THAT(results.results(0).quantizable_unit().name(),
+              StrEq("composite_dot_general_fn"));
+  EXPECT_TRUE(results.results(0).method().has_static_range_ptq());
 }
 
 }  // namespace
