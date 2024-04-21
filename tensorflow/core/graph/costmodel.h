@@ -27,8 +27,11 @@ limitations under the License.
 #include "tensorflow/core/graph/types.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
+#include "tensorflow/core/lib/gtl/inlined_vector.h"
+#include "tensorflow/core/platform/hash.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 typedef std::unordered_map<StringPiece, int32, StringPieceHasher>

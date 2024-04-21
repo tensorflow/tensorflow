@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_GRAPH_COLLECTIVE_ORDER_H_
 
 #include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
 
