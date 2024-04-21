@@ -148,7 +148,24 @@ cc_library(
         "file_system_helper.h",
         "threadpool.h",
     ],
-    deps = tf_windows_aware_platform_deps("env") + if_static([":env_impl"]),
+    deps = tf_windows_aware_platform_deps("env") + if_static([":env_impl"]) + [
+        ":cord",
+        ":env_time",
+        ":errors",
+        ":file_statistics",
+        ":macros",
+        ":mutex",
+        ":platform",
+        ":platform_port",
+        ":protobuf",
+        ":status",
+        ":statusor",
+        ":stringpiece",
+        ":threadpool_interface",
+        ":types",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/types:optional",
+    ],
 )
 
 cc_library(
@@ -1393,7 +1410,6 @@ tsl_cc_test(
     deps = [
         ":blocking_counter",
         ":env",
-        ":env_impl",
         ":random",
         ":test",
         ":test_main",

@@ -20,6 +20,7 @@ limitations under the License.
 #include <deque>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <ostream>
 #include <string>
 #include <unordered_map>
@@ -136,7 +137,7 @@ void SetStackTrace(::tsl::Status& status, std::vector<StackFrame> stack_trace) {
 
 std::vector<StackFrame> GetStackTrace(const ::tsl::Status& status) {
   std::vector<StackFrame> stack_trace;
-  absl::optional<absl::Cord> maybe_serialized_payload =
+  std::optional<absl::Cord> maybe_serialized_payload =
       status.GetPayload(kStackTraceProtoUrl);
   if (maybe_serialized_payload.has_value()) {
     std::vector<std::string> split =

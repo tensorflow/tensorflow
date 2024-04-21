@@ -15,10 +15,12 @@ limitations under the License.
 
 #include "tsl/platform/unbounded_work_queue.h"
 
+#include <memory>
+
 #include "absl/memory/memory.h"
-#include "tsl/platform/random.h"
 #include "tsl/platform/blocking_counter.h"
 #include "tsl/platform/env.h"
+#include "tsl/platform/random.h"
 #include "tsl/platform/test.h"
 
 namespace tsl {
@@ -28,7 +30,7 @@ class UnboundedWorkQueueTest : public ::testing::Test {
  protected:
   UnboundedWorkQueueTest()
       : work_queue_(
-            absl::make_unique<UnboundedWorkQueue>(Env::Default(), "test")) {}
+            std::make_unique<UnboundedWorkQueue>(Env::Default(), "test")) {}
   ~UnboundedWorkQueueTest() override = default;
 
   void RunMultipleCopiesOfClosure(const int num_closures,

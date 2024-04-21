@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tsl/platform/threadpool.h"
 
+#include <memory>
+#include <optional>
+
 #define EIGEN_USE_THREADS
 
 #include "absl/types/optional.h"
@@ -125,18 +128,19 @@ ThreadPool::ThreadPool(Env* env, const ThreadOptions& thread_options,
   if (num_threads < 1) num_threads = 1;
 #endif  // TENSORFLOW_THREADSCALING_EXPERIMENTAL
 
-  eigen_threadpool_.reset(new Eigen::ThreadPoolTempl<EigenEnvironment>(
-      num_threads, low_latency_hint,
-      EigenEnvironment(env, thread_options, "tf_" + name)));
+  eigen_threadpool_ =
+      std::make_unique<Eigen::ThreadPoolTempl<EigenEnvironment>>(
+          num_threads, low_latency_hint,
+          EigenEnvironment(env, thread_options, "tf_" + name));
   underlying_threadpool_ = eigen_threadpool_.get();
-  threadpool_device_.reset(new Eigen::ThreadPoolDevice(underlying_threadpool_,
-                                                       num_threads, allocator));
+  threadpool_device_ = std::make_unique<Eigen::ThreadPoolDevice>(
+      underlying_threadpool_, num_threads, allocator);
 }
 
 ThreadPool::ThreadPool(thread::ThreadPoolInterface* user_threadpool) {
   underlying_threadpool_ = user_threadpool;
-  threadpool_device_.reset(new Eigen::ThreadPoolDevice(
-      underlying_threadpool_, underlying_threadpool_->NumThreads(), nullptr));
+  threadpool_device_ = std::make_unique<Eigen::ThreadPoolDevice>(
+      underlying_threadpool_, underlying_threadpool_->NumThreads(), nullptr);
 }
 
 ThreadPool::~ThreadPool() {}
@@ -185,7 +189,7 @@ void ThreadPool::TransformRangeConcurrently(
     const std::function<void(int64_t, int64_t)>& fn) {
   ParallelFor(total,
               SchedulingParams(SchedulingStrategy::kFixedBlockSize,
-                               absl::nullopt /* cost_per_unit */, block_size),
+                               std::nullopt /* cost_per_unit */, block_size),
               fn);
 }
 
