@@ -1752,7 +1752,7 @@ REGISTER_OP("StridedSlice")
 
       PartialTensorShape processing_shape, final_shape;
       bool is_identity, is_simple_slice, slice_dim0;
-      gtl::InlinedVector<int64, 4> begin, end, strides;
+      absl::InlinedVector<int64, 4UL> begin, end, strides;
       TF_RETURN_IF_ERROR(ValidateStridedSliceOp(
           begin_value, end_value, *strides_value, input_shape, begin_mask,
           end_mask, ellipsis_mask, new_axis_mask, shrink_axis_mask,
