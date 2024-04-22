@@ -75,6 +75,7 @@ using ::mlir::stablehlo::GetDimensionSizeOp;
 using ::mlir::stablehlo::ReshapeOp;
 using ::mlir::stablehlo::UniformQuantizeOp;
 using ::stablehlo::quantization::Method;
+using ::stablehlo::quantization::QuantizedDimension;
 using ::stablehlo::quantization::QuantizedType;
 using ::stablehlo::quantization::StaticRangePtq;
 
@@ -463,7 +464,8 @@ class QuantizeConvolutionOpPattern : public EntryFuncBodyQuantizationPattern {
 
   // Returns true if the quantization method indicates per-channel quantization
   // for convolution weights. This method specifically matches a quantization
-  // dimension of 3 for the input index 1.
+  // dimension of 3 for the input index 1 or unspecified quantization dimension
+  // for the input index 1.
   bool IsWeightPerChannelQuantized(const Method& quantization_method) const {
     if (quantization_method.has_static_range_ptq()) {
       const StaticRangePtq& static_range_ptq_spec =
@@ -472,7 +474,13 @@ class QuantizeConvolutionOpPattern : public EntryFuncBodyQuantizationPattern {
       if (static_range_ptq_spec.input_quantized_types().contains(1)) {
         const QuantizedType& weight_quantized_type =
             static_range_ptq_spec.input_quantized_types().at(1);
-        return weight_quantized_type.dimension_specs().dimension() == 3;
+        if (weight_quantized_type.has_per_tensor()) {
+          return false;
+        }
+        const QuantizedDimension& dimension_specs =
+            weight_quantized_type.dimension_specs();
+        return !dimension_specs.has_dimension() ||
+               dimension_specs.dimension() == 3;
       }
     }
     return false;
