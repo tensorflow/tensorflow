@@ -184,6 +184,8 @@ class PjRtFutureBase {
       return ref_.CopyRCRef();
     }
 
+    tsl::AsyncValue* GetAsyncValue() const { return ref_.GetAsyncValue(); }
+
    private:
     tsl::AsyncValueRef<T> ref_;
   };
@@ -358,6 +360,9 @@ class PjRtFuture<void> : public internal::PjRtFutureBase<std::nullopt_t> {
     // track completion of a promise. It is undefined behavior to access the
     // value stored in the AsyncValue.
     using Base::Promise::CopyRCRef;
+
+    // Same as above but returns non-owned pointer to underlying AsyncValue.
+    using Base::Promise::GetAsyncValue;
 
     // Sets the promise completed with a given status. Must be called at most
     // once.
