@@ -91,7 +91,7 @@ void TF_LookupOrCreatePluginResource(
         void* opaque_plugin_resource = create_func(create_func_args);
         *new_resource = new tensorflow::PluginResource(
             opaque_plugin_resource, plugin_resource_name, delete_func);
-        return tensorflow::OkStatus();
+        return absl::OkStatus();
       });
 
   if (cc_status.ok()) {
