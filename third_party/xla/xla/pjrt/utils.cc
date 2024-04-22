@@ -386,7 +386,7 @@ static std::string GetFrontendAttr(absl::Span<const LayoutMode> layout_modes) {
 }
 
 Status AddLayoutModesToFrontendAttrs(mlir::ModuleOp module,
-                                     XlaComputation& xla_computation) {
+                                     HloModuleProto* hlo_module) {
   TF_ASSIGN_OR_RETURN(std::vector<LayoutMode> arg_layout_modes,
                       GetArgLayoutModes(module));
   TF_ASSIGN_OR_RETURN(std::vector<LayoutMode> out_layout_modes,
@@ -394,9 +394,8 @@ Status AddLayoutModesToFrontendAttrs(mlir::ModuleOp module,
 
   // Type is string->string proto map. Using auto here to deal with different
   // build environments.
-  auto& frontend_attrs = *xla_computation.mutable_proto()
-                              ->mutable_frontend_attributes()
-                              ->mutable_map();
+  auto& frontend_attrs =
+      *hlo_module->mutable_frontend_attributes()->mutable_map();
   frontend_attrs["arg_layout_modes"] = GetFrontendAttr(arg_layout_modes);
   frontend_attrs["out_layout_modes"] = GetFrontendAttr(out_layout_modes);
   return OkStatus();
@@ -412,7 +411,7 @@ static std::string GetFrontendAttrForMemorySpace(
 }
 
 Status AddMemoryKindsToFrontendAttrs(mlir::ModuleOp module,
-                                     XlaComputation& xla_computation) {
+                                     HloModuleProto* hlo_module) {
   TF_ASSIGN_OR_RETURN(std::vector<MemorySpaceColor> arg_memory_spaces,
                       GetArgMemoryKinds(module));
   TF_ASSIGN_OR_RETURN(std::vector<MemorySpaceColor> out_memory_spaces,
@@ -420,9 +419,8 @@ Status AddMemoryKindsToFrontendAttrs(mlir::ModuleOp module,
 
   // Type is string->string proto map. Using auto here to deal with different
   // build environments.
-  auto& frontend_attrs = *xla_computation.mutable_proto()
-                              ->mutable_frontend_attributes()
-                              ->mutable_map();
+  auto& frontend_attrs =
+      *hlo_module->mutable_frontend_attributes()->mutable_map();
   frontend_attrs["arg_memory_spaces"] =
       GetFrontendAttrForMemorySpace(arg_memory_spaces);
   frontend_attrs["out_memory_spaces"] =

@@ -68,15 +68,15 @@ StatusOr<std::vector<MemorySpaceColor>> GetOutputMemoryKinds(
 
 // Populates the frontend attributes "arg_layout_mode" and "out_layout_mode" in
 // xla_computation based on `module`. This function must be called before the
-// LayoutMode getters below work correctly on `computation`.
+// LayoutMode getters below work correctly on `hlo_module_proto`.
 Status AddLayoutModesToFrontendAttrs(mlir::ModuleOp module,
-                                     XlaComputation& xla_computation);
+                                     HloModuleProto* hlo_module_proto);
 
 // Populates the frontend attributes "arg_memory_kinds" and "out_memory_kinds"
 // in xla_computation based on `module`. This function must be called before the
-// LayoutMode getters below work correctly on `computation`.
+// LayoutMode getters below work correctly on `hlo_module_proto`.
 Status AddMemoryKindsToFrontendAttrs(mlir::ModuleOp module,
-                                     XlaComputation& xla_computation);
+                                     HloModuleProto* hlo_module_proto);
 
 // Returns the LayoutMode for each argument of the computations. Checks for the
 // "arg_layout_mode" frontend attribute, and if not present, assumes
