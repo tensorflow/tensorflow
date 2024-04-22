@@ -6,7 +6,7 @@
 # This will change in the future.
 absl-py ~= 1.0.0
 astunparse ~= 1.6.3
-flatbuffers ~= 23.5.26
+flatbuffers ~= 24.3.7
 google_pasta ~= 0.2
 h5py ~= 3.10.0 # Earliest version for Python 3.12
 ml_dtypes ~= 0.3.1
