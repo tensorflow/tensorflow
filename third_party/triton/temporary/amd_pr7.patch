@@ -1,0 +1,81 @@
+==== triton/BUILD#46 - /google/src/cloud/csigg/triton_amd/triton/BUILD ====
+# action=edit type=text
+--- triton/BUILD	2024-04-11 02:00:21.000000000 -0700
++++ triton/BUILD	2024-04-21 23:52:01.000000000 -0700
+@@ -725,12 +725,12 @@
+         "@llvm-project//llvm:Support",
+         "@llvm-project//mlir:ControlFlowDialect",
+         "@llvm-project//mlir:GPUDialect",
++        "@llvm-project//mlir:GPUToROCDLTransforms",
+         "@llvm-project//mlir:IR",
+-        "@llvm-project//mlir:LLVMCommonConversion",
+         "@llvm-project//mlir:LLVMDialect",
+         "@llvm-project//mlir:NVVMDialect",
+         "@llvm-project//mlir:Pass",
+-        "@llvm-project//mlir:TransformUtils",
++        "@llvm-project//mlir:ROCDLDialect",
+         "@llvm-project//mlir:Transforms",
+     ],
+ )
+==== triton/third_party/amd/BUILD#None - /google/src/cloud/csigg/triton_amd/triton/third_party/amd/BUILD ====
+# action=add type=text
+--- /dev/null	1969-12-31 16:00:00.000000000 -0800
++++ triton/third_party/amd/BUILD	2024-04-22 03:55:13.000000000 -0700
+@@ -0,0 +1,57 @@
++load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
++
++# TODO(csigg): fix, enable error upstream, remove.
++_no_unused_variable = select({
++    "//:compiler_is_msvc": [],
++    "//conditions:default": ["-Wno-unused-variable"],
++})
++
++cc_library(
++    name = "TritonAMDGPUToLLVM",
++    srcs = glob([
++        "lib/TritonAMDGPUToLLVM/**/*.h",
++        "lib/TritonAMDGPUToLLVM/**/*.cpp",
++    ]),
++    hdrs = glob([
++        "include/TritonAMDGPUToLLVM/**/*.h",
++    ]),
++    copts = _no_unused_variable,
++    includes = ["include"],
++    deps = [
++        ":triton_conversion_amdgpu_to_llvm_passes_inc_gen",
++        "@llvm-project//mlir:ConvertToLLVM",
++        "@llvm-project//mlir:IR",
++        "@llvm-project//mlir:LLVMCommonConversion",
++        "@llvm-project//mlir:LLVMDialect",
++        "@llvm-project//mlir:Pass",
++        "@llvm-project//mlir:Support",
++        "@llvm-project//mlir:TransformUtils",
++        "@llvm-project//mlir:Transforms",
++        "//:TritonAnalysis",
++        "//:TritonDialects",
++        "//:TritonGPUToLLVM",
++    ],
++)
++
++td_library(
++    name = "td_files",
++    srcs = glob(["include/**/*.td"]),
++    includes = ["include"],
++    deps = ["//:td_files"],
++)
++
++gentbl_cc_library(
++    name = "triton_conversion_amdgpu_to_llvm_passes_inc_gen",
++    tbl_outs = [
++        (
++            [
++                "--gen-pass-decls",
++                "--name=TritonAMDGPUToLLVM",
++            ],
++            "include/TritonAMDGPUToLLVM/Passes.h.inc",
++        ),
++    ],
++    tblgen = "@llvm-project//mlir:mlir-tblgen",
++    td_file = "include/TritonAMDGPUToLLVM/Passes.td",
++    deps = [":td_files"],
++)
