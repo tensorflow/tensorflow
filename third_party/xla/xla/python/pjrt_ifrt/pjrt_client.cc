@@ -111,7 +111,7 @@ PjRtClient::PjRtClient(std::shared_ptr<xla::PjRtClient> pjrt_client)
 
 PjRtClient::~PjRtClient() = default;
 
-absl::StatusOr<PjRtDevice*> PjRtClient::LookupPjRtDevice(
+absl::StatusOr<PjRtCompatibleDevice*> PjRtClient::LookupPjRtDevice(
     xla::PjRtDevice* pjrt_device) const {
   auto it = device_map_.find(pjrt_device);
   if (it == device_map_.end()) {
@@ -121,7 +121,7 @@ absl::StatusOr<PjRtDevice*> PjRtClient::LookupPjRtDevice(
   return it->second.get();
 }
 
-absl::StatusOr<PjRtMemory*> PjRtClient::LookupPjRtMemory(
+absl::StatusOr<PjRtCompatibleMemory*> PjRtClient::LookupPjRtMemory(
     xla::PjRtMemorySpace* pjrt_memory) const {
   auto it = memory_map_.find(pjrt_memory);
   if (it == memory_map_.end()) {

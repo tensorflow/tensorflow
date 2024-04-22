@@ -26,12 +26,21 @@ namespace ifrt {
 
 class PjRtClient;
 
-class PjRtMemory final : public llvm::RTTIExtends<PjRtMemory, Memory> {
+class PjRtCompatibleMemory
+    : public llvm::RTTIExtends<PjRtCompatibleMemory, Memory> {
+ public:
+  virtual xla::PjRtMemorySpace* pjrt_memory() = 0;
+
+  static char ID;  // NOLINT
+};
+
+class PjRtMemory final
+    : public llvm::RTTIExtends<PjRtMemory, PjRtCompatibleMemory> {
  public:
   PjRtMemory(PjRtClient* client, xla::PjRtMemorySpace* pjrt_memory);
 
   PjRtClient* client() const { return client_; }
-  xla::PjRtMemorySpace* pjrt_memory() { return pjrt_memory_; }
+  xla::PjRtMemorySpace* pjrt_memory() override { return pjrt_memory_; }
 
   MemoryId Id() const override;
   const MemoryKind& Kind() const override;

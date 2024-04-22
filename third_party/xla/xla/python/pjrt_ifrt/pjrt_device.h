@@ -30,11 +30,19 @@ limitations under the License.
 namespace xla {
 namespace ifrt {
 
-class PjRtDevice final : public llvm::RTTIExtends<PjRtDevice, Device> {
+class PjRtCompatibleDevice : public llvm::RTTIExtends<PjRtDevice, Device> {
+ public:
+  virtual xla::PjRtDevice* pjrt_device() const = 0;
+
+  static char ID;  // NOLINT
+};
+
+class PjRtDevice final
+    : public llvm::RTTIExtends<PjRtDevice, PjRtCompatibleDevice> {
  public:
   PjRtDevice(PjRtClient* client, xla::PjRtDevice* pjrt_device);
 
-  xla::PjRtDevice* pjrt_device() const { return pjrt_device_; }
+  xla::PjRtDevice* pjrt_device() const override { return pjrt_device_; }
 
   // Device implementation.
 

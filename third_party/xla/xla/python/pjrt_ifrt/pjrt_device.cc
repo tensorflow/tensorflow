@@ -32,6 +32,8 @@ limitations under the License.
 namespace xla {
 namespace ifrt {
 
+char PjRtCompatibleDevice::ID = 0;
+
 char PjRtDevice::ID = 0;
 
 PjRtDevice::PjRtDevice(PjRtClient* client, xla::PjRtDevice* pjrt_device)

@@ -525,7 +525,7 @@ PjRtLoadedExecutable::Execute(absl::Span<tsl::RCReference<Array>> args,
   }
 
   const bool portable_execution = devices.has_value();
-  PjRtDevice* portable_execution_device =
+  PjRtCompatibleDevice* portable_execution_device =
       static_cast<PjRtDevice*>(devices_.front());
   if (portable_execution) {
     if (devices->size() != 1) {

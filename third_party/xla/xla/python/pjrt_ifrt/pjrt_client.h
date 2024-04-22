@@ -50,6 +50,8 @@ namespace xla {
 namespace ifrt {
 
 class PjRtCompatibleArray;
+class PjRtCompatibleDevice;
+class PjRtCompatibleMemory;
 class PjRtDevice;
 class PjRtMemory;
 
@@ -69,9 +71,9 @@ class PjRtCompatibleClient
       std::shared_ptr<PjRtBuffer> pjrt_buffer) = 0;
   virtual absl::StatusOr<tsl::RCReference<PjRtCompatibleArray>> CreatePjRtArray(
       Shape shape, PjRtBuffers pjrt_buffers) = 0;
-  virtual absl::StatusOr<PjRtDevice*> LookupPjRtDevice(
+  virtual absl::StatusOr<PjRtCompatibleDevice*> LookupPjRtDevice(
       xla::PjRtDevice* pjrt_device) const = 0;
-  virtual absl::StatusOr<PjRtMemory*> LookupPjRtMemory(
+  virtual absl::StatusOr<PjRtCompatibleMemory*> LookupPjRtMemory(
       xla::PjRtMemorySpace* pjrt_memory) const = 0;
 
   static char ID;  // NOLINT
@@ -175,9 +177,9 @@ class PjRtClient final
       DType dtype, absl::Span<const int64_t> dims,
       Device* device) const override;
 
-  absl::StatusOr<PjRtDevice*> LookupPjRtDevice(
+  absl::StatusOr<PjRtCompatibleDevice*> LookupPjRtDevice(
       xla::PjRtDevice* pjrt_device) const override;
-  absl::StatusOr<PjRtMemory*> LookupPjRtMemory(
+  absl::StatusOr<PjRtCompatibleMemory*> LookupPjRtMemory(
       xla::PjRtMemorySpace* pjrt_memory) const override;
 
   // Transfer the given literal to the infeed queue.
