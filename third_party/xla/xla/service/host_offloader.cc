@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <array>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -48,6 +49,9 @@ limitations under the License.
 namespace xla {
 
 namespace {
+
+using ::xla::host_memory_offload_annotations::kMoveToDeviceCustomCallTarget;
+using ::xla::host_memory_offload_annotations::kMoveToHostCustomCallTarget;
 
 void SetMemorySpace(Shape* shape, int64_t memory_space_color) {
   CHECK(shape->has_layout());
@@ -149,27 +153,77 @@ absl::StatusOr<std::vector<HloInstruction*>> GetBufferUsersOfType(
   return result;
 }
 
-HloInstruction* FindDSAnnotation(HloInstruction* hlo) {
-  while (!hlo->IsCustomCall(
-      host_memory_offload_annotations::kMoveToDeviceCustomCallTarget)) {
-    if (hlo->opcode() != HloOpcode::kReshape &&
-        hlo->opcode() != HloOpcode::kBitcast) {
-      break;
-    }
-    if (hlo->user_count() != 1) {
+// Returns true if the instruction passed in preserves the underlying buffer,
+// And the buffer is passed through the first operand.
+// This is used to trace the graph between an annotation and its relevant slice.
+bool CanTraverseOpBetweenAnnotation(HloInstruction* hlo) {
+  if (hlo->opcode() == HloOpcode::kBitcast) {
+    return true;
+  } else if (hlo->opcode() == HloOpcode::kReshape) {
+    return ShapeUtil::ReshapeIsBitcast(hlo->operand(0)->shape(), hlo->shape());
+  } else if (hlo->opcode() == HloOpcode::kReduce) {
+    // TODO(b/333902007): Remove this once trivial reduces no longer appear.
+    return ShapeUtil::TrueRank(hlo->operand(0)->shape()) ==
+           ShapeUtil::TrueRank(hlo->shape());
+  }
+  return false;
+}
+
+// Starting from a slice or dynamic-slice, trace the graph down through reshapes
+// and bitcasts to find the annotation that signals that the data is being moved
+// to the device from the host. If no custom call is found, returns an empty
+// optional.
+std::optional<HloInstruction*> FindAnnotationFromDS(HloInstruction* hlo) {
+  CHECK(hlo->opcode() == HloOpcode::kDynamicSlice ||
+        hlo->opcode() == HloOpcode::kSlice)
+      << "Expected a dynamic-slice or slice as input.";
+  if (hlo->user_count() != 1) {
+    return std::nullopt;
+  }
+  hlo = hlo->users()[0];
+  while (!hlo->IsCustomCall(kMoveToDeviceCustomCallTarget)) {
+    if (!CanTraverseOpBetweenAnnotation(hlo) || hlo->user_count() != 1) {
       break;
     }
     hlo = hlo->users()[0];
   }
-  return hlo;
+  if (hlo->IsCustomCall(kMoveToDeviceCustomCallTarget)) {
+    return hlo;
+  }
+  return std::nullopt;
+}
+
+// Starting from a MoveToHost custom call, trace the graph down through reshapes
+// and bitcasts to return the dynamic-update-slice that moves the data from the
+// host to the device. If no DUS is found, returns an empty optional.
+std::optional<HloInstruction*> FindDUSFromAnnotation(HloInstruction* hlo) {
+  CHECK(hlo->IsCustomCall(kMoveToHostCustomCallTarget))
+      << "Expected a MoveToHost custom call as input.";
+  if (hlo->user_count() != 1) {
+    return std::nullopt;
+  }
+  hlo = hlo->users()[0];
+  while (hlo->opcode() != HloOpcode::kDynamicUpdateSlice) {
+    if (!CanTraverseOpBetweenAnnotation(hlo) || hlo->user_count() != 1) {
+      break;
+    }
+    hlo = hlo->users()[0];
+  }
+  if (hlo->opcode() == HloOpcode::kDynamicUpdateSlice) {
+    return hlo;
+  }
+  return std::nullopt;
 }
 
 }  // namespace
 
 absl::StatusOr<bool> HostOffloader::TryOutputStreaming(
     HloInstruction* custom_call) {
+  // Check if this custom call traces down to a dynamic-update-slice. If so, we
+  // must use HloAliasAnalysis on the buffer of that dynamic-update-slice.
+  std::optional<HloInstruction*> dus = FindDUSFromAnnotation(custom_call);
   const HloBuffer& unique_buffer =
-      alias_analysis_->GetUniqueBufferAt(custom_call);
+      alias_analysis_->GetUniqueBufferAt(dus.value_or(custom_call));
   bool is_used_as_output_with_host_memory_space = false;
   const HloComputation* const entry_computation =
       custom_call->GetModule()->entry_computation();
@@ -379,13 +433,15 @@ Status HostOffloader::MemoryOnlyOffloadStartingWithDus(
                           out->append(inst->name());
                         }));
     }
-    HloInstruction* consuming_slice_user =
-        FindDSAnnotation(consuming_slice->users()[0]);
-    if (consuming_slice_user->opcode() != HloOpcode::kCustomCall) {
+    std::optional<HloInstruction*> slice_user =
+        FindAnnotationFromDS(consuming_slice);
+    if (!slice_user.has_value()) {
       return Internal(
           "Slice/Dynamic-slice %s does not have a matching annotation.",
           consuming_slice->name());
     }
+
+    HloInstruction* consuming_slice_user = slice_user.value();
     if (consuming_slice_user->custom_call_target() !=
         host_memory_offload_annotations::kMoveToDeviceCustomCallTarget) {
       return Internal(
@@ -629,6 +685,16 @@ Status HostOffloader::HandleStreamedBuffer(const HloBuffer& unique_buffer) {
             CreateCopyForInputStreaming(move_to_device_custom_call));
         expected_host_to_device_annotations_.emplace(
             move_to_device_custom_call);
+      } else if (use.instruction->opcode() == HloOpcode::kDynamicSlice ||
+                 use.instruction->opcode() == HloOpcode::kSlice) {
+        std::optional<HloInstruction*> move_to_device_custom_call =
+            FindAnnotationFromDS(use.instruction);
+        if (move_to_device_custom_call.has_value()) {
+          TF_RETURN_IF_ERROR(
+              CreateCopyForInputStreaming(move_to_device_custom_call.value()));
+          expected_host_to_device_annotations_.emplace(
+              move_to_device_custom_call.value());
+        }
       }
     }
   }
