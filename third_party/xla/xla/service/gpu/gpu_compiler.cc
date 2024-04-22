@@ -1614,16 +1614,21 @@ absl::StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
   // out we have no way of telling how far through the process we got).
   RecordHloPassesDuration(end_usecs - start_usecs);
 
+  TF_ASSIGN_OR_RETURN(
+      AutotuneConfig autotune_config,
+      GetAutotuneConfig(stream_exec, debug_opts, options, gpu_target_config));
+  AutotuneResults autotune_results;
+  if (!is_deviceless) {
+    TF_RETURN_IF_ERROR(
+        AutotunerUtil::SerializeAutotuneResults(&autotune_results));
+    TF_RETURN_IF_ERROR(SerializeAutotuneResultsToFile(debug_opts));
+  }
   const std::optional<std::string> optimized_fingerprint =
-      MaybeUploadOptimizedGpuSymbols(module.get());
+      MaybeUploadOptimizedGpuSymbols(module.get(), autotune_results);
   if (unoptimized_fingerprint.has_value() &&
       optimized_fingerprint.has_value()) {
     MaybeUploadGpuSymbolMapping(*unoptimized_fingerprint,
                                 *optimized_fingerprint);
-  }
-  if (!is_deviceless) {
-    TF_RETURN_IF_ERROR(
-        SerializeAutotuneResultsToFile(module->config().debug_options()));
   }
 
   return std::move(module);

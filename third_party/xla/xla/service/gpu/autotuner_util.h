@@ -282,6 +282,11 @@ struct AutotunerUtil {
   static absl::Status SerializeAutotuneResultsToFile(
       absl::string_view file_path);
 
+  // As above, but if you already called SerializeAutotuneResults to get a
+  // proto.
+  static absl::Status SerializeAutotuneResultsToFile(
+      const AutotuneResults& results, absl::string_view file_path);
+
   // Loads autotune results from a file.
   //
   // If `file_path` ends with ".txt" or ".textproto", then the file is
