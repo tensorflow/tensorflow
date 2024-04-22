@@ -204,7 +204,7 @@ class MultiplexSparseOp : public OpKernel {
                              indices_tensor.shape().DebugString(),
                              " values: ", values_tensor.shape().DebugString());
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 
