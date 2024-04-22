@@ -90,7 +90,7 @@ Status CompileTFMLIRToBEF(const TfrtFunctionCompileOptions& options,
     return diag_handler.Combine(
         tensorflow::errors::Internal("failed to convert MLIR to BEF."));
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow
