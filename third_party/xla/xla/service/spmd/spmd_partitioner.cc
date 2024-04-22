@@ -4712,7 +4712,8 @@ SPMDCollectiveOpsCreator GetDefaultCollectiveOpsCreator(int64_t num_partitions,
                 reduction->Clone(), false);
         HloInstruction* all_reduce =
             b->AddInstruction(HloInstruction::CreateAllReduce(
-                operand->shape(), {operand}, reduction_clone, device_groups,
+                operand->shape(), {operand}, reduction_clone,
+                CollectiveDeviceList(device_groups),
                 /*constrain_layout=*/false, channel_id,
                 /*use_global_device_ids=*/true));
         reduction_clone->SetCollectiveCallInstruction(all_reduce);
@@ -4757,7 +4758,7 @@ SPMDCollectiveOpsCreator GetDefaultCollectiveOpsCreator(int64_t num_partitions,
           }
         }
         return b->AddInstruction(HloInstruction::CreateAllToAll(
-            output_shape, operands, groups,
+            output_shape, operands, CollectiveDeviceList(groups),
             /*constrain_layout=*/false, channel_id, split_dimension));
       },
       [num_replicas, num_partitions](
@@ -4775,7 +4776,8 @@ SPMDCollectiveOpsCreator GetDefaultCollectiveOpsCreator(int64_t num_partitions,
           }
         }
         return b->AddInstruction(HloInstruction::CreateAllGather(
-            ag_shape, {operand}, all_gather_dimension, device_groups,
+            ag_shape, {operand}, all_gather_dimension,
+            CollectiveDeviceList(device_groups),
             /*constrain_layout=*/false, channel_id,
             /*use_global_device_ids=*/true));
       },

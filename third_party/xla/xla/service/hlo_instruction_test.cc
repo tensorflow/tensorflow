@@ -2047,8 +2047,8 @@ TEST_F(HloInstructionTest, StringifyAsyncOpsWithReduceScatter) {
     HloInstruction* param = async_builder.AddInstruction(
         HloInstruction::CreateParameter(0, rs_input_shape, "pasync"));
     async_builder.AddInstruction(HloInstruction::CreateReduceScatter(
-        rs_output_shape, {param}, add_computation.get(), {}, false,
-        std::nullopt, false, 0));
+        rs_output_shape, {param}, add_computation.get(), CollectiveDeviceList(),
+        false, std::nullopt, false, 0));
     async_computation = async_builder.Build();
   }
 
@@ -2568,8 +2568,8 @@ TEST_F(HloInstructionTest, VerifyToApplyRegionPointsToReduceScatter) {
   HloInstruction* param = main_builder.AddInstruction(
       HloInstruction::CreateParameter(0, rs_input_shape, "input"));
   main_builder.AddInstruction(HloInstruction::CreateReduceScatter(
-      rs_output_shape, {param}, add_computation.get(), {}, false, std::nullopt,
-      false, 0));
+      rs_output_shape, {param}, add_computation.get(), CollectiveDeviceList(),
+      false, std::nullopt, false, 0));
 
   auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(main_builder.Build());
@@ -2606,8 +2606,8 @@ TEST_F(HloInstructionTest, VerifyToApplyRegionPointsToAllReduce) {
   HloInstruction* param = main_builder.AddInstruction(
       HloInstruction::CreateParameter(0, ar_input_shape, "input"));
   main_builder.AddInstruction(HloInstruction::CreateAllReduce(
-      ar_input_shape, {param}, add_computation.get(), {}, false, std::nullopt,
-      false));
+      ar_input_shape, {param}, add_computation.get(), CollectiveDeviceList(),
+      false, std::nullopt, false));
 
   auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(main_builder.Build());

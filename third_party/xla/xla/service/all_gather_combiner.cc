@@ -130,7 +130,7 @@ Status CombineAllGathers(absl::Span<HloInstruction* const> to_combine,
   HloInstruction* combined;
   combined = computation.AddInstruction(HloInstruction::CreateAllGather(
       ShapeUtil::MakeTupleShape(output_shapes), operands, most_frequent_dim,
-      to_combine.front()->replica_groups(),
+      to_combine.front()->device_list(),
       /*constrain_layout=*/false, to_combine.front()->channel_id(),
       Cast<HloAllGatherInstruction>(to_combine.front())
           ->use_global_device_ids()));

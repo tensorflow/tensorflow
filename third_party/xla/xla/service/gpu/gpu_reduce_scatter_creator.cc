@@ -95,7 +95,7 @@ absl::StatusOr<bool> ReduceScatterCreator::Run(
 
       HloInstruction *ars =
           computation->AddInstruction(HloInstruction::CreateReduceScatter(
-              scatter_shape, {rs_input}, ar->to_apply(), ar->replica_groups(),
+              scatter_shape, {rs_input}, ar->to_apply(), ar->device_list(),
               ar->constrain_layout(), channel_id, ar->use_global_device_ids(),
               ar_spec->split_dim));
 

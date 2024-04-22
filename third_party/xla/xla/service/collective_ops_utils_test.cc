@@ -101,8 +101,8 @@ TEST(CollectiveOpsUtilsTest, CollectiveWithChannelId2) {
           0, ShapeUtil::MakeShape(BF16, {1, 512, 4096}), "p0")));
   HloInstruction *instr =
       builder.AddInstruction(HloInstruction::CreateAllGather(
-          ShapeUtil::MakeShape(BF16, {1, 4096, 4096}), {param_0}, 1, {group},
-          true, 231, true));
+          ShapeUtil::MakeShape(BF16, {1, 4096, 4096}), {param_0}, 1,
+          CollectiveDeviceList({group}), true, 231, true));
   auto computation = builder.Build(
       builder.AddInstruction(HloInstruction::CreateTuple({instr})));
   auto fusion =
