@@ -91,7 +91,11 @@ PYBIND11_MODULE(_pywrap_tensorflow_lite_calibration_wrapper, m) {
                  self.QuantizeModel(input_py_type, output_py_type, allow_float,
                                     operator_output_name));
            })
-      .def("Calibrate", [](CalibrationWrapper& self) {
-        return tensorflow::PyoOrThrow(self.Calibrate());
+      .def("Calibrate",
+           [](CalibrationWrapper& self) {
+             return tensorflow::PyoOrThrow(self.Calibrate());
+           })
+      .def("GetOpNames", [](CalibrationWrapper& self) {
+        return tensorflow::PyoOrThrow(self.GetOpNames());
       });
 }
