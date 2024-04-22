@@ -174,4 +174,8 @@ std::optional<int64_t> GetDotGeneralQuantizationDim(
   return filter_rank - 1;
 }
 
+bool ContainsConvOrDot(StringRef str) {
+  return str.contains("_conv") || str.contains("_dot_general");
+}
+
 }  // namespace mlir::quant

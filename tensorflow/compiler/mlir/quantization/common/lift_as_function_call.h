@@ -44,10 +44,6 @@ constexpr StringRef kCompositeFuncPrefix = "composite_";
 inline constexpr StringRef kOriginalStablehloEntryFunctionAttrName =
     "_original_entry_function";
 
-// Name of the string attribute attached to `XlaCallModuleOp`, which is the
-// textproto representation of `Method`.
-inline constexpr StringRef kQuantizationMethodAttr = "_quantization_method";
-
 // FunctionCallOpType to be generated as the function call operator when
 // function lifting will happen.
 enum FunctionCallOpType { TFPartitionedCallOp = 0, TFXlaCallModuleOp = 1 };
@@ -100,6 +96,14 @@ SmallVector<Value, 4> LiftAsFunctionCall(OpBuilder& builder, Location location,
 // argument list.
 // Used to attach bias to einsum argument list.
 SmallVector<Value> AppendToVector(ArrayRef<Value> arguments, Value append);
+
+// Checks if the `Method` attatched to the given `tf.XlaCallModule` op has
+// `WeightOnlyPtq`.
+bool HasWeightOnlyPtqMethod(TF::XlaCallModuleOp xla_call_module_op);
+
+// Checks if an op is a `tf.XlaCallModule` op, contains 'conv' or 'dot_general'
+// in its name and has `Method` with `WeightOnlyPtq`.
+bool IsWeightOnlyQuantizableOp(const Operation& op);
 
 }  // namespace mlir::quant
 

@@ -509,4 +509,19 @@ Method GetQuantizationMethodOrDefault(absl::Nonnull<Operation*> op) {
   return method.ok() ? *method : Method::default_instance();
 }
 
+bool HasWeightOnlyPtqMethod(TF::XlaCallModuleOp xla_call_module_op) {
+  Method method = GetQuantizationMethodOrDefault(xla_call_module_op);
+  return method.has_weight_only_ptq();
+}
+
+bool IsWeightOnlyQuantizableOp(const Operation& op) {
+  if (auto call_op = dyn_cast<TF::XlaCallModuleOp>(op)) {
+    StringRef entry_function_name = GetEntryFunctionName(call_op);
+    absl::StatusOr<Method> quantization_method = GetQuantizationMethod(call_op);
+    return ContainsConvOrDot(entry_function_name) && quantization_method.ok() &&
+           quantization_method->has_weight_only_ptq();
+  }
+  return false;
+}
+
 }  // namespace mlir::quant
