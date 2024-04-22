@@ -3087,7 +3087,7 @@ struct ConvolutionOpGeneralConversion
     modifiedRhs = applyConvolutionReversal(loc, rewriter, op, modifiedRhs);
 
     // Non-one values for feature or batch group counts will result in reshaped
-    // inputs and outputs. These mappings are used to keep track of the the new
+    // inputs and outputs. These mappings are used to keep track of the new
     // index after reshaping has possibly inserted new dimensions.
     auto paddedLhsType = modifiedLhs.getType().cast<ShapedType>();
     auto paddedRhsType = modifiedRhs.getType().cast<ShapedType>();

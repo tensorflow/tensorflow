@@ -100,7 +100,7 @@ class HloRunner : public HloRunnerInterface {
   // ExecuteWithMovedDeviceBuffers is more memory-safe, but it consumes the
   // arguments. Please consider using that.
   //
-  // This may overwrite the values of the arguments if the the module has
+  // This may overwrite the values of the arguments if the module has
   // aliasing.
   absl::StatusOr<ExecutionOutput> ExecuteWithDeviceBuffers(
       std::unique_ptr<HloModule> module,

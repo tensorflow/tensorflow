@@ -1844,7 +1844,7 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
   // sequence of tensors with the same shape followed by the same number of
   // rank-0 tensors with the same element types as the corresponding inputs.
   // NB. Here, We mean "shape" in the StableHLO/MHLO sense of the dimensions of
-  // a the tensor, excluding the element type, not the the HLO sense, which
+  // a the tensor, excluding the element type, not the HLO sense, which
   // includes it.
   //
   // Given the above operands and attributes, the custom_call returns tensors

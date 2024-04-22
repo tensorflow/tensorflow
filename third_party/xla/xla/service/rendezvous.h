@@ -71,7 +71,7 @@ template <typename R>
 using RendezvousResultType = typename RendezvousResult<R>::Type;
 
 // The group of threads identifies itself with a key that must be unique to
-// the the group. When all threads have arrived at the rendezvous, one thread
+// the group. When all threads have arrived at the rendezvous, one thread
 // executes the given function with the values supplied by each thread, and
 // all threads receive the result. Rendezvous must have a human readable name to
 // make easy to debug stuck and timed out attempts.

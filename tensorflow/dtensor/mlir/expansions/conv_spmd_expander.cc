@@ -337,7 +337,7 @@ StatusOr<mlir::Operation*> HandleConvBackpropInput(
   }
 
   // Compute the 'true' input/output layout of the operation. E.g. batch sharded
-  // vs non-batch sharded. If at least one of the the input gradient or output
+  // vs non-batch sharded. If at least one of the input gradient or output
   // gradient is batch sharded, use that dimension.
   string batch_sharding_dimension = grad_layout.sharding_spec(0);
   if (batch_sharding_dimension == Layout::kUnshardedDim) {

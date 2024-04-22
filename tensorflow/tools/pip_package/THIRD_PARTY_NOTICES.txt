@@ -7299,7 +7299,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 numpy/random:
 -------------
 
-**This software is dual-licensed under the The University of Illinois/NCSA
+**This software is dual-licensed under the University of Illinois/NCSA
 Open Source License (NCSA) and The 3-Clause BSD License**
 
 # NCSA Open Source License

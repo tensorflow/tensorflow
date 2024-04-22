@@ -67,7 +67,7 @@ HloInstruction* EffectiveOperand(HloInstruction* hlo) {
       return clone;
     }
     case HloOpcode::kReduce: {
-      // Reduce is a reshape in the case the the hlo chain was an upcast.
+      // Reduce is a reshape in the case the hlo chain was an upcast.
       HloInstruction* operand = EffectiveOperand(hlo->mutable_operand(0));
       return hlo->AddInstruction(HloInstruction::CreateReshape(
           ShapeUtil::ChangeElementType(hlo->shape(),

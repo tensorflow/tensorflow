@@ -64,7 +64,7 @@ bool AllSliceInputsAreCompatible(
 //
 // A root is compatible with the transpose hero if:
 //   * Either the root has a traspose hero with the same normalized dimensions
-//   * Or the root output shape is equal to the the transpose input shape
+//   * Or the root output shape is equal to the transpose input shape
 std::optional<TransposeDescription> FindConsistentTransposeHero(
     const std::vector<const HloInstruction*>& hlo_roots,
     const std::vector<const HloInstruction*>& heroes) {

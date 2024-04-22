@@ -38,7 +38,7 @@ namespace {
 
 size_t HashCall(BaseRecvTensorCall* call) {
   // Salt hash with "42" to avoid using the same hash function for the shard key
-  // and the hashtable contained within the the shard itself.
+  // and the hashtable contained within the shard itself.
   return absl::HashOf(call, 42);
 }
 

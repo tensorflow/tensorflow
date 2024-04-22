@@ -48,7 +48,7 @@ struct CheckCtx {
   std::string op_name;
 };
 
-// Checks that the `tensor` element type is supported by one the the `checks`
+// Checks that the `tensor` element type is supported by one the `checks`
 // functions.
 //
 // Returns a failed precondition error when no check succeeds.

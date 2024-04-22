@@ -160,7 +160,7 @@ Operation* FindCompilePredecessor(Operation* func_op,
       }
       o = o->getParentOp();
     }
-    // Check that the the compile op actually passes its results to its parents.
+    // Check that the compile op actually passes its results to its parents.
     if (GetResultInBlock(compile_op->getResult(1), blocks)) {
       tpu_compile_predecessor = compile_op;
       return WalkResult::interrupt();

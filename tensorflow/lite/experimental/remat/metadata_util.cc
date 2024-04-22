@@ -75,7 +75,7 @@ bool Parse(const char** data, size_t* size, std::pair<First, Second>* out) {
 }
 
 // Vectors are serialized as the concetation of the serialization of their size
-// and the the serializations of their elements.
+// and the serializations of their elements.
 template <class Value>
 void Serialize(std::string* out, const std::vector<Value>& in) {
   Serialize(out, static_cast<uint32_t>(in.size()));
