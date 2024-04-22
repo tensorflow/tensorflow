@@ -183,6 +183,7 @@ xla_test(
         "//xla/service/gpu:gpu_executable",
         "//xla/service/gpu:variant_visitor",
         "//xla/stream_executor:device_description",
+        "//xla/stream_executor:device_memory_allocator",
         "//xla/tests:filecheck",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/functional:any_invocable",

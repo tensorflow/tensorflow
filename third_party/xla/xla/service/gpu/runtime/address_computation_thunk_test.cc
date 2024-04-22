@@ -186,9 +186,9 @@ TEST(AddressComputationThunkTest, SlicedGemm) {
 
   // Preparing parameters for thunk execution.
   ServiceExecutableRunOptions run_options;
+  se::StreamExecutorMemoryAllocator allocator(executor);
   BufferAllocations allocations(
-      {lhs, rhs, out, workspace, lhs_offset_0, lhs_offset_1}, 0,
-      executor->GetAllocator());
+      {lhs, rhs, out, workspace, lhs_offset_0, lhs_offset_1}, 0, &allocator);
 
   Thunk::ExecuteParams params =
       Thunk::ExecuteParams::Create(run_options, allocations, stream.get(),
@@ -358,9 +358,10 @@ TEST(AddressComputationThunkTest, SlicedNonContiguousGemm) {
 
   // Preparing parameters for thunk execution.
   ServiceExecutableRunOptions run_options;
+  se::StreamExecutorMemoryAllocator allocator(executor);
   BufferAllocations allocations({lhs, rhs, out, workspace, lhs_offset_0,
                                  lhs_offset_1, rhs_offset_0, rhs_offset_1},
-                                0, executor->GetAllocator());
+                                0, &allocator);
 
   Thunk::ExecuteParams params =
       Thunk::ExecuteParams::Create(run_options, allocations, stream.get(),
@@ -527,9 +528,10 @@ TEST(AddressComputationThunkTest, MulipleSlicedOperandsGemm) {
 
   // Preparing parameters for thunk execution.
   ServiceExecutableRunOptions run_options;
+  se::StreamExecutorMemoryAllocator allocator(executor);
   BufferAllocations allocations({lhs, rhs, out, workspace, lhs_offset_0,
                                  lhs_offset_1, rhs_offset_0, rhs_offset_1},
-                                0, executor->GetAllocator());
+                                0, &allocator);
 
   Thunk::ExecuteParams params =
       Thunk::ExecuteParams::Create(run_options, allocations, stream.get(),
@@ -673,9 +675,9 @@ TEST(AddressComputationThunkTest, SlicedMemcpy) {
 
   // Preparing parameters for thunk execution.
   ServiceExecutableRunOptions run_options;
+  se::StreamExecutorMemoryAllocator allocator(executor);
   BufferAllocations allocations(
-      {src, dst, offset_0, offset_1, offset_2, offset_3}, 0,
-      executor->GetAllocator());
+      {src, dst, offset_0, offset_1, offset_2, offset_3}, 0, &allocator);
 
   Thunk::ExecuteParams params =
       Thunk::ExecuteParams::Create(run_options, allocations, stream.get(),
@@ -861,10 +863,11 @@ TEST(AddressComputationThunkTest, SlicedOutputMemcpy) {
 
   // Preparing parameters for thunk execution.
   ServiceExecutableRunOptions run_options;
+  se::StreamExecutorMemoryAllocator allocator(executor);
   BufferAllocations allocations(
       {src, dst, src_offset_0, src_offset_1, src_offset_2, src_offset_3,
        dst_offset_0, dst_offset_1, dst_offset_2, dst_offset_3},
-      0, executor->GetAllocator());
+      0, &allocator);
 
   Thunk::ExecuteParams params =
       Thunk::ExecuteParams::Create(run_options, allocations, stream.get(),
@@ -1024,9 +1027,9 @@ TEST(AddressComputationThunkTest, SlicedGemmArbitraryArgumentOrder) {
 
   // Preparing parameters for thunk execution.
   ServiceExecutableRunOptions run_options;
+  se::StreamExecutorMemoryAllocator allocator(executor);
   BufferAllocations allocations(
-      {workspace, lhs, out, rhs, lhs_offset_0, lhs_offset_1}, 0,
-      executor->GetAllocator());
+      {workspace, lhs, out, rhs, lhs_offset_0, lhs_offset_1}, 0, &allocator);
 
   Thunk::ExecuteParams params =
       Thunk::ExecuteParams::Create(run_options, allocations, stream.get(),
@@ -1174,10 +1177,11 @@ TEST(AddressComputationThunkTest, SlicedGemmArbitraryNumberOfArguments) {
 
   // Preparing parameters for thunk execution.
   ServiceExecutableRunOptions run_options;
+  se::StreamExecutorMemoryAllocator allocator(executor);
   BufferAllocations allocations(
       {workspace, /*garbage, to be ignored*/ se::DeviceMemoryBase(), out, rhs,
        lhs_offset_0, lhs_offset_1, /*garbage, to be ignored*/ rhs, lhs},
-      0, executor->GetAllocator());
+      0, &allocator);
 
   Thunk::ExecuteParams params =
       Thunk::ExecuteParams::Create(run_options, allocations, stream.get(),
@@ -1323,9 +1327,10 @@ TEST(AddressComputationThunkTest, SlicedTupledOperandGemm) {
 
   // Preparing parameters for thunk execution.
   ServiceExecutableRunOptions run_options;
+  se::StreamExecutorMemoryAllocator allocator(executor);
   BufferAllocations allocations(
       {lhs_whole_buffer, rhs, out, workspace, lhs_offset_0, lhs_offset_1}, 0,
-      executor->GetAllocator());
+      &allocator);
 
   Thunk::ExecuteParams params =
       Thunk::ExecuteParams::Create(run_options, allocations, stream.get(),
@@ -1506,10 +1511,11 @@ TEST(AddressComputationThunkTest, SlicedMemcpyOOB) {
 
   // Preparing parameters for thunk execution.
   ServiceExecutableRunOptions run_options;
+  se::StreamExecutorMemoryAllocator allocator(executor);
   BufferAllocations allocations(
       {src, dst, src_offset_0, src_offset_1, src_offset_2, src_offset_3,
        dst_offset_0, dst_offset_1, dst_offset_2, dst_offset_3},
-      0, executor->GetAllocator());
+      0, &allocator);
 
   Thunk::ExecuteParams params =
       Thunk::ExecuteParams::Create(run_options, allocations, stream.get(),
@@ -1675,8 +1681,9 @@ TEST(AddressComputationThunkTest, SlicedOperandsSameBufferGemm) {
 
   // Preparing parameters for thunk execution.
   ServiceExecutableRunOptions run_options;
+  se::StreamExecutorMemoryAllocator allocator(executor);
   BufferAllocations allocations({buffer, workspace, lhs_offset_0, lhs_offset_1},
-                                0, executor->GetAllocator());
+                                0, &allocator);
 
   Thunk::ExecuteParams params =
       Thunk::ExecuteParams::Create(run_options, allocations, stream.get(),
