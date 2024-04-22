@@ -2710,6 +2710,116 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     self.assertAllClose(new_outputs, got_outputs, atol=0.097)
     self.assertAllClose(new_outputs, expected_outputs, atol=0.057)
 
+  def test_reuse_calibration_data(self):
+    model = self._create_simple_gather_and_conv_model(
+        dtypes.int32, filter_shape=(2, 3, 3, 1024)
+    )
+    saved_model_save.save(model, self._input_saved_model_path)
+
+    data_gen = self._create_data_generator(
+        input_key='input_tensor',
+        shape=[50],
+        minval=0,
+        maxval=64,
+        dtype=dtypes.int32,
+    )
+
+    tags = {tag_constants.SERVING}
+
+    calibration_data_dir = self.create_tempdir('calibration_data').full_path
+    quantization_options = quant_opts_pb2.QuantizationOptions(
+        quantization_method=quant_opts_pb2.QuantizationMethod(
+            preset_method=_PresetMethod.METHOD_STATIC_RANGE_INT8
+        ),
+        tags=tags,
+        signature_keys=['serving_default'],
+        op_set=quant_opts_pb2.XLA,
+        force_graph_mode_calibration=True,
+        calibration_options=stablehlo_quant_config_pb2.CalibrationOptions(
+            calibration_method=_CalibrationMethod.CALIBRATION_METHOD_MIN_MAX,
+            calibration_data_dir=calibration_data_dir,
+        ),
+    )
+
+    # Run quantization the first time, calibration is expected to be run.
+    with self.assertLogs(level='INFO') as info_logs:
+      # Save the logger verbosity.
+      prev_log_level = logging.get_verbosity()
+      logging.set_verbosity(logging.INFO)
+      try:
+        converted_model1 = quantize_model.quantize(
+            self._input_saved_model_path,
+            self._output_saved_model_path,
+            quantization_options,
+            representative_dataset=data_gen,
+        )
+      finally:
+        # Restore the logger verbosity.
+        logging.set_verbosity(prev_log_level)
+
+      self.assertNotEmpty(info_logs.records)
+      self.assertTrue(
+          self._any_log_contains(
+              'Calibration step is executed in graph mode.',
+              info_logs.records,
+          )
+      )
+      self.assertIsNotNone(converted_model1)
+      self.assertCountEqual(
+          converted_model1.signatures._signatures.keys(), {'serving_default'}
+      )
+
+      output_loader = saved_model_loader.SavedModelLoader(
+          self._output_saved_model_path
+      )
+      output_graphdef = output_loader.get_meta_graph_def_from_tags(
+          tags
+      ).graph_def
+      self.assertTrue(self._contains_op(output_graphdef, 'XlaConvV2'))
+
+    # Run quantization the first time, calibration is expected to be skipped.
+    with self.assertLogs(level='INFO') as info_logs:
+      # Save the logger verbosity.
+      prev_log_level = logging.get_verbosity()
+      logging.set_verbosity(logging.INFO)
+      try:
+        converted_model2 = quantize_model.quantize(
+            self._input_saved_model_path,
+            self._output_saved_model_path,
+            quantization_options,
+            representative_dataset=data_gen,
+            overwrite_output_directory=True,
+        )
+      finally:
+        # Restore the logger verbosity.
+        logging.set_verbosity(prev_log_level)
+
+      self.assertNotEmpty(info_logs.records)
+      self.assertFalse(
+          self._any_log_contains(
+              'Calibration step is executed in graph mode.',
+              info_logs.records,
+          )
+      )
+      self.assertIsNotNone(converted_model2)
+      self.assertCountEqual(
+          converted_model2.signatures._signatures.keys(), {'serving_default'}
+      )
+
+      # Expect two models to produce the same results.
+      test_data = ops.convert_to_tensor(
+          np.random.uniform(low=0, high=64, size=(32)).astype(
+              dtypes.int32.as_numpy_dtype
+          )
+      )
+      new_outputs_1 = converted_model1.signatures['serving_default'](
+          input_tensor=test_data
+      )['output']
+      new_outputs_2 = converted_model2.signatures['serving_default'](
+          input_tensor=test_data
+      )['output']
+      self.assertAllClose(new_outputs_1, new_outputs_2)
+
   @test_util.run_in_graph_and_eager_modes
   def test_function_alias_preserved(self):
     model = self._create_conv2d_model(

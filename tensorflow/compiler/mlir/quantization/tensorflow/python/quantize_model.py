@@ -638,7 +638,7 @@ def _populate_calibration_options(
   if calib_opts.calibration_data_dir:
     save_model.create_empty_output_dir(
         calib_opts.calibration_data_dir,
-        overwrite=True,
+        overwrite=calib_opts.force_regenerate_calibration_data,
     )
 
 
