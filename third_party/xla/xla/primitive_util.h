@@ -185,7 +185,7 @@ constexpr PrimitiveType NativeToPrimitiveType<tsl::float8_e4m3fn>() {
 }
 
 template <>
-constexpr PrimitiveType NativeToPrimitiveType<tsl::float8_e4m3b11>() {
+constexpr PrimitiveType NativeToPrimitiveType<tsl::float8_e4m3b11fnuz>() {
   return F8E4M3B11FNUZ;
 }
 
@@ -315,7 +315,7 @@ struct PrimitiveTypeToNative<F8E4M3FN> {
 
 template <>
 struct PrimitiveTypeToNative<F8E4M3B11FNUZ> {
-  using type = tsl::float8_e4m3b11;
+  using type = tsl::float8_e4m3b11fnuz;
 };
 
 template <>

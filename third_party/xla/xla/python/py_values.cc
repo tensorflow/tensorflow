@@ -181,7 +181,7 @@ absl::StatusOr<DevicePutResultFn> HandleNumpyScalar(
   } else if (std::is_same<T, tsl::float8_e4m3fn>()) {
     PyArray_ScalarAsCtype(h.ptr(), &data.template emplace<2>());
     type = F8E4M3FN;
-  } else if (std::is_same<T, tsl::float8_e4m3b11>()) {
+  } else if (std::is_same<T, tsl::float8_e4m3b11fnuz>()) {
     PyArray_ScalarAsCtype(h.ptr(), &data.template emplace<2>());
     type = F8E4M3B11FNUZ;
   } else if (std::is_same<T, tsl::float8_e5m2>()) {
@@ -382,7 +382,7 @@ absl::StatusOr<DevicePutResultFn> DevicePut(nb::handle arg,
         (*p)[dtypes.np_float8_e4m3fn.ptr()] =
             HandleNumpyScalar<tsl::float8_e4m3fn>;
         (*p)[dtypes.np_float8_e4m3b11fnuz.ptr()] =
-            HandleNumpyScalar<tsl::float8_e4m3b11>;
+            HandleNumpyScalar<tsl::float8_e4m3b11fnuz>;
         (*p)[dtypes.np_float8_e5m2.ptr()] = HandleNumpyScalar<tsl::float8_e5m2>;
         (*p)[dtypes.np_float8_e4m3fnuz.ptr()] =
             HandleNumpyScalar<tsl::float8_e4m3fnuz>;

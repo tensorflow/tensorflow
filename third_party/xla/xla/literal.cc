@@ -2259,7 +2259,7 @@ void LiteralBase::Piece::WriteToProto(LiteralProto* proto) const {
       break;
     case F8E4M3B11FNUZ:
       *proto->mutable_f8e4m3b11fnuzs() = std::string(
-          reinterpret_cast<const char*>(data<tsl::float8_e4m3b11>().data()),
+          reinterpret_cast<const char*>(data<tsl::float8_e4m3b11fnuz>().data()),
           size_bytes_dense());
       break;
     case F8E5M2FNUZ:
@@ -2440,8 +2440,8 @@ Status LiteralBase::Piece::CopyFromProto(const LiteralProto& proto) {
     }
     case F8E4M3B11FNUZ: {
       const std::string& s(proto.f8e4m3b11fnuzs());
-      TF_RET_CHECK(data<tsl::float8_e4m3b11>().size() *
-                       sizeof(tsl::float8_e4m3b11) ==
+      TF_RET_CHECK(data<tsl::float8_e4m3b11fnuz>().size() *
+                       sizeof(tsl::float8_e4m3b11fnuz) ==
                    s.size());
       memcpy(untyped_data(), s.data(), s.size());
       break;

@@ -135,7 +135,7 @@ TEST(UtilTest, RoundTripFpToString) {
                 -std::numeric_limits<tsl::float8_e4m3fn>::quiet_NaN()),
             "-nan");
   EXPECT_EQ(RoundTripFpToString(
-                std::numeric_limits<tsl::float8_e4m3b11>::quiet_NaN()),
+                std::numeric_limits<tsl::float8_e4m3b11fnuz>::quiet_NaN()),
             "-nan");
   EXPECT_EQ(RoundTripFpToString(
                 std::numeric_limits<tsl::float8_e4m3fnuz>::quiet_NaN()),
@@ -249,11 +249,13 @@ TEST(UtilTest, TotalOrder_F8E4M3FN) {
 
 TEST(UtilTest, TotalOrder_F8E4M3B11) {
   for (int a = 0; a < 256; ++a) {
-    tsl::float8_e4m3b11 x =
-        Eigen::numext::bit_cast<tsl::float8_e4m3b11>(static_cast<uint8_t>(a));
+    tsl::float8_e4m3b11fnuz x =
+        Eigen::numext::bit_cast<tsl::float8_e4m3b11fnuz>(
+            static_cast<uint8_t>(a));
     for (int b = 0; b < 256; ++b) {
-      tsl::float8_e4m3b11 y =
-          Eigen::numext::bit_cast<tsl::float8_e4m3b11>(static_cast<uint8_t>(b));
+      tsl::float8_e4m3b11fnuz y =
+          Eigen::numext::bit_cast<tsl::float8_e4m3b11fnuz>(
+              static_cast<uint8_t>(b));
       TotalOrderHelper(x, y);
     }
   }

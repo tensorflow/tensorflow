@@ -175,8 +175,8 @@ TEST_F(LiteralUtilTest, LiteralScalarToString) {
       LiteralUtil::CreateR0<tsl::float8_e4m3fn>(tsl::float8_e4m3fn(0.5));
   EXPECT_EQ("f8e4m3fn[] 0.5", f8e4m3_lit.ToString());
 
-  auto f8e4m3b11fnuz_lit =
-      LiteralUtil::CreateR0<tsl::float8_e4m3b11>(tsl::float8_e4m3b11(0.5));
+  auto f8e4m3b11fnuz_lit = LiteralUtil::CreateR0<tsl::float8_e4m3b11fnuz>(
+      tsl::float8_e4m3b11fnuz(0.5));
   EXPECT_EQ("f8e4m3b11fnuz[] 0.5", f8e4m3b11fnuz_lit.ToString());
 
   auto f8e4m3fnuz_lit =
@@ -628,9 +628,9 @@ TEST_F(LiteralUtilTest, IsAll) {
   EXPECT_FALSE(LiteralUtil::CreateR1<tsl::float8_e4m3fn>({r16}).IsAll(8));
   EXPECT_TRUE(LiteralUtil::CreateR1<tsl::float8_e4m3fn>({r16}).IsAll(9));
 
-  tsl::float8_e4m3b11 s16(9);  // Exactly representable in e4m3
-  EXPECT_FALSE(LiteralUtil::CreateR1<tsl::float8_e4m3b11>({s16}).IsAll(8));
-  EXPECT_TRUE(LiteralUtil::CreateR1<tsl::float8_e4m3b11>({s16}).IsAll(9));
+  tsl::float8_e4m3b11fnuz s16(9);  // Exactly representable in e4m3
+  EXPECT_FALSE(LiteralUtil::CreateR1<tsl::float8_e4m3b11fnuz>({s16}).IsAll(8));
+  EXPECT_TRUE(LiteralUtil::CreateR1<tsl::float8_e4m3b11fnuz>({s16}).IsAll(9));
 
   tsl::float8_e4m3fnuz t16(9);  // Exactly representable in e4m3
   EXPECT_FALSE(LiteralUtil::CreateR1<tsl::float8_e4m3fnuz>({t16}).IsAll(8));
@@ -1195,9 +1195,9 @@ TEST_F(LiteralUtilTest, PopulateWithValueR1F8e4m3) {
 
 TEST_F(LiteralUtilTest, PopulateWithValueR1F8e4m3b11) {
   Literal output(ShapeUtil::MakeShape(F8E4M3B11FNUZ, {3}));
-  tsl::float8_e4m3b11 x(0.5f);
-  output.PopulateWithValue<tsl::float8_e4m3b11>(x);
-  auto expected = LiteralUtil::CreateR1<tsl::float8_e4m3b11>({x, x, x});
+  tsl::float8_e4m3b11fnuz x(0.5f);
+  output.PopulateWithValue<tsl::float8_e4m3b11fnuz>(x);
+  auto expected = LiteralUtil::CreateR1<tsl::float8_e4m3b11fnuz>({x, x, x});
   EXPECT_EQ(output, expected);
 }
 
@@ -1710,7 +1710,7 @@ TEST_F(LiteralUtilTest, ConvertIfTypesMatchF8) {
   using e4 = tsl::float8_e4m3fn;
   auto f8e4m3 = LiteralUtil::CreateR2WithLayout<e4>(
       {{e4{0.}, e4{1.}}, {e4{2.}, e4{3.}}}, layout_r2_dim0major_);
-  using b11 = tsl::float8_e4m3b11;
+  using b11 = tsl::float8_e4m3b11fnuz;
   auto f8e4m3b11 = LiteralUtil::CreateR2WithLayout<b11>(
       {{b11{0.}, b11{1.}}, {b11{2.}, b11{3.}}}, layout_r2_dim0major_);
   using e5f = tsl::float8_e5m2fnuz;
@@ -2198,7 +2198,7 @@ TEST_F(LiteralUtilTest, ProtoRoundTrip) {
   using e4 = tsl::float8_e4m3fn;
   auto vector_f8e4m3 =
       LiteralUtil::CreateR1<e4>({e4{10.0}, e4{20.0}, e4{-32.0}});
-  using b11 = tsl::float8_e4m3b11;
+  using b11 = tsl::float8_e4m3b11fnuz;
   auto vector_f8e4m3b11 =
       LiteralUtil::CreateR1<b11>({b11{10.0}, b11{20.0}, b11{-30.0}});
   using e5f = tsl::float8_e5m2fnuz;
