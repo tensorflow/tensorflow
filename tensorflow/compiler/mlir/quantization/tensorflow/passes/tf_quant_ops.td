@@ -61,7 +61,18 @@ def TF_CustomAggregatorOp : TF_Op<"CustomAggregator", [Pure]> {
   let arguments = (ins
     TensorOf<[TF_Float32]>:$input,
 
-    StrAttr:$id
+    // The unique id of this `CustomAggregator` op.
+    StrAttr:$id,
+    // The integer value of the enforcing `CalibrationMethod`.
+    I32Attr:$calibration_method,
+    // The number of bins when histogram is initialized.
+    I32Attr:$initial_num_bins,
+    // Min percentile to be included in the selected range, only used in the
+    // `HISTOGRAM_PERCENTILE` method.
+    F32Attr:$min_percentile,
+    // Max percentile to be included in the selected range, only used in the
+    // `HISTOGRAM_PERCENTILE` method.
+    F32Attr:$max_percentile
   );
 
   let results = (outs
