@@ -704,6 +704,7 @@ cc_library(
     name = "gemm_fusion_autotuner",
     srcs = if_cuda_is_configured(["gemm_fusion_autotuner.cc"]),
     hdrs = if_cuda_is_configured(["gemm_fusion_autotuner.h"]),
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     deps = if_cuda_is_configured([
         ":autotuner_compile_util",
         ":autotuner_util",
@@ -3083,6 +3084,7 @@ cc_library(
     hdrs = [
         "compile_module_to_llvm_ir.h",
     ],
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     deps = [
         ":executable_proto_cc",
         ":gpu_constants",
@@ -3684,7 +3686,7 @@ cc_library(
             "ENABLE_LIBNVPTXCOMPILER_SUPPORT=1",
         ],
         "//conditions:default": [],
-    }),
+    }) + if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     deps = if_cuda_is_configured([
         ":autotuner_util",
         ":buffer_sharing",
