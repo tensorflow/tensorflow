@@ -1422,6 +1422,9 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
 
     if (debug_options.xla_gpu_normalize_layouts()) {
       pipeline.AddPass<LayoutNormalization>(&NormalizeLayoutForGpuCustomCalls);
+      // Remove any redundant operations (such as bitcasts) introduced by layout
+      // normalization.
+      pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(simplifier_options);
     }
     pipeline.AddPass<BroadcastCanonicalizer>();
 
