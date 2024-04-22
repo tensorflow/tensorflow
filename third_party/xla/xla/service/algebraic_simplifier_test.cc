@@ -10924,7 +10924,6 @@ TEST_F(AlgebraicSimplifierTest, SparseDotMoveSliceToOperands) {
 TEST_F(AlgebraicSimplifierTest, SparseDotKeepTranspose) {
   const char* hlo_string = R"(
     HloModule m
-
     ENTRY test {
       %lhs = f32[10,16] parameter(0)
       %rhs = f32[32,20] parameter(1)
@@ -10949,6 +10948,188 @@ TEST_F(AlgebraicSimplifierTest, SparseDotKeepTranspose) {
   AlgebraicSimplifier simplifier2(options);
   TF_ASSERT_OK_AND_ASSIGN(changed, RunHloPass(&simplifier2, module.get()));
   EXPECT_FALSE(changed);
+}
+
+TEST_F(AlgebraicSimplifierTest, SparseDotKeepOperandsTranspose) {
+  const char* hlo_string = R"(
+    HloModule m
+    ENTRY test {
+      %lhs = f32[10,20,30,16] parameter(0)
+      %rhs = f32[10,20,32,40] parameter(1)
+      %lhs_t = f32[20,10,30,16] transpose(%lhs), dimensions={1,0,2,3}
+      %rhs_t = f32[20,10,32,40] transpose(%rhs), dimensions={1,0,2,3}
+      %meta = u16[20,10,30,2] parameter(2)
+      ROOT %root = dot(%lhs_t, %rhs_t, %meta),
+          lhs_batch_dims={0,1}, rhs_batch_dims={0,1},
+          lhs_contracting_dims={3}, rhs_contracting_dims={2}, sparsity=L.3@2:4
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  AlgebraicSimplifier simplifier(default_options_);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&simplifier, module.get()));
+  EXPECT_FALSE(changed);
+}
+
+TEST_F(AlgebraicSimplifierTest, SparseDotNoAssociativeReorderOuter) {
+  const char* hlo_string = R"(
+    HloModule m
+    ENTRY test {
+      %a = f32[10,5] parameter(0)
+      %b = f32[5,32] parameter(1)
+      %c = f32[64,20] parameter(2)
+      %meta = u16[10,4] parameter(3)
+      %inner = f32[10,32] dot(%a, %b),
+          lhs_contracting_dims={1}, rhs_contracting_dims={0}
+      ROOT %outer = f32[10,20] dot(%inner, %c, %meta),
+          lhs_contracting_dims={1}, rhs_contracting_dims={0}, sparsity=L.1@2:4
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  AlgebraicSimplifierOptions options;
+  options.set_use_associative_reordering(true);
+  options.set_associative_reordering_threshold(0);
+  AlgebraicSimplifier simplifier(options);
+  EXPECT_FALSE(simplifier.Run(module.get()).value());
+}
+
+TEST_F(AlgebraicSimplifierTest, SparseDotNoAssociativeReorderInner) {
+  const char* hlo_string = R"(
+    HloModule m
+    ENTRY test {
+      %a = f32[10,64] parameter(0)
+      %b = f32[128,32] parameter(1)
+      %c = f32[32,20] parameter(2)
+      %meta = u16[10,8] parameter(3)
+      %inner = f32[10,32] dot(%a, %b, %meta),
+          lhs_contracting_dims={1}, rhs_contracting_dims={0}, sparsity=L.1@2:4
+      ROOT %outer = f32[10,20] dot(%inner, %c),
+          lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  AlgebraicSimplifierOptions options;
+  options.set_use_associative_reordering(true);
+  options.set_associative_reordering_threshold(0);
+  AlgebraicSimplifier simplifier(options);
+  EXPECT_FALSE(simplifier.Run(module.get()).value());
+}
+
+TEST_F(AlgebraicSimplifierTest, SparseDotNoAssociativeReorderReduce) {
+  const char* hlo_string = R"(
+    HloModule m
+    add {
+      %p0 = f32[] parameter(0)
+      %p1 = f32[] parameter(1)
+      ROOT %add = f32[] add(p0, p1)
+    }
+    ENTRY test {
+      %a = f32[10,16] parameter(0)
+      %b = f32[32,20] parameter(1)
+      %meta = u16[10,2] parameter(2)
+      %dot = f32[10,20] dot(%a, %b, %meta),
+          lhs_contracting_dims={1}, rhs_contracting_dims={0}, sparsity=L.1@2:4
+      %c = f32[] constant(0)
+      ROOT %reduce = f32[10] reduce(%dot, %c), dimensions={1}, to_apply=add
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  AlgebraicSimplifierOptions options;
+  options.set_use_associative_reordering(true);
+  options.set_associative_reordering_threshold(0);
+  AlgebraicSimplifier simplifier(options);
+  EXPECT_FALSE(simplifier.Run(module.get()).value());
+}
+
+TEST_F(AlgebraicSimplifierTest, SparseDotNoAssociativeReorderOther) {
+  const char* hlo_string = R"(
+    HloModule m
+    ENTRY test {
+      %a = f32[10,16] parameter(0)
+      %b = f32[32,20] parameter(1)
+      %meta = u16[10,2] parameter(2)
+      %reverse = f32[10,16] reverse(%a), dimensions={1}
+      ROOT %dot = f32[10,20] dot(%reverse, %b, %meta),
+          lhs_contracting_dims={1}, rhs_contracting_dims={0}, sparsity=L.1@2:4
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  AlgebraicSimplifierOptions options;
+  options.set_use_associative_reordering(true);
+  options.set_associative_reordering_threshold(0);
+  AlgebraicSimplifier simplifier(options);
+  EXPECT_FALSE(simplifier.Run(module.get()).value());
+}
+
+TEST_F(AlgebraicSimplifierTest, SparseDotReduceBatchDimension) {
+  const char* kModuleStr = R"(
+    HloModule m
+    add {
+      %p0 = f32[] parameter(0)
+      %p1 = f32[] parameter(1)
+      ROOT %add = f32[] add(%p0, %p1)
+    }
+    ENTRY test {
+      %p0 = f32[32,8,5,64] parameter(0)
+      %p1 = f32[8,32,128,7] parameter(1)
+      %meta = u16[32,8,5,8] parameter(2)
+      %dot = f32[32,8,5,7] dot(%p0, %p1, %meta),
+          lhs_batch_dims={0,1}, rhs_batch_dims={1,0},
+          lhs_contracting_dims={3}, rhs_contracting_dims={2}, sparsity=L.3@2:4
+      %c = f32[] constant(0)
+      ROOT %r = f32[8,5,7] reduce(%dot, %c), dimensions={0}, to_apply=add
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(SparseDotMatcher(m::Parameter(0), m::Parameter(1),
+                                          m::Parameter(2))));
+}
+
+TEST_F(AlgebraicSimplifierTest, SparseDotNoContractingReorder) {
+  const char* kModuleStr = R"(
+    HloModule m
+    ENTRY test {
+      %lhs = f32[2,8] constant({{1,2,3,4,5,6,7,8},{9,10,11,12,13,14,15,16}})
+      %meta = u16[2,1] constant({{0},{1}})
+      %t0 = f32[5,2,8] parameter(0)
+      %t1 = f32[5,8,2] transpose(%t0), dimensions={0,2,1}
+      %rhs = f32[5,16] reshape(t1)
+      ROOT %dot = f32[2,5] dot(%lhs, %rhs, %meta),
+          lhs_contracting_dims={1}, rhs_contracting_dims={1}, sparsity=L.1@2:4
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+}
+
+TEST_F(AlgebraicSimplifierTest, SparseDotOfConcat) {
+  const char* kModuleStr = R"(
+    HloModule m
+    ENTRY test {
+      %a = f32[2,4] parameter(0)
+      %b = f32[2,4] parameter(1)
+      %lhs = f32[2,8] concatenate(%a, %b), dimensions={1}
+      %meta = u16[2,1] constant({{0},{1}})
+      %rhs = f32[16,2] constant({
+          {0,1},{2,3},{4,5},{6,7},{8,9},{10,11},{12,13},{14,15},
+          {16,17},{18,19},{20,21},{22,23},{24,25},{26,27},{28,29},{30,31}})
+      ROOT %dot = f32[2,2] dot(%lhs, %rhs, %meta),
+          lhs_contracting_dims={1}, rhs_contracting_dims={0}, sparsity=L.1@2:4
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
 }
 
 TEST_F(AlgebraicSimplifierTest, BroadcastToTranspose) {

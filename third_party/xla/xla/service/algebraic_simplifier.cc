@@ -2467,6 +2467,10 @@ AlgebraicSimplifierVisitor::RemoveTransposesFromDotOperands(
       rank != dnums.lhs_batch_dimensions_size() + 2) {
     return false;
   }
+  // Skip sparse dots.
+  if (Cast<HloDotInstruction>(dot)->sparse_operands()) {
+    return false;
+  }
 
   // The last two elements of the permutation must be either [rank-2, rank-1]
   // (i.e. no permutation) or [rank-1, rank-2].  Otherwise, this means that
@@ -2541,6 +2545,7 @@ absl::StatusOr<HloInstruction*> AlgebraicSimplifierVisitor::OptimizeDotOfConcat(
   const DotDimensionNumbers& dnums = dot->dot_dimension_numbers();
   if (dnums.lhs_contracting_dimensions_size() != 1 ||
       dnums.lhs_batch_dimensions_size() != 0 ||
+      Cast<HloDotInstruction>(dot)->sparse_operands() ||
       dot->shape().dimensions_size() != 2) {  // dot output 2D
     return nullptr;
   }
@@ -2684,9 +2689,8 @@ absl::StatusOr<HloInstruction*> AlgebraicSimplifierVisitor::OptimizeDotOfGather(
     HloInstruction* dot) {
   const DotDimensionNumbers& dnums = dot->dot_dimension_numbers();
   if (dnums.lhs_contracting_dimensions_size() != 1 ||
-      dnums.rhs_contracting_dimensions_size() != 1 ||
       dnums.lhs_batch_dimensions_size() != 0 ||
-      dnums.rhs_batch_dimensions_size() != 0 ||
+      Cast<HloDotInstruction>(dot)->sparse_operands() ||
       dot->shape().dimensions_size() != 2) {  // dot output 2D
     VLOG(10) << "DotOfGather: Can only optimize 2D, non-batch dot operations.";
     return nullptr;
@@ -2853,7 +2857,8 @@ AlgebraicSimplifierVisitor::OptimizeDotOfReorderContractingDims(
   HloInstruction* constant;
   if (!Match(lhs,
              m::Reshape(&reshape, m::Transpose(&transpose, m::Op(&input)))) ||
-      !Match(rhs, m::Constant(&constant))) {
+      !Match(rhs, m::Constant(&constant)) ||
+      Cast<HloDotInstruction>(dot)->sparse_operands()) {
     return nullptr;
   }
 
@@ -3366,19 +3371,18 @@ Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
     bool outer_lhs_dot = false;
     bool outer_rhs_dot = false;
 
-    if (lhs->opcode() == HloOpcode::kDot &&
-        !Cast<HloDotInstruction>(lhs)->sparse_operands()) {
+    if (lhs->opcode() == HloOpcode::kDot) {
       outer = dot;
       inner = lhs;
       outer_lhs_dot = true;
-    } else if (rhs->opcode() == HloOpcode::kDot &&
-               !Cast<HloDotInstruction>(rhs)->sparse_operands()) {
+    } else if (rhs->opcode() == HloOpcode::kDot) {
       outer = dot;
       inner = rhs;
       outer_rhs_dot = true;
     }
 
-    if (outer_lhs_dot || outer_rhs_dot) {
+    if ((outer_lhs_dot || outer_rhs_dot) &&
+        !Cast<HloDotInstruction>(inner)->sparse_operands()) {
       DotDimensionNumbers ab_dnums, ac_dnums, bc_dnums;
 
       // We will now use inner and outer to build up ab_dnums, ac_dnums, and
@@ -7462,13 +7466,9 @@ Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
       Match(arg, m::Dot(&dot, m::Op(&lhs), m::Op(&rhs)).WithOneUser()) &&
       Match(reduce->to_apply()->root_instruction(),
             m::AddAnyOrder(m::Parameter(0), m::Parameter(1))) &&
-      absl::c_any_of(
-          reduce->dimensions(),
-          [&](int64_t dim) {
-            return dim <
-                   dot->dot_dimension_numbers().lhs_batch_dimensions_size();
-          }) &&
-      !Cast<HloDotInstruction>(dot)->sparse_operands()) {
+      absl::c_any_of(reduce->dimensions(), [&](int64_t dim) {
+        return dim < dot->dot_dimension_numbers().lhs_batch_dimensions_size();
+      })) {
     const auto& dnums = dot->dot_dimension_numbers();
     DotDimensionNumbers new_dnums = dnums;
     new_dnums.clear_lhs_batch_dimensions();
@@ -7495,10 +7495,16 @@ Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
         reduce_dims.push_back(dim - removed_dims);
       }
     }
+    HloDotInstruction* dot_cast = Cast<HloDotInstruction>(dot);
+    std::vector<SparsityDescriptor> sparsity(dot_cast->sparsity().begin(),
+                                             dot_cast->sparsity().end());
+    auto sparse_meta =
+        absl::MakeSpan(dot->operands()).subspan(HloDotInstruction::kOperands);
     TF_ASSIGN_OR_RETURN(
         auto new_dot,
         MakeDotHlo(lhs, rhs, new_dnums, dot->precision_config(),
-                   /*preferred_element_type=*/dot->shape().element_type()));
+                   /*preferred_element_type=*/dot->shape().element_type(),
+                   std::move(sparsity), sparse_meta));
     dot->SetupDerivedInstruction(new_dot);
     if (reduce_dims.empty()) {
       return ReplaceInstruction(hlo, new_dot);
