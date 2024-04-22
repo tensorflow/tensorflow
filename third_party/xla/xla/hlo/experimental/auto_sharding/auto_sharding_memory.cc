@@ -25,7 +25,6 @@ limitations under the License.
 
 #include "absl/container/btree_map.h"
 #include "absl/container/btree_set.h"
-#include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "tsl/platform/protobuf.h"
 
@@ -51,9 +50,10 @@ struct Interval {
 
 }  // namespace
 
-int64_t MemoryTermReducer::Reduce(
+std::pair<int64_t, int64_t> MemoryTermReducer::Reduce(
     int64_t num_lives, int64_t num_primitives,
-    std::function<tsl::protobuf::RepeatedField<int64_t>(int64_t)>  // NOLINT
+    const std::function<
+        tsl::protobuf::RepeatedField<int64_t>(int64_t)>&  // NOLINT
         live) {
   LOG(INFO) << "Memory Term Reducer beginning to reduce number of terms ...";
 
@@ -105,7 +105,7 @@ int64_t MemoryTermReducer::Reduce(
   // A function that merges a primitive (or members of a group) into a group.
   auto MergeIntoGroup = [num_primitives, this](
                             PrimIdx prim_idx,
-                            absl::flat_hash_set<PrimIdx>& reduced_group) {
+                            absl::btree_set<PrimIdx>& reduced_group) {
     if (prim_idx < num_primitives) {
       reduced_group.insert(prim_idx);
     } else {
@@ -154,10 +154,16 @@ int64_t MemoryTermReducer::Reduce(
         actives.insert({live_idx, prim_idx});
       }
       for (const PrimIdx prim_idx : evict[live_idx]) {
-        actives.erase({intervals[prim_idx].lower, prim_idx});
-        if (actives.empty()) continue;
-        const LiveAndPrim& active = *actives.begin();
-        overlaps.insert({active.first - live_idx, {prim_idx, active.second}});
+        std::optional<LiveAndPrim> active;  // The active prim we overlap with.
+        auto prim = actives.find({intervals[prim_idx].lower, prim_idx});
+        if (auto next = prim; ++next != actives.end()) {
+          active = *next;  // Choose a prim that started soon after we did.
+        } else if (actives.begin()->second != prim_idx) {
+          active = *actives.begin();  // Otherwise, choose the earliest prim.
+        }
+        actives.erase(prim);
+        if (!active) continue;
+        overlaps.insert({active->first - live_idx, {prim_idx, active->second}});
       }
     }
     bool changed = false;
@@ -165,7 +171,7 @@ int64_t MemoryTermReducer::Reduce(
       PrimIdx prim0_idx = prim_pair.first, prim1_idx = prim_pair.second;
       std::optional<Interval> overlap = CalcOverlap(prim0_idx, prim1_idx);
       if (!overlap) continue;
-      absl::flat_hash_set<PrimIdx> reduced_group;
+      absl::btree_set<PrimIdx> reduced_group;
       MergeIntoGroup(prim0_idx, reduced_group);
       MergeIntoGroup(prim1_idx, reduced_group);
       if (CalcNumTerms(prim0_idx) + CalcNumTerms(prim1_idx) <=
@@ -210,9 +216,8 @@ int64_t MemoryTermReducer::Reduce(
   // Add in any additional terms that will be needed to define groups.
   for (const auto& group : reduced_groups_) num_reduced_terms += group.size();
 
-  LOG(INFO) << "Memory Term Reducer reduced number of terms from " << num_terms
-            << " to " << num_reduced_terms;
-  return num_reduced_terms;
+  LOG(INFO) << "Memory Term Reducer finished reducing the number of terms.";
+  return {num_terms, num_reduced_terms};
 }
 
 const std::vector<std::vector<int64_t>>& MemoryTermReducer::GetReducedLive()
@@ -220,7 +225,7 @@ const std::vector<std::vector<int64_t>>& MemoryTermReducer::GetReducedLive()
   return reduced_live_;
 }
 
-const std::vector<absl::flat_hash_set<int64_t>>&
+const std::vector<absl::btree_set<int64_t>>&
 MemoryTermReducer::GetReducedGroups() const {
   return reduced_groups_;
 }

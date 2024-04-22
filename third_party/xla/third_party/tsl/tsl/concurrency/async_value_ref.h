@@ -132,6 +132,17 @@ class AsyncValueRef {
     AsPtr().AndThen(std::forward<Waiter>(waiter));
   }
 
+  template <typename R, typename F, typename U = std::invoke_result_t<F, T&>,
+            std::enable_if_t<std::is_constructible_v<R, U>>* = nullptr>
+  AsyncValueRef<R> Map(F&& f) {
+    return AsPtr().template Map<R>(std::forward<F>(f));
+  }
+
+  template <typename F, typename R = std::invoke_result_t<F, T&>>
+  AsyncValueRef<R> Map(F&& f) {
+    return Map<R>(std::forward<F>(f));
+  }
+
   // Make the AsyncValueRef available.
   void SetStateConcrete() const { value_->SetStateConcrete(); }
 
@@ -205,6 +216,14 @@ class AsyncValueRef {
  private:
   RCReference<AsyncValue> value_;
 };
+
+// Forward declare AsyncValueRef constructors.
+template <typename T>
+AsyncValueRef<T> MakeUnconstructedAsyncValueRef();
+template <typename T, typename... Args>
+AsyncValueRef<T> MakeConstructedAsyncValueRef(Args&&... args);
+template <typename T, typename... Args>
+AsyncValueRef<T> MakeAvailableAsyncValueRef(Args&&... args);
 
 // Non owning typed pointer for the AsyncValue. Can be cheaply passed around
 // when the lifetime of the underlying async value is clear from the context.
@@ -303,8 +322,8 @@ class AsyncValuePtr {
   //
   // Sample usage:
   //
-  // async_value_ref.AndThen([] {
-  //   // async_value_ref is now ready.
+  // async_value_ptr.AndThen([] {
+  //   // async_value_ptr is now ready.
   // });
   template <typename Waiter, SimpleWaiter<Waiter>* = nullptr>
   void AndThen(Waiter&& waiter) const {
@@ -317,8 +336,8 @@ class AsyncValuePtr {
   //
   // Sample usage:
   //
-  // async_value_ref.AndThen([] (absl::StatusOr<T*> status_or) {
-  //   // async_value_ref is now ready and its value/error is in the provided
+  // async_value_ptr.AndThen([] (absl::StatusOr<T*> status_or) {
+  //   // async_value_ptr is now ready and its value/error is in the provided
   //   // `status_or` argument.
   //   if (!status_or.ok()) {
   //      // Handle the error in `status_or.status()`.
@@ -330,9 +349,9 @@ class AsyncValuePtr {
   void AndThen(Waiter&& waiter) const {
     AndThen([waiter = std::forward<Waiter>(waiter), av_ptr = *this]() mutable {
       if (av_ptr.IsError()) {
-        return std::forward<Waiter>(waiter)(av_ptr.GetError());
+        return waiter(av_ptr.GetError());
       } else {
-        return std::forward<Waiter>(waiter)(&av_ptr.get());
+        return waiter(&av_ptr.get());
       }
     });
   }
@@ -345,8 +364,8 @@ class AsyncValuePtr {
   //
   // Sample usage:
   //
-  // async_value_ref.AndThen([] (absl::Status status) {
-  //   // async_value_ref is now ready and its status is in the provided
+  // async_value_ptr.AndThen([] (absl::Status status) {
+  //   // async_value_ptr is now ready and its status is in the provided
   //   // `status` argument.
   //   if (!status.ok()) {
   //     // Handle the error.
@@ -358,11 +377,41 @@ class AsyncValuePtr {
   void AndThen(Waiter&& waiter) const {
     AndThen([waiter = std::forward<Waiter>(waiter), av_ptr = *this]() mutable {
       if (av_ptr.IsError()) {
-        return std::forward<Waiter>(waiter)(av_ptr.GetError());
+        return waiter(av_ptr.GetError());
       } else {
-        return std::forward<Waiter>(waiter)(absl::OkStatus());
+        return waiter(absl::OkStatus());
       }
     });
+  }
+
+  // Returns and AsyncValueRef<R> that is emplaced from the result of invoking
+  // functor `f` with *this value. If *this completes with an error, returned
+  // async value will also be an error.
+  //
+  // Sample usage:
+  //
+  // async_value_ptr.Map<R>([](T& value) {
+  //   return U(value); // R must be constructible from U
+  // })
+  //
+  template <typename R, typename F, typename U = std::invoke_result_t<F, T&>,
+            std::enable_if_t<std::is_constructible_v<R, U>>* = nullptr>
+  AsyncValueRef<R> Map(F&& f) {
+    auto result = MakeUnconstructedAsyncValueRef<R>();
+    AndThen([f = std::forward<F>(f), av_ptr = *this, result]() mutable {
+      if (av_ptr.IsError()) {
+        result.SetError(av_ptr.GetError());
+      } else {
+        result.emplace(f(av_ptr.get()));
+      }
+    });
+    return result;
+  }
+
+  // A `Map` overload that automatically infers the type of result from `f`.
+  template <typename F, typename R = std::invoke_result_t<F, T&>>
+  AsyncValueRef<R> Map(F&& f) {
+    return Map<R>(std::forward<F>(f));
   }
 
  private:
