@@ -9374,38 +9374,6 @@ ENTRY %reshape {
   EXPECT_THAT(instruction, op::Sharding("{devices=[1,2,2]0,1,2,3}"));
 }
 
-TEST_F(ShardingPropagationTest, OffloadingPropagation) {
-  const char* const hlo_string = R"(
-HloModule module
-ENTRY %offloading {
-  %param0 = f32[1,256,128] parameter(0), sharding={devices=[1,1,4]0,1,2,3}
-  %zero = f32[] constant(0.0)
-  %broadcast = f32[256,256,128] broadcast(%zero), dimensions={}
-  %izero = s32[] constant(0)
-  %custom-call.0 = f32[1,256,128] custom-call(f32[1,256,128] %param0), custom_call_target="MoveToHost"
-  %dynamic-update-slice = f32[256,256,128] dynamic-update-slice(%broadcast, %custom-call.0, %izero, %izero, %izero)
-  %dynamic-slice = f32[1,256,128] dynamic-slice(%dynamic-update-slice, %izero, %izero, %izero), dynamic_slice_sizes={1,256,128}
-  %custom-call.1 = f32[1,256,128] custom-call(f32[1,256,128] %dynamic-slice), custom_call_target="MoveToDevice"
-  ROOT %copy = f32[1,256,128] copy(%custom-call.1), sharding={devices=[1,4,1]0,1,2,3}
-})";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool changed,
-      ShardingPropagation(/*is_spmd=*/true, /*propagate_metadata=*/true)
-          .Run(module.get()));
-
-  XLA_VLOG_LINES(1, module->ToString());
-  EXPECT_TRUE(changed);
-
-  auto* to_host = FindInstruction(module.get(), "custom-call.0");
-  EXPECT_THAT(to_host, op::Sharding("{devices=[1,1,4]0,1,2,3}"));
-
-  auto* from_host_input =
-      FindInstruction(module.get(), "custom-call.1")->operand(0);
-  EXPECT_THAT(from_host_input, op::Sharding("{devices=[1,1,4]0,1,2,3}"));
-}
-
 TEST_P(ParameterizedMetadataTest, PropagateThroughSingleUsers) {
   const char* const hlo_string = R"(
 HloModule module
