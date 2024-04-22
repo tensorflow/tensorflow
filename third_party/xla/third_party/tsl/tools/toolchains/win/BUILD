@@ -17,7 +17,7 @@ platform(
     remote_execution_properties = """
         properties:{
           name: "container-image"
-          value: "docker://gcr.io/tensorflow-testing/tf-win2019-rbe@sha256:775f2889a35e7cc87f8e1dc83f3195acb4e709cebe3572cf3ae591ccef27e7e8"
+          value: "docker://gcr.io/tensorflow-testing/tf-win2019-rbe@sha256:f92c317dfd69f78fba2bc05887555079a2db1df975eab98546be7fe789af8221"
         }
         properties:{
           name: "OSFamily"
@@ -32,7 +32,7 @@ platform(
         """,
 )
 
-#Register platform to support clang-cl on Windows
+# Register the clang-cl platform
 platform(
     name = "x64_windows-clang-cl",
     constraint_values = [
@@ -40,4 +40,20 @@ platform(
         "@platforms//os:windows",
         "@bazel_tools//tools/cpp:clang-cl",
     ],
+    remote_execution_properties = """
+        properties:{
+          name: "container-image"
+          value: "docker://gcr.io/tensorflow-testing/tf-win2019-rbe@sha256:f92c317dfd69f78fba2bc05887555079a2db1df975eab98546be7fe789af8221"
+        }
+        properties:{
+          name: "OSFamily"
+          value: "Windows"
+        }
+        properties:{
+          name: "Pool" value: "default"
+        }
+        properties:{
+          name: "dockerNetwork" value: "off"
+        }
+        """,
 )

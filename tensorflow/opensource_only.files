@@ -185,6 +185,7 @@ tf_staging/tensorflow/tools/toolchains/remote_config/BUILD:
 tf_staging/tensorflow/tools/toolchains/win/BUILD:
 tf_staging/tensorflow/tools/toolchains/win/bazel_211/BUILD:
 tf_staging/tensorflow/tools/toolchains/win/tf_win_05022023/BUILD:
+tf_staging/tensorflow/tools/toolchains/win/tf_win_20240416/BUILD:
 tf_staging/tensorflow/tools/toolchains/win_1803/py38/BUILD:
 tf_staging/tensorflow/tools/toolchains/win_1803/py39/BUILD:
 tf_staging/tensorflow/virtual_root_template_v1.__init__:.py
