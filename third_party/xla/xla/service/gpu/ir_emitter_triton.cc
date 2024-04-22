@@ -139,6 +139,7 @@ limitations under the License.
 #include "triton/Conversion/TritonToTritonGPU/TritonToTritonGPUPass.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
 #include "triton/Dialect/Triton/IR/Types.h"
+#include "triton/Dialect/TritonGPU/IR/Dialect.h"
 #include "triton/Dialect/TritonNvidiaGPU/Transforms/Passes.h"
 
 namespace xla {
@@ -1129,18 +1130,18 @@ struct MatMulLaunchConfig {
   matmul_dims.n = iter_spec->at(0).count;
   // Contracting dimension length.
   if (config.split_k > 1 &&
-      dot.operand(0)->operand(0)->opcode() == HloOpcode::kPad) {
+      dot.operand(1)->operand(0)->opcode() == HloOpcode::kPad) {
     // Unpadded LHS shape:  [..., k, ...]
     // Padded LHS shape:    [..., padded_k, ...]
     // Bitcasted LHS shape: [..., split_k, padded_k / split_k, ...]
-    TF_RET_CHECK(dot.operand(0)->opcode() == HloOpcode::kBitcast);
-    const Shape& unpadded_lhs_shape =
-        dot.operand(0)->operand(0)->operand(0)->shape();
+    TF_RET_CHECK(dot.operand(1)->opcode() == HloOpcode::kBitcast);
+    const Shape& unpadded_rhs_shape =
+        dot.operand(1)->operand(0)->operand(0)->shape();
     matmul_dims.k =
-        unpadded_lhs_shape.dimensions(dims.lhs_contracting_dimensions(0) - 1);
+        unpadded_rhs_shape.dimensions(dims.rhs_contracting_dimensions(0) - 1);
   } else {
     matmul_dims.k =
-        dot.operand(0)->shape().dimensions(dims.lhs_contracting_dimensions(0)) *
+        dot.operand(1)->shape().dimensions(dims.rhs_contracting_dimensions(0)) *
         config.split_k;
   }
 
@@ -1917,7 +1918,8 @@ absl::Status EmitMatMul(mlir::OpBuilder builder,
   const HloInstruction* instr =
       hlo_query::GetFirstInstructionWithOpcode(*computation, HloOpcode::kDot);
   const HloDotInstruction* dot_instr = DynCast<HloDotInstruction>(instr);
-  TF_RET_CHECK(!dot_instr->sparse_operands());
+  bool is_sparse = dot_instr->sparse_operands() > 0;
+
   // Use 32-bit indexing if addressing any of the inputs or the output (which
   // could grow if split_k is set) does not cross the INT_MAX boundary.
   // Otherwise, fall back to 64-bit indexing, which is slower.
@@ -1970,6 +1972,7 @@ absl::Status EmitMatMul(mlir::OpBuilder builder,
   const int64_t width = group_m * launch_config.grid_n;
 
   auto c32 = [&](int64_t v) { return CreateConst(b, b.getI32Type(), v); };
+  auto c64 = [&](int64_t v) { return CreateConst(b, b.getI64Type(), v); };
 
   auto pid_nc =
       b.create<mt::GetProgramIdOp>(launch_config.noncontracting_program_id_dim);
@@ -2000,13 +2003,13 @@ absl::Status EmitMatMul(mlir::OpBuilder builder,
   absl::flat_hash_map<int, const HloInstruction*> iter_args_to_inputs;
   absl::flat_hash_map<int, std::vector<int32_t>> iter_args_to_boundary_checks;
 
-  Side lhs{
-      TritonFusionAnalysis::Scope::LHS,
-      /*tiled_dims=*/
-      {DimProperties(dims.lhs_noncontracting_dim_idx, pid_m, block_m,
-                     /*split_value=*/1),
-       DimProperties(dims.lhs_contracting_dim_idx, pid_k, block_k, split_k)},
-      dims.lhs_batch_dim_idx};
+  Side lhs{TritonFusionAnalysis::Scope::LHS,
+           /*tiled_dims=*/
+           {DimProperties(dims.lhs_noncontracting_dim_idx, pid_m, block_m,
+                          /*split_value=*/1),
+            DimProperties(dims.lhs_contracting_dim_idx, pid_k,
+                          block_k / (1 + is_sparse), split_k)},
+           dims.lhs_batch_dim_idx};
   Side rhs{
       TritonFusionAnalysis::Scope::RHS,
       /*tiled_dims=*/
@@ -2030,7 +2033,7 @@ absl::Status EmitMatMul(mlir::OpBuilder builder,
     absl::flat_hash_map<const HloInstruction*, Value> values_rhs;
 
     // Load tiles of all parameters of LHS and RHS scopes and advance pointers.
-    for (int i = 0; i < iter_args.size() - 1; ++i) {
+    for (int i = 0; i < iter_args.size() - 1 - is_sparse; ++i) {
       const bool is_lhs =
           i < ScopeInputs(analysis, TritonFusionAnalysis::Scope::LHS).size();
       Side& side = is_lhs ? lhs : rhs;
@@ -2107,6 +2110,21 @@ absl::Status EmitMatMul(mlir::OpBuilder builder,
       dot_input_rhs = apply_mask(1, dot_input_rhs);
     }
 
+    if (is_sparse) {
+      Value meta_arg = iter_args[iter_args.size() - 2];
+      Value meta = b.create<mt::LoadOp>(meta_arg, std::vector<int>{},
+                                        std::nullopt, mt::CacheModifier::NONE,
+                                        mt::EvictionPolicy::NORMAL,
+                                        /*isVolatile=*/false);
+      iter_args_next.push_back(
+          b.create<mt::AdvanceOp>(meta_arg.getType(), meta_arg,
+                                  mlir::ValueRange{c32(0), c32(block_k / 16)}));
+      iter_args_next.push_back(b.create<mt::gpu::SparseDotOp>(
+          dot_input_lhs, dot_input_rhs, iter_args.back(), meta));
+      b.create<mlir::scf::YieldOp>(iter_args_next);
+      return;
+    }
+
     const HloModule* hlo_module = dot_instr->GetModule();
     if (hlo_module->config().debug_options().xla_gpu_enable_bf16_3way_gemm() &&
         hlo_module->config().debug_options().xla_gpu_enable_bf16_6way_gemm()) {
@@ -2161,6 +2179,31 @@ absl::Status EmitMatMul(mlir::OpBuilder builder,
                               iter_args_to_boundary_checks[iter_args.size()]));
       iter_args.push_back(tensor_ptr);
     }
+  }
+
+  // Create tensor pointer for the sparsity metadata.
+  if (is_sparse) {
+    Shape shape = dot_instr->operand(2)->shape();
+    int last = shape.rank() - 1;
+    auto params = analysis.ScopeParameters(TritonFusionAnalysis::Scope::META);
+    CHECK_EQ(params.size(), 1);
+    int64_t stride = split_k > 1 ? shape.dimensions(1) * shape.dimensions(2)
+                                 : shape.dimensions(last);
+    auto tensor_ptr =
+        b.create<mt::MakeTensorPtrOp>(
+             fn.getArgument((*params.begin())->parameter_number()),
+             mlir::ValueRange{c64(shape.dimensions(0)),
+                              c64(shape.dimensions(last))},
+             mlir::ValueRange{c64(stride), c64(1)},
+             mlir::ValueRange{c32(0), c32(0)},
+             std::vector<int32_t>{block_m, block_k / 16},
+             std::vector<int32_t>{1, 0})
+            .getResult()
+            .cast<Value>();
+    tensor_ptr = b.create<mt::AdvanceOp>(
+        tensor_ptr.getType(), tensor_ptr,
+        mlir::ValueRange{b.create<ma::MulIOp>(pid_m, c32(block_m)), c32(0)});
+    iter_args.push_back(tensor_ptr);
   }
 
   iter_args.push_back(accumulator_init);
@@ -2555,8 +2598,9 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
     const HloComputation* hlo_computation,
     const se::DeviceDescription& device_info, const TritonGemmConfig& config,
     TritonIrEmitter ir_emitter, mlir::MLIRContext& mlir_context) {
-  mlir_context.loadDialect<mt::TritonDialect, mlir::arith::ArithDialect,
-                           mlir::affine::AffineDialect>();
+  mlir_context
+      .loadDialect<mt::TritonDialect, mt::gpu::TritonGPUDialect,
+                   mlir::arith::ArithDialect, mlir::affine::AffineDialect>();
 
   mlir::OpBuilder b(&mlir_context);
   auto loc = mlir::NameLoc::get(b.getStringAttr(hlo_computation->name()));
@@ -2567,9 +2611,10 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
   // Build Triton kernel.
   SmallVector<Type> fn_arg_types;
   for (HloInstruction* p : hlo_computation->parameter_instructions()) {
-    fn_arg_types.push_back(mt::PointerType::get(
-        StorageType(b, TritonType(b, p->shape().element_type())),
-        mn::kGlobalMemorySpace));
+    PrimitiveType type = p->shape().element_type();
+    Type ir_type = type != U16 ? TritonType(b, type) : b.getI16Type();
+    fn_arg_types.push_back(
+        mt::PointerType::get(StorageType(b, ir_type), mn::kGlobalMemorySpace));
   }
 
   for (const ShapeUtil::IndexedShape& s :

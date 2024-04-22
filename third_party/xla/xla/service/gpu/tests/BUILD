@@ -924,6 +924,26 @@ xla_test(
 )
 
 xla_test(
+    name = "gpu_sparse_dot_test",
+    srcs = ["gpu_sparse_dot_test.cc"],
+    backends = [
+        "gpu_a100",
+        # TODO(b/335197598): re-enable Hopper test when the blocker is resolved (PTX version)
+        # "gpu_h100",
+    ],
+    deps = [
+        ":gpu_codegen_test",
+        "//third_party/half:includes",
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla/tests:xla_internal_test_main",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+xla_test(
     name = "gpu_fused_mha_test",
     srcs = ["gpu_fused_mha_test.cc"],
     backend_tags = {"gpu": [
