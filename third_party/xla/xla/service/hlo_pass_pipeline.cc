@@ -169,8 +169,10 @@ absl::StatusOr<bool> HloPassPipeline::RunPassesInternal(
     HloPassInterface* pass = passes[i];
     std::string pass_name = std::string(pass->name());
     XLA_SCOPED_LOGGING_TIMER(absl::StrCat("HLO pass: ", pass_name));
-    tsl::profiler::ScopedAnnotation annotation{
-        [&] { return "XlaPass:" + pass_name; }};
+    tsl::profiler::ScopedAnnotation annotation{[&] {
+      return absl::StrFormat("XlaPass:#name=%s,module=%s,program_id=%s#",
+                             pass_name, hlo->name(), UniqueId(*hlo));
+    }};
     VLOG(1) << "  HLO pass " << pass_name;
     VLOG(2) << "  Module hash " << absl::HashOf(*hlo);
     if (!pass->IsPassPipeline()) {

@@ -91,6 +91,7 @@ limitations under the License.
 #include "tsl/platform/rocm_rocdl_path.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
+#include "tsl/profiler/lib/scoped_annotation.h"
 #include "tsl/profiler/lib/traceme.h"
 
 #if !defined(PLATFORM_GOOGLE) && TENSORFLOW_USE_ROCM
@@ -217,6 +218,10 @@ std::unique_ptr<llvm::TargetMachine> GetTargetMachine(
 // for the NVPTX target.
 std::string EmitModuleToPTX(llvm::Module* module,
                             llvm::TargetMachine* target_machine) {
+  tsl::profiler::ScopedAnnotation annotation([&] {
+    return absl::StrFormat("XlaEmitGpuAsm:#module=%s#",
+                           module->getName().str());
+  });
   std::string ptx;
   llvm::raw_string_ostream stream(ptx);
   llvm::buffer_ostream pstream(stream);
@@ -388,6 +393,10 @@ absl::Status LinkAndOptimizeModule(
     const DebugOptions& debug_options, const std::string& device_bitcode_path,
     TargetModuleLinker module_linker, llvm::Triple default_target_triple,
     llvm::TargetMachine* target_machine, int inline_threshold) {
+  tsl::profiler::ScopedAnnotation annotation([&] {
+    return absl::StrFormat("XlaOptimizeLlvmIr:#module=%s#",
+                           module->getName().str());
+  });
   TF_RETURN_IF_ERROR(
       module_linker(module, gpu_version, debug_options, device_bitcode_path));
 

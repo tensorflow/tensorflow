@@ -1959,6 +1959,10 @@ GpuCompiler::CompileToBackendResult(
 absl::StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
     std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
     const CompileOptions& options) {
+  tsl::profiler::ScopedAnnotation backend_annotation{[&] {
+    return absl::StrFormat("XlaCompileBackend:#module=%s,program_id=%d#",
+                           module->name(), module->unique_id());
+  }};
   Thunk::BinaryMap dnn_compiled_graphs;
   if (stream_exec) {
     TF_RETURN_IF_ERROR(RunCudnnFusionCompilerPass(module.get(), stream_exec,
@@ -2031,6 +2035,10 @@ absl::StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
   int64_t debug_buffer_assignment_show_max =
       module->config().debug_options().xla_debug_buffer_assignment_show_max();
 
+  tsl::profiler::ScopedAnnotation annotation([&] {
+    return absl::StrFormat("XlaCreateGpuExecutable:#module=%s#",
+                           module->name());
+  });
   TF_ASSIGN_OR_RETURN(
       auto gpu_executable,
       GpuExecutable::Create(GpuExecutable::Params{
@@ -2099,6 +2107,10 @@ GpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
 
   for (std::unique_ptr<HloModule>& module : modules) {
     if (!module->has_schedule()) {
+      tsl::profiler::ScopedAnnotation annotation{[&] {
+        return absl::StrFormat("XlaCompile:#module=%s,program_id=%d#",
+                               module->name(), module->unique_id());
+      }};
       CompileOptions compile_options;
       compile_options.device_allocator = options.device_allocator();
       compile_options.target_config = options.target_config();
