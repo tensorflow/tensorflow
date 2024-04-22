@@ -18,7 +18,6 @@ limitations under the License.
 #include "absl/types/optional.h"
 #include "tsl/framework/metrics.h"
 #include "tsl/platform/env.h"
-#include "tsl/platform/logging.h"
 #include "tsl/platform/mutex.h"
 #include "tsl/platform/types.h"
 

@@ -18,9 +18,13 @@ limitations under the License.
 #include <forward_list>
 
 #include "absl/memory/memory.h"
+#include "tsl/lib/gtl/flatmap.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
+#include "tsl/platform/mutex.h"
+#include "tsl/platform/notification.h"
 #include "tsl/platform/status.h"
+#include "tsl/platform/stringpiece.h"
 
 namespace tsl {
 

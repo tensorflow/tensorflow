@@ -17,7 +17,11 @@ limitations under the License.
 
 #include <string>
 
+#include "tsl/framework/allocator.h"
 #include "tsl/platform/logging.h"
+#include "tsl/platform/mutex.h"
+#include "tsl/platform/numa.h"
+#include "tsl/platform/types.h"
 
 namespace tsl {
 

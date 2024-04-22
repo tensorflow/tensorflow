@@ -21,6 +21,8 @@ limitations under the License.
 #include <random>
 #include <vector>
 
+#include "absl/memory/memory.h"
+#include "tsl/platform/env.h"
 #include "tsl/platform/notification.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/test.h"

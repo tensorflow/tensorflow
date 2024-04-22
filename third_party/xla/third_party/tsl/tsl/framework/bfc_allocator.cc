@@ -20,16 +20,21 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/container/flat_hash_set.h"
+#include "absl/log/log.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/optional.h"
+#include "tsl/framework/allocator.h"
 #include "tsl/framework/allocator_retry.h"
-#include "tsl/lib/core/bits.h"
+#include "tsl/platform/env.h"
 #include "tsl/platform/file_system.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/mutex.h"
 #include "tsl/platform/numbers.h"
 #include "tsl/platform/stacktrace.h"
-#include "tsl/platform/str_util.h"
+#include "tsl/platform/status.h"
 #include "tsl/platform/strcat.h"
+#include "tsl/platform/thread_annotations.h"
 #include "tsl/platform/types.h"
 #include "tsl/profiler/lib/scoped_memory_debug_annotation.h"
 #include "tsl/profiler/lib/traceme.h"

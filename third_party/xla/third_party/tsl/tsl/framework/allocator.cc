@@ -19,8 +19,6 @@ limitations under the License.
 
 #include "tsl/framework/allocator_registry.h"
 #include "tsl/framework/tracking_allocator.h"
-#include "tsl/platform/mem.h"
-#include "tsl/platform/mutex.h"
 #include "tsl/platform/strcat.h"
 #include "tsl/platform/stringprintf.h"
 #include "tsl/platform/types.h"
