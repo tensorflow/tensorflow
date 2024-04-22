@@ -20,9 +20,12 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/base/thread_annotations.h"
+#include "absl/synchronization/mutex.h"
 #include "xla/executable_run_options.h"
 #include "xla/service/backend.h"
 #include "xla/service/stream_pool.h"
+#include "xla/status.h"
 #include "xla/statusor.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/util.h"

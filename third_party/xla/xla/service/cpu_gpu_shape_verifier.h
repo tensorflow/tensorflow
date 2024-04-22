@@ -19,7 +19,9 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/hlo_verifier.h"
+#include "xla/status.h"
 
 namespace xla {
 

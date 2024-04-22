@@ -17,10 +17,17 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/call_graph.h"
+#include "xla/status.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
 
