@@ -128,7 +128,6 @@ cc_toolchain_config(
     name = "linux_aarch64_toolchain_config",
     abi_libc_version = "local",
     abi_version = "local",
-    builtin_sysroot = "/dt10/",
     compile_flags = [
         "--target=aarch64-unknown-linux-gnu",
         "-fstack-protector",
@@ -147,7 +146,6 @@ cc_toolchain_config(
     coverage_link_flags = ["--coverage"],
     cpu = "aarch64",
     cxx_builtin_include_directories = [
-        "/dt10/",
         "/usr/lib/llvm-17/include/",
         "/usr/lib/llvm-17/lib/clang/17/include",
     ],
