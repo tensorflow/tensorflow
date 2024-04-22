@@ -63,6 +63,7 @@ limitations under the License.
 #include "xla/service/gpu/cudnn_vectorize_convolutions.h"
 #include "xla/service/gpu/cudnn_workspace_rewriter.h"
 #include "xla/service/gpu/cusolver_rewriter.h"
+#include "xla/service/gpu/dot_sparsity_rewriter.h"
 #include "xla/service/gpu/gemm_algorithm_picker.h"
 #include "xla/service/gpu/gemm_fusion_autotuner.h"
 #include "xla/service/gpu/gpu_asm_opts_util.h"
@@ -274,6 +275,7 @@ absl::Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
   }
 
   pre_pipeline.AddPass<DotDimensionMerger>();
+  pre_pipeline.AddPass<DotSparsityRewriter>();
 
   for (const CublasPaddingRequirement& requirement :
        CublasPaddingRequirements) {

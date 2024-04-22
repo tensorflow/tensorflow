@@ -10921,9 +10921,10 @@ TEST_F(AlgebraicSimplifierTest, SparseDotMoveSliceToOperands) {
   EXPECT_EQ(descriptor.dimension(), 2);
 }
 
-TEST_F(AlgebraicSimplifierTest, SparseDotTranspose) {
+TEST_F(AlgebraicSimplifierTest, SparseDotKeepTranspose) {
   const char* hlo_string = R"(
     HloModule m
+
     ENTRY test {
       %lhs = f32[10,16] parameter(0)
       %rhs = f32[32,20] parameter(1)
@@ -10936,16 +10937,18 @@ TEST_F(AlgebraicSimplifierTest, SparseDotTranspose) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  EXPECT_TRUE(AlgebraicSimplifier(default_options_).Run(module.get()).value());
-  HloInstruction* root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root,
-              GmockMatch(SparseDotMatcher(m::Parameter(1), m::Parameter(0),
-                                          m::Parameter(2))
-                             .WithShape(F32, {20, 10})));
-  auto dot = Cast<HloDotInstruction>(root);
-  auto descriptor = dot->sparsity().front();
-  EXPECT_EQ(descriptor.index(), 1);
-  EXPECT_EQ(descriptor.dimension(), 1);
+
+  auto options = AlgebraicSimplifierOptions();
+
+  options.set_supports_non_canonical_dots(false);
+  AlgebraicSimplifier simplifier1(options);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&simplifier1, module.get()));
+  EXPECT_FALSE(changed);
+
+  options.set_supports_non_canonical_dots(true);
+  AlgebraicSimplifier simplifier2(options);
+  TF_ASSERT_OK_AND_ASSIGN(changed, RunHloPass(&simplifier2, module.get()));
+  EXPECT_FALSE(changed);
 }
 
 TEST_F(AlgebraicSimplifierTest, BroadcastToTranspose) {
