@@ -407,7 +407,7 @@ static absl::StatusOr<std::shared_ptr<NcclClique::Lock>> InitializeNcclClique(
 
     absl::btree_map<int32_t, NcclApi::OwnedNcclComm> comms;
     for (size_t i = 0; i < splitted_comms.size(); ++i) {
-      comms[i] = std::move(splitted_comms[i]);
+      comms[keys[i]] = std::move(splitted_comms[i]);
     }
 
     VLOG(3) << absl::StreamFormat(
@@ -498,10 +498,6 @@ absl::StatusOr<std::shared_ptr<NcclClique::Lock>> AcquireNcclClique(
 
   if (enable_nccl_comm_splitting) {
     for (auto& [acquired_clique_key, acquired_clique] : acquired_cliques) {
-      // We don't support splitting non-local cliques as it requires careful
-      // synchronization between multiple processes.
-      if (!(*acquired_clique)->IsLocal()) continue;
-
       if (clique_key.IsSubsetOf(acquired_clique_key)) {
         return InitializeNcclClique(device, run_id, clique_key, acquired_clique,
                                     num_local_participants, rank, config);
