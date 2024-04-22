@@ -17,7 +17,9 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "tsl/platform/env.h"
 
 namespace stablehlo::quantization::io {
@@ -40,6 +42,17 @@ absl::StatusOr<std::string> CreateTmpDir(tsl::Env* env);
 // status if failed. The file system used will be the default environment
 // returned by `tsl::Env::Default`.
 absl::StatusOr<std::string> CreateTmpDir();
+
+// Convenience function for writing string `data` to file without the need to
+// pass `tsl::Env` instance. Internally it uses the default `tsl::Env::Default`.
+absl::Status WriteStringToFile(absl::string_view file_path,
+                               absl::string_view data);
+
+// Convenience function for reading string data from file at `file_path` without
+// the need to pass `tsl::Env` instance. Internally it uses the default
+// `tsl::Env::Default`. Returns an OK status with string data containing file
+// contents. Returns non-ok status upon error, e.g. file doesn't exist.
+absl::StatusOr<std::string> ReadFileToString(absl::string_view file_path);
 
 }  // namespace stablehlo::quantization::io
 
