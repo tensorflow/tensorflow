@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tsl/lib/io/iterator.h"
 
+#include "tsl/platform/status.h"
+#include "tsl/platform/stringpiece.h"
+
 namespace tsl {
 namespace table {
 

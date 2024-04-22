@@ -21,6 +21,7 @@ limitations under the License.
 #include "tsl/platform/cord.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/status.h"
+#include "tsl/platform/tstring.h"
 #include "tsl/platform/types.h"
 
 namespace tsl {

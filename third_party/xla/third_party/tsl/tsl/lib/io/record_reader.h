@@ -18,7 +18,9 @@ limitations under the License.
 
 #include "tsl/lib/io/inputstream_interface.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/status.h"
 #include "tsl/platform/stringpiece.h"
+#include "tsl/platform/tstring.h"
 #if !defined(IS_SLIM_BUILD)
 #include "tsl/lib/io/snappy/snappy_compression_options.h"
 #include "tsl/lib/io/snappy/snappy_inputstream.h"

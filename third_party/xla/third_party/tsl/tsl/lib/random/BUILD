@@ -67,7 +67,7 @@ cc_library(
     visibility = internal_visibility([
         "//tensorflow/core/lib/random:__pkg__",
         "//tensorflow/lite:__subpackages__",
-    ]),
+    ]) + ["//tsl/lib/io:__pkg__"],
 )
 
 cc_library(
