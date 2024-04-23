@@ -40,9 +40,7 @@ cc_library(
     name = "random_distributions_utils",
     hdrs = ["random_distributions_utils.h"],
     compatible_with = get_compatible_with_portable(),
-    visibility = [
-        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
-    ],
+    visibility = ["//visibility:private"],
     deps = [
         ":philox_random",
         "@local_tsl//tsl/lib/random:random_distributions_utils",

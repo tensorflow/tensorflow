@@ -58,7 +58,7 @@ class Histogram final {
   //   - This histogram has more or equal number of samples than `other` in
   //     every bucket.
   // Returns an InvalidArgument error if the requirements are violated.
-  StatusOr<Histogram> Subtract(const Histogram& other) const;
+  absl::StatusOr<Histogram> Subtract(const Histogram& other) const;
 
  private:
   HistogramProto histogram_proto_;

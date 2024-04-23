@@ -221,7 +221,7 @@ struct CseKey {
 
 }  // namespace
 
-StatusOr<bool> HloCSE::Run(
+absl::StatusOr<bool> HloCSE::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

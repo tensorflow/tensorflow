@@ -74,7 +74,7 @@ tensorflow::Status ProfilerSessionWrapper::Start(
     const absl::flat_hash_map<std::string, std::variant<int, std::string>>&
         options) {
   auto opts = GetRemoteSessionManagerOptionsLocked(logdir, options);
-  session_ = tensorflow::ProfilerSession::Create(opts.profiler_options());
+  session_ = tsl::ProfilerSession::Create(opts.profiler_options());
   logdir_ = logdir;
   return session_->Status();
 }

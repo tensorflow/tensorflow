@@ -944,8 +944,8 @@ Status RewriteLoopWithConcatGroups(HloInstruction* loop,
   return OkStatus();
 }
 
-StatusOr<bool> RunOnLoop(HloInstruction* loop,
-                         int64_t min_operand_count_to_optimize) {
+absl::StatusOr<bool> RunOnLoop(HloInstruction* loop,
+                               int64_t min_operand_count_to_optimize) {
   auto body = loop->while_body();
   auto param = body->parameter_instruction(0);
   auto root = body->root_instruction();
@@ -1019,7 +1019,7 @@ StatusOr<bool> RunOnLoop(HloInstruction* loop,
 
 }  // namespace
 
-StatusOr<bool> WhileLoopConcatCodeMotion::Run(
+absl::StatusOr<bool> WhileLoopConcatCodeMotion::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

@@ -150,9 +150,9 @@ def _tf_repositories():
     # LINT.IfChange
     tf_http_archive(
         name = "XNNPACK",
-        sha256 = "55827bd7c39a080d4296e84dfbe576240d83a3347df8ad4e10cf9fe400678db7",
-        strip_prefix = "XNNPACK-65ca94a2d3f39e7ff8e4045852b32b65ca6a16b7",
-        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/65ca94a2d3f39e7ff8e4045852b32b65ca6a16b7.zip"),
+        sha256 = "256ab4034e93bdeea2e1216cd8361a85bd4ee4884a89bf5e4e142abcdc796805",
+        strip_prefix = "XNNPACK-50037f8072731a2cc30a961b96e199ad691887e4",
+        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/50037f8072731a2cc30a961b96e199ad691887e4.zip"),
     )
     # LINT.ThenChange(//tensorflow/lite/tools/cmake/modules/xnnpack.cmake)
 
@@ -506,10 +506,10 @@ def _tf_repositories():
     tf_http_archive(
         name = "snappy",
         build_file = "//third_party:snappy.BUILD",
-        sha256 = "2e458b7017cd58dcf1469ab315389e85e7f445bd035188f2983f81fb19ecfb29",
-        strip_prefix = "snappy-984b191f0fefdeb17050b42a90b7625999c13b8d",
+        sha256 = "7ee7540b23ae04df961af24309a55484e7016106e979f83323536a1322cedf1b",
+        strip_prefix = "snappy-1.2.0",
         system_build_file = "//third_party/systemlibs:snappy.BUILD",
-        urls = tf_mirror_urls("https://github.com/google/snappy/archive/984b191f0fefdeb17050b42a90b7625999c13b8d.tar.gz"),
+        urls = tf_mirror_urls("https://github.com/google/snappy/archive/1.2.0.zip"),
     )
 
     tf_http_archive(
@@ -867,17 +867,17 @@ def _tf_repositories():
     # third_party/py/riegeli) that are used in TF.
     tf_http_archive(
         name = "riegeli",
-        sha256 = "870ca080cdfc5eba696a72ccc3a54cbf0f2271befc0d459eafa8f065edfaadb2",
-        strip_prefix = "riegeli-264ef7b4a1314d97265b37544b27cd3923ea72d2",
-        urls = tf_mirror_urls("https://github.com/google/riegeli/archive/264ef7b4a1314d97265b37544b27cd3923ea72d2.zip"),
+        sha256 = "1d216d5c97fa60632143d209a1bb48c2a83788efdb876902e7bbc06396d5ee1f",
+        strip_prefix = "riegeli-5d75119232cd4f6db8dfa69a1503289f050e9643",
+        urls = tf_mirror_urls("https://github.com/google/riegeli/archive/5d75119232cd4f6db8dfa69a1503289f050e9643.zip"),
     )
 
     tf_http_archive(
         name = "riegeli_py",
-        sha256 = "870ca080cdfc5eba696a72ccc3a54cbf0f2271befc0d459eafa8f065edfaadb2",
+        sha256 = "1d216d5c97fa60632143d209a1bb48c2a83788efdb876902e7bbc06396d5ee1f",
         patch_file = ["//third_party:riegeli_fix.patch"],
-        strip_prefix = "riegeli-264ef7b4a1314d97265b37544b27cd3923ea72d2",
-        urls = tf_mirror_urls("https://github.com/google/riegeli/archive/264ef7b4a1314d97265b37544b27cd3923ea72d2.zip"),
+        strip_prefix = "riegeli-5d75119232cd4f6db8dfa69a1503289f050e9643",
+        urls = tf_mirror_urls("https://github.com/google/riegeli/archive/5d75119232cd4f6db8dfa69a1503289f050e9643.zip"),
     )
 
     # Required by riegeli.

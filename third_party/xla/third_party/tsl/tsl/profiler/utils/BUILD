@@ -1,5 +1,5 @@
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
-load("//tsl:tsl.bzl", "internal_visibility")
+load("@local_xla//xla/tsl:tsl.bzl", "internal_visibility")
 load("//tsl/platform:build_config.bzl", "tsl_cc_test")
 load("//tsl/platform:build_config_root.bzl", "if_static")
 load("//tsl/profiler/builds:build_config.bzl", "tf_profiler_copts")
@@ -426,6 +426,7 @@ cc_library(
         "//tsl/profiler/protobuf:xplane_proto_cc",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/hash",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",

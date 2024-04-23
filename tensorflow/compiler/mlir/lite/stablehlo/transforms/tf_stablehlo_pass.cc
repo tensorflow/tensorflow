@@ -52,17 +52,17 @@ class TFToMhloPass
  public:
   explicit TFToMhloPass(bool skip_quantization_ops = false,
                         bool skip_resize = false,
-                        bool skip_stateful_partitioned_call = false)
+                        bool skip_partitioned_calls = false)
       : PassWrapper() {
     skip_quantization_ops_ = skip_quantization_ops;
     skip_resize_ = skip_resize;
-    skip_stateful_partitioned_call_ = skip_stateful_partitioned_call;
+    skip_partitioned_calls_ = skip_partitioned_calls;
   }
 
   TFToMhloPass(const TFToMhloPass &pass) {
     skip_quantization_ops_ = pass.skip_quantization_ops_;
     skip_resize_ = pass.skip_resize_;
-    skip_stateful_partitioned_call_ = pass.skip_stateful_partitioned_call_;
+    skip_partitioned_calls_ = pass.skip_partitioned_calls_;
   }
 
  private:
@@ -90,9 +90,10 @@ class TFToMhloPass
       *this, "skip-resize",
       ::llvm::cl::desc("Skip tf.ResizeBilinear and tf.ResizeNearestNeighbor")};
 
-  Option<bool> skip_stateful_partitioned_call_{
-      *this, "skip-stateful-partitioned-call",
-      ::llvm::cl::desc("Skip tf.StatefulPartitionedCall")};
+  Option<bool> skip_partitioned_calls_{
+      *this, "skip-partitioned-calls",
+      ::llvm::cl::desc(
+          "Skip tf.StatefulPartitionedCall and tf.PartitionedCall")};
 };
 
 void TFToMhloPass::runOnOperation() {
@@ -129,7 +130,8 @@ void TFToMhloPass::runOnOperation() {
     target.addLegalOp<TF::ResizeBilinearOp>();
     target.addLegalOp<TF::ResizeNearestNeighborOp>();
   }
-  if (skip_stateful_partitioned_call_) {
+  if (skip_partitioned_calls_) {
+    target.addLegalOp<TF::PartitionedCallOp>();
     target.addLegalOp<TF::StatefulPartitionedCallOp>();
   }
 
@@ -145,9 +147,10 @@ struct TFToStablehloOptions : public PassPipelineOptions<TFToStablehloOptions> {
   Option<bool> skip_resize{
       *this, "skip-resize",
       ::llvm::cl::desc("Skip tf.ResizeBilinear and tf.ResizeNearestNeighbor")};
-  Option<bool> skip_stateful_partitioned_call{
-      *this, "skip-stateful-partitioned-call",
-      ::llvm::cl::desc("Skip tf.StatefulPartitionedCall")};
+  Option<bool> skip_partitioned_calls{
+      *this, "skip-partitioned-calls",
+      ::llvm::cl::desc(
+          "Skip tf.StatefulPartitionedCall and tf.PartitionedCall")};
 };
 
 void PopulateLegalizeTFToStablehloPipeline(
@@ -157,7 +160,7 @@ void PopulateLegalizeTFToStablehloPipeline(
   // reusing their work, perhaps through `LowerToMlProgramAndHlo`.
   pm.addNestedPass<func::FuncOp>(std::make_unique<TFToMhloPass>(
       options.skip_quantization_ops, options.skip_resize,
-      options.skip_stateful_partitioned_call));
+      options.skip_partitioned_calls));
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mhlo::createHloLegalizeToStablehloPass());
 }
@@ -170,11 +173,11 @@ static PassPipelineRegistration<TFToStablehloOptions>
 void AddLegalizeTFToStablehloPasses(OpPassManager &pm,
                                     bool skip_quantization_ops,
                                     bool skip_resize,
-                                    bool skip_stateful_partitioned_call) {
+                                    bool skip_partitioned_calls) {
   TFToStablehloOptions options;
   options.skip_quantization_ops = skip_quantization_ops;
   options.skip_resize = skip_resize;
-  options.skip_stateful_partitioned_call = skip_stateful_partitioned_call;
+  options.skip_partitioned_calls = skip_partitioned_calls;
   PopulateLegalizeTFToStablehloPipeline(pm, options);
 }
 

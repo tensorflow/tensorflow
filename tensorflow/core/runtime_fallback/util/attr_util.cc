@@ -270,22 +270,22 @@ llvm::Error FillAttrValueMapUsingScalar(const OpAttrsRawEntry& entry,
 Status ParseTfDataType(absl::string_view dtype, DataType* data_type) {
   if (dtype == "DT_INT8") {
     *data_type = DataType::DT_INT8;
-    return OkStatus();
+    return absl::OkStatus();
   } else if (dtype == "DT_INT32") {
     *data_type = DataType::DT_INT32;
-    return OkStatus();
+    return absl::OkStatus();
   } else if (dtype == "DT_INT64") {
     *data_type = DataType::DT_INT64;
-    return OkStatus();
+    return absl::OkStatus();
   } else if (dtype == "DT_HALF") {
     *data_type = DataType::DT_HALF;
-    return OkStatus();
+    return absl::OkStatus();
   } else if (dtype == "DT_FLOAT") {
     *data_type = DataType::DT_FLOAT;
-    return OkStatus();
+    return absl::OkStatus();
   } else if (dtype == "DT_DOUBLE") {
     *data_type = DataType::DT_DOUBLE;
-    return OkStatus();
+    return absl::OkStatus();
   } else {
     return errors::InvalidArgument("Unsupported dtype, ", std::string(dtype),
                                    " in ParseTfDataType.");
@@ -432,10 +432,10 @@ tfrt::DType ConvertTfDataTypeToBefAttrType(DataType data_type) {
 Status ParseBoolAttrValue(absl::string_view attr_value, bool* bool_val) {
   if (attr_value == "false") {
     *bool_val = false;
-    return OkStatus();
+    return absl::OkStatus();
   } else if (attr_value == "true") {
     *bool_val = true;
-    return OkStatus();
+    return absl::OkStatus();
   } else {
     return errors::InvalidArgument("Could not parse bool from \"", attr_value,
                                    "\"");
@@ -448,7 +448,7 @@ Status ParseIntAttrValue(absl::string_view attr_value, int64_t* int_val) {
     return errors::InvalidArgument("Could not parse int from \"", attr_value,
                                    "\"");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ParseTensorAttrValue(absl::string_view attr_value,
@@ -464,7 +464,7 @@ Status ParseTensorAttrValue(absl::string_view attr_value,
     if (protobuf::TextFormat::ParseFromString(
             static_cast<std::string>(attr_value), message) &&
         tensor->FromProto(tensor_proto)) {
-      return OkStatus();
+      return absl::OkStatus();
     } else {
       return errors::InvalidArgument("Could not parse tensor value from \"",
                                      attr_value, "\"");
@@ -498,7 +498,7 @@ Status ParseTensorShapeAttrValue(absl::string_view attr_value,
     }
     shape_val->push_back(int_val);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 bool IsUnusedAttribute(absl::string_view attr_name) {
@@ -576,14 +576,14 @@ Status SetUpScalarAttr(tfrt::TypedAttrBase bef_attr,
     return tensorflow::errors::Internal("Failed to set up attribute.");
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status SetUpScalarFunctionAttr(tfrt::StringAttr func_attr,
                                tensorflow::AttrValue& tf_attr) {
   tfrt::string_view func_name = func_attr.GetValue();
   tf_attr.mutable_func()->set_name(func_name.data(), func_name.size());
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void AddShapeToAttrList(tfrt::ShapeAttr shape,
@@ -618,7 +618,7 @@ Status SetUpListAttr(tfrt::AggregateAttr aggregate_attr,
       return tensorflow::errors::Internal("Failed to set up list attr.");
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status SetUpListAttr(tfrt::ArrayAttr array_attr,
@@ -627,7 +627,7 @@ Status SetUpListAttr(tfrt::ArrayAttr array_attr,
 
   // Handle an empty array case.
   if (array_attr.GetNumElements() == 0) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   tfrt::BEFAttributeType element_type = array_attr.GetElementType();
@@ -638,19 +638,19 @@ Status SetUpListAttr(tfrt::ArrayAttr array_attr,
         for (auto value : array_attr.GetValue<bool>()) {
           list->add_b(value);
         }
-        return OkStatus();
+        return absl::OkStatus();
       }
       case tfrt::DType::I64: {
         for (auto value : array_attr.GetValue<int64_t>()) {
           list->add_i(value);
         }
-        return OkStatus();
+        return absl::OkStatus();
       }
       case tfrt::DType::F32: {
         for (auto value : array_attr.GetValue<float>()) {
           list->add_f(value);
         }
-        return OkStatus();
+        return absl::OkStatus();
       }
       default:
         return tensorflow::errors::Internal(
@@ -661,7 +661,7 @@ Status SetUpListAttr(tfrt::ArrayAttr array_attr,
     for (auto value : array_attr.GetValue<tfrt::DType>()) {
       list->add_type(ConvertBefAttrTypeToTfDataType(value));
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   return tensorflow::errors::Internal("Failed to set up list attr.");
@@ -705,7 +705,7 @@ Status SetUpAttrValueMap(tfrt::AggregateAttr op_attr_array,
     TF_RETURN_IF_ERROR(SetUpScalarFunctionAttr(attr_value, tf_attr));
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tfd

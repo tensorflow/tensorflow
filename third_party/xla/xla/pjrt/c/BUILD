@@ -44,6 +44,15 @@ cc_library(
 )
 
 cc_library(
+    name = "pjrt_c_api_stream_extension_hdrs",
+    hdrs = ["pjrt_c_api_stream_extension.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":pjrt_c_api_hdrs",
+    ],
+)
+
+cc_library(
     name = "pjrt_c_api_profiler_extension_hdrs",
     hdrs = ["pjrt_c_api_profiler_extension.h"],
     visibility = ["//visibility:public"],
@@ -169,6 +178,25 @@ cc_library(
     ],
 )
 
+# PJRT CPU plugin.
+xla_cc_binary(
+    name = "pjrt_c_api_cpu_plugin.so",
+    linkopts = [
+        "-Wl,--version-script,$(location :pjrt_c_api_cpu_version_script.lds)",
+        "-Wl,--no-undefined",
+    ],
+    linkshared = True,
+    tags = [
+        "noasan",
+        "nomsan",
+        "notsan",
+    ],
+    deps = [
+        ":pjrt_c_api_cpu",
+        ":pjrt_c_api_cpu_version_script.lds",
+    ],
+)
+
 cc_library(
     name = "pjrt_c_api_gpu_internal",
     srcs = ["pjrt_c_api_gpu_internal.cc"],
@@ -180,6 +208,7 @@ cc_library(
         ":pjrt_c_api_hdrs",
         ":pjrt_c_api_helpers",
         ":pjrt_c_api_profiler_extension_hdrs",
+        ":pjrt_c_api_stream_extension_hdrs",
         ":pjrt_c_api_wrapper_impl",
         "//xla/backends/profiler/gpu:device_tracer",  # To register the GPU Tracers with the GPU Plugin".
         "//xla/backends/profiler/plugin:plugin_tracer_impl",

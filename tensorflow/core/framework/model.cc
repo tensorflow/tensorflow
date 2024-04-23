@@ -1326,8 +1326,8 @@ class AsyncKnownRatio : public AsyncRatio {
       parameters.push_back(pair.second);
     }
     return std::make_shared<AsyncKnownRatio>(
-        Args{id_, name_, std::move(output)}, Ratio(), MemoryRatio(),
-        parameters);
+        Args{id_, name_, std::move(output)}, Ratio(), MemoryRatio(), parameters,
+        is_legacy_prefetch_autotuned_);
   }
 
   Status ToProto(ModelProto::Node* node_proto) const override {
@@ -2333,6 +2333,15 @@ void Model::Optimize(AutotuneAlgorithm algorithm,
   {
     tf_shared_lock l(mu_);
     snapshot = output_->Snapshot();
+  }
+  if (snapshot->num_elements() <= 0) {
+    VLOG(2) << "The root node has not produced any element. Will start "
+               "optimizing only when at least a "
+               "path of nodes from file sources to the root has element "
+               "sizes. This is to ensure "
+               "autotune will not increase too much on nodes closer to file "
+               "sources when the pipeline starts initially.";
+    return;
   }
   MaybeSyncStateValuesToValues(snapshot);
   int64_t total_ram_budget;

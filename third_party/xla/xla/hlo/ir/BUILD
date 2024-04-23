@@ -1,8 +1,8 @@
 # Description:
 #   XLA’s HLO Intermediate Representation implementation.
 
-load("@local_tsl//tsl:tsl.bzl", "internal_visibility")
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
+load("//xla/tsl:tsl.bzl", "internal_visibility")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -20,6 +20,7 @@ package_group(
 cc_library(
     name = "hlo",
     srcs = [
+        "collective_device_list.cc",
         "dfs_hlo_visitor.cc",
         "dynamic_parameter_binding.cc",
         "hlo_computation.cc",
@@ -36,6 +37,7 @@ cc_library(
         "hlo_sharding_metadata.cc",
     ],
     hdrs = [
+        "collective_device_list.h",
         "dfs_hlo_visitor.h",
         "dfs_hlo_visitor_with_default.h",
         "dynamic_parameter_binding.h",

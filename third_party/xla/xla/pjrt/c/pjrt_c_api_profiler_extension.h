@@ -26,7 +26,7 @@ limitations under the License.
 extern "C" {
 #endif
 
-#define PJRT_API_PROFILER_EXTENSION_VERSION 0
+#define PJRT_API_PROFILER_EXTENSION_VERSION 1
 
 typedef struct PJRT_Profiler_Extension {
   size_t struct_size;
@@ -37,7 +37,7 @@ typedef struct PJRT_Profiler_Extension {
   // valid only when used as an args extension
   int64_t traceme_context_id;
 } PJRT_Profiler_Extension;
-PJRT_DEFINE_STRUCT_TRAITS(PJRT_Profiler_Extension, profiler_api);
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Profiler_Extension, traceme_context_id);
 
 #ifdef __cplusplus
 }

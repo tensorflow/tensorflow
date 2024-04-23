@@ -76,6 +76,7 @@ limitations under the License.
 #include "tsl/platform/errors.h"
 #include "tsl/platform/file_system.h"
 #include "tsl/platform/logging.h"
+#include "tsl/profiler/lib/scoped_annotation.h"
 
 namespace xla {
 namespace llvm_ir {
@@ -332,9 +333,12 @@ llvm::Constant* ConvertLiteralToIrConstant(const Literal& literal,
   int64_t size_bytes = literal.size_bytes();
   CHECK_EQ(module->getDataLayout().isLittleEndian(), tsl::port::kLittleEndian);
   std::vector<char> packed_data;
-  if (primitive_util::Is4BitType(literal.shape().element_type())) {
-    packed_data.resize((size_bytes + 1) / 2);
-    PackInt4(absl::MakeSpan(data, size_bytes), absl::MakeSpan(packed_data));
+  if (primitive_util::IsSubByteNonPredType(literal.shape().element_type())) {
+    auto bit_width = primitive_util::BitWidth(literal.shape().element_type());
+    int elements_per_byte = 8 / bit_width;
+    packed_data.resize(CeilOfRatio<int64_t>(size_bytes, elements_per_byte));
+    PackIntN(bit_width, absl::MakeSpan(data, size_bytes),
+             absl::MakeSpan(packed_data));
     data = packed_data.data();
     size_bytes = packed_data.size();
   }
@@ -722,6 +726,10 @@ void DumpIrIfEnabled(const HloModule& hlo_module,
   if (!DumpingEnabledForHloModule(hlo_module)) {
     return;
   }
+  tsl::profiler::ScopedAnnotation annotation([&] {
+    return absl::StrFormat("XlaDumpLlvmIr:#module=%s,program_id=%d#",
+                           hlo_module.name(), hlo_module.unique_id());
+  });
   // We can end up compiling different modules with the same name when using
   // XlaJitCompiledCpuFunction::Compile.  Avoid overwriting IR files previously
   // dumped from the same process in such cases.

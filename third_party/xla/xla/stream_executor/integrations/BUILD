@@ -1,8 +1,8 @@
-load("@local_tsl//tsl:tsl.bzl", "if_google", "internal_visibility")
-load("@local_tsl//tsl:tsl.default.bzl", "filegroup")
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load("//xla:xla.bzl", "xla_cc_test")
 load("//xla/stream_executor:build_defs.bzl", "stream_executor_friends")
+load("//xla/tsl:tsl.bzl", "if_google", "internal_visibility")
+load("//xla/tsl:tsl.default.bzl", "filegroup")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],

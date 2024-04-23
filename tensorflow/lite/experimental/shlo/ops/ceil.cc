@@ -19,7 +19,6 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "tensorflow/lite/experimental/shlo/bf16.h"
-#include "tensorflow/lite/experimental/shlo/data_type.h"
 #include "tensorflow/lite/experimental/shlo/dispatch.h"
 #include "tensorflow/lite/experimental/shlo/f16.h"
 #include "tensorflow/lite/experimental/shlo/ops/unary_elementwise.h"
@@ -59,10 +58,11 @@ absl::Status Prepare(CeilOp& op, const Tensor& input, Tensor& output) {
 absl::Status Evaluate(CeilOp& op, const Tensor& input, Tensor& output) {
   Ceil ceil;
   if (input.IsPerTensorQuantized()) {
-    DISPATCH_QUANTIZED(detail::DequantizeOpQuantizePerTensor,
-                       input.quantized_tensor_element_type().StorageType(),
-                       input.quantized_tensor_element_type().ExpressedType(),
-                       ceil, input, output)
+    DISPATCH_QUANTIZED(
+        detail::DequantizeOpQuantizePerTensor,
+        input.quantized_per_tensor_element_type().StorageType(),
+        input.quantized_per_tensor_element_type().ExpressedType(), ceil, input,
+        output)
   } else if (IsFloatTensor(input)) {
     DISPATCH_FLOAT(detail::EvaluateNoQuantization, input.tensor_element_type(),
                    ceil, input, output);

@@ -20,6 +20,7 @@ limitations under the License.
 #include <optional>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -41,6 +42,22 @@ struct EstimateRunTimeData {
   absl::Duration write_time;
   absl::Duration compute_time;
   absl::Duration exec_time;
+
+  std::string ToString() const {
+    return absl::StrFormat(
+        "EstimateRunTimeData{\n"
+        " flops: %d\n"
+        " bytes_written: %d\n"
+        " num_threads: %d\n"
+        " read_time: %s\n"
+        " write_time: %s\n"
+        " compute_time: %s\n"
+        " exec_time: %s\n"
+        "}",
+        flops, bytes_written, num_threads, FormatDuration(read_time),
+        FormatDuration(write_time), FormatDuration(compute_time),
+        FormatDuration(exec_time));
+  }
 };
 
 class GpuPerformanceModelCache {

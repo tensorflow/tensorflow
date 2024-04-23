@@ -47,6 +47,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/comparison_util.h"
+#include "xla/hlo/ir/collective_device_list.h"
 #include "xla/hlo/ir/dfs_hlo_visitor.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_domain_metadata.h"
@@ -695,7 +696,7 @@ class HloInstruction {
   //   computation_map: a map from computation id to HloComputation*. This map
   //     must contain all computations which the newly constructed instruction
   //     calls.
-  static StatusOr<std::unique_ptr<HloInstruction>> CreateFromProto(
+  static absl::StatusOr<std::unique_ptr<HloInstruction>> CreateFromProto(
       const HloInstructionProto& proto,
       const absl::flat_hash_map<int64_t, HloInstruction*>& instruction_map,
       const absl::flat_hash_map<int64_t, HloComputation*>& computation_map = {},
@@ -857,6 +858,13 @@ class HloInstruction {
   // order of inputs from different participants.
   static std::unique_ptr<HloInstruction> CreateAllGather(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
+      int64_t all_gather_dimension, const CollectiveDeviceList& device_list,
+      bool constrain_layout, const std::optional<int64_t>& channel_id,
+      bool use_global_device_ids);
+
+  ABSL_DEPRECATED("Use CollectiveDeviceList instead of list of ReplicaGroup.")
+  static std::unique_ptr<HloInstruction> CreateAllGather(
+      const Shape& shape, absl::Span<HloInstruction* const> operands,
       int64_t all_gather_dimension,
       absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
       const std::optional<int64_t>& channel_id, bool use_global_device_ids);
@@ -868,6 +876,13 @@ class HloInstruction {
   // except that the order of the group members determines the concatenation
   // order of inputs from different participants. Needs to be used in
   // conjunction of a AllGatherDone op that synchronizes and returns the result.
+  static std::unique_ptr<HloInstruction> CreateAllGatherStart(
+      const Shape& shape, absl::Span<HloInstruction* const> operands,
+      int64_t all_gather_dimension, const CollectiveDeviceList& device_list,
+      bool constrain_layout, const std::optional<int64_t>& channel_id,
+      bool use_global_device_ids);
+
+  ABSL_DEPRECATED("Use CollectiveDeviceList instead of list of ReplicaGroup.")
   static std::unique_ptr<HloInstruction> CreateAllGatherStart(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       int64_t all_gather_dimension,
@@ -890,12 +905,27 @@ class HloInstruction {
   static std::unique_ptr<HloInstruction> CreateAllReduce(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       HloComputation* reduce_computation,
+      const CollectiveDeviceList& device_list, bool constrain_layout,
+      const std::optional<int64_t>& channel_id, bool use_global_device_ids);
+
+  ABSL_DEPRECATED("Use CollectiveDeviceList instead of list of ReplicaGroup.")
+  static std::unique_ptr<HloInstruction> CreateAllReduce(
+      const Shape& shape, absl::Span<HloInstruction* const> operands,
+      HloComputation* reduce_computation,
       absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
       const std::optional<int64_t>& channel_id, bool use_global_device_ids);
 
   // Creates a reduce-scatter operation which reduces its inputs across the
   // given replica groups and then scatters the reduced data across the N
   // participants.
+  static std::unique_ptr<HloInstruction> CreateReduceScatter(
+      const Shape& shape, absl::Span<HloInstruction* const> operands,
+      HloComputation* reduce_computation,
+      const CollectiveDeviceList& device_list, bool constrain_layout,
+      const std::optional<int64_t>& channel_id, bool use_global_device_ids,
+      int64_t scatter_dimension);
+
+  ABSL_DEPRECATED("Use CollectiveDeviceList instead of list of ReplicaGroup.")
   static std::unique_ptr<HloInstruction> CreateReduceScatter(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       HloComputation* reduce_computation,
@@ -916,6 +946,13 @@ class HloInstruction {
   // `channel_id`: for Allreduce nodes from different modules, if
   // they have the same channel_id, they will be 'Allreduce'd. If
   // empty, Allreduce will not be applied cross modules.
+  static std::unique_ptr<HloInstruction> CreateAllReduceStart(
+      const Shape& shape, absl::Span<HloInstruction* const> operands,
+      HloComputation* reduce_computation,
+      const CollectiveDeviceList& device_list, bool constrain_layout,
+      const std::optional<int64_t>& channel_id, bool use_global_device_ids);
+
+  ABSL_DEPRECATED("Use CollectiveDeviceList instead of list of ReplicaGroup.")
   static std::unique_ptr<HloInstruction> CreateAllReduceStart(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       HloComputation* reduce_computation,
@@ -950,6 +987,13 @@ class HloInstruction {
   // performs AllToAll and then concatenates the results into a single array.
   static std::unique_ptr<HloInstruction> CreateAllToAll(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
+      const CollectiveDeviceList& device_list, bool constrain_layout,
+      const std::optional<int64_t>& channel_id,
+      const std::optional<int64_t>& split_dimension = std::nullopt);
+
+  ABSL_DEPRECATED("Use CollectiveDeviceList instead of list of ReplicaGroup.")
+  static std::unique_ptr<HloInstruction> CreateAllToAll(
+      const Shape& shape, absl::Span<HloInstruction* const> operands,
       absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
       const std::optional<int64_t>& channel_id,
       const std::optional<int64_t>& split_dimension = std::nullopt);
@@ -960,13 +1004,21 @@ class HloInstruction {
   // on that replica is a tensor consists of 0(s) in `shape`.
   static std::unique_ptr<HloInstruction> CreateCollectiveBroadcast(
       const Shape& shape, absl::Span<HloInstruction* const> operand,
+      const CollectiveDeviceList& device_list, bool constrain_layout,
+      const std::optional<int64_t>& channel_id);
+
+  ABSL_DEPRECATED("Use CollectiveDeviceList instead of list of ReplicaGroup.")
+  static std::unique_ptr<HloInstruction> CreateCollectiveBroadcast(
+      const Shape& shape, absl::Span<HloInstruction* const> operand,
       absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
       const std::optional<int64_t>& channel_id);
 
+  // TODO(b/316622399): Remove this function declaration (there is not matching
+  // declaration or usage of this function).
   static std::unique_ptr<HloInstruction> CreateCollectiveBroadcast(
       const Shape& shape, HloInstruction* input, HloInstruction* output,
       HloInstruction* input_start_indices, HloInstruction* output_start_indices,
-      absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
+      const CollectiveDeviceList& device_list, bool constrain_layout,
       const std::optional<int64_t>& channel_id);
 
   // Creates a communication instruction that permutes data cross replicas.
@@ -2120,7 +2172,7 @@ class HloInstruction {
   //   TF_RETURN_IF_ERROR(instr.set_backend_config(proto));
   //   return instr.raw_backend_config_string();
   //
-  static StatusOr<std::string> BackendConfigToRawString(
+  static absl::StatusOr<std::string> BackendConfigToRawString(
       const tsl::protobuf::Message& proto);
 
   // Returns the information used to tell the implementation information about
@@ -2345,7 +2397,12 @@ class HloInstruction {
   Shape* mutable_outfeed_shape();
 
   // Delegates to HloCollectiveInstruction::replica_groups.
+  // TODO(b/316622399): Remove usages of this method and replace with
+  // device_list()->replica_groups().
   const std::vector<ReplicaGroup>& replica_groups() const;
+
+  // Delegates to HloCollectiveInstruction::device_list.
+  const CollectiveDeviceList& device_list() const;
 
   // Delegates to HloCollectivePermuteInstruction::source_target_pairs.
   const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs() const;
@@ -2806,7 +2863,7 @@ extern template Status HloInstruction::Visit(DfsHloVisitor* visitor);
 extern template Status HloInstruction::Visit(ConstDfsHloVisitor* visitor);
 
 absl::string_view ToString(HloInstruction::FusionKind kind);
-StatusOr<HloInstruction::FusionKind> StringToFusionKind(
+absl::StatusOr<HloInstruction::FusionKind> StringToFusionKind(
     absl::string_view kind_name);
 
 // Custom (de)stringification functions for protos that live inside
@@ -2823,14 +2880,17 @@ std::string ConvolutionDimensionNumbersToString(
 std::string ReplicaGroupsToString(
     absl::Span<const ReplicaGroup> replica_groups);
 
-StatusOr<RandomAlgorithm> StringToRandomAlgorithm(const std::string& name);
-StatusOr<RandomDistribution> StringToRandomDistribution(
+absl::StatusOr<RandomAlgorithm> StringToRandomAlgorithm(
     const std::string& name);
-StatusOr<PrecisionConfig::Precision> StringToPrecision(const std::string& name);
+absl::StatusOr<RandomDistribution> StringToRandomDistribution(
+    const std::string& name);
+absl::StatusOr<PrecisionConfig::Precision> StringToPrecision(
+    const std::string& name);
 absl::StatusOr<PrecisionConfig::Algorithm> StringToAlgorithm(
     const std::string& name);
-StatusOr<CustomCallSchedule> StringToCustomCallSchedule(absl::string_view name);
-StatusOr<CustomCallApiVersion> StringToCustomCallApiVersion(
+absl::StatusOr<CustomCallSchedule> StringToCustomCallSchedule(
+    absl::string_view name);
+absl::StatusOr<CustomCallApiVersion> StringToCustomCallApiVersion(
     absl::string_view name);
 
 std::ostream& operator<<(std::ostream& os, HloInstruction::FusionKind kind);

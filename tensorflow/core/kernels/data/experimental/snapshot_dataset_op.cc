@@ -1324,11 +1324,11 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
               *out_tensors = std::move(buffer_.front().value);
 
               {
-                profiler::TraceMe activity(
+                tsl::profiler::TraceMe activity(
                     [&]() {
                       return absl::StrCat(prefix(), kSeparator, kBookkeeping);
                     },
-                    profiler::TraceMeLevel::kInfo);
+                    tsl::profiler::TraceMeLevel::kInfo);
                 // Printing some statistics along the way.
                 int64_t num_bytes = 0;
                 for (int i = 0; i < out_tensors->size(); ++i) {
@@ -1494,9 +1494,9 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
             std::vector<Tensor> read_tensors;
             Status s = reader->ReadTensors(&read_tensors);
             if (s.ok()) {
-              profiler::TraceMe activity(
+              tsl::profiler::TraceMe activity(
                   [&]() { return absl::StrCat(prefix(), kSeparator, kParse); },
-                  profiler::TraceMeLevel::kInfo);
+                  tsl::profiler::TraceMeLevel::kInfo);
               BufferElement elem;
               elem.value = std::move(read_tensors);
               elem.status = absl::OkStatus();
@@ -1731,11 +1731,11 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
           TF_RETURN_IF_ERROR(FillBuffer(ctx));
 
           {
-            profiler::TraceMe activity(
+            tsl::profiler::TraceMe activity(
                 [&]() {
                   return absl::StrCat(prefix(), kSeparator, kBookkeeping);
                 },
-                profiler::TraceMeLevel::kInfo);
+                tsl::profiler::TraceMeLevel::kInfo);
 
             // Book keeping to report some statistics.
             mutex_lock l(mu_);
@@ -1998,11 +1998,11 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
                                  string* snapshot_data_filename,
                                  std::unique_ptr<snapshot_util::Writer>* writer,
                                  bool* end_of_processing) {
-          profiler::TraceMe activity(
+          tsl::profiler::TraceMe activity(
               [&]() {
                 return absl::StrCat(prefix(), kSeparator, kProcessOneElement);
               },
-              profiler::TraceMeLevel::kInfo);
+              tsl::profiler::TraceMeLevel::kInfo);
           bool cancelled = false;
           *end_of_processing = false;
           bool produced_elem = false;

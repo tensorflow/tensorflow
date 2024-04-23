@@ -407,7 +407,7 @@ func.func @needs_transpose(%arg : tensor<10x11x12x13x14x15x16x17x18x19xf32>)
 // CHECK-ROW-RED-SAME:     into tensor<110x156x210x272x342xf32>
 // CHECK-ROW-RED:      %[[CTED:.*]] = "mhlo.transpose"(%[[CED]])
 // CHECK-ROW-RED-SAME:     {permutation = dense<[0, 2, 4, 1, 3]>
-// CHECK-ROW-RED-SAME:     : tensor<5xi64>} : (tensor<110x156x210x272x342xf32>)
+// CHECK-ROW-RED-SAME:     : tensor<5xi64>}> : (tensor<110x156x210x272x342xf32>)
 // CHECK-ROW-RED-SAME:     -> tensor<110x210x342x156x272xf32>
 // CHECK-ROW-RED:      %[[CTCED:.*]] = tensor.collapse_shape %[[CTED]]
 // CHECK-ROW-RED-SAME:     {{\[}}[0, 1, 2], [3, 4]{{\]}}

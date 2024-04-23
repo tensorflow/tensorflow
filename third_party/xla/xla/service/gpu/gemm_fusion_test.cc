@@ -889,11 +889,11 @@ TEST_F(GemmFusionLevel2Test, NestedSlicingIsAnalyzedCorrectly) {
                           ParseAndReturnVerifiedModule(R"(
 triton_gemm_d_computation {
   p0 = f32[6,24]{1,0} parameter(0)
-  s1 = f32[5,20]{1,0} slice(p0), slice={[1:6], [3:23]}
-  n1 = f32[5,20]{1,0} negate(s1)
-  s2 = f32[3,7]{1,0} slice(n1), slice={[1:4], [13:20]}
+  slice1 = f32[5,20]{1,0} slice(p0), slice={[1:6], [3:23]}
+  n1 = f32[5,20]{1,0} negate(slice1)
+  slice2 = f32[3,7]{1,0} slice(n1), slice={[1:4], [13:20]}
   p1 = f32[7,37]{1,0} parameter(1)
-  ROOT d = f32[3,37]{1,0} dot(s2, p1),
+  ROOT d = f32[3,37]{1,0} dot(slice2, p1),
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 }
 

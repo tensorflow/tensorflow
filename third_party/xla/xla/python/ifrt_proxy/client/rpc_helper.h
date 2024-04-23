@@ -130,7 +130,7 @@ class RpcHelper {
 
   // Utility functions for common functions.
 
-  Future<absl::Status> CheckFuture(uint64_t handle);
+  Future<> CheckFuture(uint64_t handle);
 
  private:
   RequestMetadata ManufactureRequestMetadata() ABSL_LOCKS_EXCLUDED(mu_);

@@ -17,13 +17,22 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/substitute.h"
+#include "xla/comparison_util.h"
+#include "xla/debug_options_flags.h"
+#include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/primitive_util.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
+#include "xla/stream_executor/dnn.h"
+#include "xla/stream_executor/stream_executor_pimpl.h"
 #include "xla/tests/filecheck.h"
+#include "xla/xla.pb.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/statusor.h"
 
@@ -267,6 +276,32 @@ ENTRY e {
                             ErrorSpec{/*aabs=*/1e-5, /*arel=*/1e-5}));
 }
 
+TEST_F(CuDnnFusionExecutionTest, IntegerMathExecutesCorrectly) {
+  if (!IsAtLeastCuDnn91()) {
+    GTEST_SKIP() << "Integer math requires cuDNN 9.1+.";
+  }
+  const std::string kHloText =
+      R"(
+fusion1 {
+  p0 = s8[16,16] parameter(0)
+  p1 = s8[16,16] parameter(1)
+  d = s32[16,16] dot(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  p2 = s32[16,16] parameter(2)
+  ROOT a = s32[16,16] add(d, p2)
+}
+
+ENTRY e {
+  p0 = s8[16,16] parameter(0)
+  p1 = s8[16,16] parameter(1)
+  p2 = s32[16,16] parameter(2)
+  ROOT r = s32[16,16] fusion(p0, p1, p2), kind=kCustom,
+    calls=fusion1,
+    backend_config={"fusion_backend_config": {"kind":"__cudnn$fusion"}}
+})";
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/0, /*arel=*/0}));
+}
+
 class CuDnnFusionCommandBufferTest : public CuDnnFusionTest {
  public:
   DebugOptions GetDebugOptionsForTest() override {
@@ -300,13 +335,13 @@ ENTRY e {
     backend_config={"fusion_backend_config":{"kind":"__cudnn$fusion","cudnn_fusion_config":{"plan_id":"0"}}}
 })";
 
+  se::StreamExecutorMemoryAllocator allocator(
+      backend().default_stream_executor());
   // Verify that a command buffer is applied.
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<Executable> executable,
-      backend().compiler()->RunBackend(
-          GetOptimizedModule(kHloText).value(),
-          backend().default_stream_executor(),
-          backend().default_stream_executor()->GetAllocator()));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Executable> executable,
+                          backend().compiler()->RunBackend(
+                              GetOptimizedModule(kHloText).value(),
+                              backend().default_stream_executor(), &allocator));
   absl::StatusOr<bool> filecheck_result =
       RunFileCheck(executable->module().ToString(), R"(
 ; CHECK: ENTRY

@@ -21,6 +21,7 @@ limitations under the License.
 #include <stack>
 #include <string>
 
+#include "absl/base/nullability.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -479,10 +480,9 @@ bool IsEinsumSupportedByXlaDotV2(StringAttr equation_attr) {
          rhs_out_idx_start >= batch_dim_size;
 }
 
-absl::StatusOr<Method> GetQuantizationMethod(
-    TF::XlaCallModuleOp xla_call_module_op) {
+absl::StatusOr<Method> GetQuantizationMethod(absl::Nonnull<Operation*> op) {
   const auto quantization_method_attr =
-      xla_call_module_op->getAttrOfType<StringAttr>(kQuantizationMethodAttr);
+      op->getAttrOfType<StringAttr>(kQuantizationMethodAttr);
   if (!quantization_method_attr) {
     return absl::InvalidArgumentError(absl::StrCat(
         "Attribute ", kQuantizationMethodAttr.str(), " is not found."));
@@ -498,15 +498,30 @@ absl::StatusOr<Method> GetQuantizationMethod(
   return quantization_method;
 }
 
-Method GetQuantizationMethodOrDefault(TF::XlaCallModuleOp xla_call_module_op) {
-  absl::StatusOr<Method> method = GetQuantizationMethod(xla_call_module_op);
+Method GetQuantizationMethodOrDefault(absl::Nonnull<Operation*> op) {
+  absl::StatusOr<Method> method = GetQuantizationMethod(op);
   if (method.status().code() == absl::StatusCode::kInternal) {
     // This indicates that the `Method` protobuf string is corrupt, but this
     // function ignores it and returns the default instance.
-    xla_call_module_op->emitError(absl::StrCat(
-        "Failed to get quantization method: ", method.status().ToString()));
+    op->emitError(absl::StrCat("Failed to get quantization method: ",
+                               method.status().ToString()));
   }
   return method.ok() ? *method : Method::default_instance();
+}
+
+bool HasWeightOnlyPtqMethod(TF::XlaCallModuleOp xla_call_module_op) {
+  Method method = GetQuantizationMethodOrDefault(xla_call_module_op);
+  return method.has_weight_only_ptq();
+}
+
+bool IsWeightOnlyQuantizableOp(const Operation& op) {
+  if (auto call_op = dyn_cast<TF::XlaCallModuleOp>(op)) {
+    StringRef entry_function_name = GetEntryFunctionName(call_op);
+    absl::StatusOr<Method> quantization_method = GetQuantizationMethod(call_op);
+    return ContainsConvOrDot(entry_function_name) && quantization_method.ok() &&
+           quantization_method->has_weight_only_ptq();
+  }
+  return false;
 }
 
 }  // namespace mlir::quant

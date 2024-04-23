@@ -26,7 +26,7 @@ namespace shlo_ref {
 struct Not {
   template <class T>
   T operator()(T v) const {
-    return ~v;
+    return static_cast<T>(~v);
   }
 };
 

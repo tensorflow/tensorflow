@@ -15,12 +15,14 @@ limitations under the License.
 
 #include "xla/service/gpu/fusions/concatenate_mlir.h"
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/error_spec.h"
-#include "xla/service/gpu/fusions/concatenate.h"
 #include "xla/service/gpu/fusions/mlir_emitter_test_base.h"
+#include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/model/indexing_test_utils.h"
 #include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {

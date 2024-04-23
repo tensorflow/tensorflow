@@ -164,7 +164,7 @@ class GraphConstructor {
     string default_device;
   };
 
-  typedef gtl::ArraySlice<const NodeDef*> NodeDefSlice;
+  typedef absl::Span<const NodeDef* const> NodeDefSlice;
 
   // versions, library, and debug_info may be nullptr
   static Status Construct(
@@ -1534,7 +1534,7 @@ Status ConvertGraphDefToGraph(const GraphConstructorOptions& opts,
 }
 
 Status ConvertNodeDefsToGraph(const GraphConstructorOptions& opts,
-                              gtl::ArraySlice<NodeDef> nodes, Graph* g,
+                              absl::Span<const NodeDef> nodes, Graph* g,
                               const GraphDebugInfo* debug_info) {
   ShapeRefiner refiner(TF_GRAPH_DEF_VERSION, g->op_registry());
   // TODO(irving): Copy will go away once NodeInfo exists

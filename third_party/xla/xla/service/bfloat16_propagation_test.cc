@@ -212,7 +212,7 @@ TEST_F(BFloat16PropagationTest, DoNotChangeAllReduce) {
   HloInstruction* all_reduce =
       builder.AddInstruction(HloInstruction::CreateAllReduce(
           ShapeUtil::MakeTupleShape({shape, shape}), {a, b}, reduction,
-          /*replica_groups=*/{}, /*constrain_layout=*/false,
+          /*device_list=*/CollectiveDeviceList(), /*constrain_layout=*/false,
           /*channel_id=*/1, /*use_global_device_ids=*/false));
   HloInstruction* gte0 = builder.AddInstruction(
       HloInstruction::CreateGetTupleElement(shape, all_reduce, 0));
@@ -540,7 +540,6 @@ TEST_F(BFloat16PropagationTest, ConvertTupleFusionElementIfUsedByAdd) {
   EXPECT_EQ(new_fusion_root->operand(0)->opcode(), HloOpcode::kConvert);
   EXPECT_TRUE(OutputsBF16(new_fusion_root->operand(0)));
 }
-
 
 // Tests that BF16 is propagated properly through a while computation with
 // non-tuple input/output.

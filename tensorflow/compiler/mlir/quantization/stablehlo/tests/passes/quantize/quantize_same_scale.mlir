@@ -16,7 +16,7 @@ module attributes {tf_saved_model.semantics} {
     %1 = "quantfork.dcast"(%0) : (tensor<1x2x!quant.uniform<i8:f32, 5.000000e-03>>) -> tensor<1x2xf32>
     %2 = "quantfork.qcast"(%arg1) {volatile} : (tensor<2x3xf32>) -> tensor<2x3x!quant.uniform<i8<-127:127>:f32:1, {6.000000e-03,6.000000e-03,6.000000e-03}>>
     %3 = "quantfork.dcast"(%2) : (tensor<2x3x!quant.uniform<i8<-127:127>:f32:1, {6.000000e-03,6.000000e-03,6.000000e-03}>>) -> tensor<2x3xf32>
-    %4 = "tf.XlaCallModule"(%1, %3) {Sout = [#tf_type.shape<1x3>], _entry_function = @composite_dot_general_fn_1, _original_entry_function = "composite_dot_general_fn_1", _stablehlo_module_attrs = {}, _tfl_quant_trait = "fully_quantizable",   device = "", dim_args_spec = [], disabled_checks = [], has_token_input_output = false, module = "", platforms = [], version = 5 : i64} : (tensor<1x2xf32>, tensor<2x3xf32>) -> tensor<1x3xf32>
+    %4 = "tf.XlaCallModule"(%1, %3) {Sout = [#tf_type.shape<1x3>], _entry_function = @composite_dot_general_fn_1, _original_entry_function = "composite_dot_general_fn_1", _quantization_method = "static_range_ptq {}", _stablehlo_module_attrs = {}, _tfl_quant_trait = "fully_quantizable",   device = "", dim_args_spec = [], disabled_checks = [], has_token_input_output = false, module = "", platforms = [], version = 5 : i64} : (tensor<1x2xf32>, tensor<2x3xf32>) -> tensor<1x3xf32>
     %5 = "quantfork.qcast"(%4) {volatile} : (tensor<1x3xf32>) -> tensor<1x3x!quant.uniform<i8:f32, 0.13170163023705575:-1>>
     %6 = "quantfork.dcast"(%5) : (tensor<1x3x!quant.uniform<i8:f32, 0.13170163023705575:-1>>) -> tensor<1x3xf32>
     %7 = stablehlo.reshape %6 : (tensor<1x3xf32>) -> tensor<3x1xf32>
@@ -58,7 +58,7 @@ module attributes {tf_saved_model.semantics} {
     %1 = "quantfork.dcast"(%0) : (tensor<1x2x!quant.uniform<i8:f32, 5.000000e-03>>) -> tensor<1x2xf32>
     %2 = "quantfork.qcast"(%arg1) {volatile} : (tensor<2x3xf32>) -> tensor<2x3x!quant.uniform<i8<-127:127>:f32:1, {6.000000e-03,6.000000e-03,6.000000e-03}>>
     %3 = "quantfork.dcast"(%2) : (tensor<2x3x!quant.uniform<i8<-127:127>:f32:1, {6.000000e-03,6.000000e-03,6.000000e-03}>>) -> tensor<2x3xf32>
-    %4 = "tf.XlaCallModule"(%1, %3) {Sout = [#tf_type.shape<1x3>], _entry_function = @composite_dot_general_fn_1, _original_entry_function = "composite_dot_general_fn_1", _stablehlo_module_attrs = {}, _tfl_quant_trait = "fully_quantizable",   device = "", dim_args_spec = [], disabled_checks = [], has_token_input_output = false, module = "", platforms = [], version = 5 : i64} : (tensor<1x2xf32>, tensor<2x3xf32>) -> tensor<1x3xf32>
+    %4 = "tf.XlaCallModule"(%1, %3) {Sout = [#tf_type.shape<1x3>], _entry_function = @composite_dot_general_fn_1, _original_entry_function = "composite_dot_general_fn_1", _quantization_method = "static_range_ptq {}", _stablehlo_module_attrs = {}, _tfl_quant_trait = "fully_quantizable",   device = "", dim_args_spec = [], disabled_checks = [], has_token_input_output = false, module = "", platforms = [], version = 5 : i64} : (tensor<1x2xf32>, tensor<2x3xf32>) -> tensor<1x3xf32>
     %5 = "quantfork.qcast"(%4) {volatile} : (tensor<1x3xf32>) -> tensor<1x3x!quant.uniform<i8:f32, 0.13170163023705575:-1>>
     %6 = "quantfork.dcast"(%5) : (tensor<1x3x!quant.uniform<i8:f32, 0.13170163023705575:-1>>) -> tensor<1x3xf32>
     %7 = stablehlo.reshape %6 : (tensor<1x3xf32>) -> tensor<3x1xf32>
@@ -133,7 +133,7 @@ module attributes {tf_saved_model.semantics} {
     %6 = "quantfork.dcast"(%5) : (tensor<4x2x!quant.uniform<i8:f32, 5.000000e-03:-1>>) -> tensor<4x2xf32>
     %7 = "quantfork.qcast"(%arg2) {volatile} : (tensor<2x5xf32>) -> tensor<2x5x!quant.uniform<i8<-127:127>:f32:1, {6.000000e-03,6.000000e-03,6.000000e-03,6.000000e-03,6.000000e-03}>>
     %8 = "quantfork.dcast"(%7) : (tensor<2x5x!quant.uniform<i8<-127:127>:f32:1, {6.000000e-03,6.000000e-03,6.000000e-03,6.000000e-03,6.000000e-03}>>) -> tensor<2x5xf32>
-    %9 = "tf.XlaCallModule"(%6, %8) {Sout = [#tf_type.shape<4x5>], _entry_function = @composite_dot_general_fn_1, _original_entry_function = "composite_dot_general_fn_1", _stablehlo_module_attrs = {}, _tfl_quant_trait = "fully_quantizable",   device = "", dim_args_spec = [], disabled_checks = [], has_token_input_output = false, module = "", platforms = [], version = 5 : i64} : (tensor<4x2xf32>, tensor<2x5xf32>) -> tensor<4x5xf32>
+    %9 = "tf.XlaCallModule"(%6, %8) {Sout = [#tf_type.shape<4x5>], _entry_function = @composite_dot_general_fn_1, _original_entry_function = "composite_dot_general_fn_1", _quantization_method = "static_range_ptq {}", _stablehlo_module_attrs = {}, _tfl_quant_trait = "fully_quantizable",   device = "", dim_args_spec = [], disabled_checks = [], has_token_input_output = false, module = "", platforms = [], version = 5 : i64} : (tensor<4x2xf32>, tensor<2x5xf32>) -> tensor<4x5xf32>
     %10 = "quantfork.qcast"(%9) {volatile} : (tensor<4x5xf32>) -> tensor<4x5x!quant.uniform<i8:f32, 1.000000e-03:-3>>
     %11 = "quantfork.dcast"(%10) : (tensor<4x5x!quant.uniform<i8:f32, 1.000000e-03:-3>>) -> tensor<4x5xf32>
     return %11 : tensor<4x5xf32>
@@ -173,7 +173,7 @@ module attributes {tf_saved_model.semantics} {
     %1 = "quantfork.dcast"(%0) : (tensor<1x2x!quant.uniform<i8:f32, 5.000000e-03>>) -> tensor<1x2xf32>
     %2 = "quantfork.qcast"(%arg1) {volatile} : (tensor<2x3xf32>) -> tensor<2x3x!quant.uniform<i8<-127:127>:f32:1, {6.000000e-03,6.000000e-03,6.000000e-03}>>
     %3 = "quantfork.dcast"(%2) : (tensor<2x3x!quant.uniform<i8<-127:127>:f32:1, {6.000000e-03,6.000000e-03,6.000000e-03}>>) -> tensor<2x3xf32>
-    %4 = "tf.XlaCallModule"(%1, %3) {Sout = [#tf_type.shape<1x3>], _entry_function = @composite_dot_general_fn_1, _original_entry_function = "composite_dot_general_fn_1", _stablehlo_module_attrs = {}, _tfl_quant_trait = "fully_quantizable",   device = "", dim_args_spec = [], disabled_checks = [], has_token_input_output = false, module = "", platforms = [], version = 5 : i64} : (tensor<1x2xf32>, tensor<2x3xf32>) -> tensor<1x3xf32>
+    %4 = "tf.XlaCallModule"(%1, %3) {Sout = [#tf_type.shape<1x3>], _entry_function = @composite_dot_general_fn_1, _original_entry_function = "composite_dot_general_fn_1", _quantization_method = "static_range_ptq {}", _stablehlo_module_attrs = {}, _tfl_quant_trait = "fully_quantizable",   device = "", dim_args_spec = [], disabled_checks = [], has_token_input_output = false, module = "", platforms = [], version = 5 : i64} : (tensor<1x2xf32>, tensor<2x3xf32>) -> tensor<1x3xf32>
     %5 = "quantfork.qcast"(%4) {volatile} : (tensor<1x3xf32>) -> tensor<1x3x!quant.uniform<i8:f32, 0.13170163023705575:-1>>
     %6 = "quantfork.dcast"(%5) : (tensor<1x3x!quant.uniform<i8:f32, 0.13170163023705575:-1>>) -> tensor<1x3xf32>
     %7 = "quantfork.qcast"(%arg2) {volatile} : (tensor<f32>) -> tensor<!quant.uniform<i8:f32, 0.13170163023705575:-1>>
@@ -218,7 +218,7 @@ module attributes {tf_saved_model.semantics} {
     %1 = "quantfork.dcast"(%0) : (tensor<1x2x!quant.uniform<i8:f32, 5.000000e-03>>) -> tensor<1x2xf32>
     %2 = "quantfork.qcast"(%arg1) {volatile} : (tensor<2x3xf32>) -> tensor<2x3x!quant.uniform<i8<-127:127>:f32:1, {6.000000e-03,6.000000e-03,6.000000e-03}>>
     %3 = "quantfork.dcast"(%2) : (tensor<2x3x!quant.uniform<i8<-127:127>:f32:1, {6.000000e-03,6.000000e-03,6.000000e-03}>>) -> tensor<2x3xf32>
-    %4 = "tf.XlaCallModule"(%1, %3) {Sout = [#tf_type.shape<1x3>], _entry_function = @composite_dot_general_fn_1, _original_entry_function = "composite_dot_general_fn_1", _stablehlo_module_attrs = {}, _tfl_quant_trait = "fully_quantizable",   device = "", dim_args_spec = [], disabled_checks = [], has_token_input_output = false, module = "", platforms = [], version = 5 : i64} : (tensor<1x2xf32>, tensor<2x3xf32>) -> tensor<1x3xf32>
+    %4 = "tf.XlaCallModule"(%1, %3) {Sout = [#tf_type.shape<1x3>], _entry_function = @composite_dot_general_fn_1, _original_entry_function = "composite_dot_general_fn_1", _quantization_method = "static_range_ptq {}", _stablehlo_module_attrs = {}, _tfl_quant_trait = "fully_quantizable",   device = "", dim_args_spec = [], disabled_checks = [], has_token_input_output = false, module = "", platforms = [], version = 5 : i64} : (tensor<1x2xf32>, tensor<2x3xf32>) -> tensor<1x3xf32>
     %5 = "quantfork.qcast"(%4) {volatile} : (tensor<1x3xf32>) -> tensor<1x3x!quant.uniform<i8:f32, 0.13170163023705575:-1>>
     %6 = "quantfork.dcast"(%5) : (tensor<1x3x!quant.uniform<i8:f32, 0.13170163023705575:-1>>) -> tensor<1x3xf32>
     %7 = "quantfork.qcast"(%arg3) {volatile} : (tensor<1x3xf32>) -> tensor<1x3x!quant.uniform<i8:f32, 0.13170163023705575:-1>>
@@ -260,7 +260,7 @@ module attributes {tf_saved_model.semantics} {
     %1 = "quantfork.dcast"(%0) : (tensor<1x2x!quant.uniform<i8:f32, 5.000000e-03>>) -> tensor<1x2xf32>
     %2 = "quantfork.qcast"(%arg1) {volatile} : (tensor<2x3xf32>) -> tensor<2x3x!quant.uniform<i8<-127:127>:f32:1, {6.000000e-03,6.000000e-03,6.000000e-03}>>
     %3 = "quantfork.dcast"(%2) : (tensor<2x3x!quant.uniform<i8<-127:127>:f32:1, {6.000000e-03,6.000000e-03,6.000000e-03}>>) -> tensor<2x3xf32>
-    %4 = "tf.XlaCallModule"(%1, %3) {Sout = [#tf_type.shape<1x3>], _entry_function = @composite_dot_general_fn_1, _original_entry_function = "composite_dot_general_fn_1", _stablehlo_module_attrs = {}, _tfl_quant_trait = "fully_quantizable",   device = "", dim_args_spec = [], disabled_checks = [], has_token_input_output = false, module = "", platforms = [], version = 5 : i64} : (tensor<1x2xf32>, tensor<2x3xf32>) -> tensor<1x3xf32>
+    %4 = "tf.XlaCallModule"(%1, %3) {Sout = [#tf_type.shape<1x3>], _entry_function = @composite_dot_general_fn_1, _original_entry_function = "composite_dot_general_fn_1", _quantization_method = "static_range_ptq {}", _stablehlo_module_attrs = {}, _tfl_quant_trait = "fully_quantizable",   device = "", dim_args_spec = [], disabled_checks = [], has_token_input_output = false, module = "", platforms = [], version = 5 : i64} : (tensor<1x2xf32>, tensor<2x3xf32>) -> tensor<1x3xf32>
     %5 = "quantfork.qcast"(%4) {volatile} : (tensor<1x3xf32>) -> tensor<1x3x!quant.uniform<i8:f32, 0.13170163023705575:-1>>
     %6 = "quantfork.dcast"(%5) : (tensor<1x3x!quant.uniform<i8:f32, 0.13170163023705575:-1>>) -> tensor<1x3xf32>
     %7 = stablehlo.broadcast_in_dim %6, dims = [2, 1] : (tensor<1x3xf32>) -> tensor<2x3x2xf32>
@@ -302,7 +302,7 @@ module attributes {tf_saved_model.semantics} {
     %1 = "quantfork.dcast"(%0) : (tensor<3x4x5x!quant.uniform<i8:f32, 5.000000e-03>>) -> tensor<3x4x5xf32>
     %2 = "quantfork.qcast"(%arg1) {volatile} : (tensor<3x5x2xf32>) -> tensor<3x5x2x!quant.uniform<i8<-127:127>:f32, 6.000000e-03:13>>
     %3 = "quantfork.dcast"(%2) : (tensor<3x5x2x!quant.uniform<i8<-127:127>:f32, 6.000000e-03:13>>) -> tensor<3x5x2xf32>
-    %4 = "tf.XlaCallModule"(%1, %3) {Sout = [#tf_type.shape<1x3>], _entry_function = @composite_dot_general_fn_1, _original_entry_function = "composite_dot_general_fn_1", _stablehlo_module_attrs = {}, _tfl_quant_trait = "fully_quantizable",   device = "", dim_args_spec = [], disabled_checks = [], has_token_input_output = false, module = "", platforms = [], version = 5 : i64} : (tensor<3x4x5xf32>, tensor<3x5x2xf32>) -> tensor<3x4x2xf32>
+    %4 = "tf.XlaCallModule"(%1, %3) {Sout = [#tf_type.shape<1x3>], _entry_function = @composite_dot_general_fn_1, _original_entry_function = "composite_dot_general_fn_1", _quantization_method = "static_range_ptq {}", _stablehlo_module_attrs = {}, _tfl_quant_trait = "fully_quantizable",   device = "", dim_args_spec = [], disabled_checks = [], has_token_input_output = false, module = "", platforms = [], version = 5 : i64} : (tensor<3x4x5xf32>, tensor<3x5x2xf32>) -> tensor<3x4x2xf32>
     %5 = "quantfork.qcast"(%4) {volatile} : (tensor<3x4x2xf32>) -> tensor<3x4x2x!quant.uniform<i8:f32, 0.13170163023705575:-1>>
     %6 = "quantfork.dcast"(%5) : (tensor<3x4x2x!quant.uniform<i8:f32, 0.13170163023705575:-1>>) -> tensor<3x4x2xf32>
     %7 = "stablehlo.gather"(%6, %arg2) {
@@ -350,7 +350,7 @@ module attributes {tf_saved_model.semantics} {
     %1 = "quantfork.dcast"(%0) : (tensor<3x2x!quant.uniform<i8:f32, 5.000000e-03>>) -> tensor<3x2xf32>
     %2 = "quantfork.qcast"(%arg1) {volatile} : (tensor<2x4xf32>) -> tensor<2x4x!quant.uniform<i8<-127:127>:f32:1, {6.000000e-03,6.000000e-03,6.000000e-03,6.000000e-03}>>
     %3 = "quantfork.dcast"(%2) : (tensor<2x4x!quant.uniform<i8<-127:127>:f32:1, {6.000000e-03,6.000000e-03,6.000000e-03,6.000000e-03}>>) -> tensor<2x4xf32>
-    %4 = "tf.XlaCallModule"(%1, %3) {Sout = [#tf_type.shape<1x3>], _entry_function = @composite_dot_general_fn_1, _original_entry_function = "composite_dot_general_fn_1", _stablehlo_module_attrs = {}, _tfl_quant_trait = "fully_quantizable",   device = "", dim_args_spec = [], disabled_checks = [], has_token_input_output = false, module = "", platforms = [], version = 5 : i64} : (tensor<3x2xf32>, tensor<2x4xf32>) -> tensor<3x4xf32>
+    %4 = "tf.XlaCallModule"(%1, %3) {Sout = [#tf_type.shape<1x3>], _entry_function = @composite_dot_general_fn_1, _original_entry_function = "composite_dot_general_fn_1", _quantization_method = "static_range_ptq {}", _stablehlo_module_attrs = {}, _tfl_quant_trait = "fully_quantizable",   device = "", dim_args_spec = [], disabled_checks = [], has_token_input_output = false, module = "", platforms = [], version = 5 : i64} : (tensor<3x2xf32>, tensor<2x4xf32>) -> tensor<3x4xf32>
     %5 = "quantfork.qcast"(%4) {volatile} : (tensor<3x4xf32>) -> tensor<3x4x!quant.uniform<i8:f32, 0.13170163023705575:-1>>
     %6 = "quantfork.dcast"(%5) : (tensor<3x4x!quant.uniform<i8:f32, 0.13170163023705575:-1>>) -> tensor<3x4xf32>
     %7 = stablehlo.slice %6 [1:3, 2:4] : (tensor<3x4xf32>) -> tensor<2x2xf32>

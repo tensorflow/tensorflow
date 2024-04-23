@@ -85,7 +85,7 @@ absl::StatusOr<Literal> MakeFakeLiteralWithSameValue(const Shape& shape,
   }
   Shape new_shape = shape;
   new_shape.mutable_layout()->clear_tiles();
-  return primitive_util::PrimitiveTypeSwitch<StatusOr<Literal>>(
+  return primitive_util::PrimitiveTypeSwitch<absl::StatusOr<Literal>>(
       [&](auto type) -> absl::StatusOr<Literal> {
         if constexpr (primitive_util::IsArrayType(type)) {
           using NativeT = primitive_util::NativeTypeOf<type>;
@@ -984,7 +984,7 @@ FunctionalHloRunner::RunInternal(
       execute_options.untuple_result = false;
       break;
   }
-  std::optional<std::vector<PjRtFuture<Status>>> futures;
+  std::optional<std::vector<PjRtFuture<>>> futures;
   futures.emplace();
   for (int repeat = 0; repeat < running_options.num_repeats; ++repeat) {
     VLOG(1) << "FunctionalHloRunner: ExecuteOnDevices started (repeat = "

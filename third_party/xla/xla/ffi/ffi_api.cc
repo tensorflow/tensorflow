@@ -38,7 +38,7 @@ limitations under the License.
 //===----------------------------------------------------------------------===//
 
 struct XLA_FFI_Error {
-  xla::Status status;
+  absl::Status status;
 };
 
 struct XLA_FFI_ExecutionContext {
@@ -291,6 +291,8 @@ static void* XLA_FFI_INTERNAL_CalledComputation_Get(
 // XLA FFI Api access
 //===----------------------------------------------------------------------===//
 
+extern "C" const XLA_FFI_Api* XLA_FFI_GetApi() { return GetXlaFfiApi(); }
+
 static XLA_FFI_InternalApi internal_api = {
     XLA_FFI_INTERNAL_Error_Forward,
     XLA_FFI_INTERNAL_Stream_Get,
@@ -312,6 +314,6 @@ static XLA_FFI_Api api = {
     XLA_FFI_Stream_Get,        // returns platform specific stream
 };
 
-XLA_FFI_Api* GetXlaFfiApi() { return &api; }
+const XLA_FFI_Api* GetXlaFfiApi() { return &api; }
 
 }  // namespace xla::ffi

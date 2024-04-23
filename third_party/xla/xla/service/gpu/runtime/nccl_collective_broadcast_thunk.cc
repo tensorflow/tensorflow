@@ -23,7 +23,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/collective_ops_utils.h"
-#include "xla/service/gpu/nccl_api.h"
+#include "xla/service/gpu/runtime/nccl_api.h"
 #include "xla/service/gpu/runtime/nccl_collective_thunk.h"
 #include "xla/service/gpu/runtime/thunk.h"
 #include "xla/status.h"
@@ -57,12 +57,12 @@ NcclCollectiveBroadcastStartThunk::GetGroupMode(
 
 Status NcclCollectiveBroadcastStartThunk::RunNcclCollective(
     const ExecuteParams& params, se::Stream& stream,
-    NcclApi::NcclCommHandle comm) {
+    NcclCommHandleWrapper comm_wrapper) {
   TF_ASSIGN_OR_RETURN(
       std::vector<DeviceBufferPair> device_buffers,
       ConvertToDeviceBuffers(params, buffers_, config_.operand_element_type));
-  return ::xla::gpu::RunCollectiveBroadcast(device_buffers, stream, comm,
-                                            nccl_api());
+  return ::xla::gpu::RunCollectiveBroadcast(
+      device_buffers, stream, comm_wrapper.comm_handle, nccl_api());
 }
 
 Status RunCollectiveBroadcast(std::vector<DeviceBufferPair>& buffers,

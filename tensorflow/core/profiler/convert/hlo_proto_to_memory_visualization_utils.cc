@@ -38,6 +38,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/layout_util.h"
 #include "xla/service/hlo.pb.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/platform/errors.h"
@@ -57,12 +58,16 @@ using ::xla::LogicalBufferProto;
 using ::xla::Shape;
 using ::xla::ShapeUtil;
 
-const Shape* ResolveShapeIndex(const Shape* shape,
-                               absl::Span<const int64_t> shape_index) {
-  for (int64_t value : shape_index) {
-    shape = &shape->tuple_shapes(value);
+Shape ResolveShapeIndex(const xla::ShapeProto& shape_proto,
+                        absl::Span<const int64_t> shape_index) {
+  if (shape_index.empty()) return Shape(shape_proto);
+  // Choosing the last subshape to maintain historical behavior.
+  int64_t i = shape_index.back();
+  if (i >= shape_proto.tuple_shapes_size()) {
+    LOG(WARNING) << "shape_index out of tuple_shapes range.";
+    return Shape(shape_proto);
   }
-  return shape;
+  return Shape(shape_proto.tuple_shapes(i));
 }
 
 std::string ShapeDescription(const Shape& shape) {
@@ -132,12 +137,12 @@ struct LogicalBufferStruct {
   LogicalBufferStruct(const LogicalBufferProto& p,
                       const BufferAllocationStruct& b,
                       const ::xla::HloInstructionProto& i, uint64_t offset)
-      : proto(p), buffer_allocation(b), hlo_instruction(i), offset(offset) {
-    // Get shape of logical buffer.
-    const Shape top_level_shape(hlo_instruction.shape());
-    shape =
-        *ResolveShapeIndex(&top_level_shape, proto.defined_at().shape_index());
-  }
+      : proto(p),
+        buffer_allocation(b),
+        hlo_instruction(i),
+        offset(offset),
+        shape(ResolveShapeIndex(hlo_instruction.shape(),
+                                proto.defined_at().shape_index())) {}
 
   absl::string_view instruction_name() const { return hlo_instruction.name(); }
 
@@ -326,6 +331,7 @@ class HloProtoBufferWrapper {
       // to obtain the buffer allocation index ourselves.
       if (heap_simulator_traces[i].events().empty()) continue;
       int logical_buffer_id = heap_simulator_traces[i].events(0).buffer_id();
+      if (!id_to_logical_buffer_.contains(logical_buffer_id)) continue;
       auto* logical_buffer = id_to_logical_buffer_[logical_buffer_id].get();
       auto buffer_allocation_index = logical_buffer->buffer_allocation.index();
       id_to_buffer_allocation_[buffer_allocation_index]

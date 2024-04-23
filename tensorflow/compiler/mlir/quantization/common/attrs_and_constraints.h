@@ -20,6 +20,7 @@ limitations under the License.
 #include <optional>
 #include <type_traits>
 
+#include "absl/status/statusor.h"
 #include "llvm/Support/Debug.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -40,6 +41,10 @@ limitations under the License.
 namespace mlir::quant {
 
 constexpr char kAttrMapAttribute[] = "attr_map";
+
+// Name of the string attribute attached to `XlaCallModuleOp`, which is the
+// textproto representation of `Method`.
+inline constexpr StringRef kQuantizationMethodAttr = "_quantization_method";
 
 // Permutation from the NHWC tensor format to NCHW. This is an inverse
 // permutation of `kNchwToNhwcPermutation`.
@@ -178,6 +183,15 @@ FailureOr<int32_t> CastI64ToI32(int64_t value);
 FailureOr<SmallVector<int32_t>> CastI64ArrayToI32(
     ArrayRef<int64_t> int64_array);
 
+// Returns the first operation with the given type in the function.
+template <typename OpType>
+OpType FindOperationOfType(func::FuncOp function) {
+  for (auto op : function.getBody().getOps<OpType>()) {
+    return op;
+  }
+  return nullptr;
+}
+
 // Returns the first user of the given operation, optionally of the given
 // type if provided. If there is no user or user of type, return nullptr.
 template <typename T = Operation*>
@@ -185,6 +199,18 @@ Operation* FindUserOfType(Operation* op) {
   for (Operation* user : op->getUsers()) {
     if (isa<T>(user)) {
       return user;
+    }
+  }
+  return nullptr;
+}
+
+// Returns the first user of the given operation, optionally of the given
+// type if provided. If there is no user or user of type, return nullptr.
+template <typename T = Operation*>
+Operation* FindOperandOfType(Operation* op) {
+  for (Value operand_value : op->getOperands()) {
+    if (isa<T>(operand_value.getDefiningOp())) {
+      return operand_value.getDefiningOp();
     }
   }
   return nullptr;
@@ -216,10 +242,18 @@ inline bool HasQuantizableTrait(Operation* op) {
 // is quantized.
 bool IsHybridQuantizedOp(Operation* op);
 
+// Returns whether a given `stablehlo.dot_general` can be legalizable to
+// `tfl.fully_connected`.
+absl::StatusOr<bool> IsDotGeneralFullyConnected(
+    ::mlir::stablehlo::DotGeneralOp dot_general_op);
+
 // Returns the quantization dimension for a given `stablehlo.dot_general` op,
 // or `std::nullopt` if the given op is not per-channel quantizable.
 std::optional<int64_t> GetDotGeneralQuantizationDim(
     ::mlir::stablehlo::DotGeneralOp dot_general_op);
+
+// Checks if a `StringRef` contains 'conv' or 'dot_general'.
+bool ContainsConvOrDot(StringRef str);
 
 }  // namespace mlir::quant
 

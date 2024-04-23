@@ -47,7 +47,6 @@ limitations under the License.
 #include "third_party/nanobind/include/nanobind/stl/vector.h"  // IWYU pragma: keep
 #include "xla/pjrt/exceptions.h"
 #include "xla/pjrt/lru_cache.h"
-#include "xla/pjrt/pjrt_client.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/memory.h"
@@ -380,7 +379,7 @@ PrepareIfrtInputs(const xla::PyLoadedExecutable& executable,
   xla::DevicePutOptions options;
   options.squash_64bit_types = !enable_x64;
   options.allow_zero_copy = true;
-  xla::PjRtDevice* data_device = nullptr;
+  xla::ifrt::Device* data_device = nullptr;
   if (executable.ifrt_loaded_executable()->num_devices() == 1) {
     data_device = executable.ifrt_loaded_executable()->addressable_devices()[0];
   }
@@ -401,9 +400,15 @@ PrepareIfrtInputs(const xla::PyLoadedExecutable& executable,
         TF_RETURN_IF_ERROR(
             jax::ApplyTransferGuardToHostToDevice(transfer_guard_formatter));
         TF_ASSIGN_OR_RETURN(
-            xla::DevicePutResult on_device,
+            auto on_device_fn,
             DevicePut(arg, executable.ifrt_loaded_executable()->client(),
                       data_device, options, xla::ifrt::MemoryKind()));
+        TF_ASSIGN_OR_RETURN(xla::DevicePutResult on_device, [&]() {
+          // Must release the GIL before calling IFRT because backends may
+          // decide to block/sleep for device buffer allocation.
+          nb::gil_scoped_release gil_release;
+          return std::move(on_device_fn)();
+        }());
 
         num_args_arrays.push_back(std::move(on_device.ifrt_array));
         if (on_device.owning_pybuffer) {
@@ -541,9 +546,6 @@ absl::StatusOr<nb::object> PjitFunction::Call(nb::handle callable,
     }
 
     xla::PyArray py_array = nb::borrow<xla::PyArray>(arg);
-    if (!py_array.fastpath_enabled()) {
-      return fallback_to_cache_miss();
-    }
 
     // Only allow committed PyArray in cpp pjit for now as the logic on handling
     // sharding for uncommitted PyArray is complicated and still under
@@ -748,29 +750,29 @@ void PjitFunction::PopulateCacheEntry(PjitCacheEntry& cache_entry,
   cache_entry.executable = nb::cast<std::shared_ptr<xla::PyLoadedExecutable>>(
       fastpath_data.attr("xla_executable"));
 
-  nb::list in_shardings = fastpath_data.attr("in_shardings");
-  cache_entry.in_shardings.reserve(in_shardings.size());
+  nb::sequence in_shardings = fastpath_data.attr("in_shardings");
+  cache_entry.in_shardings.reserve(nb::len(in_shardings));
   for (nb::handle sharding : in_shardings) {
     cache_entry.in_shardings.push_back(nb::borrow(sharding));
   }
 
-  nb::list out_shardings = fastpath_data.attr("out_shardings");
-  cache_entry.out_shardings.reserve(out_shardings.size());
+  nb::sequence out_shardings = fastpath_data.attr("out_shardings");
+  cache_entry.out_shardings.reserve(nb::len(out_shardings));
   for (nb::handle sharding : out_shardings) {
     cache_entry.out_shardings.push_back(nb::borrow(sharding));
   }
 
-  nb::list out_committed = fastpath_data.attr("out_committed");
-  cache_entry.out_committed.reserve(out_committed.size());
+  nb::sequence out_committed = fastpath_data.attr("out_committed");
+  cache_entry.out_committed.reserve(nb::len(out_committed));
   for (nb::handle c : out_committed) {
     cache_entry.out_committed.push_back(nb::cast<bool>(c));
   }
 
-  nb::list out_avals = fastpath_data.attr("out_avals");
-  cache_entry.out_avals.reserve(out_avals.size());
-  cache_entry.out_dtypes.reserve(out_avals.size());
-  cache_entry.out_shapes.reserve(out_avals.size());
-  cache_entry.out_weak_types.reserve(out_avals.size());
+  nb::sequence out_avals = fastpath_data.attr("out_avals");
+  cache_entry.out_avals.reserve(nb::len(out_avals));
+  cache_entry.out_dtypes.reserve(nb::len(out_avals));
+  cache_entry.out_shapes.reserve(nb::len(out_avals));
+  cache_entry.out_weak_types.reserve(nb::len(out_avals));
   for (nb::handle aval : out_avals) {
     cache_entry.out_avals.push_back(nb::borrow(aval));
     cache_entry.out_dtypes.push_back(aval.attr("dtype"));
@@ -783,8 +785,8 @@ void PjitFunction::PopulateCacheEntry(PjitCacheEntry& cache_entry,
   cache_entry.out_pytree_def = nb::cast<xla::PyTreeDef>(
       nb::handle(fastpath_data.attr("out_pytree_def").ptr()));
 
-  nb::list kept_var_bitvec = fastpath_data.attr("kept_var_bitvec");
-  cache_entry.kept_var_bitvec.reserve(kept_var_bitvec.size());
+  nb::sequence kept_var_bitvec = fastpath_data.attr("kept_var_bitvec");
+  cache_entry.kept_var_bitvec.reserve(nb::len(kept_var_bitvec));
   for (nb::handle k : kept_var_bitvec) {
     cache_entry.kept_var_bitvec.push_back(nb::cast<bool>(k));
   }

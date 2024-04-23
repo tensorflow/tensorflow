@@ -11,7 +11,10 @@ package(
 cc_library(
     name = "xla_ops",
     srcs = ["xla_ops.cc"],
-    deps = ["//tensorflow/core:framework"],
+    deps = [
+        "//tensorflow/core:framework",
+        "@com_google_absl//absl/status",
+    ],
     alwayslink = 1,
 )
 

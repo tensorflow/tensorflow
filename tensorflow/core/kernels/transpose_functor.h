@@ -34,7 +34,7 @@ namespace tensorflow {
 // REQUIRES: in.dim_size(perm[i]) == out->dim_size(i)
 template <typename Device>
 Status DoTranspose(const Device& device, const Tensor& in,
-                   const gtl::ArraySlice<int32> perm, Tensor* out);
+                   const absl::Span<const int32> perm, Tensor* out);
 
 // Conjugate and transpose tensor 'in' into tensor 'out' according to dimension
 // permutation 'perm'.
@@ -45,7 +45,7 @@ Status DoTranspose(const Device& device, const Tensor& in,
 // REQUIRES: in.dim_size(perm[i]) == out->dim_size(i)
 template <typename Device>
 Status DoConjugateTranspose(const Device& device, const Tensor& in,
-                            const gtl::ArraySlice<int32> perm, Tensor* out);
+                            const absl::Span<const int32> perm, Tensor* out);
 
 // Convenience versions of DoTranspose that only swap the last (inner) two
 // dimensions.
@@ -62,7 +62,7 @@ Status DoConjugateMatrixTranspose(const Device& device, const Tensor& in,
 template <typename Device, typename T, bool conjugate = false>
 struct Transpose {
   static void run(const Device& d, const Tensor& in,
-                  const gtl::ArraySlice<int32> perm, Tensor* out);
+                  const absl::Span<const int32> perm, Tensor* out);
 };
 
 // Implementation details.
@@ -77,7 +77,7 @@ typedef gtl::InlinedVector<int32, 8> TransposePermsVec;
 // Example: Tensor shape {2, 3, 4, 5, 120} and permutation {0, 4, 1, 2, 3} will
 // produce new shape {2, 60, 120} and new permutation {0, 2, 1}.
 inline void ReduceTransposeDimensions(const TensorShape& shape,
-                                      gtl::ArraySlice<int32> perm,
+                                      absl::Span<const int32> perm,
                                       TransposePermsVec* new_perm,
                                       TransposeDimsVec* new_dims) {
   CHECK_EQ(shape.dims(), perm.size());
@@ -146,7 +146,7 @@ inline bool NonSingletonDimensionsAlign(const TensorShape& input_shape,
 // Uses Eigen to transpose.
 template <typename Device, typename T, int NDIMS>
 void TransposeUsingEigen(const Device& d, const Tensor& in,
-                         const gtl::ArraySlice<int32> perm, bool conjugate,
+                         const absl::Span<const int32> perm, bool conjugate,
                          Tensor* out) {
   Eigen::array<int, NDIMS> p;
   for (int i = 0; i < NDIMS; ++i) p[i] = perm[i];
@@ -165,7 +165,7 @@ void TransposeUsingEigen(const Device& d, const Tensor& in,
 
 template <typename Device>
 Status DoTransposeImpl(const Device& d, const Tensor& in,
-                       const gtl::ArraySlice<int32> perm, bool conjugate,
+                       const absl::Span<const int32> perm, bool conjugate,
                        Tensor* out) {
   CHECK_EQ(in.dims(), out->dims());
   CHECK_EQ(in.dims(), perm.size());

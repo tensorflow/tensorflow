@@ -2,7 +2,7 @@
 // RUN: FILECHECK_OPTS="" FileCheck %s
 
 func.func @three_fry_i64(%arg0: tensor<2xi64>) -> (tensor<2xi64>, tensor<8xi64>) {
-  %output_state, %output = "mhlo.rng_bit_generator"(%arg0) {rng_algorithm = #mhlo.rng_algorithm<THREE_FRY>} : (tensor<2xi64>) -> (tensor<2xi64>, tensor<8xi64>)
+  %output_state, %output = "mhlo.rng_bit_generator"(%arg0) <{rng_algorithm = #mhlo.rng_algorithm<THREE_FRY>}> : (tensor<2xi64>) -> (tensor<2xi64>, tensor<8xi64>)
   return %output_state, %output : tensor<2xi64>, tensor<8xi64>
 }
 
@@ -98,7 +98,7 @@ func.func @three_fry_i64(%arg0: tensor<2xi64>) -> (tensor<2xi64>, tensor<8xi64>)
 // -----
 
 func.func @three_fry_i32(%arg0: tensor<2xi64>) -> (tensor<2xi64>, tensor<8xi32>) {
-  %output_state, %output = "mhlo.rng_bit_generator"(%arg0) {rng_algorithm = #mhlo.rng_algorithm<THREE_FRY>} : (tensor<2xi64>) -> (tensor<2xi64>, tensor<8xi32>)
+  %output_state, %output = "mhlo.rng_bit_generator"(%arg0) <{rng_algorithm = #mhlo.rng_algorithm<THREE_FRY>}> : (tensor<2xi64>) -> (tensor<2xi64>, tensor<8xi32>)
   return %output_state, %output : tensor<2xi64>, tensor<8xi32>
 }
 
@@ -140,7 +140,7 @@ func.func @three_fry_i32(%arg0: tensor<2xi64>) -> (tensor<2xi64>, tensor<8xi32>)
 // -----
 
 func.func @three_fry_odd_i32(%arg0: tensor<2xi64>) -> (tensor<2xi64>, tensor<7x11xi32>) {
-  %output_state, %output = "mhlo.rng_bit_generator"(%arg0) {rng_algorithm = #mhlo.rng_algorithm<THREE_FRY>} : (tensor<2xi64>) -> (tensor<2xi64>, tensor<7x11xi32>)
+  %output_state, %output = "mhlo.rng_bit_generator"(%arg0) <{rng_algorithm = #mhlo.rng_algorithm<THREE_FRY>}> : (tensor<2xi64>) -> (tensor<2xi64>, tensor<7x11xi32>)
   return %output_state, %output : tensor<2xi64>, tensor<7x11xi32>
 }
 
@@ -183,7 +183,7 @@ func.func @three_fry_odd_i32(%arg0: tensor<2xi64>) -> (tensor<2xi64>, tensor<7x1
 // -----
 
 func.func @three_fry_i16(%arg0: tensor<2xi64>) -> (tensor<2xi64>, tensor<8xi16>) {
-  %output_state, %output = "mhlo.rng_bit_generator"(%arg0) {rng_algorithm = #mhlo.rng_algorithm<THREE_FRY>} : (tensor<2xi64>) -> (tensor<2xi64>, tensor<8xi16>)
+  %output_state, %output = "mhlo.rng_bit_generator"(%arg0) <{rng_algorithm = #mhlo.rng_algorithm<THREE_FRY>}> : (tensor<2xi64>) -> (tensor<2xi64>, tensor<8xi16>)
   return %output_state, %output : tensor<2xi64>, tensor<8xi16>
 }
 
@@ -224,7 +224,7 @@ func.func @three_fry_i16(%arg0: tensor<2xi64>) -> (tensor<2xi64>, tensor<8xi16>)
 // -----
 
 func.func @philox_i64(%arg0: tensor<2xi64>) -> (tensor<2xi64>, tensor<8xi64>) {
-  %output_state, %output = "mhlo.rng_bit_generator"(%arg0) {rng_algorithm = #mhlo.rng_algorithm<PHILOX>} : (tensor<2xi64>) -> (tensor<2xi64>, tensor<8xi64>)
+  %output_state, %output = "mhlo.rng_bit_generator"(%arg0) <{rng_algorithm = #mhlo.rng_algorithm<PHILOX>}> : (tensor<2xi64>) -> (tensor<2xi64>, tensor<8xi64>)
   return %output_state, %output : tensor<2xi64>, tensor<8xi64>
 }
 
@@ -349,7 +349,7 @@ func.func @philox_i64(%arg0: tensor<2xi64>) -> (tensor<2xi64>, tensor<8xi64>) {
 // -----
 
 func.func @philox_i32(%arg0: tensor<2xi64>) -> (tensor<2xi64>, tensor<8xi32>) {
-  %output_state, %output = "mhlo.rng_bit_generator"(%arg0) {rng_algorithm = #mhlo.rng_algorithm<PHILOX>} : (tensor<2xi64>) -> (tensor<2xi64>, tensor<8xi32>)
+  %output_state, %output = "mhlo.rng_bit_generator"(%arg0) <{rng_algorithm = #mhlo.rng_algorithm<PHILOX>}> : (tensor<2xi64>) -> (tensor<2xi64>, tensor<8xi32>)
   return %output_state, %output : tensor<2xi64>, tensor<8xi32>
 }
 
@@ -385,7 +385,7 @@ func.func @philox_i32(%arg0: tensor<2xi64>) -> (tensor<2xi64>, tensor<8xi32>) {
 // -----
 
 func.func @philox_i32_odd(%arg0: tensor<2xi64>) -> (tensor<2xi64>, tensor<7x11xi32>) {
-  %output_state, %output = "mhlo.rng_bit_generator"(%arg0) {rng_algorithm = #mhlo.rng_algorithm<PHILOX>} : (tensor<2xi64>) -> (tensor<2xi64>, tensor<7x11xi32>)
+  %output_state, %output = "mhlo.rng_bit_generator"(%arg0) <{rng_algorithm = #mhlo.rng_algorithm<PHILOX>}> : (tensor<2xi64>) -> (tensor<2xi64>, tensor<7x11xi32>)
   return %output_state, %output : tensor<2xi64>, tensor<7x11xi32>
 }
 
@@ -436,7 +436,7 @@ func.func @philox_i32_odd(%arg0: tensor<2xi64>) -> (tensor<2xi64>, tensor<7x11xi
 
 
 func.func @philox_i64_odd(%arg0: tensor<2xi64>) -> (tensor<2xi64>, tensor<3x5xi64>) {
-  %output_state, %output = "mhlo.rng_bit_generator"(%arg0) {rng_algorithm = #mhlo.rng_algorithm<PHILOX>} : (tensor<2xi64>) -> (tensor<2xi64>, tensor<3x5xi64>)
+  %output_state, %output = "mhlo.rng_bit_generator"(%arg0) <{rng_algorithm = #mhlo.rng_algorithm<PHILOX>}> : (tensor<2xi64>) -> (tensor<2xi64>, tensor<3x5xi64>)
   return %output_state, %output : tensor<2xi64>, tensor<3x5xi64>
 }
 
@@ -475,7 +475,7 @@ func.func @philox_i64_odd(%arg0: tensor<2xi64>) -> (tensor<2xi64>, tensor<3x5xi6
 // -----
 
 func.func @philox_i16(%arg0: tensor<2xi64>) -> (tensor<2xi64>, tensor<8xi16>) {
-  %output_state, %output = "mhlo.rng_bit_generator"(%arg0) {rng_algorithm = #mhlo.rng_algorithm<PHILOX>} : (tensor<2xi64>) -> (tensor<2xi64>, tensor<8xi16>)
+  %output_state, %output = "mhlo.rng_bit_generator"(%arg0) <{rng_algorithm = #mhlo.rng_algorithm<PHILOX>}> : (tensor<2xi64>) -> (tensor<2xi64>, tensor<8xi16>)
   return %output_state, %output : tensor<2xi64>, tensor<8xi16>
 }
 

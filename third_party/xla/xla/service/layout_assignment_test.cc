@@ -1722,6 +1722,74 @@ TEST_F(LayoutAssignmentTest, PartialEntryParameterLayout) {
                  {0, 1, 2});
 }
 
+// Test the ability to enforce tuple constraint with no result constraint.
+TEST_F(LayoutAssignmentTest, TupleEntryParameterLayoutNoResultConstraint) {
+  const char* module_str = R"(
+ HloModule EntryLayout, entry_computation_layout={((f32[32,650]{0,1},s32[16,1,18]{0,1,2}))->(f32[208,100]{1,0},s32[2,144]{1,0})}
+
+ ENTRY %main {
+   p = (f32[32,650],s32[16,1,18]) parameter(0)
+   operand = f32[32,650] get-tuple-element(p), index=0 
+   reshape = f32[208,100] reshape(operand)
+   indices = s32[16,1,18] get-tuple-element(p), index=1
+   reshape_indices = s32[2,144] reshape(indices)
+   ROOT t = tuple(reshape, reshape_indices)
+ } )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                          ParseAndReturnVerifiedModule(module_str));
+  // Allow propagation only to parameter 0
+  m->mutable_entry_computation_layout()->mutable_result_layout()->Clear();
+
+  LayoutAssignment layout_assignment(m->mutable_entry_computation_layout(),
+                                     nullptr);
+  EXPECT_IS_OK(layout_assignment.Run(m.get()).status());
+  // Assign bitcasting layout to parameter 0
+  ExpectLayoutIs(
+      m->entry_computation_layout().parameter_layout(0).shape().tuple_shapes(0),
+      {0, 1});
+  // Parameter layout that is set is unmodified.
+  ExpectLayoutIs(
+      m->entry_computation_layout().parameter_layout(0).shape().tuple_shapes(1),
+      {0, 1, 2});
+}
+
+// Test the ability to enforce tuple constraint with no result constraint and
+// one tuple element not specified.
+TEST_F(LayoutAssignmentTest,
+       PartialTupleEntryParameterLayoutNoResultConstraint) {
+  const char* module_str = R"(
+ HloModule EntryLayout, entry_computation_layout={((f32[32,650]{0,1},s32[16,1,18]{0,1,2}))->(f32[208,100]{1,0},s32[2,144]{1,0})}
+
+ ENTRY %main {
+   p = (f32[32,650],s32[16,1,18]) parameter(0)
+   operand = f32[32,650] get-tuple-element(p), index=0 
+   reshape = f32[208,100] reshape(operand)
+   indices = s32[16,1,18] get-tuple-element(p), index=1
+   reshape_indices = s32[2,144] reshape(indices)
+   ROOT t = tuple(reshape, reshape_indices)
+ } )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                          ParseAndReturnVerifiedModule(module_str));
+  // Allow propagation only to parameter 0
+  m->mutable_entry_computation_layout()->mutable_result_layout()->Clear();
+  m->mutable_entry_computation_layout()->mutable_parameter_layout(0)->Clear(
+      {1});
+
+  LayoutAssignment layout_assignment(m->mutable_entry_computation_layout(),
+                                     nullptr);
+  EXPECT_IS_OK(layout_assignment.Run(m.get()).status());
+  // Assign bitcasting layout to parameter 0
+  ExpectLayoutIs(
+      m->entry_computation_layout().parameter_layout(0).shape().tuple_shapes(0),
+      {0, 1});
+  // Parameter layout that is set is unmodified.
+  ExpectLayoutIs(
+      m->entry_computation_layout().parameter_layout(0).shape().tuple_shapes(1),
+      {2, 1, 0});
+}
+
 // Test the ability to enforce aliasing .
 TEST_F(LayoutAssignmentTest, AliasParameterAndOutput) {
   const char* module_str = R"(

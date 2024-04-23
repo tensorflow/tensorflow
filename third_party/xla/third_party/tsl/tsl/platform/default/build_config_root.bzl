@@ -46,53 +46,56 @@ def tf_additional_tpu_ops_deps():
 # used for all framework_shared_object platforms including MacOS.
 def if_static(extra_deps, otherwise = [], macos = []):
     ret = {
-        str(Label("//tsl:framework_shared_object")): otherwise,
+        str(Label("@local_xla//xla/tsl:framework_shared_object")): otherwise,
         "//conditions:default": extra_deps,
     }
     if macos:
-        ret[str(Label("//tsl:macos_with_framework_shared_object"))] = macos
+        ret[str(Label("@local_xla//xla/tsl:macos_with_framework_shared_object"))] = macos
     return select(ret)
 
 def if_static_and_not_mobile(extra_deps, otherwise = []):
     return select({
-        str(Label("//tsl:framework_shared_object")): otherwise,
-        str(Label("//tsl:android")): otherwise,
-        str(Label("//tsl:ios")): otherwise,
+        str(Label("@local_xla//xla/tsl:framework_shared_object")): otherwise,
+        str(Label("@local_xla//xla/tsl:android")): otherwise,
+        str(Label("@local_xla//xla/tsl:ios")): otherwise,
         "//conditions:default": extra_deps,
     })
 
 def if_llvm_aarch32_available(then, otherwise = []):
     return select({
-        str(Label("//tsl:aarch32_or_cross")): then,
+        str(Label("@local_xla//xla/tsl:aarch32_or_cross")): then,
         "//conditions:default": otherwise,
     })
 
 def if_llvm_aarch64_available(then, otherwise = []):
     return select({
-        str(Label("//tsl:aarch64_or_cross")): then,
+        str(Label("@local_xla//xla/tsl:aarch64_or_cross")): then,
         "//conditions:default": otherwise,
     })
 
 def if_llvm_arm_available(then, otherwise = []):
     return select({
-        str(Label("//tsl:arm_or_cross")): then,
+        str(Label("@local_xla//xla/tsl:arm_or_cross")): then,
         "//conditions:default": otherwise,
     })
 
+def if_llvm_hexagon_available(then, otherwise = []):
+    return otherwise
+
 def if_llvm_powerpc_available(then, otherwise = []):
     return select({
-        str(Label("//tsl:ppc64le_or_cross")): then,
+        str(Label("@local_xla//xla/tsl:ppc64le_or_cross")): then,
         "//conditions:default": otherwise,
     })
 
 def if_llvm_system_z_available(then, otherwise = []):
     return select({
-        str(Label("//tsl:s390x_or_cross")): then,
+        str(Label("@local_xla//xla/tsl:s390x_or_cross")): then,
         "//conditions:default": otherwise,
     })
 
 def if_llvm_x86_available(then, otherwise = []):
     return select({
-        str(Label("//tsl:x86_or_cross")): then,
+        str(Label("@local_xla//xla/tsl:x86_or_cross")): then,
         "//conditions:default": otherwise,
     })

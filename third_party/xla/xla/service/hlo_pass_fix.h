@@ -50,18 +50,19 @@ class HloPassFix : public Pass {
   }
 
   using HloPassInterface::Run;
-  StatusOr<bool> Run(HloModule* module,
-                     const absl::flat_hash_set<absl::string_view>&
-                         execution_threads) override {
+  absl::StatusOr<bool> Run(HloModule* module,
+                           const absl::flat_hash_set<absl::string_view>&
+                               execution_threads) override {
     RunState run_state(module);
     TF_RETURN_IF_ERROR(RunToFixPoint(module, &run_state, execution_threads));
     return !run_state.changed.empty();
   }
 
   using HloPassInterface::RunOnModuleGroup;
-  StatusOr<bool> RunOnModuleGroup(HloModuleGroup* module_group,
-                                  const absl::flat_hash_set<absl::string_view>&
-                                      execution_threads) override {
+  absl::StatusOr<bool> RunOnModuleGroup(
+      HloModuleGroup* module_group,
+      const absl::flat_hash_set<absl::string_view>& execution_threads)
+      override {
     bool changed = false;
     bool changed_this_iteration = true;
     int64_t iteration_count = 0;

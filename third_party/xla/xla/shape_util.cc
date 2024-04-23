@@ -926,7 +926,8 @@ Shape ShapeUtil::PrependMajorDimension(int64_t bound, Shape shape) {
   int64_t size = sizeof(int64_t) + proto.ByteSizeLong();
 
   TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
-      shape, [&](const Shape& subshape, const ShapeIndex& index) {
+      shape,
+      [&](const Shape& subshape, const ShapeIndex& index) -> absl::Status {
         if (subshape.IsTuple()) {
           return OkStatus();
         }
@@ -940,9 +941,12 @@ Shape ShapeUtil::PrependMajorDimension(int64_t bound, Shape shape) {
         if (subshape.element_type() == PRED) {
           // PRED is packed 8 elements per byte.
           size += CeilOfRatio<int64_t>(ElementsIn(subshape), 8);
-        } else if (primitive_util::Is4BitType(subshape.element_type())) {
+        } else if (primitive_util::IsSubByteNonPredType(
+                       subshape.element_type())) {
           // 4-bit types are packed 2 elements per byte.
-          size += CeilOfRatio<int64_t>(ElementsIn(subshape), 2);
+          size += CeilOfRatio<int64_t>(
+              ElementsIn(subshape),
+              8 / primitive_util::BitWidth(subshape.element_type()));
         } else {
           size += ByteSizeOfElements(subshape);
         }

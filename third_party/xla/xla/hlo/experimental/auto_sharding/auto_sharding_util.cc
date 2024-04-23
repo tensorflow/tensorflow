@@ -59,6 +59,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/status.h"
 
 namespace xla {
@@ -97,8 +98,9 @@ std::optional<HloSharding> GetInputSharding(const HloInstruction* ins,
   }
 
   std::optional<HloSharding> inferred_sharding =
-      ShardingPropagation::GetShardingFromUser(
-          *ins_clone->operand(op_index), *ins_clone, 10, true, call_graph);
+      ShardingPropagation::GetShardingFromUser(*ins_clone->operand(op_index),
+                                               *ins_clone, 10, true, call_graph,
+                                               /*sharding_helper=*/nullptr);
 
   if (!inferred_sharding.has_value() && IsTopKCustomCall(ins)) {
     // ShardingPropagation::GetShardingFromUser does not handle TopK custom
@@ -164,7 +166,7 @@ HloSharding PropagateDimwiseShardingSlice(const HloSharding& input_spec,
 
   std::vector<int64_t> tensor_to_mesh_dim =
       GetTensorDimToMeshDim(new_shape.rank(), input_spec, device_mesh,
-                            /* consider_reverse_device_meshes */ false);
+                            /* consider_reverse_device_meshes */ true);
 
   std::vector<int64_t> tensor_dims;
   std::vector<int64_t> mesh_dims;
@@ -1270,10 +1272,9 @@ std::vector<int64_t> GetTensorDimToMeshDim(
   }
 }
 
-Shape ComputeIntermediateShape(const HloSharding& src_sharding,
-                               const HloSharding& dst_sharding,
-                               const Shape& shape,
-                               const Array<int64_t>& device_mesh) {
+absl::StatusOr<Shape> ComputeIntermediateShape(
+    const HloSharding& src_sharding, const HloSharding& dst_sharding,
+    const Shape& shape, const Array<int64_t>& device_mesh) {
   int64_t src_n_dim = NumTileDimensions(src_sharding);
 
   const HloSharding* sharding_1d;
@@ -1291,8 +1292,10 @@ Shape ComputeIntermediateShape(const HloSharding& src_sharding,
     if (sharding_1d->tile_assignment().dim(i) == 1) {
       inter_shape_dims.push_back(shape.dimensions(i));
     } else {
-      CHECK(shape.dimensions(i) % device_mesh.dim(0) == 0)
-          << "Only support even partition";
+      // TODO(b/333750146): Support this case instead of bailing here
+      if (shape.dimensions(i) % device_mesh.dim(0) != 0) {
+        return absl::InternalError("Indivisible tensor dims");
+      }
       inter_shape_dims.push_back(device_mesh.dim(0));
       inter_shape_dims.push_back(shape.dimensions(i) / device_mesh.dim(0));
     }
@@ -1309,36 +1312,40 @@ HloInstruction* ReshardTensor(HloInstruction* tensor,
                               const HloSharding& dst_sharding,
                               const Array<int64_t>& device_mesh) {
   const Shape& shape = tensor->shape();
-  auto computation = tensor->parent();
+  HloComputation* computation = tensor->parent();
 
   int64_t src_n_dim = NumTileDimensions(src_sharding);
   int64_t dst_n_dim = NumTileDimensions(dst_sharding);
 
   HloInstruction* replace_with = nullptr;
   if (src_n_dim != dst_n_dim && src_n_dim != -1 && dst_n_dim != -1) {
-    Shape inter_shape = ComputeIntermediateShape(src_sharding, dst_sharding,
-                                                 shape, device_mesh);
+    absl::StatusOr<Shape> inter_shape = ComputeIntermediateShape(
+        src_sharding, dst_sharding, shape, device_mesh);
+    if (inter_shape.ok()) {
+      std::optional<HloSharding> src_inter_sharding =
+          hlo_sharding_util::ReshapeSharding(shape, *inter_shape, src_sharding);
+      std::optional<HloSharding> dst_inter_sharding =
+          hlo_sharding_util::ReshapeSharding(shape, *inter_shape, dst_sharding);
+      if (!src_inter_sharding.has_value() || !dst_inter_sharding.has_value()) {
+        src_inter_sharding = HloSharding::Replicate();
+        dst_inter_sharding = HloSharding::Replicate();
+        LOG(WARNING) << "Invalid mixed mesh shape resharding.";
+      }
 
-    std::optional<HloSharding> src_inter_sharding =
-        hlo_sharding_util::ReshapeSharding(shape, inter_shape, src_sharding);
-    std::optional<HloSharding> dst_inter_sharding =
-        hlo_sharding_util::ReshapeSharding(shape, inter_shape, dst_sharding);
-    if (!src_inter_sharding.has_value() || !dst_inter_sharding.has_value()) {
-      src_inter_sharding = HloSharding::Replicate();
-      dst_inter_sharding = HloSharding::Replicate();
-      LOG(WARNING) << "Invalid mixed mesh shape resharding.";
+      HloInstruction* src_inter = computation->AddInstruction(
+          HloInstruction::CreateReshape(*inter_shape, tensor));
+      src_inter->set_sharding(*src_inter_sharding);
+
+      HloInstruction* dst_inter = computation->AddInstruction(
+          HloInstruction::CreateReshape(*inter_shape, src_inter));
+      dst_inter->set_sharding(*dst_inter_sharding);
+
+      replace_with = computation->AddInstruction(
+          HloInstruction::CreateReshape(shape, dst_inter));
+    } else {
+      replace_with = computation->AddInstruction(
+          HloInstruction::CreateReshape(shape, tensor));
     }
-
-    HloInstruction* src_inter = computation->AddInstruction(
-        HloInstruction::CreateReshape(inter_shape, tensor));
-    src_inter->set_sharding(*src_inter_sharding);
-
-    HloInstruction* dst_inter = computation->AddInstruction(
-        HloInstruction::CreateReshape(inter_shape, src_inter));
-    dst_inter->set_sharding(*dst_inter_sharding);
-
-    replace_with = computation->AddInstruction(
-        HloInstruction::CreateReshape(shape, dst_inter));
   } else {
     replace_with = computation->AddInstruction(
         HloInstruction::CreateReshape(shape, tensor));
@@ -1348,19 +1355,20 @@ HloInstruction* ReshardTensor(HloInstruction* tensor,
   return replace_with;
 }
 
-void FixMixedMeshShapeReshardingGetTupleElementWithTupleOutput(
+absl::Status FixMixedMeshShapeReshardingGetTupleElementWithTupleOutput(
     HloInstruction* inst,
     const std::vector<std::optional<HloSharding>>& dst_shardings,
     const Array<int64_t>& device_mesh) {
   size_t tuple_size = inst->shape().tuple_shapes_size();
-  auto current_sharding = inst->sharding();
+  const HloSharding& current_sharding = inst->sharding();
 
   bool need_to_reshard = false;
   for (size_t i = 0; i < tuple_size; ++i) {
     CHECK(!inst->shape().tuple_shapes(i).IsTuple());
-    auto element_current_sharding = current_sharding.GetSubSharding(
-        inst->shape(), {static_cast<int64_t>(i)});
-    auto element_dst_sharding_opt = dst_shardings[i];
+    const HloSharding& element_current_sharding =
+        current_sharding.GetSubSharding(inst->shape(),
+                                        {static_cast<int64_t>(i)});
+    std::optional<HloSharding> element_dst_sharding_opt = dst_shardings[i];
 
     // Extract tuple element
     if (element_dst_sharding_opt.has_value() &&
@@ -1370,21 +1378,22 @@ void FixMixedMeshShapeReshardingGetTupleElementWithTupleOutput(
   }
 
   if (!need_to_reshard) {
-    return;
+    return absl::OkStatus();
   }
 
-  auto inst_users = inst->users();
+  const PtrVec<HloInstruction*>& inst_users = inst->users();
   std::vector<HloInstruction*> resharded;
   std::vector<HloSharding> reassembled_tuple_shardings;
   resharded.reserve(tuple_size);
   reassembled_tuple_shardings.reserve(tuple_size);
   for (size_t i = 0; i < tuple_size; ++i) {
-    auto element_current_sharding = current_sharding.GetSubSharding(
-        inst->shape(), {static_cast<int64_t>(i)});
-    auto element_dst_sharding_opt = dst_shardings[i];
+    const HloSharding& element_current_sharding =
+        current_sharding.GetSubSharding(inst->shape(),
+                                        {static_cast<int64_t>(i)});
+    std::optional<HloSharding> element_dst_sharding_opt = dst_shardings[i];
 
     // Extract tuple element
-    auto element =
+    HloInstruction* element =
         inst->parent()->AddInstruction(HloInstruction::CreateGetTupleElement(
             inst->shape().tuple_shapes(i), inst, i));
     if (!element_dst_sharding_opt.has_value() ||
@@ -1392,36 +1401,39 @@ void FixMixedMeshShapeReshardingGetTupleElementWithTupleOutput(
       resharded.push_back(std::move(element));
       reassembled_tuple_shardings.push_back(element_current_sharding);
     } else {
-      auto replace_with = ReshardTensor(element, element_current_sharding,
-                                        *element_dst_sharding_opt, device_mesh);
+      HloInstruction* replace_with =
+          ReshardTensor(element, element_current_sharding,
+                        *element_dst_sharding_opt, device_mesh);
       resharded.push_back(std::move(replace_with));
       reassembled_tuple_shardings.push_back(*element_dst_sharding_opt);
     }
   }
 
-  auto reassembled_tuple =
+  HloInstruction* reassembled_tuple =
       inst->parent()->AddInstruction(HloInstruction::CreateTuple(resharded));
   reassembled_tuple->set_sharding(
       HloSharding::Tuple(inst->shape(), reassembled_tuple_shardings));
 
-  for (auto user : inst_users) {
-    TF_CHECK_OK(inst->ReplaceUseWith(user, reassembled_tuple));
+  for (HloInstruction* user : inst_users) {
+    TF_RETURN_IF_ERROR(inst->ReplaceUseWith(user, reassembled_tuple));
   }
+  return absl::OkStatus();
 }
 
-void FixMixedMeshShapeReshardingGetTupleElement(
+absl::Status FixMixedMeshShapeReshardingGetTupleElement(
     HloInstruction* inst, const HloSharding& dst_sharding,
     const Array<int64_t>& device_mesh,
     absl::flat_hash_map<std::string, std::vector<HloSharding>>&
         preserve_shardings) {
-  HloInstruction* operand = inst->mutable_operand(0);
-  auto input_tuple_sharding = operand->sharding();
+  const HloInstruction* operand = inst->operand(0);
+  const HloSharding& input_tuple_sharding = operand->sharding();
   size_t index = inst->tuple_index();
   if (input_tuple_sharding.tuple_elements()[index] == dst_sharding) {
-    return;
+    return absl::OkStatus();
   }
 
-  auto inst_users = inst->users();
+  // Make a copy of the users before things are modified.
+  const PtrVec<HloInstruction*> inst_users = inst->users();
 
   const HloSharding& src_sharding =
       input_tuple_sharding.tuple_elements()[index];
@@ -1438,8 +1450,8 @@ void FixMixedMeshShapeReshardingGetTupleElement(
                  << "GB: " << replace_with->ToString();
   }
 
-  for (auto user : inst_users) {
-    TF_CHECK_OK(inst->ReplaceUseWith(user, replace_with));
+  for (HloInstruction* user : inst_users) {
+    TF_RETURN_IF_ERROR(inst->ReplaceUseWith(user, replace_with));
   }
 
   auto iter = preserve_shardings.find(inst->name());
@@ -1448,21 +1460,22 @@ void FixMixedMeshShapeReshardingGetTupleElement(
         std::vector<HloSharding>(iter->second);
     preserve_shardings.erase(inst->name());
   }
+  return absl::OkStatus();
 }
 
-void FixMixedMeshShapeResharding(HloInstruction* inst, int operand_num,
-                                 const HloSharding& dst_sharding,
-                                 const Array<int64_t>& device_mesh,
-                                 ReshardingCache* resharding_cache) {
+absl::Status FixMixedMeshShapeResharding(HloInstruction* inst, int operand_num,
+                                         const HloSharding& dst_sharding,
+                                         const Array<int64_t>& device_mesh,
+                                         ReshardingCache* resharding_cache) {
   HloInstruction* operand = inst->mutable_operand(operand_num);
   if (operand->opcode() == HloOpcode::kOutfeed ||
       operand->opcode() == HloOpcode::kSendDone) {
-    return;
+    return absl::OkStatus();
   }
 
   CHECK(operand->has_sharding()) << inst->name() << " " << operand->name();
   if (operand->sharding() == dst_sharding) {
-    return;
+    return absl::OkStatus();
   }
 
   if (operand->shape().IsToken()) {
@@ -1479,7 +1492,8 @@ void FixMixedMeshShapeResharding(HloInstruction* inst, int operand_num,
         nullptr;
     if (resharding_cache != nullptr) {
       cache_vector = &((*resharding_cache)[operand]);
-      for (auto& entry : *cache_vector) {
+      for (const std::pair<HloSharding, HloInstruction*>& entry :
+           *cache_vector) {
         if (entry.first == dst_sharding) {
           replace_with = entry.second;
         }
@@ -1504,8 +1518,9 @@ void FixMixedMeshShapeResharding(HloInstruction* inst, int operand_num,
                    << "GB: " << replace_with->ToString();
     }
 
-    TF_CHECK_OK(inst->ReplaceOperandWith(operand_num, replace_with));
+    TF_RETURN_IF_ERROR(inst->ReplaceOperandWith(operand_num, replace_with));
   }
+  return absl::OkStatus();
 }
 
 bool IsParameterConvert(const HloInstruction* inst) {

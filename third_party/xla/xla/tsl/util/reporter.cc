@@ -24,20 +24,20 @@ namespace tsl {
 TestReportFile::TestReportFile(const string& fname, const string& test_name)
     : closed_(true), fname_(fname), test_name_(test_name) {}
 
-Status TestReportFile::Append(const string& content) {
-  if (closed_) return OkStatus();
+absl::Status TestReportFile::Append(const string& content) {
+  if (closed_) return absl::OkStatus();
   return log_file_->Append(content);
 }
 
-Status TestReportFile::Close() {
-  if (closed_) return OkStatus();
+absl::Status TestReportFile::Close() {
+  if (closed_) return absl::OkStatus();
   closed_ = true;
   return log_file_->Close();
 }
 
-Status TestReportFile::Initialize() {
+absl::Status TestReportFile::Initialize() {
   if (fname_.empty()) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   string mangled_fname = strings::StrCat(
       fname_, absl::StrJoin(str_util::Split(test_name_, '/'), "__"));
@@ -50,7 +50,7 @@ Status TestReportFile::Initialize() {
   TF_RETURN_IF_ERROR(log_file_->Flush());
 
   closed_ = false;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 TestReporter::TestReporter(const string& fname, const string& test_name)
@@ -58,8 +58,8 @@ TestReporter::TestReporter(const string& fname, const string& test_name)
   benchmark_entry_.set_name(test_name);
 }
 
-Status TestReporter::Close() {
-  if (report_file_.IsClosed()) return OkStatus();
+absl::Status TestReporter::Close() {
+  if (report_file_.IsClosed()) return absl::OkStatus();
 
   tensorflow::BenchmarkEntries entries;
   *entries.add_entry() = benchmark_entry_;
@@ -69,36 +69,37 @@ Status TestReporter::Close() {
   return report_file_.Close();
 }
 
-Status TestReporter::Benchmark(int64_t iters, double cpu_time, double wall_time,
-                               double throughput) {
-  if (report_file_.IsClosed()) return OkStatus();
+absl::Status TestReporter::Benchmark(int64_t iters, double cpu_time,
+                                     double wall_time, double throughput) {
+  if (report_file_.IsClosed()) return absl::OkStatus();
   benchmark_entry_.set_iters(iters);
   benchmark_entry_.set_cpu_time(cpu_time / iters);
   benchmark_entry_.set_wall_time(wall_time / iters);
   benchmark_entry_.set_throughput(throughput);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status TestReporter::SetProperty(const string& name, const string& value) {
-  if (report_file_.IsClosed()) return OkStatus();
+absl::Status TestReporter::SetProperty(const string& name,
+                                       const string& value) {
+  if (report_file_.IsClosed()) return absl::OkStatus();
   (*benchmark_entry_.mutable_extras())[name].set_string_value(value);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status TestReporter::SetProperty(const string& name, double value) {
-  if (report_file_.IsClosed()) return OkStatus();
+absl::Status TestReporter::SetProperty(const string& name, double value) {
+  if (report_file_.IsClosed()) return absl::OkStatus();
   (*benchmark_entry_.mutable_extras())[name].set_double_value(value);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status TestReporter::AddMetric(const string& name, double value) {
-  if (report_file_.IsClosed()) return OkStatus();
+absl::Status TestReporter::AddMetric(const string& name, double value) {
+  if (report_file_.IsClosed()) return absl::OkStatus();
   auto* metric = benchmark_entry_.add_metrics();
   metric->set_name(name);
   metric->set_value(value);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status TestReporter::Initialize() { return report_file_.Initialize(); }
+absl::Status TestReporter::Initialize() { return report_file_.Initialize(); }
 
 }  // namespace tsl

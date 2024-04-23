@@ -1,4 +1,4 @@
-load("@local_tsl//tsl:tsl.default.bzl", "tsl_pybind_extension")
+load("@local_xla//xla/tsl:tsl.default.bzl", "tsl_pybind_extension")
 load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
 load("//tensorflow:strict.default.bzl", "py_strict_test")
 

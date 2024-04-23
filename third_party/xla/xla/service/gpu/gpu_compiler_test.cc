@@ -1,3 +1,4 @@
+#include "xla/service/gpu/gpu_compiler.h"
 /* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -33,6 +34,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/executable.h"
+#include "xla/service/gpu/autotuner_util.h"
+#include "xla/service/gpu/gpu_hlo_schedule.h"
 #include "xla/service/gpu/metrics.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/pattern_matcher.h"
@@ -41,7 +44,9 @@ limitations under the License.
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/env.h"
+#include "tsl/platform/path.h"
 #include "tsl/platform/statusor.h"
+#include "tsl/platform/test.h"
 
 namespace xla {
 namespace gpu {
@@ -55,10 +60,13 @@ using ::testing::TempDir;
 
 class GpuCompilerTest : public HloTestBase {
  public:
-  absl::StatusOr<std::unique_ptr<BufferAssignment>> AssignBuffers(
-      HloModule* module) {
+  absl::Status Schedule(HloModule* module) {
     auto compiler = backend().compiler();
-    return compiler->AssignBuffers(module, backend().default_stream_executor());
+    const se::DeviceDescription& gpu_device_info =
+        backend().default_stream_executor()->GetDeviceDescription();
+    TF_RETURN_IF_ERROR(ScheduleGpuModule(module, 4, gpu_device_info).status());
+    return tensorflow::down_cast<GpuCompiler*>(compiler)
+        ->RunPostSchedulingPipelines(module, 4 * 1024 * 1024, gpu_device_info);
   }
 };
 
@@ -311,7 +319,7 @@ ENTRY main {
   EXPECT_EQ(while_op->while_body()->root_instruction()->operand(1)->opcode(),
             HloOpcode::kCopy);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto buffer_assignment, AssignBuffers(module.get()));
+  TF_ASSERT_OK(Schedule(module.get()));
   EXPECT_EQ(CountCopies(*module), 4);
   module->entry_computation()->root_instruction();
   while_op = root->operand(0)->operand(0);
@@ -355,10 +363,18 @@ ENTRY main {
   config.set_debug_options(triton_enabled_debug_options);
   config.set_replica_count(1);
   config.set_num_partitions(1);
+
+  // Load autotuning DB. We shouldn't depend on actual execution times in a unit
+  // test.
+  std::string path =
+      tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "service", "gpu",
+                        "gpu_compiler_test_autotune_db.textproto");
+  TF_EXPECT_OK(AutotunerUtil::LoadAutotuneResultsFromFile(path));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string, config));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> triton_enabled_module,
                           GetOptimizedModule(std::move(module)));
+  AutotunerUtil::ClearAutotuneResults();
   DebugOptions triton_disabled_debug_options = GetDebugOptionsForTest();
   triton_disabled_debug_options.set_xla_gpu_enable_address_computation_fusion(
       false);

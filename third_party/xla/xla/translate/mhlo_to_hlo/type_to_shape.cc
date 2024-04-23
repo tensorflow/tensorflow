@@ -15,35 +15,40 @@ limitations under the License.
 
 #include "xla/translate/mhlo_to_hlo/type_to_shape.h"
 
+#include <algorithm>
+#include <cstdint>
 #include <numeric>
 #include <optional>
-#include <string>
 #include <tuple>
+#include <utility>
 #include <vector>
 
+#include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/SparseTensor/IR/Enums.h"  // from @llvm-project
 #include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"  // from @llvm-project
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "xla/mlir/utils/type_util.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
-#include "xla/primitive_util.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/statusor.h"
 #include "xla/xla_data.pb.h"
 
 using ::int64_t;
-using mlir::IntegerType;
 using mlir::MemRefType;
 using mlir::RankedTensorType;
 using mlir::ShapedType;
 using mlir::VectorType;
 using mlir::mhlo::TypeExtensionsAttr;
 using xla::PrimitiveType;
-using xla::ShapeUtil;
 
 namespace xla {
 
@@ -206,7 +211,8 @@ Shape TypeToShape(mlir::Type type) {
     }
     return ShapeUtil::MakeTupleShape(shapes);
 
-  } else if (type.isa<mlir::mhlo::TokenType>()) {
+  } else if (type.isa<mlir::mhlo::TokenType>() ||
+             type.isa<mlir::stablehlo::TokenType>()) {
     return ShapeUtil::MakeTokenShape();
   } else if (auto bundle_type = type.dyn_cast<mlir::mhlo::AsyncBundleType>()) {
     auto tuple_type =

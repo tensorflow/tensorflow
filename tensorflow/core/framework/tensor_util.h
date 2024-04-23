@@ -49,7 +49,7 @@ void DeepCopy(const Tensor& input, Tensor* output);
 // REQUIRES: Each member of 'tensors' must point to data stored in CPU memory.
 // REQUIRES: Each member of 'tensors' must be a Tensor of a copy-able type if it
 //           is not appropriately memory-aligned.
-Status Concat(const gtl::ArraySlice<Tensor>& tensors,
+Status Concat(const absl::Span<const Tensor>& tensors,
               Tensor* result) TF_MUST_USE_RESULT;
 
 // Splits 'tensor' into 'sizes.size()' individual tensors, along the 0th
@@ -62,7 +62,7 @@ Status Concat(const gtl::ArraySlice<Tensor>& tensors,
 //           appropriately memory-aligned.
 //
 // Split() and Concat() are inverse operations.
-Status Split(const Tensor& tensor, const gtl::ArraySlice<int64_t>& sizes,
+Status Split(const Tensor& tensor, const absl::Span<const int64_t>& sizes,
              std::vector<Tensor>* result) TF_MUST_USE_RESULT;
 
 namespace internal {

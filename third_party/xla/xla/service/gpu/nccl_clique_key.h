@@ -30,6 +30,8 @@ limitations under the License.
 
 namespace xla::gpu {
 
+TSL_LIB_GTL_DEFINE_INT_TYPE(NcclStreamId, uint64_t);
+
 // A standalone library without any dependencies on NCCL that allows us to
 // include this header in all of XLA without worrying about NCCL availability.
 
@@ -58,9 +60,12 @@ constexpr static int64_t kAsyncStreamTotal =
 
 // Assigns a unique ID to a stream for asynchronous or synchronous execution.
 // These IDs can be used, for example, to look up the NCCL communicator.
-inline uint64_t GetStreamId(
-    bool is_async, AsyncStreamKind stream_kind = AsyncStreamKind::kCollective) {
-  return is_async ? static_cast<int64_t>(stream_kind) + 1 : 0;
+inline NcclStreamId GetStreamId(
+    uint64_t main_stream_id, bool is_async,
+    AsyncStreamKind stream_kind = AsyncStreamKind::kCollective) {
+  return NcclStreamId(is_async ? (main_stream_id << 3) +
+                                     static_cast<uint64_t>(stream_kind) + 1
+                               : main_stream_id << 3);
 }
 
 //===----------------------------------------------------------------------===//
@@ -75,12 +80,13 @@ inline uint64_t GetStreamId(
 class NcclCliqueKey {
  public:
   explicit NcclCliqueKey(
-      std::vector<GlobalDeviceId> devices, int64_t stream_id = 0,
+      std::vector<GlobalDeviceId> devices,
+      NcclStreamId stream_id = NcclStreamId(0),
       AsyncStreamKind stream_kind = AsyncStreamKind::kCollective);
 
   absl::Span<const GlobalDeviceId> devices() const;
 
-  int64_t stream_id() const;
+  NcclStreamId stream_id() const;
 
   // Returns the rank of the global device in the clique.
   std::optional<int64_t> rank(GlobalDeviceId id) const;
@@ -105,7 +111,7 @@ class NcclCliqueKey {
 
  private:
   std::vector<GlobalDeviceId> devices_;
-  int64_t stream_id_;
+  NcclStreamId stream_id_;
   AsyncStreamKind stream_kind_;
 };
 

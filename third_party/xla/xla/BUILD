@@ -1,5 +1,3 @@
-load("@local_tsl//tsl:tsl.bzl", "internal_visibility")
-load("@local_tsl//tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
 load(
     "@local_tsl//tsl/platform:build_config.bzl",
     "tf_proto_library",
@@ -9,6 +7,8 @@ load("//third_party/compute_library:build_defs.bzl", "if_enable_acl")
 
 # Placeholder: load py_proto_library
 load("//xla:xla.bzl", "xla_cc_test", "xla_py_proto_library")
+load("//xla/tsl:tsl.bzl", "internal_visibility")
+load("//xla/tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -241,6 +241,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     visibility = internal_visibility([":friends"]),
     deps = [
+        "@com_google_absl//absl/strings",
         "@eigen_archive//:eigen3",
         "@local_tsl//tsl/platform:ml_dtypes",
     ],
@@ -250,9 +251,7 @@ xla_cc_test(
     name = "types_test",
     size = "small",
     srcs = ["types_test.cc"],
-    visibility = [
-        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
-    ],
+    visibility = ["//visibility:private"],
     deps = [
         ":test",
         ":types",
@@ -319,7 +318,7 @@ cc_library(
         "statusor.h",
     ],
     linkopts = select({
-        "@local_tsl//tsl:freebsd": ["-lexecinfo"],
+        "//xla/tsl:freebsd": ["-lexecinfo"],
         "//conditions:default": [],
     }),
     visibility = ["//visibility:public"],
@@ -597,6 +596,7 @@ cc_library(
         ":array4d",
         ":permutation_util",
         ":printer",
+        ":shape_tree",
         ":shape_util",
         ":status",
         ":status_macros",
@@ -610,7 +610,6 @@ cc_library(
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/functional:function_ref",
-        "@com_google_absl//absl/hash",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
@@ -636,6 +635,7 @@ xla_cc_test(
         ":array4d",
         ":literal",
         ":literal_util",
+        ":shape_tree",
         ":shape_util",
         ":status",
         ":test",

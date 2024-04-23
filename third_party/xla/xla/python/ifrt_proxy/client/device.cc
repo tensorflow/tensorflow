@@ -14,44 +14,43 @@
 
 #include "xla/python/ifrt_proxy/client/device.h"
 
-#include <memory>
-
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/literal.h"
-#include "xla/pjrt/pjrt_client.h"
-#include "xla/pjrt/pjrt_future.h"
+#include "xla/python/ifrt/device.h"
 
 namespace xla {
 namespace ifrt {
 namespace proxy {
 
-std::unique_ptr<xla::ScopedAsyncTrackingEvent> Device::CreateAsyncTrackingEvent(
-    absl::string_view description) const {
-  return nullptr;
+ifrt::Client* Device::client() const { return client_; }
+
+DeviceId Device::Id() const { return DeviceId(description_.id()); }
+
+bool Device::IsAddressable() const { return is_addressable_; }
+
+absl::string_view Device::Kind() const { return description_.device_kind(); }
+absl::string_view Device::ToString() const { return description_.ToString(); }
+
+absl::string_view Device::DebugString() const {
+  return description_.DebugString();
 }
 
-absl::Status Device::TransferToInfeed(const xla::LiteralSlice& literal) {
-  return absl::UnimplementedError("Device does not support TransferToInfeed");
-}
+absl::Span<ifrt::Memory* const> Device::Memories() const { return memories_; }
 
-absl::Status Device::TransferFromOutfeed(xla::MutableBorrowingLiteral literal) {
-  return absl::UnimplementedError(
-      "Device does not support TransferFromOutfeed");
-}
-
-absl::Span<xla::PjRtMemorySpace* const> Device::memory_spaces() const {
-  return memory_spaces_;
-}
-
-absl::StatusOr<xla::PjRtMemorySpace*> Device::default_memory_space() const {
-  if (default_memory_space_ == nullptr) {
-    return absl::UnimplementedError(
-        "Device does not support default_memory_space");
+absl::StatusOr<ifrt::Memory*> Device::DefaultMemory() const {
+  if (default_memory_ == nullptr) {
+    return absl::UnimplementedError("Device does not support default_memory");
   }
-  return default_memory_space_;
+  return default_memory_;
+}
+
+int Device::ProcessIndex() const { return description_.process_index(); }
+
+const absl::flat_hash_map<std::string, PjRtDeviceAttribute>&
+Device::Attributes() const {
+  return description_.Attributes();
 }
 
 char Device::ID = 0;  // NOLINT

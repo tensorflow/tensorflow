@@ -144,7 +144,7 @@ Status LowerHloToJITInvocation(mlir::ModuleOp module,
   if (failed(pm.run(module))) {
     return absl::InternalError("Lowering HLO to JIT invocation failed.");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status LowerHlotoLoops(mlir::ModuleOp module,
@@ -236,7 +236,7 @@ Status LowerHlotoLoops(mlir::ModuleOp module,
   if (failed(pm.run(module))) {
     return absl::InternalError("Lowering HLO to loops failed.");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status LowerLoopsToGPU(mlir::ModuleOp module, bool index_64bit,
@@ -305,7 +305,7 @@ Status LowerLoopsToGPU(mlir::ModuleOp module, bool index_64bit,
   if (failed(pm.run(module))) {
     return absl::InternalError("Lowering to GPU kernels failed.");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status LowerKernelBodiesToLowLevelIr(mlir::ModuleOp module,
@@ -350,7 +350,7 @@ Status LowerKernelBodiesToLowLevelIr(mlir::ModuleOp module,
         "Lowering to low-level device IR failed.");
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status AmendKernelLLVMIRWithStaticKnowledge(mlir::ModuleOp module,
@@ -366,7 +366,7 @@ Status AmendKernelLLVMIRWithStaticKnowledge(mlir::ModuleOp module,
   return failed(pm.run(module))
              ? tensorflow::errors::Internal(
                    "Amending LLVMIR with static knowledge failed.")
-             : OkStatus();
+             : absl::OkStatus();
 }
 
 Status GenerateDeviceCode(mlir::ModuleOp module,
@@ -387,7 +387,7 @@ Status GenerateDeviceCode(mlir::ModuleOp module,
 
   return failed(pm.run(module))
              ? tensorflow::errors::Internal("Generating device code failed.")
-             : OkStatus();
+             : absl::OkStatus();
 }
 
 Status LowerHostSideToFinalForm(mlir::ModuleOp module, bool apply_cl_options) {
@@ -402,7 +402,7 @@ Status LowerHostSideToFinalForm(mlir::ModuleOp module, bool apply_cl_options) {
 
   return failed(pm.run(module)) ? tensorflow::errors::Internal(
                                       "Final lowering of host side failed.")
-                                : OkStatus();
+                                : absl::OkStatus();
 }
 
 }  // namespace

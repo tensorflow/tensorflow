@@ -160,13 +160,13 @@ f {
   a1 = s8[] add(p1, p1)
   b1 = s8[10000] broadcast(a1), dimensions={}
   a2 = s8[10000] add(b1, b1)
-  s1 = s8[8000] slice(a2), slice={[0:8000]}
-  s2 = s8[8000] slice(a2), slice={[2000:10000]}
+  slice1 = s8[8000] slice(a2), slice={[0:8000]}
+  slice2 = s8[8000] slice(a2), slice={[2000:10000]}
   c = s8[10000] constant({...})
-  sc1 = s8[8000] slice(c), slice={[0:8000]}
-  sc2 = s8[8000] slice(c), slice={[2000:10000]}
-  a3 = s8[8000] add(s1, s2)
-  a4 = s8[8000] add(sc1, sc2)
+  slicec1 = s8[8000] slice(c), slice={[0:8000]}
+  slicec2 = s8[8000] slice(c), slice={[2000:10000]}
+  a3 = s8[8000] add(slice1, slice2)
+  a4 = s8[8000] add(slicec1, slicec2)
   ROOT a5 = s8[8000] add(a3, a4)
 }
 
@@ -254,9 +254,9 @@ f {
   p1 = s8[100] parameter(0)
   i1 = s8[100] iota(), iota_dimension=0
   a1 = s8[100] add(p1, i1)
-  s1 = s8[1] slice(a1), slice={[0:1]}
-  s2 = s8[1] slice(a1), slice={[3:4]}
-  ROOT r = s8[1] add(s1, s2)
+  slice1 = s8[1] slice(a1), slice={[0:1]}
+  slice2 = s8[1] slice(a1), slice={[3:4]}
+  ROOT r = s8[1] add(slice1, slice2)
 }
 
 ENTRY e {

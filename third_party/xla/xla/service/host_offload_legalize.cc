@@ -401,6 +401,42 @@ absl::StatusOr<bool> ProcessAnnotationForCopyMovement(
         VLOG(5) << "Couldn't find annotation for consumer instruction in chain";
         return false;
       }
+
+      // Fix up while body's root instruction shape along the way.
+      if (annotation->IsCustomCall(
+              host_memory_offload_annotations::kMoveToDeviceCustomCallTarget)) {
+        for (HloInstruction* user : annotation->users()) {
+          HloInstruction* root_instruction =
+              annotation->parent()->root_instruction();
+          if (root_instruction == user &&
+              root_instruction->opcode() == HloOpcode::kTuple) {
+            auto callers =
+                call_graph->GetComputationCallers(annotation->parent());
+            if (callers.size() != 1 ||
+                callers[0]->opcode() != HloOpcode::kWhile) {
+              return absl::InvalidArgumentError(
+                  "Expected to be called only by one caller and caller be a "
+                  "While");
+            }
+            for (int i = 0; i < user->operands().size(); i++) {
+              if (user->operands()[i] == annotation &&
+                  annotation->operand(0)->opcode() ==
+                      HloOpcode::kGetTupleElement &&
+                  annotation->operand(0)->operand(0)->opcode() ==
+                      HloOpcode::kParameter &&
+                  annotation->operand(0)->tuple_index() == i) {
+                // A special case where move-to-device is put into the result
+                // tuple element at the same index as where the move-to-device
+                // gets the data from. In this case, while loop's result tuple
+                // should not use move-to-device since at loop entry it's still
+                // on host.
+                user->ReplaceOperandWith(i, annotation->mutable_operand(0))
+                    .IgnoreError();
+              }
+            }
+          }
+        }
+      }
       stack.pop_back();
       continue;
     }
@@ -419,9 +455,12 @@ absl::StatusOr<bool> ProcessAnnotationForCopyMovement(
       }
     }
   }
+
   auto update_shape_layout =
       [&](const std::pair<HloInstruction*, int>& instruction,
           HloInstruction* copy_to_move) {
+        VLOG(5) << "Update shape layout: " << instruction.first->ToString()
+                << " " << instruction.second;
         // Update shape. Tuple shape vs array shape.
         if (instruction.second != -1) {
           *instruction.first->mutable_shape()
@@ -431,7 +470,24 @@ absl::StatusOr<bool> ProcessAnnotationForCopyMovement(
           *instruction.first->mutable_shape()->mutable_layout() =
               copy_to_move->operand(0)->shape().layout();
         }
+
+        if (instruction.first->opcode() == HloOpcode::kWhile) {
+          // Fix up while body's root instruction shape and condition's
+          // parameter shape for while loops.
+          Shape new_shape = copy_to_move->operand(0)->shape();
+          *instruction.first->while_body()
+               ->root_instruction()
+               ->mutable_shape()
+               ->mutable_tuple_shapes(instruction.second)
+               ->mutable_layout() = new_shape.layout();
+          *instruction.first->while_condition()
+               ->parameter_instruction(0)
+               ->mutable_shape()
+               ->mutable_tuple_shapes(instruction.second)
+               ->mutable_layout() = new_shape.layout();
+        }
       };
+
   // Process all copies one at a time from the last to the first and push it to
   // its specific user.
   while (!copies_to_move.empty()) {
@@ -440,8 +496,8 @@ absl::StatusOr<bool> ProcessAnnotationForCopyMovement(
     stack.clear();
     stack.push_back(copy_to_move);
     while (!stack.empty()) {
-      VLOG(5) << "Current value before down: "
-              << stack.back().first->ToString();
+      VLOG(5) << "Current value before down: " << stack.back().first->ToString()
+              << " " << stack.back().second;
       auto current_value_down =
           WalkDownMemoryOffload(stack.back(), *call_graph);
       if (!current_value_down.ok()) {

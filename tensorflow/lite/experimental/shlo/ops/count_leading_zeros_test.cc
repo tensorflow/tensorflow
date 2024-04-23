@@ -22,7 +22,9 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/numeric/bits.h"
 #include "tensorflow/lite/experimental/shlo/data_type.h"
+#include "tensorflow/lite/experimental/shlo/i4.h"
 #include "tensorflow/lite/experimental/shlo/ops/test_util.h"
 #include "tensorflow/lite/experimental/shlo/ops/unary_elementwise_test_util.h"
 #include "tensorflow/lite/experimental/shlo/shape.h"
@@ -49,25 +51,32 @@ namespace {
 struct CountLeadingZeros {
   template <class T>
   T operator()(T v) const {
-    return absl::countl_zero(static_cast<std::make_unsigned_t<T>>(v));
+    if constexpr (std::is_same_v<I4, T>) {
+      return I4(absl::countl_zero(static_cast<uint8_t>(v << 4 | 0xf)));
+    } else {
+      return absl::countl_zero(static_cast<std::make_unsigned_t<T>>(v));
+    }
   }
 } count_leading_zeros_ref;
 
 template <class T>
 struct CountLeadingZerosFunctorTest : ::testing::Test {};
 
-using CountLeadingZerosTypes = ::testing::Types<int32_t, int16_t, int8_t>;
+using CountLeadingZerosTypes = ::testing::Types<int32_t, int16_t, int8_t, I4>;
 
 TYPED_TEST_SUITE(CountLeadingZerosFunctorTest, CountLeadingZerosTypes);
 
 TYPED_TEST(CountLeadingZerosFunctorTest, GivesCorrectResults) {
-  constexpr TypeParam byte_count = 8 * sizeof(TypeParam);
+  int64_t bit_count = 8 * sizeof(TypeParam);
+  if constexpr (std::is_same_v<I4, TypeParam>) {
+    bit_count = 4;
+  }
   EXPECT_EQ(count_leading_zeros_ref(std::numeric_limits<TypeParam>::lowest()),
             0);
   EXPECT_EQ(count_leading_zeros_ref(static_cast<TypeParam>(-1)), 0);
-  EXPECT_EQ(count_leading_zeros_ref(static_cast<TypeParam>(0)), byte_count);
-  EXPECT_EQ(count_leading_zeros_ref(static_cast<TypeParam>(1)), byte_count - 1);
-  EXPECT_EQ(count_leading_zeros_ref(static_cast<TypeParam>(2)), byte_count - 2);
+  EXPECT_EQ(count_leading_zeros_ref(static_cast<TypeParam>(0)), bit_count);
+  EXPECT_EQ(count_leading_zeros_ref(static_cast<TypeParam>(1)), bit_count - 1);
+  EXPECT_EQ(count_leading_zeros_ref(static_cast<TypeParam>(2)), bit_count - 2);
   EXPECT_EQ(count_leading_zeros_ref(std::numeric_limits<TypeParam>::max()), 1);
 }
 

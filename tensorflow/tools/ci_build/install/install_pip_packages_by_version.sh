@@ -31,7 +31,9 @@ JAX_PACKAGES=(
   "wheel"
   "cloudpickle"
   "colorama>=0.4.4"
-  "matplotlib"
+  # TODO(phawkins): reenable matplotlib once it makes a NumPy 2.0 compatible
+  # release.
+  # "matplotlib"
   "pillow>=9.1.0"
   "rich"
   "absl-py"
@@ -40,7 +42,7 @@ JAX_PACKAGES=(
   "opt-einsum"
   "auditwheel"
   "typing_extensions"
-  "ml_dtypes>=0.3.0"
+  "ml_dtypes>=0.4.0"
   "importlib_metadata>=4.6"
   "flatbuffers"
   "build"
@@ -91,13 +93,9 @@ else
 fi
 
 if [[ "$2" == "jax" ]]; then
-  # Special casing by version of Python
-  # E.g., numpy supports py3.11 only from 1.23.4
-  if [[ ${PYTHON_VERSION} -eq 12 ]]; then
-    "${PIP_INSTALL[@]}" "numpy==1.26.0" "scipy==1.11.2"
-  else
-    "${PIP_INSTALL[@]}" "numpy==1.23.4" "scipy==1.9.3"
-  fi
+  # As of NumPy 2.0, wheels must be built against NumPy 2.0, even if we intend
+  # to deploy them against Numpy 1.
+  "${PIP_INSTALL[@]}" --pre "numpy==2.0.0rc1" "scipy==1.13.0rc1"
 else
   # Special casing by version of Python
   # E.g., numpy supports py3.10 only from 1.21.3

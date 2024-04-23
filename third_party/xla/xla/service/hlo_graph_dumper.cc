@@ -1410,14 +1410,14 @@ std::string HloDotDumper::GetInstructionNodeBackendConfig(
   // !show_backend_config, but this is simpler, and it's not too noisy.)
   std::vector<std::pair<std::string, std::string>> props;
   if (gpu::IsCustomCallToDnnConvolution(*instr)) {
-    StatusOr<gpu::GpuBackendConfig> config =
+    absl::StatusOr<gpu::GpuBackendConfig> config =
         instr->backend_config<gpu::GpuBackendConfig>();
     if (config.ok()) {
       props = ExtractCudnnConvBackendConfigProps(
           config->cudnn_conv_backend_config());
     }
   } else if (gpu::IsCublasGemm(*instr)) {
-    StatusOr<gpu::GpuBackendConfig> config =
+    absl::StatusOr<gpu::GpuBackendConfig> config =
         instr->backend_config<gpu::GpuBackendConfig>();
     if (config.ok()) {
       // gemm strides are generally uninteresting (derived from the instruction
@@ -1788,7 +1788,7 @@ NodeFilter MakeNodeFromToFilter(const HloInstruction* from,
 }
 
 absl::Mutex url_renderer_mu(absl::kConstInit);
-std::function<StatusOr<std::string>(absl::string_view)>* url_renderer
+std::function<absl::StatusOr<std::string>(absl::string_view)>* url_renderer
     ABSL_GUARDED_BY(url_renderer_mu) = nullptr;
 
 // Storage for fusion visualization: (module_id, computation_id) -> sequence of
@@ -1836,7 +1836,7 @@ static std::pair<int, int> FusionVisualizerStateKey(
 }  // namespace
 
 // Compress with zlib + b64 encode.
-static StatusOr<std::string> CompressAndEncode(absl::string_view input) {
+static absl::StatusOr<std::string> CompressAndEncode(absl::string_view input) {
   class WritableStringFile : public tsl::WritableFile {
    public:
     explicit WritableStringFile(std::string* data) : data_(data){};
@@ -1877,7 +1877,7 @@ static std::string EscapeJSONString(absl::string_view raw) {
       "\"");
 }
 
-StatusOr<std::string> WrapFusionExplorer(
+absl::StatusOr<std::string> WrapFusionExplorer(
     const FusionVisualizerProgress& visualizer_progress,
     absl::string_view graph_title) {
   if (visualizer_progress.frames.empty()) {
@@ -2097,15 +2097,16 @@ static std::string GraphTitle(const HloComputation& computation) {
   return absl::StrCat(computation.parent()->name(), "_", computation.name());
 }
 
-StatusOr<std::string> WrapFusionExplorer(const HloComputation& computation) {
+absl::StatusOr<std::string> WrapFusionExplorer(
+    const HloComputation& computation) {
   absl::MutexLock lock(&fusion_visualizer_state_mu);
   const FusionVisualizerProgress& visualizer_progress =
       fusion_visualizer_states[FusionVisualizerStateKey(computation)];
   return WrapFusionExplorer(visualizer_progress, GraphTitle(computation));
 }
 
-static StatusOr<std::string> WrapDotInHtml(absl::string_view dot,
-                                           absl::string_view title) {
+static absl::StatusOr<std::string> WrapDotInHtml(absl::string_view dot,
+                                                 absl::string_view title) {
   FusionVisualizerProgress progress;
   progress.AddState(dot, title, std::nullopt);
   return WrapFusionExplorer(progress, title);
@@ -2117,10 +2118,9 @@ static StatusOr<std::string> WrapDotInHtml(absl::string_view dot,
 // returning an error because we want to fail quickly when there's no URL
 // renderer available, and this function runs only after we've done all the work
 // of producing dot for the graph.)
-static StatusOr<std::string> WrapDotInFormat(const HloComputation& computation,
-                                             absl::string_view dot,
-                                             RenderedGraphFormat format)
-    ABSL_EXCLUSIVE_LOCKS_REQUIRED(url_renderer_mu) {
+static absl::StatusOr<std::string> WrapDotInFormat(
+    const HloComputation& computation, absl::string_view dot,
+    RenderedGraphFormat format) ABSL_EXCLUSIVE_LOCKS_REQUIRED(url_renderer_mu) {
   switch (format) {
     case RenderedGraphFormat::kUrl:
       CHECK(url_renderer != nullptr)
@@ -2134,7 +2134,7 @@ static StatusOr<std::string> WrapDotInFormat(const HloComputation& computation,
 }
 
 void RegisterGraphToURLRenderer(
-    std::function<StatusOr<std::string>(absl::string_view)> renderer) {
+    std::function<absl::StatusOr<std::string>(absl::string_view)> renderer) {
   absl::MutexLock lock(&url_renderer_mu);
   if (url_renderer != nullptr) {
     LOG(WARNING) << "Multiple calls to RegisterGraphToURLRenderer. Last call "
@@ -2142,8 +2142,9 @@ void RegisterGraphToURLRenderer(
                     "nondeterministic, this may not be what you want.";
   }
   delete url_renderer;
-  url_renderer = new std::function<StatusOr<std::string>(absl::string_view)>(
-      std::move(renderer));
+  url_renderer =
+      new std::function<absl::StatusOr<std::string>(absl::string_view)>(
+          std::move(renderer));
 }
 
 void RegisterFusionState(const HloComputation& computation,
@@ -2195,7 +2196,8 @@ absl::StatusOr<std::string> RenderGraph(
   return WrapDotInFormat(computation, rendered_dot, format);
 }
 
-StatusOr<std::string> RenderAllComputationsToHtml(const HloModule& module) {
+absl::StatusOr<std::string> RenderAllComputationsToHtml(
+    const HloModule& module) {
   FusionVisualizerProgress progress;
 
   std::vector<HloInstruction*> instrs =
@@ -2233,7 +2235,7 @@ StatusOr<std::string> RenderAllComputationsToHtml(const HloModule& module) {
   return WrapFusionExplorer(progress, module.name());
 }
 
-StatusOr<std::string> RenderNeighborhoodAround(
+absl::StatusOr<std::string> RenderNeighborhoodAround(
     const HloInstruction& node, int radius, RenderedGraphFormat format,
     HloRenderOptions hlo_render_options,
     const absl::flat_hash_set<const HloInstruction*>& boundary,
@@ -2256,7 +2258,7 @@ StatusOr<std::string> RenderNeighborhoodAround(
   return WrapDotInFormat(*node.parent(), rendered_dot, format);
 }
 
-StatusOr<std::string> RenderAllPathsFromTo(
+absl::StatusOr<std::string> RenderAllPathsFromTo(
     const HloInstruction& from, const HloInstruction& to, int64_t max_nodes,
     RenderedGraphFormat format, HloRenderOptions hlo_render_options) {
   absl::MutexLock lock(&url_renderer_mu);

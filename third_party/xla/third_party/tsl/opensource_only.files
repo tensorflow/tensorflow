@@ -22,11 +22,14 @@ third_party/git/BUILD:
 third_party/git/git_configure.bzl:
 third_party/gpus/BUILD:
 third_party/gpus/crosstool/BUILD.rocm.tpl:
+third_party/gpus/crosstool/BUILD.sycl.tpl:
 third_party/gpus/crosstool/BUILD.tpl:
 third_party/gpus/crosstool/BUILD:
 third_party/gpus/crosstool/LICENSE:
 third_party/gpus/crosstool/clang/bin/crosstool_wrapper_driver_is_not_gcc.tpl:
 third_party/gpus/crosstool/clang/bin/crosstool_wrapper_driver_rocm.tpl:
+third_party/gpus/crosstool/clang/bin/crosstool_wrapper_driver_sycl.tpl:
+third_party/gpus/crosstool/sycl_cc_toolchain_config.bzl.tpl:
 third_party/gpus/crosstool/windows/msvc_wrapper_for_nvcc.py.tpl:
 third_party/gpus/cuda/BUILD.tpl:
 third_party/gpus/cuda/BUILD.windows.tpl:
@@ -42,6 +45,10 @@ third_party/gpus/rocm/BUILD:
 third_party/gpus/rocm/build_defs.bzl.tpl:
 third_party/gpus/rocm/rocm_config.h.tpl:
 third_party/gpus/rocm_configure.bzl:
+third_party/gpus/sycl/BUILD.tpl:
+third_party/gpus/sycl/BUILD:
+third_party/gpus/sycl/build_defs.bzl.tpl:
+third_party/gpus/sycl_configure.bzl:
 third_party/grpc/BUILD:
 third_party/implib_so/BUILD:
 third_party/implib_so/get_symbols.py:

@@ -45,7 +45,7 @@ namespace sparse {
 // the values in IX in particular columns (dimensions) of interest.
 class DimComparator {
  public:
-  typedef typename gtl::ArraySlice<int64_t> VarDimArray;
+  typedef absl::Span<const int64_t> VarDimArray;
 
   DimComparator(const TTypes<int64_t>::Matrix& ix, const VarDimArray& order,
                 const VarDimArray& shape)

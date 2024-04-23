@@ -34,7 +34,7 @@ namespace toco {
   auto it = model->operators.begin() + op_index;
   const auto* base_op = it->get();
   if (base_op->type != OperatorType::kSelect) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
   const auto* op = static_cast<const SelectOperator*>(base_op);
 
@@ -43,23 +43,23 @@ namespace toco {
   auto& output_array = model->GetArray(op->outputs[0]);
   if (output_array.data_type == ArrayDataType::kNone) {
     // Yield until the output type has been set by PropagateArrayDataTypes.
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
   if (!output_array.has_shape()) {
     // Yield until the output shape has been set by PropagateFixedShapes.
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   // We require the cond input to be constant.
   if (!IsConstantParameterArray(*model, op->inputs[0])) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
   const Array& cond_array = model->GetArray(op->inputs[0]);
   CHECK(cond_array.data_type == ArrayDataType::kBool)
       << "Only bool conditions are supported";
   const auto& cond_data = cond_array.GetBuffer<ArrayDataType::kBool>().data;
   if (cond_data.empty()) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   // Check if the condition is the same for all elements.
@@ -70,14 +70,14 @@ namespace toco {
           "Cannot resolve %s as constant; cond_array has differing "
           "per-element values",
           LogName(*op));
-      return ::tensorflow::OkStatus();
+      return absl::OkStatus();
     }
   }
 
   // Pass-through the selected input.
   *modified =
       RemoveTrivialPassthroughOp(this, model, op_index, cond_value ? 1 : 2);
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace toco

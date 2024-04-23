@@ -24,7 +24,7 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/stream_executor/stream_executor_internal.h"
+#include "xla/stream_executor/stream_executor_interface.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
@@ -32,7 +32,7 @@ namespace stream_executor {
 
 absl::StatusOr<std::unique_ptr<CommandBuffer>> CommandBuffer::Create(
     StreamExecutor* executor, Mode mode) {
-  return executor->implementation()->CreateCommandBuffer(mode);
+  return executor->CreateCommandBuffer(mode);
 }
 
 absl::StatusOr<std::unique_ptr<CommandBuffer>> CommandBuffer::Trace(

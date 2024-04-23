@@ -101,6 +101,8 @@ limitations under the License.
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 
+using absl::Status;
+using absl::StatusOr;
 using llvm::ArrayRef;
 using mlir::Builder;
 using mlir::DenseElementsAttr;
@@ -115,8 +117,6 @@ using mlir::Value;
 using mlir::func::FuncOp;
 using tflite::OperatorT;
 using tflite::TensorT;
-using xla::Status;
-using xla::StatusOr;
 
 namespace errors = tensorflow::errors;
 namespace tfl = mlir::TFL;
@@ -519,7 +519,7 @@ Status ConvertSubgraphIdxToStablehloRegion(
 
     op_state.addAttribute("body", body_attr);
 
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
   if (auto* opts = op.builtin_options_2.AsStablehloReduceWindowOptions()) {
     int32_t body_idx = opts->body_subgraph_index;
@@ -532,7 +532,7 @@ Status ConvertSubgraphIdxToStablehloRegion(
 
     op_state.addAttribute("body", body_attr);
 
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
   if (auto* opts = op.builtin_options_2.AsStablehloSortOptions()) {
     int32_t comparator_idx = opts->comparator_subgraph_index;
@@ -545,7 +545,7 @@ Status ConvertSubgraphIdxToStablehloRegion(
 
     op_state.addAttribute("comparator", comparator_attr);
 
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
   if (auto* opts = op.builtin_options_2.AsStablehloWhileOptions()) {
     int32_t body_idx = opts->body_subgraph_index;
@@ -566,7 +566,7 @@ Status ConvertSubgraphIdxToStablehloRegion(
     op_state.addAttribute("body", body_attr);
     op_state.addAttribute("cond", cond_attr);
 
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
   if (auto* opts = op.builtin_options_2.AsStablehloScatterOptions()) {
     uint32_t subgraph_idx = opts->update_computation_subgraph_index;
@@ -580,10 +580,10 @@ Status ConvertSubgraphIdxToStablehloRegion(
 
     op_state.addAttribute(kScatterRegionFuncName, subgraph_attr);
 
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
   // skip if not supported
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 Status AddOpIntermediatesForLstm(
@@ -612,7 +612,7 @@ Status AddOpIntermediatesForLstm(
       op_state.addAttribute(named_attr.getName(), named_attr.getValue());
     }
   }
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 // TODO(krzysd) Handle function calls
@@ -747,7 +747,7 @@ StatusOr<Operation*> ConvertOp(
   llvm::SmallVector<mlir::NamedAttribute, 2> attrs;
   auto builtin_code = tflite::GetBuiltinCode(&op_code);
   if (builtin_code == tflite::BuiltinOperator_CUSTOM) {
-    auto status = ::tensorflow::OkStatus();
+    auto status = absl::OkStatus();
 
     std::vector<uint8_t> custom_options;
 

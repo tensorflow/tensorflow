@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/python/ifrt/client.h"
+#include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/nb_class_ptr.h"
 #include "xla/python/pjrt_ifrt/pjrt_client.h"
@@ -124,30 +125,31 @@ class PyClient {
   absl::StatusOr<nb_class_ptr<PyDevice>> DeviceFromLocalHardwareId(
       int local_hardware_id);
 
-  // Returns the PyDevice associated with the given PjRtDevice.
-  nb_class_ptr<PyDevice> GetPyDevice(PjRtDevice* device);
+  // Returns the PyDevice associated with the given ifrt::Device.
+  nb_class_ptr<PyDevice> GetPyDevice(ifrt::Device* device);
 
-  // Returns the PyMemorySpace associated with the given PjRtMemorySpace.
-  nb_class_ptr<PyMemorySpace> GetPyMemorySpace(PjRtMemorySpace* memory_space);
+  // Returns the PyMemorySpace associated with the given ifrt::Memory.
+  nb_class_ptr<PyMemorySpace> GetPyMemorySpace(ifrt::Memory* memory_space);
 
   // Returns a vector of live PyArray objects. PyArray objects may share
   // PjRtBuffers, so there may be duplicates of the same underlying device
   // buffer.
-  std::vector<nanobind::object> LiveBuffersOnDevice(PjRtDevice* device);
+  std::vector<nanobind::object> LiveBuffersOnDevice(ifrt::Device* device);
 
   nanobind::list LiveExecutables();
 
   // TODO(zhangqiaorjc): Remove when we have transparent defragmentation.
   absl::Status Defragment();
 
-  static absl::StatusOr<nanobind::list> MakeCrossHostReceiveBuffers(
-      nb_class_ptr<PyClient> client, absl::Span<const Shape> shapes,
-      PjRtDevice* device);
-
   static absl::StatusOr<nanobind::object> BufferFromPyval(
       nb_class_ptr<PyClient> client, nanobind::handle argument,
-      PjRtDevice* device, bool force_copy,
+      ifrt::Device* device, bool force_copy,
       ifrt::Client::HostBufferSemantics host_buffer_semantics);
+
+  static absl::StatusOr<nb_class_ptr<PyLoadedExecutable>> CompileIfrtProgram(
+      nb_class_ptr<PyClient> client,
+      std::unique_ptr<ifrt::Program> ifrt_program,
+      std::unique_ptr<ifrt::CompileOptions> ifrt_options);
 
   static absl::StatusOr<nb_class_ptr<PyLoadedExecutable>> Compile(
       nb_class_ptr<PyClient> client, std::string mlir_module,
@@ -241,7 +243,7 @@ class PyClient {
   PyArray_Storage* arrays_ = nullptr;
 
   absl::flat_hash_map<ifrt::Device*, nb_class_ptr<PyDevice>> devices_;
-  absl::flat_hash_map<PjRtMemorySpace*, nb_class_ptr<PyMemorySpace>>
+  absl::flat_hash_map<ifrt::Memory*, nb_class_ptr<PyMemorySpace>>
       memory_spaces_;
 };
 

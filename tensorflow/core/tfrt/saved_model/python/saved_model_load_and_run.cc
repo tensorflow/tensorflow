@@ -40,7 +40,7 @@ limitations under the License.
 namespace tensorflow::tfrt_stub {
 using RefCountHandle = tsl::core::RefCountPtr<tensorflow::TensorHandle>;
 
-tensorflow::StatusOr<std::unique_ptr<SavedModel>> LoadSavedModel(
+absl::StatusOr<std::unique_ptr<SavedModel>> LoadSavedModel(
     absl::string_view saved_model_dir,
     const std::unordered_set<std::string>& tags) {
   auto runtime = tensorflow::tfrt_stub::Runtime::Create(

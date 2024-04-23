@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/literal.h"
 #include "xla/pjrt/pjrt_device_description.h"
+#include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
@@ -163,7 +164,7 @@ MockClient::MockClient(std::unique_ptr<xla::ifrt::Client> delegated)
         return delegated_->GetDefaultDeviceAssignment(num_replicas,
                                                       num_partitions);
       });
-  ON_CALL(*this, LookupDevice).WillByDefault([this](int device_id) {
+  ON_CALL(*this, LookupDevice).WillByDefault([this](DeviceId device_id) {
     return delegated_->LookupDevice(device_id);
   });
   ON_CALL(*this, LookupAddressableDevice)
@@ -174,8 +175,14 @@ MockClient::MockClient(std::unique_ptr<xla::ifrt::Client> delegated)
     return delegated_->GetDefaultCompiler();
   });
   ON_CALL(*this, GetTopologyForDevices)
-      .WillByDefault([this](absl::Span<xla::ifrt::Device* const> devices) {
+      .WillByDefault([this](const xla::ifrt::DeviceList& devices) {
         return delegated_->GetTopologyForDevices(devices);
+      });
+  ON_CALL(*this, GetDefaultLayoutForDevice)
+      .WillByDefault([this](xla::ifrt::DType dtype,
+                            absl::Span<const int64_t> dims,
+                            xla::ifrt::Device* device) {
+        return delegated_->GetDefaultLayoutForDevice(dtype, dims, device);
       });
 }
 // LINT.ThenChange()
@@ -188,28 +195,11 @@ MockDevice::MockDevice(Device* delegated) : delegated_(delegated) {
   ON_CALL(*this, IsAddressable).WillByDefault([this]() {
     return delegated_->IsAddressable();
   });
-  ON_CALL(*this, description)
-      .WillByDefault([this]() -> const xla::PjRtDeviceDescription& {
-        return delegated_->description();
-      });
-  ON_CALL(*this, global_device_id).WillByDefault([this]() {
-    return delegated_->global_device_id();
+  ON_CALL(*this, Id).WillByDefault([this]() { return delegated_->Id(); });
+  ON_CALL(*this, ProcessIndex).WillByDefault([this]() {
+    return delegated_->ProcessIndex();
   });
-  ON_CALL(*this, process_index).WillByDefault([this]() {
-    return delegated_->process_index();
-  });
-  ON_CALL(*this, local_device_id).WillByDefault([this]() {
-    return delegated_->local_device_id();
-  });
-  ON_CALL(*this, local_hardware_id_typed).WillByDefault([this]() {
-    return delegated_->local_hardware_id_typed();
-  });
-  ON_CALL(*this, local_hardware_id).WillByDefault([this]() {
-    return delegated_->local_hardware_id();
-  });
-  ON_CALL(*this, device_kind).WillByDefault([this]() {
-    return delegated_->device_kind();
-  });
+  ON_CALL(*this, Kind).WillByDefault([this]() { return delegated_->Kind(); });
   ON_CALL(*this, DebugString).WillByDefault([this]() {
     return delegated_->DebugString();
   });
@@ -222,26 +212,11 @@ MockDevice::MockDevice(Device* delegated) : delegated_(delegated) {
               -> const absl::flat_hash_map<std::string, PjRtDeviceAttribute>& {
             return delegated_->Attributes();
           });
-  ON_CALL(*this, CreateAsyncTrackingEvent)
-      .WillByDefault([this](absl::string_view description) {
-        return delegated_->CreateAsyncTrackingEvent(description);
-      });
-  ON_CALL(*this, TransferToInfeed)
-      .WillByDefault([this](const LiteralSlice& literal) {
-        return delegated_->TransferToInfeed(literal);
-      });
-  ON_CALL(*this, TransferFromOutfeed)
-      .WillByDefault([this](MutableBorrowingLiteral literal) {
-        return delegated_->TransferFromOutfeed(std::move(literal));
-      });
-  ON_CALL(*this, default_memory_space).WillByDefault([this]() {
-    return delegated_->default_memory_space();
+  ON_CALL(*this, DefaultMemory).WillByDefault([this]() {
+    return delegated_->DefaultMemory();
   });
-  ON_CALL(*this, GetAllocatorStats).WillByDefault([this]() {
-    return delegated_->GetAllocatorStats();
-  });
-  ON_CALL(*this, memory_spaces).WillByDefault([this]() {
-    return delegated_->memory_spaces();
+  ON_CALL(*this, Memories).WillByDefault([this]() {
+    return delegated_->Memories();
   });
 }
 // LINT.ThenChange()

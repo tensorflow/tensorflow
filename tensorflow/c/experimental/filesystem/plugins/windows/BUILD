@@ -31,8 +31,5 @@ cc_library(
         "nobuilder",
         "notap",
     ],
-    deps = [
-        "//tensorflow/c:tf_status",
-        "//tensorflow/c/experimental/filesystem:filesystem_interface",
-    ],
+    deps = ["//tensorflow/c/experimental/filesystem:filesystem_interface"],
 )

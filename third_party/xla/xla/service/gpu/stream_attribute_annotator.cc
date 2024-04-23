@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/gpu_fusible.h"
 #include "xla/service/gpu/runtime/thunk.h"
 #include "xla/statusor.h"
 #include "xla/util.h"
@@ -102,6 +103,39 @@ absl::StatusOr<bool> AnnotateStreamAttributesForCopyStart(
   return true;
 }
 
+absl::StatusOr<bool> WrapIntoFusionAndAnnotateStreamAttributes(
+    HloInstruction* instruction, int64_t channel_id,
+    GpuBackendConfig& instr_gpu_config) {
+  auto* computation = instruction->parent();
+  auto* module = computation->parent();
+  auto* fusion_instruction =
+      computation->AddInstruction(HloInstruction::CreateFusion(
+          instruction->shape(), ChooseFusionKind(*instruction, *instruction),
+          instruction));
+  const absl::string_view wrapped_opcode =
+      HloOpcodeString(instruction->opcode());
+  module->SetAndUniquifyInstrName(fusion_instruction,
+                                  absl::StrCat("wrapped_", wrapped_opcode));
+  module->SetAndUniquifyComputationName(
+      fusion_instruction->fused_instructions_computation(),
+      absl::StrCat("wrapped_", wrapped_opcode, "_computation"));
+  if (module->has_schedule()) {
+    module->schedule().replace_instruction(computation, instruction,
+                                           fusion_instruction);
+  }
+  TF_RETURN_IF_ERROR(fusion_instruction->CopyAllControlDepsFrom(instruction));
+  TF_RETURN_IF_ERROR(instruction->DropAllControlDeps());
+  TF_RETURN_IF_ERROR(instruction->ReplaceAllUsesWith(fusion_instruction));
+  TF_RETURN_IF_ERROR(computation->RemoveInstruction(instruction));
+
+  instr_gpu_config.set_operation_queue_id(channel_id);
+  TF_RETURN_IF_ERROR(fusion_instruction->set_backend_config(instr_gpu_config));
+  VLOG(3) << "Add async stream " << channel_id << " and wrapped instruction "
+          << instruction->ToString();
+  VLOG(3) << "  Fusion wrapper: " << fusion_instruction->ToString();
+  return true;
+}
+
 absl::StatusOr<bool> AnnotateStreamAttributesForUsers(
     HloInstruction* instr, GpuBackendConfig& instr_gpu_config) {
   bool changed = false;
@@ -140,7 +174,8 @@ absl::StatusOr<bool> StreamAttributeAnnotator::Run(
       5, "StreamAttributeAnnotator::Run(), before:\n" + module->ToString());
   bool changed = false;
   int64_t channel_id = hlo_query::NextChannelId(*module);
-  for (const HloComputation* comp : module->computations(execution_threads)) {
+  for (const HloComputation* comp :
+       module->MakeComputationPostOrder(execution_threads)) {
     for (HloInstruction* instr : comp->MakeInstructionPostOrder()) {
       auto instr_gpu_config = instr->backend_config<GpuBackendConfig>();
       if (!instr_gpu_config.ok()) {
@@ -157,6 +192,14 @@ absl::StatusOr<bool> StreamAttributeAnnotator::Run(
       } else if (instr->opcode() == HloOpcode::kCopyStart) {
         TF_ASSIGN_OR_RETURN(bool comp_result,
                             AnnotateStreamAttributesForCopyStart(
+                                instr, channel_id, instr_gpu_config.value()));
+        changed |= comp_result;
+        continue;
+      } else if (comp->IsAsyncComputation() &&
+                 (instr->opcode() == HloOpcode::kDynamicSlice ||
+                  instr->opcode() == HloOpcode::kDynamicUpdateSlice)) {
+        TF_ASSIGN_OR_RETURN(bool comp_result,
+                            WrapIntoFusionAndAnnotateStreamAttributes(
                                 instr, channel_id, instr_gpu_config.value()));
         changed |= comp_result;
         continue;

@@ -21,7 +21,7 @@ limitations under the License.
 #include <string_view>
 
 #include "third_party/nanobind/include/nanobind/nanobind.h"
-#include "xla/pjrt/pjrt_client.h"
+#include "xla/python/ifrt/memory.h"
 #include "xla/python/nb_class_ptr.h"
 #include "xla/python/py_client.h"
 
@@ -29,7 +29,7 @@ namespace xla {
 
 class PyMemorySpace {
  public:
-  PyMemorySpace(nb_class_ptr<PyClient> client, PjRtMemorySpace* memory_space);
+  PyMemorySpace(nb_class_ptr<PyClient> client, ifrt::Memory* memory_space);
 
   // Memory spaces are compared using Python object identity, so we don't allow
   // them to be copied or moved.
@@ -39,7 +39,7 @@ class PyMemorySpace {
   PyMemorySpace& operator=(PyMemorySpace&&) = delete;
 
   const nb_class_ptr<PyClient>& client() const { return client_; }
-  PjRtMemorySpace* memory_space() const { return memory_space_; }
+  ifrt::Memory* memory_space() const { return memory_; }
 
   int process_index() const;
   std::string_view platform() const;
@@ -58,7 +58,7 @@ class PyMemorySpace {
   static PyType_Slot slots_[];
 
   nb_class_ptr<PyClient> client_;
-  PjRtMemorySpace* memory_space_;
+  ifrt::Memory* memory_;
 };
 
 }  // namespace xla

@@ -26,6 +26,7 @@ from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import options as options_lib
+from tensorflow.python.data.ops import test_mode
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import errors
 from tensorflow.python.platform import test
@@ -284,6 +285,13 @@ class ListFilesGlobalShuffleCheckpointTest(
     checkpoint_test_base.CheckpointTestBase,
     parameterized.TestCase):
 
+  def setUp(self):
+    super().setUp()
+    # Bypasses the default value for `warm_start`, which is not supported for
+    # global shuffling:
+    # https://github.com/tensorflow/tensorflow/blob/29561af231863afb3b6b89e3aa8a6a550c2b7bb0/tensorflow/python/data/ops/options.py#L633
+    test_mode.toggle_test_mode(False)
+
   @combinations.generate(
       combinations.times(
           test_base.default_test_combinations(),
@@ -304,25 +312,20 @@ class ListFilesGlobalShuffleCheckpointTest(
     def _build_dataset() -> dataset_ops.Dataset:
       dataset = dataset_ops.Dataset.list_files(path.join(self.tmp_dir, '*'),
                                                shuffle=False)
-      # TODO(b/325112575): Swapping the order of `repeat` and `prefetch` causes
-      # `warm_start` to be turned on which causes the wrong iterator context to
-      # be passed to the prefetch thread. Investigate this.
+      dataset = dataset.prefetch(buffer_size=dataset_ops.AUTOTUNE)
       if repetitions > 1:
         dataset = dataset.repeat(repetitions)
-      dataset = dataset.prefetch(buffer_size=dataset_ops.AUTOTUNE)
       dataset = global_shuffle_op._global_shuffle(
           dataset, seed=42, reshuffle_each_iteration=reshuffle_each_iteration)
       options = options_lib.Options()
       options.experimental_symbolic_checkpoint = symbolic_checkpoint
-      options.experimental_warm_start = False
-      options.experimental_optimization.apply_default_optimizations = False
       return dataset.with_options(options)
 
     verify_fn(
         self,
         _build_dataset,
         num_outputs=len(filenames) * repetitions,
-        assert_items_equal=True)
+        assert_items_equal=reshuffle_each_iteration)
 
 
 if __name__ == '__main__':

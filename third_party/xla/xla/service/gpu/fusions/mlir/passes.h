@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 #include <optional>
+#include <string>
 
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project  // IWYU pragma: keep
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"  // from @llvm-project  // IWYU pragma: keep
@@ -36,7 +37,8 @@ std::optional<Interval> GetRange(mlir::Value value);
 
 std::unique_ptr<mlir::Pass> CreateExpandFloatOpsPass(bool pre_ampere);
 std::unique_ptr<mlir::Pass> CreateLowerFuncPass();
-std::unique_ptr<mlir::Pass> CreateLowerTensorsPass();
+std::unique_ptr<mlir::Pass> CreateLowerTensorsPass(
+    bool is_amd_gpu = false, const std::string& gpu_arch = "6.0");
 std::unique_ptr<mlir::Pass> CreateLowerToLLVMPass();
 std::unique_ptr<mlir::Pass> CreateLowerXlaGpuToScfPass();
 std::unique_ptr<mlir::Pass> CreateMergePointersToSameSlicePass();

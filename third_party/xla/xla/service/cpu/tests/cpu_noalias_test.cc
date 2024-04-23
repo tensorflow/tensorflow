@@ -16,18 +16,32 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "llvm/IR/BasicBlock.h"
+#include "llvm/IR/Constants.h"
+#include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/Function.h"
+#include "llvm/IR/GlobalVariable.h"
+#include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Module.h"
+#include "llvm/IR/Type.h"
+#include "llvm/Support/Casting.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal.h"
+#include "xla/literal_util.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/tests/cpu_codegen_test.h"
+#include "xla/service/hlo_ordering.h"
 #include "xla/service/llvm_ir/alias_analysis.h"
+#include "xla/service/llvm_ir/ir_array.h"
 #include "xla/service/llvm_ir/llvm_util.h"
+#include "xla/service/logical_buffer.h"
 #include "xla/shape_util.h"
+#include "xla/status.h"
 #include "xla/tests/filecheck.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
 namespace xla {

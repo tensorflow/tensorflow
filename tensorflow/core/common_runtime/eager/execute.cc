@@ -217,12 +217,12 @@ Status CopyInputToExpectedDevice(EagerContext* ctx, EagerOperation* op,
   // We are only here if the policy is warn or silent copies, so we should
   // trigger a copy.
   TensorHandle* result_handle = nullptr;
-  profiler::TraceMe activity(
+  tsl::profiler::TraceMe activity(
       [&] {
         return absl::StrCat("_Send input ", i, " from ", handle_device->name(),
                             " to ", expected_input_device->name());
       },
-      profiler::TraceMeLevel::kInfo);
+      tsl::profiler::TraceMeLevel::kInfo);
   Status status =
       EagerCopyToDevice(handle, ctx, &op->Executor(), expected_input_device,
                         /* mirror= */ true, &result_handle);
@@ -246,8 +246,8 @@ Status CopyInputToExpectedDevice(EagerContext* ctx, EagerOperation* op,
 Status ValidateInputTypeAndPlacement(
     EagerContext* ctx, EagerOperation* op,
     const core::RefCountPtr<KernelAndDevice>& kernel) {
-  profiler::TraceMe activity("ValidateInputTypeAndPlacement",
-                             profiler::TraceMeLevel::kInfo);
+  tsl::profiler::TraceMe activity("ValidateInputTypeAndPlacement",
+                                  tsl::profiler::TraceMeLevel::kInfo);
   const int n_inputs = op->Inputs().size();
   if (kernel->num_inputs() != n_inputs) {
     return errors::InvalidArgument("expected ", kernel->num_inputs(),
@@ -1085,8 +1085,8 @@ using BoolTensorInputs = std::vector<std::pair<std::string, bool>>;
 // function's input signature. Currently this is only useful to invoke when
 // small_constants_optimizer is enabled because the runtime will have equivalent
 // FunctionDefs of the original tf.function without the boolean tensor input.
-StatusOr<BoolTensorInputs> GetBoolInputs(EagerOperation* op,
-                                         bool delete_inputs) {
+absl::StatusOr<BoolTensorInputs> GetBoolInputs(EagerOperation* op,
+                                               bool delete_inputs) {
   BoolTensorInputs result;
   if (!op->is_function()) return result;
   // Extract tensor inputs.
@@ -1199,7 +1199,7 @@ bool IsSummaryOptimizerEnabled(const EagerOperation* op) {
   return arg_value.value() == include_summary_arg.second;
 }
 
-StatusOr<Fprint128> GetKernelCacheKey(
+absl::StatusOr<Fprint128> GetKernelCacheKey(
     const EagerOperation& op, const Fprint128& op_cache_key,
     const std::vector<Device*>& input_device_ptrs,
     const std::unordered_map<int, DtypeAndPartialTensorShape>&
@@ -1253,8 +1253,8 @@ Status ExtractFunctionInputInfo(
     absl::flat_hash_map<string, const std::vector<string>*>& composite_devices,
     std::unordered_map<int, DtypeAndPartialTensorShape>&
         input_resource_variable_dtypes_and_shapes) {
-  profiler::TraceMe activity("EagerCopyToDevice",
-                             profiler::TraceMeLevel::kInfo);
+  tsl::profiler::TraceMe activity("EagerCopyToDevice",
+                                  tsl::profiler::TraceMeLevel::kInfo);
   EagerContext& ctx = op->EagerContext();
   input_device_ptrs.reserve(op->Inputs().size());
   const absl::InlinedVector<TensorHandle*, 4>* inputs;
@@ -1718,13 +1718,13 @@ Status AddOrExecuteNode(core::RefCountPtr<KernelAndDevice> kernel,
 //    running without an explicitly requested device.
 Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
                          int* num_retvals) {
-  profiler::ScopedMemoryDebugAnnotation op_annotation(
+  tsl::profiler::ScopedMemoryDebugAnnotation op_annotation(
       op->op_name(), op->eager_func_params().has_value()
                          ? op->eager_func_params().value().step_id.value_or(0)
                          : 0);
-  profiler::TraceMe activity(
+  tsl::profiler::TraceMe activity(
       [&] { return absl::StrCat("EagerLocalExecute: ", op->Name()); },
-      profiler::TraceMeLevel::kInfo);
+      tsl::profiler::TraceMeLevel::kInfo);
   EagerContext& ctx = op->EagerContext();
   auto& executor = op->Executor();
   TF_RETURN_IF_ERROR(executor.status());
@@ -1881,8 +1881,8 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
 
   tensorflow::Device* op_device = std::get<Device*>(op->Device());
   {
-    profiler::TraceMe activity("CopyInputToExpectedDevice",
-                               profiler::TraceMeLevel::kInfo);
+    tsl::profiler::TraceMe activity("CopyInputToExpectedDevice",
+                                    tsl::profiler::TraceMeLevel::kInfo);
     const bool is_function = op->is_function();
     const absl::InlinedVector<TensorHandle*, 4>* inputs;
     TF_RETURN_IF_ERROR(op->TensorHandleInputs(&inputs));
@@ -2128,8 +2128,8 @@ void CollectGraphs(EagerContext* ctx) {
 
 Status DoEagerExecute(EagerOperation* op, TensorHandle** retvals,
                       int* num_retvals) {
-  profiler::TraceMe activity([&] {
-    return ::tensorflow::profiler::TraceMeEncode(
+  tsl::profiler::TraceMe activity([&] {
+    return tsl::profiler::TraceMeEncode(
         "EagerExecute",
         {{"eager_op", op->Name()}, {"is_func", op->is_function()}});
   });
@@ -2178,8 +2178,8 @@ Status EagerKernelExecute(
     GraphCollector* graph_collector, CancellationManager* cancellation_manager,
     absl::Span<TensorHandle*> retvals,
     const absl::optional<ManagedStackTrace>& stack_trace) {
-  profiler::TraceMe activity("EagerKernelExecute",
-                             profiler::TraceMeLevel::kInfo);
+  tsl::profiler::TraceMe activity("EagerKernelExecute",
+                                  tsl::profiler::TraceMeLevel::kInfo);
   std::vector<EagerKernelRet> outputs(1);
 
   ExecuteNodeArgs inputs(op_inputs.size());
@@ -2468,13 +2468,13 @@ void EagerLocalExecuteAsync(EagerOperation* op, TensorHandle** retvals,
     return;
   }
 
-  profiler::ScopedMemoryDebugAnnotation op_annotation(
+  tsl::profiler::ScopedMemoryDebugAnnotation op_annotation(
       op->op_name(), op->eager_func_params().has_value()
                          ? op->eager_func_params().value().step_id.value_or(0)
                          : 0);
-  profiler::TraceMe activity(
+  tsl::profiler::TraceMe activity(
       [&] { return absl::StrCat("EagerLocalExecuteAsync: ", op->Name()); },
-      profiler::TraceMeLevel::kInfo);
+      tsl::profiler::TraceMeLevel::kInfo);
   EagerContext& ctx = op->EagerContext();
 
   core::RefCountPtr<KernelAndDevice> kernel;

@@ -97,9 +97,12 @@ TEST_P(TopkTest, TopKFloat) {
   const auto [n_kb, k, batch_size, offset] = GetParam();
   const size_t n = n_kb * 1024 + offset;
 
-  auto input_buffer = executor->AllocateOwnedArray<T>(n * batch_size),
-       output_values = executor->AllocateOwnedArray<T>(k * batch_size);
-  auto output_indices = executor->AllocateOwnedArray<uint32_t>(k * batch_size);
+  stream_executor::ScopedDeviceMemory<T> input_buffer(
+      executor, executor->AllocateArray<T>(n * batch_size));
+  stream_executor::ScopedDeviceMemory<T> output_values(
+      executor, executor->AllocateArray<T>(k * batch_size));
+  stream_executor::ScopedDeviceMemory<T> output_indices(
+      executor, executor->AllocateArray<uint32_t>(k * batch_size));
 
   ASSERT_TRUE(!(input_buffer.is_null() || output_values.is_null() ||
                 output_indices.is_null()));
@@ -133,9 +136,12 @@ TEST_P(TopkTest, TopKPackedNegative) {
   const auto [n_kb, k, batch_size, offset] = GetParam();
   const size_t n = n_kb * 1024 + offset;
 
-  auto input_buffer = executor->AllocateOwnedArray<T>(n * batch_size),
-       output_values = executor->AllocateOwnedArray<T>(k * batch_size);
-  auto output_indices = executor->AllocateOwnedArray<uint32_t>(k * batch_size);
+  stream_executor::ScopedDeviceMemory<T> input_buffer(
+      executor, executor->AllocateArray<T>(n * batch_size));
+  stream_executor::ScopedDeviceMemory<T> output_values(
+      executor, executor->AllocateArray<T>(k * batch_size));
+  stream_executor::ScopedDeviceMemory<T> output_indices(
+      executor, executor->AllocateArray<uint32_t>(k * batch_size));
 
   ASSERT_TRUE(!(input_buffer.is_null() || output_values.is_null() ||
                 output_indices.is_null()));
@@ -187,9 +193,12 @@ void BM_SmallTopk(benchmark::State& state) {
   auto* executor = GetGpuExecutor();
   auto stream = executor->CreateStream().value();
 
-  auto input_buffer = executor->AllocateOwnedArray<T>(n * batch_size),
-       output_values = executor->AllocateOwnedArray<T>(k * batch_size);
-  auto output_indices = executor->AllocateOwnedArray<uint32_t>(k * batch_size);
+  stream_executor::ScopedDeviceMemory<T> input_buffer(
+      executor, executor->AllocateArray<T>(n * batch_size));
+  stream_executor::ScopedDeviceMemory<T> output_values(
+      executor, executor->AllocateArray<T>(k * batch_size));
+  stream_executor::ScopedDeviceMemory<T> output_indices(
+      executor, executor->AllocateArray<uint32_t>(k * batch_size));
 
   if (input_buffer.is_null() || output_values.is_null() ||
       output_indices.is_null()) {
@@ -206,11 +215,14 @@ void BM_SmallTopk(benchmark::State& state) {
   }
 
   for (auto _ : state) {
-    auto timer = se::gpu::GpuTimer::Create(stream.get());
+    // Warmup execution without GpuTimer active
+    CHECK_OK(RunTopk(stream.get(), Get(T()), *input_buffer, n, *output_values,
+                     *output_indices, k, batch_size));
+    auto timer = se::gpu::GpuTimer::Create(stream.get(),
+                                           true /* warmup run was executed */);
     CHECK_OK(timer.status());
     CHECK_OK(RunTopk(stream.get(), Get(T()), *input_buffer, n, *output_values,
                      *output_indices, k, batch_size));
-    CHECK_OK(stream->BlockHostUntilDone());
     auto timer_duration = timer.value().GetElapsedDuration();
     CHECK_OK(timer_duration.status());
     state.SetIterationTime(absl::ToDoubleSeconds(timer_duration.value()));

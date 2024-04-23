@@ -98,7 +98,6 @@ TEST_F(ReductionTest, ThreadIndexingRowReduction) {
         s0 in [0, 0]
         s1 in [0, 0]
         s2 in [0, 15]
-        0 in [0, 0]
         d0 mod 32 + s2 * 32 in [0, 511]
         d3 * 8 + d0 floordiv 32 in [0, 6399]
       )"));
@@ -116,7 +115,6 @@ TEST_F(ReductionTest, ThreadIndexingRowReduction) {
         d3 in [0, 799]
         d4 in [0, 0]
         d5 in [0, 0]
-        (d3 * 8 + d0 floordiv 32) mod 64 in [0, 63]
         d0 mod 32 in [0, 0]
         d3 * 8 + d0 floordiv 32 in [0, 6399]
       )"));
@@ -167,7 +165,6 @@ TEST_F(ReductionTest, ThreadIndexingMultiRowReduction) {
         s0 in [0, 0]
         s1 in [0, 0]
         s2 in [0, 0]
-        0 in [0, 0]
         d0 mod 4 in [0, 3]
         d3 * 64 + d0 floordiv 4 in [0, 6399]
       )"));
@@ -185,10 +182,8 @@ TEST_F(ReductionTest, ThreadIndexingMultiRowReduction) {
         d3 in [0, 99]
         d4 in [0, 0]
         d5 in [0, 0]
-        (d0 floordiv 4) mod 64 in [0, 63]
         d0 mod 4 in [0, 0]
         d3 * 64 + d0 floordiv 4 in [0, 6399]
-        d3 + (d0 floordiv 4) floordiv 64 in [0, 99]
       )"));
 }
 
@@ -289,7 +284,6 @@ TEST_F(ReductionTest, ThreadIndexingOutputLayout) {
         d3 in [0, 799]
         d4 in [0, 0]
         d5 in [0, 0]
-        (d3 * 8 + d0 floordiv 32) mod 64 in [0, 63]
         d0 mod 32 in [0, 0]
         d3 * 8 + d0 floordiv 32 in [0, 6399]
       )"));
@@ -340,7 +334,6 @@ TEST_F(ReductionTest, ThreadIndexingSideOutput) {
       s0 in [0, 0]
       s1 in [0, 0]
       s2 in [0, 15]
-      0 in [0, 0]
       d0 mod 32 + s2 * 32 in [0, 511]
       d3 * 8 + d0 floordiv 32 in [0, 6399]
   )";
@@ -395,7 +388,6 @@ TEST_F(ReductionTest, bla) {
         s1 in [0, 0]
         s2 in [0, 7]
         s3 in [0, 1]
-        0 in [0, 0]
         d0 + s2 * 512 in [0, 4095]
       )"));
 }

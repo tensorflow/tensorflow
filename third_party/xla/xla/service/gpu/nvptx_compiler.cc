@@ -61,7 +61,9 @@ limitations under the License.
 #include "xla/service/gpu/cudnn_pad_for_convolutions.h"
 #include "xla/service/gpu/cudnn_simplify_padding.h"
 #include "xla/service/gpu/cudnn_vectorize_convolutions.h"
+#include "xla/service/gpu/cudnn_workspace_rewriter.h"
 #include "xla/service/gpu/cusolver_rewriter.h"
+#include "xla/service/gpu/dot_sparsity_rewriter.h"
 #include "xla/service/gpu/gemm_algorithm_picker.h"
 #include "xla/service/gpu/gemm_fusion_autotuner.h"
 #include "xla/service/gpu/gpu_asm_opts_util.h"
@@ -88,6 +90,7 @@ limitations under the License.
 #include "xla/service/reshape_mover.h"
 #include "xla/service/tuple_simplifier.h"
 #include "xla/status.h"
+#include "xla/stream_executor/cuda/cuda_asm_compiler.h"
 #include "xla/stream_executor/cuda/cuda_diagnostics.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/cuda/ptx_compiler.h"
@@ -272,6 +275,7 @@ absl::Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
   }
 
   pre_pipeline.AddPass<DotDimensionMerger>();
+  pre_pipeline.AddPass<DotSparsityRewriter>();
 
   for (const CublasPaddingRequirement& requirement :
        CublasPaddingRequirements) {
@@ -294,7 +298,9 @@ absl::Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
   // Transform TriangularSolve ops into custom-calls, so we can add temp
   // memory.
   post_pipeline.AddPass<TriangularSolveRewriter>();
-
+  if (stream_exec) {
+    post_pipeline.AddPass<CuDnnWorkspaceRewriter>(*stream_exec);
+  }
   TF_RETURN_IF_ERROR(post_pipeline.Run(hlo_module).status());
 
   return absl::OkStatus();
@@ -346,6 +352,10 @@ absl::Status NVPTXCompiler::AddCustomKernelReplacementPasses(
 absl::Status NVPTXCompiler::RunCudnnFusionCompilerPass(
     HloModule* module, se::StreamExecutor* stream_exec,
     Thunk::BinaryMap* dnn_compiled_graphs) {
+  tsl::profiler::ScopedAnnotation annotation([&] {
+    return absl::StrFormat("XlaCompileCudnnFusion:#module=%s,program_id=%d#",
+                           module->name(), module->unique_id());
+  });
   CuDnnFusionCompiler cudnn_compiler(*stream_exec, *dnn_compiled_graphs);
   return cudnn_compiler.Run(module).status();
 }
@@ -637,6 +647,9 @@ NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
       absl::StrCat("NVPTXCompiler::CompileGpuAsmOrGetCachedResult for ",
                    module_name),
       !options.is_autotuning_compilation);
+  tsl::profiler::ScopedAnnotation annotation([&] {
+    return absl::StrFormat("XlaCompileGpuAsm:#module=%s#", module_name);
+  });
   tsl::profiler::TraceMe activity("PTX->CUBIN",
                                   tsl::profiler::TraceMeLevel::kInfo);
   CompilationCacheValue* cache_value = nullptr;

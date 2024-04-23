@@ -28,7 +28,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/ir_emission_utils.h"
-#include "xla/service/gpu/nccl_api.h"
+#include "xla/service/gpu/runtime/nccl_api.h"
 #include "xla/service/gpu/runtime/nccl_collective_thunk.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -94,13 +94,14 @@ NcclAllToAllStartThunk::NcclAllToAllStartThunk(
 
 absl::Status NcclAllToAllStartThunk::RunNcclCollective(
     const ExecuteParams& params, se::Stream& stream,
-    NcclApi::NcclCommHandle comm) {
+    NcclCommHandleWrapper comm_wrapper) {
   TF_ASSIGN_OR_RETURN(
       std::vector<DeviceBufferPair> device_buffers,
       ConvertToDeviceBuffers(params, buffers_,
                              config_.config.operand_element_type));
   return xla::gpu::RunAllToAll(nccl_api(), config_.has_split_dimension,
-                               device_buffers, stream, comm);
+                               device_buffers, stream,
+                               comm_wrapper.comm_handle);
 }
 
 absl::Status RunAllToAll(NcclApi* nccl_api, bool has_split_dimension,

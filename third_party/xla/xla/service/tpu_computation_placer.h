@@ -27,7 +27,7 @@ namespace tpu {
 class TpuComputationPlacer : public xla::ComputationPlacer {
  public:
   template <typename T>
-  using StatusOr = xla::StatusOr<T>;
+  using StatusOr = absl::StatusOr<T>;
 
   TpuComputationPlacer();
   ~TpuComputationPlacer() override;

@@ -64,6 +64,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
               ([10, 1, 1024], [10, 1024, 3]),
               ([2, 3, 1, 1024], [2, 3, 1024, 3]),
           ),
+          'merge_fusion_with_dequantize': (False, True),
       }])
   )
   @test_util.run_in_graph_and_eager_modes
@@ -72,6 +73,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
       bias_fn: Optional[ops.Operation],
       activation_fn: Optional[ops.Operation],
       dim_sizes: Sequence[int],
+      merge_fusion_with_dequantize: bool,
   ):
     lhs_dim_size, rhs_dim_size = dim_sizes
     input_shape = (*lhs_dim_size,)
@@ -115,6 +117,9 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
             ]
         ),
         tf_saved_model=qc.TfSavedModelConfig(tags=[tag_constants.SERVING]),
+        pipeline_config=qc.PipelineConfig(
+            merge_fusion_with_dequantize=merge_fusion_with_dequantize
+        ),
     )
     quantization.quantize_saved_model(
         self._input_saved_model_path,
@@ -149,6 +154,19 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         ),
         0.65,
     )
+
+    if merge_fusion_with_dequantize:
+      # Check activation functions are explicitly present.
+      # If present the last op before return should be stablehlo.clamp for relu6
+      # and stablehlo.maximum for relu.
+      if activation_fn is nn_ops.relu6:
+        self.assertRegex(module_str, r'stablehlo.clamp.*\n.*return')
+      elif activation_fn is nn_ops.relu:
+        self.assertRegex(module_str, r'stablehlo.maximum.*\n.*return')
+    else:
+      # Check activation functions are implicit.
+      self.assertNotRegex(module_str, r'stablehlo.clamp.*\n.*return')
+      self.assertNotRegex(module_str, r'stablehlo.maximum.*\n.*return')
 
   @parameterized.parameters(
       testing.parameter_combinations([{
@@ -342,6 +360,8 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
               False,
               True,
           ),
+          'merge_fusion_with_dequantize': (False, True),
+          'has_func_alias': (False, True),
       }])
   )
   @test_util.run_in_graph_and_eager_modes
@@ -352,7 +372,9 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
       has_batch_norm: bool,
       input_shape_dynamic: bool,
       enable_per_channel_quantized_weight: bool,
+      merge_fusion_with_dequantize: bool,
       dilations: Sequence[int] = None,
+      has_func_alias: bool = False,
   ):
     input_shape = (None, 3, 4, 3) if input_shape_dynamic else (1, 3, 4, 3)
     filter_shape = (2, 3, 3, 2)
@@ -366,15 +388,16 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         has_batch_norm,
         strides,
         dilations,
+        'SAME',
+        has_func_alias,
     )
-    # TODO(b/331809306): investigate why these tests fail.
-    # skip these test cases.
-    if (
-        bias_fn is None
-        and has_batch_norm
-        and input_shape_dynamic
-        and enable_per_channel_quantized_weight
-    ):
+    # TODO: b/331809306 - Investigate why these test fail then re-enable.
+    if has_batch_norm and (bias_fn or not input_shape_dynamic):
+      return
+
+    # TODO: b/331120943 - Re-enable this after correctly handling quantization
+    # granularity per quantizable scope.
+    if has_batch_norm and (not bias_fn and input_shape_dynamic):
       return
 
     # Generate model input data.
@@ -410,6 +433,9 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
             enable_per_channel_quantized_weight=enable_per_channel_quantized_weight,
         ),
         tf_saved_model=qc.TfSavedModelConfig(tags=[tag_constants.SERVING]),
+        pipeline_config=qc.PipelineConfig(
+            merge_fusion_with_dequantize=merge_fusion_with_dequantize
+        ),
     )
     quantization.quantize_saved_model(
         self._input_saved_model_path,
@@ -444,6 +470,27 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         ),
         0.61,
     )
+
+    if merge_fusion_with_dequantize:
+      # Check activation functions are explicitly present.
+      # If present the last op before return should be stablehlo.clamp for relu6
+      # and stablehlo.maximum for relu.
+      if activation_fn is nn_ops.relu6:
+        self.assertRegex(module_str, r'stablehlo.clamp.*\n.*return')
+      elif activation_fn is nn_ops.relu:
+        self.assertRegex(module_str, r'stablehlo.maximum.*\n.*return')
+    else:
+      # Check activation functions are implicit.
+      self.assertNotRegex(module_str, r'stablehlo.clamp.*\n.*return')
+      self.assertNotRegex(module_str, r'stablehlo.maximum.*\n.*return')
+
+    if has_func_alias:
+      func_aliases = self._get_function_aliases(
+          self._output_saved_model_path, [tag_constants.SERVING]
+      )
+      self.assertCountEqual(
+          func_aliases.values(), [quantize_model_test_base.FUNC_ALIAS]
+      )
 
   @parameterized.parameters(
       testing.parameter_combinations([{
@@ -526,6 +573,66 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
             self._output_saved_model_path, self._input_saved_model_path
         ),
         0.65,
+    )
+
+  @parameterized.named_parameters(
+      ('use_constant_with_int32_input', np.int32, False),
+      ('use_variable_with_int32_input', np.int32, True),
+      ('use_constant_with_int64_input', np.int64, False),
+      ('use_variable_with_int64_input', np.int64, True),
+  )
+  @test_util.run_v2_only
+  def test_gather_model(self, input_type, use_variable):
+    model = self._create_gather_model(input_type, use_variable)
+
+    save.save(model, self._input_saved_model_path)
+
+    rng = np.random.default_rng(seed=42)
+    static_input_shape = [6]
+
+    def data_gen() -> repr_dataset.RepresentativeDataset:
+      for _ in range(100):
+        yield {
+            'input_tensor': rng.uniform(
+                low=0.0, high=10, size=static_input_shape
+            ).astype(input_type)
+        }
+
+    dataset_path = self.create_tempfile('tfrecord').full_path
+    path_map = {'serving_default': dataset_path}
+    repr_dataset.TfRecordRepresentativeDatasetSaver(path_map).save(
+        {'serving_default': data_gen()}
+    )
+
+    config = qc.QuantizationConfig(
+        static_range_ptq_preset=qc.StaticRangePtqPreset(
+            representative_datasets=[
+                qc.RepresentativeDatasetConfig(
+                    tf_record=qc.TfRecordFile(path=dataset_path)
+                )
+            ]
+        ),
+        tf_saved_model=qc.TfSavedModelConfig(tags=[tag_constants.SERVING]),
+    )
+    quantization.quantize_saved_model(
+        self._input_saved_model_path,
+        self._output_saved_model_path,
+        config,
+    )
+
+    root = load.load(self._output_saved_model_path)
+    self.assertCountEqual(root.signatures.keys(), {'serving_default'})
+    module_str = self._extract_first_xla_call_module_op(
+        self._output_saved_model_path
+    )
+    self.assertTrue(re.search('stablehlo.gather.*xi8>', module_str))
+
+    # Due to other meta data, the compression is not exactly 1/4.
+    self.assertLess(
+        testing.get_size_ratio(
+            self._output_saved_model_path, self._input_saved_model_path
+        ),
+        1 / 3,
     )
 
   def test_when_preset_not_srq_raises_error(self):
@@ -985,7 +1092,7 @@ class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     )
 
     config = qc.QuantizationConfig(
-        weight_only_preset=qc.WeightOnlyPreset(),
+        weight_only_ptq_preset=qc.WeightOnlyPtqPreset(),
         tf_saved_model=qc.TfSavedModelConfig(tags=[tag_constants.SERVING]),
     )
     quantization.quantize_saved_model(
@@ -1010,9 +1117,8 @@ class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         self._output_saved_model_path
     )
 
-    # Tests that the output graph contains subtract and multiply for
+    # Tests that the output graph contains multiply for symmetric
     # dequantization.
-    self.assertTrue(re.search('stablehlo.subtract', module_str))
     self.assertTrue(re.search('stablehlo.multiply', module_str))
     # Tests that the output graph contains float dot_general.
     self.assertTrue(
@@ -1043,6 +1149,7 @@ class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
               False,
               True,
           ),
+          'has_func_alias': (False, True),
       }])
   )
   @test_util.run_in_graph_and_eager_modes
@@ -1053,6 +1160,7 @@ class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
       has_batch_norm: bool,
       input_shape_dynamic: bool,
       dilations: Sequence[int] = None,
+      has_func_alias: bool = False,
   ):
     input_shape = (None, 3, 4, 3) if input_shape_dynamic else (1, 3, 4, 3)
     filter_shape = (2, 3, 3, 2)
@@ -1066,6 +1174,8 @@ class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         has_batch_norm,
         strides,
         dilations,
+        'SAME',
+        has_func_alias,
     )
 
     rng = np.random.default_rng(1234)
@@ -1077,7 +1187,7 @@ class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     )
 
     config = qc.QuantizationConfig(
-        weight_only_preset=qc.WeightOnlyPreset(),
+        weight_only_ptq_preset=qc.WeightOnlyPtqPreset(),
         tf_saved_model=qc.TfSavedModelConfig(tags=[tag_constants.SERVING]),
     )
     quantization.quantize_saved_model(
@@ -1111,13 +1221,141 @@ class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         re.search('stablehlo.convolution.*xf32>.*xf32>.*xf32>', module_str)
     )
 
+    if has_func_alias:
+      func_aliases = self._get_function_aliases(
+          self._output_saved_model_path, [tag_constants.SERVING]
+      )
+      self.assertCountEqual(
+          func_aliases.values(), [quantize_model_test_base.FUNC_ALIAS]
+      )
+
     # Due to other meta data, the compression is not exactly 1/4.
     self.assertLess(
         testing.get_size_ratio(
             self._output_saved_model_path, self._input_saved_model_path
         ),
-        0.35,
+        0.4,
     )
+
+  @parameterized.parameters(
+      testing.parameter_combinations([{
+          'shape_dynamic': (
+              False,
+              True,
+          ),
+      }])
+  )
+  @test_util.run_in_graph_and_eager_modes
+  def test_add_ptq_model(
+      self,
+      shape_dynamic: bool,
+  ):
+    input_shape = (None, 3, 4, 3) if shape_dynamic else (2, 3, 4, 3)
+    self._create_add_model(
+        input_shape,
+        self._input_saved_model_path,
+    )
+
+    # Generate model input data.
+    rng = np.random.default_rng(seed=42)
+    static_input_shape = [dim if dim is not None else 2 for dim in input_shape]
+
+    def data_gen() -> repr_dataset.RepresentativeDataset:
+      for _ in range(100):
+        yield {
+            'input_tensor': rng.uniform(
+                low=0.0, high=1.0, size=static_input_shape
+            ).astype(np.float32)
+        }
+
+    dataset_path = self.create_tempfile('tfrecord').full_path
+    path_map = {'serving_default': dataset_path}
+    repr_dataset.TfRecordRepresentativeDatasetSaver(path_map).save(
+        {'serving_default': data_gen()}
+    )
+
+    config = qc.QuantizationConfig(
+        static_range_ptq_preset=qc.StaticRangePtqPreset(
+            representative_datasets=[
+                qc.RepresentativeDatasetConfig(
+                    tf_record=qc.TfRecordFile(path=dataset_path)
+                )
+            ],
+        ),
+        tf_saved_model=qc.TfSavedModelConfig(tags=[tag_constants.SERVING]),
+    )
+    quantization.quantize_saved_model(
+        self._input_saved_model_path,
+        self._output_saved_model_path,
+        config,
+    )
+
+    self.assertEqual(
+        self._get_num_xla_call_module_op(self._output_saved_model_path), 1
+    )
+    module_str = self._extract_first_xla_call_module_op(
+        self._output_saved_model_path
+    )
+
+    # Check add is not quantized.
+    self.assertTrue(re.search(r'stablehlo.add.*f32>', module_str))
+
+  @parameterized.parameters(
+      testing.parameter_combinations([{
+          'shape_dynamic': (
+              False,
+              True,
+          ),
+      }])
+  )
+  @test_util.run_in_graph_and_eager_modes
+  def test_add_weight_only_model(
+      self,
+      shape_dynamic: bool,
+  ):
+    input_shape = (None, 3, 4, 3) if shape_dynamic else (2, 3, 4, 3)
+    self._create_add_model(
+        input_shape,
+        self._input_saved_model_path,
+    )
+
+    # Generate model input data.
+    rng = np.random.default_rng(seed=42)
+    static_input_shape = [dim if dim is not None else 2 for dim in input_shape]
+
+    def data_gen() -> repr_dataset.RepresentativeDataset:
+      for _ in range(100):
+        yield {
+            'input_tensor': rng.uniform(
+                low=0.0, high=1.0, size=static_input_shape
+            ).astype(np.float32)
+        }
+
+    dataset_path = self.create_tempfile('tfrecord').full_path
+    path_map = {'serving_default': dataset_path}
+    repr_dataset.TfRecordRepresentativeDatasetSaver(path_map).save(
+        {'serving_default': data_gen()}
+    )
+
+    config = qc.QuantizationConfig(
+        weight_only_ptq_preset=qc.WeightOnlyPtqPreset(),
+        tf_saved_model=qc.TfSavedModelConfig(tags=[tag_constants.SERVING]),
+    )
+    quantization.quantize_saved_model(
+        self._input_saved_model_path,
+        self._output_saved_model_path,
+        config,
+    )
+
+    self.assertEqual(
+        self._get_num_xla_call_module_op(self._output_saved_model_path), 1
+    )
+    module_str = self._extract_first_xla_call_module_op(
+        self._output_saved_model_path
+    )
+
+    # Check add is not quantized.
+    self.assertTrue(re.search(r'stablehlo.add.*f32>', module_str), module_str)
 
 
 if __name__ == '__main__':

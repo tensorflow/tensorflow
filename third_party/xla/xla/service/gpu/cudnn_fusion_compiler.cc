@@ -147,6 +147,20 @@ inline std::optional<fe::DataType_t> ToCudnnDataType(const PrimitiveType type) {
   }
 }
 
+inline std::optional<fe::DataType_t> GetComputeDataType(
+    const PrimitiveType type) {
+  fe::DataType_t compute_dtype = fe::DataType_t::FLOAT;
+  if (primitive_util::IsIntegralType(type)) {
+#if CUDNN_VERSION >= 90100
+    compute_dtype = fe::DataType_t::INT32;
+#else
+    VLOG(3) << "Integer math requires cuDNN 9.1+.";
+    return std::nullopt;
+#endif  // CUDNN_VERSION
+  }
+  return compute_dtype;
+}
+
 int FusionLevel(const HloInstruction& hlo) {
   return hlo.GetModule()
       ->config()
@@ -372,12 +386,13 @@ absl::StatusOr<std::optional<se::gpu::CudnnGraph>> HloFusionToCuDnnGraph(
         return std::nullopt;
       }
       const auto compute_dtype =
-          (primitive_util::IsIntegralType(hlo->shape().element_type()))
-              ? fe::DataType_t::INT32
-              : fe::DataType_t::FLOAT;
+          GetComputeDataType(hlo->shape().element_type());
+      if (!compute_dtype.has_value()) {
+        return std::nullopt;
+      }
       const auto attrs = graph::Pointwise_attributes()
                              .set_mode(mode.value())
-                             .set_compute_data_type(compute_dtype);
+                             .set_compute_data_type(compute_dtype.value());
       if (hlo->operand_count() == 1) {
         hlo_to_cudnn[hlo] = graph.pointwise(operand(0), attrs);
       } else if (hlo->operand_count() == 2) {
@@ -396,12 +411,14 @@ absl::StatusOr<std::optional<se::gpu::CudnnGraph>> HloFusionToCuDnnGraph(
       }
     } else if (hlo->opcode() == HloOpcode::kDot) {
       const auto compute_dtype =
-          (primitive_util::IsIntegralType(hlo->shape().element_type()))
-              ? fe::DataType_t::INT32
-              : fe::DataType_t::FLOAT;
-      hlo_to_cudnn[hlo] = graph.matmul(
-          operand(0), operand(1),
-          graph::Matmul_attributes().set_compute_data_type(compute_dtype));
+          GetComputeDataType(hlo->shape().element_type());
+      if (!compute_dtype.has_value()) {
+        return std::nullopt;
+      }
+      hlo_to_cudnn[hlo] =
+          graph.matmul(operand(0), operand(1),
+                       graph::Matmul_attributes().set_compute_data_type(
+                           compute_dtype.value()));
     } else {
       VLOG(3) << "Unimplemented operation.";
       return std::nullopt;

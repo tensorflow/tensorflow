@@ -34,7 +34,7 @@ bool UseFallback(mlir::Operation *op) {
   // TF kernels so that we don't need to check every op here.
   return !llvm::isa<
       mlir::TF::_TfrtSetResourceOp, mlir::TF::_TfrtGetResourceOp,
-      mlir::TF::BatchFunctionOp, mlir::TF::CaseOp, mlir::TF::IfrtLoadVariableOp,
+      mlir::TF::BatchFunctionOp, mlir::TF::CaseOp,
       mlir::TF::IfrtRestoreVariableOp, mlir::TF::StatefulPartitionedCallOp,
       mlir::TF::PartitionedCallOp, mlir::TF::LegacyCallOp, mlir::TF::IfOp,
       mlir::TF::WhileOp, mlir::TF::TPUCompileMlirAndExecuteOp>(op);

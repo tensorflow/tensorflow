@@ -180,7 +180,7 @@ int main(int argc, char** argv) {
     if (iteration_count != 1) {
       std::cerr << "\n=== Iteration " << i << "\n";
     }
-    xla::Status result = xla::RunAndCompare(
+    absl::Status result = xla::RunAndCompare(
         hlo_filename, &test_runner, reference_runner.get(), engine.get(), opts,
         /*iteration_literals_proto=*/nullptr,
         /*reference_module_modifier_hook=*/{},

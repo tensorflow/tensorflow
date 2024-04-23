@@ -56,10 +56,11 @@ class BufferComparatorTest : public testing::Test {
                            const std::vector<ElementType>& expected) {
     auto stream = stream_exec_->CreateStream().value();
 
-    se::ScopedDeviceMemory<ElementType> current_buffer =
-        stream_exec_->AllocateOwnedArray<ElementType>(current.size());
-    se::ScopedDeviceMemory<ElementType> expected_buffer =
-        stream_exec_->AllocateOwnedArray<ElementType>(expected.size());
+    se::ScopedDeviceMemory<ElementType> current_buffer(
+        stream_exec_, stream_exec_->AllocateArray<ElementType>(current.size()));
+    se::ScopedDeviceMemory<ElementType> expected_buffer(
+        stream_exec_,
+        stream_exec_->AllocateArray<ElementType>(expected.size()));
 
     TF_CHECK_OK(stream->Memcpy(current_buffer.ptr(), current.data(),
                                current_buffer->size()));
@@ -349,12 +350,14 @@ TEST_F(BufferComparatorTest, BF16) {
 
   auto stream = stream_exec_->CreateStream().value();
 
-  se::ScopedDeviceMemory<Eigen::bfloat16> lhs =
-      stream_exec_->AllocateOwnedArray<Eigen::bfloat16>(element_count);
+  se::ScopedDeviceMemory<Eigen::bfloat16> lhs(
+      stream_exec_,
+      stream_exec_->AllocateArray<Eigen::bfloat16>(element_count));
   InitializeBuffer(stream.get(), BF16, &rng_state, *lhs.ptr());
 
-  se::ScopedDeviceMemory<Eigen::bfloat16> rhs =
-      stream_exec_->AllocateOwnedArray<Eigen::bfloat16>(element_count);
+  se::ScopedDeviceMemory<Eigen::bfloat16> rhs(
+      stream_exec_,
+      stream_exec_->AllocateArray<Eigen::bfloat16>(element_count));
   InitializeBuffer(stream.get(), BF16, &rng_state, *rhs.ptr());
 
   BufferComparator comparator(ShapeUtil::MakeShape(BF16, {element_count}),

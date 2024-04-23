@@ -56,14 +56,14 @@ class Attrs {
 
 // Helper to construct a NodeDef.
 NodeDef NDef(
-    StringPiece name, StringPiece op, gtl::ArraySlice<string> inputs,
-    gtl::ArraySlice<std::pair<string, FunctionDefHelper::AttrValueWrapper>>
+    StringPiece name, StringPiece op, absl::Span<const string> inputs,
+    absl::Span<const std::pair<string, FunctionDefHelper::AttrValueWrapper>>
         attrs = {},
     const string& device = "");
 
 // Helper to construct a GraphDef proto.
-GraphDef GDef(gtl::ArraySlice<NodeDef> nodes,
-              gtl::ArraySlice<FunctionDef> funcs = {});
+GraphDef GDef(absl::Span<const NodeDef> nodes,
+              absl::Span<const FunctionDef> funcs = {});
 
 // For testing convenience, we provide a few simple functions that can
 // be easily executed and tested.

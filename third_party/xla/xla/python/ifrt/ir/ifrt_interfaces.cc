@@ -21,7 +21,12 @@ limitations under the License.
 #include "xla/python/ifrt/ir/constants.h"
 
 // Generated definitions.
-#include "xla/python/ifrt/ir/ifrt_interfaces.cc.inc"
+
+#define GET_ATTR_INTERFACE_CLASSES
+#include "xla/python/ifrt/ir/ifrt_attr_interfaces.cc.inc"
+
+#define GET_OP_INTERFACE_CLASSES
+#include "xla/python/ifrt/ir/ifrt_op_interfaces.cc.inc"
 
 namespace mlir {
 namespace OpTrait {

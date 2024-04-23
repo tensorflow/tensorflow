@@ -264,9 +264,9 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
         batch_results_.pop_front();
         cond_var_->notify_all();
       }
-      profiler::TraceMe traceme([&] {
-        return profiler::TraceMeEncode("MapAndBatchConsume",
-                                       {{"element_id", result->uid}});
+      tsl::profiler::TraceMe traceme([&] {
+        return tsl::profiler::TraceMeEncode("MapAndBatchConsume",
+                                            {{"element_id", result->uid}});
       });
       // Deallocate tensors allocated for the output.
       auto cleanup = gtl::MakeCleanup([result] { result->output.clear(); });
@@ -425,9 +425,9 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
     void CallFunction(std::shared_ptr<IteratorContext> ctx,
                       const std::shared_ptr<BatchResult>& result,
                       int64_t offset) TF_LOCKS_EXCLUDED(*mu_) {
-      profiler::TraceMe traceme([&] {
-        return profiler::TraceMeEncode("MapAndBatchProduce",
-                                       {{"element_id", result->uid}});
+      tsl::profiler::TraceMe traceme([&] {
+        return tsl::profiler::TraceMeEncode("MapAndBatchProduce",
+                                            {{"element_id", result->uid}});
       });
       // Get the next input element.
       std::vector<Tensor> input_element;

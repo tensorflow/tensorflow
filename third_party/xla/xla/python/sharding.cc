@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/python/py_client.h"
 #include "xla/python/py_device_list.h"
 #include "xla/python/sharded_device_array.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/logging.h"
 
 namespace jax {
@@ -190,7 +191,16 @@ NamedSharding::NamedSharding(nb::object mesh, nb::object spec,
       CheckAndCanonicalizeMemoryKind(memory_kind_, internal_device_list_);
 
   nb::module_ si = nb::module_::import_("jax._src.sharding_impls");
-  parsed_pspec_ = si.attr("preprocess")(mesh_, spec_, parsed_pspec_);
+  // TODO(parkers): Once jax always has preprocess_with_manual, we can
+  // remove the fallback.
+  nb::object preprocess_fn;
+  try {
+    preprocess_fn = si.attr("preprocess_with_manual");
+  } catch (nb::python_error& e) {
+    parsed_pspec_ = si.attr("preprocess")(mesh_, spec_, parsed_pspec_);
+    return;
+  }
+  parsed_pspec_ = preprocess_fn(mesh_, spec_, parsed_pspec_, manual_axes_);
 }
 
 SingleDeviceSharding::SingleDeviceSharding(nb::object device,

@@ -350,13 +350,13 @@ TEST_F(CustomCallTest, WithStatusFailed) {
 // XLA runtime custom calls provides type-safe custom call API
 //===----------------------------------------------------------------------===//
 
-static absl::Status AlwaysFail(ffi::BufferBase arg, int32_t value) {
+static absl::Status AlwaysFail(ffi::Result<ffi::BufferBase>, int32_t value) {
   return absl::InternalError(absl::StrCat("Uh oh, wrong value: ", value));
 }
 
 XLA_FFI_DEFINE_HANDLER(kAlwaysFail, AlwaysFail,
                        ffi::Ffi::Bind()
-                           .Arg<ffi::BufferBase>()  // arg
+                           .Ret<ffi::BufferBase>()  //
                            .Attr<int32_t>("value")  // value
 );
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$always_fail",
@@ -376,9 +376,9 @@ TEST_F(CustomCallTest, RuntimeCustomCallAlwaysFail) {
 }
 
 static absl::Status Memcpy(se::Stream* stream, ffi::BufferBase src,
-                           ffi::BufferBase dst) {
+                           ffi::Result<ffi::BufferBase> dst) {
   return stream->MemcpyD2D(
-      &dst.data, src.data,
+      &dst->data, src.data,
       absl::c_accumulate(src.dimensions, 1.0, std::multiplies<int64_t>()) *
           sizeof(float));
 }
@@ -387,7 +387,7 @@ XLA_FFI_DEFINE_HANDLER(kMemcpy, Memcpy,
                        ffi::Ffi::Bind()
                            .Ctx<ffi::Stream>()
                            .Arg<ffi::BufferBase>()  // src
-                           .Arg<ffi::BufferBase>()  // dst
+                           .Ret<ffi::BufferBase>()  // dst
 );
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$memcpy", PLATFORM,
                          kMemcpy);
@@ -405,13 +405,14 @@ TEST_F(CustomCallTest, ExportedFfiMemcpy) {
   EXPECT_THAT(result.data<float>(), ::testing::Each(42));
 }
 
-static absl::Status HandleUserPointer(ffi::BufferBase, const std::string* str) {
+static absl::Status HandleUserPointer(ffi::Result<ffi::BufferBase>,
+                                      const std::string* str) {
   return absl::InternalError(*str);
 }
 
 XLA_FFI_DEFINE_HANDLER(kHandleUserPointer, HandleUserPointer,
                        ffi::Ffi::Bind()
-                           .Arg<ffi::BufferBase>()  // buffer for result
+                           .Ret<ffi::BufferBase>()  // buffer for result
                            .Attr<ffi::Pointer<std::string>>("message"));
 
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$user_data", PLATFORM,
@@ -435,14 +436,14 @@ TEST_F(CustomCallTest, PassUserPointerWithAttrs) {
 }
 
 bool is_ffi_invoked = false;
-static absl::Status IsInvoked(ffi::BufferBase) {
+static absl::Status IsInvoked(ffi::Result<ffi::BufferBase>) {
   is_ffi_invoked = true;
   return absl::OkStatus();
 }
 
 XLA_FFI_DEFINE_HANDLER(
     kIsInvoked, IsInvoked,
-    ffi::Ffi::Bind().Arg<ffi::BufferBase>());  // Buffer for result (unused).
+    ffi::Ffi::Bind().Ret<ffi::BufferBase>());  // Buffer for result (unused).
 
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$isinvoked", PLATFORM,
                          kIsInvoked);
@@ -477,7 +478,8 @@ TEST_F(CustomCallTest, ExportedFfiUnknownTarget) {
 // fusions/address_computation_fusion_test.cc
 
 // Reusing kExpectedOpaque from the original test.
-static absl::Status Opaque(ffi::BufferBase, const std::string* str) {
+static absl::Status Opaque(ffi::Result<ffi::BufferBase>,
+                           const std::string* str) {
   std::string opaque(*str);
   if (opaque != kExpectedOpaque)
     return absl::InternalError(absl::StrFormat(
@@ -488,7 +490,7 @@ static absl::Status Opaque(ffi::BufferBase, const std::string* str) {
 
 XLA_FFI_DEFINE_HANDLER(kOpaque, Opaque,
                        ffi::Ffi::Bind()
-                           .Arg<ffi::BufferBase>()  // Dummy result buffer.
+                           .Ret<ffi::BufferBase>()  // Dummy result buffer.
                            .Attr<ffi::Pointer<std::string>>("opaque"));
 
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$opaque", PLATFORM,
@@ -514,20 +516,23 @@ static absl::Status TokensChecker(std::vector<ffi::BufferBase> inputs,
   return absl::OkStatus();
 }
 
-static absl::Status Tokens1Input(ffi::BufferBase input1, ffi::BufferBase,
+static absl::Status Tokens1Input(ffi::BufferBase input1,
+                                 ffi::Result<ffi::BufferBase>,
                                  const std::string* opaque) {
   return TokensChecker({input1}, opaque);
 }
 
 static absl::Status Tokens2Inputs(ffi::BufferBase input1,
-                                  ffi::BufferBase input2, ffi::BufferBase,
+                                  ffi::BufferBase input2,
+                                  ffi::Result<ffi::BufferBase>,
                                   const std::string* opaque) {
   return TokensChecker({input1, input2}, opaque);
 }
 
 static absl::Status Tokens3Inputs(ffi::BufferBase input1,
                                   ffi::BufferBase input2,
-                                  ffi::BufferBase input3, ffi::BufferBase,
+                                  ffi::BufferBase input3,
+                                  ffi::Result<ffi::BufferBase>,
                                   const std::string* opaque) {
   return TokensChecker({input1, input2, input3}, opaque);
 }
@@ -535,7 +540,7 @@ static absl::Status Tokens3Inputs(ffi::BufferBase input1,
 XLA_FFI_DEFINE_HANDLER(kTokens1Input, Tokens1Input,
                        ffi::Ffi::Bind()
                            .Arg<ffi::BufferBase>()  // 1 input buffer.
-                           .Arg<ffi::BufferBase>()  // Output buffer.
+                           .Ret<ffi::BufferBase>()  // Output buffer.
                            .Attr<ffi::Pointer<std::string>>("opaque"));
 
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$tokens_1input",
@@ -545,7 +550,7 @@ XLA_FFI_DEFINE_HANDLER(kTokens2Inputs, Tokens2Inputs,
                        ffi::Ffi::Bind()
                            .Arg<ffi::BufferBase>()  // 1st input buffer.
                            .Arg<ffi::BufferBase>()  // 2nd input buffer.
-                           .Arg<ffi::BufferBase>()  // Output buffer.
+                           .Ret<ffi::BufferBase>()  // Output buffer.
                            .Attr<ffi::Pointer<std::string>>("opaque"));
 
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$tokens_2inputs",
@@ -556,7 +561,7 @@ XLA_FFI_DEFINE_HANDLER(kTokens3Inputs, Tokens3Inputs,
                            .Arg<ffi::BufferBase>()  // 1st input buffer.
                            .Arg<ffi::BufferBase>()  // 2nd input buffer.
                            .Arg<ffi::BufferBase>()  // 3rd input buffer.
-                           .Arg<ffi::BufferBase>()  // Output buffer.
+                           .Ret<ffi::BufferBase>()  // Output buffer.
                            .Attr<ffi::Pointer<std::string>>("opaque"));
 
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$tokens_3inputs",
@@ -596,10 +601,12 @@ TEST_P(CustomCallTokensTest, ExportedFfiTokensTest) {
 INSTANTIATE_TEST_SUITE_P(CustomCallTokensTest, CustomCallTokensTest,
                          ::testing::ValuesIn(GetTokenTestCases()));
 
-static absl::Status AlwaysSucceed(ffi::BufferBase) { return absl::OkStatus(); }
+static absl::Status AlwaysSucceed(ffi::Result<ffi::BufferBase>) {
+  return absl::OkStatus();
+}
 
 XLA_FFI_DEFINE_HANDLER(kAlwaysSucceed, AlwaysSucceed,
-                       ffi::Ffi::Bind().Arg<ffi::BufferBase>());
+                       ffi::Ffi::Bind().Ret<ffi::BufferBase>());
 
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$always_succeed",
                          PLATFORM, kAlwaysSucceed);
@@ -619,7 +626,7 @@ TEST_F(CustomCallTest, ExportedFfiWithStatusSucceeded) {
 // XLA:FFI handler for testing attributes decoding
 //===----------------------------------------------------------------------===//
 
-static absl::Status FfiAttributes(ffi::BufferBase,
+static absl::Status FfiAttributes(ffi::Result<ffi::BufferBase>,
                                   absl::Span<const int32_t> i32_arr) {
   if (i32_arr.size() != 4)
     return absl::InternalError("i32_arr size does not match");
@@ -632,7 +639,7 @@ static absl::Status FfiAttributes(ffi::BufferBase,
 
 XLA_FFI_DEFINE_HANDLER(kFfiAttributes, FfiAttributes,
                        ffi::Ffi::Bind()
-                           .Arg<ffi::BufferBase>()
+                           .Ret<ffi::BufferBase>()
                            .Attr<absl::Span<const int32_t>>("i32_arr"));
 
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "xla.gpu.ffi_attributes",
@@ -656,7 +663,7 @@ TEST_F(CustomCallTest, FfiAttributes) {
 
 static absl::Status MemcpyWithCalledComputation(
     se::Stream* stream, se::OwningScratchAllocator<> scratch_allocator,
-    ffi::BufferBase src, ffi::BufferBase dst,
+    ffi::BufferBase src, ffi::Result<ffi::BufferBase> dst,
     const HloComputation* called_computation) {
   if (called_computation == nullptr)
     return absl::InternalError("Called computation is not defined");
@@ -680,7 +687,7 @@ XLA_FFI_DEFINE_HANDLER(kMemcpyWithCalledComputation,
                            .Ctx<ffi::Stream>()
                            .Ctx<ffi::ScratchAllocator>()  // scratch
                            .Arg<ffi::BufferBase>()        // src
-                           .Arg<ffi::BufferBase>()        // dst
+                           .Ret<ffi::BufferBase>()        // dst
                            .Ctx<ffi::CalledComputation>());
 
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(),

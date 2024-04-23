@@ -62,6 +62,7 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:statusor",
     ],
@@ -75,6 +76,7 @@ tf_cc_test(
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:status",
@@ -321,7 +323,18 @@ cc_library(
     hdrs = ["report.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
+        ":io",
+        "//tensorflow/compiler/mlir/quantization/common:lift_as_function_call",
         "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+        "@local_tsl//tsl/platform:protobuf",
     ],
 )
 
@@ -330,8 +343,12 @@ tf_cc_test(
     srcs = ["report_test.cc"],
     deps = [
         ":report",
+        "//tensorflow/compiler/mlir/quantization/common:test_base",
         "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
+        "@llvm-project//mlir:IR",
+        "@local_tsl//tsl/platform:protobuf",
     ],
 )
 

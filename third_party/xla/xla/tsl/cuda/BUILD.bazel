@@ -101,14 +101,14 @@ cc_library(
     name = "cudart",  # buildifier: disable=duplicated-name
     srcs = select({
         # include dynamic loading implementation only when if_cuda_is_configured and build dynamically
-        "@local_tsl//tsl:is_cuda_enabled_and_oss": [
+        "@local_xla//xla/tsl:is_cuda_enabled_and_oss": [
             "cudart.tramp.S",
             "cudart_stub.cc",
         ],
         "//conditions:default": [],
     }),
     linkopts = select({
-        "@local_tsl//tsl:is_cuda_enabled_and_oss": cuda_rpath_flags("nvidia/cuda_runtime/lib"),
+        "@local_xla//xla/tsl:is_cuda_enabled_and_oss": cuda_rpath_flags("nvidia/cuda_runtime/lib"),
         "//conditions:default": [],
     }),
     local_defines = [
@@ -117,7 +117,7 @@ cc_library(
     textual_hdrs = ["cudart.inc"],
     visibility = ["//visibility:public"],
     deps = select({
-        "@local_tsl//tsl:is_cuda_enabled_and_oss": [
+        "@local_xla//xla/tsl:is_cuda_enabled_and_oss": [
             ":cuda",
             "@com_google_absl//absl/container:flat_hash_set",
             "@local_config_cuda//cuda:cuda_headers",

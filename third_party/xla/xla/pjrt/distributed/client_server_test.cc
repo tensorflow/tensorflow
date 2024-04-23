@@ -115,7 +115,7 @@ TEST_F(ClientServerTest, ConnectAndShutdownAreBarriers) {
 
   absl::Barrier barrier(num_nodes);
 
-  auto thread_fn = [&](int node_id) -> xla::Status {
+  auto thread_fn = [&](int node_id) -> absl::Status {
     auto client = GetClient(node_id);
 
     // Allow the threads to call Connect one-by-one in order.
@@ -155,7 +155,7 @@ TEST_F(ClientServerTest, ConnectAndShutdownAreBarriers) {
     return OkStatus();
   };
 
-  std::vector<xla::Status> statuses(num_nodes);
+  std::vector<absl::Status> statuses(num_nodes);
   {
     tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test_threads",
                                         num_nodes);
@@ -207,7 +207,7 @@ TEST_F(ClientServerTest, ConnectAndEnumerateDevices) {
   // client. This ensures that devices are sent out of turn (compared to their
   // node ids).
   absl::Notification n;
-  auto thread0_fn = [&]() -> xla::Status {
+  auto thread0_fn = [&]() -> absl::Status {
     auto client = GetClient(/*node_id=*/0);
     GlobalTopologyProto topology;
     TF_RETURN_IF_ERROR(client->Connect());
@@ -234,7 +234,7 @@ TEST_F(ClientServerTest, ConnectAndEnumerateDevices) {
     TF_RET_CHECK(value == "value2");
     return OkStatus();
   };
-  auto thread1_fn = [&]() -> xla::Status {
+  auto thread1_fn = [&]() -> absl::Status {
     auto client = GetClient(/*node_id=*/1);
     GlobalTopologyProto topology;
     TF_RETURN_IF_ERROR(client->Connect());
@@ -261,9 +261,9 @@ TEST_F(ClientServerTest, ConnectAndEnumerateDevices) {
     return OkStatus();
   };
 
-  std::vector<std::function<xla::Status()>> functions = {thread0_fn,
-                                                         thread1_fn};
-  std::vector<xla::Status> statuses(functions.size());
+  std::vector<std::function<absl::Status()>> functions = {thread0_fn,
+                                                          thread1_fn};
+  std::vector<absl::Status> statuses(functions.size());
   {
     tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test_threads",
                                         functions.size());
@@ -299,7 +299,7 @@ TEST_F(ClientServerTest, EnumerateElevenDevices) {
     node->mutable_devices(0)->set_slice_index(i % 2);
   }
 
-  auto thread_fn = [&](int node_id) -> xla::Status {
+  auto thread_fn = [&](int node_id) -> absl::Status {
     auto client = GetClient(node_id);
     GlobalTopologyProto topology;
     TF_RETURN_IF_ERROR(client->Connect());
@@ -315,7 +315,7 @@ TEST_F(ClientServerTest, EnumerateElevenDevices) {
     return OkStatus();
   };
 
-  std::vector<xla::Status> statuses(num_nodes);
+  std::vector<absl::Status> statuses(num_nodes);
   {
     tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test_threads",
                                         num_nodes);
@@ -336,7 +336,7 @@ TEST_F(ClientServerTest, ZeroInitTimeoutShouldStillWaitForOtherTasks) {
 
   absl::Barrier barrier(num_nodes);
 
-  auto thread_fn = [&](int node_id) -> xla::Status {
+  auto thread_fn = [&](int node_id) -> absl::Status {
     DistributedRuntimeClient::Options client_options;
     client_options.init_timeout = absl::ZeroDuration();
     auto client = GetClient(node_id, client_options);
@@ -351,7 +351,7 @@ TEST_F(ClientServerTest, ZeroInitTimeoutShouldStillWaitForOtherTasks) {
     return OkStatus();
   };
 
-  std::vector<xla::Status> statuses(num_nodes);
+  std::vector<absl::Status> statuses(num_nodes);
   {
     tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test_threads",
                                         num_nodes);
@@ -368,11 +368,11 @@ TEST_F(ClientServerTest, ClientsTerminateShutdownIfAnyClientGoesAway) {
   int num_nodes = 3;
   StartService(num_nodes);
 
-  auto thread_fn = [&](int node_id) -> xla::Status {
+  auto thread_fn = [&](int node_id) -> absl::Status {
     DistributedRuntimeClient::Options client_options;
     client_options.shutdown_on_destruction = node_id != 0;
     client_options.missed_heartbeat_callback =
-        [&](xla::Status status, bool coordinator_initiated) {};
+        [&](absl::Status status, bool coordinator_initiated) {};
     auto client = GetClient(node_id, client_options);
 
     TF_RETURN_IF_ERROR(client->Connect());
@@ -387,7 +387,7 @@ TEST_F(ClientServerTest, ClientsTerminateShutdownIfAnyClientGoesAway) {
     return OkStatus();
   };
 
-  std::vector<xla::Status> statuses(num_nodes);
+  std::vector<absl::Status> statuses(num_nodes);
   {
     tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test_threads",
                                         num_nodes);
@@ -413,11 +413,11 @@ TEST_F(ClientServerTest, ClientsReceiveMissedHeartbeatIfAnyClientGoesAway) {
   int num_nodes = 3;
   StartService(num_nodes);
 
-  auto thread_fn = [&](int node_id) -> xla::Status {
+  auto thread_fn = [&](int node_id) -> absl::Status {
     DistributedRuntimeClient::Options client_options;
     client_options.shutdown_on_destruction = (node_id != 0);
     absl::Notification shutdown;
-    client_options.missed_heartbeat_callback = [&](xla::Status status,
+    client_options.missed_heartbeat_callback = [&](absl::Status status,
                                                    bool coordinator_initiated) {
       shutdown.Notify();
     };
@@ -432,7 +432,7 @@ TEST_F(ClientServerTest, ClientsReceiveMissedHeartbeatIfAnyClientGoesAway) {
     return OkStatus();
   };
 
-  std::vector<xla::Status> statuses(num_nodes);
+  std::vector<absl::Status> statuses(num_nodes);
   {
     tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test_threads",
                                         num_nodes);
@@ -456,12 +456,12 @@ TEST_F(ClientServerTest, ClientsTerminateIfServiceGoesAway) {
 
   absl::Barrier barrier(num_nodes + 1);
 
-  auto thread_fn = [&](int node_id) -> xla::Status {
+  auto thread_fn = [&](int node_id) -> absl::Status {
     DistributedRuntimeClient::Options client_options;
     client_options.rpc_timeout = absl::Seconds(1);
     client_options.shutdown_timeout = absl::Seconds(10);
     absl::Notification shutdown;
-    client_options.missed_heartbeat_callback = [&](xla::Status status,
+    client_options.missed_heartbeat_callback = [&](absl::Status status,
                                                    bool coordinator_initiated) {
       shutdown.Notify();
     };
@@ -480,7 +480,7 @@ TEST_F(ClientServerTest, ClientsTerminateIfServiceGoesAway) {
     return OkStatus();
   };
 
-  std::vector<xla::Status> statuses(num_nodes);
+  std::vector<absl::Status> statuses(num_nodes);
   {
     tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test_threads",
                                         num_nodes);
@@ -502,7 +502,7 @@ TEST_F(ClientServerTest, LateClientsAreOk) {
 
   absl::Barrier barrier(num_nodes);
 
-  auto thread_fn = [&](int node_id) -> xla::Status {
+  auto thread_fn = [&](int node_id) -> absl::Status {
     DistributedRuntimeClient::Options client_options;
     client_options.init_timeout = absl::Seconds(20);
     client_options.rpc_timeout = absl::Milliseconds(200);
@@ -515,7 +515,7 @@ TEST_F(ClientServerTest, LateClientsAreOk) {
     return OkStatus();
   };
 
-  std::vector<xla::Status> statuses(num_nodes);
+  std::vector<absl::Status> statuses(num_nodes);
   {
     tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test_threads",
                                         num_nodes);
@@ -537,13 +537,13 @@ TEST_F(ClientServerTest, ConnectEventuallyTimesOutIfAClientDoesNotShowUp) {
   service_options.shutdown_timeout = timeout;
   StartService(num_nodes, service_options);
 
-  auto thread_fn = [&](int node_id) -> xla::Status {
+  auto thread_fn = [&](int node_id) -> absl::Status {
     DistributedRuntimeClient::Options client_options;
     client_options.init_timeout = timeout;
     client_options.rpc_timeout = timeout;
     // Overwrite the default error callback which invokes LOG(QFATAL).
     client_options.missed_heartbeat_callback =
-        [](xla::Status status, bool coordinator_reported_failure) {
+        [](absl::Status status, bool coordinator_reported_failure) {
           LOG(ERROR) << "Distributed client has missing heartbeats: " << status;
         };
     auto client = GetClient(node_id, client_options);
@@ -554,7 +554,7 @@ TEST_F(ClientServerTest, ConnectEventuallyTimesOutIfAClientDoesNotShowUp) {
   };
 
   // Note: one fewer thread than 'num_nodes'.
-  std::vector<xla::Status> statuses(num_nodes - 1);
+  std::vector<absl::Status> statuses(num_nodes - 1);
   {
     tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test_threads",
                                         num_nodes);
@@ -571,7 +571,7 @@ TEST_F(ClientServerTest, WaitAtBarrier_Succeed) {
   int num_nodes = 2;
   StartService(num_nodes);
 
-  auto thread_fn = [&](int node_id) -> xla::Status {
+  auto thread_fn = [&](int node_id) -> absl::Status {
     auto client = GetClient(node_id);
     TF_RETURN_IF_ERROR(client->Connect());
 
@@ -582,7 +582,7 @@ TEST_F(ClientServerTest, WaitAtBarrier_Succeed) {
     return xla::OkStatus();
   };
 
-  std::vector<xla::Status> statuses(num_nodes);
+  std::vector<absl::Status> statuses(num_nodes);
   {
     tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test_threads",
                                         num_nodes);
@@ -600,7 +600,7 @@ TEST_F(ClientServerTest, WaitAtBarrier_Timeout) {
   StartService(num_nodes);
   absl::Notification n;
 
-  auto thread_fn = [&](int node_id) -> xla::Status {
+  auto thread_fn = [&](int node_id) -> absl::Status {
     auto client = GetClient(node_id);
     TF_RETURN_IF_ERROR(client->Connect());
 
@@ -619,7 +619,7 @@ TEST_F(ClientServerTest, WaitAtBarrier_Timeout) {
     return xla::OkStatus();
   };
 
-  std::vector<xla::Status> statuses(num_nodes);
+  std::vector<absl::Status> statuses(num_nodes);
   {
     tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test_threads",
                                         num_nodes);
@@ -639,7 +639,7 @@ TEST_F(ClientServerTest, WaitAtBarrier_TimeoutWithDifferentBarrierId) {
   int num_nodes = 2;
   StartService(num_nodes);
 
-  auto thread_fn = [&](int node_id) -> xla::Status {
+  auto thread_fn = [&](int node_id) -> absl::Status {
     auto client = GetClient(node_id);
     TF_RETURN_IF_ERROR(client->Connect());
 
@@ -655,7 +655,7 @@ TEST_F(ClientServerTest, WaitAtBarrier_TimeoutWithDifferentBarrierId) {
     return xla::OkStatus();
   };
 
-  std::vector<xla::Status> statuses(num_nodes);
+  std::vector<absl::Status> statuses(num_nodes);
   {
     tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test_threads",
                                         num_nodes);
@@ -673,7 +673,7 @@ TEST_F(ClientServerTest, WaitAtBarrier_FailWithSameBarrierId) {
   int num_nodes = 2;
   StartService(num_nodes);
 
-  auto thread_fn = [&](int node_id) -> xla::Status {
+  auto thread_fn = [&](int node_id) -> absl::Status {
     auto client = GetClient(node_id);
     TF_RETURN_IF_ERROR(client->Connect());
 
@@ -684,7 +684,7 @@ TEST_F(ClientServerTest, WaitAtBarrier_FailWithSameBarrierId) {
     return xla::OkStatus();
   };
 
-  std::vector<xla::Status> statuses(num_nodes);
+  std::vector<absl::Status> statuses(num_nodes);
   {
     tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test_threads",
                                         num_nodes);

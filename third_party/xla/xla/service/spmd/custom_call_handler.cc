@@ -44,6 +44,7 @@ limitations under the License.
 #include "xla/service/custom_call_sharding_helper.h"
 #include "xla/service/hlo_lexer.h"
 #include "xla/service/hlo_module_config.h"
+#include "xla/service/host_memory_offload_annotations.h"
 #include "xla/service/spmd/spmd_partitioner.h"
 #include "xla/service/spmd/spmd_partitioner_util.h"
 #include "xla/shape.h"
@@ -455,6 +456,27 @@ Status SpmdPartitioningVisitor::HandleCustomCall(HloInstruction* hlo) {
 
   if (hlo->custom_call_target() == "TopK") {
     return HandleCustomCallTopK(hlo);
+  }
+
+  if (hlo->custom_call_target() ==
+      host_memory_offload_annotations::kMoveToHostCustomCallTarget) {
+    return HandleElementwise(hlo);
+  }
+
+  if (hlo->custom_call_target() ==
+      host_memory_offload_annotations::kMoveToDeviceCustomCallTarget) {
+    // Use the operand's sharding to shard the move-to-device op. This avoids
+    // inserting any resharding before the custom call so that the
+    // host-offloader pass can pattern match the offloading sequences correctly.
+    const HloSharding& sharding = hlo->operand(0)->sharding();
+    HloInstruction* move_to_device = b_.AddInstruction(
+        hlo->CloneWithNewOperands(MakePartitionedShape(hlo->shape(), sharding),
+                                  {GetPartitionedHlo(hlo->operand(0)).hlo()}));
+    move_to_device->set_sharding(sharding);
+    SetPartitionedHlo(hlo, PartitionedHlo(move_to_device, hlo->shape(),
+                                          MakePartitioningState())
+                               .Reshard(hlo->sharding()));
+    return OkStatus();
   }
 
   return DefaultAction(hlo);

@@ -210,7 +210,7 @@ Status CheckAliasSetCompatibility(const AliasSet& alias_set,
                                   const HloInstructionSequence& sequence,
                                   bool crash_on_error);
 
-void GenerateReduceScatter(
+absl::Status GenerateReduceScatter(
     const HloInstructionSequence& sequence, const AliasMap& alias_map,
     const InstructionDepthMap& depth_map, const StrategyMap& strategy_map,
     const CostGraph& cost_graph, absl::Span<const int64_t> s_val,

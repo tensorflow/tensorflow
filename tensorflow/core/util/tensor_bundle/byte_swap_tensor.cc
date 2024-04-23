@@ -63,7 +63,7 @@ Status ByteSwapBuffer(char* buff, size_t size, DataType dtype,
     case DT_BOOL:
     case DT_UINT8:
     case DT_INT8:
-      return OkStatus();
+      return absl::OkStatus();
 
     // 16-bit types
     case DT_BFLOAT16:
@@ -119,7 +119,7 @@ Status ByteSwapBuffer(char* buff, size_t size, DataType dtype,
   }
 
   TF_RETURN_IF_ERROR(ByteSwapArray(buff, bytes_per_elem, array_len));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -198,7 +198,7 @@ Status ByteSwapTensorContentInNode(NodeDef& node) {
       }
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ByteSwapTensorContentInMetaGraphDef(MetaGraphDef* meta_graph_def) {
@@ -207,13 +207,13 @@ Status ByteSwapTensorContentInMetaGraphDef(MetaGraphDef* meta_graph_def) {
                              ->mutable_function())
     for (auto& node : (*function.mutable_node_def()))
       TF_RETURN_IF_ERROR(ByteSwapTensorContentInNode(node));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ByteSwapTensorContentInGraphDef(GraphDef* graph_def) {
   for (auto& node : *graph_def->mutable_node())
     TF_RETURN_IF_ERROR(ByteSwapTensorContentInNode(node));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

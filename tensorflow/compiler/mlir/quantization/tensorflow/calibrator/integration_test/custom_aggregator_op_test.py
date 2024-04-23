@@ -46,10 +46,14 @@ class CustomAggregatorTest(test.TestCase):
 
       aggregator = custom_aggregator_op_wrapper.custom_aggregator(
           input_tensor,
-          '1',
+          id='1',
           calibration_method=_CalibrationMethod.CALIBRATION_METHOD_MIN_MAX,
       )
-      self.assertAllEqual(self.evaluate(aggregator), [1.0, 2.0, 3.0, 4.0, 5.0])
+      aggregator_output = self.evaluate(aggregator)
+      self.assertAllEqual(aggregator_output.output, [1.0, 2.0, 3.0, 4.0, 5.0])
+      self.assertEqual(aggregator_output.min, 1.0)
+      self.assertEqual(aggregator_output.max, 5.0)
+      self.assertEmpty(aggregator_output.histogram)
 
       statistics: calib_stat_pb2.CalibrationStatistics = (
           pywrap_calibration.get_statistics_from_calibrator('1')
@@ -71,7 +75,12 @@ class CustomAggregatorTest(test.TestCase):
           '2',
           calibration_method=_CalibrationMethod.CALIBRATION_METHOD_MIN_MAX,
       )
-      self.assertAllEqual(self.evaluate(aggregator1), [1.0, 2.0, 3.0, 4.0, 5.0])
+      aggregator1_output = self.evaluate(aggregator1)
+      self.assertAllEqual(aggregator1_output.output, [1.0, 2.0, 3.0, 4.0, 5.0])
+      self.assertEqual(aggregator1_output.min, 1.0)
+      self.assertEqual(aggregator1_output.max, 5.0)
+      self.assertEmpty(aggregator1_output.histogram)
+
       input_tensor2 = array_ops.constant(
           [-1.0, -2.0, -3.0, -4.0, -5.0], dtypes.float32
       )
@@ -80,9 +89,13 @@ class CustomAggregatorTest(test.TestCase):
           '3',
           calibration_method=_CalibrationMethod.CALIBRATION_METHOD_MIN_MAX,
       )
+      aggregator2_output = self.evaluate(aggregator2)
       self.assertAllEqual(
-          self.evaluate(aggregator2), [-1.0, -2.0, -3.0, -4.0, -5.0]
+          aggregator2_output.output, [-1.0, -2.0, -3.0, -4.0, -5.0]
       )
+      self.assertEqual(aggregator2_output.min, -5.0)
+      self.assertEqual(aggregator2_output.max, -1.0)
+      self.assertEmpty(aggregator2_output.histogram)
 
       statistics: calib_stat_pb2 = (
           pywrap_calibration.get_statistics_from_calibrator('2')
@@ -108,7 +121,12 @@ class CustomAggregatorTest(test.TestCase):
           '4',
           calibration_method=_CalibrationMethod.CALIBRATION_METHOD_MIN_MAX,
       )
-      self.assertAllEqual(self.evaluate(aggregator1), [1.0, 2.0, 3.0, 4.0, 5.0])
+      aggregator1_output = self.evaluate(aggregator1)
+      self.assertAllEqual(aggregator1_output.output, [1.0, 2.0, 3.0, 4.0, 5.0])
+      self.assertEqual(aggregator1_output.min, 1.0)
+      self.assertEqual(aggregator1_output.max, 5.0)
+      self.assertEmpty(aggregator1_output.histogram)
+
       input_tensor2 = array_ops.constant(
           [-1.0, -2.0, -3.0, -4.0, -5.0], dtypes.float32
       )
@@ -117,9 +135,13 @@ class CustomAggregatorTest(test.TestCase):
           '5',
           calibration_method=_CalibrationMethod.CALIBRATION_METHOD_MIN_MAX,
       )
+      aggregator2_output = self.evaluate(aggregator2)
       self.assertAllEqual(
-          self.evaluate(aggregator2), [-1.0, -2.0, -3.0, -4.0, -5.0]
+          aggregator2_output.output, [-1.0, -2.0, -3.0, -4.0, -5.0]
       )
+      self.assertEqual(aggregator2_output.min, -5.0)
+      self.assertEqual(aggregator2_output.max, -1.0)
+      self.assertEmpty(aggregator2_output.histogram)
 
       statistics: calib_stat_pb2 = (
           pywrap_calibration.get_statistics_from_calibrator('4')
@@ -157,10 +179,15 @@ class CustomAggregatorTest(test.TestCase):
           '6',
           calibration_method=_CalibrationMethod.CALIBRATION_METHOD_AVERAGE_MIN_MAX,
       )
+      aggregator1_output = self.evaluate(aggregator1)
       self.assertAllEqual(
-          self.evaluate(aggregator1),
+          aggregator1_output.output,
           [-50.0, -25.0, 0.0, 25.0, 50.0],
       )
+      self.assertEqual(aggregator1_output.min, -50.0)
+      self.assertEqual(aggregator1_output.max, 50.0)
+      self.assertEmpty(aggregator1_output.histogram)
+
       input_tensor2 = array_ops.constant(
           [-100.0, -50.0, 0.0, 50.0, 100.0], dtypes.float32
       )
@@ -169,9 +196,13 @@ class CustomAggregatorTest(test.TestCase):
           '6',
           calibration_method=_CalibrationMethod.CALIBRATION_METHOD_AVERAGE_MIN_MAX,
       )
+      aggregator2_output = self.evaluate(aggregator2)
       self.assertAllEqual(
-          self.evaluate(aggregator2), [-100.0, -50.0, 0.0, 50.0, 100.0]
+          aggregator2_output.output, [-100.0, -50.0, 0.0, 50.0, 100.0]
       )
+      self.assertEqual(aggregator2_output.min, -100.0)
+      self.assertEqual(aggregator2_output.max, 100.0)
+      self.assertEmpty(aggregator2_output.histogram)
 
       statistics: calib_stat_pb2 = (
           pywrap_calibration.get_statistics_from_calibrator('6')
@@ -182,6 +213,31 @@ class CustomAggregatorTest(test.TestCase):
       num_samples = statistics.average_min_max_statistics.num_samples
 
       self.assertAllEqual((min_sum, max_sum, num_samples), (-150.0, 150.0, 2))
+
+  def testHistogramCalibration(self):
+    with self.session():
+      pywrap_calibration.clear_calibrator()
+      input_tensor = array_ops.constant(
+          [1.0, 1.0, 3.0, 4.0, 6.0], dtypes.float32
+      )
+
+      aggregator = custom_aggregator_op_wrapper.custom_aggregator(
+          input_tensor,
+          id='7',
+          calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_MSE_BRUTEFORCE,
+          initial_num_bins=256,
+      )
+      aggregator_output = self.evaluate(aggregator)
+      self.assertAllEqual(aggregator_output.output, [1.0, 1.0, 3.0, 4.0, 6.0])
+      self.assertEqual(aggregator_output.min, 1.0)
+      self.assertEqual(aggregator_output.max, 6.0)
+
+      self.assertLen(aggregator_output.histogram, 512)
+      self.assertEqual(sum(aggregator_output.histogram), 5)
+      self.assertEqual(aggregator_output.histogram[0], 2)
+      self.assertEqual(aggregator_output.histogram[128], 1)
+      self.assertEqual(aggregator_output.histogram[192], 1)
+      self.assertEqual(aggregator_output.histogram[320], 1)
 
 
 if __name__ == '__main__':

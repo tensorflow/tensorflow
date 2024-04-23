@@ -6,10 +6,10 @@ func.func @compute_reshape_shape(%arg0: index, %arg1: tensor<2xi32>) -> tensor<2
   func.return %0 : tensor<2xi32>
   //      CHECK: %[[ARG0_I32:.*]] = builtin.unrealized_conversion_cast %arg0 : index to tensor<i32>
   // CHECK-NEXT: %[[TMP0:.*]] = mhlo.constant dense<-1> : tensor<i32>
-  // CHECK-NEXT: %[[INPUT_SIZE0x1:.*]] = "mhlo.slice"(%arg1) {limit_indices = dense<1> : tensor<1xi64>, start_indices = dense<0> : tensor<1xi64>, strides = dense<1> : tensor<1xi64>} : (tensor<2xi32>) -> tensor<1xi32>
+  // CHECK-NEXT: %[[INPUT_SIZE0x1:.*]] = "mhlo.slice"(%arg1) <{limit_indices = dense<1> : tensor<1xi64>, start_indices = dense<0> : tensor<1xi64>, strides = dense<1> : tensor<1xi64>}> : (tensor<2xi32>) -> tensor<1xi32>
   // CHECK-NEXT: %[[INPUT_SIZE0:.*]] = mhlo.reshape %[[INPUT_SIZE0x1]] : (tensor<1xi32>) -> tensor<i32>
   // CHECK-NEXT: %[[TMP1:.*]] = mhlo.multiply %[[TMP0]], %[[INPUT_SIZE0]] : tensor<i32>
-  // CHECK-NEXT: %[[INPUT_SIZE1x1:.*]] = "mhlo.slice"(%arg1) {limit_indices = dense<2> : tensor<1xi64>, start_indices = dense<1> : tensor<1xi64>, strides = dense<1> : tensor<1xi64>} : (tensor<2xi32>) -> tensor<1xi32>
+  // CHECK-NEXT: %[[INPUT_SIZE1x1:.*]] = "mhlo.slice"(%arg1) <{limit_indices = dense<2> : tensor<1xi64>, start_indices = dense<1> : tensor<1xi64>, strides = dense<1> : tensor<1xi64>}> : (tensor<2xi32>) -> tensor<1xi32>
   // CHECK-NEXT: %[[INPUT_SIZE1:.*]] = mhlo.reshape %[[INPUT_SIZE1x1]] : (tensor<1xi32>) -> tensor<i32>
   // CHECK-NEXT: %[[INPUT_SIZE_PRODUCT:.*]] = mhlo.multiply %[[TMP1]], %[[INPUT_SIZE1]] : tensor<i32>
   // CHECK-NEXT: %[[COMPUTED_SIZE:.*]] = mhlo.divide %[[ARG0_I32]], %[[INPUT_SIZE_PRODUCT]] : tensor<i32>
@@ -20,7 +20,7 @@ func.func @compute_reshape_shape(%arg0: index, %arg1: tensor<2xi32>) -> tensor<2
   // CHECK-NEXT: %[[INPUT_SIZE1_EQ_M1:.*]] = mhlo.compare  EQ, %6, %[[M1]],  NOTYPE : (tensor<i32>, tensor<i32>) -> tensor<i1>
   // CHECK-NEXT: %[[RESULT_SIZE1:.*]] = mhlo.select %[[INPUT_SIZE1_EQ_M1]], %[[COMPUTED_SIZE]], %6 : tensor<i1>, tensor<i32>
   // CHECK-NEXT: %[[RESULT_SIZE1x1:.*]] = mhlo.reshape %[[RESULT_SIZE1]] : (tensor<i32>) -> tensor<1xi32>
-  // CHECK-NEXT: %[[RESULT:.*]] = "mhlo.concatenate"(%[[RESULT_SIZE0x1]], %[[RESULT_SIZE1x1]]) {dimension = 0 : i64} : (tensor<1xi32>, tensor<1xi32>) -> tensor<2xi32>
+  // CHECK-NEXT: %[[RESULT:.*]] = "mhlo.concatenate"(%[[RESULT_SIZE0x1]], %[[RESULT_SIZE1x1]]) <{dimension = 0 : i64}> : (tensor<1xi32>, tensor<1xi32>) -> tensor<2xi32>
   // CHECK-NEXT: return %[[RESULT]] : tensor<2xi32>
 }
 
@@ -32,10 +32,10 @@ func.func @num_elements_tensor_to_index(%arg0: tensor<2xindex>) -> index {
   func.return %0 : index
   //      CHECK: %[[ARG0_I32:.*]] = builtin.unrealized_conversion_cast %arg0 : tensor<2xindex> to tensor<2xi32>
   // CHECK-NEXT: %[[TMP0:.*]] = mhlo.constant dense<1> : tensor<i32>
-  // CHECK-NEXT: %[[SIZE0x1:.*]] = "mhlo.slice"(%[[ARG0_I32]]) {limit_indices = dense<1> : tensor<1xi64>, start_indices = dense<0> : tensor<1xi64>, strides = dense<1> : tensor<1xi64>} : (tensor<2xi32>) -> tensor<1xi32>
+  // CHECK-NEXT: %[[SIZE0x1:.*]] = "mhlo.slice"(%[[ARG0_I32]]) <{limit_indices = dense<1> : tensor<1xi64>, start_indices = dense<0> : tensor<1xi64>, strides = dense<1> : tensor<1xi64>}> : (tensor<2xi32>) -> tensor<1xi32>
   // CHECK-NEXT: %[[SIZE0:.*]] = mhlo.reshape %[[SIZE0x1]] : (tensor<1xi32>) -> tensor<i32>
   // CHECK-NEXT: %[[TMP1:.*]] = mhlo.multiply %[[TMP0]], %[[SIZE0]] : tensor<i32>
-  // CHECK-NEXT: %[[SIZE1x1:.*]] = "mhlo.slice"(%[[ARG0_I32]]) {limit_indices = dense<2> : tensor<1xi64>, start_indices = dense<1> : tensor<1xi64>, strides = dense<1> : tensor<1xi64>} : (tensor<2xi32>) -> tensor<1xi32>
+  // CHECK-NEXT: %[[SIZE1x1:.*]] = "mhlo.slice"(%[[ARG0_I32]]) <{limit_indices = dense<2> : tensor<1xi64>, start_indices = dense<1> : tensor<1xi64>, strides = dense<1> : tensor<1xi64>}> : (tensor<2xi32>) -> tensor<1xi32>
   // CHECK-NEXT: %[[SIZE1:.*]] = mhlo.reshape %[[SIZE1x1]] : (tensor<1xi32>) -> tensor<i32>
   // CHECK-NEXT: %[[RESULT_I32:.*]] = mhlo.multiply %[[TMP1]], %[[SIZE1]] : tensor<i32>
   // CHECK-NEXT: %[[RESULT_INDEX:.*]] = builtin.unrealized_conversion_cast %[[RESULT_I32]] : tensor<i32> to index
@@ -64,11 +64,11 @@ func.func @num_elements_xxx_to_size(%arg0: tensor<2xindex>) -> !shape.size {
 func.func @shape_of_ranked_to_index(%arg0: tensor<?x1xf32>) -> tensor<2xindex> {
   %0 = shape.shape_of %arg0 : tensor<?x1xf32> -> tensor<2xindex>
   func.return %0 : tensor<2xindex>
-  //      CHECK: %[[SIZE0x1:.*]] = "mhlo.get_dimension_size"(%arg0) {dimension = 0 : i64} : (tensor<?x1xf32>) -> tensor<i32>
+  //      CHECK: %[[SIZE0x1:.*]] = "mhlo.get_dimension_size"(%arg0) <{dimension = 0 : i64}> : (tensor<?x1xf32>) -> tensor<i32>
   // CHECK-NEXT: %[[SIZE0:.*]] = mhlo.reshape %[[SIZE0x1]] : (tensor<i32>) -> tensor<1xi32>
-  // CHECK-NEXT: %[[SIZE1x1:.*]] = "mhlo.get_dimension_size"(%arg0) {dimension = 1 : i64} : (tensor<?x1xf32>) -> tensor<i32>
+  // CHECK-NEXT: %[[SIZE1x1:.*]] = "mhlo.get_dimension_size"(%arg0) <{dimension = 1 : i64}> : (tensor<?x1xf32>) -> tensor<i32>
   // CHECK-NEXT: %[[SIZE1:.*]] = mhlo.reshape %[[SIZE1x1]] : (tensor<i32>) -> tensor<1xi32>
-  // CHECK-NEXT: %[[RESULT_I32:.*]] = "mhlo.concatenate"(%[[SIZE0]], %[[SIZE1]]) {dimension = 0 : i64} : (tensor<1xi32>, tensor<1xi32>) -> tensor<2xi32>
+  // CHECK-NEXT: %[[RESULT_I32:.*]] = "mhlo.concatenate"(%[[SIZE0]], %[[SIZE1]]) <{dimension = 0 : i64}> : (tensor<1xi32>, tensor<1xi32>) -> tensor<2xi32>
   // CHECK-NEXT: %[[RESULT_INDEX:.*]] = builtin.unrealized_conversion_cast %[[RESULT_I32]] : tensor<2xi32> to tensor<2xindex>
   // CHECK-NEXT: return %[[RESULT_INDEX]] : tensor<2xindex>
 }
@@ -96,7 +96,7 @@ func.func @tensor_dim(%arg0: tensor<?x?xf32>) -> index {
   %c0 = arith.constant 0 : index
   %dim = tensor.dim %arg0, %c0 : tensor<?x?xf32>
   func.return %dim : index
-  //      CHECK: %[[DIM_SIZE:.*]] = "mhlo.get_dimension_size"(%arg0) {dimension = 0 : i64} : (tensor<?x?xf32>) -> tensor<i32>
+  //      CHECK: %[[DIM_SIZE:.*]] = "mhlo.get_dimension_size"(%arg0) <{dimension = 0 : i64}> : (tensor<?x?xf32>) -> tensor<i32>
   // CHECK-NEXT: %[[DIM_SIZE_INDEX:.*]] = builtin.unrealized_conversion_cast %[[DIM_SIZE]] : tensor<i32> to index
   // CHECK-NEXT: return %[[DIM_SIZE_INDEX]] : index
 }
@@ -119,7 +119,7 @@ func.func @tensor_from_elements(%arg0: index) -> tensor<2xindex> {
   //      CHECK: %[[ELEMENT1_SCALAR:.*]] = builtin.unrealized_conversion_cast %arg0 : index to tensor<i32>
   // CHECK-NEXT: %[[ELEMENT1:.*]] = mhlo.reshape %[[ELEMENT1_SCALAR]] : (tensor<i32>) -> tensor<1xi32>
   // CHECK-NEXT: %[[ELEMENT2:.*]] = mhlo.constant dense<0> : tensor<1xi32>
-  // CHECK-NEXT: %[[CONCAT:.*]] = "mhlo.concatenate"(%[[ELEMENT1]], %[[ELEMENT2]]) {dimension = 0 : i64} : (tensor<1xi32>, tensor<1xi32>) -> tensor<2xi32>
+  // CHECK-NEXT: %[[CONCAT:.*]] = "mhlo.concatenate"(%[[ELEMENT1]], %[[ELEMENT2]]) <{dimension = 0 : i64}> : (tensor<1xi32>, tensor<1xi32>) -> tensor<2xi32>
   // CHECK-NEXT: %[[CONCAT_INDEX:.*]] = builtin.unrealized_conversion_cast %[[CONCAT]] : tensor<2xi32> to tensor<2xindex>
   // CHECK-NEXT: return %[[CONCAT_INDEX]] : tensor<2xindex>
 }
@@ -173,7 +173,7 @@ func.func @shape_broadcast_different_dims(%arg0: tensor<4xindex>, %arg1: tensor<
   //      CHECK: %[[LHS:.*]] = builtin.unrealized_conversion_cast %arg0 : tensor<4xindex> to tensor<4xi32>
   // CHECK-NEXT: %[[RHS:.*]] = builtin.unrealized_conversion_cast %arg1 : tensor<6xindex> to tensor<6xi32>
   // CHECK-NEXT: %[[PAD:.*]] = mhlo.constant dense<1> : tensor<2xi32>
-  // CHECK-NEXT: %[[LHS_PAD:.*]] = "mhlo.concatenate"(%[[PAD]], %[[LHS]]) {dimension = 0 : i64} : (tensor<2xi32>, tensor<4xi32>) -> tensor<6xi32>
+  // CHECK-NEXT: %[[LHS_PAD:.*]] = "mhlo.concatenate"(%[[PAD]], %[[LHS]]) <{dimension = 0 : i64}> : (tensor<2xi32>, tensor<4xi32>) -> tensor<6xi32>
   // CHECK-NEXT: %[[BROADCAST:.*]] = mhlo.maximum %[[LHS_PAD]], %[[RHS]] : tensor<6xi32>
   // CHECK-NEXT: %[[BROADCAST_INDEX:.*]] = builtin.unrealized_conversion_cast %[[BROADCAST]] : tensor<6xi32> to tensor<6xindex>
   // CHECK-NEXT: return %[[BROADCAST_INDEX]] : tensor<6xindex>

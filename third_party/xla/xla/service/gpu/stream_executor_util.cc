@@ -530,6 +530,24 @@ absl::StatusOr<se::dnn::NormKind> GetDNNNormKindFromCudnnNormKind(
   }
 }
 
+absl::StatusOr<se::dnn::FMHAMaskKind> GetDNNFmhaMaskKindFromCudnnFmhaMaskKind(
+    CudnnfMHAMaskKind kind) {
+  switch (kind) {
+    case CudnnfMHAMaskKind::kNoMask:
+      return se::dnn::NO_MASK;
+    case CudnnfMHAMaskKind::kPadding:
+      return se::dnn::PADDING;
+    case CudnnfMHAMaskKind::kCausal:
+      return se::dnn::CAUSAL;
+    case CudnnfMHAMaskKind::kPaddingCausal:
+      return se::dnn::PADDING_CAUSAL;
+    case CudnnfMHAMaskKind::kAlibi:
+      return se::dnn::ALIBI;
+    default:
+      return Internal("Unexpected fmha mask kind");
+  }
+}
+
 absl::StatusOr<se::dnn::FusedMHAKind> GetDNNFusedMHAKindFromCudnnfMHAKind(
     CudnnfMHAKind kind) {
   switch (kind) {
@@ -660,7 +678,7 @@ absl::Span<AutotuneResult const> TopResultsWithinMeasurementError(
   // This value was picked by repeatedly running a few kernels that run for a
   // short time and observing the run-time variance. A more rigorous analysis
   // of the measurement error might yield a better error threshold.
-  constexpr absl::Duration kMeasurementError = absl::Microseconds(2);
+  constexpr absl::Duration kMeasurementError = absl::Microseconds(4);
 
   absl::Duration min_time = tsl::proto_utils::FromDurationProto(
       results_sorted_by_runtime.front().run_time());

@@ -219,7 +219,7 @@ class LiftFlexCustomOp : public OpRewritePattern<TFL::CustomOp> {
     for (const auto& name_and_value : node_def.attr()) {
       const std::string& attr_name = name_and_value.first;
       const tensorflow::AttrValue& attr_value = name_and_value.second;
-      StatusOr<Attribute> mlir_attr =
+      absl::StatusOr<Attribute> mlir_attr =
           tensorflow::ConvertAttributeValue(attr_value, &builder);
       if (!mlir_attr.ok()) {
         return emitError(loc, mlir_attr.status().message());

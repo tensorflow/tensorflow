@@ -60,17 +60,13 @@ def QuantizeCompositeFunctionsPass : Pass<"stablehlo-quantize-composite-function
         "enable-per-channel-quantized-weight",
         "bool", /*default=*/"true",
         "Whether to enable per-channel quantized weights.">,
-    Option<"enable_full_int_quantization_",
-        "enable-full-int-quantization",
-        "bool", /*default=*/"false",
-        "Whether to enable full int quantization, including non compute-heavy ops.">,
     Option<"mlir_dump_file_name_", "mlir-dump-file-name",
         "std::optional<std::string>", /*default=*/"std::nullopt",
         "MLIR dump file name.">,
-    Option<"enable_weight_only_",
-        "enable-weight-only",
+    Option<"merge_fusion_with_dequantize_",
+        "merge-fusion-with-dequantize",
         "bool", /*default=*/"false",
-        "Whether to produce weight-only quantized op for convolution and dot_general op.">,
+        "Whether to merge quantized conv/dot_general fusion with subsequent dequantize.">,
   ];
   let dependentDialects = [
     "mlir::arith::ArithDialect",
@@ -106,14 +102,6 @@ def QuantizePass : Pass<"stablehlo-quantize", "mlir::ModuleOp"> {
         "enable-per-channel-quantized-weight",
         "bool", /*default=*/"true",
         "Whether to enable per-channel quantized weights.">,
-    Option<"enable_full_int_quantization_",
-      "enable-full-int-quantization",
-      "bool", /*default=*/"false",
-      "Whether to apply full int quantization, including non compute-heavy ops.">,
-    Option<"enable_weight_only_",
-        "enable-weight-only",
-        "bool", /*default=*/"false",
-        "Whether to produce weight-only quantized op for convolution and dot_general op.">,
   ];
   let dependentDialects = [
     "mlir::stablehlo::StablehloDialect",
@@ -127,6 +115,21 @@ def PostQuantizePass : Pass<"stablehlo-post-quantize", "mlir::func::FuncOp"> {
   let dependentDialects = [
     "mlir::stablehlo::StablehloDialect",
     "mlir::quantfork::QuantizationForkDialect",
+  ];
+}
+
+def XlaCallModuleToCallPass : Pass<"stablehlo-xla-call-module-to-call", "ModuleOp"> {
+  let summary = "Convert XlaCallModuleOp to func.call op";
+  let dependentDialects = [
+    "TF::TensorFlowDialect",
+  ];
+}
+
+def MergeFusionWithDequantizePass : Pass<"stablehlo-merge-fusion-with-dequantize", "mlir::ModuleOp"> {
+  let summary = "Merge quantized conv/dot_general fusion with subsequent dequantize.";
+  let dependentDialects = [
+    "chlo::ChloDialect",
+    "mlir::stablehlo::StablehloDialect",
   ];
 }
 
@@ -216,4 +219,14 @@ def RemoveShardingCustomCallPass : Pass<"stablehlo-remove-sharding-custom-call",
     targets.
   }];
   let dependentDialects = ["mlir::stablehlo::StablehloDialect"];
+}
+
+def InsertCalibrationStatisticsSaverPass : Pass<"stablehlo-insert-calibration-statistics-saver", "ModuleOp"> {
+  let summary = "Inserts `CalibrationStatisticsSaver` op to collect and save calibration statistics.";
+  let description = [{
+    Finds all `CustomAggregator` ops in the each function and add a single
+    `CalibrationStatisticsSaver` op at the end of the function to collect their
+    statistics.
+  }];
+  let dependentDialects = ["TF::TensorFlowDialect"];
 }

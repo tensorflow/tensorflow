@@ -134,11 +134,14 @@ using OpQuantSpecGetter =
 // Quantization scale spec of an op. The information defined in the MLIR
 // interfaces FixedOutputRangeInterface and SameOperandsAndResultsScale should
 // be checked first if present.
+// TODO: b/323478683: Consider deprecating this.
 struct OpQuantScaleSpec {
   // Whether this op has a fixed range requirement (e.g. sigmoid)
   bool has_fixed_output_range = false;
-  // Whether this op should have same result and operand scales (e.g. concat)
+  // Whether this op should have same operand and result scales (e.g. concat)
   bool has_same_scale_requirement = false;
+  // Whether this op should have same operand and result type (e.g. gather)
+  bool has_same_operand_and_result_type_requirement = false;
   // Returns the fixed output range, when has_fixed_output_range is set.
   GetFixedOutputRangeFunc fixed_output_range_func;
   // Returns whether same operands and results scales are required.

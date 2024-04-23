@@ -127,8 +127,8 @@ TEST_F(ConvertMoverTest, MoveDownTwoSlices) {
   HloModule module
 
   ENTRY main {
-    s1 = f32[9] slice(f32[10] convert(f16[10] parameter(0))), slice={[0:9]}
-    ROOT s2 = f32[8] slice(s1), slice={[0:8]}
+    slice1 = f32[9] slice(f32[10] convert(f16[10] parameter(0))), slice={[0:9]}
+    ROOT slice2 = f32[8] slice(slice1), slice={[0:8]}
   })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(module_string));

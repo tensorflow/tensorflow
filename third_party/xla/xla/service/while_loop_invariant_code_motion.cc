@@ -137,7 +137,7 @@ bool WhileLoopInvariantCodeMotion::NotWorthHoistingIndividually(
   }
 }
 
-StatusOr<bool>
+absl::StatusOr<bool>
 WhileLoopInvariantCodeMotion::TryHoistingInvariantInstructionsFromWhileBody(
     HloInstruction* while_instr, BoundNonLinearCompilerAnalysis* allowance) {
   auto print_no_metadata = HloPrintOptions{}.set_print_metadata(false);
@@ -328,7 +328,7 @@ WhileLoopInvariantCodeMotion::TryHoistingInvariantInstructionsFromWhileBody(
   return true;
 }
 
-StatusOr<bool> WhileLoopInvariantCodeMotion::Run(
+absl::StatusOr<bool> WhileLoopInvariantCodeMotion::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   VLOG(2) << "HLO module before WhileLoopInvariantCodeMotion:";

@@ -93,6 +93,7 @@ class ReductionDegenerateDimRemoverVisitor : public DfsHloRewriteVisitor {
     std::unique_ptr<HloInstruction> new_reduce = HloInstruction::CreateReduce(
         canonical_reduce_shape, input_reshapes, instr->init_values(),
         updated_reduced_dimensions, instr->to_apply());
+    instr->SetupDerivedInstruction(new_reduce.get());
 
     if (canonical_reduce_shape != instr->shape()) {
       HloInstruction *wrapped_reduce =

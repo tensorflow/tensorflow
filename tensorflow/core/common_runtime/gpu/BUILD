@@ -446,6 +446,7 @@ cc_library(
     features = ["-layering_check"],
     deps = [
         ":gpu_scheduling_metrics_storage",
+        "//tensorflow/core/framework:resource_base",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:fixed_array",
         "@com_google_absl//absl/container:node_hash_map",
@@ -476,6 +477,5 @@ cc_library(
     name = "gpu_scheduling_metrics_storage",
     srcs = ["gpu_scheduling_metrics_storage.cc"],
     hdrs = ["gpu_scheduling_metrics_storage.h"],
-    visibility = ["//visibility:public"],
     deps = ["@local_tsl//tsl/framework:real_time_in_memory_metric"],
 )

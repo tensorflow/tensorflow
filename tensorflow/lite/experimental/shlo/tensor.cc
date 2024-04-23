@@ -19,111 +19,102 @@ limitations under the License.
 #include <cstddef>
 #include <variant>
 
+#include "absl/log/absl_check.h"
 #include "tensorflow/lite/experimental/shlo/data_type.h"
+#include "tensorflow/lite/experimental/shlo/overload.h"
 #include "tensorflow/lite/experimental/shlo/quantized_tensor_element_type.h"
 #include "tensorflow/lite/experimental/shlo/shape.h"
 
 namespace shlo_ref {
 
-std::variant<TensorElementType, QuantizedTensorElementType> BaselineType(
-    const std::variant<TensorElementType, QuantizedTensorElementType>& type) {
+TensorElementTypeVariant BaselineType(const TensorElementTypeVariant& type) {
   return std::visit(
-      [](auto t)
-          -> std::variant<TensorElementType, QuantizedTensorElementType> {
-        return BaselineType(t);
-      },
-      type);
+      [](auto t) -> TensorElementTypeVariant { return BaselineType(t); }, type);
 }
 
 const Shape& Tensor::shape() const {
-  if (IsQuantized()) {
-    return quantized_tensor_type().shape;
-  } else {
-    return tensor_type().shape;
-  }
+  return std::visit([](auto& t) -> const Shape& { return t.shape; }, type);
 }
 
 Shape& Tensor::shape() {
-  if (IsQuantized()) {
-    return quantized_tensor_type().shape;
-  } else {
-    return tensor_type().shape;
-  }
+  return std::visit([](auto& t) -> Shape& { return t.shape; }, type);
 }
 
 bool Tensor::IsQuantized() const {
-  return std::holds_alternative<QuantizedTensorType>(type);
+  return IsPerTensorQuantized() || IsPerAxisQuantized();
 }
 
 bool Tensor::IsPerAxisQuantized() const {
-  return IsQuantized() &&
-         std::get<QuantizedTensorType>(type).element_type.IsPerAxisQuantized();
+  return std::holds_alternative<QuantizedPerAxisTensorType>(type);
 }
 bool Tensor::IsPerTensorQuantized() const {
-  return IsQuantized() && std::get<QuantizedTensorType>(type)
-                              .element_type.IsPerTensorQuantized();
+  return std::holds_alternative<QuantizedPerTensorTensorType>(type);
 }
 
-size_t Tensor::Rank() const {
-  return IsQuantized() ? quantized_tensor_type().shape.Rank()
-                       : tensor_type().shape.Rank();
-}
+size_t Tensor::Rank() const { return shape().Rank(); }
 
 DataType Tensor::StorageType() const {
-  return IsQuantized() ? quantized_tensor_type().element_type.StorageType()
-                       : tensor_type().element_type;
+  return std::visit(
+      shlo_ref::Overload(
+          [](const TensorType& t) { return t.element_type; },
+          [](const auto& t) { return t.element_type.StorageType(); }),
+      type);
 }
 
-DimensionSize Tensor::NumElements() const {
-  return IsQuantized() ? quantized_tensor_type().shape.NumElements()
-                       : tensor_type().shape.NumElements();
-}
+DimensionSize Tensor::NumElements() const { return shape().NumElements(); }
 
 size_t Tensor::SizeInBytes() const {
-  if (IsQuantized()) {
-    return SizeOf(quantized_tensor_type().element_type.StorageType()) *
-           quantized_tensor_type().shape.NumElements();
-  } else {
-    return SizeOf(tensor_type().element_type) *
-           tensor_type().shape.NumElements();
-  }
+  return SizeOf(StorageType()) * NumElements();
 }
 
 TensorType& Tensor::tensor_type() {
-  assert(std::holds_alternative<TensorType>(type));
+  ABSL_CHECK(std::holds_alternative<TensorType>(type));
   return std::get<TensorType>(type);
 }
 
 const TensorType& Tensor::tensor_type() const {
-  assert(std::holds_alternative<TensorType>(type));
+  ABSL_CHECK(std::holds_alternative<TensorType>(type));
   return std::get<TensorType>(type);
 }
 
-QuantizedTensorType& Tensor::quantized_tensor_type() {
-  assert(std::holds_alternative<QuantizedTensorType>(type));
-  return std::get<QuantizedTensorType>(type);
+QuantizedPerTensorTensorType& Tensor::quantized_per_tensor_type() {
+  ABSL_CHECK(std::holds_alternative<QuantizedPerTensorTensorType>(type));
+  return std::get<QuantizedPerTensorTensorType>(type);
 }
 
-const QuantizedTensorType& Tensor::quantized_tensor_type() const {
-  assert(std::holds_alternative<QuantizedTensorType>(type));
-  return std::get<QuantizedTensorType>(type);
+const QuantizedPerTensorTensorType& Tensor::quantized_per_tensor_type() const {
+  assert(std::holds_alternative<QuantizedPerTensorTensorType>(type));
+  return std::get<QuantizedPerTensorTensorType>(type);
+}
+
+QuantizedPerAxisTensorType& Tensor::quantized_per_axis_type() {
+  ABSL_CHECK(std::holds_alternative<QuantizedPerAxisTensorType>(type));
+  return std::get<QuantizedPerAxisTensorType>(type);
+}
+
+const QuantizedPerAxisTensorType& Tensor::quantized_per_axis_type() const {
+  assert(std::holds_alternative<QuantizedPerAxisTensorType>(type));
+  return std::get<QuantizedPerAxisTensorType>(type);
 }
 
 const TensorElementType& Tensor::tensor_element_type() const {
   return tensor_type().element_type;
 }
-const QuantizedTensorElementType& Tensor::quantized_tensor_element_type()
+
+const QuantizedElementTypePerTensor& Tensor::quantized_per_tensor_element_type()
     const {
-  return quantized_tensor_type().element_type;
+  return quantized_per_tensor_type().element_type;
 }
 
-std::variant<TensorElementType, QuantizedTensorElementType>
-Tensor::element_type() const {
-  if (const TensorType* t = std::get_if<TensorType>(&type); t != nullptr) {
-    return t->element_type;
-  } else {
-    return std::get<QuantizedTensorType>(type).element_type;
-  }
+const QuantizedElementTypePerAxis& Tensor::quantized_per_axis_element_type()
+    const {
+  return quantized_per_axis_type().element_type;
+}
+
+TensorElementTypeVariant Tensor::element_type() const {
+  return std::visit(
+      [](const auto& t) -> TensorElementTypeVariant { return t.element_type; },
+      type);
 }
 
 bool operator==(const TensorType& lhs, const TensorType& rhs) {
@@ -134,13 +125,23 @@ bool operator!=(const TensorType& lhs, const TensorType& rhs) {
   return !(lhs == rhs);
 }
 
-bool operator==(const QuantizedTensorType& lhs,
-                const QuantizedTensorType& rhs) {
+bool operator==(const QuantizedPerTensorTensorType& lhs,
+                const QuantizedPerTensorTensorType& rhs) {
   return lhs.element_type == rhs.element_type && lhs.shape == rhs.shape;
 }
 
-bool operator!=(const QuantizedTensorType& lhs,
-                const QuantizedTensorType& rhs) {
+bool operator!=(const QuantizedPerTensorTensorType& lhs,
+                const QuantizedPerTensorTensorType& rhs) {
+  return !(lhs == rhs);
+}
+
+bool operator==(const QuantizedPerAxisTensorType& lhs,
+                const QuantizedPerAxisTensorType& rhs) {
+  return lhs.element_type == rhs.element_type && lhs.shape == rhs.shape;
+}
+
+bool operator!=(const QuantizedPerAxisTensorType& lhs,
+                const QuantizedPerAxisTensorType& rhs) {
   return !(lhs == rhs);
 }
 

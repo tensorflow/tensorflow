@@ -559,7 +559,7 @@ class PjrtCApiBufferTest : public PjrtCApiTest {
   }
 
   std::unique_ptr<PJRT_Buffer, ::pjrt::PJRT_BufferDeleter> buffer_;
-  xla::PjRtFuture<absl::Status> event_;
+  xla::PjRtFuture<> event_;
 };
 
 TEST_F(PjrtCApiBufferTest, IsDeleted) {
@@ -645,7 +645,7 @@ TEST_F(PjrtCApiBufferTest, ToHostBufferNoHostLayout) {
   args.event = nullptr;
 
   PJRT_Error* error = api_->PJRT_Buffer_ToHostBuffer(&args);
-  xla::PjRtFuture<absl::Status> transfer_to_host =
+  xla::PjRtFuture<> transfer_to_host =
       ::pjrt::ConvertCEventToCppFuture(args.event, api_);
   TF_CHECK_OK(transfer_to_host.Await());
 

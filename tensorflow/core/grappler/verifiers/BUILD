@@ -58,8 +58,6 @@ tf_cc_test(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "//tensorflow/core/grappler:grappler_item",
-        "//tensorflow/core/grappler/inputs:trivial_test_graph_input_yielder",
         "@com_google_absl//absl/strings",
     ],
 )

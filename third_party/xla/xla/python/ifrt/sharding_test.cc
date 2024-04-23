@@ -23,6 +23,8 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "llvm/Support/Casting.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/index.h"
+#include "xla/python/ifrt/index_domain.h"
 #include "xla/python/ifrt/ir/sharding_param.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/shape.h"
@@ -364,19 +366,24 @@ TEST_P(ShardingParamShardingTest, IndexDomainWithReplication) {
 
 INSTANTIATE_TEST_SUITE_P(NumDevices, SingleDeviceShardingTest,
                          testing::Values(test_util::ShardingTestParam{
-                             .num_devices = 6, .num_addressable_devices = 6}));
+                             /*num_devices=*/6,
+                             /*num_addressable_devices=*/6}));
 INSTANTIATE_TEST_SUITE_P(NumDevices, OpaqueShardingTest,
                          testing::Values(test_util::ShardingTestParam{
-                             .num_devices = 6, .num_addressable_devices = 6}));
+                             /*num_devices=*/6,
+                             /*num_addressable_devices=*/6}));
 INSTANTIATE_TEST_SUITE_P(NumDevices, ConcreteShardingTest,
                          testing::Values(test_util::ShardingTestParam{
-                             .num_devices = 6, .num_addressable_devices = 6}));
+                             /*num_devices=*/6,
+                             /*num_addressable_devices=*/6}));
 INSTANTIATE_TEST_SUITE_P(NumDevices, ConcreteEvenShardingTest,
                          testing::Values(test_util::ShardingTestParam{
-                             .num_devices = 6, .num_addressable_devices = 6}));
+                             /*num_devices=*/6,
+                             /*num_addressable_devices=*/6}));
 INSTANTIATE_TEST_SUITE_P(NumDevices, ShardingParamShardingTest,
                          testing::Values(test_util::ShardingTestParam{
-                             .num_devices = 6, .num_addressable_devices = 4}));
+                             /*num_devices=*/6,
+                             /*num_addressable_devices=*/4}));
 
 }  // namespace
 }  // namespace ifrt

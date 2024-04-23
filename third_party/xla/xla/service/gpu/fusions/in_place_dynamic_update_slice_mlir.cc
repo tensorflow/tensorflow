@@ -94,10 +94,13 @@ MlirInPlaceDynamicUpdateSliceFusion::ComputeThreadIdToInputIndexing(
                                        update_shape, mlir_context);
 }
 
-std::vector<const HloInstruction*>
-MlirInPlaceDynamicUpdateSliceFusion::GetInstructionsWithCustomCodegen(
-    const HloFusionInstruction& fusion) const {
-  return dus_ops_;
+std::optional<mlir_converter::EpilogueSpecification>
+MlirInPlaceDynamicUpdateSliceFusion::GetEpilogue(
+    const HloFusionInstruction& fusion, mlir::MLIRContext* mlir_context) const {
+  // We don't actually support epilogues for DUS, but this is how we tell
+  // the base class that we don't want it to generate code for the DUS.
+  return mlir_converter::EpilogueSpecification::FromIdentityIndexing(
+      dus_ops_.front(), analysis_.fusion_roots().front(), mlir_context);
 }
 
 absl::Status MlirInPlaceDynamicUpdateSliceFusion::EmitEntryFunction(
@@ -121,8 +124,6 @@ absl::Status MlirInPlaceDynamicUpdateSliceFusion::EmitEntryFunction(
 
   const auto& root_computation = computations.FindPartitionedComputation(
       fusion.fused_instructions_computation());
-  const auto& dus_subgraph = root_computation.FindSubgraph(dus_ops_.front());
-
   const auto* dus_instr =
       Cast<HloDynamicUpdateSliceInstruction>(dus_ops_.front());
   const auto& update_shape = dus_instr->update()->shape();
@@ -133,14 +134,14 @@ absl::Status MlirInPlaceDynamicUpdateSliceFusion::EmitEntryFunction(
         auto input_indices = ApplyAffineMap(indexing.GetAffineMap(), dim_values,
                                             symbol_values, b);
         SmallVector<Value> update_indices;
+        auto start_indices = ProvideParameterRange(
+            root_computation, dus_instr,
+            dus_instr->first_index_operand_number(), update_shape.rank(), {},
+            call_targets, entry_function, b);
         for (int i = 0; i < update_shape.rank(); ++i) {
           int64_t update_size = update_shape.dimensions(i);
-          auto start_index =
-              ProvideParameter(dus_subgraph, dus_instr,
-                               i + dus_instr->first_index_operand_number(), {},
-                               call_targets, entry_function, b)[0];
-          start_index = ClampIndex(
-              start_index,
+          auto start_index = ClampIndex(
+              start_indices[i],
               primitive_util::IsUnsignedIntegralType(
                   dus_instr
                       ->operand(i + dus_instr->first_index_operand_number())
@@ -153,8 +154,15 @@ absl::Status MlirInPlaceDynamicUpdateSliceFusion::EmitEntryFunction(
         }
 
         auto updated_value =
-            ProvideParameter(dus_subgraph, dus_instr, kDUSUpdateIndex,
-                             input_indices, call_targets, entry_function, b)[0];
+            ProvideParameter(root_computation, dus_instr, kDUSUpdateIndex,
+                             input_indices, call_targets, entry_function, b);
+        // Handle bitcasts under the DUS.
+        if (dus_instr->shape() != fusion.shape()) {
+          update_indices = ApplyAffineMap(
+              GetBitcastMap(dus_instr->shape(), fusion.shape(), b.getContext())
+                  .GetAffineMap(),
+              update_indices, {}, b);
+        }
         auto insert = b.create<InsertOp>(updated_value, output_tensors[0],
                                          update_indices);
 

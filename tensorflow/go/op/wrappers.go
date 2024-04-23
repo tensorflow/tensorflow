@@ -1709,21 +1709,10 @@ func AssignVariableXlaConcatNDPaddings(value []int64) AssignVariableXlaConcatNDA
 //
 // Arguments:
 //
-//		resource: Resource variable for concatenated input tensors across all dimensions.
-//	  }
-//	  in_arg {
-//	    name: "inputs"
-//	    description: <<END
+//	resource: Resource variable for concatenated input tensors across all dimensions.
+//	inputs: Input tensor slices in row-major order to merge across all dimensions. All
 //
-// Input tensor slices in row-major order to merge across all dimensions. All
 // inputs must have the same shape.
-//
-//	}
-//	out_arg {
-//	  name: "output"
-//	  description: <<END
-//
-// Output tensor formed from merging input slices based on num_concats defined.
 //
 //	num_concats: Number of ways to merge per dimension.
 //
@@ -36784,17 +36773,14 @@ func ReadVariableXlaSplitNDPaddings(value []int64) ReadVariableXlaSplitNDAttr {
 //
 // Arguments:
 //
-//		resource: Resource variable of input tensor to split across all dimensions.
-//	  }
-//	  out_arg {
-//	    name: "outputs"
-//	    description: <<END
+//	resource: Resource variable of input tensor to split across all dimensions.
 //
-// Output slices based on input and num_splits defined, in row-major order.
 //
 //	num_splits: Number of ways to split per dimension. Shape dimensions must be evenly
 //
 // divisible.
+//
+// Returns Output slices based on input and num_splits defined, in row-major order.
 func ReadVariableXlaSplitND(scope *Scope, resource tf.Output, T tf.DataType, N int64, num_splits []int64, optional ...ReadVariableXlaSplitNDAttr) (outputs []tf.Output) {
 	if scope.Err() != nil {
 		return
@@ -58561,14 +58547,9 @@ func XlaConcatNDPaddings(value []int64) XlaConcatNDAttr {
 //
 // inputs must have the same shape.
 //
-//	}
-//	out_arg {
-//	  name: "output"
-//	  description: <<END
-//
-// Output tensor formed from merging input slices based on num_concats defined.
-//
 //	num_concats: Number of ways to merge per dimension.
+//
+// Returns Output tensor formed from merging input slices based on num_concats defined.
 func XlaConcatND(scope *Scope, inputs []tf.Output, num_concats []int64, optional ...XlaConcatNDAttr) (output tf.Output) {
 	if scope.Err() != nil {
 		return

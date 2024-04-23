@@ -94,7 +94,7 @@ class HloInputOutputAliasConfig {
   // HloInputOutputAliasProto.
   HloInputOutputAliasProto ToProto() const;
 
-  static StatusOr<HloInputOutputAliasConfig> CreateFromProto(
+  static absl::StatusOr<HloInputOutputAliasConfig> CreateFromProto(
       Shape output_shape, const HloInputOutputAliasProto& proto);
 
   // Returns the output index that the given parameter and parameter index is
@@ -199,7 +199,7 @@ class HloBufferDonorConfig {
 
   // (De)Serializes an HloBufferDonorConfig to/from an HloBufferDonorProto.
   HloBufferDonorProto ToProto() const;
-  static StatusOr<HloBufferDonorConfig> CreateFromProto(
+  static absl::StatusOr<HloBufferDonorConfig> CreateFromProto(
       const HloBufferDonorProto& proto);
 
   // Verifies that the given config is valid for the given module.

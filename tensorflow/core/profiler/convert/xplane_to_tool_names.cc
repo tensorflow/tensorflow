@@ -30,7 +30,7 @@ limitations under the License.
 namespace tensorflow {
 namespace profiler {
 
-StatusOr<std::string> GetAvailableToolNames(
+absl::StatusOr<std::string> GetAvailableToolNames(
     const SessionSnapshot& session_snapshot) {
   std::vector<std::string> tools;
   bool is_cloud_vertex_ai = !session_snapshot.HasAccessibleRunDir();

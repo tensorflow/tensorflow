@@ -119,7 +119,8 @@ absl::StatusOr<Shape> GetBatchRowColumnShape(
     // The GeMM output always has its layout set such that the batch, row, and
     // col dim groups are each laid out physically sequentially. GeMM operands
     // must, therefore, be laid out similarly.
-    auto check_physically_sequential = [&](absl::Span<const int64_t> dims) {
+    auto check_physically_sequential =
+        [&](absl::Span<const int64_t> dims) -> absl::Status {
       for (auto it = dims.rbegin(); it != dims.rend(); ++it) {
         // NOTE: `i` is incremented as we check the dimensions.
         if (*it != shape.layout().minor_to_major()[i++])

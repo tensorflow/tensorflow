@@ -21,7 +21,6 @@
 #include <cstdint>
 #include <memory>
 
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
@@ -45,10 +44,10 @@ class GrpcClientHostBufferStore : public ClientHostBufferStore {
   // Implements ClientHostBufferStore.
 
   uint64_t NextHandle() override;
-  Future<absl::Status> Store(uint64_t handle, absl::string_view data) override;
-  Future<absl::Status> Store(uint64_t handle, const absl::Cord& data) override;
+  Future<> Store(uint64_t handle, absl::string_view data) override;
+  Future<> Store(uint64_t handle, const absl::Cord& data) override;
   Future<absl::StatusOr<absl::Cord>> Lookup(uint64_t handle) override;
-  Future<absl::Status> Delete(uint64_t handle) override;
+  Future<> Delete(uint64_t handle) override;
 
  private:
   const std::shared_ptr<grpc::GrpcIfrtService::StubInterface> stub_;

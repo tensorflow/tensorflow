@@ -33,14 +33,13 @@ limitations under the License.
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project  // IWYU pragma: keep
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
-#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
-#include "tensorflow/compiler/mlir/quantization/common/attrs_and_constraints.h"
+#include "tensorflow/compiler/mlir/quantization/common/lift_as_function_call.h"
 #include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_utils.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/passes.h"  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -97,23 +96,13 @@ class InsertWeightParamPattern
       return false;
     }
     Operation* user = operand.getOwner();
-    if (isa<TF::XlaCallModuleOp>(user)) {
-      auto call_op = cast<TF::XlaCallModuleOp>(user);
-      const StringRef function_name = GetEntryFunctionName(call_op);
-      const bool is_conv_or_dot = function_name.contains("conv") ||
-                                  function_name.contains("dot_general");
-      const bool has_quant_trait = HasQuantizableTrait(call_op);
-      return is_conv_or_dot && has_quant_trait;
-    }
-    return false;
+    return IsWeightOnlyQuantizableOp(*user);
   }
 
   void rewrite(Operation* op, PatternRewriter& rewriter) const override {
     Operation* quantizable_op = *op->getUsers().begin();
     DenseFPElementsAttr attr;
-    if (!matchPattern(op->getResult(0), m_Constant(&attr))) {
-      return;
-    }
+    matchPattern(op->getResult(0), m_Constant(&attr));
     auto quant_type =
         quant::GetUniformQuantizedTypeForWeight(
             attr, /*symmetric=*/false, /*num_bits=*/8, /*is_signed=*/true,

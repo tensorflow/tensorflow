@@ -82,7 +82,7 @@ INSTANTIATE_TEST_SUITE_P(
 INSTANTIATE_TEST_SUITE_P(
     Quantized, IsFiniteTest,
     ::testing::Values(Params{
-        .operand = TensorWithData::Create<DataType::kSI32, DataType::kF32>(
+        .operand = TensorWithData::Create<DataType::kSI16, DataType::kF32>(
             Shape{{7}}, {0.0f, -1.0f, 0.0f, 1.0f, 1.0f, 0.0f, 1.0f}, 0.1f, 0),
         .expected = TensorWithData::Create<DataType::kI1>(
             Shape{{7}}, {true, true, true, true, true, true, true})}));

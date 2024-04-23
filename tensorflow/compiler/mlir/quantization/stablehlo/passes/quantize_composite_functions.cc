@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include <memory>
 
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project  // IWYU pragma: keep
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -26,6 +27,7 @@ limitations under the License.
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_config.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/report.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/passes.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/run_passes.h"
@@ -41,7 +43,6 @@ namespace mlir::quant::stablehlo {
 
 namespace {
 
-using QuantMethod = tensorflow::quantization::QuantizationMethod::PresetMethod;
 using ::tensorflow::quantization::RunPassesOnModuleOp;
 
 class QuantizeCompositeFunctionsPass
@@ -54,11 +55,8 @@ class QuantizeCompositeFunctionsPass
       QuantizeCompositeFunctionsPass>::QuantizeCompositeFunctionsPassBase;
 
   explicit QuantizeCompositeFunctionsPass(
-      const bool enable_per_channel_quantized_weight,
-      const bool enable_weight_only, const bool enable_full_int_quantization) {
+      const bool enable_per_channel_quantized_weight) {
     enable_per_channel_quantized_weight_ = enable_per_channel_quantized_weight;
-    enable_full_int_quantization_ = enable_full_int_quantization;
-    enable_weight_only_ = enable_weight_only;
   }
 
  private:
@@ -80,9 +78,10 @@ void QuantizeCompositeFunctionsPass::runOnOperation() {
   // Change this to user-given bit width once we have custom configuration.
   options.bit_width_ = 8;
 
-  if (enable_weight_only_) {
-    pm.addNestedPass<func::FuncOp>(createInsertWeightParamPass());
-  }
+  // Insert quantization parameters for weights for ops with `weight_only_ptq`
+  // attribute.
+  pm.addNestedPass<func::FuncOp>(createInsertWeightParamPass());
+
   // PrepareQuantizePass uses SymbolTable to fetch relevant GEMM ops for
   // determining quantization attributes. This requires module-level context.
   pm.addPass(createPrepareQuantizePass(options));
@@ -90,13 +89,22 @@ void QuantizeCompositeFunctionsPass::runOnOperation() {
   QuantizePassOptions quantize_options;
   quantize_options.enable_per_channel_quantized_weight_ =
       enable_per_channel_quantized_weight_;
-  quantize_options.enable_full_int_quantization_ =
-      enable_full_int_quantization_;
-  quantize_options.enable_weight_only_ = enable_weight_only_;
+
   // QuantizePass modifies FuncOps referenced outside of its given scope
   // and therefore requires a module-level context.
   pm.addPass(createQuantizePass(quantize_options));
   pm.addNestedPass<func::FuncOp>(createPostQuantizePass());
+
+  // Convert XlaCallModuleOps lifted but not quantized to func.call op.
+  // The reasons these ops are not quantized may be:
+  // 1. Disabled due to selective quantization.
+  // 2. Not supported, e.g. add op for server.
+  pm.addPass(createXlaCallModuleToCallPass());
+
+  // TODO: b/321729008 - move this implementation to quantization_patterns.cc.
+  if (merge_fusion_with_dequantize_) {
+    pm.addPass(createMergeFusionWithDequantizePass());
+  }
 
   ModuleOp module_op = getOperation();
   if (const absl::Status pm_run_status =
@@ -104,7 +112,11 @@ void QuantizeCompositeFunctionsPass::runOnOperation() {
       !pm_run_status.ok()) {
     signalPassFailure();
   }
-}
-}  // namespace
 
+  // Emit human-readable quantization report.
+  const QuantizationReport report(module_op);
+  report.Print();
+}
+
+}  // namespace
 }  // namespace mlir::quant::stablehlo

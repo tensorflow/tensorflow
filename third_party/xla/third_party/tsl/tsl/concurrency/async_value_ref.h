@@ -17,15 +17,20 @@ limitations under the License.
 #define TENSORFLOW_TSL_CONCURRENCY_ASYNC_VALUE_REF_H_
 
 #include <cstddef>
-#include <cstdlib>
 #include <string_view>
 #include <type_traits>
 #include <utility>
 
+#include "absl/base/attributes.h"
+#include "absl/container/inlined_vector.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "tsl/concurrency/async_value.h"
 #include "tsl/concurrency/ref_count.h"
+#include "tsl/platform/logging.h"
+#include "tsl/platform/mem.h"
 
 namespace tsl {
 
@@ -53,12 +58,11 @@ class AsyncValueRef {
 
   // Support implicit conversion from AsyncValueRef<Derived> to
   // AsyncValueRef<Base>.
-  template <typename DerivedT,
-            std::enable_if_t<std::is_base_of<T, DerivedT>::value>* = nullptr>
-  AsyncValueRef(AsyncValueRef<DerivedT>&& u)  // NOLINT
+  template <typename Derived, internal::DerivedFrom<Derived, T>* = nullptr>
+  AsyncValueRef(AsyncValueRef<Derived>&& u)  // NOLINT
       : value_(u.ReleaseRCRef()) {}
 
-  // Support implicit conversion from RCReference<AsyncValue>.
+  // Support implicit conversion from RCReference<ErrorAsyncValue>.
   AsyncValueRef(RCReference<ErrorAsyncValue> value)  // NOLINT
       : value_(std::move(value)) {}
 
@@ -83,21 +87,60 @@ class AsyncValueRef {
   // Return the stored value. The AsyncValueRef must be available.
   T& get() const { return value_->get<T>(); }
 
-  // Return the stored value as a subclass type. The AsyncValueRef must be
+  // Return the stored value as a derived type. The AsyncValueRef must be
   // available.
-  template <typename SubclassT,
-            std::enable_if_t<std::is_base_of<T, SubclassT>::value>* = nullptr>
-  SubclassT& get() const {
-    return value_->get<SubclassT>();
+  template <typename Derived, internal::DerivedFrom<Derived, T>* = nullptr>
+  Derived& get() const {
+    return value_->get<Derived>();
+  }
+
+  template <typename Derived, internal::DerivedFrom<Derived, T>* = nullptr>
+  bool Isa() const {
+    // Isa is successful if:
+    //   (1) This is no-op cast even if concrete payload has different type.
+    //   (2) Type id of a concrete payload matches Derived type id.
+    //   (3) Payload is for a special case of ErrorAsyncValue.
+    return value_ && (std::is_same_v<Derived, T> ||                     // (1)
+                      value_->IsType<Derived>() ||                      // (2)
+                      value_->IsType<DummyValueForErrorAsyncValue>());  // (3)
+  }
+
+  template <typename Derived, internal::DerivedFrom<Derived, T>* = nullptr>
+  AsyncValueRef<Derived> Cast() const {
+    DCHECK(DynCast<Derived>()) << "Illegal async value cast";
+    return AsyncValueRef<Derived>(value_);
+  }
+
+  template <typename Derived, internal::DerivedFrom<Derived, T>* = nullptr>
+  AsyncValueRef<Derived> DynCast() const {
+    DCHECK(value_) << "Async value must be not null";
+    return Isa<Derived>() ? AsyncValueRef<Derived>(value_)
+                          : AsyncValueRef<Derived>(nullptr);
+  }
+
+  template <typename Derived, internal::DerivedFrom<Derived, T>* = nullptr>
+  AsyncValueRef<Derived> DynCastOrNull() const {
+    return value_ ? DynCast<Derived>(value_) : AsyncValueRef<Derived>(nullptr);
   }
 
   T* operator->() const { return &get(); }
 
   T& operator*() const { return get(); }
 
-  template <typename WaiterT>
-  void AndThen(WaiterT&& waiter) const {
-    AsPtr().AndThen(std::forward<WaiterT>(waiter));
+  template <typename Waiter>
+  void AndThen(Waiter&& waiter) const {
+    AsPtr().AndThen(std::forward<Waiter>(waiter));
+  }
+
+  template <typename R, typename F, typename U = std::invoke_result_t<F, T&>,
+            std::enable_if_t<std::is_constructible_v<R, U>>* = nullptr>
+  AsyncValueRef<R> Map(F&& f) {
+    return AsPtr().template Map<R>(std::forward<F>(f));
+  }
+
+  template <typename F, typename R = std::invoke_result_t<F, T&>>
+  AsyncValueRef<R> Map(F&& f) {
+    return Map<R>(std::forward<F>(f));
   }
 
   // Make the AsyncValueRef available.
@@ -130,7 +173,7 @@ class AsyncValueRef {
   }
 
   void SetError(absl::Status status) const {
-    assert(!status.ok() && "expected non-ok status");
+    DCHECK(!status.ok()) << "expected non-ok status";
     return value_->SetError(std::move(status));
   }
 
@@ -174,12 +217,35 @@ class AsyncValueRef {
   RCReference<AsyncValue> value_;
 };
 
+// Forward declare AsyncValueRef constructors.
+template <typename T>
+AsyncValueRef<T> MakeUnconstructedAsyncValueRef();
+template <typename T, typename... Args>
+AsyncValueRef<T> MakeConstructedAsyncValueRef(Args&&... args);
+template <typename T, typename... Args>
+AsyncValueRef<T> MakeAvailableAsyncValueRef(Args&&... args);
+
 // Non owning typed pointer for the AsyncValue. Can be cheaply passed around
 // when the lifetime of the underlying async value is clear from the context.
 // It is the user responsibility to construct an owning AsyncValueRef to extend
 // the lifetime of the underlying value if needed.
 template <typename T>
 class AsyncValuePtr {
+  // Wait for async value availability: AndThen([] {})
+  template <typename Waiter>
+  using SimpleWaiter = std::enable_if_t<std::is_invocable_v<Waiter>>;
+
+  // Wait for async value status and value: AndThen([](absl::StatusOr<T*>) {})
+  template <typename Waiter>
+  using StatusOrWaiter =
+      std::enable_if_t<std::is_invocable_v<Waiter, absl::StatusOr<T*>>>;
+
+  // Wait for async value status: AndThen([](absl::Status) {})
+  template <typename Waiter>
+  using StatusWaiter =
+      std::enable_if_t<(std::is_invocable_v<Waiter, absl::Status> &&
+                        !std::is_invocable_v<Waiter, absl::StatusOr<T*>>)>;
+
  public:
   AsyncValuePtr() : value_(nullptr) {}
 
@@ -202,6 +268,35 @@ class AsyncValuePtr {
     return *this;
   }
 
+  template <typename Derived, internal::DerivedFrom<Derived, T>* = nullptr>
+  bool Isa() const {
+    // Isa is successful if:
+    //   (1) This is no-op cast even if concrete payload has different type.
+    //   (2) Type id of a concrete payload matches Derived type id.
+    //   (3) Payload is for a special case of ErrorAsyncValue.
+    return value_ && (std::is_same_v<Derived, T> ||                     // (1)
+                      value_->IsType<Derived>() ||                      // (2)
+                      value_->IsType<DummyValueForErrorAsyncValue>());  // (3)
+  }
+
+  template <typename Derived, internal::DerivedFrom<Derived, T>* = nullptr>
+  AsyncValuePtr<Derived> Cast() const {
+    DCHECK(DynCast<Derived>()) << "Illegal async value cast";
+    return AsyncValuePtr<Derived>(value_);
+  }
+
+  template <typename Derived, internal::DerivedFrom<Derived, T>* = nullptr>
+  AsyncValuePtr<Derived> DynCast() const {
+    DCHECK(value_) << "Async value must be not null";
+    return Isa<Derived>() ? AsyncValuePtr<Derived>(value_)
+                          : AsyncValuePtr<Derived>(nullptr);
+  }
+
+  template <typename Derived, internal::DerivedFrom<Derived, T>* = nullptr>
+  AsyncValuePtr<Derived> DynCastOrNull() const {
+    return value_ ? DynCast<Derived>(value_) : AsyncValuePtr<Derived>(nullptr);
+  }
+
   bool IsAvailable() const { return value_->IsAvailable(); }
   bool IsUnavailable() const { return value_->IsUnavailable(); }
 
@@ -218,22 +313,21 @@ class AsyncValuePtr {
   const absl::Status& GetError() const { return value_->GetError(); }
 
   void SetError(absl::Status status) const {
-    assert(!status.ok() && "expected non-ok status");
+    DCHECK(!status.ok()) << "expected non-ok status";
     return value_->SetError(std::move(status));
   }
 
-  // If the AsyncValueRef is available, run the waiter immediately. Otherwise,
-  // run the waiter when the AsyncValueRef becomes available.
+  // If the AsyncValueRef is available, invokes the `waiter` immediately.
+  // Otherwise, invokes the `waiter` when the AsyncValueRef becomes available.
   //
   // Sample usage:
   //
-  // async_value_ref.AndThen([] {
-  //   // async_value_ref is now ready.
+  // async_value_ptr.AndThen([] {
+  //   // async_value_ptr is now ready.
   // });
-  template <typename WaiterT,
-            std::enable_if_t<std::is_invocable_v<WaiterT>>* = nullptr>
-  void AndThen(WaiterT&& waiter) const {
-    value_->AndThen(std::forward<WaiterT>(waiter));
+  template <typename Waiter, SimpleWaiter<Waiter>* = nullptr>
+  void AndThen(Waiter&& waiter) const {
+    value_->AndThen(std::forward<Waiter>(waiter));
   }
 
   // This AndThen() function takes a functor that takes absl::StatusOr<T*> as
@@ -242,8 +336,8 @@ class AsyncValuePtr {
   //
   // Sample usage:
   //
-  // async_value_ref.AndThen([] (absl::StatusOr<T*> status_or) {
-  //   // async_value_ref is now ready and its value/error is in the provided
+  // async_value_ptr.AndThen([] (absl::StatusOr<T*> status_or) {
+  //   // async_value_ptr is now ready and its value/error is in the provided
   //   // `status_or` argument.
   //   if (!status_or.ok()) {
   //      // Handle the error in `status_or.status()`.
@@ -251,14 +345,13 @@ class AsyncValuePtr {
   //      // Handle the value in `*status_or`.
   //   }
   // });
-  template <typename WaiterT, std::enable_if_t<std::is_invocable_v<
-                                  WaiterT, absl::StatusOr<T*>>>* = nullptr>
-  void AndThen(WaiterT&& waiter) const {
-    AndThen([waiter = std::forward<WaiterT>(waiter), av_ptr = *this]() mutable {
+  template <typename Waiter, StatusOrWaiter<Waiter>* = nullptr>
+  void AndThen(Waiter&& waiter) const {
+    AndThen([waiter = std::forward<Waiter>(waiter), av_ptr = *this]() mutable {
       if (av_ptr.IsError()) {
-        return std::forward<WaiterT>(waiter)(av_ptr.GetError());
+        return waiter(av_ptr.GetError());
       } else {
-        return std::forward<WaiterT>(waiter)(&av_ptr.get());
+        return waiter(&av_ptr.get());
       }
     });
   }
@@ -271,8 +364,8 @@ class AsyncValuePtr {
   //
   // Sample usage:
   //
-  // async_value_ref.AndThen([] (absl::Status status) {
-  //   // async_value_ref is now ready and its status is in the provided
+  // async_value_ptr.AndThen([] (absl::Status status) {
+  //   // async_value_ptr is now ready and its status is in the provided
   //   // `status` argument.
   //   if (!status.ok()) {
   //     // Handle the error.
@@ -280,18 +373,45 @@ class AsyncValuePtr {
   //     // No error occurred.
   //   }
   // });
-  template <typename WaiterT,
-            std::enable_if_t<
-                (std::is_invocable_v<WaiterT, absl::Status> &&
-                 !std::is_invocable_v<WaiterT, absl::StatusOr<T*>>)>* = nullptr>
-  void AndThen(WaiterT&& waiter) const {
-    AndThen([waiter = std::forward<WaiterT>(waiter), av_ptr = *this]() mutable {
+  template <typename Waiter, StatusWaiter<Waiter>* = nullptr>
+  void AndThen(Waiter&& waiter) const {
+    AndThen([waiter = std::forward<Waiter>(waiter), av_ptr = *this]() mutable {
       if (av_ptr.IsError()) {
-        return std::forward<WaiterT>(waiter)(av_ptr.GetError());
+        return waiter(av_ptr.GetError());
       } else {
-        return std::forward<WaiterT>(waiter)(absl::OkStatus());
+        return waiter(absl::OkStatus());
       }
     });
+  }
+
+  // Returns and AsyncValueRef<R> that is emplaced from the result of invoking
+  // functor `f` with *this value. If *this completes with an error, returned
+  // async value will also be an error.
+  //
+  // Sample usage:
+  //
+  // async_value_ptr.Map<R>([](T& value) {
+  //   return U(value); // R must be constructible from U
+  // })
+  //
+  template <typename R, typename F, typename U = std::invoke_result_t<F, T&>,
+            std::enable_if_t<std::is_constructible_v<R, U>>* = nullptr>
+  AsyncValueRef<R> Map(F&& f) {
+    auto result = MakeUnconstructedAsyncValueRef<R>();
+    AndThen([f = std::forward<F>(f), av_ptr = *this, result]() mutable {
+      if (av_ptr.IsError()) {
+        result.SetError(av_ptr.GetError());
+      } else {
+        result.emplace(f(av_ptr.get()));
+      }
+    });
+    return result;
+  }
+
+  // A `Map` overload that automatically infers the type of result from `f`.
+  template <typename F, typename R = std::invoke_result_t<F, T&>>
+  AsyncValueRef<R> Map(F&& f) {
+    return Map<R>(std::forward<F>(f));
   }
 
  private:
@@ -308,6 +428,94 @@ RCReference<ErrorAsyncValue> MakeErrorAsyncValueRef(std::string_view message);
 RCReference<IndirectAsyncValue> MakeIndirectAsyncValue();
 
 //===----------------------------------------------------------------------===//
+// Functions for awaiting on the async values.
+//===----------------------------------------------------------------------===//
+
+template <typename T>
+void BlockUntilReady(const AsyncValueRef<T>& ref) {
+  BlockUntilReady(ref.GetAsyncValue());
+}
+
+template <typename T>
+void BlockUntilReady(const AsyncValuePtr<T>& ptr) {
+  BlockUntilReady(ptr.value());
+}
+
+template <typename T>
+void RunWhenReady(absl::Span<const AsyncValueRef<T>> refs,
+                  absl::AnyInvocable<void()> callee) {
+  absl::InlinedVector<AsyncValue*, 8> values(refs.size());
+  for (size_t i = 0; i < refs.size(); ++i) {
+    values[i] = refs[i].GetAsyncValue();
+  }
+  RunWhenReady(values, std::move(callee));
+}
+
+template <typename T>
+void RunWhenReady(absl::Span<const AsyncValuePtr<T>> ptrs,
+                  absl::AnyInvocable<void()> callee) {
+  absl::InlinedVector<AsyncValue*, 8> values(ptrs.size());
+  for (size_t i = 0; i < ptrs.size(); ++i) {
+    values[i] = ptrs[i].value();
+  }
+  RunWhenReady(values, std::move(callee));
+}
+
+//===----------------------------------------------------------------------===//
+// LLVM-style type casting library for async value refs and ptrs.
+//===----------------------------------------------------------------------===//
+
+template <typename Derived, typename T,
+          internal::DerivedFrom<Derived, T>* = nullptr>
+bool Isa(const AsyncValueRef<T>& ref) {
+  return ref.template Isa<Derived>();
+}
+
+template <typename Derived, typename T,
+          internal::DerivedFrom<Derived, T>* = nullptr>
+AsyncValueRef<Derived> Cast(const AsyncValueRef<T>& ref) {
+  return ref.template Cast<Derived>();
+}
+
+template <typename Derived, typename T,
+          internal::DerivedFrom<Derived, T>* = nullptr>
+AsyncValueRef<Derived> DynCast(const AsyncValueRef<T>& ref) {
+  return ref.template DynCast<Derived>();
+}
+
+template <typename Derived, typename T,
+          internal::DerivedFrom<Derived, T>* = nullptr>
+AsyncValueRef<Derived> DynCastOrNull(const AsyncValueRef<T>& ref) {
+  return ref.template DynCastOrNull<Derived>();
+}
+
+template <typename Derived, typename T,
+          internal::DerivedFrom<Derived, T>* = nullptr>
+bool Isa(AsyncValuePtr<T> ptr) {
+  return ptr.template Isa<Derived>();
+}
+
+template <typename Derived, typename T,
+          internal::DerivedFrom<Derived, T>* = nullptr>
+AsyncValuePtr<Derived> Cast(AsyncValuePtr<T> ptr) {
+  return ptr.template Cast<Derived>();
+}
+
+template <typename Derived, typename T,
+          internal::DerivedFrom<Derived, T>* = nullptr>
+AsyncValuePtr<Derived> DynCast(AsyncValuePtr<T> ptr) {
+  return ptr.template DynCast<Derived>();
+}
+
+template <typename Derived, typename T,
+          internal::DerivedFrom<Derived, T>* = nullptr>
+AsyncValuePtr<Derived> DynCastOrNull(AsyncValuePtr<T> ptr) {
+  return ptr.template DynCastOrNull<Derived>();
+}
+
+//===----------------------------------------------------------------------===//
+// Constructing reference-counted async values on the heap.
+//===----------------------------------------------------------------------===//
 
 namespace internal {
 
@@ -318,16 +526,11 @@ T* PlacementConstruct(void* buf, Args&&... args) {
 
 template <typename T, typename... Args>
 T* AllocateAndConstruct(Args&&... args) {
-  // TODO(ezhulenev): `port::AlignedMalloc` has a different order of arguments!
-  void* buf = internal::AlignedAlloc(alignof(T), sizeof(T));
+  void* buf = port::AlignedMalloc(sizeof(T), alignof(T));
   return PlacementConstruct<T, Args...>(buf, std::forward<Args>(args)...);
 }
 
 }  // namespace internal
-
-//===----------------------------------------------------------------------===//
-// Constructing reference-counted async values on the heap.
-//===----------------------------------------------------------------------===//
 
 // Allocate an unconstructed AsyncValueRef. The AsyncValueRef should be made
 // available later by invoking AsyncValueRef::emplace or

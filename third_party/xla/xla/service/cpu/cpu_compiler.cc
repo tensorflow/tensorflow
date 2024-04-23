@@ -642,13 +642,13 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   }
 
   {
-    // Int4Packer must be run before the rest of the pipeline since it
+    // SubbytePacker must be run before the rest of the pipeline since it
     // modifies the layout of the entry computation inputs/outputs, which is
     // passed to LayoutAssignment.
-    HloPassPipeline int4_packer_pipeline("Int4Packer pipeline");
-    int4_packer_pipeline.AddPass<SubByteNormalization>(
+    HloPassPipeline subbyte_packer_pipeline("SubbytePacker pipeline");
+    subbyte_packer_pipeline.AddPass<SubByteNormalization>(
         SubByteNormalization::SET_ELEMENT_SIZE);
-    TF_RETURN_IF_ERROR(int4_packer_pipeline.Run(module).status());
+    TF_RETURN_IF_ERROR(subbyte_packer_pipeline.Run(module).status());
   }
 
   HloPassPipeline pipeline("HLO passes through layout assignment");
@@ -1112,28 +1112,6 @@ absl::StatusOr<std::unique_ptr<HloModule>> CpuCompiler::RunHloPasses(
                                   /*compile_options=*/options,
                                   /*is_mlir_compile=*/false));
   return std::move(module);
-}
-
-absl::StatusOr<std::unique_ptr<BufferAssignment>> CpuCompiler::AssignBuffers(
-    HloModule* module, const se::StreamExecutor* /*stream_exec*/) {
-  // Select an order for emitting the HLO instructions for each computation.
-  // Using this sequence enables tighter buffer liveness analysis and reduced
-  // memory usage (as compared to using DependencyHloOrdering).
-  TF_ASSIGN_OR_RETURN(HloSchedule schedule,
-                      ScheduleModule(module, BufferSizeBytesFunction(),
-                                     ComputationSchedulerToModuleScheduler(
-                                         DFSMemoryScheduler)));
-  TF_RETURN_IF_ERROR(module->set_schedule(std::move(schedule)));
-
-  // Run buffer allocation on the HLO graph.
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<BufferAssignment> assignment,
-      BufferAssigner::Run(
-          module, std::make_unique<SequentialHloOrdering>(module->schedule()),
-          BufferSizeBytesFunction(), memory_alignment,
-          /*allocate_buffers_for_constants=*/true));
-
-  return std::move(assignment);
 }
 
 namespace {

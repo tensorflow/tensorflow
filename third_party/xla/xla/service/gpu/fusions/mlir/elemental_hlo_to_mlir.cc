@@ -14,10 +14,12 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/service/gpu/fusions/mlir/elemental_hlo_to_mlir.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <iterator>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -34,12 +36,11 @@ limitations under the License.
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/Support/MathExtras.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"  // from @llvm-project
 #include "mlir/Dialect/Affine/LoopUtils.h"  // from @llvm-project
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
+#include "mlir/Dialect/Complex/IR/Complex.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/IR/SCF.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/IR/AffineExpr.h"  // from @llvm-project
@@ -98,14 +99,10 @@ using mlir::OpBuilder;
 using mlir::Value;
 using mlir::ValueRange;
 using mlir::arith::AndIOp;
-using mlir::arith::CmpFOp;
-using mlir::arith::CmpFPredicate;
 using mlir::arith::CmpIOp;
 using mlir::arith::CmpIPredicate;
 using mlir::arith::ConstantIndexOp;
 using mlir::arith::ConstantOp;
-using mlir::arith::SelectOp;
-using mlir::scf::ForOp;
 using mlir::scf::IfOp;
 using mlir::scf::YieldOp;
 
@@ -166,17 +163,6 @@ static auto& kUnsupportedOps =
                                         HloOpcode::kStochasticConvert,
                                         HloOpcode::kCall};
 
-static auto& kUnimplementedOps = *new absl::flat_hash_set<HloOpcode>{
-    HloOpcode::kConvolution, HloOpcode::kMap};
-
-bool IsUnsupportedConstant(const HloInstruction* instr) {
-  return instr->opcode() == HloOpcode::kConstant &&
-         (!ShapeUtil::IsEffectiveScalar(instr->shape()) ||
-          primitive_util::IsUnsignedIntegralType(
-              instr->shape().element_type()) ||
-          primitive_util::IsComplexType(instr->shape().element_type()));
-}
-
 bool IsUnsupportedTuple(const HloInstruction* instr) {
   if (instr->opcode() != HloOpcode::kTuple) {
     return false;
@@ -193,17 +179,6 @@ bool IsUnsupportedTuple(const HloInstruction* instr) {
     return true;
   }
 
-  // All tuple elements must have bitcast-compatible dimensions (element types
-  // may differ).
-  auto first_shape = instr->shape().tuple_shapes(0);
-  for (int i = 1; i < instr->operand_count(); ++i) {
-    const auto& tuple_shape = instr->shape().tuple_shapes(i);
-    if (!ShapeUtil::EqualIgnoringElementType(tuple_shape, first_shape) &&
-        !ShapeUtil::IsReshapeOrTransposeBitcast(tuple_shape, first_shape,
-                                                /*ignore_element_type=*/true)) {
-      return true;
-    }
-  }
   return false;
 }
 
@@ -593,27 +568,10 @@ absl::StatusOr<Value> EmitMulAdd(Value lhs, Value rhs, Value accumulator,
                                  b.create<arith::MulIOp>(lhs, rhs));
 }
 
-absl::StatusOr<SmallVector<Value>> EmitDot(
+absl::StatusOr<SmallVector<Value>> EmitDotLoop(
     const HloInstruction* instr, mlir::Type result_element_type,
     ValueRange indices, const OperandProvider& operand_provider,
     ImplicitLocOpBuilder& b) {
-  VLOG(1) << "EmitDot: " << instr->ToString() << " "
-          << llvm_ir::DumpToString(result_element_type);
-
-  if (!algorithm_util::IsSupportedByElementalIrEmitter(
-          instr->precision_config().algorithm())) {
-    return absl::InvalidArgumentError(
-        absl::StrFormat("Algorithm not supported by the ElementalIrEmitter: %s",
-                        PrecisionConfig::Algorithm_Name(
-                            instr->precision_config().algorithm())));
-  }
-  auto* dot = DynCast<HloDotInstruction>(instr);
-  TF_RET_CHECK(dot != nullptr);
-  if (dot->sparse_operands()) {
-    return absl::UnimplementedError(
-        "Sparse dot is supported by Triton emitter only.");
-  }
-
   HloInstructionIndexing indexing =
       ComputeOutputToInputIndexing(instr, /*output_id=*/0, b.getContext());
   const IndexingMap& lhs_indexing_map = *indexing.indexing_maps.at(0).begin();
@@ -624,13 +582,18 @@ absl::StatusOr<SmallVector<Value>> EmitDot(
   Value accum_init_value =
       b.create<ConstantOp>(b.getZeroAttr(accumulator_type)).getResult();
 
+  // For convolutions with `batch_group_count` > 1, there is an additional
+  // symbol for LHS (group id) - ignore it for RHS.
+  size_t rhs_symbol_count = rhs_indexing_map.GetSymbolCount();
+
   auto body =
       [&](ValueRange iter_args, ValueRange dim_values,
           ValueRange symbol_values) -> absl::StatusOr<SmallVector<Value>> {
     llvm::SmallVector<Value> lhs_indices = ApplyAffineMap(
         lhs_indexing_map.GetAffineMap(), dim_values, symbol_values, b);
-    llvm::SmallVector<Value> rhs_indices = ApplyAffineMap(
-        rhs_indexing_map.GetAffineMap(), dim_values, symbol_values, b);
+    llvm::SmallVector<Value> rhs_indices =
+        ApplyAffineMap(rhs_indexing_map.GetAffineMap(), dim_values,
+                       symbol_values.take_front(rhs_symbol_count), b);
 
     TF_ASSIGN_OR_RETURN(Value lhs_value, GetSingleOperandValue(
                                              operand_provider, instr,
@@ -653,6 +616,40 @@ absl::StatusOr<SmallVector<Value>> EmitDot(
     results[0] = b.create<arith::TruncFOp>(b.getBF16Type(), results[0]);
   }
   return results;
+}
+
+absl::StatusOr<SmallVector<Value>> EmitDot(
+    const HloInstruction* instr, mlir::Type result_element_type,
+    ValueRange indices, const OperandProvider& operand_provider,
+    ImplicitLocOpBuilder& b) {
+  VLOG(1) << "EmitDot: " << instr->ToString() << " "
+          << llvm_ir::DumpToString(result_element_type);
+
+  if (!algorithm_util::IsSupportedByElementalIrEmitter(
+          instr->precision_config().algorithm())) {
+    return absl::InvalidArgumentError(
+        absl::StrFormat("Algorithm not supported by the ElementalIrEmitter: %s",
+                        PrecisionConfig::Algorithm_Name(
+                            instr->precision_config().algorithm())));
+  }
+  auto* dot = DynCast<HloDotInstruction>(instr);
+  TF_RET_CHECK(dot != nullptr);
+  if (dot->sparse_operands()) {
+    return absl::UnimplementedError(
+        "Sparse dot is supported by Triton emitter only.");
+  }
+
+  return EmitDotLoop(instr, result_element_type, indices, operand_provider, b);
+}
+
+absl::StatusOr<SmallVector<Value>> EmitConvolution(
+    const HloInstruction* instr, mlir::Type result_element_type,
+    ValueRange indices, const OperandProvider& operand_provider,
+    ImplicitLocOpBuilder& b) {
+  VLOG(1) << "EmitConvolution: " << instr->ToString() << " "
+          << llvm_ir::DumpToString(result_element_type);
+
+  return EmitDotLoop(instr, result_element_type, indices, operand_provider, b);
 }
 
 absl::StatusOr<SmallVector<Value>> EmitParameter(const HloInstruction* instr,
@@ -750,7 +747,6 @@ absl::StatusOr<SmallVector<Value>> HloToMlir(
     const CallTargetProvider& call_target_provider,
     ImplicitLocOpBuilder& builder) {
   CHECK(!kUnsupportedOps.contains(instr->opcode())) << instr->ToShortString();
-  CHECK(!kUnimplementedOps.contains(instr->opcode())) << instr->ToShortString();
 
   auto element_type = instr->shape().element_type();
   mlir::Type element_mlir_type;
@@ -777,15 +773,32 @@ absl::StatusOr<SmallVector<Value>> HloToMlir(
     case HloOpcode::kConcatenate:
       return EmitConcat(instr, result_element_type, indices, operand_provider,
                         builder);
-    case HloOpcode::kConstant:
+    case HloOpcode::kConstant: {
+      TF_ASSIGN_OR_RETURN(auto value_attr, CreateDenseElementsAttrFromLiteral(
+                                               instr->literal(), builder));
+      // Convert to signless if needed.
+      if (result_element_type != element_mlir_type) {
+        value_attr = value_attr.mapValues(
+            result_element_type, [](const llvm::APInt& i) { return i; });
+      }
+
       if (ShapeUtil::IsEffectiveScalar(instr->shape())) {
+        if (primitive_util::IsComplexType(element_type)) {
+          return {{builder.create<mlir::complex::ConstantOp>(
+              element_mlir_type,
+              mlir::cast<mlir::ArrayAttr>(
+                  value_attr.getValues<mlir::Attribute>()[0]))}};
+        }
         auto val = mlir::cast<mlir::TypedAttr>(
-            CreateDenseElementsAttrFromLiteral(instr->literal(), builder)
-                ->getValues<mlir::Attribute>()[0]);
+            value_attr.getValues<mlir::Attribute>()[0]);
         return {{builder.create<ConstantOp>(val).getResult()}};
       }
-      return absl::UnimplementedError(
-          absl::StrCat("Unimplemented: ", instr->ToShortString()));
+      auto constant = builder.create<ConstantOp>(value_attr).getResult();
+      return {{builder.create<mlir::tensor::ExtractOp>(constant, indices)}};
+    }
+    case HloOpcode::kConvolution:
+      return EmitConvolution(instr, result_element_type, indices,
+                             operand_provider, builder);
     case HloOpcode::kDynamicSlice:
       return EmitDynamicSlice(instr, indices, operand_provider, builder);
     case HloOpcode::kDynamicUpdateSlice:
@@ -901,17 +914,15 @@ absl::StatusOr<SmallVector<Value>> HloToMlir(
       return MapElementwiseOp<mhlo::ClzOp>(arg_types, operands, builder);
     case HloOpcode::kCompare: {
       auto* context = builder.getContext();
-      auto dir = builder.getDictionaryAttr(builder.getNamedAttr(
-          "comparison_direction",
-          mhlo::ComparisonDirectionAttr::get(
-              context,
-              mhlo::symbolizeComparisonDirection(
-                  ComparisonDirectionToString(instr->comparison_direction()))
-                  .value())));
+      auto direction = mhlo::symbolizeComparisonDirection(
+          ComparisonDirectionToString(instr->comparison_direction()));
+      mhlo::CompareOp::Properties properties;
+      properties.comparison_direction =
+          mhlo::ComparisonDirectionAttr::get(context, direction.value());
       auto result_types = llvm::to_vector(mlir::TypeRange{builder.getI1Type()});
       return {{mhlo::MhloOpToStdScalarOp::mapOpOfType<mhlo::CompareOp>(
           builder.getLoc(), result_types, arg_types,
-          mhlo::CompareOp::Adaptor(operands, dir), &builder)}};
+          mhlo::CompareOp::Adaptor(operands, nullptr, properties), &builder)}};
     }
     case HloOpcode::kComplex:
       return MapHloOp<mhlo::ComplexOp>(element_mlir_type, arg_types, operands,
@@ -940,6 +951,11 @@ absl::StatusOr<SmallVector<Value>> HloToMlir(
       return MapElementwiseOp<mhlo::Log1pOp>(arg_types, operands, builder);
     case HloOpcode::kLogistic:
       return MapElementwiseOp<mhlo::LogisticOp>(arg_types, operands, builder);
+    case HloOpcode::kMap: {
+      auto mapper = call_target_provider(
+          instr->called_computations().front()->root_instruction());
+      return builder.create<PureCallOp>(mapper, operands).getResults();
+    }
     case HloOpcode::kMaximum:
       return MapElementwiseOp<mhlo::MaxOp>(arg_types, operands, builder);
     case HloOpcode::kMinimum:
@@ -961,16 +977,14 @@ absl::StatusOr<SmallVector<Value>> HloToMlir(
       return MapHloOp<mhlo::RealOp>(element_mlir_type, arg_types, operands,
                                     builder);
     case HloOpcode::kReducePrecision: {
-      mlir::NamedAttribute exponent_bits(
-          builder.getStringAttr("exponent_bits"),
-          builder.getI32IntegerAttr(instr->exponent_bits()));
-      mlir::NamedAttribute mantissa_bits(
-          builder.getStringAttr("mantissa_bits"),
-          builder.getI32IntegerAttr(instr->mantissa_bits()));
-      return MapHloOp<mhlo::ReducePrecisionOp>(
-          operands.front().getType(), arg_types, operands, builder,
-          mlir::DictionaryAttr::get(builder.getContext(),
-                                    {exponent_bits, mantissa_bits}));
+      mhlo::ReducePrecisionOp::Properties properties;
+      properties.exponent_bits =
+          builder.getI32IntegerAttr(instr->exponent_bits());
+      properties.mantissa_bits =
+          builder.getI32IntegerAttr(instr->mantissa_bits());
+      return MapHloOp<mhlo::ReducePrecisionOp>(operands.front().getType(),
+                                               arg_types, operands, builder,
+                                               nullptr, properties);
     }
     case HloOpcode::kRemainder:
       return MapElementwiseOp<mhlo::RemOp>(arg_types, operands, builder);
@@ -1032,27 +1046,8 @@ absl::StatusOr<SmallVector<Value>> HloToMlir(
 
 bool IsHloOpSupported(const HloInstruction* instr,
                       se::CudaComputeCapability compute_capability) {
-  auto is_unsupported_type = [](const HloInstruction* instr) {
-    auto e = instr->shape().element_type();
-    // TODO(akuegel): Fix remaining issues with complex.
-    // TODO(jreiffers): Support fp8.
-    // TODO(jreiffers): Support int4.
-    return (primitive_util::IsIntegralType(e) &&
-            primitive_util::BitWidth(e) > 1 &&
-            primitive_util::BitWidth(e) < 8) ||
-           primitive_util::IsComplexType(e) ||
-           (primitive_util::IsFloatingPointType(e) &&
-            primitive_util::BitWidth(e) < 16);
-  };
-  if (is_unsupported_type(instr) ||
-      absl::c_any_of(instr->operands(), is_unsupported_type)) {
-    return false;
-  }
-
   return !(kUnsupportedOps.contains(instr->opcode()) ||
-           kUnimplementedOps.contains(instr->opcode()) ||
-           IsUnsupportedConstant(instr) || IsUnsupportedTuple(instr) ||
-           IsUnsupportedGather(instr));
+           IsUnsupportedTuple(instr) || IsUnsupportedGather(instr));
 }
 
 bool IsHloConversionSupported(const HloComputation* computation,
@@ -1111,17 +1106,22 @@ bool IsHloConversionSupported(const HloFusionAdaptor& fusion,
       });
 }
 
-SmallVector<Value> ProvideParameter(
-    const PartitionedComputation::Subgraph& caller, const HloInstruction* instr,
-    int operand_index, ValueRange indices,
-    const CallTargetProvider& call_target_provider, mlir::func::FuncOp this_fn,
-    ImplicitLocOpBuilder& builder) {
+Value ProvideParameter(const PartitionedComputation& computation,
+                       const HloInstruction* instr, int operand_index,
+                       ValueRange indices,
+                       const CallTargetProvider& call_target_provider,
+                       mlir::func::FuncOp this_fn,
+                       ImplicitLocOpBuilder& builder,
+                       const PartitionedComputation::Subgraph* caller) {
   auto* operand = instr->operand(operand_index);
 
-  const auto& injected_values = caller.injected_values;
+  if (!caller) {
+    caller = &computation.FindSubgraph(instr);
+  }
+  const auto& injected_values = caller->injected_values;
   if (auto it = injected_values.find(operand); it != injected_values.end()) {
     auto injected_param_values =
-        this_fn.getArguments().take_back(caller.injected_values.size());
+        this_fn.getArguments().take_back(caller->injected_values.size());
     return {{injected_param_values[it->second]}};
   }
 
@@ -1129,20 +1129,26 @@ SmallVector<Value> ProvideParameter(
   SmallVector<Value> operands(
       this_fn.getArguments().take_front(instr->parent()->num_parameters()));
   absl::c_copy(indices, std::back_inserter(operands));
-  return builder.create<PureCallOp>(callee, operands).getResults();
+  auto results = builder.create<PureCallOp>(callee, operands).getResults();
+  if (results.size() == 1) {
+    return results[0];
+  }
+  auto callee_subgraph = computation.FindSubgraph(operand);
+  auto it = absl::c_find(callee_subgraph.roots, operand);
+  CHECK(it != callee_subgraph.roots.end());
+  return results[std::distance(callee_subgraph.roots.begin(), it)];
 }
 
 SmallVector<Value> ProvideParameterRange(
-    const PartitionedComputation::Subgraph& caller, const HloInstruction* instr,
+    const PartitionedComputation& computation, const HloInstruction* instr,
     int start, int num, ValueRange indices,
     const CallTargetProvider& call_target_provider, mlir::func::FuncOp this_fn,
     ImplicitLocOpBuilder& builder) {
   SmallVector<Value> scalars;
+  scalars.reserve(num);
   for (int i = 0; i < num; ++i) {
-    auto scalar = ProvideParameter(caller, instr, i + start, indices,
-                                   call_target_provider, this_fn, builder);
-    CHECK_EQ(scalar.size(), 1);
-    scalars.push_back(scalar.front());
+    scalars.push_back(ProvideParameter(computation, instr, i + start, indices,
+                                       call_target_provider, this_fn, builder));
   }
   return scalars;
 }
@@ -1150,6 +1156,7 @@ SmallVector<Value> ProvideParameterRange(
 namespace {
 
 absl::StatusOr<SmallVector<Value>> SubgraphToMlir(
+    const PartitionedComputation& computation,
     const PartitionedComputation::Subgraph& subgraph,
     mlir::func::FuncOp this_fn, const CallTargetProvider& call_target_provider,
     ValueRange parameters, ValueRange indices, ImplicitLocOpBuilder& builder) {
@@ -1164,16 +1171,15 @@ absl::StatusOr<SmallVector<Value>> SubgraphToMlir(
 
   auto provide_operand =
       [&](const HloInstruction* instr, int index,
-          ValueRange indices) -> absl::StatusOr<SmallVector<Value>> {
+          ValueRange operand_indices) -> absl::StatusOr<SmallVector<Value>> {
     auto* operand = instr->operand(index);
     if (subgraph.instructions.contains(operand)) {
-      return emit_instr(operand, indices);
+      return emit_instr(operand, operand_indices);
     }
     return ConvertToSignless(
-        ProvideParameter(subgraph, instr, index, indices, call_target_provider,
-                         this_fn, builder),
+        {ProvideParameter(computation, instr, index, operand_indices,
+                          call_target_provider, this_fn, builder, &subgraph)},
         builder);
-    return results;
   };
 
   emit_instr = [&](const HloInstruction* instr,
@@ -1212,8 +1218,21 @@ absl::StatusOr<SmallVector<Value>> SubgraphToMlir(
     return entry;
   };
 
-  for (const auto* root : subgraph.roots) {
-    TF_ASSIGN_OR_RETURN(auto root_results, emit_instr(root, indices));
+  TF_RET_CHECK(subgraph.roots.size() == subgraph.root_indexing.size())
+      << "roots and root_indexing must have the same size in "
+      << subgraph.ToString();
+  for (const auto [root, indexing] :
+       llvm::zip(subgraph.roots, subgraph.root_indexing)) {
+    TF_RET_CHECK(indexing.getNumDims() + indexing.getNumSymbols() ==
+                 indices.size())
+        << "Incorrect number of indices (got " << indices.size()
+        << ", expected " << indexing.getNumDims() << " dims and "
+        << indexing.getNumSymbols() << "symbols) in " << subgraph.ToString();
+    int num_dims = indexing.getNumDims();
+    auto root_indices =
+        ApplyAffineMap(indexing, /*dims=*/indices.take_front(num_dims),
+                       /*symbols=*/indices.drop_front(num_dims), builder);
+    TF_ASSIGN_OR_RETURN(auto root_results, emit_instr(root, root_indices));
     results.append(root_results.begin(), root_results.end());
   }
   return results;
@@ -1248,9 +1267,10 @@ absl::Status SubgraphToMlirFunction(
       computation.computation().num_parameters());
   int num_injected_values = subgraph.injected_values.size();
   auto indices = indices_and_injected_values.drop_back(num_injected_values);
-  TF_ASSIGN_OR_RETURN(auto results,
-                      SubgraphToMlir(subgraph, func, call_target_provider,
-                                     parameters, indices, builder));
+  TF_ASSIGN_OR_RETURN(
+      auto results,
+      SubgraphToMlir(computation, subgraph, func, call_target_provider,
+                     parameters, indices, builder));
 
   // We have been converting signed types to signless types. To match the
   // function signature, we have to convert back to signed types.
@@ -1341,6 +1361,9 @@ mlir::Value ClampIndex(mlir::Value index, bool is_unsigned, int64_t high,
   }
 
   if (is_unsigned) {
+    if (index.getType().isUnsignedInteger()) {
+      index = ConvertToSignless({index}, b).front();
+    }
     if (index.getType() != b.getIndexType()) {
       index = b.create<arith::IndexCastUIOp>(b.getIndexType(), index);
     }

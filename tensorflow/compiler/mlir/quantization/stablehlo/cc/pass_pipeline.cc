@@ -54,18 +54,18 @@ void AddPreCalibrationPasses(OpPassManager& pm,
   pm.addPass(CreateIssueIDsOfCustomAggregationOpsPass());
 }
 
-void AddPostCalibrationPasses(
-    OpPassManager& pm, const PipelineConfig& pipeline_config,
-    const StaticRangePtqPreset& static_range_ptq_preset) {
+void AddPostCalibrationPasses(OpPassManager& pm,
+                              const PipelineConfig& pipeline_config,
+                              const QuantizationSpecs& specs) {
   QuantizeCompositeFunctionsPassOptions options;
-  // TODO: b/331120943 - Use QuantizationConfig instead of preset flags.
-  options.enable_per_channel_quantized_weight_ =
-      static_range_ptq_preset.enable_per_channel_quantized_weight();
-  options.enable_full_int_quantization_ =
-      static_range_ptq_preset.enable_full_int_quantization();
+  // TODO: b/331120943 - Temporarily set below to true, signaling per-channel
+  // quantization will be applied for all where applicable. This will be
+  // replaced by individual `Method` in `QuantizationSpecs`.
+  options.enable_per_channel_quantized_weight_ = true;
   // For debugging purposes.
   options.mlir_dump_file_name_ = "quantize_composite_functions";
-  options.enable_weight_only_ = false;
+  options.merge_fusion_with_dequantize_ =
+      pipeline_config.merge_fusion_with_dequantize();
 
   AddShapeLegalizationPasses(pm);
   pm.addNestedPass<func::FuncOp>(
@@ -100,7 +100,6 @@ void AddWeightOnlyQuantizationPasses(
   QuantizeCompositeFunctionsPassOptions options;
   // For debugging purposes.
   options.mlir_dump_file_name_ = "quantize_composite_functions";
-  options.enable_weight_only_ = true;
   pm.addPass(createQuantizeCompositeFunctionsPass(options));
 
   // Add an inliner pass to inline quantized StableHLO functions.

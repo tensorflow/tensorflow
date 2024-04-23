@@ -455,7 +455,7 @@ class InferenceContext {
   std::string DebugString(ShapeHandle s);
   std::string DebugString(DimensionHandle d);
   std::string DebugString(const ShapeAndType& shape_and_type);
-  std::string DebugString(gtl::ArraySlice<ShapeAndType> shape_and_types);
+  std::string DebugString(absl::Span<const ShapeAndType> shape_and_types);
 
   // Describes the whole context, for debugging purposes.
   std::string DebugString() const;
@@ -772,12 +772,12 @@ class InferenceContext {
 
   Status ReturnUnknownShape(ShapeHandle* out) {
     *out = UnknownShape();
-    return OkStatus();
+    return absl::OkStatus();
   }
   Status ReturnCreatedShape(const std::vector<DimensionHandle>& dims,
                             ShapeHandle* out) {
     *out = MakeShape(dims);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Adds additional context to the given status.

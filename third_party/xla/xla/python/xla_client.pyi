@@ -22,6 +22,7 @@ import numpy
 from . import xla_extension as _xla
 from .xla_extension import Shape as Shape
 from .xla_extension import Layout as Layout
+from .xla_extension import ifrt_programs as ifrt_programs
 from .xla_extension import ops as ops
 from .xla_extension import profiler as profiler
 
@@ -83,6 +84,7 @@ def heap_profile(client: Client) -> bytes:
   ...
 
 def make_cpu_client(
+    asynchronous: bool = ...,
     distributed_client: Optional[DistributedRuntimeClient] = ...,
     node_id: int = ...,
     num_nodes: int = ...,

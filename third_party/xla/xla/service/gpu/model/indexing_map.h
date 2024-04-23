@@ -44,6 +44,7 @@ struct Interval {
   void Print(std::ostream& out) const;
 
   bool IsPoint() const { return lower == upper; }
+  int64_t NumElements() const { return upper - lower + 1; }
 
   bool Contains(int64_t value) const {
     return value >= lower && value <= upper;
@@ -169,6 +170,9 @@ H AbslHashValue(H h, const RangeVar& range_var) {
 struct RTVar {
   Interval feasible_values;
   const HloInstruction* hlo;
+  // This is a map from the iteration space of the corresponding indexing map to
+  // the iteration space of `hlo`. It shows what element of `hlo` we need to
+  // extract to get the runtime value for the RTVar.
   mlir::AffineMap map;
 };
 bool operator==(const RTVar& lhs, const RTVar& rhs);
@@ -325,6 +329,12 @@ class IndexingMap {
   // [N, N]` constraints. Returns true if a rescale took place, otherwise false.
   bool RescaleSymbols();
 
+  // Does `symbol` correspond to a range var?
+  bool IsRangeVarSymbol(mlir::AffineSymbolExpr symbol) const;
+
+  // Does `symbol` correspond to an RTVar?
+  bool IsRTVarSymbol(mlir::AffineSymbolExpr symbol) const;
+
  private:
   IndexingMap() = default;
 
@@ -360,6 +370,21 @@ IndexingMap operator*(const IndexingMap& lhs, const IndexingMap& rhs);
 IndexingMap ComposeIndexingMaps(const IndexingMap& first,
                                 const IndexingMap& second);
 
+// Prints the RTVars.
+//
+// This is exposed to allow SymbolicTile to reuse it.
+//
+// `first_rt_var_symbol_index`: The index of the symbol associated with the
+// first RTVar. The RTVars will be printed with consequent symbol indices
+// starting with `first_rt_var_symbol_index`. For example, if `rt_vars.size()
+// == 3` and `first_rt_var_symbol_index == 4`, then the symbol names "s4",
+// "s5" and "s6" will be used.
+//
+// TODO(b/334043862): Unexpose this function if possible.
+void PrintRTVars(const std::vector<RTVar>& rt_vars,
+                 int first_rt_var_symbol_index, std::ostream& out,
+                 const AffineMapPrinter& printer);
+
 template <typename H>
 H AbslHashValue(H h, const IndexingMap& indexing_map) {
   llvm::hash_code affine_map_hash =
@@ -369,6 +394,9 @@ H AbslHashValue(H h, const IndexingMap& indexing_map) {
                     indexing_map.GetRTVars(),
                     indexing_map.GetConstraintsCount());
 }
+
+int64_t FloorDiv(int64_t dividend, int64_t divisor);
+int64_t CeilDiv(int64_t dividend, int64_t divisor);
 
 }  // namespace gpu
 }  // namespace xla

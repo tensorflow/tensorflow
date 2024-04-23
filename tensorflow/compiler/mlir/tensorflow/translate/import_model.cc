@@ -4280,17 +4280,13 @@ SavedModelMLIRImportInput::~SavedModelMLIRImportInput() {}
 
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertGraphdefToMlir(
     const GraphDef& graphdef, const GraphDebugInfo& debug_info,
-    const GraphImportConfig& specs, mlir::MLIRContext* context,
-    bool add_default_attributes) {
+    const GraphImportConfig& specs, mlir::MLIRContext* context) {
   GraphConstructorOptions options;
   options.allow_internal_ops = true;
-  options.add_default_attributes = add_default_attributes;
   Graph graph(OpRegistry::Global());
-
   GraphDef preprocessed_graphdef(graphdef);
-  if (add_default_attributes) {
-    TF_RETURN_IF_ERROR(PreprocessGraphDef(&specs, &preprocessed_graphdef));
-  }
+  TF_RETURN_IF_ERROR(PreprocessGraphDef(&specs, &preprocessed_graphdef));
+
   if (specs.upgrade_legacy) {
     TF_RETURN_IF_ERROR(GenerateResourceSharedNameIfEmpty(
         preprocessed_graphdef, graph.flib_def().default_registry()));

@@ -37,7 +37,7 @@ absl::StatusOr<XlaComputation> BuildComputation() {
 void CompileAndExecute(
     LocalExecutable* executable, int device_ordinal, LocalClient* client,
     absl::Mutex* results_mutex,
-    std::vector<std::pair<int, StatusOr<ScopedShapedBuffer>>>* results) {
+    std::vector<std::pair<int, absl::StatusOr<ScopedShapedBuffer>>>* results) {
   xla::ExecutableRunOptions execute_options;
   execute_options.set_intra_op_thread_pool(
       client->backend().eigen_intra_op_thread_pool_device());
@@ -72,7 +72,7 @@ void TestWithDeviceCount(const int device_count) {
   std::unique_ptr<LocalExecutable> executable = std::move(executables[0]);
   std::vector<tsl::Thread*> threads;
   absl::Mutex results_mutex;
-  std::vector<std::pair<int, StatusOr<ScopedShapedBuffer>>> results;
+  std::vector<std::pair<int, absl::StatusOr<ScopedShapedBuffer>>> results;
   tsl::Env* env = tsl::Env::Default();
   for (int device_ordinal = 0; device_ordinal < device_count;
        device_ordinal++) {

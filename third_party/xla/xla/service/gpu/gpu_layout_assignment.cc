@@ -48,11 +48,13 @@ limitations under the License.
 #include "xla/status.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/dnn.h"
+#include "xla/tsl/util/env_var.h"
 #include "xla/util.h"
 #include "xla/window_util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -125,37 +127,50 @@ HeuristicLayoutAssignment(const HloInstruction* instr,
     return kAllNHWC;
   }
 
-  // If we're not Volta or not fp16/bfloat16, or not conv2D, the decision is
-  // easy: Use NCHW.
   const bool isFloat16 = (input_ty == F16) || (input_ty == BF16);
-  const auto* cuda_compute_capability =
-      std::get_if<se::CudaComputeCapability>(&gpu_version);
-  bool is_volta =
-      cuda_compute_capability &&
-      cuda_compute_capability->IsAtLeast(se::CudaComputeCapability::VOLTA);
-  if (!isFloat16 || !is_volta ||
-      instr->shape().tuple_shapes(0).dimensions_size() != 4) {
-    return kAllNCHW;
+  if (std::holds_alternative<se::CudaComputeCapability>(gpu_version)) {
+    // If we're not Volta or not fp16/bfloat16, or not conv2D, the decision is
+    // easy: Use NCHW.
+    const auto* cuda_compute_capability =
+        std::get_if<se::CudaComputeCapability>(&gpu_version);
+    bool is_volta =
+        cuda_compute_capability &&
+        cuda_compute_capability->IsAtLeast(se::CudaComputeCapability::VOLTA);
+    if (!isFloat16 || !is_volta ||
+        instr->shape().tuple_shapes(0).dimensions_size() != 4) {
+      return kAllNCHW;
+    }
+
+    // Empirically we've found with Volta and cudnn <= 7.3 that backward-input
+    // convs with stride are significantly faster with NCHW layouts.
+    //
+    // We could have used a mixed layout combination, e.g. (NHWC, NCHW, NCHW),
+    // which on paper gives good performance. However, there are two
+    // observations:
+    // * a mixed layout combination is more cuDNN-bug prone, based on empirical
+    //   evidence.
+    // * we've also observed that for mixed layouts, cuDNN transposes data back
+    //   and forth from a different layout combination. If we end up with
+    //   transposes anyway, we prefer to have them in XLA, as they can be fused.
+    if (std::make_tuple(dnn_version.major_version(),
+                        dnn_version.minor_version()) <= std::make_tuple(7, 3) &&
+        instr->custom_call_target() == kCudnnConvBackwardInputCallTarget &&
+        window_util::HasStride(instr->window())) {
+      return kAllNCHW;
+    }
+  } else if (std::holds_alternative<se::RocmComputeCapability>(gpu_version)) {
+    bool is_enabled = false;
+    TF_CHECK_OK(tsl::ReadBoolFromEnvVar("TF_USE_ROCM_NHWC",
+                                        /*default_val=*/false, &is_enabled));
+    auto rocm_compute_capability =
+        std::get<se::RocmComputeCapability>(gpu_version);
+    if (!isFloat16 || (!rocm_compute_capability.has_nhwc_layout_support()) ||
+        instr->shape().tuple_shapes(0).dimensions_size() != 4 || !is_enabled) {
+      return kAllNCHW;
+    }
   }
 
   VLOG(2) << "Using heuristic to figure out layouts for " << instr->ToString();
-
-  // Empirically we've found with Volta and cudnn <= 7.3 that backward-input
-  // convs with stride are significantly faster with NCHW layouts.
-  //
-  // We could have used a mixed layout combination, e.g. (NHWC, NCHW, NCHW),
-  // which on paper gives good performance. However, there are two observations:
-  // * a mixed layout combination is more cuDNN-bug prone, based on empirical
-  //   evidence.
-  // * we've also observed that for mixed layouts, cuDNN transposes data back
-  //   and forth from a different layout combination. If we end up with
-  //   transposes anyway, we prefer to have them in XLA, as they can be fused.
-  if (std::make_tuple(dnn_version.major_version(),
-                      dnn_version.minor_version()) <= std::make_tuple(7, 3) &&
-      instr->custom_call_target() == kCudnnConvBackwardInputCallTarget &&
-      window_util::HasStride(instr->window())) {
-    return kAllNCHW;
-  }
 
   // For other Volta f16 convolutions, use NHWC.
   return kAllNHWC;

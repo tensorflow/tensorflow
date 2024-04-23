@@ -25,6 +25,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
+        "//tensorflow/compiler/mlir/quantization/stablehlo/cc/calibration:min_max_value",
         "//tensorflow/compiler/mlir/quantization/tensorflow:tf_quant_ops",
         "//tensorflow/compiler/mlir/quantization/tensorflow/calibrator:calibration_statistics_proto_cc",
         "//tensorflow/compiler/mlir/quantization/tensorflow/calibrator:calibrator_singleton",
@@ -97,5 +98,22 @@ tf_cc_test(
         "@com_google_absl//absl/status:statusor",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:status_matchers",
+    ],
+)
+
+cc_library(
+    name = "calibration_parameters",
+    srcs = [],
+    hdrs = ["calibration_parameters.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = ["//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc"],
+)
+
+tf_cc_test(
+    name = "calibration_parameters_test",
+    srcs = ["calibration_parameters_test.cc"],
+    deps = [
+        ":calibration_parameters",
+        "@com_google_googletest//:gtest_main",
     ],
 )

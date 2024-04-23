@@ -348,7 +348,7 @@ class CudnnSupport : public dnn::DnnSupport {
       std::optional<dnn::TensorDescriptor> mask_descriptor,
       std::optional<dnn::TensorDescriptor> bias_descriptor, double scale,
       std::optional<double> dropout_rate, std::optional<int64_t> seed,
-      bool is_flash_attention, bool is_causal_mask) override;
+      bool is_flash_attention, dnn::FMHAMaskKind mask_type) override;
 
   absl::StatusOr<std::unique_ptr<const dnn::FusedMHABackwardRunner>>
   FusedMHABackwardRunnerFromDesc(
@@ -368,7 +368,8 @@ class CudnnSupport : public dnn::DnnSupport {
       std::optional<dnn::TensorDescriptor> fwd_output_descriptor,
       std::optional<dnn::TensorDescriptor> bias_descriptor, double scale,
       std::optional<double> dropout_rate, std::optional<int64_t> seed,
-      bool is_flash_attention, bool is_causal_mask);
+      bool is_flash_attention, dnn::FMHAMaskKind mask_type);
+
   bool GetRnnAlgorithms(
       std::vector<dnn::AlgorithmDesc>* out_algorithms) override;
 
@@ -718,6 +719,32 @@ class CudnnSupport : public dnn::DnnSupport {
   CudnnSupport(const CudnnSupport&) = delete;
   void operator=(const CudnnSupport&) = delete;
 };
+
+absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionOperationGraph(
+    dnn::DnnSupport& dnn_support,
+    const dnn::MatmulTensorDescriptor& q_descriptor,
+    const dnn::MatmulTensorDescriptor& k_descriptor,
+    const dnn::MatmulTensorDescriptor& v_descriptor,
+    const dnn::TensorDescriptor& o_descriptor,
+    const std::optional<dnn::TensorDescriptor> bias_descriptor,
+    const std::optional<dnn::TensorDescriptor> mask_descriptor,
+    const std::optional<dnn::TensorDescriptor> stats_descriptor,
+    const float scale, const bool use_dropout,
+    const std::optional<double> dropout_rate,
+    const dnn::FMHAMaskKind mask_type);
+
+absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionBackwardOperationGraph(
+    dnn::DnnSupport& dnn_support, const dnn::MatmulTensorDescriptor& q_desc,
+    const dnn::MatmulTensorDescriptor& k_desc,
+    const dnn::MatmulTensorDescriptor& p_desc,
+    const dnn::MatmulTensorDescriptor& v_desc,
+    const dnn::MatmulTensorDescriptor& do_desc,
+    const dnn::TensorDescriptor& dq_desc, const dnn::TensorDescriptor& dk_desc,
+    const dnn::TensorDescriptor& dv_desc,
+    const std::optional<dnn::TensorDescriptor> bias_descriptor,
+    std::optional<double> dropout_rate, std::optional<int64_t> seed,
+    double scale, bool use_dropout, bool use_mask, bool use_bias,
+    const dnn::FMHAMaskKind mask_type);
 
 }  // namespace gpu
 }  // namespace stream_executor

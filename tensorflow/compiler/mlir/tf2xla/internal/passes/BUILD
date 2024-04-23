@@ -33,7 +33,6 @@ cc_library(
         ":verify_clustering_pass",
         ":xla_broadcast",
         ":xla_cluster_formation",
-        ":xla_outline_entry_functions",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
@@ -135,7 +134,6 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:tpu_rewrite_device_util",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tf_pass_inc_gen",
         "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings",
@@ -290,36 +288,6 @@ cc_library(
 )
 
 cc_library(
-    name = "xla_outline_entry_functions",
-    srcs = ["xla_outline_entry_functions.cc"],
-    textual_hdrs = [
-        "clustering_passes.h.inc",
-    ],
-    deps = [
-        ":clustering_passes_inc_gen",
-        "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/compiler/mlir/tensorflow:attribute_utils",
-        "//tensorflow/compiler/mlir/tensorflow:call_graph_util",
-        "//tensorflow/compiler/mlir/tensorflow:cluster_util",
-        "//tensorflow/compiler/mlir/tensorflow:string_util",
-        "//tensorflow/compiler/mlir/tensorflow:tensorflow_analysis",
-        "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
-        "//tensorflow/compiler/mlir/tensorflow:tpu_rewrite_device_util",
-        "//tensorflow/core:core_cpu_base",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:portable_gif_internal",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/strings",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:TransformUtils",
-    ],
-)
-
-cc_library(
     name = "mark_ops_for_outside_compilation",
     srcs = ["mark_ops_for_outside_compilation.cc"],
     textual_hdrs = [
@@ -422,22 +390,6 @@ cc_library(
         "@llvm-project//mlir:Rewrite",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
-    ],
-)
-
-tf_cc_test(
-    name = "tpu_cluster_formation_test",
-    srcs = ["tpu_cluster_formation_test.cc"],
-    deps = [
-        ":clustering_passes",
-        "//tensorflow/compiler/mlir/tf2xla/transforms:test_utils",
-        "//tensorflow/core/lib/monitoring:cell_reader",
-        "@com_google_googletest//:gtest_main",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:Support",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
