@@ -51,7 +51,6 @@ namespace gpu {
 namespace {
 
 namespace fe = cudnn_frontend;
-namespace graph = fe::graph;
 
 // create cuDNN graphs from HloCustomCall
 absl::StatusOr<se::gpu::CudnnGraph> HloCustomCallToCuDnnGraph(

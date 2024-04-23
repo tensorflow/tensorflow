@@ -348,7 +348,7 @@ std::vector<int64_t> MapDimensions(const Shape& original_shape,
           std::back_inserter(original_dimensions_in_dimensions));
       // The unique mapping of dimensions requires either all or none of the
       // entries of original_dimensions to be an element of dimensions.
-      if (original_dimensions_in_dimensions.size() != 0 &&
+      if (!original_dimensions_in_dimensions.empty() &&
           original_dimensions_in_dimensions.size() !=
               original_dimensions.size()) {
         return {};

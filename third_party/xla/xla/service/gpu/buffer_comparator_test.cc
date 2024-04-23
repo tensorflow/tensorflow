@@ -73,8 +73,7 @@ class BufferComparatorTest : public testing::Test {
             primitive_util::NativeToPrimitiveType<ElementType>(),
             {static_cast<int64_t>(current_buffer->ElementCount())}),
         HloModuleConfig());
-    return comparator
-        .CompareEqual(stream.get(), *current_buffer, *expected_buffer)
+    return comparator.CompareEqual(stream, *current_buffer, *expected_buffer)
         .value();
   }
 
