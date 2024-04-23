@@ -180,6 +180,24 @@ class ReduceOpsTest(xla_test.XLATestCase, parameterized.TestCase):
           'Axes contains duplicate dimension'):
         sess.run(out, {a: [10, 20, 30], index: [0, 0]})
 
+  def testReduceEuclideanNorm(self, index_dtype):
+
+    def reference_euclidean_norm(dtype, inp, axis):
+      inp = inp.astype(dtype)
+      return np.sqrt(np.sum(inp * np.conj(inp), axis)).astype(dtype)
+
+    for real_dtype in [np.int32, np.int64, np.float16, np.float32, np.float64]:
+      self._testReduction(
+          math_ops.reduce_euclidean_norm,
+          functools.partial(reference_euclidean_norm, real_dtype), real_dtype,
+          self.REAL_DATA, index_dtype)
+
+    for complex_dtype in [np.complex64]:
+      self._testReduction(
+          math_ops.reduce_euclidean_norm,
+          functools.partial(reference_euclidean_norm, complex_dtype),
+          complex_dtype, self.COMPLEX_DATA, index_dtype)
+
 
 class ReduceOpPrecisionTest(xla_test.XLATestCase):
 

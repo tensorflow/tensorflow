@@ -25,8 +25,10 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "xla/client/lib/constants.h"
+#include "xla/client/lib/math.h"
 #include "xla/client/xla_builder.h"
 #include "xla/literal.h"
+#include "xla/primitive_util.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 
 namespace tensorflow {
@@ -198,6 +200,45 @@ class AnyOp : public XlaReductionOp {
 
 REGISTER_XLA_OP(Name("Any").CompileTimeConstantInput("reduction_indices"),
                 AnyOp);
+
+class EuclideanNormOp : public XlaReductionOp {
+ public:
+  explicit EuclideanNormOp(OpKernelConstruction* ctx)
+      : XlaReductionOp(ctx,
+                       XlaHelpers::SumAccumulationType(ctx->input_type(0))) {}
+  xla::XlaOp InitialValue(xla::XlaBuilder* builder) override {
+    return xla::Zero(builder, xla_reduction_type_);
+  }
+
+  xla::XlaOp PreprocessInput(xla::XlaBuilder* /*builder*/,
+                             const xla::XlaOp& data) override {
+    return xla::Mul(data, MaybeConjugate(data, true));
+  }
+
+  void BuildReducer(xla::XlaBuilder* builder, const xla::XlaOp& scalar_lhs,
+                    const xla::XlaOp& scalar_rhs) override {
+    xla::Add(scalar_lhs, scalar_rhs);
+  }
+
+  xla::XlaOp BuildFinalizer(
+      xla::XlaBuilder* /*builder*/, const xla::XlaOp& input,
+      const xla::XlaOp& reduce_output,
+      const std::vector<int64_t>& dimensions_to_reduce) override {
+    if (xla::primitive_util::IsIntegralType(xla_reduction_type_)) {
+      // XLA only supports float and complex sqrt.
+      // Thus, cast integral type to F32 for computation.
+      return XlaHelpers::ConvertElementType(
+          xla::Sqrt(xla::ConvertElementType(reduce_output, xla::F32)),
+          input_type(0));
+    }
+    return XlaHelpers::ConvertElementType(xla::Sqrt(reduce_output),
+                                          input_type(0));
+  }
+};
+
+REGISTER_XLA_OP(
+    Name("EuclideanNorm").CompileTimeConstantInput("reduction_indices"),
+    EuclideanNormOp);
 
 }  // namespace
 }  // namespace tensorflow

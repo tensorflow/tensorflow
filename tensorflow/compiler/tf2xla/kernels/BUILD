@@ -866,9 +866,11 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_resource",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
+        "@local_xla//xla:comparison_util",
         "@local_xla//xla:literal",
         "@local_xla//xla/client:xla_builder",
         "@local_xla//xla/client/lib:constants",
+        "@local_xla//xla/client/lib:math",
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
