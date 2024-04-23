@@ -1582,7 +1582,7 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
 absl::StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
     std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
     const CompileOptions& options) {
-  const DebugOptions& debug_opts = module->config().debug_options();
+  const DebugOptions debug_opts = module->config().debug_options();
   TF_RETURN_IF_ERROR(LoadAutotuneResultsFromFile(debug_opts));
   bool is_deviceless = options.target_config.has_value() ||
                        !debug_opts.xla_gpu_target_config_filename().empty();
@@ -1614,9 +1614,6 @@ absl::StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
   // out we have no way of telling how far through the process we got).
   RecordHloPassesDuration(end_usecs - start_usecs);
 
-  TF_ASSIGN_OR_RETURN(
-      AutotuneConfig autotune_config,
-      GetAutotuneConfig(stream_exec, debug_opts, options, gpu_target_config));
   AutotuneResults autotune_results;
   if (!is_deviceless) {
     TF_RETURN_IF_ERROR(
