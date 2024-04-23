@@ -54,7 +54,11 @@ limitations under the License.
 namespace pjrt {
 namespace gpu_plugin {
 
+#if TENSORFLOW_USE_ROCM
+#define PJRT_GPU_PLUGIN_PLATFORM_NAME "ROCM"
+#else
 #define PJRT_GPU_PLUGIN_PLATFORM_NAME "CUDA"
+#endif
 
 PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
   PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(

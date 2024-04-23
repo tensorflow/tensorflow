@@ -1,4 +1,8 @@
 load(
+    "@local_config_rocm//rocm:build_defs.bzl",
+    "if_rocm_is_configured",
+)
+load(
     "@local_tsl//tsl/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
 )
@@ -201,6 +205,7 @@ cc_library(
     name = "pjrt_c_api_gpu_internal",
     srcs = ["pjrt_c_api_gpu_internal.cc"],
     hdrs = ["pjrt_c_api_gpu_internal.h"],
+    local_defines = if_rocm_is_configured(["TENSORFLOW_USE_ROCM=1"]),
     visibility = ["//visibility:public"],
     deps = [
         ":pjrt_c_api_custom_partitioner_extension_hdrs",
@@ -273,6 +278,8 @@ xla_cc_binary(
         "//xla/service:gpu_plugin",
     ] + if_cuda_is_configured([
         "//xla/stream_executor:cuda_platform",
+    ]) + if_rocm_is_configured([
+        "//xla/stream_executor:rocm_platform",
     ]),
 )
 

@@ -69,7 +69,7 @@ Status ReadOpListFromFile(const string& filename,
     s = input_buffer->ReadLine(&line_contents);
   }
   if (!errors::IsOutOfRange(s)) return s;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ReadOpRegOffsetsFromFile(absl::string_view filename,
@@ -82,7 +82,7 @@ Status ReadOpRegOffsetsFromFile(absl::string_view filename,
   string contents;
   TF_RETURN_IF_ERROR(in.ReadAll(&contents));
   op_reg_offsets->ParseFromString(contents);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 std::vector<string> GetSourceFileListFromOpRegOffsets(
@@ -150,7 +150,7 @@ Status PrintAllPythonOps(absl::Span<const string> api_def_dirs,
     TF_RETURN_IF_ERROR(file->Append(result));
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
