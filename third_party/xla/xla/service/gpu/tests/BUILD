@@ -830,6 +830,8 @@ lit_test_suite(
         "reduce_f64_column.hlo": ["no_rocm"],
         "reduce_large_row_to_scalar.hlo": ["no_rocm"],
         "reduce_row_vectorized.hlo": ["no_rocm"],
+        "kernel_reuse.hlo": ["no_rocm"],
+        "triton_naming.hlo": ["no_rocm"],
     },
     tools = [
         "//xla/tools:hlo-opt",
