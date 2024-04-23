@@ -395,6 +395,12 @@ class PjRtFuture<void> : public internal::PjRtFutureBase<std::nullopt_t> {
 
   PjRtFuture() = default;
 
+  PjRtFuture(const PjRtFuture& other) = default;
+  PjRtFuture& operator=(const PjRtFuture& other) = default;
+
+  PjRtFuture(PjRtFuture&& other) = default;
+  PjRtFuture& operator=(PjRtFuture&& other) = default;
+
   // Constructor for an already-available PjRtFuture. OkStatus means that future
   // is already successfully completed. Error means that future is already
   // completed with an error.
