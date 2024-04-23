@@ -496,7 +496,9 @@ class MklQuantizeV2Op : public OpKernel {
       // Estimating scales for quantization.
       const int num_bits = sizeof(T) * 8;
       const float max_abs = std::max(std::abs(min_range), std::abs(max_range));
-      const bool is_signed = std::is_same<T, qint8>();
+      const bool is_signed = std::is_same<T, qint8>() ||
+                             std::is_same<T, qint16>() ||
+                             std::is_same<T, qint32>();
       float target_range;
       if (is_signed) {
         max_range = max_abs;
