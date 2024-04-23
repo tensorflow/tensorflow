@@ -4835,13 +4835,13 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
                           GraphDef* optimized_graph) {
   GrapplerItem mutable_item = item;
   Status status;
-  bool xla_cpu_jit_disble_fusion =
+  bool xla_cpu_jit_disable_fusion =
       xla_auto_clustering_on_ && IsXlaCpuGlobalJitOn();
 #ifdef DNNL_AARCH64_USE_ACL
-  xla_cpu_jit_disble_fusion = false;
+  xla_cpu_jit_disable_fusion = false;
 #endif  // DNNL_AARCH64_USE_ACL
   RemapperContext ctx(&mutable_item, &status, cpu_layout_conversion_,
-                      xla_auto_clustering_on_, xla_cpu_jit_disble_fusion);
+                      xla_auto_clustering_on_, xla_cpu_jit_disable_fusion);
   TF_RETURN_IF_ERROR(status);
 
   // Processing graph in reverse-topological sorted order allows to remap

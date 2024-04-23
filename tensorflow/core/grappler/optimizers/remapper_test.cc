@@ -3047,7 +3047,7 @@ TEST_F(RemapperControlDependencyPatternMatcher, BF16) {
 class XlaCpuJitDisableFusionTest : public RemapperTest {
  protected:
   void SetUp() override {
-    setenv("TF_XLA_FLAGS", "--tf_xla_cpu_global_jit", 1 /* replace */);
+    setenv("TF_XLA_FLAGS", "--tf_xla_cpu_global_jit", /*overwrite=*/1);
   }
 
   template <DataType DTYPE>
@@ -3085,7 +3085,7 @@ class XlaCpuJitDisableFusionTest : public RemapperTest {
     }
 
     Remapper optimizer(RewriterConfig::ON, RewriterConfig::NO_CONVERSION_ON_CPU,
-                       true /* xla_clustering_on */);
+                       /*xla_clustering_on=*/true);
     GraphDef output;
     TF_ASSERT_OK(optimizer.Optimize(nullptr, item, &output));
 
