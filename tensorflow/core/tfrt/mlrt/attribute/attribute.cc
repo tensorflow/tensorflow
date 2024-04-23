@@ -19,10 +19,19 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "llvm/ADT/ArrayRef.h"
+#include "llvm/Support/raw_ostream.h"
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_attributes.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
-#include "tensorflow/core/platform/status.h"
-#include "tsl/platform/statusor.h"
+#include "tensorflow/compiler/mlir/tfrt/translate/mlrt/mlir_to_bytecode.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/tfrt/mlrt/bytecode/bytecode.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 namespace tf_mlrt {

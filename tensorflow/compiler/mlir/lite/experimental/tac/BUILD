@@ -1,9 +1,9 @@
-load("//tensorflow:strict.default.bzl", "py_strict_library")
 load("@flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
 load(
     "@llvm-project//mlir:tblgen.bzl",
     "gentbl_cc_library",
 )
+load("//tensorflow:strict.default.bzl", "py_strict_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
@@ -82,9 +82,12 @@ cc_library(
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:BytecodeOpInterface",
+        "@llvm-project//mlir:CallOpInterfaces",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:SideEffectInterfaces",
     ],
 )
 
@@ -197,6 +200,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
     ],
 )
@@ -215,6 +219,7 @@ cc_library(
         "//tensorflow/compiler/mlir/lite/experimental/tac/hardwares:target_hardware",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:CallOpInterfaces",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
@@ -259,10 +264,13 @@ cc_library(
         "@com_google_protobuf//:protobuf_headers",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:CallOpInterfaces",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:SideEffectInterfaces",
         "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
     ],
     alwayslink = 1,

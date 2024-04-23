@@ -71,9 +71,6 @@ class GpuCompiler : public LLVMCompiler {
       std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
       const CompileOptions& options) override;
 
-  absl::StatusOr<std::unique_ptr<BufferAssignment>> AssignBuffers(
-      HloModule* hlo_module, const se::StreamExecutor* stream_exec) override;
-
   absl::StatusOr<std::unique_ptr<Executable>> RunBackend(
       std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
       const CompileOptions& options) override;
@@ -123,6 +120,7 @@ class GpuCompiler : public LLVMCompiler {
   struct BackendCompileResult {
     std::string asm_text;
     std::vector<uint8_t> binary;
+    Thunk::BinaryMap dnn_compiled_graphs;
   };
 
   // During compilation with device, stream_exec != null and autotune_results
@@ -152,8 +150,8 @@ class GpuCompiler : public LLVMCompiler {
     return absl::OkStatus();
   }
 
-  // Add autotuning passes for triton gemm.
-  virtual absl::Status AddTritonGemmAutotuningPasses(
+  // Add autotuning passes for GEMM fusions.
+  virtual absl::Status AddGemmFusionAutotuningPasses(
       HloPassPipeline* pipeline, HloModule* hlo_module,
       AutotuneConfig& autotune_config, tsl::thread::ThreadPool* thread_pool) {
     return absl::OkStatus();
@@ -162,6 +160,13 @@ class GpuCompiler : public LLVMCompiler {
   // Add passes that convert HLO operations to custom kernels.
   virtual absl::Status AddCustomKernelReplacementPasses(
       HloPassPipeline* pipeline, const DebugOptions& debug_options) {
+    return absl::OkStatus();
+  }
+
+  // Runs CUDNN fusion compiler pass.
+  virtual absl::Status RunCudnnFusionCompilerPass(
+      HloModule* module, se::StreamExecutor* stream_exec,
+      Thunk::BinaryMap* dnn_compiled_graphs) {
     return absl::OkStatus();
   }
 

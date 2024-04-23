@@ -20,7 +20,7 @@ limitations under the License.
 
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/matmul_utils.h"
-#include "xla/service/gpu/thunk.h"
+#include "xla/service/gpu/runtime/thunk.h"
 #include "xla/status.h"
 
 namespace xla {

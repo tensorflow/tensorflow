@@ -15,24 +15,18 @@ limitations under the License.
 
 #include "xla/service/gpu/gpu_windowed_einsum_handler.h"
 
-#include <algorithm>
 #include <cstdint>
-#include <memory>
-#include <optional>
-#include <utility>
-#include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
-#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/pattern_matcher.h"
-#include "xla/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
@@ -68,6 +62,16 @@ absl::Status UpdateDotAndConsumerConfig(HloInstruction* dot,
   return absl::OkStatus();
 }
 
+absl::Status SetForceDelayForInstruction(HloInstruction* instr,
+                                         bool force_delay) {
+  auto gpu_config = instr->backend_config<gpu::GpuBackendConfig>();
+
+  gpu_config->set_force_earliest_schedule(force_delay);
+
+  TF_RETURN_IF_ERROR(instr->set_backend_config(gpu_config.value()));
+  return absl::OkStatus();
+}
+
 absl::StatusOr<bool> HandleRsWindowedEinsumLoop(HloComputation* comp,
                                                 int64_t stream_id) {
   bool changed = false;
@@ -86,6 +90,16 @@ absl::StatusOr<bool> HandleRsWindowedEinsumLoop(HloComputation* comp,
       // Dispatch the dot to additional compute stream.
       TF_RETURN_IF_ERROR(UpdateDotAndConsumerConfig(matched_dot, stream_id));
       ++stream_id;
+      changed = true;
+    }
+
+    // We need to enforce the first collective-permute to be always scheduled
+    // at the beginning of the loop.
+    HloInstruction* matched_cp;
+    if (Match(inst, m::CollectivePermute(
+                        &matched_cp, m::GetTupleElement(m::Parameter(), 2)))) {
+      TF_RETURN_IF_ERROR(
+          SetForceDelayForInstruction(matched_cp, /*force_delay=*/true));
       changed = true;
     }
   }
@@ -110,6 +124,18 @@ absl::StatusOr<bool> HandleAgWindowedEinsumLoop(HloComputation* comp,
       // Dispatch the dot to additional compute stream.
       TF_RETURN_IF_ERROR(UpdateDotAndConsumerConfig(matched_dot, stream_id));
       ++stream_id;
+      TF_RETURN_IF_ERROR(
+          SetForceDelayForInstruction(matched_dot, /*force_delay=*/true));
+      changed = true;
+    }
+
+    // We need to enforce the first collective-permute to be always scheduled
+    // at the beginning of the loop.
+    HloInstruction* matched_cp;
+    if (Match(inst, m::CollectivePermute(
+                        &matched_cp, m::GetTupleElement(m::Parameter(), 0)))) {
+      TF_RETURN_IF_ERROR(
+          SetForceDelayForInstruction(matched_cp, /*force_delay=*/true));
       changed = true;
     }
   }

@@ -26,7 +26,6 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_init.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "tensorflow/core/common_runtime/device/device_mem_allocator.h"
-#include "tensorflow/core/common_runtime/gpu/gpu_virtual_mem_allocator.h"
 #include "tensorflow/core/framework/typed_allocator.h"
 #include "tensorflow/core/protobuf/bfc_memory_map.pb.h"
 #include "tensorflow/core/protobuf/config.pb.h"
@@ -67,20 +66,6 @@ class GPUBFCAllocatorTest
     : public ::testing::TestWithParam<std::unique_ptr<SubAllocator> (*)(
           size_t)> {};
 
-#if CUDA_VERSION >= 10020
-std::unique_ptr<SubAllocator> CreateVirtualMemorySubAllocator(
-    size_t virtual_address_space_size = 1ull << 32) {
-  PlatformDeviceId gpu_id(0);
-  auto executor =
-      GPUMachineManager()->ExecutorForDevice(gpu_id.value()).value();
-  auto* gpu_context = reinterpret_cast<stream_executor::gpu::GpuContext*>(
-      executor->platform_specific_handle().context);
-  return tensorflow::GpuVirtualMemAllocator::Create(
-             {}, {}, *gpu_context, gpu_id, virtual_address_space_size, {})
-      .value();
-}
-#endif
-
 std::unique_ptr<SubAllocator> CreateGPUMemAllocator(size_t) {
   PlatformDeviceId gpu_id(0);
   return absl::WrapUnique(new DeviceMemAllocator(
@@ -90,21 +75,10 @@ std::unique_ptr<SubAllocator> CreateGPUMemAllocator(size_t) {
 
 std::unique_ptr<SubAllocator> CreateSubAllocator(
     size_t virtual_address_space_size = 1ull << 32) {
-#if CUDA_VERSION >= 10020
-  return CreateVirtualMemorySubAllocator(virtual_address_space_size);
-#else
   return CreateGPUMemAllocator(virtual_address_space_size);
-#endif
 }
 
-auto TestSuiteValues() {
-#if CUDA_VERSION >= 10020
-  return ::testing::Values(&CreateGPUMemAllocator,
-                           &CreateVirtualMemorySubAllocator);
-#else
-  return ::testing::Values(&CreateGPUMemAllocator);
-#endif
-}
+auto TestSuiteValues() { return ::testing::Values(&CreateGPUMemAllocator); }
 
 TEST_P(GPUBFCAllocatorTest, NoDups) {
   GPUBFCAllocator a(GetParam()(1ull << 32), 1 << 30, "GPU_0_bfc", {});
@@ -603,34 +577,6 @@ INSTANTIATE_TEST_SUITE_P(GPUBFCAllocatorPrivateMethodTestSuite,
 // Tests that cannot be trivially parameterized for both suballocator types.
 class GPUBFCAllocatorTest_SubAllocatorSpecific : public ::testing::Test {};
 
-#if CUDA_VERSION >= 10020
-// Benchmark for measuring "high water mark" for BFCAllocator owned memory.
-TEST_F(GPUBFCAllocatorTest_SubAllocatorSpecific,
-       VirtualAllocatorPromotesReuse) {
-  GPUBFCAllocator::Options options;
-  options.allow_growth = true;
-
-  constexpr size_t k512MiB = 512ull << 20;
-
-  // 512 MiB allocator.
-  GPUBFCAllocator a(CreateVirtualMemorySubAllocator(1ull << 32), k512MiB,
-                    "GPU_0_bfc", options);
-  // Allocate 128 raw pointers of 4 megs.
-  const size_t size = 1LL << 22;
-  std::vector<void*> initial_ptrs;
-  for (size_t s = 0; s < 128; s++) {
-    void* raw = a.AllocateRaw(1, size);
-    initial_ptrs.push_back(raw);
-  }
-  // Deallocate all but the last one so the big chunk cannot be GC'd
-  for (int i = 0; i < 127; ++i) {
-    a.DeallocateRaw(initial_ptrs[i]);
-  }
-  void* big_alloc = a.AllocateRaw(1, k512MiB - size);
-  EXPECT_NE(big_alloc, nullptr);
-}
-#endif
-
 TEST_F(GPUBFCAllocatorTest_SubAllocatorSpecific,
        PhysicalAllocatorOomsFragmentation) {
   GPUBFCAllocator::Options options;
@@ -706,58 +652,12 @@ class GPUBFCAllocatorPrivateMethodsTest_SubAllocatorSpecific
     }
     EXPECT_EQ(1, num_chunks_in_bins);
   }
-
-#if CUDA_VERSION >= 10020
-  // Counterpart to the GPUMemAllocator test suite TestRegionDeallocation tests.
-  // Here we expect no deallocations because all allocations are coalesced into
-  // a single region.
-  void TestNoRegionDeallocation() {
-    GPUBFCAllocator::Options options;
-    options.allow_growth = true;
-
-    // Max of 2GiB, but starts out small.
-    GPUBFCAllocator a(CreateVirtualMemorySubAllocator(1uLL << 32), 1LL << 31,
-                      "GPU_0_bfc", options);
-
-    // Allocate 128 raw pointers of 4 megs.
-    const size_t size = 1LL << 22;
-    std::vector<void*> initial_ptrs;
-    for (size_t s = 0; s < 128; s++) {
-      void* raw = a.AllocateRaw(1, size);
-      initial_ptrs.push_back(raw);
-    }
-
-    {
-      mutex_lock l(a.lock_);
-      EXPECT_EQ(1, a.region_manager_.regions().size());
-    }
-
-    // Deallocate all the memories except the last one.
-    for (size_t i = 0; i < initial_ptrs.size() - 1; i++) {
-      a.DeallocateRaw(initial_ptrs[i]);
-    }
-
-    // Deallocate free regions and there should still be only one.
-    EXPECT_EQ(false, a.DeallocateFreeRegions(/*rounded_bytes=*/0));
-    {
-      mutex_lock l(a.lock_);
-      EXPECT_EQ(1, a.region_manager_.regions().size());
-    }
-  }
-#endif
 };
 
 TEST_F(GPUBFCAllocatorPrivateMethodsTest_SubAllocatorSpecific,
        TestRegionDeallocation) {
   TestRegionDeallocation();
 }
-
-#if CUDA_VERSION >= 10020
-TEST_F(GPUBFCAllocatorPrivateMethodsTest_SubAllocatorSpecific,
-       TestNoRegionDeallocation) {
-  TestNoRegionDeallocation();
-}
-#endif
 
 }  // namespace tsl
 

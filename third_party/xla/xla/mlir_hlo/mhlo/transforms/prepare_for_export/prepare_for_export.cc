@@ -44,6 +44,8 @@ limitations under the License.
 namespace mlir {
 namespace mhlo {
 
+constexpr char kShardingAttr[] = "mhlo.sharding";
+
 #define GEN_PASS_DEF_PREPAREFOREXPORTPASS
 #include "mhlo/transforms/mhlo_passes.h.inc"
 
@@ -59,8 +61,8 @@ struct PrepareForExportPass
 // Materializes some splat before export because it may be more efficient in
 // HLOInstruction.
 void prepareConstantOp(Operation *op, SplatElementsAttr attr) {
-  // Arbitrarialy chosen "small" number. This could be chosen based on the
-  // proto size too.
+  // Arbitrarily chosen "small" number. This could be chosen based on the proto
+  // size too.
   if (attr.getNumElements() < 32) return;
   ShapedType returnType = op->getResultTypes().front().cast<ShapedType>();
   ImplicitLocOpBuilder b(op->getLoc(), op);
@@ -76,6 +78,10 @@ void prepareConstantOp(Operation *op, SplatElementsAttr attr) {
   }
   auto broadcast =
       b.create<BroadcastInDimOp>(returnType, cst, b.getI64TensorAttr({}));
+  if (auto sharding = op->getAttrOfType<mlir::StringAttr>(kShardingAttr)) {
+    // The added broadcast inherits the kShardingAttr from op.
+    broadcast->setAttr(kShardingAttr, sharding);
+  }
   op->replaceAllUsesWith(broadcast);
   op->erase();
 }
@@ -84,6 +90,7 @@ void prepareConstantOp(Operation *op, SplatElementsAttr attr) {
 void prepareWhileOp(WhileOp whileOp) {
   llvm::SetVector<Value> implicitInputs;
   getUsedValuesDefinedAbove(whileOp->getRegions(), implicitInputs);
+  if (implicitInputs.empty()) return;
   // Each captured value has to be passed as operand to the while, become then
   // an operand to the condition region and the body region, and an extra
   // operand to the return op in the body. It also becomes an extra result for

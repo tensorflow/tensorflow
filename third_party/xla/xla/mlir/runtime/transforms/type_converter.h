@@ -20,8 +20,12 @@ limitations under the License.
 #include <memory>
 
 #include "absl/status/statusor.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/Types.h"  // from @llvm-project
 #include "xla/runtime/types.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace runtime {

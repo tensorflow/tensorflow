@@ -2632,6 +2632,29 @@ def MHLO_DotGeneralOp: MHLO_ShapedInterfaceOp<"dot_general", [Pure]> {
   let hasVerifier = 1;
 }
 
+def MHLO_SparseDotOp: MHLO_Op<"sparse_dot", [Pure]> {
+  let summary = "Sparse dot operation";
+  let description = [{
+    Similar to `dot_general` operation, with one or both of the operands being
+    sparse. An additional argument provides sparsity meta information.
+    Disclaimer: this op is experimental / a work in progress.
+  }];
+  let arguments = (ins
+    MHLO_Tensor:$lhs,
+    MHLO_Tensor:$rhs,
+    Variadic<MHLO_Tensor>:$meta,
+    OptionalAttr<MHLO_SparsityDescriptor>:$lhs_sparsity,
+    OptionalAttr<MHLO_SparsityDescriptor>:$rhs_sparsity,
+    MHLO_DotDimensionNumbers:$dot_dimension_numbers,
+    MHLO_PrecisionConfigAttr:$precision_config
+  );
+  let results = (outs MHLO_Tensor);
+  // SparseDot op required custom exporter to pass the preferred element type
+  // to Xla builder.
+  let hasCustomHLOConverter = 1;
+  let hasVerifier = 1;
+}
+
 def MHLO_EinsumOp: MHLO_Op<"einsum", [Pure]> {
   let summary = "Einsum operation";
   let description = [{

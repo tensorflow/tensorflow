@@ -22,10 +22,13 @@ limitations under the License.
 #include <cstdio>
 #include <list>
 #include <memory>
+#include <string>
 #include <system_error>  // NOLINT
 #include <utility>
+#include <vector>
 
 #include "absl/functional/any_invocable.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ExecutionEngine/ExecutionEngine.h"
 #include "llvm/ExecutionEngine/JITSymbol.h"
 #include "llvm/ExecutionEngine/Orc/ExecutorProcessControl.h"
@@ -79,10 +82,9 @@ extern "C" uint16_t __truncdfbf2(double);
 
 namespace xla {
 namespace cpu {
-namespace {
 
-llvm::SmallVector<std::string, 0> DetectMachineAttributes() {
-  llvm::SmallVector<std::string, 0> result;
+std::vector<std::string> DetectMachineAttributes() {
+  std::vector<std::string> result;
   llvm::StringMap<bool> host_features;
   if (llvm::sys::getHostCPUFeatures(host_features)) {
     for (auto& feature : host_features) {
@@ -92,6 +94,8 @@ llvm::SmallVector<std::string, 0> DetectMachineAttributes() {
   }
   return result;
 }
+
+namespace {
 
 class DefaultMemoryMapper final
     : public llvm::SectionMemoryManager::MemoryMapper {
@@ -293,6 +297,8 @@ bool ContiguousSectionMemoryManager::finalizeMemory(std::string* err_msg) {
 SimpleOrcJIT::InferTargetMachineForJIT(
     const llvm::TargetOptions& target_options,
     llvm::CodeGenOptLevel opt_level) {
+  std::vector<std::string> attrs = DetectMachineAttributes();
+  llvm::SmallVector<std::string, 0> llvm_attrs(attrs.begin(), attrs.end());
   std::unique_ptr<llvm::TargetMachine> target_machine(
       llvm::EngineBuilder()
           .setTargetOptions(target_options)
@@ -300,7 +306,7 @@ SimpleOrcJIT::InferTargetMachineForJIT(
           .selectTarget(
               /*TargetTriple=*/llvm::Triple(), /*MArch=*/"",
               /*MCPU=*/llvm::sys::getHostCPUName(),
-              /*MAttrs=*/DetectMachineAttributes()));
+              /*MAttrs=*/llvm_attrs));
   CHECK(target_machine != nullptr);
   return target_machine;
 }

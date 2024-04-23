@@ -43,7 +43,7 @@ limitations under the License.
 
 namespace xla {
 namespace memory_space_assignment {
-/*static*/ StatusOr<std::unique_ptr<CostAnalysis>> CostAnalysis::Create(
+/*static*/ absl::StatusOr<std::unique_ptr<CostAnalysis>> CostAnalysis::Create(
     const HloCostAnalysis& cost_analysis, const CostAnalysisOptions& options,
     const HloModule& module) {
   TF_ASSIGN_OR_RETURN(auto alias_analysis, HloAliasAnalysis::Run(&module));

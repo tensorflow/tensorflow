@@ -16,14 +16,26 @@ limitations under the License.
 #include "xla/service/call_inliner.h"
 
 #include <memory>
+#include <utility>
+#include <vector>
 
+#include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_sharding_metadata.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/hlo_dce.h"
 #include "xla/service/hlo_domain_isolator.h"
+#include "xla/status.h"
+#include "xla/status_macros.h"
+#include "xla/util.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -136,6 +148,11 @@ CallInliner::Inline(HloInstruction* call) {
   return visitor.ConsumeInstructionMap();
 }
 
+bool CallInliner::IsInlineableCallOp(HloInstruction* instruction) const {
+  return instruction->opcode() == HloOpcode::kCall &&
+         !instruction->parent()->IsAsyncComputation();
+}
+
 absl::StatusOr<bool> CallInliner::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
@@ -156,8 +173,7 @@ absl::StatusOr<bool> CallInliner::Run(
       // used for parallel device computation.
       // TODO(b/229887502): update the inliner to ignore only parallel
       // device type async call instead of all.
-      if (instruction->opcode() == HloOpcode::kCall &&
-          !instruction->parent()->IsAsyncComputation()) {
+      if (IsInlineableCallOp(instruction)) {
         const auto& callees = instruction->called_computations();
         TF_RET_CHECK(callees.size() == 1);
         if (!single_call_site_ || call_graph->GetNode(instruction->to_apply())
@@ -182,7 +198,7 @@ absl::StatusOr<bool> CallInliner::Run(
     // Run DCE to remove called computations which are now becoming unused.
     // This can result then in problems if within the called computation, there
     // were send/recv instructions, which the module group verifier will flag as
-    // error findingthe same channel ID used for multiple send/recv
+    // error finding the same channel ID used for multiple send/recv
     // instructions.
     TF_RETURN_IF_ERROR(HloDCE().Run(module, execution_threads).status());
   }

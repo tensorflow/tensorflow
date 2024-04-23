@@ -16,8 +16,11 @@ limitations under the License.
 
 #include <string>
 
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
+#include "tensorflow/lite/python/metrics/converter_error_data.pb.h"
 
 namespace mlir {
 namespace TFL {

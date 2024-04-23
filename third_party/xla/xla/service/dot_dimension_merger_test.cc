@@ -145,7 +145,7 @@ HloModule m
 ENTRY e {
  p0 = bf16[3,4,5,6,16] parameter(0)
  p1 = bf16[3,4,5,32,6] parameter(1)
- meta = u16[3,6,2] parameter(2)
+ meta = u16[3,4,5,6,2] parameter(2)
  ROOT d = bf16[4,5,6,6] dot(p0, p1, meta), sparsity=L.4@2:4,
   lhs_batch_dims={1,2}, lhs_contracting_dims={0,4},
   rhs_batch_dims={1,2}, rhs_contracting_dims={0,3}
@@ -154,7 +154,7 @@ ENTRY e {
   RunAndFilecheckHloRewrite(kHloText, DotDimensionMerger(), R"(
 ; CHECK: %[[R0:.*]] = bf16[3,20,6,16]{3,2,1,0} reshape(%p0)
 ; CHECK: %[[R1:.*]] = bf16[3,20,32,6]{3,2,1,0} reshape(%p1)
-; CHECK: %[[R2:.*]] = u16[3,6,2]{2,1,0} parameter(2)
+; CHECK: %[[R2:.*]] = u16[3,20,6,2]{3,2,1,0} reshape(%meta)
 ; CHECK: %[[DOT:.*]] = bf16[20,6,6]{2,1,0} dot(%[[R0]], %[[R1]], %[[R2]])
 ; CHECK-SAME: lhs_batch_dims={1}
 ; CHECK-SAME: lhs_contracting_dims={0,3}

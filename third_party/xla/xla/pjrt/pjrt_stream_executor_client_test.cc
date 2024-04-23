@@ -42,7 +42,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
-xla::StatusOr<std::unique_ptr<PjRtStreamExecutorClient>> GetClient() {
+absl::StatusOr<std::unique_ptr<PjRtStreamExecutorClient>> GetClient() {
   LocalClient* local_client = xla::ClientLibrary::LocalClientOrDie();
   TF_ASSIGN_OR_RETURN(se::Platform * platform,
                       PlatformUtil::GetPlatform("Host"));
@@ -130,8 +130,8 @@ TEST(PjRtStreamExecutorClientTest, DonateWithControlDependency) {
       std::unique_ptr<PjRtBuffer> buffer,
       client->BufferFromHostLiteral(literal, client->addressable_devices()[0]));
 
-  auto avr = tsl::MakeUnconstructedAsyncValueRef<absl::Status>();
-  PjRtFuture<absl::Status> future(avr);
+  PjRtFuture<>::Promise promise = PjRtFuture<>::CreatePromise();
+  PjRtFuture<> future(promise);
   auto blocked_buffer =
       std::move(*(buffer->DonateWithControlDependency(future)));
   EXPECT_TRUE(buffer->IsDeleted());
@@ -150,7 +150,7 @@ TEST(PjRtStreamExecutorClientTest, DonateWithControlDependency) {
 
   EXPECT_FALSE(got_literal);
 
-  avr.emplace(absl::OkStatus());
+  promise.Set();
   EXPECT_TRUE(future.IsReady());
 
   {

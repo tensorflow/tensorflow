@@ -1,4 +1,4 @@
-/* Copyright 2024 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -924,10 +924,12 @@ class MklMatMulPrimitive : public MklPrimitive {
     // Create MatMul descriptor and primitive descriptor.
     if constexpr (CSR) {
       // If it's a CSR matrix.
+#ifdef ENABLE_ONEDNN_V3
       const auto tmp = memory::desc::csr(
           params.a_dims, MklDnnType<Tlhs>(), params.a_nnz,
           dnnl::memory::data_type::s32, dnnl::memory::data_type::s32);
       context_.a_md.reset(new memory::desc(tmp));
+#endif  // ENABLE_ONEDNN_V3
     } else {
       context_.a_md.reset(new memory::desc({params.a_dims}, MklDnnType<Tlhs>(),
                                            params.a_strides));

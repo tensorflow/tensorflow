@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2024 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -22,9 +22,9 @@ limitations under the License.
 
 // Ensure the included flatbuffers.h is the same version as when this file was
 // generated, otherwise it may not be compatible.
-static_assert(FLATBUFFERS_VERSION_MAJOR == 23 &&
-              FLATBUFFERS_VERSION_MINOR == 5 &&
-              FLATBUFFERS_VERSION_REVISION == 26,
+static_assert(FLATBUFFERS_VERSION_MAJOR == 24 &&
+              FLATBUFFERS_VERSION_MINOR == 3 &&
+              FLATBUFFERS_VERSION_REVISION == 7,
              "Non-compatible flatbuffers version included");
 
 namespace tflite {
@@ -700,11 +700,12 @@ enum TensorType : int8_t {
   TensorType_UINT32 = 15,
   TensorType_UINT16 = 16,
   TensorType_INT4 = 17,
+  TensorType_BFLOAT16 = 18,
   TensorType_MIN = TensorType_FLOAT32,
-  TensorType_MAX = TensorType_INT4
+  TensorType_MAX = TensorType_BFLOAT16
 };
 
-inline const TensorType (&EnumValuesTensorType())[18] {
+inline const TensorType (&EnumValuesTensorType())[19] {
   static const TensorType values[] = {
     TensorType_FLOAT32,
     TensorType_FLOAT16,
@@ -723,13 +724,14 @@ inline const TensorType (&EnumValuesTensorType())[18] {
     TensorType_VARIANT,
     TensorType_UINT32,
     TensorType_UINT16,
-    TensorType_INT4
+    TensorType_INT4,
+    TensorType_BFLOAT16
   };
   return values;
 }
 
 inline const char * const *EnumNamesTensorType() {
-  static const char * const names[19] = {
+  static const char * const names[20] = {
     "FLOAT32",
     "FLOAT16",
     "INT32",
@@ -748,13 +750,14 @@ inline const char * const *EnumNamesTensorType() {
     "UINT32",
     "UINT16",
     "INT4",
+    "BFLOAT16",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNameTensorType(TensorType e) {
-  if (::flatbuffers::IsOutRange(e, TensorType_FLOAT32, TensorType_INT4)) return "";
+  if (::flatbuffers::IsOutRange(e, TensorType_FLOAT32, TensorType_BFLOAT16)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesTensorType()[index];
 }

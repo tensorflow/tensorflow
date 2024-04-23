@@ -89,12 +89,12 @@ class SampleStableDelegateKernel : public SimpleOpaqueDelegateKernelInterface {
       const int node_index = nodes_to_execute->data[i];
 
       TfLiteOpaqueNode* delegated_node = nullptr;
-      TfLiteRegistrationExternal* delegated_node_registration = nullptr;
+      TfLiteOperator* delegated_node_registration = nullptr;
       TfLiteOpaqueContextGetNodeAndRegistration(
           context, node_index, &delegated_node, &delegated_node_registration);
 
       builtin_codes_[subgraph_index][i] =
-          TfLiteRegistrationExternalGetBuiltInCode(delegated_node_registration);
+          TfLiteOperatorGetBuiltInCode(delegated_node_registration);
 
       for (int n = 0; n < TfLiteOpaqueNodeNumberOfInputs(delegated_node); ++n) {
         auto input_tensor =
@@ -419,7 +419,7 @@ TfLiteStatus SampleStableDelegate::ComputeCompatibleCalleeSubgraphs(
   for (int i = 0; i < execution_plan->size; ++i) {
     int node_index = execution_plan->data[i];
     TfLiteOpaqueNode* node = nullptr;
-    TfLiteRegistrationExternal* registration = nullptr;
+    TfLiteOperator* registration = nullptr;
     status = TfLiteOpaqueContextGetNodeAndRegistration(
         current_context, node_index, &node, &registration);
     if (status != kTfLiteOk) {
@@ -427,7 +427,7 @@ TfLiteStatus SampleStableDelegate::ComputeCompatibleCalleeSubgraphs(
     }
 
     TfLiteBuiltinOperator builtin_operator =
-        TfLiteRegistrationExternalGetBuiltInCode(registration);
+        TfLiteOperatorGetBuiltInCode(registration);
     if (builtin_operator == kTfLiteBuiltinWhile) {
       void* builtin_data = TfLiteOpaqueNodeGetBuiltinData(node);
       const auto* op_data =
@@ -503,10 +503,10 @@ int helpers::CalculateNumElements(const TfLiteOpaqueTensor* opaque_tensor) {
 }
 
 bool SampleStableDelegate::IsNodeSupportedByDelegate(
-    const TfLiteRegistrationExternal* registration_external,
-    const TfLiteOpaqueNode* node, TfLiteOpaqueContext* context) const {
+    const TfLiteOperator* registration_external, const TfLiteOpaqueNode* node,
+    TfLiteOpaqueContext* context) const {
   TfLiteBuiltinOperator builtin_operator =
-      TfLiteRegistrationExternalGetBuiltInCode(registration_external);
+      TfLiteOperatorGetBuiltInCode(registration_external);
   void* builtin_data = TfLiteOpaqueNodeGetBuiltinData(node);
   // List of supported / unsupported ops.
   switch (builtin_operator) {

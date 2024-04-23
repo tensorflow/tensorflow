@@ -200,15 +200,19 @@ void RecordTFDataFilename(const string& name, const string& filename);
 // Records the total attempts made by file logger.
 void RecordTFDataFileLoggerAttempts();
 
-// Records the total errors encountered by file logger with this error code.
-void RecordTFDataFileLoggerErrors(error::Code code);
+// Records an error of type `code` with message `error_message` encountered by
+// file logger.
+void RecordTFDataFileLoggerErrors(error::Code code,
+                                  const string& error_message);
 
 // Records the total number of files attempted to be logged by file logger.
 void RecordTFDataFileLoggerAttemptedNumFiles(size_t num_files);
 
-// Records the total number of files that encountered errors during logging by
-// file logger with this error code.
-void RecordTFDataFileLoggerErrorsNumFiles(size_t num_files, error::Code code);
+// Records the number of files that encountered an error of type
+// `code` with message `error_message` during logging by file logger with this
+// error code.
+void RecordTFDataFileLoggerErrorsNumFiles(size_t num_files, error::Code code,
+                                          const string& error_message);
 
 // Records statistics of tf.data auto sharding.
 //
@@ -337,12 +341,14 @@ int64_t GetFunctionGraphOptimizationCacheLoadCount(
 
 // Records the activity of the first phase of the mlir bridge using the
 // tf_metadata.tf_mlir_bridge_first_phase_count metric.
-// device_type: tpu, cpu, gpu, etc.
+// bridge_type: replicated, nonreplicated, etc.
 // bridge_version: v1 compat, v2, etc.
+// device_type: tpu, cpu, gpu, etc.
 // fallback_enabled: true if fallback will happen, false if not
 // result: outcome of bridge (success, failure, disabled, invalid_graph, etc.)
-void UpdateTfMlirBridgeFirstPhaseCounter(const std::string& device_type,
+void UpdateTfMlirBridgeFirstPhaseCounter(const std::string& bridge_type,
                                          const std::string& bridge_version,
+                                         const std::string& device_type,
                                          bool fallback_enabled,
                                          const std::string& result);
 

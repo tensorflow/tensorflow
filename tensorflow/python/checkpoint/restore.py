@@ -113,16 +113,16 @@ class CheckpointPosition(object):
      callback: Reshard callback for resharding this checkpoint position. Maybe
        None.
     """
-    if not isinstance(
-        self.callback, checkpoint_adapter.ReshardCallback
-    ):
-      raise TypeError("Cannot override resharding callback.")
+    if not issubclass(checkpoint_adapter.ReshardCallback, type(self.callback)):
+      raise TypeError(
+          "Cannot override resharding callback, already set to non trivial."
+      )
     self.callback = callback
 
   def has_non_trivial_reshard_callback(self) -> bool:
     """Determine whether this value has a non-trivial resharding callback."""
-    return not isinstance(
-        self.callback, checkpoint_adapter.ReshardCallback
+    return not issubclass(
+        checkpoint_adapter.ReshardCallback, type(self.callback)
     )
 
   def is_simple_variable(self) -> bool:
@@ -747,7 +747,7 @@ def _queue_slot_variables(checkpoint_position, visit_queue):
             # If the corresponding variable has a non trivial resharding
             # attached, the the slot variable should be resharded in the same
             # way.
-            checkpoint_position.reshard_callback
+            checkpoint_position.callback
             if checkpoint_position.has_non_trivial_reshard_callback()
             else None,
         )
@@ -782,7 +782,7 @@ def _queue_slot_variables(checkpoint_position, visit_queue):
               # If the corresponding variable has a non trivial resharding
               # attached, the the slot variable should be resharded in the same
               # way.
-              checkpoint_position.reshard_callback
+              checkpoint_position.callback
               if checkpoint_position.has_non_trivial_reshard_callback()
               else None,
           )

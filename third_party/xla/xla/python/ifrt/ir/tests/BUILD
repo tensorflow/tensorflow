@@ -11,6 +11,7 @@ lit_test_suite(
     srcs = enforce_glob(
         [
             "ifrt_duplicated_callee_elimination.mlir",
+            "ifrt_verify_sharding_specified.mlir",
             "spmd_expansion.mlir",
             "spmd_interface_verification.mlir",
             "verify_array.mlir",
@@ -37,6 +38,7 @@ cc_binary(
     name = "ifrt-opt",
     srcs = ["ifrt-opt.cc"],
     deps = [
+        "//xla/mlir_hlo:hlo_dialect_registration",
         "//xla/python/ifrt/ir",
         "//xla/python/ifrt/ir/transforms:built_in_spmd_expansions",
         "//xla/python/ifrt/ir/transforms:passes",
@@ -84,7 +86,9 @@ cc_library(
         "//xla/python/ifrt/ir",
         "//xla/python/ifrt/ir:compiler",
         "//xla/python/pjrt_ifrt:xla_ifrt",
+        "//xla/service:computation_placer_hdr",
         "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@local_tsl//tsl/concurrency:ref_count",
         "@local_tsl//tsl/lib/core:status_test_util",

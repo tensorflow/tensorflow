@@ -24,9 +24,9 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/service/gpu/nccl_api.h"
-#include "xla/service/gpu/nccl_collective_thunk.h"
-#include "xla/service/gpu/thunk.h"
+#include "xla/service/gpu/runtime/nccl_api.h"
+#include "xla/service/gpu/runtime/nccl_collective_thunk.h"
+#include "xla/service/gpu/runtime/thunk.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/stream.h"
@@ -87,12 +87,13 @@ NcclAllGatherStartThunk::NcclAllGatherStartThunk(
 
 absl::Status NcclAllGatherStartThunk::RunNcclCollective(
     const ExecuteParams& params, se::Stream& stream,
-    NcclApi::NcclCommHandle comm) {
+    NcclCommHandleWrapper comm_wrapper) {
   TF_ASSIGN_OR_RETURN(
       std::vector<DeviceBufferPair> device_buffers,
       ConvertToDeviceBuffers(params, buffers_,
                              config_.config.operand_element_type));
-  return xla::gpu::RunAllGather(nccl_api(), device_buffers, stream, comm);
+  return xla::gpu::RunAllGather(nccl_api(), device_buffers, stream,
+                                comm_wrapper.comm_handle);
 }
 
 absl::Status RunAllGather(NcclApi* nccl_api,

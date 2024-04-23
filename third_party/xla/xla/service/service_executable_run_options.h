@@ -42,9 +42,9 @@ class ServiceExecutableRunOptions {
   ServiceExecutableRunOptions()
       : ServiceExecutableRunOptions(ExecutableRunOptions()) {}
 
-  explicit ServiceExecutableRunOptions(ExecutableRunOptions run_options,
+  explicit ServiceExecutableRunOptions(const ExecutableRunOptions& run_options,
                                        StreamBorrower stream_borrower = nullptr)
-      : run_options_(std::move(run_options)),
+      : run_options_(run_options),
         stream_borrower_(std::move(stream_borrower)) {}
 
   // Returns reference or pointer to `ExecutableRunOptions` member.

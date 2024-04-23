@@ -15,35 +15,51 @@ limitations under the License.
 
 #include "xla/python/dlpack.h"
 
+#include <Python.h>
+
 #include <cstdint>
 #include <functional>
 #include <memory>
 #include <numeric>
 #include <optional>
+#include <string_view>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "include/dlpack/dlpack.h"  // from @dlpack
-#include "pybind11/gil.h"  // from @pybind11
-#include "pybind11/pytypes.h"  // from @pybind11
+#include "llvm/Support/Casting.h"
+#include "third_party/nanobind/include/nanobind/nanobind.h"
 #include "xla/layout.h"
+#include "xla/layout_util.h"
 #include "xla/pjrt/exceptions.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_layout.h"
+#include "xla/python/ifrt/array.h"
+#include "xla/python/ifrt/device.h"
+#include "xla/python/nb_class_ptr.h"
 #include "xla/python/pjrt_ifrt/pjrt_array.h"
+#include "xla/python/pjrt_ifrt/pjrt_client.h"
+#include "xla/python/pjrt_ifrt/pjrt_device.h"
 #include "xla/python/py_array.h"
+#include "xla/python/py_client.h"
 #include "xla/python/python_ref_manager.h"
 #include "xla/python/traceback.h"
 #include "xla/python/types.h"
 #include "xla/python/util.h"
+#include "xla/shape_util.h"
+#include "xla/status_macros.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/logging.h"
+#include "tsl/platform/statusor.h"
 
-namespace py = pybind11;
+namespace nb = nanobind;
 
 namespace xla {
 namespace {
@@ -54,7 +70,7 @@ struct DLPackTensor {
   ~DLPackTensor();
 
   // `buffer_reference` is populated if we have shared (read-only) access.
-  py::object buffer_reference;
+  nb::object buffer_reference;
 
   // `external_reference` is always populated.
   std::unique_ptr<PjRtBuffer::ExternalReference> external_reference;
@@ -279,9 +295,9 @@ absl::StatusOr<PjRtDevice*> DeviceForDLDevice(const PjRtClient* cpu_client,
 
 }  // namespace
 
-absl::StatusOr<py::capsule> BufferToDLPackManagedTensor(
-    py::handle py_buffer, std::optional<std::intptr_t> stream) {
-  ifrt::Array* ifrt_array = py::cast<xla::PyArray>(py_buffer).ifrt_array();
+absl::StatusOr<nb::capsule> BufferToDLPackManagedTensor(
+    nb::handle py_buffer, std::optional<std::intptr_t> stream) {
+  ifrt::Array* ifrt_array = nb::cast<xla::PyArray>(py_buffer).ifrt_array();
   if (ifrt_array == nullptr) {
     return Unimplemented(
         "BufferToDLPackManagedTensor called on deleted array.");
@@ -307,17 +323,18 @@ absl::StatusOr<py::capsule> BufferToDLPackManagedTensor(
   {
     // AcquireExternalReference may block; there are no API guarantees.
     GlobalPyRefManager()->CollectGarbage();
-    py::gil_scoped_release gil_release;
+    nb::gil_scoped_release gil_release;
     TF_ASSIGN_OR_RETURN(pack->external_reference,
                         pjrt_buffer->AcquireExternalReference());
     if (stream) {
       TF_RETURN_IF_ERROR(
           pack->external_reference->WaitUntilBufferReadyOnStream(*stream));
     } else {
-      TF_RETURN_IF_ERROR(AwaitBuffersReady(ifrt_array));
+      TF_RETURN_IF_ERROR(
+          AwaitBuffersReady(absl::MakeConstSpan(&ifrt_array, 1)));
     }
   }
-  pack->buffer_reference = py::reinterpret_borrow<py::object>(py_buffer);
+  pack->buffer_reference = nb::borrow<nb::object>(py_buffer);
 
   dt.data = pack->external_reference->OpaqueDeviceMemoryDataPointer();
   pack->tensor.manager_ctx = pack.get();
@@ -340,37 +357,44 @@ absl::StatusOr<py::capsule> BufferToDLPackManagedTensor(
   dt.strides = reinterpret_cast<std::int64_t*>(pack->strides.data());
   dt.byte_offset = 0;
 
-  py::capsule capsule(&pack.release()->tensor, kDlTensorCapsuleName,
-                      [](PyObject* obj) {
-                        DLManagedTensor* dlmt = static_cast<DLManagedTensor*>(
-                            PyCapsule_GetPointer(obj, kDlTensorCapsuleName));
-                        if (dlmt) {
-                          DLPackTensorDeleter(dlmt);
-                        } else {
-                          // The tensor has been deleted. Clear any error from
-                          // PyCapsule_GetPointer.
-                          PyErr_Clear();
-                        }
-                      });
+  // We cannot use nanobind's capsule object constructor because we need to
+  // detect if the capsule name has been changed in the deleter, but nanobind
+  // hides the underlying Python object from the deleter.
+  nb::capsule capsule = nb::steal<nb::capsule>(
+      PyCapsule_New(&pack.release()->tensor, kDlTensorCapsuleName,
+                    [](PyObject* obj) noexcept {
+                      DLManagedTensor* dlmt = static_cast<DLManagedTensor*>(
+                          PyCapsule_GetPointer(obj, kDlTensorCapsuleName));
+                      if (dlmt) {
+                        DLPackTensorDeleter(dlmt);
+                      } else {
+                        // The tensor has been deleted. Clear any error from
+                        // PyCapsule_GetPointer.
+                        PyErr_Clear();
+                      }
+                    }));
+  if (!capsule.ptr()) {
+    throw nb::python_error();
+  }
   return capsule;
 }
 
-absl::StatusOr<pybind11::object> DLPackManagedTensorToBuffer(
-    const pybind11::capsule& tensor, std::shared_ptr<PyClient> cpu_client,
-    std::shared_ptr<PyClient> gpu_client) {
+absl::StatusOr<nb::object> DLPackManagedTensorToBuffer(
+    const nb::capsule& tensor, std::optional<nb_class_ptr<PyClient>> cpu_client,
+    std::optional<nb_class_ptr<PyClient>> gpu_client) {
   // TODO(hyeontaek): This is a potential target for an IFRT client to multiplex
   // multiple PjRt clients. Devices from these PjRt clients could be expressed
   // as a unified set of IFRT devices.
-  auto* cpu_pjrt_client = cpu_client ? cpu_client->pjrt_client() : nullptr;
-  auto* gpu_pjrt_client = gpu_client ? gpu_client->pjrt_client() : nullptr;
+  auto* cpu_pjrt_client = cpu_client ? (*cpu_client)->pjrt_client() : nullptr;
+  auto* gpu_pjrt_client = gpu_client ? (*gpu_client)->pjrt_client() : nullptr;
 
-  if (absl::string_view(tensor.name()) != kDlTensorCapsuleName) {
+  if (std::string_view(tensor.name()) != kDlTensorCapsuleName) {
     return InvalidArgument(
         "DLPack tensor must be a capsule with name \"dltensor\", got \"%s\". "
         "Note that a DLPack tensor may be consumed at most once.",
-        absl::string_view(tensor.name()));
+        std::string_view(tensor.name()));
   }
-  DLManagedTensor* dlmt = static_cast<DLManagedTensor*>(tensor);
+  DLManagedTensor* dlmt = static_cast<DLManagedTensor*>(tensor.data());
   if (dlmt->dl_tensor.ndim < 0) {
     return InvalidArgument(
         "Number of dimensions in DLManagedTensor must be nonnegative, got %d",
@@ -404,8 +428,19 @@ absl::StatusOr<pybind11::object> DLPackManagedTensorToBuffer(
   // for non-default layouts, and will return wrong results if a non-default
   // layout is passed to a computation expecting default layouts. Remove this
   // special case when non-default layouts are better supported by JAX.
-  TF_ASSIGN_OR_RETURN(Layout default_layout, device->client()->GetDefaultLayout(
-                                                 element_type, dimensions));
+  absl::StatusOr<Layout> default_layout_from_client =
+      device->client()->GetDefaultLayout(element_type, dimensions);
+  Layout default_layout;
+  if (default_layout_from_client.ok()) {
+    default_layout = *default_layout_from_client;
+  } else if (absl::IsUnimplemented(default_layout_from_client.status())) {
+    // TODO(skyewm): consider remove the fallback path when GetDefaultLayout is
+    // unimplemented.
+    Shape host_shape = ShapeUtil::MakeShape(element_type, dimensions);
+    default_layout = LayoutUtil::GetWithDefaultLayout(host_shape).layout();
+  } else {
+    return default_layout_from_client.status();
+  }
   if (shape.layout() != default_layout) {
     return Unimplemented(
         "from_dlpack got array with non-default layout with minor-to-major "
@@ -430,8 +465,8 @@ absl::StatusOr<pybind11::object> DLPackManagedTensorToBuffer(
   // TODO(phawkins): simplify the expression below once we know cpu_client is
   // always non-null.
   auto client = (cpu_client && device->client() == cpu_pjrt_client)
-                    ? std::move(cpu_client)
-                    : std::move(gpu_client);
+                    ? std::move(*cpu_client)
+                    : std::move(*gpu_client);
   auto* ifrt_client =
       llvm::dyn_cast_or_null<ifrt::PjRtCompatibleClient>(client->ifrt_client());
   if (ifrt_client == nullptr) {
@@ -444,16 +479,22 @@ absl::StatusOr<pybind11::object> DLPackManagedTensorToBuffer(
                                             std::move(ifrt_array), false, true);
 }
 
-absl::StatusOr<pybind11::object> DLPackManagedTensorToBuffer(
-    const pybind11::capsule& tensor, PjRtDevice* device,
-    std::shared_ptr<PyClient> client, std::optional<std::intptr_t> stream) {
-  if (absl::string_view(tensor.name()) != kDlTensorCapsuleName) {
+absl::StatusOr<nb::object> DLPackManagedTensorToBuffer(
+    const nb::capsule& tensor, ifrt::Device* ifrt_device,
+    nb_class_ptr<PyClient> client, std::optional<std::intptr_t> stream) {
+  ifrt::PjRtDevice* device =
+      llvm::dyn_cast_or_null<ifrt::PjRtDevice>(ifrt_device);
+  if (device == nullptr) {
+    throw XlaRuntimeError(
+        "DLPack is supported for PjRt-compatible backends only.");
+  }
+  if (std::string_view(tensor.name()) != kDlTensorCapsuleName) {
     return InvalidArgument(
         "DLPack tensor must be a capsule with name \"dltensor\", got \"%s\". "
         "Note that a DLPack tensor may be consumed at most once.",
-        absl::string_view(tensor.name()));
+        std::string_view(tensor.name()));
   }
-  DLManagedTensor* dlmt = static_cast<DLManagedTensor*>(tensor);
+  DLManagedTensor* dlmt = static_cast<DLManagedTensor*>(tensor.data());
   if (dlmt->dl_tensor.ndim < 0) {
     return InvalidArgument(
         "Number of dimensions in DLManagedTensor must be nonnegative, got %d",
@@ -482,11 +523,12 @@ absl::StatusOr<pybind11::object> DLPackManagedTensorToBuffer(
   if (dlmt->deleter) {
     on_delete_callback = [dlmt]() { dlmt->deleter(dlmt); };
   }
-  TF_ASSIGN_OR_RETURN(auto pjrt_buffer,
-                      device->client()->CreateViewOfDeviceBuffer(
-                          static_cast<char*>(dlmt->dl_tensor.data) +
-                              dlmt->dl_tensor.byte_offset,
-                          shape, device, on_delete_callback, stream));
+  TF_ASSIGN_OR_RETURN(
+      auto pjrt_buffer,
+      device->pjrt_device()->client()->CreateViewOfDeviceBuffer(
+          static_cast<char*>(dlmt->dl_tensor.data) +
+              dlmt->dl_tensor.byte_offset,
+          shape, device->pjrt_device(), on_delete_callback, stream));
   // We have taken ownership of the array inside the capsule; make sure the
   // capsule it cannot be used again.
   PyCapsule_SetName(tensor.ptr(), "used_dltensor");

@@ -138,6 +138,9 @@ struct ComputeOpAndFuncBufferizePass
         .insert<bufferization::BufferizationDialect, lmhlo::LmhloDialect,
                 linalg::LinalgDialect, memref::MemRefDialect, mhlo::MhloDialect,
                 shape::ShapeDialect, vector::VectorDialect>();
+    arith::registerBufferizableOpInterfaceExternalModels(registry);
+    mlir::bufferization::func_ext::
+        registerBufferizableOpInterfaceExternalModels(registry);
     linalg::registerBufferizableOpInterfaceExternalModels(registry);
     mhlo::registerBufferizableOpInterfaceExternalModels(registry);
     shape::registerBufferizableOpInterfaceExternalModels(registry);
@@ -153,8 +156,7 @@ struct ComputeOpAndFuncBufferizePass
     // will be migrated to BufferizableOpInterface-based bufferization.
     options.opFilter.allowDialect<bufferization::BufferizationDialect,
                                   linalg::LinalgDialect, mhlo::MhloDialect,
-                                  shape::ShapeDialect, tensor::TensorDialect,
-                                  vector::VectorDialect>();
+                                  shape::ShapeDialect, vector::VectorDialect>();
 
     if (failed(bufferization::bufferizeOp(getOperation(), options))) {
       signalPassFailure();

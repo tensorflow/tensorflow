@@ -15,9 +15,11 @@ limitations under the License.
 
 #include "tsl/concurrency/async_value.h"
 
+#include <cstdint>
 #include <memory>
 #include <utility>
 
+#include "absl/status/status.h"
 #include "tsl/concurrency/async_value_ref.h"
 #include "tsl/platform/test.h"
 

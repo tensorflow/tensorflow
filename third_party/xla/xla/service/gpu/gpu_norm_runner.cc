@@ -20,8 +20,12 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/cublas_cudnn.h"
+#include "xla/service/gpu/stream_executor_util.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/dnn.h"
+#include "xla/stream_executor/lazy_op_runner.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {

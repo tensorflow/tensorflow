@@ -54,8 +54,12 @@ struct ThreadOptions;
 /// Callers may wish to provide a custom Env object to get fine grain
 /// control.
 ///
-/// All Env implementations are safe for concurrent access from
-/// multiple threads without any external synchronization.
+/// All Env implementations of file-system modifying functionality are safe
+/// for concurrent access from multiple threads without any external
+/// synchronization, *however*, Envs and their underlying file systems are
+/// global objects, and therefore, if any thread modifies options, the modified
+/// options take effect process-wide. The SetOption functions themselves are
+/// also *not* thread safe.
 class Env {
  public:
   Env();

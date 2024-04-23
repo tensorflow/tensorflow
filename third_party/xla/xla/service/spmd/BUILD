@@ -1,7 +1,7 @@
 # Description: SPMD partitioning pass.
 
-load("//xla:xla.bzl", "xla_cc_test")
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
+load("//xla:xla.bzl", "xla_cc_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -66,6 +66,7 @@ cc_library(
         "//xla/service:hlo_module_config",
         "//xla/service:hlo_pass",
         "//xla/service:hlo_pass_pipeline",
+        "//xla/service:host_memory_offload_annotations_hdr",
         "//xla/service:pattern_matcher",
         "//xla/service:shape_inference",
         "//xla/service:sharding_propagation",

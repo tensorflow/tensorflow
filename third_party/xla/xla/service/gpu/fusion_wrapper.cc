@@ -18,13 +18,13 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/gpu_fusible.h"
-#include "xla/status_macros.h"
-#include "xla/statusor.h"
+#include "xla/status.h"
 #include "tsl/platform/errors.h"
 
 namespace xla {

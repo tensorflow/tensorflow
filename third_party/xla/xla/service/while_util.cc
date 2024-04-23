@@ -49,7 +49,8 @@ namespace xla {
 
 using absl::StrCat;
 
-static StatusOr<std::pair<HloComputation*, CallInliner::InlinedInstructionMap>>
+static absl::StatusOr<
+    std::pair<HloComputation*, CallInliner::InlinedInstructionMap>>
 WidenWhileCondition(HloComputation* narrow_condition, const Shape& wide_shape) {
   const Shape& narrow_shape =
       narrow_condition->parameter_instruction(0)->shape();
@@ -86,7 +87,8 @@ WidenWhileCondition(HloComputation* narrow_condition, const Shape& wide_shape) {
   return {{wide_while_cond, std::move(inlined_instructions_map)}};
 }
 
-static StatusOr<std::pair<HloComputation*, CallInliner::InlinedInstructionMap>>
+static absl::StatusOr<
+    std::pair<HloComputation*, CallInliner::InlinedInstructionMap>>
 WidenWhileBody(HloComputation* narrow_body, const Shape& wide_shape) {
   const Shape& narrow_shape = narrow_body->parameter_instruction(0)->shape();
 
@@ -125,7 +127,7 @@ WidenWhileBody(HloComputation* narrow_body, const Shape& wide_shape) {
   return {{wide_while_body, std::move(inlined_instructions_map)}};
 }
 
-/*static*/ StatusOr<WhileUtil::MakeInstructionsLiveInResult>
+/*static*/ absl::StatusOr<WhileUtil::MakeInstructionsLiveInResult>
 WhileUtil::MakeInstructionsLiveIn(
     HloInstruction* while_instr,
     absl::Span<HloInstruction* const> instructions) {
@@ -188,7 +190,7 @@ WhileUtil::MakeInstructionsLiveIn(
   return std::move(result);
 }
 
-static StatusOr<std::unique_ptr<HloComputation>>
+static absl::StatusOr<std::unique_ptr<HloComputation>>
 MakeCountedLoopConditionComputation(const Shape& loop_state_shape,
                                     int32_t trip_count) {
   Shape scalar_pred = ShapeUtil::MakeShape(PRED, {});
@@ -212,9 +214,10 @@ MakeCountedLoopConditionComputation(const Shape& loop_state_shape,
   return std::move(cond_computation);
 }
 
-static StatusOr<std::unique_ptr<HloComputation>> MakeCountedLoopBodyComputation(
+static absl::StatusOr<std::unique_ptr<HloComputation>>
+MakeCountedLoopBodyComputation(
     const Shape& loop_state_shape,
-    absl::FunctionRef<StatusOr<WhileUtil::LoopStateTy>(
+    absl::FunctionRef<absl::StatusOr<WhileUtil::LoopStateTy>(
         HloInstruction*, const WhileUtil::LoopStateTy&)>
         loop_body_generator) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloComputation> body_computation,
@@ -277,11 +280,11 @@ static Shape MakeLoopStateShapeWithLayout(
   return ShapeUtil::MakeTupleShape(loop_state_shape_components);
 }
 
-/*static*/ StatusOr<WhileUtil::OwningLoopStateTy> WhileUtil::MakeCountedLoop(
-    HloModule* module, int32_t trip_count,
-    const WhileUtil::LoopStateTy& init_values,
-    WhileUtil::LoopBodyGeneratorTy loop_body_generator,
-    const OpMetadata& metadata) {
+/*static*/ absl::StatusOr<WhileUtil::OwningLoopStateTy>
+WhileUtil::MakeCountedLoop(HloModule* module, int32_t trip_count,
+                           const WhileUtil::LoopStateTy& init_values,
+                           WhileUtil::LoopBodyGeneratorTy loop_body_generator,
+                           const OpMetadata& metadata) {
   CHECK_GE(trip_count, 0);
 
   // Both MakeCountedLoopConditionComputation and MakeCountedLoopBodyComputation
@@ -319,7 +322,7 @@ static Shape MakeLoopStateShapeWithLayout(
   return WhileUtil::OwningLoopStateTy{std::move(owned), while_results};
 }
 
-/*static*/ StatusOr<WhileUtil::LoopStateTy> WhileUtil::MakeCountedLoop(
+/*static*/ absl::StatusOr<WhileUtil::LoopStateTy> WhileUtil::MakeCountedLoop(
     HloComputation* computation, int32_t trip_count,
     const WhileUtil::LoopStateTy& init_values,
     WhileUtil::LoopBodyGeneratorTy loop_body_generator,

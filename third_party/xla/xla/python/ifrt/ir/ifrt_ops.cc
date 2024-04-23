@@ -32,10 +32,13 @@ limitations under the License.
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/IR/ValueRange.h"  // from @llvm-project
 #include "mlir/Interfaces/CallInterfaces.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "xla/python/ifrt/ir/constants.h"
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
+#include "xla/python/ifrt/ir/ifrt_interfaces.h"
 
 // Generated definitions.
 #define GET_OP_CLASSES
@@ -47,9 +50,9 @@ namespace ifrt {
 namespace {
 
 mlir::FailureOr<mlir::RankedTensorType> GetGlobalShape(mlir::Type type) {
-  if (auto ranked_tensor = type.dyn_cast<mlir::RankedTensorType>()) {
+  if (auto ranked_tensor = mlir::dyn_cast<mlir::RankedTensorType>(type)) {
     return ranked_tensor;
-  } else if (auto array = type.dyn_cast<IfrtArrayType>()) {
+  } else if (auto array = mlir::dyn_cast<IfrtArrayType>(type)) {
     return array.getShape();
   } else {
     return mlir::failure();
@@ -61,18 +64,16 @@ mlir::FailureOr<mlir::RankedTensorType> GetGlobalShape(mlir::Value value) {
 }
 
 mlir::FailureOr<mlir::RankedTensorType> GetGlobalShapeFromLocal(
-    mlir::Type type, ShardingParam shard_param) {
-  if (auto local_ranked_tensor = type.dyn_cast<mlir::RankedTensorType>()) {
-    llvm::SmallVector<int64_t> global_shape;
-    auto local_shape = local_ranked_tensor.getShape();
-    if (local_shape.size() != shard_param.dim_shards().size()) {
+    mlir::Type type, IfrtShardingAttrInterface sharding_attr) {
+  if (auto local_ranked_tensor = mlir::dyn_cast<mlir::RankedTensorType>(type)) {
+    auto global_shape =
+        sharding_attr.GlobalShapeFromLocalShape(local_ranked_tensor.getShape());
+    if (global_shape.ok()) {
+      return mlir::RankedTensorType::get(global_shape.value(),
+                                         local_ranked_tensor.getElementType());
+    } else {
       return mlir::failure();
     }
-    for (auto [idx, dim_shard] : llvm::enumerate(shard_param.dim_shards())) {
-      global_shape.push_back(dim_shard * local_shape[idx]);
-    }
-    return mlir::RankedTensorType::get(global_shape,
-                                       local_ranked_tensor.getElementType());
   } else {
     // IFRT arrays cannot be in the local view.
     return mlir::failure();
@@ -115,14 +116,14 @@ mlir::LogicalResult VerifyGlobalLocalShapesEquivalent(
                              << call_mnemonic << ": " << call_value;
   }
   // The types of the CallOp func signature must be IfrtArrayType.
-  auto array = call_value.getType().dyn_cast<IfrtArrayType>();
+  auto array = mlir::dyn_cast<IfrtArrayType>(call_value.getType());
   if (array == nullptr) {
     return mlir::failure();
   }
   // Convert from local shape to global shape using the sharding provided
   // by the CallOp func signature.
   mlir::FailureOr<mlir::RankedTensorType> callee_shape =
-      GetGlobalShapeFromLocal(callee_type, array.getSharding());
+      GetGlobalShapeFromLocal(callee_type, array.getShardingAttr());
   if (mlir::failed(callee_shape)) {
     return op->emitOpError() << "fails to get global shape from "
                              << callee_mnemonic << ": " << callee_type;
@@ -347,13 +348,13 @@ mlir::LogicalResult CallOp::verify() {
   llvm::SmallVector<IfrtArrayType, 4> input_arrays;
   input_arrays.reserve(getInputs().size());
   for (const mlir::Value input : getInputs()) {
-    input_arrays.push_back(input.getType().cast<IfrtArrayType>());
+    input_arrays.push_back(mlir::cast<IfrtArrayType>(input.getType()));
   }
 
   llvm::SmallVector<IfrtArrayType, 4> output_arrays;
   output_arrays.reserve(getOutputs().size());
   for (const mlir::Value output : getOutputs()) {
-    output_arrays.push_back(output.getType().cast<IfrtArrayType>());
+    output_arrays.push_back(mlir::cast<IfrtArrayType>(output.getType()));
   }
 
   if (mlir::failed(VerifyDevicePlacement(*this, getDevices(), input_arrays,
@@ -411,13 +412,13 @@ mlir::LogicalResult CallLoadedExecutableOp::verify() {
   llvm::SmallVector<IfrtArrayType, 4> input_arrays;
   input_arrays.reserve(getInputs().size());
   for (const mlir::Value input : getInputs()) {
-    input_arrays.push_back(input.getType().cast<IfrtArrayType>());
+    input_arrays.push_back(mlir::cast<IfrtArrayType>(input.getType()));
   }
 
   llvm::SmallVector<IfrtArrayType, 4> output_arrays;
   output_arrays.reserve(getOutputs().size());
   for (const mlir::Value output : getOutputs()) {
-    output_arrays.push_back(output.getType().cast<IfrtArrayType>());
+    output_arrays.push_back(mlir::cast<IfrtArrayType>(output.getType()));
   }
 
   return VerifyIoAliases(*this, getIoAliases(), input_arrays, output_arrays);

@@ -32,9 +32,11 @@ limitations under the License.
 #include "xla/ffi/ffi.h"
 #include "xla/ffi/ffi_api.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
+#include "xla/pjrt/c/pjrt_c_api_custom_partitioner_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_gpu_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "xla/pjrt/c/pjrt_c_api_profiler_extension.h"
+#include "xla/pjrt/c/pjrt_c_api_stream_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
 #include "xla/pjrt/gpu/gpu_helpers.h"
 #include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
@@ -42,6 +44,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_device_description.h"
+#include "xla/python/custom_partition_callback.h"
 #include "xla/service/compiler.h"
 #include "xla/service/custom_call_target_registry.h"
 #include "xla/stream_executor/device_description.h"
@@ -198,6 +201,57 @@ PJRT_Profiler_Extension profiler_extension{
     /*profiler_api=*/&profiler_api,
 };
 
+PJRT_Error* PJRT_Register_Custom_Partitioner(
+    PJRT_Register_Custom_Partitioner_Args* args) {
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "PJRT_Register_Custom_Partitioner_Args",
+      PJRT_Register_Custom_Partitioner_Args_STRUCT_SIZE, args->struct_size));
+  std::string name(args->name, args->name_size);
+  RegisterCustomCallPartitioner(
+      name, jax::CreateCApiCustomCallPartitioner(args->callbacks));
+  return nullptr;
+}
+
+PJRT_Custom_Partitioner_Extension custom_partitioner{
+    /*struct_size=*/PJRT_Custom_Partitioner_Extension_STRUCT_SIZE,
+    /*type=*/PJRT_Extension_Type::PJRT_Extension_Type_Custom_Partitioner,
+    /*next=*/reinterpret_cast<PJRT_Extension_Base*>(&profiler_extension),
+    /*register_custom_partitioner=*/PJRT_Register_Custom_Partitioner,
+};
+
+PJRT_Error* PJRT_Get_Stream_For_External_Ready_Events(
+    PJRT_Get_Stream_For_External_Ready_Events_Args* args) {
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "PJRT_Get_Stream_For_External_Ready_Events_Args",
+      PJRT_Get_Stream_For_External_Ready_Events_Args_STRUCT_SIZE,
+      args->struct_size));
+  PJRT_ASSIGN_OR_RETURN(
+      args->stream, args->device->device->GetStreamForExternalReadyEvents());
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Wait_Until_Buffer_Ready_On_Stream(
+    PJRT_Wait_Until_Buffer_Ready_On_Stream_Args* args) {
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "PJRT_Wait_Until_Buffer_Ready_On_Stream_Args",
+      PJRT_Wait_Until_Buffer_Ready_On_Stream_Args_STRUCT_SIZE,
+      args->struct_size));
+  PJRT_ASSIGN_OR_RETURN(
+      std::unique_ptr<xla::PjRtBuffer::ExternalReference> external_reference,
+      args->buffer->buffer->AcquireExternalReference());
+  PJRT_RETURN_IF_ERROR(
+      external_reference->WaitUntilBufferReadyOnStream(args->stream));
+  return nullptr;
+}
+
+PJRT_Stream_Extension stream{
+    /*struct_size=*/PJRT_Stream_Extension_STRUCT_SIZE,
+    /*type=*/PJRT_Extension_Type::PJRT_Extension_Type_Stream,
+    /*next=*/reinterpret_cast<PJRT_Extension_Base*>(&custom_partitioner),
+    /*get_stream=*/PJRT_Get_Stream_For_External_Ready_Events,
+    /*wait_stream=*/PJRT_Wait_Until_Buffer_Ready_On_Stream,
+};
+
 PJRT_Error* PJRT_Gpu_Register_Custom_Call(
     PJRT_Gpu_Register_Custom_Call_Args* args) {
   PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
@@ -228,14 +282,15 @@ const PJRT_Api* GetGpuPjrtApi() {
   static PJRT_Gpu_Custom_Call custom_call{
       /*struct_size=*/PJRT_Gpu_Custom_Call_STRUCT_SIZE,
       /*type=*/PJRT_Extension_Type::PJRT_Extension_Type_Gpu_Custom_Call,
-      /*next=*/reinterpret_cast<PJRT_Extension_Base*>(&profiler_extension),
+      /*next=*/reinterpret_cast<PJRT_Extension_Base*>(&stream),
       /*custom_call=*/PJRT_Gpu_Register_Custom_Call,
   };
   static const PJRT_Api pjrt_api =
       pjrt::CreatePjrtApi(pjrt::gpu_plugin::PJRT_Client_Create,
                           pjrt::gpu_plugin::PJRT_GpuDeviceTopology_Create,
                           pjrt::PJRT_Plugin_Initialize_NoOp,
-                          reinterpret_cast<PJRT_Extension_Base*>(&custom_call));
+                          reinterpret_cast<PJRT_Extension_Base*>(&custom_call),
+                          pjrt::PJRT_Plugin_Attributes_Xla);
 
   return &pjrt_api;
 }

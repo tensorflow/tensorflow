@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -125,6 +126,9 @@ absl::StatusOr<se::dnn::ConvolutionKind> GetDNNConvKindFromCudnnConvKind(
 
 absl::StatusOr<se::dnn::NormKind> GetDNNNormKindFromCudnnNormKind(
     CudnnNormKind kind);
+
+absl::StatusOr<se::dnn::FMHAMaskKind> GetDNNFmhaMaskKindFromCudnnFmhaMaskKind(
+    CudnnfMHAMaskKind kind);
 
 absl::StatusOr<se::dnn::FusedMHAKind> GetDNNFusedMHAKindFromCudnnfMHAKind(
     CudnnfMHAKind kind);

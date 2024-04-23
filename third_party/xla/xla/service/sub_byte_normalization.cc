@@ -46,8 +46,8 @@ bool UpdateLayout(Layout* layout, PrimitiveType type,
     case SubByteNormalization::REMOVE_ELEMENT_SIZE:
       return set_element_size(0);
     case SubByteNormalization::SET_ELEMENT_SIZE:
-      if (primitive_util::Is4BitType(type)) {
-        return set_element_size(4);
+      if (primitive_util::IsSubByteNonPredType(type)) {
+        return set_element_size(primitive_util::BitWidth(type));
       } else {
         return set_element_size(0);
       }
@@ -84,7 +84,7 @@ bool ProcessInputOrOutputLayout(ShapeLayout* shape_layout,
 
 }  // namespace
 
-StatusOr<bool> SubByteNormalization::Run(
+absl::StatusOr<bool> SubByteNormalization::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

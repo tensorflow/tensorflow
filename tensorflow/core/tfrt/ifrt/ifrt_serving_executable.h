@@ -31,20 +31,26 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/tf2hlo.h"
+#include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/ifrt_types.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
+#include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/xla_data.pb.h"
+#include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_loaded_variable_registry.h"
+#include "tensorflow/core/tfrt/ifrt/ifrt_restore_tensor_registry.h"
+#include "tensorflow/core/tfrt/ifrt/tf_host_callback.h"
 #include "tsl/concurrency/ref_count.h"
+#include "tsl/platform/threadpool.h"
+#include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime
 
 namespace tensorflow {
 namespace ifrt_serving {
@@ -56,7 +62,10 @@ class IfrtServingExecutable {
       mlir::OwningOpRef<mlir::ModuleOp> module,
       std::shared_ptr<xla::ifrt::Client> client,
       const tsl::thread::ThreadPool* thread_pool,
-      const IfrtLoadedVariableRegistry* ifrt_loaded_variable_registry,
+      IfrtLoadedVariableRegistry* ifrt_loaded_variable_registry,
+      const IfrtRestoreTensorRegistry* ifrt_restore_tensor_registry,
+      tfrt::ConcurrentWorkQueue* checkpoint_loader_queue,
+      tensorflow::StaticDeviceMgr* device_mgr,
       tensorflow::XlaHelpers::ShapeRepresentationFn shape_representation_fn)
       : model_name_(std::string(model_name)),
         signature_name_(std::string(signature_name)),
@@ -64,6 +73,9 @@ class IfrtServingExecutable {
         ifrt_client_(std::move(client)),
         thread_pool_(*thread_pool),
         ifrt_loaded_variable_registry_(*ifrt_loaded_variable_registry),
+        ifrt_restore_tensor_registry_(*ifrt_restore_tensor_registry),
+        checkpoint_loader_queue_(checkpoint_loader_queue),
+        device_mgr_(device_mgr),
         shape_representation_fn_(std::move(shape_representation_fn)) {}
 
   // Movable but not copyable.
@@ -108,6 +120,9 @@ class IfrtServingExecutable {
   struct CachedExecutableBundle {
     std::shared_ptr<xla::ifrt::LoadedExecutable> ifrt_executable;
     tensorflow::tpu::TPUCompileMetadataProto compile_metadata;
+    // TODO(b/322541827): change from std::shared_ptr to std::unique_ptr once
+    // we avoid copy use of CachedExectableBundle.
+    std::vector<std::shared_ptr<TfHostCallback>> host_callbacks;
   };
 
   std::string model_name_;
@@ -119,13 +134,23 @@ class IfrtServingExecutable {
   std::shared_ptr<xla::ifrt::Client> ifrt_client_;
   const tsl::thread::ThreadPool& thread_pool_;
 
-  const IfrtLoadedVariableRegistry& ifrt_loaded_variable_registry_;
+  IfrtLoadedVariableRegistry& ifrt_loaded_variable_registry_;
+  const IfrtRestoreTensorRegistry& ifrt_restore_tensor_registry_;
+  tfrt::ConcurrentWorkQueue* checkpoint_loader_queue_;
+  tensorflow::StaticDeviceMgr* device_mgr_;  // Not owned. For host callback.
   tensorflow::XlaHelpers::ShapeRepresentationFn shape_representation_fn_;
 
   mutable absl::Mutex mutex_;
   absl::flat_hash_map<Key,
                       xla::ifrt::Future<absl::StatusOr<CachedExecutableBundle>>>
       executable_bundles_ ABSL_GUARDED_BY(mutex_);
+
+  // Asynchronously load the restored variable tensors to Ifrt array.
+  absl::Status AsyncLoadIfrtArray(
+      absl::Span<const tensorflow::Tensor> inputs,
+      absl::Span<const int> variable_arg_indices,
+      const CachedExecutableBundle& executable_bundle,
+      const std::vector<xla::ifrt::Device*>& devices);
 
   absl::StatusOr<tsl::RCReference<xla::ifrt::Array>> ConvertTensorToArray(
       const tensorflow::Tensor& tensor,

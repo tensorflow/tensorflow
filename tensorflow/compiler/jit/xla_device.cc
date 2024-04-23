@@ -485,7 +485,8 @@ void XlaDevice::ComputeAsync(AsyncOpKernel* op_kernel, OpKernelContext* context,
 
 Status XlaDevice::Sync() {
   VLOG(1) << "XlaDevice::Sync";
-  profiler::TraceMe activity("XlaDevice::Sync", profiler::TraceMeLevel::kInfo);
+  tsl::profiler::TraceMe activity("XlaDevice::Sync",
+                                  tsl::profiler::TraceMeLevel::kInfo);
   std::shared_ptr<se::Stream> stream;
   {
     mutex_lock lock(mu_);

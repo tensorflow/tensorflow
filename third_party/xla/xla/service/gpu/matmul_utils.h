@@ -54,12 +54,12 @@ const tsl::protobuf::RepeatedField<int64_t>& BatchDimensionsForOperand(
     const HloInstruction& dot, int operand_number);
 
 // Index of the only contracting dimension of dot instruction operand.
-int64_t ContractingDimensionIndex(const HloInstruction& dot,
-                                  int operand_number);
+absl::StatusOr<int64_t> ContractingDimensionIndex(const HloInstruction& dot,
+                                                  int operand_number);
 
 // Index of the only non-contracting dimension of dot instruction operand.
-int64_t NonContractingDimensionIndex(const HloInstruction& dot,
-                                     int operand_number);
+absl::StatusOr<int64_t> NonContractingDimensionIndex(const HloInstruction& dot,
+                                                     int operand_number);
 
 // Normalize shape to (batch, rows, columns) logical dimensions.
 absl::StatusOr<Shape> GetBatchRowColumnShape(
@@ -69,6 +69,16 @@ absl::StatusOr<Shape> GetBatchRowColumnShape(
 // GPU folding rule for the `TransposeFolding` pass.
 absl::StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
                                                     int64_t operand_idx);
+
+// Returns true if the sum of the sizes of the unbatched operand matrices
+// for the dot is smaller than the given threshold.
+absl::StatusOr<bool> IsMatrixMultiplicationTooSmallForRewriting(
+    const HloInstruction& dot, int64_t threshold);
+
+// Returns true if the backend can lower the dot. Currently the classical
+// emitters cannot handle some dots, e.g., i8[] x i8[] -> i32[] dots,
+// so we need to always use cuBLAS or Triton for those.
+bool IsDotSupportedByClassicalEmitters(const HloInstruction& dot);
 
 // extending plain MatrixLayout struct with creator functions
 struct MatrixLayout : public se::gpu::MatrixLayout {

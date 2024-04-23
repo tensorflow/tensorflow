@@ -1,13 +1,14 @@
-# Placeholder: load py_proto_library
-load("//xla:xla.bzl", "xla_cc_test", "xla_py_proto_library")
-load("//third_party/compute_library:build_defs.bzl", "if_enable_acl")
-load("@local_tsl//tsl:tsl.bzl", "internal_visibility")
-load("@local_tsl//tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
 load(
     "@local_tsl//tsl/platform:build_config.bzl",
     "tf_proto_library",
 )
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
+load("//third_party/compute_library:build_defs.bzl", "if_enable_acl")
+
+# Placeholder: load py_proto_library
+load("//xla:xla.bzl", "xla_cc_test", "xla_py_proto_library")
+load("//xla/tsl:tsl.bzl", "internal_visibility")
+load("//xla/tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -25,6 +26,7 @@ package_group(
         "//third_party/mira/...",
         "//third_party/mlcompass/...",
         "//third_party/mlir_edge/model_curriculum/...",
+        "//third_party/openxla/shardonnay/...",
         "//third_party/py/enzyme_ad/...",
         "//third_party/py/jax/...",
         "//third_party/py/t5x/...",
@@ -239,6 +241,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     visibility = internal_visibility([":friends"]),
     deps = [
+        "@com_google_absl//absl/strings",
         "@eigen_archive//:eigen3",
         "@local_tsl//tsl/platform:ml_dtypes",
     ],
@@ -248,9 +251,7 @@ xla_cc_test(
     name = "types_test",
     size = "small",
     srcs = ["types_test.cc"],
-    visibility = [
-        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
-    ],
+    visibility = ["//visibility:private"],
     deps = [
         ":test",
         ":types",
@@ -317,7 +318,7 @@ cc_library(
         "statusor.h",
     ],
     linkopts = select({
-        "@local_tsl//tsl:freebsd": ["-lexecinfo"],
+        "//xla/tsl:freebsd": ["-lexecinfo"],
         "//conditions:default": [],
     }),
     visibility = ["//visibility:public"],
@@ -595,6 +596,7 @@ cc_library(
         ":array4d",
         ":permutation_util",
         ":printer",
+        ":shape_tree",
         ":shape_util",
         ":status",
         ":status_macros",
@@ -602,6 +604,7 @@ cc_library(
         ":types",
         ":util",
         ":xla_data_proto_cc",
+        "//xla/tsl/util:byte_swap_array",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:config",
         "@com_google_absl//absl/base:core_headers",
@@ -619,7 +622,6 @@ cc_library(
         "@local_tsl//tsl/platform:platform_port",
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/util:byte_swap_array",
     ],
 )
 
@@ -633,6 +635,7 @@ xla_cc_test(
         ":array4d",
         ":literal",
         ":literal_util",
+        ":shape_tree",
         ":shape_util",
         ":status",
         ":test",
@@ -869,11 +872,10 @@ cc_library(
     hdrs = ["test_helpers.h"],
     visibility = internal_visibility([":friends"]),
     deps = [
+        ":status",
         ":statusor",
         ":types",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:protobuf",
-        "@local_tsl//tsl/platform:regexp",
         "@local_tsl//tsl/platform:test",
     ],
 )
@@ -1071,12 +1073,12 @@ cc_library(
     deps =
         [
             ":types",
+            "//xla/tsl/util:command_line_flags",
             "@com_google_absl//absl/container:flat_hash_map",
             "@com_google_absl//absl/strings",
             "@com_google_absl//absl/strings:str_format",
             "@com_google_absl//absl/types:span",
             "@local_tsl//tsl/platform:logging",
-            "@local_tsl//tsl/util:command_line_flags",
         ],
 )
 
@@ -1086,12 +1088,12 @@ xla_cc_test(
     deps =
         [
             ":parse_flags_from_env",
+            "//xla/tsl/util:command_line_flags",
             "@com_google_absl//absl/strings:str_format",
             "@local_tsl//tsl/platform:env",
             "@local_tsl//tsl/platform:logging",
             "@local_tsl//tsl/platform:subprocess",
             "@local_tsl//tsl/platform:test",
-            "@local_tsl//tsl/util:command_line_flags",
         ],
 )
 
@@ -1109,6 +1111,7 @@ cc_library(
             ":parse_flags_from_env",
             ":xla_proto_cc",
             "//xla/stream_executor/cuda:ptx_compiler_support",
+            "//xla/tsl/util:command_line_flags",
             "@com_google_absl//absl/algorithm:container",
             "@com_google_absl//absl/base",
             "@com_google_absl//absl/container:flat_hash_map",
@@ -1117,7 +1120,6 @@ cc_library(
             "@com_google_absl//absl/strings:str_format",
             "@local_tsl//tsl/platform:logging",
             "@local_tsl//tsl/platform:protobuf",
-            "@local_tsl//tsl/util:command_line_flags",
         ],
 )
 
@@ -1246,5 +1248,12 @@ cc_library(
 
 cc_library(
     name = "empty",
+    visibility = ["//visibility:public"],
+)
+
+# Needed to workaround https://github.com/bazelbuild/bazel/issues/21519
+alias(
+    name = "bazel_issue_21519",
+    actual = ":empty",
     visibility = ["//visibility:public"],
 )

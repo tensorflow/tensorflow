@@ -46,7 +46,7 @@ using stream_executor::internal::CachedDsoLoader::GetRocblasDsoHandle;
 #else
 
 #define ROCBLAS_API_WRAPPER(__name)                                      \
-  struct DynLoadShim__##__name {                                         \
+  static struct DynLoadShim__##__name {                                  \
     constexpr static const char* kName = #__name;                        \
     using FuncPtrT = std::add_pointer<decltype(::__name)>::type;         \
     static void* GetDsoHandle() {                                        \

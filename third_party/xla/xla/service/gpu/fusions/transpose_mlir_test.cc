@@ -65,16 +65,13 @@ TEST_F(MlirTransposeFusionTest, ThreadIndexing021) {
         s0 in [0, 0]
         s1 in [0, 7]
         s2 in [0, 0]
-
-        (d3 mod 2) * 32 + d0 mod 32 in [0, 63]
-        d0 floordiv 32 + s1 * 4 in [0, 31]
       )"));
   EXPECT_THAT(
       fusion.ComputeThreadIdToOutputIndexing(0, &mlir_context_)->ToString(),
       MatchIndexingString(R"(
         (d0, d1, d2, d3, d4, d5)[s0, s1, s2] -> (
           d3 floordiv 2,
-          (d3 mod 2) * 32 + d0 floordiv 32 + s1 * 4,
+          d0 floordiv 32 + (d3 mod 2) * 32 + s1 * 4,
           d0 mod 32
         )
         domain:
@@ -88,9 +85,6 @@ TEST_F(MlirTransposeFusionTest, ThreadIndexing021) {
         s0 in [0, 0]
         s1 in [0, 7]
         s2 in [0, 0]
-
-        (d3 mod 2) * 32 + d0 floordiv 32 + s1 * 4 in [0, 63]
-        d0 mod 32 in [0, 31]
       )"));
 }
 
@@ -115,8 +109,8 @@ TEST_F(MlirTransposeFusionTest, ThreadIndexing201) {
       fusion.ComputeThreadIdToInputIndexing(0, 0, &mlir_context_)->ToString(),
       MatchIndexingString(R"(
         (d0, d1, d2, d3, d4, d5)[s0, s1, s2] -> (
-          (d3 * 32 + d0 floordiv 32 + s1 * 4) floordiv 64,
-          (d3 * 32 + d0 floordiv 32 + s1 * 4) mod 64,
+          d3 floordiv 2,
+          d0 floordiv 32 + (d3 * 32 + s1 * 4) mod 64,
           d0 mod 32
         )
         domain:
@@ -130,18 +124,14 @@ TEST_F(MlirTransposeFusionTest, ThreadIndexing201) {
         s0 in [0, 0]
         s1 in [0, 7]
         s2 in [0, 0]
-
-        0 in [0, 0]
-        d0 mod 32 in [0, 31]
-        d3 * 32 + d0 floordiv 32 + s1 * 4 in [0, 6399]
       )"));
   EXPECT_THAT(
       fusion.ComputeThreadIdToOutputIndexing(0, &mlir_context_)->ToString(),
       MatchIndexingString(R"(
         (d0, d1, d2, d3, d4, d5)[s0, s1, s2] -> (
           d0 floordiv 32 + s1 * 4,
-          (d3 * 32 + d0 mod 32) floordiv 64,
-          (d3 * 32 + d0 mod 32) mod 64
+          d3 floordiv 2,
+          (d3 mod 2) * 32 + d0 mod 32
         )
         domain:
         d0 in [0, 127]
@@ -154,10 +144,6 @@ TEST_F(MlirTransposeFusionTest, ThreadIndexing201) {
         s0 in [0, 0]
         s1 in [0, 7]
         s2 in [0, 0]
-
-        0 in [0, 0]
-        d0 floordiv 32 + s1 * 4 in [0, 31]
-        d3 * 32 + d0 mod 32 in [0, 6399]
       )"));
 }
 
@@ -197,7 +183,7 @@ TEST_F(MlirTransposeFusionTest, FusedTranspose021) {
     // CHECK:      scf.for
     // CHECK-SAME:    %[[C0]] to %[[C8]] step %[[C1]]
     // CHECK-SAME:    iter_args(%[[OUT_:.*]] = %[[OUT]])
-    // CHECK:       %[[ABS:.*]] = xla_gpu.pure_call @fused_computation_abs
+    // CHECK:       %[[ABS:.*]] = xla_gpu.pure_call @fused_computation__epilogue__
     // CHECK:       tensor.insert %[[ABS]] into %[[OUT_]]
   )"));
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
@@ -238,7 +224,7 @@ TEST_F(MlirTransposeFusionTest, Transpose021_Parameter) {
     // CHECK:      scf.for
     // CHECK-SAME:    %[[C0]] to %[[C8]] step %[[C1]]
     // CHECK-SAME:    iter_args(%[[OUT_:.*]] = %[[OUT]])
-    // CHECK:       %[[ABS:.*]] = xla_gpu.pure_call @fused_computation_abs
+    // CHECK:       %[[ABS:.*]] = xla_gpu.pure_call @fused_computation__epilogue__
     // CHECK:       tensor.insert %[[ABS]] into %[[OUT_]]
   )"));
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
@@ -265,7 +251,6 @@ TEST_F(MlirTransposeFusionTest, Transpose021_NoEpilogue) {
     // CHECK-DAG:  %[[C0:.*]] = arith.constant 0 : index
     // CHECK-DAG:  %[[C1:.*]] = arith.constant 1 : index
     // CHECK-DAG:  %[[C8:.*]] = arith.constant 8 : index
-
     // CHECK:      %[[SHMEM:.*]] = xla_gpu.allocate_shared : tensor<1x32x32xf32>
     // CHECK:      %[[SHMEM_WITH_VALS:.*]] = scf.for
     // CHECK-SAME:     %[[C0]] to %[[C8]] step %[[C1]]
@@ -299,6 +284,7 @@ TEST_F(MlirTransposeFusionTest, Transpose_4D) {
         calls=%fused_computation
     }
   )";
+  TF_EXPECT_OK(EmitAndCheckIR(kHloString, "// CHECK: xla_gpu.allocate_shared"));
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
 }
 
@@ -317,6 +303,7 @@ TEST_F(MlirTransposeFusionTest, Transpose_2D) {
         calls=%fused_computation
     }
   )";
+  TF_EXPECT_OK(EmitAndCheckIR(kHloString, "// CHECK: xla_gpu.allocate_shared"));
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
 }
 
@@ -342,6 +329,7 @@ TEST_F(MlirTransposeFusionTest, Transpose_2D_2) {
       ROOT %fusion = f32[2820,17]{1,0} fusion(%p0, %p1), kind=kInput, calls=%fused_computation
     }
   )";
+  TF_EXPECT_OK(EmitAndCheckIR(kHloString, "// CHECK: xla_gpu.allocate_shared"));
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
 }
 
@@ -350,20 +338,94 @@ TEST_F(MlirTransposeFusionTest, MultipleRootsForTranspose) {
     HloModule m
 
     %fused_computation {
-      %iota.0 = s32[200,200]{1,0} iota(), iota_dimension=1
-      %iota.1 = s32[200,200]{1,0} iota(), iota_dimension=0
-      %compare = pred[200,200]{1,0} compare(s32[200,200]{1,0} %iota.0, s32[200,200]{1,0} %iota.1), direction=GE
-      %transpose = pred[200,200]{1,0} transpose(pred[200,200]{1,0} %compare), dimensions={1,0}
-      %copy = pred[200,200]{1,0} copy(pred[200,200]{1,0} %transpose)
-      %copy.1 = pred[200,200]{1,0} copy(pred[200,200]{1,0} %transpose)
-      ROOT %tuple = (pred[200,200]{1,0}, pred[200,200]{1,0}, pred[200,200]{1,0}) 
-            tuple(pred[200,200]{1,0} %transpose, pred[200,200]{1,0} %copy, pred[200,200]{1,0} %copy.1)
+      %iota.0 = s32[200,200] iota(), iota_dimension=1
+      %iota.1 = s32[200,200] iota(), iota_dimension=0
+      %compare = pred[200,200] compare(%iota.0, %iota.1), direction=GE
+      %transpose = pred[200,200] transpose(%compare), dimensions={1,0}
+      %copy = pred[200,200] copy(%transpose)
+      %copy.1 = pred[200,200] copy(%transpose)
+      ROOT %tuple = (pred[200,200], pred[200,200], pred[200,200]{1,0})
+            tuple(%transpose, %copy, %copy.1)
     }
 
     ENTRY main {
-      ROOT %fusion = (pred[200,200]{1,0}, pred[200,200]{1,0}, pred[200,200]{1,0}) fusion(), kind=kInput, calls=%fused_computation
+      ROOT %fusion =
+        (pred[200,200]{1,0}, pred[200,200]{1,0}, pred[200,200]{1,0})
+        fusion(), kind=kInput, calls=%fused_computation
     }
   )";
+  TF_EXPECT_OK(EmitAndCheckIR(kHloString, "// CHECK: xla_gpu.allocate_shared"));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
+}
+
+TEST_F(MlirTransposeFusionTest, PartialTile) {
+  auto kHloString = R"(
+    HloModule m
+
+    fused_computation {
+      %p0 = f64[24,2,6,4] parameter(0)
+      ROOT %t = f64[6,4,2,24] transpose(%p0), dimensions={2,3,1,0}
+    }
+
+    ENTRY main {
+      %p0 = f64[24,2,6,4] parameter(0)
+      ROOT %fusion = f64[6,4,2,24] fusion(%p0), kind=kInput, calls=%fused_computation
+    }
+  )";
+  TF_EXPECT_OK(EmitAndCheckIR(kHloString, "// CHECK: xla_gpu.allocate_shared"));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
+}
+
+TEST_F(MlirTransposeFusionTest, MixedIndexing) {
+  auto kHloString = R"(
+    HloModule m
+
+    fused_computation {
+      %p0 = f64[24,2,6,4] parameter(0)
+      %bc = f64[24,2,24] bitcast(%p0)
+      %t1 = f64[6,4,2,24] transpose(%p0), dimensions={2,3,1,0}
+      %t2 = f64[24,2,24] transpose(%bc), dimensions={2,1,0}
+      %p1 = f64[] parameter(1)
+      %bc1 = f64[6,4,2,24] broadcast(%p1), dimensions={}
+      %bc2 = f64[24,2,24] broadcast(%p1), dimensions={}
+      %a1 = f64[6,4,2,24] add(%t1, %bc1)
+      %a2 = f64[24,2,24] add(%t2, %bc2)
+      ROOT %t = (f64[6,4,2,24], f64[24,2,24]) tuple(%a1, %a2)
+    }
+
+    ENTRY main {
+      %p0 = f64[24,2,6,4] parameter(0)
+      %p1 = f64[] parameter(1)
+      ROOT %fusion = (f64[6,4,2,24], f64[24,2,24]) fusion(%p0, %p1),
+        kind=kInput, calls=%fused_computation
+    }
+  )";
+  TF_EXPECT_OK(EmitAndCheckIR(kHloString, "// CHECK: xla_gpu.allocate_shared"));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
+}
+
+TEST_F(MlirTransposeFusionTest, SideOutputs) {
+  auto kHloString = R"(
+    HloModule m
+
+    fused_computation {
+      %p0 = f64[24,2,36] parameter(0)
+      %p1 = f64[36,2,24] parameter(1)
+      %tr = f64[36,2,24] transpose(%p0), dimensions={2,1,0}
+      %neg = f64[36,2,24] negate(%p1)
+      %log = f64[24,2,36] log(%p0)
+      ROOT %t = (f64[36,2,24], f64[36,2,24], f64[24,2,36])
+        tuple(%neg, %tr, %log)
+    }
+
+    ENTRY main {
+      %p0 = f64[24,2,36] parameter(0)
+      %p1 = f64[36,2,24] parameter(1)
+      ROOT %fusion = (f64[36,2,24], f64[36,2,24], f64[24,2,36])
+        fusion(%p0, %p1), kind=kInput, calls=%fused_computation
+    }
+  )";
+  TF_EXPECT_OK(EmitAndCheckIR(kHloString, "// CHECK: xla_gpu.allocate_shared"));
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
 }
 

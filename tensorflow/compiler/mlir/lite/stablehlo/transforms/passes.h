@@ -59,6 +59,9 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateUnfoldSplatConstantPass();
 // Create a pass that legalizes MHLO to TFLite dialect.
 std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeHloToTfLitePass();
 
+// Creates a pass that lowers stablehlo composite ops to tflite ops.
+std::unique_ptr<OperationPass<ModuleOp>> CreateCompositeLoweringPass();
+
 // Adds the HLO to TF rewrite patterns to the specified pattern list.
 void PopulateLegalizeHloToTfPatterns(RewritePatternSet* patterns,
                                      MLIRContext* context);
@@ -67,8 +70,7 @@ void PopulateLegalizeHloToTfPatterns(RewritePatternSet* patterns,
 void PopulateLegalizeHloToTFLitePatterns(RewritePatternSet* patterns,
                                          MLIRContext* context);
 
-#define GEN_PASS_DECL_LEGALIZESTABLEHLOTOVHLOPASS
-#define GEN_PASS_DECL_LEGALIZEVHLOTOSTABLEHLOPASS
+#define GEN_PASS_DECL
 #define GEN_PASS_REGISTRATION
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/passes.h.inc"
 

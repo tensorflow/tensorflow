@@ -35,6 +35,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "third_party/nanobind/include/nanobind/nanobind.h"
 #include "third_party/nanobind/include/nanobind/stl/string_view.h"  // IWYU pragma: keep
+#include "xla/pjrt/host_callback.h"
 #include "xla/pjrt/transpose.h"
 #include "xla/primitive_util.h"
 #include "xla/python/nb_numpy.h"
@@ -127,14 +128,16 @@ absl::Status CpuCallback::PrepareAndCall(void* result, void** arg_ptrs) {
 }
 
 absl::StatusOr<nb::tuple> CpuCallback::CallInternal(nb::tuple args) {
+  auto py_error_to_status = [](nb::python_error& e) {
+    std::string error_message = e.what();
+    return absl::InternalError(
+        absl::StrFormat("CpuCallback error: %s", error_message));
+  };
   nb::object result_object;
   try {
     result_object = callable_(*nb::borrow<nb::args>(args));
   } catch (nb::python_error& e) {
-    PyErr_Clear();
-    std::string error_message = e.what();
-    return absl::InternalError(
-        absl::StrFormat("CpuCallback error: %s", error_message));
+    return py_error_to_status(e);
   }
   if (!PyTuple_Check(result_object.ptr())) {
     return absl::InternalError(
@@ -158,7 +161,12 @@ absl::StatusOr<nb::tuple> CpuCallback::CallInternal(nb::tuple args) {
       }
       continue;
     }
-    nb_numpy_ndarray array = nb_numpy_ndarray::ensure(output);
+    nb_numpy_ndarray array;
+    try {
+      array = nb_numpy_ndarray::from_any(output, NPY_ARRAY_ENSUREARRAY);
+    } catch (nb::python_error& e) {
+      return py_error_to_status(e);
+    }
     static_assert(sizeof(ssize_t) == sizeof(int64_t),
                   "Expected ssize_t to be of equal size to int64_t");
     absl::Span<int64_t const> dims(

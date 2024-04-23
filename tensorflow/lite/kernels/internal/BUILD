@@ -1007,6 +1007,7 @@ cc_library(
         "//tensorflow/lite/kernels:cpu_backend_context",
         "//tensorflow/lite/kernels:cpu_backend_gemm",
         "//tensorflow/lite/kernels:op_macros",
+        "@com_google_absl//absl/base:prefetch",
         "@ruy//ruy/profiler:instrumentation",
     ],
 )
@@ -1507,9 +1508,7 @@ filegroup(
     srcs = glob([
         "optimized/*.h",
     ]),
-    visibility = [
-        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
-    ],
+    visibility = ["//visibility:private"],
 )
 
 filegroup(
@@ -1517,9 +1516,7 @@ filegroup(
     srcs = glob([
         "reference/*.h",
     ]),
-    visibility = [
-        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
-    ],
+    visibility = ["//visibility:private"],
 )
 
 filegroup(
@@ -1527,9 +1524,7 @@ filegroup(
     srcs = glob([
         "*.h",
     ]),
-    visibility = [
-        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
-    ],
+    visibility = ["//visibility:private"],
 )
 
 transitive_hdrs(

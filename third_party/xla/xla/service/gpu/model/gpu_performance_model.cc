@@ -120,8 +120,12 @@ GpuPerformanceModel::EstimateRunTimeForInstruction(
   VLogResult(flops, bytes_read, bytes_written, num_threads, compute_time,
              read_time, write_time, exec_time);
 
-  return {flops,      bytes_written, num_threads, read_time,
-          write_time, compute_time,  exec_time};
+  EstimateRunTimeData runtime_data = {flops,     bytes_written, num_threads,
+                                      read_time, write_time,    compute_time,
+                                      exec_time};
+  VLOG(3) << "Runtime data for HLO: " << instr->name() << "\n"
+          << runtime_data.ToString();
+  return runtime_data;
 }
 
 /*static*/ EstimateRunTimeData

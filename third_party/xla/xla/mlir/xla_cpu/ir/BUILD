@@ -1,10 +1,10 @@
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
-load("@local_tsl//tsl:tsl.bzl", "internal_visibility")
+load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
+load("//xla/tsl:tsl.bzl", "internal_visibility")
 load(
-    "@local_tsl//tsl:tsl.default.bzl",
+    "//xla/tsl:tsl.default.bzl",
     "get_compatible_with_portable",
 )
-load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -104,6 +104,7 @@ cc_library(
         "//xla/mlir_hlo",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:BufferizationDialect",
+        "@llvm-project//mlir:BufferizationInterfaces",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:InferTypeOpInterface",
     ],

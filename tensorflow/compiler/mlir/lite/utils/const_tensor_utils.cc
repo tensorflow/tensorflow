@@ -345,22 +345,41 @@ StatusOr<mlir::ElementsAttr> ConvertFloatBuffer(
   switch (elem_type.getIntOrFloatBitWidth()) {
     case 16: {
       assert(bytes_len % 2 == 0);
-      assert(elem_type.isF16());
+      // Supports both BF16 and F16.
+      assert(elem_type.isF16() || elem_type.isBF16());
       int elem_count = bytes_len / 2;
-      std::vector<Eigen::half> values;
-      values.reserve(elem_count);
 
-      const char* data = reinterpret_cast<const char*>(buffer.data());
+      if (elem_type.isF16()) {
+        std::vector<Eigen::half> values;
+        values.reserve(elem_count);
 
-      for (int i = 0; i < elem_count; i++) {
-        uint16_t bit_repr =
-            llvm::support::endian::readNext<uint16_t, llvm::endianness::native,
-                                            llvm::support::unaligned>(data);
-        values.push_back(Eigen::numext::bit_cast<Eigen::half>(bit_repr));
+        const char* data = reinterpret_cast<const char*>(buffer.data());
+
+        for (int i = 0; i < elem_count; i++) {
+          uint16_t bit_repr = llvm::support::endian::readNext<
+              uint16_t, llvm::endianness::native, llvm::support::unaligned>(
+              data);
+          values.push_back(Eigen::numext::bit_cast<Eigen::half>(bit_repr));
+        }
+
+        return mlir::ElementsAttr(
+            DenseElementsAttr::get(shaped_type, ArrayRef<Eigen::half>(values)));
+      } else {
+        std::vector<Eigen::bfloat16> values;
+        values.reserve(elem_count);
+
+        const char* data = reinterpret_cast<const char*>(buffer.data());
+
+        for (int i = 0; i < elem_count; i++) {
+          uint16_t bit_repr = llvm::support::endian::readNext<
+              uint16_t, llvm::endianness::native, llvm::support::unaligned>(
+              data);
+          values.push_back(Eigen::numext::bit_cast<Eigen::bfloat16>(bit_repr));
+        }
+
+        return mlir::ElementsAttr(DenseElementsAttr::get(
+            shaped_type, ArrayRef<Eigen::bfloat16>(values)));
       }
-
-      return mlir::ElementsAttr(
-          DenseElementsAttr::get(shaped_type, ArrayRef<Eigen::half>(values)));
     }
     case 32: {
       assert(bytes_len % 4 == 0);

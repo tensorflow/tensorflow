@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/c/tf_datatype.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_helper.h"
+#include "xla/tsl/c/tsl_status_internal.h"
 #include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -35,7 +36,6 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/platform/types.h"
-#include "tsl/c/tsl_status_internal.h"
 
 using tensorflow::dyn_cast;
 using tensorflow::string;

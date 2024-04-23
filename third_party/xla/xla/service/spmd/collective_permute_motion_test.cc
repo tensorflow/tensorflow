@@ -68,6 +68,40 @@ TEST_F(CollectivePermuteMotionTest, SimpleMove) {
   EXPECT_THAT(output, op::Multiply(select, select));
 }
 
+TEST_F(CollectivePermuteMotionTest, NoCollectivePermute) {
+  absl::string_view hlo_string = R"(
+  HloModule test
+  body {
+    loop_var = (s32[], f32[], f32[]) parameter(0)
+    constant.1 = s32[] constant(1)
+    gte0 = s32[] get-tuple-element(loop_var), index=0
+    add = s32[] add(gte0, constant.1)
+    gte1 = f32[] get-tuple-element(loop_var), index=1
+    constant.4 = f32[] constant(4.0)
+    ROOT tuple = (s32[], f32[], f32[]) tuple(add, constant.4, gte1)
+  }
+  cond {
+    loop_var = (s32[], f32[], f32[]) parameter(0)
+    gte.cond = s32[] get-tuple-element(loop_var), index=0
+    constant.3 = s32[] constant(5)
+    ROOT lt = pred[] compare(gte.cond, constant.3), direction=LT
+  }
+  ENTRY  main {
+    constant.2 = s32[] constant(0)
+    param = f32[] parameter(0)
+    param.1 = f32[] parameter(1)
+    tuple.1 = (s32[], f32[], f32[]) tuple(constant.2, param, param.1)
+    while = (s32[], f32[], f32[]) while(tuple.1), condition=cond, body=body
+    ROOT result = s32[] get-tuple-element(while), index=0
+  }
+)";
+  // Test that the pass does not crash if there is no collective permute
+  // (but other conditions in FindMovableClusterAtBodyRoot are satisfied).
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
+  CollectivePermuteMotion pass;
+  ASSERT_FALSE(pass.Run(&*module).value());
+}
+
 TEST_F(CollectivePermuteMotionTest, MoveWithElementwise) {
   absl::string_view hlo_string = R"(
   HloModule test

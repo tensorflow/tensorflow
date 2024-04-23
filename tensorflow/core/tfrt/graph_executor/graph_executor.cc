@@ -61,6 +61,7 @@ limitations under the License.
 #include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
+#include "tensorflow/core/lib/monitoring/gauge.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/status.h"
@@ -132,6 +133,12 @@ StepId GetNextStepId() {
   return gen.GetNextStepId();
 }
 
+auto* graph_executor_mode = monitoring::Gauge<std::string, 2>::New(
+    "/tfrt/graph_executor/mode",
+    "Record the total number of imported savedmodel using different graph "
+    "executor modes (BEF vs MLRT interpreter)",
+    "model_name", "model_version");
+
 }  // namespace
 
 tensorflow::Status RunMlrtFunction(
@@ -201,7 +208,7 @@ tensorflow::Status RunMlrtFunction(
     outputs->push_back(std::move(mlrt_output.Get<FallbackTensor>().tensor()));
   }
 
-  return tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 absl::StatusOr<std::unique_ptr<RequestInfo>> CreateRequestInfo(
@@ -313,7 +320,7 @@ tensorflow::Status GraphExecutionRunOnFunction(
   // will add TraceMeProducer and TraceMeConsumer to connect async tasks.
   tsl::profiler::TraceMe traceme(
       [request_id, signature_name, &options, symbol_uids] {
-        return tensorflow::profiler::TraceMeEncode(
+        return tsl::profiler::TraceMeEncode(
             "TfrtModelRun",
             {{"_r", 1},
              {"id", request_id},
@@ -496,14 +503,16 @@ absl::StatusOr<std::unique_ptr<GraphExecutor>> GraphExecutor::Create(
     // Overrides cost_analysis_options.
     options.cost_analysis_options.version = Options::CostAnalysisOptions::kOnce;
   }
-
   TfrtGraphExecutionState::Options graph_execution_state_options;
   graph_execution_state_options.run_placer_grappler_on_functions =
       options.run_placer_grappler_on_functions;
 
   options.compile_options.fuse_get_resource_ops_in_hoisting =
       !options.enable_mlrt;
-
+  graph_executor_mode
+      ->GetCell(options.model_metadata.name(),
+                absl::StrCat(options.model_metadata.version()))
+      ->Set(options.enable_mlrt ? "mlrt" : "bef");
   TF_ASSIGN_OR_RETURN(
       auto graph_execution_state,
       TfrtGraphExecutionState::Create(graph_execution_state_options,
@@ -655,7 +664,7 @@ tensorflow::Status GraphExecutor::Run(
   absl::Duration elapsed_duration = end - now;
   loaded_client_graph.latency_sampler()->Add(
       absl::ToDoubleMicroseconds(elapsed_duration));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 tensorflow::Status GraphExecutor::Extend(const GraphDef& graph) {
@@ -871,7 +880,7 @@ tensorflow::Status GraphExecutor::InitBef(
   TF_RETURN_IF_ERROR(
       RunRuntimeInitializer(exec_ctx, bef_file, kResourceInitFunction));
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 tensorflow::Status GraphExecutor::InitBytecode(
@@ -904,7 +913,7 @@ tensorflow::Status GraphExecutor::InitBytecode(
         &loaded_graph->sync_resource_state()));
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::StatusOr<std::reference_wrapper<GraphExecutor::LoadedClientGraph>>
@@ -956,7 +965,7 @@ GraphExecutor::GetOrCreateLoadedClientGraph(
     input_nodes[input_name] = array_info;
   }
   ClientGraph client_graph{
-      joined_name,
+      run_options.name.empty() ? joined_name : run_options.name,
       std::move(input_nodes),
       {output_tensor_names.begin(), output_tensor_names.end()},
       {target_tensor_names.begin(), target_tensor_names.end()}};
@@ -1086,7 +1095,7 @@ Status GraphExecutor::LoadedClientGraph::UpdateCost(
     // add a test kernel that examines the cost.
     executable_context_ = std::move(new_executable_context);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 GraphExecutor::LoadedClientGraph::LoadedClientGraph(
@@ -1120,7 +1129,7 @@ GraphExecutor::LoadedClientGraph::LoadedClientGraph(
                                    tsl::core::RefCountPtr<Rendezvous>* r) {
               *r = tsl::core::RefCountPtr<Rendezvous>(
                   new IntraProcessRendezvous(device_mgr));
-              return OkStatus();
+              return absl::OkStatus();
             }}),
       latency_sampler_(latency_sampler) {
   const auto& options = graph_executor_->options().cost_analysis_options;

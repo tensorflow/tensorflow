@@ -16,14 +16,8 @@ limitations under the License.
 #ifndef XLA_TEST_HELPERS_H_
 #define XLA_TEST_HELPERS_H_
 
-#include <list>
-#include <vector>
-
-#include "absl/strings/string_view.h"
+#include "xla/status.h"
 #include "xla/statusor.h"
-#include "xla/types.h"
-#include "tsl/platform/protobuf.h"
-#include "tsl/platform/regexp.h"
 #include "tsl/platform/test.h"
 
 // This module contains a minimal subset of gmock functionality just
@@ -54,18 +48,18 @@ inline const Status& GetStatus(const StatusOr<T>& status) {
 // Macros for testing the results of functions that return Status or
 // StatusOr<T> (for any type T).
 #define EXPECT_IS_OK(expression) \
-  EXPECT_EQ(::tsl::OkStatus(),   \
+  EXPECT_EQ(::absl::OkStatus(),  \
             xla::testing::internal_status::GetStatus(expression))
 #define EXPECT_IS_NOT_OK(expression) \
-  EXPECT_NE(::tsl::OkStatus(),       \
+  EXPECT_NE(::absl::OkStatus(),      \
             xla::testing::internal_status::GetStatus(expression))
 #undef ASSERT_IS_OK
 #define ASSERT_IS_OK(expression) \
-  ASSERT_EQ(::tsl::OkStatus(),   \
+  ASSERT_EQ(::absl::OkStatus(),  \
             xla::testing::internal_status::GetStatus(expression))
 #undef ASSERT_IS_NOT_OK
 #define ASSERT_IS_NOT_OK(expression) \
-  ASSERT_NE(::tsl::OkStatus(),       \
+  ASSERT_NE(::absl::OkStatus(),      \
             xla::testing::internal_status::GetStatus(expression))
 
 #endif  // XLA_TEST_HELPERS_H_

@@ -24,7 +24,6 @@ limitations under the License.
 #include <utility>
 
 #include "absl/base/call_once.h"
-#include "absl/container/fixed_array.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -44,6 +43,10 @@ limitations under the License.
 #include "tsl/lib/math/math_util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
+
+#ifdef GOOGLE_CUDA
+#include "xla/stream_executor/cuda/cuda_asm_compiler.h"
+#endif
 
 namespace stream_executor {
 
@@ -352,7 +355,8 @@ absl::StatusOr<RedzoneCheckStatus> RedzoneAllocator::CheckRedzones() const {
   auto* kernel_ptr = &loaded_kernel;
 #endif  // GOOGLE_CUDA
 
-  auto out_param = executor->AllocateOwnedScalar<uint64_t>();
+  stream_executor::ScopedDeviceMemory<uint64_t> out_param(
+      executor, executor->AllocateScalar<uint64_t>());
   TF_RETURN_IF_ERROR(stream_->MemZero(out_param.ptr(), sizeof(uint64_t)));
 
   for (const auto& buf_and_size : allocated_buffers_) {

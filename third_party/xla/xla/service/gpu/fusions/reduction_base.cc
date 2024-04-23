@@ -319,10 +319,9 @@ ReductionInfo ReductionInfo::Create(const HloFusionAnalysis& analysis) {
 std::optional<IndexingMap> ReductionInfo::ComputeThreadIdToOutputIndexing(
     int64_t root_index, mlir::MLIRContext* ctx) const {
   if (!groups_.is_reduction_root[root_index]) {
-    // Non-transpose roots are elementwise by definition.
+    // Non-reduction roots are elementwise by definition.
     return ComputeThreadIdToInputIndexing(root_index, 0, ctx);
   }
-  auto* root = analysis_.fusion_roots()[root_index];
   auto* hero = analysis_.fusion_heroes()[root_index];
 
   auto block_offsets = GetBlockOffsetsForTiling(tiling_, ctx);
@@ -332,12 +331,12 @@ std::optional<IndexingMap> ReductionInfo::ComputeThreadIdToOutputIndexing(
 
   auto physical_shape = ShapeUtil::DeleteDimensions(hero->dimensions(),
                                                     hero->operand(0)->shape());
-  std::vector<Range> dimension_ranges{
-      {0, tiling_.GetNumThreadsPerBlock() - 1},
+  std::vector<DimVar> dimension_ranges{
+      {{0, tiling_.GetNumThreadsPerBlock() - 1}},
       {},
       {},
-      {0, tiling_.GetNumBlocks() - 1},
-      {0, static_cast<int64_t>(groups_.grouped_roots.size() - 1)},
+      {{0, tiling_.GetNumBlocks() - 1}},
+      {{0, static_cast<int64_t>(groups_.grouped_roots.size() - 1)}},
       {},
   };
 
@@ -349,13 +348,13 @@ std::optional<IndexingMap> ReductionInfo::ComputeThreadIdToOutputIndexing(
   constexpr int kColMinorKept = ReductionDimensions::kColMinorKeptDimension;
   constexpr int kColReduced = ReductionDimensions::kColReducedDimension;
 
-  auto physical_index = [&]() {
+  auto map = [&]() {
     if (is_row_reduction_) {
       IndexingMap linear_index(
           mlir::AffineMap::get(
               6, 0, block_offsets.getResult(kRowKept) + thread_ids[kRowKept],
               ctx),
-          dimension_ranges, {});
+          dimension_ranges, /*range_vars=*/{}, /*rt_vars=*/{});
       int rows_per_warp = GetRowsPerWarp();
       if (rows_per_warp > 1) {
         linear_index.AddConstraint(
@@ -376,7 +375,7 @@ std::optional<IndexingMap> ReductionInfo::ComputeThreadIdToOutputIndexing(
             {block_offsets.getResult(kColMajorKept),
              block_offsets.getResult(kColMinorKept) + thread_ids[kColReduced]},
             ctx),
-        dimension_ranges, {});
+        dimension_ranges, /*range_vars=*/{}, /*rt_vars=*/{});
 
     projected_index.AddConstraint(
         mlir::getAffineDimExpr(
@@ -397,10 +396,6 @@ std::optional<IndexingMap> ReductionInfo::ComputeThreadIdToOutputIndexing(
                           tiling_.GetXlaShape()),
                       physical_shape, ctx));
   }();
-
-  auto map = ComposeIndexingMaps(
-      physical_index,
-      GetBitcastMap(FirstShape(hero->shape()), FirstShape(root->shape()), ctx));
 
   int group_index = groups_.group_id_per_root[root_index];
   map.AddConstraint(

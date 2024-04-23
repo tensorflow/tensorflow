@@ -31,17 +31,17 @@ namespace profiler {
 
 // Note that tensorflow/tools/def_file_filter/symbols_pybind.txt is incompatible
 // with absl::string_view.
-Status ProfileGrpc(const std::string& service_address,
-                   const tensorflow::ProfileRequest& request,
-                   tensorflow::ProfileResponse* response);
+absl::Status ProfileGrpc(const std::string& service_address,
+                         const tensorflow::ProfileRequest& request,
+                         tensorflow::ProfileResponse* response);
 
-Status NewSessionGrpc(const std::string& service_address,
-                      const tensorflow::NewProfileSessionRequest& request,
-                      tensorflow::NewProfileSessionResponse* response);
+absl::Status NewSessionGrpc(const std::string& service_address,
+                            const tensorflow::NewProfileSessionRequest& request,
+                            tensorflow::NewProfileSessionResponse* response);
 
-Status MonitorGrpc(const std::string& service_address,
-                   const tensorflow::MonitorRequest& request,
-                   tensorflow::MonitorResponse* response);
+absl::Status MonitorGrpc(const std::string& service_address,
+                         const tensorflow::MonitorRequest& request,
+                         tensorflow::MonitorResponse* response);
 
 class RemoteProfilerSession {
  public:
@@ -64,7 +64,7 @@ class RemoteProfilerSession {
   // whichever is first. Subsequent calls after the first will yield nullptr and
   // an error status.
   std::unique_ptr<tensorflow::ProfileResponse> WaitForCompletion(
-      Status& out_status);
+      absl::Status& out_status);
 
  private:
   explicit RemoteProfilerSession(
@@ -78,7 +78,7 @@ class RemoteProfilerSession {
   //  evaluated lazily at WaitForCompletion() time.
   void ProfileAsync();
 
-  Status status_on_completion_;
+  absl::Status status_on_completion_;
   std::unique_ptr<tensorflow::ProfileResponse> response_;
   // Client address and connection attributes.
   std::string service_address_;

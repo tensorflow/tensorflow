@@ -24,7 +24,6 @@ limitations under the License.
 
 #include "absl/algorithm/algorithm.h"
 #include "absl/algorithm/container.h"
-#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -67,43 +66,6 @@ using hlo_query::ContainsInstrWithOpcode;
 const int kUnrollTripCountThreshold = 64;
 const int kUnrollInstructionCountThreshold = 800;
 const int kUnrollExpandFactorThreshold = 10000;
-
-// The following sequence of passes are necessary to prepare loops for
-// unrolling. Failure to run these passes will prevent unroller from unrolling
-// loops that would have been otherwise unrollable.
-//
-// Instead of placing these passes in compiler, they are placed
-// here to indicate explicit dependency to these passes.
-StatusOr<bool> PrepareModuleForUnrolling(
-    HloModule* module,
-    const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  bool changed = false;
-  TF_ASSIGN_OR_RETURN(
-      bool applied_cse,
-      HloCSE{/*is_layout_sensitive=*/true}.Run(module, execution_threads));
-  if (applied_cse) {
-    changed = true;
-    VLOG(3) << "Applied hlo cse to module " << module->name();
-  }
-
-  TF_ASSIGN_OR_RETURN(bool applied_tuple_simplifier,
-                      TupleSimplifier{}.Run(module, execution_threads));
-  if (applied_tuple_simplifier) {
-    changed = true;
-    VLOG(3) << "Applied tuple simplifier to module " << module->name();
-  }
-
-  // We apply constant sinking to fix point.
-  HloPassFix<WhileLoopConstantSinking> constant_sinking(
-      /*sink_broadcast_of_constants=*/true);
-  TF_ASSIGN_OR_RETURN(bool applied_constant_sinking,
-                      constant_sinking.Run(module, execution_threads));
-  if (applied_constant_sinking) {
-    changed = true;
-    VLOG(3) << "Applied constant sinking to module " << module->name();
-  }
-  return changed;
-}
 
 // A utility function that decides whether a loop is unrollable or not.
 std::optional<WhileLoopConfig> IsLoopUnrollable(HloInstruction* while_op) {
@@ -172,7 +134,7 @@ std::optional<WhileLoopConfig> IsLoopUnrollable(HloInstruction* while_op) {
   HloEvaluator evaluator(/*max_loop_iterations=*/0);
   const HloInstruction* while_init = while_op->operand(0);
   const HloInstruction* indvar_init = while_init->operand(*indvar_tuple_idx);
-  StatusOr<Literal> indvar_init_result = evaluator.Evaluate(indvar_init);
+  absl::StatusOr<Literal> indvar_init_result = evaluator.Evaluate(indvar_init);
   if (!indvar_init_result.ok()) {
     VLOG(2) << "Couldn't evaluate induction variable init, "
             << indvar_init_result.status() << ", " << indvar_init->ToString();
@@ -213,9 +175,10 @@ std::unique_ptr<HloInstruction> GetConstantWithPrimitiveType(PrimitiveType type,
 
 // Helper function that replaces a single iteration of a while loop with
 // induction variable equal to induction_value.
-StatusOr<std::unique_ptr<HloComputation>> UnrollSingleIterationOfTrivialLoop(
-    HloInstruction* while_op, const int64_t indvar_idx,
-    const int64_t induction_value) {
+absl::StatusOr<std::unique_ptr<HloComputation>>
+UnrollSingleIterationOfTrivialLoop(HloInstruction* while_op,
+                                   const int64_t indvar_idx,
+                                   const int64_t induction_value) {
   // We clone the body since we are changing the computation.
   std::unique_ptr<HloComputation> while_body_clone =
       while_op->while_body()->Clone(absl::StrCat(induction_value));
@@ -367,8 +330,9 @@ absl::Status InitialFeasibilityCheck(HloInstruction* while_op,
   return absl::OkStatus();
 }
 
-StatusOr<bool> UnrollInternal(HloInstruction* while_op, WhileLoopConfig config,
-                              int64_t unroll_factor) {
+absl::StatusOr<bool> UnrollInternal(HloInstruction* while_op,
+                                    WhileLoopConfig config,
+                                    int64_t unroll_factor) {
   TF_RETURN_IF_ERROR(InitialFeasibilityCheck(while_op, config, unroll_factor));
 
   VLOG(3) << "Unrolling while instruction " << while_op->ToShortString()
@@ -401,9 +365,9 @@ StatusOr<bool> UnrollInternal(HloInstruction* while_op, WhileLoopConfig config,
   return true;
 }
 
-StatusOr<bool> UnrollInternalWrapped(HloInstruction* while_op,
-                                     WhileLoopConfig config,
-                                     int64_t unroll_factor) {
+absl::StatusOr<bool> UnrollInternalWrapped(HloInstruction* while_op,
+                                           WhileLoopConfig config,
+                                           int64_t unroll_factor) {
   TF_RETURN_IF_ERROR(InitialFeasibilityCheck(while_op, config, unroll_factor));
 
   VLOG(3) << "Unrolling (wrapped) while instruction "
@@ -416,7 +380,7 @@ StatusOr<bool> UnrollInternalWrapped(HloInstruction* while_op,
 
   auto body_builder =
       HloComputation::Builder(absl::StrCat("unrolled-body-", while_op->name()));
-  StatusOr<HloInstruction*> p = body_builder.AddParameter(
+  absl::StatusOr<HloInstruction*> p = body_builder.AddParameter(
       while_op->while_body()->parameter_instruction(0)->Clone());
 
   std::vector<HloInstruction*> call_operands = {p.value()};
@@ -452,7 +416,40 @@ StatusOr<bool> UnrollInternalWrapped(HloInstruction* while_op,
 
 };  // namespace
 
-absl::flat_hash_map<HloInstruction*, WhileLoopConfig> GetUnrollableLoops(
+absl::StatusOr<bool> PrepareModuleForUnrolling(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  bool changed = false;
+  TF_ASSIGN_OR_RETURN(
+      bool applied_cse,
+      HloCSE(/*is_layout_sensitive=*/true, /*only_fusion_computations=*/false,
+             /*ignore_control_dependencies=*/false, /*only_scalars=*/true)
+          .Run(module, execution_threads));
+  if (applied_cse) {
+    changed = true;
+    VLOG(3) << "Applied hlo cse to module " << module->name();
+  }
+  TF_ASSIGN_OR_RETURN(bool applied_tuple_simplifier,
+                      TupleSimplifier{}.Run(module, execution_threads));
+  if (applied_tuple_simplifier) {
+    changed = true;
+    VLOG(3) << "Applied tuple simplifier to module " << module->name();
+  }
+
+  // We apply constant sinking to fix point.
+  HloPassFix<WhileLoopConstantSinking> constant_sinking(
+      /*sink_broadcast_of_constants=*/true,
+      /*sink_only_scalar_constants=*/true);
+  TF_ASSIGN_OR_RETURN(bool applied_constant_sinking,
+                      constant_sinking.Run(module, execution_threads));
+  if (applied_constant_sinking) {
+    changed = true;
+    VLOG(3) << "Applied constant sinking to module " << module->name();
+  }
+  return changed;
+}
+
+std::vector<std::pair<HloInstruction*, WhileLoopConfig>> GetUnrollableLoops(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   // Processing the while loops in the reverse topological order. If the body
@@ -463,18 +460,18 @@ absl::flat_hash_map<HloInstruction*, WhileLoopConfig> GetUnrollableLoops(
                     HloPredicateIsOp<HloOpcode::kWhile>);
   }
 
-  absl::flat_hash_map<HloInstruction*, WhileLoopConfig> while_loop_configs;
+  std::vector<std::pair<HloInstruction*, WhileLoopConfig>> while_loop_configs;
   for (HloInstruction* instr : all_while_ops) {
     std::optional<WhileLoopConfig> config = IsLoopUnrollable(instr);
     if (config.has_value()) {
-      while_loop_configs[instr] = *config;
+      while_loop_configs.emplace_back(instr, config.value());
     }
   }
   return while_loop_configs;
 }
 
-StatusOr<bool> Unroll(HloInstruction* while_op, int64_t unroll_factor,
-                      bool wrap_in_trivial_loop) {
+absl::StatusOr<bool> Unroll(HloInstruction* while_op, int64_t unroll_factor,
+                            bool wrap_in_trivial_loop) {
   bool changed = false;
   HloModule* module = while_op->GetModule();
 
@@ -506,7 +503,7 @@ StatusOr<bool> Unroll(HloInstruction* while_op, int64_t unroll_factor,
   return unrolled;
 }
 
-StatusOr<bool> WhileLoopUnroller::Run(
+absl::StatusOr<bool> WhileLoopUnroller::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   // TODO(b/288130138) For now, we only support full unrolling. Will add partial
@@ -533,8 +530,8 @@ StatusOr<bool> WhileLoopUnroller::Run(
   // Gather a preliminary vector of all the while ops that we think we can
   // unroll. We do this ahead of time so we don't have to worry about mutating
   // the lists of computations or instructions while we iterate.
-  absl::flat_hash_map<HloInstruction*, WhileLoopConfig> unrollable_while_ops =
-      GetUnrollableLoops(module, execution_threads);
+  std::vector<std::pair<HloInstruction*, WhileLoopConfig>>
+      unrollable_while_ops = GetUnrollableLoops(module, execution_threads);
 
   VLOG(3) << "Number of while instructions in the module to unroll: "
           << unrollable_while_ops.size();

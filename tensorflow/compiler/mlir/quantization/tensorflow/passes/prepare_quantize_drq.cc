@@ -45,7 +45,7 @@ namespace {
 
 using QuantizationUnit = std::pair<Operation*, int>;
 using QuantizationUnits = llvm::SetVector<QuantizationUnit>;
-using ::mlir::quant::OpSet;
+using ::tensorflow::quantization::OpSet;
 
 // Applies prepare quantization on the model in TF dialect for dynamic range
 // quantization case.

@@ -44,6 +44,10 @@ inline const char* RocmName() {
   static constexpr char kRocmName[] = "rocm";
   return kRocmName;
 }
+inline const char* SyclName() {
+  static constexpr char kSyclName[] = "sycl";
+  return kSyclName;
+}
 inline const char* TpuName() {
   static constexpr char kTpuName[] = "tpu";
   return kTpuName;
@@ -59,6 +63,10 @@ inline PjRtPlatformId CudaId() {
 inline PjRtPlatformId RocmId() {
   static const PjRtPlatformId kRocmId = tsl::Fingerprint64(RocmName());
   return kRocmId;
+}
+inline PjRtPlatformId SyclId() {
+  static const PjRtPlatformId kSyclId = tsl::Fingerprint64(SyclName());
+  return kSyclId;
 }
 inline PjRtPlatformId TpuId() {
   static const PjRtPlatformId kTpuId = tsl::Fingerprint64(TpuName());
@@ -131,6 +139,15 @@ class PjRtTopologyDescription {
   // Returns vendor specific attributes about the topology.
   virtual const absl::flat_hash_map<std::string, PjRtDeviceAttribute>&
   Attributes() const = 0;
+
+  // Returns the default device layout for a buffer with `element_type` and
+  // `dims`. The default layout is a platform-specific layout used when no other
+  // layout is specified, e.g. for host-to-device transfers. When compiling, the
+  // default layout is used for program arguments and outputs unless
+  // user-specified or compiler-chosen layouts are requested via the
+  // "mhlo.layout_mode" attribute.
+  virtual StatusOr<Layout> GetDefaultLayout(
+      PrimitiveType element_type, absl::Span<const int64_t> dims) const = 0;
 };
 
 // Abstract interface that all registered compilers must implement.

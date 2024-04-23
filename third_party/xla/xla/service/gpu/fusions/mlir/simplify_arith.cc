@@ -20,25 +20,11 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/base/optimization.h"
-#include "llvm/ADT/SmallVector.h"
-#include "llvm/Support/Casting.h"
-#include "mlir/Dialect/Affine/IR/AffineOps.h"  // from @llvm-project
-#include "mlir/Dialect/Affine/LoopUtils.h"  // from @llvm-project
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
-#include "mlir/Dialect/Arith/Utils/Utils.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/SCF/IR/SCF.h"  // from @llvm-project
 #include "mlir/Dialect/Utils/StaticValueUtils.h"  // from @llvm-project
-#include "mlir/IR/AffineExpr.h"  // from @llvm-project
-#include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
-#include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
-#include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "xla/service/gpu/fusions/mlir/passes.h"
@@ -52,8 +38,8 @@ namespace gpu {
 
 namespace {
 
-Range::ComparisonResult EvaluateCmpI(mlir::arith::CmpIPredicate pred, Range lhs,
-                                     int64_t rhs) {
+Interval::ComparisonResult EvaluateCmpI(mlir::arith::CmpIPredicate pred,
+                                        Interval lhs, int64_t rhs) {
   switch (pred) {
     case mlir::arith::CmpIPredicate::eq:
       return lhs == rhs;
@@ -84,7 +70,7 @@ struct RewriteCmpI : mlir::OpRewritePattern<mlir::arith::CmpIOp> {
     auto rhs = mlir::getConstantIntValue(op.getRhs());
     auto lhs = GetRange(op.getLhs());
     if (lhs && rhs) {
-      Range::ComparisonResult result =
+      Interval::ComparisonResult result =
           EvaluateCmpI(op.getPredicate(), *lhs, *rhs);
       if (result != std::nullopt) {
         rewriter.replaceOpWithNewOp<mlir::arith::ConstantIntOp>(

@@ -22,20 +22,15 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "ruy/denormal.h"  // from @ruy
-#include "tensorflow/lite/allocation.h"
 #include "tensorflow/lite/c/common_internal.h"
-#include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/profiler.h"
 #include "tensorflow/lite/core/async/async_signature_runner.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/core/subgraph.h"
-#include "tensorflow/lite/external_cpu_backend_context.h"
-#include "tensorflow/lite/minimal_logging.h"
-#include "tensorflow/lite/stderr_reporter.h"
-#include "tensorflow/lite/util.h"
+#include "tensorflow/lite/interpreter_options.h"
+#include "tensorflow/lite/profiling/root_profiler.h"
 
 namespace tflite {
 

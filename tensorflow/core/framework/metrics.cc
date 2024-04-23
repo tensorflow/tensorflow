@@ -275,14 +275,12 @@ auto* tf_data_filename_counter = tsl::monitoring::Counter<2>::New(
 
 auto* tf_data_file_logger_attempts_counter = tsl::monitoring::Counter<0>::New(
     "/tensorflow/data/file_logger_attempts",
-    "The number of times a file logger attempted to log "
-    "filenames.");
+    "The number of times a file logger attempted to log filenames.");
 
-auto* tf_data_file_logger_errors_counter = tsl::monitoring::Counter<1>::New(
+auto* tf_data_file_logger_errors_counter = tsl::monitoring::Counter<2>::New(
     "/tensorflow/data/file_logger_errors",
-    "The number of times file logger got error of this type occurred with "
-    "this ",
-    "status_code");
+    "The number of times file logger got error of this type and message.",
+    "error_code", "error_message");
 
 auto* tf_data_file_logger_attempted_num_files_counter =
     tsl::monitoring::Counter<0>::New(
@@ -291,11 +289,11 @@ auto* tf_data_file_logger_attempted_num_files_counter =
         "logger.");
 
 auto* tf_data_file_logger_errors_num_files_counter =
-    tsl::monitoring::Counter<1>::New(
+    tsl::monitoring::Counter<2>::New(
         "/tensorflow/data/file_logger_errors_num_files",
-        "The number of files that encountered errors of this type and code "
+        "The number of files that encountered errors of this type and message "
         "during logging by the file logger.",
-        "status_code");
+        "error_code", "error_message");
 
 auto* tf_data_model_gauge =
     tsl::monitoring::Gauge<std::function<std::string()>, 1>::New(
@@ -343,7 +341,7 @@ auto* tf_data_error = tsl::monitoring::Counter<2>::New(
 
 auto* tf_data_framework_type = tsl::monitoring::Counter<1>::New(
     "/tensorflow/data/framework_type",
-    "The framework type used to build the tf.data.Dataset.", "framework_type");
+    "The framework type used to build the tf.data.Dataset.", "name");
 
 auto* parse_dense_feature_counter = tsl::monitoring::Counter<0>::New(
     "/tensorflow/data/dense_feature",
@@ -445,10 +443,10 @@ auto* eager_client_error_counter = tsl::monitoring::Counter<2>::New(
     "Count the errors in eager client as a central place.", "error_source",
     "error_type");
 
-auto* mlir_bridge_first_phase_counter = tsl::monitoring::Counter<4>::New(
+auto* mlir_bridge_first_phase_counter = tsl::monitoring::Counter<5>::New(
     "/tensorflow/core/tf_mlir_bridge_first_phase_count",
-    "Tracks processing state in first phase of mlir bridge", "device",
-    "version", "fallback", "result");
+    "Tracks processing state in first phase of mlir bridge", "bridge",
+    "version", "device", "fallback", "result");
 
 auto* mlir_second_phase_count = tensorflow::monitoring::Counter<1>::New(
     "/tensorflow/core/tf2xla/api/v2/phase2_compilation_status" /*metric_name*/,
@@ -698,8 +696,10 @@ void RecordTFDataFileLoggerAttempts() {
   tf_data_file_logger_attempts_counter->GetCell()->IncrementBy(1);
 }
 
-void RecordTFDataFileLoggerErrors(error::Code code) {
-  tf_data_file_logger_errors_counter->GetCell(error::Code_Name(code))
+void RecordTFDataFileLoggerErrors(error::Code error_code,
+                                  const string& error_message) {
+  tf_data_file_logger_errors_counter
+      ->GetCell(error::Code_Name(error_code), error_message)
       ->IncrementBy(1);
 }
 
@@ -708,8 +708,11 @@ void RecordTFDataFileLoggerAttemptedNumFiles(size_t num_files) {
       num_files);
 }
 
-void RecordTFDataFileLoggerErrorsNumFiles(size_t num_files, error::Code code) {
-  tf_data_file_logger_errors_num_files_counter->GetCell(error::Code_Name(code))
+void RecordTFDataFileLoggerErrorsNumFiles(size_t num_files,
+                                          error::Code error_code,
+                                          const string& error_message) {
+  tf_data_file_logger_errors_num_files_counter
+      ->GetCell(error::Code_Name(error_code), error_message)
       ->IncrementBy(num_files);
 }
 
@@ -945,14 +948,16 @@ void TestDelta::Reset() { last_value_ = cell_->value(); }
 
 int64 TestDelta::Get() { return cell_->value() - last_value_; }
 
-void UpdateTfMlirBridgeFirstPhaseCounter(const std::string& device_type,
+void UpdateTfMlirBridgeFirstPhaseCounter(const std::string& bridge_type,
                                          const std::string& bridge_version,
+                                         const std::string& device_type,
                                          bool fallback_enabled,
                                          const std::string& result) {
   std::string fallback_status =
       fallback_enabled ? "fallback_enabled" : "fallback_disabled";
   mlir_bridge_first_phase_counter
-      ->GetCell(device_type, bridge_version, fallback_status, result)
+      ->GetCell(bridge_type, bridge_version, device_type, fallback_status,
+                result)
       ->IncrementBy(1);
 }
 

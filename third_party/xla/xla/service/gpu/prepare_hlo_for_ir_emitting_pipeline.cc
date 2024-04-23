@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <utility>
 
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/copy_insertion.h"

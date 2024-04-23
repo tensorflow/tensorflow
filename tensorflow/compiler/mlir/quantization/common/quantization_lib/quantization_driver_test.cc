@@ -26,12 +26,16 @@ limitations under the License.
 #include "llvm/ADT/DenseMap.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/quantization/common/attrs_and_constraints.h"  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/quantization/common/func.h"
 #include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_utils.h"
@@ -80,7 +84,8 @@ std::unique_ptr<quant::OpQuantSpec> GetOpQuantSpec(
 
 TEST_F(ApplyQuantizationParamsPropagationTest,
        ConstsUsedMultipleTimesAreDuplicated) {
-  OwningOpRef<ModuleOp> module_op_ref = ParseModuleOpString(kModuleTFLite);
+  const OwningOpRef<ModuleOp> module_op_ref =
+      ParseModuleOpString(kModuleTFLite);
   func::FuncOp main_fn = FindMainFuncOp(*module_op_ref);
 
   auto op_quant_spec_getter = [&](Operation* op) {
@@ -97,14 +102,13 @@ TEST_F(ApplyQuantizationParamsPropagationTest,
 
   int64_t num_constant_op = 0;
   main_fn.walk([&](arith::ConstantOp cst) { ++num_constant_op; });
-  // TODO: b/323478683 - This should actually be 3. Bias parameter is
-  // duplicated one extra time. Tackle this in a follow-up cl.
   EXPECT_EQ(num_constant_op, 4);
 }
 
 TEST_F(ApplyQuantizationParamsPropagationTest,
        PropagateParamsCreatesQuantState) {
-  OwningOpRef<ModuleOp> module_op_ref = ParseModuleOpString(kModuleTFLite);
+  const OwningOpRef<ModuleOp> module_op_ref =
+      ParseModuleOpString(kModuleTFLite);
   func::FuncOp main_fn = FindMainFuncOp(*module_op_ref);
 
   auto op_quant_spec_getter = [&](Operation* op) {
@@ -120,16 +124,23 @@ TEST_F(ApplyQuantizationParamsPropagationTest,
   quantization_driver.Initialize();
   ASSERT_TRUE(quantization_driver.PropagateParamsAndReturnIfChanged());
   EXPECT_THAT(quantization_driver.GetArgs(), Not(IsEmpty()));
+
   for (const auto& arg : quantization_driver.GetArgs()) {
-    QuantState& state = quantization_driver.GetArgQuantState(arg);
-    // TODO: b/323478683 - Below should not be empty. Inspect further to see
-    // if there is a bug.
-    EXPECT_TRUE(state.IsEmpty());
+    const QuantState& state = quantization_driver.GetArgQuantState(arg);
+    EXPECT_TRUE(isa<quant::QuantizedType>(state.params));
+  }
+  for (const auto& result : quantization_driver.GetResultStates()) {
+    Operation* op = result.first.first;
+    const int res_index = result.first.second;
+    const QuantState state =
+        quantization_driver.GetResultQuantState(op, res_index);
+    EXPECT_TRUE(isa<quant::QuantizedType>(state.params));
   }
 }
 
 TEST_F(ApplyQuantizationParamsPropagationTest, FinalizeInsertsQDQOps) {
-  OwningOpRef<ModuleOp> module_op_ref = ParseModuleOpString(kModuleTFLite);
+  const OwningOpRef<ModuleOp> module_op_ref =
+      ParseModuleOpString(kModuleTFLite);
   func::FuncOp main_fn = FindMainFuncOp(*module_op_ref);
 
   auto op_quant_spec_getter = [&](Operation* op) {
@@ -146,8 +157,12 @@ TEST_F(ApplyQuantizationParamsPropagationTest, FinalizeInsertsQDQOps) {
       xla_call_module_op->getOperand(1).getDefiningOp();
   Operation* filter_qcast_op = filter_dcast_op->getOperand(0).getDefiningOp();
   ASSERT_NE(filter_qcast_op, nullptr);
-  // TODO: b/323478683 - Add check for `UniformQuantizedPerAxisType` below.
-  EXPECT_TRUE(filter_qcast_op->getResult(0).getType().isa<mlir::Type>());
+  EXPECT_TRUE(isa<quantfork::QuantizeCastOp>(filter_qcast_op));
+  EXPECT_TRUE(isa<quantfork::DequantizeCastOp>(filter_dcast_op));
+  EXPECT_TRUE(isa<UniformQuantizedPerAxisType>(filter_qcast_op->getResult(0)
+                                                   .getType()
+                                                   .cast<TensorType>()
+                                                   .getElementType()));
 }
 
 }  // namespace

@@ -21,10 +21,9 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/service/gpu/gemm_rewriter_triton.h"
+#include "xla/service/gpu/gemm_fusion.h"
 #include "xla/statusor.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_test_base.h"
@@ -114,6 +113,57 @@ ENTRY e {
       *analysis.IterSpec(TritonFusionAnalysis::Scope::RHS, p1, 1),
       ElementsAre(FieldsAre(/*stride=*/1, /*count=*/3, /*slice_start=*/0,
                             /*slice_limit=*/3, ElementsAre(3))));
+}
+
+TEST_F(TritonDotAnalysisTest, DoNotRemoveTrivialDimensionForDot) {
+  const std::string hlo_text = R"(
+HloModule t, is_scheduled=true
+
+triton_dot {
+  param_0.1 = f32[137,115]{1,0} parameter(0)
+  param_1.1 = f32[1,115]{1,0} parameter(1)
+  ROOT dot = f32[137,1]{1,0} dot(param_0.1, param_1.1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={1}
+}
+
+ENTRY e {
+  p0 = f32[137,115]{1,0} parameter(0)
+  p1 = f32[1,115]{1,0} parameter(1)
+  ROOT custom-call = f32[137,1]{1,0} fusion(p0, p1), kind=kCustom,
+    calls=triton_dot,
+    backend_config={"fusion_backend_config": {kind: "__triton_gemm",
+    triton_gemm_config: {"block_m":16,"block_n":64,"block_k":32,
+                         "split_k":1,"num_stages":1,"num_warps":2,
+                         "num_ctas":1}}}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+  const HloComputation* dot_computation =
+      module->entry_computation()->root_instruction()->called_computations()[0];
+  const HloInstruction* p0 = dot_computation->parameter_instruction(0);
+  const HloInstruction* p1 = dot_computation->parameter_instruction(1);
+  TF_ASSERT_OK_AND_ASSIGN(const auto analysis,
+                          TritonFusionAnalysis::Execute(*dot_computation));
+  EXPECT_EQ(*analysis.ScopeParameters(TritonFusionAnalysis::Scope::LHS).begin(),
+            p0);
+  EXPECT_EQ(*analysis.ScopeParameters(TritonFusionAnalysis::Scope::RHS).begin(),
+            p1);
+  EXPECT_THAT(
+      *analysis.IterSpec(TritonFusionAnalysis::Scope::LHS, p0, 0),
+      ElementsAre(FieldsAre(/*stride=*/115, /*count=*/137, /*slice_start=*/0,
+                            /*slice_limit=*/137, ElementsAre(137))));
+  EXPECT_THAT(
+      *analysis.IterSpec(TritonFusionAnalysis::Scope::LHS, p0, 1),
+      ElementsAre(FieldsAre(/*stride=*/1, /*count=*/115, /*slice_start=*/0,
+                            /*slice_limit=*/115, ElementsAre(115))));
+  EXPECT_THAT(
+      *analysis.IterSpec(TritonFusionAnalysis::Scope::RHS, p1, 0),
+      ElementsAre(FieldsAre(/*stride=*/115, /*count=*/1, /*slice_start=*/0,
+                            /*slice_limit=*/1, ElementsAre(1))));
+  EXPECT_THAT(
+      *analysis.IterSpec(TritonFusionAnalysis::Scope::RHS, p1, 1),
+      ElementsAre(FieldsAre(/*stride=*/1, /*count=*/115, /*slice_start=*/0,
+                            /*slice_limit=*/115, ElementsAre(115))));
 }
 
 TEST_F(TritonDotAnalysisTest, Merge) {
@@ -546,8 +596,8 @@ ENTRY e {
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
   ROOT bc = bf16[2,2,100] broadcast(dot), dimensions={0,1}
 })"));
-  EXPECT_TRUE(GemmRewriterTriton(se::CudaComputeCapability{
-                                     se::CudaComputeCapability::AMPERE, 0})
+  EXPECT_TRUE(GemmFusion(se::CudaComputeCapability{
+                             se::CudaComputeCapability::AMPERE, 0})
                   .Run(module.get())
                   .value());
   EXPECT_EQ(module->entry_computation()->root_instruction()->opcode(),
@@ -624,6 +674,35 @@ ENTRY e {
   (void)analysis;
 }
 
+TEST_F(TritonDotAnalysisTest, SparseDot) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+triton_gemm {
+  lhs = bf16[5,16] parameter(0)
+  rhs = bf16[32,10] parameter(1)
+  meta = u16[5,2] parameter(2)
+  ROOT dot = f32[5,10] dot(lhs, rhs, meta),
+      lhs_contracting_dims={1}, rhs_contracting_dims={0}, sparsity=L.1@2:4
+}
+
+ENTRY main {
+  lhs = bf16[5,16] parameter(0)
+  rhs = bf16[32,10] parameter(1)
+  meta = u16[5,2] parameter(2)
+  ROOT out = f32[5,10] fusion(lhs, rhs, meta),
+      kind=kCustom, calls=triton_gemm, backend_config={kind:"__triton_gemm"}
+}
+)"));
+
+  const HloComputation* dot_computation =
+      module->entry_computation()->root_instruction()->called_computations()[0];
+  TF_ASSERT_OK_AND_ASSIGN(const auto analysis,
+                          TritonFusionAnalysis::Execute(*dot_computation));
+  EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::META,
+                                 dot_computation->parameter_instruction(2), 0),
+              ::testing::SizeIs(1));
+}
+
 using TritonSoftmaxAnalysisTest = HloTestBase;
 
 TEST_F(TritonSoftmaxAnalysisTest, DegenerateBatchDimensionIsSupported) {
@@ -659,9 +738,11 @@ ENTRY e {
               ElementsAre(FieldsAre(/*stride=*/1, /*count=*/97,
                                     /*slice_start=*/0, /*slice_limit=*/97,
                                     /*subfragments=*/ElementsAre(97))));
-  EXPECT_EQ(analysis.IterSpec(TritonFusionAnalysis::Scope::OUTPUT,
-                              computation->root_instruction(), 1),
-            nullptr);
+  EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::OUTPUT,
+                                 computation->root_instruction(), 1),
+              ElementsAre(FieldsAre(/*stride=*/97, /*count=*/1,
+                                    /*slice_start=*/0, /*slice_limit=*/1,
+                                    /*subfragments=*/ElementsAre(1))));
 }
 
 TEST_F(TritonSoftmaxAnalysisTest, BroadcastIntoBatchDimensionIsSupported) {
@@ -889,6 +970,46 @@ ENTRY main {
       module->entry_computation()->root_instruction()->called_computations()[0];
   const auto analysis = TritonFusionAnalysis::Execute(*computation);
   EXPECT_FALSE(analysis.ok());
+}
+
+TEST_F(TritonSoftmaxAnalysisTest, ProducerConsumerFusion) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule t
+add {
+  Arg_0 = f32[] parameter(0)
+  Arg_1 = f32[] parameter(1)
+  ROOT add = f32[] add(Arg_0, Arg_1)
+}
+
+producer_computation {
+  parameter_0 = f32[125] parameter(0)
+  ROOT broadcast = f32[125,127] broadcast(parameter_0), dimensions={0}
+}
+
+triton_softmax_computation {
+  parameter_0 = f32[125,127] parameter(0)
+  multiply_0 = f32[125,127] multiply(parameter_0, parameter_0)
+  constant_0 = f32[] constant(0)
+  reduce_0 = f32[125] reduce(multiply_0, constant_0), dimensions={1}, to_apply=add
+  broadcast_4 = f32[125,127] broadcast(reduce_0), dimensions={0}
+  ROOT multiply = f32[125,127] multiply(multiply_0, broadcast_4)
+}
+
+ENTRY main {
+  param_0 = f32[125] parameter(0)
+  param_1 = f32[125,127] parameter(1)
+  producer_fusion = f32[125,127] fusion(param_0), kind=kLoop, calls=producer_computation
+  ROOT triton_softmax = f32[125,127] fusion(producer_fusion), kind=kCustom,
+      calls=triton_softmax_computation,
+      backend_config={"fusion_backend_config": {"kind":"__triton_softmax"}}
+})"));
+
+  auto consumer = module->entry_computation()->root_instruction();
+  auto producer = consumer->operand(0);
+
+  EXPECT_TRUE(
+      TritonFusionAnalysis::ExecuteForProducerConsumer(*producer, *consumer)
+          .ok());
 }
 
 }  // namespace

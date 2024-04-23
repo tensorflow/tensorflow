@@ -113,9 +113,6 @@ sudo sed -i '/^build --profile/d' /usertools/aarch64_clang.bazelrc
 sudo sed -i '\@^build.*=\"/usr/local/bin/python3\"$@d' /usertools/aarch64_clang.bazelrc
 sed -i '$ aimport /usertools/aarch64_clang.bazelrc' .bazelrc
 
-# Override breaking change in setuptools v60 (https://github.com/pypa/setuptools/pull/2896)
-export SETUPTOOLS_USE_DISTUTILS=stdlib
-
 # Local variables
 WHL_DIR="${KOKORO_ARTIFACTS_DIR}/tensorflow/whl"
 sudo install -o ${CI_BUILD_USER} -g ${CI_BUILD_GROUP} -d ${WHL_DIR}
@@ -123,7 +120,7 @@ WHL_DIR=$(realpath "${WHL_DIR}") # Get absolute path
 
 # configure may have chosen the wrong setting for PYTHON_LIB_PATH so
 # determine here the correct setting
-PY_SITE_PACAKGES=$(${PYTHON_BIN_PATH} -c "import site ; print(site.getsitepackages()[0])")
+PY_SITE_PACKAGES=$(${PYTHON_BIN_PATH} -c "import site ; print(site.getsitepackages()[0])")
 
 # Determine the major.minor versions of python being used (e.g., 3.7).
 # Useful for determining the directory of the local pip installation.

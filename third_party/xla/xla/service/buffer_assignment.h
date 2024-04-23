@@ -72,7 +72,6 @@ class BufferAllocation {
 
   BufferAllocation(Index index, int64_t size, LogicalBuffer::Color color)
       : index_(index), size_(size), color_(color) {}
-  ~BufferAllocation() {}
 
   // Returns the index of this allocation.
   Index index() const { return index_; }

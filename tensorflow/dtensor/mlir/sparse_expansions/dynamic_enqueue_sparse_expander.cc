@@ -15,15 +15,18 @@ limitations under the License.
 
 #include "tensorflow/dtensor/mlir/sparse_expansions/dynamic_enqueue_sparse_expander.h"
 
+#include "llvm/ADT/SmallVector.h"
+#include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/collection_ops_util.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/dtensor/cc/dstatus.h"
 #include "tensorflow/dtensor/mlir/sparse_expander_common.h"
-#include "tensorflow/dtensor/mlir/value_utils.h"
 
 namespace tensorflow {
 namespace dtensor {

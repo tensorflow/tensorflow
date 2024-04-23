@@ -157,17 +157,17 @@ RPC(LoadedExecutableDestruct, loaded_executable_destruct);
 RPC(LoadedHostCallbackPoll, loaded_host_callback_poll);
 RPC(LoadedHostCallbackReturn, loaded_host_callback_return);
 
-Future<absl::Status> RpcHelper::CheckFuture(uint64_t handle) {
+Future<> RpcHelper::CheckFuture(uint64_t handle) {
   auto req = std::make_unique<CheckFutureRequest>();
   req->set_future_handle(handle);
 
-  auto promise = Future<absl::Status>::CreatePromise();
+  auto promise = Future<>::CreatePromise();
   CheckFuture(std::move(req))
       .OnReady(
           [promise](absl::StatusOr<std::shared_ptr<CheckFutureResponse>>
                         response) mutable { promise.Set(response.status()); });
 
-  return Future<absl::Status>(promise);
+  return Future<>(std::move(promise));
 }
 
 }  // namespace proxy

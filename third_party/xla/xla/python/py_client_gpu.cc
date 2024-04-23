@@ -26,6 +26,7 @@ limitations under the License.
 #endif
 #include "third_party/nanobind/include/nanobind/nanobind.h"
 #include "xla/pjrt/exceptions.h"
+#include "xla/pjrt/host_callback.h"
 #include "xla/primitive_util.h"
 #include "xla/python/callback.h"
 #include "xla/python/nb_numpy.h"
@@ -97,8 +98,10 @@ void XlaPythonGpuCallback(gpuStreamHandle stream, void** buffers,
     array.attr("flags").attr("writeable") = nb::bool_(false);
     PyTuple_SET_ITEM(host_input_arrays.ptr(), i, array.inc_ref().ptr());
   }
+  EnterHostCallback();
   std::optional<nb::tuple> maybe_result_tuple =
       callback->Call(host_input_arrays, status);
+  LeaveHostCallback();
   if (!maybe_result_tuple) {
     return;
   }
@@ -129,7 +132,7 @@ void XlaPythonGpuCallback(gpuStreamHandle stream, void** buffers,
       options.dims = dims;
       options.permutation = result.reversed_layout;
       options.input_layout = xla::TransposePlan::Striding{strides};
-      xla::StatusOr<std::shared_ptr<xla::TransposePlan>> plan =
+      absl::StatusOr<std::shared_ptr<xla::TransposePlan>> plan =
           callback->transpose_cache().GetOrCreate(options);
       if (!plan.ok()) {
         throw xla::XlaRuntimeError(plan.status().ToString());

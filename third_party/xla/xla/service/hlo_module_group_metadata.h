@@ -114,7 +114,7 @@ class HloModuleGroupMetadata {
   ~HloModuleGroupMetadata() = default;
 
   // Build and return the metadata for the given modules.
-  static StatusOr<std::unique_ptr<HloModuleGroupMetadata>> Build(
+  static absl::StatusOr<std::unique_ptr<HloModuleGroupMetadata>> Build(
       absl::Span<HloModule* const> modules);
 
   // Returns true if the instruction is one of the 4 channel instructions (Send,
@@ -125,8 +125,12 @@ class HloModuleGroupMetadata {
   // comment above on companion instructions.
   bool IsCompanionInstruction(HloInstruction* hlo) const;
 
+  // Returns true if the instruction is either a cross-module all-reduce
+  // instruction in a non-spmd module.
+  bool IsNonSpmdCrossModuleAllReduce(HloInstruction* hlo) const;
+
   // Returns true if the instruction is either a channel instruction, a
-  // cross-module all-reduce instruction, or a companion instruction.
+  // cross-module non-spmd all-reduce instruction, or a companion instruction.
   bool InstructionCommunicates(HloInstruction* hlo) const;
 
   // Returns the Channel instance for the given channel id.

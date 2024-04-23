@@ -63,6 +63,11 @@
 
 # Placeholder: load py_proto_library
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
+load("@local_config_tensorrt//:build_defs.bzl", "if_tensorrt")
+load(
+    "@local_xla//xla/tsl/mkl:build_defs.bzl",
+    "if_mkl",
+)
 load(
     "//tensorflow:tensorflow.bzl",
     "if_android",
@@ -107,11 +112,6 @@ load(
     "//tensorflow/core/platform:rules_cc.bzl",
     "cc_library",
 )
-load(
-    "//third_party/mkl:build_defs.bzl",
-    "if_mkl",
-)
-load("@local_config_tensorrt//:build_defs.bzl", "if_tensorrt")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -646,7 +646,6 @@ cc_library(
         "//tensorflow/core/kernels/mkl:mkl_matmul_op",
         "//tensorflow/core/kernels/mkl:mkl_sparse_matrix_matmul_op",
         "//tensorflow/core/kernels/mkl:mkl_tmp_ops",
-        "//tensorflow/core/kernels/mkl:mkl_deprecated_ops",
     ]) + if_cuda_or_rocm([
         "//tensorflow/core/kernels:cudnn_rnn_kernels",
     ]) + if_cuda([
@@ -662,9 +661,7 @@ cc_library(
 
 cc_library(
     name = "dynamic_kernels_impl",
-    visibility = [
-        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
-    ],
+    visibility = ["//visibility:private"],
     deps = [
         "//tensorflow/core/kernels:sobol_op",
     ],
@@ -1269,7 +1266,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@eigen_archive//:eigen3",
         "@ml_dtypes//:float8",
-        "@ml_dtypes//:int4",
+        "@ml_dtypes//:intn",
     ] + if_static([":lib_internal_impl"]),
 )
 
@@ -1297,7 +1294,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@eigen_archive//:eigen3",
         "@ml_dtypes//:float8",
-        "@ml_dtypes//:int4",
+        "@ml_dtypes//:intn",
     ],
 )
 
@@ -1446,7 +1443,7 @@ cc_library(
         "@eigen_archive//:eigen3",
         "@local_tsl//tsl/lib/math:math_util",
         "@ml_dtypes//:float8",
-        "@ml_dtypes//:int4",
+        "@ml_dtypes//:intn",
         "@snappy",
         "@zlib",
     ] + select({
@@ -1708,8 +1705,8 @@ tf_cuda_library(
         "@local_tsl//tsl/framework:cancellation",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:stringpiece",
-        "@local_tsl//tsl/util:command_line_flags",
-        "@local_tsl//tsl/util:device_name_utils",
+        "@local_xla//xla/tsl/util:command_line_flags",
+        "@local_xla//xla/tsl/util:device_name_utils",
     ] + if_cuda([
         "@local_config_cuda//cuda:cudnn_header",
     ]) + if_static(
@@ -1993,7 +1990,6 @@ tf_cc_test_mkl(
         "//tensorflow/core/kernels/mkl:mkl_softmax_op",
         "//tensorflow/core/kernels/mkl:mkl_transpose_op",
         "//tensorflow/core/kernels/mkl:mkl_tmp_ops",
-        "//tensorflow/core/kernels/mkl:mkl_deprecated_ops",
     ]),
 )
 

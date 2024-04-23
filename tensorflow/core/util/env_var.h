@@ -16,10 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_UTIL_ENV_VAR_H_
 #define TENSORFLOW_CORE_UTIL_ENV_VAR_H_
 
+#include "xla/tsl/util/env_var.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/types.h"
-#include "tsl/util/env_var.h"
 
 namespace tensorflow {
 

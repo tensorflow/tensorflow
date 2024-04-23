@@ -91,8 +91,8 @@ class Array final : public llvm::RTTIExtends<Array, xla::ifrt::Array> {
   ArrayHandle handle() const { return handle_; }
 
   xla::ifrt::Client* client() const override;
-  Future<absl::Status> GetReadyFuture() const override;
-  Future<absl::Status> Delete() override;
+  Future<> GetReadyFuture() const override;
+  Future<> Delete() override;
   bool IsDeleted() const override;
   std::string DebugString() const override;
 
@@ -102,6 +102,10 @@ class Array final : public llvm::RTTIExtends<Array, xla::ifrt::Array> {
   std::shared_ptr<const Sharding> shared_ptr_sharding() const override {
     return sharding_;
   }
+  absl::StatusOr<std::unique_ptr<PjRtLayout>> layout() const override {
+    return absl::UnimplementedError(
+        "Array::layout() not implemented for IFRT proxy");
+  };
 
   absl::StatusOr<std::vector<tsl::RCReference<xla::ifrt::Array>>>
   DisassembleIntoSingleDeviceArrays(ArrayCopySemantics semantics) override;
@@ -110,7 +114,7 @@ class Array final : public llvm::RTTIExtends<Array, xla::ifrt::Array> {
       xla::ifrt::ArrayCopySemantics semantics) override;
 
   ABSL_MUST_USE_RESULT
-  Future<absl::Status> CopyToHostBuffer(
+  Future<> CopyToHostBuffer(
       void* data, std::optional<absl::Span<const int64_t>> byte_strides,
       ArrayCopySemantics semantics) override;
 

@@ -46,10 +46,10 @@ limitations under the License.
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/lite/quantization/ir/FakeQuantSupport.h"
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantizeUtils.h"
-#include "tensorflow/compiler/mlir/lite/quantization/ir/UniformSupport.h"
+#include "tensorflow/compiler/mlir/quantization/common/ir/FakeQuantSupport.h"
+#include "tensorflow/compiler/mlir/quantization/common/ir/UniformSupport.h"
 #include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_traits.h"
 #include "tensorflow/lite/kernels/internal/portable_tensor_utils.h"
 #include "tensorflow/lite/tools/optimize/quantization_utils.h"
@@ -173,9 +173,6 @@ quant::UniformQuantizedPerAxisType ResetAxisAndBroadcast(
     // - for Reshape, the data layout isn't changed but the innermost dimension
     // is expand to cover the last two original dimensions. Thus we just need to
     // be repeated the `scales` dim[2] times to covers the new dim length.
-    //
-    // TODO: b/141709944 - after the fix, the `scales` can be for dim[2], thus
-    // we have to repeat each elements in the `scales` locally dim[3] times.
     if (BroadcastVector<double>(shaped.getDimSize(quant_dim), scales) ||
         BroadcastVector<int64_t>(shaped.getDimSize(quant_dim), zero_points)) {
       return {};
@@ -399,7 +396,9 @@ void ExtractMinMaxFromAttr(const DenseFPElementsAttr values, const int dim_size,
     }
   } else {
     int64_t flatten_index = 0;
-    for (auto it = values.begin(); it != values.end(); ++it, ++flatten_index) {
+    auto begin = values.begin();
+    auto end = values.end();
+    for (auto it = begin; it != end; ++it, ++flatten_index) {
       const double ele_value = FloatAttr::getValueAsDouble(*it);
       const int slice_index = flatten_index / slice_size;
       const int channel_index = slice_index % dim_size;

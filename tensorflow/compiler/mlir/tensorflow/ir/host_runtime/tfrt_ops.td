@@ -63,6 +63,36 @@ def TF__TfrtGetResourceOp : TF_Op<"_TfrtGetResource",
   let hasVerifier = 1;
 }
 
+def TF_IfrtRestoreVariableOp : TF_Op<"IfrtRestoreVariableOp", []> {
+  let summary = "Restore variable tensors";
+  let description = [{
+    This Op is similar to a combination of RestoreV2 and AssignVariable Op, but
+    this Op's execution is asynchronous.
+
+    This Op is specific to TFRT + IFRT runtime and is not a stable interface for
+    serialization.
+
+    This Op will restore the tensors asynchronously. There are N restored tensors
+    corresponding to N $var_handle. Each restored tensor is given a unique name,
+    typically a concatenation of `container_name` and `shared_name` from a `var_handle`.
+    The runtime shall handle the possibility that the tensors are not ready when requested
+    because the tensors are loaded asynchronously.
+  }];
+
+  let arguments = (ins
+    Arg<TF_StrTensor, [{Must have a single element.  The prefix of a V2 checkpoint.}]>:$prefix,
+    Arg<TF_StrTensor, [{shape {N}.  The names of the tensors to be restored. This is tensor name in the model.}]>:$tensor_names,
+    Arg<TF_StrTensor, [{shape {N}.  The slice specs of the tensors to be restored.
+Empty strings indicate that they are non-partitioned tensors.}]>:$shape_and_slices,
+    // VarHandles for restored tensors.
+    Variadic<TF_Tensor>:$var_handles,
+    // Data types for restored tensor.
+    TypeArrayAttr: $restored_dtypes
+  );
+
+}
+
+
 def TF_IfrtLoadVariableOp : TF_Op<"IfrtLoadVariable", [Pure]> {
   let summary = "Loads a variable tensor as an IFRT array";
 
@@ -79,9 +109,13 @@ def TF_IfrtLoadVariableOp : TF_Op<"IfrtLoadVariable", [Pure]> {
     configuration specified in `VariableDeviceShardingConfigProto`.
 
     This op returns a scalar string tensor containing the loaded variable name, which can be
-    used as a key to look for the loaded IFRT array in runtime.
+    used as a key to look for the loaded IFRT array in runtime and a restored tensor, which
+    maybe lowered to a future by runtime.
   }];
 
+  // TODO(b/330360798) Redefine the IfrtLoadVariableOp as it doesn't require the
+  // sharding info in the attribute. Consider adding an attribute `used_by_cpu`
+  // and use to for determining if the host tensor can be released.
   let arguments = (ins
     Arg<TF_Tensor, [{The variable tensor to be loaded}], []>:$variable,
     DefaultValuedStrAttr<StrAttr, "">:$device_sharding_config_proto_text,
@@ -89,7 +123,8 @@ def TF_IfrtLoadVariableOp : TF_Op<"IfrtLoadVariable", [Pure]> {
   );
 
   let results = (outs
-    TF_StrTensor:$array_key
+    TF_StrTensor:$array_key,
+    TF_Tensor: $tensor_future
   );
 
   TF_DerivedOperandTypeListAttr Tin = TF_DerivedOperandTypeListAttr<0>;

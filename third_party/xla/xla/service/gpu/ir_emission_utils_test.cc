@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "xla/literal.h"
 #include "xla/literal_util.h"
+#include "xla/service/gpu/hlo_traversal.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/types.h"
 #include "xla/util.h"

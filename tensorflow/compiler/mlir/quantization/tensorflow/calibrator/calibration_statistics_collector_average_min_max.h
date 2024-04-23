@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <optional>
 
+#include "absl/types/span.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/calibrator/calibration_statistics.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/calibrator/calibration_statistics_collector_base.h"
@@ -37,7 +38,8 @@ class CalibrationStatisticsCollectorAverageMinMax
 
   void ClearData() override;
 
-  void Collect(const float *data, unsigned int N) override;
+  void Collect(float min, float max,
+               absl::Span<const int64_t> histogram) override;
 
   std::optional<CalibrationStatistics> GetStatistics() const override;
 

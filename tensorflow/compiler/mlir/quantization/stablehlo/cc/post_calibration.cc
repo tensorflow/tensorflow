@@ -29,7 +29,7 @@ namespace mlir::quant::stablehlo {
 
 using ::stablehlo::quantization::PipelineConfig;
 using ::stablehlo::quantization::QuantizationConfig;
-using ::stablehlo::quantization::StaticRangePtqPreset;
+using ::stablehlo::quantization::QuantizationSpecs;
 using ::tensorflow::quantization::RunPasses;
 
 PostCalibrationComponent::PostCalibrationComponent(
@@ -40,18 +40,17 @@ absl::StatusOr<ModuleOp> PostCalibrationComponent::Run(
     ModuleOp module_op, const QuantizationConfig& config) {
   TF_RETURN_IF_ERROR(RunPasses(
       kName, /*add_passes_func=*/
-      [&config, this](PassManager& pm) {
-        AddPostCalibrationPasses(pm, config.pipeline_config(),
-                                 config.static_range_ptq_preset());
+      [&config](PassManager& pm) {
+        AddPostCalibrationPasses(pm, config.pipeline_config(), config.specs());
       },
       *ctx_, module_op));
   return module_op;
 }
 
 void PostCalibrationComponent::AddPasses(
-    OpPassManager& pm, const StaticRangePtqPreset& static_range_ptq_preset,
+    OpPassManager& pm, const QuantizationSpecs& specs,
     const PipelineConfig& pipeline_config) const {
-  AddPostCalibrationPasses(pm, pipeline_config, static_range_ptq_preset);
+  AddPostCalibrationPasses(pm, pipeline_config, specs);
 }
 
 }  // namespace mlir::quant::stablehlo

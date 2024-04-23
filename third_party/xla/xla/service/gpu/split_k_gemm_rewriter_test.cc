@@ -620,6 +620,72 @@ ENTRY e {
                           TritonFusionAnalysis::Execute(*dot_computation));
 }
 
+TEST_F(SplitKTest, SparseDotWithLhsSparseOperandIsRewritten) {
+  const std::string hlo_text = R"(
+HloModule test
+
+triton_gemm {
+  lhs = f16[2,5,1600] parameter(0)
+  rhs = f16[2,3200,10] parameter(1)
+  meta = u16[2,5,200] parameter(2)
+  ROOT dot = f32[2,5,10] dot(lhs, rhs, meta),
+      lhs_batch_dims={0}, rhs_batch_dims={0},
+      lhs_contracting_dims={2}, rhs_contracting_dims={1}, sparsity=L.2@2:4
+}
+
+ENTRY e {
+  lhs = f16[2,5,1600] parameter(0)
+  rhs = f16[2,3200,10] parameter(1)
+  meta = u16[2,5,200] parameter(2)
+  ROOT fusion = f32[2,5,10] fusion(lhs, rhs, meta),
+    kind=kCustom, calls=triton_gemm, backend_config="__triton_gemm"
+})";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+  TritonGemmConfig config(16, 16, 16, /*split_k=*/4, 1, 1);
+  TF_EXPECT_OK(MakeDotSplitKBatch(
+      module->entry_computation()->root_instruction(), config));
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kReduce);
+
+  HloInstruction* dot =
+      module->GetComputationWithName("triton_gemm")->root_instruction();
+  EXPECT_EQ(dot->operand(0)->shape(),
+            ShapeUtil::MakeShapeWithDescendingLayout(F16, {2, 5, 4, 400}));
+  EXPECT_EQ(dot->operand(1)->shape(),
+            ShapeUtil::MakeShapeWithDescendingLayout(F16, {2, 4, 800, 10}));
+  EXPECT_EQ(dot->operand(2)->shape(),
+            ShapeUtil::MakeShapeWithDescendingLayout(U16, {2, 5, 4, 50}));
+}
+
+TEST_F(SplitKTest, SparseDotWithRhsSparseOperandTriggersError) {
+  const std::string hlo_text = R"(
+HloModule test
+
+triton_gemm {
+  lhs = f16[2,5,3200] parameter(0)
+  rhs = f16[2,1600,10] parameter(1)
+  meta = u16[2,200,10] parameter(2)
+  ROOT dot = f32[2,5,10] dot(lhs, rhs, meta),
+      lhs_batch_dims={0}, rhs_batch_dims={0},
+      lhs_contracting_dims={2}, rhs_contracting_dims={1}, sparsity=R.1@2:4
+}
+
+ENTRY e {
+  lhs = f16[2,5,3200] parameter(0)
+  rhs = f16[2,1600,10] parameter(1)
+  meta = u16[2,200,10] parameter(2)
+  ROOT fusion = f32[2,5,10] fusion(lhs, rhs, meta),
+    kind=kCustom, calls=triton_gemm, backend_config="__triton_gemm"
+})";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+  TritonGemmConfig config(16, 16, 16, /*split_k=*/4, 1, 1);
+  auto result = MakeDotSplitKBatch(
+      module->entry_computation()->root_instruction(), config);
+  EXPECT_FALSE(result.ok());
+}
+
 class SplitKTestWithMorePreciseReduction
     : public HloTestBase,
       public ::testing::WithParamInterface<int> {

@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
 #include <tuple>
@@ -182,6 +183,15 @@ class Allocation {
   std::vector<HloUse> uses_;
   std::optional<int64_t> cross_program_prefetch_index_;
 };
+
+using AllocationSequence = std::vector<std::unique_ptr<Allocation>>;
+std::tuple<int64_t, bool, int64_t> GetAllocationSortTuple(
+    const std::unique_ptr<Allocation>& allocation);
+void SortAllocationSequence(AllocationSequence& allocations);
+std::string AllocationSequenceToString(AllocationSequence& allocations,
+                                       bool sort_allocations = false);
+std::vector<Allocation*> GetAllocationSequenceInRawPointers(
+    AllocationSequence& allocations);
 
 // This class represents an allocation that pins a tensor to
 // a specific memory space.

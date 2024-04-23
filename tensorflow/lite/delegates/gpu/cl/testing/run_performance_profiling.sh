@@ -50,6 +50,9 @@ while [[ "$1" != "" ]]; do
       echo "$description"
       exit
       ;;
+    --)
+      shift
+      break
   esac
   shift
 done
@@ -110,7 +113,7 @@ bazel build "${BUILD_CONFIG[@]}" //$SHELL_DIR:$BINARY_NAME
 ADB push bazel-bin/$SHELL_DIR/$BINARY_NAME $OPENCL_DIR
 
 ADB shell chmod +x $OPENCL_DIR/$BINARY_NAME
-ADB shell "cd $OPENCL_DIR && ./$BINARY_NAME $model_name"
+ADB shell "cd $OPENCL_DIR && ./$BINARY_NAME $model_name $@"
 
 # clean up files from device
 ADB shell rm -rf $OPENCL_DIR

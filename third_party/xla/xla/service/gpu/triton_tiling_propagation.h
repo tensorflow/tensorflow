@@ -114,6 +114,8 @@ class TensorIterationSpec {
   // Returns nullptr if not found.
   const DimIterationSpec* Find(int dimension) const;
 
+  std::vector<int> GetDimensions() const;
+
   void RemoveEmptyDimensions() {
     absl::erase_if(dim_iteration_specs_,
                    [](const auto& it) { return it.second.empty(); });

@@ -446,7 +446,7 @@ diff --ruN a/stablehlo/stablehlo/experimental/dialect/CMakeLists.txt b/stablehlo
 diff --ruN a/stablehlo/stablehlo/experimental/dialect/StablehloOps.cpp b/stablehlo/stablehlo/experimental/dialect/StablehloOps.cpp
 --- stablehlo/stablehlo/experimental/dialect/StablehloOps.cpp
 +++ stablehlo/stablehlo/experimental/dialect/StablehloOps.cpp
-@@ -0,0 +1,504 @@
+@@ -0,0 +1,506 @@
 +/* Copyright 2023 The StableHLO Authors.
 +
 +Licensed under the Apache License, Version 2.0 (the "License");
@@ -751,7 +751,7 @@ diff --ruN a/stablehlo/stablehlo/experimental/dialect/StablehloOps.cpp b/stableh
 +
 +  // Unpack operands and attributes of the underlying custom call into
 +  // operation-specific inputs.
-+  auto rngAlgorithmAttr = op_->getAttr("rng_algorithm");
++  auto rngAlgorithmAttr = op_->getDiscardableAttr("rng_algorithm");
 +  auto initialState = op_.getInputs()[0];
 +  auto outputShape = op_.getInputs()[1];
 +  auto outputState = op_.getResults()[0];
@@ -812,7 +812,9 @@ diff --ruN a/stablehlo/stablehlo/experimental/dialect/StablehloOps.cpp b/stableh
 +}
 +
 +RngAlgorithm DynamicRngBitGeneratorOpAdaptor::getRngAlgorithm() {
-+  return op_->getAttr("rng_algorithm").cast<RngAlgorithmAttr>().getValue();
++  return op_->getDiscardableAttr("rng_algorithm")
++      .cast<RngAlgorithmAttr>()
++      .getValue();
 +}
 +
 +TypedValue<ShapedType> DynamicRngBitGeneratorOpAdaptor::getInitialState() {
@@ -1420,17 +1422,17 @@ diff --ruN a/stablehlo/stablehlo/experimental/tests/stablehlo_canonicalize_dynam
 +// CHECK-LABEL: func @dynamic_reduce_window_success_static_result_type
 +func.func @dynamic_reduce_window_success_static_result_type(%arg0: tensor<3x2xf32>, %arg1: tensor<f32>) -> tensor<2x2xf32> {
 +  //           CHECK-NOT: stablehlo.dynamic_reduce_window
-+  //               CHECK: "stablehlo.reduce_window"(%arg0, %arg1) ({
-+  //          CHECK-NEXT:   ^[[BB:bb.*]](%[[ARG2:arg.*]]: tensor<f32>, %[[ARG3:arg.*]]: tensor<f32>):
-+  //          CHECK-NEXT:     %[[VAL1:.*]] = stablehlo.add %arg2, %arg3 : tensor<f32>
-+  //          CHECK-NEXT:     stablehlo.return %[[VAL1]] : tensor<f32>
-+  //          CHECK-NEXT: }) {
++  //               CHECK: "stablehlo.reduce_window"(%arg0, %arg1) <{
 +  //          CHECK-SAME:   base_dilations = array<i64: 2, 1>,
 +  // CHECK-SAME{LITERAL}:   padding = dense<[[2, 1], [0, 0]]> : tensor<2x2xi64>,
 +  //          CHECK-SAME:   window_dilations = array<i64: 3, 1>,
 +  //          CHECK-SAME:   window_dimensions = array<i64: 2, 1>,
 +  //          CHECK-SAME:   window_strides = array<i64: 4, 1>
-+  //          CHECK-SAME: } : (tensor<3x2xf32>, tensor<f32>) -> tensor<2x2xf32>
++  //          CHECK-SAME: }> ({
++  //          CHECK-NEXT:   ^[[BB:bb.*]](%[[ARG2:arg.*]]: tensor<f32>, %[[ARG3:arg.*]]: tensor<f32>):
++  //          CHECK-NEXT:     %[[VAL1:.*]] = stablehlo.add %arg2, %arg3 : tensor<f32>
++  //          CHECK-NEXT:     stablehlo.return %[[VAL1]] : tensor<f32>
++  //          CHECK-NEXT: }) : (tensor<3x2xf32>, tensor<f32>) -> tensor<2x2xf32>
 +  %0 = stablehlo.constant dense<[2, 1]> : tensor<2xi64>
 +  %1 = stablehlo.constant dense<[4, 1]> : tensor<2xi64>
 +  %2 = stablehlo.constant dense<[2, 1]> : tensor<2xi64>
@@ -1452,17 +1454,17 @@ diff --ruN a/stablehlo/stablehlo/experimental/tests/stablehlo_canonicalize_dynam
 +// CHECK-LABEL: func @dynamic_reduce_window_success_dynamic_result_type
 +func.func @dynamic_reduce_window_success_dynamic_result_type(%arg0: tensor<?x2xf32>, %arg1: tensor<f32>) -> tensor<?x2xf32> {
 +  //           CHECK-NOT: stablehlo.dynamic_reduce_window
-+  //               CHECK: "stablehlo.reduce_window"(%arg0, %arg1) ({
-+  //          CHECK-NEXT:   ^[[BB:bb.*]](%[[ARG2:arg.*]]: tensor<f32>, %[[ARG3:arg.*]]: tensor<f32>):
-+  //          CHECK-NEXT:     %[[VAL1:.*]] = stablehlo.add %arg2, %arg3 : tensor<f32>
-+  //          CHECK-NEXT:     stablehlo.return %[[VAL1]] : tensor<f32>
-+  //          CHECK-NEXT: }) {
++  //               CHECK: "stablehlo.reduce_window"(%arg0, %arg1) <{
 +  //          CHECK-SAME:   base_dilations = array<i64: 2, 1>,
 +  // CHECK-SAME{LITERAL}:   padding = dense<[[2, 1], [0, 0]]> : tensor<2x2xi64>,
 +  //          CHECK-SAME:   window_dilations = array<i64: 3, 1>,
 +  //          CHECK-SAME:   window_dimensions = array<i64: 2, 1>,
 +  //          CHECK-SAME:   window_strides = array<i64: 4, 1>
-+  //          CHECK-SAME: } : (tensor<?x2xf32>, tensor<f32>) -> tensor<?x2xf32>
++  //          CHECK-SAME: }> ({
++  //          CHECK-NEXT:   ^[[BB:bb.*]](%[[ARG2:arg.*]]: tensor<f32>, %[[ARG3:arg.*]]: tensor<f32>):
++  //          CHECK-NEXT:     %[[VAL1:.*]] = stablehlo.add %arg2, %arg3 : tensor<f32>
++  //          CHECK-NEXT:     stablehlo.return %[[VAL1]] : tensor<f32>
++  //          CHECK-NEXT: }) : (tensor<?x2xf32>, tensor<f32>) -> tensor<?x2xf32>
 +  %0 = stablehlo.constant dense<[2, 1]> : tensor<2xi64>
 +  %1 = stablehlo.constant dense<[4, 1]> : tensor<2xi64>
 +  %2 = stablehlo.constant dense<[2, 1]> : tensor<2xi64>
@@ -1947,7 +1949,7 @@ diff --ruN a/stablehlo/stablehlo/experimental/transforms/CMakeLists.txt b/stable
 diff --ruN a/stablehlo/stablehlo/experimental/transforms/ChloRecomposeOps.cpp b/stablehlo/stablehlo/experimental/transforms/ChloRecomposeOps.cpp
 --- stablehlo/stablehlo/experimental/transforms/ChloRecomposeOps.cpp
 +++ stablehlo/stablehlo/experimental/transforms/ChloRecomposeOps.cpp
-@@ -0,0 +1,168 @@
+@@ -0,0 +1,180 @@
 +/* Copyright 2024 The StableHLO Authors.
 +Licensed under the Apache License, Version 2.0 (the "License");
 +you may not use this file except in compliance with the License.
@@ -1966,16 +1968,19 @@ diff --ruN a/stablehlo/stablehlo/experimental/transforms/ChloRecomposeOps.cpp b/
 +#include <functional>
 +
 +#include "llvm/ADT/SmallVector.h"
++#include "llvm/Support/Casting.h"
 +#include "mlir/Dialect/Func/IR/FuncOps.h"
 +#include "mlir/IR/Attributes.h"
 +#include "mlir/IR/BuiltinAttributes.h"
 +#include "mlir/IR/PatternMatch.h"
++#include "mlir/Pass/PassManager.h"
 +#include "mlir/Support/LogicalResult.h"
 +#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 +#include "stablehlo/dialect/ChloOps.h"
 +#include "stablehlo/dialect/StablehloOps.h"
 +#include "stablehlo/experimental/dialect/StablehloOps.h"
 +#include "stablehlo/experimental/transforms/Passes.h"
++#include "stablehlo/transforms/Passes.h"
 +
 +namespace mlir {
 +namespace stablehlo {
@@ -1988,7 +1993,8 @@ diff --ruN a/stablehlo/stablehlo/experimental/transforms/ChloRecomposeOps.cpp b/
 +
 +FailureOr<DictionaryAttr> getCustomCallOpAttributes(CustomCallOp op,
 +                                                    PatternRewriter& rewriter) {
-+  auto attrs = op->getAttrOfType<DictionaryAttr>("mhlo.attributes");
++  auto attrs = llvm::dyn_cast_or_null<DictionaryAttr>(
++      op->getDiscardableAttr("mhlo.attributes"));
 +  if (!attrs)
 +    return rewriter.notifyMatchFailure(
 +        op, "Expected mhlo.attributes dictionary attribute.");
@@ -2113,13 +2119,21 @@ diff --ruN a/stablehlo/stablehlo/experimental/transforms/ChloRecomposeOps.cpp b/
 +  }
 +};
 +
++void createChloLegalizeToStablehloPipeline(OpPassManager& pm) {
++  pm.addPass(mlir::stablehlo::experimental::createChloRecomposeOpsPass());
++  pm.addNestedPass<mlir::func::FuncOp>(
++      mlir::stablehlo::createChloLegalizeToStablehloPass());
++  pm.addNestedPass<mlir::func::FuncOp>(
++      mlir::stablehlo::createShapeLegalizeToStablehloPass());
++}
++
 +}  // namespace experimental
 +}  // namespace stablehlo
 +}  // namespace mlir
 diff --ruN a/stablehlo/stablehlo/experimental/transforms/Passes.h b/stablehlo/stablehlo/experimental/transforms/Passes.h
 --- stablehlo/stablehlo/experimental/transforms/Passes.h
 +++ stablehlo/stablehlo/experimental/transforms/Passes.h
-@@ -0,0 +1,36 @@
+@@ -0,0 +1,38 @@
 +/* Copyright 2023 The StableHLO Authors.
 +
 +Licensed under the Apache License, Version 2.0 (the "License");
@@ -2150,6 +2164,8 @@ diff --ruN a/stablehlo/stablehlo/experimental/transforms/Passes.h b/stablehlo/st
 +#define GEN_PASS_DECL
 +#define GEN_PASS_REGISTRATION
 +#include "stablehlo/experimental/transforms/Passes.h.inc"
++
++void createChloLegalizeToStablehloPipeline(OpPassManager &pm);
 +
 +}  // namespace experimental
 +}  // namespace stablehlo
@@ -2548,23 +2564,4 @@ diff --ruN a/stablehlo/stablehlo/experimental/transforms/StablehloRefineShapes.c
 +}  // namespace experimental
 +}  // namespace stablehlo
 +}  // namespace mlir
-diff --ruN a/stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp b/stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp
---- stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp
-+++ stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp
-@@ -147,12 +147,12 @@
-   if (failed(refineValues(rewriter, op, op->getResults(), types)))
-     return failure();
- 
--  // This `replaceOpWithIf` call doesn't actually change the IR, but
-+  // This `replaceOpUsesWithIf` call doesn't actually change the IR, but
-   // it does ask the rewriter to visit all the users of this op. There is no
-   // upstream API to achieve this directly, but if it's introduced in the
-   // future, we could use it here.
--  rewriter.replaceOpWithIf(op, op->getResults(),
--                           [](OpOperand& use) { return false; });
-+  rewriter.replaceOpUsesWithIf(op, op->getResults(),
-+                               [](OpOperand& use) { return false; });
-   return success();
- }
- 
 

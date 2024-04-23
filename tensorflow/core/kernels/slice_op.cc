@@ -216,8 +216,8 @@ class SliceOp : public OpKernel {
 
  private:
   template <int NDIM>
-  void HandleCase(OpKernelContext* context, gtl::ArraySlice<int64_t> begin,
-                  gtl::ArraySlice<int64_t> size, const Tensor& input,
+  void HandleCase(OpKernelContext* context, absl::Span<const int64_t> begin,
+                  absl::Span<const int64_t> size, const Tensor& input,
                   Tensor* result) {
     Eigen::DSizes<Eigen::DenseIndex, NDIM> indices;
     Eigen::DSizes<Eigen::DenseIndex, NDIM> sizes;

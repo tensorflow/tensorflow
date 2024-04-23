@@ -40,7 +40,8 @@ Status ParseMlirModuleStringAndConvertToXlaComputation(
 // Serialize using MLIR Bytecode Format which does not guarantee forward or
 // backward compatiblity of the dialects used. If passing StableHLO with forward
 // or backward compatibility requirements, use SerializeUsingVersionedStablehlo.
-StatusOr<std::string> SerializeUsingNativeBytecode(mlir::ModuleOp mlir_module);
+absl::StatusOr<std::string> SerializeUsingNativeBytecode(
+    mlir::ModuleOp mlir_module, std::optional<int64_t> plugin_version);
 
 // Serializes an MLIR module to a portable artifact with forward and backward
 // compatibility. Supports modules using StableHLO/MHLO/CHLO/Func dialects.
@@ -52,7 +53,7 @@ StatusOr<std::string> SerializeUsingNativeBytecode(mlir::ModuleOp mlir_module);
 // Ideally should be the `mlir::stablehlo::getCurrentVersion()` of the plugin.
 // If program contains dialects that aren't supposed in StableHLO portable
 // artifacts, use SerializeUsingNativeBytecode.
-StatusOr<std::string> SerializeUsingVersionedStablehlo(
+absl::StatusOr<std::string> SerializeUsingVersionedStablehlo(
     mlir::ModuleOp mlir_module, absl::string_view target, bool inplace = false);
 
 // Given a module that might be a portable artifact, deserialize and upgrade it

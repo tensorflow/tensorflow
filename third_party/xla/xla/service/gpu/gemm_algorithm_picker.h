@@ -42,17 +42,6 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-absl::StatusOr<AutotuneResult> GetBestBlasAlgorithm(
-    se::Stream* stream, se::RedzoneAllocator& allocator,
-    std::optional<std::string_view> gemm_str,
-    const AutotuneConfig& autotune_config, se::DeviceMemoryBase lhs_buffer,
-    se::DeviceMemoryBase rhs_buffer, se::DeviceMemoryBase output_buffer,
-    absl::Span<const se::blas::AlgorithmType> algorithms,
-    const Shape& output_shape, const HloModuleConfig& hlo_module_config,
-    double beta,
-    const std::function<absl::StatusOr<se::blas::ProfileResult>(
-        const se::blas::AlgorithmType&)>& run_benchmark);
-
 // GemmAlgorithmPicker supports two modes: device and deviceless.
 // In device mode, we run autotuning on the device and store autotune results.
 // In deviceless mode, we pass in some information related to the device and

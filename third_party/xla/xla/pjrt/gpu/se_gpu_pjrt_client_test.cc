@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/pjrt/distributed/in_memory_key_value_store.h"
+#include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/utils.h"
 #include "xla/service/hlo_parser.h"
 #include "xla/statusor.h"
@@ -424,6 +425,32 @@ TEST(StreamExecutorGpuClientTest, CopyRawToHostOutOfRange) {
       buffer->CopyRawToHost(dst, 1, buffer->GetOnDeviceSizeInBytes().value());
   EXPECT_THAT(result.Await(), StatusIs(absl::StatusCode::kInvalidArgument,
                                        HasSubstr("invalid offset 1")));
+  free(dst);
+}
+
+TEST(StreamExecutorGpuClientTest, CopyRawToHostFuture) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client,
+                          GetStreamExecutorGpuClient(GpuClientOptions()));
+  auto literal = xla::LiteralUtil::CreateR1<float>({41.0f, 42.0f});
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> buffer,
+      client->BufferFromHostLiteral(literal, client->addressable_devices()[0]));
+
+  auto dst_promise = xla::PjRtFuture<absl::StatusOr<void*>>::CreatePromise();
+  xla::PjRtFuture<absl::StatusOr<void*>> dst_future(dst_promise);
+
+  TF_ASSERT_OK_AND_ASSIGN(int64_t size, buffer->GetOnDeviceSizeInBytes());
+  buffer->GetReadyFuture().OnReady([dst_promise = std::move(dst_promise),
+                                    size](absl::Status status) mutable {
+    dst_promise.Set(aligned_alloc(size, 0));
+  });
+
+  auto result = buffer->CopyRawToHostFuture(dst_future, 0, size);
+  TF_EXPECT_OK(result.Await());
+  TF_ASSERT_OK_AND_ASSIGN(auto* dst, dst_future.Await());
+  EXPECT_EQ(*(static_cast<float*>(dst)), 41.0f);
+  EXPECT_EQ(*(static_cast<float*>(dst) + 1), 42.0f);
+
   free(dst);
 }
 

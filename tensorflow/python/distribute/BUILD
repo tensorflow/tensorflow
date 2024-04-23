@@ -651,6 +651,31 @@ py_strict_test(
     ],
 )
 
+cuda_py_strict_test(
+    name = "mwms_pjrt_gpu_test",
+    srcs = ["mwms_pjrt_gpu_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY3",
+    tags = [
+        "multi_and_single_gpu",
+    ],
+    xla_enabled = True,
+    deps = [
+        ":multi_process_runner",
+        ":multi_worker_test_base",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/framework:config",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:collective_ops",
+    ],
+)
+
 py_strict_library(
     name = "tpu_strategy",
     srcs = ["tpu_strategy.py"],

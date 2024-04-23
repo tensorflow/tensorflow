@@ -16,12 +16,20 @@ limitations under the License.
 #include "xla/service/gpu/parallel_loop_emitter.h"
 
 #include <cstdint>
-#include <memory>
+#include <vector>
 
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "llvm/IR/Constants.h"
+#include "llvm/IR/IRBuilder.h"
 #include "xla/primitive_util.h"
+#include "xla/service/gpu/launch_dimensions.h"
+#include "xla/service/llvm_ir/ir_array.h"
+#include "xla/service/llvm_ir/loop_emitter.h"
+#include "xla/shape.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 // IWYU pragma: no_include "llvm/IR/Intrinsics.gen.inc"
@@ -246,7 +254,7 @@ absl::Status ParallelLoopEmitter::EmitSerialLoop(absl::string_view loop_name,
       // such that it divides num_elements, but for int4 arrays, the caller
       // always sets unroll_factor to a multiple of 2 to prevent different
       // threads from writing to adjacent elements occupying the same byte.
-      CHECK(primitive_util::Is4BitType(shape_.element_type()));
+      CHECK(primitive_util::IsSubByteNonPredType(shape_.element_type()));
       llvm_ir::LlvmIfData if_in_bounds = llvm_ir::EmitIfThenElse(
           b_->CreateICmpULT(array_index.linear(),
                             llvm::ConstantInt::get(index_type, num_elements)),

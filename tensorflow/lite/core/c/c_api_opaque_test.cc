@@ -578,15 +578,14 @@ TEST(TestTfLiteOpaqueNode, CustomOpWithSetAndGetTemporaries) {
       "tensorflow/lite/testdata/custom_sinh.bin");
   ASSERT_NE(model, nullptr);
 
-  TfLiteRegistrationExternal* reg =
-      TfLiteRegistrationExternalCreate(kTfLiteBuiltinCustom, "Sinh", 1);
-  TfLiteRegistrationExternalSetPrepare(reg, my_custom_op::Prepare);
-  TfLiteRegistrationExternalSetInit(reg, my_custom_op::Init);
-  TfLiteRegistrationExternalSetFree(reg, my_custom_op::Free);
-  TfLiteRegistrationExternalSetInvoke(reg, my_custom_op::Invoke);
+  TfLiteOperator* reg = TfLiteOperatorCreate(kTfLiteBuiltinCustom, "Sinh", 1);
+  TfLiteOperatorSetPrepare(reg, my_custom_op::Prepare);
+  TfLiteOperatorSetInit(reg, my_custom_op::Init);
+  TfLiteOperatorSetFree(reg, my_custom_op::Free);
+  TfLiteOperatorSetInvoke(reg, my_custom_op::Invoke);
 
   TfLiteInterpreterOptions* options = TfLiteInterpreterOptionsCreate();
-  TfLiteInterpreterOptionsAddRegistrationExternal(options, reg);
+  TfLiteInterpreterOptionsAddOperator(options, reg);
 
   TfLiteInterpreter* interpreter = TfLiteInterpreterCreate(model, options);
 
@@ -606,7 +605,7 @@ TEST(TestTfLiteOpaqueNode, CustomOpWithSetAndGetTemporaries) {
   EXPECT_EQ(output_value, input_value);
 
   TfLiteInterpreterDelete(interpreter);
-  TfLiteRegistrationExternalDelete(reg);
+  TfLiteOperatorDelete(reg);
   TfLiteModelDelete(model);
 }
 

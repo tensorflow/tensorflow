@@ -635,6 +635,9 @@ typedef struct TpuEmbeddingEngine_RecvActivationsComputation_Params {
   void* priv;
 
   TpuSerializedProto tpu_embedding_config;
+  TpuSerializedProto embedding_partitions;
+  TpuSerializedProto hbm_buffers_config;
+  TpuSerializedProto tpu_topology;
   XLA_Shape* deduplication_data_shape;
   TpuSerializedProto* op_sharding;
 
@@ -652,6 +655,9 @@ typedef struct
   void* priv;
 
   TpuSerializedProto tpu_embedding_config;
+  TpuSerializedProto embedding_partitions;
+  TpuSerializedProto hbm_buffers_config;
+  TpuSerializedProto tpu_topology;
   TpuSerializedProto* op_sharding;
   // out
   TpuSerializedProto* xla_computation;
@@ -669,6 +675,9 @@ typedef struct TpuEmbeddingEngine_SendTPUEmbeddingGradientsComputation_Params {
 
   int32_t num_inputs;
   TpuSerializedProto tpu_embedding_config;
+  TpuSerializedProto embedding_partitions;
+  TpuSerializedProto hbm_buffers_config;
+  TpuSerializedProto tpu_topology;
   XLA_Shape* learning_rate_tuple_shape;
   XLA_Shape* deduplication_data_shape;
   XLA_Shape* gradient_tuple_shape;
@@ -686,6 +695,9 @@ typedef struct TpuEmbeddingEngine_DedupDataSizeComputation_Params {
   void* priv;
 
   TpuSerializedProto tpu_embedding_config;
+  TpuSerializedProto embedding_partitions;
+  TpuSerializedProto hbm_buffers_config;
+  TpuSerializedProto tpu_topology;
   // out
   int32_t* num_elements;
   TF_Status* status;
@@ -699,6 +711,9 @@ typedef struct TpuEmbeddingEngine_DedupDataTupleMaskComputation_Params {
   void* priv;
 
   TpuSerializedProto tpu_embedding_config;
+  TpuSerializedProto embedding_partitions;
+  TpuSerializedProto hbm_buffers_config;
+  TpuSerializedProto tpu_topology;
   // out
   TpuSerializedProto* xla_computation;
   TF_Status* status;

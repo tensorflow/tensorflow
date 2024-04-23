@@ -54,10 +54,6 @@ class ModelRuntimeContext {
     DCHECK(resource_context_);
   }
 
-  const SessionMetadata& metadata() const {
-    return graph_execution_options_->model_metadata;
-  }
-
   absl::string_view name() const {
     return graph_execution_options_->model_metadata.name();
   }
@@ -196,13 +192,14 @@ class Runtime {
   }
 
   void SetCreateRequestQueueFn(
-      std::function<StatusOr<std::unique_ptr<WorkQueueInterface>>(int64_t)>
+      std::function<
+          absl::StatusOr<std::unique_ptr<WorkQueueInterface>>(int64_t)>
           create_request_queue_fn) {
     create_request_queue_fn_ = std::move(create_request_queue_fn);
   }
 
   // Creates a work queue for a request.
-  StatusOr<std::unique_ptr<WorkQueueInterface>> CreateRequestQueue(
+  absl::StatusOr<std::unique_ptr<WorkQueueInterface>> CreateRequestQueue(
       int64_t request_id) const {
     if (create_request_queue_fn_) {
       return create_request_queue_fn_(request_id);
@@ -216,7 +213,7 @@ class Runtime {
                    WorkQueueInterface* work_queue);
 
   std::unique_ptr<tfrt::CoreRuntime> core_runtime_;
-  std::function<StatusOr<std::unique_ptr<WorkQueueInterface>>(int64_t)>
+  std::function<absl::StatusOr<std::unique_ptr<WorkQueueInterface>>(int64_t)>
       create_request_queue_fn_;
   WorkQueueInterface* work_queue_ = nullptr;
   std::vector<std::function<absl::Status(ModelRuntimeContext&)>>

@@ -79,11 +79,11 @@ class HloPassPipeline : public HloPassInterface {
   }
 
   using HloPassInterface::Run;
-  StatusOr<bool> Run(
+  absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
   using HloPassInterface::RunOnModuleGroup;
-  StatusOr<bool> RunOnModuleGroup(
+  absl::StatusOr<bool> RunOnModuleGroup(
       HloModuleGroup* module_group,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
@@ -125,7 +125,7 @@ class HloPassPipeline : public HloPassInterface {
   // Helper which runs the given pass on the given HLO. HloT can be either
   // HloModule or HloModuleGroup.
   template <typename HloT>
-  StatusOr<bool> RunPassesInternal(
+  absl::StatusOr<bool> RunPassesInternal(
       HloT* hlo, const DebugOptions& debug_options,
       const absl::flat_hash_set<absl::string_view>& execution_threads);
 
@@ -134,14 +134,14 @@ class HloPassPipeline : public HloPassInterface {
   // empty thread list means all `execution_threads` are considered. These
   // helpers enable templating of the core of the pipeline logic by providing
   // HloModule and HloModuleGroup specific methods with the same name.
-  static StatusOr<bool> RunHelper(
+  static absl::StatusOr<bool> RunHelper(
       HloPassInterface* pass, HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) {
     TF_ASSIGN_OR_RETURN(bool changed, pass->Run(module, execution_threads));
     module->Cleanup();
     return changed;
   }
-  static StatusOr<bool> RunHelper(
+  static absl::StatusOr<bool> RunHelper(
       HloPassInterface* pass, HloModuleGroup* module_group,
       const absl::flat_hash_set<absl::string_view>& execution_threads) {
     TF_ASSIGN_OR_RETURN(

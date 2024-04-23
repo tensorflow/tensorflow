@@ -66,6 +66,24 @@ class Shape {
   // and possible confusion with C++ container's usage of size().
   DimensionSize NumElements() const;
 
+  // The following members are provided for compatibility with the standard
+  // library.
+  using value_type = DimensionSize;
+
+  const value_type& operator[](int dim) const { return dims_[dim]; }
+  value_type& operator[](int dim) { return dims_[dim]; }
+
+  auto cbegin() const { return dims_.begin(); }
+  auto begin() const { return dims_.begin(); }
+  auto begin() { return dims_.begin(); }
+  auto cend() const { return dims_.end(); }
+  auto end() const { return dims_.end(); }
+  auto end() { return dims_.end(); }
+  bool empty() const { return dims_.empty(); }
+  size_t size() const { return dims_.size(); }
+  const value_type* data() const { return dims_.data(); }
+  value_type* data() { return dims_.data(); }
+
  private:
   absl::InlinedVector<DimensionSize, kMaxNumDimensions> dims_;
 };

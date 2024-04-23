@@ -533,6 +533,12 @@ def TestFactory(xla_backend,
   class LayoutsTest(ComputationTest):
     """Tests related to getting and setting on-device memory layouts."""
 
+    def _minor_to_major(self, layout: xla_client.PjRtLayout):  # pylint: disable=invalid-name
+      m2m_str = re.search("{([0-9,]*)", str(layout)).group(1)
+      if not m2m_str:
+        return ()
+      return tuple(int(x) for x in m2m_str.split(","))
+
     @unittest.skipIf(pathways, "not implemented")
     def testGetArgumentLayouts(self):
       # Create computation with a few parameters.
@@ -557,9 +563,9 @@ def TestFactory(xla_backend,
       # Test that compiled executable returns plausible layouts.
       layouts: Sequence[xla_client.Layout] = executable.get_parameter_layouts()
       self.assertLen(layouts, 3)
-      self.assertLen(layouts[0].minor_to_major(), 3)
-      self.assertLen(layouts[1].minor_to_major(), 2)
-      self.assertEmpty(layouts[2].minor_to_major())
+      self.assertLen(self._minor_to_major(layouts[0]), 3)
+      self.assertLen(self._minor_to_major(layouts[1]), 2)
+      self.assertEmpty(self._minor_to_major(layouts[2]))
 
     @unittest.skipIf(pathways, "not implemented")
     def testGetArgumentLayoutsTupled(self):
@@ -590,9 +596,9 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
       # Test that compiled executable returns plausible layouts.
       layouts: Sequence[xla_client.Layout] = executable.get_parameter_layouts()
       self.assertLen(layouts, 3)
-      self.assertLen(layouts[0].minor_to_major(), 3)
-      self.assertEmpty(layouts[1].minor_to_major())
-      self.assertLen(layouts[2].minor_to_major(), 1)
+      self.assertLen(self._minor_to_major(layouts[0]), 3)
+      self.assertEmpty(self._minor_to_major(layouts[1]))
+      self.assertLen(self._minor_to_major(layouts[2]), 1)
 
     @unittest.skipIf(pathways, "not implemented")
     def testGetOutputLayouts(self):
@@ -616,9 +622,9 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
       # Test that compiled executable returns plausible layouts.
       layouts: Sequence[xla_client.Layout] = executable.get_output_layouts()
       self.assertLen(layouts, 3)
-      self.assertLen(layouts[0].minor_to_major(), 2)
-      self.assertEmpty(layouts[1].minor_to_major())
-      self.assertLen(layouts[2].minor_to_major(), 1)
+      self.assertLen(self._minor_to_major(layouts[0]), 2)
+      self.assertEmpty(self._minor_to_major(layouts[1]))
+      self.assertLen(self._minor_to_major(layouts[2]), 1)
 
     @unittest.skipIf(pathways, "not implemented")
     def testSetArgumentLayouts(self):
@@ -652,9 +658,9 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
       # Check input layouts.
       input_layouts = executable.get_parameter_layouts()
       self.assertLen(input_layouts, 3)
-      self.assertEqual(input_layouts[0].minor_to_major(), (0, 1, 2))
-      self.assertEqual(input_layouts[1].minor_to_major(), ())
-      self.assertEqual(input_layouts[2].minor_to_major(), (0,))
+      self.assertEqual(self._minor_to_major(input_layouts[0]), (0, 1, 2))
+      self.assertEqual(self._minor_to_major(input_layouts[1]), ())
+      self.assertEqual(self._minor_to_major(input_layouts[2]), (0,))
 
       # Compile a version with default arg0 layout so we can make sure we
       # actually set it above.
@@ -662,8 +668,9 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
           module_str.replace('"{0,1,2}"', '"default"')
       )
       self.assertNotEqual(
-          input_layouts[0].minor_to_major(),
-          default_executable.get_parameter_layouts()[0].minor_to_major())
+          self._minor_to_major(input_layouts[0]),
+          self._minor_to_major(default_executable.get_parameter_layouts()[0]),
+      )
 
     @unittest.skipIf(pathways or pathways_ifrt, "not implemented")
     def testSetArgumentLayoutsLegacy(self):
@@ -706,8 +713,10 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
           executable.get_parameter_layouts())
       self.assertEqual(len(actual_layouts), len(expected_layouts))
       for actual, expected in zip(actual_layouts, expected_layouts):
-        self.assertEqual(actual.minor_to_major(),
-                         expected.layout().minor_to_major())
+        self.assertEqual(
+            self._minor_to_major(actual),
+            expected.layout().minor_to_major(),
+        )
 
     @unittest.skipIf(pathways, "not implemented")
     def testSetOutputLayouts(self):
@@ -741,9 +750,9 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
       # Check output layouts.
       output_layouts = executable.get_output_layouts()
       self.assertLen(output_layouts, 3)
-      self.assertEqual(output_layouts[0].minor_to_major(), (0, 1, 2))
-      self.assertEqual(output_layouts[1].minor_to_major(), ())
-      self.assertEqual(output_layouts[2].minor_to_major(), (0,))
+      self.assertEqual(self._minor_to_major(output_layouts[0]), (0, 1, 2))
+      self.assertEqual(self._minor_to_major(output_layouts[1]), ())
+      self.assertEqual(self._minor_to_major(output_layouts[2]), (0,))
 
       # Compile a version with default first output layout so we can make sure
       # we actually set it above.
@@ -751,8 +760,9 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
           module_str.replace('"{0,1,2}"', '"default"')
       )
       self.assertNotEqual(
-          output_layouts[0].minor_to_major(),
-          default_executable.get_output_layouts()[0].minor_to_major())
+          self._minor_to_major(output_layouts[0]),
+          self._minor_to_major(default_executable.get_output_layouts()[0]),
+      )
 
     @unittest.skipIf(pathways, "not implemented")
     def SetLayoutsSharded(self):
@@ -788,13 +798,13 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 8 : i32,
       # Check input layouts.
       input_layouts = executable.get_parameter_layouts()
       self.assertLen(input_layouts, 2)
-      self.assertEqual(input_layouts[0].minor_to_major(), (0, 1))
-      self.assertEqual(input_layouts[1].minor_to_major(), ())
+      self.assertEqual(self._minor_to_major(input_layouts[0]), (0, 1))
+      self.assertEqual(self._minor_to_major(input_layouts[1]), ())
 
       # Check output layout.
       output_layouts = executable.get_output_layouts()
       self.assertLen(output_layouts, 1)
-      self.assertEqual(input_layouts[0].minor_to_major(), (0, 1))
+      self.assertEqual(self._minor_to_major(input_layouts[0]), (0, 1))
 
       # Compile a version with default layouts so we can make sure we actually
       # set it above.
@@ -802,11 +812,13 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 8 : i32,
           module_str.replace('"{0,1}"', '"default"')
       )
       self.assertNotEqual(
-          input_layouts[0].minor_to_major(),
-          default_executable.get_parameter_layouts()[0].minor_to_major())
+          self._minor_to_major(input_layouts[0]),
+          self._minor_to_major(default_executable.get_parameter_layouts()[0]),
+      )
       self.assertNotEqual(
-          output_layouts[0].minor_to_major(),
-          default_executable.get_output_layouts()[0].minor_to_major())
+          self._minor_to_major(output_layouts[0]),
+          self._minor_to_major(default_executable.get_output_layouts()[0]),
+      )
 
     @unittest.skipIf(pathways, "not implemented")
     def testAutoArgumentLayouts(self):
@@ -838,8 +850,8 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
 
       # Check input layouts.
       input_layouts = executable.get_parameter_layouts()
-      self.assertEqual(input_layouts[0].minor_to_major(), (1, 0))
-      self.assertEqual(input_layouts[1].minor_to_major(), (2, 0, 1))
+      self.assertEqual(self._minor_to_major(input_layouts[0]), (1, 0))
+      self.assertEqual(self._minor_to_major(input_layouts[1]), (2, 0, 1))
 
       # Compile a version with default layouts so we can make sure the compiler
       # is actually choosing above.
@@ -849,8 +861,8 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
       # We expect the compiler to choose a non-default layout for the second
       # (1024,8,128) argument.
       self.assertNotEqual(
-          input_layouts[1].minor_to_major(),
-          default_executable.get_parameter_layouts()[1].minor_to_major(),
+          self._minor_to_major(input_layouts[1]),
+          self._minor_to_major(default_executable.get_parameter_layouts()[1]),
       )
 
     @unittest.skipIf(pathways, "not implemented")
@@ -881,7 +893,7 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
 
       # Check output layout
       output_layout, = executable.get_output_layouts()
-      self.assertEqual(output_layout.minor_to_major(), (2, 0, 1))
+      self.assertEqual(self._minor_to_major(output_layout), (2, 0, 1))
 
       # Compile a version with default layouts so we can make sure the compiler
       # is actually choosing above.
@@ -890,8 +902,8 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
       )
       # We expect the compiler to choose a non-default output layout.
       self.assertNotEqual(
-          output_layout.minor_to_major(),
-          default_executable.get_output_layouts()[0].minor_to_major(),
+          self._minor_to_major(output_layout),
+          self._minor_to_major(default_executable.get_output_layouts()[0]),
       )
 
   tests.append(LayoutsTest)
@@ -2533,6 +2545,12 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
       for device in self.backend.local_devices():
         self.assertEqual(device.platform, self.backend.platform)
 
+    def testCoreCount(self):
+      if self.backend.platform != "gpu":
+        self.skipTest("core_count is only supported on GPU")
+      for device in self.backend.local_devices():
+        self.assertGreater(device.core_count, 0)
+
     def testLocalHardwareId(self):
       for device in self.backend.devices():
         local_hardware_id = device.local_hardware_id
@@ -2548,6 +2566,7 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
           self.assertEqual(lookup_device, device)
 
     @unittest.skipIf(pathways, "not implemented")
+    @unittest.skipIf(pathways_ifrt, "not implemented")
     def testMemoryStats(self):
       for device in self.backend.local_devices():
         stats = device.memory_stats()
@@ -2927,6 +2946,34 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
         self.backend.pjrt_c_api_major_version  # pylint: disable=pointless-statement
       with self.assertRaises(AttributeError):
         self.backend.pjrt_c_api_minor_version  # pylint: disable=pointless-statement
+
+    @unittest.skipIf(pathways or pathways_ifrt, "has different behavior")
+    def testPluginProgramDoesNotCompile(self):
+      program = xla_client.ifrt_programs.make_plugin_program("foobar")
+      options = xla_client.ifrt_programs.make_plugin_compile_options()
+      with self.assertRaisesRegex(
+          xla_client.XlaRuntimeError, "PjRtCompiler requires an XlaProgram"
+      ):
+        self.backend.compile_ifrt_program(program, options)
+
+    @unittest.skipIf(pathways, "does not work with non-ifrt legacy pathways")
+    def testXlaProgramViaIfrtProgram(self):
+      c = self._NewComputation()
+      ops.Iota(c, xla_client.PrimitiveType.F32, 10)
+      program = xla_client.ifrt_programs.make_xla_program(
+          xla_computation_to_mlir_module(c.build())
+      )
+      options = xla_client.ifrt_programs.make_xla_compile_options(
+          xla_client.CompileOptions(), []
+      )
+
+      compiled_c = self.backend.compile_ifrt_program(program, options)
+      results = xla_client.execute_with_python_values(
+          compiled_c, arguments=(), backend=self.backend
+      )
+
+      self.assertLen(results, 1)
+      np.testing.assert_equal(results[0], np.arange(10, dtype=np.float32))
 
     @unittest.skipIf(cloud_tpu or pathways or pathways_ifrt or tfrt_tpu,
                      "not implemented")

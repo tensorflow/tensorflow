@@ -578,6 +578,14 @@ inline bool IsBF16ShapedType(Type t) {
   return false;
 }
 
+// Returns true if it is a shaped type of FloatType elements.
+inline bool IsFloatShapedType(Type t) {
+  if (auto shaped_type = t.dyn_cast_or_null<ShapedType>()) {
+    return shaped_type.getElementType().isa<FloatType>();
+  }
+  return false;
+}
+
 // Returns new shape with rank 'new_dims' with padded ones on the
 // left if needed.
 inline std::vector<int64_t> GetPaddedShape(ArrayRef<int64_t> old_shape,
@@ -3067,6 +3075,50 @@ OpFoldResult SquareOp::fold(FoldAdaptor adaptor) {
 
   auto compute = [](APFloat value) -> APFloat { return value * value; };
   return ConstFoldUnaryOp(result_type, operands[0], compute);
+}
+
+//===----------------------------------------------------------------------===//
+// MaximumOp
+//===----------------------------------------------------------------------===//
+
+OpFoldResult MaximumOp::fold(FoldAdaptor adaptor) {
+  auto lhs_type = getLhs().getType();
+  auto rhs_type = getRhs().getType();
+  // Only constant fold for float tensors of the same type is implemented.
+  if (lhs_type != rhs_type || !IsFloatShapedType(lhs_type)) return nullptr;
+
+  auto lhs = adaptor.getLhs().dyn_cast_or_null<DenseElementsAttr>();
+  auto rhs = adaptor.getRhs().dyn_cast_or_null<DenseElementsAttr>();
+  if (lhs && lhs.isSplat()) {
+    APFloat lhs_value = lhs.getSplatValue<APFloat>();
+    lhs_value.changeSign();
+    if (lhs_value.isLargest()) return getRhs();
+  }
+  if (rhs && rhs.isSplat()) {
+    APFloat rhs_value = rhs.getSplatValue<APFloat>();
+    rhs_value.changeSign();
+    if (rhs_value.isLargest()) return getLhs();
+  }
+  return nullptr;
+}
+
+//===----------------------------------------------------------------------===//
+// MinimumOp
+//===----------------------------------------------------------------------===//
+
+OpFoldResult MinimumOp::fold(FoldAdaptor adaptor) {
+  auto lhs_type = getLhs().getType();
+  auto rhs_type = getRhs().getType();
+  // Only constant fold for float tensors of the same type is implemented.
+  if (lhs_type != rhs_type || !IsFloatShapedType(lhs_type)) return nullptr;
+
+  auto lhs = adaptor.getLhs().dyn_cast_or_null<DenseElementsAttr>();
+  auto rhs = adaptor.getRhs().dyn_cast_or_null<DenseElementsAttr>();
+  if (lhs && lhs.isSplat() && lhs.getSplatValue<APFloat>().isLargest())
+    return getRhs();
+  if (rhs && rhs.isSplat() && rhs.getSplatValue<APFloat>().isLargest())
+    return getLhs();
+  return nullptr;
 }
 
 //===----------------------------------------------------------------------===//

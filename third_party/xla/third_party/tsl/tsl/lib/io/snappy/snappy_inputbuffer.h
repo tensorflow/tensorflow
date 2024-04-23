@@ -56,11 +56,11 @@ class SnappyInputBuffer : public InputStreamInterface {
   //   If input_buffer_ is smaller in size than a compressed block.
   // others:
   //   If reading from file failed.
-  Status ReadNBytes(int64_t bytes_to_read, tstring* result) override;
+  absl::Status ReadNBytes(int64_t bytes_to_read, tstring* result) override;
 
   int64_t Tell() const override;
 
-  Status Reset() override;
+  absl::Status Reset() override;
 
  private:
   // Reads data from `file_` and tries to fill up `input_buffer_` if enough
@@ -76,13 +76,13 @@ class SnappyInputBuffer : public InputStreamInterface {
   // Returns OutOfRange error if NO data could be read from file. Note that this
   // won't return an OutOfRange if there wasn't sufficient data in file to
   // completely fill up `input_buffer_`.
-  Status ReadFromFile();
+  absl::Status ReadFromFile();
 
   // Reads the length of the next compressed block stored in the next 4 bytes at
   // `next_in_`. Uncompresses the next compressed block and writes the output
   // produced to the output_buffer_.
   // Should be called only after the cached output has been consumed.
-  Status Inflate();
+  absl::Status Inflate();
 
   // Starts reading bytes at `next_out_` until either `bytes_to_read`
   // bytes have been read or `next_out_` is reached.
@@ -92,7 +92,7 @@ class SnappyInputBuffer : public InputStreamInterface {
 
   // Reads the length of the next *compressed* block and stores in `length`.
   // The length is stored in 4 bytes in little endian notation.
-  Status ReadCompressedBlockLength(uint32* length);
+  absl::Status ReadCompressedBlockLength(uint32* length);
 
   RandomAccessFile* file_;         // Not owned
   int64_t file_pos_ = 0;           // Next position to read from in `file_`

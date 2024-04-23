@@ -61,8 +61,8 @@ struct AotResult {
 
 // AOT compiles saved_model in input_model_dir and returns AotResult, otherwise
 // returns error.
-StatusOr<AotResult> AotCompileSavedModel(absl::string_view input_model_dir,
-                                         AotOptions aot_options = {});
+absl::StatusOr<AotResult> AotCompileSavedModel(
+    absl::string_view input_model_dir, AotOptions aot_options = {});
 
 // TODO(b/296466237): Add unit test.
 // Runs bridge and compiles the generated XLA functions corresponding to the
@@ -72,7 +72,7 @@ StatusOr<AotResult> AotCompileSavedModel(absl::string_view input_model_dir,
 // so that shape inference pass in bridge can proceed correctly. Returns
 // AotResult::ExecutableMap as compilation result, which maps function
 // signatures to serialized executables.
-StatusOr<AotResult::ExecutableMap> AotCompileXlaFunctionsInMetaGraphDef(
+absl::StatusOr<AotResult::ExecutableMap> AotCompileXlaFunctionsInMetaGraphDef(
     const MetaGraphDef& meta_graph_def, const std::string& signature_name,
     const absl::flat_hash_map<std::string, tensorflow::TensorShapeProto>&
         input_shapes,
@@ -85,7 +85,8 @@ StatusOr<AotResult::ExecutableMap> AotCompileXlaFunctionsInMetaGraphDef(
 // AOT compiles `function` into PjRtExecutable. It is the counterpart of the JIT
 // version `CompileToPjRtLoadedExecutable`. `compilation_result` contains the
 // generated XLA computation.
-StatusOr<std::unique_ptr<xla::PjRtExecutable>> AotCompileToGpuPjRtExecutable(
+absl::StatusOr<std::unique_ptr<xla::PjRtExecutable>>
+AotCompileToGpuPjRtExecutable(
     const FunctionLibraryDefinition* flib_def, const NameAttrList& function,
     int graph_def_version, const std::vector<XlaCompiler::Argument>& args,
     bool has_ref_vars, bool may_alias_resource_update,
@@ -94,7 +95,7 @@ StatusOr<std::unique_ptr<xla::PjRtExecutable>> AotCompileToGpuPjRtExecutable(
 
 // Returns serialized PJRT loaded GPU executable. This function requires GPU
 // device to be present during compilation.
-StatusOr<std::string> AotCompileToGpuPjRtLoadedExecutableWithDevice(
+absl::StatusOr<std::string> AotCompileToGpuPjRtLoadedExecutableWithDevice(
     const FunctionLibraryDefinition* flib_def, const NameAttrList& function,
     int graph_def_version, const std::vector<XlaCompiler::Argument>& args,
     bool has_ref_vars, bool may_alias_resource_update,

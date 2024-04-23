@@ -396,6 +396,7 @@ class Layout {
 
   static constexpr int64_t kDefaultMemorySpace = 0;
   static constexpr int64_t kGenericFastMemorySpace = 1;
+  static constexpr int64_t kHostMemorySpace = 5;
   int64_t memory_space() const { return memory_space_; }
   Layout& set_memory_space(int64_t value) {
     memory_space_ = value;
@@ -473,7 +474,7 @@ class Layout {
 
   // The number of bits used to store an individual array element.
   // When the value is 0, default to ShapeUtil::ByteSizeOfPrimitiveType.
-  uint16_t element_size_in_bits_ = 0;
+  int64_t element_size_in_bits_ = 0;
 
   // A map from physical dimension numbers to logical dimension numbers.
   // The first element is the most minor physical dimension (fastest varying

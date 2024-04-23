@@ -2245,6 +2245,7 @@ cc_test(
         ":builtin_ops",
         ":test_main",
         ":test_util",
+        "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
     ],
 )

@@ -301,7 +301,7 @@ using ConstDfsHloVisitorWithDefault =
 class DfsHloRewriteVisitor : public DfsHloVisitorWithDefault {
  public:
   // Runs a visitor on the module and returns whether the module has changed.
-  StatusOr<bool> RunOnModule(
+  absl::StatusOr<bool> RunOnModule(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads = {}) {
     Status status;
@@ -341,14 +341,15 @@ class DfsHloRewriteVisitor : public DfsHloVisitorWithDefault {
   // Replaces the existing HLO instruction old_instruction, with
   // new_instruction, and marks the optimizer status as changed.
   // Returns the Status representing the result of the replace operation.
-  StatusOr<bool> ReplaceInstruction(HloInstruction* old_instruction,
-                                    HloInstruction* new_instruction,
-                                    bool preserve_sharding) {
+  absl::StatusOr<bool> ReplaceInstruction(HloInstruction* old_instruction,
+                                          HloInstruction* new_instruction,
+                                          bool preserve_sharding) {
     VLOG(3) << "Replacing instruction:" << "\n  old: "
             << old_instruction->ToString()
             << "\n  new: " << new_instruction->ToString();
-    StatusOr<bool> changed_or = old_instruction->parent()->ReplaceInstruction(
-        old_instruction, new_instruction, preserve_sharding);
+    absl::StatusOr<bool> changed_or =
+        old_instruction->parent()->ReplaceInstruction(
+            old_instruction, new_instruction, preserve_sharding);
     if (ABSL_PREDICT_TRUE(changed_or.ok())) {
       changed_ |= changed_or.value();
     }
@@ -357,7 +358,7 @@ class DfsHloRewriteVisitor : public DfsHloVisitorWithDefault {
 
   Status ReplaceInstruction(HloInstruction* old_instruction,
                             HloInstruction* new_instruction) {
-    StatusOr<bool> changed_or =
+    absl::StatusOr<bool> changed_or =
         ReplaceInstruction(old_instruction, new_instruction,
                            /*preserve_sharding=*/false);
     if (ABSL_PREDICT_TRUE(changed_or.ok())) {

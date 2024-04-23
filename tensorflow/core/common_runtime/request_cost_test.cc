@@ -51,6 +51,24 @@ TEST(RequestCostTest, RecordCost) {
                                    Pair("cpu_v2", absl::Milliseconds(44))));
 }
 
+TEST(RequestCostTest, RecordMetrics) {
+  RequestCost request_cost;
+
+  request_cost.RecordMetrics({{"metric_v1", 1}, {"metric_v2", 3.14}});
+  EXPECT_THAT(
+      request_cost.GetMetrics(),
+      UnorderedElementsAre(Pair("metric_v1", 1), Pair("metric_v2", 3.14)));
+
+  request_cost.RecordMetrics({{"metric_v1", 11},
+                              {"metric_v2", 3.14159},
+                              {"other_metric_v1", 3},
+                              {"other_metric_v2", 4}});
+  EXPECT_THAT(request_cost.GetMetrics(),
+              UnorderedElementsAre(
+                  Pair("metric_v1", 11), Pair("metric_v2", 3.14159),
+                  Pair("other_metric_v1", 3), Pair("other_metric_v2", 4)));
+}
+
 TEST(RequestCostTest, RecordBatchMetrics) {
   RequestCost request_cost;
 

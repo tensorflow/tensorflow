@@ -17,16 +17,13 @@ limitations under the License.
 #define XLA_PYTHON_SHARDING_H_
 
 #include <cstddef>
-#include <memory>
 #include <optional>
-#include <string>
 #include <utility>
 
 // placeholder for index annotation headers
 #include "absl/hash/hash.h"
 #include "third_party/nanobind/include/nanobind/nanobind.h"
 #include "xla/hlo/ir/hlo_sharding.h"
-#include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/status_casters.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/nb_class_ptr.h"
@@ -68,9 +65,6 @@ nanobind::object CheckAndCanonicalizeMemoryKind(
 size_t ShardingHash(nanobind::handle sharding);
 
 bool ShardingEqual(nanobind::handle a, nanobind::handle b);
-
-xla::ClientAndPtr<xla::PjRtMemorySpace> GetMemory(
-    const xla::ClientAndPtr<xla::PjRtDevice>& device, const std::string& kind);
 
 class XLACompatibleSharding : public Sharding {
  public:
@@ -118,7 +112,7 @@ class SingleDeviceSharding : public XLACompatibleSharding {
       nanobind::object device, nanobind::object memory_kind = nanobind::none());
 
   // Used only in C++ to accelerate `PyArray::MakeFromSingleDeviceArray()`.
-  SingleDeviceSharding(std::shared_ptr<xla::PyClient> client,
+  SingleDeviceSharding(xla::nb_class_ptr<xla::PyClient> client,
                        xla::ifrt::DeviceList device_list,
                        nanobind::object memory_kind);
 

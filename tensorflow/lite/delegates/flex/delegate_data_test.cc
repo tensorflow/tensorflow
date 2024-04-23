@@ -71,7 +71,7 @@ TEST(DelegateDataTest, CheckFunctionDef) {
          std::set<std::string>* result) {
         result->insert("add_subgraph");
         result->insert("mul_subgraph");
-        return ::tensorflow::OkStatus();
+        return absl::OkStatus();
       };
 
   // Builds a TF Lite primary graph with two subgraphs.
@@ -216,7 +216,7 @@ TEST(DelegateDataTest, CheckFunctionDefWithOnlyMainGraph) {
          std::set<std::string>* result) {
         result->insert("add_subgraph");
         result->insert("mul_subgraph");
-        return ::tensorflow::OkStatus();
+        return absl::OkStatus();
       };
 
   // Builds a TF Lite primary graph with two subgraphs.

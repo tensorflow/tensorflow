@@ -682,6 +682,7 @@ cc_library(
         ":tpu_compilation_cache_lookup",
         ":tpu_program_group_interface",
         "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
     ] + tf_grpc_cc_dependencies(),
 )
@@ -780,7 +781,7 @@ cc_library(
         "//tensorflow/core/distributed_runtime/rpc:grpc_util",
         "//tensorflow/core/lib/core:threadpool",
         "//tensorflow/core/platform:coding",
-        "@local_tsl//tsl/distributed_runtime/rpc:grpc_call",
+        "@local_xla//xla/tsl/distributed_runtime/rpc:grpc_call",
     ] + tf_grpc_cc_dependencies(),
 )
 

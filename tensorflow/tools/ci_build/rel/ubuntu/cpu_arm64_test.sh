@@ -109,7 +109,7 @@ sed -i '$ aimport /usertools/aarch64_clang.bazelrc' .bazelrc
 
 # configure may have chosen the wrong setting for PYTHON_LIB_PATH so
 # determine here the correct setting
-PY_SITE_PACAKGES=$(${PYTHON_BIN_PATH} -c "import site ; print(site.getsitepackages()[0])")
+PY_SITE_PACKAGES=$(${PYTHON_BIN_PATH} -c "import site ; print(site.getsitepackages()[0])")
 
 update_bazel_flags
 

@@ -25,6 +25,7 @@ limitations under the License.
 #include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/IR/ValueRange.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/fusions/mlir/computation_partitioner.h"
@@ -40,29 +41,24 @@ using OperandProvider =
     std::function<absl::StatusOr<llvm::SmallVector<mlir::Value>>(
         const HloInstruction* instr, int index, mlir::ValueRange indices)>;
 
-// Emits MLIR to generate the given element of the HLO instruction. Required
-// operands are accessed through the `operand_provider` function.
-// CHECK fails if IsHloConversionSupported returns false.
-absl::StatusOr<llvm::SmallVector<mlir::Value>> HloToMlir(
-    const HloInstruction* instr, mlir::ValueRange indices,
-    const OperandProvider& operand_provider,
-    const CallTargetProvider& call_target_provider,
-    mlir::ImplicitLocOpBuilder& builder);
-
-// Emits MLIR to produce the value(s) of a parameter. The parameter must be
-// located outside the subgraph.
-llvm::SmallVector<mlir::Value> ProvideParameter(
+// Emits MLIR to produce the value of a parameter. The parameter must be located
+// outside the subgraph. By default, the caller subgraph will be determined by
+// searching in 'computation' for the subgraph that constains 'instr'. If
+// 'instr' does not belong to 'computation', the caller subgraph can be passed
+// directly.
+mlir::Value ProvideParameter(
     const PartitionedComputation& computation, const HloInstruction* instr,
     int operand_index, mlir::ValueRange indices,
-    const CallTargetProvider& call_target_provider,
-    mlir::ImplicitLocOpBuilder& builder);
+    const CallTargetProvider& call_target_provider, mlir::func::FuncOp this_fn,
+    mlir::ImplicitLocOpBuilder& builder,
+    const PartitionedComputation::Subgraph* caller = nullptr);
 
 // Emits MLIR to produce the values of a range of parameters. The parameters
 // must all be scalars. The parameters are all evaluated at the same indices.
 llvm::SmallVector<mlir::Value> ProvideParameterRange(
     const PartitionedComputation& computation, const HloInstruction* instr,
     int start, int num, mlir::ValueRange indices,
-    const CallTargetProvider& call_target_provider,
+    const CallTargetProvider& call_target_provider, mlir::func::FuncOp this_fn,
     mlir::ImplicitLocOpBuilder& builder);
 
 // Checks whether the given HLO instruction can be converted to MLIR.
@@ -106,9 +102,20 @@ mlir::Value CheckConstraints(const IndexingMap& map, mlir::ValueRange dims,
 llvm::SmallVector<mlir::Value> EmitLoopNest(
     mlir::ImplicitLocOpBuilder& b, mlir::ValueRange dim_values,
     mlir::ValueRange iter_args_inits, const IndexingMap& indexing_map,
-    const std::function<llvm::SmallVector<mlir::Value>(
+    mlir::function_ref<llvm::SmallVector<mlir::Value>(
         mlir::ValueRange iter_args, mlir::ValueRange dim_values,
-        mlir::ValueRange symbol_values)>& create_body);
+        mlir::ValueRange symbol_values)>
+        create_body);
+
+// Same as EmitLoopNest, but the body building function can return an error
+// which gets returned from EmitLoopNestWithStatus.
+absl::StatusOr<llvm::SmallVector<mlir::Value>> EmitLoopNestWithStatus(
+    mlir::ImplicitLocOpBuilder& b, mlir::ValueRange dim_values,
+    mlir::ValueRange iter_args_inits, const IndexingMap& indexing_map,
+    mlir::function_ref<absl::StatusOr<llvm::SmallVector<mlir::Value>>(
+        mlir::ValueRange iter_args, mlir::ValueRange dim_values,
+        mlir::ValueRange symbol_values)>
+        create_body);
 
 // Clamps `index` to [0, high] boundaries.
 mlir::Value ClampIndex(mlir::Value index, bool is_unsigned, int64_t high,

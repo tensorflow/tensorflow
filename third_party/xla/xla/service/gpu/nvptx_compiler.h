@@ -71,13 +71,17 @@ class NVPTXCompiler : public GpuCompiler {
       AutotuneConfig& autotune_config,
       tsl::thread::ThreadPool* thread_pool) override;
 
-  absl::Status AddTritonGemmAutotuningPasses(
+  absl::Status AddGemmFusionAutotuningPasses(
       HloPassPipeline* pipeline, HloModule* hlo_module,
       AutotuneConfig& autotune_config,
       tsl::thread::ThreadPool* thread_pool) override;
 
   absl::Status AddCustomKernelReplacementPasses(
       HloPassPipeline* pipeline, const DebugOptions& debug_options) override;
+
+  absl::Status RunCudnnFusionCompilerPass(
+      HloModule* module, se::StreamExecutor* stream_exec,
+      Thunk::BinaryMap* dnn_compiled_graphs) override;
 
   HloDataflowAnalysis::CanShareBuffer GetCanShareBuffer() const override;
 

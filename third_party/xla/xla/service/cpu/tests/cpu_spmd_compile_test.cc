@@ -17,13 +17,13 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "xla/hlo/utils/hlo_query.h"
+#include "absl/status/statusor.h"
+#include "xla/debug_options_flags.h"
 #include "xla/service/cpu/cpu_compiler.h"
 #include "xla/service/cpu/test_target_triple_helper.h"
 #include "xla/service/cpu/tests/cpu_codegen_test.h"
+#include "xla/service/executable.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/service/hlo_parser.h"
-#include "xla/tests/hlo_test_base.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/test.h"
 

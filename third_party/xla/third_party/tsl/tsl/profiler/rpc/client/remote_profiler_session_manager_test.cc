@@ -84,7 +84,7 @@ TEST(RemoteProfilerSessionManagerTest, Simple) {
 
   ProfileRequest request =
       PopulateProfileRequest(TmpDir(), "session_id", service_address, options);
-  Status status;
+  absl::Status status;
   auto sessions =
       RemoteProfilerSessionManager::Create(options, request, status);
   EXPECT_TRUE(status.ok());
@@ -116,7 +116,7 @@ TEST(RemoteProfilerSessionManagerTest, ExpiredDeadline) {
   absl::Time approx_start = absl::Now();
   ProfileRequest request =
       PopulateProfileRequest(TmpDir(), "session_id", service_address, options);
-  Status status;
+  absl::Status status;
   auto sessions =
       RemoteProfilerSessionManager::Create(options, request, status);
   EXPECT_TRUE(status.ok());
@@ -148,7 +148,7 @@ TEST(RemoteProfilerSessionManagerTest, LongSession) {
 
   ProfileRequest request =
       PopulateProfileRequest(TmpDir(), "session_id", service_address, options);
-  Status status;
+  absl::Status status;
   auto sessions =
       RemoteProfilerSessionManager::Create(options, request, status);
   EXPECT_TRUE(status.ok());

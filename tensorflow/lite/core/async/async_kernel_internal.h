@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_CORE_ASYNC_ASYNC_KERNEL_INTERNAL_H_
 #define TENSORFLOW_LITE_CORE_ASYNC_ASYNC_KERNEL_INTERNAL_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <vector>
 
@@ -114,6 +115,16 @@ struct TfLiteAsyncKernel {
                                  TfLiteOpaqueContext* context,
                                  TfLiteOpaqueNode* node, int tensor_index,
                                  const TfLiteAttributeMap* attrs) = nullptr;
+
+  // Set attributes to the buffer, backend kernel will validate the buffer.
+  TfLiteStatus (*set_buffer_attributes)(
+      TfLiteAsyncKernel* async_kernel, const TfLiteBackendBuffer* buffer,
+      const TfLiteAttributeMap* attrs) = nullptr;
+
+  // Get attributes from the buffer, backend kernel will validate the buffer.
+  TfLiteStatus (*get_buffer_attributes)(TfLiteAsyncKernel* async_kernel,
+                                        const TfLiteBackendBuffer* buffer,
+                                        TfLiteAttributeMap* attrs) = nullptr;
 
   // Prepares the kernel using the information from Set[In|Out]putAttributes
   // call above.

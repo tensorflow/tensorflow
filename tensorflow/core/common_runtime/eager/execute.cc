@@ -59,6 +59,7 @@ limitations under the License.
 #include "absl/types/optional.h"
 #include "tensorflow/c/tf_tensor_internal.h"
 #include "tensorflow/compiler/jit/defs.h"
+#include "xla/tsl/util/env_var.h"
 #include "tensorflow/core/common_runtime/colocation_graph.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_set.h"
@@ -120,6 +121,16 @@ auto* top_level_jit_compilation_counter = monitoring::Counter<1>::New(
     "/tensorflow/core/tf_top_level_jit_compilation",
     "The number of times a top-level JIT-compiled function is called.",
     "device");
+
+bool SendAsProtosWhenPossible() {
+  static bool send_as_protos_when_possible = []() {
+    bool result;
+    TF_CHECK_OK(tsl::ReadBoolFromEnvVar("TF_SEND_AS_PROTOS_WHEN_POSSIBLE",
+                                        false, &result));
+    return result;
+  }();
+  return send_as_protos_when_possible;
+}
 
 const string& DeviceNameOrUnspecified(Device* device) {
   static string* unspecified_string = new string("<unspecified>");
@@ -206,12 +217,12 @@ Status CopyInputToExpectedDevice(EagerContext* ctx, EagerOperation* op,
   // We are only here if the policy is warn or silent copies, so we should
   // trigger a copy.
   TensorHandle* result_handle = nullptr;
-  profiler::TraceMe activity(
+  tsl::profiler::TraceMe activity(
       [&] {
         return absl::StrCat("_Send input ", i, " from ", handle_device->name(),
                             " to ", expected_input_device->name());
       },
-      profiler::TraceMeLevel::kInfo);
+      tsl::profiler::TraceMeLevel::kInfo);
   Status status =
       EagerCopyToDevice(handle, ctx, &op->Executor(), expected_input_device,
                         /* mirror= */ true, &result_handle);
@@ -235,8 +246,8 @@ Status CopyInputToExpectedDevice(EagerContext* ctx, EagerOperation* op,
 Status ValidateInputTypeAndPlacement(
     EagerContext* ctx, EagerOperation* op,
     const core::RefCountPtr<KernelAndDevice>& kernel) {
-  profiler::TraceMe activity("ValidateInputTypeAndPlacement",
-                             profiler::TraceMeLevel::kInfo);
+  tsl::profiler::TraceMe activity("ValidateInputTypeAndPlacement",
+                                  tsl::profiler::TraceMeLevel::kInfo);
   const int n_inputs = op->Inputs().size();
   if (kernel->num_inputs() != n_inputs) {
     return errors::InvalidArgument("expected ", kernel->num_inputs(),
@@ -1074,8 +1085,8 @@ using BoolTensorInputs = std::vector<std::pair<std::string, bool>>;
 // function's input signature. Currently this is only useful to invoke when
 // small_constants_optimizer is enabled because the runtime will have equivalent
 // FunctionDefs of the original tf.function without the boolean tensor input.
-StatusOr<BoolTensorInputs> GetBoolInputs(EagerOperation* op,
-                                         bool delete_inputs) {
+absl::StatusOr<BoolTensorInputs> GetBoolInputs(EagerOperation* op,
+                                               bool delete_inputs) {
   BoolTensorInputs result;
   if (!op->is_function()) return result;
   // Extract tensor inputs.
@@ -1188,7 +1199,7 @@ bool IsSummaryOptimizerEnabled(const EagerOperation* op) {
   return arg_value.value() == include_summary_arg.second;
 }
 
-StatusOr<Fprint128> GetKernelCacheKey(
+absl::StatusOr<Fprint128> GetKernelCacheKey(
     const EagerOperation& op, const Fprint128& op_cache_key,
     const std::vector<Device*>& input_device_ptrs,
     const std::unordered_map<int, DtypeAndPartialTensorShape>&
@@ -1242,8 +1253,8 @@ Status ExtractFunctionInputInfo(
     absl::flat_hash_map<string, const std::vector<string>*>& composite_devices,
     std::unordered_map<int, DtypeAndPartialTensorShape>&
         input_resource_variable_dtypes_and_shapes) {
-  profiler::TraceMe activity("EagerCopyToDevice",
-                             profiler::TraceMeLevel::kInfo);
+  tsl::profiler::TraceMe activity("EagerCopyToDevice",
+                                  tsl::profiler::TraceMeLevel::kInfo);
   EagerContext& ctx = op->EagerContext();
   input_device_ptrs.reserve(op->Inputs().size());
   const absl::InlinedVector<TensorHandle*, 4>* inputs;
@@ -1707,13 +1718,13 @@ Status AddOrExecuteNode(core::RefCountPtr<KernelAndDevice> kernel,
 //    running without an explicitly requested device.
 Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
                          int* num_retvals) {
-  profiler::ScopedMemoryDebugAnnotation op_annotation(
+  tsl::profiler::ScopedMemoryDebugAnnotation op_annotation(
       op->op_name(), op->eager_func_params().has_value()
                          ? op->eager_func_params().value().step_id.value_or(0)
                          : 0);
-  profiler::TraceMe activity(
+  tsl::profiler::TraceMe activity(
       [&] { return absl::StrCat("EagerLocalExecute: ", op->Name()); },
-      profiler::TraceMeLevel::kInfo);
+      tsl::profiler::TraceMeLevel::kInfo);
   EagerContext& ctx = op->EagerContext();
   auto& executor = op->Executor();
   TF_RETURN_IF_ERROR(executor.status());
@@ -1870,8 +1881,8 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
 
   tensorflow::Device* op_device = std::get<Device*>(op->Device());
   {
-    profiler::TraceMe activity("CopyInputToExpectedDevice",
-                               profiler::TraceMeLevel::kInfo);
+    tsl::profiler::TraceMe activity("CopyInputToExpectedDevice",
+                                    tsl::profiler::TraceMeLevel::kInfo);
     const bool is_function = op->is_function();
     const absl::InlinedVector<TensorHandle*, 4>* inputs;
     TF_RETURN_IF_ERROR(op->TensorHandleInputs(&inputs));
@@ -1915,21 +1926,41 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
                                               ctx.GetContextViewId()));
         }
       }
-      auto* input_handle = remote_op->add_op_inputs()->mutable_remote_handle();
-      // For a remote component function, a function execution request and an
-      // input generation request may come from different workers. We need to
-      // guarantee that the input generation request is processed before the
-      // function execution request, so wait until the remote input is ready
-      // before sending it to the multi-device function device.
-      bool wait_until_ready =
-          SkipRemoteHandleWaitReady() ? false : op->is_function();
-      TF_RETURN_IF_ERROR(ctx.RemoteMgr()->SerializeRemoteTensorHandle(
-          input, wait_until_ready, input_handle, input_device,
-          *input_device_name, serialize_resource_dtype_and_shape));
-      if (!input_handle->resource_dtypes_and_shapes().empty()) {
-        TF_RETURN_IF_ERROR(
-            input->AddResourceShapeMirror(op_device, input_handle->op_id(),
-                                          input_handle->output_num(), &ctx));
+      int64_t num_elements;
+      TF_RETURN_IF_ERROR(input->NumElements(&num_elements));
+      if ((input->Type() == TensorHandle::HandleType::LOCAL) &&
+          (num_elements == 1) && (input->DataType() != DT_VARIANT) &&
+          SendAsProtosWhenPossible()) {
+        auto* input_tensor_proto = remote_op->add_op_inputs()->mutable_tensor();
+        const tensorflow::Tensor* input_tensor = nullptr;
+        TensorHandle* local_cpu_input_handle = nullptr;
+        TF_RETURN_IF_ERROR(EagerCopyToDevice(input, &ctx, &ctx.Executor(),
+                                             ctx.HostCPU(), false,
+                                             &local_cpu_input_handle));
+        TF_RETURN_IF_ERROR(local_cpu_input_handle->Tensor(&input_tensor));
+        input_tensor->AsProtoTensorContent(input_tensor_proto);
+        // `TensorHandle::AddResourceShapeMirror` can change `input` but only if
+        // `TensorHandle::handle_dtypes_and_shapes_` is not empty. And that
+        // requires `TensorHandle::dtype` to be equal to `DT_RESOURCE` which
+        // cannot be the case when we are here. So nothing else to do.
+      } else {
+        auto* input_handle =
+            remote_op->add_op_inputs()->mutable_remote_handle();
+        // For a remote component function, a function execution request and an
+        // input generation request may come from different workers. We need to
+        // guarantee that the input generation request is processed before the
+        // function execution request, so wait until the remote input is ready
+        // before sending it to the multi-device function device.
+        bool wait_until_ready =
+            SkipRemoteHandleWaitReady() ? false : op->is_function();
+        TF_RETURN_IF_ERROR(ctx.RemoteMgr()->SerializeRemoteTensorHandle(
+            input, wait_until_ready, input_handle, input_device,
+            *input_device_name, serialize_resource_dtype_and_shape));
+        if (!input_handle->resource_dtypes_and_shapes().empty()) {
+          TF_RETURN_IF_ERROR(
+              input->AddResourceShapeMirror(op_device, input_handle->op_id(),
+                                            input_handle->output_num(), &ctx));
+        }
       }
     }
   }
@@ -2097,8 +2128,8 @@ void CollectGraphs(EagerContext* ctx) {
 
 Status DoEagerExecute(EagerOperation* op, TensorHandle** retvals,
                       int* num_retvals) {
-  profiler::TraceMe activity([&] {
-    return ::tensorflow::profiler::TraceMeEncode(
+  tsl::profiler::TraceMe activity([&] {
+    return tsl::profiler::TraceMeEncode(
         "EagerExecute",
         {{"eager_op", op->Name()}, {"is_func", op->is_function()}});
   });
@@ -2147,8 +2178,8 @@ Status EagerKernelExecute(
     GraphCollector* graph_collector, CancellationManager* cancellation_manager,
     absl::Span<TensorHandle*> retvals,
     const absl::optional<ManagedStackTrace>& stack_trace) {
-  profiler::TraceMe activity("EagerKernelExecute",
-                             profiler::TraceMeLevel::kInfo);
+  tsl::profiler::TraceMe activity("EagerKernelExecute",
+                                  tsl::profiler::TraceMeLevel::kInfo);
   std::vector<EagerKernelRet> outputs(1);
 
   ExecuteNodeArgs inputs(op_inputs.size());
@@ -2437,13 +2468,13 @@ void EagerLocalExecuteAsync(EagerOperation* op, TensorHandle** retvals,
     return;
   }
 
-  profiler::ScopedMemoryDebugAnnotation op_annotation(
+  tsl::profiler::ScopedMemoryDebugAnnotation op_annotation(
       op->op_name(), op->eager_func_params().has_value()
                          ? op->eager_func_params().value().step_id.value_or(0)
                          : 0);
-  profiler::TraceMe activity(
+  tsl::profiler::TraceMe activity(
       [&] { return absl::StrCat("EagerLocalExecuteAsync: ", op->Name()); },
-      profiler::TraceMeLevel::kInfo);
+      tsl::profiler::TraceMeLevel::kInfo);
   EagerContext& ctx = op->EagerContext();
 
   core::RefCountPtr<KernelAndDevice> kernel;

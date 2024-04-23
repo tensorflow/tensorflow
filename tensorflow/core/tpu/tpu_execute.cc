@@ -104,16 +104,16 @@ int64_t ShapeSizeCompactRaw(const xla::Shape& shape) {
 
 // Given a tuple, fix all non-leaf nodes (tuples) such that the tuple tables
 // point to the correct leaf nodes.
-xla::Status FixTupleTableAsync(se::Stream* stream,
-                               const xla::Shape& tuple_shape,
-                               xla::ExecutionInput* mem,
-                               xla::TransferManager* transfer_manager) {
+absl::Status FixTupleTableAsync(se::Stream* stream,
+                                const xla::Shape& tuple_shape,
+                                xla::ExecutionInput* mem,
+                                xla::TransferManager* transfer_manager) {
   return xla::ShapeUtil::ForEachSubshapeWithStatus(
       tuple_shape,
       [&](const xla::Shape& element_shape,
           const xla::ShapeIndex& index) -> Status {
         if (!element_shape.IsTuple()) {
-          return OkStatus();
+          return absl::OkStatus();
         }
         std::vector<se::DeviceMemoryBase> elements;
         xla::ShapeIndex element_index = index;
@@ -159,7 +159,7 @@ bool DynamicShapeIsCompatible(const xla::Shape& dynamic_shape,
 //
 // Metadata contains the sizes of shape without padding, eventually
 // representing the size of valid data.
-xla::Status UpdateDynamicInputs(
+absl::Status UpdateDynamicInputs(
     se::Stream* stream, se::DeviceMemoryAllocator* allocator,
     std::vector<xla::ExecutionInput>* runtime_inputs,
     const std::vector<xla::Shape>& compile_time_shapes) {
@@ -183,7 +183,7 @@ xla::Status UpdateDynamicInputs(
         [&](const xla::Shape& compile_time_shape,
             const xla::ShapeIndex& index) -> Status {
           if (compile_time_shape.IsTuple() || compile_time_shape.is_static()) {
-            return OkStatus();
+            return absl::OkStatus();
           }
 
           const xla::Shape& runtime_shape =
@@ -251,7 +251,7 @@ xla::Status UpdateDynamicInputs(
           *mutable_input_mem =
               xla::MaybeOwningDeviceMemory(std::move(new_input));
           element_modified = true;
-          return OkStatus();
+          return absl::OkStatus();
         }));
     if (element_modified) {
       // The input location has been modified, need to fix tuple table to
@@ -261,7 +261,7 @@ xla::Status UpdateDynamicInputs(
                                             &runtime_input, transfer_manager));
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void TPUCancelExecution(int device_ordinal) {
@@ -405,7 +405,7 @@ OcParamsPtr CreateOcParams(const std::string& rendezvous_key_base,
 
 }  // namespace
 
-xla::StatusOr<xla::ExecutionOutput> TPUExecute(
+absl::StatusOr<xla::ExecutionOutput> TPUExecute(
     const TPUExecutableInfoProto& executable,
     const TPUHostTransferInfoProto& host_transfers,
     const xla::HloProto& hlo_metadata,
@@ -416,7 +416,7 @@ xla::StatusOr<xla::ExecutionOutput> TPUExecute(
     stream_executor::Stream* stream,
     stream_executor::Stream* host_to_device_stream,
     const XLA_TpuProgram* tpu_program) {
-  profiler::TraceMe traceme("TPUExecute", 2);
+  tsl::profiler::TraceMe traceme("TPUExecute", 2);
   TF_RET_CHECK(tpu::TpuPlatformInterface::GetRegisteredPlatform() != nullptr);
   TF_RET_CHECK(tpu_program != nullptr);
   const int device_ordinal = node_context->device_ordinal();
@@ -527,7 +527,7 @@ xla::StatusOr<xla::ExecutionOutput> TPUExecute(
         "RPC cancelled, not running TPU program on device ", device_ordinal));
   }
 
-  xla::StatusOr<xla::ExecutionOutput> output =
+  absl::StatusOr<xla::ExecutionOutput> output =
       tpu_executable->ExecuteAsyncOnStream(&service_run_options,
                                            std::move(arguments),
                                            /*hlo_execution_profile=*/nullptr);

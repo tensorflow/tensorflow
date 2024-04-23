@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/service/gpu/scatter_slice_simplifier.h"
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
 #include "xla/shape.h"

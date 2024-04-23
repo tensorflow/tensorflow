@@ -128,17 +128,21 @@ class BatchDimensionMerger : public DfsHloRewriteVisitor {
     }
 
     // Update sparsity descriptors, if present.
-    std::vector<SparsityDescriptor> sparsity;
-    auto sparse_meta =
-        absl::MakeSpan(dot->operands()).subspan(HloDotInstruction::kOperands);
-    for (SparsityDescriptor descriptor :
-         Cast<HloDotInstruction>(dot)->sparsity()) {
+    auto sparsity = Cast<HloDotInstruction>(dot)->sparsity();
+    std::vector<SparsityDescriptor> new_sparsity(sparsity.begin(),
+                                                 sparsity.end());
+    std::vector<HloInstruction*> sparse_meta(sparsity.size());
+    for (int i = 0; i < sparsity.size(); ++i) {
+      SparsityDescriptor& descriptor = new_sparsity[i];
       int64_t sparse_batch_dim =
           descriptor.index() == 0 ? lhs_batch_dimension : rhs_batch_dimension;
       if (descriptor.dimension() > sparse_batch_dim)
         descriptor.set_dimension(descriptor.dimension() -
                                  (batch_dimension_count - 1));
-      sparsity.push_back(descriptor);
+      HloInstruction* meta =
+          dot->mutable_operand(HloDotInstruction::kOperands + i);
+      Shape new_meta_shape = merge_batch_dims(meta->shape(), sparse_batch_dim);
+      TF_ASSIGN_OR_RETURN(sparse_meta[i], MakeReshapeHlo(new_meta_shape, meta));
     }
 
     TF_ASSIGN_OR_RETURN(HloInstruction * reshaped_lhs,
@@ -151,7 +155,7 @@ class BatchDimensionMerger : public DfsHloRewriteVisitor {
     HloInstruction* new_dot = dot->parent()->AddInstruction(
         HloInstruction::CreateDot(new_dot_shape, reshaped_lhs, reshaped_rhs,
                                   new_dot_dimension_numbers,
-                                  dot->precision_config(), sparsity,
+                                  dot->precision_config(), new_sparsity,
                                   sparse_meta),
         &dot->metadata());
     dot->SetupDerivedInstruction(new_dot);

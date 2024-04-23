@@ -40,6 +40,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "xla/service/gpu/fusions/mlir/passes.h"
+#include "xla/service/gpu/model/indexing_analysis.h"
 #include "xla/service/gpu/model/indexing_map.h"
 
 namespace xla {
@@ -48,8 +49,8 @@ namespace gpu {
 #define GEN_PASS_DEF_SIMPLIFYAFFINEPASS
 #include "xla/service/gpu/fusions/mlir/passes.h.inc"
 
-std::optional<Range> GetRange(mlir::Value value) {
-  auto attr_to_range = [](mlir::Attribute attr) -> std::optional<Range> {
+std::optional<Interval> GetRange(mlir::Value value) {
+  auto attr_to_range = [](mlir::Attribute attr) -> std::optional<Interval> {
     if (!attr) {
       return std::nullopt;
     }
@@ -99,31 +100,33 @@ struct RewriteAffineApply
       mlir::affine::AffineApplyOp op,
       mlir::PatternRewriter& rewriter) const override {
     auto affine_map = op.getAffineMap();
-    std::vector<Range> dim_ranges(affine_map.getNumDims());
-    std::vector<Range> symbol_ranges(affine_map.getNumSymbols());
+    std::vector<DimVar> dim_ranges(affine_map.getNumDims());
+    std::vector<RangeVar> symbol_ranges(affine_map.getNumSymbols());
 
     for (int i = 0; i < affine_map.getNumInputs(); ++i) {
       if (auto range = GetRange(op->getOperand(i))) {
         if (i >= dim_ranges.size()) {
-          symbol_ranges[i - dim_ranges.size()] = *range;
+          symbol_ranges[i - dim_ranges.size()] = RangeVar{*range};
         } else {
-          dim_ranges[i] = *range;
+          dim_ranges[i] = DimVar{*range};
         }
       } else {
         return rewriter.notifyMatchFailure(op, "failed to deduce range");
       }
     }
 
-    IndexingMap map(op.getAffineMap(), dim_ranges, symbol_ranges);
-    map.Simplify();
+    IndexingMap map(op.getAffineMap(), dim_ranges, symbol_ranges,
+                    /*rt_vars=*/{});
+    map.Simplify(GetIndexingMapForInstruction);
     auto expr = map.GetAffineMap().getResult(0);
 
-    RangeEvaluator range_evaluator(dim_ranges, symbol_ranges, op->getContext());
+    RangeEvaluator range_evaluator(map.GetDimensionBounds(),
+                                   map.GetSymbolBounds(), op->getContext());
     std::function<bool(mlir::AffineExpr)> can_be_lowered;
     bool fits_32_bits = true;
     can_be_lowered = [&](mlir::AffineExpr expr) {
       auto range = range_evaluator.ComputeExpressionRange(expr);
-      fits_32_bits &= range.upper_bound < std::numeric_limits<int32_t>::max();
+      fits_32_bits &= range.upper < std::numeric_limits<int32_t>::max();
 
       auto bin_op = llvm::dyn_cast<mlir::AffineBinaryOpExpr>(expr);
       if (!bin_op) {
@@ -150,8 +153,7 @@ struct RewriteAffineApply
     mlir::ImplicitLocOpBuilder b(op.getLoc(), rewriter);
     if (!can_be_lowered(expr)) {
       auto range = range_evaluator.ComputeExpressionRange(expr);
-      op->setAttr("xla.range",
-                  b.getIndexArrayAttr({range.lower_bound, range.upper_bound}));
+      op->setAttr("xla.range", b.getIndexArrayAttr({range.lower, range.upper}));
       return rewriter.notifyMatchFailure(op,
                                          "unable to lower the affine apply");
     }
@@ -202,8 +204,8 @@ struct RewriteAffineApply
     rewriter
         .replaceOpWithNewOp<mlir::arith::IndexCastUIOp>(op, b.getIndexType(),
                                                         result)
-        ->setAttr("xla.range", b.getIndexArrayAttr({result_range.lower_bound,
-                                                    result_range.upper_bound}));
+        ->setAttr("xla.range", b.getIndexArrayAttr(
+                                   {result_range.lower, result_range.upper}));
     return mlir::success();
   }
 };

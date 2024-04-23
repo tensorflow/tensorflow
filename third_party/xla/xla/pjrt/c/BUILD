@@ -1,4 +1,3 @@
-load("//xla:xla.bzl", "xla_cc_binary", "xla_cc_test")
 load(
     "@local_tsl//tsl/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
@@ -8,6 +7,7 @@ load(
     "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
+load("//xla:xla.bzl", "xla_cc_binary", "xla_cc_test")
 
 # copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])
 
@@ -44,12 +44,30 @@ cc_library(
 )
 
 cc_library(
+    name = "pjrt_c_api_stream_extension_hdrs",
+    hdrs = ["pjrt_c_api_stream_extension.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":pjrt_c_api_hdrs",
+    ],
+)
+
+cc_library(
     name = "pjrt_c_api_profiler_extension_hdrs",
     hdrs = ["pjrt_c_api_profiler_extension.h"],
     visibility = ["//visibility:public"],
     deps = [
         ":pjrt_c_api_hdrs",
         "//xla/backends/profiler/plugin:profiler_c_api_hdrs",
+    ],
+)
+
+cc_library(
+    name = "pjrt_c_api_custom_partitioner_extension_hdrs",
+    hdrs = ["pjrt_c_api_custom_partitioner_extension.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":pjrt_c_api_hdrs",
     ],
 )
 
@@ -160,16 +178,37 @@ cc_library(
     ],
 )
 
+# PJRT CPU plugin.
+xla_cc_binary(
+    name = "pjrt_c_api_cpu_plugin.so",
+    linkopts = [
+        "-Wl,--version-script,$(location :pjrt_c_api_cpu_version_script.lds)",
+        "-Wl,--no-undefined",
+    ],
+    linkshared = True,
+    tags = [
+        "noasan",
+        "nomsan",
+        "notsan",
+    ],
+    deps = [
+        ":pjrt_c_api_cpu",
+        ":pjrt_c_api_cpu_version_script.lds",
+    ],
+)
+
 cc_library(
     name = "pjrt_c_api_gpu_internal",
     srcs = ["pjrt_c_api_gpu_internal.cc"],
     hdrs = ["pjrt_c_api_gpu_internal.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":pjrt_c_api_custom_partitioner_extension_hdrs",
         ":pjrt_c_api_gpu_extension_hdrs",
         ":pjrt_c_api_hdrs",
         ":pjrt_c_api_helpers",
         ":pjrt_c_api_profiler_extension_hdrs",
+        ":pjrt_c_api_stream_extension_hdrs",
         ":pjrt_c_api_wrapper_impl",
         "//xla/backends/profiler/gpu:device_tracer",  # To register the GPU Tracers with the GPU Plugin".
         "//xla/backends/profiler/plugin:plugin_tracer_impl",
@@ -186,6 +225,7 @@ cc_library(
         "//xla/pjrt/gpu:gpu_helpers",
         "//xla/pjrt/gpu:se_gpu_pjrt_client",
         "//xla/pjrt/gpu:se_gpu_pjrt_compiler",  # To register GPU AOT compiler
+        "//xla/python:custom_partition_callback",
         "//xla/python:inspect_sharding",  # To register "InspectSharding" custom partitioning handler.
         "//xla/service:compiler",
         "//xla/service:custom_call_target_registry",

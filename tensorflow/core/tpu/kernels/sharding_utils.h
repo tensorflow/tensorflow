@@ -334,7 +334,7 @@ class XlaNDConcatenator {
   absl::Status ComputeInternal(
       absl::Span<const Tensor> inputs,
       const std::function<Status(const Tensor&)>& assign_or_copy_value_fn,
-      const std::function<StatusOr<Tensor*>()>& get_output_fn,
+      const std::function<absl::StatusOr<Tensor*>()>& get_output_fn,
       const Device& device) {
     const int rank = inputs[0].shape().dims();
 

@@ -24,10 +24,12 @@ limitations under the License.
 
 #include "google/protobuf/any.pb.h"
 #include "absl/algorithm/container.h"
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
+#include "llvm/Support/ExtensibleRTTI.h"
 #include "third_party/nanobind/include/nanobind/nanobind.h"
 #include "xla/layout_util.h"
 #include "xla/pjrt/host_callback.h"
@@ -35,12 +37,18 @@ limitations under the License.
 #include "xla/python/callback.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/host_callback.h"
+#include "xla/python/pjrt_ifrt/pjrt_host_callback.h"
 #include "xla/python/pjrt_ifrt/xla_host_callback.pb.h"
 #include "xla/python/py_host_callback.pb.h"
 #include "xla/python/python_ref_manager.h"
 #include "xla/python/types.h"
 #include "xla/shape.h"
+#include "xla/shape_util.h"
+#include "xla/status_macros.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
+#include "tsl/concurrency/ref_count.h"
+#include "tsl/platform/statusor.h"
 
 namespace nb = nanobind;
 

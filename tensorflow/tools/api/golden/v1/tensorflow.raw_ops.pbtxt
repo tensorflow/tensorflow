@@ -382,7 +382,7 @@ tf_module {
   }
   member_method {
     name: "BatchFunction"
-    argspec: "args=[\'in_tensors\', \'captured_tensors\', \'f\', \'num_batch_threads\', \'max_batch_size\', \'batch_timeout_micros\', \'Tout\', \'max_enqueued_batches\', \'allowed_batch_sizes\', \'container\', \'shared_name\', \'batching_queue\', \'low_priority_max_batch_size\', \'low_priority_batch_timeout_micros\', \'low_priority_allowed_batch_sizes\', \'low_priority_max_enqueued_batches\', \'enable_large_batch_splitting\', \'name\'], varargs=None, keywords=None, defaults=[\'10\', \'[]\', \'\', \'\', \'\', \'0\', \'0\', \'[]\', \'0\', \'False\', \'None\'], "
+    argspec: "args=[\'in_tensors\', \'captured_tensors\', \'f\', \'num_batch_threads\', \'max_batch_size\', \'batch_timeout_micros\', \'Tout\', \'max_enqueued_batches\', \'allowed_batch_sizes\', \'container\', \'shared_name\', \'batching_queue\', \'low_priority_max_batch_size\', \'low_priority_batch_timeout_micros\', \'low_priority_allowed_batch_sizes\', \'low_priority_max_enqueued_batches\', \'mixed_priority_policy\', \'enable_large_batch_splitting\', \'name\'], varargs=None, keywords=None, defaults=[\'10\', \'[]\', \'\', \'\', \'\', \'0\', \'0\', \'[]\', \'0\', \'low_priority_padding_with_max_batch_size\', \'False\', \'None\'], "
   }
   member_method {
     name: "BatchIFFT"
@@ -2087,6 +2087,10 @@ tf_module {
   member_method {
     name: "InTopKV2"
     argspec: "args=[\'predictions\', \'targets\', \'k\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "IndexFlatMapDataset"
+    argspec: "args=[\'input_dataset\', \'map_func_other_args\', \'index_map_func_other_args\', \'output_cardinality\', \'map_func\', \'index_map_func\', \'output_types\', \'output_shapes\', \'metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'None\'], "
   }
   member_method {
     name: "InfeedDequeue"
@@ -5607,6 +5611,10 @@ tf_module {
   member_method {
     name: "VariableV2"
     argspec: "args=[\'shape\', \'dtype\', \'container\', \'shared_name\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'\', \'None\'], "
+  }
+  member_method {
+    name: "WeightedFlatMapDataset"
+    argspec: "args=[\'input_datasets\', \'weights\', \'output_types\', \'output_shapes\', \'metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'None\'], "
   }
   member_method {
     name: "Where"

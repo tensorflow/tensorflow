@@ -15,24 +15,32 @@ limitations under the License.
 
 #include "xla/service/gpu/elemental_ir_emitter.h"
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
 // IWYU pragma: no_include "llvm/IR/Attributes.gen.inc"
 // IWYU pragma: no_include "llvm/IR/Intrinsics.gen.inc"
+#include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "llvm/IR/Attributes.h"
 #include "llvm/IR/BasicBlock.h"
+#include "llvm/IR/Constants.h"
 #include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Type.h"
 #include "llvm/Support/ModRef.h"
+#include "llvm/TargetParser/Triple.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/layout.h"
-#include "xla/literal.h"
+#include "xla/service/elemental_ir_emitter.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/ir_emitter_nested.h"
@@ -40,7 +48,7 @@ limitations under the License.
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/service/llvm_ir/math_ops.h"
-#include "xla/statusor.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 

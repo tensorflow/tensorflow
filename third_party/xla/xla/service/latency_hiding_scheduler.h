@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/str_cat.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/hlo_alias_analysis.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_pass_interface.h"
@@ -342,6 +343,8 @@ class HloGraphNode {
   void SetGraphDepth(TimeCost graph_depth) { graph_depth_ = graph_depth; }
   bool GetForceDelay() const { return force_delay_; }
   void SetForceDelay(bool force_delay) { force_delay_ = force_delay; }
+  bool GetForceEarly() const { return force_early_; }
+  void SetForceEarly(bool force_early) { force_early_ = force_early; }
   ResourcesVector GetResources() const { return resources_; }
   bool DoesOccupyAnyResource() const {
     return absl::c_any_of(resources_, [](const ResourcePair& resource) {
@@ -414,6 +417,7 @@ class HloGraphNode {
     absl::StrAppend(&result, "Depth: ", depth_, "\n");
     absl::StrAppend(&result, "Graph Depth: ", graph_depth_, "\n");
     absl::StrAppend(&result, "Force Delay: ", force_delay_, "\n");
+    absl::StrAppend(&result, "Force Early: ", force_early_, "\n");
     absl::StrAppend(&result, "Predecessors:\n");
     for (const HloEdge& e : predecessors_) {
       absl::StrAppend(&result, e.ToString());
@@ -466,6 +470,8 @@ class HloGraphNode {
   ResourcesVector resources_;
   // Force the scheduling of the nodes with attribute set as late as possible.
   bool force_delay_ = false;
+  // Force the scheduling of the nodes with attribute set as early as possible.
+  bool force_early_ = false;
   // Whether this node has been scheduled or not yet.
   bool scheduled_ = false;
   // Shareable resources released by this node.
@@ -606,8 +612,9 @@ class MemoryPressureTracker {
   const MemoryPressureState& pressure_state() const { return pressure_state_; }
 
  private:
-  static bool ShouldSkipBufferAllocations(const HloInstruction* instruction,
-                                          const ShapeIndex& idx) {
+  static bool ShouldSkipBufferAllocations(
+      const HloInstruction* instruction, const ShapeIndex& idx,
+      const HloInstruction* first_definition) {
     // Make GetTupleElement/kBitcast make alive only the tuple pointer if not
     // array shape.
     if ((instruction->opcode() == HloOpcode::kGetTupleElement ||
@@ -615,11 +622,16 @@ class MemoryPressureTracker {
         !idx.empty()) {
       return true;
     }
+    // Skip entry computation parameters because their memory usage is already
+    // accounted for.
+    if (first_definition->opcode() == HloOpcode::kParameter &&
+        first_definition->parent()->IsEntryComputation()) {
+      return true;
+    }
     return false;
   }
   static bool ShouldSkipBufferReleases(const HloInstruction* instruction) {
-    // Make GetTupleElement/kBitcast make alive only the tuple pointer if not
-    // array shape.
+    // Do not release parameter buffers as they are still in use by the caller.
     if (instruction->opcode() == HloOpcode::kParameter) {
       return true;
     }

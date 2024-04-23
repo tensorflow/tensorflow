@@ -36,9 +36,9 @@ limitations under the License.
 #include "xla/debug_options_parsers.h"
 #include "xla/parse_flags_from_env.h"
 #include "xla/stream_executor/cuda/ptx_compiler_support.h"
+#include "xla/tsl/util/command_line_flags.h"
 #include "xla/xla.pb.h"
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep
-#include "tsl/util/command_line_flags.h"
 
 namespace xla {
 
@@ -50,6 +50,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_llvm_disable_expensive_passes(false);
   opts.set_xla_backend_optimization_level(3);
   opts.set_xla_gpu_autotune_level(4);
+  opts.set_xla_gpu_autotune_max_solutions(0);
   opts.set_xla_cpu_multi_thread_eigen(true);
   opts.set_xla_gpu_cuda_data_dir("./cuda_sdk_lib");
   opts.set_xla_gpu_asm_extra_flags("");
@@ -147,7 +148,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_enable_shared_constants(true);
   opts.set_xla_gpu_enable_nccl_user_buffers(false);
   opts.set_xla_gpu_enable_nccl_comm_splitting(false);
-  opts.set_xla_gpu_enable_nccl_per_stream_comms(true);
+  opts.set_xla_gpu_enable_nccl_per_stream_comms(false);
 
   // Set 4GB space limit for redzone scratch allocator.
   opts.set_xla_gpu_redzone_scratch_max_megabytes(1LL << 12);
@@ -198,6 +199,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_exhaustive_tiling_search(false);
 
   opts.set_xla_gpu_enable_priority_fusion(true);
+  opts.set_xla_gpu_enable_triton_softmax_priority_fusion(false);
 
   opts.set_xla_gpu_auto_spmd_partitioning_memory_budget_gb(0);
   opts.set_xla_gpu_auto_spmd_partitioning_memory_budget_ratio(1.1);
@@ -209,7 +211,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_enable_reduction_epilogue_fusion(true);
   opts.set_xla_gpu_enable_nccl_clique_optimization(false);
   opts.set_xla_gpu_cublas_fallback(true);
-  opts.set_xla_gpu_cudnn_gemm_fusion(false);
+  opts.set_xla_gpu_cudnn_gemm_fusion_level(0);
   opts.set_xla_gpu_enable_while_loop_double_buffering(false);
   opts.set_xla_gpu_ensure_minor_dot_contraction_dims(false);
   opts.set_xla_gpu_filter_kernels_spilling_registers_on_autotuning(true);
@@ -236,7 +238,21 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_nccl_p2p_max_nchannels(0);
 
   opts.set_xla_gpu_enable_mlir_emitters(false);
+  opts.set_xla_gpu_max_mlir_kernels(0);
+  opts.set_xla_gpu_skip_mlir_kernels(0);
+
   opts.set_xla_gpu_multi_streamed_windowed_einsum(false);
+
+  // Minimum combined size of matrices in matrix multiplication to
+  // be rewritten to cuBLAS or Triton kernel call.
+  // This threshold is a conservative estimate and has been measured
+  // to be always beneficial (up to generally several times faster)
+  // on V100 and H100 GPUs. See openxla/xla #9319 for details.
+  const int64_t kDefaultMinGemmRewriteSize = 100;
+  opts.set_xla_gpu_gemm_rewrite_size_threshold(kDefaultMinGemmRewriteSize);
+
+  opts.set_xla_gpu_use_memcpy_local_p2p(false);
+
   return opts;
 }
 
@@ -736,6 +752,12 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       debug_options->xla_gpu_autotune_level(),
       "Set GEMM and Convolution auto-tuning level. 0 = off; 1 = on; 2 = "
       "on+init; 3 = on+init+reinit; 4 = on+init+reinit+check."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_autotune_max_solutions",
+      int64_setter_for(&DebugOptions::set_xla_gpu_autotune_max_solutions),
+      debug_options->xla_gpu_autotune_max_solutions(),
+      "Maximal number of GEMM solutions to consider for autotuning: 0 means "
+      "consider all solutions returned by the GEMM library."));
   flag_list->push_back(tsl::Flag(
       "xla_force_host_platform_device_count",
       int32_setter_for(&DebugOptions::set_xla_force_host_platform_device_count),
@@ -1399,6 +1421,12 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       debug_options->xla_gpu_enable_priority_fusion(),
       "Enable priority queue for fusion order."));
   flag_list->push_back(tsl::Flag(
+      "xla_gpu_enable_triton_softmax_priority_fusion",
+      bool_setter_for(
+          &DebugOptions::set_xla_gpu_enable_triton_softmax_priority_fusion),
+      debug_options->xla_gpu_enable_triton_softmax_priority_fusion(),
+      "Enable fusion into Triton Softmax in PriorityFusion pass."));
+  flag_list->push_back(tsl::Flag(
       "xla_gpu_dump_autotune_results_to",
       string_setter_for(&DebugOptions::set_xla_gpu_dump_autotune_results_to),
       debug_options->xla_gpu_dump_autotune_results_to(),
@@ -1415,6 +1443,12 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "unless the name ends with .txt or .textproto. It will be loaded at most "
       "once per process. This only works on CUDA. In tests, the TEST_WORKSPACE "
       "prefix can be used to load files from their data dependencies."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_require_complete_aot_autotune_results",
+      bool_setter_for(
+          &DebugOptions::set_xla_gpu_require_complete_aot_autotune_results),
+      debug_options->xla_gpu_multi_streamed_windowed_einsum(),
+      "Whether to require complete AOT autotuning results."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_auto_spmd_partitioning_memory_budget_gb",
       int32_setter_for(
@@ -1446,10 +1480,10 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       debug_options->xla_gpu_triton_fusion_level(),
       "Triton fusion level, higher levels mean more fused operations."));
   flag_list->push_back(tsl::Flag(
-      "xla_gpu_dump_autotuned_triton_fusions",
-      bool_setter_for(&DebugOptions::set_xla_gpu_dump_autotuned_triton_fusions),
-      debug_options->xla_gpu_dump_autotuned_triton_fusions(),
-      "Dumps autotuned Triton fusions to the directory specified by "
+      "xla_gpu_dump_autotuned_gemm_fusions",
+      bool_setter_for(&DebugOptions::set_xla_gpu_dump_autotuned_gemm_fusions),
+      debug_options->xla_gpu_dump_autotuned_gemm_fusions(),
+      "Dumps autotuned GEMM fusions to the directory specified by "
       "xla_dump_to or stdout. Each fusion is dumped only once, as an optimized "
       "HLO."));
   flag_list->push_back(tsl::Flag(
@@ -1487,13 +1521,14 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       tsl::Flag("xla_gpu_cublas_fallback",
                 bool_setter_for(&DebugOptions::set_xla_gpu_cublas_fallback),
                 debug_options->xla_gpu_cublas_fallback(),
-                "Allow Triton GEMM autotuning to fall back to cuBLAS when that "
+                "Allow GEMM fusion autotuning to fall back to cuBLAS when that "
                 "is faster."));
-  flag_list->push_back(
-      tsl::Flag("xla_gpu_cudnn_gemm_fusion",
-                bool_setter_for(&DebugOptions::set_xla_gpu_cudnn_gemm_fusion),
-                debug_options->xla_gpu_cudnn_gemm_fusion(),
-                "Allow GEMM fusion autotuning probe cuDNN as a backend."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_cudnn_gemm_fusion_level",
+      int32_setter_for(&DebugOptions::set_xla_gpu_cudnn_gemm_fusion_level),
+      debug_options->xla_gpu_cudnn_gemm_fusion_level(),
+      "cuDNN GEMM fusion level; higher level corresponds to more kinds of "
+      "fused operations."));
   flag_list->push_back(
       tsl::Flag("xla_gpu_mock_custom_calls",
                 bool_setter_for(&DebugOptions::set_xla_gpu_mock_custom_calls),
@@ -1605,12 +1640,34 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       bool_setter_for(&DebugOptions::set_xla_gpu_enable_mlir_emitters),
       debug_options->xla_gpu_enable_mlir_emitters(),
       "Enable new MLIR-based emitters."));
+  flag_list->push_back(
+      tsl::Flag("xla_gpu_max_mlir_kernels",
+                int64_setter_for(&DebugOptions::set_xla_gpu_max_mlir_kernels),
+                debug_options->xla_gpu_max_mlir_kernels(),
+                "Maximum number of kernels to emit with MLIR."));
+  flag_list->push_back(
+      tsl::Flag("xla_gpu_skip_mlir_kernels",
+                int64_setter_for(&DebugOptions::set_xla_gpu_skip_mlir_kernels),
+                debug_options->xla_gpu_skip_mlir_kernels(),
+                "Number of initial kernels to skip MLIR emission for."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_multi_streamed_windowed_einsum",
       bool_setter_for(
           &DebugOptions::set_xla_gpu_multi_streamed_windowed_einsum),
       debug_options->xla_gpu_multi_streamed_windowed_einsum(),
       "Whether to run windowed einsum using multiple compute streams."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_gemm_rewrite_size_threshold",
+      int64_setter_for(&DebugOptions::set_xla_gpu_gemm_rewrite_size_threshold),
+      debug_options->xla_gpu_gemm_rewrite_size_threshold(),
+      "Threshold until which elemental dot emitter is preferred for GEMMs "
+      "(minumum combined number of elements of both matrices "
+      "in non-batch dimensions to be considered for a rewrite)."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_use_memcpy_local_p2p",
+      bool_setter_for(&DebugOptions::set_xla_gpu_use_memcpy_local_p2p),
+      debug_options->xla_gpu_use_memcpy_local_p2p(),
+      "Whether to use memcpy for local p2p communication."));
 }  // NOLINT(readability/fn_size)
 
 // Allocates flag_values and flag_objects; this function must not be called more

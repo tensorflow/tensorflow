@@ -54,9 +54,6 @@ inline constexpr int64_t kMinDimensionToTransposeTiled2 = 8;
 inline constexpr int64_t kMinTotalDimensionsToTransposeTiled = 64 * 128;
 
 // Matrix multiplication before the rewrite.
-//
-// These functions should never return "true" on instructions after
-// GemmRewriter pass has finished.
 bool IsMatrixMultiplication(const HloInstruction& dot);
 bool IsMatrixVectorMultiplication(const HloInstruction& dot);
 
@@ -103,6 +100,9 @@ bool IsSliceWithUnitStrides(const HloInstruction* instr);
 // Returns true if `instr` is a slice instruction and produces a contiguous
 // slice.
 bool IsContiguousSlice(const HloInstruction& instr);
+
+// Returns true if `sliced` is a contiguous slice of `orig`.
+bool IsContiguousSlice(const Shape& orig, const Shape& sliced);
 
 // Emits code to shuffle data between threads of a warp. This has the same
 // semantics as the PTX "shfl.sync.down" instruction but works for values that

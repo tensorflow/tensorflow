@@ -37,7 +37,7 @@ REGISTER_OP("ConvertToCooTensor")
         TF_RETURN_IF_ERROR(c->WithRank(c->output(i), 1, &rank));
         c->set_output(i, c->UnknownShapeOfRank(1));
       }
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("GetMinibatchesInCsrWithPhysicalReplica")
@@ -103,7 +103,7 @@ REGISTER_OP("GetMinibatchesInCsrWithPhysicalReplica")
       c->set_output(4, c->Scalar());
       c->set_output(5, c->Scalar());
       c->set_output(6, c->Scalar());
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("GetMinibatchSplitsWithPhysicalReplica")
@@ -135,7 +135,7 @@ REGISTER_OP("GetMinibatchSplitsWithPhysicalReplica")
       c->set_output(4, c->UnknownShapeOfRank(1));
       c->set_output(5, c->Scalar());
       c->set_output(6, c->Scalar());
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("StoreMinibatchStatisticsInFdo")
@@ -150,6 +150,6 @@ REGISTER_OP("StoreMinibatchStatisticsInFdo")
     .Attr("mini_batch_splits: string")
     .SetIsStateful()
     .SetShapeFn([](shape_inference::InferenceContext* c) {
-      return OkStatus();
+      return absl::OkStatus();
     });
 }  // namespace tensorflow

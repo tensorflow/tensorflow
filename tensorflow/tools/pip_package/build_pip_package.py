@@ -219,14 +219,21 @@ def patch_so(srcs_dir: str) -> None:
     srcs_dir: target directory with .so files to patch.
   """
   to_patch = {
-      "tensorflow/python/_pywrap_tensorflow_internal.so":
-      "$ORIGIN/../../tensorflow/tsl/python/lib/core",
-      ("tensorflow/compiler/mlir/quantization/tensorflow/python/"
-       "pywrap_function_lib.so"): "$ORIGIN/../../../../../python",
-      ("tensorflow/compiler/mlir/quantization/tensorflow/python/"
-       "pywrap_quantize_model.so"): "$ORIGIN/../../../../../python",
-      ("tensorflow/compiler/mlir/quantization/tensorflow/calibrator/"
-       "pywrap_calibration.so"): "$ORIGIN/../../../../../python",
+      "tensorflow/python/_pywrap_tensorflow_internal.so": (
+          "$ORIGIN/../../tensorflow/compiler/xla/tsl/python/lib/core"
+      ),
+      (
+          "tensorflow/compiler/mlir/quantization/tensorflow/python/"
+          "pywrap_function_lib.so"
+      ): "$ORIGIN/../../../../../python",
+      (
+          "tensorflow/compiler/mlir/quantization/tensorflow/python/"
+          "pywrap_quantize_model.so"
+      ): "$ORIGIN/../../../../../python",
+      (
+          "tensorflow/compiler/mlir/quantization/tensorflow/calibrator/"
+          "pywrap_calibration.so"
+      ): "$ORIGIN/../../../../../python",
   }
   for file, path in to_patch.items():
     rpath = subprocess.check_output(

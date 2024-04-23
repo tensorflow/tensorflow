@@ -15,12 +15,11 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_CALIBRATOR_CALIBRATION_STATISTICS_COLLECTOR_BASE_H_
 #define TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_CALIBRATOR_CALIBRATION_STATISTICS_COLLECTOR_BASE_H_
 
+#include <cstdint>
 #include <optional>
-#include <vector>
 
 #include "absl/types/span.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/calibrator/calibration_statistics.pb.h"
-#include "tensorflow/core/framework/tensor.h"
 
 namespace tensorflow {
 namespace calibrator {
@@ -30,25 +29,11 @@ namespace calibrator {
 // statistics based on the calibration methods.
 class CalibrationStatisticsCollectorBase {
  public:
-  // Collect data for calibration using float vector.
-  // It internally calls private method Collect(float*, unsigned int)
-  void Collect(const std::vector<float>& data_vec) {
-    Collect(data_vec.data(), data_vec.size());
-  }
-  // Collect data for calibration using absl::Span<float>.
-  // It internally calls private method Collect(float*, unsigned int)
-  void Collect(absl::Span<float> data_span) {
-    Collect(data_span.data(), data_span.size());
-  }
-  // Collect data for calibration using Tensor
-  // It internally calls private method Collect(float*, unsigned int)
-  void Collect(const Tensor& data_tensor) {
-    auto data_flat = data_tensor.flat<float>();
-    Collect(data_flat.data(), data_flat.size());
-  }
+  // Collect data for calibration.
+  virtual void Collect(float min, float max,
+                       absl::Span<const int64_t> histogram) = 0;
 
   virtual void ClearData() = 0;
-  virtual void Collect(const float* data, unsigned int N) = 0;
   // Return the statistics needed for a given calibration method.
   virtual std::optional<CalibrationStatistics> GetStatistics() const = 0;
   virtual ~CalibrationStatisticsCollectorBase() = default;

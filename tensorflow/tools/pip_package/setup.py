@@ -78,7 +78,7 @@ def standard_or_nightly(standard, nightly):
 REQUIRED_PACKAGES = [
     'absl-py >= 1.0.0',
     'astunparse >= 1.6.0',
-    'flatbuffers >= 23.5.26',
+    'flatbuffers >= 24.3.7',
     'gast >=0.2.1,!=0.5.0,!=0.5.1,!=0.5.2',
     'google_pasta >= 0.1.1',
     'h5py >= 3.10.0',
@@ -115,7 +115,7 @@ REQUIRED_PACKAGES = [
     # or final). For example, 'keras-nightly ~= 2.14.0.dev' will be replaced by
     # 'keras >= 2.14.0rc0, < 2.15' on the release branch after the branch cut.
     'tb-nightly ~= 2.17.0.a',
-    'keras-nightly ~= 3.1.0.dev',
+    'keras-nightly >= 3.2.0.dev',
 ]
 REQUIRED_PACKAGES = [p for p in REQUIRED_PACKAGES if p is not None]
 
@@ -125,9 +125,6 @@ FAKE_REQUIRED_PACKAGES = [
     # different architectures having different requirements.
     # The entries here should be a simple duplicate of those in the collaborator
     # build section.
-    standard_or_nightly('tensorflow-cpu-aws', 'tf-nightly-cpu-aws') + '==' +
-    _VERSION + ';platform_system=="Linux" and (platform_machine=="arm64" or '
-    'platform_machine=="aarch64")',
     standard_or_nightly('tensorflow-intel', 'tf-nightly-intel') + '==' +
     _VERSION + ';platform_system=="Windows"',
 ]
@@ -139,25 +136,12 @@ if collaborator_build:
   # If this is a collaborator build, then build an "installer" wheel and
   # add the collaborator packages as the only dependencies.
   REQUIRED_PACKAGES = [
-      # Install the TensorFlow package built by AWS if the user is running
-      # Linux on an Aarch64 machine.
-      standard_or_nightly('tensorflow-cpu-aws', 'tf-nightly-cpu-aws')
-      + '=='
-      + _VERSION
-      + ';platform_system=="Linux" and (platform_machine=="arm64" or '
-      'platform_machine=="aarch64")',
       # Install the TensorFlow package built by Intel if the user is on a
       # Windows machine.
       standard_or_nightly('tensorflow-intel', 'tf-nightly-intel')
       + '=='
       + _VERSION
       + ';platform_system=="Windows"',
-      # Install the TensorFlow package built by Apple if the user is running
-      # macOS on an Apple Silicon machine.
-      standard_or_nightly('tensorflow-macos', 'tf-nightly-macos')
-      + '=='
-      + _VERSION
-      + ';platform_system=="Darwin" and platform_machine=="arm64"',
   ]
 
 # Set up extra packages, which are optional sets of other Python package deps.

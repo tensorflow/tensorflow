@@ -30,10 +30,10 @@ TEST(NcclCliqueKeyTest, IsSubsetOf) {
   GlobalDeviceId id2 = GlobalDeviceId(2);
   GlobalDeviceId id3 = GlobalDeviceId(3);
 
-  NcclCliqueKey key0({id0, id1}, 0);
-  NcclCliqueKey key1({id0, id1, id2, id3}, 0);
-  NcclCliqueKey key2({id0, id1, id2, id3}, 1);
-  NcclCliqueKey key3({id1, id2, id3}, 0);
+  NcclCliqueKey key0({id0, id1}, NcclStreamId(0));
+  NcclCliqueKey key1({id0, id1, id2, id3}, NcclStreamId(0));
+  NcclCliqueKey key2({id0, id1, id2, id3}, NcclStreamId(1));
+  NcclCliqueKey key3({id1, id2, id3}, NcclStreamId(0));
 
   EXPECT_TRUE(key0.IsSubsetOf(key1));
   EXPECT_FALSE(key0.IsSubsetOf(key2));
@@ -46,8 +46,8 @@ TEST(NcclCliqueKeyTest, Compare) {
   GlobalDeviceId id2 = GlobalDeviceId(2);
   GlobalDeviceId id3 = GlobalDeviceId(3);
 
-  NcclCliqueKey key0({id0, id1}, 0);
-  NcclCliqueKey key1({id1, id2, id3}, 0);
+  NcclCliqueKey key0({id0, id1}, NcclStreamId(0));
+  NcclCliqueKey key1({id1, id2, id3}, NcclStreamId(0));
 
   EXPECT_LT(key0, key1);
   EXPECT_GT(key1, key0);
@@ -59,8 +59,8 @@ TEST(NcclCliqueKeyTest, BtreeIterationOrder) {
   GlobalDeviceId id2 = GlobalDeviceId(2);
   GlobalDeviceId id3 = GlobalDeviceId(3);
 
-  NcclCliqueKey key0({id0, id2}, 0);
-  NcclCliqueKey key1({id0, id1, id2, id3}, 0);
+  NcclCliqueKey key0({id0, id2}, NcclStreamId(0));
+  NcclCliqueKey key1({id0, id1, id2, id3}, NcclStreamId(0));
 
   absl::btree_map<NcclCliqueKey, int64_t, std::greater<NcclCliqueKey>> map;
   map[key0] = 0;

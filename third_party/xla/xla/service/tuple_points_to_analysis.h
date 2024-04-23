@@ -183,7 +183,7 @@ std::ostream& operator<<(std::ostream& out, const BufferAlias& buffer_alias);
 class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
  public:
   // Runs points-to analysis on 'module'.
-  static StatusOr<std::unique_ptr<TuplePointsToAnalysis>> Run(
+  static absl::StatusOr<std::unique_ptr<TuplePointsToAnalysis>> Run(
       const HloModule* module);
 
   // Return the points-to set of an instruction. This describes the potential
@@ -196,7 +196,7 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
 
   // Returns the buffer defined at the given instruction and index. An error is
   // returned if no buffer is defined at that point.
-  StatusOr<const LogicalBuffer*> GetBufferDefinedAt(
+  absl::StatusOr<const LogicalBuffer*> GetBufferDefinedAt(
       const HloInstruction* instruction, const ShapeIndex& index) const;
 
   // Return a (possibly empty) vector containing all BufferAliases of the given

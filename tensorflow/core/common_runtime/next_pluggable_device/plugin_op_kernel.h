@@ -96,8 +96,8 @@ class PluginOpKernelContext {
                                         void* create_func_args,
                                         void (*delete_func)(void*)) = 0;
 
-  virtual PluginCoordinationServiceAgent* GetPluginCoordinationServiceAgent()
-      const = 0;
+  virtual std::unique_ptr<PluginCoordinationServiceAgent>
+  GetPluginCoordinationServiceAgent() const = 0;
 
   // This method will allocate a new `PluginVariable`. Caller is responsible
   // for managing it's lifetime.

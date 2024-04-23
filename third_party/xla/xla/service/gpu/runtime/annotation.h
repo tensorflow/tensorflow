@@ -38,21 +38,21 @@ class ModuleAnnotation {
 
   std::string_view longest_op_name_prefix() const { return longest_prefix_; }
   explicit operator std::string_view() const { return title_str_; }
-  nvtxStringHandle_t title() const { return title_; }
+  tsl::profiler::StringHandle title() const { return title_; }
   static uint64_t NvtxSchemaId();
   int32_t common_stack_frames() const { return common_stack_frames_; }
 
  private:
-  friend void RangePush(nvtxDomainHandle_t domain,
+  friend void RangePush(tsl::profiler::ProfilerDomainHandle domain,
                         const ModuleAnnotation& annotation) {
     tsl::profiler::RangePush(domain, annotation.title(), annotation);
   }
 
   std::string longest_prefix_;
   std::string title_str_;
-  nvtxStringHandle_t title_;
-  nvtxStringHandle_t module_name_;
-  nvtxStringHandle_t common_src_locations_{};
+  tsl::profiler::StringHandle title_;
+  tsl::profiler::StringHandle module_name_;
+  tsl::profiler::StringHandle common_src_locations_{};
   int32_t module_id_{-1};
   int32_t common_stack_frames_{};
 };
@@ -66,16 +66,16 @@ struct KernelAnnotation {
   static uint64_t NvtxSchemaId();
 
  private:
-  friend void RangePush(nvtxDomainHandle_t domain,
+  friend void RangePush(tsl::profiler::ProfilerDomainHandle domain,
                         const KernelAnnotation& annotation) {
     tsl::profiler::RangePush(domain, annotation.title, annotation);
   }
 
   std::string title_str;
-  nvtxStringHandle_t title;
-  nvtxStringHandle_t hlo_dump;
-  nvtxStringHandle_t src_locations;
-  nvtxStringHandle_t called_hlo_dump;
+  tsl::profiler::StringHandle title;
+  tsl::profiler::StringHandle hlo_dump;
+  tsl::profiler::StringHandle src_locations;
+  tsl::profiler::StringHandle called_hlo_dump;
 };
 
 // Parsed/prepared information for an HloModule that gets propagated to NVTX

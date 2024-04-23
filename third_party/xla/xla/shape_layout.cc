@@ -89,8 +89,14 @@ const Layout& ShapeLayout::layout() const {
 }
 
 void ShapeLayout::Clear() { LayoutUtil::ClearLayout(&shape_); }
+void ShapeLayout::Clear(ShapeIndexView shape_index) {
+  ShapeUtil::GetMutableSubshape(&shape_, shape_index)->clear_layout();
+}
 
 bool ShapeLayout::LayoutIsSet() const { return LayoutUtil::HasLayout(shape_); }
+bool ShapeLayout::AnyLayoutIsSet() const {
+  return LayoutUtil::HasAnyLayout(shape_);
+}
 
 void ShapeLayout::ResetLayout(const Layout& layout) {
   DCHECK(!shape_.IsTuple());
