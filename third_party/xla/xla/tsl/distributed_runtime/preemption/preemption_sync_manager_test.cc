@@ -21,9 +21,14 @@ limitations under the License.
 #include "grpcpp/server.h"
 #include "grpcpp/server_builder.h"
 #include "grpcpp/support/channel_arguments.h"
+#include "absl/log/log.h"
 #include "absl/memory/memory.h"
+#include "absl/status/status.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
+#include "third_party/grpc/include/grpcpp/server.h"
+#include "third_party/grpc/include/grpcpp/server_builder.h"
+#include "third_party/grpc/include/grpcpp/support/channel_arguments.h"
 #include "xla/tsl/distributed_runtime/coordination/coordination_client.h"
 #include "xla/tsl/distributed_runtime/coordination/coordination_service.h"
 #include "xla/tsl/distributed_runtime/coordination/coordination_service_agent.h"
@@ -37,6 +42,7 @@ limitations under the License.
 #include "tsl/platform/test.h"
 #include "tsl/platform/threadpool.h"
 #include "tsl/protobuf/coordination_config.pb.h"
+#include "tsl/protobuf/coordination_service.pb.h"
 
 namespace tsl {
 namespace {
