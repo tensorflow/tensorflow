@@ -17,13 +17,16 @@ limitations under the License.
 #define TENSORFLOW_TSL_CONCURRENCY_CONCURRENT_VECTOR_H_
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <cassert>
-#include <memory>
+#include <cstddef>
+#include <cstdint>
 #include <vector>
 
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "tsl/platform/logging.h"
 
 namespace tsl {
 namespace internal {
@@ -58,25 +61,13 @@ class ConcurrentVector {
  public:
   // Initialize the vector with the given initial_capapcity
   explicit ConcurrentVector(size_t initial_capacity) : state_(0ull) {
-    // ConcurrentVector does not support inserting more than 2^64 elements,
-    // which should be more than enough for any reasonable use case.
-    all_allocated_elements_.reserve(65);
-    all_allocated_elements_.emplace_back();
-    auto& v = all_allocated_elements_.back();
+    auto& v = all_allocated_elements_[0];
     v.reserve(std::max(static_cast<size_t>(1), initial_capacity));
-  }
-
-  T& operator[](size_t index) {
-    auto state = State::Decode(state_.load(std::memory_order_acquire));
-    assert(index < state.size);
-    // .data() is a workaround for libc++ assertions in operator[], which will
-    // cause data race when container is resized from another thread.
-    return all_allocated_elements_.data()[state.last_allocated].data()[index];
   }
 
   const T& operator[](size_t index) const {
     auto state = State::Decode(state_.load(std::memory_order_acquire));
-    assert(index < state.size);
+    DCHECK_LT(index, state.size);
     // .data() is a workaround for libc++ assertions in operator[], which will
     // cause data race when container is resized from another thread.
     return all_allocated_elements_.data()[state.last_allocated].data()[index];
@@ -106,7 +97,8 @@ class ConcurrentVector {
   size_t emplace_back(Args&&... args) {
     absl::MutexLock lock(&mutex_);
 
-    auto& last = all_allocated_elements_.back();
+    auto state = State::Decode(state_.load(std::memory_order_relaxed));
+    auto& last = all_allocated_elements_[state.last_allocated];
 
     if (last.size() < last.capacity()) {
       // There is still room in the current vector without reallocation. Just
@@ -114,7 +106,6 @@ class ConcurrentVector {
       last.emplace_back(std::forward<Args>(args)...);
 
       // Increment the size of the concurrent vector.
-      auto state = State::Decode(state_.load(std::memory_order_relaxed));
       state.size += 1;
       state_.store(state.Encode(), std::memory_order_release);
 
@@ -124,18 +115,16 @@ class ConcurrentVector {
     // Allocate a new vector with twice as much capacity, copy the elements
     // from the previous vector, and set elements_ to point to the data of the
     // new vector.
-    auto& new_last = all_allocated_elements_.emplace_back();
-    auto& prev = *(all_allocated_elements_.rbegin() + 1);
-    new_last.reserve(prev.capacity() * 2);
-    assert(prev.size() == prev.capacity());
+    auto& new_last = all_allocated_elements_[state.last_allocated + 1];
+    new_last.reserve(last.capacity() * 2);
+    DCHECK_EQ(last.size(), last.capacity());
 
     // Copy over the previous vector to the new vector.
-    new_last.insert(new_last.begin(), prev.begin(), prev.end());
+    new_last.insert(new_last.begin(), last.begin(), last.end());
     new_last.emplace_back(std::forward<Args>(args)...);
 
     // Increment the size of the concurrent vector and index of the last
     // allocated vector.
-    auto state = State::Decode(state_.load(std::memory_order_relaxed));
     state.last_allocated += 1;
     state.size += 1;
     state_.store(state.Encode(), std::memory_order_release);
@@ -168,7 +157,10 @@ class ConcurrentVector {
   std::atomic<uint64_t> state_;
 
   absl::Mutex mutex_;
-  std::vector<std::vector<T>> all_allocated_elements_;
+
+  // ConcurrentVector does not support inserting more than 2^64 elements,
+  // which should be more than enough for any reasonable use case.
+  std::array<std::vector<T>, 64> all_allocated_elements_;
 };
 
 }  // namespace internal
