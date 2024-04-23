@@ -929,8 +929,7 @@ xla_test(
     srcs = ["gpu_sparse_dot_test.cc"],
     backends = [
         "gpu_a100",
-        # TODO(b/335197598): re-enable Hopper test when the blocker is resolved (PTX version)
-        # "gpu_h100",
+        "gpu_h100",
     ],
     deps = [
         ":gpu_codegen_test",
