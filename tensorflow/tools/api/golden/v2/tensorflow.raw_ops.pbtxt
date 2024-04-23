@@ -4389,6 +4389,10 @@ tf_module {
     argspec: "args=[\'gradients\', \'features\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "SortListOfSparseCoreCooTensors"
+    argspec: "args=[\'row_ids_list\', \'col_ids_list\', \'gains_list\', \'sample_count_list\', \'col_offset_list\', \'num_replica\', \'table_vocab_size\', \'feature_width\', \'num_sc_per_chip\', \'max_ids_per_sparse_core\', \'max_unique_ids_per_sparse_core\', \'table_name\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "SpaceToBatch"
     argspec: "args=[\'input\', \'paddings\', \'block_size\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }

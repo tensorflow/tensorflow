@@ -54,6 +54,7 @@ tf_gen_op_wrapper_py(
         "GetMinibatchSplitsWithPhysicalReplica",
         "StoreMinibatchStatisticsInFdo",
         "ConvertToListOfSparseCoreCooTensors",
+        "SortListOfSparseCoreCooTensors",
         "GlobalIterId",
         "TPUCopyWithDynamicShape",
         "TPUAnnotateTensorsWithDynamicShape",

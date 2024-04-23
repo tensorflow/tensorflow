@@ -190,6 +190,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@local_xla//xla:util",
     ],
     alwayslink = 1,

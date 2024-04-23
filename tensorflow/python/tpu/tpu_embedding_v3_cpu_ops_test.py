@@ -174,6 +174,78 @@ class TpuEmbeddingV3CPUOpsTest(parameterized.TestCase, test.TestCase):
     self.assertAllClose(golden_col_ids, array_ops.concat(col_ids_list, axis=0))
     self.assertAllClose(gains, array_ops.concat(gains_list, axis=0))
 
+  def test_sort_list_of_sparse_core_coo_tensors(self):
+    sample_count = 16
+    token_count = 1024
+    combiner = "sum"
+    num_chips = 4
+    sparse_feature = sparse_ops.sparse_reorder(
+        sparse_tensor.SparseTensor(
+            indices=[[i % sample_count, i] for i in np.arange(token_count)],
+            values=np.arange(token_count),
+            dense_shape=[sample_count, 1024],
+        )
+    )
+
+    row_ids_list, col_ids_list, gains_list = (
+        xla_ops.convert_to_list_of_sparse_core_coo_tensors(
+            indices_or_row_splits=math_ops.cast(
+                sparse_feature.indices, dtype=dtypes.int32
+            ),
+            values=math_ops.cast(sparse_feature.values, dtype=dtypes.int32),
+            weights=1.0,
+            sample_count=sample_count,
+            combiner=combiner,
+            num_sc_per_chip=4,
+            row_offset=0,
+            col_offset=0,
+            col_shift=0,
+            num_sc_shards=num_chips * 4,
+            stacked_table_sample_count=sample_count,
+        )
+    )
+
+    for i in range(4):
+      (
+          sorted_row_ids,
+          sorted_col_ids,
+          sorted_gains,
+          _,
+      ) = xla_ops.sort_list_of_sparse_core_coo_tensors(
+          row_ids_list=[row_ids_list[i]],
+          col_ids_list=[col_ids_list[i]],
+          gains_list=[gains_list[i]],
+          sample_count_list=[sample_count // 4],
+          col_offset_list=[0],
+          num_replica=num_chips,
+          table_vocab_size=16384,
+          feature_width=16,
+          num_sc_per_chip=4,
+          max_ids_per_sparse_core=256,
+          max_unique_ids_per_sparse_core=256,
+          table_name="table",
+      )
+
+      embedding_lookup_inputs = []
+      for row_id, col_id, gain in zip(
+          row_ids_list[i], col_ids_list[i], gains_list[i]
+      ):
+        embedding_lookup_inputs.append((col_id % 16, col_id, row_id, gain))
+      # sort based on replica id first, then col_id.
+      embedding_lookup_inputs.sort()
+
+      self.assertAllClose(
+          sorted_row_ids,
+          [inp[2] % (sample_count // 4) for inp in embedding_lookup_inputs],
+      )
+      self.assertAllClose(
+          sorted_col_ids,
+          [inp[1] // (num_chips * 4) for inp in embedding_lookup_inputs],
+      )
+      self.assertAllClose(
+          sorted_gains, [inp[3] for inp in embedding_lookup_inputs]
+      )
+
 
 if __name__ == "__main__":
   v2_compat.enable_v2_behavior()

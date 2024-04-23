@@ -16,12 +16,15 @@ limitations under the License.
 #define TENSORFLOW_CORE_TPU_KERNELS_SPARSE_CORE_PREPROCESS_OPS_H_
 
 #include <cstdint>
+#include <map>
 #include <memory>
+#include <optional>
 #include <string>
+#include <vector>
 
-#include "absl/status/status.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/tpu/kernels/sparse_core_ops_stats_handler.h"
@@ -177,6 +180,31 @@ class ConvertToListOfSparseCoreCooTensorsOp : public OpKernel {
   int per_sc_row_offset_;
   int per_sc_stacked_table_sample_count_;
   std::string combiner_;
+};
+
+class SortListOfSparseCoreCooTensorsOp : public OpKernel {
+ public:
+  explicit SortListOfSparseCoreCooTensorsOp(OpKernelConstruction* ctx);
+  ~SortListOfSparseCoreCooTensorsOp() override = default;
+  SortListOfSparseCoreCooTensorsOp(const SortListOfSparseCoreCooTensorsOp&) =
+      delete;
+  SortListOfSparseCoreCooTensorsOp& operator=(
+      const SortListOfSparseCoreCooTensorsOp&) = delete;
+
+  void Compute(OpKernelContext* ctx) override;
+
+ private:
+  int32_t num_sc_per_chip_;
+  int32_t feature_width_;
+  int32_t num_replica_;
+  int32_t num_physical_replica_;
+  int32_t num_physical_replica_bit_;
+  int32_t max_ids_per_sparse_core_;
+  int32_t max_unique_ids_per_sparse_core_;
+  std::string table_name_;
+  std::vector<int32_t> sample_count_list_;
+  std::vector<int32_t> col_offset_list_;
+  std::map<int32_t, std::vector<int32_t>> col_offset_to_feature_id_;
 };
 
 }  // namespace tensorflow

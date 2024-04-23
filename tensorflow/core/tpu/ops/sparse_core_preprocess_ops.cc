@@ -16,10 +16,10 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "xla/util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
-#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tsl/platform/errors.h"
 
@@ -180,6 +180,53 @@ REGISTER_OP("ConvertToListOfSparseCoreCooTensors")
       TF_RETURN_IF_ERROR(c->set_output("row_ids_list", output_id_shape));
       TF_RETURN_IF_ERROR(c->set_output("col_ids_list", output_id_shape));
       TF_RETURN_IF_ERROR(c->set_output("gains_list", output_id_shape));
+      return absl::OkStatus();
+    });
+
+REGISTER_OP("SortListOfSparseCoreCooTensors")
+    .Input("row_ids_list: N * int32")
+    .Input("col_ids_list: N * int32")
+    .Input("gains_list:  N * float32")
+    .Output("sorted_row_ids: int32")
+    .Output("sorted_col_ids: int32")
+    .Output("sorted_gains: float32")
+    .Output("id_counts: int32")
+    .Attr("sample_count_list : list(int)")
+    .Attr("col_offset_list : list(int)")
+    .Attr("num_replica: int >= 1")
+    .Attr("table_vocab_size: int >= 1")
+    .Attr("feature_width: int >= 1")
+    .Attr("num_sc_per_chip: int >= 1")
+    .Attr("max_ids_per_sparse_core: int >= 1")
+    .Attr("max_unique_ids_per_sparse_core: int >= 1")
+    .Attr("table_name: string")
+    .Attr("N: int >= 1")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      std::vector<int32_t> sample_count_list;
+      TF_RETURN_IF_ERROR(c->GetAttr("sample_count_list", &sample_count_list));
+      std::vector<int32_t> col_offset_list;
+      TF_RETURN_IF_ERROR(c->GetAttr("col_offset_list", &col_offset_list));
+      int32_t num_features;
+      TF_RETURN_IF_ERROR(c->GetAttr("N", &num_features));
+
+      if (sample_count_list.size() != num_features) {
+        return absl::InvalidArgumentError(
+            absl::StrCat("sample_count_list must have the same size as number "
+                         "of feature inputs, but got ",
+                         sample_count_list.size(), " vs ", num_features));
+      }
+
+      if (col_offset_list.size() != num_features) {
+        return absl::InvalidArgumentError(
+            absl::StrCat("col_offset_list must have the same size as number of "
+                         "feature inputs, but got ",
+                         col_offset_list.size(), " vs ", num_features));
+      }
+
+      c->set_output(0, c->UnknownShapeOfRank(1));
+      c->set_output(1, c->UnknownShapeOfRank(1));
+      c->set_output(2, c->UnknownShapeOfRank(1));
+      c->set_output(3, c->UnknownShapeOfRank(1));
       return absl::OkStatus();
     });
 
