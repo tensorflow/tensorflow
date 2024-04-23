@@ -129,22 +129,27 @@ class IndexFlatMapTest(test_base.DatasetTestBase, parameterized.TestCase):
   @combinations.generate(
       combinations.times(
           test_base.default_test_combinations(),
-          combinations.combine(input_range=[0, 10], use_tensors=[True, False])))
-  def test_nested_list(self, input_range: int, use_tensors: bool):
+          combinations.combine(
+              input_range=[0, 10],
+              map_output=[
+                  [[1, 2], [3, 4], [5, 6]],
+                  [[[1, 2], [3, 4]], [[5, 6], [7, 8]], [[9, 10], [11, 12]]]
+              ],
+              use_tensors=[True, False])))
+  def test_nested_list(
+      self, input_range: int, map_output: list[Any], use_tensors: bool):
 
     def _map_func(_) -> Union[tensor.Tensor, list[list[int]]]:
-      return (
-          constant_op.constant([[1, 2], [3, 4], [5, 6]], dtype=dtypes.int64)
-          if use_tensors
-          else [[1, 2], [3, 4], [5, 6]])
+      return (constant_op.constant(map_output, dtype=dtypes.int64)
+              if use_tensors else map_output)
 
     def _index_map_func(i: int) -> tuple[int, int]:
-      return (i // 3, i % 3)
+      return (i // len(map_output), i % len(map_output))
 
     dataset = dataset_ops.Dataset.range(input_range)
     dataset = index_flat_map_op.index_flat_map(
         dataset, _map_func, _index_map_func)
-    self.assertDatasetProduces(dataset, [[1, 2], [3, 4], [5, 6]] * input_range)
+    self.assertDatasetProduces(dataset, map_output * input_range)
 
   @combinations.generate(test_base.default_test_combinations())
   def test_offset_out_of_range(self):
