@@ -542,6 +542,10 @@ TEST(AsyncValuePtrTest, Cast) {
 // Performance benchmarks below
 //===----------------------------------------------------------------------===//
 
+struct InlineExecutor : public AsyncValue::Executor {
+  void Execute(Task task) final { task(); }
+};
+
 static void BM_MapIntToFloat(benchmark::State& state) {
   auto ref = MakeAvailableAsyncValueRef<int32_t>(42);
   auto ptr = ref.AsPtr();
@@ -552,6 +556,19 @@ static void BM_MapIntToFloat(benchmark::State& state) {
   }
 }
 
+static void BM_MapIntToFloatOnExecutor(benchmark::State& state) {
+  auto ref = MakeAvailableAsyncValueRef<int32_t>(42);
+  auto ptr = ref.AsPtr();
+
+  InlineExecutor executor;
+  for (auto _ : state) {
+    auto mapped =
+        ptr.Map(executor, [](int32_t value) -> float { return value; });
+    benchmark::DoNotOptimize(mapped);
+  }
+}
+
 BENCHMARK(BM_MapIntToFloat);
+BENCHMARK(BM_MapIntToFloatOnExecutor);
 
 }  // namespace tsl
