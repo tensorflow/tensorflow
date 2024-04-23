@@ -52,6 +52,7 @@ tsl_cc_test(
     deps = [
         ":async_value",
         "//tsl/platform:test",
+        "//tsl/platform:test_benchmark",
         "//tsl/platform:test_main",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/status",

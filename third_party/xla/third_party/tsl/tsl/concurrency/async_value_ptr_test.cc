@@ -26,6 +26,7 @@ limitations under the License.
 #include "tsl/concurrency/async_value.h"
 #include "tsl/concurrency/async_value_ref.h"
 #include "tsl/platform/test.h"
+#include "tsl/platform/test_benchmark.h"
 
 namespace tsl {
 
@@ -428,5 +429,21 @@ TEST(AsyncValuePtrTest, Cast) {
   EXPECT_TRUE(Cast<A>(c_indirect.AsPtr()));
   EXPECT_TRUE(Cast<C>(c_indirect.AsPtr()));
 }
+
+//===----------------------------------------------------------------------===//
+// Performance benchmarks below
+//===----------------------------------------------------------------------===//
+
+static void BM_MapIntToFloat(benchmark::State& state) {
+  auto ref = MakeAvailableAsyncValueRef<int32_t>(42);
+  auto ptr = ref.AsPtr();
+
+  for (auto _ : state) {
+    auto mapped = ptr.Map([](int32_t value) -> float { return value; });
+    benchmark::DoNotOptimize(mapped);
+  }
+}
+
+BENCHMARK(BM_MapIntToFloat);
 
 }  // namespace tsl
