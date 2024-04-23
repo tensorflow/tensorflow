@@ -50,18 +50,63 @@ class alignas(uint16_t) F16 {
 
   F16& operator=(float x) { return *this = static_cast<F16>(x); }
 
-#define SHLO_REF_DECLARE_BINARY_OP(OP)   \
-  friend F16 operator OP(F16 x, F16 y);  \
-  template <typename T, typename SIFNAE> \
-  friend auto operator OP(F16 x, T y);   \
-  template <typename T, typename SIFNAE> \
-  friend auto operator OP(T x, F16 y);
+#ifdef SHLO_REF_HAS_BUILTIN_FLOAT16
 
-#define SHLO_REF_DECLARE_BINARY_ASSIGN_OP(OP) \
-  SHLO_REF_DECLARE_BINARY_OP(OP);             \
-  friend F16& operator OP##=(F16 & x, F16 y); \
-  template <typename T, typename SIFNAE>      \
-  friend F16& operator OP##=(F16 & x, T y);
+#define SHLO_REF_DEFINE_BINARY_OP(OP)                                         \
+  friend F16 operator OP(F16 x, F16 y) { return x.native_ OP y.native_; }     \
+                                                                              \
+  template <typename T, typename = std::enable_if_t<std::is_arithmetic_v<T>>> \
+  friend auto operator OP(F16 x, T y) {                                       \
+    return x.native_ OP y;                                                    \
+  }                                                                           \
+                                                                              \
+  template <typename T, typename = std::enable_if_t<std::is_arithmetic_v<T>>> \
+  friend auto operator OP(T x, F16 y) {                                       \
+    return x OP y.native_;                                                    \
+  }
+
+#define SHLO_REF_DEFINE_BINARY_ASSIGN_OP(OP)                               \
+  SHLO_REF_DEFINE_BINARY_OP(OP);                                           \
+  friend F16& operator OP##=(F16 & x, F16 y) {                             \
+    x.native_ OP## = y.native_;                                            \
+    return x;                                                              \
+  }                                                                        \
+                                                                           \
+  template <class T, typename = std::enable_if_t<std::is_arithmetic_v<T>>> \
+  friend F16& operator OP##=(F16 & x, T y) {                               \
+    x.native_ OP## = y;                                                    \
+    return x;                                                              \
+  }
+
+#else  // !SHLO_REF_HAS_BUILTIN_FLOAT16
+
+#define SHLO_REF_DEFINE_BINARY_OP(OP)                            \
+  friend F16 operator OP(F16 x, F16 y) {                         \
+    return F16(static_cast<float>(x) OP static_cast<float>(y));  \
+  }                                                              \
+                                                                 \
+  template <typename T, typename C = std::common_type_t<F16, T>> \
+  friend auto operator OP(F16 x, T y) {                          \
+    return static_cast<C>(static_cast<float>(x) OP y);           \
+  }                                                              \
+                                                                 \
+  template <typename T, typename C = std::common_type_t<F16, T>> \
+  friend std::common_type<F16, T> operator OP(T x, F16 y) {      \
+    return static_cast<C>(x OP static_cast<float>(y));           \
+  }
+
+#define SHLO_REF_DEFINE_BINARY_ASSIGN_OP(OP)                               \
+  SHLO_REF_DEFINE_BINARY_OP(OP);                                           \
+  friend F16& operator OP##=(F16 & x, F16 y) {                             \
+    return x = F16(static_cast<float>(x) OP static_cast<float>(y));        \
+  }                                                                        \
+                                                                           \
+  template <class T, typename = std::enable_if_t<std::is_arithmetic_v<T>>> \
+  friend F16& operator OP##=(F16 & x, T y) {                               \
+    return x = static_cast<float>(x) OP y;                                 \
+  }
+
+#endif  // SHLO_REF_HAS_BUILTIN_FLOAT16
 
   friend F16 operator+(F16 x);
   friend F16 operator-(F16 x);
@@ -69,18 +114,18 @@ class alignas(uint16_t) F16 {
   friend F16 operator++(F16& x, int);
   friend F16& operator--(F16& x);
   friend F16 operator--(F16& x, int);
-  SHLO_REF_DECLARE_BINARY_ASSIGN_OP(+);
-  SHLO_REF_DECLARE_BINARY_ASSIGN_OP(-);
-  SHLO_REF_DECLARE_BINARY_ASSIGN_OP(*);
-  SHLO_REF_DECLARE_BINARY_ASSIGN_OP(/);
-  SHLO_REF_DECLARE_BINARY_OP(<);
-  SHLO_REF_DECLARE_BINARY_OP(<=);
-  SHLO_REF_DECLARE_BINARY_OP(>);
-  SHLO_REF_DECLARE_BINARY_OP(>=);
-  SHLO_REF_DECLARE_BINARY_OP(==);
-  SHLO_REF_DECLARE_BINARY_OP(!=);
-#undef SHLO_REF_DECLARE_BINARY_ASSIGN_OP
-#undef SHLO_REF_DECLARE_BINARY_OP
+  SHLO_REF_DEFINE_BINARY_ASSIGN_OP(+);
+  SHLO_REF_DEFINE_BINARY_ASSIGN_OP(-);
+  SHLO_REF_DEFINE_BINARY_ASSIGN_OP(*);
+  SHLO_REF_DEFINE_BINARY_ASSIGN_OP(/);
+  SHLO_REF_DEFINE_BINARY_OP(<);
+  SHLO_REF_DEFINE_BINARY_OP(<=);
+  SHLO_REF_DEFINE_BINARY_OP(>);
+  SHLO_REF_DEFINE_BINARY_OP(>=);
+  SHLO_REF_DEFINE_BINARY_OP(==);
+  SHLO_REF_DEFINE_BINARY_OP(!=);
+#undef SHLO_REF_DEFINE_BINARY_ASSIGN_OP
+#undef SHLO_REF_DEFINE_BINARY_OP
 
  private:
   union {
@@ -125,45 +170,13 @@ inline F16 operator+(F16 x) { return x.native_; }
 
 inline F16 operator-(F16 x) { return -x.native_; }
 
-inline F16& operator++(F16& x) {
-  ++x.native_;
-  return x;
-}
+inline F16& operator++(F16& x) { return x += 1; }
 
 inline F16 operator++(F16& x, int) { return x.native_++; }
 
-inline F16& operator--(F16& x) {
-  --x.native_;
-  return x;
-}
+inline F16& operator--(F16& x) { return x -= 1; }
 
 inline F16 operator--(F16& x, int) { return x.native_--; }
-
-#define INTERNAL_F16_ARITHMETIC_OP(OP)                                        \
-  inline F16 operator OP(F16 x, F16 y) { return x.native_ OP y.native_; }     \
-                                                                              \
-  template <typename T, typename = std::enable_if_t<std::is_arithmetic_v<T>>> \
-  inline auto operator OP(F16 x, T y) {                                       \
-    return x.native_ OP y;                                                    \
-  }                                                                           \
-                                                                              \
-  template <typename T, typename = std::enable_if_t<std::is_arithmetic_v<T>>> \
-  inline auto operator OP(T x, F16 y) {                                       \
-    return x OP y.native_;                                                    \
-  }
-
-#define INTERNAL_F16_ARITHMETIC_ASSIGN_OP(OP)                              \
-  INTERNAL_F16_ARITHMETIC_OP(OP);                                          \
-  inline F16& operator OP##=(F16 & x, F16 y) {                             \
-    x.native_ OP## = y.native_;                                            \
-    return x;                                                              \
-  }                                                                        \
-                                                                           \
-  template <class T, typename = std::enable_if_t<std::is_arithmetic_v<T>>> \
-  inline F16& operator OP##=(F16 & x, T y) {                               \
-    x.native_ OP## = y;                                                    \
-    return x;                                                              \
-  }
 
 #else  // !SHLO_REF_HAS_BUILTIN_FLOAT16
 
@@ -174,32 +187,6 @@ inline F16::F16(T x)
 inline F16::operator float() const { return fp16_ieee_to_fp32_value(bits_); }
 
 inline F16::operator bool() const { return bits_; }
-
-#define INTERNAL_F16_ARITHMETIC_OP(OP)                          \
-  inline F16 operator OP(F16 x, F16 y) {                        \
-    return F16(static_cast<float>(x) OP static_cast<float>(y)); \
-  }                                                             \
-                                                                \
-  template <typename T, typename C = std::common_type<F16, T>>  \
-  inline auto operator OP(F16 x, T y) {                         \
-    return static_cast<C>(static_cast<float>(x) OP y);          \
-  }                                                             \
-                                                                \
-  template <typename T, typename C = std::common_type<F16, T>>  \
-  inline std::common_type<F16, T> operator OP(T x, F16 y) {     \
-    return static_cast<C>(x OP static_cast<float>(y));          \
-  }
-
-#define INTERNAL_F16_ARITHMETIC_ASSIGN_OP(OP)                              \
-  INTERNAL_F16_ARITHMETIC_OP(OP);                                          \
-  inline F16& operator OP##=(F16 & x, F16 y) {                             \
-    return x = F16(static_cast<float>(x) OP static_cast<float>(y));        \
-  }                                                                        \
-                                                                           \
-  template <class T, typename = std::enable_if_t<std::is_arithmetic_v<T>>> \
-  inline F16& operator OP##=(F16 & x, T y) {                               \
-    return x = static_cast<float>(x) OP y;                                 \
-  }
 
 inline F16 operator-(F16 x) { return F16(-static_cast<float>(x)); }
 inline F16 operator+(F16 x) { return F16(static_cast<float>(x)); }
@@ -221,20 +208,6 @@ inline F16 operator--(F16& x, int) {
 }
 
 #endif
-
-INTERNAL_F16_ARITHMETIC_ASSIGN_OP(+)
-INTERNAL_F16_ARITHMETIC_ASSIGN_OP(-)
-INTERNAL_F16_ARITHMETIC_ASSIGN_OP(*)
-INTERNAL_F16_ARITHMETIC_ASSIGN_OP(/)
-INTERNAL_F16_ARITHMETIC_OP(<)
-INTERNAL_F16_ARITHMETIC_OP(<=)
-INTERNAL_F16_ARITHMETIC_OP(>)
-INTERNAL_F16_ARITHMETIC_OP(>=)
-INTERNAL_F16_ARITHMETIC_OP(==)
-INTERNAL_F16_ARITHMETIC_OP(!=)
-
-#undef INTERNAL_F16_ARITHMETIC_OP
-#undef INTERNAL_F16_ARITHMETIC_ASSIGN_OP
 
 }  // namespace shlo_ref
 
