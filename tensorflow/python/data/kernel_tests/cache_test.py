@@ -18,7 +18,7 @@ import os
 from os import path
 import shutil
 import tempfile
-from typing import Optional
+from typing import Callable, Optional
 
 from absl.testing import parameterized
 import numpy as np
@@ -725,6 +725,40 @@ class CacheGlobalShuffleTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertCountEqual(dataset_output, expected)
     self.assertNotEqual(dataset_output, expected)
     self.assertLen(dataset_output, self.evaluate(dataset.cardinality()))
+
+
+class CacheGlobalShuffleCheckpointTest(
+    checkpoint_test_base.CheckpointTestBase, parameterized.TestCase):
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          checkpoint_test_base.default_test_combinations(),
+          combinations.combine(
+              dataset_range=[10],
+              repetitions=[1, 2],
+              reshuffle_each_iteration=[True, False])))
+  def test(
+      self,
+      verify_fn: Callable[..., None],
+      dataset_range: int,
+      repetitions: int,
+      reshuffle_each_iteration: bool):
+
+    def _build_dataset() -> dataset_ops.Dataset:
+      dataset = dataset_ops.Dataset.range(dataset_range)
+      dataset = dataset.cache()
+      dataset = dataset.prefetch(buffer_size=dataset_ops.AUTOTUNE)
+      if repetitions > 1:
+        dataset = dataset.repeat(repetitions)
+      return global_shuffle_op._global_shuffle(
+          dataset, seed=42, reshuffle_each_iteration=reshuffle_each_iteration)
+
+    verify_fn(
+        self,
+        _build_dataset,
+        num_outputs=dataset_range * repetitions,
+        assert_items_equal=reshuffle_each_iteration)
 
 
 if __name__ == "__main__":
