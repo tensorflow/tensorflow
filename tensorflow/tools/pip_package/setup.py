@@ -312,7 +312,7 @@ if '_tpu' in project_name:
   # timing of these tests, the UTC date from eight hours ago is expected to be a
   # valid version.
   _libtpu_version = standard_or_nightly(
-      '2.16.0rc0',
+      _VERSION.replace('-', ''),
       '0.1.dev'
       + (
           datetime.datetime.now(tz=datetime.timezone.utc)
