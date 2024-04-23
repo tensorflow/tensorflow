@@ -220,3 +220,13 @@ def RemoveShardingCustomCallPass : Pass<"stablehlo-remove-sharding-custom-call",
   }];
   let dependentDialects = ["mlir::stablehlo::StablehloDialect"];
 }
+
+def InsertCalibrationStatisticsSaverPass : Pass<"stablehlo-insert-calibration-statistics-saver", "ModuleOp"> {
+  let summary = "Inserts `CalibrationStatisticsSaver` op to collect and save calibration statistics.";
+  let description = [{
+    Finds all `CustomAggregator` ops in the each function and add a single
+    `CalibrationStatisticsSaver` op at the end of the function to collect their
+    statistics.
+  }];
+  let dependentDialects = ["TF::TensorFlowDialect"];
+}

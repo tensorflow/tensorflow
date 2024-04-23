@@ -83,6 +83,20 @@ def TF_CustomAggregatorOp : TF_Op<"CustomAggregator", [Pure]> {
   );
 }
 
+def TF_CalibrationStatisticsSaverOp : TF_Op<"CalibrationStatisticsSaver", []> {
+  let summary = "Aggregates and saves calibration statistics.";
+
+  let arguments = (ins
+    Variadic<TensorOf<[TF_Float32, TF_Int64]>>:$inputs,
+
+    StrAttr:$output_file_path,
+    StrArrayAttr:$ids,
+    I32ArrayAttr:$calibration_methods
+  );
+
+  TF_DerivedOperandTypeListAttr Tin = TF_DerivedOperandTypeListAttr<0>;
+}
+
 def TF_DumpTensorOp : TF_Op<"DumpTensor", []> {
   let summary = "Dump tensor proto.";
 
