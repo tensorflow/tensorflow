@@ -16,9 +16,7 @@ limitations under the License.
 #ifndef XLA_PYTHON_IFRT_FUTURE_H_
 #define XLA_PYTHON_IFRT_FUTURE_H_
 
-#include "absl/types/span.h"
 #include "xla/pjrt/pjrt_future.h"
-#include "xla/status.h"
 
 namespace xla {
 namespace ifrt {
@@ -43,11 +41,7 @@ using Future = ::xla::PjRtFuture<T>;
 template <typename T = void>
 using Promise = typename ::xla::PjRtFuture<T>::Promise;
 
-// Returns a `Future` that aggregates the return status of all `Future`s.
-Future<Status> JoinFutures(absl::Span<Future<Status>> futures);
-
-// Returns a `Future` that aggregates the return status of all `Future`s.
-Future<> JoinFutures(absl::Span<Future<>> futures);
+using ::xla::JoinFutures;
 
 }  // namespace ifrt
 }  // namespace xla
