@@ -14181,6 +14181,44 @@ ENTRY entry {
             op::Shape("(f32[1,4096,4096]{2,1,0}, s32[1,4096,4096]{2,1,0})")));
 }
 
+TEST_P(SpmdPartitioningTest, PartitionOffloading) {
+  const char* const hlo_string = R"(
+HloModule module, entry_computation_layout={(f32[1,256,128]{2,1,0})->f32[1,256,128]{2,1,0}}
+ENTRY offloading (param0: f32[1,256,128]) -> f32[1,256,128] {
+  zero = f32[] constant(0), sharding={replicated}
+  broadcast = f32[256,256,128]{2,1,0} broadcast(zero), dimensions={}, sharding={devices=[1,1,4]0,1,2,3}
+  param0 = f32[1,256,128]{2,1,0} parameter(0), sharding={devices=[1,1,4]0,1,2,3}
+  move-to-host  = f32[1,256,128]{2,1,0} custom-call(param0), custom_call_target="MoveToHost", sharding={devices=[1,1,4]0,1,2,3}
+  izero = s32[] constant(0)
+  dynamic-update-slice = f32[256,256,128]{2,1,0} dynamic-update-slice(broadcast, move-to-host, izero, izero, izero), sharding={devices=[1,1,4]0,1,2,3}
+  dynamic-slice = f32[1,256,128]{2,1,0} dynamic-slice(dynamic-update-slice, izero, izero, izero), dynamic_slice_sizes={1,256,128}, sharding={devices=[1,1,4]0,1,2,3}
+  move-to-device = f32[1,256,128]{2,1,0} custom-call(dynamic-slice), custom_call_target="MoveToDevice", sharding={devices=[1,4,1]0,1,2,3}
+  ROOT copy = f32[1,256,128]{2,1,0} copy(move-to-device), sharding={devices=[1,4,1]0,1,2,3}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module,
+      PartitionComputation(
+          hlo_string, /*num_devices=*/4,
+          /*conv_halo_exchange_always_on_lhs=*/true,
+          /*xla_tpu_enable_log_recorder_partitioned_logging=*/true));
+  XLA_VLOG_LINES(1, module->ToString());
+
+  // Check that the partitioner does not insert any sharding code between
+  // the offloading ops and the slicing ops.
+  auto move_to_host = FindInstruction(module.get(), "move-to-host.1");
+  auto move_to_device = FindInstruction(module.get(), "move-to-device.1");
+  EXPECT_EQ(
+      FindInstruction(module.get(), HloOpcode::kDynamicUpdateSlice)->operand(1),
+      move_to_host);
+  EXPECT_EQ(move_to_device->operand(0)->opcode(), HloOpcode::kDynamicSlice);
+
+  // Verify that the offloading ops are indeed partitioned.
+  EXPECT_THAT(move_to_host, op::Shape("f32[1,256,32]"));
+  EXPECT_THAT(move_to_device, op::Shape("f32[1,256,32]"));
+}
+
 }  // namespace
 }  // namespace spmd
 }  // namespace xla
