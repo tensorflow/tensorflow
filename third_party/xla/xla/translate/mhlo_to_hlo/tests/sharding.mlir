@@ -14,27 +14,16 @@ func.func public @main(%arg0: tensor<f32> {mhlo.sharding = ""}, %arg1: tensor<4x
 // -----
 
 // CHECK-LABEL: ENTRY %main.{{.*}} ({{[^,]*}}: f32[5,8,128]) -> f32[5,8,128]
-func.func @main(%arg0: tensor<5x8x128xf32> {mhlo.sharding = "{devices=[1,2,1]0,1}"}) -> (tensor<5x8x128xf32> {mhlo.sharding = "{devices=[1,2,1]0,1}"}) {
-  // CHECK-NEXT: %Arg_0.1 = f32[5,8,128] parameter(0), sharding={devices=[1,2,1]0,1}
-  // CHECK-NEXT: %custom-call.2 = f32[5,8,128] custom-call(f32[5,8,128] %Arg_0.1), custom_call_target="Sharding", sharding={devices=[1,2,1]0,1}
-  // CHECK-NEXT: %tuple.3 = (f32[5,8,128]) tuple(f32[5,8,128] %custom-call.2), sharding={{\{}}{devices=[1,2,1]0,1}}
-  // CHECK-NEXT: ROOT %get-tuple-element.4 = f32[5,8,128] get-tuple-element((f32[5,8,128]) %tuple.3), index=0, sharding={devices=[1,2,1]0,1}
-  %0 = "mhlo.custom_call"(%arg0) {call_target_name = "Sharding", mhlo.sharding = "{devices=[1,2,1]0,1}"} : (tensor<5x8x128xf32>) -> tensor<5x8x128xf32>
-  func.return %0 : tensor<5x8x128xf32>
-}
-
-// -----
-
-// CHECK-LABEL: ENTRY %main.{{.*}} ({{[^,]*}}: f32[5,8,128]) -> (f32[5,8,128])
-func.func @main(%arg0: tensor<5x8x128xf32> {mhlo.sharding = "{devices=[1,2,1]0,1}"}) -> (tuple<tensor<5x8x128xf32>> {mhlo.sharding = "{{devices=[1,2,1]0,1}}"}) {
+func.func @main(%arg0: tensor<5x8x128xf32> {mhlo.sharding = "\08\03\1A\03\01\02\01\22\02\00\01"}) -> (tensor<5x8x128xf32> {mhlo.sharding = "\08\03\1A\03\01\02\01\22\02\00\01"}) {
   // CHECK-NEXT: %Arg_0.1 = f32[5,8,128] parameter(0), sharding={devices=[1,2,1]0,1}
   // CHECK-NEXT: %custom-call.2 = f32[5,8,128] custom-call(f32[5,8,128] %Arg_0.1), custom_call_target="Sharding", sharding={devices=[1,2,1]0,1}
   // CHECK-NEXT: %tuple.3 = (f32[5,8,128]) tuple(f32[5,8,128] %custom-call.2)
-  // CHECK-NEXT: %tuple.4 = ((f32[5,8,128])) tuple((f32[5,8,128]) %tuple.3), sharding={{\{}}{devices=[1,2,1]0,1}}
-  // CHECK-NEXT: ROOT %get-tuple-element.5 = (f32[5,8,128]) get-tuple-element(((f32[5,8,128])) %tuple.4), index=0, sharding={{\{}}{devices=[1,2,1]0,1}}
-  %0 = "mhlo.custom_call"(%arg0) {call_target_name = "Sharding", mhlo.sharding = "{devices=[1,2,1]0,1}"} : (tensor<5x8x128xf32>) -> tensor<5x8x128xf32>
-  %1 = "mhlo.tuple"(%0) : (tensor<5x8x128xf32>) -> tuple<tensor<5x8x128xf32>>
-  func.return %1 : tuple<tensor<5x8x128xf32>>
+  // CHECK-NEXT: ROOT %get-tuple-element.4 = f32[5,8,128] get-tuple-element((f32[5,8,128]) %tuple.3), index=0
+  // CHECK-SAME: sharding={devices=[1,2,1]0,1}
+  %0 = "mhlo.custom_call"(%arg0) {call_target_name = "Sharding",
+				  mhlo.sharding = "\08\03\1A\03\01\02\01\22\02\00\01"
+				 } : (tensor<5x8x128xf32>) -> tensor<5x8x128xf32>
+  func.return %0 : tensor<5x8x128xf32>
 }
 
 // -----
