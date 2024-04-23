@@ -335,13 +335,13 @@ ENTRY e {
     backend_config={"fusion_backend_config":{"kind":"__cudnn$fusion","cudnn_fusion_config":{"plan_id":"0"}}}
 })";
 
+  se::StreamExecutorMemoryAllocator allocator(
+      backend().default_stream_executor());
   // Verify that a command buffer is applied.
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<Executable> executable,
-      backend().compiler()->RunBackend(
-          GetOptimizedModule(kHloText).value(),
-          backend().default_stream_executor(),
-          backend().default_stream_executor()->GetAllocator()));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Executable> executable,
+                          backend().compiler()->RunBackend(
+                              GetOptimizedModule(kHloText).value(),
+                              backend().default_stream_executor(), &allocator));
   absl::StatusOr<bool> filecheck_result =
       RunFileCheck(executable->module().ToString(), R"(
 ; CHECK: ENTRY

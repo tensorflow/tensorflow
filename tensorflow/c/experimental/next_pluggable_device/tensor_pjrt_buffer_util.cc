@@ -69,7 +69,7 @@ absl::Status SetPjRtCBufferToTensor(PJRT_Buffer* c_buffer,
 
 absl::StatusOr<xla::PjRtCApiClient*> GetPjRtCApiClient(
     const DeviceType& device_type) {
-  TF_ASSIGN_OR_RETURN(tsl::StatusOr<xla::PjRtClient*> pjrt_client,
+  TF_ASSIGN_OR_RETURN(absl::StatusOr<xla::PjRtClient*> pjrt_client,
                       tensorflow::GetPjRtClient(device_type));
   auto* pjrt_c_api_client = dynamic_cast<xla::PjRtCApiClient*>(*pjrt_client);
   if (pjrt_c_api_client == nullptr) {

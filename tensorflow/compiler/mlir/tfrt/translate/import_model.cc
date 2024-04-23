@@ -52,6 +52,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tf2xla/api/v2/cluster_tf.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v2/tf_dialect_to_executor.h"
 #include "tensorflow/compiler/mlir/tfrt/backend_compiler.h"
+#include "tensorflow/compiler/mlir/tfrt/function/function.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/tfrt_pipeline_options.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/tpu_passes.h"
@@ -345,6 +346,8 @@ std::unique_ptr<tensorflow::TfrtPipelineOptions> GetTfrtPipelineOptions(
   pipeline_options->enable_while_parallel_iterations =
       options.enable_while_parallel_iterations;
   pipeline_options->cost_threshold = options.cost_threshold;
+  pipeline_options->min_num_batch_threads = options.min_num_batch_threads;
+
   pipeline_options->merge_inter_dependent_streams =
       options.merge_inter_dependent_streams;
 

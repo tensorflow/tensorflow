@@ -52,6 +52,7 @@ constexpr const char kMapFuncOtherArgs[] = "map_func_other_args";
 constexpr const char kIndexMapFn[] = "index_map_func";
 constexpr const char kIndexMapFuncTargs[] = "Tindex_map_func_args";
 constexpr const char kIndexMapFuncOtherArgs[] = "index_map_func_other_args";
+constexpr const char kOutputCardinality[] = "output_cardinality";
 constexpr const char kOutputTypes[] = "output_types";
 constexpr const char kOutputShapes[] = "output_shapes";
 constexpr const char kElementCount[] = "element_count";
@@ -81,7 +82,7 @@ absl::StatusOr<size_t> GetValue(const Tensor& tensor) {
       return tensor.scalar<int32_t>()();
     default:
       return absl::InvalidArgumentError(absl::StrCat(
-          "The `index_map_fn` for `index_flat_map` is expected to return two "
+          "The `index_map_func` for `index_flat_map` is expected to return two "
           "int32/int64 values representing the element index and an offset "
           "within the element. Got: ",
           tensor.DebugString()));
@@ -91,6 +92,16 @@ absl::StatusOr<size_t> GetValue(const Tensor& tensor) {
 // Returns the `offset`-th element from `tensors`.
 absl::StatusOr<std::vector<Tensor>> GetSlice(const std::vector<Tensor>& tensors,
                                              size_t offset) {
+  if (tensors.size() > 1) {
+    if (offset >= tensors.size()) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "`index_flat_map` got invalid `index_map_func` which returns offset ",
+          offset, ", but the input element has ", tensors.size(),
+          " elements: ", ToDebugString(tensors)));
+    }
+    return std::vector<Tensor>{tensors[offset]};
+  }
+
   std::vector<Tensor> result;
   for (size_t i = 0; i < tensors.size(); ++i) {
     if (tensors[i].dims() == 0) {  // Scalar.
@@ -99,7 +110,7 @@ absl::StatusOr<std::vector<Tensor>> GetSlice(const std::vector<Tensor>& tensors,
     }
     if (offset > tensors[i].dim_size(0)) {
       return absl::InvalidArgumentError(absl::StrCat(
-          "`index_flat_map` got invalid `index_map_fn` which returns offset ",
+          "`index_flat_map` got invalid `index_map_func` which returns offset ",
           offset, ", but the input element has ", tensors[i].dim_size(0),
           " elements: ", tensors[i].DebugString()));
     }
@@ -129,12 +140,13 @@ class IndexFlatMapDatasetOp::Dataset : public DatasetBase {
   Dataset(OpKernelContext* ctx, const DatasetBase* input,
           std::unique_ptr<CapturedFunction> captured_map_func,
           std::unique_ptr<CapturedFunction> captured_index_map_func,
-          const DataTypeVector& output_types,
+          const int64_t output_cardinality, const DataTypeVector& output_types,
           const std::vector<PartialTensorShape>& output_shapes)
       : DatasetBase(DatasetContext(ctx)),
         input_(input),
         captured_map_func_(std::move(captured_map_func)),
         captured_index_map_func_(std::move(captured_index_map_func)),
+        output_cardinality_(output_cardinality),
         output_types_(output_types),
         output_shapes_(output_shapes) {
     input_->Ref();
@@ -153,8 +165,7 @@ class IndexFlatMapDatasetOp::Dataset : public DatasetBase {
   }
 
   int64_t CardinalityInternal(CardinalityOptions options) const override {
-    // TODO(b/325112575): Implement this.
-    return kUnknownCardinality;
+    return output_cardinality_;
   }
 
   absl::Status InputDatasets(
@@ -191,6 +202,9 @@ class IndexFlatMapDatasetOp::Dataset : public DatasetBase {
     TF_RETURN_IF_ERROR(captured_index_map_func_->AddToGraph(
         ctx, b, &index_map_func_other_args, &index_map_func_other_args_types));
 
+    Node* output_cardinality;
+    TF_RETURN_IF_ERROR(b->AddScalar(output_cardinality_, &output_cardinality));
+
     AttrValue map_func_attr;
     b->BuildAttrValue(captured_map_func_->func(), &map_func_attr);
 
@@ -208,7 +222,8 @@ class IndexFlatMapDatasetOp::Dataset : public DatasetBase {
     return b->AddDataset(
         this,
         /*inputs=*/
-        {std::make_pair(0, input_graph_node)},
+        {std::make_pair(0, input_graph_node),
+         std::make_pair(3, output_cardinality)},
         /*list_inputs=*/
         {std::make_pair(1, map_func_other_args),
          std::make_pair(2, index_map_func_other_args)},
@@ -225,6 +240,7 @@ class IndexFlatMapDatasetOp::Dataset : public DatasetBase {
   const DatasetBase* const input_;
   const std::unique_ptr<CapturedFunction> captured_map_func_;
   const std::unique_ptr<CapturedFunction> captured_index_map_func_;
+  const int64_t output_cardinality_;
   const DataTypeVector output_types_;
   const std::vector<PartialTensorShape> output_shapes_;
 };
@@ -250,44 +266,56 @@ class IndexFlatMapDatasetOp::Dataset::Iterator
                                std::vector<Tensor>* out_tensors,
                                bool* end_of_sequence) override
       ABSL_LOCKS_EXCLUDED(mu_) {
+    if (ctx->index_mapper()) {
+      return Get(ctx, out_tensors, end_of_sequence);
+    }
+
     absl::MutexLock l(&mu_);
-    *end_of_sequence = false;
-    if (ctx->index_mapper() == nullptr) {
-      absl::StatusOr<std::tuple<size_t, size_t>> next_input_index_and_offset =
-          GetUnflattenedIndex(ctx, element_count_);
-      TF_RETURN_IF_ERROR(next_input_index_and_offset.status());
-      const auto [next_input_index, offset] = *next_input_index_and_offset;
-      // When all the values of the current input element have been read,
-      // advances to the next input element. Otherwise, returns an element from
-      // the current `input_unflattened_tensors_`.
-      if (next_input_index > input_element_count_ ||
-          input_unflattened_tensors_.empty()) {
-        input_unflattened_tensors_.clear();
-        TF_RETURN_IF_ERROR(GetMappedTensorsFromInput(
-            ctx, &input_unflattened_tensors_, end_of_sequence));
-        if (*end_of_sequence) {
-          return absl::OkStatus();
-        }
-        input_element_count_ = next_input_index;
-      }
-      TF_ASSIGN_OR_RETURN(*out_tensors,
-                          GetSlice(input_unflattened_tensors_, offset));
-      ++element_count_;
-    } else {
-      // TODO(b/325112575): Make it easier to return multiple values from
-      // IndexMapperFn.
-      size_t offset = 0;
-      IteratorContext ctx_with_index_mapper =
-          GetContextWithIndexMapper(ctx, offset);
-      std::vector<Tensor> mapped_tensors;
+    absl::StatusOr<std::tuple<size_t, size_t>> next_input_index_and_offset =
+        GetUnflattenedIndex(ctx, element_count_);
+    TF_RETURN_IF_ERROR(next_input_index_and_offset.status());
+    const auto [next_input_index, offset] =
+        *std::move(next_input_index_and_offset);
+    // When all the values of the current input element have been read,
+    // advances to the next input element. Otherwise, returns an element from
+    // the current `input_unflattened_tensors_`.
+    if (next_input_index > input_element_count_ ||
+        input_unflattened_tensors_.empty()) {
+      input_unflattened_tensors_.clear();
       TF_RETURN_IF_ERROR(GetMappedTensorsFromInput(
-          &ctx_with_index_mapper, &mapped_tensors, end_of_sequence));
-      ctx->MergeCheckpoint(ctx_with_index_mapper.checkpoint());
+          ctx, &input_unflattened_tensors_, end_of_sequence));
       if (*end_of_sequence) {
         return absl::OkStatus();
       }
-      TF_ASSIGN_OR_RETURN(*out_tensors, GetSlice(mapped_tensors, offset));
+      input_element_count_ = next_input_index;
     }
+    TF_ASSIGN_OR_RETURN(*out_tensors,
+                        GetSlice(input_unflattened_tensors_, offset));
+    ++element_count_;
+    return absl::OkStatus();
+  }
+
+  absl::Status Get(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
+                   bool* end_of_sequence) ABSL_LOCKS_EXCLUDED(mu_) {
+    const int64_t cardinality = dataset()->Cardinality();
+    if (cardinality < 0) {
+      return absl::FailedPreconditionError(absl::StrCat(
+          "Global shuffling requires finite cardinality. Got cardinality ",
+          cardinality, " for dataset ", dataset()->DebugString(), "."));
+    }
+
+    absl::MutexLock l(&mu_);
+    size_t offset = 0;
+    IteratorContext ctx_with_index_mapper =
+        GetContextWithIndexMapper(ctx, offset);
+    std::vector<Tensor> mapped_tensors;
+    TF_RETURN_IF_ERROR(GetMappedTensorsFromInput(
+        &ctx_with_index_mapper, &mapped_tensors, end_of_sequence));
+    ctx->MergeCheckpoint(ctx_with_index_mapper.checkpoint());
+    if (*end_of_sequence) {
+      return absl::OkStatus();
+    }
+    TF_ASSIGN_OR_RETURN(*out_tensors, GetSlice(mapped_tensors, offset));
     return absl::OkStatus();
   }
 
@@ -437,9 +465,14 @@ void IndexFlatMapDatasetOp::MakeDataset(OpKernelContext* ctx,
   OP_REQUIRES_OK(ctx, CapturedFunction::Create(ctx, index_map_func_metadata_,
                                                kIndexMapFuncOtherArgs,
                                                &captured_index_map_func));
+
+  int64_t output_cardinality;
+  OP_REQUIRES_OK(
+      ctx, ParseScalarArgument(ctx, kOutputCardinality, &output_cardinality));
+
   *output = new Dataset(ctx, input, std::move(captured_map_func),
-                        std::move(captured_index_map_func), output_types_,
-                        output_shapes_);
+                        std::move(captured_index_map_func), output_cardinality,
+                        output_types_, output_shapes_);
 }
 
 std::unique_ptr<IteratorBase>

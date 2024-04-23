@@ -168,18 +168,18 @@ xla::Array<T> ArrayFromDenseElementsAttr(mlir::DenseElementsAttr dense_attr) {
       xla::primitive_util::NativeToPrimitiveType<T>();
   xla::Shape shape = xla::TypeToShape(dense_attr.getType());
   xla::Array<T> array(shape.dimensions());
-  if constexpr (!xla::primitive_util::Is4BitType(type)) {
+  if constexpr (!xla::primitive_util::IsSubByteNonPredType(type)) {
     array.SetValues(dense_attr.getValues<T>());
   } else {
     // The only way to get subbyte integers from getValues() is to get them as
     // APInts.
     auto values = dense_attr.getValues<llvm::APInt>();
     for (int i = 0; i < values.size(); i++) {
-      if constexpr (type == xla::U4) {
-        array.data()[i] = xla::u4{values[i].getZExtValue()};
+      if constexpr (xla::primitive_util::IsUnsignedIntegralType(type)) {
+        array.data()[i] = T{values[i].getZExtValue()};
       } else {
-        static_assert(type == xla::S4);
-        array.data()[i] = xla::s4(values[i].getSExtValue());
+        static_assert(xla::primitive_util::IsSignedIntegralType(type));
+        array.data()[i] = T{values[i].getSExtValue()};
       }
     }
   }

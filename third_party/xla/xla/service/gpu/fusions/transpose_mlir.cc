@@ -251,17 +251,16 @@ absl::StatusOr<SmallVector<Value, 4>> MlirTransposeFusion::EmitWriteToShMemMlir(
               ApplyAffineMap(shmem_input_indexing.GetAffineMap(), dim_values,
                              symbol_values, builder);
 
-          auto result_scalars = mlir_converter::ProvideParameter(
-              root_computation.FindSubgraph(transpose), transpose,
+          auto result_scalar = mlir_converter::ProvideParameter(
+              root_computation, transpose,
               /*operand_index=*/0, input_indices, call_target_provider,
               entry_function, builder);
 
           SmallVector<Value> result_tensors;
           result_tensors.reserve(num_outputs);
-          for (auto [tensor, value] :
-               llvm::zip(output_tensors, result_scalars)) {
+          for (auto tensor : output_tensors) {
             result_tensors.push_back(
-                builder.create<InsertOp>(value, tensor, shmem_indices));
+                builder.create<InsertOp>(result_scalar, tensor, shmem_indices));
           }
           return result_tensors;
         });
@@ -283,7 +282,6 @@ absl::Status MlirTransposeFusion::EmitReadFromShMemMlir(
   auto output_indexing = *ComputeThreadIdToOutputIndexing(0, mlir_context);
   auto shmem_output_indexing =
       GetSharedMemoryReadIndexingMap(output_indexing, permutation_[2]);
-  std::cerr << "output indexing: " << output_indexing.ToString() << "\n";
   auto result_tensors = EmitThreadLoopNest(
       builder, output_tensor_args, output_indexing,
       [&](ValueRange output_tensors, ValueRange dim_values,

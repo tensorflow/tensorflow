@@ -34,7 +34,6 @@ namespace ifrt_serving {
 class IfrtLoadedVariableRegistry {
  public:
   struct LoadedVariable {
-    DtypeAndShape dtype_and_shape;
     xla::ifrt::Future<absl::StatusOr<tsl::RCReference<xla::ifrt::Array>>> array;
   };
   using LoadedVariableConstructor =

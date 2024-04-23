@@ -120,7 +120,7 @@ class InitPassManagerTest : public testing::Test {
     builder.create<mlir::func::ReturnOp>(builder.getUnknownLoc());
   }
 
-  tsl::Status GetDumpDir(std::string* dump_dir) {
+  absl::Status GetDumpDir(std::string* dump_dir) {
     std::vector<string> files;
     if (auto status = tsl::Env::Default()->GetChildren(path_, &files);
         !status.ok()) {
@@ -131,7 +131,7 @@ class InitPassManagerTest : public testing::Test {
           "Expecting directory to have one child.");
     }
     *dump_dir = tsl::io::JoinPath(path_, files[0]);
-    return tsl::OkStatus();
+    return absl::OkStatus();
   }
 
   std::string path_;

@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TFRT_TRANSFORMS_TFRT_PIPELINE_OPTIONS_H_
 #define TENSORFLOW_COMPILER_MLIR_TFRT_TRANSFORMS_TFRT_PIPELINE_OPTIONS_H_
 
+#include <cstdint>
 #include <string>
 
 #include "llvm/Support/CommandLine.h"
@@ -143,6 +144,10 @@ struct TfrtPipelineOptions
           "The cost threshold to decide whether a sequence of operations is "
           "cheap, and then whether it can be executed inline."),
       llvm::cl::init(1)};
+
+  Option<int64_t> min_num_batch_threads{
+      *this, "tfrt-min-num-batch-threads",
+      llvm::cl::desc("The minimum number of batch threads"), llvm::cl::init(1)};
 
   Option<bool> merge_inter_dependent_streams{
       *this, "tfrt-merge-inter-dependent-streams",

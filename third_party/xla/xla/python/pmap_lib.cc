@@ -45,7 +45,6 @@ limitations under the License.
 #include "third_party/nanobind/include/nanobind/stl/variant.h"  // IWYU pragma: keep
 #include "third_party/nanobind/include/nanobind/stl/vector.h"  // IWYU pragma: keep
 #include "xla/pjrt/exceptions.h"
-#include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/status_casters.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/device.h"
@@ -131,7 +130,7 @@ struct ShardArgResult {
 //
 // Both `devices` and `sharding_spec` has the same length.
 absl::StatusOr<ShardArgResult> ShardArg(
-    nb::handle arg, absl::Span<xla::PjRtDevice* const> devices,
+    nb::handle arg, absl::Span<xla::ifrt::Device* const> devices,
     const InputSpec& input_spec, nb::handle py_devices,
     const nb::callable& python_fallback) {
   if (arg.type().ptr() == xla::PyArray::type().ptr()) {
@@ -265,7 +264,7 @@ struct PmapCacheEntry {
   std::shared_ptr<xla::PyLoadedExecutable> executable;
   // The value `backend.local_devices()`.
   nb::object py_devices;  // To pass back to Python.
-  std::vector<xla::PjRtDevice*> devices;
+  std::vector<xla::ifrt::Device*> devices;
   std::vector<InputSpec> input_specs;
   xla::PyTreeDef out_pytree_def;
   // Objects necessary to build the out Array objects.
@@ -628,7 +627,7 @@ absl::StatusOr<nb::object> PmapFunction::Call(nb::handle callable,
   }
 
   // 1. Parse arguments.
-  std::vector<xla::PjRtDevice*>& input_devices = cache_entry.devices;
+  std::vector<xla::ifrt::Device*>& input_devices = cache_entry.devices;
   std::vector<InputSpec>& input_specs = cache_entry.input_specs;
   const int num_args = flat_dynamic_args.size();
 

@@ -247,7 +247,7 @@ class WeightedFlatMapDatasetOp::Dataset : public DatasetBase {
       absl::MutexLock l(&mu_);
       for (int i = 0; i < dataset()->inputs_.size(); ++i) {
         TF_RETURN_IF_ERROR(dataset()->inputs_[i]->MakeIterator(
-            ctx, this, prefix(), &input_impls_[i]));
+            ctx, this, absl::StrCat(prefix(), "[", i, "]"), &input_impls_[i]));
       }
       return absl::OkStatus();
     }
@@ -343,6 +343,7 @@ class WeightedFlatMapDatasetOp::Dataset : public DatasetBase {
         TF_RETURN_IF_ERROR(writer->WriteScalar(
             prefix(), absl::StrCat(kInputNumElements, "[", i, "]"),
             inputs_element_count_[i]));
+        TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impls_[i]));
       }
       return absl::OkStatus();
     }
@@ -401,7 +402,7 @@ class WeightedFlatMapDatasetOp::Dataset : public DatasetBase {
     // Keeps track of the position of this iterator that each input starts to
     // scan for its next index.
     std::vector<size_t> next_positions_;
-    std::vector<uint64_t> cumulative_input_cardinalities_;
+    const std::vector<uint64_t> cumulative_input_cardinalities_;
   };
 
   const std::vector<DatasetBase*> inputs_;

@@ -73,7 +73,7 @@ int64_t MemoryTermReducer::Reduce(
   }
 
   // For each live index, track the primitives entering memory or being evicted.
-  std::vector<absl::flat_hash_set<PrimIdx>> enter(num_lives), evict(num_lives);
+  std::vector<absl::btree_set<PrimIdx>> enter(num_lives), evict(num_lives);
   for (PrimIdx prim_idx = 0; prim_idx < num_primitives; ++prim_idx) {
     if (!intervals[prim_idx].IsValid()) continue;  // Not found in live matrix.
     enter[intervals[prim_idx].lower].insert(prim_idx);

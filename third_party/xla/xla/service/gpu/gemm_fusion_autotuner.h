@@ -15,15 +15,25 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_GEMM_FUSION_AUTOTUNER_H_
 #define XLA_SERVICE_GPU_GEMM_FUSION_AUTOTUNER_H_
 
+#include <cstdint>
+#include <memory>
+#include <string>
+#include <utility>
+#include <variant>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/autotuning.pb.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/service/executable.h"
+#include "xla/service/gpu/autotuner_compile_util.h"
 #include "xla/service/gpu/autotuner_util.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/hlo_pass_interface.h"
@@ -53,11 +63,72 @@ class GemmFusionAutotuner : public HloModulePass {
   tsl::thread::ThreadPool* thread_pool_;
 };
 
-// TODO(b/266210099): have a way to generate/load these dynamically.
-// Returns a list of possible tilings for a GEMM performed in Triton.
-absl::StatusOr<std::vector<TritonGemmConfig>> GetPossibleMatmulAutotuneConfigs(
-    const HloDotInstruction& dot, se::CudaComputeCapability compute_capability,
-    const DebugOptions& debug_options, bool exhaustive_tiling_search = false);
+// Autotuner implementation.
+class GemmFusionAutotunerImpl {
+ public:
+  GemmFusionAutotunerImpl(AutotuneConfig config, DebugOptions debug_options,
+                          tsl::thread::ThreadPool* thread_pool)
+      : config_(std::move(config)),
+        debug_options_(std::move(debug_options)),
+        thread_pool_(thread_pool) {}
+
+  struct CuBlasConfig {
+    bool operator<(const CuBlasConfig& other) const;
+  };
+  struct CuDnnConfig {
+    int64_t plan_id;
+    bool operator<(const CuDnnConfig& other) const;
+  };
+  using Config = std::variant<CuBlasConfig, CuDnnConfig, TritonGemmConfig>;
+
+  struct ExecutableCandidate {
+    Config config;
+    std::unique_ptr<Executable> executable;
+  };
+
+  // Generate all possible configs for a dot operation.
+  absl::StatusOr<std::vector<Config>> GenerateConfigs(
+      const HloFusionInstruction& fusion);
+  absl::StatusOr<std::vector<TritonGemmConfig>> GenerateTritonConfigs(
+      const HloDotInstruction& dot);
+
+  // Compile all executables for all fusions.
+  absl::StatusOr<absl::flat_hash_map<const HloFusionInstruction*,
+                                     std::vector<ExecutableCandidate>>>
+  CompileAll(AutotunerCompileUtil& compile_util,
+             const absl::flat_hash_map<const HloFusionInstruction*,
+                                       std::vector<Config>>& task);
+
+  // Profile all executables for a fusion.
+  absl::StatusOr<std::vector<AutotuneResult>> Profile(
+      AutotunerCompileUtil& compile_util, const HloFusionInstruction& fusion,
+      absl::Span<const ExecutableCandidate> candidates);
+
+  // Autotune and save the results to the autotuning cache.
+  absl::Status Autotune(
+      AutotunerCompileUtil& compile_util,
+      const absl::flat_hash_map<const HloFusionInstruction*,
+                                std::vector<Config>>& gemm_config_sets);
+
+  // Helper methods.
+  const AutotuneConfig& GetConfig() const { return config_; }
+  bool IsAutotuningEnabled() const;
+  static std::string ToString(const Config& config);
+
+ private:
+  se::CudaComputeCapability GetComputeCapability() const {
+    return std::get<se::CudaComputeCapability>(
+        config_.GetGpuComputeCapability());
+  }
+
+  std::vector<TritonGemmConfig> GetDefaultTritonConfigs() const;
+  std::vector<TritonGemmConfig> GetExhaustiveTritonConfigs() const;
+
+  const AutotuneConfig config_;
+  const DebugOptions debug_options_;
+  tsl::thread::ThreadPool* thread_pool_;
+  std::vector<TritonGemmConfig> triton_configs_;
+};
 
 }  // namespace gpu
 }  // namespace xla

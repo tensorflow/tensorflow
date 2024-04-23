@@ -122,10 +122,11 @@ TEST_F(ConstantsTest, OneCellF8e5m2) {
 }
 
 TEST_F(ConstantsTest, OneCellF8e4m3b11fnuz) {
-  std::vector<tsl::float8_e4m3b11> constant = {tsl::float8_e4m3b11{2.0}};
+  std::vector<tsl::float8_e4m3b11fnuz> constant = {
+      tsl::float8_e4m3b11fnuz{2.0}};
 
   XlaBuilder builder(TestName());
-  auto c = ConstantR1<tsl::float8_e4m3b11>(&builder, constant);
+  auto c = ConstantR1<tsl::float8_e4m3b11fnuz>(&builder, constant);
   // F8 outputs are not yet supported so convert to F32
   ConvertElementType(c, F32);
 

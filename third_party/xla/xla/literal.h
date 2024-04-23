@@ -34,7 +34,6 @@ limitations under the License.
 
 #include "absl/base/attributes.h"
 #include "absl/base/casts.h"
-#include "absl/base/config.h"
 #include "absl/functional/function_ref.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -48,10 +47,10 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/printer.h"
 #include "xla/shape.h"
+#include "xla/shape_tree.h"
 #include "xla/shape_util.h"
 #include "xla/status.h"
 #include "xla/status_macros.h"
-#include "xla/statusor.h"
 #include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -492,6 +491,12 @@ class LiteralBase {
   static Literal CreateFromShapeWithUndeterminedLeafArrays(const Shape& shape);
 
  protected:
+  class Piece;
+
+  // Recursively builds the subtree for the given piece and sets the subshapes
+  // of the given piece with the given shape.
+  void BuildPieceSubtree(const Shape& shape, Piece* piece);
+
   template <typename OutputIterator>
   Status SerializeWithShapeProto(const ShapeProto& proto,
                                  OutputIterator output) const;
@@ -510,8 +515,7 @@ class LiteralBase {
     void WriteElement(NativeT element) {
       constexpr PrimitiveType primitive_type =
           primitive_util::NativeToPrimitiveType<NativeT>();
-      static_assert(primitive_type != PRED);
-      static_assert(!primitive_util::Is4BitType(primitive_type));
+      static_assert(primitive_util::BitWidth(primitive_type) % 8 == 0);
       if constexpr (primitive_util::IsComplexType(primitive_type)) {
         WriteElement(element.real());
         WriteElement(element.imag());
@@ -536,40 +540,36 @@ class LiteralBase {
 
     template <typename NativeT>
     void WriteElements(absl::Span<const NativeT> elements) {
-      if constexpr (std::is_same_v<NativeT, bool>) {
-        int64_t bytes = elements.size() / 8;
+      constexpr PrimitiveType primitive_type =
+          primitive_util::NativeToPrimitiveType<NativeT>();
+      constexpr int bits_per_element = primitive_util::BitWidth(primitive_type);
+      if constexpr (bits_per_element < 8) {
+        static_assert(!primitive_util::IsFloatingPointType(primitive_type));
+        static_assert(!primitive_util::IsComplexType(primitive_type));
+        static_assert(8 % bits_per_element == 0);
+        constexpr int elements_per_byte = 8 / bits_per_element;
+
+        int64_t bytes = elements.size() / elements_per_byte;
         for (int64_t i = 0; i < bytes; ++i) {
           uint8_t byte = 0;
-          for (int b = 0; b < 8; ++b) {
-            if (elements[i * 8 + b]) {
-              byte |= uint8_t{1} << b;
-            }
+          for (int b = 0; b < elements_per_byte; ++b) {
+            uint8_t src =
+                static_cast<uint8_t>(elements[i * elements_per_byte + b]) &
+                LsbMask<uint8_t>(bits_per_element);
+            byte |= src << (b * bits_per_element);
           }
           WriteElement(byte);
         }
-        int64_t rest = elements.size() % 8;
+        int64_t rest = elements.size() % elements_per_byte;
         if (rest != 0) {
           uint8_t byte = 0;
           for (int64_t b = 0; b < rest; ++b) {
-            if (elements[bytes * 8 + b]) {
-              byte |= uint8_t{1} << b;
-            }
+            uint8_t src =
+                static_cast<uint8_t>(elements[bytes * elements_per_byte + b]) &
+                LsbMask<uint8_t>(bits_per_element);
+            byte |= src << (b * bits_per_element);
           }
           WriteElement(byte);
-        }
-      } else if constexpr (primitive_util::Is4BitType(
-                               primitive_util::NativeToPrimitiveType<
-                                   NativeT>())) {
-        int64_t bytes = elements.size() / 2;
-        for (int64_t i = 0; i < bytes; ++i) {
-          uint8_t low = static_cast<uint8_t>(elements[i * 2]);
-          uint8_t high = static_cast<uint8_t>(elements[i * 2 + 1]);
-          uint8_t byte = (low & uint8_t{0xf}) | (high << 4);
-          WriteElement(byte);
-        }
-        if (elements.size() % 2 != 0) {
-          uint8_t last = static_cast<uint8_t>(elements.back()) & uint8_t{0xf};
-          WriteElement(last);
         }
       } else {
         for (NativeT element : elements) {
@@ -607,8 +607,7 @@ class LiteralBase {
     ABSL_MUST_USE_RESULT bool ReadElement(NativeT& element) {
       constexpr PrimitiveType primitive_type =
           primitive_util::NativeToPrimitiveType<NativeT>();
-      static_assert(!primitive_util::Is4BitType(primitive_type));
-      static_assert(primitive_type != PRED);
+      static_assert(primitive_util::BitWidth(primitive_type) % 8 == 0);
       if constexpr (primitive_util::IsComplexType(primitive_type)) {
         using ComponentT =
             primitive_util::NativeTypeOf<primitive_util::ComplexComponentType(
@@ -653,45 +652,38 @@ class LiteralBase {
 
     template <typename NativeT>
     ABSL_MUST_USE_RESULT bool ReadElements(absl::Span<NativeT> elements) {
-      if constexpr (std::is_same_v<NativeT, bool>) {
-        int64_t bytes = elements.size() / 8;
+      constexpr PrimitiveType primitive_type =
+          primitive_util::NativeToPrimitiveType<NativeT>();
+      constexpr int bits_per_element = primitive_util::BitWidth(primitive_type);
+      if constexpr (bits_per_element < 8) {
+        static_assert(!primitive_util::IsFloatingPointType(primitive_type));
+        static_assert(!primitive_util::IsComplexType(primitive_type));
+        static_assert(8 % bits_per_element == 0);
+        constexpr int elements_per_byte = 8 / bits_per_element;
+
+        int64_t bytes = elements.size() / elements_per_byte;
         for (int64_t i = 0; i < bytes; ++i) {
           uint8_t byte;
           if (!ReadElement(byte)) {
             return false;
           }
-          for (int b = 0; b < 8; ++b) {
-            elements[i * 8 + b] = !!(byte & (uint8_t{1} << b));
+          for (int b = 0; b < elements_per_byte; ++b) {
+            elements[i * elements_per_byte + b] =
+                static_cast<NativeT>(byte & LsbMask<uint8_t>(bits_per_element));
+            byte >>= bits_per_element;
           }
         }
-        int64_t rest = elements.size() % 8;
+        int64_t rest = elements.size() % elements_per_byte;
         if (rest != 0) {
           uint8_t byte;
           if (!ReadElement(byte)) {
             return false;
           }
           for (int64_t b = 0; b < rest; ++b) {
-            elements[bytes * 8 + b] = !!(byte & (uint8_t{1} << b));
+            elements[bytes * elements_per_byte + b] =
+                static_cast<NativeT>(byte & LsbMask<uint8_t>(bits_per_element));
+            byte >>= bits_per_element;
           }
-        }
-      } else if constexpr (primitive_util::Is4BitType(
-                               primitive_util::NativeToPrimitiveType<
-                                   NativeT>())) {
-        int64_t bytes = elements.size() / 2;
-        for (int64_t i = 0; i < bytes; ++i) {
-          uint8_t byte;
-          if (!ReadElement(byte)) {
-            return false;
-          }
-          elements[i * 2] = static_cast<NativeT>(byte & uint8_t{0xf});
-          elements[i * 2 + 1] = static_cast<NativeT>(byte >> 4);
-        }
-        if (elements.size() % 2 != 0) {
-          uint8_t last;
-          if (!ReadElement(last)) {
-            return false;
-          }
-          elements.back() = static_cast<NativeT>(last);
         }
       } else {
         for (NativeT& element : elements) {
@@ -1533,19 +1525,20 @@ class BorrowingLiteral : public LiteralBase {
 
   // 'src_buf_ptr' is not owned by this class and must outlive the
   // lifetime of this class. It points to an appropriately sized buffer with
-  // data interpretered as indicated by 'shape'.
+  // data interpreted as indicated by 'shape'.
   // This constructor is only used for array shapes.
   BorrowingLiteral(const char* src_buf_ptr, const Shape& shape);
+
   // Similar as above, except to be used for constructing non-nested tuples.
   BorrowingLiteral(absl::Span<const char* const> src_buf_ptrs,
                    const Shape& shape);
-  // TODO(b/79707221): adding constructors for nested tuples as well.
+
+  // Similar as above, except to be used for constructing literals with
+  // potentially nested tuples (same shape as `src_buf_ptrs`) with borrowed
+  // buffers for each shape index.
+  explicit BorrowingLiteral(ShapeTree<const char*> src_buf_ptrs);
 
  private:
-  // Recursively builds the subtree for the given piece and sets the subshapes
-  // of the given piece with the given shape.
-  void BuildPieceSubtree(const Shape& shape, Piece* piece);
-
   // Accessor for the root piece of this literal.
   const Piece& root_piece() const override { return root_piece_; };
   Piece root_piece_;

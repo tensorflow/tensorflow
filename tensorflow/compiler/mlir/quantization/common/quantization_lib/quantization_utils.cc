@@ -396,7 +396,9 @@ void ExtractMinMaxFromAttr(const DenseFPElementsAttr values, const int dim_size,
     }
   } else {
     int64_t flatten_index = 0;
-    for (auto it = values.begin(); it != values.end(); ++it, ++flatten_index) {
+    auto begin = values.begin();
+    auto end = values.end();
+    for (auto it = begin; it != end; ++it, ++flatten_index) {
       const double ele_value = FloatAttr::getValueAsDouble(*it);
       const int slice_index = flatten_index / slice_size;
       const int channel_index = slice_index % dim_size;

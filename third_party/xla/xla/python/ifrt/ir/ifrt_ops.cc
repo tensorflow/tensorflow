@@ -34,6 +34,7 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/IR/ValueRange.h"  // from @llvm-project
 #include "mlir/Interfaces/CallInterfaces.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "xla/python/ifrt/ir/constants.h"
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
@@ -49,9 +50,9 @@ namespace ifrt {
 namespace {
 
 mlir::FailureOr<mlir::RankedTensorType> GetGlobalShape(mlir::Type type) {
-  if (auto ranked_tensor = type.dyn_cast<mlir::RankedTensorType>()) {
+  if (auto ranked_tensor = mlir::dyn_cast<mlir::RankedTensorType>(type)) {
     return ranked_tensor;
-  } else if (auto array = type.dyn_cast<IfrtArrayType>()) {
+  } else if (auto array = mlir::dyn_cast<IfrtArrayType>(type)) {
     return array.getShape();
   } else {
     return mlir::failure();
@@ -64,7 +65,7 @@ mlir::FailureOr<mlir::RankedTensorType> GetGlobalShape(mlir::Value value) {
 
 mlir::FailureOr<mlir::RankedTensorType> GetGlobalShapeFromLocal(
     mlir::Type type, IfrtShardingAttrInterface sharding_attr) {
-  if (auto local_ranked_tensor = type.dyn_cast<mlir::RankedTensorType>()) {
+  if (auto local_ranked_tensor = mlir::dyn_cast<mlir::RankedTensorType>(type)) {
     auto global_shape =
         sharding_attr.GlobalShapeFromLocalShape(local_ranked_tensor.getShape());
     if (global_shape.ok()) {
@@ -115,7 +116,7 @@ mlir::LogicalResult VerifyGlobalLocalShapesEquivalent(
                              << call_mnemonic << ": " << call_value;
   }
   // The types of the CallOp func signature must be IfrtArrayType.
-  auto array = call_value.getType().dyn_cast<IfrtArrayType>();
+  auto array = mlir::dyn_cast<IfrtArrayType>(call_value.getType());
   if (array == nullptr) {
     return mlir::failure();
   }
@@ -347,13 +348,13 @@ mlir::LogicalResult CallOp::verify() {
   llvm::SmallVector<IfrtArrayType, 4> input_arrays;
   input_arrays.reserve(getInputs().size());
   for (const mlir::Value input : getInputs()) {
-    input_arrays.push_back(input.getType().cast<IfrtArrayType>());
+    input_arrays.push_back(mlir::cast<IfrtArrayType>(input.getType()));
   }
 
   llvm::SmallVector<IfrtArrayType, 4> output_arrays;
   output_arrays.reserve(getOutputs().size());
   for (const mlir::Value output : getOutputs()) {
-    output_arrays.push_back(output.getType().cast<IfrtArrayType>());
+    output_arrays.push_back(mlir::cast<IfrtArrayType>(output.getType()));
   }
 
   if (mlir::failed(VerifyDevicePlacement(*this, getDevices(), input_arrays,
@@ -411,13 +412,13 @@ mlir::LogicalResult CallLoadedExecutableOp::verify() {
   llvm::SmallVector<IfrtArrayType, 4> input_arrays;
   input_arrays.reserve(getInputs().size());
   for (const mlir::Value input : getInputs()) {
-    input_arrays.push_back(input.getType().cast<IfrtArrayType>());
+    input_arrays.push_back(mlir::cast<IfrtArrayType>(input.getType()));
   }
 
   llvm::SmallVector<IfrtArrayType, 4> output_arrays;
   output_arrays.reserve(getOutputs().size());
   for (const mlir::Value output : getOutputs()) {
-    output_arrays.push_back(output.getType().cast<IfrtArrayType>());
+    output_arrays.push_back(mlir::cast<IfrtArrayType>(output.getType()));
   }
 
   return VerifyIoAliases(*this, getIoAliases(), input_arrays, output_arrays);

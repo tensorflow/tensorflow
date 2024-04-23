@@ -80,6 +80,7 @@ cc_library(
     deps = [
         "//tsl/platform:macros",
         "//tsl/platform:types",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:inlined_vector",
     ],
 )

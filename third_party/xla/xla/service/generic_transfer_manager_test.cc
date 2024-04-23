@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/host/host_platform_id.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -62,18 +63,21 @@ class GenericTransferManagerTest : public ::testing::Test {
         se::PlatformManager::PlatformWithId(se::host::kHostPlatformId));
     TF_ASSERT_OK_AND_ASSIGN(stream_executor_, platform->ExecutorForDevice(0));
     TF_ASSERT_OK_AND_ASSIGN(stream_, stream_executor_->CreateStream());
+    allocator_ =
+        std::make_unique<se::StreamExecutorMemoryAllocator>(stream_executor_);
   }
 
   ScopedShapedBuffer AllocateBuffer(const Shape& shape) {
-    auto buffer = transfer_manager_.AllocateScopedShapedBuffer(
-        shape, stream_executor_->GetAllocator(),
-        /*device_ordinal=*/0);
+    auto buffer =
+        transfer_manager_.AllocateScopedShapedBuffer(shape, allocator_.get(),
+                                                     /*device_ordinal=*/0);
     return std::move(buffer.value());
   }
 
   PackingTransferManager transfer_manager_;
   se::StreamExecutor* stream_executor_;
   std::unique_ptr<se::Stream> stream_;
+  std::unique_ptr<se::DeviceMemoryAllocator> allocator_;
 };
 
 TEST_F(GenericTransferManagerTest, TransferLiteralToDevice) {

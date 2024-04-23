@@ -43,6 +43,7 @@ limitations under the License.
 #include "tensorflow/core/tfrt/fallback/op_kernel_runner.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_config.pb.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_model_context.h"
+#include "tensorflow/core/tfrt/ifrt/ifrt_restore_tensor_registry.h"
 #include "tensorflow/core/tfrt/mlrt/bytecode/bytecode.h"
 #include "tensorflow/core/tfrt/mlrt/bytecode/executable.h"
 #include "tensorflow/core/tfrt/mlrt/interpreter/builtin_kernels.h"
@@ -223,14 +224,9 @@ mlrt::bc::Buffer CreateExecutableForIfrtLoadVariableOp(
   mlrt::testing::AttributeTable attributes(
       executable_ctor.construct_attributes(4));
 
-  tensorflow::ifrt_serving::VariableDeviceShardingConfigProto sharding_config;
-  sharding_config.add_device_ids(0);
-  std::string serialized_sharding_config;
-  tsl::protobuf::TextFormat::Printer printer;
-  printer.SetSingleLineMode(true);
-  printer.PrintToString(sharding_config, &serialized_sharding_config);
-
-  attributes.Add("sharding_config", serialized_sharding_config);
+  // TODO(b/330360798) Redefine the IfrtLoadVariableOp as it doesn't require the
+  // sharding info in the attribute. Consider adding an attribute `used_by_cpu`
+  // and use to for determining if the host tensor can be released.
   attributes.Add("variable_name", kVariableRuntimeName);
 
   attributes.Add("var_handle_op_node_def",
@@ -301,9 +297,8 @@ mlrt::bc::Buffer CreateExecutableForIfrtLoadVariableOp(
       kernel_ctor.construct_results(2).Assign(
           {regs.Use("output_tensor"), regs.Def("dummy_future")});
       kernel_ctor.construct_arguments(1).Assign({regs.Use("variable_handle")});
-      kernel_ctor.construct_attributes(2).Assign(
-          {attributes.GetHandle("sharding_config"),
-           attributes.GetHandle("variable_name")});
+      kernel_ctor.construct_attributes(1).Assign(
+          {attributes.GetHandle("variable_name")});
       kernel_ctor.construct_last_uses(1).Assign(
           {redundant_ifrt_load_variable_op ? 0 : 1});
       kernel_index++;
@@ -313,9 +308,8 @@ mlrt::bc::Buffer CreateExecutableForIfrtLoadVariableOp(
       kernel_ctor.set_code(kernels.Use("tf_mlrt.ifrt_load_variable"));
       kernel_ctor.construct_results(2).Assign(
           {regs.Def("dummy"), regs.Def("dummy_future2")});
-      kernel_ctor.construct_attributes(2).Assign(
-          {attributes.GetHandle("sharding_config"),
-           attributes.GetHandle("variable_name")});
+      kernel_ctor.construct_attributes(1).Assign(
+          {attributes.GetHandle("variable_name")});
       kernel_ctor.construct_arguments(1).Assign({regs.Use("variable_handle")});
       kernel_ctor.construct_last_uses(1).Assign({1});
       kernel_index++;
@@ -401,10 +395,14 @@ TEST(KernelTest, IfrtLoadVariableOp) {
   auto input_tensor_future =
       xla::ifrt::Future<absl::StatusOr<tensorflow::Tensor>>(
           input_tensor_promise);
+  ifrt_serving::IfrtRestoreTensorRegistry::RestoredTensorInfo
+      restore_tensor_info{.dtype_and_shape = {.dtype = input_tensor.dtype(),
+                                              .shape = input_tensor.shape()},
+                          .tensor_future = input_tensor_future};
   input_tensor_promise.Set(input_tensor);
   TF_ASSERT_OK((*ifrt_model_context)
                    ->GetRestoreTensorRegistry()
-                   .TryRegister(kVariableRuntimeName, input_tensor_future));
+                   .TryRegister(kVariableRuntimeName, restore_tensor_info));
 
   std::vector<mlrt::Value> args;
   std::vector<uint8_t> last_uses;
@@ -422,11 +420,6 @@ TEST(KernelTest, IfrtLoadVariableOp) {
   notification.WaitForNotification();
 
   TF_ASSERT_OK(execution_context.status());
-
-  TF_ASSERT_OK((*ifrt_model_context)
-                   ->GetLoadedVariableRegistry()
-                   .GetLoadedVariable(kVariableRuntimeName)
-                   .status());
 
   ExpectEqual(results[0].Get<tfrt_stub::FallbackTensor>().tensor(),
               AsScalar(tsl::tstring(kVariableRuntimeName)));
@@ -500,10 +493,14 @@ TEST(KernelTest, DuplicateIfrtLoadVariableOpShallSucceed) {
   auto input_tensor_future =
       xla::ifrt::Future<absl::StatusOr<tensorflow::Tensor>>(
           input_tensor_promise);
+  ifrt_serving::IfrtRestoreTensorRegistry::RestoredTensorInfo
+      restore_tensor_info{.dtype_and_shape = {.dtype = input_tensor.dtype(),
+                                              .shape = input_tensor.shape()},
+                          .tensor_future = input_tensor_future};
   input_tensor_promise.Set(input_tensor);
   TF_ASSERT_OK((*ifrt_model_context)
                    ->GetRestoreTensorRegistry()
-                   .TryRegister(kVariableRuntimeName, input_tensor_future));
+                   .TryRegister(kVariableRuntimeName, restore_tensor_info));
 
   std::vector<mlrt::Value> args;
   std::vector<uint8_t> last_uses;
@@ -521,11 +518,6 @@ TEST(KernelTest, DuplicateIfrtLoadVariableOpShallSucceed) {
   notification.WaitForNotification();
 
   TF_ASSERT_OK(execution_context.status());
-
-  TF_ASSERT_OK((*ifrt_model_context)
-                   ->GetLoadedVariableRegistry()
-                   .GetLoadedVariable(kVariableRuntimeName)
-                   .status());
 
   ExpectEqual(results[0].Get<tfrt_stub::FallbackTensor>().tensor(),
               AsScalar(tsl::tstring(kVariableRuntimeName)));
@@ -589,7 +581,7 @@ TEST(KernelTest, IfrtRestoreVariableOp) {
   xla::ifrt::Future<absl::StatusOr<tensorflow::Tensor>> uninitialized_entry =
       (*ifrt_model_context)
           ->GetRestoreTensorRegistry()
-          .Get(kVariableRuntimeName);
+          .GetRestoredTensor(kVariableRuntimeName);
   ASSERT_TRUE(uninitialized_entry.IsReady());
   EXPECT_THAT(uninitialized_entry.Await().status(),
               ::tsl::testing::StatusIs(absl::StatusCode::kNotFound));
@@ -630,7 +622,7 @@ TEST(KernelTest, IfrtRestoreVariableOp) {
   xla::ifrt::Future<absl::StatusOr<tensorflow::Tensor>> restored_future =
       (*ifrt_model_context)
           ->GetRestoreTensorRegistry()
-          .Get(kVariableRuntimeName);
+          .GetRestoredTensor(kVariableRuntimeName);
   absl::StatusOr<tensorflow::Tensor> restored_tensor = restored_future.Await();
   TF_ASSERT_OK(restored_tensor.status());
   EXPECT_THAT(*restored_tensor, TensorEq(AsTensor<int32_t>({1, 2, 3}, {3})));

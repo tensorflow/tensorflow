@@ -17,20 +17,16 @@
 #ifndef XLA_PYTHON_IFRT_PROXY_CLIENT_DEVICE_H_
 #define XLA_PYTHON_IFRT_PROXY_CLIENT_DEVICE_H_
 
-#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/literal.h"
-#include "xla/pjrt/pjrt_client.h"
+#include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/pjrt/pjrt_device_description.h"
-#include "xla/pjrt/pjrt_future.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/memory.h"
 
@@ -77,7 +73,7 @@ class DeviceDescription final : public xla::PjRtDeviceDescription {
   absl::flat_hash_map<std::string, xla::PjRtDeviceAttribute> attributes_;
 };
 
-class Device final : public xla::ifrt::Device {
+class Device final : public llvm::RTTIExtends<Device, xla::ifrt::Device> {
  public:
   Device(DeviceDescription description, int local_device_id,
          int local_hardware_id, bool is_addressable)
@@ -86,50 +82,34 @@ class Device final : public xla::ifrt::Device {
         local_hardware_id_(local_hardware_id),
         is_addressable_(is_addressable) {}
 
-  xla::PjRtClient* client() const override { return nullptr; }
+  ifrt::Client* client() const override;
+  bool IsAddressable() const override;
 
-  bool IsAddressable() const override { return is_addressable_; }
+  DeviceId Id() const override;
+  absl::string_view Kind() const override;
+  absl::string_view ToString() const override;
+  absl::string_view DebugString() const override;
+  int ProcessIndex() const override;
 
-  const xla::PjRtDeviceDescription& description() const override {
-    return description_;
-  }
+  const absl::flat_hash_map<std::string, PjRtDeviceAttribute>& Attributes()
+      const override;
 
-  int local_hardware_id() const override {
-    return local_hardware_id_typed().value();
-  }
-
-  PjRtLocalDeviceId local_device_id() const override {
-    return PjRtLocalDeviceId(local_device_id_);
-  }
-
-  PjRtLocalHardwareId local_hardware_id_typed() const override {
-    return PjRtLocalHardwareId(local_hardware_id_);
-  }
-
-  std::unique_ptr<xla::ScopedAsyncTrackingEvent> CreateAsyncTrackingEvent(
-      absl::string_view description) const override;
-
-  absl::Status TransferToInfeed(const xla::LiteralSlice& literal) override;
-
-  absl::Status TransferFromOutfeed(
-      xla::MutableBorrowingLiteral literal) override;
-
-  absl::Span<xla::PjRtMemorySpace* const> memory_spaces() const override;
-
-  absl::StatusOr<xla::PjRtMemorySpace*> default_memory_space() const override;
+  absl::Span<ifrt::Memory* const> Memories() const override;
+  absl::StatusOr<ifrt::Memory*> DefaultMemory() const override;
 
   static char ID;  // NOLINT
 
  private:
-  friend class Client;  // For `memory_spaces_` initialization.
+  friend class Client;  // For `memories_` initialization.
 
+  ifrt::Client* client_;
   const DeviceDescription description_;
   const int local_device_id_;
   const int local_hardware_id_;
   const bool is_addressable_;
 
-  std::vector<xla::ifrt::Memory*> memory_spaces_;
-  xla::ifrt::Memory* default_memory_space_ = nullptr;
+  std::vector<xla::ifrt::Memory*> memories_;
+  xla::ifrt::Memory* default_memory_ = nullptr;
 };
 
 }  // namespace proxy

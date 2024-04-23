@@ -118,14 +118,14 @@ func.func @reduce_window_max_activation_transpose(%arg0: tensor<1x16x16x4xf32>) 
 
 // Check that the body is not modified.
 // CHECK: %[[REDUCE_WINDOW:.+]] = "stablehlo.reduce_window"(%[[ARG]], %[[INIT_VALUE_CONST]])
+// CHECK: <{window_dimensions = array<i64: 1, 2, 2, 1>, window_strides = array<i64: 1, 2, 2, 1>}>
 // CHECK: ^bb0(%[[REDUCE_ARG_0:.+]]: tensor<f32>, %[[REDUCE_ARG_1:.+]]: tensor<f32>):
 // CHECK: %[[MAX:.+]] = stablehlo.maximum %[[REDUCE_ARG_0]], %[[REDUCE_ARG_1]]
 // CHECK: stablehlo.return %[[MAX]]
 
 // Check that the attributes window_dimensions & window_strides are also
 // permutated to match the new input shape.
-// CHECK: {window_dimensions = array<i64: 1, 2, 2, 1>, window_strides = array<i64: 1, 2, 2, 1>}
-// CHECK-SAME: (tensor<1x16x16x4xf32>, tensor<f32>) -> tensor<1x8x8x4xf32>
+// CHECK: (tensor<1x16x16x4xf32>, tensor<f32>) -> tensor<1x8x8x4xf32>
 
 // Check that a `stablehlo.transpose` is added to the result to match the shape
 // of the users.
@@ -162,6 +162,7 @@ func.func @reduce_window_max_activation_transpose_explicit_optional_attrs(
 
 // Check that the body is not modified.
 // CHECK: %[[REDUCE_WINDOW:.+]] = "stablehlo.reduce_window"(%[[ARG]], %[[INIT_VALUE_CONST]])
+// CHECK: <{base_dilations = array<i64: 1, 2, 2, 1>, window_dilations = array<i64: 1, 2, 2, 1>, window_dimensions = array<i64: 1, 2, 2, 1>, window_strides = array<i64: 1, 2, 2, 1>}>
 // CHECK: ^bb0(%[[REDUCE_ARG_0:.+]]: tensor<f32>, %[[REDUCE_ARG_1:.+]]: tensor<f32>):
 // CHECK: %[[MAX:.+]] = stablehlo.maximum %[[REDUCE_ARG_0]], %[[REDUCE_ARG_1]]
 // CHECK: stablehlo.return %[[MAX]]
@@ -169,8 +170,7 @@ func.func @reduce_window_max_activation_transpose_explicit_optional_attrs(
 // Check that the attributes window_dimensions & window_strides along with
 // optional attributes base_dilations and window_dilations are also permutated
 // to match the new input shape.
-// CHECK: {base_dilations = array<i64: 1, 2, 2, 1>, window_dilations = array<i64: 1, 2, 2, 1>, window_dimensions = array<i64: 1, 2, 2, 1>, window_strides = array<i64: 1, 2, 2, 1>}
-// CHECK-SAME: (tensor<1x16x16x4xf32>, tensor<f32>) -> tensor<1x15x15x4xf32>
+// CHECK: (tensor<1x16x16x4xf32>, tensor<f32>) -> tensor<1x15x15x4xf32>
 
 // Check that a `stablehlo.transpose` is added to the result to match the shape
 // of the users.

@@ -36,7 +36,8 @@ class MlirInputSlicesFusion : public MlirFusionEmitterBase {
  public:
   explicit MlirInputSlicesFusion(const HloFusionAnalysis& analysis)
       : analysis_(analysis),
-        unroll_factor_(analysis.input_output_info().has_4_bit_output ? 2 : 1) {}
+        unroll_factor_(CeilOfRatio(
+            8, analysis.input_output_info().smallest_output_dtype_bits)) {}
   LaunchDimensions launch_dimensions() const override;
 
   std::optional<IndexingMap> ComputeThreadIdToOutputIndexing(

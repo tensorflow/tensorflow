@@ -206,6 +206,7 @@ cc_library(
         "transforms/deduplicate_if_result_pass.cc",
         "transforms/fuse_tpu_compile_and_execute_ops.cc",
         "transforms/insert_tensor_copy.cc",
+        "transforms/lower_bound_batch_threads.cc",
         "transforms/lower_saved_model.cc",
         "transforms/merge_tf_if_ops.cc",
         "transforms/optimize.cc",
@@ -279,6 +280,35 @@ cc_library(
 )
 
 cc_library(
+    name = "function",
+    srcs = [
+        "function/function.cc",
+    ],
+    hdrs = [
+        "function/function.h",
+    ],
+    deps = [
+        ":tf_to_tfrt",
+        ":tfrt_compile_options",
+        ":tfrt_pipeline_options",
+        "//tensorflow/compiler/mlir/tensorflow:dump_mlir_util",
+        "//tensorflow/compiler/mlir/tensorflow:error_util",
+        "//tensorflow/compiler/mlir/tensorflow:translate_lib",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@tf_runtime//:bef",
+        "@tf_runtime//:core_runtime",
+        "@tf_runtime//:mlirtobef",
+    ],
+)
+
+cc_library(
     name = "saved_model",
     srcs = [
         "saved_model/saved_model.cc",
@@ -326,6 +356,7 @@ cc_library(
     ],
     deps = [
         ":backend_compiler",
+        ":function",
         ":tf_to_tfrt",
         ":tfrt_compile_options",
         ":tfrt_pipeline_options",

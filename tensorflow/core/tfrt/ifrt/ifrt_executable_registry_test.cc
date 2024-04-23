@@ -41,11 +41,13 @@ limitations under the License.
 #include "tensorflow/core/platform/resource_loader.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_loaded_variable_registry.h"
+#include "tensorflow/core/tfrt/ifrt/ifrt_restore_tensor_registry.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_serving_executable.h"
 #include "tensorflow/core/tfrt/ifrt/tf_host_callback.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/threadpool.h"
+#include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime
 
 namespace tensorflow {
 namespace ifrt_serving {
@@ -79,12 +81,17 @@ CreateIfrtServingExecutable(mlir::MLIRContext& context) {
                       xla::ifrt::test_util::GetClient());
 
   IfrtLoadedVariableRegistry ifrt_loaded_variable_registry;
+  IfrtRestoreTensorRegistry ifrt_restore_tensor_registry;
+  std::unique_ptr<tfrt::ConcurrentWorkQueue> work_queue =
+      tfrt::CreateMultiThreadedWorkQueue(
+          /*num_threads=*/4, /*num_blocking_threads=*/4);
   TF_ASSIGN_OR_RETURN(std::unique_ptr<tensorflow::StaticDeviceMgr> device_mgr,
                       CreateTfStaticDeviceMgr());
 
   return std::make_unique<IfrtServingExecutable>(
       "test", "main", std::move(mlir_module), client, &GetThreadPool(),
-      &ifrt_loaded_variable_registry, device_mgr.get(),
+      &ifrt_loaded_variable_registry, &ifrt_restore_tensor_registry,
+      work_queue.get(), device_mgr.get(),
       tensorflow::IdentityShapeRepresentationFn());
 }
 

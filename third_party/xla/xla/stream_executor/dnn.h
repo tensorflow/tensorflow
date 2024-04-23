@@ -1748,7 +1748,7 @@ class DnnSupport {
       std::optional<TensorDescriptor> mask_descriptor,
       std::optional<TensorDescriptor> bias_descriptor, double scale,
       std::optional<double> dropout_rate, std::optional<int64_t> seed,
-      bool is_flash_attention, bool is_causal_mask);
+      bool is_flash_attention, dnn::FMHAMaskKind mask_type);
 
   virtual absl::StatusOr<std::unique_ptr<const FusedMHABackwardRunner>>
   FusedMHABackwardRunnerFromDesc(
@@ -1767,7 +1767,7 @@ class DnnSupport {
       std::optional<TensorDescriptor> fwd_output_descriptor,
       std::optional<TensorDescriptor> bias_descriptor, double scale,
       std::optional<double> dropout_rate, std::optional<int64_t> seed,
-      bool is_flash_attention, bool is_causal_mask);
+      bool is_flash_attention, dnn::FMHAMaskKind mask_type);
 
   virtual bool GetMIOpenConvolveAlgorithms(
       ConvolutionKind kind, DataType element_type, Stream* stream,

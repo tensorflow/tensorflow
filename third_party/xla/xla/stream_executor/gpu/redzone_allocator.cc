@@ -355,7 +355,8 @@ absl::StatusOr<RedzoneCheckStatus> RedzoneAllocator::CheckRedzones() const {
   auto* kernel_ptr = &loaded_kernel;
 #endif  // GOOGLE_CUDA
 
-  auto out_param = executor->AllocateOwnedScalar<uint64_t>();
+  stream_executor::ScopedDeviceMemory<uint64_t> out_param(
+      executor, executor->AllocateScalar<uint64_t>());
   TF_RETURN_IF_ERROR(stream_->MemZero(out_param.ptr(), sizeof(uint64_t)));
 
   for (const auto& buf_and_size : allocated_buffers_) {

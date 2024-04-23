@@ -64,7 +64,10 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
+#include "tensorflow/core/tfrt/ifrt/ifrt_config.pb.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_loaded_variable_registry.h"
+#include "tensorflow/core/tfrt/ifrt/ifrt_loaded_variable_utils.h"
+#include "tensorflow/core/tfrt/ifrt/ifrt_restore_tensor_registry.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_tensor_utils.h"
 #include "tensorflow/core/tfrt/ifrt/sharding_utils.h"
 #include "tensorflow/core/tfrt/ifrt/tf_host_callback.h"
@@ -79,7 +82,7 @@ namespace {
 absl::StatusOr<std::vector<DtypeAndShape>> BuildDtypeAndShape(
     absl::Span<const tensorflow::Tensor> inputs,
     absl::Span<const int> variable_arg_indices,
-    const IfrtLoadedVariableRegistry& ifrt_loaded_variable_registry) {
+    const IfrtRestoreTensorRegistry& ifrt_restore_tensor_registry) {
   std::vector<DtypeAndShape> dtypes_and_shapes;
   dtypes_and_shapes.reserve(inputs.size());
 
@@ -88,10 +91,10 @@ absl::StatusOr<std::vector<DtypeAndShape>> BuildDtypeAndShape(
     if (variable_index < variable_arg_indices.size() &&
         i == variable_arg_indices[variable_index]) {
       // Get already loaded variable tensor.
-      TF_ASSIGN_OR_RETURN(auto loaded_variable,
-                          ifrt_loaded_variable_registry.GetLoadedVariable(
+      TF_ASSIGN_OR_RETURN(auto dtype_and_shape,
+                          ifrt_restore_tensor_registry.GetDtypeAndShape(
                               inputs[i].scalar<tsl::tstring>()()));
-      dtypes_and_shapes.push_back(loaded_variable.dtype_and_shape);
+      dtypes_and_shapes.push_back(dtype_and_shape);
 
       variable_index++;
     } else {
@@ -129,8 +132,9 @@ absl::StatusOr<std::vector<xla::ifrt::Device*>> GetAssignedDevices(
          computation_idx < device_assignment.computation_count();
          computation_idx++) {
       auto device_id = device_assignment(replica_idx, computation_idx);
-      TF_ASSIGN_OR_RETURN(xla::ifrt::Device * device,
-                          ifrt_client.LookupDevice(device_id));
+      TF_ASSIGN_OR_RETURN(
+          xla::ifrt::Device * device,
+          ifrt_client.LookupDevice(xla::ifrt::DeviceId(device_id)));
       devices.push_back(device);
     }
   }
@@ -424,7 +428,7 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
 
   TF_ASSIGN_OR_RETURN(std::vector<DtypeAndShape> dtypes_and_shapes,
                       BuildDtypeAndShape(inputs, variable_arg_indices,
-                                         ifrt_loaded_variable_registry_));
+                                         ifrt_restore_tensor_registry_));
   TF_ASSIGN_OR_RETURN(
       CachedExecutableBundle executable_bundle,
       LookUpOrCreateExecutable(absl::MakeSpan(dtypes_and_shapes)).Await());
@@ -441,6 +445,10 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
         "Expected ", executable_bundle.compile_metadata.args().size(),
         " but got ", dtypes_and_shapes.size(), " arguments"));
   }
+
+  // Asynchronously load the restored variable tensors to Ifrt array.
+  TF_RETURN_IF_ERROR(AsyncLoadIfrtArray(inputs, variable_arg_indices,
+                                        executable_bundle, devices));
 
   std::vector<tsl::RCReference<xla::ifrt::Array>> args;
   args.reserve(inputs.size());
@@ -512,5 +520,36 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
   return outputs;
 }
 
+absl::Status IfrtServingExecutable::AsyncLoadIfrtArray(
+    absl::Span<const tensorflow::Tensor> inputs,
+    absl::Span<const int> variable_arg_indices,
+    const CachedExecutableBundle& executable_bundle,
+    const std::vector<xla::ifrt::Device*>& devices) {
+  for (const int i : variable_arg_indices) {
+    if (inputs[i].dtype() != tensorflow::DT_STRING ||
+        !tensorflow::TensorShapeUtils::IsScalar(inputs[i].shape())) {
+      return absl::FailedPreconditionError(
+          absl::StrCat("Expected a scalar tensor as loaded variable array key, "
+                       "but got type ",
+                       inputs[i].dtype(), " and shape ",
+                       inputs[i].shape().DebugString(), " at index ", i));
+    }
+    std::string runtime_name = inputs[i].scalar<tsl::tstring>()();
+    // TODO(b/330360798): Add test cases for OpSharding on variables.
+    VariableDeviceShardingConfigProto sharding_config;
+    *sharding_config.mutable_sharding() =
+        executable_bundle.compile_metadata.args()[i].sharding();
+    for (const auto& device : devices) {
+      sharding_config.add_device_ids(device->Id().value());
+    }
+
+    TF_RETURN_IF_ERROR(
+        ifrt_serving::AsyncLoadRestoredTensorAsIfrtLoadedVariable(
+            runtime_name, ifrt_client_, thread_pool_,
+            ifrt_restore_tensor_registry_, ifrt_loaded_variable_registry_,
+            checkpoint_loader_queue_, sharding_config));
+  }
+  return absl::OkStatus();
+}
 }  // namespace ifrt_serving
 }  // namespace tensorflow

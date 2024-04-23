@@ -24,8 +24,10 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/base/thread_annotations.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
+#include "llvm/Support/Casting.h"
 #include "third_party/nanobind/include/nanobind/nanobind.h"
 #include "third_party/nanobind/include/nanobind/stl/function.h"  // IWYU pragma: keep
 #include "third_party/nanobind/include/nanobind/stl/optional.h"  // IWYU pragma: keep
@@ -34,10 +36,11 @@ limitations under the License.
 #include "xla/client/executable_build_options.h"
 #include "xla/client/xla_builder.h"
 #include "xla/literal.h"
-#include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/status_casters.h"
+#include "xla/python/ifrt/device.h"
 #include "xla/python/nb_class_ptr.h"
 #include "xla/python/outfeed_receiver.h"
+#include "xla/python/pjrt_ifrt/pjrt_client.h"
 #include "xla/python/py_client.h"
 #include "xla/python/types.h"
 #include "tsl/platform/logging.h"
@@ -56,23 +59,41 @@ class OutfeedReceiverForPython {
   using CallbackToPython =
       std::function<void(nb_class_ptr<PyDevice>, uint32_t, nb::object)>;
 
+  static absl::StatusOr<std::unique_ptr<OutfeedReceiverForPython>> Create(
+      CallbackToPython callback_python,
+      std::vector<nb_class_ptr<PyClient>> clients,
+      ssize_t max_callback_queue_size_bytes,
+      const std::optional<ExecutableBuildOptions>& executable_build_options) {
+    std::vector<ifrt::PjRtClient*> client_ptrs;
+    client_ptrs.reserve(clients.size());
+    for (const auto& client : clients) {
+      ifrt::PjRtClient* client_ptr =
+          llvm::dyn_cast<ifrt::PjRtClient>(client->ifrt_client());
+      if (!client_ptr) {
+        return absl::InvalidArgumentError(
+            "Outfeed receiver only implemented for PJRT clients.");
+      }
+      client_ptrs.push_back(client_ptr);
+    }
+
+    return std::make_unique<OutfeedReceiverForPython>(
+        std::move(callback_python), std::move(clients), client_ptrs,
+        max_callback_queue_size_bytes, executable_build_options);
+  }
+
   OutfeedReceiverForPython(
       CallbackToPython callback_python,
       std::vector<nb_class_ptr<PyClient>> clients,
+      std::vector<ifrt::PjRtClient*> client_ptrs,
       ssize_t max_callback_queue_size_bytes,
       const std::optional<ExecutableBuildOptions>& executable_build_options)
       : callback_python_(std::move(callback_python)),
         clients_(std::move(clients)) {
     OutfeedReceiver::Callback callback =
-        [this](PjRtDevice* device, uint32_t consumer_id,
+        [this](ifrt::Device* device, uint32_t consumer_id,
                std::shared_ptr<Literal> literal) {
           this->Callback(device, consumer_id, std::move(literal));
         };
-    std::vector<PjRtClient*> client_ptrs(clients_.size());
-    absl::c_transform(clients_, client_ptrs.begin(),
-                      [](const nb_class_ptr<PyClient>& client) {
-                        return client->pjrt_client();
-                      });
     outfeed_receiver_ = std::make_unique<OutfeedReceiver>(
         callback, client_ptrs, max_callback_queue_size_bytes,
         executable_build_options);
@@ -105,7 +126,7 @@ class OutfeedReceiverForPython {
                                                   arrays, device_idx);
   }
 
-  void Callback(PjRtDevice* device, uint32_t consumer_id,
+  void Callback(ifrt::Device* device, uint32_t consumer_id,
                 std::shared_ptr<Literal> literal) {
     {
       absl::MutexLock lock(&mu_);
@@ -117,7 +138,7 @@ class OutfeedReceiverForPython {
     // We expect the number of clients to be small, so an O(n) search is fine.
     auto it = absl::c_find_if(
         clients_, [device](const nb_class_ptr<PyClient>& client) {
-          return client->pjrt_client() == device->client();
+          return client->ifrt_client() == device->client();
         });
     CHECK(it != clients_.end());
     PyClient* client = it->get();
@@ -148,10 +169,10 @@ void BuildOutfeedReceiverSubmodule(nb::module_& m) {
          nb::sequence clients, ssize_t max_callback_queue_size_bytes,
          std::optional<ExecutableBuildOptions> executable_build_options)
           -> std::unique_ptr<OutfeedReceiverForPython> {
-        auto server = std::make_unique<OutfeedReceiverForPython>(
+        auto server = xla::ValueOrThrow(OutfeedReceiverForPython::Create(
             std::move(callback_to_python),
             SequenceToVector<nb_class_ptr<PyClient>>(clients),
-            max_callback_queue_size_bytes, executable_build_options);
+            max_callback_queue_size_bytes, executable_build_options));
         nb::gil_scoped_release gil_release;
         server->Start();
         return server;

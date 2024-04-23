@@ -183,6 +183,7 @@ xla_test(
         "//xla/service/gpu:gpu_executable",
         "//xla/service/gpu:variant_visitor",
         "//xla/stream_executor:device_description",
+        "//xla/stream_executor:device_memory_allocator",
         "//xla/tests:filecheck",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/functional:any_invocable",
@@ -768,7 +769,7 @@ xla_cc_test(
 )
 
 lit_test_suite(
-    name = "all_tests",
+    name = "hlo_lit_tests",
     srcs = enforce_glob(
         [
             "add_preds.hlo",
@@ -814,7 +815,12 @@ lit_test_suite(
     ]),
     cfg = "//xla:lit.cfg.py",
     data = [
-        ":test_utilities",
+        "//xla/tools/hlo_opt:gpu_specs/a100_80.txtpb",
+        "//xla/tools/hlo_opt:gpu_specs/a6000.txtpb",
+        "//xla/tools/hlo_opt:gpu_specs/h100.txtpb",
+        "//xla/tools/hlo_opt:gpu_specs/mi200.txtpb",
+        "//xla/tools/hlo_opt:gpu_specs/p100.txtpb",
+        "//xla/tools/hlo_opt:gpu_specs/v100.txtpb",
     ],
     default_tags = tf_cuda_tests_tags(),
     tags_override = {
@@ -829,20 +835,17 @@ lit_test_suite(
     ],
 )
 
-filegroup(
-    name = "test_utilities",
-    testonly = True,
-    data = [
-        "//xla/tools:hlo-opt",
-        "//xla/tools/hlo_opt:gpu_specs/a100_80.txtpb",
-        "//xla/tools/hlo_opt:gpu_specs/a6000.txtpb",
-        "//xla/tools/hlo_opt:gpu_specs/h100.txtpb",
-        "//xla/tools/hlo_opt:gpu_specs/mi200.txtpb",
-        "//xla/tools/hlo_opt:gpu_specs/p100.txtpb",
-        "//xla/tools/hlo_opt:gpu_specs/v100.txtpb",
-        "@llvm-project//llvm:FileCheck",
-    ],
-)
+# copybara:uncomment_begin(triton-opt tool doesn't build in OSS)
+# lit_test_suite(
+#     name = "mlir_lit_tests",
+#     srcs = glob(["*.mlir"]),
+#     cfg = "//xla:lit.cfg.py",
+#     tools = [
+#         "@llvm-project//llvm:FileCheck",
+#         "@triton//:triton-opt",
+#     ],
+# )
+# copybara:uncomment_end
 
 xla_cc_test(
     name = "kernel_launch_test",
@@ -922,10 +925,30 @@ xla_test(
 )
 
 xla_test(
+    name = "gpu_sparse_dot_test",
+    srcs = ["gpu_sparse_dot_test.cc"],
+    backends = [
+        "gpu_a100",
+        # TODO(b/335197598): re-enable Hopper test when the blocker is resolved (PTX version)
+        # "gpu_h100",
+    ],
+    deps = [
+        ":gpu_codegen_test",
+        "//third_party/half:includes",
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla/tests:xla_internal_test_main",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+xla_test(
     name = "gpu_fused_mha_test",
     srcs = ["gpu_fused_mha_test.cc"],
     backend_tags = {"gpu": [
-        "requires-gpu-sm80",
+        "requires-gpu-sm90",
     ]},
     backends = [
         "gpu",

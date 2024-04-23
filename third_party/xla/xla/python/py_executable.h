@@ -134,7 +134,7 @@ class PyLoadedExecutable {
  public:
   PyLoadedExecutable(
       nb_class_ptr<PyClient> client,
-      std::unique_ptr<ifrt::LoadedExecutable> ifrt_loaded_executable,
+      std::shared_ptr<ifrt::LoadedExecutable> ifrt_loaded_executable,
       std::optional<nb_traceback> traceback,
       std::optional<std::string> fingerprint);
   ~PyLoadedExecutable();
@@ -142,6 +142,10 @@ class PyLoadedExecutable {
   nb_class_ptr<PyClient> client() const { return client_; }
   ifrt::LoadedExecutable* ifrt_loaded_executable() const {
     return ifrt_loaded_executable_.get();
+  }
+
+  std::shared_ptr<ifrt::LoadedExecutable> shared_ifrt_loaded_executable() {
+    return ifrt_loaded_executable_;
   }
 
   absl::Span<const PjRtLoadedExecutable::LogicalDeviceIds>
@@ -238,7 +242,7 @@ class PyLoadedExecutable {
   friend class PyClient;
 
   nb_class_ptr<PyClient> client_;
-  std::unique_ptr<ifrt::LoadedExecutable> ifrt_loaded_executable_;
+  std::shared_ptr<ifrt::LoadedExecutable> ifrt_loaded_executable_;
   std::optional<nb_traceback> traceback_;
 
   // Identical executables (i.e. representing the same program) will have the

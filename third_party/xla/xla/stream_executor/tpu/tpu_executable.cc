@@ -151,7 +151,7 @@ absl::StatusOr<ExecutionOutput> TpuExecutable::ExecuteAsyncOnStream(
 
   xla::ScopedShapedBuffer result(
       ApiConverter::FromC(&se_execution_output.result),
-      run_options->stream()->parent()->GetAllocator());
+      ApiConverter::FromC(se_run_options.allocator));
   ApiConverter::Destroy(&se_execution_output.result);
 
   ExecutionOutput output(std::move(result));
@@ -165,7 +165,7 @@ absl::StatusOr<ExecutionOutput> TpuExecutable::ExecuteAsyncOnStream(
   for (int i = 0; i < se_execution_output.to_be_released_size; ++i) {
     output.AddToBeReleased(
         ApiConverter::FromC(&se_execution_output.to_be_released[i],
-                            run_options->stream()->parent()->GetAllocator())
+                            ApiConverter::FromC(se_run_options.allocator))
             .Release()
             .value());
   }

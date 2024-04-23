@@ -24,7 +24,8 @@ namespace {
 
 TEST(ProfilerDisabledTest, ProfilerDisabledTest) {
   setenv("TF_DISABLE_PROFILING", "1", /*overwrite=*/1);
-  StatusOr<ProfilerLock> profiler_lock = tsl::profiler::ProfilerLock::Acquire();
+  absl::StatusOr<ProfilerLock> profiler_lock =
+      tsl::profiler::ProfilerLock::Acquire();
   EXPECT_FALSE(profiler_lock.ok());
 }
 

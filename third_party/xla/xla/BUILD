@@ -241,6 +241,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     visibility = internal_visibility([":friends"]),
     deps = [
+        "@com_google_absl//absl/strings",
         "@eigen_archive//:eigen3",
         "@local_tsl//tsl/platform:ml_dtypes",
     ],
@@ -595,6 +596,7 @@ cc_library(
         ":array4d",
         ":permutation_util",
         ":printer",
+        ":shape_tree",
         ":shape_util",
         ":status",
         ":status_macros",
@@ -633,6 +635,7 @@ xla_cc_test(
         ":array4d",
         ":literal",
         ":literal_util",
+        ":shape_tree",
         ":shape_util",
         ":status",
         ":test",

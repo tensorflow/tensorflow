@@ -157,8 +157,30 @@ class GlobalShuffleTest(test_base.DatasetTestBase, parameterized.TestCase):
 
 
 class WeightedFlatMapGlobalShuffleCheckpointTest(
-    checkpoint_test_base.CheckpointTestBase, parameterized.TestCase
-):
+    checkpoint_test_base.CheckpointTestBase, parameterized.TestCase):
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          checkpoint_test_base.default_test_combinations(),
+          combinations.combine(symbolic_checkpoint=[True, False])))
+  def testWeightedFlatMap(
+      self,
+      verify_fn: Callable[..., None],
+      symbolic_checkpoint: bool):
+
+    def _build_dataset() -> dataset_ops.Dataset:
+      dataset1 = dataset_ops.Dataset.range(10)
+      dataset2 = dataset_ops.Dataset.range(10, 20)
+      dataset3 = dataset_ops.Dataset.range(20, 30)
+      dataset = weighted_flat_map_op._weighted_flat_map(
+          [dataset1, dataset2, dataset3], np.asarray([0.25, 0.25, 0.5]))
+      options = options_lib.Options()
+      options.experimental_optimization.apply_default_optimizations = False
+      options.experimental_symbolic_checkpoint = symbolic_checkpoint
+      return dataset.with_options(options)
+
+    verify_fn(self, _build_dataset, num_outputs=20)
 
   @combinations.generate(
       combinations.times(
@@ -167,7 +189,7 @@ class WeightedFlatMapGlobalShuffleCheckpointTest(
           combinations.combine(
               reshuffle_each_iteration=[True, False],
               symbolic_checkpoint=[True, False])))
-  def testWeightedFlatMap(
+  def testGlobalshuffle(
       self,
       verify_fn: Callable[..., None],
       reshuffle_each_iteration: bool,
@@ -178,11 +200,9 @@ class WeightedFlatMapGlobalShuffleCheckpointTest(
       dataset2 = dataset_ops.Dataset.range(10, 20)
       dataset3 = dataset_ops.Dataset.range(20, 30)
       dataset = weighted_flat_map_op._weighted_flat_map(
-          [dataset1, dataset2, dataset3], np.asarray([0.25, 0.25, 0.5])
-      )
+          [dataset1, dataset2, dataset3], np.asarray([0.25, 0.25, 0.5]))
       dataset = global_shuffle_op._global_shuffle(
-          dataset, seed=42, reshuffle_each_iteration=reshuffle_each_iteration
-      )
+          dataset, seed=42, reshuffle_each_iteration=reshuffle_each_iteration)
       options = options_lib.Options()
       options.experimental_optimization.apply_default_optimizations = False
       options.experimental_symbolic_checkpoint = symbolic_checkpoint

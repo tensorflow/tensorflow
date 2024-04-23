@@ -16,9 +16,7 @@ limitations under the License.
 
 #include <memory>
 #include <string>
-#include <tuple>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -27,6 +25,7 @@ limitations under the License.
 #include "absl/strings/cord.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "riegeli/base/maker.h"  // from @riegeli
 #include "riegeli/bytes/cord_reader.h"  // from @riegeli
 #include "riegeli/bytes/fd_reader.h"  // from @riegeli
 #include "riegeli/bytes/string_reader.h"  // from @riegeli
@@ -131,8 +130,7 @@ TEST(RepeatedStringSplitterTest, TestSplitChunks) {
   EXPECT_EQ(chunked_message2, chunked_message);
 }
 
-template <typename T>
-static void CheckChunks(riegeli::RecordReader<T>& reader,
+static void CheckChunks(riegeli::RecordReaderBase& reader,
                         std::vector<string>& strings) {
   ChunkMetadata chunk_metadata;
   reader.Seek(reader.Size().value());
@@ -180,8 +178,8 @@ TEST(RepeatedStringSplitterTest, TestWrite) {
   EXPECT_TRUE(exists);
 
   // Look for the last chunk, which should contain a ChunkMetadata proto.
-  riegeli::RecordReader<riegeli::FdReader<>> file_reader(
-      (riegeli::FdReader(expected_file)));
+  riegeli::RecordReader file_reader(
+      riegeli::Maker<riegeli::FdReader>(std::move(expected_file)));
 
   CheckChunks(file_reader, strings);
 }
@@ -196,8 +194,8 @@ TEST(RepeatedStringSplitterTest, TestWriteToString) {
   bool is_chunked = std::get<1>(string_output_results.value());
   EXPECT_TRUE(is_chunked);
   // Look for the last chunk, which should contain a ChunkMetadata proto.
-  riegeli::RecordReader<riegeli::StringReader<>> string_reader(
-      std::forward_as_tuple(string_output));
+  riegeli::RecordReader string_reader(
+      riegeli::Maker<riegeli::StringReader>(string_output));
 
   CheckChunks(string_reader, strings);
 }
@@ -213,8 +211,8 @@ TEST(RepeatedStringSplitterTest, TestWriteToCord) {
   bool is_chunked = std::get<1>(cord_output_results.value());
   EXPECT_TRUE(is_chunked);
   // Look for the last chunk, which should contain a ChunkMetadata proto.
-  riegeli::RecordReader<riegeli::CordReader<>> cord_reader(
-      std::forward_as_tuple(&cord_output));
+  riegeli::RecordReader cord_reader(
+      riegeli::Maker<riegeli::CordReader>(&cord_output));
 
   CheckChunks(cord_reader, strings);
 }

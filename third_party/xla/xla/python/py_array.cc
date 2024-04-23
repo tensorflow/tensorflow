@@ -66,6 +66,7 @@ limitations under the License.
 #include "xla/python/nb_helpers.h"
 #include "xla/python/nb_numpy.h"
 #include "xla/python/pjrt_ifrt/pjrt_array.h"
+#include "xla/python/pjrt_ifrt/pjrt_device.h"
 #include "xla/python/pjrt_ifrt/xla_sharding.h"
 #include "xla/python/py_client.h"
 #include "xla/python/py_device.h"
@@ -881,10 +882,16 @@ StatusOr<nb::object> CudaArrayInterfaceToBuffer(const nb::dict& cai,
   Shape shape = ShapeUtil::MakeShapeWithDenseLayout(element_type, dimensions,
                                                     minor_to_major);
   std::function<void()> on_delete_callback = []() {};
+  auto* pjrt_device =
+      llvm::dyn_cast_or_null<ifrt::PjRtDevice>(device->device());
+  if (pjrt_device == nullptr) {
+    return InvalidArgument(
+        "This operation is implemented for a PjRt-compatible backend only.");
+  }
   TF_ASSIGN_OR_RETURN(
       auto pjrt_buffer,
       device->client()->pjrt_client()->CreateViewOfDeviceBuffer(
-          static_cast<char*>(data_ptr), shape, device->device(),
+          static_cast<char*>(data_ptr), shape, pjrt_device->pjrt_device(),
           on_delete_callback,
           stream <= 2 ? std::nullopt : std::make_optional(stream)));
   auto* ifrt_client =
@@ -1359,9 +1366,10 @@ bool IsZeroCopyableCpuBuffer(const PjRtBuffer* buf) {
   // device.
   bool has_default_layout = buf->layout() == nullptr ||
                             HasDefaultLayout(GetXlaLayoutUnsafe(buf->layout()));
-  // On CPU for non-int4 values, we can return the value in a zero-copy way.
-  // For int4 values, we must copy in order to unpack the array.
-  return buf->IsOnCpu() && !primitive_util::Is4BitType(buf->element_type()) &&
+  // On CPU for values >= 8 bits, we can return the value in a zero-copy way.
+  // For sub-byte values, we must copy in order to unpack the array.
+  return buf->IsOnCpu() &&
+         !primitive_util::IsSubByteNonPredType(buf->element_type()) &&
          has_default_layout;
 }
 }  // namespace
@@ -1378,8 +1386,8 @@ StatusOr<nb::object> PyHostValue::AsNumPyArray(
   if (arr != nullptr) {
     auto* pjrt_buffer = arr->pjrt_buffers().front().get();
     TF_RET_CHECK(!pjrt_buffer->IsTuple());
-    // On CPU for non-int4 values, we can return the value in a zero-copy way.
-    // For int4 values, we must copy in order to unpack the array.
+    // On CPU for values >= 8 bits, we can return the value in a zero-copy way.
+    // For sub-byte values, we must copy in order to unpack the array.
     if (IsZeroCopyableCpuBuffer(pjrt_buffer)) {
       TF_ASSIGN_OR_RETURN(const auto* shape,
                           XlaDynamicShape(ifrt_array, dynamic_shape_holder));

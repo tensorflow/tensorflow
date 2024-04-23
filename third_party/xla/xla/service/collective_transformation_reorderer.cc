@@ -223,7 +223,7 @@ CollectiveTransformationReorder::ReorderAllGatherTransformations(
     HloInstruction* new_all_gather =
         computation->AddInstruction(HloInstruction::CreateAllGather(
             new_all_gather_shape, {all_gather_operand}, all_gather_dimension,
-            all_gather->replica_groups(), all_gather->constrain_layout(),
+            all_gather->device_list(), all_gather->constrain_layout(),
             all_gather->channel_id(), all_gather->use_global_device_ids()));
     TF_RETURN_IF_ERROR(
         transformations.back().hlo->ReplaceAllUsesWith(new_all_gather));
@@ -272,7 +272,7 @@ CollectiveTransformationReorder::ReorderAllReduceTransformations(
     HloInstruction* new_all_reduce =
         computation->AddInstruction(HloInstruction::CreateAllReduce(
             cur_operand->shape(), {cur_operand}, all_reduce->to_apply(),
-            all_reduce->replica_groups(), all_reduce->constrain_layout(),
+            all_reduce->device_list(), all_reduce->constrain_layout(),
             all_reduce->channel_id(), all_reduce->use_global_device_ids()));
 
     // For each eligible reshape on the old all-reduce's operand, we reshape the

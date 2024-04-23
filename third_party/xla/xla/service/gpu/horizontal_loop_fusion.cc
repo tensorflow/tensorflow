@@ -729,7 +729,7 @@ absl::StatusOr<bool> GpuHorizontalLoopFusion::Run(
                       RunOnComputation(module->entry_computation()));
 
   if (changed) {
-    // Correctly set element_size_in_bits for any int4 added slice and
+    // Correctly set element_size_in_bits for any sub-byte added slice and
     // concatenate instructions
     TF_ASSIGN_OR_RETURN(
         [[maybe_unused]] bool unused,

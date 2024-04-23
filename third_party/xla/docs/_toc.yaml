@@ -32,14 +32,16 @@ toc:
       path: /xla/lsp
 - title: Contributing
   section:
-    - title: Develop a new backend for XLA
-      path: /xla/developing_new_backend
     - title: Developer guide
       path: /xla/developer_guide
     - title: Code reviews
       path: /xla/code_reviews
     - title: Build from source
       path: /xla/build_from_source
+    - title: Develop a new backend for XLA
+      path: /xla/developing_new_backend
+    - title: Develop a new PJRT plugin
+      path: /xla/pjrt_integration
 - title: Using XLA in TensorFlow
   section:
     - title: Using XLA in TensorFlow

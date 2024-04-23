@@ -22,6 +22,7 @@
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "xla/pjrt/pjrt_device_description.h"
+#include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt_proxy/client/client_session.h"
 #include "xla/python/ifrt_proxy/client/host_buffer.h"
@@ -136,37 +137,35 @@ TEST_F(ClientTest, Init) {
   ASSERT_EQ(client_->device_count(), 2);
   ASSERT_EQ(client_->addressable_device_count(), 1);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto* const device0, client_->LookupDevice(0));
-  EXPECT_EQ(device0->id(), 0);
-  EXPECT_EQ(device0->local_hardware_id(), 1234);
-  EXPECT_EQ(device0->device_kind(), "mock");
+  TF_ASSERT_OK_AND_ASSIGN(auto* const device0,
+                          client_->LookupDevice(DeviceId(0)));
+  EXPECT_EQ(device0->Id(), DeviceId(0));
+  EXPECT_EQ(device0->Kind(), "mock");
   EXPECT_THAT(device0->Attributes(),
               ElementsAre(Pair(
                   "name", xla::PjRtDeviceAttribute(std::string("device0")))));
 
-  ASSERT_THAT(device0->memory_spaces(), SizeIs(1));
-  auto* const memory0 = device0->memory_spaces()[0];
-  EXPECT_EQ(memory0->id(), 0);
-  EXPECT_EQ(memory0->kind(), "mock");
-  EXPECT_EQ(memory0->kind_id(), 0);
-  EXPECT_THAT(memory0->devices(), UnorderedElementsAre(device0));
-  EXPECT_THAT(device0->default_memory_space(), IsOkAndHolds(memory0));
+  ASSERT_THAT(device0->Memories(), SizeIs(1));
+  auto* const memory0 = device0->Memories()[0];
+  EXPECT_EQ(memory0->Id(), 0);
+  EXPECT_EQ(memory0->Kind().memory_kind(), "mock");
+  EXPECT_THAT(memory0->Devices(), UnorderedElementsAre(device0));
+  EXPECT_THAT(device0->DefaultMemory(), IsOkAndHolds(memory0));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto* const device1, client_->LookupDevice(1));
-  EXPECT_EQ(device1->id(), 1);
-  EXPECT_EQ(device1->local_hardware_id(), 1234);
-  EXPECT_EQ(device1->device_kind(), "mock");
+  TF_ASSERT_OK_AND_ASSIGN(auto* const device1,
+                          client_->LookupDevice(DeviceId(1)));
+  EXPECT_EQ(device1->Id(), 1);
+  EXPECT_EQ(device1->Kind(), "mock");
   EXPECT_THAT(device1->Attributes(),
               ElementsAre(Pair(
                   "name", xla::PjRtDeviceAttribute(std::string("device1")))));
 
-  ASSERT_THAT(device1->memory_spaces(), SizeIs(1));
-  auto* const memory1 = device1->memory_spaces()[0];
-  EXPECT_EQ(memory1->id(), 1);
-  EXPECT_EQ(memory1->kind(), "mock");
-  EXPECT_EQ(memory1->kind_id(), 1);
-  EXPECT_THAT(memory1->devices(), UnorderedElementsAre(device1));
-  EXPECT_THAT(device1->default_memory_space(), IsOkAndHolds(memory1));
+  ASSERT_THAT(device1->Memories(), SizeIs(1));
+  auto* const memory1 = device1->Memories()[0];
+  EXPECT_EQ(memory1->Id(), 1);
+  EXPECT_EQ(memory1->Kind().memory_kind(), "mock");
+  EXPECT_THAT(memory1->Devices(), UnorderedElementsAre(device1));
+  EXPECT_THAT(device1->DefaultMemory(), IsOkAndHolds(memory1));
 
   EXPECT_THAT(client_->addressable_devices(), ElementsAre(device1));
 }

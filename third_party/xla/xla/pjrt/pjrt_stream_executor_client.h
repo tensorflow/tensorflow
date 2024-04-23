@@ -294,7 +294,7 @@ class PjRtStreamExecutorClient : public PjRtClient {
       std::shared_ptr<BufferSequencingEvent> definition_event);
 
   StatusOr<std::unique_ptr<PjRtBuffer>> CreateErrorBuffer(
-      Status error, const Shape& shape, PjRtDevice* device) override;
+      Status error, const Shape& shape, PjRtMemorySpace* memory) override;
 
   StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
   CreateBuffersForAsyncHostToDevice(absl::Span<const Shape> shapes,

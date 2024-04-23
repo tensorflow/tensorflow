@@ -39,7 +39,7 @@ class DeviceListTest : public test_util::ShardingTest {};
 TEST_P(DeviceListTest, ToFromProto) {
   auto device_list = GetDevices({0, 1});
   DeviceListProto proto = device_list.ToProto();
-  auto lookup_device_func = [&](int device_id) -> absl::StatusOr<Device*> {
+  auto lookup_device_func = [&](DeviceId device_id) -> absl::StatusOr<Device*> {
     return client()->LookupDevice(device_id);
   };
   TF_ASSERT_OK_AND_ASSIGN(auto device_list_copy,

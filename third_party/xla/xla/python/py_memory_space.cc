@@ -32,8 +32,8 @@ namespace nb = ::nanobind;
 namespace xla {
 
 PyMemorySpace::PyMemorySpace(nb_class_ptr<PyClient> client,
-                             PjRtMemorySpace* memory_space)
-    : client_(std::move(client)), memory_space_(memory_space) {}
+                             ifrt::Memory* memory)
+    : client_(std::move(client)), memory_(memory) {}
 
 int PyMemorySpace::process_index() const { return client_->process_index(); }
 
@@ -52,19 +52,17 @@ std::string_view PyMemorySpace::platform() const {
   }
 }
 
-std::string_view PyMemorySpace::kind() const { return memory_space_->kind(); }
-
-std::string_view PyMemorySpace::Str() const {
-  return memory_space_->DebugString();
+std::string_view PyMemorySpace::kind() const {
+  return *memory_->Kind().memory_kind();
 }
 
-std::string_view PyMemorySpace::Repr() const {
-  return memory_space_->ToString();
-}
+std::string_view PyMemorySpace::Str() const { return memory_->DebugString(); }
+
+std::string_view PyMemorySpace::Repr() const { return memory_->ToString(); }
 
 nb::list PyMemorySpace::AddressableByDevices() const {
   nb::list devices;
-  for (ifrt::Device* device : memory_space_->devices()) {
+  for (ifrt::Device* device : memory_->Devices()) {
     devices.append(client_->GetPyDevice(device));
   }
   return devices;

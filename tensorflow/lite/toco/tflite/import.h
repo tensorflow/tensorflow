@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/toco/model.h"
+#include "tensorflow/lite/toco/model_flags.pb.h"
 
 namespace toco {
 

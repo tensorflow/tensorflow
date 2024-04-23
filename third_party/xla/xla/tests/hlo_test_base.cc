@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/statusor.h"
+#include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/tests/filecheck.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/pjrt_client_registry.h"
@@ -885,6 +886,14 @@ HloInstruction* HloTestBase::FindInstruction(HloModule* module,
   return nullptr;
 }
 
+se::DeviceMemoryAllocator* HloTestBase::GetAllocator() {
+  if (allocator_ == nullptr) {
+    allocator_ = std::make_unique<se::StreamExecutorMemoryAllocator>(
+        backend().default_stream_executor());
+  }
+  return allocator_.get();
+}
+
 Backend& HloTestBase::backend() { return test_runner_.backend(); }
 
 /* static */
@@ -911,15 +920,14 @@ absl::StatusOr<std::unique_ptr<HloModule>> HloTestBase::GetOptimizedModule(
       std::unique_ptr<HloModule> module,
       ParseAndReturnVerifiedModule(hlo, GetModuleConfigForTest()));
   return backend().compiler()->RunHloPasses(
-      std::move(module), backend().default_stream_executor(),
-      backend().default_stream_executor()->GetAllocator());
+      std::move(module), backend().default_stream_executor(), GetAllocator());
 }
 
 absl::StatusOr<std::unique_ptr<HloModule>> HloTestBase::GetOptimizedModule(
     std::unique_ptr<HloModule> hlo_module) {
-  return backend().compiler()->RunHloPasses(
-      std::move(hlo_module), backend().default_stream_executor(),
-      backend().default_stream_executor()->GetAllocator());
+  return backend().compiler()->RunHloPasses(std::move(hlo_module),
+                                            backend().default_stream_executor(),
+                                            GetAllocator());
 }
 
 absl::StatusOr<std::unique_ptr<HloRunnerInterface>>

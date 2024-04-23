@@ -125,5 +125,12 @@ CublasLtMatmulThunk::GetMatmulAlgorithm(
   return it->second;
 }
 
+absl::Status CublasLtMatmulThunk::Initialize(const InitializeParams& params) {
+  if (!params.executor->AsBlas()) {
+    return absl::InternalError("Failed to initialize BLASLT support");
+  }
+  return absl::OkStatus();
+}
+
 }  // namespace gpu
 }  // namespace xla

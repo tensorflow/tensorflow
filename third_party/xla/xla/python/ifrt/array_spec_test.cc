@@ -44,7 +44,7 @@ TEST_P(ArraySpecTest, ToFromProto) {
                                               /*shape=*/shape,
                                               /*shard_shape=*/shard_shape)};
 
-  auto lookup_device_func = [&](int device_id) -> absl::StatusOr<Device*> {
+  auto lookup_device_func = [&](DeviceId device_id) -> absl::StatusOr<Device*> {
     return client()->LookupDevice(device_id);
   };
   TF_ASSERT_OK_AND_ASSIGN(const ArraySpecProto proto, spec.ToProto());

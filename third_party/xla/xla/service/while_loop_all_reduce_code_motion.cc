@@ -825,7 +825,7 @@ absl::flat_hash_map<int, HloInstruction*> CreateSinkedAllReduces(
             while_parent->AddInstruction(HloInstruction::CreateAllReduce(
                 all_reduce_operand->shape(), {all_reduce_operand},
                 old_all_reduce->called_computations()[0],
-                old_all_reduce->replica_groups(),
+                old_all_reduce->device_list(),
                 old_all_reduce->constrain_layout(),
                 hlo_query::NextChannelId(*(while_parent->parent())),
                 old_all_reduce->use_global_device_ids()));
@@ -836,7 +836,7 @@ absl::flat_hash_map<int, HloInstruction*> CreateSinkedAllReduces(
             while_parent->AddInstruction(HloInstruction::CreateReduceScatter(
                 old_reduce_scatter->shape(), {all_reduce_operand},
                 old_reduce_scatter->called_computations()[0],
-                old_reduce_scatter->replica_groups(),
+                old_reduce_scatter->device_list(),
                 old_reduce_scatter->constrain_layout(),
                 hlo_query::NextChannelId(*(while_parent->parent())),
                 old_reduce_scatter->use_global_device_ids(),

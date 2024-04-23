@@ -1422,17 +1422,17 @@ diff --ruN a/stablehlo/stablehlo/experimental/tests/stablehlo_canonicalize_dynam
 +// CHECK-LABEL: func @dynamic_reduce_window_success_static_result_type
 +func.func @dynamic_reduce_window_success_static_result_type(%arg0: tensor<3x2xf32>, %arg1: tensor<f32>) -> tensor<2x2xf32> {
 +  //           CHECK-NOT: stablehlo.dynamic_reduce_window
-+  //               CHECK: "stablehlo.reduce_window"(%arg0, %arg1) ({
-+  //          CHECK-NEXT:   ^[[BB:bb.*]](%[[ARG2:arg.*]]: tensor<f32>, %[[ARG3:arg.*]]: tensor<f32>):
-+  //          CHECK-NEXT:     %[[VAL1:.*]] = stablehlo.add %arg2, %arg3 : tensor<f32>
-+  //          CHECK-NEXT:     stablehlo.return %[[VAL1]] : tensor<f32>
-+  //          CHECK-NEXT: }) {
++  //               CHECK: "stablehlo.reduce_window"(%arg0, %arg1) <{
 +  //          CHECK-SAME:   base_dilations = array<i64: 2, 1>,
 +  // CHECK-SAME{LITERAL}:   padding = dense<[[2, 1], [0, 0]]> : tensor<2x2xi64>,
 +  //          CHECK-SAME:   window_dilations = array<i64: 3, 1>,
 +  //          CHECK-SAME:   window_dimensions = array<i64: 2, 1>,
 +  //          CHECK-SAME:   window_strides = array<i64: 4, 1>
-+  //          CHECK-SAME: } : (tensor<3x2xf32>, tensor<f32>) -> tensor<2x2xf32>
++  //          CHECK-SAME: }> ({
++  //          CHECK-NEXT:   ^[[BB:bb.*]](%[[ARG2:arg.*]]: tensor<f32>, %[[ARG3:arg.*]]: tensor<f32>):
++  //          CHECK-NEXT:     %[[VAL1:.*]] = stablehlo.add %arg2, %arg3 : tensor<f32>
++  //          CHECK-NEXT:     stablehlo.return %[[VAL1]] : tensor<f32>
++  //          CHECK-NEXT: }) : (tensor<3x2xf32>, tensor<f32>) -> tensor<2x2xf32>
 +  %0 = stablehlo.constant dense<[2, 1]> : tensor<2xi64>
 +  %1 = stablehlo.constant dense<[4, 1]> : tensor<2xi64>
 +  %2 = stablehlo.constant dense<[2, 1]> : tensor<2xi64>
@@ -1454,17 +1454,17 @@ diff --ruN a/stablehlo/stablehlo/experimental/tests/stablehlo_canonicalize_dynam
 +// CHECK-LABEL: func @dynamic_reduce_window_success_dynamic_result_type
 +func.func @dynamic_reduce_window_success_dynamic_result_type(%arg0: tensor<?x2xf32>, %arg1: tensor<f32>) -> tensor<?x2xf32> {
 +  //           CHECK-NOT: stablehlo.dynamic_reduce_window
-+  //               CHECK: "stablehlo.reduce_window"(%arg0, %arg1) ({
-+  //          CHECK-NEXT:   ^[[BB:bb.*]](%[[ARG2:arg.*]]: tensor<f32>, %[[ARG3:arg.*]]: tensor<f32>):
-+  //          CHECK-NEXT:     %[[VAL1:.*]] = stablehlo.add %arg2, %arg3 : tensor<f32>
-+  //          CHECK-NEXT:     stablehlo.return %[[VAL1]] : tensor<f32>
-+  //          CHECK-NEXT: }) {
++  //               CHECK: "stablehlo.reduce_window"(%arg0, %arg1) <{
 +  //          CHECK-SAME:   base_dilations = array<i64: 2, 1>,
 +  // CHECK-SAME{LITERAL}:   padding = dense<[[2, 1], [0, 0]]> : tensor<2x2xi64>,
 +  //          CHECK-SAME:   window_dilations = array<i64: 3, 1>,
 +  //          CHECK-SAME:   window_dimensions = array<i64: 2, 1>,
 +  //          CHECK-SAME:   window_strides = array<i64: 4, 1>
-+  //          CHECK-SAME: } : (tensor<?x2xf32>, tensor<f32>) -> tensor<?x2xf32>
++  //          CHECK-SAME: }> ({
++  //          CHECK-NEXT:   ^[[BB:bb.*]](%[[ARG2:arg.*]]: tensor<f32>, %[[ARG3:arg.*]]: tensor<f32>):
++  //          CHECK-NEXT:     %[[VAL1:.*]] = stablehlo.add %arg2, %arg3 : tensor<f32>
++  //          CHECK-NEXT:     stablehlo.return %[[VAL1]] : tensor<f32>
++  //          CHECK-NEXT: }) : (tensor<?x2xf32>, tensor<f32>) -> tensor<?x2xf32>
 +  %0 = stablehlo.constant dense<[2, 1]> : tensor<2xi64>
 +  %1 = stablehlo.constant dense<[4, 1]> : tensor<2xi64>
 +  %2 = stablehlo.constant dense<[2, 1]> : tensor<2xi64>
@@ -2564,76 +2564,4 @@ diff --ruN a/stablehlo/stablehlo/experimental/transforms/StablehloRefineShapes.c
 +}  // namespace experimental
 +}  // namespace stablehlo
 +}  // namespace mlir
-diff --ruN a/stablehlo/stablehlo/reference/Ops.cpp b/stablehlo/stablehlo/reference/Ops.cpp
---- stablehlo/stablehlo/reference/Ops.cpp
-+++ stablehlo/stablehlo/reference/Ops.cpp
-@@ -16,6 +16,7 @@
- #include "stablehlo/reference/Ops.h"
- 
- #include <algorithm>
-+#include <cstdint>
- 
- #include "llvm/ADT/APFloat.h"
- #include "llvm/ADT/APInt.h"
-@@ -1428,23 +1429,23 @@
-                         inputSpatialDimensions.end());
-   lhsPermutation.push_back(inputFeatureDimension);
- 
--  auto lhsWindowDimensions =
--      concatAndPermute(lhs.getShape()[inputBatchDimension],
--                       extractElements(rhs.getShape(), kernelSpatialDimensions),
--                       lhs.getShape()[inputFeatureDimension], lhsPermutation);
--
--  auto lhsWindowStrides =
--      concatAndPermute(1L, llvm::to_vector(windowStrides), 1L, lhsPermutation);
-+  auto lhsWindowDimensions = concatAndPermute<int64_t>(
-+      lhs.getShape()[inputBatchDimension],
-+      extractElements(rhs.getShape(), kernelSpatialDimensions),
-+      lhs.getShape()[inputFeatureDimension], lhsPermutation);
-+
-+  auto lhsWindowStrides = concatAndPermute<int64_t>(
-+      1L, llvm::to_vector(windowStrides), 1L, lhsPermutation);
- 
-   auto lhsBaseDilations =
--      concatAndPermute(0L, Sizes(lhsDilation) - 1, 0L, lhsPermutation);
--
--  auto lhsWindowDilations =
--      concatAndPermute(1L, llvm::to_vector(rhsDilation), 1L, lhsPermutation);
-+      concatAndPermute<int64_t>(0L, Sizes(lhsDilation) - 1, 0L, lhsPermutation);
-+
-+  auto lhsWindowDilations = concatAndPermute<int64_t>(
-+      1L, llvm::to_vector(rhsDilation), 1L, lhsPermutation);
- 
-   Sizes lhsPaddingLow, lhsPaddingHigh;
--  for (auto paddingPair : concatAndPermute({0, 0}, llvm::to_vector(padding),
--                                           {0, 0}, lhsPermutation)) {
-+  for (auto paddingPair : concatAndPermute<std::pair<int64_t, int64_t>>(
-+           {0, 0}, llvm::to_vector(padding), {0, 0}, lhsPermutation)) {
-     lhsPaddingLow.push_back(paddingPair.first);
-     lhsPaddingHigh.push_back(paddingPair.second);
-   }
-@@ -1461,8 +1462,8 @@
-   for (; outputSpatialIndexIt != outputSpatialIndexItEnd;
-        ++outputSpatialIndexIt) {
-     Sizes lhsWindowStart;
--    for (auto [i, offset] : llvm::enumerate(
--             concatAndPermute(0L, *outputSpatialIndexIt, 0L, lhsPermutation)))
-+    for (auto [i, offset] : llvm::enumerate(concatAndPermute<int64_t>(
-+             0L, *outputSpatialIndexIt, 0L, lhsPermutation)))
-       lhsWindowStart.push_back(lhsWindowStrides[i] * offset);
- 
-     Sizes limitIndices;
-@@ -1507,9 +1508,9 @@
-     for (auto dotProductIt = dotProduct.index_begin();
-          dotProductIt != dotProduct.index_end();
-          ++dotProductIt, ++resultNonSpatialIt) {
--      Index resultIndex(
--          concatAndPermute((*resultNonSpatialIt)[0], *outputSpatialIndexIt,
--                           (*resultNonSpatialIt)[1], resultPermutation));
-+      Index resultIndex(concatAndPermute<int64_t>(
-+          (*resultNonSpatialIt)[0], *outputSpatialIndexIt,
-+          (*resultNonSpatialIt)[1], resultPermutation));
-       result.set(resultIndex, dotProduct.get(*dotProductIt));
-     }
-   }
 

@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 
@@ -89,14 +90,15 @@ void GenericTransferManager::TransferLiteralFromDevice(
         [&](const Shape& subshape, const ShapeIndex& index) -> Status {
           if (subshape.IsArray()) {
             if (PackSubbyteTypes() &&
-                primitive_util::Is4BitType(subshape.element_type())) {
+                primitive_util::IsSubByteNonPredType(subshape.element_type())) {
               if (!subshape.is_static()) {
                 return absl::UnimplementedError(
                     "Int4 outputs with dynamic shapes are unsupported");
               }
-              return TransferInt4ArrayFromDevice(
+              return TransferIntNArrayFromDevice(
                   stream,
                   /*source=*/device_buffer.buffer(index),
+                  subshape.element_type(),
                   /*num_elements=*/ShapeUtil::ElementsIn(subshape),
                   /*destination=*/literal.untyped_data(index));
             } else {
@@ -166,14 +168,16 @@ Status GenericTransferManager::TransferLiteralToDeviceAsync(
           TF_RET_CHECK(size == device_memory.size());
 
           auto TransferBuffer = [&](const void* source) {
-            if (PackSubbyteTypes() &&
-                primitive_util::Is4BitType(device_subshape.element_type())) {
+            if (PackSubbyteTypes() && primitive_util::IsSubByteNonPredType(
+                                          device_subshape.element_type())) {
               if (!device_subshape.is_static()) {
-                return absl::UnimplementedError(
-                    "Int4 inputs with dynamic shapes are unsupported");
+                return absl::UnimplementedError(absl::StrCat(
+                    primitive_util::LowercasePrimitiveTypeName(
+                        device_subshape.element_type()),
+                    " inputs with dynamic shapes are unsupported"));
               }
-              return TransferInt4ArrayToDevice(
-                  stream,
+              return TransferIntNArrayToDevice(
+                  stream, device_subshape.element_type(),
                   /*num_elements=*/ShapeUtil::ElementsIn(device_subshape),
                   /*source=*/source,
                   /*destination=*/&device_memory);
@@ -242,28 +246,34 @@ Status GenericTransferManager::TransferBufferToDevice(
   return stream->Memcpy(destination, source, size);
 }
 
-Status GenericTransferManager::TransferInt4ArrayFromDevice(
+Status GenericTransferManager::TransferIntNArrayFromDevice(
     se::Stream* stream, const se::DeviceMemoryBase& source,
-    int64_t num_elements, void* destination) {
-  int64_t packed_size = (num_elements + 1) / 2;
+    PrimitiveType element_type, int64_t num_elements, void* destination) {
+  int bit_width = primitive_util::BitWidth(element_type);
+  int64_t elements_per_byte = 8 / bit_width;
+  int64_t packed_size = CeilOfRatio(num_elements, elements_per_byte);
   auto packed_dst_data = std::make_unique<std::vector<char>>(packed_size);
   TF_RETURN_IF_ERROR(TransferBufferFromDevice(stream, source, packed_size,
                                               packed_dst_data->data()));
-  TF_RETURN_IF_ERROR(stream->DoHostCallback([destination, num_elements,
-                                             packed_dst_data =
-                                                 std::move(packed_dst_data)]() {
-    UnpackInt4(*packed_dst_data,
-               absl::MakeSpan(static_cast<char*>(destination), num_elements));
-  }));
+  TF_RETURN_IF_ERROR(
+      stream->DoHostCallback([destination, bit_width, num_elements,
+                              packed_dst_data = std::move(packed_dst_data)]() {
+        UnpackIntN(
+            bit_width, *packed_dst_data,
+            absl::MakeSpan(static_cast<char*>(destination), num_elements));
+      }));
   return OkStatus();
 }
 
-Status GenericTransferManager::TransferInt4ArrayToDevice(
-    se::Stream* stream, int64_t num_elements, const void* source,
-    se::DeviceMemoryBase* destination) {
+Status GenericTransferManager::TransferIntNArrayToDevice(
+    se::Stream* stream, PrimitiveType element_type, int64_t num_elements,
+    const void* source, se::DeviceMemoryBase* destination) {
+  int bit_width = primitive_util::BitWidth(element_type);
+  int64_t elements_per_byte = 8 / bit_width;
   auto packed_src_data = std::make_unique<std::vector<char>>(
-      CeilOfRatio(num_elements, int64_t{2}));
-  PackInt4(absl::MakeSpan(static_cast<const char*>(source), num_elements),
+      CeilOfRatio(num_elements, elements_per_byte));
+  PackIntN(bit_width,
+           absl::MakeSpan(static_cast<const char*>(source), num_elements),
            absl::MakeSpan(*packed_src_data));
   TF_RETURN_IF_ERROR(TransferBufferToDevice(
       stream, packed_src_data->size(), packed_src_data->data(), destination));
@@ -283,8 +293,9 @@ Shape GenericTransferManager::HostShapeToDeviceShape(
     const Shape& host_shape) const {
   Shape device_shape = TransferManager::HostShapeToDeviceShape(host_shape);
   if (PackSubbyteTypes() &&
-      primitive_util::Is4BitType(device_shape.element_type())) {
-    device_shape.mutable_layout()->set_element_size_in_bits(4);
+      primitive_util::IsSubByteNonPredType(device_shape.element_type())) {
+    device_shape.mutable_layout()->set_element_size_in_bits(
+        primitive_util::BitWidth(device_shape.element_type()));
   }
   return device_shape;
 }

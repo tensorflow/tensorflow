@@ -21,6 +21,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
+#include <variant>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
@@ -44,6 +45,7 @@ limitations under the License.
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Bufferization/IR/BufferizableOpInterface.h"  // from @llvm-project
 #include "mlir/Dialect/ControlFlow/IR/ControlFlow.h"  // from @llvm-project
+#include "mlir/Dialect/DLTI/DLTI.h"  // from @llvm-project
 #include "mlir/Dialect/Func/Extensions/InlinerExtension.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"  // from @llvm-project
@@ -92,6 +94,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
@@ -139,6 +142,21 @@ void AddRanges(llvm::Function* func, const LaunchDimensions& launch_dims,
       }
     }
   }
+}
+
+bool Needs64Bits(const Shape& shape) {
+  return shape.IsArray() ? !IsInt32(ShapeUtil::ElementsIn(shape))
+                         : absl::c_any_of(shape.tuple_shapes(), Needs64Bits);
+}
+
+bool Needs64BitIndices(const HloComputation* computation) {
+  for (auto* instr : computation->instructions()) {
+    if (Needs64Bits(instr->shape()) ||
+        absl::c_any_of(instr->called_computations(), Needs64BitIndices)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 }  // namespace
@@ -238,8 +256,9 @@ MlirFusionEmitterBase::CreateLLVMModule(
     const se::DeviceDescription& device, const HloFusionInstruction& fusion,
     const std::string& entry_function_name,
     const BufferAssignment* buffer_assignment) const {
-  TF_RET_CHECK(device.cuda_compute_capability().major >= 1)
-      << "Unsupported device type: " << device.name();
+  bool is_amd = std::holds_alternative<se::RocmComputeCapability>(
+      device.gpu_compute_capability());
+  TF_RET_CHECK(!is_amd) << "Unsupported device type: " << device.name();
   TF_ASSIGN_OR_RETURN(
       auto module, CreateMLIRModule(mlir_context, fusion, entry_function_name,
                                     buffer_assignment));
@@ -253,7 +272,9 @@ MlirFusionEmitterBase::CreateLLVMModule(
   pm.addPass(CreatePropagateSliceIndicesPass());
   pm.addPass(CreateLowerFuncPass());
   pm.addPass(CreateLowerXlaGpuToScfPass());
-  pm.addPass(CreateLowerTensorsPass());
+  pm.addPass(CreateLowerTensorsPass(
+      is_amd, is_amd ? device.rocm_compute_capability().gcn_arch_name()
+                     : device.cuda_compute_capability().ToString()));
   pm.addPass(mlir::createConvertComplexToStandardPass());
   pm.addPass(CreateMergePointersToSameSlicePass());
 
@@ -302,12 +323,12 @@ MlirFusionEmitterBase::CreateMLIRModule(
     mlir::MLIRContext& context, const HloFusionInstruction& fusion,
     const std::string& entry_function_name,
     const BufferAssignment* buffer_assignment) const {
-  context.loadDialect<mlir::tensor::TensorDialect, mlir::func::FuncDialect,
-                      mlir::affine::AffineDialect, mlir::arith::ArithDialect,
-                      mlir::cf::ControlFlowDialect, mlir::math::MathDialect,
-                      mlir::scf::SCFDialect, mlir::mhlo::MhloDialect,
-                      mlir::gpu::GPUDialect, mlir::NVVM::NVVMDialect,
-                      xla::gpu::XlaGpuDialect>();
+  context.loadDialect<mlir::DLTIDialect, mlir::tensor::TensorDialect,
+                      mlir::func::FuncDialect, mlir::affine::AffineDialect,
+                      mlir::arith::ArithDialect, mlir::cf::ControlFlowDialect,
+                      mlir::math::MathDialect, mlir::scf::SCFDialect,
+                      mlir::mhlo::MhloDialect, mlir::gpu::GPUDialect,
+                      mlir::NVVM::NVVMDialect, xla::gpu::XlaGpuDialect>();
   mlir::DialectRegistry registry;
   mlir::func::registerInlinerExtension(registry);
   mlir::registerBuiltinDialectTranslation(registry);
@@ -450,6 +471,15 @@ absl::Status MlirFusionEmitterBase::EmitMlir(
             fusion.fused_instructions_computation()),
         *epilogue, subgraph_to_mlir_fn[&*epilogue], call_targets));
   }
+
+  int index_bitwidth =
+      Needs64BitIndices(fusion.fused_instructions_computation()) ? 64 : 32;
+  mlir::OpBuilder b(module->getContext());
+  auto index_layout = mlir::DataLayoutEntryAttr::get(
+      b.getIndexType(), b.getI32IntegerAttr(index_bitwidth));
+  module->setAttr(
+      mlir::DLTIDialect::kDataLayoutAttrName,
+      mlir::DataLayoutSpecAttr::get(module->getContext(), {index_layout}));
 
   return EmitEntryFunction(computations, call_targets, entry_function, fusion);
 }

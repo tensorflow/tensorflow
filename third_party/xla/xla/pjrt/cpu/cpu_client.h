@@ -324,6 +324,9 @@ class TfrtCpuClient final : public PjRtClient {
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateErrorBuffer(
       Status error, const Shape& shape, PjRtDevice* device) override;
 
+  absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateErrorBuffer(
+      Status error, const Shape& shape, PjRtMemorySpace* memory) override;
+
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateUninitializedBuffer(
       const Shape& shape, PjRtDevice* device) override;
 

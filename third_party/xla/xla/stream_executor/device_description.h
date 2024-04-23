@@ -20,6 +20,7 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_DEVICE_DESCRIPTION_H_
 #define XLA_STREAM_EXECUTOR_DEVICE_DESCRIPTION_H_
 
+#include <cassert>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -57,6 +58,13 @@ struct CudaComputeCapability {
   constexpr CudaComputeCapability(int major, int minor) {
     this->major = major;
     this->minor = minor;
+  }
+  // cuda arch format "major.minor", example: "8.6".
+  explicit CudaComputeCapability(const std::string &cuda_arch_name) {
+    std::vector<std::string> split = absl::StrSplit(cuda_arch_name, '.');
+    assert(split.size() == 2);
+    this->major = std::stoi(split[0]);
+    this->minor = std::stoi(split[1]);
   }
 
   explicit CudaComputeCapability(const CudaComputeCapabilityProto &proto) {
@@ -373,6 +381,9 @@ class DeviceDescription {
   }
 
   GpuDeviceInfoProto ToGpuProto() const;
+
+  std::string ToString() const;
+
   explicit DeviceDescription(const GpuDeviceInfoProto &proto);
 
   // For string values that are not available via the underlying platform, this

@@ -689,11 +689,11 @@ func.func @broadcast_constant_fold_complex() -> tensor<1x64x224x224xcomplex<f32>
 
 // CHECK-LABEL: func @broadcast_constant_fold_quantized_skipped
 func.func @broadcast_constant_fold_quantized_skipped() -> tensor<1x64x224x224x!quant.uniform<i8:f32, 1.000000e+00:3>> {
-  %cst = stablehlo.constant() {value = dense<2> : tensor<i8>} : ()  ->  tensor<!quant.uniform<i8:f32, 1.000000e+00:3>>
+  %cst = mhlo.constant() {value = dense<2> : tensor<i8>} : ()  ->  tensor<!quant.uniform<i8:f32, 1.000000e+00:3>>
   %b = "mhlo.broadcast"(%cst) <{broadcast_sizes = dense<[1, 64, 224, 224]> : tensor<4xi64>}> : (tensor<!quant.uniform<i8:f32, 1.000000e+00:3>>) -> tensor<1x64x224x224x!quant.uniform<i8:f32, 1.000000e+00:3>>
   func.return %b : tensor<1x64x224x224x!quant.uniform<i8:f32, 1.000000e+00:3>>
 }
-// CHECK-NEXT: %[[CST:.*]] = stablehlo.constant() {value = dense<2> : tensor<i8>} : ()  ->  tensor<!quant.uniform<i8:f32, 1.000000e+00:3>>
+// CHECK-NEXT: %[[CST:.*]] = mhlo.constant() <{value = dense<2> : tensor<i8>}> : ()  ->  tensor<!quant.uniform<i8:f32, 1.000000e+00:3>>
 // CHECK-NEXT: %[[RES:.*]] = "mhlo.broadcast"(%[[CST:.*]]) <{broadcast_sizes = dense<[1, 64, 224, 224]> : tensor<4xi64>}> : (tensor<!quant.uniform<i8:f32, 1.000000e+00:3>>) -> tensor<1x64x224x224x!quant.uniform<i8:f32, 1.000000e+00:3>>
 // CHECK-NEXT: return %[[RES:.*]] : tensor<1x64x224x224x!quant.uniform<i8:f32, 1.000000e+00:3>>
 

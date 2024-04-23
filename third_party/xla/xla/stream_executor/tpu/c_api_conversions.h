@@ -118,6 +118,8 @@ xla::MaybeOwningDeviceMemory FromC(
 
 // DeviceMemoryAllocator
 SE_DeviceMemoryAllocator ToC(stream_executor::DeviceMemoryAllocator* allocator);
+stream_executor::DeviceMemoryAllocator* FromC(
+    const SE_DeviceMemoryAllocator& c_allocator);
 
 // OwningDeviceMemory
 SE_MaybeOwningDeviceMemory ToC(stream_executor::OwningDeviceMemory* mem);

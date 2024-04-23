@@ -134,11 +134,11 @@ HloModule module
 ENTRY main {
   input = f32[1,17,9,9]{3,2,1,0} parameter(0)
   copy = f32[1,17,9,9]{1,3,2,0} copy(input)
-  s0 = s32[] parameter(1)
-  s1 = s32[] parameter(2)
-  s2 = s32[] parameter(3)
-  s3 = s32[] parameter(4)
-  ROOT ds = f32[1,4,6,6]{1,3,2,0} dynamic-slice(copy, s0, s1, s2, s3), dynamic_slice_sizes={1,4,6,6}
+  p0 = s32[] parameter(1)
+  p1 = s32[] parameter(2)
+  p2 = s32[] parameter(3)
+  p3 = s32[] parameter(4)
+  ROOT ds = f32[1,4,6,6]{1,3,2,0} dynamic-slice(copy, p0, p1, p2, p3), dynamic_slice_sizes={1,4,6,6}
 }
 )";
 

@@ -159,6 +159,9 @@ class PjRtCApiDevice : public PjRtDevice {
 
   StatusOr<tsl::AllocatorStats> GetAllocatorStats() const override;
 
+  absl::StatusOr<std::intptr_t> GetStreamForExternalReadyEvents()
+      const override;
+
  private:
   friend class PjRtCApiClient;
 
@@ -573,6 +576,8 @@ class PjRtCApiExternalReference : public PjRtBuffer::ExternalReference {
     data_ptr_ = data_ptr;
   }
   ~PjRtCApiExternalReference() override;
+
+  Status WaitUntilBufferReadyOnStream(std::intptr_t stream) override;
 
  private:
   PjRtCApiClient* client_;

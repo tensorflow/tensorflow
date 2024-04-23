@@ -101,16 +101,32 @@ TEST(CollectiveOpsUtilsTest, CollectiveWithChannelId2) {
           0, ShapeUtil::MakeShape(BF16, {1, 512, 4096}), "p0")));
   HloInstruction *instr =
       builder.AddInstruction(HloInstruction::CreateAllGather(
-          ShapeUtil::MakeShape(BF16, {1, 4096, 4096}), {param_0}, 1, {group},
-          true, 231, true));
+          ShapeUtil::MakeShape(BF16, {1, 4096, 4096}), {param_0}, 1,
+          CollectiveDeviceList({group}), true, 231, true));
   auto computation = builder.Build(
       builder.AddInstruction(HloInstruction::CreateTuple({instr})));
   auto fusion =
       HloInstruction::CreateFusion(ShapeUtil::MakeShape(BF16, {1, 4096, 4096}),
                                    HloInstruction::FusionKind::kOutput,
                                    {param_0}, computation.get(), "fusion");
-
   EXPECT_TRUE(IsCollectiveWithChannelId(fusion.get()));
+
+  auto builder2 = HloComputation::Builder("CollectiveWithChannelId2");
+  TF_ASSERT_OK_AND_ASSIGN(
+      HloInstruction * param_1,
+      builder2.AddParameter(HloInstruction::CreateParameter(
+          0, ShapeUtil::MakeShape(BF16, {1, 512, 4096}), "p1")));
+  HloInstruction *instr_without_channel_id =
+      builder2.AddInstruction(HloInstruction::CreateAllGather(
+          ShapeUtil::MakeShape(BF16, {1, 4096, 4096}), {param_1}, 1, {group},
+          true, std::nullopt, true));
+  auto computation2 = builder2.Build(builder2.AddInstruction(
+      HloInstruction::CreateTuple({instr_without_channel_id})));
+  auto fusion2 =
+      HloInstruction::CreateFusion(ShapeUtil::MakeShape(BF16, {1, 4096, 4096}),
+                                   HloInstruction::FusionKind::kOutput,
+                                   {param_1}, computation2.get(), "fusion2");
+  EXPECT_FALSE(IsCollectiveWithChannelId(fusion2.get()));
 }
 
 }  // namespace

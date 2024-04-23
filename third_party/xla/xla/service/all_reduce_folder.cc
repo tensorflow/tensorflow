@@ -18,6 +18,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "xla/hlo/ir/collective_device_list.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -200,7 +201,8 @@ absl::StatusOr<bool> AllReduceFolder::Run(
       HloInstruction *new_ar =
           computation->AddInstruction(HloInstruction::CreateAllReduce(
               ar0->shape(), ar0->operands(), ar0->to_apply(),
-              *new_replica_groups, /*constrain_layout=*/false, channel_id,
+              CollectiveDeviceList(*new_replica_groups),
+              /*constrain_layout=*/false, channel_id,
               ar0->use_global_device_ids()));
       TF_RETURN_IF_ERROR(ar1->ReplaceAllUsesWith(new_ar));
       TF_RETURN_IF_ERROR(computation->RemoveInstruction(ar1));

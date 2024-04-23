@@ -1913,6 +1913,14 @@ Status CreateTfExecutorToTfrtPipeline(mlir::PassManager &pm,
   return absl::OkStatus();
 }
 
+Status CreateTFExecutorToTFPipeline(mlir::PassManager &pm,
+                                    const TfrtPipelineOptions &options) {
+  TF_RETURN_IF_ERROR(
+      CreateTFExecutorToTFPreInvariantOptimizationPipeline(pm, options));
+  CreateTFExecutorToTFInvariantOptimizationPipelineHelper(pm, options);
+  return absl::OkStatus();
+}
+
 static mlir::PassRegistration<TfToTfrtConversionPass> tf_to_tfrt_pass;
 
 static mlir::PassPipelineRegistration<TfrtPipelineOptions> tf_pipeline(

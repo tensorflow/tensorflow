@@ -32,7 +32,7 @@ namespace stream_executor {
 
 absl::StatusOr<std::unique_ptr<CommandBuffer>> CommandBuffer::Create(
     StreamExecutor* executor, Mode mode) {
-  return executor->implementation()->CreateCommandBuffer(mode);
+  return executor->CreateCommandBuffer(mode);
 }
 
 absl::StatusOr<std::unique_ptr<CommandBuffer>> CommandBuffer::Trace(

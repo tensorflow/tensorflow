@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/comparison_util.h"
+#include "xla/hlo/ir/collective_device_list.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_domain_metadata.h"
@@ -628,9 +629,13 @@ class HloRecvDoneInstruction : public HloSendRecvInstruction {
 
 class HloCollectiveInstruction : public HloChannelInstruction {
  public:
+  // TODO(b/316622399): Remove usages of this method and replace with
+  // device_list()->replica_groups().
   const std::vector<ReplicaGroup>& replica_groups() const {
-    return replica_groups_;
+    return device_list_.replica_groups();
   }
+
+  const CollectiveDeviceList& device_list() const { return device_list_; }
 
   // Returns true if the layout of the AllReduce is enforced by XLA client (as
   // the layout set in the shape). The only reason for the client to set the
@@ -653,6 +658,13 @@ class HloCollectiveInstruction : public HloChannelInstruction {
   explicit HloCollectiveInstruction(
       HloOpcode opcode, const Shape& shape,
       absl::Span<HloInstruction* const> operands,
+      const CollectiveDeviceList& collective_device_list, bool constrain_layout,
+      const std::optional<int64_t>& channel_id);
+
+  ABSL_DEPRECATED("Use CollectiveDeviceList instead of list of ReplicaGroup.")
+  explicit HloCollectiveInstruction(
+      HloOpcode opcode, const Shape& shape,
+      absl::Span<HloInstruction* const> operands,
       absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
       const std::optional<int64_t>& channel_id);
 
@@ -665,17 +677,27 @@ class HloCollectiveInstruction : public HloChannelInstruction {
       absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
           eq_computations) const override;
 
-  std::vector<ReplicaGroup> replica_groups_;
+  CollectiveDeviceList device_list_;
   bool constrain_layout_;
 };
 
 class HloAllGatherInstruction : public HloCollectiveInstruction {
  public:
+  explicit HloAllGatherInstruction(HloOpcode opcode, const Shape& shape,
+                                   absl::Span<HloInstruction* const> operands,
+                                   int64_t all_gather_dimension,
+                                   const CollectiveDeviceList& device_list,
+                                   bool constrain_layout,
+                                   const std::optional<int64_t>& channel_id,
+                                   bool use_global_device_ids);
+
+  ABSL_DEPRECATED("Use CollectiveDeviceList instead of list of ReplicaGroup.")
   explicit HloAllGatherInstruction(
       HloOpcode opcode, const Shape& shape,
       absl::Span<HloInstruction* const> operands, int64_t all_gather_dimension,
       absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
       const std::optional<int64_t>& channel_id, bool use_global_device_ids);
+
   // Same as HloAllReduceInstruction::use_global_device_ids.
   bool use_global_device_ids() const { return use_global_device_ids_; }
 
@@ -715,6 +737,14 @@ class HloAllGatherInstruction : public HloCollectiveInstruction {
 // Base class for all-reduce and all-reduce scatter instructions.
 class HloAllReduceInstructionBase : public HloCollectiveInstruction {
  public:
+  explicit HloAllReduceInstructionBase(
+      HloOpcode opcode, const Shape& shape,
+      absl::Span<HloInstruction* const> operands,
+      HloComputation* reduce_computation,
+      const CollectiveDeviceList& device_list, bool constrain_layout,
+      const std::optional<int64_t>& channel_id, bool use_global_device_ids);
+
+  ABSL_DEPRECATED("Use CollectiveDeviceList instead of list of ReplicaGroup.")
   explicit HloAllReduceInstructionBase(
       HloOpcode opcode, const Shape& shape,
       absl::Span<HloInstruction* const> operands,
@@ -776,6 +806,14 @@ class HloReduceScatterInstruction : public HloAllReduceInstructionBase {
   explicit HloReduceScatterInstruction(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       HloComputation* reduce_computation,
+      const CollectiveDeviceList& device_list, bool constrain_layout,
+      const std::optional<int64_t>& channel_id, bool use_global_device_ids,
+      int64_t scatter_dimension);
+
+  ABSL_DEPRECATED("Use CollectiveDeviceList instead of list of ReplicaGroup.")
+  explicit HloReduceScatterInstruction(
+      const Shape& shape, absl::Span<HloInstruction* const> operands,
+      HloComputation* reduce_computation,
       absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
       const std::optional<int64_t>& channel_id, bool use_global_device_ids,
       int64_t scatter_dimension);
@@ -811,6 +849,13 @@ class HloReduceScatterInstruction : public HloAllReduceInstructionBase {
 
 class HloAllToAllInstruction : public HloCollectiveInstruction {
  public:
+  explicit HloAllToAllInstruction(
+      const Shape& shape, absl::Span<HloInstruction* const> operands,
+      const CollectiveDeviceList& device_list, bool constrain_layout,
+      const std::optional<int64_t>& channel_id,
+      const std::optional<int64_t>& split_dimension);
+
+  ABSL_DEPRECATED("Use CollectiveDeviceList instead of list of ReplicaGroup.")
   explicit HloAllToAllInstruction(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
@@ -852,6 +897,13 @@ class HloAllToAllInstruction : public HloCollectiveInstruction {
 
 class HloCollectiveBroadcastInstruction : public HloCollectiveInstruction {
  public:
+  explicit HloCollectiveBroadcastInstruction(
+      HloOpcode opcode, const Shape& shape,
+      absl::Span<HloInstruction* const> operands,
+      const CollectiveDeviceList& device_list, bool constrain_layout,
+      const std::optional<int64_t>& channel_id);
+
+  ABSL_DEPRECATED("Use CollectiveDeviceList instead of list of ReplicaGroup.")
   explicit HloCollectiveBroadcastInstruction(
       HloOpcode opcode, const Shape& shape,
       absl::Span<HloInstruction* const> operands,

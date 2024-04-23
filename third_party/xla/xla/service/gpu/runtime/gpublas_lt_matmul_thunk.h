@@ -49,6 +49,7 @@ class CublasLtMatmulThunk : public Thunk {
                       BufferAllocation::Slice d_amax_buffer /* may be null */);
 
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
+  absl::Status Initialize(const InitializeParams& params) override;
 
  private:
   absl::StatusOr<se::gpu::BlasLt::MatmulPlan*> GetMatmulPlan(

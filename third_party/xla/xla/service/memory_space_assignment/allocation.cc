@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <optional>
 #include <string>
 #include <tuple>
@@ -29,7 +30,6 @@ limitations under the License.
 #include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
-#include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
@@ -39,7 +39,6 @@ limitations under the License.
 #include "xla/service/heap_simulator/allocation_block.h"
 #include "xla/service/heap_simulator/heap_simulator.h"
 #include "xla/service/hlo_value.h"
-#include "xla/service/memory_space_assignment/cost_analysis.h"
 #include "xla/service/memory_space_assignment/slice.h"
 #include "xla/service/time_utils.h"
 #include "xla/service/tuple_util.h"
@@ -47,6 +46,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status.h"
 #include "xla/util.h"
+#include "tsl/platform/casts.h"
 #include "tsl/platform/errors.h"
 
 namespace xla::memory_space_assignment {
@@ -849,6 +849,49 @@ bool MirroredAllocation::operator==(const Allocation& other) const {
   const MirroredAllocation* casted_other =
       dynamic_cast<const MirroredAllocation*>(&other);
   return casted_other != nullptr && (*this) == (*casted_other);
+}
+
+std::tuple<int64_t, bool, int64_t> GetAllocationSortTuple(
+    const std::unique_ptr<Allocation>& allocation) {
+  int64_t scheduled_on_or_before = allocation->start_time();
+  int64_t scheduled_on_or_after = allocation->start_time();
+  if (allocation->is_copy_allocation()) {
+    auto copy_allocation =
+        tensorflow::down_cast<CopyAllocation*>(allocation.get());
+    scheduled_on_or_before = copy_allocation->copy_done_schedule_before();
+    scheduled_on_or_after = copy_allocation->copy_start_schedule_after();
+  }
+  return std::forward_as_tuple(scheduled_on_or_before,
+                               !allocation->is_copy_allocation(),
+                               scheduled_on_or_after);
+}
+
+void SortAllocationSequence(AllocationSequence& allocations) {
+  absl::c_sort(allocations, [](const std::unique_ptr<Allocation>& lhs,
+                               const std::unique_ptr<Allocation>& rhs) {
+    return GetAllocationSortTuple(lhs) < GetAllocationSortTuple(rhs);
+  });
+}
+
+std::string AllocationSequenceToString(AllocationSequence& allocations,
+                                       bool sort_allocations) {
+  if (sort_allocations) {
+    SortAllocationSequence(allocations);
+  }
+  std::string allocations_str = "\n";
+  for (const std::unique_ptr<Allocation>& allocation : allocations) {
+    absl::StrAppend(&allocations_str, allocation->ToString(), "\n");
+  }
+  return allocations_str;
+}
+
+std::vector<Allocation*> GetAllocationSequenceInRawPointers(
+    AllocationSequence& allocations) {
+  std::vector<Allocation*> allocations_in_raw_pointers;
+  for (const std::unique_ptr<Allocation>& allocation : allocations) {
+    allocations_in_raw_pointers.push_back(allocation.get());
+  }
+  return allocations_in_raw_pointers;
 }
 
 }  // namespace xla::memory_space_assignment

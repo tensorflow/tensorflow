@@ -20,6 +20,7 @@ limitations under the License.
 #include <ostream>
 #include <sstream>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/log/check.h"
@@ -45,6 +46,48 @@ using ::mlir::getAffineConstantExpr;
 using ::mlir::getAffineDimExpr;
 using ::mlir::MLIRContext;
 
+// Gets a modified version of `offset_expressions` where the indices of RTVar
+// symbols have been adjusted to the indexing used by SymbolicTiles.
+//
+// In the indexing map, we have dimensions and symbols like this:
+// dimensions: [dims] symbols: [range var symbols][RTVar symbols]
+// And in the symbolic tile, we want to have this:
+// dimensions: [] symbols: [dims][RTVar symbols]
+// To achieve this, this function adjusts the indices of the RTVar symbols.
+// The range vars and the dims do not have to be adjusted, because of the
+// following precondition:
+//
+// Precondition: `offset_expressions` must not contain dimensions and range
+// vars. (This must be true, as long as
+// `SubstituteAllIndicesAndRangeVarSymbolsWithSameValue` is used in the
+// definition of offset_expressions.)
+std::vector<AffineExpr> GetOffsetExpressionsWithAdjustedRTVarSymbolIndices(
+    std::vector<AffineExpr> offset_expressions,
+    const IndexingMap& indexing_map) {
+  // Precondition check:
+  for (AffineExpr offset_expr : offset_expressions) {
+    offset_expr.walk([&indexing_map](AffineExpr expr) {
+      CHECK(expr.getKind() != AffineExprKind::DimId);
+      CHECK(!(expr.getKind() == AffineExprKind::SymbolId &&
+              indexing_map.IsRangeVarSymbol(
+                  llvm::cast<mlir::AffineSymbolExpr>(expr))));
+    });
+  }
+
+  MLIRContext* mlir_context = indexing_map.GetAffineMap().getContext();
+
+  llvm::DenseMap<AffineExpr, AffineExpr> symbol_map;
+  for (int i = 0; i < indexing_map.GetRTVarsCount(); i++) {
+    symbol_map[getAffineSymbolExpr(indexing_map.GetRangeVarsCount() + i,
+                                   mlir_context)] =
+        getAffineSymbolExpr(indexing_map.GetDimensionCount() + i, mlir_context);
+  }
+  for (AffineExpr& offset_expr : offset_expressions) {
+    offset_expr = offset_expr.replace(symbol_map);
+  }
+  return offset_expressions;
+}
+
 // Internal helper that checks whether an affine map describes a tileable space.
 // In simple terms, this currently returns true if "dimensions don't mix", i.e.,
 // every result expression only refers to a single dimension (or symbol).
@@ -62,9 +105,11 @@ bool IndexingMapDescribesTileableSpace(const IndexingMap& indexing_map) {
     // if it did. For that reason, we err on the side of conservatism and
     // explicitly do not support such cases.
     int64_t num_hits = 0;
-    result_expr.walk([&num_hits](AffineExpr expr) {
-      if (expr.getKind() == AffineExprKind::SymbolId ||
-          expr.getKind() == AffineExprKind::DimId) {
+    result_expr.walk([&num_hits, &indexing_map](AffineExpr expr) {
+      if ((expr.getKind() == AffineExprKind::DimId) ||
+          (expr.getKind() == AffineExprKind::SymbolId &&
+           indexing_map.IsRangeVarSymbol(
+               llvm::cast<mlir::AffineSymbolExpr>(expr)))) {
         ++num_hits;
       }
     });
@@ -78,8 +123,9 @@ bool IndexingMapDescribesTileableSpace(const IndexingMap& indexing_map) {
 
 // Helper to perform function application to using the same parameter for every
 // dimension and symbol parameter.
-AffineMap SubstituteAllIndicesAndKnownSymbolsWithSameValue(AffineMap affine_map,
-                                                           AffineExpr value) {
+AffineMap SubstituteAllIndicesAndRangeVarSymbolsWithSameValue(
+    AffineMap affine_map, AffineExpr value, int num_range_vars) {
+  CHECK_LE(num_range_vars, affine_map.getNumSymbols());
   MLIRContext* mlir_context = affine_map.getContext();
   int64_t num_dims = affine_map.getNumDims();
   int64_t num_symbols = affine_map.getNumSymbols();
@@ -89,7 +135,8 @@ AffineMap SubstituteAllIndicesAndKnownSymbolsWithSameValue(AffineMap affine_map,
     indices[getAffineDimExpr(i, mlir_context)] = value;
   }
 
-  for (int64_t i = 0; i < num_symbols; ++i) {
+  // Do not substitute RTVars.
+  for (int64_t i = 0; i < num_range_vars; ++i) {
     indices[getAffineSymbolExpr(i, mlir_context)] = value;
   }
 
@@ -236,6 +283,8 @@ std::optional<SizeAndStrideExpression> ExtractSizeAndStride(
     case mlir::AffineExprKind::SymbolId:
       VLOG(1) << "Encountered complex size expression involving symbol "
               << printer.ToString(strided_indexing);
+      // It's currently not checked separately, but RTVars shouldn't appear in
+      // the strided indexing expressions.
       return std::nullopt;
     case mlir::AffineExprKind::Add:
       // TODO(b/328427138): this should only be necessary in the multivariate
@@ -253,13 +302,12 @@ std::optional<SizeAndStrideExpression> ExtractSizeAndStride(
 
 /*static*/ std::optional<SymbolicTile> SymbolicTile::FromIndexingMap(
     const IndexingMap& indexing_map) {
-  // Bail out on runtime offsets.
-  if (indexing_map.GetRTVarsCount()) {
-    return std::nullopt;
-  }
+  VLOG(1) << "SymbolicTile::FromIndexingMap: " << indexing_map.ToString();
+
   // TODO(b/328427138): handle multiple symbols in a single tile to support
   // merging dimensions.
   if (!IndexingMapDescribesTileableSpace(indexing_map)) {
+    VLOG(1) << "Not a tileable indexing map";
     return std::nullopt;
   }
 
@@ -290,8 +338,9 @@ std::optional<SizeAndStrideExpression> ExtractSizeAndStride(
   //
   // offset_expressions = f(0, ..., 0)[0, ..., 0].
   std::vector<AffineExpr> offset_expressions =
-      SubstituteAllIndicesAndKnownSymbolsWithSameValue(
-          input_affine_map, getAffineConstantExpr(0, mlir_context))
+      SubstituteAllIndicesAndRangeVarSymbolsWithSameValue(
+          input_affine_map, getAffineConstantExpr(0, mlir_context),
+          indexing_map.GetRangeVarsCount())
           .getResults();
 
   std::vector<AffineExpr> size_expressions;
@@ -307,6 +356,18 @@ std::optional<SizeAndStrideExpression> ExtractSizeAndStride(
         ExtractSizeAndStride(composite_indexing - offset,
                              indexing_map.GetSymbolBounds());
     if (!maybe_size_and_stride.has_value()) {
+      // Retry with a simplified expression.
+      // For example `(d0 + s0 - s0)` will be simplified to `d0`.
+      // But the simplification doesn't help when it rewrites `mod` to
+      // `floordiv` & `add`, so at first we try without simplification.
+      maybe_size_and_stride = ExtractSizeAndStride(
+          simplifyAffineExpr(composite_indexing - offset,
+                             input_affine_map.getNumDims(),
+                             input_affine_map.getNumSymbols()),
+          indexing_map.GetSymbolBounds());
+    }
+    if (!maybe_size_and_stride.has_value()) {
+      VLOG(1) << "No size and stride extracted";
       return std::nullopt;
     }
     size_expressions.push_back(maybe_size_and_stride->size);
@@ -330,15 +391,32 @@ std::optional<SizeAndStrideExpression> ExtractSizeAndStride(
     }
   }
 
-  int64_t num_symbols = input_affine_map.getNumDims();
   AffineMap offset_map =
-      AffineMap::get(0, num_symbols, offset_expressions, mlir_context);
+      AffineMap::get(0, /*symbolCount=*/indexing_map.GetDimensionCount() +
+                            indexing_map.GetRTVarsCount(),
+                     GetOffsetExpressionsWithAdjustedRTVarSymbolIndices(
+                         std::move(offset_expressions), indexing_map),
+                     mlir_context);
   AffineMap size_map =
-      AffineMap::get(0, num_symbols, size_expressions, mlir_context);
+      AffineMap::get(0, /*symbolCount=*/indexing_map.GetDimensionCount(),
+                     size_expressions, mlir_context);
   AffineMap stride_map =
-      AffineMap::get(0, num_symbols, stride_expressions, mlir_context);
+      AffineMap::get(0, /*symbolCount=*/indexing_map.GetDimensionCount(),
+                     stride_expressions, mlir_context);
 
-  return SymbolicTile(offset_map, size_map, stride_map);
+  return SymbolicTile(offset_map, size_map, stride_map,
+                      indexing_map.GetRTVars());
+}
+
+std::string SymbolicTile::RtVarsToString(
+    const AffineMapPrinter& printer) const {
+  std::string s;
+  std::stringstream ss(s);
+  int num_non_rt_var_symbols = offset_map_.getNumSymbols() - rt_vars_.size();
+  PrintRTVars(rt_vars_,
+              /*first_rt_var_symbol_index=*/num_non_rt_var_symbols, ss,
+              printer);
+  return ss.str();
 }
 
 std::string SymbolicTile::ToString(const AffineMapPrinter& printer) const {
@@ -357,6 +435,11 @@ void SymbolicTile::Print(std::ostream& out,
   printer.Print(out, size_map_);
   out << "\n\tstride_map: ";
   printer.Print(out, stride_map_);
+  out << "\n\trt_vars: ";
+  int num_non_rt_var_symbols = offset_map_.getNumSymbols() - rt_vars_.size();
+  PrintRTVars(rt_vars_,
+              /*first_rt_var_symbol_index=*/num_non_rt_var_symbols, out,
+              printer);
   out << "\n";
 }
 

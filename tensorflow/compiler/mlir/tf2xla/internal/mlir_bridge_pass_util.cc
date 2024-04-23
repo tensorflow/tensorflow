@@ -76,6 +76,36 @@ LogicalResult HasAttr(
   return failure();
 }
 
+// Check if the `graph` has parameter server jobs and resource variable
+// arguments that are on parameter servers
+bool HasPsWithResourceVariable(const Graph& graph) {
+  // Check parameter serverjobs and resource variable arguments that are
+  // on parameter servers.
+  const std::string jobType = "ps";
+  const std::string nodeType = "_Arg";
+  const std::string attrKey = "T";
+  for (const Node* node : graph.nodes()) {
+    if (node->type_string() == nodeType) {
+      auto device_name = node->assigned_device_name();
+      DeviceNameUtils::ParsedName device;
+      if (DeviceNameUtils::ParseFullName(device_name, &device) &&
+          device.has_job && device.job == jobType) {
+        for (const auto& attr : node->attrs()) {
+          auto attr_key = attr.first;
+          auto attr_value = attr.second;
+          if (attr_key == attrKey &&
+              attr_value.value_case() == AttrValue::kType &&
+              attr_value.type() == DT_RESOURCE) {
+            return true;
+            break;
+          }
+        }
+      }
+    }
+  }
+  return false;
+}
+
 bool IsNonReplicatedGraph(const Graph& graph,
                           const FunctionLibraryDefinition* function_library) {
   auto predicate = [](const Graph& graph) {
@@ -171,7 +201,8 @@ bool AreFunctionsFromFlibDefInference(
 
 bool IsSupportedByNonReplicatedBridge(
     const Graph& graph, const FunctionLibraryDefinition* function_library) {
-  return IsNonReplicatedGraph(graph, function_library);
+  return IsNonReplicatedGraph(graph, function_library) &&
+         HasPsWithResourceVariable(graph);
 }
 
 bool IsSupportedByReplicatedBridge(

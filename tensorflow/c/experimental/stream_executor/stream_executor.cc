@@ -200,14 +200,16 @@ void HostCallbackTrampoline(void* ctx, TF_Status* status) {
   delete host_ctx;
 }
 
-class CStreamExecutor : public StreamExecutorInterface {
+class CStreamExecutor : public StreamExecutor {
  public:
-  explicit CStreamExecutor(SP_Device device, SP_DeviceFns* device_fns,
+  explicit CStreamExecutor(Platform* se_platform, SP_Device device,
+                           SP_DeviceFns* device_fns,
                            SP_StreamExecutor* stream_executor,
                            SP_Platform* platform, SP_PlatformFns* platform_fns,
                            SP_TimerFns* timer_fns, const std::string& name,
                            int visible_device_count)
-      : device_(std::move(device)),
+      : StreamExecutor(se_platform),
+        device_(std::move(device)),
         device_fns_(device_fns),
         stream_executor_(stream_executor),
         platform_(platform),
@@ -644,11 +646,9 @@ absl::StatusOr<std::unique_ptr<StreamExecutor>> CPlatform::GetUncachedExecutor(
                                  c_status.get());
   TF_RETURN_IF_ERROR(StatusFromTF_Status(c_status.get()));
 
-  auto executor = std::make_unique<CStreamExecutor>(
-      std::move(device), &device_fns_, &stream_executor_, &platform_,
+  return std::make_unique<CStreamExecutor>(
+      this, std::move(device), &device_fns_, &stream_executor_, &platform_,
       &platform_fns_, &timer_fns_, name_, visible_device_count);
-  auto result = std::make_unique<StreamExecutor>(this, std::move(executor));
-  return result;
 }
 
 absl::Status InitStreamExecutorPlugin(void* dso_handle,

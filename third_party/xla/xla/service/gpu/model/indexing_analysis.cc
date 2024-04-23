@@ -1320,10 +1320,10 @@ GroupedByOpIndexingMap ComputeGroupedOutputToInputIndexing(
   if (fusion_adaptor.ContainsInstruction(target_instr)) {
     if (auto parameter_instr =
             DynCast<HloParameterInstruction>(&target_instr.instruction())) {
-      const HloInstruction* user = parameter_instr->users().front();
-      auto fusion_operand = HloInstructionAdaptor(*user).GetOperand(
-          parameter_instr->parameter_number());
-      grouped_indexing_maps[&fusion_operand.instruction()] = {initial_map};
+      auto fusion_instr = parameter_instr->parent()->FusionInstruction();
+      auto fusion_operand =
+          fusion_instr->operand(parameter_instr->parameter_number());
+      grouped_indexing_maps[fusion_operand] = {initial_map};
       return grouped_indexing_maps;
     }
   }

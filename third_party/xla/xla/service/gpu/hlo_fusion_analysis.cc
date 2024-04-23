@@ -100,12 +100,14 @@ std::optional<TransposeDescription> FindConsistentTransposeHero(
   return tiled_transpose_hero;
 }
 
-int SmallestInputDtypeBits(const std::vector<const HloInstruction*>& args) {
+int SmallestBitWidth(absl::Span<const HloInstruction* const> args) {
   int bits = std::numeric_limits<int>::max();
   for (const HloInstruction* operand : args) {
     if (!operand->shape().IsArray()) continue;
-    bits = std::min(bits,
-                    primitive_util::BitWidth(operand->shape().element_type()));
+    bits = std::min(
+        bits, operand->shape().element_type() == PRED
+                  ? 8
+                  : primitive_util::BitWidth(operand->shape().element_type()));
   }
   return bits;
 }
@@ -145,14 +147,9 @@ HloFusionAnalysis HloFusionAnalysis::Create(
     fusion_arguments.push_back(&argument.instruction());
   });
 
-  auto is_4bit = [](const HloInstruction* arg) {
-    return primitive_util::Is4BitType(arg->shape().element_type());
-  };
-
   InputOutputInfo input_output_info{
-      .has_4_bit_input = absl::c_any_of(fusion_arguments, is_4bit),
-      .has_4_bit_output = absl::c_any_of(roots, is_4bit),
-      .smallest_input_dtype_bits = SmallestInputDtypeBits(fusion_arguments),
+      .smallest_input_dtype_bits = SmallestBitWidth(fusion_arguments),
+      .smallest_output_dtype_bits = SmallestBitWidth(roots),
   };
 
   std::optional<TransposeDescription> tiled_transpose_hero =
@@ -213,11 +210,11 @@ HloFusionAnalysis::EmitterFusionKind HloFusionAnalysis::GetEmitterFusionKind()
   }
 #endif
 
-  if (input_output_info_.has_4_bit_input ||
-      input_output_info_.has_4_bit_output) {
-    // Only loop and input slice fusions currently can handle int4
+  if (input_output_info_.smallest_input_dtype_bits < 8 ||
+      input_output_info_.smallest_output_dtype_bits < 8) {
+    // Only loop and input slice fusions currently can handle packed
     // inputs/outputs, due to the special handling with IrArray needed to deal
-    // with two values occupying a single byte.
+    // with multiple values occupying a single byte.
     if (fusion_roots_.size() > 1 &&
         IsInputFusibleNonStridedSlices(fusion_roots_) &&
         AllSliceInputsAreCompatible(fusion_roots_)) {

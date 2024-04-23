@@ -2090,7 +2090,7 @@ tf_module {
   }
   member_method {
     name: "IndexFlatMapDataset"
-    argspec: "args=[\'input_dataset\', \'map_func_other_args\', \'index_map_func_other_args\', \'map_func\', \'index_map_func\', \'output_types\', \'output_shapes\', \'metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'None\'], "
+    argspec: "args=[\'input_dataset\', \'map_func_other_args\', \'index_map_func_other_args\', \'output_cardinality\', \'map_func\', \'index_map_func\', \'output_types\', \'output_shapes\', \'metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'None\'], "
   }
   member_method {
     name: "InfeedDequeue"

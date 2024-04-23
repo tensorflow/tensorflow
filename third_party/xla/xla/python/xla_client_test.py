@@ -2566,6 +2566,7 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
           self.assertEqual(lookup_device, device)
 
     @unittest.skipIf(pathways, "not implemented")
+    @unittest.skipIf(pathways_ifrt, "not implemented")
     def testMemoryStats(self):
       for device in self.backend.local_devices():
         stats = device.memory_stats()

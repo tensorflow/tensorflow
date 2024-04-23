@@ -47,7 +47,7 @@ class SingleDeviceShardingSerDes
     const SingleDeviceSharding& sharding =
         llvm::cast<SingleDeviceSharding>(serializable);
     SingleDeviceShardingProto proto;
-    proto.set_device_id(sharding.devices().front()->id());
+    proto.set_device_id(sharding.devices().front()->Id().value());
     if (sharding.memory_kind().memory_kind().has_value()) {
       proto.set_memory_kind(std::string(*sharding.memory_kind().memory_kind()));
     }
@@ -65,9 +65,9 @@ class SingleDeviceShardingSerDes
       return absl::InvalidArgumentError(
           "Failed to parse serialized SimpleDeviceSharding");
     }
-    TF_ASSIGN_OR_RETURN(
-        Device * device,
-        deserialize_sharding_options->lookup_device(proto.device_id()));
+    TF_ASSIGN_OR_RETURN(Device * device,
+                        deserialize_sharding_options->lookup_device(
+                            DeviceId(proto.device_id())));
     MemoryKind memory_kind;
     if (proto.has_memory_kind()) {
       memory_kind = MemoryKind(proto.memory_kind());

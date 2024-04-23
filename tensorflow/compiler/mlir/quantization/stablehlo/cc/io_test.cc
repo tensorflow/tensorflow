@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/io.h"
 
 #include <cstdint>
+#include <fstream>
 #include <string>
 #include <vector>
 
@@ -23,6 +24,7 @@ limitations under the License.
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/file_system.h"
 #include "tsl/platform/status.h"
@@ -32,6 +34,7 @@ limitations under the License.
 namespace stablehlo::quantization::io {
 namespace {
 
+using ::testing::Eq;
 using ::testing::HasSubstr;
 using ::testing::IsEmpty;
 using ::testing::Not;
@@ -138,6 +141,40 @@ TEST(IoTest, CreateTmpDirWhenInvalidPathReturnsInternalError) {
 
   EXPECT_THAT(tmp_dir, StatusIs(absl::StatusCode::kInternal,
                                 HasSubstr("Failed to create tmp dir")));
+}
+
+TEST(IoTest, WriteStringToFile) {
+  const std::string dst_file_path =
+      absl::StrCat(testing::TempDir(), "/tmp_file");
+
+  const absl::Status write_status =
+      WriteStringToFile(dst_file_path, "test_string");
+  ASSERT_THAT(write_status, IsOk());
+
+  auto* const env = tsl::Env::Default();
+  ASSERT_THAT(env->FileExists(dst_file_path), IsOk());
+
+  std::string data{};
+  ASSERT_THAT(tsl::ReadFileToString(env, dst_file_path, &data), IsOk());
+
+  EXPECT_THAT(data, Eq("test_string"));
+}
+
+TEST(IoTest, ReadFileToString) {
+  // Prepare a temp file and write some string to it.
+  const std::string src_file_path =
+      absl::StrCat(testing::TempDir(), "/tmp_file");
+
+  {
+    std::ofstream ofs(src_file_path);
+    ofs << "test_string";
+  }
+
+  // Test that the contents match.
+  const absl::StatusOr<std::string> read_status =
+      ReadFileToString(src_file_path);
+  ASSERT_THAT(read_status, IsOk());
+  EXPECT_THAT(*read_status, Eq("test_string"));
 }
 
 }  // namespace

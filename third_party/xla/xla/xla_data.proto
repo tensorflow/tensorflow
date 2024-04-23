@@ -32,6 +32,7 @@ enum PrimitiveType {
   PRED = 1;
 
   // Signed integral values of fixed width.
+  S2 = 26;
   S4 = 21;
   S8 = 2;
   S16 = 3;
@@ -39,6 +40,7 @@ enum PrimitiveType {
   S64 = 5;
 
   // Unsigned integral values of fixed width.
+  U2 = 27;
   U4 = 22;
   U8 = 6;
   U16 = 7;
@@ -124,7 +126,7 @@ enum PrimitiveType {
   // primitive type will have empty dimensions and tuple_shapes fields.
   TOKEN = 17;
 
-  // Next = 26
+  // Next = 28
 }
 // LINT.ThenChange(
 //   https://www.tensorflow.org/code/tensorflow/compiler/xla/shape_util.cc,
@@ -547,9 +549,11 @@ message DeviceAssignmentProto {
 message LiteralProto {
   ShapeProto shape = 1;
   repeated bool preds = 2;
+  bytes s2s = 26;
   bytes s4s = 21;
-  bytes u4s = 22;
   bytes s8s = 15;
+  bytes u2s = 27;
+  bytes u4s = 22;
   bytes u8s = 3;
   repeated int32 s32s = 4;
   repeated int64 s64s = 5;
@@ -571,7 +575,7 @@ message LiteralProto {
   bytes f8e5m2fnuzs = 24;
   bytes f8e4m3fnuzs = 25;
   repeated int64 sparse_indices = 14;
-  // Next = 26
+  // Next = 28
 }
 
 message WindowDimension {

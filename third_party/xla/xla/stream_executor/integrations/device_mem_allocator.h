@@ -85,7 +85,7 @@ class DeviceMemAllocator : public tsl::SubAllocator {
         auto status = stream_exec_->CollectiveMemoryDeallocate(ptr);
         CHECK(status.ok()) << status.message();
       } else if (memory_type_ == MemoryType::kHost) {
-        stream_exec_->HostMemoryDeallocate(ptr, num_bytes);
+        stream_exec_->HostMemoryDeallocate(ptr);
       } else {
         DeviceMemoryBase device_ptr(ptr);
         stream_exec_->Deallocate(&device_ptr);

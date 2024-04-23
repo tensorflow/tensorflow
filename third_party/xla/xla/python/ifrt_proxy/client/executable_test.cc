@@ -178,11 +178,10 @@ TEST_F(LoadedExecutableTest, Metadata) {
 #if defined(PLATFORM_GOOGLE)
 TEST_F(LoadedExecutableTest, Execute) {
   MockDevice device;
-  ON_CALL(device, global_device_id())
-      .WillByDefault(Return(xla::PjRtGlobalDeviceId(1)));
+  ON_CALL(device, Id()).WillByDefault(Return(DeviceId(1)));
 
   MockClient client;
-  ON_CALL(client, LookupDevice(1)).WillByDefault(Return(&device));
+  ON_CALL(client, LookupDevice(DeviceId(1))).WillByDefault(Return(&device));
 
   LoadedExecutable executable(
       &client, rpc_helper_, /*handle=*/1234, /*name=*/"foo",

@@ -230,9 +230,9 @@ absl::Status MlirReductionFusion::EmitReduction(EmitterState& state) const {
     int num_inputs = hero->operand_count() / 2;
     const auto& computation =
         state.computations.FindPartitionedComputation(hero->parent());
-    inits[hero] = ProvideParameterRange(
-        computation.FindSubgraph(hero), hero, num_inputs, num_inputs, {},
-        state.call_target, state.entry_function, builder);
+    inits[hero] =
+        ProvideParameterRange(computation, hero, num_inputs, num_inputs, {},
+                              state.call_target, state.entry_function, builder);
   }
 
   auto evaluate_epilogue =
@@ -365,9 +365,10 @@ MlirReductionFusion::EmitterState::EmitPerThreadReducedElements(
         input_indexing.GetAffineMap(), dim_values, symbol_values, builder);
     auto operands = FusionParams();
     absl::c_copy(indices, std::back_inserter(operands));
-    auto values = ProvideParameterRange(computations.FindSubgraph(hero), hero,
-                                        0, hero->operand_count() / 2, indices,
-                                        call_target, entry_function, builder);
+    auto values = ProvideParameterRange(
+        computations.FindPartitionedComputation(hero->parent()), hero, 0,
+        hero->operand_count() / 2, indices, call_target, entry_function,
+        builder);
 
     SmallVector<Value> reduce_args = outputs;
     reduce_args.append(values.begin(), values.end());

@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_QUANTIZATION_COMMON_LIFT_AS_FUNCTION_CALL_H_
 #define TENSORFLOW_COMPILER_MLIR_QUANTIZATION_COMMON_LIFT_AS_FUNCTION_CALL_H_
 
+#include "absl/base/nullability.h"
 #include "absl/status/statusor.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -43,10 +44,6 @@ constexpr StringRef kCompositeFuncPrefix = "composite_";
 inline constexpr StringRef kOriginalStablehloEntryFunctionAttrName =
     "_original_entry_function";
 
-// Name of the string attribute attached to `XlaCallModuleOp`, which is the
-// textproto representation of `Method`.
-inline constexpr StringRef kQuantizationMethodAttr = "_quantization_method";
-
 // FunctionCallOpType to be generated as the function call operator when
 // function lifting will happen.
 enum FunctionCallOpType { TFPartitionedCallOp = 0, TFXlaCallModuleOp = 1 };
@@ -62,19 +59,20 @@ bool IsInStableHloOpRegion(Operation* op);
 // Checks if a given einsum op is supported for XlaDotV2 quantization.
 bool IsEinsumSupportedByXlaDotV2(StringAttr equation_attr);
 
-// Gets the quantization method from the given `XlaCallModuleOp`. It is
-// retrieved from the `kQuantizationMethodAttr` string attribute. Returns
+// Gets the quantization method from `op`. It is retrieved from the
+// `kQuantizationMethodAttr` string attribute. Returns
 // `absl::InvalidArgumentError` when the attribute doesn't exist. Returns
 // `absl::InternalError` when parsing the attribute to `Method` failed.
+// `op` must be non-null.
 absl::StatusOr<::stablehlo::quantization::Method> GetQuantizationMethod(
-    TF::XlaCallModuleOp xla_call_module_op);
+    absl::Nonnull<Operation*> op);
 
-// Gets the quantization method from the given `XlaCallModuleOp`. It is
-// retrieved from the `kQuantizationMethodAttr` string attribute. Returns a
-// default instance of `Method` iff the attribute doesn't exist or the attribute
-// contains an invalid textproto for `Method`.
+// Gets the quantization method from `op`. It is retrieved from the
+// `kQuantizationMethodAttr` string attribute. Returns a default instance of
+// `Method` iff the attribute doesn't exist or the attribute contains an invalid
+// textproto for `Method`. `op` must be non-null.
 ::stablehlo::quantization::Method GetQuantizationMethodOrDefault(
-    TF::XlaCallModuleOp xla_call_module_op);
+    absl::Nonnull<Operation*> op);
 
 // Creates a function to wrap the section between arguments and results.
 // The generated function call op type will be decided by the given call_op_type
@@ -98,6 +96,14 @@ SmallVector<Value, 4> LiftAsFunctionCall(OpBuilder& builder, Location location,
 // argument list.
 // Used to attach bias to einsum argument list.
 SmallVector<Value> AppendToVector(ArrayRef<Value> arguments, Value append);
+
+// Checks if the `Method` attatched to the given `tf.XlaCallModule` op has
+// `WeightOnlyPtq`.
+bool HasWeightOnlyPtqMethod(TF::XlaCallModuleOp xla_call_module_op);
+
+// Checks if an op is a `tf.XlaCallModule` op, contains 'conv' or 'dot_general'
+// in its name and has `Method` with `WeightOnlyPtq`.
+bool IsWeightOnlyQuantizableOp(const Operation& op);
 
 }  // namespace mlir::quant
 

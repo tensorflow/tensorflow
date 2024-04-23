@@ -131,9 +131,17 @@ message QuantizationResults {
   repeated QuantizationResult results = 1;
 }
 
+// Signals per-channel quantization. When dimension is not specified, StableHLO
+// quantizer determines the quantization dimension to be output feature
+// dimension for convolution and first non-batching, non-contracting dimension
+// for dot_general.
 message QuantizedDimension {
-  int32 dimension = 1;  // Should be less than the rank of the quantized tensor.
+  // Should be less than the rank of the quantized tensor.
+  optional int32 dimension = 1;
 }
+
+// Signals quantization type to be per-tensor.
+message PerTensor {}
 
 // Corresponds to StableHLO's `QuantizedTensorElementType`. Type parameters such
 // as `QuantizationParameters` is omitted because they are determined during
@@ -144,13 +152,17 @@ message QuantizedDimension {
 // Currently only supports specifying quantization granularity (e.g. for
 // per-channel quantization).
 // TODO: b/331144430 - Support specifying storage types.
+// Next ID: 3
 message QuantizedType {
   // Specifies the granularity of quantization parameters for each dimension of
   // a quantized tensor. If specified, per-channel quantization is applied. If
   // not specified, per-tensor quantization is applied.
   // TODO: Make it a `repeated` field to be able to express multi-channel /
   // sub-channel quantization.
-  QuantizedDimension dimension_specs = 1;
+  oneof type {
+    QuantizedDimension dimension_specs = 1;
+    PerTensor per_tensor = 2;
+  }
 }
 
 // A quantization method representing "do not quantize". Mostly used for

@@ -133,6 +133,7 @@ Status IteratorResource::GetNext(OpKernelContext* ctx,
   params.thread_pool = &unbounded_thread_pool_;
   params.id_registry = captured_state->id_registry();
   params.warm_start = dataset->options().warm_start();
+  params.model = captured_state->model();
   std::function<void()> deregister_fn;
   TF_RETURN_IF_ERROR(RegisterCancellationCallback(
       ctx->cancellation_manager(),

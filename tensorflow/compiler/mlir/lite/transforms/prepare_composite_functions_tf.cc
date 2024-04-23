@@ -86,6 +86,8 @@ LogicalResult CreateTflFusableOpCustomOptions(
       fbb.Int(attr.first.data(), int_attr.getInt());
     } else if (auto bool_attr = attr.second.dyn_cast_or_null<BoolAttr>()) {
       fbb.Bool(attr.first.data(), bool_attr.getValue());
+    } else if (auto string_attr = attr.second.dyn_cast_or_null<StringAttr>()) {
+      fbb.String(attr.first.data(), string_attr.getValue().str());
     } else {
       // TODO(b/201482289): support other data types.
       return failure();
