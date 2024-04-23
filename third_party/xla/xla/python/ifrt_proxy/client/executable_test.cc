@@ -138,7 +138,7 @@ TEST_F(LoadedExecutableTest, Metadata) {
       &client, rpc_helper_, /*handle=*/1234, /*name=*/"foo",
       /*num_devices=*/2, /*addressable_device_logical_device_ids=*/{},
       /*addressable_devices=*/{}, /*fingerprint=*/"fingerprint",
-      /*ready_future=*/Future<absl::Status>(absl::OkStatus()),
+      /*ready_future=*/Future<>(absl::OkStatus()),
       /*loaded_host_callbacks=*/{}, /*loaded_host_callback_handles=*/{});
 
   EXPECT_THAT(
@@ -187,7 +187,7 @@ TEST_F(LoadedExecutableTest, Execute) {
       &client, rpc_helper_, /*handle=*/1234, /*name=*/"foo",
       /*num_devices=*/2, /*addressable_device_logical_device_ids=*/{},
       /*addressable_devices=*/{}, /*fingerprint=*/"fingerprint",
-      /*ready_future=*/Future<absl::Status>(absl::OkStatus()),
+      /*ready_future=*/Future<>(absl::OkStatus()),
       /*loaded_host_callbacks=*/{}, /*loaded_host_callback_handles=*/{});
 
   IfrtResponse response;
@@ -279,7 +279,7 @@ TEST_F(LoadedExecutableTest, Delete) {
       &client, rpc_helper_, /*handle=*/1234, /*name=*/"foo",
       /*num_devices=*/2, /*addressable_device_logical_device_ids=*/{},
       /*addressable_devices=*/{}, /*fingerprint=*/"fingerprint",
-      /*ready_future=*/Future<absl::Status>(absl::OkStatus()),
+      /*ready_future=*/Future<>(absl::OkStatus()),
       /*loaded_host_callbacks=*/{}, /*loaded_host_callback_handles=*/{});
 
   {
@@ -312,7 +312,7 @@ TEST_F(LoadedExecutableTest, Delete) {
                                                     })pb")))))
         .WillOnce(MockClientSessionReturnResponse(response));
 
-    Future<absl::Status> result = executable.Delete();
+    Future<> result = executable.Delete();
     EXPECT_THAT(result.Await(),
                 StatusIs(absl::StatusCode::kUnknown, StrEq("injected error")));
   }

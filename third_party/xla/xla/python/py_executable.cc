@@ -178,7 +178,7 @@ struct ShardedBufferAdapter<ExecuteShardedArg> {
 void PopulateExecuteShardedResults(
     const nb_class_ptr<PyClient>& client,
     std::vector<tsl::RCReference<ifrt::Array>> ifrt_arrays,
-    const PjRtFuture<absl::Status>& result_status, int num_computations,
+    const PjRtFuture<>& result_status, int num_computations,
     std::vector<std::vector<PyArray>>& outputs) {
   auto traceback = Traceback::Get();
   DCHECK_GT(num_computations, 0);
@@ -286,11 +286,10 @@ PyShardedToken PyExecuteResults::ConsumeToken() {
 std::vector<std::vector<PyArray>>
 PyExecuteResults::DisassembleIntoSingleDeviceArrays() {
   std::vector<std::vector<PyArray>> outputs;
-  PopulateExecuteShardedResults(client_, Consume(),
-                                result_status_.IsValid()
-                                    ? result_status_.ToStatusFuture()
-                                    : PjRtFuture<absl::Status>(),
-                                num_computations_, outputs);
+  PopulateExecuteShardedResults(
+      client_, Consume(),
+      result_status_.IsValid() ? result_status_ : PjRtFuture<>(),
+      num_computations_, outputs);
   return outputs;
 }
 
@@ -311,11 +310,10 @@ PyExecuteResults::DisassemblePrefixIntoSingleDeviceArrays(size_t n) {
   ifrt_arrays_.erase(ifrt_arrays_.begin() + n, ifrt_arrays_.end());
   std::swap(ifrt_arrays_, ifrt_arrays);
   std::vector<std::vector<PyArray>> outputs;
-  PopulateExecuteShardedResults(client_, std::move(ifrt_arrays),
-                                result_status_.IsValid()
-                                    ? result_status_.ToStatusFuture()
-                                    : PjRtFuture<absl::Status>(),
-                                num_computations_, outputs);
+  PopulateExecuteShardedResults(
+      client_, std::move(ifrt_arrays),
+      result_status_.IsValid() ? result_status_ : PjRtFuture<>(),
+      num_computations_, outputs);
   return outputs;
 }
 
@@ -339,8 +337,7 @@ std::vector<nb::object> PyExecuteResults::ConsumeWithHandlers(
     if (std::holds_alternative<const PyArrayResultHandler*>(handler)) {
       outputs.push_back(std::get<const PyArrayResultHandler*>(handler)->Call(
           client_, std::move(ifrt_arrays[buffer_id]),
-          result_status_.IsValid() ? result_status_.ToStatusFuture()
-                                   : PjRtFuture<absl::Status>()));
+          result_status_.IsValid() ? result_status_ : PjRtFuture<>()));
     } else {
       tsl::profiler::TraceMe traceme("ConsumeWithHandlers fallback.");
       auto disassembled_arrays =
@@ -353,8 +350,7 @@ std::vector<nb::object> PyExecuteResults::ConsumeWithHandlers(
       for (auto& disassembled_array : *disassembled_arrays) {
         nb::object array = PyArray::MakeFromSingleDeviceArray(
             client_, traceback, std::move(disassembled_array), false, true,
-            result_status_.IsValid() ? result_status_.ToStatusFuture()
-                                     : PjRtFuture<absl::Status>());
+            result_status_.IsValid() ? result_status_ : PjRtFuture<>());
         PyList_SET_ITEM(bufs.ptr(), i, array.release().ptr());
         ++i;
       }

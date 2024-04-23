@@ -144,8 +144,7 @@ Future<> Array::Delete() {
   // replies with the deletion's response, from within
   // `Future(status_handle_promise).OnReady()`, schedule `CheckFuture()` on a
   // separate thread.
-  return Future<>::FromStatusFuture(
-      rpc_helper_->CheckFuture((*response)->deletion_future_handle()));
+  return rpc_helper_->CheckFuture((*response)->deletion_future_handle());
 }
 
 bool Array::IsDeleted() const {

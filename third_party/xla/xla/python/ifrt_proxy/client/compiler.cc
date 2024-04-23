@@ -127,7 +127,7 @@ absl::StatusOr<std::unique_ptr<xla::ifrt::LoadedExecutable>> Compiler::Compile(
       break;
   }
 
-  Future<absl::Status> ready_future =
+  Future<> ready_future =
       rpc_helper_->CheckFuture(response->ready_future_handle());
 
   std::vector<uint64_t> loaded_host_callback_handles(

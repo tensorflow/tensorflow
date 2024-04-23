@@ -57,7 +57,7 @@ class LoadedExecutable final
                        addressable_device_logical_device_ids,
                    std::vector<xla::ifrt::Device*> addressable_devices,
                    absl::StatusOr<std::optional<std::string>> fingerprint,
-                   Future<absl::Status> ready_future,
+                   Future<> ready_future,
                    std::vector<tsl::RCReference<xla::ifrt::LoadedHostCallback>>
                        loaded_host_callbacks,
                    std::vector<uint64_t> loaded_host_callback_handles);
@@ -68,7 +68,7 @@ class LoadedExecutable final
   absl::string_view name() const override;
   absl::StatusOr<std::optional<std::string>> Fingerprint() const override;
   absl::StatusOr<std::string> Serialize() const override;
-  Future<absl::Status> GetReadyFuture() const override;
+  Future<> GetReadyFuture() const override;
 
   int num_devices() const override;
   int64_t SizeOfGeneratedCodeInBytes() const override;
@@ -94,7 +94,7 @@ class LoadedExecutable final
       const ExecuteOptions& options,
       std::optional<DeviceList> devices) override;
 
-  Future<absl::Status> Delete() override;
+  Future<> Delete() override;
   bool IsDeleted() const override;
 
   absl::Span<const LogicalDeviceIds> addressable_device_logical_ids()
@@ -133,7 +133,7 @@ class LoadedExecutable final
       addressable_device_logical_device_ids_;
   const std::vector<xla::ifrt::Device*> addressable_devices_;
   const absl::StatusOr<std::optional<std::string>> fingerprint_;
-  const Future<absl::Status> ready_future_;
+  const Future<> ready_future_;
 
   // Metadata queried when the executable is created. Declared as `mutable`
   // since `Future::Await()` is not const.

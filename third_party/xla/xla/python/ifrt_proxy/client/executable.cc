@@ -184,7 +184,7 @@ LoadedExecutable::LoadedExecutable(
         addressable_device_logical_device_ids,
     std::vector<xla::ifrt::Device*> addressable_devices,
     absl::StatusOr<std::optional<std::string>> fingerprint,
-    Future<absl::Status> ready_future,
+    Future<> ready_future,
     std::vector<tsl::RCReference<xla::ifrt::LoadedHostCallback>>
         loaded_host_callbacks,
     std::vector<uint64_t> loaded_host_callback_handles)
@@ -327,9 +327,7 @@ absl::StatusOr<std::string> LoadedExecutable::Serialize() const {
       "underlying serialization format is not stable");
 }
 
-Future<absl::Status> LoadedExecutable::GetReadyFuture() const {
-  return ready_future_;
-}
+Future<> LoadedExecutable::GetReadyFuture() const { return ready_future_; }
 
 int LoadedExecutable::num_devices() const { return num_devices_; }
 
@@ -437,8 +435,7 @@ LoadedExecutable::Execute(absl::Span<tsl::RCReference<xla::ifrt::Array>> args,
 
   // Populate the execution status future. `CheckFuture` deletes the server-side
   // futures after its completion.
-  result.status = Future<>::FromStatusFuture(
-      rpc_helper_->CheckFuture(response->status_handle()));
+  result.status = rpc_helper_->CheckFuture(response->status_handle());
 
   // Create output arrays. The cleanup logic ensures that all handles are
   // properly cleaned up on early return.
@@ -466,14 +463,14 @@ LoadedExecutable::Execute(absl::Span<tsl::RCReference<xla::ifrt::Array>> args,
   return result;
 }
 
-Future<absl::Status> LoadedExecutable::Delete() {
+Future<> LoadedExecutable::Delete() {
   auto req = std::make_unique<LoadedExecutableDeleteRequest>();
   req->set_loaded_executable_handle(handle_);
 
   absl::StatusOr<std::shared_ptr<LoadedExecutableDeleteResponse>> response =
       rpc_helper_->LoadedExecutableDelete(std::move(req)).Await();
   if (!response.ok()) {
-    return Future<absl::Status>(response.status());
+    return Future<>(response.status());
   }
   return rpc_helper_->CheckFuture((*response)->future_handle());
 }

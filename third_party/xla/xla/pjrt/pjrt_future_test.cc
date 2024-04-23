@@ -84,8 +84,8 @@ TEST(PjRtFutureTest, StatefulFuture) {
 }
 
 TEST(PjRtFutureTest, StatusFuture) {
-  auto promise = PjRtFuture<absl::Status>::CreatePromise();
-  PjRtFuture<absl::Status> future(promise);
+  auto promise = PjRtFuture<>::CreatePromise();
+  PjRtFuture<> future(promise);
 
   EXPECT_FALSE(future.IsReady());
   promise.Set(absl::OkStatus());

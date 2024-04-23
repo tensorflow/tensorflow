@@ -1338,15 +1338,6 @@ class PjRtBuffer {
     return Unimplemented("DonateWithControlDependency is not supported.");
   }
 
-  // TODO(b/333538339): Delete this adaptor once all users migrate from
-  // PjRtFuture<Status> to PjRtFuture<>.
-  StatusOr<std::unique_ptr<PjRtBuffer>> DonateWithControlDependency(
-      PjRtFuture<Status> dependency) {
-    PjRtFuture<>::Promise promise = PjRtFuture<>::CreatePromise();
-    dependency.OnReady([promise](Status s) mutable { promise.Set(s); });
-    return DonateWithControlDependency(PjRtFuture<>(std::move(promise)));
-  }
-
   // Helper to allow a caller to indicate that it is going to do some "sends"
   // of the buffer a later date, where a send is a transfer out of a device
   // buffer, either copying to host, or to a remote device.

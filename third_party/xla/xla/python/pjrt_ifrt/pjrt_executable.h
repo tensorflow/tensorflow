@@ -215,10 +215,10 @@ class PjRtLoadedExecutable final
     return pjrt_loaded_executable_->name();
   }
 
-  Future<absl::Status> GetReadyFuture() const override {
+  Future<> GetReadyFuture() const override {
     // PjRtCompiler blocks until compilation finishes and returns only the
     // executables that are ready.
-    return Future<absl::Status>(absl::OkStatus());
+    return Future<>(absl::OkStatus());
   }
 
   std::optional<std::vector<OpSharding>> GetParameterShardings()
@@ -282,7 +282,7 @@ class PjRtLoadedExecutable final
       absl::Span<tsl::RCReference<Array>> args, const ExecuteOptions& options,
       std::optional<DeviceList> devices) override;
 
-  Future<Status> Delete() override;
+  Future<> Delete() override;
   bool IsDeleted() const override {
     DCHECK(this);
     return pjrt_loaded_executable_->IsDeleted();

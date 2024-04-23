@@ -245,7 +245,7 @@ class MockLoadedExecutable
   MOCK_METHOD(absl::StatusOr<std::optional<std::string>>, Fingerprint, (),
               (const, final));
   MOCK_METHOD(absl::StatusOr<std::string>, Serialize, (), (const, final));
-  MOCK_METHOD(Future<absl::Status>, GetReadyFuture, (), (const, override));
+  MOCK_METHOD(Future<>, GetReadyFuture, (), (const, override));
   MOCK_METHOD(int, num_devices, (), (const, final));
   MOCK_METHOD(int64_t, SizeOfGeneratedCodeInBytes, (), (const, final));
   MOCK_METHOD(absl::StatusOr<CompiledMemoryStats>, GetCompiledMemoryStats, (),
@@ -271,7 +271,7 @@ class MockLoadedExecutable
                const ExecuteOptions& options,
                std::optional<DeviceList> devices),
               (final));
-  MOCK_METHOD(Future<Status>, Delete, (), (final));
+  MOCK_METHOD(Future<>, Delete, (), (final));
   MOCK_METHOD(bool, IsDeleted, (), (const, final));
   MOCK_METHOD(absl::Span<const LogicalDeviceIds>,
               addressable_device_logical_ids, (), (const, final));

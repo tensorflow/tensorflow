@@ -343,14 +343,11 @@ nb::object MakeShapedArrayCached(const ShapedArrayCacheKey& key) {
 
 }  // namespace
 
-PyArray_Storage::PyArray_Storage(nb::object aval, bool weak_type,
-                                 xla::nb_dtype dtype,
-                                 std::vector<int64_t> shape,
-                                 nb::object sharding, bool committed,
-                                 nb_class_ptr<PyClient> py_client,
-                                 std::optional<nb_traceback> traceback,
-                                 tsl::RCReference<ifrt::Array> ifrt_array,
-                                 xla::PjRtFuture<absl::Status> result_status)
+PyArray_Storage::PyArray_Storage(
+    nb::object aval, bool weak_type, xla::nb_dtype dtype,
+    std::vector<int64_t> shape, nb::object sharding, bool committed,
+    nb_class_ptr<PyClient> py_client, std::optional<nb_traceback> traceback,
+    tsl::RCReference<ifrt::Array> ifrt_array, xla::PjRtFuture<> result_status)
     : aval(std::move(aval)),
       weak_type(weak_type),
       dtype(std::move(dtype)),
@@ -380,7 +377,7 @@ void PyArray::PyInit(PyArray self, nb::object aval, nb::object sharding,
             nb::cast<bool>(aval.attr("weak_type")), std::move(dtype),
             std::move(shape), std::move(sharding), committed,
             py_arrays.at(0).py_client(), Traceback::Get(),
-            std::move(ifrt_array), xla::PjRtFuture<absl::Status>());
+            std::move(ifrt_array), xla::PjRtFuture<>());
 
   if (!skip_checks) {
     self.CheckAndRearrange();
@@ -390,7 +387,7 @@ void PyArray::PyInit(PyArray self, nb::object aval, nb::object sharding,
 PyArray PyArray::MakeFromSingleDeviceArray(
     nb_class_ptr<PyClient> py_client, std::optional<nb_traceback> traceback,
     tsl::RCReference<ifrt::Array> ifrt_array, bool weak_type, bool committed,
-    xla::PjRtFuture<absl::Status> result_status) {
+    xla::PjRtFuture<> result_status) {
   if (!llvm::isa<ifrt::SingleDeviceSharding>(ifrt_array->sharding())) {
     throw XlaRuntimeError(
         InvalidArgument("Constructing single device jax.Array from non-single "
@@ -449,12 +446,12 @@ PyArray PyArrayResultHandler::Call(absl::Span<const PyArray> py_arrays) const {
   return Call(
       py_arrays.at(0).py_client(),
       CreateIfRtArrayFromSingleDeviceShardedPyArrays(dtype_, shape_, py_arrays),
-      xla::PjRtFuture<absl::Status>());
+      xla::PjRtFuture<>());
 }
 
-PyArray PyArrayResultHandler::Call(
-    nb_class_ptr<PyClient> py_client, tsl::RCReference<ifrt::Array> ifrt_array,
-    xla::PjRtFuture<absl::Status> result_status) const {
+PyArray PyArrayResultHandler::Call(nb_class_ptr<PyClient> py_client,
+                                   tsl::RCReference<ifrt::Array> ifrt_array,
+                                   xla::PjRtFuture<> result_status) const {
   return PyArray(aval_, weak_type_, dtype_, shape_, sharding_,
                  std::move(py_client), Traceback::Get(), std::move(ifrt_array),
                  committed_, skip_checks_, std::move(result_status));
@@ -462,7 +459,7 @@ PyArray PyArrayResultHandler::Call(
 
 PyArray PyArrayResultHandler::Call(PyArray py_array) const {
   return Call(py_array.py_client(), tsl::FormRef(py_array.ifrt_array()),
-              xla::PjRtFuture<absl::Status>());
+              xla::PjRtFuture<>());
 }
 
 PyArray::PyArray(nb::object aval, bool weak_type, nb_dtype dtype,
@@ -470,8 +467,7 @@ PyArray::PyArray(nb::object aval, bool weak_type, nb_dtype dtype,
                  nb_class_ptr<PyClient> py_client,
                  std::optional<nb_traceback> traceback,
                  tsl::RCReference<ifrt::Array> ifrt_array, bool committed,
-                 bool skip_checks,
-                 xla::PjRtFuture<absl::Status> result_status) {
+                 bool skip_checks, xla::PjRtFuture<> result_status) {
   auto* self =
       PyArray_tp_new(reinterpret_cast<PyTypeObject*>(type_), nullptr, nullptr);
   m_ptr = self;
@@ -1478,10 +1474,8 @@ Status PyHostValue::CopyToHostAsync(std::optional<Shape>& dynamic_shape_holder,
   // better about an efficient layout for the host buffer. It will be useful
   // to revisit the semantics of PjRtBuffer::ToLiteral() to see if it is
   // desirable for the runtime to choose the layout.
-  ready_ = ifrt_array
-               ->CopyToHostBuffer(value_.mutable_data(), strides,
-                                  ifrt::ArrayCopySemantics::kReuseInput)
-               .ToStatusFuture();
+  ready_ = ifrt_array->CopyToHostBuffer(value_.mutable_data(), strides,
+                                        ifrt::ArrayCopySemantics::kReuseInput);
   // Make sure the destination of the copy remains alive until the copy is done.
   value_.inc_ref();
   ready_.OnReady([array{value_.ptr()}](Status status) {
