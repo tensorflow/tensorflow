@@ -6522,7 +6522,11 @@ class Subgraph {
       float default_out_max = std::numeric_limits<float>::infinity();
 
       // Attention Type
+      TF_LITE_ENSURE_EQ(logging_context,
+                        query_proj.dims->data[2] % key_proj.dims->data[2], 0);
       bool is_mqa = (key_proj.dims->data[2] == 1);
+      bool is_gqa =
+          !is_mqa && (key_proj.dims->data[2] != query_proj.dims->data[2]);
 
       // Scale the query values by multiplying 1 / sqrt(dim_per_head).
       const auto query_dim = query_proj.dims;
@@ -6532,60 +6536,66 @@ class Subgraph {
       if (scale_param != nullptr && *scale_param == scale_const) {
         TF_LITE_ENSURE_EQ(
             logging_context, xnn_status_success,
-            xnn_define_tensor_value(subgraph, xnn_datatype_fp32, 0, nullptr,
-                                    scale_param, XNN_INVALID_VALUE_ID, 0,
-                                    &scale_out_id));
+            xnn_define_tensor_value(subgraph, xnn_datatype_fp32, /*num_dims=*/0,
+                                    /*dims=*/nullptr, scale_param,
+                                    XNN_INVALID_VALUE_ID, 0, &scale_out_id));
       } else {
         // fallback
         uint32_t scale_orig_id = XNN_INVALID_VALUE_ID;
         TF_LITE_ENSURE_EQ(
             logging_context, xnn_status_success,
-            xnn_define_tensor_value(subgraph, xnn_datatype_fp32, 0, nullptr,
-                                    &query_proj.dims->data[3],
+            xnn_define_tensor_value(subgraph, xnn_datatype_fp32, /*num_dims=*/0,
+                                    /*dims=*/nullptr, &query_proj.dims->data[3],
                                     XNN_INVALID_VALUE_ID, 0, &scale_orig_id));
-        TF_LITE_ENSURE_EQ(logging_context, xnn_status_success,
-                          xnn_define_tensor_value(
-                              subgraph, xnn_datatype_fp32, 0, nullptr, nullptr,
-                              XNN_INVALID_VALUE_ID, 0, &scale_out_id));
-        TF_LITE_ENSURE_EQ(logging_context, xnn_status_success,
-                          xnn_define_clamp(subgraph, scale_const, scale_const,
-                                           scale_orig_id, scale_out_id, 0));
+        TF_LITE_ENSURE_EQ(
+            logging_context, xnn_status_success,
+            xnn_define_tensor_value(subgraph, xnn_datatype_fp32, /*num_dims=*/0,
+                                    /*dims=*/nullptr, nullptr,
+                                    XNN_INVALID_VALUE_ID, 0, &scale_out_id));
+        TF_LITE_ENSURE_EQ(
+            logging_context, xnn_status_success,
+            xnn_define_clamp(subgraph, scale_const, scale_const, scale_orig_id,
+                             scale_out_id, /*flags=*/0));
       }
       uint32_t multiply_out_id = XNN_INVALID_VALUE_ID;
-      TF_LITE_ENSURE_EQ(logging_context, xnn_status_success,
-                        xnn_define_tensor_value(
-                            subgraph, xnn_datatype_fp32, 0, nullptr, nullptr,
-                            XNN_INVALID_VALUE_ID, 0, &multiply_out_id));
-      TF_LITE_ENSURE_EQ(logging_context, xnn_status_success,
-                        xnn_define_multiply2(subgraph, default_out_min,
-                                             default_out_max, query_proj_id,
-                                             scale_out_id, multiply_out_id, 0));
+      TF_LITE_ENSURE_EQ(
+          logging_context, xnn_status_success,
+          xnn_define_tensor_value(subgraph, xnn_datatype_fp32, /*num_dims=*/0,
+                                  /*dims=*/nullptr, nullptr,
+                                  XNN_INVALID_VALUE_ID, 0, &multiply_out_id));
+      TF_LITE_ENSURE_EQ(
+          logging_context, xnn_status_success,
+          xnn_define_multiply2(subgraph, default_out_min, default_out_max,
+                               query_proj_id, scale_out_id, multiply_out_id,
+                               /*flags=*/0));
       // Dot similarity
       // BTNH -> BNTH
       std::vector<size_t> permute_q = {0, 2, 1, 3};
       TF_LITE_ENSURE_EQ(logging_context, query_proj.dims->size,
                         permute_q.size());
       uint32_t permute_q_out_id = XNN_INVALID_VALUE_ID;
-      TF_LITE_ENSURE_EQ(logging_context, xnn_status_success,
-                        xnn_define_tensor_value(
-                            subgraph, xnn_datatype_fp32, 0, nullptr, nullptr,
-                            XNN_INVALID_VALUE_ID, 0, &permute_q_out_id));
+      TF_LITE_ENSURE_EQ(
+          logging_context, xnn_status_success,
+          xnn_define_tensor_value(subgraph, xnn_datatype_fp32, /*num_dims=*/0,
+                                  /*dims=*/nullptr, nullptr,
+                                  XNN_INVALID_VALUE_ID, 0, &permute_q_out_id));
       TF_LITE_ENSURE_EQ(logging_context, xnn_status_success,
                         xnn_define_static_transpose(
                             subgraph, permute_q.size(), permute_q.data(),
-                            multiply_out_id, permute_q_out_id, 0));
+                            multiply_out_id, permute_q_out_id, /*flags=*/0));
       // BSNH -> BNSH
       std::vector<size_t> permute_k = {0, 2, 1, 3};
       TF_LITE_ENSURE_EQ(logging_context, key_proj.dims->size, permute_k.size());
       uint32_t permute_k_out_id = XNN_INVALID_VALUE_ID;
-      TF_LITE_ENSURE_EQ(logging_context, xnn_status_success,
-                        xnn_define_tensor_value(
-                            subgraph, xnn_datatype_fp32, 0, nullptr, nullptr,
-                            XNN_INVALID_VALUE_ID, 0, &permute_k_out_id));
+      TF_LITE_ENSURE_EQ(
+          logging_context, xnn_status_success,
+          xnn_define_tensor_value(subgraph, xnn_datatype_fp32, /*num_dims=*/0,
+                                  /*dims=*/nullptr, nullptr,
+                                  XNN_INVALID_VALUE_ID, 0, &permute_k_out_id));
       TF_LITE_ENSURE_EQ(logging_context, xnn_status_success,
                         xnn_define_static_transpose(
                             subgraph, permute_k.size(), permute_k.data(),
-                            key_proj_id, permute_k_out_id, 0));
+                            key_proj_id, permute_k_out_id, /*flags=*/0));
       // einsum(BNTH.BNSH -> BNTS)
       uint32_t fc_out_id = XNN_INVALID_VALUE_ID;
       if (!is_mqa) {
@@ -6593,14 +6603,69 @@ class Subgraph {
         // [B, N, T, S] . [B, N, H, S]
         // output shape [query_proj_dim[0], query_proj_dim[2],
         // query_proj_dim[1], key_proj_dim[1]];
-        TF_LITE_ENSURE_EQ(logging_context, xnn_status_success,
-                          xnn_define_tensor_value(
-                              subgraph, xnn_datatype_fp32, 0, nullptr, nullptr,
-                              XNN_INVALID_VALUE_ID, 0, &fc_out_id));
-        TF_LITE_ENSURE_EQ(logging_context, xnn_status_success,
-                          xnn_define_batch_matrix_multiply(
-                              subgraph, permute_q_out_id, permute_k_out_id,
-                              fc_out_id, XNN_FLAG_TRANSPOSE_B));
+        TF_LITE_ENSURE_EQ(
+            logging_context, xnn_status_success,
+            xnn_define_tensor_value(subgraph, xnn_datatype_fp32, /*num_dims=*/0,
+                                    /*dims=*/nullptr, nullptr,
+                                    XNN_INVALID_VALUE_ID, 0, &fc_out_id));
+        if (is_gqa) {
+          uint32_t q_reshape_id = XNN_INVALID_VALUE_ID;
+          TF_LITE_ENSURE_EQ(
+              logging_context, xnn_status_success,
+              xnn_define_tensor_value(subgraph, xnn_datatype_fp32,
+                                      /*num_dims=*/0, /*dims=*/nullptr, nullptr,
+                                      XNN_INVALID_VALUE_ID, 0, &q_reshape_id));
+          uint32_t k_reshape_id = XNN_INVALID_VALUE_ID;
+          TF_LITE_ENSURE_EQ(
+              logging_context, xnn_status_success,
+              xnn_define_tensor_value(subgraph, xnn_datatype_fp32,
+                                      /*num_dims=*/0, /*dims=*/nullptr, nullptr,
+                                      XNN_INVALID_VALUE_ID, 0, &k_reshape_id));
+          uint32_t bmm_reshape_id = XNN_INVALID_VALUE_ID;
+          TF_LITE_ENSURE_EQ(
+              logging_context, xnn_status_success,
+              xnn_define_tensor_value(
+                  subgraph, xnn_datatype_fp32, /*num_dims=*/0, /*dims=*/nullptr,
+                  nullptr, XNN_INVALID_VALUE_ID, 0, &bmm_reshape_id));
+          size_t num_query_groups = key_proj.dims->data[2];
+          size_t head_per_query = query_proj.dims->data[2] / num_query_groups;
+          std::vector<size_t> q_reshape_dims = {
+              (size_t)query_proj.dims->data[0], num_query_groups,
+              head_per_query, (size_t)query_proj.dims->data[1],
+              (size_t)query_proj.dims->data[3]};
+          std::vector<size_t> k_reshape_dims = {
+              (size_t)key_proj.dims->data[0], num_query_groups, 1,
+              (size_t)key_proj.dims->data[1], (size_t)key_proj.dims->data[3]};
+          std::vector<size_t> bmm_reshape_dims = {
+              (size_t)query_proj.dims->data[0],
+              num_query_groups * head_per_query,
+              (size_t)query_proj.dims->data[1], (size_t)key_proj.dims->data[1]};
+          TF_LITE_ENSURE_EQ(
+              logging_context, xnn_status_success,
+              xnn_define_static_reshape(subgraph, q_reshape_dims.size(),
+                                        q_reshape_dims.data(), permute_q_out_id,
+                                        q_reshape_id, /*flags=*/0));
+          TF_LITE_ENSURE_EQ(
+              logging_context, xnn_status_success,
+              xnn_define_static_reshape(subgraph, k_reshape_dims.size(),
+                                        k_reshape_dims.data(), permute_k_out_id,
+                                        k_reshape_id, /*flags=*/0));
+          TF_LITE_ENSURE_EQ(
+              logging_context, xnn_status_success,
+              xnn_define_batch_matrix_multiply(subgraph, q_reshape_id,
+                                               k_reshape_id, bmm_reshape_id,
+                                               /*flags=*/XNN_FLAG_TRANSPOSE_B));
+          TF_LITE_ENSURE_EQ(
+              logging_context, xnn_status_success,
+              xnn_define_static_reshape(subgraph, bmm_reshape_dims.size(),
+                                        bmm_reshape_dims.data(), bmm_reshape_id,
+                                        fc_out_id, /*flags=*/0));
+        } else {
+          TF_LITE_ENSURE_EQ(logging_context, xnn_status_success,
+                            xnn_define_batch_matrix_multiply(
+                                subgraph, permute_q_out_id, permute_k_out_id,
+                                fc_out_id, /*flags=*/XNN_FLAG_TRANSPOSE_B));
+        }
       } else {
         // FC (permute_q, permute_k)
         TFLITE_DCHECK(key_proj.dims->data[0] == 1);
@@ -6609,62 +6674,68 @@ class Subgraph {
         std::vector<size_t> reshape_dims_k = {(size_t)key_proj.dims->data[1],
                                               (size_t)key_proj.dims->data[3]};
         uint32_t reshape_dims_k_out_id = XNN_INVALID_VALUE_ID;
-        TF_LITE_ENSURE_EQ(logging_context, xnn_status_success,
-                          xnn_define_tensor_value(
-                              subgraph, xnn_datatype_fp32, 0, nullptr, nullptr,
-                              XNN_INVALID_VALUE_ID, 0, &reshape_dims_k_out_id));
+        TF_LITE_ENSURE_EQ(
+            logging_context, xnn_status_success,
+            xnn_define_tensor_value(
+                subgraph, xnn_datatype_fp32, /*num_dims=*/0, /*dims=*/nullptr,
+                nullptr, XNN_INVALID_VALUE_ID, 0, &reshape_dims_k_out_id));
         TF_LITE_ENSURE_EQ(
             logging_context, xnn_status_success,
             xnn_define_static_reshape(subgraph, reshape_dims_k.size(),
                                       reshape_dims_k.data(), permute_k_out_id,
-                                      reshape_dims_k_out_id, 0));
+                                      reshape_dims_k_out_id, /*flags=*/0));
         // Output shape: [B, N, T, S]
         // FC: input = permuted_q, weight = reshaped_k, bias = nullptr,
         // params=(transpose=false)
         // assumes no sparse computation for now
-        TF_LITE_ENSURE_EQ(logging_context, xnn_status_success,
-                          xnn_define_tensor_value(
-                              subgraph, xnn_datatype_fp32, 0, nullptr, nullptr,
-                              XNN_INVALID_VALUE_ID, 0, &fc_out_id));
         TF_LITE_ENSURE_EQ(
             logging_context, xnn_status_success,
-            xnn_define_fully_connected(
-                subgraph, default_out_min, default_out_max, permute_q_out_id,
-                reshape_dims_k_out_id, XNN_INVALID_VALUE_ID, fc_out_id, 0));
+            xnn_define_tensor_value(subgraph, xnn_datatype_fp32, /*num_dims=*/0,
+                                    /*dims=*/nullptr, nullptr,
+                                    XNN_INVALID_VALUE_ID, 0, &fc_out_id));
+        TF_LITE_ENSURE_EQ(logging_context, xnn_status_success,
+                          xnn_define_fully_connected(
+                              subgraph, default_out_min, default_out_max,
+                              permute_q_out_id, reshape_dims_k_out_id,
+                              XNN_INVALID_VALUE_ID, fc_out_id, /*flags=*/0));
       }
       // TODO(b/323195341): add CapTanh support.
       // element_add atten_mask and matmul_out
       uint32_t padded_logits_id = XNN_INVALID_VALUE_ID;
-      TF_LITE_ENSURE_EQ(logging_context, xnn_status_success,
-                        xnn_define_tensor_value(
-                            subgraph, xnn_datatype_fp32, 0, nullptr, nullptr,
-                            XNN_INVALID_VALUE_ID, 0, &padded_logits_id));
+      TF_LITE_ENSURE_EQ(
+          logging_context, xnn_status_success,
+          xnn_define_tensor_value(subgraph, xnn_datatype_fp32, /*num_dims=*/0,
+                                  /*dims=*/nullptr, nullptr,
+                                  XNN_INVALID_VALUE_ID, 0, &padded_logits_id));
       TF_LITE_ENSURE_EQ(
           logging_context, xnn_status_success,
           xnn_define_add2(subgraph, default_out_min, default_out_max,
-                          atten_mask_id, fc_out_id, padded_logits_id, 0));
+                          atten_mask_id, fc_out_id, padded_logits_id,
+                          /*flags=*/0));
       // softmax(padded_logits)
       uint32_t probs_id = XNN_INVALID_VALUE_ID;
       TF_LITE_ENSURE_EQ(
           logging_context, xnn_status_success,
-          xnn_define_tensor_value(subgraph, xnn_datatype_fp32, 0, nullptr,
-                                  nullptr, XNN_INVALID_VALUE_ID, 0, &probs_id));
-      TF_LITE_ENSURE_EQ(
-          logging_context, xnn_status_success,
-          xnn_define_softmax(subgraph, padded_logits_id, probs_id, 0));
+          xnn_define_tensor_value(subgraph, xnn_datatype_fp32, /*num_dims=*/0,
+                                  /*dims=*/nullptr, nullptr,
+                                  XNN_INVALID_VALUE_ID, 0, &probs_id));
+      TF_LITE_ENSURE_EQ(logging_context, xnn_status_success,
+                        xnn_define_softmax(subgraph, padded_logits_id, probs_id,
+                                           /*flags=*/0));
       // Permute(value_proj, {0, 2, 3, 1})
       std::vector<size_t> permute_v = {0, 2, 3, 1};
       TF_LITE_ENSURE_EQ(logging_context, value_proj.dims->size,
                         permute_v.size());
       uint32_t permute_v_out_id = XNN_INVALID_VALUE_ID;
-      TF_LITE_ENSURE_EQ(logging_context, xnn_status_success,
-                        xnn_define_tensor_value(
-                            subgraph, xnn_datatype_fp32, 0, nullptr, nullptr,
-                            XNN_INVALID_VALUE_ID, 0, &permute_v_out_id));
+      TF_LITE_ENSURE_EQ(
+          logging_context, xnn_status_success,
+          xnn_define_tensor_value(subgraph, xnn_datatype_fp32, /*num_dims=*/0,
+                                  /*dims=*/nullptr, nullptr,
+                                  XNN_INVALID_VALUE_ID, 0, &permute_v_out_id));
       TF_LITE_ENSURE_EQ(logging_context, xnn_status_success,
                         xnn_define_static_transpose(
                             subgraph, permute_v.size(), permute_v.data(),
-                            value_proj_id, permute_v_out_id, 0));
+                            value_proj_id, permute_v_out_id, /*flags=*/0));
       // Outcome
       // BNTS.BNHS -> BNTH
       uint32_t fc2_out_id = XNN_INVALID_VALUE_ID;
@@ -6673,14 +6744,71 @@ class Subgraph {
         // [B, N, T, S] . [B, N, H, S]
         // output shape [padded_logits_dims[0], padded_logits_dims[1],
         // padded_logits_dims[2], value_proj_dims[3]];
-        TF_LITE_ENSURE_EQ(logging_context, xnn_status_success,
-                          xnn_define_tensor_value(
-                              subgraph, xnn_datatype_fp32, 0, nullptr, nullptr,
-                              XNN_INVALID_VALUE_ID, 0, &fc2_out_id));
-        TF_LITE_ENSURE_EQ(logging_context, xnn_status_success,
-                          xnn_define_batch_matrix_multiply(
-                              subgraph, probs_id, permute_v_out_id, fc2_out_id,
-                              XNN_FLAG_TRANSPOSE_B));
+        TF_LITE_ENSURE_EQ(
+            logging_context, xnn_status_success,
+            xnn_define_tensor_value(subgraph, xnn_datatype_fp32, /*num_dims=*/0,
+                                    /*dims=*/nullptr, nullptr,
+                                    XNN_INVALID_VALUE_ID, 0, &fc2_out_id));
+        if (is_gqa) {
+          uint32_t padded_logits_reshape_id = XNN_INVALID_VALUE_ID;
+          TF_LITE_ENSURE_EQ(
+              logging_context, xnn_status_success,
+              xnn_define_tensor_value(
+                  subgraph, xnn_datatype_fp32, /*num_dims=*/0, /*dims=*/nullptr,
+                  nullptr, XNN_INVALID_VALUE_ID, 0, &padded_logits_reshape_id));
+          uint32_t v_reshape_id = XNN_INVALID_VALUE_ID;
+          TF_LITE_ENSURE_EQ(
+              logging_context, xnn_status_success,
+              xnn_define_tensor_value(subgraph, xnn_datatype_fp32,
+                                      /*num_dims=*/0, /*dims=*/nullptr, nullptr,
+                                      XNN_INVALID_VALUE_ID, 0, &v_reshape_id));
+          uint32_t bmm2_reshape_id = XNN_INVALID_VALUE_ID;
+          TF_LITE_ENSURE_EQ(
+              logging_context, xnn_status_success,
+              xnn_define_tensor_value(
+                  subgraph, xnn_datatype_fp32, /*num_dims=*/0, /*dims=*/nullptr,
+                  nullptr, XNN_INVALID_VALUE_ID, 0, &bmm2_reshape_id));
+          size_t num_query_groups = value_proj.dims->data[2];
+          size_t head_per_query = query_proj.dims->data[2] / num_query_groups;
+          std::vector<size_t> padded_logits_reshape_dims = {
+              (size_t)query_proj.dims->data[0], num_query_groups,
+              head_per_query, (size_t)query_proj.dims->data[1],
+              (size_t)value_proj.dims->data[1]};
+          std::vector<size_t> v_reshape_dims = {
+              (size_t)value_proj.dims->data[0], num_query_groups, 1,
+              (size_t)value_proj.dims->data[3],
+              (size_t)value_proj.dims->data[1]};
+          std::vector<size_t> bmm2_reshape_dims = {
+              (size_t)query_proj.dims->data[0],
+              num_query_groups * head_per_query,
+              (size_t)query_proj.dims->data[1],
+              (size_t)query_proj.dims->data[3]};
+          TF_LITE_ENSURE_EQ(logging_context, xnn_status_success,
+                            xnn_define_static_reshape(
+                                subgraph, padded_logits_reshape_dims.size(),
+                                padded_logits_reshape_dims.data(), probs_id,
+                                padded_logits_reshape_id, /*flags=*/0));
+          TF_LITE_ENSURE_EQ(
+              logging_context, xnn_status_success,
+              xnn_define_static_reshape(subgraph, v_reshape_dims.size(),
+                                        v_reshape_dims.data(), permute_v_out_id,
+                                        v_reshape_id, /*flags=*/0));
+          TF_LITE_ENSURE_EQ(
+              logging_context, xnn_status_success,
+              xnn_define_batch_matrix_multiply(
+                  subgraph, padded_logits_reshape_id, v_reshape_id,
+                  bmm2_reshape_id, /*flags=*/XNN_FLAG_TRANSPOSE_B));
+          TF_LITE_ENSURE_EQ(
+              logging_context, xnn_status_success,
+              xnn_define_static_reshape(
+                  subgraph, bmm2_reshape_dims.size(), bmm2_reshape_dims.data(),
+                  bmm2_reshape_id, fc2_out_id, /*flags=*/0));
+        } else {
+          TF_LITE_ENSURE_EQ(logging_context, xnn_status_success,
+                            xnn_define_batch_matrix_multiply(
+                                subgraph, probs_id, permute_v_out_id,
+                                fc2_out_id, /*flags=*/XNN_FLAG_TRANSPOSE_B));
+        }
       } else {
         // FC (padded_logits, permute_v)
         TFLITE_DCHECK(value_proj.dims->data[0] == 1);
@@ -6689,35 +6817,37 @@ class Subgraph {
         std::vector<size_t> reshape_dims_v = {(size_t)value_proj.dims->data[3],
                                               (size_t)value_proj.dims->data[1]};
         uint32_t reshape_dims_v_out_id = XNN_INVALID_VALUE_ID;
-        TF_LITE_ENSURE_EQ(logging_context, xnn_status_success,
-                          xnn_define_tensor_value(
-                              subgraph, xnn_datatype_fp32, 0, nullptr, nullptr,
-                              XNN_INVALID_VALUE_ID, 0, &reshape_dims_v_out_id));
+        TF_LITE_ENSURE_EQ(
+            logging_context, xnn_status_success,
+            xnn_define_tensor_value(
+                subgraph, xnn_datatype_fp32, /*num_dims=*/0, /*dims=*/nullptr,
+                nullptr, XNN_INVALID_VALUE_ID, 0, &reshape_dims_v_out_id));
         TF_LITE_ENSURE_EQ(
             logging_context, xnn_status_success,
             xnn_define_static_reshape(subgraph, reshape_dims_v.size(),
                                       reshape_dims_v.data(), permute_v_out_id,
-                                      reshape_dims_v_out_id, 0));
+                                      reshape_dims_v_out_id, /*flags=*/0));
         // Output shape: [B, N, T, S]
         // FC: input = padded_logits, weight = reshaped_v, bias = nullptr,
         // params=(transpose=false)
         // assumes no sparse computation for now
-        TF_LITE_ENSURE_EQ(logging_context, xnn_status_success,
-                          xnn_define_tensor_value(
-                              subgraph, xnn_datatype_fp32, 0, nullptr, nullptr,
-                              XNN_INVALID_VALUE_ID, 0, &fc2_out_id));
         TF_LITE_ENSURE_EQ(
             logging_context, xnn_status_success,
-            xnn_define_fully_connected(
-                subgraph, default_out_min, default_out_max, probs_id,
-                reshape_dims_v_out_id, XNN_INVALID_VALUE_ID, fc2_out_id, 0));
+            xnn_define_tensor_value(subgraph, xnn_datatype_fp32, /*num_dims=*/0,
+                                    /*dims=*/nullptr, nullptr,
+                                    XNN_INVALID_VALUE_ID, 0, &fc2_out_id));
+        TF_LITE_ENSURE_EQ(logging_context, xnn_status_success,
+                          xnn_define_fully_connected(
+                              subgraph, default_out_min, default_out_max,
+                              probs_id, reshape_dims_v_out_id,
+                              XNN_INVALID_VALUE_ID, fc2_out_id, /*flags=*/0));
       }
       // [B, N, T, H] -> BTNH
       // Permute(fc2_out_id, {0, 2, 1, 3}) -> output tensor
       std::vector<size_t> permute_fc = {0, 2, 1, 3};
       const xnn_status status = xnn_define_static_transpose(
           subgraph, permute_fc.size(), permute_fc.data(), fc2_out_id, output_id,
-          0);
+          /*flags=*/0);
       if (status != xnn_status_success) {
         TF_LITE_KERNEL_LOG(logging_context, "failed to delegate %s node #%d",
                            "odml.scaled_dot_product_attention", node_index);
