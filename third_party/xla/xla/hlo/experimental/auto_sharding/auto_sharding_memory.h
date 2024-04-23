@@ -18,9 +18,10 @@ limitations under the License.
 
 #include <cstdint>
 #include <functional>
+#include <utility>
 #include <vector>
 
-#include "absl/container/flat_hash_set.h"
+#include "absl/container/btree_set.h"
 #include "tsl/platform/protobuf.h"
 
 namespace xla {
@@ -43,16 +44,18 @@ namespace spmd {
 // to model some new groups (4, 5, and 6) formed from the others.
 class MemoryTermReducer {
  public:
-  int64_t Reduce(
+  // Returns the number of memory terms before and after the reduction.
+  std::pair<int64_t, int64_t> Reduce(
       int64_t num_lives, int64_t num_primitives,
-      std::function<tsl::protobuf::RepeatedField<int64_t>(int64_t)>  // NOLINT
+      const std::function<
+          tsl::protobuf::RepeatedField<int64_t>(int64_t)>&  // NOLINT
           live);
   const std::vector<std::vector<int64_t>>& GetReducedLive() const;
-  const std::vector<absl::flat_hash_set<int64_t>>& GetReducedGroups() const;
+  const std::vector<absl::btree_set<int64_t>>& GetReducedGroups() const;
 
  private:
   std::vector<std::vector<int64_t>> reduced_live_;
-  std::vector<absl::flat_hash_set<int64_t>> reduced_groups_;
+  std::vector<absl::btree_set<int64_t>> reduced_groups_;
 };
 
 }  // namespace spmd
