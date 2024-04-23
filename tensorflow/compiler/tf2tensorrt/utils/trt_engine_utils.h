@@ -42,7 +42,10 @@ ExecutionContext CreateExecutionContext(nvinfer1::ICudaEngine* cuda_engine);
 Status SetTrtEngineInputs(nvinfer1::ICudaEngine* cuda_engine,
                           nvinfer1::IExecutionContext* execution_context,
                           const int trt_profile_idx,
-                          std::vector<void*>& buffers, bool use_implicit_batch,
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
+                          std::vector<void*>& buffers,
+#endif
+                          bool use_implicit_batch,
                           int num_batch,
                           const TrtShapeOptimizationProfile& profiles,
                           OpKernelContext* ctx = nullptr,
@@ -63,7 +66,10 @@ Status GetTrtBindingShape(const nvinfer1::ICudaEngine* cuda_engine,
 // the Tensors in outputs are already allocated.
 Status SetTrtEngineOutputs(nvinfer1::ICudaEngine* cuda_engine,
                            nvinfer1::IExecutionContext* execution_context,
-                           int trt_profile_idx, std::vector<void*>& buffers,
+                           int trt_profile_idx,
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
+                           std::vector<void*>& buffers,
+#endif
                            bool use_implicit_batch, int batch_size = 0,
                            OpKernelContext* ctx = nullptr,
                            DataVec* outputs = nullptr);
@@ -71,7 +77,10 @@ Status SetTrtEngineOutputs(nvinfer1::ICudaEngine* cuda_engine,
 // Enqueues TensorRT inference job. The batch_size argument is only relevant in
 // implicit batch mode.
 Status TrtEnqueue(nvinfer1::IExecutionContext* execution_context,
-                  std::vector<void*>& buffers, cudaStream_t stream,
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
+                  std::vector<void*>& buffers,
+#endif
+                  cudaStream_t stream,
                   bool use_implicit_batch, int batch_size = 1);
 
 }  // namespace tensorrt

@@ -1014,6 +1014,10 @@ TEST_F(ConverterTest, CreateConstantLayer) {
 
 class ConvertGraphDefToEngineTest : public ::testing::Test {
  public:
+  ConvertGraphDefToEngineTest() {
+    runtime_.reset(nvinfer1::createInferRuntime(logger_));
+  }
+
   Status RunConvertGraphDefToEngine(Scope* s) {
     GraphDef gdef;
     TF_EXPECT_OK(s->ToGraphDef(&gdef));
@@ -1038,13 +1042,15 @@ class ConvertGraphDefToEngineTest : public ::testing::Test {
     return ConvertGraphDefToEngine(
         gdef, /*ctx=*/nullptr, TrtPrecisionMode::FP32, /*max_batch_size=*/1,
         /*max_workspace_size_bytes=*/64 << 20, input_shapes, &logger_,
-        /*allocator=*/nullptr, /*calibrator=*/nullptr, &engine_,
+        /*allocator=*/nullptr, runtime_.get(),
+        /*calibrator=*/nullptr, &engine_,
         /*use_calibration=*/false, /*use_implicit_batch=*/true,
         /*convert_successfully=*/nullptr, /*profiles=*/nullptr,
         "TRTEngineOp_000_000", /*use_explicit_precision=*/false);
   }
 
  protected:
+  TrtUniquePtrType<nvinfer1::IRuntime> runtime_;
   TrtUniquePtrType<nvinfer1::ICudaEngine> engine_;
 
  private:
@@ -1130,6 +1136,7 @@ class OpConverterTest : public ::testing::Test {
     // Destroy existing TRT objects in a proper order.
     converter_.reset(nullptr);
     engine_.reset(nullptr);
+    runtime_.reset(nullptr);
 
     // Re-create them in proper order.
     converter_ =
@@ -1143,6 +1150,8 @@ class OpConverterTest : public ::testing::Test {
 
     // Reset other related artifacts.
     scope_ = Scope::NewRootScope();
+
+    runtime_.reset(nvinfer1::createInferRuntime(logger_));
   }
 
   // Constructs a flat tensor with 'vals' in Unified Memory.
@@ -1228,18 +1237,32 @@ class OpConverterTest : public ::testing::Test {
 
   void CheckDataTypeMatches(const DataVec& datas) {
     if (VLOG_IS_ON(2)) {
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
       int nbBindings = engine_->getNbBindings();
+#else
+      int nbBindings = engine_->getNbIOTensors();
+#endif
       VLOG(2) << "Number of engine bindings: " << nbBindings;
       for (int i = 0; i < nbBindings; i++) {
-        VLOG(2) << "Binding " << i << " name: " << engine_->getBindingName(i);
+        VLOG(2) << "Binding " << i << " name: " <<
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
+            engine_->getBindingName(i);
+#else
+            engine_->getIOTensorName(i);
+#endif
       }
     }
     for (const auto& data : datas) {
       VLOG(2) << "Checking if data type matches for tensor " << data.name;
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
       const int input_index = engine_->getBindingIndex(data.name.c_str());
       ASSERT_NE(-1, input_index);
       const nvinfer1::DataType trt_dtype =
           engine_->getBindingDataType(input_index);
+#else
+      const nvinfer1::DataType trt_dtype =
+          engine_->getTensorDataType(data.name.c_str());
+#endif
       DataType tf_type;
       TF_ASSERT_OK(TrtTypeToTfType(trt_dtype, &tf_type));
       ASSERT_EQ(data.tensor.dtype(), tf_type)
@@ -1285,7 +1308,7 @@ class OpConverterTest : public ::testing::Test {
         converter_->BuildCudaEngine(&engine_,
                                     /*max_batch_size=*/batch_size,
                                     /*max_workspace_size_bytes=*/1 << 26,
-                                    /*allocator=*/nullptr,
+                                    /*allocator=*/nullptr, runtime_.get(),
                                     /*calibrator=*/nullptr,
                                     /*profiles=*/&profiles));
     CHECK_NOTNULL(engine_.get());
@@ -1295,7 +1318,12 @@ class OpConverterTest : public ::testing::Test {
     const int num_bindings = input_data.size() + output_data->size();
     std::vector<void*> buffers(num_bindings);
 
-    if (engine_->getNbBindings() != num_bindings) {
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
+    const int actual_num_bindings = engine_->getNbBindings();
+#else
+    const int actual_num_bindings = engine_->getNbIOTensors();
+#endif
+    if (actual_num_bindings != num_bindings) {
       return errors::Internal("Number of bindings do not match");
     }
     // Since we have only 1 optimization profile (which is enabled by default)
@@ -1306,16 +1334,25 @@ class OpConverterTest : public ::testing::Test {
 
     // Prepare input bindings.
     TF_RETURN_IF_ERROR(
-        SetTrtEngineInputs(engine_.get(), execution_context.get(), 0, buffers,
+        SetTrtEngineInputs(engine_.get(), execution_context.get(), 0,
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
+                           buffers,
+#endif
                            converter_->use_implicit_batch(), batch_size,
                            profiles, nullptr, &input_data));
     // Prepare output bindings.
     TF_RETURN_IF_ERROR(SetTrtEngineOutputs(
-        engine_.get(), execution_context.get(), 0, buffers,
+        engine_.get(), execution_context.get(), 0,
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
+        buffers,
+#endif
         converter_->use_implicit_batch(), batch_size, nullptr, output_data));
     // Execute the TRT engine.
-    TF_RETURN_IF_ERROR(TrtEnqueue(execution_context.get(), buffers, stream_,
-                                  converter_->use_implicit_batch(),
+    TF_RETURN_IF_ERROR(TrtEnqueue(execution_context.get(),
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
+                                  buffers,
+#endif
+                                  stream_, converter_->use_implicit_batch(),
                                   batch_size));
     cudaStreamSynchronize(stream_);
     return OkStatus();
@@ -1568,6 +1605,7 @@ class OpConverterTest : public ::testing::Test {
   Logger& logger_ = *Logger::GetLogger();
 
  private:
+  TrtUniquePtrType<nvinfer1::IRuntime> runtime_;
   TrtUniquePtrType<nvinfer1::ICudaEngine> engine_;
   cudaStream_t stream_;
   std::unique_ptr<Allocator> tensor_buffer_allocator_;

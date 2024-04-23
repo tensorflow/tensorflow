@@ -179,7 +179,11 @@ class ConvertTile : public OpConverterBase<ConvertTile> {
     DimsAdapter stride(std::vector<int>(nb_dims, 1));
     auto layer = network->addSlice(input_trt_tensor, start, output_size,
                                    stride.AsTrtDims());
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
     layer->setMode(nvinfer1::SliceMode::kWRAP);
+#else
+    layer->setMode(nvinfer1::SampleMode::kWRAP);
+#endif
     if (target_shape) layer->setInput(2, *target_shape);
 
     converter->SetLayerName(layer, params.node_def.name(), "to_tile");

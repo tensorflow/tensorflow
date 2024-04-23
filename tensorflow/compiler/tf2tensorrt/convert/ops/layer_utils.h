@@ -601,9 +601,9 @@ class TRTNetworkBuilder {
       nvinfer1::ITensor* input, float quantize_scale, float dequantize_scale,
       const std::string& name) {
     TRT_ENSURE(input);
-    if (!IS_TRT_VERSION_GE(8, 0, 0, 0)) {
-      TRT_ENSURE(network_->hasExplicitPrecision());
-    }
+#if !IS_TRT_VERSION_GE(8, 0, 0, 0)
+    TRT_ENSURE(network_->hasExplicitPrecision());
+#endif
     TRT_ENSURE(IS_TRT_VERSION_GE(7, 1, 0, 0));
 
     static int count = 0;
