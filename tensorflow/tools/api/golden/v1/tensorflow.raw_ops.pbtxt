@@ -977,6 +977,10 @@ tf_module {
     argspec: "args=[\'indices_or_row_splits\', \'values\', \'weights\', \'sample_count\', \'combiner\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "ConvertToListOfSparseCoreCooTensors"
+    argspec: "args=[\'indices_or_row_splits\', \'values\', \'weights\', \'sample_count\', \'num_sc_per_chip\', \'row_offset\', \'col_offset\', \'col_shift\', \'num_sc_shards\', \'stacked_table_sample_count\', \'combiner\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "Copy"
     argspec: "args=[\'input\', \'tensor_name\', \'debug_ops_spec\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'[]\', \'None\'], "
   }

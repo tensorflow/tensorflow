@@ -2431,4 +2431,30 @@ def TF_StoreMinibatchStatisticsInFdoOp : TF_Op<"StoreMinibatchStatisticsInFdo", 
   let results = (outs
   );
 }
+
+def TF_ConvertToListOfSparseCoreCooTensorsOp : TF_Op<"ConvertToListOfSparseCoreCooTensors", [Pure, SameVariadicOperandSize, SameVariadicResultSize]> {
+  let summary = "An op which converts the sparse/ragged/dense tensor into a list of COO tensor for each SparseCore.";
+
+  let arguments = (ins
+    TF_Int32Tensor:$indices_or_row_splits,
+    TF_Int32Tensor:$values,
+    TF_Float32Tensor:$weights,
+
+    ConfinedAttr<I64Attr, [IntMinValue<1>]>:$sample_count,
+    ConfinedAttr<I64Attr, [IntMinValue<0>]>:$row_offset,
+    ConfinedAttr<I64Attr, [IntMinValue<0>]>:$col_offset,
+    ConfinedAttr<I64Attr, [IntMinValue<0>]>:$col_shift,
+    ConfinedAttr<I64Attr, [IntMinValue<1>]>:$num_sc_shards,
+    ConfinedAttr<I64Attr, [IntMinValue<1>]>:$stacked_table_sample_count,
+    StrAttr:$combiner
+  );
+
+  let results = (outs
+    Variadic<TF_Int32Tensor>:$row_ids_list,
+    Variadic<TF_Int32Tensor>:$col_ids_list,
+    Variadic<TF_Float32Tensor>:$gains_list
+  );
+
+  TF_DerivedResultSizeAttr num_sc_per_chip = TF_DerivedResultSizeAttr<0>;
+}
 #endif // TF_OPS

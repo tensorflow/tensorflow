@@ -146,6 +146,39 @@ class StoreMinibatchStatisticsInFdoOp : public OpKernel {
   int64_t num_sc_per_chip_;
 };
 
+// TODO(pineapplejuice233): Unify this op with ConvertToListOfCooTensorsV2Op.
+class ConvertToListOfSparseCoreCooTensorsOp : public OpKernel {
+ public:
+  explicit ConvertToListOfSparseCoreCooTensorsOp(OpKernelConstruction* ctx);
+  ~ConvertToListOfSparseCoreCooTensorsOp() override = default;
+  ConvertToListOfSparseCoreCooTensorsOp(
+      const ConvertToListOfSparseCoreCooTensorsOp&) = delete;
+  ConvertToListOfSparseCoreCooTensorsOp& operator=(
+      const ConvertToListOfSparseCoreCooTensorsOp&) = delete;
+
+  void Compute(OpKernelContext* ctx) override;
+
+ private:
+  void WriteToOutputTensor(int32* row_ids, int32* col_ids, float* gains,
+                           int32* row_ids_tensor_ptr, int32* col_ids_tensor_ptr,
+                           float* gains_tensor_ptr, int32_t begin_index,
+                           int32_t end_index, int32_t sc_id,
+                           std::optional<std::vector<float>> gains_rescale);
+  int sample_count_;
+  int num_sc_per_chip_;
+  int per_sc_sample_count_;
+  int row_offset_;
+  int col_offset_;
+  int col_shift_;
+  int num_sc_shards_;
+  int stacked_table_sample_count_;
+  int num_sc_shards_bit_mod_;
+  int num_sc_shards_bit_mod_inv_;
+  int per_sc_row_offset_;
+  int per_sc_stacked_table_sample_count_;
+  std::string combiner_;
+};
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_TPU_KERNELS_SPARSE_CORE_PREPROCESS_OPS_H_
