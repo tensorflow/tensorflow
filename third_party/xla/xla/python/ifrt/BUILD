@@ -42,7 +42,6 @@ cc_library(
         "device.cc",
         "dtype.cc",
         "executable.cc",
-        "future.cc",
         "host_callback.cc",
         "index.cc",
         "index_domain.cc",
