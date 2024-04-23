@@ -1484,11 +1484,20 @@ class MutableBorrowingLiteral : public MutableLiteralBase {
   MutableBorrowingLiteral(MutableLiteralBase* literal);
   MutableBorrowingLiteral(MutableBorrowingLiteral literal,
                           const ShapeIndex& view_root);
+
+  // 'src_buf_ptr' is not owned by this class and must outlive the
+  // lifetime of this class. It points to an appropriately sized buffer with
+  // data interpreted as indicated by 'shape'.
+  // This constructor is only used for array shapes.
   MutableBorrowingLiteral(const char* src_buf_ptr, const Shape& shape);
 
-  // Create a literal from a list of buffers and a shape.
-  // Returns a tuple literal if `shape` is a tuple type.
+  // Similar as above, except to be used for constructing non-nested tuples.
   MutableBorrowingLiteral(absl::Span<char*> src_buf_ptrs, const Shape& shape);
+
+  // Similar as above, except to be used for constructing literals with
+  // potentially nested tuples (same shape as `src_buf_ptrs`) with borrowed
+  // buffers for each shape index.
+  explicit MutableBorrowingLiteral(ShapeTree<char*> src_buf_ptrs);
 
  private:
   const Piece& root_piece() const override { return *root_piece_; };
