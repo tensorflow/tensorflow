@@ -40,7 +40,7 @@ double Histogram::num(size_t bucket) const {
 double Histogram::sum() const { return histogram_proto_.sum(); }
 double Histogram::sum_squares() const { return histogram_proto_.sum_squares(); }
 
-StatusOr<Histogram> Histogram::Subtract(const Histogram& other) const {
+absl::StatusOr<Histogram> Histogram::Subtract(const Histogram& other) const {
   HistogramProto histogram_proto = histogram_proto_;
   if (other.histogram_proto_.bucket_limit().empty() &&
       other.histogram_proto_.bucket().empty()) {
