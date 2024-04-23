@@ -246,6 +246,9 @@ template <class T>
 class PjRtFuture : public internal::PjRtFutureBase<T> {
   using Base = internal::PjRtFutureBase<T>;
 
+  static_assert(!std::is_same_v<T, absl::Status>,
+                "Use PjRtFuture<> specialization for stateless futures");
+
  public:
   // Wrapper for AsyncValueRef<T> that can be used by clients that don't
   // natively use TSL concurrency library.
