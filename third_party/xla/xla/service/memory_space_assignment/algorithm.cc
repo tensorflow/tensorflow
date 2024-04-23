@@ -1939,48 +1939,7 @@ absl::StatusOr<MsaAlgorithm::Result> MsaAlgorithm::AllocateAllocationValues(
           latest_prefetch_time =
               std::min(computation_span.start - 1, latest_prefetch_time);
         }
-        if (hlo_use.instruction->opcode() == HloOpcode::kWhile) {
-          // Given an example while loop and flattened schedule (logical times
-          // shown on the left):
-          //
-          // 0:  a = ...
-          // 1:  ...
-          //     cond {
-          // 2:   p = param(0)
-          // 3:   ...
-          //     }
-          //     body {
-          // 4:   p = param(0)
-          // 5:   ...
-          // 6:   ROOT ...
-          //     }
-          // 7:  w = while(a), body=body, cond=cond
-          //
-          // When processing "a" (time 0) and its while use (time 7), we update
-          // the interval to time 0-4. This is so that the remaining interval
-          // (5-6) can be allocated separately and this buffer doesn't waste
-          // alternate memory space within the while loop body.
-          HloComputation* while_body = hlo_use.instruction->while_body();
-          // We require while body ROOTs to be the last in the schedule.
-          CHECK_EQ(instruction_schedule.at(while_body->root_instruction()) + 1,
-                   instruction_schedule.at(hlo_use.instruction))
-              << "While body ROOTs need to be the last in the schedule! "
-                 "Please run RootInstructionSinker.";
-          // Replace the use time with the parameter time so that we can decide
-          // on alternate memory allocations within the while loop body when we
-          // look at uses within the while loop body.
-          use_time =
-              instruction_schedule.at(while_body->parameter_instruction(0));
-        } else if (hlo_use.instruction->opcode() == HloOpcode::kConditional) {
-          // Replace the use time with the earliest parameter of called
-          // computations.
-          for (const HloComputation* called_computation :
-               hlo_use.instruction->called_computations()) {
-            use_time = std::min(
-                use_time, instruction_schedule.at(
-                              called_computation->parameter_instruction(0)));
-          }
-        }
+        use_time = GetCorrectedUseTime(hlo_use);
       }
 
       // Add a required assignment in default memory if the use not allowed in
@@ -2859,6 +2818,56 @@ void MsaAlgorithm::AllocateReservedScopedAllocations() {
   ClearPendingChunks();
 }
 
+int64_t MsaAlgorithm::GetCorrectedUseTime(const HloUse& use) const {
+  const absl::flat_hash_map<const HloInstruction*, int64_t>& schedule =
+      hlo_live_range_.instruction_schedule();
+  if (use.instruction->opcode() == HloOpcode::kWhile) {
+    // Given an example while loop and flattened schedule (logical times shown
+    // on the left):
+    //
+    // 0:  a = ...
+    // 1:  ...
+    //     cond {
+    // 2:   p = param(0)
+    // 3:   ...
+    //     }
+    //     body {
+    // 4:   p = param(0)
+    // 5:   ...
+    // 6:   ROOT ...
+    //     }
+    // 7:  w = while(a), body=body, cond=cond
+    //
+    // When processing "a" (time 0) and its while use (time 7), we update the
+    // interval to time 0-4. This is so that the remaining interval (5-6) can be
+    // allocated separately and this buffer doesn't waste alternate memory space
+    // within the while loop body.
+    HloComputation* while_body = use.instruction->while_body();
+    // We require while body ROOTs to be the last in the schedule.
+    CHECK_EQ(schedule.at(while_body->root_instruction()) + 1,
+             schedule.at(use.instruction))
+        << "While body ROOTs need to be the last in the schedule! "
+           "Please run RootInstructionSinker.";
+    // The corrected use is the parameter time. This is so that we can decide on
+    // alternate memory allocations within the while loop body when we look at
+    // uses within the while loop body.
+    return schedule.at(while_body->parameter_instruction(0));
+  }
+  if (use.instruction->opcode() == HloOpcode::kConditional) {
+    // The corrected use time is the earliest parameter of the called
+    // computations.
+    int64_t use_time = std::numeric_limits<int64_t>::max();
+    for (const HloComputation* called_computation :
+         use.instruction->called_computations()) {
+      use_time = std::min(
+          use_time, schedule.at(called_computation->parameter_instruction(0)));
+    }
+    return use_time;
+  }
+  // Otherwise, just return the time of the use instruction.
+  return hlo_live_range_.instruction_schedule().at(use.instruction);
+}
+
 std::optional<MsaAlgorithm::RequiredMemoryAssignment>
 MsaAlgorithm::RequiredMemoryAssignmentAt(const HloValue* buffer,
                                          int64_t time) const {
@@ -2967,8 +2976,7 @@ void MsaAlgorithm::AddRequiredAssignment(const HloUse& use,
                                          bool add_to_pending) {
   const HloValue* value = &alias_analysis_.dataflow_analysis().GetUniqueValueAt(
       use.instruction->operand(use.operand_number), use.operand_index);
-  int64_t instruction_time =
-      hlo_live_range_.instruction_schedule().at(use.instruction);
+  int64_t instruction_time = GetCorrectedUseTime(use);
   AddRequiredAssignment(value, use.instruction, memory_space, instruction_time,
                         offset, add_to_pending);
 }
