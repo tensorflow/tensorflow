@@ -102,6 +102,26 @@ class AsyncValueRef {
     //   (1) This is no-op cast even if concrete payload has different type.
     //   (2) Type id of a concrete payload matches Derived type id.
     //   (3) Payload is for a special case of ErrorAsyncValue.
+    //
+    // IMPORTANT: Because AsyncValue can be in unconstructed state we can't rely
+    // on `dynamic_cast` (and for similar reason on LLVM casts) and have to
+    // rely on type id stored in the async value itself. The downside of this
+    // approach that we might return false negatives.
+    //
+    // Example:
+    //
+    //   struct A {};
+    //   struct B : public A {};
+    //   struct C : public C {}
+    //
+    //   AsyncValueRef<A> ref = MakeUnconstructedAsyncValueRef<C>();
+    //
+    // In this example `ref.Isa<B>()` will return `false` although `C` can be
+    // safely casted to a pointer to its base type `B`, however type id does
+    // not have any details about type relationship. This can be fixed by adding
+    // extra bits of information to type table and by requiring participating
+    // types to register their relationship to base types in terms of their type
+    // ids, however there is no such need in practice (so far).
     return value_ && (std::is_same_v<Derived, T> ||                     // (1)
                       value_->IsType<Derived>() ||                      // (2)
                       value_->IsType<DummyValueForErrorAsyncValue>());  // (3)
@@ -498,9 +518,6 @@ RCReference<ErrorAsyncValue> MakeErrorAsyncValueRef(absl::Status status);
 ABSL_DEPRECATED("Use the error async value constructor that takes absl::Status")
 RCReference<ErrorAsyncValue> MakeErrorAsyncValueRef(std::string_view message);
 
-// Construct an empty IndirectAsyncValue, not forwarding to anything.
-RCReference<IndirectAsyncValue> MakeIndirectAsyncValue();
-
 //===----------------------------------------------------------------------===//
 // Functions for awaiting on the async values.
 //===----------------------------------------------------------------------===//
@@ -634,6 +651,15 @@ AsyncValueRef<T> MakeAvailableAsyncValueRef(Args&&... args) {
       internal::AllocateAndConstruct<internal::ConcreteAsyncValue<T>>(
           typename internal::ConcreteAsyncValue<T>::ConcretePayload{},
           std::forward<Args>(args)...)));
+}
+
+// Construct an empty IndirectAsyncValue, not forwarding to anything.
+RCReference<IndirectAsyncValue> MakeIndirectAsyncValue();
+
+// Construct an empty IndirectAsyncValue with a known type.
+template <typename T>
+RCReference<IndirectAsyncValue> MakeIndirectAsyncValue() {
+  return TakeRef(internal::AllocateAndConstruct<TypedIndirectAsyncValue<T>>());
 }
 
 //===----------------------------------------------------------------------===//

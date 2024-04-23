@@ -330,6 +330,17 @@ TEST(AsyncValuePtrTest, Isa) {
   indirect->ForwardTo(c_ref.CopyRCRef());
   EXPECT_TRUE(Isa<A>(c_indirect.AsPtr()));
   EXPECT_TRUE(Isa<C>(c_indirect.AsPtr()));
+
+  // Typed indirect async value correctly handled by Isa<T>.
+  auto typed_indirect = MakeIndirectAsyncValue<C>();
+  AsyncValueRef<A> c_typed_indirect(indirect);
+  EXPECT_TRUE(Isa<A>(c_typed_indirect.AsPtr()));
+  EXPECT_TRUE(Isa<C>(c_typed_indirect.AsPtr()));
+
+  // Forwarding does not change anything for typed indirect async value.
+  typed_indirect->ForwardTo(c_ref.CopyRCRef());
+  EXPECT_TRUE(Isa<A>(c_typed_indirect.AsPtr()));
+  EXPECT_TRUE(Isa<C>(c_typed_indirect.AsPtr()));
 }
 
 TEST(AsyncValuePtrTest, DynCast) {
@@ -385,6 +396,17 @@ TEST(AsyncValuePtrTest, DynCast) {
   indirect->ForwardTo(c_ref.CopyRCRef());
   EXPECT_TRUE(DynCast<A>(c_indirect.AsPtr()));
   EXPECT_TRUE(DynCast<C>(c_indirect.AsPtr()));
+
+  // Typed indirect async value correctly handled by DynCast<T>.
+  auto typed_indirect = MakeIndirectAsyncValue<C>();
+  AsyncValueRef<A> c_typed_indirect(indirect);
+  EXPECT_TRUE(DynCast<A>(c_typed_indirect.AsPtr()));
+  EXPECT_TRUE(DynCast<C>(c_typed_indirect.AsPtr()));
+
+  // Forwarding does not change anything for typed indirect async value.
+  typed_indirect->ForwardTo(c_ref.CopyRCRef());
+  EXPECT_TRUE(DynCast<A>(c_typed_indirect.AsPtr()));
+  EXPECT_TRUE(DynCast<C>(c_typed_indirect.AsPtr()));
 }
 
 TEST(AsyncValuePtrTest, Cast) {
@@ -428,6 +450,17 @@ TEST(AsyncValuePtrTest, Cast) {
   indirect->ForwardTo(c_ref.CopyRCRef());
   EXPECT_TRUE(Cast<A>(c_indirect.AsPtr()));
   EXPECT_TRUE(Cast<C>(c_indirect.AsPtr()));
+
+  // Typed indirect async value correctly handled by Cast<T>.
+  auto typed_indirect = MakeIndirectAsyncValue<C>();
+  AsyncValueRef<A> c_typed_indirect(indirect);
+  EXPECT_TRUE(Cast<A>(c_typed_indirect.AsPtr()));
+  EXPECT_TRUE(Cast<C>(c_typed_indirect.AsPtr()));
+
+  // Forwarding does not change anything for typed indirect async value.
+  typed_indirect->ForwardTo(c_ref.CopyRCRef());
+  EXPECT_TRUE(Cast<A>(c_typed_indirect.AsPtr()));
+  EXPECT_TRUE(Cast<C>(c_typed_indirect.AsPtr()));
 }
 
 //===----------------------------------------------------------------------===//

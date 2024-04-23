@@ -166,17 +166,18 @@ void IndirectAsyncValue::ForwardTo(RCReference<AsyncValue> value) {
       concrete_value->AddRef();
       indirect_value->DropRef();
     }
+    // If indirect async value was created for any particular type id, check
+    // that forwarded to value has exactly the same type id.
+    DCHECK(type_id_ == kUnknownTypeId || type_id_ == concrete_value->type_id_)
+        << "IndirectAsyncValue::ForwardTo value has an unexpected type id";
     value_ = concrete_value;
     type_id_ = concrete_value->type_id_;
     NotifyAvailable(s);
   } else {
-    // Copy value here because the evaluation order of
-    // value->AndThen(std::move(value)) is not defined prior to C++17.
-    AsyncValue* value2 = value.get();
-    value2->AndThen(
-        [this2 = FormRef(this), value2 = std::move(value)]() mutable {
-          this2->ForwardTo(std::move(value2));
-        });
+    AsyncValue* av = value.get();
+    av->AndThen([self = FormRef(this), value = std::move(value)]() mutable {
+      self->ForwardTo(std::move(value));
+    });
   }
 }
 
