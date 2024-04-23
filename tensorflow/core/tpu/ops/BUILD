@@ -189,6 +189,7 @@ cc_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/status",
         "@local_xla//xla:util",
     ],
     alwayslink = 1,

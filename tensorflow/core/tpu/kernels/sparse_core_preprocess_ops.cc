@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/tpu/kernels/sparse_core_preprocess_ops.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -25,6 +26,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/log/log.h"
+#include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
@@ -44,8 +46,11 @@ limitations under the License.
 #include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/core/tpu/kernels/sparse_core_ops_stats_handler.h"
 #include "tensorflow/core/tpu/kernels/sparse_core_ops_utils.h"
+#include "tsl/profiler/lib/traceme.h"
 
 namespace tensorflow {
+
+bool IsPowerOfTwo(int32_t x) { return x > 0 && (x & (x - 1)) == 0; }
 
 Status ValidateInputs(const Tensor& indices_or_row_splits, const Tensor& values,
                       const Tensor& weights, int sample_count) {
@@ -114,6 +119,8 @@ Status ComputeRowIdsBeforePadding(const Tensor& indices_or_row_splits,
   if (indices_or_row_splits.NumElements() == 0) {
     // Dense tensor to COO format.
     // Row ids are just the index ids.
+    // Note: this path is also taken when the input is a ragged/sparse tensor
+    // with 0 elements. In that case, the row_ids will just be empty as well.
     for (int32 i = 0; i < total_id_count; ++i) {
       *(row_ids_before_padding + i) = i;
     }
@@ -1043,5 +1050,207 @@ REGISTER_KERNEL_BUILDER(
     Name("StoreMinibatchStatisticsInFdo").Device(DEVICE_CPU),
     StoreMinibatchStatisticsInFdoOp)
 #endif
+
+ConvertToListOfSparseCoreCooTensorsOp::ConvertToListOfSparseCoreCooTensorsOp(
+    OpKernelConstruction* ctx)
+    : OpKernel(ctx) {
+  OP_REQUIRES_OK(ctx, ctx->GetAttr("sample_count", &sample_count_));
+  OP_REQUIRES_OK(ctx, ctx->GetAttr("combiner", &combiner_));
+  OP_REQUIRES_OK(ctx, ctx->GetAttr("num_sc_per_chip", &num_sc_per_chip_));
+  OP_REQUIRES_OK(ctx, ValidateInputCombiner(combiner_));
+
+  OP_REQUIRES_OK(ctx, ctx->GetAttr("row_offset", &row_offset_));
+  OP_REQUIRES_OK(ctx, ctx->GetAttr("col_offset", &col_offset_));
+  OP_REQUIRES_OK(ctx, ctx->GetAttr("col_shift", &col_shift_));
+  OP_REQUIRES_OK(ctx, ctx->GetAttr("num_sc_shards", &num_sc_shards_));
+  OP_REQUIRES_OK(ctx, ctx->GetAttr("stacked_table_sample_count",
+                                   &stacked_table_sample_count_));
+
+  OP_REQUIRES(
+      ctx, IsPowerOfTwo(num_sc_shards_),
+      absl::InvalidArgumentError(absl::StrCat("num_sc_shards ", num_sc_shards_,
+                                              " is not a power of two.")));
+
+  int32_t num_sc_shards_bit = std::log2(num_sc_shards_);
+  num_sc_shards_bit_mod_ = (1 << num_sc_shards_bit) - 1;
+  num_sc_shards_bit_mod_inv_ = ~num_sc_shards_bit_mod_;
+
+  per_sc_sample_count_ = sample_count_ / num_sc_per_chip_;
+  per_sc_row_offset_ = row_offset_ / num_sc_per_chip_;
+  per_sc_stacked_table_sample_count_ =
+      stacked_table_sample_count_ / num_sc_per_chip_;
+}
+
+void ConvertToListOfSparseCoreCooTensorsOp::Compute(OpKernelContext* ctx) {
+  const Tensor* indices_or_row_splits;
+  OP_REQUIRES_OK(ctx,
+                 ctx->input("indices_or_row_splits", &indices_or_row_splits));
+  const Tensor* values;
+  OP_REQUIRES_OK(ctx, ctx->input("values", &values));
+  const Tensor* weights;
+  OP_REQUIRES_OK(ctx, ctx->input("weights", &weights));
+
+  OP_REQUIRES_OK(ctx, ValidateInputs(*indices_or_row_splits, *values, *weights,
+                                     sample_count_));
+
+  const int32 total_id_count = values->NumElements();
+
+  auto row_ids_before_dedup =
+      absl::make_unique_for_overwrite<int32[]>(total_id_count);
+
+  OP_REQUIRES_OK(
+      ctx, ComputeRowIdsBeforePadding(*indices_or_row_splits, total_id_count,
+                                      row_ids_before_dedup.get()));
+
+  // Compute the rescaled gains for non-sum combiners.
+  std::optional<std::vector<float>> gains_rescale =
+      combiner_ != "sum"
+          ? std::make_optional<std::vector<float>>(sample_count_, 0.0f)
+          : std::nullopt;
+
+  auto combiner_scale_contribution_fn =
+      GetCombinerScaleContributionFunction(combiner_);
+
+  auto combiner_scale_transform_fn =
+      GetCombinerScaleTransformFunction(combiner_);
+
+  const int32* row_ids_before_dedup_ptr = row_ids_before_dedup.get();
+  const int32* values_ptr = values->flat<int32>().data();
+  const float* weights_ptr = weights->flat<float>().data();
+
+  // Dedup the ids within one sample by just checking the adjacent ids. This
+  // will NOT result in a full deduplication.
+  std::vector<int32> row_ids;
+  std::vector<int32> col_ids;
+  std::vector<float> gains;
+  row_ids.reserve(total_id_count);
+  col_ids.reserve(total_id_count);
+  gains.reserve(total_id_count);
+
+  std::vector<int32_t> per_sc_token_count(num_sc_per_chip_, 0);
+
+  // TODO(pineapplejuice233): unify the two identical for loops if possible.
+  if (weights->NumElements() == 1) {
+    // Broadcast the same weight to all tokens.
+    const float gain = *weights_ptr;
+    const float rescaled_gain = combiner_scale_contribution_fn(gain);
+    for (int token_id = 0; token_id < total_id_count; ++token_id) {
+      const int32 row_id = *(row_ids_before_dedup_ptr + token_id);
+      const int32 col_id = *(values_ptr + token_id);
+      if (gains_rescale.has_value()) {
+        // Compute the gain rescale before doing the dedup.
+        (*gains_rescale)[row_id] += rescaled_gain;
+      }
+      if (!row_ids.empty() && row_ids.back() == row_id &&
+          col_ids.back() == col_id) {
+        gains.back() = gains.back() + gain;
+      } else {
+        row_ids.push_back(row_id);
+        col_ids.push_back(col_id);
+        gains.push_back(gain);
+        ++per_sc_token_count[row_id / per_sc_sample_count_];
+      }
+    }
+  } else {
+    for (int token_id = 0; token_id < total_id_count; ++token_id) {
+      const int32 row_id = *(row_ids_before_dedup_ptr + token_id);
+      const int32 col_id = *(values_ptr + token_id);
+      const float gain = *(weights_ptr + token_id);
+      if (gains_rescale.has_value()) {
+        // Compute the gain rescale before doing the dedup.
+        (*gains_rescale)[row_id] += combiner_scale_contribution_fn(gain);
+      }
+      if (!row_ids.empty() && row_ids.back() == row_id &&
+          col_ids.back() == col_id) {
+        gains.back() = gains.back() + gain;
+      } else {
+        row_ids.push_back(row_id);
+        col_ids.push_back(col_id);
+        gains.push_back(gain);
+        ++per_sc_token_count[row_id / per_sc_sample_count_];
+      }
+    }
+  }
+
+  OpOutputList gains_output_list;
+  OpOutputList row_ids_output_list;
+  OpOutputList col_ids_output_list;
+
+  OP_REQUIRES_OK(ctx, ctx->output_list("gains_list", &gains_output_list));
+  OP_REQUIRES_OK(ctx, ctx->output_list("row_ids_list", &row_ids_output_list));
+  OP_REQUIRES_OK(ctx, ctx->output_list("col_ids_list", &col_ids_output_list));
+
+  int32_t previous_index = 0;
+
+  if (gains_rescale.has_value()) {
+    absl::c_transform(*gains_rescale, gains_rescale->begin(),
+                      combiner_scale_transform_fn);
+  }
+  for (int i = 0; i < num_sc_per_chip_; ++i) {
+    Tensor* gains_tensor;
+    OP_REQUIRES_OK(
+        ctx, gains_output_list.allocate(i, TensorShape({per_sc_token_count[i]}),
+                                        &gains_tensor));
+    Tensor* row_ids_tensor;
+    OP_REQUIRES_OK(
+        ctx, row_ids_output_list.allocate(
+                 i, TensorShape({per_sc_token_count[i]}), &row_ids_tensor));
+    Tensor* col_ids_tensor;
+    OP_REQUIRES_OK(
+        ctx, col_ids_output_list.allocate(
+                 i, TensorShape({per_sc_token_count[i]}), &col_ids_tensor));
+
+    int32* row_ids_tensor_ptr = row_ids_tensor->flat<int32>().data();
+    int32* col_ids_tensor_ptr = col_ids_tensor->flat<int32>().data();
+    float* gains_tensor_ptr = gains_tensor->flat<float>().data();
+
+    WriteToOutputTensor(
+        row_ids.data(), col_ids.data(), gains.data(), row_ids_tensor_ptr,
+        col_ids_tensor_ptr, gains_tensor_ptr, previous_index,
+        previous_index + per_sc_token_count[i], i, gains_rescale);
+    previous_index += per_sc_token_count[i];
+  }
+}
+
+void ConvertToListOfSparseCoreCooTensorsOp::WriteToOutputTensor(
+    int32* row_ids, int32* col_ids, float* gains, int32* row_ids_tensor_ptr,
+    int32* col_ids_tensor_ptr, float* gains_tensor_ptr, int32_t begin_index,
+    int32_t end_index, int32_t sc_id,
+    std::optional<std::vector<float>> gains_rescale) {
+  tsl::profiler::TraceMe traceme(
+      "ConvertToListOfSparseCoreCooTensorsOp::WriteToOutputTensor");
+  if (gains_rescale.has_value()) {
+    // Rescale the gain so that we can always do 'sum' combine on it later.
+    for (int token_id = 0; token_id < end_index - begin_index; ++token_id) {
+      *(row_ids_tensor_ptr + token_id) =
+          *(row_ids + token_id + begin_index) % per_sc_sample_count_ +
+          per_sc_row_offset_ + per_sc_stacked_table_sample_count_ * sc_id;
+      *(col_ids_tensor_ptr + token_id) =
+          ((*(col_ids + token_id + begin_index) + col_shift_) &
+           num_sc_shards_bit_mod_) +
+          (*(col_ids + token_id + begin_index) & num_sc_shards_bit_mod_inv_) +
+          col_offset_;
+      *(gains_tensor_ptr + token_id) =
+          *(gains + token_id + begin_index) *
+          (*gains_rescale)[*(row_ids + token_id + begin_index)];
+    }
+  } else {
+    std::transform(row_ids + begin_index, row_ids + end_index,
+                   row_ids_tensor_ptr, [this, &sc_id](int32 row_id) -> int32 {
+                     return row_id % per_sc_sample_count_ + per_sc_row_offset_ +
+                            per_sc_stacked_table_sample_count_ * sc_id;
+                   });
+    std::transform(col_ids + begin_index, col_ids + end_index,
+                   col_ids_tensor_ptr, [this](int32 col_id) -> int32 {
+                     return ((col_id + col_shift_) & num_sc_shards_bit_mod_) +
+                            (col_id & num_sc_shards_bit_mod_inv_) + col_offset_;
+                   });
+    std::copy(gains + begin_index, gains + end_index, gains_tensor_ptr);
+  }
+}
+
+REGISTER_KERNEL_BUILDER(
+    Name("ConvertToListOfSparseCoreCooTensors").Device(DEVICE_CPU),
+    ConvertToListOfSparseCoreCooTensorsOp)
 
 }  // namespace tensorflow

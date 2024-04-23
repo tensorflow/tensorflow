@@ -12,6 +12,10 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <cstdint>
+#include <vector>
+
+#include "absl/status/status.h"
 #include "xla/util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
@@ -152,4 +156,31 @@ REGISTER_OP("StoreMinibatchStatisticsInFdo")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       return absl::OkStatus();
     });
+
+REGISTER_OP("ConvertToListOfSparseCoreCooTensors")
+    .Input("indices_or_row_splits: int32")
+    .Input("values: int32")
+    .Input("weights: float32")
+    .Output("row_ids_list: num_sc_per_chip * int32")
+    .Output("col_ids_list: num_sc_per_chip * int32")
+    .Output("gains_list: num_sc_per_chip * float32")
+    .Attr("sample_count: int >= 1")
+    .Attr("num_sc_per_chip: int >= 1")
+    .Attr("row_offset: int >= 0")
+    .Attr("col_offset: int >= 0")
+    .Attr("col_shift: int >= 0")
+    .Attr("num_sc_shards: int >= 1")
+    .Attr("stacked_table_sample_count: int >= 1")
+    .Attr("combiner: string")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      int32_t num_sc_per_chip;
+      TF_RETURN_IF_ERROR(c->GetAttr("num_sc_per_chip", &num_sc_per_chip));
+      std::vector<shape_inference::ShapeHandle> output_id_shape(
+          num_sc_per_chip, c->UnknownShapeOfRank(1));
+      TF_RETURN_IF_ERROR(c->set_output("row_ids_list", output_id_shape));
+      TF_RETURN_IF_ERROR(c->set_output("col_ids_list", output_id_shape));
+      TF_RETURN_IF_ERROR(c->set_output("gains_list", output_id_shape));
+      return absl::OkStatus();
+    });
+
 }  // namespace tensorflow

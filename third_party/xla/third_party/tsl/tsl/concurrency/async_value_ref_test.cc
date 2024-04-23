@@ -401,6 +401,17 @@ TEST(AsyncValueRefTest, Isa) {
   indirect->ForwardTo(c_ref.CopyRCRef());
   EXPECT_TRUE(Isa<A>(c_indirect));
   EXPECT_TRUE(Isa<C>(c_indirect));
+
+  // Typed indirect async value correctly handled by Isa<T>.
+  auto typed_indirect = MakeIndirectAsyncValue<C>();
+  AsyncValueRef<A> c_typed_indirect(indirect);
+  EXPECT_TRUE(Isa<A>(c_typed_indirect));
+  EXPECT_TRUE(Isa<C>(c_typed_indirect));
+
+  // Forwarding does not change anything for typed indirect async value.
+  typed_indirect->ForwardTo(c_ref.CopyRCRef());
+  EXPECT_TRUE(Isa<A>(c_typed_indirect));
+  EXPECT_TRUE(Isa<C>(c_typed_indirect));
 }
 
 TEST(AsyncValueRefTest, DynCast) {
@@ -456,6 +467,17 @@ TEST(AsyncValueRefTest, DynCast) {
   indirect->ForwardTo(c_ref.CopyRCRef());
   EXPECT_TRUE(DynCast<A>(c_indirect));
   EXPECT_TRUE(DynCast<C>(c_indirect));
+
+  // Typed indirect async value correctly handled by DynCast<T>.
+  auto typed_indirect = MakeIndirectAsyncValue<C>();
+  AsyncValueRef<A> c_typed_indirect(indirect);
+  EXPECT_TRUE(DynCast<A>(c_typed_indirect));
+  EXPECT_TRUE(DynCast<C>(c_typed_indirect));
+
+  // Forwarding does not change anything for typed indirect async value.
+  typed_indirect->ForwardTo(c_ref.CopyRCRef());
+  EXPECT_TRUE(DynCast<A>(c_typed_indirect));
+  EXPECT_TRUE(DynCast<C>(c_typed_indirect));
 }
 
 TEST(AsyncValueRefTest, Cast) {
@@ -499,6 +521,17 @@ TEST(AsyncValueRefTest, Cast) {
   indirect->ForwardTo(c_ref.CopyRCRef());
   EXPECT_TRUE(Cast<A>(c_indirect));
   EXPECT_TRUE(Cast<C>(c_indirect));
+
+  // Typed indirect async value correctly handled by Cast<T>.
+  auto typed_indirect = MakeIndirectAsyncValue<C>();
+  AsyncValueRef<A> c_typed_indirect(indirect);
+  EXPECT_TRUE(Cast<A>(c_typed_indirect));
+  EXPECT_TRUE(Cast<C>(c_typed_indirect));
+
+  // Forwarding does not change anything for typed indirect async value.
+  typed_indirect->ForwardTo(c_ref.CopyRCRef());
+  EXPECT_TRUE(Cast<A>(c_typed_indirect));
+  EXPECT_TRUE(Cast<C>(c_typed_indirect));
 }
 
 }  // namespace tsl

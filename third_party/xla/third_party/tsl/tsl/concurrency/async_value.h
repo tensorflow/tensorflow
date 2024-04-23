@@ -276,6 +276,8 @@ class AsyncValue {
  protected:
   friend class IndirectAsyncValue;
 
+  static constexpr uint16_t kUnknownTypeId = 0;
+
   // Utility template for tag dispatching.
   template <typename T>
   struct TypeTag {};
@@ -297,7 +299,7 @@ class AsyncValue {
         kind_(kind),
         has_vtable_(false),
         is_refcounted_(is_refcounted),
-        type_id_(0),
+        type_id_(kUnknownTypeId),
         waiters_and_state_(WaitersAndState(nullptr, state)) {
     if (AsyncValueAllocationTrackingEnabled() && is_refcounted)
       total_allocated_async_values_.fetch_add(1, std::memory_order_relaxed);
@@ -746,10 +748,12 @@ class ErrorAsyncValue
             std::move(status)) {}
 };
 
-// IndirectAsyncValue represents an uncomputed AsyncValue of unspecified kind
-// and type. IndirectAsyncValue is used when an AsyncValue must be returned,
-// but the value it holds is not ready and the producer of the value doesn't
-// know what type it will ultimately be, or whether it will be an error.
+// IndirectAsyncValue represents an un-computed AsyncValue of unspecified kind
+// and maybe unknown type. IndirectAsyncValue is used when an AsyncValue must be
+// returned, but the value it holds is not ready and the producer of the value
+// might not know what type it will ultimately be, or whether it will be an
+// error. The purpose of indirect async value is to be eventually forwarded to
+// a concrete async value with a constructed payload or an error.
 class IndirectAsyncValue : public AsyncValue {
   friend class AsyncValue;
 
@@ -780,9 +784,16 @@ class IndirectAsyncValue : public AsyncValue {
            value_->IsUnique();
   }
 
- private:
+ protected:
+  // Constructor for TypedIndirectAsyncValue (defined below).
+  template <typename T>
+  explicit IndirectAsyncValue(TypeTag<T>)
+      : AsyncValue(Kind::kIndirect, State::kUnconstructed,
+                   /*is_refcounted=*/true, TypeTag<T>()) {}
+
   ~IndirectAsyncValue() { Destroy(); }
 
+ private:
   void Destroy() {
     if (value_) {
       value_->DropRef();
@@ -793,9 +804,18 @@ class IndirectAsyncValue : public AsyncValue {
   AsyncValue* value_ = nullptr;
 };
 
-// -----------------------------------------------------------
-// Implementation details follow.  Clients should ignore them.
-//
+// TypedIndirectAsyncValue represents an indirect async value of a particular
+// type. Indirect async values constructed with a known type can be forwarded
+// only to async values of exactly the same type.
+template <typename T>
+class TypedIndirectAsyncValue : public IndirectAsyncValue {
+ public:
+  TypedIndirectAsyncValue() : IndirectAsyncValue(TypeTag<T>()) {
+    static_assert(sizeof(TypedIndirectAsyncValue) ==
+                  sizeof(IndirectAsyncValue));
+  }
+};
+
 inline AsyncValue::~AsyncValue() {
   assert(waiters_and_state_.load().waiter() == nullptr &&
          "An async value with waiters should never have refcount of zero");

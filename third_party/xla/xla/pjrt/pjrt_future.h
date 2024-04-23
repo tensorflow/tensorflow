@@ -379,9 +379,6 @@ class PjRtFuture<void> : public internal::PjRtFutureBase<std::nullopt_t> {
         Base::Promise::SetError(std::move(status));
       }
     }
-
-    // TODO(b/333538339): Remove this method in favor if Set() above.
-    void SetError(absl::Status status) { Set(std::move(status)); }
   };
 
   // Returns a Promise that can be used to construct a PjRtFuture, and then Set
