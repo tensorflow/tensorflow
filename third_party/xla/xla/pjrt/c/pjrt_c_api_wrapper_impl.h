@@ -179,14 +179,6 @@ struct PJRT_Buffer {
 
 struct PJRT_Event {
   xla::PjRtFuture<> future;
-  // TODO(b/333538339): It's safe to Await() on PjRtFuture<> multiple times,
-  // remove this workaround.
-  //
-  // Set and stored upon future.Await(), as PjRtFuture only allows its result to
-  // be queried through Await() and Await() can only safely be called once. This
-  // variable allows C API users to check for error status any time after
-  // Await() has been called.
-  std::optional<absl::Status> status;
 };
 
 struct PJRT_SerializedExecutable {

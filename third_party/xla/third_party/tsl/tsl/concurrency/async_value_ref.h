@@ -437,12 +437,14 @@ class AsyncValuePtr {
   // An overload that executes `waiter` on a user-provided executor.
   template <typename Waiter, StatusOrWaiter<Waiter>* = nullptr>
   void AndThen(AsyncValue::Executor& executor, Waiter&& waiter) const {
+    // We don't know when the executor will run the callback, so we need to
+    // copy the AsyncValueRef to keep the underlying value alive.
     AndThen(executor,
-            [waiter = std::forward<Waiter>(waiter), ptr = *this]() mutable {
-              if (ABSL_PREDICT_FALSE(ptr.IsError())) {
-                return waiter(ptr.GetError());
+            [waiter = std::forward<Waiter>(waiter), ref = CopyRef()]() mutable {
+              if (ABSL_PREDICT_FALSE(ref.IsError())) {
+                return waiter(ref.GetError());
               } else {
-                return waiter(&ptr.get());
+                return waiter(&ref.get());
               }
             });
   }
@@ -478,10 +480,12 @@ class AsyncValuePtr {
   // An overload that executes `waiter` on a user-provided executor.
   template <typename Waiter, StatusWaiter<Waiter>* = nullptr>
   void AndThen(AsyncValue::Executor& executor, Waiter&& waiter) const {
+    // We don't know when the executor will run the callback, so we need to
+    // copy the AsyncValueRef to keep the underlying value alive.
     AndThen(executor,
-            [waiter = std::forward<Waiter>(waiter), ptr = *this]() mutable {
-              if (ABSL_PREDICT_FALSE(ptr.IsError())) {
-                return waiter(ptr.GetError());
+            [waiter = std::forward<Waiter>(waiter), ref = CopyRef()]() mutable {
+              if (ABSL_PREDICT_FALSE(ref.IsError())) {
+                return waiter(ref.GetError());
               } else {
                 return waiter(absl::OkStatus());
               }
