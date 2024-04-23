@@ -44,6 +44,7 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_sharding_util.h"
 #include "xla/protobuf_util.h"
 #include "xla/service/dot_as_convolution_util.h"
+#include "xla/service/host_memory_offload_annotations.h"
 #include "xla/shape.h"
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
@@ -277,9 +278,12 @@ bool IsPassthroughCustomOps(const HloInstruction* hlo) {
       hlo->operand(0)->shape().rank() != hlo->shape().rank()) {
     return false;
   }
-  return hlo->IsCustomCall({"ResizeNearest", "ResizeBilinear",
-                            "ResizeNearestGrad", "ResizeBilinearGrad",
-                            "Cholesky"});
+
+  return hlo->IsCustomCall(
+      {"ResizeNearest", "ResizeBilinear", "ResizeNearestGrad",
+       "ResizeBilinearGrad", "Cholesky",
+       host_memory_offload_annotations::kMoveToDeviceCustomCallTarget,
+       host_memory_offload_annotations::kMoveToHostCustomCallTarget});
 }
 
 // Return the operand which is the most suitable for determining the sharding
