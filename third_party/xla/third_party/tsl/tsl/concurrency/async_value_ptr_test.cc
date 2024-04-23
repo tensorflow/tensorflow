@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <atomic>
 #include <cstdint>
 
 #include "absl/status/status.h"
@@ -114,6 +115,81 @@ TEST(AsyncValuePtrTest, AndThenStatusOrNoError) {
   AsyncValuePtr<int32_t> ptr = ref.AsPtr();
 
   ptr.AndThen([&](absl::StatusOr<int32_t*> v) { EXPECT_EQ(**v, 42); });
+}
+
+TEST(AsyncValuePtrTest, MapAvailable) {
+  AsyncValueRef<int32_t> ref = MakeAvailableAsyncValueRef<int32_t>(42);
+  AsyncValuePtr<int32_t> ptr = ref.AsPtr();
+
+  AsyncValueRef<float> mapped_to_float =
+      ptr.Map([](int32_t value) -> float { return value; });
+  EXPECT_TRUE(mapped_to_float.IsAvailable());
+  EXPECT_EQ(mapped_to_float.get(), 42.0f);
+}
+
+TEST(AsyncValuePtrTest, MapUnvailable) {
+  AsyncValueRef<int32_t> ref = MakeConstructedAsyncValueRef<int32_t>(42);
+  AsyncValuePtr<int32_t> ptr = ref.AsPtr();
+
+  AsyncValueRef<float> mapped_to_float =
+      ptr.Map([](int32_t value) -> float { return value; });
+
+  EXPECT_FALSE(mapped_to_float.IsAvailable());
+  ref.SetStateConcrete();
+
+  EXPECT_TRUE(mapped_to_float.IsAvailable());
+  EXPECT_EQ(mapped_to_float.get(), 42.0f);
+}
+
+TEST(AsyncValuePtrTest, MapToNonMoveable) {
+  AsyncValueRef<int32_t> ref = MakeAvailableAsyncValueRef<int32_t>(42);
+  AsyncValuePtr<int32_t> ptr = ref.AsPtr();
+
+  AsyncValueRef<std::atomic<int32_t>> mapped_to_atomic =
+      ptr.Map<std::atomic<int32_t>>([](int32_t value) { return value; });
+  EXPECT_TRUE(mapped_to_atomic.IsAvailable());
+  EXPECT_EQ(mapped_to_atomic->load(), 42);
+}
+
+TEST(AsyncValuePtrTest, MapError) {
+  AsyncValueRef<int32_t> ref =
+      MakeErrorAsyncValueRef(absl::InternalError("error"));
+  AsyncValuePtr<int32_t> ptr = ref.AsPtr();
+
+  AsyncValueRef<float> mapped_to_float =
+      ptr.Map([](int32_t value) -> float { return value; });
+  EXPECT_TRUE(mapped_to_float.IsError());
+  EXPECT_EQ(mapped_to_float.GetError(), absl::InternalError("error"));
+}
+
+TEST(AsyncValuePtrTest, MapUnvailableError) {
+  AsyncValueRef<int32_t> ref = MakeConstructedAsyncValueRef<int32_t>(42);
+  AsyncValuePtr<int32_t> ptr = ref.AsPtr();
+
+  AsyncValueRef<float> mapped_to_float =
+      ptr.Map([](int32_t value) -> float { return value; });
+
+  EXPECT_FALSE(mapped_to_float.IsAvailable());
+  ref.SetError(absl::InternalError("error"));
+
+  EXPECT_TRUE(mapped_to_float.IsError());
+  EXPECT_EQ(mapped_to_float.GetError(), absl::InternalError("error"));
+}
+
+TEST(AsyncValuePtrTest, MapMultipleTimes) {
+  AsyncValueRef<int32_t> ref = MakeAvailableAsyncValueRef<int32_t>(42);
+  AsyncValuePtr<int32_t> ptr = ref.AsPtr();
+
+  auto plus_one = [](int32_t value) { return value + 1; };
+  AsyncValueRef<int32_t> mapped = ptr.Map(plus_one)
+                                      .Map(plus_one)
+                                      .Map(plus_one)
+                                      .Map(plus_one)
+                                      .Map(plus_one)
+                                      .Map(plus_one);
+
+  EXPECT_TRUE(mapped.IsAvailable());
+  EXPECT_EQ(mapped.get(), 42 + 6);
 }
 
 TEST(AsyncValuePtrTest, BlockUntilReady) {
