@@ -81,6 +81,7 @@ cc_library(
     hdrs = ["concurrent_vector.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
+        "//tsl/platform:logging",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
     ],

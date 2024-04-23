@@ -793,6 +793,14 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
       const AllocationRequest& request, const AliasedOffset* preferred_offset,
       SlicedBufferInterval* alternate_mem_interval) const;
 
+  // Returns the corrected schedule time of an HloUse. The corrected time is
+  // equivalent to the actual time of the use instructions for all instructions
+  // except for while and conditional instructions. For while instructions, the
+  // corrected time is the time of the body parameter, and for conditional, the
+  // corrected time is the time of the parameter of the earliest-scheduled
+  // called computation.
+  int64_t GetCorrectedUseTime(const HloUse& use) const;
+
   // Returns the required assignment at a particular time, if available.
   std::optional<RequiredMemoryAssignment> RequiredMemoryAssignmentAt(
       const HloValue* buffer, int64_t time) const;

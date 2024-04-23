@@ -16,6 +16,8 @@ limitations under the License.
 #include "xla/pjrt/pjrt_future.h"
 
 #include <cstdint>
+#include <memory>
+#include <utility>
 #include <vector>
 
 #include "absl/status/status.h"
@@ -36,6 +38,42 @@ TEST(PjRtFutureTest, StatelessFuture) {
 
   future.OnReady(
       [](absl::Status status) { EXPECT_EQ(status, absl::OkStatus()); });
+}
+
+TEST(PjRtFutureTest, CopyableFuture) {
+  auto promise = PjRtFuture<int32_t>::CreatePromise();
+  PjRtFuture<int32_t> future(promise);
+
+  PjRtFuture<int32_t> copy_constructed(future);
+  PjRtFuture<int32_t> copy_assigned = future;
+
+  EXPECT_FALSE(copy_constructed.IsReady());
+  EXPECT_FALSE(copy_assigned.IsReady());
+  promise.Set(42);
+  EXPECT_TRUE(copy_constructed.IsReady());
+  EXPECT_TRUE(copy_assigned.IsReady());
+}
+
+TEST(PjRtFutureTest, MoveConstructedFuture) {
+  auto promise = PjRtFuture<std::unique_ptr<int32_t>>::CreatePromise();
+  PjRtFuture<std::unique_ptr<int32_t>> future(promise);
+
+  PjRtFuture<std::unique_ptr<int32_t>> move_constructed(std::move(future));
+
+  EXPECT_FALSE(move_constructed.IsReady());
+  promise.Set(std::make_unique<int32_t>(42));
+  EXPECT_TRUE(move_constructed.IsReady());
+}
+
+TEST(PjRtFutureTest, MoveAssignedFuture) {
+  auto promise = PjRtFuture<std::unique_ptr<int32_t>>::CreatePromise();
+  PjRtFuture<std::unique_ptr<int32_t>> future(promise);
+
+  PjRtFuture<std::unique_ptr<int32_t>> move_assigned = std::move(future);
+
+  EXPECT_FALSE(move_assigned.IsReady());
+  promise.Set(std::make_unique<int32_t>(42));
+  EXPECT_TRUE(move_assigned.IsReady());
 }
 
 TEST(PjRtFutureTest, StatelessError) {
