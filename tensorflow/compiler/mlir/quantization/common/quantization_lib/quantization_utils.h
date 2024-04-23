@@ -26,10 +26,10 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <type_traits>
-#include <unordered_map>
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/DenseMap.h"
@@ -54,8 +54,8 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/lite/quantization/ir/FakeQuantSupport.h"
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
+#include "tensorflow/compiler/mlir/quantization/common/ir/FakeQuantSupport.h"
 #include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_config.h"
 #include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_traits.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -86,11 +86,11 @@ inline constexpr double kNearZeroTolerance = 1.0e-6;
 using QuantParams = QuantizedType;
 using QuantSpec = QuantizationSpecs;
 using SignedInteger = std::pair<unsigned, unsigned>;  // bitwidth and sign
-using QuantParamsForResults = llvm::SmallVector<QuantParams, 4>;
+using QuantParamsForResults = llvm::SmallVector<QuantizedType, 4>;
 using AccumulatorScaleFunc =
-    std::function<QuantParams(const std::vector<QuantParams>&, int, bool)>;
+    std::function<QuantizedType(const std::vector<QuantizedType>&, int, bool)>;
 using BiasParamsMap =
-    std::unordered_map<int, std::pair<std::vector<int>, AccumulatorScaleFunc>>;
+    absl::flat_hash_map<int, std::pair<std::vector<int>, AccumulatorScaleFunc>>;
 // UniformQuantizedType GetFixedOutputRange(bool sign, int bit_width)
 using GetFixedOutputRangeFunc = std::function<UniformQuantizedType(bool, int)>;
 // bool RequiredSameOperandsAndResultsScale(bool sign, int $bit_width)
@@ -134,11 +134,14 @@ using OpQuantSpecGetter =
 // Quantization scale spec of an op. The information defined in the MLIR
 // interfaces FixedOutputRangeInterface and SameOperandsAndResultsScale should
 // be checked first if present.
+// TODO: b/323478683: Consider deprecating this.
 struct OpQuantScaleSpec {
   // Whether this op has a fixed range requirement (e.g. sigmoid)
   bool has_fixed_output_range = false;
-  // Whether this op should have same result and operand scales (e.g. concat)
+  // Whether this op should have same operand and result scales (e.g. concat)
   bool has_same_scale_requirement = false;
+  // Whether this op should have same operand and result type (e.g. gather)
+  bool has_same_operand_and_result_type_requirement = false;
   // Returns the fixed output range, when has_fixed_output_range is set.
   GetFixedOutputRangeFunc fixed_output_range_func;
   // Returns whether same operands and results scales are required.

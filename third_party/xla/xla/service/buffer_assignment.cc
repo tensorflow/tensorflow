@@ -524,7 +524,8 @@ bool BufferAssignment::HaveDisjointSlices(const HloInstruction* hlo_a,
     SliceSet slices;
     Status status = ShapeUtil::ForEachSubshapeWithStatus(
         instr->shape(),
-        [&](const Shape& /*subshape*/, const ShapeIndex& index) {
+        [&](const Shape& /*subshape*/,
+            const ShapeIndex& index) -> absl::Status {
           auto shape_slices = GetAllSlices(instr, index);
           if (shape_slices.empty()) {
             return InvalidArgument("No slices assigned to part of instr.");

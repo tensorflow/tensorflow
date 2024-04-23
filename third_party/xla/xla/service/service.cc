@@ -748,7 +748,8 @@ absl::StatusOr<std::unique_ptr<Executable>> Service::BuildExecutable(
       module_proto.name());
 
   tsl::profiler::ScopedAnnotation annotation{[&] {
-    return absl::StrCat("XlaCompile:#module=", module_proto.name(), "#");
+    // module's unique_id is not available yet
+    return absl::StrFormat("XlaCompile:#module=%s#", module_proto.name());
   }};
 
   TF_ASSIGN_OR_RETURN(
@@ -771,9 +772,6 @@ absl::StatusOr<std::unique_ptr<Executable>> Service::BuildExecutable(
                                     std::move(module), executor, options));
   }
 
-  tsl::profiler::ScopedAnnotation backend_annotation{[&] {
-    return absl::StrCat("XlaCompileBackend:#module=", module_proto.name(), "#");
-  }};
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<Executable> executable,
       backend->compiler()->RunBackend(std::move(module), executor, options));
@@ -790,10 +788,10 @@ absl::StatusOr<std::unique_ptr<Executable>> Service::BuildExecutable(
       buffer_assignment_proto_after_opt != nullptr) {
     CHECK(DumpingEnabledForHloModule(executable->module()));
     *hlo_proto_before_opt->mutable_buffer_assignment() =
-        std::move(*buffer_assignment_proto_after_opt);
+        *buffer_assignment_proto_after_opt;
     executable->set_hlo_proto(std::move(hlo_proto_before_opt));
   }
-  return std::move(executable);
+  return executable;
 }
 
 Status Service::Compile(const CompileRequest* arg, CompileResponse* result) {

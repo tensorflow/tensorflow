@@ -17,10 +17,12 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/attributes.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
@@ -32,11 +34,17 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/io.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/pass_pipeline.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/types.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/cc/convert_asset_args.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/cc/run_passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/exported_model.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/constants.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/python/unfreeze_constants.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_graphdef.h"
@@ -56,6 +64,8 @@ namespace {
 using ::mlir::tf_saved_model::kTfSavedModelIndexPathAttr;
 using ::mlir::tf_saved_model::kTfSavedModelInitializerInitType;
 using ::mlir::tf_saved_model::kTfSavedModelInitializerRestoreType;
+using ::stablehlo::quantization::QuantizationConfig;
+using ::stablehlo::quantization::io::GetLocalTmpFileName;
 using ::tensorflow::AssetFileDef;
 using ::tensorflow::ConvertMlirToGraph;
 using ::tensorflow::FunctionDefLibrary;
@@ -67,6 +77,8 @@ using ::tensorflow::NodeDef;
 using ::tensorflow::OpRegistry;
 using ::tensorflow::SaverDef;
 using ::tensorflow::quantization::ExportedModel;
+using ::tensorflow::quantization::RunPasses;
+using ::tensorflow::quantization::UnfreezeConstantsAndSaveVariables;
 
 // Finds and returns the name of the node from a set of control output nodes.
 // The name should contain the string `contains`. Returns an empty string if no
@@ -114,7 +126,29 @@ std::string FindFilePrefixTensorName(const GraphDef& graph_def) {
 
 }  // namespace
 
-ExportedModel CreateExportedModel(
+absl::StatusOr<ExportedModel> CreateExportedModel(
+    const std::vector<std::string>& signature_keys,
+    const std::unordered_set<std::string>& tags,
+    const QuantizationConfig& quantization_config,
+    absl::string_view debug_name_prefix,
+    const absl::flat_hash_map<FunctionName, FunctionAlias>& function_aliases,
+    MLIRContext& ctx ABSL_ATTRIBUTE_LIFETIME_BOUND, ModuleOp module_op) {
+  TF_ASSIGN_OR_RETURN(const std::string checkpoint_dir, GetLocalTmpFileName());
+  const ExportOptions export_opts = {
+      /*duplicate_shape_determining_constants=*/true,
+      /*unfreeze_constants=*/false, checkpoint_dir,
+      /*debug_name=*/
+      absl::StrCat(debug_name_prefix, kExportStepSuffix)};
+
+  TF_ASSIGN_OR_RETURN(const SmallVector<AssetFileDef> asset_file_defs,
+                      RunExportPasses(export_opts, ctx, module_op));
+
+  return ConvertMlirModuleToExportedModel(
+      module_op, checkpoint_dir, function_aliases,
+      {asset_file_defs.begin(), asset_file_defs.end()});
+}
+
+ExportedModel CreateExportedModelFromGraphDef(
     GraphDef&& graph_def, const absl::string_view init_node_name,
     const absl::string_view checkpoint_dir,
     const std::optional<SaverDef> saver_def,
@@ -222,9 +256,35 @@ absl::StatusOr<ExportedModel> ConvertMlirModuleToExportedModel(
   TF_ASSIGN_OR_RETURN(const std::optional<SaverDef> saver_def,
                       CreateSaverDef(control_ret_node_names, graph_def));
 
-  return CreateExportedModel(std::move(graph_def), init_node_name,
-                             checkpoint_dir, std::move(saver_def),
-                             function_aliases, asset_file_defs);
+  return CreateExportedModelFromGraphDef(std::move(graph_def), init_node_name,
+                                         checkpoint_dir, std::move(saver_def),
+                                         function_aliases, asset_file_defs);
+}
+
+absl::StatusOr<SmallVector<AssetFileDef>> RunExportPasses(
+    const ExportOptions& export_opts, MLIRContext& ctx, ModuleOp module_op) {
+  if (export_opts.unfreeze_constants) {
+    TF_RETURN_IF_ERROR(UnfreezeConstantsAndSaveVariables(
+        export_opts.checkpoint_dir, ctx, module_op));
+    LOG(INFO) << "Unfrozen constants and saved variables to checkpoint file: "
+              << export_opts.checkpoint_dir;
+  }
+
+  TF_RETURN_IF_ERROR(RunPasses(
+      /*name=*/
+      export_opts.debug_name,
+      /*add_passes_func=*/
+      [dup_constants = export_opts.duplicate_shape_determining_constants](
+          PassManager& pm) { AddExportPasses(pm, dup_constants); },
+      ctx, module_op));
+
+  FailureOr<SmallVector<AssetFileDef>> asset_file_defs =
+      quant::ConvertAssetArgs(module_op);
+  if (failed(asset_file_defs)) {
+    return absl::InternalError("Failed to convert asset args.");
+  }
+
+  return *asset_file_defs;
 }
 
 }  // namespace mlir::quant::stablehlo

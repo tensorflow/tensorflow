@@ -128,6 +128,8 @@ class Compiler {
              other.ToProto().SerializeAsString();
     }
 
+    std::string ToString() { return ToProto().DebugString(); }
+
     se::DeviceDescription device_description;
     std::string platform_name;
     se::dnn::VersionInfo dnn_version_info;
@@ -175,15 +177,6 @@ class Compiler {
       se::DeviceMemoryAllocator* device_allocator) {
     return RunHloPasses(std::move(module), executor,
                         CompileOptions{device_allocator});
-  }
-
-  // Performs scheduling and buffer assignment and returns the buffer
-  // assignments.
-  // The returned 'BufferAssignment' retains a pointer to the 'HloModule', so
-  // the module must live at least as long as the buffer assignments.
-  virtual absl::StatusOr<std::unique_ptr<BufferAssignment>> AssignBuffers(
-      HloModule* module, const se::StreamExecutor* executor) {
-    return Unimplemented("This compiler does not support this method");
   }
 
   // Compiles the HLO module for execution on a device given by the executor,
@@ -448,7 +441,7 @@ class AotCompilationOptions {
     return target_config_;
   }
   void set_target_config(const Compiler::TargetConfig& target_config) {
-    target_config_ = std::move(target_config);
+    target_config_ = target_config;
   }
 
  protected:

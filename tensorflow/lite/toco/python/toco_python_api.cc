@@ -223,7 +223,7 @@ PyObject* TocoConvert(PyObject* model_flags_proto_txt_raw,
   }
 
   if (!status.ok()) {
-    PyErr_SetString(PyExc_Exception, tsl::NullTerminatedMessage(status));
+    PyErr_SetString(PyExc_Exception, absl::StatusMessageAsCStr(status));
     return nullptr;
   }
   if (extended_return && !enable_mlir_converter) {

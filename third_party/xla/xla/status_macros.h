@@ -72,7 +72,7 @@ class MakeErrorStream {
     operator Status() { return wrapped_error_stream_->GetStatus(); }
     template <typename T>
     // NOLINTNEXTLINE(google-explicit-constructor)
-    operator xla::StatusOr<T>() {
+    operator absl::StatusOr<T>() {
       return wrapped_error_stream_->GetStatus();
     }
 

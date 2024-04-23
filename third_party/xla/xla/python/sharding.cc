@@ -18,7 +18,6 @@ limitations under the License.
 #include <Python.h>
 
 #include <cstdlib>
-#include <memory>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -30,10 +29,7 @@ limitations under the License.
 #include "third_party/nanobind/include/nanobind/nanobind.h"
 #include "third_party/nanobind/include/nanobind/stl/string.h"  // IWYU pragma: keep
 #include "third_party/nanobind/include/nanobind/stl/string_view.h"  // IWYU pragma: keep
-#include "pybind11/pybind11.h"  // from @pybind11
 #include "xla/hlo/ir/hlo_sharding.h"
-#include "xla/pjrt/pjrt_client.h"
-#include "xla/pjrt/status_casters.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/nb_class_ptr.h"
 #include "xla/python/nb_helpers.h"
@@ -41,7 +37,7 @@ limitations under the License.
 #include "xla/python/py_client.h"
 #include "xla/python/py_device_list.h"
 #include "xla/python/sharded_device_array.h"
-#include "xla/util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/logging.h"
 
 namespace jax {
@@ -176,45 +172,6 @@ bool ShardingEqual(nb::handle a, nb::handle b) {
   return a.equal(b);
 }
 
-xla::ClientAndPtr<xla::PjRtMemorySpace> GetMemory(
-    const xla::ClientAndPtr<xla::PjRtDevice>& device, const std::string& kind) {
-  xla::PjRtMemorySpace* result_memory_space = nullptr;
-  for (auto* memory_space : device->memory_spaces()) {
-    if (memory_space->memory_space_kind() == kind) {
-      if (result_memory_space != nullptr) {
-        std::string memories = absl::StrJoin(
-            device->memory_spaces(), ", ",
-            [](std::string* out, const auto& memory_space) {
-              absl::StrAppend(out, memory_space->memory_space_kind());
-            });
-        auto device_kind = device->device_kind();
-        xla::ThrowIfError(
-            xla::InvalidArgument("Found more than one addressable memory for "
-                                 "kind %s which is not allowed. There can only "
-                                 "be one memory for each "
-                                 "kind. Device %s can address the following "
-                                 "memory kinds: %s",
-                                 kind, device_kind, memories));
-      }
-      result_memory_space = memory_space;
-    }
-  }
-  if (result_memory_space == nullptr) {
-    std::string memories =
-        absl::StrJoin(device->memory_spaces(), ", ",
-                      [](std::string* out, const auto& memory_space) {
-                        absl::StrAppend(out, memory_space->memory_space_kind());
-                      });
-    auto device_kind = device->device_kind();
-    xla::ThrowIfError(xla::InvalidArgument(
-        "Could not find memory addressable by device %s. Device %s "
-        "can address the following memory kinds: %s. "
-        "Got memory kind: %s",
-        device_kind, device_kind, memories, kind));
-  }
-  return WrapWithClient(device.client(), result_memory_space);
-}
-
 NamedSharding::NamedSharding(nb::object mesh, nb::object spec,
                              nb::object memory_kind, nb::object parsed_pspec,
                              nb::object manual_axes)
@@ -234,7 +191,16 @@ NamedSharding::NamedSharding(nb::object mesh, nb::object spec,
       CheckAndCanonicalizeMemoryKind(memory_kind_, internal_device_list_);
 
   nb::module_ si = nb::module_::import_("jax._src.sharding_impls");
-  parsed_pspec_ = si.attr("preprocess")(mesh_, spec_, parsed_pspec_);
+  // TODO(parkers): Once jax always has preprocess_with_manual, we can
+  // remove the fallback.
+  nb::object preprocess_fn;
+  try {
+    preprocess_fn = si.attr("preprocess_with_manual");
+  } catch (nb::python_error& e) {
+    parsed_pspec_ = si.attr("preprocess")(mesh_, spec_, parsed_pspec_);
+    return;
+  }
+  parsed_pspec_ = preprocess_fn(mesh_, spec_, parsed_pspec_, manual_axes_);
 }
 
 SingleDeviceSharding::SingleDeviceSharding(nb::object device,
@@ -249,15 +215,10 @@ SingleDeviceSharding::SingleDeviceSharding(nb::object device,
 }
 
 SingleDeviceSharding::SingleDeviceSharding(
-    std::shared_ptr<xla::PyClient> client, xla::ifrt::DeviceList device_list,
+    xla::nb_class_ptr<xla::PyClient> client, xla::ifrt::DeviceList device_list,
     nb::object memory_kind)
     : XLACompatibleSharding(/*num_devices=*/1),
-      // TODO(phawkins): remove pybind11 translation when nanobind transition is
-      // complete.
-      device_(nb::steal<nb::object>(
-          pybind11::cast(WrapWithClient(client, device_list.front()))
-              .release()
-              .ptr())),
+      device_(client->GetPyDevice(device_list.front())),
       memory_kind_(std::move(memory_kind)),
       internal_device_list_(xla::make_nb_class<PyDeviceList>(
           std::move(client), std::move(device_list))) {

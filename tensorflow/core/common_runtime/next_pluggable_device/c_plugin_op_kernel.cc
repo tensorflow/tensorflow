@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/next_pluggable_device/c_plugin_op_kernel.h"
 
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -164,7 +165,7 @@ Status CPluginOpKernelContext::LookupOrCreateResource(
   return StatusFromTF_Status(status);
 }
 
-PluginCoordinationServiceAgent*
+std::unique_ptr<PluginCoordinationServiceAgent>
 CPluginOpKernelContext::GetPluginCoordinationServiceAgent() const {
   auto* agent = TF_GetCoordinationServiceAgent(ctx_);
   return CreatePluginCoordinationServiceAgent(agent);

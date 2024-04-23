@@ -10,4 +10,5 @@ message CpuTopologyProto {
     int32 local_hardware_id = 3;
   }
   repeated CpuDevice cpu_devices = 1;
+  repeated string machine_attributes = 4;
 }

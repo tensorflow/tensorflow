@@ -44,7 +44,6 @@ limitations under the License.
 #include "xla/python/pjrt_ifrt/pjrt_client.h"
 #include "xla/python/pjrt_ifrt/pjrt_host_callback.h"
 #include "xla/status.h"
-#include "xla/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/concurrency/ref_count.h"
@@ -114,12 +113,14 @@ class PjRtExecutable final
     return pjrt_executable_->GetOutputShardings();
   }
 
-  absl::StatusOr<std::vector<Layout>> GetParameterLayouts() const override {
+  absl::StatusOr<std::vector<std::unique_ptr<Layout>>> GetParameterLayouts()
+      const override {
     DCHECK(this);
     return pjrt_executable_->GetParameterLayouts();
   }
 
-  absl::StatusOr<std::vector<Layout>> GetOutputLayouts() const override {
+  absl::StatusOr<std::vector<std::unique_ptr<Layout>>> GetOutputLayouts()
+      const override {
     DCHECK(this);
     return pjrt_executable_->GetOutputLayouts();
   }
@@ -214,10 +215,10 @@ class PjRtLoadedExecutable final
     return pjrt_loaded_executable_->name();
   }
 
-  Future<absl::Status> GetReadyFuture() const override {
+  Future<> GetReadyFuture() const override {
     // PjRtCompiler blocks until compilation finishes and returns only the
     // executables that are ready.
-    return Future<absl::Status>(absl::OkStatus());
+    return Future<>(absl::OkStatus());
   }
 
   std::optional<std::vector<OpSharding>> GetParameterShardings()
@@ -231,12 +232,14 @@ class PjRtLoadedExecutable final
     return pjrt_loaded_executable_->GetOutputShardings();
   }
 
-  absl::StatusOr<std::vector<Layout>> GetParameterLayouts() const override {
+  absl::StatusOr<std::vector<std::unique_ptr<Layout>>> GetParameterLayouts()
+      const override {
     DCHECK(this);
     return pjrt_loaded_executable_->GetParameterLayouts();
   }
 
-  absl::StatusOr<std::vector<Layout>> GetOutputLayouts() const override {
+  absl::StatusOr<std::vector<std::unique_ptr<Layout>>> GetOutputLayouts()
+      const override {
     DCHECK(this);
     return pjrt_loaded_executable_->GetOutputLayouts();
   }
@@ -279,7 +282,7 @@ class PjRtLoadedExecutable final
       absl::Span<tsl::RCReference<Array>> args, const ExecuteOptions& options,
       std::optional<DeviceList> devices) override;
 
-  Future<Status> Delete() override;
+  Future<> Delete() override;
   bool IsDeleted() const override {
     DCHECK(this);
     return pjrt_loaded_executable_->IsDeleted();
@@ -292,7 +295,7 @@ class PjRtLoadedExecutable final
   }
   absl::Span<Device* const> addressable_devices() const override {
     DCHECK(this);
-    return pjrt_loaded_executable_->addressable_devices();
+    return addressable_devices_;
   }
 
   absl::StatusOr<
@@ -316,7 +319,7 @@ class PjRtLoadedExecutable final
   PjRtLoadedExecutable(
       PjRtCompatibleClient* client,
       std::shared_ptr<xla::PjRtLoadedExecutable> pjrt_loaded_executable,
-      DeviceList devices,
+      DeviceList devices, std::vector<Device*> addressable_devices,
       std::vector<tsl::RCReference<LoadedHostCallback>>
           all_loaded_host_callbacks,
       std::vector<PjRtHostSendAndRecvLoadedHostCallback*>
@@ -327,6 +330,7 @@ class PjRtLoadedExecutable final
   PjRtCompatibleClient* client_;
   std::shared_ptr<xla::PjRtLoadedExecutable> pjrt_loaded_executable_;
   DeviceList devices_;
+  std::vector<Device*> addressable_devices_;
   std::shared_ptr<std::vector<tsl::RCReference<LoadedHostCallback>>>
       all_loaded_host_callbacks_;
   std::vector<PjRtHostSendAndRecvLoadedHostCallback*> host_send_recv_callbacks_;

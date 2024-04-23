@@ -39,7 +39,11 @@ limitations under the License.
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/service/compiler.h"
+#if GOOGLE_CUDA
 #include "xla/service/gpu/nvptx_compiler.h"
+#elif TENSORFLOW_USE_ROCM
+#include "xla/service/gpu/amdgpu_compiler.h"
+#endif
 #include "xla/service/hlo_parser.h"
 #include "xla/tests/literal_test_util.h"
 #include "tsl/platform/casts.h"
@@ -116,7 +120,11 @@ TEST(StreamExecutorGpuCompilerTest, SuccessAotCompileXlaAndLoad) {
                           GetStreamExecutorGpuClient(GpuClientOptions()));
   auto se_client = absl::WrapUnique(
       tensorflow::down_cast<StreamExecutorGpuClient*>(client.release()));
+#if GOOGLE_CUDA
   auto gpu_compiler = gpu::NVPTXCompiler();
+#elif TENSORFLOW_USE_ROCM
+  auto gpu_compiler = gpu::AMDGPUCompiler();
+#endif
   Compiler::TargetConfig gpu_target_config{
       se_client->client()->backend().default_stream_executor()};
   StreamExecutorGpuCompiler compiler;

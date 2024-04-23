@@ -75,13 +75,6 @@ class ScopedDeviceMemory {
   // Precondition: memory was allocated by the stream executor `parent`.
   ScopedDeviceMemory(StreamExecutor *parent, DeviceMemoryBase value);
 
-  // Constructor overload that places a literal array into device memory.
-  //
-  // Relies on the allocation function exposed by the stream executor `parent`,
-  // which will be also used for deallocating the memory
-  ScopedDeviceMemory(StreamExecutor *parent,
-                     std::initializer_list<ElemT> values);
-
   // Moves ownership of the memory from other to the constructed
   // object.
   //

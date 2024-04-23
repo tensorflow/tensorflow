@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/service/platform_util.h"
 #include "xla/shape_layout.h"
 #include "xla/statusor.h"
+#include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/manifest_checking_test.h"
@@ -413,6 +414,7 @@ class HloTestBase : public ManifestCheckingTest {
 
   bool verifier_layout_sensitive_;
   bool allow_mixed_precision_in_hlo_verifier_;
+  HloPredicate instruction_can_change_layout_func_;
   std::unique_ptr<HloVerifier> hlo_verifier_;
 
   ErrorSpec error_spec_{0.0001};
@@ -429,9 +431,12 @@ class HloTestBase : public ManifestCheckingTest {
   static se::Platform* GetTestPlatform();
 
  private:
+  // Creates or retrieves the allocator.
+  se::DeviceMemoryAllocator* GetAllocator();
   // Either an HloRunner or HloRunnerPjRt depending on if ShouldUsePjRt()
   std::unique_ptr<HloRunnerInterface> runner_;
   se::Platform* test_platform_;
+  std::unique_ptr<se::DeviceMemoryAllocator> allocator_;
 
   // Given the test module, makes a reference module that is ready to run on the
   // reference platform. This assumes that the given module is ready to run on

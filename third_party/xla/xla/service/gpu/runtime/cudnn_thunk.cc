@@ -15,29 +15,35 @@ limitations under the License.
 
 #include "xla/service/gpu/runtime/cudnn_thunk.h"
 
+#include <memory>
+#include <utility>
+
 #include "absl/status/status.h"
+#include "xla/stream_executor/dnn.h"
+#include "tsl/platform/errors.h"
 
 namespace xla {
 namespace gpu {
 
-CuDnnThunk::CuDnnThunk(std::string serialized_graph, ThunkInfo thunk_info,
+CuDnnThunk::CuDnnThunk(std::string fingerprint, ThunkInfo thunk_info,
                        absl::Span<const KernelArgument> kernel_arguments)
     : Thunk(Kind::kCuDnn, std::move(thunk_info)),
-      serialized_graph_(std::move(serialized_graph)) {
+      fingerprint_(std::move(fingerprint)),
+      graph_(std::make_shared<se::dnn::LazyDnnGraph>(nullptr)) {
   args_.reserve(kernel_arguments.size());
   for (const KernelArgument& kernel_argument : kernel_arguments) {
     args_.push_back(kernel_argument.slice());
-  }
+  };
 }
 
 absl::Status CuDnnThunk::Initialize(const InitializeParams& params) {
   absl::Status ret = absl::OkStatus();
   absl::call_once(once_flag_, [&] {
-    auto result =
-        params.stream->parent()->AsDnn()->DeserializeGraph(serialized_graph_);
-    std::string().swap(serialized_graph_);
+    auto result = params.stream->parent()->AsDnn()->DeserializeGraph(
+        params.src.dnn_compiled_graphs.at(fingerprint_));
+    std::string().swap(fingerprint_);
     if (result.ok()) {
-      graph_ = std::move(*result);
+      graph_->swap(*result);
     }
     ret = result.status();
   });
@@ -45,13 +51,16 @@ absl::Status CuDnnThunk::Initialize(const InitializeParams& params) {
 }
 
 absl::Status CuDnnThunk::ExecuteOnStream(const ExecuteParams& params) {
+  InitializeParams initialize_params;
+  initialize_params.stream = params.stream;
+  TF_RETURN_IF_ERROR(Initialize(initialize_params));
   std::vector<se::DeviceMemoryBase> buffer_args;
   buffer_args.reserve(args_.size());
   for (const BufferAllocation::Slice& arg : args_) {
     buffer_args.push_back(params.buffer_allocations->GetDeviceAddress(arg));
   }
-  return graph_->Execute(*params.stream,
-                         absl::Span<se::DeviceMemoryBase>(buffer_args));
+  return graph_->get()->Execute(*params.stream,
+                                absl::Span<se::DeviceMemoryBase>(buffer_args));
 }
 
 }  // namespace gpu

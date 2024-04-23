@@ -93,6 +93,7 @@ docker exec xla bazel \
         --features=layering_check \
         --profile=/tf/pkg/profile.json.gz \
         --flaky_test_attempts=3 \
+        --config=warnings \
         $RBE_FLAGS \
         $ADDITIONAL_FLAGS \
         -- //xla/... //build_tools/... @local_tsl//tsl/... $TARGET_FILTERS

@@ -50,10 +50,8 @@ limitations under the License.
 #include "tensorflow/cc/saved_model/loader.h"
 #include "tensorflow/compiler/mlir/init_mlir.h"
 #include "tensorflow/compiler/mlir/lite/flatbuffer_export.h"
-#include "tensorflow/compiler/mlir/lite/stablehlo/serializer/flatbuffer_export.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/check_accepted_ops_pass.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/op_stat_pass.h"
-#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_tfl_pass.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_util.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/transforms.h"
 #include "tensorflow/compiler/mlir/lite/tf_to_tfl_flatbuffer.h"
@@ -191,17 +189,6 @@ tensorflow::StatusOr<OwningOpRef<mlir::ModuleOp>> ImportSavedModelOrMLIR(
                           saved_model_bundle);
 }
 
-tensorflow::Status ConvertStableHLOToFlatbuffer(mlir::ModuleOp module,
-                                                std::string* flatbuffer_str) {
-  mlir::odml::FlatbufferExportOptions options;
-  if (!mlir::odml::MlirToFlatBufferTranslateFunction(module, options,
-                                                     flatbuffer_str)) {
-    return tensorflow::errors::Aborted("Unable to export flatbuffer");
-  }
-
-  return ::tensorflow::OkStatus();
-}
-
 tensorflow::Status ExportModule(mlir::ModuleOp module,
                                 const std::string& output_filename,
                                 bool elide_large_elements_attrs) {
@@ -210,20 +197,6 @@ tensorflow::Status ExportModule(mlir::ModuleOp module,
   if (output == nullptr) {
     llvm::errs() << error_msg << '\n';
     return tensorflow::errors::Aborted("Unable to write to output path.");
-  }
-
-  // Export TFLite Flatbuffer as output
-  if (export_type == "tflite") {
-    std::string flatbuffer_str;
-    auto status =
-        mlir::odml::ConvertStableHLOToFlatbuffer(module, &flatbuffer_str);
-    if (!status.ok()) {
-      return status;
-    }
-
-    output->os() << flatbuffer_str;
-    output->keep();
-    return ::tensorflow::OkStatus();
   }
 
   // Export StableHLO MLIR as output

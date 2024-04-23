@@ -125,113 +125,374 @@ Encountered unresolved custom op: Atan.
 
 ### Create and register the operator.
 
-All TensorFlow Lite operators (both custom and builtin) are defined using a
-simple pure-C interface that consists of four functions:
+```c++
+#include "tensorflow/lite/c/c_api.h"
+#include "tensorflow/lite/c/c_api_opaque.h"
+```
+
+TensorFlow Lite custom operators are defined using a simple pure-C API that
+consists of an opaque type (`TfLiteRegistrationExternal`) and related functions.
+
+`TfLiteRegistrationExternal` is an opaque type:
 
 ```c++
-typedef struct {
-  void* (*init)(TfLiteContext* context, const char* buffer, size_t length);
-  void (*free)(TfLiteContext* context, void* buffer);
-  TfLiteStatus (*prepare)(TfLiteContext* context, TfLiteNode* node);
-  TfLiteStatus (*invoke)(TfLiteContext* context, TfLiteNode* node);
-} TfLiteRegistration;
+typedef struct TfLiteRegistrationExternal TfLiteRegistrationExternal;
+```
+
+`TfLiteRegistrationExternal` stores the operator's identity and implementation.
+(Note that the operator is distinct from its operands, which are stored in the
+TF Lite graph nodes for nodes that call the operator.)
+
+Instances of this type are constructed with calls to
+`TfLiteRegistrationExternalCreate` and can be destroyed by calling
+`TfLiteRegistrationExternalDelete`.
+
+The operator's identity is set via the parameters to the constructor function
+`TfLiteRegistrationExternalCreate`:
+
+```c++
+TfLiteRegistrationExternal*
+TfLiteRegistrationExternalCreate(
+    TfLiteBuiltinOperator builtin_code,  // Normally `TfLiteBuiltinCustom`.
+    const char* custom_name,  // The name of the custom op.
+    int version  // Normally `1` for the first version of a custom op.
+);
+```
+
+The operator implementation can define "methods" with the following signatures.
+All of these methods are optional, but for an operator to be successfully
+evaluated, the operator implementation needs to define and set (using the setter
+functions) at least the `Prepare` and `Invoke` methods.
+
+```c++
+// Initializes the op from serialized data.
+void* Init(TfLiteOpaqueContext* context, const char* buffer, size_t length);
+
+// Deallocates the op.
+// The pointer `buffer` is the data previously returned by an Init invocation.
+void Free(TfLiteOpaqueContext* context, void* buffer);
+
+// Called when the inputs that this node depends on have been resized.
+TfLiteStatus Prepare(TfLiteOpaqueContext* context, TfLiteOpaqueNode* node);
+
+// Called when the node is executed. (Should read node inputs and write to
+// node outputs).
+TfLiteStatus Invoke(TfLiteOpaqueContext* context, TfLiteOpaqueNode* node);
+
+// Retrieves the async kernel.
+TfLiteAsyncKernel AsyncKernel(TfLiteOpaqueContext* context,
+                              TfLiteOpaqueNode* node);
+```
+
+The function *names* (or namespace prefixes, for C++) in your op implementation
+don't have to match the function names in the above code snippet, since the TF
+Lite custom ops API will only use their addresses. Indeed we recommend that you
+declare them in an anonymous namespace or as static functions.
+
+But it is a good idea to include your operator name as a namespace or prefix on
+these function names:
+
+<div>
+  <devsite-selector>
+    <section>
+      <h3>C++</h3>
+      <p><pre class="prettyprint lang-cpp">
+namespace my_namespace::my_custom_op {
+  void* Init(TfLiteOpaqueContext* context,
+             const char* buffer, size_t length) { ... }
+  // ... plus definitions of Free, Prepare, and Invoke ...
+}
+      </pre></p>
+    </section>
+    <section>
+      <h3>C</h3>
+      <p><pre class="prettyprint lang-cpp">
+void* MyCustomOpInit(TfLiteOpaqueContext* context,
+                     const char* buffer, size_t length) { ... }
+// ... plus definitions of MyCustomOpFree, MyCustomOpPrepare, and
+// MyCustomOpInvoke.
+      </pre></p>
+    </section>
+  </devsite-selector>
+</div>
+
+Since this is a C API, these "methods" are implemented as C function pointers in
+the `TfLiteRegistrationExternal` type, which are set by passing the addresses of
+your implementation functions to the corresponding setter functions
+`TfLiteRegistrationExternalSet`*MethodName*:
+
+```c++
+void TfLiteRegistrationExternalSetInit(
+    TfLiteRegistrationExternal* registration,
+    void* (*init)(TfLiteOpaqueContext* context, const char* buffer,
+                  size_t length));
+void TfLiteRegistrationExternalSetFree(
+    TfLiteRegistrationExternal* registration,
+    void (*free)(TfLiteOpaqueContext* context, void* data));
+void TfLiteRegistrationExternalSetPrepare(
+    TfLiteRegistrationExternal* registration,
+    TfLiteStatus (*prepare)(TfLiteOpaqueContext* context,
+                            TfLiteOpaqueNode* node));
+void TfLiteRegistrationExternalSetInvoke(
+    TfLiteRegistrationExternal* registration,
+    TfLiteStatus (*invoke)(TfLiteOpaqueContext* context,
+                           TfLiteOpaqueNode* node));
+void TfLiteRegistrationExternalSetAsyncKernel(
+    TfLiteRegistrationExternal* registration,
+    struct TfLiteAsyncKernel* (*async_kernel)(TfLiteOpaqueContext* context,
+                                              TfLiteOpaqueNode* node));
 ```
 
 Refer to
-[`common.h`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/c/common.h)
-for details on `TfLiteContext` and `TfLiteNode`. The former provides error
+[`common.h`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/core/c/common.h)
+for details on `TfLiteContext` and `TfLiteNode`. `TfLiteContext` provides error
 reporting facilities and access to global objects, including all the tensors.
-The latter allows implementations to access their inputs and outputs.
+`TfLiteNode` allows operator implementations to access their inputs and outputs.
 
-When the interpreter loads a model, it calls `init()` once for each node in the
-graph. A given `init()` will be called more than once if the op is used multiple
-times in the graph. For custom ops a configuration buffer will be provided,
-containing a flexbuffer that maps parameter names to their values. The buffer is
-empty for builtin ops because the interpreter has already parsed the op
-parameters. Kernel implementations that require state should initialize it here
-and transfer ownership to the caller. For each `init()` call, there will be a
-corresponding call to `free()`, allowing implementations to dispose of the
-buffer they might have allocated in `init()`.
+When the interpreter loads a model, it calls the `Init()` method once for each
+node in the graph. A given `Init()` will be called more than once if the op is
+used multiple times in the graph. For custom ops a configuration buffer will be
+provided, containing a flexbuffer that maps parameter names to their values. The
+buffer is empty for builtin ops because the interpreter has already parsed the
+op parameters. Kernel implementations that require state should initialize it
+here and transfer ownership to the caller. For each `Init()` call, there will be
+a corresponding call to `Free()`, allowing implementations to dispose of the
+buffer they might have allocated in `Init()`.
 
 Whenever the input tensors are resized, the interpreter will go through the
 graph notifying implementations of the change. This gives them the chance to
 resize their internal buffer, check validity of input shapes and types, and
-recalculate output shapes. This is all done through `prepare()`, and
-implementations can access their state using `node->user_data`.
+recalculate output shapes. This is all done through the `Prepare()` method, and
+implementations can access their state using
+`TfLiteOpaqueNodeGetUserData(node)`.
 
 Finally, each time inference runs, the interpreter traverses the graph calling
-`invoke()`, and here too the state is available as `node->user_data`.
+the `Invoke()` method, and here too the state is available as
+`TfLiteOpaqueNodeGetUserData(node)`.
 
-Custom ops can be implemented in exactly the same way as builtin ops, by
-defining those four functions and a global registration function that usually
-looks like this:
+Custom ops can be implemented by defining those "method" functions, and then
+defining a function that returns an instance of `TfLiteRegistrationExternal`
+constructed by calling `TfLiteRegistrationExternalCreate` and then the relevant
+setter methods:
 
-```c++
-namespace my_namespace {
-  const TfLiteRegistration* Register_MY_CUSTOM_OP() {
-    static const TfLiteRegistration r = {my_custom_op::Init,
-                                         my_custom_op::Free,
-                                         my_custom_op::Prepare,
-                                         my_custom_op::Eval};
-    return &r;
+<div>
+  <devsite-selector>
+    <section>
+      <h3>C++</h3>
+      <p><pre class="prettyprint lang-cpp">
+namespace my_namespace::my_custom_op {
+  namespace {
+    void* Init(TfLiteOpaqueContext* context,
+               const char* buffer, size_t length) { ... }
+    void Free(TfLiteOpaqueContext* context, void* buffer) { ... }
+    TfLiteStatus Prepare(TfLiteOpaqueContext* context,
+                         TfLiteOpaqueNode* node) { ... }
+    TfLiteStatus Invoke(TfLiteOpaqueContext* context,
+                        TfLiteOpaqueNode* node) {... }
+  };
+
+  const TfLiteRegistrationExternal* MyCustomOpRegistrationExternal() {
+    // Singleton instance, intentionally never destroyed.
+    static const TfLiteRegistrationExternal* my_custom_op = ()[] {
+        TfLiteRegistrationExternal* r =
+            TfLiteRegistrationExternalCreate(
+                kTfLiteBuiltinCustom, "MyCustomOp", /*version=*/ 1);
+        TfLiteRegistrationExternalSetInit(r, Init);
+        TfLiteRegistrationExternalSetFree(r, Free);
+        TfLiteRegistrationExternalSetPrepare(r, Prepare);
+        TfLiteRegistrationExternalSetInvoke(r, Eval);
+        return r;
+      };
+    return my_custom_op;
+  }
+
+  const TfLiteRegistration* MyCustomOpRegistration() {
+    static const TfLiteRegistration my_custom_op {
+      .registration_external = MyCustomOpRegistrationExternal();
+    };
+    return my_custom_op;
   }
 }  // namespace my_namespace
-```
+      </pre></p>
+    </section>
+    <section>
+      <h3>C</h3>
+      <p><pre class="prettyprint lang-cpp">
+static void* MyCustomOpInit(TfLiteOpaqueContext* context, const char* buffer,
+                     size_t length) { ... }
+static void MyCustomOpFree(TfLiteOpaqueContext* context, void* buffer) { ... }
+static TfLiteStatus MyCustomOpPrepare(TfLiteOpaqueContext* context,
+                                      TfLiteOpaqueNode* node) { ... }
+static TfLiteStatus MyCustomOpInvoke(TfLiteOpaqueContext* context,
+                                     TfLiteOpaqueNode* node) {... }
 
-Note that registration is not automatic and an explicit call to
-`Register_MY_CUSTOM_OP` should be made. While the standard `BuiltinOpResolver`
-(available from the `:builtin_ops` target) takes care of the registration of
-builtins, custom ops will have to be collected in separate custom libraries.
+static TfLiteRegistrationExternal* MyCustomOpCreate() {
+  const TfLiteRegistrationExternal* r =
+      TfLiteRegistrationExternalCreate(
+          kTfLiteBuiltinCustom, "MyCustomOp", /*version=*/ 1);
+  TfLiteRegistrationExternalSetInit(r, MyCustomOpInit);
+  TfLiteRegistrationExternalSetFree(r, MyCustomOpFree);
+  TfLiteRegistrationExternalSetPrepare(r, MyCustomOpPrepare);
+  TfLiteRegistrationExternalSetInvoke(r, MyCustomOpEval);
+  return r;
+}
+
+const TfLiteRegistrationExternal* MyCustomOpRegistrationExternal() {
+  // Singleton instance, intentionally never destroyed.
+  static const TfLiteRegistrationExternal* my_custom_op = MyCustomOpCreate();
+  return my_custom_op;
+}
+
+const TfLiteRegistration MyCustomOpRegistration() {
+  static const TfLiteRegistration my_custom_op {
+    .registration_external = MyCustomOpRegistrationExternal();
+  };
+  return my_custom_op;
+}
+      </pre></p>
+    </section>
+  </devsite-selector>
+</div>
+
+Note that registration is not automatic and an explicit call to your
+`MyCustomOpRegistration` function should be made (see details below). While the
+standard `BuiltinOpResolver` (available from the `:builtin_ops` target) takes
+care of the registration of builtins, custom ops will have to be collected in
+separate custom libraries.
 
 ### Defining the kernel in the TensorFlow Lite runtime
 
 All we need to do to use the op in TensorFlow Lite is define two functions
-(`Prepare` and `Eval`), and construct a `TfLiteRegistration`:
+(`Prepare` and `Eval`), and a third to construct a `TfLiteRegistrationExternal`:
 
-```cpp
-TfLiteStatus AtanPrepare(TfLiteContext* context, TfLiteNode* node) {
-  using namespace tflite;
-  TF_LITE_ENSURE_EQ(context, NumInputs(node), 1);
-  TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
+<div>
+  <devsite-selector>
+    <section>
+      <h3>C++</h3>
+      <p><pre class="prettyprint lang-cpp">
+namespace atan_op {
+  namespace {
+    TfLiteStatus AtanPrepare(TfLiteOpaqueContext* context, TfLiteOpaqueNode* node) {
+      TF_LITE_OPAQUE_ENSURE_EQ(context, TfLiteOpaqueNodeNumInputs(node), 1);
+      TF_LITE_OPAQUE_ENSURE_EQ(context, TfLiteOpaqueNodeNumOutputs(node), 1);
 
-  const TfLiteTensor* input = GetInput(context, node, 0);
-  TfLiteTensor* output = GetOutput(context, node, 0);
+      const TfLiteOpaqueTensor* input = TfLiteOpaqueNodeGetInput(context, node, 0);
+      TfLiteOpaqueTensor* output = TfLiteOpaqueNodeGetOutput(context, node, 0);
 
-  int num_dims = NumDimensions(input);
+      int num_dims = TfLiteOpaqueTensorNumDimensions(input);
+
+      TfLiteIntArray* output_size = TfLiteIntArrayCreate(num_dims);
+      for (int i=0; i < num_dims; ++i) {
+        output_size->data[i] = input->dims->data[i];
+      }
+
+      return TfLiteOpaqueContextResizeTensor(context, output, output_size);
+    }
+
+    TfLiteStatus AtanEval(TfLiteOpaqueContext* context, TfLiteOpaqueNode* node) {
+      const TfLiteOpaqueTensor* input = TfLiteOpaqueNodeGetInput(context, node, 0);
+      TfLiteOpaqueTensor* output = TfLiteOpaqueNodeGetOutput(context, node, 0);
+
+      float* input_data = static_cast<float*>(TfLiteOpaqueTensorData(input));
+      float* output_data = static_cast<float*>(TfLiteOpaqueTensorData(output));
+
+      size_t count = 1;
+      int num_dims = TfLiteOpaqueTensorNumDimensions(input);
+      for (int i = 0; i < num_dims; ++i) {
+        count *= input->dims->data[i];
+      }
+
+      for (size_t i = 0; i < count; ++i) {
+        output_data[i] = atan(input_data[i]);
+      }
+      return kTfLiteOk;
+    }
+  }  // anonymous namespace
+
+  const TfLiteRegistrationExternal* AtanOpRegistrationExternal() {
+    // Singleton instance, intentionally never destroyed.
+    static const TfLiteRegistrationExternal* atan_op = ()[] {
+        auto* r = TfLiteRegistrationExternalCreate(
+            kTfLiteBuiltinCustom, "ATAN", /*version=*/ 1);
+        TfLiteRegistrationExternalSetPrepare(r, Prepare);
+        TfLiteRegistrationExternalSetInvoke(r, Eval);
+        return r;
+      };
+    return atan_op;
+  }
+
+  const TfLiteRegistration AtanOpRegistration() {
+    static const TfLiteRegistration atan_op {
+      .registration_external = AtanOpRegistrationExternal();
+    };
+    return atan_op;
+  }
+}  // namespace atan_op
+      </pre></p>
+    </section>
+    <section>
+      <h3>C</h3>
+      <p><pre class="prettyprint lang-cpp">
+static TfLiteStatus AtanPrepare(TfLiteOpaqueContext* context, TfLiteOpaqueNode* node) {
+  TF_LITE_OPAQUE_ENSURE_EQ(context, TfLiteOpaqueNodeNumInputs(node), 1);
+  TF_LITE_OPAQUE_ENSURE_EQ(context, TfLiteOpaqueNodeNumOutputs(node), 1);
+
+  const TfLiteOpaqueTensor* input = TfLiteOpaqueNodeGetInput(context, node, 0);
+  TfLiteOpaqueTensor* output = TfLiteOpaqueNodeGetOutput(context, node, 0);
+
+  int num_dims = TfLiteOpaqueTensorNumDimensions(input);
 
   TfLiteIntArray* output_size = TfLiteIntArrayCreate(num_dims);
-  for (int i=0; i<num_dims; ++i) {
+  for (int i = 0; i < num_dims; ++i) {
     output_size->data[i] = input->dims->data[i];
   }
 
-  return context->ResizeTensor(context, output, output_size);
+  return TfLiteOpaqueContextResizeTensor(context, output, output_size);
 }
 
-TfLiteStatus AtanEval(TfLiteContext* context, TfLiteNode* node) {
-  using namespace tflite;
-  const TfLiteTensor* input = GetInput(context, node, 0);
-  TfLiteTensor* output = GetOutput(context, node, 0);
+static TfLiteStatus AtanEval(TfLiteOpaqueContext* context, TfLiteOpaqueNode* node) {
+  const TfLiteOpaqueTensor* input = TfLiteOpaqueNodeGetInput(context, node, 0);
+  TfLiteOpaqueTensor* output = TfLiteOpaqueNodeGetOutput(context, node, 0);
 
-  float* input_data = GetTensorData<float>(input);
-  float* output_data = GetTensorData<float>(output);
+  float* input_data = static_cast<float*>(TfLiteOpaqueTensorData(input));
+  float* output_data = static_cast<float*>(TfLiteOpaqueTensorData(output));
 
   size_t count = 1;
-  int num_dims = NumDimensions(input);
+  int num_dims = TfLiteOpaqueTensorNumDimensions(input);
   for (int i = 0; i < num_dims; ++i) {
     count *= input->dims->data[i];
   }
 
-  for (size_t i=0; i<count; ++i) {
+  for (size_t i = 0; i < count; ++i) {
     output_data[i] = atan(input_data[i]);
   }
   return kTfLiteOk;
 }
 
-const TfLiteRegistration* Register_ATAN() {
-  static const TfLiteRegistration r = {nullptr, nullptr, AtanPrepare, AtanEval};
-  return &r;
+static const TfLiteRegistrationExternal* AtanOpCreate() {
+  TfLiteRegistrationExternal* r = TfLiteRegistrationExternalCreate(
+          kTfLiteBuiltinCustom, "ATAN", /*version=*/ 1);
+  TfLiteRegistrationExternalSetPrepare(r, Prepare);
+  TfLiteRegistrationExternalSetInvoke(r, Eval);
+  return r;
 }
-```
+
+const TfLiteRegistrationExternal* AtanOpRegistrationExternal() {
+  // Singleton instance, intentionally never destroyed.
+  static const TfLiteRegistrationExternal* atan_op = AtanOpCreate();
+  return atan_op;
+}
+
+const TfLiteRegistration AtanOpRegistration() {
+  static const TfLiteRegistration atan_op {
+    .registration_external = AtanOpRegistrationExternal();
+  };
+  return atan_op;
+}
+      </pre></p>
+    </section>
+  </devsite-selector>
+</div>
 
 When initializing the `OpResolver`, add the custom op into the resolver (see
 below for an example). This will register the operator with Tensorflow Lite so
@@ -262,6 +523,11 @@ class OpResolver {
 };
 ```
 
+Note that for backwards compatibility, this class uses the older concrete type
+`TfLiteRegistration` rather than the opaque type `TfLiteRegistrationExternal`,
+but the `TfLiteRegistration` struct contains a `registration_external` field of
+type `TfLiteRegistrationExternal*`.
+
 The `MutableOpResolver` and `BuiltinOpResolver` classes are derived from
 `OpResolver`:
 
@@ -281,7 +547,8 @@ class BuiltinOpResolver : public MutableOpResolver {
 };
 ```
 
-Regular usage requires that you use the `BuiltinOpResolver` and write:
+Regular usage (without custom ops) requires that you use the `BuiltinOpResolver`
+and write:
 
 ```c++
 tflite::ops::builtin::BuiltinOpResolver resolver;
@@ -294,7 +561,7 @@ and call `AddCustom` (before you pass the resolver to the
 ```c++
 tflite::ops::builtin::MutableOpResolver resolver;
 resolver.AddAll(tflite::ops::builtin::BuiltinOpResolver());
-resolver.AddCustom("Atan", Register_ATAN());
+resolver.AddCustom("Atan", AtanOpRegistration());
 ```
 
 If the set of builtin ops is deemed to be too large, a new `OpResolver` could be
@@ -332,20 +599,64 @@ call (as show above) to
     of copying as much as possible.
 
 2.  If a data structure will persist during the entire operation, we advise
-    pre-allocating the memory using temporary tensors. You may need to use
+    pre-allocating the memory using temporary tensors. You may need to use an
     OpData struct to reference the tensor indices in other functions. See the
     example in the
     [kernel for convolution](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/kernels/conv.cc).
-    A sample code snippet is below
+    A sample code snippet is below.
 
-    ```
-    auto* op_data = reinterpret_cast<OpData*>(node->user_data);
-    TfLiteIntArrayFree(node->temporaries);
-    node->temporaries = TfLiteIntArrayCreate(1);
-    node->temporaries->data[0] = op_data->temp_tensor_index;
-    TfLiteTensor* temp_tensor = &context->tensors[op_data->temp_tensor_index];
-    temp_tensor->type =  kTfLiteFloat32;
-    temp_tensor->allocation_type = kTfLiteArenaRw;
+    ```c++
+    struct MyOpData {
+      int temp_tensor_index;
+      ...
+    };
+
+    void* Init(TfLiteOpaqueContext* context,
+        const char* buffer, size_t length) {
+      auto* op_data = new MyOpData{};
+      ...
+      return op_data;
+    }
+    void Free(TfLiteOpaqueContext* context, void* buffer) {
+      ...
+      delete reinterpret_cast<MyOpData*>(buffer);
+    }
+    TfLiteStatus Prepare(TfLiteOpaqueContext* context,
+                         TfLiteOpaqueNode* node) {
+      ...
+      auto* op_data =
+          reinterpret_cast<MyOpData*>(TfLiteOpaqueNodeGetUserData(node));
+      const int num_temporaries = 1;
+      int temporary_tensor_indices[num_temporaries];
+      TfLiteOpaqueTensorBuilder* builder = TfLiteOpaqueTensorBuilderCreate();
+      TfLiteOpaqueTensorBuilderSetType(builder, kTfLiteFloat32);
+      TfLiteOpaqueTensorBuilderSetAllocationType(builder, kTfLiteArenaRw);
+      TfLiteOpaqueContextAddTensor(context, builder,
+          &temporary_tensor_indices[0]);
+      TfLiteOpaqueTensorBuilderDelete(builder);
+      TfLiteOpaqueNodeSetTemporaries(node, temporary_tensor_indices,
+          num_temporaries);
+      op_data->temp_tensor_index = temporary_tensor_indices[0];
+      ...
+      return kTfLiteOk;
+    }
+    TfLiteStatus Invoke(TfLiteOpaqueContext* context,
+                        TfLiteOpaqueNode* node) {
+      ...
+      auto* op_data = reinterpret_cast<MyOpData*>(
+          TfLiteOpaqueNodeGetUserData(node));
+      TfLiteOpaqueTensor* temp_tensor =
+          TfLiteOpaqueContextGetOpaqueTensor(context,
+              op_data->temp_tensor_index);
+      TF_LITE_OPAQUE_ENSURE(context,
+          TfLiteTensorType(temp_tensor) == kTfLiteFloat32);
+      TF_LITE_OPAQUE_ENSURE(context,
+          TfLiteTensorGetAllocationType(temp_Tensor) == kTfLiteArenaRw);
+      void *temp_data = TfLiteTensorData(temp_tensor);
+      TF_LITE_OPAQUE_ENSURE(context, temp_data != nullptr);
+      ...
+      return kTfLiteOk;
+    }
     ```
 
 3.  If it doesn't cost too much wasted memory, prefer using a static fixed size
@@ -363,7 +674,7 @@ call (as show above) to
     `malloc` in a function and have an error exit, deallocate memory before you
     exit.
 
-6.  Use `TF_LITE_ENSURE(context, condition)` to check for a specific condition.
-    Your code must not leave memory hanging when `TF_LITE_ENSURE` is used, i.e.,
-    these macros should be used before any resources are allocated that will
-    leak.
+6.  Use `TF_LITE_OPAQUE_ENSURE(context, condition)` to check for a specific
+    condition. Your code must not leave memory hanging when
+    `TF_LITE_OPAQUE_ENSURE` is used, i.e., these macros should be used before
+    any resources are allocated that will leak.

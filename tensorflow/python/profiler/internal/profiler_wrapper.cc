@@ -179,4 +179,53 @@ PYBIND11_MODULE(_pywrap_profiler, m) {
       // TODO: consider defaulting `xspace_path_list` to empty list, since
       // this parameter is only used for two of the tools...
       py::arg(), py::arg(), py::arg() = py::dict());
+
+  m.def("xspace_to_tools_data_from_byte_string",
+        [](const py::list& xspace_string_list, const py::list& filenames_list,
+           const py::str& py_tool_name, const py::dict options = py::dict()) {
+          std::vector<std::unique_ptr<tensorflow::profiler::XSpace>> xspaces;
+          xspaces.reserve(xspace_string_list.size());
+          std::vector<std::string> xspace_paths;
+          xspace_paths.reserve(filenames_list.size());
+
+          // XSpace string inputs
+          for (py::handle obj : xspace_string_list) {
+            std::string xspace_string = std::string(py::cast<py::bytes>(obj));
+            auto xspace = std::make_unique<tensorflow::profiler::XSpace>();
+            if (!xspace->ParseFromString(xspace_string)) {
+              return py::make_tuple(py::bytes(""), py::bool_(false));
+            }
+            for (int i = 0; i < xspace->hostnames_size(); ++i) {
+              std::string hostname = xspace->hostnames(i);
+              std::replace(hostname.begin(), hostname.end(), ':', '_');
+              xspace->mutable_hostnames(i)->swap(hostname);
+            }
+            xspaces.push_back(std::move(xspace));
+          }
+
+          // XSpace paths.
+          for (py::handle obj : filenames_list) {
+            xspace_paths.push_back(std::string(py::cast<py::str>(obj)));
+          }
+
+          auto status_or_session_snapshot =
+              tensorflow::profiler::SessionSnapshot::Create(
+                  std::move(xspace_paths), std::move(xspaces));
+          if (!status_or_session_snapshot.ok()) {
+            LOG(ERROR) << status_or_session_snapshot.status().message();
+            return py::make_tuple(py::bytes(""), py::bool_(false));
+          }
+
+          std::string tool_name = std::string(py_tool_name);
+          ToolOptions tool_options = ToolOptionsFromPythonDict(options);
+          auto status_or_tool_data =
+              tensorflow::profiler::ConvertMultiXSpacesToToolData(
+                  status_or_session_snapshot.value(), tool_name, tool_options);
+          if (!status_or_tool_data.ok()) {
+            LOG(ERROR) << status_or_tool_data.status().message();
+            return py::make_tuple(py::bytes(""), py::bool_(false));
+          }
+          return py::make_tuple(py::bytes(status_or_tool_data.value()),
+                                py::bool_(true));
+        });
 };

@@ -400,7 +400,7 @@ class TensorListConcat : public OpKernel {
       OP_REQUIRES(c, !dim_sizes.empty(),
                   errors::InvalidArgument("element_shape must not be empty"));
       element_shape_except_first_dim =
-          PartialTensorShape(gtl::ArraySlice<int64_t>(dim_sizes).subspan(1));
+          PartialTensorShape(absl::Span<const int64_t>(dim_sizes).subspan(1));
     }
     // Check that the input Variant tensor is indeed a TensorList and has the
     // correct element type.
@@ -459,7 +459,7 @@ class TensorListConcat : public OpKernel {
               errors::InvalidArgument("Concat saw a scalar shape at index ", i,
                                       " but requires at least vectors."));
           TensorShape shape_except_first_dim = TensorShape(
-              gtl::ArraySlice<int64_t>(t.shape().dim_sizes()).subspan(1));
+              absl::Span<const int64_t>(t.shape().dim_sizes()).subspan(1));
           OP_REQUIRES_OK(c, tmp.MergeWith(shape_except_first_dim,
                                           &element_shape_except_first_dim));
           OP_REQUIRES(c, first_dim == -1 || first_dim == t.shape().dim_size(0),

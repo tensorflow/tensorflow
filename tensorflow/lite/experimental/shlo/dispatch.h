@@ -81,6 +81,24 @@ limitations under the License.
     }                                                                   \
   }
 
+#define DISPATCH_BOOL_INT(name, element_type, ...)                      \
+  {                                                                     \
+    switch (element_type) {                                             \
+      case DataType::kI1:                                               \
+        RETURN_OK_STATUS_IF_VOID((name<DataType::kI1>(__VA_ARGS__)));   \
+      case DataType::kSI4:                                              \
+        RETURN_OK_STATUS_IF_VOID((name<DataType::kSI4>(__VA_ARGS__)));  \
+      case DataType::kSI8:                                              \
+        RETURN_OK_STATUS_IF_VOID((name<DataType::kSI8>(__VA_ARGS__)));  \
+      case DataType::kSI16:                                             \
+        RETURN_OK_STATUS_IF_VOID((name<DataType::kSI16>(__VA_ARGS__))); \
+      case DataType::kSI32:                                             \
+        RETURN_OK_STATUS_IF_VOID((name<DataType::kSI32>(__VA_ARGS__))); \
+      default:                                                          \
+        return absl::InvalidArgumentError("Unsupported element type");  \
+    }                                                                   \
+  }
+
 #define DISPATCH_BOOL_INT_FLOAT(name, element_type, ...)                \
   {                                                                     \
     switch (element_type) {                                             \
@@ -140,30 +158,9 @@ limitations under the License.
         break;                                                               \
       case DataType::kSI16:                                                  \
         switch (expressed_type) {                                            \
-          case DataType::kBF16:                                              \
-            RETURN_OK_STATUS_IF_VOID(                                        \
-                (name<DataType::kSI16, DataType::kBF16>(__VA_ARGS__)));      \
-          case DataType::kF16:                                               \
-            RETURN_OK_STATUS_IF_VOID(                                        \
-                (name<DataType::kSI16, DataType::kF16>(__VA_ARGS__)));       \
           case DataType::kF32:                                               \
             RETURN_OK_STATUS_IF_VOID(                                        \
                 (name<DataType::kSI16, DataType::kF32>(__VA_ARGS__)));       \
-          default:                                                           \
-            return absl::InvalidArgumentError("Unsupported expressed type"); \
-        }                                                                    \
-        break;                                                               \
-      case DataType::kSI32:                                                  \
-        switch (expressed_type) {                                            \
-          case DataType::kBF16:                                              \
-            RETURN_OK_STATUS_IF_VOID(                                        \
-                (name<DataType::kSI32, DataType::kBF16>(__VA_ARGS__)));      \
-          case DataType::kF16:                                               \
-            RETURN_OK_STATUS_IF_VOID(                                        \
-                (name<DataType::kSI32, DataType::kF16>(__VA_ARGS__)));       \
-          case DataType::kF32:                                               \
-            RETURN_OK_STATUS_IF_VOID(                                        \
-                (name<DataType::kSI32, DataType::kF32>(__VA_ARGS__)));       \
           default:                                                           \
             return absl::InvalidArgumentError("Unsupported expressed type"); \
         }                                                                    \

@@ -814,8 +814,9 @@ Status EqualDynamicShapesAndDimensions(const LiteralSlice& expected,
                                        const LiteralSlice& actual) {
   TF_RETURN_IF_ERROR(EqualShapes(expected.shape(), actual.shape()));
   return ShapeUtil::ForEachSubshapeWithStatus(
-      expected.shape(), [&expected, &actual](const Shape& expected_shape,
-                                             const ShapeIndex& index) {
+      expected.shape(),
+      [&expected, &actual](const Shape& expected_shape,
+                           const ShapeIndex& index) -> absl::Status {
         auto actual_shape = ShapeUtil::GetSubshape(actual.shape(), index);
         for (int i = 0; i < expected_shape.dimensions().size(); ++i) {
           if (!expected_shape.is_dynamic_dimension(i) &&

@@ -831,8 +831,14 @@ Status DatasetBase::CheckRandomAccessCompatible(const int64 index) const {
 
 Status DatasetBase::Get(OpKernelContext* ctx, int64 index,
                         std::vector<Tensor>* out_tensors) const {
-  return errors::Unimplemented(
-      "Random access is not implemented for this dataset.");
+  return errors::Unimplemented("Random access is not implemented for dataset ",
+                               DebugString());
+}
+
+Status DatasetBase::Get(AnyContext ctx, int64 index,
+                        std::vector<Tensor>* out_tensors) const {
+  return errors::Unimplemented("Random access is not implemented for dataset ",
+                               DebugString());
 }
 
 absl::StatusOr<DatasetBase*> DatasetBase::Finalize(

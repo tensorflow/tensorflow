@@ -144,6 +144,8 @@ typedef struct {
   int last_delegate_node_index;
 #endif
 #ifdef TFLITE_GPU_ENABLE_INVOKE_LOOP
+  // Number of times to invoke the inference in GPU delegate, to collect more
+  // accurate latency result. Default as 1, which is the original behavior.
   int gpu_invoke_loop_times;
 #endif
 } TfLiteGpuDelegateOptionsV2;

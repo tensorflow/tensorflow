@@ -60,11 +60,9 @@ module {
     TF_ASSERT_OK_AND_ASSIGN(serialized, Serialize(*program));
   }
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Serializable> deserialized,
-                          Deserialize(serialized, /*options=*/nullptr));
-
-  auto xla_program = llvm::dyn_cast<XlaProgram>(deserialized.get());
-  ASSERT_THAT(xla_program, Not(IsNull()));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<XlaProgram> xla_program,
+      Deserialize<XlaProgram>(serialized, /*options=*/nullptr));
 
   // Verify that the deserialized program has no StableHLO ops.
   bool has_unsupported_dialect = false;

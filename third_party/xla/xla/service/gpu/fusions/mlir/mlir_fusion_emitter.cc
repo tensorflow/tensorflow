@@ -21,6 +21,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
+#include <variant>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
@@ -44,6 +45,7 @@ limitations under the License.
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Bufferization/IR/BufferizableOpInterface.h"  // from @llvm-project
 #include "mlir/Dialect/ControlFlow/IR/ControlFlow.h"  // from @llvm-project
+#include "mlir/Dialect/DLTI/DLTI.h"  // from @llvm-project
 #include "mlir/Dialect/Func/Extensions/InlinerExtension.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"  // from @llvm-project
@@ -92,6 +94,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
@@ -141,6 +144,21 @@ void AddRanges(llvm::Function* func, const LaunchDimensions& launch_dims,
   }
 }
 
+bool Needs64Bits(const Shape& shape) {
+  return shape.IsArray() ? !IsInt32(ShapeUtil::ElementsIn(shape))
+                         : absl::c_any_of(shape.tuple_shapes(), Needs64Bits);
+}
+
+bool Needs64BitIndices(const HloComputation* computation) {
+  for (auto* instr : computation->instructions()) {
+    if (Needs64Bits(instr->shape()) ||
+        absl::c_any_of(instr->called_computations(), Needs64BitIndices)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 }  // namespace
 
 Value MlirFusionEmitterBase::EmitBlockId(mlir::ImplicitLocOpBuilder& builder,
@@ -161,6 +179,13 @@ Value MlirFusionEmitterBase::EmitThreadId(mlir::ImplicitLocOpBuilder& builder,
       static_cast<mlir::gpu::Dimension>(dim));
   thread_id->setAttr("xla.range", builder.getIndexArrayAttr({0, count - 1}));
   return thread_id;
+}
+
+llvm::SmallVector<Value> MlirFusionEmitterBase::EmitThreadAndBlockIds(
+    mlir::ImplicitLocOpBuilder& builder) const {
+  auto& b = builder;
+  return {EmitThreadId(b, 0), EmitThreadId(b, 1), EmitThreadId(b, 2),
+          EmitBlockId(b, 0),  EmitBlockId(b, 1),  EmitBlockId(b, 2)};
 }
 
 absl::StatusOr<FusionEmissionResult> MlirFusionEmitterBase::Emit(
@@ -231,8 +256,9 @@ MlirFusionEmitterBase::CreateLLVMModule(
     const se::DeviceDescription& device, const HloFusionInstruction& fusion,
     const std::string& entry_function_name,
     const BufferAssignment* buffer_assignment) const {
-  TF_RET_CHECK(device.cuda_compute_capability().major >= 1)
-      << "Unsupported device type: " << device.name();
+  bool is_amd = std::holds_alternative<se::RocmComputeCapability>(
+      device.gpu_compute_capability());
+  TF_RET_CHECK(!is_amd) << "Unsupported device type: " << device.name();
   TF_ASSIGN_OR_RETURN(
       auto module, CreateMLIRModule(mlir_context, fusion, entry_function_name,
                                     buffer_assignment));
@@ -246,7 +272,9 @@ MlirFusionEmitterBase::CreateLLVMModule(
   pm.addPass(CreatePropagateSliceIndicesPass());
   pm.addPass(CreateLowerFuncPass());
   pm.addPass(CreateLowerXlaGpuToScfPass());
-  pm.addPass(CreateLowerTensorsPass());
+  pm.addPass(CreateLowerTensorsPass(
+      is_amd, is_amd ? device.rocm_compute_capability().gcn_arch_name()
+                     : device.cuda_compute_capability().ToString()));
   pm.addPass(mlir::createConvertComplexToStandardPass());
   pm.addPass(CreateMergePointersToSameSlicePass());
 
@@ -295,12 +323,12 @@ MlirFusionEmitterBase::CreateMLIRModule(
     mlir::MLIRContext& context, const HloFusionInstruction& fusion,
     const std::string& entry_function_name,
     const BufferAssignment* buffer_assignment) const {
-  context.loadDialect<mlir::tensor::TensorDialect, mlir::func::FuncDialect,
-                      mlir::affine::AffineDialect, mlir::arith::ArithDialect,
-                      mlir::cf::ControlFlowDialect, mlir::math::MathDialect,
-                      mlir::scf::SCFDialect, mlir::mhlo::MhloDialect,
-                      mlir::gpu::GPUDialect, mlir::NVVM::NVVMDialect,
-                      xla::gpu::XlaGpuDialect>();
+  context.loadDialect<mlir::DLTIDialect, mlir::tensor::TensorDialect,
+                      mlir::func::FuncDialect, mlir::affine::AffineDialect,
+                      mlir::arith::ArithDialect, mlir::cf::ControlFlowDialect,
+                      mlir::math::MathDialect, mlir::scf::SCFDialect,
+                      mlir::mhlo::MhloDialect, mlir::gpu::GPUDialect,
+                      mlir::NVVM::NVVMDialect, xla::gpu::XlaGpuDialect>();
   mlir::DialectRegistry registry;
   mlir::func::registerInlinerExtension(registry);
   mlir::registerBuiltinDialectTranslation(registry);
@@ -401,27 +429,30 @@ SmallVector<Value> MlirFusionEmitterBase::EmitThreadLoopNest(
     const std::function<
         SmallVector<Value>(ValueRange outputs_tensors, ValueRange dim_values,
                            ValueRange symbol_values)>& create_body) const {
-  SmallVector<Value> dim_values{EmitThreadId(b, 0), EmitThreadId(b, 1),
-                                EmitThreadId(b, 2), EmitBlockId(b, 0),
-                                EmitBlockId(b, 1),  EmitBlockId(b, 2)};
-  return mlir_converter::EmitLoopNest(b, dim_values, outputs, indexing_map,
-                                      create_body);
+  return mlir_converter::EmitLoopNest(b, EmitThreadAndBlockIds(b), outputs,
+                                      indexing_map, create_body);
 }
 
 absl::Status MlirFusionEmitterBase::EmitMlir(
     mlir::ModuleOp module, mlir::func::FuncOp entry_function,
     const HloFusionInstruction& fusion) const {
-  auto customized = GetInstructionsWithCustomCodegen(fusion);
+  std::optional<mlir_converter::EpilogueSpecification> epilogue =
+      GetEpilogue(fusion, module->getContext());
   mlir_converter::PartitionedComputations computations(
-      fusion.fused_instructions_computation(), customized);
+      fusion.fused_instructions_computation(), module->getContext(), epilogue);
   auto subgraph_to_mlir_fn = computations.DeclareFunctions(module);
 
-  // Erase subgraphs for all customized instructions - we don't want to
-  // automatically emit functions for them.
-  for (auto* custom : customized) {
-    subgraph_to_mlir_fn.extract(&computations.FindSubgraph(custom))
-        .mapped()
-        .erase();
+  // Erase subgraphs for all heroes that aren't used anywhere else. This is
+  // necessary because the instructions may not have elemental implementations
+  // (scatter).
+  if (epilogue) {
+    for (auto* custom : epilogue->heroes) {
+      if (custom->user_count() == 0) {
+        subgraph_to_mlir_fn.extract(&computations.FindSubgraph(custom))
+            .mapped()
+            .erase();
+      }
+    }
   }
 
   auto call_targets =
@@ -434,31 +465,42 @@ absl::Status MlirFusionEmitterBase::EmitMlir(
       }
     }
   }
-
-  // Restore the mapping for the customized instructions - they are emitted
-  // inside the entry function.
-  for (auto* root : customized) {
-    subgraph_to_mlir_fn[&computations.FindSubgraph(root)] = entry_function;
+  if (const auto& epilogue = computations.epilogue()) {
+    TF_RETURN_IF_ERROR(mlir_converter::SubgraphToMlirFunction(
+        computations.FindPartitionedComputation(
+            fusion.fused_instructions_computation()),
+        *epilogue, subgraph_to_mlir_fn[&*epilogue], call_targets));
   }
+
+  int index_bitwidth =
+      Needs64BitIndices(fusion.fused_instructions_computation()) ? 64 : 32;
+  mlir::OpBuilder b(module->getContext());
+  auto index_layout = mlir::DataLayoutEntryAttr::get(
+      b.getIndexType(), b.getI32IntegerAttr(index_bitwidth));
+  module->setAttr(
+      mlir::DLTIDialect::kDataLayoutAttrName,
+      mlir::DataLayoutSpecAttr::get(module->getContext(), {index_layout}));
 
   return EmitEntryFunction(computations, call_targets, entry_function, fusion);
 }
 
 mlir::ValueRange MlirFusionEmitterBase::EmitEpilogue(
-    const HloInstruction* root, const HloInstruction* hero,
-    const mlir_converter::CallTargetProvider& call_targets,
-    mlir::ValueRange injected_values, mlir::ValueRange output_indices,
+    const mlir_converter::PartitionedComputations& computations,
+    mlir::func::FuncOp entry_fn, mlir::ValueRange hero_values,
+    mlir::ValueRange output_indices,
     mlir::ImplicitLocOpBuilder& builder) const {
-  if (root == hero) {
-    return injected_values;
+  const auto& epilogue = computations.epilogue();
+  if (!epilogue) {
+    return hero_values;
   }
 
-  auto entry_fn = call_targets(hero);
-  auto epilogue_fn = call_targets(root);
-  SmallVector<Value> operands = mlir::ValueRange(
-      entry_fn.getArguments().take_front(hero->parent()->num_parameters()));
+  auto epilogue_fn = mlir::cast<mlir::func::FuncOp>(
+      entry_fn->getParentOfType<mlir::ModuleOp>().lookupSymbol(epilogue->name));
+  SmallVector<Value> operands =
+      mlir::ValueRange(entry_fn.getArguments().take_front(
+          computations.fusion()->num_parameters()));
   absl::c_copy(output_indices, std::back_inserter(operands));
-  absl::c_copy(injected_values, std::back_inserter(operands));
+  absl::c_copy(hero_values, std::back_inserter(operands));
 
   return builder.create<PureCallOp>(epilogue_fn, operands).getResults();
 }

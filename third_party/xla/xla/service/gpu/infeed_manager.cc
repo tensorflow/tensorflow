@@ -16,12 +16,23 @@ limitations under the License.
 #include "xla/service/gpu/infeed_manager.h"
 
 #include <cstdint>
+#include <limits>
 #include <memory>
+#include <utility>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/literal.h"
+#include "xla/service/gpu/xfeed_queue.h"
+#include "xla/shape.h"
+#include "xla/shape_tree.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/util.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "xla/service/gpu/xla_executor_state.h"

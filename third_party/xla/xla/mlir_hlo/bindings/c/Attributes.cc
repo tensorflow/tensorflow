@@ -654,3 +654,29 @@ intptr_t mlirMhloTypeExtensionsGetBoundsSize(MlirAttribute attr) {
 int64_t mlirMhloTypeExtensionsGetBoundsElem(MlirAttribute attr, intptr_t pos) {
   return unwrap(attr).cast<mlir::mhlo::TypeExtensionsAttr>().getBounds()[pos];
 }
+
+//
+// SparsityDescriptor
+//
+
+MlirAttribute mlirMhloSparsityDescriptorGet(MlirContext ctx, int64_t dimension,
+                                            int64_t n, int64_t m) {
+  return wrap(
+      mlir::mhlo::SparsityDescriptorAttr::get(unwrap(ctx), dimension, n, m));
+}
+
+bool mlirMhloAttributeIsASparsityDescriptor(MlirAttribute attr) {
+  return unwrap(attr).isa<mlir::mhlo::SparsityDescriptorAttr>();
+}
+
+int64_t mlirMhloSparsityDescriptorGetDimension(MlirAttribute attr) {
+  return unwrap(attr).cast<mlir::mhlo::SparsityDescriptorAttr>().getDimension();
+}
+
+int64_t mlirMhloSparsityDescriptorGetN(MlirAttribute attr) {
+  return unwrap(attr).cast<mlir::mhlo::SparsityDescriptorAttr>().getN();
+}
+
+int64_t mlirMhloSparsityDescriptorGetM(MlirAttribute attr) {
+  return unwrap(attr).cast<mlir::mhlo::SparsityDescriptorAttr>().getM();
+}

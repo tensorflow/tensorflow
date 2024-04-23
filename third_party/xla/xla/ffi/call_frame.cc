@@ -20,6 +20,7 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -84,13 +85,19 @@ void CallFrameBuilder::AddBufferArg(se::DeviceMemoryBase memory,
   args_.push_back(Buffer{memory, type, {dims.begin(), dims.end()}});
 }
 
+void CallFrameBuilder::AddBufferRet(se::DeviceMemoryBase memory,
+                                    PrimitiveType type,
+                                    absl::Span<const int64_t> dims) {
+  rets_.push_back(Buffer{memory, type, {dims.begin(), dims.end()}});
+}
+
 void CallFrameBuilder::AddAttributes(AttributesMap attrs) {
   for (auto& [name, attr] : attrs) {
     attrs_.try_emplace(std::move(name), std::move(attr));
   }
 }
 
-CallFrame CallFrameBuilder::Build() { return CallFrame(args_, attrs_); }
+CallFrame CallFrameBuilder::Build() { return CallFrame(args_, rets_, attrs_); }
 
 CallFrameBuilder::CallFrameBuilder(CallFrameBuilder&&) = default;
 CallFrameBuilder& CallFrameBuilder::operator=(CallFrameBuilder&&) = default;
@@ -125,6 +132,19 @@ struct CallFrame::Dictionary {
   std::unique_ptr<Attributes> attrs;
 };
 
+struct CallFrame::Array {
+  std::variant<std::vector<int32_t>, std::vector<int64_t>, std::vector<float>>
+      value;  // XLA_FFI_Array::data
+
+  XLA_FFI_Array array = {XLA_FFI_Array_STRUCT_SIZE, nullptr};
+};
+
+struct CallFrame::Scalar {
+  std::variant<int32_t, int64_t, float> value;  // XLA_FFI_Scalar::value
+
+  XLA_FFI_Scalar scalar = {XLA_FFI_Scalar_STRUCT_SIZE, nullptr};
+};
+
 struct CallFrame::String {
   std::string value;  // XLA_FFI_ByteSpan::ptr
 
@@ -151,6 +171,21 @@ struct CallFrame::Arguments {
   XLA_FFI_Args ffi_args = {XLA_FFI_Args_STRUCT_SIZE, nullptr};
 };
 
+struct CallFrame::Results {
+  explicit Results(size_t size) {
+    results.reserve(size);
+    types.reserve(size);
+    rets.reserve(size);
+  }
+
+  std::vector<Buffer> results;
+
+  std::vector<XLA_FFI_RetType> types;  // XLA_FFI_Rets::types
+  std::vector<void*> rets;             // XLA_FFI_Rets::rets
+
+  XLA_FFI_Rets ffi_rets = {XLA_FFI_Rets_STRUCT_SIZE, nullptr};
+};
+
 struct CallFrame::Attributes {
   explicit Attributes(size_t size) {
     attributes.reserve(size);
@@ -173,62 +208,72 @@ struct CallFrame::Attributes {
 //===----------------------------------------------------------------------===//
 
 CallFrame::CallFrame(absl::Span<const CallFrameBuilder::Buffer> args,
+                     absl::Span<const CallFrameBuilder::Buffer> rets,
                      const CallFrameBuilder::AttributesMap& attrs)
-    : arguments_(InitArgs(args)), attributes_(InitAttrs(attrs)) {}
+    : arguments_(InitArgs(args)),
+      results_(InitRets(rets)),
+      attributes_(InitAttrs(attrs)) {}
 
-XLA_FFI_CallFrame CallFrame::Build(XLA_FFI_Api* api,
+XLA_FFI_CallFrame CallFrame::Build(const XLA_FFI_Api* api,
                                    XLA_FFI_ExecutionContext* ctx) {
   XLA_FFI_CallFrame call_frame = {XLA_FFI_CallFrame_STRUCT_SIZE, nullptr};
   call_frame.api = api;
   call_frame.ctx = ctx;
   call_frame.args = arguments_->ffi_args;
+  call_frame.rets = results_->ffi_rets;
   call_frame.attrs = attributes_->ffi_attrs;
   return call_frame;
 }
 
 CallFrame::~CallFrame() = default;
 
+// We rely on casting to and from underlying integral type to convert from
+// PrimitiveType to XLA FFI DataType, and for safety convert all unknown types
+// to invalid type, otherwise we can accidentally cause UB.
+static XLA_FFI_DataType ToDataType(PrimitiveType primitive_type) {
+  switch (primitive_type) {
+    case PrimitiveType::PRIMITIVE_TYPE_INVALID:
+    case PrimitiveType::PRED:
+    case PrimitiveType::S8:
+    case PrimitiveType::S16:
+    case PrimitiveType::S32:
+    case PrimitiveType::S64:
+    case PrimitiveType::U8:
+    case PrimitiveType::U16:
+    case PrimitiveType::U32:
+    case PrimitiveType::U64:
+    case PrimitiveType::F16:
+    case PrimitiveType::F32:
+    case PrimitiveType::F64:
+    case PrimitiveType::BF16:
+      return static_cast<XLA_FFI_DataType>(primitive_type);
+    default:
+      DCHECK(false) << "Unsupported primitive type" << primitive_type;
+      return XLA_FFI_DataType_INVALID;
+  }
+}
+
+CallFrame::Buffer CallFrame::ConvertBuffer(
+    const CallFrameBuilder::Buffer& buffer) {
+  Buffer result;
+  result.dims = buffer.dims;
+  result.buffer.data = const_cast<void*>(buffer.memory.opaque());
+  result.buffer.dtype = ToDataType(buffer.type);
+  result.buffer.rank = result.dims.size();
+  return result;
+}
+
 //===----------------------------------------------------------------------===//
 // Call frame arguments
 //===----------------------------------------------------------------------===//
 
-/*static*/ std::unique_ptr<CallFrame::Arguments> CallFrame::InitArgs(
+std::unique_ptr<CallFrame::Arguments> CallFrame::InitArgs(
     absl::Span<const CallFrameBuilder::Buffer> bargs) {
   auto res = std::make_unique<Arguments>(bargs.size());
 
-  // We rely on casting to and from underlying integral type to convert from
-  // PrimitiveType to XLA FFI DataType, and for safety convert all unknown types
-  // to invalid type, otherwise we can accidentally cause UB.
-  auto to_data_type = [](PrimitiveType primitive_type) {
-    switch (primitive_type) {
-      case PrimitiveType::PRIMITIVE_TYPE_INVALID:
-      case PrimitiveType::S8:
-      case PrimitiveType::S16:
-      case PrimitiveType::S32:
-      case PrimitiveType::S64:
-      case PrimitiveType::U8:
-      case PrimitiveType::U16:
-      case PrimitiveType::U32:
-      case PrimitiveType::U64:
-      case PrimitiveType::F16:
-      case PrimitiveType::F32:
-      case PrimitiveType::F64:
-      case PrimitiveType::BF16:
-        return static_cast<XLA_FFI_DataType>(primitive_type);
-      default:
-        DCHECK(false) << "Unsupported primitive type" << primitive_type;
-        return XLA_FFI_DataType_INVALID;
-    }
-  };
-
   // Convert call frame builder arguments to call frame arguments.
   for (const CallFrameBuilder::Buffer& barg : bargs) {
-    Buffer buffer;
-    buffer.dims = barg.dims;
-    buffer.buffer.data = const_cast<void*>(barg.memory.opaque());
-    buffer.buffer.dtype = to_data_type(barg.type);
-    buffer.buffer.rank = buffer.dims.size();
-    res->arguments.push_back(std::move(buffer));
+    res->arguments.push_back(ConvertBuffer(barg));
   }
 
   // Fix up pointers in XLA FFI structs.
@@ -244,9 +289,42 @@ CallFrame::~CallFrame() = default;
 
   // Finally initialize the XLA FFI struct. At this point all storage is
   // allocated and it's safe to grab a pointer to it.
-  res->ffi_args.num_args = res->arguments.size();
+  res->ffi_args.size = res->arguments.size();
   res->ffi_args.types = res->types.data();
   res->ffi_args.args = res->args.data();
+
+  return res;
+}
+
+//===----------------------------------------------------------------------===//
+// Call frame results
+//===----------------------------------------------------------------------===//
+
+std::unique_ptr<CallFrame::Results> CallFrame::InitRets(
+    absl::Span<const CallFrameBuilder::Buffer> brets) {
+  auto res = std::make_unique<Results>(brets.size());
+
+  // Convert call frame builder arguments to call frame arguments.
+  for (const CallFrameBuilder::Buffer& bret : brets) {
+    res->results.push_back(ConvertBuffer(bret));
+  }
+
+  // Fix up pointers in XLA FFI structs.
+  for (CallFrame::Buffer& arg : res->results) {
+    arg.buffer.dims = arg.dims.data();
+  }
+
+  // Initialize vectors required for building XLA_FFI_Rets.
+  for (CallFrame::Buffer& ret : res->results) {
+    res->types.push_back(XLA_FFI_RetType_BUFFER);
+    res->rets.push_back(&ret.buffer);
+  }
+
+  // Finally initialize the XLA FFI struct. At this point all storage is
+  // allocated and it's safe to grab a pointer to it.
+  res->ffi_rets.size = res->results.size();
+  res->ffi_rets.types = res->types.data();
+  res->ffi_rets.rets = res->rets.data();
 
   return res;
 }
@@ -258,9 +336,12 @@ CallFrame::~CallFrame() = default;
 // An std::visit overload set for converting CallFrameBuilder::Attribute to
 // CallFrame::Attribute.
 struct CallFrame::ConvertAttribute {
-  template <typename T>
-  CallFrame::Attribute operator()(const T& value) {
-    return value;
+  CallFrame::Attribute operator()(const CallFrameBuilder::Array& array) {
+    return CallFrame::Array{array};
+  }
+
+  CallFrame::Attribute operator()(const CallFrameBuilder::Scalar& scalar) {
+    return CallFrame::Scalar{scalar};
   }
 
   CallFrame::Attribute operator()(const std::string& str) {
@@ -272,25 +353,58 @@ struct CallFrame::ConvertAttribute {
   }
 };
 
+template <typename T>
+static XLA_FFI_DataType GetDataType() {
+  if constexpr (std::is_same_v<int32_t, T>) {
+    return XLA_FFI_DataType_S32;
+  } else if constexpr (std::is_same_v<int64_t, T>) {
+    return XLA_FFI_DataType_S64;
+  } else if constexpr (std::is_same_v<float, T>) {
+    return XLA_FFI_DataType_F32;
+  } else {
+    static_assert(sizeof(T) == 0, "unsupported FFI data type");
+  }
+}
+
 // An std::visit overload set to fix up CallFrame::Attribute storage and
 // initialize XLA FFI structs with valid pointers into storage objects.
 struct CallFrame::FixupAttribute {
-  template <typename T>
-  void operator()(T& value) {}
+  void operator()(CallFrame::Array& array) {
+    auto visitor = [&](auto& value) {
+      using T = typename std::remove_reference_t<decltype(value)>::value_type;
+      array.array.dtype = GetDataType<T>();
+      array.array.size = value.size();
+      array.array.data = value.data();
+    };
+    std::visit(visitor, array.value);
+  }
+
+  void operator()(CallFrame::Scalar& scalar) {
+    auto visitor = [&](auto& value) {
+      using T = std::remove_reference_t<decltype(value)>;
+      scalar.scalar.dtype = GetDataType<T>();
+      scalar.scalar.value = &value;
+    };
+    std::visit(visitor, scalar.value);
+  }
 
   void operator()(CallFrame::String& str) {
     str.span.ptr = str.value.data();
     str.span.len = str.value.size();
   }
+
+  void operator()(CallFrame::Dictionary&) {}
 };
 
 // An std::visit overload set to get CallFrame::Attribute XLA FFI type.
 struct CallFrame::AttributeType {
-  XLA_FFI_AttrType operator()(int32_t&) { return XLA_FFI_AttrType_I32; }
+  XLA_FFI_AttrType operator()(CallFrame::Array&) {
+    return XLA_FFI_AttrType_ARRAY;
+  }
 
-  XLA_FFI_AttrType operator()(int64_t&) { return XLA_FFI_AttrType_I64; }
-
-  XLA_FFI_AttrType operator()(float&) { return XLA_FFI_AttrType_F32; }
+  XLA_FFI_AttrType operator()(CallFrame::Scalar&) {
+    return XLA_FFI_AttrType_SCALAR;
+  }
 
   XLA_FFI_AttrType operator()(CallFrame::String&) {
     return XLA_FFI_AttrType_STRING;
@@ -307,6 +421,10 @@ struct CallFrame::AttributeStorage {
   void* operator()(T& value) {
     return &value;
   }
+
+  void* operator()(CallFrame::Array& array) { return &array.array; }
+
+  void* operator()(CallFrame::Scalar& scalar) { return &scalar.scalar; }
 
   void* operator()(CallFrame::String& str) { return &str.span; }
 
@@ -346,7 +464,7 @@ struct CallFrame::AttributeStorage {
 
   // Finally initialize XLA FFI struct. At this point all storage is allocated
   // and it's safe to grab a pointer to it.
-  res->ffi_attrs.num_attrs = res->attributes.size();
+  res->ffi_attrs.size = res->attributes.size();
   res->ffi_attrs.names = res->names.data();
   res->ffi_attrs.types = res->types.data();
   res->ffi_attrs.attrs = res->attrs.data();

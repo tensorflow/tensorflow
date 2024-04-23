@@ -17,6 +17,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/status/status.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/tf_pjrt_client.h"
 #include "tensorflow/core/platform/errors.h"
@@ -66,7 +67,7 @@ Status PjRtState::SetPjRtClient(const DeviceType& device_type,
     unused_.push_back(std::move(it->second));
   }
   clients_[device_type] = std::move(client);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status PjRtState::MovePjRtClientToUnused(const DeviceType& device_type) {
@@ -74,10 +75,22 @@ Status PjRtState::MovePjRtClientToUnused(const DeviceType& device_type) {
   if (auto it = clients_.find(device_type); it != clients_.end()) {
     unused_.push_back(std::move(it->second));
     clients_.erase(it);
-    return OkStatus();
+    return absl::OkStatus();
   }
   return errors::NotFound("PjRt client not found for device type ",
                           device_type);
+}
+
+Status PjRtState::SetPjRtGpuClientCreationInfo(
+    std::unique_ptr<PjRtGpuClientCreationInfo> info) {
+  absl::MutexLock lock(&mu_);
+  pjrt_gpu_client_creation_info_ = std::move(info);
+  return absl::OkStatus();
+}
+
+PjRtGpuClientCreationInfo* PjRtState::GetPjRtGpuClientCreationInfo() {
+  absl::MutexLock lock(&mu_);
+  return pjrt_gpu_client_creation_info_.get();
 }
 
 string PjRtState::DebugString() const { return "PjRtState"; }

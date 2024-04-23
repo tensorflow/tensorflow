@@ -66,7 +66,9 @@ const HloInstruction* ResolveOperand(const HloInstruction* operand) {
   // Deal with multi-output fusion operands, which are reached via a
   // get-tuple-element op.
   if (operand->opcode() == HloOpcode::kGetTupleElement &&
-      operand->operand(0)->opcode() == HloOpcode::kFusion) {
+      operand->operand(0)->opcode() == HloOpcode::kFusion &&
+      operand->operand(0)->fused_expression_root()->opcode() ==
+          HloOpcode::kTuple) {
     return operand->operand(0)->fused_expression_root()->operand(
         operand->tuple_index());
   }

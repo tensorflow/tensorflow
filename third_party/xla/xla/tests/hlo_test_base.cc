@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/statusor.h"
+#include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/tests/filecheck.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/pjrt_client_registry.h"
@@ -98,6 +99,7 @@ HloTestBase::HloTestBase(se::Platform* test_platform,
       verifier_layout_sensitive_(verifier_layout_sensitive),
       allow_mixed_precision_in_hlo_verifier_(
           allow_mixed_precision_in_hlo_verifier),
+      instruction_can_change_layout_func_(instruction_can_change_layout_func),
       test_platform_(test_platform) {
   hlo_verifier_ = std::make_unique<HloVerifier>(
       /*layout_sensitive=*/verifier_layout_sensitive,
@@ -128,19 +130,16 @@ std::unique_ptr<VerifiedHloModule> HloTestBase::CreateNewVerifiedModule(
   return std::make_unique<VerifiedHloModule>(
       name, GetModuleConfigForTest(replica_count), verifier_layout_sensitive_,
       allow_mixed_precision_in_hlo_verifier_,
-      backend().compiler()->ShapeSizeBytesFunction());
+      backend().compiler()->ShapeSizeBytesFunction(),
+      instruction_can_change_layout_func_);
 }
 
 absl::StatusOr<std::unique_ptr<VerifiedHloModule>>
 HloTestBase::ParseAndReturnVerifiedModule(absl::string_view hlo_text,
                                           int64_t replica_count,
                                           int64_t num_partitions) {
-  TF_ASSIGN_OR_RETURN(
-      auto module,
-      ParseAndReturnVerifiedModule(
-          hlo_text, GetModuleConfigForTest(replica_count, num_partitions)));
-  UpdateEntryComputationLayout(module.get());
-  return module;
+  return ParseAndReturnVerifiedModule(
+      hlo_text, GetModuleConfigForTest(replica_count, num_partitions));
 }
 
 absl::StatusOr<std::unique_ptr<VerifiedHloModule>>
@@ -149,7 +148,8 @@ HloTestBase::ParseAndReturnVerifiedModule(absl::string_view hlo_text,
   auto module = std::make_unique<VerifiedHloModule>(
       TestName(), config, verifier_layout_sensitive_,
       allow_mixed_precision_in_hlo_verifier_,
-      backend().compiler()->ShapeSizeBytesFunction());
+      backend().compiler()->ShapeSizeBytesFunction(),
+      instruction_can_change_layout_func_);
   TF_RETURN_IF_ERROR(module->ParseHloStringAndVerifyModule(hlo_text));
   UpdateEntryComputationLayout(module.get());
   return std::move(module);
@@ -886,6 +886,14 @@ HloInstruction* HloTestBase::FindInstruction(HloModule* module,
   return nullptr;
 }
 
+se::DeviceMemoryAllocator* HloTestBase::GetAllocator() {
+  if (allocator_ == nullptr) {
+    allocator_ = std::make_unique<se::StreamExecutorMemoryAllocator>(
+        backend().default_stream_executor());
+  }
+  return allocator_.get();
+}
+
 Backend& HloTestBase::backend() { return test_runner_.backend(); }
 
 /* static */
@@ -912,15 +920,14 @@ absl::StatusOr<std::unique_ptr<HloModule>> HloTestBase::GetOptimizedModule(
       std::unique_ptr<HloModule> module,
       ParseAndReturnVerifiedModule(hlo, GetModuleConfigForTest()));
   return backend().compiler()->RunHloPasses(
-      std::move(module), backend().default_stream_executor(),
-      backend().default_stream_executor()->GetAllocator());
+      std::move(module), backend().default_stream_executor(), GetAllocator());
 }
 
 absl::StatusOr<std::unique_ptr<HloModule>> HloTestBase::GetOptimizedModule(
     std::unique_ptr<HloModule> hlo_module) {
-  return backend().compiler()->RunHloPasses(
-      std::move(hlo_module), backend().default_stream_executor(),
-      backend().default_stream_executor()->GetAllocator());
+  return backend().compiler()->RunHloPasses(std::move(hlo_module),
+                                            backend().default_stream_executor(),
+                                            GetAllocator());
 }
 
 absl::StatusOr<std::unique_ptr<HloRunnerInterface>>

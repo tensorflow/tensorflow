@@ -55,7 +55,7 @@ class RemoteLoadedHostCallbackQueue {
   struct ExecutionRequest {
     std::vector<Buffer> operands;
     std::vector<Buffer> results;
-    Future<absl::Status>::Promise status;
+    Future<>::Promise status;
   };
 
   ~RemoteLoadedHostCallbackQueue();

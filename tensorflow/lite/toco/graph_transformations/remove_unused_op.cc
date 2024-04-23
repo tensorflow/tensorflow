@@ -60,7 +60,7 @@ namespace toco {
     }
     for (const std::string& output_array : model->flags.output_arrays()) {
       if (output == output_array) {
-        return ::tensorflow::OkStatus();
+        return absl::OkStatus();
       }
     }
     for (const auto& rnn_state : model->flags.rnn_states()) {
@@ -69,26 +69,26 @@ namespace toco {
         if (!IsDiscardableArray(*model, rnn_state.back_edge_source_array()) ||
             !IsDiscardableArray(*model, rnn_state.state_array()) ||
             CountOpsWithInput(*model, rnn_state.state_array())) {
-          return ::tensorflow::OkStatus();
+          return absl::OkStatus();
         }
       }
     }
     if (CountOpsWithInput(*model, output)) {
-      return ::tensorflow::OkStatus();
+      return absl::OkStatus();
     }
   }
 
   if (op->unresolved_outputs) {
     AddMessageF("Not discarding %s because it has unresolved outputs.",
                 LogName(*op));
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   AddMessageF("Discarding %s because none of its outputs is used.",
               LogName(*op));
   DeleteOpAndArrays(model, op);
   *modified = true;
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace toco

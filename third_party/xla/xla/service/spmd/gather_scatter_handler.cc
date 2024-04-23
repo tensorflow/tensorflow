@@ -73,11 +73,22 @@ PartitionedHlo PerGroupPartitionedHlo(
 std::vector<PartitionedHlo> PerGroupPartitionedHlos(
     std::vector<PartitionedHlo>& phlos, const GroupedSharding& grouped_sharding,
     SpmdBuilder* b, absl::InlinedVector<std::function<void()>, 3>& clean_ups) {
+  // Cache per-group partitioned hlos to avoid group-partitioning it more than
+  // once.
+  absl::flat_hash_map<HloInstruction*, PartitionedHlo> cached_per_group_hlos;
+  std::vector<HloInstruction*> hlos;
+  absl::c_transform(phlos, std::back_inserter(hlos),
+                    [&](PartitionedHlo phlo) { return phlo.hlo(); });
+
   std::vector<PartitionedHlo> per_group_phlos;
-  absl::c_transform(
-      phlos, std::back_inserter(per_group_phlos), [&](PartitionedHlo phlo) {
-        return PerGroupPartitionedHlo(phlo, grouped_sharding, b, clean_ups);
-      });
+  for (int i = 0; i != hlos.size(); ++i) {
+    if (!cached_per_group_hlos.contains(hlos[i])) {
+      cached_per_group_hlos.emplace(std::make_pair(
+          hlos[i],
+          PerGroupPartitionedHlo(phlos[i], grouped_sharding, b, clean_ups)));
+    }
+    per_group_phlos.push_back(cached_per_group_hlos.at(hlos[i]));
+  }
   return per_group_phlos;
 }
 
@@ -120,7 +131,7 @@ std::vector<int64_t> GatherOperandDimsByPriority(
   }
   const auto operand_passthrough_dims =
       hlo_sharding_util::GetGatherOperandPassthroughOperandDims(
-          operand.base_shape(), operand.sharding(), *gather, slice_sizes);
+          operand.base_shape(), *gather, slice_sizes);
   absl::c_copy(operand_passthrough_dims,
                std::back_inserter(priority_dims_for_operand));
   return priority_dims_for_operand;
@@ -157,8 +168,7 @@ std::vector<int64_t> GatherOutputDimsByPriority(
   std::vector<int64_t> priority_dims_for_output;
   auto operand_passthrough_output_dims =
       hlo_sharding_util::GetGatherOperandPassthroughOutputDims(
-          output_shape, operand.base_shape(), operand.sharding(), *gather,
-          slice_sizes);
+          output_shape, operand.base_shape(), *gather, slice_sizes);
   for (int i = 0; i != output_shape.rank(); ++i) {
     if (!absl::c_linear_search(operand_passthrough_output_dims, i)) {
       priority_dims_for_output.push_back(i);
@@ -343,7 +353,7 @@ absl::StatusOr<HloInstruction*> PartitionGatherOperandPassthroughDimensions(
               operand.base_shape(), operand.sharding(), *gather, slice_sizes)) {
     const auto operand_grouping_dims =
         hlo_sharding_util::GetGatherOperandPassthroughOperandDims(
-            operand.base_shape(), operand.sharding(), *gather, slice_sizes);
+            operand.base_shape(), *gather, slice_sizes);
     const int64_t num_groups =
         operand.sharding().NumTiles(operand_grouping_dims);
     const int64_t num_tiles = operand.sharding().TotalNumTiles();

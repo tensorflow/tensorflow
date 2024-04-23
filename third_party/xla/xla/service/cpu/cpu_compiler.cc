@@ -642,13 +642,13 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   }
 
   {
-    // Int4Packer must be run before the rest of the pipeline since it
+    // SubbytePacker must be run before the rest of the pipeline since it
     // modifies the layout of the entry computation inputs/outputs, which is
     // passed to LayoutAssignment.
-    HloPassPipeline int4_packer_pipeline("Int4Packer pipeline");
-    int4_packer_pipeline.AddPass<SubByteNormalization>(
+    HloPassPipeline subbyte_packer_pipeline("SubbytePacker pipeline");
+    subbyte_packer_pipeline.AddPass<SubByteNormalization>(
         SubByteNormalization::SET_ELEMENT_SIZE);
-    TF_RETURN_IF_ERROR(int4_packer_pipeline.Run(module).status());
+    TF_RETURN_IF_ERROR(subbyte_packer_pipeline.Run(module).status());
   }
 
   HloPassPipeline pipeline("HLO passes through layout assignment");
@@ -711,12 +711,17 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   // Convert BF16 and F8 operations to F32 and F16 respectively so that the CPU
   // backend can support BF16/F8 operations without directly implementing a
   // BF16/F8 lowering for most ops.
-#if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
-  CpuFloatSupport bf16_support(BF16);
-#else
   FloatSupport bf16_support(BF16);
-#endif
+#if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
+  CpuFloatSupport onednn_bf16_support(BF16);
+  if (!is_aot_compile) {
+    pipeline.AddPass<FloatNormalization>(&onednn_bf16_support);
+  } else {
+    pipeline.AddPass<FloatNormalization>(&bf16_support);
+  }
+#else
   pipeline.AddPass<FloatNormalization>(&bf16_support);
+#endif
   FloatSupport f8e5m2_support(F8E5M2, F16);
   pipeline.AddPass<FloatNormalization>(&f8e5m2_support);
   FloatSupport f8e4m3fn_support(F8E4M3FN, F16);
@@ -905,14 +910,20 @@ Status CpuCompiler::RunHloPassesAfterLayoutAssn(
 #if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
   // AOT compiled code runs in single thread.
   if (!is_aot_compile) {
+    auto debug_options = module->config().debug_options();
     // Run SimplifyFPConversions pass to simplify the BF16 pattern and make it
     // easier to match.
-    pipeline.AddPass<SimplifyFPConversions>();
+    // Remove `f32 -> bf16 -> f32` casts inserted by bf16 normalization.
+    if (debug_options.xla_allow_excess_precision()) {
+      pipeline.AddPass<SimplifyFPConversions>();
+    }
     pipeline.AddPass<OneDnnMatMulRewriter>(max_parallelism,
                                            compile_options.thread_pool);
     // Run SimplifyFPConversions pass again to remove redundant Convert ops
     // that may exist as a result of running OneDnnMatMulRewriter pass.
-    pipeline.AddPass<SimplifyFPConversions>();
+    if (debug_options.xla_allow_excess_precision()) {
+      pipeline.AddPass<SimplifyFPConversions>();
+    }
   }
 #endif  // INTEL_MKL && ENABLE_ONEDNN_V3
 
@@ -1101,28 +1112,6 @@ absl::StatusOr<std::unique_ptr<HloModule>> CpuCompiler::RunHloPasses(
                                   /*compile_options=*/options,
                                   /*is_mlir_compile=*/false));
   return std::move(module);
-}
-
-absl::StatusOr<std::unique_ptr<BufferAssignment>> CpuCompiler::AssignBuffers(
-    HloModule* module, const se::StreamExecutor* /*stream_exec*/) {
-  // Select an order for emitting the HLO instructions for each computation.
-  // Using this sequence enables tighter buffer liveness analysis and reduced
-  // memory usage (as compared to using DependencyHloOrdering).
-  TF_ASSIGN_OR_RETURN(HloSchedule schedule,
-                      ScheduleModule(module, BufferSizeBytesFunction(),
-                                     ComputationSchedulerToModuleScheduler(
-                                         DFSMemoryScheduler)));
-  TF_RETURN_IF_ERROR(module->set_schedule(std::move(schedule)));
-
-  // Run buffer allocation on the HLO graph.
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<BufferAssignment> assignment,
-      BufferAssigner::Run(
-          module, std::make_unique<SequentialHloOrdering>(module->schedule()),
-          BufferSizeBytesFunction(), memory_alignment,
-          /*allocate_buffers_for_constants=*/true));
-
-  return std::move(assignment);
 }
 
 namespace {

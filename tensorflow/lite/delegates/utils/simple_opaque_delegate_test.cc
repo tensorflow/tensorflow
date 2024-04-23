@@ -272,18 +272,17 @@ TEST(DelegateTest, TestDataMultiAddBin_MultiInputMultiOutput_FullyDelegated) {
   TfLiteModelDelete(model);
 }
 
-TfLiteRegistrationExternal* CreateDelegateKernelRegistrationImpl(
+TfLiteOperator* CreateDelegateKernelRegistrationImpl(
     SimpleOpaqueDelegateInterface* delegate) {
-  TfLiteRegistrationExternal* kernel_registration =
-      TfLiteRegistrationExternalCreate(kTfLiteBuiltinDelegate, delegate->Name(),
-                                       1);
-  TfLiteRegistrationExternalSetFree(
+  TfLiteOperator* kernel_registration =
+      TfLiteOperatorCreate(kTfLiteBuiltinDelegate, delegate->Name(), 1);
+  TfLiteOperatorSetFree(
       kernel_registration,
       [](TfLiteOpaqueContext* context, void* buffer) -> void {
         delete reinterpret_cast<SimpleOpaqueDelegateInterface*>(buffer);
       });
 
-  TfLiteRegistrationExternalSetInit(
+  TfLiteOperatorSetInit(
       kernel_registration,
       [](TfLiteOpaqueContext* context, const char* buffer,
          size_t length) -> void* {
@@ -302,7 +301,7 @@ TfLiteRegistrationExternal* CreateDelegateKernelRegistrationImpl(
         }
         return delegate_kernel.release();
       });
-  TfLiteRegistrationExternalSetPrepare(
+  TfLiteOperatorSetPrepare(
       kernel_registration,
       [](TfLiteOpaqueContext* context,
          TfLiteOpaqueNode* opaque_node) -> TfLiteStatus {
@@ -311,7 +310,7 @@ TfLiteRegistrationExternal* CreateDelegateKernelRegistrationImpl(
                 TfLiteOpaqueNodeGetUserData(opaque_node));
         return delegate_kernel->Prepare(context, opaque_node);
       });
-  TfLiteRegistrationExternalSetInvoke(
+  TfLiteOperatorSetInvoke(
       kernel_registration,
       [](TfLiteOpaqueContext* context,
          TfLiteOpaqueNode* opaque_node) -> TfLiteStatus {
@@ -394,7 +393,7 @@ TEST_F(TestDelegate, SetBufferHandle) {
     TfLiteIntArray* execution_plan;
     TF_LITE_ENSURE_STATUS(
         TfLiteOpaqueContextGetExecutionPlan(opaque_context, &execution_plan));
-    TfLiteRegistrationExternal* delegate_kernel_registration =
+    TfLiteOperator* delegate_kernel_registration =
         CreateDelegateKernelRegistrationImpl(simple_opaque_delegate);
 
     return TfLiteOpaqueContextReplaceNodeSubsetsWithDelegateKernels(

@@ -1,25 +1,40 @@
 # PJRT C API changelog
 
-## 0.46
+## 0.49
+* Added ``PJRT_Extension_Type::PJRT_Extension_Type_Stream``.
+
+## 0.48 (Apr 10, 2024)
+* Added ``PjRtCApiMemorySpace::kind_id`` for uniquely identifying memory space kinds.
+* Renamed memory space kind to ``PjRtCApiMemorySpace::memory_space_kind`` to
+  ``PjRtCApiMemorySpace::kind``.
+* Added new host buffer semantics enum
+  ``PJRT_HostBufferSemantics_kMutableZeroCopy``
+
+## 0.47 (Mar 29, 2024)
+* Added ``PJRT_Extension_Type::PJRT_Extension_Type_Custom_Partitioner``.
+* Renamed host buffer semantics enum from ``PJRT_HostBufferSemantics_kZeroCopy``
+  to ``PJRT_HostBufferSemantics_kImmutableZeroCopy``.
+
+## 0.46 (Feb 29, 2024)
 * Update outdated struct sizes from previous changes to
   ``PJRT_Device_AddressableMemories_Args`` and ``PJRT_ExecuteOptions``.
 
-## 0.45
+## 0.45 (Feb 27, 2024)
 * Breaking changes
   * Added struct_size field to beginning of PJRT_Extension_Base. This is so
     forwards and backwards compatibility logic can be implemented with extension
     structs.
 
-## 0.44
+## 0.44 (Feb 26, 2024)
 * Changed all ``void*`` extension fields to have type ``PJRT_Extension_Base*``
 
-## 0.43
+## 0.43 (Feb 24, 2024)
 * Added some new fields to PJRT_Executable_GetCompiledMemoryStats
 
-## 0.42
+## 0.42 (Feb 13, 2024)
 * Renamed all ``priv`` fields to ``extension_start``
 
-## 0.41
+## 0.41 (Feb 13, 2024)
 * Renamed PJRT_Structure_Base to PJRT_Extension_Base
 * Renamed PJRT_Structure_Type to PJRT_Extension_Type (and similarly for enum fields)
 

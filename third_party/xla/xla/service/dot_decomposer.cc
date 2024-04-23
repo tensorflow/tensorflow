@@ -219,21 +219,11 @@ Status CanonicalizeDot(HloDotInstruction* original_dot) {
   sparsity.reserve(original_dot->sparse_operands());
   sparse_meta.reserve(original_dot->sparse_operands());
   auto transpose_meta = [&](HloInstruction* original_meta,
-                            absl::Span<const int64_t> dnums,
-                            absl::Span<const int64_t> batch) {
-    std::vector<int64_t> meta_transpose;
-    for (int64_t original_dnum : dnums) {
-      if (!absl::c_linear_search(batch, original_dnum)) {
-        int skip_batch_dnums = absl::c_count_if(
-            batch, [&](int64_t dnum) { return dnum < original_dnum; });
-        meta_transpose.push_back(original_dnum - skip_batch_dnums);
-      }
-    }
+                            absl::Span<const int64_t> transpose) {
     return computation->AddInstruction(
         HloInstruction::CreateTranspose(
-            ShapeUtil::PermuteDimensions(meta_transpose,
-                                         original_meta->shape()),
-            original_meta, meta_transpose),
+            ShapeUtil::PermuteDimensions(transpose, original_meta->shape()),
+            original_meta, transpose),
         &original_meta->metadata());
   };
   for (int i = 0; i < original_dot->sparse_operands(); ++i) {
@@ -245,12 +235,10 @@ Status CanonicalizeDot(HloDotInstruction* original_dot) {
         original_dot->mutable_operand(HloDotInstruction::kOperands + i);
     HloInstruction* meta_operand;
     if (descriptor.index() == 0) {
-      meta = transpose_meta(meta, lhs_transpose,
-                            original_dnums.lhs_batch_dimensions());
+      meta = transpose_meta(meta, lhs_transpose);
       meta_operand = reshaped_lhs;
     } else {
-      meta = transpose_meta(meta, rhs_transpose,
-                            original_dnums.rhs_batch_dimensions());
+      meta = transpose_meta(meta, rhs_transpose);
       meta_operand = reshaped_rhs;
     }
     TF_ASSIGN_OR_RETURN(Shape result_shape,

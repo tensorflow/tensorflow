@@ -273,20 +273,22 @@ GpuCommandBuffer::GetSetWhileConditionKernel(StreamExecutor* executor) {
 
 absl::StatusOr<GpuCommandBuffer::NoOpKernel*> GpuCommandBuffer::GetNoOpKernel(
     StreamExecutor* executor) {
+#if !defined(TENSORFLOW_USE_ROCM)
   if (!noop_kernel_) {
     MultiKernelLoaderSpec spec(/*arity=*/0);
-#if !defined(TENSORFLOW_USE_ROCM)
     spec.AddCudaPtxInMemory(gpu::kNoOpKernel, "noop");
-#else
-    spec.AddInProcessSymbol(gpu::GetNoOpKernel(), "noop");
-#endif  // TENSORFLOW_USE_ROCM
     TF_ASSIGN_OR_RETURN(noop_kernel_, NoOpKernel::Create(executor, spec));
   }
   return &noop_kernel_;
+#else
+  return absl::UnimplementedError(
+      "GpuCommandBuffer::GetNoOpKernel is not implemented.");
+#endif  // TENSORFLOW_USE_ROCM
 }
 
 absl::Status GpuCommandBuffer::DisableBarriersExecution(
     GpuGraphExecHandle exec) {
+#if !defined(TENSORFLOW_USE_ROCM)
   ExecutionScope& execution_scope = execution_scopes_[kDefaulExecutionScope];
 
   for (GpuGraphBarrierInfo& barrier : execution_scope.barriers) {
@@ -301,6 +303,7 @@ absl::Status GpuCommandBuffer::DisableBarriersExecution(
       TF_RETURN_IF_ERROR(cmd_buffer->DisableBarriersExecution(exec));
     }
   }
+#endif  // TENSORFLOW_USE_ROCM
   return absl::OkStatus();
 }
 
@@ -323,16 +326,21 @@ absl::Status GpuCommandBuffer::CheckNumCommandBuffers(
 
 absl::StatusOr<GpuGraphNodeHandle> GpuCommandBuffer::CreateBarrierNode(
     StreamExecutor* executor, const Dependencies& dependencies) {
+  GpuGraphNodeHandle barrier_handle = nullptr;
+#if !defined(TENSORFLOW_USE_ROCM)
   // TODO(b/316343054): Instead of empty nodes we create no-op kernel nodes as
   // barriers because CUDA 12.3 does not support empty nodes inside
   // conditional command buffers. This should be fixed in CUDA 12.4.
   TF_ASSIGN_OR_RETURN(NoOpKernel * noop, GetNoOpKernel(executor));
 
-  GpuGraphNodeHandle barrier_handle = nullptr;
   TF_RETURN_IF_ERROR(GpuDriver::GraphAddKernelNode(
       &barrier_handle, graph_, dependencies, "noop",
       AsGpuKernel(&**noop)->AsGpuFunctionHandle(), 1, 1, 1, 1, 1, 1, 0,
       /*kernel_params=*/nullptr, /*extra=*/nullptr));
+#else
+  TF_RETURN_IF_ERROR(
+      GpuDriver::GraphAddEmptyNode(&barrier_handle, graph_, dependencies));
+#endif  // TENSORFLOW_USE_ROCM
 
   return barrier_handle;
 }
@@ -879,7 +887,7 @@ absl::Status GpuCommandBuffer::If(ExecutionScopeId execution_scope_id,
                                   StreamExecutor* executor,
                                   DeviceMemory<bool> predicate,
                                   Builder then_builder) {
-  DCHECK(executor->implementation() == parent_);
+  DCHECK(executor == parent_);
 
   TF_ASSIGN_OR_RETURN(SetIfConditionKernel * set_if_condition,
                       GetSetIfConditionKernel(executor));
@@ -901,7 +909,7 @@ absl::Status GpuCommandBuffer::IfElse(ExecutionScopeId execution_scope_id,
                                       DeviceMemory<bool> predicate,
                                       Builder then_builder,
                                       Builder else_builder) {
-  DCHECK(executor->implementation() == parent_);
+  DCHECK(executor == parent_);
 
   TF_ASSIGN_OR_RETURN(SetIfElseConditionKernel * set_if_else_condition,
                       GetSetIfElseConditionKernel(executor));
@@ -923,7 +931,7 @@ absl::Status GpuCommandBuffer::Case(ExecutionScopeId execution_scope_id,
                                     StreamExecutor* executor,
                                     DeviceMemory<int32_t> index,
                                     std::vector<Builder> branches) {
-  DCHECK(executor->implementation() == parent_);
+  DCHECK(executor == parent_);
 
   // TODO(ezhulenev): Relax this constraint, we can launch multiple back to back
   // kernels to update conditional handles in batches of size 8.
@@ -966,7 +974,7 @@ absl::Status GpuCommandBuffer::For(ExecutionScopeId execution_scope_id,
                                    int32_t num_iteration,
                                    DeviceMemory<int32_t> loop_counter,
                                    Builder body_builder) {
-  DCHECK(executor->implementation() == parent_);
+  DCHECK(executor == parent_);
 
   TF_ASSIGN_OR_RETURN(SetForConditionKernel * set_for_condition,
                       GetSetForConditionKernel(executor));
@@ -1001,7 +1009,7 @@ absl::Status GpuCommandBuffer::While(ExecutionScopeId execution_scope_id,
                                      DeviceMemory<bool> pred,
                                      ExecutionScopeBuilder cond_builder,
                                      Builder body_builder) {
-  DCHECK(executor->implementation() == parent_);
+  DCHECK(executor == parent_);
 
   TF_ASSIGN_OR_RETURN(SetWhileConditionKernel * set_while_condition,
                       GetSetWhileConditionKernel(executor));

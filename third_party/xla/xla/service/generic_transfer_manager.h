@@ -83,12 +83,6 @@ class GenericTransferManager : public TransferManager {
   Shape HostShapeToDeviceShape(const Shape& host_shape) const override;
 
  private:
-  // Returns whether subbyte types (types less than 1 byte, e.g. U4) should
-  // have multiple values packed into a single byte on the device. Subbyte
-  // bytes are never packed on the host. By default, returns false, so a byte
-  // can only hold one value, but subclasses can override this.
-  virtual bool PackSubbyteTypes() const { return false; }
-
   // Transfer a memory block of the given size from the device source into the
   // 'destination' buffer.
   //
@@ -110,8 +104,9 @@ class GenericTransferManager : public TransferManager {
   // bytes where each byte stores two int4 values. 'destination' is a buffer
   // with num_elements bytes, where a single int4 value will be written to each
   // byte in the lower 4 bits.
-  virtual Status TransferInt4ArrayFromDevice(se::Stream* stream,
+  virtual Status TransferIntNArrayFromDevice(se::Stream* stream,
                                              const se::DeviceMemoryBase& source,
+                                             PrimitiveType element_type,
                                              int64_t num_elements,
                                              void* destination);
 
@@ -120,7 +115,8 @@ class GenericTransferManager : public TransferManager {
   // lower 4 bits of each byte stores an int4 value. 'destination' is a buffer
   // with (num_elements+1)/2 bytes, where two int4 values will be written into
   // each byte.
-  virtual Status TransferInt4ArrayToDevice(se::Stream* stream,
+  virtual Status TransferIntNArrayToDevice(se::Stream* stream,
+                                           PrimitiveType element_type,
                                            int64_t num_elements,
                                            const void* source,
                                            se::DeviceMemoryBase* destination);

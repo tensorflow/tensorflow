@@ -124,7 +124,7 @@ Status HandleInputOutputArraysWithModule(
                                      ") does not exist in the given graph");
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ConvertSavedModelToTFLiteFlatBuffer(
@@ -204,6 +204,8 @@ Status ConvertSavedModelToTFLiteFlatBuffer(
   pass_config.legalize_custom_tensor_list_ops =
       toco_flags.legalize_custom_tensor_list_ops();
   pass_config.enable_stablehlo_quantizer = toco_flags.has_quantization_config();
+  pass_config.enable_composite_direct_lowering =
+      toco_flags.enable_composite_direct_lowering();
 
   if (toco_flags.qdq_conversion_mode() == "STATIC") {
     pass_config.quant_specs.qdq_conversion_mode =

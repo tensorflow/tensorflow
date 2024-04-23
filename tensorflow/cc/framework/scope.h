@@ -125,7 +125,7 @@ class Scope {
   /// Return a new scope. All ops created within the returned scope will have as
   /// control dependencies the union of operations in the control_deps vector
   /// and the control dependencies of the current scope.
-  Scope WithControlDependencies(gtl::ArraySlice<Operation> control_deps) const;
+  Scope WithControlDependencies(absl::Span<const Operation> control_deps) const;
   /// Same as above, but convenient to add control dependency on the operation
   /// producing the control_dep output.
   Scope WithControlDependencies(const Output& control_dep) const;

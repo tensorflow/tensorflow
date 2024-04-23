@@ -137,7 +137,7 @@ void GatherFusionInstructions(
 
 }  // namespace
 
-/* static */ StatusOr<std::unique_ptr<TuplePointsToAnalysis>>
+/* static */ absl::StatusOr<std::unique_ptr<TuplePointsToAnalysis>>
 TuplePointsToAnalysis::Run(const HloModule* module) {
   auto logical_buffer_analysis = LogicalBufferAnalysis::Run(module);
   std::unique_ptr<TuplePointsToAnalysis> analysis(new TuplePointsToAnalysis(
@@ -632,7 +632,7 @@ const LogicalBuffer& TuplePointsToAnalysis::GetBuffer(
   return logical_buffer_analysis_->GetBuffer(id);
 }
 
-StatusOr<const LogicalBuffer*> TuplePointsToAnalysis::GetBufferDefinedAt(
+absl::StatusOr<const LogicalBuffer*> TuplePointsToAnalysis::GetBufferDefinedAt(
     const HloInstruction* instruction, const ShapeIndex& index) const {
   const auto& buffers = GetPointsToSet(instruction).element(index);
   if (buffers.size() != 1 || buffers[0]->instruction() != instruction) {

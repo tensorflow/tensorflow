@@ -44,7 +44,7 @@ absl::StatusOr<ReplacedAsync> CreateAsyncAllReduce(
   auto* ar = Cast<HloAllReduceInstruction>(instruction);
   HloInstruction* start =
       computation->AddInstruction(HloInstruction::CreateAllReduceStart(
-          ar->shape(), ar->operands(), ar->to_apply(), ar->replica_groups(),
+          ar->shape(), ar->operands(), ar->to_apply(), ar->device_list(),
           ar->constrain_layout(), ar->channel_id(),
           ar->use_global_device_ids()));
   HloInstruction* done =
@@ -69,8 +69,8 @@ absl::StatusOr<ReplacedAsync> CreateAsyncAllGather(
        ag->shape()});
   HloInstruction* start =
       computation->AddInstruction(HloInstruction::CreateAllGatherStart(
-          shape, ag->operands(), ag->all_gather_dimension(),
-          ag->replica_groups(), ag->constrain_layout(), ag->channel_id(),
+          shape, ag->operands(), ag->all_gather_dimension(), ag->device_list(),
+          ag->constrain_layout(), ag->channel_id(),
           ag->use_global_device_ids()));
   HloInstruction* done =
       computation->AddInstruction(HloInstruction::CreateUnary(

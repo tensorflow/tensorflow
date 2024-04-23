@@ -49,9 +49,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
-#include "tensorflow/compiler/mlir/lite/quantization/ir/FakeQuantSupport.h"
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
-#include "tensorflow/compiler/mlir/lite/quantization/ir/UniformSupport.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/utils/attribute_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/constant_utils.h"
@@ -1097,9 +1095,9 @@ void LegalizeTFPass::runOnOperation() {
   addPatterns(context, stage1Patterns, this->preserve_assert_op_);
 
   FrozenRewritePatternSet stage1FrozenPatterns(std::move(stage1Patterns));
-  if (!applyPatterns(func, target, stage1FrozenPatterns))
+  if (!applyPatterns(func, target, stage1FrozenPatterns)) {
     return signalPassFailure();
-
+  }
   // Explict BroadcastTo addition for left-over broadcast-able ops.
   // The following pattern matchings should be done after the other legalization
   // rules in order not to add unnecessary BroadcastTo ops.
@@ -1128,8 +1126,9 @@ void LegalizeTFPass::runOnOperation() {
                      ApplyExplicitBroadcasting<TF::SelectV2Op>>(context);
 
   FrozenRewritePatternSet stage2FrozenPatterns(std::move(stage2Patterns));
-  if (!applyPatterns(func, target, stage2FrozenPatterns))
+  if (!applyPatterns(func, target, stage2FrozenPatterns)) {
     return signalPassFailure();
+  }
 }
 
 }  // namespace

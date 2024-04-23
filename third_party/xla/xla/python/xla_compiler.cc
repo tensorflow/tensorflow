@@ -40,7 +40,6 @@ limitations under the License.
 #include "third_party/nanobind/include/nanobind/stl/string_view.h"  // IWYU pragma: keep
 #include "third_party/nanobind/include/nanobind/stl/variant.h"  // IWYU pragma: keep
 #include "third_party/nanobind/include/nanobind/stl/vector.h"  // IWYU pragma: keep
-#include "pybind11/pybind11.h"  // from @pybind11
 #include "xla/array.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/client/xla_builder.h"
@@ -292,20 +291,13 @@ StatusOr<HloSharding> IotaTileHelper(
                    subgroup_types);
 }
 
-// Registers a 'fn_capsule' as a CPU custom call target.
-// 'fn_capsule' must be a void* pointer encapsulated in a PyCapsule object,
-// with name "xla._CUSTOM_CALL_TARGET".
+// Registers a 'fn_capsule' as a custom call target.
+// 'fn_capsule' must be a void* pointer encapsulated in a PyCapsule object.
 // 'platform' is an XLA platform name, e.g., "Host" or "CUDA".
 absl::Status PyRegisterCustomCallTarget(const std::string& fn_name,
                                         nb::capsule capsule,
                                         const std::string& platform,
                                         int api_version) {
-  static const char* const kName = "xla._CUSTOM_CALL_TARGET";
-  if (absl::string_view(capsule.name()) != kName) {
-    return InvalidArgument(
-        "Argument to RegisterCustomCallTarget was not a "
-        "xla._CUSTOM_CALL_TARGET capsule.");
-  }
   switch (api_version) {
     case 0:
       CustomCallTargetRegistry::Global()->Register(
@@ -722,9 +714,8 @@ void BuildXlaCompilerSubmodule(nb::module_& m) {
         });
   m.def(
       "hlo_module_cost_analysis",
-      xla::ValueOrThrowWrapper([](nb::handle client_py, const HloModule& module)
+      xla::ValueOrThrowWrapper([](PyClient* client, const HloModule& module)
                                    -> StatusOr<nb::dict> {
-        PyClient* client = pybind11::cast<PyClient*>(client_py.ptr());
         TF_ASSIGN_OR_RETURN(auto analysis,
                             client->pjrt_client()->GetHloCostAnalysis());
         TF_RETURN_IF_ERROR(module.entry_computation()->Accept(analysis.get()));
@@ -950,10 +941,10 @@ void BuildXlaCompilerSubmodule(nb::module_& m) {
           targets[nb::str(name.data(), name.size())] = nb::capsule(target);
         }
 
-        for (const auto& [name, target] :
+        for (const auto& [name, registration] :
              ffi::StaticRegisteredHandlers(platform)) {
           targets[nb::str(name.data(), name.size())] =
-              nb::capsule(reinterpret_cast<void*>(target));
+              nb::capsule(reinterpret_cast<void*>(registration.handler));
         }
         return targets;
       },

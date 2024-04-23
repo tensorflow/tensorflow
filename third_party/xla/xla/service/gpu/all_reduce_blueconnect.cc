@@ -35,11 +35,12 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/hlo_creation_utils.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/statusor.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -235,14 +236,16 @@ absl::StatusOr<bool> TryDecomposeAllReduce(HloAllReduceInstruction* all_reduce,
   HloInstruction* reduce_scatter =
       computation.AddInstruction(HloInstruction::CreateReduceScatter(
           reduce_scatter_shape, flat_operands, all_reduce->to_apply(),
-          decomposed_groups->scatter_gather_groups, /*constrain_layout=*/false,
-          all_reduce->channel_id(), all_reduce->use_global_device_ids(),
+          CollectiveDeviceList(decomposed_groups->scatter_gather_groups),
+          /*constrain_layout=*/false, all_reduce->channel_id(),
+          all_reduce->use_global_device_ids(),
           /*scatter_dimension=*/0));
 
   HloInstruction* new_all_reduce =
       computation.AddInstruction(HloInstruction::CreateAllReduce(
           reduce_scatter_shape, GetOutputs(*reduce_scatter),
-          all_reduce->to_apply(), decomposed_groups->new_all_reduce_groups,
+          all_reduce->to_apply(),
+          CollectiveDeviceList(decomposed_groups->new_all_reduce_groups),
           /*constrain_layout=*/false, all_reduce->channel_id(),
           all_reduce->use_global_device_ids()));
 
@@ -250,7 +253,8 @@ absl::StatusOr<bool> TryDecomposeAllReduce(HloAllReduceInstruction* all_reduce,
       computation.AddInstruction(HloInstruction::CreateAllGather(
           ShapeUtil::MakeMaybeTupleShape(flat_shapes),
           GetOutputs(*new_all_reduce),
-          /*all_gather_dimension=*/0, decomposed_groups->scatter_gather_groups,
+          /*all_gather_dimension=*/0,
+          CollectiveDeviceList(decomposed_groups->scatter_gather_groups),
           /*constrain_layout=*/false, all_reduce->channel_id(),
           all_reduce->use_global_device_ids()));
 

@@ -44,6 +44,8 @@ limitations under the License.
 #include "mlir/Dialect/Tensor/Transforms/BufferizableOpInterfaceImpl.h"  // from @llvm-project
 #include "mlir/Dialect/Vector/Transforms/BufferizableOpInterfaceImpl.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "xla/mlir/backends/cpu/transforms/passes.h"
 #include "xla/mlir/runtime/transforms/compiler.h"
@@ -152,7 +154,11 @@ static Status CreateHloXlaPipeline(
   // one-shot-bufferize generates unnecessary allocs for. The detensorize pass
   // replaces these linalg.generics with scalar ops.
   auto detensorize = mlir::createLinalgDetensorizePass();
-  if (detensorize->initializeOptions("aggressive-mode=true").failed()) {
+  if (detensorize
+          ->initializeOptions(
+              "aggressive-mode=true",
+              [](const mlir::Twine&) { return mlir::failure(); })
+          .failed()) {
     return tsl::errors::Internal("Failed to set up detensorize pass.");
   }
   pm.addNestedPass<mlir::func::FuncOp>(std::move(detensorize));
@@ -179,13 +185,13 @@ static Status CreateHloXlaPipeline(
   }
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());
-  mlir::bufferization::BufferResultsToOutParamsOptions out_params_options;
-  out_params_options.filterFn = [](mlir::func::FuncOp* func) {
+  mlir::bufferization::BufferResultsToOutParamsOpts out_params_opts;
+  out_params_opts.filterFn = [](mlir::func::FuncOp* func) {
     // Only transform the entry point.
     return func->getSymName() == "main";
   };
-  pm.addPass(mlir::bufferization::createBufferResultsToOutParamsPass(
-      out_params_options));
+  pm.addPass(
+      mlir::bufferization::createBufferResultsToOutParamsPass(out_params_opts));
 
   pm.addNestedPass<FuncOp>(
       mlir::bufferization::createPromoteBuffersToStackPass(nullptr));

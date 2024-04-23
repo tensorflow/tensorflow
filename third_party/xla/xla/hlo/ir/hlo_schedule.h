@@ -78,6 +78,14 @@ class HloInstructionSequence {
     *id_it = new_instruction->unique_id();
   }
 
+  // Adds the instruction to the sequence at a specified index,
+  void insert_instruction(HloInstruction* instruction, int64_t index) {
+    CHECK(0 <= index && index < size()) << "Index out of bounds";
+    instruction_sequence_.insert(instruction_sequence_.begin() + index,
+                                 instruction);
+    id_sequence_.insert(id_sequence_.begin() + index, instruction->unique_id());
+  }
+
   // Clears the sequence of all instructions.
   void clear() {
     instruction_sequence_.clear();
@@ -114,9 +122,9 @@ class HloSchedule {
   explicit HloSchedule(const HloModule* module) : module_(module) {}
 
   // (De)Serialize an HloSchedule to/from a HloScheduleProto.
-  static StatusOr<HloSchedule> CreateFromProto(const HloModule* module,
-                                               const HloScheduleProto& proto);
-  StatusOr<HloScheduleProto> ToProto() const;
+  static absl::StatusOr<HloSchedule> CreateFromProto(
+      const HloModule* module, const HloScheduleProto& proto);
+  absl::StatusOr<HloScheduleProto> ToProto() const;
 
   // Returns a reference to the sequence for the given computation.
   const HloInstructionSequence& sequence(

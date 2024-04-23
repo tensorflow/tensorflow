@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/base/thread_annotations.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/core/data/name_utils.h"
@@ -40,6 +41,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/random_seed_ops.h"
 #include "tensorflow/core/kernels/random_index_shuffle.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace data {
@@ -47,6 +49,7 @@ namespace {
 
 constexpr int32_t kIndexShuffleRounds = 8;
 
+constexpr const char kDatasetType[] = "GlobalShuffle";
 constexpr const char kElementCount[] = "element_count";
 constexpr const char kGlobalShuffleDataset[] = "GlobalShuffleDataset";
 constexpr const char kReshuffleEachIteration[] = "reshuffle_each_iteration";
@@ -105,7 +108,7 @@ class GlobalShuffleDatasetOp::Dataset : public DatasetBase {
   }
 
   std::string DebugString() const override {
-    return name_utils::DatasetDebugString(kGlobalShuffleDataset);
+    return name_utils::DatasetDebugString(kDatasetType);
   }
 
   int64_t CardinalityInternal(CardinalityOptions options) const override {
@@ -152,6 +155,10 @@ class GlobalShuffleDatasetOp::Dataset : public DatasetBase {
         /*attrs=*/
         {std::make_pair(kReshuffleEachIteration, reshuffle_each_iteration)},
         output);
+  }
+
+  absl::Status RandomIndexingCompatible() const override {
+    return absl::OkStatus();
   }
 
  private:
@@ -202,33 +209,7 @@ class GlobalShuffleDatasetOp::Dataset::Iterator
     return absl::OkStatus();
   }
 
-  absl::Status SaveInternal(SerializationContext* ctx,
-                            IteratorStateWriter* writer) override {
-    absl::MutexLock l(&mu_);
-    TF_RETURN_IF_ERROR(
-        writer->WriteScalar(prefix(), kElementCount, element_count_));
-    return absl::OkStatus();
-  }
-
-  absl::Status RestoreInternal(IteratorContext* ctx,
-                               IteratorStateReader* reader) override {
-    absl::MutexLock l(&mu_);
-    if (ctx->restored_element_count().has_value()) {
-      element_count_ = *ctx->restored_element_count();
-    } else {
-      TF_RETURN_IF_ERROR(
-          reader->ReadScalar(prefix(), kElementCount, &element_count_));
-    }
-    IteratorContext::Params params(ctx);
-    params.restored_element_count = element_count_;
-    IteratorContext ctx_copy(params);
-    TF_RETURN_IF_ERROR(RestoreInput(&ctx_copy, reader, input_impl_));
-    ctx->MergeCheckpoint(ctx_copy.checkpoint());
-    return absl::OkStatus();
-  }
-
- private:
-  IndexMapperFn GetIndexMapper(IndexMapperFn parent_index_mapper) const
+  IndexMapperFn GetIndexMapper(IndexMapperFn parent_index_mapper) const override
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     uint32_t seed = static_cast<uint32_t>(seed_);
     uint32_t seed2 = static_cast<uint32_t>(seed2_);
@@ -236,9 +217,10 @@ class GlobalShuffleDatasetOp::Dataset::Iterator
     uint64_t max_index =
         cardinality_ > 0 ? static_cast<uint64_t>(cardinality_ - 1) : 0;
     return [parent_index_mapper, seed, seed2, seed3,
-            max_index](size_t element_position) -> size_t {
+            max_index](size_t element_position) -> absl::StatusOr<size_t> {
       if (parent_index_mapper != nullptr) {
-        element_position = parent_index_mapper(element_position);
+        TF_ASSIGN_OR_RETURN(element_position,
+                            parent_index_mapper(element_position));
       }
       // This could happen if the source dataset generates more elements than
       // needed by the intermediate transformations. For example, when shuffling
@@ -259,6 +241,33 @@ class GlobalShuffleDatasetOp::Dataset::Iterator
     };
   }
 
+  absl::Status SaveInternal(SerializationContext* ctx,
+                            IteratorStateWriter* writer) override {
+    absl::MutexLock l(&mu_);
+    TF_RETURN_IF_ERROR(
+        writer->WriteScalar(prefix(), kElementCount, element_count_));
+    return absl::OkStatus();
+  }
+
+  absl::Status RestoreInternal(IteratorContext* ctx,
+                               IteratorStateReader* reader) override {
+    absl::MutexLock l(&mu_);
+    if (ctx->restored_element_count().has_value()) {
+      element_count_ = *ctx->restored_element_count();
+    } else {
+      TF_RETURN_IF_ERROR(
+          reader->ReadScalar(prefix(), kElementCount, &element_count_));
+    }
+    IteratorContext::Params params(ctx);
+    params.restored_element_count = element_count_;
+    params.index_mapper = GetIndexMapper(ctx->index_mapper());
+    IteratorContext ctx_copy(params);
+    TF_RETURN_IF_ERROR(RestoreInput(&ctx_copy, reader, input_impl_));
+    ctx->MergeCheckpoint(ctx_copy.checkpoint());
+    return absl::OkStatus();
+  }
+
+ private:
   const int64_t cardinality_;
 
   mutable absl::Mutex mu_;
@@ -340,8 +349,7 @@ std::unique_ptr<IteratorBase>
 GlobalShuffleDatasetOp::Dataset::MakeIteratorInternal(
     const std::string& prefix) const {
   return std::make_unique<GlobalShuffleDatasetOp::Dataset::Iterator>(
-      Iterator::Params{
-          this, name_utils::IteratorPrefix(kGlobalShuffleDataset, prefix)},
+      Iterator::Params{this, name_utils::IteratorPrefix(kDatasetType, prefix)},
       seed_generator_->get());
 }
 

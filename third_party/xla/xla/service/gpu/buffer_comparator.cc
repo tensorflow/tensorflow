@@ -18,7 +18,6 @@ limitations under the License.
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
-#include <memory>
 #include <string_view>
 #include <type_traits>
 #include <vector>
@@ -27,7 +26,7 @@ limitations under the License.
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
-#include "xla/statusor.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/kernel.h"
@@ -61,8 +60,8 @@ static absl::StatusOr<bool> DeviceCompare(se::Stream* stream,
                                           void* kernel_symbol) {
   se::StreamExecutor* executor = stream->parent();
 
-  se::ScopedDeviceMemory<uint64_t> out_param =
-      executor->AllocateOwnedScalar<uint64_t>();
+  se::ScopedDeviceMemory<uint64_t> out_param(
+      executor, executor->AllocateScalar<uint64_t>());
 
   TF_RETURN_IF_ERROR(stream->MemZero(out_param.ptr(), sizeof(uint64_t)));
   if (current.size() != expected.size()) {

@@ -54,12 +54,12 @@ const tsl::protobuf::RepeatedField<int64_t>& BatchDimensionsForOperand(
     const HloInstruction& dot, int operand_number);
 
 // Index of the only contracting dimension of dot instruction operand.
-int64_t ContractingDimensionIndex(const HloInstruction& dot,
-                                  int operand_number);
+absl::StatusOr<int64_t> ContractingDimensionIndex(const HloInstruction& dot,
+                                                  int operand_number);
 
 // Index of the only non-contracting dimension of dot instruction operand.
-int64_t NonContractingDimensionIndex(const HloInstruction& dot,
-                                     int operand_number);
+absl::StatusOr<int64_t> NonContractingDimensionIndex(const HloInstruction& dot,
+                                                     int operand_number);
 
 // Normalize shape to (batch, rows, columns) logical dimensions.
 absl::StatusOr<Shape> GetBatchRowColumnShape(
@@ -69,6 +69,16 @@ absl::StatusOr<Shape> GetBatchRowColumnShape(
 // GPU folding rule for the `TransposeFolding` pass.
 absl::StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
                                                     int64_t operand_idx);
+
+// Returns true if the sum of the sizes of the unbatched operand matrices
+// for the dot is smaller than the given threshold.
+absl::StatusOr<bool> IsMatrixMultiplicationTooSmallForRewriting(
+    const HloInstruction& dot, int64_t threshold);
+
+// Returns true if the backend can lower the dot. Currently the classical
+// emitters cannot handle some dots, e.g., i8[] x i8[] -> i32[] dots,
+// so we need to always use cuBLAS or Triton for those.
+bool IsDotSupportedByClassicalEmitters(const HloInstruction& dot);
 
 // extending plain MatrixLayout struct with creator functions
 struct MatrixLayout : public se::gpu::MatrixLayout {
@@ -104,6 +114,7 @@ struct GemmConfig : public se::gpu::GemmConfig {
       absl::Span<const int64_t> rhs_batch_dims,
       absl::Span<const int64_t> rhs_contracting_dims, const Shape& output_shape,
       double alpha_real, double alpha_imag, double beta,
+      PrecisionConfig::Algorithm precision_algorithm,
       std::optional<int64_t> algorithm, int64_t compute_precision, bool grad_x,
       bool grad_y);
 
@@ -115,8 +126,10 @@ struct GemmConfig : public se::gpu::GemmConfig {
       absl::Span<const int64_t> rhs_batch_dims,
       absl::Span<const int64_t> rhs_contracting_dims, const Shape& c_shape,
       const Shape* bias_shape_ptr, const Shape& output_shape, double alpha_real,
-      double alpha_imag, double beta, std::optional<int64_t> algorithm,
-      int64_t compute_precision, bool grad_x, bool grad_y);
+      double alpha_imag, double beta,
+      PrecisionConfig::Algorithm precision_algorithm,
+      std::optional<int64_t> algorithm, int64_t compute_precision, bool grad_x,
+      bool grad_y);
 
   struct DescriptorsTuple {
     se::gpu::MatrixDescriptor lhs;

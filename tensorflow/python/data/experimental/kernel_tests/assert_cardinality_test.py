@@ -97,8 +97,7 @@ class AssertCardinalityTest(test_base.DatasetTestBase, parameterized.TestCase):
               asserted_cardinality=100,
               expected_error=errors.FailedPreconditionError,
               expected_error_message=(
-                  "Input dataset was expected to contain 100 elements but "
-                  "contained only 10 elements.")) +
+                  "Input dataset was expected to contain 100 elements.")) +
           combinations.combine(
               num_elements=10,
               asserted_cardinality=cardinality.INFINITE,

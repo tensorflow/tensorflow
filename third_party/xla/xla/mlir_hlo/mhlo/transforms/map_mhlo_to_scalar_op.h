@@ -701,25 +701,25 @@ inline Value mapConvertOpToStdScalarOp(Location loc, ArrayRef<Type> targetTypes,
                                             std::nullopt);
   }
   if (sourceType.isa<FloatType>() && targetType.isa<FloatType>()) {
-    auto src = sourceType.cast<FloatType>();
-    auto res = targetType.cast<FloatType>();
-    if (src.getWidth() > res.getWidth()) {
-      return b->create<mlir::arith::TruncFOp>(loc, resultTypes, args,
+    if (sourceType == targetType) {
+      return args.front();
+    }
+
+    mlir::Value src = args.front();
+    auto dst = targetType.cast<FloatType>();
+    if (sourceType.getIntOrFloatBitWidth() == dst.getWidth()) {
+      // There are no ops for conversions between floats of equal width, so we
+      // go through the next-larger standard type.
+      sourceType = dst.getWidth() == 8 ? b->getF16Type() : b->getF32Type();
+      src = b->create<mlir::arith::ExtFOp>(loc, sourceType, src).getResult();
+    }
+    assert(sourceType.getIntOrFloatBitWidth() != dst.getWidth());
+
+    if (sourceType.getIntOrFloatBitWidth() > dst.getWidth()) {
+      return b->create<mlir::arith::TruncFOp>(loc, resultTypes, src,
                                               std::nullopt);
     }
-    if (src.getWidth() < res.getWidth()) {
-      return b->create<mlir::arith::ExtFOp>(loc, resultTypes, args,
-                                            std::nullopt);
-    }
-    // There's no direct conversion between different 16 bit floating point
-    // types, so go through 32 bit float.
-    if (sourceType != targetType) {
-      assert(sourceType.isBF16() || targetType.isBF16());
-      Value ext = b->create<arith::ExtFOp>(loc, b->getF32Type(), args);
-      return b->create<arith::TruncFOp>(loc, resultTypes, ext);
-    }
-    // No conversion is needed for identical float types.
-    return args.front();
+    return b->create<mlir::arith::ExtFOp>(loc, resultTypes, src, std::nullopt);
   }
   if (targetType.isInteger(/*width=*/1)) {
     // When casting to bool, we need to compare whether the value is equal to
@@ -1163,7 +1163,7 @@ inline Value mapMhloOpToStdScalarOp<mhlo::PowOp>(Location loc,
   // The accum is correct when the rhs is non-negative. When rhs is
   // negative, we return 0 for integer, with the exception of lhs values of 1
   // and -1 which have integer results for negative exponents. Specifically, the
-  // calulation is the following:
+  // calculation is the following:
   //
   // - Return accum if the rhs is not negative.
   // - Return 1 or -1 depending on the parity of rhs when the lhs is -1.
@@ -1313,9 +1313,11 @@ struct MhloOpToStdScalarOp {
                                  ArrayRef<Type> argTypes, ValueRange args,
                                  OpBuilder* b) {
     static_assert(!std::is_same<MhloOpTy, mhlo::ConvertOp>::value);
-    return mapOpOfType<MhloOpTy>(
-        op.getLoc(), resultTypes, argTypes,
-        typename MhloOpTy::Adaptor(args, op->getAttrDictionary()), b);
+    typename MhloOpTy::Adaptor adaptor(args, op->getAttrDictionary(),
+                                       op->getPropertiesStorage(),
+                                       op->getRegions());
+    return mapOpOfType<MhloOpTy>(op.getLoc(), resultTypes, argTypes, adaptor,
+                                 b);
   }
   // Overload for mhlo::ConvertOp.
   static Value mapOpWithArgTypes(mhlo::ConvertOp op, ArrayRef<Type> resultTypes,

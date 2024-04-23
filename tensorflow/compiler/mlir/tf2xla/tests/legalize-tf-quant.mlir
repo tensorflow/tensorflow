@@ -256,7 +256,7 @@ func.func @uniform_quantized_dot(%input: tensor<?xf32>) -> tensor<?x!tf_type.qin
   %output_zps = "tf.Const"() { value = dense<5> : tensor<i32> } : () -> tensor<i32>
 
   // CHECK-DAG: %[[RHS:.*]] = mhlo.constant()
-  // CHECK-SAME{LITERAL}: {value = dense<[[1, 2], [3, 4]]> : tensor<2x2xi8>} : () -> tensor<2x2x!quant.uniform<i8:f32, 1.000000e+00:3>>
+  // CHECK-SAME{LITERAL}: <{value = dense<[[1, 2], [3, 4]]> : tensor<2x2xi8>}> : () -> tensor<2x2x!quant.uniform<i8:f32, 1.000000e+00:3>>
   // CHECK-DAG: %[[LHS:.*]] = mhlo.uniform_quantize %arg0 : (tensor<?xf32>) -> tensor<?x!quant.uniform<i8:f32, 2.000000e+00:4>>
   // CHECK-DAG: %[[CONVERT_1:.*]] = mhlo.bitcast_convert %[[LHS]] : (tensor<?x!quant.uniform<i8:f32, 2.000000e+00:4>>) -> tensor<?xi8>
   // CHECK-DAG: %[[CONVERT_2:.*]] = mhlo.bitcast_convert %[[CONVERT_1]] : (tensor<?xi8>) -> tensor<?x!quant.uniform<i8:f32, 2.000000e+00:4>>
@@ -306,7 +306,7 @@ func.func @uniform_quantized_convolution(%input: tensor<1x6x6x3xf32>) -> tensor<
   %output_zps = "tf.Const"() { value = dense<5> : tensor<i32> } : () -> tensor<i32>
 
   // CHECK-DAG: %[[RHS:.*]] = mhlo.constant()
-  // CHECK-SAME{LITERAL}: {value = dense<127> : tensor<2x3x3x2xi8>} : () -> tensor<2x3x3x2x!quant.uniform<i8:f32, 1.000000e+00:3>>
+  // CHECK-SAME{LITERAL}: <{value = dense<127> : tensor<2x3x3x2xi8>}> : () -> tensor<2x3x3x2x!quant.uniform<i8:f32, 1.000000e+00:3>>
   // CHECK-DAG: %[[LHS:.*]] = mhlo.uniform_quantize %arg0 : (tensor<1x6x6x3xf32>) -> tensor<1x6x6x3x!quant.uniform<i8:f32, 2.000000e+00:4>>
   // CHECK-DAG: %[[CONVERT_1:.*]] = mhlo.bitcast_convert %[[LHS]] : (tensor<1x6x6x3x!quant.uniform<i8:f32, 2.000000e+00:4>>) -> tensor<1x6x6x3xi8>
   // CHECK-DAG: %[[CONVERT_2:.*]] = mhlo.bitcast_convert %[[CONVERT_1]] : (tensor<1x6x6x3xi8>) -> tensor<1x6x6x3x!quant.uniform<i8:f32, 2.000000e+00:4>>
@@ -367,7 +367,7 @@ func.func @uniform_quantized_add(%arg0: tensor<3x2x!tf_type.qint32>) -> tensor<3
   %output_zps = "tf.Const"() { value = dense<4> : tensor<i32> } : () -> tensor<i32>
 
   // CHECK-DAG: %[[LHS:.*]] = mhlo.bitcast_convert %arg0 : (tensor<3x2xi32>) -> tensor<3x2x!quant.uniform<i32:f32, 2.000000e+00:4>>
-  // CHECK-DAG: %[[RHS:.*]] = mhlo.constant() {value = dense<127> : tensor<2xi32>} : () -> tensor<2x!quant.uniform<i32:f32, 2.000000e+00:4>>
+  // CHECK-DAG: %[[RHS:.*]] = mhlo.constant() <{value = dense<127> : tensor<2xi32>}> : () -> tensor<2x!quant.uniform<i32:f32, 2.000000e+00:4>>
   // CHECK: %[[RES:.*]] = chlo.broadcast_add %[[LHS]], %[[RHS]] {broadcast_dimensions = array<i64: 1>} :
   // CHECK-SAME: (tensor<3x2x!quant.uniform<i32:f32, 2.000000e+00:4>>, tensor<2x!quant.uniform<i32:f32, 2.000000e+00:4>>)
   // CHECK-SAME: -> tensor<3x2x!quant.uniform<i32:f32, 2.000000e+00:4>>
@@ -407,7 +407,7 @@ func.func @uniform_quantized_clip_by_value(%input: tensor<3x2xf32>) -> tensor<3x
   %zps = "tf.Const"() { value = dense<4> : tensor<2xi32> } : () -> tensor<2xi32>
 
   // tensor_proto that points to dense<127> of type !tf_type.qint32.
-  // CHECK-DAG: %[[MIN_MAX:.*]] = mhlo.constant() {value = dense<127> : tensor<2xi32>} : () -> tensor<2x!quant.uniform<i32:f32:1, {2.000000e+00:4,2.000000e+00:4}>>
+  // CHECK-DAG: %[[MIN_MAX:.*]] = mhlo.constant() <{value = dense<127> : tensor<2xi32>}> : () -> tensor<2x!quant.uniform<i32:f32:1, {2.000000e+00:4,2.000000e+00:4}>>
   %min = "tf.Const"() { value = #tf_type<tensor_proto : "0x746674656E736F722464747970653A2044545F51494E5433322074656E736F725F7368617065207B207D2074656E736F725F636F6E74656E743A20225C3137375C3030305C3030305C30303022"> : tensor<2x!tf_type.qint32> } : () -> tensor<2x!tf_type.qint32>
   %max = "tf.Const"() { value = #tf_type<tensor_proto : "0x746674656E736F722464747970653A2044545F51494E5433322074656E736F725F7368617065207B207D2074656E736F725F636F6E74656E743A20225C3137375C3030305C3030305C30303022"> : tensor<2x!tf_type.qint32> } : () -> tensor<2x!tf_type.qint32>
 

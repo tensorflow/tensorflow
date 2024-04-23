@@ -38,6 +38,24 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+inline absl::StatusOr<xla::gpu::CudnnfMHAMaskKind> AsCudnnFmhaMaskKind(
+    xla::gpu::CudnnfMHABackendConfig_MaskType mask_type) {
+  switch (mask_type) {
+    case xla::gpu::CudnnfMHABackendConfig::NO_MASK:
+      return xla::gpu::CudnnfMHAMaskKind::kNoMask;
+    case xla::gpu::CudnnfMHABackendConfig::PADDING:
+      return xla::gpu::CudnnfMHAMaskKind::kPadding;
+    case xla::gpu::CudnnfMHABackendConfig::CAUSAL:
+      return xla::gpu::CudnnfMHAMaskKind::kCausal;
+    case xla::gpu::CudnnfMHABackendConfig::PADDING_CAUSAL:
+      return xla::gpu::CudnnfMHAMaskKind::kPaddingCausal;
+    case xla::gpu::CudnnfMHABackendConfig::ALIBI:
+      return xla::gpu::CudnnfMHAMaskKind::kAlibi;
+    default:
+      return xla::Internal("Unknown fmha mask kind.");
+  }
+}
+
 // This is an interim structure to hold the parameters to construct a
 // GpufMHAConfig.
 // Struct to describe properties of a FMHA without being tied to specific
@@ -47,7 +65,7 @@ struct GpufMHADescriptor {
   CudnnfMHAKind kind;
   CudnnfMHABackendConfig backend_config;
   bool is_flash_attention;
-  bool is_causal_mask;
+  CudnnfMHAMaskKind mask_type;
   Shape lhs_bmm1_shape;
   Shape rhs_bmm1_shape;
   Shape rhs_bmm2_shape;
@@ -65,7 +83,7 @@ struct GpufMHABackwardDescriptor {
   CudnnfMHAKind kind;
   CudnnfMHABackendConfig backend_config;
   bool is_flash_attention;
-  bool is_causal_mask;
+  CudnnfMHAMaskKind mask_type;
   Shape bmm1_grad_gemm1_rhs_shape;
   Shape bmm1_grad_gemm2_rhs_shape;
   Shape bmm2_grad_gemm1_lhs_shape;
@@ -99,7 +117,7 @@ struct GpufMHAConfig {
 
   se::dnn::AlgorithmDesc algorithm;
   bool is_flash_attention;
-  bool is_causal_mask;
+  CudnnfMHAMaskKind mask_type;
   // bias -> [1, num_attn_heads, q_seq_len, kv_seq_len]
   // mask -> [batch_size, 1, q_seq_len, kv_seq_len]
   se::dnn::MatmulTensorDescriptor lhs_bmm1;
@@ -128,7 +146,7 @@ struct GpufMHABackwardConfig {
 
   se::dnn::AlgorithmDesc algorithm;
   bool is_flash_attention;
-  bool is_causal_mask;
+  CudnnfMHAMaskKind mask_type;
   // mask -> [batch_size, 1, q_seq_len, kv_seq_len]
   // d_bias -> [1, num_heads, q_seq_len, kv_seq_len]
   se::dnn::MatmulTensorDescriptor bmm1_grad_gemm1_rhs;
@@ -182,8 +200,6 @@ struct GpufMHABackwardParams {
       se::DeviceMemoryBase d_bmm1_rhs_buffer,
       se::DeviceMemoryBase d_bmm2_rhs_buffer,
       std::optional<se::DeviceMemoryBase> d_s_buffer,
-      std::optional<se::DeviceMemoryBase> softmax_sum_buffer,
-      std::optional<se::DeviceMemoryBase> d_Q_accum_buffer,
       std::optional<se::DeviceMemoryBase> mask_buffer,
       std::optional<se::DeviceMemoryBase> d_bias_buffer,
       std::optional<se::DeviceMemoryBase> fwd_output_buffer,
@@ -201,8 +217,6 @@ struct GpufMHABackwardParams {
   se::DeviceMemoryBase d_bmm1_rhs_buffer;
   se::DeviceMemoryBase d_bmm2_rhs_buffer;
   std::optional<se::DeviceMemoryBase> d_s_buffer;
-  std::optional<se::DeviceMemoryBase> softmax_sum_buffer;
-  std::optional<se::DeviceMemoryBase> d_Q_accum_buffer;
   std::optional<se::DeviceMemoryBase> mask_buffer;
   std::optional<se::DeviceMemoryBase> d_bias_buffer;
   std::optional<se::DeviceMemoryBase> fwd_output_buffer;
@@ -412,8 +426,6 @@ absl::Status RunGpuFMHABackward(
     se::DeviceMemoryBase d_bmm1_rhs_buffer,
     se::DeviceMemoryBase d_bmm2_rhs_buffer,
     std::optional<se::DeviceMemoryBase> d_s_buffer,
-    std::optional<se::DeviceMemoryBase> softmax_sum_buffer,
-    std::optional<se::DeviceMemoryBase> d_Q_accum_buffer,
     std::optional<se::DeviceMemoryBase> mask_buffer,
     std::optional<se::DeviceMemoryBase> d_bias_buffer,
     std::optional<se::DeviceMemoryBase> fwd_output_buffer,

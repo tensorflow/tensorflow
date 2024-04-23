@@ -19,6 +19,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/statusor.h"
 
@@ -51,6 +52,26 @@ absl::StatusOr<std::string> CreateTmpDir(tsl::Env* const env) {
 absl::StatusOr<std::string> CreateTmpDir() {
   // The overloaded function uses the default env.
   return CreateTmpDir(tsl::Env::Default());
+}
+
+absl::Status WriteStringToFile(const absl::string_view file_path,
+                               const absl::string_view data) {
+  auto* env = tsl::Env::Default();
+  return WriteStringToFile(env, std::string(file_path), data);
+}
+
+absl::StatusOr<std::string> ReadFileToString(
+    const absl::string_view file_path) {
+  auto* env = tsl::Env::Default();
+  std::string data{};
+  absl::Status read_status =
+      ReadFileToString(env, std::string(file_path), &data);
+
+  if (read_status.ok()) {
+    return data;
+  } else {
+    return read_status;
+  }
 }
 
 }  // namespace stablehlo::quantization::io

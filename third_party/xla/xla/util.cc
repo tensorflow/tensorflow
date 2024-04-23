@@ -182,7 +182,7 @@ std::string RoundTripFpToString(tsl::float8_e4m3fn value) {
   return result;
 }
 
-std::string RoundTripFpToString(tsl::float8_e4m3b11 value) {
+std::string RoundTripFpToString(tsl::float8_e4m3b11fnuz value) {
   std::string result = GenericRoundTripFpToString(value);
   return result;
 }
@@ -454,30 +454,6 @@ std::string SanitizeFileName(std::string file_name) {
 bool DistinctNumbersAreConsecutiveIfSorted(absl::Span<const int64_t> seq) {
   return *absl::c_max_element(seq) - *absl::c_min_element(seq) ==
          seq.size() - 1;
-}
-
-void PackInt4(absl::Span<const char> input, absl::Span<char> output) {
-  CHECK_EQ(output.size(), CeilOfRatio(input.size(), size_t{2}));
-  for (size_t i = 0; i < input.size(); ++i) {
-    // Mask out the high-order 4 bits in case they have extraneous data.
-    char val = input[i] & 0xf;
-    if (i % 2 == 0) {
-      output[i / 2] = val << 4;
-    } else {
-      output[i / 2] |= val;
-    }
-  }
-}
-
-void UnpackInt4(absl::Span<const char> input, absl::Span<char> output) {
-  CHECK_EQ(input.size(), CeilOfRatio(output.size(), size_t{2}));
-  for (size_t i = 0; i < output.size(); ++i) {
-    if (i % 2 == 0) {
-      output[i] = (input[i / 2] >> 4) & 0xf;
-    } else {
-      output[i] = input[i / 2] & 0xf;
-    }
-  }
 }
 
 }  // namespace xla

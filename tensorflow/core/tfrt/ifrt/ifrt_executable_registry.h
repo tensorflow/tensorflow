@@ -74,11 +74,11 @@ class ServingExecutableRegistry {
   // Registers an executable under the given program id. Returns an RAII handle
   // that unregisters the program at its destruction.
   static absl::StatusOr<Handle> Register(
-      int64_t program_id, std::shared_ptr<IfrtServingExecutable> executable);
+      int64_t program_id, std::unique_ptr<IfrtServingExecutable> executable);
 
   // Looks up an executable registered under the given program id, or returns
   // nullptr if there's no such program.
-  static std::shared_ptr<IfrtServingExecutable> Lookup(int64_t program_id);
+  static IfrtServingExecutable* Lookup(int64_t program_id);
 
  private:
   friend class Handle;
@@ -87,7 +87,7 @@ class ServingExecutableRegistry {
 
   // Mapping from program ids to executables.
   static absl::flat_hash_map<int64_t,
-                             std::shared_ptr<IfrtServingExecutable>>* const
+                             std::unique_ptr<IfrtServingExecutable>>* const
       executables_ ABSL_GUARDED_BY(&mu_);
 };
 

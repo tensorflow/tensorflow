@@ -61,9 +61,9 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core/common_runtime/next_pluggable_device/c:plugin_c_api_hdrs",
-        "@local_tsl//tsl/c:tsl_status_internal",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:statusor",
+        "@local_xla//xla/tsl/c:tsl_status_internal",
     ],
 )
 
@@ -246,9 +246,7 @@ cc_library(
     name = "loose_headers",
     tags = ["avoid_dep"],
     textual_hdrs = ["c_plugin_op_kernel.h"],
-    visibility = [
-        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
-    ],
+    visibility = ["//visibility:private"],
 )
 
 cc_library(
@@ -271,7 +269,7 @@ cc_library(
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:statusor",
         "@com_google_absl//absl/time",
-        "@local_tsl//tsl/distributed_runtime/coordination:coordination_service_agent",
+        "@local_xla//xla/tsl/distributed_runtime/coordination:coordination_service_agent",
     ],
 )
 
@@ -327,9 +325,6 @@ tf_cc_test(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/time",
-        "@local_tsl//tsl/distributed_runtime:call_options",
-        "@local_tsl//tsl/distributed_runtime/coordination:coordination_client",
-        "@local_tsl//tsl/distributed_runtime/coordination:coordination_service_agent",
         "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:env_impl",
@@ -339,6 +334,9 @@ tf_cc_test(
         "@local_tsl//tsl/platform:test_main",
         "@local_tsl//tsl/protobuf:coordination_config_proto_cc",
         "@local_tsl//tsl/protobuf:coordination_service_proto_cc",
+        "@local_xla//xla/tsl/distributed_runtime:call_options",
+        "@local_xla//xla/tsl/distributed_runtime/coordination:coordination_client",
+        "@local_xla//xla/tsl/distributed_runtime/coordination:coordination_service_agent",
     ],
 )
 

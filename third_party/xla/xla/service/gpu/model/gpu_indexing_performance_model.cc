@@ -88,16 +88,17 @@ int64_t GetIterationSpaceSize(const IndexingMap& indexing_map,
     return 0;
   }
 
-  auto get_ranges_iteration_space_size = [](const std::vector<Range>& ranges) {
-    int64_t num_iters = 1;
-    for (const Range& range : ranges) {
-      num_iters *= range.upper_bound - range.lower_bound + 1;
-    }
-    return num_iters;
-  };
+  auto get_ranges_iteration_space_size =
+      [](const std::vector<Interval>& ranges) {
+        int64_t num_iters = 1;
+        for (const Interval& range : ranges) {
+          num_iters *= range.upper - range.lower + 1;
+        }
+        return num_iters;
+      };
 
-  return get_ranges_iteration_space_size(indexing_map.GetSymbolRanges()) *
-         get_ranges_iteration_space_size(indexing_map.GetDimensionRanges());
+  return get_ranges_iteration_space_size(indexing_map.GetSymbolBounds()) *
+         get_ranges_iteration_space_size(indexing_map.GetDimensionBounds());
 }
 
 EstimateRunTimeData

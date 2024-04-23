@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/types/optional.h"
 #include "absl/types/variant.h"
+#include "xla/tsl/util/env_var.h"
 #include "tensorflow/core/common_runtime/build_graph_options.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/function.h"
@@ -67,7 +68,6 @@ limitations under the License.
 #include "tensorflow/core/util/reffed_status_callback.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
-#include "tsl/util/env_var.h"
 #if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/protobuf/remote_tensor_handle.pb.h"
 #endif  // IS_MOBILE_PLATFORM
@@ -150,7 +150,7 @@ ProcessFunctionLibraryRuntime::ProcessFunctionLibraryRuntime(
 Status ProcessFunctionLibraryRuntime::SendTensors(
     const string& source_device, const string& target_device,
     const string& key_prefix, int64_t src_incarnation,
-    gtl::ArraySlice<Tensor> tensors_to_send, DeviceContext* device_context,
+    absl::Span<const Tensor> tensors_to_send, DeviceContext* device_context,
     const std::vector<AllocatorAttributes>& alloc_attrs,
     RendezvousInterface* rendezvous) {
   std::vector<string> keys;
@@ -398,7 +398,7 @@ ProcessFunctionLibraryRuntime::IsMultiDevice(
 
 namespace {
 // Returns the local tensors referred by `args`.
-std::vector<Tensor> GetLocalArgs(gtl::ArraySlice<FunctionArg> args) {
+std::vector<Tensor> GetLocalArgs(absl::Span<const FunctionArg> args) {
   std::vector<Tensor> tensors;
   for (const auto& arg : args) {
     if (arg.index() == 0) {
@@ -573,7 +573,7 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
     }
   }
 
-  StatusOr<OptimizedFunctionGraphInfo> optimized_graph_info =
+  absl::StatusOr<OptimizedFunctionGraphInfo> optimized_graph_info =
       (!optimized_graph_proto.has_value() ||
        !optimized_graph_proto.value().ok())
           ? OptimizeFunctionGraphOrReadFromFileCache(
@@ -615,7 +615,7 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
   // We must preserve control returns in each of the function components,
   // otherwise after function inlining we might prune side-effectful nodes.
   const auto control_ret =
-      [&node_name_to_control_ret](const Node* n) -> absl::optional<string> {
+      [&node_name_to_control_ret](const Node* n) -> std::optional<string> {
     const auto it = node_name_to_control_ret.find(n->name());
     return it != node_name_to_control_ret.end()
                // NOLINTNEXTLINE
@@ -684,7 +684,8 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
     }
 
     FunctionDef shard;
-    s = GraphToFunctionDef(*subgraph, comp_data->name, control_ret, &shard);
+    s = GraphToFunctionDef(std::move(subgraph), comp_data->name, control_ret,
+                           &shard);
     if (!s.ok()) {
       done(s);
       return;
@@ -1319,7 +1320,7 @@ Status ProcessFunctionLibraryRuntime::CreateRendezvous(
 }
 
 Status ProcessFunctionLibraryRuntime::GetComponentArgs(
-    const gtl::ArraySlice<Tensor> args,
+    const absl::Span<const Tensor> args,
     const ProcessFunctionLibraryRuntime::ComponentFunctionData& comp_data,
     ProcessFunctionLibraryRuntime::InternalArgs* comp_args) {
   // "Index"s of _Arg nodes are unique when all arguments are local Tensors.
@@ -1374,7 +1375,7 @@ Status ProcessFunctionLibraryRuntime::GetComponentArgs(
 
 void ProcessFunctionLibraryRuntime::Run(
     const FunctionLibraryRuntime::Options& opts,
-    FunctionLibraryRuntime::Handle handle, gtl::ArraySlice<Tensor> args,
+    FunctionLibraryRuntime::Handle handle, absl::Span<const Tensor> args,
     std::vector<Tensor>* rets,
     FunctionLibraryRuntime::DoneCallback done) const {
   FunctionLibraryRuntime::Options new_opts = opts;
@@ -1419,7 +1420,7 @@ void ProcessFunctionLibraryRuntime::Run(
 // This method handles the simple remote call case (not multi-device).
 void ProcessFunctionLibraryRuntime::RunInternal(
     const FunctionLibraryRuntime::Options& opts,
-    FunctionLibraryRuntime::Handle handle, gtl::ArraySlice<FunctionArg> args,
+    FunctionLibraryRuntime::Handle handle, absl::Span<const FunctionArg> args,
     std::vector<FunctionRet>* rets,
     std::vector<std::unique_ptr<CleanUpItem>>* cleanup_items,
     FunctionLibraryRuntime::DoneCallback done) const {
@@ -1559,7 +1560,7 @@ void ProcessFunctionLibraryRuntime::Run(
 
 Status ProcessFunctionLibraryRuntime::RunSync(
     const FunctionLibraryRuntime::Options& orig_opts,
-    FunctionLibraryRuntime::Handle handle, gtl::ArraySlice<Tensor> args,
+    FunctionLibraryRuntime::Handle handle, absl::Span<const Tensor> args,
     std::vector<Tensor>* rets) const {
   MultiDeviceFunctionData* multi_device_data = IsMultiDevice(handle);
   if (multi_device_data && multi_device_data->enable_sync_execution) {

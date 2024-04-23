@@ -20,6 +20,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -356,7 +357,7 @@ bool ShouldAddOpToSubgraph(Operation* op,
 // tf.XlaCallModuleOps as separate subgraphs. Wires them back to the main
 // function block to be compatible with SavedModel structure.
 void ReplaceStablehloOpsInMainFunctionWithXlaCallModuleOps(
-    ModuleOp module_op, func::FuncOp main_func) {
+    ModuleOp module_op, func::FuncOp main_func, int& stablehlo_func_id) {
   Block& main_func_block = main_func.getBody().front();
 
   // LiveOuts keeps track of live values at the output of some op. The updates
@@ -400,7 +401,6 @@ void ReplaceStablehloOpsInMainFunctionWithXlaCallModuleOps(
     operands.insert(op->getOperands().begin(), op->getOperands().end());
   };
 
-  int stablehlo_func_id = -1;
   for (Operation* op : reverse_main_func_block_ops) {
     if (!ops_to_add.contains(op)) continue;
     // When hitting a non-StableHLO op, i.e. tf.CustomAggregatorOp, start
@@ -489,8 +489,30 @@ void ReplaceStablehloOpsInMainFunctionWithXlaCallModuleOpsPass::
   func::FuncOp main_func = FindMainFuncOp(module_op);
   if (!main_func) return;
 
-  DuplicateSmallConstantOps(module_op, main_func);
-  ReplaceStablehloOpsInMainFunctionWithXlaCallModuleOps(module_op, main_func);
+  // In case the model has tf.StatefulPartitionedCallOp or tf.PartitionedCallOp,
+  // we recursively find called functions and process StableHLO ops in them.
+  SmallVector<func::FuncOp> func_ops;
+  func_ops.push_back(main_func);
+  int stablehlo_func_id = -1;
+  while (!func_ops.empty()) {
+    auto main_func = func_ops.back();
+    func_ops.pop_back();
+    if (!main_func) continue;
+
+    SymbolTable symbol_table(module_op);
+    for (auto call_op : main_func.getOps<TF::PartitionedCallOp>()) {
+      func_ops.push_back(dyn_cast_or_null<func::FuncOp>(symbol_table.lookup(
+          call_op.getFAttr().cast<FlatSymbolRefAttr>().getValue())));
+    }
+    for (auto call_op : main_func.getOps<TF::StatefulPartitionedCallOp>()) {
+      func_ops.push_back(
+          dyn_cast_or_null<func::FuncOp>(symbol_table.lookup(call_op.getF())));
+    }
+
+    DuplicateSmallConstantOps(module_op, main_func);
+    ReplaceStablehloOpsInMainFunctionWithXlaCallModuleOps(module_op, main_func,
+                                                          stablehlo_func_id);
+  }
 
   // TODO - b/298966126: Currently quantizable functions are identified in TF
   // Quantizer via the tf_quant.composite_function UnitAttr attached to

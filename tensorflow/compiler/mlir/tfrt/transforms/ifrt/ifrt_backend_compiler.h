@@ -16,10 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TFRT_TRANSFORMS_IFRT_IFRT_BACKEND_COMPILER_H_
 #define TENSORFLOW_COMPILER_MLIR_TFRT_TRANSFORMS_IFRT_IFRT_BACKEND_COMPILER_H_
 
-
 #include "absl/status/status.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tfrt/backend_compiler.h"
+#include "tensorflow/compiler/mlir/tfrt/transforms/tpu_passes.h"
 #include "tensorflow/core/tfrt/runtime/runtime.h"
 
 namespace tensorflow {
@@ -28,11 +28,17 @@ namespace ifrt_serving {
 // Implements the custom backend compiler for IFRT based serving in TFRT.
 class IfrtBackendCompiler : public tensorflow::BackendCompiler {
  public:
+  explicit IfrtBackendCompiler(TpuCompiler* tpu_compiler = nullptr)
+      : tpu_compiler_(tpu_compiler) {}
+
   // Rewrites the tensorflow graph in MLIR for IFRT serving. The methods
   // extracts regions for IFRT execution on accelerator (e.g. TPU).
   absl::Status CompileTensorflow(
       tensorflow::tfrt_stub::ModelRuntimeContext& model_context,
       mlir::ModuleOp module) const override;
+
+ private:
+  TpuCompiler* tpu_compiler_;  // Not owned.
 };
 
 }  // namespace ifrt_serving

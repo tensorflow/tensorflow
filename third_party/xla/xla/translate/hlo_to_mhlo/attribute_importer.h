@@ -19,13 +19,12 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "absl/status/statusor.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -55,6 +54,10 @@ mlir::ArrayAttr ConvertOutputOperandAliasing(
     const std::vector<std::pair<xla::ShapeIndex,
                                 std::pair<int64_t, xla::ShapeIndex>>>& aliaInfo,
     mlir::Builder* builder);
+
+// Converts the sparsity descriptor to attributes.
+absl::StatusOr<mlir::mhlo::SparsityDescriptorAttr> ConvertSparsityDescriptor(
+    xla::SparsityDescriptor sparsity_descriptor, mlir::Builder* builder);
 
 absl::StatusOr<mlir::mhlo::FftType> ConvertFftType(FftType type);
 absl::StatusOr<mlir::mhlo::Transpose> ConvertTranspose(

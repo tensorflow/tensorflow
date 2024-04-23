@@ -47,41 +47,26 @@ class CalibratorSingleton {
   // Clears the collected data of the given node id.
   static void ClearData(absl::string_view id);
 
-  // Reports data to singleton using float vector.
-  // Only calculates the required statistics from CalibrationMethod based
-  // on CalibrationOptions.
-  static void Report(absl::string_view id, const std::vector<float>& data_vec,
+  // Reports data to the singleton. Only calculates the required statistics
+  // based on CalibrationOptions.
+  static void Report(absl::string_view id, const Tensor& min_tensor,
+                     const Tensor& max_tensor, const Tensor& histogram_tensor,
                      const CalibrationOptions& calib_opts);
 
-  // Reports data to singleton using absl::Span
-  // Only calculates the required statistics from CalibrationMethod based
-  // on CalibrationOptions.
-  static void Report(absl::string_view id, absl::Span<float> data_span,
-                     const CalibrationOptions& calib_opts);
-
-  // Reports data to singleton using absl::Span
-  // Only calculates the required statistics from CalibrationMethod based
-  // on CalibrationOptions.
-  static void Report(absl::string_view id, const Tensor& data_tensor,
+  // Same as above but accepts primitive input types.
+  static void Report(absl::string_view id, float min, float max,
+                     absl::Span<const int64_t> histogram,
                      const CalibrationOptions& calib_opts);
 
   // Returns the calibration statistics of the given id.
   static std::optional<CalibrationStatistics> GetStatistics(
       absl::string_view id);
 
-  // Issues a new node ID that uniquely identifies a set of calibration
-  // statistics.
-  static int64_t IssueNewId();
-
  private:
   static CalibratorSingleton& GetInstance();
   static absl::Mutex lock_;
   static void AssignIfNotExists(std::string id_str,
                                 const CalibrationOptions& calib_opts);
-
-  // Indicates the next id for a set of calibration statistics. For every new ID
-  // issued this will be incremented atomically.
-  std::atomic<int64_t> next_id_{0};
 
   absl::flat_hash_map<std::string,
                       std::unique_ptr<CalibrationStatisticsCollectorBase>>

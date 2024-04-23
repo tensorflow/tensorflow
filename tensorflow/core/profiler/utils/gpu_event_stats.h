@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_PROFILER_UTILS_GPU_EVENT_STATS_H_
 
 #include <cstdint>
+#include <optional>
 #include <vector>
 
 #include "absl/strings/string_view.h"
@@ -44,15 +45,15 @@ struct GpuEventStats {
   // Stats from XLA.
   std::vector<absl::string_view> hlo_op_names;
   absl::string_view hlo_module_name;
-  absl::optional<uint64_t> program_id;
+  std::optional<uint64_t> program_id;
 
   // Stats from CUPTI.
   absl::string_view kernel_details;
   absl::string_view memcpy_details;
-  absl::optional<int64_t> correlation_id;
+  std::optional<int64_t> correlation_id;
 
   // Stats derived by grouping.
-  absl::optional<int64_t> group_id;
+  std::optional<int64_t> group_id;
   bool is_eager = false;
 };
 
@@ -65,11 +66,11 @@ struct LaunchEventStats {
   }
 
   // Stats from CUPTI.
-  absl::optional<int64_t> device_id;
-  absl::optional<int64_t> correlation_id;
+  std::optional<int64_t> device_id;
+  std::optional<int64_t> correlation_id;
 
   // Stat derived by grouping.
-  absl::optional<int64_t> group_id;
+  std::optional<int64_t> group_id;
 };
 
 }  // namespace profiler

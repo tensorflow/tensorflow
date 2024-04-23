@@ -353,13 +353,13 @@ cc_library(
         "lib/ws.c",
         "lib/ws.h",
     ] + select({
-        "@local_tsl//tsl:macos": [
+        "@local_xla//xla/tsl:macos": [
             "lib/vtls/sectransp.c",
         ],
-        "@local_tsl//tsl:ios": [
+        "@local_xla//xla/tsl:ios": [
             "lib/vtls/sectransp.c",
         ],
-        "@local_tsl//tsl:windows": CURL_WIN_SRCS,
+        "@local_xla//xla/tsl:windows": CURL_WIN_SRCS,
         "//conditions:default": [
         ],
     }),
@@ -378,7 +378,7 @@ cc_library(
         "include/curl/websockets.h",
     ],
     copts = select({
-        "@local_tsl//tsl:windows": CURL_WIN_COPTS,
+        "@local_xla//xla/tsl:windows": CURL_WIN_COPTS,
         "//conditions:default": [
             "-Iexternal/curl/lib",
             "-D_GNU_SOURCE",
@@ -391,10 +391,10 @@ cc_library(
             "-Wno-string-plus-int",
         ],
     }) + select({
-        "@local_tsl//tsl:macos": [
+        "@local_xla//xla/tsl:macos": [
             "-fno-constant-cfstrings",
         ],
-        "@local_tsl//tsl:windows": [
+        "@local_xla//xla/tsl:windows": [
             # See curl.h for discussion of write size and Windows
             "/DCURL_MAX_WRITE_SIZE=16384",
         ],
@@ -405,10 +405,10 @@ cc_library(
     defines = ["CURL_STATICLIB"],
     includes = ["include"],
     linkopts = select({
-        "@local_tsl//tsl:android": [
+        "@local_xla//xla/tsl:android": [
             "-pie",
         ],
-        "@local_tsl//tsl:macos": [
+        "@local_xla//xla/tsl:macos": [
             "-Wl,-framework",
             "-Wl,CoreFoundation",
             "-Wl,-framework",
@@ -416,8 +416,8 @@ cc_library(
             "-Wl,-framework",
             "-Wl,Security",
         ],
-        "@local_tsl//tsl:ios": [],
-        "@local_tsl//tsl:windows": [
+        "@local_xla//xla/tsl:ios": [],
+        "@local_xla//xla/tsl:windows": [
             "-DEFAULTLIB:ws2_32.lib",
             "-DEFAULTLIB:advapi32.lib",
             "-DEFAULTLIB:crypt32.lib",
@@ -431,8 +431,8 @@ cc_library(
     deps = [
         "@zlib",
     ] + select({
-        "@local_tsl//tsl:ios": [],
-        "@local_tsl//tsl:windows": [],
+        "@local_xla//xla/tsl:ios": [],
+        "@local_xla//xla/tsl:windows": [],
         "//conditions:default": [
             "@boringssl//:ssl",
         ],
@@ -538,7 +538,7 @@ cc_binary(
         "src/tool_xattr.h",
     ],
     copts = select({
-        "@local_tsl//tsl:windows": CURL_BIN_WIN_COPTS,
+        "@local_xla//xla/tsl:windows": CURL_BIN_WIN_COPTS,
         "//conditions:default": [
             "-Iexternal/curl/lib",
             "-D_GNU_SOURCE",

@@ -177,8 +177,7 @@ class FoldBroadcastInDimBeforeBinaryElementwiseOp
     // When the operand other than the broadcast op is not a const op, we
     // should not fold broadcast op.
     auto binary_op_const_operand =
-        lhs_bcast_op ? rhs.template getDefiningOp<mhlo::ConstantOp>()
-                     : lhs.template getDefiningOp<mhlo::ConstantOp>();
+        (lhs_bcast_op ? rhs : lhs).template getDefiningOp<mhlo::ConstantOp>();
     if (!binary_op_const_operand) return failure();
     auto bcast_op = lhs_bcast_op ? lhs_bcast_op : rhs_bcast_op;
     auto const_op =

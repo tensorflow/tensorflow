@@ -26,6 +26,7 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
@@ -49,6 +50,7 @@ limitations under the License.
 #include "xla/service/gpu/kernel_arguments.h"
 #include "xla/service/gpu/kernel_reuse_cache.h"
 #include "xla/service/gpu/launch_dimensions.h"
+#include "xla/service/gpu/model/indexing_analysis.h"
 #include "xla/service/gpu/model/indexing_map.h"
 #include "xla/service/gpu/runtime/kernel_thunk.h"
 #include "xla/service/gpu/target_util.h"
@@ -58,7 +60,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status.h"
 #include "xla/status_macros.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
@@ -117,10 +118,10 @@ absl::Status AnnotateKernelLaunchDimensions(
   return absl::OkStatus();
 }
 
-IndexingMap KernelFusionInterface::GetDefaultThreadIdToOutputIndexingMap(
-    const LaunchDimensions& launch_dims, int unroll_factor,
-    const Shape& output_shape, mlir::MLIRContext* ctx) {
-  std::vector<mlir::AffineExpr> output_dims(output_shape.rank());
+IndexingMap KernelFusionInterface::GetDefaultThreadIdIndexingMap(
+    const LaunchDimensions& launch_dims, int unroll_factor, const Shape& shape,
+    mlir::MLIRContext* ctx) {
+  std::vector<mlir::AffineExpr> output_dims(shape.rank());
 
   std::array<uint64_t, 3> thread_counts{
       launch_dims.thread_counts_per_block().x,
@@ -163,41 +164,40 @@ IndexingMap KernelFusionInterface::GetDefaultThreadIdToOutputIndexingMap(
 
   // See IndexUtil::LinearIndexToMultidimensionalIndex.
   uint64_t divisor = 1;
-  for (auto dimension : LayoutUtil::MinorToMajor(output_shape)) {
-    output_dims[dimension] =
-        (linear_index.floorDiv(divisor)) %
-        static_cast<uint64_t>(output_shape.dimensions(dimension));
-    divisor *= output_shape.dimensions(dimension);
+  for (auto dimension : LayoutUtil::MinorToMajor(shape)) {
+    output_dims[dimension] = (linear_index.floorDiv(divisor)) %
+                             static_cast<uint64_t>(shape.dimensions(dimension));
+    divisor *= shape.dimensions(dimension);
   }
 
-  std::vector<Range> dimension_ranges = {
-      {0, static_cast<int64_t>(launch_dims.thread_counts_per_block().x) - 1},
-      {0, static_cast<int64_t>(launch_dims.thread_counts_per_block().y) - 1},
-      {0, static_cast<int64_t>(launch_dims.thread_counts_per_block().z) - 1},
-      {0, static_cast<int64_t>(launch_dims.block_counts().x) - 1},
-      {0, static_cast<int64_t>(launch_dims.block_counts().y) - 1},
-      {0, static_cast<int64_t>(launch_dims.block_counts().z) - 1},
+  std::vector<DimVar> dim_vars = {
+      {{0, static_cast<int64_t>(launch_dims.thread_counts_per_block().x) - 1}},
+      {{0, static_cast<int64_t>(launch_dims.thread_counts_per_block().y) - 1}},
+      {{0, static_cast<int64_t>(launch_dims.thread_counts_per_block().z) - 1}},
+      {{0, static_cast<int64_t>(launch_dims.block_counts().x) - 1}},
+      {{0, static_cast<int64_t>(launch_dims.block_counts().y) - 1}},
+      {{0, static_cast<int64_t>(launch_dims.block_counts().z) - 1}},
   };
-  std::vector<Range> symbol_ranges;
-  int64_t num_elements = ShapeUtil::ElementsIn(output_shape);
-  symbol_ranges.push_back(
-      {0, CeilOfRatio(num_elements,
-                      static_cast<int64_t>(launch_dims.launch_bound()) *
-                          unroll_factor) -
-              1});
-  symbol_ranges.push_back({0, unroll_factor - 1});
+  std::vector<RangeVar> range_vars;
+  int64_t num_elements = ShapeUtil::ElementsIn(shape);
+  range_vars.push_back(
+      {{0, CeilOfRatio(num_elements,
+                       static_cast<int64_t>(launch_dims.launch_bound()) *
+                           unroll_factor) -
+               1}});
+  range_vars.push_back({0, unroll_factor - 1});
   IndexingMap indexing_map(
       mlir::AffineMap::get(/*dimCount=*/6,
                            /*symbolCount=*/2, output_dims, ctx),
-      dimension_ranges, symbol_ranges);
+      dim_vars, range_vars, /*rt_vars=*/{});
   // Remove the unroll_elem_id symbol if unrolling divides num_elements.
   if (num_elements % unroll_factor == 0) {
     indexing_map.AddConstraint(linear_index.replace({{unroll_elem_id, c0}}),
-                               Range{0, num_elements - unroll_factor});
+                               Interval{0, num_elements - unroll_factor});
   } else {
-    indexing_map.AddConstraint(linear_index, Range{0, num_elements - 1});
+    indexing_map.AddConstraint(linear_index, Interval{0, num_elements - 1});
   }
-  indexing_map.Simplify();
+  indexing_map.Simplify(GetIndexingMapForInstruction);
   return indexing_map;
 }
 

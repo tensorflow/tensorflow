@@ -36,6 +36,7 @@ visibility = [
     "//third_party/reverb:__subpackages__",
     "//tensorflow_minigo:__subpackages__",
     "//research/graph/fairness/inproc_fair_reg:__subpackages__",
+    "//third_party/py/scenic:__subpackages__",
 ]
 
 package(
@@ -3111,6 +3112,7 @@ py_strict_library(
         "variables.py",
     ],
     srcs_version = "PY3",
+    visibility = visibility,
     deps = [
         ":array_ops",
         ":array_ops_gen",
@@ -3122,6 +3124,7 @@ py_strict_library(
         ":resource_variable_ops_gen",
         ":state_ops",
         ":state_ops_gen",
+        "//tensorflow/compiler/tf2xla/ops:gen_xla_ops",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/core/function/trace_type",
         "//tensorflow/python:pywrap_tensorflow",

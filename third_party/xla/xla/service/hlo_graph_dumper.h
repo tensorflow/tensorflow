@@ -16,10 +16,15 @@ limitations under the License.
 #ifndef XLA_SERVICE_HLO_GRAPH_DUMPER_H_
 #define XLA_SERVICE_HLO_GRAPH_DUMPER_H_
 
+#include <optional>
 #include <string>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
-#include "xla/types.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/statusor.h"
 #include "xla/xla.pb.h"
 
 // This file contains routines for rendering HLO computations into a
@@ -59,6 +64,14 @@ struct HloRenderOptions {
 
   // Include the while subcomputations in the rendered graph.
   bool show_while_subcomputations = true;
+
+  bool override_node_colors = false;
+};
+
+// Contains color computed according to the numerical diff of an HloInstruction
+struct ColorStats {
+  std::string color;
+  std::string stats;
 };
 
 // Renders an HLO module as a human-readable visual graph.
@@ -68,13 +81,15 @@ struct HloRenderOptions {
 // unreadable, or both.  To view such graphs, use a tool such as
 // interactive_graphviz, which calls RenderNeighborhoodAround to render subsets
 // of a graph.
-StatusOr<std::string> RenderGraph(const HloComputation& computation,
-                                  absl::string_view label,
-                                  const DebugOptions& debug_options,
-                                  RenderedGraphFormat format,
-                                  HloRenderOptions hlo_render_options = {});
+absl::StatusOr<std::string> RenderGraph(
+    const HloComputation& computation, absl::string_view label,
+    const DebugOptions& debug_options, RenderedGraphFormat format,
+    HloRenderOptions hlo_render_options = {},
+    std::optional<absl::flat_hash_map<const HloInstruction*, ColorStats>>
+        color_map = std::nullopt);
 
-StatusOr<std::string> RenderAllComputationsToHtml(const HloModule& module);
+absl::StatusOr<std::string> RenderAllComputationsToHtml(
+    const HloModule& module);
 
 // Like RenderGraph, but renders only nodes "near" the given node in the graph.
 //
@@ -84,15 +99,17 @@ StatusOr<std::string> RenderAllComputationsToHtml(const HloModule& module);
 //
 // The optional boundary specifies a set of boundary nodes, beyond which nodes
 // will be omitted even if they are within the radius.
-StatusOr<std::string> RenderNeighborhoodAround(
+absl::StatusOr<std::string> RenderNeighborhoodAround(
     const HloInstruction& node, int radius, RenderedGraphFormat format,
     HloRenderOptions hlo_render_options = {},
-    const absl::flat_hash_set<const HloInstruction*>& boundary = {});
+    const absl::flat_hash_set<const HloInstruction*>& boundary = {},
+    std::optional<absl::flat_hash_map<const HloInstruction*, ColorStats>>
+        color_map = std::nullopt);
 
 // Renders nodes on any of the paths from `from` to `to`.  If there are more
 // than max_nodes on all paths, restricts to the max_nodes nodes on the shortest
 // paths.
-StatusOr<std::string> RenderAllPathsFromTo(
+absl::StatusOr<std::string> RenderAllPathsFromTo(
     const HloInstruction& from, const HloInstruction& to, int64_t max_nodes,
     RenderedGraphFormat format, HloRenderOptions hlo_render_options = {});
 
@@ -116,11 +133,12 @@ void RegisterFusionState(const HloComputation& computation,
 // There can only be one active renderer, and the last call to this function
 // wins.
 void RegisterGraphToURLRenderer(
-    std::function<StatusOr<std::string>(absl::string_view dot)> renderer);
+    std::function<absl::StatusOr<std::string>(absl::string_view dot)> renderer);
 
 // Generates a fusion explorer for the given computation using the data in
 // fusion_visualizer_state.
-StatusOr<std::string> WrapFusionExplorer(const HloComputation& computation);
+absl::StatusOr<std::string> WrapFusionExplorer(
+    const HloComputation& computation);
 
 }  // namespace xla
 

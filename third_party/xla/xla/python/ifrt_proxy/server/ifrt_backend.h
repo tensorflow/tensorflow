@@ -172,7 +172,7 @@ class IfrtBackend final : public BackendInterface {
   const std::shared_ptr<HostBufferStore> host_buffer_store_;
 
   absl::Mutex futures_mutex_;
-  absl::flat_hash_map<uint64_t, Future<absl::Status>> futures_
+  absl::flat_hash_map<uint64_t, Future<>> futures_
       ABSL_GUARDED_BY(futures_mutex_);
 
   absl::Mutex arrays_mutex_;

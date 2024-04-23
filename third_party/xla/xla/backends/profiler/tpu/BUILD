@@ -1,6 +1,6 @@
-load("@local_tsl//tsl:tsl.bzl", "if_with_tpu_support")
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load("@local_tsl//tsl/profiler/builds:build_config.bzl", "tf_profiler_copts")
+load("//xla/tsl:tsl.bzl", "if_with_tpu_support")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -18,8 +18,8 @@ cc_library(
         "//xla/stream_executor/tpu:tpu_ops_c_api_hdrs",
         "//xla/stream_executor/tpu:tpu_profiler_init_fns",
         "//xla/stream_executor/tpu:tsl_status_helper",
+        "//xla/tsl/c:tsl_status",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/c:tsl_status",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:types",

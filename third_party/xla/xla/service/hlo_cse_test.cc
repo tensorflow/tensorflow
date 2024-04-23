@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/strings/substitute.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -707,6 +708,32 @@ TEST_F(HloCseTest, OptimizationBarrier) {
   HloCSE cse(/*is_layout_sensitive=*/false);
   TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&cse, m.get()));
   EXPECT_FALSE(changed);
+}
+
+TEST_F(HloCseTest, OnlyScalar) {
+  const char* const hlo_string = R"(
+    HloModule m
+
+    ENTRY entry {
+      %const1 = f32[] constant(1)
+      %const2 = f32[] constant(1)
+      %const3 = f32[2] constant({1,2})
+      %const4 = f32[2] constant({1,2})
+      %add.0 = f32[] add(%const1, %const2)
+      %add.1 = f32[2] add(%const3, %const4)
+      ROOT out = (f32[], f32[2]) tuple(%add.0, %add.1)
+    })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  HloCSE cse(/*is_layout_sensitive=*/false, /*only_fusion_computations=*/false,
+             /*ignore_control_dependencies=*/false, /*only_scalars=*/true);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&cse, m.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_EQ(absl::c_count_if(m->entry_computation()->instructions(),
+                             [](const HloInstruction* instruction) {
+                               return instruction->IsConstant();
+                             }),
+            3);
 }
 
 class HloCseCustomCallTest

@@ -49,7 +49,7 @@ class StatsAggregatorImpl : public StatsAggregator {
  public:
   StatsAggregatorImpl() {}
 
-  void AddToHistogram(const string& name, gtl::ArraySlice<double> values,
+  void AddToHistogram(const string& name, absl::Span<const double> values,
                       const int64_t steps) override {
     mutex_lock l(mu_);
     histogram::Histogram& histogram = histograms_[name];
@@ -138,7 +138,7 @@ class StatsAggregatorImplV2 : public StatsAggregator {
     }
   }
 
-  void AddToHistogram(const string& name, gtl::ArraySlice<double> values,
+  void AddToHistogram(const string& name, absl::Span<const double> values,
                       const int64_t steps) override {
     mutex_lock l(mu_);
     histogram::Histogram& histogram = histograms_[name];

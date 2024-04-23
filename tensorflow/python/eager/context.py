@@ -150,6 +150,25 @@ def xla_sharding_for_resource_variables_enabled():
   return _XLA_SHARDING_FOR_RESOURCE_VARIABLES
 
 
+@contextlib.contextmanager
+def temporarily_disable_xla_sharding_for_resource_variables():
+  """Temporarily disables XLA sharding for resource variables.
+
+  Should be a no-op if it is already disabled.
+
+  Yields:
+    None.
+  """
+  previously_enabled = xla_sharding_for_resource_variables_enabled()
+
+  try:
+    disable_xla_sharding_for_resource_variables()
+    yield
+  finally:
+    if previously_enabled:
+      enable_xla_sharding_for_resource_variables()
+
+
 # Expose it as internally public APIs for Keras use cases in b/171080602.
 tf_export("__internal__.is_tfrt_enabled", v1=[])(is_tfrt_enabled)
 

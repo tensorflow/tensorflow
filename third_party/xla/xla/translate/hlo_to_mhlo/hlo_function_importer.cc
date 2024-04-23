@@ -16,7 +16,10 @@ limitations under the License.
 #include "xla/translate/hlo_to_mhlo/hlo_function_importer.h"
 
 #include <algorithm>
+#include <cassert>
+#include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -24,24 +27,32 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "absl/strings/match.h"
+#include "absl/status/status.h"
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/APInt.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/Support/raw_ostream.h"
+#include "llvm/Support/Casting.h"
+#include "llvm/Support/ErrorHandling.h"
 #include "mlir/AsmParser/AsmParser.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/Region.h"  // from @llvm-project
+#include "mlir/IR/SymbolTable.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/IR/ValueRange.h"  // from @llvm-project
+#include "mlir/Interfaces/SideEffectInterfaces.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -51,20 +62,22 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/ir/hlo_sharding_metadata.h"
+#include "xla/layout.h"
 #include "xla/layout_util.h"
+#include "xla/literal.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
-#include "xla/printer.h"
 #include "xla/protobuf_util.h"
 #include "xla/service/hlo.pb.h"
+#include "xla/shape_layout.h"
 #include "xla/shape_util.h"
 #include "xla/status.h"
-#include "xla/status_macros.h"
 #include "xla/translate/hlo_to_mhlo/attribute_importer.h"
 #include "xla/translate/hlo_to_mhlo/custom_call_importer.h"
 #include "xla/translate/hlo_to_mhlo/hlo_utils.h"
 #include "xla/translate/hlo_to_mhlo/location_importer.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
 using llvm::APInt;
@@ -562,7 +575,12 @@ absl::StatusOr<Value> HloFunctionImporter::ImportInstructionsImpl(
         auto new_operation,
         ImportInstructionWithLayout(instruction, operands, builder));
     if (new_operation) {
-      instruction_value_map_[instruction] = new_operation->getResult(0);
+      unsigned int idx =
+          (instruction->opcode() == HloOpcode::kRngBitGenerator &&
+           instruction->shape().IsArray())
+              ? 1
+              : 0;
+      instruction_value_map_[instruction] = new_operation->getResult(idx);
     }
   }
 
@@ -820,12 +838,13 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       }
 
     case HloOpcode::kDot: {
+      auto dot = Cast<HloDotInstruction>(instruction);
       attributes.push_back(builder_->getNamedAttr(
           "precision_config",
           ConvertPrecisionConfig(&instruction->precision_config(), builder_)));
 
       // Consider consolidating DotOps together.
-      if (DotIsDefault(instruction)) {
+      if (DotIsDefault(instruction) && !dot->sparse_operands()) {
         return func_builder
             ->create<mlir::mhlo::DotOp>(loc, result_type, operands, attributes)
             .getOperation();
@@ -835,9 +854,23 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
           "dot_dimension_numbers",
           ConvertDotDimensionNumbers(instruction->dot_dimension_numbers(),
                                      builder_)));
+      if (!dot->sparse_operands()) {
+        return func_builder
+            ->create<mlir::mhlo::DotGeneralOp>(loc, result_type, operands,
+                                               attributes)
+            .getOperation();
+      }
+
+      for (const SparsityDescriptor& descriptor : dot->sparsity()) {
+        TF_ASSIGN_OR_RETURN(auto sparsity,
+                            ConvertSparsityDescriptor(descriptor, builder_));
+        attributes.push_back(builder_->getNamedAttr(
+            descriptor.index() == 0 ? "lhs_sparsity" : "rhs_sparsity",
+            sparsity));
+      }
       return func_builder
-          ->create<mlir::mhlo::DotGeneralOp>(loc, result_type, operands,
-                                             attributes)
+          ->create<mlir::mhlo::SparseDotOp>(loc, result_type, operands,
+                                            attributes)
           .getOperation();
     }
     case HloOpcode::kCall: {
@@ -1615,18 +1648,44 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       }
     }
     case HloOpcode::kRngBitGenerator: {
+      // HloRngBitGeneratorInstruction can have two kinds of shapes, (1)
+      // tuple(output_state, output_data), and (2) output_data.
+      // mhlo::RngBitGeneratorOp has only one shape, (output_state,
+      // output_data).
       auto rng_op = Cast<HloRngBitGeneratorInstruction>(instruction);
-
-      // Flatten the return type if they are tuple-typed.
-      llvm::SmallVector<Type> flattened_ret_types;
-      FlattenTupleType(result_type, flattened_ret_types);
 
       auto algorithm_attr = mlir::mhlo::RngAlgorithmAttr::get(
           builder_->getContext(),
           *mlir::mhlo::symbolizeRngAlgorithm(rng_op->algorithm()));
-      auto op = func_builder->create<mlir::mhlo::RngBitGeneratorOp>(
-          loc, flattened_ret_types, algorithm_attr, operands[0]);
+      attributes.push_back(
+          builder_->getNamedAttr("rng_algorithm", algorithm_attr));
 
+      // Flatten the return type if they are tuple-typed.
+      llvm::SmallVector<Type> flattened_ret_types;
+      FlattenTupleType(result_type, flattened_ret_types);
+      if (rng_op->shape().IsArray()) {
+        TF_ASSIGN_OR_RETURN(auto state_type,
+                            ConvertShapeToType<RankedTensorType>(
+                                rng_op->operand(0)->shape(), *builder_));
+        flattened_ret_types.insert(flattened_ret_types.begin(), state_type);
+
+        if (instruction->has_sharding()) {
+          Shape tuple_shape = ShapeUtil::MakeTupleShape(
+              {rng_op->operand(0)->shape(), instruction->shape()});
+          HloSharding tuple_sharding = HloSharding::Tuple(
+              tuple_shape, {HloSharding::Replicate(), instruction->sharding()});
+          CHECK_EQ(attributes.front().getName().str(), kShardingAttr);
+          attributes.front() = builder_->getNamedAttr(
+              kShardingAttr, ConvertSharding(tuple_sharding, builder_));
+        }
+      }
+      CHECK_EQ(flattened_ret_types.size(), 2);
+
+      auto op = func_builder->create<mlir::mhlo::RngBitGeneratorOp>(
+          loc, flattened_ret_types, operands[0], attributes);
+      if (rng_op->shape().IsArray()) {
+        return op.getOperation();
+      }
       return CreateTupleFromOpResults(func_builder, loc, op.getOperation(),
                                       result_type);
     }

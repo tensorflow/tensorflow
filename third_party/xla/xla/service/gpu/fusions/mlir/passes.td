@@ -50,8 +50,7 @@ def LowerFuncPass : Pass<"xla-gpu-lower-func", "mlir::ModuleOp"> {
   let constructor = "CreateLowerFuncPass()";
 }
 
-def LowerTensorsPass :
-   Pass<"xla-gpu-lower-tensors", "mlir::ModuleOp"> {
+def LowerTensorsPass : Pass<"xla-gpu-lower-tensors", "mlir::ModuleOp"> {
   let summary = "Lowers tensors to llvm pointers and loads/stores.";
 
   let description = [{
@@ -60,10 +59,18 @@ def LowerTensorsPass :
   }];
 
   let dependentDialects = [
-    "mlir::func::FuncDialect", "mlir::gpu::GPUDialect", "mlir::LLVM::LLVMDialect",
-    "mlir::tensor::TensorDialect", "mlir::scf::SCFDialect",
+    "mlir::LLVM::LLVMDialect",
+    "mlir::func::FuncDialect",
+    "mlir::gpu::GPUDialect",
+    "mlir::scf::SCFDialect",
+    "mlir::tensor::TensorDialect",
   ];
-
+  let options = [
+    Option<"is_amd_gpu_", "is_amd_gpu", "bool", /*default=*/"false",
+           "True if AMD GPU.">,
+    Option<"gpu_arch_", "gpu_arch", "std::string", /*default=*/"",
+           "CUDA or ROCm compute capability.">,
+  ];
   let constructor = "CreateLowerTensorsPass()";
 }
 

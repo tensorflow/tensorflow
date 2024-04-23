@@ -129,24 +129,26 @@ TEST_F(ReductionTest, RowReduceMOFEpilogue) {
       reduce1 = f32[8] reduce(param_0, param_1), dimensions={1}, to_apply=Add
       reduce2 = f32[8] reduce(param_0, param_1), dimensions={1}, to_apply=Mul
       log = f32[8] log(reduce1)
+      abs = f32[8] abs(reduce1)
       neg = f32[8] negate(reduce2)
-      ROOT tuple = (f32[8], f32[8]) tuple(log, neg)
+      ROOT tuple = (f32[8], f32[8], f32[8]) tuple(log, neg, abs)
     }
     ENTRY main {
       a = f32[8,2048] parameter(0)
       c = f32[] constant(0)
-      ROOT fusion = (f32[8], f32[8]) fusion(a, c), kind=kInput, calls=fused_computation
+      ROOT fusion = (f32[8], f32[8], f32[8]) fusion(a, c), kind=kInput,
+        calls=fused_computation
     })";
   TF_ASSERT_OK(EmitAndCheckIR(kHloString, R"(
-    // CHECK: pure_call @Add_add
-    // CHECK: shuffle_reduce
+    // CHECK-DAG: pure_call @Add_add
+    // CHECK-DAG: shuffle_reduce @Add_add
+    // CHECK-DAG: pure_call @Mul_mul
+    // CHECK-DAG: shuffle_reduce @Mul_mul
     // CHECK: allocate_shared
-    // CHECK: pure_call @Mul_mul
-    // CHECK: shuffle_reduce
     // CHECK: allocate_shared
     // CHECK: sync_threads
-    // CHECK: shuffle_reduce
-    // CHECK: shuffle_reduce
+    // CHECK-DAG: shuffle_reduce @Add_add
+    // CHECK-DAG: shuffle_reduce @Mul_mul
   )"));
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
 }
@@ -302,6 +304,38 @@ TEST_F(ReductionTest, MixedIndexing) {
     ENTRY entry {
       %param_0 = f32[64,128] parameter(0)
       ROOT %fusion = (f32[128], f32[128]) fusion(%param_0), kind=kInput, calls=fusion
+    })";
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
+}
+
+TEST_F(ReductionTest, NonTrivialEpilogue) {
+  constexpr auto kHloString = R"(
+    HloModule module
+    add {
+      p0 = f64[] parameter(0)
+      p1 = f64[] parameter(1)
+      ROOT add = f64[] add(p0, p1)
+    }
+    fusion {
+      %p0 = f64[4] parameter(0)
+      %p1 = f64[4] parameter(1)
+      %c0 = f64[] constant(-inf)
+      %reduce0 = f64[] reduce(p1, c0), dimensions={0}, to_apply=add
+      %bc0 = f64[4] broadcast(reduce0), dimensions={}
+      %compare0 = pred[4] compare(p1, bc0), direction=EQ
+      %c1 = f64[] constant(0)
+      %bc1 = f64[4] broadcast(c1), dimensions={}
+      %select.3.1 = f64[4] select(compare0, p0, bc1)
+      %reduce1 = f64[] reduce(select.3.1, c1), dimensions={0}, to_apply=add
+      %convert0 = f64[4] convert(compare0)
+      %reduce2 = f64[] reduce(convert0, c1), dimensions={0}, to_apply=add
+      ROOT %tuple.1 = (f64[], f64[], f64[]) tuple(%reduce1, reduce0, reduce2)
+    }
+    ENTRY main {
+      %p0 = f64[4] parameter(0)
+      %p1 = f64[4] parameter(1)
+      ROOT %fusion = (f64[], f64[], f64[]) fusion(%p0, %p1), kind=kInput,
+        calls=fusion
     })";
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
 }

@@ -424,8 +424,8 @@ TEST(TestFastParseExample, Empty) {
   FastParseExampleConfig config;
   config.sparse.push_back({"test", DT_STRING});
   Status status =
-      FastParseExample(config, gtl::ArraySlice<tstring>(),
-                       gtl::ArraySlice<tstring>(), nullptr, &result);
+      FastParseExample(config, absl::Span<const tstring>(),
+                       absl::Span<const tstring>(), nullptr, &result);
   EXPECT_TRUE(status.ok()) << status;
 }
 

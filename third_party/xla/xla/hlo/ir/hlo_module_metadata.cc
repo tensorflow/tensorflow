@@ -25,7 +25,8 @@ limitations under the License.
 
 namespace xla {
 
-StatusOr<HloPassMetadata*> HloModuleMetadata::GetCurrentHloPassMetadata() {
+absl::StatusOr<HloPassMetadata*>
+HloModuleMetadata::GetCurrentHloPassMetadata() {
   if (running_passes_.empty()) {
     return NotFound(
         "HloPassMetadata for currently running pass not found, either because "

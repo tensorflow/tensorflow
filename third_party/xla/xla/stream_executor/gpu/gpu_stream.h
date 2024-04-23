@@ -24,7 +24,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
 #include "xla/stream_executor/platform.h"
-#include "xla/stream_executor/stream_executor_internal.h"
+#include "xla/stream_executor/stream_executor_interface.h"
 
 namespace stream_executor {
 namespace gpu {
@@ -35,7 +35,7 @@ class GpuExecutor;
 // StreamInterface.
 //
 // Thread-safe post-initialization.
-class GpuStream : public internal::StreamInterface {
+class GpuStream : public StreamInterface {
  public:
   explicit GpuStream(GpuExecutor* parent)
       : parent_(parent), gpu_stream_(nullptr), completed_event_(nullptr) {}

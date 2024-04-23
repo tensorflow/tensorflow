@@ -15,13 +15,17 @@ limitations under the License.
 
 #include "xla/hlo/ir/hlo_reachability.h"
 
+#include <memory>
 #include <set>
+#include <string_view>
 
+#include "absl/random/random.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/computation_placer.h"
 #include "xla/test.h"
 #include "xla/test_helpers.h"
 #include "xla/tests/hlo_test_base.h"
+#include "tsl/platform/test_benchmark.h"
 
 namespace xla {
 
@@ -239,6 +243,76 @@ TEST_F(HloReachabilityTest, ReplaceInstructions) {
   EXPECT_FALSE(reachability->IsPresent(add));
   EXPECT_TRUE(reachability->IsReachable(p0, fusion));
 }
+
+}  // namespace
+
+class HloReachabilityMapBitSetBenchmark {
+ public:
+  explicit HloReachabilityMapBitSetBenchmark(int size) : a_(size), b_(size) {
+    // Initialize the bit sets to random inputs. Done out of caution -- note
+    // that a sufficiently smart optimizer might realize that the bit sets
+    // are otherwise initialized to 0.
+    absl::BitGen gen;
+    for (int i = 0; i < size; ++i) {
+      if (absl::Bernoulli(gen, 0.5)) a_.Set(i);
+      if (absl::Bernoulli(gen, 0.5)) b_.Set(i);
+    }
+  }
+  void Union() { a_ |= b_; }
+
+ private:
+  HloReachabilityMap::BitSet a_;
+  HloReachabilityMap::BitSet b_;
+};
+
+namespace {
+
+void BM_HloReachabilityBitSetUnion(benchmark::State& state) {
+  HloReachabilityMapBitSetBenchmark bm(state.range(0));
+  for (auto s : state) {
+    bm.Union();
+  }
+}
+#define BM_ARGS Arg(1)->Arg(64)->Arg(128)->Arg(256)->Range(512, 256 * 1024)
+BENCHMARK(BM_HloReachabilityBitSetUnion)->BM_ARGS;
+
+class HloReachabilityBenchmark {
+ public:
+  HloReachabilityBenchmark(int size, std::string_view name) : name_(name) {
+    Shape r0f32 = ShapeUtil::MakeShape(F32, {});
+    auto builder = HloComputation::Builder(name);
+
+    // Build a graph of chained Exponentials, i.e. Exp(...(Exp(Input))...).
+    HloInstruction* constant = builder.AddInstruction(
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(2.0f)));
+    HloInstruction* prev = constant;
+    for (int i = 1; i < size; ++i) {
+      prev = builder.AddInstruction(
+          HloInstruction::CreateUnary(r0f32, HloOpcode::kExp, prev));
+    }
+
+    HloModuleConfig hlo_config;
+    module_ = std::make_unique<HloModule>(name_, hlo_config);
+    computation_ =
+        module_->AddEntryComputation(builder.Build(/*root_instruction=*/prev));
+  }
+  std::unique_ptr<HloReachabilityMap> Build() {
+    return HloReachabilityMap::Build(computation_);
+  }
+
+ private:
+  std::unique_ptr<HloModule> module_;
+  HloComputation* computation_;
+  const std::string name_;
+};
+
+void BM_HloReachabilityBuild(benchmark::State& state) {
+  HloReachabilityBenchmark bm(state.range(0), state.name());
+  for (auto s : state) {
+    benchmark::DoNotOptimize(bm.Build());
+  }
+}
+BENCHMARK(BM_HloReachabilityBuild)->BM_ARGS;
 
 }  // namespace
 

@@ -99,6 +99,9 @@ struct PassConfig {
   // When set to true, StableHLO Quantizer is run. The full configuration for
   // the quantizer is at `TocoFlags::quantization_config`.
   bool enable_stablehlo_quantizer = false;
+
+  // Enables the attempt to directly lower composites into tflite ops.
+  bool enable_composite_direct_lowering = false;
 };
 
 inline llvm::raw_ostream& operator<<(llvm::raw_ostream& os,

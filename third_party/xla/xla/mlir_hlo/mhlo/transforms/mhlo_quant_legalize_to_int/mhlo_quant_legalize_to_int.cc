@@ -592,6 +592,18 @@ struct DotLikeDimensionNumbers {
   SmallVector<int64_t> rhsContractingDims;
 };
 
+// Checks if zero points of the given quantized type are zero.
+bool isZeroPointZero(QuantType type) {
+  if (isPerTensorType(type)) {
+    return getPerTensorType(type).getZeroPoint() == 0;
+  }
+  if (isPerChannelType(type)) {
+    ArrayRef<int64_t> zeroPoints = getPerChannelType(type).getZeroPoints();
+    return llvm::all_of(zeroPoints, [](int64_t zp) { return zp == 0; });
+  }
+  return false;
+}
+
 // A shared matchAndRewrite implementation for dot-like hybrid quantized
 // operators. Hybrid ops are currently only interpreted as weight-only
 // quantization ops, this might change in the future.
@@ -605,10 +617,17 @@ LogicalResult matchAndRewriteDotLikeHybridOp(
   // For weight-only quantization:
   // result = hybridOp(lhs, dequant(rhs))
   Value lhsFloat32Tensor = adaptor.getLhs();
-  Value rhs = adaptor.getRhs();
-  quant::UniformQuantizedType rhsElementType =
-      getElementTypeOrSelf(op.getRhs().getType())
-          .template cast<quant::UniformQuantizedType>();
+  // Insert optimization_barrier to prevent constant folding of dequantize +
+  // quantized weights.
+  auto barrier = rewriter.create<mhlo::OptimizationBarrierOp>(op->getLoc(),
+                                                              adaptor.getRhs());
+  Operation::result_range resultRange = barrier.getResults();
+  Value rhs = resultRange.front();
+  FailureOr<QuantType> rhsElementQuantType =
+      getQuantType(op.getRhs().getType());
+  if (failed(rhsElementQuantType)) {
+    return failure();
+  }
   auto resFloat32TensorType =
       op.getResult().getType().template cast<TensorType>();
   auto rhsFloat32TensorType =
@@ -616,21 +635,25 @@ LogicalResult matchAndRewriteDotLikeHybridOp(
           rewriter.getF32Type());
 
   // Get scales and zero points for rhs.
-  Value rhsZeroPoint = rewriter.create<mhlo::ConstantOp>(
-      op->getLoc(), rewriter.getF32FloatAttr((rhsElementType.getZeroPoint())));
-  Value rhsScaleConstant = rewriter.create<mhlo::ConstantOp>(
-      op->getLoc(),
-      rewriter.getF32FloatAttr(static_cast<float>(rhsElementType.getScale())));
+  Value rhsScale, rhsZeroPoint;
+  DenseI64ArrayAttr broadcastDims;
+  getQuantizationParams(rewriter, op->getLoc(), *rhsElementQuantType, rhsScale,
+                        rhsZeroPoint,
+                        /*outputZeroPointInFp=*/true, broadcastDims);
 
   // Dequantize rhs_float32_tensor.
   Value rhsFloat32Tensor =
       rewriter.create<mhlo::ConvertOp>(op->getLoc(), rhsFloat32TensorType, rhs);
-  rhsFloat32Tensor = rewriter.create<chlo::BroadcastSubOp>(
-      op->getLoc(), rhsFloat32TensorType, rhsFloat32Tensor, rhsZeroPoint,
-      nullptr);
+
+  // Subtract zero points only when it is not zero.
+  if (!isZeroPointZero(*rhsElementQuantType)) {
+    rhsFloat32Tensor = rewriter.create<chlo::BroadcastSubOp>(
+        op->getLoc(), rhsFloat32TensorType, rhsFloat32Tensor, rhsZeroPoint,
+        broadcastDims);
+  }
   rhsFloat32Tensor = rewriter.create<chlo::BroadcastMulOp>(
-      op->getLoc(), rhsFloat32TensorType, rhsFloat32Tensor, rhsScaleConstant,
-      nullptr);
+      op->getLoc(), rhsFloat32TensorType, rhsFloat32Tensor, rhsScale,
+      broadcastDims);
 
   // Execute conversion target op.
   SmallVector<Value, 2> operands{lhsFloat32Tensor, rhsFloat32Tensor};
@@ -1036,13 +1059,13 @@ FailureOr<bool> isDotLikeOpHybrid(DotLikeOp op) {
       getElementTypeOrSelf(op.getResult()));
 
   if (isLhsQuant && ((isRhsQuant && isResQuant) ||
-                     (isa<mhlo::ConvolutionOp>(op) && isRhsQuantPerChannel &&
-                      isResQuantPerChannel))) {
-    // For quantized ops, RHS and result must be both per-channel quantized.
-    // For Convolution, we also support per-channel quantized RHS/result.
+                     (isRhsQuantPerChannel && isResQuantPerChannel))) {
+    // For quantized ops, RHS and result must be both per-channel quantized or
+    // both per-tensor quantized.
     return false;
   }
-  if (!isLhsQuant && !isLhsQuantPerChannel && isRhsQuant && !isResQuant &&
+  if (!isLhsQuant && !isLhsQuantPerChannel &&
+      (isRhsQuant || isRhsQuantPerChannel) && !isResQuant &&
       !isResQuantPerChannel) {
     return true;
   }

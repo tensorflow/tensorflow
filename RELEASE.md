@@ -29,6 +29,8 @@
 * GPU
     * Support for NVIDIA GPUs with compute capability 8.9 (e.g. L4 & L40) has
       been added to TF binary distributions (Python wheels).
+* Replace `DebuggerOptions` of TensorFlow Quantizer, and migrate to
+  `DebuggerConfig` of StableHLO Quantizer.
 
 ## Keras
 
@@ -57,6 +59,15 @@
     built with support for a given CPU target. This can be useful for skipping
     target-specific tests if a target is not supported.
 
+*   `tf.data`
+    * Support `data.experimental.distribued_save`. `distribued_save` uses
+      tf.data service
+      (https://www.tensorflow.org/api_docs/python/tf/data/experimental/service)
+      to write distributed dataset snapshots. The call is non-blocking and
+      returns without waiting for the snapshot to finish. Setting `wait=True` to
+      `tf.data.Dataset.load` allows the snapshots to be read while they are
+      being written.
+
 ### Bug Fixes and Other Changes
 
 * <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
@@ -70,6 +81,19 @@
       schema globally in the converter and inference engine. The new behaviour
       can be disabled via experimental
       flag `converter._experimental_disable_per_channel_quantization_for_dense_layers = True`.
+    * C API:
+        * The experimental `TfLiteRegistrationExternal` type has been renamed as
+          `TfLiteOperator`, and likewise for the corresponding API functions.
+    * The Python TF Lite Interpreter bindings now have an option
+      `experimental_default_delegate_latest_features` to enable all default
+      delegate features.
+
+* `tf.data`
+    * Add `wait` to `tf.data.Dataset.load`. If `True`, for snapshots written
+      with `distributed_save`, it reads the snapshot while it is being written.
+      For snapshots written with regular `save`, it waits for the snapshot until
+      it's finished. The default is `False` for backward compatibility. Users of
+      `distributed_save` are recommended to set it to `True`.
 
 ## Thanks to our Contributors
 

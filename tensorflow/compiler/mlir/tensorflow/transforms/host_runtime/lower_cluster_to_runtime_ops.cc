@@ -28,6 +28,8 @@ limitations under the License.
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/host_runtime/runtime_passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/sparsecore/sparsecore_passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/data_dumper_logger_config.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
@@ -92,12 +94,7 @@ void AddTPULowerClusterToRuntimeOpsPassPipeline(OpPassManager& pm,
 void AddNonTPULowerClusterToRuntimeOpsPassPipeline(
     OpPassManager& pm, llvm::StringRef module_name) {
   // Rewrite cluster functions into XLA launch ops.
-  if (tensorflow::GetMlirCommonFlags()
-          ->tf_mlir_enable_generic_outside_compilation) {
-    pm.addPass(mlir::TFDevice::CreateXlaRewriteV2Pass());
-  } else {
-    pm.addPass(mlir::TFDevice::CreateXlaRewritePass());
-  }
+  pm.addPass(mlir::TFDevice::CreateXlaRewritePass());
   // Re-run the canonicalizer pass as some cleanup during resource op lifting
   // pass opens up some opportunities for canonicalization of cluster ops.
   // Specifically, we want to eliminate pass through results from the cluster
@@ -121,6 +118,7 @@ void CreateNonTPULowerClusterToRuntimeOpsPassPipeline(
 // TODO(b/306728216): Move this out of the Bridge component and into a Host
 // runtime component.
 tensorflow::Status RecordIfErrorStatus(const std::string error_prefix,
+                                       std::string bridge_type,
                                        tsl::DeviceType device_type,
                                        absl::Status status) {
   if (status.ok()) {
@@ -129,11 +127,12 @@ tensorflow::Status RecordIfErrorStatus(const std::string error_prefix,
 
   VLOG(2) << error_prefix << " " << status;
   tensorflow::metrics::UpdateTfMlirBridgeFirstPhaseCounter(
-      device_type.type_string(), /*bridge_version=*/"v2",
+      bridge_type,
+      /*bridge_version=*/mlir::TF::kMlirPh1BridgeCounterV2,
+      device_type.type_string(),
       /*fallback_enabled=*/false,
       /*result=*/"failure");
 
-  constexpr char kBridgeComponent[] = "TFXLABridge";
   std::string bridge_subcomponent = "TFXLA_PHASE_ONE_MLIR_TPU_BRIDGE";
 
   tsl::OkOrSetErrorCounterPayload(
@@ -144,7 +143,7 @@ tensorflow::Status RecordIfErrorStatus(const std::string error_prefix,
     bridge_subcomponent = "TFXLA_PHASE_ONE_MLIR_CPU/GPU_BRIDGE";
   }
 
-  tsl::error_logging::Log(kBridgeComponent, bridge_subcomponent,
+  tsl::error_logging::Log(mlir::TF::kBridgeComponent, bridge_subcomponent,
                           status.ToString())
       .IgnoreError();
 
@@ -194,10 +193,13 @@ absl::Status RunLowerClusterToRuntimeOpsPassPipeline(
         module, llvm::StringRef(), &runtime_lowering);
   }
 
+  std::string bridge_type = xla_device_type == DeviceType(DEVICE_TPU_XLA_JIT)
+                                ? mlir::TF::kMlirPh1BridgeCounterReplicated
+                                : mlir::TF::kMlirPh1BridgeCounterNonReplicated;
   auto result_status = diag_handler.ConsumeStatus();
   TF_RETURN_IF_ERROR(
       RecordIfErrorStatus(/*error_prefix=*/"lower_cluster_to_runtime",
-                          xla_device_type, result_status));
+                          bridge_type, xla_device_type, result_status));
 
   return absl::OkStatus();
 }

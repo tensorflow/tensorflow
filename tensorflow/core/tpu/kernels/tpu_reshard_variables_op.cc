@@ -136,14 +136,15 @@ Status TPUReshardVariablesOpKernel::DoTpuExecute(
   TF_ASSIGN_OR_RETURN(std::unique_ptr<tpu::TpuNodeContext> node_interfaces,
                       tpu::TpuNodeContext::Create(device_ordinal));
 
-  profiler::TraceMe trace_me(
+  tsl::profiler::TraceMe trace_me(
       [device_ordinal] {
-        return profiler::TraceMeEncode("TPUReshardVariablesOpKernel",
-                                       {{"device_ordinal", device_ordinal}});
+        return tsl::profiler::TraceMeEncode(
+            "TPUReshardVariablesOpKernel",
+            {{"device_ordinal", device_ordinal}});
       },
       /*level=*/2);
-  profiler::TraceMe trace_me_init("TPUReshardVariablesOpKernel::Init",
-                                  /*level=*/2);
+  tsl::profiler::TraceMe trace_me_init("TPUReshardVariablesOpKernel::Init",
+                                       /*level=*/2);
 
   string rendezvous_key_base;
   std::unique_ptr<tpu::CompilationCacheEntryRef> entry_ref;

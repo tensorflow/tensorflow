@@ -662,7 +662,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
 
   struct LiteralPtrEqualityFunctor {
     bool operator()(const Literal* lhs, const Literal* rhs) const {
-      return *lhs == *rhs;
+      return *lhs == *rhs && lhs->shape().layout() == rhs->shape().layout();
     }
   };
 

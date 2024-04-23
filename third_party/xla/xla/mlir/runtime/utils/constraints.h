@@ -17,7 +17,9 @@ limitations under the License.
 #define XLA_MLIR_RUNTIME_UTILS_CONSTRAINTS_H_
 
 #include "absl/status/statusor.h"
+#include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Interfaces/FunctionInterfaces.h"  // from @llvm-project
 #include "xla/runtime/constraints.h"
 

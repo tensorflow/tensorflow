@@ -33,17 +33,19 @@ class HloCSE : public HloModulePass {
   // when replacing instructions with their equivalents.
   explicit HloCSE(bool is_layout_sensitive,
                   bool only_fusion_computations = false,
-                  bool ignore_control_dependencies = false)
+                  bool ignore_control_dependencies = false,
+                  bool only_scalars = false)
       : is_layout_sensitive_(is_layout_sensitive),
         only_fusion_computations_(only_fusion_computations),
-        ignore_control_dependencies_(ignore_control_dependencies) {}
+        ignore_control_dependencies_(ignore_control_dependencies),
+        only_scalars_(only_scalars) {}
   ~HloCSE() override = default;
   absl::string_view name() const override { return "cse"; }
 
   // Run CSE on the given module. Returns whether the module was changed (common
   // subexpressions were found and eliminated).
   using HloPassInterface::Run;
-  StatusOr<bool> Run(
+  absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
@@ -51,6 +53,7 @@ class HloCSE : public HloModulePass {
   const bool is_layout_sensitive_;
   const bool only_fusion_computations_;
   const bool ignore_control_dependencies_;
+  const bool only_scalars_;
 };
 
 }  // namespace xla

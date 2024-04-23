@@ -262,7 +262,7 @@ DnnSupport::FusedMHARunnerFromDesc(
     std::optional<dnn::TensorDescriptor> mask_descriptor,
     std::optional<dnn::TensorDescriptor> bias_descriptor, double scale,
     std::optional<double> dropout_rate, std::optional<int64_t> seed,
-    bool is_flash_attention, bool is_causal_mask) {
+    bool is_flash_attention, dnn::FMHAMaskKind mask_type) {
   return absl::UnimplementedError("FusedMHARunnerFromDesc not implemented.");
 }
 
@@ -284,7 +284,7 @@ DnnSupport::FusedMHABackwardRunnerFromDesc(
     std::optional<dnn::TensorDescriptor> fwd_output_descriptor,
     std::optional<dnn::TensorDescriptor> bias_descriptor, double scale,
     std::optional<double> dropout_rate, std::optional<int64_t> seed,
-    bool is_flash_attention, bool is_causal_mask) {
+    bool is_flash_attention, dnn::FMHAMaskKind mask_type) {
   return absl::UnimplementedError(
       "FusedMHABackwardRunnerFromDesc not implemented.");
 }

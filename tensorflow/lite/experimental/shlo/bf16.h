@@ -19,7 +19,7 @@ limitations under the License.
 #if defined(__STDCPP_BFLOAT16_T__)
 #include <stdfloat>
 namespace shlo_ref {
-using BF16 = bfloat16_t;
+using BF16 = ::std::bfloat16_t;
 }  // namespace shlo_ref
 
 #else
@@ -105,6 +105,12 @@ class BF16 {
   INTERNAL_BF16_ARITHMETIC_ASSIGN_OP(*)
   INTERNAL_BF16_ARITHMETIC_OP(/)
   INTERNAL_BF16_ARITHMETIC_ASSIGN_OP(/)
+  INTERNAL_BF16_ARITHMETIC_OP(==)
+  INTERNAL_BF16_ARITHMETIC_OP(!=)
+  INTERNAL_BF16_ARITHMETIC_OP(<)
+  INTERNAL_BF16_ARITHMETIC_OP(<=)
+  INTERNAL_BF16_ARITHMETIC_OP(>)
+  INTERNAL_BF16_ARITHMETIC_OP(>=)
 
 #undef INTERNAL_BF16_ARITHMETIC_OP
 #undef INTERNAL_BF16_ARITHMETIC_ASSIGN_OP

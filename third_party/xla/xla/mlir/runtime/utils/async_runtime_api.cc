@@ -25,11 +25,18 @@ limitations under the License.
 #include <utility>
 
 #include "absl/base/dynamic_annotations.h"
+#include "absl/functional/any_invocable.h"
+#include "llvm/ADT/STLFunctionalExtras.h"
+#include "llvm/ExecutionEngine/JITSymbol.h"
+#include "llvm/ExecutionEngine/Orc/Core.h"
+#include "llvm/ExecutionEngine/Orc/Mangling.h"
+#include "llvm/ExecutionEngine/Orc/Shared/ExecutorAddress.h"
 #include "mlir/ExecutionEngine/AsyncRuntime.h"  // from @llvm-project
 #include "xla/runtime/async_runtime.h"
 #include "tsl/concurrency/async_value.h"
 #include "tsl/concurrency/async_value_ref.h"
 #include "tsl/concurrency/chain.h"
+#include "tsl/concurrency/ref_count.h"
 #include "tsl/platform/mem.h"
 
 namespace xla {

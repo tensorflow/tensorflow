@@ -22,6 +22,25 @@ func.func @splat_constant_complex_float() -> tensor<128x1014x508xcomplex<f64>> {
 
 // -----
 
+// CHECK-LABEL: @while_without_implicit_capture
+func.func @while_without_implicit_capture(%arg0: tensor<i64>) -> tensor<i64> {
+  // CHECK: mhlo.while
+  // CHECK-SAME: (%[[ARG1:.*]] = %arg0, %[[ARG2:.*]] = %arg0)
+  // CHECK-SAME: {mhlo.sharding = "{{\{}}{replicated},{replicated}}"}
+  %0:2 = "mhlo.while"(%arg0, %arg0) ({
+  ^bb0(%arg1: tensor<i64>, %arg2: tensor<i64>):
+    %1 = "mhlo.compare"(%arg1, %arg2) {comparison_direction = #mhlo<comparison_direction LT>} : (tensor<i64>, tensor<i64>) -> tensor<i1>
+    "mhlo.return"(%1) : (tensor<i1>) -> ()
+  },  {
+  ^bb0(%arg1: tensor<i64>, %arg2: tensor<i64>):
+    %2 = mhlo.add %arg1, %arg1 : tensor<i64>
+    "mhlo.return"(%2, %arg2) : (tensor<i64>, tensor<i64>) -> ()
+  }) {mhlo.sharding = "{{replicated},{replicated}}"} : (tensor<i64>, tensor<i64>) -> (tensor<i64>, tensor<i64>)
+  func.return %0#0 : tensor<i64>
+}
+
+// -----
+
 // CHECK-LABEL: @while_with_implicit_arg_capture
 func.func @while_with_implicit_arg_capture(%arg0: tensor<i64>) -> tensor<i64> {
   // CHECK: mhlo.while
@@ -52,7 +71,7 @@ func.func @while_with_implicit_capture(%arg0 :  tensor<i1>, %arg1 : tensor<5xi32
   %1 = mhlo.constant dense<false> : tensor<i1>
   // Check that the iota implicit capture is made explicit
   // CHECK: %[[IOTA:.*]] = "mhlo.iota
-  %2 = "mhlo.iota"() {iota_dimension = 0 : i64} : () -> tensor<5xi32>
+  %2 = "mhlo.iota"() <{iota_dimension = 0 : i64}> : () -> tensor<5xi32>
   // CHECK: mhlo.while{{.*}} %[[IOTA]])
   %3:2 = "mhlo.while"(%arg0, %arg1) ({
   ^bb0(%arg2: tensor<i1>, %arg3 : tensor<5xi32>):
@@ -96,7 +115,7 @@ func.func @broadcast_in_dim_dimension_unsorted(%arg0: tensor<1x2xi32>) -> tensor
 // Unfuse the transpose from the broadcastInDim before export.
 // CHECK: %[[TRANSPOSE:.*]] = "mhlo.transpose"(%arg0){{.*}}permutation = dense<[1, 0]>{{.*}} -> tensor<2x1xi32>
 // CHECK: mhlo.broadcast_in_dim"(%[[TRANSPOSE]]){{.*}}broadcast_dimensions = dense<[1, 2]>
-  %0 = "mhlo.broadcast_in_dim"(%arg0) {broadcast_dimensions = dense<[2, 1]> : tensor<2xi64>} : (tensor<1x2xi32>) -> tensor<1x2x3xi32>
+  %0 = "mhlo.broadcast_in_dim"(%arg0) <{broadcast_dimensions = dense<[2, 1]> : tensor<2xi64>}> : (tensor<1x2xi32>) -> tensor<1x2x3xi32>
   func.return %0 : tensor<1x2x3xi32>
 }
 

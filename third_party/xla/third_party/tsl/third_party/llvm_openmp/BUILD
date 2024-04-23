@@ -1,11 +1,6 @@
 # Build file for OpenMP library that is part of llvm
 
-load(
-    "@local_tsl//tsl:tsl.bzl",
-    "if_linux_x86_64",
-    "if_macos",
-    "if_windows",
-)
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load(
     "@local_tsl//third_party/llvm_openmp:cmake_vars.bzl",
     "cmake_var_string",
@@ -16,7 +11,12 @@ load(
     "dict_add",
     "libiomp5_cc_binary",
 )
-load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+load(
+    "@local_xla//xla/tsl:tsl.bzl",
+    "if_linux_x86_64",
+    "if_macos",
+    "if_windows",
+)
 
 package(
     default_visibility = [
@@ -36,7 +36,7 @@ py_binary(
 )
 
 kmp_i18n_os_type = select({
-    "@local_tsl//tsl:windows": "win",
+    "@local_xla//xla/tsl:windows": "win",
     "//conditions:default": "lin",
 })
 
@@ -114,7 +114,7 @@ omp_vars_win = {
 }
 
 omp_all_cmake_vars = select({
-    "@local_tsl//tsl:windows": cmake_var_string(
+    "@local_xla//xla/tsl:windows": cmake_var_string(
         dict_add(
             omp_vars,
             omp_vars_win,

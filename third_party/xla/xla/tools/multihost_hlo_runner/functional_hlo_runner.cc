@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/literal.h"
+#include "xla/pjrt/cpu/cpu_client.h"
 #include "xla/pjrt/distributed/client.h"
 #include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
 #include "xla/pjrt/pjrt_client.h"
@@ -84,7 +85,7 @@ absl::StatusOr<Literal> MakeFakeLiteralWithSameValue(const Shape& shape,
   }
   Shape new_shape = shape;
   new_shape.mutable_layout()->clear_tiles();
-  return primitive_util::PrimitiveTypeSwitch<StatusOr<Literal>>(
+  return primitive_util::PrimitiveTypeSwitch<absl::StatusOr<Literal>>(
       [&](auto type) -> absl::StatusOr<Literal> {
         if constexpr (primitive_util::IsArrayType(type)) {
           using NativeT = primitive_util::NativeTypeOf<type>;
@@ -242,6 +243,11 @@ void AddShardingAnnotationsToSpmdPartitionedModule(HloModule* hlo_module) {
   HloInstruction* entry_root =
       hlo_module->entry_computation()->root_instruction();
   set_manual_sharding(entry_root);
+}
+
+absl::StatusOr<std::unique_ptr<PjRtClient>>
+FunctionalHloRunner::CreateHostClient() {
+  return GetTfrtCpuClient(CpuClientOptions());
 }
 
 absl::StatusOr<std::unique_ptr<PjRtClient>>
@@ -978,7 +984,7 @@ FunctionalHloRunner::RunInternal(
       execute_options.untuple_result = false;
       break;
   }
-  std::optional<std::vector<PjRtFuture<Status>>> futures;
+  std::optional<std::vector<PjRtFuture<>>> futures;
   futures.emplace();
   for (int repeat = 0; repeat < running_options.num_repeats; ++repeat) {
     VLOG(1) << "FunctionalHloRunner: ExecuteOnDevices started (repeat = "

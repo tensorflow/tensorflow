@@ -179,7 +179,7 @@ TEST_F(MockArrayTest, ReadyFuturePropagatesError) {
   TF_ASSERT_OK_AND_ASSIGN(ArrayPair arr, NewArray());
 
   EXPECT_CALL(*arr.backend_array, GetReadyFuture).WillOnce([&] {
-    return Future<absl::Status>(absl::InternalError("testing"));
+    return Future<>(absl::InternalError("testing"));
   });
 
   EXPECT_THAT(arr.proxy_client_array->GetReadyFuture().Await(),
@@ -198,12 +198,12 @@ TEST_F(MockArrayTest, DeletionFutureWaitsUntilDeleted) {
     // returns being blocked on `wait_ready`. That version of the testcase does
     // not currently work since both the client and the server synchronously
     // block until the MockArray's Delete() returns.
-    auto promise = Future<absl::Status>::CreatePromise();
+    auto promise = Future<>::CreatePromise();
     threads.Schedule([&, promise]() mutable {
       wait_ready.WaitForNotification();
       promise.Set(arr.backend_array->delegated()->Delete().Await());
     });
-    return Future<absl::Status>(promise);
+    return Future<>(promise);
   });
 
   EXPECT_FALSE(arr.proxy_client_array->IsDeleted());
@@ -222,7 +222,7 @@ TEST_F(MockArrayTest, DeletionPropagatesError) {
   TF_ASSERT_OK_AND_ASSIGN(ArrayPair arr, NewArray());
 
   EXPECT_CALL(*arr.backend_array, Delete).WillOnce([&] {
-    return Future<absl::Status>(absl::InternalError("testing"));
+    return Future<>(absl::InternalError("testing"));
   });
 
   EXPECT_FALSE(arr.proxy_client_array->IsDeleted());
@@ -258,7 +258,7 @@ TEST_F(MockArrayTest, CopyToHostFuturePropagatesError) {
   absl::Notification wait_ready;
 
   EXPECT_CALL(*arr.backend_array, CopyToHostBuffer).WillOnce([&] {
-    return Future<Status>(absl::InternalError("testing"));
+    return Future<>(absl::InternalError("testing"));
   });
 
   char data[1000];

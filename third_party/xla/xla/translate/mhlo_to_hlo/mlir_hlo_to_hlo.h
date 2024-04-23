@@ -54,18 +54,18 @@ struct MlirToHloConversionOptions {
 // are converted to a tuple even when there is only a single return value.
 // Multiple return values are always converted to a tuple and returned as a
 // single value.
-xla::Status ConvertMlirHloToHlo(mlir::ModuleOp module,
-                                ::xla::HloProto* hlo_proto, bool use_tuple_args,
-                                bool return_tuple,
-                                MlirToHloConversionOptions options = {});
+absl::Status ConvertMlirHloToHlo(mlir::ModuleOp module,
+                                 ::xla::HloProto* hlo_proto,
+                                 bool use_tuple_args, bool return_tuple,
+                                 MlirToHloConversionOptions options = {});
 
 // Transforms a Block into HLO, where the HLO is represented as calls into an
 // XlaBuilder. Callee functions are allowed in the Block's ancestor ModuleOp.
 // xla_params are inputs to block. returns are the returned XlaOps.
-xla::Status BuildHloFromMlirHlo(mlir::Block& block, xla::XlaBuilder& builder,
-                                llvm::ArrayRef<xla::XlaOp> xla_params,
-                                std::vector<xla::XlaOp>& returns,
-                                MlirToHloConversionOptions options = {});
+absl::Status BuildHloFromMlirHlo(mlir::Block& block, xla::XlaBuilder& builder,
+                                 llvm::ArrayRef<xla::XlaOp> xla_params,
+                                 std::vector<xla::XlaOp>& returns,
+                                 MlirToHloConversionOptions options = {});
 
 }  // namespace mlir
 

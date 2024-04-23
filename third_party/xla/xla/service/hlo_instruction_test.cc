@@ -2047,8 +2047,8 @@ TEST_F(HloInstructionTest, StringifyAsyncOpsWithReduceScatter) {
     HloInstruction* param = async_builder.AddInstruction(
         HloInstruction::CreateParameter(0, rs_input_shape, "pasync"));
     async_builder.AddInstruction(HloInstruction::CreateReduceScatter(
-        rs_output_shape, {param}, add_computation.get(), {}, false,
-        std::nullopt, false, 0));
+        rs_output_shape, {param}, add_computation.get(), CollectiveDeviceList(),
+        false, std::nullopt, false, 0));
     async_computation = async_builder.Build();
   }
 
@@ -2568,8 +2568,8 @@ TEST_F(HloInstructionTest, VerifyToApplyRegionPointsToReduceScatter) {
   HloInstruction* param = main_builder.AddInstruction(
       HloInstruction::CreateParameter(0, rs_input_shape, "input"));
   main_builder.AddInstruction(HloInstruction::CreateReduceScatter(
-      rs_output_shape, {param}, add_computation.get(), {}, false, std::nullopt,
-      false, 0));
+      rs_output_shape, {param}, add_computation.get(), CollectiveDeviceList(),
+      false, std::nullopt, false, 0));
 
   auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(main_builder.Build());
@@ -2606,8 +2606,8 @@ TEST_F(HloInstructionTest, VerifyToApplyRegionPointsToAllReduce) {
   HloInstruction* param = main_builder.AddInstruction(
       HloInstruction::CreateParameter(0, ar_input_shape, "input"));
   main_builder.AddInstruction(HloInstruction::CreateAllReduce(
-      ar_input_shape, {param}, add_computation.get(), {}, false, std::nullopt,
-      false));
+      ar_input_shape, {param}, add_computation.get(), CollectiveDeviceList(),
+      false, std::nullopt, false));
 
   auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(main_builder.Build());
@@ -2833,6 +2833,42 @@ TEST_F(HloInstructionTest,
     }
   }
   EXPECT_EQ(num_conditional_branch_comp, branch_computations.size());
+}
+
+TEST_F(HloInstructionTest, BackendConfigCopiedToDerived) {
+  HloComputation::Builder b(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 2});
+  auto p0 = b.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
+  auto p1 = b.AddInstruction(HloInstruction::CreateParameter(0, shape, "p1"));
+  auto add = b.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, p0, p1));
+
+  gpu::GpuBackendConfig gpu_config;
+  gpu_config.set_operation_queue_id(2);
+  TF_ASSERT_OK(add->set_backend_config(gpu_config));
+  auto add2 = b.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, p0, p0));
+  add->SetupDerivedInstruction(add2);
+  auto backend_config = add2->backend_config<gpu::GpuBackendConfig>();
+  EXPECT_TRUE(backend_config.ok());
+  EXPECT_EQ(backend_config->operation_queue_id(), 2);
+}
+
+TEST_F(HloInstructionTest, BackendConfigNotCopiedToDerivedWithDiffOpcode) {
+  HloComputation::Builder b(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 2});
+  auto p0 = b.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
+  auto p1 = b.AddInstruction(HloInstruction::CreateParameter(0, shape, "p1"));
+  auto or1 = b.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kOr, p0, p1));
+
+  gpu::GpuBackendConfig gpu_config;
+  gpu_config.set_operation_queue_id(2);
+  TF_ASSERT_OK(or1->set_backend_config(gpu_config));
+  auto add2 = b.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, p0, p1));
+  or1->SetupDerivedInstruction(add2);
+  EXPECT_FALSE(add2->has_backend_config());
 }
 
 }  // namespace

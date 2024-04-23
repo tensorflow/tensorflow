@@ -1,10 +1,10 @@
 # Description:
 #   Host-platform specific StreamExecutor support code.
 
+load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load("//xla:xla.bzl", "xla_cc_test")
 load("//xla/stream_executor:build_defs.bzl", "stream_executor_friends")
-load("@local_tsl//tsl:tsl.bzl", "internal_visibility")
-load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
+load("//xla/tsl:tsl.bzl", "internal_visibility")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -40,7 +40,7 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        ":host_gpu_executor",
+        ":host_executor",
         ":host_platform_id",
         "//xla/stream_executor",
         "//xla/stream_executor:platform_manager",
@@ -63,7 +63,7 @@ cc_library(
         "host_stream.h",
     ],
     deps = [
-        "//xla/stream_executor:stream_executor_internal",
+        "//xla/stream_executor:stream_interface",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/log:check",
@@ -76,19 +76,53 @@ cc_library(
     ],
 )
 
-# TODO(22689637): Rename this target.
 cc_library(
-    name = "host_gpu_executor",
+    name = "host_kernel_c_api",
+    hdrs = ["host_kernel_c_api.h"],
+)
+
+cc_library(
+    name = "host_kernel",
+    srcs = ["host_kernel.cc"],
+    hdrs = ["host_kernel.h"],
+    deps = [
+        ":host_kernel_c_api",
+        "//xla/stream_executor",
+        "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:stream_executor_interface",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+xla_cc_test(
+    name = "host_kernel_test",
+    srcs = ["host_kernel_test.cc"],
+    deps = [
+        ":host_kernel",
+        ":host_kernel_c_api",
+        "//xla/stream_executor",
+        "//xla/stream_executor:device_memory",
+        "@local_tsl//tsl/lib/core:status_test_util",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:test_main",
+    ],
+)
+
+cc_library(
+    name = "host_executor",
     srcs = [
-        "host_gpu_executor.cc",
+        "host_executor.cc",
     ],
     hdrs = [
-        "host_gpu_executor.h",
+        "host_executor.h",
     ],
     deps = [
         ":host_stream",
         "//xla/stream_executor",
-        "//xla/stream_executor:stream_executor_internal",
+        "//xla/stream_executor:event_interface",
+        "//xla/stream_executor:stream_executor_interface",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",

@@ -49,25 +49,25 @@ class LocalExecutable {
 
   // Run the compiled computation with the given arguments and options and
   // return the result.
-  StatusOr<ScopedShapedBuffer> Run(
+  absl::StatusOr<ScopedShapedBuffer> Run(
       absl::Span<const ShapedBuffer* const> arguments,
       ExecutableRunOptions run_options);
 
   // Similar to Run(), but allows for donating argument buffers to the
   // executable.
-  StatusOr<ExecutionOutput> Run(std::vector<ExecutionInput> arguments,
-                                ExecutableRunOptions run_options);
+  absl::StatusOr<ExecutionOutput> Run(std::vector<ExecutionInput> arguments,
+                                      ExecutableRunOptions run_options);
 
   // Similar to Run(), but need not block the host waiting for the computation
   // to complete before returning.
-  StatusOr<ScopedShapedBuffer> RunAsync(
+  absl::StatusOr<ScopedShapedBuffer> RunAsync(
       absl::Span<const ShapedBuffer* const> arguments,
       ExecutableRunOptions run_options);
 
   // Similar to RunAsync(), but allows for donating argument buffers to the
   // executable.
-  StatusOr<ExecutionOutput> RunAsync(std::vector<ExecutionInput> arguments,
-                                     ExecutableRunOptions run_options);
+  absl::StatusOr<ExecutionOutput> RunAsync(
+      std::vector<ExecutionInput> arguments, ExecutableRunOptions run_options);
 
   // Return the options used to build the executable.
   const ExecutableBuildOptions& build_options() const { return build_options_; }
@@ -76,7 +76,7 @@ class LocalExecutable {
   Executable* executable() const { return executable_.get(); }
 
  private:
-  StatusOr<ExecutionOutput> RunAsync(
+  absl::StatusOr<ExecutionOutput> RunAsync(
       absl::Span<Shape const* const> argument_host_shapes,
       std::vector<ExecutionInput> arguments, ExecutableRunOptions run_options);
 
@@ -89,11 +89,12 @@ class LocalExecutable {
                                   const Backend& backend);
 
   // Returns a literal containing the contents of the given ShapedBuffer.
-  StatusOr<Literal> LiteralFromShapedBuffer(const ShapedBuffer& shaped_buffer);
+  absl::StatusOr<Literal> LiteralFromShapedBuffer(
+      const ShapedBuffer& shaped_buffer);
 
-  StatusOr<std::pair<ServiceExecutableRunOptions, StreamPool::Ptr>> RunHelper(
-      absl::Span<const Shape* const> argument_shapes,
-      ExecutableRunOptions run_options);
+  absl::StatusOr<std::pair<ServiceExecutableRunOptions, StreamPool::Ptr>>
+  RunHelper(absl::Span<const Shape* const> argument_shapes,
+            ExecutableRunOptions run_options);
 
   // The ordinal of the device which this executable was compiled for. The
   // executable can run on all equivalent devices (as determined by
@@ -142,7 +143,7 @@ class LocalClient : public Client {
   //
   // The given ExecutableBuildOptions overrides any values from XLA_FLAGS
   // environment variable.
-  StatusOr<std::vector<std::unique_ptr<LocalExecutable>>> Compile(
+  absl::StatusOr<std::vector<std::unique_ptr<LocalExecutable>>> Compile(
       const XlaComputation& computation,
       absl::Span<const Shape* const> argument_layouts,
       const ExecutableBuildOptions& options);
@@ -150,14 +151,14 @@ class LocalClient : public Client {
   // Same as Compile() above, but return AotCompilationResult objects (instead
   // of LocalExecutable objects), which can be persisted to later load
   // LocalExecutable(s) using the Load() method below.
-  StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
+  absl::StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
   CompileAheadOfTime(const XlaComputation& computation,
                      absl::Span<const Shape* const> argument_layouts,
                      const ExecutableBuildOptions& options);
 
   // Return a LocalExecutable object loaded from a serialized
   // AotCompilationResult.
-  StatusOr<std::unique_ptr<LocalExecutable>> Load(
+  absl::StatusOr<std::unique_ptr<LocalExecutable>> Load(
       const std::string& serialized_aot_result,
       const ExecutableBuildOptions& options);
 
@@ -165,21 +166,22 @@ class LocalClient : public Client {
   // ScopedShapedBuffer. If non-null the given memory allocator is used for
   // device memory allocation. If null, the default memory allocator for the
   // device is used.
-  StatusOr<ScopedShapedBuffer> LiteralToShapedBuffer(
+  absl::StatusOr<ScopedShapedBuffer> LiteralToShapedBuffer(
       const LiteralSlice& literal, int device_ordinal,
       se::DeviceMemoryAllocator* allocator = nullptr);
 
   // Transfer the BorrowingLiteral to the device with the given ordinal.
-  StatusOr<TransferToServerResponse> TransferToLocalServer(
+  absl::StatusOr<TransferToServerResponse> TransferToLocalServer(
       const ::xla::BorrowingLiteral& literal, int device_ordinal);
 
   // Copy the data from the device contained in the given ShapedBuffer and
   // return as a Literal.
-  StatusOr<Literal> ShapedBufferToLiteral(const ShapedBuffer& shaped_buffer);
+  absl::StatusOr<Literal> ShapedBufferToLiteral(
+      const ShapedBuffer& shaped_buffer);
 
   // Converts a GlobalDataHandle into a pointer to a ShapedBuffer that's valid
   // as long as the handle is valid.
-  StatusOr<const ShapedBuffer*> GlobalDataToShapedBuffer(
+  absl::StatusOr<const ShapedBuffer*> GlobalDataToShapedBuffer(
       const GlobalDataHandle& data, int replica_number);
 
   // Transfer the given literal to the infeed queue of the given device.
@@ -201,7 +203,7 @@ class LocalClient : public Client {
   // This returns an error if there is not a one-to-one correspondence of
   // replicas to device ordinals, but is useful as a short term mechanism for
   // the "easy" case where a single replica is a single device.
-  StatusOr<int> ReplicaNumberToDeviceOrdinal(int replica_number);
+  absl::StatusOr<int> ReplicaNumberToDeviceOrdinal(int replica_number);
 
   // Returns the platform that the underlying service targets.
   se::Platform* platform() const;

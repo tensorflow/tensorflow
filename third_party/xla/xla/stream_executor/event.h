@@ -23,10 +23,7 @@ limitations under the License.
 
 namespace stream_executor {
 
-namespace internal {
 class EventInterface;
-}
-
 class Stream;
 class StreamExecutor;
 
@@ -64,7 +61,7 @@ class Event {
   absl::Status WaitForEventOnExternalStream(std::intptr_t stream);
 
   // Returns a pointer to the underlying platform-specific implementation.
-  internal::EventInterface* implementation() { return implementation_.get(); }
+  EventInterface* implementation() { return implementation_.get(); }
 
   Event(Event&&);
   Event& operator=(Event&&);
@@ -78,7 +75,7 @@ class Event {
 
   // Pointer to the platform-specific EventInterface implementation underlying
   // the object. Owned.
-  std::unique_ptr<internal::EventInterface> implementation_;
+  std::unique_ptr<EventInterface> implementation_;
 
   Event(const Event&) = delete;
   void operator=(const Event&) = delete;

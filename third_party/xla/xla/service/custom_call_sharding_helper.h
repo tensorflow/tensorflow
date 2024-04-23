@@ -47,6 +47,10 @@ class CustomCallShardingHelper {
       HloInstruction* instruction) const {
     return {};
   }
+  // Returns if the given custom-call instruction can propagate sharding to its
+  // operands.
+  virtual bool CanPropagateShardingToOperands(
+      const HloInstruction* instruction) const;
   virtual ~CustomCallShardingHelper() = default;
 };
 
@@ -58,8 +62,8 @@ class SpmdPartitioningVisitor;
 // policies.
 class CustomCallPartitioner : public CustomCallShardingHelper {
  public:
-  virtual xla::Status Partition(spmd::SpmdPartitioningVisitor* partitioner,
-                                HloInstruction* hlo) const;
+  virtual absl::Status Partition(spmd::SpmdPartitioningVisitor* partitioner,
+                                 HloInstruction* hlo) const;
 
   // Returns if the given side-effecting custom-call is allowed to have
   // replicated sharding.

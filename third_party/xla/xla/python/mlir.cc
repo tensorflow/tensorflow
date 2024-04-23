@@ -17,8 +17,10 @@ limitations under the License.
 #include <string_view>
 
 #include "mhlo/transforms/passes.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/Bytecode/BytecodeWriter.h"  // from @llvm-project
 #include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"  // from @llvm-project
 #include "mlir/Dialect/Func/Extensions/AllExtensions.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -48,6 +50,8 @@ limitations under the License.
 #include "xla/status.h"
 #include "xla/translate/hlo_to_mhlo/hlo_to_mlir_hlo.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/logging.h"
+#include "tsl/platform/statusor.h"
 
 namespace nb = nanobind;
 
@@ -88,6 +92,16 @@ std::string PrintModule(mlir::ModuleOp module) {
   flags.enableDebugInfo();
   module->print(os, flags);
   return s;
+}
+
+absl::StatusOr<std::string> SerializeUsingBytecode(mlir::ModuleOp module) {
+  std::string bytecode;
+  llvm::raw_string_ostream os(bytecode);
+  mlir::BytecodeWriterConfig config;
+  if (mlir::failed(mlir::writeBytecodeToFile(module, os, config))) {
+    return absl::InvalidArgumentError("mlir::writeBytecodeToFile failed");
+  }
+  return bytecode;
 }
 
 void EnablePrintBeforeAndAfter(mlir::PassManager& pm) {
@@ -136,7 +150,7 @@ absl::StatusOr<XlaComputation> PyMlirModuleToXlaComputation(
   return computation;
 }
 
-absl::StatusOr<std::string> PyMhloToStablehlo(std::string_view mlir_module) {
+absl::StatusOr<nb::bytes> PyMhloToStablehlo(std::string_view mlir_module) {
   mlir::MLIRContext context;
   if (VLOG_IS_ON(3)) context.disableMultithreading();
   // JAX can be customized in a way that involves operations from custom
@@ -154,10 +168,13 @@ absl::StatusOr<std::string> PyMhloToStablehlo(std::string_view mlir_module) {
   if (!mlir::succeeded(pm.run(*module))) {
     return tsl::errors::InvalidArgument("MHLO => StableHLO failed");
   }
-  return PrintModule(*module);
+  // Use bytecode, passing unregistered dialects with properties causes issues
+  // when using textual assembly.
+  TF_ASSIGN_OR_RETURN(std::string bytecode, SerializeUsingBytecode(*module));
+  return nb::bytes(bytecode.data(), bytecode.size());
 }
 
-absl::StatusOr<std::string> PyStablehloToMhlo(const nb::bytes& mlir_module) {
+absl::StatusOr<nb::bytes> PyStablehloToMhlo(const nb::bytes& mlir_module) {
   mlir::MLIRContext context;
   if (VLOG_IS_ON(3)) context.disableMultithreading();
   // See PyMhloToStablehlo for an explanation of why we're allowing unregistered
@@ -173,7 +190,11 @@ absl::StatusOr<std::string> PyStablehloToMhlo(const nb::bytes& mlir_module) {
   if (!mlir::succeeded(pm.run(*module))) {
     return tsl::errors::InvalidArgument("StableHLO => MHLO failed");
   }
-  return PrintModule(*module);
+
+  // Use bytecode, passing unregistered dialects with properties causes issues
+  // when using textual assembly.
+  TF_ASSIGN_OR_RETURN(std::string bytecode, SerializeUsingBytecode(*module));
+  return nb::bytes(bytecode.data(), bytecode.size());
 }
 
 absl::StatusOr<nb::bytes> PySerializePortableArtifact(
@@ -210,31 +231,37 @@ void BuildMlirSubmodule(nb::module_& m) {
   mlir_module.def("xla_computation_to_mlir_module",
                   xla::ValueOrThrowWrapper(PyXlaComputationToMlirModule),
                   nb::arg("computation"), nb::arg("emit_stable_hlo") = true);
+  mlir_module.def(
+      "mlir_module_to_xla_computation",
+      [](const nb::bytes& bytecode, bool use_tuple_args, bool return_tuple) {
+        return xla::ValueOrThrow(PyMlirModuleToXlaComputation(
+            std::string_view(bytecode.c_str(), bytecode.size()), use_tuple_args,
+            return_tuple));
+      },
+      nb::arg("mlir_module"), nb::arg("use_tuple_args") = false,
+      nb::arg("return_tuple") = false);
   mlir_module.def("mlir_module_to_xla_computation",
                   xla::ValueOrThrowWrapper(PyMlirModuleToXlaComputation),
                   nb::arg("mlir_module"), nb::arg("use_tuple_args") = false,
                   nb::arg("return_tuple") = false);
   mlir_module.def(
       "mhlo_to_stablehlo",
-      [](const nb::bytes& mlir_module) {
+      [](const nb::bytes& bytecode) {
         return xla::ValueOrThrow(PyMhloToStablehlo(
-            std::string_view(mlir_module.c_str(), mlir_module.size())));
+            std::string_view(bytecode.c_str(), bytecode.size())));
       },
       nb::arg("mlir_module"));
-  mlir_module.def(
-      "mhlo_to_stablehlo",
-      [](std::string_view mlir_module) {
-        return xla::ValueOrThrow(PyMhloToStablehlo(mlir_module));
-      },
-      nb::arg("mlir_module"));
+  mlir_module.def("mhlo_to_stablehlo",
+                  xla::ValueOrThrowWrapper(PyMhloToStablehlo),
+                  nb::arg("mlir_module"));
   mlir_module.def("stablehlo_to_mhlo",
                   xla::ValueOrThrowWrapper(PyStablehloToMhlo),
                   nb::arg("mlir_module"));
   mlir_module.def(
       "serialize_portable_artifact",
-      [](const nb::bytes& mlir_module, std::string_view target) {
+      [](const nb::bytes& bytecode, std::string_view target) {
         return xla::ValueOrThrow(PySerializePortableArtifact(
-            std::string_view(mlir_module.c_str(), mlir_module.size()), target));
+            std::string_view(bytecode.c_str(), bytecode.size()), target));
       },
       nb::arg("mlir_module"), nb::arg("target"));
   mlir_module.def("serialize_portable_artifact",
@@ -245,12 +272,12 @@ void BuildMlirSubmodule(nb::module_& m) {
                   nb::arg("mlir_module"));
   mlir_module.def(
       "refine_polymorphic_shapes",
-      [](nb::bytes mlir_module, bool enable_shape_assertions,
+      [](nb::bytes bytecode, bool enable_shape_assertions,
          bool validate_static_shapes) -> nb::bytes {
         std::string buffer;
         llvm::raw_string_ostream os(buffer);
         xla::ThrowIfError(RefinePolymorphicShapes(
-            std::string_view(mlir_module.c_str(), mlir_module.size()), os,
+            std::string_view(bytecode.c_str(), bytecode.size()), os,
             enable_shape_assertions, validate_static_shapes));
         return nb::bytes(buffer.data(), buffer.size());
       },

@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/analysis/resource_dataflow.h"
 
 #include "llvm/ADT/STLExtras.h"
-#include "llvm/Support/Debug.h"
 #include "mlir/Analysis/DataFlow/SparseAnalysis.h"  // from @llvm-project
 #include "mlir/Analysis/DataFlowFramework.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -55,9 +54,6 @@ ResourceConstructingOps ResourceConstructingOps::EntryState(Value value) {
           tf_saved_model::GlobalTensorOp>(func, barg.getArgNumber(),
                                           symbol_table);
       ResourceConstructingOps result(global_tensor);
-      if (func.getArgAttr(barg.getArgNumber(), kCompositeDevice)) {
-        result.is_on_composite_device = true;
-      }
       return result;
     }
   } else if (auto vh = dyn_cast<TF::VarHandleOp>(value.getDefiningOp())) {
@@ -75,17 +71,47 @@ ResourceConstructingOps ResourceConstructingOps::join(
   ResourceConstructingOps ret;
   ret.ops.insert(lhs.ops.begin(), lhs.ops.end());
   ret.ops.insert(rhs.ops.begin(), rhs.ops.end());
-  ret.is_on_composite_device =
-      lhs.is_on_composite_device || rhs.is_on_composite_device;
   return ret;
 }
 
 void ResourceConstructingOps::print(raw_ostream &os) const {
   llvm::interleaveComma(ops, os << "[");
-  if (is_on_composite_device) {
-    os << " COMPOSITE";
-  }
   os << "]";
+}
+
+IsComposite::IsComposite(Operation *op) {}
+
+IsComposite IsComposite::EntryState(MLIRContext *context) {
+  return IsComposite();
+}
+
+IsComposite IsComposite::EntryState(Value value) {
+  IsComposite result;
+  if (auto barg = value.dyn_cast<BlockArgument>()) {
+    if (func::FuncOp func =
+            dyn_cast<func::FuncOp>(barg.getOwner()->getParentOp())) {
+      if (func.getArgAttr(barg.getArgNumber(), kCompositeDevice)) {
+        result.is_on_composite_device = true;
+      }
+      return result;
+    }
+  }
+  return result;
+}
+
+IsComposite IsComposite::join(const IsComposite &lhs, const IsComposite &rhs) {
+  IsComposite ret;
+  ret.is_on_composite_device =
+      lhs.is_on_composite_device || rhs.is_on_composite_device;
+  return ret;
+}
+
+void IsComposite::print(raw_ostream &os) const {
+  if (is_on_composite_device) {
+    os << "COMPOSITE";
+  } else {
+    os << "NOT_COMPOSITE";
+  }
 }
 
 class ResourceDataflowAnalysis
@@ -94,22 +120,31 @@ class ResourceDataflowAnalysis
   using TensorflowDataflowAnalysis<
       ResourceConstructingOps>::TensorflowDataflowAnalysis;
   void visitOperation(Operation *op, ArrayRef<const StateT *> operands,
-                      ArrayRef<StateT *> results) override;
+                      ArrayRef<StateT *> results) override {
+    if (ForwardThroughTFOperation(op, operands, results)) return;
+    setAllToEntryStates(results);
+  }
   ~ResourceDataflowAnalysis() override = default;
 };
 
-void ResourceDataflowAnalysis::visitOperation(Operation *op,
-                                              ArrayRef<const StateT *> operands,
-                                              ArrayRef<StateT *> results) {
-  LLVM_DEBUG(llvm::dbgs() << "ResAn: Visiting operation: " << *op << "\n");
-
-  if (ForwardThroughTFOperation(op, operands, results)) return;
-
-  setAllToEntryStates(results);
-}
+class IsCompositeDataflowAnalysis
+    : public TensorflowDataflowAnalysis<IsComposite> {
+ public:
+  using TensorflowDataflowAnalysis<IsComposite>::TensorflowDataflowAnalysis;
+  void visitOperation(Operation *op, ArrayRef<const StateT *> operands,
+                      ArrayRef<StateT *> results) override {
+    if (ForwardThroughTFOperation(op, operands, results)) return;
+    setAllToEntryStates(results);
+  }
+  ~IsCompositeDataflowAnalysis() override = default;
+};
 
 void LoadResourceDataflowAnalysis(DataFlowSolver &solver) {
   solver.load<ResourceDataflowAnalysis>();
+}
+
+void LoadIsCompositeDataflowAnalysis(DataFlowSolver &solver) {
+  solver.load<IsCompositeDataflowAnalysis>();
 }
 
 }  // namespace TF
