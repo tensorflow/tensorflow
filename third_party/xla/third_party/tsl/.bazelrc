@@ -450,6 +450,17 @@ build:win_clang --host_linkopt=/FORCE:MULTIPLE
 test:win_clang --linkopt=/FORCE:MULTIPLE
 test:win_clang --host_linkopt=/FORCE:MULTIPLE
 
+# Same config as above but for XLA, which has different toolchain paths
+build:win_clang_xla --copt=/clang:-Weverything
+build:win_clang_xla --extra_toolchains=@local_config_cc//:cc-toolchain-x64_windows-clang-cl
+build:win_clang_xla --extra_execution_platforms=//tools/toolchains/win:x64_windows-clang-cl
+build:win_clang_xla --host_platform=//tools/toolchains/win:x64_windows-clang-cl
+build:win_clang_xla --compiler=clang-cl
+build:win_clang_xla --linkopt=/FORCE:MULTIPLE
+build:win_clang_xla --host_linkopt=/FORCE:MULTIPLE
+test:win_clang_xla --linkopt=/FORCE:MULTIPLE
+test:win_clang_xla --host_linkopt=/FORCE:MULTIPLE
+
 # Options to build TensorFlow 1.x or 2.x.
 # TODO(kanglan): Change v2's define to default behavior
 build:v2 --define=tf_api_version=2 --action_env=TF2_BEHAVIOR=1
