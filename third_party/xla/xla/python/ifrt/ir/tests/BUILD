@@ -11,6 +11,7 @@ lit_test_suite(
     srcs = enforce_glob(
         [
             "ifrt_duplicated_callee_elimination.mlir",
+            "ifrt_verify_donation.mlir",
             "ifrt_verify_sharding_specified.mlir",
             "spmd_expansion.mlir",
             "spmd_interface_verification.mlir",

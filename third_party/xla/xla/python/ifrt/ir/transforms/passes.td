@@ -107,6 +107,17 @@ them. The duplicated callee `FuncOp` will not be removed.
   let constructor = "CreateIfrtDuplicatedCalleeEliminationPass()";
 }
 
+def IfrtVerifyDonationPass : Pass<"ifrt-verify-donation", "mlir::ModuleOp"> {
+  let summary = "Verify that `!ifrt.array` are not donated more than once.";
+  let description = [{
+Verifiy that no `!ifrt.array` is donated more than once, and that all
+`ifrt.array`s that are donated and arguments of the main func have
+`ifrt.donated` attribute.
+  }];
+
+  let constructor = "CreateIfrtVerifyDonationPass()";
+}
+
 def IfrtVerifyShardingSpecifiedPass :
     Pass<"ifrt-verify-sharding-specified", "mlir::ModuleOp"> {
   let summary = "Verify that all `!ifrt.array` have sharding specified.";
