@@ -67,6 +67,22 @@ class UnsortedSegmentJoinOpTest(UnicodeTestCase, parameterized.TestCase):
             separator=separator))
     self.assertAllEqual(res.shape, np.array(output_array).shape)
     self.assertAllEqualUnicode(res, output_array)
+  
+  def test_large_num_segments(self):
+    inputs = [['A', 'B'], ['C', 'D'], ['E', 'F'], ['G', 'H']]
+    segment_ids = [0, 1, 0, 2]
+    num_segments = 10000
+    separator = ':'
+    output_array = [['A:E:G'], ['B:D'], ['C:F'], ['H']]
+
+    res = self.evaluate(
+        string_ops.unsorted_segment_join(
+            inputs=inputs,
+            segment_ids=segment_ids,
+            num_segments=num_segments,
+            separator=separator))
+    self.assertAllEqual(res.shape, np.array(output_array).shape)
+    self.assertAllEqual(res, output_array)
 
   def test_type_check(self):
     inputs = [['Y', 'q', 'c'], ['Y', '6', '6'], ['p', 'G', 'a']]

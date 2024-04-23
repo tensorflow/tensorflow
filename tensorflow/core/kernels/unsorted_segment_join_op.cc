@@ -98,9 +98,10 @@ class UnsortedSegmentJoinOp : public OpKernel {
     auto num_segments = num_segments_tensor.scalar<NUM_SEGMENTS_TYPE>()();
 
     OP_REQUIRES(
-        context, num_segments >= 0,
+        context, num_segments >= 0 && num_segments <= MAX_SEGMENTS,
         errors::InvalidArgument(
-            "Number of segments must be non-negative but got ", num_segments));
+            "Number of segments must be between 0 and MAX_SEGMENTS but got ",
+            num_segments));
     OP_REQUIRES(context, segment_dims != 0,
                 errors::InvalidArgument("Segment_id cannot have rank 0"));
 
@@ -156,6 +157,7 @@ class UnsortedSegmentJoinOp : public OpKernel {
 
  private:
   string separator_;
+  static constexpr int MAX_SEGMENTS = 100000; // subject to change
 };
 
 #define REGISTER_CPU_KERNEL(indices_type, num_segments_type)  \
