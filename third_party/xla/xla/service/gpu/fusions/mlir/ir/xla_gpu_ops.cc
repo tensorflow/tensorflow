@@ -15,21 +15,40 @@ limitations under the License.
 
 #include "xla/service/gpu/fusions/mlir/ir/xla_gpu_ops.h"
 
+#include <cstdint>
+
+#include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/ADT/TypeSwitch.h"  // IWYU pragma: keep
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project  // IWYU pragma: keep
 #include "mlir/IR/DialectImplementation.h"  // from @llvm-project  // IWYU pragma: keep
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project  // IWYU pragma: keep
+#include "mlir/IR/OpImplementation.h"  // from @llvm-project
+#include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project  // IWYU pragma: keep
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project  // IWYU pragma: keep
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/InliningUtils.h"  // from @llvm-project
 #include "xla/service/gpu/fusions/mlir/ir/xla_gpu_dialect.cc.inc"
 
 namespace xla {
 namespace gpu {
 namespace {
+
+using mlir::failure;
+using mlir::LogicalResult;
+using mlir::OpBuilder;
+using mlir::OperationState;
+using mlir::RankedTensorType;
+using mlir::Region;
+using mlir::SmallVector;
+using mlir::success;
+using mlir::Type;
+using mlir::Value;
+using mlir::ValueRange;
+
 struct XlaGpuInlinerInterface : public mlir::DialectInlinerInterface {
   using DialectInlinerInterface::DialectInlinerInterface;
   // Returns true if the given operation 'callable', that implements the
@@ -75,6 +94,7 @@ struct XlaGpuInlinerInterface : public mlir::DialectInlinerInterface {
     return true;
   }
 };
+
 }  // namespace
 
 void XlaGpuDialect::initialize() {
@@ -86,7 +106,7 @@ void XlaGpuDialect::initialize() {
   addInterfaces<XlaGpuInlinerInterface>();
 }
 
-mlir::LogicalResult PureCallOp::verifySymbolUses(
+LogicalResult PureCallOp::verifySymbolUses(
     mlir::SymbolTableCollection &symbolTable) {
   auto callee = getCalleeAttr();
   auto function =
@@ -105,7 +125,7 @@ mlir::LogicalResult PureCallOp::verifySymbolUses(
                        << "' expects " << func_arg_count;
   }
 
-  return mlir::success();
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -118,6 +138,113 @@ void AllocateSharedOp::getAsmResultNames(
 }
 
 //===----------------------------------------------------------------------===//
+// ApplyIndexingOp
+//===----------------------------------------------------------------------===//
+
+// Parser a comma-separated list of type %operand in [lower_bound, upper_bound].
+// Adds the parsed elements to the provided containers.
+mlir::ParseResult parseOperandsWithBoundsList(
+    mlir::OpAsmParser &parser,
+    SmallVector<mlir::OpAsmParser::UnresolvedOperand, 4> *operands,
+    SmallVector<int64_t, 4> *lower_bounds,
+    SmallVector<int64_t, 4> *upper_bounds) {
+  int32_t lower_bound, upper_bound;
+  mlir::OpAsmParser::UnresolvedOperand operand;
+  if (parser.parseCommaSeparatedList([&]() {
+        if (parser.parseOperand(operand) || parser.parseKeyword("in") ||
+            parser.parseLSquare() || parser.parseInteger(lower_bound) ||
+            parser.parseComma() || parser.parseInteger(upper_bound) ||
+            parser.parseRSquare()) {
+          return failure();
+        }
+        operands->push_back(operand);
+        lower_bounds->push_back(lower_bound);
+        upper_bounds->push_back(upper_bound);
+        return success();
+      })) {
+    return failure();
+  }
+  return success();
+}
+
+mlir::ParseResult ApplyIndexingOp::parse(mlir::OpAsmParser &parser,
+                                         OperationState &result) {
+  mlir::Builder &builder = parser.getBuilder();
+  auto index_type = builder.getIndexType();
+
+  mlir::AffineMapAttr affine_map_attr;
+  if (parser.parseAttribute(affine_map_attr, "map", result.attributes)) {
+    return failure();
+  }
+
+  SmallVector<mlir::OpAsmParser::UnresolvedOperand, 4> operands;
+  SmallVector<int64_t, 4> lower_bounds, upper_bounds;
+  if (succeeded(parser.parseOptionalLParen())) {
+    if (parseOperandsWithBoundsList(parser, &operands, &lower_bounds,
+                                    &upper_bounds) ||
+        parser.parseRParen()) {
+      return failure();
+    }
+  }
+  if (succeeded(parser.parseOptionalLSquare())) {
+    if (parseOperandsWithBoundsList(parser, &operands, &lower_bounds,
+                                    &upper_bounds) ||
+        parser.parseRSquare()) {
+      return failure();
+    }
+  }
+  if (parser.resolveOperands(operands, index_type, result.operands) ||
+      parser.parseOptionalAttrDict(result.attributes)) {
+    return failure();
+  }
+  result.addAttribute("lower_bounds",
+                      builder.getDenseI64ArrayAttr(lower_bounds));
+  result.addAttribute("upper_bounds",
+                      builder.getDenseI64ArrayAttr(upper_bounds));
+
+  auto map = affine_map_attr.getAffineMap();
+  result.addTypes(SmallVector<Type, 2>(map.getNumResults(), index_type));
+  return success();
+}
+
+void ApplyIndexingOp::print(mlir::OpAsmPrinter &p) {
+  mlir::AffineMapAttr affine_map_attr = getMapAttr();
+  mlir::AffineMap affine_map = affine_map_attr.getAffineMap();
+  p << " " << affine_map_attr;
+
+  auto lower_bounds = getLowerBounds();
+  auto upper_bounds = getUpperBounds();
+  auto operands = getOperands();
+  unsigned num_dimensions = affine_map.getNumDims();
+  if (num_dimensions > 0) {
+    p << '(';
+    for (int dim_id = 0; dim_id < num_dimensions; ++dim_id) {
+      p << operands[dim_id] << " in " << '[' << lower_bounds[dim_id] << ", "
+        << upper_bounds[dim_id] << ']';
+      if (dim_id != num_dimensions - 1) {
+        p << ", ";
+      }
+    }
+    p << ')';
+  }
+  unsigned num_symbols = affine_map.getNumSymbols();
+  if (num_symbols > 0) {
+    p << '[';
+    for (int symbol_id = 0; symbol_id < num_symbols; ++symbol_id) {
+      unsigned operand_id = num_dimensions + symbol_id;
+      p << operands[operand_id] << " in " << '[' << lower_bounds[operand_id]
+        << ", " << upper_bounds[operand_id] << ']';
+      if (symbol_id != num_symbols - 1) {
+        p << ", ";
+      }
+    }
+    p << ']';
+  }
+  p.printOptionalAttrDict((*this)->getAttrs(), /*elidedAttrs=*/{
+                              "map", "lower_bounds", "upper_bounds"});
+}
+
+//===----------------------------------------------------------------------===//
 // AtomicRMWOp
 //===----------------------------------------------------------------------===//
 
@@ -125,14 +252,6 @@ void AtomicRMWOp::getAsmResultNames(
     llvm::function_ref<void(mlir::Value, mlir::StringRef)> setNameFn) {
   setNameFn(getResult(), "atomic_rmw");
 }
-
-using mlir::OpBuilder;
-using mlir::OperationState;
-using mlir::RankedTensorType;
-using mlir::Region;
-using mlir::Type;
-using mlir::Value;
-using mlir::ValueRange;
 
 void AtomicRMWOp::build(OpBuilder &builder, OperationState &result,
                         Value tensor, ValueRange ivs) {
