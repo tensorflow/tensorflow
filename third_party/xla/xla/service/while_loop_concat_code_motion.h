@@ -64,9 +64,9 @@ class WhileLoopConcatCodeMotion : public HloModulePass {
   ~WhileLoopConcatCodeMotion() override = default;
 
   absl::string_view name() const override {
-    static constexpr absl::string_view kName = "while-loop-concat-code-motion";
-    return kName;
+    return "while-loop-concat-code-motion";
   }
+
   using HloPassInterface::Run;
   absl::StatusOr<bool> Run(
       HloModule* module,
