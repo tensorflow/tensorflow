@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_TSL_CONCURRENCY_ASYNC_VALUE_H_
 #define TENSORFLOW_TSL_CONCURRENCY_ASYNC_VALUE_H_
 
+#include <algorithm>
 #include <atomic>
 #include <cassert>
 #include <cstddef>
@@ -58,6 +59,8 @@ constexpr bool kMaybeBase = std::is_class<T>::value && !std::is_final<T>::value;
 // data and the payload data in consecutive memory locations.
 class AsyncValue {
  public:
+  class Executor;
+
   ~AsyncValue();
 
   // Return true if state is kUnconstructed.
@@ -147,11 +150,15 @@ class AsyncValue {
 
   void SetError(absl::Status status);
 
-  // If the value is available or becomes available, this calls the closure
-  // immediately.  Otherwise, adds the waiter to the waiter list and calls it
+  // If the value is available or becomes available, this invokes the waiter
+  // immediately. Otherwise, adds the waiter to the waiter list and calls it
   // when the value becomes available.
   template <typename Waiter>
   void AndThen(Waiter&& waiter);
+
+  // Same as above, but waiter will be invoked on the given executor.
+  template <typename Waiter>
+  void AndThen(Executor& executor, Waiter&& waiter);
 
   // Return the total number of async values that are currently live in the
   // process. This is intended for debugging/assertions only, and shouldn't be
@@ -247,6 +254,24 @@ class AsyncValue {
   State state() const {
     return waiters_and_state_.load(std::memory_order_acquire).state();
   }
+
+  // AsyncValue executor allows to customize where the waiter callback is
+  // executed. By default the waiter callback is executed on the caller thread
+  // if async value is already available, or on a thread that sets async value
+  // available (emplacing a value or setting an error), which can accidentally
+  // lead to executing a very expensive computations on a low-latency thread.
+  //
+  // IMPORTANT: It's the caller responsibility to ensure that executor passed to
+  // all `AndThen` or `Map` function calls stay alive while async values have
+  // unresolved waiters waiting to be invoked.
+  class Executor {
+   public:
+    using Task = absl::AnyInvocable<void()>;
+
+    virtual ~Executor() = default;
+
+    virtual void Execute(Task task) = 0;
+  };
 
  protected:
   friend class IndirectAsyncValue;
@@ -949,7 +974,7 @@ template <typename Waiter>
 void AsyncValue::AndThen(Waiter&& waiter) {
   // Clients generally want to use AndThen without them each having to check
   // to see if the value is present. Check for them, and immediately run the
-  // lambda if it is already here.
+  // waiter if it is already here.
   auto old_value = waiters_and_state_.load(std::memory_order_acquire);
   if (old_value.state() == State::kConcrete ||
       old_value.state() == State::kError) {
@@ -958,6 +983,25 @@ void AsyncValue::AndThen(Waiter&& waiter) {
     return;
   }
   EnqueueWaiter(std::forward<Waiter>(waiter), old_value);
+}
+
+template <typename Waiter>
+void AsyncValue::AndThen(Executor& executor, Waiter&& waiter) {
+  // Clients generally want to use AndThen without them each having to check
+  // to see if the value is present. Check for them, and immediately run the
+  // waiter if it is already here.
+  auto old_value = waiters_and_state_.load(std::memory_order_acquire);
+  if (old_value.state() == State::kConcrete ||
+      old_value.state() == State::kError) {
+    assert(old_value.waiter() == nullptr);
+    executor.Execute(std::forward<Waiter>(waiter));
+    return;
+  }
+  EnqueueWaiter(
+      [&executor, waiter = std::forward<Waiter>(waiter)]() mutable {
+        executor.Execute(std::move(waiter));
+      },
+      old_value);
 }
 
 inline void AsyncValue::Destroy() {
