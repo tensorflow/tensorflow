@@ -22,7 +22,9 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_join.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
@@ -609,25 +611,18 @@ bool IsCollective(const HloInstruction* instruction) {
 }
 
 bool IsCollectiveWithChannelId(const HloInstruction* instruction) {
-  switch (instruction->opcode()) {
-    case HloOpcode::kAllReduce:
-    case HloOpcode::kAllReduceStart:
-    case HloOpcode::kAllGather:
-    case HloOpcode::kAllGatherStart:
-    case HloOpcode::kAllToAll:
-    case HloOpcode::kCollectivePermute:
-    case HloOpcode::kCollectivePermuteStart:
-      return instruction->channel_id().has_value();
-    case HloOpcode::kFusion:
-      for (const auto* inner_inst : instruction->fused_instructions()) {
-        if (IsCollectiveWithChannelId(inner_inst)) {
-          return true;
-        }
+  if (instruction->opcode() == HloOpcode::kFusion) {
+    for (const auto* inner_inst : instruction->fused_instructions()) {
+      if (IsCollectiveWithChannelId(inner_inst)) {
+        return true;
       }
-      return false;
-    default:
-      return false;
+    }
+    return false;
   }
+  if (DynCast<HloChannelInstruction>(instruction) == nullptr) {
+    return false;
+  }
+  return IsCollective(instruction) && instruction->channel_id().has_value();
 }
 
 bool IsSyncCollective(const HloInstruction* instr) {
