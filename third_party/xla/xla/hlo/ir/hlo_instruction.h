@@ -1013,14 +1013,6 @@ class HloInstruction {
       absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
       const std::optional<int64_t>& channel_id);
 
-  // TODO(b/316622399): Remove this function declaration (there is not matching
-  // declaration or usage of this function).
-  static std::unique_ptr<HloInstruction> CreateCollectiveBroadcast(
-      const Shape& shape, HloInstruction* input, HloInstruction* output,
-      HloInstruction* input_start_indices, HloInstruction* output_start_indices,
-      const CollectiveDeviceList& device_list, bool constrain_layout,
-      const std::optional<int64_t>& channel_id);
-
   // Creates a communication instruction that permutes data cross replicas.
   // Data is sent/received according to the (source_replica_id,
   // target_replica_id) pairs in `source_target_pairs`. If a replica id is not a
