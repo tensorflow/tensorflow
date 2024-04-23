@@ -43,13 +43,15 @@ cc_library(
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/core:lib",
         "//tensorflow/core/common_runtime/device:device_utils",
-        "//tensorflow/core/platform:strcat",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:optional",
         "@local_tsl//tsl/platform:status",
         "@local_xla//xla/stream_executor",
+        "@local_xla//xla/stream_executor:event_interface",
         "@local_xla//xla/stream_executor:platform",
+        "@local_xla//xla/stream_executor:stream_interface",
     ],
 )
 
@@ -79,13 +81,22 @@ tf_cc_test(
     name = "stream_executor_test",
     srcs = ["stream_executor_test.cc"],
     deps = [
-        ":stream_executor",
         ":stream_executor_internal",
         ":stream_executor_test_util",
+        "//tensorflow/c:c_api_macros_hdrs",
+        "//tensorflow/c:tf_status_headers",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:optional",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/protobuf:error_codes_proto_impl_cc",
         "@local_xla//xla/stream_executor",
     ],
 )
@@ -97,6 +108,7 @@ cc_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         ":stream_executor_hdrs",
+        "//tensorflow/c:c_api_macros_hdrs",
         "//tensorflow/c:tf_status",
     ],
 )
