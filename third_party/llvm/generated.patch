@@ -1,1 +1,52 @@
 Auto generated patch. Do not edit or delete it, even if empty.
+diff -ruN --strip-trailing-cr a/lldb/test/API/tools/lldb-dap/coreFile/TestDAP_coreFile.py b/lldb/test/API/tools/lldb-dap/coreFile/TestDAP_coreFile.py
+--- a/lldb/test/API/tools/lldb-dap/coreFile/TestDAP_coreFile.py
++++ b/lldb/test/API/tools/lldb-dap/coreFile/TestDAP_coreFile.py
+@@ -25,6 +25,7 @@
+ 
+         expected_frames = [
+             {
++                "column": 0,
+                 "id": 524288,
+                 "line": 4,
+                 "name": "bar",
+@@ -32,6 +33,7 @@
+                 "instructionPointerReference": "0x40011C",
+             },
+             {
++                "column": 0,
+                 "id": 524289,
+                 "line": 10,
+                 "name": "foo",
+@@ -39,6 +41,7 @@
+                 "instructionPointerReference": "0x400142",
+             },
+             {
++                "column": 0,
+                 "id": 524290,
+                 "line": 16,
+                 "name": "_start",
+diff -ruN --strip-trailing-cr a/llvm/test/TableGen/directive1.td b/llvm/test/TableGen/directive1.td
+--- a/llvm/test/TableGen/directive1.td
++++ b/llvm/test/TableGen/directive1.td
+@@ -370,7 +370,7 @@
+ // IMPL-EMPTY:
+ // IMPL-NEXT:  static_assert(sizeof(llvm::tdl::Directive) == sizeof(int));
+ // IMPL-NEXT:  {{.*}} static const llvm::tdl::Directive LeafConstructTable[][2] = {
+-// IMPL-NEXT:    llvm::tdl::TDLD_dira, static_cast<llvm::tdl::Directive>(0),
++// IMPL-NEXT:    {llvm::tdl::TDLD_dira, static_cast<llvm::tdl::Directive>(0),},
+ // IMPL-NEXT:  };
+ // IMPL-EMPTY:
+ // IMPL-NEXT:  {{.*}} static auto LeafConstructTableEndDirective = LeafConstructTable + 1;
+diff -ruN --strip-trailing-cr a/llvm/test/TableGen/directive2.td b/llvm/test/TableGen/directive2.td
+--- a/llvm/test/TableGen/directive2.td
++++ b/llvm/test/TableGen/directive2.td
+@@ -301,7 +301,7 @@
+ // IMPL-EMPTY:
+ // IMPL-NEXT:  static_assert(sizeof(llvm::tdl::Directive) == sizeof(int));
+ // IMPL-NEXT:  {{.*}} static const llvm::tdl::Directive LeafConstructTable[][2] = {
+-// IMPL-NEXT:    llvm::tdl::TDLD_dira, static_cast<llvm::tdl::Directive>(0),
++// IMPL-NEXT:    {llvm::tdl::TDLD_dira, static_cast<llvm::tdl::Directive>(0),},
+ // IMPL-NEXT:  };
+ // IMPL-EMPTY:
+ // IMPL-NEXT:  {{.*}} static auto LeafConstructTableEndDirective = LeafConstructTable + 1;
