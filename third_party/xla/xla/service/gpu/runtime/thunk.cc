@@ -236,6 +236,7 @@ Thunk::ExecuteParams::ExecuteParams(
     CASE(kConvolution);
     CASE(kConvolutionReorder);
     CASE(kCopy);
+    CASE(kCopyDone);
     CASE(kCubSort);
     CASE(kCublasLtMatmul);
     CASE(kCustomCall);

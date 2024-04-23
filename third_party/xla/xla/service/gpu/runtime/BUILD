@@ -521,6 +521,7 @@ cc_library(
     hdrs = ["copy_thunk.h"],
     deps = [
         "//xla:status",
+        "//xla/hlo/ir:hlo",
         "//xla/service:buffer_assignment",
         "//xla/service/gpu/runtime:thunk",
         "//xla/stream_executor",

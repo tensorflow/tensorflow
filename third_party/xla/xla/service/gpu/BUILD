@@ -3644,11 +3644,12 @@ xla_test(
     ],
 )
 
-xla_cc_test(
+xla_test(
     name = "gpu_offloading_test",
     srcs = ["gpu_offloading_test.cc"],
-    tags = tf_cuda_tests_tags(),
+    backends = ["gpu"],
     deps = [
+        ":backend_configs_cc",
         ":horizontal_loop_fusion",
         ":metrics",
         "//xla:autotune_results_proto_cc",
@@ -3659,7 +3660,6 @@ xla_cc_test(
         "//xla/hlo/utils:hlo_matchers",
         "//xla/service:buffer_assignment",
         "//xla/service:buffer_value",
-        "//xla/service:gpu_plugin",
         "//xla/service:hlo_cost_analysis",
         "//xla/service:hlo_memory_scheduler",
         "//xla/service:hlo_rematerialization",
@@ -3667,7 +3667,9 @@ xla_cc_test(
         "//xla/service:pattern_matcher",
         "//xla/service:pattern_matcher_gmock",
         "//xla/service:xla_debug_info_manager",
+        "//xla/service/gpu:stream_attribute_annotator",
         "//xla/tests:hlo_test_base",
+        "//xla/tests:test_macros_header",
         "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/base:log_severity",
         "@com_google_absl//absl/log:scoped_mock_log",
