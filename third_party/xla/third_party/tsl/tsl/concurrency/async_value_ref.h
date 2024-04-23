@@ -52,6 +52,9 @@ class AsyncValuePtr;
 template <typename T>
 class AsyncValueRef {
  public:
+  // AsyncValueRef<T>::value_type
+  using value_type = T;
+
   AsyncValueRef() = default;
   AsyncValueRef(std::nullptr_t) {}  // NOLINT
 
@@ -159,26 +162,34 @@ class AsyncValueRef {
     AsPtr().AndThen(executor, std::forward<Waiter>(waiter));
   }
 
-  template <typename R, typename F, typename U = std::invoke_result_t<F, T&>,
-            std::enable_if_t<std::is_constructible_v<R, U>>* = nullptr>
+  template <typename R, typename F>
   AsyncValueRef<R> Map(F&& f) {
     return AsPtr().template Map<R>(std::forward<F>(f));
   }
 
-  template <typename R, typename F, typename U = std::invoke_result_t<F, T&>,
-            std::enable_if_t<std::is_constructible_v<R, U>>* = nullptr>
+  template <typename R, typename F>
   AsyncValueRef<R> Map(AsyncValue::Executor& executor, F&& f) {
     return AsPtr().template Map<R>(executor, std::forward<F>(f));
   }
 
-  template <typename F, typename R = std::invoke_result_t<F, T&>>
+  template <typename F>
   auto Map(F&& f) {
     return AsPtr().template Map(std::forward<F>(f));
   }
 
-  template <typename F, typename R = std::invoke_result_t<F, T&>>
+  template <typename F>
   auto Map(AsyncValue::Executor& executor, F&& f) {
     return AsPtr().template Map(executor, std::forward<F>(f));
+  }
+
+  template <typename F>
+  auto FlatMap(F&& f) {
+    return AsPtr().template FlatMap(std::forward<F>(f));
+  }
+
+  template <typename F>
+  auto FlatMap(AsyncValue::Executor& executor, F&& f) {
+    return AsPtr().template FlatMap(executor, std::forward<F>(f));
   }
 
   // Make the AsyncValueRef available.
@@ -255,6 +266,15 @@ class AsyncValueRef {
   RCReference<AsyncValue> value_;
 };
 
+// Detects if a type is a specialization of an AsyncValueRef template.
+template <typename T>
+struct IsAsyncValueRef : std::false_type {};
+template <typename T>
+struct IsAsyncValueRef<AsyncValueRef<T>> : std::true_type {};
+
+template <typename T>
+inline constexpr bool is_async_value_ref_v = IsAsyncValueRef<T>::value;
+
 // Forward declare AsyncValueRef constructors.
 template <typename T>
 AsyncValueRef<T> MakeUnconstructedAsyncValueRef();
@@ -262,6 +282,11 @@ template <typename T, typename... Args>
 AsyncValueRef<T> MakeConstructedAsyncValueRef(Args&&... args);
 template <typename T, typename... Args>
 AsyncValueRef<T> MakeAvailableAsyncValueRef(Args&&... args);
+
+// Forward declare indirect async value constructors.
+RCReference<IndirectAsyncValue> MakeIndirectAsyncValue();
+template <typename T>
+RCReference<IndirectAsyncValue> MakeIndirectAsyncValue();
 
 // Non owning typed pointer for the AsyncValue. Can be cheaply passed around
 // when the lifetime of the underlying async value is clear from the context.
@@ -319,6 +344,9 @@ class AsyncValuePtr {
                        !std::is_constructible_v<R, U>>;
 
  public:
+  // AsyncValuePtr<T>::value_type
+  using value_type = T;
+
   AsyncValuePtr() : value_(nullptr) {}
 
   explicit AsyncValuePtr(AsyncValue* value) : value_(value) {}
@@ -610,7 +638,61 @@ class AsyncValuePtr {
     }
   }
 
+  // Returns and AsyncValueRef<R> that will be forwarded to the AsyncValueRef
+  // returned from a functor.
+  //
+  // Sample usage:
+  //
+  // async_value_ptr.FlatMap([](T& value) -> AsyncValueRef<R> {
+  //   return LaunchAsyncTask(value);
+  // })
+  //
+  template <typename F, typename R = std::invoke_result_t<F, T&>,
+            std::enable_if_t<is_async_value_ref_v<R>>* = nullptr>
+  AsyncValueRef<typename R::value_type> FlatMap(F&& f) {
+    auto promise = MakePromise<R>();
+    AndThen([f = std::forward<F>(f), promise, ptr = *this]() mutable {
+      if (ABSL_PREDICT_FALSE(ptr.IsError())) {
+        promise->SetError(ptr.GetError());
+      } else {
+        promise->ForwardTo(f(*ptr));
+      }
+    });
+    return AsyncValueRef<typename R::value_type>(promise);
+  }
+
+  // An overload that executes `f` on a user-provided executor.
+  template <typename F, typename R = std::invoke_result_t<F, T&>,
+            std::enable_if_t<is_async_value_ref_v<R>>* = nullptr>
+  AsyncValueRef<typename R::value_type> FlatMap(AsyncValue::Executor& executor,
+                                                F&& f) {
+    auto promise = MakePromise<R>();
+    // We don't know when the executor will run the callback, so we need to
+    // copy the AsyncValueRef to keep the underlying value alive.
+    AndThen(executor,
+            [f = std::forward<F>(f), promise, ref = CopyRef()]() mutable {
+              if (ABSL_PREDICT_FALSE(ref.IsError())) {
+                promise->SetError(ref.GetError());
+              } else {
+                promise->ForwardTo(f(*ref));
+              }
+            });
+    return AsyncValueRef<typename R::value_type>(promise);
+  }
+
  private:
+  // We set a concrete type for indirect async value promise only if the type is
+  // final, because otherwise we can forward it later to one of the derived
+  // types and this will be a run time error.
+  template <typename R>
+  RCReference<IndirectAsyncValue> MakePromise() {
+    if constexpr (std::is_final_v<typename R::value_type>) {
+      return MakeIndirectAsyncValue<typename R::value_type>();
+    } else {
+      return MakeIndirectAsyncValue();
+    };
+  }
+
   AsyncValue* value_;  // doesn't own the async value
 };
 

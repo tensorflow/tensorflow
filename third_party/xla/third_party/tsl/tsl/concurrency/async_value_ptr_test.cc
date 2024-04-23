@@ -235,6 +235,33 @@ TEST(AsyncValuePtrTest, MapStatusOrConstructible) {
   EXPECT_EQ(mapped_to_x->value, 42.0f);
 }
 
+TEST(AsyncValuePtrTest, FlatMapAvailable) {
+  AsyncValueRef<int32_t> ref = MakeAvailableAsyncValueRef<int32_t>(42);
+  AsyncValuePtr<int32_t> ptr = ref.AsPtr();
+
+  AsyncValueRef<float> fmapped_to_float = ptr.FlatMap([](int32_t value) {
+    return MakeAvailableAsyncValueRef<float>(1.0f * value);
+  });
+
+  EXPECT_TRUE(fmapped_to_float.IsAvailable());
+  EXPECT_EQ(fmapped_to_float.get(), 42.0f);
+}
+
+TEST(AsyncValuePtrTest, FlatMapUnavailable) {
+  AsyncValueRef<int32_t> ref = MakeConstructedAsyncValueRef<int32_t>(42);
+  AsyncValuePtr<int32_t> ptr = ref.AsPtr();
+
+  AsyncValueRef<float> fmapped_to_float = ptr.FlatMap([](int32_t value) {
+    return MakeAvailableAsyncValueRef<float>(1.0f * value);
+  });
+
+  EXPECT_FALSE(fmapped_to_float.IsAvailable());
+  ref.SetStateConcrete();
+
+  EXPECT_TRUE(fmapped_to_float.IsAvailable());
+  EXPECT_EQ(fmapped_to_float.get(), 42.0f);
+}
+
 struct DeferredExecutor : public AsyncValue::Executor {
   void Execute(Task task) final { tasks.push_back(std::move(task)); }
 
@@ -337,6 +364,26 @@ TEST(AsyncValuePtrTest, MapStatusOrErrorOnExecutor) {
 
   EXPECT_TRUE(mapped_to_float.IsError());
   EXPECT_EQ(mapped_to_float.GetError(), absl::InternalError("error"));
+}
+
+TEST(AsyncValuePtrTest, FlatMapAvailableOnExecutor) {
+  AsyncValueRef<int32_t> ref = MakeConstructedAsyncValueRef<int32_t>(42);
+  AsyncValuePtr<int32_t> ptr = ref.AsPtr();
+
+  DeferredExecutor executor;
+  AsyncValueRef<float> fmapped_to_float =
+      ptr.FlatMap(executor, [](int32_t value) {
+        return MakeAvailableAsyncValueRef<float>(1.0f * value);
+      });
+
+  ref.SetStateConcrete();
+  ref.release()->DropRef();
+
+  EXPECT_FALSE(fmapped_to_float.IsAvailable());
+  EXPECT_EQ(executor.Quiesce(), 1);
+
+  EXPECT_TRUE(fmapped_to_float.IsAvailable());
+  EXPECT_EQ(fmapped_to_float.get(), 42.0f);
 }
 
 TEST(AsyncValuePtrTest, BlockUntilReady) {
