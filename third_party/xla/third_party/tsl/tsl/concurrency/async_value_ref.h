@@ -127,9 +127,9 @@ class AsyncValueRef {
 
   T& operator*() const { return get(); }
 
-  template <typename WaiterT>
-  void AndThen(WaiterT&& waiter) const {
-    AsPtr().AndThen(std::forward<WaiterT>(waiter));
+  template <typename Waiter>
+  void AndThen(Waiter&& waiter) const {
+    AsPtr().AndThen(std::forward<Waiter>(waiter));
   }
 
   // Make the AsyncValueRef available.
@@ -212,6 +212,21 @@ class AsyncValueRef {
 // the lifetime of the underlying value if needed.
 template <typename T>
 class AsyncValuePtr {
+  // Wait for async value availability: AndThen([] {})
+  template <typename Waiter>
+  using SimpleWaiter = std::enable_if_t<std::is_invocable_v<Waiter>>;
+
+  // Wait for async value status and value: AndThen([](absl::StatusOr<T*>) {})
+  template <typename Waiter>
+  using StatusOrWaiter =
+      std::enable_if_t<std::is_invocable_v<Waiter, absl::StatusOr<T*>>>;
+
+  // Wait for async value status: AndThen([](absl::Status) {})
+  template <typename Waiter>
+  using StatusWaiter =
+      std::enable_if_t<(std::is_invocable_v<Waiter, absl::Status> &&
+                        !std::is_invocable_v<Waiter, absl::StatusOr<T*>>)>;
+
  public:
   AsyncValuePtr() : value_(nullptr) {}
 
@@ -283,18 +298,17 @@ class AsyncValuePtr {
     return value_->SetError(std::move(status));
   }
 
-  // If the AsyncValueRef is available, run the waiter immediately. Otherwise,
-  // run the waiter when the AsyncValueRef becomes available.
+  // If the AsyncValueRef is available, invokes the `waiter` immediately.
+  // Otherwise, invokes the `waiter` when the AsyncValueRef becomes available.
   //
   // Sample usage:
   //
   // async_value_ref.AndThen([] {
   //   // async_value_ref is now ready.
   // });
-  template <typename WaiterT,
-            std::enable_if_t<std::is_invocable_v<WaiterT>>* = nullptr>
-  void AndThen(WaiterT&& waiter) const {
-    value_->AndThen(std::forward<WaiterT>(waiter));
+  template <typename Waiter, SimpleWaiter<Waiter>* = nullptr>
+  void AndThen(Waiter&& waiter) const {
+    value_->AndThen(std::forward<Waiter>(waiter));
   }
 
   // This AndThen() function takes a functor that takes absl::StatusOr<T*> as
@@ -312,14 +326,13 @@ class AsyncValuePtr {
   //      // Handle the value in `*status_or`.
   //   }
   // });
-  template <typename WaiterT, std::enable_if_t<std::is_invocable_v<
-                                  WaiterT, absl::StatusOr<T*>>>* = nullptr>
-  void AndThen(WaiterT&& waiter) const {
-    AndThen([waiter = std::forward<WaiterT>(waiter), av_ptr = *this]() mutable {
+  template <typename Waiter, StatusOrWaiter<Waiter>* = nullptr>
+  void AndThen(Waiter&& waiter) const {
+    AndThen([waiter = std::forward<Waiter>(waiter), av_ptr = *this]() mutable {
       if (av_ptr.IsError()) {
-        return std::forward<WaiterT>(waiter)(av_ptr.GetError());
+        return std::forward<Waiter>(waiter)(av_ptr.GetError());
       } else {
-        return std::forward<WaiterT>(waiter)(&av_ptr.get());
+        return std::forward<Waiter>(waiter)(&av_ptr.get());
       }
     });
   }
@@ -341,16 +354,13 @@ class AsyncValuePtr {
   //     // No error occurred.
   //   }
   // });
-  template <typename WaiterT,
-            std::enable_if_t<
-                (std::is_invocable_v<WaiterT, absl::Status> &&
-                 !std::is_invocable_v<WaiterT, absl::StatusOr<T*>>)>* = nullptr>
-  void AndThen(WaiterT&& waiter) const {
-    AndThen([waiter = std::forward<WaiterT>(waiter), av_ptr = *this]() mutable {
+  template <typename Waiter, StatusWaiter<Waiter>* = nullptr>
+  void AndThen(Waiter&& waiter) const {
+    AndThen([waiter = std::forward<Waiter>(waiter), av_ptr = *this]() mutable {
       if (av_ptr.IsError()) {
-        return std::forward<WaiterT>(waiter)(av_ptr.GetError());
+        return std::forward<Waiter>(waiter)(av_ptr.GetError());
       } else {
-        return std::forward<WaiterT>(waiter)(absl::OkStatus());
+        return std::forward<Waiter>(waiter)(absl::OkStatus());
       }
     });
   }

@@ -150,8 +150,8 @@ class AsyncValue {
   // If the value is available or becomes available, this calls the closure
   // immediately.  Otherwise, adds the waiter to the waiter list and calls it
   // when the value becomes available.
-  template <typename WaiterT>
-  void AndThen(WaiterT waiter);
+  template <typename Waiter>
+  void AndThen(Waiter&& waiter);
 
   // Return the total number of async values that are currently live in the
   // process. This is intended for debugging/assertions only, and shouldn't be
@@ -249,9 +249,6 @@ class AsyncValue {
   }
 
  protected:
-  // -----------------------------------------------------------
-  // Implementation details follow.  Clients should ignore them.
-
   friend class IndirectAsyncValue;
 
   // Utility template for tag dispatching.
@@ -948,8 +945,8 @@ inline const absl::Status& AsyncValue::GetError() const {
   return *result;
 }
 
-template <typename WaiterT>
-void AsyncValue::AndThen(WaiterT waiter) {
+template <typename Waiter>
+void AsyncValue::AndThen(Waiter&& waiter) {
   // Clients generally want to use AndThen without them each having to check
   // to see if the value is present. Check for them, and immediately run the
   // lambda if it is already here.
@@ -960,7 +957,7 @@ void AsyncValue::AndThen(WaiterT waiter) {
     waiter();
     return;
   }
-  EnqueueWaiter(std::forward<WaiterT>(waiter), old_value);
+  EnqueueWaiter(std::forward<Waiter>(waiter), old_value);
 }
 
 inline void AsyncValue::Destroy() {
