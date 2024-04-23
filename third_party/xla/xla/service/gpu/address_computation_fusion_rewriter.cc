@@ -409,15 +409,19 @@ absl::StatusOr<bool> AddressComputationFusionRewriter::Run(
                       std::pair<UseDefDataflowPaths, DefUseDataflowPaths>>
       matches;
 
-  // Collect all potential custom call matches in the non-fusion computations.
+  // Collect all potential custom call and reduce-scatter --> dus matches in the
+  // non-fusion computations.
   for (HloComputation* computation : module->computations()) {
     if (computation->IsFusionComputation()) continue;
     for (HloInstruction* instr : computation->instructions()) {
-      if (IsLegacyCublasMatmul(*instr) ||
-          (IsCustomCall(instr, platform_name_))) {
-        UseDefDataflowPaths sliced_operand_paths = GetSlicedOperandPaths(instr);
-        bool has_sliced_operand_paths = sliced_operand_paths.size() > 1;
-
+      UseDefDataflowPaths sliced_operand_paths = {instr};
+      bool has_sliced_operand_paths = false;
+      if (IsLegacyCublasMatmul(*instr) || IsCustomCall(instr, platform_name_)) {
+        sliced_operand_paths = GetSlicedOperandPaths(instr);
+        has_sliced_operand_paths = sliced_operand_paths.size() > 1;
+      }
+      if (instr->opcode() == HloOpcode::kReduceScatter ||
+          IsLegacyCublasMatmul(*instr) || IsCustomCall(instr, platform_name_)) {
         DefUseDataflowPaths sliced_user_paths = GetSlicedUserPaths(instr);
         bool has_sliced_user_paths = absl::c_any_of(
             sliced_user_paths,

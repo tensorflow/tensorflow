@@ -1766,4 +1766,135 @@ TEST_F(AddressComputationFusionRewriterTest, DUSSimpleGemmWorkspaceIgnored) {
                             expected);
 }
 
+TEST_F(AddressComputationFusionRewriterTest,
+       ReduceScatterMultipleUsesOfReduceScatter) {
+  const char* hlo = R"(
+    HloModule test, num_partitions=2
+
+    add.clone {
+      x.1 = f16[] parameter(0)
+      y.1 = f16[] parameter(1)
+      ROOT add.462 = f16[] add(x.1, y.1)
+    }
+
+
+    ENTRY %main.9 {
+      %p0 = f16[128,128]{1,0} parameter(0)
+      %p1 = f16[128,128]{1,0} parameter(1)
+      %p3 = s32[] parameter(2)
+      constant.718 = s32[] constant(0)
+
+      reduce-scatter = f16[64,128]{1,0} reduce-scatter(%p0), channel_id=64, replica_groups={{0,1}}, use_global_device_ids=true, dimensions={0}, to_apply=add.clone
+      dynamic-update-slice = f16[128,128]{1,0} dynamic-update-slice(%p1, reduce-scatter, %p3, constant.718), metadata={}
+      ROOT tuple = (f16[128,128]{1,0}, f16[64, 128]{1,0}) tuple(dynamic-update-slice, reduce-scatter)
+    }
+  )";
+  auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
+  RunAndFilecheckHloRewrite(hlo, AddressComputationFusionRewriter(PLATFORM),
+                            std::nullopt);
+}
+
+TEST_F(AddressComputationFusionRewriterTest, ReduceScatterDUS) {
+  const char* hlo = R"(
+    HloModule test, num_partitions=2
+
+    add.clone {
+      x.1 = f16[] parameter(0)
+      y.1 = f16[] parameter(1)
+      ROOT add.462 = f16[] add(x.1, y.1)
+    }
+
+
+    ENTRY %main.9 {
+      %p0 = f16[128,128]{1,0} parameter(0)
+      %p1 = f16[128,128]{1,0} parameter(1)
+      %p3 = s32[] parameter(2)
+      constant.718 = s32[] constant(0)
+
+      reduce-scatter = f16[64,128]{1,0} reduce-scatter(%p0), channel_id=64, replica_groups={{0,1}}, use_global_device_ids=true, dimensions={0}, to_apply=add.clone
+      ROOT dynamic-update-slice = f16[128,128]{1,0} dynamic-update-slice(%p1, reduce-scatter, %p3, constant.718), metadata={}
+    })";
+
+  const char* expected = R"(
+    ; CHECK: %add.clone (
+    ; CHECK-DAG: }
+
+    ; CHECK:     %address-computation {{.*}} {
+    ; CHECK-DAG:   [[P0:%[^ ]+]] = f16[128,128]{1,0} parameter(0)
+    ; CHECK-DAG:   [[P1:%[^ ]+]] = f16[128,128]{1,0} parameter(1)
+    ; CHECK-DAG:   [[REDUCE_SCATTER:%[^ ]+]] = f16[64,128]{1,0} reduce-scatter([[P0]]), channel_id=64, replica_groups={{.+}} use_global_device_ids=true, dimensions={0}, to_apply=%add.clone
+    ; CHECK-DAG:   [[P2:%[^ ]+]] = s32[] parameter(2)
+    ; CHECK-DAG:   [[P3:%[^ ]+]] = s32[] parameter(3)
+    ; CHECK-DAG:   ROOT %{{[^ ]+}} = f16[128,128]{1,0} dynamic-update-slice([[P1]], [[REDUCE_SCATTER]], [[P2]], [[P3]])
+    ; CHECK:     }
+
+    ; CHECK:     ENTRY %main{{.*}} {
+    ; CHECK:       ROOT [[ADDRESS_COMPUTATION:%[^ ]+]] = f16[128,128]{1,0} fusion
+    ; CHECK:         kind=kCustom, calls=%address-computation,
+    ; CHECK:         backend_config={
+    ; CHECK:           "fusion_backend_config":{
+    ; CHECK:             "kind":"__custom_fusion",
+    ; CHECK:             "custom_fusion_config":{"name":"dynamic_address_computation"}
+    ; CHECK:         }
+    ; CHECK:     }
+  )";
+
+  auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
+  RunAndFilecheckHloRewrite(hlo, AddressComputationFusionRewriter(PLATFORM),
+                            expected);
+}
+
+TEST_F(AddressComputationFusionRewriterTest, ReduceScatterDUSWithBitcast) {
+  const char* hlo = R"(
+
+    HloModule test, num_partitions=2
+
+    add.clone {
+      x.1 = f16[] parameter(0)
+      y.1 = f16[] parameter(1)
+      ROOT add.462 = f16[] add(x.1, y.1)
+    }
+
+
+    ENTRY %main.9 {
+      %p0 = f16[128,128]{1,0} parameter(0)
+      %p1 = f16[8,128,128]{2,1,0} parameter(1)
+      %p3 = s32[] parameter(2)
+      constant.718 = s32[] constant(0)
+
+      reduce-scatter = f16[64,128]{1,0} reduce-scatter(%p0), channel_id=64, replica_groups={{0,1}}, use_global_device_ids=true, dimensions={0}, to_apply=add.clone
+      bitcast = f16[1,64,128]{2,1,0} bitcast(reduce-scatter)
+      ROOT dynamic-update-slice = f16[8,128,128]{2,1,0} dynamic-update-slice(%p1, bitcast, %p3, constant.718, constant.718), metadata={}
+    })";
+
+  const char* expected = R"(
+    ; CHECK: %add.clone (
+    ; CHECK-DAG: }
+
+    ; CHECK:     %address-computation {{.*}} {
+    ; CHECK-DAG:   [[P0:%[^ ]+]] = f16[128,128]{1,0} parameter(0)
+    ; CHECK-DAG:   [[P1:%[^ ]+]] = f16[8,128,128]{2,1,0} parameter(1)
+    ; CHECK-DAG:   [[REDUCE_SCATTER:%[^ ]+]] = f16[64,128]{1,0} reduce-scatter([[P0]]), channel_id=64, replica_groups={{.+}} use_global_device_ids=true, dimensions={0}, to_apply=%add.clone
+    ; CHECK-DAG:   [[BITCAST:%[^ ]+]] = f16[1,64,128]{2,1,0} bitcast([[REDUCE_SCATTER]])
+    ; CHECK-DAG:   [[P2:%[^ ]+]] = s32[] parameter(2)
+    ; CHECK-DAG:   [[P3:%[^ ]+]] = s32[] parameter(3)
+    ; CHECK-DAG:   ROOT %{{[^ ]+}} = f16[8,128,128]{2,1,0} dynamic-update-slice([[P1]], [[BITCAST]], [[P2]], [[P3]], [[P3]])
+    ; CHECK:     }
+
+    ; CHECK:     ENTRY %main{{.*}} {
+    ; CHECK:       ROOT [[ADDRESS_COMPUTATION:%[^ ]+]] = f16[8,128,128]{2,1,0} fusion
+    ; CHECK:         kind=kCustom, calls=%address-computation,
+    ; CHECK:         backend_config={
+    ; CHECK:           "fusion_backend_config":{
+    ; CHECK:             "kind":"__custom_fusion",
+    ; CHECK:             "custom_fusion_config":{"name":"dynamic_address_computation"}
+    ; CHECK:         }
+    ; CHECK:     }
+  )";
+
+  auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
+  RunAndFilecheckHloRewrite(hlo, AddressComputationFusionRewriter(PLATFORM),
+                            expected);
+}
+
 }  // namespace xla::gpu
