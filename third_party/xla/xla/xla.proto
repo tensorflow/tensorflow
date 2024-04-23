@@ -629,7 +629,7 @@ message DebugOptions {
 
   int32 xla_gpu_triton_fusion_level = 229;
 
-  bool xla_gpu_dump_autotuned_triton_fusions = 232;
+  bool xla_gpu_dump_autotuned_gemm_fusions = 232;
 
   bool xla_gpu_copy_insertion_use_region_analysis = 236;
 

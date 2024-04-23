@@ -543,7 +543,7 @@ class GemmFusionAutotunerDumpTest : public GemmFusionAutotunerTest {
     DebugOptions debug_options =
         GemmFusionAutotunerTest::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_cublas_fallback(true);
-    debug_options.set_xla_gpu_dump_autotuned_triton_fusions(true);
+    debug_options.set_xla_gpu_dump_autotuned_gemm_fusions(true);
     return debug_options;
   }
 };

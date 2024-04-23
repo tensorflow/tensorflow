@@ -988,7 +988,7 @@ absl::Status GemmFusionAutotunerImpl::Autotune(
     VLOG(2) << "Best time: "
             << tsl::proto_utils::FromDurationProto(best.run_time());
 
-    if (debug_options_.xla_gpu_dump_autotuned_triton_fusions()) {
+    if (debug_options_.xla_gpu_dump_autotuned_gemm_fusions()) {
       TF_RETURN_IF_ERROR(DumpAutotunedFusion(config_, compile_util, best,
                                              fusion, fusion_id++));
     }
