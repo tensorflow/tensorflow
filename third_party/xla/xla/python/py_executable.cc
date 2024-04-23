@@ -205,7 +205,7 @@ absl::StatusOr<PyExecuteResults> ExecuteShardedOnLocalDevicesInternal(
     std::optional<std::vector<PjRtFuture<>>>& returned_futures,
     bool attach_status_to_results) {
   std::vector<tsl::RCReference<ifrt::Array>> output_arrays;
-  std::unique_ptr<ifrt::Future<absl::Status>> returned_future;
+  std::unique_ptr<ifrt::Future<>> returned_future;
   int num_computations = ifrt_loaded_executable->addressable_devices().size();
   PjRtFuture<> result_status;
   {
