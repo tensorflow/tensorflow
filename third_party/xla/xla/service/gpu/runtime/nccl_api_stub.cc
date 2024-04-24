@@ -26,7 +26,7 @@ limitations under the License.
 #include "xla/service/gpu/runtime/nccl_api.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/stream.h"
-#include "tsl/concurrency/ref_count.h"
+#include "xla/tsl/concurrency/ref_count.h"
 
 namespace xla::gpu {
 

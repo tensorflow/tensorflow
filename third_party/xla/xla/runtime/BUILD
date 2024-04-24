@@ -50,9 +50,9 @@ cc_library(
     hdrs = ["async_runtime.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
+        "//xla/tsl/concurrency:async_value",
+        "//xla/tsl/concurrency:ref_count",
         "@com_google_absl//absl/base:dynamic_annotations",
-        "@local_tsl//tsl/concurrency:async_value",
-        "@local_tsl//tsl/concurrency:ref_count",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:platform_port",
     ],
@@ -63,7 +63,7 @@ xla_cc_test(
     srcs = ["async_runtime_test.cc"],
     deps = [
         ":async_runtime",
-        "@local_tsl//tsl/concurrency:async_value",
+        "//xla/tsl/concurrency:async_value",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_main",
     ],
@@ -140,13 +140,13 @@ cc_library(
         ":type_id",
         "//xla:shape_util",
         "//xla/runtime/ffi:ffi_abi",
+        "//xla/tsl/concurrency:async_value",
         "@com_google_absl//absl/base:dynamic_annotations",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
         "@eigen_archive//:eigen3",
         "@llvm-project//llvm:Support",
-        "@local_tsl//tsl/concurrency:async_value",
     ],
 )
 
@@ -271,12 +271,12 @@ cc_library(
         ":errors",
         "//xla/mlir/runtime/transforms:jit_compiler",
         "//xla/mlir/runtime/utils:constraints",
+        "//xla/tsl/concurrency:async_value",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@llvm-project//llvm:Support",
-        "@local_tsl//tsl/concurrency:async_value",
     ],
 )
 

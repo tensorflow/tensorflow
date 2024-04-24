@@ -26,7 +26,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/runtime/cpu_event.h"
-#include "tsl/concurrency/async_value_ref.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
 
 namespace xla {
 namespace {

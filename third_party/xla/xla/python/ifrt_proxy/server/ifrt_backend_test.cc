@@ -67,8 +67,8 @@
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/test.h"
+#include "xla/tsl/concurrency/ref_count.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/concurrency/ref_count.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep

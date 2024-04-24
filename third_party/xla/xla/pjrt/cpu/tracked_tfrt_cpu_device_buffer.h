@@ -28,8 +28,8 @@ limitations under the License.
 #include "xla/cpu_function_runtime.h"
 #include "xla/runtime/cpu_event.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/util.h"
-#include "tsl/concurrency/async_value_ref.h"
 #include "tsl/platform/mem.h"
 
 namespace xla {

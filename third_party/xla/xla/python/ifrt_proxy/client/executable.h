@@ -40,8 +40,8 @@
 #include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/host_callback.h"
 #include "xla/python/ifrt_proxy/client/rpc_helper.h"
+#include "xla/tsl/concurrency/ref_count.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/concurrency/ref_count.h"
 
 namespace xla {
 namespace ifrt {

@@ -25,7 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/ifrt_types.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/future.h"
-#include "tsl/concurrency/ref_count.h"
+#include "xla/tsl/concurrency/ref_count.h"
 
 namespace tensorflow {
 namespace ifrt_serving {

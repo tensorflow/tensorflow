@@ -86,8 +86,8 @@ limitations under the License.
 #if GOOGLE_CUDA
 #include "xla/stream_executor/cuda/cuda_driver.h"
 #endif
+#include "xla/tsl/concurrency/ref_count.h"
 #include "xla/util.h"
-#include "tsl/concurrency/ref_count.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"

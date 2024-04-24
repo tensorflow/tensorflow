@@ -25,9 +25,9 @@ limitations under the License.
 #include <utility>
 
 #include "absl/base/dynamic_annotations.h"
-#include "tsl/concurrency/async_value.h"
-#include "tsl/concurrency/async_value_ref.h"
-#include "tsl/concurrency/chain.h"
+#include "xla/tsl/concurrency/async_value.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
+#include "xla/tsl/concurrency/chain.h"
 #include "tsl/platform/mem.h"
 
 // -------------------------------------------------------------------------- //

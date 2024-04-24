@@ -192,6 +192,7 @@ cc_library(
         "//xla/runtime:memref_view",
         "//xla/runtime:tracing",
         "//xla/runtime:type_id",
+        "//xla/tsl/concurrency:async_value",
         "@com_google_absl//absl/types:span",
         "@eigen_archive//:eigen3",
         "@llvm-project//llvm:Support",
@@ -202,7 +203,6 @@ cc_library(
         "@llvm-project//mlir:LLVMCommonConversion",
         "@llvm-project//mlir:LLVMDialect",
         "@llvm-project//mlir:Support",
-        "@local_tsl//tsl/concurrency:async_value",
     ],
 )
 
