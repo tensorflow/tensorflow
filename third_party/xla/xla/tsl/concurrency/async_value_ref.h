@@ -294,21 +294,6 @@ RCReference<IndirectAsyncValue> MakeIndirectAsyncValue();
 // the lifetime of the underlying value if needed.
 template <typename T>
 class AsyncValuePtr {
-  // Wait for async value availability: AndThen([] {})
-  template <typename Waiter>
-  using SimpleWaiter = std::enable_if_t<std::is_invocable_v<Waiter>>;
-
-  // Wait for async value status and value: AndThen([](absl::StatusOr<T*>) {})
-  template <typename Waiter>
-  using StatusOrWaiter =
-      std::enable_if_t<std::is_invocable_v<Waiter, absl::StatusOr<T*>>>;
-
-  // Wait for async value status: AndThen([](absl::Status) {})
-  template <typename Waiter>
-  using StatusWaiter =
-      std::enable_if_t<(std::is_invocable_v<Waiter, absl::Status> &&
-                        !std::is_invocable_v<Waiter, absl::StatusOr<T*>>)>;
-
   // Detect result types that are `absl::StatusOr<R>` container.
   template <typename R>
   struct IsStatusOr : std::false_type {};
@@ -322,6 +307,27 @@ class AsyncValuePtr {
   static constexpr bool is_status_or_v = IsStatusOr<R>::value;
   template <class R>
   static constexpr bool is_status_like_v = is_status_v<R> || is_status_or_v<R>;
+
+  // Wait for async value availability: AndThen([] {})
+  template <typename Waiter>
+  using SimpleWaiter = std::enable_if_t<std::is_invocable_v<Waiter>>;
+
+  // Wait for async value status and value: AndThen([](absl::StatusOr<T*>) {})
+  template <typename Waiter>
+  using StatusOrWaiter =
+      std::enable_if_t<std::is_invocable_v<Waiter, absl::StatusOr<T*>>>;
+
+  // Wait for async value status: AndThen([](absl::Status) {})
+  //
+  // IMPORTANT: We disable this type of AndThen callback if the payload type is
+  // absl::Status because it is ambiguous and confusing: error can be an async
+  // value error or a concrete payload of a completed async value. Users should
+  // use other types of callbacks to disambiguate the provenance of status.
+  template <typename Waiter>
+  using StatusWaiter =
+      std::enable_if_t<(!is_status_v<T> &&
+                        std::is_invocable_v<Waiter, absl::Status> &&
+                        !std::is_invocable_v<Waiter, absl::StatusOr<T*>>)>;
 
   // Because AsyncValue itself is a discriminated union of absl::Status and
   // typed payload (error or value) the use of AsyncValueRef<status-like> is
