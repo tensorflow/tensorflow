@@ -1389,7 +1389,8 @@ PjRtStreamExecutorBuffer::Release(bool wait_for_operations_to_complete) {
         // occur when a buffer was copied to a device and then never used there.
         // In that case we get a new stream and use it to hold onto a reference
         // to the buffer until the events are complete.
-        if (!stream_and_event.reference_held &&
+        if (!stream_and_event.event->IsPredeterminedError() &&
+            !stream_and_event.reference_held &&
             !stream_and_event.event->DefinedOn(
                 local_device_state->compute_stream()) &&
             !stream_and_event.event->IsComplete()) {
