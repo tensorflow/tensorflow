@@ -116,7 +116,7 @@ MlirReductionFusion::MlirReductionFusion(const HloFusionAnalysis& analysis)
 
 bool MlirReductionFusion::IsSupported(const HloFusionAnalysis& analysis) {
   auto info = ReductionInfo::Create(analysis);
-  return info.GetGroups().grouped_roots.size() == 1 && info.IsRaceFree();
+  return info.GetGroups().grouped_roots.size() == 1;
 }
 
 std::optional<mlir_converter::EpilogueSpecification>
@@ -207,42 +207,74 @@ absl::Status MlirReductionFusion::EmitReduction(EmitterState& state) const {
                                        thread_and_block_indices, {}, builder);
 
   HloValueMap inits;
+  llvm::SmallVector<Value> outputs =
+      mlir::ValueRange(state.entry_function.getArguments().drop_front(
+          state.fusion.fused_parameters().size()));
+  HloValueMap root_output_indices;
+  llvm::SmallVector<Value> epilogue_input_indices;
+  const auto& epilogue = *state.computations.epilogue();
+  epilogue_input_indices = EmitThreadAndBlockIds(builder);
+  int num_symbols = epilogue.root_indexing.front().getNumSymbols();
+  for (int i = 0; i < num_symbols; ++i) {
+    epilogue_input_indices.push_back(zero);
+  }
+  for (auto [index, root] : llvm::enumerate(epilogue.roots)) {
+    root_output_indices[root] = mlir_converter::ApplyAffineMap(
+        epilogue.root_indexing[index], epilogue_input_indices, {}, builder);
+  }
+
   for (auto [index, hero] : llvm::enumerate(reduction_heroes_)) {
-    int num_inputs = hero->operand_count() / 2;
+    int arity = hero->operand_count() / 2;
     const auto& computation =
         state.computations.FindPartitionedComputation(hero->parent());
     inits[hero] =
-        ProvideParameterRange(computation, hero, num_inputs, num_inputs, {},
+        ProvideParameterRange(computation, hero, arity, arity, {},
                               state.call_target, state.entry_function, builder);
+    if (!reduction_info().IsRaceFree()) {
+      CHECK_EQ(arity, 1) << "Only unary reductions are supported with atomics.";
+      auto& output = outputs[state.OutputIndex(hero, 0)];
+      output = builder.create<PredicatedInsertOp>(thread_has_output,
+                                                  inits[hero].front(), output,
+                                                  root_output_indices[hero]);
+    }
   }
 
-  auto evaluate_epilogue =
-      [&](const HloValueMap& results,
-          llvm::SmallVector<Value> outputs) -> llvm::SmallVector<Value> {
-    llvm::SmallVector<Value> indices = EmitThreadAndBlockIds(builder);
-    const auto& epilogue = *state.computations.epilogue();
-    int num_symbols = epilogue.root_indexing.front().getNumSymbols();
-    for (int i = 0; i < num_symbols; ++i) {
-      indices.push_back(zero);
-    }
+  auto evaluate_epilogue = [&](const HloValueMap& results,
+                               llvm::SmallVector<Value> outputs) {
     auto values = EmitEpilogue(state.computations, state.entry_function,
-                               results, indices, builder);
-    for (auto [index, root] : llvm::enumerate(epilogue.roots)) {
+                               results, epilogue_input_indices, builder);
+    const auto& epilogue = *state.computations.epilogue();
+    for (auto root : epilogue.roots) {
       for (auto [result_index, result] : llvm::enumerate(values.at(root))) {
         auto& output = outputs[state.OutputIndex(root, result_index)];
-        auto output_indices = mlir_converter::ApplyAffineMap(
-            epilogue.root_indexing[index], indices, {}, builder);
-        output = builder.create<PredicatedInsertOp>(thread_has_output, result,
-                                                    output, output_indices);
+        if (reduction_info().IsRaceFree()) {
+          output = builder.create<PredicatedInsertOp>(
+              thread_has_output, result, output, root_output_indices[root]);
+        } else {
+          auto updated = builder.create<mlir::scf::IfOp>(
+              thread_has_output,
+              [&, result = result](mlir::OpBuilder then_builder,
+                                   mlir::Location loc) {
+                auto reducer = state.GetReducer(root);
+                auto rmw = then_builder.create<AtomicRMWOp>(
+                    loc, output, root_output_indices[root]);
+                auto rmw_body = rmw.getBodyBuilder();
+                auto reduced = rmw_body.create<PureCallOp>(
+                    loc, reducer, ValueRange{rmw.getCurrentValue(), result});
+                rmw_body.create<xla::gpu::YieldOp>(loc, reduced.getResult(0));
+                then_builder.create<mlir::scf::YieldOp>(loc, rmw.getResult());
+              },
+              [&](mlir::OpBuilder else_builder, mlir::Location loc) {
+                else_builder.create<mlir::scf::YieldOp>(loc, output);
+              });
+          output = updated.getResult(0);
+        }
       }
     }
     return outputs;
   };
 
   auto accumulated = state.EmitPerThreadReducedElements(inits);
-  llvm::SmallVector<Value> outputs =
-      mlir::ValueRange(state.entry_function.getArguments().drop_front(
-          state.fusion.fused_parameters().size()));
   for (auto root : side_output_roots_) {
     outputs[state.OutputIndex(root, 0)] = accumulated[root].front();
   }
@@ -262,7 +294,7 @@ absl::Status MlirReductionFusion::EmitReduction(EmitterState& state) const {
 
   if (!use_shared) {
     builder.create<mlir::func::ReturnOp>(
-        evaluate_epilogue(accumulated, outputs));
+        evaluate_epilogue(accumulated, std::move(outputs)));
     return absl::OkStatus();
   }
 
