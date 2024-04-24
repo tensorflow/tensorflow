@@ -50,7 +50,6 @@ HloModuleImporter::HloModuleImporter(mlir::ModuleOp module,
   module.getContext()->loadDialect<mlir::func::FuncDialect>();
   module.getContext()->loadDialect<mlir::mhlo::MhloDialect>();
   module.getContext()->loadDialect<mlir::quant::QuantizationDialect>();
-  module.getContext()->loadDialect<mlir::quant::QuantizationDialect>();
 }
 
 namespace {
