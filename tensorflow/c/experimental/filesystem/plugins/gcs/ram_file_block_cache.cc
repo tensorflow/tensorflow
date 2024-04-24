@@ -268,7 +268,7 @@ void RamFileBlockCache::Prune() {
       }
       // We need to make a copy of the filename here, since it could otherwise
       // be used within RemoveFile_Locked after `it` is deleted.
-      RemoveFile_Locked(std::string(it->first.first));
+      RemoveFile_Locked(it->first.first);
     }
   }
 }
