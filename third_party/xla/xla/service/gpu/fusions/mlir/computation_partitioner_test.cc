@@ -131,7 +131,7 @@ TEST_F(ComputationPartitionerTest, TupleRoot) {
   ASSERT_NE(fusion, nullptr);
   PartitionedComputation computation(fusion, &mlir_context_);
 
-  ASSERT_THAT(computation.subgraphs(), SizeIs(1)) << computation.ToString();
+  ASSERT_THAT(computation.subgraphs(), SizeIs(5)) << computation.ToString();
 }
 
 TEST_F(ComputationPartitionerTest, Epilogue) {
@@ -159,15 +159,12 @@ TEST_F(ComputationPartitionerTest, Epilogue) {
   auto* fused_computation = module->GetComputationWithName("fused_computation");
   EpilogueSpecification epilogue{
       /*heroes=*/{fused_computation->GetInstructionWithName("reduce")},
+      /*roots=*/
+      {fused_computation->GetInstructionWithName("log"),
+       fused_computation->GetInstructionWithName("sign")},
       /*index_ranges=*/{1, 42},
       {mlir::AffineMap::get(1, 0, mlir::getAffineDimExpr(0, &mlir_context_))}};
   PartitionedComputations fusion(fused_computation, &mlir_context_, epilogue);
-
-  // The epilogue should be one subgraph.
-  EXPECT_EQ(
-      &fusion.FindSubgraph(
-          fused_computation->GetInstructionWithName("bitcast")),
-      &fusion.FindSubgraph(fused_computation->GetInstructionWithName("tuple")));
 
   mlir::ImplicitLocOpBuilder builder(mlir::UnknownLoc::get(&mlir_context_),
                                      &mlir_context_);

@@ -81,6 +81,7 @@ absl::flat_hash_map<const HloInstruction*, int> PartitionGraphByIndexing(
     for (auto* user : instr->users()) {
       auto user_indexing = indexing_for_instr(user);
       if (user->opcode() == HloOpcode::kConcatenate ||
+          user->opcode() == HloOpcode::kTuple ||
           (instr_indexing && user_indexing != *instr_indexing)) {
         instr_indexing = std::nullopt;
         break;
@@ -103,6 +104,7 @@ EpilogueSpecification EpilogueSpecification::FromIdentityIndexing(
   EpilogueSpecification result;
   absl::c_copy(root->shape().dimensions(),
                std::back_inserter(result.index_ranges));
+  result.roots.push_back(root);
   result.root_indexing.push_back(mlir::AffineMap::getMultiDimIdentityMap(
       root->shape().rank(), mlir_context));
   result.heroes.push_back(hero);
@@ -112,12 +114,26 @@ EpilogueSpecification EpilogueSpecification::FromIdentityIndexing(
 EpilogueSpecification EpilogueSpecification::FromOutputIndexing(
     const HloFusionAnalysis& analysis,
     const std::vector<const HloInstruction*>& heroes,
+    const std::vector<const HloInstruction*>& roots,
     const KernelFusionInterface& fusion, mlir::MLIRContext* mlir_context) {
   EpilogueSpecification result;
 
-  for (auto [index, hero] : llvm::enumerate(analysis.fusion_heroes())) {
-    auto indexing = fusion.ComputeThreadIdToOutputIndexing(index, mlir_context);
-    if (index == 0) {
+  absl::flat_hash_map<const HloInstruction*, const HloInstruction*>
+      root_to_hero;
+  for (auto [root, hero] :
+       llvm::zip(analysis.fusion_roots(), analysis.fusion_heroes())) {
+    root_to_hero[root] = hero;
+  }
+  absl::flat_hash_map<const HloInstruction*, int> root_to_index;
+  for (auto [index, root] : llvm::enumerate(analysis.fusion_roots())) {
+    root_to_index[root] = root_to_index.size();
+  }
+
+  result.root_indexing.reserve(roots.size());
+  for (auto* root : roots) {
+    auto indexing = fusion.ComputeThreadIdToOutputIndexing(root_to_index[root],
+                                                           mlir_context);
+    if (result.index_ranges.empty()) {
       result.index_ranges.reserve(indexing->GetDimensionCount() +
                                   indexing->GetSymbolCount());
       for (const auto& dim : indexing->GetDimensionBounds()) {
@@ -128,6 +144,7 @@ EpilogueSpecification EpilogueSpecification::FromOutputIndexing(
       }
     }
 
+    auto* hero = root_to_hero[root];
     auto epilogue_indexing =
         ComputeEpilogueInputToOutputIndexing(hero, mlir_context);
     auto root_indexing = ComposeIndexingMaps(*indexing, epilogue_indexing);
@@ -135,6 +152,7 @@ EpilogueSpecification EpilogueSpecification::FromOutputIndexing(
     result.root_indexing.push_back(root_indexing.GetAffineMap());
   }
   result.heroes = heroes;
+  result.roots = roots;
   return result;
 }
 
@@ -209,8 +227,12 @@ PartitionedComputation::PartitionedComputation(
       // which has the benefit of leading to slightly easier to read IR.
       return user->opcode() == HloOpcode::kConcatenate;
     };
+    auto is_tuple = [&](const HloInstruction* user) {
+      return user->shape().IsTuple();
+    };
     can_merge &= absl::c_none_of(instruction->users(), is_bad_gather);
     can_merge &= absl::c_none_of(instruction->users(), is_concat);
+    can_merge &= absl::c_none_of(instruction->users(), is_tuple);
     if (can_merge) {
       auto& set = disjoint_sets[instruction];
       for (auto* user : instruction->users()) {
@@ -292,24 +314,16 @@ PartitionedComputation::PartitionedComputation(
 std::optional<PartitionedComputation::Subgraph>
 PartitionedComputation::Subgraph::ForEpilogue(
     const std::optional<EpilogueSpecification>& epilogue) {
-  if (!epilogue) {
-    return std::nullopt;
-  }
-  const auto* computation = epilogue->heroes.front()->parent();
-  if ((epilogue->heroes.size() == 1 &&
-       epilogue->heroes[0] == computation->root_instruction())) {
+  if (!epilogue ||
+      (epilogue->heroes.size() == 1 && epilogue->heroes == epilogue->roots)) {
     return std::nullopt;
   }
 
+  const auto* computation = epilogue->heroes.front()->parent();
   PartitionedComputation::Subgraph subgraph;
   subgraph.name = llvm_ir::SanitizeFunctionName(
       absl::StrCat(computation->name(), "__epilogue__"));
-  if (computation->root_instruction()->opcode() == HloOpcode::kTuple) {
-    absl::c_copy(computation->root_instruction()->operands(),
-                 std::back_inserter(subgraph.roots));
-  } else {
-    subgraph.roots = {computation->root_instruction()};
-  }
+  subgraph.roots = epilogue->roots;
 
   for (auto* hero : epilogue->heroes) {
     if (!subgraph.injected_values.contains(hero)) {

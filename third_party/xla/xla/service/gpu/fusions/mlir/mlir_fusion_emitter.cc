@@ -453,6 +453,14 @@ absl::Status MlirFusionEmitterBase::EmitMlir(
             .erase();
       }
     }
+
+    // The epilogue function replaces the root tuple.
+    auto* root = fusion.fused_instructions_computation()->root_instruction();
+    if (root->opcode() == HloOpcode::kTuple) {
+      subgraph_to_mlir_fn.extract(&computations.FindSubgraph(root))
+          .mapped()
+          .erase();
+    }
   }
 
   auto call_targets =

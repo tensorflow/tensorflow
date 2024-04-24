@@ -45,9 +45,11 @@ struct EpilogueSpecification {
   static EpilogueSpecification FromOutputIndexing(
       const HloFusionAnalysis& analysis,
       const std::vector<const HloInstruction*>& heroes,
+      const std::vector<const HloInstruction*>& roots,
       const KernelFusionInterface& fusion, mlir::MLIRContext* mlir_context);
 
   std::vector<const HloInstruction*> heroes;
+  std::vector<const HloInstruction*> roots;
 
   // The ranges of the indices that the subgraph is called with.
   std::vector<int64_t> index_ranges;

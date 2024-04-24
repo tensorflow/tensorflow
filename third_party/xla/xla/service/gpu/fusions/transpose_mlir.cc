@@ -324,7 +324,8 @@ std::optional<mlir_converter::EpilogueSpecification>
 MlirTransposeFusion::GetEpilogue(const HloFusionInstruction& fusion,
                                  MLIRContext* mlir_context) const {
   return mlir_converter::EpilogueSpecification::FromOutputIndexing(
-      analysis_, shmem_transposes_, *this, mlir_context);
+      analysis_, shmem_transposes_, analysis_.fusion_roots(), *this,
+      mlir_context);
 }
 
 absl::Status MlirTransposeFusion::EmitEntryFunction(

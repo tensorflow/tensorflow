@@ -1226,6 +1226,7 @@ TEST_F(ElementalHloToMlirTest, Epilogue) {
       [this](HloComputation* entry) {
         EpilogueSpecification epilogue;
         epilogue.heroes.push_back(entry->GetInstructionWithName("transpose"));
+        epilogue.roots.push_back(entry->GetInstructionWithName("add"));
         epilogue.index_ranges = {2, 16, 17};
         epilogue.root_indexing.push_back(
             mlir::AffineMap::getMultiDimIdentityMap(3, &context_)
@@ -1488,11 +1489,11 @@ TEST_F(ElementalHloToMlirTest, MixedIndexingTuple) {
     // CHECK-SAME:     %[[P0:.*]]: tensor<10x10xf32>,
     // CHECK-SAME:     %[[P1:.*]]: tensor<100xf32>,
     // CHECK-SAME:     %[[X:.*]]: index {{{.*}}}, %[[Y:.*]]: index {{{.*}}}
-    // CHECK:        %[[A:.*]] = tensor.extract %[[P0]][%[[X]], %[[Y]]]
+    // CHECK:        %[[A:.*]] = xla_gpu.pure_call @main_p0(%[[P0]], %[[P1]], %[[X]], %[[Y]])
     // CHECK:        %[[IDX:.*]] = affine.apply
     // CHECK-SAME:       affine_map<()[s0, s1] -> (s0 * 10 + s1)>()
     // CHECK-SAME:       [%[[X]], %[[Y]]]
-    // CHECK:        %[[B:.*]] = tensor.extract %[[P1]][%[[IDX]]]
+    // CHECK:        %[[B:.*]] = xla_gpu.pure_call @main_p1(%[[P0]], %[[P1]], %[[IDX]])
     // CHECK:        return %[[A]], %[[B]]
   )"));
 }

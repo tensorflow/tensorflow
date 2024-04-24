@@ -340,6 +340,38 @@ TEST_F(ReductionTest, NonTrivialEpilogue) {
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
 }
 
+TEST_F(ReductionTest, SideOutput) {
+  constexpr auto kHloString = R"(
+    HloModule Test, is_scheduled=true
+
+    Add {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT add = f32[] add(lhs, rhs)
+    }
+    fused_computation {
+      param_0 = f32[8,2048] parameter(0)
+      param_1 = f32[] parameter(1)
+      exp = f32[8,2048] exponential(param_0)
+      reduce = f32[8] reduce(param_0, param_1), dimensions={1}, to_apply=Add
+      ROOT t = (f32[8], f32[8,2048]) tuple(reduce, exp)
+    }
+    ENTRY main {
+      a = f32[8,2048] parameter(0)
+      c = f32[] constant(0)
+      ROOT fusion = (f32[8], f32[8,2048]) fusion(a, c), kind=kInput,
+          calls=fused_computation
+    })";
+  TF_ASSERT_OK(EmitAndCheckIR(kHloString, R"(
+    // CHECK: @fused_computation
+    // CHECK: scf.for
+    // CHECK: scf.for
+    // CHECK: %[[SIDE_OUTPUT:.*]] = xla_gpu.pure_call @fused_computation_exp
+    // CHECK-NEXT: tensor.insert %[[SIDE_OUTPUT]]
+  )"));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
