@@ -283,6 +283,11 @@ std::unique_ptr<StrategyGroup> CreateElementwiseOperatorStrategies(
     int64_t max_depth, StrategyGroups& strategy_groups,
     AssociativeDotPairs& associative_dot_pairs);
 
+std::unique_ptr<StrategyGroup> HandlePartialReduce(
+    const HloInstruction* ins, size_t instruction_id, bool have_memory_cost,
+    StrategyGroups& strategy_groups, const ClusterEnvironment& cluster_env,
+    StrategyMap& strategy_map, const CallGraph& call_graph);
+
 // Factory functions for StrategyGroup.
 std::unique_ptr<StrategyGroup> CreateLeafStrategyGroupWithoutInNodes(
     size_t instruction_id, StrategyGroups& strategy_groups);

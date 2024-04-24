@@ -362,6 +362,71 @@ void FollowArrayOrTokenStrategyGroup(
   }
 }
 
+std::unique_ptr<StrategyGroup> HandlePartialReduce(
+    const HloInstruction* ins, const size_t instruction_id,
+    const bool have_memory_cost, StrategyGroups& strategy_groups,
+    const ClusterEnvironment& cluster_env, StrategyMap& strategy_map,
+    const CallGraph& call_graph) {
+  absl::StatusOr<int64_t> reduction_dim = GetPartialReduceReductionDim(ins);
+  CHECK_OK(reduction_dim);
+  const Shape& shape = ins->shape();
+  const HloInstruction* operand = ins->operand(0);
+  const StrategyGroup* src_strategy_group = strategy_map.at(operand).get();
+
+  std::unique_ptr<StrategyGroup> strategy_group =
+      CreateTupleStrategyGroup(instruction_id);
+  int64_t output_size = shape.tuple_shapes_size();
+  for (size_t i = 0; i < output_size; ++i) {
+    std::unique_ptr<StrategyGroup> child_strategy_group =
+        CreateLeafStrategyGroupWithoutInNodes(instruction_id, strategy_groups);
+    child_strategy_group->in_nodes.push_back(src_strategy_group);
+    child_strategy_group->following = src_strategy_group;
+    for (int64_t sid = 0; sid < src_strategy_group->strategies.size(); ++sid) {
+      const HloSharding& input_spec =
+          src_strategy_group->strategies[sid].output_sharding;
+      // There is no way for us to handle manual sharding.
+      if (input_spec.IsManual() || input_spec.IsManualSubgroup()) {
+        continue;
+      }
+
+      HloSharding output_spec = input_spec;
+      if (!(input_spec.IsReplicated() || input_spec.IsTileMaximal())) {
+        // All 3. sub-cases (reduction dim would be replicated in the
+        // output)
+        output_spec = hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(
+            input_spec, {*reduction_dim});
+      }
+
+      // Get a list of input shardings, each corresponds to an operand.
+      std::vector<std::optional<HloSharding>> input_shardings;
+      for (int64_t k = 0; k < output_size * 2; ++k) {
+        if (k < output_size) {
+          input_shardings.push_back(input_spec);
+        } else {
+          input_shardings.push_back(HloSharding::Replicate());
+        }
+      }
+
+      std::string name = ToStringSimple(output_spec);
+      double compute_cost = 0, communication_cost = 0;
+      double memory_cost =
+          GetBytes(ins->shape().tuple_shapes(i)) / output_spec.NumTiles();
+      std::pair<ReshardingCosts, ReshardingCosts> resharding_costs =
+          GenerateReshardingCostsAndMissingShardingsForAllOperands(
+              ins, output_spec, strategy_map, cluster_env, call_graph,
+              input_shardings);
+
+      child_strategy_group->strategies.push_back(ShardingStrategy(
+          {std::move(name), std::move(output_spec), compute_cost,
+           communication_cost, memory_cost, std::move(resharding_costs.first),
+           std::move(resharding_costs.second), std::move(input_shardings)}));
+    }
+
+    strategy_group->childs.push_back(std::move(child_strategy_group));
+  }
+  return strategy_group;
+}
+
 std::unique_ptr<StrategyGroup> MaybeFollowInsStrategyGroup(
     const StrategyGroup* src_strategy_group, const Shape& shape,
     const size_t instruction_id, const bool have_memory_cost,

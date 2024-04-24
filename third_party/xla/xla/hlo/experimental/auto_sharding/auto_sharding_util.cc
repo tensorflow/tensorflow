@@ -41,6 +41,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "json/json.h"
 #include "xla/array.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_strategy.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -2339,6 +2340,36 @@ HloSharding ReplaceGivenShardingsWithUnknownForTuple(
   }
 
   return HloSharding::Tuple(shape, new_tuple_shardings);
+}
+
+absl::StatusOr<int64_t> GetPartialReduceReductionDim(
+    const HloInstruction* ins) {
+  constexpr char kReductionDimKey[] = "reduction_dim";
+  if (ins->raw_backend_config_string().empty()) {
+    return absl::InternalError(
+        "No backend config for a PartialReduce custom call.");
+  }
+  Json::Value parsed_json;
+  Json::Reader json_reader;
+  json_reader.parse(ins->raw_backend_config_string(), parsed_json,
+                    /* collectComments */ false);
+  if (!parsed_json.isObject()) {
+    return absl::InternalError(
+        "Error when parsing json backend config for a PartialReduce custom "
+        "call.");
+  }
+  if (!parsed_json.isMember(kReductionDimKey)) {
+    return absl::InternalError(
+        "No backend config found for a PartialReduce custom call.");
+  }
+
+  if (!parsed_json[kReductionDimKey].isInt64()) {
+    return absl::InternalError(
+        "Error when extracting the reduction key from the json backend config "
+        "of a PartialReduce custom call.");
+  }
+
+  return parsed_json[kReductionDimKey].asInt64();
 }
 
 }  // namespace spmd
