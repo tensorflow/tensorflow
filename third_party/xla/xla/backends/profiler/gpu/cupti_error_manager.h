@@ -70,8 +70,6 @@ class CuptiErrorManager : public xla::profiler::CuptiInterface {
       CUpti_BuffersCallbackRequestFunc func_buffer_requested,
       CUpti_BuffersCallbackCompleteFunc func_buffer_completed) override;
 
-  CUptiResult ActivityUsePerThreadBuffer() override;
-
   // Returns device ID for a given context.
   CUptiResult GetDeviceId(CUcontext context, uint32_t* device_id) override;
 

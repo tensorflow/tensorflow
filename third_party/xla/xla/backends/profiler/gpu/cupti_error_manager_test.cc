@@ -121,10 +121,6 @@ TEST_F(CuptiErrorManagerTest, GpuTraceActivityEnableTest) {
   EXPECT_CALL(*mock_, EnableCallback(1, _, _, _))
       .InSequence(s1)
       .WillOnce(Invoke(cupti_wrapper_.get(), &CuptiWrapper::EnableCallback));
-  EXPECT_CALL(*mock_, ActivityUsePerThreadBuffer())
-      .InSequence(s1)
-      .WillOnce(Invoke(cupti_wrapper_.get(),
-                       &CuptiWrapper::ActivityUsePerThreadBuffer));
   EXPECT_CALL(*mock_, ActivityRegisterCallbacks(_, _))
       .InSequence(s1)
       .WillOnce(Invoke(cupti_wrapper_.get(),
@@ -169,10 +165,6 @@ TEST_F(CuptiErrorManagerTest, GpuTraceAutoEnableTest) {
   EXPECT_CALL(*mock_, EnableDomain(1, _, _))
       .InSequence(s1)
       .WillOnce(Invoke(cupti_wrapper_.get(), &CuptiWrapper::EnableDomain));
-  EXPECT_CALL(*mock_, ActivityUsePerThreadBuffer())
-      .InSequence(s1)
-      .WillOnce(Invoke(cupti_wrapper_.get(),
-                       &CuptiWrapper::ActivityUsePerThreadBuffer));
   EXPECT_CALL(*mock_, ActivityRegisterCallbacks(_, _))
       .InSequence(s1)
       .WillOnce(Invoke(cupti_wrapper_.get(),
