@@ -162,6 +162,8 @@ void AddSupportedFunctionalOps(MLIRContext* context,
   supported_ops->insert(
       OperationName(mlir::TF::XlaCallModuleOp::getOperationName(), context));
   supported_ops->insert(
+      OperationName(mlir::TF::XlaHostComputeOp::getOperationName(), context));
+  supported_ops->insert(
       OperationName(mlir::TF::XlaReduceOp::getOperationName(), context));
   supported_ops->insert(
       OperationName(mlir::TF::XlaReduceWindowOp::getOperationName(), context));
