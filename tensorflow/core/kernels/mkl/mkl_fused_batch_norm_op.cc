@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 #ifdef INTEL_MKL
 
-#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "dnnl.hpp"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -24,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/no_op.h"
 #include "tensorflow/core/util/mkl_util.h"
 #include "tensorflow/core/util/tensor_format.h"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #if defined(DNNL_AARCH64_USE_ACL) && defined(ENABLE_ONEDNN_OPENMP)
 #include "tensorflow/core/platform/mutex.h"
 #endif
@@ -827,7 +827,7 @@ class MklFusedBatchNormBwdPrimitiveFactory : public MklPrimitiveFactory<T> {
 //  with MKL. This is different from default where the classes are
 //  derived. Moves enabling to compile-time rather than runtime.
 template <typename Device, typename T, typename U, bool reserved_space,
-          bool is_batch_norm_ex = false, bool native_format = false>
+          bool is_batch_norm_ex = false>
 class MklFusedBatchNormOp : public OpKernel {
  public:
   explicit MklFusedBatchNormOp(OpKernelConstruction* context)
@@ -882,7 +882,7 @@ class MklFusedBatchNormOp : public OpKernel {
 
       TensorShape tf_shape_src;
       MklDnnShape dnn_shape_src;
-      GetMklShape(context, kSrcIndex, &dnn_shape_src, native_format);
+      GetMklShape(context, kSrcIndex, &dnn_shape_src, true);
 
       if (dnn_shape_src.IsMklTensor()) {
         tf_shape_src = dnn_shape_src.GetTfShape();
@@ -1100,13 +1100,7 @@ class MklFusedBatchNormOp : public OpKernel {
       // Check if reorder is needed for src.
       const T* src_data = nullptr;
       std::shared_ptr<BatchNormFwdPd> bn_fwd_pd = bn_fwd->GetBatchNormFwdPd();
-      if (!native_format && src_md != bn_fwd_pd->src_desc()) {
-        src.SetUsrMem(src_md, &src_tensor);
-        src.CheckReorderToOpMem(bn_fwd_pd->src_desc(), cpu_engine_, context);
-        src_data = static_cast<T*>(src.GetOpMem().get_data_handle());
-      } else {
-        src_data = static_cast<T*>(const_cast<T*>(src_tensor.flat<T>().data()));
-      }
+      src_data = static_cast<T*>(const_cast<T*>(src_tensor.flat<T>().data()));
 
       // Allocate output (dst) tensor
       MklDnnShape dnn_shape_dst;
@@ -1119,11 +1113,9 @@ class MklFusedBatchNormOp : public OpKernel {
                                                : src_tensor.shape().dims();
       dnn_shape_dst.SetTfLayout(ndims, src_dims, mkl_tensor_fmt);
       tf_shape_dst.AddDim(dst_pd.get_size() / sizeof(T));
-      if (native_format) {
-        tf_shape_dst = dnn_shape_dst.GetTfShape();
-      }
+      tf_shape_dst = dnn_shape_dst.GetTfShape();
       AllocateOutputSetMklShape(context, kDstIndex, &dst_tensor, tf_shape_dst,
-                                dnn_shape_dst, native_format);
+                                dnn_shape_dst, true);
 
 #ifndef ENABLE_ONEDNN_V3
       U* scale_shift_op_data = scale_shift_data;
@@ -1222,7 +1214,7 @@ class MklFusedBatchNormOp : public OpKernel {
     MklDnnShape dnn_shape_dst;
     dnn_shape_dst.SetMklTensor(false);
     AllocateOutputSetMklShape(context, kDstIndex, dst_tensor, tf_shape_src,
-                              dnn_shape_dst, native_format);
+                              dnn_shape_dst, true);
     DCHECK(*dst_tensor);
     memset(const_cast<char*>((*dst_tensor)->tensor_data().data()), 0,
            (*dst_tensor)->tensor_data().size());
@@ -1260,8 +1252,7 @@ class MklFusedBatchNormOp : public OpKernel {
     MklDnnShape mkl_shape_batch_mean;
     mkl_shape_batch_mean.SetMklTensor(false);
     AllocateOutputSetMklShape(context, kBatchMeanIndex, batch_mean_tensor,
-                              tf_shape_scale, mkl_shape_batch_mean,
-                              native_format);
+                              tf_shape_scale, mkl_shape_batch_mean, true);
     DCHECK(*batch_mean_tensor);
 
     // Set NAN mean value in case of empty input tensor
@@ -1274,7 +1265,7 @@ class MklFusedBatchNormOp : public OpKernel {
     mkl_shape_batch_variance.SetMklTensor(false);
     AllocateOutputSetMklShape(context, kBatchVarianceIndex,
                               batch_variance_tensor, tf_shape_scale,
-                              mkl_shape_batch_variance, native_format);
+                              mkl_shape_batch_variance, true);
     DCHECK(*batch_variance_tensor);
 
     // Set NAN variance value in case of empty input tensor
@@ -1285,8 +1276,7 @@ class MklFusedBatchNormOp : public OpKernel {
     MklDnnShape mkl_shape_saved_mean;
     mkl_shape_saved_mean.SetMklTensor(false);
     AllocateOutputSetMklShape(context, kSavedMeanIndex, saved_mean_tensor,
-                              tf_shape_scale, mkl_shape_saved_mean,
-                              native_format);
+                              tf_shape_scale, mkl_shape_saved_mean, true);
     DCHECK(*saved_mean_tensor);
 
     // Set 0 mean value in case of empty input tensor
@@ -1297,7 +1287,7 @@ class MklFusedBatchNormOp : public OpKernel {
     mkl_shape_saved_variance.SetMklTensor(false);
     AllocateOutputSetMklShape(context, kSavedVarianceIndex,
                               saved_variance_tensor, tf_shape_scale,
-                              mkl_shape_saved_variance, native_format);
+                              mkl_shape_saved_variance, true);
     DCHECK(*saved_variance_tensor);
 
     // Set 0 variance value in case of empty input tensor
@@ -1312,14 +1302,13 @@ class MklFusedBatchNormOp : public OpKernel {
       mkl_shape_reserved_space.SetMklTensor(false);
       AllocateOutputSetMklShape(context, kReservedSpaceIndex,
                                 reserved_space_tensor, workspace_tf_shape,
-                                mkl_shape_reserved_space, native_format);
+                                mkl_shape_reserved_space, true);
       DCHECK((*reserved_space_tensor) != nullptr);
     }
   }
 };
 
-template <typename Device, typename T, typename U, bool reserved_space,
-          bool native_format = false>
+template <typename Device, typename T, typename U, bool reserved_space>
 class MklFusedBatchNormGradOp : public OpKernel {
  public:
   explicit MklFusedBatchNormGradOp(OpKernelConstruction* context)
@@ -1355,8 +1344,8 @@ class MklFusedBatchNormGradOp : public OpKernel {
                            : Tensor();
 
       MklDnnShape dnn_shape_src, dnn_shape_diff_dst;
-      GetMklShape(context, kSrcIndex, &dnn_shape_src, native_format);
-      GetMklShape(context, kDiffDstIndex, &dnn_shape_diff_dst, native_format);
+      GetMklShape(context, kSrcIndex, &dnn_shape_src, true);
+      GetMklShape(context, kDiffDstIndex, &dnn_shape_diff_dst, true);
 
       TensorShape tf_shape_src, tf_shape_diff_dst;
       if (dnn_shape_diff_dst.IsMklTensor()) {
@@ -1506,26 +1495,6 @@ class MklFusedBatchNormGradOp : public OpKernel {
       T* src_data =
           static_cast<T*>(const_cast<T*>(src_tensor.flat<T>().data()));
 
-      if (!native_format) {
-        // oneDNN requires src and diff_dst to be in same memory layout, either
-        // blocked or native format. If these inputs are in different formats,
-        // convert the one in native format to blocked format as oneDNN gives
-        // better performance for blocked format.
-        if (dnn_shape_src.IsMklTensor() && !dnn_shape_diff_dst.IsMklTensor()) {
-          reorder_diff_dst.SetUsrMem(diff_dst_md, &diff_dst_tensor);
-          reorder_diff_dst.CheckReorderToOpMem(src_md, cpu_engine_, context);
-          diff_dst_md = src_md;
-          diff_dst_data =
-              static_cast<T*>(reorder_diff_dst.GetOpMem().get_data_handle());
-        } else if (!dnn_shape_src.IsMklTensor() &&
-                   dnn_shape_diff_dst.IsMklTensor()) {
-          reorder_src.SetUsrMem(src_md, &src_tensor);
-          reorder_src.CheckReorderToOpMem(diff_dst_md, cpu_engine_, context);
-          src_md = diff_dst_md;
-          src_data = static_cast<T*>(reorder_src.GetOpMem().get_data_handle());
-        }
-      }
-
 #ifndef ENABLE_ONEDNN_V3
       // scale_shift -- oneDNN packs scales/shifts as scale_shift in order
       // of scale, ..., scale, shift, ...., shift
@@ -1564,18 +1533,6 @@ class MklFusedBatchNormGradOp : public OpKernel {
 
       // Check if diff_dst input needs to be reordered
       std::shared_ptr<BatchNormBwdPd> bn_bwd_pd = bn_bwd->GetBatchNormBwdPd();
-      if (!native_format && diff_dst_md != bn_bwd_pd->diff_dst_desc()) {
-        diff_dst.SetUsrMem(diff_dst_md, diff_dst_data);
-        diff_dst.CheckReorderToOpMem(bn_bwd_pd->diff_dst_desc(), cpu_engine_,
-                                     context);
-        diff_dst_data = static_cast<T*>(diff_dst.GetOpMem().get_data_handle());
-      }
-
-      if (!native_format && (src_md != bn_bwd_pd->src_desc())) {
-        src.SetUsrMem(src_md, src_data);
-        src.CheckReorderToOpMem(bn_bwd_pd->src_desc(), cpu_engine_, context);
-        src_data = static_cast<T*>(src.GetOpMem().get_data_handle());
-      }
 
       // Indices of output tensors
       const size_t kDiffSrcIndex = 0;
@@ -1590,12 +1547,9 @@ class MklFusedBatchNormGradOp : public OpKernel {
       dnn_shape_diff_src.SetTfLayout(src_dims.size(), src_dims, mkl_tensor_fmt);
       dnn_shape_diff_src.SetTfDimOrder(src_dims.size(), tensor_format_);
       tf_shape_diff_src.AddDim(diff_src_pd.get_size() / sizeof(T));
-      if (native_format) {
-        tf_shape_diff_src = dnn_shape_diff_src.GetTfShape();
-      }
+      tf_shape_diff_src = dnn_shape_diff_src.GetTfShape();
       AllocateOutputSetMklShape(context, kDiffSrcIndex, &diff_src_tensor,
-                                tf_shape_diff_src, dnn_shape_diff_src,
-                                native_format);
+                                tf_shape_diff_src, dnn_shape_diff_src, true);
 
       U* mean_data =
           static_cast<U*>(const_cast<U*>(saved_mean_tensor.flat<U>().data()));
@@ -1670,7 +1624,7 @@ class MklFusedBatchNormGradOp : public OpKernel {
     MklDnnShape dnn_shape_diff_src;
     dnn_shape_diff_src.SetMklTensor(false);
     AllocateOutputSetMklShape(context, kDiffSrcIndex, diff_src_tensor,
-                              tf_shape_src, dnn_shape_diff_src, native_format);
+                              tf_shape_src, dnn_shape_diff_src, true);
     auto diff_src_data = (*diff_src_tensor)->flat<T>().data();
     std::fill_n(diff_src_data, (*diff_src_tensor)->shape().num_elements(),
                 static_cast<T>(0));
@@ -1697,8 +1651,7 @@ class MklFusedBatchNormGradOp : public OpKernel {
     MklDnnShape mkl_shape_diff_scale;
     mkl_shape_diff_scale.SetMklTensor(false);
     AllocateOutputSetMklShape(context, kDiffScaleIndex, diff_scale_tensor,
-                              tf_shape_scale_shift, mkl_shape_diff_scale,
-                              native_format);
+                              tf_shape_scale_shift, mkl_shape_diff_scale, true);
     DCHECK(*diff_scale_tensor);
 
     auto diff_scale_data = (*diff_scale_tensor)->flat<U>().data();
@@ -1708,8 +1661,7 @@ class MklFusedBatchNormGradOp : public OpKernel {
     MklDnnShape mkl_shape_diff_shift;
     mkl_shape_diff_shift.SetMklTensor(false);
     AllocateOutputSetMklShape(context, kDiffShiftIndex, diff_shift_tensor,
-                              tf_shape_scale_shift, mkl_shape_diff_shift,
-                              native_format);
+                              tf_shape_scale_shift, mkl_shape_diff_shift, true);
     DCHECK(*diff_shift_tensor);
 
     auto diff_shift_data = (*diff_shift_tensor)->flat<U>().data();
@@ -1722,11 +1674,11 @@ class MklFusedBatchNormGradOp : public OpKernel {
     MklDnnShape mkl_shape_p;
     mkl_shape_p.SetMklTensor(false);
     AllocateOutputSetMklShape(context, kP1Index, &p1_tensor, TensorShape({}),
-                              mkl_shape_p, native_format);
+                              mkl_shape_p, true);
     std::fill_n(p1_tensor->flat<U>().data(), p1_tensor->shape().num_elements(),
                 static_cast<U>(0));
     AllocateOutputSetMklShape(context, kP2Index, &p2_tensor, TensorShape({}),
-                              mkl_shape_p, native_format);
+                              mkl_shape_p, true);
     std::fill_n(p2_tensor->flat<U>().data(), p2_tensor->shape().num_elements(),
                 static_cast<U>(0));
   }
@@ -1734,79 +1686,53 @@ class MklFusedBatchNormGradOp : public OpKernel {
   memory::dims GetMeanVarianceDims() { return memory::dims({1, depth_}); }
 };
 
-#define REGISTER_MKL_FUSED_BATCHNORM_CPU(T)                    \
-  REGISTER_KERNEL_BUILDER(                                     \
-      Name("_MklFusedBatchNorm")                               \
-          .Device(DEVICE_CPU)                                  \
-          .TypeConstraint<T>("T")                              \
-          .Label(mkl_op_registry::kMklLayoutDependentOpLabel), \
-      MklFusedBatchNormOp<CPUDevice, T, T, false, false>);     \
-  REGISTER_KERNEL_BUILDER(                                     \
-      Name("_MklNativeFusedBatchNorm")                         \
-          .Device(DEVICE_CPU)                                  \
-          .TypeConstraint<T>("T")                              \
-          .Label(mkl_op_registry::kMklNameChangeOpLabel),      \
-      MklFusedBatchNormOp<CPUDevice, T, T, false, false, true>);
+#define REGISTER_MKL_FUSED_BATCHNORM_CPU(T)               \
+  REGISTER_KERNEL_BUILDER(                                \
+      Name("_MklNativeFusedBatchNorm")                    \
+          .Device(DEVICE_CPU)                             \
+          .TypeConstraint<T>("T")                         \
+          .Label(mkl_op_registry::kMklNameChangeOpLabel), \
+      MklFusedBatchNormOp<CPUDevice, T, T, false, false>);
 
 TF_CALL_float(REGISTER_MKL_FUSED_BATCHNORM_CPU);
 TF_CALL_bfloat16(REGISTER_MKL_FUSED_BATCHNORM_CPU);
 TF_CALL_half(REGISTER_MKL_FUSED_BATCHNORM_CPU);
 #undef REGISTER_MKL_FUSED_BATCHNORM_CPU
 
-#define REGISTER_MKL_FUSED_BATCHNORM_V2_CPU(T, U)              \
-  REGISTER_KERNEL_BUILDER(                                     \
-      Name("_MklFusedBatchNormV2")                             \
-          .Device(DEVICE_CPU)                                  \
-          .TypeConstraint<T>("T")                              \
-          .TypeConstraint<U>("U")                              \
-          .Label(mkl_op_registry::kMklLayoutDependentOpLabel), \
-      MklFusedBatchNormOp<CPUDevice, T, U, false, false>);     \
-  REGISTER_KERNEL_BUILDER(                                     \
-      Name("_MklNativeFusedBatchNormV2")                       \
-          .Device(DEVICE_CPU)                                  \
-          .TypeConstraint<T>("T")                              \
-          .TypeConstraint<U>("U")                              \
-          .Label(mkl_op_registry::kMklNameChangeOpLabel),      \
-      MklFusedBatchNormOp<CPUDevice, T, U, false, false, true>);
+#define REGISTER_MKL_FUSED_BATCHNORM_V2_CPU(T, U)         \
+  REGISTER_KERNEL_BUILDER(                                \
+      Name("_MklNativeFusedBatchNormV2")                  \
+          .Device(DEVICE_CPU)                             \
+          .TypeConstraint<T>("T")                         \
+          .TypeConstraint<U>("U")                         \
+          .Label(mkl_op_registry::kMklNameChangeOpLabel), \
+      MklFusedBatchNormOp<CPUDevice, T, U, false, false>);
 
 REGISTER_MKL_FUSED_BATCHNORM_V2_CPU(float, float);
 REGISTER_MKL_FUSED_BATCHNORM_V2_CPU(bfloat16, float);
 REGISTER_MKL_FUSED_BATCHNORM_V2_CPU(Eigen::half, float);
 #undef REGISTER_MKL_FUSED_BATCHNORM_V2_CPU
 
-#define REGISTER_MKL_FUSED_BATCHNORM_GRAD_CPU(T)               \
-  REGISTER_KERNEL_BUILDER(                                     \
-      Name("_MklFusedBatchNormGrad")                           \
-          .Device(DEVICE_CPU)                                  \
-          .TypeConstraint<T>("T")                              \
-          .Label(mkl_op_registry::kMklLayoutDependentOpLabel), \
-      MklFusedBatchNormGradOp<CPUDevice, T, T, false>);        \
-  REGISTER_KERNEL_BUILDER(                                     \
-      Name("_MklNativeFusedBatchNormGrad")                     \
-          .Device(DEVICE_CPU)                                  \
-          .TypeConstraint<T>("T")                              \
-          .Label(mkl_op_registry::kMklNameChangeOpLabel),      \
-      MklFusedBatchNormGradOp<CPUDevice, T, T, false, true>);
+#define REGISTER_MKL_FUSED_BATCHNORM_GRAD_CPU(T)          \
+  REGISTER_KERNEL_BUILDER(                                \
+      Name("_MklNativeFusedBatchNormGrad")                \
+          .Device(DEVICE_CPU)                             \
+          .TypeConstraint<T>("T")                         \
+          .Label(mkl_op_registry::kMklNameChangeOpLabel), \
+      MklFusedBatchNormGradOp<CPUDevice, T, T, false>);
 
 TF_CALL_float(REGISTER_MKL_FUSED_BATCHNORM_GRAD_CPU);
 TF_CALL_bfloat16(REGISTER_MKL_FUSED_BATCHNORM_GRAD_CPU);
 #undef REGISTER_MKL_FUSED_BATCHNORM_GRAD_CPU
 
-#define REGISTER_MKL_FUSED_BATCHNORM_GRAD_V2_CPU(T, U)         \
-  REGISTER_KERNEL_BUILDER(                                     \
-      Name("_MklFusedBatchNormGradV2")                         \
-          .Device(DEVICE_CPU)                                  \
-          .TypeConstraint<T>("T")                              \
-          .TypeConstraint<U>("U")                              \
-          .Label(mkl_op_registry::kMklLayoutDependentOpLabel), \
-      MklFusedBatchNormGradOp<CPUDevice, T, U, false>);        \
-  REGISTER_KERNEL_BUILDER(                                     \
-      Name("_MklNativeFusedBatchNormGradV2")                   \
-          .Device(DEVICE_CPU)                                  \
-          .TypeConstraint<T>("T")                              \
-          .TypeConstraint<U>("U")                              \
-          .Label(mkl_op_registry::kMklNameChangeOpLabel),      \
-      MklFusedBatchNormGradOp<CPUDevice, T, U, false, true>);
+#define REGISTER_MKL_FUSED_BATCHNORM_GRAD_V2_CPU(T, U)    \
+  REGISTER_KERNEL_BUILDER(                                \
+      Name("_MklNativeFusedBatchNormGradV2")              \
+          .Device(DEVICE_CPU)                             \
+          .TypeConstraint<T>("T")                         \
+          .TypeConstraint<U>("U")                         \
+          .Label(mkl_op_registry::kMklNameChangeOpLabel), \
+      MklFusedBatchNormGradOp<CPUDevice, T, U, false>);
 
 REGISTER_MKL_FUSED_BATCHNORM_GRAD_V2_CPU(float, float);
 REGISTER_MKL_FUSED_BATCHNORM_GRAD_V2_CPU(bfloat16, float);
@@ -1816,35 +1742,21 @@ REGISTER_MKL_FUSED_BATCHNORM_GRAD_V2_CPU(Eigen::half, float);
 // TODO(intel-tf): FusedBatchNormV3 has an additional output that
 //       is used to hold intermediate results. This parameter
 //       functionality is not implemented on CPU.
-#define REGISTER_MKL_FUSED_BATCHNORM_V3_CPU(T, U)               \
-  REGISTER_KERNEL_BUILDER(                                      \
-      Name("_MklFusedBatchNormV3")                              \
-          .Device(DEVICE_CPU)                                   \
-          .TypeConstraint<T>("T")                               \
-          .TypeConstraint<U>("U")                               \
-          .Label(mkl_op_registry::kMklLayoutDependentOpLabel),  \
-      MklFusedBatchNormOp<CPUDevice, T, U, true, false>);       \
-  REGISTER_KERNEL_BUILDER(                                      \
-      Name("_MklFusedBatchNormEx")                              \
-          .Device(DEVICE_CPU)                                   \
-          .TypeConstraint<T>("T")                               \
-          .TypeConstraint<U>("U")                               \
-          .Label(mkl_op_registry::kMklLayoutDependentOpLabel),  \
-      MklFusedBatchNormOp<CPUDevice, T, U, true, true>);        \
-  REGISTER_KERNEL_BUILDER(                                      \
-      Name("_MklNativeFusedBatchNormV3")                        \
-          .Device(DEVICE_CPU)                                   \
-          .TypeConstraint<T>("T")                               \
-          .TypeConstraint<U>("U")                               \
-          .Label(mkl_op_registry::kMklNameChangeOpLabel),       \
-      MklFusedBatchNormOp<CPUDevice, T, U, true, false, true>); \
-  REGISTER_KERNEL_BUILDER(                                      \
-      Name("_MklNativeFusedBatchNormEx")                        \
-          .Device(DEVICE_CPU)                                   \
-          .TypeConstraint<T>("T")                               \
-          .TypeConstraint<U>("U")                               \
-          .Label(mkl_op_registry::kMklNameChangeOpLabel),       \
-      MklFusedBatchNormOp<CPUDevice, T, U, true, true, true>);
+#define REGISTER_MKL_FUSED_BATCHNORM_V3_CPU(T, U)         \
+  REGISTER_KERNEL_BUILDER(                                \
+      Name("_MklNativeFusedBatchNormV3")                  \
+          .Device(DEVICE_CPU)                             \
+          .TypeConstraint<T>("T")                         \
+          .TypeConstraint<U>("U")                         \
+          .Label(mkl_op_registry::kMklNameChangeOpLabel), \
+      MklFusedBatchNormOp<CPUDevice, T, U, true, false>); \
+  REGISTER_KERNEL_BUILDER(                                \
+      Name("_MklNativeFusedBatchNormEx")                  \
+          .Device(DEVICE_CPU)                             \
+          .TypeConstraint<T>("T")                         \
+          .TypeConstraint<U>("U")                         \
+          .Label(mkl_op_registry::kMklNameChangeOpLabel), \
+      MklFusedBatchNormOp<CPUDevice, T, U, true, true>);
 
 REGISTER_MKL_FUSED_BATCHNORM_V3_CPU(float, float);
 REGISTER_MKL_FUSED_BATCHNORM_V3_CPU(bfloat16, float);
@@ -1862,21 +1774,14 @@ REGISTER_KERNEL_BUILDER(Name("_FusedBatchNormEx")
                             .TypeConstraint<float>("U"),
                         NoOp);
 
-#define REGISTER_MKL_FUSED_BATCHNORM_GRAD_V3_CPU(T, U)         \
-  REGISTER_KERNEL_BUILDER(                                     \
-      Name("_MklFusedBatchNormGradV3")                         \
-          .Device(DEVICE_CPU)                                  \
-          .TypeConstraint<T>("T")                              \
-          .TypeConstraint<U>("U")                              \
-          .Label(mkl_op_registry::kMklLayoutDependentOpLabel), \
-      MklFusedBatchNormGradOp<CPUDevice, T, U, true>);         \
-  REGISTER_KERNEL_BUILDER(                                     \
-      Name("_MklNativeFusedBatchNormGradV3")                   \
-          .Device(DEVICE_CPU)                                  \
-          .TypeConstraint<T>("T")                              \
-          .TypeConstraint<U>("U")                              \
-          .Label(mkl_op_registry::kMklNameChangeOpLabel),      \
-      MklFusedBatchNormGradOp<CPUDevice, T, U, true, true>);
+#define REGISTER_MKL_FUSED_BATCHNORM_GRAD_V3_CPU(T, U)    \
+  REGISTER_KERNEL_BUILDER(                                \
+      Name("_MklNativeFusedBatchNormGradV3")              \
+          .Device(DEVICE_CPU)                             \
+          .TypeConstraint<T>("T")                         \
+          .TypeConstraint<U>("U")                         \
+          .Label(mkl_op_registry::kMklNameChangeOpLabel), \
+      MklFusedBatchNormGradOp<CPUDevice, T, U, true>);
 
 REGISTER_MKL_FUSED_BATCHNORM_GRAD_V3_CPU(float, float);
 REGISTER_MKL_FUSED_BATCHNORM_GRAD_V3_CPU(bfloat16, float);
