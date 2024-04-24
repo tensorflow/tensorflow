@@ -16,11 +16,13 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_QUANTIZATION_STABLEHLO_CC_IO_H_
 
 #include <string>
+#include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "tsl/platform/env.h"
+#include "tsl/platform/errors.h"
 
 namespace stablehlo::quantization::io {
 
@@ -53,6 +55,18 @@ absl::Status WriteStringToFile(absl::string_view file_path,
 // `tsl::Env::Default`. Returns an OK status with string data containing file
 // contents. Returns non-ok status upon error, e.g. file doesn't exist.
 absl::StatusOr<std::string> ReadFileToString(absl::string_view file_path);
+
+// Lists all files and directories under the given directory.
+absl::StatusOr<std::vector<std::string>> ListDirectory(
+    absl::string_view directory);
+
+template <class MessageT>
+absl::StatusOr<MessageT> ReadBinaryProto(const std::string& binary_file_path) {
+  MessageT message;
+  TF_RETURN_IF_ERROR(
+      tsl::ReadBinaryProto(tsl::Env::Default(), binary_file_path, &message));
+  return message;
+}
 
 }  // namespace stablehlo::quantization::io
 

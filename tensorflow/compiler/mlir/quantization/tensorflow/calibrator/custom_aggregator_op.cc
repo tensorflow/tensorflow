@@ -19,7 +19,6 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/calibration/calibration_parameters.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/calibrator/calibrator_singleton.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/op.h"
@@ -133,11 +132,6 @@ class CustomAggregatorOp : public OpKernel {
       CalculateHistogramStatistics(context, input_tensor, min_value, max_value,
                                    num_bins, histogram_output);
     }
-
-    // By passing calib_opts_ and input_tensor to CalibratorSingleton,
-    // CalibrationStatisticsCollector can calculate statistics for calibration.
-    calibrator::CalibratorSingleton::Report(id_, *min_output, *max_output,
-                                            *histogram_output, calib_opts_);
   }
 
  private:

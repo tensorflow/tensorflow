@@ -40,11 +40,14 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/io.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/saved_model_export.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/types.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/passes/passes.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/cc/run_passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/exported_model.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/python/py_function_lib.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
 namespace mlir::quant::stablehlo {
@@ -60,6 +63,20 @@ using ::tensorflow::AssetFileDef;
 using ::tensorflow::SignatureDef;
 using ::tensorflow::quantization::ExportedModel;
 using ::tensorflow::quantization::PyFunctionLibrary;
+using ::tensorflow::quantization::RunPasses;
+
+absl::Status RunCalibrationPasses(mlir::ModuleOp module_op, MLIRContext& ctx,
+                                  absl::string_view calibration_data_dir) {
+  return RunPasses(
+      /*name=*/
+      CalibrationComponent::kName,
+      /*add_passes_func=*/
+      [calibration_data_dir](PassManager& pm) {
+        pm.addPass(
+            CreateInsertCalibrationStatisticsSaverPass(calibration_data_dir));
+      },
+      ctx, module_op);
+}
 
 CalibrationComponent::CalibrationComponent(
     absl::Nonnull<MLIRContext*> ctx,
@@ -78,7 +95,8 @@ CalibrationComponent::CalibrationComponent(
       signature_keys_(std::move(signature_keys)) {}
 
 absl::StatusOr<ExportedModel> CalibrationComponent::ExportToSavedModel(
-    ModuleOp module_op, const absl::string_view dst_saved_model_path) {
+    ModuleOp module_op, absl::string_view calibration_data_dir,
+    const absl::string_view dst_saved_model_path) {
   TF_ASSIGN_OR_RETURN(const std::string checkpoint_dir, GetLocalTmpFileName());
 
   // Clone ModuleOp and function aliases so changes in this pipeline won't
@@ -87,6 +105,9 @@ absl::StatusOr<ExportedModel> CalibrationComponent::ExportToSavedModel(
 
   // Disable DumpTensor ops when running calibration.
   DisableDebugging(*cloned_module_ref);
+
+  TF_RETURN_IF_ERROR(
+      RunCalibrationPasses(*cloned_module_ref, *ctx_, calibration_data_dir));
 
   // `duplicate_shape_determining_constants = false` because the
   // resulting graph of this step is not expected to be loaded on TPU.
@@ -116,9 +137,12 @@ absl::StatusOr<ModuleOp> CalibrationComponent::Run(
   TF_ASSIGN_OR_RETURN(const std::string precalibrated_saved_model_dir,
                       CreateTmpDir());
 
-  TF_ASSIGN_OR_RETURN(
-      ExportedModel exported_model,
-      ExportToSavedModel(module_op, precalibrated_saved_model_dir));
+  // TODO: b/333809933 - Make the calibration statistics directory configurable.
+  TF_ASSIGN_OR_RETURN(const std::string calibration_data_dir, CreateTmpDir());
+
+  TF_ASSIGN_OR_RETURN(ExportedModel exported_model,
+                      ExportToSavedModel(module_op, calibration_data_dir,
+                                         precalibrated_saved_model_dir));
 
   // Translates `RepresentativeDatasetConfig`s to signature key ->
   // `RepresentativeDatasetFile` mapping.
@@ -142,7 +166,8 @@ absl::StatusOr<ModuleOp> CalibrationComponent::Run(
   }
 
   if (absl::Status status = AddCalibrationStatistics(
-          module_op, config.calibration_options(), *py_function_lib_);
+          module_op, calibration_data_dir, config.calibration_options(),
+          *py_function_lib_);
       !status.ok()) {
     LOG(WARNING) << "Some CustomAggregator ops do not have min or max "
                     "values. Parts of the graph are not quantized. "

@@ -15,12 +15,14 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/io.h"
 
 #include <string>
+#include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "tsl/platform/env.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
 namespace stablehlo::quantization::io {
@@ -72,6 +74,14 @@ absl::StatusOr<std::string> ReadFileToString(
   } else {
     return read_status;
   }
+}
+
+absl::StatusOr<std::vector<std::string>> ListDirectory(
+    absl::string_view directory) {
+  std::vector<std::string> children;
+  TF_RETURN_IF_ERROR(
+      tsl::Env::Default()->GetChildren(std::string(directory), &children));
+  return children;
 }
 
 }  // namespace stablehlo::quantization::io

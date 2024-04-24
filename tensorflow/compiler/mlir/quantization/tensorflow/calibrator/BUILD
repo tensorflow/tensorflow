@@ -12,13 +12,8 @@ load(
     "get_compatible_with_portable",
     "tf_kernel_library",
     "tf_py_strict_test",
-    "tf_python_pybind_extension",
 )
 load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
-load(
-    "//tensorflow/core/platform:build_config_root.bzl",
-    "if_static",
-)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -28,49 +23,6 @@ package(
         "//tensorflow/tools/pip_package:__subpackages__",
     ],
     licenses = ["notice"],
-)
-
-# Directly linked to `custom_aggregator_op`. In general, one should avoid directly depending on
-# this target to avoid the ODR violation. Depend on `calibrator_singleton` instead.
-cc_library(
-    name = "calibrator_singleton_impl",
-    srcs = ["calibrator_singleton.cc"],
-    hdrs = ["calibrator_singleton.h"],
-    compatible_with = get_compatible_with_portable(),
-    deps = [
-        ":calibration_statistics_collector_average_min_max",
-        ":calibration_statistics_collector_base",
-        ":calibration_statistics_collector_histogram",
-        ":calibration_statistics_collector_min_max",
-        ":calibration_statistics_proto_cc",
-        "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
-        "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
-        "//tensorflow/core:framework",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/types:optional",
-        "@com_google_absl//absl/types:span",
-    ],
-)
-
-cc_library(
-    name = "calibrator_singleton",
-    hdrs = ["calibrator_singleton.h"],
-    compatible_with = get_compatible_with_portable(),
-    deps = if_static([":calibrator_singleton_impl"]) + [
-        ":calibration_statistics_collector_base",
-        ":calibration_statistics_proto_cc",
-        "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
-        "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
-        "//tensorflow/core:framework",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/types:optional",
-        "@com_google_absl//absl/types:span",
-    ],
 )
 
 cc_library(
@@ -181,20 +133,6 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
-    name = "calibrator_singleton_test",
-    size = "small",
-    srcs = ["calibrator_singleton_test.cc"],
-    deps = [
-        ":calibration_statistics_proto_cc",
-        ":calibrator_singleton_impl",
-        "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
 tf_kernel_library(
     name = "custom_aggregator_op",
     srcs = ["custom_aggregator_op.cc"],
@@ -204,7 +142,6 @@ tf_kernel_library(
         "//tensorflow/compiler/mlir/quantization/tensorflow/python:__pkg__",
     ],
     deps = [
-        ":calibrator_singleton_impl",
         "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
         "//tensorflow/compiler/mlir/quantization/stablehlo/cc/calibration:calibration_parameters",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
@@ -238,7 +175,6 @@ tf_py_strict_test(
     deps = [
         ":calibration_statistics_proto_py",
         ":gen_custom_aggregator_op_wrapper",
-        ":pywrap_calibration",
         "//tensorflow:tensorflow_py",
         "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_py",
         "//tensorflow/python:pywrap_tensorflow",
@@ -246,20 +182,6 @@ tf_py_strict_test(
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/platform:client_testlib",
-    ],
-)
-
-tf_python_pybind_extension(
-    name = "pywrap_calibration",
-    srcs = ["pywrap_calibration.cc"],
-    pytype_srcs = ["pywrap_calibration.pyi"],
-    deps = [
-        ":calibration_statistics_proto_cc",
-        ":calibrator_singleton",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
-        "@pybind11",
-        "@pybind11_protobuf//pybind11_protobuf:native_proto_caster",
     ],
 )
 

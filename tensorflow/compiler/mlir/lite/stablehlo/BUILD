@@ -794,7 +794,6 @@ tf_cc_binary(
         "//tensorflow/compiler/mlir/lite:tf_to_tfl_flatbuffer",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantize_preprocess",
         "//tensorflow/compiler/mlir/quantization/tensorflow:tf_quant_ops",
-        "//tensorflow/compiler/mlir/quantization/tensorflow/calibrator:calibrator_singleton_impl",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tf_graph_optimization_pass",

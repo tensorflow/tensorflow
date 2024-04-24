@@ -36,6 +36,7 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/cc/saved_model/loader.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/calibration/component.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/calibration/statistics.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/config.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/context.h"
@@ -77,6 +78,7 @@ using ::mlir::quant::stablehlo::GetFunctionAliases;
 using ::mlir::quant::stablehlo::kExportStepSuffix;
 using ::mlir::quant::stablehlo::PostCalibrationComponent;
 using ::mlir::quant::stablehlo::PreCalibrationComponent;
+using ::mlir::quant::stablehlo::RunCalibrationPasses;
 using ::mlir::quant::stablehlo::UpdateFunctionAliases;
 using ::stablehlo::quantization::AddCalibrationStatistics;
 using ::stablehlo::quantization::ChangeToQuantizedFilename;
@@ -156,13 +158,16 @@ absl::StatusOr<ExportedModel> ModuleOpToExportedModel(
 absl::StatusOr<ExportedModel> ExportCalibrationModel(
     mlir::ModuleOp module_op, mlir::MLIRContext *context,
     const QuantizationOptions &quantization_options,
-    const absl::flat_hash_map<std::string, std::string> &function_aliases) {
+    const absl::flat_hash_map<std::string, std::string> &function_aliases,
+    absl::string_view calibration_data_dir) {
   // Clone ModuleOp and function aliases so changes in this pipeline won't
   // be reflected in the original values.
   mlir::OwningOpRef<mlir::ModuleOp> cloned_module_ref(module_op.clone());
 
   // Disable DumpTensor ops when running calibration.
   DisableDebugging(*cloned_module_ref);
+  TF_RETURN_IF_ERROR(
+      RunCalibrationPasses(*cloned_module_ref, *context, calibration_data_dir));
 
   absl::StatusOr<ExportedModel> exported_model = ModuleOpToExportedModel(
       *cloned_module_ref, context, kTfQuantPtqPreCalibrationStepName,
@@ -200,7 +205,8 @@ QuantizationConfig GetQuantizationConfigForStaticRangePtq(
 absl::StatusOr<ExportedModel> QuantizePtqModelPreCalibrationImpl(
     mlir::ModuleOp module_op, mlir::MLIRContext *context,
     const QuantizationOptions &quantization_options,
-    const absl::flat_hash_map<std::string, std::string> &function_aliases) {
+    const absl::flat_hash_map<std::string, std::string> &function_aliases,
+    absl::string_view calibration_data_dir) {
   const bool is_stablehlo = quantization_options.op_set() == OpSet::STABLEHLO;
   // Use StableHLO Quantizer option if opset is specified.
   if (is_stablehlo) {
@@ -221,7 +227,7 @@ absl::StatusOr<ExportedModel> QuantizePtqModelPreCalibrationImpl(
   }
 
   return ExportCalibrationModel(module_op, context, quantization_options,
-                                function_aliases);
+                                function_aliases, calibration_data_dir);
 }
 
 absl::StatusOr<ExportedModel> QuantizePtqModelPostCalibrationImpl(
@@ -422,27 +428,30 @@ absl::StatusOr<ExportedModel> QuantizeStaticRangePtq(
   }
   mlir::OwningOpRef<mlir::ModuleOp> module_ref = std::move(module).value();
 
+  // TODO: b/333809933 - Make the calibration statistics directory configurable.
+  TF_ASSIGN_OR_RETURN(std::string calibration_data_dir, CreateTmpDir());
+
   TF_ASSIGN_OR_RETURN(
       absl::StatusOr<ExportedModel> pre_calibration_exported_model,
       QuantizePtqModelPreCalibrationImpl(
-          *module_ref, context.get(), quantization_options, *function_aliases));
+          *module_ref, context.get(), quantization_options, *function_aliases,
+          calibration_data_dir));
 
-  TF_ASSIGN_OR_RETURN(
-      const absl::StatusOr<std::string> precalibrated_saved_model_dir,
-      CreateTmpDir());
+  TF_ASSIGN_OR_RETURN(std::string precalibrated_saved_model_dir,
+                      CreateTmpDir());
 
   py_function_library.SaveExportedModel(
-      *precalibrated_saved_model_dir, *pre_calibration_exported_model,
+      precalibrated_saved_model_dir, *pre_calibration_exported_model,
       saved_model_path, tags, signature_def_map);
 
   py_function_library.RunCalibration(
-      *precalibrated_saved_model_dir, signature_keys, tags,
+      precalibrated_saved_model_dir, signature_keys, tags,
       quantization_options.force_graph_mode_calibration(),
       representative_dataset_file_map_serialized);
 
   if (absl::Status status = AddCalibrationStatistics(
-          *module_ref, quantization_options.calibration_options(),
-          py_function_library);
+          *module_ref, calibration_data_dir,
+          quantization_options.calibration_options(), py_function_library);
       !status.ok()) {
     LOG(WARNING) << "Some CustomAggregator ops do not have min or max "
                     "values. Parts of the graph are not quantized. "

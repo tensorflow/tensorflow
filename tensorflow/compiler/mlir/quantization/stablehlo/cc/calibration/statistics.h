@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_QUANTIZATION_STABLEHLO_CC_CALIBRATION_STATISTICS_H_
 
 #include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/python/py_function_lib.h"
@@ -27,7 +28,7 @@ namespace stablehlo::quantization {
 // respectively. `calibration_options` provides the strategy to retrieve min and
 // max values.
 absl::Status AddCalibrationStatistics(
-    mlir::ModuleOp module_op,
+    mlir::ModuleOp module_op, absl::string_view calibration_data_dir,
     const stablehlo::quantization::CalibrationOptions& calibration_options,
     const tensorflow::quantization::PyFunctionLibrary& py_function_library);
 

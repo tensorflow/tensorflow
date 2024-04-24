@@ -1316,7 +1316,6 @@ tf_cc_binary(
         "//tensorflow/cc/saved_model:loader",
         "//tensorflow/compiler/mlir:init_mlir",
         "//tensorflow/compiler/mlir/quantization/common/quantization_lib:quantization_config",
-        "//tensorflow/compiler/mlir/quantization/tensorflow/calibrator:calibrator_singleton_impl",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
         "//tensorflow/compiler/mlir/tensorflow:translate_cl_options",

@@ -27,7 +27,6 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/file_system.h"
-#include "tsl/platform/status.h"
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/types.h"
 
@@ -38,6 +37,8 @@ using ::testing::Eq;
 using ::testing::HasSubstr;
 using ::testing::IsEmpty;
 using ::testing::Not;
+using ::testing::SizeIs;
+using ::testing::UnorderedElementsAre;
 using ::tsl::testing::IsOk;
 using ::tsl::testing::StatusIs;
 
@@ -175,6 +176,30 @@ TEST(IoTest, ReadFileToString) {
       ReadFileToString(src_file_path);
   ASSERT_THAT(read_status, IsOk());
   EXPECT_THAT(*read_status, Eq("test_string"));
+}
+
+TEST(IoTest, ListChildrenInDirectory) {
+  absl::StatusOr<std::string> tmp_dir = CreateTmpDir();
+
+  ASSERT_THAT(tmp_dir, IsOk());
+
+  auto* const env = tsl::Env::Default();
+  EXPECT_THAT(env->FileExists(*tmp_dir), IsOk());
+
+  ASSERT_THAT(
+      WriteStringToFile(absl::StrCat(*tmp_dir, "/tmp_file1"), "test_string"),
+      IsOk());
+  ASSERT_THAT(
+      WriteStringToFile(absl::StrCat(*tmp_dir, "/tmp_file2"), "test_string"),
+      IsOk());
+  ASSERT_THAT(env->RecursivelyCreateDir(absl::StrCat(*tmp_dir, "/subdir")),
+              IsOk());
+
+  absl::StatusOr<std::vector<std::string>> children = ListDirectory(*tmp_dir);
+  EXPECT_THAT(children, IsOk());
+  EXPECT_THAT(children.value(), SizeIs(3));
+  EXPECT_THAT(children.value(),
+              UnorderedElementsAre("subdir", "tmp_file1", "tmp_file2"));
 }
 
 }  // namespace
