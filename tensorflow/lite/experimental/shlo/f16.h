@@ -80,19 +80,19 @@ class alignas(uint16_t) F16 {
 
 #else  // !SHLO_REF_HAS_BUILTIN_FLOAT16
 
-#define SHLO_REF_DEFINE_BINARY_OP(OP)                            \
-  friend F16 operator OP(F16 x, F16 y) {                         \
-    return F16(static_cast<float>(x) OP static_cast<float>(y));  \
-  }                                                              \
-                                                                 \
-  template <typename T, typename C = std::common_type_t<F16, T>> \
-  friend auto operator OP(F16 x, T y) {                          \
-    return static_cast<C>(static_cast<float>(x) OP y);           \
-  }                                                              \
-                                                                 \
-  template <typename T, typename C = std::common_type_t<F16, T>> \
-  friend std::common_type<F16, T> operator OP(T x, F16 y) {      \
-    return static_cast<C>(x OP static_cast<float>(y));           \
+#define SHLO_REF_DEFINE_BINARY_OP(OP)                              \
+  friend F16 operator OP(F16 x, F16 y) {                           \
+    return F16(static_cast<float>(x) OP static_cast<float>(y));    \
+  }                                                                \
+                                                                   \
+  template <typename T, typename C = std::common_type_t<F16, T>>   \
+  friend C operator OP(F16 x, T y) {                               \
+    return static_cast<C>(static_cast<C>(x) OP static_cast<C>(y)); \
+  }                                                                \
+                                                                   \
+  template <typename T, typename C = std::common_type_t<F16, T>>   \
+  friend C operator OP(T x, F16 y) {                               \
+    return static_cast<C>(static_cast<C>(x) OP static_cast<C>(y)); \
   }
 
 #define SHLO_REF_DEFINE_BINARY_ASSIGN_OP(OP)                               \
@@ -136,20 +136,51 @@ class alignas(uint16_t) F16 {
     uint16_t bits_;
   };
 };
+
+namespace detail {
+
+template <class T, class SFINAE = void>
+struct F16CommonType {};
+
+template <class T>
+struct F16CommonType<T, std::enable_if_t<std::is_integral_v<T>>> {
+  using type = F16;
+};
+
+template <class T>
+struct F16CommonType<T, std::enable_if_t<std::is_floating_point_v<T>>> {
+  using type = T;
+};
+
+template <class T>
+struct F16CommonType<T, std::enable_if_t<!std::is_arithmetic_v<T> &&
+                                         std::is_convertible_v<T, float>>> {
+  using type = float;
+};
+
+template <class T>
+struct F16CommonType<T, std::enable_if_t<!std::is_arithmetic_v<T> &&
+                                         !std::is_convertible_v<T, float> &&
+                                         std::is_convertible_v<T, double>>> {
+  using type = double;
+};
+
+}  // namespace detail
+
 }  // namespace shlo_ref
 
 namespace std {
 
-template <typename T>
-struct common_type<shlo_ref::F16, T> {
-  static_assert(
-      std::is_arithmetic_v<T>,
-      "Can only find a common type between F16 and an arithmetic types.");
+template <>
+struct common_type<shlo_ref::F16, shlo_ref::F16> {
   using type = shlo_ref::F16;
 };
 
 template <typename T>
-struct common_type<T, shlo_ref::F16> : common_type<shlo_ref::F16, T> {};
+struct common_type<shlo_ref::F16, T> : shlo_ref::detail::F16CommonType<T> {};
+
+template <typename T>
+struct common_type<T, shlo_ref::F16> : shlo_ref::detail::F16CommonType<T> {};
 
 }  // namespace std
 
@@ -160,7 +191,7 @@ static_assert(alignof(F16) == alignof(uint16_t));
 #ifdef SHLO_REF_HAS_BUILTIN_FLOAT16
 
 template <typename T, typename _>
-F16::F16(T x) : native_(static_cast<_Float16>(x)) {}
+F16::F16(T x) : native_(static_cast<_Float16>(static_cast<float>(x))) {}
 
 inline F16::operator float() const { return native_; }
 
