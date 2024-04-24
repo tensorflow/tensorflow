@@ -82,11 +82,13 @@ class MlirFusionEmitterBase : public KernelFusionInterface {
       mlir::func::FuncOp entry_function,
       const HloFusionInstruction& fusion) const = 0;
 
-  // Evaluates the epilogue of the fusion. Returns `hero_values` if there is no
-  // epilogue.
-  mlir::ValueRange EmitEpilogue(
+  // Evaluates the epilogue of the fusion. Returns the results for each epilogue
+  // root.
+  absl::flat_hash_map<const HloInstruction*, mlir::ValueRange> EmitEpilogue(
       const mlir_converter::PartitionedComputations& computations,
-      mlir::func::FuncOp entry_fn, mlir::ValueRange hero_values,
+      mlir::func::FuncOp entry_fn,
+      const absl::flat_hash_map<const HloInstruction*,
+                                llvm::SmallVector<mlir::Value>>& injected,
       mlir::ValueRange output_indices,
       mlir::ImplicitLocOpBuilder& builder) const;
 

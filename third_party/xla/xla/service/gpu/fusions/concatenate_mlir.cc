@@ -123,12 +123,14 @@ absl::Status MlirConcatenateFusion::EmitEntryFunction(
       auto result_scalar = mlir_converter::ProvideParameter(
           root_computation, concat, operand_index, input_indices, call_targets,
           entry_function, builder);
-      llvm::SmallVector<Value> result_scalars{result_scalar};
+      absl::flat_hash_map<const HloInstruction*, llvm::SmallVector<Value>>
+          hero_value{{concat, {result_scalar}}};
       auto output_indices =
           mlir_converter::ApplyAffineMap(thread_id_to_output_map.GetAffineMap(),
                                          dim_values, symbol_values, builder);
-      result_scalars = EmitEpilogue(computations, entry_function,
-                                    result_scalars, output_indices, builder);
+      auto result_scalars =
+          EmitEpilogue(computations, entry_function, hero_value, output_indices,
+                       builder)[analysis_.fusion_roots().front()];
 
       SmallVector<Value> result_tensors;
       result_tensors.reserve(output_tensor_args.size());

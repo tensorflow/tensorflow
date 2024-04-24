@@ -62,7 +62,7 @@ using mlir::ValueRange;
 using mlir_converter::PartitionedComputations;
 
 using HloValueMap =
-    llvm::DenseMap<const HloInstruction*, llvm::SmallVector<Value>>;
+    absl::flat_hash_map<const HloInstruction*, llvm::SmallVector<Value>>;
 
 struct MlirReductionFusion::EmitterState {
   // Uses the given indexing map to reduce a subset of the inputs in a single
@@ -206,7 +206,7 @@ absl::Status MlirReductionFusion::EmitReduction(EmitterState& state) const {
       mlir_converter::CheckConstraints(*ComputeThreadIdToOutputIndexing(0, ctx),
                                        thread_and_block_indices, {}, builder);
 
-  llvm::DenseMap<const HloInstruction*, SmallVector<Value>> inits;
+  HloValueMap inits;
   for (auto [index, hero] : llvm::enumerate(reduction_heroes_)) {
     int num_inputs = hero->operand_count() / 2;
     const auto& computation =
@@ -220,43 +220,18 @@ absl::Status MlirReductionFusion::EmitReduction(EmitterState& state) const {
       [&](const HloValueMap& results,
           llvm::SmallVector<Value> outputs) -> llvm::SmallVector<Value> {
     llvm::SmallVector<Value> indices = EmitThreadAndBlockIds(builder);
-    if (state.computations.epilogue()) {
-      llvm::SmallVector<Value> hero_values(reduction_heroes_.size());
-      const auto& epilogue = *state.computations.epilogue();
-      for (auto hero : reduction_heroes_) {
-        const auto& result = results.at(hero);
-        CHECK(result.size() == 1)
-            << "Epilogue fusions are not supported with variadic reduce.";
-        hero_values[epilogue.injected_values.at(hero)] = result.front();
-      }
-
-      int num_symbols = epilogue.root_indexing.front().getNumSymbols();
-      for (int i = 0; i < num_symbols; ++i) {
-        indices.push_back(zero);
-      }
-      llvm::SmallVector<Value> epilogue_values =
-          EmitEpilogue(state.computations, state.entry_function, hero_values,
-                       indices, builder);
-      for (auto [index, root] : llvm::enumerate(epilogue.roots)) {
-        auto& output = outputs[state.OutputIndex(root, 0)];
+    const auto& epilogue = *state.computations.epilogue();
+    int num_symbols = epilogue.root_indexing.front().getNumSymbols();
+    for (int i = 0; i < num_symbols; ++i) {
+      indices.push_back(zero);
+    }
+    auto values = EmitEpilogue(state.computations, state.entry_function,
+                               results, indices, builder);
+    for (auto [index, root] : llvm::enumerate(epilogue.roots)) {
+      for (auto [result_index, result] : llvm::enumerate(values.at(root))) {
+        auto& output = outputs[state.OutputIndex(root, result_index)];
         auto output_indices = mlir_converter::ApplyAffineMap(
             epilogue.root_indexing[index], indices, {}, builder);
-        output = builder.create<PredicatedInsertOp>(
-            thread_has_output, epilogue_values[index], output, output_indices);
-      }
-    } else {
-      CHECK_EQ(reduction_roots_.size(), 1);
-      auto* reduction = reduction_roots_.front();
-      int root_index = absl::c_find(analysis().fusion_roots(), reduction) -
-                       analysis().fusion_roots().begin();
-      auto output_indices = mlir_converter::ApplyAffineMap(
-          ComputeThreadIdToOutputIndexing(root_index, builder.getContext())
-              ->GetAffineMap(),
-          indices, {}, builder);
-
-      for (auto [result_index, result] :
-           llvm::enumerate(results.at(reduction))) {
-        auto& output = outputs[state.OutputIndex(reduction, result_index)];
         output = builder.create<PredicatedInsertOp>(thread_has_output, result,
                                                     output, output_indices);
       }

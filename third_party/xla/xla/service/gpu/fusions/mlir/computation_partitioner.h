@@ -109,10 +109,12 @@ class PartitionedComputation {
     std::vector<mlir::AffineMap> root_indexing;
 
     // For values that are function arguments (not function calls), stores
-    // the mapping from value to the argument index. The arguments always
-    // come after the tensor parameters and output indices; the indices are
-    // relative to the argument after the last index argument.
-    absl::flat_hash_map<const HloInstruction*, int> injected_values;
+    // the mapping from value to the starting argument index. The arguments
+    // always come after the tensor parameters and output indices; the indices
+    // are relative to the argument after the last index argument.
+    absl::flat_hash_map<const HloInstruction*, int> injected_value_starts;
+    // The sum of the arity of the injected values.
+    int num_injected_values = 0;
 
     std::string ToString() const;
 

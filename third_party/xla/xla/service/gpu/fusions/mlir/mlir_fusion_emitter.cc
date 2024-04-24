@@ -492,25 +492,40 @@ absl::Status MlirFusionEmitterBase::EmitMlir(
   return EmitEntryFunction(computations, call_targets, entry_function, fusion);
 }
 
-mlir::ValueRange MlirFusionEmitterBase::EmitEpilogue(
+absl::flat_hash_map<const HloInstruction*, ValueRange>
+MlirFusionEmitterBase::EmitEpilogue(
     const mlir_converter::PartitionedComputations& computations,
-    mlir::func::FuncOp entry_fn, mlir::ValueRange hero_values,
-    mlir::ValueRange output_indices,
-    mlir::ImplicitLocOpBuilder& builder) const {
+    mlir::func::FuncOp entry_fn,
+    const absl::flat_hash_map<const HloInstruction*, llvm::SmallVector<Value>>&
+        injected,
+    ValueRange output_indices, mlir::ImplicitLocOpBuilder& builder) const {
   const auto& epilogue = computations.epilogue();
-  if (!epilogue) {
-    return hero_values;
-  }
+  CHECK(epilogue)
+      << "Epilogue emission was requested but no epilogue is present.";
 
   auto epilogue_fn = mlir::cast<mlir::func::FuncOp>(
       entry_fn->getParentOfType<mlir::ModuleOp>().lookupSymbol(epilogue->name));
-  SmallVector<Value> operands =
-      mlir::ValueRange(entry_fn.getArguments().take_front(
-          computations.fusion()->num_parameters()));
+  SmallVector<Value> operands = ValueRange(entry_fn.getArguments().take_front(
+      computations.fusion()->num_parameters()));
   absl::c_copy(output_indices, std::back_inserter(operands));
-  absl::c_copy(hero_values, std::back_inserter(operands));
+  int injected_offset = operands.size();
+  operands.resize(injected_offset + epilogue->num_injected_values);
+  for (auto [injected_instruction, start] : epilogue->injected_value_starts) {
+    absl::c_copy(injected.at(injected_instruction),
+                 operands.begin() + injected_offset + start);
+  }
 
-  return builder.create<PureCallOp>(epilogue_fn, operands).getResults();
+  ValueRange results =
+      builder.create<PureCallOp>(epilogue_fn, operands).getResults();
+  absl::flat_hash_map<const HloInstruction*, ValueRange> results_per_root;
+  for (auto* root : epilogue->roots) {
+    int arity =
+        root->shape().IsTuple() ? root->shape().tuple_shapes().size() : 1;
+    results_per_root[root] = results.take_front(arity);
+    results = results.drop_front(arity);
+  }
+  CHECK_EQ(results.size(), 0);
+  return results_per_root;
 }
 
 }  // namespace gpu

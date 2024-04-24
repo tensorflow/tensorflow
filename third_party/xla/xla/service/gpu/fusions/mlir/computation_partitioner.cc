@@ -58,6 +58,14 @@ namespace gpu {
 namespace mlir_converter {
 namespace {
 
+int Arity(const Shape& shape) {
+  return shape.IsTuple() ? shape.tuple_shapes_size() : 1;
+}
+
+const Shape& TupleShape(const Shape& shape, int index) {
+  return shape.IsTuple() ? shape.tuple_shapes(index) : shape;
+}
+
 absl::flat_hash_map<const HloInstruction*, int> PartitionGraphByIndexing(
     const HloComputation& computation) {
   constexpr int kRootIndexing = 0;
@@ -314,8 +322,7 @@ PartitionedComputation::PartitionedComputation(
 std::optional<PartitionedComputation::Subgraph>
 PartitionedComputation::Subgraph::ForEpilogue(
     const std::optional<EpilogueSpecification>& epilogue) {
-  if (!epilogue ||
-      (epilogue->heroes.size() == 1 && epilogue->heroes == epilogue->roots)) {
+  if (!epilogue) {
     return std::nullopt;
   }
 
@@ -325,19 +332,20 @@ PartitionedComputation::Subgraph::ForEpilogue(
       absl::StrCat(computation->name(), "__epilogue__"));
   subgraph.roots = epilogue->roots;
 
+  int index = 0;
   for (auto* hero : epilogue->heroes) {
-    if (!subgraph.injected_values.contains(hero)) {
-      int index = subgraph.injected_values.size();
-      subgraph.injected_values[hero] = index;
+    if (subgraph.injected_value_starts.insert({hero, index}).second) {
+      index += Arity(hero->shape());
     }
   }
+  subgraph.num_injected_values = index;
 
   absl::flat_hash_set<const HloInstruction*> seen;
   std::function<void(const HloInstruction*)> visit;
   visit = [&](const HloInstruction* instruction) {
     if (!seen.insert(instruction).second) return;
     for (auto [index, operand] : llvm::enumerate(instruction->operands())) {
-      if (!subgraph.injected_values.contains(operand)) {
+      if (!subgraph.injected_value_starts.contains(operand)) {
         visit(operand);
       }
     }
@@ -470,11 +478,14 @@ mlir::func::FuncOp CreateSubgraphMlirFunction(
     // Populate arguments for injected parameters (values that are computed
     // outside the function and are passed into it).
     int operand_offset = parameter_types.size();
-    parameter_types.resize(operand_offset + subgraph.injected_values.size());
+    parameter_types.resize(operand_offset + subgraph.num_injected_values);
     arg_attrs.resize(parameter_types.size());
 
-    for (auto [value, index] : subgraph.injected_values) {
-      parameter_types[operand_offset + index] = element_type(value->shape());
+    for (auto [value, start] : subgraph.injected_value_starts) {
+      for (int index = 0; index < Arity(value->shape()); ++index) {
+        parameter_types[operand_offset + start + index] =
+            element_type(TupleShape(value->shape(), index));
+      }
     }
   } else {
     for (auto* param : computation->parameter_instructions()) {
