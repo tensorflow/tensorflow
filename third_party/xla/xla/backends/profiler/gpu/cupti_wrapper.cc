@@ -56,14 +56,6 @@ CUptiResult CuptiWrapper::ActivityRegisterCallbacks(
                                         func_buffer_completed);
 }
 
-CUptiResult CuptiWrapper::ActivityUsePerThreadBuffer() {
-  uint8_t use_per_thread_activity_buffer = 1;
-  size_t value_size = sizeof(use_per_thread_activity_buffer);
-  return cuptiActivitySetAttribute(
-      CUPTI_ACTIVITY_ATTR_PER_THREAD_ACTIVITY_BUFFER, &value_size,
-      &use_per_thread_activity_buffer);
-}
-
 CUptiResult CuptiWrapper::GetDeviceId(CUcontext context, uint32_t* deviceId) {
   return cuptiGetDeviceId(context, deviceId);
 }
