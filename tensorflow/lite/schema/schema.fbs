@@ -471,6 +471,7 @@ enum BuiltinOperator : int32 {
   DILATE = 203,
   STABLEHLO_RNG_BIT_GENERATOR = 204,
   REDUCE_WINDOW = 205 (deprecated),
+  STABLEHLO_COMPOSITE = 206, // WARNING: No runtime support
 }
 // LINT.ThenChange(nnapi_linter/linter.proto)
 
@@ -628,6 +629,7 @@ union BuiltinOptions2{
   DilateOptions,
   StablehloRngBitGeneratorOptions,
   ReduceWindowOptions (deprecated),
+  StableHLOCompositeOptions,
 }
 
 table StablehloGatherOptions{
@@ -1485,6 +1487,14 @@ table OperatorCode {
 
 enum CustomOptionsFormat : byte {
   FLEXBUFFERS = 0,
+}
+
+table StableHLOCompositeOptions {
+  name:string;
+  decomposition_subgraph_index:int32;
+  composite_attributes:[ubyte];
+  composite_attributes_format:CustomOptionsFormat;
+  version:int32;
 }
 
 // An operator takes tensors as inputs and outputs. The type of operation being

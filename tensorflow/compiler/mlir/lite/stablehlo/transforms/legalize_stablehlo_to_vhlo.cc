@@ -41,6 +41,7 @@ limitations under the License.
 #include "stablehlo/transforms/Passes.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/passes.h"
+#include "tensorflow/lite/core/macros.h"
 
 #define DEBUG_TYPE "compat-passes"
 
@@ -274,11 +275,11 @@ struct LegalizeStablehloToVhloPass
           LegalizeStablehloToVhloPass> {
   void runOnOperation() override {
     ModuleOp module = getOperation();
-    std::string target_version = "0.14.0";
+    std::string target_version = tflite_supported_stablehlo_version;
     VhloToStablehloTypeConverter to_builtin_converter;
 
     // StableHLO --> VHLO (allow funcs)
-    //   VHLO -> Downgrade to 0.14.0
+    //   VHLO -> Downgrade to 0.19.0 / tflite_supported_stablehlo_version
     //     VHLO Tensor --> Builtin Tensor
     //       Remove cast(tensor->vhlo) -> cast(vhlo->tensor) pattern
     if (failed(ApplyStablehloToVhloPatterns(module,

@@ -925,6 +925,7 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_STABLEHLO_SLICE:
     case BuiltinOperator_STABLEHLO_BROADCAST_IN_DIM:
     case BuiltinOperator_STABLEHLO_CONVOLUTION:
+    case BuiltinOperator_STABLEHLO_COMPOSITE:
     case BuiltinOperator_STABLEHLO_LOGISTIC:
     case BuiltinOperator_STABLEHLO_ADD:
     case BuiltinOperator_STABLEHLO_DIVIDE:

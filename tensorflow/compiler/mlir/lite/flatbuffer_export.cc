@@ -20,6 +20,7 @@ limitations under the License.
 #include <algorithm>
 #include <cassert>
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 #include <iterator>
 #include <limits>
@@ -771,6 +772,11 @@ class Translator {
       const std::vector<int32_t>& results,
       mlir::VhloToStablehloTypeConverter& vhlo_type_converter);
 
+  std::optional<BufferOffset<tflite::Operator>> BuildVhloCompositeV1Op(
+      mlir::vhlo::CompositeOpV1 composite_op,
+      const std::vector<int32_t>& operands, const std::vector<int32_t>& results,
+      std::string op_name);
+
   std::optional<BufferOffset<tflite::Operator>> BuildVhloScatterV1Op(
       mlir::vhlo::ScatterOpV1 scatter_op, const std::vector<int32_t>& operands,
       const std::vector<int32_t>& results,
@@ -1497,6 +1503,43 @@ uint32_t Translator::GetOpcodeIndex(const std::string& op_name,
   return it.first->second;
 }
 
+void CreateFlexbufferVector(
+    const std::unique_ptr<flexbuffers::Builder>& flex_builder,
+    std::string& name, const mlir::Attribute& attr) {
+  auto start = flex_builder->StartVector(name.c_str());
+  auto array = attr.cast<mlir::ArrayAttr>().getValue();
+
+  for (int i = 0; i < array.size(); i++) {
+    if (llvm::isa<mlir::BoolAttr>(array[i])) {
+      flex_builder->Bool(name.c_str(),
+                         array[i].cast<mlir::BoolAttr>().getValue());
+    } else if (llvm::isa<mlir::StringAttr>(attr)) {
+      flex_builder->String(name.c_str(),
+                           array[i].cast<mlir::StringAttr>().getValue().str());
+    } else if (llvm::isa<mlir::vhlo::BooleanV1Attr>(array[i])) {
+      flex_builder->Bool(name.c_str(),
+                         array[i].cast<mlir::vhlo::BooleanV1Attr>().getValue());
+    } else if (llvm::isa<mlir::vhlo::StringV1Attr>(array[i])) {
+      flex_builder->String(
+          name.c_str(),
+          array[i].cast<mlir::vhlo::StringV1Attr>().getValue().str());
+    } else if (llvm::isa<mlir::vhlo::IntegerV1Attr>(array[i])) {
+      flex_builder->Int(
+          name.c_str(),
+          array[i].cast<mlir::vhlo::IntegerV1Attr>().getValue().getSExtValue());
+    } else if (llvm::isa<mlir::vhlo::FloatV1Attr>(array[i])) {
+      flex_builder->Float(
+          name.c_str(),
+          array[i].cast<mlir::vhlo::FloatV1Attr>().getValue().convertToFloat());
+
+    } else if (llvm::isa<mlir::vhlo::ArrayV1Attr>(array[i])) {
+      CreateFlexbufferVector(flex_builder, name, array[i]);
+    }
+  }
+
+  flex_builder->EndVector(start, /*typed=*/false, /*fixed=*/false);
+}
+
 std::optional<BufferOffset<tflite::Operator>>
 Translator::BuildStablehloOperatorwithoutOptions(
     Operation* inst, const std::vector<int32_t>& operands,
@@ -1571,6 +1614,78 @@ Translator::BuildStablehloGatherOp(mlir::stablehlo::GatherOp gather_op,
       /*intermediates=*/0, /*large_custom_options_offset=*/0,
       /*large_custom_options_size=*/0,
       tflite::BuiltinOptions2_StablehloGatherOptions, gather_option.Union());
+}
+
+std::optional<BufferOffset<tflite::Operator>>
+Translator::BuildVhloCompositeV1Op(mlir::vhlo::CompositeOpV1 composite_op,
+                                   const std::vector<int32_t>& operands,
+                                   const std::vector<int32_t>& results,
+                                   std::string op_name) {
+  uint32_t opcode_index =
+      GetOpcodeIndex(op_name, tflite::BuiltinOperator_STABLEHLO_COMPOSITE);
+
+  int32_t api_version = composite_op.getVersion()
+                            .cast<mlir::vhlo::IntegerV1Attr>()
+                            .getValue()
+                            .getSExtValue();
+
+  auto name = builder_.CreateString(
+      composite_op.getName().cast<mlir::vhlo::StringV1Attr>().getValue().str());
+
+  auto composite_attributes = composite_op.getCompositeAttributes()
+                                  .cast<mlir::vhlo::DictionaryV1Attr>();
+  auto flex_builder = std::make_unique<flexbuffers::Builder>();
+  size_t map_start = flex_builder->StartMap();
+
+  for (auto namedAttr : composite_attributes.getValue()) {
+    auto name =
+        namedAttr.first.cast<mlir::vhlo::StringV1Attr>().getValue().str();
+    auto attr = namedAttr.second;
+
+    if (llvm::isa<mlir::BoolAttr>(attr))
+      flex_builder->Bool(name.c_str(), attr.cast<mlir::BoolAttr>().getValue());
+    else if (llvm::isa<mlir::StringAttr>(attr))
+      flex_builder->String(name.c_str(),
+                           attr.cast<mlir::StringAttr>().getValue().str());
+    else if (llvm::isa<mlir::vhlo::BooleanV1Attr>(attr))
+      flex_builder->Bool(name.c_str(),
+                         attr.cast<mlir::vhlo::BooleanV1Attr>().getValue());
+    else if (llvm::isa<mlir::vhlo::StringV1Attr>(attr))
+      flex_builder->String(
+          name.c_str(), attr.cast<mlir::vhlo::StringV1Attr>().getValue().str());
+    else if (llvm::isa<mlir::vhlo::IntegerV1Attr>(attr))
+      flex_builder->Int(
+          name.c_str(),
+          attr.cast<mlir::vhlo::IntegerV1Attr>().getValue().getSExtValue());
+    else if (llvm::isa<mlir::vhlo::FloatV1Attr>(attr))
+      flex_builder->Float(
+          name.c_str(),
+          attr.cast<mlir::vhlo::FloatV1Attr>().getValue().convertToFloat());
+  }
+
+  flex_builder->EndMap(map_start);
+  flex_builder->Finish();
+
+  int32_t decomposition_subgraph_index =
+      subgraph_index_map_[composite_op.getDecomposition()
+                              .cast<mlir::vhlo::StringV1Attr>()
+                              .getValue()
+                              .str()];
+
+  auto composite_option = tflite::CreateStableHLOCompositeOptions(
+      builder_, name, decomposition_subgraph_index,
+      builder_.CreateVector(flex_builder->GetBuffer()),
+      tflite::CustomOptionsFormat_FLEXBUFFERS, api_version);
+
+  return tflite::CreateOperator(
+      builder_, opcode_index, builder_.CreateVector(operands),
+      builder_.CreateVector(results), tflite::BuiltinOptions_NONE,
+      /*builtin_options=*/0, /*custom_options=*/0,
+      tflite::CustomOptionsFormat_FLEXBUFFERS,
+      /*mutating_variable_inputs=*/0, /*intermediates=*/0,
+      /*large_custom_options_offset=*/0, /*large_custom_options_size=*/0,
+      tflite::BuiltinOptions2_StableHLOCompositeOptions,
+      composite_option.Union());
 }
 
 std::optional<BufferOffset<tflite::Operator>>
@@ -2035,6 +2150,10 @@ std::optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
     }
     if (auto vhlo_op = llvm::dyn_cast<mlir::vhlo::PadOpV1>(inst)) {
       return BuildVhloPadV1Op(vhlo_op, operands, results, vhlo_type_converter);
+    }
+    if (auto vhlo_op = llvm::dyn_cast<mlir::vhlo::CompositeOpV1>(inst)) {
+      return BuildVhloCompositeV1Op(vhlo_op, operands, results,
+                                    inst->getName().getStringRef().str());
     }
     // for ops don't have kernels, only serialize when conversion is set to
     // true
