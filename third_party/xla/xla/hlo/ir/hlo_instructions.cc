@@ -20,7 +20,6 @@ limitations under the License.
 #include <deque>
 #include <functional>
 #include <iterator>
-#include <list>
 #include <memory>
 #include <numeric>
 #include <optional>
@@ -49,7 +48,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/ir/hlo_sharding_metadata.h"
-#include "xla/iterator_util.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
@@ -1924,10 +1922,9 @@ HloCallableInstruction::CloneAndAppendInstructionIntoCalledComputation(
   HloInstruction* clone = nullptr;
   bool do_not_clone =
       instruction_to_append->opcode() == HloOpcode::kTuple &&
-      std::find_if(instruction_to_append->users().begin(),
-                   instruction_to_append->users().end(), [](HloInstruction* u) {
-                     return u->opcode() != HloOpcode::kGetTupleElement;
-                   }) == instruction_to_append->users().end();
+      absl::c_all_of(instruction_to_append->users(), [](HloInstruction* u) {
+        return u->opcode() == HloOpcode::kGetTupleElement;
+      });
   if (called_computations().empty()) {
     // New fusion instruction. It should not be a multioutput instruction.
     CHECK(!add_output);
@@ -2327,9 +2324,8 @@ void HloFusionInstruction::MergeFusionInstructionIntoMultiOutput(
   std::vector<HloInstruction*> unfused_instructions;
   auto computation_to_merge =
       instruction_to_merge->fused_instructions_computation();
-  auto post_order = computation_to_merge->MakeInstructionPostOrder();
-  for (auto rit = post_order.rbegin(); rit != post_order.rend(); ++rit) {
-    auto fused_instruction = *rit;
+  for (auto fused_instruction :
+       computation_to_merge->MakeInstructionPostOrder()) {
     if (fused_instruction->opcode() == HloOpcode::kParameter) {
       InsertOrDie(&old_to_new, fused_instruction,
                   instruction_to_merge->mutable_operand(
@@ -2339,18 +2335,16 @@ void HloFusionInstruction::MergeFusionInstructionIntoMultiOutput(
 
     // Here we clone the insertion and call FuseInstructionIntoMultiOutput()
     // which clones again. This can be improved.
+    std::vector<HloInstruction*> new_operands;
+    new_operands.reserve(fused_instruction->operand_count());
+    for (HloInstruction* new_operand : fused_instruction->mutable_operands()) {
+      new_operands.push_back(FindOrDie(old_to_new, new_operand));
+    }
     auto cloned_instruction =
-        parent()->AddInstruction(fused_instruction->Clone());
+        parent()->AddInstruction(fused_instruction->CloneWithNewOperands(
+            fused_instruction->shape(), new_operands, /*suffix=*/"clone"));
     unfused_instructions.push_back(cloned_instruction);
     InsertOrDie(&old_to_new, fused_instruction, cloned_instruction);
-  }
-  for (auto unfused_instruction : unfused_instructions) {
-    for (int64_t index = 0; index < unfused_instruction->operand_count();
-         index++) {
-      auto new_operand =
-          FindOrDie(old_to_new, unfused_instruction->mutable_operand(index));
-      TF_CHECK_OK(unfused_instruction->ReplaceOperandWith(index, new_operand));
-    }
   }
 
   // If there are no unfused instructions, the fused computation must consist
@@ -2362,7 +2356,7 @@ void HloFusionInstruction::MergeFusionInstructionIntoMultiOutput(
                 instruction_to_merge->fused_instructions_computation()
                     ->root_instruction()
                     ->parameter_number())
-          : unfused_instructions.front();
+          : unfused_instructions.back();
   TF_CHECK_OK(instruction_to_merge->ReplaceAllUsesWith(unfused_root));
 
   TF_CHECK_OK(
@@ -2378,7 +2372,7 @@ void HloFusionInstruction::MergeFusionInstructionIntoMultiOutput(
   FuseInstructionIntoMultiOutput(unfused_root);
   TF_CHECK_OK(unfused_root->parent()->RemoveInstruction(unfused_root));
   // The rest instructions are of normal fusing.
-  for (int64_t i = 1; i < unfused_instructions.size(); i++) {
+  for (int64_t i = unfused_instructions.size() - 2; i >= 0; --i) {
     auto instruction = unfused_instructions[i];
     FuseInstruction(instruction);
     TF_CHECK_OK(instruction->parent()->RemoveInstruction(instruction));
