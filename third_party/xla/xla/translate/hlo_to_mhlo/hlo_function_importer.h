@@ -68,7 +68,7 @@ class HloFunctionImporter {
   static Status ImportAsRegion(const HloComputation& computation,
                                mlir::SymbolTable& symbol_table,
                                mlir::Region* region, mlir::Builder* builder,
-                               bool flatten_region_arg_tuple = false);
+                               bool flatten_region_arg_tuple);
 
   // Imports the given computation to the given place specified by `builder`.
   // `arguments` contains values for all parameters.
@@ -159,7 +159,7 @@ class HloFunctionImporter {
 
   // Imports the given computation in the specified region.
   Status ImportAsRegion(const HloComputation& computation, mlir::Region* region,
-                        bool flatten_region_arg_tuple = false);
+                        bool flatten_region_arg_tuple);
 
   // Imports instructions from the given computation in the specified block.
   // Assumes that the block already has correct arguments populated.
