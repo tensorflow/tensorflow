@@ -17,9 +17,6 @@ limitations under the License.
 
 #include <vector>
 
-#include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tfrt {

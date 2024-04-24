@@ -22,19 +22,19 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "absl/strings/match.h"
+#include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/threadpool.h"
 #define EIGEN_USE_THREADS
 
 #include "tensorflow/core/tfrt/run_handler_thread_pool/run_handler.h"
 
 #define EIGEN_USE_THREADS
 
-#include "absl/memory/memory.h"
 #include "absl/synchronization/barrier.h"
 #include "absl/synchronization/notification.h"
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/blocking_counter.h"
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
 #include "tfrt/host_context/task_function.h"  // from @tf_runtime
 
