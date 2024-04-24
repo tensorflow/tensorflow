@@ -2548,4 +2548,183 @@ def TF_GetStatsFromListOfSparseCoreCooTensorsOp : TF_Op<"GetStatsFromListOfSpars
 
   TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<1>;
 }
+
+def TF_XlaSparseDenseMatmulWithStaticBufferSizeOp : TF_Op<"XlaSparseDenseMatmulWithStaticBufferSize", [Pure]> {
+  let summary = "A XLA op which performs the dense-sparse matrix multiplication.";
+
+  let arguments = (ins
+    TF_Int32Tensor:$row_pointers,
+    TF_Int32Tensor:$sorted_sample_ids,
+    TF_Int32Tensor:$sorted_token_ids,
+    TF_Float32Tensor:$sorted_gains,
+    TF_Float32Tensor:$embedding_table,
+    TF_Int32Tensor:$num_minibatches_per_physical_sparse_core,
+
+    ConfinedAttr<I64Attr, [IntMinValue<0>]>:$input_size,
+    OptionalAttr<F32Attr>:$quantization_config_low,
+    OptionalAttr<F32Attr>:$quantization_config_high,
+    OptionalAttr<I64Attr>:$quantization_config_num_buckets,
+    ConfinedAttr<I64Attr, [IntMinValue<1>]>:$max_ids_per_sparse_core,
+    ConfinedAttr<I64Attr, [IntMinValue<1>]>:$max_unique_ids_per_sparse_core,
+    StrAttr:$table_name
+  );
+
+  let results = (outs
+    TF_Float32Tensor:$activations
+  );
+}
+
+
+def TF_XlaSparseDenseMatmulGradWithSgdAndStaticBufferSizeOp : TF_Op<"XlaSparseDenseMatmulGradWithSgdAndStaticBufferSize", [Pure]> {
+  let summary = "A XLA op which performs the SGD optimizer update for the dense-sparse matrix multiplication.";
+
+  let arguments = (ins
+    TF_Int32Tensor:$row_pointers,
+    TF_Int32Tensor:$sorted_sample_ids,
+    TF_Int32Tensor:$sorted_token_ids,
+    TF_Float32Tensor:$sorted_gains,
+    TF_Float32Tensor:$activation_gradients,
+    TF_Float32Tensor:$learning_rate,
+    TF_Float32Tensor:$embedding_table,
+    TF_Int32Tensor:$num_minibatches_per_physical_sparse_core,
+
+    F32Attr:$clip_weight_min,
+    F32Attr:$clip_weight_max,
+    ConfinedAttr<I64Attr, [IntMinValue<1>]>:$max_ids_per_sparse_core,
+    ConfinedAttr<I64Attr, [IntMinValue<1>]>:$max_unique_ids_per_sparse_core,
+    StrAttr:$table_name
+  );
+
+  let results = (outs
+    TF_Float32Tensor:$updated_embedding_table
+  );
+}
+
+def XlaSparseDenseMatmulGradWithAdagradAndStaticBufferSizeOp : TF_Op<"XlaSparseDenseMatmulGradWithAdagradAndStaticBufferSize", [Pure]> {
+  let summary = "A XLA op which performs the Adagrad optimizer update for the dense-sparse matrix multiplication.";
+
+  let arguments = (ins
+    TF_Int32Tensor:$row_pointers,
+    TF_Int32Tensor:$sorted_sample_ids,
+    TF_Int32Tensor:$sorted_token_ids,
+    TF_Float32Tensor:$sorted_gains,
+    TF_Float32Tensor:$activation_gradients,
+    TF_Float32Tensor:$learning_rate,
+    TF_Float32Tensor:$embedding_table,
+    TF_Float32Tensor:$accumulator,
+    TF_Int32Tensor:$num_minibatches_per_physical_sparse_core,
+
+    F32Attr:$clip_weight_min,
+    F32Attr:$clip_weight_max,
+    ConfinedAttr<I64Attr, [IntMinValue<1>]>:$max_ids_per_sparse_core,
+    ConfinedAttr<I64Attr, [IntMinValue<1>]>:$max_unique_ids_per_sparse_core,
+    StrAttr:$table_name
+  );
+
+  let results = (outs
+    TF_Float32Tensor:$updated_embedding_table,
+    TF_Float32Tensor:$updated_accumulator
+  );
+}
+
+def XlaSparseDenseMatmulGradWithAdagradMomentumAndStaticBufferSizeOp : TF_Op<"XlaSparseDenseMatmulGradWithAdagradMomentumAndStaticBufferSize", [Pure]> {
+  let summary = "A XLA op which performs the Adagrad momentumoptimizer update for the dense-sparse matrix multiplication.";
+
+  let arguments = (ins
+    TF_Int32Tensor:$row_pointers,
+    TF_Int32Tensor:$sorted_sample_ids,
+    TF_Int32Tensor:$sorted_token_ids,
+    TF_Float32Tensor:$sorted_gains,
+    TF_Float32Tensor:$activation_gradients,
+    TF_Float32Tensor:$learning_rate,
+    TF_Float32Tensor:$embedding_table,
+    TF_Float32Tensor:$accumulator,
+    TF_Float32Tensor:$momenta,
+    TF_Int32Tensor:$num_minibatches_per_physical_sparse_core,
+
+    BoolAttr:$use_nesterov,
+    F32Attr:$exponent,
+    F32Attr:$beta1,
+    F32Attr:$beta2,
+    F32Attr:$epsilon,
+    F32Attr:$clip_weight_min,
+    F32Attr:$clip_weight_max,
+    ConfinedAttr<I64Attr, [IntMinValue<1>]>:$max_ids_per_sparse_core,
+    ConfinedAttr<I64Attr, [IntMinValue<1>]>:$max_unique_ids_per_sparse_core,
+    StrAttr:$table_name
+  );
+
+  let results = (outs
+    TF_Float32Tensor:$updated_embedding_table,
+    TF_Float32Tensor:$updated_accumulator,
+    TF_Float32Tensor:$updated_momenta
+  );
+}
+
+def XlaSparseDenseMatmulGradWithAdamAndStaticBufferSizeOp : TF_Op<"XlaSparseDenseMatmulGradWithAdamAndStaticBufferSize", [Pure]> {
+  let summary = "A XLA op which performs the Adam optimizer update for the dense-sparse matrix multiplication.";
+
+  let arguments = (ins
+    TF_Int32Tensor:$row_pointers,
+    TF_Int32Tensor:$sorted_sample_ids,
+    TF_Int32Tensor:$sorted_token_ids,
+    TF_Float32Tensor:$sorted_gains,
+    TF_Float32Tensor:$activation_gradients,
+    TF_Float32Tensor:$learning_rate,
+    TF_Float32Tensor:$embedding_table,
+    TF_Float32Tensor:$momenta,
+    TF_Float32Tensor:$velocity,
+    TF_Int32Tensor:$num_minibatches_per_physical_sparse_core,
+
+    BoolAttr:$use_sum_inside_sqrt,
+    F32Attr:$beta1,
+    F32Attr:$beta2,
+    F32Attr:$epsilon,
+    F32Attr:$clip_weight_min,
+    F32Attr:$clip_weight_max,
+    ConfinedAttr<I64Attr, [IntMinValue<1>]>:$max_ids_per_sparse_core,
+    ConfinedAttr<I64Attr, [IntMinValue<1>]>:$max_unique_ids_per_sparse_core,
+    StrAttr:$table_name
+  );
+
+  let results = (outs
+    TF_Float32Tensor:$updated_embedding_table,
+    TF_Float32Tensor:$updated_momenta,
+    TF_Float32Tensor:$updated_velocity
+  );
+}
+
+def XlaSparseDenseMatmulGradWithFtrlAndStaticBufferSizeOp : TF_Op<"XlaSparseDenseMatmulGradWithFtrlAndStaticBufferSize", [Pure]> {
+  let summary = "A XLA op which performs the Ftrl optimizer update for the dense-sparse matrix multiplication.";
+
+  let arguments = (ins
+    TF_Int32Tensor:$row_pointers,
+    TF_Int32Tensor:$sorted_sample_ids,
+    TF_Int32Tensor:$sorted_token_ids,
+    TF_Float32Tensor:$sorted_gains,
+    TF_Float32Tensor:$activation_gradients,
+    TF_Float32Tensor:$learning_rate,
+    TF_Float32Tensor:$embedding_table,
+    TF_Float32Tensor:$accumulator,
+    TF_Float32Tensor:$linear,
+    TF_Int32Tensor:$num_minibatches_per_physical_sparse_core,
+
+    BoolAttr:$multiply_linear_by_learning_rate,
+    F32Attr:$beta,
+    F32Attr:$learning_rate_power,
+    F32Attr:$l1_regularization_strength,
+    F32Attr:$l2_regularization_strength,
+    F32Attr:$clip_weight_min,
+    F32Attr:$clip_weight_max,
+    ConfinedAttr<I64Attr, [IntMinValue<1>]>:$max_ids_per_sparse_core,
+    ConfinedAttr<I64Attr, [IntMinValue<1>]>:$max_unique_ids_per_sparse_core,
+    StrAttr:$table_name
+  );
+
+  let results = (outs
+    TF_Float32Tensor:$updated_embedding_table,
+    TF_Float32Tensor:$updated_accumulator,
+    TF_Float32Tensor:$updated_linear
+  );
+}
 #endif // TF_OPS
