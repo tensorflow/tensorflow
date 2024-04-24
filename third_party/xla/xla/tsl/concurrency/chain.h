@@ -13,9 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_TSL_CONCURRENCY_ASYNC_VALUE_REF_H_
-#define TENSORFLOW_TSL_CONCURRENCY_ASYNC_VALUE_REF_H_
+#ifndef XLA_TSL_CONCURRENCY_CHAIN_H_
+#define XLA_TSL_CONCURRENCY_CHAIN_H_
 
-#include "xla/tsl/concurrency/async_value_ref.h"
+namespace tsl {
 
-#endif  // TENSORFLOW_TSL_CONCURRENCY_ASYNC_VALUE_REF_H_
+class Chain {};
+
+}  // namespace tsl
+
+#endif  // XLA_TSL_CONCURRENCY_CHAIN_H_

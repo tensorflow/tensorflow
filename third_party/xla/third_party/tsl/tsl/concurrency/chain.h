@@ -16,10 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_TSL_CONCURRENCY_CHAIN_H_
 #define TENSORFLOW_TSL_CONCURRENCY_CHAIN_H_
 
-namespace tsl {
-
-class Chain {};
-
-}  // namespace tsl
+#include "xla/tsl/concurrency/chain.h"
 
 #endif  // TENSORFLOW_TSL_CONCURRENCY_CHAIN_H_
