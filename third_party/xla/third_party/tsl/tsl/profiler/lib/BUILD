@@ -1,12 +1,9 @@
+load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load("@local_xla//xla/tsl:tsl.bzl", "if_not_android", "internal_visibility", "nvtx_headers")
 load("@local_xla//xla/tsl:tsl.default.bzl", "filegroup")
 load("//tsl/platform:build_config.bzl", "tsl_cc_test")
 load("//tsl/platform:build_config_root.bzl", "if_static")
-load(
-    "//tsl/platform/default:cuda_build_defs.bzl",
-    "if_cuda_is_configured",
-)
 load(
     "//tsl/profiler/builds:build_config.bzl",
     "tf_profiler_copts",
@@ -271,13 +268,13 @@ cc_library(
 
 cc_library(
     name = "nvtx_utils",
-    srcs = if_cuda_is_configured(
+    srcs = if_cuda(
         ["nvtx_utils.cc"],
         ["nvtx_utils_stub.cc"],
     ),
     hdrs = ["nvtx_utils.h"],
     visibility = ["//visibility:public"],
-    deps = if_cuda_is_configured(nvtx_headers()),
+    deps = if_cuda(nvtx_headers()),
 )
 
 cc_library(
