@@ -1,12 +1,1 @@
 Auto generated patch. Do not edit or delete it, even if empty.
-diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/test/src/math/BUILD.bazel b/utils/bazel/llvm-project-overlay/libc/test/src/math/BUILD.bazel
---- a/utils/bazel/llvm-project-overlay/libc/test/src/math/BUILD.bazel
-+++ b/utils/bazel/llvm-project-overlay/libc/test/src/math/BUILD.bazel
-@@ -298,6 +298,7 @@
-         "//libc:__support_fputil_fp_bits",
-         "//libc:__support_fputil_manipulation_functions",
-         "//libc:hdr_math_macros",
-+        "//libc/test/UnitTest:fp_test_helpers",
-         "//libc/test/UnitTest:LibcUnitTest",
-     ],
- )
