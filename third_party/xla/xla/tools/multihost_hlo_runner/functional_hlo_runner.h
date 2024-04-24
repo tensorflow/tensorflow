@@ -377,16 +377,10 @@ class FunctionalHloRunner {
   // arguments might be invalid when arguments are destructed.
   static absl::StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>
   CopyArgumentsToDevice(PjRtClient& client,
-                        absl::Span<PjRtDevice* const> addressable_devices,
+                        const PjRtLoadedExecutable* executable,
                         const PerDeviceLiteralVecType& arguments,
-                        bool log_input);
-
-  static absl::StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>
-  CopyArgumentsToDevice(PjRtClient& client,
-                        absl::Span<PjRtDevice* const> addressable_devices,
-                        const LiteralVec& argument_literals,
-                        const PerDeviceIndexVecType& argument_indices,
-                        bool log_input);
+                        bool log_input, bool flattened_arguments,
+                        bool clone_device0_arguments = false);
 
   static absl::StatusOr<PerDeviceLiteralVecType> RunInternal(
       PjRtClient& client, PjRtLoadedExecutable* executable,
