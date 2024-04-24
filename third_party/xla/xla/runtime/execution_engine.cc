@@ -374,12 +374,13 @@ ExecutionEngine::CreateFromModule(std::unique_ptr<llvm::LLVMContext> ctx,
   std::optional<absl::MutexLock> lljit_lock(lljit_mu);
 
   // Construct the LLJIT with the given compiler and object linking layers.
-  auto jit = llvm::orc::LLJITBuilder()
-                 .setCompileFunctionCreator(compile_function_creator)
-                 .setObjectLinkingLayerCreator(obj_layer_creator)
-                 .setExecutorProcessControl(std::move(*executorProcessControl))
-                 .setNumCompileThreads(0)  // disable multi-threading
-                 .create();
+  auto jit =
+      llvm::orc::LLJITBuilder()
+          .setCompileFunctionCreator(compile_function_creator)
+          .setObjectLinkingLayerCreator(obj_layer_creator)
+          .setExecutorProcessControl(std::move(*executorProcessControl))
+          .setSupportConcurrentCompilation(false)  // disable multi-threading
+          .create();
 
   if (auto err = jit.takeError())
     return Internal("failed to construct LLJIT: %s", ToString(err));
