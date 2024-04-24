@@ -462,7 +462,7 @@ class ExecuteOpConversion final : public mlir::ConversionPattern {
       tensorflow::TensorProto tensor_proto;
       auto status = ConvertToTensorProto(const_op.getValue(), &tensor_proto);
       if (!status.ok())
-        return const_op.emitError(tsl::NullTerminatedMessage(status));
+        return const_op.emitError(absl::StatusMessageAsCStr(status));
 
       rewriter.replaceOpWithNewOp<tf_mlrt::ConstOp>(
           op, rewriter.getType<tf_mlrt::TFTensorType>(),
