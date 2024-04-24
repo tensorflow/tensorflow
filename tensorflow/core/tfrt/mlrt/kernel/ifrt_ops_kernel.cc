@@ -53,7 +53,6 @@ limitations under the License.
 #include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime
 
 using tensorflow::ifrt_serving::IfrtModelContext;
-using tensorflow::ifrt_serving::VariableDeviceShardingConfigProto;
 
 namespace tensorflow {
 namespace tf_mlrt {
