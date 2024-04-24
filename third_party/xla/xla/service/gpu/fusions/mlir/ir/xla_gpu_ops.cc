@@ -16,6 +16,8 @@ limitations under the License.
 #include "xla/service/gpu/fusions/mlir/ir/xla_gpu_ops.h"
 
 #include <cstdint>
+#include <utility>
+#include <vector>
 
 #include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/ADT/TypeSwitch.h"  // IWYU pragma: keep
@@ -32,11 +34,13 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/InliningUtils.h"  // from @llvm-project
 #include "xla/service/gpu/fusions/mlir/ir/xla_gpu_dialect.cc.inc"
+#include "xla/service/gpu/model/indexing_map.h"
 
 namespace xla {
 namespace gpu {
 namespace {
 
+using mlir::AffineMap;
 using mlir::failure;
 using mlir::LogicalResult;
 using mlir::OpBuilder;
@@ -209,7 +213,7 @@ mlir::ParseResult ApplyIndexingOp::parse(mlir::OpAsmParser &parser,
 
 void ApplyIndexingOp::print(mlir::OpAsmPrinter &p) {
   mlir::AffineMapAttr affine_map_attr = getMapAttr();
-  mlir::AffineMap affine_map = affine_map_attr.getAffineMap();
+  AffineMap affine_map = affine_map_attr.getAffineMap();
   p << " " << affine_map_attr;
 
   auto lower_bounds = getLowerBounds();
@@ -242,6 +246,45 @@ void ApplyIndexingOp::print(mlir::OpAsmPrinter &p) {
   }
   p.printOptionalAttrDict((*this)->getAttrs(), /*elidedAttrs=*/{
                               "map", "lower_bounds", "upper_bounds"});
+}
+
+LogicalResult ApplyIndexingOp::verify() {
+  auto affine_map = getMapAttr().getAffineMap();
+  unsigned num_variables = affine_map.getNumDims() + affine_map.getNumSymbols();
+  if (getOperands().size() != num_variables ||
+      getLowerBounds().size() != num_variables ||
+      getUpperBounds().size() != num_variables) {
+    return emitOpError(
+        "operand, lower_bounds, upper_bounds count and affine map dimension "
+        "and symbol count must match");
+  }
+  IndexingMap indexing_map = getIndexingMap();
+  if (indexing_map.IsKnownEmpty()) {
+    return emitOpError("indexing map is empty");
+  }
+  return success();
+}
+
+IndexingMap ApplyIndexingOp::getIndexingMap() {
+  auto lower_bounds = getLowerBounds();
+  auto upper_bounds = getUpperBounds();
+
+  AffineMap affine_map = getMapAttr().getAffineMap();
+  unsigned num_dimensions = affine_map.getNumDims();
+  std::vector<DimVar> dim_vars;
+  dim_vars.reserve(num_dimensions);
+  for (int id = 0; id < num_dimensions; ++id) {
+    dim_vars.push_back(DimVar{Interval{lower_bounds[id], upper_bounds[id]}});
+  }
+  unsigned num_symbols = affine_map.getNumSymbols();
+  std::vector<RangeVar> range_vars;
+  range_vars.reserve(num_symbols);
+  for (int id = 0; id < num_symbols; ++id) {
+    range_vars.push_back(
+        RangeVar{Interval{lower_bounds[id], upper_bounds[id]}});
+  }
+  return IndexingMap(affine_map, std::move(dim_vars), std::move(range_vars),
+                     /*rt_vars=*/{});
 }
 
 //===----------------------------------------------------------------------===//
