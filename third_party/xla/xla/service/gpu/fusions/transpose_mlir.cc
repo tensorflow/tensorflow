@@ -299,13 +299,13 @@ absl::Status MlirTransposeFusion::EmitReadFromShMemMlir(
         llvm::SmallVector<Value> epilogue_indices = dim_values;
         absl::c_copy(symbol_values, std::back_inserter(epilogue_indices));
         auto result_scalars =
-            EmitEpilogue(computations, entry_function, transpose_values,
-                         epilogue_indices, builder);
+            EmitEpilogue(/*epilogue_index=*/0, computations, entry_function,
+                         transpose_values, epilogue_indices, builder);
         SmallVector<Value> results;
         results.reserve(output_tensor_args.size());
         for (auto [root, tensor, indexing] :
              llvm::zip(analysis_.fusion_roots(), output_tensors,
-                       computations.epilogue()->root_indexing)) {
+                       computations.epilogues().front().root_indexing)) {
           llvm::SmallVector<Value> indices =
               ApplyAffineMap(indexing, dim_values, symbol_values, builder);
           results.push_back(builder.create<InsertOp>(
@@ -318,12 +318,12 @@ absl::Status MlirTransposeFusion::EmitReadFromShMemMlir(
   return absl::OkStatus();
 }
 
-std::optional<mlir_converter::EpilogueSpecification>
-MlirTransposeFusion::GetEpilogue(const HloFusionInstruction& fusion,
-                                 MLIRContext* mlir_context) const {
-  return mlir_converter::EpilogueSpecification::FromOutputIndexing(
+std::vector<mlir_converter::EpilogueSpecification>
+MlirTransposeFusion::GetEpilogues(const HloFusionInstruction& fusion,
+                                  MLIRContext* mlir_context) const {
+  return {mlir_converter::EpilogueSpecification::FromOutputIndexing(
       analysis_, shmem_transposes_, analysis_.fusion_roots(), *this,
-      mlir_context);
+      mlir_context)};
 }
 
 absl::Status MlirTransposeFusion::EmitEntryFunction(

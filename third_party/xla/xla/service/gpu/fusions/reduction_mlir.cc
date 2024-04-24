@@ -119,11 +119,11 @@ bool MlirReductionFusion::IsSupported(const HloFusionAnalysis& analysis) {
   return info.GetGroups().grouped_roots.size() == 1;
 }
 
-std::optional<mlir_converter::EpilogueSpecification>
-MlirReductionFusion::GetEpilogue(const HloFusionInstruction& fusion,
-                                 mlir::MLIRContext* mlir_context) const {
-  return mlir_converter::EpilogueSpecification::FromOutputIndexing(
-      analysis(), reduction_heroes_, reduction_roots_, *this, mlir_context);
+std::vector<mlir_converter::EpilogueSpecification>
+MlirReductionFusion::GetEpilogues(const HloFusionInstruction& fusion,
+                                  mlir::MLIRContext* mlir_context) const {
+  return {mlir_converter::EpilogueSpecification::FromOutputIndexing(
+      analysis(), reduction_heroes_, reduction_roots_, *this, mlir_context)};
 }
 
 absl::Status MlirReductionFusion::EmitEntryFunction(
@@ -143,8 +143,6 @@ absl::Status MlirReductionFusion::EmitEntryFunction(
 }
 
 absl::Status MlirReductionFusion::EmitReduction(EmitterState& state) const {
-  CHECK(IsSupported(analysis()))
-      << "Attempting to output code for an unsupported reduction";
   auto& builder = state.builder;
   const auto& tiling = reduction_info().GetTiling();
 
@@ -212,7 +210,7 @@ absl::Status MlirReductionFusion::EmitReduction(EmitterState& state) const {
           state.fusion.fused_parameters().size()));
   HloValueMap root_output_indices;
   llvm::SmallVector<Value> epilogue_input_indices;
-  const auto& epilogue = *state.computations.epilogue();
+  const auto& epilogue = state.computations.epilogues().front();
   epilogue_input_indices = EmitThreadAndBlockIds(builder);
   int num_symbols = epilogue.root_indexing.front().getNumSymbols();
   for (int i = 0; i < num_symbols; ++i) {
@@ -241,9 +239,10 @@ absl::Status MlirReductionFusion::EmitReduction(EmitterState& state) const {
 
   auto evaluate_epilogue = [&](const HloValueMap& results,
                                llvm::SmallVector<Value> outputs) {
-    auto values = EmitEpilogue(state.computations, state.entry_function,
-                               results, epilogue_input_indices, builder);
-    const auto& epilogue = *state.computations.epilogue();
+    auto values = EmitEpilogue(/*epilogue_index=*/0, state.computations,
+                               state.entry_function, results,
+                               epilogue_input_indices, builder);
+    const auto& epilogue = state.computations.epilogues().front();
     for (auto root : epilogue.roots) {
       for (auto [result_index, result] : llvm::enumerate(values.at(root))) {
         auto& output = outputs[state.OutputIndex(root, result_index)];

@@ -319,21 +319,20 @@ PartitionedComputation::PartitionedComputation(
   }
 }
 
-std::optional<PartitionedComputation::Subgraph>
-PartitionedComputation::Subgraph::ForEpilogue(
-    const std::optional<EpilogueSpecification>& epilogue) {
-  if (!epilogue) {
-    return std::nullopt;
-  }
-
-  const auto* computation = epilogue->heroes.front()->parent();
+PartitionedComputation::Subgraph PartitionedComputation::Subgraph::ForEpilogue(
+    const EpilogueSpecification& epilogue) {
+  const auto* computation = epilogue.heroes.front()->parent();
   PartitionedComputation::Subgraph subgraph;
   subgraph.name = llvm_ir::SanitizeFunctionName(
-      absl::StrCat(computation->name(), "__epilogue__"));
-  subgraph.roots = epilogue->roots;
+      absl::StrCat(computation->name(), "__epilogue__",
+                   absl::StrJoin(epilogue.roots, "_",
+                                 [](std::string* out, const auto* root) {
+                                   absl::StrAppend(out, root->name());
+                                 })));
+  subgraph.roots = epilogue.roots;
 
   int index = 0;
-  for (auto* hero : epilogue->heroes) {
+  for (auto* hero : epilogue.heroes) {
     if (subgraph.injected_value_starts.insert({hero, index}).second) {
       index += Arity(hero->shape());
     }
@@ -353,16 +352,15 @@ PartitionedComputation::Subgraph::ForEpilogue(
 
   visit(computation->root_instruction());
   subgraph.instructions = std::move(seen);
-  subgraph.index_ranges = epilogue->index_ranges;
-  subgraph.root_indexing = epilogue->root_indexing;
+  subgraph.index_ranges = epilogue.index_ranges;
+  subgraph.root_indexing = epilogue.root_indexing;
   return subgraph;
 }
 
 PartitionedComputations::PartitionedComputations(
     const HloComputation* fusion, mlir::MLIRContext* mlir_context,
-    std::optional<EpilogueSpecification> epilogue)
-    : fusion_(fusion),
-      epilogue_(PartitionedComputation::Subgraph::ForEpilogue(epilogue)) {
+    std::vector<EpilogueSpecification> epilogues)
+    : fusion_(fusion) {
   // Collect all transitively called computations (including the fusion itself).
   absl::flat_hash_set<const HloComputation*> seen;
   std::vector<const HloComputation*> computations;
@@ -377,9 +375,12 @@ PartitionedComputations::PartitionedComputations(
   visit(fusion);
 
   absl::flat_hash_set<const HloInstruction*> roots;
-  if (epilogue) {
-    roots = {epilogue->heroes.begin(), epilogue->heroes.end()};
-    for (auto* instruction : epilogue->heroes) {
+  epilogues_.reserve(epilogues.size());
+  for (const auto& epilogue : epilogues) {
+    epilogues_.push_back(
+        PartitionedComputation::Subgraph::ForEpilogue(epilogue));
+    roots.insert(epilogue.heroes.begin(), epilogue.heroes.end());
+    for (auto* instruction : epilogue.heroes) {
       roots.insert(instruction->operands().begin(),
                    instruction->operands().end());
     }
@@ -403,22 +404,20 @@ PartitionedComputations::DeclareFunctions(mlir::ModuleOp module) const {
       mapping;
   mlir::ImplicitLocOpBuilder builder(module.getLoc(), module->getContext());
   builder.setInsertionPointToEnd(module.getBody());
+  auto create_funcs =
+      [&](absl::Span<const PartitionedComputation::Subgraph> subgraphs) {
+        for (const auto& subgraph : subgraphs) {
+          auto func_op = CreateSubgraphMlirFunction(subgraph, builder);
+          func_op->setAttr("llvm.linkage", mlir::LLVM::LinkageAttr::get(
+                                               module->getContext(),
+                                               mlir::LLVM::Linkage::Internal));
+          mapping[&subgraph] = func_op;
+        }
+      };
   for (const auto& computation : partitioned_computations_) {
-    for (const auto& subgraph : computation.subgraphs()) {
-      auto func_op = CreateSubgraphMlirFunction(subgraph, builder);
-      func_op->setAttr("llvm.linkage", mlir::LLVM::LinkageAttr::get(
-                                           module->getContext(),
-                                           mlir::LLVM::Linkage::Internal));
-      mapping[&subgraph] = func_op;
-    }
+    create_funcs(computation.subgraphs());
   }
-  if (epilogue_) {
-    auto func_op = CreateSubgraphMlirFunction(*epilogue_, builder);
-    func_op->setAttr("llvm.linkage",
-                     mlir::LLVM::LinkageAttr::get(
-                         module->getContext(), mlir::LLVM::Linkage::Internal));
-    mapping[&*epilogue_] = func_op;
-  }
+  create_funcs(epilogues_);
   return mapping;
 }
 

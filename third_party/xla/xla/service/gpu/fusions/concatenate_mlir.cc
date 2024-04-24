@@ -68,12 +68,12 @@ MlirConcatenateFusion::ComputeThreadIdToInputIndexing(
                                        ctx);
 }
 
-std::optional<mlir_converter::EpilogueSpecification>
-MlirConcatenateFusion::GetEpilogue(const HloFusionInstruction& fusion,
-                                   mlir::MLIRContext* mlir_context) const {
-  return mlir_converter::EpilogueSpecification::FromIdentityIndexing(
+std::vector<mlir_converter::EpilogueSpecification>
+MlirConcatenateFusion::GetEpilogues(const HloFusionInstruction& fusion,
+                                    mlir::MLIRContext* mlir_context) const {
+  return {mlir_converter::EpilogueSpecification::FromIdentityIndexing(
       analysis_.fusion_heroes().front(), analysis_.fusion_roots().front(),
-      mlir_context);
+      mlir_context)};
 }
 
 absl::Status MlirConcatenateFusion::EmitEntryFunction(
@@ -128,9 +128,9 @@ absl::Status MlirConcatenateFusion::EmitEntryFunction(
       auto output_indices =
           mlir_converter::ApplyAffineMap(thread_id_to_output_map.GetAffineMap(),
                                          dim_values, symbol_values, builder);
-      auto result_scalars =
-          EmitEpilogue(computations, entry_function, hero_value, output_indices,
-                       builder)[analysis_.fusion_roots().front()];
+      auto result_scalars = EmitEpilogue(
+          /*epilogue_index=*/0, computations, entry_function, hero_value,
+          output_indices, builder)[analysis_.fusion_roots().front()];
 
       SmallVector<Value> result_tensors;
       result_tensors.reserve(output_tensor_args.size());

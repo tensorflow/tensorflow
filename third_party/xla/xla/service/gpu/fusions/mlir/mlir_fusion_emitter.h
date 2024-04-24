@@ -70,10 +70,10 @@ class MlirFusionEmitterBase : public KernelFusionInterface {
   // Returns the set of instructions that will be isolated in the partitioned,
   // i.e., they will get their own subgraph. We won't automatically emit
   // functions for these instructions.
-  virtual std::optional<mlir_converter::EpilogueSpecification> GetEpilogue(
+  virtual std::vector<mlir_converter::EpilogueSpecification> GetEpilogues(
       const HloFusionInstruction& fusion,
       mlir::MLIRContext* mlir_context) const {
-    return std::nullopt;
+    return {};
   }
 
   virtual absl::Status EmitEntryFunction(
@@ -85,6 +85,7 @@ class MlirFusionEmitterBase : public KernelFusionInterface {
   // Evaluates the epilogue of the fusion. Returns the results for each epilogue
   // root.
   absl::flat_hash_map<const HloInstruction*, mlir::ValueRange> EmitEpilogue(
+      int epilogue_index,
       const mlir_converter::PartitionedComputations& computations,
       mlir::func::FuncOp entry_fn,
       const absl::flat_hash_map<const HloInstruction*,

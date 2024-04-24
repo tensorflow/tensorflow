@@ -80,9 +80,9 @@ class ElementalHloToMlirTest : public HloTestBase {
                              builder.getContext()));
     builder.setInsertionPointToStart(module->getBody());
     auto* entry_computation = hlo_module->entry_computation();
-    std::optional<EpilogueSpecification> epilogue_spec = std::nullopt;
+    std::vector<EpilogueSpecification> epilogue_spec;
     if (epilogue_spec_fn) {
-      epilogue_spec = epilogue_spec_fn(entry_computation);
+      epilogue_spec.push_back(epilogue_spec_fn(entry_computation));
     }
     PartitionedComputations partitioned_computations(entry_computation,
                                                      &context_, epilogue_spec);
@@ -96,9 +96,10 @@ class ElementalHloToMlirTest : public HloTestBase {
     TF_RETURN_IF_ERROR(SubgraphToMlirFunction(
         entry_pc, entry_pc.GetRootSubgraph(), entry_func, call_targets));
 
-    if (const auto& epilogue = partitioned_computations.epilogue()) {
-      TF_RETURN_IF_ERROR(SubgraphToMlirFunction(entry_pc, *epilogue,
-                                                fns[&*epilogue], call_targets));
+    if (!partitioned_computations.epilogues().empty()) {
+      const auto& epilogue = partitioned_computations.epilogues().front();
+      TF_RETURN_IF_ERROR(SubgraphToMlirFunction(entry_pc, epilogue,
+                                                fns[&epilogue], call_targets));
     }
 
     // Canonicalize and CSE for better readability of check tests.
@@ -1213,7 +1214,7 @@ TEST_F(ElementalHloToMlirTest, Epilogue) {
         ROOT %add = f32[2,17,16] add(%transpose, %bc)
       })",
       R"(
-      // CHECK:      @main__epilogue__(
+      // CHECK:      @main__epilogue__add(
       // CHECK-SAME:     %[[ARG0:.*]]: tensor<2x16x17xf32>
       // CHECK-SAME:     %[[ARG1:.*]]: tensor<f32>
       // CHECK-SAME:     %[[X:.*]]: index {xla.range = [0 : index, 1 :

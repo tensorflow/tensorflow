@@ -15,13 +15,16 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_FUSIONS_REDUCTION_MLIR_H_
 #define XLA_SERVICE_GPU_FUSIONS_REDUCTION_MLIR_H_
 
-#include "absl/container/flat_hash_map.h"
+#include <vector>
+
 #include "absl/status/status.h"
 #include "mlir/Dialect/Bufferization/IR/BufferizableOpInterface.h"  // from @llvm-project
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/service/gpu/fusions/mlir/elemental_hlo_to_mlir.h"
+#include "xla/service/gpu/fusions/mlir/computation_partitioner.h"
 #include "xla/service/gpu/fusions/mlir/mlir_fusion_emitter.h"
 #include "xla/service/gpu/fusions/reduction_base.h"
+#include "xla/service/gpu/hlo_fusion_analysis.h"
 
 namespace xla {
 namespace gpu {
@@ -42,7 +45,7 @@ class MlirReductionFusion : public ReductionFusionBase<MlirFusionEmitterBase> {
       mlir::func::FuncOp entry_function,
       const HloFusionInstruction& fusion) const override;
 
-  std::optional<mlir_converter::EpilogueSpecification> GetEpilogue(
+  std::vector<mlir_converter::EpilogueSpecification> GetEpilogues(
       const HloFusionInstruction& fusion,
       mlir::MLIRContext* mlir_context) const override;
 

@@ -164,13 +164,14 @@ TEST_F(ComputationPartitionerTest, Epilogue) {
        fused_computation->GetInstructionWithName("sign")},
       /*index_ranges=*/{1, 42},
       {mlir::AffineMap::get(1, 0, mlir::getAffineDimExpr(0, &mlir_context_))}};
-  PartitionedComputations fusion(fused_computation, &mlir_context_, epilogue);
+  PartitionedComputations fusion(fused_computation, &mlir_context_, {epilogue});
 
   mlir::ImplicitLocOpBuilder builder(mlir::UnknownLoc::get(&mlir_context_),
                                      &mlir_context_);
   EXPECT_EQ(
-      PrintAndErase(CreateSubgraphMlirFunction(*fusion.epilogue(), builder)),
-      "func.func private @fused_computation__epilogue__(tensor<4xf32>, "
+      PrintAndErase(
+          CreateSubgraphMlirFunction(fusion.epilogues().front(), builder)),
+      "func.func private @fused_computation__epilogue__log_sign(tensor<4xf32>, "
       "index {xla.range = [0 : index, 0 : index]}, "
       "index {xla.range = [0 : index, 41 : index]}, "
       "f32) -> (f32, f32)");

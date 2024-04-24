@@ -140,14 +140,14 @@ LaunchDimensions MlirScatterFusion::launch_dimensions() const {
   return CalculateLaunchDimensions(shape, analysis_.device_info());
 }
 
-std::optional<mlir_converter::EpilogueSpecification>
-MlirScatterFusion::GetEpilogue(const HloFusionInstruction& fusion,
-                               mlir::MLIRContext* mlir_context) const {
+std::vector<mlir_converter::EpilogueSpecification>
+MlirScatterFusion::GetEpilogues(const HloFusionInstruction& fusion,
+                                mlir::MLIRContext* mlir_context) const {
   // We don't actually support epilogues for scatter, but this is how we tell
   // the base class that we don't want it to generate code for the scatter.
-  return mlir_converter::EpilogueSpecification::FromIdentityIndexing(
+  return {mlir_converter::EpilogueSpecification::FromIdentityIndexing(
       analysis_.fusion_heroes().front(), analysis_.fusion_roots().front(),
-      mlir_context);
+      mlir_context)};
 }
 
 mlir::Value EmitScatterComputation(
