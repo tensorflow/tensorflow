@@ -230,4 +230,65 @@ REGISTER_OP("SortListOfSparseCoreCooTensors")
       return absl::OkStatus();
     });
 
+REGISTER_OP("ConvertToSparseCoreCsrWrappedCooTensor")
+    .Input("sorted_row_ids_list: num_sc_per_chip * int32")
+    .Input("sorted_col_ids_list: num_sc_per_chip * int32")
+    .Input("sorted_gains_list: num_sc_per_chip * float32")
+    .Input("id_counts_list: num_sc_per_chip * int32")
+    .Input("splits: int64")
+    .Output("row_pointers: int32")
+    .Output("sorted_sample_ids: int32")
+    .Output("sorted_token_ids: int32")
+    .Output("sorted_gains: float32")
+    .Output("row_pointers_unpadded_size: int32")
+    .Output("ids_unpadded_size: int32")
+    .Output("num_minibatches_per_sc: int32")
+    .Attr("sample_count_per_sc : int >= 1")
+    .Attr("num_replica: int >= 1")
+    .Attr("max_minibatches_per_sc: int >= 1")
+    .Attr("max_ids_per_chip_per_sample: int >= 1")
+    .Attr("table_vocab_size: int >= 1")
+    .Attr("feature_width: int >= 1")
+    .Attr("num_sc_per_chip: int >= 1")
+    .Attr("table_name: string")
+    .Attr("allow_id_dropping: bool")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      int32 max_minibatches_per_sc;
+      TF_RETURN_IF_ERROR(
+          c->GetAttr("max_minibatches_per_sc", &max_minibatches_per_sc));
+      int32 num_replica;
+      TF_RETURN_IF_ERROR(c->GetAttr("num_replica", &num_replica));
+      int32 sample_count_per_sc;
+      TF_RETURN_IF_ERROR(
+          c->GetAttr("sample_count_per_sc", &sample_count_per_sc));
+      int32 max_ids_per_chip_per_sample;
+      TF_RETURN_IF_ERROR(c->GetAttr("max_ids_per_chip_per_sample",
+                                    &max_ids_per_chip_per_sample));
+      // We can't get this number programmatically since the shape inference
+      // will be run as part of the graph generation which might not have the
+      // tpu system available.
+      const int xla_pad_size = 8;
+      int32 num_sc_per_chip;
+      TF_RETURN_IF_ERROR(c->GetAttr("num_sc_per_chip", &num_sc_per_chip));
+
+      const int num_physical_replica = num_replica * num_sc_per_chip;
+      const int max_total_minibatches =
+          num_sc_per_chip * max_minibatches_per_sc;
+      const int max_ids_per_chip =
+          max_ids_per_chip_per_sample * sample_count_per_sc * num_sc_per_chip;
+
+      const int padded_row_pointers_size_per_sc =
+          xla::RoundUpTo(num_physical_replica, xla_pad_size);
+
+      c->set_output(0, c->MakeShape({max_total_minibatches *
+                                     padded_row_pointers_size_per_sc}));
+      for (int i = 1; i < 4; ++i) {
+        c->set_output(i, c->MakeShape({max_ids_per_chip}));
+      }
+      c->set_output(4, c->Scalar());
+      c->set_output(5, c->Scalar());
+      c->set_output(6, c->Scalar());
+      return absl::OkStatus();
+    });
+
 }  // namespace tensorflow

@@ -74,6 +74,7 @@ tf_py_strict_test(
     deps = [
         # copybara:uncomment "//tensorflow/core/tpu/kernels",
         "//tensorflow/python/compat:v2_compat",
+        "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:sparse_tensor",

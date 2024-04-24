@@ -981,6 +981,10 @@ tf_module {
     argspec: "args=[\'indices_or_row_splits\', \'values\', \'weights\', \'sample_count\', \'num_sc_per_chip\', \'row_offset\', \'col_offset\', \'col_shift\', \'num_sc_shards\', \'stacked_table_sample_count\', \'combiner\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "ConvertToSparseCoreCsrWrappedCooTensor"
+    argspec: "args=[\'sorted_row_ids_list\', \'sorted_col_ids_list\', \'sorted_gains_list\', \'id_counts_list\', \'splits\', \'sample_count_per_sc\', \'num_replica\', \'max_minibatches_per_sc\', \'max_ids_per_chip_per_sample\', \'table_vocab_size\', \'feature_width\', \'table_name\', \'allow_id_dropping\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "Copy"
     argspec: "args=[\'input\', \'tensor_name\', \'debug_ops_spec\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'[]\', \'None\'], "
   }

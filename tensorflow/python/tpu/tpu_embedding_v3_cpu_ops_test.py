@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+import functools
 import itertools
 import math
 
@@ -19,6 +20,7 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.compat import v2_compat
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
@@ -92,6 +94,135 @@ def convert_input_to_coo_tensor(
   gains = ops.convert_to_tensor(gains, dtype=dtypes.float32)
 
   return row_ids, col_ids, gains
+
+
+def _convert_coo_tensor_to_csr_with_physical_replica(
+    row_ids,
+    col_ids,
+    gains,
+    splits,
+    sample_count,
+    num_replica,
+    max_minibatches_per_sc,
+    max_ids_per_chip_per_sample,
+    table_vocab_size,
+):
+  num_sc_per_replica = 4
+  num_physical_replica = num_replica * num_sc_per_replica
+  assert (
+      sample_count % num_sc_per_replica == 0
+  ), f"sample count should be multiply of 4 instead got {sample_count}"
+
+  per_sc_sample_count = sample_count // num_sc_per_replica
+
+  splits = splits.numpy()
+  if splits.size > 1:
+    splits = functools.reduce(lambda x, y: x | y, splits)
+
+  max_division_level = 6
+  max_divisions = 1 << max_division_level
+
+  division_size = (table_vocab_size + max_divisions - 1) // max_divisions
+
+  bucket_splits = []
+  current_index = 0
+  while splits > 0:
+    if splits % 2 == 1:
+      split_level = int(current_index + 1).bit_length() - 1
+      split_offset = current_index + 1 - (1 << split_level)
+      split_size = 1 << (max_division_level - 1 - split_level)
+      bucket_splits.append(split_size + split_offset * split_size * 2)
+    splits >>= 1
+    current_index += 1
+
+  bucket_splits.sort()
+
+  num_minibatch_per_sc = len(bucket_splits) + 1
+
+  embedding_lookup_inputs = []
+  for row_id, col_id, gain in zip(row_ids, col_ids, gains):
+    embedding_lookup_inputs.append(
+        (col_id % num_physical_replica, col_id, row_id, gain)
+    )
+  # sort based on replica id first, then col_id.
+  embedding_lookup_inputs.sort()
+
+  total_minibatches = num_minibatch_per_sc * num_sc_per_replica
+
+  assert num_minibatch_per_sc <= max_minibatches_per_sc, (
+      f"Get {num_minibatch_per_sc} minibatches per sparse core, but the"
+      " number of max minibatches per sparse core is"
+      f" {max_minibatches_per_sc}"
+  )
+
+  minibatches = [[] for _ in range(total_minibatches)]
+
+  def calculate_minibatch_id(col_id):
+    for i, bucket_split in enumerate(bucket_splits):
+      if bucket_split * division_size > col_id:
+        return i
+    return len(bucket_splits)
+
+  for embedding_lookup_input in embedding_lookup_inputs:
+    sc_id = embedding_lookup_input[2] // per_sc_sample_count
+    minibatch_id = calculate_minibatch_id(embedding_lookup_input[1])
+
+    minibatches[sc_id * num_minibatch_per_sc + minibatch_id].append(
+        embedding_lookup_input
+    )
+
+  def round_up_to(x, round_value):
+    return x + -x % round_value
+
+  max_ids_per_chip = max_ids_per_chip_per_sample * sample_count
+
+  padded_row_pointers_size = round_up_to(num_physical_replica, 8)
+
+  total_row_pinters_size = padded_row_pointers_size * (
+      max_minibatches_per_sc * num_sc_per_replica
+  )
+
+  row_pointers = np.full(total_row_pinters_size, 8, dtype=np.int32)
+  sorted_sample_ids = np.full(max_ids_per_chip, 8, dtype=np.int32)
+  sorted_token_ids = np.full(max_ids_per_chip, 8, dtype=np.int32)
+  sorted_gains = np.full(max_ids_per_chip, 8, dtype=np.float32)
+
+  id_index = 0
+  row_pointers_index = 0
+  for minibatch in minibatches:
+    index = 0
+    for replica_id in range(num_physical_replica):
+      while index < len(minibatch) and replica_id == minibatch[index][0]:
+        sorted_token_ids[id_index] = minibatch[index][1] // num_physical_replica
+        sorted_sample_ids[id_index] = minibatch[index][2] % per_sc_sample_count
+        sorted_gains[id_index] = minibatch[index][3]
+        index += 1
+        id_index += 1
+      row_pointers[row_pointers_index] = id_index
+      id_index = round_up_to(id_index, 8)
+      row_pointers_index += 1
+
+    for i in range(
+        row_pointers_index,
+        round_up_to(row_pointers_index, padded_row_pointers_size),
+    ):
+      row_pointers[i] = id_index
+    row_pointers_index = round_up_to(
+        row_pointers_index, padded_row_pointers_size
+    )
+
+  row_pointers_unpadded_size = total_minibatches * padded_row_pointers_size
+  ids_unpadded_size = id_index
+
+  return (
+      row_pointers,
+      sorted_sample_ids,
+      sorted_token_ids,
+      sorted_gains,
+      np.array(row_pointers_unpadded_size, dtype=np.int32),
+      np.array(ids_unpadded_size, dtype=np.int32),
+      np.array(num_minibatch_per_sc, dtype=np.int32),
+  )
 
 
 class TpuEmbeddingV3CPUOpsTest(parameterized.TestCase, test.TestCase):
@@ -174,6 +305,127 @@ class TpuEmbeddingV3CPUOpsTest(parameterized.TestCase, test.TestCase):
     self.assertAllClose(golden_col_ids, array_ops.concat(col_ids_list, axis=0))
     self.assertAllClose(gains, array_ops.concat(gains_list, axis=0))
 
+  def test_convert_to_list_of_sparse_core_coo_tensors(self):
+    sample_count = 16
+    token_count = 1024
+    combiner = "sum"
+    sparse_feature = sparse_ops.sparse_reorder(
+        sparse_tensor.SparseTensor(
+            indices=[[i % sample_count, i] for i in np.arange(token_count)],
+            values=np.arange(token_count),
+            dense_shape=[sample_count, 1024],
+        )
+    )
+
+    row_ids_list, col_ids_list, gains_list = (
+        xla_ops.convert_to_list_of_sparse_core_coo_tensors(
+            indices_or_row_splits=math_ops.cast(
+                sparse_feature.indices, dtype=dtypes.int32
+            ),
+            values=math_ops.cast(sparse_feature.values, dtype=dtypes.int32),
+            weights=1.0,
+            sample_count=sample_count,
+            combiner=combiner,
+            num_sc_per_chip=4,
+            row_offset=0,
+            col_offset=0,
+            col_shift=0,
+            num_sc_shards=16,
+            stacked_table_sample_count=sample_count,
+        )
+    )
+
+    sorted_row_ids_list = []
+    sorted_col_ids_list = []
+    sorted_gains_list = []
+    id_counts_list = []
+    for i in range(4):
+      (
+          sorted_row_ids,
+          sorted_col_ids,
+          sorted_gains,
+          id_counts,
+      ) = xla_ops.sort_list_of_sparse_core_coo_tensors(
+          row_ids_list=[row_ids_list[i]],
+          col_ids_list=[col_ids_list[i]],
+          gains_list=[gains_list[i]],
+          sample_count_list=[sample_count // 4],
+          col_offset_list=[0],
+          num_replica=4,
+          table_vocab_size=16384,
+          feature_width=16,
+          num_sc_per_chip=4,
+          max_ids_per_sparse_core=256,
+          max_unique_ids_per_sparse_core=256,
+          table_name="table",
+      )
+      sorted_row_ids_list.append(sorted_row_ids)
+      sorted_col_ids_list.append(sorted_col_ids)
+      sorted_gains_list.append(sorted_gains)
+      id_counts_list.append(id_counts)
+
+    (
+        row_pointers,
+        sorted_sample_ids,
+        sorted_token_ids,
+        sorted_gains,
+        row_pointers_unpadded_size,
+        ids_unpadded_size,
+        num_minibatches_per_sc,
+    ) = xla_ops.convert_to_sparse_core_csr_wrapped_coo_tensor(
+        sorted_row_ids_list=sorted_row_ids_list,
+        sorted_col_ids_list=sorted_col_ids_list,
+        sorted_gains_list=sorted_gains_list,
+        id_counts_list=id_counts_list,
+        splits=constant_op.constant(0, dtype=dtypes.int64),
+        sample_count_per_sc=sample_count // 4,
+        max_minibatches_per_sc=4,
+        max_ids_per_chip_per_sample=64,
+        table_vocab_size=16384,
+        feature_width=16,
+        num_replica=4,
+        allow_id_dropping=False,
+        table_name="table",
+    )
+
+    (
+        golden_row_pointers,
+        golden_sorted_sample_ids,
+        golden_sorted_token_ids,
+        golden_sorted_gains,
+        golden_row_pointers_unpadded_size,
+        golden_ids_unpadded_size,
+        golden_num_minibatches_per_sc,
+    ) = _convert_coo_tensor_to_csr_with_physical_replica(
+        row_ids=array_ops.concat(row_ids_list, axis=0),
+        col_ids=array_ops.concat(col_ids_list, axis=0),
+        gains=array_ops.concat(gains_list, axis=0),
+        splits=constant_op.constant(0, dtype=dtypes.int64),
+        sample_count=sample_count,
+        num_replica=4,
+        max_minibatches_per_sc=4,
+        max_ids_per_chip_per_sample=64,
+        table_vocab_size=16384,
+    )
+
+    self.assertAllClose(
+        golden_row_pointers[:golden_row_pointers_unpadded_size],
+        row_pointers[:row_pointers_unpadded_size],
+    )
+    self.assertAllClose(
+        golden_sorted_sample_ids[:golden_ids_unpadded_size],
+        sorted_sample_ids[:ids_unpadded_size],
+    )
+    self.assertAllClose(
+        golden_sorted_token_ids[:golden_ids_unpadded_size],
+        sorted_token_ids[:ids_unpadded_size],
+    )
+    self.assertAllClose(
+        golden_sorted_gains[:golden_ids_unpadded_size],
+        sorted_gains[:ids_unpadded_size],
+    )
+    self.assertEqual(golden_num_minibatches_per_sc, num_minibatches_per_sc)
+
   def test_sort_list_of_sparse_core_coo_tensors(self):
     sample_count = 16
     token_count = 1024
@@ -245,6 +497,101 @@ class TpuEmbeddingV3CPUOpsTest(parameterized.TestCase, test.TestCase):
       self.assertAllClose(
           sorted_gains, [inp[3] for inp in embedding_lookup_inputs]
       )
+
+  def test_id_dropping_with_convert_to_list_of_sparse_core_coo_tensors(self):
+    sample_count = 16
+    token_count = 1024
+    combiner = "sum"
+    sparse_feature = sparse_ops.sparse_reorder(
+        sparse_tensor.SparseTensor(
+            indices=[[i % sample_count, i] for i in np.arange(token_count)],
+            values=np.arange(token_count),
+            dense_shape=[sample_count, 1024],
+        )
+    )
+
+    row_ids_list, col_ids_list, gains_list = (
+        xla_ops.convert_to_list_of_sparse_core_coo_tensors(
+            indices_or_row_splits=math_ops.cast(
+                sparse_feature.indices, dtype=dtypes.int32
+            ),
+            values=math_ops.cast(sparse_feature.values, dtype=dtypes.int32),
+            weights=1.0,
+            sample_count=sample_count,
+            combiner=combiner,
+            num_sc_per_chip=4,
+            row_offset=0,
+            col_offset=0,
+            col_shift=0,
+            num_sc_shards=16,
+            stacked_table_sample_count=sample_count,
+        )
+    )
+
+    sorted_row_ids_list = []
+    sorted_col_ids_list = []
+    sorted_gains_list = []
+    id_counts_list = []
+    for i in range(4):
+      (
+          sorted_row_ids,
+          sorted_col_ids,
+          sorted_gains,
+          id_counts,
+      ) = xla_ops.sort_list_of_sparse_core_coo_tensors(
+          row_ids_list=[row_ids_list[i]],
+          col_ids_list=[col_ids_list[i]],
+          gains_list=[gains_list[i]],
+          sample_count_list=[sample_count // 4],
+          col_offset_list=[0],
+          num_replica=4,
+          table_vocab_size=16384,
+          feature_width=16,
+          num_sc_per_chip=4,
+          max_ids_per_sparse_core=256,
+          max_unique_ids_per_sparse_core=256,
+          table_name="table",
+      )
+      sorted_row_ids_list.append(sorted_row_ids)
+      sorted_col_ids_list.append(sorted_col_ids)
+      sorted_gains_list.append(sorted_gains)
+      id_counts_list.append(id_counts)
+
+    # If not allow id dropping, the op will fail with very small
+    # max_ids_per_chip_per_sample.
+    with self.assertRaises(Exception):
+      xla_ops.convert_to_sparse_core_csr_wrapped_coo_tensor(
+          sorted_row_ids_list=sorted_row_ids_list,
+          sorted_col_ids_list=sorted_col_ids_list,
+          sorted_gains_list=sorted_gains_list,
+          id_counts_list=id_counts_list,
+          splits=constant_op.constant(0, dtype=dtypes.int64),
+          sample_count_per_sc=sample_count // 4,
+          max_minibatches_per_sc=4,
+          max_ids_per_chip_per_sample=8,
+          table_vocab_size=16384,
+          feature_width=16,
+          num_replica=4,
+          allow_id_dropping=False,
+          table_name="table",
+      )
+
+    # Allow id dropping, the op will succeed,
+    xla_ops.convert_to_sparse_core_csr_wrapped_coo_tensor(
+        sorted_row_ids_list=sorted_row_ids_list,
+        sorted_col_ids_list=sorted_col_ids_list,
+        sorted_gains_list=sorted_gains_list,
+        id_counts_list=id_counts_list,
+        splits=constant_op.constant(0, dtype=dtypes.int64),
+        sample_count_per_sc=sample_count // 4,
+        max_minibatches_per_sc=4,
+        max_ids_per_chip_per_sample=8,
+        table_vocab_size=16384,
+        feature_width=16,
+        num_replica=4,
+        allow_id_dropping=True,
+        table_name="table",
+    )
 
 
 if __name__ == "__main__":

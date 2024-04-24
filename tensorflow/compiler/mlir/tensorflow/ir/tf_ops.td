@@ -2488,4 +2488,38 @@ def TF_SortListOfSparseCoreCooTensorsOp : TF_Op<"SortListOfSparseCoreCooTensors"
   // N represents the number of COO tensors in the list.
   TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<1>;
 }
+
+
+def TF_ConvertToSparseCoreCsrWrappedCooTensorOp : TF_Op<"ConvertToSparseCoreCsrWrappedCooTensorOp", [Pure, SameVariadicOperandSize]> {
+  let summary = "An op which converts the sorted coo tensor into sparse core CSR wrapped COO format.";
+
+  let arguments = (ins
+    Variadic<TF_Int32Tensor>:$sorted_row_ids_list,
+    Variadic<TF_Int32Tensor>:$sorted_col_ids_list,
+    Variadic<TF_Float32Tensor>:$sorted_gains_list,
+    Variadic<TF_Int32Tensor>:$id_counts_list,
+    TF_Int64Tensor:$splits,
+
+    ConfinedAttr<I64Attr, [IntMinValue<1>]>:$sample_count_per_sc,
+    ConfinedAttr<I64Attr, [IntMinValue<1>]>:$num_replica,
+    ConfinedAttr<I64Attr, [IntMinValue<1>]>:$max_minibatches_per_sc,
+    ConfinedAttr<I64Attr, [IntMinValue<1>]>:$max_ids_per_chip_per_sample,
+    ConfinedAttr<I64Attr, [IntMinValue<1>]>:$table_vocab_size,
+    ConfinedAttr<I64Attr, [IntMinValue<1>]>:$feature_width,
+    StrAttr:$table_name,
+    BoolAttr:$allow_id_dropping
+  );
+
+  let results = (outs
+    TF_Int32Tensor:$row_pointers,
+    TF_Int32Tensor:$sorted_sample_ids,
+    TF_Int32Tensor:$sorted_token_ids,
+    TF_Float32Tensor:$sorted_gains,
+    TF_Int32Tensor:$row_pointers_unpadded_size,
+    TF_Int32Tensor:$ids_unpadded_size,
+    TF_Int32Tensor:$num_minibatches_per_sc
+  );
+
+  TF_DerivedOperandSizeAttr num_sc_per_chip = TF_DerivedOperandSizeAttr<1>;
+}
 #endif // TF_OPS

@@ -207,6 +207,30 @@ class SortListOfSparseCoreCooTensorsOp : public OpKernel {
   std::map<int32_t, std::vector<int32_t>> col_offset_to_feature_id_;
 };
 
+class ConvertToSparseCoreCsrWrappedCooTensorOp : public OpKernel {
+ public:
+  explicit ConvertToSparseCoreCsrWrappedCooTensorOp(OpKernelConstruction* ctx);
+  ~ConvertToSparseCoreCsrWrappedCooTensorOp() override = default;
+  ConvertToSparseCoreCsrWrappedCooTensorOp(
+      const ConvertToSparseCoreCsrWrappedCooTensorOp&) = delete;
+  ConvertToSparseCoreCsrWrappedCooTensorOp& operator=(
+      const ConvertToSparseCoreCsrWrappedCooTensorOp&) = delete;
+
+  void Compute(OpKernelContext* ctx) override;
+
+ private:
+  int32_t num_sc_per_chip_;
+  int32_t table_vocab_size_;
+  int32_t feature_width_;
+  int32_t num_replica_;
+  int32_t sample_count_per_sc_;
+  int32_t max_minibatches_per_sc_;
+  int32_t max_ids_per_chip_per_sample_;
+  bool allow_id_dropping_;
+  std::string table_name_;
+  std::string device_name_;
+};
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_TPU_KERNELS_SPARSE_CORE_PREPROCESS_OPS_H_
