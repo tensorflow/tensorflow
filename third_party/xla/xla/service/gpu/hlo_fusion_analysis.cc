@@ -306,9 +306,7 @@ HloFusionAnalysis AnalyzeProducerConsumerFusion(
           ? consumer.backend_config<GpuBackendConfig>()->fusion_backend_config()
           : producer.backend_config<GpuBackendConfig>()
                 ->fusion_backend_config(),
-      std::make_unique<ProducerConsumerFusion>(
-          HloFusionAdaptor::ForInstruction(&producer),
-          HloFusionAdaptor::ForInstruction(&consumer)),
+      HloFusionAdaptor::ForProducerConsumer(&producer, &consumer),
       &device_info);
 }
 

@@ -88,10 +88,10 @@ TEST_F(IndexingAnalysisTest, ComputeGroupedOutputToInputIndexing) {
   const HloInstruction* parameter = root->operand(0);
   const HloInstruction* transpose = root->operand(1);
 
-  auto fusion_adaptor = ProducerConsumerFusion(transpose, root);
+  auto fusion_adaptor = HloFusionAdaptor::ForProducerConsumer(transpose, root);
 
   auto grouped_indexing = ComputeGroupedOutputToInputIndexing(
-      fusion_adaptor, fusion_adaptor.GetRoots()[0], &mlir_context_);
+      *fusion_adaptor, fusion_adaptor->GetRoots()[0], &mlir_context_);
   EXPECT_THAT(grouped_indexing,
               UnorderedElementsAre(
                   Pair(root, ElementsAre(MatchIndexingMap(R"(

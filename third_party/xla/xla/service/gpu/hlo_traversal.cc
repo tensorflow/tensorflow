@@ -15,11 +15,14 @@ limitations under the License.
 #include "xla/service/gpu/hlo_traversal.h"
 
 #include <functional>
+#include <iterator>
 #include <memory>
 #include <optional>
 #include <queue>
+#include <sstream>
 #include <string>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
@@ -79,38 +82,42 @@ const HloInstruction* ResolveOperand(const HloInstruction* operand) {
   }
   return operand;
 }
+}  // namespace
 
-class SingleInstructionFusion : public HloFusionAdaptor {
+class SingleInstructionFusion : public internal::HloFusionInstructionAdaptor {
  public:
-  explicit SingleInstructionFusion(const HloInstruction* instruction)
-      : instruction_(*instruction) {
+  explicit SingleInstructionFusion(const HloInstruction* instruction,
+                                   const HloFusionAdaptor* parent)
+      : instruction_(instruction), parent_(parent) {
     CHECK_NE(instruction->opcode(), HloOpcode::kFusion)
         << "Use HloFusionFusion";
   }
 
   bool ContainsInstruction(HloInstructionAdaptor instruction) const override {
-    return instruction == instruction_;
+    return &instruction.instruction() == instruction_;
   }
 
   absl::InlinedVector<HloInstructionAdaptor, 2> GetRoots() const override {
-    return {instruction_};
+    return {HloInstructionAdaptor{*instruction_, parent_}};
   }
 
   absl::InlinedVector<HloInstructionAdaptor, 2> MakeInstructionPostOrder()
       const override {
-    return {instruction_};
+    return {HloInstructionAdaptor{*instruction_, parent_}};
   }
 
-  std::string ToString() const override { return instruction_.ToString(); }
+  std::string ToString() const override { return instruction_->ToString(); }
 
  private:
-  HloInstructionAdaptor instruction_;
+  const HloInstruction* instruction_;
+  const HloFusionAdaptor* parent_;
 };
 
-class HloComputationFusion : public HloFusionAdaptor {
+class HloComputationFusion : public internal::HloFusionInstructionAdaptor {
  public:
-  explicit HloComputationFusion(const HloComputation* computation)
-      : computation_(computation) {
+  explicit HloComputationFusion(const HloComputation* computation,
+                                const HloFusionAdaptor* parent)
+      : computation_(computation), parent_(parent) {
     // HloFusionAdaptor should only be created for fusion computations, that
     // usually have only a few roots, but there is a case when we can it for
     // non-fusion computations with thousands of roots. It happens inside
@@ -128,7 +135,7 @@ class HloComputationFusion : public HloFusionAdaptor {
     }
   }
 
-  static absl::InlinedVector<HloInstructionAdaptor, 2> FindRoots(
+  absl::InlinedVector<HloInstructionAdaptor, 2> FindRoots(
       const HloComputation* computation) {
     absl::InlinedVector<HloInstructionAdaptor, 2> roots;
 
@@ -140,7 +147,7 @@ class HloComputationFusion : public HloFusionAdaptor {
           get_roots(operand);
         }
       } else {
-        HloInstructionAdaptor wrapped{*instr};
+        HloInstructionAdaptor wrapped{*instr, parent_};
         if (roots_set.insert(wrapped).second) {
           roots.push_back(wrapped);
         }
@@ -181,7 +188,7 @@ class HloComputationFusion : public HloFusionAdaptor {
           (instr->opcode() == HloOpcode::kTuple && instr->IsRoot())) {
         continue;
       }
-      result.emplace_back(*instr);
+      result.emplace_back(*instr, parent_);
     }
     return result;
   }
@@ -191,21 +198,83 @@ class HloComputationFusion : public HloFusionAdaptor {
  private:
   const HloComputation* computation_;
   absl::InlinedVector<HloInstructionAdaptor, 2> roots_;
+  const HloFusionAdaptor* parent_;
 };
 
-}  // namespace
-
+/*static*/
 std::unique_ptr<HloFusionAdaptor> HloFusionAdaptor::ForInstruction(
     const HloInstruction* instruction) {
   if (instruction->opcode() == HloOpcode::kFusion) {
     return ForComputation(instruction->fused_instructions_computation());
   }
-  return std::make_unique<SingleInstructionFusion>(instruction);
+
+  auto fusion_adaptor = std::make_unique<HloFusionAdaptor>();
+  fusion_adaptor->AddInstruction(instruction);
+  return fusion_adaptor;
 }
 
+/*static*/
+std::unique_ptr<HloFusionAdaptor> HloFusionAdaptor::ForProducerConsumer(
+    const HloInstruction* producer, const HloInstruction* consumer) {
+  auto fusion_adaptor = std::make_unique<HloFusionAdaptor>();
+  fusion_adaptor->AddInstruction(producer);
+  fusion_adaptor->AddInstruction(consumer);
+  return fusion_adaptor;
+}
+
+/*static*/
 std::unique_ptr<HloFusionAdaptor> HloFusionAdaptor::ForComputation(
     const HloComputation* computation) {
-  return std::make_unique<HloComputationFusion>(computation);
+  auto fusion_adaptor = std::make_unique<HloFusionAdaptor>();
+  fusion_adaptor->AddComputation(computation);
+  return fusion_adaptor;
+}
+
+bool HloFusionAdaptor::ContainsInstruction(
+    HloInstructionAdaptor instruction) const {
+  for (const auto& fusion_instruction : fusion_instructions_) {
+    if (fusion_instruction->ContainsInstruction(instruction)) return true;
+  }
+  return false;
+}
+
+absl::InlinedVector<HloInstructionAdaptor, 2> HloFusionAdaptor::GetRoots()
+    const {
+  return fusion_instructions_.back()->GetRoots();
+}
+
+absl::InlinedVector<HloInstructionAdaptor, 2>
+HloFusionAdaptor::MakeInstructionPostOrder() const {
+  absl::InlinedVector<HloInstructionAdaptor, 2> result_post_order;
+
+  for (const auto& fusion_instruction : fusion_instructions_) {
+    absl::c_move(fusion_instruction->MakeInstructionPostOrder(),
+                 std::back_inserter(result_post_order));
+  }
+
+  return result_post_order;
+}
+
+std::string HloFusionAdaptor::ToString() const {
+  std::ostringstream ss;
+  for (const auto& fusion_instruction : fusion_instructions_) {
+    ss << fusion_instruction->ToString() << "\n";
+  }
+  return ss.str();
+}
+
+void HloFusionAdaptor::AddInstruction(const HloInstruction* instruction) {
+  if (instruction->opcode() == HloOpcode::kFusion) {
+    AddComputation(instruction->fused_instructions_computation());
+  } else {
+    fusion_instructions_.push_back(
+        std::make_unique<SingleInstructionFusion>(instruction, this));
+  }
+}
+
+void HloFusionAdaptor::AddComputation(const HloComputation* computation) {
+  fusion_instructions_.push_back(
+      std::make_unique<HloComputationFusion>(computation, this));
 }
 
 absl::InlinedVector<HloInstructionAdaptor, 2>
