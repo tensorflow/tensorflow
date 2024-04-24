@@ -66,11 +66,6 @@ constexpr int kDUSUpdateIndex = 1;
 
 }  // namespace
 
-/*static*/ bool MlirInPlaceDynamicUpdateSliceFusion::IsSupported(
-    const HloFusionAnalysis& analysis) {
-  return analysis.fusion_roots().size() == 1;
-}
-
 LaunchDimensions MlirInPlaceDynamicUpdateSliceFusion::launch_dimensions()
     const {
   const auto& update_shape =
@@ -124,49 +119,51 @@ absl::Status MlirInPlaceDynamicUpdateSliceFusion::EmitEntryFunction(
 
   const auto& root_computation = computations.FindPartitionedComputation(
       fusion.fused_instructions_computation());
-  const auto* dus_instr =
-      Cast<HloDynamicUpdateSliceInstruction>(dus_ops_.front());
-  const auto& update_shape = dus_instr->update()->shape();
   auto result_tensors = EmitThreadLoopNest(
       b, output_tensor_args, indexing,
       [&](ValueRange output_tensors, ValueRange dim_values,
           ValueRange symbol_values) -> llvm::SmallVector<Value> {
         auto input_indices = ApplyAffineMap(indexing.GetAffineMap(), dim_values,
                                             symbol_values, b);
-        SmallVector<Value> update_indices;
-        auto start_indices = ProvideParameterRange(
-            root_computation, dus_instr,
-            dus_instr->first_index_operand_number(), update_shape.rank(), {},
-            call_targets, entry_function, b);
-        for (int i = 0; i < update_shape.rank(); ++i) {
-          int64_t update_size = update_shape.dimensions(i);
-          auto start_index = ClampIndex(
-              start_indices[i],
-              primitive_util::IsUnsignedIntegralType(
-                  dus_instr
-                      ->operand(i + dus_instr->first_index_operand_number())
-                      ->shape()
-                      .element_type()),
-              dus_instr->shape().dimensions(i) - update_size, b);
+        llvm::SmallVector<Value> results;
+        for (auto [instr, root, output] :
+             llvm::zip(dus_ops_, analysis_.fusion_roots(), output_tensors)) {
+          const auto* dus_instr = Cast<HloDynamicUpdateSliceInstruction>(instr);
+          const auto& update_shape = dus_instr->update()->shape();
+          SmallVector<Value> update_indices;
+          auto start_indices = ProvideParameterRange(
+              root_computation, dus_instr,
+              dus_instr->first_index_operand_number(), update_shape.rank(), {},
+              call_targets, entry_function, b);
+          for (int i = 0; i < update_shape.rank(); ++i) {
+            int64_t update_size = update_shape.dimensions(i);
+            auto start_index = ClampIndex(
+                start_indices[i],
+                primitive_util::IsUnsignedIntegralType(
+                    dus_instr
+                        ->operand(i + dus_instr->first_index_operand_number())
+                        ->shape()
+                        .element_type()),
+                dus_instr->shape().dimensions(i) - update_size, b);
 
-          update_indices.push_back(
-              b.create<AddIOp>(input_indices[i], start_index));
+            update_indices.push_back(
+                b.create<AddIOp>(input_indices[i], start_index));
+          }
+
+          auto updated_value =
+              ProvideParameter(root_computation, dus_instr, kDUSUpdateIndex,
+                               input_indices, call_targets, entry_function, b);
+          // Handle bitcasts under the DUS.
+          if (dus_instr->shape() != root->shape()) {
+            update_indices = ApplyAffineMap(
+                GetBitcastMap(dus_instr->shape(), root->shape(), b.getContext())
+                    .GetAffineMap(),
+                update_indices, {}, b);
+          }
+          results.push_back(
+              b.create<InsertOp>(updated_value, output, update_indices));
         }
-
-        auto updated_value =
-            ProvideParameter(root_computation, dus_instr, kDUSUpdateIndex,
-                             input_indices, call_targets, entry_function, b);
-        // Handle bitcasts under the DUS.
-        if (dus_instr->shape() != fusion.shape()) {
-          update_indices = ApplyAffineMap(
-              GetBitcastMap(dus_instr->shape(), fusion.shape(), b.getContext())
-                  .GetAffineMap(),
-              update_indices, {}, b);
-        }
-        auto insert = b.create<InsertOp>(updated_value, output_tensors[0],
-                                         update_indices);
-
-        return {insert.getResult()};
+        return results;
       });
 
   b.create<ReturnOp>(result_tensors);

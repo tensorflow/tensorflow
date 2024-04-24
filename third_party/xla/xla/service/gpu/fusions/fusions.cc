@@ -194,8 +194,7 @@ absl::StatusOr<std::unique_ptr<FusionInterface>> GetFusionEmitter(
     case HloFusionAnalysis::EmitterFusionKind::kLoop: {
       if (IsDynamicUpdateSliceFusion(analysis) &&
           fusion_info.CanEmitDynamicUpdateSliceInPlace()) {
-        if (check_mlir_emitters(
-                MlirInPlaceDynamicUpdateSliceFusion::IsSupported)) {
+        if (check_mlir_emitters(nullptr)) {
           return std::make_unique<MlirInPlaceDynamicUpdateSliceFusion>(
               analysis);
         }
