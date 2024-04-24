@@ -4088,7 +4088,7 @@ class Subgraph {
                 num_bias_elements, output_channels, node->inputs->data[0]);
             return kTfLiteError;
           }
-          TF_LITE_ENSURE_STATUS(CheckTensorFloat32OrQInt32Type(
+          TF_LITE_ENSURE_STATUS(CheckTensorFloat32OrQCInt32Type(
               delegate, logging_context, bias_tensor, node->inputs->data[2],
               node_index));
           if (quasi_static_tensors.count(node->inputs->data[2]) == 0) {
