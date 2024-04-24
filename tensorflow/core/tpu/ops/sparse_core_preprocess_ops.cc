@@ -291,4 +291,24 @@ REGISTER_OP("ConvertToSparseCoreCsrWrappedCooTensor")
       return absl::OkStatus();
     });
 
+REGISTER_OP("GetStatsFromListOfSparseCoreCooTensors")
+    .Input("row_ids_list: N * int32")
+    .Input("col_ids_list: N * int32")
+    .Input("gains_list:  N * float32")
+    .Output("max_ids_per_sparse_core: int32")
+    .Output("max_unique_ids_per_sparse_core: int32")
+    .Attr("sample_count_list : list(int)")
+    .Attr("col_offset_list : list(int)")
+    .Attr("num_replica: int >= 1")
+    .Attr("table_vocab_size: int >= 1")
+    .Attr("feature_width: int >= 1")
+    .Attr("num_sc_per_chip: int >= 1")
+    .Attr("table_name: string")
+    .Attr("N: int >= 1")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      c->set_output(0, c->Scalar());
+      c->set_output(1, c->Scalar());
+      return absl::OkStatus();
+    });
+
 }  // namespace tensorflow

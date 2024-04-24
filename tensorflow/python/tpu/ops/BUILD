@@ -56,6 +56,7 @@ tf_gen_op_wrapper_py(
         "ConvertToListOfSparseCoreCooTensors",
         "SortListOfSparseCoreCooTensors",
         "ConvertToSparseCoreCsrWrappedCooTensor",
+        "GetStatsFromListOfSparseCoreCooTensors",
         "GlobalIterId",
         "TPUCopyWithDynamicShape",
         "TPUAnnotateTensorsWithDynamicShape",

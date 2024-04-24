@@ -96,6 +96,23 @@ def convert_input_to_coo_tensor(
   return row_ids, col_ids, gains
 
 
+def _compute_sparse_core_stats(row_ids, col_ids, num_sc_shards):
+  max_ids = np.zeros(num_sc_shards)
+  max_unique_ids = np.zeros(num_sc_shards)
+  previous_col_id = -1
+  previous_row_id = -1
+  for col_id, row_id in sorted(zip(col_ids, row_ids)):
+    if col_id != previous_col_id:
+      max_ids[col_id % num_sc_shards] += 1
+      max_unique_ids[col_id % num_sc_shards] += 1
+    else:
+      if previous_row_id != row_id:
+        max_ids[col_id % num_sc_shards] += 1
+    previous_col_id = col_id
+    previous_row_id = row_id
+  return max(max_ids), max(max_unique_ids)
+
+
 def _convert_coo_tensor_to_csr_with_physical_replica(
     row_ids,
     col_ids,
@@ -425,6 +442,82 @@ class TpuEmbeddingV3CPUOpsTest(parameterized.TestCase, test.TestCase):
         sorted_gains[:ids_unpadded_size],
     )
     self.assertEqual(golden_num_minibatches_per_sc, num_minibatches_per_sc)
+
+  def test_get_stats_from_list_of_sparse_core_coo_tensors(self):
+    sample_count = 16
+    token_count = 1024
+    combiner = "sum"
+    sparse_feature = sparse_ops.sparse_reorder(
+        sparse_tensor.SparseTensor(
+            indices=[
+                [i % sample_count, i]
+                for i in np.random.randint(low=0, high=1024, size=token_count)
+            ],
+            values=np.random.randint(low=0, high=1024, size=token_count),
+            dense_shape=[sample_count, 1024],
+        )
+    )
+    max_ids_golden = 0
+    max_unique_ids_golden = 0
+
+    for i in range(4):
+      sparse_feature_slice = sparse_ops.sparse_slice(
+          sparse_feature,
+          [i * sample_count // 4, 0],
+          [sample_count // 4, 1024],
+      )
+      max_ids_per_sparse_core, max_uniques_per_sparse_core = (
+          _compute_sparse_core_stats(
+              sparse_feature_slice.indices[:, 0],
+              sparse_feature_slice.values,
+              num_sc_shards=16,
+          )
+      )
+      max_ids_golden = max(max_ids_golden, max_ids_per_sparse_core)
+      max_unique_ids_golden = max(
+          max_unique_ids_golden, max_uniques_per_sparse_core
+      )
+
+    row_ids_list, col_ids_list, gains_list = (
+        xla_ops.convert_to_list_of_sparse_core_coo_tensors(
+            indices_or_row_splits=math_ops.cast(
+                sparse_feature.indices, dtype=dtypes.int32
+            ),
+            values=math_ops.cast(sparse_feature.values, dtype=dtypes.int32),
+            weights=1.0,
+            sample_count=sample_count,
+            combiner=combiner,
+            num_sc_per_chip=4,
+            row_offset=0,
+            col_offset=0,
+            col_shift=0,
+            num_sc_shards=16,
+            stacked_table_sample_count=sample_count,
+        )
+    )
+
+    max_ids = 0
+    max_uniques = 0
+    for i in range(4):
+      max_ids_per_sparse_core, max_unique_ids_per_sparse_core = (
+          xla_ops.get_stats_from_list_of_sparse_core_coo_tensors(
+              row_ids_list=[row_ids_list[i]],
+              col_ids_list=[col_ids_list[i]],
+              gains_list=[gains_list[i]],
+              sample_count_list=[sample_count // 4],
+              col_offset_list=[0],
+              num_replica=4,
+              table_vocab_size=16384,
+              feature_width=16,
+              num_sc_per_chip=4,
+              table_name="table",
+          )
+      )
+      max_ids = max(max_ids, max_ids_per_sparse_core)
+      max_uniques = max(max_uniques, max_unique_ids_per_sparse_core)
+
+    self.assertEqual(max_ids, max_ids_golden)
+    self.assertEqual(max_uniques, max_unique_ids_golden)
 
   def test_sort_list_of_sparse_core_coo_tensors(self):
     sample_count = 16

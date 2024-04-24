@@ -1949,6 +1949,10 @@ tf_module {
     argspec: "args=[\'handle\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "GetStatsFromListOfSparseCoreCooTensors"
+    argspec: "args=[\'row_ids_list\', \'col_ids_list\', \'gains_list\', \'sample_count_list\', \'col_offset_list\', \'num_replica\', \'table_vocab_size\', \'feature_width\', \'num_sc_per_chip\', \'table_name\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "GlobalIterId"
     argspec: "args=[\'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }

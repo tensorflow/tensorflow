@@ -2522,4 +2522,30 @@ def TF_ConvertToSparseCoreCsrWrappedCooTensorOp : TF_Op<"ConvertToSparseCoreCsrW
 
   TF_DerivedOperandSizeAttr num_sc_per_chip = TF_DerivedOperandSizeAttr<1>;
 }
+
+
+def TF_GetStatsFromListOfSparseCoreCooTensorsOp : TF_Op<"GetStatsFromListOfSparseCoreCooTensors",  [Pure, SameVariadicOperandSize]> {
+  let summary = "An op which computes the max_ids/uniques for a given table.";
+
+  let arguments = (ins
+    Variadic<TF_Int32Tensor>:$row_ids_list,
+    Variadic<TF_Int32Tensor>:$col_ids_list,
+    Variadic<TF_Float32Tensor>:$gains_list,
+
+    I64ArrayAttr:$sample_count_list,
+    I64ArrayAttr:$col_offset_list,
+    ConfinedAttr<I64Attr, [IntMinValue<1>]>:$num_replica,
+    ConfinedAttr<I64Attr, [IntMinValue<1>]>:$table_vocab_size,
+    ConfinedAttr<I64Attr, [IntMinValue<1>]>:$feature_width,
+    ConfinedAttr<I64Attr, [IntMinValue<1>]>:$num_sc_per_chip,
+    StrAttr:$table_name
+  );
+
+  let results = (outs
+    TF_Int32Tensor:$max_ids_per_sparse_core,
+    TF_Int32Tensor:$max_unique_ids_per_sparse_core
+  );
+
+  TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<1>;
+}
 #endif // TF_OPS
