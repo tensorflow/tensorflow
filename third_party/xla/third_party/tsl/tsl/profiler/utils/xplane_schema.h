@@ -506,6 +506,7 @@ TF_CONST_INIT extern const absl::string_view kMegaScaleCompressionStart;
 TF_CONST_INIT extern const absl::string_view kMegaScaleCompressionFinished;
 TF_CONST_INIT extern const absl::string_view kMegaScaleDecompressionStart;
 TF_CONST_INIT extern const absl::string_view kMegaScaleDecompressionFinished;
+TF_CONST_INIT extern const absl::string_view kMegaScaleChecksum;
 TF_CONST_INIT extern const char kXProfMetadataKey[];
 TF_CONST_INIT extern const char kXProfMetadataFlow[];
 TF_CONST_INIT extern const char kXProfMetadataTransfers[];

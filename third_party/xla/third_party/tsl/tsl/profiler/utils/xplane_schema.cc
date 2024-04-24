@@ -560,6 +560,7 @@ const absl::string_view kMegaScaleDecompressionStart =
     "MegaScale: Decompression";
 const absl::string_view kMegaScaleDecompressionFinished =
     "MegaScale: Decompression Finished";
+const absl::string_view kMegaScaleChecksum = "MegaScale: Checksum";
 const char kXProfMetadataKey[] = "key";
 const char kXProfMetadataFlow[] = "flow";
 const char kXProfMetadataTransfers[] = "transfers";
