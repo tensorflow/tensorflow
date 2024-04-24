@@ -29,6 +29,8 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/Hashing.h"
@@ -75,6 +77,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/shape_inference_utils.h"
@@ -89,6 +92,7 @@ limitations under the License.
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/ir/types/dialect.h"
+#include "tsl/platform/errors.h"
 
 #define DEBUG_TYPE "tf-shape-inference"
 
@@ -3224,6 +3228,25 @@ static FailureOr<bool> InferShapeForFunction(ShapeInference& context,
   return true;
 }
 
+absl::StatusOr<SmallVector<SmallVector<int64_t>>> ParseArgumentShapes(
+    absl::string_view input_shapes) {
+  SmallVector<SmallVector<int64_t>> parsed_shapes;
+  if (input_shapes.empty()) {
+    return parsed_shapes;
+  }
+
+  std::vector<std::optional<std::vector<int>>> shapes;
+  TF_RETURN_IF_ERROR(::tensorflow::ParseNodeShapes(input_shapes, shapes));
+
+  for (const auto& shape : shapes) {
+    if (!shape) {
+      return absl::AbortedError("Missing input argument shapes");
+    }
+    parsed_shapes.push_back(SmallVector<int64_t>(shape->begin(), shape->end()));
+  }
+  return parsed_shapes;
+}
+
 FailureOr<bool> InferShapeForFunction(func::FuncOp func,
                                       ArrayRef<ArrayRef<int64_t>> arg_shapes,
                                       int64_t graph_version,
@@ -3284,7 +3307,8 @@ FailureOr<bool> InferShapeForFunction(func::FuncOp func,
 }
 
 FailureOr<bool> InferModuleShape(ModuleOp module, int64_t max_iterations,
-                                 ArrayRef<TypeID> ops_to_skip) {
+                                 ArrayRef<TypeID> ops_to_skip,
+                                 ArrayRef<ArrayRef<int64_t>> input_shapes) {
   auto producer_or = tensorflow::GetTfGraphProducerVersion(module);
   if (!producer_or.ok()) {
     // TODO(jpienaar): Keeping the existing behavior for now but this could
@@ -3294,13 +3318,30 @@ FailureOr<bool> InferModuleShape(ModuleOp module, int64_t max_iterations,
     return true;
   }
   int64_t producer = producer_or.value();
+
   // TODO(jpienaar): Clean up propagate_NextIterationSinkOp_callee_constants if
   // it is no longer needed.
   ShapeInference context(producer, module,
                          /*propagate_caller_callee_constants=*/false,
                          ops_to_skip);
-  if (auto main = module.lookupSymbol<mlir::func::FuncOp>("main"))
+  auto main = module.lookupSymbol<mlir::func::FuncOp>("main");
+  // Error if no main to refine with input shapes
+  if (!main && !input_shapes.empty()) {
+    return module->emitError(
+        "Input shapes provided but no `main` function found.");
+  }
+
+  // Add main function to head of queue, refine input shapes if provided
+  if (main) {
+    if (!input_shapes.empty()) {
+      FailureOr<bool> failure_or_converged =
+          InferShapeForFunction(main, input_shapes, producer,
+                                /*max_iterations=*/10, ops_to_skip);
+      if (failed(failure_or_converged) || !failure_or_converged.value())
+        return failure_or_converged;
+    }
     context.enqueue(main);
+  }
   for (auto func : module.getOps<func::FuncOp>()) context.enqueue(func);
   // Arbitrarily upper bound the maximum number of functions that get processed
   // just to avoid pathological cases.

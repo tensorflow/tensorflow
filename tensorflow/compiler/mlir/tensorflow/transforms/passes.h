@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_PASSES_H_
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_PASSES_H_
 
+#include <cstdint>
 #include <memory>
 #include <string>
 
@@ -99,7 +100,8 @@ std::unique_ptr<OperationPass<func::FuncOp>>
 CreateReplicateTensorListInitOpsPass();
 
 // Performs Shape Inference on the TensorFlow dialect using the global registry.
-std::unique_ptr<OperationPass<ModuleOp>> CreateTFShapeInferencePass();
+std::unique_ptr<OperationPass<ModuleOp>> CreateTFShapeInferencePass(
+    ArrayRef<ArrayRef<int64_t>> input_shapes = {});
 
 // Performs TF.data optimizations.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateTFDataOptimizationPass();

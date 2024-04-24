@@ -381,7 +381,9 @@ def TensorFlowShapeInferencePass : Pass<"tf-shape-inference", "ModuleOp"> {
 
   let options = [
     Option<"max_iterations_", "max-iterations", "int64_t", /*default=*/"10",
-           "Maximum shape inference iterations">
+           "Maximum shape inference iterations">,
+    Option<"input_arg_shapes_", "input-arg-shapes", "std::string", /*default=*/"",
+           "Input tensor shapes. Shapes for different tensors are separated by ':', and dimension sizes for the same tensor are separated by ','">,
   ];
 }
 
