@@ -860,6 +860,7 @@ cc_library(
     deps = [
         "convert_type",
         ":op_quant_spec_getters_inc",
+        ":stateful_ops_utils",
         ":tensorflow_lite",
         ":tensorflow_lite_passes_inc_gen",
         ":tensorflow_lite_post_quantize_inc_gen",
