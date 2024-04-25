@@ -86,6 +86,25 @@ TEST(PjRtFutureTest, AwaitMoveOnlyFuture) {
   EXPECT_EQ(*std::move(future).Await(), 42);
 }
 
+TEST(PjRtFutureTest, OnReadyRvalueFuture) {
+  auto promise = PjRtFuture<int32_t>::CreatePromise();
+  PjRtFuture<int32_t> future(promise);
+
+  promise.Set(42);
+
+  std::move(future).OnReady([](int32_t value) { EXPECT_EQ(value, 42); });
+}
+
+TEST(PjRtFutureTest, OnReadyMoveOnlyFuture) {
+  auto promise = PjRtFuture<std::unique_ptr<int32_t>>::CreatePromise();
+  PjRtFuture<std::unique_ptr<int32_t>> future(promise);
+
+  promise.Set(std::make_unique<int32_t>(42));
+
+  std::move(future).OnReady(
+      [](std::unique_ptr<int32_t> value) { EXPECT_EQ(*value, 42); });
+}
+
 TEST(PjRtFutureTest, StatelessError) {
   auto promise = PjRtFuture<>::CreatePromise();
   PjRtFuture<> future(promise);
