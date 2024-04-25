@@ -41,6 +41,7 @@ limitations under the License.
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "xla/runtime/custom_call.h"
@@ -619,7 +620,7 @@ struct AggregateAttrEncoding : public CustomCallAttrEncoding {
 
   mlir::LogicalResult Match(mlir::SymbolTable &, std::string_view,
                             mlir::Attribute attr) const final {
-    return mlir::success(attr.isa<AttrType>());
+    return mlir::success(mlir::isa<AttrType>(attr));
   }
 
   mlir::FailureOr<Encoded> Encode(mlir::SymbolTable &sym_table, Globals &g,
@@ -629,7 +630,7 @@ struct AggregateAttrEncoding : public CustomCallAttrEncoding {
     // Extract aggregate attributes from the user-defined attributes.
     llvm::SmallVector<mlir::NamedAttribute> attrs;
     for (auto &bind : attrdef.bindings)
-      attrs.emplace_back(bind(attr.cast<AttrType>(), b));
+      attrs.emplace_back(bind(mlir::cast<AttrType>(attr), b));
 
     // Encode extracted attributes as an aggregate.
     auto type_id = TypeID::get<Tagged<RuntimeType>>();

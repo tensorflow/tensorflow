@@ -20,6 +20,7 @@
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/TypeRange.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "xla/mlir/runtime/ir/rt_dialect.h"
 #include "tsl/platform/test.h"
@@ -47,8 +48,8 @@ TEST(CallingConventionTest, DefaultCallingConvention) {
   auto converted = calling_convention(signature);
 
   EXPECT_EQ(converted.getNumInputs(), 2);
-  EXPECT_TRUE(converted.getInput(0).isa<ExecutionContextType>());
-  EXPECT_TRUE(converted.getInput(1).isa<IntegerType>());
+  EXPECT_TRUE(mlir::isa<ExecutionContextType>(converted.getInput(0)));
+  EXPECT_TRUE(mlir::isa<IntegerType>(converted.getInput(1)));
 }
 
 TEST(CallingConventionTest, DefaultCallingConventionWithTypeConverter) {
@@ -68,8 +69,8 @@ TEST(CallingConventionTest, DefaultCallingConventionWithTypeConverter) {
   auto converted = calling_convention(signature);
 
   EXPECT_EQ(converted.getNumInputs(), 2);
-  EXPECT_TRUE(converted.getInput(0).isa<ExecutionContextType>());
-  EXPECT_TRUE(converted.getInput(1).isa<MemRefType>());
+  EXPECT_TRUE(mlir::isa<ExecutionContextType>(converted.getInput(0)));
+  EXPECT_TRUE(mlir::isa<MemRefType>(converted.getInput(1)));
 }
 
 TEST(CallingConventionTest, ResultsToOutsCallingConvention) {
@@ -89,8 +90,8 @@ TEST(CallingConventionTest, ResultsToOutsCallingConvention) {
   auto converted = calling_convention(signature);
 
   EXPECT_EQ(converted.getNumInputs(), 2);
-  EXPECT_TRUE(converted.getInput(0).isa<ExecutionContextType>());
-  EXPECT_TRUE(converted.getInput(1).isa<MemRefType>());
+  EXPECT_TRUE(mlir::isa<ExecutionContextType>(converted.getInput(0)));
+  EXPECT_TRUE(mlir::isa<MemRefType>(converted.getInput(1)));
 
   EXPECT_EQ(converted.getNumResults(), 0);
 }

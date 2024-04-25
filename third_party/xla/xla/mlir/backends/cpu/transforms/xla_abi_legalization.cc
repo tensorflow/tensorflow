@@ -27,6 +27,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "xla/mlir/backends/cpu/transforms/passes.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
@@ -78,7 +79,7 @@ Value NormalizeTensor(ImplicitLocOpBuilder& b, TypedValue<ShapedType> tensor,
 
 void NormalizeInputInPlace(ImplicitLocOpBuilder& b, Value tensor,
                            ArrayRef<int64_t> layout) {
-  auto typedTensor = tensor.dyn_cast<TypedValue<ShapedType>>();
+  auto typedTensor = mlir::dyn_cast<TypedValue<ShapedType>>(tensor);
   if (!typedTensor || IsDefaultLayout(layout)) {
     return;
   }
@@ -92,12 +93,13 @@ SmallVector<SmallVector<int64_t>> FlattenLayoutAttribute(Attribute attr) {
   SmallVector<SmallVector<int64_t>> layouts;
 
   auto visit_attr = [&](mlir::Attribute attr) {
-    if (attr.isa<DenseElementsAttr>()) {
-      layouts.emplace_back(attr.cast<DenseElementsAttr>().getValues<int64_t>());
+    if (mlir::isa<DenseElementsAttr>(attr)) {
+      layouts.emplace_back(
+          mlir::cast<DenseElementsAttr>(attr).getValues<int64_t>());
     }
   };
 
-  if (auto array = attr.dyn_cast<ArrayAttr>()) {
+  if (auto array = mlir::dyn_cast<ArrayAttr>(attr)) {
     for (int64_t i = 0; i < array.size(); ++i) {
       visit_attr(array[i]);
     }
@@ -164,7 +166,7 @@ struct RewriteReturnArgs : OpRewritePattern<func::ReturnOp> {
       results.push_back(
           IsDefaultLayout(layout)
               ? result
-              : NormalizeTensor(b, result.cast<TypedValue<ShapedType>>(),
+              : NormalizeTensor(b, mlir::cast<TypedValue<ShapedType>>(result),
                                 layout,
                                 /*isInput=*/false));
     }
@@ -176,8 +178,8 @@ struct RewriteReturnArgs : OpRewritePattern<func::ReturnOp> {
 };
 
 bool IsI1Tensor(Type ty) {
-  return ty.isa<ShapedType>() &&
-         ty.cast<ShapedType>().getElementType().isInteger(1);
+  return mlir::isa<ShapedType>(ty) &&
+         mlir::cast<ShapedType>(ty).getElementType().isInteger(1);
 }
 
 struct RewriteI1Results : OpRewritePattern<func::FuncOp> {
@@ -239,7 +241,8 @@ struct RewriteCustomCalls : OpRewritePattern<mhlo::CustomCallOp> {
         const auto& layout = operand_layouts[index];
         if (!IsDefaultLayout(layout)) {
           Value normalized = NormalizeTensor(
-              b, op.getOperand(index).cast<TypedValue<ShapedType>>(), layout,
+              b, mlir::cast<TypedValue<ShapedType>>(op.getOperand(index)),
+              layout,
               /*isInput=*/false);
           op.setOperand(index, normalized);
         }

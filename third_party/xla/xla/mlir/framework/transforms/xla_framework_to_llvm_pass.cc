@@ -138,11 +138,11 @@ struct BarePtrFuncOpConversion : public ConvertOpToLLVMPattern<func::FuncOp> {
           Value inner_index = rewriter.create<LLVM::ConstantOp>(
               loc, typeConverter->convertType(rewriter.getIntegerType(32)),
               rewriter.getI32IntegerAttr(static_cast<int32_t>(
-                  funcOp
-                      ->getAttrOfType<mlir::ArrayAttr>(
-                          "xla_framework.result_inner_mapping")
-                      .getValue()[current_index]
-                      .cast<mlir::IntegerAttr>()
+                  mlir::cast<mlir::IntegerAttr>(
+                      funcOp
+                          ->getAttrOfType<mlir::ArrayAttr>(
+                              "xla_framework.result_inner_mapping")
+                          .getValue()[current_index])
                       .getValue()
                       .getSExtValue())));
 
@@ -227,10 +227,11 @@ class LegalizeXLAFrameworkToLLVMPass
     target.markUnknownOpDynamicallyLegal([](Operation *) { return true; });
     target.addIllegalDialect<xla_framework::XLAFrameworkDialect>();
     target.addDynamicallyLegalOp<func::FuncOp>([](func::FuncOp op) {
-      if (llvm::any_of(
-              llvm::concat<const Type>(op.getArgumentTypes(),
-                                       op.getResultTypes()),
-              [](Type type) { return type.isa<xla_framework::BufferType>(); }))
+      if (llvm::any_of(llvm::concat<const Type>(op.getArgumentTypes(),
+                                                op.getResultTypes()),
+                       [](Type type) {
+                         return mlir::isa<xla_framework::BufferType>(type);
+                       }))
         return false;
       return true;
     });

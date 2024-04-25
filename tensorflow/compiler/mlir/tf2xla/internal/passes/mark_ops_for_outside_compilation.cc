@@ -38,6 +38,7 @@ limitations under the License.
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Rewrite/PatternApplicator.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
@@ -238,13 +239,13 @@ void AddRewrittenCompositeOps(MLIRContext* context,
 }
 
 bool IsStringType(Type type) {
-  if (type.isa<mlir::TF::StringType>()) return true;
+  if (mlir::isa<mlir::TF::StringType>(type)) return true;
 
-  auto sub_type = type.dyn_cast<mlir::TF::TensorFlowTypeWithSubtype>();
+  auto sub_type = mlir::dyn_cast<mlir::TF::TensorFlowTypeWithSubtype>(type);
   if (!sub_type) return false;
 
   bool has_string = llvm::any_of(sub_type.GetSubtypes(), [](TensorType type) {
-    return type.getElementType().isa<mlir::TF::StringType>();
+    return mlir::isa<mlir::TF::StringType>(type.getElementType());
   });
   return has_string;
 }
@@ -290,7 +291,8 @@ bool IsSupportedOp(Operation& op,
 }
 
 bool IsVariant(Value value) {
-  return getElementTypeOrSelf(value.getType()).isa<mlir::TF::VariantType>();
+  return mlir::isa<mlir::TF::VariantType>(
+      getElementTypeOrSelf(value.getType()));
 }
 
 bool HasOutsideCompiledAncestor(Operation* op) {

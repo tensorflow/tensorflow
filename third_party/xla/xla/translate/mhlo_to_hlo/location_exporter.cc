@@ -40,7 +40,7 @@ static std::string GetNameFromLocImpl(Location loc) {
   while (!locs.empty()) {
     Location curr_loc = locs.pop_back_val();
 
-    if (auto name_loc = curr_loc.dyn_cast<NameLoc>()) {
+    if (auto name_loc = mlir::dyn_cast<NameLoc>(curr_loc)) {
       // Add name in NameLoc. For NameLoc we also account for names due to ops
       // in functions where the op's name is first.
       auto name = name_loc.getName().strref().split('@').first;
@@ -48,10 +48,10 @@ static std::string GetNameFromLocImpl(Location loc) {
       if (!name.ends_with(":")) {
         loc_names.push_back(name);
       }
-    } else if (auto call_loc = curr_loc.dyn_cast<CallSiteLoc>()) {
+    } else if (auto call_loc = mlir::dyn_cast<CallSiteLoc>(curr_loc)) {
       // Use location of the Callee to generate the name.
       locs.push_back(call_loc.getCallee());
-    } else if (auto fused_loc = curr_loc.dyn_cast<FusedLoc>()) {
+    } else if (auto fused_loc = mlir::dyn_cast<FusedLoc>(curr_loc)) {
       // Push all locations in FusedLoc in reverse order, so locations are
       // visited based on order in FusedLoc.
       auto reversed_fused_locs = llvm::reverse(fused_loc.getLocations());
@@ -70,7 +70,7 @@ static std::string GetOpTypeFromLoc(Location loc) {
   while (!locs.empty()) {
     Location curr_loc = locs.pop_back_val();
 
-    if (auto name_loc = curr_loc.dyn_cast<NameLoc>()) {
+    if (auto name_loc = mlir::dyn_cast<NameLoc>(curr_loc)) {
       // Add name in NameLoc. For NameLoc we also account for names due to ops
       // in functions where the op's name is first.
       auto op_type = name_loc.getName().strref().split('@').first;
@@ -78,10 +78,10 @@ static std::string GetOpTypeFromLoc(Location loc) {
         op_type = op_type.substr(0, op_type.size() - 1);
         loc_op_types.push_back(op_type);
       }
-    } else if (auto call_loc = curr_loc.dyn_cast<CallSiteLoc>()) {
+    } else if (auto call_loc = mlir::dyn_cast<CallSiteLoc>(curr_loc)) {
       // Use location of the Callee to generate the name.
       locs.push_back(call_loc.getCallee());
-    } else if (auto fused_loc = curr_loc.dyn_cast<FusedLoc>()) {
+    } else if (auto fused_loc = mlir::dyn_cast<FusedLoc>(curr_loc)) {
       // The first location is reserved for op_type.
       if (!fused_loc.getLocations().empty())
         locs.push_back(fused_loc.getLocations()[0]);
@@ -92,10 +92,10 @@ static std::string GetOpTypeFromLoc(Location loc) {
 }
 
 static void SetSourceFileAndLine(Location loc, xla::OpMetadata& metadata) {
-  if (auto file_line_col_loc = loc.dyn_cast<mlir::FileLineColLoc>()) {
+  if (auto file_line_col_loc = mlir::dyn_cast<mlir::FileLineColLoc>(loc)) {
     metadata.set_source_file(file_line_col_loc.getFilename().str());
     metadata.set_source_line(file_line_col_loc.getLine());
-  } else if (auto fused_loc = loc.dyn_cast<FusedLoc>()) {
+  } else if (auto fused_loc = mlir::dyn_cast<FusedLoc>(loc)) {
     for (Location it : fused_loc.getLocations()) {
       SetSourceFileAndLine(it, metadata);
     }
@@ -113,7 +113,7 @@ xla::OpMetadata CreateOpMetadataFromLocation(
   std::string op_type = GetOpTypeFromLoc(loc);
   metadata.set_op_type(op_type);
 
-  if (auto name_loc = loc.dyn_cast<mlir::NameLoc>()) {
+  if (auto name_loc = mlir::dyn_cast<mlir::NameLoc>(loc)) {
     loc = name_loc.getChildLoc();
     if (isa<mlir::UnknownLoc>(loc)) return metadata;
 

@@ -22,6 +22,7 @@ limitations under the License.
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/TypeRange.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/core/ir/dialect.h"
 #include "tensorflow/core/ir/types/dialect.h"
 #include "tensorflow/core/ir/utility.h"
@@ -38,7 +39,7 @@ class ControlRetIterator final
                                    ValueIteratorT, Value>::mapped_iterator_base;
 
   Value mapElement(Value value) const {
-    return value.getType().isa<tf_type::ControlType>()
+    return mlir::isa<tf_type::ControlType>(value.getType())
                ? value
                : tfg::LookupControlDependency(value);
   }

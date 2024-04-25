@@ -29,6 +29,7 @@ limitations under the License.
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
@@ -141,9 +142,9 @@ mlir::LogicalResult CreateSendRecvOpsToTransferProgramKey(
     mlir::OpBuilder fn_builder = mlir::OpBuilder::atBlockEnd(fn_block);
     auto recv = fn_builder.create<mlir::TF::_HostRecvOp>(
         compile_op->getLoc(),
-        compilation_key.getType().cast<mlir::TensorType>(), device_key_map[i],
-        compile_op_launch.getDevice(), /*send_device_incarnation=*/0,
-        local_devices[i]);
+        mlir::cast<mlir::TensorType>(compilation_key.getType()),
+        device_key_map[i], compile_op_launch.getDevice(),
+        /*send_device_incarnation=*/0, local_devices[i]);
     recv->setAttr("device", builder.getStringAttr(local_devices[i]));
 
     fn_builder.create<mlir::func::ReturnOp>(recv_select_fn.getLoc(),

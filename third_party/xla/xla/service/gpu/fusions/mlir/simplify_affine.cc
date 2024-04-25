@@ -55,7 +55,7 @@ std::optional<Interval> GetRange(mlir::Value value) {
       return std::nullopt;
     }
     auto values = llvm::to_vector(
-        attr.cast<mlir::ArrayAttr>().getAsValueRange<mlir::IntegerAttr>());
+        mlir::cast<mlir::ArrayAttr>(attr).getAsValueRange<mlir::IntegerAttr>());
     return {{values[0].getSExtValue(), values[1].getSExtValue()}};
   };
 
@@ -63,7 +63,7 @@ std::optional<Interval> GetRange(mlir::Value value) {
     return attr_to_range(value.getDefiningOp()->getAttr("xla.range"));
   }
 
-  auto bbarg = value.dyn_cast<mlir::BlockArgument>();
+  auto bbarg = mlir::dyn_cast<mlir::BlockArgument>(value);
   if (!bbarg) {
     return std::nullopt;
   }

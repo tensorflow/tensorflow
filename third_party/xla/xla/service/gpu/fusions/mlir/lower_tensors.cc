@@ -89,7 +89,9 @@ struct RewriteFunctionSignatures : mlir::OpRewritePattern<mlir::func::FuncOp> {
 
   LogicalResult matchAndRewrite(
       mlir::func::FuncOp op, mlir::PatternRewriter& rewriter) const override {
-    auto is_tensor = [](Type ty) { return ty.isa<mlir::RankedTensorType>(); };
+    auto is_tensor = [](Type ty) {
+      return mlir::isa<mlir::RankedTensorType>(ty);
+    };
     if (!llvm::any_of(op.getFunctionType().getInputs(), is_tensor)) {
       return rewriter.notifyMatchFailure(op,
                                          "the function has no input tensors");
@@ -138,7 +140,7 @@ Value GetLinearIndex(TypedValue<mlir::RankedTensorType> tensor,
   auto byte_shape = ShapeUtil::MakeShape(U8, tensor.getType().getShape());
   if (auto encoding = tensor.getType().getEncoding()) {
     *byte_shape.mutable_layout() = LayoutUtil::MakeLayout(llvm::to_vector(
-        encoding.cast<mlir::DenseElementsAttr>().getValues<int64_t>()));
+        mlir::cast<mlir::DenseElementsAttr>(encoding).getValues<int64_t>()));
   }
   auto linearize_map = mlir::getAffineConstantExpr(0, rewriter.getContext());
   for (auto [dim, stride] :
@@ -236,7 +238,7 @@ struct RewriteTensorInsert : mlir::OpRewritePattern<mlir::tensor::InsertOp> {
       mlir::PatternRewriter& rewriter) const override {
     Value dest = op.getDest();
     while (dest.getDefiningOp()) {
-      int result_number = dest.cast<mlir::OpResult>().getResultNumber();
+      int result_number = mlir::cast<mlir::OpResult>(dest).getResultNumber();
       if (auto insert = dest.getDefiningOp<mlir::tensor::InsertOp>()) {
         dest = insert.getDest();
       } else if (auto scf_if = dest.getDefiningOp<scf::IfOp>()) {
@@ -254,7 +256,7 @@ struct RewriteTensorInsert : mlir::OpRewritePattern<mlir::tensor::InsertOp> {
     }
 
     mlir::ImplicitLocOpBuilder b(op.getLoc(), rewriter);
-    auto tensor_dest = dest.cast<TypedValue<mlir::RankedTensorType>>();
+    auto tensor_dest = mlir::cast<TypedValue<mlir::RankedTensorType>>(dest);
     auto linear_index = GetLinearIndex(tensor_dest, op.getIndices(), rewriter);
     auto element_type = tensor_dest.getType().getElementType();
     Value is_low_nibble = nullptr;
@@ -306,13 +308,13 @@ struct RewriteCall : mlir::OpRewritePattern<mlir::func::CallOp> {
   LogicalResult matchAndRewrite(
       mlir::func::CallOp op, mlir::PatternRewriter& rewriter) const override {
     if (!llvm::any_of(op->getOperandTypes(), [](Type ty) {
-          return ty.isa<mlir::RankedTensorType>();
+          return mlir::isa<mlir::RankedTensorType>(ty);
         })) {
       return rewriter.notifyMatchFailure(op, "the call has no input tensors");
     }
 
     for (const auto&& [index, arg] : llvm::enumerate(op.getOperands())) {
-      if (arg.getType().isa<mlir::RankedTensorType>()) {
+      if (mlir::isa<mlir::RankedTensorType>(arg.getType())) {
         op.setOperand(
             index,
             rewriter
@@ -357,7 +359,7 @@ struct RewriteAllocateShared : mlir::OpRewritePattern<AllocateSharedOp> {
   LogicalResult matchAndRewrite(
       AllocateSharedOp op, mlir::PatternRewriter& rewriter) const override {
     auto module = op->getParentOfType<mlir::ModuleOp>();
-    auto shaped_ty = op.getResult().getType().cast<mlir::ShapedType>();
+    auto shaped_ty = mlir::cast<mlir::ShapedType>(op.getResult().getType());
     constexpr int kGPUSharedMemoryAddrSpace = 3;
     mlir::ImplicitLocOpBuilder b(op.getLoc(), rewriter);
 

@@ -25,6 +25,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/Interfaces/DerivedAttributeOpInterface.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/export_utils.h"
@@ -183,7 +184,7 @@ Status PopulateDerivedAttributes(mlir::Operation* inst, llvm::StringRef name,
     auto values = inst->getResults();
     auto begin = values.begin();
     auto end = values.begin();
-    while (end != values.end() && (*end).getType().isa<mlir::ShapedType>())
+    while (end != values.end() && mlir::isa<mlir::ShapedType>((*end).getType()))
       end++;
     if (begin != end) {
       mlir::TF::ResultShapeRange output_shapes = {

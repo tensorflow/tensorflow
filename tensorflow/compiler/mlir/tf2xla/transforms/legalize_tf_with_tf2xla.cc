@@ -35,6 +35,7 @@ limitations under the License.
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/op_or_arg_name_mapper.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -75,13 +76,13 @@ namespace {
 // Returns true if the given type is a ranked tensor type with static or bounded
 // dimensions.
 bool IsBounded(Type ty) {
-  auto ranked_ty = ty.dyn_cast<RankedTensorType>();
+  auto ranked_ty = mlir::dyn_cast<RankedTensorType>(ty);
   if (!ranked_ty) return false;
 
   if (ranked_ty.hasStaticShape()) return true;
 
   auto encoding =
-      ranked_ty.getEncoding().dyn_cast_or_null<TypeExtensionsAttr>();
+      mlir::dyn_cast_or_null<TypeExtensionsAttr>(ranked_ty.getEncoding());
   if (!encoding) return false;
 
   for (int i = 0; i < ranked_ty.getRank(); ++i) {
@@ -96,10 +97,11 @@ bool IsBounded(Type ty) {
 bool HasSymbolRefAttr(Operation* op) {
   for (const auto& attr : op->getAttrs()) {
     Attribute attr_value = attr.getValue();
-    if (attr_value.isa<SymbolRefAttr>()) {
+    if (mlir::isa<SymbolRefAttr>(attr_value)) {
       return true;
-    } else if (auto array_attr = attr_value.dyn_cast<ArrayAttr>()) {
-      if (!array_attr.empty() && array_attr.begin()->isa<SymbolRefAttr>()) {
+    } else if (auto array_attr = mlir::dyn_cast<ArrayAttr>(attr_value)) {
+      if (!array_attr.empty() &&
+          mlir::isa<SymbolRefAttr>(*array_attr.begin())) {
         return true;
       }
     }
@@ -146,8 +148,8 @@ class Tf2XlaRewritePattern : public ConversionPattern {
 };
 
 bool ShouldRefineTypeTo(Type original_ty, Type updated_ty) {
-  auto updated = updated_ty.dyn_cast<ShapedType>();
-  auto original = original_ty.dyn_cast<ShapedType>();
+  auto updated = mlir::dyn_cast<ShapedType>(updated_ty);
+  auto original = mlir::dyn_cast<ShapedType>(original_ty);
 
   // Both types must be shaped types.
   if (!original || !updated) return false;

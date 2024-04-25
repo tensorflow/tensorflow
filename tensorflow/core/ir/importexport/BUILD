@@ -109,6 +109,7 @@ cc_library(
         "//tensorflow/core/platform:statusor",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
         "@local_tsl//tsl/platform:ml_dtypes",
     ],
 )

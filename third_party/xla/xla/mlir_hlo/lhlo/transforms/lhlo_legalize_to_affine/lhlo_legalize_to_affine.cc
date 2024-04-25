@@ -26,6 +26,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Location.h"
 #include "mlir/Pass/Pass.h"
+#include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 namespace mlir {
@@ -55,8 +56,8 @@ struct DotOpConverter : public OpRewritePattern<DotOp> {
                                 PatternRewriter& rewriter) const override {
     Value lhs = op.getLhs();
     Value rhs = op.getRhs();
-    MemRefType lhsType = lhs.getType().cast<MemRefType>();
-    MemRefType rhsType = rhs.getType().cast<MemRefType>();
+    MemRefType lhsType = mlir::cast<MemRefType>(lhs.getType());
+    MemRefType rhsType = mlir::cast<MemRefType>(rhs.getType());
     Type elementType = lhsType.getElementType();
     ArrayRef<int64_t> shapeLhs = lhsType.getShape();
     ArrayRef<int64_t> shapeRhs = rhsType.getShape();
@@ -130,7 +131,7 @@ struct ConcatOpConverter : public OpRewritePattern<ConcatenateOp> {
                                 PatternRewriter& rewriter) const override {
     Location loc = op.getLoc();
     Value output = op.getOutput();
-    MemRefType outputType = output.getType().cast<MemRefType>();
+    MemRefType outputType = mlir::cast<MemRefType>(output.getType());
     unsigned outputRank = outputType.getRank();
     ArrayRef<int64_t> outputShape = outputType.getShape();
 
@@ -139,7 +140,7 @@ struct ConcatOpConverter : public OpRewritePattern<ConcatenateOp> {
     int64_t prevBound = 0;
 
     for (Value operand : operands) {
-      MemRefType operandType = operand.getType().cast<MemRefType>();
+      MemRefType operandType = mlir::cast<MemRefType>(operand.getType());
       ArrayRef<int64_t> operandShape = operandType.getShape();
 
       // TODO(pashu123): Extend support for dynamic dimensions.
@@ -189,11 +190,11 @@ struct ConcatOpConverter : public OpRewritePattern<ConcatenateOp> {
 static Value getZeroValue(Type type, Location loc, PatternRewriter& rewriter) {
   assert(type.isIntOrFloat() && "Expected int or float");
 
-  if (IntegerType intType = type.dyn_cast<IntegerType>())
+  if (IntegerType intType = mlir::dyn_cast<IntegerType>(type))
     return rewriter.create<mlir::arith::ConstantIntOp>(loc, 0,
                                                        intType.getWidth());
 
-  FloatType floatType = type.cast<FloatType>();
+  FloatType floatType = mlir::cast<FloatType>(type);
   return rewriter.create<mlir::arith::ConstantFloatOp>(
       loc, APFloat::getZero(floatType.getFloatSemantics()), floatType);
 }
@@ -202,7 +203,7 @@ static Value getZeroValue(Type type, Location loc, PatternRewriter& rewriter) {
 static void fillBuffer(Location loc, Value buffer, Value fillValue,
                        PatternRewriter& builder) {
   OpBuilder::InsertionGuard guard(builder);
-  MemRefType bufType = buffer.getType().cast<MemRefType>();
+  MemRefType bufType = mlir::cast<MemRefType>(buffer.getType());
   unsigned rank = bufType.getRank();
   SmallVector<Value, 4> dimSizes;
   dimSizes.reserve(rank);
@@ -220,7 +221,7 @@ static void fillBuffer(Location loc, Value buffer, Value fillValue,
     ivs[i] = forOp.getInductionVar();
   }
   Type fillValueType = fillValue.getType();
-  auto fillMemRefType = fillValueType.dyn_cast<MemRefType>();
+  auto fillMemRefType = mlir::dyn_cast<MemRefType>(fillValueType);
   assert(((fillMemRefType && fillMemRefType.getRank() == 0) ||
           fillValueType.isIntOrFloat()) &&
          "init value has to be a 0-d memref or int or fp");
@@ -252,19 +253,20 @@ class GatherOpConverter : public OpRewritePattern<GatherOp> {
 
     // Operand array.
     Value operand = op.getOperand();
-    MemRefType operandType = operand.getType().cast<MemRefType>();
+    MemRefType operandType = mlir::cast<MemRefType>(operand.getType());
     unsigned operandRank = operandType.getRank();
     ArrayRef<int64_t> operandShape = operandType.getShape();
 
     // Start_indices array.
     Value startIndices = op.getStartIndices();
-    MemRefType startIndicesType = startIndices.getType().cast<MemRefType>();
+    MemRefType startIndicesType =
+        mlir::cast<MemRefType>(startIndices.getType());
     unsigned startIndicesRank = startIndicesType.getRank();
     ArrayRef<int64_t> startIndicesShape = startIndicesType.getShape();
 
     // Output array.
     Value output = op.getOutput();
-    MemRefType outputType = output.getType().cast<MemRefType>();
+    MemRefType outputType = mlir::cast<MemRefType>(output.getType());
     ArrayRef<int64_t> outputShape = outputType.getShape();
 
     if (!operandType.hasStaticShape() || !startIndicesType.hasStaticShape() ||
@@ -450,7 +452,7 @@ class GatherOpConverter : public OpRewritePattern<GatherOp> {
         rewriter.create<affine::AffineLoadOp>(loc, output, outputInductionVars);
 
     // The selected value is added to the previous value stored in output array.
-    if (elementType.isa<FloatType>())
+    if (mlir::isa<FloatType>(elementType))
       outputValue = rewriter.create<arith::AddFOp>(loc, elementType, selectLoad,
                                                    outputValue);
     else
@@ -486,8 +488,8 @@ struct PadOpConverter : public OpRewritePattern<PadOp> {
     Value paddingValue = op.getPaddingValue();
     Value output = op.getOutput();
 
-    auto operandType = operand.getType().dyn_cast<ShapedType>();
-    auto outputType = output.getType().dyn_cast<ShapedType>();
+    auto operandType = mlir::dyn_cast<ShapedType>(operand.getType());
+    auto outputType = mlir::dyn_cast<ShapedType>(output.getType());
     // We allow lowering for only ranked input/output.
     if (!(operandType && outputType && operandType.hasRank() &&
           outputType.hasRank()))
@@ -574,8 +576,8 @@ struct BinaryOpConverter : public OpRewritePattern<LhloOpTy> {
                                 PatternRewriter& rewriter) const override {
     Value lhs = op.getLhs();
     Value rhs = op.getRhs();
-    const auto& lhsType = lhs.getType().template cast<MemRefType>();
-    const auto& rhsType = rhs.getType().template cast<MemRefType>();
+    const auto& lhsType = mlir::cast<MemRefType>(lhs.getType());
+    const auto& rhsType = mlir::cast<MemRefType>(rhs.getType());
     const auto& elementType = lhsType.getElementType();
 
     if (lhsType.getShape() != rhsType.getShape()) {
@@ -611,7 +613,7 @@ struct UnaryOpConverter : public OpRewritePattern<LhloOpTy> {
   LogicalResult matchAndRewrite(LhloOpTy op,
                                 PatternRewriter& rewriter) const override {
     Value input = op.getInput();
-    auto inputType = input.getType().cast<MemRefType>();
+    auto inputType = mlir::cast<MemRefType>(input.getType());
     auto elementType = inputType.getElementType();
     ArrayRef<int64_t> shape = inputType.getShape();
 

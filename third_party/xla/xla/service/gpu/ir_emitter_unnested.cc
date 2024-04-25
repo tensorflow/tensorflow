@@ -1430,7 +1430,7 @@ absl::Status IrEmitterUnnested::EmitCustomCallThunk(
       if (!backend_config_str.empty()) {
         mlir::Attribute attr = mlir::parseAttribute(
             backend_config_str, ir_emitter_context_->mlir_context());
-        if (auto dict = attr.dyn_cast_or_null<mlir::DictionaryAttr>()) {
+        if (auto dict = mlir::dyn_cast_or_null<mlir::DictionaryAttr>(attr)) {
           TF_ASSIGN_OR_RETURN(attributes, BuildAttributesMap(dict));
           break;
         }

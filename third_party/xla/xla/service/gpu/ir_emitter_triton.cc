@@ -207,10 +207,10 @@ T ScalarConstantValue(const HloInstruction& instr, PrimitiveType dst_type) {
 // Create a scalar constant.
 template <typename T>
 ma::ConstantOp CreateConst(ImplicitLocOpBuilder b, Type type, T value) {
-  if (type.isa<mlir::IntegerType>()) {
+  if (mlir::isa<mlir::IntegerType>(type)) {
     return b.create<ma::ConstantOp>(b.getIntegerAttr(type, value));
   }
-  if (type.isa<mlir::FloatType>()) {
+  if (mlir::isa<mlir::FloatType>(type)) {
     return b.create<ma::ConstantOp>(
         b.getFloatAttr(type, static_cast<double>(value)));
   }
@@ -222,11 +222,11 @@ template <typename T>
 ma::ConstantOp CreateConst(ImplicitLocOpBuilder& b, Type type, T value,
                            ArrayRef<int64_t> shape) {
   auto tensor_type = mlir::RankedTensorType::get(shape, type);
-  if (auto int_type = type.dyn_cast<mlir::IntegerType>()) {
+  if (auto int_type = mlir::dyn_cast<mlir::IntegerType>(type)) {
     return b.create<ma::ConstantOp>(mlir::DenseElementsAttr::get(
         tensor_type, mlir::APInt(int_type.getIntOrFloatBitWidth(), value)));
   }
-  if (auto float_type = type.dyn_cast<mlir::FloatType>()) {
+  if (auto float_type = mlir::dyn_cast<mlir::FloatType>(type)) {
     return b.create<ma::ConstantOp>(mlir::DenseElementsAttr::get(
         tensor_type, b.getFloatAttr(type, static_cast<double>(value))));
   }
@@ -234,7 +234,7 @@ ma::ConstantOp CreateConst(ImplicitLocOpBuilder& b, Type type, T value,
 }
 
 Value ZerosLike(ImplicitLocOpBuilder& b, Value x) {
-  if (auto src_shaped_ty = x.getType().dyn_cast<ShapedType>()) {
+  if (auto src_shaped_ty = mlir::dyn_cast<ShapedType>(x.getType())) {
     Type src_ty = src_shaped_ty.getElementType();
     return CreateConst(b, src_ty, 0, src_shaped_ty.getShape());
   }
@@ -242,7 +242,7 @@ Value ZerosLike(ImplicitLocOpBuilder& b, Value x) {
 }
 
 Value OnesLike(ImplicitLocOpBuilder& b, Value x) {
-  if (auto src_shaped_ty = x.getType().dyn_cast<ShapedType>()) {
+  if (auto src_shaped_ty = mlir::dyn_cast<ShapedType>(x.getType())) {
     Type src_ty = src_shaped_ty.getElementType();
     return CreateConst(b, src_ty, 1, src_shaped_ty.getShape());
   }
@@ -255,7 +255,7 @@ Value Cast(ImplicitLocOpBuilder& b, Value value, Type dst_element_ty) {
   Type src_element_ty = src_ty;
   Type fp32_ty = b.getF32Type();
   Type dst_ty = dst_element_ty;
-  if (auto src_shaped_ty = src_ty.dyn_cast<ShapedType>()) {
+  if (auto src_shaped_ty = mlir::dyn_cast<ShapedType>(src_ty)) {
     src_element_ty = src_shaped_ty.getElementType();
     dst_ty = src_shaped_ty.clone(src_shaped_ty.getShape(), dst_element_ty);
     fp32_ty = src_shaped_ty.clone(src_shaped_ty.getShape(), b.getF32Type());
@@ -276,8 +276,8 @@ Value Cast(ImplicitLocOpBuilder& b, Value value, Type dst_element_ty) {
   }
 
   // float => float
-  auto src_fp_element_ty = src_element_ty.dyn_cast<mlir::FloatType>();
-  auto dst_fp_element_ty = dst_element_ty.dyn_cast<mlir::FloatType>();
+  auto src_fp_element_ty = mlir::dyn_cast<mlir::FloatType>(src_element_ty);
+  auto dst_fp_element_ty = mlir::dyn_cast<mlir::FloatType>(dst_element_ty);
   if (src_fp_element_ty && dst_fp_element_ty) {
     if (src_fp_element_ty.getFPMantissaWidth() >
         dst_fp_element_ty.getFPMantissaWidth()) {
@@ -287,8 +287,8 @@ Value Cast(ImplicitLocOpBuilder& b, Value value, Type dst_element_ty) {
     }
   }
   // int => int
-  if (src_element_ty.isa<mlir::IntegerType>() &&
-      dst_element_ty.isa<mlir::IntegerType>()) {
+  if (mlir::isa<mlir::IntegerType>(src_element_ty) &&
+      mlir::isa<mlir::IntegerType>(dst_element_ty)) {
     if (src_element_ty.getIntOrFloatBitWidth() <
         dst_element_ty.getIntOrFloatBitWidth()) {
       if (src_element_ty.isInteger(1)) {
@@ -299,7 +299,7 @@ Value Cast(ImplicitLocOpBuilder& b, Value value, Type dst_element_ty) {
     return b.create<ma::TruncIOp>(dst_ty, value);
   }
   // int => float
-  if (src_element_ty.isa<mlir::IntegerType>() && dst_fp_element_ty) {
+  if (mlir::isa<mlir::IntegerType>(src_element_ty) && dst_fp_element_ty) {
     // TODO(b/266862493): Support unsigned integer types.
     if (src_element_ty.isInteger(1)) {
       return b.create<ma::UIToFPOp>(dst_ty, value);
@@ -307,7 +307,7 @@ Value Cast(ImplicitLocOpBuilder& b, Value value, Type dst_element_ty) {
     return b.create<ma::SIToFPOp>(dst_ty, value);
   }
   // float => int
-  if (src_fp_element_ty && dst_element_ty.isa<mlir::IntegerType>()) {
+  if (src_fp_element_ty && mlir::isa<mlir::IntegerType>(dst_element_ty)) {
     // TODO(b/266862493): Support unsigned integer types.
     if (dst_element_ty.isInteger(1)) {
       return b.create<ma::CmpFOp>(ma::CmpFPredicate::UNE, value,
@@ -322,7 +322,7 @@ Value Cast(ImplicitLocOpBuilder& b, Value value, Type dst_element_ty) {
 }
 
 Value Subtract(ImplicitLocOpBuilder& b, ValueRange values) {
-  if (mlir::getElementTypeOrSelf(values[0]).isa<mlir::IntegerType>()) {
+  if (mlir::isa<mlir::IntegerType>(mlir::getElementTypeOrSelf(values[0]))) {
     return b.create<ma::SubIOp>(values[0], values[1]);
   } else {
     return b.create<ma::SubFOp>(values[0], values[1]);
@@ -332,7 +332,7 @@ Value Subtract(ImplicitLocOpBuilder& b, ValueRange values) {
 Value Compare(ImplicitLocOpBuilder& b, ValueRange values,
               mlir::mhlo::ComparisonDirection direction) {
   const Type type = mlir::getElementTypeOrSelf(values[0]);
-  if (type.isa<mlir::IntegerType>()) {
+  if (mlir::isa<mlir::IntegerType>(type)) {
     return b.create<ma::CmpIOp>(
         mlir::mhlo::impl::getCmpPredicate<ma::CmpIPredicate>(
             direction,
@@ -349,7 +349,7 @@ Value Compare(ImplicitLocOpBuilder& b, ValueRange values,
 
 Value Maximum(ImplicitLocOpBuilder& b, const se::DeviceDescription& device_info,
               ValueRange values) {
-  if (mlir::getElementTypeOrSelf(values[0]).isa<mlir::FloatType>()) {
+  if (mlir::isa<mlir::FloatType>(mlir::getElementTypeOrSelf(values[0]))) {
     return b.create<ma::MaximumFOp>(values);
   }
   // logic: isNaN(lhs) || (!isNan(rhs) && lhs >= rhs) ? lhs : rhs
@@ -370,7 +370,7 @@ Value Maximum(ImplicitLocOpBuilder& b, const se::DeviceDescription& device_info,
 
 Value Minimum(ImplicitLocOpBuilder& b, const se::DeviceDescription& device_info,
               ValueRange values) {
-  if (mlir::getElementTypeOrSelf(values[0]).isa<mlir::FloatType>()) {
+  if (mlir::isa<mlir::FloatType>(mlir::getElementTypeOrSelf(values[0]))) {
     return b.create<ma::MinimumFOp>(values);
   }
   // logic: isNaN(lhs) || (!isNan(rhs) && lhs <= rhs) ? lhs : rhs
@@ -435,7 +435,7 @@ absl::StatusOr<Value> EmitElementwise(ImplicitLocOpBuilder& b,
     }
   }
   const bool is_integer =
-      mlir::getElementTypeOrSelf(inputs[0]).isa<mlir::IntegerType>();
+      mlir::isa<mlir::IntegerType>(mlir::getElementTypeOrSelf(inputs[0]));
 
   switch (hlo.opcode()) {
     case HloOpcode::kCopy:
@@ -561,7 +561,7 @@ absl::StatusOr<Value> EmitBroadcast(
       out_shape.push_back(dim.block_size);
     }
   }
-  auto tensor_input = input.dyn_cast<TensorValue>();
+  auto tensor_input = mlir::dyn_cast<TensorValue>(input);
   if (!tensor_input) {
     // Input is scalar.
     return Splat(b, input, out_shape);
@@ -584,7 +584,7 @@ absl::StatusOr<Value> EmitBroadcast(
       ++dim_idx;
     }
   }
-  return Broadcast(b, expanded_input.cast<TensorValue>(), out_shape);
+  return Broadcast(b, mlir::cast<TensorValue>(expanded_input), out_shape);
 }
 
 absl::StatusOr<Value> EmitScope(
@@ -601,7 +601,7 @@ absl::StatusOr<Value> EmitReduce(ImplicitLocOpBuilder& b,
                                  const HloInstruction& hlo_reduce,
                                  Value input) {
   llvm::ArrayRef<int64_t> input_shape =
-      input.cast<TensorValue>().getType().getShape();
+      mlir::cast<TensorValue>(input).getType().getShape();
 
   // At the moment, we should only emit a full reduction over the last axis of
   // a single input.
@@ -692,7 +692,7 @@ absl::StatusOr<Value> EmitReduce(ImplicitLocOpBuilder& b,
   // We want to return a tensor of float32, but the ReturnReduceOp produces an
   // f32 constant when reducing a single dim. To convert to a tensor we splat
   // the result.
-  if (!reduction.getResult().front().dyn_cast<TensorValue>()) {
+  if (!mlir::dyn_cast<TensorValue>(reduction.getResult().front())) {
     result = Splat(b, result, {});
   }
 
@@ -792,7 +792,7 @@ Value EmitTiledBroadcast(
     }
   }
 
-  return Broadcast(b, expanded_input.cast<TensorValue>(),
+  return Broadcast(b, mlir::cast<TensorValue>(expanded_input),
                    padded_output_tile_shape);
 }
 
@@ -958,7 +958,7 @@ void StripParameterAddressSpaces(mlir::RewriterBase& rewriter,
   ml::LLVMFunctionType func_ty = func.getFunctionType();
   SmallVector<Type> generic_func_params(
       llvm::map_range(func_ty.getParams(), [](Type type) -> Type {
-        auto ptr_ty = type.dyn_cast<ml::LLVMPointerType>();
+        auto ptr_ty = mlir::dyn_cast<ml::LLVMPointerType>(type);
         if (!ptr_ty) return type;
         if (ptr_ty.getAddressSpace() != mn::kGlobalMemorySpace) return type;
         return ml::LLVMPointerType::get(ptr_ty.getContext());
@@ -968,8 +968,9 @@ void StripParameterAddressSpaces(mlir::RewriterBase& rewriter,
 
   // Create a function with the new signature.
   SmallVector<mlir::DictionaryAttr> arg_attrs(llvm::map_range(
-      func.getArgAttrsAttr().getValue(),
-      [](mlir::Attribute attr) { return attr.cast<mlir::DictionaryAttr>(); }));
+      func.getArgAttrsAttr().getValue(), [](mlir::Attribute attr) {
+        return mlir::cast<mlir::DictionaryAttr>(attr);
+      }));
   auto generic_func = rewriter.create<ml::LLVMFuncOp>(
       func.getLoc(), func.getSymName(), generic_func_ty, func.getLinkage(),
       func.getDsoLocal(), func.getCConv(), /*comdat=*/nullptr,
@@ -1317,7 +1318,8 @@ class MatMulEmitterHelper {
     CHECK(accum_type.ok()) << "Unexpected algorithm: "
                            << PrecisionConfig::Algorithm_Name(algorithm);
     Type mlir_accum_type = TritonType(b_, accum_type.value());
-    if (auto float_accum_type = mlir_accum_type.dyn_cast<mlir::FloatType>()) {
+    if (auto float_accum_type =
+            mlir::dyn_cast<mlir::FloatType>(mlir_accum_type)) {
       return float_accum_type;
     }
     LOG(FATAL) << "Only floating point accumulator types are supported for "
@@ -1592,11 +1594,10 @@ class MatMulEmitterHelper {
       // Load of a scalar.
       return base;
     }
-    auto tensor_ptr =
+    auto tensor_ptr = mlir::cast<Value>(
         b_.create<mt::MakeTensorPtrOp>(base, bounds, strides, tensor_offsets,
                                        block_dims, dim_order)
-            .getResult()
-            .cast<Value>();
+            .getResult());
     tensor_ptr = b_.create<mt::AdvanceOp>(tensor_ptr.getType(), tensor_ptr,
                                           block_offsets);
     return tensor_ptr;
@@ -1688,7 +1689,7 @@ ConstHloInstructionSet ScopeInputs(const TritonFusionAnalysis& analysis,
 // zero.
 // It is used for Emit6xBfloat16MatMul.
 Value TruncateToBF16TowardsZero(ImplicitLocOpBuilder& b, Value input) {
-  ShapedType input_type = input.getType().dyn_cast<ShapedType>();
+  ShapedType input_type = mlir::dyn_cast<ShapedType>(input.getType());
   Type input_type_as_i32 = input_type.clone(b.getI32Type());
   Value input_as_i32 = b.create<mt::BitcastOp>(input_type_as_i32, input);
   Value mask = CreateConst<uint32_t>(b, b.getI32Type(), 0xFFFF0000u,
@@ -1724,7 +1725,7 @@ Value RoundToBF16(ImplicitLocOpBuilder& b, Value input) {
 Value CheckFiniteF32(ImplicitLocOpBuilder& b, Value input) {
   Value positive_inf = CreateConst<float>(
       b, b.getF32Type(), std::numeric_limits<float>::infinity(),
-      input.getType().cast<ShapedType>().getShape());
+      mlir::cast<ShapedType>(input.getType()).getShape());
   Value abs_input = b.create<mm::AbsFOp>(input);
   return b.create<ma::CmpFOp>(ma::CmpFPredicate::OGT, positive_inf, abs_input);
 }
@@ -1734,9 +1735,9 @@ Value CheckFiniteF32(ImplicitLocOpBuilder& b, Value input) {
 absl::StatusOr<Value> Emit6xBfloat16MatMul(ImplicitLocOpBuilder& b, Value lhs,
                                            Value rhs, Value acc) {
   Type f32 = b.getF32Type();
-  TF_RET_CHECK(lhs.getType().cast<ShapedType>().getElementType() == f32);
-  TF_RET_CHECK(rhs.getType().cast<ShapedType>().getElementType() == f32);
-  TF_RET_CHECK(acc.getType().cast<ShapedType>().getElementType() == f32);
+  TF_RET_CHECK(mlir::cast<ShapedType>(lhs.getType()).getElementType() == f32);
+  TF_RET_CHECK(mlir::cast<ShapedType>(rhs.getType()).getElementType() == f32);
+  TF_RET_CHECK(mlir::cast<ShapedType>(acc.getType()).getElementType() == f32);
 
   Value lhs_high = RoundToBF16(b, TruncateToBF16TowardsZero(b, lhs));
   Value lhs_middle =
@@ -1782,9 +1783,9 @@ absl::StatusOr<Value> Emit6xBfloat16MatMul(ImplicitLocOpBuilder& b, Value lhs,
 absl::StatusOr<Value> Emit3xBfloat16MatMul(ImplicitLocOpBuilder& b, Value lhs,
                                            Value rhs, Value acc) {
   Type f32 = b.getF32Type();
-  TF_RET_CHECK(lhs.getType().cast<ShapedType>().getElementType() == f32);
-  TF_RET_CHECK(rhs.getType().cast<ShapedType>().getElementType() == f32);
-  TF_RET_CHECK(acc.getType().cast<ShapedType>().getElementType() == f32);
+  TF_RET_CHECK(mlir::cast<ShapedType>(lhs.getType()).getElementType() == f32);
+  TF_RET_CHECK(mlir::cast<ShapedType>(rhs.getType()).getElementType() == f32);
+  TF_RET_CHECK(mlir::cast<ShapedType>(acc.getType()).getElementType() == f32);
 
   Value lhs_high = RoundToBF16(b, TruncateToBF16TowardsZero(b, lhs));
   Value lhs_low = RoundToBF16(b, SoftMiddleEight(b, lhs));
@@ -1839,8 +1840,10 @@ bool Is6xBfloat16MatMul(const HloDotInstruction* dot_instr,
     return hlo_module->config()
                .debug_options()
                .xla_gpu_enable_bf16_6way_gemm() &&
-           dot_input_lhs.getType().cast<ShapedType>().getElementType() == f32 &&
-           dot_input_rhs.getType().cast<ShapedType>().getElementType() == f32;
+           mlir::cast<ShapedType>(dot_input_lhs.getType()).getElementType() ==
+               f32 &&
+           mlir::cast<ShapedType>(dot_input_rhs.getType()).getElementType() ==
+               f32;
   }
 
   return algorithm == PrecisionConfig::ALG_DOT_BF16_BF16_F32_X6;
@@ -1859,8 +1862,10 @@ bool Is3xBfloat16MatMul(const HloDotInstruction* dot_instr,
     return hlo_module->config()
                .debug_options()
                .xla_gpu_enable_bf16_3way_gemm() &&
-           dot_input_lhs.getType().cast<ShapedType>().getElementType() == f32 &&
-           dot_input_rhs.getType().cast<ShapedType>().getElementType() == f32;
+           mlir::cast<ShapedType>(dot_input_lhs.getType()).getElementType() ==
+               f32 &&
+           mlir::cast<ShapedType>(dot_input_rhs.getType()).getElementType() ==
+               f32;
   }
 
   return algorithm == PrecisionConfig::ALG_DOT_BF16_BF16_F32_X3;
@@ -2095,10 +2100,9 @@ absl::Status EmitMatMul(mlir::OpBuilder builder,
                   block_k));
       }
       auto apply_mask = [&](int64_t dim, Value input) {
-        auto ty = input.getType().cast<mlir::RankedTensorType>();
-        TensorValue range_expanded = b.create<mt::ExpandDimsOp>(range_k, dim)
-                                         .getResult()
-                                         .cast<TensorValue>();
+        auto ty = mlir::cast<mlir::RankedTensorType>(input.getType());
+        TensorValue range_expanded = mlir::cast<TensorValue>(
+            b.create<mt::ExpandDimsOp>(range_k, dim).getResult());
         Value mask = b.create<mt::BroadcastOp>(
             ty.clone(b.getI1Type()),
             b.create<ma::CmpIOp>(ma::CmpIPredicate::slt, range_expanded,

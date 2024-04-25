@@ -36,6 +36,7 @@ limitations under the License.
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
@@ -100,19 +101,18 @@ LogicalResult GetLstmProperty(LstmOp op,
     return failure();
   }
   lstm_variant->use_projection =
-      !op.getProjectionWeights().getType().template isa<NoneType>();
+      !mlir::isa<NoneType>(op.getProjectionWeights().getType());
   lstm_variant->use_peephole =
-      !op.getCellToOutputWeights().getType().template isa<NoneType>();
+      !mlir::isa<NoneType>(op.getCellToOutputWeights().getType());
   lstm_variant->use_layer_norm =
-      !op.getForgetLayerNormCoefficients().getType().template isa<NoneType>();
+      !mlir::isa<NoneType>(op.getForgetLayerNormCoefficients().getType());
 
   *op_property = operator_property::GetOperatorProperty(
       *lstm_variant, activation_number_of_bits);
 
   // TODO(b/176258587) move this to operator_property.cc if this is needed in
   // other components, too.
-  bool use_cifg =
-      op.getInputToInputWeights().getType().template isa<NoneType>();
+  bool use_cifg = mlir::isa<NoneType>(op.getInputToInputWeights().getType());
   if (use_cifg) {
     const absl::flat_hash_set<int> cifg_non_inputs = {1, 5, 9, 12, 20};
     const int cifg_non_intermediate = 0;
@@ -197,9 +197,9 @@ class PrepareLstmOutputScale : public OpRewritePattern<SourceOp> {
     llvm::SmallVector<llvm::APFloat, 4> min_max_values;
 
     for (auto& stats_op : stats_ops) {
-      auto values = stats_op.getLayerStats()
-                        .dyn_cast<DenseFPElementsAttr>()
-                        .getValues<llvm::APFloat>();
+      auto values =
+          mlir::dyn_cast<DenseFPElementsAttr>(stats_op.getLayerStats())
+              .getValues<llvm::APFloat>();
       min_max_values.insert(min_max_values.end(), values.begin(), values.end());
     }
 
@@ -285,8 +285,8 @@ class ConvertOpStatsToQDQs : public OpRewritePattern<SourceOp> {
       const operator_property::TensorProperty& tensor_property,
       PatternRewriter& rewriter) const {
     // Non-float tensors are neither weights nor require quantization.
-    auto type = const_op->getResult(0).getType().dyn_cast<ShapedType>();
-    if (!type || !type.getElementType().isa<FloatType>()) return success();
+    auto type = mlir::dyn_cast<ShapedType>(const_op->getResult(0).getType());
+    if (!type || !mlir::isa<FloatType>(type.getElementType())) return success();
 
     DenseFPElementsAttr attr;
     if (!matchPattern(const_op->getResult(0), m_Constant(&attr))) {
@@ -312,12 +312,12 @@ class ConvertOpStatsToQDQs : public OpRewritePattern<SourceOp> {
           rewriter.getIntegerType(16), attr.getType().getElementType(), scale,
           /*zeroPoint=*/0, llvm::minIntN(10), -llvm::minIntN(10));
     } else {
-      quant_type = quant::GetUniformQuantizedTypeForWeight(
-                       attr, /*symmetric=*/true,
-                       /*num_bits=*/tensor_property.number_of_bits,
-                       /*is_signed=*/true,
-                       /*narrow_range=*/true, quant_specs_.legacy_float_scale)
-                       .template dyn_cast<quant::UniformQuantizedType>();
+      quant_type = mlir::dyn_cast<quant::UniformQuantizedType>(
+          quant::GetUniformQuantizedTypeForWeight(
+              attr, /*symmetric=*/true,
+              /*num_bits=*/tensor_property.number_of_bits,
+              /*is_signed=*/true,
+              /*narrow_range=*/true, quant_specs_.legacy_float_scale));
     }
     if (!quant_type) {
       const_op->emitError("Failed to get quantized type");
@@ -346,7 +346,7 @@ class ConvertOpStatsToQDQs : public OpRewritePattern<SourceOp> {
                      << "] is a state tensor, but has more than one use.";
       return failure();
     }
-    auto stats = stats_op.getLayerStats().dyn_cast<DenseFPElementsAttr>();
+    auto stats = mlir::dyn_cast<DenseFPElementsAttr>(stats_op.getLayerStats());
     if (!stats || stats.getNumElements() != 2) {
       stats_op.emitError("Stats should have 2 values.");
       return failure();
@@ -454,7 +454,7 @@ class ConvertLstmStatsToQDQs : public ConvertOpStatsToQDQs<SourceOp> {
         return failure();
       }
       auto calibrated_type =
-          quant_type.template dyn_cast<quant::CalibratedQuantizedType>();
+          mlir::dyn_cast<quant::CalibratedQuantizedType>(quant_type);
       if (!calibrated_type) {
         int num_storage_bits = quant_type.getStorageTypeIntegralWidth();
         if (tensor_property.number_of_bits != num_storage_bits) {
@@ -474,9 +474,9 @@ class ConvertLstmStatsToQDQs : public ConvertOpStatsToQDQs<SourceOp> {
             /*narrowRange=*/false, calibrated_type.getExpressedType(),
             /*isSigned=*/this->quant_specs_.IsSignedInferenceType());
         if (this->quant_specs_.legacy_float_scale) {
-          qtype = quant::DownCastScale(qtype, calibrated_type.getMin(),
-                                       calibrated_type.getMax(), op.getLoc())
-                      .template cast<UniformQuantizedType>();
+          qtype = mlir::cast<UniformQuantizedType>(
+              quant::DownCastScale(qtype, calibrated_type.getMin(),
+                                   calibrated_type.getMax(), op.getLoc()));
         }
       } else if (tensor_property.number_of_bits == 16) {
         double max = std::max(std::abs(calibrated_type.getMin()),
@@ -508,9 +508,9 @@ inline quant::AccumulatorScaleFunc GetUniformQuantizedTypeForBiasWithScale(
   return [=](const std::vector<quant::QuantParams>& quant_params,
              const int adjusted_quant_dim,
              const bool legacy_float_scale) -> quant::QuantParams {
-    if (auto qtype = quant::GetUniformQuantizedTypeForBias(
-                         quant_params, legacy_float_scale, adjusted_quant_dim)
-                         .dyn_cast_or_null<UniformQuantizedType>()) {
+    if (auto qtype = mlir::dyn_cast_or_null<UniformQuantizedType>(
+            quant::GetUniformQuantizedTypeForBias(
+                quant_params, legacy_float_scale, adjusted_quant_dim))) {
       return quant::UniformQuantizedType::get(
           qtype.getFlags(), qtype.getStorageType(), qtype.getExpressedType(),
           qtype.getScale() * scale, qtype.getZeroPoint(),
@@ -540,14 +540,14 @@ std::unique_ptr<quant::OpQuantSpec> GetLstmOpQuantSpec(LstmOp op) {
            tensor_property.derived_scale.intermediate_tensors) {
         auto quant_type = GetIntermediateElementType<LstmOp>(op, tensor_index);
         if (!quant_type ||
-            !quant_type.template isa<quant::UniformQuantizedType>()) {
+            !mlir::isa<quant::UniformQuantizedType>(quant_type)) {
           op->emitError() << "While processing derived scale, intermediate "
                           << intermediate_attributes[tensor_index]
                           << " is not quantized.";
           return nullptr;
         }
-        scale *= quant_type.template dyn_cast<quant::UniformQuantizedType>()
-                     .getScale();
+        scale *=
+            mlir::dyn_cast<quant::UniformQuantizedType>(quant_type).getScale();
       }
       for (float factor : tensor_property.derived_scale.factors) {
         scale *= factor;
@@ -590,7 +590,8 @@ class PropagateTransposedPerAxisQuantDim
     auto q_op = dyn_cast_or_null<quantfork::QuantizeCastOp>(
         dq_op.getOperand().getDefiningOp());
     if (!q_op) return failure();
-    auto qtype = dq_op.getArg().getType().cast<TensorType>().getElementType();
+    auto qtype =
+        mlir::cast<TensorType>(dq_op.getArg().getType()).getElementType();
     auto aqtype = dyn_cast_or_null<quant::UniformQuantizedPerAxisType>(qtype);
     if (!aqtype) return failure();
 
@@ -599,8 +600,8 @@ class PropagateTransposedPerAxisQuantDim
     auto next_op = *transpose_op.getResult().getUsers().begin();
     if (dyn_cast_or_null<quantfork::QuantizeCastOp>(next_op)) return failure();
 
-    auto input_type = transpose_op.getInput().getType().cast<ShapedType>();
-    auto perm_type = transpose_op.getPerm().getType().cast<ShapedType>();
+    auto input_type = mlir::cast<ShapedType>(transpose_op.getInput().getType());
+    auto perm_type = mlir::cast<ShapedType>(transpose_op.getPerm().getType());
     if (input_type.hasStaticShape() && perm_type.hasStaticShape()) {
       if (perm_type.getNumElements() != input_type.getRank()) {
         return transpose_op.emitOpError(

@@ -80,13 +80,15 @@ LogicalResult CreateTflFusableOpCustomOptions(
   size_t start_map = fbb.StartMap();
 
   for (auto attr : attrs) {
-    if (auto float_attr = attr.second.dyn_cast_or_null<FloatAttr>()) {
+    if (auto float_attr = mlir::dyn_cast_or_null<FloatAttr>(attr.second)) {
       fbb.Float(attr.first.data(), float_attr.getValue().convertToFloat());
-    } else if (auto int_attr = attr.second.dyn_cast_or_null<IntegerAttr>()) {
+    } else if (auto int_attr =
+                   mlir::dyn_cast_or_null<IntegerAttr>(attr.second)) {
       fbb.Int(attr.first.data(), int_attr.getInt());
-    } else if (auto bool_attr = attr.second.dyn_cast_or_null<BoolAttr>()) {
+    } else if (auto bool_attr = mlir::dyn_cast_or_null<BoolAttr>(attr.second)) {
       fbb.Bool(attr.first.data(), bool_attr.getValue());
-    } else if (auto string_attr = attr.second.dyn_cast_or_null<StringAttr>()) {
+    } else if (auto string_attr =
+                   mlir::dyn_cast_or_null<StringAttr>(attr.second)) {
       fbb.String(attr.first.data(), string_attr.getValue().str());
     } else {
       // TODO(b/201482289): support other data types.
@@ -182,7 +184,7 @@ LogicalResult CheckFusableLayerNormalizedLstmCellSimple(
     func::FuncOp lstm_func) {
   for (int i = 0; i < 5; ++i) {
     auto input = lstm_func.getArgument(i);
-    auto input_type = input.getType().dyn_cast_or_null<RankedTensorType>();
+    auto input_type = mlir::dyn_cast_or_null<RankedTensorType>(input.getType());
     if (!input_type) {
       lstm_func.emitWarning(
           "we cannot fuse this lstm func because all the inputs have not "
@@ -197,7 +199,7 @@ LogicalResult CheckFusableLayerNormalizedLstmCellSimple(
 LogicalResult CheckFusableLstmCellSimple(func::FuncOp lstm_func) {
   for (int i = 0; i < 4; ++i) {
     auto input = lstm_func.getArgument(i);
-    auto input_type = input.getType().dyn_cast_or_null<RankedTensorType>();
+    auto input_type = mlir::dyn_cast_or_null<RankedTensorType>(input.getType());
     if (!input_type) {
       lstm_func.emitWarning(
           "we cannot fuse this lstm func because all the inputs have not "
@@ -250,7 +252,7 @@ LogicalResult CheckFusableKerasLstm(func::FuncOp lstm_func, ModuleOp module) {
   // types.
   for (int i = 0; i < 6; ++i) {
     auto input = lstm_func.getArgument(i);
-    auto input_type = input.getType().dyn_cast_or_null<RankedTensorType>();
+    auto input_type = mlir::dyn_cast_or_null<RankedTensorType>(input.getType());
     if (!input_type) {
       lstm_func.emitWarning(
           "we cannot fuse this lstm func because all the inputs have not "
@@ -368,7 +370,7 @@ void PrepareCompositeFunctionsPass::ConvertTFImplementsWithAttributes(
     for (auto attr_item : dict_attr) {
       // Push other attributes except the TFLFusableOp.
       if (attr_item.getName() == kTFLFusableOp &&
-          attr_item.getValue().dyn_cast<BoolAttr>().getValue()) {
+          mlir::dyn_cast<BoolAttr>(attr_item.getValue()).getValue()) {
         tfl_fusable_op = true;
       } else {
         attributes.push_back({attr_item.getName(), attr_item.getValue()});

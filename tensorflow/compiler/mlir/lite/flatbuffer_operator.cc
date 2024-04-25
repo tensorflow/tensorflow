@@ -42,6 +42,7 @@ limitations under the License.
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "stablehlo/dialect/VhloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
@@ -177,7 +178,7 @@ ConvertI64ArrayAttrForOptionWriter(mlir::ArrayAttr attrArray,
   std::vector<int32_t> intVec;
   intVec.reserve(attrArray.getValue().size());
   for (auto attr : attrArray.getValue()) {
-    intVec.push_back(attr.cast<mlir::IntegerAttr>().getInt());
+    intVec.push_back(mlir::cast<mlir::IntegerAttr>(attr).getInt());
   }
   return builder->CreateVector(intVec);
 }
@@ -189,7 +190,7 @@ ConvertF32ArrayAttrForOptionWriter(mlir::ArrayAttr attrArray,
   floatVec.reserve(attrArray.getValue().size());
   for (auto attr : attrArray.getValue()) {
     floatVec.push_back(
-        attr.cast<mlir::FloatAttr>().getValue().convertToFloat());
+        mlir::cast<mlir::FloatAttr>(attr).getValue().convertToFloat());
   }
   return builder->CreateVector(floatVec);
 }
@@ -341,8 +342,8 @@ static mlir::Attribute BuildVhloTensorV1Attr(std::vector<int64_t> shape,
                                              std::vector<int64_t> value,
                                              mlir::Builder builder) {
   mlir::StablehloVhloTypeConverter type_converter;
-  auto builtin_attr = BuildRankedTensorAttr(shape, value, builder)
-                          .dyn_cast<mlir::DenseIntElementsAttr>();
+  auto builtin_attr = mlir::dyn_cast<mlir::DenseIntElementsAttr>(
+      BuildRankedTensorAttr(shape, value, builder));
   auto vhlo_type = type_converter.convertType(builtin_attr.getType());
   return mlir::vhlo::TensorV1Attr::get(builder.getContext(), vhlo_type,
                                        builtin_attr.getRawData());
@@ -352,8 +353,8 @@ static mlir::Attribute BuildVhloTensorV1Attr(std::vector<int64_t> shape,
                                              std::vector<bool> value,
                                              mlir::Builder builder) {
   mlir::StablehloVhloTypeConverter type_converter;
-  auto builtin_attr = BuildRankedTensorAttr(shape, value, builder)
-                          .dyn_cast<mlir::DenseIntElementsAttr>();
+  auto builtin_attr = mlir::dyn_cast<mlir::DenseIntElementsAttr>(
+      BuildRankedTensorAttr(shape, value, builder));
   auto vhlo_type = type_converter.convertType(builtin_attr.getType());
   return mlir::vhlo::TensorV1Attr::get(builder.getContext(), vhlo_type,
                                        builtin_attr.getRawData());

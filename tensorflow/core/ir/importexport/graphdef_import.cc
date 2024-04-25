@@ -710,10 +710,10 @@ absl::StatusOr<unsigned int> GraphDefImporter::ArgNumType(
     SmallVectorImpl<Type> &types) {
   // Check whether a type list attribute is specified.
   if (!arg_def.type_list_attr().empty()) {
-    if (auto v =
-            attrs.get(arg_def.type_list_attr()).dyn_cast_or_null<ArrayAttr>()) {
+    if (auto v = mlir::dyn_cast_or_null<ArrayAttr>(
+            attrs.get(arg_def.type_list_attr()))) {
       for (Attribute attr : v) {
-        if (auto dtype = attr.dyn_cast<TypeAttr>()) {
+        if (auto dtype = mlir::dyn_cast<TypeAttr>(attr)) {
           types.push_back(UnrankedTensorType::get(dtype.getValue()));
         } else {
           return InvalidArgument("Expected '", arg_def.type_list_attr(),
@@ -728,8 +728,8 @@ absl::StatusOr<unsigned int> GraphDefImporter::ArgNumType(
   unsigned num = 1;
   // Check whether a number attribute is specified.
   if (!arg_def.number_attr().empty()) {
-    if (auto v =
-            attrs.get(arg_def.number_attr()).dyn_cast_or_null<IntegerAttr>()) {
+    if (auto v = mlir::dyn_cast_or_null<IntegerAttr>(
+            attrs.get(arg_def.number_attr()))) {
       num = v.getValue().getZExtValue();
     } else {
       return NotFound("Type attr not found: ", arg_def.number_attr());
@@ -744,7 +744,8 @@ absl::StatusOr<unsigned int> GraphDefImporter::ArgNumType(
     return InvalidArgument("Arg '", arg_def.name(),
                            "' has invalid type and no type attribute");
   } else {
-    if (auto v = attrs.get(arg_def.type_attr()).dyn_cast_or_null<TypeAttr>()) {
+    if (auto v =
+            mlir::dyn_cast_or_null<TypeAttr>(attrs.get(arg_def.type_attr()))) {
       dtype = v.getValue();
     } else {
       return NotFound("Type attr not found: ", arg_def.type_attr());

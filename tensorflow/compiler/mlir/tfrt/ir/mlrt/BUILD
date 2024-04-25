@@ -59,6 +59,7 @@ cc_library(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:InliningUtils",
+        "@llvm-project//mlir:Support",
     ],
 )
 
@@ -167,6 +168,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:InliningUtils",
         "@llvm-project//mlir:SideEffectInterfaces",
+        "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
         "@tf_runtime//:compiler_tfrt_op_interfaces",
         "@tf_runtime//:compiler_tfrt_traits",

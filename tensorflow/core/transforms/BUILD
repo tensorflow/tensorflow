@@ -105,6 +105,7 @@ cc_library(
         "//tensorflow/core/ir:Dialect",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
     ],
 )
 

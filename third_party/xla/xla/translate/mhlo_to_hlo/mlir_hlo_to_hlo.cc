@@ -56,6 +56,7 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
@@ -144,13 +145,13 @@ static mlir::LogicalResult GetXlaOp(
 }
 
 bool IsBoundedOrStatic(mlir::Type ty) {
-  auto ranked_ty = ty.dyn_cast_or_null<mlir::RankedTensorType>();
+  auto ranked_ty = mlir::dyn_cast_or_null<mlir::RankedTensorType>(ty);
   if (!ranked_ty) return false;
 
   if (ranked_ty.hasStaticShape()) return true;
 
-  auto encoding = ranked_ty.getEncoding()
-                      .dyn_cast_or_null<mlir::mhlo::TypeExtensionsAttr>();
+  auto encoding = mlir::dyn_cast_or_null<mlir::mhlo::TypeExtensionsAttr>(
+      ranked_ty.getEncoding());
   if (!encoding || encoding.getBounds().empty()) return false;
 
   int64_t rank = ranked_ty.getRank();
@@ -188,7 +189,7 @@ xla::Array<T> ArrayFromDenseElementsAttr(mlir::DenseElementsAttr dense_attr) {
 
 absl::StatusOr<xla::Literal> CreateArrayLiteralFromAttr(mlir::ElementsAttr attr,
                                                         xla::Layout layout) {
-  auto dense_attr = attr.dyn_cast<mlir::DenseElementsAttr>();
+  auto dense_attr = mlir::dyn_cast<mlir::DenseElementsAttr>(attr);
   if (!dense_attr)
     return tsl::errors::Unimplemented("Only dense elements attr are supported");
 
@@ -260,7 +261,7 @@ static std::vector<xla::CrossProgramPrefetch> Convert_cross_program_prefetches(
     mlir::ArrayAttr prefetches) {
   std::vector<xla::CrossProgramPrefetch> cross_program_prefetches;
   for (auto prefetch : prefetches) {
-    auto cpp = prefetch.cast<mlir::mhlo::CrossProgramPrefetchAttr>();
+    auto cpp = mlir::cast<mlir::mhlo::CrossProgramPrefetchAttr>(prefetch);
     xla::CrossProgramPrefetch xla_cpp;
     xla_cpp.set_parameter(cpp.getParameter());
     for (auto index : cpp.getIndices()) xla_cpp.add_index(index);
@@ -321,11 +322,11 @@ static void SetLayout(xla::Shape& shape, mlir::ArrayAttr layouts) {
   if (shape.IsTuple()) {
     for (int i = 0; i < shape.tuple_shapes_size(); ++i) {
       SetLayout(*shape.mutable_tuple_shapes(i),
-                layouts[i].cast<mlir::DenseIntElementsAttr>());
+                mlir::cast<mlir::DenseIntElementsAttr>(layouts[i]));
     }
   } else {
     assert(layouts.size() == 1);
-    SetLayout(shape, layouts[0].cast<mlir::DenseIntElementsAttr>());
+    SetLayout(shape, mlir::cast<mlir::DenseIntElementsAttr>(layouts[0]));
   }
 }
 
@@ -335,7 +336,7 @@ static std::vector<xla::Shape> ConvertTypesToShapesWithLayout(
   std::vector<xla::Shape> shapes_with_layout;
   for (auto [type, layout] : llvm::zip(value_types, layouts)) {
     xla::Shape shape = xla::TypeToShape(type);
-    SetLayout(shape, layout.cast<mlir::DenseIntElementsAttr>());
+    SetLayout(shape, mlir::cast<mlir::DenseIntElementsAttr>(layout));
     shapes_with_layout.push_back(std::move(shape));
   }
   return shapes_with_layout;
@@ -433,7 +434,7 @@ static std::unique_ptr<xla::PrecisionConfig> Convert_precision_config(
     xla::PrecisionConfig::Precision p;
     auto operand_precision =
         mlir::mhlo::stringifyPrecision(
-            attr.cast<mlir::mhlo::PrecisionAttr>().getValue())
+            mlir::cast<mlir::mhlo::PrecisionAttr>(attr).getValue())
             .str();
     // TODO(jpienaar): Update this to ensure this is captured by verify.
     if (xla::PrecisionConfig::Precision_Parse(operand_precision, &p)) {
@@ -583,7 +584,7 @@ void ConstructFrontendAttributesFromAttribute(
     const mlir::DictionaryAttr& frontend_attributes_dict,
     xla::FrontendAttributes& frontend_attributes) {
   for (const auto& attr : frontend_attributes_dict)
-    if (auto value_str_attr = attr.getValue().dyn_cast<mlir::StringAttr>())
+    if (auto value_str_attr = mlir::dyn_cast<mlir::StringAttr>(attr.getValue()))
       frontend_attributes.mutable_map()->insert(
           {attr.getName().str(), value_str_attr.getValue().str()});
 }
@@ -961,12 +962,13 @@ LogicalResult ExportXlaOp(DynamicPadOp op, OpLoweringContext ctx) {
 }
 
 LogicalResult ExportXlaOp(DynamicReshapeOp op, OpLoweringContext ctx) {
-  auto resultType = op.getResult().getType().dyn_cast<RankedTensorType>();
+  auto resultType = mlir::dyn_cast<RankedTensorType>(op.getResult().getType());
   if (!resultType) return op->emitOpError() << "expected ranked result";
   auto resultBounds = hlo::encodingToBounds(resultType.getEncoding());
   if (resultBounds.empty())
     return op->emitOpError() << "expected bounded result";
-  auto shapeType = op.getOutputShape().getType().dyn_cast<RankedTensorType>();
+  auto shapeType =
+      mlir::dyn_cast<RankedTensorType>(op.getOutputShape().getType());
   if (!shapeType || !shapeType.getElementType().isInteger(32))
     return op->emitOpError() << "expected output shape to be tensor<Nxi32>";
 
@@ -1046,8 +1048,9 @@ LogicalResult ExportXlaOp(AllGatherOp op, OpLoweringContext ctx) {
   auto all_gather_dim = op.getAllGatherDim();
   int64_t shard_count = 0;
   for (size_t i = 0; i < operands.size(); ++i) {
-    TensorType operand_type = op.getOperand(i).getType().cast<TensorType>();
-    TensorType result_type = op.getType(i).cast<TensorType>();
+    TensorType operand_type =
+        mlir::cast<TensorType>(op.getOperand(i).getType());
+    TensorType result_type = mlir::cast<TensorType>(op.getType(i));
     if (!operand_type.hasStaticShape() || !result_type.hasStaticShape())
       return failure();
     if (i == 0) {
@@ -1145,7 +1148,7 @@ LogicalResult ExportXlaOp(ReduceScatterOp op, OpLoweringContext ctx) {
   xla::XlaOp operand;
   if (failed(GetXlaOp(op.getOperand(), value_map, &operand, op)))
     return failure();
-  TensorType operand_type = op.getOperand().getType().cast<TensorType>();
+  TensorType operand_type = mlir::cast<TensorType>(op.getOperand().getType());
   TensorType result_type = op.getType();
   if (!operand_type.hasStaticShape() || !result_type.hasStaticShape())
     return failure();
@@ -1200,8 +1203,8 @@ LogicalResult ExportXlaOp(AsyncStartOp op, OpLoweringContext ctx) {
       dyn_cast_or_null<AllGatherOp>(callee.getBody().front().front());
   if (all_gather_op && SimplyReturnedOp(all_gather_op)) {
     TensorType operand_type =
-        all_gather_op.getOperand(0).getType().cast<TensorType>();
-    TensorType result_type = all_gather_op.getType(0).cast<TensorType>();
+        mlir::cast<TensorType>(all_gather_op.getOperand(0).getType());
+    TensorType result_type = mlir::cast<TensorType>(all_gather_op.getType(0));
     if (!operand_type.hasStaticShape() || !result_type.hasStaticShape())
       return failure();
     if (operands.size() != 1) return failure();
@@ -1213,7 +1216,7 @@ LogicalResult ExportXlaOp(AsyncStartOp op, OpLoweringContext ctx) {
         Convert_replica_groups(all_gather_op.getReplicaGroups()),
         Convert_channel_handle(all_gather_op.getChannelHandle()),
         ExtractLayout(all_gather_op,
-                      result_type.cast<RankedTensorType>().getRank()),
+                      mlir::cast<RankedTensorType>(result_type).getRank()),
         Convert_use_global_device_ids(all_gather_op.getUseGlobalDeviceIds()));
     return success();
   }
@@ -1273,11 +1276,12 @@ LogicalResult ExportXlaOp(AsyncStartOp op, OpLoweringContext ctx) {
   }
   auto recv_op = dyn_cast_or_null<RecvOp>(callee.getBody().front().front());
   if (recv_op && SimplyReturnedOp(recv_op)) {
-    auto result_types = result.getType().cast<AsyncBundleType>().getTypes()[1];
+    auto result_types =
+        mlir::cast<AsyncBundleType>(result.getType()).getTypes()[1];
 
     mlir::Type received_type = mlir::TupleType::get(op->getContext(), {});
     if (isa<TupleType>(result_types)) {
-      received_type = result_types.cast<TupleType>().getType(0);
+      received_type = mlir::cast<TupleType>(result_types).getType(0);
     }
 
     value_map[result] = xla::internal::XlaBuilderFriend::BuildRecv(
@@ -1412,11 +1416,11 @@ LogicalResult ExportXlaOp(AsyncDoneOp op, OpLoweringContext ctx) {
   auto recv_op = dyn_cast_or_null<RecvOp>(callee.getBody().front().front());
   if (recv_op && SimplyReturnedOp(recv_op)) {
     auto result_types =
-        op.getBundle().getType().cast<AsyncBundleType>().getTypes()[1];
+        mlir::cast<AsyncBundleType>(op.getBundle().getType()).getTypes()[1];
 
     mlir::Type received_type = mlir::TupleType::get(op->getContext(), {});
     if (isa<TupleType>(result_types)) {
-      received_type = result_types.cast<TupleType>().getType(0);
+      received_type = mlir::cast<TupleType>(result_types).getType(0);
     }
 
     xla::XlaOp xla_recv = xla::internal::XlaBuilderFriend::BuildRecvDone(
@@ -1463,7 +1467,7 @@ LogicalResult ExportXlaOp(BitcastConvertOp op, OpLoweringContext ctx) {
 }
 
 LogicalResult ExportXlaOp(BroadcastInDimOp op, OpLoweringContext ctx) {
-  auto type = op.getType().dyn_cast<RankedTensorType>();
+  auto type = mlir::dyn_cast<RankedTensorType>(op.getType());
   if (!type) return failure();
   auto& value_map = *ctx.values;
   xla::XlaOp operand;
@@ -1879,7 +1883,7 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
                << " is not a supported attribute for ApproxTopK";
     }
     auto backend_config =
-        op.getBackendConfigAttr().dyn_cast_or_null<mlir::DictionaryAttr>();
+        mlir::dyn_cast_or_null<mlir::DictionaryAttr>(op.getBackendConfigAttr());
     if (!backend_config)
       return op.emitOpError() << "Missing backend_config attribute";
 
@@ -1967,14 +1971,16 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
 
     SmallVector<RankedTensorType> input_types, init_value_types, result_types;
     for (size_t i = 0; i < num_inputs; ++i) {
-      auto input_type = op.getOperand(i).getType().dyn_cast<RankedTensorType>();
+      auto input_type =
+          mlir::dyn_cast<RankedTensorType>(op.getOperand(i).getType());
       if (!input_type) return failure();
       input_types.push_back(input_type);
-      auto init_value_type =
-          op.getOperand(num_inputs + i).getType().dyn_cast<RankedTensorType>();
+      auto init_value_type = mlir::dyn_cast<RankedTensorType>(
+          op.getOperand(num_inputs + i).getType());
       if (!init_value_type) return failure();
       init_value_types.push_back(init_value_type);
-      auto result_type = op.getResult(i).getType().dyn_cast<RankedTensorType>();
+      auto result_type =
+          mlir::dyn_cast<RankedTensorType>(op.getResult(i).getType());
       if (!result_type) return failure();
       result_types.push_back(result_type);
     }
@@ -2025,7 +2031,7 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
              << "ApproxTopK takes exactly 1 called_computation.";
     }
     mlir::func::FuncOp callee = ctx.converter->LookUpSymbol(
-        op.getCalledComputations()[0].cast<FlatSymbolRefAttr>());
+        mlir::cast<FlatSymbolRefAttr>(op.getCalledComputations()[0]));
     mlir::FunctionType callee_type = callee.getFunctionType();
     SmallVector<Type, 4> expected_callee_input_types;
     for (unsigned i = 0; i < num_inputs; ++i) {
@@ -2095,16 +2101,14 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
 
   if (*xla_api_version == xla::CustomCallApiVersion::API_VERSION_TYPED_FFI) {
     // Serialize backend config dictionary as a string.
-    if (auto dict = op.getBackendConfig()
-                        .value_or(mlir::Attribute())
-                        .dyn_cast_or_null<mlir::DictionaryAttr>()) {
+    if (auto dict = mlir::dyn_cast_or_null<mlir::DictionaryAttr>(
+            op.getBackendConfig().value_or(mlir::Attribute()))) {
       llvm::raw_string_ostream(backend_config) << dict;
     }
   } else {
     // Forward backend config string to the HLO instruction.
-    if (auto str = op.getBackendConfig()
-                       .value_or(mlir::Attribute())
-                       .dyn_cast_or_null<mlir::StringAttr>()) {
+    if (auto str = mlir::dyn_cast_or_null<mlir::StringAttr>(
+            op.getBackendConfig().value_or(mlir::Attribute()))) {
       llvm::raw_string_ostream(backend_config) << str.strref();
     }
   }
@@ -2140,7 +2144,7 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
   xla::XlaOp custom_call;
   if (op.getCalledComputations().size() == 1) {
     mlir::func::FuncOp callee = ctx.converter->LookUpSymbol(
-        op.getCalledComputations()[0].cast<FlatSymbolRefAttr>());
+        mlir::cast<FlatSymbolRefAttr>(op.getCalledComputations()[0]));
     if (failed(ctx.converter->RunOnFunction(callee))) return failure();
     xla::XlaComputation& computation =
         ctx.converter->GetLoweredComputation(callee);
@@ -2861,11 +2865,11 @@ LogicalResult ConvertLayout(mlir::Operation* op, const mlir::ArrayAttr& layout,
     }
     for (int i = 0; i < subshapes_data_size; i++) {
       mlir::Attribute child = layout[i];
-      if (child.isa<mlir::UnitAttr>()) {
+      if (mlir::isa<mlir::UnitAttr>(child)) {
         // ignore unit attributes, they are used only for tokens.
         continue;
       }
-      mlir::ArrayAttr c = child.dyn_cast<mlir::ArrayAttr>();
+      mlir::ArrayAttr c = mlir::dyn_cast<mlir::ArrayAttr>(child);
       if (!c) {
         op->emitOpError() << "Type Error: Expected layout array attribute";
         return failure();
@@ -2882,7 +2886,7 @@ LogicalResult ConvertLayout(mlir::Operation* op, const mlir::ArrayAttr& layout,
       }
       std::vector<int64_t> array(rank);
       for (int i = 0; i < rank; i++) {
-        mlir::IntegerAttr attr = layout[i].dyn_cast<mlir::IntegerAttr>();
+        mlir::IntegerAttr attr = mlir::dyn_cast<mlir::IntegerAttr>(layout[i]);
         if (!attr) {
           op->emitOpError() << "Type Error: Expected layout integer attribute";
           return failure();
@@ -2912,7 +2916,7 @@ LogicalResult ConvertInfeedtLayout(mlir::Operation* op,
     // Handles following shape:
     //   single array-shape of infeed data
     mlir::ArrayAttr child_layout =
-        layout[layout_index].dyn_cast<mlir::ArrayAttr>();
+        mlir::dyn_cast<mlir::ArrayAttr>(layout[layout_index]);
     if (!child_layout) {
       op->emitOpError() << "Type Error: Expected layout array attribute";
       return failure();
@@ -2925,7 +2929,8 @@ LogicalResult ConvertInfeedtLayout(mlir::Operation* op,
       }
       std::vector<int64_t> array(rank);
       for (int i = 0; i < rank; i++) {
-        mlir::IntegerAttr attr = child_layout[i].dyn_cast<mlir::IntegerAttr>();
+        mlir::IntegerAttr attr =
+            mlir::dyn_cast<mlir::IntegerAttr>(child_layout[i]);
         if (!attr) {
           op->emitOpError() << "Type Error: Expected layout integer attribute";
           return failure();
@@ -2984,9 +2989,7 @@ LogicalResult ConvertInfeedtLayout(mlir::Operation* op,
 LogicalResult ExportXlaOperatorWrapped(mlir::Operation* inst,
                                        OpLoweringContext ctx) {
   auto op = dyn_cast<mlir::mhlo::AddOp>(inst);
-  if (op && op.getResult()
-                .getType()
-                .cast<mlir::TensorType>()
+  if (op && mlir::cast<mlir::TensorType>(op.getResult().getType())
                 .getElementType()
                 .isSignlessInteger(1)) {
     auto& value_map = *ctx.values;
@@ -3143,7 +3146,7 @@ LogicalResult ConvertToHloModule::Lower(
 
   if (auto op = dyn_cast<mlir::tensor::CastOp>(inst)) {
     Value operand = op.getOperand();
-    auto ty = operand.getType().dyn_cast<ShapedType>();
+    auto ty = mlir::dyn_cast<ShapedType>(operand.getType());
     // If this was a cast from a static or bounded tensors, then it is a noop
     // for export to HLO and we can use the operand.
     if (!ty || !IsBoundedOrStatic(ty)) {
@@ -3163,7 +3166,7 @@ LogicalResult ConvertToHloModule::Lower(
   }
 
   if (matchPattern(inst, m_Constant(&const_attr))) {
-    if (!inst->getResult(0).getType().isa<ShapedType>()) {
+    if (!mlir::isa<ShapedType>(inst->getResult(0).getType())) {
       return inst->emitError(
           "expected shaped type during constant mhlo -> hlo translation");
     }
@@ -3359,7 +3362,7 @@ LogicalResult ConvertToHloModule::RunOnFunction(mlir::func::FuncOp f) {
           if (instr.parameter_number() == i)
             instr.mutable_parameter_replication()
                 ->add_replicated_at_leaf_buffers(
-                    b.cast<mlir::BoolAttr>().getValue());
+                    mlir::cast<mlir::BoolAttr>(b).getValue());
     }
   }
   lowered_computation_[f] = std::move(computation);
@@ -3683,8 +3686,8 @@ absl::Status ConvertMlirHloToHlo(mlir::ModuleOp module,
   if (auto spmd_parameters_sharding = module->getAttrOfType<mlir::ArrayAttr>(
           "mhlo.spmd_parameters_shardings")) {
     for (const auto& sharding : spmd_parameters_sharding.getValue()) {
-      *hlo_module.add_spmd_parameters_shardings() =
-          *xla::ConvertSharding(sharding.cast<mlir::StringAttr>().getValue());
+      *hlo_module.add_spmd_parameters_shardings() = *xla::ConvertSharding(
+          mlir::cast<mlir::StringAttr>(sharding).getValue());
     }
   }
 

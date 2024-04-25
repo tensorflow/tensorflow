@@ -23,6 +23,7 @@ limitations under the License.
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
 
 namespace mlir {
@@ -62,7 +63,7 @@ class RenameEntrypointToMainPass
       //   }
       // clang-format on
       for (auto attr : session_initializer.getInitializers()) {
-        auto sym_attr = attr.dyn_cast<FlatSymbolRefAttr>();
+        auto sym_attr = mlir::dyn_cast<FlatSymbolRefAttr>(attr);
         if (!sym_attr) break;
         entrypoints.erase(sym_attr.getValue());
       }

@@ -33,6 +33,7 @@ limitations under the License.
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
@@ -171,8 +172,8 @@ bool PrepareQuantizePass::SetInputNodesQuantizationParams(func::FuncOp func) {
 
   bool need_to_set_input_nodes_quantization_params = false;
   for (const BlockArgument arg : func.getArguments()) {
-    auto shaped = arg.getType().dyn_cast<ShapedType>();
-    if (shaped && shaped.getElementType().isa<FloatType>() &&
+    auto shaped = mlir::dyn_cast<ShapedType>(arg.getType());
+    if (shaped && mlir::isa<FloatType>(shaped.getElementType()) &&
         !has_quantize_op(arg)) {
       need_to_set_input_nodes_quantization_params = true;
       break;
@@ -197,8 +198,8 @@ bool PrepareQuantizePass::SetInputNodesQuantizationParams(func::FuncOp func) {
   auto add_quantize_op = [&](Location loc, Type input_type, Block* block,
                              Block::iterator insertion_point, Value arg,
                              int i) {
-    if (auto shaped = input_type.dyn_cast<ShapedType>()) {
-      if (shaped.getElementType().isa<FloatType>()) {
+    if (auto shaped = mlir::dyn_cast<ShapedType>(input_type)) {
+      if (mlir::isa<FloatType>(shaped.getElementType())) {
         // If there are existing quantize ops, they are from training and we
         // should respect them.
         if (has_quantize_op(arg)) {

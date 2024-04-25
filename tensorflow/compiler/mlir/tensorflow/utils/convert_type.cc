@@ -22,6 +22,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 #include "tensorflow/core/framework/types.h"
@@ -124,7 +125,7 @@ Status ConvertScalarTypeToDataType(Type type, DataType* dtype) {
   } else if (type.isFloat8E5M2()) {
     *dtype = DT_FLOAT8_E5M2;
     return OkStatus();
-  } else if (auto itype = type.dyn_cast<mlir::IntegerType>()) {
+  } else if (auto itype = mlir::dyn_cast<mlir::IntegerType>(type)) {
     switch (itype.getWidth()) {
       case 1:
         *dtype = DT_BOOL;
@@ -148,7 +149,7 @@ Status ConvertScalarTypeToDataType(Type type, DataType* dtype) {
         return errors::Unimplemented(
             absl::StrCat("Converting ", debugString(type), " to DataType"));
     }
-  } else if (auto complex_type = type.dyn_cast<mlir::ComplexType>()) {
+  } else if (auto complex_type = mlir::dyn_cast<mlir::ComplexType>(type)) {
     auto etype = complex_type.getElementType();
     if (etype.isF32()) {
       *dtype = DT_COMPLEX64;
@@ -174,7 +175,7 @@ Status ConvertScalarTypeToDataType(Type type, DataType* dtype) {
 }
 
 Status ConvertToDataType(Type type, DataType* dtype) {
-  if (auto stype = type.dyn_cast<ShapedType>()) {
+  if (auto stype = mlir::dyn_cast<ShapedType>(type)) {
     TF_RETURN_IF_ERROR(
         ConvertScalarTypeToDataType(stype.getElementType(), dtype));
   } else {

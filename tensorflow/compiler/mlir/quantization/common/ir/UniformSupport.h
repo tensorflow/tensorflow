@@ -24,6 +24,7 @@ limitations under the License.
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 
 namespace mlir {
 namespace quantfork {
@@ -75,7 +76,7 @@ class UniformQuantizedValueConverter {
             static_cast<double>(uniformType.getStorageTypeMin()),
             static_cast<double>(uniformType.getStorageTypeMax()),
             uniformType.getStorageTypeIntegralWidth(), uniformType.isSigned()) {
-    assert(uniformType.getExpressedType().isa<FloatType>());
+    assert(mlir::isa<FloatType>(uniformType.getExpressedType()));
     assert(uniformType.getStorageType().isSignlessInteger());
   }
 
@@ -203,7 +204,7 @@ class UniformQuantizedPerAxisValueConverter {
         storageBitWidth(uniformType.getStorageTypeIntegralWidth()),
         isSigned(uniformType.isSigned()),
         quantizationDim(uniformType.getQuantizedDimension()) {
-    assert(uniformType.getExpressedType().isa<FloatType>());
+    assert(mlir::isa<FloatType>(uniformType.getExpressedType()));
     assert(uniformType.getStorageType().isSignlessInteger());
     assert(scales.size() == zeroPoints.size());
   }

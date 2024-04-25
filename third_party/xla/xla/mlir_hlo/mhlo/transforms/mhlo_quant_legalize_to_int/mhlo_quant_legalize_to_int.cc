@@ -54,12 +54,12 @@ namespace {
 using QuantType = std::variant<quant::UniformQuantizedType,
                                quant::UniformQuantizedPerAxisType>;
 FailureOr<QuantType> getQuantType(Type type) {
-  if (auto quantType =
-          getElementTypeOrSelf(type).dyn_cast<quant::UniformQuantizedType>()) {
+  if (auto quantType = mlir::dyn_cast<quant::UniformQuantizedType>(
+          getElementTypeOrSelf(type))) {
     return QuantType(quantType);
   }
-  if (auto quantType = getElementTypeOrSelf(type)
-                           .dyn_cast<quant::UniformQuantizedPerAxisType>()) {
+  if (auto quantType = mlir::dyn_cast<quant::UniformQuantizedPerAxisType>(
+          getElementTypeOrSelf(type))) {
     return QuantType(quantType);
   }
   return failure();
@@ -168,16 +168,16 @@ void getQuantizationStorageInfo(OpBuilder &builder, Location loc,
 
 // Extracts storage type of a UQ type. Return original type if it is no UQ type.
 Type getQuantStorageType(Type type) {
-  if (auto shaped = type.dyn_cast<ShapedType>()) {
+  if (auto shaped = mlir::dyn_cast<ShapedType>(type)) {
     return shaped.clone(getQuantStorageType(shaped.getElementType()));
   }
 
-  if (auto elementType =
-          getElementTypeOrSelf(type).dyn_cast<quant::UniformQuantizedType>()) {
+  if (auto elementType = mlir::dyn_cast<quant::UniformQuantizedType>(
+          getElementTypeOrSelf(type))) {
     return elementType.getStorageType();
   }
-  if (auto elementType = getElementTypeOrSelf(type)
-                             .dyn_cast<quant::UniformQuantizedPerAxisType>()) {
+  if (auto elementType = mlir::dyn_cast<quant::UniformQuantizedPerAxisType>(
+          getElementTypeOrSelf(type))) {
     return elementType.getStorageType();
   }
   return type;
@@ -305,7 +305,8 @@ Value requantize(mlir::OpState op, Value input, QuantType inputQuantType,
                                         outputQuantType, outputFloat);
 
   // Clamp output if the output integer bit-width <32.
-  if (outputTensorType.getElementType().cast<IntegerType>().getWidth() < 32) {
+  if (mlir::cast<IntegerType>(outputTensorType.getElementType()).getWidth() <
+      32) {
     Value quantizationMin, quantizationMax;
     getQuantizationStorageInfo(rewriter, op->getLoc(), outputQuantType,
                                quantizationMin, quantizationMax);
@@ -334,8 +335,9 @@ class ConvertUniformQuantizeOp
       if (succeeded(quantType)) {
         return matchAndRewriteQuantize(op, adaptor, rewriter, *quantType);
       }
-    } else if (inputElementType.isa<quant::UniformQuantizedType,
-                                    quant::UniformQuantizedPerAxisType>()) {
+    } else if (mlir::isa<quant::UniformQuantizedType,
+                         quant::UniformQuantizedPerAxisType>(
+                   inputElementType)) {
       auto inputQuantType = getQuantType(inputElementType);
       auto outputQuantType = getQuantType(op.getResult().getType());
       if (succeeded(inputQuantType) && succeeded(outputQuantType)) {
@@ -395,8 +397,8 @@ class ConvertUniformQuantizeOp
         op,
         requantize(op, adaptor.getOperand(), inputQuantType, outputQuantType,
                    /*outputTensorType=*/
-                   op.getResult().getType().cast<TensorType>().clone(
-                       getQuantStorageType(outputQuantType)),
+                   mlir::cast<TensorType>(op.getResult().getType())
+                       .clone(getQuantStorageType(outputQuantType)),
                    rewriter));
     return success();
   }
@@ -423,13 +425,13 @@ class ConvertUniformDequantizeOp
     Value input = adaptor.getOperand();
     // TODO: b/260280919 - Consider avoiding conversion to int32.
     auto resInt32TensorType =
-        input.getType().cast<TensorType>().clone(rewriter.getI32Type());
+        mlir::cast<TensorType>(input.getType()).clone(rewriter.getI32Type());
     Value resInt32 = rewriter.create<mhlo::ConvertOp>(
         op->getLoc(), resInt32TensorType, input);
     resInt32 = rewriter.create<chlo::BroadcastSubOp>(
         op->getLoc(), resInt32TensorType, resInt32, zeroPoints, broadcastDims);
     auto resFloatTensorType =
-        resInt32.getType().cast<TensorType>().clone(rewriter.getF32Type());
+        mlir::cast<TensorType>(resInt32.getType()).clone(rewriter.getF32Type());
     Value resFloat = rewriter.create<mhlo::ConvertOp>(
         op->getLoc(), resFloatTensorType, resInt32);
     resFloat = rewriter.replaceOpWithNewOp<chlo::BroadcastMulOp>(
@@ -628,11 +630,9 @@ LogicalResult matchAndRewriteDotLikeHybridOp(
   if (failed(rhsElementQuantType)) {
     return failure();
   }
-  auto resFloat32TensorType =
-      op.getResult().getType().template cast<TensorType>();
-  auto rhsFloat32TensorType =
-      op.getRhs().getType().template cast<TensorType>().clone(
-          rewriter.getF32Type());
+  auto resFloat32TensorType = mlir::cast<TensorType>(op.getResult().getType());
+  auto rhsFloat32TensorType = mlir::cast<TensorType>(op.getRhs().getType())
+                                  .clone(rewriter.getF32Type());
 
   // Get scales and zero points for rhs.
   Value rhsScale, rhsZeroPoint;
@@ -672,7 +672,7 @@ Value createZeroPointPartialOffset(OpBuilder &builder, Location loc,
 
   // Calculate the output tensor shape. This is input tensor dims minus
   // contracting dims.
-  auto rankedTensor = tensor.getType().cast<RankedTensorType>();
+  auto rankedTensor = mlir::cast<RankedTensorType>(tensor.getType());
   SmallVector<int64_t> outputDims;
   for (int64_t i = 0; i < rankedTensor.getRank(); ++i) {
     if (llvm::count(reductionDims, i) == 0) {
@@ -683,7 +683,7 @@ Value createZeroPointPartialOffset(OpBuilder &builder, Location loc,
   // Convert input tensor to output type since mhlo::Reduce only supports same
   // element type for input/output.
   tensor = builder.create<mhlo::ConvertOp>(
-      loc, tensor.getType().cast<TensorType>().clone(outputElementType),
+      loc, mlir::cast<TensorType>(tensor.getType()).clone(outputElementType),
       tensor);
   auto reducerTensorType = RankedTensorType::get({}, outputElementType);
 
@@ -756,7 +756,7 @@ Value broadcastZpContribution(OpBuilder &builder, Location loc,
   // zero-point-offset tensor to the final output tensor, and then do the
   // broadcast.
   auto zpContributionRank =
-      zpContribution.getType().cast<ShapedType>().getRank();
+      mlir::cast<ShapedType>(zpContribution.getType()).getRank();
   SmallVector<int64_t> broadcastDims;
   broadcastDims.resize(zpContributionRank, 0);
   // Result tensor will have batching dims first, then LHS result dims, then
@@ -779,7 +779,7 @@ Value broadcastZpContribution(OpBuilder &builder, Location loc,
   }
   // Use broadcast_in_dim or dyanmic_broadcast_in_dim based on output shape
   // dynamism.
-  if (outputTensorType.cast<ShapedType>().hasStaticShape()) {
+  if (mlir::cast<ShapedType>(outputTensorType).hasStaticShape()) {
     zpContribution = builder.create<mhlo::BroadcastInDimOp>(
         loc, outputTensorType, zpContribution,
         DenseIntElementsAttr::get(
@@ -805,8 +805,8 @@ Value calculateZeroPointOffset(OpBuilder &builder, Location loc, Value lhs,
                                Value rhs, Value output, int64_t lhsZp,
                                int64_t rhsZp, TensorType outputTensorType,
                                const DotLikeDimensionNumbers &dims) {
-  mlir::ShapedType lhsShape = lhs.getType().cast<mlir::ShapedType>();
-  mlir::ShapedType rhsShape = rhs.getType().cast<mlir::ShapedType>();
+  mlir::ShapedType lhsShape = mlir::cast<mlir::ShapedType>(lhs.getType());
+  mlir::ShapedType rhsShape = mlir::cast<mlir::ShapedType>(rhs.getType());
   Value result = nullptr;
   Value outputDimsValue = nullptr;
   // Calculate LHS contribution when RHS zp is non-zero.
@@ -900,17 +900,17 @@ Value createDotLikeKernel<mhlo::ConvolutionOp>(OpBuilder &builder, Location loc,
     auto originalPadding = op.getPaddingAttr().getValues<int64_t>();
 
     Value zp = builder.create<mhlo::ConstantOp>(
-        loc,
-        DenseIntElementsAttr::get(
-            RankedTensorType::get({}, builder.getI8Type()),
-            {static_cast<int8_t>(getElementTypeOrSelf(op.getLhs().getType())
-                                     .cast<quant::UniformQuantizedType>()
-                                     .getZeroPoint())}));
+        loc, DenseIntElementsAttr::get(
+                 RankedTensorType::get({}, builder.getI8Type()),
+                 {static_cast<int8_t>(
+                     mlir::cast<quant::UniformQuantizedType>(
+                         getElementTypeOrSelf(op.getLhs().getType()))
+                         .getZeroPoint())}));
     // Convert Padding attributes from mhlo::Convolution to mhlo::Pad. Note that
     // Padding is applied for spatial dimensions [1...rank-1) only for
     // mhlo::Convolution. But mhlo::Pad require those for all dimensions. Hence
     // we add 0 to the beginning and end of the padding vectors.
-    int64_t rank = lhs.getType().cast<TensorType>().getRank();
+    int64_t rank = mlir::cast<TensorType>(lhs.getType()).getRank();
     SmallVector<int64_t> paddingLow(rank, 0), paddingHigh(rank, 0),
         paddingInterior(rank, 0);
     for (int64_t i = 1; i < rank - 1; ++i) {
@@ -965,20 +965,18 @@ LogicalResult matchAndRewriteDotLikeOp(DotLikeOp op, DotLikeOpAdaptor adaptor,
   Value resI32 = createDotLikeKernel(rewriter, op->getLoc(), op,
                                      resInt32TensorType, lhs, rhs, attrs);
 
-  auto lhsElementQuantType = getElementTypeOrSelf(op.getLhs().getType())
-                                 .template cast<quant::UniformQuantizedType>();
-  auto rhsElementQuantType =
-      getElementTypeOrSelf(op.getRhs().getType())
-          .template dyn_cast<quant::UniformQuantizedType>();
+  auto lhsElementQuantType = mlir::cast<quant::UniformQuantizedType>(
+      getElementTypeOrSelf(op.getLhs().getType()));
+  auto rhsElementQuantType = mlir::dyn_cast<quant::UniformQuantizedType>(
+      getElementTypeOrSelf(op.getRhs().getType()));
   auto rhsElementQuantPerChannelType =
-      getElementTypeOrSelf(op.getRhs().getType())
-          .template dyn_cast<quant::UniformQuantizedPerAxisType>();
-  auto resElementQuantType =
-      getElementTypeOrSelf(op.getResult())
-          .template dyn_cast<quant::UniformQuantizedType>();
+      mlir::dyn_cast<quant::UniformQuantizedPerAxisType>(
+          getElementTypeOrSelf(op.getRhs().getType()));
+  auto resElementQuantType = mlir::dyn_cast<quant::UniformQuantizedType>(
+      getElementTypeOrSelf(op.getResult()));
   auto resElementQuantPerChannelType =
-      getElementTypeOrSelf(op.getResult())
-          .template dyn_cast<quant::UniformQuantizedPerAxisType>();
+      mlir::dyn_cast<quant::UniformQuantizedPerAxisType>(
+          getElementTypeOrSelf(op.getResult()));
 
   // Here we assume LHS must be per-tensor quantized.
   // If RHS is per-channel quantized, it must has 0 zp.
@@ -1015,7 +1013,8 @@ LogicalResult matchAndRewriteDotLikeOp(DotLikeOp op, DotLikeOpAdaptor adaptor,
     // Skip zp_offset if it is 0.
     if (zpOffset) {
       auto zpOffsetFloat32TensorType =
-          zpOffset.getType().cast<TensorType>().clone(rewriter.getF32Type());
+          mlir::cast<TensorType>(zpOffset.getType())
+              .clone(rewriter.getF32Type());
       zpOffset = rewriter.create<mhlo::ConvertOp>(
           op->getLoc(), zpOffsetFloat32TensorType, zpOffset);
       zpOffset = rewriter.create<chlo::BroadcastMulOp>(
@@ -1197,8 +1196,8 @@ FailureOr<DotLikeDimensionNumbers> verifyAndConstructDims(
                              std::get<quant::UniformQuantizedPerAxisType>(
                                  rhsElementQuantType)
                                  .getZeroPoints(),
-                             getElementTypeOrSelf(op.getResult())
-                                 .cast<quant::UniformQuantizedPerAxisType>()
+                             mlir::cast<quant::UniformQuantizedPerAxisType>(
+                                 getElementTypeOrSelf(op.getResult()))
                                  .getZeroPoints()),
                          [](int64_t zp) { return zp != 0; })) {
     op->emitError("RHS/result UQ type must have zero zp.");
@@ -1208,7 +1207,7 @@ FailureOr<DotLikeDimensionNumbers> verifyAndConstructDims(
   if (!isRhsQuantPerTensor &&
       (std::get<quant::UniformQuantizedPerAxisType>(rhsElementQuantType)
            .getQuantizedDimension() !=
-       op.getRhs().getType().cast<TensorType>().getRank() - 1)) {
+       mlir::cast<TensorType>(op.getRhs().getType()).getRank() - 1)) {
     op->emitError("Conv quantized axis must be out channel axis");
     return failure();
   }
@@ -1216,8 +1215,8 @@ FailureOr<DotLikeDimensionNumbers> verifyAndConstructDims(
   // the same for each channel.
   if (!isRhsQuantPerTensor) {
     auto resElementQuantPerChannelType =
-        getElementTypeOrSelf(op.getResult())
-            .cast<quant::UniformQuantizedPerAxisType>();
+        mlir::cast<quant::UniformQuantizedPerAxisType>(
+            getElementTypeOrSelf(op.getResult()));
     SmallVector<double> scaleRatios(
         resElementQuantPerChannelType.getScales().size());
     for (size_t i = 0; i < scaleRatios.size(); ++i) {

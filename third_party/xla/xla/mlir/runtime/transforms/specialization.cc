@@ -40,6 +40,7 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Interfaces/FunctionInterfaces.h"  // from @llvm-project
 #include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "xla/mlir/runtime/transforms/type_converter.h"
 #include "xla/mlir/runtime/utils/constraints.h"
 #include "xla/runtime/arguments.h"
@@ -102,19 +103,19 @@ static StatusOr<mlir::Type> SpecializeOperandType(
   // Replace all symbolic dimensions with dynamic dimension.
   auto shape = SymbolicShapesResolver::Normalize(symbolic_shape);
 
-  if (auto memref = type.dyn_cast<mlir::MemRefType>()) {
+  if (auto memref = mlir::dyn_cast<mlir::MemRefType>(type)) {
     if (auto st = VerifyMemrefOperand(index, memref, *memref_arg); !st.ok())
       return st;
     return mlir::MemRefType::get(shape, memref.getElementType());
   }
 
-  if (auto tensor = type.dyn_cast<mlir::RankedTensorType>()) {
+  if (auto tensor = mlir::dyn_cast<mlir::RankedTensorType>(type)) {
     if (auto st = VerifyMemrefOperand(index, tensor, *memref_arg); !st.ok())
       return st;
     return mlir::RankedTensorType::get(shape, tensor.getElementType());
   }
 
-  if (auto tensor = type.dyn_cast<mlir::UnrankedTensorType>()) {
+  if (auto tensor = mlir::dyn_cast<mlir::UnrankedTensorType>(type)) {
     if (auto st = VerifyMemrefOperand(index, tensor, *memref_arg); !st.ok())
       return st;
     return mlir::RankedTensorType::get(shape, tensor.getElementType());
@@ -236,7 +237,7 @@ Status SpecializeFunction(mlir::FunctionOpInterface func,
     // We only support sinking of Tensor arguments into the function body.
     mlir::Type input =
         llvm::cast<mlir::FunctionType>(func.getFunctionType()).getInput(i);
-    mlir::TensorType tensor = input.dyn_cast<mlir::TensorType>();
+    mlir::TensorType tensor = mlir::dyn_cast<mlir::TensorType>(input);
     if (!tensor || !SupportsValueSpecialization(tensor)) {
       return InvalidArgumentError(StrCat(
           "non-sinkable operand was marked for sinking: ", debugString(input)));

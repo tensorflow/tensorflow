@@ -95,8 +95,8 @@ std::vector<Type> GetValueTypes(const InputContainer& input) {
 }
 
 bool IsResourceType(Type val_type) {
-  if (auto tensor_type = val_type.dyn_cast<mlir::TensorType>()) {
-    if (tensor_type.getElementType().isa<TF::ResourceType>()) {
+  if (auto tensor_type = mlir::dyn_cast<mlir::TensorType>(val_type)) {
+    if (mlir::isa<TF::ResourceType>(tensor_type.getElementType())) {
       return true;
     }
   }
@@ -139,7 +139,7 @@ void GatherOpsForExtraction(mlir::SetVector<Operation*>* operations,
       if (predecessors) {
         for (Value operand : op->getOperands()) {
           // Stop at the block boundary.
-          if (operand.isa<BlockArgument>()) continue;
+          if (mlir::isa<BlockArgument>(operand)) continue;
 
           Operation* predecessor = operand.getDefiningOp();
           if (!operations->contains(predecessor) &&

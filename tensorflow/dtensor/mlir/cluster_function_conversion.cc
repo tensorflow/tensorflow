@@ -29,6 +29,7 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
@@ -80,7 +81,7 @@ mlir::LogicalResult AttachRetvalLayouts(
     // operations. In that case, query the input layouts for function callsite
     // operations for layout information.
     if (!result_layout) {
-      if (auto block_arg = operand.dyn_cast<mlir::BlockArgument>()) {
+      if (auto block_arg = mlir::dyn_cast<mlir::BlockArgument>(operand)) {
         auto layout_or_status = ExtractLayoutFromOperand(
             sp_call_op.getOperand(block_arg.getArgNumber()));
         if (!layout_or_status.ok())

@@ -90,7 +90,7 @@ class InsertWeightParamPattern
     if (op->getNumResults() != 1) {
       return failure();
     }
-    auto type = op->getResult(0).getType().cast<TensorType>();
+    auto type = mlir::cast<TensorType>(op->getResult(0).getType());
     if (!type || !type.getElementType().isF32()) {
       return failure();
     }
@@ -124,11 +124,10 @@ class InsertWeightParamPattern
 
     Type weight_type;
     if (IsPerTensor(weight_only_ptq)) {
-      weight_type =
+      weight_type = dyn_cast<quant::QuantizedType>(
           quant::GetUniformQuantizedTypeForWeight(
               attr, /*symmetric=*/false, /*num_bits=*/8, /*is_signed=*/true,
-              /*narrow_range=*/false, /*legacy_float_scale=*/false)
-              .template dyn_cast<quant::QuantizedType>();
+              /*narrow_range=*/false, /*legacy_float_scale=*/false));
     } else {
       int quantization_dimension = GetQuantizationDimension(
           weight_only_ptq, cast<TF::XlaCallModuleOp>(quantizable_op));
@@ -138,7 +137,7 @@ class InsertWeightParamPattern
           /*narrow_range=*/false, /*legacy_float_scale=*/false);
     }
 
-    auto quant_type = weight_type.template dyn_cast<quant::QuantizedType>();
+    auto quant_type = dyn_cast<quant::QuantizedType>(weight_type);
     if (!quant_type) {
       op->emitError(
           "Failed to get weight quantization parameters for weight-only "

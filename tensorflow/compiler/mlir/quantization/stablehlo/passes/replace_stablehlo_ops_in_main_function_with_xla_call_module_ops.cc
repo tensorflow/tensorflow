@@ -163,7 +163,7 @@ void CreateXlaCallModuleOp(ValueRange inputs, ValueRange outputs,
   SmallVector<Attribute> shape_attrs;
   for (const Type result_type : result_types) {
     shape_attrs.push_back(
-        tf_type::ShapeAttr::get(ctx, result_type.cast<ShapedType>()));
+        tf_type::ShapeAttr::get(ctx, mlir::cast<ShapedType>(result_type)));
   }
   const auto empty_array_attr = ArrayAttr::get(ctx, {});
   // TODO: b/310291615 - find a better way for platform support.
@@ -502,7 +502,7 @@ void ReplaceStablehloOpsInMainFunctionWithXlaCallModuleOpsPass::
     SymbolTable symbol_table(module_op);
     for (auto call_op : main_func.getOps<TF::PartitionedCallOp>()) {
       func_ops.push_back(dyn_cast_or_null<func::FuncOp>(symbol_table.lookup(
-          call_op.getFAttr().cast<FlatSymbolRefAttr>().getValue())));
+          mlir::cast<FlatSymbolRefAttr>(call_op.getFAttr()).getValue())));
     }
     for (auto call_op : main_func.getOps<TF::StatefulPartitionedCallOp>()) {
       func_ops.push_back(

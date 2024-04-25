@@ -33,6 +33,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Value.h"
 #include "mlir/Pass/Pass.h"
+#include "mlir/Support/LLVM.h"
 
 namespace mlir {
 namespace mhlo {
@@ -76,14 +77,14 @@ struct CustomCallOpInterface
     SmallVector<Value> bufferArgs;
     for (OpOperand &operand : customCallOp->getOpOperands()) {
       auto &newBuffer = bufferArgs.emplace_back();
-      if (operand.get().getType().isa<mhlo::TokenType>()) {
+      if (mlir::isa<mhlo::TokenType>(operand.get().getType())) {
         // Remember the token for later. We need it for the return value but
         // it's not getting passed to LMHLO.
         if (tokenArgument) return failure();
         tokenArgument = operand.get();
         continue;
       }
-      if (!operand.get().getType().isa<TensorType>()) return failure();
+      if (!mlir::isa<TensorType>(operand.get().getType())) return failure();
       FailureOr<Value> operandBuffer =
           getBuffer(rewriter, operand.get(), options);
       if (failed(operandBuffer)) return failure();
@@ -93,10 +94,10 @@ struct CustomCallOpInterface
     // Allocate outputs.
     for (OpResult result : customCallOp->getOpResults()) {
       auto &newBuffer = bufferArgs.emplace_back();
-      if (result.getType().isa<mhlo::TokenType>()) {
+      if (mlir::isa<mhlo::TokenType>(result.getType())) {
         continue;
       }
-      auto tensorType = result.getType().dyn_cast<RankedTensorType>();
+      auto tensorType = mlir::dyn_cast<RankedTensorType>(result.getType());
       if (!tensorType) return failure();
       // TODO(springerm): Create alloc_tensor ops during TensorCopyInsertion.
       AnalysisState analysisState(options);
@@ -185,7 +186,7 @@ struct ReshapeOpInterface
                           const BufferizationOptions &options) const {
     auto reshapeOp = cast<mhlo::ReshapeOp>(op);
     auto unrankedOperandType =
-        reshapeOp.getOperand().getType().dyn_cast<UnrankedTensorType>();
+        mlir::dyn_cast<UnrankedTensorType>(reshapeOp.getOperand().getType());
     if (unrankedOperandType == nullptr) return success();
 
     // The buffer still has the old (pre-reshape) type.
@@ -193,7 +194,7 @@ struct ReshapeOpInterface
         getBuffer(rewriter, reshapeOp.getOperand(), options);
     if (failed(operandBuffer)) return failure();
 
-    auto resultType = reshapeOp.getType().cast<RankedTensorType>();
+    auto resultType = mlir::cast<RankedTensorType>(reshapeOp.getType());
     auto destType =
         MemRefType::get(resultType.getShape(), resultType.getElementType());
     replaceOpWithNewBufferizedOp<memref::CastOp>(rewriter, op, destType,
@@ -233,16 +234,16 @@ struct DynamicReshapeOpInterface
 
     ShapedType resultType;
     TensorType opResultType = reshapeOp.getType();
-    if (auto rankedType = opResultType.dyn_cast<RankedTensorType>()) {
+    if (auto rankedType = mlir::dyn_cast<RankedTensorType>(opResultType)) {
       resultType =
           MemRefType::get(rankedType.getShape(), rankedType.getElementType());
     } else if (auto unrankedType =
-                   opResultType.dyn_cast<UnrankedTensorType>()) {
+                   mlir::dyn_cast<UnrankedTensorType>(opResultType)) {
       resultType = UnrankedMemRefType::get(unrankedType.getElementType(), 0);
     }
     auto operand = *operandBuffer;
     // If the operand has a non-identity affine map, we will have to add a copy.
-    auto bufferType = operandBuffer->getType().dyn_cast<MemRefType>();
+    auto bufferType = mlir::dyn_cast<MemRefType>(operandBuffer->getType());
     if (bufferType && !bufferType.getLayout().isIdentity()) {
       // TODO(springerm): Create alloc_tensor ops during TensorCopyInsertion.
       AnalysisState analysisState(options);
@@ -268,11 +269,11 @@ FailureOr<Value> insertDynamicMemrefCastOp(
     mhlo::DynamicBroadcastInDimOp op, Value operand, RewriterBase &rewriter,
     const BufferizationOptions &options) {
   auto loc = op.getLoc();
-  auto operandType = operand.getType().cast<MemRefType>();
+  auto operandType = mlir::cast<MemRefType>(operand.getType());
   auto operandShape = operandType.getShape();
   auto operandRank = operandType.getRank();
 
-  auto resultType = op.getType().cast<RankedTensorType>();
+  auto resultType = mlir::cast<RankedTensorType>(op.getType());
   auto resultRank = resultType.getRank();
 
   Value zero = rewriter.create<arith::ConstantIndexOp>(loc, 0);
@@ -380,7 +381,8 @@ struct DynamicBroadcastInDimOpInterface
   LogicalResult bufferize(Operation *op, RewriterBase &rewriter,
                           const BufferizationOptions &options) const {
     auto broadcastInDimOp = cast<mhlo::DynamicBroadcastInDimOp>(op);
-    auto resultType = broadcastInDimOp.getType().dyn_cast<RankedTensorType>();
+    auto resultType =
+        mlir::dyn_cast<RankedTensorType>(broadcastInDimOp.getType());
     if (!resultType) return success();
 
     // The buffer still has the old (pre-reshape) type.

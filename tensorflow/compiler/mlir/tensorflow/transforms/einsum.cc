@@ -90,7 +90,7 @@ TF::SumOp createSumOp(Value value, Location loc,
                       PatternRewriter* rewriter) {
   Value redux_op = createI32ConstantOp(redux_axes, loc, rewriter);
 
-  auto value_type = value.getType().cast<RankedTensorType>();
+  auto value_type = mlir::cast<RankedTensorType>(value.getType());
   auto shape = value_type.getShape();
   llvm::SmallVector<int64_t> sum_shape;
   for (int i = 0; i < shape.size(); ++i) {
@@ -108,7 +108,7 @@ TF::TransposeOp createTransposeOp(Value value, Location loc,
                                   llvm::ArrayRef<int32_t> permutation,
                                   PatternRewriter* rewriter) {
   auto perm_op = createI32ConstantOp(permutation, loc, rewriter);
-  auto value_type = value.getType().cast<RankedTensorType>();
+  auto value_type = mlir::cast<RankedTensorType>(value.getType());
   auto shape = value_type.getShape();
   SmallVector<int64_t, 4> transposed_shape(shape.begin(), shape.end());
   for (int i = 0, end = shape.size(); i < end; ++i) {
@@ -529,7 +529,7 @@ LogicalResult rewriteToReduceSumAndTranspose(TF::EinsumOp op,
   bool needs_transpose = false;
   for (int64_t i = 0; i < dnums.lhs_out.size(); ++i) {
     if (std::get<0>(dnums.lhs_out[i]) >
-        lhs.getType().cast<RankedTensorType>().getRank() - 1) {
+        mlir::cast<RankedTensorType>(lhs.getType()).getRank() - 1) {
       continue;
     }
 
@@ -637,8 +637,8 @@ LogicalResult reshapeForBatchMatmul(const Location& loc,
                                     Value* rhs,
                                     SmallVectorImpl<int64_t>* out_shape,
                                     PatternRewriter* rewriter) {
-  RankedTensorType lhs_type = lhs->getType().cast<RankedTensorType>();
-  RankedTensorType rhs_type = rhs->getType().cast<RankedTensorType>();
+  RankedTensorType lhs_type = mlir::cast<RankedTensorType>(lhs->getType());
+  RankedTensorType rhs_type = mlir::cast<RankedTensorType>(rhs->getType());
 
   int32_t num_lhs_reshape_segids = 0;
   int32_t num_rhs_reshape_segids = 0;
@@ -776,7 +776,7 @@ LogicalResult rewriteToBatchMatmul(TF::EinsumOp op,
   EinsumDimensionNumbers original_dnums = dnums;
 
   RankedTensorType original_type =
-      op.getResult().getType().dyn_cast_or_null<RankedTensorType>();
+      mlir::dyn_cast_or_null<RankedTensorType>(op.getResult().getType());
   if (!original_type) return failure();
 
   std::vector<int32_t> out_transpose;
@@ -822,7 +822,7 @@ LogicalResult matchAndRewriteUnaryEinsumOp(TF::EinsumOp op,
         op, "Function only supports unary einsum op");
   }
   RankedTensorType lhs =
-      op.getOperand(0).getType().dyn_cast_or_null<RankedTensorType>();
+      mlir::dyn_cast_or_null<RankedTensorType>(op.getOperand(0).getType());
   if (!lhs) {
     return failure();
   }
@@ -862,9 +862,9 @@ LogicalResult ConvertTFEinsumOp::matchAndRewrite(
   }
 
   RankedTensorType lhs =
-      op.getOperand(0).getType().dyn_cast_or_null<RankedTensorType>();
+      mlir::dyn_cast_or_null<RankedTensorType>(op.getOperand(0).getType());
   RankedTensorType rhs =
-      op.getOperand(1).getType().dyn_cast_or_null<RankedTensorType>();
+      mlir::dyn_cast_or_null<RankedTensorType>(op.getOperand(1).getType());
   if (!lhs || !rhs) {
     return failure();
   }

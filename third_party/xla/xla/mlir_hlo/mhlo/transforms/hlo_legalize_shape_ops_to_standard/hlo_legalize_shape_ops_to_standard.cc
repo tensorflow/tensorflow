@@ -38,6 +38,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
+#include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/DialectConversion.h"
 
@@ -61,7 +62,7 @@ struct ComputeReshapeShapeConversion
     auto indexType = rewriter.getIndexType();
     auto numElements = adaptor.getOperands()[0];
     auto targetShapeType =
-        adaptor.getOperands()[1].getType().cast<ShapedType>();
+        mlir::cast<ShapedType>(adaptor.getOperands()[1].getType());
     auto extentType =
         shape::getExtentTensorType(ctx, targetShapeType.getDimSize(0));
 
@@ -128,7 +129,7 @@ struct CstrReshapableConversion
     Value one = rewriter.create<arith::ConstantIndexOp>(loc, 1);
     auto numElements = adaptor.getOperands()[0];
     auto targetShapeType =
-        adaptor.getOperands()[1].getType().cast<ShapedType>();
+        mlir::cast<ShapedType>(adaptor.getOperands()[1].getType());
     auto extentType =
         shape::getExtentTensorType(ctx, targetShapeType.getDimSize(0));
 

@@ -3350,8 +3350,8 @@ Operation* ReduceWindowOp::getReductionOp(int resultIndex) {
   auto returnOp = cast<ReturnOp>(getBody().front().getTerminator());
   Operation* computeOp = returnOp.getResults()[resultIndex].getDefiningOp();
   if (computeOp->getNumOperands() != 2) return nullptr;
-  auto arg0 = computeOp->getOperand(0).dyn_cast<BlockArgument>();
-  auto arg1 = computeOp->getOperand(1).dyn_cast<BlockArgument>();
+  auto arg0 = dyn_cast<BlockArgument>(computeOp->getOperand(0));
+  auto arg1 = dyn_cast<BlockArgument>(computeOp->getOperand(1));
   if (!arg0 || !arg1) return nullptr;
   int64_t arg0Num = arg0.getArgNumber();
   int64_t arg1Num = arg1.getArgNumber();

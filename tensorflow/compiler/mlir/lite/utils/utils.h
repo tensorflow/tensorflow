@@ -46,7 +46,7 @@ inline bool OpHasSameStaticShapes(Operation* op) {
   int operand_num = 0;
   ArrayRef<int64_t> shape;
   for (Value value : values) {
-    auto shaped_type = value.getType().dyn_cast<ShapedType>();
+    auto shaped_type = mlir::dyn_cast<ShapedType>(value.getType());
     if (!shaped_type || !shaped_type.hasStaticShape()) {
       return false;
     }
@@ -64,14 +64,14 @@ inline bool OpHasSameStaticShapes(Operation* op) {
 
 // Checks if all elements in the constant attribute value are 1.
 inline bool IsAllOnesConstant(Attribute value) {
-  auto values = value.cast<DenseElementsAttr>().getValues<int32_t>();
+  auto values = mlir::cast<DenseElementsAttr>(value).getValues<int32_t>();
   return !std::any_of(values.begin(), values.end(),
                       [](int32_t element_value) { return element_value != 1; });
 }
 
 // Checks if all elements in the constant attribute value are non-negative.
 inline bool HasNonNegativeValues(Attribute value) {
-  auto values = value.cast<DenseElementsAttr>().getValues<APInt>();
+  auto values = mlir::cast<DenseElementsAttr>(value).getValues<APInt>();
   return !std::any_of(
       values.begin(), values.end(),
       [](const APInt& element_value) { return element_value.isNegative(); });
@@ -79,8 +79,8 @@ inline bool HasNonNegativeValues(Attribute value) {
 
 // Utility function to get the offset between two dense attribute values.
 inline TypedAttr GetOffSet(Attribute begin, Attribute end) {
-  auto begin_values = begin.cast<DenseElementsAttr>().getValues<int32_t>();
-  auto end_values = end.cast<DenseElementsAttr>().getValues<int32_t>();
+  auto begin_values = mlir::cast<DenseElementsAttr>(begin).getValues<int32_t>();
+  auto end_values = mlir::cast<DenseElementsAttr>(end).getValues<int32_t>();
 
   SmallVector<int32_t> offsets;
   if (begin_values.size() == end_values.size()) {
@@ -118,7 +118,7 @@ inline bool AreLastTwoDimsTransposed(Value permutation) {
 
 // Gets the new type after transposing the last 2 dimensions.
 inline Type TransposeLastTwoDims(Type type) {
-  auto shaped_type = type.dyn_cast<ShapedType>();
+  auto shaped_type = mlir::dyn_cast<ShapedType>(type);
   if (!shaped_type.hasStaticShape() || shaped_type.getRank() < 2) {
     return nullptr;
   }
@@ -136,7 +136,7 @@ inline Type TransposeLastTwoDims(Type type) {
 // applying the permutation to the given shape through a transpose.
 inline ShapedType GetTransposedType(Value input,
                                     llvm::ArrayRef<int64_t> permutation_array) {
-  auto input_type = input.getType().cast<ShapedType>();
+  auto input_type = mlir::cast<ShapedType>(input.getType());
   if (permutation_array.size() != input_type.getRank()) {
     return nullptr;
   }
@@ -153,7 +153,8 @@ inline ShapedType GetTransposedType(Value input,
 // Precondition: output_val's is ranked tensor.
 // Returns a truncated shape when `truncate` is set to true.
 inline DenseElementsAttr GetShape(Value output_val, bool truncate = false) {
-  auto output_shape = output_val.getType().dyn_cast<ShapedType>().getShape();
+  auto output_shape =
+      mlir::dyn_cast<ShapedType>(output_val.getType()).getShape();
 
   SmallVector<int32_t> shape;
   shape.reserve(output_shape.size());

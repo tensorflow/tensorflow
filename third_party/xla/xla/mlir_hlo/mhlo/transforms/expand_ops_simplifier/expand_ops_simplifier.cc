@@ -31,6 +31,7 @@ limitations under the License.
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/Value.h"
 #include "mlir/Pass/Pass.h"
+#include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 namespace mlir {
@@ -162,7 +163,7 @@ struct SelectAndScatterExpanderPattern
 
     llvm::SmallVector<int64_t> concatenatedIotasDims;
     concatenatedIotasDims.reserve(
-        iotaIndices.front().getType().cast<ShapedType>().getRank());
+        mlir::cast<ShapedType>(iotaIndices.front().getType()).getRank());
     concatenatedIotasDims.insert(concatenatedIotasDims.end(),
                                  broadcastedIotaDims.begin(),
                                  broadcastedIotaDims.end());
@@ -189,8 +190,8 @@ struct SelectAndScatterExpanderPattern
     llvm::SmallVector<Type> scatterIns;
     llvm::SmallVector<Location> scatterLocs;
     scatterIns.push_back(RankedTensorType::get(
-        {},
-        broadcastedInitValue.getType().cast<ShapedType>().getElementType()));
+        {}, mlir::cast<ShapedType>(broadcastedInitValue.getType())
+                .getElementType()));
     scatterIns.push_back(
         RankedTensorType::get({}, source.getType().getElementType()));
     scatterLocs.push_back(broadcastedInitValue.getLoc());

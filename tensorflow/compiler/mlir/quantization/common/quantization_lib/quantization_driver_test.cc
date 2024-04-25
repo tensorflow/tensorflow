@@ -159,10 +159,9 @@ TEST_F(ApplyQuantizationParamsPropagationTest, FinalizeInsertsQDQOps) {
   ASSERT_NE(filter_qcast_op, nullptr);
   EXPECT_TRUE(isa<quantfork::QuantizeCastOp>(filter_qcast_op));
   EXPECT_TRUE(isa<quantfork::DequantizeCastOp>(filter_dcast_op));
-  EXPECT_TRUE(isa<UniformQuantizedPerAxisType>(filter_qcast_op->getResult(0)
-                                                   .getType()
-                                                   .cast<TensorType>()
-                                                   .getElementType()));
+  EXPECT_TRUE(isa<UniformQuantizedPerAxisType>(
+      mlir::cast<TensorType>(filter_qcast_op->getResult(0).getType())
+          .getElementType()));
 }
 
 }  // namespace

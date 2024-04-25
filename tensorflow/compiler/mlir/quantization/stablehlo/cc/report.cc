@@ -85,9 +85,8 @@ std::optional<QuantizationResult> GetQuantizationResult(func::CallOp call_op) {
 std::optional<QuantizationResult> GetQuantizationResult(
     TF::XlaCallModuleOp xla_call_module_op) {
   const StringAttr callee_name_attr =
-      xla_call_module_op
-          ->getDiscardableAttr(kOriginalStablehloEntryFunctionAttrName)
-          .dyn_cast_or_null<StringAttr>();
+      mlir::dyn_cast_or_null<StringAttr>(xla_call_module_op->getDiscardableAttr(
+          kOriginalStablehloEntryFunctionAttrName));
 
   // `TF::XlaCallModuleOp` without the `_original_entry_function` means it is
   // not a quantizable unit.

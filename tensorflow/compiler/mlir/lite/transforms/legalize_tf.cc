@@ -96,7 +96,7 @@ class LegalizeTFPass : public impl::LegalizeTFPassBase<LegalizeTFPass> {
 // Util that casts 'val' to Int32 by adding a cast Op.
 Value CreateCastToInt32(Value val, Location loc, PatternRewriter& rewriter) {
   IntegerType new_ele_type = rewriter.getIntegerType(32);
-  if (auto shaped_type = val.getType().dyn_cast<RankedTensorType>()) {
+  if (auto shaped_type = mlir::dyn_cast<RankedTensorType>(val.getType())) {
     ShapedType new_type =
         RankedTensorType::get(shaped_type.getShape(), new_ele_type);
     return rewriter.createOrFold<TF::CastOp>(loc, new_type, val,
@@ -114,7 +114,7 @@ Value CreateCastToInt32(Value val, Location loc, PatternRewriter& rewriter) {
 // 2. In the default case, cast the `Value` to an int32_t.
 Value CreateInt32ConstOrCast(Value val, Location loc,
                              PatternRewriter& rewriter) {
-  if (val.getType().cast<ShapedType>().hasStaticShape()) {
+  if (mlir::cast<ShapedType>(val.getType()).hasStaticShape()) {
     DenseElementsAttr shape_value_attr;
     if (matchPattern(val, m_Constant(&shape_value_attr))) {
       SmallVector<int32_t, 4> new_shape_array_i32;
@@ -137,7 +137,7 @@ Value CreateInt32ConstOrCast(Value val, Location loc,
 
 // Get shape of an operand or result, support both dynamic and static shape.
 Value GetShape(Value input, Location loc, PatternRewriter& rewriter) {
-  auto shaped_type = input.getType().cast<ShapedType>();
+  auto shaped_type = mlir::cast<ShapedType>(input.getType());
   if (shaped_type.hasStaticShape()) {
     auto static_shape = shaped_type.getShape();
     auto static_shape_type =
@@ -271,7 +271,7 @@ bool ConvertTFBatchMatMulOp2TFLFullyConnectedOp(Operation* bmm_op,
 
   // Create a tfl.transpose op that performs ZX transpose on `input`.
   auto create_z_x_transpose_op = [&](Value input) -> Value {
-    RankedTensorType input_type = input.getType().cast<RankedTensorType>();
+    RankedTensorType input_type = mlir::cast<RankedTensorType>(input.getType());
     const int input_rank = input_type.getRank();
 
     // Create a 1D I32 tensor for representing the dimension permutation.
@@ -364,7 +364,7 @@ LogicalResult ConvertTFMatMulOp::matchAndRewrite(
   auto rhs = op->getOperand(1);
   auto transpose = [&](Value input) -> std::pair<LogicalResult, Value> {
     RankedTensorType type =
-        input.getType().dyn_cast_or_null<RankedTensorType>();
+        mlir::dyn_cast_or_null<RankedTensorType>(input.getType());
     if (!type || type.getRank() != 2) return {failure(), nullptr};
 
     auto permute_attr = DenseIntElementsAttr::get(
@@ -583,15 +583,15 @@ bool ConvertTFMatrixDiagV2orV3(Operation* op, PatternRewriter* rewriter) {
   // Verify padding_value is a tensor with all 0s.
   mlir::Value padding_value = tf_matrix_diag_v2_or_v3_op.getPaddingValue();
   mlir::Type element_type =
-      padding_value.getType().cast<ShapedType>().getElementType();
-  if (element_type.isa<FloatType>()) {
+      mlir::cast<ShapedType>(padding_value.getType()).getElementType();
+  if (mlir::isa<FloatType>(element_type)) {
     DenseFPElementsAttr padding_attr;
     if (!matchPattern(padding_value, m_Constant(&padding_attr)) ||
         !padding_attr.isSplat() ||
         !padding_attr.getSplatValue<APFloat>().isZero()) {
       return false;
     }
-  } else if (element_type.isa<IntegerType>()) {
+  } else if (mlir::isa<IntegerType>(element_type)) {
     DenseIntElementsAttr padding_attr;
     if (!matchPattern(padding_value, m_Constant(&padding_attr)) ||
         !padding_attr.isSplat() ||
@@ -642,7 +642,7 @@ struct LegalizeUnidirectionalSequenceLstm : public RewritePattern {
 
     SmallVector<int64_t, 20> tflite_indices;
     for (auto index_attr : tflite_indices_attr.getValue()) {
-      IntegerAttr index = index_attr.cast<IntegerAttr>();
+      IntegerAttr index = mlir::cast<IntegerAttr>(index_attr);
       tflite_indices.push_back(index.getInt());
     }
 
@@ -773,13 +773,13 @@ class ApplyExplicitBroadcasting : public OpRewritePattern<SourceOp> {
     SmallVector<int64_t, 4> symbolic_broadcast_shape;
     // Matches fail when lhs or rhs is unranked tensor.
     // TODO(b/176202543): Support unranked tensor.
-    if (!lhs.getType().cast<ShapedType>().hasRank() ||
-        !rhs.getType().cast<ShapedType>().hasRank()) {
+    if (!mlir::cast<ShapedType>(lhs.getType()).hasRank() ||
+        !mlir::cast<ShapedType>(rhs.getType()).hasRank()) {
       return failure();
     }
     if (!OpTrait::util::getBroadcastedShape(
-            lhs.getType().cast<ShapedType>().getShape(),
-            rhs.getType().cast<ShapedType>().getShape(),
+            mlir::cast<ShapedType>(lhs.getType()).getShape(),
+            mlir::cast<ShapedType>(rhs.getType()).getShape(),
             symbolic_broadcast_shape)) {
       return failure();
     }
@@ -824,13 +824,13 @@ class ApplyExplicitBroadcasting : public OpRewritePattern<SourceOp> {
     auto lhs = op->getOperand(0);
     auto rhs = op->getOperand(1);
 
-    if (!lhs.getType().cast<ShapedType>().hasStaticShape() ||
-        !rhs.getType().cast<ShapedType>().hasStaticShape()) {
+    if (!mlir::cast<ShapedType>(lhs.getType()).hasStaticShape() ||
+        !mlir::cast<ShapedType>(rhs.getType()).hasStaticShape()) {
       return rewriteOpWithDynamicInput(op, rewriter);
     }
 
-    auto lhs_shape = lhs.getType().cast<ShapedType>().getShape();
-    auto rhs_shape = rhs.getType().cast<ShapedType>().getShape();
+    auto lhs_shape = mlir::cast<ShapedType>(lhs.getType()).getShape();
+    auto rhs_shape = mlir::cast<ShapedType>(rhs.getType()).getShape();
 
     if (lhs_shape == rhs_shape) {
       return failure();
@@ -892,23 +892,23 @@ class ApplyExplicitBroadcasting<TF::SelectV2Op>
 
     // Matches fail when lhs|rhs|cond is unranked tensor.
     // TODO(b/176202543): Support unranked tensor.
-    if (!lhs.getType().cast<ShapedType>().hasRank() ||
-        !rhs.getType().cast<ShapedType>().hasRank() ||
-        !cond.getType().cast<ShapedType>().hasRank()) {
+    if (!mlir::cast<ShapedType>(lhs.getType()).hasRank() ||
+        !mlir::cast<ShapedType>(rhs.getType()).hasRank() ||
+        !mlir::cast<ShapedType>(cond.getType()).hasRank()) {
       return failure();
     }
 
     // Calculates symbolic broadcast shape that is only used in types.
     SmallVector<int64_t, 4> symbolic_broadcast_lhs_rhs_shape;
     if (!OpTrait::util::getBroadcastedShape(
-            lhs.getType().cast<ShapedType>().getShape(),
-            rhs.getType().cast<ShapedType>().getShape(),
+            mlir::cast<ShapedType>(lhs.getType()).getShape(),
+            mlir::cast<ShapedType>(rhs.getType()).getShape(),
             symbolic_broadcast_lhs_rhs_shape)) {
       return failure();
     }
     SmallVector<int64_t, 4> symbolic_broadcast_shape;
     if (!OpTrait::util::getBroadcastedShape(
-            cond.getType().cast<ShapedType>().getShape(),
+            mlir::cast<ShapedType>(cond.getType()).getShape(),
             symbolic_broadcast_lhs_rhs_shape, symbolic_broadcast_shape)) {
       return failure();
     }
@@ -964,15 +964,15 @@ class ApplyExplicitBroadcasting<TF::SelectV2Op>
     auto rhs = op->getOperand(2);
 
     // Should have static shapes to calculate the broadcasted shape.
-    if (!lhs.getType().cast<ShapedType>().hasStaticShape() ||
-        !rhs.getType().cast<ShapedType>().hasStaticShape() ||
-        !cond.getType().cast<ShapedType>().hasStaticShape()) {
+    if (!mlir::cast<ShapedType>(lhs.getType()).hasStaticShape() ||
+        !mlir::cast<ShapedType>(rhs.getType()).hasStaticShape() ||
+        !mlir::cast<ShapedType>(cond.getType()).hasStaticShape()) {
       return rewriteOpWithDynamicInput(op, rewriter);
     }
 
-    auto lhs_shape = lhs.getType().cast<ShapedType>().getShape();
-    auto rhs_shape = rhs.getType().cast<ShapedType>().getShape();
-    auto cond_shape = cond.getType().cast<ShapedType>().getShape();
+    auto lhs_shape = mlir::cast<ShapedType>(lhs.getType()).getShape();
+    auto rhs_shape = mlir::cast<ShapedType>(rhs.getType()).getShape();
+    auto cond_shape = mlir::cast<ShapedType>(cond.getType()).getShape();
 
     if (lhs_shape == rhs_shape && cond_shape == lhs_shape) {
       return failure();

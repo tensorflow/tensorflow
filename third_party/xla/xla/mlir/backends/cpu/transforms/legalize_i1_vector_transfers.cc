@@ -25,6 +25,7 @@ limitations under the License.
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "xla/mlir/backends/cpu/transforms/passes.h"
 #include "xla/mlir/xla_cpu/ir/xla_cpu.h"
@@ -51,11 +52,11 @@ Value CastToI8(Value in, ImplicitLocOpBuilder& b, bool optional = false) {
     return {};
   }
 
-  if (auto vec_ty = ty.dyn_cast<VectorType>()) {
+  if (auto vec_ty = mlir::dyn_cast<VectorType>(ty)) {
     return b.create<arith::ExtUIOp>(
         vec_ty.cloneWith(std::nullopt, b.getI8Type()), in);
   }
-  if (auto memref_ty = ty.dyn_cast<MemRefType>()) {
+  if (auto memref_ty = mlir::dyn_cast<MemRefType>(ty)) {
     auto cast_ty = memref_ty.cloneWith(std::nullopt, b.getI8Type());
     return b.create<xla_cpu::MemRefElementCastOp>(cast_ty, in);
   }

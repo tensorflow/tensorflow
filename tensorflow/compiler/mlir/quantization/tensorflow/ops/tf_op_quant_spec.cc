@@ -56,7 +56,7 @@ bool IsOpWithInt8TypeOperand(Operation* op) {
 }
 
 bool IsValueWithQuantizablePrecision(Value val) {
-  auto type = val.getType().dyn_cast<ShapedType>();
+  auto type = mlir::dyn_cast<ShapedType>(val.getType());
   if (!type) return false;
   // Supported original tensor data types.
   if (type.getElementType().isF32() || type.getElementType().isBF16())
@@ -82,7 +82,7 @@ std::unique_ptr<OpQuantSpec> GetTFOpQuantSpec(Operation* op) {
   auto spec = std::make_unique<OpQuantSpec>();
   if (auto call_op = dyn_cast<TF::PartitionedCallOp>(op)) {
     StringRef function_name =
-        call_op.getFAttr().cast<FlatSymbolRefAttr>().getValue();
+        mlir::cast<FlatSymbolRefAttr>(call_op.getFAttr()).getValue();
     if (!function_name.starts_with("composite_")) {
       return spec;
     }

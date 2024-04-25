@@ -25,6 +25,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "xla/mlir/xla_cpu/ir/xla_cpu_dialect.cc.inc"
 #include "xla/mlir/xla_cpu/ir/xla_cpu_enums.cc.inc"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
@@ -48,13 +49,13 @@ template <typename Op>
 LogicalResult BufferizeOp(Op op, RewriterBase &rewriter,
                           const bufferization::BufferizationOptions &options,
                           int64_t num_inputs) {
-  if (op.getOperands().front().getType().template isa<MemRefType>()) {
+  if (mlir::isa<MemRefType>(op.getOperands().front().getType())) {
     return success();
   }
   SmallVector<Value> new_operands;
   std::optional<Value> token = std::nullopt;
   for (auto operand : op.getOperands()) {
-    if (operand.getType().template isa<TokenType>()) {
+    if (mlir::isa<TokenType>(operand.getType())) {
       assert(operand == op.getOperands().back() &&
              "Expect token type only for last operand");
       assert(!token && "Expect at most only one token-typed operand");
@@ -156,8 +157,8 @@ LogicalResult AddDependencyOp::bufferize(
 }
 
 LogicalResult MemRefElementCastOp::verify() {
-  auto src_memref_ty = getSrc().getType().cast<MemRefType>();
-  auto dst_memref_ty = getDst().getType().cast<MemRefType>();
+  auto src_memref_ty = mlir::cast<MemRefType>(getSrc().getType());
+  auto dst_memref_ty = mlir::cast<MemRefType>(getDst().getType());
   if (src_memref_ty.getShape() != dst_memref_ty.getShape()) {
     return emitOpError() << "expects matching shapes";
   }

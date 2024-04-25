@@ -82,7 +82,7 @@ bool IsExpressedTypeF32(QuantizedType quantized_type);
 // Given a value, extract the `ElementType`.
 // `value` should be a non-null `TensorType`.
 inline Type GetElementType(const Value value) {
-  return value.getType().cast<TensorType>().getElementType();
+  return mlir::cast<TensorType>(value.getType()).getElementType();
 }
 
 // Returns true iff `type` is a uniform quantized type whose storage type is

@@ -240,7 +240,7 @@ class AddCustomAggregationOp : public RewritePattern {
         if (auto call_op =
                 dyn_cast_or_null<TF::PartitionedCallOp>(defining_op)) {
           StringRef function_name =
-              call_op.getFAttr().cast<FlatSymbolRefAttr>().getValue();
+              mlir::cast<FlatSymbolRefAttr>(call_op.getFAttr()).getValue();
           if (function_name.contains("gather")) continue;
         }
 

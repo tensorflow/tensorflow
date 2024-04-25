@@ -25,6 +25,7 @@ limitations under the License.
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
@@ -152,7 +153,7 @@ void DefaultQuantParamsPass::AddToWorkListIfUnquantized(
     Value value, std::vector<Value> *values) {
   // If the result isn't with float type, this result is an integer tensor and
   // doesn't require quantization.
-  auto tensor_type = value.getType().dyn_cast<TensorType>();
+  auto tensor_type = mlir::dyn_cast<TensorType>(value.getType());
   if (!tensor_type) {
     // There are none type values.
     return;
@@ -202,9 +203,9 @@ quant::QuantParams DefaultQuantParamsPass::GetQuantParamsForBias(
   for (int non_bias : non_biases) {
     Operation *non_bias_define = op->getOperand(non_bias).getDefiningOp();
     if (auto dequant = llvm::dyn_cast<TFL::DequantizeOp>(non_bias_define)) {
-      auto non_bias_type = dequant.getInput().getType().cast<TensorType>();
+      auto non_bias_type = mlir::cast<TensorType>(dequant.getInput().getType());
       auto non_bias_ele_type =
-          non_bias_type.getElementType().cast<quant::QuantizedType>();
+          mlir::cast<quant::QuantizedType>(non_bias_type.getElementType());
       non_bias_types.push_back(non_bias_ele_type);
     } else {
       // The non-bias hasn't been quantized, let's skip this bias.

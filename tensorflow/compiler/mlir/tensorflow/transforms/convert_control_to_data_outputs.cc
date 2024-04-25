@@ -114,7 +114,7 @@ SmallVector<TF::WhileOp> GetWhileCallers(func::FuncOp func,
 }
 
 bool IsResourceType(Type type) {
-  return getElementTypeOrSelf(type).isa<TF::ResourceType>();
+  return mlir::isa<TF::ResourceType>(getElementTypeOrSelf(type));
 }
 
 bool OnlyOperatesOnCompositeDevices(
@@ -124,11 +124,11 @@ bool OnlyOperatesOnCompositeDevices(
   auto& alias_analysis = side_effect_analysis.GetAliasAnalysis();
   llvm::SmallSet<int, 8> read_array;
   for (const Attribute& attr : op.getDeviceVarReadsIndices()) {
-    read_array.insert(attr.cast<IntegerAttr>().getInt());
+    read_array.insert(mlir::cast<IntegerAttr>(attr).getInt());
   }
   llvm::SmallSet<int, 8> update_array;
   for (const Attribute& attr : op.getDeviceVarUpdatesIndices()) {
-    update_array.insert(attr.cast<IntegerAttr>().getInt());
+    update_array.insert(mlir::cast<IntegerAttr>(attr).getInt());
   }
 
   for (auto& arg : op->getOpOperands()) {
@@ -270,7 +270,7 @@ void CollectChainResources(
 //
 // Checks if the value `control` is a NoOp control barrier.
 bool IsNoOpControlBarrier(Value control) {
-  if (!control.getType().isa<ControlType>()) return false;
+  if (!mlir::isa<ControlType>(control.getType())) return false;
 
   auto control_island = dyn_cast_or_null<IslandOp>(control.getDefiningOp());
   if (!control_island) return false;

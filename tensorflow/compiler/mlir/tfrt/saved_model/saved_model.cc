@@ -27,6 +27,7 @@ limitations under the License.
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
@@ -42,9 +43,9 @@ namespace {
 using ::mlir::tf_saved_model::kTfSavedModelIndexPathAttr;
 
 llvm::StringRef ProcessIndexPath(mlir::ArrayAttr index_path) {
-  if (index_path.size() == 1 && index_path[0].isa<mlir::StringAttr>()) {
+  if (index_path.size() == 1 && mlir::isa<mlir::StringAttr>(index_path[0])) {
     // TODO(chky): Support cases where index_path is not a single string.
-    return index_path[0].cast<mlir::StringAttr>().getValue();
+    return mlir::cast<mlir::StringAttr>(index_path[0]).getValue();
   }
   return "";
 }
@@ -92,8 +93,8 @@ Status MapFunctionSignaturesFromTFSavedModelMLIR(
       if (auto input_index_path = func.getArgAttrOfType<mlir::ArrayAttr>(
               i, kTfSavedModelIndexPathAttr)) {
         input_names.push_back(ProcessIndexPath(input_index_path));
-        auto statusor_spec =
-            ProcessTensorSpec(func_type.getInput(i).cast<mlir::TensorType>());
+        auto statusor_spec = ProcessTensorSpec(
+            mlir::cast<mlir::TensorType>(func_type.getInput(i)));
         if (!statusor_spec.ok()) {
           status = std::move(statusor_spec).status();
           return mlir::WalkResult::interrupt();
@@ -120,8 +121,8 @@ Status MapFunctionSignaturesFromTFSavedModelMLIR(
       if (auto output_index_path = func.getResultAttrOfType<mlir::ArrayAttr>(
               i, kTfSavedModelIndexPathAttr)) {
         output_names.push_back(ProcessIndexPath(output_index_path));
-        auto statusor_spec =
-            ProcessTensorSpec(func_type.getResult(i).cast<mlir::TensorType>());
+        auto statusor_spec = ProcessTensorSpec(
+            mlir::cast<mlir::TensorType>(func_type.getResult(i)));
         if (!statusor_spec.ok()) {
           status = std::move(statusor_spec).status();
           return mlir::WalkResult::interrupt();

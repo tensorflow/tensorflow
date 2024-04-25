@@ -37,6 +37,7 @@ limitations under the License.
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/host_runtime/tfrt_ops.h.inc"
@@ -380,11 +381,11 @@ class IfrtRestoreVariableOpConversion
 };
 
 std::optional<std::string> DecodeLongName(mlir::Location loc) {
-  if (auto name_loc = loc.dyn_cast<mlir::NameLoc>()) {
+  if (auto name_loc = mlir::dyn_cast<mlir::NameLoc>(loc)) {
     return name_loc.getName().str();
   }
 
-  if (auto fused_loc = loc.dyn_cast<mlir::FusedLoc>()) {
+  if (auto fused_loc = mlir::dyn_cast<mlir::FusedLoc>(loc)) {
     std::string fused_name;
     for (auto l : fused_loc.getLocations()) {
       if (auto n = DecodeLongName(l)) {
@@ -1027,7 +1028,7 @@ class TfToMlrtConversionPass
     type_converter_.addConversion(
         [=](mlir::TensorType type) -> std::optional<mlir::Type> {
           // Ref types are not supported in both compiler and runtime.
-          if (type.getElementType().isa<mlir::TF::TensorFlowRefType>())
+          if (mlir::isa<mlir::TF::TensorFlowRefType>(type.getElementType()))
             return std::nullopt;
           return tf_mlrt::TFTensorType::get(context);
         });
@@ -1037,8 +1038,8 @@ class TfToMlrtConversionPass
            mlir::ValueRange inputs, mlir::Location loc) -> mlir::Value {
       if (inputs.size() != 1) return mlir::Value();
 
-      if (inputs[0].getType().isa<mlrt::compiler::FutureType>()) {
-        if (desired_type.isa<tf_mlrt::TFTensorType>()) {
+      if (mlir::isa<mlrt::compiler::FutureType>(inputs[0].getType())) {
+        if (mlir::isa<tf_mlrt::TFTensorType>(desired_type)) {
           return builder.create<tf_mlrt::AwaitOp>(loc, desired_type, inputs[0]);
         }
 

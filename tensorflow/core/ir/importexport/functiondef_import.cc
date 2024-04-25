@@ -24,6 +24,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op_def.pb.h"
@@ -504,7 +505,7 @@ Status ImportGenericFunction(
     }
     TF_ASSIGN_OR_RETURN(Value result, value_manager.GetValueOrCreatePlaceholder(
                                           (Twine("^") + ret_val.second).str()));
-    if (!result.getType().isa<ControlType>())
+    if (!mlir::isa<ControlType>(result.getType()))
       return InvalidArgument("failed to map returned value ", ret_val.second,
                              ", isn't a control output");
     ret_vals[func.ret_size() + position->second] = result;

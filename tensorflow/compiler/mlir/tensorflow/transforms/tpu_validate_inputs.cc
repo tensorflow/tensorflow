@@ -372,7 +372,8 @@ bool CheckOpsClusterIO(Operation* op, MetadataMap& metadata_map) {
 
 bool TypeMustBeNonXLA(const Type& type) {
   const Type elem = getElementTypeOrSelf(type);
-  return !elem.isa<TF::ResourceType>() && !tensorflow::TypeValidForXLA(type);
+  return !mlir::isa<TF::ResourceType>(elem) &&
+         !tensorflow::TypeValidForXLA(type);
 }
 
 // Check if the op cannot be XLA compiled. If the op does not satisfy this

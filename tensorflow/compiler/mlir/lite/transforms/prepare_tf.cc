@@ -89,7 +89,7 @@ namespace {
 // Preconditions: The given value must have a ShapedType.
 static Value CreateTFCastOpI32(OpBuilder *builder, Location loc, Value x,
                                BoolAttr truncate) {
-  auto x_type = x.getType().dyn_cast_or_null<ShapedType>();
+  auto x_type = mlir::dyn_cast_or_null<ShapedType>(x.getType());
   if (!x_type) llvm_unreachable("unsupported type");
   Type type = x_type.clone(builder->getI32Type());
   return builder->create<TF::CastOp>(loc, type, x, truncate);
@@ -200,14 +200,14 @@ class ConvertTFConvOp : public RewritePattern {
     // that we can extract info from the shape (e.g., for constructing bias
     // tensor, for setting depth_multiplier attribute, etc.).
     auto filter = tf_op.getFilter();
-    auto filter_type = filter.getType().template dyn_cast<RankedTensorType>();
+    auto filter_type = mlir::dyn_cast<RankedTensorType>(filter.getType());
     if (!filter_type || filter_type.getRank() != 4 ||
         !filter_type.hasStaticShape())
       return failure();
 
     Value input = tf_op.getInput();
     RankedTensorType input_type =
-        input.getType().template dyn_cast<RankedTensorType>();
+        mlir::dyn_cast<RankedTensorType>(input.getType());
     // Only rank size four input will be only available by the tf.Conv2D
     // operator verification.
     if (!input_type || input_type.isDynamicDim(3)) {
@@ -244,7 +244,7 @@ class ConvertTFConvOp : public RewritePattern {
           op->getAttrOfType<ArrayAttr>("explicit_paddings").getValue();
 
       auto get_int = [](Attribute attr) {
-        return attr.template cast<IntegerAttr>().getInt();
+        return mlir::cast<IntegerAttr>(attr).getInt();
       };
 
       SmallVector<int32_t> padding_values(padding_attr_array.size());
@@ -324,7 +324,7 @@ class ConvertTFConv2D : public ConvertTFConvOp<ConvertTFConv2D, TF::Conv2DOp> {
     auto perm_op = rewriter.create<TF::ConstOp>(loc, perm_type, perm_attr);
 
     // Create tensor type for the transpose result.
-    auto filter_type = filter.getType().cast<RankedTensorType>();
+    auto filter_type = mlir::cast<RankedTensorType>(filter.getType());
     auto result_shape =
         llvm::to_vector<4>(llvm::map_range(perm, [filter_type](int64_t dim) {
           return filter_type.getDimSize(dim);
@@ -361,7 +361,8 @@ class ConvertTFDepthwiseConv2dNative
     // have a corresponding 'depth_multiplier' attribute; the multiplier is the
     // fourth dimension in the 4-D filter tensor. We query the multiplier from
     // tf.DepthwiseConv2dNative and set it as the attribute value accordingly.
-    auto multiplier = filter.getType().cast<RankedTensorType>().getDimSize(3);
+    auto multiplier =
+        mlir::cast<RankedTensorType>(filter.getType()).getDimSize(3);
 
     filter = legalizeFilter(rewriter, loc, filter);
     return rewriter.create<TFL::DepthwiseConv2DOp>(
@@ -385,7 +386,7 @@ class ConvertTFDepthwiseConv2dNative
   /// RankedTensorType.
   Value legalizeFilter(PatternRewriter &rewriter, Location loc,
                        Value filter) const {
-    auto filter_type = filter.getType().cast<RankedTensorType>();
+    auto filter_type = mlir::cast<RankedTensorType>(filter.getType());
     auto filterShape = filter_type.getShape();
     SmallVector<int64_t, 4> result_shape = {1, filterShape[0], filterShape[1],
                                             filterShape[2] * filterShape[3]};
@@ -443,7 +444,7 @@ struct ConvertTFStridedSlice : public RewritePattern {
     // Insert a new reshape op.
     Value original_input = strided_slice_op.getInput();
     RankedTensorType original_input_type =
-        original_input.getType().dyn_cast<RankedTensorType>();
+        mlir::dyn_cast<RankedTensorType>(original_input.getType());
     if (!original_input_type) {
       return failure();
     }
@@ -522,7 +523,8 @@ struct ConvertTFStridedSlice : public RewritePattern {
 
     DenseIntElementsAttr begin_dense_elem_attr;
     Value begin = strided_slice_op.getBegin();
-    auto begin_ranked_attr_type = begin.getType().dyn_cast<RankedTensorType>();
+    auto begin_ranked_attr_type =
+        mlir::dyn_cast<RankedTensorType>(begin.getType());
     if (!begin_ranked_attr_type ||
         !matchPattern(begin, m_Constant(&begin_dense_elem_attr))) {
       return failure();
@@ -530,7 +532,7 @@ struct ConvertTFStridedSlice : public RewritePattern {
 
     DenseIntElementsAttr end_dense_elem_attr;
     Value end = strided_slice_op.getEnd();
-    auto end_ranked_attr_type = end.getType().dyn_cast<RankedTensorType>();
+    auto end_ranked_attr_type = mlir::dyn_cast<RankedTensorType>(end.getType());
     if (!end_ranked_attr_type ||
         !matchPattern(end, m_Constant(&end_dense_elem_attr))) {
       return failure();
@@ -539,14 +541,15 @@ struct ConvertTFStridedSlice : public RewritePattern {
     DenseIntElementsAttr stride_dense_elem_attr;
     Value stride = strided_slice_op.getStrides();
     auto stride_ranked_attr_type =
-        stride.getType().dyn_cast<RankedTensorType>();
+        mlir::dyn_cast<RankedTensorType>(stride.getType());
     if (!stride_ranked_attr_type ||
         !matchPattern(stride, m_Constant(&stride_dense_elem_attr))) {
       return failure();
     }
 
     Value input = strided_slice_op.getInput();
-    RankedTensorType input_type = input.getType().dyn_cast<RankedTensorType>();
+    RankedTensorType input_type =
+        mlir::dyn_cast<RankedTensorType>(input.getType());
     if (!input_type) {
       return failure();
     }
@@ -554,7 +557,7 @@ struct ConvertTFStridedSlice : public RewritePattern {
 
     const int input_size = input_shape.size();
 
-    RankedTensorType begin_type = begin.getType().cast<RankedTensorType>();
+    RankedTensorType begin_type = mlir::cast<RankedTensorType>(begin.getType());
     const ArrayRef<int64_t> begin_shape = begin_type.getShape();
     const int begin_dim = begin_shape.size();
 
@@ -688,7 +691,7 @@ struct ConvertTFStridedSlice : public RewritePattern {
     }
 
     auto ranked_input_type =
-        strided_slice_op.getInput().getType().dyn_cast<RankedTensorType>();
+        mlir::dyn_cast<RankedTensorType>(strided_slice_op.getInput().getType());
     if (!ranked_input_type) {
       return failure();
     }
@@ -697,10 +700,11 @@ struct ConvertTFStridedSlice : public RewritePattern {
     auto end_attr = strided_slice_op.getEnd();
     auto strides_attr = strided_slice_op.getStrides();
 
-    auto begin_attr_type = begin_attr.getType().dyn_cast<RankedTensorType>();
-    auto end_attr_type = end_attr.getType().dyn_cast<RankedTensorType>();
+    auto begin_attr_type =
+        mlir::dyn_cast<RankedTensorType>(begin_attr.getType());
+    auto end_attr_type = mlir::dyn_cast<RankedTensorType>(end_attr.getType());
     auto strides_attr_type =
-        strides_attr.getType().dyn_cast<RankedTensorType>();
+        mlir::dyn_cast<RankedTensorType>(strides_attr.getType());
 
     DenseIntElementsAttr begin_elem_attr;
     DenseIntElementsAttr end_elem_attr;
@@ -899,8 +903,8 @@ struct FusedBatchNormV3Pat : public ::mlir::RewritePattern {
       if (!epsilon)
         epsilon = rewriter.getFloatAttr(rewriter.getF32Type(), 0.0001f);
 
-      if (!(((epsilon.isa<::mlir::FloatAttr>())) &&
-            ((epsilon.cast<::mlir::FloatAttr>().getType().isF32())))) {
+      if (!(((mlir::isa<::mlir::FloatAttr>(epsilon))) &&
+            ((mlir::cast<::mlir::FloatAttr>(epsilon).getType().isF32())))) {
         return rewriter.notifyMatchFailure(
             fused_batch_norm_op, [&](::mlir::Diagnostic &diag) {
               diag << "op 'tf.FusedBatchNormV3' attribute 'epsilon' failed to "
@@ -963,7 +967,7 @@ struct FusedBatchNormV3Pat : public ::mlir::RewritePattern {
     int64_t last_dim = ShapedType::kDynamic;
     {
       auto is_last_dim_compatible = [](const Value &v, int64_t &last_dim) {
-        auto v_type = v.getType().dyn_cast_or_null<RankedTensorType>();
+        auto v_type = mlir::dyn_cast_or_null<RankedTensorType>(v.getType());
         if (!v_type) return true;
         int64_t v_last_dim = v_type.getDimSize(v_type.getRank() - 1);
         if (v_last_dim == ShapedType::kDynamic) return true;
@@ -1007,9 +1011,8 @@ struct FusedBatchNormV3Pat : public ::mlir::RewritePattern {
 
     // For training, mean and variance is calculated from input values.
     if (is_training.getValue()) {
-      auto input_type = fused_batch_norm_op.getX()
-                            .getType()
-                            .dyn_cast_or_null<RankedTensorType>();
+      auto input_type = mlir::dyn_cast_or_null<RankedTensorType>(
+          fused_batch_norm_op.getX().getType());
       if (!input_type || input_type.getRank() != 4) {
         return rewriter.notifyMatchFailure(
             fused_batch_norm_op, [&](::mlir::Diagnostic &diag) {
@@ -1383,14 +1386,14 @@ struct ConvertRfftToRfft2d : public RewritePattern {
     auto rfft_op = dyn_cast<TF::RFFTOp>(op);
 
     auto input = rfft_op.getInput();
-    auto input_type = input.getType().dyn_cast_or_null<RankedTensorType>();
+    auto input_type = mlir::dyn_cast_or_null<RankedTensorType>(input.getType());
     if (!input_type) return failure();
     auto fft_len = rfft_op.getFftLength();
-    auto fft_len_type = fft_len.getType().dyn_cast_or_null<ShapedType>();
+    auto fft_len_type = mlir::dyn_cast_or_null<ShapedType>(fft_len.getType());
     if (!fft_len_type) return failure();
 
     auto output_type =
-        rfft_op.getResult().getType().dyn_cast_or_null<RankedTensorType>();
+        mlir::dyn_cast_or_null<RankedTensorType>(rfft_op.getResult().getType());
     if (!output_type) return failure();
 
     // Expanded inputs.

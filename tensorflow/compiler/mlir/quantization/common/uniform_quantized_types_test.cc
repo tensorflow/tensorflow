@@ -348,7 +348,8 @@ TEST_F(IsI8F32UniformQuantizedTypeTest, UniformQuantizedTypeSucceeds) {
       /*flags=*/QuantizationFlags::Signed, builder_.getI8Type(),
       builder_.getF32Type(), /*scale=*/1.0,
       /*zeroPoint=*/0, /*storageTypeMin=*/-128, /*storageTypeMax=*/127);
-  EXPECT_THAT(qi8_type.dyn_cast_or_null<UniformQuantizedType>(), NotNull());
+  EXPECT_THAT(mlir::dyn_cast_or_null<UniformQuantizedType>(qi8_type),
+              NotNull());
 }
 
 TEST_F(IsI8F32UniformQuantizedTypeTest, StorageTypeI8Succeeds) {
@@ -398,8 +399,9 @@ TEST_F(IsI8F32UniformQuantizedTypeTest, UniformQuantizedPerAxisTypeSucceeds) {
           /*scales=*/{1.0},
           /*zeroPoints=*/{0}, /*quantizedDimension=*/0, /*storageTypeMin=*/-128,
           /*storageTypeMax=*/127);
-  EXPECT_THAT(qi8_per_axis_type.dyn_cast_or_null<UniformQuantizedPerAxisType>(),
-              NotNull());
+  EXPECT_THAT(
+      mlir::dyn_cast_or_null<UniformQuantizedPerAxisType>(qi8_per_axis_type),
+      NotNull());
 }
 
 TEST_F(IsI8F32UniformQuantizedPerAxisTypeTest, StorageTypeI8Succeeds) {
@@ -452,7 +454,8 @@ TEST_F(IsI32F32UniformQuantizedTypeTest, UniformQuantizedTypeSucceeds) {
       /*zeroPoint=*/0, /*storageTypeMin=*/-2147483647,
       /*storageTypeMax=*/2147483646);
   EXPECT_TRUE(IsI32F32UniformQuantizedType(qi32_type));
-  EXPECT_THAT(qi32_type.dyn_cast_or_null<UniformQuantizedType>(), NotNull());
+  EXPECT_THAT(mlir::dyn_cast_or_null<UniformQuantizedType>(qi32_type),
+              NotNull());
 }
 
 TEST_F(IsI32F32UniformQuantizedTypeTest, StorageTypeI32Succeeds) {
@@ -509,7 +512,7 @@ TEST_F(IsI32F32UniformQuantizedPerAxisTypeTest,
       /*storageTypeMax=*/127);
   EXPECT_FALSE(IsI32F32UniformQuantizedPerAxisType(qi8_type));
   EXPECT_FALSE(IsStorageTypeI32(qi8_type));
-  EXPECT_THAT(qi8_type.dyn_cast_or_null<UniformQuantizedPerAxisType>(),
+  EXPECT_THAT(mlir::dyn_cast_or_null<UniformQuantizedPerAxisType>(qi8_type),
               IsNull());
 }
 
@@ -523,7 +526,7 @@ TEST_F(IsI32F32UniformQuantizedTypeTest, UniformQuantizedPerAxisTypeSucceeds) {
           /*storageTypeMin=*/-2147483647, /*storageTypeMax=*/2147483646);
 
   EXPECT_THAT(
-      qi32_per_axis_type.dyn_cast_or_null<UniformQuantizedPerAxisType>(),
+      mlir::dyn_cast_or_null<UniformQuantizedPerAxisType>(qi32_per_axis_type),
       NotNull());
 }
 

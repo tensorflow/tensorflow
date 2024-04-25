@@ -176,7 +176,7 @@ LogicalResult VerifySharding(mlir::Type type,
     // verify shardings that actually break a tensor apart.
     return success();
   }
-  if (RankedTensorType ranked_type = type.dyn_cast<RankedTensorType>()) {
+  if (RankedTensorType ranked_type = mlir::dyn_cast<RankedTensorType>(type)) {
     const int64_t tensor_rank = ranked_type.getRank();
     int tile_assignment_rank = sharding->tile_assignment_dimensions_size();
 
@@ -461,13 +461,13 @@ std::optional<StringRef> GetXlaShardingFromRetval(
           llvm::dyn_cast<func::FuncOp>(call_op.resolveCallable());
       if (!func) continue;
       value_to_visit = func.front().getTerminator()->getOperand(
-          value_to_visit.cast<OpResult>().getResultNumber());
+          mlir::cast<OpResult>(value_to_visit).getResultNumber());
       values_to_visit.push_back(value_to_visit);
       continue;
     }
 
     if (auto while_op = llvm::dyn_cast<TF::WhileRegionOp>(def)) {
-      if (auto op_result = value_to_visit.cast<OpResult>()) {
+      if (auto op_result = mlir::cast<OpResult>(value_to_visit)) {
         int result_idx = op_result.getResultNumber();
         if (auto yield_op = llvm::dyn_cast<TF::YieldOp>(
                 while_op.getBody().front().getTerminator())) {

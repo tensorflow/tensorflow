@@ -96,6 +96,7 @@ xla_cc_test(
         "//xla/mlir/runtime/ir:rt",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:MemRefDialect",
+        "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_main",

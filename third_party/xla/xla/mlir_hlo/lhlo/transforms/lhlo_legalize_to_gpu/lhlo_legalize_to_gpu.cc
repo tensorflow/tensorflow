@@ -40,6 +40,7 @@ limitations under the License.
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
+#include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/DialectConversion.h"
 
 namespace mlir {
@@ -64,7 +65,7 @@ class LhloReduceToGPULaunchConverter : public OpConversionPattern<ReduceOp> {
     // Only support 1d reductions for now.
     int64_t size = 0;
     for (auto result : reduceOp.getOut()) {
-      auto shapedType = result.getType().dyn_cast<ShapedType>();
+      auto shapedType = mlir::dyn_cast<ShapedType>(result.getType());
       if (!shapedType || shapedType.getRank() != 1) {
         return failure();
       }
@@ -80,7 +81,7 @@ class LhloReduceToGPULaunchConverter : public OpConversionPattern<ReduceOp> {
     // Require all inputs to have the same shape.
     int64_t reduceDimSize = 0;
     for (auto input : reduceOp.getInputs()) {
-      auto shapedType = input.getType().dyn_cast<ShapedType>();
+      auto shapedType = mlir::dyn_cast<ShapedType>(input.getType());
       if (!shapedType || !shapedType.hasStaticShape()) {
         return failure();
       }
@@ -139,7 +140,8 @@ class LhloReduceToGPULaunchConverter : public OpConversionPattern<ReduceOp> {
           loc, resType, output, offset, size, stride);
       llvm::SmallVector<Value, 4> indexings;
       Value inputBuffer = reduceOp.getInputs().front();
-      auto inputTypeRank = inputBuffer.getType().cast<MemRefType>().getRank();
+      auto inputTypeRank =
+          mlir::cast<MemRefType>(inputBuffer.getType()).getRank();
 
       Value input = *reduceOp.operand_begin();
       SmallVector<OpFoldResult> offsets = llvm::to_vector<4>(llvm::map_range(

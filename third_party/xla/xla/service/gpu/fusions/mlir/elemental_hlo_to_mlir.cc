@@ -550,7 +550,7 @@ absl::StatusOr<Value> EmitMulAdd(Value lhs, Value rhs, Value accumulator,
                                  mlir::Type result_element_type,
                                  mlir::Type accumulator_type,
                                  ImplicitLocOpBuilder& b) {
-  if (result_element_type.isa<FloatType>()) {
+  if (mlir::isa<FloatType>(result_element_type)) {
     if (result_element_type.isBF16()) {
       lhs = b.create<arith::ExtFOp>(b.getF32Type(), lhs);
       rhs = b.create<arith::ExtFOp>(b.getF32Type(), rhs);
@@ -657,7 +657,7 @@ absl::StatusOr<SmallVector<Value>> EmitParameter(const HloInstruction* instr,
                                                  ValueRange indices,
                                                  ImplicitLocOpBuilder& b) {
   Value value = this_fn.getArgument(instr->parameter_number());
-  if (value.getType().isa<mlir::TensorType>()) {
+  if (mlir::isa<mlir::TensorType>(value.getType())) {
     value = b.create<mlir::tensor::ExtractOp>(value, indices);
   } else {
     TF_RET_CHECK(indices.empty());

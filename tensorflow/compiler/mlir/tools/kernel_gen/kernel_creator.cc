@@ -52,6 +52,7 @@ limitations under the License.
 #include "mlir/Interfaces/DataLayoutInterfaces.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Dialect/Builtin/BuiltinToLLVMIRTranslation.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Dialect/GPU/GPUToLLVMIRTranslation.h"  // from @llvm-project
@@ -91,7 +92,7 @@ bool IsSmallAlloc(Value alloc) {
   constexpr unsigned kMaximumSizeInBytes = 64;
   constexpr unsigned kMaxRankOfAllocatedMemRef = 1;
 
-  auto type = alloc.getType().dyn_cast<mlir::ShapedType>();
+  auto type = mlir::dyn_cast<mlir::ShapedType>(alloc.getType());
   if (!type || !alloc.getDefiningOp<mlir::memref::AllocOp>()) return false;
   if (!type.hasStaticShape()) {
     // Check if the dynamic shape dimension of the alloc is produced by RankOp

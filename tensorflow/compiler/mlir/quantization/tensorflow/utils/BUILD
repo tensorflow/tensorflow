@@ -30,6 +30,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
     ],
 )
 
@@ -85,6 +86,7 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
         "@local_xla//xla:xla_data_proto_cc",
     ],
 )
@@ -100,5 +102,6 @@ tf_cc_test(
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
     ],
 )

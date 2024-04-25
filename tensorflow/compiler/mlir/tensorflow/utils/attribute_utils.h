@@ -22,6 +22,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/tf2xla/tf2xla_defs.h"
 
 namespace mlir {
@@ -167,7 +168,7 @@ class IdentityNOp;
 // as an attribute.
 template <typename AttrT>
 bool GetValueAsConstant(Value val, AttrT &attr) {
-  while (auto result = val.dyn_cast<OpResult>()) {
+  while (auto result = mlir::dyn_cast<OpResult>(val)) {
     Operation *op = result.getOwner();
     if (!isa<IdentityOp>(op) && !isa<IdentityNOp>(op)) break;
     val = op->getOperand(result.getResultNumber());
