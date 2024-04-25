@@ -1047,6 +1047,49 @@ ENTRY main {
           .ok());
 }
 
+TEST_F(TritonDotAnalysisTest, PadWithTrivialDimension) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+HloModule t
+
+triton_gemm_dot {
+  parameter_0 = f32[1001,1]{1,0} parameter(0)
+  constant = f32[] constant(0)
+  pad = f32[1004,1]{1,0} pad(parameter_0, constant), padding=0_3x0_0
+  bitcast = f32[4,251,1]{2,1,0} bitcast(pad)
+  parameter_1 = f32[4,251,2048]{2,1,0} parameter(1)
+  ROOT dot = f32[4,1,2048]{2,1,0} dot(bitcast, parameter_1),
+    lhs_batch_dims={0}, lhs_contracting_dims={1}, rhs_batch_dims={0},
+    rhs_contracting_dims={1}
+})"));
+  const HloComputation* dot_computation = *module->computations().begin();
+  TF_ASSERT_OK_AND_ASSIGN(
+      TritonFusionAnalysis analysis,
+      TritonFusionAnalysis::Execute(*dot_computation, /*split_k=*/4));
+  const HloInstruction* p0 = dot_computation->parameter_instruction(0);
+  const HloInstruction* p1 = dot_computation->parameter_instruction(1);
+  EXPECT_EQ(*analysis.ScopeParameters(TritonFusionAnalysis::Scope::LHS).begin(),
+            p0);
+  EXPECT_EQ(*analysis.ScopeParameters(TritonFusionAnalysis::Scope::RHS).begin(),
+            p1);
+  EXPECT_THAT(
+      *analysis.IterSpec(TritonFusionAnalysis::Scope::LHS, p0, /*dimension=*/1),
+      ElementsAre(FieldsAre(/*stride=*/1, /*count=*/1001, /*slice_start=*/0,
+                            /*slice_limit=*/1001, ElementsAre(1001))));
+  EXPECT_THAT(
+      *analysis.IterSpec(TritonFusionAnalysis::Scope::LHS, p0, /*dimension=*/2),
+      ElementsAre(FieldsAre(/*stride=*/1, /*count=*/1, /*slice_start=*/0,
+                            /*slice_limit=*/1, ElementsAre(1))));
+  EXPECT_THAT(
+      *analysis.IterSpec(TritonFusionAnalysis::Scope::RHS, p1, /*dimension=*/1),
+      ElementsAre(FieldsAre(/*stride=*/2048, /*count=*/1004, /*slice_start=*/0,
+                            /*slice_limit=*/1004, ElementsAre(251, 4))));
+  EXPECT_THAT(
+      *analysis.IterSpec(TritonFusionAnalysis::Scope::RHS, p1, /*dimension=*/2),
+      ElementsAre(FieldsAre(/*stride=*/1, /*count=*/2048, /*slice_start=*/0,
+                            /*slice_limit=*/2048, ElementsAre(2048))));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
