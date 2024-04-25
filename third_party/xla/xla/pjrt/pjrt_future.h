@@ -341,17 +341,6 @@ class PjRtFuture : public internal::PjRtFutureBase<T> {
              /*on_block_start=*/nullptr,
              /*on_block_end=*/nullptr) {}
 
-  // Constructor used by clients that natively use TSL concurrency library.
-  //
-  // on_block_start is called before Await starts to block.
-  // on_block_end is called after Await finishes blocking.
-  explicit PjRtFuture(
-      tsl::AsyncValueRef<T> async_value,
-      PjRtFutureHelpers::OnBlockStartFn on_block_start = nullptr,
-      PjRtFutureHelpers::OnBlockEndFn on_block_end = nullptr)
-      : Base(std::move(async_value), std::move(on_block_start),
-             std::move(on_block_end)) {}
-
   // Constructor used by clients that don't natively use TSL concurrency library
   // and want to use the wrapped PjRtFuture<T>::Promise class.
   //

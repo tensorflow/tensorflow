@@ -49,6 +49,7 @@ cc_library(
     deps = [
         ":cc_api_stable",
         "//tensorflow/lite:allocation",
+        "//tensorflow/lite:array",
         "//tensorflow/lite:external_cpu_backend_context",
         "//tensorflow/lite:graph_info",
         "//tensorflow/lite:interpreter_options_header",
@@ -119,6 +120,7 @@ cc_library(
         ":cc_api_stable",
         ":model_builder",
         "//tensorflow/lite:allocation",
+        "//tensorflow/lite:array",
         "//tensorflow/lite:external_cpu_backend_context",
         "//tensorflow/lite:graph_info",
         "//tensorflow/lite:interpreter_options_header",
@@ -172,6 +174,7 @@ cc_library(
         ":model_builder",
         ":subgraph",
         "//tensorflow/lite:allocation",
+        "//tensorflow/lite:array",
         "//tensorflow/lite:external_cpu_backend_context",
         "//tensorflow/lite:graph_info",
         "//tensorflow/lite:interpreter_options_header",
@@ -250,6 +253,7 @@ cc_library(
     deps = [
         ":cc_api_stable",
         "//tensorflow/lite:allocation",
+        "//tensorflow/lite:array",
         "//tensorflow/lite:external_cpu_backend_context",
         "//tensorflow/lite:graph_info",
         "//tensorflow/lite:interpreter_options_header",
@@ -463,6 +467,7 @@ cc_library(
     ],
     deps = [
         "//tensorflow/lite:allocation",
+        "//tensorflow/lite:array",
         "//tensorflow/lite:graph_info",
         "//tensorflow/lite:interpreter_options_header",
         "//tensorflow/lite:kernel_api",

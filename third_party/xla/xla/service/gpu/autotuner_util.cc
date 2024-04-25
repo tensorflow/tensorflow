@@ -336,6 +336,13 @@ AutotunerUtil::CreateRedzoneAllocator(const AutotuneConfig& config,
 AutotunerUtil::SerializeAutotuneResultsForModule(
     const HloModule& module, const AutotuneConfig& autotune_config,
     bool as_textproto) {
+  AutotuneResults results =
+      SerializeAutotuneResultsForModule(module, autotune_config);
+  return AutotuneResultsToString(results, as_textproto);
+}
+
+/*static*/ AutotuneResults AutotunerUtil::SerializeAutotuneResultsForModule(
+    const HloModule& module, const AutotuneConfig& autotune_config) {
   AutotuneResults results;
   results.set_version(kVersion);
 
@@ -348,7 +355,7 @@ AutotunerUtil::SerializeAutotuneResultsForModule(
   }
 
   SortAutotuneResults(&results);
-  return AutotuneResultsToString(results, as_textproto);
+  return results;
 }
 
 }  // namespace gpu
