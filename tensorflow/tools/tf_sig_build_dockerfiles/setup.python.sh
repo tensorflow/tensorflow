@@ -52,6 +52,9 @@ VERSION=$1
 REQUIREMENTS=$2
 
 # Add deadsnakes repo for Python installation
+DEBIAN_FRONTEND=noninteractive apt-get --allow-unauthenticated update
+DEBIAN_FRONTEND=noninteractive apt install -y wget software-properties-common
+DEBIAN_FRONTEND=noninteractive apt-get clean all
 add-apt-repository -y 'ppa:deadsnakes/ppa'
 
 # Install Python packages for this container's version

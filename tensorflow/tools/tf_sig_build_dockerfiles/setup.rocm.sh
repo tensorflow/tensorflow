@@ -23,6 +23,7 @@ set -x
 ROCM_VERSION=$1 # e.g. 5.2.0
 ROCM_PATH=${ROCM_PATH:-/opt/rocm-${ROCM_VERSION}}
 ROCM_DEB_REPO_HOME=https://repo.radeon.com/rocm/apt/
+AMDGPU_DEB_REPO_HOME=https://repo.radeon.com/amdgpu/
 ROCM_BUILD_NAME=ubuntu
 ROCM_BUILD_NUM=main
 
@@ -35,23 +36,27 @@ else
         ROCM_VERS=$ROCM_VERSION
 fi
 ROCM_DEB_REPO=${ROCM_DEB_REPO_HOME}${ROCM_VERS}/
+AMDGPU_DEB_REPO=${AMDGPU_DEB_REPO_HOME}${ROCM_VERS}/
+
+DEBIAN_FRONTEND=noninteractive apt-get --allow-unauthenticated update 
+DEBIAN_FRONTEND=noninteractive apt install -y wget software-properties-common
+DEBIAN_FRONTEND=noninteractive apt-get clean all
 
 if [ ! -f "/${CUSTOM_INSTALL}" ]; then
 # Add rocm repository
 chmod 1777 /tmp
-DEBIAN_FRONTEND=noninteractive apt-get --allow-unauthenticated update 
-DEBIAN_FRONTEND=noninteractive apt install -y wget software-properties-common
-DEBIAN_FRONTEND=noninteractive apt-get clean all
 wget -qO - https://repo.radeon.com/rocm/rocm.gpg.key | apt-key add -;
-wget -qO - https://apt.llvm.org/llvm-snapshot.gpg.key | apt-key add -;
+
 if [[ $ROCM_DEB_REPO == https://repo.radeon.com/rocm/*  ]] ; then \
       echo "deb [arch=amd64] $ROCM_DEB_REPO $ROCM_BUILD_NAME $ROCM_BUILD_NUM" > /etc/apt/sources.list.d/rocm.list; \
+      echo "deb [arch=amd64] $AMDGPU_DEB_REPO$ROCM_BUILD_NAME focal $ROCM_BUILD_NUM" > /etc/apt/sources.list.d/amdgpu.list; \
     else \
       echo "deb [arch=amd64 trusted=yes] $ROCM_DEB_REPO $ROCM_BUILD_NAME $ROCM_BUILD_NUM" > /etc/apt/sources.list.d/rocm.list ; \
     fi
 else
     bash "/${CUSTOM_INSTALL}"
 fi
+wget -qO - https://apt.llvm.org/llvm-snapshot.gpg.key | apt-key add -;
 echo "deb [arch=amd64 trusted=yes] http://apt.llvm.org/focal/ llvm-toolchain-focal-17 main" > /etc/apt/sources.list.d/llvm.list
 
 GPU_DEVICE_TARGETS=${GPU_DEVICE_TARGETS:-"gfx900 gfx906 gfx908 gfx90a gfx940 gfx941 gfx942 gfx1030 gfx1100"}
