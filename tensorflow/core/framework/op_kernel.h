@@ -1066,8 +1066,8 @@ class OpKernelContext {
     return params_->output_attr_array[index];
   }
 
-  gtl::InlinedVector<WrappedAllocator, 4> ConsumeWrappedAllocators() {
-    gtl::InlinedVector<WrappedAllocator, 4> retrieved;
+  absl::InlinedVector<WrappedAllocator, 4UL> ConsumeWrappedAllocators() {
+    absl::InlinedVector<WrappedAllocator, 4UL> retrieved;
     if (tracking_state_) {
       mutex_lock lock(tracking_state_->mu);
       retrieved.swap(tracking_state_->wrapped_allocators);
@@ -1297,7 +1297,7 @@ class OpKernelContext {
   Status status_;
   friend class CollectiveExecutor;  // for access to params_
   Params* params_;                  // not owned
-  gtl::InlinedVector<TensorValue, 4> outputs_;
+  absl::InlinedVector<TensorValue, 4UL> outputs_;
 
   // Keep track of calls to ScopedAllocator.
   // TODO(ayushd): change to absl::flat_hash_set.
@@ -1308,16 +1308,17 @@ class OpKernelContext {
   // recorded.
   struct TrackingState {
     mutable mutex mu;
-    gtl::InlinedVector<WrappedAllocator, 4> wrapped_allocators
+    absl::InlinedVector<WrappedAllocator, 4UL> wrapped_allocators
         TF_GUARDED_BY(mu);
 
     mutable mutex stats_mu;
     int64_t temp_memory_allocated TF_GUARDED_BY(stats_mu) = 0;
 
     int64_t persistent_memory_allocated TF_GUARDED_BY(stats_mu) = 0;
-    gtl::InlinedVector<std::pair<const void*, int64_t>, 2>
+    absl::InlinedVector<std::pair<const void*, int64_t>, 2UL>
         temp_tensor_buffer_and_size TF_GUARDED_BY(stats_mu);
-    gtl::InlinedVector<int64_t, 2> persistent_alloc_ids TF_GUARDED_BY(stats_mu);
+    absl::InlinedVector<int64_t, 2UL> persistent_alloc_ids
+        TF_GUARDED_BY(stats_mu);
   };
   std::unique_ptr<TrackingState> tracking_state_;
 

@@ -686,9 +686,9 @@ class Tensor {
   void set_dtype(DataType t) { shape_.set_data_type(t); }
 
   // TensorShape's InlineVector.
-  static gtl::InlinedVector<int64_t, 4> ComputeFlatInnerDims(
+  static absl::InlinedVector<int64_t, 4UL> ComputeFlatInnerDims(
       absl::Span<const int64_t> orig, int64_t num_out_dims);
-  static gtl::InlinedVector<int64_t, 4> ComputeFlatOuterDims(
+  static absl::InlinedVector<int64_t, 4UL> ComputeFlatOuterDims(
       absl::Span<const int64_t> orig, int64_t num_out_dims);
 
   TensorShape shape_;
@@ -975,7 +975,7 @@ typename TTypes<T, NDIMS>::Tensor Tensor::flat_outer_dims() {
 
 template <typename T, size_t NDIMS>
 typename TTypes<T, NDIMS>::Tensor Tensor::flat_inner_outer_dims(int64_t begin) {
-  gtl::InlinedVector<int64_t, 4> flat_outer =
+  absl::InlinedVector<int64_t, 4UL> flat_outer =
       ComputeFlatOuterDims(shape_.dim_sizes(), begin + NDIMS);
   return shaped<T, NDIMS>(ComputeFlatInnerDims(flat_outer, NDIMS));
 }
@@ -993,7 +993,7 @@ typename TTypes<T, NDIMS>::ConstTensor Tensor::flat_outer_dims() const {
 template <typename T, size_t NDIMS>
 typename TTypes<T, NDIMS>::ConstTensor Tensor::flat_inner_outer_dims(
     int64_t begin) const {
-  gtl::InlinedVector<int64_t, 4> flat_outer =
+  absl::InlinedVector<int64_t, 4UL> flat_outer =
       ComputeFlatOuterDims(shape_.dim_sizes(), begin + NDIMS);
   return shaped<T, NDIMS>(ComputeFlatInnerDims(flat_outer, NDIMS));
 }
