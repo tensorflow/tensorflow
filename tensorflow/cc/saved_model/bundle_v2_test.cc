@@ -28,6 +28,7 @@ limitations under the License.
 #include "json/reader.h"
 #include "json/value.h"
 #include "tensorflow/cc/saved_model/metrics.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/trackable_object_graph.pb.h"
