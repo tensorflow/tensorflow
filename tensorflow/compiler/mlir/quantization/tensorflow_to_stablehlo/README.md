@@ -1,4 +1,4 @@
-## Tensorflow SavedModel to StableHLO (tf-to-stablehlo-translate-translate)
+## Tensorflow SavedModel to StableHLO (tf-to-stablehlo-translate)
 
 ### Description
 
@@ -19,17 +19,18 @@ tf-to-stablehlo-translate \
     [--output-filename=/path/to/output.mlir]
 ```
 
-* `--input-path`: The path to the input TensorFlow SavedModel or MLIR module.
+* `--input-path`: The path to the input TensorFlow SavedModel or MLIR module
+  with .mlir extension.
 * `--exported-model-signatures`: Comma-separated list of exported model
-  signatures to convert.
-* `--tags: Comma-separated list of tags for loading SavedModel. Ignored for MLIR
-  input.
+  signatures to convert. Ignored for MLIR input.
+* `--tags`: Comma-separated list of tags for loading SavedModel. Ignored for
+  MLIR input.
 * `--input-arg-shapes`: A string representation of input argument shapes for
   'main' entry-point, separating tensors with ':', dimension with ',', and
-  using '?' for unknown sizes. For example, 'input-arg-shapes=1,2::1,?'
-  expresses argument shapes [1,2], [] and [1,?].
+  using '?' for unknown sizes. For example, `input-arg-shapes=1,2::1,?`
+  expresses argument shapes `[1,2]`, `[]` and `[1,?]`.
 * `--e`: Elide large elements attrs while dumping the output StableHLO.
-* --output_filename: Path to the output file where the textual StableHLO MLIR
+* `--output_filename`: Path to the output file where the textual StableHLO MLIR
   module will be written (default: stdout).
 
 
