@@ -23,10 +23,6 @@ limitations under the License.
 
 namespace stablehlo::quantization {
 
-// TODO: b/321158562 - Make the number of bins configurable.
-// Default number of histogram bins for each batch sample.
-constexpr int32_t kDefaultNumOfBins = 1 << 9;
-
 // Calculates the bin width from the range and expected number of bins. The
 // bin width is formalized to the form of 2^n. As a consequence, the actual
 // number of bins might be smaller than the given `num_bins`.
@@ -70,8 +66,10 @@ inline bool IsHistogramCalibration(
 }
 
 // Gets the number of bins for the given calibration method.
-inline int32_t GetNumBins(const CalibrationOptions::CalibrationMethod method) {
-  return IsHistogramCalibration(method) ? kDefaultNumOfBins : 0;
+inline int32_t GetNumBins(const CalibrationOptions& calib_opts) {
+  return IsHistogramCalibration(calib_opts.calibration_method())
+             ? calib_opts.calibration_parameters().num_bins()
+             : 0;
 }
 
 }  // namespace stablehlo::quantization

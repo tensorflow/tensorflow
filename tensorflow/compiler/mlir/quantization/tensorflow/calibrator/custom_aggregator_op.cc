@@ -36,7 +36,6 @@ using ::stablehlo::quantization::CalculateBinIndexSafe;
 using ::stablehlo::quantization::CalculateBinWidth;
 using ::stablehlo::quantization::CalculateLowerBound;
 using ::stablehlo::quantization::CalibrationOptions;
-using ::stablehlo::quantization::GetNumBins;
 using CPUDevice = ::Eigen::ThreadPoolDevice;
 using CalibrationMethod =
     ::stablehlo::quantization::CalibrationOptions_CalibrationMethod;
@@ -51,7 +50,7 @@ REGISTER_OP("CustomAggregator")
     .Output("histogram: int64")
     .Attr("id: string")
     .Attr("calibration_method: int = 0")
-    .Attr("initial_num_bins: int = 0")
+    .Attr("num_bins: int = 0")
     .Attr("min_percentile: float = 0.0")
     .Attr("max_percentile: float = 0.0")
     .SetShapeFn([](::tensorflow::shape_inference::InferenceContext* c) {
@@ -59,12 +58,9 @@ REGISTER_OP("CustomAggregator")
       c->set_output(1, c->Scalar());
       c->set_output(2, c->Scalar());
 
-      const tensorflow::AttrValue* calibration_method_attr;
-      TF_RETURN_IF_ERROR(
-          c->GetAttr("calibration_method", &calibration_method_attr));
-      int32_t num_bins = GetNumBins(
-          static_cast<CalibrationMethod>(calibration_method_attr->i()));
-      c->set_output(3, c->MakeShape({num_bins}));
+      const tensorflow::AttrValue* num_bins_attr;
+      TF_RETURN_IF_ERROR(c->GetAttr("num_bins", &num_bins_attr));
+      c->set_output(3, c->MakeShape({num_bins_attr->i()}));
 
       return absl::OkStatus();
     });
@@ -76,13 +72,12 @@ class CustomAggregatorOp : public OpKernel {
     OP_REQUIRES_OK(context, context->GetAttr("id", &id_));
 
     int calibration_method_value;
-    int initial_num_bins;
+    int num_bins;
     float min_percentile;
     float max_percentile;
     OP_REQUIRES_OK(context, context->GetAttr("calibration_method",
                                              &calibration_method_value));
-    OP_REQUIRES_OK(context,
-                   context->GetAttr("initial_num_bins", &initial_num_bins));
+    OP_REQUIRES_OK(context, context->GetAttr("num_bins", &num_bins));
     OP_REQUIRES_OK(context,
                    context->GetAttr("min_percentile", &min_percentile));
     OP_REQUIRES_OK(context,
@@ -97,8 +92,7 @@ class CustomAggregatorOp : public OpKernel {
         absl::AbortedError("The calibration method must be specified."));
 
     calib_opts_.set_calibration_method(calibration_method);
-    calib_opts_.mutable_calibration_parameters()->set_initial_num_bins(
-        initial_num_bins);
+    calib_opts_.mutable_calibration_parameters()->set_num_bins(num_bins);
     calib_opts_.mutable_calibration_parameters()->set_min_percentile(
         min_percentile);
     calib_opts_.mutable_calibration_parameters()->set_max_percentile(
@@ -122,7 +116,7 @@ class CustomAggregatorOp : public OpKernel {
         context->template eigen_device<CPUDevice>()) = input_flat.maximum();
 
     // Calculate histogram statistics.
-    int32_t num_bins = GetNumBins(calib_opts_.calibration_method());
+    const int32_t num_bins = calib_opts_.calibration_parameters().num_bins();
     Tensor* histogram_output = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output("histogram", {num_bins},
                                                      &histogram_output));

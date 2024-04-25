@@ -69,18 +69,16 @@ TEST(PopulateDefaultsTest, ExplicitCalibrationOptionsNotOverridden) {
       *config.mutable_calibration_options();
   calibration_options.set_calibration_method(
       CalibrationOptions::CALIBRATION_METHOD_AVERAGE_MIN_MAX);
-  calibration_options.mutable_calibration_parameters()->set_initial_num_bins(
-      512);
+  calibration_options.mutable_calibration_parameters()->set_num_bins(512);
 
   // Test that if the user explicitly provided `calibration_options`, it is not
   // overridden.
   const QuantizationConfig new_config = PopulateDefaults(config);
   EXPECT_THAT(new_config.calibration_options().calibration_method(),
               Eq(CalibrationOptions::CALIBRATION_METHOD_AVERAGE_MIN_MAX));
-  EXPECT_THAT(new_config.calibration_options()
-                  .calibration_parameters()
-                  .initial_num_bins(),
-              Eq(512));
+  EXPECT_THAT(
+      new_config.calibration_options().calibration_parameters().num_bins(),
+      Eq(512));
 }
 
 TEST(PopulateDefaultsTest, DefaultNumbersPopulatedForPartOfCalibrationOptions) {
@@ -89,18 +87,16 @@ TEST(PopulateDefaultsTest, DefaultNumbersPopulatedForPartOfCalibrationOptions) {
       *config.mutable_calibration_options();
   calibration_options.set_calibration_method(
       CalibrationOptions::CALIBRATION_METHOD_HISTOGRAM_PERCENTILE);
-  calibration_options.mutable_calibration_parameters()->set_initial_num_bins(
-      512);
+  calibration_options.mutable_calibration_parameters()->set_num_bins(512);
 
   // Test that if the user explicitly provided part of the
   // `calibration_options`, it is not overridden, rest of the data are default.
   const QuantizationConfig new_config = PopulateDefaults(config);
   EXPECT_THAT(new_config.calibration_options().calibration_method(),
               Eq(CalibrationOptions::CALIBRATION_METHOD_HISTOGRAM_PERCENTILE));
-  EXPECT_THAT(new_config.calibration_options()
-                  .calibration_parameters()
-                  .initial_num_bins(),
-              Eq(512));
+  EXPECT_THAT(
+      new_config.calibration_options().calibration_parameters().num_bins(),
+      Eq(512));
   EXPECT_THAT(new_config.calibration_options()
                   .calibration_parameters()
                   .min_percentile(),
@@ -123,10 +119,9 @@ TEST(PopulateDefaultsTest,
   EXPECT_THAT(
       new_config.calibration_options().calibration_method(),
       Eq(CalibrationOptions::CALIBRATION_METHOD_HISTOGRAM_MSE_BRUTEFORCE));
-  EXPECT_THAT(new_config.calibration_options()
-                  .calibration_parameters()
-                  .initial_num_bins(),
-              Eq(256));
+  EXPECT_THAT(
+      new_config.calibration_options().calibration_parameters().num_bins(),
+      Eq(512));
   EXPECT_THAT(new_config.calibration_options()
                   .calibration_parameters()
                   .min_percentile(),

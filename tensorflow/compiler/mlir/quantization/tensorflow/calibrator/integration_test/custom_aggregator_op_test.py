@@ -129,7 +129,7 @@ class CustomAggregatorTest(test.TestCase):
           input_tensor,
           id='7',
           calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_MSE_BRUTEFORCE,
-          initial_num_bins=256,
+          num_bins=512,
       )
       aggregator_output = self.evaluate(aggregator)
       self.assertAllEqual(aggregator_output.output, [1.0, 1.0, 3.0, 4.0, 6.0])

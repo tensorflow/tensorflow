@@ -65,8 +65,8 @@ def TF_CustomAggregatorOp : TF_Op<"CustomAggregator", [Pure]> {
     StrAttr:$id,
     // The integer value of the enforcing `CalibrationMethod`.
     I32Attr:$calibration_method,
-    // The number of bins when histogram is initialized.
-    I32Attr:$initial_num_bins,
+    // The number of histogram bins.
+    I32Attr:$num_bins,
     // Min percentile to be included in the selected range, only used in the
     // `HISTOGRAM_PERCENTILE` method.
     F32Attr:$min_percentile,

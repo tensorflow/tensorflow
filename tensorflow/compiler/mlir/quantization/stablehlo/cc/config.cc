@@ -29,59 +29,35 @@ void PopulateDefaultCalibrationOptions(QuantizationConfig& quant_config) {
     quant_config.mutable_calibration_options()->set_calibration_method(
         CalibrationOptions::CALIBRATION_METHOD_MIN_MAX);
   }
+
   switch (quant_config.calibration_options().calibration_method()) {
-    case CalibrationOptions::CALIBRATION_METHOD_MIN_MAX:
-      break;
-    case CalibrationOptions::CALIBRATION_METHOD_AVERAGE_MIN_MAX:
-      break;
     case CalibrationOptions::CALIBRATION_METHOD_HISTOGRAM_PERCENTILE:
-      if (quant_config.calibration_options()
-              .calibration_parameters()
-              .initial_num_bins() == 0) {
-        quant_config.mutable_calibration_options()
-            ->mutable_calibration_parameters()
-            ->set_initial_num_bins(256);
-      }
-      if (quant_config.calibration_options()
-              .calibration_parameters()
-              .min_percentile() == 0) {
-        quant_config.mutable_calibration_options()
-            ->mutable_calibration_parameters()
-            ->set_min_percentile(0.001);
-      }
-      if (quant_config.calibration_options()
-              .calibration_parameters()
-              .max_percentile() == 0) {
-        quant_config.mutable_calibration_options()
-            ->mutable_calibration_parameters()
-            ->set_max_percentile(99.999);
-      }
-      break;
     case CalibrationOptions::CALIBRATION_METHOD_HISTOGRAM_MSE_BRUTEFORCE:
-      if (quant_config.calibration_options()
-              .calibration_parameters()
-              .initial_num_bins() == 0) {
-        quant_config.mutable_calibration_options()
-            ->mutable_calibration_parameters()
-            ->set_initial_num_bins(256);
-      }
-      break;
     case CalibrationOptions::CALIBRATION_METHOD_HISTOGRAM_MSE_MAX_FREQUENCY:
-      if (quant_config.calibration_options()
-              .calibration_parameters()
-              .initial_num_bins() == 0) {
-        quant_config.mutable_calibration_options()
-            ->mutable_calibration_parameters()
-            ->set_initial_num_bins(256);
-      }
-      break;
     case CalibrationOptions::CALIBRATION_METHOD_HISTOGRAM_MSE_SYMMETRIC:
       if (quant_config.calibration_options()
               .calibration_parameters()
-              .initial_num_bins() == 0) {
+              .num_bins() == 0) {
         quant_config.mutable_calibration_options()
             ->mutable_calibration_parameters()
-            ->set_initial_num_bins(256);
+            ->set_num_bins(512);
+      }
+      if (quant_config.calibration_options().calibration_method() ==
+          CalibrationOptions::CALIBRATION_METHOD_HISTOGRAM_PERCENTILE) {
+        if (quant_config.calibration_options()
+                .calibration_parameters()
+                .min_percentile() == 0) {
+          quant_config.mutable_calibration_options()
+              ->mutable_calibration_parameters()
+              ->set_min_percentile(0.001);
+        }
+        if (quant_config.calibration_options()
+                .calibration_parameters()
+                .max_percentile() == 0) {
+          quant_config.mutable_calibration_options()
+              ->mutable_calibration_parameters()
+              ->set_max_percentile(99.999);
+        }
       }
       break;
     default:

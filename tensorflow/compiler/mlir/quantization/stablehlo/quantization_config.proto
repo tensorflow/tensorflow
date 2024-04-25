@@ -278,7 +278,7 @@ message DebuggerConfig {
 }
 
 // Defines various calibration options.
-// Next ID: 4
+// Next ID: 5
 message CalibrationOptions {
   // Configurations for calibration methods.
   // Next ID: 7
@@ -308,10 +308,8 @@ message CalibrationOptions {
   // Parameters required for calibration.
   // Next ID: 4
   message CalibrationParameters {
-    // The number of bins when histogram is initialized. It can be increased
-    // because histogram is dynamically expanded by sample inputs.
-    // initial_num_bins is 256 by default.
-    int32 initial_num_bins = 1;
+    // The number of histogram bins. Default to 512.
+    int32 num_bins = 1;
     // min_percentile is only used in HISTOGRAM_PERCENTILE.
     // min_percentile is 0.001 by default.
     float min_percentile = 2;
@@ -333,6 +331,9 @@ message CalibrationOptions {
   // Configures representative dataset. Each item corresponds to a
   // representative dataset used to calibrate a function.
   repeated RepresentativeDatasetConfig representative_datasets = 3;
+
+  // The path to save calibration statistics data.
+  string calibration_data_dir = 4;
 }
 
 // Quantization configuration for StableHLO Quantizer. This is the primary

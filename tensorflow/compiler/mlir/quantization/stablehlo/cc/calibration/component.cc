@@ -137,8 +137,11 @@ absl::StatusOr<ModuleOp> CalibrationComponent::Run(
   TF_ASSIGN_OR_RETURN(const std::string precalibrated_saved_model_dir,
                       CreateTmpDir());
 
-  // TODO: b/333809933 - Make the calibration statistics directory configurable.
-  TF_ASSIGN_OR_RETURN(const std::string calibration_data_dir, CreateTmpDir());
+  std::string calibration_data_dir =
+      config.calibration_options().calibration_data_dir();
+  if (calibration_data_dir.empty()) {
+    TF_ASSIGN_OR_RETURN(calibration_data_dir, CreateTmpDir());
+  }
 
   TF_ASSIGN_OR_RETURN(ExportedModel exported_model,
                       ExportToSavedModel(module_op, calibration_data_dir,

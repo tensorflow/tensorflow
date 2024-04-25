@@ -445,8 +445,12 @@ absl::StatusOr<ExportedModel> QuantizeStaticRangePtq(
   }
   mlir::OwningOpRef<mlir::ModuleOp> module_ref = std::move(module).value();
 
-  // TODO: b/333809933 - Make the calibration statistics directory configurable.
-  TF_ASSIGN_OR_RETURN(std::string calibration_data_dir, CreateTmpDir());
+  std::string calibration_data_dir =
+      quantization_options.calibration_options().calibration_data_dir();
+  if (calibration_data_dir.empty()) {
+    TF_ASSIGN_OR_RETURN(calibration_data_dir, CreateTmpDir());
+  }
+
   TF_ASSIGN_OR_RETURN(ExportedModel calibration_exported_model,
                       QuantizePtqModelPreCalibrationImpl(
                           *module_ref, context.get(), quantization_options,

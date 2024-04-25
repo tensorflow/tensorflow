@@ -607,8 +607,8 @@ def _populate_calibration_options(
       calib_opts.calibration_method
       == _CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_PERCENTILE
   ):
-    if not calib_opts.calibration_parameters.initial_num_bins:
-      calib_opts.calibration_parameters.initial_num_bins = 256
+    if not calib_opts.calibration_parameters.num_bins:
+      calib_opts.calibration_parameters.num_bins = 512
     if not calib_opts.calibration_parameters.min_percentile:
       calib_opts.calibration_parameters.min_percentile = 0.001
     if not calib_opts.calibration_parameters.max_percentile:
@@ -632,8 +632,14 @@ def _populate_calibration_options(
           f' methods. calibration_method={calib_opts.calibration_method}'
       )
 
-    if not calib_opts.calibration_parameters.initial_num_bins:
-      calib_opts.calibration_parameters.initial_num_bins = 256
+    if not calib_opts.calibration_parameters.num_bins:
+      calib_opts.calibration_parameters.num_bins = 512
+
+  if calib_opts.calibration_data_dir:
+    save_model.create_empty_output_dir(
+        calib_opts.calibration_data_dir,
+        overwrite=True,
+    )
 
 
 def _populate_quantization_options_default_values(
