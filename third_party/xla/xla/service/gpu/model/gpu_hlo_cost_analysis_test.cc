@@ -541,6 +541,39 @@ TEST_F(GpuHloCostAnalysisTest, CommonElementwiseUseParameterAndRoot) {
             0.f);
 }
 
+TEST_F(GpuHloCostAnalysisTest,
+       CommonElementwiseUseParameterAndRootMultiOutputFusion) {
+  const char* hlo_fusion_module_str = R"(
+  HloModule m
+
+  f {
+    p0 = s8[10] parameter(0)
+    p1 = s8[] parameter(1)
+    p1b = s8[10] broadcast(p1)
+    a = s8[10] add(p0, p1b)
+    neg = s8[10] negate(a)
+    ROOT _ = (s8[10], s8[10]) tuple(a, neg)
+  }
+
+  ENTRY _ {
+    p0 = s8[10] parameter(0)
+    p1 = s8[] parameter(1)
+    ROOT _ = (s8[10], s8[10]) fusion(p0, p1), kind=kLoop, calls=f
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_fusion_module_str));
+  ASSERT_IS_OK(module->entry_computation()->Accept(&analysis_));
+  HloInstruction* fusion = module->entry_computation()->root_instruction();
+
+  EXPECT_EQ(analysis_.CommonElementwiseUtilization(
+                fusion->fused_parameter(0), fusion->fused_expression_root()),
+            1.f);
+  EXPECT_EQ(analysis_.CommonElementwiseUtilization(
+                fusion->fused_parameter(1), fusion->fused_expression_root()),
+            0.f);
+}
+
 TEST_F(GpuHloCostAnalysisTest, Reduce) {
   absl::string_view hlo_string = R"(
 HloModule m
