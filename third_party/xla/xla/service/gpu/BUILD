@@ -3573,6 +3573,7 @@ xla_test(
     name = "gpu_compiler_test",
     srcs = if_gpu_is_configured(["gpu_compiler_test.cc"]),
     backends = ["gpu"],
+    tags = ["no_rocm"],
     data = ["gpu_compiler_test_autotune_db.textproto"],
     deps = [
         ":gpu_compiler",
