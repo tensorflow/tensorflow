@@ -95,8 +95,9 @@ void AddQuantizationPasses(const mlir::TFL::PassConfig& pass_config,
     pass_manager.addNestedPass<mlir::func::FuncOp>(
         mlir::TFL::CreateOptimizeBatchMatmulPass());
   }
-  pass_manager.addNestedPass<mlir::func::FuncOp>(
-      mlir::TFL::CreateOptimizePass(/*enable_canonicalization=*/true));
+  pass_manager.addNestedPass<mlir::func::FuncOp>(mlir::TFL::CreateOptimizePass(
+      /*enable_canonicalization=*/true, /*disable_fuse_mul_and_fc=*/false,
+      pass_config.fold_qweights_into_tpose_conv));
 }
 
 void AddDynamicRangeQuantizationPasses(const mlir::TFL::PassConfig& pass_config,
@@ -134,8 +135,9 @@ void AddDynamicRangeQuantizationPasses(const mlir::TFL::PassConfig& pass_config,
     pass_manager.addNestedPass<mlir::func::FuncOp>(
         mlir::TFL::CreateOptimizeBatchMatmulPass());
   }
-  pass_manager.addNestedPass<mlir::func::FuncOp>(
-      mlir::TFL::CreateOptimizePass(/*enable_canonicalization=*/true));
+  pass_manager.addNestedPass<mlir::func::FuncOp>(mlir::TFL::CreateOptimizePass(
+      /*enable_canonicalization=*/true, /*disable_fuse_mul_and_fc=*/false,
+      pass_config.fold_qweights_into_tpose_conv));
 }
 
 void AddPreQuantizationStableHloToTfPasses(
@@ -467,8 +469,10 @@ void AddPostVariableFreezingTFToTFLConversionPasses(
     }
     pass_manager->addPass(mlir::TFL::CreatePushTransposeThroughEwisePass());
     pass_manager->addNestedPass<mlir::func::FuncOp>(
-        mlir::TFL::CreateOptimizePass(/*enable_canonicalization=*/true,
-                                      toco_flags.disable_fuse_mul_and_fc()));
+        mlir::TFL::CreateOptimizePass(
+            /*enable_canonicalization=*/true,
+            toco_flags.disable_fuse_mul_and_fc(),
+            pass_config.fold_qweights_into_tpose_conv));
 
     // This pass operates on TensorFlow ops but is triggered after legalization
     // so that it can target constants introduced once TensorFlow Identity ops

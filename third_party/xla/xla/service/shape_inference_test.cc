@@ -4056,6 +4056,32 @@ TEST_F(ShapeInferenceTest, UnboundedAllReduce) {
       << " expected: " << ShapeUtil::HumanString(expected);
 }
 
+TEST_F(ShapeInferenceTest, UnboundedAllToAll) {
+  TF_ASSERT_OK_AND_ASSIGN(const Shape operand, ParseShape("f32[?, 10]"));
+  TF_ASSERT_OK_AND_ASSIGN(const Shape expected, ParseShape("f32[?, 10]"));
+  TF_ASSERT_OK_AND_ASSIGN(
+      const Shape inferred_shape,
+      ShapeInference::InferAllToAllShape(/*shape=*/operand,
+                                         /*split_dimension=*/0,
+                                         /*concat_dimension=*/0,
+                                         /*split_count=*/3));
+  EXPECT_TRUE(ShapeUtil::Equal(inferred_shape, expected))
+      << "inferred: " << ShapeUtil::HumanString(inferred_shape)
+      << " expected: " << ShapeUtil::HumanString(expected);
+}
+
+TEST_F(ShapeInferenceTest, UnboundedAllToAllTupleUnsupported) {
+  TF_ASSERT_OK_AND_ASSIGN(const Shape operand, ParseShape("f32[?, 10]"));
+  TF_ASSERT_OK_AND_ASSIGN(const Shape expected,
+                          ParseShape("(f32[?, 10], f32[?, 10])"));
+  const absl::StatusOr<Shape> inferred_shape =
+      ShapeInference::InferAllToAllTupleShape(
+          /*operand_shapes=*/{&operand, &operand});
+  EXPECT_THAT(
+      inferred_shape.status().message(),
+      HasSubstr("AllToAllTuple does not support unbounded dynamic shapes"));
+}
+
 TEST_P(UnboundedLogicalOpShapeInferenceTest, UnboundedAnd) {
   TF_ASSERT_OK_AND_ASSIGN(const Shape lhs, ParseShape(GetParam().lhs));
   TF_ASSERT_OK_AND_ASSIGN(const Shape rhs, ParseShape(GetParam().rhs));

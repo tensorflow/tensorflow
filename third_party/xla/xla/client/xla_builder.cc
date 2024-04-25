@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/client/xla_builder.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -3789,15 +3790,55 @@ XlaOp XlaBuilder::AllToAllArray(
       return all_to_all;
     }
     DimensionVector sizes;
+    const bool is_unbounded = operand_shape->is_unbounded_dynamic();
+    std::vector<XlaOp> dynamic_sizes;
+    auto GetR1DimensionSizeOrConstant = [&](XlaOp operand,
+                                            int64_t dimension) -> XlaOp {
+      if (operand_shape->is_unbounded_dynamic_dimension(dimension)) {
+        return Reshape(GetDimensionSize(operand, dimension), {1});
+      }
+      return ConstantR1<int32_t>(
+          this, {static_cast<int32_t>(operand_shape->dimensions(dimension))});
+    };
+    XlaOp r1_split_count =
+        ConstantR1<int32_t>(this, {static_cast<int32_t>(split_count)});
     for (int64_t i = 0; i < operand_shape->rank(); ++i) {
       if (i != split_dimension) {
         sizes.push_back(operand_shape->dimensions(i));
+        if (is_unbounded) {
+          dynamic_sizes.push_back(GetR1DimensionSizeOrConstant(operand, i));
+        }
         continue;
       }
       sizes.push_back(split_count);
-      sizes.push_back(operand_shape->dimensions(i) / split_count);
+      sizes.push_back(operand_shape->is_unbounded_dynamic_dimension(i)
+                          ? Shape::kUnboundedSize
+                          : operand_shape->dimensions(i) / split_count);
+
+      if (is_unbounded) {
+        dynamic_sizes.push_back(r1_split_count);
+        dynamic_sizes.push_back(
+            operand_shape->is_unbounded_dynamic_dimension(i)
+                ? Div(GetR1DimensionSizeOrConstant(operand, i), r1_split_count)
+                : ConstantR1<int32_t>(this,
+                                      {static_cast<int32_t>(sizes.back())}));
+      }
     }
-    all_to_all = Reshape(all_to_all, sizes);
+
+    if (is_unbounded) {
+      std::vector<bool> dynamic_dimensions;
+      std::transform(
+          sizes.begin(), sizes.end(), std::back_inserter(dynamic_dimensions),
+          [](int64_t size) { return size == Shape::kUnboundedSize; });
+      TF_ASSIGN_OR_RETURN(
+          const Shape shape,
+          ShapeUtil::MakeValidatedShape(all_to_all_shape.element_type(), sizes,
+                                        dynamic_dimensions));
+      all_to_all =
+          MhloDynamicReshape(all_to_all, ConcatInDim(dynamic_sizes, 0), shape);
+    } else {
+      all_to_all = Reshape(all_to_all, sizes);
+    }
 
     std::vector<int64_t> permutation;
     const auto rank = operand_shape->rank();
@@ -3810,6 +3851,21 @@ XlaOp XlaBuilder::AllToAllArray(
       permutation.push_back(dim_after_reshape);
     }
     all_to_all = Transpose(all_to_all, permutation);
+
+    if (is_unbounded) {
+      std::vector<XlaOp> new_dimensions;
+      for (int64_t i = 0; i < operand_shape->rank(); ++i) {
+        new_dimensions.push_back(GetR1DimensionSizeOrConstant(operand, i));
+      }
+      new_dimensions[split_dimension] =
+          Div(new_dimensions[split_dimension], r1_split_count);
+      new_dimensions[concat_dimension] =
+          Mul(new_dimensions[concat_dimension], r1_split_count);
+
+      return MhloDynamicReshape(all_to_all, ConcatInDim(new_dimensions, 0),
+                                all_to_all_shape);
+    }
+
     return Reshape(all_to_all_shape, all_to_all);
   });
 }
@@ -3865,6 +3921,13 @@ XlaOp XlaBuilder::AllToAllTuple(
     const std::optional<ChannelHandle>& channel_id) {
   return ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
+    if (operand_shape->is_unbounded_dynamic() ||
+        split_dimension == Shape::kUnboundedSize ||
+        concat_dimension == Shape::kUnboundedSize ||
+        split_count == Shape::kUnboundedSize) {
+      return InvalidArgument(
+          "AllToAllTuple does not support unbounded dynamic shapes");
+    }
 
     // The HloInstruction for AllToAll currently only handles the data
     // communication: it accepts N already split parts and scatters them to N
@@ -3890,14 +3953,14 @@ XlaOp XlaBuilder::AllToAllTuple(
     }
 
     // Handle data communication.
-    XlaOp alltoall =
+    XlaOp all_to_all =
         this->AllToAllTuple(slices, replica_groups, layout, channel_id);
 
     // Concat the N received parts.
     std::vector<XlaOp> received;
     received.reserve(split_count);
     for (int i = 0; i < split_count; i++) {
-      received.push_back(this->GetTupleElement(alltoall, i));
+      received.push_back(this->GetTupleElement(all_to_all, i));
     }
     return this->ConcatInDim(received, concat_dimension);
   });

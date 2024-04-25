@@ -2,6 +2,8 @@
 // RUN: tf-opt %s -tfl-optimize | FileCheck %s
 // Run optimize pass and then canonicalize pass, and make sure some folding is applied.
 // RUN: tf-opt %s -tfl-optimize='enable-canonicalization=true' | FileCheck --check-prefix=FOLD %s
+// Run patterns which are only relevant to xnpack.
+// RUN: tf-opt %s -tfl-optimize='fold-qweights-into-tpose-conv=true' | FileCheck --check-prefix=CHECK-WFOLD %s
 
 // Run legalize pass and then optimize pass, and make sure some fusing is applied.
 // RUN: tf-opt %s -tfl-legalize-tf -tfl-optimize | FileCheck --check-prefix=Fusing %s
@@ -101,6 +103,19 @@ func.func @fuseSubIntoConv2d(%arg0: tensor<256x32x32x3xf32>, %arg1: tensor<16x3x
 
   // CHECK-DAG: %cst = arith.constant dense<[5.000000e-01, 1.500000e+00, 2.500000e+00, 3.500000e+00, 4.500000e+00, 5.500000e+00, 6.500000e+00, 7.500000e+00, 8.500000e+00, 9.500000e+00, 1.050000e+01, 1.150000e+01, 1.250000e+01, 1.350000e+01, 1.450000e+01, 1.550000e+01]> : tensor<16xf32>
   // CHECK: %0 = "tfl.conv_2d"(%arg0, %arg1, %cst)
+}
+
+// CHECK-LABEL: foldQuantWeightsIntoTposeConv
+func.func @foldQuantWeightsIntoTposeConv(%arg0: tensor<2x2x3x2048xf32>) -> tensor<2x3x2x2048xf32> {
+  %output_shape = arith.constant dense<[2, 3, 2, 2048]> : tensor<4xi32>
+  %q_weighs = "tfl.pseudo_qconst"() {qtype = tensor<4x2x2x2048x!quant.uniform<u8<1:255>:f32, 0.15:151>>, value = dense<-76> : tensor<4x2x2x2048xi8>} : () -> tensor<4x2x2x2048x!quant.uniform<u8<1:255>:f32, 0.15:151>>
+  %dq_weights = "tfl.dequantize"(%q_weighs) : (tensor<4x2x2x2048x!quant.uniform<u8<1:255>:f32, 0.15:151>>) -> tensor<4x2x2x2048xf32>
+  %bias = "tfl.no_value"() {value} : () -> none
+  %out = "tfl.transpose_conv"(%output_shape, %dq_weights, %arg0, %bias) {fused_activation_function = "NONE", padding = "SAME", stride_h = 1 : i32, stride_w = 1 : i32} : (tensor<4xi32>, tensor<4x2x2x2048xf32>, tensor<2x2x3x2048xf32>, none) -> tensor<2x3x2x2048xf32>
+  func.return %out : tensor<2x3x2x2048xf32>
+
+  // CHECK-WFOLD-NOT: "tfl.dequantize"
+  // CHECK-WFOLD: "tfl.transpose_conv"(%cst, %1, %arg0, %0) <{fused_activation_function = "NONE", padding = "SAME", stride_h = 1 : i32, stride_w = 1 : i32}> : (tensor<4xi32>, tensor<4x2x2x2048x!quant.uniform<u8<1:255>:f32
 }
 
 // CHECK-LABEL: fuseAddIntoTransposeConv

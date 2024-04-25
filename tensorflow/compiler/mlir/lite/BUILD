@@ -50,6 +50,7 @@ td_library(
 td_library(
     name = "tensorflow_lite_patterns_td_files",
     srcs = [
+        "transforms/fold_qweights_into_tpose_conv.td",
         "transforms/legalize_patterns.td",
         "transforms/legalize_variables.td",
         "transforms/optimize_batch_matmul.td",
@@ -240,6 +241,20 @@ gentbl_cc_library(
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "transforms/optimize_patterns.td",
+    deps = [":tensorflow_lite_patterns_td_files"],
+)
+
+gentbl_cc_library(
+    name = "tensorflow_lite_fold_qweights_into_tpose_conv_inc_gen",
+    compatible_with = get_compatible_with_portable(),
+    tbl_outs = [
+        (
+            ["-gen-rewriters"],
+            "transforms/generated_fold_qweights_into_tpose_conv.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "transforms/fold_qweights_into_tpose_conv.td",
     deps = [":tensorflow_lite_patterns_td_files"],
 )
 
@@ -757,6 +772,7 @@ cc_library(
 cc_library(
     name = "tensorflow_lite_optimize",
     srcs = [
+        "transforms/generated_fold_qweights_into_tpose_conv.inc",
         "transforms/generated_optimize.inc",
         "transforms/optimize.cc",
     ],
@@ -767,6 +783,8 @@ cc_library(
         ":constant_utils",
         ":convert_type",
         ":tensorflow_lite",
+        ":tensorflow_lite_fold_qweights_into_tpose_conv_inc_gen",
+        ":tensorflow_lite_optimize_inc_gen",
         ":tensorflow_lite_passes_inc_gen",
         ":validators",
         "//tensorflow/compiler/mlir/quantization/common/quantization_lib",

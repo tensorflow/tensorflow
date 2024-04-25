@@ -41,6 +41,7 @@ def DefaultQuantParamsPass : Pass<"tfl-default-quant", "mlir::func::FuncOp"> {
                "Is the corresponding integer signed">,
   ];
 }
+
 def DecomposeHybridQuantizationPass : Pass<"tfl-decompose-hybrid-quantization", "mlir::func::FuncOp"> {
   let summary = "Decomposes hybridge quantization to explicit quantize / dequantize";
   let description = [{
@@ -194,6 +195,9 @@ def OptimizePass : Pass<"tfl-optimize", "mlir::func::FuncOp"> {
       Option<"disable_fuse_mul_and_fc_", "disable-fuse-mul-and-fc",
              "bool", "false",
              "Disable folding mul and fully connected ops during optimization pass.">,
+      Option<"fold_qweights_into_tpose_conv_", "fold-qweights-into-tpose-conv",
+             "bool", "false",
+             "Enable patterns which assume xnnpack is available to runtime.">,
   ];
 }
 
