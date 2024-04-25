@@ -463,7 +463,7 @@ def internal_hlo_deps():
 
 # Config setting selector used when building for products
 # which requires restricted licenses to be avoided.
-def if_not_mobile_or_arm_or_lgpl_restricted(a):
+def if_not_mobile_or_arm_or_macos_or_lgpl_restricted(a):
     _ = (a,)  # buildifier: disable=unused-variable
     return select({
         "//conditions:default": [],
