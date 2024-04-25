@@ -28,6 +28,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/lite/allocation.h"
+#include "tensorflow/lite/array.h"
 #include "tensorflow/lite/c/common_internal.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/op_resolver.h"
@@ -250,9 +251,15 @@ class Subgraph {
     return &nodes_and_registration_[node_index];
   }
 
-  // Change the dimensionality of a given tensor. Note, this is only acceptable
-  // for tensor indices that are inputs.
-  // Returns status of failure or success.
+  // Change the dimensionality of a given tensor.
+  //
+  // Note, this is only acceptable for tensor indices that are inputs.
+  TfLiteStatus ResizeInputTensor(int tensor_index, const int* dims_data,
+                                 int rank);
+
+  // Change the dimensionality of a given tensor.
+  //
+  // Note, this is only acceptable for tensor indices that are inputs.
   TfLiteStatus ResizeInputTensor(int tensor_index,
                                  const std::vector<int>& dims);
 

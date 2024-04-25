@@ -583,6 +583,7 @@ cc_library_with_tflite(
     ],
     deps = [
         ":allocation",
+        ":array",
         ":external_cpu_backend_context",
         ":graph_info",
         ":kernel_api",
@@ -629,6 +630,7 @@ cc_library_with_tflite(
     ],
     deps = [
         ":allocation",
+        ":array",
         ":external_cpu_backend_context",
         ":graph_info",
         ":kernel_api",
@@ -699,6 +701,7 @@ cc_library_with_tflite(
     ],
     deps = [
         ":allocation",
+        ":array",
         ":external_cpu_backend_context",
         ":graph_info",
         ":logger",
@@ -781,6 +784,7 @@ cc_library_with_tflite(
     ],
     deps = [
         ":allocation",
+        ":array",
         ":builtin_ops",
         ":external_cpu_backend_context",
         ":macros",

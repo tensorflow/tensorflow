@@ -668,7 +668,7 @@ cc_library(
     copts = tflite_copts(),
     deps = [
         ":kernel_util",
-        "//tensorflow/lite:kernel_api",
+        "//tensorflow/lite:util",
         "//tensorflow/lite/core:subgraph",
         "//tensorflow/lite/core/c:common",
     ],
