@@ -997,7 +997,6 @@ using FusedMHASignature = void(DeviceMemoryBase /*BMM1_inputA_data*/,
                                DeviceMemoryBase /* BMM1_inputB_data */,
                                DeviceMemoryBase /* BMM2_inputA_data */,
                                DeviceMemoryBase /* output_data */,
-                               DeviceMemoryBase /* mask_data */,
                                DeviceMemoryBase /* bias_data */,
                                DeviceMemoryBase /* activation_data */,
                                DeviceMemoryBase /* seqlen_q_data */,
@@ -1013,9 +1012,9 @@ using FusedMHABackwardSignature = void(
     DeviceMemoryBase /* d_BMM1_inputA_data */,
     DeviceMemoryBase /* d_BMM1_inputB_data */,
     DeviceMemoryBase /* d_BMM2_inputB_data */, DeviceMemoryBase /* d_S_data */,
-    DeviceMemoryBase /* mask_data */, DeviceMemoryBase /* d_bias_data */,
-    DeviceMemoryBase /* fwd_output_data */, DeviceMemoryBase /* bias_data */,
-    DeviceMemoryBase /* seqlen_q_data */, DeviceMemoryBase /* seqlen_k_data */);
+    DeviceMemoryBase /* d_bias_data */, DeviceMemoryBase /* fwd_output_data */,
+    DeviceMemoryBase /* bias_data */, DeviceMemoryBase /* seqlen_q_data */,
+    DeviceMemoryBase /* seqlen_k_data */);
 using FusedMHABackwardRunner = OpRunner<FusedMHABackwardSignature>;
 
 // Describes the configuration for the algorithms that will used.
@@ -1738,21 +1737,20 @@ class DnnSupport {
 
   virtual absl::StatusOr<std::unique_ptr<const FusedMHARunner>>
   FusedMHARunnerFromDesc(
-      Stream* stream, const AlgorithmDesc& algorithm_desc, FusedMHAKind kind,
+      Stream* stream, const AlgorithmDesc& algorithm_desc,
       const MatmulTensorDescriptor& bmm1_lhs_descriptor,
       const MatmulTensorDescriptor& bmm1_rhs_descriptor,
       const MatmulTensorDescriptor& bmm2_rhs_descriptor,
       const MatmulTensorDescriptor& intermediate_bmm2_lhs_descriptor,
       const TensorDescriptor& output_descriptor,
       std::optional<TensorDescriptor> activation_descriptor,
-      std::optional<TensorDescriptor> mask_descriptor,
       std::optional<TensorDescriptor> bias_descriptor, double scale,
       std::optional<double> dropout_rate, std::optional<int64_t> seed,
-      bool is_flash_attention, dnn::FMHAMaskKind mask_type);
+      dnn::FMHAMaskKind mask_type);
 
   virtual absl::StatusOr<std::unique_ptr<const FusedMHABackwardRunner>>
   FusedMHABackwardRunnerFromDesc(
-      Stream* stream, const AlgorithmDesc& algorithm_desc, FusedMHAKind kind,
+      Stream* stream, const AlgorithmDesc& algorithm_desc,
       const MatmulTensorDescriptor& bmm1_grad_gemm1_rhs_descriptor,
       const MatmulTensorDescriptor& bmm1_grad_gemm2_rhs_descriptor,
       const MatmulTensorDescriptor& bmm2_grad_gemm1_lhs_descriptor,
@@ -1762,12 +1760,11 @@ class DnnSupport {
       const TensorDescriptor& d_bmm1_rhs_descriptor,
       const TensorDescriptor& d_bmm2_rhs_descriptor,
       std::optional<TensorDescriptor> d_s_descriptor,
-      std::optional<TensorDescriptor> mask_descriptor,
       std::optional<TensorDescriptor> d_bias_descriptor,
       std::optional<TensorDescriptor> fwd_output_descriptor,
       std::optional<TensorDescriptor> bias_descriptor, double scale,
       std::optional<double> dropout_rate, std::optional<int64_t> seed,
-      bool is_flash_attention, dnn::FMHAMaskKind mask_type);
+      dnn::FMHAMaskKind mask_type);
 
   virtual bool GetMIOpenConvolveAlgorithms(
       ConvolutionKind kind, DataType element_type, Stream* stream,

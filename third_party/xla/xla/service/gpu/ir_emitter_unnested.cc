@@ -964,30 +964,15 @@ absl::Status IrEmitterUnnested::EmitFusedMHAThunk(
   BufferAllocation::Slice seqlen_q_slice, seqlen_k_slice;
   std::optional<Shape> mask_shape, bias_shape;
   {
-    bool has_mask = kind == CudnnfMHAKind::kScaleMaskSoftmax ||
-                    kind == CudnnfMHAKind::kScaleMaskSoftmaxDropout ||
-                    kind == CudnnfMHAKind::kScaleBiasMaskSoftmax ||
-                    kind == CudnnfMHAKind::kScaleBiasMaskSoftmaxDropout;
-    bool has_bias = kind == CudnnfMHAKind::kScaleBiasMaskSoftmax ||
-                    kind == CudnnfMHAKind::kScaleBiasSoftmaxDropout ||
-                    kind == CudnnfMHAKind::kScaleBiasSoftmax ||
+    bool has_bias = kind == CudnnfMHAKind::kScaleBiasSoftmax ||
                     kind == CudnnfMHAKind::kScaleBiasSoftmaxDropout;
 
-    if (has_mask) {
-      const HloInstruction* mask = instr->operand(3);
-      TF_ASSIGN_OR_RETURN(mask_slice, GetAllocationSliceForHlo(mask));
-      mask_shape = mask->shape();
-      if (has_bias) {
-        const HloInstruction* bias = instr->operand(4);
-        TF_ASSIGN_OR_RETURN(bias_slice, GetAllocationSliceForHlo(bias));
-        bias_shape = bias->shape();
-      }
-    } else if (has_bias) {
+    if (has_bias) {
       const HloInstruction* bias = instr->operand(3);
       TF_ASSIGN_OR_RETURN(bias_slice, GetAllocationSliceForHlo(bias));
       bias_shape = bias->shape();
     }
-    int64_t seqlen_qk_operand_index = 3 + has_mask + has_bias;
+    int64_t seqlen_qk_operand_index = 3 + has_bias;
     bool has_seqlen_qk = seqlen_qk_operand_index == instr->operand_count() - 2;
     if (has_seqlen_qk) {
       const HloInstruction* seqlen_q = instr->operand(seqlen_qk_operand_index);
@@ -1012,7 +997,6 @@ absl::Status IrEmitterUnnested::EmitFusedMHAThunk(
                       AsCudnnFmhaMaskKind(config.mask_type()));
   GpufMHADescriptor descriptor = {kind,
                                   config,
-                                  config.is_flash_attention(),
                                   mask_type,
                                   lhs_bmm1->shape(),
                                   rhs_bmm1->shape(),
@@ -1040,7 +1024,6 @@ absl::Status IrEmitterUnnested::EmitFusedMHABackwardThunk(
                       instr->backend_config<xla::gpu::GpuBackendConfig>());
   const xla::gpu::CudnnfMHABackendConfig& config =
       gpu_config.cudnn_fmha_backend_config();
-  bool is_flash_attention = config.is_flash_attention();
 
   int input_index = 0;
   TF_ASSIGN_OR_RETURN(BufferAllocation::Slice bmm1_grad_gemm1_rhs_slice,
@@ -1059,41 +1042,20 @@ absl::Status IrEmitterUnnested::EmitFusedMHABackwardThunk(
                       GetAllocationSliceForHlo(instr->operand(input_index)));
   Shape bmm2_grad_gemm1_lhs_shape;
 
-  // fmha.getBmm2GradGemm1Lhs() could be bmm2_grad_gemm1_lhs for regular
-  // attention or softmax stats for flash attention here we set the shape to
-  // be bmm2_grad_gemm1_lhs even it is flash attention
-  if (is_flash_attention) {
-    // flash attention TODO: make sure the layout is correct for
-    // bmm2_grad_gemm1_lhs
-    Shape intermediate_tensor_shape(config.intermediate_tensor_shape());
-    bmm2_grad_gemm1_lhs_shape = intermediate_tensor_shape;
-    input_index++;
-  } else {
-    bmm2_grad_gemm1_lhs_shape = instr->operand(input_index++)->shape();
-  }
+  Shape intermediate_tensor_shape(config.intermediate_tensor_shape());
+  bmm2_grad_gemm1_lhs_shape = intermediate_tensor_shape;
+  input_index++;
 
   TF_ASSIGN_OR_RETURN(BufferAllocation::Slice d_output_slice,
                       GetAllocationSliceForHlo(instr->operand(input_index)));
   Shape d_output_shape = instr->operand(input_index++)->shape();
 
   TF_ASSIGN_OR_RETURN(const CudnnfMHAKind kind, GetCudnnfMHAKind(instr));
-  bool has_mask = kind == CudnnfMHAKind::kBackwardScaleMaskSoftmax ||
-                  kind == CudnnfMHAKind::kBackwardScaleBiasMaskSoftmax ||
-                  kind == CudnnfMHAKind::kBackwardScaleMaskSoftmaxDropout ||
-                  kind == CudnnfMHAKind::kBackwardScaleBiasMaskSoftmaxDropout;
   BufferAllocation::Slice mask_slice;
   std::optional<Shape> mask_shape;
-  if (has_mask) {
-    TF_ASSIGN_OR_RETURN(mask_slice,
-                        GetAllocationSliceForHlo(instr->operand(input_index)));
-    mask_shape = instr->operand(input_index++)->shape();
-  }
 
-  bool has_bias = is_flash_attention &&
-                  (kind == CudnnfMHAKind::kBackwardScaleBiasSoftmax ||
-                   kind == CudnnfMHAKind::kBackwardScaleBiasSoftmaxDropout ||
-                   kind == CudnnfMHAKind::kBackwardScaleBiasMaskSoftmax ||
-                   kind == CudnnfMHAKind::kBackwardScaleBiasMaskSoftmaxDropout);
+  bool has_bias = (kind == CudnnfMHAKind::kBackwardScaleBiasSoftmax ||
+                   kind == CudnnfMHAKind::kBackwardScaleBiasSoftmaxDropout);
   BufferAllocation::Slice bias_slice;
   std::optional<Shape> bias_shape;
   if (has_bias) {
@@ -1104,11 +1066,10 @@ absl::Status IrEmitterUnnested::EmitFusedMHABackwardThunk(
 
   BufferAllocation::Slice fwd_output_slice;
   std::optional<Shape> fwd_output_shape;
-  if (is_flash_attention) {
-    TF_ASSIGN_OR_RETURN(fwd_output_slice,
-                        GetAllocationSliceForHlo(instr->operand(input_index)));
-    fwd_output_shape = instr->operand(input_index++)->shape();
-  }
+
+  TF_ASSIGN_OR_RETURN(fwd_output_slice,
+                      GetAllocationSliceForHlo(instr->operand(input_index)));
+  fwd_output_shape = instr->operand(input_index++)->shape();
 
   BufferAllocation::Slice seqlen_q_slice, seqlen_k_slice;
   bool has_seqlen_qk = input_index == instr->operand_count() - 2;
@@ -1139,31 +1100,18 @@ absl::Status IrEmitterUnnested::EmitFusedMHABackwardThunk(
 
   BufferAllocation::Slice d_s_slice;
   std::optional<Shape> d_s_shape;
-  if (!is_flash_attention) {
-    TF_ASSIGN_OR_RETURN(d_s_slice,
-                        GetAllocationSliceForHlo(instr, {output_index}));
-    d_s_shape = ShapeUtil::GetSubshape(instr->shape(), {output_index++});
-  }
 
   TF_ASSIGN_OR_RETURN(BufferAllocation::Slice scratch_slice,
                       GetAllocationSliceForHlo(instr, {output_index++}));
 
-  bool has_dbias =
-      instr->shape().tuple_shapes().size() == 6 && !is_flash_attention;
   BufferAllocation::Slice d_bias_slice;
   std::optional<Shape> d_bias_shape;
-  if (has_dbias) {
-    TF_ASSIGN_OR_RETURN(d_bias_slice,
-                        GetAllocationSliceForHlo(instr, {output_index}));
-    d_bias_shape = ShapeUtil::GetSubshape(instr->shape(), {output_index++});
-  }
   TF_RET_CHECK(output_index == instr->shape().tuple_shapes().size());
   TF_ASSIGN_OR_RETURN(const auto mask_type,
                       AsCudnnFmhaMaskKind(config.mask_type()));
   GpufMHABackwardDescriptor descriptor = {
       kind,
       config,
-      is_flash_attention,
       mask_type,
       bmm1_grad_gemm1_rhs_shape,
       bmm1_grad_gemm2_rhs_shape,

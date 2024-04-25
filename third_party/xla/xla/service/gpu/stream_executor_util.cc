@@ -548,35 +548,6 @@ absl::StatusOr<se::dnn::FMHAMaskKind> GetDNNFmhaMaskKindFromCudnnFmhaMaskKind(
   }
 }
 
-absl::StatusOr<se::dnn::FusedMHAKind> GetDNNFusedMHAKindFromCudnnfMHAKind(
-    CudnnfMHAKind kind) {
-  switch (kind) {
-    case CudnnfMHAKind::kScaleBiasMaskSoftmaxDropout:
-    case CudnnfMHAKind::kScaleMaskSoftmaxDropout:
-    case CudnnfMHAKind::kBmmBmm:
-    case CudnnfMHAKind::kScaleBiasMaskSoftmax:
-    case CudnnfMHAKind::kScaleMaskSoftmax:
-    case CudnnfMHAKind::kScaleBiasSoftmax:
-    case CudnnfMHAKind::kScaleBiasSoftmaxDropout:
-      return se::dnn::FusedMHAKind::BMM1_OUTPUT_INPUT_TYPE;
-    case CudnnfMHAKind::kSoftmaxDropout:
-    case CudnnfMHAKind::kSoftmax:
-      return se::dnn::FusedMHAKind::BMM1_OUTPUT_FLOAT;
-    // backward
-    case CudnnfMHAKind::kBackwardScaleBiasMaskSoftmaxDropout:
-    case CudnnfMHAKind::kBackwardScaleMaskSoftmaxDropout:
-    case CudnnfMHAKind::kBackwardBmmBmm:
-    case CudnnfMHAKind::kBackwardScaleBiasMaskSoftmax:
-    case CudnnfMHAKind::kBackwardScaleMaskSoftmax:
-    case CudnnfMHAKind::kBackwardScaleBiasSoftmax:
-    case CudnnfMHAKind::kBackwardScaleBiasSoftmaxDropout:
-    case CudnnfMHAKind::kBackwardSoftmaxDropout:
-    case CudnnfMHAKind::kBackwardSoftmax:
-      return se::dnn::FusedMHAKind::BMM1_OUTPUT_INPUT_TYPE;
-  }
-  return Internal("Unexpected fMHA kind");
-}
-
 absl::StatusOr<se::dnn::DataType> GetDNNDataTypeFromPrimitiveType(
     PrimitiveType type) {
   switch (type) {
