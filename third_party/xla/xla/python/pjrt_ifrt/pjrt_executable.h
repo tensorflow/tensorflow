@@ -329,11 +329,18 @@ class PjRtLoadedExecutable final
 
   PjRtCompatibleClient* client_;
   std::shared_ptr<xla::PjRtLoadedExecutable> pjrt_loaded_executable_;
+  // Devices that `pjrt_loaded_executable_` runs on. Empty if the executable is
+  // portable.
   DeviceList devices_;
   std::vector<Device*> addressable_devices_;
   std::shared_ptr<std::vector<tsl::RCReference<LoadedHostCallback>>>
       all_loaded_host_callbacks_;
   std::vector<PjRtHostSendAndRecvLoadedHostCallback*> host_send_recv_callbacks_;
+
+  // Output array specs. If the executable is portable, shardings in
+  // `output_shardings_` will use an arbitrary addressable device, and will be
+  // overridden by a `SingleDeviceSharding` generated on the fly at execution
+  // time.
   std::vector<DType> output_dtypes_;
   std::vector<Shape> output_shapes_;
   std::vector<std::shared_ptr<const Sharding>> output_shardings_;

@@ -339,8 +339,13 @@ PjRtLoadedExecutable::CreateInternal(
     ds.push_back(ifrt_device);
   }
   DeviceList devices(std::move(ds));
+  // Devices used for constructing output shardings. A fake one will be used for
+  // a portable executable.
+  std::optional<DeviceList> sharding_devices;
   if (devices.empty()) {
-    return InvalidArgument("At least one device is required");
+    sharding_devices = DeviceList({client->addressable_devices().front()});
+  } else {
+    sharding_devices = devices;
   }
   std::vector<DType> output_dtypes;
   std::vector<Shape> output_shapes;
@@ -366,7 +371,7 @@ PjRtLoadedExecutable::CreateInternal(
               xla::ShapeUtil::MakeShape(element_type, dimensions)));
     }
     output_shardings.push_back(ifrt::ConcreteEvenSharding::Create(
-        devices, memory_kind,
+        *sharding_devices, memory_kind,
         /*shape=*/ifrt::Shape(dimensions),
         /*shard_shape=*/ifrt::Shape(tile_shape_dimensions)));
     return OkStatus();
@@ -374,7 +379,8 @@ PjRtLoadedExecutable::CreateInternal(
   auto append_token = [&] {
     output_dtypes.push_back(DType(DType::kToken));
     output_shapes.push_back(Shape({}));
-    output_shardings.push_back(OpaqueSharding::Create(devices, MemoryKind()));
+    output_shardings.push_back(
+        OpaqueSharding::Create(*sharding_devices, MemoryKind()));
   };
   auto check_output_sharding_condition =
       [](absl::Span<const xla::PrimitiveType> element_types,
@@ -502,7 +508,23 @@ PjRtLoadedExecutable::Execute(absl::Span<tsl::RCReference<Array>> args,
   std::vector<std::vector<PjRtBuffer*>> argument_handles;
   std::vector<std::unique_ptr<PjRtBuffer>> owned_buffers;
 
-  const int num_computations = devices_.size();
+  int num_computations;
+  const bool portable_execution = devices.has_value();
+  PjRtCompatibleDevice* portable_execution_device = nullptr;
+  if (portable_execution) {
+    if (devices->size() != 1) {
+      return InvalidArgument(
+          "Only single-shard portable execution is supported");
+    }
+    num_computations = 1;
+    portable_execution_device = static_cast<PjRtDevice*>(devices->front());
+  } else {
+    if (devices_.empty()) {
+      return InvalidArgument("No devices provided for portable executable");
+    }
+    num_computations = devices_.size();
+  }
+
   argument_handles.resize(num_computations);
   for (int i = 0; i < num_computations; ++i) {
     argument_handles[i].reserve(args.size());
@@ -521,29 +543,6 @@ PjRtLoadedExecutable::Execute(absl::Span<tsl::RCReference<Array>> args,
     for (const auto& pjrt_buffer : pjrt_array->pjrt_buffers()) {
       argument_handles[j].push_back(pjrt_buffer.get());
       ++j;
-    }
-  }
-
-  const bool portable_execution = devices.has_value();
-  PjRtCompatibleDevice* portable_execution_device =
-      static_cast<PjRtDevice*>(devices_.front());
-  if (portable_execution) {
-    if (devices->size() != 1) {
-      return InvalidArgument(
-          "Only single-shard portable execution is supported");
-    }
-    portable_execution_device = static_cast<PjRtDevice*>(devices->front());
-  }
-
-  if (portable_execution) {
-    if (!argument_handles[0].empty()) {
-      TF_ASSIGN_OR_RETURN(
-          portable_execution_device,
-          client_->LookupPjRtDevice(argument_handles[0][0]->device()));
-    } else {
-      // Cannot infer the device from the input.
-      // TODO(hyeontaek): Probably we should take devices as an argument?
-      portable_execution_device = static_cast<PjRtDevice*>(devices_.front());
     }
   }
 
