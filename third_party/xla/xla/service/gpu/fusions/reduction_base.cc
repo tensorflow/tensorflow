@@ -80,9 +80,9 @@ int GetVectorSize(const HloFusionAnalysis& analysis,
     return 1;
   }
 
-  // Enabling vectorization if number of threads is <= warpsize leads to half or
-  // more of the threads not doing any work.
-  if (num_threads <= WarpSize()) {
+  // Enabling vectorization if (number_threads * vector_size) is <=
+  // minor_reduced_dimension otherwise exist threads not doing any work.
+  if (num_threads * 2 > reduction_dimensions.dimensions[kRowMinorReduced]) {
     return 1;
   }
 

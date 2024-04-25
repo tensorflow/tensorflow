@@ -1301,6 +1301,7 @@ cc_library(
     srcs = ["triton_fusion_analysis.cc"],
     hdrs = ["triton_fusion_analysis.h"],
     deps = [
+        ":cudnn_support_utils",
         ":matmul_utils",
         ":triton_tiling_propagation",
         "//xla:autotuning_proto_cc",
@@ -2947,9 +2948,11 @@ cc_library(
     hdrs = if_cuda_is_configured(["cudnn_fusion_compiler.h"]),
     deps = if_cuda_is_configured([
         ":backend_configs_cc",
+        ":cudnn_support_utils",
         ":ir_emission_utils",
         ":kernel_reuse_cache",
         ":matmul_utils",
+        ":triton_fusion_analysis",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
@@ -2962,7 +2965,6 @@ cc_library(
         "//xla:util",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_query",
-        "//xla/service/gpu:triton_fusion_analysis",
         "//xla/service:hlo_pass",
         "//xla/stream_executor:stream_executor_headers",
         "//xla/stream_executor/cuda:cudnn_frontend_helpers",

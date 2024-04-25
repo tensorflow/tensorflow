@@ -73,9 +73,6 @@ def CreateTFCastToInt32Op : NativeCodeCall<
 def CreateInt32ConstOrCast : NativeCodeCall<
   "CreateInt32ConstOrCast($0, $_loc, $_builder)">;
 
-def CreateNoneValue : NativeCodeCall<
-  "$_builder.create<TFL::NoValueOp>($0.getLoc(), $_builder.getUnitAttr())">;
-
 // Creates an int32 constant op from an integer attribute $0.
 def CreateInt32ConstOpFromIntAttr
   : NativeCodeCall<"$_builder.create<TF::ConstOp>($_loc, DenseElementsAttr::get(RankedTensorType::get({}, $_builder.getI32Type()), {static_cast<int32_t>($0.cast<IntegerAttr>().getInt())}))">;
