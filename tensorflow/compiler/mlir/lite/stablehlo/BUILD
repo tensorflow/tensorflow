@@ -761,7 +761,7 @@ cc_library(
         "transforms/optimize_layout.cc",
     ],
     hdrs = ["transforms/passes.h"],
-    compatible_with = ["//buildenv/target:non_prod"],
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":passes_inc_gen",
         "@llvm-project//llvm:Support",
