@@ -50,6 +50,8 @@ message AutoShardingSolverRequest {
   repeated Pair edges = 6;
   repeated Nodes live = 7;
   repeated Edges live_edges = 28;
+  repeated Pair node_intervals = 36;
+  repeated Pair edge_intervals = 37;
   repeated Costs computation_costs = 8;
   repeated Costs communication_costs = 9;
   repeated Costs memory_costs = 10;
