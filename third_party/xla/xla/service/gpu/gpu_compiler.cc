@@ -1616,8 +1616,11 @@ absl::StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
 
   AutotuneResults autotune_results;
   if (!is_deviceless) {
-    TF_RETURN_IF_ERROR(
-        AutotunerUtil::SerializeAutotuneResults(&autotune_results));
+    TF_ASSIGN_OR_RETURN(
+        AutotuneConfig autotune_config,
+        GetAutotuneConfig(stream_exec, debug_opts, options, gpu_target_config));
+    autotune_results = AutotunerUtil::SerializeAutotuneResultsForModule(
+        *module, autotune_config);
     TF_RETURN_IF_ERROR(SerializeAutotuneResultsToFile(debug_opts));
   }
   const std::optional<std::string> optimized_fingerprint =
