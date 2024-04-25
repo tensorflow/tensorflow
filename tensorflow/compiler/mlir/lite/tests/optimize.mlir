@@ -2652,6 +2652,17 @@ func.func @FuseAddWithFullyConnectedWithQuantizedWeight(%arg: tensor<2x512xf32>)
   // CHECK: tfl.add
 }
 
+// CHECK-LABEL: @FuseBatchMatMulAndTransposeWithQuantizedWeight
+func.func @FuseBatchMatMulAndTransposeWithQuantizedWeight(%arg: tensor<1x2xf32>) -> tensor<1x3xf32> {
+  %cst_3 = arith.constant dense<[1, 0]> : tensor<2xi32>
+  %79 = "tfl.pseudo_qconst"() {qtype = tensor<3x2x!quant.uniform<i8<-127:127>:f32:0, {2.378620e-03,2.848260e-03,2.545190e-03}>>, value = dense<10> : tensor<3x2xi8>} : () -> tensor<3x2x!quant.uniform<i8<-127:127>:f32:0, {2.378620e-03,2.848260e-03,2.545190e-03}>>
+  %80 = "tfl.transpose"(%79, %cst_3) : (tensor<3x2x!quant.uniform<i8<-127:127>:f32:0, {2.378620e-03,2.848260e-03,2.545190e-03}>>, tensor<2xi32>) -> tensor<2x3x!quant.uniform<i8<-127:127>:f32:1, {2.378620e-03,2.848260e-03,2.545190e-03}>>
+  %81 = "tfl.batch_matmul"(%arg, %80) {adj_x = false, adj_y = false, asymmetric_quantize_inputs = false} : (tensor<1x2xf32>, tensor<2x3x!quant.uniform<i8<-127:127>:f32:1, {2.378620e-03,2.848260e-03,2.545190e-03}>>) -> tensor<1x3xf32>
+  func.return %81 : tensor<1x3xf32>
+
+  // CHECK: tfl.fully_connected
+}
+
 // CHECK-LABEL: @FuseAddWithFullyConnectedNoBias
 // Note: Currently not fused.
 func.func @FuseAddWithFullyConnectedNoBias(%arg: tensor<2x512xf32>) -> tensor<2x1024xf32> {
