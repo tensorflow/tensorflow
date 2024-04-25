@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_query.h"
+#include "xla/service/gpu/cudnn_support_utils.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/triton_tiling_propagation.h"
 #include "xla/service/instruction_fusion.h"
@@ -298,6 +299,11 @@ absl::Status TritonFusionAnalysis::ExecuteForDotFusion(
   while (!output->IsRoot()) {
     TF_RET_CHECK(output->user_count() == 1);
     const HloInstruction* input = output;
+    // Tuple with a custom call can be added at root to allocate a workspace
+    // buffer. These do not need to participate in propagation of dimensions.
+    if (IsWorkspaceAllocationRoot(*output->users()[0])) {
+      break;
+    }
     output = output->users()[0];
     DimOrdersAndReqsOrError result = GetPropagatedDimOrdersAndRequirements(
         *output, context.dim_orders().at(input),

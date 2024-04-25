@@ -23,7 +23,10 @@ limitations under the License.
 #include <utility>
 
 #include "tsl/platform/macros.h"
+
+#if GOOGLE_CUDA
 #include "tsl/profiler/lib/nvtx_utils.h"
+#endif
 
 #if !defined(IS_MOBILE_PLATFORM)
 #include "tsl/profiler/backends/cpu/annotation_stack.h"
