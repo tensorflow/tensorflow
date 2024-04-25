@@ -53,6 +53,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/kernels/batching_util/batch_scheduler.h"
 #include "tensorflow/core/kernels/batching_util/batch_scheduler_utils.h"
+#include "tensorflow/core/kernels/batching_util/batch_stats.h"
 #include "tensorflow/core/kernels/batching_util/concat_split_util.h"
 #include "tensorflow/core/kernels/batching_util/input_split_metadata.h"
 #include "tensorflow/core/kernels/batching_util/threadsafe_status.h"
@@ -1235,6 +1236,15 @@ void BatchResourceBase::SplitBatchCostsAndRecordMetrics(
     RecordBatchCosts(model_name, processed_size,
                      absl::StrCat(cost_type, kNoSmearSuffix),
                      total_cost / processed_size * batch.size());
+
+    if (cost_type == kTpuCostName) {
+      // Register TPU cost for in-process use.
+      GlobalBatchStats()
+          .model(model_name)
+          .batch_size(processed_size)
+          .tpu_cost()
+          .Register(total_cost);
+    }
 
     for (int i = 0; i < batch.num_tasks(); i++) {
       RequestCost* request_cost = batch.task(i).request_cost;

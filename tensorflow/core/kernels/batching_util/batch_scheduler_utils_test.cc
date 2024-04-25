@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/batching_util/batch_scheduler_utils.h"
 
+#include <string>
+
 #include <gtest/gtest.h>
 
 namespace tensorflow {
@@ -40,6 +42,33 @@ TEST(GetNextAllowedBatchSizeTest, AlreadyAllowedBatchSize) {
 
 TEST(GetNextAllowedBatchSizeTest, GreaterThanAllowedBatchSize) {
   EXPECT_EQ(GetNextAllowedBatchSize(10, {2, 4, 8}, false), 10);
+}
+
+TEST(BatchPaddingPolicyTest, AbslParseFlag) {
+  std::string error;
+  BatchPaddingPolicy policy;
+
+  EXPECT_TRUE(AbslParseFlag("PAD_UP", &policy, &error));
+  EXPECT_EQ(policy, BatchPaddingPolicy::kPadUp);
+  EXPECT_EQ(error, "");
+
+  EXPECT_TRUE(AbslParseFlag("BATCH_DOWN", &policy, &error));
+  EXPECT_EQ(policy, BatchPaddingPolicy::kBatchDown);
+  EXPECT_EQ(error, "");
+
+  EXPECT_TRUE(AbslParseFlag("MINIMIZE_TPU_COST_PER_REQUEST", &policy, &error));
+  EXPECT_EQ(policy, BatchPaddingPolicy::kMinimizeTpuCostPerRequest);
+  EXPECT_EQ(error, "");
+
+  EXPECT_FALSE(AbslParseFlag("cucumber", &policy, &error));
+  EXPECT_NE(error, "");
+}
+
+TEST(BatchPaddingPolicyTest, AbslUnparseFlag) {
+  EXPECT_EQ(AbslUnparseFlag(BatchPaddingPolicy::kPadUp), "PAD_UP");
+  EXPECT_EQ(AbslUnparseFlag(BatchPaddingPolicy::kBatchDown), "BATCH_DOWN");
+  EXPECT_EQ(AbslUnparseFlag(BatchPaddingPolicy::kMinimizeTpuCostPerRequest),
+            "MINIMIZE_TPU_COST_PER_REQUEST");
 }
 
 }  // namespace
