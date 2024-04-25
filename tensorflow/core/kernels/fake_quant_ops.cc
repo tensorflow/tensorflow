@@ -341,6 +341,7 @@ class FakeQuantWithMinMaxVarsPerChannelOp : public OpKernel {
       : OpKernel::OpKernel(context) {
     int num_bits;
     OP_REQUIRES_OK(context, context->GetAttr("num_bits", &num_bits));
+    OP_REQUIRES_OK(context, context->GetAttr("channel_dim", &channel_dim_));
     OP_REQUIRES(
         context, IsNumBitsValid(num_bits),
         InvalidArgument("num_bits must be between 2 and 16, inclusive"));
@@ -354,7 +355,7 @@ class FakeQuantWithMinMaxVarsPerChannelOp : public OpKernel {
   void Compute(OpKernelContext* context) override {
     CHECK_EQ(3, context->num_inputs());
     const Tensor& input = context->input(0);
-    const int depth = input.dim_size(input.dims() - 1);  // last dimension size.
+    const int depth = input.dim_size(channel_dim_);
     const Tensor& min = context->input(1);
     const Tensor& max = context->input(2);
 
@@ -382,6 +383,7 @@ class FakeQuantWithMinMaxVarsPerChannelOp : public OpKernel {
   }
 
  private:
+  int channel_dim_;
   int quant_min_;
   int quant_max_;
 };
