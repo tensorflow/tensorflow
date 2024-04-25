@@ -238,14 +238,17 @@ absl::StatusOr<AotResult> AotCompileSavedModel(
                                     std::string(input_model_dir),
                                     resource_context.get());
 
-  {
-    model_context.set_meta_graph_def(&meta_graph_def);
-    TF_RETURN_IF_ERROR(
-        aot_options.graph_execution_options->runtime->CreateRuntimeResources(
-            model_context));
-
-    model_context.set_meta_graph_def(nullptr);
-  }
+  CallableOptions callable_options =
+      CombineSignatureDefs(meta_graph_def.signature_def());
+  model_context.set_graph_def(&meta_graph_def.graph_def());
+  model_context.set_callable_options(&callable_options);
+  TF_RETURN_IF_ERROR(
+      aot_options.graph_execution_options->runtime->CreateRuntimeResources(
+          model_context));
+  // These are only needed for `CreateRuntimeResources`, and also safer
+  // since meta_graph_def will be moved.
+  model_context.set_graph_def(nullptr);
+  model_context.set_callable_options(nullptr);
 
   tfrt::BefBuffer bef;
   std::vector<std::string> xla_function_names;
