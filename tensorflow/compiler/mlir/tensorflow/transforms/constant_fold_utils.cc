@@ -134,7 +134,7 @@ LogicalResult EvaluateOperation(Operation* inst,
       node_def->get()->op(), node_def->get()->name(), host_cpu, operands.size(),
       [&](tensorflow::AttrValueMap* attr_value_map) {
         *attr_value_map = node_def->get()->attr();
-        return tensorflow::OkStatus();
+        return absl::OkStatus();
       },
       fallback_state.device_manager(),
       fallback_state.process_function_library_runtime());
