@@ -17,8 +17,10 @@ limitations under the License.
 #define XLA_PJRT_PJRT_FUTURE_H_
 
 #include <algorithm>
+#include <atomic>
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <optional>
 #include <type_traits>
 #include <utility>
@@ -185,11 +187,8 @@ class PjRtFutureBase : public PjRtFutureMoveControl<
     Promise(Promise&& other) = default;
     Promise& operator=(Promise&& other) = default;
 
-    Promise(const Promise& other) : ref_(other.ref_.CopyRef()) {}
-    Promise& operator=(const Promise& other) {
-      ref_ = other.ref_.CopyRef();
-      return *this;
-    }
+    Promise(const Promise& other) = default;
+    Promise& operator=(const Promise& other) = default;
 
     operator bool() const { return static_cast<bool>(ref_); }  // NOLINT
 
@@ -215,7 +214,7 @@ class PjRtFutureBase : public PjRtFutureMoveControl<
       ref_.template emplace<T>(std::forward<Args>(args)...);
     }
 
-    tsl::AsyncValueRef<T> ExtractRef() && { return std::move(ref_); }
+    tsl::AsyncValueRef<T> release() { return std::move(ref_); }
 
     tsl::RCReference<tsl::AsyncValue> CopyRCRef() const {
       return ref_.CopyRCRef();
@@ -223,8 +222,22 @@ class PjRtFutureBase : public PjRtFutureMoveControl<
 
     tsl::AsyncValue* GetAsyncValue() const { return ref_.GetAsyncValue(); }
 
+#ifndef NDEBUG
+    int64_t AddFuture() { return num_futures_->fetch_add(1); }
+#endif
+
    private:
     tsl::AsyncValueRef<T> ref_;
+
+#ifndef NDEBUG
+    // In debug builds we track the number of futures created from a promise to
+    // detect when a promise for a move-only type can be accidentally shared by
+    // multiple futures. We wrap the counter into shared pointer because promise
+    // for a unique future is still copyable, but only one future can be created
+    // from all the copies.
+    std::shared_ptr<std::atomic<int64_t>> num_futures_ =
+        std::make_shared<std::atomic<int64_t>>(0);
+#endif
   };
 
   PjRtFutureBase() = default;
@@ -348,8 +361,15 @@ class PjRtFuture : public internal::PjRtFutureBase<T> {
       Promise promise,
       PjRtFutureHelpers::OnBlockStartFn on_block_start = nullptr,
       PjRtFutureHelpers::OnBlockEndFn on_block_end = nullptr)
-      : Base(std::move(promise).ExtractRef(), std::move(on_block_start),
-             std::move(on_block_end)) {}
+      : Base(promise.release(), std::move(on_block_start),
+             std::move(on_block_end)) {
+#ifndef NDEBUG
+    if constexpr (Base::is_unique()) {
+      DCHECK_EQ(promise.AddFuture(), 0)
+          << "Unique PjRtFuture cannot share a promise object";
+    }
+#endif
+  }
 
   // Blocks the calling thread until the future is ready, then returns the
   // final value.
@@ -467,7 +487,7 @@ class PjRtFuture<void> : public internal::PjRtFutureBase<std::nullopt_t> {
       Promise promise,
       PjRtFutureHelpers::OnBlockStartFn on_block_start = nullptr,
       PjRtFutureHelpers::OnBlockEndFn on_block_end = nullptr)
-      : Base(std::move(promise).ExtractRef(), std::move(on_block_start),
+      : Base(promise.release(), std::move(on_block_start),
              std::move(on_block_end)) {}
 
   // Blocks the calling thread until the future is ready.
