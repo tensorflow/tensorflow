@@ -367,7 +367,7 @@ absl::Status DeserializeAoTMlirModule(
 }
 
 CallableOptions CombineSignatureDefs(
-    const proto2::Map<std::string, SignatureDef>& signature_defs) {
+    const google::protobuf::Map<std::string, SignatureDef>& signature_defs) {
   CallableOptions callable_options;
   for (const auto& sig_iter : signature_defs) {
     const auto& signature_def = sig_iter.second;
