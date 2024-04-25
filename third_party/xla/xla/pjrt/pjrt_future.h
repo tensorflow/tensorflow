@@ -251,16 +251,16 @@ class PjRtFutureBase : public PjRtFutureMoveControl<
 
   tsl::AsyncValuePtr<T> promise() const { return promise_.AsPtr(); }
 
-  PjRtFutureHelpers::ProfilingKeys OnBlockStart() {
+  PjRtFutureHelpers::ProfilingKeys OnBlockStart() const {
     return on_block_start_ ? on_block_start_()
                            : PjRtFutureHelpers::ProfilingKeys();
   }
 
-  void OnBlockEnd(PjRtFutureHelpers::ProfilingKeys keys) {
+  void OnBlockEnd(PjRtFutureHelpers::ProfilingKeys keys) const {
     if (on_block_end_) on_block_end_(std::move(keys));
   }
 
-  void BlockUntilReady() {
+  void BlockUntilReady() const {
     CHECK(IsValid());
     if (!promise().IsAvailable()) {
       PjRtFutureHelpers::ProfilingKeys keys = OnBlockStart();
@@ -366,6 +366,14 @@ class PjRtFuture : public internal::PjRtFutureBase<T> {
   // Blocks the calling thread until the future is ready, then returns the
   // final value.
   const T& Await() & {
+    Base::BlockUntilReady();
+    DCHECK(Base::promise().IsConcrete());
+    return *Base::promise();
+  }
+
+  // Blocks the calling thread until the future is ready, then returns the
+  // final value.
+  const T& Await() const& {
     Base::BlockUntilReady();
     DCHECK(Base::promise().IsConcrete());
     return *Base::promise();
