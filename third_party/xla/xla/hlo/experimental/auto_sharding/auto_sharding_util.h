@@ -233,12 +233,6 @@ inline bool IsTopKCustomCall(const HloInstruction* inst) {
          inst->custom_call_target() == "TopK";
 }
 
-// Return whether this instruction is a TopK custom call.
-inline bool IsPartialReduceCustomCall(const HloInstruction* inst) {
-  return inst->opcode() == HloOpcode::kCustomCall &&
-         inst->custom_call_target() == "PartialReduce";
-}
-
 // Pass through the custom call marker and get the source instruction
 inline const HloInstruction* PassThroughCustomCallMarkerGetSource(
     const HloInstruction* ins) {
@@ -667,9 +661,6 @@ bool IsShardingMisaligned(const HloSharding& sharding, const Shape& shape);
 HloSharding ReplaceGivenShardingsWithUnknownForTuple(
     const HloSharding& sharding, const Shape& shape,
     absl::Span<const bool> to_replace_sharding_ids);
-
-// Extract the reduction_dim of a PartialReduce custom call
-absl::StatusOr<int64_t> GetPartialReduceReductionDim(const HloInstruction* ins);
 
 }  // namespace spmd
 }  // namespace xla
