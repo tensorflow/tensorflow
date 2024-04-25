@@ -26,8 +26,12 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/primitive_util.h"
 #include "xla/service/executable.h"
+#include "xla/service/gpu/cudnn_fusion_compiler.h"
+#include "xla/service/gpu/runtime/thunk.h"
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
+#include "xla/service/pattern_matcher.h"
+#include "xla/service/pattern_matcher_gmock.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/stream_executor_pimpl.h"
 #include "xla/tests/filecheck.h"
@@ -74,6 +78,44 @@ class CuDnnFusionTest : public GpuCodegenTest {
 };
 
 using CuDnnFusionExecutionTest = CuDnnFusionTest;
+
+namespace m = ::xla::match;
+
+TEST_F(CuDnnFusionExecutionTest, WorkspaceAllocationWorks) {
+  if (!IsAtLeastCuDnn91()) {
+    GTEST_SKIP() << "This test case requests a workspace only with cuDNN 9.1+.";
+  }
+  const std::string kHloText = R"(
+fusion1 {
+  p0 = f32[32,96] parameter(0)
+  p1 = f32[96,64] parameter(1)
+  ROOT r = f32[32,64] dot(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+ENTRY e {
+  p0 = f32[32,96] parameter(0)
+  p1 = f32[96,64] parameter(1)
+  ROOT _ = f32[32,64] fusion(p0, p1), kind=kCustom, calls=fusion1,
+    backend_config={"fusion_backend_config": {kind: "__cudnn$fusion"}}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(kHloText));
+  Thunk::BinaryMap dnn_compiled_graphs;
+  CuDnnFusionCompiler cudnn_compiler(*backend().default_stream_executor(),
+                                     dnn_compiled_graphs);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, cudnn_compiler.Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::GetTupleElement(m::Fusion())));
+  EXPECT_THAT(module->entry_computation()
+                  ->root_instruction()
+                  ->operand(0)
+                  ->fused_instructions_computation()
+                  ->root_instruction(),
+              GmockMatch(m::Tuple(m::Dot(), m::CustomCall())));
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+}
 
 TEST_F(CuDnnFusionExecutionTest,
        NoTritonConfigIsAssignedAtZeroAutotuningLevel) {
@@ -347,8 +389,8 @@ ENTRY e {
 ; CHECK: ENTRY
 ; CHECK-NEXT: parameter
 ; CHECK-NEXT: parameter
-; CHECK-NEXT: ROOT
-; CHECK-SAME: command_buffer
+; CHECK: command_buffer
+; CHECK-NOT: fusion
 )");
   TF_ASSERT_OK(filecheck_result.status());
   EXPECT_TRUE(filecheck_result.value());
