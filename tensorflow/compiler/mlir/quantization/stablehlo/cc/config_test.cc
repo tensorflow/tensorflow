@@ -24,6 +24,7 @@ namespace {
 using ::testing::Eq;
 using ::testing::SizeIs;
 using ::testing::StrEq;
+using ::testing::Truly;
 
 TEST(PopulateDefaultsTest, PopulateDefaultsForEmptyConfig) {
   QuantizationConfig config{};
@@ -282,6 +283,15 @@ TEST(ExpandPresetsTest, ExpandWeightOnlyPtqPresetDefault) {
   EXPECT_THAT(spec.matcher().function_name().regex(),
               StrEq("^.*(conv|dot_general).*"));
   EXPECT_TRUE(spec.method().has_weight_only_ptq());
+
+  const WeightOnlyPtq& weight_only_ptq_spec = spec.method().weight_only_ptq();
+
+  EXPECT_THAT(weight_only_ptq_spec.input_quantized_types(),
+              UnorderedElementsAre(Pair(
+                  1, Truly([](const auto& quantized_type) {
+                    return quantized_type.has_dimension_specs() &&
+                           !quantized_type.dimension_specs().has_dimension();
+                  }))));
 }
 
 }  // namespace
