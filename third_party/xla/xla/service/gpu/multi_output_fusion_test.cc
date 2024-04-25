@@ -591,6 +591,50 @@ TEST_F(MultiOutputFusionTest, MultiOutputFusionSiblingLoopAndMultiOutputLoop) {
 }
 
 TEST_F(MultiOutputFusionTest,
+       MultiOutputFusionSiblingMultiOutputLoopAndMultiOutputLoop) {
+  auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
+    fused_computation_1 {
+      p0.1 = f32[8,16]{1,0} parameter(0)
+      mul = f32[8,16]{1,0} multiply(p0.1, p0.1)
+      exp = f32[8,16]{1,0} exponential(p0.1)
+      ROOT tuple = (f32[8,16]{1,0}, f32[8,16]{1,0}) tuple(mul, exp)
+    }
+
+    fused_computation_2 {
+      p0.2 = f32[8,16]{1,0} parameter(0)
+      const.2 = f32[] constant(0)
+      broadcast = f32[8,16]{1,0} broadcast(const.2),
+        dimensions={}
+      add = f32[8,16]{1,0} add(p0.2, broadcast)
+      ROOT tuple.1 = (f32[8,16]{1,0}, f32[8,16]{1,0}) tuple(add, broadcast)
+    }
+
+    ENTRY entry {
+      p0 = f32[8,16]{1,0} parameter(0)
+      fusion.1 = (f32[8,16]{1,0}, f32[8,16]{1,0}) fusion(p0), kind=kLoop,
+        calls=fused_computation_1
+      fusion.2 = (f32[8,16]{1,0}, f32[8,16]{1,0}) fusion(p0), kind=kLoop,
+        calls=fused_computation_2
+      gte0 = f32[8,16]{1,0} get-tuple-element(fusion.1), index=0
+      gte1 = f32[8,16]{1,0} get-tuple-element(fusion.1), index=1
+      gte2 = f32[8,16]{1,0} get-tuple-element(fusion.2), index=0
+      gte3 = f32[8,16]{1,0} get-tuple-element(fusion.2), index=1
+      ROOT root = (f32[8,16]{1,0}, f32[8,16]{1,0}, f32[8,16]{1,0},
+        f32[8,16]{1,0})
+        tuple(gte0, gte1, gte2, gte3)
+    })"))
+                    .value();
+  ASSERT_TRUE(mof_.Run(module.get()).value());
+  SCOPED_TRACE(module->ToString());
+  const HloInstruction* fusion =
+      module->entry_computation()->root_instruction()->operand(0)->operand(0);
+  ASSERT_TRUE(fusion->IsMultiOutputFusion());
+  EXPECT_THAT(
+      fusion->fused_expression_root(),
+      GmockMatch(m::Tuple(m::Multiply(), m::Exp(), m::Add(), m::Broadcast())));
+}
+
+TEST_F(MultiOutputFusionTest,
        MultiOutputFusionSiblingLoopAndMultiOutputLoopDifferentShapes) {
   auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
     fused_computation_1 {
