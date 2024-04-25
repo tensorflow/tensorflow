@@ -208,9 +208,21 @@ MlirOptimizationPassState MlirBridgePass::GetPassState(
     return MlirOptimizationPassState::Disabled;
   }
 
+  // TODO(b/328084279): when MlirBridgePass::GetPassState() returns
+  // MlirOptimizationPassState::FallbackEnabled or
+  // MlirOptimizationPassState::Enabled, Tensorflow imports a Graph to an
+  // MLIR module, calls MlirBridgePass::Run(), and exports the MLIR module to a
+  // Graph. The Graph->MLIR module->Graph round trip will not happen if
+  // MlirOptimizationPassState::Disabled is returned. Some input graphs with a
+  // TPU device in device_set yet without replication depends on the round
+  // trip, which does not always produce the same Graph. Call
+  // HasTPUDevice(*device_set) to ensure such graps work. Note
+  // MlirBridgePass::Run() will still reject such graphs that they do not go
+  // through the Phase 1 Bridge.
   return GetPassStateImpl(
       /*is_supported_by_replicated_brige*/ IsSupportedByReplicatedBridge(
-          graph, &function_library),
+          graph, &function_library) ||
+          HasTPUDevice(*device_set),
       config_proto, graph, function_library);
 }
 
