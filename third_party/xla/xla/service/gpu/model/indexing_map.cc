@@ -1089,8 +1089,8 @@ bool IsFunctionOfUnusedDimsAndSymbolsOnly(
 
 }  // namespace
 
-void IndexingMap::RemoveUnusedSymbols() {
-  if (IsUndefined()) return;
+SmallBitVector IndexingMap::RemoveUnusedSymbols() {
+  if (IsUndefined()) return {};
 
   // Remove unused symbols from the affine_map.
   unsigned num_symbols_before = affine_map_.getNumSymbols();
@@ -1130,7 +1130,7 @@ void IndexingMap::RemoveUnusedSymbols() {
 
   // Remap symbols in the constraint expressions accordingly.
   unsigned num_symbols_after = affine_map_.getNumSymbols();
-  if (num_symbols_after == num_symbols_before) return;
+  if (num_symbols_after == num_symbols_before) return {};
 
   std::vector<RangeVar> compressed_range_vars;
   std::vector<RTVar> compressed_rt_vars;
@@ -1166,6 +1166,7 @@ void IndexingMap::RemoveUnusedSymbols() {
   for (const auto& [expr, range] : to_add) {
     AddConstraint(expr, range);
   }
+  return unused_symbols_bit_vector;
 }
 
 void IndexingMap::MergeModConstraints() {

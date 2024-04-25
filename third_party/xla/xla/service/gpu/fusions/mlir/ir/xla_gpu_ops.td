@@ -256,13 +256,24 @@ def ApplyIndexingOp : XLAGPU_Op<"apply_indexing", [Pure]> {
                        DenseI64ArrayAttr:$upper_bounds);
   let results = (outs Variadic<Index>);
 
-
+  let builders = [
+    OpBuilder<(ins "mlir::ValueRange":$operands,
+                   "const IndexingMap&":$indexing_map)>,
+    OpBuilder<(ins "mlir::ValueRange":$operands, "mlir::AffineMap":$affine_map,
+               "llvm::ArrayRef<DimVar>":$dim_vars,
+               "llvm::ArrayRef<RangeVar>":$range_vars)>,
+    OpBuilder<(ins "mlir::ValueRange":$operands,
+                   "mlir::AffineMap":$affine_map,
+                   "llvm::ArrayRef<int64_t>":$lower_bounds,
+                   "llvm::ArrayRef<int64_t>":$upper_bounds)>,
+  ];
   let extraClassDeclaration = [{
     // Return an indexing map constructed from affine_map and the bounds.
     xla::gpu::IndexingMap getIndexingMap();
   }];
   let hasCustomAssemblyFormat = 1;
   let hasVerifier = 1;
+  let hasCanonicalizer = 1;
 }
 
 #endif // MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS

@@ -323,7 +323,9 @@ class IndexingMap {
   bool IsUndefined() const { return affine_map_ == mlir::AffineMap(); }
 
   // Removes unused symbols from the `affine_map_` and constraints.
-  void RemoveUnusedSymbols();
+  // Returns a bit vector of symbols that were removed. If none of the symbols
+  // were removed, returns {}.
+  llvm::SmallBitVector RemoveUnusedSymbols();
 
   // Rescales all symbols that are sufficiently constrained through `s? mod x =
   // [N, N]` constraints. Returns true if a rescale took place, otherwise false.

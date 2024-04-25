@@ -16,9 +16,9 @@ limitations under the License.
 #include "xla/service/gpu/fusions/mlir/ir/xla_gpu_ops.h"
 
 #include <cstdint>
-#include <utility>
 #include <vector>
 
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/ADT/TypeSwitch.h"  // IWYU pragma: keep
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -34,12 +34,14 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/InliningUtils.h"  // from @llvm-project
 #include "xla/service/gpu/fusions/mlir/ir/xla_gpu_dialect.cc.inc"
+#include "xla/service/gpu/model/indexing_analysis.h"
 #include "xla/service/gpu/model/indexing_map.h"
 
 namespace xla {
 namespace gpu {
 namespace {
 
+using llvm::ArrayRef;
 using mlir::AffineMap;
 using mlir::failure;
 using mlir::LogicalResult;
@@ -144,6 +146,39 @@ void AllocateSharedOp::getAsmResultNames(
 //===----------------------------------------------------------------------===//
 // ApplyIndexingOp
 //===----------------------------------------------------------------------===//
+
+void ApplyIndexingOp::build(OpBuilder &builder, OperationState &result,
+                            ValueRange operands,
+                            const IndexingMap &indexing_map) {
+  build(builder, result, operands, indexing_map.GetAffineMap(),
+        indexing_map.GetDimVars(), indexing_map.GetRangeVars());
+}
+
+void ApplyIndexingOp::build(OpBuilder &builder, OperationState &result,
+                            ValueRange operands, AffineMap affine_map,
+                            ArrayRef<DimVar> dim_vars,
+                            ArrayRef<RangeVar> range_vars) {
+  SmallVector<int64_t, 4> lower_bounds, upper_bounds;
+  for (const DimVar &dim_var : dim_vars) {
+    lower_bounds.push_back(dim_var.bounds.lower);
+    upper_bounds.push_back(dim_var.bounds.upper);
+  }
+  for (const RangeVar &range_var : range_vars) {
+    lower_bounds.push_back(range_var.range.lower);
+    upper_bounds.push_back(range_var.range.upper);
+  }
+  build(builder, result, operands, affine_map, lower_bounds, upper_bounds);
+}
+
+void ApplyIndexingOp::build(OpBuilder &builder, OperationState &result,
+                            ValueRange operands, AffineMap affine_map,
+                            ArrayRef<int64_t> lower_bounds,
+                            ArrayRef<int64_t> upper_bounds) {
+  SmallVector<Type, 2> result_types(affine_map.getNumResults(),
+                                    builder.getIndexType());
+  build(builder, result, result_types, operands, affine_map, lower_bounds,
+        upper_bounds);
+}
 
 // Parser a comma-separated list of type %operand in [lower_bound, upper_bound].
 // Adds the parsed elements to the provided containers.
@@ -285,6 +320,46 @@ IndexingMap ApplyIndexingOp::getIndexingMap() {
   }
   return IndexingMap(affine_map, std::move(dim_vars), std::move(range_vars),
                      /*rt_vars=*/{});
+}
+
+namespace {
+
+struct SimplifyIndexingMap : public mlir::OpRewritePattern<ApplyIndexingOp> {
+  using OpRewritePattern<ApplyIndexingOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(
+      ApplyIndexingOp indexing_op,
+      mlir::PatternRewriter &rewriter) const override {
+    IndexingMap indexing_map = indexing_op.getIndexingMap();
+    if (!indexing_map.Simplify(GetIndexingMapForInstruction)) {
+      return failure();
+    }
+
+    // Remove unused symbols.
+    auto unused_symbols_bit_vector = indexing_map.RemoveUnusedSymbols();
+    if (!unused_symbols_bit_vector.empty()) {
+      SmallVector<Value, 4> operands = indexing_op.getOperands().take_front(
+          indexing_map.GetDimensionCount());
+      for (int i = 0; i < unused_symbols_bit_vector.size(); ++i) {
+        if (!unused_symbols_bit_vector[i]) {
+          operands.push_back(indexing_op.getOperand(i));
+        }
+      }
+      rewriter.replaceOpWithNewOp<ApplyIndexingOp>(indexing_op, operands,
+                                                   indexing_map);
+    } else {
+      rewriter.replaceOpWithNewOp<ApplyIndexingOp>(
+          indexing_op, indexing_op.getOperands(), indexing_map);
+    }
+    return success();
+  }
+};
+
+}  // namespace
+
+void ApplyIndexingOp::getCanonicalizationPatterns(
+    mlir::RewritePatternSet &results, mlir::MLIRContext *context) {
+  results.add<SimplifyIndexingMap>(context);
 }
 
 //===----------------------------------------------------------------------===//
