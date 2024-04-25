@@ -83,8 +83,6 @@ using ::mlir::quant::stablehlo::UpdateFunctionAliases;
 using ::stablehlo::quantization::AddCalibrationStatistics;
 using ::stablehlo::quantization::ChangeToQuantizedFilename;
 using ::stablehlo::quantization::DebuggerConfig;
-using ::stablehlo::quantization::DisableDebugging;
-using ::stablehlo::quantization::EnableDebugging;
 using ::stablehlo::quantization::ExpandPresets;
 using ::stablehlo::quantization::PopulateDefaults;
 using ::stablehlo::quantization::QuantizationConfig;
@@ -164,8 +162,6 @@ absl::StatusOr<ExportedModel> ExportCalibrationModel(
   // be reflected in the original values.
   mlir::OwningOpRef<mlir::ModuleOp> cloned_module_ref(module_op.clone());
 
-  // Disable DumpTensor ops when running calibration.
-  DisableDebugging(*cloned_module_ref);
   TF_RETURN_IF_ERROR(
       RunCalibrationPasses(*cloned_module_ref, *context, calibration_data_dir));
 
@@ -176,6 +172,27 @@ absl::StatusOr<ExportedModel> ExportCalibrationModel(
   if (!exported_model.status().ok()) {
     return absl::InternalError(
         absl::StrCat("Failed to export calibration model: ",
+                     exported_model.status().message()));
+  }
+
+  return *exported_model;
+}
+
+absl::StatusOr<ExportedModel> ExportDebuggingModel(
+    mlir::ModuleOp module_op, mlir::MLIRContext *context,
+    const QuantizationOptions &quantization_options,
+    const absl::flat_hash_map<std::string, std::string> &function_aliases) {
+  // Clone ModuleOp and function aliases so changes in this pipeline won't
+  // be reflected in the original values.
+  mlir::OwningOpRef<mlir::ModuleOp> cloned_module_ref(module_op.clone());
+
+  absl::StatusOr<ExportedModel> exported_model = ModuleOpToExportedModel(
+      *cloned_module_ref, context, kTfQuantPtqPreCalibrationStepName,
+      /*unfreeze_constants=*/!quantization_options.freeze_all_variables(),
+      function_aliases);
+  if (!exported_model.status().ok()) {
+    return absl::InternalError(
+        absl::StrCat("Failed to export debugging model: ",
                      exported_model.status().message()));
   }
 
@@ -430,18 +447,16 @@ absl::StatusOr<ExportedModel> QuantizeStaticRangePtq(
 
   // TODO: b/333809933 - Make the calibration statistics directory configurable.
   TF_ASSIGN_OR_RETURN(std::string calibration_data_dir, CreateTmpDir());
+  TF_ASSIGN_OR_RETURN(ExportedModel calibration_exported_model,
+                      QuantizePtqModelPreCalibrationImpl(
+                          *module_ref, context.get(), quantization_options,
+                          *function_aliases, calibration_data_dir));
 
-  TF_ASSIGN_OR_RETURN(
-      absl::StatusOr<ExportedModel> pre_calibration_exported_model,
-      QuantizePtqModelPreCalibrationImpl(
-          *module_ref, context.get(), quantization_options, *function_aliases,
-          calibration_data_dir));
-
+  // Save and run the calibration model.
   TF_ASSIGN_OR_RETURN(std::string precalibrated_saved_model_dir,
                       CreateTmpDir());
-
   py_function_library.SaveExportedModel(
-      precalibrated_saved_model_dir, *pre_calibration_exported_model,
+      precalibrated_saved_model_dir, calibration_exported_model,
       saved_model_path, tags, signature_def_map);
 
   py_function_library.RunCalibration(
@@ -468,14 +483,17 @@ absl::StatusOr<ExportedModel> QuantizeStaticRangePtq(
   if (quantization_options.has_debugger_config() &&
       quantization_options.debugger_config().debugger_type() ==
           DebuggerConfig::DEBUGGER_TYPE_WHOLE_MODEL) {
-    EnableDebugging(*pre_calibration_exported_model);
+    TF_ASSIGN_OR_RETURN(
+        ExportedModel debugging_exported_model,
+        ExportDebuggingModel(*module_ref, context.get(), quantization_options,
+                             *function_aliases));
     ChangeToQuantizedFilename(*module_ref);
 
     absl::string_view unquantized_dump_model_path =
         quantization_options.debugger_config().unquantized_dump_model_path();
     py_function_library.SaveExportedModel(
-        unquantized_dump_model_path, *pre_calibration_exported_model,
-        saved_model_path, tags, signature_def_map);
+        unquantized_dump_model_path, debugging_exported_model, saved_model_path,
+        tags, signature_def_map);
   }
 
   return QuantizePtqModelPostCalibrationImpl(

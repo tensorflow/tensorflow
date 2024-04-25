@@ -16,15 +16,11 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_QUANTIZATION_STABLEHLO_CC_DEBUGGER_H_
 
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/quantization/tensorflow/exported_model.pb.h"
 
 namespace stablehlo::quantization {
 
 // Disables debugging on `DumpTensor` ops.
 void DisableDebugging(mlir::ModuleOp module_op);
-
-// Enables debugging on `DumpTensor` ops.
-void EnableDebugging(tensorflow::quantization::ExportedModel& exported_model);
 
 // Changes the filename from `unquantized_tensor_data.pb` to
 // `quantized_tensor_data.pb`.

@@ -67,6 +67,9 @@ using ::tensorflow::quantization::RunPasses;
 
 absl::Status RunCalibrationPasses(mlir::ModuleOp module_op, MLIRContext& ctx,
                                   absl::string_view calibration_data_dir) {
+  // Disable DumpTensor ops when running calibration.
+  DisableDebugging(module_op);
+
   return RunPasses(
       /*name=*/
       CalibrationComponent::kName,
@@ -102,9 +105,6 @@ absl::StatusOr<ExportedModel> CalibrationComponent::ExportToSavedModel(
   // Clone ModuleOp and function aliases so changes in this pipeline won't
   // be reflected in the original values.
   mlir::OwningOpRef<mlir::ModuleOp> cloned_module_ref(module_op.clone());
-
-  // Disable DumpTensor ops when running calibration.
-  DisableDebugging(*cloned_module_ref);
 
   TF_RETURN_IF_ERROR(
       RunCalibrationPasses(*cloned_module_ref, *ctx_, calibration_data_dir));
