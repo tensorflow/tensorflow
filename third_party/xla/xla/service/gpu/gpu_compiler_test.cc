@@ -68,6 +68,12 @@ class GpuCompilerTest : public HloTestBase {
     return tensorflow::down_cast<GpuCompiler*>(compiler)
         ->RunPostSchedulingPipelines(module, 4 * 1024 * 1024, gpu_device_info);
   }
+  const auto& device_desc() {
+    return backend().default_stream_executor()->GetDeviceDescription();
+  }
+  const se::GpuComputeCapability& GpuComputeComp() {
+    return device_desc().gpu_compute_capability();
+  }
 };
 
 TEST_F(GpuCompilerTest, CompiledProgramsCount) {
@@ -330,6 +336,9 @@ ENTRY main {
 
 TEST_F(GpuCompilerTest,
        GemmFusionIsNoOpWhenGemmFusionAutotunerFallsBackToCublas) {
+  if (std::holds_alternative<se::RocmComputeCapability>(GpuComputeComp())) {
+    GTEST_SKIP() << "Folder structure differences prevents finding of gpu_compiler_test_autotune_db.textproto.";
+  }
   const absl::string_view hlo_string = R"(
 HloModule test
 
