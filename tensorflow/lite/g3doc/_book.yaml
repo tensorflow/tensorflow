@@ -142,6 +142,7 @@ upper_tabs:
         path: /lite/android/delegates/nnapi
       - title: "Hexagon delegate"
         path: /lite/android/delegates/hexagon
+        status: unsupported
 
       - heading: "Models with metadata"
       - title: "Overview"
