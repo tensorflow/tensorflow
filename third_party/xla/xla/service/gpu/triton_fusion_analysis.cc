@@ -320,6 +320,17 @@ absl::Status TritonFusionAnalysis::ExecuteForDotFusion(
   return absl::OkStatus();
 }
 
+std::optional<TritonFusionAnalysis::Scope>
+TritonFusionAnalysis::QueryInstructionScope(const HloInstruction& hlo) const {
+  for (const Scope& scope : {Scope::LHS, Scope::RHS, Scope::OUTPUT}) {
+    if (iter_specs_.at(scope).count(&hlo) > 0) {
+      return scope;
+    }
+  }
+  LOG(WARNING) << "No scope for hlo: " << hlo.ToString();
+  return std::nullopt;
+}
+
 const TensorIterationSpec::DimIterationSpec* TritonFusionAnalysis::IterSpec(
     const TritonFusionAnalysis::Scope scope, const HloInstruction* hlo,
     const int dimension) const {
