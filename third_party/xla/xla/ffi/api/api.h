@@ -1278,20 +1278,31 @@ class Handler : public Ffi {
   XLA_FFI_Error* FailedDecodeError(const XLA_FFI_CallFrame* call_frame,
                                    std::array<bool, kSize> decoded,
                                    const DiagnosticEngine& diagnostic) const {
-    std::string message =
-        "Failed to decode all FFI handler operands (bad operands at: ";
+    auto stage = [&] {
+      switch (call_frame->stage) {
+        case XLA_FFI_ExecutionStage_PREPARE:
+          return "prepare";
+        case XLA_FFI_ExecutionStage_INITIALIZE:
+          return "initialize";
+        case XLA_FFI_ExecutionStage_EXECUTE:
+          return "execute";
+      }
+    };
+
+    std::stringstream message;
+    message << "[" << stage() << "] "
+            << "Failed to decode all FFI handler operands (bad operands at: ";
     for (size_t cnt = 0, idx = 0; idx < kSize; ++idx) {
       if (!decoded[idx]) {
-        if (cnt++) message.append(", ");
-        message.append(std::to_string(idx));
+        if (cnt++) message << ", ";
+        message << std::to_string(idx);
       }
     }
-    message.append(")");
+    message << ")";
     if (auto s = std::move(diagnostic).Result(); !s.empty()) {
-      message.append("\nDiagnostics:\n");
-      message.append(s);
+      message << "\nDiagnostics:\n" << s;
     }
-    return InvalidArgument(call_frame->api, message);
+    return InvalidArgument(call_frame->api, message.str());
   }
 
   template <typename...>

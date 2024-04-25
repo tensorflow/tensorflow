@@ -220,10 +220,12 @@ CallFrame::CallFrame(absl::Span<const CallFrameBuilder::Buffer> args,
       attributes_(InitAttrs(attrs)) {}
 
 XLA_FFI_CallFrame CallFrame::Build(const XLA_FFI_Api* api,
-                                   XLA_FFI_ExecutionContext* ctx) {
+                                   XLA_FFI_ExecutionContext* ctx,
+                                   XLA_FFI_ExecutionStage stage) {
   XLA_FFI_CallFrame call_frame = {XLA_FFI_CallFrame_STRUCT_SIZE, nullptr};
   call_frame.api = api;
   call_frame.ctx = ctx;
+  call_frame.stage = stage;
   call_frame.args = arguments_->ffi_args;
   call_frame.rets = results_->ffi_rets;
   call_frame.attrs = attributes_->ffi_attrs;

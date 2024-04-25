@@ -112,7 +112,8 @@ absl::Status CustomCallThunk::ExecuteCustomCall(const ExecuteParams& params) {
 }
 
 absl::Status CustomCallThunk::ExecuteFfiHandler(
-    XLA_FFI_Handler* handler, int32_t device_ordinal, se::Stream* stream,
+    XLA_FFI_Handler* handler, XLA_FFI_ExecutionStage stage,
+    int32_t device_ordinal, se::Stream* stream,
     se::DeviceMemoryAllocator* allocator,
     const ffi::ExecutionContext* execution_context,
     const BufferAllocations* buffer_allocations) {
@@ -155,7 +156,7 @@ absl::Status CustomCallThunk::ExecuteFfiHandler(
 
   CallOptions options = {device_ordinal, stream, allocator, called_computation_,
                          execution_context};
-  return Call(bundle_->execute, call_frame, options);
+  return Call(bundle_->execute, call_frame, options, stage);
 }
 
 absl::Status CustomCallThunk::Prepare(const PrepareParams& params,
@@ -172,16 +173,18 @@ absl::Status CustomCallThunk::Initialize(const InitializeParams& params) {
   }
 
   return ExecuteFfiHandler(
-      bundle_->initialize, params.buffer_allocations->device_ordinal(),
-      params.stream, params.buffer_allocations->memory_allocator(),
+      bundle_->initialize, XLA_FFI_ExecutionStage_INITIALIZE,
+      params.buffer_allocations->device_ordinal(), params.stream,
+      params.buffer_allocations->memory_allocator(),
       params.ffi_execution_context, params.buffer_allocations);
 }
 
 absl::Status CustomCallThunk::ExecuteOnStream(const ExecuteParams& params) {
   if (bundle_.has_value()) {
     return ExecuteFfiHandler(
-        bundle_->execute, params.buffer_allocations->device_ordinal(),
-        params.stream, params.buffer_allocations->memory_allocator(),
+        bundle_->execute, XLA_FFI_ExecutionStage_EXECUTE,
+        params.buffer_allocations->device_ordinal(), params.stream,
+        params.buffer_allocations->memory_allocator(),
         params.ffi_execution_context, params.buffer_allocations);
   }
   return ExecuteCustomCall(params);
