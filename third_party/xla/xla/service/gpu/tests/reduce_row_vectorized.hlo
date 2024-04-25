@@ -89,7 +89,6 @@ ENTRY reduce.1 {
 // CHECK:       loop1.loop_body:                                  ; preds = %[[VAL_44]]
 // CHECK:         %[[VAL_50:.*]] = add nuw nsw i32 %[[VAL_46]], 4
 // CHECK:         store i32 %[[VAL_50]], ptr %[[VAL_27]], align 4
-// CHECK:         %[[VAL_51:.*]] = icmp eq i32 %[[VAL_46]], %thread.id.1
 // CHECK:         br i1 true, label %[[VAL_52:.*]], label %[[VAL_53:.*]]
 // CHECK:       is_full_tile-after:                               ; preds = %[[VAL_54:.*]], %[[VAL_55:.*]]
 // CHECK:         br label %[[VAL_44]], !llvm.loop !5
@@ -139,7 +138,6 @@ ENTRY reduce.1 {
 // CHECK:       loop2.loop_body:                                  ; preds = %[[VAL_74]]
 // CHECK:         %[[VAL_79:.*]] = add nuw nsw i32 %[[VAL_76]], 64
 // CHECK:         store i32 %[[VAL_79]], ptr %[[VAL_26]], align 4
-// CHECK:         %[[VAL_80:.*]] = icmp eq i32 %[[VAL_76]], 0
 // CHECK:         %[[VAL_81:.*]] = add i32 %[[VAL_76]], %thread.id.2
 // CHECK:         store i32 0, ptr %[[VAL_25]], align 4
 // CHECK:         br label %[[VAL_82:.*]]
@@ -150,7 +148,6 @@ ENTRY reduce.1 {
 // CHECK:       loop3.loop_body:                                  ; preds = %[[VAL_82]]
 // CHECK:         %[[VAL_86:.*]] = add nuw nsw i32 %[[VAL_84]], 1
 // CHECK:         store i32 %[[VAL_86]], ptr %[[VAL_25]], align 4
-// CHECK:         %[[VAL_87:.*]] = icmp eq i32 %[[VAL_84]], 0
 // CHECK:         %[[VAL_88:.*]] = add i32 %tile_origin.0, 0
 // CHECK:         %[[VAL_89:.*]] = add i32 %tile_origin.1, %[[VAL_46]]
 // CHECK:         %[[VAL_90:.*]] = add i32 %tile_origin.2, %[[VAL_81]]
@@ -186,7 +183,6 @@ ENTRY reduce.1 {
 // CHECK:       loop2.loop_body6:                                 ; preds = %[[VAL_106]]
 // CHECK:         %[[VAL_111:.*]] = add nuw nsw i32 %[[VAL_108]], 64
 // CHECK:         store i32 %[[VAL_111]], ptr %[[VAL_23]], align 4
-// CHECK:         %[[VAL_112:.*]] = icmp eq i32 %[[VAL_108]], 0
 // CHECK:         %[[VAL_113:.*]] = add i32 %[[VAL_108]], %thread.id.2
 // CHECK:         %[[VAL_114:.*]] = icmp ult i32 %[[VAL_113]], 512
 // CHECK:         br i1 %[[VAL_114]], label %[[VAL_115:.*]], label %[[VAL_107]]
@@ -204,7 +200,6 @@ ENTRY reduce.1 {
 // CHECK:       loop3.loop_body12:                                ; preds = %[[VAL_117]]
 // CHECK:         %[[VAL_121:.*]] = add nuw nsw i32 %[[VAL_119]], 1
 // CHECK:         store i32 %[[VAL_121]], ptr %[[VAL_22]], align 4
-// CHECK:         %[[VAL_122:.*]] = icmp eq i32 %[[VAL_119]], 0
 // CHECK:         %[[VAL_123:.*]] = add i32 %tile_origin.0, 0
 // CHECK:         %[[VAL_124:.*]] = add i32 %tile_origin.1, %[[VAL_46]]
 // CHECK:         %[[VAL_125:.*]] = add i32 %tile_origin.2, %[[VAL_113]]
