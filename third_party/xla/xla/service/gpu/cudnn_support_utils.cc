@@ -212,5 +212,12 @@ CudnnInferTransposeForBiasReordering(const Shape& shape) {
   return CudnnReorderTransposeConfig{split_shape, shape, permutation};
 }
 
+bool IsWorkspaceAllocationRoot(const HloInstruction& root) {
+  return root.IsRoot() && root.opcode() == HloOpcode::kTuple &&
+         root.operand_count() == 2 &&
+         root.operand(1)->IsCustomCall(kWorkspaceAllocationCustomCallTarget) &&
+         root.operand(1)->operand_count() == 0;
+}
+
 }  // namespace gpu
 }  // namespace xla
