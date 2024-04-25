@@ -177,9 +177,10 @@ class PjRtFutureBase : public PjRtFutureMoveControl<
   // caller only using move assignment.
   static constexpr bool is_unique() { return !std::is_copy_constructible_v<T>; }
 
-  // Wrapper for AsyncValueRef<T> that can be used by clients that don't
-  // natively use TSL concurrency library. Stateless and stateful PjRtFuture<T>
-  // specializations define their own Promise type inheriting from this one.
+  // PjRtFuture<T>::Promise provides a facility to store a value or an error
+  // that is later acquired asynchronously via a PjRtFuture<T> constructed from
+  // the promise object. Note that the promise object is meant to be used only
+  // once (set value or error).
   class Promise {
    public:
     Promise() = default;
@@ -214,13 +215,13 @@ class PjRtFutureBase : public PjRtFutureMoveControl<
       ref_.template emplace<T>(std::forward<Args>(args)...);
     }
 
+    // Releases the underlying AsyncValueRef container to the caller.
     tsl::AsyncValueRef<T> release() { return std::move(ref_); }
 
-    tsl::RCReference<tsl::AsyncValue> CopyRCRef() const {
-      return ref_.CopyRCRef();
-    }
-
-    tsl::AsyncValue* GetAsyncValue() const { return ref_.GetAsyncValue(); }
+    // Returns a pointer to the underlying AsyncValue that can be used to
+    // track completion of a promise. It is undefined behavior to access the
+    // value stored in the AsyncValue.
+    tsl::AsyncValue* async_value() const { return ref_.GetAsyncValue(); }
 
 #ifndef NDEBUG
     int64_t AddFuture() { return num_futures_->fetch_add(1); }
@@ -312,8 +313,6 @@ class PjRtFuture : public internal::PjRtFutureBase<T> {
                 "Use PjRtFuture<> specialization for stateless futures");
 
  public:
-  // Wrapper for AsyncValueRef<T> that can be used by clients that don't
-  // natively use TSL concurrency library.
   class Promise : public Base::Promise {
    public:
     using Base::Promise::Promise;
@@ -449,19 +448,10 @@ class PjRtFuture<void> : public internal::PjRtFutureBase<std::nullopt_t> {
   using Base = internal::PjRtFutureBase<std::nullopt_t>;
 
  public:
-  // Wrapper for AsyncValueRef<T> that can be used by clients that don't
-  // natively use TSL concurrency library.
   class Promise : public Base::Promise {
    public:
+    using Base::Promise::async_value;
     using Base::Promise::Promise;
-
-    // Returns a reference to the underlying AsyncValue that can be used to
-    // track completion of a promise. It is undefined behavior to access the
-    // value stored in the AsyncValue.
-    using Base::Promise::CopyRCRef;
-
-    // Same as above but returns non-owned pointer to underlying AsyncValue.
-    using Base::Promise::GetAsyncValue;
 
     // Sets the promise completed with a given status. Must be called at most
     // once.
