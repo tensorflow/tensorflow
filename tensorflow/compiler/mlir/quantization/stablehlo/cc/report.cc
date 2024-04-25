@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "llvm/Support/raw_ostream.h"
@@ -27,6 +28,7 @@ limitations under the License.
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/quantization/common/lift_as_function_call.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/io.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep
@@ -37,6 +39,7 @@ namespace {
 using ::stablehlo::quantization::Method;
 using ::stablehlo::quantization::QuantizationResult;
 using ::stablehlo::quantization::QuantizationResults;
+using ::stablehlo::quantization::io::WriteStringToFile;
 using ::tsl::protobuf::TextFormat;
 
 // Given a `quantized_func_name` that starts with `kQuantizedFuncPrefix`,
@@ -160,6 +163,13 @@ std::string QuantizationReport::ToString() const {
 void QuantizationReport::Print() const {
   llvm::outs() << ToString();
   llvm::outs().flush();  // Show the report immediately.
+}
+
+absl::Status QuantizationReport::Save(const StringRef file_path) const {
+  std::string results_str{};
+  TextFormat::PrintToString(GetQuantizationResults(), &results_str);
+
+  return WriteStringToFile(file_path, results_str);
 }
 
 }  // namespace mlir::quant::stablehlo
