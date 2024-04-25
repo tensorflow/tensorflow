@@ -171,6 +171,10 @@ class PjRtFutureBase : public PjRtFutureMoveControl<
   }
 
  protected:
+  // Returns `true` if the future holds a unique value that can be passed to the
+  // caller only using move assignment.
+  static constexpr bool is_unique() { return !std::is_copy_constructible_v<T>; }
+
   // Wrapper for AsyncValueRef<T> that can be used by clients that don't
   // natively use TSL concurrency library. Stateless and stateful PjRtFuture<T>
   // specializations define their own Promise type inheriting from this one.
@@ -241,6 +245,15 @@ class PjRtFutureBase : public PjRtFutureMoveControl<
 
   void OnBlockEnd(PjRtFutureHelpers::ProfilingKeys keys) {
     if (on_block_end_) on_block_end_(std::move(keys));
+  }
+
+  void BlockUntilReady() {
+    CHECK(IsValid());
+    if (!promise().IsAvailable()) {
+      PjRtFutureHelpers::ProfilingKeys keys = OnBlockStart();
+      tsl::BlockUntilReady(promise());
+      OnBlockEnd(std::move(keys));
+    }
   }
 
  private:
@@ -340,15 +353,26 @@ class PjRtFuture : public internal::PjRtFutureBase<T> {
 
   // Blocks the calling thread until the future is ready, then returns the
   // final value.
-  T Await() {
-    CHECK(Base::IsValid());
-    if (!Base::promise().IsAvailable()) {
-      PjRtFutureHelpers::ProfilingKeys keys = Base::OnBlockStart();
-      BlockUntilReady(Base::promise());
-      Base::OnBlockEnd(std::move(keys));
-    }
+  const T& Await() & {
+    Base::BlockUntilReady();
     DCHECK(Base::promise().IsConcrete());
     return *Base::promise();
+  }
+
+  // Blocks the calling thread until the future is ready, then returns the
+  // final value.
+  std::conditional_t<Base::is_unique(), T, const T&> Await() && {
+    Base::BlockUntilReady();
+    DCHECK(Base::promise().IsConcrete());
+
+    if constexpr (Base::is_unique()) {
+      return std::move(*Base::promise());
+    } else {
+      // We can't move from the promise to the caller because for non-unique
+      // futures we can have multiple copies of the PjRtFuture sharing the
+      // same underlying promise object.
+      return *Base::promise();
+    }
   }
 
   // Registers callback to be called once the promise is ready, with the final
@@ -449,11 +473,7 @@ class PjRtFuture<void> : public internal::PjRtFutureBase<std::nullopt_t> {
   // Blocks the calling thread until the future is ready.
   absl::Status Await() {
     CHECK(Base::IsValid());
-    if (!Base::promise().IsAvailable()) {
-      PjRtFutureHelpers::ProfilingKeys keys = Base::OnBlockStart();
-      BlockUntilReady(Base::promise());
-      Base::OnBlockEnd(std::move(keys));
-    }
+    Base::BlockUntilReady();
     return Base::promise().IsError() ? Base::promise().GetError()
                                      : absl::OkStatus();
   }

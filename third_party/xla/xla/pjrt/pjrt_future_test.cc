@@ -76,6 +76,16 @@ TEST(PjRtFutureTest, MoveAssignedFuture) {
   EXPECT_TRUE(move_assigned.IsReady());
 }
 
+TEST(PjRtFutureTest, AwaitMoveOnlyFuture) {
+  auto promise = PjRtFuture<std::unique_ptr<int32_t>>::CreatePromise();
+  PjRtFuture<std::unique_ptr<int32_t>> future(promise);
+
+  promise.Set(std::make_unique<int32_t>(42));
+
+  EXPECT_EQ(*future.Await(), 42);
+  EXPECT_EQ(*std::move(future).Await(), 42);
+}
+
 TEST(PjRtFutureTest, StatelessError) {
   auto promise = PjRtFuture<>::CreatePromise();
   PjRtFuture<> future(promise);
