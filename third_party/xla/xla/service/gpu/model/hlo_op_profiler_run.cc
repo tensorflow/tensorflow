@@ -33,6 +33,7 @@ limitations under the License.
 #include "tsl/platform/env.h"
 #include "tsl/platform/init_main.h"
 #include "tsl/platform/path.h"
+#include "tsl/platform/protobuf.h"
 #include "tsl/platform/status.h"
 
 namespace xla {
@@ -57,8 +58,9 @@ void WriteOutput(const DeviceHloInstructionProfiles& literal,
     file_name = tsl::io::GetTempFilename(absl::StrCat(name, ".textproto"));
   }
   VLOG(0) << "Writing output to " << file_name;
-  TF_CHECK_OK(tsl::WriteStringToFile(tsl::Env::Default(), file_name,
-                                     literal.DebugString()));
+  TF_CHECK_OK(
+      tsl::WriteStringToFile(tsl::Env::Default(), file_name,
+                             tsl::LegacyUnredactedDebugString(literal)));
 }
 
 int RunProfiler(int argc, char** argv) {

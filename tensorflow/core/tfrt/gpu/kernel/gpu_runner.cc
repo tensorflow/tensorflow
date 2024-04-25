@@ -55,6 +55,7 @@ limitations under the License.
 #include "tsl/framework/serving_device_selector.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/fingerprint.h"
+#include "tsl/platform/protobuf.h"
 #include "tsl/platform/statusor.h"
 #include "tfrt/host_context/async_dispatch.h"  // from @tf_runtime
 #include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
@@ -293,7 +294,7 @@ absl::StatusOr<uint64_t> GenerateFingerprint(
   return tsl::Fingerprint64(
       absl::StrCat(fallback_request_state->session_metadata().name(),
                    fallback_request_state->session_metadata().version(),
-                   fdef->signature().DebugString()));
+                   tsl::LegacyUnredactedDebugString(fdef->signature())));
 }
 
 std::vector<XlaCompiler::Argument> BuildXlaCompilerArguments(
