@@ -116,7 +116,7 @@ MlirReductionFusion::MlirReductionFusion(const HloFusionAnalysis& analysis)
 
 bool MlirReductionFusion::IsSupported(const HloFusionAnalysis& analysis) {
   auto info = ReductionInfo::Create(analysis);
-  return info.GetGroups().grouped_roots.size() == 1;
+  return info.GetGroups().grouped_roots.size() == 1 && info.IsRaceFree();
 }
 
 std::vector<mlir_converter::EpilogueSpecification>
@@ -228,13 +228,6 @@ absl::Status MlirReductionFusion::EmitReduction(EmitterState& state) const {
     inits[hero] =
         ProvideParameterRange(computation, hero, arity, arity, {},
                               state.call_target, state.entry_function, builder);
-    if (!reduction_info().IsRaceFree()) {
-      CHECK_EQ(arity, 1) << "Only unary reductions are supported with atomics.";
-      auto& output = outputs[state.OutputIndex(hero, 0)];
-      output = builder.create<PredicatedInsertOp>(thread_has_output,
-                                                  inits[hero].front(), output,
-                                                  root_output_indices[hero]);
-    }
   }
 
   auto evaluate_epilogue = [&](const HloValueMap& results,
@@ -246,28 +239,8 @@ absl::Status MlirReductionFusion::EmitReduction(EmitterState& state) const {
     for (auto root : epilogue.roots) {
       for (auto [result_index, result] : llvm::enumerate(values.at(root))) {
         auto& output = outputs[state.OutputIndex(root, result_index)];
-        if (reduction_info().IsRaceFree()) {
-          output = builder.create<PredicatedInsertOp>(
-              thread_has_output, result, output, root_output_indices[root]);
-        } else {
-          auto updated = builder.create<mlir::scf::IfOp>(
-              thread_has_output,
-              [&, result = result](mlir::OpBuilder then_builder,
-                                   mlir::Location loc) {
-                auto reducer = state.GetReducer(root);
-                auto rmw = then_builder.create<AtomicRMWOp>(
-                    loc, output, root_output_indices[root]);
-                auto rmw_body = rmw.getBodyBuilder();
-                auto reduced = rmw_body.create<PureCallOp>(
-                    loc, reducer, ValueRange{rmw.getCurrentValue(), result});
-                rmw_body.create<xla::gpu::YieldOp>(loc, reduced.getResult(0));
-                then_builder.create<mlir::scf::YieldOp>(loc, rmw.getResult());
-              },
-              [&](mlir::OpBuilder else_builder, mlir::Location loc) {
-                else_builder.create<mlir::scf::YieldOp>(loc, output);
-              });
-          output = updated.getResult(0);
-        }
+        output = builder.create<PredicatedInsertOp>(
+            thread_has_output, result, output, root_output_indices[root]);
       }
     }
     return outputs;
