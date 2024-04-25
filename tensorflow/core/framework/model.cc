@@ -772,7 +772,9 @@ class AsyncInterleaveMany : public Node {
         return 0.0;
       }
     }
-    return (*parameter)->value * AverageBufferedElementSizeLocked();
+    return std::max((*parameter)->value,
+                    static_cast<double>(buffered_elements_)) *
+           AverageBufferedElementSizeLocked();
   }
 
   Status ToProto(ModelProto::Node* node_proto) const override {
@@ -1103,13 +1105,16 @@ class AsyncRatio : public Node {
 
     if (parameter) {
       if (memory_ratio_ == 0) {
-        result += (*parameter)->value * AverageBufferedElementSizeLocked();
+        result += std::max((*parameter)->value,
+                           static_cast<double>(buffered_elements_)) *
+                  AverageBufferedElementSizeLocked();
       } else {
         // The estimation is currently not accurate for MapAndBatchDataset for
         // the maximum buffer size does not match `num_parallel_calls`
         // parameter.
-        result += (*parameter)->value * AverageBufferedElementSizeLocked() /
-                  memory_ratio_;
+        result += std::max((*parameter)->value,
+                           static_cast<double>(buffered_elements_)) *
+                  AverageBufferedElementSizeLocked() / memory_ratio_;
       }
     }
     return result;
@@ -2333,15 +2338,6 @@ void Model::Optimize(AutotuneAlgorithm algorithm,
   {
     tf_shared_lock l(mu_);
     snapshot = output_->Snapshot();
-  }
-  if (snapshot->num_elements() <= 0) {
-    VLOG(2) << "The root node has not produced any element. Will start "
-               "optimizing only when at least a "
-               "path of nodes from file sources to the root has element "
-               "sizes. This is to ensure "
-               "autotune will not increase too much on nodes closer to file "
-               "sources when the pipeline starts initially.";
-    return;
   }
   MaybeSyncStateValuesToValues(snapshot);
   int64_t total_ram_budget;

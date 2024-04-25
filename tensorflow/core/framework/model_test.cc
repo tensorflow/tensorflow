@@ -3621,6 +3621,73 @@ TEST(NodeTest, OnlyCollectParametersThatHaveElementsProduced) {
   EXPECT_EQ(root->CollectTunableParameters().size(), 2);
 }
 
+TEST(NodeTest, TotalMaximumBufferedBytesShouldAccountBufferedElements) {
+  // Builds a graph:
+  // root <- parallel_map <- parallel_interleave
+
+  static constexpr int kIrrelevantMin = 1;
+  static constexpr int kIrrelevantMax = 16;
+  static constexpr int kElementSize = 100;
+
+  auto parallel_interleave = model::MakeAsyncKnownRatioNode(
+      {0, "parallel_interleave", nullptr}, /*ratio=*/1,
+      {model::MakeParameter(kParallelism,
+                            std::make_shared<SharedState>(kAutotune,
+                                                          /*mu=*/nullptr,
+                                                          /*cond_var=*/nullptr),
+                            kIrrelevantMin, kIrrelevantMax)},
+      /*is_legacy_prefetch_autotuned=*/false);
+
+  auto parallel_map = model::MakeAsyncKnownRatioNode(
+      {1, "parallel_map", nullptr}, /*ratio=*/1,
+      {model::MakeParameter(kParallelism,
+                            std::make_shared<SharedState>(kAutotune,
+                                                          /*mu=*/nullptr,
+                                                          /*cond_var=*/nullptr),
+                            kIrrelevantMin, kIrrelevantMax)},
+      /*is_legacy_prefetch_autotuned=*/false);
+
+  parallel_map->add_input(parallel_interleave);
+
+  auto root = MakeUnknownNode({2, "unknown0", nullptr});
+  root->add_input(parallel_map);
+
+  // Simluates 10 elements is buffered but only generate 1 element out.
+  for (int i = 0; i < 10; ++i) {
+    parallel_interleave->record_buffer_event(kElementSize, 1);
+  }
+  parallel_interleave->record_bytes_produced(kElementSize);
+  parallel_interleave->record_element();
+  auto parallel_interleave_params =
+      parallel_interleave->CollectNodeTunableParameters();
+  ASSERT_EQ(parallel_interleave_params.size(), 1);
+  // Supposes the parameter value is tuned to 2 during optimization.
+  parallel_interleave_params[0].second->value = 2;
+  // Simulates 5 elements is buffered
+  for (int i = 0; i < 5; ++i) {
+    parallel_map->record_buffer_event(kElementSize, 1);
+  }
+  parallel_map->record_bytes_produced(kElementSize);
+  parallel_map->record_element();
+  auto parallel_map_params = parallel_map->CollectNodeTunableParameters();
+  ASSERT_EQ(parallel_map_params.size(), 1);
+  // Supposes the parameter value is tuned to 3 during optimization.
+  parallel_map_params[0].second->value = 3;
+
+  // Simulates there is still some lingering elements held by the ops
+  EXPECT_EQ(kElementSize * (10 + 5),
+            static_cast<int64_t>(root->TotalMaximumBufferedBytes()));
+
+  // Assumes we want to tune the parameter values to larger than 10 and 5
+  parallel_interleave_params[0].second->value = 18;
+  parallel_map_params[0].second->value = 31;
+
+  // Now the maximum buffered bytes is expected to increase to `kElementSize *
+  // (18 + 31)`
+  EXPECT_EQ(kElementSize * (18 + 31),
+            static_cast<int64_t>(root->TotalMaximumBufferedBytes()));
+}
+
 }  // namespace
 }  // namespace model
 }  // namespace data
