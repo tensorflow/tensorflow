@@ -16,9 +16,20 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_BATCHING_UTIL_BATCH_SCHEDULER_UTILS_H_
 #define TENSORFLOW_CORE_KERNELS_BATCHING_UTIL_BATCH_SCHEDULER_UTILS_H_
 
+#include <string>
 #include <vector>
 
+#include "absl/flags/declare.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/types.h"
+
+namespace tensorflow::serving {
+enum class BatchPaddingPolicy;  // Forward-declaring for the ABSL_DECLARE_FLAG.
+}  // namespace tensorflow::serving
+
+// Exposed for testing only.
+ABSL_DECLARE_FLAG(tensorflow::serving::BatchPaddingPolicy,
+                  tensorflow_batch_padding_policy);
 
 namespace tensorflow {
 namespace serving {
@@ -29,6 +40,24 @@ namespace serving {
 int GetNextAllowedBatchSize(int batch_size,
                             const std::vector<int32>& allowed_batch_sizes,
                             bool disable_padding);
+
+// Returns the largest allowed batch size that is smaller than or equal to
+// batch_size. Returns batch_size if no such size exists.
+int GetPrevAllowedBatchSize(int batch_size,
+                            const std::vector<int32>& allowed_batch_sizes,
+                            bool disable_padding);
+
+// See the description of the --tensorflow_batch_padding_policy flag (in the
+// .cc file) for the documentation.
+enum class BatchPaddingPolicy {
+  kPadUp,
+  kBatchDown,
+  kMinimizeTpuCostPerRequest,
+};
+
+bool AbslParseFlag(absl::string_view text, BatchPaddingPolicy* out,
+                   std::string* error);
+std::string AbslUnparseFlag(BatchPaddingPolicy in);
 
 }  // namespace serving
 }  // namespace tensorflow

@@ -23,12 +23,14 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
+#include "tensorflow/core/common_runtime/cost_constants.h"
 #include "tensorflow/core/common_runtime/cost_measurement.h"
 #include "tensorflow/core/common_runtime/cost_measurement_registry.h"
 #include "tensorflow/core/common_runtime/request_cost.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/kernels/batching_util/batch_stats.h"
 #include "tsl/platform/criticality.h"
 
 namespace tensorflow {
@@ -292,6 +294,39 @@ TEST(SplitBatchCostsAndRecordMetricsTest, SplitOnlyNonZeroCostTypes) {
       ::testing::ElementsAre(::testing::FieldsAre(
           /*processed_size=*/20, /*input_size=*/9, /*padding_size=*/10,
           UnorderedElementsAre(Pair("test_tpu", absl::Milliseconds(100))))));
+}
+
+TEST(SplitBatchCostsAndRecordMetricsTest, UpdatesGlobalBatchStats) {
+  // Create batch_cost_measurements with one TPU cost.
+  class FakeTpuCostMeasurement : public CostMeasurement {
+   public:
+    using CostMeasurement::CostMeasurement;
+    absl::Duration GetTotalCost() override { return absl::Hours(555); }
+    absl::string_view GetCostType() const override { return kTpuCostName; }
+  };
+  CostMeasurement::Context context{/* is_per_query= */ false};
+  std::vector<std::unique_ptr<CostMeasurement>> batch_cost_measurements;
+  batch_cost_measurements.push_back(
+      std::make_unique<FakeTpuCostMeasurement>(context));
+
+  // Create a non-empty batch.
+  BatchResourceBase::BatchT batch;
+  batch.AddTask(MakeBatchTask(/* task_size= */ 1, nullptr));
+  batch.Close();
+
+  // Pick a model name that no other test would pick. This is so that we are
+  // sure that the CPU cost for this model name has either never been reported
+  // before or, if this test is executed multiple times, has been reported by
+  // this only.
+  const char kModelName[] = __FILE__;
+
+  BatchResourceBase::SplitBatchCostsAndRecordMetrics(
+      kModelName, batch_cost_measurements,
+      /* processed_size= */ 17, batch);
+
+  EXPECT_EQ(
+      GlobalBatchStats().model(kModelName).batch_size(17).tpu_cost().mean(),
+      absl::Hours(555));
 }
 
 }  // namespace
