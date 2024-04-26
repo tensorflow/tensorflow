@@ -1,5 +1,6 @@
 // RUN: xla-translate --print-sugar=false -hlo-text-to-mlir-hlo -hlo-import-all-computations %s -o - | FileCheck %s
 // RUN: xla-translate --print-sugar=false -hlo-text-to-mlir-hlo %s -o - | FileCheck %s -check-prefix=NO_DEAD_FUNCTION
+// RUN: xla-translate --print-sugar=false -hlo-text-to-mlir-hlo -hlo-import-all-computations -hlo-flatten-computation-args-result %s -o - | FileCheck %s -check-prefix=FLATTEN-CHECK
 
 // CHECK: #[[$DC:.*]] = #sparse_tensor.encoding<{ map = (d0, d1) -> (d0 : dense, d1 : compressed), posWidth = 32, crdWidth = 32 }>
 // CHECK: #[[$CSS:.*]] = #sparse_tensor.encoding<{ map = (d0, d1, d2) -> (d0 : compressed(nonunique), d1 : singleton(nonunique, nonordered), d2 : singleton(nonordered)), posWidth = 32, crdWidth = 32 }>
@@ -161,11 +162,15 @@ add {
 }
 
 // CHECK-LABEL:  func private @test_tuple_all_reduce
+// FLATTEN-CHECK-LABEL:  func private @test_tuple_all_reduce
 %test_tuple_all_reduce {
   %input.1 = f32[8] parameter(0)
   %input.2 = f32[] parameter(1)
-  // CHECK:        %[[ALL_REDUCE:.*]]:2 = "mhlo.all_reduce"(%arg0, %arg1)
-  // CHECK:        %[[TUPLE:.*]] = mhlo.tuple %[[ALL_REDUCE]]#0, %[[ALL_REDUCE]]#1 {{.*}} : tuple<tensor<8xf32>, tensor<f32>>
+  // CHECK:         %[[ALL_REDUCE:.*]]:2 = "mhlo.all_reduce"(%arg0, %arg1)
+  // CHECK:         %[[TUPLE:.*]] = mhlo.tuple %[[ALL_REDUCE]]#0, %[[ALL_REDUCE]]#1 {{.*}} : tuple<tensor<8xf32>, tensor<f32>>
+
+  // FLATTEN-CHECK: %[[ALL_REDUCE:.*]]:2 = "mhlo.all_reduce"(%arg0, %arg1)
+  // FLATTEN-CHECK: return %[[ALL_REDUCE]]#0, %[[ALL_REDUCE]]#1 : tensor<8xf32>, tensor<f32>
   ROOT result = (f32[8]{0}, f32[]) all-reduce(f32[8]{0} %input.1, f32[] %input.2), replica_groups={}, to_apply=add
 }
 
@@ -200,6 +205,7 @@ add {
 }
 
 // CHECK-LABEL:  func private @test_batch_norm_grad
+// FLATTEN-CHECK-LABEL:  func private @test_batch_norm_grad
 %test_batch_norm_grad (input: f32[2,2,2,2], scale: f32[2], mean: f32[2], variance: f32[2], grad_output: f32[2,2,2,2]) -> (f32[2,2,2,2], f32[2], f32[2]) {
   %input = f32[2,2,2,2] parameter(0)
   %scale = f32[2] parameter(1)
@@ -212,10 +218,14 @@ add {
   // CHECK-SAME:  feature_index = 1 : i64
   // CHECK:  %[[TUPLE:.+]] = mhlo.tuple
   // CHECK:  return %[[TUPLE]]
+
+  // FLATTEN-CHECK:  %[[GRAD_OPERAND:.+]], %[[GRAD_SCALE:.+]], %[[GRAD_OFFSET:.+]]  = "mhlo.batch_norm_grad"
+  // FLATTEN-CHECK:  return %[[GRAD_OPERAND]], %[[GRAD_SCALE]], %[[GRAD_OFFSET]]
   ROOT %batch-norm-grad = (f32[2,2,2,2], f32[2], f32[2]) batch-norm-grad(f32[2,2,2,2] %input, f32[2] %scale, f32[2] %mean, f32[2] %variance, f32[2,2,2,2] %grad_output), epsilon=0.001, feature_index=1
 }
 
 // CHECK-LABEL:  func private @test_batch_norm_train
+// FLATTEN-CHECK-LABEL:  func private @test_batch_norm_train
 %test_batch_norm_train (input: f32[2,2,2,2], scale: f32[2], offset: f32[2]) -> (f32[2,2,2,2], f32[2], f32[2]) {
   %input = f32[2,2,2,2] parameter(0)
   %scale = f32[2] parameter(1)
@@ -226,6 +236,9 @@ add {
   // CHECK-SAME:  feature_index = 1 : i64
   // CHECK:  %[[TUPLE:.+]] = mhlo.tuple
   // CHECK:  return %[[TUPLE]]
+
+  // FLATTEN-CHECK:  %[[OUT:.+]], %[[MEAN:.+]], %[[VAR:.+]] = "mhlo.batch_norm_training"
+  // FLATTEN-CHECK:  return %[[OUT]], %[[MEAN]], %[[VAR]]
   ROOT %batch-norm-train = (f32[2,2,2,2], f32[2], f32[2]) batch-norm-training(f32[2,2,2,2] %input, f32[2] %scale, f32[2] %offset), epsilon=0.001, feature_index=1
 }
 
@@ -240,6 +253,49 @@ add {
   %arg0.1 = s64[] parameter(0), metadata={op_name="HLO_Args"}
   // CHECK-NEXT:  call @call(%arg0) : (tensor<i64>) -> tensor<i64>
   ROOT %call.2 = s64[] call(%arg0.1), to_apply=%call
+}
+
+// CHECK-LABEL:  func private @call_tuple_args_result(%arg0: tuple<tensor<i64>, tuple<tensor<i64>, tensor<i64>>>, %arg1: tensor<i64>) -> tuple<tensor<i64>, tensor<i64>> {
+// FLATTEN-CHECK-LABEL:  func private @call_tuple_args_result(%arg0: tensor<i64>, %arg1: tensor<i64>, %arg2: tensor<i64>, %arg3: tensor<i64>) -> (tensor<i64>, tensor<i64>) {
+%call_tuple_args_result (arg1: (s64[], (s64[], s64[])), arg2: s64[]) -> (s64[], s64[]) {
+  %arg1 = (s64[], (s64[], s64[])) parameter(0)
+  %arg2 = s64[] parameter(1)
+  %get-tuple-element.1 = s64[] get-tuple-element((s64[], (s64[], s64[])) %arg1), index=0
+  %get-tuple-element.2 = (s64[], s64[]) get-tuple-element((s64[], (s64[], s64[])) %arg1), index=1
+  %get-tuple-element.3 = s64[] get-tuple-element((s64[], s64[]) %get-tuple-element.2), index=1
+  %get-tuple-element.4 = s64[] get-tuple-element((s64[], s64[]) %get-tuple-element.2), index=0
+  %add.1 = s64[] add(s64[] %get-tuple-element.1, s64[] %get-tuple-element.3)
+  %add.2 = s64[] add(s64[] %arg2, s64[] %get-tuple-element.4)
+
+  // CHECK-NEXT:  %[[GTE_1:.+]] = mhlo.get_tuple_element %arg0[0]
+  // CHECK-NEXT:  %[[GTE_2:.+]] = mhlo.get_tuple_element %arg0[1] {xla_shape = "(s64[], s64[])"
+  // CHECK-NEXT:  %[[GTE_3:.+]] = mhlo.get_tuple_element %[[GTE_2]][1]
+  // CHECK-NEXT:  %[[ADD_1:.+]] = mhlo.add %[[GTE_1]], %[[GTE_3]]
+  // CHECK-NEXT:  %[[GTE_4:.+]] = mhlo.get_tuple_element %[[GTE_2]][0]
+  // CHECK-NEXT:  %[[ADD_2:.+]] = mhlo.add %arg1, %[[GTE_4]]
+  // CHECK-NEXT:  %[[TUPLE:.+]] = mhlo.tuple %[[ADD_1]], %[[ADD_2]]
+  // CHECK-NEXT: return %[[TUPLE]]
+
+  // FLATTEN-CHECK-NEXT:  %[[ADD_1:.+]] = mhlo.add %arg0, %arg2
+  // FLATTEN-CHECK-NEXT:  %[[ADD_2:.+]] = mhlo.add %arg3, %arg1
+  // FLATTEN-CHECK-NEXT: return %[[ADD_1]], %[[ADD_2]]
+
+  ROOT %tuple.1 = (s64[], s64[]) tuple(%add.1, %add.2)
+}
+
+// CHECK-LABEL:  func private @test_call_tuple_args_result(%arg0: tensor<i64>, %arg1: tuple<tensor<i64>, tuple<tensor<i64>, tensor<i64>>>) -> tuple<tensor<i64>, tensor<i64>> {
+// FLATTEN-CHECK-LABEL:  func private @test_call_tuple_args_result(%arg0: tensor<i64>, %arg1: tensor<i64>, %arg2: tensor<i64>, %arg3: tensor<i64>) -> (tensor<i64>, tensor<i64>) {
+%test_call_tuple_args_result (arg1: s64[], arg2: (s64[], (s64[], s64[]))) -> (s64[], s64[]) {
+  %arg1 = s64[] parameter(0)
+  %arg2 = (s64[], (s64[], s64[])) parameter(1)
+
+  // CHECK-NEXT:  %[[CALL:.+]] = call @call_tuple_args_result(%arg1, %arg0) {xla_shape = "(s64[], s64[])"} : (tuple<tensor<i64>, tuple<tensor<i64>, tensor<i64>>>, tensor<i64>) -> tuple<tensor<i64>, tensor<i64>>
+  // CHECK-NEXT:  return %[[CALL]]
+
+  // FLATTEN-CHECK-NEXT:  %[[CALL:.+]]:2 = call @call_tuple_args_result(%arg1, %arg2, %arg3, %arg0) : (tensor<i64>, tensor<i64>, tensor<i64>, tensor<i64>) -> (tensor<i64>, tensor<i64>)
+  // FLATTEN-CHECK-NEXT:  return %[[CALL]]#0, %[[CALL]]#1
+
+  ROOT %call.2 = (s64[], s64[]) call(%arg2, %arg1), to_apply=%call_tuple_args_result
 }
 
 // CHECK-LABEL:  func private @test_cholesky
@@ -365,6 +421,8 @@ add {
 // implementations with attributes, etc.
 // CHECK-LABEL: func private @test_conv(
 // CHECK-SAME:                  %[[VAL_0:.*]]: tensor<256x32x32x1xf32>) -> tuple<tensor<256x30x30x1xf32>> {
+// FLATTEN-CHECK-LABEL: func private @test_conv(
+// FLATTEN-CHECK-SAME:                  %[[VAL_0:.*]]: tensor<256x32x32x1xf32>) -> tensor<256x30x30x1xf32> {
 %test_conv {
   %arg0.1 = f32[256,32,32,1]{3,2,1,0} parameter(0), metadata={op_name="HLO_Args"}
 
@@ -395,6 +453,7 @@ add {
   %reshape.5 = f32[256,30,30,1]{3,2,1,0} reshape(%convolution.4), metadata={op_name="HLO_Retvals"}
 
   // CHECK-NEXT: %[[VAL_6:.*]] = mhlo.tuple %[[VAL_5]] {xla_shape = {{.*}}} : tuple<tensor<256x30x30x1xf32>>
+  // FLATTEN-CHECK: return %[[_:.+]] : tensor<256x30x30x1xf32>
   ROOT %tuple.6 = (f32[256,30,30,1]{3,2,1,0}) tuple(%reshape.5), metadata={op_name="HLO_Retvals"}
 }
 
@@ -573,6 +632,8 @@ add {
 
 // CHECK-LABEL:  func private @test_custom_call_tuple_output
 // CHECK-SAME:  [[ARG_0:%.*]]: tensor<2x3xf32>, [[ARG_1:%.*]]: tensor<5x5xf32>) -> tuple<tensor<1x2x3xf32>, tensor<3x7x9xi32>>
+// FLATTEN-CHECK-LABEL:  func private @test_custom_call_tuple_output
+// FLATTEN-CHECK-SAME:  [[ARG_0:%.*]]: tensor<2x3xf32>, [[ARG_1:%.*]]: tensor<5x5xf32>) -> (tensor<1x2x3xf32>, tensor<3x7x9xi32>)
 %test_custom_call_tuple_output (arg1: f32[2,3], arg2: f32[5,5]) -> (f32[1,2,3], s32[3,7,9]) {
   %arg1 = f32[2,3] parameter(0)
   %arg2 = f32[5,5] parameter(1)
@@ -610,12 +671,21 @@ add {
 
 // CHECK-LABEL:  func private @test_custom_call_with_output_operand_alising
 // CHECK-SAME:  [[ARG_0:%.*]]: tuple<tensor<1x1xf32>, tensor<2x3xf32>>, [[ARG_1:%.*]]: tensor<5x5xf32>) -> tuple<tensor<2x3xf32>>
+// FLATTEN-CHECK-LABEL:  func private @test_custom_call_with_output_operand_alising
+// FLATTEN-CHECK-SAME:  [[ARG_0:%.*]]: tensor<1x1xf32>, [[ARG_1:%.*]]: tensor<2x3xf32>, [[ARG_2:%.*]]: tensor<5x5xf32>) -> tensor<2x3xf32>
 %test_custom_call_with_output_operand_alising (arg1: (f32[1,1], f32[2,3]), arg2: f32[5,5]) -> (f32[2,3]) {
   %arg1 = (f32[1,1], f32[2,3]) parameter(0)
   %arg2 = f32[5,5] parameter(1)
   // CHECK:  mhlo.custom_call @foo([[ARG_0]], [[ARG_1]]) {
   // CHECK-SAME{LITERAL}: output_operand_aliases = [#mhlo.output_operand_alias<output_tuple_indices = [0], operand_index = 0, operand_tuple_indices = [1]>]
   // CHECK-SAME: (tuple<tensor<1x1xf32>, tensor<2x3xf32>>, tensor<5x5xf32>) -> tuple<tensor<2x3xf32>>
+
+  // FLATTEN-CHECK-NEXT: [[TUPLE:%.*]] = mhlo.tuple %arg0, %arg1 : tuple<tensor<1x1xf32>, tensor<2x3xf32>>
+  // FLATTEN-CHECK-NEXT: [[CUSTOM_CALL:%.*]] = mhlo.custom_call @foo([[TUPLE]], [[ARG_2]]) {
+  // FLATTEN-CHECK-SAME{LITERAL}: output_operand_aliases = [#mhlo.output_operand_alias<output_tuple_indices = [0], operand_index = 0, operand_tuple_indices = [1]>]
+  // FLATTEN-CHECK-SAME: (tuple<tensor<1x1xf32>, tensor<2x3xf32>>, tensor<5x5xf32>) -> tuple<tensor<2x3xf32>>
+  // FLATTEN-CHECK-NEXT: [[GET_TUPLE_ELEMENT:%.*]] = mhlo.get_tuple_element [[CUSTOM_CALL]][0] : (tuple<tensor<2x3xf32>>) -> tensor<2x3xf32>
+  // FLATTEN-CHECK-NEXT: return [[GET_TUPLE_ELEMENT]]
   ROOT %custom-call = (f32[2,3]) custom-call((f32[1,1], f32[2,3]) %arg1, f32[5,5] %arg2), custom_call_target="foo", output_to_operand_aliasing={{0}: (0, {1})}
 }
 
@@ -840,6 +910,8 @@ add {
 
 // CHECK-LABEL:  func private @test_infeed
 // CHECK-SAME: ([[TOKEN:%.*]]: !mhlo.token) -> tuple<tensor<3x3x3xi32>, !mhlo.token>
+// FLATTEN-CHECK-LABEL:  func private @test_infeed
+// FLATTEN-CCHECK-SAME: ([[TOKEN:%.*]]: !mhlo.token) -> (tensor<3x3x3xi32>, !mhlo.token)
 %test_infeed (token0: token[]) -> (s32[3, 3, 3], token[]) {
   %token0 = token[] parameter(0)
   // CHECK-NEXT:  "mhlo.infeed"([[TOKEN]])
@@ -863,6 +935,8 @@ add {
 
 // CHECK-LABEL:  func private @test_infeed_layout
 // CHECK-SAME: ([[TOKEN:%.*]]: !mhlo.token) -> tuple<tuple<tensor<3x4xi32>, tensor<5x6xi32>, tensor<7x8xi32>, tensor<9x10xi32>>, !mhlo.token>
+// FLATTEN-CHECK-LABEL:  func private @test_infeed_layout
+// FLATTEN-CHECK-SAME: ([[TOKEN:%.*]]: !mhlo.token) -> (tensor<3x4xi32>, tensor<5x6xi32>, tensor<7x8xi32>, tensor<9x10xi32>, !mhlo.token)
 %test_infeed_layout (token0: token[]) -> ( ( s32[3, 4]{1, 0}, s32[5, 6]{1, 0}, s32[7, 8]{1, 0}, s32[9,10]{1, 0}), token[]) {
   %token0 = token[] parameter(0)
   // CHECK-NEXT:  [[INFEED:%.*]]:5 = "mhlo.infeed"([[TOKEN]])
@@ -871,6 +945,9 @@ add {
   // CHECK-NEXT: [[T1:%.*]] = mhlo.tuple [[INFEED]]#0, [[INFEED]]#1, [[INFEED]]#2, [[INFEED]]#3
   // CHECK-NEXT: [[T2:%.*]] = mhlo.tuple [[T1]], [[INFEED]]#4
   // CHECK-NEXT: return [[T2]]
+
+  // FLATTEN-CHECK-NEXT:  [[INFEED:%.*]]:5 = "mhlo.infeed"([[TOKEN]])
+  // FLATTEN-CHECK-NEXT: return [[INFEED]]#0, [[INFEED]]#1, [[INFEED]]#2, [[INFEED]]#3, [[INFEED]]#4
   ROOT %infeed = ( ( s32[3, 4]{1, 0}, s32[5, 6]{1, 0}, s32[7, 8]{1, 0}, s32[9,10]{1, 0}), token[]) infeed(token[] %token0), infeed_config="foobar"
 }
 
@@ -1152,6 +1229,8 @@ add {
 
 // CHECK-LABEL:  func private @test_reduce
 // CHECK-SAME: ([[ARG0:%.*]]: tensor<4x4xf32>, [[ARG1:%.*]]: tensor<4xf32>, [[ARG2:%.*]]: tensor<f32>) -> tuple<tuple<tensor<f32>, tensor<f32>>, tensor<f32>>
+// FLATTEN-CHECK-LABEL:  func private @test_reduce
+// FLATTEN-CHECK-SAME: ([[ARG0:%.*]]: tensor<4x4xf32>, [[ARG1:%.*]]: tensor<4xf32>, [[ARG2:%.*]]: tensor<f32>) -> (tensor<f32>, tensor<f32>, tensor<f32>)
 %test_reduce (Arg_0.1: f32[4, 4], Arg_1.2: f32[4], Arg_2.3: f32[]) -> ((f32[], f32[]), f32[]) {
   %Arg_0.1 = f32[4, 4] parameter(0)
   %Arg_1.2 = f32[4] parameter(1)
@@ -1163,6 +1242,8 @@ add {
   // CHECK:  %[[B:.*]] = mhlo.add{{.*}} : tensor<f32>
   // CHECK: mhlo.return %[[A]], %[[B]] : tensor<f32>, tensor<f32>
   // CHECK: mhlo.tuple %0#0, %0#1 {xla_shape = {{.*}}} : tuple<tensor<f32>, tensor<f32>>
+
+  // FLATTEN-CHECK:  [[REDUCE_1:%.*]]:2 = mhlo.reduce([[ARG0]] init: [[ARG2]]), ([[ARG0]] init: [[ARG2]])
   %reduce.1 = (f32[], f32[]) reduce(%Arg_0.1, %Arg_0.1, %Arg_2.3, %Arg_2.3), dimensions={0, 1}, to_apply=%reduce_helper.1
 
   // CHECK:  [[VAL2:%.*]] = mhlo.reduce([[ARG0]] init: [[ARG2]]) applies mhlo.add across dimensions = [0, 1] : (tensor<4x4xf32>, tensor<f32>) -> tensor<f32>
@@ -1173,9 +1254,11 @@ add {
   // CHECK:  [[VAL4:%.*]] = mhlo.reduce([[VAL3]] init: [[ARG2]]) applies mhlo.add across dimensions = [0] : (tensor<4xf32>, tensor<f32>) -> tensor<f32>
   %reduce.4 = f32[] reduce(%reduce.2, %Arg_2.3), dimensions={0}, to_apply=%reduce_helper.3
 
-  // CHECK:  %5 = mhlo.subtract [[VAL2]], [[VAL4]] : tensor<f32>
+  // CHECK:  mhlo.subtract [[VAL2]], [[VAL4]] : tensor<f32>
+  // FLATTEN-CHECK:  [[SUBTRACT:%.*]] = mhlo.subtract
   %sub.5 = f32[] subtract(%reduce.3, %reduce.4)
 
+  // FLATTEN-CHECK:  return [[REDUCE_1]]#0, [[REDUCE_1]]#1, [[SUBTRACT]]
   ROOT %tuple.6 = ((f32[], f32[]), f32[]) tuple(%reduce.1, %sub.5)
 }
 
@@ -1413,6 +1496,9 @@ add {
 // CHECK:      mhlo.return [[LHS]], [[RHS]] : tensor<f32>, tensor<f32>
 // CHECK:    })
 
+// FLATTEN-CHECK-LABEL:  func.func private @test_variadic_scatter
+// FLATTEN-CHECK-SAME:   [[ARG_0:%.*]]: tensor<200x100x300xf32>, [[ARG_1:%.*]]: tensor<10x2xi64>, [[ARG_2:%.*]]: tensor<10x300xf32>) -> (tensor<200x100x300xf32>, tensor<200x100x300xf32>)
+
 %update_computation_returning_tuple {
   %lhs = f32[] parameter(0)
   %rhs = f32[] parameter(1)
@@ -1627,11 +1713,13 @@ add {
 }
 
 // CHECK-LABEL:  func private @test_tuple(%arg0: tensor<1xi32>, %arg1: tensor<1x2xf32>) -> tuple<tensor<1xi32>, tensor<1x2xf32>>
+// FLATTEN-CHECK-LABEL:  func private @test_tuple(%arg0: tensor<1xi32>, %arg1: tensor<1x2xf32>) -> (tensor<1xi32>, tensor<1x2xf32>)
 %test_tuple(Arg_0.1: s32[1], Arg_1.2: f32[1, 2]) -> (s32[1], f32[1,2]) {
   %Arg_0.1 = s32[1] parameter(0)
   %Arg_1.2 = f32[1, 2] parameter(1)
 
   // CHECK:  mhlo.tuple %arg0, %arg1 {xla_shape = {{.*}}} : tuple<tensor<1xi32>, tensor<1x2xf32>>
+  // FLATTEN-CHECK:  return %arg0, %arg1 : tensor<1xi32>, tensor<1x2xf32>
   ROOT %tuple.4 = (s32[1], f32[1,2]) tuple(%Arg_0.1, %Arg_1.2)
 }
 
@@ -1702,6 +1790,8 @@ add {
 
 // CHECK-LABEL:  func private @complex_type
 // CHECK-SAME:    (%[[ARG0:.*]]: tensor<2xcomplex<f32>>, %[[ARG1:.*]]: tensor<2xcomplex<f64>>) -> tuple<tensor<2xf32>, tensor<2xf64>>
+// FLATTEN-CHECK-LABEL:  func private @complex_type
+// FLATTEN-CHECK-SAME:    (%[[ARG0:.*]]: tensor<2xcomplex<f32>>, %[[ARG1:.*]]: tensor<2xcomplex<f64>>) -> (tensor<2xf32>, tensor<2xf64>)
 %complex_type (Arg_0.1: c64[2], Arg_1.2: c128[2]) -> (f32[2], f64[2]) {
   %Arg_0.1 = c64[2] parameter(0)
   %abs.3 = f32[2] abs(c64[2] %Arg_0.1)
@@ -1724,14 +1814,19 @@ add {
 
 // CHECK-LABEL:  func private @rngbitgen_tuple_shape
 // CHECK-SAME:    (%[[ARG0:.*]]: tensor<3xui64>) -> (tuple<tensor<3xui64>, tensor<2x2xui32>> {mhlo.sharding = "{{\{}}{maximal device=0}, {maximal device=1}}"})
+// FLATTEN-CHECK-LABEL:  func private @rngbitgen_tuple_shape
+// FLATTEN-CHECK-SAME:    (%[[ARG0:.*]]: tensor<3xui64>) -> (tensor<3xui64> {mhlo.sharding = "{maximal device=0}"}, tensor<2x2xui32> {mhlo.sharding = "{maximal device=1}"})
 %rngbitgen_tuple_shape (Arg_0.1: u64[3]) -> (u64[3], u32[2,2]) {
   %Arg_0.1 = u64[3] parameter(0)
-  // CHECK: %[[RNG0:.+]], %[[RNG1:.+]] = "mhlo.rng_bit_generator"(%[[ARG0]]) 
+  // CHECK: %[[RNG0:.+]], %[[RNG1:.+]] = "mhlo.rng_bit_generator"(%[[ARG0]])
   // CHECK-SAME: rng_algorithm = #mhlo.rng_algorithm<PHILOX>
   // CHECK-SAME: mhlo.sharding = "{{\{}}{maximal device=0}, {maximal device=1}}"
   // CHECK-SAME: (tensor<3xui64>) -> (tensor<3xui64>, tensor<2x2xui32>)
   // CHECK: %[[TUPLE:.+]] = mhlo.tuple %[[RNG0]], %[[RNG1]] {xla_shape = "(u64[3]{0}, u32[2,2]{1,0})"} : tuple<tensor<3xui64>, tensor<2x2xui32>>
   // CHECK: return %[[TUPLE]]
+
+  // FLATTEN-CHECK: %[[RNG0:.+]], %[[RNG1:.+]] = "mhlo.rng_bit_generator"(%[[ARG0]])
+  // FLATTEN-CHECK: return %[[RNG0]], %[[RNG1]]
   ROOT %rng-bit-generator.2 = (u64[3], u32[2,2]) rng-bit-generator(u64[3] %Arg_0.1), algorithm=rng_philox, sharding={{maximal device=0}, {maximal device=1}}
 }
 
@@ -1863,6 +1958,33 @@ add {
   ROOT %copy.1 = s32[4] copy(%arg0.1), sharding={devices=[2]0,1}
 }
 
+// CHECK-LABEL: func private @test_tuple_args_and_result_with_sharding
+// CHECK-SAME{LITERAL}: (%arg0: tuple<tuple<tensor<4xi32>, tensor<4xi32>>, tensor<4xi32>> {mhlo.sharding = "{{replicated}, {devices=[4]<=[4]}, {devices=[2,2]<=[4] last_tile_dim_replicate}}"},
+// CHECK-SAME{LITERAL}:  %arg1: tensor<4xi32> {mhlo.sharding = "{devices=[2,2]<=[2,2]T(1,0) last_tile_dim_replicate}"})
+// CHECK-SAME{LITERAL}: -> (tuple<tensor<4xi32>, tuple<tuple<tensor<4xi32>, tensor<4xi32>>, tensor<4xi32>>>
+// CHECK-SAME{LITERAL}:     {mhlo.sharding = "{{devices=[2,2]<=[2,2]T(1,0) last_tile_dim_replicate}, {replicated}, {devices=[4]<=[4]}, {devices=[2,2]<=[4] last_tile_dim_replicate}}"})
+
+// FLATTEN-CHECK-LABEL: func private @test_tuple_args_and_result_with_sharding
+// FLATTEN-CHECK-SAME:    (%arg0: tensor<4xi32> {mhlo.sharding = "{replicated}"},
+// FLATTEN-CHECK-SAME:     %arg1: tensor<4xi32> {mhlo.sharding = "{devices=[4]<=[4]}"},
+// FLATTEN-CHECK-SAME:     %arg2: tensor<4xi32> {mhlo.sharding = "{devices=[2,2]<=[4] last_tile_dim_replicate}"},
+// FLATTEN-CHECK-SAME:     %arg3: tensor<4xi32> {mhlo.sharding = "{devices=[2,2]<=[2,2]T(1,0) last_tile_dim_replicate}"})
+// FLATTEN-CHECK-SAME:    -> (tensor<4xi32> {mhlo.sharding = "{devices=[2,2]<=[2,2]T(1,0) last_tile_dim_replicate}"},
+// FLATTEN-CHECK-SAME:        tensor<4xi32> {mhlo.sharding = "{replicated}"},
+// FLATTEN-CHECK-SAME:        tensor<4xi32> {mhlo.sharding = "{devices=[4]<=[4]}"},
+// FLATTEN-CHECK-SAME:        tensor<4xi32> {mhlo.sharding = "{devices=[2,2]<=[4] last_tile_dim_replicate}"})
+%test_tuple_args_and_result_with_sharding (arg1: ((s32[4], s32[4]), s32[4]), arg2: s32[4]) -> (s32[4], ((s32[4], s32[4]), s32[4])) {
+  %arg1 = ((s32[4], s32[4]), s32[4]) parameter(0), sharding={{replicated},{devices=[4]<=[4]},{devices=[2,2]<=[4] last_tile_dim_replicate}}
+  %arg2 = s32[4] parameter(1), sharding={devices=[2,2]<=[2,2]T(1,0) last_tile_dim_replicate}
+
+  // CHECK-NEXT: %[[TUPLE:.+]] = mhlo.tuple %arg1, %arg0
+  // CHECK-NEXT: return %[[TUPLE]]
+
+  // FLATTEN-CHECK-NEXT: return %arg3, %arg0, %arg1, %arg2
+
+  ROOT %tuple.1 = (s32[4], ((s32[4], s32[4]), s32[4])) tuple(s32[4] %arg2, ((s32[4], s32[4]), s32[4]) %arg1), sharding={{devices=[2,2]<=[2,2]T(1,0) last_tile_dim_replicate}, {replicated}, {devices=[4]<=[4]}, {devices=[2,2]<=[4] last_tile_dim_replicate}}
+}
+
 // CHECK-LABEL: func private @named_thread
 // CHECK-SAME: (%[[ARG0:.*]]: tensor<10xf32>)
 // CHECK-SAME: execution_thread = "mythread"
@@ -1876,6 +1998,11 @@ add {
 // CHECK-LABEL: func private @param_replication
 // CHECK-SAME: mhlo.parameter_replication = [true]
 // CHECK-SAME: mhlo.parameter_replication = [false, true]
+
+// FLATTEN-CHECK-LABEL: func private @param_replication(
+// FLATTEN-CHECK-SAME: %arg0: tensor<f32> {mhlo.parameter_replication = [true]},
+// FLATTEN-CHECK-SAME: %arg1: tensor<2x4xf32>,
+// FLATTEN-CHECK-SAME: %arg2: tensor<2x4xf32> {mhlo.parameter_replication = [true]})
 %param_replication (a: f32[], b: (f32[2,4], (f32[2,4]))) -> (f32[], (f32[2,4], (f32[2,4]))) {
   %a = f32[] parameter(0), parameter_replication={true}
   %b = (f32[2,4]{1,0}, (f32[2,4]{1,0})) parameter(1), parameter_replication={false,true}
@@ -1899,3 +2026,6 @@ add {
 // CHECK-LABEL:  func private @test_topk
 // CHECK-SAME:  ([[ARG:%.*]]: tensor<4x4xf32>) -> tuple<tensor<4x2xf32>, tensor<4x2xi32>>
 // CHECK:  mhlo.topk([[ARG]], k = 2, largest = true) : tensor<4x4xf32> -> (tensor<4x2xf32>, tensor<4x2xi32>)
+
+// FLATTEN-CHECK-LABEL:  func private @test_topk
+// FLATTEN-CHECK-SAME:  ([[ARG:%.*]]: tensor<4x4xf32>) -> (tensor<4x2xf32>, tensor<4x2xi32>)

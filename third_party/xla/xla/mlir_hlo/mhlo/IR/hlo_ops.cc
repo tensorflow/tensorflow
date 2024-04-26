@@ -6913,10 +6913,8 @@ LogicalResult verifyCrossProgramPrefetchAttr(CrossProgramPrefetchAttr cpp,
            << "cross_program_prefetch: parameter " << cpp.getParameter()
            << " out of range. main has only " << main.getNumArguments()
            << " arguments";
-  auto type = getTypeFromTupleIndices(main.getArgument(cpp.getParameter())
-                                          .getType()
-                                          .dyn_cast_or_null<TupleType>(),
-                                      cpp.getIndices());
+  auto type = getTypeFromTupleIndices(
+      main.getArgument(cpp.getParameter()).getType(), cpp.getIndices());
   if (!type)
     return module->emitOpError()
            << "cross_program_prefetch: no subshape at given index: "
