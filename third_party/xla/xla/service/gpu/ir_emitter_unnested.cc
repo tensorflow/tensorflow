@@ -191,6 +191,7 @@ inline std::pair<bool, int64_t> GetSendRecvAsyncEventsKey(Thunk::Kind kind,
 IrEmitterUnnested::IrEmitterUnnested(IrEmitterContext* ir_emitter_context)
     : IrEmitter(ir_emitter_context, /*is_nested=*/false),
       send_recv_events_(std::make_shared<SendRecvAsyncEvents>()),
+      copy_events_(std::make_shared<CopyThunk::AsyncEvents>()),
       elemental_emitter_(*ir_emitter_context, &b_) {}
 
 std::unique_ptr<IrEmitterUnnested> IrEmitterUnnested::Create(
@@ -2507,60 +2508,71 @@ static std::optional<GlobalDeviceId> DeviceConstraint(
   return std::nullopt;
 }
 
+absl::StatusOr<bool> ShapeHasHostMemorySpace(Shape shape, int index,
+                                             int host_memory_space) {
+  return shape.tuple_shapes(index).has_layout() &&
+         shape.tuple_shapes(index).layout().memory_space() == host_memory_space;
+}
+
 absl::Status IrEmitterUnnested::EmitCopyStartThunk(
-    const HloCopyStartInstruction* instr) {
+    const HloCopyStartInstruction* copy_start_instr) {
   // copy-start has a tuple shape: {host, device, context},
   // or {device, host, context}.
   // Only the destination shape is needed to get the output buffer.
   TF_ASSIGN_OR_RETURN(BufferAllocation::Slice dst_buffer,
-                      GetAllocationSliceForHlo(instr,
-                                               /*ShapeIndex=*/{0}));
+                      GetAllocationSliceForHlo(copy_start_instr,
+                                               /*index=*/{0}));
 
-  const HloInstruction* src = instr->operand(0);
+  const HloInstruction* src = copy_start_instr->operand(0);
   const Shape& input_shape = src->shape();
   TF_ASSIGN_OR_RETURN(BufferAllocation::Slice src_buffer,
                       GetAllocationSliceForHlo(src, {}));
-  Shape shape = instr->shape();
+  const Shape& shape = copy_start_instr->shape();
   CHECK(shape.IsTuple());
-
-  if (shape.mutable_tuple_shapes(0)->has_layout() &&
-      shape.mutable_tuple_shapes(0)->mutable_layout()->memory_space() ==
-          static_cast<int>(stream_executor::MemoryType::kHost)) {
-    VLOG(3) << "Device to Host: host memory space "
-            << static_cast<int>(stream_executor::MemoryType::kHost);
+  int host_memory_space = static_cast<int>(stream_executor::MemoryType::kHost);
+  TF_ASSIGN_OR_RETURN(bool is_dst_host_memory,
+                      ShapeHasHostMemorySpace(shape, 0, host_memory_space));
+  TF_ASSIGN_OR_RETURN(bool is_src_host_memory,
+                      ShapeHasHostMemorySpace(shape, 1, host_memory_space));
+  if (is_dst_host_memory == is_src_host_memory) {
+    return absl::InternalError(absl::StrFormat(
+        "Copy-start %s doesn't have correct host memory space color S(%d)",
+        copy_start_instr->ToString(),
+        static_cast<int>(stream_executor::MemoryType::kHost)));
+  }
+  if (is_dst_host_memory) {
     auto thunk = std::make_unique<DeviceToHostCopyThunk>(
-        Thunk::ThunkInfo::WithProfileAnnotation(instr),
+        Thunk::ThunkInfo::WithProfileAnnotation(copy_start_instr),
         /*source_buffer=*/src_buffer,
         /*destination_buffer=*/dst_buffer,
-        /*mem_size=*/ShapeUtil::ByteSizeOf(input_shape));
+        /*mem_size=*/ShapeUtil::ByteSizeOf(input_shape),
+        /*copy_events=*/copy_events_,
+        /*copy_start_instr=*/copy_start_instr);
     AddThunkToThunkSequence(std::move(thunk));
-    return absl::OkStatus();
-  }
-  if (shape.mutable_tuple_shapes(1)->has_layout() &&
-      shape.mutable_tuple_shapes(1)->mutable_layout()->memory_space() ==
-          static_cast<int>(stream_executor::MemoryType::kHost)) {
-    VLOG(3) << "Host to Device from the host memory space "
-            << static_cast<int>(stream_executor::MemoryType::kHost);
-    ;
+  } else {
     auto thunk = std::make_unique<HostToDeviceCopyThunk>(
-        Thunk::ThunkInfo::WithProfileAnnotation(instr),
+        Thunk::ThunkInfo::WithProfileAnnotation(copy_start_instr),
         /*source_buffer=*/src_buffer,
         /*destination_buffer=*/dst_buffer,
-        /*mem_size=*/ShapeUtil::ByteSizeOf(input_shape));
+        /*mem_size=*/ShapeUtil::ByteSizeOf(input_shape),
+        /*copy_events=*/copy_events_,
+        /*copy_start_instr=*/copy_start_instr);
     AddThunkToThunkSequence(std::move(thunk));
-    return absl::OkStatus();
   }
 
-  // Disabled the generation of memcpy D2D as only H2D and D2H are useful
-  // for memory offload now.
+  return absl::OkStatus();
+}
 
-  auto thunk = std::make_unique<DeviceToDeviceCopyThunk>(
-      Thunk::ThunkInfo::WithProfileAnnotation(instr),
-      /*source_buffer=*/src_buffer,
-      /*destination_buffer=*/dst_buffer,
-      /*mem_size=*/ShapeUtil::ByteSizeOf(input_shape));
+absl::Status IrEmitterUnnested::EmitCopyDoneThunk(const HloInstruction* instr) {
+  const HloInstruction* copy_start_instr = instr->operand(0);
+  CHECK(copy_start_instr->opcode() == HloOpcode::kCopyStart);
+
+  auto thunk = std::make_unique<CopyDoneThunk>(
+      Thunk::kCopyDone,
+      Thunk::ThunkInfo::WithProfileAnnotation(copy_start_instr),
+      /*copy_events=*/copy_events_,
+      /*copy_start_instr=*/copy_start_instr);
   AddThunkToThunkSequence(std::move(thunk));
-
   return absl::OkStatus();
 }
 
@@ -2914,6 +2926,8 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
       return EmitWhile(instr);
     case HloOpcode::kCopyStart:
       return EmitCopyStartThunk(Cast<HloCopyStartInstruction>(instr));
+    case HloOpcode::kCopyDone:
+      return EmitCopyDoneThunk(instr);
 
     // HLO module is already scheduled, so instructions for ordering are noops.
     case HloOpcode::kAddDependency:
@@ -2924,7 +2938,6 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
     case HloOpcode::kGetTupleElement:
     case HloOpcode::kParameter:
     case HloOpcode::kTuple:
-    case HloOpcode::kCopyDone:
       return absl::OkStatus();
     default:
       return Internal("Unsupported instruction opcode: %s",

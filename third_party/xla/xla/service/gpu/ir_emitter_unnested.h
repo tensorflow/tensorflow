@@ -42,6 +42,7 @@ limitations under the License.
 #include "xla/service/gpu/ir_emitter.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/launch_dimensions.h"
+#include "xla/service/gpu/runtime/copy_thunk.h"
 #include "xla/service/gpu/runtime/send_recv_thunk.h"
 #include "xla/service/gpu/runtime/thunk.h"
 #include "xla/service/llvm_ir/ir_array.h"
@@ -198,6 +199,8 @@ class IrEmitterUnnested : public IrEmitter {
       const HloCollectivePermuteInstruction* instr);
 
   absl::Status EmitCopyStartThunk(const HloCopyStartInstruction* instr);
+
+  absl::Status EmitCopyDoneThunk(const HloInstruction* instr);
 
   absl::Status EmitHloInstruction(const HloInstruction* instr);
 
@@ -376,6 +379,9 @@ class IrEmitterUnnested : public IrEmitter {
 
   // Container for async send/recv events shared by send/recv thunks.
   std::shared_ptr<SendRecvAsyncEvents> send_recv_events_;
+
+  // Container for async copy-start/copy-done events.
+  std::shared_ptr<CopyThunk::AsyncEvents> copy_events_;
 
   // Returns the ShapedSlices for the given operands.
   absl::StatusOr<std::vector<ShapedSlice>> GetShapedSlices(

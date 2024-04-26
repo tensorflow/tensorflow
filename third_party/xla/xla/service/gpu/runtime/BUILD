@@ -520,12 +520,17 @@ cc_library(
     srcs = ["copy_thunk.cc"],
     hdrs = ["copy_thunk.h"],
     deps = [
+        ":thunk",
         "//xla:status",
+        "//xla/hlo/ir:hlo",
         "//xla/service:buffer_assignment",
-        "//xla/service/gpu/runtime:thunk",
         "//xla/stream_executor",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
-        "@llvm-project//mlir:IR",
+        "@com_google_absl//absl/synchronization",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
