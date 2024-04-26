@@ -1,1 +1,560 @@
 Auto generated patch. Do not edit or delete it, even if empty.
+diff -ruN --strip-trailing-cr a/lld/ELF/Arch/RISCV.cpp b/lld/ELF/Arch/RISCV.cpp
+--- a/lld/ELF/Arch/RISCV.cpp
++++ b/lld/ELF/Arch/RISCV.cpp
+@@ -1084,62 +1084,10 @@
+   }
+ }
+ 
+-static void mergeAtomic(DenseMap<unsigned, unsigned>::iterator it,
+-                        const InputSectionBase *oldSection,
+-                        const InputSectionBase *newSection, unsigned int oldTag,
+-                        unsigned int newTag) {
+-  using RISCVAttrs::RISCVAtomicAbiTag::AtomicABI;
+-  // Same tags stay the same, and UNKNOWN is compatible with anything
+-  if (oldTag == newTag || newTag == AtomicABI::UNKNOWN)
+-    return;
+-
+-  switch (oldTag) {
+-  case AtomicABI::UNKNOWN:
+-    it->getSecond() = newTag;
+-    return;
+-  case AtomicABI::A6C:
+-    switch (newTag) {
+-    case AtomicABI::A6S:
+-      it->getSecond() = AtomicABI::A6C;
+-      return;
+-    case AtomicABI::A7:
+-      error(toString(oldSection) + " has atomic_abi=" + Twine(oldTag) +
+-            " but " + toString(newSection) +
+-            " has atomic_abi=" + Twine(newTag));
+-      return;
+-    };
+-
+-  case AtomicABI::A6S:
+-    switch (newTag) {
+-    case AtomicABI::A6C:
+-      it->getSecond() = AtomicABI::A6C;
+-      return;
+-    case AtomicABI::A7:
+-      it->getSecond() = AtomicABI::A7;
+-      return;
+-    };
+-
+-  case AtomicABI::A7:
+-    switch (newTag) {
+-    case AtomicABI::A6S:
+-      it->getSecond() = AtomicABI::A7;
+-      return;
+-    case AtomicABI::A6C:
+-      error(toString(oldSection) + " has atomic_abi=" + Twine(oldTag) +
+-            " but " + toString(newSection) +
+-            " has atomic_abi=" + Twine(newTag));
+-      return;
+-    };
+-  default:
+-    llvm_unreachable("unknown AtomicABI");
+-  };
+-}
+-
+ static RISCVAttributesSection *
+ mergeAttributesSection(const SmallVector<InputSectionBase *, 0> &sections) {
+   RISCVISAInfo::OrderedExtensionMap exts;
+   const InputSectionBase *firstStackAlign = nullptr;
+-  const InputSectionBase *firstAtomicAbi = nullptr;
+   unsigned firstStackAlignValue = 0, xlen = 0;
+   bool hasArch = false;
+ 
+@@ -1186,17 +1134,6 @@
+       case RISCVAttrs::PRIV_SPEC_MINOR:
+       case RISCVAttrs::PRIV_SPEC_REVISION:
+         break;
+-
+-      case llvm::RISCVAttrs::AttrType::ATOMIC_ABI:
+-        if (auto i = parser.getAttributeValue(tag.attr)) {
+-          auto r = merged.intAttr.try_emplace(tag.attr, *i);
+-          if (r.second) {
+-            firstAtomicAbi = sec;
+-          } else {
+-            mergeAtomic(r.first, firstAtomicAbi, sec, r.first->getSecond(), *i);
+-          }
+-        }
+-        continue;
+       }
+ 
+       // Fallback for deprecated priv_spec* and other unknown attributes: retain
+diff -ruN --strip-trailing-cr a/lld/test/ELF/riscv-attributes.s b/lld/test/ELF/riscv-attributes.s
+--- a/lld/test/ELF/riscv-attributes.s
++++ b/lld/test/ELF/riscv-attributes.s
+@@ -44,39 +44,6 @@
+ # RUN: not ld.lld a.o b.o c.o diff_stack_align.o -o /dev/null 2>&1 | FileCheck %s --check-prefix=STACK_ALIGN --implicit-check-not=error:
+ # STACK_ALIGN: error: diff_stack_align.o:(.riscv.attributes) has stack_align=32 but a.o:(.riscv.attributes) has stack_align=16
+ 
+-## merging atomic_abi values for A6C and A7 lead to an error.
+-# RUN: llvm-mc -filetype=obj -triple=riscv64  atomic_abi_A6C.s -o atomic_abi_A6C.o
+-# RUN: llvm-mc -filetype=obj -triple=riscv64  atomic_abi_A7.s -o atomic_abi_A7.o
+-# RUN: not ld.lld atomic_abi_A6C.o atomic_abi_A7.o -o /dev/null 2>&1 | FileCheck %s --check-prefix=ATOMIC_ABI_ERROR --implicit-check-not=error:
+-# ATOMIC_ABI_ERROR: error: atomic_abi_A6C.o:(.riscv.attributes) has atomic_abi=1 but atomic_abi_A7.o:(.riscv.attributes) has atomic_abi=3
+-
+-
+-# RUN: llvm-mc -filetype=obj -triple=riscv64  atomic_abi_A6S.s -o atomic_abi_A6S.o
+-# RUN: ld.lld atomic_abi_A6S.o atomic_abi_A6C.o -o atomic_abi_A6C_A6S
+-# RUN: llvm-readobj -A atomic_abi_A6C_A6S | FileCheck %s --check-prefix=A6C_A6S
+-
+-# RUN: ld.lld atomic_abi_A6S.o atomic_abi_A7.o -o atomic_abi_A6S_A7
+-# RUN: llvm-readobj -A atomic_abi_A6S_A7 | FileCheck %s --check-prefix=A6S_A7
+-
+-# RUN: llvm-mc -filetype=obj -triple=riscv64  atomic_abi_unknown.s -o atomic_abi_unknown.o
+-# RUN: ld.lld atomic_abi_unknown.o atomic_abi_A6C.o -o atomic_abi_A6C_unknown
+-# RUN: llvm-readobj -A atomic_abi_A6C_unknown | FileCheck %s --check-prefixes=UNKNOWN_A6C
+-
+-# RUN: ld.lld atomic_abi_unknown.o diff_stack_align.o -o atomic_abi_none_unknown
+-# RUN: llvm-readobj -A atomic_abi_none_unknown | FileCheck %s --check-prefixes=UNKNOWN_NONE
+-
+-# RUN: ld.lld diff_stack_align.o atomic_abi_A6C.o -o atomic_abi_A6C_none
+-# RUN: llvm-readobj -A atomic_abi_A6C_none | FileCheck %s --check-prefixes=NONE_A6C
+-
+-# RUN: ld.lld atomic_abi_unknown.o atomic_abi_A6S.o -o atomic_abi_A6S_unknown
+-# RUN: llvm-readobj -A atomic_abi_A6S_unknown | FileCheck %s --check-prefix=UNKNOWN_A6S
+-
+-# RUN: ld.lld atomic_abi_unknown.o atomic_abi_A7.o -o atomic_abi_A7_unknown
+-# RUN: llvm-readobj -A atomic_abi_A7_unknown | FileCheck %s --check-prefix=UNKNOWN_A7
+-
+-# RUN: ld.lld diff_stack_align.o atomic_abi_A7.o -o atomic_abi_A7_none
+-# RUN: llvm-readobj -A atomic_abi_A7_none | FileCheck %s --check-prefix=NONE_A7
+-
+ ## The deprecated priv_spec is not handled as GNU ld does.
+ ## Differing priv_spec attributes lead to an absent attribute.
+ # RUN: llvm-mc -filetype=obj -triple=riscv64 diff_priv_spec.s -o diff_priv_spec.o
+@@ -319,175 +286,6 @@
+ .attribute priv_spec, 3
+ .attribute priv_spec_minor, 3
+ 
+-#--- atomic_abi_unknown.s
+-.attribute atomic_abi, 0
+-
+-#--- atomic_abi_A6C.s
+-.attribute atomic_abi, 1
+-
+-#--- atomic_abi_A6S.s
+-.attribute atomic_abi, 2
+-
+-#--- atomic_abi_A7.s
+-.attribute atomic_abi, 3
+-
+-#      UNKNOWN_NONE: BuildAttributes {
+-# UNKNOWN_NONE-NEXT:   FormatVersion: 0x41
+-# UNKNOWN_NONE-NEXT:   Section 1 {
+-# UNKNOWN_NONE-NEXT:     SectionLength: 17
+-# UNKNOWN_NONE-NEXT:     Vendor: riscv
+-# UNKNOWN_NONE-NEXT:     Tag: Tag_File (0x1)
+-# UNKNOWN_NONE-NEXT:     Size: 7
+-# UNKNOWN_NONE-NEXT:     FileAttributes {
+-# UNKNOWN_NONE-NEXT:       Attribute {
+-# UNKNOWN_NONE-NEXT:         Tag: 4
+-# UNKNOWN_NONE-NEXT:         Value: 32
+-# UNKNOWN_NONE-NEXT:         TagName: stack_align
+-# UNKNOWN_NONE-NEXT:         Description: Stack alignment is 32-bytes
+-# UNKNOWN_NONE-NEXT:       }
+-# UNKNOWN_NONE-NEXT:     }
+-# UNKNOWN_NONE-NEXT:   }
+-# UNKNOWN_NONE-NEXT: }
+-
+-#      NONE_A6C: BuildAttributes {
+-# NONE_A6C-NEXT:   FormatVersion: 0x41
+-# NONE_A6C-NEXT:   Section 1 {
+-# NONE_A6C-NEXT:     SectionLength: 19
+-# NONE_A6C-NEXT:     Vendor: riscv
+-# NONE_A6C-NEXT:     Tag: Tag_File (0x1)
+-# NONE_A6C-NEXT:     Size: 9
+-# NONE_A6C-NEXT:     FileAttributes {
+-# NONE_A6C-NEXT:       Attribute {
+-# NONE_A6C-NEXT:         Tag: 14
+-# NONE_A6C-NEXT:         Value: 1
+-# NONE_A6C-NEXT:         TagName: atomic_abi
+-# NONE_A6C-NEXT:         Description: Atomic ABI is 1
+-# NONE_A6C-NEXT:       }
+-# NONE_A6C-NEXT:       Attribute {
+-# NONE_A6C-NEXT:         Tag: 4
+-# NONE_A6C-NEXT:         Value: 32
+-# NONE_A6C-NEXT:         TagName: stack_align
+-# NONE_A6C-NEXT:         Description: Stack alignment is 32-bytes
+-# NONE_A6C-NEXT:       }
+-# NONE_A6C-NEXT:     }
+-# NONE_A6C-NEXT:   }
+-# NONE_A6C-NEXT: }
+-
+-#      UNKNOWN_A6C: BuildAttributes {
+-# UNKNOWN_A6C-NEXT:   FormatVersion: 0x41
+-# UNKNOWN_A6C-NEXT:   Section 1 {
+-# UNKNOWN_A6C-NEXT:     SectionLength: 17
+-# UNKNOWN_A6C-NEXT:     Vendor: riscv
+-# UNKNOWN_A6C-NEXT:     Tag: Tag_File (0x1)
+-# UNKNOWN_A6C-NEXT:     Size: 7
+-# UNKNOWN_A6C-NEXT:     FileAttributes {
+-# UNKNOWN_A6C-NEXT:       Attribute {
+-# UNKNOWN_A6C-NEXT:         Tag: 14
+-# UNKNOWN_A6C-NEXT:         Value: 1
+-# UNKNOWN_A6C-NEXT:         TagName: atomic_abi
+-# UNKNOWN_A6C-NEXT:         Description: Atomic ABI is 1
+-# UNKNOWN_A6C-NEXT:       }
+-# UNKNOWN_A6C-NEXT:     }
+-# UNKNOWN_A6C-NEXT:   }
+-# UNKNOWN_A6C-NEXT: }
+-
+-#      UNKNOWN_A6S: BuildAttributes {
+-# UNKNOWN_A6S-NEXT:   FormatVersion: 0x41
+-# UNKNOWN_A6S-NEXT:   Section 1 {
+-# UNKNOWN_A6S-NEXT:     SectionLength:
+-# UNKNOWN_A6S-NEXT:     Vendor: riscv
+-# UNKNOWN_A6S-NEXT:     Tag: Tag_File (0x1)
+-# UNKNOWN_A6S-NEXT:     Size: 7
+-# UNKNOWN_A6S-NEXT:     FileAttributes {
+-# UNKNOWN_A6S-NEXT:       Attribute {
+-# UNKNOWN_A6S-NEXT:         Tag: 14
+-# UNKNOWN_A6S-NEXT:         Value: 2
+-# UNKNOWN_A6S-NEXT:         TagName: atomic_abi
+-# UNKNOWN_A6S-NEXT:         Description: Atomic ABI is 2
+-# UNKNOWN_A6S-NEXT:       }
+-# UNKNOWN_A6S-NEXT:     }
+-# UNKNOWN_A6S-NEXT:   }
+-# UNKNOWN_A6S-NEXT: }
+-
+-#      NONE_A7: BuildAttributes {
+-# NONE_A7-NEXT:   FormatVersion: 0x41
+-# NONE_A7-NEXT:   Section 1 {
+-# NONE_A7-NEXT:     SectionLength: 19
+-# NONE_A7-NEXT:     Vendor: riscv
+-# NONE_A7-NEXT:     Tag: Tag_File (0x1)
+-# NONE_A7-NEXT:     Size: 9
+-# NONE_A7-NEXT:     FileAttributes {
+-# NONE_A7-NEXT:       Attribute {
+-# NONE_A7-NEXT:         Tag: 14
+-# NONE_A7-NEXT:         Value: 3
+-# NONE_A7-NEXT:         TagName: atomic_abi
+-# NONE_A7-NEXT:         Description: Atomic ABI is 3
+-# NONE_A7-NEXT:       }
+-# NONE_A7-NEXT:       Attribute {
+-# NONE_A7-NEXT:         Tag: 4
+-# NONE_A7-NEXT:         Value: 32
+-# NONE_A7-NEXT:         TagName: stack_align
+-# NONE_A7-NEXT:         Description: Stack alignment is 32-bytes
+-# NONE_A7-NEXT:       }
+-# NONE_A7-NEXT:     }
+-# NONE_A7-NEXT:   }
+-# NONE_A7-NEXT: }
+-
+-
+-#      UNKNOWN_A7: BuildAttributes {
+-# UNKNOWN_A7-NEXT:   FormatVersion: 0x41
+-# UNKNOWN_A7-NEXT:   Section 1 {
+-# UNKNOWN_A7-NEXT:     SectionLength: 17
+-# UNKNOWN_A7-NEXT:     Vendor: riscv
+-# UNKNOWN_A7-NEXT:     Tag: Tag_File (0x1)
+-# UNKNOWN_A7-NEXT:     Size: 7
+-# UNKNOWN_A7-NEXT:     FileAttributes {
+-# UNKNOWN_A7-NEXT:       Attribute {
+-# UNKNOWN_A7-NEXT:         Tag: 14
+-# UNKNOWN_A7-NEXT:         Value: 3
+-# UNKNOWN_A7-NEXT:         TagName: atomic_abi
+-# UNKNOWN_A7-NEXT:         Description: Atomic ABI is 3
+-# UNKNOWN_A7-NEXT:       }
+-# UNKNOWN_A7-NEXT:     }
+-# UNKNOWN_A7-NEXT:   }
+-# UNKNOWN_A7-NEXT: }
+-
+-#      A6C_A6S: BuildAttributes {
+-# A6C_A6S-NEXT:   FormatVersion: 0x41
+-# A6C_A6S-NEXT:   Section 1 {
+-# A6C_A6S-NEXT:     SectionLength: 17
+-# A6C_A6S-NEXT:     Vendor: riscv
+-# A6C_A6S-NEXT:     Tag: Tag_File (0x1)
+-# A6C_A6S-NEXT:     Size: 7
+-# A6C_A6S-NEXT:     FileAttributes {
+-# A6C_A6S-NEXT:       Attribute {
+-# A6C_A6S-NEXT:         Tag: 14
+-# A6C_A6S-NEXT:         Value: 1
+-# A6C_A6S-NEXT:         TagName: atomic_abi
+-# A6C_A6S-NEXT:         Description: Atomic ABI is 1
+-# A6C_A6S-NEXT:       }
+-# A6C_A6S-NEXT:     }
+-# A6C_A6S-NEXT:   }
+-# A6C_A6S-NEXT: }
+-
+-#      A6S_A7: BuildAttributes {
+-# A6S_A7-NEXT:   FormatVersion: 0x41
+-# A6S_A7-NEXT:   Section 1 {
+-# A6S_A7-NEXT:     SectionLength: 17
+-# A6S_A7-NEXT:     Vendor: riscv
+-# A6S_A7-NEXT:     Tag: Tag_File (0x1)
+-# A6S_A7-NEXT:     Size: 7
+-# A6S_A7-NEXT:     FileAttributes {
+-# A6S_A7-NEXT:       Attribute {
+-# A6S_A7-NEXT:         Tag: 14
+-# A6S_A7-NEXT:         Value: 3
+-# A6S_A7-NEXT:         TagName: atomic_abi
+-# A6S_A7-NEXT:         Description: Atomic ABI is 3
+-# A6S_A7-NEXT:       }
+-# A6S_A7-NEXT:     }
+-# A6S_A7-NEXT:   }
+-# A6S_A7-NEXT: }
+-
+ #--- unknown13.s
+ .attribute 13, "0"
+ #--- unknown13a.s
+diff -ruN --strip-trailing-cr a/lldb/test/Shell/Unwind/eh-frame-dwarf-unwind-abort.test b/lldb/test/Shell/Unwind/eh-frame-dwarf-unwind-abort.test
+--- a/lldb/test/Shell/Unwind/eh-frame-dwarf-unwind-abort.test
++++ b/lldb/test/Shell/Unwind/eh-frame-dwarf-unwind-abort.test
+@@ -9,12 +9,12 @@
+ # CHECK: stop reason = signal SIGTRAP
+ 
+ thread backtrace
+-# CHECK: frame #0: {{.*}}`asm_main + 23
++# CHECK: frame #0: {{.*}}`asm_main + 19
+ # CHECK: frame #1: {{.*}}`main + {{.*}}
+ 
+ target modules show-unwind -n asm_main
+ # CHECK: eh_frame UnwindPlan:
+ # CHECK: row[0]:    0: CFA=rsp +8 => rip=[CFA-8]
+-# CHECK: row[1]:   14: CFA=rsp+16 => rbp=[CFA-16] rip=[CFA-8]
+-# CHECK: row[2]:   17: CFA=rbp+16 => rbp=[CFA-16] rip=[CFA-8]
+-# CHECK: row[3]:   22: CFA=rsp +8 => rip=[CFA-8]
++# CHECK: row[1]:   10: CFA=rsp+16 => rbp=[CFA-16] rip=[CFA-8]
++# CHECK: row[2]:   13: CFA=rbp+16 => rbp=[CFA-16] rip=[CFA-8]
++# CHECK: row[3]:   18: CFA=rsp +8 => rip=[CFA-8]
+diff -ruN --strip-trailing-cr a/llvm/docs/ReleaseNotes.rst b/llvm/docs/ReleaseNotes.rst
+--- a/llvm/docs/ReleaseNotes.rst
++++ b/llvm/docs/ReleaseNotes.rst
+@@ -112,11 +112,6 @@
+ * The experimental Ssqosid extension is supported.
+ * Zacas is no longer experimental.
+ * Added the CSR names from the Resumable Non-Maskable Interrupts (Smrnmi) extension.
+-* The default atomics mapping was changed to emit an additional trailing fence
+-  for sequentially consistent stores, offering compatibility with a future
+-  mapping using load-acquire and store-release instructions while remaining
+-  fully compatible with objects produced prior to this change. The mapping
+-  (ABI) used is recorded as an ELF attribute.
+ 
+ Changes to the WebAssembly Backend
+ ----------------------------------
+diff -ruN --strip-trailing-cr a/llvm/include/llvm/Support/RISCVAttributeParser.h b/llvm/include/llvm/Support/RISCVAttributeParser.h
+--- a/llvm/include/llvm/Support/RISCVAttributeParser.h
++++ b/llvm/include/llvm/Support/RISCVAttributeParser.h
+@@ -24,7 +24,6 @@
+ 
+   Error unalignedAccess(unsigned tag);
+   Error stackAlign(unsigned tag);
+-  Error atomicAbi(unsigned tag);
+ 
+ public:
+   RISCVAttributeParser(ScopedPrinter *sw)
+diff -ruN --strip-trailing-cr a/llvm/include/llvm/Support/RISCVAttributes.h b/llvm/include/llvm/Support/RISCVAttributes.h
+--- a/llvm/include/llvm/Support/RISCVAttributes.h
++++ b/llvm/include/llvm/Support/RISCVAttributes.h
+@@ -32,21 +32,8 @@
+   PRIV_SPEC = 8,
+   PRIV_SPEC_MINOR = 10,
+   PRIV_SPEC_REVISION = 12,
+-  ATOMIC_ABI = 14,
+ };
+ 
+-namespace RISCVAtomicAbiTag {
+-enum AtomicABI : unsigned {
+-  // Values for Tag_RISCV_atomic_abi
+-  // Defined at
+-  // https://github.com/riscv-non-isa/riscv-elf-psabi-doc/blob/master/riscv-elf.adoc#tag_riscv_atomic_abi-14-uleb128version
+-  UNKNOWN = 0,
+-  A6C = 1,
+-  A6S = 2,
+-  A7 = 3,
+-};
+-} // namespace RISCVAtomicAbiTag
+-
+ enum { NOT_ALLOWED = 0, ALLOWED = 1 };
+ 
+ } // namespace RISCVAttrs
+diff -ruN --strip-trailing-cr a/llvm/lib/Support/RISCVAttributeParser.cpp b/llvm/lib/Support/RISCVAttributeParser.cpp
+--- a/llvm/lib/Support/RISCVAttributeParser.cpp
++++ b/llvm/lib/Support/RISCVAttributeParser.cpp
+@@ -36,18 +36,7 @@
+         {
+             RISCVAttrs::UNALIGNED_ACCESS,
+             &RISCVAttributeParser::unalignedAccess,
+-        },
+-        {
+-            RISCVAttrs::ATOMIC_ABI,
+-            &RISCVAttributeParser::atomicAbi,
+-        },
+-};
+-
+-Error RISCVAttributeParser::atomicAbi(unsigned Tag) {
+-  uint64_t Value = de.getULEB128(cursor);
+-  printAttribute(Tag, Value, "Atomic ABI is " + utostr(Value));
+-  return Error::success();
+-}
++        }};
+ 
+ Error RISCVAttributeParser::unalignedAccess(unsigned tag) {
+   static const char *strings[] = {"No unaligned access", "Unaligned access"};
+diff -ruN --strip-trailing-cr a/llvm/lib/Support/RISCVAttributes.cpp b/llvm/lib/Support/RISCVAttributes.cpp
+--- a/llvm/lib/Support/RISCVAttributes.cpp
++++ b/llvm/lib/Support/RISCVAttributes.cpp
+@@ -18,7 +18,6 @@
+     {PRIV_SPEC, "Tag_priv_spec"},
+     {PRIV_SPEC_MINOR, "Tag_priv_spec_minor"},
+     {PRIV_SPEC_REVISION, "Tag_priv_spec_revision"},
+-    {ATOMIC_ABI, "Tag_atomic_abi"},
+ };
+ 
+ constexpr TagNameMap RISCVAttributeTags{tagData};
+diff -ruN --strip-trailing-cr a/llvm/lib/Target/RISCV/MCTargetDesc/RISCVTargetStreamer.cpp b/llvm/lib/Target/RISCV/MCTargetDesc/RISCVTargetStreamer.cpp
+--- a/llvm/lib/Target/RISCV/MCTargetDesc/RISCVTargetStreamer.cpp
++++ b/llvm/lib/Target/RISCV/MCTargetDesc/RISCVTargetStreamer.cpp
+@@ -75,13 +75,6 @@
+     auto &ISAInfo = *ParseResult;
+     emitTextAttribute(RISCVAttrs::ARCH, ISAInfo->toString());
+   }
+-
+-  if (STI.hasFeature(RISCV::FeatureStdExtA)) {
+-    unsigned AtomicABITag = STI.hasFeature(RISCV::FeatureNoTrailingSeqCstFence)
+-                                ? RISCVAttrs::RISCVAtomicAbiTag::AtomicABI::A6C
+-                                : RISCVAttrs::RISCVAtomicAbiTag::AtomicABI::A6S;
+-    emitAttribute(RISCVAttrs::ATOMIC_ABI, AtomicABITag);
+-  }
+ }
+ 
+ // This part is for ascii assembly output
+diff -ruN --strip-trailing-cr a/llvm/lib/Target/RISCV/RISCVFeatures.td b/llvm/lib/Target/RISCV/RISCVFeatures.td
+--- a/llvm/lib/Target/RISCV/RISCVFeatures.td
++++ b/llvm/lib/Target/RISCV/RISCVFeatures.td
+@@ -1216,10 +1216,10 @@
+ def FeatureSaveRestore : SubtargetFeature<"save-restore", "EnableSaveRestore",
+                                           "true", "Enable save/restore.">;
+ 
+-def FeatureNoTrailingSeqCstFence : SubtargetFeature<"no-trailing-seq-cst-fence",
+-                                          "EnableTrailingSeqCstFence",
+-                                          "false",
+-                                          "Disable trailing fence for seq-cst store.">;
++def FeatureTrailingSeqCstFence : SubtargetFeature<"seq-cst-trailing-fence",
++                                          "EnableSeqCstTrailingFence",
++                                          "true",
++                                          "Enable trailing fence for seq-cst store.">;
+ 
+ def FeatureUnalignedScalarMem
+    : SubtargetFeature<"unaligned-scalar-mem", "EnableUnalignedScalarMem",
+diff -ruN --strip-trailing-cr a/llvm/lib/Target/RISCV/RISCVISelLowering.cpp b/llvm/lib/Target/RISCV/RISCVISelLowering.cpp
+--- a/llvm/lib/Target/RISCV/RISCVISelLowering.cpp
++++ b/llvm/lib/Target/RISCV/RISCVISelLowering.cpp
+@@ -20192,7 +20192,7 @@
+ 
+   if (isa<LoadInst>(Inst) && isAcquireOrStronger(Ord))
+     return Builder.CreateFence(AtomicOrdering::Acquire);
+-  if (Subtarget.enableTrailingSeqCstFence() && isa<StoreInst>(Inst) &&
++  if (Subtarget.enableSeqCstTrailingFence() && isa<StoreInst>(Inst) &&
+       Ord == AtomicOrdering::SequentiallyConsistent)
+     return Builder.CreateFence(AtomicOrdering::SequentiallyConsistent);
+   return nullptr;
+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/RISCV/atomic-load-store.ll b/llvm/test/CodeGen/RISCV/atomic-load-store.ll
+--- a/llvm/test/CodeGen/RISCV/atomic-load-store.ll
++++ b/llvm/test/CodeGen/RISCV/atomic-load-store.ll
+@@ -1,26 +1,26 @@
+ ; NOTE: Assertions have been autogenerated by utils/update_llc_test_checks.py
+ ; RUN: llc -mtriple=riscv32 -verify-machineinstrs < %s \
+ ; RUN:   | FileCheck -check-prefix=RV32I %s
+-; RUN: llc -mtriple=riscv32 -mattr=+a,+no-trailing-seq-cst-fence -verify-machineinstrs < %s \
++; RUN: llc -mtriple=riscv32 -mattr=+a -verify-machineinstrs < %s \
+ ; RUN:   | FileCheck -check-prefixes=RV32IA,RV32IA-WMO %s
+-; RUN: llc -mtriple=riscv32 -mattr=+a,+experimental-ztso,+no-trailing-seq-cst-fence -verify-machineinstrs < %s \
++; RUN: llc -mtriple=riscv32 -mattr=+a,+experimental-ztso -verify-machineinstrs < %s \
+ ; RUN:   | FileCheck -check-prefixes=RV32IA,RV32IA-TSO %s
+ ; RUN: llc -mtriple=riscv64 -verify-machineinstrs < %s \
+ ; RUN:   | FileCheck -check-prefix=RV64I %s
+-; RUN: llc -mtriple=riscv64 -mattr=+a,+no-trailing-seq-cst-fence -verify-machineinstrs < %s \
++; RUN: llc -mtriple=riscv64 -mattr=+a -verify-machineinstrs < %s \
+ ; RUN:   | FileCheck -check-prefixes=RV64IA,RV64IA-WMO %s
+-; RUN: llc -mtriple=riscv64 -mattr=+a,+experimental-ztso,+no-trailing-seq-cst-fence -verify-machineinstrs < %s \
++; RUN: llc -mtriple=riscv64 -mattr=+a,+experimental-ztso -verify-machineinstrs < %s \
+ ; RUN:   | FileCheck -check-prefixes=RV64IA,RV64IA-TSO %s
+ 
+ 
+-; RUN: llc -mtriple=riscv32 -mattr=+a -verify-machineinstrs < %s \
++; RUN: llc -mtriple=riscv32 -mattr=+a,+seq-cst-trailing-fence -verify-machineinstrs < %s \
+ ; RUN:   | FileCheck -check-prefixes=RV32IA,RV32IA-WMO-TRAILING-FENCE %s
+-; RUN: llc -mtriple=riscv32 -mattr=+a,+experimental-ztso -verify-machineinstrs < %s \
++; RUN: llc -mtriple=riscv32 -mattr=+a,+experimental-ztso,+seq-cst-trailing-fence -verify-machineinstrs < %s \
+ ; RUN:   | FileCheck -check-prefixes=RV32IA,RV32IA-TSO-TRAILING-FENCE %s
+ 
+-; RUN: llc -mtriple=riscv64 -mattr=+a -verify-machineinstrs < %s \
++; RUN: llc -mtriple=riscv64 -mattr=+a,+seq-cst-trailing-fence -verify-machineinstrs < %s \
+ ; RUN:   | FileCheck -check-prefixes=RV64IA,RV64IA-WMO-TRAILING-FENCE %s
+-; RUN: llc -mtriple=riscv64 -mattr=+a,+experimental-ztso -verify-machineinstrs < %s \
++; RUN: llc -mtriple=riscv64 -mattr=+a,+experimental-ztso,+seq-cst-trailing-fence -verify-machineinstrs < %s \
+ ; RUN:   | FileCheck -check-prefixes=RV64IA,RV64IA-TSO-TRAILING-FENCE %s
+ 
+ 
+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/RISCV/attributes.ll b/llvm/test/CodeGen/RISCV/attributes.ll
+--- a/llvm/test/CodeGen/RISCV/attributes.ll
++++ b/llvm/test/CodeGen/RISCV/attributes.ll
+@@ -129,8 +129,7 @@
+ ; RUN: llc -mtriple=riscv64 -mattr=+m %s -o - | FileCheck --check-prefixes=CHECK,RV64M %s
+ ; RUN: llc -mtriple=riscv64 -mattr=+zmmul %s -o - | FileCheck --check-prefixes=CHECK,RV64ZMMUL %s
+ ; RUN: llc -mtriple=riscv64 -mattr=+m,+zmmul %s -o - | FileCheck --check-prefixes=CHECK,RV64MZMMUL %s
+-; RUN: llc -mtriple=riscv64 -mattr=+a,no-trailing-seq-cst-fence %s -o - | FileCheck --check-prefixes=CHECK,RV64A,A6C %s
+-; RUN: llc -mtriple=riscv64 -mattr=+a %s -o - | FileCheck --check-prefixes=CHECK,RV64A,A6S %s
++; RUN: llc -mtriple=riscv64 -mattr=+a %s -o - | FileCheck --check-prefixes=CHECK,RV64A %s
+ ; RUN: llc -mtriple=riscv64 -mattr=+f %s -o - | FileCheck --check-prefixes=CHECK,RV64F %s
+ ; RUN: llc -mtriple=riscv64 -mattr=+d %s -o - | FileCheck --check-prefixes=CHECK,RV64D %s
+ ; RUN: llc -mtriple=riscv64 -mattr=+c %s -o - | FileCheck --check-prefixes=CHECK,RV64C %s
+@@ -517,10 +516,3 @@
+   %1 = add i32 %a, 1
+   ret i32 %1
+ }
+-
+-define i8 @atomic_load_i8_seq_cst(ptr %a) nounwind {
+-  %1 = load atomic i8, ptr %a seq_cst, align 1
+-  ret i8 %1
+-; A6S: .attribute 14, 2
+-; A6C: .attribute 14, 1
+-}
+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/RISCV/forced-atomics.ll b/llvm/test/CodeGen/RISCV/forced-atomics.ll
+--- a/llvm/test/CodeGen/RISCV/forced-atomics.ll
++++ b/llvm/test/CodeGen/RISCV/forced-atomics.ll
+@@ -1,12 +1,12 @@
+ ; NOTE: Assertions have been autogenerated by utils/update_llc_test_checks.py
+-; RUN: llc -mtriple=riscv32 -mattr=+no-trailing-seq-cst-fence < %s | FileCheck %s --check-prefixes=RV32,RV32-NO-ATOMIC
++; RUN: llc -mtriple=riscv32 -mattr=+seq-cst-trailing-fence < %s | FileCheck %s --check-prefixes=RV32,RV32-NO-ATOMIC
+ ; RUN: llc -mtriple=riscv32 < %s | FileCheck %s --check-prefixes=RV32,RV32-NO-ATOMIC
+-; RUN: llc -mtriple=riscv32 -mattr=+forced-atomics,+no-trailing-seq-cst-fence < %s | FileCheck %s --check-prefixes=RV32,RV32-ATOMIC
+-; RUN: llc -mtriple=riscv32 -mattr=+forced-atomics < %s | FileCheck %s --check-prefixes=RV32,RV32-ATOMIC-TRAILING
+-; RUN: llc -mtriple=riscv64 -mattr=+no-trailing-seq-cst-fence < %s | FileCheck %s --check-prefixes=RV64,RV64-NO-ATOMIC
++; RUN: llc -mtriple=riscv32 -mattr=+forced-atomics < %s | FileCheck %s --check-prefixes=RV32,RV32-ATOMIC
++; RUN: llc -mtriple=riscv32 -mattr=+forced-atomics,+seq-cst-trailing-fence < %s | FileCheck %s --check-prefixes=RV32,RV32-ATOMIC-TRAILING
+ ; RUN: llc -mtriple=riscv64 < %s | FileCheck %s --check-prefixes=RV64,RV64-NO-ATOMIC
+-; RUN: llc -mtriple=riscv64 -mattr=+forced-atomics,+no-trailing-seq-cst-fence < %s | FileCheck %s --check-prefixes=RV64,RV64-ATOMIC
+-; RUN: llc -mtriple=riscv64 -mattr=+forced-atomics < %s | FileCheck %s --check-prefixes=RV64,RV64-ATOMIC-TRAILING
++; RUN: llc -mtriple=riscv64 -mattr=+seq-cst-trailing-fence < %s | FileCheck %s --check-prefixes=RV64,RV64-NO-ATOMIC
++; RUN: llc -mtriple=riscv64 -mattr=+forced-atomics < %s | FileCheck %s --check-prefixes=RV64,RV64-ATOMIC
++; RUN: llc -mtriple=riscv64 -mattr=+forced-atomics,+seq-cst-trailing-fence < %s | FileCheck %s --check-prefixes=RV64,RV64-ATOMIC-TRAILING
+ 
+ define i8 @load8(ptr %p) nounwind {
+ ; RV32-NO-ATOMIC-LABEL: load8:
+diff -ruN --strip-trailing-cr a/llvm/test/MC/RISCV/attribute.s b/llvm/test/MC/RISCV/attribute.s
+--- a/llvm/test/MC/RISCV/attribute.s
++++ b/llvm/test/MC/RISCV/attribute.s
+@@ -24,6 +24,3 @@
+ 
+ .attribute priv_spec_revision, 0
+ # CHECK: attribute      12, 0
+-
+-.attribute atomic_abi, 0
+-# CHECK: attribute      14, 0
+diff -ruN --strip-trailing-cr a/llvm/test/MC/RISCV/invalid-attribute.s b/llvm/test/MC/RISCV/invalid-attribute.s
+--- a/llvm/test/MC/RISCV/invalid-attribute.s
++++ b/llvm/test/MC/RISCV/invalid-attribute.s
+@@ -33,6 +33,3 @@
+ 
+ .attribute arch, 30
+ # CHECK: [[@LINE-1]]:18: error: expected string constant
+-
+-.attribute atomic_abi, "16"
+-# CHECK: [[@LINE-1]]:24: error: expected numeric constant
