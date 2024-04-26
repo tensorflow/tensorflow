@@ -55,7 +55,8 @@ std::pair<int64_t, int64_t> MemoryTermReducer::Reduce(
     int64_t num_lives, int64_t num_primitives,
     const std::function<
         tsl::protobuf::RepeatedField<int64_t>(int64_t)>&  // NOLINT
-        live) {
+        live,
+    int64_t max_iterations) {
   LOG(INFO) << "Memory Term Reducer beginning to reduce number of terms ...";
 
   // Clear internal state.
@@ -79,7 +80,7 @@ std::pair<int64_t, int64_t> MemoryTermReducer::Reduce(
     }
   }
 
-  Reduce(num_lives, num_primitives);
+  Reduce(num_lives, num_primitives, max_iterations);
 
   // Create the reduced live matrix.
   int64_t num_reduced_terms = 0;
@@ -101,7 +102,8 @@ std::pair<int64_t, int64_t> MemoryTermReducer::Reduce(
 
 std::pair<int64_t, int64_t> MemoryTermReducer::Reduce(
     int64_t num_lives, int64_t num_primitives,
-    const std::function<std::pair<int64_t, int64_t>(int64_t)>& intervals) {
+    const std::function<std::pair<int64_t, int64_t>(int64_t)>& intervals,
+    int64_t max_iterations) {
   LOG(INFO) << "Memory Term Reducer beginning to reduce number of terms ...";
 
   // Clear internal state.
@@ -118,7 +120,7 @@ std::pair<int64_t, int64_t> MemoryTermReducer::Reduce(
     num_terms += length(reduced_intervals_.back());
   }
 
-  Reduce(num_lives, num_primitives);
+  Reduce(num_lives, num_primitives, max_iterations);
 
   // Calculate the number of reduced terms.
   int64_t num_reduced_terms = 0;
@@ -134,7 +136,8 @@ std::pair<int64_t, int64_t> MemoryTermReducer::Reduce(
   return {num_terms, num_reduced_terms};
 }
 
-void MemoryTermReducer::Reduce(int64_t num_lives, int64_t num_primitives) {
+void MemoryTermReducer::Reduce(int64_t num_lives, int64_t num_primitives,
+                               int64_t max_iterations) {
   // For each live index, track the primitives entering memory or being evicted.
   std::vector<absl::btree_set<PrimIdx>> enter(num_lives), evict(num_lives);
   for (PrimIdx prim_idx = 0; prim_idx < num_primitives; ++prim_idx) {
@@ -259,8 +262,9 @@ void MemoryTermReducer::Reduce(int64_t num_lives, int64_t num_primitives) {
     return changed;
   };
 
-  while (SweepAndMerge()) {
+  for (int64_t iteration = 0; iteration < max_iterations; ++iteration) {
     // Repeated until no additional reductions can be achieved.
+    if (!SweepAndMerge()) break;
   }
 
   // Remove any groups that have vanished.
