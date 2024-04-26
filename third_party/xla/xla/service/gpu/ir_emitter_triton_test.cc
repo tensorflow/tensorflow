@@ -1240,6 +1240,44 @@ CHECK: triton_gpu.sparse_dot %[[LHS]], %[[RHS]], %{{[^:]+}}, %[[META]] :
     )"));
 }
 
+TEST_F(TritonFilecheckTest, SparseDotBroadcastMetadata) {
+  const char* kHloText = R"(
+HloModule t
+
+triton_dot {
+  lhs = f16[10,32,64] parameter(0)
+  rhs = f16[10,128,256] parameter(1)
+  meta_partial = u16[8] parameter(2)
+  meta = u16[10,32,8] broadcast(meta_partial), dimensions={2}
+  ROOT dot = f16[10,32,256] dot(lhs, rhs, meta),
+    lhs_batch_dims={0}, lhs_contracting_dims={2},
+    rhs_batch_dims={0}, rhs_contracting_dims={1}, sparsity=L.2@2:4
+}
+
+ENTRY e {
+  lhs = f16[10,32,64] parameter(0)
+  rhs = f16[10,128,256] parameter(1)
+  meta_partial = u16[8] parameter(2)
+  ROOT _ = f16[10,32,256] fusion(lhs, rhs, meta_partial), kind=kCustom, calls=triton_dot,
+    backend_config={"fusion_backend_config": {kind: "__triton_gemm",
+    triton_gemm_config:
+    {"block_m":32,"block_n":32,"block_k":32,"split_k":1,"num_stages":1,"num_warps":1,"num_ctas":1}}}
+}
+)";
+  TritonGemmConfig config(32, 32, 32, 1, 1, 1);
+  TF_ASSERT_OK(
+      CreateTritonIrAndFileCheck(kHloText, config, EmitMatMul, "triton_dot", R"(
+CHECK: %[[TWO:.+]] = arith.constant 2 : i32
+CHECK: %[[LHS:[0-9]+]] = tt.load
+CHECK: %[[RHS:[0-9]+]] = tt.load
+CHECK: %[[T1:[0-9]+]] = tt.load %[[PTR:.+]] {
+CHECK: tt.advance %[[PTR]], [%[[TWO]]]
+CHECK: %[[T2:[0-9]+]] = tt.expand_dims %[[T1]]
+CHECK: %[[META:[0-9]+]] = tt.broadcast %[[T2]]
+CHECK: triton_gpu.sparse_dot %[[LHS]], %[[RHS]], %{{[^:]+}}, %[[META]] :
+    )"));
+}
+
 TEST_F(TritonGemmTest, DoNotUseTensorCoresWithNonDefaultPrecision) {
   const std::string kHloText = R"(
 triton_gemm_r {
