@@ -56,6 +56,11 @@ void R0F32Add2(float* out, float** in) {
   *out = **in + 2.0f;
 }
 
+void R0F32Add2InPlace(float* out, float** in) {
+  ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(in, sizeof(float*));
+  **in = **in + 2.0f;
+}
+
 void R2F32ReduceSum(float* out, float** in) {
   ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(in, sizeof(float) * 4);
   float* array = in[0];
@@ -101,6 +106,7 @@ void CustomCallFailWithBackendConfigStr(float*, float**, const char* opaque,
 }  // namespace
 
 XLA_CPU_REGISTER_CUSTOM_CALL_TARGET(R0F32Add2);
+XLA_CPU_REGISTER_CUSTOM_CALL_TARGET(R0F32Add2InPlace);
 XLA_CPU_REGISTER_CUSTOM_CALL_TARGET(R2F32ReduceSum);
 XLA_CPU_REGISTER_CUSTOM_CALL_TARGET(Add1ToValues);
 XLA_CPU_REGISTER_CUSTOM_CALL_TARGET(F32TupleSwap);
@@ -142,8 +148,8 @@ XLA_TEST_F(CustomCallTest, CustomCallR0F32Add2Aliased) {
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
 
   builder
-      .AddInstruction(
-          HloInstruction::CreateCustomCall(r0f32_, {constant}, "R0F32Add2"))
+      .AddInstruction(HloInstruction::CreateCustomCall(r0f32_, {constant},
+                                                       "R0F32Add2InPlace"))
       ->set_output_to_operand_aliasing({{{}, {0, {}}}});
 
   module->AddEntryComputation(builder.Build());
