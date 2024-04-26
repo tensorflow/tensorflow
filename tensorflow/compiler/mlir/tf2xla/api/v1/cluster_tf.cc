@@ -29,13 +29,10 @@ limitations under the License.
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/host_runtime/lower_cluster_to_runtime_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
-#include "tensorflow/compiler/mlir/tensorflow/utils/data_dumper_logger_config.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
-#include "tensorflow/compiler/mlir/tf2xla/api/v1/tf_dialect_to_executor.h"
 #include "tensorflow/compiler/mlir/tf2xla/internal/clustering_bridge_passes.h"
 #include "tensorflow/compiler/mlir/tf2xla/internal/inference/inference_passes.h"
 #include "tensorflow/compiler/mlir/tf2xla/internal/logging_hooks.h"
@@ -43,9 +40,7 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/stacktrace.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/tpu/tpu_defs.h"
 #include "tensorflow/core/util/debug_data_dumper.h"
-#include "tsl/framework/device_type.h"
 #include "tsl/platform/error_logging.h"
 #include "tsl/platform/errors.h"
 
