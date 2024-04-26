@@ -100,12 +100,12 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     visibility = ["//visibility:public"],
     deps = [
-        ":nccl_clique_key",
         "//xla:executable_run_options",
         "//xla:status_macros",
         "//xla:statusor",
         "//xla/service:executable",
         "//xla/service:global_device_id",
+        "//xla/service/gpu/runtime:nccl_clique_key",
         "//xla/stream_executor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/status",
@@ -872,34 +872,6 @@ cc_library(
     ],
 )
 
-cc_library(
-    name = "nccl_clique_key",
-    srcs = ["nccl_clique_key.cc"],
-    hdrs = ["nccl_clique_key.h"],
-    compatible_with = get_compatible_with_portable(),
-    deps = [
-        "//xla/service:global_device_id",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/container:btree",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/types:span",
-    ],
-)
-
-xla_cc_test(
-    name = "nccl_clique_key_test",
-    srcs = ["nccl_clique_key_test.cc"],
-    deps = [
-        ":nccl_clique_key",
-        "//xla/service:global_device_id",
-        "@com_google_absl//absl/container:btree",
-        "@local_tsl//tsl/platform:test",
-        "@local_tsl//tsl/platform:test_main",
-    ],
-)
-
 cuda_library(
     name = "sleep_kernel",
     srcs = if_cuda_is_configured(["sleep_kernel.cu.cc"]),
@@ -930,7 +902,6 @@ cc_library(
         ":gpu_constants",
         ":gpu_executable_run_options",
         ":ir_emission_utils",
-        ":nccl_clique_key",
         ":stream_executor_util",
         "//xla:executable_run_options",
         "//xla:shape_tree",
@@ -952,6 +923,7 @@ cc_library(
         "//xla/service:xla_debug_info_manager",
         "//xla/service/gpu/runtime:annotation",
         "//xla/service/gpu/runtime:nccl_clique",
+        "//xla/service/gpu/runtime:nccl_clique_key",
         "//xla/service/gpu/runtime:thunk",
         "//xla/stream_executor",
         "//xla/stream_executor:device_description",

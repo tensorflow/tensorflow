@@ -28,7 +28,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/collective_ops_utils.h"
-#include "xla/service/gpu/nccl_clique_key.h"
+#include "xla/service/gpu/runtime/nccl_clique_key.h"
 #include "xla/service/hlo_parser.h"
 #include "xla/shape.h"
 #include "xla/status_macros.h"

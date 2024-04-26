@@ -32,7 +32,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/primitive_util.h"
 #include "xla/service/collective_ops_utils.h"
-#include "xla/service/gpu/nccl_clique_key.h"
+#include "xla/service/gpu/runtime/nccl_clique_key.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_activation.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"

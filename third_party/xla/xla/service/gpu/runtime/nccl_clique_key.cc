@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/nccl_clique_key.h"
+#include "xla/service/gpu/runtime/nccl_clique_key.h"
 
 #include <algorithm>
 #include <cstdint>

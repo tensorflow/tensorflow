@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_GPU_NCCL_CLIQUE_KEY_H_
-#define XLA_SERVICE_GPU_NCCL_CLIQUE_KEY_H_
+#ifndef XLA_SERVICE_GPU_RUNTIME_NCCL_CLIQUE_KEY_H_
+#define XLA_SERVICE_GPU_RUNTIME_NCCL_CLIQUE_KEY_H_
 
 #include <array>
 #include <cstdint>
@@ -165,4 +165,4 @@ using NcclCliqueIdCallback =  // NOLINT
 
 }  // namespace xla::gpu
 
-#endif  // XLA_SERVICE_GPU_NCCL_CLIQUE_KEY_H_
+#endif  // XLA_SERVICE_GPU_RUNTIME_NCCL_CLIQUE_KEY_H_

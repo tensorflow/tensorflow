@@ -28,7 +28,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/service/gpu/nccl_clique_key.h"
+#include "xla/service/gpu/runtime/nccl_clique_key.h"
 #include "xla/service/gpu/runtime/nccl_collective_thunk.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/stream_executor_pimpl.h"

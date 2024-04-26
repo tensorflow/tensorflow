@@ -29,8 +29,8 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "xla/executable_run_options.h"
-#include "xla/service/gpu/nccl_clique_key.h"
 #include "xla/service/gpu/runtime/nccl_api.h"
+#include "xla/service/gpu/runtime/nccl_clique_key.h"
 #include "xla/service/lockable.h"
 #include "xla/stream_executor/stream_executor.h"
 
