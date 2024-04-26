@@ -1958,7 +1958,6 @@ absl::Status EmitMatMul(mlir::OpBuilder builder,
   // time.
   auto loc = mlir::NameLoc::get(builder.getStringAttr(dot_instr->name()));
   ImplicitLocOpBuilder b(loc, builder);
-  Type i32_ty = b.getI32Type();
 
   TF_RETURN_IF_ERROR(ValidateMatMulConfig(config, *dot_instr));
   const int split_k = config.split_k;
@@ -2107,17 +2106,14 @@ absl::Status EmitMatMul(mlir::OpBuilder builder,
     // the other two get discarded by the masked store at the end.
     const bool need_masking = dims.k % (block_k * split_k) > 0;
     if (need_masking) {
-      auto elements_in_tile =
-          b.create<ma::SubIOp>(CreateConst(b, i32_ty, dims.k), ki);
-      auto range_k = Range(b, block_k);
-      if (pid_k != nullptr) {
-        range_k = b.create<ma::AddIOp>(
-            range_k,
-            Splat(b,
-                  b.create<ma::MulIOp>(pid_k, CreateConst(b, i32_ty, block_k)),
-                  block_k));
-      }
-      auto apply_mask = [&](int64_t dim, Value input) {
+      auto apply_mask = [&](int64_t dim, Value input, int denom) {
+        auto elements_in_tile = b.create<ma::SubIOp>(c32(dims.k / denom), ki);
+        int size = block_k / denom;
+        auto range_k = Range(b, size);
+        if (pid_k != nullptr) {
+          range_k = b.create<ma::AddIOp>(
+              range_k, Splat(b, b.create<ma::MulIOp>(pid_k, c32(size)), size));
+        }
         auto ty = mlir::cast<mlir::RankedTensorType>(input.getType());
         TensorValue range_expanded = mlir::cast<TensorValue>(
             b.create<mt::ExpandDimsOp>(range_k, dim).getResult());
@@ -2128,8 +2124,10 @@ absl::Status EmitMatMul(mlir::OpBuilder builder,
                                        range_expanded.getType().getShape())));
         return b.create<ma::SelectOp>(mask, input, ZerosLike(b, input));
       };
-      dot_input_lhs = apply_mask(0, dot_input_lhs);
-      dot_input_rhs = apply_mask(1, dot_input_rhs);
+      dot_input_lhs = apply_mask(0, dot_input_lhs, is_sparse ? 2 : 1);
+      dot_input_rhs = apply_mask(1, dot_input_rhs, 1);
+      // Masking the metadata is not necessary, as the inputs are masked
+      // (i.e. zeroed out), so the padded metadata can hold any values.
     }
 
     if (is_sparse) {

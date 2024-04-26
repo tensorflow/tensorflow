@@ -1240,6 +1240,44 @@ CHECK: triton_gpu.sparse_dot %[[LHS]], %[[RHS]], %{{[^:]+}}, %[[META]] :
     )"));
 }
 
+TEST_F(TritonFilecheckTest, SparseDotWithMasking) {
+  const char* kHloText = R"(
+HloModule t
+
+triton_dot {
+  lhs = f16[32,24] parameter(0)
+  rhs = f16[48,32] parameter(1)
+  meta = u16[32,3] parameter(2)
+  ROOT dot = f16[32,32] dot(lhs, rhs, meta),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}, sparsity=L.1@2:4
+}
+
+ENTRY e {
+  lhs = f16[32,24] parameter(0)
+  rhs = f16[48,32] parameter(1)
+  meta = u16[32,3] parameter(2)
+  ROOT _ = f16[32,32] fusion(lhs, rhs, meta), kind=kCustom, calls=triton_dot,
+    backend_config={"fusion_backend_config": {kind: "__triton_gemm",
+    triton_gemm_config:
+    {"block_m":32,"block_n":32,"block_k":64,"split_k":1,"num_stages":1,"num_warps":1,"num_ctas":1}}}
+}
+)";
+  TritonGemmConfig config(32, 32, 64, 1, 1, 1);
+  TF_ASSERT_OK(
+      CreateTritonIrAndFileCheck(kHloText, config, EmitMatMul, "triton_dot", R"(
+CHECK-DAG: %[[C24:.+]] = arith.constant dense<24>
+CHECK-DAG: %[[C48:.+]] = arith.constant dense<48>
+CHECK: %[[LHS:[0-9]+]] = tt.load %{{.+}} {boundaryCheck = array<i32: 1>
+CHECK: %[[RHS:[0-9]+]] = tt.load %{{.+}} {boundaryCheck = array<i32: 0>
+CHECK: %[[META:[0-9]+]] = tt.load %{{.+}} {boundaryCheck = array<i32: 1>
+CHECK: arith.cmpi slt, %{{.+}}, %[[C24]] :
+CHECK: %[[LHS_MASKED:[0-9]+]] = arith.select %{{.+}}, %[[LHS]],
+CHECK: arith.cmpi slt, %{{.+}}, %[[C48]] :
+CHECK: %[[RHS_MASKED:[0-9]+]] = arith.select %{{.+}}, %[[RHS]],
+CHECK: triton_gpu.sparse_dot %[[LHS_MASKED]], %[[RHS_MASKED]], %{{[^:]+}}, %[[META]] :
+    )"));
+}
+
 TEST_F(TritonFilecheckTest, SparseDotBroadcastMetadata) {
   const char* kHloText = R"(
 HloModule t
