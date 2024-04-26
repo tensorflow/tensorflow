@@ -23,11 +23,11 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/log/log.h"
-#include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
@@ -181,11 +181,11 @@ absl::Status ConcatInputFeatureFromSameTable(
     }
     (*total_id_counts)[feature_group_id] = total_id_count;
     (*updated_row_ids)[feature_group_id] =
-        absl::make_unique_for_overwrite<int32_t[]>(total_id_count);
+        std::unique_ptr<int32_t[]>(new int32_t[total_id_count]);
     (*updated_col_ids)[feature_group_id] =
-        absl::make_unique_for_overwrite<int32_t[]>(total_id_count);
+        std::unique_ptr<int32_t[]>(new int32_t[total_id_count]);
     (*updated_gains)[feature_group_id] =
-        absl::make_unique_for_overwrite<float[]>(total_id_count);
+        std::unique_ptr<float[]>(new float[total_id_count]);
     int32_t tmp_size = 0;
     for (int32_t feature_id : feature_id_list) {
       int32_t feature_id_count = (*row_ids_list)[feature_id].NumElements();
@@ -220,10 +220,10 @@ absl::Status SortDedupAndCountStatsOfCooTensor(
        ++feature_group_id) {
     int32_t total_id_count = (*total_id_counts)[feature_group_id];
     (*dedup_ids_index_mapping)[feature_group_id] =
-        absl::make_unique_for_overwrite<uint32_t[]>(total_id_count);
+        std::unique_ptr<uint32_t[]>(new uint32_t[total_id_count]);
 
     (*gains_after_dedup)[feature_group_id] =
-        absl::make_unique_for_overwrite<float[]>(total_id_count);
+        std::unique_ptr<float[]>(new float[total_id_count]);
 
     uint32_t* per_feature_dedup_ids_index_mapping =
         (*dedup_ids_index_mapping)[feature_group_id].get();
@@ -234,7 +234,7 @@ absl::Status SortDedupAndCountStatsOfCooTensor(
     const int32_t* col_ids_ptr = (*updated_col_ids)[feature_group_id].get();
     const float* gains_ptr = (*updated_gains)[feature_group_id].get();
     (*col_ids_index_list)[feature_group_id] =
-        absl::make_unique_for_overwrite<uint64_t[]>(total_id_count);
+        std::make_unique<uint64_t[]>(total_id_count);
     uint64_t* per_feature_col_ids_index_list =
         (*col_ids_index_list)[feature_group_id].get();
     for (int32_t index = 0; index < total_id_count; ++index) {
@@ -1209,8 +1209,8 @@ void ConvertToListOfSparseCoreCooTensorsOp::Compute(OpKernelContext* ctx) {
 
   const int32 total_id_count = values->NumElements();
 
-  auto row_ids_before_dedup =
-      absl::make_unique_for_overwrite<int32[]>(total_id_count);
+  auto row_ids_before_dedup = std::unique_ptr<int32[]>(
+      new std::remove_extent_t<int32[]>[total_id_count]);
 
   OP_REQUIRES_OK(
       ctx, ComputeRowIdsBeforePadding(*indices_or_row_splits, total_id_count,

@@ -163,7 +163,6 @@ cc_library(
         "//tensorflow/core/platform:status",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log",
-        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
