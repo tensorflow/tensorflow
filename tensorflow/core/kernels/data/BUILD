@@ -295,8 +295,10 @@ tf_kernel_library(
         "//tensorflow/core/data:flat_map_utils",
         "//tensorflow/core/data:name_utils",
         "//tensorflow/core/data:serialization_utils",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:thread_annotations",
     ],
 )
 

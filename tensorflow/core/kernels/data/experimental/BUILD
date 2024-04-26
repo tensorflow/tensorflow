@@ -342,6 +342,7 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/data:name_utils",
+        "//tensorflow/core/framework:dataset_options_proto_cc",
         "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/kernels:random_index_shuffle",
         "//tensorflow/core/kernels/data:random_seed_ops",

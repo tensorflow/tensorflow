@@ -14,14 +14,17 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/data/flat_map_utils.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <cstdlib>
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 #include "tensorflow/core/data/captured_function.h"
 #include "tensorflow/core/framework/dataset.h"
@@ -78,6 +81,18 @@ absl::StatusOr<int64_t> FlatMapRandomAccessHandler::Cardinality() {
   return cumulative_cardinalities_->back();
 }
 
+absl::StatusOr<int64_t> FlatMapRandomAccessHandler::CumulativeCardinality(
+    size_t index) {
+  TF_RETURN_IF_ERROR(cumulative_cardinalities_.status());
+  if (index >= cumulative_cardinalities_->size()) {
+    return absl::OutOfRangeError(absl::StrCat(
+        "Dataset index exceeds the number of input datasets. Got index: ",
+        index, ", number of input datasets: ",
+        cumulative_cardinalities_->size(), "."));
+  }
+  return (*cumulative_cardinalities_)[index];
+}
+
 absl::StatusOr<std::vector<int64_t>>
 FlatMapRandomAccessHandler::ComputeCardinalities() {
   if (input_datasets_.empty()) {
@@ -103,6 +118,46 @@ FlatMapRandomAccessHandler::ComputeCardinalities() {
     cumulative_cardinalities.push_back(0);
   }
   return cumulative_cardinalities;
+}
+
+absl::StatusOr<int64_t> FlatMapRandomAccessHandler::GetDatasetIndex(
+    size_t element_position) {
+  TF_ASSIGN_OR_RETURN(int64_t cardinality, Cardinality());
+  if (cardinality < 0) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Failed to globally shuffle flat map dataset. Global shuffling "
+        "requires finite cardinality. Got ",
+        cardinality, "."));
+  }
+  if (element_position >= cardinality) {
+    return absl::OutOfRangeError(absl::StrCat(
+        "Element index exceeds the flat map dataset cardinality. Got index: ",
+        element_position, ", cardinality: ", cardinality, "."));
+  }
+  return std::upper_bound(cumulative_cardinalities_->begin(),
+                          cumulative_cardinalities_->end(), element_position) -
+         cumulative_cardinalities_->begin();
+}
+
+absl::StatusOr<std::vector<std::unique_ptr<IteratorBase>>>
+FlatMapRandomAccessHandler::MakeInputIterators(
+    IteratorContext* ctx, const DatasetBaseIterator* parent,
+    const std::string& prefix) {
+  if (input_datasets_.empty()) {
+    TF_ASSIGN_OR_RETURN(input_datasets_, MakeInputDatasets());
+  }
+
+  std::vector<std::unique_ptr<IteratorBase>> result;
+  if (input_datasets_.empty()) {
+    return result;
+  }
+
+  result.resize(input_datasets_.size());
+  for (size_t i = 0; i < input_datasets_.size(); ++i) {
+    TF_RETURN_IF_ERROR(input_datasets_[i]->MakeIterator(
+        ctx, parent, absl::StrCat(prefix, "[", i, "]"), &result[i]));
+  }
+  return result;
 }
 
 absl::StatusOr<std::vector<DatasetBase*>>

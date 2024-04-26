@@ -52,6 +52,18 @@ class FlatMapRandomAccessHandler {
   // Returns the dataset cardinality.
   absl::StatusOr<int64_t> Cardinality();
 
+  // Returns the cumulative cardinality at the index-th dataset.
+  absl::StatusOr<int64_t> CumulativeCardinality(size_t index);
+
+  // Given the flattened element position `element_position`, returns the index
+  // of the dataset to which the element belongs.
+  absl::StatusOr<int64_t> GetDatasetIndex(size_t element_position);
+
+  // Creates the dataset iterators.
+  absl::StatusOr<std::vector<std::unique_ptr<IteratorBase>>> MakeInputIterators(
+      IteratorContext* ctx, const DatasetBaseIterator* parent,
+      const std::string& prefix);
+
  private:
   // Computes the cumulative cardinalities.
   absl::StatusOr<std::vector<int64_t>> ComputeCardinalities();

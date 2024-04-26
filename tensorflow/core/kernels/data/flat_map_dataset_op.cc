@@ -15,9 +15,11 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/flat_map_dataset_op.h"
 
 #include <cstdint>
+#include <cstdlib>
 #include <string>
 #include <utility>
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
@@ -35,6 +37,8 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tsl/platform/logging.h"
+#include "tsl/platform/statusor.h"
+#include "tsl/platform/thread_annotations.h"
 
 namespace tensorflow {
 namespace data {
@@ -71,6 +75,7 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
         output_shapes_(output_shapes),
         random_access_handler_(ctx, input, *captured_func_) {
     input_->Ref();
+    random_indexing_compatible_ = input_->RandomIndexingCompatible();
   }
 
   ~Dataset() override { input_->Unref(); }
@@ -113,6 +118,10 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
   Status CheckExternalState() const override {
     TF_RETURN_IF_ERROR(captured_func_->CheckExternalState());
     return input_->CheckExternalState();
+  }
+
+  absl::Status RandomIndexingCompatible() const override {
+    return random_indexing_compatible_;
   }
 
  protected:
@@ -159,6 +168,10 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
     Status GetNextInternal(IteratorContext* ctx,
                            std::vector<Tensor>* out_tensors,
                            bool* end_of_sequence) override {
+      if (ctx->index_mapper()) {
+        return Get(ctx, out_tensors, end_of_sequence);
+      }
+
       // LINT.IfChange(GetNextInternal)
       mutex_lock l(mu_);
       do {
@@ -284,6 +297,58 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
       *end_of_sequence = false;
       return absl::OkStatus();
       // LINT.ThenChange(:GetNextInternal)
+    }
+
+    // TODO(b/325112575): Support save/load.
+    absl::Status Get(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
+                     bool* end_of_sequence) TF_LOCKS_EXCLUDED(mu_) {
+      mutex_lock l(mu_);
+      TF_ASSIGN_OR_RETURN(size_t parent_index,
+                          ctx->index_mapper()(element_count_));
+
+      FlatMapRandomAccessHandler& random_access =
+          dataset()->random_access_handler_;
+      absl::StatusOr<int64_t> dataset_index =
+          random_access.GetDatasetIndex(parent_index);
+      if (absl::IsOutOfRange(dataset_index.status())) {
+        *end_of_sequence = true;
+        return absl::OkStatus();
+      }
+      TF_RETURN_IF_ERROR(dataset_index.status());
+
+      if (dataset_iterators_.empty()) {
+        // TODO(b/325112575): Consider moving this to `Initialize()`, which
+        // requires passing the `index_mapper` to the `IteratorContext` there.
+        TF_ASSIGN_OR_RETURN(
+            dataset_iterators_,
+            random_access.MakeInputIterators(ctx, this, prefix()));
+      }
+
+      IteratorContext::Params params(ctx);
+      params.index_mapper = GetFlatMapIndexMapper(parent_index, *dataset_index);
+      IteratorContext global_shuffle_ctx(std::move(params));
+      TF_RETURN_IF_ERROR(dataset_iterators_[*dataset_index]->GetNext(
+          &global_shuffle_ctx, out_tensors, end_of_sequence));
+      ctx->MergeCheckpoint(global_shuffle_ctx.checkpoint());
+      ++element_count_;
+      return absl::OkStatus();
+    }
+
+    IndexMapperFn GetFlatMapIndexMapper(size_t parent_index,
+                                        size_t dataset_index)
+        TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      return [this, parent_index, dataset_index](
+                 size_t element_position) -> absl::StatusOr<size_t> {
+        if (dataset_index == 0) {
+          return parent_index;
+        }
+        FlatMapRandomAccessHandler& random_access =
+            dataset()->random_access_handler_;
+        TF_ASSIGN_OR_RETURN(
+            int64_t cumulative_cardinality,
+            random_access.CumulativeCardinality(dataset_index - 1));
+        return parent_index - cumulative_cardinality;
+      };
     }
 
    protected:
@@ -424,6 +489,13 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
     std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_);
     std::unique_ptr<IteratorBase> current_element_iterator_ TF_GUARDED_BY(mu_);
     std::vector<Tensor> inputs_ TF_GUARDED_BY(mu_);
+    // Number of flattened elements produced by the iterator. Note this differs
+    // from `element_index_` which counts the input datasets that have been
+    // iterated over.
+    size_t element_count_ TF_GUARDED_BY(mu_) = 0;
+    // All dataset iterators. Only populated when global shuffling is enabled.
+    std::vector<std::unique_ptr<IteratorBase>> dataset_iterators_
+        TF_GUARDED_BY(mu_);
     std::unique_ptr<InstantiatedCapturedFunction> instantiated_captured_func_;
   };
 
@@ -431,6 +503,7 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
   const std::unique_ptr<CapturedFunction> captured_func_;
   const DataTypeVector output_types_;
   const std::vector<PartialTensorShape> output_shapes_;
+  absl::Status random_indexing_compatible_ = absl::OkStatus();
   mutable FlatMapRandomAccessHandler random_access_handler_;
 };
 

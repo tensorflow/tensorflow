@@ -14,12 +14,14 @@
 # ==============================================================================
 """Tests for `tf.data.Dataset.flat_map()`."""
 import random
+from typing import Optional
 
 from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.core.framework import dataset_options_pb2
 from tensorflow.python.client import session
+from tensorflow.python.data.experimental.ops import global_shuffle_op
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
@@ -462,6 +464,38 @@ class FlatMapCheckpointTest(
       return dataset.with_options(options)
 
     verify_fn(self, build_dataset, num_outputs=3 * 4 - num_skips)
+
+
+class FlatMapGlobalShuffleTest(
+    test_base.DatasetTestBase, parameterized.TestCase):
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(
+              repetitions=[1, 2],
+              seed=[None, 42],
+              reshuffle_each_iteration=[True, False])))
+  def test(
+      self,
+      repetitions: int,
+      seed: Optional[int],
+      reshuffle_each_iteration: bool):
+    dataset = dataset_ops.Dataset.from_tensor_slices(
+        [[1, 2, 3], [4, 5, 6], [7, 8, 9]])
+    dataset = dataset.flat_map(dataset_ops.Dataset.from_tensor_slices)
+    if repetitions > 1:
+      dataset = dataset.repeat(repetitions)
+    dataset = dataset.prefetch(buffer_size=dataset_ops.AUTOTUNE)
+    dataset = global_shuffle_op._global_shuffle(
+        dataset, seed=seed, reshuffle_each_iteration=reshuffle_each_iteration)
+
+    expected = list(range(1, 10)) * repetitions
+    dataset_output = self.getDatasetOutput(
+        dataset, requires_initialization=True)
+    self.assertCountEqual(dataset_output, expected)
+    self.assertNotEqual(dataset_output, expected)
+    self.assertLen(dataset_output, self.evaluate(dataset.cardinality()))
 
 
 if __name__ == "__main__":

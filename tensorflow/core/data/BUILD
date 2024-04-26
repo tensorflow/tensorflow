@@ -200,6 +200,7 @@ cc_library(
         "//tensorflow/core/kernels/data:iterator_ops",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:refcount",
