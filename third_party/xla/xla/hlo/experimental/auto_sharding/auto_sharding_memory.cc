@@ -114,6 +114,7 @@ std::pair<int64_t, int64_t> MemoryTermReducer::Reduce(
   reduced_intervals_.reserve(num_primitives);
   for (PrimIdx prim_idx = 0; prim_idx < num_primitives; ++prim_idx) {
     reduced_intervals_.push_back(intervals(prim_idx));
+    if (!IsValid(reduced_intervals_.back())) continue;
     num_terms += length(reduced_intervals_.back());
   }
 

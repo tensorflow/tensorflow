@@ -559,6 +559,25 @@ TEST(AutoShardingMemoryTest, ExampleFromDocumentationUsingIntervals) {
   EXPECT_EQ(reducer.GetReducedGroups(), expected_reduced_groups);
 }
 
+TEST(AutoShardingMemoryTest, InvalidIntervals) {
+  const std::vector<std::pair<int64_t, int64_t>> intervals =
+      {{0, 4}, {9223372036854775807, 0}, {9223372036854775807, 0}};
+
+  MemoryTermReducer reducer;
+  const auto num_terms = reducer.Reduce(/*num_lives=*/5, /*num_primitives=*/3,
+                                        Convert(intervals));
+
+  const std::vector<std::vector<int64_t>> expected_reduced_live = {};
+  const std::vector<std::pair<int64_t, int64_t>> expected_reduced_intervals =
+      {{0, 4}, {9223372036854775807, 0}, {9223372036854775807, 0}};
+  const std::vector<absl::btree_set<int64_t>> expected_reduced_groups = {};
+  const std::pair<int64_t, int64_t> expected_num_terms = {5, 5};
+  EXPECT_EQ(num_terms, expected_num_terms);
+  EXPECT_EQ(reducer.GetReducedLive(), expected_reduced_live);
+  EXPECT_EQ(reducer.GetReducedIntervals(), expected_reduced_intervals);
+  EXPECT_EQ(reducer.GetReducedGroups(), expected_reduced_groups);
+}
+
 // clang-format on
 
 }  // namespace
