@@ -76,8 +76,8 @@ H AbslHashValue(H h, const HloInstructionAdaptor& m) {
 }
 
 template <HloOpcode op, HloOpcode... rest>
-bool IsOpcodeAnyOf(const HloInstructionAdaptor& adaptor) {
-  return (adaptor.opcode() == op) || ((adaptor.opcode() == rest) || ...);
+bool IsOpcodeAnyOf(const HloInstruction* instr) {
+  return (instr->opcode() == op) || ((instr->opcode() == rest) || ...);
 }
 
 namespace internal {
@@ -156,14 +156,23 @@ bool HloAnyOf(absl::Span<const HloInstructionAdaptor> roots,
               const std::function<bool(HloInstructionAdaptor node)>& visit,
               bool visit_operands = true);
 
-// Visit the HLO nodes stating from `roots`, returning the first
-// node for which `visit` returns true, or `nullptr` if no node matches. Uses
+// Visit the HLO nodes starting from `roots`, returning the first
+// node for which `visit` returns true, or `nullopt` if no node matches. Uses
 // the same order as `HloBfsConsumersFirstTraversal` if `visit_operands` is
 // true. Otherwise the same order as `HloBfsProducersFirstTraversal` is used.
 std::optional<HloInstructionAdaptor> HloFindIf(
     absl::Span<const HloInstructionAdaptor> roots,
     const HloFusionAdaptor& fusion,
     const std::function<bool(HloInstructionAdaptor node)>& visit,
+    bool visit_operands = true);
+
+// Visit the HLO nodes starting from `roots`. If `visit_operands` is true, the
+// search is going towards the operands, otherwise towards the users. Returns
+// the first node for which `visit` returns true, or `nullopt` if no node
+// matches.
+std::optional<const HloInstruction*> HloFindIf(
+    absl::Span<const HloInstruction* const> roots,
+    const std::function<bool(const HloInstruction* node)>& visit,
     bool visit_operands = true);
 
 // Visit the producers of all parameters that are needed by the fusion.

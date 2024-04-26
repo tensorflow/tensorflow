@@ -427,5 +427,42 @@ std::optional<HloInstructionAdaptor> HloFindIf(
   return result;
 }
 
+std::optional<const HloInstruction*> HloFindIf(
+    absl::Span<const HloInstruction* const> roots,
+    const std::function<bool(const HloInstruction* node)>& visit,
+    bool visit_operands) {
+  absl::flat_hash_set<const HloInstruction*> visited;
+  std::queue<const HloInstruction*> q;
+  auto enqueue = [&](const HloInstruction* node) {
+    if (visit_operands) {
+      for (const HloInstruction* operand : node->operands()) {
+        if (visited.insert(operand).second) {
+          q.push(operand);
+        }
+      }
+    } else {
+      for (const HloInstruction* operand : node->users()) {
+        if (visited.insert(operand).second) {
+          q.push(operand);
+        }
+      }
+    }
+  };
+  for (auto root : roots) {
+    if (visited.insert(root).second) {
+      q.push(root);
+    }
+  }
+  while (!q.empty()) {
+    const HloInstruction* node = q.front();
+    q.pop();
+    if (visit(node)) {
+      return node;
+    }
+    enqueue(node);
+  }
+  return std::nullopt;
+}
+
 }  // namespace gpu
 }  // namespace xla
