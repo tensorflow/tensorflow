@@ -20,6 +20,7 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "pthreadpool.h"  // from @pthreadpool
+#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
 
 namespace tflite {

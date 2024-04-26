@@ -424,6 +424,7 @@ cc_library(
     deps = [
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/core/kernels:builtin_ops",
@@ -1173,6 +1174,8 @@ cc_test(
         ":test_main",
         ":unary_elementwise_tester",
         ":xnnpack_delegate_test_mode",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -1188,6 +1191,8 @@ cc_test(
         ":binary_elementwise_tester",
         ":test_main",
         ":xnnpack_delegate_test_mode",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -1203,6 +1208,8 @@ cc_test(
         ":pool_2d_tester",
         ":test_main",
         ":xnnpack_delegate_test_mode",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -1234,6 +1241,8 @@ cc_test(
         ":test_main",
         ":unary_elementwise_tester",
         ":xnnpack_delegate_test_mode",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -1249,6 +1258,7 @@ cc_test(
         ":quantized_conv_2d_tester",
         ":test_main",
         ":xnnpack_delegate_test_mode",
+        "//tensorflow/lite/c:c_api_types",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -1264,6 +1274,7 @@ cc_test(
         ":quantized_depthwise_conv_2d_tester",
         ":test_main",
         ":xnnpack_delegate_test_mode",
+        "//tensorflow/lite/c:c_api_types",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -1279,6 +1290,8 @@ cc_test(
         ":concatenation_tester",
         ":test_main",
         ":xnnpack_delegate_test_mode",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -1294,6 +1307,7 @@ cc_test(
         ":conv_2d_tester",
         ":test_main",
         ":xnnpack_delegate_test_mode",
+        "//tensorflow/lite/c:c_api_types",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -1308,6 +1322,7 @@ cc_test(
     deps = [
         ":test_main",
         ":xnnpack_delegate_test_mode",
+        "//tensorflow/lite/c:c_api_types",
         "@com_google_googletest//:gtest",
         "@pthreadpool",
     ],
@@ -1324,6 +1339,8 @@ cc_test(
         ":depth_to_space_tester",
         ":test_main",
         ":xnnpack_delegate_test_mode",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -1339,6 +1356,7 @@ cc_test(
         ":depthwise_conv_2d_tester",
         ":test_main",
         ":xnnpack_delegate_test_mode",
+        "//tensorflow/lite/c:c_api_types",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -1354,6 +1372,8 @@ cc_test(
         ":binary_elementwise_tester",
         ":test_main",
         ":xnnpack_delegate_test_mode",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -1418,6 +1438,8 @@ cc_test(
         ":test_main",
         ":unary_elementwise_tester",
         ":xnnpack_delegate_test_mode",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -1433,6 +1455,7 @@ cc_test(
         ":fully_connected_tester",
         ":test_main",
         ":xnnpack_delegate_test_mode",
+        "//tensorflow/lite/c:c_api_types",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -1448,6 +1471,8 @@ cc_test(
         ":test_main",
         ":unary_elementwise_tester",
         ":xnnpack_delegate_test_mode",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
     ],
 )
