@@ -38,7 +38,7 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-tsl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GetMlirModuleFromString(
+absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GetMlirModuleFromString(
     llvm::StringRef string, mlir::MLIRContext* context) {
   mlir::DialectRegistry mlir_registry;
   RegisterAllTensorFlowDialects(mlir_registry);
