@@ -2563,4 +2563,16 @@ diff --ruN a/stablehlo/stablehlo/experimental/transforms/StablehloRefineShapes.c
 +}  // namespace experimental
 +}  // namespace stablehlo
 +}  // namespace mlir
+diff --ruN a/stablehlo/stablehlo/transforms/StablehloAggressiveSimplification.cpp b/stablehlo/stablehlo/transforms/StablehloAggressiveSimplification.cpp
+--- stablehlo/stablehlo/transforms/StablehloAggressiveSimplification.cpp
++++ stablehlo/stablehlo/transforms/StablehloAggressiveSimplification.cpp
+@@ -735,7 +735,7 @@
+       addToWorkList(retOp.getOperand(resultNo));
+       while (!workList.empty()) {
+         auto definition = workList.pop_back_val();
+-        if (auto blockArg = definition.dyn_cast<BlockArgument>()) {
++        if (auto blockArg = dyn_cast<BlockArgument>(definition)) {
+           // using one argument implies using the whole argument pair
+           const auto pairNo = blockArg.getArgNumber() % numOperandPairs;
+           usedArgs.set(pairNo);
 
