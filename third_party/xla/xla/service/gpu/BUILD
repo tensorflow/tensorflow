@@ -3918,6 +3918,40 @@ cc_library(
 )
 
 cc_library(
+    name = "gpu_algebraic_simplifier",
+    srcs = [
+        "gpu_algebraic_simplifier.cc",
+    ],
+    hdrs = [
+        "gpu_algebraic_simplifier.h",
+    ],
+    deps = [
+        "//xla:util",
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:algebraic_simplifier",
+        "//xla/service:hlo_pass",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+xla_cc_test(
+    name = "gpu_algebraic_simplifier_test",
+    srcs = ["gpu_algebraic_simplifier_test.cc"],
+    deps = [
+        ":gpu_algebraic_simplifier",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:algebraic_simplifier",
+        "//xla/tests:hlo_test_base",
+        "//xla/tests:xla_internal_test_main",
+        "@com_google_googletest//:gtest",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+cc_library(
     name = "amdgpu_compiler_impl",
     srcs = [
         "amdgpu_compiler.cc",
