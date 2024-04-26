@@ -272,7 +272,9 @@ FusionDecision ShapesCompatibleForMultiOutputFusion(
     // Special-case reduction-to-vector ops: The loop dimensions are determined
     // by the shape of the first operand.
     // TODO(jreiffers): Compute the non-trivial hero only once here.
-    const auto& hero = FindNonTrivialHero(*element_instr);
+    const auto& hero = element_instr->parent()->IsFusionComputation()
+                           ? FindNonTrivialHero(*element_instr)
+                           : *element_instr;
     if (IsReductionFromOrToContiguousDimensions(*element_instr) ||
         GetDescriptionForTiledTransposeEmitter(*element_instr, hero)
             .has_value()) {

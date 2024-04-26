@@ -118,21 +118,12 @@ class HloComputationFusion : public internal::HloFusionInstructionAdaptor {
   explicit HloComputationFusion(const HloComputation* computation,
                                 const HloFusionAdaptor* parent)
       : computation_(computation), parent_(parent) {
-    // HloFusionAdaptor should only be created for fusion computations, that
-    // usually have only a few roots, but there is a case when we can it for
-    // non-fusion computations with thousands of roots. It happens inside
-    // `FindNonTrivialHero` and it gets very expensive. Calling
-    // `FindNonTrivialHero` also doesn't make sense on non-fusion computation,
-    // but `InstructionFusion` and `FusionMerger` depend on this behavoiur in
-    // `IsProducerConsumerFusible`.
-    //
     // `FindNonTrivialHero` only call `ContainsInstruction` and doesn't use
     // information about roots, so we can skip looking for roots as performance
     // optimization.
     // TODO(shyshkov): Clean this up once priority fusion is fully launched.
-    if (computation->IsFusionComputation()) {
-      roots_ = FindRoots(computation);
-    }
+    CHECK(computation->IsFusionComputation());
+    roots_ = FindRoots(computation);
   }
 
   absl::InlinedVector<HloInstructionAdaptor, 2> FindRoots(
