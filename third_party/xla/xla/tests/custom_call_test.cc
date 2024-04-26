@@ -134,6 +134,24 @@ XLA_TEST_F(CustomCallTest, CustomCallR0F32Add2) {
   LiteralTestUtil::ExpectR0Near<float>(44.0f, result, error_spec_);
 }
 
+XLA_TEST_F(CustomCallTest, CustomCallR0F32Add2Aliased) {
+  auto module = CreateNewVerifiedModule();
+  auto builder = HloComputation::Builder(TestName());
+
+  auto constant = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
+
+  builder
+      .AddInstruction(
+          HloInstruction::CreateCustomCall(r0f32_, {constant}, "R0F32Add2"))
+      ->set_output_to_operand_aliasing({{{}, {0, {}}}});
+
+  module->AddEntryComputation(builder.Build());
+
+  TF_ASSERT_OK_AND_ASSIGN(auto result, Execute(std::move(module), {}));
+  LiteralTestUtil::ExpectR0Near<float>(44.0f, result, error_spec_);
+}
+
 XLA_TEST_F(CustomCallTest, CustomCallR2F32Reduce) {
   auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());

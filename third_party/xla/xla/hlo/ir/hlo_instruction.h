@@ -2533,6 +2533,11 @@ class HloInstruction {
   const std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>&
   output_operand_aliasing() const;
 
+  // Delegates to HloCallableInstruction::set_output_to_operand_aliasing().
+  void set_output_to_operand_aliasing(
+      std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>
+          aliasing);
+
   // Appends operand to the list of operands and adds this instruction as a user
   // of the operand.
   void AppendOperand(HloInstruction* operand);

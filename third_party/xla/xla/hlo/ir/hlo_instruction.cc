@@ -5574,4 +5574,11 @@ HloInstruction::output_operand_aliasing() const {
   return Cast<HloCallableInstruction>(this)->output_to_operand_aliasing();
 }
 
+void HloInstruction::set_output_to_operand_aliasing(
+    std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>
+        aliasing) {
+  Cast<HloCallableInstruction>(this)->set_output_to_operand_aliasing(
+      std::move(aliasing));
+}
+
 }  // namespace xla
