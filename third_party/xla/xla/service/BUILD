@@ -880,8 +880,6 @@ xla_cc_test(
     srcs = ["hlo_instruction_test.cc"],
     tags = ["no_aarch64"],
     deps = [
-        ":pattern_matcher",
-        ":pattern_matcher_gmock",
         "//xla:literal",
         "//xla:protobuf_util",
         "//xla:shape_util",
