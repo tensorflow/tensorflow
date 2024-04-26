@@ -574,6 +574,7 @@ tf_cc_test(
     deps = [
         ":math_utils",
         "@com_google_googletest//:gtest_main",
+        "@llvm-project//mlir:Support",
     ],
 )
 
