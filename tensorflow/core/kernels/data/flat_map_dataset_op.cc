@@ -14,22 +14,27 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/flat_map_dataset_op.h"
 
+#include <cstdint>
 #include <string>
 #include <utility>
 
+#include "absl/status/statusor.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/graph_runner.h"
 #include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
 #include "tensorflow/core/data/captured_function.h"
 #include "tensorflow/core/data/dataset_utils.h"
+#include "tensorflow/core/data/flat_map_utils.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/data/serialization_utils.h"
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/dataset_options.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/random/random.h"
+#include "tsl/platform/logging.h"
 
 namespace tensorflow {
 namespace data {
@@ -63,7 +68,8 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
         input_(input),
         captured_func_(std::move(captured_func)),
         output_types_(output_types),
-        output_shapes_(output_shapes) {
+        output_shapes_(output_shapes),
+        random_access_handler_(ctx, input, *captured_func_) {
     input_->Ref();
   }
 
@@ -83,6 +89,20 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
 
   string DebugString() const override {
     return name_utils::DatasetDebugString(kDatasetType);
+  }
+
+  int64_t CardinalityInternal(CardinalityOptions options) const override {
+    if (options.compute_level() <
+        CardinalityOptions::CARDINALITY_COMPUTE_MODERATE) {
+      return kUnknownCardinality;
+    }
+    absl::StatusOr<int64_t> cardinality = random_access_handler_.Cardinality();
+    if (!cardinality.ok()) {
+      LOG(ERROR) << "Unable to compute cardinality for dataset "
+                 << DebugString() << " due to error: " << cardinality.status();
+      return kUnknownCardinality;
+    }
+    return *cardinality;
   }
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
@@ -411,6 +431,7 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
   const std::unique_ptr<CapturedFunction> captured_func_;
   const DataTypeVector output_types_;
   const std::vector<PartialTensorShape> output_shapes_;
+  mutable FlatMapRandomAccessHandler random_access_handler_;
 };
 
 FlatMapDatasetOp::FlatMapDatasetOp(OpKernelConstruction* ctx)

@@ -384,6 +384,7 @@ tf_py_strict_test(
     deps = [
         ":checkpoint_test_base",
         ":test_base",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python/client:session",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:options",

@@ -18,6 +18,7 @@ import random
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.core.framework import dataset_options_pb2
 from tensorflow.python.client import session
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
@@ -188,6 +189,61 @@ class FlatMapTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     dataset = dataset_ops.Dataset.from_tensors(42).flat_map(fn, name="flat_map")
     self.assertDatasetProduces(dataset, [42])
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testCardinality(self):
+    dataset = dataset_ops.Dataset.from_tensor_slices(
+        [[1, 2, 3], [4, 5, 6], [7, 8, 9]])
+    dataset = dataset.flat_map(dataset_ops.Dataset.from_tensor_slices)
+    options = dataset_options_pb2.CardinalityOptions(
+        compute_level="CARDINALITY_COMPUTE_MODERATE")
+    cardinality = dataset_ops.gen_dataset_ops.dataset_cardinality(
+        dataset._variant_tensor, options.SerializeToString())
+    self.assertEqual(self.evaluate(cardinality), 9)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testInfiniteCardinality(self):
+    dataset = dataset_ops.Dataset.from_tensor_slices(
+        [[1, 2, 3], [4, 5, 6], [7, 8, 9]])
+    dataset = dataset.flat_map(lambda _: dataset_ops.Dataset.range(1).repeat())
+    options = dataset_options_pb2.CardinalityOptions(
+        compute_level="CARDINALITY_COMPUTE_MODERATE")
+    cardinality = dataset_ops.gen_dataset_ops.dataset_cardinality(
+        dataset._variant_tensor, options.SerializeToString())
+    self.assertEqual(self.evaluate(cardinality), dataset_ops.INFINITE)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testUnknownCardinality(self):
+    dataset = dataset_ops.Dataset.from_tensor_slices(
+        [[1, 2, 3], [4, 5, 6], [7, 8, 9]])
+    dataset = dataset.flat_map(
+        lambda _: dataset_ops.Dataset.range(10).filter(lambda x: x % 2 == 1))
+    options = dataset_options_pb2.CardinalityOptions(
+        compute_level="CARDINALITY_COMPUTE_MODERATE")
+    cardinality = dataset_ops.gen_dataset_ops.dataset_cardinality(
+        dataset._variant_tensor, options.SerializeToString())
+    self.assertEqual(self.evaluate(cardinality), dataset_ops.UNKNOWN)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testEmptyCardinality(self):
+    dataset = dataset_ops.Dataset.range(0)
+    dataset = dataset.flat_map(dataset_ops.Dataset.range)
+    options = dataset_options_pb2.CardinalityOptions(
+        compute_level="CARDINALITY_COMPUTE_MODERATE")
+    cardinality = dataset_ops.gen_dataset_ops.dataset_cardinality(
+        dataset._variant_tensor, options.SerializeToString())
+    self.assertEqual(self.evaluate(cardinality), 0)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testCardinalityLowEffort(self):
+    dataset = dataset_ops.Dataset.from_tensor_slices(
+        [[1, 2, 3], [4, 5, 6], [7, 8, 9]])
+    dataset = dataset.flat_map(dataset_ops.Dataset.from_tensor_slices)
+    options = dataset_options_pb2.CardinalityOptions(
+        compute_level="CARDINALITY_COMPUTE_LOW")
+    cardinality = dataset_ops.gen_dataset_ops.dataset_cardinality(
+        dataset._variant_tensor, options.SerializeToString())
+    self.assertEqual(self.evaluate(cardinality), dataset_ops.UNKNOWN)
 
   @combinations.generate(test_base.default_test_combinations())
   def testMapFuncFailWithErrorContext(self):
