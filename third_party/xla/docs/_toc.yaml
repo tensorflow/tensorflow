@@ -24,18 +24,16 @@ toc:
       path: /xla/custom_call
     - title: Persisted autotuning
       path: /xla/persisted_autotuning
-    - title: Copybara quirks
-      path: /xla/copybara
     - title: XLA Tooling
       path: /xla/tools
     - title: Using LSP autocompletion
       path: /xla/lsp
 - title: Contributing
   section:
+    - title: Contributing
+      path: /xla/contributing
     - title: Developer guide
       path: /xla/developer_guide
-    - title: Code reviews
-      path: /xla/code_reviews
     - title: Build from source
       path: /xla/build_from_source
     - title: Develop a new backend for XLA
