@@ -331,10 +331,13 @@ nb::object MakeShapedArrayCached(const ShapedArrayCacheKey& key) {
       });
 
   if (!value->has_value()) {
-    nb_dtype dtype = IfrtDtypeToNbDtype(key.dtype).value();
-    nb::object aval =
-        (*shaped_array)(SpanToNbTuple(absl::Span<const int64_t>(key.dims)),
-                        dtype, key.weak_type);
+    nb_dtype dtype =
+        IfrtDtypeToDtypeWithTokenCanonicalization(key.dtype).value();
+    nb::object aval = (*shaped_array)(
+        SpanToNbTuple(absl::Span<const int64_t>(
+            key.dtype.kind() == ifrt::DType::kToken ? std::vector<int64_t>{0}
+                                                    : key.dims)),
+        dtype, key.weak_type);
     *value = aval;
     return aval;
   }
@@ -395,11 +398,13 @@ PyArray PyArray::MakeFromSingleDeviceArray(
   }
   auto shape_span = ifrt_array->shape().dims();
   ShapedArrayCacheKey key;
-  key.dims = std::vector<int64_t>(shape_span.begin(), shape_span.end());
   key.dtype = ifrt_array->dtype();
+  key.dims = key.dtype.kind() == ifrt::DType::kToken
+                 ? std::vector<int64_t>{0}
+                 : std::vector<int64_t>(shape_span.begin(), shape_span.end());
   key.weak_type = weak_type;
   auto aval = MakeShapedArrayCached(key);
-  auto dtype = IfrtDtypeToNbDtype(key.dtype).value();
+  auto dtype = IfrtDtypeToDtypeWithTokenCanonicalization(key.dtype).value();
   const ifrt::MemoryKind memory_kind = ifrt_array->sharding().memory_kind();
   nb::object py_memory_kind =
       (jax::GetEnableMemories() && memory_kind.memory_kind().has_value())
@@ -420,11 +425,13 @@ PyArray PyArray::MakeFromIfrtArrayAndSharding(
     bool weak_type, bool committed, bool skip_checks) {
   auto shape_span = ifrt_array->shape().dims();
   ShapedArrayCacheKey key;
-  key.dims = std::vector<int64_t>(shape_span.begin(), shape_span.end());
   key.dtype = ifrt_array->dtype();
+  key.dims = key.dtype.kind() == ifrt::DType::kToken
+                 ? std::vector<int64_t>{0}
+                 : std::vector<int64_t>(shape_span.begin(), shape_span.end());
   key.weak_type = weak_type;
   auto aval = MakeShapedArrayCached(key);
-  auto dtype = IfrtDtypeToNbDtype(key.dtype).value();
+  auto dtype = IfrtDtypeToDtypeWithTokenCanonicalization(key.dtype).value();
   return PyArray(std::move(aval), weak_type, dtype, std::move(key.dims),
                  std::move(sharding), std::move(py_client),
                  std::move(traceback), std::move(ifrt_array), committed,

@@ -711,6 +711,10 @@ Status HostOffloader::HandleInputStreaming(HloComputation* computation) {
       computation->parent()->entry_computation_layout();
 
   for (int i = 0; i < entry_computation_layout.parameter_count(); ++i) {
+    if (entry_computation_layout.parameter_shape(i).IsToken()) {
+      LOG(WARNING) << "Token parameters are not supported for streaming.";
+      continue;
+    }
     if (entry_computation_layout.parameter_shape(i).IsTuple()) {
       // Handle tuple parameters, which may contain streamed elements. Nested
       // tuples are not supported.

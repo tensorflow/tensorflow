@@ -1999,6 +1999,14 @@ Status CheckCompatibleShapes(bool strict_shape_checking,
                              const Shape& execution_shape,
                              const TransferManager& transfer_manager,
                              int parameter_index) {
+  // Handle the special case: the underlying pjrt buffer of a JAX token may have
+  // shape `pred[0]`.
+  if (execution_shape.IsToken() &&
+      buffer_on_device_shape.element_type() == PrimitiveType::PRED &&
+      buffer_on_device_shape.dimensions_size() == 1 &&
+      buffer_on_device_shape.dimensions(0) == 0) {
+    return OkStatus();
+  }
   // TODO(misard) Support casting of tuple parameters.
   if (strict_shape_checking || buffer_on_device_shape.IsTuple()) {
     if (!ShapeUtil::Compatible(buffer_on_device_shape, execution_shape)) {
