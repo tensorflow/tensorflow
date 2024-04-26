@@ -547,9 +547,10 @@ xla_test(
 xla_test(
     name = "xla_hlo_profile_test",
     srcs = ["xla_hlo_profile_test.cc"],
-    disabled_backends = [
-        # Hlo profiles are not supported on the interpreter backend.
-        "interpreter",
+    backends = [
+        # Hlo profiles are only supported on CPU/GPU.
+        "cpu",
+        "gpu",
     ],
     tags = ["no_aarch64"],
     deps = [
@@ -2422,6 +2423,11 @@ xla_test(
 xla_test(
     name = "cpu_gpu_fusion_test",
     srcs = ["cpu_gpu_fusion_test.cc"],
+    backends = [
+        "cpu",
+        "gpu",
+        "interpreter",
+    ],
     deps = [
         ":client_library_test_base",
         ":hlo_test_base",

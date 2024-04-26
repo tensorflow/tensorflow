@@ -1605,7 +1605,8 @@ XLA_TEST_F(ConvolutionTest, ConvolveF32BackwardInputGroupedConvolution) {
 class ConvolutionHloTest : public HloTestBase {};
 
 // double datatype is not yet supported in ROCm
-XLA_TEST_F(ConvolutionHloTest, DISABLED_ON_GPU_ROCM(ConvolveF64Forward)) {
+XLA_TEST_F(ConvolutionHloTest,
+           DISABLED_ON_TPU(DISABLED_ON_GPU_ROCM(ConvolveF64Forward))) {
   constexpr char kHlo[] = R"(
 HloModule TestModule
 
@@ -1644,7 +1645,7 @@ ENTRY Test {
 
 // double datatype is not yet supported in ROCm
 XLA_TEST_F(ConvolutionHloTest,
-           DISABLED_ON_GPU_ROCM(ConvolveF64BackwardFilter)) {
+           DISABLED_ON_TPU(DISABLED_ON_GPU_ROCM(ConvolveF64BackwardFilter))) {
   constexpr char kHlo[] = R"(
 HloModule TestModule
 
@@ -1657,7 +1658,8 @@ ENTRY Test {
 }
 
 // double datatype is not yet supported in ROCm
-XLA_TEST_F(ConvolutionHloTest, DISABLED_ON_GPU_ROCM(ConvolveF64BackwardInput)) {
+XLA_TEST_F(ConvolutionHloTest,
+           DISABLED_ON_TPU(DISABLED_ON_GPU_ROCM(ConvolveF64BackwardInput))) {
   constexpr char kHlo[] = R"(
 HloModule TestModule
 
