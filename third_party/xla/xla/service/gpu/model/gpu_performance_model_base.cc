@@ -88,7 +88,7 @@ std::optional<EstimateRunTimeData> GpuPerformanceModelCache::Get(
     const HloInstruction& instruction) {
   absl::MutexLock lock(&mutex_);
 
-  auto it = instruction_runtime_data_.find(HloInstructionAdaptor(instruction));
+  auto it = instruction_runtime_data_.find(&instruction);
   if (it != instruction_runtime_data_.end()) {
     return it->second;
   }
@@ -99,9 +99,9 @@ std::optional<absl::Duration> GpuPerformanceModelCache::Get(
     const HloInstruction& producer, const HloInstruction& consumer) {
   absl::MutexLock lock(&mutex_);
 
-  auto it = fusion_runtime_data_.find(HloInstructionAdaptor(producer));
+  auto it = fusion_runtime_data_.find(&producer);
   if (it != fusion_runtime_data_.end()) {
-    auto jt = it->second.find(HloInstructionAdaptor(consumer));
+    auto jt = it->second.find(&consumer);
     if (jt != it->second.end()) {
       return jt->second;
     }
@@ -113,34 +113,32 @@ void GpuPerformanceModelCache::Set(const HloInstruction& instruction,
                                    const EstimateRunTimeData& runtime_data) {
   absl::MutexLock lock(&mutex_);
 
-  instruction_runtime_data_[HloInstructionAdaptor(instruction)] = runtime_data;
+  instruction_runtime_data_[&instruction] = runtime_data;
 }
 
 void GpuPerformanceModelCache::Set(const HloInstruction& producer,
                                    const HloInstruction& consumer,
                                    absl::Duration runtime) {
   absl::MutexLock lock(&mutex_);
-  fusion_runtime_data_[HloInstructionAdaptor(producer)]
-                      [HloInstructionAdaptor(consumer)] = runtime;
+  fusion_runtime_data_[&producer][&consumer] = runtime;
 }
 
 void GpuPerformanceModelCache::Invalidate(const HloInstruction& instruction) {
   absl::MutexLock lock(&mutex_);
-  HloInstructionAdaptor adaptor(instruction);
 
   // Remove runtime data for the instruction.
-  instruction_runtime_data_.erase(adaptor);
+  instruction_runtime_data_.erase(&instruction);
 
   // Remove cache for all producer-consumer pairs where the instruction is
   // producer.
-  fusion_runtime_data_.erase(adaptor);
+  fusion_runtime_data_.erase(&instruction);
 
   // Iterate through operands to find all producer-consumer pairs where
   // instruction is consumer and remove them from cache.
-  for (auto* operand : instruction.operands()) {
-    auto it = fusion_runtime_data_.find(HloInstructionAdaptor(*operand));
+  for (const HloInstruction* operand : instruction.operands()) {
+    auto it = fusion_runtime_data_.find(operand);
     if (it != fusion_runtime_data_.end()) {
-      it->second.erase(adaptor);
+      it->second.erase(&instruction);
     }
   }
 }

@@ -83,13 +83,13 @@ class GpuPerformanceModelCache {
   absl::Mutex mutex_;
 
   // Stores unfused runtime data for individual instructions.
-  absl::flat_hash_map<HloInstructionAdaptor, EstimateRunTimeData>
+  absl::flat_hash_map<const HloInstruction*, EstimateRunTimeData>
       instruction_runtime_data_;
 
   // Stores fused runtime data for producer-consumer pairs.
   absl::flat_hash_map<
-      HloInstructionAdaptor,
-      absl::flat_hash_map<HloInstructionAdaptor, absl::Duration>>
+      const HloInstruction*,
+      absl::flat_hash_map<const HloInstruction*, absl::Duration>>
       fusion_runtime_data_;
 };
 
