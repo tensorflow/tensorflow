@@ -76,7 +76,7 @@ bool IsPyFloat(PyObject* obj) {
 
 struct ConverterState {
   // The inferred tensor shape.
-  gtl::InlinedVector<int64_t, 4> inferred_shape;
+  absl::InlinedVector<int64_t, 4UL> inferred_shape;
 
   // The inferred tensor data type.
   DataType inferred_dtype;
