@@ -15,30 +15,12 @@ limitations under the License.
 
 #include "xla/service/gpu/gpu_algebraic_simplifier.h"
 
-#include <cstdint>
-#include <utility>
-
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
-
-namespace {
-
-bool DotHasOnlyBatchAndContractingOnOneOperand(int64_t lhs_rank,
-                                               int64_t rhs_rank,
-                                               DotDimensionNumbers dnums) {
-  return (dnums.lhs_batch_dimensions_size() +
-              dnums.lhs_contracting_dimensions_size() ==
-          lhs_rank) ||
-         (dnums.rhs_contracting_dimensions_size() +
-              dnums.rhs_batch_dimensions_size() ==
-          rhs_rank);
-}
-
-}  // namespace
 
 bool GpuAlgebraicSimplifierVisitor::ShouldStrengthReduceDotToReduce(
     const HloInstruction* hlo) {
@@ -54,10 +36,12 @@ bool GpuAlgebraicSimplifierVisitor::ShouldStrengthReduceDotToReduce(
   const HloInstruction* lhs = dot->operand(0);
   const HloInstruction* rhs = dot->operand(1);
   DotDimensionNumbers dnums = dot->dot_dimension_numbers();
-  bool lhs_is_vector = DotHasOnlyBatchAndContractingOnOneOperand(
-      lhs->shape().rank(), rhs->shape().rank(), dnums);
-  bool rhs_is_vector = DotHasOnlyBatchAndContractingOnOneOperand(
-      rhs->shape().rank(), lhs->shape().rank(), std::move(dnums));
+  bool lhs_is_vector = (dnums.lhs_batch_dimensions_size() +
+                            dnums.lhs_contracting_dimensions_size() ==
+                        lhs->shape().rank());
+  bool rhs_is_vector = (dnums.rhs_batch_dimensions_size() +
+                            dnums.rhs_contracting_dimensions_size() ==
+                        rhs->shape().rank());
   // Strength-reduce vector-vector dots since they are not supported by
   // GemmFusion.
   return lhs_is_vector && rhs_is_vector;

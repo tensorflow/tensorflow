@@ -65,7 +65,7 @@ ENTRY entry {
   options.set_enable_dot_strength_reduction(true);
   GpuAlgebraicSimplifier simplifier(options);
   GpuAlgebraicSimplifierVisitor visitor(options, &simplifier);
-  EXPECT_TRUE(visitor.ShouldStrengthReduceDotToReduce(dot));
+  EXPECT_FALSE(visitor.ShouldStrengthReduceDotToReduce(dot));
 }
 
 }  // namespace
