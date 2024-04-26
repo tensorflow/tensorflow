@@ -5821,6 +5821,7 @@ cc_library(
     name = "gpu_symbol_repository",
     hdrs = ["gpu_symbol_repository.h"],
     deps = [
+        "//xla:autotune_results_proto_cc",
         "//xla:xla_proto_cc",
         "//xla/service:symbol_repository",
     ],
