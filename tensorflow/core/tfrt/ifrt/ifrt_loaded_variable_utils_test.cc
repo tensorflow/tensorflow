@@ -137,8 +137,12 @@ TEST(ShardingUtilsTest, ShardTensorToIfrtLoadedVariableSucceed) {
       "var_x", client, thread_pool, restored_tensor_registry,
       loaded_variable_registry, restore_work_queue.get(), sharding_config));
   promise.Set(input_tensor);
+  IfrtLoadedVariableRegistry::Key key{
+      .device_ids = {0},
+      .input_name = "var_x",
+  };
   TF_ASSERT_OK_AND_ASSIGN(auto v,
-                          loaded_variable_registry.GetLoadedVariable("var_x"));
+                          loaded_variable_registry.GetLoadedVariable(key));
   TF_ASSERT_OK_AND_ASSIGN(auto assembled_array, v.array.Await());
 
   TF_ASSERT_OK_AND_ASSIGN(auto disassembled_arrays,

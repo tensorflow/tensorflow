@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_TFRT_IFRT_IFRT_SERVING_EXECUTABLE_H_
 
 #include <algorithm>
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
@@ -24,6 +25,7 @@ limitations under the License.
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -49,6 +51,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_loaded_variable_registry.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_restore_tensor_registry.h"
+#include "tensorflow/core/tfrt/ifrt/ifrt_serving_core_selector.h"
 #include "tensorflow/core/tfrt/ifrt/tf_host_callback.h"
 #include "tsl/platform/threadpool.h"
 #include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime
@@ -59,7 +62,8 @@ namespace ifrt_serving {
 class IfrtServingExecutable {
  public:
   IfrtServingExecutable(
-      absl::string_view model_name, absl::string_view signature_name,
+      int64_t program_id, absl::string_view model_name,
+      absl::string_view signature_name,
       mlir::OwningOpRef<mlir::ModuleOp> module,
       std::shared_ptr<xla::ifrt::Client> client,
       const tsl::thread::ThreadPool* thread_pool,
@@ -67,8 +71,10 @@ class IfrtServingExecutable {
       const IfrtRestoreTensorRegistry* ifrt_restore_tensor_registry,
       tfrt::ConcurrentWorkQueue* checkpoint_loader_queue,
       tensorflow::StaticDeviceMgr* device_mgr,
-      tensorflow::XlaHelpers::ShapeRepresentationFn shape_representation_fn)
-      : model_name_(std::string(model_name)),
+      tensorflow::XlaHelpers::ShapeRepresentationFn shape_representation_fn,
+      IfrtServingCoreSelector* ifrt_serving_core_selector)
+      : program_id_(program_id),
+        model_name_(std::string(model_name)),
         signature_name_(std::string(signature_name)),
         module_(std::move(module)),
         ifrt_client_(std::move(client)),
@@ -77,7 +83,8 @@ class IfrtServingExecutable {
         ifrt_restore_tensor_registry_(*ifrt_restore_tensor_registry),
         checkpoint_loader_queue_(checkpoint_loader_queue),
         device_mgr_(device_mgr),
-        shape_representation_fn_(std::move(shape_representation_fn)) {}
+        shape_representation_fn_(std::move(shape_representation_fn)),
+        ifrt_serving_core_selector_(std::move(ifrt_serving_core_selector)) {}
 
   // Movable but not copyable.
   IfrtServingExecutable(IfrtServingExecutable&& other) = default;
@@ -134,6 +141,7 @@ class IfrtServingExecutable {
         delete;
   };
 
+  int64_t program_id_;
   using SharedCachedExecutableBundle = std::shared_ptr<CachedExecutableBundle>;
 
   std::string model_name_;
@@ -150,6 +158,7 @@ class IfrtServingExecutable {
   tfrt::ConcurrentWorkQueue* checkpoint_loader_queue_;
   tensorflow::StaticDeviceMgr* device_mgr_;  // Not owned. For host callback.
   tensorflow::XlaHelpers::ShapeRepresentationFn shape_representation_fn_;
+  IfrtServingCoreSelector* ifrt_serving_core_selector_;
 
   mutable absl::Mutex mutex_;
   absl::flat_hash_map<
@@ -169,9 +178,12 @@ class IfrtServingExecutable {
       const xla::OpSharding& sharding);
 
   xla::ifrt::Future<absl::StatusOr<SharedCachedExecutableBundle>>
-  LookUpOrCreateExecutable(absl::Span<const DtypeAndShape> dtypes_and_shapes);
+  LookUpOrCreateExecutable(
+      const tensorflow::tpu::TPUCompileMetadataProto& compile_metadata,
+      absl::Span<const DtypeAndShape> dtypes_and_shapes);
   absl::StatusOr<IfrtServingExecutable::SharedCachedExecutableBundle>
   CreateExecutableSynchronously(
+      const tensorflow::tpu::TPUCompileMetadataProto& compile_metadata,
       absl::Span<const DtypeAndShape> dtypes_and_shapes);
 
   absl::StatusOr<std::unique_ptr<xla::ifrt::Sharding>> CreateSharding(
@@ -180,6 +192,9 @@ class IfrtServingExecutable {
 
   std::vector<xla::ifrt::Shape> GetArgShape(
       int arg_index, const CachedExecutableBundle& entry);
+
+  bool UsePortableExecution(
+      const tensorflow::tpu::TPUCompileMetadataProto& compile_metadata);
 };
 
 }  // namespace ifrt_serving

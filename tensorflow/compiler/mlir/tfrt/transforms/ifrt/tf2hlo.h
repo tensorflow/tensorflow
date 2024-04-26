@@ -24,8 +24,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/ifrt_types.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "xla/python/ifrt/client.h"
-#include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
 
@@ -38,11 +36,16 @@ struct Tf2HloResult {
   tf2xla::HostComputeMetadata host_compute_metadata;
 };
 
+absl::StatusOr<tensorflow::tpu::TPUCompileMetadataProto> GetCompileMetadata(
+    mlir::ModuleOp module, absl::Span<const DtypeAndShape> inputs,
+    const xla::ifrt::Client& ifrt_client);
+
 // A class that convert tf module to hlo
 // TODO(b/304839793): provide wrap persistent compilation cache.
 absl::StatusOr<Tf2HloResult> CompileTfToHlo(
     mlir::ModuleOp module, absl::Span<const DtypeAndShape> inputs,
     absl::string_view entry_function_name, const xla::ifrt::Client& ifrt_client,
+    const tensorflow::tpu::TPUCompileMetadataProto& compile_metadata,
     tensorflow::XlaHelpers::ShapeRepresentationFn shape_representation_fn);
 
 }  // namespace ifrt_serving
