@@ -616,7 +616,7 @@ GemmFusionAutotunerImpl::GenerateTritonConfigs(const HloDotInstruction& dot) {
     // Sparse meta should have at least one element per thread.
     // Note: only 2:4 structured sparsity is currently supported.
     if (dot.sparse_operands()) {
-      config.block_k = std::max(config.block_k, 2 * kMinTileSize);
+      config.block_k = std::max(config.block_k, 4 * kMinTileSize);
       int meta_elements = config.block_m * config.block_k / 16;
       config.num_warps =
           std::min<int>(config.num_warps, meta_elements / WarpSize());

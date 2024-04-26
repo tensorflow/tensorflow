@@ -1,0 +1,23 @@
+diff --git a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/ConvertLayoutOpToLLVM/SharedToSparseDotOperand.cpp b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/ConvertLayoutOpToLLVM/SharedToSparseDotOperand.cpp
+--- a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/ConvertLayoutOpToLLVM/SharedToSparseDotOperand.cpp
++++ b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/ConvertLayoutOpToLLVM/SharedToSparseDotOperand.cpp
+@@ -22,16 +22,16 @@ Value convertLayout(
+   // Calculate tile size as number of mask elements (4xi4).
+   NvidiaMmaEncodingAttr mmaLayout =
+       sparseEncoding.getParent().cast<NvidiaMmaEncodingAttr>();
++  SmallVector<unsigned> warpsPerCTA = mmaLayout.getWarpsPerCTA();
+   SmallVector<unsigned> shapePerCTATile = {
+-      kTileSize * mmaLayout.getWarpsPerCTA()[0],
+-      kTileSize / kMetadataElementsPerPackedValue};
++      kTileSize * warpsPerCTA[0], kTileSize / kMetadataElementsPerPackedValue};
+   Value strideM = smemObj.strides[0];
+   Value strideK = smemObj.strides[1];
+ 
+   // Calculate offset in the tile for the current thread.
+   Value threadsPerWarp = i32_val(kThreadsPerWarp);
+   Value warpId = udiv(thread, threadsPerWarp);
+-  Value warpGroupId = urem(warpId, i32_val(shapePerCTATile[0] / kTileSize));
++  Value warpGroupId = udiv(warpId, i32_val(warpsPerCTA[1]));
+   Value laneId = urem(thread, threadsPerWarp);
+   Value laneGroupId = udiv(laneId, i32_val(kThreadsInGroup));
+   Value columnId = urem(laneId, i32_val(shapePerCTATile[1]));
