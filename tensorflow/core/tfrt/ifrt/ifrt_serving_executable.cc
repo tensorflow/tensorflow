@@ -302,9 +302,12 @@ absl::StatusOr<IfrtServingExecutable::SharedCachedExecutableBundle>
 IfrtServingExecutable::CreateExecutableSynchronously(
     const tensorflow::tpu::TPUCompileMetadataProto& compile_metadata,
     absl::Span<const DtypeAndShape> dtypes_and_shapes) {
+  // Clone the module b/c CompileTfToHlo serialize the module and may lead to
+  // race condition.
+  mlir::OwningOpRef<mlir::ModuleOp> module_copy(module_->clone());
   TF_ASSIGN_OR_RETURN(
       Tf2HloResult tf2hlo_result,
-      CompileTfToHlo(*module_, dtypes_and_shapes, signature_name(),
+      CompileTfToHlo(*module_copy, dtypes_and_shapes, signature_name(),
                      *ifrt_client_, compile_metadata,
                      shape_representation_fn_));
   const int num_replicas = tf2hlo_result.compile_metadata.num_replicas();

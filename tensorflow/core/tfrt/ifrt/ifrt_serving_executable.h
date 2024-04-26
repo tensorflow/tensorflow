@@ -128,8 +128,6 @@ class IfrtServingExecutable {
   struct CachedExecutableBundle {
     std::unique_ptr<xla::ifrt::LoadedExecutable> ifrt_executable;
     tensorflow::tpu::TPUCompileMetadataProto compile_metadata;
-    // TODO(b/322541827): change from std::shared_ptr to std::unique_ptr once
-    // we avoid copy use of CachedExectableBundle.
     std::vector<std::unique_ptr<TfHostCallback>> host_callbacks;
 
     CachedExecutableBundle() = default;
@@ -147,7 +145,6 @@ class IfrtServingExecutable {
   std::string model_name_;
   std::string signature_name_;
 
-  std::unique_ptr<mlir::MLIRContext> context_;
   mlir::OwningOpRef<mlir::ModuleOp> module_;
 
   std::shared_ptr<xla::ifrt::Client> ifrt_client_;
