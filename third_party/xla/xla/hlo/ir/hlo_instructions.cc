@@ -2054,7 +2054,7 @@ HloCallableInstruction::CloneAndAppendInstructionIntoCalledComputation(
     // If this is a newly created multioutput instruction, we need to update
     // the use of the original callable instruction.
     if (newly_created_tuple_instr) {
-      HloInstruction* new_instr = parent()->AddInstruction(
+      HloInstruction* new_instr = AddInstruction(
           HloInstruction::CreateGetTupleElement(root->shape(), this, 0));
       TF_CHECK_OK(ReplaceAllUsesWithDifferentShape(new_instr));
     }
@@ -2069,7 +2069,7 @@ HloCallableInstruction::CloneAndAppendInstructionIntoCalledComputation(
         CHECK_EQ(old_gte->opcode(), HloOpcode::kGetTupleElement);
         int64_t old_tuple_index = old_gte->tuple_index();
         HloInstruction* new_gte =
-            parent()->AddInstruction(HloInstruction::CreateGetTupleElement(
+            AddInstruction(HloInstruction::CreateGetTupleElement(
                 old_gte->shape(), this, index + old_tuple_index));
         TF_CHECK_OK(old_gte->ReplaceAllUsesWith(new_gte));
         to_be_removed.push_back(old_gte);
@@ -2079,7 +2079,7 @@ HloCallableInstruction::CloneAndAppendInstructionIntoCalledComputation(
       }
     } else {
       HloInstruction* new_gte =
-          parent()->AddInstruction(HloInstruction::CreateGetTupleElement(
+          AddInstruction(HloInstruction::CreateGetTupleElement(
               clone->shape(), this, index - 1));
       TF_CHECK_OK(instruction_to_append->ReplaceAllUsesWith(new_gte));
     }
@@ -2128,6 +2128,7 @@ HloFusionInstruction::HloFusionInstruction(const Shape& shape,
   SetAndSanitizeName(HloOpcodeString(opcode()));
   set_parent(fused_root->parent());
   set_metadata(fused_root->metadata());
+  set_frontend_attributes(fused_root->frontend_attributes());
   CHECK(fused_root->IsFusible()) << fused_root->ToString();
   CloneAndAppendInstructionIntoCalledComputation(fused_root);
 }
