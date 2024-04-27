@@ -36,6 +36,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/casts.h"
+#include "pngconf.h"  // from @png
 #include "tensorflow/core/platform/png.h"
 #include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/types.h"
