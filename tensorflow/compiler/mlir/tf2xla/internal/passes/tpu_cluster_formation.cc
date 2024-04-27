@@ -638,7 +638,7 @@ Operation* BuildPartitionedOutputs(
   builder.create<mlir::tf_device::ReturnOp>(result_op->getLoc(), results);
 
   // Then erase all the identity and partitioned output ops.
-  for (auto [_, ops] : partitioned_outputs) {
+  for (const auto& [_, ops] : partitioned_outputs) {
     for (mlir::TF::TPUPartitionedOutputV2Op op : ops) {
       op->erase();
     }
