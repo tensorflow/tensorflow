@@ -232,13 +232,13 @@ LogicalResult Tf2XlaRewriter::PrepareParams() {
 // Returns true if the given type is a ranked tensor type with static or
 // bounded dimensions.
 bool IsBounded(Type ty) {
-  auto ranked_ty = ty.dyn_cast<RankedTensorType>();
+  auto ranked_ty = mlir::dyn_cast<RankedTensorType>(ty);
   if (!ranked_ty) return false;
 
   if (ranked_ty.hasStaticShape()) return true;
 
   auto encoding =
-      ranked_ty.getEncoding().dyn_cast_or_null<TypeExtensionsAttr>();
+      mlir::dyn_cast_or_null<TypeExtensionsAttr>(ranked_ty.getEncoding());
   if (!encoding) return false;
 
   for (int i = 0; i < ranked_ty.getRank(); ++i) {
@@ -253,10 +253,11 @@ bool IsBounded(Type ty) {
 bool HasSymbolRefAttr(Operation* op) {
   for (const auto& attr : op->getAttrs()) {
     Attribute attr_value = attr.getValue();
-    if (attr_value.isa<SymbolRefAttr>()) {
+    if (mlir::isa<SymbolRefAttr>(attr_value)) {
       return true;
-    } else if (auto array_attr = attr_value.dyn_cast<ArrayAttr>()) {
-      if (!array_attr.empty() && array_attr.begin()->isa<SymbolRefAttr>()) {
+    } else if (auto array_attr = mlir::dyn_cast<ArrayAttr>(attr_value)) {
+      if (!array_attr.empty() &&
+          mlir::isa<SymbolRefAttr>(*array_attr.begin())) {
         return true;
       }
     }
@@ -305,7 +306,7 @@ LogicalResult Tf2XlaRewriter::PrepareKernelInputs(
 
 LogicalResult Tf2XlaRewriter::LegalizeOp() {
   for (Type ty : op_->getOperandTypes()) {
-    auto ranked_ty = ty.dyn_cast<ShapedType>();
+    auto ranked_ty = mlir::dyn_cast<ShapedType>(ty);
     // Only bounded operands are supported in the XLA builders.
     if (!IsBounded(ranked_ty)) {
       return op_->emitRemark()

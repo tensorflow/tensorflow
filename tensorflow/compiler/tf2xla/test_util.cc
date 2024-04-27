@@ -37,7 +37,7 @@ Status InstantiateFunctionForTest(const string& name,
   for (NodeDef& n : inst.nodes) {
     *result->gdef.add_node() = std::move(n);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

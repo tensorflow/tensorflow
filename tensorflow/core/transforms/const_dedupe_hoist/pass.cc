@@ -29,6 +29,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/core/ir/dialect.h"
 #include "tensorflow/core/ir/ops.h"
 #include "tensorflow/core/ir/utility.h"
@@ -189,7 +190,7 @@ void DedupeAndHoistConstantPass::RunOnGraphOrFuncOp(Operation* op) {
   op->walk([&](Operation* inner_op) {
     if (inner_op->getName().getIdentifier() != tfg_const) return;
 
-    ElementsAttr val = inner_op->getAttr(value_id).cast<ElementsAttr>();
+    ElementsAttr val = mlir::cast<ElementsAttr>(inner_op->getAttr(value_id));
     if (val.getNumElements() > max_size_) return;
     constant_ops[inner_op].push_back(inner_op);
   });

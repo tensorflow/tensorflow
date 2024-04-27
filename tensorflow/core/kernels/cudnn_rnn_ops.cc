@@ -24,6 +24,7 @@ limitations under the License.
 #include <unordered_set>
 #include <utility>
 
+#include "absl/strings/str_cat.h"
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
@@ -137,6 +138,13 @@ using se::dnn::RnnStateTensorDescriptor;
 using se::dnn::ToDataType;
 using tsl::StatusOr;
 
+absl::StatusOr<stream_executor::dnn::DnnSupport*> GetDnn(Stream* stream) {
+  auto dnn = stream->parent()->AsDnn();
+  if (dnn == nullptr) {
+    return absl::InternalError("No DNN for stream");
+  }
+  return dnn;
+}
 uint64 HashList(const std::vector<int>& list) {
   if (list.empty()) {
     return 0;
@@ -708,22 +716,26 @@ Status CreateForwardAndBackwardIODescriptors(
   const TensorShape& output_shape = model_shapes.output_shape;
 
   DCHECK_EQ(input_shape.dims(), 3);
+  auto dnn = executor->AsDnn();
+  if (dnn == nullptr) {
+    return absl::InvalidArgumentError("No dnn in the executor.");
+  }
   if (seq_lengths.data() != nullptr) {
     if (time_major) {
-      auto input_desc_s = executor->createRnnSequenceTensorDescriptor(
+      auto input_desc_s = dnn->CreateRnnSequenceTensorDescriptor(
           input_shape.dim_size(0), input_shape.dim_size(1),
           input_shape.dim_size(2), seq_lengths, time_major, data_type);
       TF_RETURN_IF_ERROR(input_desc_s.status());
       *input_desc = std::move(input_desc_s).value();
     } else {
-      auto input_desc_s = executor->createRnnSequenceTensorDescriptor(
+      auto input_desc_s = dnn->CreateRnnSequenceTensorDescriptor(
           input_shape.dim_size(1), input_shape.dim_size(0),
           input_shape.dim_size(2), seq_lengths, time_major, data_type);
       TF_RETURN_IF_ERROR(input_desc_s.status());
       *input_desc = std::move(input_desc_s).value();
     }
   } else {
-    auto input_desc_s = executor->createRnnSequenceTensorDescriptor(
+    auto input_desc_s = dnn->CreateRnnSequenceTensorDescriptor(
         input_shape.dim_size(0), input_shape.dim_size(1),
         input_shape.dim_size(2), data_type);
     TF_RETURN_IF_ERROR(input_desc_s.status());
@@ -732,13 +744,13 @@ Status CreateForwardAndBackwardIODescriptors(
 
   DCHECK_EQ(hidden_state_shape.dims(), 3);
   if (time_major) {
-    auto hidden_state_desc_s = executor->createRnnStateTensorDescriptor(
+    auto hidden_state_desc_s = dnn->CreateRnnStateTensorDescriptor(
         hidden_state_shape.dim_size(0), hidden_state_shape.dim_size(1),
         hidden_state_shape.dim_size(2), data_type);
     TF_RETURN_IF_ERROR(hidden_state_desc_s.status());
     *h_state_desc = std::move(hidden_state_desc_s).value();
   } else {
-    auto hidden_state_desc_s = executor->createRnnStateTensorDescriptor(
+    auto hidden_state_desc_s = dnn->CreateRnnStateTensorDescriptor(
         hidden_state_shape.dim_size(1), hidden_state_shape.dim_size(0),
         hidden_state_shape.dim_size(2), data_type);
     TF_RETURN_IF_ERROR(hidden_state_desc_s.status());
@@ -747,13 +759,13 @@ Status CreateForwardAndBackwardIODescriptors(
 
   DCHECK_EQ(cell_state_shape.dims(), 3);
   if (time_major) {
-    auto cell_state_desc_s = executor->createRnnStateTensorDescriptor(
+    auto cell_state_desc_s = dnn->CreateRnnStateTensorDescriptor(
         cell_state_shape.dim_size(0), cell_state_shape.dim_size(1),
         cell_state_shape.dim_size(2), data_type);
     TF_RETURN_IF_ERROR(cell_state_desc_s.status());
     *c_state_desc = std::move(cell_state_desc_s).value();
   } else {
-    auto cell_state_desc_s = executor->createRnnStateTensorDescriptor(
+    auto cell_state_desc_s = dnn->CreateRnnStateTensorDescriptor(
         cell_state_shape.dim_size(1), cell_state_shape.dim_size(0),
         cell_state_shape.dim_size(2), data_type);
     TF_RETURN_IF_ERROR(cell_state_desc_s.status());
@@ -763,20 +775,20 @@ Status CreateForwardAndBackwardIODescriptors(
   DCHECK_EQ(output_shape.dims(), 3);
   if (seq_lengths.data() != nullptr) {
     if (time_major) {
-      auto output_desc_s = executor->createRnnSequenceTensorDescriptor(
+      auto output_desc_s = dnn->CreateRnnSequenceTensorDescriptor(
           output_shape.dim_size(0), output_shape.dim_size(1),
           output_shape.dim_size(2), seq_lengths, time_major, data_type);
       TF_RETURN_IF_ERROR(output_desc_s.status());
       *output_desc = std::move(output_desc_s).value();
     } else {
-      auto output_desc_s = executor->createRnnSequenceTensorDescriptor(
+      auto output_desc_s = dnn->CreateRnnSequenceTensorDescriptor(
           output_shape.dim_size(1), output_shape.dim_size(0),
           output_shape.dim_size(2), seq_lengths, time_major, data_type);
       TF_RETURN_IF_ERROR(output_desc_s.status());
       *output_desc = std::move(output_desc_s).value();
     }
   } else {
-    auto output_desc_s = executor->createRnnSequenceTensorDescriptor(
+    auto output_desc_s = dnn->CreateRnnSequenceTensorDescriptor(
         output_shape.dim_size(0), output_shape.dim_size(1),
         output_shape.dim_size(2), data_type);
     TF_RETURN_IF_ERROR(output_desc_s.status());
@@ -838,32 +850,22 @@ Status DoForwardImpl(OpKernelContext* context, const RnnDescriptor& rnn_desc,
         DT_INT32, {static_cast<long>(seq_lengths.size())},
         &seq_lengths_tensor));
     seq_lengths_ptr = AsDeviceMemory<int>(&seq_lengths_tensor);
-    if (!stream
-             ->ThenMemcpy(&seq_lengths_ptr, seq_lengths.data(),
-                          seq_lengths.size() * sizeof(int))
-             .ok()) {
-      return errors::InvalidArgument(
-          "Failed to copy memory from host to "
-          "device for sequence_lengths in "
-          "CudnnRNNV3");
-    }
+    TF_RETURN_IF_ERROR(stream->Memcpy(&seq_lengths_ptr, seq_lengths.data(),
+                                      seq_lengths.size() * sizeof(int)));
   }
 
-  bool launch_success =
-      stream
-          ->ThenRnnForward(rnn_desc, *input_desc, input_data, seq_lengths_ptr,
-                           *h_state_desc, input_h_data, *c_state_desc,
-                           input_c_data, params_data, *output_desc,
-                           &output_data, *h_state_desc, &output_h_data,
-                           *c_state_desc, &output_c_data, is_training,
-                           reserve_space_allocator, workspace_allocator,
-                           output_profile_result)
-          .ok();
-  return launch_success
-             ? OkStatus()
-             : errors::Internal(
-                   "Failed to call ThenRnnForward with model config: ",
-                   model_types.DebugString(), ", ", model_shapes.DebugString());
+  TF_ASSIGN_OR_RETURN(auto dnn, GetDnn(stream));
+  bool launch_success = dnn->DoRnnForward(
+      stream, rnn_desc, *input_desc, input_data, seq_lengths_ptr, *h_state_desc,
+      input_h_data, *c_state_desc, input_c_data, params_data, *output_desc,
+      &output_data, *h_state_desc, &output_h_data, *c_state_desc,
+      &output_c_data, is_training, reserve_space_allocator, workspace_allocator,
+      output_profile_result);
+  return launch_success ? OkStatus()
+                        : absl::InternalError(absl::StrCat(
+                              "Failed to call DoRnnForward with model config: ",
+                              model_types.DebugString(), ", ",
+                              model_shapes.DebugString()));
 }
 
 template <typename T>
@@ -1024,34 +1026,25 @@ Status DoBackwardImpl(
         DT_INT32, {static_cast<long>(seq_lengths.size())},
         &seq_lengths_tensor));
     seq_lengths_ptr = AsDeviceMemory<int>(&seq_lengths_tensor);
-    if (!stream
-             ->ThenMemcpy(&seq_lengths_ptr, seq_lengths.data(),
-                          seq_lengths.size() * sizeof(int))
-             .ok()) {
-      return errors::InvalidArgument(
-          "Failed to copy memory from host to "
-          "device for sequence_lengths in "
-          "CudnnRNNBackwardOpV3");
-    }
+    TF_RETURN_IF_ERROR(stream->Memcpy(&seq_lengths_ptr, seq_lengths.data(),
+                                      seq_lengths.size() * sizeof(int)));
   }
 
-  bool launch_success =
-      stream
-          ->ThenRnnBackward(
-              rnn_desc, *input_desc, input_data, seq_lengths_ptr, *h_state_desc,
-              input_h_data, *c_state_desc, input_c_data, params_data,
-              *output_desc, output_data, *h_state_desc, output_h_data,
-              *c_state_desc, output_c_data, output_backprop_data,
-              output_h_backprop_data, output_c_backprop_data,
-              &input_backprop_data, &input_h_backprop_data,
-              &input_c_backprop_data, &params_backprop_data,
-              &reserve_space_uint8, workspace_allocator, output_profile_result)
-          .ok();
+  TF_ASSIGN_OR_RETURN(auto dnn, GetDnn(stream));
+  bool launch_success = dnn->DoRnnBackward(
+      stream, rnn_desc, *input_desc, input_data, seq_lengths_ptr, *h_state_desc,
+      input_h_data, *c_state_desc, input_c_data, params_data, *output_desc,
+      output_data, *h_state_desc, output_h_data, *c_state_desc, output_c_data,
+      output_backprop_data, output_h_backprop_data, output_c_backprop_data,
+      &input_backprop_data, &input_h_backprop_data, &input_c_backprop_data,
+      &params_backprop_data, &reserve_space_uint8, workspace_allocator,
+      output_profile_result);
   return launch_success
              ? OkStatus()
-             : errors::Internal(
-                   "Failed to call ThenRnnBackward with model config: ",
-                   model_types.DebugString(), ", ", model_shapes.DebugString());
+             : absl::InternalError(absl::StrCat(
+                   "Failed to call DoRnnBackward with model config: ",
+                   model_types.DebugString(), ", ",
+                   model_shapes.DebugString()));
 }
 
 template <typename T>
@@ -1197,7 +1190,9 @@ void RestoreParams(const OpInputList params_input,
     auto data_src_ptr = StreamExecutorUtil::AsDeviceMemory<T>(params_input[i]);
     DeviceMemoryBase data_dst_ptr =
         SliceDeviceMemory(*data_dst, params[i].offset, size_in_bytes);
-    stream->ThenMemcpy(&data_dst_ptr, data_src_ptr, size_in_bytes);
+    CHECK(stream  // Crash OK
+              ->Memcpy(&data_dst_ptr, data_src_ptr, size_in_bytes)
+              .ok());
   }
 }
 
@@ -1294,7 +1289,11 @@ class CudnnRNNKernelCommon : public OpKernel {
     // ExtracCudnnRNNParamsInfo is only called by op_kernels that do not require
     // random number generator, therefore set state_allocator to nullptr.
     const AlgorithmConfig algo_config;
-    auto rnn_desc_s = stream->parent()->createRnnDescriptor(
+    auto dnn = stream->parent()->AsDnn();
+    if (dnn == nullptr) {
+      return absl::InvalidArgumentError("Dnn is not supported");
+    }
+    auto rnn_desc_s = dnn->CreateRnnDescriptor(
         num_layers, h_num_units, input_size, /*cell_size=*/c_num_units,
         /*batch_size=*/0, input_mode, rnn_direction_mode(), rnn_mode(),
         ToDataType<T>::value, algo_config, GetNumericOptions(), dropout(),
@@ -1319,7 +1318,11 @@ class CudnnRNNKernelCommon : public OpKernel {
     se::dnn::DataType data_type = std::is_same_v<T, bfloat16>
                                       ? se::dnn::DataType::kFloat
                                       : ToDataType<T>::value;
-    auto rnn_desc_s = executor->createRnnDescriptor(
+    auto dnn = executor->AsDnn();
+    if (dnn == nullptr) {
+      return absl::InvalidArgumentError("Dnn is not supported");
+    }
+    auto rnn_desc_s = dnn->CreateRnnDescriptor(
         model_shapes.num_layers, model_shapes.num_units,
         model_shapes.input_size, model_shapes.cell_num_units,
         model_shapes.batch_size, input_mode, rnn_direction_mode(), rnn_mode(),
@@ -1557,7 +1560,8 @@ class CudnnRNNParamsToCanonical<GPUDevice, T> : public CudnnRNNKernelCommon {
       DeviceMemoryBase data_src_ptr = SliceDeviceMemory(
           input_ptr, rnn_desc->ParamsWeightRegions()[i].offset, size_in_bytes);
       auto data_dst_ptr = StreamExecutorUtil::AsDeviceMemory<T>(*output);
-      stream->ThenMemcpy(&data_dst_ptr, data_src_ptr, size_in_bytes);
+      OP_REQUIRES_OK(
+          context, stream->Memcpy(&data_dst_ptr, data_src_ptr, size_in_bytes));
     }
 
     OP_REQUIRES(
@@ -1579,7 +1583,8 @@ class CudnnRNNParamsToCanonical<GPUDevice, T> : public CudnnRNNKernelCommon {
       DeviceMemoryBase data_src_ptr = SliceDeviceMemory(
           input_ptr, rnn_desc->ParamsBiasRegions()[i].offset, size_in_bytes);
       auto data_dst_ptr = StreamExecutorUtil::AsDeviceMemory<T>(*output);
-      stream->ThenMemcpy(&data_dst_ptr, data_src_ptr, size_in_bytes);
+      OP_REQUIRES_OK(
+          context, stream->Memcpy(&data_dst_ptr, data_src_ptr, size_in_bytes));
     }
   }
 
@@ -1892,7 +1897,11 @@ class CudnnRNNForwardOpV2<GPUDevice, T>
 
     std::vector<AlgorithmDesc> algorithms;
     auto* stream = context->op_device_context()->stream();
-    CHECK(stream->parent()->GetRnnAlgorithms(&algorithms));
+    auto dnn = stream->parent()->AsDnn();
+    if (dnn == nullptr) {
+      return absl::InvalidArgumentError("No DNN found");
+    }
+    CHECK(dnn->GetRnnAlgorithms(&algorithms));
     if (algorithms.empty()) {
       LOG(WARNING) << "No Rnn algorithm found";
       return OkStatus();

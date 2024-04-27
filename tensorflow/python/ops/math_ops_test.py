@@ -791,16 +791,38 @@ class DivAndModTest(test_util.TensorFlowTestCase):
 
   def intEdgeTestData(self, dtype):
     """Edge-case test data for integer types."""
-    # INT_MIN/-1 expected to produce signed-integer overflow,
-    # INT_MIN/INT_MAX expected to work.
-    nums = np.array([np.iinfo(dtype).min, -1, 1,
-                     np.iinfo(dtype).max],
-                    dtype=dtype).reshape([4, 1])
-    divs = nums.reshape([1, 4])
+    # INT_MIN/-1 will produce signed-integer overflow, so we instead test
+    # (INT_MIN + 1) / -1.
+    nums = np.array(
+        [
+            [np.iinfo(dtype).min, -1, 1, np.iinfo(dtype).max],
+            [np.iinfo(dtype).min + 1, -1, 1, np.iinfo(dtype).max],
+            [np.iinfo(dtype).min, -1, 1, np.iinfo(dtype).max],
+            [np.iinfo(dtype).min, -1, 1, np.iinfo(dtype).max],
+        ],
+        dtype=dtype,
+    )
+    divs = np.array(
+        [
+            [
+                np.iinfo(dtype).min,
+                np.iinfo(dtype).min,
+                np.iinfo(dtype).min,
+                np.iinfo(dtype).min,
+            ],
+            [-1, -1, -1, -1],
+            [1, 1, 1, 1],
+            [
+                np.iinfo(dtype).max,
+                np.iinfo(dtype).max,
+                np.iinfo(dtype).max,
+                np.iinfo(dtype).max,
+            ],
+        ],
+        dtype=dtype,
+    )
     return nums, divs
 
-  @test_util.disable_asan("Expected signed integer overflow.")
-  @test_util.disable_ubsan("Expected signed integer overflow.")
   def testFloorDivModIntEdges(self):
     for dtype in [np.int32, np.int64]:
       x, y = self.intEdgeTestData(dtype)
@@ -810,12 +832,7 @@ class DivAndModTest(test_util.TensorFlowTestCase):
       tf_floor_mod = math_ops.floormod(x, y)
       np_floor_mod = self.numpySafeFloorModInt(x, y)
       self.assertAllEqual(tf_floor_mod, np_floor_mod)
-      z = math_ops.add(math_ops.multiply(tf_floor_div, y), tf_floor_mod)
-      # x = floor_div(x, y) * y + floor_mod(x, y)
-      self.assertAllEqual(z, np.broadcast_to(x, z.shape))
 
-  @test_util.disable_asan("Expected signed integer overflow.")
-  @test_util.disable_ubsan("Expected signed integer overflow.")
   def testTruncateDivModIntEdges(self):
     for dtype in [np.int32, np.int64]:
       x, y = self.intEdgeTestData(dtype)
@@ -825,9 +842,6 @@ class DivAndModTest(test_util.TensorFlowTestCase):
       tf_truncate_mod = math_ops.truncatemod(x, y)
       np_truncate_mod = self.numpySafeTruncateModInt(x, y)
       self.assertAllEqual(tf_truncate_mod, np_truncate_mod)
-      z = math_ops.add(math_ops.multiply(tf_truncate_div, y), tf_truncate_mod)
-      # x = truncatediv(x, y) * y + truncatemod(x, y)
-      self.assertAllEqual(z, np.broadcast_to(x, z.shape))
 
 
 @test_util.run_all_in_graph_and_eager_modes

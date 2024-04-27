@@ -34,7 +34,7 @@ Status FunctionOptimizationPassRegistry::Run(
     std::unique_ptr<Graph>* graph, FunctionLibraryDefinition* flib_def,
     std::vector<std::string>* control_ret_node_names,
     bool* control_rets_updated) {
-  if (!pass_) return OkStatus();
+  if (!pass_) return absl::OkStatus();
 
   tensorflow::metrics::ScopedCounter<2> timings(
       tensorflow::metrics::GetGraphOptimizationCounter(),

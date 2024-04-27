@@ -73,7 +73,7 @@ Type GetSizeVarType(OpBuilder builder) {
 // forwards the argument. Otherwise, returns -1.
 int64_t FindAliasedInput(func::FuncOp func, int64_t return_index) {
   Value return_val = func.front().getTerminator()->getOperand(return_index);
-  auto maybe_arg = return_val.dyn_cast<BlockArgument>();
+  auto maybe_arg = mlir::dyn_cast<BlockArgument>(return_val);
   if (!maybe_arg) return -1;
   return maybe_arg.getArgNumber();
 }
@@ -180,8 +180,8 @@ LogicalResult HandleWhileOp(
       while_op.getLoc(), body.getFunctionType().getInputs(), new_while_operands,
       while_op->getAttrs());
   for (int64_t i = 0; i < while_op.getNumResults(); ++i) {
-    if (!getElementTypeOrSelf(while_op.getOperand(i).getType())
-             .isa<TF::ResourceType>()) {
+    if (!mlir::isa<TF::ResourceType>(
+            getElementTypeOrSelf(while_op.getOperand(i).getType()))) {
       continue;
     }
     int64_t aliased_input = FindAliasedInput(body, i);
@@ -233,7 +233,7 @@ LogicalResult HandleIfOp(
       if_op.getLoc(), then_func.getFunctionType().getResults(), new_if_operands,
       if_op->getAttrs());
   for (auto result : if_op.getResults()) {
-    if (!getElementTypeOrSelf(result.getType()).isa<TF::ResourceType>()) {
+    if (!mlir::isa<TF::ResourceType>(getElementTypeOrSelf(result.getType()))) {
       continue;
     }
     int64_t then_aliased_input =
@@ -287,8 +287,8 @@ LogicalResult HandlePartitionedCallOp(
                  const_cast<func::FuncOp&>(info.decomposed_callee).getName()));
     for (int64_t i = 0; i < call.getNumResults(); ++i) {
       auto result = call.getResult(i);
-      if (!getElementTypeOrSelf(result.getType())
-               .template isa<TF::ResourceType>()) {
+      if (!mlir::isa<TF::ResourceType>(
+              getElementTypeOrSelf(result.getType()))) {
         continue;
       }
       int64_t aliased_input = FindAliasedInput(info.decomposed_callee, i);
@@ -328,9 +328,9 @@ LogicalResult HandlePartitionedCallOp(
   } else {
     info.decomposed_callee = lowered_callee;
     for (auto& entry : callee_map) {
-      info.stack_var_arg_to_size_arg
-          [entry.getFirst().cast<BlockArgument>().getArgNumber()] =
-          entry.getSecond().cast<BlockArgument>().getArgNumber();
+      info.stack_var_arg_to_size_arg[mlir::cast<BlockArgument>(entry.getFirst())
+                                         .getArgNumber()] =
+          mlir::cast<BlockArgument>(entry.getSecond()).getArgNumber();
     }
     if (lowered_callee != callee) {
       // Add the clone with a new name.
@@ -372,7 +372,7 @@ LogicalResult HandleStackV2Op(
   auto size_var_type = GetSizeVarType(builder);
   auto var_type = RankedTensorType::get(
       {}, TF::ResourceType::get(
-              ArrayRef<TensorType>{buffer.getType().cast<TensorType>()},
+              ArrayRef<TensorType>{mlir::cast<TensorType>(buffer.getType())},
               stack.getContext()));
   auto local_var = builder.create<TF::MlirLocalVarOp>(
       stack.getLoc(), ArrayRef<Type>{var_type}, ArrayRef<Value>{});
@@ -446,7 +446,8 @@ LogicalResult HandleRegionControlFlowOps(
     llvm::StringMap<PartitionedCallStackOpsInfo>*
         decomposed_partitioned_call_callees) {
   for (OpOperand& operand : op.getOpOperands()) {
-    if (getElementTypeOrSelf(operand.get().getType()).isa<TF::ResourceType>()) {
+    if (mlir::isa<TF::ResourceType>(
+            getElementTypeOrSelf(operand.get().getType()))) {
       return op.emitOpError()
              << "found unexpected type " << operand.get().getType()
              << " of operand #" << operand.getOperandNumber()
@@ -455,7 +456,7 @@ LogicalResult HandleRegionControlFlowOps(
     }
   }
   for (OpResult result : op.getResults()) {
-    if (getElementTypeOrSelf(result.getType()).isa<TF::ResourceType>()) {
+    if (mlir::isa<TF::ResourceType>(getElementTypeOrSelf(result.getType()))) {
       return op.emitOpError()
              << "found unexpected type " << result.getType() << " of result #"
              << result.getResultNumber()

@@ -130,6 +130,7 @@ py_strict_library(
     visibility = [
         "//tensorflow:internal",
         "//third_party/py/tf_slim:__subpackages__",
+        "//waymo/ml/deploy/numeric_debugging:__subpackages__",
     ],
     deps = [
         ":debug_graphs",

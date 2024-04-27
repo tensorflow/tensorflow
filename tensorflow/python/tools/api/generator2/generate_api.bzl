@@ -176,7 +176,7 @@ def _generate_api_impl(ctx):
     args.use_param_file("--flagfile=%s")
 
     args.add_joined("--output_files", ctx.outputs.output_files, join_with = ",")
-    args.add("--output_dir", paths.join(ctx.bin_dir.path, ctx.label.package, ctx.attr.output_dir))
+    args.add("--output_dir", paths.join(ctx.bin_dir.path, ctx.label.workspace_root, ctx.label.package, ctx.attr.output_dir))
     if ctx.file.root_init_template:
         args.add("--root_init_template", ctx.file.root_init_template)
     args.add("--apiversion", ctx.attr.api_version)

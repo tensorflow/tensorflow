@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "xla/hlo/ir/collective_device_list.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -136,7 +137,7 @@ std::optional<std::vector<ReplicaGroup>> FoldReplicaGroups(
 
 }  // namespace
 
-StatusOr<bool> AllReduceFolder::Run(
+absl::StatusOr<bool> AllReduceFolder::Run(
     HloModule *module,
     const absl::flat_hash_set<absl::string_view> &execution_threads) {
   if (hlo_query::ContainsLayoutConstrainedAllReduce(*module)) {
@@ -200,7 +201,8 @@ StatusOr<bool> AllReduceFolder::Run(
       HloInstruction *new_ar =
           computation->AddInstruction(HloInstruction::CreateAllReduce(
               ar0->shape(), ar0->operands(), ar0->to_apply(),
-              *new_replica_groups, /*constrain_layout=*/false, channel_id,
+              CollectiveDeviceList(*new_replica_groups),
+              /*constrain_layout=*/false, channel_id,
               ar0->use_global_device_ids()));
       TF_RETURN_IF_ERROR(ar1->ReplaceAllUsesWith(new_ar));
       TF_RETURN_IF_ERROR(computation->RemoveInstruction(ar1));

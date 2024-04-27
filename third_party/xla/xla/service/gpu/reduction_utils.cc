@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -22,16 +22,18 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/layout_util.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/util.h"
 #include "tsl/platform/logging.h"
 
 #ifdef GOOGLE_CUDA
 #include "xla/service/gpu/gpu_asm_opts_util.h"
-#include "xla/stream_executor/gpu/asm_compiler.h"
+#include "xla/stream_executor/cuda/cuda_asm_compiler.h"
 #endif  // GOOGLE_CUDA
 
 namespace xla {
@@ -108,7 +110,7 @@ int64_t ReductionDimensionRaceFreeBound(
   return WarpSize() * reduction_tiling[1];
 }
 
-static bool IsUnnestedReductionFasterThanElemental(
+bool IsUnnestedReductionFasterThanElemental(
     const ReductionDimensions& reduction_dimensions) {
   if (reduction_dimensions.is_row_reduction) {
     // For row reduction, the tile block is 1 x tile_size_x, and we are reducing
@@ -217,6 +219,24 @@ ReductionDimensions GetReductionKindAndContiguousComponents(
             {1, shape_partition[0], shape_partition[1]}};
   }
   return {/*is_row_reduction=*/false, shape_partition};
+}
+
+bool IsRealReductionHero(const HloInstruction& root,
+                         const HloInstruction& hero) {
+  if (!IsReductionFromOrToContiguousDimensions(hero)) {
+    return false;
+  }
+  return &root == &hero ||
+         ReductionIsRaceFree(hero.GetModule()->config(),
+                             GetReductionKindAndContiguousComponents(hero));
+}
+
+bool AreReductionsMultiOutputFusionCompatible(
+    const HloInstruction* reduce_hero, const HloInstruction* first_reduce) {
+  // The reduction kind must be the same for all reduce heroes inside of a
+  // multioutput fusion.
+  return GetReductionKindAndContiguousComponents(*reduce_hero) ==
+         GetReductionKindAndContiguousComponents(*first_reduce);
 }
 
 }  // namespace gpu

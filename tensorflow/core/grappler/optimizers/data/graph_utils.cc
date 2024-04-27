@@ -189,7 +189,7 @@ Status GetScalarConstNodeValueHelper(
 
   get_value(tensor);
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <>
@@ -360,7 +360,7 @@ Status EnsureNodeNamesUnique(Graph* g) {
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status GetFetchNode(const MutableGraphView& graph, const GrapplerItem& item,
@@ -373,7 +373,7 @@ Status GetFetchNode(const MutableGraphView& graph, const GrapplerItem& item,
 
   *fetch_node = graph.GetNode(item.fetch.at(0));
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 bool IsItemDerivedFromFunctionDef(const GrapplerItem& item,
@@ -466,7 +466,7 @@ Status SetMetadataName(const std::string& name, NodeDef* node) {
   }
   *metadata.mutable_name() = name;
   metadata.SerializeToString((*node->mutable_attr())["metadata"].mutable_s());
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace graph_utils

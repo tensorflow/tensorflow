@@ -3,9 +3,9 @@
 // CHECK: HloModule main, entry_computation_layout={(s64[<=4,1]{1,0})->s64[1,<=4]{1,0}}
 func.func @main(%arg0: tensor<?x1xi64, #mhlo.type_extensions<bounds = [4, ?]>>) -> tensor<1x?xi64, #mhlo.type_extensions<bounds = [?, 4]>> {
   %0 = mhlo.constant dense<1> : tensor<1xi32>
-  %1 = "mhlo.get_dimension_size"(%arg0) {dimension = 0 : i64} : (tensor<?x1xi64, #mhlo.type_extensions<bounds = [4, ?]>>) -> tensor<i32>
+  %1 = "mhlo.get_dimension_size"(%arg0) <{dimension = 0 : i64}> : (tensor<?x1xi64, #mhlo.type_extensions<bounds = [4, ?]>>) -> tensor<i32>
   %2 = mhlo.reshape %1 : (tensor<i32>) -> tensor<1xi32>
-  %3 = "mhlo.concatenate"(%0, %2) {dimension = 0 : i64} : (tensor<1xi32>, tensor<1xi32>) -> tensor<2xi32>
+  %3 = "mhlo.concatenate"(%0, %2) <{dimension = 0 : i64}> : (tensor<1xi32>, tensor<1xi32>) -> tensor<2xi32>
   %4 = mhlo.dynamic_reshape %arg0, %3 : (tensor<?x1xi64, #mhlo.type_extensions<bounds = [4, ?]>>, tensor<2xi32>) -> tensor<1x?xi64, #mhlo.type_extensions<bounds = [?, 4]>>
   func.return %4 : tensor<1x?xi64, #mhlo.type_extensions<bounds = [?, 4]>>
   //      CHECK: %[[ARG0:.*]] = s64[<=4,1] parameter(0)

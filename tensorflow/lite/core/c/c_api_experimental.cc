@@ -37,6 +37,16 @@ TfLiteStatus TfLiteInterpreterResetVariableTensors(
   return interpreter->impl->ResetVariableTensors();
 }
 
+int32_t TfLiteInterpreterGetVariableTensorCount(
+    const TfLiteInterpreter* interpreter) {
+  return static_cast<int32_t>(interpreter->impl->variables().size());
+}
+
+TfLiteTensor* TfLiteInterpreterGetVariableTensor(
+    const TfLiteInterpreter* interpreter, int32_t input_index) {
+  return interpreter->impl->tensor(interpreter->impl->variables()[input_index]);
+}
+
 void TfLiteInterpreterOptionsAddBuiltinOp(
     TfLiteInterpreterOptions* options, TfLiteBuiltinOperator op,
     const TfLiteRegistration* registration, int32_t min_version,
@@ -65,11 +75,10 @@ void TfLiteInterpreterOptionsAddCustomOp(TfLiteInterpreterOptions* options,
 
 void TfLiteInterpreterOptionsSetOpResolverExternal(
     TfLiteInterpreterOptions* options,
-    const TfLiteRegistrationExternal* (*find_builtin_op)(void* user_data,
-                                                         int op, int version),
-    const TfLiteRegistrationExternal* (*find_custom_op)(void* user_data,
-                                                        const char* custom_op,
-                                                        int version),
+    const TfLiteOperator* (*find_builtin_op)(void* user_data, int op,
+                                             int version),
+    const TfLiteOperator* (*find_custom_op)(void* user_data,
+                                            const char* custom_op, int version),
     void* op_resolver_user_data) {
   options->op_resolver_callbacks = {};  // Sets all fields to null.
   options->op_resolver_callbacks.find_builtin_op_external = find_builtin_op;
@@ -79,10 +88,11 @@ void TfLiteInterpreterOptionsSetOpResolverExternal(
 
 void TfLiteInterpreterOptionsSetOpResolverExternalWithFallback(
     TfLiteInterpreterOptions* options,
-    const TfLiteRegistrationExternal* (*find_builtin_op_external)(
-        void* user_data, int op, int version),
-    const TfLiteRegistrationExternal* (*find_custom_op_external)(
-        void* user_data, const char* custom_op, int version),
+    const TfLiteOperator* (*find_builtin_op_external)(void* user_data, int op,
+                                                      int version),
+    const TfLiteOperator* (*find_custom_op_external)(void* user_data,
+                                                     const char* custom_op,
+                                                     int version),
     const TfLiteRegistration* (*find_builtin_op)(void* user_data,
                                                  TfLiteBuiltinOperator op,
                                                  int version),

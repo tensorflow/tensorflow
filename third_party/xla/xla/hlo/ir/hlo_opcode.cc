@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -33,7 +33,7 @@ absl::string_view HloOpcodeString(HloOpcode opcode) {
   }
 }
 
-StatusOr<HloOpcode> StringToHloOpcode(absl::string_view opcode_name) {
+absl::StatusOr<HloOpcode> StringToHloOpcode(absl::string_view opcode_name) {
   static auto* opcode_map = new absl::flat_hash_map<std::string, HloOpcode>({
 #define STRING_TO_OPCODE_ENTRY(enum_name, opcode_name, ...) \
   {opcode_name, HloOpcode::enum_name},

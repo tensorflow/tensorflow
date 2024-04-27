@@ -28,6 +28,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_set.h"
@@ -87,18 +88,18 @@ TEST(DeviceUtilTest, AddDeviceToOp) {
   ASSERT_EQ(devices_attr.size(), 3);
 
   // CPU device added with an empty metadata.
-  auto device_meta_0 = devices_attr.get(cpu0).dyn_cast<mlir::UnitAttr>();
+  auto device_meta_0 = mlir::dyn_cast<mlir::UnitAttr>(devices_attr.get(cpu0));
   ASSERT_NE(device_meta_0, nullptr);
 
   // GPU device successfully parsed compute capability from description.
   auto device_meta_1 =
-      devices_attr.get(gpu0).dyn_cast<mlir::TF::GpuDeviceMetadata>();
+      mlir::dyn_cast<mlir::TF::GpuDeviceMetadata>(devices_attr.get(gpu0));
   ASSERT_NE(device_meta_1, nullptr);
   ASSERT_EQ(device_meta_1.getCcMajor(), 7);
   ASSERT_EQ(device_meta_1.getCcMinor(), 0);
 
   // If description is empty GPU devices added with an empty metadata.
-  auto device_meta_2 = devices_attr.get(gpu1).dyn_cast<mlir::UnitAttr>();
+  auto device_meta_2 = mlir::dyn_cast<mlir::UnitAttr>(devices_attr.get(gpu1));
   ASSERT_NE(device_meta_2, nullptr);
 }
 

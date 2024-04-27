@@ -96,7 +96,7 @@ TF::ReshapeOp ConvertTFBatchMatMulOp<BatchMatMulOpType>::createReshapeOp(
 template <typename BatchMatMulOpType>
 std::vector<Value> ConvertTFBatchMatMulOp<BatchMatMulOpType>::sliceInput(
     Value value, int batch_size, Location loc, PatternRewriter& rewriter) {
-  RankedTensorType tensorType = value.getType().cast<RankedTensorType>();
+  RankedTensorType tensorType = mlir::cast<RankedTensorType>(value.getType());
   Type element_type = tensorType.getElementType();
 
   int rank = tensorType.getShape().size();
@@ -150,17 +150,17 @@ LogicalResult ConvertTFBatchMatMulOp<BatchMatMulOpType>::matchAndRewrite(
   Value input_lhs = op.getX();
   Value input_rhs = op.getY();
 
-  if (!input_lhs.getType().isa<RankedTensorType>()) {
+  if (!mlir::isa<RankedTensorType>(input_lhs.getType())) {
     // LHS must be a ranked tensor type
     return failure();
   }
-  if (!input_rhs.getType().isa<RankedTensorType>()) {
+  if (!mlir::isa<RankedTensorType>(input_rhs.getType())) {
     // RHS must be a ranked tensor type
     return failure();
   }
 
-  auto lhs_type = input_lhs.getType().cast<RankedTensorType>();
-  auto rhs_type = input_rhs.getType().cast<RankedTensorType>();
+  auto lhs_type = mlir::cast<RankedTensorType>(input_lhs.getType());
+  auto rhs_type = mlir::cast<RankedTensorType>(input_rhs.getType());
 
   // Skip int8 x int8 => int32.
   if (lhs_type.getElementType().isInteger(8) &&

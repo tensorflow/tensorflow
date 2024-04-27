@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -32,20 +32,25 @@ Status VerifyS4U4Usage(HloInstruction* instruction) {
   switch (instruction->opcode()) {
     case HloOpcode::kBitcast:
     case HloOpcode::kConstant:
+    case HloOpcode::kConcatenate:
     case HloOpcode::kConvert:
     case HloOpcode::kCopy:
     case HloOpcode::kFusion:
     case HloOpcode::kGetTupleElement:
     case HloOpcode::kParameter:
+    case HloOpcode::kSlice:
     case HloOpcode::kTuple:
+    case HloOpcode::kWhile:
       break;
     default:
       TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
           instruction->shape(), [&](const Shape& shape, const ShapeIndex&) {
-            if (primitive_util::Is4BitType(shape.element_type())) {
+            if (primitive_util::IsSubByteNonPredType(shape.element_type())) {
               return absl::InvalidArgumentError(absl::StrFormat(
-                  "S4/U4 is currently only supported in convert instructions, "
-                  "but got instruction with S4/U4 input: %s",
+                  "%s is currently only supported in convert instructions, "
+                  "but got instruction: %s",
+                  primitive_util::LowercasePrimitiveTypeName(
+                      shape.element_type()),
                   instruction->ToString()));
             }
             return OkStatus();
@@ -66,11 +71,11 @@ Status CpuGpuShapeVerifier::Preprocess(HloInstruction* hlo) {
                 "The XLA CPU/GPU backend does not support sparse shapes: %s",
                 hlo->ToString()));
           }
-          if (!primitive_util::Is4BitType(shape.element_type()) &&
+          if (!primitive_util::IsSubByteNonPredType(shape.element_type()) &&
               shape.layout().element_size_in_bits() != 0) {
             return absl::InvalidArgumentError(absl::StrFormat(
                 "The XLA CPU/GPU backend does not support custom element sizes "
-                "on non-4-bit types: %s",
+                "on non-sub-byte-bit types: %s",
                 hlo->ToString()));
           }
         }

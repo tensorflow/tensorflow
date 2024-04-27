@@ -32,9 +32,14 @@ limitations under the License.
 #include "tensorflow/lite/core/api/profiler.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/core/signature_runner.h"
+#include "tensorflow/lite/core/subgraph.h"
+#include "tensorflow/lite/experimental/remat/metadata_util.h"
 #include "tensorflow/lite/external_cpu_backend_context.h"
 #include "tensorflow/lite/interpreter_options.h"
+#include "tensorflow/lite/logger.h"
 #include "tensorflow/lite/minimal_logging.h"
+#include "tensorflow/lite/profiling/root_profiler.h"
+#include "tensorflow/lite/profiling/telemetry/c/telemetry_setting.h"
 #include "tensorflow/lite/profiling/telemetry/telemetry.h"
 #include "tensorflow/lite/stderr_reporter.h"
 #include "tensorflow/lite/util.h"
@@ -491,14 +496,6 @@ TfLiteStatus Interpreter::ApplyOptionsImpl(InterpreterOptions* options) {
   // Set InterpreterOptions object to SubGraph.
   for (auto& subgraph : subgraphs_) {
     subgraph->SetOptions(options_.get());
-  }
-
-  // Handle `experimental_dynamic_allocation_for_large_tensors_`.
-  if (options->GetDynamicAllocationForLargeTensors() > 0) {
-    for (auto& subgraph : subgraphs_) {
-      subgraph->OptimizeMemoryForLargeTensors(
-          options->GetDynamicAllocationForLargeTensors());
-    }
   }
   return kTfLiteOk;
 }

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/dtensor/cc/constants.h"
 #include "tensorflow/dtensor/cc/dstatus.h"
 #include "tensorflow/dtensor/mlir/dtensor_location.h"
@@ -39,7 +40,7 @@ StatusOr<mlir::Operation*> OptionalGetValueSPMDExpander::ExpandOp(
 
   for (int i = 0; i < original_op->getNumResults(); ++i) {
     mlir::TensorType global_output_type =
-        original_op.getResult(i).getType().cast<mlir::TensorType>();
+        mlir::cast<mlir::TensorType>(original_op.getResult(i).getType());
     TF_ASSIGN_OR_RETURN(
         mlir::TensorType local_type,
         LocalTypeFromGlobalType(output_layouts[i], global_output_type));

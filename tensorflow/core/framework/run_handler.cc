@@ -622,24 +622,24 @@ void RunHandlerThreadPool::WorkerLoop(int thread_id,
       }
     }
     if (t.f) {
-      profiler::TraceMe activity(
+      tsl::profiler::TraceMe activity(
           [=] {
             return strings::StrCat(task_from_blocking_queue ? "inter" : "intra",
                                    " #id = ", tws->GetTracemeId(), " ",
                                    thread_id, "#");
           },
-          profiler::TraceMeLevel::kInfo);
+          tsl::profiler::TraceMeLevel::kInfo);
       VLOG(2) << "Running " << (task_from_blocking_queue ? "inter" : "intra")
               << " work from " << tws->GetTracemeId();
       tws->IncrementInflightTaskCount(task_from_blocking_queue);
       env_.ExecuteTask(t);
       tws->DecrementInflightTaskCount(task_from_blocking_queue);
     } else {
-      profiler::TraceMe activity(
+      tsl::profiler::TraceMe activity(
           [=] {
             return strings::StrCat("Sleeping#thread_id=", thread_id, "#");
           },
-          profiler::TraceMeLevel::kInfo);
+          tsl::profiler::TraceMeLevel::kInfo);
       if (VLOG_IS_ON(4)) {
         for (int i = 0; i < thread_work_sources->size(); ++i) {
           VLOG(4) << "source id " << i << " "
@@ -847,12 +847,12 @@ class RunHandlerPool::Impl {
     {
       mutex_lock l(mu_);
       if (!has_free_handler()) {
-        profiler::TraceMe activity(
+        tsl::profiler::TraceMe activity(
             [&] {
               return strings::StrCat("WaitingForHandler#step_id=", step_id,
                                      "#");
             },
-            profiler::TraceMeLevel::kInfo);
+            tsl::profiler::TraceMeLevel::kInfo);
         TRACESTRING(
             strings::StrCat("RunHandlerPool::Impl::Get waiting for a handler "
                             "with timeout in millisecond",

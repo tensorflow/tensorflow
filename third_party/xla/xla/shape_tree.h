@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -286,6 +286,22 @@ class ShapeTree {
     result_nodes.reserve(nodes_.size());
     for (const Node& node : nodes_) {
       result_nodes.push_back({node.first, func(node.second)});
+    }
+
+    ShapeTree<U> result(shape_, std::move(result_nodes));
+    result.index_table_ = index_table_;
+    result.shape_storage_ = shape_storage_;
+    return result;
+  }
+
+  template <typename U>
+  absl::StatusOr<ShapeTree<U>> MapWithStatus(
+      absl::FunctionRef<absl::StatusOr<U>(const T&)> func) {
+    typename ShapeTree<U>::Nodes result_nodes;
+    result_nodes.reserve(nodes_.size());
+    for (const Node& node : nodes_) {
+      TF_ASSIGN_OR_RETURN(U result, func(node.second));
+      result_nodes.push_back({node.first, std::move(result)});
     }
 
     ShapeTree<U> result(shape_, std::move(result_nodes));

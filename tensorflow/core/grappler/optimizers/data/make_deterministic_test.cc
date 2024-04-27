@@ -672,7 +672,7 @@ TEST_P(RewriteMapAndBatchWithoutSplitTest, RewriteMapAndBatchWithoutSplit) {
       "map_and_batch", "range", "batch_size", "num_parallel_calls",
       "drop_remainder", func.signature().name());
   SetAttrValue(
-      gtl::ArraySlice<PartialTensorShape>{
+      absl::Span<const PartialTensorShape>{
           {2}, {-1, 3, -1}, PartialTensorShape()},
       &(*map_and_batch_node_def.mutable_attr())["output_shapes"]);
 

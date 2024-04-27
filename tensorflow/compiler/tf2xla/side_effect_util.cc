@@ -74,7 +74,7 @@ Status SetDeviceOrdinalAttributeForNode(Node* node, int device_ordinal) {
     return errors::Internal("Unknown node type to set 'device_ordinal': ",
                             node->DebugString());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 std::set<std::string> CalculateTokenInputsForOutputToken(const Graph& g) {
@@ -143,7 +143,7 @@ Status ParseHostComputeCoreList(absl::Span<const string> list_from_attr,
     }
     (*host_compute_core)[parts[0]] = core;
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

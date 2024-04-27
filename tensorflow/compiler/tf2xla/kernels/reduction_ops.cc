@@ -101,7 +101,7 @@ class MaxOp : public XlaReductionOp {
           "Unsupported PrimitiveType in MaxOp: '",
           xla::PrimitiveType_Name(xla_reduction_type), "'");
     } else {
-      return OkStatus();
+      return absl::OkStatus();
     }
   }
 

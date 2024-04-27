@@ -105,6 +105,7 @@ cc_library(
         "//tensorflow/core/ir:Dialect",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
     ],
 )
 
@@ -197,7 +198,9 @@ tf_cc_binary(
         "//tensorflow/core/ir:Dialect",
         "//tensorflow/core/ir:tf_op_registry",
         "//tensorflow/core/ir/types:Dialect",
+        "@llvm-project//mlir:IR",
         "@llvm-project//mlir:MlirOptLib",
+        "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
     ],
 )

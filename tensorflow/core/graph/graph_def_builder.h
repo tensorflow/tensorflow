@@ -82,7 +82,7 @@ class GraphDefBuilder {
     Options WithName(StringPiece name) const;
     Options WithDevice(StringPiece device) const;
     Options WithControlInput(Node* control_input) const;
-    Options WithControlInputs(gtl::ArraySlice<Node*> control_inputs) const;
+    Options WithControlInputs(absl::Span<Node* const> control_inputs) const;
 
     // Override the default value for an optional attr.
     template <class T>
@@ -130,7 +130,7 @@ class GraphDefBuilder {
     Options WithNameImpl(StringPiece name);
     Options WithDeviceImpl(StringPiece device);
     Options WithControlInputImpl(Node* control_input);
-    Options WithControlInputsImpl(gtl::ArraySlice<Node*> control_inputs);
+    Options WithControlInputsImpl(absl::Span<Node* const> control_inputs);
     template <class T>
     Options WithAttrImpl(StringPiece name, T&& value) {
       attrs_.emplace_back(string(name), AttrValue());

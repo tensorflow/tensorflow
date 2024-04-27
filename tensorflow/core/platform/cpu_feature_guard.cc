@@ -99,18 +99,30 @@ class CPUFeatureGuard {
 #ifdef __AVX512BF16__
     CheckFeatureOrDie(CPUFeature::AVX512_BF16, "AVX512_BF16");
 #endif  // __AVX512BF16__
+#ifdef __AVX512FP16__
+    CheckFeatureOrDie(CPUFeature::AVX512_FP16, "AVX512_FP16");
+#endif  // __AVX512FP16__
 #ifdef __AVXVNNI__
     CheckFeatureOrDie(CPUFeature::AVX_VNNI, "AVX_VNNI");
 #endif  // __AVXVNNI__
-#ifdef __AMXTILE__
+#ifdef __AVXVNNIINT8__
+    CheckFeatureOrDie(CPUFeature::AVX_VNNI_INT8, "AVX_VNNI_INT8");
+#endif  // __AVXVNNIINT8__
+#ifdef __AVXNECONVERT__
+    CheckFeatureOrDie(CPUFeature::AVX_NE_CONVERT, "AVX_NE_CONVERT");
+#endif  // __AVXNECONVERT__
+#ifdef __AMX_TILE__
     CheckFeatureOrDie(CPUFeature::AMX_TILE, "AMX_TILE");
-#endif  // __AMXTILE__
-#ifdef __AMXINT8__
+#endif  // __AMX_TILE__
+#ifdef __AMX_INT8__
     CheckFeatureOrDie(CPUFeature::AMX_INT8, "AMX_INT8");
-#endif  // __AMXINT8__
-#ifdef __AMXBF16__
+#endif  // __AMX_INT8__
+#ifdef __AMX_BF16__
     CheckFeatureOrDie(CPUFeature::AMX_BF16, "AMX_BF16");
-#endif  // __AMXBF16__
+#endif  // __AMX_BF16__
+#ifdef __AMX_FP16__
+    CheckFeatureOrDie(CPUFeature::AMX_FP16, "AMX_FP16");
+#endif  // __AMX_FP16__
 #ifdef __FMA__
     CheckFeatureOrDie(CPUFeature::FMA, "FMA");
 #endif  // __FMA__
@@ -158,23 +170,39 @@ void InfoAboutUnusedCPUFeatures() {
 #ifndef __AVX512BF16__
     CheckIfFeatureUnused(CPUFeature::AVX512_BF16, "AVX512_BF16",
                          missing_instructions);
-#endif  // __AVX512BF16___
+#endif  // __AVX512BF16__
+#ifndef __AVX512FP16__
+    CheckIfFeatureUnused(CPUFeature::AVX512_FP16, "AVX512_FP16",
+                         missing_instructions);
+#endif  // __AVX512FP16__
 #ifndef __AVXVNNI__
     CheckIfFeatureUnused(CPUFeature::AVX_VNNI, "AVX_VNNI",
                          missing_instructions);
 #endif  // __AVXVNNI__
-#ifndef __AMXTILE__
+#ifndef __AVXVNNIINT8__
+    CheckIfFeatureUnused(CPUFeature::AVX_VNNI_INT8, "AVX_VNNI_INT8",
+                         missing_instructions);
+#endif  // __AVXVNNIINT8__
+#ifndef __AVXNECONVERT__
+    CheckIfFeatureUnused(CPUFeature::AVX_NE_CONVERT, "AVX_NE_CONVERT",
+                         missing_instructions);
+#endif  // __AVXNECONVERT__
+#ifndef __AMX_TILE__
     CheckIfFeatureUnused(CPUFeature::AMX_TILE, "AMX_TILE",
                          missing_instructions);
-#endif  // __AMXTILE__
-#ifndef __AMXINT8__
+#endif  // __AMX_TILE__
+#ifndef __AMX_INT8__
     CheckIfFeatureUnused(CPUFeature::AMX_INT8, "AMX_INT8",
                          missing_instructions);
-#endif  // __AMXINT8__
-#ifndef __AMXBF16__
+#endif  // __AMX_INT8__
+#ifndef __AMX_BF16__
     CheckIfFeatureUnused(CPUFeature::AMX_BF16, "AMX_BF16",
                          missing_instructions);
-#endif  // __AMXBF16__
+#endif  // __AMX_BF16__
+#ifndef __AMX_FP16__
+    CheckIfFeatureUnused(CPUFeature::AMX_FP16, "AMX_FP16",
+                         missing_instructions);
+#endif  // __AMX_FP16__
 #ifndef __FMA__
     CheckIfFeatureUnused(CPUFeature::FMA, "FMA", missing_instructions);
 #endif  // __FMA__

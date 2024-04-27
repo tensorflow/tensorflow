@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -60,7 +60,7 @@ class TupleUtil {
   // new_instruction. If the replacement instruction has a different shape than
   // the old one, we insert a bitcast if insert_bitcast_if_different_shape is
   // set to true.
-  static StatusOr<HloInstruction*> ReplaceTupleWith(
+  static absl::StatusOr<HloInstruction*> ReplaceTupleWith(
       HloInstruction* new_instruction, HloInstruction* tuple,
       ShapeIndex shape_index, bool insert_bitcast_if_different_shape = true);
 

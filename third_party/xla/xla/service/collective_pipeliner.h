@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -61,6 +61,12 @@ class CollectivePipeliner : public HloModulePass {
     kForward,
     kForwardSink,
   };
+
+  // Postprocessing cloned collective instructions, such as for modifying loop
+  // iteration related frontend attributes to reflect loop pipelining.
+  using HloPostprocessor =
+      std::optional<std::function<Status(HloInstruction* instr)>>;
+
   struct Config {
     int64_t level_to_operate_on = 0;
     // Maximum number of HLOs to pipeline per loop. (Meant to help controlling
@@ -82,6 +88,13 @@ class CollectivePipeliner : public HloModulePass {
     // buffer we are storing the value in in the output loop for forward
     // pipelining. This function allows to not do it for certain ops.
     HloPredicate reuse_pipelined_op_buffer;
+    // Determine whether a loop variant parameter should be allowed in
+    // pipelining chains. This is currently only used to support kBackward
+    // pipelinining.
+    HloPredicate should_allow_loop_variant_parameter_in_chain =
+        HloPredicateFalse;
+    HloPostprocessor postprocess_backward_peeled_op = std::nullopt;
+    HloPostprocessor postprocess_backward_rorated_op = std::nullopt;
   };
   static const char* const kInsertedByPreviousStep;
   static const char* const kSunkByPreviousStep;
@@ -113,7 +126,7 @@ class CollectivePipeliner : public HloModulePass {
   }
 
   using HloPassInterface::Run;
-  StatusOr<bool> Run(
+  absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 

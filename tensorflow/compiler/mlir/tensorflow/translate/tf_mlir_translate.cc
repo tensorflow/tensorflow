@@ -28,6 +28,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/cc/saved_model/bundle_v2.h"
 #include "tensorflow/cc/saved_model/reader.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
@@ -263,7 +264,7 @@ GraphdefToSplattedMlirTranslateFunction(
         if (auto attr = inst.getAttrOfType<mlir::ElementsAttr>(attr_id)) {
           mlir::Attribute rand_val;
           mlir::Type element_type = attr.getShapedType().getElementType();
-          if (element_type.isa<mlir::IntegerType>()) {
+          if (mlir::isa<mlir::IntegerType>(element_type)) {
             rand_val = mlir::IntegerAttr::get(element_type, std::rand());
           } else if (element_type.isF16() || element_type.isF32() ||
                      element_type.isF64()) {

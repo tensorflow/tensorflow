@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -57,7 +57,7 @@ TEST_F(CpuGpuShapeVerifierTest, Int4UnsupportedInstruction) {
   ASSERT_FALSE(status.ok());
   EXPECT_THAT(
       status.message(),
-      HasSubstr("S4/U4 is currently only supported in convert instructions"));
+      HasSubstr("u4 is currently only supported in convert instructions"));
 }
 
 }  // namespace

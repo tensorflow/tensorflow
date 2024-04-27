@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -77,7 +77,7 @@ class HloEvaluatorTest : public HloTestBase {
  public:
   HloEvaluatorTest() : use_bfloat16_(false) { InitializeFftData(); }
 
-  StatusOr<Literal> Evaluate(
+  absl::StatusOr<Literal> Evaluate(
       absl::Span<const Literal* const> arg_literals = {}) {
     if (use_bfloat16_) {
       HloElementTypeConverter(F32, BF16).Run(m_.get()).value();
@@ -155,7 +155,7 @@ class HloEvaluatorTest : public HloTestBase {
   }
 
   void TestEvaluationFailure(HloInstruction* instruction) {
-    StatusOr<Literal> result = evaluator_.Evaluate(instruction);
+    absl::StatusOr<Literal> result = evaluator_.Evaluate(instruction);
     EXPECT_TRUE(!result.ok());
   }
 
@@ -170,7 +170,7 @@ class HloEvaluatorTest : public HloTestBase {
   }
 
   void TestRecursiveEvaluationFailure(HloInstruction* instruction) {
-    StatusOr<Literal> result = evaluator_.Evaluate(
+    absl::StatusOr<Literal> result = evaluator_.Evaluate(
         instruction, /*recursively_evaluate_nonconstant_operands=*/true);
     EXPECT_TRUE(!result.ok());
   }
@@ -4560,7 +4560,7 @@ TEST_F(HloEvaluatorTest, EvaluateCustomCall_HandlerError) {
   HloEvaluator evaluator;
   evaluator.set_custom_call_handler([](const HloInstruction* custom_call,
                                        absl::Span<const Literal*> operands) {
-    return InternalError("Test error");
+    return Internal("Test error");
   });
   EXPECT_EQ(evaluator.Evaluate(*m_, {&args[0]}).status().code(),
             ::tsl::error::INTERNAL);
@@ -4603,6 +4603,30 @@ TEST_F(HloEvaluatorTest, EvaluateCustomCall_ManyInputs) {
   auto arg1_data = args[1].data<uint32_t>();
   std::vector<uint32_t> expected_data = {arg0_data[0] + arg1_data[0]};
   EXPECT_TRUE(absl::c_equal(expected_data, actual_literal.data<uint32_t>()));
+}
+
+TEST_F(HloEvaluatorTest, EvaluateCustomCallInFusion) {
+  const absl::string_view hlo_text = R"(
+fusion1 {
+  p = f32[] parameter(0)
+  ROOT c = f32[] custom-call(p), custom_call_target="__cchandler1"
+}
+
+ENTRY e {
+  p = f32[] parameter(0)
+  ROOT f = f32[] fusion(p), kind=kCustom, calls=fusion1
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
+  auto input = LiteralUtil::CreateR0<float>(0);
+  HloEvaluator evaluator;
+  evaluator.set_custom_call_handler([](const HloInstruction* custom_call,
+                                       absl::Span<const Literal*> operands) {
+    return LiteralUtil::CreateR0<float>(1 -
+                                        operands[0]->GetFirstElement<float>());
+  });
+  TF_ASSERT_OK_AND_ASSIGN(auto output, evaluator.Evaluate(*m_, {&input}));
+  EXPECT_EQ(output, LiteralUtil::CreateR0<float>(1));
 }
 
 TEST_F(HloEvaluatorTest, IsFiniteF16) {
@@ -4833,6 +4857,23 @@ TEST_F(HloEvaluatorTest, SortC64) {
   ENTRY main {
     c = c64[3] constant({(2, 0), (4, 0), (6, 0)})
     ROOT sort = c64[3]{0} sort(c), dimensions={0}, to_apply=sort_lt_comparator
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
+  Literal expected =
+      LiteralUtil::CreateR1<std::complex<float>>({2.f, 4.f, 6.f});
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal result, HloEvaluator().Evaluate(*m_->entry_computation(), {}));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
+TEST_F(HloEvaluatorTest, ConvertC128ToC64) {
+  const absl::string_view hlo_text = R"(
+  HloModule m
+
+  ENTRY main {
+    c = c128[3] constant({(2, 0), (4, 0), (6, 0)})
+    ROOT sort = c64[3]{0} convert(c)
   }
   )";
   TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));

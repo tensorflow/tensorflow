@@ -18,12 +18,17 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/data/split_utils.h"
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/macros.h"
+#include "tsl/platform/thread_annotations.h"
 
 namespace tensorflow {
 namespace data {
@@ -52,6 +57,11 @@ class ZipDatasetOp::Dataset : public DatasetBase {
       output_shapes_.insert(output_shapes_.end(),
                             input->output_shapes().begin(),
                             input->output_shapes().end());
+
+      if (input != nullptr && random_indexing_compatible_.ok() &&
+          !input->RandomIndexingCompatible().ok()) {
+        random_indexing_compatible_ = input->RandomIndexingCompatible();
+      }
     }
   }
 
@@ -70,7 +80,7 @@ class ZipDatasetOp::Dataset : public DatasetBase {
   Status MakeSplitProviders(std::vector<std::unique_ptr<SplitProvider>>*
                                 split_providers) const override {
     TF_ASSIGN_OR_RETURN(*split_providers, GetSplitProviders(this));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   const DataTypeVector& output_dtypes() const override {
@@ -104,14 +114,14 @@ class ZipDatasetOp::Dataset : public DatasetBase {
     for (const auto& input : inputs_) {
       inputs->push_back(input);
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status CheckExternalState() const override {
     for (const auto& input : inputs_) {
       TF_RETURN_IF_ERROR(input->CheckExternalState());
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status Get(OpKernelContext* ctx, int64 index,
@@ -124,7 +134,11 @@ class ZipDatasetOp::Dataset : public DatasetBase {
       out_tensors->insert(out_tensors->end(), input_tensors.begin(),
                           input_tensors.end());
     }
-    return OkStatus();
+    return absl::OkStatus();
+  }
+
+  absl::Status RandomIndexingCompatible() const override {
+    return random_indexing_compatible_;
   }
 
  protected:
@@ -140,7 +154,7 @@ class ZipDatasetOp::Dataset : public DatasetBase {
     }
     TF_RETURN_IF_ERROR(b->AddDataset(
         this, {}, {std::make_pair(0, input_graph_nodes)}, {}, output));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:
@@ -162,7 +176,7 @@ class ZipDatasetOp::Dataset : public DatasetBase {
             &input_impls_[i]));
         ctx->MergeCheckpoint(input_contexts_[i].checkpoint());
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     Status GetNextInternal(IteratorContext* ctx,
@@ -171,12 +185,20 @@ class ZipDatasetOp::Dataset : public DatasetBase {
       mutex_lock l(mu_);
       if (input_impls_.empty()) {
         *end_of_sequence = true;
-        return OkStatus();
+        return absl::OkStatus();
       }
       out_tensors->clear();
       out_tensors->reserve(dataset()->output_dtypes().size());
-      Status status = OkStatus();
+      Status status = absl::OkStatus();
       *end_of_sequence = false;
+
+      if (TF_PREDICT_FALSE(ctx->index_mapper() && !input_contexts_.empty() &&
+                           input_contexts_.back().index_mapper() == nullptr)) {
+        for (IteratorContext& input_context : input_contexts_) {
+          input_context.SetIndexMapper(ctx->index_mapper());
+        }
+      }
+
       for (int i = 0; i < input_impls_.size(); ++i) {
         const auto& input_impl = input_impls_[i];
         std::vector<Tensor> input_tensors;
@@ -232,12 +254,30 @@ class ZipDatasetOp::Dataset : public DatasetBase {
       for (auto& input_impl : input_impls_) {
         TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl));
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     Status RestoreInternal(IteratorContext* ctx,
                            IteratorStateReader* reader) override {
       mutex_lock l(mu_);
+      // Note: When restoring, `SaveInternal` would not be called
+      // if there is a global_shuffle_dataset_op.cc above this op.
+      if (ctx->restored_element_count()) {
+        if (input_impls_.size() != dataset()->inputs_.size()) {
+          return absl::FailedPreconditionError(
+              "`Initialize` should be called before restoring from the "
+              "checkpoint.");
+        }
+        if (ctx->index_mapper() == nullptr) {
+          return absl::FailedPreconditionError(
+              "ctx->index_mapper() should be provided along with "
+              "ctx->restored_element_count() when restoring.");
+        }
+        for (const auto& input_impl : input_impls_) {
+          TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl));
+        }
+        return absl::OkStatus();
+      }
       int64_t inputs_empty;
       TF_RETURN_IF_ERROR(
           reader->ReadScalar(prefix(), kInputImplsEmpty, &inputs_empty));
@@ -248,18 +288,19 @@ class ZipDatasetOp::Dataset : public DatasetBase {
         for (auto& input_impl : input_impls_)
           TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl));
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
 
    private:
     mutex mu_;
     std::vector<std::unique_ptr<IteratorBase>> input_impls_ TF_GUARDED_BY(mu_);
-    std::vector<IteratorContext> input_contexts_;
+    std::vector<IteratorContext> input_contexts_ TF_GUARDED_BY(mu_);
   };
 
   const std::vector<DatasetBase*> inputs_;
   DataTypeVector output_dtypes_;
   std::vector<PartialTensorShape> output_shapes_;
+  absl::Status random_indexing_compatible_ = absl::OkStatus();
 };
 
 ZipDatasetOp::ZipDatasetOp(OpKernelConstruction* ctx) : DatasetOpKernel(ctx) {}

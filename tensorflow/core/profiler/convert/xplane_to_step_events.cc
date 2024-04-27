@@ -267,6 +267,7 @@ StepEvents ConvertTpuDeviceTraceXLineToStepEvents(const uint64 device_id,
       op_metrics_builder;
   line.ForEachEvent([&](const XEventVisitor& event) {
     auto group_id = event.GetStat(StatType::kGroupId);
+    if (!group_id.has_value()) return;
     op_metrics_builder[group_id->IntOrUintValue()].AddOpMetric(event);
   });
   for (auto& [group_id, builder] : op_metrics_builder) {

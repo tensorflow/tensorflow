@@ -12,10 +12,7 @@ py_strict_binary(
     python_version = "PY3",
     srcs_version = "PY3",
     deps = [
-        "@absl_py//absl:app",
         "//tensorflow:tensorflow_py",
-        # copybara:uncomment "//third_party/py/tensorflow:tensorflow_compat_v1_estimator",
-        # copybara:uncomment "//third_party/py/tensorflow:tensorflow_compat_v2_estimator",
         "//tensorflow/python:modules_with_exports",
         "//tensorflow/python:no_contrib",
         "//tensorflow/python/lib/io:file_io",
@@ -24,6 +21,7 @@ py_strict_binary(
         "//tensorflow/tools/common:public_api",
         "//tensorflow/tools/common:traverse",
         "//tensorflow/tools/compatibility:all_renames_v2",
+        "@absl_py//absl:app",
     ],
 )
 
@@ -33,10 +31,7 @@ py_strict_binary(
     python_version = "PY3",
     srcs_version = "PY3",
     deps = [
-        "@absl_py//absl:app",
         "//tensorflow:tensorflow_py",
-        # copybara:uncomment "//third_party/py/tensorflow:tensorflow_compat_v1_estimator",
-        # copybara:uncomment "//third_party/py/tensorflow:tensorflow_compat_v2_estimator",
         "//tensorflow/python:no_contrib",
         "//tensorflow/python/lib/io:file_io",
         "//tensorflow/python/util:tf_decorator_py",
@@ -45,5 +40,6 @@ py_strict_binary(
         "//tensorflow/tools/common:public_api",
         "//tensorflow/tools/common:traverse",
         "//tensorflow/tools/compatibility:tf_upgrade_v2_lib",
+        "@absl_py//absl:app",
     ],
 )

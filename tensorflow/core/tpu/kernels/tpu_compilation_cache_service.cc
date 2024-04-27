@@ -130,7 +130,7 @@ void TpuCompilationCacheService::GetTpuProgram(GetTpuProgramCall* call) {
              tpu::CompilationCacheFetchTarget::MAIN);
   }
 
-  xla::StatusOr<std::vector<::grpc::Slice>> buffer_slices =
+  absl::StatusOr<std::vector<::grpc::Slice>> buffer_slices =
       tpu::SerializeCacheEntryToBufferSlices(cache_entry);
 
   if (!buffer_slices.ok()) {

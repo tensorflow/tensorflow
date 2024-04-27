@@ -396,7 +396,7 @@ func.func @reshape_integration(%arg0: tensor<512x512xf32>,
     // CHECK: shape.assuming_yield
     shape.assuming_yield %21 : tensor<?x8x?x64xf32>
   }
-  %5 = "mhlo.transpose"(%4) {permutation = dense<[0, 2, 1, 3]> : tensor<4xi64>}
+  %5 = "mhlo.transpose"(%4) <{permutation = dense<[0, 2, 1, 3]> : tensor<4xi64>}>
       : (tensor<?x8x?x64xf32>) -> tensor<?x?x8x64xf32>
   %6 = "mhlo.transpose"(%5) {permutation = dense<[0, 1, 3, 2]>
       : tensor<4xi64>} : (tensor<?x?x8x64xf32>) -> tensor<?x?x64x8xf32>
@@ -412,7 +412,7 @@ func.func @reshape_integration(%arg0: tensor<512x512xf32>,
   %12 = "mhlo.reshape"(%11) : (tensor<1xi32>) -> tensor<i32>
   %13 = mhlo.multiply %10, %12 : tensor<i32>
   %14 = "mhlo.reshape"(%13) : (tensor<i32>) -> tensor<1xi32>
-  %15 = "mhlo.concatenate"(%14, %0) {dimension = 0 : i64}
+  %15 = "mhlo.concatenate"(%14, %0) <{dimension = 0 : i64}>
       : (tensor<1xi32>, tensor<1xi32>) -> tensor<2xi32>
   %16 = shape.shape_of %6 : tensor<?x?x64x8xf32> -> tensor<4xindex>
   %17 = shape.num_elements %16 : tensor<4xindex> -> index

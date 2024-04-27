@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,20 +19,19 @@ limitations under the License.
 #include <cmath>
 #include <cstdint>
 #include <memory>
-#include <string>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/match.h"
-#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/map_util.h"
@@ -69,14 +68,14 @@ static constexpr absl::string_view kCollNumDevicesKey =
 // type of hardware below.
 // TODO TJ this needs to be hosted somewhere more centralized.
 
-Status GpuHloCostAnalysis::Preprocess(const HloInstruction* hlo) {
+absl::Status GpuHloCostAnalysis::Preprocess(const HloInstruction* hlo) {
   TF_RETURN_IF_ERROR(HloCostAnalysis::Preprocess(hlo));
 
   current_properties_[kIRSizeKey] = 1;
   current_properties_[kBasicBlockSplitCountKey] =
       ElementalIrEmitter::OpInvalidatesCache(hlo);
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 float GpuHloCostAnalysis::ScalingRatio(const HloInstruction& hlo) const {
@@ -95,10 +94,10 @@ int64_t GpuHloCostAnalysis::FusionParameterReadBytes(
   if (!options_.count_multiple_input_accesses) {
     utilization = fmin(utilization, 1.0);
   }
-  return GetShapeSize(hlo->shape()) * utilization;
+  return std::llround(GetShapeSize(hlo->shape()) * utilization);
 }
 
-Status GpuHloCostAnalysis::FusionCalculateUtilizations(
+absl::Status GpuHloCostAnalysis::FusionCalculateUtilizations(
     const HloInstruction* fusion) {
   const HloInstruction* root = fusion->fused_expression_root();
   // Traverse through the computation from the root till parameters propagating
@@ -173,15 +172,23 @@ Status GpuHloCostAnalysis::FusionCalculateUtilizations(
         // to be more realistic.
         int64_t operand_elements =
             ShapeUtil::ElementsInRecursive(operand->shape());
-        cur_operand_utilization =
-            ceil(cur_operand_utilization * operand_elements) / operand_elements;
+
+        if (operand_elements == 0) {
+          // Element count should not be 0 in any production use case, but there
+          // are valid HLO inputs that occur in tests.
+          cur_operand_utilization = 0;
+        } else {
+          cur_operand_utilization =
+              ceil(cur_operand_utilization * operand_elements) /
+              operand_elements;
+        }
         root_utilizations_[operand] += cur_operand_utilization;
         root_ir_sizes[operand] += cur_instr_times_emitted;
       }
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 float GpuHloCostAnalysis::CommonElementwiseUtilization(
@@ -222,14 +229,16 @@ bool GpuHloCostAnalysis::ProducerConsumerMergedTooLarge(
   return merged_ir_size > kMaxIRSize;
 }
 
-Status GpuHloCostAnalysis::HandleCustomCall(const HloInstruction* custom_call) {
+absl::Status GpuHloCostAnalysis::HandleCustomCall(
+    const HloInstruction* custom_call) {
   if (IsCublasGemm(*custom_call)) {
     // The naming conventions and meanings of gemm parameters are documented
     // here:
     // https://docs.nvidia.com/cuda/cublas/index.html#cublas-lt-t-gt-gemm
-    TF_ASSIGN_OR_RETURN(auto gemm_config,
-                        custom_call->backend_config<gpu::GemmBackendConfig>());
-
+    TF_ASSIGN_OR_RETURN(auto gpu_config,
+                        custom_call->backend_config<gpu::GpuBackendConfig>());
+    const gpu::GemmBackendConfig& gemm_config =
+        gpu_config.gemm_backend_config();
     // Technically, in addition to the dot product (A * B), cuBLAS gemm also
     // performs additional scaling (by factor 'alpha') and addition with a
     // scaled third matrix (beta * C), which will introduce additional
@@ -256,7 +265,7 @@ Status GpuHloCostAnalysis::HandleCustomCall(const HloInstruction* custom_call) {
     current_properties_[kFlopsKey] =
         GetDotFlops(custom_call->operand(0)->shape(), output_shape,
                     gemm_config.dot_dimension_numbers());
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   if (IsCustomCallToDnnConvolution(*custom_call)) {
@@ -289,7 +298,7 @@ Status GpuHloCostAnalysis::HandleCustomCall(const HloInstruction* custom_call) {
       current_properties_[kBytesAccessedKey] += output_size;
       current_properties_.set_output_bytes_accessed(output_size);
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   return HloCostAnalysis::HandleCustomCall(custom_call);
@@ -315,43 +324,9 @@ int64_t GpuHloCostAnalysis::GetConvolutionFlops(
                                               result_shape);
 }
 
-using ProfilesNestedMap = absl::flat_hash_map<
-    std::string,  // compute capability.
-    absl::flat_hash_map<std::pair<HloOpcode, PrimitiveType>, int64_t>>;
-
-const ProfilesNestedMap* LoadOpProfiles() {
-  ProfilesNestedMap* ret = new ProfilesNestedMap();
-  DeviceHloInstructionProfiles all_device_profiles;
-  CHECK(tsl::protobuf::TextFormat::ParseFromString(
-      std::string(kDeviceHloOpProfiles), &all_device_profiles));
-  for (const auto& device_profile : all_device_profiles.entries()) {
-    for (const auto& entry : device_profile.second.entries()) {
-      auto op_code = StringToHloOpcode(entry.instruction().opcode()).value();
-      auto element_type = entry.instruction().shape().element_type();
-
-      (*ret)[device_profile.first][std::make_pair(op_code, element_type)] =
-          entry.clock_cycles();
-    }
-  }
-  return ret;
-}
-
 int64_t FlopsPerElement(const se::DeviceDescription* device_info,
                         const PrimitiveType type, const HloOpcode opcode) {
-  std::string compute_capability = "<unknown>";
-  if (device_info != nullptr) {
-    if (auto* ptr = std::get_if<stream_executor::CudaComputeCapability>(
-            &device_info->gpu_compute_capability()))
-      compute_capability = absl::StrCat("sm_", ptr->major, ptr->minor);
-    if (auto* ptr = std::get_if<stream_executor::RocmComputeCapability>(
-            &device_info->gpu_compute_capability()))
-      compute_capability = ptr->gfx_version();
-  }
-
-  static const auto* all_profiles = LoadOpProfiles();
-  static const auto& default_profile = all_profiles->at("sm_86");
-  auto device_profile =
-      FindOrDefault(*all_profiles, compute_capability, default_profile);
+  auto device_profile = HloOpProfiles::Singleton().GetProfile(device_info);
   // Elementwise instructions typically take at least a few clock cycles.
   constexpr int64_t kDefaultFlopsPerElement = 3;
   return FindOrDefault(device_profile, std::make_pair(opcode, type),
@@ -371,7 +346,8 @@ int64_t GetFlopsForElementwiseOp(const se::DeviceDescription* gpu_device_info,
                                   instr->shape());
 }
 
-Status GpuHloCostAnalysis::HandleAllReduce(const HloInstruction* allreduce) {
+absl::Status GpuHloCostAnalysis::HandleAllReduce(
+    const HloInstruction* allreduce) {
   const HloModuleConfig& config = allreduce->GetModule()->config();
   TF_ASSIGN_OR_RETURN(
       CollectiveOpGroupMode group_mode,
@@ -428,19 +404,91 @@ Status GpuHloCostAnalysis::HandleAllReduce(const HloInstruction* allreduce) {
   float scaling_ratio = (1.0 * num_ranks) / num_intra_steps;
   current_properties_[kCollAlgoScaleRatioKey] = scaling_ratio;
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status GpuHloCostAnalysis::HandleElementwiseOp(const HloInstruction* hlo) {
+absl::Status GpuHloCostAnalysis::HandleConcatenate(const HloInstruction* hlo) {
+  // Concat turns into a compare plus branch instruction.
+  int64_t flop_per_element = 6;
+  // If a warp crosses the operands boundary, both branches are executed. This
+  // depends on the tiling of the final fusion and is therefore hard to predict
+  // at this level. Executing both branches drives up the flops, but not the
+  // bandwidth. So it might seem like a good idea to fuse a concat into a
+  // memory-bound consumer. However, the divergent warps increase the cost of
+  // compute-heavy producers that might be fused later. We see this issue in
+  // some important LLM models that fuse a concat into a column reduction (see
+  // PriorityFusionTest.DontFuseConcat test). To prevent this particular fusion,
+  // we add large number of flops to the concat. Both the condition and the flop
+  // count are tuned to this particular case.
+  // TODO(b/315776282): Model this more accurately once we can reason about
+  // tiling patterns.
+  int64_t dim = Cast<HloConcatenateInstruction>(hlo)->concatenate_dimension();
+  if (dim > 0 && hlo->operand(0)->shape().dimensions()[dim] & 31) {
+    flop_per_element = 400;
+  }
+  current_properties_[kFlopsKey] =
+      flop_per_element * ShapeUtil::ElementsInRecursive(hlo->shape());
+  return absl::OkStatus();
+}
+
+absl::Status GpuHloCostAnalysis::HandleReduce(const HloInstruction* hlo) {
+  // HloCostAnalysis::HandleReduce computes FLOPs for the computation correctly,
+  // but `bytes_accessed` estimates are different for GPU.
+  TF_RETURN_IF_ERROR(HloCostAnalysis::HandleReduce(hlo));
+
+  const HloReduceInstruction* reduce = DynCast<HloReduceInstruction>(hlo);
+  auto output_shape = reduce->shape().IsArray()
+                          ? reduce->shape()
+                          : reduce->shape().tuple_shapes(0);
+
+  int64_t output_bytes_accessed = 0;
+  ShapeUtil::ForEachLeafShape(
+      reduce->shape(), [&](const Shape& sub_shape, const ShapeIndex& index) {
+        output_bytes_accessed += GetShapeSize(sub_shape);
+      });
+
+  current_properties_.set_output_bytes_accessed(output_bytes_accessed);
+
+  int64_t bytes_accessed = output_bytes_accessed;
+  for (int64_t input_operand_id = 0; input_operand_id < reduce->input_count();
+       ++input_operand_id) {
+    bytes_accessed +=
+        current_properties_.operand_bytes_accessed(input_operand_id);
+  }
+
+  int64_t output_shape_size = ShapeUtil::ElementsIn(output_shape);
+  for (int64_t init_operand_id = reduce->input_count();
+       init_operand_id < reduce->operand_count(); ++init_operand_id) {
+    auto init_operand = reduce->operand(init_operand_id);
+
+    int64_t operand_bytes_accessed =
+        output_shape_size * GetShapeSize(init_operand->shape());
+    current_properties_.set_operand_bytes_accessed(init_operand_id,
+                                                   operand_bytes_accessed);
+    current_properties_.set_operand_utilization(init_operand_id,
+                                                output_shape_size);
+
+    bytes_accessed += operand_bytes_accessed;
+  }
+
+  current_properties_[kBytesAccessedKey] = bytes_accessed;
+
+  return absl::OkStatus();
+}
+
+absl::Status GpuHloCostAnalysis::HandleElementwiseOp(
+    const HloInstruction* hlo) {
   current_properties_[kFlopsKey] = GetFlopsForElementwiseOp(device_info_, hlo);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status GpuHloCostAnalysis::HandleElementwiseUnary(const HloInstruction* hlo) {
+absl::Status GpuHloCostAnalysis::HandleElementwiseUnary(
+    const HloInstruction* hlo) {
   return HandleElementwiseOp(hlo);
 }
 
-Status GpuHloCostAnalysis::HandleElementwiseBinary(const HloInstruction* hlo) {
+absl::Status GpuHloCostAnalysis::HandleElementwiseBinary(
+    const HloInstruction* hlo) {
   return HandleElementwiseOp(hlo);
 }
 

@@ -428,7 +428,7 @@ Status InitBiasAddArgs(OpKernelContext* context, BiasAddArgs<T>* args,
     args->leakyrelu_alpha = *leakyrelu_alpha;
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <typename T>
@@ -471,7 +471,7 @@ Status InitFusedBatchNormArgs(OpKernelContext* context, float epsilon,
     args->leakyrelu_alpha = *leakyrelu_alpha;
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

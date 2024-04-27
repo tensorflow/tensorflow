@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -57,11 +57,11 @@ class TestStream : public CopyToDeviceStream {
         chunk_(chunk),
         done_(done) {}
 
-  PjRtFuture<Status> AddChunk(PjRtChunk chunk) override {
+  PjRtFuture<> AddChunk(PjRtChunk chunk) override {
     CHECK(!done_.HasBeenNotified());
     chunk_ = std::move(chunk);
     done_.Notify();
-    return PjRtFuture<Status>(OkStatus());
+    return PjRtFuture<>(OkStatus());
   }
 
  private:

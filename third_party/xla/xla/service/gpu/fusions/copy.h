@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,7 +17,9 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/fusions/fusion_emitter.h"
 #include "xla/service/gpu/ir_emitter_context.h"
@@ -37,12 +39,9 @@ class MemcpyFusion : public FusionInterface {
         srcs_(std::move(srcs)),
         dsts_(std::move(dsts)) {}
 
-  StatusOr<FusionEmissionResult> Emit(IrEmitterContext& ir_emitter_context,
-                                      ElementalIrEmitter& elemental_emitter,
-                                      mlir::lmhlo::FusionOp fusion_op,
-                                      const HloFusionInstruction& fusion,
-                                      KernelReuseCache& kernel_cache,
-                                      llvm::IRBuilder<>*) const final;
+  absl::StatusOr<FusionEmissionResult> Emit(
+      IrEmitterContext& ir_emitter_context,
+      const HloFusionInstruction& fusion) const final;
 
  private:
   std::vector<BufferAllocation::Slice> src_buffers_;

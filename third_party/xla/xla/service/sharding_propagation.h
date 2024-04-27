@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -57,7 +57,7 @@ bool InferConvolutionShardingFromOperands(HloInstruction* instruction,
 // operand's existing sharding.
 // unspecified_dims will be populated with the converted copies if the custom
 // call is partially specified.
-StatusOr<bool> ProcessShardingInstruction(
+absl::StatusOr<bool> ProcessShardingInstruction(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads,
     bool replace_sharding_with_copy,
@@ -70,7 +70,9 @@ StatusOr<bool> ProcessShardingInstruction(
     absl::flat_hash_map<int64_t, absl::flat_hash_set<HloInstruction*>>*
         shard_group_id_to_shard_as_group = nullptr,
     absl::flat_hash_map<int64_t, absl::flat_hash_set<HloInstruction*>>*
-        shard_group_id_to_shard_like_group = nullptr);
+        shard_group_id_to_shard_like_group = nullptr,
+    const std::vector<bool>*
+        allow_spmd_sharding_propagation_to_parameters_vector = nullptr);
 
 int64_t ComputeNonRootUsers(const HloInstruction* instr);
 
@@ -120,7 +122,7 @@ class ShardingPropagation : public HloModulePass {
   }
   absl::string_view name() const override { return "sharding-propagation"; }
   using HloPassInterface::Run;
-  StatusOr<bool> Run(
+  absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
@@ -133,7 +135,8 @@ class ShardingPropagation : public HloModulePass {
 
   static std::optional<HloSharding> GetShardingFromUser(
       const HloInstruction& instruction, const HloInstruction& user,
-      int64_t aggressiveness, bool is_spmd, const CallGraph& call_graph);
+      int64_t aggressiveness, bool is_spmd, const CallGraph& call_graph,
+      const CustomCallShardingHelper* sharding_helper);
 
   // Canonicalizes entry_computation_layouts by calling
   // module.layout_canonicalization_callback(), which gives canolicalized

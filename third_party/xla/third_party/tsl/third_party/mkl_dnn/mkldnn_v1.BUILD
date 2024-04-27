@@ -1,8 +1,7 @@
-load("@local_tsl//tsl:tsl.bzl", "tf_openmp_copts")
-load("@local_tsl//third_party/mkl:build_defs.bzl", "if_mkl")
-load("@local_tsl//third_party/mkl_dnn:build_defs.bzl", "if_mkldnn_openmp")
-load("@local_tsl//third_party/mkl:build_defs.bzl", "if_mkl_ml")
 load("@bazel_skylib//rules:expand_template.bzl", "expand_template")
+load("@local_tsl//third_party/mkl_dnn:build_defs.bzl", "if_mkldnn_openmp")
+load("@local_xla//xla/tsl:tsl.bzl", "tf_openmp_copts")
+load("@local_xla//xla/tsl/mkl:build_defs.bzl", "if_mkl", "if_mkl_ml")
 
 exports_files(["LICENSE"])
 
@@ -14,8 +13,9 @@ _CMAKE_COMMON_LIST = {
     "#cmakedefine DNNL_SYCL_CUDA": "#undef DNNL_SYCL_CUDA",
     "#cmakedefine DNNL_SYCL_HIP": "#undef DNNL_SYCL_HIP",
     "#cmakedefine DNNL_ENABLE_STACK_CHECKER": "#undef DNNL_ENABLE_STACK_CHECKER",
-    "#cmakedefine DNNL_EXPERIMENTAL": "#undef DNNL_EXPERIMENTAL",
     "#cmakedefine ONEDNN_BUILD_GRAPH": "#undef ONEDNN_BUILD_GRAPH",
+    "#cmakedefine DNNL_EXPERIMENTAL_SPARSE": "#define DNNL_EXPERIMENTAL_SPARSE",
+    "#cmakedefine DNNL_EXPERIMENTAL": "#undef DNNL_EXPERIMENTAL",
     "#cmakedefine01 BUILD_TRAINING": "#define BUILD_TRAINING 1",
     "#cmakedefine01 BUILD_INFERENCE": "#define BUILD_INFERENCE 0",
     "#cmakedefine01 BUILD_PRIMITIVE_ALL": "#define BUILD_PRIMITIVE_ALL 1",
@@ -95,14 +95,14 @@ expand_template(
     substitutions = {
         "@DNNL_VERSION_MAJOR@": "3",
         "@DNNL_VERSION_MINOR@": "3",
-        "@DNNL_VERSION_PATCH@": "0",
+        "@DNNL_VERSION_PATCH@": "4",
         "@DNNL_VERSION_HASH@": "N/A",
     },
     template = "include/oneapi/dnnl/dnnl_version.h.in",
 )
 
 _COPTS_LIST = select({
-    "@local_tsl//tsl:windows": [],
+    "@local_xla//xla/tsl:windows": [],
     "//conditions:default": ["-fexceptions"],
 }) + [
     "-UUSE_MKL",
@@ -171,15 +171,15 @@ cc_library(
     includes = _INCLUDES_LIST,
     # TODO(penpornk): Use lrt_if_needed from tensorflow.bzl instead.
     linkopts = select({
-        "@local_tsl//tsl:linux_aarch64": ["-lrt"],
-        "@local_tsl//tsl:linux_x86_64": ["-lrt"],
-        "@local_tsl//tsl:linux_ppc64le": ["-lrt"],
+        "@local_xla//xla/tsl:linux_aarch64": ["-lrt"],
+        "@local_xla//xla/tsl:linux_x86_64": ["-lrt"],
+        "@local_xla//xla/tsl:linux_ppc64le": ["-lrt"],
         "//conditions:default": [],
     }),
     textual_hdrs = _TEXTUAL_HDRS_LIST,
     visibility = ["//visibility:public"],
     deps = [":onednn_autogen"] + if_mkl_ml(
-        ["@local_tsl//third_party/mkl:intel_binary_blob"],
+        ["@local_xla//xla/tsl/mkl:intel_binary_blob"],
         [],
     ),
 )

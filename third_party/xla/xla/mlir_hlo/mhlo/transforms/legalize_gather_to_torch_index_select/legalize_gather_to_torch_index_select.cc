@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -23,6 +23,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/Pass/Pass.h"
+#include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 namespace mlir {
@@ -39,13 +40,13 @@ struct GatherIsTorchIndexSelect : public OpRewritePattern<GatherOp> {
   LogicalResult matchAndRewrite(GatherOp gather,
                                 PatternRewriter &rewriter) const override {
     auto startIndices = gather.getStartIndices();
-    auto startIndicesTy = startIndices.getType().cast<ShapedType>();
+    auto startIndicesTy = mlir::cast<ShapedType>(startIndices.getType());
     if (!startIndicesTy.hasRank()) {
       return rewriter.notifyMatchFailure(gather, "unranked start_indices");
     }
 
     auto operand = gather.getOperand();
-    auto operandTy = operand.getType().cast<ShapedType>();
+    auto operandTy = mlir::cast<ShapedType>(operand.getType());
     if (!operandTy.hasRank()) {
       return rewriter.notifyMatchFailure(gather, "unranked operand");
     }
@@ -73,7 +74,8 @@ struct GatherIsTorchIndexSelect : public OpRewritePattern<GatherOp> {
       return rewriter.notifyMatchFailure(gather, "start_index_map != [0]");
     }
 
-    auto resultTy = gather.getResult().getType().dyn_cast<RankedTensorType>();
+    auto resultTy =
+        mlir::dyn_cast<RankedTensorType>(gather.getResult().getType());
     if (!resultTy) {
       return rewriter.notifyMatchFailure(gather, "unranked result");
     }

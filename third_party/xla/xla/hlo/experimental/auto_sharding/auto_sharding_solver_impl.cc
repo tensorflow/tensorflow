@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "xla/hlo/experimental/auto_sharding/auto_sharding.pb.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_solver.h"
+#include "xla/hlo/experimental/auto_sharding/auto_sharding_strategy.h"
 #include "ortools/linear_solver/linear_solver.h"
 
 namespace xla {
@@ -35,6 +36,13 @@ double EvaluateMakespan(const AutoShardingSolverRequest& request,
                         const AutoShardingSolverResult& result,
                         AutoShardingEvaluation& evaluation) {
   return 0.0;  // TODO(moffitt): Implement this.
+}
+
+StrategyShaver::StrategyShaver(const AutoShardingSolverRequest& request)
+    : request_(request) {}
+
+NodeStrategies StrategyShaver::FindShavedStrategies() const {
+  return {};  // TODO(moffitt): Implement this.
 }
 
 }  // namespace spmd

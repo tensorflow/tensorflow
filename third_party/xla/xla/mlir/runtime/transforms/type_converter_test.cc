@@ -16,8 +16,11 @@
 
 #include "xla/mlir/runtime/transforms/type_converter.h"
 
+#include "llvm/Support/Casting.h"
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "xla/runtime/types.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/test.h"
 
 namespace xla {

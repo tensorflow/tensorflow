@@ -1,0 +1,14 @@
+syntax = "proto3";
+
+package xla;
+
+// A proto used to serialize CpuTopology instances.
+message CpuTopologyProto {
+  message CpuDevice {
+    int32 id = 1;
+    int32 process_index = 2;
+    int32 local_hardware_id = 3;
+  }
+  repeated CpuDevice cpu_devices = 1;
+  repeated string machine_attributes = 4;
+}

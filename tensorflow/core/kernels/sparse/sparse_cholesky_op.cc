@@ -269,7 +269,7 @@ class CSRSparseCholeskyCPUOp : public OpKernel {
             perm_shape.dim_size(0), " != ", *batch_size);
     }
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 

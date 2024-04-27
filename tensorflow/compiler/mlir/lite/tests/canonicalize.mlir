@@ -350,12 +350,12 @@ func.func @OptimizeTranposeWithRank7orMoreEffectiveRank6(%arg0: tensor<7x6x5x4x3
   %cst = arith.constant dense<[6, 5, 4, 3, 2, 1, 0]> : tensor<7xi32>
   %0 = "tfl.transpose"(%arg0, %cst) : (tensor<7x6x5x4x3x2x1xf32>, tensor<7xi32>) -> tensor<1x2x3x4x5x6x7xf32>
   return %0 : tensor<1x2x3x4x5x6x7xf32>
-  // CHECK-DAG: %cst = arith.constant dense<[7, 6, 5, 4, 3, 2]> : tensor<6xi32>
-  // CHECK-DAG: %cst_0 = arith.constant dense<[5, 4, 3, 2, 1, 0]> : tensor<6xi32>
-  // CHECK-DAG: %cst_1 = arith.constant dense<[1, 2, 3, 4, 5, 6, 7]> : tensor<7xi32>
-  // CHECK: %0 = "tfl.reshape"(%arg0, %cst) : (tensor<7x6x5x4x3x2x1xf32>, tensor<6xi32>) -> tensor<7x6x5x4x3x2xf32>
-  // CHECK: %1 = "tfl.transpose"(%0, %cst_0) : (tensor<7x6x5x4x3x2xf32>, tensor<6xi32>) -> tensor<2x3x4x5x6x7xf32>
-  // CHECK: %2 = "tfl.reshape"(%1, %cst_1) : (tensor<2x3x4x5x6x7xf32>, tensor<7xi32>) -> tensor<1x2x3x4x5x6x7xf32>
+  // CHECK-DAG: %[[cst:.*]] = arith.constant dense<[7, 6, 5, 4, 3, 2]> : tensor<6xi32>
+  // CHECK-DAG: %[[cst_0:.*]] = arith.constant dense<[5, 4, 3, 2, 1, 0]> : tensor<6xi32>
+  // CHECK-DAG: %[[cst_1:.*]] = arith.constant dense<[1, 2, 3, 4, 5, 6, 7]> : tensor<7xi32>
+  // CHECK: %0 = "tfl.reshape"(%arg0, %[[cst]]) : (tensor<7x6x5x4x3x2x1xf32>, tensor<6xi32>) -> tensor<7x6x5x4x3x2xf32>
+  // CHECK: %1 = "tfl.transpose"(%0, %[[cst_0]]) : (tensor<7x6x5x4x3x2xf32>, tensor<6xi32>) -> tensor<2x3x4x5x6x7xf32>
+  // CHECK: %2 = "tfl.reshape"(%1, %[[cst_1]]) : (tensor<2x3x4x5x6x7xf32>, tensor<7xi32>) -> tensor<1x2x3x4x5x6x7xf32>
   // CHECK: return %2
 }
 
@@ -364,12 +364,12 @@ func.func @OptimizeTranposeWithRank7orMoreEffectiveRank4(%arg0: tensor<56x8x56x1
   %cst = arith.constant dense<[4, 5, 1, 2, 0, 6, 3]> : tensor<7xi32>
   %0 = "tfl.transpose"(%arg0, %cst) : (tensor<56x8x56x1x1x1x7xf32>, tensor<7xi32>) -> tensor<1x1x8x56x56x7x1xf32>
   return %0 : tensor<1x1x8x56x56x7x1xf32>
-  // CHECK-DAG: %cst = arith.constant dense<[56, 8, 56, 7]> : tensor<4xi32>
-  // CHECK-DAG: %cst_0 = arith.constant dense<[1, 2, 0, 3]> : tensor<4xi32>
-  // CHECK-DAG: %cst_1 = arith.constant dense<[1, 1, 8, 56, 56, 7, 1]> : tensor<7xi32>
-  // CHECK: %0 = "tfl.reshape"(%arg0, %cst) : (tensor<56x8x56x1x1x1x7xf32>, tensor<4xi32>) -> tensor<56x8x56x7xf32>
-  // CHECK: %1 = "tfl.transpose"(%0, %cst_0) : (tensor<56x8x56x7xf32>, tensor<4xi32>) -> tensor<8x56x56x7xf32>
-  // CHECK: %2 = "tfl.reshape"(%1, %cst_1) : (tensor<8x56x56x7xf32>, tensor<7xi32>) -> tensor<1x1x8x56x56x7x1xf32>
+  // CHECK-DAG: %[[cst:.*]] = arith.constant dense<[56, 8, 56, 7]> : tensor<4xi32>
+  // CHECK-DAG: %[[cst_0:.*]] = arith.constant dense<[1, 2, 0, 3]> : tensor<4xi32>
+  // CHECK-DAG: %[[cst_1:.*]] = arith.constant dense<[1, 1, 8, 56, 56, 7, 1]> : tensor<7xi32>
+  // CHECK: %0 = "tfl.reshape"(%arg0, %[[cst]]) : (tensor<56x8x56x1x1x1x7xf32>, tensor<4xi32>) -> tensor<56x8x56x7xf32>
+  // CHECK: %1 = "tfl.transpose"(%0, %[[cst_0]]) : (tensor<56x8x56x7xf32>, tensor<4xi32>) -> tensor<8x56x56x7xf32>
+  // CHECK: %2 = "tfl.reshape"(%1, %[[cst_1]]) : (tensor<8x56x56x7xf32>, tensor<7xi32>) -> tensor<1x1x8x56x56x7x1xf32>
   // CHECK: return %2
 }
 

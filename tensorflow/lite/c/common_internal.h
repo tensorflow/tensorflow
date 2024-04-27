@@ -24,11 +24,11 @@ limitations under the License.
 // NOTE: This header does not follow C conventions and does not define a C API.
 // It is effectively an (internal) implementation detail of the C API.
 
-// `TfLiteRegistrationExternal` is an external version of `TfLiteRegistration`
+// `TfLiteOperator` is an external version of `TfLiteRegistration`
 // for C API which doesn't use internal types (such as `TfLiteContext`) but only
 // uses stable API types (such as `TfLiteOpaqueContext`). The purpose of each
 // field is the exactly the same as with `TfLiteRegistration`.
-typedef struct TfLiteRegistrationExternal {
+typedef struct TfLiteOperator {
   // Custom op name.  This should be non-null iff the op is a custom op,
   // i.e. iff builtin_code is kTfLiteBuiltinCustom.
   const char* custom_name;
@@ -81,7 +81,7 @@ typedef struct TfLiteRegistrationExternal {
   // Indicates if an operator's output can safely overwrite its input.
   // See the comments in `TfLiteInPlaceOp`.
   uint64_t inplace_operator;
-} TfLiteRegistrationExternal;
+} TfLiteOperator;
 
 // Returns true iff it's safe to dereference
 // 'delegate->opaque_delegate_builder'.

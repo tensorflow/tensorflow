@@ -114,7 +114,7 @@ struct WritableFileRawStream : public llvm::raw_ostream {
   std::unique_ptr<WritableFile> file;
 };
 
-struct CrashReproducerStream : public mlir::PassManager::ReproducerStream {
+struct CrashReproducerStream : public mlir::ReproducerStream {
   CrashReproducerStream(llvm::StringRef name,
                         std::unique_ptr<llvm::raw_ostream> file)
       : name(name), ostream(std::move(file)) {}
@@ -128,8 +128,7 @@ struct CrashReproducerStream : public mlir::PassManager::ReproducerStream {
 };
 
 // MLIR crash reproducer which reports failures to the crash analysis system.
-struct CrashAnalysisCrashReproducerStream
-    : public mlir::PassManager::ReproducerStream {
+struct CrashAnalysisCrashReproducerStream : public mlir::ReproducerStream {
  public:
   CrashAnalysisCrashReproducerStream()
       : internal_str(""), string_stream(internal_str) {}
@@ -304,9 +303,8 @@ void SetCrashReproducer(mlir::PassManager& pm, llvm::StringRef dir_path) {
     }
   }
 
-  mlir::PassManager::ReproducerStreamFactory factory =
-      [path](std::string& error)
-      -> std::unique_ptr<mlir::PassManager::ReproducerStream> {
+  mlir::ReproducerStreamFactory factory =
+      [path](std::string& error) -> std::unique_ptr<mlir::ReproducerStream> {
     if (path == kCrashReproducerStdErr)
       return std::make_unique<CrashReproducerStream>(
           "(stderr)", std::make_unique<LogInfoRawStream>());

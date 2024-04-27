@@ -16,10 +16,8 @@
 
 from absl.testing import parameterized
 
-from tensorflow.python import summary
 from tensorflow.python.compiler.xla import xla
 from tensorflow.python.eager import def_function
-from tensorflow.python.estimator import model_fn as model_fn_lib
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
@@ -31,11 +29,10 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import while_loop
 from tensorflow.python.platform import test
+from tensorflow.python.summary import summary
 from tensorflow.python.tpu import tpu_feed
 
 
-_TRAIN = model_fn_lib.ModeKeys.TRAIN
-_EVAL = model_fn_lib.ModeKeys.EVAL
 _EXPECTED_LOSS = 1
 _EXPECTED_FEATURE = 2
 _EXPECTED_LABEL = 3

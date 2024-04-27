@@ -4,6 +4,10 @@ tf_class {
   is_instance: "<class \'tensorflow.python.checkpoint.sharding.sharding_util.ShardingCallback\'>"
   is_instance: "<class \'abc.ABC\'>"
   member {
+    name: "MaxShardSizePartitioner"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "description"
     mtype: "<type \'property\'>"
   }

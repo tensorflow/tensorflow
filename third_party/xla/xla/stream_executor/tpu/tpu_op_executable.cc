@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -49,7 +49,7 @@ TpuOpExecutable::TpuOpExecutable(
       core_program_(core_program),
       outside_compilation_params_(outside_compilation_params) {}
 
-xla::Status TpuOpExecutable::LoadProgramAndEnqueueToStream(
+absl::Status TpuOpExecutable::LoadProgramAndEnqueueToStream(
     const xla::ServiceExecutableRunOptions& run_options,
     absl::Span<const se::DeviceMemoryBase> arguments,
     se::DeviceMemoryBase result,

@@ -296,6 +296,13 @@ typedef struct TfLiteFloat16 {
   uint16_t data;
 } TfLiteFloat16;
 
+/// bfloat16 data type compatible with the Google Brain definition.
+/// https://cloud.google.com/tpu/docs/bfloat16.
+/// This provides 1 bit of sign, 8 bits of exponent, and 7 bits of mantissa.
+typedef struct TfLiteBFloat16 {
+  uint16_t data;
+} TfLiteBFloat16;
+
 /// Return the name of a given type, for error reporting purposes.
 const char* TfLiteTypeGetName(TfLiteType type);
 
@@ -1007,11 +1014,17 @@ typedef struct TfLiteContext {
                                          int subgraph_index);
 } TfLiteContext;
 
-/// `TfLiteRegistrationExternal` is an external version of `TfLiteRegistration`
+/// `TfLiteOperator` is an external version of `TfLiteRegistration`
 /// for C API which doesn't use internal types (such as `TfLiteContext`) but
 /// only uses stable API types (such as `TfLiteOpaqueContext`). The purpose of
 /// each field is the exactly the same as with `TfLiteRegistration`.
-typedef struct TfLiteRegistrationExternal TfLiteRegistrationExternal;
+typedef struct TfLiteOperator TfLiteOperator;
+
+#ifndef DOXYGEN_SKIP
+// For backwards compatibility.
+// Deprecated. Use TfLiteOperator instead.
+typedef TfLiteOperator TfLiteRegistrationExternal;
+#endif
 
 /// The valid values of the `inplace_operator` field in `TfLiteRegistration`.
 /// This allow an op to signal to the runtime that the same data pointer
@@ -1078,7 +1091,7 @@ static const int kTfLiteMaxSharableOpInputs = 3;
 /// It is a struct containing "methods" (C function pointers) that will be
 /// invoked by the TF Lite runtime to evaluate instances of the operation.
 ///
-/// See also `TfLiteRegistrationExternal` which is a more ABI-stable equivalent.
+/// See also `TfLiteOperator` which is a more ABI-stable equivalent.
 typedef struct TfLiteRegistration {
   /// Initializes the op from serialized data.
   /// Called only *once* for the lifetime of the op, so any one-time allocations
@@ -1149,12 +1162,12 @@ typedef struct TfLiteRegistration {
   /// properly.
   int version;
 
-  /// The external version of `TfLiteRegistration`. Since we can't use internal
-  /// types (such as `TfLiteContext`) for C API to maintain ABI stability.
-  /// C API user will provide `TfLiteRegistrationExternal` to implement custom
-  /// ops. We keep it inside of `TfLiteRegistration` and use it to route
-  /// callbacks properly.
-  TfLiteRegistrationExternal* registration_external;
+  /// The external (i.e. ABI-stable) version of `TfLiteRegistration`.
+  /// Since we can't use internal types (such as `TfLiteContext`) for C API to
+  /// maintain ABI stability.  C API user will provide `TfLiteOperator` to
+  /// implement custom ops.  We keep it inside of `TfLiteRegistration` and use
+  /// it to route callbacks properly.
+  TfLiteOperator* registration_external;
 
   /// Retrieves asynchronous kernel.
   ///
@@ -1194,7 +1207,7 @@ typedef struct TfLiteRegistration_V3 {
   int32_t builtin_code;
   const char* custom_name;
   int version;
-  TfLiteRegistrationExternal* registration_external;
+  TfLiteOperator* registration_external;
   struct TfLiteAsyncKernel* (*async_kernel)(TfLiteContext* context,
                                             TfLiteNode* node);
 } TfLiteRegistration_V3;
@@ -1220,7 +1233,7 @@ typedef struct TfLiteRegistration_V2 {
   int32_t builtin_code;
   const char* custom_name;
   int version;
-  TfLiteRegistrationExternal* registration_external;
+  TfLiteOperator* registration_external;
 } TfLiteRegistration_V2;
 
 /// \private
@@ -1348,15 +1361,19 @@ typedef struct TfLiteDelegate {
 TfLiteDelegate TfLiteDelegateCreate(void);
 
 /// `TfLiteOpaqueDelegateBuilder` is used for constructing
-/// `TfLiteOpaqueDelegate`, see `TfLiteOpaqueDelegateCreate` below.  Note:
-/// This struct is not ABI stable.
+/// `TfLiteOpaqueDelegate`, see `TfLiteOpaqueDelegateCreate` in c_api_opaque.h.
+/// NOTE: This struct is not ABI stable.
 ///
 /// For forward source compatibility `TfLiteOpaqueDelegateBuilder` objects
 /// should be brace-initialized, so that all fields (including any that might be
 /// added in the future) get zero-initialized.  The purpose of each field is
 /// exactly the same as with `TfLiteDelegate`.
 ///
-/// WARNING: This is an experimental interface that is subject to change.
+/// NOTE: This type is part of the TensorFlow Lite Extension APIs.
+/// We reserve the right to make changes to this API in future releases,
+/// potentially including non-backwards-compatible changes, on a different
+/// schedule than for the other TensorFlow Lite APIs. See
+/// https://www.tensorflow.org/guide/versions#separate_version_number_for_tensorflow_lite_extension_apis.
 typedef struct TfLiteOpaqueDelegateBuilder {
   /// Data that delegate needs to identify itself. This data is owned by the
   /// delegate. The delegate is owned in the user code, so the delegate is
@@ -1394,37 +1411,21 @@ typedef struct TfLiteOpaqueDelegateBuilder {
 } TfLiteOpaqueDelegateBuilder;
 
 #ifndef TF_LITE_STATIC_MEMORY
-/// Creates an opaque delegate and returns its address.  The opaque delegate
-/// will behave according to the provided `opaque_delegate_builder`.  The
-/// lifetime of the objects pointed to by any of the fields within the
-/// `opaque_delegate_builder` must outlive the returned
-/// `TfLiteOpaqueDelegate` and any `TfLiteInterpreter`,
-/// `TfLiteInterpreterOptions`, `tflite::Interpreter`, or
-/// `tflite::InterpreterBuilder` that the delegate is added to.  The returned
-/// address should be passed to `TfLiteOpaqueDelegateDelete` for deletion.  If
-/// `opaque_delegate_builder` is a null pointer, then a null pointer will be
-/// returned.
+// See c_api_opaque.h.
+// This declaration in common.h is only for backwards compatibility.
+// NOTE: This function is part of the TensorFlow Lite Extension APIs, see above.
 TfLiteOpaqueDelegate* TfLiteOpaqueDelegateCreate(
     const TfLiteOpaqueDelegateBuilder* opaque_delegate_builder);
 
-/// Deletes the provided opaque `delegate`.  This function has no effect if the
-/// `delegate` is a null pointer.
+// See c_api_opaque.h.
+// This declaration in common.h is only for backwards compatibility.
+// NOTE: This function is part of the TensorFlow Lite Extension APIs, see above.
 void TfLiteOpaqueDelegateDelete(TfLiteOpaqueDelegate* delegate);
 #endif  // TF_LITE_STATIC_MEMORY
 
-/// Returns a pointer to the data associated with the provided opaque
-/// `delegate`.
-///
-/// A null pointer will be returned when:
-/// - The `delegate` is null.
-/// - The `data` field of the `TfLiteOpaqueDelegateBuilder` used to construct
-///   the `delegate` was null.
-/// - Or in case of any other error.
-/// - The `delegate` has been constructed via a `TfLiteOpaqueDelegateBuilder`,
-///   but the `data` field of the `TfLiteOpaqueDelegateBuilder` is null.
-///
-///  The data_ field of `delegate` will be returned if the
-///  `opaque_delegate_builder` field is null.
+// See c_api_opaque.h.
+// This declaration in common.h is only for backwards compatibility.
+// NOTE: This function is part of the TensorFlow Lite Extension APIs, see above.
 void* TfLiteOpaqueDelegateGetData(const TfLiteOpaqueDelegate* delegate);
 
 /// Returns a tensor data allocation strategy.

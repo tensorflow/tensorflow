@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,15 +15,23 @@ limitations under the License.
 
 #include "xla/service/gpu/multi_output_fusion.h"
 
+#include <cstdint>
 #include <optional>
 #include <vector>
 
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/gpu_fusible.h"
+#include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
-#include "xla/stream_executor/device_description.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/tests/hlo_test_base.h"
 
 namespace xla {
@@ -580,6 +588,50 @@ TEST_F(MultiOutputFusionTest, MultiOutputFusionSiblingLoopAndMultiOutputLoop) {
   ASSERT_TRUE(fusion->IsMultiOutputFusion());
   EXPECT_THAT(fusion->fused_expression_root(),
               GmockMatch(m::Tuple(m::Multiply(), m::Exp(), m::Add())));
+}
+
+TEST_F(MultiOutputFusionTest,
+       MultiOutputFusionSiblingMultiOutputLoopAndMultiOutputLoop) {
+  auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
+    fused_computation_1 {
+      p0.1 = f32[8,16]{1,0} parameter(0)
+      mul = f32[8,16]{1,0} multiply(p0.1, p0.1)
+      exp = f32[8,16]{1,0} exponential(p0.1)
+      ROOT tuple = (f32[8,16]{1,0}, f32[8,16]{1,0}) tuple(mul, exp)
+    }
+
+    fused_computation_2 {
+      p0.2 = f32[8,16]{1,0} parameter(0)
+      const.2 = f32[] constant(0)
+      broadcast = f32[8,16]{1,0} broadcast(const.2),
+        dimensions={}
+      add = f32[8,16]{1,0} add(p0.2, broadcast)
+      ROOT tuple.1 = (f32[8,16]{1,0}, f32[8,16]{1,0}) tuple(add, broadcast)
+    }
+
+    ENTRY entry {
+      p0 = f32[8,16]{1,0} parameter(0)
+      fusion.1 = (f32[8,16]{1,0}, f32[8,16]{1,0}) fusion(p0), kind=kLoop,
+        calls=fused_computation_1
+      fusion.2 = (f32[8,16]{1,0}, f32[8,16]{1,0}) fusion(p0), kind=kLoop,
+        calls=fused_computation_2
+      gte0 = f32[8,16]{1,0} get-tuple-element(fusion.1), index=0
+      gte1 = f32[8,16]{1,0} get-tuple-element(fusion.1), index=1
+      gte2 = f32[8,16]{1,0} get-tuple-element(fusion.2), index=0
+      gte3 = f32[8,16]{1,0} get-tuple-element(fusion.2), index=1
+      ROOT root = (f32[8,16]{1,0}, f32[8,16]{1,0}, f32[8,16]{1,0},
+        f32[8,16]{1,0})
+        tuple(gte0, gte1, gte2, gte3)
+    })"))
+                    .value();
+  ASSERT_TRUE(mof_.Run(module.get()).value());
+  SCOPED_TRACE(module->ToString());
+  const HloInstruction* fusion =
+      module->entry_computation()->root_instruction()->operand(0)->operand(0);
+  ASSERT_TRUE(fusion->IsMultiOutputFusion());
+  EXPECT_THAT(
+      fusion->fused_expression_root(),
+      GmockMatch(m::Tuple(m::Multiply(), m::Exp(), m::Add(), m::Broadcast())));
 }
 
 TEST_F(MultiOutputFusionTest,
@@ -1968,35 +2020,35 @@ ENTRY main {
 )");
 }
 
-TEST_F(TransposeMultiOutputFusionTest, CopyAndInputEpilogueFusion) {
+TEST_F(TransposeMultiOutputFusionTest, TransposeAndInputEpilogueFusion) {
   const char* hlo = R"(
 HloModule module
 
 fused_computation {
   param_0.1 = f32[16,32]{1,0} parameter(0)
   s.1 = f32[16,32]{1,0} sqrt(param_0.1)
-  c.1 = f32[16,32]{0,1} copy(s.1)
-  ROOT out = f32[16,32,1]{0,1,2} bitcast(c.1)
+  t.1 = f32[32,16]{1,0} transpose(s.1), dimensions={1,0}
+  ROOT out = f32[32,16,1]{2,1,0} bitcast(t.1)
 }
 
 ENTRY main {
   p = f32[16,32]{1,0} parameter(0)
-  fusion = f32[16,32,1]{0,1,2} fusion(p), kind=kInput, calls=fused_computation
+  fusion = f32[32,16,1]{2,1,0} fusion(p), kind=kInput, calls=fused_computation
   c1 = exponential(p)
   ROOT t = tuple(fusion, c1)
 }
   )";
 
   CheckGpuMultiOutputFusion(hlo, R"(
-// CHECK: %fused_computation (param_0.1: f32[16,32]) -> (f32[16,32,1], f32[16,32]) {
+// CHECK: %fused_computation
 // CHECK-NEXT:   [[param_0_1_0:%[^ ]+]] = f32[16,32]{1,0} parameter(0)
 // CHECK-NEXT:   [[s_1_1:%[^ ]+]] = f32[16,32]{1,0} sqrt([[param_0_1_0]])
-// CHECK-NEXT:   [[c_1_2:%[^ ]+]] = f32[16,32]{0,1} copy([[s_1_1]])
-// CHECK-NEXT:   [[out_3:%[^ ]+]] = f32[16,32,1]{0,1,2} bitcast([[c_1_2]])
+// CHECK-NEXT:   [[c_1_2:%[^ ]+]] = f32[32,16]{1,0} transpose([[s_1_1]])
+// CHECK-NEXT:   [[out_3:%[^ ]+]] = f32[32,16,1]{2,1,0} bitcast([[c_1_2]])
 // CHECK-NEXT:   [[c1_1_4:%[^ ]+]] = f32[16,32]{1,0} exponential([[param_0_1_0]])
-// CHECK-NEXT:   ROOT [[tuple_5:%[^ ]+]] = (f32[16,32,1]{0,1,2}, f32[16,32]{1,0}) tuple([[out_3]], [[c1_1_4]])
+// CHECK-NEXT:   ROOT [[tuple_5:%[^ ]+]] = (f32[32,16,1]{2,1,0}, f32[16,32]{1,0}) tuple([[out_3]], [[c1_1_4]])
 // CHECK-NEXT: }
-// CHECK: [[fusion_0:%[^ ]+]] = (f32[16,32,1]{0,1,2}, f32[16,32]{1,0}) fusion([[p_1:%[^ ]+]]), kind=kInput, calls=[[fused_computation_2:%[^ ]+]]
+// CHECK: [[fusion_0:%[^ ]+]] = (f32[32,16,1]{2,1,0}, f32[16,32]{1,0}) fusion([[p_1:%[^ ]+]]), kind=kInput, calls=[[fused_computation_2:%[^ ]+]]
 )");
 }
 

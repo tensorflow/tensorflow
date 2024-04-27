@@ -13,8 +13,8 @@
 # limitations under the License.
 # ==============================================================================
 
-load("//tensorflow:strict.default.bzl", "py_strict_binary")
 load("@flatbuffers//:build_defs.bzl", "flatbuffer_android_library", "flatbuffer_cc_library", "flatbuffer_java_library")
+load("//tensorflow:strict.default.bzl", "py_strict_binary")
 load("//tensorflow/core/platform:build_config_root.bzl", "tf_gpu_tests_tags")
 load("//tensorflow/lite:special_rules.bzl", "tflite_extra_gles_deps", "tflite_portable_test_suite")
 
@@ -50,8 +50,10 @@ cc_library(
     srcs = ["canonicalize_value.cc"],
     hdrs = ["canonicalize_value.h"],
     deps = [
+        ":devicedb",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
+        "@com_googlesource_code_re2//:re2",
     ],
 )
 
@@ -60,6 +62,7 @@ cc_test(
     srcs = ["canonicalize_value_test.cc"],
     deps = [
         ":canonicalize_value",
+        ":devicedb",
         "@com_google_googletest//:gtest_main",
     ],
 )

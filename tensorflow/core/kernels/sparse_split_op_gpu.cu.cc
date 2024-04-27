@@ -291,16 +291,13 @@ struct SparseSplitFunctor<GPUDevice, T> {
 
     // Copy the slice ends to the host so that we can compute the output shapes.
     ScratchSpace<Index> slice_ends_host(context, num_split, /*on_host=*/true);
-    OP_REQUIRES_ASYNC(
+    OP_REQUIRES_OK_ASYNC(
         context,
-        stream
-            ->ThenMemcpy(
-                slice_ends_host.mutable_data(),
-                se::DeviceMemoryBase(slice_ends_ptr,
-                                     num_split * sizeof(*slice_ends_ptr)),
-                num_split * sizeof(*slice_ends_ptr))
-            .ok(),
-        errors::Internal("Failed to copy slice_ends to host"), done);
+        stream->Memcpy(slice_ends_host.mutable_data(),
+                       se::DeviceMemoryBase(
+                           slice_ends_ptr, num_split * sizeof(*slice_ends_ptr)),
+                       num_split * sizeof(*slice_ends_ptr)),
+        done);
 
     auto async_finish_computation =
         [this, context, input_nnz, num_split, rank, axis, dense_shape,

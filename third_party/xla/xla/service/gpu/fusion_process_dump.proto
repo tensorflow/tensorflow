@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package xla.gpu;
 
+import "xla/stream_executor/device_description.proto";
+
 message FusionStep {
   message Fusion {
     // Name of the resulting fusion. Can be the same as producer or consumer.
@@ -46,4 +48,13 @@ message FusionStep {
 
 message FusionProcessDumpProto {
   repeated FusionStep fusion_steps = 1;
+
+  stream_executor.GpuDeviceInfoProto gpu_device_info = 2;
+
+  // HLO module before fusion in short parsable string format. The string
+  // represantation is compacter than HloModuleProto in this case, especially
+  // when the fusion process dump is stored as text proto.
+  //
+  // TODO: Consider using base64 or gzip to decrease the size of the string.
+  string hlo_module_before_fusion = 3;
 }

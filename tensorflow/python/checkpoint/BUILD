@@ -35,6 +35,17 @@ py_strict_library(
 )
 
 py_strict_library(
+    name = "checkpoint_adapter",
+    srcs = ["checkpoint_adapter.py"],
+    srcs_version = "PY3",
+    deps = [
+        "//tensorflow/python/framework:tensor",
+        "//tensorflow/python/trackable:base",
+        "@absl_py//absl/logging",
+    ],
+)
+
+py_strict_library(
     name = "async_checkpoint_helper",
     srcs = ["async_checkpoint_helper.py"],
     srcs_version = "PY3",
@@ -103,7 +114,6 @@ py_strict_library(
         "//tensorflow/python/util:tf_contextlib",
         "//tensorflow/python/util:tf_export",
         "//tensorflow/python/util:tf_inspect",
-        "@absl_py//absl/logging",
     ],
 )
 
@@ -131,7 +141,6 @@ tf_py_strict_test(
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:control_flow_ops",
         "//tensorflow/python/ops:init_ops",
-        "//tensorflow/python/ops:resource_variable_ops",
         "//tensorflow/python/ops:state_ops",
         "//tensorflow/python/ops:template",
         "//tensorflow/python/ops:variable_scope",
@@ -142,6 +151,7 @@ tf_py_strict_test(
         "//tensorflow/python/saved_model:save",
         "//tensorflow/python/trackable:autotrackable",
         "//tensorflow/python/trackable:base",
+        "//tensorflow/python/training:adam",
         "//tensorflow/python/training:checkpoint_utils",
         "//tensorflow/python/training:saver",
         "@absl_py//absl/testing:parameterized",
@@ -161,6 +171,7 @@ tf_py_strict_test(
     srcs = ["checkpoint_with_v1_optimizers_test.py"],
     deps = [
         ":checkpoint",
+        ":checkpoint_options",
         "//tensorflow/python/client:session",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
@@ -173,6 +184,7 @@ tf_py_strict_test(
         "//tensorflow/python/ops:variable_scope",
         "//tensorflow/python/trackable:autotrackable",
         "//tensorflow/python/training:adam",
+        "//tensorflow/python/training:checkpoint_utils",
     ],
 )
 
@@ -330,12 +342,14 @@ py_strict_library(
     srcs = ["restore.py"],
     srcs_version = "PY3",
     deps = [
+        ":checkpoint_adapter",
         ":checkpoint_view",
         ":functional_saver",
         ":save_util_v1",
         ":saveable_compat",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:io_ops",
         "//tensorflow/python/ops:io_ops_gen",
@@ -420,6 +434,7 @@ py_strict_library(
         "//tensorflow/python/ops:io_ops",
         "//tensorflow/python/ops:io_ops_gen",
         "//tensorflow/python/ops:string_ops",
+        "//tensorflow/python/saved_model:pywrap_saved_model",
         "//tensorflow/python/saved_model/registration",
         "//tensorflow/python/trackable:base",
         "//tensorflow/python/trackable:trackable_utils",
@@ -428,6 +443,7 @@ py_strict_library(
         "//tensorflow/python/types:core",
         "//tensorflow/python/util:nest",
         "//tensorflow/python/util:object_identity",
+        "@absl_py//absl/logging",
     ],
 )
 

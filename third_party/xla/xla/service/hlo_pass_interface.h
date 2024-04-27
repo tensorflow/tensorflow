@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -83,10 +83,10 @@ class HloPassInterface {
   //        override;
   //   };
   //
-  StatusOr<bool> Run(HloModule* module) {
+  absl::StatusOr<bool> Run(HloModule* module) {
     return Run(module, /*execution_threads=*/{});
   }
-  virtual StatusOr<bool> Run(
+  virtual absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) = 0;
 
@@ -132,10 +132,10 @@ class HloPassInterface {
   //        override;
   //   };
   //
-  StatusOr<bool> RunOnModuleGroup(HloModuleGroup* module_group) {
+  absl::StatusOr<bool> RunOnModuleGroup(HloModuleGroup* module_group) {
     return RunOnModuleGroup(module_group, /*execution_threads=*/{});
   }
-  virtual StatusOr<bool> RunOnModuleGroup(
+  virtual absl::StatusOr<bool> RunOnModuleGroup(
       HloModuleGroup* module_group,
       const absl::flat_hash_set<absl::string_view>& execution_threads) = 0;
 
@@ -147,9 +147,10 @@ class HloModulePass : public HloPassInterface {
  public:
   // Runs the pass on a module group by iterating through each module in the
   // group.
-  StatusOr<bool> RunOnModuleGroup(HloModuleGroup* module_group,
-                                  const absl::flat_hash_set<absl::string_view>&
-                                      execution_threads) override {
+  absl::StatusOr<bool> RunOnModuleGroup(
+      HloModuleGroup* module_group,
+      const absl::flat_hash_set<absl::string_view>& execution_threads)
+      override {
     bool changed = false;
     for (HloModule* module : module_group->modules()) {
       TF_ASSIGN_OR_RETURN(bool module_changed, Run(module, execution_threads));
@@ -171,10 +172,10 @@ class HloModulePass : public HloPassInterface {
 // on an HLO module.
 class HloModuleGroupPass : public HloPassInterface {
  public:
-  StatusOr<bool> Run(HloModule* module,
-                     const absl::flat_hash_set<absl::string_view>&
-                         execution_threads) override {
-    return InternalError("Module group pass cannot be run on a module");
+  absl::StatusOr<bool> Run(HloModule* module,
+                           const absl::flat_hash_set<absl::string_view>&
+                               execution_threads) override {
+    return Internal("Module group pass cannot be run on a module");
   }
 };
 

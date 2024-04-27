@@ -1,0 +1,955 @@
+/* Copyright 2023 The OpenXLA Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+#if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
+
+#define EIGEN_USE_THREADS
+
+#include "xla/service/cpu/onednn_matmul_rewriter.h"
+
+#include "xla/executable_run_options.h"
+#include "xla/hlo/evaluator/hlo_evaluator.h"
+#include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/service/cpu/backend_config.pb.h"
+#include "xla/service/cpu/onednn_matmul.h"
+#include "xla/service/cpu/onednn_memory_util.h"
+#include "xla/service/cpu/onednn_util.h"
+#include "xla/service/hlo_cost_analysis.h"
+#include "xla/service/pattern_matcher.h"
+#include "xla/status_macros.h"
+#include "xla/tsl/util/onednn_threadpool.h"
+#include "tsl/platform/logging.h"  // IWYU pragma: keep
+
+namespace xla {
+namespace cpu {
+
+namespace {
+namespace m = match;
+
+inline Status ValidateDotDimensionNumbers(
+    const DotDimensionNumbers& dim_numbers) {
+  // Checks some invariants that do not hold in general, but DotDecomposer
+  // should have established for us.
+  TF_RET_CHECK(dim_numbers.lhs_contracting_dimensions_size() == 1);
+  std::vector<int64_t> batch_dim_numbers(
+      dim_numbers.lhs_batch_dimensions_size());
+  absl::c_iota(batch_dim_numbers, 0);
+  TF_RET_CHECK(
+      absl::c_equal(batch_dim_numbers, dim_numbers.lhs_batch_dimensions()));
+  TF_RET_CHECK(
+      absl::c_equal(batch_dim_numbers, dim_numbers.rhs_batch_dimensions()));
+  return OkStatus();
+}
+
+// Whether the element type of instr is compatible with oneDNN kernels.
+// TODO(intel-tf): Restict compatible types based on instruction kind.
+inline bool CompatibleElementType(const HloInstruction* instr) {
+  PrimitiveType element_type = instr->shape().element_type();
+  return element_type == BF16 || element_type == F32 || element_type == F16;
+}
+
+// Type conversion from and to any of F16, BF16 and FP32.
+// TODO(intel-tf): Support more types when enabled.
+template <typename Pattern>
+inline auto SupportedConvert(Pattern pattern) {
+  auto supported_convert = [](const HloInstruction* instr) -> bool {
+    return CompatibleElementType(instr) &&
+           CompatibleElementType(instr->operand(0));
+  };
+  return m::Convert(pattern).WithPredicate(supported_convert);
+}
+
+template <typename Pattern>
+inline auto SupportedConvert(HloInstruction** convert, Pattern pattern) {
+  auto supported_convert = [](const HloInstruction* instr) -> bool {
+    return CompatibleElementType(instr) &&
+           CompatibleElementType(instr->operand(0));
+  };
+  return m::Convert(convert, pattern).WithPredicate(supported_convert);
+}
+
+template <typename Pattern>
+auto ElementwiseSafeIntermediate(HloInstruction** instr, Pattern pattern) {
+  return m::AnyOf<HloInstruction>(
+      m::Broadcast(instr, pattern.WithOneUser()),
+      m::Slice(instr, pattern.WithOneUser()),
+      m::Bitcast(instr, pattern.WithOneUser()),
+      m::Reshape(instr, pattern.WithOneUser()),
+      SupportedConvert(instr, pattern.WithOneUser()), pattern);
+}
+
+inline auto OneDnnMatmulInstr(HloInstruction** instr) {
+  return m::CustomCall(instr, {"__onednn$matmul"});
+}
+
+inline auto ConvertBF16ToF32(HloInstruction** instr) {
+  return m::Convert(m::Op(instr).WithElementType(PrimitiveType::BF16))
+      .WithElementType(PrimitiveType::F32);
+}
+
+inline auto BcastConstScalar(HloInstruction** instr, double value) {
+  return m::Broadcast(instr, m::ConstantScalar(value));
+}
+
+inline auto BcastConstScalar(double value) {
+  return BcastConstScalar(nullptr, value);
+}
+
+auto ConstScalarNear(double value) {
+  return m::ConstantScalar().WithPredicate(
+      [expected = value](const HloInstruction* instr) {
+        // Not a very robust floating-point comparison, but good enough for our
+        // purposes.
+        std::optional<double> actual =
+            static_cast<const HloConstantInstruction*>(instr)
+                ->literal()
+                .GetAsDouble({});
+        if (!actual.has_value()) return false;
+        double epsilon;
+        switch (instr->shape().element_type()) {
+          case F16:
+            epsilon = 128 * std::numeric_limits<Eigen::half>::epsilon();
+            break;
+          case BF16:
+            epsilon = 128 * std::numeric_limits<bfloat16>::epsilon();
+            break;
+          case F32:
+            epsilon = 128 * std::numeric_limits<float>::epsilon();
+            break;
+          case F64:
+            epsilon = 128 * std::numeric_limits<double>::epsilon();
+            break;
+          default:
+            return false;
+        }
+        return abs(*actual - expected) < (abs(*actual + expected) * epsilon);
+      });
+}
+
+bool IsScalar(const HloInstruction* instr) {
+  return ShapeUtil::IsEffectiveScalar(instr->shape());
+}
+
+std::optional<float> GetConstantValueAsFloat32(const HloInstruction* inst) {
+  if (!IsScalar(inst)) {
+    return std::nullopt;
+  }
+  switch (inst->shape().element_type()) {
+    case F16:
+      return inst->literal().GetFirstElement<half>();
+    case BF16:
+      return inst->literal().GetFirstElement<bfloat16>();
+    case F32:
+      return inst->literal().GetFirstElement<float>();
+    default:
+      return std::nullopt;
+  }
+}
+
+inline auto BcastConstScalarNear(double value) {
+  return m::Broadcast(ConstScalarNear(value));
+}
+
+// Associativity and commutativity properties of multiply results in various
+// patterns for an equivalent computation. This function tries to capture most
+// of the variations for a computation a * b * c. For example, patterns could be
+// any of (a * b) * c or a * (b * c), along with the variations resulting from
+// commutative patterns.
+template <typename PatternA, typename PatternB, typename PatternC>
+inline auto MultiplyMultiplyAnyOrder(PatternA a, PatternB b, PatternC c) {
+  return m::AnyOf<HloInstruction>(
+      m::MultiplyAnyOrder(a, m::MultiplyAnyOrder(b, c)),
+      m::MultiplyAnyOrder(b, m::MultiplyAnyOrder(a, c)),
+      m::MultiplyAnyOrder(c, m::MultiplyAnyOrder(a, b)));
+}
+
+bool GELUActivation(HloInstruction* instr, HloInstruction** src) {
+  // Attempt to match GELU_TANH activation
+  // (https://arxiv.org/abs/1606.08415), where:
+  // gelu_tanh(x) = x * cdf(x)
+  // cdf(x) = 0.5 * (1 + tanh(sqrt(2 / pi) * (x + 0.044715 * x**3))
+  //                     \--------- errf_approximate term -------/
+
+  HloInstruction* errf;
+
+  // The expression 0.5 * x * (1 + errf) as common pattern for GELU exact and
+  // approximate activations.
+  auto common_pattrn = MultiplyMultiplyAnyOrder(
+      BcastConstScalar(0.5), m::Op(src),
+      m::AddAnyOrder(BcastConstScalar(1.0), m::Op(&errf).WithOneUser()));
+
+  bool matched = Match(instr, common_pattrn);
+  if (matched) {
+    // The subexpression 0.044715 * x**3 appears in GELU approximate activation.
+    // However, it is often optimized by other HLO passes into an expression of
+    // 0.044715 * x * (x * x). Since there are three consecutive multiplies,
+    // there could be a large number of patterns. We try to capture some of
+    // those:
+    //
+    //      1. (0.044715 * x) * x * x
+    //      2. 0.044715 * (x * x) * x
+    //
+    // Note each of the above could in turn have various patterns due to
+    // associativity and commutativity properties of multiply.
+    auto subexpr_pattern = m::AnyOf<HloInstruction>(
+        MultiplyMultiplyAnyOrder(
+            m::MultiplyAnyOrder(BcastConstScalarNear(0.044715),
+                                m::Op().Is(*src)),
+            m::Op().Is(*src), m::Op().Is(*src)),
+        MultiplyMultiplyAnyOrder(
+            BcastConstScalarNear(0.044715),
+            m::Multiply(m::Op().Is(*src), m::Op().Is(*src)), m::Op().Is(*src)));
+
+    auto errf_apprx_pattern =
+        m::Tanh(m::MultiplyAnyOrder(
+                    BcastConstScalarNear(sqrt(M_2_PI)),
+                    m::AddAnyOrder(m::Op().Is(*src), subexpr_pattern)
+                        .WithOneUser()))
+            .WithOneUser();
+    matched = Match(errf, errf_apprx_pattern);
+  }
+  return matched;
+}
+
+// OneDNN matmul can fuse add operation with automatic broadcasting along the
+// addend's dimensions that are 1s. When compatible, Broadcast can be replaced
+// by Bitcast, which is much cheaper. Compute new shape for the Bitcast.
+StatusOr<Shape> AdjustBiasShape(const HloInstruction* broadcast_instr,
+                                const Shape& dot_shape) {
+  if (broadcast_instr->opcode() != HloOpcode::kBroadcast) {
+    return absl::InvalidArgumentError(
+        "Hlo instruction is not a Broadcast insruction.");
+  }
+  auto bcast = Cast<HloBroadcastInstruction>(broadcast_instr);
+  Shape new_shape = bcast->shape();
+  // Broadcast instruction has "dimensions" parameter along which its input's
+  // dimensions should not change. For example,
+  //      dot = f32[3,4,5,6] dot(...)
+  //      arg = f32[3,6]{1,0} parameter(0)
+  //      broad = f32[3,4,5,6]{3,2,1,0} broadcast(arg), dimensions={0,3}
+  //      add = f32[3,4,5,6]{3,2,1,0} add(dot, arg)
+  // can be replaced with the following
+  //      arg = f32[3,6]{1,0} parameter(0)
+  //      bitcast = f32[3,1,1,6]{3,2,1,0} bitcast(arg)
+  //      fused = f32[3,4,5,6]{3,2,1,0} custom-call((..., bitcast)
+  auto kept_dimensions = bcast->dimensions();
+  for (int i = 0; i < new_shape.rank(); i++) {
+    if (!absl::c_linear_search(kept_dimensions, i)) {
+      new_shape.set_dimensions(i, 1);
+    }
+  }
+
+  // If rank(new_shape) > rank(dot), extra dimensions with value = 1 can be
+  // deleted from the new_shape.
+  int64_t rank_difference = new_shape.rank() - dot_shape.rank();
+  auto new_dims = new_shape.dimensions();
+  std::vector<int64_t> dims_to_delete;
+  for (int i = 0; i < rank_difference; ++i) {
+    if (new_dims[i] == 1) {
+      dims_to_delete.push_back(i);
+    }
+  }
+  new_shape = ShapeUtil::DeleteDimensions(dims_to_delete, new_shape);
+
+  // New shape for bias should satisfy the condition:
+  //   rank(new_shape) <= rank(dot).
+  if (new_shape.rank() > dot_shape.rank()) {
+    return absl::CancelledError(
+        "Bias shape could not be adjusted for a fusion.");
+  }
+
+  return new_shape;
+};
+
+inline bool IsOperandFusible(HloInstruction* operand, HloInstruction* dot) {
+  // Check if the operand's shape is compatible with matmul for fusion.
+  // An operand is fusable if
+  //    1. rank(operand) <= rank(dot) and
+  //    2. Starting from the last dim in backward direction, the dimension
+  //       size of operand is either 1 or same to dot.
+  auto operand_dims = operand->shape().dimensions();
+  auto dot_dims = dot->shape().dimensions();
+  if (operand_dims.size() > dot_dims.size()) return false;
+  int operand_idx = operand_dims.size() - 1;
+  int dot_idx = dot_dims.size() - 1;
+  for (; operand_idx >= 0; --operand_idx, --dot_idx) {
+    if (operand_dims[operand_idx] != 1 &&
+        operand_dims[operand_idx] != dot_dims[dot_idx])
+      return false;
+  }
+  return true;
+}
+
+inline bool IsRowMajor(const Shape& shape) {
+  return LayoutUtil::IsMonotonicWithDim0Major(shape.layout());
+}
+
+template <typename Pattern>
+inline auto BitcastWithReshapeSemantics(HloInstruction** bitcast,
+                                        Pattern pattern) {
+  // TODO(intel-tf): Add stronger condition that Bitcast does not have transpose
+  // semantics. Some of the HLO passes replaces Transpose with Bitcast. Here
+  // the layouts are checked to be rowmajor since the current pass runs after
+  // the layout assignment and oneDNN matmul is enabled for rowmajor layouts.
+  auto is_reshape = [](const HloInstruction* instr) -> bool {
+    if (!instr) return false;
+    auto input_shape = instr->operand(0)->shape();
+    auto output_shape = instr->shape();
+    bool is_same_type = ShapeUtil::SameElementType(input_shape, output_shape);
+    bool has_equal_num_elems = ShapeUtil::ElementsIn(input_shape) ==
+                               ShapeUtil::ElementsIn(output_shape);
+    bool has_rowmajor_layout =
+        IsRowMajor(input_shape) && IsRowMajor(output_shape);
+    return is_same_type && has_equal_num_elems && has_rowmajor_layout;
+  };
+  return m::Bitcast(bitcast, pattern).WithPredicate(is_reshape);
+}
+
+template <typename Pattern>
+inline auto OptionalConvertAndBitcast(HloInstruction** optional_convert,
+                                      HloInstruction** optional_bitcast,
+                                      Pattern pattern) {
+  // Checks the presence of some intermediate operations that can be moved /
+  // folded to allow dot fusion with add.
+  // Try to match either of the following:
+  //   1. pattern-root -> bf16/f16-to-fp32 convert -> bitcast
+  //   2. pattern-root -> bf16/f16-to-fp32 convert
+  //   3. pattern-root -> bitcast
+  //   4. pattern-root
+  auto common =
+      m::AnyOf<HloInstruction>(
+          SupportedConvert(optional_convert, std::move(pattern).WithOneUser())
+              .WithElementType(PrimitiveType::F32),
+          std::move(pattern).WithOneUser())
+          .WithOneUser();
+  return m::AnyOf<HloInstruction>(
+      BitcastWithReshapeSemantics(optional_bitcast, common), common);
+}
+
+}  // namespace
+
+bool OneDnnMatMulRewriter::ShouldRewrite(const HloInstruction* dot_instr) {
+  // Currently, blocking control dependencies
+  if (dot_instr->HasControlDependencies()) return false;
+  if (!IsSupportedType(dot_instr->shape().element_type())) return false;
+  if (dot_instr->operands().size() != 2) return false;
+
+  // Currently, we rewrite when the data type is F32 or BF16. Note we do not
+  // need to check equality of contraction dim-size of the operands. HLO
+  // verifier already does the job. We, however, need to check if contraction
+  // is over only 1 dimension (a.k.a. K dimension in matrix-multiplication
+  // parlance). We also restrict that batch dimensions of the operands
+  // match.
+  const Shape& lhs_shape = dot_instr->operand(0)->shape();
+  const Shape& rhs_shape = dot_instr->operand(1)->shape();
+  const Shape& output_shape = dot_instr->shape();
+  // None of the operands and result should be ZeroElementArray.
+  if (ShapeUtil::IsZeroElementArray(lhs_shape) ||
+      ShapeUtil::IsZeroElementArray(rhs_shape) ||
+      ShapeUtil::IsZeroElementArray(output_shape)) {
+    return false;
+  }
+  // OneDNN only supports rank <= kOneDnnMaxNDims and singular non-contracting
+  // dimensions. We should not rewrite if any of these conditions are violated.
+  if (lhs_shape.rank() <= 0 || lhs_shape.rank() > kOneDnnMaxNDims ||
+      rhs_shape.rank() <= 0 || rhs_shape.rank() > kOneDnnMaxNDims ||
+      output_shape.rank() > std::min({lhs_shape.rank(), rhs_shape.rank(),
+                                      static_cast<int64_t>(kOneDnnMaxNDims)})) {
+    return false;
+  }
+
+  // Layout should be row-major, contraction dimensions captures transpose
+  // scenarios in last two dimensions.
+  if (!IsRowMajor(lhs_shape) || !IsRowMajor(rhs_shape) ||
+      !IsRowMajor(output_shape)) {
+    return false;
+  }
+
+  auto dot_dim_numbers = dot_instr->dot_dimension_numbers();
+  int64_t lhs_dim_k = dot_dim_numbers.lhs_contracting_dimensions(0);
+  int64_t rhs_dim_k = dot_dim_numbers.rhs_contracting_dimensions(0);
+  // Supported contraction is only in one of last two dimensions.
+  if (lhs_dim_k < lhs_shape.rank() - 2 || rhs_dim_k < rhs_shape.rank() - 2) {
+    return false;
+  }
+
+  // OneDNN matmul has scratch allocation and copy overheads. The overheads
+  // can be amortized if there is sufficient number of flops. We don't rewrite
+  // for small cases (determined empirically).
+  // TODO(intel-tf): Relax the condition when more optimizations in oneDNN
+  // matmul is achieved.
+  auto num_flops = xla::HloCostAnalysis::GetDotFlops(lhs_shape, output_shape,
+                                                     dot_dim_numbers);
+  auto rank = output_shape.rank();
+  auto flops_threshold = (rank <= 2) ? (1 << 24) : (1 << 19);
+  return (num_flops >= flops_threshold);
+}
+
+class OneDnnMatMulRewriteVisitor : public DfsHloRewriteVisitor {
+ public:
+  // Matches patterns for possible MatMul fusions that are supported by oneDNN
+  // library. Matched HLO instruction(s) are replaced by custom call.
+  Status HandleDot(HloInstruction* instr) override {
+    HloInstruction* dot_instr;
+    auto pattern = m::Op(&dot_instr).WithOpcode(HloOpcode::kDot);
+    if (!Match(instr, pattern)) return OkStatus();
+
+    TF_RETURN_IF_ERROR(
+        ValidateDotDimensionNumbers(dot_instr->dot_dimension_numbers()));
+    if (!OneDnnMatMulRewriter::ShouldRewrite(dot_instr)) return OkStatus();
+    TF_ASSIGN_OR_RETURN(dot_instr, ReconfigureDotDimensions(dot_instr));
+    auto dot_dim_numbers = dot_instr->dot_dimension_numbers();
+    const Shape& lhs_shape = dot_instr->operand(0)->shape();
+    const Shape& rhs_shape = dot_instr->operand(1)->shape();
+    const Shape& output_shape = dot_instr->shape();
+
+    int64_t lhs_dim_k = dot_dim_numbers.lhs_contracting_dimensions(0);
+    int64_t rhs_dim_k = dot_dim_numbers.rhs_contracting_dimensions(0);
+
+    HloInstruction* matmul_call =
+        dot_instr->AddInstruction(HloInstruction::CreateCustomCall(
+            output_shape,
+            {dot_instr->mutable_operand(0), dot_instr->mutable_operand(1)},
+            "__onednn$matmul"));
+    // Set additional info via config, e.g., transpose and fusion info.
+    BackendConfig backend_config;
+    OneDnnMatMulConfig* matmul_config =
+        backend_config.mutable_onednn_matmul_config();
+    bool transpose_a = (lhs_dim_k != lhs_shape.rank() - 1);
+    bool transpose_b = (rhs_dim_k != rhs_shape.rank() - 2);
+    matmul_config->set_transpose_a(transpose_a);
+    matmul_config->set_transpose_b(transpose_b);
+    TF_RETURN_IF_ERROR(matmul_call->set_backend_config(backend_config));
+    TF_RETURN_IF_ERROR(ReplaceInstruction(dot_instr, matmul_call));
+    return OkStatus();
+  }
+
+  Status HandleAdd(HloInstruction* instr) override {
+    // Try to do a fusion for Dot(onednn-matmul) + Add. However,
+    // HLO Add instruction might receive the addends after additional
+    // processing like Broadcast, Bitcast, Convert, etc. is applied to the raw
+    // addends. Here, the following possible pattern is matched.
+    //
+    // clang-format off
+    //
+    //            Dot                               addend
+    //             |                                  |
+    //             v                                  v
+    //     optional instructions            optional instructions
+    //    (e.g, Convert, Bitcast)         (e.g, Convert, Broadcast)
+    //             |                                  |
+    //             +--------------+-------------------+
+    //                            |
+    //                            v
+    //                           Add
+    //
+    // clang-format on
+
+    HloInstruction *addend_intermediate, *dot;
+    HloInstruction* optional_dot_bitcast = nullptr;
+    HloInstruction* optional_dot_convert = nullptr;
+
+    auto pattern = m::AddAnyOrder(
+        &instr,
+        OptionalConvertAndBitcast(&optional_dot_convert, &optional_dot_bitcast,
+                                  OneDnnMatmulInstr(&dot))
+            .WithOneUser(),
+        m::Op(&addend_intermediate));
+
+    if (Match(instr, pattern)) {
+      if (!IsSupportedType(dot->shape().element_type())) return OkStatus();
+      // TODO(intel-tf): Remove the condition below when the fusion Dot +
+      // Add(bias) + Add(e.g., residual) is enabled.
+      if (!dot->backend_config<BackendConfig>()
+               ->mutable_onednn_matmul_config()
+               ->fused_ops()
+               .empty() &&
+          dot->backend_config<BackendConfig>()
+                  ->mutable_onednn_matmul_config()
+                  ->fused_ops(0) == OneDnnMatMulConfig::BIAS) {
+        return OkStatus();
+      }
+      std::vector<HloInstruction*> new_operands;
+      for (auto operand : dot->operands()) {
+        new_operands.push_back(operand);
+      }
+
+      // At this point, the addend could have one of the following
+      // possiblities that the current fusion can handle:
+      //
+      //   - addend -> Convert -> Broadcast -> Add
+      //   - addend -> Broadcast -> Convert -> Add
+      //   - addend -> Convert
+      //   - addend -> Broadcast
+      //   - addend
+      //
+      // Hunt for addend through possible sequences above and check the addend
+      // is compatible to onednn-matmul fusion.
+      HloInstruction* addend = nullptr;
+      HloInstruction* optional_addend_broadcast = nullptr;
+      auto addend_pattern = m::AnyOf<HloInstruction>(
+          m::Broadcast(&optional_addend_broadcast,
+                       m::Convert(&addend, m::Op())),
+          m::Convert(m::Broadcast(&optional_addend_broadcast, m::Op(&addend))),
+          m::Convert(&addend, m::Op()),
+          m::Broadcast(&optional_addend_broadcast, m::Op(&addend)),
+          m::Op(&addend));
+      if (!Match(addend_intermediate, addend_pattern)) return OkStatus();
+
+      if (optional_addend_broadcast && addend->shape().rank() != 1) {
+        auto new_shape =
+            AdjustBiasShape(optional_addend_broadcast, dot->shape());
+        if (new_shape.ok()) {
+          addend = addend->AddInstruction(
+              HloInstruction::CreateBitcast(new_shape.value(), addend));
+        } else {
+          VLOG(2) << new_shape.status();
+          return OkStatus();
+        }
+      }
+
+      // Validate addend for fusion.
+      if (CompatibleElementType(addend) && IsOperandFusible(addend, dot)) {
+        new_operands.push_back(addend);
+      } else {
+        return OkStatus();
+      }
+
+      auto matmul_call = Cast<HloCustomCallInstruction>(instr->AddInstruction(
+          dot->CloneWithNewOperands(dot->shape(), new_operands)));
+
+      auto backend_config = matmul_call->backend_config<BackendConfig>();
+      backend_config->mutable_onednn_matmul_config()->add_fused_ops(
+          addend->shape().rank() != 1 ? OneDnnMatMulConfig::BINARY_ADD
+                                      : OneDnnMatMulConfig::BIAS);
+      if (optional_addend_broadcast) {
+        backend_config->mutable_onednn_matmul_config()->set_bias_broadcast(
+            true);
+      }
+      TF_RETURN_IF_ERROR(matmul_call->set_backend_config(*backend_config));
+
+      HloInstruction* new_instr;
+      // If matched pattern has custom-call -> bitcast -> add, then we need to
+      // insert bitcast after the new fusion to maintain the correct shape
+      // (new-custom-call -> bitcast). Also, this will optionally be followed
+      // by -> convert for bf16 case to avoid datatype mismatch.
+      if (optional_dot_bitcast != nullptr &&
+          optional_dot_bitcast->opcode() == HloOpcode::kBitcast) {
+        if (optional_dot_convert != nullptr &&
+            optional_dot_convert->opcode() == HloOpcode::kConvert) {
+          auto bitcast_call =
+              matmul_call->AddInstruction(HloInstruction::CreateBitcast(
+                  ShapeUtil::ChangeElementType(
+                      instr->shape(), matmul_call->shape().element_type()),
+                  matmul_call));
+          new_instr =
+              bitcast_call->AddInstruction(HloInstruction::CreateConvert(
+                  ShapeUtil::ChangeElementType(
+                      bitcast_call->shape(),
+                      optional_dot_convert->shape().element_type()),
+                  bitcast_call));
+        } else {
+          new_instr = matmul_call->AddInstruction(
+              HloInstruction::CreateBitcast(instr->shape(), matmul_call));
+        }
+      } else {
+        if (optional_dot_convert != nullptr &&
+            optional_dot_convert->opcode() == HloOpcode::kConvert) {
+          new_instr = matmul_call->AddInstruction(HloInstruction::CreateConvert(
+              ShapeUtil::ChangeElementType(
+                  matmul_call->shape(),
+                  optional_dot_convert->shape().element_type()),
+              matmul_call));
+        } else {
+          new_instr = matmul_call;
+        }
+      }
+      TF_RETURN_IF_ERROR(ReplaceInstruction(instr, new_instr));
+    }
+
+    return OkStatus();
+  }
+
+  Status HandleMaximum(HloInstruction* instr) override {
+    HloInstruction* matmul_call;
+    HloInstruction* intermediate_instr = nullptr;
+    // Attempt to elide maximum and fuse ReLU activation into GEMM, including
+    // when slicing or bitcasting is applied to the result.
+    if (Match(instr, m::MaximumAnyOrder(ElementwiseSafeIntermediate(
+                                            &intermediate_instr,
+                                            OneDnnMatmulInstr(&matmul_call))
+                                            .WithOneUser(),
+                                        BcastConstScalar(0)))) {
+      return FuseActivation(OneDnnMatMulConfig::RELU, instr, matmul_call,
+                            intermediate_instr);
+    }
+    return OkStatus();
+  }
+
+  Status HandleMultiply(HloInstruction* instr) override {
+    HloInstruction* matmul_call;
+    HloInstruction* intermediate_instr = nullptr;
+    HloInstruction* src;
+    if (GELUActivation(instr, &src)) {
+      if (Match(src,
+                ElementwiseSafeIntermediate(&intermediate_instr,
+                                            OneDnnMatmulInstr(&matmul_call)))) {
+        return FuseActivation(OneDnnMatMulConfig::GELU_TANH, instr, matmul_call,
+                              intermediate_instr);
+      }
+    }
+
+    HloInstruction *dot, *constant;
+    auto pattern = m::Op(&instr)
+                       .WithOpcode(HloOpcode::kMultiply)
+                       .WithBinaryOperandsAnyOrder(
+                           m::Op(&dot)
+                               .WithOneUser()
+                               .WithOpcode(HloOpcode::kCustomCall)
+                               .WithCustomCallTarget({"__onednn$matmul"}),
+                           m::Broadcast(m::Constant(&constant)));
+
+    if (Match(instr, pattern)) {
+      std::vector<HloInstruction*> new_operands;
+      auto constant_value = *GetConstantValueAsFloat32(constant);
+
+      for (auto operand : dot->operands()) {
+        new_operands.push_back(operand);
+      }
+      auto matmul_call = Cast<HloCustomCallInstruction>(instr->AddInstruction(
+          dot->CloneWithNewOperands(instr->shape(), new_operands)));
+      auto backend_config = matmul_call->backend_config<BackendConfig>();
+      backend_config->mutable_onednn_matmul_config()->add_fused_ops(
+          OneDnnMatMulConfig::LINEAR);
+      // Casting to int32 because of issues in proto config for decimal types
+      // handling.
+      backend_config->mutable_onednn_matmul_config()->set_alpha_typecast(
+          *(reinterpret_cast<int32_t*>(&constant_value)));
+      TF_RETURN_IF_ERROR(matmul_call->set_backend_config(*backend_config));
+      TF_RETURN_IF_ERROR(ReplaceInstruction(instr, matmul_call));
+    }
+    return OkStatus();
+  }
+
+  Status FuseActivation(OneDnnMatMulConfig_FusionKind kind,
+                        HloInstruction* activation, HloInstruction* matmul,
+                        HloInstruction* intermediate_instr = nullptr) {
+    TF_ASSIGN_OR_RETURN(auto backend_config,
+                        matmul->backend_config<BackendConfig>());
+    auto* matmul_config = backend_config.mutable_onednn_matmul_config();
+    matmul_config->add_fused_ops(kind);
+
+    std::unique_ptr<HloInstruction> output = matmul->Clone();
+    TF_RETURN_IF_ERROR(output->set_backend_config(backend_config));
+
+    if (intermediate_instr) {
+      output = intermediate_instr->CloneWithNewOperands(
+          intermediate_instr->shape(),
+          {matmul->parent()->AddInstruction(std::move(output))});
+    }
+
+    return ReplaceWithNewInstruction(activation, std::move(output));
+  }
+
+  // This function changes dot instruction for supported matrix
+  // multiplication scenarios. In particular, it changes the shape
+  // of lhs, rhs and result arrays.
+  //    - lhs configuration scenario
+  //      lhs:    [batch_dims,contracting_dim] to [batch_dims,1,contracting_dim]
+  //      result: [batch_dims,feature_dim] to [batch_dims,1,feature_dim]
+  //
+  //    - rhs configuration scenario
+  //      rhs:    [batch_dims,contracting_dim] to [batch_dims,contracting_dim,1]
+  //      result: [batch_dims,feature_dim] to [batch_dims,feature_dim, 1]
+  //
+  //    - both lhs and rhs configuration scenario
+  //      lhs:    [batch_dims,contracting_dim] to [batch_dims,1,contracting_dim]
+  //      rhs:    [batch_dims,contracting_dim] to [batch_dims,contracting_dim,1]
+  //      result: [batch_dims] to [batch_dims,1,1]
+  StatusOr<HloInstruction*> ReconfigureDotDimensions(
+      HloInstruction* dot_instr) {
+    HloInstruction* lhs = dot_instr->mutable_operand(0);
+    HloInstruction* rhs = dot_instr->mutable_operand(1);
+    DotDimensionNumbers dim_numbers = dot_instr->dot_dimension_numbers();
+
+    auto lhs_batch_dims = dim_numbers.lhs_batch_dimensions();
+    auto lhs_contraction_dims = dim_numbers.lhs_contracting_dimensions();
+    bool is_lhs_vector = lhs->shape().rank() ==
+                         (lhs_batch_dims.size() + lhs_contraction_dims.size());
+
+    auto rhs_batch_dims = dim_numbers.rhs_batch_dimensions();
+    auto rhs_contraction_dims = dim_numbers.rhs_contracting_dimensions();
+    bool is_rhs_vector = rhs->shape().rank() ==
+                         (rhs_batch_dims.size() + rhs_contraction_dims.size());
+
+    if (!is_lhs_vector && !is_rhs_vector) return dot_instr;
+
+    std::vector<int64_t> adjusted_lhs_dims(lhs->shape().dimensions().begin(),
+                                           lhs->shape().dimensions().end());
+    std::vector<int64_t> adjusted_rhs_dims(rhs->shape().dimensions().begin(),
+                                           rhs->shape().dimensions().end());
+    std::vector<int64_t> adjusted_dot_dims(
+        dot_instr->shape().dimensions().begin(),
+        dot_instr->shape().dimensions().end());
+
+    if (is_lhs_vector) {
+      auto lhs_it = adjusted_lhs_dims.begin() + lhs_batch_dims.size();
+      adjusted_lhs_dims.insert(lhs_it, 1, 1);
+      auto result_it = adjusted_dot_dims.begin() + lhs_batch_dims.size();
+      adjusted_dot_dims.insert(result_it, 1, 1);
+      auto lhs_contraction_dim =
+          dot_instr->dot_dimension_numbers().lhs_contracting_dimensions(0);
+      dim_numbers.set_lhs_contracting_dimensions(0, lhs_contraction_dim + 1);
+      lhs = lhs->AddInstruction(HloInstruction::CreateBitcast(
+          ShapeUtil::MakeShape(lhs->shape().element_type(), adjusted_lhs_dims),
+          lhs));
+    }
+
+    if (is_rhs_vector) {
+      auto it = adjusted_rhs_dims.end();
+      adjusted_rhs_dims.insert(it, 1, 1);
+      auto result_it = adjusted_dot_dims.end();
+      adjusted_dot_dims.insert(result_it, 1, 1);
+      rhs = rhs->AddInstruction(HloInstruction::CreateBitcast(
+          ShapeUtil::MakeShape(rhs->shape().element_type(), adjusted_rhs_dims),
+          rhs));
+    }
+
+    HloInstruction* adjusted_dot =
+        dot_instr->AddInstruction(HloInstruction::CreateDot(
+            ShapeUtil::MakeShape(dot_instr->shape().element_type(),
+                                 adjusted_dot_dims),
+            lhs, rhs, dim_numbers, dot_instr->precision_config()));
+
+    HloInstruction* replacement_instr = adjusted_dot->AddInstruction(
+        HloInstruction::CreateBitcast(dot_instr->shape(), adjusted_dot));
+
+    TF_RETURN_IF_ERROR(ReplaceInstruction(dot_instr, replacement_instr));
+    return adjusted_dot;
+  }
+};
+
+class OneDnnPostRewriteVisitor : public DfsHloRewriteVisitor {
+ public:
+  OneDnnPostRewriteVisitor(int intra_op_parallelism,
+                           const tsl::thread::ThreadPool* compile_threadpool)
+      : intra_op_parallelism_(intra_op_parallelism > 0
+                                  ? intra_op_parallelism
+                                  : tsl::port::MaxParallelism()),
+        evaluator_(/*max_loop_iterations=*/0) {
+    if (compile_threadpool) {
+      threadpool_device_.reset(
+          new Eigen::ThreadPoolDevice(compile_threadpool->AsEigenThreadPool(),
+                                      compile_threadpool->NumThreads()));
+    } else {
+      threadpool_handle_.reset(new tsl::thread::ThreadPool(
+          tsl::Env::Default(), "XLACpuCompile", tsl::port::MaxParallelism()));
+      threadpool_device_.reset(
+          new Eigen::ThreadPoolDevice(threadpool_handle_->AsEigenThreadPool(),
+                                      threadpool_handle_->NumThreads()));
+    }
+
+#ifndef ENABLE_ONEDNN_OPENMP
+    // Set oneDNN concurrency settings (which is thread-local)
+    tsl::OneDnnThreadPool::set_onednn_max_threads(intra_op_parallelism_);
+#endif
+  }
+
+  Status HandleCustomCall(HloInstruction* custom_call) override {
+    HloInstruction* matmul;
+    if (Match(custom_call, OneDnnMatmulInstr(&matmul))) {
+      return HandleCustomCallInternal<dnnl::matmul::primitive_desc>(
+          custom_call);
+    }
+
+    return DefaultAction(custom_call);
+  }
+
+  template <typename PrimDesc>
+  Status HandleCustomCallInternal(HloInstruction* custom_call) {
+    auto scratch_add = AddScratch<PrimDesc>(custom_call);
+    if (scratch_add.ok()) {
+      custom_call = *scratch_add;
+    } else {
+      VLOG(2) << scratch_add.status();
+    }
+    auto weights_prepack = PrepackWeights<PrimDesc>(custom_call);
+    if (!weights_prepack.ok()) {
+      VLOG(2) << weights_prepack.status();
+    }
+    return OkStatus();
+  }
+
+  template <typename>
+  Status SetWeightsPrepack(HloInstruction*, bool);
+
+  template <typename>
+  Status SetUserScratch(HloInstruction*, bool);
+
+  template <typename>
+  bool GetWeightsPrepack(HloInstruction*);
+
+  template <typename>
+  bool GetUserScratch(HloInstruction*);
+
+  // Add scratch for matmul by changing the result of custom-call to
+  // tuple(result, scratch)
+  template <typename PrimDesc>
+  StatusOr<HloInstruction*> AddScratch(HloInstruction* custom_call) {
+    if (GetUserScratch<PrimDesc>(custom_call)) {
+      return custom_call;
+    }
+    TF_RETURN_IF_ERROR(SetUserScratch<PrimDesc>(custom_call, true));
+    auto prim_desc = CreateOneDnnPrimDesc<PrimDesc>(custom_call);
+    int64_t scratch_size = prim_desc->scratchpad_desc().get_size();
+    Shape scratch_shape = ShapeUtil::MakeShape(U8, {scratch_size});
+    Shape tuple_shape =
+        ShapeUtil::MakeTupleShape({custom_call->shape(), scratch_shape});
+    auto new_custom_call = custom_call->AddInstruction(
+        custom_call->CloneWithNewShape(tuple_shape));
+    HloInstruction* gte =
+        new_custom_call->AddInstruction(HloInstruction::CreateGetTupleElement(
+            custom_call->shape(), new_custom_call, 0));
+    auto status = ReplaceInstruction(custom_call, gte);
+    if (!status.ok()) {
+      TF_RETURN_IF_ERROR(SetUserScratch<PrimDesc>(custom_call, false));
+      return absl::CancelledError("Adding scratch is unsuccessful.");
+    }
+    return new_custom_call;
+  }
+
+  template <typename PrimDesc>
+  StatusOr<HloInstruction*> PrepackWeights(HloInstruction* custom_call) {
+    if (GetWeightsPrepack<PrimDesc>(custom_call)) {
+      return custom_call;
+    }
+    auto weights = custom_call->operand(1);
+    if (weights->user_count() > 1) {
+      return absl::FailedPreconditionError(
+          "Cannot prepack weights. There is more than one consumer.");
+    }
+    auto weights_shape = weights->shape();
+    Literal weights_literal;
+    if (!(weights_shape.rank() == 2 &&
+          evaluator_.TryEvaluate(weights, &weights_literal))) {
+      return absl::CancelledError(
+          "Cannot prepack weights. Not constant 2D weights.");
+    }
+    auto plain_weights_md = ShapeToMemDesc(weights_shape);
+    if constexpr (std::is_same<PrimDesc, dnnl::matmul::primitive_desc>::value) {
+      TF_ASSIGN_OR_RETURN(auto backend_config,
+                          custom_call->backend_config<BackendConfig>());
+      TRANSPOSE_LAST_TWO_DIMS_IF(
+          backend_config.onednn_matmul_config().transpose_b(),
+          plain_weights_md);
+    }
+    TF_RETURN_IF_ERROR(SetWeightsPrepack<PrimDesc>(custom_call, true));
+    auto prim_desc = CreateOneDnnPrimDesc<PrimDesc>(custom_call);
+    auto packed_weights_md = prim_desc->weights_desc();
+    auto packed_weights_shape = MemDescToXlaShapeFlattened(packed_weights_md);
+    auto packed_weights_literal = Literal(packed_weights_shape);
+    ReorderWeight(plain_weights_md, weights_literal.untyped_data(),
+                  packed_weights_md, packed_weights_literal.untyped_data());
+    HloInstruction* reordered_weight = custom_call->AddInstruction(
+        HloInstruction::CreateConstant(std::move(packed_weights_literal)));
+    auto status =
+        custom_call->ReplaceOperandWithDifferentShape(1, reordered_weight);
+    if (!status.ok()) {
+      TF_RETURN_IF_ERROR(SetWeightsPrepack<PrimDesc>(custom_call, false));
+      return absl::CancelledError(
+          "Cannot replace plain weights with prepacked weights.");
+    } else {
+      return custom_call;
+    }
+  }
+
+  void ReorderWeight(const dnnl::memory::desc& src_md, void* src_buf,
+                     const dnnl::memory::desc& dst_md, void* dst_buf) {
+    auto onednn_threadpool = CreateOneDnnThreadPool(threadpool_device_.get());
+    dnnl::engine cpu_engine(dnnl::engine::kind::cpu, 0);
+    auto onednn_stream = MakeOneDnnStream(cpu_engine, onednn_threadpool.get());
+    auto src_mem = dnnl::memory(src_md, cpu_engine, src_buf);
+    auto dst_mem = dnnl::memory(dst_md, cpu_engine, dst_buf);
+    dnnl::reorder reorder_prim{src_mem, dst_mem};
+    reorder_prim.execute(onednn_stream, src_mem, dst_mem);
+    onednn_stream.wait();
+  }
+
+ private:
+  int intra_op_parallelism_;
+  HloEvaluator evaluator_;
+  std::unique_ptr<tsl::thread::ThreadPool> threadpool_handle_;
+  std::unique_ptr<Eigen::ThreadPoolDevice> threadpool_device_;
+};
+
+#define EMIT_GET_BACKEND_CONFIG_SPECIALIZATION(GETTER, PRIM_DESC, CONFIG,  \
+                                               FIELD)                      \
+  template <>                                                              \
+  inline bool OneDnnPostRewriteVisitor::GETTER<PRIM_DESC>(HloInstruction * \
+                                                          custom_call) {   \
+    auto backend_config = custom_call->backend_config<BackendConfig>();    \
+    return backend_config.ok() ? backend_config->CONFIG().FIELD() : false; \
+  }
+
+EMIT_GET_BACKEND_CONFIG_SPECIALIZATION(GetUserScratch,
+                                       dnnl::matmul::primitive_desc,
+                                       onednn_matmul_config, user_scratchpad);
+EMIT_GET_BACKEND_CONFIG_SPECIALIZATION(GetWeightsPrepack,
+                                       dnnl::matmul::primitive_desc,
+                                       onednn_matmul_config, weights_prepacked);
+
+#define EMIT_SET_BACKEND_CONFIG_SPECIALIZATION(SETTER, PRIM_DESC, CONFIG_TYPE, \
+                                               CONFIG, FIELD)                  \
+  template <>                                                                  \
+  inline Status OneDnnPostRewriteVisitor::SETTER<PRIM_DESC>(                   \
+      HloInstruction * custom_call, bool value) {                              \
+    TF_ASSIGN_OR_RETURN(auto backend_config,                                   \
+                        custom_call->backend_config<BackendConfig>());         \
+    CONFIG_TYPE* config = backend_config.mutable_##CONFIG();                   \
+    config->set_##FIELD(value);                                                \
+    return custom_call->set_backend_config(backend_config);                    \
+  }
+
+EMIT_SET_BACKEND_CONFIG_SPECIALIZATION(SetWeightsPrepack,
+                                       dnnl::matmul::primitive_desc,
+                                       OneDnnMatMulConfig, onednn_matmul_config,
+                                       weights_prepacked);
+EMIT_SET_BACKEND_CONFIG_SPECIALIZATION(SetUserScratch,
+                                       dnnl::matmul::primitive_desc,
+                                       OneDnnMatMulConfig, onednn_matmul_config,
+                                       user_scratchpad);
+
+StatusOr<bool> OneDnnMatMulRewriter::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  OneDnnMatMulRewriteVisitor visitor;
+  TF_ASSIGN_OR_RETURN(auto result,
+                      visitor.RunOnModule(module, execution_threads));
+
+  OneDnnPostRewriteVisitor reorder_visitor(intra_op_parallelism_,
+                                           compile_threadpool_);
+  TF_ASSIGN_OR_RETURN(auto result2,
+                      reorder_visitor.RunOnModule(module, execution_threads));
+
+  return {result || result2};
+}
+
+}  // namespace cpu
+}  // namespace xla
+
+#endif  // INTEL_MKL && ENABLE_ONEDNN_V3

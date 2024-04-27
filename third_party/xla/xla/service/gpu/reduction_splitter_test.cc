@@ -1,4 +1,4 @@
-/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2016 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,12 +15,15 @@ limitations under the License.
 
 #include "xla/service/gpu/reduction_splitter.h"
 
+#include <cstdint>
+#include <vector>
+
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/hlo_parser.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
 #include "xla/shape_util.h"
 #include "xla/test.h"
-#include "xla/test_helpers.h"
 #include "xla/tests/hlo_test_base.h"
 
 namespace xla {
@@ -51,7 +54,8 @@ TEST_F(ReductionSplitterTest, SplitReductionAtDimensionTwo) {
   }
   )")
                     .value();
-  ASSERT_TRUE(ReductionSplitter().Run(module.get()).value());
+  ASSERT_TRUE(
+      ReductionSplitter(/*ignore_small_dims=*/true).Run(module.get()).value());
   SCOPED_TRACE(module->ToString());
   const HloInstruction* root_reduction =
       module->entry_computation()->root_instruction();
@@ -82,7 +86,8 @@ TEST_F(ReductionSplitterTest, SplitReductionAtDimensionZero) {
   }
   )")
                     .value();
-  ASSERT_TRUE(ReductionSplitter().Run(module.get()).value());
+  ASSERT_TRUE(
+      ReductionSplitter(/*ignore_small_dims=*/false).Run(module.get()).value());
   SCOPED_TRACE(module->ToString());
   const HloInstruction* root_reduction =
       module->entry_computation()->root_instruction();
@@ -108,13 +113,16 @@ TEST_F(ReductionSplitterTest, DontSplitReductionWithSmallDimensions) {
   }
 
   ENTRY entry_computation {
-    param_0 = f32[8,1024,8]{2,1,0} parameter(0)
+    param_0 = f32[16,8,1024,8]{3,2,1,0} parameter(0)
     constant_11111 = f32[] constant(0)
-    ROOT reduce.982 = f32[1024]{0} reduce(param_0, constant_11111), dimensions={2,0}, to_apply=add_computation
+    ROOT reduce.982 = f32[16,1024]{1,0} reduce(param_0, constant_11111), dimensions={3,1}, to_apply=add_computation
   }
   )")
                     .value();
-  EXPECT_FALSE(ReductionSplitter().Run(module.get()).value());
+  EXPECT_FALSE(
+      ReductionSplitter(/*ignore_small_dims=*/true).Run(module.get()).value());
+  EXPECT_TRUE(
+      ReductionSplitter(/*ignore_small_dims=*/false).Run(module.get()).value());
 }
 
 TEST_F(ReductionSplitterTest, DontSplitReductionsWithContiguousDimensions) {
@@ -135,7 +143,8 @@ TEST_F(ReductionSplitterTest, DontSplitReductionsWithContiguousDimensions) {
   }
   )")
                     .value();
-  EXPECT_FALSE(ReductionSplitter().Run(module.get()).value());
+  EXPECT_FALSE(
+      ReductionSplitter(/*ignore_small_dims=*/false).Run(module.get()).value());
 }
 
 }  // namespace

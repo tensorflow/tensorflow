@@ -33,7 +33,12 @@ namespace {
 std::string GenerateCode(const ConvPointwiseAttributes& attr) {
   std::string c = R"(
 MAIN_FUNCTION($0) {
-  int X = GLOBAL_ID_0;
+  int linear_id = GLOBAL_ID_0;
+  int X = linear_id / args.dst_tensor.Batch();
+  int B = linear_id % args.dst_tensor.Batch();
+  args.weights_tensor.SetBatchRef(B);
+  args.src_tensor.SetBatchRef(B);
+  args.dst_tensor.SetBatchRef(B);
   int Y = GLOBAL_ID_1;
   int S = GLOBAL_ID_2;
   if (X >= args.dst_tensor.Width() ||

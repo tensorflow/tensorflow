@@ -23,7 +23,7 @@ COPY apt.conf /etc/apt/
 RUN /build_patchelf.sh
 
 ################################################################################
-FROM nvidia/cuda:12.2.0-devel-ubuntu20.04 as devel
+FROM nvidia/cuda:12.3.1-devel-ubuntu20.04 as devel
 ################################################################################
 COPY --from=builder /dt10 /dt10
 COPY --from=builder /patchelf/patchelf_0.14.3-1_arm64.deb /patchelf/patchelf_0.14.3-1_arm64.deb

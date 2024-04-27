@@ -29,6 +29,7 @@
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Region.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/experimental/tac/common/targets.h"
 #include "tensorflow/compiler/mlir/lite/experimental/tac/hardwares/target_hardware.h"
 #include "tensorflow/compiler/mlir/lite/experimental/tac/runtime_metadata_generated.h"
@@ -82,8 +83,7 @@ std::optional<std::vector<float>> GetPerDeviceCosts(
   for (const auto& kv : hardware_map) {
     auto cost_attr = device_costs_attr.getNamed(kv.first);
     if (!cost_attr.has_value()) return std::nullopt;
-    float cost = cost_attr->getValue()
-                     .dyn_cast_or_null<mlir::FloatAttr>()
+    float cost = mlir::dyn_cast_or_null<mlir::FloatAttr>(cost_attr->getValue())
                      .getValueAsDouble();
     device_costs[kv.second] = cost;
   }

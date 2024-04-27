@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -26,6 +26,8 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "xla/python/ifrt/memory.h"
+#include "xla/python/ifrt/shape.h"
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -90,7 +92,7 @@ std::unique_ptr<HloSharding> HloSharding::Create(
       std::move(devices), memory_kind, std::move(xla_hlo_sharding)));
 }
 
-StatusOr<std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>>>
+absl::StatusOr<std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>>>
 HloSharding::Disassemble(const Shape& shape) const {
   TF_ASSIGN_OR_RETURN(auto index_domains, IndexDomains(shape));
   std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>> result;
@@ -102,7 +104,16 @@ HloSharding::Disassemble(const Shape& shape) const {
   return result;
 }
 
-StatusOr<std::vector<IndexDomain>> HloSharding::IndexDomains(
+absl::StatusOr<
+    std::vector<std::pair<DynamicShape, std::shared_ptr<const Sharding>>>>
+HloSharding::Disassemble(const DynamicShape& dynamic_shape) const {
+  return InvalidArgument(
+      "HloSharding can only disassemble static shape, but was asked "
+      "to disassemble dynamic shape %s",
+      dynamic_shape.DebugString());
+}
+
+absl::StatusOr<std::vector<IndexDomain>> HloSharding::IndexDomains(
     const Shape& shape) const {
   auto format_shape = [&] {
     return absl::StrCat("[", absl::StrJoin(shape.dims(), ","), "]");

@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -22,14 +22,14 @@ limitations under the License.
 
 #include "absl/cleanup/cleanup.h"
 #include "absl/functional/any_invocable.h"
+#include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "xla/status.h"
 #include "xla/stream_executor/allocator_stats.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/device_options.h"
 #include "xla/stream_executor/event.h"
-#include "xla/stream_executor/stream_executor_internal.h"
+#include "xla/stream_executor/stream_executor_interface.h"
 #include "xla/stream_executor/tpu/c_api_conversions.h"
 #include "xla/stream_executor/tpu/c_api_decl.h"
 #include "xla/stream_executor/tpu/status_helper.h"
@@ -37,7 +37,7 @@ limitations under the License.
 #include "xla/stream_executor/tpu/tpu_executor_api.h"
 #include "xla/stream_executor/tpu/tpu_stream.h"
 #include "xla/stream_executor/tpu/tpu_topology.h"
-#include "tsl/c/tsl_status.h"
+#include "xla/tsl/c/tsl_status.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"  // IWYU pragma: keep
 
@@ -45,19 +45,14 @@ namespace stream_executor {
 namespace tpu {
 
 namespace {
-using xla::Status;
+using absl::Status;
 }  // namespace
 
 TpuExecutor::~TpuExecutor() { ExecutorApiFn()->TpuExecutor_FreeFn(executor_); }
 
-Status TpuExecutor::Init(int device_ordinal,
-                         ::stream_executor::DeviceOptions device_options) {
+Status TpuExecutor::Init() {
   StatusHelper status;
-  SE_DeviceOptions* options =
-      ExecutorApiFn()->TpuExecutor_NewDeviceOptionsFn(device_options.flags());
-  ExecutorApiFn()->TpuExecutor_InitFn(executor_, device_ordinal, options,
-                                      status.c_status);
-  ExecutorApiFn()->TpuExecutor_FreeDeviceOptionsFn(options);
+  ExecutorApiFn()->TpuExecutor_InitFn(executor_, status.c_status);
   return status.status();
 }
 
@@ -104,11 +99,11 @@ bool TpuExecutor::CreateStreamDependency(Stream* dependent, Stream* other) {
       get_stream(other->implementation()));
 }
 
-Status TpuExecutor::AllocateEvent(Event* event) { return tsl::OkStatus(); }
+Status TpuExecutor::AllocateEvent(Event* event) { return absl::OkStatus(); }
 
 Status TpuExecutor::DeallocateEvent(Event* event) {
   tpu_platform().EraseEvent(event->implementation());
-  return tsl::OkStatus();
+  return absl::OkStatus();
 }
 
 stream_executor::Event::Status TpuExecutor::PollForEventStatus(
@@ -145,8 +140,7 @@ Status TpuExecutor::WaitForEvent(Stream* stream,
 // responsible for deallocating the internal value when they are destroyed.
 
 // Called by Stream::Stream
-std::unique_ptr<::stream_executor::internal::StreamInterface>
-TpuExecutor::GetStreamImplementation() {
+std::unique_ptr<StreamInterface> TpuExecutor::GetStreamImplementation() {
   SE_Stream* tpu_stream = ExecutorApiFn()->TpuStream_NewFn(executor_);
   auto ptr = std::make_unique<tensorflow::tpu::TpuStream>(tpu_stream);
   tpu_platform().mutex().Lock();
@@ -156,8 +150,7 @@ TpuExecutor::GetStreamImplementation() {
 }
 
 // Called by Event::Event
-std::unique_ptr<::stream_executor::internal::EventInterface>
-TpuExecutor::CreateEventImplementation() {
+std::unique_ptr<EventInterface> TpuExecutor::CreateEventImplementation() {
   SE_Event* tpu_event = ExecutorApiFn()->TpuEvent_NewFn(executor_);
   auto ptr = std::make_unique<TpuEvent>(tpu_event);
   tpu_platform().InsertEvent(ptr.get(), tpu_event);
@@ -234,22 +227,26 @@ Status TpuExecutor::EnqueueInfeed(int32_t infeed_queue_index,
   return status.status();
 }
 
-bool TpuExecutor::Memcpy(Stream* stream, void* host_dst,
-                         const ::stream_executor::DeviceMemoryBase& device_src,
-                         uint64_t size) {
+absl::Status TpuExecutor::Memcpy(
+    Stream* stream, void* host_dst,
+    const ::stream_executor::DeviceMemoryBase& device_src, uint64_t size) {
+  StatusHelper status;
   SE_DeviceMemoryBase se_base = ApiConverter::ToC(device_src);
-  return ExecutorApiFn()->TpuExecutor_MemcpyToHostFn(
-      executor_, get_stream(stream->implementation()), host_dst, &se_base,
-      size);
+  ExecutorApiFn()->TpuExecutor_MemcpyToHostFn(
+      executor_, get_stream(stream->implementation()), host_dst, &se_base, size,
+      status.c_status);
+  return status.status();
 }
 
-bool TpuExecutor::Memcpy(Stream* stream,
-                         ::stream_executor::DeviceMemoryBase* device_dst,
-                         const void* host_src, uint64_t size) {
+absl::Status TpuExecutor::Memcpy(
+    Stream* stream, ::stream_executor::DeviceMemoryBase* device_dst,
+    const void* host_src, uint64_t size) {
+  StatusHelper status;
   SE_DeviceMemoryBase se_base = ApiConverter::ToC(*device_dst);
-  return ExecutorApiFn()->TpuExecutor_MemcpyFromHostFn(
-      executor_, get_stream(stream->implementation()), &se_base, host_src,
-      size);
+  ExecutorApiFn()->TpuExecutor_MemcpyFromHostFn(
+      executor_, get_stream(stream->implementation()), &se_base, host_src, size,
+      status.c_status);
+  return status.status();
 }
 
 Status TpuExecutor::SynchronousMemcpy(
@@ -270,12 +267,6 @@ Status TpuExecutor::SynchronousMemcpy(
   ExecutorApiFn()->TpuExecutor_SynchronousMemcpyToHostFn(
       executor_, host_dst, &se_base, size, status.c_status);
   return status.status();
-}
-
-Status TpuExecutor::SynchronousMemcpyDeviceToDevice(
-    ::stream_executor::DeviceMemoryBase* device_dst,
-    const ::stream_executor::DeviceMemoryBase& device_src, uint64_t size) {
-  return tsl::errors::Unimplemented("This operation not supported on TPU");
 }
 
 bool TpuExecutor::MemcpyDeviceToDevice(

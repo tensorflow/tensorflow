@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -209,12 +209,12 @@ struct AnnotateExpandingDimensionsInDynamicBroadcastInDim
     }
 
     // Annotate op in place.
-    rewriter.startRootUpdate(op);
+    rewriter.startOpModification(op);
     op.setKnownExpandingDimensionsAttr(
         rewriter.getI64TensorAttr(knownExpandingDims.takeVector()));
     op.setKnownNonexpandingDimensionsAttr(
         rewriter.getI64TensorAttr(knownNonexpandingDims.takeVector()));
-    rewriter.finalizeRootUpdate(op);
+    rewriter.finalizeOpModification(op);
     return success();
   }
 };
@@ -719,9 +719,10 @@ struct DynamicReshapeToExpandAndCollapseShape final
   using OpRewritePattern::OpRewritePattern;
   LogicalResult matchAndRewrite(mhlo::DynamicReshapeOp op,
                                 PatternRewriter &rewriter) const override {
-    auto operandTy = op.getOperand().getType().dyn_cast<RankedTensorType>();
+    auto operandTy =
+        mlir::dyn_cast<RankedTensorType>(op.getOperand().getType());
     if (!operandTy) return failure();
-    auto resultTy = op.getType().dyn_cast<RankedTensorType>();
+    auto resultTy = mlir::dyn_cast<RankedTensorType>(op.getType());
     if (!resultTy) return failure();
 
     // Handle degenerate scalar expand case.
@@ -838,7 +839,8 @@ std::optional<Value> simplifyBroadcast(ShapeComponentAnalysis &analysis,
     // 1 dimensions are filtered above, recreate the constant.
     if (!shapeAndRankForDim[i].first) {
       auto one = builder->getIntegerAttr(
-          shapes[0].getType().cast<RankedTensorType>().getElementType(), 1);
+          mlir::cast<RankedTensorType>(shapes[0].getType()).getElementType(),
+          1);
       elements.push_back(builder->create<arith::ConstantOp>(loc, one));
       continue;
     }

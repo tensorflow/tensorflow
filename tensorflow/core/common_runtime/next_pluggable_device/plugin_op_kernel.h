@@ -96,8 +96,8 @@ class PluginOpKernelContext {
                                         void* create_func_args,
                                         void (*delete_func)(void*)) = 0;
 
-  virtual PluginCoordinationServiceAgent* GetPluginCoordinationServiceAgent()
-      const = 0;
+  virtual std::unique_ptr<PluginCoordinationServiceAgent>
+  GetPluginCoordinationServiceAgent() const = 0;
 
   // This method will allocate a new `PluginVariable`. Caller is responsible
   // for managing it's lifetime.
@@ -130,6 +130,8 @@ class PluginOpKernelContext {
   virtual int64_t GetStepId() const = 0;
 
   virtual int GetDeviceId() const = 0;
+
+  virtual std::string_view GetDeviceName() const = 0;
 
   virtual std::string GetSessionName() const = 0;
 

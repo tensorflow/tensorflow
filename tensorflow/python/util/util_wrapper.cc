@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "pybind11/pytypes.h"  // from @pybind11
-#include "tensorflow/core/platform/cpu_info.h"
+#include "tensorflow/core/util/util.h"
 #include "tensorflow/python/lib/core/pybind11_lib.h"
 #include "tensorflow/python/util/util.h"
 
@@ -311,22 +311,22 @@ PYBIND11_MODULE(_pywrap_utils, m) {
         True if `instance` is a `Variable`.
     )pbdoc");
   m.def(
-      "IsBF16SupportedByOneDNNOnThisCPU",
-      []() {
-        bool result = tensorflow::port::TestCPUFeature(
-            tensorflow::port::CPUFeature::AVX512F);
+      "IsDataTypeSupportedByOneDNNOnThisCPU",
+      [](const tensorflow::DataType& dt) {
+        bool result = tensorflow::IsDataTypeSupportedByOneDNNOnThisCPU(dt);
         if (PyErr_Occurred()) {
           throw py::error_already_set();
         }
         return result;
       },
       R"pbdoc(
-      Returns 1 if CPU has avx512f feature.
+      Returns true if input type is supported on CPU when oneDNN is enabled
 
       Args:
-       None
+       type: an input data type
 
       Returns:
-        True if CPU has avx512f feature.
+        True if input type is supported on CPU when oneDNN is enabled.
+        False otherwise.
     )pbdoc");
 }

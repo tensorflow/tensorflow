@@ -112,7 +112,7 @@ Status ValidateGraphHasNoCycle(const Graph& graph) {
         graph.num_nodes() - processed,
         " nodes, including: ", absl::StrJoin(nodes_in_cycle, ", "));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status VerifyNoDuplicateNodeNames(const GraphDef& graph) {
@@ -123,7 +123,7 @@ Status VerifyNoDuplicateNodeNames(const GraphDef& graph) {
     }
     nodes.insert(node.name());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace graph

@@ -41,7 +41,7 @@ Status ValidateAssignUpdateVariableOpShapes(XlaOpKernelContext* ctx) {
       ctx->GetVariableTypeAndShape(0, &variable_dtype, &variable_shape));
   TF_RETURN_IF_ERROR(
       ValidateAssignUpdateVariableOpShapes(variable_shape, value_shape));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 class VarIsInitializedOp : public XlaOpKernel {

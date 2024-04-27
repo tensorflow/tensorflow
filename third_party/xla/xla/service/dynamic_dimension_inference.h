@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -77,7 +77,7 @@ class DynamicDimensionInference {
   // false.
   using AssertionGenerator = std::function<void(HloInstruction*)>;
 
-  static StatusOr<DynamicDimensionInference> Run(
+  static absl::StatusOr<DynamicDimensionInference> Run(
       HloModule* module,
       OpSupportsDynamismHandler op_supports_dynamism_handler = nullptr,
       CustomCallInferenceHandler custom_call_handler = nullptr,

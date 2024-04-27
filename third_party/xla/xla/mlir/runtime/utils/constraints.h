@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,8 +17,11 @@ limitations under the License.
 #define XLA_MLIR_RUNTIME_UTILS_CONSTRAINTS_H_
 
 #include "absl/status/statusor.h"
+#include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Interfaces/FunctionInterfaces.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "xla/runtime/constraints.h"
 
 namespace xla {
@@ -37,7 +40,7 @@ absl::StatusOr<ArgumentConstraint> ResolveArgumentConstraint(
 inline bool SupportsValueSpecialization(mlir::Type type) {
   // TODO(ezhulenev): Add support for sinking `memref` values once the value
   // specialization will support it.
-  mlir::TensorType tensor = type.dyn_cast<mlir::TensorType>();
+  mlir::TensorType tensor = mlir::dyn_cast<mlir::TensorType>(type);
   return tensor && (tensor.getRank() == 0 || tensor.getRank() == 1) &&
          (tensor.getElementType().isInteger(32) ||
           tensor.getElementType().isInteger(64));

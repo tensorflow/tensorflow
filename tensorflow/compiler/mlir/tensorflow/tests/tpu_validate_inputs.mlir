@@ -202,3 +202,29 @@ func.func @invalid_TUPLE_sharding_arity(%arg0: tensor<i32>) -> tensor<i32> {
   return %0 : tensor<i32>
 }
 // -----
+
+//  Serialized string:
+//   "\08\02\2a\08\08\01\1a\01\01\22\01\00\2a\08\08\01\1a\01\01\22\01\01"
+//  Proto debug string:
+//    type: 	 TUPLE
+//    tuple_shardings {
+//      type: MAXIMAL
+//      tile_assignment_dimensions: 1
+//      tile_assignment_devices: 0
+//    }
+//    tuple_shardings {
+//      type: MAXIMAL
+//      tile_assignment_dimensions: 1
+//      tile_assignment_devices: 1
+//    }
+
+func.func @outfeed_enqueue_tuple_sharding_exception(%arg0: tensor<i32>, %arg1: tensor<i32>) -> tensor<i32> {
+  %0 = tf_executor.graph {
+    %control = tf_executor.island wraps "tf.TPUReplicateMetadata"() {_xla_compile_device_type = "TPU", _tpu_replicate = "cluster", device = "/device:TPU:0", num_cores_per_replica = 2 : i64, num_replicas = 1 : i64, topology = "topology"} : () -> ()
+    %0, %c0 = tf_executor.island wraps "tf.AddV2"(%arg0, %arg1) {_tpu_replicate = "cluster"} : (tensor<i32>, tensor<i32>) -> tensor<i32>
+    %c1 = tf_executor.island wraps "tf.OutfeedEnqueueTuple"(%arg0, %arg1) {_tpu_replicate = "cluster", _XlaSharding = "\08\02\2a\08\08\01\1a\01\01\22\01\00\2a\08\08\01\1a\01\01\22\01\01"} : (tensor<i32>, tensor<i32>) -> ()
+    tf_executor.fetch %0 : tensor<i32>
+  }
+  return %0 : tensor<i32>
+}
+// -----

@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -254,6 +254,26 @@ def MHLO_ArrayOfLayoutAttr : TypedArrayAttrBase<MHLO_LayoutAttr,
 def MHLO_FlatSymbolRefArrayAttr :
   TypedArrayAttrBase<FlatSymbolRefAttr, "flat symbol ref array attribute"> {
   let constBuilderCall = "::mlir::ArrayAttr::get($_builder.getContext(), $0)";
+}
+
+// Sparsity descriptor attribute
+def MHLO_SparsityDescriptor : AttrDef<MHLO_Dialect, "SparsityDescriptor"> {
+  let mnemonic = "sparsity";
+  let summary = "Describes structured (N:M) sparsity configuration";
+  let description = [{
+    This attribute is defined for a sparse dot operation with a structured
+    sparse input tensor. With (N=2,M=4), every 4 consecutive logical elements
+    have exactly 2 non-zero physical elements in the input tensor.
+
+    $dimension defines the index of the contracting dimension that is sparse
+    (it has to be the most minor dimension). The additional metadata operand
+    in the sparse dot operation defines which logical elements are zeroed out.
+  }];
+  let parameters = (ins
+    "int64_t":$dimension,
+    "int64_t":$n,
+    "int64_t":$m);
+  let assemblyFormat = "`<` struct(params) `>`";
 }
 
 //===----------------------------------------------------------------------===//

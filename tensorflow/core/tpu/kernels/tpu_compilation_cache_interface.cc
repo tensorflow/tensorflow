@@ -112,7 +112,7 @@ Status CompilationCacheEntryRef::ToSubEntryRef(
   // Otherwise, since the refcount is always on the main entry, we don't
   // need ref/unref.
   entry_ = target;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 TpuCompilationCacheInterface::TpuCompilationCacheInterface(
@@ -148,7 +148,7 @@ TpuCompilationCacheInterface::~TpuCompilationCacheInterface() {
 
 Status TpuCompilationCacheInterface::MarkEntryForEviction(
     int64_t subgraph_uid) {
-  profiler::TraceMe key_release_traceme(
+  tsl::profiler::TraceMe key_release_traceme(
       "TPU compilation cache possibly evict uid",
       /*level=*/2);
   CompiledSubgraph* deleted_entry = nullptr;
@@ -157,7 +157,7 @@ Status TpuCompilationCacheInterface::MarkEntryForEviction(
     auto iter = entries_by_uid_.find(subgraph_uid);
     if (iter == entries_by_uid_.end()) {
       // If already evicted, return ok.
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     // Mark entry for eviction.
@@ -191,12 +191,13 @@ Status TpuCompilationCacheInterface::MarkEntryForEviction(
 
   // Unload from device cache if entry is evicted from host cache.
   UnloadAndDestroy(deleted_entry);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status TpuCompilationCacheInterface::Release(int64_t subgraph_uid) {
-  profiler::TraceMe key_release_traceme("TPU compilation cache release uid",
-                                        /*level=*/2);
+  tsl::profiler::TraceMe key_release_traceme(
+      "TPU compilation cache release uid",
+      /*level=*/2);
 
   CompiledSubgraph* deleted_entry = nullptr;
   {
@@ -220,7 +221,7 @@ Status TpuCompilationCacheInterface::Release(int64_t subgraph_uid) {
             << marked_for_eviction_size_ << " bytes).";
   }
   UnloadAndDestroy(deleted_entry);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void TpuCompilationCacheInterface::UnloadAndDestroy(CompiledSubgraph* entry) {
@@ -287,7 +288,7 @@ CompilationRefHolder* TpuCompilationCacheInterface::MakePerStepRefHolder() {
 }
 
 void TpuCompilationCacheInterface::DiscardEntryRefs(
-    gtl::ArraySlice<CompiledSubgraph*> entries) {
+    absl::Span<CompiledSubgraph* const> entries) {
   std::vector<CompiledSubgraph*> removed_entries;
   {
     absl::MutexLock lock(&mu_);
@@ -415,7 +416,7 @@ Status TpuCompilationCacheInterface::CompileIfKeyAbsentHelper(
     const std::function<Status(TpuProgramGroupInterface*)>& compile_function) {
   CompiledSubgraph* entry = nullptr;
 
-  profiler::TraceMe subgraph_lookup_traceme(
+  tsl::profiler::TraceMe subgraph_lookup_traceme(
       "TPU compilation cache subgraph lookup",
       /*level=*/2);
 
@@ -559,7 +560,7 @@ Status TpuCompilationCacheInterface::GetKeysFromUid(
     return errors::NotFound("No subgraph found for uid ", uid);
   }
   *keys = iter->second->proto_key;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status TpuCompilationCacheInterface::Lookup(
@@ -567,7 +568,7 @@ Status TpuCompilationCacheInterface::Lookup(
     std::unique_ptr<CompilationCacheEntryRef>* entry) {
   entry->reset();
 
-  profiler::TraceMe proto_lookup_traceme(
+  tsl::profiler::TraceMe proto_lookup_traceme(
       "TPU compilation cache proto lookup by uid",
       /*level=*/2);
 
@@ -584,7 +585,7 @@ Status TpuCompilationCacheInterface::Lookup(
   }
   *entry = std::make_unique<CompilationCacheEntryRef>(this, cache_entry,
                                                       proto_index);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status TpuCompilationCacheInterface::Lookup(
@@ -592,8 +593,9 @@ Status TpuCompilationCacheInterface::Lookup(
     std::unique_ptr<CompilationCacheEntryRef>* entry) {
   entry->reset();
 
-  profiler::TraceMe proto_lookup_traceme("TPU compilation cache proto lookup",
-                                         /*level=*/2);
+  tsl::profiler::TraceMe proto_lookup_traceme(
+      "TPU compilation cache proto lookup",
+      /*level=*/2);
 
   absl::MutexLock lock(&mu_);
   const auto iter = entries_by_proto_key_.find(proto_key);
@@ -604,7 +606,7 @@ Status TpuCompilationCacheInterface::Lookup(
   int proto_index = iter->second.second;
   *entry = std::make_unique<CompilationCacheEntryRef>(this, cache_entry,
                                                       proto_index);
-  return OkStatus();
+  return absl::OkStatus();
 }
 }  // namespace tpu
 }  // namespace tensorflow

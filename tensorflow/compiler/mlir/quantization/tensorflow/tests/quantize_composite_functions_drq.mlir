@@ -103,10 +103,8 @@ module {
 
 // CHECK-LABEL: func @depthwise_conv
 // CHECK-DAG: %[[bias:.*]] = "tf.Const"() <{value = dense<0.000000e+00> : tensor<3xf32>}> : () -> tensor<3xf32>
-// CHECK-DAG: %[[q_w1:.*]] = "tf.Const"() <{value = #tf_type<tensor_proto : "0x746674
-// CHECK-SAME:                                                                     -> tensor<2x3x1x3x!tf_type.qint8>
-// CHECK-DAG: %[[q_w2:.*]] = "tf.Const"() <{value = #tf_type<tensor_proto : "0x746674
-// CHECK-SAME:                                                                     -> tensor<2x3x1x6x!tf_type.qint8>
+// CHECK-DAG: %[[q_w1:.*]] = "tf.Const"() <{value = #tf_type<tensor_proto : "0x746674{{.*}}-> tensor<2x3x1x3x!tf_type.qint8>
+// CHECK-DAG: %[[q_w2:.*]] = "tf.Const"() <{value = #tf_type<tensor_proto : "0x746674{{.*}}-> tensor<2x3x1x6x!tf_type.qint8>
 // CHECK-DAG: %[[w_scale:.*]] = "tf.Const"() <{value = dense<0.0236220472> : tensor<f32>}> : () -> tensor<f32>
 // CHECK-DAG: %[[w_zp:.*]] = "tf.Const"() <{value = dense<0> : tensor<i32>}> : () -> tensor<i32>
 

@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -30,7 +30,7 @@ limitations under the License.
 #include "xla/service/cpu/backend_config.pb.h"
 #include "xla/service/cpu/onednn_memory_util.h"
 #include "xla/service/cpu/runtime_lightweight_check.h"
-#include "tsl/util/onednn_threadpool.h"
+#include "xla/tsl/util/onednn_threadpool.h"
 #include "unsupported/Eigen/CXX11/Tensor"
 
 namespace xla {
@@ -46,13 +46,11 @@ using dnnl::stream;
 
 ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_OneDnnLayerNorm(
     void* result, void** args) {
-  // args[0]: ptr to nargs
+  // args[0]: ptr to nargs. We don't use nargs here.
   // args[1]: ptr to ExecutableRunOptions
   // args[2]: ptr to OneDnnLayerNormConfig
   // args[3...]: ptrs to operands
-  int arg_indx = 0;
-  const int64_t num_args = *(static_cast<int64_t*>(args[arg_indx++]));
-
+  int arg_indx = 1;
   const xla::ExecutableRunOptions* run_options =
       static_cast<const xla::ExecutableRunOptions*>(args[arg_indx++]);
   XLA_LIGHTWEIGHT_CHECK(run_options != nullptr);
@@ -85,7 +83,8 @@ ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_OneDnnLayerNorm(
   auto shift_mem = memory(scaleshift_md, cpu_engine, beta_minfo.Data());
 
   // TODO(intel-tf): Move epsilon to OneDnnLayerNormConfig.
-  const float epsilon = 1.e-5f;
+  float epsilon;
+  *(reinterpret_cast<int32_t*>(&epsilon)) = ln_config.epsilon_typecast();
 
   auto lnorm_pd = layer_normalization_forward::primitive_desc(
       cpu_engine, prop_kind::forward_inference, src_md, dst_md, epsilon,

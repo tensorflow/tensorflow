@@ -24,6 +24,7 @@ limitations under the License.
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/DialectRegistry.h"  // from @llvm-project
@@ -47,6 +48,8 @@ limitations under the License.
 namespace mlir {
 namespace quant {
 namespace {
+
+using ::tensorflow::quantization::OpSet;
 
 class PrepareLiftingPass
     : public PassWrapper<PrepareLiftingPass, OperationPass<func::FuncOp>> {
@@ -95,8 +98,8 @@ class PrepareLiftingPass
 // indices in `val2`.
 bool HasEqualElementSize(Value val1, Value val2, ArrayRef<int> val1_indices,
                          ArrayRef<int> val2_indices) {
-  ShapedType val1_shape = val1.getType().cast<ShapedType>();
-  ShapedType val2_shape = val2.getType().cast<ShapedType>();
+  ShapedType val1_shape = mlir::cast<ShapedType>(val1.getType());
+  ShapedType val2_shape = mlir::cast<ShapedType>(val2.getType());
   if (!val1_shape.hasRank() || !val2_shape.hasRank()) return false;
 
   int val1_result = 1;
@@ -118,6 +121,27 @@ bool HasEqualElementSize(Value val1, Value val2, ArrayRef<int> val1_indices,
   }
 
   return val1_result == val2_result;
+}
+
+// Checks if a shape has dim sizes of all ones except the right most dim.
+bool ReshapableTo1DTensor(ShapedType rhs_shape) {
+  for (auto rank = 0; rank < rhs_shape.getRank() - 1; rank++) {
+    if (rhs_shape.getDimSize(rank) != 1) {
+      return false;
+    }
+  }
+  return true;
+}
+
+Value ReshapeTo1DTensor(OpBuilder& builder, Location loc, Value value) {
+  auto shape = mlir::cast<ShapedType>(value.getType());
+  if (shape.getRank() != 1) {
+    SmallVector<int64_t> new_shape;
+    new_shape.push_back(shape.getNumElements());
+    value = builder.create<TF::ReshapeOp>(
+        loc, value, Create1DConstValue(builder, loc, new_shape));
+  }
+  return ConstantFoldOpIfPossible(value.getDefiningOp()).front();
 }
 
 // Matches convolution op with "NHWC" data format or matmul op with false adj_y.
@@ -158,7 +182,7 @@ LogicalResult MatchSupportedAffineOp(Operation* op, Value& binding_output,
 // Makes the 1D value broadcastable with the `rhs_shape`.
 Value MakeOneDimValueBroadcastable(OpBuilder& builder, Location loc,
                                    Value value, ShapedType rhs_shape) {
-  ShapedType value_shape = value.getType().dyn_cast_or_null<ShapedType>();
+  ShapedType value_shape = mlir::dyn_cast_or_null<ShapedType>(value.getType());
   if (!value_shape || value_shape.getRank() != 1 ||
       !value_shape.hasStaticShape() || !rhs_shape.hasStaticShape()) {
     return {};
@@ -187,7 +211,8 @@ bool CanBeSymmetricallyQuantized(Value weight) {
   auto dq_op = weight.getDefiningOp<quantfork::DequantizeCastOp>();
   if (!dq_op) return true;
 
-  auto qtype = dq_op.getArg().getType().cast<TensorType>().getElementType();
+  auto qtype =
+      mlir::cast<TensorType>(dq_op.getArg().getType()).getElementType();
   if (auto uniform_type = llvm::dyn_cast_or_null<UniformQuantizedType>(qtype)) {
     return uniform_type.getZeroPoint() == 0;
   } else if (auto per_axis_type =
@@ -228,12 +253,12 @@ Value MultiplyFakeQuantValue(OpBuilder& builder, Location loc, Value value,
 
   Value float_value = q_op.getArg();
   Value new_value = builder.create<TF::MulOp>(loc, float_value, multiplier);
-  auto new_value_type = new_value.getType().cast<TensorType>();
+  auto new_value_type = mlir::cast<TensorType>(new_value.getType());
 
   // Get multiplier value in double.
   DenseFPElementsAttr multiplier_attr;
   if (!matchPattern(multiplier, m_Constant(&multiplier_attr)) ||
-      multiplier_attr.getType().cast<ShapedType>().getRank() > 1) {
+      mlir::cast<ShapedType>(multiplier_attr.getType()).getRank() > 1) {
     return {};
   }
   std::vector<double> multiplier_values;
@@ -244,7 +269,7 @@ Value MultiplyFakeQuantValue(OpBuilder& builder, Location loc, Value value,
 
   // Multiply the quantization parameters by the multiplier.
   QuantizedType new_qtype;
-  auto element_type = q_op.getType().cast<TensorType>().getElementType();
+  auto element_type = mlir::cast<TensorType>(q_op.getType()).getElementType();
   if (auto uniform_type = llvm::dyn_cast<UniformQuantizedType>(element_type)) {
     if (multiplier_attr.isSplat()) {
       double new_scale = multiplier_array.front() * uniform_type.getScale();

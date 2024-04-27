@@ -15,11 +15,12 @@ limitations under the License.
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/lite/quantization/ir/FakeQuantSupport.h"
 #include "tensorflow/compiler/mlir/lite/quantization/ir/Passes.h"
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
-#include "tensorflow/compiler/mlir/lite/quantization/ir/UniformSupport.h"
+#include "tensorflow/compiler/mlir/quantization/common/ir/FakeQuantSupport.h"
+#include "tensorflow/compiler/mlir/quantization/common/ir/UniformSupport.h"
 
 using namespace mlir;
 using namespace mlir::quantfork;
@@ -121,9 +122,9 @@ class ConstFakeQuantPerAxisRewrite
     min.reserve(fqOp.getMin().size());
     max.reserve(fqOp.getMax().size());
     for (auto m : fqOp.getMin())
-      min.push_back(m.cast<FloatAttr>().getValueAsDouble());
+      min.push_back(mlir::cast<FloatAttr>(m).getValueAsDouble());
     for (auto m : fqOp.getMax())
-      max.push_back(m.cast<FloatAttr>().getValueAsDouble());
+      max.push_back(mlir::cast<FloatAttr>(m).getValueAsDouble());
 
     return fakeQuantAttrsToType(fqOp.getLoc(), fqOp.getNumBits(),
                                 fqOp.getAxis(), min, max, fqOp.getNarrowRange(),

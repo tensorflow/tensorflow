@@ -17,6 +17,8 @@ limitations under the License.
 #include <string>
 
 #include "tensorflow/c/ops.h"
+#include "tensorflow/c/tf_datatype.h"
+#include "tensorflow/c/tf_status.h"
 #include "tensorflow/core/framework/registration/registration.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"

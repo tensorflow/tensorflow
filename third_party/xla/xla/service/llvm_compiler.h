@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -70,7 +70,7 @@ class LLVMCompiler : public Compiler {
   using Compiler::RunBackend;
   using Compiler::RunHloPasses;
 
-  StatusOr<std::vector<std::unique_ptr<Executable>>> Compile(
+  absl::StatusOr<std::vector<std::unique_ptr<Executable>>> Compile(
       std::unique_ptr<HloModuleGroup> module_group,
       std::vector<std::vector<se::StreamExecutor*>> stream_execs,
       const CompileOptions& options) override;

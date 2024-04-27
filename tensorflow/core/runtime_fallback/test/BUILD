@@ -190,9 +190,9 @@ cc_library(
 #         ":coreruntime_driver",
 #         "@com_google_googletest//:gtest",
 #         "//tensorflow/core/platform:test_benchmark",
+#         "//tensorflow/core/platform/default/build_config:test_main",
 #         "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_op_handler",
 #         "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_tensor",
-#         "@local_tsl//tsl/platform/default/build_config:test_main",
 #         "@tf_runtime//:core_runtime_alwayslink",
 #         "@tf_runtime//:hostcontext",
 #         "@tf_runtime//:tensor",
@@ -215,9 +215,9 @@ cc_library(
 #     deps = [
 #         "@com_google_googletest//:gtest",
 #         "//tensorflow/core/framework:tensor_testutil",
+#         "//tensorflow/core/platform/default/build_config:test_main",
 #         "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_compat_request_state",
 #         "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_op_handler",
-#         "@local_tsl//tsl/platform/default/build_config:test_main",
 #         "@tf_runtime//:core_runtime_alwayslink",
 #     ],
 # )

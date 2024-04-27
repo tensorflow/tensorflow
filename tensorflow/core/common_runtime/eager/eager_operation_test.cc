@@ -42,7 +42,7 @@ TEST(EagerOperationTest, DeviceName) {
   TF_ASSERT_OK(op->SetDeviceName("/job:localhost"));
   EXPECT_EQ("/job:localhost", op->DeviceName());
 
-  EXPECT_NE(OkStatus(), op->SetDeviceName("/not/a/valid/name"));
+  EXPECT_NE(absl::OkStatus(), op->SetDeviceName("/not/a/valid/name"));
 
   delete op;
   ctx->Unref();

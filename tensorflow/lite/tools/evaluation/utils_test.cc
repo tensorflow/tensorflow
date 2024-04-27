@@ -44,20 +44,27 @@ TEST(UtilsTest, StripTrailingSlashesTest) {
 
 TEST(UtilsTest, ReadFileErrors) {
   std::string correct_path(kLabelsPath);
+  std::string empty_path(kEmptyFilePath);
   std::string wrong_path("xyz.txt");
   std::vector<std::string> lines;
   EXPECT_FALSE(ReadFileLines(correct_path, nullptr));
+  EXPECT_FALSE(ReadFileLines(empty_path, nullptr));
   EXPECT_FALSE(ReadFileLines(wrong_path, &lines));
 }
 
 TEST(UtilsTest, ReadFileCorrectly) {
   std::string file_path(kLabelsPath);
+  std::string empty_path(kEmptyFilePath);
   std::vector<std::string> lines;
-  EXPECT_TRUE(ReadFileLines(file_path, &lines));
+  std::vector<std::string> empty_lines;
 
+  EXPECT_TRUE(ReadFileLines(file_path, &lines));
   EXPECT_EQ(lines.size(), 2);
   EXPECT_EQ(lines[0], "label1");
   EXPECT_EQ(lines[1], "label2");
+
+  EXPECT_TRUE(ReadFileLines(empty_path, &empty_lines));
+  EXPECT_EQ(empty_lines.size(), 0);
 }
 
 TEST(UtilsTest, SortedFilenamesTest) {

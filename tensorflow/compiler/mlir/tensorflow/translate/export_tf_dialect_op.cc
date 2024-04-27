@@ -25,6 +25,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/Interfaces/DerivedAttributeOpInterface.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/export_utils.h"
@@ -119,7 +120,7 @@ Status GetUnregisteredAttrs(
 
 // Collects all attribute names to ignore in an MLIR operation when exporting to
 // a TensorFlow NodeDef.
-StatusOr<absl::flat_hash_set<absl::string_view>> GetAttributesToIgnore(
+absl::StatusOr<absl::flat_hash_set<absl::string_view>> GetAttributesToIgnore(
     mlir::Operation* inst, mlir::DictionaryAttr derived_attrs,
     const tensorflow::OpRegistrationData* op_reg_data,
     bool ignore_unregistered_attrs) {
@@ -183,7 +184,7 @@ Status PopulateDerivedAttributes(mlir::Operation* inst, llvm::StringRef name,
     auto values = inst->getResults();
     auto begin = values.begin();
     auto end = values.begin();
-    while (end != values.end() && (*end).getType().isa<mlir::ShapedType>())
+    while (end != values.end() && mlir::isa<mlir::ShapedType>((*end).getType()))
       end++;
     if (begin != end) {
       mlir::TF::ResultShapeRange output_shapes = {
@@ -256,7 +257,7 @@ Status GetAttrValuesFromOperation(
   return OkStatus();
 }
 
-StatusOr<std::unique_ptr<NodeDef>> ConvertTFDialectOpToNodeDef(
+absl::StatusOr<std::unique_ptr<NodeDef>> ConvertTFDialectOpToNodeDef(
     mlir::Operation* inst, llvm::StringRef name,
     bool ignore_unregistered_attrs) {
   TF_ASSIGN_OR_RETURN(auto node_def, GetOperationNodeDef(inst, name));

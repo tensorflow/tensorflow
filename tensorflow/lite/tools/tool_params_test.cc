@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/lite/tools/tool_params.h"
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
 namespace tflite {

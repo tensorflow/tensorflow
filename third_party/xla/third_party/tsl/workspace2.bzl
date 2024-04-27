@@ -6,7 +6,6 @@ load("@bazel_skylib//lib:versions.bzl", "versions")
 # Import external repository rules.
 load("@bazel_tools//tools/build_defs/repo:java.bzl", "java_import_external")
 load("@io_bazel_rules_closure//closure:defs.bzl", "filegroup_external")
-load("@tf_runtime//:dependencies.bzl", "tfrt_dependencies")
 load("//third_party:repo.bzl", "tf_http_archive", "tf_mirror_urls")
 
 # Import third party repository rules. See go/tfbr-thirdparty.
@@ -20,9 +19,9 @@ load("//third_party/gemmlowp:workspace.bzl", gemmlowp = "repo")
 load("//third_party/git:git_configure.bzl", "git_configure")
 load("//third_party/gpus:cuda_configure.bzl", "cuda_configure")
 load("//third_party/gpus:rocm_configure.bzl", "rocm_configure")
+load("//third_party/gpus:sycl_configure.bzl", "sycl_configure")
 load("//third_party/hwloc:workspace.bzl", hwloc = "repo")
 load("//third_party/implib_so:workspace.bzl", implib_so = "repo")
-load("//third_party/jpeg:workspace.bzl", jpeg = "repo")
 load("//third_party/llvm:setup.bzl", "llvm_setup")
 load("//third_party/nasm:workspace.bzl", nasm = "repo")
 load("//third_party/nccl:nccl_configure.bzl", "nccl_configure")
@@ -51,7 +50,6 @@ def _initialize_third_party():
     gemmlowp()
     hwloc()
     implib_so()
-    jpeg()
     ml_dtypes()
     nasm()
     pybind11_abseil()
@@ -78,6 +76,7 @@ def _tf_toolchains():
     syslibs_configure(name = "local_config_syslibs")
     python_configure(name = "local_config_python")
     rocm_configure(name = "local_config_rocm")
+    sycl_configure(name = "local_config_sycl")
     remote_execution_configure(name = "local_config_remote_execution")
 
     # For windows bazel build
@@ -134,13 +133,6 @@ def _tf_repositories():
         sha256 = "b96413b10dd8edaa4f6c0a60c6cf5ef55eebeef78164d5d69294c8173457f0ec",
         strip_prefix = "pthreadpool-b8374f80e42010941bda6c85b0e3f1a1bd77a1e0",
         urls = tf_mirror_urls("https://github.com/Maratyszcza/pthreadpool/archive/b8374f80e42010941bda6c85b0e3f1a1bd77a1e0.zip"),
-    )
-
-    tf_http_archive(
-        name = "clog",
-        strip_prefix = "cpuinfo-5e63739504f0f8e18e941bd63b2d6d42536c7d90",
-        sha256 = "18eca9bc8d9c4ce5496d0d2be9f456d55cbbb5f0639a551ce9c8bac2e84d85fe",
-        urls = tf_mirror_urls("https://github.com/pytorch/cpuinfo/archive/5e63739504f0f8e18e941bd63b2d6d42536c7d90.tar.gz"),
     )
 
     tf_http_archive(
@@ -248,26 +240,6 @@ def _tf_repositories():
         sha256 = "5e9ebe17eaa2895eb7f77fefbf52deeda7c4b63f5a616916b823eb74f3a0c542",
         strip_prefix = "tensorflow-gcp-tools-2643d8caeba6ca2a6a0b46bb123953cb95b7e7d5",
         urls = tf_mirror_urls("https://github.com/GoogleCloudPlatform/tensorflow-gcp-tools/archive/2643d8caeba6ca2a6a0b46bb123953cb95b7e7d5.tar.gz"),
-    )
-
-    tf_http_archive(
-        name = "png",
-        build_file = "//third_party:png.BUILD",
-        patch_file = ["//third_party:png_fix_rpi.patch"],
-        sha256 = "a00e9d2f2f664186e4202db9299397f851aea71b36a35e74910b8820e380d441",
-        strip_prefix = "libpng-1.6.39",
-        system_build_file = "//third_party/systemlibs:png.BUILD",
-        urls = tf_mirror_urls("https://github.com/glennrp/libpng/archive/v1.6.39.tar.gz"),
-    )
-
-    tf_http_archive(
-        name = "gif",
-        build_file = "//third_party:gif.BUILD",
-        patch_file = ["//third_party:gif_fix_strtok_r.patch"],
-        sha256 = "31da5562f44c5f15d63340a09a4fd62b48c45620cd302f77a6d9acf0077879bd",
-        strip_prefix = "giflib-5.2.1",
-        system_build_file = "//third_party/systemlibs:gif.BUILD",
-        urls = tf_mirror_urls("https://pilotfiber.dl.sourceforge.net/project/giflib/giflib-5.2.1.tar.gz"),
     )
 
     tf_http_archive(
@@ -403,7 +375,6 @@ def _tf_repositories():
         urls = tf_mirror_urls("https://github.com/open-source-parsers/jsoncpp/archive/1.9.5.tar.gz"),
     )
 
-    # Note: if you update this, you have to update libpng too. See cl/437813808
     tf_http_archive(
         name = "zlib",
         build_file = "//third_party:zlib.BUILD",
@@ -426,9 +397,18 @@ def _tf_repositories():
         name = "nccl_archive",
         build_file = "//third_party:nccl/archive.BUILD",
         patch_file = ["//third_party/nccl:archive.patch"],
-        sha256 = "16ac98f3e926c024ce48e10ab220e19ce734adc48c423cfd55ad6f509bd1179f",
-        strip_prefix = "nccl-2.18.5-1",
-        urls = tf_mirror_urls("https://github.com/nvidia/nccl/archive/v2.18.5-1.tar.gz"),
+        sha256 = "1c5474553afedb88e878c772f13d6f90b9226b3f2971dfa6f873adb9443100c2",
+        strip_prefix = "nccl-2.19.3-1",
+        urls = tf_mirror_urls("https://github.com/nvidia/nccl/archive/v2.19.3-1.tar.gz"),
+    )
+
+    # Note that we are currently taking NVTX headers from a NCCL release to get nvToolsExtPayload.h
+    tf_http_archive(
+        name = "nvtx_archive",
+        build_file = "//third_party:nvtx/BUILD",
+        sha256 = "1c5474553afedb88e878c772f13d6f90b9226b3f2971dfa6f873adb9443100c2",
+        strip_prefix = "nccl-2.19.3-1/src/include/nvtx3",
+        urls = tf_mirror_urls("https://github.com/nvidia/nccl/archive/v2.19.3-1.tar.gz"),
     )
 
     java_import_external(
@@ -634,8 +614,6 @@ def workspace():
     # don't already exist (at least if the external repository macros were
     # written according to common practice to query native.existing_rule()).
     _tf_repositories()
-
-    tfrt_dependencies()
 
 # Alias so it can be loaded without assigning to a different symbol to prevent
 # shadowing previous loads and trigger a buildifier warning.

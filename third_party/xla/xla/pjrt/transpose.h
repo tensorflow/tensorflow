@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -26,6 +26,7 @@ limitations under the License.
 #ifndef XLA_PJRT_TRANSPOSE_H_
 #define XLA_PJRT_TRANSPOSE_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -34,6 +35,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/types/span.h"
 #include "absl/types/variant.h"
 #include "xla/pjrt/lru_cache.h"
 #include "xla/statusor.h"
@@ -86,13 +88,18 @@ class TransposePlan {
     kF64ToEf57 = 1,
   };
 
+  struct Options {
+    size_t elem_size_in_bytes;
+    absl::Span<int64_t const> dims;
+    absl::Span<int64_t const> permutation;
+    std::variant<Tiling, Striding> input_layout = Tiling{};
+    Tiling output_tiling;
+    Transformation transformation = Transformation::kNone;
+    int num_threads = 1;
+  };
+
   static StatusOr<std::unique_ptr<TransposePlan>> Create(
-      size_t elem_size_in_bytes, absl::Span<int64_t const> dims,
-      absl::Span<int64_t const> permutation,
-      std::variant<Tiling, Striding> input_layout = Tiling{},
-      Tiling output_tiling = Tiling{},
-      Transformation transformation = Transformation::kNone,
-      int num_threads = 1);
+      const Options& options);
 
   TransposePlan();
   ~TransposePlan();
@@ -276,14 +283,7 @@ class TransposePlanCache {
 
   // Creates or returns a cached copy of a transpose plan.
   StatusOr<std::shared_ptr<TransposePlan>> GetOrCreate(
-      size_t elem_size_in_bytes, absl::Span<int64_t const> dims,
-      absl::Span<int64_t const> permutation,
-      std::variant<TransposePlan::Tiling, TransposePlan::Striding>
-          input_layout = TransposePlan::Tiling{},
-      TransposePlan::Tiling output_tiling = TransposePlan::Tiling{},
-      TransposePlan::Transformation transformation =
-          TransposePlan::Transformation::kNone,
-      int num_threads = 1);
+      const TransposePlan::Options& options);
 
  private:
   LRUCache<TransposePlanCacheKey,

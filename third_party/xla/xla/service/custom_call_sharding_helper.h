@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -47,6 +47,10 @@ class CustomCallShardingHelper {
       HloInstruction* instruction) const {
     return {};
   }
+  // Returns if the given custom-call instruction can propagate sharding to its
+  // operands.
+  virtual bool CanPropagateShardingToOperands(
+      const HloInstruction* instruction) const;
   virtual ~CustomCallShardingHelper() = default;
 };
 
@@ -58,8 +62,8 @@ class SpmdPartitioningVisitor;
 // policies.
 class CustomCallPartitioner : public CustomCallShardingHelper {
  public:
-  virtual xla::Status Partition(spmd::SpmdPartitioningVisitor* partitioner,
-                                HloInstruction* hlo) const;
+  virtual absl::Status Partition(spmd::SpmdPartitioningVisitor* partitioner,
+                                 HloInstruction* hlo) const;
 
   // Returns if the given side-effecting custom-call is allowed to have
   // replicated sharding.

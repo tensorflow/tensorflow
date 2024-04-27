@@ -730,6 +730,13 @@ def _GatherV2Grad(op: ops.Operation, grad):
     ], 0)
     params_grad = array_ops.transpose(params_grad, invert_transpose_dims)
 
+  if not isinstance(params_grad, indexed_slices_lib.IndexedSlices):
+    # Prevents mismatches in shapes when some tensor dimensions are zero.
+    params_grad = array_ops.reshape(
+        params_grad,
+        array_ops.shape(params)
+    )
+
   return [params_grad, None, None]
 
 
@@ -1005,6 +1012,11 @@ def _MirrorPadGrad(op: ops.Operation, grad):
 def _MirrorPadGradGrad(op: ops.Operation, grad):
   mode = op.get_attr("mode")
   return [gen_array_ops.mirror_pad(grad, op.inputs[1], mode=mode), None]
+
+
+ops.NotDifferentiable("FakeQuantWithMinMaxArgsGradient")
+ops.NotDifferentiable("FakeQuantWithMinMaxVarsGradient")
+ops.NotDifferentiable("FakeQuantWithMinMaxVarsPerChannelGradient")
 
 
 @ops.RegisterGradient("QuantizeAndDequantize")

@@ -27,16 +27,16 @@ namespace tsl {
 ///
 /// See https://en.wikipedia.org/wiki/Base64
 template <typename T>
-Status Base64Encode(StringPiece source, bool with_padding, T* encoded);
+absl::Status Base64Encode(StringPiece source, bool with_padding, T* encoded);
 template <typename T>
-Status Base64Encode(StringPiece source,
-                    T* encoded);  // with_padding=false.
+absl::Status Base64Encode(StringPiece source,
+                          T* encoded);  // with_padding=false.
 
 /// \brief Converts data from web-safe base64 encoding.
 ///
 /// See https://en.wikipedia.org/wiki/Base64
 template <typename T>
-Status Base64Decode(StringPiece data, T* decoded);
+absl::Status Base64Decode(StringPiece data, T* decoded);
 
 // Explicit instantiations defined in base64.cc.
 extern template Status Base64Decode<std::string>(StringPiece data,

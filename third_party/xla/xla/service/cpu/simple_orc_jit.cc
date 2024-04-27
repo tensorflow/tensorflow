@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -22,9 +22,13 @@ limitations under the License.
 #include <cstdio>
 #include <list>
 #include <memory>
+#include <string>
 #include <system_error>  // NOLINT
 #include <utility>
+#include <vector>
 
+#include "absl/functional/any_invocable.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ExecutionEngine/ExecutionEngine.h"
 #include "llvm/ExecutionEngine/JITSymbol.h"
 #include "llvm/ExecutionEngine/Orc/ExecutorProcessControl.h"
@@ -35,6 +39,7 @@ limitations under the License.
 #include "llvm/Support/Alignment.h"
 #include "llvm/Support/CodeGen.h"
 #include "llvm/Support/Memory.h"
+#include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Process.h"
 #include "llvm/TargetParser/Host.h"
 #include "mlir/ExecutionEngine/CRunnerUtils.h"  // from @llvm-project
@@ -77,10 +82,9 @@ extern "C" uint16_t __truncdfbf2(double);
 
 namespace xla {
 namespace cpu {
-namespace {
 
-llvm::SmallVector<std::string, 0> DetectMachineAttributes() {
-  llvm::SmallVector<std::string, 0> result;
+std::vector<std::string> DetectMachineAttributes() {
+  std::vector<std::string> result;
   llvm::StringMap<bool> host_features;
   if (llvm::sys::getHostCPUFeatures(host_features)) {
     for (auto& feature : host_features) {
@@ -90,6 +94,8 @@ llvm::SmallVector<std::string, 0> DetectMachineAttributes() {
   }
   return result;
 }
+
+namespace {
 
 class DefaultMemoryMapper final
     : public llvm::SectionMemoryManager::MemoryMapper {
@@ -291,6 +297,8 @@ bool ContiguousSectionMemoryManager::finalizeMemory(std::string* err_msg) {
 SimpleOrcJIT::InferTargetMachineForJIT(
     const llvm::TargetOptions& target_options,
     llvm::CodeGenOptLevel opt_level) {
+  std::vector<std::string> attrs = DetectMachineAttributes();
+  llvm::SmallVector<std::string, 0> llvm_attrs(attrs.begin(), attrs.end());
   std::unique_ptr<llvm::TargetMachine> target_machine(
       llvm::EngineBuilder()
           .setTargetOptions(target_options)
@@ -298,7 +306,7 @@ SimpleOrcJIT::InferTargetMachineForJIT(
           .selectTarget(
               /*TargetTriple=*/llvm::Triple(), /*MArch=*/"",
               /*MCPU=*/llvm::sys::getHostCPUName(),
-              /*MAttrs=*/DetectMachineAttributes()));
+              /*MAttrs=*/llvm_attrs));
   CHECK(target_machine != nullptr);
   return target_machine;
 }
@@ -311,7 +319,7 @@ SimpleOrcJIT::SimpleOrcJIT(
     bool disable_slp_vectorizer, llvm::FastMathFlags fast_math_flags,
     LLVMCompiler::ModuleHook pre_optimization_hook,
     LLVMCompiler::ModuleHook post_optimization_hook,
-    std::function<void(const llvm::object::ObjectFile&)> post_codegen_hook)
+    absl::AnyInvocable<void(const llvm::object::ObjectFile&)> post_codegen_hook)
     : target_machine_(InferTargetMachineForJIT(target_options, opt_level)),
       target_triple_(target_machine_->getTargetTriple()),
       data_layout_(target_machine_->createDataLayout()),
@@ -388,7 +396,8 @@ llvm::Expected<std::unique_ptr<SimpleOrcJIT>> SimpleOrcJIT::Create(
     bool disable_slp_vectorizer, llvm::FastMathFlags fast_math_flags,
     LLVMCompiler::ModuleHook pre_optimization_hook,
     LLVMCompiler::ModuleHook post_optimization_hook,
-    std::function<void(const llvm::object::ObjectFile&)> post_codegen_hook) {
+    absl::AnyInvocable<void(const llvm::object::ObjectFile&)>
+        post_codegen_hook) {
   auto SSP = std::make_shared<llvm::orc::SymbolStringPool>();
   auto target_process_control =
       llvm::orc::SelfExecutorProcessControl::Create(std::move(SSP));
@@ -441,6 +450,11 @@ void SimpleOrcJIT::notifyObjectLoaded(
 
 void SimpleOrcJIT::notifyFreeingObject(llvm::JITEventListener::ObjectKey key) {
   gdb_jit_event_listener_->notifyFreeingObject(key);
+}
+
+llvm::Error SimpleOrcJIT::AddObjFile(
+    std::unique_ptr<llvm::MemoryBuffer> obj_file) {
+  return object_layer_.add(*main_jit_dylib_, std::move(obj_file));
 }
 
 llvm::Error SimpleOrcJIT::AddModule(llvm::orc::ThreadSafeModule module) {
@@ -531,6 +545,7 @@ bool RegisterKnownJITSymbols() {
   REGISTER_CPU_RUNTIME_SYMBOL(OneDnnMatMul);
   REGISTER_CPU_RUNTIME_SYMBOL(OneDnnSoftmax);
   REGISTER_CPU_RUNTIME_SYMBOL(OneDnnLayerNorm);
+  REGISTER_CPU_RUNTIME_SYMBOL(OneDnnMatMulReorder);
 #endif  // INTEL_MKL && ENABLE_ONEDNN_V3
 
   registry->Register("__gnu_f2h_ieee", reinterpret_cast<void*>(__gnu_f2h_ieee),

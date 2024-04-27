@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,21 +16,31 @@ limitations under the License.
 #include "xla/service/gpu/all_reduce_blueconnect.h"
 
 #include <algorithm>
+#include <cstddef>
+#include <cstdint>
 #include <iterator>
 #include <optional>
+#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/btree_map.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_query.h"
+#include "xla/service/computation_placer.h"
 #include "xla/service/hlo_creation_utils.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/logging.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -56,7 +66,7 @@ struct DecomposedReplicaGroups {
   std::vector<ReplicaGroup> new_all_reduce_groups;
 };
 
-StatusOr<std::optional<DecomposedReplicaGroups>> TryDecomposeReplicaGroup(
+absl::StatusOr<std::optional<DecomposedReplicaGroups>> TryDecomposeReplicaGroup(
     const ReplicaGroup& replica_group,
     const DeviceAssignment& device_assignment, size_t num_devices_per_host) {
   int group_size = replica_group.replica_ids_size();
@@ -107,8 +117,9 @@ StatusOr<std::optional<DecomposedReplicaGroups>> TryDecomposeReplicaGroup(
                                   std::move(new_all_reduce_groups)}};
 }
 
-StatusOr<std::optional<DecomposedReplicaGroups>> TryDecomposeReplicaGroups(
-    const HloAllReduceInstruction& all_reduce, size_t num_devices_per_host) {
+absl::StatusOr<std::optional<DecomposedReplicaGroups>>
+TryDecomposeReplicaGroups(const HloAllReduceInstruction& all_reduce,
+                          size_t num_devices_per_host) {
   const DeviceAssignment& device_assignment =
       all_reduce.GetModule()->config().static_device_assignment();
 
@@ -183,8 +194,8 @@ StatusOr<std::optional<DecomposedReplicaGroups>> TryDecomposeReplicaGroups(
 //
 // When applied repeatedly, this transformation will reproduce the same pattern
 // as described in the BlueConnect paper.
-StatusOr<bool> TryDecomposeAllReduce(HloAllReduceInstruction* all_reduce,
-                                     size_t num_devices_per_host) {
+absl::StatusOr<bool> TryDecomposeAllReduce(HloAllReduceInstruction* all_reduce,
+                                           size_t num_devices_per_host) {
   TF_RET_CHECK(all_reduce);
   TF_RET_CHECK(!all_reduce->has_sharding());
 
@@ -225,14 +236,16 @@ StatusOr<bool> TryDecomposeAllReduce(HloAllReduceInstruction* all_reduce,
   HloInstruction* reduce_scatter =
       computation.AddInstruction(HloInstruction::CreateReduceScatter(
           reduce_scatter_shape, flat_operands, all_reduce->to_apply(),
-          decomposed_groups->scatter_gather_groups, /*constrain_layout=*/false,
-          all_reduce->channel_id(), all_reduce->use_global_device_ids(),
+          CollectiveDeviceList(decomposed_groups->scatter_gather_groups),
+          /*constrain_layout=*/false, all_reduce->channel_id(),
+          all_reduce->use_global_device_ids(),
           /*scatter_dimension=*/0));
 
   HloInstruction* new_all_reduce =
       computation.AddInstruction(HloInstruction::CreateAllReduce(
           reduce_scatter_shape, GetOutputs(*reduce_scatter),
-          all_reduce->to_apply(), decomposed_groups->new_all_reduce_groups,
+          all_reduce->to_apply(),
+          CollectiveDeviceList(decomposed_groups->new_all_reduce_groups),
           /*constrain_layout=*/false, all_reduce->channel_id(),
           all_reduce->use_global_device_ids()));
 
@@ -240,7 +253,8 @@ StatusOr<bool> TryDecomposeAllReduce(HloAllReduceInstruction* all_reduce,
       computation.AddInstruction(HloInstruction::CreateAllGather(
           ShapeUtil::MakeMaybeTupleShape(flat_shapes),
           GetOutputs(*new_all_reduce),
-          /*all_gather_dimension=*/0, decomposed_groups->scatter_gather_groups,
+          /*all_gather_dimension=*/0,
+          CollectiveDeviceList(decomposed_groups->scatter_gather_groups),
           /*constrain_layout=*/false, all_reduce->channel_id(),
           all_reduce->use_global_device_ids()));
 
@@ -251,9 +265,13 @@ StatusOr<bool> TryDecomposeAllReduce(HloAllReduceInstruction* all_reduce,
     outputs[i] = computation.AddInstruction(HloInstruction::CreateBitcast(
         all_reduce->operand(i)->shape(), outputs[i]));
   }
+  HloInstruction* replacement = MaybeMakeTuple(outputs);
 
   TF_RETURN_IF_ERROR(
-      computation.ReplaceInstruction(all_reduce, MaybeMakeTuple(outputs)));
+      all_reduce->CopyAllControlDepsTo(reduce_scatter, replacement));
+
+  TF_RETURN_IF_ERROR(all_reduce->DropAllControlDeps());
+  TF_RETURN_IF_ERROR(computation.ReplaceInstruction(all_reduce, replacement));
 
   // Try to apply decomposition recursively.
   TF_RETURN_IF_ERROR(
@@ -265,7 +283,7 @@ StatusOr<bool> TryDecomposeAllReduce(HloAllReduceInstruction* all_reduce,
 
 }  // namespace
 
-StatusOr<bool> AllReduceBlueConnect::Run(
+absl::StatusOr<bool> AllReduceBlueConnect::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   VLOG(1) << "Running AllReduceBlueConnect";

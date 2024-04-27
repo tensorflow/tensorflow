@@ -63,7 +63,7 @@ class SaveDatasetV2Params : public DatasetParams {
     input_names->clear();
     input_names->emplace_back(SaveDatasetV2Op::kInputDataset);
     input_names->emplace_back(SaveDatasetV2Op::kPath);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status GetAttributes(AttributeVector* attr_vector) const override {
@@ -75,7 +75,7 @@ class SaveDatasetV2Params : public DatasetParams {
                               type_arguments_);
     attr_vector->emplace_back(SaveDatasetV2Op::kOutputTypes, output_dtypes_);
     attr_vector->emplace_back(SaveDatasetV2Op::kOutputShapes, output_shapes_);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   string path() const { return path_; }
@@ -101,7 +101,7 @@ class SaveDatasetV2OpTest : public DatasetOpsTestBase {
     TF_RETURN_IF_ERROR(DatasetOpsTestBase::Initialize(dataset_params));
     auto params = static_cast<const SaveDatasetV2Params&>(dataset_params);
     save_filename_ = params.path();
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  protected:

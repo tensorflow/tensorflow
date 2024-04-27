@@ -149,7 +149,7 @@ LogicalResult EvaluateOperation(tensorflow::DeviceBase *cpu_device,
       continue;
     }
 
-    tensorflow::StatusOr<ElementsAttr> attr_or =
+    absl::StatusOr<ElementsAttr> attr_or =
         ConvertTensor(*(op_context.mutable_output(i)), builder);
     if (!attr_or.status().ok()) {
       VLOG(3) << attr_or.status().message();

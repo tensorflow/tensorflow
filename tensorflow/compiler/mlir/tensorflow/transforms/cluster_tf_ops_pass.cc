@@ -33,6 +33,7 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/IRMapping.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/core/util/device_name_utils.h"
@@ -124,7 +125,7 @@ std::optional<llvm::StringMap<FunctionMetadata>> GetFunctionMetadatas(
 
       // If the value is defined as an argument of the func_op, adds it to
       // the argument list of the function that uses this op.
-      if (BlockArgument block_arg = value.dyn_cast<BlockArgument>()) {
+      if (BlockArgument block_arg = mlir::dyn_cast<BlockArgument>(value)) {
         if (StringAttr attr = func_op.getArgAttrOfType<StringAttr>(
                 block_arg.getArgNumber(), kTFDeviceAttr)) {
           value_device = attr.getValue().str();

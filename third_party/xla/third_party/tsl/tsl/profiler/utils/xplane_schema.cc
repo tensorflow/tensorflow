@@ -47,8 +47,8 @@ const absl::string_view kHostCpusPlaneName = "Host CPUs";
 const absl::string_view kSyscallsPlaneName = "Syscalls";
 
 const absl::string_view kStepLineName = "Steps";
-const absl::string_view kTensorFlowNameScopeLineName = "TensorFlow Name Scope";
-const absl::string_view kTensorFlowOpLineName = "TensorFlow Ops";
+const absl::string_view kTensorFlowNameScopeLineName = "Framework Name Scope";
+const absl::string_view kTensorFlowOpLineName = "Framework Ops";
 const absl::string_view kXlaModuleLineName = "XLA Modules";
 const absl::string_view kXlaOpLineName = "XLA Ops";
 const absl::string_view kXlaAsyncOpLineName = "Async XLA Ops";
@@ -58,6 +58,8 @@ const absl::string_view kCounterEventsLineName = "_counters_";
 
 const absl::string_view kDeviceVendorNvidia = "Nvidia";
 const absl::string_view kDeviceVendorAMD = "AMD";
+
+const absl::string_view kTaskEnvPlaneName = "Task Environment";
 
 namespace {
 
@@ -138,6 +140,7 @@ const HostEventTypeMap& GetHostEventTypeMap() {
       // Batching related.
       {"BatchingSessionRun", kBatchingSessionRun},
       {"ProcessBatch", kProcessBatch},
+      {"BrainSessionRun", kBrainSessionRun},
       {"ConcatInputTensors", kConcatInputTensors},
       {"MergeInputTensors", kMergeInputTensors},
       {"ScheduleWithoutSplit", kScheduleWithoutSplit},
@@ -265,6 +268,7 @@ const StatTypeMap& GetStatTypeMap() {
       {"tf_function_call", kTfFunctionCall},
       {"tracing_count", kTfFunctionTracingCount},
       {"flops", kFlops},
+      {"model_flops", kModelFlops},
       {"bytes_accessed", kBytesAccessed},
       {"memory_access_breakdown", kMemoryAccessBreakdown},
       {"source", kSourceInfo},
@@ -329,6 +333,7 @@ const StatTypeMap& GetStatTypeMap() {
       {"dcn_destination_per_slice_device_id", kDcnDestinationPerSliceDeviceId},
       {"dcn_chunk", kDcnChunk},
       {"dcn_loop_index", kDcnLoopIndex},
+      {"dropped_traces", kDroppedTraces},
   });
   DCHECK_EQ(stat_type_map->size(), kNumStatTypes);
   return *stat_type_map;
@@ -394,6 +399,29 @@ const LineIdTypeStrMap& GetLineIdTypeStrMap() {
   return *line_id_type_str_map;
 }
 
+using TaskEnvStatTypeMap =
+    absl::flat_hash_map<absl::string_view, TaskEnvStatType>;
+using TaskEnvStatTypeStrMap =
+    absl::flat_hash_map<TaskEnvStatType, absl::string_view>;
+
+constexpr int kNumTaskEnvStatTypes = TaskEnvStatType::kLastTaskEnvStatType -
+                                     TaskEnvStatType::kFirstTaskEnvStatType + 1;
+
+const TaskEnvStatTypeMap& GetTaskEnvStatTypeMap() {
+  static auto* task_env_stat_type_map = new TaskEnvStatTypeMap({
+      {"profile_start_time", kEnvProfileStartTime},
+      {"profile_stop_time", kEnvProfileStopTime},
+  });
+  DCHECK_EQ(task_env_stat_type_map->size(), kNumTaskEnvStatTypes);
+  return *task_env_stat_type_map;
+}
+
+const TaskEnvStatTypeStrMap& GetTaskEnvStatTypeStrMap() {
+  static auto* task_env_stat_type_str_map = new TaskEnvStatTypeStrMap(
+      gtl::ReverseMap<TaskEnvStatTypeStrMap>(GetTaskEnvStatTypeMap()));
+  return *task_env_stat_type_str_map;
+}
+
 }  // namespace
 
 absl::string_view GetHostEventTypeStr(HostEventType event_type) {
@@ -437,6 +465,17 @@ absl::string_view GetMegaScaleStatTypeStr(MegaScaleStatType stat_type) {
 
 std::optional<int64_t> FindMegaScaleStatType(absl::string_view stat_name) {
   if (auto stat_type = gtl::FindOrNull(GetMegaScaleStatTypeMap(), stat_name)) {
+    return *stat_type;
+  }
+  return std::nullopt;
+}
+
+absl::string_view GetTaskEnvStatTypeStr(TaskEnvStatType stat_type) {
+  return GetTaskEnvStatTypeStrMap().at(stat_type);
+}
+
+std::optional<int64_t> FindTaskEnvStatType(absl::string_view stat_name) {
+  if (auto stat_type = gtl::FindOrNull(GetTaskEnvStatTypeMap(), stat_name)) {
     return *stat_type;
   }
   return std::nullopt;
@@ -497,6 +536,8 @@ const absl::string_view kMegaScaleDcnReceive =
 const absl::string_view kMegaScaleDcnSend =
     "MegaScale: Communication Transport Send";
 const absl::string_view kMegaScaleDcnSendFinished = "MegaScale: Send Finished";
+const absl::string_view kMegaScaleDcnMemAllocate = "MegaScale: Memory Allocate";
+const absl::string_view kMegaScaleDcnMemCopy = "MegaScale: Memory Copy";
 const absl::string_view kMegaScaleTopologyDiscovery =
     "MegaScale: Communication Topology Discovery.";
 const absl::string_view kMegaScaleBarrier = "MegaScale: Barrier.";
@@ -509,10 +550,29 @@ const absl::string_view kMegaScaleH2DTransferStart =
     "MegaScale: Host to Device Action";
 const absl::string_view kMegaScaleH2DTransferFinished =
     "MegaScale: Host to Device Transfer Finished";
+const absl::string_view kMegaScaleReductionStart = "MegaScale: Reduction";
+const absl::string_view kMegaScaleReductionFinished =
+    "MegaScale: Reduction Finished";
+const absl::string_view kMegaScaleCompressionStart = "MegaScale: Compression";
+const absl::string_view kMegaScaleCompressionFinished =
+    "MegaScale: Compression Finished";
+const absl::string_view kMegaScaleDecompressionStart =
+    "MegaScale: Decompression";
+const absl::string_view kMegaScaleDecompressionFinished =
+    "MegaScale: Decompression Finished";
 const char kXProfMetadataKey[] = "key";
 const char kXProfMetadataFlow[] = "flow";
 const char kXProfMetadataTransfers[] = "transfers";
 const char kXProfMetadataBufferSize[] = "buffer_size";
 
+// String constants for threadpool_listener
+const absl::string_view kThreadpoolListenerRecord =
+    "ThreadpoolListener::Record";
+const absl::string_view kThreadpoolListenerStartRegion =
+    "ThreadpoolListener::StartRegion";
+const absl::string_view kThreadpoolListenerStopRegion =
+    "ThreadpoolListener::StopRegion";
+const absl::string_view kThreadpoolListenerRegion =
+    "ThreadpoolListener::Region";
 }  // namespace profiler
 }  // namespace tsl

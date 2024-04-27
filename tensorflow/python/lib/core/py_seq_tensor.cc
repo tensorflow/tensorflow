@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 // Must be included first
 // clang-format off
-#include "tsl/python/lib/core/numpy.h" //NOLINT
+#include "xla/tsl/python/lib/core/numpy.h" //NOLINT
 // clang-format on
 
 #include "tensorflow/python/lib/core/py_seq_tensor.h"
@@ -76,7 +76,7 @@ bool IsPyFloat(PyObject* obj) {
 
 struct ConverterState {
   // The inferred tensor shape.
-  gtl::InlinedVector<int64_t, 4> inferred_shape;
+  absl::InlinedVector<int64_t, 4UL> inferred_shape;
 
   // The inferred tensor data type.
   DataType inferred_dtype;

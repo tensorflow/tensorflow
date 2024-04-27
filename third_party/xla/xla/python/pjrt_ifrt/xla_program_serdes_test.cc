@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -60,11 +60,9 @@ module {
     TF_ASSERT_OK_AND_ASSIGN(serialized, Serialize(*program));
   }
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Serializable> deserialized,
-                          Deserialize(serialized, /*options=*/nullptr));
-
-  auto xla_program = llvm::dyn_cast<XlaProgram>(deserialized.get());
-  ASSERT_THAT(xla_program, Not(IsNull()));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<XlaProgram> xla_program,
+      Deserialize<XlaProgram>(serialized, /*options=*/nullptr));
 
   // Verify that the deserialized program has no StableHLO ops.
   bool has_unsupported_dialect = false;

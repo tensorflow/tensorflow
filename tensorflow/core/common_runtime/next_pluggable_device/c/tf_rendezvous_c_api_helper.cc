@@ -101,9 +101,9 @@ using DoneCallbackParamPtr =
     std::unique_ptr<TF_RendezvousDoneCallback_Params, DoneCallbackParamDeleter>;
 
 SendParamDeleter MakeSendParamDeleter();
-StatusOr<SendParamPtr> SendParamsToC(const RendezvousInterface::ParsedKey& key,
-                                     const RendezvousInterface::Args& args,
-                                     const Tensor& tensor, bool is_dead);
+absl::StatusOr<SendParamPtr> SendParamsToC(
+    const RendezvousInterface::ParsedKey& key,
+    const RendezvousInterface::Args& args, const Tensor& tensor, bool is_dead);
 
 void RendezvousCallbackThunk(void* context,
                              TF_RendezvousDoneCallback_Params* params) {
@@ -168,9 +168,10 @@ SendParamDeleter MakeSendParamDeleter() {
   };
 }
 
-StatusOr<SendParamPtr> SendParamsToC(const RendezvousInterface::ParsedKey& key,
-                                     const RendezvousInterface::Args& args,
-                                     const Tensor& tensor, const bool is_dead) {
+absl::StatusOr<SendParamPtr> SendParamsToC(
+    const RendezvousInterface::ParsedKey& key,
+    const RendezvousInterface::Args& args, const Tensor& tensor,
+    const bool is_dead) {
   TF_RendezvousSend_Params* params = new TF_RendezvousSend_Params();
   params->key = new TF_RendezvousParsedKey(ToC(key));
   params->args = new TF_RendezvousArgsStruct(ToC(args));

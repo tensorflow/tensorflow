@@ -156,7 +156,7 @@ class Counter {
   template <typename... Labels>
   CounterCell* GetCell(const Labels&... labels) TF_LOCKS_EXCLUDED(mu_);
 
-  Status GetStatus() { return status_; }
+  absl::Status GetStatus() { return status_; }
 
  private:
   explicit Counter(
@@ -172,16 +172,17 @@ class Counter {
               }
             })) {
     if (registration_handle_) {
-      status_ = OkStatus();
+      status_ = absl::OkStatus();
     } else {
-      status_ = Status(absl::StatusCode::kAlreadyExists,
+      status_ =
+          absl::Status(absl::StatusCode::kAlreadyExists,
                        "Another metric with the same name already exists.");
     }
   }
 
   mutable mutex mu_;
 
-  Status status_;
+  absl::Status status_;
 
   using LabelArray = std::array<string, NumLabels>;
   std::map<LabelArray, CounterCell> cells_ TF_GUARDED_BY(mu_);

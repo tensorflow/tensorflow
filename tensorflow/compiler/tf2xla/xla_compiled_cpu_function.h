@@ -164,6 +164,8 @@ class XlaCompiledCpuFunction {
 
   XlaCompiledCpuFunction(const XlaCompiledCpuFunction&) = delete;
   XlaCompiledCpuFunction& operator=(const XlaCompiledCpuFunction&) = delete;
+  XlaCompiledCpuFunction(XlaCompiledCpuFunction&&) = default;
+  XlaCompiledCpuFunction& operator=(XlaCompiledCpuFunction&&) = default;
 
   // Sets the intra-op thread pool used to run individual ops concurrently.
   void set_thread_pool(const Eigen::ThreadPoolDevice* pool) {

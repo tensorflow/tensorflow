@@ -31,6 +31,7 @@ limitations under the License.
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/lib/io/compression.h"
 #include "tsl/platform/env.h"
+#include "tsl/platform/path.h"
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
@@ -41,7 +42,6 @@ namespace data {
 namespace {
 
 using testing::CreateDummyDistributedSnapshotMetadata;
-using ::testing::ElementsAre;
 using ::testing::IsEmpty;
 using testing::LocalTempFilename;
 using testing::RangeDataset;
@@ -56,6 +56,7 @@ class TestSnapshotCluster {
     TestCluster::Config config;
     config.num_workers = num_workers;
     config.worker_heartbeat_interval_ms = 100;
+    config.work_dir = tsl::io::JoinPath(tsl::testing::TmpDir(), "work_dir");
     test_cluster_ = std::make_unique<TestCluster>(config);
     TF_CHECK_OK(test_cluster_->Initialize());
     dispatcher_client_ = std::make_unique<DataServiceDispatcherClient>(
@@ -104,16 +105,9 @@ TEST_P(DistributedSnapshotTest, WriteSnapshot) {
   TF_ASSERT_OK(
       data_service.dispatcher().Snapshot(dataset, snapshot_path, metadata));
   TF_ASSERT_OK(WaitForSnapshotComplete(snapshot_path));
-  if (NumWorkers() == 1) {
-    EXPECT_THAT(testing::ReadSnapshot<int64_t>(snapshot_path,
-                                               tsl::io::compression::kNone),
-                IsOkAndHolds(ElementsAre(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)));
-  } else {  // More than 1 workers: The element order is non-deterministic.
-    EXPECT_THAT(
-        testing::ReadSnapshot<int64_t>(snapshot_path,
-                                       tsl::io::compression::kNone),
-        IsOkAndHolds(UnorderedElementsAre(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)));
-  }
+  EXPECT_THAT(testing::ReadSnapshot<int64_t>(snapshot_path,
+                                             tsl::io::compression::kNone),
+              IsOkAndHolds(UnorderedElementsAre(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)));
 }
 
 TEST_P(DistributedSnapshotTest, WriteMultipleSnapshots) {

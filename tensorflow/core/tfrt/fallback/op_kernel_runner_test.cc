@@ -69,10 +69,12 @@ TEST(OpKernelRunnerTest, Create) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto runner,
       OpKernelRunner::Create(
-          /*op_name=*/"TestOp", /*node_name=*/"TestOp_node_name",
+          /*op_name=*/
+          "TestOp", /*node_name=*/"TestOp_node_name",
           /*device_name=*/"/job:localhost/replica:0/task:0/device:CPU:0",
           /*num_args=*/1,
-          /*attr_builder=*/[](tensorflow::AttrValueMap*) { return OkStatus(); },
+          /*attr_builder=*/
+          [](tensorflow::AttrValueMap*) { return absl::OkStatus(); },
           fallback_state->device_manager(),
           fallback_state->process_function_library_runtime()));
 
@@ -98,7 +100,8 @@ TEST(OpKernelRunnerTest, OpKernelRunnerCache) {
           /*op_name=*/"TestOp",
           /*device_name=*/"/job:localhost/replica:0/task:0/device:CPU:0",
           /*num_args=*/1,
-          /*attr_builder=*/[](tensorflow::AttrValueMap*) { return OkStatus(); },
+          /*attr_builder=*/
+          [](tensorflow::AttrValueMap*) { return absl::OkStatus(); },
           fallback_state->device_manager(),
           fallback_state->process_function_library_runtime()));
 
@@ -113,7 +116,8 @@ TEST(OpKernelRunnerTest, OpKernelRunnerCache) {
           /*op_name=*/"TestOp",
           /*device_name=*/"/job:localhost/replica:0/task:0/device:CPU:0",
           /*num_args=*/1,
-          /*attr_builder=*/[](tensorflow::AttrValueMap*) { return OkStatus(); },
+          /*attr_builder=*/
+          [](tensorflow::AttrValueMap*) { return absl::OkStatus(); },
           fallback_state->device_manager(),
           fallback_state->process_function_library_runtime()));
 
@@ -142,11 +146,12 @@ TEST(OpKernelRunnerTest, OpKernelRunState) {
 
   Tensor a(DT_FLOAT, TensorShape({}));
   Tensor b(DT_INT32, TensorShape({}));
-  gtl::InlinedVector<TensorValue, 4> inputs{TensorValue(&a), TensorValue(&b)};
+  absl::InlinedVector<TensorValue, 4UL> inputs{TensorValue(&a),
+                                               TensorValue(&b)};
   params.inputs = inputs;
 
   Tensor c(DT_UINT8, TensorShape({}));
-  gtl::InlinedVector<TensorValue, 4> new_inputs{TensorValue(&c)};
+  absl::InlinedVector<TensorValue, 4UL> new_inputs{TensorValue(&c)};
 
   OpKernelRunState run_state(new_inputs, params);
 

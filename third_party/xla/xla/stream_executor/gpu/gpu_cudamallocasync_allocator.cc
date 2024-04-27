@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/stream_executor/gpu/gpu_cudamallocasync_allocator.h"
 
+#include <atomic>
+#include <cstddef>
 #include <map>
 #include <memory>
 #include <optional>
@@ -28,14 +30,13 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
-#include "xla/stream_executor/device_id_utils.h"
-#include "xla/stream_executor/gpu/gpu_init.h"
-#include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/gpu/gpu_init.h"  // IWYU pragma: keep
+#include "xla/stream_executor/stream_executor.h"  // IWYU pragma: keep
+#include "xla/tsl/util/env_var.h"  // IWYU pragma: keep
 #include "tsl/framework/allocator.h"
 #include "tsl/framework/device_id.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/mutex.h"
-#include "tsl/util/env_var.h"
 
 namespace stream_executor {
 
@@ -102,11 +103,6 @@ void GpuCudaMallocAsyncAllocator::PrintAllocatorStatisticsNoLock() {
 #endif
 }
 
-void GpuCudaMallocAsyncAllocator::PrintAllocatorStatistics() {
-  tsl::mutex_lock lock(lock_);
-  PrintAllocatorStatisticsNoLock();
-}
-
 std::atomic<int> GpuCudaMallocAsyncAllocator::number_instantiated_(0);
 
 GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
@@ -121,8 +117,8 @@ GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
   (void)reserve_memory_;
 
 #if TF_CUDA_MALLOC_ASYNC_SUPPORTED
-  stream_exec_ = DeviceIdUtil::ExecutorForPlatformDeviceId(GPUMachineManager(),
-                                                           platform_device_id)
+  stream_exec_ = GPUMachineManager()
+                     ->ExecutorForDevice(platform_device_id.value())
                      .value();
   // Initialized here as it only exist if compiled with a recent
   // enough CUDA.
@@ -447,8 +443,7 @@ void GpuCudaMallocAsyncAllocator::SetStreamAndPreallocateMemory(void* stream) {
     void* ptr = AllocateRaw(0, prealloc_size);
     DeallocateRaw(ptr);
     VLOG(2) << Name() << " GpuCudaMallocAsyncAllocator reserved the pool for "
-            << prealloc_size << " bytes"
-            << ". First ptr: " << ptr;
+            << prealloc_size << " bytes" << ". First ptr: " << ptr;
     ClearStats();
   }
 #endif

@@ -12,11 +12,12 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
 #include "tsl/platform/retrying_utils.h"
 
+#include <cmath>
 #include <fstream>
 
+#include "absl/time/time.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
@@ -152,6 +153,29 @@ TEST(RetryingUtilsTest, DeleteWithRetries_FirstNotFoundReturnedAsIs) {
             RetryingUtils::DeleteWithRetries(
                 delete_func, RetryConfig(0 /* init_delay_time_us */))
                 .code());
+}
+
+TEST(RetryingUtilsTest, ComputeRetryBackoff) {
+  for (int i = 0; i < 30; ++i) {
+    EXPECT_LE(0.4 * absl::Milliseconds(1) +
+                  0.6 * absl::Milliseconds(1) * std::pow(1.3, i),
+              ComputeRetryBackoff(/*current_retry_attempt=*/i));
+    EXPECT_LE(
+        ComputeRetryBackoff(/*current_retry_attempt=*/i),
+        0.4 * absl::Milliseconds(1) + absl::Milliseconds(1) * std::pow(1.3, i));
+  }
+}
+
+TEST(RetryingUtilsTest, ComputeRetryBackoff_MinMaxDelays) {
+  for (int i = 0; i < 30; ++i) {
+    EXPECT_EQ(ComputeRetryBackoff(/*current_retry_attempt=*/i,
+                                  /*min_delay=*/absl::Seconds(10)),
+              absl::Seconds(10));
+    EXPECT_EQ(ComputeRetryBackoff(/*current_retry_attempt=*/i,
+                                  /*min_delay=*/absl::Microseconds(1),
+                                  /*max_delay=*/absl::Microseconds(1)),
+              absl::Microseconds(1));
+  }
 }
 
 }  // namespace

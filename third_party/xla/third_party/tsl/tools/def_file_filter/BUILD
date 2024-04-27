@@ -11,5 +11,4 @@ package(default_visibility = ["//visibility:public"])
 filegroup(
     name = "symbols_pybind",
     srcs = ["symbols_pybind.txt"],
-    visibility = ["//visibility:public"],
 )

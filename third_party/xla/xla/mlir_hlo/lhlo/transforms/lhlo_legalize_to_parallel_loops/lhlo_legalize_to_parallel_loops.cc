@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -29,6 +29,7 @@ limitations under the License.
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/Pass/Pass.h"
+#include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/DialectConversion.h"
 
 namespace mlir {
@@ -55,7 +56,7 @@ Value applySingleResultLhloCode(Location loc, ValueRange operands,
   SmallVector<Value, 2> argBufs;
   for (auto argType : lhloBlock->getArgumentTypes()) {
     argBufs.push_back(
-        b->create<memref::AllocOp>(loc, argType.cast<MemRefType>()));
+        b->create<memref::AllocOp>(loc, mlir::cast<MemRefType>(argType)));
   }
   for (const auto& operand : llvm::enumerate(operands)) {
     b->create<memref::StoreOp>(loc, operand.value(), argBufs[operand.index()]);
@@ -75,9 +76,8 @@ Value applySingleResultLhloCode(Location loc, ValueRange operands,
 // into a reduction operator of scf.reduce by doing buffer allocation for
 // scalar arguments and the result of `scf.reduce` to make it compatible with
 // LHLO ops.
-void convertToReductionOperator(Location loc, scf::ReduceOp reduceOp,
+void convertToReductionOperator(Location loc, Block& loopReduceOpBody,
                                 Block* lhloBlock, OpBuilder* b) {
-  Block& loopReduceOpBody = reduceOp.getReductionOperator().front();
   OpBuilder::InsertionGuard guard(*b);
   b->setInsertionPointToStart(&loopReduceOpBody);
   b->create<scf::ReduceReturnOp>(
@@ -117,7 +117,7 @@ MappedIvs mapWindowIvsToInput(OpTy op, Value operand, ValueRange ivs,
   auto padding = op.getPadding().value();
 
   auto loc = op.getLoc();
-  auto operandShape = operand.getType().template cast<MemRefType>().getShape();
+  auto operandShape = mlir::cast<MemRefType>(operand.getType()).getShape();
 
   // `in_bounds` is false when the mapped indices are in the padding area.
   mappedIvs.inBounds = b->create<mlir::arith::ConstantOp>(
@@ -155,7 +155,8 @@ scf::ParallelOp makeLoopOverShape(Location loc, Value shapedValue,
   Value zero = b->create<arith::ConstantIndexOp>(loc, 0);
   Value one = b->create<arith::ConstantIndexOp>(loc, 1);
 
-  ArrayRef<int64_t> shape = shapedValue.getType().cast<ShapedType>().getShape();
+  ArrayRef<int64_t> shape =
+      mlir::cast<ShapedType>(shapedValue.getType()).getShape();
   SmallVector<Value, 2> lower, upper, step;
   for (const auto& dim : llvm::enumerate(shape)) {
     upper.push_back(
@@ -211,7 +212,8 @@ class ReduceOpConverter : public OpConversionPattern<lmhlo::ReduceOp> {
 
     scf::ReduceOp scfReduceOp =
         createReduceOpInNestedParallelLoops(reduceOp, &rewriter);
-    convertToReductionOperator(reduceOp.getLoc(), scfReduceOp,
+    convertToReductionOperator(reduceOp.getLoc(),
+                               scfReduceOp.getReductions().front().front(),
                                &reduceOp.getBody().front(), &rewriter);
     rewriter.replaceOp(reduceOp, std::nullopt);
     return success();
@@ -249,7 +251,7 @@ class ReduceOpConverter : public OpConversionPattern<lmhlo::ReduceOp> {
     Value out = reduceOp.getOut().front();
     SmallVector<Value, 2> parallelLower, parallelUpper, parallelStep;
     SmallVector<Value, 2> reduceLower, reduceUpper, reduceStep;
-    auto operandShape = operand.getType().cast<MemRefType>().getShape();
+    auto operandShape = mlir::cast<MemRefType>(operand.getType()).getShape();
     for (const auto& dim : llvm::enumerate(operandShape)) {
       const bool isReducingDim = reducingDims.count(dim.index());
 
@@ -387,7 +389,8 @@ class ReduceWindowOpConverter
     scf::ReduceOp reduceOp = createReduceOpInNestedParallelLoops(
         reduceWindowOp, outputLoop, windowLoop, &rewriter);
 
-    convertToReductionOperator(reduceWindowOp.getLoc(), reduceOp,
+    convertToReductionOperator(reduceWindowOp.getLoc(),
+                               reduceOp.getReductions().front().front(),
                                &reduceWindowOp.getBody().front(), &rewriter);
     rewriter.replaceOp(reduceWindowOp, std::nullopt);
     return success();
@@ -441,7 +444,7 @@ class ReduceWindowOpConverter
     }
 
     Value input = reduceWindowOp.getInputs()[0];
-    auto inputType = input.getType().cast<MemRefType>();
+    auto inputType = mlir::cast<MemRefType>(input.getType());
 
     // Compute ivs in 'arg' buffer and whether these ivs are in pad area or not.
     MappedIvs mappedIvs = mapWindowIvsToInput(
@@ -452,12 +455,14 @@ class ReduceWindowOpConverter
         loc, inputType.getElementType(), mappedIvs.inBounds,
         /*withElseRegion=*/true);
 
-    OpBuilder thenBuilder = elemOrInit.getThenBodyBuilder(rewriter);
+    OpBuilder thenBuilder =
+        elemOrInit.getThenBodyBuilder(rewriter->getListener());
     Value elem =
         thenBuilder.create<mlir::memref::LoadOp>(loc, input, mappedIvs.ivs);
     thenBuilder.create<scf::YieldOp>(loc, elem);
 
-    OpBuilder elseBuilder = elemOrInit.getElseBodyBuilder(rewriter);
+    OpBuilder elseBuilder =
+        elemOrInit.getElseBodyBuilder(rewriter->getListener());
     elseBuilder.create<scf::YieldOp>(loc, *windowLoop.getInitVals().begin());
 
     return rewriter->create<scf::ReduceOp>(loc,
@@ -552,7 +557,7 @@ class SelectAndScatterOpConverter
     Value one = b->create<arith::ConstantIndexOp>(loc, 1);
 
     auto elementType =
-        sAndSOp.getOut().getType().cast<MemRefType>().getElementType();
+        mlir::cast<MemRefType>(sAndSOp.getOut().getType()).getElementType();
     auto rank = loopOverSrc.getNumLoops();
 
     // `iter_args` = [iv_1, ..., iv_N, selected_value, is_initialized]

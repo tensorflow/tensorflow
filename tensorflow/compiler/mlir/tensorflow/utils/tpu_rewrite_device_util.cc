@@ -36,6 +36,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
@@ -609,7 +610,7 @@ StatusOr<llvm::SmallVector<int64_t, 8>> GetDeviceCoordinates(
   for (auto device_coordinate_and_idx :
        llvm::enumerate(device_assignment_attr)) {
     auto device_coordinate =
-        device_coordinate_and_idx.value().dyn_cast<mlir::IntegerAttr>();
+        mlir::dyn_cast<mlir::IntegerAttr>(device_coordinate_and_idx.value());
     if (!device_coordinate)
       return absl::InvalidArgumentError(
           llvm::formatv(kBadIntArrayElementMsg, kDeviceAssignmentAttr,
@@ -733,8 +734,8 @@ bool IsTPUReplicatedCore(llvm::StringRef device) {
 
 bool TypeValidForXLA(const mlir::Type& type) {
   const mlir::Type elem = getElementTypeOrSelf(type);
-  return !elem.isa<mlir::TF::ResourceType>() &&
-         !elem.isa<mlir::TF::StringType>();
+  return !mlir::isa<mlir::TF::ResourceType>(elem) &&
+         !mlir::isa<mlir::TF::StringType>(elem);
 }
 
 mlir::LogicalResult GetDeviceToHostMap(

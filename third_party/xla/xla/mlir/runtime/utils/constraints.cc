@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,8 +21,16 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/Casting.h"
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Interfaces/FunctionInterfaces.h"  // from @llvm-project
 #include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "xla/runtime/constraints.h"
 
 namespace xla {
 namespace runtime {
@@ -45,7 +53,7 @@ StatusOr<SmallVector<ArgumentConstraint>> GetArgumentsConstraints(
     if (!attr) return ArgumentConstraint::kResolved;
 
     // Otherwise try to parse constraint from the string attribute.
-    auto str = attr.dyn_cast_or_null<StringAttr>();
+    auto str = mlir::dyn_cast_or_null<StringAttr>(attr);
     if (!str)
       return InvalidArgumentError(
           StrCat("unexpected ", kArgumentConstraintAttrName, " attribute"));
@@ -74,7 +82,7 @@ StatusOr<ArgumentConstraint> ResolveArgumentConstraint(
   if (constraint == ArgumentConstraint::kResolved) return constraint;
 
   // Operand must be a shaped type: memref or tensor.
-  auto shaped = type.dyn_cast<ShapedType>();
+  auto shaped = mlir::dyn_cast<ShapedType>(type);
   if (!shaped)
     return InvalidArgumentError(
         StrCat("unsupported operand type: ", debugString(type)));

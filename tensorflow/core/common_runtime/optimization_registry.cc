@@ -103,7 +103,7 @@ Status OptimizationPassRegistry::RunGrouping(
              VLOG_IS_ON(3) || (VLOG_IS_ON(2) &&
                                grouping == Grouping::POST_REWRITE_FOR_EXEC));
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void OptimizationPassRegistry::LogGrouping(Grouping grouping, int vlog_level) {

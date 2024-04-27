@@ -421,9 +421,7 @@ def make_csv_dataset_v2(
       index.
     label_name: A optional string corresponding to the label column. If
       provided, the data for this column is returned as a separate `Tensor` from
-      the features dictionary, so that the dataset complies with the format
-      expected by a `tf.Estimator.train` or `tf.Estimator.evaluate` input
-      function.
+      the features dictionary.
     select_columns: An optional list of integer indices or string column
       names, that specifies a subset of columns of CSV data to select. If
       column names are provided, these must correspond to names provided in

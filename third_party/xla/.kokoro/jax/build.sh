@@ -80,7 +80,7 @@ build_and_test_on_rbe_gpu() {
     --override_repository=xla="${KOKORO_ARTIFACTS_DIR}"/github/xla \
     --config=avx_posix \
     --config=mkl_open_source_only \
-    --config="rbe_linux_cuda12.2_nvcc_py3.9" \
+    --config="rbe_linux_cuda12.3_nvcc_py3.9" \
     --config=tensorflow_testing_rbe_linux \
     --test_env=XLA_PYTHON_CLIENT_ALLOCATOR=platform \
     --test_output=errors \

@@ -21,21 +21,29 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
-#include "absl/strings/match.h"
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
+#include "tensorflow/core/framework/device_factory.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/kernels/batch_kernel_test_util.h"
+#include "tensorflow/core/kernels/batching_util/batch_scheduler.h"
 #include "tensorflow/core/kernels/batching_util/warmup.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/config.pb.h"
+#include "tensorflow/core/public/version.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/blocking_counter.h"
+#include "tsl/platform/criticality.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/refcount.h"
 #include "tsl/platform/status.h"
 
 namespace tensorflow {
@@ -60,10 +68,503 @@ TEST_P(BatchFunctionKernelTest, EnableAdaptiveScheduler) {
 
 INSTANTIATE_TEST_SUITE_P(Params, BatchFunctionKernelTest, ::testing::Bool());
 
-class BatchFunctionKernelParallelWarmupTestState : public OpsTestBase {
+class SharedBatchFunctionTestState : public OpsTestBase {
  public:
   // Init test fixture with a batch kernel instance.
-  Status Init(bool enable_splitting, bool check_output_shape) {
+  void CreateFunctionLibraryRuntime() {
+    pflr_ = std::make_unique<ProcessFunctionLibraryRuntime>(
+        device_mgr_.get(), Env::Default(), /*config=*/nullptr,
+        TF_GRAPH_DEF_VERSION, flib_def_.get(), OptimizerOptions(),
+        /*thread_pool=*/nullptr, /*parent=*/nullptr,
+        /*session_metadata=*/nullptr,
+        Rendezvous::Factory{[](const int64_t, const DeviceMgr *device_mgr,
+                               tsl::core::RefCountPtr<Rendezvous> *r) {
+          *r = tsl::core::RefCountPtr<Rendezvous>(
+              new IntraProcessRendezvous(device_mgr));
+          return absl::OkStatus();
+        }});
+  }
+};
+
+class BatchFunctionTestState : public SharedBatchFunctionTestState {
+ public:
+  // Init test fixture with a batch kernel instance. The caller guarantees that
+  // the device pointer is valid throughout the life of this class.
+  absl::Status Init(Device *device, bool enable_low_priority_queue,
+                    absl::string_view mixed_priority_policy,
+                    int64_t expected_batch_size) {
+    // Override the per-test/per-op device with a given device so that it can
+    // be shared between ops.
+    device_ = device;
+
+    NameAttrList f;
+    f.set_name("ShapeEnforcingFunction");
+    FunctionDef func = FunctionDefHelper::Create(
+        // function_name
+        f.name(),
+        // in_def
+        {"x:int64"},
+        // out_def
+        {"o:int64"},
+        // attr_def
+        {},
+        // node_def
+        {{{"o"},
+          "EnsureShape",
+          {"x"},
+          {{"T", DataType::DT_INT64},
+           {"shape", TensorShape({expected_batch_size, 2})}}}},
+        // ret_def
+        {{"o", "o:output"}});
+    TF_RETURN_IF_ERROR(flib_def_->AddFunctionDef(func));
+    SharedBatchFunctionTestState::CreateFunctionLibraryRuntime();
+
+    std::vector<NodeDefBuilder::NodeOut> inputs(
+        {NodeDefBuilder::NodeOut({"n1", 0, DataType::DT_INT64})});
+    TF_RETURN_IF_ERROR(NodeDefBuilder("BatchTPUInput", "BatchFunction")
+                           .Attr("max_batch_size", 8)
+                           .Attr("num_batch_threads", 8)
+                           .Attr("allowed_batch_sizes", {4, 8})
+                           .Attr("batch_timeout_micros", 1000000)
+                           .Attr("max_enqueued_batches", 10)
+                           .Attr("enable_large_batch_splitting", true)
+                           .Attr("low_priority_max_batch_size",
+                                 enable_low_priority_queue ? 8 : 0)
+                           .Attr("low_priority_batch_timeout_micros",
+                                 enable_low_priority_queue ? 2000000 : 0)
+                           .Attr("low_priority_allowed_batch_sizes",
+                                 enable_low_priority_queue
+                                     ? std::vector<int>{4, 8}
+                                     : std::vector<int>())
+                           .Attr("low_priority_max_enqueued_batches",
+                                 enable_low_priority_queue ? 2 : 0)
+                           .Attr("mixed_priority_policy", mixed_priority_policy)
+                           .Attr("Tin", {DataType::DT_INT64})
+                           .Input(inputs)
+                           .Attr("Tcaptured", std::vector<DataType>{})
+                           .Input(std::vector<NodeDefBuilder::NodeOut>{})
+                           .Attr("Tout", std::vector<DataType>{DT_INT64})
+                           .Attr("f", f)
+                           .Finalize(node_def()));
+    return OpsTestBase::InitOp();
+  }
+
+  void TestBody() override {}
+};
+
+class BatchFunctionTest : public ::testing::TestWithParam<bool> {
+ protected:
+  void SetUp() override {
+    // The device needs to be shared in each test case and within each test case
+    // only.
+    cpu_device_ =
+        DeviceFactory::NewDevice("CPU", {}, "/job:a/replica:0/task:0");
+  }
+  std::unique_ptr<Device> cpu_device_;
+};
+
+TEST_P(BatchFunctionTest, BatchingWorksWithoutCriticality) {
+  SessionMetadata session_metadata;
+  session_metadata.set_name("test_model");
+  session_metadata.set_version(123);
+
+  bool enable_low_priority_queue = GetParam();
+  {
+    tsl::BlockingCounter blocking_counter(8);
+    // 8 threads run the batch op with no explicit criticality set. They are
+    // eventually batched to form a tensor with [8, 2] shape which is verified
+    // within the function.
+    for (int i = 0; i < 8; ++i) {
+      Env::Default()->SchedClosure([&]() {
+        ASSERT_EQ(tsl::criticality::GetCriticality(),
+                  tsl::criticality::Criticality::kCritical);
+
+        BatchFunctionTestState test_state;
+        test_state.set_session_metadata(session_metadata);
+        TF_ASSERT_OK(test_state.Init(
+            cpu_device_.get(), enable_low_priority_queue,
+            serving::kLowPriorityPaddingWithMaxBatchSizeAttrValue,
+            /*expected_batch_size=*/8));
+        test_state.AddInputFromList<int64_t>(TensorShape({1, 2}), {123, 456});
+        TF_EXPECT_OK(test_state.RunOpKernel());
+
+        test::ExpectTensorEqual<int64_t>(
+            *test_state.GetOutput(0),
+            test::AsTensor<int64_t>({123, 456}, TensorShape({1, 2})));
+        blocking_counter.DecrementCount();
+      });
+    }
+
+    blocking_counter.Wait();
+  }
+}
+
+TEST_P(BatchFunctionTest, PaddingWorksWithoutCriticality) {
+  SessionMetadata session_metadata;
+  session_metadata.set_name("test_model");
+  session_metadata.set_version(123);
+
+  bool enable_low_priority_queue = GetParam();
+  {
+    tsl::BlockingCounter blocking_counter(2);
+    // 2 threads run the batch op with no explicit criticality set. They are
+    // eventually batched and padded to form a tensor with [4, 2] shape which is
+    // verified within the function.
+    for (int i = 0; i < 2; ++i) {
+      Env::Default()->SchedClosure([&]() {
+        ASSERT_EQ(tsl::criticality::GetCriticality(),
+                  tsl::criticality::Criticality::kCritical);
+
+        BatchFunctionTestState test_state;
+        test_state.set_session_metadata(session_metadata);
+        TF_ASSERT_OK(test_state.Init(
+            cpu_device_.get(), enable_low_priority_queue,
+            serving::kLowPriorityPaddingWithMaxBatchSizeAttrValue,
+            /*expected_batch_size=*/4));
+        test_state.AddInputFromList<int64_t>(TensorShape({1, 2}), {123, 456});
+        TF_EXPECT_OK(test_state.RunOpKernel());
+
+        test::ExpectTensorEqual<int64_t>(
+            *test_state.GetOutput(0),
+            test::AsTensor<int64_t>({123, 456}, TensorShape({1, 2})));
+        blocking_counter.DecrementCount();
+      });
+    }
+
+    blocking_counter.Wait();
+  }
+}
+
+#if defined(PLATFORM_GOOGLE)
+TEST_P(BatchFunctionTest,
+       LowPriorityTaskPaddingHighPriorityBatchUptoMaxBatchSize) {
+  SessionMetadata session_metadata;
+  session_metadata.set_name("test_model");
+  session_metadata.set_version(123);
+
+  bool enable_low_priority_queue = GetParam();
+  {
+    tsl::BlockingCounter blocking_counter(8);
+    // 4 threads run the batch op with critical plus and 4 threads run the batch
+    // op with sheddable. They are eventually batched to form a tensor with [8,
+    // 2] shape which is verified within the function.
+    for (int i = 0; i < 4; ++i) {
+      Env::Default()->SchedClosure([&]() {
+        tsl::criticality::ScopedCriticality scoped_criticality(
+            tsl::criticality::Criticality::kCriticalPlus);
+        ASSERT_EQ(tsl::criticality::GetCriticality(),
+                  tsl::criticality::Criticality::kCriticalPlus);
+
+        BatchFunctionTestState test_state;
+        test_state.set_session_metadata(session_metadata);
+        TF_ASSERT_OK(test_state.Init(
+            cpu_device_.get(), enable_low_priority_queue,
+            serving::kLowPriorityPaddingWithMaxBatchSizeAttrValue,
+            /*expected_batch_size=*/8));
+        test_state.AddInputFromList<int64_t>(TensorShape({1, 2}), {123, 456});
+        TF_EXPECT_OK(test_state.RunOpKernel());
+
+        test::ExpectTensorEqual<int64_t>(
+            *test_state.GetOutput(0),
+            test::AsTensor<int64_t>({123, 456}, TensorShape({1, 2})));
+        blocking_counter.DecrementCount();
+      });
+    }
+
+    for (int i = 0; i < 4; ++i) {
+      Env::Default()->SchedClosure([&]() {
+        tsl::criticality::ScopedCriticality scoped_criticality(
+            tsl::criticality::Criticality::kSheddable);
+        ASSERT_EQ(tsl::criticality::GetCriticality(),
+                  tsl::criticality::Criticality::kSheddable);
+
+        BatchFunctionTestState test_state;
+        test_state.set_session_metadata(session_metadata);
+        TF_ASSERT_OK(test_state.Init(
+            cpu_device_.get(), enable_low_priority_queue,
+            serving::kLowPriorityPaddingWithMaxBatchSizeAttrValue,
+            /*expected_batch_size=*/8));
+        test_state.AddInputFromList<int64_t>(TensorShape({1, 2}), {234, 567});
+        TF_EXPECT_OK(test_state.RunOpKernel());
+
+        test::ExpectTensorEqual<int64_t>(
+            *test_state.GetOutput(0),
+            test::AsTensor<int64_t>({234, 567}, TensorShape({1, 2})));
+        blocking_counter.DecrementCount();
+      });
+    }
+
+    blocking_counter.Wait();
+  }
+}
+
+TEST_P(BatchFunctionTest,
+       LowPriorityTaskPaddingHighPriorityBatchWithExtraPadding) {
+  SessionMetadata session_metadata;
+  session_metadata.set_name("test_model");
+  session_metadata.set_version(123);
+
+  bool enable_low_priority_queue = GetParam();
+  {
+    tsl::BlockingCounter blocking_counter(2);
+    // 1 thread run the batch op with critical plus and 1 threads run the batch
+    // op with sheddable. They are eventually batched and padded to form a
+    // tensor with [4, 2] shape which is verified within the function.
+    Env::Default()->SchedClosure([&]() {
+      tsl::criticality::ScopedCriticality scoped_criticality(
+          tsl::criticality::Criticality::kCriticalPlus);
+      ASSERT_EQ(tsl::criticality::GetCriticality(),
+                tsl::criticality::Criticality::kCriticalPlus);
+
+      BatchFunctionTestState test_state;
+      test_state.set_session_metadata(session_metadata);
+      TF_ASSERT_OK(
+          test_state.Init(cpu_device_.get(), enable_low_priority_queue,
+                          serving::kLowPriorityPaddingWithMaxBatchSizeAttrValue,
+                          /*expected_batch_size=*/4));
+      test_state.AddInputFromList<int64_t>(TensorShape({1, 2}), {123, 456});
+      TF_EXPECT_OK(test_state.RunOpKernel());
+
+      test::ExpectTensorEqual<int64_t>(
+          *test_state.GetOutput(0),
+          test::AsTensor<int64_t>({123, 456}, TensorShape({1, 2})));
+      blocking_counter.DecrementCount();
+    });
+
+    Env::Default()->SchedClosure([&]() {
+      tsl::criticality::ScopedCriticality scoped_criticality(
+          tsl::criticality::Criticality::kSheddable);
+      ASSERT_EQ(tsl::criticality::GetCriticality(),
+                tsl::criticality::Criticality::kSheddable);
+
+      BatchFunctionTestState test_state;
+      test_state.set_session_metadata(session_metadata);
+      TF_ASSERT_OK(
+          test_state.Init(cpu_device_.get(), enable_low_priority_queue,
+                          serving::kLowPriorityPaddingWithMaxBatchSizeAttrValue,
+                          /*expected_batch_size=*/4));
+      test_state.AddInputFromList<int64_t>(TensorShape({1, 2}), {234, 567});
+      TF_EXPECT_OK(test_state.RunOpKernel());
+
+      test::ExpectTensorEqual<int64_t>(
+          *test_state.GetOutput(0),
+          test::AsTensor<int64_t>({234, 567}, TensorShape({1, 2})));
+      blocking_counter.DecrementCount();
+    });
+
+    blocking_counter.Wait();
+  }
+}
+
+TEST_P(BatchFunctionTest,
+       LowPriorityTaskPaddingHighPriorityBatchUptoNextAllowedBatchSize) {
+  SessionMetadata session_metadata;
+  session_metadata.set_name("test_model");
+  session_metadata.set_version(123);
+
+  bool enable_low_priority_queue = GetParam();
+  {
+    tsl::BlockingCounter blocking_counter(4);
+    // 2 threads run the batch op with critical plus and 2 threads run the batch
+    // op with sheddable. They are eventually batched to form a tensor with [4,
+    // 2] shape which is verified within the function.
+    for (int i = 0; i < 2; ++i) {
+      Env::Default()->SchedClosure([&]() {
+        tsl::criticality::ScopedCriticality scoped_criticality(
+            tsl::criticality::Criticality::kCriticalPlus);
+        ASSERT_EQ(tsl::criticality::GetCriticality(),
+                  tsl::criticality::Criticality::kCriticalPlus);
+
+        BatchFunctionTestState test_state;
+        test_state.set_session_metadata(session_metadata);
+        TF_ASSERT_OK(test_state.Init(
+            cpu_device_.get(), enable_low_priority_queue,
+            serving::kLowPriorityPaddingWithNextAllowedBatchSizeAttrValue,
+            /*expected_batch_size=*/4));
+        test_state.AddInputFromList<int64_t>(TensorShape({1, 2}), {123, 456});
+        TF_EXPECT_OK(test_state.RunOpKernel());
+
+        test::ExpectTensorEqual<int64_t>(
+            *test_state.GetOutput(0),
+            test::AsTensor<int64_t>({123, 456}, TensorShape({1, 2})));
+        blocking_counter.DecrementCount();
+      });
+    }
+
+    for (int i = 0; i < 2; ++i) {
+      Env::Default()->SchedClosure([&]() {
+        tsl::criticality::ScopedCriticality scoped_criticality(
+            tsl::criticality::Criticality::kSheddable);
+        ASSERT_EQ(tsl::criticality::GetCriticality(),
+                  tsl::criticality::Criticality::kSheddable);
+
+        BatchFunctionTestState test_state;
+        test_state.set_session_metadata(session_metadata);
+        TF_ASSERT_OK(test_state.Init(
+            cpu_device_.get(), enable_low_priority_queue,
+            serving::kLowPriorityPaddingWithNextAllowedBatchSizeAttrValue,
+            /*expected_batch_size=*/4));
+        test_state.AddInputFromList<int64_t>(TensorShape({1, 2}), {234, 567});
+        TF_EXPECT_OK(test_state.RunOpKernel());
+
+        test::ExpectTensorEqual<int64_t>(
+            *test_state.GetOutput(0),
+            test::AsTensor<int64_t>({234, 567}, TensorShape({1, 2})));
+        blocking_counter.DecrementCount();
+      });
+    }
+
+    blocking_counter.Wait();
+  }
+}
+#endif
+
+INSTANTIATE_TEST_SUITE_P(BatchFunctionTest, BatchFunctionTest,
+                         ::testing::Bool());
+
+#if defined(PLATFORM_GOOGLE)
+TEST_F(BatchFunctionTest, HighPriorityBatchNotPaddedWithLowPriorityTasks) {
+  SessionMetadata session_metadata;
+  session_metadata.set_name("test_model");
+  session_metadata.set_version(123);
+
+  {
+    tsl::BlockingCounter blocking_counter(8);
+    // 4 threads run the batch op with critical plus and 4 threads run the batch
+    // op with sheddable. They each get batched separately to form tensors with
+    // [4, 2] shape which is verified within the function.
+    for (int i = 0; i < 4; ++i) {
+      Env::Default()->SchedClosure([&]() {
+        tsl::criticality::ScopedCriticality scoped_criticality(
+            tsl::criticality::Criticality::kCriticalPlus);
+        ASSERT_EQ(tsl::criticality::GetCriticality(),
+                  tsl::criticality::Criticality::kCriticalPlus);
+
+        BatchFunctionTestState test_state;
+        test_state.set_session_metadata(session_metadata);
+        TF_ASSERT_OK(test_state.Init(cpu_device_.get(),
+                                     /*enable_low_priority_queue=*/true,
+                                     serving::kPriorityIsolationAttrValue,
+                                     /*expected_batch_size=*/4));
+        test_state.AddInputFromList<int64_t>(TensorShape({1, 2}), {123, 456});
+        TF_EXPECT_OK(test_state.RunOpKernel());
+
+        test::ExpectTensorEqual<int64_t>(
+            *test_state.GetOutput(0),
+            test::AsTensor<int64_t>({123, 456}, TensorShape({1, 2})));
+        blocking_counter.DecrementCount();
+      });
+    }
+
+    for (int i = 0; i < 4; ++i) {
+      Env::Default()->SchedClosure([&]() {
+        tsl::criticality::ScopedCriticality scoped_criticality(
+            tsl::criticality::Criticality::kSheddable);
+        ASSERT_EQ(tsl::criticality::GetCriticality(),
+                  tsl::criticality::Criticality::kSheddable);
+
+        BatchFunctionTestState test_state;
+        test_state.set_session_metadata(session_metadata);
+        TF_ASSERT_OK(test_state.Init(cpu_device_.get(),
+                                     /*enable_low_priority_queue=*/true,
+                                     serving::kPriorityIsolationAttrValue,
+                                     /*expected_batch_size=*/4));
+        test_state.AddInputFromList<int64_t>(TensorShape({1, 2}), {234, 567});
+        TF_EXPECT_OK(test_state.RunOpKernel());
+
+        test::ExpectTensorEqual<int64_t>(
+            *test_state.GetOutput(0),
+            test::AsTensor<int64_t>({234, 567}, TensorShape({1, 2})));
+        blocking_counter.DecrementCount();
+      });
+    }
+
+    blocking_counter.Wait();
+  }
+}
+
+TEST_F(BatchFunctionTest, LowPriorityOnlyBatchAtMaxLowPriorityBatchSize) {
+  SessionMetadata session_metadata;
+  session_metadata.set_name("test_model");
+  session_metadata.set_version(123);
+
+  {
+    tsl::BlockingCounter blocking_counter(8);
+    // 8 threads run the batch op with sheddable. They are eventually batched to
+    // form a tensor with [8, 2] shape, which is verified within the function,
+    // since the low priority max batch size is set to 8.
+    for (int i = 0; i < 8; ++i) {
+      Env::Default()->SchedClosure([&]() {
+        tsl::criticality::ScopedCriticality scoped_criticality(
+            tsl::criticality::Criticality::kSheddable);
+        ASSERT_EQ(tsl::criticality::GetCriticality(),
+                  tsl::criticality::Criticality::kSheddable);
+
+        BatchFunctionTestState test_state;
+        test_state.set_session_metadata(session_metadata);
+        TF_ASSERT_OK(test_state.Init(
+            cpu_device_.get(),
+            /*enable_low_priority_queue=*/true,
+            serving::kLowPriorityPaddingWithMaxBatchSizeAttrValue,
+            /*expected_batch_size=*/8));
+        test_state.AddInputFromList<int64_t>(TensorShape({1, 2}), {234, 567});
+        TF_EXPECT_OK(test_state.RunOpKernel());
+
+        test::ExpectTensorEqual<int64_t>(
+            *test_state.GetOutput(0),
+            test::AsTensor<int64_t>({234, 567}, TensorShape({1, 2})));
+        blocking_counter.DecrementCount();
+      });
+    }
+
+    blocking_counter.Wait();
+  }
+}
+
+TEST_F(BatchFunctionTest, LowPriorityBatchPaddedToLowPriorityAllowedBatchSize) {
+  SessionMetadata session_metadata;
+  session_metadata.set_name("test_model");
+  session_metadata.set_version(123);
+
+  {
+    tsl::BlockingCounter blocking_counter(2);
+    // 2 threads run the batch op with sheddable. They are eventually batched
+    // and padded to form a tensor with [4, 2] shape, which is verified within
+    // the function, since the low priority allowed batch size is set to [4, 8].
+    for (int i = 0; i < 2; ++i) {
+      Env::Default()->SchedClosure([&]() {
+        tsl::criticality::ScopedCriticality scoped_criticality(
+            tsl::criticality::Criticality::kSheddable);
+        ASSERT_EQ(tsl::criticality::GetCriticality(),
+                  tsl::criticality::Criticality::kSheddable);
+
+        BatchFunctionTestState test_state;
+        test_state.set_session_metadata(session_metadata);
+        TF_ASSERT_OK(test_state.Init(
+            cpu_device_.get(),
+            /*enable_low_priority_queue=*/true,
+            serving::kLowPriorityPaddingWithMaxBatchSizeAttrValue,
+            /*expected_batch_size=*/4));
+        test_state.AddInputFromList<int64_t>(TensorShape({1, 2}), {234, 567});
+        TF_EXPECT_OK(test_state.RunOpKernel());
+
+        test::ExpectTensorEqual<int64_t>(
+            *test_state.GetOutput(0),
+            test::AsTensor<int64_t>({234, 567}, TensorShape({1, 2})));
+        blocking_counter.DecrementCount();
+      });
+    }
+
+    blocking_counter.Wait();
+  }
+}
+#endif
+
+class BatchFunctionKernelParallelWarmupTestState
+    : public SharedBatchFunctionTestState {
+ public:
+  // Init test fixture with a batch kernel instance.
+  absl::Status Init(bool enable_splitting) {
     static auto *const cpu_device = []() {
       auto device =
           DeviceFactory::NewDevice("CPU", {}, "/job:a/replica:0/task:0");
@@ -76,74 +577,46 @@ class BatchFunctionKernelParallelWarmupTestState : public OpsTestBase {
 
     NameAttrList f;
     f.set_name("BatchFunctionKernelParallelWarmupTestStateFunc");
-    FunctionDef func;
-    if (check_output_shape) {
-      func = FunctionDefHelper::Create(
-          // function_name
-          f.name(),
-          // in_def
-          {"x:int64"},
-          // out_def
-          {"o:int64"},
-          // attr_def
-          {},
-          // node_def
-          {{{"o"},
-            "EnsureShape",
-            {"x"},
-            {{"T", DataType::DT_INT64}, {"shape", TensorShape({2})}}}},
-          // ret_def
-          {{"o", "o:output"}});
-    } else {
-      func = FunctionDefHelper::Create(
-          // function_name
-          f.name(),
-          // in_def
-          {"x:int64"},
-          // out_def
-          {"o:int64"},
-          // attr_def
-          {},
-          // node_def
-          {{{"o"}, "Identity", {"x"}, {{"T", DataType::DT_INT64}}}},
-          // ret_def
-          {{"o", "o:output"}});
-    }
+    FunctionDef func = FunctionDefHelper::Create(
+        // function_name
+        f.name(),
+        // in_def
+        {"x:int64"},
+        // out_def
+        {"o:int64"},
+        // attr_def
+        {},
+        // node_def
+        {{{"o"},
+          "EnsureShape",
+          {"x"},
+          {{"T", DataType::DT_INT64}, {"shape", TensorShape({2})}}}},
+        // ret_def
+        {{"o", "o:output"}});
     TF_RETURN_IF_ERROR(flib_def_->AddFunctionDef(func));
-
-    pflr_ = std::make_unique<ProcessFunctionLibraryRuntime>(
-        device_mgr_.get(), Env::Default(), /*config=*/nullptr,
-        TF_GRAPH_DEF_VERSION, flib_def_.get(), OptimizerOptions(),
-        /*thread_pool=*/nullptr, /*parent=*/nullptr,
-        /*session_metadata=*/nullptr,
-        Rendezvous::Factory{[](const int64_t, const DeviceMgr *device_mgr,
-                               tsl::core::RefCountPtr<Rendezvous> *r) {
-          *r = tsl::core::RefCountPtr<Rendezvous>(
-              new IntraProcessRendezvous(device_mgr));
-          return OkStatus();
-        }});
+    SharedBatchFunctionTestState::CreateFunctionLibraryRuntime();
 
     std::vector<NodeDefBuilder::NodeOut> inputs(
         {NodeDefBuilder::NodeOut({"n1", 0, DataType::DT_INT64})});
-    TF_CHECK_OK(NodeDefBuilder("BatchTPUInput", "BatchFunction")
-                    .Attr("max_batch_size", enable_splitting ? 16 : 8)
-                    .Attr("num_batch_threads", 8)
-                    .Attr("allowed_batch_sizes", {2, 4, 8})
-                    .Attr("batch_timeout_micros", 100000)
-                    .Attr("max_enqueued_batches", 10)
-                    .Attr("enable_large_batch_splitting", true)
-                    .Attr("low_priority_max_batch_size", 64)
-                    .Attr("low_priority_batch_timeout_micros", 8000)
-                    .Attr("low_priority_allowed_batch_sizes", {32, 64})
-                    .Attr("low_priority_max_enqueued_batches", 1000)
-                    .Attr("Tin", {DataType::DT_INT64})
-                    .Input(inputs)
-                    .Attr("Tcaptured", std::vector<DataType>{})
-                    .Input(std::vector<NodeDefBuilder::NodeOut>{})
-                    .Attr("Tout", std::vector<DataType>{DT_INT64})
-                    .Attr("f", f)
-                    .Finalize(node_def()));
-    return InitOp();
+    TF_RETURN_IF_ERROR(NodeDefBuilder("BatchTPUInput", "BatchFunction")
+                           .Attr("max_batch_size", enable_splitting ? 16 : 8)
+                           .Attr("num_batch_threads", 8)
+                           .Attr("allowed_batch_sizes", {2, 4, 8})
+                           .Attr("batch_timeout_micros", 1000000)
+                           .Attr("max_enqueued_batches", 10)
+                           .Attr("enable_large_batch_splitting", true)
+                           .Attr("low_priority_max_batch_size", 64)
+                           .Attr("low_priority_batch_timeout_micros", 8000)
+                           .Attr("low_priority_allowed_batch_sizes", {32, 64})
+                           .Attr("low_priority_max_enqueued_batches", 1000)
+                           .Attr("Tin", {DataType::DT_INT64})
+                           .Input(inputs)
+                           .Attr("Tcaptured", std::vector<DataType>{})
+                           .Input(std::vector<NodeDefBuilder::NodeOut>{})
+                           .Attr("Tout", std::vector<DataType>{DT_INT64})
+                           .Attr("f", f)
+                           .Finalize(node_def()));
+    return OpsTestBase::InitOp();
   }
 
   void TestBody() override {}
@@ -175,8 +648,7 @@ TEST_P(BatchFunctionKernelParallelWarmupTest, ParallelWarmup) {
       Env::Default()->SchedClosure([&]() {
         BatchFunctionKernelParallelWarmupTestState test;
         test.set_session_metadata(session_metadata);
-        TF_CHECK_OK(test.Init(enable_splitting,
-                              /*check_output_shape=*/true));
+        TF_CHECK_OK(test.Init(enable_splitting));
         test.AddInputFromList<int64_t>(TensorShape({2}), {123, 456});
         TF_CHECK_OK(test.RunOpKernel());
 
@@ -197,8 +669,7 @@ TEST_P(BatchFunctionKernelParallelWarmupTest, ParallelWarmup) {
       Env::Default()->SchedClosure([&]() {
         BatchFunctionKernelParallelWarmupTestState test;
         test.set_session_metadata(session_metadata);
-        TF_CHECK_OK(test.Init(enable_splitting,
-                              /*check_output_shape=*/true));
+        TF_CHECK_OK(test.Init(enable_splitting));
         test.AddInputFromList<int64_t>(TensorShape({2}), {123, 456});
         // We expect requests to be batched together when the warm-up mode is
         // turned off, which will make the execution fail at `EnsureShape`.
@@ -211,71 +682,9 @@ TEST_P(BatchFunctionKernelParallelWarmupTest, ParallelWarmup) {
   }
 }
 
-TEST_P(BatchFunctionKernelParallelWarmupTest, ParallelWarmupAutoBatch) {
-  SessionMetadata session_metadata;
-  session_metadata.set_name("test_model");
-  session_metadata.set_version(123);
-  serving::WarmupStateRegistry::Key key(session_metadata.name(),
-                                        session_metadata.version());
-
-  int num_requests = 16;
-
-  bool enable_splitting = GetParam();
-  {
-    auto per_model_data = std::make_unique<PerModelData>();
-    per_model_data->warmup_all_batch_sizes = true;
-    auto handle = serving::GetGlobalWarmupStateRegistry().Register(
-        key, std::move(per_model_data));
-
-    tsl::BlockingCounter blocking_counter(num_requests);
-    for (int i = 0; i < num_requests; ++i) {
-      Env::Default()->SchedClosure([&]() {
-        BatchFunctionKernelParallelWarmupTestState test;
-        test.set_session_metadata(session_metadata);
-        TF_CHECK_OK(test.Init(enable_splitting, /*check_output_shape=*/true));
-        test.AddInputFromList<int64_t>(TensorShape({2}), {123, 456});
-        auto status = test.RunOpKernel();
-        ASSERT_FALSE(status.ok());
-        // This proves the kernel is executed with batch sizes other than 2.
-        EXPECT_TRUE(absl::StrContains(status.message(),
-                                      "is not compatible with expected shape"));
-        blocking_counter.DecrementCount();
-      });
-    }
-    blocking_counter.Wait();
-  }
-
-  {
-    EXPECT_FALSE(serving::GetGlobalWarmupStateRegistry().Lookup(key));
-    auto per_model_data = std::make_unique<PerModelData>();
-    per_model_data->warmup_all_batch_sizes = true;
-    auto handle = serving::GetGlobalWarmupStateRegistry().Register(
-        key, std::move(per_model_data));
-
-    tsl::BlockingCounter blocking_counter(num_requests);
-    for (int i = 0; i < num_requests; ++i) {
-      Env::Default()->SchedClosure([&]() {
-        BatchFunctionKernelParallelWarmupTestState test;
-        test.set_session_metadata(session_metadata);
-        // Error free when the EnsureShapeOp is replaced with an Identity op.
-        TF_CHECK_OK(test.Init(enable_splitting, /*check_output_shape=*/false));
-        test.AddInputFromList<int64_t>(TensorShape({2}), {123, 456});
-        auto status = test.RunOpKernel();
-        TF_CHECK_OK(test.RunOpKernel());
-
-        test::ExpectTensorEqual<int64_t>(*test.GetOutput(0),
-                                         test::AsTensor<int64_t>({123, 456}));
-
-        blocking_counter.DecrementCount();
-      });
-    }
-
-    blocking_counter.Wait();
-  }
-}
-
 INSTANTIATE_TEST_SUITE_P(BatchFunctionKernelParallelWarmupTestSuite,
                          BatchFunctionKernelParallelWarmupTest,
                          ::testing::Bool());
+
 }  // namespace
 }  // namespace tensorflow

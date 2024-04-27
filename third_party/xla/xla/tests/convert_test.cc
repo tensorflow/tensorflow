@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -31,7 +31,7 @@ limitations under the License.
 #include "xla/tests/test_macros.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/float8.h"
+#include "tsl/platform/ml_dtypes.h"
 #include "tsl/platform/test.h"
 
 namespace xla {
@@ -43,7 +43,9 @@ class ConvertTest : public ClientLibraryTestBase {
       : ClientLibraryTestBase(platform) {
     mutable_debug_options()->add_xla_disable_hlo_passes("algsimp");
     mutable_debug_options()->add_xla_disable_hlo_passes("inline");
-    mutable_debug_options()->set_xla_gpu_simplify_all_fp_conversions(false);
+    mutable_debug_options()->add_xla_disable_hlo_passes(
+        "simplify-fp-conversions");
+    mutable_debug_options()->set_xla_allow_excess_precision(false);
   }
 };
 
@@ -958,13 +960,14 @@ XLA_TEST_F(ConvertTest, ConvertF8e4m3b11fnuzF16RoundtripExhaustive) {
   // Convert from FP8 to FP16, then back to FP8
   XlaBuilder builder(TestName());
 
-  std::vector<tsl::float8_e4m3b11> all_f8;
+  std::vector<tsl::float8_e4m3b11fnuz> all_f8;
   for (int i = 0; i < 256; i++) {
-    all_f8.push_back(
-        Eigen::numext::bit_cast<tsl::float8_e4m3b11>(static_cast<uint8_t>(i)));
+    all_f8.push_back(Eigen::numext::bit_cast<tsl::float8_e4m3b11fnuz>(
+        static_cast<uint8_t>(i)));
   }
 
-  xla::XlaOp all_f8_as_f8 = ConstantR1<tsl::float8_e4m3b11>(&builder, all_f8);
+  xla::XlaOp all_f8_as_f8 =
+      ConstantR1<tsl::float8_e4m3b11fnuz>(&builder, all_f8);
   xla::XlaOp all_f8_as_f16 = ConvertElementType(all_f8_as_f8, F16);
   ConvertElementType(all_f8_as_f16, F8E4M3B11FNUZ);
   ComputeAndCompare(&builder, {}, ErrorSpec(0.));
@@ -976,8 +979,9 @@ XLA_TEST_F(ConvertTest, ConvertF8e4m3b11fnuzF16RoundtripExhaustive2) {
 
   std::vector<float> all_f8;
   for (int i = 0; i < 256; i++) {
-    all_f8.push_back(static_cast<float>(
-        Eigen::numext::bit_cast<tsl::float8_e4m3b11>(static_cast<uint8_t>(i))));
+    all_f8.push_back(
+        static_cast<float>(Eigen::numext::bit_cast<tsl::float8_e4m3b11fnuz>(
+            static_cast<uint8_t>(i))));
   }
 
   xla::XlaOp all_f8_as_f32 = ConstantR1<float>(&builder, all_f8);
@@ -989,13 +993,14 @@ XLA_TEST_F(ConvertTest, ConvertF8e4m3b11fnuzF16RoundtripExhaustive3) {
   // Convert from FP8 to FP32.
   XlaBuilder builder(TestName());
 
-  std::vector<tsl::float8_e4m3b11> all_f8;
+  std::vector<tsl::float8_e4m3b11fnuz> all_f8;
   for (int i = 0; i < 256; i++) {
-    all_f8.push_back(
-        Eigen::numext::bit_cast<tsl::float8_e4m3b11>(static_cast<uint8_t>(i)));
+    all_f8.push_back(Eigen::numext::bit_cast<tsl::float8_e4m3b11fnuz>(
+        static_cast<uint8_t>(i)));
   }
 
-  xla::XlaOp all_f8_as_f8 = ConstantR1<tsl::float8_e4m3b11>(&builder, all_f8);
+  xla::XlaOp all_f8_as_f8 =
+      ConstantR1<tsl::float8_e4m3b11fnuz>(&builder, all_f8);
   ConvertElementType(all_f8_as_f8, F32);
   ComputeAndCompare(&builder, {}, ErrorSpec(0.));
 }

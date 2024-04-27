@@ -119,12 +119,17 @@ class ExtractImagePatchesOp : public XlaOpKernel {
     kernel_shape[num_spatial_dims + 1] = kernel_size * depth;
     xla::Shape iota_kernel_shape =
         xla::ShapeUtil::MakeShape(xla::S32, {kernel_size, depth, kernel_size});
-    xla::XlaOp filter =
-        xla::Reshape(xla::ConvertElementType(
-                         xla::Eq(xla::Iota(builder, iota_kernel_shape, 0),
-                                 xla::Iota(builder, iota_kernel_shape, 2)),
-                         type),
-                     kernel_shape);
+    xla::XlaOp pred_intermediate = xla::Eq(xla::Iota(builder, iota_kernel_shape,
+                                                     /* iota_dimension= */ 0),
+                                           xla::Iota(builder, iota_kernel_shape,
+                                                     /* iota_dimension= */ 2));
+    // In some cases TPU implementations give different results than CPU and GPU
+    // when doing the conversion directly from pred to the final type. Add an
+    // extra conversion to S32 here solves this.
+    xla::XlaOp int_intermediate =
+        xla::ConvertElementType(pred_intermediate, xla::S32);
+    xla::XlaOp filter = xla::Reshape(
+        xla::ConvertElementType(int_intermediate, type), kernel_shape);
 
     xla::ConvolutionDimensionNumbers dims;
     std::vector<int64_t> window_strides(num_spatial_dims);

@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -36,7 +36,7 @@ struct ReduceScatterSpec {
 
 // Matches the given all-reduce operation to a reduce-scatter pattern.
 std::optional<ReduceScatterSpec> MatchReduceScatter(
-    const HloAllReduceInstruction* ar, int64_t num_partitions,
+    const HloAllReduceInstructionBase* ar, int64_t num_partitions,
     int64_t num_replicas, bool allow_multiple_split_dims = false,
     bool allow_intervening_reshape = false, int64_t min_rank = 1,
     HloPredicate match_partition_id = HloPredicateIsOp<HloOpcode::kPartitionId>,

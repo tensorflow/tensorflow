@@ -30,6 +30,8 @@ limitations under the License.
 #include "tensorflow/c/eager/tfe_tensorhandle_internal.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_helper.h"
+#include "xla/tsl/c/tsl_status_internal.h"
+#include "xla/tsl/distributed_runtime/coordination/coordination_service_agent.h"
 #include "tensorflow/core/common_runtime/composite_device.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/eager/eager_operation.h"
@@ -43,8 +45,6 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/strcat.h"
-#include "tsl/c/tsl_status_internal.h"
-#include "tsl/distributed_runtime/coordination/coordination_service_agent.h"
 #include "tsl/framework/cancellation.h"
 
 using tensorflow::string;
@@ -606,7 +606,7 @@ void TFE_OpSetCancellationManager(TFE_Op* op,
                                   TF_Status* status) {
   tensorflow::unwrap(op)->SetCancellationManager(
       tensorflow::unwrap(cancellation_manager));
-  status->status = ::tensorflow::OkStatus();
+  status->status = absl::OkStatus();
 }
 
 TFE_Executor* TFE_NewExecutor(bool is_async, bool enable_streaming_enqueue,
@@ -667,7 +667,7 @@ void TFE_ContextGetFunctionDef(TFE_Context* ctx, const char* function_name,
   buf->data_deallocator = [](void* data, size_t length) {
     tensorflow::port::Free(data);
   };
-  status->status = ::tensorflow::OkStatus();
+  status->status = absl::OkStatus();
 }
 
 void TFE_ContextGetGraphDebugInfo(TFE_Context* ctx, const char* function_name,
@@ -691,7 +691,7 @@ void TFE_ContextGetGraphDebugInfo(TFE_Context* ctx, const char* function_name,
   buf->data_deallocator = [](void* data, size_t length) {
     tensorflow::port::Free(data);
   };
-  status->status = ::tensorflow::OkStatus();
+  status->status = absl::OkStatus();
 }
 
 TF_Tensor* TFE_AllocateHostTensor(TFE_Context* ctx, TF_DataType dtype,
@@ -817,7 +817,7 @@ void TFE_GetExecutedOpNames(TFE_Context* ctx, TF_Buffer* buf,
   buf->data_deallocator = [](void* data, size_t length) {
     tensorflow::port::Free(data);
   };
-  status->status = ::tensorflow::OkStatus();
+  status->status = absl::OkStatus();
 }
 
 void TFE_SetLogicalCpuDevices(TFE_Context* ctx, int num_cpus,
@@ -960,7 +960,7 @@ void TFE_GetTaskStates(TFE_Context* ctx, const TF_Buffer& tasks, void* states,
     *state_iter = std::move(s);
     ++state_iter;
   }
-  status->status = tensorflow::OkStatus();
+  status->status = absl::OkStatus();
 }
 
 void TFE_WaitAtBarrier(TFE_Context* ctx, const char* barrier_id,

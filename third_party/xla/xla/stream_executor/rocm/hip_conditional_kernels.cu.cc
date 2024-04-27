@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,33 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <hip/hip_runtime.h>
+#include <string_view>
 
-namespace stream_executor {
-namespace rocm {
-namespace {
+namespace stream_executor::gpu {
 
-__global__ void SetCondition() {}
+std::string_view GetSetIfConditionKernel() { return "<unsupported>"; }
+std::string_view GetSetIfElseConditionKernel() { return "<unsupported>"; }
+std::string_view GetSetCaseConditionKernel() { return "<unsupported>"; }
+std::string_view GetSetForConditionKernel() { return "<unsupported>"; }
+std::string_view GetSetWhileConditionKernel() { return "<unsupported>"; }
 
-}  // namespace
-}  // namespace rocm
-
-namespace gpu {
-void* GetSetIfConditionKernel() {
-  return reinterpret_cast<void*>(&rocm::SetCondition);
-}
-void* GetSetIfElseConditionKernel() {
-  return reinterpret_cast<void*>(&rocm::SetCondition);
-}
-void* GetSetCaseConditionKernel() {
-  return reinterpret_cast<void*>(&rocm::SetCondition);
-}
-void* GetSetForConditionKernel() {
-  return reinterpret_cast<void*>(&rocm::SetCondition);
-}
-void* GetSetWhileConditionKernel() {
-  return reinterpret_cast<void*>(&rocm::SetCondition);
-}
-}  // namespace gpu
-
-}  // namespace stream_executor
+}  // namespace stream_executor::gpu

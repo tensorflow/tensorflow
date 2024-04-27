@@ -107,7 +107,7 @@ class WindowDatasetOp::Dataset : public DatasetBase {
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status CheckExternalState() const override {
@@ -133,7 +133,7 @@ class WindowDatasetOp::Dataset : public DatasetBase {
                       {input_graph_node, window_size_node, window_shift_node,
                        window_stride_node, drop_remainder_node},
                       output));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:
@@ -153,7 +153,7 @@ class WindowDatasetOp::Dataset : public DatasetBase {
       const int64_t window_shift = dataset()->window_shift_;
       const int64_t window_stride = dataset()->window_stride_;
       std::vector<std::vector<Tensor>> window_elements;
-      Status status = OkStatus();
+      Status status = absl::OkStatus();
       {
         const size_t target_size = TargetBufferSize(window_size, window_stride);
 
@@ -162,7 +162,7 @@ class WindowDatasetOp::Dataset : public DatasetBase {
             (buffer_.empty() ||
              (dataset()->drop_remainder_ && buffer_.size() < target_size))) {
           *end_of_sequence = true;
-          return OkStatus();
+          return absl::OkStatus();
         }
 
         // Add elements to the buffer.
@@ -187,7 +187,7 @@ class WindowDatasetOp::Dataset : public DatasetBase {
         if (buffer_.empty() ||
             (dataset()->drop_remainder_ && buffer_.size() < target_size)) {
           DCHECK(*end_of_sequence);
-          return OkStatus();
+          return absl::OkStatus();
         }
 
         int num_elements = 1 + (buffer_.size() - 1) / window_stride;
@@ -252,7 +252,7 @@ class WindowDatasetOp::Dataset : public DatasetBase {
         TF_RETURN_IF_ERROR(
             StoreDatasetInVariantTensor(window_dataset, &out_tensors->back()));
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
 
    protected:
@@ -284,7 +284,7 @@ class WindowDatasetOp::Dataset : public DatasetBase {
               buffer_[i].result[j]));
         }
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     Status RestoreInternal(IteratorContext* ctx,
@@ -314,7 +314,7 @@ class WindowDatasetOp::Dataset : public DatasetBase {
                                  &buffer_[i].result[j]));
         }
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     TraceMeMetadata GetTraceMeMetadata() const override {
@@ -340,7 +340,7 @@ class WindowDatasetOp::Dataset : public DatasetBase {
         TF_RETURN_IF_ERROR(writer->WriteScalar(prefix(), ErrorMessageKey(index),
                                                std::string(status.message())));
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     Status ReadStatusLocked(IteratorStateReader* reader, size_t index,
@@ -356,9 +356,9 @@ class WindowDatasetOp::Dataset : public DatasetBase {
                                               &error_message));
         *status = Status(code, error_message);
       } else {
-        *status = OkStatus();
+        *status = absl::OkStatus();
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     string CodeKey(size_t index) {
