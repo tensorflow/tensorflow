@@ -177,7 +177,7 @@ TfLiteDelegatePtr CreateHexagonDelegate(
 #endif  // TFLITE_ENABLE_HEXAGON
 
 #ifdef TFLITE_WITHOUT_XNNPACK
-TfLiteDelegatePtr CreateXNNPACKDelegate(int num_threads) {
+TfLiteDelegatePtr CreateXNNPACKDelegate(int num_threads, bool force_fp16) {
   return tools::CreateNullDelegate();
 }
 #else  // !defined(TFLITE_WITHOUT_XNNPACK)
@@ -240,10 +240,14 @@ TfLiteDelegatePtr CreateXNNPACKDelegate(
   return TfLiteDelegatePtr(delegate, delegate_deleter);
 }
 
-TfLiteDelegatePtr CreateXNNPACKDelegate(int num_threads) {
+TfLiteDelegatePtr CreateXNNPACKDelegate(int num_threads, bool force_fp16) {
   auto opts = XNNPackDelegateOptionsDefault();
   // Note that we don't want to use the thread pool for num_threads == 1.
   opts.num_threads = num_threads > 1 ? num_threads : 0;
+  if (force_fp16) {
+    TFLITE_LOG(INFO) << "XNNPack FP16 inference enabled.";
+    opts.flags |= TFLITE_XNNPACK_DELEGATE_FLAG_FORCE_FP16;
+  }
   return CreateXNNPACKDelegate(&opts);
 }
 #endif

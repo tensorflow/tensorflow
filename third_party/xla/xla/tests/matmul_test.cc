@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -32,6 +32,19 @@ class MatmulTestWithCublas : public HloTestBase,
     auto debug_options = HloTestBase::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_enable_cublaslt(use_cublas_lt_);
     return debug_options;
+  }
+  void SetUp() override {
+    auto dbg = GetDebugOptionsForTest();
+    if (dbg.xla_gpu_enable_cublaslt()) {
+      const auto& gpu_cc = backend()
+                               .default_stream_executor()
+                               ->GetDeviceDescription()
+                               .gpu_compute_capability();
+      if (auto* rocm = std::get_if<se::RocmComputeCapability>(&gpu_cc);
+          rocm != nullptr && !rocm->has_hipblaslt()) {
+        GTEST_SKIP() << "No hipblas-lt support on this architecture!";
+      }
+    }
   }
 
  private:

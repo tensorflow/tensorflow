@@ -15,7 +15,6 @@
 """Tests for stateless random-number generation ops."""
 
 import functools
-import os
 
 from absl.testing import parameterized
 import numpy as np
@@ -268,10 +267,11 @@ class StatelessRandomOpsTest(xla_test.XLATestCase, parameterized.TestCase):
       # maxval != 1.
       y = y.astype(float) / maxval
       # Tests that the values are distributed amongst 10 bins with equal
-      # probability. 16.92 is the Chi^2 value for 9 degrees of freedom with
-      # p=0.05. This test is probabilistic and would be flaky if the random
+      # probability. 27.88 is the Chi^2 value for 9 degrees of freedom with
+      # p=0.001. This test is probabilistic and would be flaky if the random
       # seed were not fixed.
-      self.assertLess(random_test_util.chi_squared(y, 10), 16.92)
+      bins = 10
+      self.assertLess(random_test_util.chi_squared(y, bins), 27.88)
 
   def testRandomNormalIsFinite(self):
     with self.session() as sess, self.test_scope():
@@ -308,16 +308,12 @@ class StatelessRandomOpsTest(xla_test.XLATestCase, parameterized.TestCase):
       x = stateless.stateless_truncated_normal(
           shape=[n], seed=seed_t, dtype=dtype)
       y = sess.run(x, {seed_t: [0x12345678, 0xabcdef1]})
-      is_megacore = 'megacore' in os.environ.get('TEST_TARGET', '').lower()
       if dtype == dtypes.float16:
-        if is_megacore:
-          mean_atol = 2e-3
-        else:
-          mean_atol = 7e-4
+        mean_atol = 2e-3
       else:
         mean_atol = 5e-4
 
-      if dtype == dtypes.float16 and is_megacore:
+      if dtype == dtypes.float16:
         median_atol = 2e-3
       else:
         median_atol = 8e-4

@@ -9,12 +9,6 @@
 """
 
 load(
-    ":cuda_configure.bzl",
-    "make_copy_dir_rule",
-    "make_copy_files_rule",
-    "to_list_of_strings",
-)
-load(
     "//third_party/remote_config:common.bzl",
     "config_repo_label",
     "err_out",
@@ -27,6 +21,17 @@ load(
     "raw_exec",
     "realpath",
     "which",
+)
+load(
+    ":cuda_configure.bzl",
+    "enable_cuda",
+    "make_copy_dir_rule",
+    "make_copy_files_rule",
+    "to_list_of_strings",
+)
+load(
+    ":sycl_configure.bzl",
+    "enable_sycl",
 )
 
 _GCC_HOST_COMPILER_PATH = "GCC_HOST_COMPILER_PATH"
@@ -449,6 +454,8 @@ def _create_dummy_repository(repository_ctx):
         "rocm:build_defs.bzl",
         {
             "%{rocm_is_configured}": "False",
+            "%{gpu_is_configured}": "if_true" if enable_cuda(repository_ctx) or enable_sycl(repository_ctx) else "if_false",
+            "%{cuda_or_rocm}": "if_true" if enable_cuda(repository_ctx) else "if_false",
             "%{rocm_extra_copts}": "[]",
             "%{rocm_gpu_architectures}": "[]",
             "%{rocm_version_number}": "0",
@@ -634,6 +641,8 @@ def _create_local_rocm_repository(repository_ctx):
         tpl_paths["rocm:build_defs.bzl"],
         {
             "%{rocm_is_configured}": "True",
+            "%{gpu_is_configured}": "if_true",
+            "%{cuda_or_rocm}": "if_true",
             "%{rocm_extra_copts}": _compute_rocm_extra_copts(
                 repository_ctx,
                 rocm_config.amdgpu_targets,
@@ -762,6 +771,8 @@ def _create_remote_rocm_repository(repository_ctx, remote_config_repo):
         "rocm:build_defs.bzl",
         {
             "%{rocm_is_configured}": "True",
+            "%{gpu_is_configured}": "if_true",
+            "%{cuda_or_rocm}": "if_true",
             "%{rocm_extra_copts}": _compute_rocm_extra_copts(
                 repository_ctx,
                 [],  #_compute_capabilities(repository_ctx)
@@ -815,6 +826,7 @@ _ENVIRONS = [
     _GCC_HOST_COMPILER_PATH,
     _GCC_HOST_COMPILER_PREFIX,
     "TF_NEED_ROCM",
+    "TF_NEED_CUDA",  # Needed by the `if_gpu_is_configured` macro
     _ROCM_TOOLKIT_PATH,
     _TF_ROCM_AMDGPU_TARGETS,
 ]
@@ -826,7 +838,7 @@ remote_rocm_configure = repository_rule(
     attrs = {
         "environ": attr.string_dict(),
         "_find_rocm_config": attr.label(
-            default = Label("@org_tensorflow//third_party/gpus:find_rocm_config.py"),
+            default = Label("@local_tsl//third_party/gpus:find_rocm_config.py"),
         ),
     },
 )
@@ -836,7 +848,7 @@ rocm_configure = repository_rule(
     environ = _ENVIRONS + [_TF_ROCM_CONFIG_REPO],
     attrs = {
         "_find_rocm_config": attr.label(
-            default = Label("@org_tensorflow//third_party/gpus:find_rocm_config.py"),
+            default = Label("@local_tsl//third_party/gpus:find_rocm_config.py"),
         ),
     },
 )

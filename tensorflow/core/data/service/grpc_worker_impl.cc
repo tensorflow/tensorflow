@@ -47,7 +47,7 @@ Status GrpcWorkerImpl::Start(
   worker_address_ = worker_address;
   TF_RETURN_IF_ERROR(impl_->Start(worker_address, transfer_servers));
   LocalWorkers::Add(worker_address, impl_);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void GrpcWorkerImpl::Stop() {

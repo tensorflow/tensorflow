@@ -330,6 +330,16 @@ class FuseMatMulBiasAdd
       });
       return false;
     }
+    // FusedMatMul kernel does not support grad_a/grad_b attrs
+    if ((matmul->hasAttr("grad_a") &&
+         mlir::cast<BoolAttr>(matmul->getAttr("grad_a")).getValue()) ||
+        (matmul->hasAttr("grad_b") &&
+         mlir::cast<BoolAttr>(matmul->getAttr("grad_b")).getValue())) {
+      (void)rewriter.notifyMatchFailure(matmul, [&](Diagnostic &diag) {
+        diag << "FusedMatMul kernel does not support grad_a/grad_b attrs";
+      });
+      return false;
+    }
     return true;
   }
 

@@ -86,7 +86,7 @@ Status GetFileName(string base_name, string* fname) {
 
   base_name = MakeUniqueFilename(base_name);
   *fname = absl::StrCat(result, "/", base_name);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void DumpColocationGraph(const string& base_name,
@@ -147,7 +147,7 @@ Status AssignAndLog(int assigned_device, Node* node,
   TF_RETURN_IF_ERROR(colocation_graph->LimitToAssignedDevice(*node));
 
   LogDeviceAssignment(node, log_device_placement);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -327,7 +327,7 @@ Status Placer::Run(const GraphOptimizationPassOptions& options) {
         strings::StrCat(options.debug_filename_prefix, "colocation_graph"),
         colocation_graph);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 bool Placer::CanAssignToDevice(const string& candidate_device_name,

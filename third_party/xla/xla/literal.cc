@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -45,21 +45,21 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/printer.h"
 #include "xla/shape.h"
+#include "xla/shape_tree.h"
 #include "xla/shape_util.h"
 #include "xla/status.h"
 #include "xla/status_macros.h"
-#include "xla/statusor.h"
+#include "xla/tsl/util/byte_swap_array.h"
 #include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/lib/core/bitmap.h"
 #include "tsl/platform/errors.h"
-#include "tsl/platform/float8.h"
 #include "tsl/platform/logging.h"  // IWYU pragma: keep
 #include "tsl/platform/mem.h"
+#include "tsl/platform/ml_dtypes.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
-#include "tsl/util/byte_swap_array.h"
 
 namespace xla {
 namespace {
@@ -68,10 +68,6 @@ using absl::StrCat;
 using primitive_util::NativeTypeOf;
 
 constexpr bool kLittleEndian = __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__;
-// Literals can be used as DMA targets, which can require alignment. We
-// force a tsl::Allocator::kAllocatorAlignment-byte minimum
-// alignment.
-constexpr int kMinimumAlignment = 64;
 
 // Converts between little and big endian.
 //
@@ -91,16 +87,16 @@ void ConvertEndianShort(char* bytes, int64_t size) {
 }
 
 bool LiteralProtoHasValues(const LiteralProto& proto) {
-  return proto.preds_size() || !proto.s4s().empty() || !proto.u4s().empty() ||
-         !proto.s8s().empty() || !proto.u8s().empty() || proto.s32s_size() ||
-         proto.s64s_size() || proto.u32s_size() || proto.u64s_size() ||
-         proto.f32s_size() || proto.f64s_size() || proto.c64s_size() ||
-         proto.c128s_size() || proto.tuple_literals_size() ||
-         !proto.f16s().empty() || !proto.bf16s().empty() ||
-         !proto.u16s().empty() || !proto.s16s().empty() ||
+  return !proto.s2s().empty() || !proto.s4s().empty() || !proto.s8s().empty() ||
+         !proto.s16s().empty() || proto.s32s_size() || proto.s64s_size() ||
+         !proto.u2s().empty() || !proto.u4s().empty() || !proto.u8s().empty() ||
+         !proto.u16s().empty() || proto.u32s_size() || proto.u64s_size() ||
          !proto.f8e5m2s().empty() || !proto.f8e4m3fns().empty() ||
          !proto.f8e4m3b11fnuzs().empty() || !proto.f8e5m2fnuzs().empty() ||
-         !proto.f8e4m3fnuzs().empty();
+         !proto.f8e4m3fnuzs().empty() || !proto.f16s().empty() ||
+         !proto.bf16s().empty() || proto.f32s_size() || proto.f64s_size() ||
+         proto.c64s_size() || proto.c128s_size() || proto.preds_size() ||
+         proto.tuple_literals_size();
 }
 
 // Lazy getter for the interned scalar shape in static storage. We reuse this
@@ -120,12 +116,9 @@ const Shape& ScalarShapeImpl() {
 }
 
 const Shape& ScalarShape(PrimitiveType type) {
-  return primitive_util::PrimitiveTypeSwitch<const Shape&>(
+  return primitive_util::ArrayTypeSwitch<const Shape&>(
       [&](auto primitive_type_constant) -> const Shape& {
-        if constexpr (primitive_util::IsArrayType(primitive_type_constant)) {
-          return ScalarShapeImpl<primitive_type_constant>();
-        }
-        LOG(FATAL) << "Unhandled primitive type " << type;
+        return ScalarShapeImpl<primitive_type_constant>();
       },
       type);
 }
@@ -252,6 +245,21 @@ Literal::Literal() : Literal(NilShape()) {}
 Literal::Literal(const Shape& shape)
     : Literal(shape, /*allocate_arrays=*/true) {}
 
+void Literal::SetShape(const Shape& shape) {
+  Shape shape_storage;
+  const Shape* shape_ptr = &shape;
+  if (LayoutUtil::HasCustomElementSizeInBits(shape)) {
+    shape_storage = shape;
+    shape_storage.mutable_layout()->set_element_size_in_bits(0);
+    shape_ptr = &shape_storage;
+  }
+  if (const Shape* intered_shape_ptr = TryInternShape(*shape_ptr)) {
+    shape_ = intered_shape_ptr;
+  } else {
+    shape_ = std::make_unique<Shape>(*shape_ptr);
+  }
+}
+
 void Literal::SetPiece(const Shape& shape, Piece* piece, bool allocate_arrays,
                        ArrayValueState leaf_array_value_state) {
   if (shape.IsTuple()) {
@@ -279,16 +287,9 @@ void Literal::SetPiece(const Shape& shape, Piece* piece, bool allocate_arrays,
 Literal::Literal(const Shape& shape, bool allocate_arrays,
                  ArrayValueState leaf_array_value_state)
     : MutableLiteralBase() {
-  if (const Shape* intered_shape_ptr = TryInternShape(shape)) {
-    shape_ = intered_shape_ptr;
-  } else {
-    shape_ = std::make_unique<Shape>(shape);
-  }
+  SetShape(shape);
   CHECK(leaf_array_value_state != ArrayValueState::kKnown ||
         LayoutUtil::HasLayout(*shape_));
-  // Currently we do nibble packing/unpacking in TPU host/device transfer.
-  CHECK(!LayoutUtil::HasCustomElementSizeInBits(*shape_))
-      << "Literal does not support layouts with custom bit size: " << *shape_;
   root_piece_.set_subshape(shape_.get());
   CHECK(&root_piece_.subshape() == shape_.get());
 
@@ -351,22 +352,52 @@ int32_t LiteralBase::GetDynamicSize(int64_t dim_index,
 }
 
 std::optional<int64_t> LiteralBase::GetFirstInteger() const {
-  return primitive_util::PrimitiveTypeSwitch<std::optional<int64_t>>(
+  if (!primitive_util::IsIntegralType(shape().element_type())) {
+    return std::nullopt;
+  }
+  return primitive_util::IntegralTypeSwitch<std::optional<int64_t>>(
       [&](auto primitive_type_constant) -> std::optional<int64_t> {
-        if constexpr (primitive_util::IsIntegralType(primitive_type_constant)) {
-          using NativeT = NativeTypeOf<primitive_type_constant>;
-          auto first_element = GetFirstElement<NativeT>();
-          if constexpr (std::is_same_v<NativeT, uint64_t>) {
-            int64_t v = static_cast<int64_t>(first_element);
-            if (v < 0) {
-              return std::nullopt;
-            }
+        using NativeT = NativeTypeOf<primitive_type_constant>;
+        auto first_element = GetFirstElement<NativeT>();
+        if constexpr (std::is_same_v<NativeT, uint64_t>) {
+          int64_t v = static_cast<int64_t>(first_element);
+          if (v < 0) {
+            return std::nullopt;
           }
-          return first_element;
         }
-        return std::nullopt;
+        return first_element;
       },
       shape().element_type());
+}
+
+void LiteralBase::BuildPieceSubtree(const Shape& shape, Piece* piece) {
+  CHECK(shape.IsTuple());
+  for (int i = 0; i < ShapeUtil::TupleElementCount(shape); ++i) {
+    const Shape& subshape = shape.tuple_shapes(i);
+
+    Piece child_piece;
+    child_piece.set_subshape(&subshape);
+
+    if (subshape.IsTuple()) {
+      BuildPieceSubtree(subshape, &child_piece);
+    }
+
+    piece->emplace_back(std::move(child_piece));
+  }
+}
+
+absl::Status LiteralBase::SerializeToString(std::string* output) const {
+  ShapeProto shape_proto = shape().ToProto();
+  TF_ASSIGN_OR_RETURN(int64_t size,
+                      ShapeUtil::SerializedSizeWithProto(shape(), shape_proto));
+  output->resize(size);
+  return SerializeWithShapeProto(shape_proto, output->data());
+}
+
+absl::StatusOr<std::string> LiteralBase::SerializeAsString() const {
+  std::string result;
+  TF_RETURN_IF_ERROR(SerializeToString(&result));
+  return std::move(result);
 }
 
 template <typename NativeT>
@@ -449,7 +480,7 @@ void MutableLiteralBase::CopyElementFrom(const LiteralSlice& src_literal,
   }
 }
 
-/* static */ StatusOr<Literal> MutableLiteralBase::CreateFromProto(
+/* static */ absl::StatusOr<Literal> MutableLiteralBase::CreateFromProto(
     const LiteralProto& proto, bool prohibit_empty_literal) {
   if (!proto.has_shape()) {
     return InvalidArgument("LiteralProto has no shape");
@@ -471,7 +502,7 @@ void MutableLiteralBase::CopyElementFrom(const LiteralSlice& src_literal,
   Literal literal(shape);
 
   TF_RETURN_IF_ERROR(literal.root_piece_.ForEachMutableSubpieceWithStatus(
-      [&](const ShapeIndex& index, Piece* piece) {
+      [&](const ShapeIndex& index, Piece* piece) -> absl::Status {
         const LiteralProto* proto_element = &proto;
         for (int64_t i : index) {
           CHECK(i < proto_element->tuple_literals_size());
@@ -671,25 +702,18 @@ Status LiteralBase::Piece::CopyFrom(const LiteralBase::Piece& src,
     memcpy(buffer(), src.buffer(), src.size_bytes_dense());
   } else {
     std::vector<int64_t> origin(subshape().rank(), 0);
-    TF_RETURN_IF_ERROR(primitive_util::PrimitiveTypeSwitch<Status>(
-        [&](auto primitive_type_constant) -> Status {
-          if constexpr (primitive_util::IsArrayType(primitive_type_constant)) {
-            using NativeT = NativeTypeOf<primitive_type_constant>;
-            if (only_dynamic_bound) {
-              CopyElementsWithDynamicBound<NativeT>(src);
-            } else {
-              CopyElementsBetween<NativeT>(this->data<NativeT>(),
-                                           src.data<NativeT>(), subshape(),
-                                           src.subshape());
-            }
-            return OkStatus();
+    primitive_util::ArrayTypeSwitch<void>(
+        [&](auto primitive_type_constant) {
+          using NativeT = NativeTypeOf<primitive_type_constant>;
+          if (only_dynamic_bound) {
+            CopyElementsWithDynamicBound<NativeT>(src);
+          } else {
+            CopyElementsBetween<NativeT>(this->data<NativeT>(),
+                                         src.data<NativeT>(), subshape(),
+                                         src.subshape());
           }
-          return Unimplemented(
-              "Copying a Literal object with element type %s is not "
-              "implemented.",
-              PrimitiveType_Name(subshape().element_type()));
         },
-        subshape().element_type()));
+        subshape().element_type());
   }
   DCHECK_EQ(dynamic_size_buffer_bytes(), src.dynamic_size_buffer_bytes());
   if (subshape().is_dynamic() && src.subshape().is_dynamic()) {
@@ -815,17 +839,11 @@ Status MutableLiteralBase::CopySliceFrom(const LiteralSlice& src_literal,
   TF_RET_CHECK(src_literal.shape().rank() == src_base.size());
   TF_RET_CHECK(shape().rank() == dest_base.size());
 
-  return primitive_util::PrimitiveTypeSwitch<Status>(
+  return primitive_util::ArrayTypeSwitch<Status>(
       [&](auto primitive_type_constant) -> Status {
-        if constexpr (primitive_util::IsArrayType(primitive_type_constant)) {
-          using NativeT = NativeTypeOf<primitive_type_constant>;
-          return CopySliceFromInternal<NativeT>(src_literal, src_base,
-                                                dest_base, copy_size);
-        }
-        return Unimplemented(
-            "Copying a slice from a Literal object with element type %d is not "
-            "implemented.",
-            shape().element_type());
+        using NativeT = NativeTypeOf<primitive_type_constant>;
+        return CopySliceFromInternal<NativeT>(src_literal, src_base, dest_base,
+                                              copy_size);
       },
       shape().element_type());
 }
@@ -866,7 +884,7 @@ void MutableLiteralBase::PopulateInplaceInternal(
     }
 
     auto init_function = [&](absl::Span<const int64_t> indexes,
-                             int thread_id) -> StatusOr<bool> {
+                             int thread_id) -> absl::StatusOr<bool> {
       const int64_t index =
           IndexUtil::MultidimensionalIndexToLinearIndex(shape(), indexes);
       DimensionVector minor_scan_indexes(rank, 0);
@@ -894,7 +912,7 @@ void MutableLiteralBase::PopulateInplaceInternal(
           this_shape, stride_config.base, stride_config.dimensions,
           stride_config.step,
           [&init_function](
-              absl::Span<const int64_t> indexes) -> StatusOr<bool> {
+              absl::Span<const int64_t> indexes) -> absl::StatusOr<bool> {
             auto result_ignored = init_function(indexes, /*thread_id=*/-1);
             return true;
           });
@@ -1005,10 +1023,10 @@ Literal LiteralBase::ToStatic() const {
 
 namespace {
 template <int64_t PRIMITIVE_SIZE>
-StatusOr<Literal> BroadcastHelper(const LiteralBase& src,
-                                  const Shape& src_shape,
-                                  const Shape& result_shape,
-                                  absl::Span<const int64_t> dimensions) {
+absl::StatusOr<Literal> BroadcastHelper(const LiteralBase& src,
+                                        const Shape& src_shape,
+                                        const Shape& result_shape,
+                                        absl::Span<const int64_t> dimensions) {
   for (int64_t i = 0, end = dimensions.size(); i < end; i++) {
     TF_RET_CHECK(src_shape.dimensions(i) ==
                  result_shape.dimensions(dimensions[i]));
@@ -1073,7 +1091,7 @@ StatusOr<Literal> BroadcastHelper(const LiteralBase& src,
 }
 }  // anonymous namespace
 
-StatusOr<Literal> LiteralBase::Broadcast(
+absl::StatusOr<Literal> LiteralBase::Broadcast(
     const Shape& result_shape, absl::Span<const int64_t> dimensions) const {
   const LiteralBase& src = *this;
   const Shape& src_shape = shape();
@@ -1103,7 +1121,7 @@ StatusOr<Literal> LiteralBase::Broadcast(
   }
 }
 
-StatusOr<Literal> LiteralBase::Reshape(
+absl::StatusOr<Literal> LiteralBase::Reshape(
     absl::Span<const int64_t> dimensions) const {
   if (!LayoutUtil::IsDenseArray(shape())) {
     return InvalidArgument("Reshape is only supported for dense arrays.");
@@ -1225,14 +1243,10 @@ Literal LiteralBase::Slice(absl::Span<const int64_t> start_indices,
       LayoutUtil::MinorToMajor(shape()));
   ShapeUtil::CopyDynamicDimensions(&result_shape, shape());
   Literal result_literal(result_shape);
-  primitive_util::PrimitiveTypeSwitch<void>(
+  primitive_util::ArrayTypeSwitch<void>(
       [&](auto primitive_type_constant) -> void {
-        if constexpr (primitive_util::IsArrayType(primitive_type_constant)) {
-          using NativeT = NativeTypeOf<primitive_type_constant>;
-          return SliceInternal<NativeT>(*this, start_indices, result_literal);
-        }
-        LOG(FATAL) << "not yet implemented: "
-                   << PrimitiveType_Name(result_shape.element_type());
+        using NativeT = NativeTypeOf<primitive_type_constant>;
+        return SliceInternal<NativeT>(*this, start_indices, result_literal);
       },
       result_shape.element_type());
   return result_literal;
@@ -1262,27 +1276,23 @@ std::string LiteralBase::GetAsString(absl::Span<const int64_t> multi_index,
                                      const ShapeIndex& shape_index) const {
   const Shape& subshape = ShapeUtil::GetSubshape(shape(), shape_index);
   CHECK(LayoutUtil::IsDenseArray(subshape));
-  return primitive_util::PrimitiveTypeSwitch<std::string>(
+  return primitive_util::ArrayTypeSwitch<std::string>(
       [&](auto primitive_type_constant) -> std::string {
-        if constexpr (primitive_util::IsArrayType(primitive_type_constant)) {
-          using NativeT = NativeTypeOf<primitive_type_constant>;
-          if constexpr (primitive_util::IsIntegralType(
-                            primitive_type_constant)) {
-            return StrCat(Get<NativeT>(multi_index, shape_index));
-          }
-          if constexpr (primitive_util::IsFloatingPointType(
-                            primitive_type_constant)) {
-            return RoundTripFpToString(Get<NativeT>(multi_index, shape_index));
-          }
-          if constexpr (primitive_util::IsComplexType(
-                            primitive_type_constant)) {
-            NativeT c = Get<NativeT>(multi_index, shape_index);
-            return StrCat("(", RoundTripFpToString(c.real()), ", ",
-                          RoundTripFpToString(c.imag()), ")");
-          }
-          if constexpr (primitive_type_constant == PRED) {
-            return Get<bool>(multi_index, shape_index) ? "true" : "false";
-          }
+        using NativeT = NativeTypeOf<primitive_type_constant>;
+        if constexpr (primitive_util::IsIntegralType(primitive_type_constant)) {
+          return StrCat(Get<NativeT>(multi_index, shape_index));
+        }
+        if constexpr (primitive_util::IsFloatingPointType(
+                          primitive_type_constant)) {
+          return RoundTripFpToString(Get<NativeT>(multi_index, shape_index));
+        }
+        if constexpr (primitive_util::IsComplexType(primitive_type_constant)) {
+          NativeT c = Get<NativeT>(multi_index, shape_index);
+          return StrCat("(", RoundTripFpToString(c.real()), ", ",
+                        RoundTripFpToString(c.imag()), ")");
+        }
+        if constexpr (primitive_type_constant == PRED) {
+          return Get<bool>(multi_index, shape_index) ? "true" : "false";
         }
         LOG(FATAL) << PrimitiveType_Name(subshape.element_type());
       },
@@ -1325,19 +1335,19 @@ std::optional<double> LiteralBase::GetSumAsDouble(
   const Shape& s = shape();
   CHECK(LayoutUtil::IsDenseArray(s));
 
-  return primitive_util::PrimitiveTypeSwitch<std::optional<double>>(
-      [&](auto primitive_type_constant) -> std::optional<double> {
-        if constexpr (primitive_util::IsFloatingPointType(
-                          primitive_type_constant)) {
-          using NativeT = NativeTypeOf<primitive_type_constant>;
-          double sum = 0.0;
-          auto d = root_piece().data<NativeT>();
-          for (const int64_t idx : linear_indices) {
-            sum += static_cast<double>(d[idx]);
-          }
-          return sum;
+  if (!primitive_util::IsFloatingPointType(s.element_type())) {
+    return std::nullopt;
+  }
+
+  return primitive_util::FloatingPointTypeSwitch<double>(
+      [&](auto primitive_type_constant) -> double {
+        using NativeT = NativeTypeOf<primitive_type_constant>;
+        double sum = 0.0;
+        auto d = root_piece().data<NativeT>();
+        for (const int64_t idx : linear_indices) {
+          sum += static_cast<double>(d[idx]);
         }
-        return std::nullopt;
+        return sum;
       },
       s.element_type());
 }
@@ -1388,18 +1398,17 @@ Status MutableLiteralBase::SetIntegralAsS64(
 Status MutableLiteralBase::SetFromDouble(absl::Span<const int64_t> multi_index,
                                          double value) {
   CHECK(LayoutUtil::IsDenseArray(shape()));
-  return primitive_util::PrimitiveTypeSwitch<Status>(
-      [&](auto primitive_type_constant) -> Status {
-        if constexpr (primitive_util::IsFloatingPointType(
-                          primitive_type_constant)) {
-          using NativeT = NativeTypeOf<primitive_type_constant>;
-          Set<NativeT>(multi_index, static_cast<NativeT>(value));
-          return OkStatus();
-        }
-        return FailedPrecondition("Array element type is not integral: %s",
-                                  PrimitiveType_Name(shape().element_type()));
+  if (!primitive_util::IsFloatingPointType(shape().element_type())) {
+    return FailedPrecondition("Array element type is not integral: %s",
+                              PrimitiveType_Name(shape().element_type()));
+  }
+  primitive_util::FloatingPointTypeSwitch<void>(
+      [&](auto primitive_type_constant) -> void {
+        using NativeT = NativeTypeOf<primitive_type_constant>;
+        Set<NativeT>(multi_index, static_cast<NativeT>(value));
       },
       shape().element_type());
+  return OkStatus();
 }
 
 namespace {
@@ -1682,8 +1691,8 @@ void ConvertBetweenNativeTypes(absl::Span<const NativeSrcT> src_data,
 }
 
 template <PrimitiveType kSrcType>
-void ConvertIfDestTypeMatches(const LiteralBase& src_literal,
-                              MutableLiteralBase& dst_literal) {
+Status ConvertIfDestTypeMatches(const LiteralBase& src_literal,
+                                MutableLiteralBase& dst_literal) {
   DCHECK(dst_literal.shape().IsArray());
   using NativeSrcT = NativeTypeOf<kSrcType>;
   // Pass raw data Span/pointers to called template methods to avoid duplicating
@@ -1691,31 +1700,32 @@ void ConvertIfDestTypeMatches(const LiteralBase& src_literal,
   auto src_data = src_literal.data<NativeSrcT>();
   void* dst_base = dst_literal.untyped_data();
   DCHECK_EQ(src_data.size(), dst_literal.element_count());
-  primitive_util::PrimitiveTypeSwitch<void>(
-      [&](auto primitive_type_constant) -> void {
-        if constexpr (primitive_util::IsArrayType(primitive_type_constant)) {
-          if constexpr (kSrcType != primitive_type_constant) {
-            using NativeDestT = NativeTypeOf<primitive_type_constant>;
-            ConvertBetweenNativeTypes<NativeSrcT, NativeDestT>(src_data,
-                                                               dst_base);
-          }
-          return;
+  return primitive_util::ArrayTypeSwitch<Status>(
+      [&](auto primitive_type_constant) -> Status {
+        if constexpr (primitive_util::IsComplexType(kSrcType) &&
+                      !primitive_util::IsComplexType(primitive_type_constant)) {
+          return Unimplemented("%s from type %s to type %s is not implemented.",
+                               "Converting", PrimitiveType_Name(kSrcType),
+                               PrimitiveType_Name(primitive_type_constant()));
+        } else if constexpr (kSrcType != primitive_type_constant) {
+          using NativeDestT = NativeTypeOf<primitive_type_constant>;
+          ConvertBetweenNativeTypes<NativeSrcT, NativeDestT>(src_data,
+                                                             dst_base);
         }
-        // This code path is impossible to hit.
-        LOG(FATAL) << "Unexpected type " << dst_literal.shape().element_type();
+        return OkStatus();
       },
       dst_literal.shape().element_type());
 }
 
-StatusOr<Literal> ConvertSwitch(const LiteralBase& literal,
-                                PrimitiveType primitive_dest_type) {
+absl::StatusOr<Literal> ConvertSwitch(const LiteralBase& literal,
+                                      PrimitiveType primitive_dest_type) {
   TF_RET_CHECK(LayoutUtil::IsDenseArray(literal.shape()));
   if (literal.shape().element_type() == primitive_dest_type) {
     return literal.Clone();
   }
   // Source Array type requirement is ensured by IsDenseArray before.
   if (!primitive_util::IsArrayType(primitive_dest_type) ||
-      primitive_util::IsComplexType(literal.shape().element_type())) {
+      !primitive_util::IsArrayType(literal.shape().element_type())) {
     return Unimplemented("%s from type %s to type %s is not implemented.",
                          "Converting",
                          PrimitiveType_Name(literal.shape().element_type()),
@@ -1726,29 +1736,24 @@ StatusOr<Literal> ConvertSwitch(const LiteralBase& literal,
   // duplicating it N^2 times in the conversion implementation.
   Literal result(
       ShapeUtil::ChangeElementType(literal.shape(), primitive_dest_type));
-  primitive_util::PrimitiveTypeSwitch<void>(
-      [&](auto primitive_type_constant) -> void {
-        if constexpr (primitive_util::IsArrayType(primitive_type_constant) &&
-                      !primitive_util::IsComplexType(primitive_type_constant)) {
-          ConvertIfDestTypeMatches<primitive_type_constant>(literal, result);
-          return;
-        }
-        // Unsupported conversions are checked before this switch, this path is
-        // not possible to hit.
-        LOG(FATAL) << "Unexpected type " << literal.shape().element_type();
+  TF_RETURN_IF_ERROR(primitive_util::ArrayTypeSwitch<Status>(
+      [&](auto primitive_type_constant) -> Status {
+        return ConvertIfDestTypeMatches<primitive_type_constant>(literal,
+                                                                 result);
       },
-      literal.shape().element_type());
+      literal.shape().element_type()));
   return result;
 }
 
 }  // namespace
 
-StatusOr<Literal> LiteralBase::Convert(
+absl::StatusOr<Literal> LiteralBase::Convert(
     PrimitiveType primitive_dest_type) const {
   return ConvertSwitch(*this, primitive_dest_type);
 }
 
-StatusOr<Literal> LiteralBase::BitcastConvert(const Shape& dest_shape) const {
+absl::StatusOr<Literal> LiteralBase::BitcastConvert(
+    const Shape& dest_shape) const {
   if (ShapeUtil::ByteSizeOf(dest_shape) != ShapeUtil::ByteSizeOf(shape())) {
     return InvalidArgument(
         "Can not bitcast-convert from shape %s to a shape of different size %s",
@@ -1788,7 +1793,8 @@ StatusOr<Literal> LiteralBase::BitcastConvert(const Shape& dest_shape) const {
   return out;
 }
 
-StatusOr<Literal> LiteralBase::ConvertToShape(const Shape& dest_shape) const {
+absl::StatusOr<Literal> LiteralBase::ConvertToShape(
+    const Shape& dest_shape) const {
   if (!dest_shape.IsTuple()) {
     return Convert(dest_shape.element_type());
   }
@@ -1858,19 +1864,26 @@ bool LiteralBase::Piece::EqualElements(const LiteralBase::Piece& other) const {
     CHECK(LayoutUtil::IsDenseArray(subshape()))
         << __func__ << " is only supported for dense arrays: " << subshape();
     CHECK_EQ(size_bytes_dense(), other.size_bytes_dense());
+    if (primitive_util::IsSubByteNonPredType(subshape().element_type())) {
+      CHECK(!primitive_util::IsFloatingPointType(subshape().element_type()));
+      auto one_array = buffer();
+      auto two_array = other.buffer();
+      const int bits_per_element =
+          primitive_util::BitWidth(subshape().element_type());
+      const uint8_t mask = LsbMask<uint8_t>(bits_per_element);
+      for (int64_t i = 0; i < size_bytes_dense(); ++i) {
+        if ((one_array[i] & mask) != (two_array[i] & mask)) return false;
+      }
+      return true;
+    }
     return memcmp(buffer(), other.buffer(), size_bytes_dense()) == 0;
   }
 
   std::vector<int64_t> multi_index;
-  return primitive_util::PrimitiveTypeSwitch<bool>(
+  return primitive_util::ArrayTypeSwitch<bool>(
       [&](auto primitive_type_constant) -> bool {
-        if constexpr (primitive_util::IsArrayType(primitive_type_constant)) {
-          using NativeSrcT = NativeTypeOf<primitive_type_constant>;
-          return EqualElementsInternal<NativeSrcT>(other, &multi_index);
-        }
-        LOG(FATAL)
-            << "Unimplemented: LiteralBase::Piece::EqualElements for type "
-            << PrimitiveType_Name(subshape().element_type());
+        using NativeSrcT = NativeTypeOf<primitive_type_constant>;
+        return EqualElementsInternal<NativeSrcT>(other, &multi_index);
       },
       subshape().element_type());
 }
@@ -1947,14 +1960,11 @@ bool Literal::Piece::IsAll(const Literal& scalar) const {
   CHECK(LayoutUtil::IsDenseArray(subshape()))
       << __func__ << " is only supported for dense arrays: " << subshape();
   CHECK_EQ(subshape().element_type(), scalar.shape().element_type());
-  return primitive_util::PrimitiveTypeSwitch<bool>(
+  return primitive_util::ArrayTypeSwitch<bool>(
       [&](auto primitive_type_constant) -> bool {
-        if constexpr (primitive_util::IsArrayType(primitive_type_constant)) {
-          using NativeT = NativeTypeOf<primitive_type_constant>;
-          return AllElementsEqualValue(this->data<NativeT>(),
-                                       scalar.GetFirstElement<NativeT>());
-        }
-        return false;
+        using NativeT = NativeTypeOf<primitive_type_constant>;
+        return AllElementsEqualValue(this->data<NativeT>(),
+                                     scalar.GetFirstElement<NativeT>());
       },
       subshape().element_type());
 }
@@ -1968,17 +1978,13 @@ int64_t Literal::Piece::CountAll(const Literal& scalar) const {
   CHECK(LayoutUtil::IsDenseArray(subshape()))
       << __func__ << " is only supported for dense arrays: " << subshape();
   CHECK_EQ(subshape().element_type(), scalar.shape().element_type());
-  return primitive_util::PrimitiveTypeSwitch<int64_t>(
+  return primitive_util::ArrayTypeSwitch<int64_t>(
       [&](auto primitive_type_constant) -> int64_t {
-        if constexpr (primitive_util::IsArrayType(primitive_type_constant)) {
-          using NativeT = NativeTypeOf<primitive_type_constant>;
-          return absl::c_count_if(
-              this->data<NativeT>(), [&](NativeT elem) -> bool {
-                return EqualIncludingNan(elem,
-                                         scalar.GetFirstElement<NativeT>());
-              });
-        }
-        return 0;
+        using NativeT = NativeTypeOf<primitive_type_constant>;
+        return absl::c_count_if(
+            this->data<NativeT>(), [&](NativeT elem) -> bool {
+              return EqualIncludingNan(elem, scalar.GetFirstElement<NativeT>());
+            });
       },
       subshape().element_type());
 }
@@ -1999,27 +2005,23 @@ bool LiteralBase::IsAll(int8_t value) const {
     return false;
   }
   Literal scalar(ShapeUtil::MakeScalarShape(ty));
-  return primitive_util::PrimitiveTypeSwitch<bool>(
+  return primitive_util::ArrayTypeSwitch<bool>(
       [&](auto primitive_type_constant) -> bool {
-        if constexpr (primitive_util::IsArrayType(primitive_type_constant)) {
-          using NativeT = NativeTypeOf<primitive_type_constant>;
-          NativeT converted(value);
-          if constexpr (primitive_util::IsFloatingPointType(
-                            primitive_type_constant)) {
-            if (!Eigen::numext::isfinite(converted)) {
-              return false;
-            }
+        using NativeT = NativeTypeOf<primitive_type_constant>;
+        NativeT converted(value);
+        if constexpr (primitive_util::IsFloatingPointType(
+                          primitive_type_constant)) {
+          if (!Eigen::numext::isfinite(converted)) {
+            return false;
           }
-          if constexpr (!primitive_util::IsComplexType(
-                            primitive_type_constant)) {
-            if (static_cast<int8_t>(converted) != value) {
-              return false;
-            }
-          }
-          scalar.Set<NativeT>({}, converted);
-          return root_piece().IsAll(scalar);
         }
-        return false;
+        if constexpr (!primitive_util::IsComplexType(primitive_type_constant)) {
+          if (static_cast<int8_t>(converted) != value) {
+            return false;
+          }
+        }
+        scalar.Set<NativeT>({}, converted);
+        return root_piece().IsAll(scalar);
       },
       ty);
 }
@@ -2029,41 +2031,34 @@ bool LiteralBase::IsAllFloat(float value) const {
 }
 
 bool LiteralBase::IsAllFloatImpl(float value, bool round_value) const {
-  if (!shape().IsArray()) {
+  PrimitiveType ty = shape().element_type();
+  if (!primitive_util::IsFloatingPointType(ty)) {
     return false;
   }
-  PrimitiveType ty = shape().element_type();
   Literal scalar(ShapeUtil::MakeScalarShape(ty));
-  return primitive_util::PrimitiveTypeSwitch<bool>(
+  return primitive_util::FloatingPointTypeSwitch<bool>(
       [&](auto primitive_type_constant) -> bool {
-        if constexpr (primitive_util::IsFloatingPointType(
-                          primitive_type_constant)) {
-          using NativeT = NativeTypeOf<primitive_type_constant>;
-          scalar.Set<NativeT>({}, static_cast<NativeT>(value));
-          if (!round_value && scalar.GetAsDouble({}) != value) {
-            return false;
-          }
-          return root_piece().IsAll(scalar);
+        using NativeT = NativeTypeOf<primitive_type_constant>;
+        scalar.Set<NativeT>({}, static_cast<NativeT>(value));
+        if (!round_value && scalar.GetAsDouble({}) != value) {
+          return false;
         }
-        return false;
+        return root_piece().IsAll(scalar);
       },
       ty);
 }
 
 bool LiteralBase::IsAllComplex(complex64 value) const {
-  if (!shape().IsArray()) {
+  PrimitiveType ty = shape().element_type();
+  if (!primitive_util::IsComplexType(ty)) {
     return false;
   }
-  PrimitiveType ty = shape().element_type();
   Literal scalar(ShapeUtil::MakeScalarShape(ty));
-  return primitive_util::PrimitiveTypeSwitch<bool>(
+  return primitive_util::ComplexTypeSwitch<bool>(
       [&](auto primitive_type_constant) -> bool {
-        if constexpr (primitive_util::IsComplexType(primitive_type_constant)) {
-          using NativeT = NativeTypeOf<primitive_type_constant>;
-          scalar.Set<NativeT>({}, static_cast<NativeT>(value));
-          return root_piece().IsAll(scalar);
-        }
-        return false;
+        using NativeT = NativeTypeOf<primitive_type_constant>;
+        scalar.Set<NativeT>({}, static_cast<NativeT>(value));
+        return root_piece().IsAll(scalar);
       },
       ty);
 }
@@ -2096,36 +2091,32 @@ bool LiteralBase::IsR1Iota() const {
     return false;
   }
 
-  return primitive_util::PrimitiveTypeSwitch<bool>(
+  return primitive_util::ArrayTypeSwitch<bool>(
       [&](auto primitive_type_constant) -> bool {
-        if constexpr (primitive_util::IsArrayType(primitive_type_constant)) {
-          using NativeT = NativeTypeOf<primitive_type_constant>;
-          const int64_t elements = ShapeUtil::ElementsIn(shape());
-          for (int64_t idx = 0; idx < elements; ++idx) {
-            if constexpr (primitive_util::IsIntegralType(
-                              primitive_type_constant)) {
-              if (static_cast<int64_t>(Get<NativeT>({idx})) != idx) {
-                return false;
-              }
-            } else if constexpr (primitive_util::IsFloatingPointType(
-                                     primitive_type_constant)) {
-              if (Get<NativeT>({idx}) != static_cast<NativeT>(idx)) {
-                return false;
-              }
-            } else if constexpr (primitive_util::IsComplexType(
-                                     primitive_type_constant)) {
-              if (Get<NativeT>({idx}) != NativeT(idx, 0.0f)) {
-                return false;
-              }
-            } else {
-              // pred is not iota.
+        using NativeT = NativeTypeOf<primitive_type_constant>;
+        const int64_t elements = ShapeUtil::ElementsIn(shape());
+        for (int64_t idx = 0; idx < elements; ++idx) {
+          if constexpr (primitive_util::IsIntegralType(
+                            primitive_type_constant)) {
+            if (static_cast<int64_t>(Get<NativeT>({idx})) != idx) {
               return false;
             }
+          } else if constexpr (primitive_util::IsFloatingPointType(
+                                   primitive_type_constant)) {
+            if (Get<NativeT>({idx}) != static_cast<NativeT>(idx)) {
+              return false;
+            }
+          } else if constexpr (primitive_util::IsComplexType(
+                                   primitive_type_constant)) {
+            if (Get<NativeT>({idx}) != NativeT(idx, 0.0f)) {
+              return false;
+            }
+          } else {
+            // pred is not iota.
+            return false;
           }
-          return true;
         }
-        // token, opaque, tuple, etc. are all not iota.
-        return false;
+        return true;
       },
       shape().element_type());
 }
@@ -2147,27 +2138,24 @@ std::optional<int64_t> LiteralBase::IsR1StridedIota() const {
     return std::nullopt;
   }
 
-  return primitive_util::PrimitiveTypeSwitch<std::optional<int64_t>>(
+  return primitive_util::IntegralTypeSwitch<std::optional<int64_t>>(
       [&](auto primitive_type_constant) -> std::optional<int64_t> {
-        if constexpr (primitive_util::IsIntegralType(primitive_type_constant)) {
-          using NativeT = NativeTypeOf<primitive_type_constant>;
+        using NativeT = NativeTypeOf<primitive_type_constant>;
 
-          // Infer the stride as the second element (since first element is
-          // supposed to be zero).
-          const int64_t stride = static_cast<int64_t>(Get<NativeT>({1}));
-          if (stride == 0) {
+        // Infer the stride as the second element (since first element is
+        // supposed to be zero).
+        const int64_t stride = static_cast<int64_t>(Get<NativeT>({1}));
+        if (stride == 0) {
+          return std::nullopt;
+        }
+
+        for (int64_t idx = 0; idx < elements; ++idx) {
+          if (static_cast<int64_t>(Get<NativeT>({idx})) != idx * stride) {
             return std::nullopt;
           }
-
-          for (int64_t idx = 0; idx < elements; ++idx) {
-            if (static_cast<int64_t>(Get<NativeT>({idx})) != idx * stride) {
-              return std::nullopt;
-            }
-          }
-
-          return stride;
         }
-        return std::nullopt;
+
+        return stride;
       },
       shape().element_type());
 }
@@ -2175,13 +2163,10 @@ std::optional<int64_t> LiteralBase::IsR1StridedIota() const {
 bool LiteralBase::IsZero(absl::Span<const int64_t> indices) const {
   CHECK(LayoutUtil::IsDenseArray(shape()))
       << __func__ << " is only supported for dense arrays: " << shape();
-  return primitive_util::PrimitiveTypeSwitch<bool>(
+  return primitive_util::ArrayTypeSwitch<bool>(
       [&](auto primitive_type_constant) -> bool {
-        if constexpr (primitive_util::IsArrayType(primitive_type_constant)) {
-          using NativeT = NativeTypeOf<primitive_type_constant>;
-          return Get<NativeT>(indices) == NativeT{0};
-        }
-        LOG(FATAL) << "Input literal must be an array.";
+        using NativeT = NativeTypeOf<primitive_type_constant>;
+        return Get<NativeT>(indices) == NativeT{0};
       },
       shape().element_type());
 }
@@ -2210,39 +2195,17 @@ void LiteralBase::Piece::WriteToProto(LiteralProto* proto) const {
     case PRED:
       CopyToRepeatedField(proto->mutable_preds(), data<bool>());
       break;
-    case S4:
-      *proto->mutable_s4s() = std::string(
-          reinterpret_cast<const char*>(data<s4>().data()), size_bytes_dense());
-      if (!kLittleEndian) {
-        ConvertEndianShort(proto->mutable_s4s());
-      }
-      break;
-    case S8:
-      proto->set_s8s(static_cast<const signed char*>(data<int8_t>().data()),
-                     element_count());
+    case U2:
+      *proto->mutable_u2s() = std::string(
+          reinterpret_cast<const char*>(data<u2>().data()), size_bytes_dense());
       break;
     case U4:
       *proto->mutable_u4s() = std::string(
           reinterpret_cast<const char*>(data<u4>().data()), size_bytes_dense());
-      if (!kLittleEndian) {
-        ConvertEndianShort(proto->mutable_u4s());
-      }
       break;
     case U8:
       proto->set_u8s(static_cast<const unsigned char*>(data<uint8_t>().data()),
                      element_count());
-      break;
-    case U32:
-      CopyToRepeatedField(proto->mutable_u32s(), data<uint32_t>());
-      break;
-    case U64:
-      CopyToRepeatedField(proto->mutable_u64s(), data<uint64_t>());
-      break;
-    case S32:
-      CopyToRepeatedField(proto->mutable_s32s(), data<int32_t>());
-      break;
-    case S64:
-      CopyToRepeatedField(proto->mutable_s64s(), data<int64_t>());
       break;
     case U16:
       *proto->mutable_u16s() =
@@ -2252,6 +2215,24 @@ void LiteralBase::Piece::WriteToProto(LiteralProto* proto) const {
         ConvertEndianShort(proto->mutable_u16s());
       }
       break;
+    case U32:
+      CopyToRepeatedField(proto->mutable_u32s(), data<uint32_t>());
+      break;
+    case U64:
+      CopyToRepeatedField(proto->mutable_u64s(), data<uint64_t>());
+      break;
+    case S2:
+      *proto->mutable_s2s() = std::string(
+          reinterpret_cast<const char*>(data<s2>().data()), size_bytes_dense());
+      break;
+    case S4:
+      *proto->mutable_s4s() = std::string(
+          reinterpret_cast<const char*>(data<s4>().data()), size_bytes_dense());
+      break;
+    case S8:
+      proto->set_s8s(static_cast<const signed char*>(data<int8_t>().data()),
+                     element_count());
+      break;
     case S16:
       *proto->mutable_s16s() =
           std::string(reinterpret_cast<const char*>(data<int16_t>().data()),
@@ -2259,6 +2240,37 @@ void LiteralBase::Piece::WriteToProto(LiteralProto* proto) const {
       if (!kLittleEndian) {
         ConvertEndianShort(proto->mutable_s16s());
       }
+      break;
+    case S32:
+      CopyToRepeatedField(proto->mutable_s32s(), data<int32_t>());
+      break;
+    case S64:
+      CopyToRepeatedField(proto->mutable_s64s(), data<int64_t>());
+      break;
+    case F8E5M2:
+      *proto->mutable_f8e5m2s() = std::string(
+          reinterpret_cast<const char*>(data<tsl::float8_e5m2>().data()),
+          size_bytes_dense());
+      break;
+    case F8E4M3FN:
+      *proto->mutable_f8e4m3fns() = std::string(
+          reinterpret_cast<const char*>(data<tsl::float8_e4m3fn>().data()),
+          size_bytes_dense());
+      break;
+    case F8E4M3B11FNUZ:
+      *proto->mutable_f8e4m3b11fnuzs() = std::string(
+          reinterpret_cast<const char*>(data<tsl::float8_e4m3b11fnuz>().data()),
+          size_bytes_dense());
+      break;
+    case F8E5M2FNUZ:
+      *proto->mutable_f8e5m2fnuzs() = std::string(
+          reinterpret_cast<const char*>(data<tsl::float8_e5m2fnuz>().data()),
+          size_bytes_dense());
+      break;
+    case F8E4M3FNUZ:
+      *proto->mutable_f8e4m3fnuzs() = std::string(
+          reinterpret_cast<const char*>(data<tsl::float8_e4m3fnuz>().data()),
+          size_bytes_dense());
       break;
     case F16:
       *proto->mutable_f16s() =
@@ -2275,31 +2287,6 @@ void LiteralBase::Piece::WriteToProto(LiteralProto* proto) const {
       if (!kLittleEndian) {
         ConvertEndianShort(proto->mutable_bf16s());
       }
-      break;
-    case F8E5M2:
-      *proto->mutable_f8e5m2s() = std::string(
-          reinterpret_cast<const char*>(data<tsl::float8_e5m2>().data()),
-          size_bytes_dense());
-      break;
-    case F8E4M3FN:
-      *proto->mutable_f8e4m3fns() = std::string(
-          reinterpret_cast<const char*>(data<tsl::float8_e4m3fn>().data()),
-          size_bytes_dense());
-      break;
-    case F8E4M3B11FNUZ:
-      *proto->mutable_f8e4m3b11fnuzs() = std::string(
-          reinterpret_cast<const char*>(data<tsl::float8_e4m3b11>().data()),
-          size_bytes_dense());
-      break;
-    case F8E5M2FNUZ:
-      *proto->mutable_f8e5m2fnuzs() = std::string(
-          reinterpret_cast<const char*>(data<tsl::float8_e5m2fnuz>().data()),
-          size_bytes_dense());
-      break;
-    case F8E4M3FNUZ:
-      *proto->mutable_f8e4m3fnuzs() = std::string(
-          reinterpret_cast<const char*>(data<tsl::float8_e4m3fnuz>().data()),
-          size_bytes_dense());
       break;
     case F32:
       CopyToRepeatedField(proto->mutable_f32s(), data<float>());
@@ -2370,44 +2357,24 @@ Status LiteralBase::Piece::CopyFromProto(const LiteralProto& proto) {
     case PRED:
       TF_RETURN_IF_ERROR(CopyFromRepeatedField(data<bool>(), proto.preds()));
       break;
+    case S2: {
+      const std::string& s(proto.s2s());
+      TF_RET_CHECK(data<s2>().size() * sizeof(s2) == s.size());
+      memcpy(untyped_data(), s.data(), s.size());
+      break;
+    }
     case S4: {
       const std::string& s(proto.s4s());
       TF_RET_CHECK(data<s4>().size() * sizeof(s4) == s.size());
       memcpy(untyped_data(), s.data(), s.size());
-      if (!kLittleEndian) {
-        ConvertEndianShort(reinterpret_cast<char*>(untyped_data()), s.size());
-      }
-    } break;
+      break;
+    }
     case S8: {
       auto s8_data = data<int8_t>();
       TF_RET_CHECK(proto.s8s().size() == s8_data.size());
       std::copy(proto.s8s().begin(), proto.s8s().end(), s8_data.begin());
-    } break;
-    case U4: {
-      const std::string& s(proto.u4s());
-      TF_RET_CHECK(data<u4>().size() * sizeof(u4) == s.size());
-      memcpy(untyped_data(), s.data(), s.size());
-      if (!kLittleEndian) {
-        ConvertEndianShort(reinterpret_cast<char*>(untyped_data()), s.size());
-      }
-    } break;
-    case U8: {
-      auto u8_data = data<uint8_t>();
-      TF_RET_CHECK(proto.u8s().size() == u8_data.size());
-      std::copy(proto.u8s().begin(), proto.u8s().end(), u8_data.begin());
-    } break;
-    case S32:
-      TF_RETURN_IF_ERROR(CopyFromRepeatedField(data<int32_t>(), proto.s32s()));
       break;
-    case S64:
-      TF_RETURN_IF_ERROR(CopyFromRepeatedField(data<int64_t>(), proto.s64s()));
-      break;
-    case U32:
-      TF_RETURN_IF_ERROR(CopyFromRepeatedField(data<uint32_t>(), proto.u32s()));
-      break;
-    case U64:
-      TF_RETURN_IF_ERROR(CopyFromRepeatedField(data<uint64_t>(), proto.u64s()));
-      break;
+    }
     case S16: {
       const std::string& s(proto.s16s());
       TF_RET_CHECK(data<int16_t>().size() * sizeof(int16_t) == s.size());
@@ -2415,7 +2382,32 @@ Status LiteralBase::Piece::CopyFromProto(const LiteralProto& proto) {
       if (!kLittleEndian) {
         ConvertEndianShort(reinterpret_cast<char*>(untyped_data()), s.size());
       }
-    } break;
+      break;
+    }
+    case S32:
+      TF_RETURN_IF_ERROR(CopyFromRepeatedField(data<int32_t>(), proto.s32s()));
+      break;
+    case S64:
+      TF_RETURN_IF_ERROR(CopyFromRepeatedField(data<int64_t>(), proto.s64s()));
+      break;
+    case U2: {
+      const std::string& s(proto.u2s());
+      TF_RET_CHECK(data<u2>().size() * sizeof(u2) == s.size());
+      memcpy(untyped_data(), s.data(), s.size());
+      break;
+    }
+    case U4: {
+      const std::string& s(proto.u4s());
+      TF_RET_CHECK(data<u4>().size() * sizeof(u4) == s.size());
+      memcpy(untyped_data(), s.data(), s.size());
+      break;
+    }
+    case U8: {
+      auto u8_data = data<uint8_t>();
+      TF_RET_CHECK(proto.u8s().size() == u8_data.size());
+      std::copy(proto.u8s().begin(), proto.u8s().end(), u8_data.begin());
+      break;
+    }
     case U16: {
       const std::string& s(proto.u16s());
       TF_RET_CHECK(data<uint16_t>().size() * sizeof(uint16_t) == s.size());
@@ -2423,41 +2415,53 @@ Status LiteralBase::Piece::CopyFromProto(const LiteralProto& proto) {
       if (!kLittleEndian) {
         ConvertEndianShort(reinterpret_cast<char*>(untyped_data()), s.size());
       }
-    } break;
+      break;
+    }
+    case U32:
+      TF_RETURN_IF_ERROR(CopyFromRepeatedField(data<uint32_t>(), proto.u32s()));
+      break;
+    case U64:
+      TF_RETURN_IF_ERROR(CopyFromRepeatedField(data<uint64_t>(), proto.u64s()));
+      break;
     case F8E5M2: {
       const std::string& s(proto.f8e5m2s());
       TF_RET_CHECK(data<tsl::float8_e5m2>().size() * sizeof(tsl::float8_e5m2) ==
                    s.size());
       memcpy(untyped_data(), s.data(), s.size());
-    } break;
+      break;
+    }
     case F8E4M3FN: {
       const std::string& s(proto.f8e4m3fns());
       TF_RET_CHECK(data<tsl::float8_e4m3fn>().size() *
                        sizeof(tsl::float8_e4m3fn) ==
                    s.size());
       memcpy(untyped_data(), s.data(), s.size());
-    } break;
+      break;
+    }
     case F8E4M3B11FNUZ: {
       const std::string& s(proto.f8e4m3b11fnuzs());
-      TF_RET_CHECK(data<tsl::float8_e4m3b11>().size() *
-                       sizeof(tsl::float8_e4m3b11) ==
+      TF_RET_CHECK(data<tsl::float8_e4m3b11fnuz>().size() *
+                       sizeof(tsl::float8_e4m3b11fnuz) ==
                    s.size());
       memcpy(untyped_data(), s.data(), s.size());
-    } break;
+      break;
+    }
     case F8E5M2FNUZ: {
       const std::string& s(proto.f8e5m2fnuzs());
       TF_RET_CHECK(data<tsl::float8_e5m2fnuz>().size() *
                        sizeof(tsl::float8_e5m2fnuz) ==
                    s.size());
       memcpy(untyped_data(), s.data(), s.size());
-    } break;
+      break;
+    }
     case F8E4M3FNUZ: {
       const std::string& s(proto.f8e4m3fnuzs());
       TF_RET_CHECK(data<tsl::float8_e4m3fnuz>().size() *
                        sizeof(tsl::float8_e4m3fnuz) ==
                    s.size());
       memcpy(untyped_data(), s.data(), s.size());
-    } break;
+      break;
+    }
     case F16: {
       const std::string& s(proto.f16s());
       TF_RET_CHECK(data<half>().size() * sizeof(half) == s.size());
@@ -2465,8 +2469,8 @@ Status LiteralBase::Piece::CopyFromProto(const LiteralProto& proto) {
       if (!kLittleEndian) {
         ConvertEndianShort(reinterpret_cast<char*>(untyped_data()), s.size());
       }
-    } break;
-
+      break;
+    }
     case BF16: {
       const std::string& s(proto.bf16s());
       TF_RET_CHECK(data<bfloat16>().size() * sizeof(bfloat16) == s.size());
@@ -2474,7 +2478,8 @@ Status LiteralBase::Piece::CopyFromProto(const LiteralProto& proto) {
       if (!kLittleEndian) {
         ConvertEndianShort(reinterpret_cast<char*>(untyped_data()), s.size());
       }
-    } break;
+      break;
+    }
     case F32:
       TF_RETURN_IF_ERROR(CopyFromRepeatedField(data<float>(), proto.f32s()));
       break;
@@ -2695,6 +2700,25 @@ MutableBorrowingLiteral::MutableBorrowingLiteral(absl::Span<char*> src_buf_ptrs,
   }
 }
 
+MutableBorrowingLiteral::MutableBorrowingLiteral(ShapeTree<char*> src_buf_ptrs)
+    : MutableLiteralBase() {
+  shape_ = std::make_unique<Shape>(src_buf_ptrs.shape());
+
+  root_piece_ = new Piece();
+  root_piece_->set_subshape(shape_.get());
+  BuildPieceSubtree(*shape_, root_piece_);
+
+  root_piece_->ForEachMutableSubpiece(
+      [&](const ShapeIndex& index, Piece* piece) {
+        if (ShapeUtil::GetSubshape(*shape_, index).IsTuple()) {
+          DCHECK_EQ(src_buf_ptrs.element(index), nullptr)
+              << "Tuples should not have buffer pointers";
+          return;
+        }
+        piece->set_buffer(const_cast<char*>(src_buf_ptrs.element(index)));
+      });
+}
+
 MutableBorrowingLiteral::~MutableBorrowingLiteral() {
   if (root_piece_ != nullptr) {
     delete root_piece_;
@@ -2707,22 +2731,6 @@ LiteralSlice::LiteralSlice(const LiteralBase& literal)
 LiteralSlice::LiteralSlice(const LiteralBase& literal,
                            const ShapeIndex& view_root)
     : LiteralBase(), root_piece_(&literal.piece(view_root)) {}
-
-void BorrowingLiteral::BuildPieceSubtree(const Shape& shape, Piece* piece) {
-  CHECK(shape.IsTuple());
-  for (int i = 0; i < ShapeUtil::TupleElementCount(shape); ++i) {
-    const Shape& subshape = shape.tuple_shapes(i);
-
-    Piece child_piece;
-    child_piece.set_subshape(&subshape);
-
-    if (subshape.IsTuple()) {
-      BuildPieceSubtree(subshape, &child_piece);
-    }
-
-    piece->emplace_back(std::move(child_piece));
-  }
-}
 
 BorrowingLiteral::BorrowingLiteral(const char* src_buf_ptr, const Shape& shape)
     : LiteralBase(), shape_(std::make_unique<Shape>(shape)) {
@@ -2749,6 +2757,23 @@ BorrowingLiteral::BorrowingLiteral(absl::Span<const char* const> src_buf_ptrs,
     CHECK(src_shape.IsArray());
     root_piece_.child(i).set_buffer(const_cast<char*>(src_buf_ptrs[i]));
   }
+}
+
+BorrowingLiteral::BorrowingLiteral(ShapeTree<const char*> src_buf_ptrs)
+    : LiteralBase(), shape_(std::make_unique<Shape>(src_buf_ptrs.shape())) {
+  root_piece_ = Piece();
+  root_piece_.set_subshape(shape_.get());
+  BuildPieceSubtree(*shape_, &root_piece_);
+
+  root_piece_.ForEachMutableSubpiece(
+      [&](const ShapeIndex& index, Piece* piece) {
+        if (ShapeUtil::GetSubshape(*shape_, index).IsTuple()) {
+          DCHECK_EQ(src_buf_ptrs.element(index), nullptr)
+              << "Tuples should not have buffer pointers";
+          return;
+        }
+        piece->set_buffer(const_cast<char*>(src_buf_ptrs.element(index)));
+      });
 }
 
 }  // namespace xla

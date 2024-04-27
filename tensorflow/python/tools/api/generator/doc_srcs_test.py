@@ -69,7 +69,7 @@ if __name__ == '__main__':
            'decorators.')
   parser.add_argument(
       '--api_name', type=str,
-      help='API name: tensorflow or estimator')
+      help='API name: tensorflow')
   FLAGS, unparsed = parser.parse_known_args()
 
   importlib.import_module(FLAGS.package)

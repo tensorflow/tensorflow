@@ -18,7 +18,6 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core/ir:Dialect",
         "//tensorflow/core/ir:shape_inference_utils",
-        "//tensorflow/core/ir/importexport:convert_tensor",
         "//tensorflow/core/ir/types:Dialect",
         "//tensorflow/core/transforms:PassIncGen",
         "@llvm-project//llvm:Support",

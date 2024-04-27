@@ -66,10 +66,11 @@ struct Variant {
     int i;
     size_t s;
     const char* c;
+    bool b;
   } val;
 
   // Tracking bit used for equality comparison.
-  enum { kInvalid, kInt, kSizeT, kString } type;
+  enum { kInvalid, kInt, kSizeT, kString, kBool } type;
 };
 
 // Copyable.
@@ -101,6 +102,11 @@ inline const char* const* Variant::Get<const char*>() const {
   return &val.c;
 }
 template <>
+inline const bool* Variant::Get<bool>() const {
+  if (type != kBool) return nullptr;
+  return &val.b;
+}
+template <>
 inline void Variant::Set(int v) {
   val.i = v;
   type = kInt;
@@ -114,6 +120,11 @@ template <>
 inline void Variant::Set(const char* v) {
   val.c = v;
   type = kString;
+}
+template <>
+inline void Variant::Set(bool v) {
+  val.b = v;
+  type = kBool;
 }
 
 }  // namespace interop

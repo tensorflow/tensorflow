@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -1061,6 +1061,30 @@ ENTRY main.8 {
   ROOT reduce.7 = f16[2]{0} reduce(Arg_0.1, constant.2), dimensions={1,2}, to_apply=region_0.3
 }
 )";
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{1e-5, 1e-5}));
+}
+
+XLA_TEST_F(ReduceHloTest, ReduceWithEpilogueMultiOutputFusion) {
+  absl::string_view hlo_string = R"(
+    HloModule test_module
+
+    add {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT add = f32[] add(p0, p1)
+    }
+
+
+    ENTRY main {
+      %p0 = f32[1024] parameter(0)
+      %p1 = f32[] parameter(1)
+      %reduce = f32[] reduce(%p0, %p1), dimensions={0}, to_apply=add
+      %p2 = f32[1024] parameter(2)
+      %reduce2 = f32[] reduce(%p2, %p1), dimensions={0}, to_apply=add
+      %negate = f32[] negate(%reduce)
+      %log = f32[] log(%reduce)
+      ROOT %tuple = (f32[], f32[], f32[]) tuple(%negate, %reduce2, %log)
+    })";
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{1e-5, 1e-5}));
 }
 

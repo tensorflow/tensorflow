@@ -551,7 +551,7 @@ struct NCHWToNHWC {
 template <typename Device, typename T, bool conjugate = false>
 struct SwapDimension1And2InTensor3 {
   void operator()(const Device& d, const T* in,
-                  const gtl::ArraySlice<int64_t>& input_dims, T* out);
+                  const absl::Span<const int64_t>& input_dims, T* out);
 };
 
 // Converts a tensor from:
@@ -561,7 +561,7 @@ struct SwapDimension1And2InTensor3 {
 template <typename Device, typename T, bool conjugate = false>
 struct SwapDimension0And2InTensor3 {
   void operator()(const Device& d, const T* in,
-                  const gtl::ArraySlice<int64_t>& input_dims, T* out);
+                  const absl::Span<const int64_t>& input_dims, T* out);
 };
 
 // Transforms back filter from OIHW or OHWI to HWOI format to reverse effect of

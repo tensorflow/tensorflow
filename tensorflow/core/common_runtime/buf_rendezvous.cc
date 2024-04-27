@@ -148,7 +148,7 @@ void BufRendezvous::ProvideBuf(const string& key, Device* dev,
     DVLOG(4) << "ProvideBuf: key = " << key << ": calling cons_cb"
              << h->DebugString();
     DeregisterCancellation(h);
-    h->cons_cb(OkStatus(), h);
+    h->cons_cb(absl::OkStatus(), h);
   }
   if (!providebuf_status.ok()) {
     done(providebuf_status);
@@ -224,7 +224,7 @@ void BufRendezvous::ConsumeBuf(const string& key, const string& device_name,
     DVLOG(4) << "ConsumeBuf: key = " << key << ": calling cons_cb"
              << existing_hook->DebugString();
     DeregisterCancellation(existing_hook);
-    existing_hook->cons_cb(OkStatus(), existing_hook);
+    existing_hook->cons_cb(absl::OkStatus(), existing_hook);
     return;
   }
   if (!consumebuf_status.ok()) {
@@ -257,7 +257,7 @@ void BufRendezvous::CancelHook(const string& key) {
 
 /*static*/
 void BufRendezvous::DoneWithHook(Hook* h) {
-  h->prod_cb(OkStatus());
+  h->prod_cb(absl::OkStatus());
   delete h;
 }
 

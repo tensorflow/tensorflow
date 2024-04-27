@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef XLA_SERVICE_CPU_CPU_OPTIONS_H_
 #define XLA_SERVICE_CPU_CPU_OPTIONS_H_
 
+#include <string>
+
 #include "xla/service/hlo_module_config.h"
 
 // Helper functions for querying options that are specific to the CPU backend.
@@ -30,6 +32,8 @@ bool SlpVectorizerDisabled(const HloModuleConfig& config);
 bool ForceEnableExperimentalLlvmIrGemm(const HloModuleConfig& config);
 std::optional<int64_t> LlvmIrGemvTilingFactor(const HloModuleConfig& config);
 std::optional<std::tuple<int64_t, int64_t, int64_t>> LlvmIrGemmTileSize(
+    const HloModuleConfig& config);
+std::optional<std::string> ExperimentalOverriddenPipeline(
     const HloModuleConfig& config);
 
 }  // namespace options

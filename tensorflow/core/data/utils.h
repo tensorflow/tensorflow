@@ -21,7 +21,6 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
-#include "tensorflow/core/data/file_logger_client_interface.h"
 #include "tensorflow/core/protobuf/data_service.pb.h"
 
 namespace tensorflow {
@@ -50,8 +49,11 @@ std::string LocalityOptimizedPath(const std::string& path);
 absl::StatusOr<bool> DisableCompressionAtRuntime(
     const std::string& data_transfer_protocol, DeploymentMode deployment_mode);
 
-// Creates a instance of a class derived from FileLoggerClientInterface.
-std::unique_ptr<FileLoggerClientInterface> CreateFileLoggerClient();
+// Log filenames into TfDataLogger. Uses the same  TfDataFileLoggerClient at
+// every call. Thread safe.
+// TODO (shushanik) Implement streamz error reporting in case the logging is not
+// successful
+void LogFilenames(const std::vector<std::string>& files);
 
 }  // namespace data
 }  // namespace tensorflow

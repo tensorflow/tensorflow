@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -791,7 +791,7 @@ static HloModuleConfigProto::BoolList MakeOneHotBoolList(unsigned num_vals,
   return list;
 }
 
-static StatusOr<HloModuleConfigProto> MakeTestModuleConfigProto() {
+static absl::StatusOr<HloModuleConfigProto> MakeTestModuleConfigProto() {
   HloModuleConfigProto proto;
   // entry_computation_layout_ is optional
   proto.set_seed(0xdeadbeef);

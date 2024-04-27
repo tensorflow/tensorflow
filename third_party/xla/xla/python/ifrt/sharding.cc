@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,19 +21,27 @@ limitations under the License.
 #include <ostream>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "absl/types/span.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/index.h"
 #include "xla/python/ifrt/index_domain.h"
+#include "xla/python/ifrt/ir/sharding_param.h"
 #include "xla/python/ifrt/memory.h"
-#include "xla/statusor.h"
+#include "xla/python/ifrt/serdes.h"
+#include "xla/python/ifrt/shape.h"
 #include "xla/util.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {
@@ -131,8 +139,8 @@ std::vector<Index> GetTileIndices(absl::Span<const int64_t> dim_shards) {
 // Returns the tile shape after disassembling `shape` with `sharding_param`.
 //
 // Fails if can't shard evenly.
-StatusOr<Shape> GetDisassembledShape(const ShardingParam& sharding_param,
-                                     const Shape& shape) {
+absl::StatusOr<Shape> GetDisassembledShape(const ShardingParam& sharding_param,
+                                           const Shape& shape) {
   std::vector<int64_t> dims;
   dims.reserve(shape.dims().size());
   for (const auto [dim, dim_shards] :
@@ -156,6 +164,23 @@ char ConcreteSharding::ID = 0;
 char ConcreteEvenSharding::ID = 0;
 char ShardingParamSharding::ID = 0;
 
+char DeserializeShardingOptions::ID = 0;
+
+absl::StatusOr<std::unique_ptr<Sharding>> Sharding::FromProto(
+    DeviceList::LookupDeviceFunc lookup_device,
+    const ShardingProto& sharding_proto) {
+  return Deserialize<Sharding>(
+      sharding_proto.serialized_sharding(),
+      std::make_unique<DeserializeShardingOptions>(std::move(lookup_device)));
+}
+
+absl::StatusOr<ShardingProto> Sharding::ToProto() const {
+  ShardingProto sharding_proto;
+  TF_ASSIGN_OR_RETURN(*sharding_proto.mutable_serialized_sharding(),
+                      Serialize(const_cast<Sharding&>(*this)));
+  return sharding_proto;
+}
+
 std::ostream& operator<<(std::ostream& os, const Sharding& sharding) {
   return os << sharding.DebugString();
 }
@@ -166,17 +191,22 @@ std::unique_ptr<SingleDeviceSharding> SingleDeviceSharding::Create(
       new SingleDeviceSharding(device, memory_kind));
 }
 
-StatusOr<std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>>>
+absl::StatusOr<std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>>>
 SingleDeviceSharding::Disassemble(const Shape& shape) const {
   DCHECK(this);
-  std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>> result;
-  result.reserve(1);
-  result.push_back(
-      {shape, SingleDeviceSharding::Create(devices_[0], memory_kind_)});
-  return result;
+  return std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>>{
+      {shape, SingleDeviceSharding::Create(devices_[0], memory_kind_)}};
 }
 
-StatusOr<std::vector<IndexDomain>> SingleDeviceSharding::IndexDomains(
+absl::StatusOr<
+    std::vector<std::pair<DynamicShape, std::shared_ptr<const Sharding>>>>
+SingleDeviceSharding::Disassemble(const DynamicShape& dynamic_shape) const {
+  DCHECK(this);
+  return std::vector<std::pair<DynamicShape, std::shared_ptr<const Sharding>>>{
+      {dynamic_shape, SingleDeviceSharding::Create(devices_[0], memory_kind_)}};
+}
+
+absl::StatusOr<std::vector<IndexDomain>> SingleDeviceSharding::IndexDomains(
     const Shape& shape) const {
   DCHECK(this);
   std::vector<IndexDomain> result;
@@ -202,14 +232,22 @@ OpaqueSharding::OpaqueSharding(DeviceList devices, MemoryKind memory_kind)
     : llvm::RTTIExtends<OpaqueSharding, Sharding>(std::move(devices),
                                                   memory_kind) {}
 
-StatusOr<std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>>>
+absl::StatusOr<std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>>>
 OpaqueSharding::Disassemble(const Shape& shape) const {
   DCHECK(this);
   return InvalidArgument(
       "OpaqueSharding does not have shard shape information");
 }
 
-StatusOr<std::vector<IndexDomain>> OpaqueSharding::IndexDomains(
+absl::StatusOr<
+    std::vector<std::pair<DynamicShape, std::shared_ptr<const Sharding>>>>
+OpaqueSharding::Disassemble(const DynamicShape& dynamic_shape) const {
+  DCHECK(this);
+  return InvalidArgument(
+      "OpaqueSharding does not have shard shape information");
+}
+
+absl::StatusOr<std::vector<IndexDomain>> OpaqueSharding::IndexDomains(
     const Shape& shape) const {
   DCHECK(this);
   return InvalidArgument(
@@ -236,6 +274,15 @@ std::unique_ptr<ConcreteSharding> ConcreteSharding::Create(
                            std::move(shard_shapes)));
 }
 
+std::unique_ptr<ConcreteSharding> ConcreteSharding::Create(
+    DeviceList devices, MemoryKind memory_kind, DynamicShape dynamic_shape,
+    std::vector<DynamicShape> shard_dynamic_shapes) {
+  CHECK_EQ(devices.size(), shard_dynamic_shapes.size());
+  return std::unique_ptr<ConcreteSharding>(new ConcreteSharding(
+      std::move(devices), memory_kind, std::move(dynamic_shape),
+      std::move(shard_dynamic_shapes)));
+}
+
 ConcreteSharding::ConcreteSharding(DeviceList devices, MemoryKind memory_kind,
                                    Shape shape, std::vector<Shape> shard_shapes)
     : llvm::RTTIExtends<ConcreteSharding, Sharding>(std::move(devices),
@@ -243,25 +290,69 @@ ConcreteSharding::ConcreteSharding(DeviceList devices, MemoryKind memory_kind,
       shape_(std::move(shape)),
       shard_shapes_(std::move(shard_shapes)) {}
 
-StatusOr<std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>>>
+ConcreteSharding::ConcreteSharding(
+    DeviceList devices, MemoryKind memory_kind, DynamicShape dynamic_shape,
+    std::vector<DynamicShape> shard_dynamic_shapes)
+    : llvm::RTTIExtends<ConcreteSharding, Sharding>(std::move(devices),
+                                                    memory_kind),
+      shape_(std::move(dynamic_shape)),
+      shard_shapes_(std::move(shard_dynamic_shapes)) {}
+
+absl::StatusOr<std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>>>
 ConcreteSharding::Disassemble(const Shape& shape) const {
   DCHECK(this);
-  if (shape != shape_) {
+  if (!has_static_shape()) {
+    return InvalidArgument(
+        "ConcreteSharding holds dynamic shape, but was asked "
+        "to disassemble static shape %s",
+        shape.DebugString());
+  }
+  if (shape != std::get<Shape>(shape_)) {
     return InvalidArgument(
         "ConcreteSharding can only disassemble shape %s, but was asked "
         "to disassemble shape %s",
-        shape_.DebugString(), shape.DebugString());
+        std::get<Shape>(shape_).DebugString(), shape.DebugString());
   }
   std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>> result;
   result.reserve(devices_.size());
+  const std::vector<Shape>& shard_shapes =
+      std::get<std::vector<Shape>>(shard_shapes_);
   for (int i = 0; i < devices_.size(); ++i) {
-    result.push_back({shard_shapes_[i],
+    result.push_back({shard_shapes[i],
                       SingleDeviceSharding::Create(devices_[i], memory_kind_)});
   }
   return result;
 }
 
-StatusOr<std::vector<IndexDomain>> ConcreteSharding::IndexDomains(
+absl::StatusOr<
+    std::vector<std::pair<DynamicShape, std::shared_ptr<const Sharding>>>>
+ConcreteSharding::Disassemble(const DynamicShape& dynamic_shape) const {
+  DCHECK(this);
+  if (!has_dynamic_shape()) {
+    return InvalidArgument(
+        "ConcreteSharding holds static shape, but was asked "
+        "to disassemble dynamic shape %s",
+        dynamic_shape.DebugString());
+  }
+  if (dynamic_shape != std::get<DynamicShape>(shape_)) {
+    return InvalidArgument(
+        "ConcreteSharding can only disassemble dynamic shape %s, but was asked "
+        "to disassemble dynamic shape %s",
+        std::get<DynamicShape>(shape_).DebugString(),
+        dynamic_shape.DebugString());
+  }
+  std::vector<std::pair<DynamicShape, std::shared_ptr<const Sharding>>> result;
+  result.reserve(devices_.size());
+  const std::vector<DynamicShape>& shard_dynamic_shapes =
+      std::get<std::vector<DynamicShape>>(shard_shapes_);
+  for (int i = 0; i < devices_.size(); ++i) {
+    result.push_back({shard_dynamic_shapes[i],
+                      SingleDeviceSharding::Create(devices_[i], memory_kind_)});
+  }
+  return result;
+}
+
+absl::StatusOr<std::vector<IndexDomain>> ConcreteSharding::IndexDomains(
     const Shape& shape) const {
   DCHECK(this);
   return InvalidArgument(
@@ -270,19 +361,23 @@ StatusOr<std::vector<IndexDomain>> ConcreteSharding::IndexDomains(
 
 std::string ConcreteSharding::DebugString() const {
   DCHECK(this);
-  return absl::StrFormat(
-      "ConcreteSharding(devices: %s, shape: %s, shard_shapes: %s, memory_kind: "
-      "%s)",
-      absl::StrJoin(devices_, ",",
-                    [](std::string* out, const Device* device) {
-                      absl::StrAppend(out, device->ToString());
-                    }),
-      shape_.DebugString(),
-      absl::StrJoin(shard_shapes_, ",",
-                    [](std::string* out, const Shape& shard_shape) {
-                      absl::StrAppend(out, shard_shape.DebugString());
-                    }),
-      memory_kind_.DebugString());
+  return std::visit(
+      [this](const auto& shape, const auto& shard_shapes) {
+        return absl::StrFormat(
+            "ConcreteSharding(devices: %s, shape: %s, shard_shapes: %s, "
+            "memory_kind: %s)",
+            absl::StrJoin(devices_, ",",
+                          [](std::string* out, const Device* device) {
+                            absl::StrAppend(out, device->ToString());
+                          }),
+            shape.DebugString(),
+            absl::StrJoin(shard_shapes, ",",
+                          [](std::string* out, const auto& shard_shape) {
+                            absl::StrAppend(out, shard_shape.DebugString());
+                          }),
+            memory_kind_.DebugString());
+      },
+      shape_, shard_shapes_);
 }
 
 std::unique_ptr<ConcreteEvenSharding> ConcreteEvenSharding::Create(
@@ -301,7 +396,7 @@ ConcreteEvenSharding::ConcreteEvenSharding(DeviceList devices,
       shape_(std::move(shape)),
       shard_shape_(std::move(shard_shape)) {}
 
-StatusOr<std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>>>
+absl::StatusOr<std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>>>
 ConcreteEvenSharding::Disassemble(const Shape& shape) const {
   DCHECK(this);
   if (shape != shape_) {
@@ -319,7 +414,16 @@ ConcreteEvenSharding::Disassemble(const Shape& shape) const {
   return result;
 }
 
-StatusOr<std::vector<IndexDomain>> ConcreteEvenSharding::IndexDomains(
+absl::StatusOr<
+    std::vector<std::pair<DynamicShape, std::shared_ptr<const Sharding>>>>
+ConcreteEvenSharding::Disassemble(const DynamicShape& dynamic_shape) const {
+  return InvalidArgument(
+      "ConcreteEvenSharding can only disassemble static shape, but was asked "
+      "to disassemble dynamic shape %s",
+      dynamic_shape.DebugString());
+}
+
+absl::StatusOr<std::vector<IndexDomain>> ConcreteEvenSharding::IndexDomains(
     const Shape& shape) const {
   DCHECK(this);
   return InvalidArgument(
@@ -339,8 +443,9 @@ std::string ConcreteEvenSharding::DebugString() const {
       memory_kind_.DebugString());
 }
 
-StatusOr<std::unique_ptr<ShardingParamSharding>> ShardingParamSharding::Create(
-    ShardingParam sharding_param, DeviceList devices, MemoryKind memory_kind) {
+absl::StatusOr<std::unique_ptr<ShardingParamSharding>>
+ShardingParamSharding::Create(ShardingParam sharding_param, DeviceList devices,
+                              MemoryKind memory_kind) {
   int64_t device_count =
       absl::c_accumulate(sharding_param.minor_to_major().axis_sizes, 1,
                          std::multiplies<int64_t>());
@@ -354,7 +459,7 @@ StatusOr<std::unique_ptr<ShardingParamSharding>> ShardingParamSharding::Create(
       std::move(sharding_param), std::move(devices), memory_kind));
 }
 
-StatusOr<std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>>>
+absl::StatusOr<std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>>>
 ShardingParamSharding::Disassemble(const Shape& shape) const {
   DCHECK(this);
   if (shape.dims().size() != sharding_param_.dim_shards().size()) {
@@ -375,7 +480,16 @@ ShardingParamSharding::Disassemble(const Shape& shape) const {
   return result;
 }
 
-StatusOr<std::vector<IndexDomain>> ShardingParamSharding::IndexDomains(
+absl::StatusOr<
+    std::vector<std::pair<DynamicShape, std::shared_ptr<const Sharding>>>>
+ShardingParamSharding::Disassemble(const DynamicShape& dynamic_shape) const {
+  return InvalidArgument(
+      "ShardingParamSharding can only disassemble static shape, but was asked "
+      "to disassemble dynamic shape %s",
+      dynamic_shape.DebugString());
+}
+
+absl::StatusOr<std::vector<IndexDomain>> ShardingParamSharding::IndexDomains(
     const Shape& shape) const {
   DCHECK(this);
 

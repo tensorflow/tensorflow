@@ -1,5 +1,8 @@
 """Definitions for targets that use the TFLite shims."""
 
+load("@bazel_skylib//rules:build_test.bzl", "build_test")
+load("@build_bazel_rules_android//android:rules.bzl", "android_binary", "android_library")
+load("@rules_java//java:defs.bzl", "java_library", "java_test")
 load("//tensorflow:tensorflow.bzl", "clean_dep")
 load(
     "//tensorflow/lite:build_def.bzl",
@@ -7,8 +10,6 @@ load(
     "tflite_custom_c_library",
     "tflite_jni_binary",
 )
-load("@build_bazel_rules_android//android:rules.bzl", "android_binary", "android_library")
-load("@bazel_skylib//rules:build_test.bzl", "build_test")
 
 def _concat(lists):
     """Concatenate a list of lists, without requiring the inner lists to be iterable.
@@ -317,7 +318,7 @@ def java_library_with_tflite(
         'cc_library_with_tflite' / 'java_library_with_tflite'.
       **kwargs: Additional java_library parameters.
     """
-    native.java_library(
+    java_library(
         name = name,
         exports = exports + tflite_exports,
         deps = deps + tflite_deps + tflite_jni_binaries,
@@ -352,7 +353,7 @@ def java_test_with_tflite(
         using 'jni_binary_with_tflite'.
       **kwargs: Additional java_library parameters.
     """
-    native.java_test(
+    java_test(
         name = name,
         deps = deps + tflite_deps,
         runtime_deps = deps + tflite_jni_binaries,

@@ -81,6 +81,7 @@ void MutateXPlane(XPlane* plane,
 std::vector<std::unique_ptr<XplaneEventMutatorFactory>>
 CreateMutatorFactories() {
   std::vector<std::unique_ptr<XplaneEventMutatorFactory>> mutator_factories;
+  mutator_factories.push_back(ThreadpoolLineMutatorFactory::CreateFactory());
   mutator_factories.push_back(XplaneRootEventMutatorFactory::CreateFactory(
       HostEventType::kProcessBatch, 2));
   mutator_factories.push_back(XplaneRootEventMutatorFactory::CreateFactory(

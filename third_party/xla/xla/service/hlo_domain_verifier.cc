@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -84,7 +84,7 @@ Status HloDomainVerifier::RunContext::Run(
   return OkStatus();
 }
 
-StatusOr<bool> HloDomainVerifier::Run(
+absl::StatusOr<bool> HloDomainVerifier::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   RunContext run_context(module, this);
@@ -92,7 +92,7 @@ StatusOr<bool> HloDomainVerifier::Run(
   return false;
 }
 
-StatusOr<const DomainMetadata*> HloDomainVerifier::VerifyDomain(
+absl::StatusOr<const DomainMetadata*> HloDomainVerifier::VerifyDomain(
     const DomainMetadata::Domain& domain) {
   const DomainMetadata* ref_metadata = nullptr;
   VLOG(4) << "Reach set:";

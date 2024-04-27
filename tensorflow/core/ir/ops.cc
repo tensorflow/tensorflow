@@ -69,10 +69,11 @@ static void GenericGetAsmResultNames(Operation* op,
   // We only name the results when there are results to name, an op like `print`
   // which does not have results will just use the `ctl` name for the control
   // output.
-  if (op->getNumResults() > 1 && !op->getResult(0).getType().isa<ControlType>())
+  if (op->getNumResults() > 1 &&
+      !mlir::isa<ControlType>(op->getResult(0).getType()))
     set_name_fn(op->getResult(0), op->getName().stripDialect());
   for (Value result : op->getResults()) {
-    if (result.getType().isa<ControlType>()) {
+    if (mlir::isa<ControlType>(result.getType())) {
       set_name_fn(op->getResult(op->getNumResults() - 1), "ctl");
       break;
     }
@@ -310,8 +311,8 @@ static ParseResult ParseCustomTfOp(OpAsmParser& parser,
   llvm::SMLoc loc = parser.getCurrentLocation();
   Type control_type = ControlType::get(context);
   if (failed(parser.parseOptionalColonTypeList(arg_types))) return failure();
-  if (arg_types.size() == 1 && arg_types.front().isa<FunctionType>()) {
-    auto funcType = arg_types.front().cast<FunctionType>();
+  if (arg_types.size() == 1 && mlir::isa<FunctionType>(arg_types.front())) {
+    auto funcType = mlir::cast<FunctionType>(arg_types.front());
     if (funcType.getNumInputs() != numNonControlOperands)
       return parser.emitError(loc)
              << "got " << numNonControlOperands
@@ -398,8 +399,9 @@ bool GraphFuncOp::isMarkedForCompilation() {
   auto is_enabled = [this](StringRef attr_name) -> bool {
     Attribute attr = (*this)->getAttr(attr_name);
     if (!attr) return false;
-    if (auto bool_attr = attr.dyn_cast<BoolAttr>()) return bool_attr.getValue();
-    if (auto str_attr = attr.dyn_cast<StringAttr>())
+    if (auto bool_attr = mlir::dyn_cast<BoolAttr>(attr))
+      return bool_attr.getValue();
+    if (auto str_attr = mlir::dyn_cast<StringAttr>(attr))
       return !str_attr.getValue().empty();
     return false;
   };
@@ -673,7 +675,7 @@ void GraphFuncOp::print(OpAsmPrinter& p) {
     p.printOperand(getArgument(i));
     p << ": ";
     p.printType(arg_types[i]);
-    if (auto arg_attrs = args_attr[i].dyn_cast<DictionaryAttr>())
+    if (auto arg_attrs = mlir::dyn_cast<DictionaryAttr>(args_attr[i]))
       p.printOptionalAttrDict(arg_attrs.getValue());
     if (i != e - 2) {
       p << ", ";
@@ -691,7 +693,7 @@ void GraphFuncOp::print(OpAsmPrinter& p) {
     ArrayAttr results_attr = getAllResultAttrs();
     for (int i = 0, e = result_types.size(); i < e; ++i) {
       p.printType(result_types[i]);
-      if (auto result_attrs = results_attr[i].dyn_cast<DictionaryAttr>())
+      if (auto result_attrs = mlir::dyn_cast<DictionaryAttr>(results_attr[i]))
         p.printOptionalAttrDict(result_attrs.getValue());
       if (i != e - 1) {
         p << ", ";
@@ -761,7 +763,8 @@ void GraphFuncOp::getAsmBlockArgumentNames(Region& region,
   ArrayAttr args_attr = getAllArgAttrs();
   if (!args_attr || args_attr.size() != args.size()) return;
   for (int arg_num = 0, e = args.size(); arg_num < e; arg_num += 2) {
-    DictionaryAttr arg_attrs = args_attr[arg_num].dyn_cast<DictionaryAttr>();
+    DictionaryAttr arg_attrs =
+        mlir::dyn_cast<DictionaryAttr>(args_attr[arg_num]);
     if (!arg_attrs) continue;
     if (auto strAttr = arg_attrs.getAs<StringAttr>("tfg.name")) {
       set_name_fn(args[arg_num], strAttr.getValue());
@@ -1053,7 +1056,7 @@ static LogicalResult VerifyCaseLikeOp(CaseLikeOp op,
   TypeRange func_args = ins->drop_front();
 
   for (const auto& it : llvm::enumerate(op.getBranches())) {
-    SymbolRefAttr func_name = it.value().template cast<FuncAttr>().getName();
+    SymbolRefAttr func_name = mlir::cast<FuncAttr>(it.value()).getName();
     auto func =
         symbol_table.lookupNearestSymbolFrom<GraphFuncOp>(op, func_name);
     if (func && failed(VerifySignature(func, op, func_args, *outs,
@@ -1126,7 +1129,7 @@ static LogicalResult VerifyPreservedAttrs(Operation* op,
   assert(op->getNumRegions() == preserved_attrs.size());
   for (auto it : llvm::zip(preserved_attrs, op->getRegions())) {
     // Preserved attributes for a particular region may not exist.
-    auto attrs = std::get<0>(it).dyn_cast_or_null<RegionAttr>();
+    auto attrs = mlir::dyn_cast_or_null<RegionAttr>(std::get<0>(it));
     if (!attrs) continue;
     Region& region = std::get<1>(it);
 
@@ -1195,7 +1198,7 @@ static LogicalResult VerifyIfLikeRegionOp(IfLikeRegionOp op) {
 // TODO(jeffniu): Incorporate the other cases of `tf.ToBool`.
 static std::optional<bool> GetStaticallyKnownBranch(Attribute cond_attr) {
   // Only handle the case of a scalar tensor of i1.
-  auto cond = cond_attr.dyn_cast_or_null<ElementsAttr>();
+  auto cond = mlir::dyn_cast_or_null<ElementsAttr>(cond_attr);
   if (cond && cond.getNumElements() == 1 &&
       cond.getElementType().isSignlessInteger(1))
     return cond.getSplatValue<bool>();
@@ -1275,7 +1278,7 @@ static LogicalResult VerifyCaseLikeRegionOp(CaseLikeRegionOp op) {
 // try to narrow it to a statically known branch index.
 static std::optional<unsigned> GetStaticallyKnownCaseBranch(
     Attribute branch_attr) {
-  auto branch = branch_attr.dyn_cast_or_null<ElementsAttr>();
+  auto branch = mlir::dyn_cast_or_null<ElementsAttr>(branch_attr);
   if (branch && branch.getNumElements() == 1 &&
       branch.getElementType().isSignlessInteger(32))
     return branch.getSplatValue<unsigned>();
@@ -1344,7 +1347,7 @@ static LogicalResult VerifyLoopRegionArgs(Operation* op, Region& region) {
   // the first half of the arguments are not control tokens, then we know for
   // sure that the second half is only control tokens.
   for (BlockArgument data : GetLoopRegionDataArgs(region))
-    if (data.getType().isa<ControlType>())
+    if (mlir::isa<ControlType>(data.getType()))
       return arg_error(data) << "should not be a control token";
   return success();
 }
@@ -1412,7 +1415,7 @@ LogicalResult ForRegionOp::verify() {
         "expected the body block to have at least have the loop index as an "
         "argument");
   }
-  auto index = args.front().getType().dyn_cast<TensorType>();
+  auto index = mlir::dyn_cast<TensorType>(args.front().getType());
   if (!index || !index.getElementType().isSignlessInteger(32)) {
     return emitOpError(
         "expected first body block argument to be an i32 tensor");
@@ -1467,8 +1470,9 @@ bool FunctionTable::MayBeCall(Operation* op) const {
   if (IsLegacyCall(op)) return true;
   // The operation might be a call if it references a symbol.
   bool references_symbol = false;
-  op->getAttrDictionary().walk(
-      [&](Attribute attr) { references_symbol |= attr.isa<SymbolRefAttr>(); });
+  op->getAttrDictionary().walk([&](Attribute attr) {
+    references_symbol |= mlir::isa<SymbolRefAttr>(attr);
+  });
   return references_symbol;
 }
 

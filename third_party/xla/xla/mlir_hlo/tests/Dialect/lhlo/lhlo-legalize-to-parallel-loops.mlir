@@ -28,7 +28,7 @@ func.func @reduce(%arg: memref<100x10x5xf32>,
 // CHECK-SAME:      ([[C0]]) to ([[C10]]) step ([[C1]]) init ([[INIT]]) -> f32 {
 // CHECK:      [[ELEM_TO_REDUCE:%.*]] = memref.load [[ARG_BUF]]
 // CHECK-SAME:                 {{\[}}[[I]], [[J]], [[K]]] : memref<100x10x5xf32>
-// CHECK:      scf.reduce([[ELEM_TO_REDUCE]]) : f32 {
+// CHECK:      scf.reduce([[ELEM_TO_REDUCE]] : f32) {
 // CHECK:      ^bb0([[ELEM:%.*]]: f32, [[ACC:%.*]]: f32):
 // CHECK:        [[ELEM_BUF:%.*]] = memref.alloc() : memref<f32>
 // CHECK:        [[ACC_BUF:%.*]] = memref.alloc() : memref<f32>
@@ -39,10 +39,9 @@ func.func @reduce(%arg: memref<100x10x5xf32>,
 // CHECK:        [[ACC_RESULT:%.*]] = memref.load [[ACC_OUT_BUF]][] : memref<f32>
 // CHECK:        scf.reduce.return [[ACC_RESULT]] : f32
 // CHECK:      }
-// CHECK:      scf.yield
 // CHECK:    }
 // CHECK:    memref.store [[REDUCTION_RESULT]], [[RESULT_BUF]]{{\[}}[[I]], [[K]]]
-// CHECK:    scf.yield
+// CHECK:    scf.reduce
 
 // -----
 
@@ -69,7 +68,7 @@ func.func @reduce_no_outer_loop(%arg: memref<100xf32>,
 // CHECK:      [[REDUCTION_RESULT:%.*]] = scf.parallel ([[I:%.*]]) = ([[C0]])
 // CHECK-SAME:     to ([[C100]]) step ([[C1]]) init ([[INIT]]) -> f32 {
 // CHECK:        [[ELEM_TO_REDUCE:%.*]] = memref.load [[ARG_BUF]]{{\[}}[[I]]{{\]}}
-// CHECK:        scf.reduce([[ELEM_TO_REDUCE]]) : f32 {
+// CHECK:        scf.reduce([[ELEM_TO_REDUCE]] : f32) {
 // CHECK:        ^bb0([[ELEM:%.*]]: f32, [[ACC:%.*]]: f32):
 // CHECK:          [[ELEM_BUF:%.*]] = memref.alloc() : memref<f32>
 // CHECK:          [[ACC_BUF:%.*]] = memref.alloc() : memref<f32>
@@ -80,7 +79,6 @@ func.func @reduce_no_outer_loop(%arg: memref<100xf32>,
 // CHECK:          [[ACC_RESULT:%.*]] = memref.load [[ACC_OUT_BUF]][] : memref<f32>
 // CHECK:          scf.reduce.return [[ACC_RESULT]]
 // CHECK:        }
-// CHECK:        scf.yield
 // CHECK:      memref.store [[REDUCTION_RESULT]], [[RESULT_BUF]]{{\[}}[[C0]]]
 
 // -----
@@ -114,7 +112,7 @@ func.func @dynamic_reduce(%arg: memref<?x?x?xf32>,
 // CHECK-SAME:     ([[C0]]) to ([[DIM1]]) step ([[C1]]) init ([[INIT]]) -> f32 {
 // CHECK:      [[ELEM_TO_REDUCE:%.*]] = memref.load [[ARG_BUF]]
 // CHECK-SAME:                 {{\[}}[[I]], [[J]], [[K]]] : memref<?x?x?xf32>
-// CHECK:      scf.reduce([[ELEM_TO_REDUCE]]) : f32 {
+// CHECK:      scf.reduce([[ELEM_TO_REDUCE]] : f32) {
 // CHECK:      ^bb0([[ELEM:%.*]]: f32, [[ACC:%.*]]: f32):
 // CHECK:        [[ELEM_BUF:%.*]] = memref.alloc() : memref<f32>
 // CHECK:        [[ACC_BUF:%.*]] = memref.alloc() : memref<f32>
@@ -125,10 +123,9 @@ func.func @dynamic_reduce(%arg: memref<?x?x?xf32>,
 // CHECK:        [[ACC_RESULT:%.*]] = memref.load [[ACC_OUT_BUF]][] : memref<f32>
 // CHECK:        scf.reduce.return [[ACC_RESULT]] : f32
 // CHECK:      }
-// CHECK:      scf.yield
 // CHECK:    }
 // CHECK:    memref.store [[REDUCTION_RESULT]], [[RESULT_BUF]]{{\[}}[[I]], [[K]]]
-// CHECK:    scf.yield
+// CHECK:    scf.reduce
 
 // -----
 
@@ -182,7 +179,7 @@ func.func @reduce_window(%arg: memref<112x112xf32>,
 // CHECK:              scf.yield [[INIT]] : f32
 // CHECK:            }
 
-// CHECK:          scf.reduce([[ELEM_TO_REDUCE]])  : f32 {
+// CHECK:          scf.reduce([[ELEM_TO_REDUCE]]  : f32) {
 // CHECK:          ^bb0([[ELEM:%.*]]: f32, [[ACC:%.*]]: f32):
 // CHECK:            [[ELEM_BUF:%.*]] = memref.alloc() : memref<f32>
 // CHECK:            [[ACC_BUF:%.*]] = memref.alloc() : memref<f32>
@@ -193,10 +190,9 @@ func.func @reduce_window(%arg: memref<112x112xf32>,
 // CHECK:            [[ACC_RESULT:%.*]] = memref.load [[ACC_OUT_BUF]][] : memref<f32>
 // CHECK:            scf.reduce.return [[ACC_RESULT]] : f32
 // CHECK:          }
-// CHECK:          scf.yield
 // CHECK:        }
 // CHECK:        memref.store [[REDUCTION_RESULT]], [[RESULT_BUF]]{{\[}}[[I]], [[J]]]
-// CHECK:        scf.yield
+// CHECK:        scf.reduce
 // CHECK:      }
 // CHECK:      return
 // CHECK:    }

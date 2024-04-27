@@ -604,7 +604,7 @@ Status ParallelTensor::Shape(const std::vector<int64_t>** shape) const {
     shape_ = std::vector<int64_t>(dim_sizes.begin(), dim_sizes.end());
   }
   *shape = &*shape_;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ParallelTensor::SummarizeValue(std::string& summary) {
@@ -624,7 +624,7 @@ Status ParallelTensor::SummarizeValue(std::string& summary) {
                     "\": ", component_summary);
   }
   summary += "}";
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace parallel_device

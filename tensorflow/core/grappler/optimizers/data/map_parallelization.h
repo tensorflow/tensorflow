@@ -36,7 +36,7 @@ class MapParallelization : public TFDataOptimizerBase {
 
   Status Init(
       const tensorflow::RewriterConfig_CustomGraphOptimizer* config) override {
-    if (!config) return OkStatus();
+    if (!config) return absl::OkStatus();
 
     const string& autotune = config->parameter_map().at(kAutotune).s();
     if (autotune == "true") {
@@ -47,7 +47,7 @@ class MapParallelization : public TFDataOptimizerBase {
       return errors::InvalidArgument("Received an invalid value for parameter ",
                                      kAutotune, ": ", autotune);
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status OptimizeAndCollectStats(Cluster* cluster, const GrapplerItem& item,

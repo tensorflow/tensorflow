@@ -1,8 +1,8 @@
 diff --git a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
-index 2b88729d748b..e12d979b4908 100644
+index 7770284e5543..0b45127495dc 100644
 --- a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
 +++ b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
-@@ -207,13 +207,15 @@ cc_library(
+@@ -218,13 +218,15 @@ cc_library(
          "lib/Support/BLAKE3/llvm_blake3_prefix.h",
      ] + select({
          "@platforms//cpu:aarch64": [
@@ -23,7 +23,7 @@ index 2b88729d748b..e12d979b4908 100644
          ],
          "//conditions:default": [
          ],
-@@ -238,14 +240,16 @@ cc_library(
+@@ -249,14 +251,16 @@ cc_library(
      ],
      copts = llvm_copts,
      defines = select({

@@ -185,7 +185,7 @@ Status ExtractConstVectorFromValue(mlir::Value value,
   }
   for (const mlir::APInt& index : attr)
     out_vector->emplace_back(index.getSExtValue());
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 mlir::Value CreateIntScalarConst(const int64_t value, mlir::OpBuilder builder,

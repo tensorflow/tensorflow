@@ -265,14 +265,13 @@ TfLiteStatus PopulateInputLayerInfo(
   std::vector<std::string> shapes = Split(shapes_string, ':');
 
   if (names.size() != shapes.size()) {
-    TFLITE_LOG(ERROR) << "The number of items in"
-                      << " --input_layer_shape (" << shapes_string << ", with "
-                      << shapes.size() << " items)"
-                      << " must match the number of items in"
-                      << " --input_layer (" << names_string << ", with "
-                      << names.size() << " items)."
-                      << " For example --input_layer=input1,input2"
-                      << " --input_layer_shape=1,224,224,4:1,20";
+    TFLITE_LOG(ERROR)
+        << "The number of items in --input_layer_shape (" << shapes_string
+        << ", with " << shapes.size()
+        << " items) must match the number of items in --input_layer ("
+        << names_string << ", with " << names.size()
+        << " items). For example --input_layer=input1,input2 "
+           "--input_layer_shape=1,224,224,4:1,20";
     return kTfLiteError;
   }
 
@@ -381,6 +380,8 @@ BenchmarkParams BenchmarkTfLiteModel::DefaultParams() {
                           BenchmarkParam::Create<int32_t>(0));
   default_params.AddParam("disable_delegate_clustering",
                           BenchmarkParam::Create<bool>(false));
+  default_params.AddParam("enable_builtin_cast_constant_cache",
+                          BenchmarkParam::Create<bool>(false));
   default_params.AddParam("output_filepath",
                           BenchmarkParam::Create<std::string>(""));
 
@@ -469,6 +470,10 @@ std::vector<Flag> BenchmarkTfLiteModel::GetFlags() {
           "Optimize memory usage for large tensors with sacrificing latency."),
       CreateFlag<bool>("disable_delegate_clustering", &params_,
                        "Disable delegate clustering."),
+      CreateFlag<bool>(
+          "enable_builtin_cast_constant_cache", &params_,
+          "Cache the output of the builtin cast operation when its input "
+          "is a constant tensor."),
       CreateFlag<std::string>(
           "output_filepath", &params_,
           "File path to export outputs layer as binary data."),
@@ -528,6 +533,8 @@ void BenchmarkTfLiteModel::LogParams() {
                       "Optimize memory usage for large tensors", verbose);
   LOG_BENCHMARK_PARAM(bool, "disable_delegate_clustering",
                       "Disable delegate clustering", verbose);
+  LOG_BENCHMARK_PARAM(bool, "enable_builtin_cast_constant_cache",
+                      "Constant CAST output cache", verbose);
   LOG_BENCHMARK_PARAM(std::string, "output_filepath",
                       "File path to export outputs layer to", verbose);
   LOG_BENCHMARK_PARAM(int32_t, "tensor_name_display_length",
@@ -726,6 +733,8 @@ TfLiteStatus BenchmarkTfLiteModel::InitInterpreter() {
       params_.Get<int32_t>("optimize_memory_for_large_tensors"));
   options.SetDisableDelegateClustering(
       params_.Get<bool>("disable_delegate_clustering"));
+  options.SetCacheConstantCastOp(
+      params_.Get<bool>("enable_builtin_cast_constant_cache"));
 
   tflite::InterpreterBuilder builder(*model_, *resolver, &options);
   if (builder.SetNumThreads(num_threads) != kTfLiteOk) {
@@ -779,6 +788,41 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
       new InterpreterStatePrinter(interpreter_.get())));
 
   interpreter_->SetAllowFp16PrecisionForFp32(params_.Get<bool>("allow_fp16"));
+
+  auto interpreter_inputs = interpreter_->inputs();
+
+  if (!inputs_.empty()) {
+    TFLITE_TOOLS_CHECK_EQ(inputs_.size(), interpreter_inputs.size())
+        << "Inputs mismatch: Model inputs #:" << inputs_.size()
+        << " expected: " << interpreter_inputs.size();
+  }
+
+  // Check if the tensor names match, and log a warning if it doesn't.
+  for (int j = 0; j < inputs_.size(); ++j) {
+    const InputLayerInfo& input = inputs_[j];
+    int i = interpreter_inputs[j];
+    TfLiteTensor* t = interpreter_->tensor(i);
+    if (input.name != t->name) {
+      TFLITE_LOG(WARN) << "Tensor # " << i << " is named " << t->name
+                       << " but flags call it " << input.name;
+    }
+
+    if (t->type != kTfLiteString && input.shape.size() != t->dims->size) {
+      TFLITE_LOG(ERROR) << "Input tensor #" << i << " should have "
+                        << t->dims->size << " dimensions!";
+      return kTfLiteError;
+    }
+  }
+
+  // Resize all non-string tensors.
+  for (int j = 0; j < inputs_.size(); ++j) {
+    const InputLayerInfo& input = inputs_[j];
+    int i = interpreter_inputs[j];
+    TfLiteTensor* t = interpreter_->tensor(i);
+    if (t->type != kTfLiteString) {
+      interpreter_->ResizeInputTensor(i, input.shape);
+    }
+  }
 
   owned_delegates_.clear();
 
@@ -859,41 +903,6 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
             << " delegate is explicitly applied, the model graph will not be"
             << " executed by the delegate.";
       }
-    }
-  }
-
-  auto interpreter_inputs = interpreter_->inputs();
-
-  if (!inputs_.empty()) {
-    TFLITE_TOOLS_CHECK_EQ(inputs_.size(), interpreter_inputs.size())
-        << "Inputs mismatch: Model inputs #:" << inputs_.size()
-        << " expected: " << interpreter_inputs.size();
-  }
-
-  // Check if the tensor names match, and log a warning if it doesn't.
-  for (int j = 0; j < inputs_.size(); ++j) {
-    const InputLayerInfo& input = inputs_[j];
-    int i = interpreter_inputs[j];
-    TfLiteTensor* t = interpreter_->tensor(i);
-    if (input.name != t->name) {
-      TFLITE_LOG(WARN) << "Tensor # " << i << " is named " << t->name
-                       << " but flags call it " << input.name;
-    }
-
-    if (t->type != kTfLiteString && input.shape.size() != t->dims->size) {
-      TFLITE_LOG(ERROR) << "Input tensor #" << i << " should have "
-                        << t->dims->size << " dimensions!";
-      return kTfLiteError;
-    }
-  }
-
-  // Resize all non-string tensors.
-  for (int j = 0; j < inputs_.size(); ++j) {
-    const InputLayerInfo& input = inputs_[j];
-    int i = interpreter_inputs[j];
-    TfLiteTensor* t = interpreter_->tensor(i);
-    if (t->type != kTfLiteString) {
-      interpreter_->ResizeInputTensor(i, input.shape);
     }
   }
 

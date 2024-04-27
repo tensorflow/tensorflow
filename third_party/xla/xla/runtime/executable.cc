@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -160,7 +160,7 @@ Executable::GetArgumentsMemoryLayout(const FunctionType& signature) {
       continue;
     }
 
-    return InternalError("unknown operand #%i argument ABI: %s", i,
+    return Internal("unknown operand #%i argument ABI: %s", i,
                          type->ToString());
   }
 
@@ -195,7 +195,7 @@ Executable::GetResultsMemoryLayout(const FunctionType& signature) {
       continue;
     }
 
-    return InternalError("unknown result #%i argument ABI: %s", i,
+    return Internal("unknown result #%i argument ABI: %s", i,
                          type->ToString());
   }
 
@@ -381,7 +381,7 @@ Status Executable::ReturnResults(unsigned ordinal,
                                  CallFrame* call_frame) const {
   // If execution failed, forward error to all results.
   if (call_frame->is_error) {
-    auto err = InternalError("run time error: %s", call_frame->error);
+    auto err = Internal("run time error: %s", call_frame->error);
     return (results.ReturnError(err), err);
   }
 
@@ -400,7 +400,7 @@ Status Executable::ReturnResults(unsigned ordinal,
   }
 
   if (LLVM_UNLIKELY(!converted))
-    return InternalError("failed to convert all returned values");
+    return Internal("failed to convert all returned values");
   else
     return absl::OkStatus();
 }

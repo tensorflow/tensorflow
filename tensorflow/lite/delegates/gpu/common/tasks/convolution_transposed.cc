@@ -140,7 +140,7 @@ std::string ConvolutionTransposed::GenerateConvolutionTransposedCode(
         weights_layout_ == WeightsLayout::kOSpatialIOGroupO4I4) {
       BufferDescriptor desc;
       desc.element_type = op_def.src_tensors[1].GetDataType();
-      desc.element_size = 16;
+      desc.element_size = 4;
       desc.memory_type = MemoryType::GLOBAL;
       AddSrcBuffer("weights", desc);
     } else {
@@ -160,15 +160,15 @@ std::string ConvolutionTransposed::GenerateConvolutionTransposedCode(
     std::string f0, f1, f2, f3;
     if (weights_are_buffer) {
       if (gpu_info.SupportsPointersInKernels()) {
-        f0 = "FLT16_0123(weights_cache[" + std::to_string(s) + "])";
-        f1 = "FLT16_4567(weights_cache[" + std::to_string(s) + "])";
-        f2 = "FLT16_89ab(weights_cache[" + std::to_string(s) + "])";
-        f3 = "FLT16_cdef(weights_cache[" + std::to_string(s) + "])";
+        f0 = "weights_cache[" + std::to_string(s * 4 + 0) + "]";
+        f1 = "weights_cache[" + std::to_string(s * 4 + 1) + "]";
+        f2 = "weights_cache[" + std::to_string(s * 4 + 2) + "]";
+        f3 = "weights_cache[" + std::to_string(s * 4 + 3) + "]";
       } else {
-        f0 = "FLT16_0123(flt16val)";
-        f1 = "FLT16_4567(flt16val)";
-        f2 = "FLT16_89ab(flt16val)";
-        f3 = "FLT16_cdef(flt16val)";
+        f0 = "f0";
+        f1 = "f1";
+        f2 = "f2";
+        f3 = "f3";
       }
     } else {
       f0 = "f" + std::to_string(s * 4 + 0);
@@ -250,16 +250,6 @@ std::string ConvolutionTransposed::GenerateConvolutionTransposedCode(
     return check;
   };
 
-  switch (op_def.precision) {
-    case CalculationsPrecision::F32:
-      c += "#define FLT16 float16\n";
-      break;
-    case CalculationsPrecision::F32_F16:
-    case CalculationsPrecision::F16:
-      c += "#define FLT16 half16\n";
-      break;
-  }
-
   c += "MAIN_FUNCTION($0) {\n";
   if (op_def.IsBatchSupported()) {
     c += "  int linear_id = GLOBAL_ID_0;\n";
@@ -300,7 +290,7 @@ std::string ConvolutionTransposed::GenerateConvolutionTransposedCode(
     if (src_def.HasAxis(Axis::DEPTH)) {
       c += " * args.kernel_size_z";
     }
-    c += ";\n";
+    c += " * 4;\n";
   }
   for (int s = 0; s < block_size.w; ++s) {
     const std::string sind = std::to_string(s);
@@ -444,7 +434,7 @@ std::string ConvolutionTransposed::GenerateConvolutionTransposedCode(
   if (weights_are_buffer) {
     c += "      int f_offset = f_base + kernel_index * "
          "args.src_tensor.Slices() * " +
-         std::to_string(block_size.w) + ";\n";
+         std::to_string(block_size.w * 4) + ";\n";
   } else {
     c += "      int x_c = kernel_index * args.src_tensor.Slices();\n";
   }
@@ -494,7 +484,7 @@ std::string ConvolutionTransposed::GenerateConvolutionTransposedCode(
   }
   if (weights_are_buffer) {
     if (gpu_info.SupportsPointersInKernels()) {
-      c += "        __global FLT16* weights_cache = "
+      c += "        __global FLT4* weights_cache = "
            "args.weights.GetPtr(f_offset);\n";
     }
   } else {
@@ -510,12 +500,18 @@ std::string ConvolutionTransposed::GenerateConvolutionTransposedCode(
     c += "        x_c++;\n";
   }
   if (weights_are_buffer && !gpu_info.SupportsPointersInKernels()) {
-    c += "      FLT16 flt16val;\n";
+    c += "      FLT4 f0, f1, f2, f3;\n";
   }
   for (int s = 0; s < block_size.w; ++s) {
     if (weights_are_buffer && !gpu_info.SupportsPointersInKernels()) {
-      c += "        flt16val = args.weights.Read(f_offset + " +
-           std::to_string(s) + ");\n";
+      c += "        f0 = args.weights.Read(f_offset + " +
+           std::to_string(s * 4 + 0) + ");\n";
+      c += "        f1 = args.weights.Read(f_offset + " +
+           std::to_string(s * 4 + 1) + ");\n";
+      c += "        f2 = args.weights.Read(f_offset + " +
+           std::to_string(s * 4 + 2) + ");\n";
+      c += "        f3 = args.weights.Read(f_offset + " +
+           std::to_string(s * 4 + 3) + ");\n";
     }
     const std::string sind = std::to_string(s);
     for (int z = 0; z < block_size.z; ++z) {
@@ -532,7 +528,7 @@ std::string ConvolutionTransposed::GenerateConvolutionTransposedCode(
     }
   }
   if (weights_are_buffer) {
-    c += "        f_offset += " + std::to_string(block_size.w) + ";\n";
+    c += "        f_offset += " + std::to_string(block_size.w * 4) + ";\n";
   }
   c += "      }\n";
   c += "    }\n";

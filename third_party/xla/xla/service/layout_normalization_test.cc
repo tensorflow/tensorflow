@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -311,6 +311,23 @@ ENTRY main {
 )");
 }
 
+TEST_F(LayoutNormalizationTest, IotaCustomOutputLayout) {
+  const char* hlo = R"(
+HloModule module
+
+ENTRY main {
+  a = f32[2,4,3]{1,2,0} iota(), iota_dimension=2
+  ROOT out = abs(a)
+}
+)";
+
+  CheckLayoutNormalization(hlo, R"(
+// CHECK: [[iota_2:%[^ ]+]] = f32[2,3,4]{2,1,0} iota(), iota_dimension=1
+// CHECK: [[abs_3:%[^ ]+]] = f32[2,3,4]{2,1,0} abs([[iota_2]])
+// CHECK: ROOT [[bitcast_3_4:%[^ ]+]] = f32[2,4,3]{1,2,0} bitcast([[abs_3]])
+)");
+}
+
 TEST_F(LayoutNormalizationTest, Concatenate) {
   const char* hlo = R"(
 HloModule module
@@ -619,10 +636,10 @@ HloModule module
 
 ENTRY main {
   input = f32[3,4,32]{1,0,2} parameter(0)
-  s1 = s32[] parameter(1)
-  s2 = s32[] parameter(2)
-  s3 = s32[] parameter(3)
-  ROOT out = f32[1,4,32]{1,0,2} dynamic-slice(input, s1, s2, s3), dynamic_slice_sizes={1,4,32}, metadata={op_name="test"}
+  p1 = s32[] parameter(1)
+  p2 = s32[] parameter(2)
+  p3 = s32[] parameter(3)
+  ROOT out = f32[1,4,32]{1,0,2} dynamic-slice(input, p1, p2, p3), dynamic_slice_sizes={1,4,32}, metadata={op_name="test"}
 }
   )";
   CheckLayoutNormalization(hlo, R"(
@@ -636,10 +653,10 @@ HloModule module
 
 ENTRY main {
   input = f32[1,4,32]{1,0,2} parameter(0)
-  s1 = s32[] parameter(1)
-  s2 = s32[] parameter(2)
-  s3 = s32[] parameter(3)
-  ROOT out = f32[1,4,32]{1,0,2} dynamic-slice(input, s1, s2, s3), dynamic_slice_sizes={1,4,32}, metadata={op_name="test"}
+  p1 = s32[] parameter(1)
+  p2 = s32[] parameter(2)
+  p3 = s32[] parameter(3)
+  ROOT out = f32[1,4,32]{1,0,2} dynamic-slice(input, p1, p2, p3), dynamic_slice_sizes={1,4,32}, metadata={op_name="test"}
 }
   )";
   CheckLayoutNormalization(hlo, R"(

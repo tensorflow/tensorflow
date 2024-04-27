@@ -94,6 +94,25 @@ def if_cuda_is_configured(x, no_cuda = []):
       return select({"//conditions:default": x})
     return select({"//conditions:default": no_cuda})
 
+def if_cuda_newer_than(wanted_ver, if_true, if_false = []):
+    """Tests if CUDA was enabled during the configured process and if the
+    configured version is at least `wanted_ver`. `wanted_ver` needs
+    to be provided as a string in the format `<major>_<minor>`.
+    Example: `11_0`
+    """
+
+    wanted_major = int(wanted_ver.split('_')[0])
+    wanted_minor = int(wanted_ver.split('_')[1])
+
+    configured_version = "%{cuda_version}"
+    configured_major = int(configured_version.split('.')[0])
+    configured_minor = int(configured_version.split('.')[1])
+
+    if %{cuda_is_configured} and (wanted_major, wanted_minor) <= (configured_major, configured_minor):
+      return select({"//conditions:default": if_true})
+    return select({"//conditions:default": if_false})
+
+
 def cuda_header_library(
         name,
         hdrs,

@@ -42,7 +42,7 @@ bool TensorFlowOpRegistryInterface::isStateful(Operation *op) const {
   // Handle TFG region ops.
   // TODO(jeffniu): Region ops should be marked with a trait.
   StringRef op_name = op->getName().stripDialect();
-  if (op->getNumRegions() && op_name.endswith("Region"))
+  if (op->getNumRegions() && op_name.ends_with("Region"))
     op_name = op_name.drop_back(/*len("Region")=*/6);
   return IsStatefulImpl(registry_, op_name);
 }

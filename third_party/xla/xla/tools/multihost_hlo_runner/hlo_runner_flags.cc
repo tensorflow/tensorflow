@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -129,7 +129,7 @@ bool MultiHostHloRunnerFlags::CreateOptionsFromFlags(
           ? FunctionalHloRunner::SpmdMode::kUseSpmdPartitioning
           : FunctionalHloRunner::SpmdMode::kNotUseSpmdPartitioning;
   if (!flag_values_.execution_options_path.empty()) {
-    StatusOr<ExecutionOptions> execution_options =
+    absl::StatusOr<ExecutionOptions> execution_options =
         FunctionalHloRunner::LoadExecutionOptions(
             flag_values_.execution_options_path);
     if (!execution_options.ok()) {

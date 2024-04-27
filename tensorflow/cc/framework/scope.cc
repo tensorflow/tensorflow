@@ -311,7 +311,7 @@ Status Scope::ToGraphDef(GraphDef* gdef, bool include_debug_info) const {
     return *impl()->status_;
   }
   graph()->ToGraphDef(gdef, /*include_flib_def=*/true, include_debug_info);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status Scope::ToGraph(Graph* g, GraphConstructorOptions opts) const {
@@ -427,7 +427,7 @@ Scope Scope::WithOpNameImpl(const string& op_name) const {
 }
 
 Scope Scope::WithControlDependencies(
-    const gtl::ArraySlice<Operation> control_deps) const {
+    const absl::Span<const Operation> control_deps) const {
   return Scope(
       new Impl(*this, Impl::Tags::ControlDeps(),
                std::vector<Operation>(control_deps.begin(), control_deps.end()),
@@ -499,7 +499,7 @@ CompositeOpScopes Scope::GetCompositeOpScopes(
 }
 
 Status Scope::DoShapeInference(Node* node) const {
-  if (impl_->disable_shape_inference_) return OkStatus();
+  if (impl_->disable_shape_inference_) return absl::OkStatus();
   return impl_->refiner_->AddNode(node);
 }
 
@@ -547,7 +547,7 @@ Status CreateOutputWithScope(string op_name,
   scope.UpdateStatus(builder.Finalize(scope.graph(), &ret));
   TF_RETURN_IF_ERROR(scope.status());
   *output = Output(ret, 0);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

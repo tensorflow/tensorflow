@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -120,8 +120,12 @@ class PjRtStreamExecutorDevice : public PjRtDevice {
       int id, std::unique_ptr<LocalDeviceState> local_device_state,
       std::string device_kind, int process_index = 0)
       : description_(id, std::move(device_kind), process_index),
-        device_ordinal_(
-            local_device_state ? local_device_state->device_ordinal() : -1),
+        local_device_id_(local_device_state
+                             ? local_device_state->local_device_id()
+                             : PjRtLocalDeviceId(-1)),
+        local_hardware_id_(local_device_state
+                               ? local_device_state->local_hardware_id()
+                               : PjRtLocalHardwareId(-1)),
         local_device_state_(std::move(local_device_state)) {}
   ~PjRtStreamExecutorDevice() override = default;
 
@@ -148,18 +152,18 @@ class PjRtStreamExecutorDevice : public PjRtDevice {
 
   PjRtClient* client() const override { return client_; }
 
-  bool IsAddressable() const override { return device_ordinal_ != -1; }
+  bool IsAddressable() const override { return local_device_id_ != -1; }
 
   int local_hardware_id() const override {
     return local_hardware_id_typed().value();
   }
 
   PjRtLocalDeviceId local_device_id() const override {
-    return PjRtLocalDeviceId(local_hardware_id_typed().value());
+    return local_device_id_;
   }
 
   PjRtLocalHardwareId local_hardware_id_typed() const override {
-    return PjRtLocalHardwareId(device_ordinal_);
+    return local_hardware_id_;
   }
 
   // If this is a device local to this host, returns a LocalDeviceState object
@@ -191,7 +195,8 @@ class PjRtStreamExecutorDevice : public PjRtDevice {
 
  private:
   PjRtStreamExecutorDeviceDescription description_;
-  const int device_ordinal_;  // -1 means not local.
+  const PjRtLocalDeviceId local_device_id_;
+  const PjRtLocalHardwareId local_hardware_id_;
   const std::unique_ptr<LocalDeviceState> local_device_state_;
   PjRtClient* client_ = nullptr;
 };
@@ -289,7 +294,7 @@ class PjRtStreamExecutorClient : public PjRtClient {
       std::shared_ptr<BufferSequencingEvent> definition_event);
 
   StatusOr<std::unique_ptr<PjRtBuffer>> CreateErrorBuffer(
-      Status error, const Shape& shape, PjRtDevice* device) override;
+      Status error, const Shape& shape, PjRtMemorySpace* memory) override;
 
   StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
   CreateBuffersForAsyncHostToDevice(absl::Span<const Shape> shapes,
@@ -307,14 +312,14 @@ class PjRtStreamExecutorClient : public PjRtClient {
       const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
       std::optional<absl::Span<int64_t const>> byte_strides,
       HostBufferSemantics host_buffer_semantics,
-      std::function<void()> on_done_with_host_buffer, PjRtDevice* device,
-      const Layout* device_layout) override;
+      absl::AnyInvocable<void() &&> on_done_with_host_buffer,
+      PjRtDevice* device, const Layout* device_layout) override;
 
   StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostBuffer(
       const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
       std::optional<absl::Span<int64_t const>> byte_strides,
       HostBufferSemantics host_buffer_semantics,
-      std::function<void()> on_done_with_host_buffer,
+      absl::AnyInvocable<void() &&> on_done_with_host_buffer,
       PjRtDevice* device) override;
 
   StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostLiteral(
@@ -398,11 +403,10 @@ class PjRtStreamExecutorClient : public PjRtClient {
     }
   }
 
-  virtual PjRtFuture<Status> CopyRawSubBufferToHost(PjRtBuffer* buffer,
-                                                    void* dst, int64_t offset,
-                                                    int64_t transfer_size) {
-    return PjRtFuture<Status>(
-        Unimplemented("Raw copies to host not implemented."));
+  virtual PjRtFuture<> CopyRawSubBufferToHost(PjRtBuffer* buffer, void* dst,
+                                              int64_t offset,
+                                              int64_t transfer_size) {
+    return PjRtFuture<>(Unimplemented("Raw copies to host not implemented."));
   }
 
   // Helper function for creating PjRtStreamExecutorExecutables. Modifies
@@ -661,11 +665,18 @@ class PjRtStreamExecutorBuffer : public PjRtBuffer {
       bool wait_for_operations_to_complete) override;
 
   using PjRtBuffer::ToLiteralSync;
-  PjRtFuture<Status> ToLiteral(MutableLiteralBase* literal) override;
+  PjRtFuture<> ToLiteral(MutableLiteralBase* literal) override;
+  PjRtFuture<> LazyToLiteral(
+      absl::AnyInvocable<absl::StatusOr<MutableLiteralBase*>() &&> generator)
+      override;
 
   StatusOr<size_t> GetOnDeviceSizeInBytes() const override;
 
-  PjRtFuture<Status> CopyRawToHost(void* dst, int64_t offset,
+  PjRtFuture<> CopyRawToHost(void* dst, int64_t offset,
+                             int64_t transfer_size) override;
+
+  PjRtFuture<> CopyRawToHostFuture(PjRtFuture<StatusOr<void*>> dst,
+                                   int64_t offset,
                                    int64_t transfer_size) override;
 
   // Drops the buffer's reference to its associated device memory, leaving the
@@ -712,7 +723,7 @@ class PjRtStreamExecutorBuffer : public PjRtBuffer {
       std::vector<RemoteSendCallback> callbacks,
       const ScatterDetails& scatter_details) override;
 
-  PjRtFuture<Status> GetReadyFuture() override;
+  PjRtFuture<> GetReadyFuture() override;
 
   bool IsOnCpu() const override;
 
@@ -734,7 +745,7 @@ class PjRtStreamExecutorBuffer : public PjRtBuffer {
       bool wait_for_operations_to_complete);
 
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> DonateWithControlDependency(
-      PjRtFuture<absl::Status> dependency) override;
+      PjRtFuture<> dependency) override;
 
  private:
   friend class PjRtClient;
@@ -792,7 +803,7 @@ class PjRtStreamExecutorBuffer : public PjRtBuffer {
   std::shared_ptr<TrackedDeviceBuffer> device_buffer_ ABSL_GUARDED_BY(mu_);
   // Count of holds on the buffer.
   std::array<int, ScopedHold::Type::kMaxValue> holds_ ABSL_GUARDED_BY(mu_);
-  PjRtFuture<Status>::Promise definition_promise_ ABSL_GUARDED_BY(mu_);
+  PjRtFuture<>::Promise definition_promise_ ABSL_GUARDED_BY(mu_);
 };
 
 // Wraps one or more XLA LocalExecutables (one per partition, as specified by
@@ -869,22 +880,19 @@ class PjRtStreamExecutorLoadedExecutable : public PjRtLoadedExecutable {
   StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>> Execute(
       absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
       const ExecuteOptions& options,
-      std::optional<std::vector<PjRtFuture<Status>>>& returned_futures)
-      override;
+      std::optional<std::vector<PjRtFuture<>>>& returned_futures) override;
 
   using PjRtLoadedExecutable::ExecuteSharded;
   StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecuteSharded(
       absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
       const ExecuteOptions& options,
-      std::optional<PjRtFuture<Status>>& returned_future,
-      bool fill_future) override;
+      std::optional<PjRtFuture<>>& returned_future, bool fill_future) override;
 
   using PjRtLoadedExecutable::ExecutePortable;
   StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecutePortable(
       absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
       const ExecuteOptions& options,
-      std::optional<PjRtFuture<Status>>& returned_future,
-      bool fill_future) override;
+      std::optional<PjRtFuture<>>& returned_future, bool fill_future) override;
 
   void Delete() override { executables_.clear(); }
 
@@ -903,6 +911,8 @@ class PjRtStreamExecutorLoadedExecutable : public PjRtLoadedExecutable {
   absl::StatusOr<CompileOptions> GetCompileOptions() const override {
     return compile_options_;
   }
+
+  absl::StatusOr<std::string> FingerprintExecutable() const override;
 
  protected:
   bool parameter_is_tupled_arguments() const {

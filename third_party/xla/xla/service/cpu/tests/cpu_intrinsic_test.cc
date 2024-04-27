@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,12 +16,20 @@ limitations under the License.
 #include <algorithm>
 #include <string>
 
+#include <gtest/gtest.h>
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "llvm-c/Target.h"
 #include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/cpu/cpu_compiler.h"
 #include "xla/service/cpu/tests/cpu_codegen_test.h"
+#include "xla/shape_util.h"
+#include "xla/tests/hlo_test_base.h"
+#include "xla/xla.pb.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/test.h"
 
 namespace xla {
@@ -135,15 +143,15 @@ IntrinsicTestSpec CpuUnaryIntrinsicTestCases[] = {
 
     IntrinsicTestSpec{
         HloOpcode::kTanh, kTriple_x86_64, "",
-        R"(CHECK: fcmp fast uge <4 x float> %wide.load, <float -9.000000e+00, float -9.000000e+00, float -9.000000e+00, float -9.000000e+00>)"},
+        R"(CHECK: fcmp fast uge <4 x float> %wide.load, <float 0xC01FFEC880000000, float 0xC01FFEC880000000, float 0xC01FFEC880000000, float 0xC01FFEC880000000>)"},
 
     IntrinsicTestSpec{
         HloOpcode::kTanh, kTriple_x86_64, "+avx",
-        R"(CHECK: fcmp fast uge <8 x float> %wide.load, <float -9.000000e+00, float -9.000000e+00, float -9.000000e+00, float -9.000000e+00, float -9.000000e+00, float -9.000000e+00, float -9.000000e+00, float -9.000000e+00>)"},
+        R"(CHECK: fcmp fast uge <8 x float> %wide.load, <float 0xC01FFEC880000000, float 0xC01FFEC880000000, float 0xC01FFEC880000000, float 0xC01FFEC880000000, float 0xC01FFEC880000000, float 0xC01FFEC880000000, float 0xC01FFEC880000000, float 0xC01FFEC880000000>)"},
 
     IntrinsicTestSpec{
         HloOpcode::kTanh, kTriple_android_arm, "",
-        R"(CHECK: fcmp fast uge <4 x float> %wide.load, <float -9.000000e+00, float -9.000000e+00, float -9.000000e+00, float -9.000000e+00>)"},
+        R"(CHECK: fcmp fast uge <4 x float> %wide.load, <float 0xC01FFEC880000000, float 0xC01FFEC880000000, float 0xC01FFEC880000000, float 0xC01FFEC880000000>)"},
 
     IntrinsicTestSpec{
         HloOpcode::kLog, kTriple_x86_64, "",

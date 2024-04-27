@@ -108,7 +108,7 @@ def LegalizeHashTablesPass : Pass<"tfl-legalize-hashtables-tf", "mlir::ModuleOp"
 def LegalizeJaxRandomPass : Pass<"tfl-legalize-random", "mlir::func::FuncOp"> {
   let summary = "Replace jax.random.uniform/normal with tfl.custom.";
   let constructor = "CreateLegalizeJaxRandomPass()";
-  let dependentDialects = ["TFL::TensorFlowLiteDialect"];
+  let dependentDialects = ["TFL::TensorFlowLiteDialect", "stablehlo::StablehloDialect"];
 }
 
 def LegalizeTFPass : Pass<"tfl-legalize-tf", "mlir::func::FuncOp"> {
@@ -309,6 +309,8 @@ def PrepareQuantizePass : Pass<"tfl-prepare-quantize", "mlir::func::FuncOp"> {
              "disable-set-input-nodes-quantization-params",
              "bool", "false",
              "Whether disable set input nodes quantization parameters.">,
+      Option<"is_qdq_conversion_", "is-qdq-conversion", "bool", "false",
+             "Whether the source graph is a QDQ model intended for conversion only.">,
   ];
 }
 
@@ -323,6 +325,9 @@ def PrepareDynamicRangeQuantizePass : Pass<"tfl-prepare-quantize-dynamic-range",
       Option<"enable_dynamic_range_per_channel_quantization_",
               "enable-dynamic-range-per-channel-quantization", "bool",
               "true", "Whether enable per-channel quantized weights.">,
+      Option<"enable_dynamic_range_per_channel_quantization_for_dense_layers_",
+              "enable-dynamic-range-per-channel-quantization-for-dense-layers", "bool",
+              "true", "Whether enable per-channel quantized weights for Fully Connected layers (default is per tensor).">,
       Option<"min_elements_for_weights_",
               "min-elements-for-weights", "int64_t", "1024",
               "The minimum number of elements in a weights array required to apply quantization.">,
@@ -392,6 +397,9 @@ def QuantizePass : Pass<"tfl-quantize", "mlir::func::FuncOp"> {
              "std::string", "Names of location to blocklist from quantization">,
       Option<"enable_custom_op_weight_only_", "enable-custom-op-weight-only",
              "std::string", "", "Specifies which custom ops are weight-only.">,
+      Option<"enable_float16_quantization_",
+              "enable-float16-quantization", "bool",
+              "false", "Whether apply float16 quantization. If false, int8 quantization is applied.">,
   ];
 }
 
@@ -461,3 +469,10 @@ def ReduceTypePrecisionPass : Pass<"tfl-reduce-type-precision", "mlir::ModuleOp"
   let constructor = "CreateReduceTypePrecisionPass()";
   let dependentDialects = ["TFL::TensorFlowLiteDialect"];
 }
+
+def PushTransposeThroughEwisePass : Pass<"push-transpose-through-ewise", "mlir::ModuleOp"> {
+  let summary = "TODO";
+  let constructor = "CreatePushTransposeThroughEwisePass()";
+  let dependentDialects = ["TFL::TensorFlowLiteDialect"];
+}
+

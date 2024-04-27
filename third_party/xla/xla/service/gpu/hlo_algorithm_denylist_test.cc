@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,10 +18,10 @@ limitations under the License.
 #include <cstdlib>
 #include <string>
 
+#include "absl/strings/str_cat.h"
 #include "xla/stream_executor/dnn.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/path.h"
-#include "tsl/platform/resource_loader.h"
 #include "tsl/platform/test.h"
 
 namespace xla {

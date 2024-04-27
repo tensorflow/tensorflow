@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef XLA_PJRT_C_PJRT_C_API_PROFILER_EXTENSION_H_
 #define XLA_PJRT_C_PJRT_C_API_PROFILER_EXTENSION_H_
 
+#include <cstddef>
+#include <cstdint>
+
 #include "xla/backends/profiler/plugin/profiler_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 
@@ -23,13 +26,18 @@ limitations under the License.
 extern "C" {
 #endif
 
-#define PJRT_API_PROFILER_EXTENSION_VERSION 0
+#define PJRT_API_PROFILER_EXTENSION_VERSION 1
 
 typedef struct PJRT_Profiler_Extension {
-  PJRT_Structure_Type type;
-  const void* next;
+  size_t struct_size;
+  PJRT_Extension_Type type;
+  PJRT_Extension_Base* next;
+  // can be nullptr if PJRT_Profiler_Extension is used as an args extension
   PLUGIN_Profiler_Api* profiler_api;
+  // valid only when used as an args extension
+  int64_t traceme_context_id;
 } PJRT_Profiler_Extension;
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Profiler_Extension, traceme_context_id);
 
 #ifdef __cplusplus
 }

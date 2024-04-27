@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,19 +16,19 @@ limitations under the License.
 #ifndef XLA_SERVICE_CPU_COMPILER_FUNCTOR_H_
 #define XLA_SERVICE_CPU_COMPILER_FUNCTOR_H_
 
-#include <functional>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/functional/any_invocable.h"
 #include "llvm/ExecutionEngine/Orc/IRCompileLayer.h"
+#include "llvm/IR/FMF.h"
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Module.h"
-#include "llvm/IR/Operator.h"
 #include "llvm/Object/ObjectFile.h"
 #include "llvm/Target/TargetMachine.h"
 #include "xla/service/llvm_compiler.h"
-#include "tsl/platform/logging.h"
 
 namespace xla {
 namespace cpu {
@@ -43,8 +43,8 @@ class CompilerFunctor : public llvm::orc::IRCompileLayer::IRCompiler {
       bool disable_slp_vectorizer, llvm::FastMathFlags fast_math_flags,
       LLVMCompiler::ModuleHook pre_optimization_hook = nullptr,
       LLVMCompiler::ModuleHook post_optimization_hook = nullptr,
-      std::function<void(const llvm::object::ObjectFile&)> post_codegen_hook =
-          nullptr,
+      absl::AnyInvocable<void(const llvm::object::ObjectFile&)>
+          post_codegen_hook = nullptr,
       bool dfsan_enabled = false,
       const std::vector<std::string>& dfsan_abi_list_files = {},
       const std::vector<std::string>& convert_to_xla_runtime_abi = {})
@@ -75,7 +75,7 @@ class CompilerFunctor : public llvm::orc::IRCompileLayer::IRCompiler {
   const llvm::FastMathFlags fast_math_flags_;
   LLVMCompiler::ModuleHook pre_optimization_hook_;
   LLVMCompiler::ModuleHook post_optimization_hook_;
-  std::function<void(const llvm::object::ObjectFile&)> post_codegen_hook_;
+  absl::AnyInvocable<void(const llvm::object::ObjectFile&)> post_codegen_hook_;
   const bool dfsan_enabled_ = false;
   const std::vector<std::string> dfsan_abi_list_files_;
   const std::vector<std::string> convert_to_xla_runtime_abi_;

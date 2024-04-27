@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/StringRef.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -40,6 +41,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/translate_utils.h"
+#include "tensorflow/compiler/mlir/tf2xla/internal/logging_hooks.h"
 #include "tensorflow/compiler/tf2xla/layout_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
@@ -62,6 +64,7 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_support.h"
 #include "tensorflow/core/tpu/tpu_compile.h"
+#include "tensorflow/core/util/debug_data_dumper.h"
 #include "tsl/lib/monitoring/sampler.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/status.h"
@@ -127,11 +130,11 @@ Status PopulateInputOutputAliasing(
       output_to_input_alias[aliasing_output.getInt()] = arg_index;
   }
 
-  if (output_to_input_alias.empty()) return OkStatus();
+  if (output_to_input_alias.empty()) return absl::OkStatus();
 
   xla::HloModuleProto* module_proto =
       compilation_result->computation->mutable_proto();
-  StatusOr<xla::ProgramShape> program_shape_or_status =
+  absl::StatusOr<xla::ProgramShape> program_shape_or_status =
       compilation_result->computation->GetProgramShape();
   TF_RET_CHECK(program_shape_or_status.ok());
 
@@ -152,10 +155,10 @@ Status PopulateInputOutputAliasing(
     }
   }
   *module_proto->mutable_input_output_alias() = config.ToProto();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-bool failed(const tsl::Status& status) { return !status.ok(); }
+bool failed(const absl::Status& status) { return !status.ok(); }
 
 // Transforms the given module to be suitable for export to TensorFlow GraphDef
 // and then exports all functions to the given library.
@@ -170,11 +173,21 @@ Status PrepareAndExportToLibrary(mlir::ModuleOp module,
   applyTensorflowAndCLOptions(manager);
   manager.addPass(mlir::TF::CreatePrepareTpuComputationForTfExportPass());
   manager.addPass(mlir::TF::CreateTFRegionControlFlowToFunctional());
+  manager.addPass(mlir::TF::CreateTFShapeInferencePass());
   manager.addNestedPass<mlir::func::FuncOp>(
       mlir::CreateFunctionalToExecutorDialectConversionPass());
   manager.addPass(mlir::CreateBreakUpIslandsPass());
 
   mlir::StatusScopedDiagnosticHandler diag_handler(module.getContext());
+
+  if (VLOG_IS_ON(2)) {
+    llvm::StringRef module_name = llvm::StringRef();
+    constexpr const char* kDebugGroupBridgePhase2 =
+        "v1_prepare_and_export_to_library";
+    internal::EnablePassIRPrinting(manager, kDebugGroupBridgePhase2,
+                                   module_name);
+  }
+
   auto prepare_status = manager.run(module);
   auto diag_handler_status = diag_handler.ConsumeStatus();
   // There are cases where the scoped diagnostic handler catches a failure that
@@ -190,7 +203,7 @@ Status PrepareAndExportToLibrary(mlir::ModuleOp module,
                                         flib_def);
 }
 
-tsl::Status CompileTFFunctionWithoutMlir(
+absl::Status CompileTFFunctionWithoutMlir(
     FunctionToHloArgs function_computation,
     const tpu::TPUCompileMetadataProto& metadata, bool use_tuple_args,
     const XlaShapeLayoutHelpers::ShapeDeterminationFns
@@ -217,7 +230,7 @@ tsl::Status CompileTFFunctionWithoutMlir(
   return comp_status;
 }
 
-tsl::Status CompileMLIRTFFunction(
+absl::Status CompileMLIRTFFunction(
     tpu::MlirToHloArgs mlir_computation,
     const tpu::TPUCompileMetadataProto& metadata, bool use_tuple_args,
     const XlaShapeLayoutHelpers::ShapeDeterminationFns
@@ -280,7 +293,7 @@ tsl::Status CompileMLIRTFFunction(
 
 }  // namespace
 
-tsl::Status CompileTensorflowGraphToHlo(
+absl::Status CompileTensorflowGraphToHlo(
     const std::variant<tpu::MlirToHloArgs, tpu::FunctionToHloArgs>& computation,
     const tpu::TPUCompileMetadataProto& metadata, bool use_tuple_args,
     const XlaShapeLayoutHelpers::ShapeDeterminationFns
@@ -318,7 +331,7 @@ tsl::Status CompileTensorflowGraphToHlo(
   phase2_bridge_compilation_time->GetCell(kBridgePhase2Config)
       ->Add(timer.ElapsedCyclesInMilliseconds());
 
-  return tsl::OkStatus();
+  return absl::OkStatus();
 }
 
 };  // namespace v1

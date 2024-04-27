@@ -61,7 +61,7 @@ static inline Status ParseAndCheckBoxSizes(const Tensor& boxes,
                                            int* num_boxes) {
   if (boxes.NumElements() == 0 && box_index.NumElements() == 0) {
     *num_boxes = 0;
-    return OkStatus();
+    return absl::OkStatus();
   }
   // The shape of 'boxes' is [num_boxes, 4].
   if (boxes.dims() != 2) {
@@ -80,7 +80,7 @@ static inline Status ParseAndCheckBoxSizes(const Tensor& boxes,
   if (box_index.dim_size(0) != *num_boxes) {
     return errors::InvalidArgument("box_index has incompatible shape");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Conditionally calls the compute callback if all values in box_index are in
@@ -148,6 +148,11 @@ class CropAndResizeOp : public AsyncOpKernel {
     OP_REQUIRES_ASYNC(
         context, image_height > 0 && image_width > 0,
         errors::InvalidArgument("image dimensions must be positive"), done);
+    OP_REQUIRES_ASYNC(
+        context, boxes.dims() == 2,
+        absl::InvalidArgumentError(absl::StrCat("boxes must be 2-D, got: ",
+                                                boxes.shape().DebugString())),
+        done);
     OP_REQUIRES_ASYNC(
         context, TensorShapeUtils::IsVector(box_index.shape()),
         errors::InvalidArgument("box_indices must be rank 1 but is shape ",
@@ -868,9 +873,8 @@ inline void RunIfBoxIndexIsValid<GPUDevice>(
   se::DeviceMemoryBase wrapped(isvalid_dev.data(), sizeof(bool));
   const bool status =
       stream
-          ->ThenMemcpy(
-              isvalid_host_tensor.scalar<bool>().data() /* destination */,
-              wrapped /* source */, sizeof(bool))
+          ->Memcpy(isvalid_host_tensor.scalar<bool>().data() /* destination */,
+                   wrapped /* source */, sizeof(bool))
           .ok();
   OP_REQUIRES_ASYNC(
       context, status,

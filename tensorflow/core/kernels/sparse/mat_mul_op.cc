@@ -85,12 +85,12 @@ class CSRMatMulOp : public OpKernel {
     bool adjoint_a;
     OP_REQUIRES_OK(c, c->GetAttr("adjoint_a", &adjoint_a));
     OP_REQUIRES(c, !(adjoint_a && transpose_a_),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "Only one of adjoint_a and transpose_a may be true."));
     bool adjoint_b;
     OP_REQUIRES_OK(c, c->GetAttr("adjoint_b", &adjoint_b));
     OP_REQUIRES(c, !(adjoint_b && transpose_b_),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "Only one of adjoint_b and transpose_b may be true."));
     OP_REQUIRES_OK(c, c->GetAttr("transpose_output", &transpose_output_));
     OP_REQUIRES_OK(c, c->GetAttr("conjugate_output", &conjugate_output_));
@@ -111,23 +111,24 @@ class CSRMatMulOp : public OpKernel {
                         const Tensor& dense_tensor_b, int* rank,
                         int64_t* batch_size) {
     if (sparse_matrix_a.dtype() != dense_tensor_b.dtype()) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Input types don't match.  a.dtype == ",
           DataTypeString(sparse_matrix_a.dtype()),
-          " vs. b.dtype == ", DataTypeString(dense_tensor_b.dtype()));
+          " vs. b.dtype == ", DataTypeString(dense_tensor_b.dtype())));
     }
     *rank = sparse_matrix_a.dims();
     // TODO(ebrevdo): Add support for broadcasting matmul.
     if (*rank != dense_tensor_b.dims()) {
-      return errors::InvalidArgument("Ranks of a and b must match, saw: ", rank,
-                                     " vs. ", dense_tensor_b.dims(), ".");
+      return absl::InvalidArgumentError(
+          absl::StrCat("Ranks of a and b must match, saw: ", *rank, " vs. ",
+                       dense_tensor_b.dims(), "."));
     }
     // A valid CSR SparseMatrix has rank 2 or rank 3.
     *batch_size = (*rank == 2) ? 1 : dense_tensor_b.dim_size(0);
     if (sparse_matrix_a.batch_size() != *batch_size) {
-      return errors::InvalidArgument("Batch sizes of a and b must match, saw: ",
-                                     sparse_matrix_a.batch_size(), " vs. ",
-                                     batch_size, ".");
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Batch sizes of a and b must match, saw: ",
+          sparse_matrix_a.batch_size(), " vs. ", *batch_size, "."));
     }
     const auto& a_dense_shape = sparse_matrix_a.dense_shape().vec<int64_t>();
     const int64_t a_inner_dim =
@@ -135,12 +136,12 @@ class CSRMatMulOp : public OpKernel {
     const int64_t b_inner_dim =
         dense_tensor_b.dim_size(this->transpose_b_ ? *rank - 1 : *rank - 2);
     if (a_inner_dim != b_inner_dim) {
-      return errors::InvalidArgument(
-          "Inner product dimensions of A and B do not agree.  Shapes are: ",
-          TensorShape(a_dense_shape), " vs. ",
-          dense_tensor_b.shape().DebugString());
+      return absl::InvalidArgumentError(
+          absl::StrCat("Inner product dimensions of A and B do not agree. ",
+                       "Shapes are: ", TensorShape(a_dense_shape).DebugString(),
+                       " vs. ", dense_tensor_b.shape().DebugString()));
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  public:
@@ -263,7 +264,7 @@ class CSRMatMulCPUOp : public CSRMatMulOp<CPUDevice, T> {
       TF_RETURN_IF_ERROR(ctx->allocate_output(0, output_shape, output));
       *matmul_result = output_transposed;
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Returns an Eigen::Ref expression of a sparse sub-matrix from the given
@@ -488,7 +489,7 @@ class CSRMatMulCPUOp : public CSRMatMulOp<CPUDevice, T> {
       TF_RETURN_IF_ERROR(
           DoMatrixTranspose(ctx->eigen_device<CPUDevice>(), input, output));
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 

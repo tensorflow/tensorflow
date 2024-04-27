@@ -18,7 +18,6 @@ import collections
 import functools
 import re
 import threading
-import warnings
 
 import numpy as np
 import wrapt
@@ -1790,10 +1789,14 @@ class InteractiveSession(BaseSession):
     super(InteractiveSession, self).__init__(target, graph, config)
     with InteractiveSession._count_lock:
       if InteractiveSession._active_session_count > 0:
-        warnings.warn('An interactive session is already active. This can '
-                      'cause out-of-memory errors in some cases. You must '
-                      'explicitly call `InteractiveSession.close()` to release '
-                      'resources held by the other session(s).')
+        logging.error(
+            'An interactive session is already active. This can cause'
+            ' out-of-memory errors or some other unexpected errors (due to'
+            ' the unpredictable timing of garbage collection) in some cases.'
+            ' You must explicitly call `InteractiveSession.close()` to release'
+            ' resources held by the other session(s). Please use `tf.Session()`'
+            ' if you intend to productionize.'
+        )
       InteractiveSession._active_session_count += 1
     # NOTE(mrry): We do not use `Session._closed` here because it has unhelpful
     # semantics (in particular, it is not set to true if `Session.close()` is

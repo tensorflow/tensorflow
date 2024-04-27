@@ -21,3 +21,25 @@ platform(
         "@platforms//cpu:aarch64",
     ],
 )
+
+platform(
+    name = "darwin_x86_64",
+    constraint_values = [
+        "@platforms//os:macos",
+        "@platforms//cpu:x86_64",
+    ],
+)
+
+toolchain(
+    name = "macos-x86-cross-compile-cc-toolchain",
+    exec_compatible_with = [
+        "@platforms//os:linux",
+        "@platforms//cpu:x86_64",
+    ],
+    target_compatible_with = [
+        "@platforms//os:macos",
+        "@platforms//cpu:x86_64",
+    ],
+    toolchain = "//tensorflow/tools/toolchains/cross_compile/cc:macos_x86_toolchain",
+    toolchain_type = "@bazel_tools//tools/cpp:toolchain_type",
+)

@@ -14,7 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 // This transformation pass applies quantization propagation on TFLite dialect.
+#include <functional>
 #include <iterator>
+#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
@@ -30,6 +32,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -37,16 +40,15 @@ limitations under the License.
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
-#include "tensorflow/compiler/mlir/lite/quantization/ir/FakeQuantSupport.h"
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/lite/quantization/lite/tfl_to_std.h"
-#include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
-#include "tensorflow/compiler/mlir/lite/quantization/quantization_traits.h"
-#include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/transforms/prepare_quantize_helper.h"
+#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_config.h"
+#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_driver.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
 
@@ -151,8 +153,8 @@ bool PrepareQuantizePass::SetInputNodesQuantizationParams(func::FuncOp func) {
 
   bool need_to_set_input_nodes_quantization_params = false;
   for (const BlockArgument arg : func.getArguments()) {
-    auto shaped = arg.getType().dyn_cast<ShapedType>();
-    if (shaped && shaped.getElementType().isa<FloatType>() &&
+    auto shaped = mlir::dyn_cast<ShapedType>(arg.getType());
+    if (shaped && mlir::isa<FloatType>(shaped.getElementType()) &&
         !has_quantize_op(arg)) {
       need_to_set_input_nodes_quantization_params = true;
       break;
@@ -177,8 +179,8 @@ bool PrepareQuantizePass::SetInputNodesQuantizationParams(func::FuncOp func) {
   auto add_quantize_op = [&](Location loc, Type input_type, Block* block,
                              Block::iterator insertion_point, Value arg,
                              int i) {
-    if (auto shaped = input_type.dyn_cast<ShapedType>()) {
-      if (shaped.getElementType().isa<FloatType>()) {
+    if (auto shaped = mlir::dyn_cast<ShapedType>(input_type)) {
+      if (mlir::isa<FloatType>(shaped.getElementType())) {
         // If there are existing quantize ops, they are from training and we
         // should respect them.
         if (has_quantize_op(arg)) {
@@ -217,7 +219,9 @@ bool PrepareQuantizePass::SetInputNodesQuantizationParams(func::FuncOp func) {
 #include "tensorflow/compiler/mlir/lite/utils/generated_op_quant_spec_getters.inc"
 
 bool PrepareQuantizePass::RemoveRedundantStats(func::FuncOp func) {
-  return RemoveRedundantStatsOps(func, GetOpQuantSpec);
+  return RemoveRedundantStatsOps(
+      func, std::bind(GetOpQuantSpec, std::placeholders::_1,
+                      quant_specs_.disable_per_channel_for_dense_layers));
 }
 
 static Value Quantized(Operation* user) {
@@ -375,6 +379,10 @@ void PrepareQuantizePass::runOnOperation() {
     patterns_1.add<PrepareLstmOutputScale<LSTMOp>>(ctx);
     patterns_1.add<PrepareLstmOutputScale<UnidirectionalSequenceLSTMOp>>(ctx);
   }
+  if (is_qdq_conversion_ ||
+      quant_specs_.qdq_conversion_mode != quant::QDQConversionMode::kQDQNone) {
+    patterns_1.add<PropagateTransposedPerAxisQuantDim>(ctx);
+  }
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns_1));
 
   // During the legalization, unsigned quantized type is used, so we have to
@@ -402,12 +410,21 @@ void PrepareQuantizePass::runOnOperation() {
 
   SanityCheckAndAdjustment(func);
 
+  // Bind the getter with the fixed configuration parameter for the correct
+  // quantization settings of the ops.
+  std::function<std::unique_ptr<quant::OpQuantSpec>(Operation*)>
+      op_quant_spec_getter =
+          std::bind(GetOpQuantSpec, std::placeholders::_1,
+                    quant_specs_.disable_per_channel_for_dense_layers);
+
   // Finally, the quantization parameters can be propagated to the rest of the
   // values (tensors).
   ApplyQuantizationParamsPropagation(
       func, is_signed, bit_width,
-      disable_per_channel_ || quant_specs_.disable_per_channel, GetOpQuantSpec,
-      infer_tensor_range, quant_specs_.legacy_float_scale);
+      disable_per_channel_ || quant_specs_.disable_per_channel,
+      op_quant_spec_getter, infer_tensor_range, quant_specs_.legacy_float_scale,
+      (is_qdq_conversion_ ||
+       quant_specs_.qdq_conversion_mode != quant::QDQConversionMode::kQDQNone));
 }
 
 }  // namespace

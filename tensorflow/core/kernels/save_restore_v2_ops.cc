@@ -176,7 +176,7 @@ class SaveV2 : public OpKernel {
                   &checkpoint_callback_manager,
                   [](checkpoint::CheckpointCallbackManager** out) {
                     *out = new checkpoint::CheckpointCallbackManager();
-                    return OkStatus();
+                    return absl::OkStatus();
                   }));
       checkpoint_callback_manager->Save(prefix_string);
       checkpoint_callback_manager->Unref();
@@ -245,7 +245,7 @@ class RestoreV2 : public OpKernel {
                   &checkpoint_callback_manager,
                   [](checkpoint::CheckpointCallbackManager** out) {
                     *out = new checkpoint::CheckpointCallbackManager();
-                    return OkStatus();
+                    return absl::OkStatus();
                   }));
       checkpoint_callback_manager->Restore(prefix_string);
       checkpoint_callback_manager->Unref();
@@ -283,8 +283,8 @@ class MergeV2Checkpoints : public OpKernel {
                     "Input destination_prefix should be a scalar tensor, got ",
                     destination_prefix.shape().DebugString(), " instead."));
 
-    const gtl::ArraySlice<tstring> input_prefixes =
-        gtl::ArraySlice<tstring>(checkpoint_prefixes.flat<tstring>());
+    const absl::Span<const tstring> input_prefixes =
+        absl::Span<const tstring>(checkpoint_prefixes.flat<tstring>());
     Env* env = Env::Default();
     const string& merged_prefix = destination_prefix.scalar<tstring>()();
     OP_REQUIRES_OK(context,

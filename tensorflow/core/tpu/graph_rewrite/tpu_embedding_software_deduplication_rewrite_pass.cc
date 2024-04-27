@@ -36,7 +36,7 @@ namespace {
 
 // Check the number of outputs for RecvActivationsNode or for number of inputs
 // For SendGradientsNode.
-xla::Status CheckNumInputsOrOutputs(
+absl::Status CheckNumInputsOrOutputs(
     const int32 num_input_or_outputs, const std::string& attribute_name,
     const std::string& node_name,
     const tpu::TPUEmbeddingConfiguration& tpu_embedding_config) {
@@ -58,12 +58,12 @@ xla::Status CheckNumInputsOrOutputs(
         tpu_embedding_config.feature_descriptor_size(), attribute_name,
         num_input_or_outputs, node_name));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Constructs a NodeDef proto for the XlaRecvTPUEmbeddingDeduplicationData node
 // to be added to the graph or function def.
-xla::StatusOr<NodeDef> MakeRecvDeduplicationDataNodeDef(
+absl::StatusOr<NodeDef> MakeRecvDeduplicationDataNodeDef(
     absl::string_view device_name, absl::string_view tpu_replicate_attr,
     absl::string_view tpu_embedding_config_str,
     absl::Span<const std::string> control_inputs) {
@@ -94,7 +94,7 @@ xla::StatusOr<NodeDef> MakeRecvDeduplicationDataNodeDef(
 
 // Constructs a NodeDef proto for the XlaRecvTPUEmbeddingActivations node to be
 // added to the graph or function def.
-xla::StatusOr<NodeDef> MakeRecvActivationsNodeDef(
+absl::StatusOr<NodeDef> MakeRecvActivationsNodeDef(
     const NodeDef& old_activations_node_def,
     absl::string_view deduplication_data_node_name,
     absl::string_view device_name, absl::string_view tpu_replicate_attr,
@@ -158,7 +158,7 @@ xla::StatusOr<NodeDef> MakeRecvActivationsNodeDef(
 
 // Constructs a NodeDef proto for the XlaRecvTPUEmbeddingDeduplicationData node
 // to be added to the graph or function def.
-xla::StatusOr<NodeDef> MakeSendGradientsNodeDef(
+absl::StatusOr<NodeDef> MakeSendGradientsNodeDef(
     const NodeDef& old_gradients_node_def,
     absl::string_view deduplication_data_node_name,
     absl::string_view device_name, absl::string_view tpu_replicate_attr,
@@ -364,7 +364,7 @@ Status ValidateAndGetTPUEmbeddingConfiguration(
   TF_RETURN_IF_ERROR(
       GetNodeAttr(compile_node->def(), "config", tpu_embedding_config_str));
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Adds a XlaRecvTPUEmbeddingDeduplicationNode to the graph assigning to the
@@ -418,7 +418,7 @@ Status AddRecvDeduplicationDataNode(const Node* old_activations_node,
 
   VLOG(1) << "Inserted RecvDeduplicationData node: "
           << (*deduplication_data_node)->DebugString();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Replaces the old_activations_node (Op=RecvTPUEmbeddingActivations) with a new
@@ -460,7 +460,7 @@ Status ReplaceRecvActivationsNodeAndAddDeduplicationInputs(
   VLOG(1) << "Inserted new RecvTPUEmbeddingActivations node: "
           << activations_node->DebugString();
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Replaces the old_gradients_node (Op=SendTPUEmbeddingGradients) with a new
@@ -504,7 +504,7 @@ Status ReplaceSendGradientsNodeAndAddDeduplicationInputs(
   VLOG(1) << "Inserted new SendTPUEmbeddingGradients node: "
           << gradients_node->DebugString();
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Rewrites the graph for a particular _tpu_replicate attribute.
@@ -539,7 +539,7 @@ Status RewriteGraphForTpuReplicateAttrAndDevice(
         tpu_replicate_attr, tpu_embedding_config_str, old_gradients_node,
         deduplication_data_node, graph));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Inserts a RecvTPUEmbeddingActivations node into the send_recv_nodes_map. This
@@ -579,7 +579,7 @@ Status InsertActivationsNodeIntoMap(Node* activations_node,
         key, SendRecvNodes{.activations_node = activations_node,
                            .gradients_node = nullptr});
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Inserts a SendTPUEmbeddingGradients node into the send_recv_nodes_map. This
@@ -619,7 +619,7 @@ Status InsertGradientsNodeIntoMap(Node* gradients_node,
         key, SendRecvNodes{.activations_node = nullptr,
                            .gradients_node = gradients_node});
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Groups the RecvTPUEmbeddingActivations and SendTPUEmbeddingGradients of the
@@ -638,7 +638,7 @@ Status GroupSendRecvNodesByTpuReplicateAttrAndDevice(
       }
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Rewrites the graph in the specified GraphOptimizationPassOptions object for
@@ -660,7 +660,7 @@ Status RewriteGraph(Graph* graph) {
         graph));
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Rewriter configuration for each function def. For function defs, only node
@@ -722,7 +722,7 @@ std::vector<NodeDefBuilder::NodeOut> GetDataInputs(const NodeDef& node_def,
 }
 
 // Computes the RewriterConfig for the specified node_def.
-xla::StatusOr<RewriterConfig> ComputeRewriterConfigForNodeDef(
+absl::StatusOr<RewriterConfig> ComputeRewriterConfigForNodeDef(
     const NodeDef& node_def) {
   RewriterConfig rewriter_config;
   TF_RET_CHECK(!node_def.name().empty());
@@ -811,7 +811,7 @@ Status MergeRewriterConfigs(const RewriterConfig& rewriter_config,
         rewriter_config.gradients_node_def_name;
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Data type for map from device name to RewriterConfig.
@@ -820,7 +820,7 @@ using RewriterConfigsByDevice =
 
 // Computes the RewriterConfigs for the specified FunctionDef (fdef) for each
 // device (multiple devices can be used for model parallelism).
-xla::StatusOr<RewriterConfigsByDevice> ComputeRewriterConfigsByDevice(
+absl::StatusOr<RewriterConfigsByDevice> ComputeRewriterConfigsByDevice(
     const FunctionDef& fdef) {
   RewriterConfigsByDevice final_rewriter_configs_by_device;
 
@@ -938,7 +938,7 @@ Status RewriteFunctionDefs(FunctionLibraryDefinition* flib_def) {
 
     TF_RETURN_IF_ERROR(flib_def->ReplaceFunction(fname, new_fdef));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -947,7 +947,7 @@ Status TPUEmbeddingSoftwareDeduplicationRewritePass::Run(
     const GraphOptimizationPassOptions& options) {
   TF_RETURN_IF_ERROR(RewriteGraph(options.graph->get()));
   TF_RETURN_IF_ERROR(RewriteFunctionDefs(options.flib_def));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

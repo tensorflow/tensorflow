@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -23,20 +23,30 @@ limitations under the License.
 namespace stream_executor {
 namespace rocm {
 
-tsl::Status ToStatus(hipblasStatus_t status, const char* prefix) {
+absl::Status ToStatus(hipblasStatus_t status, const char* prefix) {
   if (status != HIPBLAS_STATUS_SUCCESS) {
-    return tsl::errors::Internal(absl::StrCat(
+    return absl::InternalError(absl::StrCat(
         prefix, ": ",
         "HipblasLt error " + std::to_string(static_cast<int>(status))));
   }
-  return tsl::OkStatus();
+  return absl::OkStatus();
 }
 
 hipDataType AsHipblasDataType(blas::DataType type) {
   switch (type) {
     case blas::DataType::kF8E5M2:
     case blas::DataType::kF8E4M3FN:
-      LOG(FATAL) << "hipblaslt does not support F8 yet";
+      LOG(FATAL) << "hipblaslt does not support F8E5M2 and F8E4M3FN";
+#if TF_ROCM_VERSION >= 60000
+    case blas::DataType::kF8E5M2FNUZ:
+      return HIP_R_8F_E5M2_FNUZ;
+    case blas::DataType::kF8E4M3FNUZ:
+      return HIP_R_8F_E4M3_FNUZ;
+#else
+    case blas::DataType::kF8E5M2FNUZ:
+    case blas::DataType::kF8E4M3FNUZ:
+      LOG(FATAL) << "hipblaslt only supports F8 in ROCm 6.0 and above";
+#endif
     case blas::DataType::kHalf:
       return HIP_R_16F;
     case blas::DataType::kBF16:

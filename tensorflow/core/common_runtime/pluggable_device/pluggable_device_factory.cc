@@ -31,7 +31,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
-#include "xla/stream_executor/device_id_utils.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "tensorflow/core/common_runtime/device/device_id.h"
 #include "tensorflow/core/common_runtime/device/device_id_manager.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
@@ -89,9 +89,8 @@ Status SingleVirtualDeviceMemoryLimit(const string& platform_name,
   int64_t total_memory = 0;
   int64_t available_memory = 0;
   se::Platform* platform = PluggableDeviceMachineManager(platform_name);
-  se::StreamExecutor* se = se::DeviceIdUtil::ExecutorForPlatformDeviceId(
-                               platform, platform_device_id)
-                               .value();
+  se::StreamExecutor* se =
+      platform->ExecutorForDevice(platform_device_id.value()).value();
   if (!se->DeviceMemoryUsage(&available_memory, &total_memory)) {
     return absl::UnknownError(
         absl::StrCat("Failed to query available memory for PluggableDevice ",
@@ -116,7 +115,7 @@ Status SingleVirtualDeviceMemoryLimit(const string& platform_name,
     allocated_memory = total_memory * per_process_device_memory_fraction;
   }
   *memory_limit = allocated_memory;
-  return OkStatus();
+  return absl::OkStatus();
 }
 }  // namespace
 
@@ -136,7 +135,7 @@ Status PluggableDeviceFactory::ListPhysicalDevices(
     devices->push_back(device_name);
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status PluggableDeviceFactory::GetDeviceDetails(
@@ -144,7 +143,7 @@ Status PluggableDeviceFactory::GetDeviceDetails(
   TF_RETURN_IF_ERROR(ValidatePluggableDeviceMachineManager(platform_name_));
   se::Platform* platform = PluggableDeviceMachineManager(platform_name_);
   if (platform == nullptr) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   int device_count = platform->VisibleDeviceCount();
@@ -160,7 +159,7 @@ Status PluggableDeviceFactory::GetDeviceDetails(
 
   auto desc = std::move(desc_status).value();
   (*details)["device_name"] = desc->name();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status PluggableDeviceFactory::CreateDevices(
@@ -169,11 +168,11 @@ Status PluggableDeviceFactory::CreateDevices(
   TF_RETURN_IF_ERROR(ValidatePluggableDeviceMachineManager(platform_name_));
   se::Platform* platform = PluggableDeviceMachineManager(platform_name_);
   if (platform == nullptr) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   const int visible_device_count = platform->VisibleDeviceCount();
   if (visible_device_count <= 0) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   const absl::flat_hash_map<std::string, int64_t> device_count_map(
       options.config.device_count().begin(),
@@ -212,7 +211,7 @@ Status PluggableDeviceFactory::CreateDevices(
                                              bytes, device_localities[di],
                                              devices));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 static string GetShortDeviceDescription(PlatformDeviceId platform_device_id,
@@ -275,7 +274,7 @@ Status PluggableDeviceFactory::CreatePluggableDevice(
             << GetShortDeviceDescription(platform_device_id, *desc) << ")";
   TF_RETURN_IF_ERROR(pluggable_device->Init(options));
   devices->push_back(std::move(pluggable_device));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status PluggableDeviceFactory::GetDeviceLocalities(
@@ -318,7 +317,7 @@ Status PluggableDeviceFactory::GetDeviceLocalities(
             << dev_locality.bus_id() << " numa: " << numa_node
             << "DeviceLocality: " << dev_locality.DebugString();
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

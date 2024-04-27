@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,35 +16,35 @@ limitations under the License.
 #ifndef XLA_PJRT_CPU_TRACKED_TFRT_CPU_DEVICE_BUFFER_H_
 #define XLA_PJRT_CPU_TRACKED_TFRT_CPU_DEVICE_BUFFER_H_
 
-#include <functional>
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <utility>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/functional/any_invocable.h"
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/cpu_function_runtime.h"
 #include "xla/runtime/cpu_event.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/util.h"
-#include "tsl/concurrency/async_value_ref.h"
-#include "tsl/platform/env.h"
 #include "tsl/platform/mem.h"
-#include "tsl/platform/threadpool.h"
 
 namespace xla {
 
 class MaybeOwningCpuMemory {
  public:
+  using OwnedDataPtr = std::unique_ptr<uint8_t[], void (*)(void*)>;
+
   MaybeOwningCpuMemory() = default;
 
   // Non-owning.
-  explicit MaybeOwningCpuMemory(void* buf, size_t size)
-      : buf_(buf), size_(size) {}
+  MaybeOwningCpuMemory(void* buf, size_t size) : buf_(buf), size_(size) {}
 
   // Owning.
-  using OwnedDataPtr =
-      std::unique_ptr<uint8_t[], decltype(tsl::port::AlignedFree)*>;
-  explicit MaybeOwningCpuMemory(OwnedDataPtr data, size_t size)
+  MaybeOwningCpuMemory(OwnedDataPtr data, size_t size)
       : buf_(data.get()), data_(std::move(data)), size_(size) {}
 
   // Move-only.
@@ -54,7 +54,7 @@ class MaybeOwningCpuMemory {
   MaybeOwningCpuMemory& operator=(const MaybeOwningCpuMemory&) = delete;
 
   // Owning.
-  static StatusOr<std::shared_ptr<MaybeOwningCpuMemory>> AllocateShared(
+  static absl::StatusOr<std::shared_ptr<MaybeOwningCpuMemory>> AllocateShared(
       size_t size) {
     uint8_t* data = static_cast<uint8_t*>(
         tsl::port::AlignedMalloc(size, cpu_function_runtime::MinAlign()));
@@ -88,13 +88,13 @@ class TrackedTfrtCpuDeviceBuffer {
       absl::InlinedVector<std::shared_ptr<MaybeOwningCpuMemory>, 4> buffers,
       absl::InlinedVector<tsl::AsyncValueRef<runtime::CpuEvent>, 4>
           definition_events,
-      std::function<void()> on_delete_callback = nullptr);
+      absl::AnyInvocable<void() &&> on_delete_callback = nullptr);
 
   TrackedTfrtCpuDeviceBuffer(
       bool is_tuple,
       absl::InlinedVector<std::shared_ptr<MaybeOwningCpuMemory>, 4> buffers,
       tsl::AsyncValueRef<runtime::CpuEvent> definition_event,
-      std::function<void()> on_delete_callback = nullptr);
+      absl::AnyInvocable<void() &&> on_delete_callback = nullptr);
 
   // Move-only.
   TrackedTfrtCpuDeviceBuffer(TrackedTfrtCpuDeviceBuffer&&) = default;
@@ -144,7 +144,7 @@ class TrackedTfrtCpuDeviceBuffer {
   absl::InlinedVector<tsl::AsyncValueRef<runtime::CpuEvent>, 4> usage_events_;
   // A callback to call when the TrackedTfrtCpuDeviceBuffer is about to be
   // destroyed.
-  std::function<void()> on_delete_callback_;
+  absl::AnyInvocable<void() &&> on_delete_callback_;
 };
 }  // namespace xla
 

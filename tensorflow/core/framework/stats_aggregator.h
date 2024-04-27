@@ -47,7 +47,7 @@ class StatsAggregator {
   // Add the given `values` to the histogram with the given `name`. Each
   // element of `values` will be treated as a separate sample in the histogram.
   virtual void AddToHistogram(const string& name,
-                              gtl::ArraySlice<double> values,
+                              absl::Span<const double> values,
                               int64_t global_step) = 0;
 
   // TODO(shivaniagrawal): consistency in double and float usage.

@@ -93,7 +93,7 @@ SessionSnapshot CreateSessionSnapshot(bool create_cache_file,
   std::vector<std::unique_ptr<XSpace>> xspaces;
   xspaces.push_back(std::move(xspace));
 
-  StatusOr<SessionSnapshot> session_snapshot_status =
+  absl::StatusOr<SessionSnapshot> session_snapshot_status =
       SessionSnapshot::Create(paths, std::move(xspaces));
   TF_CHECK_OK(session_snapshot_status.status());
   SessionSnapshot session_snapshot = std::move(session_snapshot_status.value());
@@ -111,14 +111,16 @@ TEST(ConvertXplaneToDcnCollectiveStats,
      HasAllHostsDcnCollectiveStatsCacheFile) {
   SessionSnapshot session_snapshot = CreateSessionSnapshot(true, true);
 
-  StatusOr<bool> status = HasDcnCollectiveStatsInMultiXSpace(session_snapshot);
+  absl::StatusOr<bool> status =
+      HasDcnCollectiveStatsInMultiXSpace(session_snapshot);
   EXPECT_EQ(status.value(), true);
 }
 
 TEST(ConvertXplaneToDcnCollectiveStats, HasNoHostDcnCollectiveStatsCacheFile) {
   SessionSnapshot session_snapshot = CreateSessionSnapshot(true, false);
 
-  StatusOr<bool> status = HasDcnCollectiveStatsInMultiXSpace(session_snapshot);
+  absl::StatusOr<bool> status =
+      HasDcnCollectiveStatsInMultiXSpace(session_snapshot);
   EXPECT_EQ(status.value(), false);
 }
 
@@ -126,7 +128,8 @@ TEST(ConvertXplaneToDcnCollectiveStats,
      NoCacheFileButTraceHasDcnCollectiveStats) {
   SessionSnapshot session_snapshot = CreateSessionSnapshot(false, true);
 
-  StatusOr<bool> status = HasDcnCollectiveStatsInMultiXSpace(session_snapshot);
+  absl::StatusOr<bool> status =
+      HasDcnCollectiveStatsInMultiXSpace(session_snapshot);
   EXPECT_EQ(status.value(), true);
 }
 
@@ -134,7 +137,8 @@ TEST(ConvertXplaneToDcnCollectiveStats,
      NoCacheFileNoDcnCollectiveStatsPresent) {
   SessionSnapshot session_snapshot = CreateSessionSnapshot(false, false);
 
-  StatusOr<bool> status = HasDcnCollectiveStatsInMultiXSpace(session_snapshot);
+  absl::StatusOr<bool> status =
+      HasDcnCollectiveStatsInMultiXSpace(session_snapshot);
   EXPECT_EQ(status.value(), false);
 }
 
@@ -142,12 +146,12 @@ TEST(ConvertXplaneToDcnCollectiveStats,
      ConvertXSpaceToDcnCollectiveStatsWhenStatsPresent) {
   SessionSnapshot session_snapshot = CreateSessionSnapshot(false, true);
 
-  StatusOr<bool> status =
+  absl::StatusOr<bool> status =
       ConvertMultiXSpaceToDcnCollectiveStats(session_snapshot);
-  StatusOr<std::optional<std::string>> all_hosts_filepath =
+  absl::StatusOr<std::optional<std::string>> all_hosts_filepath =
       session_snapshot.GetHostDataFilePath(StoredDataType::DCN_COLLECTIVE_STATS,
                                            kAllHostsIdentifier);
-  StatusOr<std::optional<std::string>> host_filepath =
+  absl::StatusOr<std::optional<std::string>> host_filepath =
       session_snapshot.GetHostDataFilePath(StoredDataType::DCN_COLLECTIVE_STATS,
                                            "hostname");
 
@@ -164,9 +168,9 @@ TEST(ConvertXplaneToDcnCollectiveStats,
      ConvertXSpaceToDcnCollectiveStatsWhenStatsNotPresent) {
   SessionSnapshot session_snapshot = CreateSessionSnapshot(false, false);
 
-  StatusOr<bool> status =
+  absl::StatusOr<bool> status =
       ConvertMultiXSpaceToDcnCollectiveStats(session_snapshot);
-  StatusOr<std::optional<std::string>> filepath =
+  absl::StatusOr<std::optional<std::string>> filepath =
       session_snapshot.GetHostDataFilePath(StoredDataType::DCN_COLLECTIVE_STATS,
                                            kNoHostIdentifier);
 
@@ -180,7 +184,7 @@ TEST(ConvertXplaneToDcnCollectiveStats,
      GetHostDcnSlackAnalysisWhenStatsNotPresent) {
   SessionSnapshot session_snapshot = CreateSessionSnapshot(false, false);
 
-  StatusOr<DcnSlackAnalysis> host_dcn_slack_analysis =
+  absl::StatusOr<DcnSlackAnalysis> host_dcn_slack_analysis =
       GetDcnSlackAnalysisByHostName(session_snapshot, "hostname");
 
   TF_EXPECT_OK(host_dcn_slack_analysis.status());
@@ -191,7 +195,7 @@ TEST(ConvertXplaneToDcnCollectiveStats,
      GetHostDcnSlackAnalysisWhenStatsPresent) {
   SessionSnapshot session_snapshot = CreateSessionSnapshot(true, true);
 
-  StatusOr<DcnSlackAnalysis> host_dcn_slack_analysis =
+  absl::StatusOr<DcnSlackAnalysis> host_dcn_slack_analysis =
       GetDcnSlackAnalysisByHostName(session_snapshot, "hostname");
 
   TF_EXPECT_OK(host_dcn_slack_analysis.status());

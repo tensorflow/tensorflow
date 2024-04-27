@@ -35,15 +35,15 @@ class FallbackState {
  public:
   // The FunctionDefLibrary is passed in to initialize the
   // ProcessFunctionLibraryRuntime member of this class
-  static StatusOr<std::unique_ptr<FallbackState>> Create(
+  static absl::StatusOr<std::unique_ptr<FallbackState>> Create(
       const SessionOptions &session_options,
       const tensorflow::FunctionDefLibrary &fdef_lib);
 
-  static StatusOr<std::unique_ptr<FallbackState>> CreateWithCpuDevice(
+  static absl::StatusOr<std::unique_ptr<FallbackState>> CreateWithCpuDevice(
       const SessionOptions &session_options,
       const tensorflow::FunctionDefLibrary &fdef_lib);
 
-  static StatusOr<std::unique_ptr<FallbackState>> CreateWithMockGpuDevice(
+  static absl::StatusOr<std::unique_ptr<FallbackState>> CreateWithMockGpuDevice(
       const SessionOptions &session_options,
       const tensorflow::FunctionDefLibrary &fdef_lib);
 
@@ -53,8 +53,8 @@ class FallbackState {
 
   // Create GraphExecutionState from the `graph_def`. The result will contain a
   // preprocessed graph with runtime information such as devices.
-  StatusOr<std::unique_ptr<GraphExecutionState>> CreateGraphExecutionState(
-      GraphDef graph_def, bool run_placer = true) const;
+  absl::StatusOr<std::unique_ptr<GraphExecutionState>>
+  CreateGraphExecutionState(GraphDef graph_def, bool run_placer = true) const;
 
   // Adds `func_def` to the function library.
   Status AddFunctionDef(const FunctionDef &func_def);

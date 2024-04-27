@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -25,6 +25,7 @@ limitations under the License.
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/Value.h"
 #include "mlir/Pass/Pass.h"
+#include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
@@ -49,11 +50,10 @@ struct CrossReplicaSumToAllReducePattern
         /*use_global_device_ids=*/false);
 
     auto *block = rewriter.createBlock(&allReduceOp.getComputation());
-    auto elementType = RankedTensorType::get({}, allReduceOp.getResults()
-                                                     .front()
-                                                     .getType()
-                                                     .dyn_cast<TensorType>()
-                                                     .getElementType());
+    auto elementType = RankedTensorType::get(
+        {},
+        mlir::dyn_cast<TensorType>(allReduceOp.getResults().front().getType())
+            .getElementType());
     auto location = allReduceOp.getComputation().getLoc();
     block->addArguments({elementType, elementType}, {location, location});
 

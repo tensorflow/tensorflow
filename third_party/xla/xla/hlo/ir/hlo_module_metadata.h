@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -25,6 +25,7 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/util.h"
 #include "tsl/platform/env.h"
+#include "tsl/platform/protobuf.h"
 
 namespace xla {
 
@@ -62,8 +63,9 @@ class HloModuleMetadata {
   void add_partitioned_module_id(int64_t id) {
     module_metadata_.add_partitioned_module_ids(id);
   }
+  Status set_custom_metadata(const ::tsl::protobuf::Message& message);
 
-  StatusOr<int64_t> current_pass_id() {
+  absl::StatusOr<int64_t> current_pass_id() {
     TF_ASSIGN_OR_RETURN(HloPassMetadata * pass_metadata,
                         GetCurrentHloPassMetadata());
     return pass_metadata->pass_id();
@@ -111,7 +113,7 @@ class HloModuleMetadata {
   // Gets mutable metadata for the currently running pass. If passes are nested,
   // finds the deepest one still running. Returns NotFound if metadata for the
   // currently running pass cannot be found.
-  StatusOr<HloPassMetadata*> GetCurrentHloPassMetadata();
+  absl::StatusOr<HloPassMetadata*> GetCurrentHloPassMetadata();
 
   Status MutateCurrentHloPassMetadata(
       absl::FunctionRef<void(HloPassMetadata*)> mutator);

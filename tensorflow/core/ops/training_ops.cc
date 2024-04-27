@@ -54,12 +54,17 @@ static Status HandleGradAndIndicesInputs(InferenceContext* c, int grad_idx,
   ShapeHandle grad = ShapeOrHandleShape<is_resource>(c, grad_idx);
   if (!is_sparse) {
     TF_RETURN_IF_ERROR(c->Merge(*s, grad, s));
-    return OkStatus();
+    return absl::OkStatus();
   }
   // Indices is a vector where indices.dim[0].rank == grad[0].rank.
   ShapeHandle indices;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(grad_idx + 1), 1, &indices));
   DimensionHandle unused;
+  const auto rank = c->Rank(grad);
+  if (!rank) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Argument grad must not be a scalar. ", "Got grad with rank ", rank));
+  }
   TF_RETURN_IF_ERROR(c->Merge(c->Dim(indices, 0), c->Dim(grad, 0), &unused));
   // Trailing part of grad matches trailing part of *s.
   ShapeHandle grad_unknown_first;
@@ -67,7 +72,7 @@ static Status HandleGradAndIndicesInputs(InferenceContext* c, int grad_idx,
       c->ReplaceDim(grad, 0, c->UnknownDim(), &grad_unknown_first));
   TF_RETURN_IF_ERROR(c->Merge(*s, grad_unknown_first, s));
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <bool is_resource>
@@ -79,7 +84,7 @@ static Status ApplyGradientDescentShapeFn(InferenceContext* c) {
   if (c->num_outputs() > 0) {
     c->set_output(0, s);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 REGISTER_OP("ApplyGradientDescent")
@@ -111,7 +116,7 @@ Status ApplyProximalGradientDescentShapeFn(InferenceContext* c) {
   if (c->num_outputs() > 0) {
     c->set_output(0, s);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 REGISTER_OP("ApplyProximalGradientDescent")
@@ -180,7 +185,7 @@ static Status ApplyAdadeltaShapeFn(InferenceContext* c) {
   if (c->num_outputs() > 0) {
     c->set_output(0, s);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 REGISTER_OP("ApplyAdadelta")
@@ -252,7 +257,7 @@ static Status ApplyAdagradShapeFn(InferenceContext* c) {
   if (c->num_outputs() > 0) {
     c->set_output(0, s);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 REGISTER_OP("ApplyAdagrad")
@@ -315,7 +320,7 @@ static Status ApplyAdagradV2ShapeFn(InferenceContext* c) {
   if (c->num_outputs() > 0) {
     c->set_output(0, s);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 REGISTER_OP("ApplyAdagradV2")
@@ -386,7 +391,7 @@ static Status ApplyProximalAdagradShapeFn(InferenceContext* c) {
   if (c->num_outputs() > 0) {
     c->set_output(0, s);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 REGISTER_OP("ApplyProximalAdagrad")
@@ -461,7 +466,7 @@ static Status ApplyAdagradDAShapeFn(InferenceContext* c) {
   if (c->num_outputs() > 0) {
     c->set_output(0, s);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 REGISTER_OP("ApplyAdagradDA")
@@ -544,7 +549,7 @@ static Status ApplyFtrlShapeFn(InferenceContext* c) {
   if (c->num_outputs() > 0) {
     c->set_output(0, s);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 REGISTER_OP("ApplyFtrl")
@@ -689,7 +694,7 @@ static Status ApplyMomentumShapeFn(InferenceContext* c) {
   if (c->num_outputs() > 0) {
     c->set_output(0, s);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 REGISTER_OP("ApplyMomentum")
@@ -790,7 +795,7 @@ static Status ApplyAdamShapeFn(InferenceContext* c) {
   if (c->num_outputs() > 0) {
     c->set_output(0, s);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 REGISTER_OP("ApplyAdam")
@@ -848,7 +853,7 @@ static Status ApplyAdamWithAmsgradShapeFn(InferenceContext* c) {
   if (c->num_outputs() > 0) {
     c->set_output(0, s);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 REGISTER_OP("ResourceApplyAdamWithAmsgrad")
@@ -886,7 +891,7 @@ static Status ApplyAdaMaxShapeFn(InferenceContext* c) {
   if (c->num_outputs() > 0) {
     c->set_output(0, s);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 REGISTER_OP("ApplyAdaMax")
@@ -935,7 +940,7 @@ static Status ApplyRMSPropShapeFn(InferenceContext* c) {
   if (c->num_outputs() > 0) {
     c->set_output(0, s);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 REGISTER_OP("ApplyRMSProp")
@@ -1016,7 +1021,7 @@ static Status ApplyCenteredRMSPropShapeFn(InferenceContext* c) {
   if (c->num_outputs() > 0) {
     c->set_output(0, s);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 REGISTER_OP("ApplyCenteredRMSProp")
@@ -1101,7 +1106,7 @@ static Status ApplyAddSignShapeFn(InferenceContext* c) {
   if (c->num_outputs() > 0) {
     c->set_output(0, s);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 REGISTER_OP("ApplyAddSign")
@@ -1145,7 +1150,7 @@ static Status ApplyPowerSignShapeFn(InferenceContext* c) {
   if (c->num_outputs() > 0) {
     c->set_output(0, s);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 REGISTER_OP("ApplyPowerSign")

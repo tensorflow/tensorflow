@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -91,7 +91,8 @@ HloInputOutputAliasProto HloInputOutputAliasConfig::ToProto() const {
   return result;
 }
 
-StatusOr<HloInputOutputAliasConfig> HloInputOutputAliasConfig::CreateFromProto(
+absl::StatusOr<HloInputOutputAliasConfig>
+HloInputOutputAliasConfig::CreateFromProto(
     Shape output_shape, const HloInputOutputAliasProto& proto) {
   HloInputOutputAliasConfig result(std::move(output_shape));
   for (const HloInputOutputAliasProto::AliasEntryProto& entry :
@@ -221,7 +222,7 @@ Status HloInputOutputAliasConfig::Verify(
     TF_RET_CHECK(LayoutUtil::IsDenseArray(output_subshape));
 
     if (size_func(param_subshape) != size_func(output_subshape)) {
-      return InternalError(
+      return Internal(
           "Expected aliased input %lld at index %s and output at index %s to "
           "have the same size. Input sub-shape is %s with size %lld, output "
           "sub-shape is %s with size %lld",
@@ -278,7 +279,7 @@ HloBufferDonorProto HloBufferDonorConfig::ToProto() const {
   return result;
 }
 
-StatusOr<HloBufferDonorConfig> HloBufferDonorConfig::CreateFromProto(
+absl::StatusOr<HloBufferDonorConfig> HloBufferDonorConfig::CreateFromProto(
     const HloBufferDonorProto& proto) {
   HloBufferDonorConfig result;
   for (const HloBufferDonorProto::BufferDonorEntryProto& entry :
@@ -334,7 +335,7 @@ Status HloBufferDonorConfig::Verify(const HloModule& module) const {
     TF_RET_CHECK(LayoutUtil::IsDenseArray(param_subshape));
 
     if (alias_config.ParameterHasAlias(donor.param_number, donor.param_index)) {
-      return InternalError(
+      return Internal(
           "Input %lld at index %s is registered as a buffer donor. However, it "
           "is also in the input output alias config.",
           donor.param_number, donor.param_index.ToString());

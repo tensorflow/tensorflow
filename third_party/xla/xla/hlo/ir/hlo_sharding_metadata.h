@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -58,7 +58,7 @@ class ShardingMetadata : public DomainMetadata {
 
   static absl::string_view KindName() { return "sharding"; }
 
-  static StatusOr<const ShardingMetadata*> ToShardingMetadata(
+  static absl::StatusOr<const ShardingMetadata*> ToShardingMetadata(
       const DomainMetadata* metadata);
 
   // Apply the specified domain metadata onto the specified domain. If no

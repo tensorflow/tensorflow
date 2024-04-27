@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -43,6 +43,7 @@ limitations under the License.
 #include "tsl/platform/path.h"
 #include "tsl/platform/regexp.h"
 #include "tsl/platform/status.h"
+#include "tsl/profiler/lib/scoped_annotation.h"
 
 namespace xla {
 
@@ -51,7 +52,7 @@ std::string RenderGraph(absl::string_view label, const HloModule& module,
                         bool show_fusion_subcomputations) {
   HloRenderOptions hlo_render_options;
   hlo_render_options.show_fusion_subcomputations = show_fusion_subcomputations;
-  StatusOr<std::string> rendered_graph =
+  absl::StatusOr<std::string> rendered_graph =
       RenderGraph(*module.entry_computation(), label,
                   module.config().debug_options(), format, hlo_render_options);
   if (rendered_graph.ok()) {
@@ -406,6 +407,10 @@ static bool IsTrivial(const HloComputation& computation) {
 static std::vector<std::string> DumpHloModuleImpl(
     const HloModule& module, const BufferAssignment* buffer_assn,
     string_view prefix, string_view suffix, const CanonicalDebugOptions& opts) {
+  tsl::profiler::ScopedAnnotation annotation([&] {
+    return absl::StrFormat("XlaDumpHloModule:#module=%s,program_id=%d#",
+                           module.name(), module.unique_id());
+  });
   std::string filename = FilenameFor(module, prefix, suffix);
 
   std::vector<std::optional<std::string>> file_paths;
@@ -472,7 +477,8 @@ static std::vector<std::string> DumpHloModuleImpl(
         continue;
       }
 
-      StatusOr<std::string> rendered_graph = WrapFusionExplorer(*computation);
+      absl::StatusOr<std::string> rendered_graph =
+          WrapFusionExplorer(*computation);
       if (!rendered_graph.ok()) {
         VLOG(1) << "Skipping fusion visualization"
                 << " for computation " << computation->name()
@@ -639,7 +645,7 @@ void DumpToFileInDirOrStdout(const HloModule& module, string_view file_prefix,
 void DumpProtobufToFile(const tsl::protobuf::Message& proto,
                         const DebugOptions& debug_options,
                         absl::string_view filename,
-                        absl::AnyInvocable<StatusOr<std::string>(
+                        absl::AnyInvocable<absl::StatusOr<std::string>(
                             tsl::Env*, const tsl::protobuf::Message&)>
                             text_formatter) {
   CanonicalDebugOptions opts(debug_options);
@@ -680,12 +686,13 @@ void DumpProtobufToFile(const tsl::protobuf::Message& proto,
   }
 }
 
-void DumpPerModuleProtobufToFile(
-    const HloModule& module, const tsl::protobuf::Message& proto,
-    const DebugOptions& debug_options, absl::string_view name,
-    absl::AnyInvocable<StatusOr<std::string>(tsl::Env*,
-                                             const tsl::protobuf::Message&)>
-        text_formatter) {
+void DumpPerModuleProtobufToFile(const HloModule& module,
+                                 const tsl::protobuf::Message& proto,
+                                 const DebugOptions& debug_options,
+                                 absl::string_view name,
+                                 absl::AnyInvocable<absl::StatusOr<std::string>(
+                                     tsl::Env*, const tsl::protobuf::Message&)>
+                                     text_formatter) {
   const std::string filename = FilenameFor(module, TimestampFor(module), name);
   DumpProtobufToFile(proto, debug_options, filename, std::move(text_formatter));
 }

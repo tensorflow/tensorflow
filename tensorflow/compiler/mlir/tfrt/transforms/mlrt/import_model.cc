@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
@@ -50,7 +51,7 @@ limitations under the License.
 namespace tensorflow {
 namespace mlrt_compiler {
 
-StatusOr<mlrt::bc::Buffer> ConvertTfMlirToBytecode(
+absl::StatusOr<mlrt::bc::Buffer> ConvertTfMlirToBytecode(
     const TfrtCompileOptions& options, tfrt_stub::FallbackState& fallback_state,
     mlir::ModuleOp module, tfrt_stub::ModelRuntimeContext& model_context,
     mlir::OwningOpRef<mlir::ModuleOp>* module_with_op_keys,
@@ -67,8 +68,12 @@ StatusOr<mlrt::bc::Buffer> ConvertTfMlirToBytecode(
           mlir::OwningOpRef<mlir::ModuleOp> copy(module.clone());
           TF_RETURN_IF_ERROR(
               ExportFunctionDefs(*copy, [flib_def](FunctionDef function_def) {
-                VLOG(1) << "Exporting MLIR function as function_def: "
-                        << function_def;
+                VLOG(1) << absl::StrCat(
+                    "Exporting MLIR function as function_def: ",
+                    // clang-tidy off
+                    function_def.DebugString()
+                    // clang-tidy on
+                );
 
                 // The TF MLIR compiler may change the function name. Then we
                 // need to retrieve the original name from the
@@ -127,13 +132,13 @@ StatusOr<mlrt::bc::Buffer> ConvertTfMlirToBytecode(
         auto statusor = mlrt::EmitExecutable(registry, module);
         if (!statusor.ok()) return statusor.status();
         bytecode_buffer = std::move(*statusor);
-        return OkStatus();
+        return absl::OkStatus();
       },
       model_context, &fallback_state, added_xla_function_names));
   return bytecode_buffer;
 }
 
-StatusOr<mlrt::bc::Buffer> ConvertTfMlirWithOpKeysToBytecode(
+absl::StatusOr<mlrt::bc::Buffer> ConvertTfMlirWithOpKeysToBytecode(
     const TfrtCompileOptions& options,
     const tfrt_stub::FallbackState& fallback_state,
     mlir::ModuleOp module_with_op_keys,

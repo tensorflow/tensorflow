@@ -176,8 +176,7 @@ LogicalResult RewriteToLargeSizeJit(FuncOp op) {
 
 void PackJITCompileOp(tf_framework::JITCompileOp op,
                       llvm::ArrayRef<int64_t> tile_sizes,
-                      llvm::ArrayRef<int64_t> unroll_factors,
-                      int64_t max_supported_rank, bool enable_ftz,
+                      llvm::ArrayRef<int64_t> unroll_factors, bool enable_ftz,
                       bool index_64bit, bool cpu_codegen) {
   IRRewriter rewriter(op.getContext());
   Block *body = op.SingleBlock::getBody();
@@ -219,7 +218,6 @@ void PackJITCompileOp(tf_framework::JITCompileOp op,
       op, op->getResultTypes(), op.getCtx(), rewriter.getStringAttr(code),
       rewriter.getI64ArrayAttr(tile_sizes),
       rewriter.getI64ArrayAttr(unroll_factors),
-      rewriter.getI64IntegerAttr(max_supported_rank),
       rewriter.getBoolAttr(enable_ftz), rewriter.getBoolAttr(index_64bit),
       rewriter.getBoolAttr(cpu_codegen));
 }
@@ -231,12 +229,11 @@ struct FuncToJITInvocationPass
     : public impl::FuncToJITInvocationPassBase<FuncToJITInvocationPass> {
   explicit FuncToJITInvocationPass(llvm::ArrayRef<int64_t> tile_sizes,
                                    llvm::ArrayRef<int64_t> unroll_factors,
-                                   int64_t max_supported_rank, bool enable_ftz,
-                                   bool index_64bit, bool cpu_codegen,
+                                   bool enable_ftz, bool index_64bit,
+                                   bool cpu_codegen,
                                    bool jit_i64_indexed_for_large_tensors) {
     tile_sizes_ = tile_sizes;
     unroll_factors_ = unroll_factors;
-    max_supported_rank_ = max_supported_rank;
     enable_ftz_ = enable_ftz;
     index_64bit_ = index_64bit;
     cpu_codegen_ = cpu_codegen;
@@ -255,9 +252,9 @@ struct FuncToJITInvocationPass
     }
 
     getOperation().walk([&](tf_framework::JITCompileOp op) {
-      PackJITCompileOp(
-          op, tile_sizes_, unroll_factors_, max_supported_rank_, enable_ftz_,
-          index_64bit_ || jit_i64_indexed_for_large_tensors_, cpu_codegen_);
+      PackJITCompileOp(op, tile_sizes_, unroll_factors_, enable_ftz_,
+                       index_64bit_ || jit_i64_indexed_for_large_tensors_,
+                       cpu_codegen_);
     });
   }
 };
@@ -266,11 +263,11 @@ struct FuncToJITInvocationPass
 
 std::unique_ptr<OperationPass<func::FuncOp>> CreateFuncToJITInvocationPass(
     llvm::ArrayRef<int64_t> tile_sizes, llvm::ArrayRef<int64_t> unroll_factors,
-    int64_t max_supported_rank, bool enable_ftz, bool index_64bit,
-    bool cpu_codegen, bool jit_i64_indexed_for_large_tensors) {
+    bool enable_ftz, bool index_64bit, bool cpu_codegen,
+    bool jit_i64_indexed_for_large_tensors) {
   return std::make_unique<FuncToJITInvocationPass>(
-      tile_sizes, unroll_factors, max_supported_rank, enable_ftz, index_64bit,
-      cpu_codegen, jit_i64_indexed_for_large_tensors);
+      tile_sizes, unroll_factors, enable_ftz, index_64bit, cpu_codegen,
+      jit_i64_indexed_for_large_tensors);
 }
 
 }  // namespace transforms

@@ -759,7 +759,7 @@ def get_ndk_api_level(environ_cp, android_ndk_home_path):
   android_ndk_api_level = prompt_loop_or_load_from_env(
       environ_cp,
       var_name='ANDROID_NDK_API_LEVEL',
-      var_default='26',  # 26 is required to support AHardwareBuffer.
+      var_default='21',  # 21 is required for ARM64 support.
       ask_for_var=(
           'Please specify the (min) Android NDK API level to use. '
           '[Available levels: %s]'
@@ -807,6 +807,18 @@ def choose_compiler(environ_cp):
   return var
 
 
+def choose_compiler_Win(environ_cp):
+  question = 'Do you want to use Clang to build TensorFlow?'
+  yes_reply = 'Add "--config=win_clang" to compile TensorFlow with CLANG.'
+  no_reply = 'MSVC will be used to compile TensorFlow.'
+  var = int(
+      get_var(
+          environ_cp, 'TF_NEED_CLANG', None, True, question, yes_reply, no_reply
+      )
+  )
+  return var
+
+
 def set_clang_compiler_path(environ_cp):
   """Set CLANG_COMPILER_PATH and environment variables.
 
@@ -844,6 +856,44 @@ def set_clang_compiler_path(environ_cp):
   write_action_env_to_bazelrc('CLANG_COMPILER_PATH', clang_compiler_path)
   write_to_bazelrc('build --repo_env=CC=%s' % clang_compiler_path)
   write_to_bazelrc('build --repo_env=BAZEL_COMPILER=%s' % clang_compiler_path)
+
+  return clang_compiler_path
+
+
+def set_clang_compiler_path_win(environ_cp):
+  """Set CLANG_COMPILER_PATH and environment variables.
+
+  Loop over user prompts for clang path until receiving a valid response.
+  Default is used if no input is given. Set CLANG_COMPILER_PATH and write
+  environment variables CC and BAZEL_COMPILER to .bazelrc.
+
+  Args:
+    environ_cp: (Dict) copy of the os.environ.
+
+  Returns:
+    string value for clang_compiler_path.
+  """
+  # Default path if clang-16 is installed by using apt-get install
+  default_clang_path = 'C:/Program Files/LLVM/bin/clang.exe'
+  if not os.path.exists(default_clang_path):
+    default_clang_path = which('clang') or ''
+
+  clang_compiler_path = prompt_loop_or_load_from_env(
+      environ_cp,
+      var_name='CLANG_COMPILER_PATH',
+      var_default=default_clang_path,
+      ask_for_var='Please specify the path to clang executable.',
+      check_success=os.path.exists,
+      resolve_symlinks=True,
+      error_msg=(
+          'Invalid clang path. %s cannot be found. Note that Clang is now'
+          'preferred compiler. You may use MSVC by removing --config=win_clang'
+      ),
+  )
+
+  write_action_env_to_bazelrc('CLANG_COMPILER_PATH', clang_compiler_path)
+  write_to_bazelrc(f'build --repo_env=CC="{clang_compiler_path}"')
+  write_to_bazelrc(f'build --repo_env=BAZEL_COMPILER="{clang_compiler_path}"')
 
   return clang_compiler_path
 
@@ -1386,8 +1436,9 @@ def main():
     else:
       raise UserInputError(
           'Invalid CUDA setting were provided %d '
-          'times in a row. Assuming to be a scripting mistake.' %
-          _DEFAULT_PROMPT_ASK_ATTEMPTS)
+          'times in a row. Assuming to be a scripting mistake.'
+          % _DEFAULT_PROMPT_ASK_ATTEMPTS
+      )
 
     set_tf_cuda_compute_capabilities(environ_cp)
     if 'LD_LIBRARY_PATH' in environ_cp and environ_cp.get(
@@ -1413,6 +1464,12 @@ def main():
       environ_cp['TF_NEED_CLANG'] = str(choose_compiler(environ_cp))
       if environ_cp.get('TF_NEED_CLANG') == '1':
         clang_compiler_path = set_clang_compiler_path(environ_cp)
+        clang_version = retrieve_clang_version(clang_compiler_path)
+        disable_clang_offsetof_extension(clang_version)
+    if is_windows():
+      environ_cp['TF_NEED_CLANG'] = str(choose_compiler_Win(environ_cp))
+      if environ_cp.get('TF_NEED_CLANG') == '1':
+        clang_compiler_path = set_clang_compiler_path_win(environ_cp)
         clang_version = retrieve_clang_version(clang_compiler_path)
         disable_clang_offsetof_extension(clang_version)
 

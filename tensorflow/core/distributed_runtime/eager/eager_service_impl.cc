@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -27,6 +28,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/types/optional.h"
 #include "tensorflow/c/eager/immediate_execution_distributed_manager.h"
+#include "xla/tsl/distributed_runtime/preemption/preemption_notifier.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/common_runtime/eager/context_distributed_manager.h"
@@ -51,7 +53,6 @@ limitations under the License.
 #include "tensorflow/core/platform/stringprintf.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
-#include "tsl/distributed_runtime/preemption/preemption_notifier.h"
 #include "tsl/protobuf/coordination_config.pb.h"
 namespace tensorflow {
 namespace eager {
@@ -92,7 +93,7 @@ Status GetNumRetvals(FunctionLibraryDefinition* func_lib_def,
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status GetEagerOperationAndNumRetvals(const Operation& operation,
@@ -129,8 +130,8 @@ Status GetEagerOperationAndNumRetvals(const Operation& operation,
                                      eager_executor, remote_func_params));
 
   {
-    profiler::TraceMe activity("EagerService:RemoteTensorHandleInternal",
-                               profiler::TraceMeLevel::kVerbose);
+    tsl::profiler::TraceMe activity("EagerService:RemoteTensorHandleInternal",
+                                    tsl::profiler::TraceMeLevel::kVerbose);
     for (const auto& input : operation.op_inputs()) {
       tensorflow::TensorHandle* handle;
       if (input.has_remote_handle()) {
@@ -167,7 +168,7 @@ Status TensorHandleProto(TensorHandle* handle, TensorProto* proto) {
   const tensorflow::Tensor* t = nullptr;
   TF_RETURN_IF_ERROR(handle->Tensor(&t));
   t->AsProtoTensorContent(proto);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status TensorHandleShape(TensorHandle* handle, TensorShapeProto* proto) {
@@ -184,7 +185,7 @@ Status TensorHandleShape(TensorHandle* handle, TensorShapeProto* proto) {
     shape.AsProto(proto);
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status AddOpRetvalsToResponse(
@@ -245,7 +246,7 @@ Status ResetAgentAndConnectToCoordinationService(
       return s;
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -280,6 +281,27 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
   if (env_ == nullptr || env_->rendezvous_mgr == nullptr) {
     return tensorflow::errors::Internal(
         "invalid eager env_ or env_->rendezvous_mgr.");
+  }
+  if (request->clear_existing_contexts()) {
+    // Cleanup state from WorkerEnv
+    for (auto* device : env_->device_mgr->ListDevices()) {
+      device->ClearResourceMgr();
+    }
+    env_->rendezvous_mgr->CleanupAll();
+    env_->collective_executor_mgr->CleanupAll();
+    TF_RETURN_IF_ERROR(env_->session_mgr->DeleteAllSessions());
+
+    // Cleanup existing contexts if any.
+    std::unordered_map<uint64, ServerContext*> tmp_contexts;
+    {
+      mutex_lock l(contexts_mu_);
+      if (!contexts_.empty()) {
+        std::swap(tmp_contexts, contexts_);
+      }
+    }
+    for (auto& context : tmp_contexts) {
+      context.second->Unref();
+    }
   }
 
   tsl::core::RefCountPtr<RemoteRendezvous> r =
@@ -395,7 +417,7 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
         tsl::PreemptionNotifier::CreatePreemptionNotifier("sigterm",
                                                           Env::Default());
     preemption_notifier->WillBePreemptedAtAsync(
-        [coord_agent](StatusOr<absl::Time> time_or_status) {
+        [coord_agent](absl::StatusOr<absl::Time> time_or_status) {
           if (time_or_status.ok()) {
             const auto coord_task = coord_agent->GetOwnTask().value();
             Status s = coord_agent->InsertKeyValue(
@@ -431,7 +453,7 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
                       new ServerContext(ctx, request->keep_alive_secs(), env_));
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status EagerServiceImpl::UpdateContext(const UpdateContextRequest* request,
@@ -463,7 +485,7 @@ Status EagerServiceImpl::UpdateContext(const UpdateContextRequest* request,
     ctx->IncrementContextViewId();
     VLOG(1) << "Processing simplified UpdateContextRequest on "
             << ctx->HostCPU()->name();
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   auto session_name =
@@ -522,7 +544,7 @@ Status EagerServiceImpl::UpdateContext(const UpdateContextRequest* request,
     *response->add_device_attributes() = da;
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status EagerServiceImpl::CreateMasterContext(
@@ -540,7 +562,7 @@ Status EagerServiceImpl::CreateMasterContext(
       ServerContext::CreateMasterContext(context, env_);
   mutex_lock l(contexts_mu_);
   contexts_.emplace(context_id, server_context);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void EagerServiceImpl::RunComponentFunction(
@@ -673,12 +695,12 @@ Status EagerServiceImpl::ExecuteOp(CallOptions* call_opts,
 Status EagerServiceImpl::Enqueue(CallOptions* call_opts,
                                  const EnqueueRequest* request,
                                  EnqueueResponse* response, uint64 stream_id) {
-  profiler::TraceMe activity(
+  tsl::profiler::TraceMe activity(
       [&] {
         return absl::StrCat(
             "EagerService:Enqueue#debug_str=", request->DebugString(), "#");
       },
-      profiler::TraceMeLevel::kInfo);
+      tsl::profiler::TraceMeLevel::kInfo);
   ServerContext* context = nullptr;
   TF_RETURN_IF_ERROR(GetServerContext(request->context_id(), &context));
   core::ScopedUnref context_unref(context);
@@ -723,7 +745,7 @@ Status EagerServiceImpl::Enqueue(CallOptions* call_opts,
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status EagerServiceImpl::WaitQueueDone(const WaitQueueDoneRequest* request,
@@ -748,17 +770,15 @@ Status EagerServiceImpl::KeepAlive(const KeepAliveRequest* request,
 
   tensorflow::EagerContext* ctx = context->Context();
   response->set_context_view_id(ctx->GetContextViewId());
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status EagerServiceImpl::CloseContext(const CloseContextRequest* request,
                                       CloseContextResponse* response) {
-  VLOG(1) << "Executing EagerService::CloseContext for context "
-          << request->context_id();
   ServerContext* context = nullptr;
   if (!GetServerContext(request->context_id(), &context).ok()) {
     // Swallow the error here.
-    return OkStatus();
+    return absl::OkStatus();
   }
   core::ScopedUnref context_unref(context);
 
@@ -768,7 +788,7 @@ Status EagerServiceImpl::CloseContext(const CloseContextRequest* request,
               << request->context_view_id() << "  for context_id "
               << request->context_id() << ". The current context_view_id is "
               << context->Context()->GetContextViewId() << ".";
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   mutex_lock l(contexts_mu_);
@@ -779,7 +799,7 @@ Status EagerServiceImpl::CloseContext(const CloseContextRequest* request,
   // we are releasing it from the map.
   context->Unref();
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status EagerServiceImpl::RegisterFunction(
@@ -804,7 +824,7 @@ Status EagerServiceImpl::RemoveFunction(const RemoveFunctionOp& remove_function,
 Status EagerServiceImpl::CleanupFunction(
     const CleanupFunctionOp& cleanup_function) {
   env_->rendezvous_mgr->Cleanup(cleanup_function.step_id());
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status EagerServiceImpl::SendTensor(const SendTensorOp& send_tensor,
@@ -831,7 +851,7 @@ Status EagerServiceImpl::SendTensor(const SendTensorOp& send_tensor,
 
   eager_context->RemoteMgr()->AddOperationOutputs(tensors, send_tensor.op_id());
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status EagerServiceImpl::SendPackedHandle(
@@ -877,7 +897,7 @@ Status EagerServiceImpl::SendPackedHandle(
 
   eager_context->RemoteMgr()->AddOperationOutputs({packed_handle},
                                                   send_packed_handle.op_id());
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 tensorflow::Status EagerServiceImpl::GetServerContext(
@@ -897,7 +917,7 @@ tensorflow::Status EagerServiceImpl::GetServerContext(
 
   (*server_context)->RecordAccess();
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace eager

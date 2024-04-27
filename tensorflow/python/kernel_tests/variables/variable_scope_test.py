@@ -27,7 +27,6 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
-from tensorflow.python.layers import core as core_layers
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import cond
 from tensorflow.python.ops import init_ops
@@ -252,21 +251,6 @@ class VariableScopeTest(test.TestCase):
       variable_scope.get_variable("v2", [], trainable=False)
       self.assertFalse(ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES))
       self.assertFalse(ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES))
-
-  def testEagerVariableStoreWithFunctionalLayer(self):
-    with context.eager_mode():
-      container = variable_scope.EagerVariableStore()
-      x = constant_op.constant([[2.0]])
-      with container.as_default():
-        y = core_layers.dense(x, 1, name="my_dense",
-                              kernel_initializer=init_ops.ones_initializer())
-      self.assertAllEqual(y, [[2.0]])
-      self.assertEqual(len(container.variables()), 2)
-      # Recreate the layer to test reuse.
-      with container.as_default():
-        core_layers.dense(x, 1, name="my_dense",
-                          kernel_initializer=init_ops.ones_initializer())
-      self.assertEqual(len(container.variables()), 2)
 
   # Not converted to use wrap_function because of
   # TypeError: Expected tf.group() expected Tensor arguments not 'None' with

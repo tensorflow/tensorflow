@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_split.h"
+#include "tensorflow/lite/delegates/gpu/cl/opencl_wrapper.h"
 #include "tensorflow/lite/delegates/gpu/cl/util.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/experimental/acceleration/compatibility/android_info.h"
@@ -309,7 +310,15 @@ GpuInfo GpuInfoFromDeviceID(cl_device_id id, cl_platform_id platform_id) {
   info.opencl_info.max_work_group_size_z = max_work_group_sizes.z;
   info.opencl_info.max_work_group_total_size =
       GetDeviceInfo<size_t>(id, CL_DEVICE_MAX_WORK_GROUP_SIZE);
-
+  info.opencl_info.dedicated_local_memory =
+      (GetDeviceInfo<cl_device_local_mem_type>(id, CL_DEVICE_LOCAL_MEM_TYPE) ==
+       CL_LOCAL);
+  if (info.IsCL30OrHigher()) {
+    info.opencl_info.preferred_work_group_size_multiple =
+        GetDeviceInfo<size_t>(id, CL_DEVICE_PREFERRED_WORK_GROUP_SIZE_MULTIPLE);
+  } else {
+    info.opencl_info.preferred_work_group_size_multiple = 0;
+  }
   info.opencl_info.base_addr_align_in_bits =
       GetDeviceInfo<cl_uint>(id, CL_DEVICE_MEM_BASE_ADDR_ALIGN);
   info.opencl_info.image_pitch_alignment = 0;
@@ -457,6 +466,9 @@ absl::Status CreateDefaultGPUDevice(CLDevice* result) {
   }
 
   *result = CLDevice(devices[0], platform_id);
+
+  LoadOpenCLFunctionExtensions(platform_id);
+
   return absl::OkStatus();
 }
 

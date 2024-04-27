@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -24,6 +24,7 @@ limitations under the License.
 #include <iterator>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "xla/bit_cast.h"
 #include "xla/client/lib/constants.h"
@@ -158,6 +159,7 @@ class ExhaustiveOpTestBase : public ClientLibraryTestBase {
   using ErrorSpecGen = typename ErrorSpecGenWrapper<T, N>::type;
   using EvaluateOp = typename EvaluateOpWrapper<NativeRefT, N>::type;
   using EnqueueOp = typename EnqueueOpWrapper<XlaInputs, N>::type;
+  using OutputRangeCheck = std::function<bool(NativeT)>;
 
   explicit ExhaustiveOpTestBase()
       : ty_(T), platform_(client_->platform()->Name()) {
@@ -168,8 +170,10 @@ class ExhaustiveOpTestBase : public ClientLibraryTestBase {
     mutable_debug_options()->clear_xla_disable_hlo_passes();
   }
 
-  void Run(EnqueueOp enqueue_op, EvaluateOp evaluate_op) {
-    Run(enqueue_op, evaluate_op, GetDefaultSpecGenerator<T, N>());
+  void Run(EnqueueOp enqueue_op, EvaluateOp evaluate_op,
+           OutputRangeCheck check_valid_range = nullptr) {
+    Run(enqueue_op, evaluate_op, GetDefaultSpecGenerator<T, N>(),
+        check_valid_range);
   }
 
   // A helper for implementing the Run method for exhaustive op tests. It
@@ -180,7 +184,8 @@ class ExhaustiveOpTestBase : public ClientLibraryTestBase {
   // called each time an output element is compared inside a loop in routine
   // ExpectNear.
   void Run(EnqueueOp enqueue_op, EvaluateOp evaluate_op,
-           ErrorSpecGen error_spec_gen) {
+           ErrorSpecGen error_spec_gen,
+           OutputRangeCheck check_valid_range = nullptr) {
     InputLiterals input_literals = CreateInputLiterals();
     FillInput(&input_literals);
 
@@ -195,15 +200,16 @@ class ExhaustiveOpTestBase : public ClientLibraryTestBase {
     TF_ASSERT_OK_AND_ASSIGN(XlaComputation comp, builder.Build());
     TF_ASSERT_OK_AND_ASSIGN(Literal result_literal,
                             RunComputationHelper(comp, input_literals));
-    ExpectNear(input_literals, result_literal, evaluate_op, error_spec_gen);
+    ExpectNear(input_literals, result_literal, evaluate_op, error_spec_gen,
+               check_valid_range);
   }
 
-  StatusOr<Literal> RunComputationHelper(const XlaComputation& comp,
-                                         const Literal& literal) {
+  absl::StatusOr<Literal> RunComputationHelper(const XlaComputation& comp,
+                                               const Literal& literal) {
     return RunComputation(comp, {&literal});
   }
 
-  StatusOr<Literal> RunComputationHelper(
+  absl::StatusOr<Literal> RunComputationHelper(
       const XlaComputation& comp, const std::array<Literal, N>& literals) {
     std::array<const Literal*, N> lit_ptrs;
     for (int i = 0; i < N; ++i) {
@@ -220,15 +226,18 @@ class ExhaustiveOpTestBase : public ClientLibraryTestBase {
   //  c) we need special handling of certain inputs.  For example, we say that
   //     a denormal input has multiple correct outputs (namely, f(x) and f(0))
   //     and just needs to be close to one of them.
+  // check_valid_range can be used to provide a function that is called with
+  // the result to check whether it is in the expected range.
   void ExpectNear(const InputLiterals& input_literals,
                   const Literal& result_literal, EvaluateOp evaluate_op,
-                  ErrorSpecGen error_spec_gen);
+                  ErrorSpecGen error_spec_gen,
+                  OutputRangeCheck check_valid_range = nullptr);
 
   // Builds and runs the computation using the LocalClient API, rather than the
   // plain Client API, which is used by ClientLibraryTestBase.  This is because
   // the plain Client API results does more memcpys to/from Literals, and that's
   // slow given that we're touching a lot of data here.
-  StatusOr<Literal> RunComputation(
+  absl::StatusOr<Literal> RunComputation(
       const XlaComputation& computation,
       absl::Span<const Literal* const> input_literals) {
     // Copy debug options from ClientLibraryTestBase.  In particular, we're

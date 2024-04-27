@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -71,7 +71,7 @@ HloInstruction* TranslateAllGatherToAllReducePerOperand(
   auto ar = comp->AddInstruction(HloInstruction::CreateAllReduce(
       dus->shape(), {dus},
       MakeBinaryAdd(dus->shape().element_type(), comp->parent()),
-      ag.replica_groups(),
+      ag.device_list(),
       /*constrain_layout=*/ag.constrain_layout(), ag.channel_id(),
       ag.use_global_device_ids()));
   return ar;
@@ -101,7 +101,7 @@ Status DecomposeAllGather(HloAllGatherInstruction* ag, HloComputation* comp) {
   return OkStatus();
 }
 
-StatusOr<bool> AllGatherDecomposer::Run(
+absl::StatusOr<bool> AllGatherDecomposer::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

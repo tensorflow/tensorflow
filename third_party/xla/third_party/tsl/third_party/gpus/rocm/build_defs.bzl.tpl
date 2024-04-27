@@ -38,6 +38,20 @@ def rocm_version_number():
     """Returns a list of supported GPU architectures."""
     return %{rocm_version_number}
 
+def if_gpu_is_configured(if_true, if_false = []):
+    """Tests if ROCm or CUDA or SYCL was enabled during the configure process."""
+    return select({"//conditions:default": %{gpu_is_configured}})
+
+def if_cuda_or_rocm(if_true, if_false = []):
+    """Tests if ROCm or CUDA was enabled during the configure process.
+
+    Unlike if_rocm() or if_cuda(), this does not require that we are building
+    with --config=rocm or --config=cuda, respectively. Used to allow non-GPU
+    code to depend on ROCm or CUDA libraries.
+
+    """
+    return select({"//conditions:default": %{cuda_or_rocm}})
+
 def if_rocm_is_configured(x):
     """Tests if the ROCm was enabled during the configure process.
 

@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "xla/pjrt/cpu/cpu_client.h"
 
+#ifndef _WIN32
 #include <unistd.h>
+#endif
 
 #include <algorithm>
 #include <cstring>
@@ -272,7 +274,7 @@ TEST(TfrtCpuClientTest, AsyncTransferSetBufferError) {
                           client->CreateBuffersForAsyncHostToDevice(
                               {shape}, client->addressable_devices()[0]));
   auto buffer = transfer_manager->RetrieveBuffer(0);
-  transfer_manager->SetBufferError(0, InternalError("foobar"));
+  transfer_manager->SetBufferError(0, Internal("foobar"));
   EXPECT_THAT(
       buffer->ToLiteralSync(),
       tsl::testing::StatusIs(tsl::error::INTERNAL, HasSubstr("foobar")));
@@ -282,7 +284,7 @@ TEST(TfrtCpuClientTest, CreateErrorBuffer) {
   TF_ASSERT_OK_AND_ASSIGN(auto client, GetTfrtCpuClient(CpuClientOptions()));
   xla::Shape shape = ShapeUtil::MakeShape(U32, {3, 2});
   TF_ASSERT_OK_AND_ASSIGN(
-      auto buffer, client->CreateErrorBuffer(InternalError("foobar"), shape,
+      auto buffer, client->CreateErrorBuffer(Internal("foobar"), shape,
                                              client->addressable_devices()[0]));
   EXPECT_THAT(
       buffer->ToLiteralSync(),

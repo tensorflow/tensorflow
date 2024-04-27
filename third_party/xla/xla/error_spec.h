@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,11 +20,11 @@ namespace xla {
 
 // Structure describing permissible absolute and relative error bounds.
 struct ErrorSpec {
-  explicit ErrorSpec(float aabs, float arel = 0, bool relaxed_nans = false)
+  explicit ErrorSpec(double aabs, double arel = 0, bool relaxed_nans = false)
       : abs(aabs), rel(arel), relaxed_nans(relaxed_nans) {}
 
-  float abs;  // Absolute error bound.
-  float rel;  // Relative error bound.
+  double abs;  // Absolute error bound.
+  double rel;  // Relative error bound.
 
   // If relaxed_nans is true then any result is valid if we are expecting NaNs.
   // In effect, this allows the tested operation to produce incorrect results

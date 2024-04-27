@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -33,7 +33,7 @@ TEST_F(QueryInferredShapeTest, OnePlusOneShape) {
   XlaBuilder builder("one_plus_one");
   auto one = ConstantR0<float>(&builder, 1.0);
   auto result = Add(one, one);
-  StatusOr<Shape> shape_status = builder.GetShape(result);
+  absl::StatusOr<Shape> shape_status = builder.GetShape(result);
   ASSERT_IS_OK(shape_status.status());
   auto shape = shape_status.value();
   ASSERT_TRUE(ShapeUtil::Equal(shape, ShapeUtil::MakeShape(F32, {})));

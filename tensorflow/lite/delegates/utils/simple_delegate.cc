@@ -14,16 +14,20 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/delegates/utils/simple_delegate.h"
 
+#include <stddef.h>
+#include <stdint.h>
+
 #include <limits>
 #include <memory>
 #include <string>
 #include <vector>
 
+#include "tensorflow/lite/array.h"
 #include "tensorflow/lite/builtin_ops.h"
-#include "tensorflow/lite/context_util.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/delegates/utils.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
+#include "tensorflow/lite/logger.h"
 #include "tensorflow/lite/minimal_logging.h"
 
 namespace tflite {
@@ -72,7 +76,6 @@ TfLiteRegistration GetDelegateKernelRegistration(
     TFLITE_DCHECK(delegate_kernel != nullptr);
     return delegate_kernel->Eval(context, node);
   };
-
   return kernel_registration;
 }
 
@@ -118,13 +121,34 @@ TfLiteDelegate* TfLiteDelegateFactory::CreateSimpleDelegate(
   if (simple_delegate == nullptr) {
     return nullptr;
   }
-  auto delegate = new TfLiteDelegate();
+  auto delegate = new TfLiteDelegate{};
   delegate->Prepare = &DelegatePrepare;
   delegate->flags = flag;
-  delegate->CopyFromBufferHandle = nullptr;
-  delegate->CopyToBufferHandle = nullptr;
-  delegate->FreeBufferHandle = nullptr;
   delegate->data_ = simple_delegate.release();
+  delegate->CopyFromBufferHandle = [](TfLiteContext* context,
+                                      TfLiteDelegate* delegate,
+                                      TfLiteBufferHandle buffer_handle,
+                                      TfLiteTensor* tensor) -> TfLiteStatus {
+    auto* simple_delegate =
+        reinterpret_cast<SimpleDelegateInterface*>(delegate->data_);
+    return simple_delegate->CopyFromBufferHandle(context, buffer_handle,
+                                                 tensor);
+  };
+  delegate->CopyToBufferHandle = [](TfLiteContext* context,
+                                    TfLiteDelegate* delegate,
+                                    TfLiteBufferHandle buffer_handle,
+                                    TfLiteTensor* tensor) -> TfLiteStatus {
+    auto* simple_delegate =
+        reinterpret_cast<SimpleDelegateInterface*>(delegate->data_);
+    return simple_delegate->CopyToBufferHandle(context, buffer_handle, tensor);
+  };
+  delegate->FreeBufferHandle = [](TfLiteContext* context,
+                                  TfLiteDelegate* delegate,
+                                  TfLiteBufferHandle* buffer_handle) {
+    auto* simple_delegate =
+        reinterpret_cast<SimpleDelegateInterface*>(delegate->data_);
+    simple_delegate->FreeBufferHandle(context, buffer_handle);
+  };
   return delegate;
 }
 

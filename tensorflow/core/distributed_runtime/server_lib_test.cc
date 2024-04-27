@@ -28,7 +28,7 @@ class TestServerFactory : public ServerFactory {
 
   Status NewServer(const ServerDef& server_def, const Options& options,
                    std::unique_ptr<ServerInterface>* out_server) override {
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 
@@ -45,7 +45,7 @@ TEST(ServerLibTest, NewServerNoFactoriesAccept) {
   server_def.set_protocol("fake_protocol");
   std::unique_ptr<ServerInterface> server;
   Status s = NewServer(server_def, &server);
-  ASSERT_NE(s, OkStatus());
+  ASSERT_NE(s, absl::OkStatus());
   EXPECT_TRUE(absl::StrContains(
       s.message(), "No server factory registered for the given ServerDef"));
   EXPECT_TRUE(

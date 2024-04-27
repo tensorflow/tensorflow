@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -341,7 +341,7 @@ bool HloLivenessAnalysis::IsLive(const HloInstruction* instruction,
 }
 
 /* static */
-StatusOr<std::unique_ptr<HloLivenessAnalysis>> HloLivenessAnalysis::Run(
+absl::StatusOr<std::unique_ptr<HloLivenessAnalysis>> HloLivenessAnalysis::Run(
     const HloModule& module) {
   VLOG(1) << "HloLivenessAnalysis::Run on module " << module.name();
   XLA_VLOG_LINES(2, module.ToString());

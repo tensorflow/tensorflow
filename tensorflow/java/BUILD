@@ -1,8 +1,6 @@
 # Description:
 # TensorFlow Java API.
 
-load(":build_defs.bzl", "JAVACOPTS")
-load(":src/gen/gen_ops.bzl", "tf_java_op_gen_srcjar")
 load(
     "//tensorflow:tensorflow.bzl",
     "VERSION",
@@ -13,6 +11,8 @@ load(
     "tf_custom_op_library",
     "tf_java_test",
 )
+load(":build_defs.bzl", "JAVACOPTS")
+load(":src/gen/gen_ops.bzl", "tf_java_op_gen_srcjar")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],

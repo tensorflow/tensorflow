@@ -41,7 +41,7 @@ namespace tensorflow {
 namespace {
 
 void ExpectErrorContains(const Status& status, absl::string_view str) {
-  EXPECT_NE(OkStatus(), status);
+  EXPECT_NE(absl::OkStatus(), status);
   EXPECT_TRUE(absl::StrContains(status.message(), str))
       << "expected error: " << status.message() << " to contain: " << str;
 }

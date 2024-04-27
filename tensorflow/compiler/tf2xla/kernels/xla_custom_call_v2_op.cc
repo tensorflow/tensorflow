@@ -93,7 +93,7 @@ class XlaCustomCallV2Op : public XlaOpKernel {
       }
     }
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   std::string call_target_name_;

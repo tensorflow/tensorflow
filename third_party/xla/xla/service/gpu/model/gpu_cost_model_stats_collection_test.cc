@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -68,8 +68,11 @@ TEST_F(GpuCostModelStatsCollectionTest, FusinInEntryComputation) {
   EXPECT_FALSE(cost_model_stats_.Run(module.get()).value());
 
   HloInstruction* root = module->entry_computation()->root_instruction();
-  TF_ASSERT_OK_AND_ASSIGN(auto backend_config,
-                          root->backend_config<FusionBackendConfig>());
+  TF_ASSERT_OK_AND_ASSIGN(auto gpu_config,
+                          root->backend_config<GpuBackendConfig>());
+  const FusionBackendConfig& backend_config =
+      gpu_config.fusion_backend_config();
+
   EXPECT_TRUE(backend_config.has_reification_cost());
   EXPECT_GT(backend_config.reification_cost().end_to_end_cycles(), 0);
 }
@@ -104,8 +107,11 @@ TEST_F(GpuCostModelStatsCollectionTest, FusinInWhileComputation) {
                              ->root_instruction()
                              ->while_body()
                              ->root_instruction();
-  TF_ASSERT_OK_AND_ASSIGN(auto backend_config,
-                          root->backend_config<FusionBackendConfig>());
+  TF_ASSERT_OK_AND_ASSIGN(auto gpu_config,
+                          root->backend_config<GpuBackendConfig>());
+  const FusionBackendConfig& backend_config =
+      gpu_config.fusion_backend_config();
+
   EXPECT_TRUE(backend_config.has_reification_cost());
   EXPECT_GT(backend_config.reification_cost().end_to_end_cycles(), 0);
 }

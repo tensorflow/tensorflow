@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,25 +15,34 @@ limitations under the License.
 
 #include "xla/service/gpu/reduction_dimension_grouper.h"
 
-#include <algorithm>
+#include <cstdint>
 #include <memory>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/layout_util.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/statusor.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
 
 class ReduceDimensionGroupVisitor : public DfsHloRewriteVisitor {
  public:
-  Status HandleReduce(HloInstruction *hlo) override {
+  absl::Status HandleReduce(HloInstruction *hlo) override {
     auto reduce = Cast<HloReduceInstruction>(hlo);
 
     VLOG(4) << "Input: " << reduce->ToString();
@@ -82,7 +91,7 @@ class ReduceDimensionGroupVisitor : public DfsHloRewriteVisitor {
       }
 
       if (!changed) {  // Since all inputs have same shape dimensions.
-        return OkStatus();
+        return absl::OkStatus();
       }
 
       Shape grouped_shape =
@@ -101,7 +110,7 @@ class ReduceDimensionGroupVisitor : public DfsHloRewriteVisitor {
   }
 };
 
-StatusOr<bool> ReductionDimensionGrouper::Run(
+absl::StatusOr<bool> ReductionDimensionGrouper::Run(
     HloModule *module,
     const absl::flat_hash_set<absl::string_view> &execution_threads) {
   TF_ASSIGN_OR_RETURN(bool changed, ReduceDimensionGroupVisitor().RunOnModule(

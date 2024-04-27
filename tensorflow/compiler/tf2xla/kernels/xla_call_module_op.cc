@@ -40,6 +40,7 @@ limitations under the License.
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/tf2xla/kernels/xla_call_module_loader.h"
@@ -182,31 +183,31 @@ class XlaCallModuleOp : public XlaOpKernel {
                                })
               << "])";
     }
-    string loading_device_type = ctx->device_type().type_string();
-    string loading_platform = "";
-    if (loading_device_type == DEVICE_CPU_XLA_JIT) {
-      loading_platform = "CPU";
-    } else if (loading_device_type == DEVICE_GPU_XLA_JIT) {
+    string compilation_device_type = ctx->device_type().type_string();
+    compilation_platform_ = "";
+    if (compilation_device_type == DEVICE_CPU_XLA_JIT) {
+      compilation_platform_ = "CPU";
+    } else if (compilation_device_type == DEVICE_GPU_XLA_JIT) {
 #if GOOGLE_CUDA
-      loading_platform = "CUDA";
+      compilation_platform_ = "CUDA";
 #elif TENSORFLOW_USE_ROCM
-      loading_platform = "ROCM";
+      compilation_platform_ = "ROCM";
 #else
       OP_REQUIRES(ctx, false,
                   absl::UnimplementedError("CUDA or ROCM build required"));
 #endif
-    } else if (loading_device_type == DEVICE_TPU_XLA_JIT) {
-      loading_platform = "TPU";
+    } else if (compilation_device_type == DEVICE_TPU_XLA_JIT) {
+      compilation_platform_ = "TPU";
     } else {
       OP_REQUIRES(ctx, false,
                   absl::UnimplementedError(absl::StrCat(
-                      "Unexpected device type ", loading_device_type)));
+                      "Unexpected device type ", compilation_device_type)));
     }
-    VLOG(3) << "Initializing XlaCallModuleOp on " << loading_platform;
+    VLOG(3) << "Initializing XlaCallModuleOp on " << compilation_platform_;
     {
       auto loader = XlaCallModuleLoader::Create(
           &context_, version, std::move(module_str), std::move(disabled_checks),
-          std::move(platforms), loading_platform,
+          std::move(platforms),
           /*num_invocation_args=*/ctx->num_inputs(),
           main_has_token_input_output);
       OP_REQUIRES_OK(ctx, loader.status());
@@ -234,16 +235,12 @@ class XlaCallModuleOp : public XlaOpKernel {
     xla::XlaBuilder *const b = ctx->builder();
 
     std::vector<xla::Shape> input_shapes;
-    int next_actual_input = 0;
-    for (mlir::Type inputType : loader_->InputTypes()) {
-      if (IsTokenType(inputType)) {
-        input_shapes.push_back(xla::ShapeUtil::MakeTokenShape());
-      } else {
-        auto shape = ctx->InputXlaShape(next_actual_input++);
-        OP_REQUIRES_OK(ctx, shape.status());
-        input_shapes.push_back(*std::move(shape));
-      }
+    for (int i = 0; i < ctx->num_inputs(); ++i) {
+      auto shape = ctx->InputXlaShape(i);
+      OP_REQUIRES_OK(ctx, shape.status());
+      input_shapes.push_back(*std::move(shape));
     }
+    OP_REQUIRES_OK(ctx, loader_->SetPlatformIndex(compilation_platform_));
     OP_REQUIRES_OK(ctx, loader_->RefineDynamicShapes(input_shapes));
     OP_REQUIRES_OK(ctx, loader_->ValidateStaticShapes());
     OP_REQUIRES_OK(ctx, loader_->LowerModuleToMhlo());
@@ -263,7 +260,7 @@ class XlaCallModuleOp : public XlaOpKernel {
     }
 
     std::vector<xla::XlaOp> inputs;
-    next_actual_input = 0;
+    int next_actual_input = 0;
     for (mlir::Type inputType : loader_->InputTypes()) {
       if (IsTokenType(inputType)) {
         if (token_input.IsUninitialized()) {
@@ -407,7 +404,7 @@ class XlaCallModuleOp : public XlaOpKernel {
         mlir::TypeRange input_types(custom_call->getOperandTypes());
         if (custom_call_has_token_input_output) {
           if (input_types.empty() ||
-              !input_types.front().isa<mlir::mhlo::TokenType>()) {
+              !mlir::isa<mlir::mhlo::TokenType>(input_types.front())) {
             return absl::InvalidArgumentError(absl::StrCat(
                 "stablehlo.custom_call with has_token_input_output = true is "
                 "expected to take !stablehlo.token as the first argument, but "
@@ -426,7 +423,7 @@ class XlaCallModuleOp : public XlaOpKernel {
         mlir::TypeRange result_types(custom_call->getResultTypes());
         if (custom_call_has_token_input_output) {
           if (result_types.empty() ||
-              !result_types.front().isa<mlir::mhlo::TokenType>()) {
+              !mlir::isa<mlir::mhlo::TokenType>(result_types.front())) {
             return absl::InvalidArgumentError(absl::StrCat(
                 "stablehlo.custom_call with has_token_input_output = true is "
                 "expected to return !stablehlo.token as the first result, but "
@@ -554,6 +551,7 @@ class XlaCallModuleOp : public XlaOpKernel {
   mlir::MLIRContext context_{mlir::MLIRContext::Threading::DISABLED};
   std::unique_ptr<XlaCallModuleLoader> loader_;
   std::vector<NameAttrList> function_list_;
+  std::string compilation_platform_;
 
   // Whether the XlaCallModule op has token input/output.
   std::vector<std::string> op_token_input_nodes_;

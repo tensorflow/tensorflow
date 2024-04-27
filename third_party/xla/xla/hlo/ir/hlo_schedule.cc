@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -38,7 +38,7 @@ limitations under the License.
 
 namespace xla {
 
-/* static */ StatusOr<HloSchedule> HloSchedule::CreateFromProto(
+/* static */ absl::StatusOr<HloSchedule> HloSchedule::CreateFromProto(
     const HloModule* module, const HloScheduleProto& proto) {
   absl::flat_hash_map<int64_t, const HloComputation*> id_to_computation;
   for (const HloComputation* computation : module->computations()) {
@@ -76,7 +76,7 @@ namespace xla {
   return std::move(schedule);
 }
 
-StatusOr<HloScheduleProto> HloSchedule::ToProto() const {
+absl::StatusOr<HloScheduleProto> HloSchedule::ToProto() const {
   TF_RETURN_IF_ERROR(Verify());
   HloScheduleProto proto;
   for (const auto& id_sequence : sequences_) {

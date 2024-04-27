@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "tensorflow/core/tfrt/mlrt/interpreter/context.h"
 #include "tensorflow/core/tfrt/mlrt/interpreter/future.h"
+#include "tensorflow/core/tfrt/mlrt/interpreter/value.h"
 #include "tfrt/concurrency/async_value_ref.h"  // from @tf_runtime
 #include "tfrt/concurrency/chain.h"  // from @tf_runtime
 

@@ -1,9 +1,9 @@
-load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_cuda_cc_test")
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "@local_tsl//tsl/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
 )
+load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_cuda_cc_test")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -17,6 +17,7 @@ package_group(
     packages = [
         # copybara:uncomment "//learning/brain/experimental/dtensor/...",
         # copybara:uncomment "//learning/brain/experimental/tfrt/...",
+        # copybara:uncomment "//learning/brain/google/monitoring/...",
         # copybara:uncomment "//learning/brain/google/xla/...",
         # copybara:uncomment "//learning/brain/tfrc/...",
         # copybara:uncomment "//learning/brain/tfrt/...",
@@ -84,8 +85,12 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/status",
+        "@local_xla//xla/client:local_client",
+        "@local_xla//xla/pjrt:local_device_state",
         "@local_xla//xla/pjrt:pjrt_client",
         "@local_xla//xla/pjrt:tf_pjrt_client",
+        "@local_xla//xla/stream_executor/integrations:tf_allocator_adapter",
     ],
 )
 
@@ -106,6 +111,8 @@ cc_library(
         "//tensorflow/core:framework_types_hdr",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@local_xla//xla/pjrt:pjrt_client",
     ],
 )
@@ -247,6 +254,16 @@ cc_library(
         "@local_xla//xla/pjrt/gpu:se_gpu_pjrt_client",
     ],
     alwayslink = True,
+)
+
+cc_library(
+    name = "metrics",
+    srcs = ["metrics.cc"],
+    hdrs = ["metrics.h"],
+    deps = [
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 tf_cuda_cc_test(

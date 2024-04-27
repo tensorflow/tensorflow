@@ -17,8 +17,21 @@ filegroup(
     ]),
 )
 
+filegroup(
+    name = "cutlass_util_header_files",
+    srcs = glob([
+        "tools/util/include/**",
+    ]),
+)
+
 cc_library(
     name = "cutlass",
-    hdrs = [":cutlass_header_files"],
-    strip_include_prefix = "/include",
+    hdrs = [
+        ":cutlass_header_files",
+        ":cutlass_util_header_files",
+    ],
+    includes = [
+        "include",
+        "tools/util/include",
+    ],
 )

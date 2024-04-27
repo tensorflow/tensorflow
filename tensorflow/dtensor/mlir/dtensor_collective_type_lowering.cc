@@ -35,6 +35,7 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/transforms/collection_ops_util.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/types.h"
@@ -99,9 +100,9 @@ mlir::LogicalResult ConvertShortIntReduce(ReduceOpType reduce_op) {
 
   // Handle bools by first casting to int32 and swapping All/Any for Min/Max.
   const mlir::TensorType& tensor_input_type =
-      input_type.dyn_cast<mlir::TensorType>();
+      mlir::dyn_cast<mlir::TensorType>(input_type);
   const mlir::TensorType& tensor_output_type =
-      output_type.dyn_cast<mlir::TensorType>();
+      mlir::dyn_cast<mlir::TensorType>(output_type);
   if (!tensor_input_type) return mlir::success();
   if (!tensor_output_type) return mlir::success();
 
@@ -166,12 +167,12 @@ mlir::LogicalResult ConvertComplexReduce(ReduceOpType reduce_op) {
   const mlir::Value tensor_input = reduce_op.getInput();
   const mlir::Value tensor_result = reduce_op.getResult();
   const mlir::TensorType complex_input_tensor_type =
-      tensor_input.getType().dyn_cast<mlir::TensorType>();
+      mlir::dyn_cast<mlir::TensorType>(tensor_input.getType());
   if (!complex_input_tensor_type) {
     return mlir::success();
   }
   const mlir::TensorType complex_result_tensor_type =
-      tensor_result.getType().dyn_cast<mlir::TensorType>();
+      mlir::dyn_cast<mlir::TensorType>(tensor_result.getType());
   if (!complex_result_tensor_type) {
     return mlir::success();
   }
@@ -222,12 +223,12 @@ mlir::LogicalResult ConvertComplexCollectives(CollectiveType op) {
   const mlir::Value tensor_input = op.getInput();
   const mlir::Value tensor_result = op.getResult();
   const mlir::TensorType complex_input_tensor_type =
-      tensor_input.getType().dyn_cast<mlir::TensorType>();
+      mlir::dyn_cast<mlir::TensorType>(tensor_input.getType());
   if (!complex_input_tensor_type) {
     return mlir::success();
   }
   const mlir::TensorType& complex_result_tensor_type =
-      tensor_result.getType().dyn_cast<mlir::TensorType>();
+      mlir::dyn_cast<mlir::TensorType>(tensor_result.getType());
   if (!complex_result_tensor_type) {
     return mlir::success();
   }

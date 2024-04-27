@@ -15,8 +15,12 @@ limitations under the License.
 
 #include "tensorflow/dtensor/mlir/sparse_expansions/matmul_sparse_expander.h"
 
+#include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/ValueRange.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/dtensor/cc/dstatus.h"
 #include "tensorflow/dtensor/mlir/sparse_expander_common.h"
 
 namespace tensorflow {

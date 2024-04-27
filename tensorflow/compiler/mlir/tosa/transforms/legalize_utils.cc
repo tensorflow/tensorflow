@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <functional>
 #include <optional>
 
@@ -29,12 +30,14 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 #include "tensorflow/compiler/mlir/tosa/transforms/legalize_common.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
+#include "tsl/framework/fixedpoint/FixedPoint.h"
 
 // Implements legalization and post-legalization optimization helper functions
 
@@ -76,7 +79,7 @@ std::optional<Value> buildReshapeWithDynamicDims(PatternRewriter& rewriter,
                                                  Value input_value,
                                                  ShapedType output_type,
                                                  llvm::ArrayRef<Value> dims) {
-  auto e_ty = input_value.getType().cast<ShapedType>().getElementType();
+  auto e_ty = mlir::cast<ShapedType>(input_value.getType()).getElementType();
   llvm::SmallVector<int64_t> static_dims;
 
   if (output_type.hasRank()) {
@@ -90,7 +93,7 @@ std::optional<Value> buildReshapeWithDynamicDims(PatternRewriter& rewriter,
     auto dim = dims[i];
     SplatElementsAttr dim_attr;
     if (matchPattern(dim, m_Constant(&dim_attr))) {
-      if (dim_attr.getType().cast<ShapedType>().getRank() != 0) {
+      if (mlir::cast<ShapedType>(dim_attr.getType()).getRank() != 0) {
         (void)rewriter.notifyMatchFailure(
             op, "dim for building tosa::ReshapeOp should be rank-0");
         return std::nullopt;
@@ -138,7 +141,7 @@ Value buildRescale(PatternRewriter& rewriter, Operation* op,
       rewriter.getI32IntegerAttr(static_cast<int32_t>(input_zp)),
       rewriter.getI32IntegerAttr(static_cast<int32_t>(output_zp)),
       rewriter.getDenseI32ArrayAttr({scale_multiplier}),
-      rewriter.getDenseI32ArrayAttr({scale_shit}),
+      rewriter.getDenseI8ArrayAttr({static_cast<int8_t>(scale_shit)}),
       rewriter.getBoolAttr(scale32), rewriter.getBoolAttr(double_round),
       rewriter.getBoolAttr(false));
 
@@ -248,8 +251,9 @@ Value buildRescaleOpConvOutput(PatternRewriter& rewriter, Operation* op,
         rewriter, op->getLoc(), output_type, conv_val,
         rewriter.getI32IntegerAttr(0), rewriter.getI32IntegerAttr(output_zp),
         rewriter.getDenseI32ArrayAttr({multiplier}),
-        rewriter.getDenseI32ArrayAttr({shift}), rewriter.getBoolAttr(scale32),
-        rewriter.getBoolAttr(double_round), rewriter.getBoolAttr(false));
+        rewriter.getDenseI8ArrayAttr({static_cast<int8_t>(shift)}),
+        rewriter.getBoolAttr(scale32), rewriter.getBoolAttr(double_round),
+        rewriter.getBoolAttr(false));
 
     return rescale_op.getResult();
 
@@ -258,7 +262,7 @@ Value buildRescaleOpConvOutput(PatternRewriter& rewriter, Operation* op,
                      weight_type.getElementType())) {
     // Per-channel quantization
     SmallVector<int32_t> multiplier_arr;
-    SmallVector<int32_t> shift_arr;
+    SmallVector<int8_t> shift_arr;
 
     SmallVector<double> weight_scale_arr(
         weight_per_channel_qtype.getScales().begin(),
@@ -277,14 +281,14 @@ Value buildRescaleOpConvOutput(PatternRewriter& rewriter, Operation* op,
                                 scale_width);
 
       multiplier_arr.push_back(multiplier);
-      shift_arr.push_back(shift);
+      shift_arr.push_back(static_cast<int8_t>(shift));
     }
 
     auto rescale_op = CreateOpAndInfer<tosa::RescaleOp>(
         rewriter, op->getLoc(), output_type, conv_val,
         rewriter.getI32IntegerAttr(0), rewriter.getI32IntegerAttr(output_zp),
         rewriter.getDenseI32ArrayAttr(multiplier_arr),
-        rewriter.getDenseI32ArrayAttr(shift_arr), rewriter.getBoolAttr(scale32),
+        rewriter.getDenseI8ArrayAttr(shift_arr), rewriter.getBoolAttr(scale32),
         rewriter.getBoolAttr(double_round), rewriter.getBoolAttr(true));
 
     return rescale_op.getResult();
@@ -423,35 +427,42 @@ Value getTosaConst16bitTable(PatternRewriter& rewriter, Operation* op,
   return const_op.getResult();
 }
 
-// Create a 32-bit TOSA TABLE constant tensor with int16[513] array.
-// Output is restricted to [-1.0, 1.0] as s0.31 format.
-void getTosaConst32bitTable(PatternRewriter& rewriter, Operation* op,
-                            double input_scale, int32_t input_zp,
-                            std::function<double(double)> func,
-                            Value& first_const, Value& second_const,
-                            Value& third_const, Value& fourth_const) {
+// Create a 32-bit TOSA TABLE for Softmax Exp
+void getTosaConst32bitSoftmaxExpTable(PatternRewriter& rewriter, Operation* op,
+                                      double beta, double input_scale,
+                                      Value& first_const, Value& second_const,
+                                      Value& third_const, Value& fourth_const) {
+  const int kScaledDiffIntegerBits = 5;
+  using FixedPointScaledDiff =
+      gemmlowp::FixedPoint<int32_t, kScaledDiffIntegerBits>;
+
+  int32_t input_beta_multiplier;
+  int input_beta_left_shift;
+  tflite::PreprocessSoftmaxScaling(beta, input_scale, kScaledDiffIntegerBits,
+                                   &input_beta_multiplier,
+                                   &input_beta_left_shift);
+
+  int diff_min = -tflite::CalculateInputRadius(kScaledDiffIntegerBits,
+                                               input_beta_left_shift);
+
   SmallVector<int16_t, 513> first_table, second_table, third_table,
       fourth_table;
-
-  double output_inv_scale = static_cast<double>(1L << 31);
-
-  for (int32_t i = -256; i <= 256; i++) {
-    double dequantized = input_scale * (i - input_zp);
-    double transformed = func(dequantized);
-    double truncated = std::min(std::max(transformed, -1.0), 1.0);
-    int64_t rescaled =
-        static_cast<int64_t>(std::round(truncated * output_inv_scale));
-
-    // 2^31 is not representable in int32_t, so store as 2^31 - 1 instead
-    if (rescaled == static_cast<int64_t>(1L << 31)) {
-      rescaled = static_cast<int64_t>(1L << 31) - 1;
+  for (int32_t input_diff = -256; input_diff <= 256; input_diff++) {
+    int32_t output = 0;
+    if (input_diff >= diff_min) {
+      const int32_t input_diff_rescaled =
+          tflite::MultiplyByQuantizedMultiplierGreaterThanOne(
+              input_diff, input_beta_multiplier, input_beta_left_shift);
+      const FixedPointScaledDiff input_diff_fixed_point =
+          FixedPointScaledDiff::FromRaw(input_diff_rescaled);
+      output = gemmlowp::exp_on_negative_values(input_diff_fixed_point).raw();
     }
 
     // Only copy the 8-bit groups
-    int32_t first = (rescaled >> 24) & 0xFF;
-    int32_t second = (rescaled >> 16) & 0xFF;
-    int32_t third = (rescaled >> 8) & 0xFF;
-    int32_t fourth = (rescaled) & 0xFF;
+    int32_t first = (output >> 24) & 0xFF;
+    int32_t second = (output >> 16) & 0xFF;
+    int32_t third = (output >> 8) & 0xFF;
+    int32_t fourth = (output) & 0xFF;
 
     first_table.push_back(first);
     second_table.push_back(second);
@@ -633,8 +644,8 @@ DenseI64ArrayAttr getPaddingValuesFromExplicitPadAttr(
   for (int i = 0; i < 2; i++) {  // Two spatial dimensions X&Y
     int64_t dim = GetTensorSpatialDimIndex(4, data_format_tf,
                                            i);  // 4D tensor, NHWC/NCHW format
-    pad_before = explicit_pad[dim * 2].template cast<IntegerAttr>().getInt();
-    pad_after = explicit_pad[dim * 2 + 1].template cast<IntegerAttr>().getInt();
+    pad_before = mlir::cast<IntegerAttr>(explicit_pad[dim * 2]).getInt();
+    pad_after = mlir::cast<IntegerAttr>(explicit_pad[dim * 2 + 1]).getInt();
     computed_paddings.push_back(pad_before);
     computed_paddings.push_back(pad_after);
   }
@@ -791,11 +802,11 @@ LogicalResult ApplyPatternsWithShapeResolution(
   // This should be investigate for whether it is still necessary due to quant
   // type stripping changing.
   func.walk([&](tosa::ConstOp op) {
-    if (op.getType().getElementType().isa<QuantizedType>()) {
+    if (mlir::isa<QuantizedType>(op.getType().getElementType())) {
       return;
     }
     auto ety = op.getValue().getShapedType().getElementType();
-    auto new_ty = op.getType().cast<TensorType>().clone(ety);
+    auto new_ty = mlir::cast<TensorType>(op.getType()).clone(ety);
     op.getResult().setType(new_ty);
   });
 

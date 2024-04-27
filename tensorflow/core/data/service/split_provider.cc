@@ -58,13 +58,13 @@ Status DataServiceSplitProvider::GetNext(Tensor* split, bool* end_of_splits)
             << "; with iteration_id=" << iteration_id_
             << ", repetition=" << repetition_;
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status DataServiceSplitProvider::Reset() TF_LOCKS_EXCLUDED(mu_) {
   mutex_lock l(mu_);
   repetition_++;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status DataServiceSplitProvider::Save(
@@ -89,7 +89,7 @@ Status CreateSplitProviders(
   TF_RETURN_IF_ERROR(standalone::Dataset::FromGraph(params, dataset_def.graph(),
                                                     &standalone_dataset));
   TF_RETURN_IF_ERROR(standalone_dataset->MakeSplitProviders(&split_providers));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace data

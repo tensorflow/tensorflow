@@ -15,80 +15,42 @@ limitations under the License.
 #ifndef TENSORFLOW_TSL_PROFILER_BACKENDS_CPU_ANNOTATION_STACK_H_
 #define TENSORFLOW_TSL_PROFILER_BACKENDS_CPU_ANNOTATION_STACK_H_
 
-#include <stddef.h>
-
 #include <atomic>
-#include <utility>
+#include <string_view>
 
-#include "absl/strings/str_cat.h"
-#include "absl/strings/string_view.h"
-#include "tsl/platform/macros.h"
 #include "tsl/platform/types.h"
 
 namespace tsl {
 namespace profiler {
-namespace internal {
-
-// Whether annotations are enabled.
-// Static atomic so Annotation::IsEnabled can be fast and non-blocking.
-TF_EXPORT extern std::atomic<int> g_annotation_enabled;
-
-}  // namespace internal
 
 // Backend for ScopedAnnotation.
 class AnnotationStack {
  public:
-  // Appends name to the annotation for the current thread and returns the
-  // original length of the annotation.
-  // Append name to the current annotation, separated by "::".
-  // The choice of separator "::" is based on characters not used by
-  // TensorFlow for its TensorOps.
-  static size_t PushAnnotation(absl::string_view name) {
-    string* annotation_stack = ThreadAnnotationStack();
-    size_t old_length = annotation_stack->size();
-    if (old_length != 0) {
-      absl::StrAppend(annotation_stack, "::", name);
-    } else {
-      *annotation_stack = string(name);
-    }
-    return old_length;
-  }
+  // Appends name to the annotations for the current thread, separated by "::".
+  // The choice of separator "::" is based on characters not used by TensorFlow
+  // for its TensorOps.
+  static void PushAnnotation(std::string_view name);
 
-  static size_t PushAnnotation(string&& name) {
-    string* annotation_stack = ThreadAnnotationStack();
-    size_t old_length = annotation_stack->size();
-    if (old_length != 0) {
-      absl::StrAppend(annotation_stack, "::", name);
-    } else {
-      *annotation_stack = std::move(name);
-    }
-    return old_length;
-  }
+  // Resizes the annotation stack for the current thread.
+  static void PopAnnotation();
 
   // Returns the annotation stack for the current thread.
-  static const string& Get() { return *ThreadAnnotationStack(); }
+  static const string& Get();
 
-  // Resizes the annotation stack for the current thread to its old length.
-  static void PopAnnotation(size_t old_length) {
-    ThreadAnnotationStack()->resize(old_length);
-  }
+  // Enables or disables the annotation stack.
+  static void Enable(bool enable);
 
-  static void Enable(bool enable) {
-    internal::g_annotation_enabled.store(enable, std::memory_order_release);
-  }
-
+  // Returns whether the annotation stack is enabled.
   static bool IsEnabled() {
-    return internal::g_annotation_enabled.load(std::memory_order_acquire);
+    return generation_.load(std::memory_order_acquire) & 1;
   }
 
  private:
   AnnotationStack() = default;
 
-  AnnotationStack(const AnnotationStack&) = delete;
-  void operator=(const AnnotationStack&) = delete;
-
-  // Returns a reference to the annotation for the current thread.
-  static string* ThreadAnnotationStack();
+  // Enabled if odd, disabled if even. The value is incremented for every call
+  // to Enable() which changes the enabled state.
+  static std::atomic<int> generation_;
 };
 
 }  // namespace profiler

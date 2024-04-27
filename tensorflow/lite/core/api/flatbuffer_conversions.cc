@@ -925,6 +925,7 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_STABLEHLO_SLICE:
     case BuiltinOperator_STABLEHLO_BROADCAST_IN_DIM:
     case BuiltinOperator_STABLEHLO_CONVOLUTION:
+    case BuiltinOperator_STABLEHLO_COMPOSITE:
     case BuiltinOperator_STABLEHLO_LOGISTIC:
     case BuiltinOperator_STABLEHLO_ADD:
     case BuiltinOperator_STABLEHLO_DIVIDE:
@@ -1017,6 +1018,9 @@ TfLiteStatus ConvertTensorType(TensorType tensor_type, TfLiteType* type,
     case TensorType_FLOAT16:
       *type = kTfLiteFloat16;
       return kTfLiteOk;
+    case TensorType_BFLOAT16:
+      *type = kTfLiteBFloat16;
+      return kTfLiteOk;
     case TensorType_FLOAT32:
       *type = kTfLiteFloat32;
       return kTfLiteOk;
@@ -1102,7 +1106,7 @@ TfLiteStatus ParseAdd(const Operator* op, ErrorReporter* error_reporter,
   } else {
     // TODO(b/157480169): We should either return kTfLiteError or fill in some
     // reasonable defaults in the params struct. We are not doing so until we
-    // better undertand the ramifications of changing the legacy behavior.
+    // better understand the ramifications of changing the legacy behavior.
   }
 
   *builtin_data = params.release();
@@ -1132,7 +1136,7 @@ TfLiteStatus ParseArgMax(const Operator* op, ErrorReporter* error_reporter,
   } else {
     // TODO(b/157480169): We should either return kTfLiteError or fill in some
     // reasonable defaults in the params struct. We are not doing so until we
-    // better undertand the ramifications of changing the legacy behavior.
+    // better understand the ramifications of changing the legacy behavior.
   }
 
   *builtin_data = params.release();
@@ -1157,7 +1161,7 @@ TfLiteStatus ParseArgMin(const Operator* op, ErrorReporter* error_reporter,
   } else {
     // TODO(b/157480169): We should either return kTfLiteError or fill in some
     // reasonable defaults in the params struct. We are not doing so until we
-    // better undertand the ramifications of changing the legacy behavior.
+    // better understand the ramifications of changing the legacy behavior.
   }
 
   *builtin_data = params.release();
@@ -1237,7 +1241,7 @@ TfLiteStatus ParseCallOnce(const Operator* op, ErrorReporter* error_reporter,
   } else {
     // TODO(b/157480169): We should either return kTfLiteError or fill in some
     // reasonable defaults in the params struct. We are not doing so until we
-    // better undertand the ramifications of changing the legacy behavior.
+    // better understand the ramifications of changing the legacy behavior.
   }
 
   *builtin_data = params.release();
@@ -1295,7 +1299,7 @@ TfLiteStatus ParseConcatenation(const Operator* op,
   } else {
     // TODO(b/157480169): We should either return kTfLiteError or fill in some
     // reasonable defaults in the params struct. We are not doing so until we
-    // better undertand the ramifications of changing the legacy behavior.
+    // better understand the ramifications of changing the legacy behavior.
   }
 
   *builtin_data = params.release();
@@ -1329,7 +1333,7 @@ TfLiteStatus ParseConv2D(const Operator* op, ErrorReporter* error_reporter,
   } else {
     // TODO(b/157480169): We should either return kTfLiteError or fill in some
     // reasonable defaults in the params struct. We are not doing so until we
-    // better undertand the ramifications of changing the legacy behavior.
+    // better understand the ramifications of changing the legacy behavior.
   }
 
   *builtin_data = params.release();
@@ -1380,7 +1384,7 @@ TfLiteStatus ParseDepthToSpace(const Operator* op,
   } else {
     // TODO(b/157480169): We should either return kTfLiteError or fill in some
     // reasonable defaults in the params struct. We are not doing so until we
-    // better undertand the ramifications of changing the legacy behavior.
+    // better understand the ramifications of changing the legacy behavior.
   }
 
   *builtin_data = params.release();
@@ -1416,7 +1420,7 @@ TfLiteStatus ParseDepthwiseConv2D(const Operator* op,
   } else {
     // TODO(b/157480169): We should either return kTfLiteError or fill in some
     // reasonable defaults in the params struct. We are not doing so until we
-    // better undertand the ramifications of changing the legacy behavior.
+    // better understand the ramifications of changing the legacy behavior.
   }
 
   *builtin_data = params.release();
@@ -1559,7 +1563,7 @@ TfLiteStatus ParseFullyConnected(const Operator* op,
   } else {
     // TODO(b/157480169): We should either return kTfLiteError or fill in some
     // reasonable defaults in the params struct. We are not doing so until we
-    // better undertand the ramifications of changing the legacy behavior.
+    // better understand the ramifications of changing the legacy behavior.
   }
 
   *builtin_data = params.release();
@@ -1636,7 +1640,7 @@ TfLiteStatus ParseIf(const Operator* op, ErrorReporter* error_reporter,
   } else {
     // TODO(b/157480169): We should either return kTfLiteError or fill in some
     // reasonable defaults in the params struct. We are not doing so until we
-    // better undertand the ramifications of changing the legacy behavior.
+    // better understand the ramifications of changing the legacy behavior.
   }
 
   *builtin_data = params.release();
@@ -1663,7 +1667,7 @@ TfLiteStatus ParseL2Normalization(const Operator* op,
   } else {
     // TODO(b/157480169): We should either return kTfLiteError or fill in some
     // reasonable defaults in the params struct. We are not doing so until we
-    // better undertand the ramifications of changing the legacy behavior.
+    // better understand the ramifications of changing the legacy behavior.
   }
 
   *builtin_data = params.release();
@@ -1819,7 +1823,7 @@ TfLiteStatus ParseMirrorPad(const Operator* op, ErrorReporter* error_reporter,
   } else {
     // TODO(b/157480169): We should either return kTfLiteError or fill in some
     // reasonable defaults in the params struct. We are not doing so until we
-    // better undertand the ramifications of changing the legacy behavior.
+    // better understand the ramifications of changing the legacy behavior.
   }
 
   *builtin_data = params.release();
@@ -1843,7 +1847,7 @@ TfLiteStatus ParseMul(const Operator* op, ErrorReporter* error_reporter,
   } else {
     // TODO(b/157480169): We should either return kTfLiteError or fill in some
     // reasonable defaults in the params struct. We are not doing so until we
-    // better undertand the ramifications of changing the legacy behavior.
+    // better understand the ramifications of changing the legacy behavior.
   }
 
   *builtin_data = params.release();
@@ -1884,7 +1888,7 @@ TfLiteStatus ParsePack(const Operator* op, ErrorReporter* error_reporter,
   } else {
     // TODO(b/157480169): We should either return kTfLiteError or fill in some
     // reasonable defaults in the params struct. We are not doing so until we
-    // better undertand the ramifications of changing the legacy behavior.
+    // better understand the ramifications of changing the legacy behavior.
   }
 
   *builtin_data = params.release();
@@ -1930,7 +1934,7 @@ TfLiteStatus ParsePool(const Operator* op, ErrorReporter* error_reporter,
   } else {
     // TODO(b/157480169): We should either return kTfLiteError or fill in some
     // reasonable defaults in the params struct. We are not doing so until we
-    // better undertand the ramifications of changing the legacy behavior.
+    // better understand the ramifications of changing the legacy behavior.
   }
 
   *builtin_data = params.release();
@@ -1988,7 +1992,7 @@ TfLiteStatus ParseReducer(const Operator* op, ErrorReporter* error_reporter,
   } else {
     // TODO(b/157480169): We should either return kTfLiteError or fill in some
     // reasonable defaults in the params struct. We are not doing so until we
-    // better undertand the ramifications of changing the legacy behavior.
+    // better understand the ramifications of changing the legacy behavior.
   }
 
   *builtin_data = params.release();
@@ -2041,7 +2045,7 @@ TfLiteStatus ParseReshape(const Operator* op, ErrorReporter* error_reporter,
   } else {
     // TODO(b/157480169): We should either return kTfLiteError or fill in some
     // reasonable defaults in the params struct. We are not doing so until we
-    // better undertand the ramifications of changing the legacy behavior.
+    // better understand the ramifications of changing the legacy behavior.
   }
 
   *builtin_data = params.release();
@@ -2237,7 +2241,7 @@ TfLiteStatus ParseStablehloScatter(const Operator* op,
   } else {
     // TODO(b/157480169): We should either return kTfLiteError or fill in some
     // reasonable defaults in the params struct. We are not doing so until we
-    // better undertand the ramifications of changing the legacy behavior.
+    // better understand the ramifications of changing the legacy behavior.
   }
   *builtin_data = params.release();
   return kTfLiteOk;
@@ -2262,7 +2266,7 @@ TfLiteStatus ParseStablehloRngBitGenerator(const Operator* op,
   } else {
     // TODO(b/157480169): We should either return kTfLiteError or fill in some
     // reasonable defaults in the params struct. We are not doing so until we
-    // better undertand the ramifications of changing the legacy behavior.
+    // better understand the ramifications of changing the legacy behavior.
   }
 
   *builtin_data = params.release();
@@ -2318,7 +2322,7 @@ TfLiteStatus ParseStablehloGather(const Operator* op,
   } else {
     // TODO(b/157480169): We should either return kTfLiteError or fill in some
     // reasonable defaults in the params struct. We are not doing so until we
-    // better undertand the ramifications of changing the legacy behavior.
+    // better understand the ramifications of changing the legacy behavior.
   }
 
   *builtin_data = params.release();
@@ -2418,7 +2422,7 @@ TfLiteStatus ParseShape(const Operator* op, ErrorReporter* error_reporter,
   } else {
     // TODO(b/157480169): We should either return kTfLiteError or fill in some
     // reasonable defaults in the params struct. We are not doing so until we
-    // better undertand the ramifications of changing the legacy behavior.
+    // better understand the ramifications of changing the legacy behavior.
   }
 
   *builtin_data = params.release();
@@ -2459,7 +2463,7 @@ TfLiteStatus ParseSoftmax(const Operator* op, ErrorReporter* error_reporter,
   } else {
     // TODO(b/157480169): We should either return kTfLiteError or fill in some
     // reasonable defaults in the params struct. We are not doing so until we
-    // better undertand the ramifications of changing the legacy behavior.
+    // better understand the ramifications of changing the legacy behavior.
   }
 
   *builtin_data = params.release();
@@ -2492,7 +2496,7 @@ TfLiteStatus ParseSpaceToDepth(const Operator* op,
   } else {
     // TODO(b/157480169): We should either return kTfLiteError or fill in some
     // reasonable defaults in the params struct. We are not doing so until we
-    // better undertand the ramifications of changing the legacy behavior.
+    // better understand the ramifications of changing the legacy behavior.
   }
 
   *builtin_data = params.release();
@@ -2516,7 +2520,7 @@ TfLiteStatus ParseSplit(const Operator* op, ErrorReporter* error_reporter,
   } else {
     // TODO(b/157480169): We should either return kTfLiteError or fill in some
     // reasonable defaults in the params struct. We are not doing so until we
-    // better undertand the ramifications of changing the legacy behavior.
+    // better understand the ramifications of changing the legacy behavior.
   }
 
   *builtin_data = params.release();
@@ -2540,7 +2544,7 @@ TfLiteStatus ParseSplitV(const Operator* op, ErrorReporter* error_reporter,
   } else {
     // TODO(b/157480169): We should either return kTfLiteError or fill in some
     // reasonable defaults in the params struct. We are not doing so until we
-    // better undertand the ramifications of changing the legacy behavior.
+    // better understand the ramifications of changing the legacy behavior.
   }
 
   *builtin_data = params.release();
@@ -2598,7 +2602,7 @@ TfLiteStatus ParseSqueeze(const Operator* op, ErrorReporter* error_reporter,
   } else {
     // TODO(b/157480169): We should either return kTfLiteError or fill in some
     // reasonable defaults in the params struct. We are not doing so until we
-    // better undertand the ramifications of changing the legacy behavior.
+    // better understand the ramifications of changing the legacy behavior.
   }
 
   *builtin_data = params.release();
@@ -2654,7 +2658,7 @@ TfLiteStatus ParseStridedSlice(const Operator* op,
   } else {
     // TODO(b/157480169): We should either return kTfLiteError or fill in some
     // reasonable defaults in the params struct. We are not doing so until we
-    // better undertand the ramifications of changing the legacy behavior.
+    // better understand the ramifications of changing the legacy behavior.
   }
 
   *builtin_data = params.release();
@@ -2679,7 +2683,7 @@ TfLiteStatus ParseSub(const Operator* op, ErrorReporter* error_reporter,
   } else {
     // TODO(b/157480169): We should either return kTfLiteError or fill in some
     // reasonable defaults in the params struct. We are not doing so until we
-    // better undertand the ramifications of changing the legacy behavior.
+    // better understand the ramifications of changing the legacy behavior.
   }
 
   *builtin_data = params.release();
@@ -2706,7 +2710,7 @@ TfLiteStatus ParseSvdf(const Operator* op, ErrorReporter* error_reporter,
   } else {
     // TODO(b/157480169): We should either return kTfLiteError or fill in some
     // reasonable defaults in the params struct. We are not doing so until we
-    // better undertand the ramifications of changing the legacy behavior.
+    // better understand the ramifications of changing the legacy behavior.
   }
 
   *builtin_data = params.release();
@@ -2755,7 +2759,7 @@ TfLiteStatus ParseTransposeConv(const Operator* op,
   } else {
     // TODO(b/157480169): We should either return kTfLiteError or fill in some
     // reasonable defaults in the params struct. We are not doing so until we
-    // better undertand the ramifications of changing the legacy behavior.
+    // better understand the ramifications of changing the legacy behavior.
   }
   *builtin_data = params.release();
   return kTfLiteOk;
@@ -2779,7 +2783,7 @@ TfLiteStatus ParseUnpack(const Operator* op, ErrorReporter* error_reporter,
   } else {
     // TODO(b/157480169): We should either return kTfLiteError or fill in some
     // reasonable defaults in the params struct. We are not doing so until we
-    // better undertand the ramifications of changing the legacy behavior.
+    // better understand the ramifications of changing the legacy behavior.
   }
 
   *builtin_data = params.release();
@@ -2810,7 +2814,7 @@ TfLiteStatus ParseVarHandle(const Operator* op, ErrorReporter* error_reporter,
   } else {
     // TODO(b/157480169): We should either return kTfLiteError or fill in some
     // reasonable defaults in the params struct. We are not doing so until we
-    // better undertand the ramifications of changing the legacy behavior.
+    // better understand the ramifications of changing the legacy behavior.
   }
 
   *builtin_data = params.release();
@@ -2835,7 +2839,7 @@ TfLiteStatus ParseWhile(const Operator* op, ErrorReporter* error_reporter,
   } else {
     // TODO(b/157480169): We should either return kTfLiteError or fill in some
     // reasonable defaults in the params struct. We are not doing so until we
-    // better undertand the ramifications of changing the legacy behavior.
+    // better understand the ramifications of changing the legacy behavior.
   }
 
   *builtin_data = params.release();

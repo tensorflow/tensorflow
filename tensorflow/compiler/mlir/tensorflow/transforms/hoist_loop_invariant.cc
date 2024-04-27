@@ -23,6 +23,7 @@ limitations under the License.
 #include "mlir/Interfaces/SideEffectInterfaces.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Transforms/LoopInvariantCodeMotionUtils.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -135,7 +136,7 @@ void HoistLoopInvariantPass::runOnOperation() {
 
   // Skip the pass if the function inputs contain any resource.
   for (const auto &type : func.getArgumentTypes()) {
-    if (getElementTypeOrSelf(type).isa<ResourceType>()) return;
+    if (mlir::isa<ResourceType>(getElementTypeOrSelf(type))) return;
   }
 
   llvm::DenseSet<ResourceHandle> read_only_vars = GetReadOnlyVariables(func);

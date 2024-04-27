@@ -1,4 +1,4 @@
-# Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2021 The OpenXLA Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -29,11 +29,20 @@ class PyTreeRegistry:
       tree: Any,
       leaf_predicate: Optional[Callable[[Any], bool]] = ...,
   ) -> Tuple[List[Any], PyTreeDef]: ...
+  def flatten_one_level(
+      self, tree: Any
+  ) -> Optional[Tuple[Iterable[Any], Any]]: ...
   def register_node(
       self,
       __type: Type[_T],
       to_iterable: Callable[[_T], Tuple[_Children, _AuxData]],
       from_iterable: Callable[[_AuxData, _Children], _T]) -> Any: ...
+  def register_dataclass_node(
+      self,
+      __type: Type[_T],
+      meta_fields: List[str],
+      data_fields: List[str]) -> Any: ...
+
 
 def default_registry() -> PyTreeRegistry: ...
 
@@ -53,7 +62,6 @@ class PyTreeDef:
   def children(self) -> List[PyTreeDef]: ...
   @staticmethod
   def make_from_node_data_and_children(
-      self,
       registry: PyTreeRegistry,
       node_data: Optional[Tuple[Type, Any]],
       children: Iterable[PyTreeDef],
@@ -71,10 +79,9 @@ class PyTreeDef:
   def serialize_using_proto(self) -> bytes: ...
   @staticmethod
   def deserialize_using_proto(
-      self, registry: PyTreeRegistry, data: bytes
+      registry: PyTreeRegistry, data: bytes
   ) -> PyTreeDef:
     ...
-
 
 _Children = TypeVar("_Children", bound=Iterable[Any])
 _AuxData = TypeVar("_AuxData", bound=Hashable)

@@ -155,14 +155,14 @@ class OpOutputs {
 
   int TfLiteIndex(int i) const { return outputs_[i]; }
 
-  tensorflow::gtl::InlinedVector<tensorflow::Tensor, 2>* GetTensors() {
+  absl::InlinedVector<tensorflow::Tensor, 2UL>* GetTensors() {
     return &vector_;
   }
 
  private:
   std::vector<int> outputs_;
   std::vector<bool> subgraph_outputs_;
-  tensorflow::gtl::InlinedVector<tensorflow::Tensor, 2> vector_;
+  absl::InlinedVector<tensorflow::Tensor, 2UL> vector_;
 };
 
 // This struct holds information such as tensor lifecycle and BufferMap which
@@ -237,7 +237,17 @@ class OpNode {
         tensorflow::OpRegistry::Global()->LookUp(nodedef_.op(), &op_reg_data_));
     AddDefaultsToNodeDef(op_reg_data_->op_def, &nodedef_);
 
-    return ::tensorflow::OkStatus();
+    // Force disable the use of inter op parallelism to prevent deadlocks in
+    // Tensorflow Function Library Runtime when only one thread is allowed.
+    // This changes the threadpool that is used by TF's data ops by passing it
+    // to the CapturedFunction instantiate function.
+    //
+    // It should be ok to remove this when/if the tensorflow::Executor::Run
+    // function is changed not to call the RunAsync function and wait on its
+    // completion. See b/304799442 for more context.
+    (*nodedef_.mutable_attr())["use_inter_op_parallelism"].set_b(false);
+
+    return absl::OkStatus();
   }
 
   tensorflow::Status BuildOpKernelRunner(
@@ -248,12 +258,12 @@ class OpNode {
                             name_, inputs_.Size(), /*attr_builder=*/
                             [this](tensorflow::AttrValueMap* attr_value_map) {
                               *attr_value_map = nodedef_.attr();
-                              return ::tensorflow::OkStatus();
+                              return absl::OkStatus();
                             },
                             *eager_context->pflr(),
                             eager_context->local_device_mgr()->HostCPU()));
 
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   tensorflow::Status BuildOpKernelInputs(
@@ -288,7 +298,7 @@ class OpNode {
       run_state->input_tf_tensor_values[i].tensor =
           &run_state->input_tf_tensors[i];
     }
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   // Returns whether an output tensor should be preserved in the buffer map by
@@ -365,7 +375,7 @@ class OpNode {
         }
       }
     }
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
  private:

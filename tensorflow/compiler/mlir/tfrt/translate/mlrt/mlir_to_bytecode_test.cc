@@ -21,6 +21,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/core/tfrt/mlrt/bytecode/executable.h"
 #include "tensorflow/core/tfrt/mlrt/interpreter/attribute_span.h"
 #include "tsl/platform/resource_loader.h"
@@ -299,13 +300,13 @@ class CustomDense {
 
 absl::StatusOr<std::string> EncodeCustomDense(const ModuleEmitterContext&,
                                               mlir::Attribute attr) {
-  auto dense_int_attr = attr.dyn_cast<mlir::DenseIntElementsAttr>();
+  auto dense_int_attr = mlir::dyn_cast<mlir::DenseIntElementsAttr>(attr);
   if (!dense_int_attr)
     return absl::InvalidArgumentError(
         "The element of the custom dense attribute must be an integer.");
 
-  if (dense_int_attr.getElementType().cast<mlir::IntegerType>().getWidth() !=
-      32) {
+  if (mlir::cast<mlir::IntegerType>(dense_int_attr.getElementType())
+          .getWidth() != 32) {
     return absl::InvalidArgumentError(
         "The element of the custom dense attribute must be an i32 integer.");
   }

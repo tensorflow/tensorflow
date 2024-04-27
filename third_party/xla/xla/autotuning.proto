@@ -82,6 +82,7 @@ message AutotuneResult {
     int64 split_k = 4;
     int64 num_stages = 5;
     int64 num_warps = 6;
+    int64 num_ctas = 7;
   }
 
   int64 scratch_bytes = 8;

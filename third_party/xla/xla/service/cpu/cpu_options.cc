@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -26,6 +26,8 @@ const char* const kXlaForceEnableExperimentalLlvmIrGemm =
     "xla_force_enable_experimental_llvm_ir_gemm";
 const char* const kLlvmIrGemmTileSize = "xla_llvm_ir_gemm_tile_size";
 const char* const kDisableSlpVectorizer = "xla_cpu_disable_slp_vectorizer";
+const char* const kXlaCpuExperimentalOverridePipeline =
+    "xla_cpu_experimental_override_pipeline";
 
 }  // namespace
 
@@ -103,6 +105,17 @@ std::optional<std::tuple<int64_t, int64_t, int64_t>> LlvmIrGemmTileSize(
 
   return std::tuple<int64_t, int64_t, int64_t>(tile_size_m, tile_size_k,
                                                tile_size_n_in_vector_width);
+}
+
+std::optional<std::string> ExperimentalOverriddenPipeline(
+    const HloModuleConfig& config) {
+  const auto& extra_options_map =
+      config.debug_options().xla_backend_extra_options();
+  auto it = extra_options_map.find(kXlaCpuExperimentalOverridePipeline);
+  if (it == extra_options_map.end()) {
+    return std::nullopt;
+  }
+  return it->second;
 }
 
 }  // namespace options

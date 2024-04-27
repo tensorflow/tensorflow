@@ -70,7 +70,7 @@ class DatasetIterator
         iterator_ctx_.get(), nullptr, "LookupTable", &iterator_));
     core::ScopedUnref unref(finalized_dataset);
     Next();
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   void Next() override {
@@ -132,7 +132,7 @@ std::unique_ptr<InitializerSerializer> MakeDatasetInitializerSerializer(
               "Failed to create InitializeTableFromDataset op: ",
               builder->opts().StatusToString());
         }
-        return OkStatus();
+        return absl::OkStatus();
       },
       /*cleanup=*/std::move(unref_dataset));
 }

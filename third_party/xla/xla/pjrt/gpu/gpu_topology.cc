@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -24,12 +24,14 @@ std::unique_ptr<const GpuTopology> GpuTopology::FromProto(
     const GpuTopologyProto& gpu_topology_proto) {
   return std::make_unique<GpuTopology>(
       std::vector<int>{gpu_topology_proto.device_ids().begin(),
-                       gpu_topology_proto.device_ids().end()});
+                       gpu_topology_proto.device_ids().end()},
+      gpu_topology_proto.platform_version());
 }
 
 GpuTopologyProto GpuTopology::ToProto() const {
   GpuTopologyProto proto;
   proto.mutable_device_ids()->Add(device_ids().begin(), device_ids().end());
+  proto.set_platform_version(platform_version());
   return proto;
 }
 

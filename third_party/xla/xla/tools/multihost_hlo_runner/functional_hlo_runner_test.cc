@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -211,7 +211,7 @@ TEST_F(FunctionalHloRunnerTest, CanCompileWithoutHavingEnoughGpus) {
     std::string after_opt_hlo;
     TF_ASSERT_OK(
         tsl::ReadFileToString(env, after_opt_hlo_paths[0], &after_opt_hlo));
-    StatusOr<bool> file_check_result = RunFileCheck(after_opt_hlo, R"(
+    absl::StatusOr<bool> file_check_result = RunFileCheck(after_opt_hlo, R"(
       // CHECK: param = f32[16,1]{1,0}
       // CHECK: add = f32[16,1]{1,0}
     )");

@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <utility>
 
+#include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
 namespace tsl {
@@ -28,7 +29,7 @@ TEST(ProfilerLockTest, DefaultConstructorCreatesInactiveInstance) {
 }
 
 TEST(ProfilerLockTest, AcquireAndReleaseExplicitly) {
-  StatusOr<ProfilerLock> profiler_lock = ProfilerLock::Acquire();
+  absl::StatusOr<ProfilerLock> profiler_lock = ProfilerLock::Acquire();
   ASSERT_TRUE(profiler_lock.ok());
   EXPECT_TRUE(profiler_lock->Active());
   profiler_lock->ReleaseIfActive();
@@ -36,14 +37,14 @@ TEST(ProfilerLockTest, AcquireAndReleaseExplicitly) {
 }
 
 TEST(ProfilerLockTest, AcquireAndReleaseOnDestruction) {
-  StatusOr<ProfilerLock> profiler_lock = ProfilerLock::Acquire();
+  absl::StatusOr<ProfilerLock> profiler_lock = ProfilerLock::Acquire();
   ASSERT_TRUE(profiler_lock.ok());
   EXPECT_TRUE(profiler_lock->Active());
 }
 
 TEST(ProfilerLockTest, ReacquireWithoutReleaseFails) {
-  StatusOr<ProfilerLock> profiler_lock_1 = ProfilerLock::Acquire();
-  StatusOr<ProfilerLock> profiler_lock_2 = ProfilerLock::Acquire();
+  absl::StatusOr<ProfilerLock> profiler_lock_1 = ProfilerLock::Acquire();
+  absl::StatusOr<ProfilerLock> profiler_lock_2 = ProfilerLock::Acquire();
   ASSERT_TRUE(profiler_lock_1.ok());
   EXPECT_TRUE(profiler_lock_1->Active());
   EXPECT_FALSE(profiler_lock_2.ok());
@@ -61,7 +62,7 @@ TEST(ProfilerLockTest, ReacquireAfterReleaseSucceeds) {
 }
 
 TEST(ProfilerLockTest, InactiveAfterMove) {
-  StatusOr<ProfilerLock> profiler_lock_1 = ProfilerLock::Acquire();
+  absl::StatusOr<ProfilerLock> profiler_lock_1 = ProfilerLock::Acquire();
   ASSERT_TRUE(profiler_lock_1.ok());
   ASSERT_TRUE(profiler_lock_1->Active());
   ProfilerLock profiler_lock_2 = std::move(*profiler_lock_1);

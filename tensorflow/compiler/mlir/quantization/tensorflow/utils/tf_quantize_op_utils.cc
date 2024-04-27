@@ -16,14 +16,15 @@ limitations under the License.
 
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 
 namespace mlir {
 namespace quant {
 
 UnrankedTensorType CreateUnknownShapeFromElementType(Type tensor_type) {
-  if (!tensor_type.cast<TensorType>()) return UnrankedTensorType();
+  if (!mlir::cast<TensorType>(tensor_type)) return UnrankedTensorType();
   return UnrankedTensorType::get(
-      tensor_type.cast<TensorType>().getElementType());
+      mlir::cast<TensorType>(tensor_type).getElementType());
 }
 
 }  // namespace quant

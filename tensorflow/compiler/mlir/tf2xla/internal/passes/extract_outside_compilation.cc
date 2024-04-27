@@ -386,7 +386,7 @@ llvm::SmallSetVector<Value, 4> GetStaticExternalOperands(
           }
           continue;
         }
-        auto block_arg = v.cast<BlockArgument>();
+        auto block_arg = mlir::cast<BlockArgument>(v);
         if (block_arg.getParentRegion() == op->getParentRegion())
           external_values.insert(v);
       }
@@ -475,7 +475,7 @@ void GetExternalOutputs(const llvm::SmallSetVector<Operation*, 4>& cluster_ops,
 LogicalResult GetShardShapedType(Operation* context_op,
                                  int num_cores_per_replica, Type full_type,
                                  Type& shard_type) {
-  RankedTensorType ranked_type = full_type.dyn_cast<RankedTensorType>();
+  RankedTensorType ranked_type = mlir::dyn_cast<RankedTensorType>(full_type);
   if (!ranked_type)
     return context_op->emitOpError()
            << "A map_outside_compilation op's input and output types must be "
@@ -587,7 +587,8 @@ LogicalResult CreateHostComputeMap(
   // Convert MANUAL sharded outputs to split sharded outputs.
   for (auto [full_type, out] :
        llvm::zip(full_output_types, host_compute.getResults())) {
-    RankedTensorType full_type_ranked = full_type.dyn_cast<RankedTensorType>();
+    RankedTensorType full_type_ranked =
+        mlir::dyn_cast<RankedTensorType>(full_type);
     if (!full_type_ranked)
       return original_op->emitOpError()
              << "map_outside_compilation must have ranked outputs";

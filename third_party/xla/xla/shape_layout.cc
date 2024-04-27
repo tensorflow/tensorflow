@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -89,8 +89,14 @@ const Layout& ShapeLayout::layout() const {
 }
 
 void ShapeLayout::Clear() { LayoutUtil::ClearLayout(&shape_); }
+void ShapeLayout::Clear(ShapeIndexView shape_index) {
+  ShapeUtil::GetMutableSubshape(&shape_, shape_index)->clear_layout();
+}
 
 bool ShapeLayout::LayoutIsSet() const { return LayoutUtil::HasLayout(shape_); }
+bool ShapeLayout::AnyLayoutIsSet() const {
+  return LayoutUtil::HasAnyLayout(shape_);
+}
 
 void ShapeLayout::ResetLayout(const Layout& layout) {
   DCHECK(!shape_.IsTuple());

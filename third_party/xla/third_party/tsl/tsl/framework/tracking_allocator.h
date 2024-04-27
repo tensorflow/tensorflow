@@ -88,9 +88,9 @@ class TrackingAllocator : public Allocator {
   // were allocated by this wrapper and have not yet been
   // deallocated. After this call completes and all allocated pointers
   // have been deallocated the wrapper will delete itself.
-  gtl::InlinedVector<AllocRecord, 4> GetRecordsAndUnRef();
+  absl::InlinedVector<AllocRecord, 4UL> GetRecordsAndUnRef();
   // Returns a copy of allocation records collected so far.
-  gtl::InlinedVector<AllocRecord, 4> GetCurrentRecords();
+  absl::InlinedVector<AllocRecord, 4UL> GetCurrentRecords();
 
  protected:
   ~TrackingAllocator() override {}
@@ -118,7 +118,7 @@ class TrackingAllocator : public Allocator {
   // this allocator.
   size_t total_bytes_ TF_GUARDED_BY(mu_);
 
-  gtl::InlinedVector<AllocRecord, 4> allocations_ TF_GUARDED_BY(mu_);
+  absl::InlinedVector<AllocRecord, 4UL> allocations_ TF_GUARDED_BY(mu_);
 
   // Track allocations locally if requested in the constructor and the
   // underlying allocator doesn't already do it for us.

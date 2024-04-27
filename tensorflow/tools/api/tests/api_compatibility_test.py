@@ -96,36 +96,9 @@ _TEST_README_FILE = resource_loader.get_path_to_datafile('README.txt')
 _UPDATE_WARNING_FILE = resource_loader.get_path_to_datafile(
     'API_UPDATE_WARNING.txt')
 
-_NON_CORE_PACKAGES = ['estimator', 'keras']
+_NON_CORE_PACKAGES = ['keras']
 _V1_APIS_FROM_KERAS = ['layers', 'nn.rnn_cell']
 _V2_APIS_FROM_KERAS = ['initializers', 'losses', 'metrics', 'optimizers']
-
-_PY311_INT_ENUM_METHODS = [
-    ('__init__', "args=['self'], varargs=args, keywords=kwds, defaults=None"),
-    ('as_integer_ratio', None),
-    ('bit_count', None),
-    ('bit_length', None),
-    ('conjugate', None),
-    ('from_bytes', None),
-    ('to_bytes', None),
-]
-_PY311_INT_ENUM_MEMBERS = [
-    ('denominator', "<type 'getset_descriptor'>"),
-    ('imag', "<type 'getset_descriptor'>"),
-    ('numerator', "<type 'getset_descriptor'>"),
-    ('real', "<type 'getset_descriptor'>"),
-]
-# pylint: disable=line-too-long
-_PY311_UPDATED_MEMBER_TYPES = {
-    "<class 'enum.EnumMeta'>": "<class 'enum.EnumType'>",
-}
-# pylint: enable=line-too-long
-
-# TODO(annarev): remove this once we test with newer version of
-# estimator that actually has compat v1 version.
-if not hasattr(tf.compat.v1, 'estimator'):
-  tf.compat.v1.estimator = tf.estimator
-  tf.compat.v2.estimator = tf.estimator
 
 
 def _KeyToFilePath(key, api_version):
@@ -237,50 +210,6 @@ def _GetTFNumpyGoldenPattern(api_version):
   return os.path.join(resource_loader.get_root_dir_with_all_resources(),
                       _KeyToFilePath('tensorflow.experimental.numpy*',
                                      api_version))
-
-
-def _UpdateExpectedDict(expected_dict):
-  """Update the expected dictionary of TFAPIObject protos.
-
-  Given an expected dictionary of TFAPIObject protos, update it such that it
-  conforms to the Python 3.11 API.
-
-  Args:
-    expected_dict: a dict of TFAPIObject protos constructed from golden files.
-
-  Returns:
-    A modified expected_dict that conforms to the Python 3.11 API.
-  """
-  for key in expected_dict:
-    module_or_class = None
-    if expected_dict[key].HasField('tf_module'):
-      module_or_class = expected_dict[key].tf_module
-    elif expected_dict[key].HasField('tf_class'):
-      module_or_class = expected_dict[key].tf_class
-      instances = ' '.join(module_or_class.is_instance)
-      if 'exceptions' in instances or 'TypeError' in instances:
-        # BaseException has a new method, add_note()
-        module_or_class.member_method.add(name='add_note')
-      elif (
-          'AutoShardPolicy' in instances
-          or 'ShardingPolicy' in instances
-          or 'PaddingSpec' in instances
-      ):
-        # For classes that inherit from enum.IntEnum, the TFAPIObject protos
-        # constructed using the TF package have these additional members and
-        # methods. So we need to add them to the golden files as well.
-        for member_name, member_type in _PY311_INT_ENUM_MEMBERS:
-          module_or_class.member.add(name=member_name, mtype=member_type)
-        for method_name, argspec in _PY311_INT_ENUM_METHODS:
-          module_or_class.member_method.add(name=method_name, argspec=argspec)
-
-    if module_or_class is not None:
-      # Update member types that have changed in Python 3.11
-      for member in module_or_class.member:
-        if member.mtype in _PY311_UPDATED_MEMBER_TYPES:
-          member.mtype = _PY311_UPDATED_MEMBER_TYPES[member.mtype]
-
-  return expected_dict
 
 
 class ApiCompatibilityTest(test.TestCase):
@@ -486,9 +415,6 @@ class ApiCompatibilityTest(test.TestCase):
         api_version=api_version)
 
   def testAPIBackwardsCompatibility(self):
-    if sys.version_info.major == 3 and sys.version_info.minor in (11, 12):
-      # TODO(b/264951243)
-      self.skipTest('Not working in Python 3.11+')
     api_version = 1
     if hasattr(tf, '_major_api_version') and tf._major_api_version == 2:
       api_version = 2
@@ -517,9 +443,6 @@ class ApiCompatibilityTest(test.TestCase):
     self.assertTrue(api_version == 1 or not hasattr(tf, 'contrib'))
 
   def testAPIBackwardsCompatibilityV1(self):
-    if sys.version_info.major == 3 and sys.version_info.minor in (11, 12):
-      # TODO(b/264951243)
-      self.skipTest('Not working in Python 3.11+')
     api_version = 1
     golden_file_patterns = os.path.join(
         resource_loader.get_root_dir_with_all_resources(),
@@ -535,9 +458,6 @@ class ApiCompatibilityTest(test.TestCase):
         omit_golden_symbols_map={'tensorflow': ['pywrap_tensorflow']})
 
   def testAPIBackwardsCompatibilityV2(self):
-    if sys.version_info.major == 3 and sys.version_info.minor in (11, 12):
-      # TODO(b/264951243)
-      self.skipTest('Not working in Python 3.11+')
     api_version = 2
     golden_file_patterns = [
         os.path.join(resource_loader.get_root_dir_with_all_resources(),
@@ -561,8 +481,6 @@ if __name__ == '__main__':
   parser = argparse.ArgumentParser()
   parser.add_argument(
       '--update_goldens', type=bool, default=False, help=_UPDATE_GOLDENS_HELP)
-  # TODO(mikecase): Create Estimator's own API compatibility test or
-  # a more general API compatibility test for use for TF components.
   parser.add_argument(
       '--only_test_core_api',
       type=bool,

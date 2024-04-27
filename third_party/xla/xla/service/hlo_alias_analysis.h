@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -39,7 +39,7 @@ class HloAliasAnalysis {
  public:
   // The callgraph of the given HloModule must be flattened
   // (xla::FlattenCallGraph) prior to running the analysis.
-  static StatusOr<std::unique_ptr<HloAliasAnalysis>> Run(
+  static absl::StatusOr<std::unique_ptr<HloAliasAnalysis>> Run(
       const HloModule* module,
       const HloDataflowAnalysis::CanShareBuffer& can_share_buffer = nullptr);
 

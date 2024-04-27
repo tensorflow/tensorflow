@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -44,6 +44,7 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_sharding_util.h"
 #include "xla/protobuf_util.h"
 #include "xla/service/dot_as_convolution_util.h"
+#include "xla/service/host_memory_offload_annotations.h"
 #include "xla/shape.h"
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
@@ -73,31 +74,49 @@ bool IsSpatiallyPartitioned(const HloInstruction* hlo) {
   return hlo->has_sharding() && IsSpatiallyPartitioned(hlo->sharding());
 }
 
-// We think manual shardings are strictly better than tile maximal shardings.
+// Returns
+// - 1, iff `lhs` is strictly better than `rhs`.
+// - 2, iff `rhs` is strictly better than `lhs`.
+// - 0 or 3, otherwise.
+//
+// Notes:
+// - We think manual shardings are strictly better than tile maximal shardings.
+// - For tuples we consider lhs to have a better sharding if none of the
+//   elements are worse and at least one element is better then in rhs
+//   sharding.
+int MaskTupleShardingStrictlyBetter(const HloSharding& lhs,
+                                    const HloSharding& rhs) {
+  DCHECK(lhs.IsTuple());
+  DCHECK(rhs.IsTuple());
+  const auto& lhs_shardings = lhs.tuple_elements();
+  const auto& rhs_shardings = rhs.tuple_elements();
+  CHECK_EQ(lhs_shardings.size(), rhs_shardings.size());
+  int mask = 0;
+  for (int64_t i = 0; i < lhs_shardings.size(); ++i) {
+    const auto& lhs_shard = lhs_shardings[i];
+    const auto& rhs_shard = rhs_shardings[i];
+    CHECK_EQ(lhs_shard.IsTuple(), rhs_shard.IsTuple());
+    if (lhs_shard.IsTuple()) {
+      mask |= MaskTupleShardingStrictlyBetter(lhs_shard, rhs_shard);
+    } else {
+      if (lhs_shard.IsManualLeaf() && rhs_shard.IsTileMaximalLeaf()) {
+        mask |= 1;
+      }
+      if (rhs_shard.IsManualLeaf() && lhs_shard.IsTileMaximalLeaf()) {
+        mask |= 2;
+      }
+    }
+    if (mask == 3) break;
+  }
+  return mask;
+}
+
 bool IsShardingStrictlyBetter(const HloSharding& lhs, const HloSharding& rhs) {
   CHECK_EQ(lhs.IsTuple(), rhs.IsTuple()) << lhs << " <> " << rhs;
   if (lhs.IsTuple()) {
-    // For tuples we consider lhs to have a better sharding if none of the
-    // elements are worse and at least one element is better then in rhs
-    // sharding.
-    const auto& lhs_shardings = lhs.tuple_elements();
-    const auto& rhs_shardings = rhs.tuple_elements();
-    CHECK_EQ(lhs_shardings.size(), rhs_shardings.size());
-    bool is_better = false;
-    for (int64_t i = 0; i < lhs_shardings.size(); ++i) {
-      if (IsShardingStrictlyBetter(rhs_shardings[i], lhs_shardings[i])) {
-        return false;
-      }
-      if (IsShardingStrictlyBetter(lhs_shardings[i], rhs_shardings[i])) {
-        is_better = true;
-      }
-    }
-    return is_better;
+    return MaskTupleShardingStrictlyBetter(lhs, rhs) == 1;
   }
-  if (lhs.IsManual() && rhs.IsTileMaximal()) {
-    return true;
-  }
-  return false;
+  return lhs.IsManualLeaf() && rhs.IsTileMaximalLeaf();
 }
 
 // Implementation for returning a improved sharding from another sharding.
@@ -107,15 +126,15 @@ std::optional<HloSharding> ReturnImprovedShardingImpl(
     bool allow_aggressive_resharding = false) {
   // Always allow improve the sharding if it's straightly better.
   if (to_improved != nullptr && IsShardingStrictlyBetter(from, *to_improved)) {
-    return from;
+    return std::move(from);
   }
   // We don't want to propagate tile maximal shardings.
   if (!IsSpatiallyPartitioned(from)) {
     return std::nullopt;
   }
-  // Any sharding is better then no sharding.
+  // Any sharding is better than no sharding.
   if (to_improved == nullptr) {
-    return from;
+    return std::move(from);
   }
   // We don't want to propagate manual shardings.
   if (from.IsManual()) {
@@ -137,7 +156,7 @@ std::optional<HloSharding> ReturnImprovedShardingImpl(
         return std::nullopt;
       }
     }
-    return from;
+    return std::move(from);
   }
   return std::nullopt;
 }
@@ -225,7 +244,7 @@ bool MaybeImproveInstructionSubSharding(
 }
 
 // We consider a convolution kernel to be small iff it is smaller along all
-// spatial dimensions then the output of the convolution. The rational is that
+// spatial dimensions than the output of the convolution. The rational is that
 // we can either shard the kernel or the output and we want to shard the larger
 // one for better efficiency.
 bool IsConvolutionKernelSmall(const HloInstruction* instruction) {
@@ -259,9 +278,12 @@ bool IsPassthroughCustomOps(const HloInstruction* hlo) {
       hlo->operand(0)->shape().rank() != hlo->shape().rank()) {
     return false;
   }
-  return hlo->IsCustomCall({"ResizeNearest", "ResizeBilinear",
-                            "ResizeNearestGrad", "ResizeBilinearGrad",
-                            "Cholesky"});
+
+  return hlo->IsCustomCall(
+      {"ResizeNearest", "ResizeBilinear", "ResizeNearestGrad",
+       "ResizeBilinearGrad", "Cholesky",
+       host_memory_offload_annotations::kMoveToDeviceCustomCallTarget,
+       host_memory_offload_annotations::kMoveToHostCustomCallTarget});
 }
 
 // Return the operand which is the most suitable for determining the sharding
@@ -303,8 +325,10 @@ const HloInstruction* PickRepresentativeOperand(
     case HloOpcode::kAllReduce:
     case HloOpcode::kReduceScatter:
     case HloOpcode::kAllToAll:
+    case HloOpcode::kCollectiveBroadcast:
     case HloOpcode::kCollectivePermute:
     case HloOpcode::kDivide:
+    case HloOpcode::kErf:
     case HloOpcode::kExp:
     case HloOpcode::kExpm1:
     case HloOpcode::kFloor:
@@ -522,7 +546,8 @@ std::optional<HloSharding> LookaheadUserSharding(HloInstruction* instr,
     HloInstruction* current = users_chain[i - 1];
     CHECK(user->has_sharding());
     sharding = ShardingPropagation::GetShardingFromUser(
-        *current, *user, INT64_MAX, is_spmd, call_graph);
+        *current, *user, INT64_MAX, is_spmd, call_graph,
+        /*sharding_helper=*/nullptr);
     // We need to set the sharding to the instruction, because
     // GetShardingFromUser() interface uses sharding from the instruction
     // itself. It will be cleared out later.
@@ -693,6 +718,7 @@ bool CanPropagateThroughAtAggressiveLevel(const HloInstruction& inst,
       inst.opcode() != HloOpcode::kGetTupleElement &&
       inst.opcode() != HloOpcode::kWhile &&
       inst.opcode() != HloOpcode::kDynamicSlice &&
+      inst.opcode() != HloOpcode::kDynamicUpdateSlice &&
       inst.opcode() != HloOpcode::kOptimizationBarrier &&
       inst.opcode() != HloOpcode::kConcatenate &&
       inst.opcode() != HloOpcode::kCall && inst.opcode() != HloOpcode::kCopy) {
@@ -1120,7 +1146,8 @@ bool InferUnspecifiedDimsFromOneUser(HloInstruction* annotate_op,
   std::optional<HloSharding> user_sharding =
       ShardingPropagation::GetShardingFromUser(
           man_conversion_op == nullptr ? *annotate_op : *man_conversion_op,
-          *user, aggressiveness, is_spmd, call_graph);
+          *user, aggressiveness, is_spmd, call_graph,
+          /*sharding_helper=*/nullptr);
   if (!user_sharding.has_value() || user_sharding->IsTileMaximal()) {
     return false;
   }
@@ -1415,11 +1442,12 @@ bool InferConvolutionShardingFromOperands(HloInstruction* instruction,
                                            instruction,
                                            may_combine_partial_sharding);
   }
-  // If the kernel is large (e.g backward convolution) then we only support
-  // replicated output.
+  // If the kernel is large (e.g., backward convolution) then we only support
+  // replicated output. We intend to keep the sharding along the batch dimension
+  // between lhs and output.
   return MaybeImproveInstructionSharding(
-      hlo_sharding_util::ReplicateAllDataDims(lhs->sharding(),
-                                              instruction->shape().rank()),
+      hlo_sharding_util::PartiallyReplicateTiledShardingOnAllDimsExcept(
+          lhs->sharding(), {dnums.input_batch_dimension()}),
       instruction, may_combine_partial_sharding);
 }
 
@@ -1513,7 +1541,7 @@ bool InferReduceShardingFromOperand(HloInstruction* instruction,
 // copy node for reshard.
 // `unspecified_dims` will be populated with the converted copies if the custom
 // call is partially specified.
-StatusOr<bool> ProcessShardingInstruction(
+absl::StatusOr<bool> ProcessShardingInstruction(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads,
     bool replace_sharding_with_copy,
@@ -1526,14 +1554,16 @@ StatusOr<bool> ProcessShardingInstruction(
     absl::flat_hash_map<int64_t, absl::flat_hash_set<HloInstruction*>>*
         shard_group_id_to_shard_as_group,
     absl::flat_hash_map<int64_t, absl::flat_hash_set<HloInstruction*>>*
-        shard_group_id_to_shard_like_group) {
+        shard_group_id_to_shard_like_group,
+    const std::vector<bool>*
+        allow_spmd_sharding_propagation_to_parameters_vector) {
   bool changed = false;
 
   const bool use_shard_group = instruction_to_shard_group_id &&
                                shard_group_id_to_shard_as_group &&
                                shard_group_id_to_shard_like_group;
   auto process_shard_group_instruction = [&](HloInstruction* instruction,
-                                             const HloSharding& sharding) {
+                                             HloSharding sharding) {
     if (use_shard_group && sharding.IsShardGroup()) {
       // Store shard group relations.
       const int64_t shard_group_id = sharding.GetShardGroup().shard_group_id;
@@ -1542,7 +1572,8 @@ StatusOr<bool> ProcessShardingInstruction(
         auto& shard_as_group =
             (*shard_group_id_to_shard_as_group)[shard_group_id];
         if (!shard_as_group.empty()) {
-          CHECK_EQ(instruction->shape(), (*shard_as_group.begin())->shape())
+          CHECK(ShapeUtil::SameDimensions(instruction->shape(),
+                                          (*shard_as_group.begin())->shape()))
               << "Instruction: " << instruction->ToString()
               << " has different shape from the shapes of the other "
                  "instructions within the same shard_as group: "
@@ -1553,7 +1584,8 @@ StatusOr<bool> ProcessShardingInstruction(
         auto& shard_like_group =
             (*shard_group_id_to_shard_like_group)[shard_group_id];
         if (!shard_like_group.empty()) {
-          CHECK_EQ(instruction->shape(), (*shard_like_group.begin())->shape())
+          CHECK(ShapeUtil::SameDimensions(instruction->shape(),
+                                          (*shard_like_group.begin())->shape()))
               << "Instruction: " << instruction->ToString()
               << " has different shape from the shapes of the other "
                  "instructions within the same shard_like group: "
@@ -1561,28 +1593,24 @@ StatusOr<bool> ProcessShardingInstruction(
         }
         shard_like_group.insert(instruction);
       }
+      sharding.ClearShardGroup();
     }
+    return sharding;
   };
   for (HloComputation* computation : module->computations(execution_threads)) {
     auto instructions = computation->MakeInstructionPostOrder();
     for (auto it = instructions.rbegin(); it != instructions.rend(); ++it) {
       HloInstruction* instruction = *it;
       if (instruction->IsCustomCall("Sharding")) {
+        HloSharding original_sharding = instruction->sharding();
         TF_RET_CHECK(instruction->has_sharding())
             << "Sharding instruction must have a sharding attribute";
         VLOG(3) << "ProcessShardingInstruction: " << instruction->ToString();
-        HloSharding sharding = instruction->sharding();
 
         std::vector<int64_t> unspec_dims;
         TF_RETURN_IF_ERROR(sharding_op_util::ParseAttributes(
             Cast<HloCustomCallInstruction>(instruction)->opaque(),
             &unspec_dims));
-
-        // Add operand(i.e. the annotated op) into shard group.
-        process_shard_group_instruction(instruction->mutable_operand(0),
-                                        sharding);
-        // Strip the sharding of the shard group related annotations.
-        sharding.ClearShardGroup();
 
         // Replace it with a copy node so that it does not need special
         // handling.
@@ -1592,21 +1620,35 @@ StatusOr<bool> ProcessShardingInstruction(
               instruction->mutable_operand(0)));
           TF_RETURN_IF_ERROR(
               computation->ReplaceInstruction(instruction, copy));
+          // Add into shard group.
+          HloSharding sharding =
+              process_shard_group_instruction(copy, original_sharding);
           copy->set_sharding(sharding);
           instruction = copy;
           changed = true;
         }
+        // Strip the sharding of the shard group related annotations.
         if (!unspec_dims.empty()) {
           absl::c_sort(unspec_dims);
           unspecified_dims->emplace(instruction, std::move(unspec_dims));
         } else if (!instruction->operand(0)->has_sharding()) {
+          HloSharding sharding = original_sharding;
+          if (instruction->operand(0)->opcode() != HloOpcode::kParameter ||
+              (allow_spmd_sharding_propagation_to_parameters_vector &&
+               allow_spmd_sharding_propagation_to_parameters_vector->size() ==
+                   module->entry_computation()->num_parameters() &&
+               allow_spmd_sharding_propagation_to_parameters_vector->at(
+                   instruction->operand(0)->parameter_number()))) {
+            // Add operand(i.e. the annotated op) into shard group.
+            sharding = process_shard_group_instruction(
+                instruction->mutable_operand(0), sharding);
+          }
           instruction->mutable_operand(0)->set_sharding(std::move(sharding));
         }
       } else if (instruction->has_sharding()) {
         // Handle shard group in parameters/outputs.
-        process_shard_group_instruction(instruction, instruction->sharding());
-        HloSharding sharding = instruction->sharding();
-        sharding.ClearShardGroup();
+        HloSharding sharding = process_shard_group_instruction(
+            instruction, instruction->sharding());
         instruction->set_sharding(std::move(sharding));
       }
     }
@@ -1685,7 +1727,8 @@ int64_t ComputeNonRootUsers(const HloInstruction* instr) {
 // Return the sharding that should be propagated from user to instruction.
 std::optional<HloSharding> ShardingPropagation::GetShardingFromUser(
     const HloInstruction& instruction, const HloInstruction& user,
-    int64_t aggressiveness, bool is_spmd, const CallGraph& call_graph) {
+    int64_t aggressiveness, bool is_spmd, const CallGraph& call_graph,
+    const CustomCallShardingHelper* sharding_helper) {
   if (!CanPropagateThroughAtAggressiveLevel(user, aggressiveness)) {
     return std::nullopt;
   }
@@ -2039,6 +2082,23 @@ std::optional<HloSharding> ShardingPropagation::GetShardingFromUser(
       }
       return std::nullopt;
     }
+    case HloOpcode::kCustomCall: {
+      bool compatible_shapes = ShapeUtil::CompatibleIgnoringElementType(
+          instruction.shape(), user.shape());
+      if (!compatible_shapes) {
+        // Incompatible shapes, we will not propagate sharding.
+        return std::nullopt;
+      }
+      if (!sharding_helper) {
+        // No available sharding helper and shapes are compatible, we will
+        // propagate sharding.
+        return user.sharding();
+      }
+      if (sharding_helper->CanPropagateShardingToOperands(&user)) {
+        return user.sharding();
+      }
+      return std::nullopt;
+    }
     default: {
       // If the user output shape is compatible with the current instruction
       // shape excluding element type and the current instruction is supported
@@ -2145,13 +2205,6 @@ bool ShardingPropagation::InferShardingFromShardGroup(
       instruction->set_sharding(member->sharding());
       return true;
     }
-  }
-  if (!SupportSpatialPartitioning(
-          instruction, computation_map, is_spmd_,
-          allow_spmd_sharding_propagation_to_output_,
-          allow_spmd_sharding_propagation_to_parameters_,
-          sharding_helper_.get())) {
-    return false;
   }
 
   const bool may_combine_partial_sharding = is_spmd_ && aggressiveness > 0;
@@ -2773,7 +2826,8 @@ bool ShardingPropagation::InferShardingFromUsers(
       } else {
         std::optional<HloSharding> user_sharding =
             ShardingPropagation::GetShardingFromUser(
-                *instruction, *user, aggressiveness, is_spmd, call_graph);
+                *instruction, *user, aggressiveness, is_spmd, call_graph,
+                sharding_helper);
         if (user_sharding && user_sharding->IsManual()) {
           instruction->set_sharding(std::move(*user_sharding));
           return true;
@@ -2792,8 +2846,9 @@ bool ShardingPropagation::InferShardingFromUsers(
   const bool may_combine_partial_sharding = is_spmd && aggressiveness > 0;
   for (const HloInstruction* user : instruction->users()) {
     std::optional<HloSharding> user_sharding =
-        ShardingPropagation::GetShardingFromUser(
-            *instruction, *user, aggressiveness, is_spmd, call_graph);
+        ShardingPropagation::GetShardingFromUser(*instruction, *user,
+                                                 aggressiveness, is_spmd,
+                                                 call_graph, sharding_helper);
     if (user_sharding && instruction->opcode() == HloOpcode::kCustomCall) {
       if (auto* partitioner =
               GetCustomCallPartitioner(instruction->custom_call_target())) {
@@ -2814,23 +2869,27 @@ bool ShardingPropagation::InferShardingFromUsers(
   return improved_sharding;
 }
 
-Status ShardingPropagation::CanonicalizeLayouts(HloModule* module) {
-  if (!allow_spmd_sharding_propagation_to_output_) {
-    return OkStatus();
+Status SetParameterShapes(
+    HloModule* module, const std::vector<Shape>& parameter_shapes,
+    const std::vector<bool>&
+        allow_spmd_sharding_propagation_to_parameters_vector) {
+  for (int64_t i = 0; i < module->entry_computation()->num_parameters(); ++i) {
+    if (!allow_spmd_sharding_propagation_to_parameters_vector[i]) {
+      continue;
+    }
+    TF_RETURN_IF_ERROR(module->mutable_config()
+                           .mutable_entry_computation_layout()
+                           ->mutable_parameter_layout(i)
+                           ->CopyLayoutFromShape(parameter_shapes[i]));
   }
-  if (!module->layout_canonicalization_callback()) {
-    LOG(INFO) << "There is no registered layout_canonicalization_callback.";
-    return OkStatus();
-  }
-  // If the result layout is automatically set, allow layout assignment to
-  // choose the layout.
+  return OkStatus();
+}
+
+Status SetResultShape(HloModule* module, const Shape& result_shape) {
   if (!module->entry_computation_layout().LayoutIsSet() ||
       !module->entry_computation_layout().result_layout().LayoutIsSet()) {
     return OkStatus();
   }
-  TF_ASSIGN_OR_RETURN(auto layouts,
-                      module->layout_canonicalization_callback()(*module));
-  Shape& result_shape = layouts.second;
   TF_RETURN_IF_ERROR(module->mutable_config()
                          .mutable_entry_computation_layout()
                          ->mutable_result_layout()
@@ -2838,7 +2897,29 @@ Status ShardingPropagation::CanonicalizeLayouts(HloModule* module) {
   return OkStatus();
 }
 
-StatusOr<bool> ShardingPropagation::Run(
+Status ShardingPropagation::CanonicalizeLayouts(HloModule* module) {
+  if (!allow_spmd_sharding_propagation_to_output_ &&
+      !allow_spmd_sharding_propagation_to_parameters_) {
+    return OkStatus();
+  }
+  if (!module->layout_canonicalization_callback()) {
+    LOG(INFO) << "There is no registered layout_canonicalization_callback.";
+    return OkStatus();
+  }
+  TF_ASSIGN_OR_RETURN(auto shapes_with_layout,
+                      module->layout_canonicalization_callback()(*module));
+  if (allow_spmd_sharding_propagation_to_parameters_) {
+    TF_RETURN_IF_ERROR(SetParameterShapes(
+        module, shapes_with_layout.first,
+        allow_spmd_sharding_propagation_to_parameters_vector_));
+  }
+  if (allow_spmd_sharding_propagation_to_output_) {
+    TF_RETURN_IF_ERROR(SetResultShape(module, shapes_with_layout.second));
+  }
+  return OkStatus();
+}
+
+absl::StatusOr<bool> ShardingPropagation::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   std::optional<absl::flat_hash_map<const HloInstruction*, HloSharding>>
@@ -2891,7 +2972,8 @@ StatusOr<bool> ShardingPropagation::Run(
               ? &saved_parameter_shardings
               : nullptr,
           &instruction_to_shard_group_id, &shard_group_id_to_shard_as_group,
-          &shard_group_id_to_shard_like_group));
+          &shard_group_id_to_shard_like_group,
+          &allow_spmd_sharding_propagation_to_parameters_vector_));
   any_changed |= changed;
   // Check sizes of the given allow_spmd_sharding_propagation vectors
   if (allow_spmd_sharding_propagation_to_output_) {
@@ -2908,8 +2990,18 @@ StatusOr<bool> ShardingPropagation::Run(
            "computation.";
   }
   if (allow_spmd_sharding_propagation_to_parameters_) {
+    auto is_same_sized_tuple = [](HloModule* module, int64_t size) {
+      if (module->entry_computation()->num_parameters() != 1) {
+        return false;
+      }
+      HloInstruction* param =
+          module->entry_computation()->parameter_instruction(0);
+      return param->shape().IsTuple() &&
+             size == param->shape().tuple_shapes_size();
+    };
     auto size = allow_spmd_sharding_propagation_to_parameters_vector_.size();
-    CHECK(size == 1 || size == module->entry_computation()->num_parameters())
+    CHECK(size == 1 || size == module->entry_computation()->num_parameters() ||
+          is_same_sized_tuple(module, size))
         << "allow-spmd-sharding-propagation-to-parameters-vector's size can be "
            "either 1 or the number of parameters in the entry computation.";
   }
@@ -3047,7 +3139,12 @@ StatusOr<bool> ShardingPropagation::Run(
     }
   }
 
-  if (!allow_spmd_sharding_propagation_to_output_) {
+  if (!allow_spmd_sharding_propagation_to_output_ &&
+      (!module->entry_computation()->root_instruction()->has_sharding() ||
+       !module->entry_computation()
+            ->root_instruction()
+            ->sharding()
+            .IsUnknown())) {
     // Consider the root instruction of the entry module as one with provided
     // sharding as its sharding have to match with the one expected by the host.
     provided_shardings.insert(module->entry_computation()->root_instruction());
@@ -3055,7 +3152,7 @@ StatusOr<bool> ShardingPropagation::Run(
 
   if (!allow_spmd_sharding_propagation_to_parameters_) {
     for (auto param : module->entry_computation()->parameter_instructions()) {
-      if (param->has_sharding()) {
+      if (param->has_sharding() && !param->sharding().IsUnknown()) {
         provided_shardings.insert(param);
       }
     }
@@ -3127,8 +3224,8 @@ StatusOr<bool> ShardingPropagation::Run(
             }
           }
         };
-        // Firstly, iterate the shard groups to take shardings from instructions
-        // of the same group.
+        // 1. Iterate the shard groups to take shardings from instructions of
+        // the same group.
         for (HloInstruction* instruction : instructions) {
           if (already_inferred_from_shard_group.contains(instruction)) {
             continue;
@@ -3161,7 +3258,7 @@ StatusOr<bool> ShardingPropagation::Run(
             changed_last_iter = true;
           }
         }
-        // Secondly, iterate the HLO graph in post order taking shardings from
+        // 2. Iterate the HLO graph in post order taking shardings from
         // operands.
         for (HloInstruction* instruction : instructions) {
           if (already_inferred_from_operands.contains(instruction)) {
@@ -3202,8 +3299,8 @@ StatusOr<bool> ShardingPropagation::Run(
             changed_last_iter = true;
           }
         }
-        // Then iterate the HLO graph in reverse post order taking shardings
-        // from users.
+        // 3. Iterate the HLO graph in reverse post order taking shardings from
+        // users.
         for (auto it = instructions.rbegin(); it != instructions.rend(); ++it) {
           if ((*it)->IsCustomCall("SPMDFullToShardShape") ||
               (*it)->IsCustomCall("SPMDShardToFullShape")) {
@@ -3283,10 +3380,9 @@ StatusOr<bool> ShardingPropagation::Run(
     // get the most specific sharding. If some of them are not compatible, then
     // it will just choose the a random sharding among them(say the first one).
     std::vector<HloSharding> shardings;
-    absl::c_transform(shard_as_group, std::back_inserter(shardings),
-                      [](const HloInstruction* instruction) {
-                        return instruction->sharding();
-                      });
+    for (HloInstruction* instruction : shard_as_group) {
+      shardings.push_back(instruction->sharding());
+    }
     HloSharding common_sharding =
         hlo_sharding_util::FindCommonSharding(shardings);
     VLOG(2) << "Aligning shard group: " << shard_as_group_id
@@ -3337,18 +3433,116 @@ StatusOr<bool> ShardingPropagation::Run(
     root_instruction->set_sharding(std::move(root_sharding));
   }
   auto params = module->entry_computation()->parameter_instructions();
-  if (allow_spmd_sharding_propagation_to_parameters_ &&
-      allow_spmd_sharding_propagation_to_parameters_vector_.size() ==
-          params.size()) {
-    for (int64_t i = 0; i < params.size(); ++i) {
-      if (!allow_spmd_sharding_propagation_to_parameters_vector_[i]) {
-        if (saved_parameter_shardings.contains(i) &&
-            !saved_parameter_shardings.at(i).IsUnknown()) {
-          params[i]->set_sharding(saved_parameter_shardings.at(i));
-        } else {
-          params[i]->clear_sharding();
+  if (allow_spmd_sharding_propagation_to_parameters_) {
+    if (allow_spmd_sharding_propagation_to_parameters_vector_.size() ==
+        params.size()) {
+      for (int64_t i = 0; i < params.size(); ++i) {
+        if (!allow_spmd_sharding_propagation_to_parameters_vector_[i]) {
+          if (saved_parameter_shardings.contains(i) &&
+              !saved_parameter_shardings.at(i).IsUnknown()) {
+            params[i]->set_sharding(saved_parameter_shardings.at(i));
+          } else {
+            params[i]->clear_sharding();
+          }
         }
       }
+    } else if (params.size() == 1 && saved_parameter_shardings.size() == 1 &&
+               params[0]->shape().IsTuple() &&
+               params[0]->shape().tuple_shapes_size() ==
+                   allow_spmd_sharding_propagation_to_parameters_vector_
+                       .size()) {
+      // There is a single parameter which is a tuple with many elements.
+      HloSharding param_sharding = params[0]->sharding();
+      for (int64_t i = 0; i < params[0]->shape().tuple_shapes_size(); ++i) {
+        HloSharding saved_subsharding =
+            saved_parameter_shardings.at(0).GetSubSharding(params[0]->shape(),
+                                                           {i});
+        if (!allow_spmd_sharding_propagation_to_parameters_vector_[i] &&
+            !saved_subsharding.IsUnknown()) {
+          param_sharding.tuple_elements()[i] = saved_subsharding;
+        }
+      }
+      params[0]->set_sharding(std::move(param_sharding));
+    }
+  }
+  // Replicate the parameter/output sharding if the propagated sharding does not
+  // evenly partition the parameter/output.
+  std::function<bool(const Shape&, const HloSharding&)> evenly_partitions =
+      [&evenly_partitions](const Shape& shape,
+                           const HloSharding& sharding) -> bool {
+    if (!sharding.IsTiled()) {
+      return true;
+    }
+    if (sharding.IsTileMaximal()) {
+      return sharding.IsReplicated();
+    }
+    if (sharding.IsTuple()) {
+      for (int64_t i = 0; i < ShapeUtil::TupleElementCount(shape); ++i) {
+        if (!evenly_partitions(ShapeUtil::GetTupleElementShape(shape, i),
+                               sharding.GetSubSharding(shape, {i}))) {
+          return false;
+        }
+      }
+    }
+    for (int64_t i = 0; i < shape.dimensions_size(); ++i) {
+      if (shape.dimensions(i) % sharding.tile_assignment().dim(i) != 0) {
+        return false;
+      }
+    }
+    return true;
+  };
+  if (allow_spmd_sharding_propagation_to_output_ &&
+      root_instruction->has_sharding()) {
+    if (root_instruction->shape().IsTuple() &&
+        allow_spmd_sharding_propagation_to_output_vector_.size() ==
+            root_instruction->shape().tuple_shapes_size()) {
+      // The output shape is a tuple and sharding propagation is allowed for at
+      // least one of its elements.
+      HloSharding root_sharding = root_instruction->sharding();
+      for (int64_t i = 0; i < root_instruction->shape().tuple_shapes_size();
+           ++i) {
+        if (allow_spmd_sharding_propagation_to_output_vector_[i] &&
+            !evenly_partitions(root_instruction->shape().tuple_shapes(i),
+                               root_sharding.tuple_elements()[i])) {
+          root_sharding.tuple_elements()[i] = HloSharding::Replicate();
+        }
+      }
+      root_instruction->set_sharding(std::move(root_sharding));
+    } else if (!root_instruction->shape().IsTuple()) {
+      // The output shape is not tuple and sharding propagation is allowed.
+      if (!evenly_partitions(root_instruction->shape(),
+                             root_instruction->sharding())) {
+        root_instruction->set_sharding(HloSharding::Replicate());
+      }
+    }
+  }
+  if (allow_spmd_sharding_propagation_to_parameters_) {
+    // Sharding propagation is allowed for at least one parameter.
+    if (allow_spmd_sharding_propagation_to_parameters_vector_.size() ==
+        params.size()) {
+      for (int64_t i = 0; i < params.size(); ++i) {
+        if (params[i]->has_sharding() &&
+            allow_spmd_sharding_propagation_to_parameters_vector_[i] &&
+            !evenly_partitions(params[i]->shape(), params[i]->sharding())) {
+          params[i]->set_sharding(HloSharding::Replicate());
+        }
+      }
+    } else if (params.size() == 1 && params[0]->shape().IsTuple() &&
+               params[0]->has_sharding() &&
+               params[0]->shape().tuple_shapes_size() ==
+                   allow_spmd_sharding_propagation_to_parameters_vector_
+                       .size()) {
+      HloSharding param_sharding = params[0]->sharding();
+      for (int64_t i = 0; i < params[0]->shape().tuple_shapes_size(); ++i) {
+        if (allow_spmd_sharding_propagation_to_parameters_vector_[i] &&
+            !evenly_partitions(
+                ShapeUtil::GetSubshapeOneIndex(params[0]->shape(), i),
+                params[0]->sharding().GetSubSharding(params[0]->shape(),
+                                                     {i}))) {
+          param_sharding.tuple_elements()[i] = HloSharding::Replicate();
+        }
+      }
+      params[0]->set_sharding(std::move(param_sharding));
     }
   }
   TF_RETURN_IF_ERROR(CanonicalizeLayouts(module));

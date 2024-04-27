@@ -24,12 +24,21 @@ limitations under the License.
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
 namespace {
+
+TEST(CallGraphUtilTest, GetEntryFunctionAttributeNames) {
+  auto attr_names = mlir::GetEntryFunctionAttributeNames();
+  EXPECT_EQ(attr_names.size(), 2);
+  EXPECT_EQ(attr_names[0], "tf.entry_function");
+  EXPECT_EQ(attr_names[1],
+            mlir::tf_saved_model::kTfSavedModelInitializerTypeAttr);
+}
 
 TEST(CallGraphUtilTest, GetEntryFunctions) {
   const char *const code = R"mlir(

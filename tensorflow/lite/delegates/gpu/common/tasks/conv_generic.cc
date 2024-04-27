@@ -1293,7 +1293,7 @@ ConvGeneric::ConvParams GetConvParamsForA7A8(const AppleInfo& apple_info,
   options.push_back(CreateWorkGroupSizeOption(
       {8, 4, 1}, WorkGroupSizeOption::ThreadMapping::kDefault, 1.0f, dst_shape,
       params.block_size));
-  if (!apple_info.IsA7GenerationGpu()) {
+  if (!apple_info.IsFamilyApple1()) {
     options.push_back(CreateWorkGroupSizeOption(
         {4, 4, 1}, WorkGroupSizeOption::ThreadMapping::kDefault, 1.01f,
         dst_shape, params.block_size));
@@ -1304,7 +1304,7 @@ ConvGeneric::ConvParams GetConvParamsForA7A8(const AppleInfo& apple_info,
   options.push_back(CreateWorkGroupSizeOption(
       {32, 1, 1}, WorkGroupSizeOption::ThreadMapping::kLinearSpatial, 1.0f,
       dst_shape, params.block_size));
-  if (!apple_info.IsA7GenerationGpu()) {
+  if (!apple_info.IsFamilyApple1()) {
     options.push_back(CreateWorkGroupSizeOption(
         {16, 1, 1}, WorkGroupSizeOption::ThreadMapping::kLinearSpatial, 1.01f,
         dst_shape, params.block_size));
@@ -1545,23 +1545,34 @@ ConvGeneric::ConvParams ConvGeneric::GuessBestParams(
       conv_params.src_depth_loop_size = 4;
     }
   } else if (gpu_info.IsPowerVR()) {
-    if (different_weights_for_height) {
+    if (gpu_info.IsCL30OrHigher()) {
+      work_group_size_ =
+          int3(gpu_info.opencl_info.preferred_work_group_size_multiple, 1, 1);
+    } else {
       work_group_size_ = int3(32, 1, 1);
+    }
+    if (different_weights_for_height) {
       work_group_launch_order_ = int3(2, 0, 1);
       conv_params.fixed_work_group_size = true;
     } else {
       conv_params.linear_spatial = true;
-      work_group_size_ = int3(32, 1, 1);
       work_group_launch_order_ = int3(1, 0, 2);
       conv_params.fixed_work_group_size = true;
     }
     conv_params.block_size = int4(1, 1, 1, 4);
     conv_params.src_depth_loop_size = 1;
-    if (definition.precision == CalculationsPrecision::F32_F16) {
-      conv_params.weights_upload_type = WeightsUploadType::LOCAL_MEM_BY_THREADS;
+    if (!gpu_info.IsApiOpenCl() ||
+        (gpu_info.IsApiOpenCl() &&
+         gpu_info.opencl_info.dedicated_local_memory)) {
+      if (definition.precision == CalculationsPrecision::F32_F16) {
+        conv_params.weights_upload_type =
+            WeightsUploadType::LOCAL_MEM_BY_THREADS;
+      } else {
+        conv_params.weights_upload_type =
+            WeightsUploadType::LOCAL_MEM_ASYNC_SUBGROUP;
+      }
     } else {
-      conv_params.weights_upload_type =
-          WeightsUploadType::LOCAL_MEM_ASYNC_SUBGROUP;
+      conv_params.weights_upload_type = WeightsUploadType::GLOBAL_MEM;
     }
     if (dst_depth % 8 == 0 || dst_depth >= 32) {
       conv_params.block_size.w = 8;

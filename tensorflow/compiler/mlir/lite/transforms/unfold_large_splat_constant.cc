@@ -24,6 +24,7 @@ limitations under the License.
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
@@ -62,7 +63,7 @@ class UnfoldLargeSplatConstantPass
   void MaybeUnfoldLargeSplatConstant(mlir::OpBuilder* op_builder,
                                      mlir::arith::ConstantOp const_op) const {
     auto splat_elements_attr =
-        const_op.getValue().dyn_cast<SplatElementsAttr>();
+        mlir::dyn_cast<SplatElementsAttr>(const_op.getValue());
     if (!splat_elements_attr) {
       return;
     }

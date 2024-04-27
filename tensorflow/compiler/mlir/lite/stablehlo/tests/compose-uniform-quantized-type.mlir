@@ -27,7 +27,7 @@ module {
     %20 = call @uniform_dequantize_0(%19, %5, %6) : (tensor<1x3x3x4xi8>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xi8>) -> tensor<1x3x3x4xf32>
     return %20 : tensor<1x3x3x4xf32>
   }
-// CHECK: %[[FILTER:.*]] = stablehlo.constant() {value = dense<1> : tensor<3x3x4x4xi8>} : () -> tensor<3x3x4x4x!quant.uniform<i8:f32:3, {{{.*}}}>>
+// CHECK: %[[FILTER:.*]] = stablehlo.constant() <{value = dense<1> : tensor<3x3x4x4xi8>}> : () -> tensor<3x3x4x4x!quant.uniform<i8:f32:3, {{{.*}}}>>
 // CHECK: %[[QUANT_ARG:.*]] = stablehlo.uniform_quantize %[[ARG]] : (tensor<1x3x3x4xf32>) -> tensor<1x3x3x4x!quant.uniform<i8:f32, {{.*}}>>
 // CHECK: %[[CONV:.*]] = stablehlo.convolution(%[[QUANT_ARG]], %[[FILTER]]) {{.*}} : (tensor<1x3x3x4x!quant.uniform<i8:f32, {{.*}}>>, tensor<3x3x4x4x!quant.uniform<i8:f32:3, {{.*}}>>) -> tensor<1x3x3x4x!quant.uniform<i8:f32, {{.*}}>>
 // CHECK: %[[DEQUANT:.*]] = stablehlo.uniform_dequantize %[[CONV]] : (tensor<1x3x3x4x!quant.uniform<i8:f32, {{.*}}>>) -> tensor<1x3x3x4xf32>
@@ -87,7 +87,7 @@ module {
     %18 = call @uniform_dequantize_0(%17, %5, %6) : (tensor<1x3x3x4xi8>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xi8>) -> tensor<1x3x3x4xf32>
     return %18 : tensor<1x3x3x4xf32>
   }
-// CHECK: %[[FILTER:.*]] = stablehlo.constant() {value = dense<20> : tensor<3x3x4x4xi8>} : () -> tensor<3x3x4x4x!quant.uniform<i8:f32:3, {{{.*}}}>>
+// CHECK: %[[FILTER:.*]] = stablehlo.constant() <{value = dense<20> : tensor<3x3x4x4xi8>}> : () -> tensor<3x3x4x4x!quant.uniform<i8:f32:3, {{{.*}}}>>
 // CHECK: %[[QUANT_ARG:.*]] = stablehlo.uniform_quantize %[[ARG]] : (tensor<1x3x3x4xf32>) -> tensor<1x3x3x4x!quant.uniform<i8:f32, {{.*}}>>
 // CHECK: %[[CONV:.*]] = stablehlo.convolution(%[[QUANT_ARG]], %[[FILTER]]) {{.*}} : (tensor<1x3x3x4x!quant.uniform<i8:f32, {{.*}}>>, tensor<3x3x4x4x!quant.uniform<i8:f32:3, {{.*}}>>) -> tensor<1x3x3x4x!quant.uniform<i8:f32, {{.*}}>>
 // CHECK: %[[DEQUANT:.*]] = stablehlo.uniform_dequantize %[[CONV]] : (tensor<1x3x3x4x!quant.uniform<i8:f32, {{.*}}>>) -> tensor<1x3x3x4xf32>
@@ -182,7 +182,7 @@ module {
     return %17 : tensor<1x4x3xf32>
   }
 // Quantization dimension == 1 because it is the output feature dimension.
-// CHECK: %[[FILTER:.*]] = stablehlo.constant() {value = dense<5> : tensor<2x3xi8>} : () -> tensor<2x3x!quant.uniform<i8:f32:1, {{{.*}}}>>
+// CHECK: %[[FILTER:.*]] = stablehlo.constant() <{value = dense<5> : tensor<2x3xi8>}> : () -> tensor<2x3x!quant.uniform<i8:f32:1, {{{.*}}}>>
 // CHECK: %[[QUANT_ARG:.*]] = stablehlo.uniform_quantize %[[ARG]] : (tensor<1x4x2xf32>) -> tensor<1x4x2x!quant.uniform<i8:f32, {{.*}}:1>>
 // CHECK: %[[CONV:.*]] = stablehlo.dot_general %[[QUANT_ARG]], %[[FILTER]], contracting_dims = [2] x [0] : (tensor<1x4x2x!quant.uniform<i8:f32, {{.*}}>>, tensor<2x3x!quant.uniform<i8:f32:1, {{.*}}>>) -> tensor<1x4x3x!quant.uniform<i8:f32, {{.*}}:2>>
 // CHECK: %[[DEQUANT:.*]] = stablehlo.uniform_dequantize %[[CONV]] : (tensor<1x4x3x!quant.uniform<i8:f32, {{.*}}>>) -> tensor<1x4x3xf32>
@@ -238,7 +238,7 @@ module {
   }
 // Quantization dimension == 1 because it is the output feature dimension.
 // Quantized filter values (from f32 constant) are cast to i8.
-// CHECK: %[[FILTER:.*]] = stablehlo.constant() {value = dense<5> : tensor<2x3xi8>} : () -> tensor<2x3x!quant.uniform<i8:f32:1, {{{.*}}}>>
+// CHECK: %[[FILTER:.*]] = stablehlo.constant() <{value = dense<5> : tensor<2x3xi8>}> : () -> tensor<2x3x!quant.uniform<i8:f32:1, {{{.*}}}>>
 // CHECK: %[[QUANT_ARG:.*]] = stablehlo.uniform_quantize %[[ARG]] : (tensor<1x4x2xf32>) -> tensor<1x4x2x!quant.uniform<i8:f32, {{.*}}:1>>
 // CHECK: %[[CONV:.*]] = stablehlo.dot_general %[[QUANT_ARG]], %[[FILTER]], contracting_dims = [2] x [0] : (tensor<1x4x2x!quant.uniform<i8:f32, {{.*}}>>, tensor<2x3x!quant.uniform<i8:f32:1, {{.*}}>>) -> tensor<1x4x3x!quant.uniform<i8:f32, {{.*}}:2>>
 // CHECK: %[[DEQUANT:.*]] = stablehlo.uniform_dequantize %[[CONV]] : (tensor<1x4x3x!quant.uniform<i8:f32, {{.*}}>>) -> tensor<1x4x3xf32>
@@ -292,7 +292,7 @@ module {
     return %15 : tensor<1x3xf32>
   }
 // Quantization dimension == 1 because it is the output feature dimension.
-// CHECK: %[[FILTER:.*]] = stablehlo.constant() {value = dense<5> : tensor<2x3xi8>} : () -> tensor<2x3x!quant.uniform<i8:f32:1, {{{.*}}}>>
+// CHECK: %[[FILTER:.*]] = stablehlo.constant() <{value = dense<5> : tensor<2x3xi8>}> : () -> tensor<2x3x!quant.uniform<i8:f32:1, {{{.*}}}>>
 // CHECK: %[[QUANT_ARG:.*]] = stablehlo.uniform_quantize %[[ARG]] : (tensor<1x2xf32>) -> tensor<1x2x!quant.uniform<i8:f32, {{.*}}:1>>
 // CHECK: %[[CONV:.*]] = stablehlo.dot_general %[[QUANT_ARG]], %[[FILTER]], contracting_dims = [1] x [0] : (tensor<1x2x!quant.uniform<i8:f32, {{.*}}>>, tensor<2x3x!quant.uniform<i8:f32:1, {{.*}}>>) -> tensor<1x3x!quant.uniform<i8:f32, {{.*}}:2>>
 // CHECK: %[[DEQUANT:.*]] = stablehlo.uniform_dequantize %[[CONV]] : (tensor<1x3x!quant.uniform<i8:f32, {{.*}}>>) -> tensor<1x3xf32>

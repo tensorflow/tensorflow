@@ -459,7 +459,8 @@ class BiasGradOp<GPUDevice, T> : public OpKernel {
     OP_REQUIRES(context, stream, errors::Internal("No GPU stream available."));
     se::DeviceMemoryBase output_ptr(output->flat<T>().data(),
                                     output->NumElements() * sizeof(T));
-    stream->ThenMemZero(&output_ptr, output->NumElements() * sizeof(T));
+    OP_REQUIRES_OK(context, stream->MemZero(&output_ptr,
+                                            output->NumElements() * sizeof(T)));
     if (output_backprop.NumElements() <= 0) return;
     if (OpDeterminismRequired()) {
       // ComputeWithReduceSum is the only deterministic algorithm.

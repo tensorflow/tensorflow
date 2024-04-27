@@ -28,8 +28,8 @@ namespace function {
 
 typedef FunctionDefHelper FDH;
 
-GraphDef GDef(gtl::ArraySlice<NodeDef> nodes,
-              gtl::ArraySlice<FunctionDef> funcs) {
+GraphDef GDef(absl::Span<const NodeDef> nodes,
+              absl::Span<const FunctionDef> funcs) {
   GraphDef g;
   VersionDef* versions = g.mutable_versions();
   versions->set_producer(TF_GRAPH_DEF_VERSION);
@@ -45,8 +45,8 @@ GraphDef GDef(gtl::ArraySlice<NodeDef> nodes,
 }
 
 // Helper to construct a NodeDef.
-NodeDef NDef(StringPiece name, StringPiece op, gtl::ArraySlice<string> inputs,
-             gtl::ArraySlice<std::pair<string, FDH::AttrValueWrapper>> attrs,
+NodeDef NDef(StringPiece name, StringPiece op, absl::Span<const string> inputs,
+             absl::Span<const std::pair<string, FDH::AttrValueWrapper>> attrs,
              const string& device) {
   NodeDef n;
   n.set_name(string(name));
@@ -154,6 +154,30 @@ FunctionDef XTimesTwoWithControlInput() {
           {{"scale"}, "Cast", {"two"}, {{"SrcT", DT_INT64}, {"DstT", "$T"}}},
           {{"y"}, "Mul", {"scale"}, {{"T", "$T"}}, /*dep=*/{"x"}},
       });
+}
+
+FunctionDef XTimesTwoWithControlOutput() {
+  const Tensor kTwo = test::AsScalar<int64_t>(2);
+  return FDH::Create(
+      // function_name
+      "XTimesTwo",
+      // in_def
+      {"x: T"},
+      // out_def
+      {"y: T"},
+      // attr_def
+      {"T: {float, double, int32, int64}"},
+      // node_def
+      {
+          {{"two"}, "Const", {}, {{"value", kTwo}, {"dtype", DT_INT64}}},
+          {{"scale"}, "Cast", {"two"}, {{"SrcT", DT_INT64}, {"DstT", "$T"}}},
+          {{"y"}, "Mul", {"x", "scale"}, {{"T", "$T"}}},
+          {{"dummy"}, "Const", {}, {{"value", kTwo}, {"dtype", DT_INT64}}},
+      },
+      // ret_def
+      {{"y", "y"}},
+      // control_ret_def
+      {{"dummy", "dummy"}});
 }
 
 FunctionDef TwoDeviceMult() {

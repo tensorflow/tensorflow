@@ -89,13 +89,6 @@ class PjrtCompileTest(test.TestCase):
       self.assertAllClose([1.0, 2.0], x.value(), atol=1e-05)
       self.assertAllClose([2.0, 3.0], y.value(), atol=1e-05)
 
-  # TODO(b/286458275): Add autoclustering tests when b/274176440 is fixed and
-  # when we can use PJRT with the GPU device. XLA_GPU device doesn't work well
-  # with autoclustering - sometimes it tries to wrap functions in an XlaLaunch
-  # op instead of _XlaCompile/_XlaRun ops.
-  def test_xla_compile_and_run(self):
-    pass
-
   def test_xla_launch_and_tf_kernel_on_gpu_device(self):
     @def_function.function(jit_compile=True)
     def const_fn():

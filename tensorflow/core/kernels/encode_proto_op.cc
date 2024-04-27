@@ -252,7 +252,7 @@ Status WriteField(const FieldDescriptor& field_desc, const Tensor& input,
       WireFormatLite::FieldType(field_desc.type()));
 
   auto input_t = input.flat_inner_dims<TensorT>();
-  if (field_desc.options().packed()) {
+  if (field_desc.is_packed()) {
     // Write the tag for the packed field.
     WireFormatLite::WriteTag(field_desc.number(),
                              WireFormatLite::WIRETYPE_LENGTH_DELIMITED, output);
@@ -277,7 +277,7 @@ Status WriteField(const FieldDescriptor& field_desc, const Tensor& input,
       Writer(value, output);
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Writes a possibly repeated string, bytes, or message field.
@@ -293,7 +293,7 @@ Status WriteVarLenField(const FieldDescriptor& field_desc, const Tensor& input,
     // small speedup.
     Writer(field_desc.number(), value, output);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 static void WriteStringAdapter(int field_number, const tstring& value,
@@ -331,7 +331,7 @@ Status WriteGroup(const FieldDescriptor& field_desc, const Tensor& input,
     WireFormatLite::WriteTag(field_desc.number(),
                              WireFormatLite::WIRETYPE_END_GROUP, output);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Writes a (possibly repeated) field into an output stream. It is the caller's

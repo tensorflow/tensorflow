@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_SPARSE_OPS_FULLY_CONNECTED_H_
 
 #include <algorithm>
+#include <cstdint>
 
 #include "ruy/profiler/instrumentation.h"  // from @ruy
 #include "tensorflow/lite/core/c/common.h"
@@ -80,6 +81,7 @@ inline void FullyConnectedSparseWeight1x16Impl(
     const TfLiteSparsity& sparsity, const FullyConnectedParams& params,
     const RuntimeShape& input_shape, const int8_t* input_data,
     const RuntimeShape& weights_shape, const int8_t* weights_data,
+    const int32_t* per_channel_scale, const int32_t* per_channel_shift,
     const RuntimeShape& bias_shape, const int32_t* bias_data,
     const RuntimeShape& output_shape, int8_t* output_data, int thread_start,
     int thread_end, const CpuBackendContext& cpu_backend_context) {
@@ -107,9 +109,9 @@ inline void FullyConnectedSparseWeight1x16Impl(
   tensor_utils::SparseMatrixBatchVectorMultiplyAccumulate1x16(
       weights_data, w1_segments, w1_indices, weights_shape.Dims(0),
       weights_shape.Dims(1), input_data + thread_start * input_depth, bias_data,
-      batches, input_offset, output_multiplier, output_shift, output_offset,
-      output_activation_min, output_activation_max,
-      output_data + thread_start * output_depth);
+      batches, input_offset, output_multiplier, output_shift, per_channel_scale,
+      per_channel_shift, output_offset, output_activation_min,
+      output_activation_max, output_data + thread_start * output_depth);
 }
 
 inline void FullyConnectedSparseWeight1x4Impl(
@@ -200,6 +202,7 @@ inline void FullyConnectedSparseWeight1x16(
     const TfLiteSparsity& sparsity, const FullyConnectedParams& params,
     const RuntimeShape& input_shape, const int8_t* input_data,
     const RuntimeShape& weights_shape, const int8_t* weights_data,
+    const int32_t* per_channel_scale, const int32_t* per_channel_shift,
     const RuntimeShape& bias_shape, const int32_t* bias_data,
     const RuntimeShape& output_shape, int8_t* output_data,
     CpuBackendContext* cpu_backend_context) {
@@ -212,8 +215,8 @@ inline void FullyConnectedSparseWeight1x16(
   // TODO(b/220851507): Add multi-thread support for quantized sparse kernel.
   return FullyConnectedSparseWeight1x16Impl(
       sparsity, params, input_shape, input_data, weights_shape, weights_data,
-      bias_shape, bias_data, output_shape, output_data, 0, batches,
-      *cpu_backend_context);
+      per_channel_scale, per_channel_shift, bias_shape, bias_data, output_shape,
+      output_data, 0, batches, *cpu_backend_context);
 }
 
 // The multi-threaded kernel slices the workload along the batch dimension. If

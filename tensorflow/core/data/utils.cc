@@ -17,11 +17,10 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
-#include "tensorflow/core/data/file_logger_client_interface.h"
-#include "tensorflow/core/data/file_logger_client_no_op.h"
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/protobuf/data_service.pb.h"
 
@@ -47,9 +46,7 @@ absl::StatusOr<bool> DisableCompressionAtRuntime(
   return false;
 }
 
-std::unique_ptr<FileLoggerClientInterface> CreateFileLoggerClient() {
-  return std::make_unique<FileLoggerClientNoOp>();
-}
+void LogFilenames(const std::vector<std::string>& files) {}
 
 }  // namespace data
 }  // namespace tensorflow

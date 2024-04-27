@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -22,20 +22,23 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/const_init.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/compiler.h"
 #include "xla/service/executable.h"
 #include "xla/service/hlo_graph_dumper.h"
 #include "xla/service/platform_util.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/types.h"
+#include "xla/xla.pb.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -53,13 +56,13 @@ static ProviderMap& GetProviderMap() {
     std::string platform, std::unique_ptr<OptProvider> translate_provider) {
   absl::MutexLock l(&provider_mu);
   CHECK(!GetProviderMap().contains(platform));
-  StatusOr<std::string> canonical_name =
+  absl::StatusOr<std::string> canonical_name =
       xla::PlatformUtil::CanonicalPlatformName(platform);
   CHECK_OK(canonical_name);
   GetProviderMap()[*canonical_name] = std::move(translate_provider);
 }
 
-/*static*/ StatusOr<OptProvider*> OptProvider::ProviderForPlatform(
+/*static*/ absl::StatusOr<OptProvider*> OptProvider::ProviderForPlatform(
     std::string platform) {
   absl::MutexLock l(&provider_mu);
 
@@ -79,7 +82,7 @@ static ProviderMap& GetProviderMap() {
   return it->second.get();
 }
 
-StatusOr<se::StreamExecutor*> OptProvider::GetExecutor() {
+absl::StatusOr<se::StreamExecutor*> OptProvider::GetExecutor() {
   DebugOptions debug_opts = GetDebugOptionsFromFlags();
   TF_ASSIGN_OR_RETURN(se::Platform * platform,
                       PlatformUtil::GetPlatform(GetPlatformName()));
@@ -92,7 +95,7 @@ StatusOr<se::StreamExecutor*> OptProvider::GetExecutor() {
   return nullptr;
 }
 
-StatusOr<std::optional<std::string>> OptProvider::GenerateStage(
+absl::StatusOr<std::optional<std::string>> OptProvider::GenerateStage(
     std::unique_ptr<HloModule> module, absl::string_view stage) {
   if (stage == "hlo") {
     TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> optimized_module,
@@ -104,12 +107,15 @@ StatusOr<std::optional<std::string>> OptProvider::GenerateStage(
     TF_ASSIGN_OR_RETURN(std::string cmps,
                         RenderAllComputationsToHtml(*optimized_module));
     return cmps;
+  } else if (stage == "hlo-backend") {
+    TF_ASSIGN_OR_RETURN(auto executable, GetExecutable(std::move(module)));
+    return executable->module().ToString();
   }
 
   return std::nullopt;
 }
 
-StatusOr<Compiler*> OptProvider::GetCompiler() {
+absl::StatusOr<Compiler*> OptProvider::GetCompiler() {
   TF_ASSIGN_OR_RETURN(se::Platform * platform,
                       PlatformUtil::GetPlatform(GetPlatformName()));
 
@@ -117,24 +123,30 @@ StatusOr<Compiler*> OptProvider::GetCompiler() {
   return compiler;
 }
 
-StatusOr<std::unique_ptr<HloModule>> OptProvider::GetOptimizedHlo(
+absl::StatusOr<std::unique_ptr<HloModule>> OptProvider::GetOptimizedHlo(
     std::unique_ptr<HloModule> input_module) {
   TF_ASSIGN_OR_RETURN(se::StreamExecutor * executor, GetExecutor());
 
   DebugOptions debug_opts = GetDebugOptionsFromFlags();
   Compiler::CompileOptions opts;
   TF_ASSIGN_OR_RETURN(Compiler * compiler, GetCompiler());
+  DebugOptions d = input_module->config().debug_options();
+  d.set_xla_embed_ir_in_executable(true);
+  input_module->mutable_config().set_debug_options(d);
+
+  if (input_module->has_schedule()) {
+    return input_module;
+  }
+
+  // But run-hlo-passes does not actually run the scheduling.
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModule> optimized_module,
       compiler->RunHloPasses(std::move(input_module), executor, opts));
 
-  DebugOptions d = optimized_module->config().debug_options();
-  d.set_xla_embed_ir_in_executable(true);
-  optimized_module->mutable_config().set_debug_options(d);
   return optimized_module;
 }
 
-StatusOr<std::unique_ptr<Executable>> OptProvider::GetExecutable(
+absl::StatusOr<std::unique_ptr<Executable>> OptProvider::GetExecutable(
     std::unique_ptr<HloModule> input_module) {
   Compiler::CompileOptions opts;
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> optimized_module,
@@ -147,6 +159,8 @@ StatusOr<std::unique_ptr<Executable>> OptProvider::GetExecutable(
   return executable;
 }
 
-std::set<std::string> OptProvider::SupportedStages() { return {"hlo", "html"}; }
+std::set<std::string> OptProvider::SupportedStages() {
+  return {"hlo", "html", "hlo-backend"};
+}
 
 }  // namespace xla

@@ -38,7 +38,7 @@ class DeviceProfilerSession {
   // Does not trace TPU devices (not supported).
   static std::unique_ptr<DeviceProfilerSession> Create() {
 #if !defined(IS_MOBILE_PLATFORM)
-    ProfileOptions options = ProfilerSession::DefaultOptions();
+    ProfileOptions options = tsl::ProfilerSession::DefaultOptions();
     options.set_host_tracer_level(0);
     options.set_device_type(ProfileOptions::GPU);
     return absl::WrapUnique(new DeviceProfilerSession(options));
@@ -56,7 +56,7 @@ class DeviceProfilerSession {
     profiler::XSpace space;
     TF_RETURN_IF_ERROR(profiler_session_->CollectData(&space));
     profiler::ConvertGpuXSpaceToStepStats(space, step_stats);
-    return OkStatus();
+    return absl::OkStatus();
 #endif
   }
 
@@ -64,7 +64,7 @@ class DeviceProfilerSession {
   // Constructs an instance of the class and starts profiling
   explicit DeviceProfilerSession(const ProfileOptions& options)
 #if !defined(IS_MOBILE_PLATFORM)
-      : profiler_session_(ProfilerSession::Create(options))
+      : profiler_session_(tsl::ProfilerSession::Create(options))
 #endif
   {
   }
@@ -75,7 +75,7 @@ class DeviceProfilerSession {
 
 #if !defined(IS_MOBILE_PLATFORM)
   // TODO(b/256013238)
-  std::unique_ptr<ProfilerSession> profiler_session_;
+  std::unique_ptr<tsl::ProfilerSession> profiler_session_;
 #endif
 };
 

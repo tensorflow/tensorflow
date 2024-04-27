@@ -54,7 +54,7 @@ enum class CompilerArgSource {
 // Returns the IR format of the selected stage for a given function `func_name`
 // using library runtime `runtime` on a device `dev` with given
 // `inputs_arg_shape_and_dtype` and `input_handles`.
-StatusOr<std::string> GetCompilerIr(
+absl::StatusOr<std::string> GetCompilerIr(
     IrExportStage stage, ProcessFunctionLibraryRuntime* pflr,
     absl::string_view func_name, Device* dev, EagerContext* context,
     absl::Span<const ArgShapeAndDType> input_arg_shape_and_dtype,
@@ -64,7 +64,7 @@ StatusOr<std::string> GetCompilerIr(
 // Returns the IR format of the selected stage for a given function `func_name`
 // using library runtime `runtime` on a platform `platform_name` with given
 // `inputs_arg_shape_and_dtype` and `input_handles`.
-StatusOr<std::string> GetCompilerIr(
+absl::StatusOr<std::string> GetCompilerIr(
     IrExportStage stage, ProcessFunctionLibraryRuntime* pflr,
     absl::string_view func_name, absl::string_view platform_name,
     EagerContext* context,

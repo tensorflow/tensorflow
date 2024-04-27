@@ -15,8 +15,6 @@
 """VariableV1 class."""
 
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import cond
-from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.util import tf_should_use
@@ -35,6 +33,10 @@ def is_variable_initialized(variable):
     Returns a scalar boolean Tensor, `True` if the variable has been
     initialized, `False` otherwise.
   """
+  # variable_v1.py is imported at the top-level internally at TF1 import time,
+  # so the import time for this file should be reduced as much as possible.
+  # Thus import state_ops only when it is used.
+  from tensorflow.python.ops import state_ops  # pylint: disable=g-import-not-at-top
   return state_ops.is_variable_initialized(variable)
 
 
@@ -256,6 +258,10 @@ class VariableV1(variables.Variable):
   SaveSliceInfo = variables.Variable.SaveSliceInfo
 
   def initialized_value(self):
+    # variable_v1.py is imported at the top-level internally at TF1 import time,
+    # so the import time for this file should be reduced as much as possible.
+    # Thus import cond only when it is used.
+    from tensorflow.python.ops import cond  # pylint: disable=g-import-not-at-top
     with ops.init_scope():
       return cond.cond(
           is_variable_initialized(self), self.read_value,

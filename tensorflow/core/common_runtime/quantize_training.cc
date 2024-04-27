@@ -148,7 +148,7 @@ Status FindSaveOp(const Graph* graph, Node** save_op,
       TF_RETURN_IF_ERROR(node->input_edges(in_edges));
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Node* FindRestoreAllOp(const Graph* graph, StringPiece save_prefix) {
@@ -237,7 +237,7 @@ Status ConnectVariablesToSaveOp(Graph* graph, Node* save_op,
   }
   graph->RemoveNode(save_op);
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Add a restore subgraph for each variable and connect to the restore_all op.
@@ -307,7 +307,7 @@ Status AddRestoreVariableSubgraphs(Graph* graph, Node* save_op,
     // Add a control edge from the assign op to restore_all op.
     graph->AddControlEdge(assign_op, restore_all);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Adds new variables to save and restore ops matching the Save and Restore
@@ -323,7 +323,7 @@ Status AddSaveAndRestore(Graph* graph, const std::vector<Node*>& variables) {
     TF_RETURN_IF_ERROR(
         ConnectVariablesToSaveOp(graph, save_op, in_edges, variables));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Sets output to the Node that computes reduction axes corresponding to all
@@ -358,7 +358,7 @@ Status MakeReductionAxes(Graph* graph, string name_prefix, Node* input,
           .Input(rank)
           .Input(delta)
           .Finalize(graph, output));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Computes the exponential moving average of input, updated in update_variable.
@@ -401,7 +401,7 @@ Status MakeExponentialMovingAverage(Graph* graph, string name_prefix,
           .Input(update_variable)
           .Input(update_value)
           .Finalize(graph, assign_value));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Creates an automatically initialized exponential moving average variable.
@@ -454,7 +454,7 @@ Status MakeInitializedEMAVariable(Graph* graph, const string& name, Node* decay,
           .Input(*var)
           .Input(assign_value)
           .Finalize(graph, var));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Computes the min and max EMA of input and stores them in min_var and max_var.
@@ -492,7 +492,7 @@ Status MakeEMAMinMaxVars(Graph* graph, const string& name_prefix, Node* input,
                                                 added_variables, min_var));
   TF_RETURN_IF_ERROR(MakeInitializedEMAVariable(graph, max_name, decay, max,
                                                 added_variables, max_var));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Makes an input min and max constant if the range is given. Otherwise, makes
@@ -525,7 +525,7 @@ Status MakeInputMinMax(Graph* graph, const string& name_prefix,
                                          input_max));
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Adds a QuantizeAndDequantizeV2 or FakeQuantizeWithMinMaxVars op
@@ -559,7 +559,7 @@ Status MakeQuantizeOp(Graph* graph, const string& name_prefix,
   } else {
     return errors::InvalidArgument("Unknown quant op type: ", quant_op_type);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Insert conversion op, connect it to the graph and remove the old edge.
@@ -588,7 +588,7 @@ Status ProcessTargetEdges(Graph* graph, const string& quant_op_type,
 
   TF_RETURN_IF_ERROR(AddSaveAndRestore(graph, added_variables));
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -655,7 +655,7 @@ Status DoQuantizeTraining(int32_t num_bits, const string& quant_op_type,
 
   TF_RETURN_IF_ERROR(ProcessTargetEdges(graph, quant_op_type, target_edges));
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status DoQuantizeTrainingOnGraphDef(const GraphDef& input_graphdef,
@@ -671,7 +671,7 @@ Status DoQuantizeTrainingOnGraphDef(const GraphDef& input_graphdef,
 
   // Convert the result graph back to a GraphDef.
   graph.ToGraphDef(result_graphdef);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status DoQuantizeTrainingOnSerializedGraphDef(const string& input_graph_string,
@@ -692,7 +692,7 @@ Status DoQuantizeTrainingOnSerializedGraphDef(const string& input_graph_string,
     return errors::Internal(
         "quantize training transformation resulted in invalid GraphDef");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

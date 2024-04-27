@@ -136,7 +136,7 @@ Status UpdateOpFromTokens(T strided_slice,
   mlir::Value new_end = IntConstWithMatchingType(
       builder, strided_slice.getLoc(), end, strided_slice.getBegin().getType());
   strided_slice.getEndMutable().assign(new_end);
-  return OkStatus();
+  return absl::OkStatus();
 }
 }  // namespace
 

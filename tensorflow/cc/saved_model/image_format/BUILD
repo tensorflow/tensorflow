@@ -9,12 +9,11 @@ load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
-        ":__subpackages__",
         "//smartass/brain/configure:__subpackages__",
-        "//tensorflow/cc/experimental/tf2:__subpackages__",
         "//tensorflow/cc/experimental/tfa:__subpackages__",
         "//tensorflow/cc/saved_model:__subpackages__",
         "//tensorflow/tools/tfg_graph_transforms:__subpackages__",
+        "//waymo/onboard/ml/chauffeur_net/utils:__subpackages__",
     ],
     licenses = ["notice"],
 )

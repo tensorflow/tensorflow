@@ -36,7 +36,7 @@ class TFRDecomposeContext {
  public:
   // The entry function to get a decompose context. All the required passes have
   // been initialized.
-  static StatusOr<std::unique_ptr<TFRDecomposeContext>> Get(
+  static absl::StatusOr<std::unique_ptr<TFRDecomposeContext>> Get(
       mlir::MLIRContext* mlir_ctx);
 
   // Constructor of the decompose context. To share the decompose library, the
@@ -51,8 +51,8 @@ class TFRDecomposeContext {
   // Decomposes the op in the NodeDef to a set of primitive ops according to the
   // decompose library in the context. Wrap the decomposed result in a
   // FunctionDef.
-  StatusOr<FunctionDef> ExpandNode(const NodeDef& node_def,
-                                   StringPiece func_name);
+  absl::StatusOr<FunctionDef> ExpandNode(const NodeDef& node_def,
+                                         StringPiece func_name);
 
   // Runs the decompose passes on the user_module.
   Status DecomposeGraph(mlir::ModuleOp user_module);
@@ -69,8 +69,8 @@ class TFRDecomposeContext {
 
 // Decomposes the NodeDef to a set of primitive ops according to the decompose
 // library loaded. Wrap the decomposed result in a FunctionDef.
-StatusOr<FunctionDef> ExpandNode(const NodeDef& node_def,
-                                 StringPiece func_name);
+absl::StatusOr<FunctionDef> ExpandNode(const NodeDef& node_def,
+                                       StringPiece func_name);
 
 // Decomposes the ops in the ModuleOp to a set of primitive ops according to
 // decompose library in the context.
