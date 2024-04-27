@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef XLA_MLIR_RUNTIME_TRANSFORMS_SPECIALIZATION_H_
 #define XLA_MLIR_RUNTIME_TRANSFORMS_SPECIALIZATION_H_
 
+#include "absl/status/status.h"
+#include "llvm/ADT/ArrayRef.h"
+#include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Interfaces/FunctionInterfaces.h"  // from @llvm-project

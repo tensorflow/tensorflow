@@ -73,22 +73,6 @@ filegroup(
     visibility = ["//tensorflow/python/compiler/tensorrt:__pkg__"],
 )
 
-filegroup(
-    name = "quantization_mnist_test_srcs",
-    srcs = ["quantization_mnist_test.py"],
-    visibility = ["//tensorflow/python/compiler/tensorrt:__pkg__"],
-)
-
-filegroup(
-    name = "quantization_mnist_test_data",
-    srcs = [
-        "testdata/mnist/checkpoint",
-        "testdata/mnist/model.ckpt-46900.data-00000-of-00001",
-        "testdata/mnist/model.ckpt-46900.index",
-    ],
-    visibility = ["//tensorflow/python/compiler/tensorrt:__pkg__"],
-)
-
 base_tags = [
     "no_cuda_on_cpu_tap",
     "no_rocm",

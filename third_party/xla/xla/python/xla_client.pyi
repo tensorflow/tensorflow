@@ -1,4 +1,4 @@
-# Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2021 The OpenXLA Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -22,6 +22,7 @@ import numpy
 from . import xla_extension as _xla
 from .xla_extension import Shape as Shape
 from .xla_extension import Layout as Layout
+from .xla_extension import ifrt_programs as ifrt_programs
 from .xla_extension import ops as ops
 from .xla_extension import profiler as profiler
 
@@ -42,6 +43,7 @@ from .xla_extension import OpSharding as OpSharding
 from .xla_extension import HloSharding as HloSharding
 from .xla_extension import PrimitiveType as PrimitiveType
 from .xla_extension import Traceback as Traceback
+from .xla_extension import PjRtLayout as PjRtLayout
 from .xla_extension import XlaBuilder as XlaBuilder
 from .xla_extension import XlaComputation as XlaComputation
 from .xla_extension import XlaOp as XlaOp
@@ -82,9 +84,11 @@ def heap_profile(client: Client) -> bytes:
   ...
 
 def make_cpu_client(
+    asynchronous: bool = ...,
     distributed_client: Optional[DistributedRuntimeClient] = ...,
     node_id: int = ...,
     num_nodes: int = ...,
+    collectives: Optional[_xla.CpuCollectives] = ...,
 ) -> Client:
   ...
 
@@ -101,6 +105,9 @@ def make_tfrt_tpu_c_api_client(options: Optional[_NameValueMapping] = None) -> C
   ...
 
 def make_tfrt_tpu_c_api_device_topology(topology_name: Optional[str] = None, **kwargs) -> DeviceTopology:
+  ...
+
+def make_c_api_device_topology(c_api: Any, topology_name: str = '', **kwargs) -> DeviceTopology:
   ...
 
 def get_topology_for_devices(devices: List[Device]) -> DeviceTopology:
@@ -121,15 +128,16 @@ def pjrt_plugin_loaded(plugin_name: str) -> bool:
 def load_pjrt_plugin_dynamically(plugin_name: str, library_path: str) -> Any:
   ...
 
+def load_pjrt_plugin_with_c_api(plugin_name: str, c_api: Any) -> None:
+  ...
+
 def pjrt_plugin_initialized(plugin_name: str) -> bool:
   ...
 
 def initialize_pjrt_plugin(plugin_name: str) -> None:
   ...
 
-def generate_pjrt_gpu_plugin_options(
-    visible_devices: str = 'all',
-) -> _NameValueMapping:
+def generate_pjrt_gpu_plugin_options() -> _NameValueMapping:
   ...
 
 class OpMetadata:
@@ -223,6 +231,8 @@ def copy_array_to_devices_with_sharding(self: ArrayImpl, devices: List[Device], 
 
 def batched_device_put(aval: Any, sharding: Any, shards: Sequence[Any], devices: List[Device]) -> ArrayImpl: ...
 
+def batched_block_until_ready(x: Sequence[ArrayImpl]) -> None: ...
+
 def check_and_canonicalize_memory_kind(
     memory_kind: Optional[str], device_list: DeviceList) -> Optional[str]: ...
 
@@ -234,7 +244,7 @@ def array_result_handler(
   ...
 
 def register_custom_call_target(
-    name: str, fn: Callable, platform: str = ...
+    name: str, fn: Callable, platform: str = ..., api_version: int = ...
 ) -> None:
   ...
 
@@ -242,3 +252,5 @@ def register_custom_call_handler(xla_platform_name: str, handler: Any) -> None:
   ...
 
 def encode_inspect_sharding_callback(handler: Any) -> bytes: ...
+
+def custom_call_targets(platform: str) -> dict[str, Any]: ...

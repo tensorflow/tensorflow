@@ -237,22 +237,16 @@ struct FillEmptyRows<GPUDevice, T, Tindex, RaggedOperands> {
     auto elements_per_row = elements_per_row_t.flat<Tindex>();
     se::DeviceMemoryBase elements_per_row_gpu_memory(
         elements_per_row.data(), dense_rows * sizeof(Tindex));
-    if (!stream
-             ->ThenMemZero(&elements_per_row_gpu_memory,
-                           dense_rows * sizeof(Tindex))
-             .ok()) {
-      return errors::Internal("Failed to zero elements_per_row");
-    }
+    TF_RETURN_IF_ERROR(stream->MemZero(&elements_per_row_gpu_memory,
+                                       dense_rows * sizeof(Tindex)));
     Tensor rows_are_not_ordered_t;
     TF_RETURN_IF_ERROR(context->allocate_temp(DT_INT32, TensorShape({1}),
                                               &rows_are_not_ordered_t));
     auto rows_are_not_ordered_gpu = rows_are_not_ordered_t.flat<int>();
     se::DeviceMemoryBase rows_are_not_ordered_gpu_memory(
         rows_are_not_ordered_gpu.data(), sizeof(int));
-    if (!stream->ThenMemZero(&rows_are_not_ordered_gpu_memory, sizeof(int))
-             .ok()) {
-      return errors::Internal("Failed to zero rows_are_not_ordered");
-    }
+    TF_RETURN_IF_ERROR(
+        stream->MemZero(&rows_are_not_ordered_gpu_memory, sizeof(int)));
     Tensor first_invalid_index_t;
     TF_RETURN_IF_ERROR(context->allocate_temp(DT_INT32, TensorShape({1}),
                                               &first_invalid_index_t));
@@ -260,12 +254,8 @@ struct FillEmptyRows<GPUDevice, T, Tindex, RaggedOperands> {
     constexpr const int kAllIndicesValid = std::numeric_limits<int>::max();
     se::DeviceMemoryBase first_invalid_index_gpu_memory(
         first_invalid_index_gpu.data(), sizeof(int));
-    if (!stream
-             ->ThenMemset32(&first_invalid_index_gpu_memory, kAllIndicesValid,
-                            sizeof(int))
-             .ok()) {
-      return errors::Internal("Failed to initialize first_invalid_index");
-    }
+    TF_RETURN_IF_ERROR(stream->Memset32(&first_invalid_index_gpu_memory,
+                                        kAllIndicesValid, sizeof(int)));
 
     if (N > 0) {
       TF_RETURN_IF_ERROR(wrap_kernel_call(
@@ -321,33 +311,22 @@ struct FillEmptyRows<GPUDevice, T, Tindex, RaggedOperands> {
                               /*output=*/num_empty_rows_through.data()));
 
     ScratchSpace<Tindex> num_empty_rows_host(context, 1, /*on_host=*/true);
-    if (!stream
-             ->ThenMemcpy(num_empty_rows_host.mutable_data(),
-                          se::DeviceMemoryBase(
-                              num_empty_rows_through.data() + (dense_rows - 1),
-                              sizeof(*num_empty_rows_host.data())),
-                          sizeof(*num_empty_rows_host.data()))
-             .ok()) {
-      return errors::Internal("Failed to copy num_empty_rows to host");
-    }
+    TF_RETURN_IF_ERROR(stream->Memcpy(
+        num_empty_rows_host.mutable_data(),
+        se::DeviceMemoryBase(num_empty_rows_through.data() + (dense_rows - 1),
+                             sizeof(*num_empty_rows_host.data())),
+        sizeof(*num_empty_rows_host.data())));
 
     ScratchSpace<int> rows_are_not_ordered_host(context, 1, /*on_host=*/true);
-    if (!stream
-             ->ThenMemcpy(rows_are_not_ordered_host.mutable_data(),
-                          rows_are_not_ordered_gpu_memory,
-                          sizeof(*rows_are_not_ordered_host.data()))
-             .ok()) {
-      return errors::Internal("Failed to copy rows_are_not_ordered to host");
-    }
+    TF_RETURN_IF_ERROR(
+        stream->Memcpy(rows_are_not_ordered_host.mutable_data(),
+                       rows_are_not_ordered_gpu_memory,
+                       sizeof(*rows_are_not_ordered_host.data())));
 
     ScratchSpace<int> first_invalid_index_host(context, 1, /*on_host=*/true);
-    if (!stream
-             ->ThenMemcpy(first_invalid_index_host.mutable_data(),
-                          first_invalid_index_gpu_memory,
-                          sizeof(*first_invalid_index_host.data()))
-             .ok()) {
-      return errors::Internal("Failed to copy first_invalid_index to host");
-    }
+    TF_RETURN_IF_ERROR(stream->Memcpy(
+        first_invalid_index_host.mutable_data(), first_invalid_index_gpu_memory,
+        sizeof(*first_invalid_index_host.data())));
 
     // We must wait for num_empty_rows and rows_are_not_ordered to be copied to
     // the host, so we enqueue the remainder of the computation onto the stream

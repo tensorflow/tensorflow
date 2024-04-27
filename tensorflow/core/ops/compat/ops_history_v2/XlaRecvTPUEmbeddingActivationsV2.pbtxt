@@ -1,0 +1,35 @@
+op 	 {
+  name: "XlaRecvTPUEmbeddingActivationsV2"
+  input_arg {
+    name: "deduplication_data"
+    type: DT_VARIANT
+  }
+  output_arg {
+    name: "outputs"
+    type: DT_FLOAT
+    number_attr: "num_tables"
+  }
+  attr {
+    name: "num_tables"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "config"
+    type: "string"
+  }
+  attr {
+    name: "embedding_partitions"
+    type: "string"
+  }
+  attr {
+    name: "hbm_buffers_config"
+    type: "string"
+  }
+  attr {
+    name: "tpu_topology"
+    type: "string"
+  }
+  is_stateful: true
+}

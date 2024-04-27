@@ -50,7 +50,7 @@ class DataServiceDispatcherClient : public DataServiceClientBase {
   // registered with the dispatcher, this will register the worker. The
   // dispatcher will report which new tasks the worker should run, and which
   // tasks it should delete.
-  StatusOr<WorkerHeartbeatResponse> WorkerHeartbeat(
+  absl::StatusOr<WorkerHeartbeatResponse> WorkerHeartbeat(
       const WorkerHeartbeatRequest& request);
 
   // Updates the dispatcher with information about the worker's state.

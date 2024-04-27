@@ -31,4 +31,7 @@ tf_class {
     name: "__init__"
     argspec: "args=[\'self\', \'node_def\', \'op\', \'message\'], varargs=args, keywords=None, defaults=None"
   }
+  member_method {
+    name: "add_note"
+  }
 }

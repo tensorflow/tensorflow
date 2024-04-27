@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -23,18 +23,31 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Interfaces/FunctionInterfaces.h"  // from @llvm-project
 #include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "xla/mlir/runtime/transforms/type_converter.h"
 #include "xla/mlir/runtime/utils/constraints.h"
 #include "xla/runtime/arguments.h"
+#include "xla/runtime/constraints.h"
 #include "xla/runtime/symbolic_shape.h"
+#include "xla/runtime/types.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace runtime {
@@ -90,19 +103,19 @@ static StatusOr<mlir::Type> SpecializeOperandType(
   // Replace all symbolic dimensions with dynamic dimension.
   auto shape = SymbolicShapesResolver::Normalize(symbolic_shape);
 
-  if (auto memref = type.dyn_cast<mlir::MemRefType>()) {
+  if (auto memref = mlir::dyn_cast<mlir::MemRefType>(type)) {
     if (auto st = VerifyMemrefOperand(index, memref, *memref_arg); !st.ok())
       return st;
     return mlir::MemRefType::get(shape, memref.getElementType());
   }
 
-  if (auto tensor = type.dyn_cast<mlir::RankedTensorType>()) {
+  if (auto tensor = mlir::dyn_cast<mlir::RankedTensorType>(type)) {
     if (auto st = VerifyMemrefOperand(index, tensor, *memref_arg); !st.ok())
       return st;
     return mlir::RankedTensorType::get(shape, tensor.getElementType());
   }
 
-  if (auto tensor = type.dyn_cast<mlir::UnrankedTensorType>()) {
+  if (auto tensor = mlir::dyn_cast<mlir::UnrankedTensorType>(type)) {
     if (auto st = VerifyMemrefOperand(index, tensor, *memref_arg); !st.ok())
       return st;
     return mlir::RankedTensorType::get(shape, tensor.getElementType());
@@ -224,7 +237,7 @@ Status SpecializeFunction(mlir::FunctionOpInterface func,
     // We only support sinking of Tensor arguments into the function body.
     mlir::Type input =
         llvm::cast<mlir::FunctionType>(func.getFunctionType()).getInput(i);
-    mlir::TensorType tensor = input.dyn_cast<mlir::TensorType>();
+    mlir::TensorType tensor = mlir::dyn_cast<mlir::TensorType>(input);
     if (!tensor || !SupportsValueSpecialization(tensor)) {
       return InvalidArgumentError(StrCat(
           "non-sinkable operand was marked for sinking: ", debugString(input)));

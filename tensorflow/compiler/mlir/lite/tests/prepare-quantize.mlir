@@ -1,5 +1,6 @@
 // RUN: tf-opt %s -tfl-prepare-quantize="quantize-allowlist=quantize_float_placeholder_only,not_reset_input" | FileCheck %s
 // RUN: tf-opt %s -tfl-prepare-quantize="disable-set-input-nodes-quantization-params=true" | FileCheck --check-prefix=MixedPrecision %s
+// RUN: tf-opt %s -tfl-prepare-quantize="is-qdq-conversion=true" | FileCheck --check-prefix=QDQ %s
 
 // CHECK-LABEL: main
 // Uses `main` function to match the default target function of QuantSpecs and
@@ -392,6 +393,32 @@ func.func @NotRescaleLogistic(%arg0: tensor<1x6x6x16x!quant.uniform<u8:f32, 7.81
 
 // CHECK:  %[[log:.*]] = "tfl.logistic"(%arg0)
 // CHECK: return %[[log]]
+}
+
+// QDQ-LABEL: QDQNoQuantizeLogistic
+func.func @QDQNoQuantizeLogistic(tensor<1x6x6x16x!quant.uniform<u8:f32, 7.812500e-03:128>>) -> tensor<1x6x6x16xf32> {
+^bb0(%arg0: tensor<1x6x6x16x!quant.uniform<u8:f32, 7.812500e-03:128>>):
+  %0 = "tfl.dequantize"(%arg0) : (tensor<1x6x6x16x!quant.uniform<u8:f32, 7.812500e-03:128>>) -> tensor<1x6x6x16xf32>
+  %1 = "tfl.logistic"(%0) : (tensor<1x6x6x16xf32>) -> tensor<1x6x6x16xf32>
+  func.return %1 : tensor<1x6x6x16xf32>
+
+// QDQ: %0 = "tfl.dequantize"(%arg0)
+// QDQ: %1 = "tfl.logistic"(%0) : (tensor<1x6x6x16xf32>) -> tensor<1x6x6x16xf32>
+// QDQ-NOT:"tfl.quantize"
+// QDQ: return %1 : tensor<1x6x6x16xf32>
+}
+
+// QDQ-LABEL: QDQNoQuantizeSoftmax
+func.func @QDQNoQuantizeSoftmax(tensor<1x6x6x16x!quant.uniform<u8:f32, 7.812500e-03:128>>) -> tensor<1x6x6x16xf32> {
+^bb0(%arg0: tensor<1x6x6x16x!quant.uniform<u8:f32, 7.812500e-03:128>>):
+  %0 = "tfl.dequantize"(%arg0) : (tensor<1x6x6x16x!quant.uniform<u8:f32, 7.812500e-03:128>>) -> tensor<1x6x6x16xf32>
+  %1 = "tfl.softmax"(%0) {beta = 1.000000e+00 : f32} : (tensor<1x6x6x16xf32>) -> tensor<1x6x6x16xf32>
+  func.return %1 : tensor<1x6x6x16xf32>
+
+// QDQ: %0 = "tfl.dequantize"(%arg0)
+// QDQ: %1 = "tfl.softmax"(%0) {beta = 1.000000e+00 : f32} : (tensor<1x6x6x16xf32>) -> tensor<1x6x6x16xf32>
+// QDQ-NOT: "tfl.quantize"
+// QDQ: return %1 : tensor<1x6x6x16xf32>
 }
 
 // CHECK-LABEL: QuantizeL2Norm
@@ -852,4 +879,42 @@ func.func @QuantizedCatsAddRequantsTest(%arg0: tensor<1x1xf32>, %arg1: tensor<1x
 // CHECK-NEXT: %[[qcat_2_0_3:.*]] = "tfl.quantize"(%[[cat_2_0_3]]) {qtype = tensor<1x3x!quant.uniform<u8:f32, 0.0034775265291625379:140>>, volatile} : (tensor<1x3xf32>) -> tensor<1x3x!quant.uniform<u8:f32, 0.0034775265291625379:140>>
 // CHECK-NEXT: %[[dqcat_2_0_3:.*]] = "tfl.dequantize"(%[[qcat_2_0_3]]) : (tensor<1x3x!quant.uniform<u8:f32, 0.0034775265291625379:140>>) -> tensor<1x3xf32>
 // CHECK-NEXT: return %[[dqcat_2_0_1_0]], %[[dqcat_2_0_3]] : tensor<1x4xf32>, tensor<1x3xf32>
+}
+
+// QDQ-LABEL: TransposePerTensorQuantizationPropagation
+func.func @TransposePerTensorQuantizationPropagation() -> tensor<2x5xf32> {
+  %perm = arith.constant dense<[1, 0]> : tensor<2xi32>
+  %cst = arith.constant dense<1.0> : tensor<5x2xf32>
+  %q = "tfl.quantize"(%cst) {qtype = tensor<5x2x!quant.uniform<i8<-127:127>:f32, 1.113490e-03>>} : (tensor<5x2xf32>) -> tensor<5x2x!quant.uniform<i8<-127:127>:f32, 1.113490e-03>>
+  %dq = "tfl.dequantize"(%q) : (tensor<5x2x!quant.uniform<i8<-127:127>:f32, 1.113490e-03>>) -> tensor<5x2xf32>
+  %t = "tfl.transpose"(%dq, %perm) : (tensor<5x2xf32>, tensor<2xi32>) -> tensor<2x5xf32>
+  func.return %t : tensor<2x5xf32>
+
+  // QDQ: %[[perm:.*]] = arith.constant dense<[1, 0]> : tensor<2xi32>
+  // QDQ-NEXT: %[[w:.*]] = arith.constant dense<1.000000e+00> : tensor<5x2xf32>
+  // QDQ-NEXT: %[[qw:.*]] = "tfl.quantize"(%[[w]]) {qtype = tensor<5x2x!quant.uniform<i8<-127:127>:f32
+  // QDQ-NEXT: %[[dqw:.*]] = "tfl.dequantize"(%[[qw]]) : (tensor<5x2x!quant.uniform<i8<-127:127>:f32
+  // QDQ-NEXT: %[[tp:.*]] = "tfl.transpose"(%[[dqw]], %[[perm]]) : (tensor<5x2xf32>, tensor<2xi32>) -> tensor<2x5xf32>
+  // QDQ-NEXT: %[[qtw:.*]] = "tfl.quantize"(%[[tp]]) {qtype = tensor<2x5x!quant.uniform<i8<-127:127>:f32
+  // QDQ-NEXT: %[[dqtw:.*]] = "tfl.dequantize"(%[[qtw]]) : (tensor<2x5x!quant.uniform<i8<-127:127>:f32
+  // QDQ-NEXT: return %[[dqtw]] : tensor<2x5xf32>
+}
+
+// QDQ-LABEL: TransposePerChannelNewQuantDim
+func.func @TransposePerChannelNewQuantDim() -> tensor<2x5xf32> {
+  %perm = arith.constant dense<[1, 0]> : tensor<2xi32>
+  %cst = arith.constant dense<1.0> : tensor<5x2xf32>
+  %q = "tfl.quantize"(%cst) {qtype = tensor<5x2x!quant.uniform<i8<-127:127>:f32:0, {1.0,2.0,3.0,4.0,5.0}>>} : (tensor<5x2xf32>) -> tensor<5x2x!quant.uniform<i8<-127:127>:f32:0, {1.0,2.0,3.0,4.0,5.0}>>
+  %dq = "tfl.dequantize"(%q) : (tensor<5x2x!quant.uniform<i8<-127:127>:f32:0, {1.0,2.0,3.0,4.0,5.0}>>) -> tensor<5x2xf32>
+  %t = "tfl.transpose"(%dq, %perm) : (tensor<5x2xf32>, tensor<2xi32>) -> tensor<2x5xf32>
+  func.return %t : tensor<2x5xf32>
+
+// QDQ: %[[perm:.*]] = arith.constant dense<[1, 0]> : tensor<2xi32>
+// QDQ-NEXT: %[[w:.*]] = arith.constant dense<1.000000e+00> : tensor<5x2xf32>
+// QDQ-NEXT: %[[qw:.*]] = "tfl.quantize"(%[[w]]) {qtype = tensor<5x2x!quant.uniform<i8<-127:127>:f32:0
+// QDQ-NEXT: %[[dqw:.*]] = "tfl.dequantize"(%[[qw]]) : (tensor<5x2x!quant.uniform<i8<-127:127>:f32:0
+// QDQ-NEXT: %[[tp:.*]] = "tfl.transpose"(%[[dqw]], %[[perm]]) : (tensor<5x2xf32>, tensor<2xi32>) -> tensor<2x5xf32>
+// QDQ-NEXT: %[[qtw:.*]] = "tfl.quantize"(%[[tp]]) {qtype = tensor<2x5x!quant.uniform<i8<-127:127>:f32:1
+// QDQ-NEXT: %[[dqtw:.*]] = "tfl.dequantize"(%[[qtw]]) : (tensor<2x5x!quant.uniform<i8<-127:127>:f32:1
+// QDQ-NEXT: return %[[dqtw]] : tensor<2x5xf32>
 }

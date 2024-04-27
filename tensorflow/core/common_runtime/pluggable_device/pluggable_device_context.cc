@@ -55,7 +55,7 @@ Status PluggableDeviceContext::ThenExecute(Device* device, se::Stream* stream,
   const DeviceBase::AcceleratorDeviceInfo* device_info =
       device->tensorflow_accelerator_device_info();
   device_info->event_mgr->ThenExecute(stream, func);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 bool PluggableDeviceContext::IsPluggableDevice() { return true; }

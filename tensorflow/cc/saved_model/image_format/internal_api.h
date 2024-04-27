@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CC_SAVED_MODEL_IMAGE_FORMAT_INTERNAL_API_H_
 
 #include <string>
+#include <tuple>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -43,10 +44,13 @@ absl::Status ReadSavedModel(const std::string& file_prefix,
 absl::Status WriteSavedModel(SavedModel* saved_model_proto,
                              const std::string& file_prefix);
 // Writes the SavedModel proto to std::string
-absl::StatusOr<std::string> WriteSavedModelToString(
+// The bool field record whether it's saved as a chunked protobuf (true) or
+// regular protobuf (false)
+absl::StatusOr<std::tuple<std::string, bool>> WriteSavedModelToString(
     SavedModel* saved_model_proto);
 #if !IS_OSS
-absl::StatusOr<absl::Cord> WriteSavedModelToCord(SavedModel* saved_model_proto);
+absl::StatusOr<std::tuple<absl::Cord, bool>> WriteSavedModelToCord(
+    SavedModel* saved_model_proto);
 #endif
 
 // See above. The `debug_max_size` argument can be used to the maximum size to

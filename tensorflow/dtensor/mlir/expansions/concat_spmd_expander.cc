@@ -47,7 +47,7 @@ Status VerifyConcatLayout(mlir::Value concat_dim_operand,
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 StatusOr<Layout> ReduceForConcatOutputLayout(mlir::Value concat_dim_operand,

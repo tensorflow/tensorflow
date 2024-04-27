@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -33,7 +33,7 @@ namespace xla {
 // Builds a distributed runtime service. `address` is the address on which
 // the service should listen, e.g., [::]:1234 . `num_nodes` is the number
 // of nodes in the cluster.
-StatusOr<std::unique_ptr<DistributedRuntimeService>>
+absl::StatusOr<std::unique_ptr<DistributedRuntimeService>>
 GetDistributedRuntimeService(std::string address,
                              const CoordinationServiceImpl::Options& options);
 

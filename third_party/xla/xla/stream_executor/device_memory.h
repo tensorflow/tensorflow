@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2015 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -26,19 +26,15 @@ limitations under the License.
 
 #include <stddef.h>
 
+#include <cstddef>
 #include <cstdint>
+#include <tuple>
 
-#include "xla/stream_executor/platform/port.h"
+#include "tsl/platform/logging.h"
 
 namespace stream_executor {
 
 class DeviceMemoryAllocator;
-class StreamExecutor;
-
-// This special address is used to indicate that the allocation is not ready
-// when constructing DeviceMemory object, and will be lazily allocated by
-// an external allocator (e.g. command buffer for GPU backend).
-inline constexpr uintptr_t kExternalAllocationMarker = 0xDEADBEEF;
 
 // void*-analogous device memory allocation. For the typed variation, see
 // DeviceMemory<T>.
@@ -62,19 +58,19 @@ class DeviceMemoryBase {
   // A `== nullptr` convenience method is also provided.
   bool is_null() const { return opaque_ == nullptr; }
 
-  bool is_external_allocation_marker() const {
-    return reinterpret_cast<uintptr_t>(opaque_) == kExternalAllocationMarker;
-  }
-
   bool operator==(std::nullptr_t other) const { return is_null(); }
   bool operator!=(std::nullptr_t other) const { return !is_null(); }
+
+  bool operator==(const DeviceMemoryBase &other) const {
+    return opaque_ == other.opaque_ && size_ == other.size_;
+  }
 
   // Provides a partial order between device memory values.
   //
   // This operator is provided so that this object can be used as a key in an
   // ordered map.
   bool operator<(const DeviceMemoryBase &other) const {
-    return opaque() < other.opaque();
+    return std::tie(opaque_, size_) < std::tie(other.opaque_, other.size_);
   }
 
   // Returns the size, in bytes, for the backing memory.
@@ -97,14 +93,17 @@ class DeviceMemoryBase {
     return opaque() == other.opaque() && size() == other.size();
   }
 
- protected:
-  friend class StreamExecutor;
+  // Creates a memory region (slice) inside another allocated memory region.
+  // Offset and size are in bytes.
+  DeviceMemoryBase GetByteSlice(uint64_t offset_bytes,
+                                uint64_t size_bytes) const {
+    DCHECK(offset_bytes + size_bytes <= size_)
+        << "requested slice allocation (offset + size) is greater "
+        << "than parent allocation size: (" << offset_bytes << " + "
+        << size_bytes << ") vs. (" << size_ << ")";
 
-  // Resets the internal values of the opaque pointer and number of bytes in the
-  // memory region, just as in the constructor.
-  void Reset(void *opaque, uint64_t bytes) {
-    opaque_ = opaque;
-    size_ = bytes;
+    return DeviceMemoryBase(
+        reinterpret_cast<std::byte *>(opaque_) + offset_bytes, size_bytes);
   }
 
  private:
@@ -144,82 +143,30 @@ class DeviceMemory final : public DeviceMemoryBase {
   // allocation.
   uint64_t ElementCount() const { return size() / sizeof(ElemT); }
 
-  // Returns whether this is a single-element allocation.
-  bool IsScalar() const { return ElementCount() == 1; }
-
-  // Create a typed area of DeviceMemory with a given opaque pointer and the
+  // Creates a typed area of DeviceMemory with a given opaque pointer and the
   // quantity of bytes in the allocation. This function is broken out to
   // distinguish bytes from an element count.
   static DeviceMemory<ElemT> MakeFromByteSize(void *opaque, uint64_t bytes) {
     return DeviceMemory<ElemT>(opaque, bytes);
   }
 
-  static DeviceMemory<ElemT> MakeExternalAllocationFromByteSize(
-      uint64_t bytes) {
-    return DeviceMemory<ElemT>(
-        reinterpret_cast<void *>(kExternalAllocationMarker), bytes);
+  // Creates a memory region (slice) inside another allocated memory region.
+  // Offset and size are specified in terms of ElemT elements.
+  DeviceMemory<ElemT> GetSlice(uint64_t element_offset,
+                               uint64_t element_count) {
+    return DeviceMemory<ElemT>(GetByteSlice(sizeof(ElemT) * element_offset,
+                                            sizeof(ElemT) * element_count));
   }
-
-  // Resets the DeviceMemory data, in MakeFromByteSize fashion.
-  // This simply clobbers the prior values.
-  void ResetFromByteSize(void *opaque, uint64_t bytes) {
-    // TODO(leary) when NVCC is eliminated we can add this check (and the
-    // logging include it requires).
-    // CHECK_EQ(0, bytes % sizeof(ElemT));
-    DeviceMemoryBase::Reset(opaque, bytes);
-  }
-
-  // ------------------------------------------------------------
 
  protected:
-  // This constructor is solely used from derived classes; it is made protected
-  // because it accepts a byte-size instead of an element count, which could
-  // potentially be misused given the ElementCount() nature of this interface.
+  // This is made protected because it accepts a byte-size instead of an element
+  // count, which could potentially be misused given the ElementCount() nature
+  // of this interface.
   //
   // In order to specify the desire to use byte size instead of element count
   // explicitly, use MakeFromByteSize.
   DeviceMemory(void *opaque, uint64_t size) : DeviceMemoryBase(opaque, size) {}
 };
-
-// A class to encapsulate the type and size of a dynamic shared memory
-// buffer. Because the buffer exists solely on the device and is not copyable
-// to the host, memory objects of this type do not maintain buffer pointers
-// on the host.
-template <typename ElemT>
-class SharedDeviceMemory final : public DeviceMemoryBase {
- public:
-  explicit SharedDeviceMemory(uint64_t elem_count)
-      : DeviceMemoryBase(nullptr, elem_count * kElemSize) {}
-
-  static constexpr size_t kElemSize = sizeof(ElemT);
-
-  // Returns the number of elements of type ElemT that constitute this
-  // allocation.
-  uint64_t ElementCount() const { return size() / kElemSize; }
-
-  // Returns whether this is a single-element allocation.
-  bool IsScalar() const { return ElementCount() == 1; }
-};
-
-// Host-side representation of packed-and-aligned vector datatypes on the device
-// side. Since these can appear in device kernel signatures, we support
-// launching them with these datatypes in launch signatures.
-
-struct Float2 {
-  float x, y;
-};
-
-struct Float4 {
-  Float2 xz, yw;
-};
-
-struct Double2 {
-  double x, y;
-};
-
-static_assert(sizeof(Float2) == 2 * sizeof(float), "Float2 must be packed");
-static_assert(sizeof(Float4) == 4 * sizeof(float), "Float4 must be packed");
-static_assert(sizeof(Double2) == 2 * sizeof(double), "Double2 must be packed");
 
 }  // namespace stream_executor
 

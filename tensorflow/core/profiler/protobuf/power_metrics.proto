@@ -9,12 +9,17 @@ message PowerComponentMetrics {
   double max_power = 2;
   // average watts monitored.
   double avg_power = 3;
-  // maximum watts of moving average power over a time window of 100us
+  // (SPI sampler only) maximum watts of moving average power over a time window
+  // of 100us.
   double max_moving_avg_power_100us = 4;
-  // maximum watts of moving average power over a time window of 1ms
+  // (SPI sampler only) maximum watts of moving average power over a time window
+  // of 1ms.
   double max_moving_avg_power_1ms = 5;
-  // maximum watts of moving average power over a time window of 10ms
+  // (SPI sampler only) maximum watts of moving average power over a time window
+  // of 10ms.
   double max_moving_avg_power_10ms = 6;
+  // (FW only) The timescale in us to compute moving averages.
+  uint32 timescale_us = 7;
 }
 
 message PowerMetrics {

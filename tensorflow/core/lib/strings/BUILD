@@ -11,10 +11,7 @@ package(
         "//tensorflow/core:__pkg__",
         # tensorflow/core/framework references some of the headers in this package
         "//tensorflow/core/framework:__subpackages__",
-        # tensorflow/core/platform still references some of the headers in this package
-        "//tensorflow/core/platform:__subpackages__",
         "//tensorflow/core/tpu:__subpackages__",
-        "@local_xla//xla/stream_executor:__subpackages__",
         # For proto_serialization library
         "//tensorflow/cc/experimental/tf2:__subpackages__",
     ],

@@ -134,7 +134,7 @@ Status ExtractEquationRelations(
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // For a set of layouts and mappings from labels to offsets in the layouts,
@@ -545,7 +545,7 @@ Status EinsumSPMDExpander::MaybeRelayoutInputs(
   for (const auto& contracting : contracting_labels)
     reduce_dims.emplace(input_label_to_sharding_spec[contracting]);
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace dtensor

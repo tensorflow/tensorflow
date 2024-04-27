@@ -91,6 +91,12 @@ upper_tabs:
         path: /lite/android/quickstart
       - title: "Google Play services runtime"
         path: /lite/android/play_services
+        section:
+        - title: "Java API"
+          path: /lite/android/java.md
+        - title: "C API"
+          path: /lite/android/native.md
+          status: experimental
       - title: "Development tools"
         path: /lite/android/development
 
@@ -130,7 +136,7 @@ upper_tabs:
           path: /lite/android/delegates/gpu.md
         - title: "Task library API"
           path: /lite/android/delegates/gpu_task.md
-        - title: "Native API"
+        - title: "C/C++ API"
           path: /lite/android/delegates/gpu_native.md
       - title: "NNAPI delegate"
         path: /lite/android/delegates/nnapi
@@ -275,6 +281,9 @@ upper_tabs:
           path: /lite/models/convert/convert_models
         - title: "Convert JAX models"
           path: /lite/examples/jax_conversion/overview
+          status: nightly
+        - title: "Colab for JAX to TFLite"
+          path: /lite/examples/jax_conversion/jax_to_tflite
           status: nightly
       - title: "Model compatibility"
         section:

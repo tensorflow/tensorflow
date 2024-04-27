@@ -17,6 +17,7 @@ limitations under the License.
 #include <vector>
 
 #include "pybind11/pybind11.h"  // from @pybind11
+#include "tensorflow/compiler/mlir/quantization/tensorflow/python/py_function_lib.h"
 #include "tensorflow/lite/toco/python/toco_python_api.h"
 #include "tensorflow/python/lib/core/pybind11_lib.h"
 
@@ -28,16 +29,20 @@ PYBIND11_MODULE(_pywrap_toco_api, m) {
       [](py::object model_flags_proto_txt_raw,
          py::object toco_flags_proto_txt_raw, py::object input_contents_txt_raw,
          bool extended_return, py::object debug_info_txt_raw,
-         bool enable_mlir_converter) {
+         bool enable_mlir_converter,
+         const tensorflow::quantization::PyFunctionLibrary*
+             quantization_py_function_library) {
         return tensorflow::PyoOrThrow(toco::TocoConvert(
             model_flags_proto_txt_raw.ptr(), toco_flags_proto_txt_raw.ptr(),
             input_contents_txt_raw.ptr(), extended_return,
-            debug_info_txt_raw.ptr(), enable_mlir_converter));
+            debug_info_txt_raw.ptr(), enable_mlir_converter,
+            quantization_py_function_library));
       },
       py::arg("model_flags_proto_txt_raw"), py::arg("toco_flags_proto_txt_raw"),
       py::arg("input_contents_txt_raw"), py::arg("extended_return") = false,
       py::arg("debug_info_txt_raw") = py::none(),
       py::arg("enable_mlir_converter") = false,
+      py::arg("quantization_py_function_library") = py::none(),
       R"pbdoc(
       Convert a model represented in `input_contents`. `model_flags_proto`
       describes model parameters. `toco_flags_proto` describes conversion
@@ -55,13 +60,15 @@ PYBIND11_MODULE(_pywrap_toco_api, m) {
          bool fully_quantize, int inference_type, int input_data_type,
          int output_data_type, bool enable_numeric_verify,
          bool enable_whole_model_verify, py::object op_blocklist,
-         py::object node_blocklist, bool enable_variable_quantization) {
+         py::object node_blocklist, bool enable_variable_quantization,
+         bool disable_per_channel_for_dense_layers) {
         return tensorflow::PyoOrThrow(toco::MlirQuantizeModel(
             input_contents_txt_raw.ptr(), disable_per_channel, fully_quantize,
             inference_type, input_data_type, output_data_type,
             enable_numeric_verify, enable_whole_model_verify,
             op_blocklist.ptr(), node_blocklist.ptr(),
-            enable_variable_quantization));
+            enable_variable_quantization,
+            disable_per_channel_for_dense_layers));
       },
       py::arg("input_contents_txt_raw"), py::arg("disable_per_channel") = false,
       py::arg("fully_quantize") = true, py::arg("inference_type") = 9,
@@ -71,6 +78,7 @@ PYBIND11_MODULE(_pywrap_toco_api, m) {
       py::arg("op_blocklist") = py::none(),
       py::arg("node_blocklist") = py::none(),
       py::arg("enable_variable_quantization") = false,
+      py::arg("disable_per_channel_for_dense_layers") = false,
       R"pbdoc(
       Returns a quantized model.
     )pbdoc");

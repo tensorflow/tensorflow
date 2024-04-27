@@ -80,8 +80,8 @@ struct OptimizedFunctionGraphInfo {
 
   // Converts from the proto to struct OptimizedFunctionGraphInfo. Returns error
   // if the conversion fails.
-  static StatusOr<OptimizedFunctionGraphInfo> FromProto(
-      const OptimizedFunctionGraph& proto);
+  static absl::StatusOr<OptimizedFunctionGraphInfo> FromProto(
+      OptimizedFunctionGraph&& proto);
 };
 
 }  // namespace tensorflow

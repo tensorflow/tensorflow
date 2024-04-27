@@ -352,6 +352,18 @@ inline void CollectValue(Percentiles value, Point* const point) {
   point->percentiles_value = std::move(value);
 }
 
+template <>
+inline void CollectValue(double value, Point* const point) {
+  point->value_type = ValueType::kDouble;
+  point->double_value = value;
+}
+
+template <>
+inline void CollectValue(std::function<double()> value_fn, Point* const point) {
+  point->value_type = ValueType::kDouble;
+  point->double_value = value_fn();
+}
+
 // Used by the CollectionRegistry class to collect all the values of all the
 // metrics in the registry. This is an implementation detail of the
 // CollectionRegistry class, please do not depend on this.

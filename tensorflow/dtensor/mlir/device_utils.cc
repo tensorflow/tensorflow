@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/core/platform/errors.h"
 
 namespace tensorflow {
@@ -38,9 +39,10 @@ StatusOr<mlir::Value> DeviceId(mlir::Operation* op) {
         "enclosing function must contain device id as argument");
 
   auto device_id = function.getArgument(0);
-  auto device_id_type = device_id.getType().dyn_cast<mlir::RankedTensorType>();
+  auto device_id_type =
+      mlir::dyn_cast<mlir::RankedTensorType>(device_id.getType());
   if (!device_id_type ||
-      !device_id_type.getElementType().isa<mlir::IntegerType>())
+      !mlir::isa<mlir::IntegerType>(device_id_type.getElementType()))
     return errors::InvalidArgument(
         "0-th argument of the enclosing function should be integer device id.");
 
@@ -48,12 +50,12 @@ StatusOr<mlir::Value> DeviceId(mlir::Operation* op) {
 }
 
 StatusOr<mlir::Value> DeviceId(mlir::Value val) {
-  if (auto block_arg = val.dyn_cast<mlir::BlockArgument>()) {
+  if (auto block_arg = mlir::dyn_cast<mlir::BlockArgument>(val)) {
     auto device_id = block_arg.getOwner()->getArgument(0);
     auto device_id_type =
-        device_id.getType().dyn_cast<mlir::RankedTensorType>();
+        mlir::dyn_cast<mlir::RankedTensorType>(device_id.getType());
     if (!device_id_type ||
-        !device_id_type.getElementType().isa<mlir::IntegerType>())
+        !mlir::isa<mlir::IntegerType>(device_id_type.getElementType()))
       return errors::InvalidArgument(
           "0-th argument of the enclosing block should be integer device id.");
     return device_id;

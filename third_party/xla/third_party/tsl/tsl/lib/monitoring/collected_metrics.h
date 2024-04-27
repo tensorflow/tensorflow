@@ -90,6 +90,7 @@ struct Point {
   int64_t int64_value;
   string string_value;
   bool bool_value;
+  double double_value;
   HistogramProto histogram_value;
   Percentiles percentiles_value;
 

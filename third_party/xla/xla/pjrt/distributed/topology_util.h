@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,8 +21,8 @@ limitations under the License.
 
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/distributed/protocol.pb.h"
-#include "xla/pjrt/pjrt_client.h"
 #include "xla/status.h"
 #include "xla/statusor.h"
 
@@ -30,7 +30,7 @@ namespace xla {
 
 // Retrieve content of /proc/sys/kernel/random/boot_id as a string.
 // Empty on non-Linux platforms.
-StatusOr<std::string> GetBootIdString();
+absl::StatusOr<std::string> GetBootIdString();
 
 // Performs a distributed exchange of topologies using a KV store. Each process
 // provides its local topology, and the local topologies are exchanged to
@@ -38,8 +38,7 @@ StatusOr<std::string> GetBootIdString();
 Status ExchangeTopologies(std::string_view platform, int node_id, int num_nodes,
                           absl::Duration get_local_topology_timeout,
                           absl::Duration get_global_topology_timeout,
-                          const PjRtClient::KeyValueGetCallback& kv_get,
-                          const PjRtClient::KeyValuePutCallback& kv_put,
+                          KeyValueStoreInterface* kv_store,
                           const LocalTopologyProto& local_topology,
                           GlobalTopologyProto* global_topology);
 

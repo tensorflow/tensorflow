@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -44,7 +44,7 @@ class HloLivenessAnalysis {
 
   // Runs liveness analysis on 'module'. Returns HloLivenessAnalysis object
   // which exports liveness for each {HloInstruction, ShapeIndex} in 'module'.
-  static StatusOr<std::unique_ptr<HloLivenessAnalysis>> Run(
+  static absl::StatusOr<std::unique_ptr<HloLivenessAnalysis>> Run(
       const HloModule& module);
 
   // Returns true if output of 'instruction' at 'shape_index' is live.

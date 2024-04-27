@@ -1029,9 +1029,10 @@ class Saver:
     if not self.saver_def.max_to_keep:
       return
     # Remove first from list if the same name was used before.
-    for p in self._last_checkpoints:
+    for p in self._last_checkpoints[:]:
       if latest_save_path == self._CheckpointFilename(p):
         self._last_checkpoints.remove(p)
+
     # Append new path to list
     self._last_checkpoints.append((latest_save_path, time.time()))
 
@@ -1844,11 +1845,9 @@ def saver_from_object_based_checkpoint(checkpoint_path,
             "when the checkpoint was written. You can construct a "
             "Saver(var_list=...) with only the variables which previously "
             "existed, and if variable names have changed you may need to "
-            "make this a dictionary with the old names as keys. If you're "
-            "using an Estimator, you'll need to return a tf.train.Saver "
-            "inside a tf.train.Scaffold from your model_fn.") %
-        (", ".join(sorted(missing_names)), ", ".join(
-            sorted(extra_names)), len(intersecting_names)))
+            "make this a dictionary with the old names as keys.") %
+                (", ".join(sorted(missing_names)), ", ".join(
+                    sorted(extra_names)), len(intersecting_names)))
   for saveable in saveables:
     for spec in saveable.specs:
       spec.name = names_to_keys[spec.name]

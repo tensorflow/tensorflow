@@ -231,7 +231,7 @@ Status DisjointSet<Handle>::Merge(Handle x, Handle y) {
 
   // x and y are already in the same set
   if (x_root == y_root) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   // x and y are not in same set, so we merge them
   // Use the occasion to strengthen what we know about the handle by merging the
@@ -248,7 +248,7 @@ Status DisjointSet<Handle>::Merge(Handle x, Handle y) {
     y_root->parent = x_root;
     x_root->rank = x_root->rank + 1;
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <typename Handle>
@@ -807,7 +807,7 @@ class SymbolicShapeRefiner {
         TF_RETURN_IF_ERROR(SetUnknownShape(function_node, i));
       }
 
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     // Copy (not reference) so that changes we make here (e.g., replacing
@@ -983,7 +983,7 @@ class SymbolicShapeRefiner {
       output++;
     }
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Prepares input shapes/values/handles, then runs shape inference, and
@@ -1071,7 +1071,7 @@ class SymbolicShapeRefiner {
 
     if (!*refined) {
       // No input shape has changed, we're done.
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     // Convert all kUnknownDimFromConst to -1 for shape inference.
@@ -1097,14 +1097,14 @@ class SymbolicShapeRefiner {
         // get output values or output shapes as tensor from function node.
         auto s = UpdateOutputShapesUsingAnnotatedInformation(*node, ctx);
         if (s.ok() && AllOutputShapesKnown(ctx)) {
-          return OkStatus();
+          return absl::OkStatus();
         }
         // If shape annotation was not available, incomplete, or incompatible,
         // fall through to call UpdateFunction().
       }
       auto s = UpdateFunction(node);
       if (s.ok()) {
-        return OkStatus();
+        return absl::OkStatus();
       } else {
         VLOG(1) << "UpdateFunction failed for " << node->op()
                 << ". Defaulting to ShapeUnknown.\n"
@@ -1144,7 +1144,7 @@ class SymbolicShapeRefiner {
           ") but was ", output_port);
     }
     ctx->set_output(output_port, shape);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   struct ShapeId {
@@ -1309,7 +1309,7 @@ class SymbolicShapeRefiner {
                      const std::string& function_name) {
     auto it = fun_to_grappler_function_item_.find(function_name);
     if (it != fun_to_grappler_function_item_.end()) {
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     const FunctionDef* function_def =
@@ -1325,7 +1325,7 @@ class SymbolicShapeRefiner {
               << function_instantiated.message();
       fun_to_grappler_function_item_[function_def->signature().name()] =
           absl::nullopt;
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     if (static_cast<int>(grappler_function_item.inputs().size()) >
@@ -1348,7 +1348,7 @@ class SymbolicShapeRefiner {
     fun_to_grappler_function_item_[function_def->signature().name()] =
         grappler_function_item;
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status AddNode(const NodeDef* node) {
@@ -1629,7 +1629,7 @@ class SymbolicShapeRefiner {
       const_tensors_to_propagate_.push_back(tensor_proto);
       c->output_tensor_protos[k] = &const_tensors_to_propagate_.back();
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Update output shapes with annotated information.
@@ -1641,7 +1641,7 @@ class SymbolicShapeRefiner {
     const auto& attr = node.attr();
     if (attr.count(kOutputSame) == 0 || !attr.at(kOutputSame).b() ||
         attr.count(kOutputShapes) == 0)
-      return OkStatus();
+      return absl::OkStatus();
 
     InferenceContext* ic = c->inference_context.get();
     int output_size = attr.at(kOutputShapes).list().shape_size();
@@ -1694,7 +1694,7 @@ class SymbolicShapeRefiner {
       }
     }
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status MaybeUpdateNodeContextOutput(const NodeDef& node, const bool is_fed,
@@ -1911,11 +1911,11 @@ class SymbolicShapeRefiner {
       const int max_element_size = 17;  // Max up to 4x4 matrix or similar.
       if (AllOutputValuesKnown(c) || !AllInputValuesKnown(c) ||
           !ShouldUpdateOutputShapesAndValues(c, max_element_size)) {
-        return OkStatus();
+        return absl::OkStatus();
       }
       UpdateOutputShapesAndValues(node, c).IgnoreError();  // This is optional.
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status InferShapes(const NodeDef& node, NodeContext* c) {
@@ -1929,7 +1929,7 @@ class SymbolicShapeRefiner {
       TF_RETURN_IF_ERROR(
           c->inference_context->Run(shape_inference::UnknownShape));
     }
-    Status status = OkStatus();
+    Status status = absl::OkStatus();
     auto it = fed_ports_.find(node.name());
     const bool is_fed = it != fed_ports_.end();
     if (is_fed) {
@@ -2073,7 +2073,7 @@ class SymbolicShapeManager {
 
   Status Merge(ShapeHandle s1, ShapeHandle s2) {
     if (!s1.IsSet() || !s2.IsSet()) {
-      return OkStatus();
+      return absl::OkStatus();
     }
     TF_RETURN_IF_ERROR(shapes_.Merge(s1, s2));
     if (InferenceContext::Rank(s1) > 0 && InferenceContext::Rank(s2) > 0) {
@@ -2083,11 +2083,11 @@ class SymbolicShapeManager {
                                        InferenceContext::DimKnownRank(s2, i)));
       }
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
   Status Merge(DimensionHandle d1, DimensionHandle d2) {
     if (!d1.IsSet() || !d2.IsSet()) {
-      return OkStatus();
+      return absl::OkStatus();
     }
     return dims_.Merge(d1, d2);
   }
@@ -2141,7 +2141,7 @@ Status ValidateSymbolicShapeManager(const GraphDef& graph_def,
                                     SymbolicShapeRefiner* refiner,
                                     SymbolicShapeManager* shape_manager) {
   if (!VLOG_IS_ON(1)) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   VLOG(1) << "Checking any conflicts in shapes and dimensions ...";
@@ -2182,7 +2182,7 @@ Status ValidateSymbolicShapeManager(const GraphDef& graph_def,
     VLOG(1) << "**** No incompatible shape found from SymbolicShapeManager.";
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Log shape inference and its merged shapes.
@@ -2194,7 +2194,7 @@ Status VerboseShapeInferenceLogging(const GraphDef& graph_def,
   // node_names_for_logging to enable detailed logging.
   absl::flat_hash_set<std::string> node_names_for_logging = {};
   if (!VLOG_IS_ON(3) || node_names_for_logging.empty()) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   auto should_log = [&node_names_for_logging](std::string node_name) {
@@ -2231,7 +2231,7 @@ Status VerboseShapeInferenceLogging(const GraphDef& graph_def,
     VLOG(3) << "";
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status GraphProperties::RelaxEnqueueShapesAndMergeTypes(
@@ -2254,7 +2254,7 @@ Status GraphProperties::RelaxEnqueueShapesAndMergeTypes(
 
     b.shape = shape_refiner->OutputAsUnion(qnode, i, a.shape, b.shape);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Compute the output shape of the merge node as the union of the available
@@ -2308,7 +2308,7 @@ Status GraphProperties::UpdateMerge(SymbolicShapeRefiner* shape_refiner,
     *new_shapes = true;
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Manually propagate the input shape for Enter nodes.
@@ -2336,7 +2336,7 @@ Status GraphProperties::UpdateEnter(SymbolicShapeRefiner* shape_refiner,
     ic->set_output_handle_shapes_and_types(0, *outputs);
     *new_shapes = true;
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status GraphProperties::UpdateShapes(
@@ -2364,7 +2364,7 @@ Status GraphProperties::UpdateShapes(
     TF_RETURN_IF_ERROR(shape_refiner->UpdateNode(n, new_shapes));
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Propagates the shapes in the transitive fan-out of <new_shapes>.
@@ -2417,7 +2417,7 @@ Status GraphProperties::PropagateShapes(
     return errors::Internal("Shape inference failed to converge");
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status GraphProperties::UpdateQueue(const NodeDef* queue_node,
@@ -2480,12 +2480,12 @@ Status GraphProperties::UpdateEnqueue(
   auto it = resource_handles.find(enqueue_node);
   if (it == resource_handles.end()) {
     // The corresponding queue was not found, there isn't much we can do.
-    return OkStatus();
+    return absl::OkStatus();
   }
   const NodeDef* qnode = it->second;
   auto qctx = shape_refiner->GetContext(qnode);
   if (!qctx) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   auto* queue_handle_data = qctx->output_handle_shapes_and_types(0);
 
@@ -2511,7 +2511,7 @@ Status GraphProperties::UpdateEnqueue(
     qctx->set_output_handle_shapes_and_types(0, shapes_and_types);
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status GraphProperties::InferStatically(bool assume_valid_feeds,
@@ -2756,7 +2756,7 @@ Status GraphProperties::InferStatically(bool assume_valid_feeds,
   TF_RETURN_IF_ERROR(VerboseShapeInferenceLogging(item_.graph, refiner.get(),
                                                   shape_manager.get()));
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status GraphProperties::InferDynamically(Cluster* cluster) {
@@ -2783,7 +2783,7 @@ Status GraphProperties::AnnotateOutputShapes(GraphDef* output_graph_def) const {
     }
     (*node->mutable_attr())["_output_shapes"] = std::move(attr_output_shape);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status GraphProperties::InferFromCostGraph(const CostGraphDef& cost_graph) {
@@ -2819,7 +2819,7 @@ Status GraphProperties::InferFromCostGraph(const CostGraphDef& cost_graph) {
 
     input_properties_[node.name()] = inputs;
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 bool GraphProperties::HasInputProperties(const string& node_name) const {

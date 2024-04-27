@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -113,7 +113,7 @@ HloElementTypeConverter::HloElementTypeConverter(
 
 // This routine converts the arithmetic operations in the given module that use
 // eliminate_type_ to operations that use replace_with_type_.
-StatusOr<bool> HloElementTypeConverter::Run(
+absl::StatusOr<bool> HloElementTypeConverter::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   XLA_VLOG_LINES(

@@ -15,10 +15,12 @@
 """Tests for `tf.data.Dataset.zip()`."""
 import collections
 import dataclasses
+from typing import Callable, Tuple
 
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.data.experimental.ops import global_shuffle_op
 from tensorflow.python.data.experimental.ops import random_access
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
@@ -382,6 +384,140 @@ class ZipRandomAccessTest(test_base.DatasetTestBase, parameterized.TestCase):
           self.evaluate(random_access.at(dataset, index=i)), expected[i])
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(random_access.at(dataset, index=4))
+
+
+class ZipGlobalShuffleTest(test_base.DatasetTestBase, parameterized.TestCase):
+
+  @combinations.generate(
+      combinations.times(
+          # Tested only on v2 because map v1 does not preserve cardinality.
+          test_base.v2_only_combinations(),
+          combinations.combine(dataset_range=[5, 6, 7]),
+      )
+  )
+  def testZipV2SameLengthInputs(self, dataset_range: int):
+    first_dataset = dataset_ops.Dataset.range(dataset_range)
+    first_dataset = first_dataset.map(lambda x: x * 2)
+    second_dataset = dataset_ops.Dataset.range(dataset_range)
+
+    dataset = dataset_ops.Dataset.zip(first_dataset, second_dataset)
+    dataset = dataset.prefetch(buffer_size=dataset_ops.AUTOTUNE)
+    shuffle_dataset1 = global_shuffle_op._global_shuffle(dataset, seed=10)
+    shuffle_dataset2 = global_shuffle_op._global_shuffle(dataset, seed=11)
+
+    dataset_output1 = self.getDatasetOutput(
+        shuffle_dataset1, requires_initialization=True
+    )
+    dataset_output2 = self.getDatasetOutput(
+        shuffle_dataset2, requires_initialization=True
+    )
+    expected = [(x * 2, x) for x in range(dataset_range)]
+
+    self.assertLen(dataset_output1, dataset_range)
+    self.assertLen(dataset_output2, dataset_range)
+    self.assertCountEqual(dataset_output1, expected)
+    self.assertCountEqual(dataset_output2, expected)
+
+    self.assertNotAllEqual(
+        dataset_output1,
+        dataset_output2,
+        "Different seeds should generate different orders of outputs.",
+    )
+
+    for x_first, x_second in dataset_output1:
+      self.assertEqual(x_first, x_second * 2)
+
+    for x_first, x_second in dataset_output2:
+      self.assertEqual(x_first, x_second * 2)
+
+  @combinations.generate(
+      combinations.times(
+          test_base.v2_only_combinations(),
+          combinations.combine(
+              dataset_ranges=[(10, 8), (9, 5), (4, 7), (5, 8)]
+          ),
+      )
+  )
+  def testZipV2DifferentLengthInputs(self, dataset_ranges: Tuple[int, int]):
+    first_dataset = dataset_ops.Dataset.range(dataset_ranges[0])
+    first_dataset = first_dataset.map(lambda x: x * 2)
+    second_dataset = dataset_ops.Dataset.range(dataset_ranges[1])
+
+    dataset = dataset_ops.Dataset.zip(first_dataset, second_dataset)
+    dataset = dataset.prefetch(buffer_size=dataset_ops.AUTOTUNE)
+    shuffle_dataset1 = global_shuffle_op._global_shuffle(dataset, seed=10)
+    shuffle_dataset2 = global_shuffle_op._global_shuffle(dataset, seed=11)
+
+    dataset_output1 = self.getDatasetOutput(
+        shuffle_dataset1, requires_initialization=True
+    )
+    dataset_output2 = self.getDatasetOutput(
+        shuffle_dataset2, requires_initialization=True
+    )
+    expected = [(x * 2, x) for x in range(min(dataset_ranges))]
+
+    self.assertLen(dataset_output1, min(dataset_ranges))
+    self.assertLen(dataset_output2, min(dataset_ranges))
+    self.assertCountEqual(dataset_output1, expected)
+    self.assertCountEqual(dataset_output2, expected)
+    self.assertNotAllEqual(
+        dataset_output1,
+        dataset_output2,
+        "Different seeds should generate different orders of outputs.",
+    )
+
+    for x_first, x_second in dataset_output1:
+      self.assertEqual(x_first, x_second * 2)
+
+    for x_first, x_second in dataset_output2:
+      self.assertEqual(x_first, x_second * 2)
+
+
+class ZipGlobalShuffleCheckpointTest(
+    checkpoint_test_base.CheckpointTestBase, parameterized.TestCase
+):
+
+  @combinations.generate(
+      combinations.times(
+          test_base.v2_only_combinations(),
+          checkpoint_test_base.default_test_combinations(),
+          combinations.combine(
+              dataset_ranges=[(10, 8), (9, 5), (4, 7), (5, 8)],
+              reshuffle_each_iteration=[True, False],
+              symbolic_checkpoint=[True, False],
+          ),
+      )
+  )
+  def testZipV2(
+      self,
+      verify_fn: Callable[..., None],
+      dataset_ranges: Tuple[int, int],
+      reshuffle_each_iteration: bool,
+      symbolic_checkpoint: bool,
+  ):
+
+    def _build_dataset():
+      first_dataset = dataset_ops.Dataset.range(dataset_ranges[0])
+      first_dataset = first_dataset.map(lambda x: x * 2)
+      second_dataset = dataset_ops.Dataset.range(dataset_ranges[1])
+
+      dataset = dataset_ops.Dataset.zip(first_dataset, second_dataset)
+      dataset = dataset.prefetch(buffer_size=dataset_ops.AUTOTUNE)
+      dataset = global_shuffle_op._global_shuffle(
+          dataset, seed=10, reshuffle_each_iteration=reshuffle_each_iteration
+      )
+
+      options = options_lib.Options()
+      options.experimental_optimization.apply_default_optimizations = False
+      options.experimental_symbolic_checkpoint = symbolic_checkpoint
+      return dataset.with_options(options)
+
+    verify_fn(
+        self,
+        _build_dataset,
+        num_outputs=min(dataset_ranges),
+        assert_items_equal=reshuffle_each_iteration,
+    )
 
 
 if __name__ == "__main__":

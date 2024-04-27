@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -362,7 +362,7 @@ Status HloModuleGroupUtil::VerifyComputations(
   return OkStatus();
 }
 
-StatusOr<std::unique_ptr<HloReachabilityMap>>
+absl::StatusOr<std::unique_ptr<HloReachabilityMap>>
 HloModuleGroupUtil::ComputeReachability(
     absl::Span<HloComputation* const> computations) {
   std::vector<HloInstruction*> post_order;

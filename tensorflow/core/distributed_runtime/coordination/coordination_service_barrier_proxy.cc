@@ -20,14 +20,17 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
-#include "tensorflow/core/platform/errors.h"
+#include "xla/tsl/distributed_runtime/coordination/coordination_service_agent.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
-#include "tsl/distributed_runtime/coordination/coordination_service_agent.h"
+#include "tsl/protobuf/coordination_service.pb.h"
 
 namespace tensorflow {
 
@@ -60,7 +63,7 @@ std::pair<Status, bool> BarrierProxy::Wait() {
       // We should have a mechanism to remove it after it has been passed.
       status_ = agent_->WaitAtBarrier(key_, timeout_, tasks_);
     } else {
-      status_ = OkStatus();
+      status_ = absl::OkStatus();
     }
     status_set_ = true;
     cv_.notify_all();
@@ -98,7 +101,7 @@ Status BarrierProxyManager::Wait(tsl::CoordinationServiceAgent* agent,
                                  int num_local_threads, absl::string_view key,
                                  absl::Duration timeout) {
   // Only one device, no need to wait.
-  if (tasks.size() == 1 && num_local_threads <= 1) return OkStatus();
+  if (tasks.size() == 1 && num_local_threads <= 1) return absl::OkStatus();
 
   profiler::TraceMe traceme([&] {
     return profiler::TraceMeEncode("BarrierProxyManager::Wait",

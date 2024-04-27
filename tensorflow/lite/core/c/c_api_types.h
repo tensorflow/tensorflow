@@ -24,9 +24,9 @@ limitations under the License.
 // clang-format off
 // NOLINTBEGIN(whitespace/line_length)
 /// \note Users of TensorFlow Lite should use
-///
-///     #include "tensorflow/lite/c/c_api_types.h"
-///
+/// \code
+/// #include "tensorflow/lite/c/c_api_types.h"
+/// \endcode
 /// to access the APIs documented on this page.
 // NOLINTEND(whitespace/line_length)
 // clang-format on
@@ -133,6 +133,7 @@ typedef enum {
   kTfLiteUInt32 = 16,
   kTfLiteUInt16 = 17,
   kTfLiteInt4 = 18,
+  kTfLiteBFloat16 = 19,
 } TfLiteType;
 
 /// Legacy. Will be deprecated in favor of `TfLiteAffineQuantization`.

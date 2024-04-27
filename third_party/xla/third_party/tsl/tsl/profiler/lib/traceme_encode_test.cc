@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "tsl/platform/platform.h"
 #include "tsl/platform/test.h"
+#include "tsl/platform/test_benchmark.h"
 
 namespace tsl {
 namespace profiler {
@@ -81,5 +82,25 @@ TEST(TraceMeEncodeTest, NoNameTest) {
 }
 
 }  // namespace
+
+void BM_TraceMeEncode(::testing::benchmark::State& state) {
+  for (auto s : state) {
+    TraceMeEncode(
+        "MyTestEvent",
+        {{"Lorem ipsum dolor sit amet", 1},
+         {"consectetur adipiscing elit", 2},
+         {"sed do eiusmod tempor incididunt", 3.52},
+         {"ut labore et dolore magna aliqua", "Ut enim ad minim veniam"},
+         {"quis nostrud exercitation ullamco", "laboris nisi ut aliquip ex"},
+         {"ea commodo consequat.", 11111.1111},
+         {"Duis aute", 1234567890},
+         {"irure dolor in", " reprehenderit in voluptate"},
+         {"velit esse cillum dolore", "eu fugiat nulla pariatur."},
+         {"Excepteur sint", "occaecat cupidatat non proident, sunt in"},
+         {"culpa qui officia", "deserunt mollit anim id est laborum."}});
+  }
+}
+BENCHMARK(BM_TraceMeEncode);
+
 }  // namespace profiler
 }  // namespace tsl

@@ -31,6 +31,10 @@ from tensorflow.core.protobuf.meta_graph_pb2 import MetaGraphDef
 from tensorflow.core.protobuf.config_pb2 import *
 from tensorflow.core.util.event_pb2 import *
 
+# Checkpoint Sharding
+from tensorflow.python.checkpoint.sharding import sharding_util
+from tensorflow.python.checkpoint.sharding import sharding_policies
+
 # Compat
 from tensorflow.python.compat import v2_compat
 
@@ -117,6 +121,7 @@ from tensorflow.python.ops import rnn
 from tensorflow.python.ops import rnn_cell
 from tensorflow.python.ops import sets
 from tensorflow.python.ops import stateful_random_ops
+from tensorflow.python.ops import tensor_getitem_override
 from tensorflow.python.ops import while_v2
 from tensorflow.python.ops.linalg import linalg
 from tensorflow.python.ops.linalg.sparse import sparse

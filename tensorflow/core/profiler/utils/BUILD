@@ -63,7 +63,10 @@ cc_library(
 cc_library(
     name = "math_utils",
     hdrs = ["math_utils.h"],
-    deps = ["@local_tsl//tsl/profiler/utils:math_utils"],
+    deps = [
+        "@com_google_absl//absl/base:core_headers",
+        "@local_tsl//tsl/profiler/utils:math_utils",
+    ],
 )
 
 cc_library(
@@ -236,7 +239,7 @@ cc_library(
         "@local_tsl//tsl/profiler/utils:tf_xplane_visitor",
         "@local_tsl//tsl/profiler/utils:timespan",
         "@local_tsl//tsl/profiler/utils:tpu_xplane_utils",
-        "@local_tsl//tsl/util:stats_calculator_portable",
+        "@local_xla//xla/tsl/util:stats_calculator_portable",
     ],
 )
 
@@ -281,8 +284,9 @@ tf_cc_test(
         ":kernel_stats_utils",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "//tensorflow/core/profiler/backends/gpu:cupti_collector_header",
         "//tensorflow/core/profiler/protobuf:kernel_stats_proto_cc",
+        "@com_google_googletest//:gtest_main",
+        "@local_xla//xla/backends/profiler/gpu:cupti_collector",
     ],
 )
 

@@ -117,6 +117,10 @@ void CreateTFExecutorToTFPreInvariantOptimizationPipelineHelper(
   // Merge non-side-effecting tf.If ops if their operands are the same.
   pm.addPass(tfrt_compiler::CreateMergeTfIfOpsPass());
 
+  // Lower bound on the number of batch threads in `tf.BatchFunction`.
+  pm.addPass(tfrt_compiler::CreateLowerBoundBatchThreadsPass(
+      options.min_num_batch_threads));
+
   // Deduplicate functions invoked by tf.BatchFunction with the same
   // shared_name
   pm.addPass(
@@ -220,7 +224,7 @@ Status ValidateTfrtPipelineOptions(const TfrtPipelineOptions &options) {
         "Invalid pipeline options. Targeting both TPU and GPU is not "
         "supported.");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status CreateTFExecutorToTFPreInvariantOptimizationPipeline(
@@ -234,7 +238,7 @@ Status CreateTFExecutorToTFPreInvariantOptimizationPipeline(
         /*print_module_scope=*/true));
   }
   CreateTFExecutorToTFPreInvariantOptimizationPipelineHelper(pm, options);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

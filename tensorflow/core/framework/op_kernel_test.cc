@@ -43,6 +43,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/device_name_utils.h"
+#include "tsl/platform/protobuf.h"
 
 class DummyKernel : public tensorflow::OpKernel {
  public:
@@ -350,15 +351,19 @@ TEST_F(OpKernelTest, NotFound) {
   const auto not_found = error::NOT_FOUND;
   // Something with that op type name exists, but only with a
   // different DeviceType.
-  ExpectFailure(CreateNodeDef("Test1", {DT_FLOAT, DT_INT32}).DebugString(),
+  ExpectFailure(tsl::LegacyUnredactedDebugString(
+                    CreateNodeDef("Test1", {DT_FLOAT, DT_INT32})),
                 DEVICE_GPU, not_found);
-  ExpectFailure(CreateNodeDef("Test3", {DT_INT8, DT_INT8}).DebugString(),
+  ExpectFailure(tsl::LegacyUnredactedDebugString(
+                    CreateNodeDef("Test3", {DT_INT8, DT_INT8})),
                 DEVICE_GPU, not_found);
-  ExpectFailure(CreateNodeDef("Test3", {DT_FLOAT, DT_FLOAT}).DebugString(),
+  ExpectFailure(tsl::LegacyUnredactedDebugString(
+                    CreateNodeDef("Test3", {DT_FLOAT, DT_FLOAT})),
                 DEVICE_CPU, not_found);
 
   // No kernel with that signature registered.
-  ExpectFailure(CreateNodeDef("Test3", {DT_INT32, DT_INT32}).DebugString(),
+  ExpectFailure(tsl::LegacyUnredactedDebugString(
+                    CreateNodeDef("Test3", {DT_INT32, DT_INT32})),
                 DEVICE_GPU, not_found);
 
   // Nothing with that op type name exists.
@@ -370,23 +375,27 @@ TEST_F(OpKernelTest, TooFewInputs) {
   const auto invalid = error::INVALID_ARGUMENT;
   NodeDef node_def = CreateNodeDef("Test1", {DT_FLOAT, DT_INT32});
   node_def.clear_input();
-  ExpectFailure(node_def.DebugString(), DEVICE_CPU, invalid);
+  ExpectFailure(tsl::LegacyUnredactedDebugString(node_def), DEVICE_CPU,
+                invalid);
   node_def.add_input("a");
-  ExpectFailure(node_def.DebugString(), DEVICE_CPU, invalid);
+  ExpectFailure(tsl::LegacyUnredactedDebugString(node_def), DEVICE_CPU,
+                invalid);
 }
 
 TEST_F(OpKernelTest, TooManyInputs) {
   const auto invalid = error::INVALID_ARGUMENT;
   NodeDef node_def = CreateNodeDef("Test1", {DT_FLOAT, DT_INT32});
   node_def.add_input("c");
-  ExpectFailure(node_def.DebugString(), DEVICE_CPU, invalid);
+  ExpectFailure(tsl::LegacyUnredactedDebugString(node_def), DEVICE_CPU,
+                invalid);
 }
 
 TEST_F(OpKernelTest, MatchSignatureFails) {
   const auto invalid = error::INVALID_ARGUMENT;
   foo::match_signature_ = true;
-  ExpectFailure(CreateNodeDef("Test2", {DT_FLOAT}).DebugString(), DEVICE_GPU,
-                invalid);
+  ExpectFailure(
+      tsl::LegacyUnredactedDebugString(CreateNodeDef("Test2", {DT_FLOAT})),
+      DEVICE_GPU, invalid);
   EXPECT_FALSE(foo::match_signature_);
 }
 

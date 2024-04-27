@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/platform_util.h"
+#include "xla/service/symbol_repository.h"
 #include "xla/service/xla_compile_result.pb.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/tests/hlo_test_base.h"
@@ -45,6 +46,7 @@ namespace xla {
 namespace {
 
 using ::testing::IsEmpty;
+using ::testing::IsNull;
 using ::testing::Not;
 using ::tsl::testing::IsOk;
 using ::tsl::testing::IsOkAndHolds;
@@ -78,13 +80,18 @@ class XlaCompileLibTest : public HloTestBase {
 };
 
 TEST_F(XlaCompileLibTest, DISABLED_ON_GPU(CompilesForCpu)) {
-  EXPECT_THAT(CompileExecutable(std::move(module_), "cpu", std::nullopt),
+  CompilationResult result;
+  EXPECT_THAT(CompileExecutable(std::move(module_), BackendType::kCpu,
+                                std::nullopt, result),
               IsOkAndHolds(Not(IsEmpty())));
 }
 
 TEST_F(XlaCompileLibTest, DISABLED_ON_CPU(CompilesForGpuWithDevice)) {
-  EXPECT_THAT(CompileExecutable(std::move(module_), "gpu", std::nullopt),
+  CompilationResult result;
+  EXPECT_THAT(CompileExecutable(std::move(module_), BackendType::kGpu,
+                                std::nullopt, result),
               IsOkAndHolds(Not(IsEmpty())));
+  EXPECT_TRUE(result.has_hlo_module()) << result.DebugString();
 }
 
 TEST_F(XlaCompileLibTest, DISABLED_ON_CPU(CompilesForGpuWithoutDevice)) {
@@ -94,13 +101,17 @@ TEST_F(XlaCompileLibTest, DISABLED_ON_CPU(CompilesForGpuWithoutDevice)) {
   stream_executor::GpuTargetConfigProto target_config;
   TF_ASSERT_OK(tsl::ReadTextProto(tsl::Env::Default(), target_config_path,
                                   &target_config));
-  EXPECT_THAT(CompileExecutable(std::move(module_), "gpu", std::nullopt),
+  CompilationResult result;
+  EXPECT_THAT(CompileExecutable(std::move(module_), BackendType::kGpu,
+                                std::nullopt, result),
               IsOkAndHolds(Not(IsEmpty())));
+  EXPECT_TRUE(result.has_hlo_module()) << result.DebugString();
 }
 
 TEST_F(XlaCompileLibTest, DISABLED_ON_GPU(ErrorsOnUnexpectedPlatform)) {
-  EXPECT_THAT(CompileExecutable(nullptr, "tpu", std::nullopt),
-              StatusIs(tsl::error::UNIMPLEMENTED));
+  XlaCompileOptions options;
+  options.platform = "tpu";
+  EXPECT_THAT(XlaCompileMain(options), StatusIs(tsl::error::UNIMPLEMENTED));
 }
 
 TEST_F(XlaCompileLibTest, DISABLED_ON_GPU(WriteResultFilePropagatesErrors)) {
@@ -140,6 +151,58 @@ TEST_F(XlaCompileLibTest, DISABLED_ON_GPU(WriteResultFileWritesTheFile)) {
   EXPECT_EQ(5, got_result.perf_stats().total_duration().seconds());
   EXPECT_EQ(0.5 * tsl::EnvTime::kSecondsToNanos,
             got_result.perf_stats().total_duration().nanos());
+}
+
+TEST_F(XlaCompileLibTest, LoadModuleErrors) {
+  EXPECT_THAT(LoadModule("/does/not/exist"), Not(IsOk()));
+}
+
+TEST_F(XlaCompileLibTest, LoadModuleLoadsTextFormat) {
+  const std::string module_file =
+      tsl::io::JoinPath(tsl::testing::TmpDir(), "module.txt");
+  TF_ASSERT_OK(tsl::WriteStringToFile(tsl::Env::Default(), module_file,
+                                      module_->ToString()));
+
+  EXPECT_THAT(LoadModule(module_file), IsOkAndHolds(Not(IsNull())));
+}
+
+TEST_F(XlaCompileLibTest, DISABLED_ON_GPU(MainForCpu)) {
+  const std::string module_file =
+      tsl::io::JoinPath(tsl::testing::TmpDir(), "module.txt");
+  TF_ASSERT_OK(tsl::WriteStringToFile(tsl::Env::Default(), module_file,
+                                      module_->ToString()));
+
+  const std::string output_path =
+      tsl::io::JoinPath(tsl::testing::TmpDir(), "output");
+  const std::string result_file =
+      tsl::io::JoinPath(tsl::testing::TmpDir(), "result.pb");
+
+  XlaCompileOptions options;
+  options.module_path = module_file;
+  options.output_path = output_path;
+  options.platform = "cpu";
+  options.result_output_file = result_file;
+  TF_EXPECT_OK(XlaCompileMain(options));
+}
+
+TEST_F(XlaCompileLibTest, DISABLED_ON_CPU(MainForGpu)) {
+  const std::string module_file =
+      tsl::io::JoinPath(tsl::testing::TmpDir(), "module.txt");
+  TF_ASSERT_OK(tsl::WriteStringToFile(tsl::Env::Default(), module_file,
+                                      module_->ToString()));
+
+  const std::string output_path =
+      tsl::io::JoinPath(tsl::testing::TmpDir(), "output");
+  const std::string result_file =
+      tsl::io::JoinPath(tsl::testing::TmpDir(), "result.pb");
+
+  XlaCompileOptions options;
+  options.module_path = module_file;
+  options.output_path = output_path;
+  options.platform = "gpu";
+  options.result_output_file = result_file;
+  options.gpu_options.use_attached_device = true;
+  TF_EXPECT_OK(XlaCompileMain(options));
 }
 
 }  // namespace

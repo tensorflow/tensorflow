@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -54,6 +54,16 @@ class InProcessCollectivesCommunicator : public CollectivesCommunicator {
                         absl::Span<const void* const> input_buffers,
                         absl::Span<void* const> output_buffers,
                         absl::Duration timeout) override;
+
+  absl::Status AllGather(const RendezvousKey& key, size_t chunk_bytes,
+                         const void* input_buffer, void* output_buffer,
+                         absl::Duration timeout) override;
+
+  absl::Status ReduceScatter(const RendezvousKey& key,
+                             ReductionKind reduction_kind,
+                             PrimitiveType element_type, size_t chunk_elems,
+                             const void* input_buffer, void* output_buffer,
+                             absl::Duration timeout) override;
 
  private:
   InProcessCollectivesState* state_;

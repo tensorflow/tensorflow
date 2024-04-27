@@ -28,7 +28,10 @@ SUPPORTED_VERSIONS=("3_9" "3_10" "3_11" "3_12")
 for VERSION in "${SUPPORTED_VERSIONS[@]}"
 do
   touch "requirements_lock_$VERSION.txt"
-  bazel run --experimental_convenience_symlinks=ignore //:requirements_"$VERSION".update
+  bazel run \
+    --experimental_convenience_symlinks=ignore \
+    --enable_bzlmod=false \
+    //:requirements_"$VERSION".update
   sed -i '/^#/d' requirements_lock_"$VERSION".txt
   mv requirements_lock_"$VERSION".txt ../../../requirements_lock_"$VERSION".txt
 done

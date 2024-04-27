@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,23 +15,27 @@ limitations under the License.
 
 include "mlir/Pass/PassBase.td"
 
-def ChloLegalizeToHloPass : Pass<"chlo-legalize-to-hlo", "func::FuncOp"> {
-  let summary = "Legalize CHLO to HLO.";
-  let constructor = "createChloLegalizeToHloPass()";
-  let options = [
-    Option<"legalize_broadcasts_", "legalize-broadcasts", "bool",
-           /*default=*/"true", "Legalize implicit broadcasts to explicit HLO broadcasting forms">,
-    Option<"expand_compositions_", "expand-compositions", "bool",
-           /*default=*/"true", "Expands client-centric compositions to HLO primitives">,
-  ];
+def ChloLegalizeToHighLevelMhloPass : Pass<"chlo-legalize-to-high-level-mhlo", "func::FuncOp"> {
+  let summary = "Legalize CHLO's with XLA counterparts, like TopK and Erf.";
+  let description = [{
+    Performs direct legalization of CHLO->MHLO only for high-level (non-basis)
+    ops with XLA support. These are MHLO ops that directly model the CHLO op,
+    such as TopK and Erf.
+  }];
+  let dependentDialects = ["mhlo::MhloDialect"];
 }
 
-def LegalizeSparseOpsPass : Pass<"legalize-sparse-ops", "func::FuncOp"> {
-  let summary = "Legalize from sparse ops before convert MLIR to XLA computation.";
-  let constructor = "createLegalizeSparseOperationsPass()";
-  let options = [
-    Option<"legalize_to_custom_calls_", "legalize-to-custom-calls", "bool",
-           /*default=*/"true", "Whether legalize the sparse operations to custom_calls to be able to translate sparse operations to XLA computations">,
+def ChloLegalizeToHloPass : Pass<"chlo-legalize-to-hlo", "func::FuncOp"> {
+  let summary = "Legalize CHLO to MHLO with XLA-supported ops.";
+  let description = [{
+    Performs legalization of CHLO->StableHLO->MHLO, while also preserving MHLO
+    high level operations when possible (see ChloLegalizeToHighLevelMhloPass).
+  }];
+  let dependentDialects = [
+    "mhlo::MhloDialect",
+    "mlir::shape::ShapeDialect",
+    "mlir::stablehlo::StablehloDialect",
+    "mlir::tensor::TensorDialect"
   ];
 }
 
@@ -315,28 +319,6 @@ def ConvertToSignlessPass : Pass<"convert-to-signless", "ModuleOp"> {
   let constructor = "createConvertToSignlessPass()";
 }
 
-def SparseRewritingPass : Pass<"mhlo-sparse-rewriting", "func::FuncOp"> {
-  let summary = "Pass to rewrite mhlo sparse tensor types.";
-  let constructor = "createSparseRewritingPass()";
-}
-
-/// Rank specialization passes.
-
-def RankSpecializationClusterPass
-    : Pass<"mhlo-rank-specialization-cluster", "func::FuncOp"> {
-  let constructor = "createRankSpecializationClusterPass()";
-}
-
-def RankSpecializationToSCFPass
-    : Pass<"mhlo-rank-specialization-to-scf", "func::FuncOp"> {
-  let constructor = "createRankSpecializationToSCFPass()";
-  let options = [
-    Option<"max_target_rank_", "max-target-rank", "int", /*default=*/"8",
-           "The maximum supported rank after rank specialization. Any argument "
-           "of greater rank may result in a runtime failure.">,
-  ];
-}
-
 def MhloExpandOpsSimplifierPass
     : Pass<"mhlo-expand-ops-simplifier", "func::FuncOp"> {
   let summary = "Expand feature rich mhlo ops into a set of simpler mhlo ops.";
@@ -392,4 +374,21 @@ def ShapeLegalizeToHloPass : Pass<"shape-legalize-to-hlo", "func::FuncOp"> {
     compilation pipelines that use HLO operations to model dynamism.
   }];
   let dependentDialects = ["mhlo::MhloDialect"];
+  let options = [
+    Option<"legalize_constraints_", "legalize-constraints", "bool",
+           /*default=*/"false", "Whether to legalize Cstr Ops to shape_assertion custom_call">
+  ];
+}
+
+def MhloQuantLegalizeToInt : Pass<"mhlo-quant-legalize-to-int", "mlir::func::FuncOp"> {
+  let summary = "Convert from MHLO quantized ops to MHLO primitive ops.";
+
+  let description = [{
+    Convert from MHLO quantized ops with MHLO quant types to MHLO primitive ops
+    like int ops.
+  }];
+  let constructor = "createMhloQuantLegalizeToIntPass()";
+  let dependentDialects = ["chlo::ChloDialect", "mhlo::MhloDialect",
+                           "quant::QuantizationDialect",
+                           "func::FuncDialect"];
 }

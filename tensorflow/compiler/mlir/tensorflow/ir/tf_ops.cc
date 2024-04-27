@@ -191,7 +191,8 @@ struct TFInlinerInterface : public DialectInlinerInterface {
   Operation *materializeCallConversion(OpBuilder &builder, Value input,
                                        Type result_type,
                                        Location conversion_loc) const final {
-    if (!result_type.isa<TensorType>() || !input.getType().isa<TensorType>())
+    if (!mlir::isa<TensorType>(result_type) ||
+        !mlir::isa<TensorType>(input.getType()))
       return nullptr;
     return builder.create<TF::CastOp>(conversion_loc, result_type, input,
                                       /*truncate=*/builder.getBoolAttr(false));
@@ -311,7 +312,7 @@ TensorFlowDialect::TensorFlowDialect(MLIRContext *context)
       >();
   addOperations<
 #define GET_OP_LIST
-#include "tensorflow/compiler/mlir/tensorflow/ir/tfrt_ops.cc.inc"
+#include "tensorflow/compiler/mlir/tensorflow/ir/host_runtime/tfrt_ops.cc.inc"
       >();
   addInterfaces<TFInlinerInterface, TFConstantFoldInterface>();
   fallback_effect_op_interface_ =

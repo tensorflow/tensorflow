@@ -50,7 +50,7 @@ func.func @select_and_scatter(%arg: memref<112x112xf32>,
 // CHECK: "scf.parallel"(%[[C0]], %[[C0]], %[[C112]], %[[C112]], %[[C1]], %[[C1]]) <{{.*}}> ({
 // CHECK: ^bb0(%[[I:.*]]: index, %[[J:.*]]: index):
 // CHECK:   "memref.store"(%[[INIT]], %[[RESULT_BUF]], %[[I]], %[[J]])
-// CHECK:   "scf.yield"() : () -> ()
+// CHECK:   "scf.reduce"() : () -> ()
 // CHECK: })
 
 // Parallel loop over source buffer to compute scattered values.
@@ -155,4 +155,4 @@ func.func @select_and_scatter(%arg: memref<112x112xf32>,
 // CHECK: "memref.atomic_yield"(%[[RES]]) : (f32) -> ()
 
 // Parallel loop over source buffer yield
-// CHECK: "scf.yield"() : () -> ()
+// CHECK: "scf.reduce"() : () -> ()

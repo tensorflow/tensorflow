@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,12 +15,18 @@ limitations under the License.
 
 #include "xla/service/cpu/cpu_layout_assignment.h"
 
+#include <cstdint>
 #include <numeric>
+#include <optional>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/map_util.h"
 #include "xla/service/cpu/dot_op_emitter.h"
 #include "xla/service/cpu/ir_emission_utils.h"
+#include "xla/shape_util.h"
 #include "tsl/platform/errors.h"
 
 namespace xla {
@@ -78,12 +84,17 @@ static optional<int64_t> ShouldMakeOperandColumnMajor(
   return it->second ? operand_idx : nullopt;
 }
 
-static Shape RowMajorShape(const Shape& old_shape) {
-  Shape new_shape(old_shape);
-  std::vector<int64_t> dimension_order(new_shape.dimensions_size());
-  std::iota(dimension_order.rbegin(), dimension_order.rend(), 0);
-  *new_shape.mutable_layout() = LayoutUtil::MakeLayout(dimension_order);
-  return new_shape;
+static Shape RowMajorShape(Shape shape) {
+  ShapeUtil::ForEachMutableSubshape(
+      &shape, [](Shape* subshape, const ShapeIndex& index) {
+        if (!subshape->IsArray()) {
+          return;
+        }
+        std::vector<int64_t> dimension_order(subshape->dimensions_size());
+        std::iota(dimension_order.rbegin(), dimension_order.rend(), 0);
+        *subshape->mutable_layout() = LayoutUtil::MakeLayout(dimension_order);
+      });
+  return shape;
 }
 
 static Shape ColMajorShape(const Shape& old_shape) {
@@ -103,6 +114,8 @@ static bool OperandsAndResultMustHaveRowMajorLayout(
   } else if (instr.opcode() == HloOpcode::kDot) {
     return DotOperandsAndResultMustHaveRowMajorLayout(instr,
                                                       target_machine_features);
+  } else if (instr.opcode() == HloOpcode::kCustomCall) {
+    return instr.custom_call_target() == "TopK";
   }
   return false;
 }
@@ -126,6 +139,20 @@ Status CpuLayoutAssignment::AddBackendConstraints(
       const HloInstruction* op = instruction->operand(*op_idx);
       TF_RETURN_IF_ERROR(
           SetOperandLayout(ColMajorShape(op->shape()), instruction, *op_idx));
+    } else if (instruction->opcode() == HloOpcode::kReduceScatter) {
+      // XLA:CPU can only support reduce-scatter where the scatter dimension
+      // is the most major dimension in the layout.
+      auto ars = Cast<HloReduceScatterInstruction>(instruction);
+      TF_RETURN_IF_ERROR(SetInstructionLayout(
+          ShapeUtil::MoveDimToMajor(ars->shape(), ars->scatter_dimension()),
+          ars));
+    } else if (instruction->opcode() == HloOpcode::kAllGather) {
+      // XLA:CPU can only support all-gathers where the gather dimension is the
+      // most major dimension in the layout.
+      auto ag = Cast<HloAllGatherInstruction>(instruction);
+      TF_RETURN_IF_ERROR(SetInstructionLayout(
+          ShapeUtil::MoveDimToMajor(ag->shape(), ag->all_gather_dimension()),
+          ag));
     } else {
       for (int64_t operand_no = 0; operand_no < instruction->operand_count();
            ++operand_no) {

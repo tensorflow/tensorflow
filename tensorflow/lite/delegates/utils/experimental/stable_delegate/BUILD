@@ -34,6 +34,7 @@ cc_library_with_tflite(
     deps = [
         "//tensorflow/lite/experimental/acceleration/compatibility:android_info",
         "//tensorflow/lite/tools:logging",
+        "@com_google_absl//absl/strings",
     ],
 )
 

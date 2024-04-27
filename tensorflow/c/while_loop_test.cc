@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
+
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/c_test_util.h"
 #include "tensorflow/core/platform/logging.h"
@@ -45,8 +47,8 @@ class CApiWhileLoopTest : public ::testing::Test {
 
     original_graph_description_ = GraphDebugString();
 
-    params_.reset(new TF_WhileParams(
-        TF_NewWhile(graph_, &inputs_[0], inputs_.size(), s_)));
+    params_ = std::make_unique<TF_WhileParams>(
+        TF_NewWhile(graph_, &inputs_[0], inputs_.size(), s_));
     ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
     ASSERT_EQ(original_graph_description_, GraphDebugString())
         << "TF_NewWhile() altered graph";
@@ -85,7 +87,7 @@ class CApiWhileLoopTest : public ::testing::Test {
       ++i;
     }
     // TODO(skyewm): use std::make_unique or absl::make_unique when possible.
-    csession_.reset(new CSession(graph_, s_));
+    csession_ = std::make_unique<CSession>(graph_, s_);
     csession_->SetInputs(inputs);
     csession_->SetOutputs(run_outputs);
     csession_->Run(s_);

@@ -1,10 +1,5 @@
 # Placeholder: load py_proto_library
 load(
-    "//tensorflow/core/platform:build_config.bzl",
-    "tf_proto_library",
-    "tf_pyclif_proto_library",
-)
-load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
     "tf_cc_tests",
@@ -12,6 +7,11 @@ load(
     "tf_cuda_library",
 )
 load("//tensorflow:tensorflow.default.bzl", "filegroup", "tf_cuda_cc_test", "tf_generate_proto_text_sources")
+load(
+    "//tensorflow/core/platform:build_config.bzl",
+    "tf_proto_library",
+    "tf_pyclif_proto_library",
+)
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "if_static",
@@ -35,6 +35,7 @@ default_visibility = [
     # copybara:uncomment "//platforms/xla/megascale/tensorflow:__subpackages__",
     # copybara:uncomment "//learning/brain/experimental/tfrt/native_lowering/graph_executor:__subpackages__",
     "//tensorflow/cc/saved_model:__subpackages__",
+    #internal starburst clustering service,
 ]
 
 package(
@@ -712,7 +713,10 @@ cc_library(
     hdrs = ["resource_base.h"],
     visibility = default_visibility + [
         "//learning/brain/google/data/core/kernels:__pkg__",
+        "//learning/deepmind/tensorflow/queues:__pkg__",
         "//learning/deepmind/tensorflow/sstable:__pkg__",
+        "//tensorflow/compiler/mlir/tools/kernel_gen:__pkg__",
+        "//waymo/ml/compiler/frontend/kernels:__pkg__",
     ],
     deps = [
         "//tensorflow/core/lib/core:refcount",
@@ -872,7 +876,7 @@ tf_cuda_library(
         "@com_google_absl//absl/strings",
         "@eigen_archive//:eigen3",
         "@local_tsl//tsl/framework:device_type",
-        "@local_tsl//tsl/util:byte_swap_array",
+        "@local_xla//xla/tsl/util:byte_swap_array",
     ],
     alwayslink = 1,
 )
@@ -1382,6 +1386,7 @@ tf_cc_tests(
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
         "@eigen_archive//:eigen3",
+        "@local_tsl//tsl/profiler/utils:xplane_utils",
     ],
 )
 
@@ -1411,9 +1416,7 @@ cc_library(
     name = "loose_headers",
     tags = ["avoid_dep"],
     textual_hdrs = ["op_gen_lib.h"],
-    visibility = [
-        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
-    ],
+    visibility = ["//visibility:private"],
 )
 
 # All framework protos are self-contained, i.e. they only import other

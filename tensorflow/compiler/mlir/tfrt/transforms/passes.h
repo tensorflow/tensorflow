@@ -66,6 +66,10 @@ std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>> CreateMergeTfIfOpsPass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateDeduplicateFunctionsInovkedByBatchFunctionPass();
 
+// Create a pass to lower bound the number of threads in tf.BatchFunction.
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+CreateLowerBoundBatchThreadsPass(int64_t min_num_batch_threads);
+
 // Create a pass to fuse the TPU Ops for TFRT.
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 CreateFuseTpuCompileAndExecutePass();

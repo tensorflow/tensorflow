@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/util/stats_calculator.h"
 #include "tsl/platform/fingerprint.h"
 #include "tsl/platform/types.h"
 #include "tsl/profiler/lib/context_types.h"
@@ -38,7 +39,6 @@ limitations under the License.
 #include "tsl/profiler/utils/xplane_builder.h"
 #include "tsl/profiler/utils/xplane_schema.h"
 #include "tsl/profiler/utils/xplane_visitor.h"
-#include "tsl/util/stats_calculator.h"
 
 namespace tsl {
 namespace profiler {
@@ -560,7 +560,7 @@ void AggregateXPlane(const XPlane& full_trace, XPlane& aggregated_trace) {
                            : event.EndTimestampPs();
       const auto& group_stat = event.GetStat(StatType::kGroupId);
       int64_t group_id =
-          group_stat.has_value() ? group_stat->IntOrUintValue() : 0;
+          group_stat.has_value() ? group_stat->IntOrUintValue() : kint64max;
 
       StatByEvent& line_stats = stats[line.Id()][group_id];
       line_stats[event.Id()].stat.UpdateStat(event.DurationPs());
@@ -606,7 +606,9 @@ void AggregateXPlane(const XPlane& full_trace, XPlane& aggregated_trace) {
             aggregated_line.AddEvent(event_metadata);
         aggregated_event.SetNumOccurrences(event_stat.stat.count());
         aggregated_event.SetDurationPs(event_stat.stat.sum());
-        aggregated_event.AddStatValue(*kGroupId, group_id);
+        if (group_id != kint64max) {
+          aggregated_event.AddStatValue(*kGroupId, group_id);
+        }
         if (event_stat.stat.count() > 1) {
           aggregated_event.AddStatValue(*kMinDurationPs, event_stat.stat.min());
         }

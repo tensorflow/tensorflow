@@ -85,7 +85,7 @@ class DirectedInterleaveDatasetOp::Dataset : public DatasetBase {
   Status MakeSplitProviders(std::vector<std::unique_ptr<SplitProvider>>*
                                 split_providers) const override {
     TF_ASSIGN_OR_RETURN(*split_providers, GetSplitProviders(this));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   const DataTypeVector& output_dtypes() const override {
@@ -117,7 +117,7 @@ class DirectedInterleaveDatasetOp::Dataset : public DatasetBase {
     for (const auto& data_input : data_inputs_) {
       inputs->push_back(data_input);
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status CheckExternalState() const override {
@@ -151,7 +151,7 @@ class DirectedInterleaveDatasetOp::Dataset : public DatasetBase {
         /*attrs=*/
         {std::make_pair(kStopOnEmptyDataset, stop_on_empty_dataset_attr)},
         output));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:
@@ -178,7 +178,7 @@ class DirectedInterleaveDatasetOp::Dataset : public DatasetBase {
             strings::StrCat(prefix(), "[", i, "]"), &data_input_impls_[i]));
         ctx->MergeCheckpoint(input_contexts_[i + 1].checkpoint());
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     Status GetNextInternal(IteratorContext* ctx,
@@ -187,7 +187,7 @@ class DirectedInterleaveDatasetOp::Dataset : public DatasetBase {
       mutex_lock l(mu_);
       if (!selector_input_impl_) {
         *end_of_sequence = true;
-        return OkStatus();
+        return absl::OkStatus();
       }
 
       while (true) {
@@ -198,7 +198,7 @@ class DirectedInterleaveDatasetOp::Dataset : public DatasetBase {
         ctx->MergeCheckpoint(input_contexts_[0].checkpoint());
         if (*end_of_sequence) {
           ResetInputs();
-          return OkStatus();
+          return absl::OkStatus();
         }
 
         int64_t selected_input = selector_result[0].scalar<int64_t>()();
@@ -216,7 +216,7 @@ class DirectedInterleaveDatasetOp::Dataset : public DatasetBase {
           ctx->MergeCheckpoint(
               input_contexts_[selected_input + 1].checkpoint());
           if (!end_of_selected_input) {
-            return OkStatus();
+            return absl::OkStatus();
           }
 
           // End of selected input here. Do cleanup on checkpoints.
@@ -225,7 +225,7 @@ class DirectedInterleaveDatasetOp::Dataset : public DatasetBase {
           if (dataset()->stop_on_empty_dataset_) {
             *end_of_sequence = true;
             ResetInputs();
-            return OkStatus();
+            return absl::OkStatus();
           }
 
           data_input_impls_[selected_input].reset();
@@ -234,7 +234,7 @@ class DirectedInterleaveDatasetOp::Dataset : public DatasetBase {
           if (num_active_inputs_ == 0) {
             selector_input_impl_.reset();
             *end_of_sequence = true;
-            return OkStatus();
+            return absl::OkStatus();
           }
         }
 
@@ -269,7 +269,7 @@ class DirectedInterleaveDatasetOp::Dataset : public DatasetBase {
           TF_RETURN_IF_ERROR(SaveInput(ctx, writer, data_input_impl));
         }
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     Status RestoreInternal(IteratorContext* ctx,
@@ -293,7 +293,7 @@ class DirectedInterleaveDatasetOp::Dataset : public DatasetBase {
           data_input_impls_[i].reset();
         }
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
 
    private:

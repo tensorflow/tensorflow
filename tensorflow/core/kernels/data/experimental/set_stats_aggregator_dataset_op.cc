@@ -35,7 +35,7 @@ class StatsAggregatorWithTagAndPrefix : public StatsAggregator {
       const string& prefix)
       : wrapped_(stats_aggregator), tag_(tag), prefix_(prefix) {}
 
-  void AddToHistogram(const string& name, gtl::ArraySlice<double> values,
+  void AddToHistogram(const string& name, absl::Span<const double> values,
                       int64_t steps) override {
     wrapped_->AddToHistogram(TaggedName(name), values, steps);
   }
@@ -146,7 +146,7 @@ class SetStatsAggregatorDatasetOp : public UnaryDatasetOpKernel {
     Status InputDatasets(
         std::vector<const DatasetBase*>* inputs) const override {
       inputs->push_back(input_);
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     Status CheckExternalState() const override {
@@ -168,7 +168,7 @@ class SetStatsAggregatorDatasetOp : public UnaryDatasetOpKernel {
       TF_RETURN_IF_ERROR(b->AddDataset(
           this, {input_graph_node, resource_handle_node, tag_node, prefix_node},
           output));
-      return OkStatus();
+      return absl::OkStatus();
     }
 
    private:

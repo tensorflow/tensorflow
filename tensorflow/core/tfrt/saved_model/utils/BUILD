@@ -55,11 +55,13 @@ tf_cc_shared_test(
         "//tensorflow/core/tfrt/fallback:fallback_state",
         "//tensorflow/core/tfrt/mlrt/bytecode",
         "//tensorflow/core/tfrt/saved_model:saved_model_testutil",
+        "//tensorflow/core/tfrt/saved_model:saved_model_util",
         "//tensorflow/core/tfrt/utils",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
         "@local_tsl//tsl/lib/core:status_test_util",
+        "@local_tsl//tsl/platform:env",
         "@tf_runtime//:bef",
     ],
 )

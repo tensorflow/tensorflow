@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/cc/saved_model/image_format/internal_api.h"
 
 #include <string>
+#include <tuple>
 
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -105,7 +106,7 @@ absl::Status WriteSavedModel(SavedModel* saved_model_proto,
 #endif
 }
 
-absl::StatusOr<std::string> WriteSavedModelToString(
+absl::StatusOr<std::tuple<std::string, bool>> WriteSavedModelToString(
     SavedModel* saved_model_proto) {
 #if !defined(PLATFORM_WINDOWS) && !defined(__APPLE__)
   tools::proto_splitter::SavedModelSplitter splitter(saved_model_proto);
@@ -119,7 +120,7 @@ absl::StatusOr<std::string> WriteSavedModelToString(
 #if !IS_OSS
 // TODO(b/311769337): Define the function unconditionally after tf oss
 // dependency is updated to protobuf v22.x.
-absl::StatusOr<absl::Cord> WriteSavedModelToCord(
+absl::StatusOr<std::tuple<absl::Cord, bool>> WriteSavedModelToCord(
     SavedModel* saved_model_proto) {
   tools::proto_splitter::SavedModelSplitter splitter(saved_model_proto);
   return splitter.WriteToCord();

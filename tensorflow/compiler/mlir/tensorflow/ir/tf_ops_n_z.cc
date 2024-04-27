@@ -386,7 +386,8 @@ OpFoldResult PackOp::fold(FoldAdaptor) {
     return {};
 
   // Replace %pack with %shape.
-  return slice_op.getInput();
+  if (slice_op.getInput().getType() == getType()) return slice_op.getInput();
+  return {};
 }
 
 // Convert Pack to Reshape when there is only one operand to be packed.
@@ -610,7 +611,7 @@ OpFoldResult PowOp::fold(FoldAdaptor adaptor) {
           output_type,
           FloatAttr::get(output_type.getElementType(), /*value=*/1.0));
     }
-    if (y_value.isExactlyValue(1.0)) {
+    if (y_value.isExactlyValue(1.0) && getX().getType() == getType()) {
       return getX();
     }
   }
@@ -2642,7 +2643,8 @@ OpFoldResult TileOp::fold(FoldAdaptor) {
     // Return input directly when multiples are all ones,
     // regardless what input is.
     if (multiples_attr.isSplat() &&
-        multiples_attr.getSplatValue<APInt>().getSExtValue() == 1) {
+        multiples_attr.getSplatValue<APInt>().getSExtValue() == 1 &&
+        getInput().getType() == getType()) {
       return getInput();
     }
   }
@@ -2866,14 +2868,7 @@ OpFoldResult FoldIdentityTranspose(TransposeOp op) {
     if (it.index() != it.value()) return {};
   }
 
-  // TODO(jpienaar): Remove if/when we handle this more generally.
-  if (op.getType() != op.getX().getType()) {
-    // If the types don't match then only fold if all the operands are in the TF
-    // dialect.
-    for (auto user : op.getOperation()->getUsers())
-      if (user->getDialect() != op->getDialect()) return {};
-  }
-
+  if (op.getType() != op.getX().getType()) return {};
   return op.getX();
 }
 
@@ -2913,6 +2908,7 @@ OpFoldResult FoldCancellableTranspose(TransposeOp op) {
   // With permutation indices that cancel each other
   if (!AreCancellablePermutations(perm0, perm1)) return {};
 
+  if (op.getType() != transpose.getX().getType()) return {};
   return transpose.getX();
 }
 

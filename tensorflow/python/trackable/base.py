@@ -1075,3 +1075,19 @@ class Trackable(object):
     del object_map  # Unused
     raise NotImplementedError("Need to implement _copy_trackable_to_cpu() if "
                               "the Trackable requires AsyncCheckpoint support.")
+
+  def _checkpoint_adapter(self, path: str):
+    """Returns a checkpoint adapter for this object.
+
+    Needs to be overridden if the `Trackable` requires adapter at restore.
+    Override this method to define callbacks for checkpoint positions to be
+    applied at restore time.
+
+    Args:
+      path: Checkpoint path.
+    Returns:
+      A subclass of AbstractCheckpointAdapter that defines callbacks at restore
+      for this trackable.
+    """
+    del path
+    return None

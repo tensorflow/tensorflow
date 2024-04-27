@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,7 +16,14 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_CUBLAS_PAD_FOR_GEMMS_H_
 #define XLA_SERVICE_GPU_CUBLAS_PAD_FOR_GEMMS_H_
 
+#include <cstdint>
+
+#include "absl/container/flat_hash_set.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/hlo_pass_interface.h"
+#include "xla/stream_executor/device_description.h"
 
 namespace xla {
 namespace gpu {
@@ -31,21 +38,21 @@ namespace gpu {
 // so it should go strictly later.
 class CublasPadForGemms : public HloModulePass {
  public:
-  CublasPadForGemms(const se::CudaComputeCapability cuda_compute_capability,
+  CublasPadForGemms(const se::GpuComputeCapability gpu_compute_capability,
                     PrimitiveType datatype, int32_t pad_to_multiple_of)
-      : cuda_compute_capability_(cuda_compute_capability),
+      : gpu_compute_capability_(gpu_compute_capability),
         datatype_(datatype),
         pad_to_multiple_of_(pad_to_multiple_of) {}
 
   absl::string_view name() const override { return "cublas-pad-for-gemms"; }
 
   using HloPassInterface::Run;
-  StatusOr<bool> Run(
+  absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
-  const se::CudaComputeCapability cuda_compute_capability_;
+  const se::GpuComputeCapability gpu_compute_capability_;
   PrimitiveType datatype_;
   int32_t pad_to_multiple_of_;
 };

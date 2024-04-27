@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "xla/client/local_client.h"
 #include "xla/pjrt/event_pool.h"
+#include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/semaphore.h"
 #include "xla/pjrt/worker_thread.h"
 #include "xla/status.h"
@@ -97,8 +98,13 @@ class LocalDeviceState {
     int num_device_to_device_streams = 1;
   };
 
-  // If asynchronous is false, the host will synchronize to the device after
-  // each execution or transfer. This is intended for debugging only.
+  // `device_ordinal` is the logical local device ordinal (returned by
+  // `local_device_id()`), and it's used to look up an addressable device local
+  // to a given client. If it is not set (-1 by default), the device's logical
+  // device ordinal will be the same as its physical device ordinal (returned by
+  // `local_hardware_id()`). In general, different PJRT devices have different
+  // logical device ordinals, and several PJRT devices can have the same
+  // physical device ordinal if they share the same physical device.
   LocalDeviceState(se::StreamExecutor* executor, LocalClient* client,
                    AllocationModel allocation_model,
                    int max_inflight_computations, bool allow_event_reuse,
@@ -108,7 +114,8 @@ class LocalDeviceState {
 
   se::StreamExecutor* executor() const { return executor_; }
 
-  int device_ordinal() const { return device_ordinal_; }
+  PjRtLocalDeviceId local_device_id() { return local_device_id_; }
+  PjRtLocalHardwareId local_hardware_id() { return local_hardware_id_; }
 
   LocalClient* client() const { return client_; }
 
@@ -168,7 +175,8 @@ class LocalDeviceState {
   //    runtime and cannot perform GPU operations itself. On GPU, callbacks
   //    execute in a separate thread.
   // b) ThenDoHostCallback waits for the callback to complete.
-  void ThenExecuteCallback(se::Stream* stream, std::function<void()> callback);
+  absl::Status ThenExecuteCallback(se::Stream* stream,
+                                   std::function<void()> callback);
 
   // Helpers for releasing values on a worker thread at the tail of a stream on
   // a worker thread. Copies `object`, and destroys the copy when the tail of
@@ -177,8 +185,8 @@ class LocalDeviceState {
   // device callback, so it is safe if the destructor frees device resource
   // (e.g., GPU objects).
   template <typename T>
-  void ThenRelease(se::Stream* stream, T&& object) {
-    ThenExecuteCallback(
+  absl::Status ThenRelease(se::Stream* stream, T&& object) {
+    return ThenExecuteCallback(
         stream, [object = std::forward<T>(object)]() { /* releases object */ });
   }
 
@@ -198,7 +206,8 @@ class LocalDeviceState {
   // stream by the host ahead of the device.
   Semaphore compute_semaphore_;
 
-  int device_ordinal_;
+  PjRtLocalDeviceId local_device_id_;
+  PjRtLocalHardwareId local_hardware_id_;
   se::StreamExecutor* const executor_;
   LocalClient* const client_;
   std::unique_ptr<se::Stream> compute_stream_;
@@ -215,12 +224,14 @@ class LocalDeviceState {
   int next_device_to_host_stream_ ABSL_GUARDED_BY(mu_) = 0;
   int next_device_to_device_stream_ ABSL_GUARDED_BY(mu_) = 0;
   int next_external_ready_event_stream_ ABSL_GUARDED_BY(mu_) = 0;
-  std::stack<std::unique_ptr<se::Stream>> usage_stream_pool_
-      ABSL_GUARDED_BY(mu_);
 
   std::random_device prng_seed_device_ ABSL_GUARDED_BY(mu_);
   std::mt19937 prng_seed_generator_ ABSL_GUARDED_BY(mu_);
   std::uniform_int_distribution<> prng_seed_distribution_ ABSL_GUARDED_BY(mu_);
+
+  absl::Mutex stream_pool_mu_;
+  std::stack<std::unique_ptr<se::Stream>> usage_stream_pool_
+      ABSL_GUARDED_BY(stream_pool_mu_);
 
   // Callback map pairs callback stream with a device stream and is used for
   // running short host-side callbacks after device side events, without

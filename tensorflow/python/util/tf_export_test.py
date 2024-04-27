@@ -169,16 +169,6 @@ class ValidateExportTest(test.TestCase):
     self.assertEqual([(('NAME_C', 'NAME_D'), 'abc'),
                       (('NAME_E', 'NAME_F'), 0.5)], module2._tf_api_constants)
 
-  def testRaisesExceptionIfInvalidSymbolName(self):
-    # TensorFlow code is not allowed to export symbols under package
-    # tf.estimator
-    with self.assertRaises(tf_export.InvalidSymbolNameError):
-      tf_export.tf_export('estimator.invalid')
-
-  def testRaisesExceptionIfInvalidV1SymbolName(self):
-    with self.assertRaises(tf_export.InvalidSymbolNameError):
-      tf_export.tf_export('valid', v1=['estimator.invalid'])
-
   def testMultipleDecorators(self):
 
     def get_wrapper(func):

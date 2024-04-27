@@ -121,6 +121,7 @@ def initialize_accelerator_system(
     enable_coordination_service: Optional[bool] = True,
     num_logical_cpu_devices: Optional[int] = None,
     experimental_reset_context: Optional[bool] = False,
+    experimental_enable_megcore: Optional[bool] = False,
 ) -> str:
   """Initializes accelerators and communication fabrics for DTensor.
 
@@ -170,6 +171,7 @@ def initialize_accelerator_system(
       as an escape hatch, if there is no clear way to refactor your code to call
       initialize_accelerator_system() before calling TensorFlow APIs that
       initialize the context.
+    experimental_enable_megcore: Optionally enable megcore in backend.
 
   Returns:
     device_type: the type of accelerator that was initialized.
@@ -258,7 +260,7 @@ def initialize_accelerator_system(
       )
 
   if device_type == "TPU" and not config.backend_is_pw():
-    tpu_util.initialize_tpu_system()
+    tpu_util.initialize_tpu_system(use_megacore=experimental_enable_megcore)
 
   _INITIALIZED_ACCELERATOR_SYSTEM_TYPE = device_type
 

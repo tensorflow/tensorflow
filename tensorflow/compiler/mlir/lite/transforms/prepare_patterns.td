@@ -51,21 +51,21 @@ class TFi32<int v> : ConstantAttr<I32ElementsAttr, !cast<string>(v)>;
 // Matmul without transpose on b to matmul with explicit transpose op and
 // transposed b.
 def ConvertMatmulWithoutTransposeToWithTranspose :
-      Pat<(TF_MatMulOp $a, $b, ConstBoolAttrFalse:$at, ConstBoolAttrFalse),
+      Pat<(TF_MatMulOp $a, $b, ConstBoolAttrFalse:$at, ConstBoolAttrFalse, $grad_a, $grad_b),
           (TF_MatMulOp $a, (TF_TransposeOp $b, (TF_SubOp (TF_RangeOp
              /*start=*/(TF_RankOp $b),
              /*limit=*/(TF_ConstOp TFi32<0>),
              /*delta=*/(TF_ConstOp TFi32<-1>)), (TF_ConstOp TFi32<1>))),
-           $at, ConstBoolAttrTrue)>;
+           $at, ConstBoolAttrTrue, $grad_a, $grad_b)>;
 
 // Matmul with transpose on a to matmul with explicit transpose op and a not
 // transposed.
-def ConvertMatmulWithTranspose : Pat<(TF_MatMulOp $a, $b, ConstBoolAttrTrue, $bt),
+def ConvertMatmulWithTranspose : Pat<(TF_MatMulOp $a, $b, ConstBoolAttrTrue, $bt, $grad_a, $grad_b),
           (TF_MatMulOp (TF_TransposeOp $a, (TF_SubOp (TF_RangeOp
              /*start=*/(TF_RankOp $a),
              /*limit=*/(TF_ConstOp TFi32<0>),
              /*delta=*/(TF_ConstOp TFi32<-1>)), (TF_ConstOp TFi32<1>))), $b,
-           ConstBoolAttrFalse, $bt)>;
+           ConstBoolAttrFalse, $bt, $grad_a, $grad_b)>;
 
 // Partially supported in TFLite, treated as passthrough IdentityOp
 def ConvertCheckNumerics : Pat<(TF_CheckNumericsOp $arg, $msg), (TF_IdentityOp $arg)>;

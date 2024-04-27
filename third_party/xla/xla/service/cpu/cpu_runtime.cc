@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -28,7 +28,12 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/base/attributes.h"
+#include "absl/base/dynamic_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
@@ -38,6 +43,7 @@ limitations under the License.
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/cpu/collectives_interface.h"
+#include "xla/service/cpu/cpu_executable_run_options.h"
 #include "xla/service/cpu/in_process_collectives.h"
 #include "xla/service/cpu/xfeed_manager.h"
 #include "xla/service/global_device_id.h"
@@ -46,6 +52,7 @@ limitations under the License.
 #include "xla/statusor.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/status.h"
@@ -142,6 +149,9 @@ extern const char* const kTracingStartSymbolName =
 extern const char* const kTracingEndSymbolName = "__xla_cpu_runtime_TracingEnd";
 extern const char* const kXlaCpuRuntimeSymbolNamePrefix = "__xla_cpu_runtime_";
 extern const char* const kAllReduceSymbolName = "__xla_cpu_runtime_AllReduce";
+extern const char* const kAllGatherSymbolName = "__xla_cpu_runtime_AllGather";
+extern const char* const kReduceScatterSymbolName =
+    "__xla_cpu_runtime_ReduceScatter";
 extern const char* const kAllToAllSymbolName = "__xla_cpu_runtime_AllToAll";
 extern const char* const kCollectivePermuteSymbolName =
     "__xla_cpu_runtime_CollectivePermute";
@@ -150,12 +160,18 @@ extern const char* const kPartitionIdSymbolName =
 extern const char* const kReplicaIdSymbolName = "__xla_cpu_runtime_ReplicaId";
 extern const char* const kOneDnnMatMulSymbolName =
     "__xla_cpu_runtime_OneDnnMatMul";
+extern const char* const kOneDnnSoftmaxSymbolName =
+    "__xla_cpu_runtime_OneDnnSoftmax";
+extern const char* const kOneDnnLayerNormSymbolName =
+    "__xla_cpu_runtime_OneDnnLayerNorm";
+extern const char* const kOneDnnMatMulReorderSymbolName =
+    "__xla_cpu_runtime_OneDnnMatMulReorder";
 
 namespace {
 
 // Inverses the encoding of a Shape protobuf into an LLVM global variable.
-StatusOr<Shape> DecodeSelfDescribingShapeConstant(const void* shape_ptr,
-                                                  int32_t size_bytes) {
+absl::StatusOr<Shape> DecodeSelfDescribingShapeConstant(const void* shape_ptr,
+                                                        int32_t size_bytes) {
   ShapeProto shape_proto;
   if (!shape_proto.ParseFromArray(shape_ptr, size_bytes)) {
     return tsl::errors::Internal("Failed parsing the shape proto");
@@ -169,7 +185,7 @@ StatusOr<Shape> DecodeSelfDescribingShapeConstant(const void* shape_ptr,
 }
 
 std::string ShapeString(const void* shape_ptr, int32_t shape_length) {
-  StatusOr<Shape> shape =
+  absl::StatusOr<Shape> shape =
       DecodeSelfDescribingShapeConstant(shape_ptr, shape_length);
   if (shape.ok()) {
     return ShapeUtil::HumanStringWithLayout(shape.value());
@@ -221,7 +237,7 @@ void ReleaseInfeedBufferAfterDequeueImpl(
           << device_ordinal;
 
   XfeedManager* xfeed = GetXfeedManager(device_ordinal);
-  StatusOr<Shape> shape =
+  absl::StatusOr<Shape> shape =
       DecodeSelfDescribingShapeConstant(shape_ptr, shape_length);
   xfeed->infeed()->ReleaseCurrentBuffer(buffer_length, buffer_ptr,
                                         std::move(shape));
@@ -259,7 +275,7 @@ void ReleaseOutfeedBufferAfterPopulationImpl(
           << device_ordinal;
 
   XfeedManager* xfeed = GetXfeedManager(device_ordinal);
-  StatusOr<Shape> shape =
+  absl::StatusOr<Shape> shape =
       DecodeSelfDescribingShapeConstant(shape_ptr, shape_length);
   xfeed->outfeed()->ReleaseCurrentBuffer(buffer_length, buffer_ptr,
                                          std::move(shape));
@@ -312,7 +328,29 @@ CollectivesInterface* GetInProcessCollectivesImpl() {
   return c;
 }
 
-absl::Duration DefaultCollectiveTimeout() { return absl::InfiniteDuration(); }
+CollectivesInterface* GetCollectivesImpl(
+    const ExecutableRunOptions* run_options) {
+  if (run_options->cpu_executable_run_options() &&
+      run_options->cpu_executable_run_options()->collectives()) {
+    return run_options->cpu_executable_run_options()->collectives();
+  }
+  return GetInProcessCollectivesImpl();
+}
+
+absl::Duration DefaultCollectiveTimeout() { return absl::Minutes(30); }
+
+absl::StatusOr<int> RankInGlobalDevices(
+    absl::Span<GlobalDeviceId const> devices, GlobalDeviceId device) {
+  auto it = absl::c_find(devices, device);
+  if (it == devices.end()) {
+    return InvalidArgument(
+        "Device %d not present in global devices %s.", device.value(),
+        absl::StrJoin(devices, ", ", [](std::string* out, GlobalDeviceId id) {
+          absl::StrAppend(out, id.value());
+        }));
+  }
+  return std::distance(devices.begin(), it);
+}
 
 ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY
 void AllToAllImpl(const ExecutableRunOptions* run_options,
@@ -330,12 +368,14 @@ void AllToAllImpl(const ExecutableRunOptions* run_options,
       GetRendezvousKey(run_options, device, group, channel_id_present,
                        /*use_global_device_ids=*/std::nullopt, op_id);
 
-  auto it = absl::c_find(rendezvous_key.global_devices, device);
-  CHECK(it != rendezvous_key.global_devices.end());
-  int rank = std::distance(rendezvous_key.global_devices.begin(), it);
+  int rank = RankInGlobalDevices(rendezvous_key.global_devices, device).value();
 
-  CollectivesInterface* collectives = GetInProcessCollectivesImpl();
+  CollectivesInterface* collectives = GetCollectivesImpl(run_options);
 
+  ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(source_buffers,
+                                      sizeof(void*) * num_buffers);
+  ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(destination_buffers,
+                                      sizeof(void*) * num_buffers);
   auto communicator =
       collectives->GetCommunicator(rendezvous_key.global_devices, rank).value();
   TF_CHECK_OK(communicator->AllToAll(
@@ -343,6 +383,62 @@ void AllToAllImpl(const ExecutableRunOptions* run_options,
       absl::Span<const void* const>(source_buffers, num_buffers),
       absl::Span<void* const>(destination_buffers, num_buffers),
       DefaultCollectiveTimeout()));
+}
+
+ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY
+void AllGatherImpl(const ExecutableRunOptions* run_options,
+                   int32_t channel_id_present, int32_t use_global_device_ids,
+                   int64_t op_id, const void* replica_groups_str,
+                   int32_t replica_groups_str_size, int64_t buffer_size,
+                   void* source_buffer, void* destination_buffer) {
+  GlobalDeviceId device(GetDeviceOrdinal(run_options));
+  std::string_view replica_groups_serialized(
+      static_cast<const char*>(replica_groups_str), replica_groups_str_size);
+  std::vector<ReplicaGroup> group =
+      ParseReplicaGroupsOnly(replica_groups_serialized).value();
+  RendezvousKey rendezvous_key =
+      GetRendezvousKey(run_options, device, group, channel_id_present,
+                       use_global_device_ids, op_id);
+
+  int rank = RankInGlobalDevices(rendezvous_key.global_devices, device).value();
+
+  CollectivesInterface* collectives = GetCollectivesImpl(run_options);
+
+  auto communicator =
+      collectives->GetCommunicator(rendezvous_key.global_devices, rank).value();
+  TF_CHECK_OK(communicator->AllGather(rendezvous_key, buffer_size,
+                                      source_buffer, destination_buffer,
+                                      DefaultCollectiveTimeout()));
+}
+
+ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY
+void ReduceScatterImpl(const ExecutableRunOptions* run_options,
+                       const void* replica_groups_str,
+                       int32_t replica_groups_str_size,
+                       int32_t channel_id_present,
+                       int32_t use_global_device_ids, int64_t op_id,
+                       int32_t reduction_kind, int32_t element_type,
+                       int64_t chunk_elems, void* input_buffer,
+                       void* output_buffer) {
+  GlobalDeviceId device(GetDeviceOrdinal(run_options));
+  std::string_view replica_groups_serialized(
+      static_cast<const char*>(replica_groups_str), replica_groups_str_size);
+  std::vector<ReplicaGroup> group =
+      ParseReplicaGroupsOnly(replica_groups_serialized).value();
+  RendezvousKey rendezvous_key =
+      GetRendezvousKey(run_options, device, group, channel_id_present,
+                       use_global_device_ids, op_id);
+
+  int rank = RankInGlobalDevices(rendezvous_key.global_devices, device).value();
+
+  CollectivesInterface* collectives = GetCollectivesImpl(run_options);
+
+  auto communicator =
+      collectives->GetCommunicator(rendezvous_key.global_devices, rank).value();
+  TF_CHECK_OK(communicator->ReduceScatter(
+      rendezvous_key, static_cast<ReductionKind>(reduction_kind),
+      static_cast<PrimitiveType>(element_type), chunk_elems, input_buffer,
+      output_buffer, DefaultCollectiveTimeout()));
 }
 
 ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY
@@ -370,11 +466,9 @@ void AllReduceImpl(const ExecutableRunOptions* run_options,
   CHECK((num_buffers > 1 && shape.IsTuple()) ||
         (num_buffers == 1 && LayoutUtil::IsDenseArray(shape)));
 
-  auto it = absl::c_find(rendezvous_key.global_devices, device);
-  CHECK(it != rendezvous_key.global_devices.end());
-  int rank = std::distance(rendezvous_key.global_devices.begin(), it);
+  int rank = RankInGlobalDevices(rendezvous_key.global_devices, device).value();
 
-  CollectivesInterface* collectives = GetInProcessCollectivesImpl();
+  CollectivesInterface* collectives = GetCollectivesImpl(run_options);
 
   auto communicator =
       collectives->GetCommunicator(rendezvous_key.global_devices, rank).value();
@@ -421,11 +515,9 @@ void CollectivePermuteImpl(const ExecutableRunOptions* run_options,
       GetRendezvousKey(run_options, device, {}, channel_id_present,
                        /*use_global_device_ids=*/std::nullopt, op_id);
 
-  auto it = absl::c_find(rendezvous_key.global_devices, device);
-  CHECK(it != rendezvous_key.global_devices.end());
-  int rank = std::distance(rendezvous_key.global_devices.begin(), it);
+  int rank = RankInGlobalDevices(rendezvous_key.global_devices, device).value();
 
-  CollectivesInterface* collectives = GetInProcessCollectivesImpl();
+  CollectivesInterface* collectives = GetCollectivesImpl(run_options);
 
   auto communicator =
       collectives->GetCommunicator(rendezvous_key.global_devices, rank).value();
@@ -451,9 +543,14 @@ ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY int __xla_cpu_runtime_PrintfToStderr(
 }
 
 ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY int64_t __xla_cpu_runtime_TracingStart(
-    const void* /* ExecutableRunOptions*  run_options_ptr*/, const char* name) {
+    const void* /* ExecutableRunOptions*  run_options_ptr*/, const char* name,
+    const char* type, const char* src_op_type, const char* src_op_name) {
   VLOG(3) << "TracingStart " << name;
-  return tsl::profiler::TraceMe::ActivityStart(name);
+  auto trace_in =
+      tsl::profiler::TraceMeEncode(type, {{"hlo_name", name},
+                                          {"src_opType", src_op_type},
+                                          {"src_opName", src_op_name}});
+  return tsl::profiler::TraceMe::ActivityStart(trace_in);
 }
 
 ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_TracingEnd(
@@ -501,6 +598,31 @@ void __xla_cpu_runtime_AllToAll(const xla::ExecutableRunOptions* run_options,
       run_options, channel_id_present, op_id, replica_groups_str,
       replica_groups_str_size, num_buffers, buffer_size, source_buffers,
       destination_buffers);
+}
+
+void __xla_cpu_runtime_AllGather(const xla::ExecutableRunOptions* run_options,
+                                 int32_t channel_id_present,
+                                 int32_t use_global_device_ids, int64_t op_id,
+                                 const void* replica_groups_str,
+                                 int32_t replica_groups_str_size,
+                                 int64_t buffer_size, void* source_buffer,
+                                 void* destination_buffer) {
+  return xla::cpu::runtime::AllGatherImpl(
+      run_options, channel_id_present, use_global_device_ids, op_id,
+      replica_groups_str, replica_groups_str_size, buffer_size, source_buffer,
+      destination_buffer);
+}
+
+void __xla_cpu_runtime_ReduceScatter(
+    const xla::ExecutableRunOptions* run_options,
+    const void* replica_groups_str, int32_t replica_groups_str_size,
+    int32_t channel_id_present, int32_t use_global_device_ids, int64_t op_id,
+    int32_t reduction_kind, int32_t element_type, int64_t chunk_elems,
+    void* input_buffer, void* output_buffer) {
+  return xla::cpu::runtime::ReduceScatterImpl(
+      run_options, replica_groups_str, replica_groups_str_size,
+      channel_id_present, use_global_device_ids, op_id, reduction_kind,
+      element_type, chunk_elems, input_buffer, output_buffer);
 }
 
 void __xla_cpu_runtime_AllReduce(const xla::ExecutableRunOptions* run_options,

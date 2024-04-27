@@ -16,17 +16,21 @@ limitations under the License.
 #ifndef TENSORFLOW_TSL_PLATFORM_DYNAMIC_ANNOTATIONS_H_
 #define TENSORFLOW_TSL_PLATFORM_DYNAMIC_ANNOTATIONS_H_
 
-#include "tsl/platform/platform.h"
+#include "absl/base/dynamic_annotations.h"
 
-// Include appropriate platform-dependent implementation.
-#if defined(PLATFORM_GOOGLE)
-#include "tsl/platform/google/dynamic_annotations.h"  // IWYU pragma: export
-#elif defined(PLATFORM_POSIX) || defined(PLATFORM_POSIX_ANDROID) ||    \
-    defined(PLATFORM_GOOGLE_ANDROID) || defined(PLATFORM_POSIX_IOS) || \
-    defined(PLATFORM_GOOGLE_IOS) || defined(PLATFORM_WINDOWS)
-#include "tsl/platform/default/dynamic_annotations.h"  // IWYU pragma: export
+#define TF_ANNOTATE_MEMORY_IS_INITIALIZED(ptr, bytes) \
+  ANNOTATE_MEMORY_IS_INITIALIZED(ptr, bytes)
+
+#define TF_ANNOTATE_BENIGN_RACE(ptr, description) \
+  ANNOTATE_BENIGN_RACE(ptr, description)
+
+// Tell MemorySanitizer to relax the handling of a given function. All "Use of
+// uninitialized value" warnings from such functions will be suppressed, and
+// all values loaded from memory will be considered fully initialized.
+#ifdef MEMORY_SANITIZER
+#define TF_ATTRIBUTE_NO_SANITIZE_MEMORY __attribute__((no_sanitize_memory))
 #else
-#error Define the appropriate PLATFORM_<foo> macro for this platform
+#define TF_ATTRIBUTE_NO_SANITIZE_MEMORY
 #endif
 
 #endif  // TENSORFLOW_TSL_PLATFORM_DYNAMIC_ANNOTATIONS_H_

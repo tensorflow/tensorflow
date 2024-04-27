@@ -35,13 +35,12 @@ class OpResolverInternal {
     return op_resolver.MayContainUserDefinedOps();
   }
 
-  // Get a shared_ptr to the RegistrationExternalsCache from an OpResolver.
+  // Get a shared_ptr to the OperatorsCache from an OpResolver.
   // This is used to allow the InterpreterBuilder and OpResolver to share
-  // the same RegistrationExternalsCache, so that the RegistrationExternal
-  // objects in it can persist for the lifetimes of both the InterpreterBuilder
-  // and OpResolver.
-  static std::shared_ptr<::tflite::internal::RegistrationExternalsCache>
-  GetSharedCache(const ::tflite::OpResolver& op_resolver) {
+  // the same OperatorsCache, so that the Operator objects in it can persist
+  // for the lifetimes of both the InterpreterBuilder and OpResolver.
+  static std::shared_ptr<::tflite::internal::OperatorsCache> GetSharedCache(
+      const ::tflite::OpResolver& op_resolver) {
     return op_resolver.registration_externals_cache_;
   }
 };

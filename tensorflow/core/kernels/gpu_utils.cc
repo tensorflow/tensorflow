@@ -24,7 +24,6 @@ limitations under the License.
 #include "absl/base/call_once.h"
 #include "xla/stream_executor/gpu/asm_compiler.h"
 #include "xla/stream_executor/gpu/redzone_allocator.h"
-#include "tensorflow/core/platform/logger.h"
 #include "tensorflow/core/protobuf/autotuning.pb.h"
 #include "tensorflow/core/protobuf/conv_autotuning.pb.h"
 #include "tensorflow/core/util/determinism.h"
@@ -36,6 +35,21 @@ namespace tensorflow {
 using xla::AutotuningLog;
 using xla::ComputeCapability;
 using xla::CudnnVersion;
+
+bool IsBF16SupportedInOps(se::Stream* stream) {
+  if (!stream) {
+    return false;  // No stream: don't know whether it's supported.
+  }
+#if GOOGLE_CUDA
+  // Performant bfloat16 operations are supported for Ampere+ GPUs. For
+  // pre-Ampere GPUs, we cast inputs to float and outputs back to bfloat16.
+  return stream->GetCudaComputeCapability().IsAtLeast(
+      se::CudaComputeCapability::AMPERE);
+#elif TENSORFLOW_USE_ROCM
+  // So far, we return false meaning that the conversion to float is needed.
+  return false;
+#endif
+}
 
 bool RedzoneCheckDisabled() {
   const char* disable_rz_str = std::getenv("TF_DISABLE_RZ_CHECK");
@@ -178,7 +192,6 @@ void LogConvAutotuneResults(se::dnn::ConvolutionKind kind,
     *log.add_results() = result;
   }
   VLOG(2) << log.DebugString();
-  Logger::GetSingleton()->LogProto(log);
 }
 
 void LogFusedConvForwardAutotuneResults(
@@ -226,7 +239,6 @@ void LogFusedConvForwardAutotuneResults(
     *log.add_results() = result;
   }
   VLOG(2) << log.DebugString();
-  Logger::GetSingleton()->LogProto(log);
 }
 
 void LogFusedMatmulAutotuneResults(
@@ -272,7 +284,6 @@ void LogFusedMatmulAutotuneResults(
     *log.add_results() = result;
   }
   VLOG(2) << log.DebugString();
-  Logger::GetSingleton()->LogProto(log);
 }
 
 namespace {

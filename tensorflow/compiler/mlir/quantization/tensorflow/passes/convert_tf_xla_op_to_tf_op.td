@@ -17,9 +17,8 @@ include "mlir/IR/OpBase.td"
 include "mlir/IR/PatternBase.td"
 include "mlir/Dialect/Func/IR/FuncOps.td"
 include "mlir/Dialect/Arith/IR/ArithOps.td"
-include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
-include "tensorflow/compiler/mlir/quantization/tensorflow/passes/utils.td"
-include "mlir/Dialect/Arith/IR/ArithOps.td"
+include "tensorflow/compiler/mlir/quantization/common/attrs_and_constraints.td"
+include "tensorflow/compiler/mlir/tensorflow/ir/tf_generated_ops.td"
 
 // Only handles the case where precision config is default.
 def IsPrecisionEmpty :

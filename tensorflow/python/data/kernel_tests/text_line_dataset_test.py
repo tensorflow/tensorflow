@@ -23,6 +23,7 @@ from absl.testing import parameterized
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.data.ops import readers
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import errors
@@ -233,16 +234,28 @@ class TextLineDatasetCheckpointTest(TextLineDatasetTestBase,
                                     checkpoint_test_base.CheckpointTestBase,
                                     parameterized.TestCase):
 
-  def _build_iterator_graph(self, test_filenames, compression_type=None):
-    return readers.TextLineDataset(
-        test_filenames, compression_type=compression_type, buffer_size=10)
+  def _build_iterator_graph(
+      self, test_filenames, symbolic_checkpoint, compression_type=None
+  ):
+    dataset = readers.TextLineDataset(
+        test_filenames, compression_type=compression_type, buffer_size=10
+    )
+    options = options_lib.Options()
+    options.experimental_symbolic_checkpoint = symbolic_checkpoint
+    dataset = dataset.with_options(options)
+    return dataset
 
   @combinations.generate(
       combinations.times(
           test_base.default_test_combinations(),
           checkpoint_test_base.default_test_combinations(),
-          combinations.combine(compression_type=[None, "GZIP", "ZLIB"])))
-  def test(self, verify_fn, compression_type):
+          combinations.combine(
+              symbolic_checkpoint=[False, True],
+              compression_type=[None, "GZIP", "ZLIB"],
+          ),
+      )
+  )
+  def test(self, verify_fn, symbolic_checkpoint, compression_type):
     num_files = 5
     lines_per_file = 5
     num_outputs = num_files * lines_per_file
@@ -250,8 +263,11 @@ class TextLineDatasetCheckpointTest(TextLineDatasetTestBase,
         num_files, lines_per_file, crlf=True, compression_type=compression_type)
     verify_fn(
         self,
-        lambda: self._build_iterator_graph(test_filenames, compression_type),
-        num_outputs)
+        lambda: self._build_iterator_graph(
+            test_filenames, symbolic_checkpoint, compression_type
+        ),
+        num_outputs,
+    )
 
 
 if __name__ == "__main__":

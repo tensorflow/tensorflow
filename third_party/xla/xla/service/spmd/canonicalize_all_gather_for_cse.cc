@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -24,7 +24,7 @@ limitations under the License.
 
 namespace xla {
 
-StatusOr<bool> CanonicalizeAllGatherForCSE::RunOnComputation(
+absl::StatusOr<bool> CanonicalizeAllGatherForCSE::RunOnComputation(
     HloComputation* comp) {
   bool changed = false;
   // Helper to find the respective shape input dimension of an shape output
@@ -81,7 +81,7 @@ StatusOr<bool> CanonicalizeAllGatherForCSE::RunOnComputation(
     HloInstruction* new_ag =
         comp->AddInstruction(HloInstruction::CreateAllGather(
             new_ag_shape, {real_data}, /*all_gather_dimension=*/new_ag_dim,
-            ag->replica_groups(), ag->constrain_layout(), new_channel_id,
+            ag->device_list(), ag->constrain_layout(), new_channel_id,
             ag->use_global_device_ids()));
     ag->SetupDerivedInstruction(new_ag);
     HloInstruction* new_formatting = comp->AddInstruction(
@@ -92,7 +92,7 @@ StatusOr<bool> CanonicalizeAllGatherForCSE::RunOnComputation(
   return changed;
 }
 
-StatusOr<bool> CanonicalizeAllGatherForCSE::Run(
+absl::StatusOr<bool> CanonicalizeAllGatherForCSE::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

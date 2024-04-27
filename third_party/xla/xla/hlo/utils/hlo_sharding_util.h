@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -25,13 +25,17 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/service/call_graph.h"
 #include "xla/shape.h"
+#include "xla/statusor.h"
+#include "xla/util.h"
 
 namespace xla {
 namespace hlo_sharding_util {
@@ -256,7 +260,7 @@ HloSharding GatherOutputOrScatterUpdateShardingFromIndicesParallelDimensions(
 // - If computation is min/max, return max value/min value with corresponding op
 //   code.
 // - Otherwise, return error status.
-StatusOr<std::pair<std::unique_ptr<HloInstruction>, HloOpcode>>
+absl::StatusOr<std::pair<std::unique_ptr<HloInstruction>, HloOpcode>>
 IdentityValueAndHloOpcodeForScatterReduceComputation(
     const HloScatterInstruction& scatter);
 
@@ -319,8 +323,8 @@ absl::InlinedVector<int64_t, 1> GetScatterParallelUpdateDims(
 
 // Returns the operand pass-through dimensions for gather operand.
 absl::InlinedVector<int64_t, 1> GetGatherOperandPassthroughOperandDims(
-    const Shape& operand_shape, const HloSharding& operand_sharding,
-    const HloInstruction& hlo, absl::Span<const int64_t> slice_sizes);
+    const Shape& operand_shape, const HloInstruction& hlo,
+    absl::Span<const int64_t> slice_sizes);
 
 // Returns the operand pass-through dimensions for scatter operand(s).
 absl::InlinedVector<int64_t, 1> GetScatterOperandPassthroughOperandDims(
@@ -329,8 +333,7 @@ absl::InlinedVector<int64_t, 1> GetScatterOperandPassthroughOperandDims(
 
 absl::InlinedVector<int64_t, 1> GetGatherOperandPassthroughOutputDims(
     const Shape& output_shape, const Shape& operand_shape,
-    const HloSharding& operand_sharding, const HloInstruction& hlo,
-    absl::Span<const int64_t> slice_sizes);
+    const HloInstruction& hlo, absl::Span<const int64_t> slice_sizes);
 
 absl::InlinedVector<int64_t, 1> GetScatterOperandPassthroughUpdateDims(
     const Shape& update_shape, const Shape& operand_shape,
@@ -358,9 +361,9 @@ absl::InlinedVector<int64_t, 1> IndexAlignedOperandParallelDims(
 // represents the in-group sharding.
 struct GroupedSharding {
   GroupedSharding(std::vector<std::vector<int64_t>> device_groups,
-                  std::vector<int64_t> group_dims,
-                  std::vector<int64_t> group_dim_sizes, int64_t data_rank,
-                  HloSharding grouped_sharding, bool subgroup_manual = false)
+                  DimensionVector group_dims, DimensionVector group_dim_sizes,
+                  int64_t data_rank, HloSharding grouped_sharding,
+                  bool subgroup_manual = false)
       : device_groups(std::move(device_groups)),
         group_dims(std::move(group_dims)),
         group_dim_sizes(std::move(group_dim_sizes)),
@@ -369,8 +372,8 @@ struct GroupedSharding {
         subgroup_manual(subgroup_manual) {}
   std::string ToString() const;
   std::vector<std::vector<int64_t>> device_groups;
-  std::vector<int64_t> group_dims;
-  std::vector<int64_t> group_dim_sizes;
+  DimensionVector group_dims;
+  DimensionVector group_dim_sizes;
   int64_t data_rank;
   HloSharding sharding;
   bool subgroup_manual;
@@ -474,6 +477,13 @@ Shape UntileShape(const HloSharding& sharding, const Shape& shape);
 // Returns the un-tiled shape.
 // REQUIRES: !sharding.IsTuple()
 Shape UntileLeafShape(const HloSharding& sharding, const Shape& shape);
+
+// Returns the tiled shape.
+Shape TileShape(const HloSharding& sharding, const Shape& shape);
+
+// Returns the tiled shape.
+// REQUIRES: !sharding.IsTuple()
+Shape TileLeafShape(const HloSharding& sharding, const Shape& shape);
 
 }  // namespace hlo_sharding_util
 }  // namespace xla

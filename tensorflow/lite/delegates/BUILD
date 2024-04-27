@@ -13,8 +13,8 @@
 # limitations under the License.
 # ==============================================================================
 
-load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_linkopts")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
+load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_linkopts")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 
 package(
@@ -80,6 +80,9 @@ cc_library(
     copts = tflite_copts(),
     deps = [
         "//tensorflow/lite:framework",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/api:error_reporter",
     ],
 )
 
@@ -105,22 +108,10 @@ cc_test(
     deps = [
         ":delegate_test_util",
         ":interpreter_utils",
-        ":utils",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite:kernel_api",
-        "//tensorflow/lite:string",
-        "//tensorflow/lite:util",
-        "//tensorflow/lite:version",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:builtin_ops",
-        "//tensorflow/lite/kernels:kernel_util",
-        "//tensorflow/lite/kernels/internal:compatibility",
-        "//tensorflow/lite/schema:schema_conversion_utils",
-        "//tensorflow/lite/schema:schema_fbs",
-        "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest_main",
-        "@eigen_archive//:eigen3",
-        "@flatbuffers",
     ],
 )
 
@@ -168,12 +159,14 @@ cc_test(
         "TFLITE_USE_OPAQUE_DELEGATE",
     ],
     deps = [
+        "//tensorflow/lite:builtin_ops",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/c:c_api_experimental",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest_main",
     ],
@@ -192,12 +185,14 @@ cc_test(
         "TF_LITE_STRIP_ERROR_STRINGS",
     ],
     deps = [
+        "//tensorflow/lite:builtin_ops",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/c:c_api_experimental",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest_main",
     ],

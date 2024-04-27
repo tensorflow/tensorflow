@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 
 #include "xla/status_macros.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/tensor_float_32_utils.h"
 #include "tensorflow/core/util/env_var.h"
@@ -165,7 +166,10 @@ StatusOr<const PlanAndAlgorithms*> GetPlanAndAlgorithms(
         .alpha = xla::complex128{1.0, 0.0},
         .beta = 0.0,
         .compute_precision = se::blas::kDefaultComputePrecision,
+        .precision_algorithm = xla::PrecisionConfig::ALG_UNSET,
         .algorithm = {},
+        .grad_x = false,
+        .grad_y = false,
         .compute_type = computation_type,
     };
 

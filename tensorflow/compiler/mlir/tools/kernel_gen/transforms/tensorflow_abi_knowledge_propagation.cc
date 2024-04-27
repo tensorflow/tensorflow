@@ -26,12 +26,12 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
+#include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_ops.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/passes.h"
-#include "xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 
 namespace mlir {
 namespace kernel_gen {
@@ -56,7 +56,7 @@ struct PropagateTfAbiKnowledgeToKernelsPass
       // the inner stride is one.
       // TODO(herhut): Insert asserts in debug mode to check this.
       for (auto argument : function.getArguments()) {
-        if (argument.getType().isa<BaseMemRefType>()) {
+        if (mlir::isa<BaseMemRefType>(argument.getType())) {
           worklist.push_back(argument);
           allocated_by_tf_runtime.insert(argument);
           offset_is_zero.insert(argument);
@@ -95,7 +95,7 @@ struct PropagateTfAbiKnowledgeToKernelsPass
       llvm::SmallDenseMap<int64_t, Value> constants;
       auto loc = kernel.getLoc();
       for (auto operand : launch.getKernelOperands()) {
-        auto memref = operand.getType().dyn_cast<MemRefType>();
+        auto memref = mlir::dyn_cast<MemRefType>(operand.getType());
         if (!memref) {
           // Scalar argument, advance kernel position by one.
           kernel_p++;

@@ -27,6 +27,13 @@ limitations under the License.
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_tensor.h"
 
+// Required for IS_MOBILE_PLATFORM definition
+#include "tsl/platform/platform.h"  // IWYU pragma: keep
+
+#if !defined(IS_MOBILE_PLATFORM) && !defined(IS_SLIM_BUILD)
+#include "tensorflow/core/common_runtime/next_pluggable_device/c/tf_rendezvous_c_api.h"
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -273,6 +280,17 @@ TF_CAPI_EXPORT extern int64_t TF_GetStepId(TF_OpKernelContext* ctx);
 // tensorflow/tsl/framework/device_id.h for more details.
 // For mobile or slim build, returns the id in the device name.
 TF_CAPI_EXPORT extern int TF_GetDeviceId(TF_OpKernelContext* ctx);
+
+// Returns the Device Name of the device that the context possesses.
+//
+// The returned TF_StringView's underlying string is owned by the OpKernel and
+// has the same lifetime as the OpKernel.
+TF_CAPI_EXPORT TF_StringView TF_GetDeviceName(TF_OpKernelContext* ctx);
+
+#if !defined(IS_MOBILE_PLATFORM) && !defined(IS_SLIM_BUILD)
+// Returns the rendezvous in the context. Not supported on mobile.
+TF_CAPI_EXPORT TF_RendezvousThunk TF_GetRendezvous(TF_OpKernelContext* ctx);
+#endif
 
 // Returns the graph def version of the given context.
 TF_CAPI_EXPORT extern int TF_GetGraphDefVersion(TF_OpKernelContext* ctx);

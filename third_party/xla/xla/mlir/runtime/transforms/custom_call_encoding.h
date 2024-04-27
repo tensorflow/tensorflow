@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -26,14 +26,22 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringRef.h"
+#include "mlir/Dialect/LLVMIR/LLVMAttrs.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "xla/runtime/custom_call.h"
@@ -612,7 +620,7 @@ struct AggregateAttrEncoding : public CustomCallAttrEncoding {
 
   mlir::LogicalResult Match(mlir::SymbolTable &, std::string_view,
                             mlir::Attribute attr) const final {
-    return mlir::success(attr.isa<AttrType>());
+    return mlir::success(mlir::isa<AttrType>(attr));
   }
 
   mlir::FailureOr<Encoded> Encode(mlir::SymbolTable &sym_table, Globals &g,
@@ -622,7 +630,7 @@ struct AggregateAttrEncoding : public CustomCallAttrEncoding {
     // Extract aggregate attributes from the user-defined attributes.
     llvm::SmallVector<mlir::NamedAttribute> attrs;
     for (auto &bind : attrdef.bindings)
-      attrs.emplace_back(bind(attr.cast<AttrType>(), b));
+      attrs.emplace_back(bind(mlir::cast<AttrType>(attr), b));
 
     // Encode extracted attributes as an aggregate.
     auto type_id = TypeID::get<Tagged<RuntimeType>>();

@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/managed_stack_trace.h"
@@ -152,6 +153,23 @@ class EagerOperation : public ImmediateExecutionOperation {
   bool colocation_exempt() const { return colocation_exempt_; }
 
   tensorflow::EagerContext& EagerContext() const { return ctx_; }
+
+  const FunctionLibraryDefinition* FuncLibDef() const {
+    if (eager_func_params_.has_value() &&
+        eager_func_params_.value().func_lib_def_override) {
+      return eager_func_params_.value().func_lib_def_override;
+    } else {
+      return ctx_.FuncLibDef();
+    }
+  }
+
+  const FunctionDef* GetFunctionDef() const {
+    if (is_function_) {
+      return FuncLibDef()->Find(attrs_.op_name());
+    } else {
+      return nullptr;
+    }
+  }
 
   AttrBuilder* MutableAttrs() { return &attrs_; }
   const AttrBuilder& Attrs() const { return attrs_; }

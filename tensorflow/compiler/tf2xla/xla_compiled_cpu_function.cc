@@ -228,4 +228,34 @@ int XlaCompiledCpuFunction::LookupResultIndex(const string& name) const {
   return LookupNameIndex(name, result_names_);
 }
 
+const char* XlaCompiledCpuFunction::GetArgName(const int index) const {
+  assert(arg_names_ != nullptr);
+  if (index < 0 || index >= num_args_) {
+    std::cerr << "XlaCompiledCpuFunction::GetArgName: index '" << index
+              << "' out of range [0, " << num_args_ << "].\n";
+    return nullptr;
+  }
+  return arg_names_[index];
+}
+
+const char* XlaCompiledCpuFunction::GetVariableName(int index) const {
+  assert(variable_names_ != nullptr);
+  if (index < 0 || index >= num_variables_) {
+    std::cerr << "XlaCompiledCpuFunction::GetVariableName: index '" << index
+              << "' out of range [0, " << num_variables_ << ").\n";
+    return nullptr;
+  }
+  return variable_names_[index];
+}
+
+const char* XlaCompiledCpuFunction::GetResultName(int index) const {
+  assert(result_names_ != nullptr);
+  if (index < 0 || index >= num_results_) {
+    std::cerr << "XlaCompiledCpuFunction::GetResultName: index '" << index
+              << "' out of range [0, " << num_results_ << ").\n";
+    return nullptr;
+  }
+  return result_names_[index];
+}
+
 }  // namespace tensorflow

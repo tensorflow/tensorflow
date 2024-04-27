@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -23,9 +23,11 @@ limitations under the License.
 #include "absl/container/fixed_array.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/backends/profiler/gpu/cupti_collector.h"
 #include "xla/backends/profiler/gpu/cupti_tracer.h"
 #include "xla/backends/profiler/gpu/cupti_wrapper.h"
+#include "xla/tsl/util/env_var.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/macros.h"
 #include "tsl/platform/thread_annotations.h"
@@ -33,16 +35,15 @@ limitations under the License.
 #include "tsl/profiler/lib/profiler_interface.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 #include "tsl/profiler/utils/time_utils.h"
-#include "tsl/util/env_var.h"
 
 namespace xla {
 namespace profiler {
 
+using absl::OkStatus;
+using absl::Status;
 using tensorflow::ProfileOptions;
 using tensorflow::profiler::XSpace;
-using tsl::OkStatus;
 using tsl::ReadBoolFromEnvVar;
-using tsl::Status;
 
 // GpuTracer for GPU.
 class GpuTracer : public tsl::profiler::ProfilerInterface {
@@ -130,12 +131,6 @@ Status GpuTracer::DoStart() {
     CUPTI_DRIVER_TRACE_CBID_cuStreamSynchronize,
   };
 
-  bool use_cupti_activity_api = true;
-  ReadBoolFromEnvVar("TF_GPU_CUPTI_USE_ACTIVITY_API", true,
-                     &use_cupti_activity_api)
-      .IgnoreError();
-  options_.enable_event_based_activity = !use_cupti_activity_api;
-
   bool trace_concurrent_kernels = false;
   ReadBoolFromEnvVar("TF_GPU_CUPTI_FORCE_CONCURRENT_KERNEL", true,
                      &trace_concurrent_kernels)
@@ -155,8 +150,8 @@ Status GpuTracer::DoStart() {
 
   CuptiTracerCollectorOptions collector_options;
   collector_options.num_gpus = cupti_tracer_->NumGpus();
-  tsl::uint64 start_gputime_ns = CuptiTracer::GetTimestamp();
-  tsl::uint64 start_walltime_ns = tsl::profiler::GetCurrentTimeNanos();
+  uint64_t start_gputime_ns = CuptiTracer::GetTimestamp();
+  uint64_t start_walltime_ns = tsl::profiler::GetCurrentTimeNanos();
   cupti_collector_ = CreateCuptiCollector(collector_options, start_walltime_ns,
                                           start_gputime_ns);
 
@@ -213,7 +208,7 @@ Status GpuTracer::CollectData(XSpace* space) {
         space->add_warnings(std::move(events_dropped));
       }
       if (cupti_collector_) {
-        tsl::uint64 end_gpu_ns = CuptiTracer::GetTimestamp();
+        uint64_t end_gpu_ns = CuptiTracer::GetTimestamp();
         cupti_collector_->Export(space, end_gpu_ns);
       }
       return OkStatus();

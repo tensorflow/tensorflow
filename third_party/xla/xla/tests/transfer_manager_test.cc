@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -328,7 +328,7 @@ XLA_TEST_F(TransferManagerTest, MultiStreamRoundTripSoak) {
   auto device_buffer2 = AllocateDeviceBuffer(literal2.shape());
 
   auto stream1 = stream_;
-  auto stream2 = stream_->GetOrCreateSubStream();
+  auto stream2 = stream_->GetOrCreateSubStream().value();
 
   Literal result1, result2;
 
@@ -352,7 +352,8 @@ XLA_TEST_F(TransferManagerTest, MultiStreamRoundTripSoak) {
   EXPECT_TRUE(LiteralTestUtil::Equal(literal2, result2));
 }
 
-XLA_TEST_F(TransferManagerTest, TransferDynamicShape) {
+// TODO(b/223222672): TPUs transfer literals using a different codepath.
+XLA_TEST_F(TransferManagerTest, DISABLED_ON_TPU(TransferDynamicShape)) {
   TF_ASSERT_OK_AND_ASSIGN(
       Shape s, ParseShape("(s64[], s32[<=1048576,3], f32[<=1048576,48])"));
 

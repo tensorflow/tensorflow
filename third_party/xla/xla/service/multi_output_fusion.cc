@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -29,13 +29,18 @@ limitations under the License.
 
 namespace xla {
 
-StatusOr<bool> MultiOutputFusion::Run(
+absl::StatusOr<bool> MultiOutputFusion::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
 
   for (auto* computation :
        module->MakeNonfusionComputations(execution_threads)) {
+    // Do not operate over async computations (computations of async
+    // instructions).
+    if (computation->IsAsyncComputation()) {
+      continue;
+    }
     computation_ = computation;
     candidates_.clear();
     candidates_index_.clear();

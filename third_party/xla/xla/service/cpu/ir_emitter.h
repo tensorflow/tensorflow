@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -112,7 +112,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   //
   // If 'allow_reassociation' is true, the fast-math reassociation flag will
   // be enabled in the function's body. This is used when emitting reducers.
-  StatusOr<llvm::Function*> EmitComputation(
+  absl::StatusOr<llvm::Function*> EmitComputation(
       HloComputation* computation, absl::string_view function_name_prefix,
       bool is_top_level_computation,
       absl::Span<HloInstruction* const> instruction_order,
@@ -134,6 +134,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // special in some way are handled explicitly in HandleFoo methods.
   Status DefaultAction(HloInstruction* hlo) override;
 
+  Status HandleAllGather(HloInstruction* instruction) override;
   Status HandleAllToAll(HloInstruction* instruction) override;
   Status HandleBitcast(HloInstruction* bitcast) override;
   Status HandleConstant(HloInstruction* constant) override;
@@ -194,7 +195,10 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   Status HandleAllReduceSingleReplica(HloInstruction* crs);
   Status HandleAllReduceMultipleReplica(HloInstruction* crs);
 #if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
-  Status HandleOneDnnMatMul(HloInstruction* hlo);
+  Status HandleOneDnnMatMulCalls(HloInstruction* hlo,
+                                 std::string runtime_symbol_name);
+  Status HandleOneDnnSoftmax(HloInstruction* hlo);
+  Status HandleOneDnnLayerNorm(HloInstruction* hlo);
 #endif  // INTEL_MKL && ENABLE_ONEDNN_V3
   // Private helper to initialize an IR function for the computation.
   void InitializeIrFunction(const std::string& function_name);
@@ -362,12 +366,10 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // concepts that generalize over other vectorizable operations.  We should
   // consider pulling out these abstractions into a VectorizingIrEmitter or
   // something similar.
-  StatusOr<bool> EmitVectorizedReduce(HloInstruction* reduce,
-                                      HloInstruction* arg,
-                                      HloInstruction* init_value,
-                                      absl::Span<const int64_t> dimensions,
-                                      HloComputation* function,
-                                      std::string* failure_reason);
+  absl::StatusOr<bool> EmitVectorizedReduce(
+      HloInstruction* reduce, HloInstruction* arg, HloInstruction* init_value,
+      absl::Span<const int64_t> dimensions, HloComputation* function,
+      std::string* failure_reason);
 
   // We'd like to keep one or two one cache-line's worth of data in registers
   // without generating IR with illegal (e.g. excessively large or
@@ -413,7 +415,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
 
   // Emits the inner loop nest that runs the reduction.  Helper function for
   // EmitVectorizedReduce.
-  StatusOr<ShardedVector> EmitInnerLoopForVectorizedReduction(
+  absl::StatusOr<ShardedVector> EmitInnerLoopForVectorizedReduction(
       const ReductionGenerator& reduction_generator,
       const llvm_ir::IrArray::Index& output_index,
       const ShardedVectorType& accumulator_type, HloInstruction* init_value,
@@ -423,9 +425,9 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // Tries to emit a fast concatenate operation using memcpy.  Returns true if
   // successful, and false on failure.  On failure, sets "failure_reason" to a
   // string describing why it could not emit a fast concatenate.
-  StatusOr<bool> EmitFastConcatenate(HloInstruction* concatenate,
-                                     absl::Span<HloInstruction* const> operands,
-                                     std::string* failure_reason);
+  absl::StatusOr<bool> EmitFastConcatenate(
+      HloInstruction* concatenate, absl::Span<HloInstruction* const> operands,
+      std::string* failure_reason);
 
   // Emits LLVM IR to transfer "element_count" elements of type "primitive_type"
   // from the address "source" to the address "target".
@@ -660,7 +662,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
 
   struct LiteralPtrEqualityFunctor {
     bool operator()(const Literal* lhs, const Literal* rhs) const {
-      return *lhs == *rhs;
+      return *lhs == *rhs && lhs->shape().layout() == rhs->shape().layout();
     }
   };
 

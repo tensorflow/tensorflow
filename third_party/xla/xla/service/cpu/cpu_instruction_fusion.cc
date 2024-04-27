@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/fusion_node_indexing_evaluation.h"
+#include "xla/service/instruction_fusion.h"
 #include "xla/service/llvm_ir/fused_ir_emitter.h"
 
 namespace xla {
@@ -96,10 +97,7 @@ FusionDecision CpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
     return "Fusion is not profitable.";
   }
 
-  if (auto fusible = InstructionFusion::ShouldFuse(consumer, operand_index);
-      !fusible) {
-    return fusible;
-  }
+  RETURN_IF_NOT_FUSIBLE(InstructionFusion::ShouldFuse(consumer, operand_index));
 
   // Fuse constants in general but avoid creating 2-instruction fusions with
   // just a constant and another node.

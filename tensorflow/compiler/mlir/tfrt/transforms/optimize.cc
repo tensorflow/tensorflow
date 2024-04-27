@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/passes.h"
@@ -41,7 +42,8 @@ class FoldDeviceIndex : public mlir::OpRewritePattern<mlir::TF::DeviceIndexOp> {
     int32_t i = 0;
     mlir::ArrayAttr device_names = op.getDeviceNames();
     for (; i < device_names.size(); ++i) {
-      auto device_name = device_names[i].cast<mlir::StringAttr>().getValue();
+      auto device_name =
+          mlir::cast<mlir::StringAttr>(device_names[i]).getValue();
       if (device_name == parsed_name.type) break;
     }
 

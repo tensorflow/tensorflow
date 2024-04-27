@@ -130,6 +130,8 @@ TF_Tensor* TF_NewTensor(TF_DataType dtype, const int64_t* dims, int num_dims,
   return CreateTensor(buf, dtype, dims, num_dims, len);
 }
 
+size_t TF_TensorDefaultAlignment() { return EIGEN_MAX_ALIGN_BYTES; }
+
 TF_Tensor* TF_TensorMaybeMove(TF_Tensor* t) {
   return t->tensor->CanMove() ? t : nullptr;
 }
@@ -258,7 +260,7 @@ Status TensorInterface::BitcastFrom(const TensorInterface& from, DataType type,
 
 Status TensorInterface::FromProto(const tensorflow::TensorProto& from) {
   bool success = tensor_.FromProto(from);
-  if (success) return OkStatus();
+  if (success) return absl::OkStatus();
   return errors::InvalidArgument("Unparseable tensor proto");
 }
 
@@ -294,7 +296,7 @@ namespace tensorflow {
 
 AbstractTensorInterface* TensorInterfaceFromTensor(const Tensor& src,
                                                    Status* status) {
-  *status = OkStatus();
+  *status = absl::OkStatus();
   if (!src.IsInitialized()) {
     *status = FailedPrecondition(
         "attempt to use a tensor with an uninitialized value");
@@ -322,7 +324,7 @@ TF_Tensor* TF_TensorFromTensor(const tensorflow::Tensor& src, Status* status) {
 
 TF_Tensor* TF_TensorFromTensorShallow(const tensorflow::Tensor& src,
                                       Status* status) {
-  *status = OkStatus();
+  *status = absl::OkStatus();
   if (!src.IsInitialized()) {
     *status = FailedPrecondition(
         "attempt to use a tensor with an uninitialized value");
@@ -341,7 +343,7 @@ Status TF_TensorToTensor(const TF_Tensor* src, Tensor* dst) {
 
 Status TensorInterface::ToTensor(tensorflow::Tensor* dst) const {
   *dst = tensor_;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 bool TensorInterface::IsAligned() const { return tensor_.IsAligned(); }

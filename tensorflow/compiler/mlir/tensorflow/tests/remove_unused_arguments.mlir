@@ -175,11 +175,13 @@ func.func @can_remove_all_results(%arg0: f32) -> (f32, f32) {
 
 // CHECK-LABEL: @has_inner_function
 func.func private @has_inner_function(%arg0: f32) -> (f32, f32) {
-  func.func private @inner() -> (tensor<f32>, tensor<f32>) {
-    %0, %1 = "some_constant"() : () -> (tensor<f32>, tensor<f32>)
-    // CHECK: return
-    // CHECK-SAME: tensor<f32>, tensor<f32>
-    return %0, %1 : tensor<f32>, tensor<f32>
+  builtin.module {
+    func.func private @inner() -> (tensor<f32>, tensor<f32>) {
+      %0, %1 = "some_constant"() : () -> (tensor<f32>, tensor<f32>)
+      // CHECK: return
+      // CHECK-SAME: tensor<f32>, tensor<f32>
+      return %0, %1 : tensor<f32>, tensor<f32>
+    }
   }
   // CHECK: return
   // CHECK-NOT: arg

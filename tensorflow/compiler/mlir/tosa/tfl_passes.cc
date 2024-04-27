@@ -38,7 +38,6 @@ void createTFLtoTOSALegalizationPipeline(
   pm.addPass(createSymbolDCEPass());
   if (opts.target_compilation_backend) {
     pm.nest<func::FuncOp>().addPass(createConvertFunctionMetadataPass());
-    pm.addPass(createLowerGlobalTensorsPass());
   }
 
   // Add pass to decompose TFLite mixed quantization to non-quantized variants.

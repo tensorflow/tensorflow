@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -89,8 +89,6 @@ llvm::Value* EmitGetTupleElement(const Shape& target_shape, int64_t index,
                                  int alignment, llvm::Value* operand,
                                  llvm::Type* operand_pointee_type,
                                  llvm::IRBuilder<>* b) {
-  CHECK(llvm::cast<llvm::PointerType>(operand->getType())
-            ->isOpaqueOrPointeeTypeMatches(operand_pointee_type));
   const std::vector<llvm::Value*> gep_index = {b->getInt64(0),
                                                b->getInt64(index)};
   llvm::Value* element_ptr =

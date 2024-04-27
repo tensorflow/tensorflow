@@ -25,6 +25,8 @@ limitations under the License.
 #include "pybind11/detail/common.h"  // from @pybind11
 #include "pybind11/pytypes.h"  // from @pybind11
 #include "pybind11_abseil/absl_casters.h"  // from @pybind11_abseil  // IWYU pragma: keep
+#include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/calibrator/calibration_statistics.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/exported_model.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -37,7 +39,7 @@ namespace internal {
 
 // Serializes a protobuf object. Raises python ValueError if serialization
 // fails.
-std::string Serialize(const tsl::protobuf::Message& protobuf_object) {
+inline std::string Serialize(const tsl::protobuf::Message& protobuf_object) {
   const std::string serialized = protobuf_object.SerializeAsString();
 
   // Empty string means it failed to serialize the protobuf with an error. See
@@ -124,9 +126,9 @@ struct type_caster<tensorflow::quantization::QuantizationOptions>
           tensorflow::quantization::QuantizationOptions> {};
 
 template <>
-struct type_caster<tensorflow::quantization::CalibrationOptions>
+struct type_caster<::stablehlo::quantization::CalibrationOptions>
     : public internal::SerializedProtobufCaster<
-          tensorflow::quantization::CalibrationOptions> {};
+          ::stablehlo::quantization::CalibrationOptions> {};
 
 template <>
 struct type_caster<tensorflow::SignatureDef>
@@ -135,6 +137,21 @@ struct type_caster<tensorflow::SignatureDef>
 template <>
 struct type_caster<tensorflow::GraphDef>
     : public internal::SerializedProtobufCaster<tensorflow::GraphDef> {};
+
+template <>
+struct type_caster<tensorflow::calibrator::CalibrationStatistics>
+    : public internal::SerializedProtobufCaster<
+          tensorflow::calibrator::CalibrationStatistics> {};
+
+template <>
+struct type_caster<stablehlo::quantization::QuantizationConfig>
+    : public internal::SerializedProtobufCaster<
+          stablehlo::quantization::QuantizationConfig> {};
+
+template <>
+struct type_caster<tensorflow::quantization::RepresentativeDatasetFile>
+    : public internal::SerializedProtobufCaster<
+          tensorflow::quantization::RepresentativeDatasetFile> {};
 
 }  // namespace pybind11::detail
 

@@ -59,6 +59,14 @@ class ResourceAliasAnalysisInfo {
   // `IsUnknownResource(resource) == false`.
   llvm::SmallSetVector<Value, 8> GetResourceAliases(Value resource) const;
 
+  llvm::SmallSetVector<Value, 8> GetValuesForResourceId(int64_t id) const {
+    auto it = id_to_resource_values_.find(id);
+    if (it == id_to_resource_values_.end()) {
+      return {};  // return empty set
+    }
+    return it->getSecond();
+  }
+
   // Returns true iff given resource is allocated by op with
   // `UniqueResourceAllocation` trait. This can be utilized for while-loop
   // parallelization.

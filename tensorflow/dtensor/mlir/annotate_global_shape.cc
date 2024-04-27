@@ -27,6 +27,7 @@ limitations under the License.
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
@@ -51,8 +52,8 @@ void AnnotateFunctionArgRetvalGlobalShapes(mlir::func::FuncOp function,
     const auto& argument_type = argument_type_and_index.value();
     // Extract TensorType from element of resource type to allow setting proper
     // global shape of resource types.
-    if (auto resource_type = mlir::getElementTypeOrSelf(argument_type)
-                                 .dyn_cast<mlir::TF::ResourceType>()) {
+    if (auto resource_type = mlir::dyn_cast<mlir::TF::ResourceType>(
+            mlir::getElementTypeOrSelf(argument_type))) {
       auto subtype = resource_type.getSubtypes();
       if (subtype.size() == 1) {
         // subtype returns a Array of TensorType -- if it contains more than one

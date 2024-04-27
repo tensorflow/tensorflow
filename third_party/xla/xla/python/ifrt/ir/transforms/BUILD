@@ -1,12 +1,15 @@
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
+load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
 
 package(
-    default_visibility = ["//visibility:public"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = ["//xla/python/ifrt:friends"],
     licenses = ["notice"],
 )
 
 gentbl_cc_library(
     name = "passes_inc_gen",
+    compatible_with = get_compatible_with_portable(),
     tbl_outs = [
         (
             [
@@ -27,11 +30,13 @@ cc_library(
     name = "passes",
     srcs = [
         "ifrt_duplicated_callee_elimination_pass.cc",
+        "ifrt_verify_donation_pass.cc",
+        "ifrt_verify_sharding_specified_pass.cc",
         "spmd_expandable_interface_verification_pass.cc",
         "spmd_expansion_pass.cc",
     ],
     hdrs = ["passes.h"],
-    visibility = ["//visibility:public"],
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":constants",
         ":passes_inc_gen",
@@ -40,7 +45,6 @@ cc_library(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
@@ -53,7 +57,7 @@ cc_library(
     name = "built_in_spmd_expansions",
     srcs = ["built_in_spmd_expansions.cc"],
     hdrs = ["built_in_spmd_expansions.h"],
-    visibility = ["//visibility:public"],
+    compatible_with = get_compatible_with_portable(),
     deps = [
         "//xla/python/ifrt/ir/transforms/spmd_expanders:spmd_expander",
         "@llvm-project//mlir:FuncDialect",
@@ -64,6 +68,6 @@ cc_library(
 cc_library(
     name = "constants",
     hdrs = ["constants.h"],
-    visibility = ["//visibility:public"],
+    compatible_with = get_compatible_with_portable(),
     deps = ["@llvm-project//llvm:Support"],
 )

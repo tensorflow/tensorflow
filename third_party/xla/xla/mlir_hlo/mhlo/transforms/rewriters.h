@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -166,13 +166,6 @@ void populateGroupReductionDimensionsPatterns(MLIRContext *context,
                                               RewritePatternSet *patterns,
                                               bool preferColumnsReductions);
 
-/// Populate rank specialization clustering and lowering patterns.
-void populateRankSpecializationClusterPatterns(MLIRContext *context,
-                                               RewritePatternSet *patterns);
-void populateRankSpecializationToSCFPatterns(MLIRContext *context,
-                                             RewritePatternSet *patterns,
-                                             int64_t maxTargetRank);
-
 /// Populate sparse tensor specific rewriting patterns.
 void populateSparseRewritingPatterns(RewritePatternSet *patterns,
                                      MLIRContext *ctx);
@@ -191,17 +184,16 @@ void populateLegalizeSparseOpsToCustomCallPatterns(MLIRContext *context,
 
 namespace chlo {
 
-// Populates a collection of conversion patterns for legalizing broadcasting
-// client-HLO to their non-broadcasting counterparts.
-void populateChloBroadcastingPatterns(MLIRContext *context,
-                                      RewritePatternSet *patterns);
+// Populates direct translations between CHLO and MHLO ops for higher level
+// MHLO ops like TopK and Erf.
+void populateChloToHighLevelMhloOpPatterns(MLIRContext *context,
+                                           RewritePatternSet *patterns);
 
-// Populates a collection of conversion patterns for legalizing client-HLO to
-// HLO by decomposing client-operations to corresponding sequences of more
-// primitive operations. This does not include the
-// PopulateChloBroadcastingPatterns above.
-void populateDecomposeChloPatterns(MLIRContext *context,
-                                   RewritePatternSet *patterns);
+// Populates direct translations between CHLO->MHLO high level ops
+// and CHLO->StableHLO->MHLO patterns.
+void populateChloToHloPatterns(MLIRContext *context,
+                               TypeConverter *typeConverter,
+                               RewritePatternSet *patterns);
 
 }  // namespace chlo
 

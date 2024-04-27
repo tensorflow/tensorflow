@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -79,7 +79,7 @@ struct OutlineXLAFunc : public RewritePattern {
     if (!func) return failure();
     if (func.getSymName() != "main") return failure();
     if (llvm::any_of(op->getOperandTypes(),
-                     [](Type t) { return !t.isa<MemRefType>(); }) ||
+                     [](Type t) { return !mlir::isa<MemRefType>(t); }) ||
         op->getNumResults() != 0)
       return failure();
     if (func->hasAttr("outlined")) return failure();

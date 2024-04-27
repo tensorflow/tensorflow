@@ -29,6 +29,7 @@ limitations under the License.
 #include "mlir/IR/UseDefLists.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.h"
@@ -94,8 +95,8 @@ void PopulateDeviceForOpResults(
     op_to_update = op_to_update->getParentOp();
 
   for (Value result : op_to_update->getResults()) {
-    if (result.getType().isa<tf_executor::TokenType>()) continue;
-    if (result.getType().isa<tf_executor::ControlType>()) break;
+    if (mlir::isa<tf_executor::TokenType>(result.getType())) continue;
+    if (mlir::isa<tf_executor::ControlType>(result.getType())) break;
 
     value_to_device.insert({result, device});
   }
@@ -118,8 +119,8 @@ llvm::StringRef FindDeviceFromOperands(
   llvm::StringRef new_device;
   const bool is_switch = llvm::isa<tf_executor::SwitchOp>(op);
   for (Value operand : op.getOperands()) {
-    if (operand.getType().isa<tf_executor::TokenType>()) continue;
-    if (operand.getType().isa<tf_executor::ControlType>()) break;
+    if (mlir::isa<tf_executor::TokenType>(operand.getType())) continue;
+    if (mlir::isa<tf_executor::ControlType>(operand.getType())) break;
 
     if (is_switch &&
         llvm::isa_and_nonnull<tf_executor::LoopCondOp>(operand.getDefiningOp()))
@@ -230,7 +231,7 @@ void PropagateDevicesToResults(
   mlir::Builder builder(func.getOperation());
 
   for (OpOperand& operand : fetch.getOperation()->getOpOperands()) {
-    if (operand.get().getType().isa<tf_executor::ControlType>()) break;
+    if (mlir::isa<tf_executor::ControlType>(operand.get().getType())) break;
     auto it = value_to_device.find(operand.get());
     if (it != value_to_device.end()) {
       auto device_attr = func.getResultAttrOfType<StringAttr>(

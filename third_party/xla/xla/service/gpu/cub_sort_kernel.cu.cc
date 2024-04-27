@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,11 +18,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 
-#if GOOGLE_CUDA
-#include "xla/service/gpu/gpu_prim_cuda.h"
-#elif TENSORFLOW_USE_ROCM
-#include "xla/service/gpu/gpu_prim_rocm.h"
-#endif  // TENSORFLOW_USE_ROCM
+#include "xla/service/gpu/gpu_prim.h"
 
 namespace xla {
 namespace gpu {

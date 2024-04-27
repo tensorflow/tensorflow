@@ -7,7 +7,7 @@ import "xla/xla.proto";
 import "xla/xla_data.proto";
 
 // A serialization of xla::ExecutableBuildOptions.
-// Next id: 16.
+// Next id: 19.
 message ExecutableBuildOptionsProto {
   // If set, this is the device to build the computation for. Valid
   // device_ordinal values are: 0 to # of devices - 1. These values are
@@ -65,6 +65,18 @@ message ExecutableBuildOptionsProto {
   // which can be used to compile post-optimizations HLO modules.
   bool run_backend_only = 11;
 
+  // Allows sharding propagation to propagate to the parameters. This changes
+  // the input shape of the computation (which is undesirable), but it can be
+  // used to allow to run partial compilation to determine what would be the
+  // input sharding of a computation if XLA would be allowed to propagate the
+  // sharding which can be used by higher level framework as a way to query
+  // intermediate sharding of operations when multiple computation would be
+  // chained and merged together.
+  // This is a vector of bool, because the user can control which parameters can
+  // have the sharding substituted. If only one boolean value is passed in the
+  // vector that is interpreted as the value to be applied for every parameter.
+  repeated bool allow_spmd_sharding_propagation_to_parameters = 18;
+
   // Allows sharding propagation to propagate to the outputs. This changes the
   // output shape of the computation (which is undesirable), but it can be used
   // to allow to run partial compilation to determine what would be the output
@@ -84,6 +96,12 @@ message ExecutableBuildOptionsProto {
   bytes fdo_profile = 14;
 
   int64 device_memory_size = 15;
+
+  // Mesh shape in auto sharding options.
+  repeated int64 auto_spmd_partitioning_mesh_shape = 16;
+
+  // Mesh ids in auto sharding options.
+  repeated int64 auto_spmd_partitioning_mesh_ids = 17;
 }
 
 message OptionOverrideProto {

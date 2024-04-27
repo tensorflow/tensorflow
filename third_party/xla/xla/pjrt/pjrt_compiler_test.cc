@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -56,6 +56,11 @@ class PjRtTestTopology : public PjRtTopologyDescription {
       const override {
     LOG(FATAL) << "Unused";
   }
+  StatusOr<Layout> GetDefaultLayout(
+      PrimitiveType element_type,
+      absl::Span<const int64_t> dims) const override {
+    return Unimplemented("TestTopology does not support GetDefaultLayout");
+  }
 };
 
 TEST(PjRtCompilerTest, CompilerNotRegistered) {
@@ -84,6 +89,11 @@ TEST(PjRtCompilerTest, CompilerRegistered) {
     const absl::flat_hash_map<std::string, PjRtDeviceAttribute>& Attributes()
         const override {
       LOG(FATAL) << "Unused";
+    }
+    StatusOr<Layout> GetDefaultLayout(
+        PrimitiveType element_type,
+        absl::Span<const int64_t> dims) const override {
+      return Unimplemented("TestTopology does not support GetDefaultLayout");
     }
   };
   PjRtTestTopology topology;

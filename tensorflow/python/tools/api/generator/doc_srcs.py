@@ -139,8 +139,6 @@ def get_doc_sources(api_name):
   """
   if api_name == tf_export.TENSORFLOW_API_NAME:
     return _TENSORFLOW_DOC_SOURCES
-  if api_name == tf_export.ESTIMATOR_API_NAME:
-    return _ESTIMATOR_DOC_SOURCES
   if api_name == tf_export.KERAS_API_NAME:
     return _KERAS_DOC_SOURCES
   return {}

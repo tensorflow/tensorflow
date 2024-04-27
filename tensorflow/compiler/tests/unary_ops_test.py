@@ -84,12 +84,12 @@ class UnaryOpsTest(xla_test.XLATestCase):
       self.assertAllClose(result[i], expected[i], rtol, atol)
 
   def AssertCloseAndSorted(self, result, expected, rtol, atol):
-    """Tests that result and expeted are both close and sorted."""
+    """Tests that result and expected are both close and sorted."""
     self.assertAllClose(result, expected, rtol, atol)
     self.assertAllEqual(np.sort(result), result)
 
   def AssertAllEqual(self, result, expected, rtol, atol):
-    """Tests that result and expeted are exactly equal."""
+    """Tests that result and expected are exactly equal."""
     self.assertAllEqual(result, expected)
 
   def testAllTypeOps(self):

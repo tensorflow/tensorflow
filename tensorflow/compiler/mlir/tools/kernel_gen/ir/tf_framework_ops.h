@@ -42,12 +42,15 @@ class OpKernelContextType
     : public Type::TypeBase<OpKernelContextType, Type, TypeStorage> {
  public:
   using Base::Base;
+  static constexpr StringLiteral name =
+      "kernel_gen.tf_framework.op_kernel_context";
 };
 
 class JITCallableType
     : public Type::TypeBase<JITCallableType, Type, TypeStorage> {
  public:
   using Base::Base;
+  static constexpr StringLiteral name = "kernel_gen.tf_framework.jit_callable";
 };
 
 absl::StatusCode ConvertAttrToEnumValue(ErrorCode error_code);

@@ -51,7 +51,7 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
-        "@local_tsl//tsl/util:env_var",
         "@local_xla//xla:xla_data_proto_cc",
+        "@local_xla//xla/tsl/util:env_var",
     ],
 )

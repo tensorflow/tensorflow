@@ -6,7 +6,7 @@ tf.distribute.Strategy is a TensorFlow API to distribute training across
 multiple GPUs, multiple machines or TPUs. Using this API, users can distribute
 their existing models and training code with minimal code changes.
 
-It can be used with TensorFlow's high level APIs, tf.keras and tf.estimator,
+It can be used with TensorFlow's high level APIs, like tf.keras,
 with just a couple of lines of code change. It does so by changing the
 underlying components of TensorFlow to become strategy-aware.
 This includes variables, layers, models, optimizers, metrics, summaries,
@@ -21,8 +21,6 @@ and checkpoints.
 [Distributed Training With Custom Training Loops Tutorial](https://www.tensorflow.org/tutorials/distribute/custom_training)
 
 [Multiworker Training With Keras Tutorial](https://www.tensorflow.org/tutorials/distribute/multi_worker_with_keras)
-
-[Multiworker Training With Estimator Tutorial](https://www.tensorflow.org/tutorials/distribute/multi_worker_with_estimator)
 
 [Save and Load with Distribution Strategy](https://www.tensorflow.org/tutorials/distribute/save_and_load)
 

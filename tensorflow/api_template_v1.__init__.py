@@ -20,7 +20,6 @@ import inspect as _inspect
 import os as _os
 import site as _site
 import sys as _sys
-import typing as _typing
 
 # pylint: disable=g-bad-import-order,protected-access,g-import-not-at-top
 from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
@@ -69,14 +68,6 @@ _current_module.compat.v2  # pylint: disable=pointless-statement
 if (_os.getenv("TF_USE_MODULAR_FILESYSTEM", "0") == "true" or
     _os.getenv("TF_USE_MODULAR_FILESYSTEM", "0") == "1"):
   import tensorflow_io_gcs_filesystem as _tensorflow_io_gcs_filesystem
-
-# Lazy-load estimator.
-_estimator_module = "tensorflow_estimator.python.estimator.api._v1.estimator"
-estimator = _LazyLoader("estimator", globals(), _estimator_module)
-_module_dir = _module_util.get_parent_dir_for_name(_estimator_module)
-if _module_dir:
-  _current_module.__path__ = [_module_dir] + _current_module.__path__
-setattr(_current_module, "estimator", estimator)
 
 # Lazy-load Keras v1.
 _tf_uses_legacy_keras = (
@@ -190,17 +181,12 @@ if _os.getenv("TF_PLUGGABLE_DEVICE_LIBRARY_PATH", ""):
       _os.getenv("TF_PLUGGABLE_DEVICE_LIBRARY_PATH")
   )
 
-# Explicitly import lazy-loaded modules to support autocompletion.
-if _typing.TYPE_CHECKING:
-  from tensorflow_estimator.python.estimator.api._v1 import estimator as estimator
-
 # Delete modules that should be hidden from dir().
 # Don't fail if these modules are not available.
 # For e.g. this file will be originally placed under tensorflow/_api/v1 which
 # does not have "python", "core" directories. Then, it will be copied
 # to tensorflow/ which does have these two directories.
 
-# pylint: disable=undefined-variable
 try:
   del python
 except NameError:

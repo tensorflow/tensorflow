@@ -24,6 +24,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/str_cat.h"
+#include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/tools/benchmark/benchmark_model.h"
 #include "tensorflow/lite/tools/benchmark/benchmark_params.h"
 #include "tensorflow/lite/tools/tool_params.h"
@@ -77,6 +78,18 @@ TEST(BenchmarkTfLiteModelTest, GetModelSizeFromFileDescriptorSucceeded) {
   benchmark.Run();
 
   EXPECT_EQ(listener.results_.model_size_mb(), stat_buf.st_size / 1e6);
+}
+
+TEST(BenchmarkTfLiteModelTest, ResizeInputWithDelegate) {
+  BenchmarkParams params = BenchmarkTfLiteModel::DefaultParams();
+  params.Set<std::string>("graph", kModelPath);
+  params.Set<bool>("use_xnnpack", true);
+  params.Set<std::string>("input_layer", "input_87");
+  params.Set<std::string>("input_layer_shape", "2,224,224,3");
+
+  BenchmarkTfLiteModel benchmark = BenchmarkTfLiteModel(std::move(params));
+
+  EXPECT_EQ(benchmark.Run(), kTfLiteOk);
 }
 
 }  // namespace

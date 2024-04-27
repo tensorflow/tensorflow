@@ -1,7 +1,7 @@
 # Description: Utilities.
 
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -94,16 +94,39 @@ cc_library(
     name = "batch_scheduler_hdrs",
     hdrs = ["batch_scheduler.h"],
     deps = [
-        "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core:framework_lite",
+        "//tensorflow/core:portable_gif_internal",
+        "//tensorflow/core/lib/core:notification",
+        "//tensorflow/core/lib/core:status",
+        "//tensorflow/core/platform:thread_annotations",
+        "//tensorflow/core/profiler/lib:traceme",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@local_tsl//tsl/platform:criticality",
     ],
 )
 
 cc_library(
     name = "batch_scheduler",
+    srcs = ["batch_scheduler.cc"],
     hdrs = ["batch_scheduler.h"],
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler/lib:traceme",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
+        "@local_tsl//tsl/platform:criticality",
+    ],
+)
+
+cc_library(
+    name = "batch_scheduler_utils",
+    srcs = ["batch_scheduler_utils.cc"],
+    hdrs = ["batch_scheduler_utils.h"],
+    deps = [
+        "//tensorflow/core:portable_gif_internal",
     ],
 )
 
@@ -127,6 +150,18 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:status_matchers",
+        "@com_google_absl//absl/status",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+tf_cc_test(
+    name = "batch_scheduler_utils_test",
+    srcs = ["batch_scheduler_utils_test.cc"],
+    deps = [
+        ":batch_scheduler_utils",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -136,11 +171,27 @@ cc_library(
     deps = [
         ":batch_input_task",
         ":batch_scheduler_hdrs",
+        ":batch_scheduler_utils",
         ":periodic_function_dynamic",
-        "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core:framework_lite",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_proto_parsing",
+        "//tensorflow/core:portable_gif_internal",
+        "//tensorflow/core/lib/core:errors",
+        "//tensorflow/core/lib/core:status",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:notification",
+        "//tensorflow/core/platform:thread_annotations",
         "//tensorflow/core/profiler/lib:connected_traceme",
+        "//tensorflow/core/profiler/lib:context_types_hdrs",
         "//tensorflow/core/profiler/lib:traceme",
-        "@com_google_absl//absl/types:variant",
+        "//tensorflow/core/profiler/lib:traceme_encode",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/time",
+        "@local_tsl//tsl/platform:criticality",
+        "@local_tsl//tsl/platform:errors",
     ],
 )
 
@@ -150,14 +201,18 @@ cc_library(
     deps = [
         ":batch_input_task",
         ":batch_scheduler",
+        ":batch_scheduler_utils",
         ":periodic_function_dynamic",
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler/lib:connected_traceme",
+        "//tensorflow/core/profiler/lib:context_types_hdrs",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/profiler/lib:traceme_encode",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/time",
-        "@com_google_absl//absl/types:variant",
-        "@com_google_absl//absl/utility",
+        "@local_tsl//tsl/platform:criticality",
     ],
     alwayslink = 1,
 )
@@ -167,6 +222,7 @@ tf_cc_test(
     size = "small",
     srcs = ["shared_batch_scheduler_test.cc"],
     deps = [
+        ":batch_scheduler",
         ":fake_clock_env",
         ":shared_batch_scheduler",
         "//tensorflow/core:lib",
@@ -176,9 +232,8 @@ tf_cc_test(
         "//tensorflow/core/platform:status_matchers",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:fixed_array",
-        "@com_google_absl//absl/flags:flag",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/time",
-        "@com_google_absl//absl/utility",
     ],
 )
 
@@ -346,7 +401,9 @@ cc_library(
     deps = [
         ":adaptive_shared_batch_scheduler",
         ":batch_scheduler",
+        ":batch_scheduler_utils",
         ":concat_split_util",
+        ":input_split_metadata",
         ":shared_batch_scheduler",
         ":threadsafe_status",
         ":warmup",
@@ -360,13 +417,16 @@ cc_library(
         "//tensorflow/core/common_runtime:request_cost",
         "//tensorflow/core/common_runtime:request_cost_accessor",
         "//tensorflow/core/common_runtime:request_cost_accessor_registry",
+        "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:thread_annotations",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/profiler/lib:traceme_encode",
         "//tensorflow/core/protobuf:for_core_protos_cc",
         "//tensorflow/core/util:incremental_barrier",
+        "@com_google_absl//absl/container:fixed_array",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/functional:bind_front",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
@@ -406,6 +466,7 @@ tf_cc_test(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:criticality",
     ],
 )
 

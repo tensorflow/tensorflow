@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -22,6 +22,7 @@ limitations under the License.
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <tuple>
 #include <variant>
 #include <vector>
 
@@ -34,20 +35,69 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+// Illustration explaining why slice_start for concatenations is negative:
+
+// Slice
+// =====
+//            input
+// [--------------------------]
+// .      .        .
+// . offset        .
+// |------> output .
+//        [--------]
+//
+// output[x] = input[x + offset]
+
+// Concatenation
+// =============
+//
+//          input_n
+// [......][--------][........]
+//         .        .
+//  offset .        .
+// <-------|        .
+// .       .        .
+// .       . output .
+// [--------------------------]
+//
+// output[x] = input_n[x - offset]
+
 class TensorIterationSpec {
  public:
-  // Description of basic iteration: `count` elements separated by `stride`.
+  // Description of basic iteration: `count` elements separated by `stride`
+  // with initial offset of `slice_start` and only `sliced_count` elements used.
   struct IterationSpecFragment {
     int64_t stride;
     int64_t count;
     int64_t slice_start;
-    int64_t slice_limit;
-    // Logical subfragments when this iteration is composed
-    // of several HLO dimensions.
+    int64_t sliced_count;
+    // Logical subfragments:
+    // These are the sizes of the HLO dimensions which make up this basic
+    // iteration.
     std::vector<int64_t> subfragments;
 
-    bool is_sliced() const { return count != slice_limit - slice_start; }
-    bool operator!=(const IterationSpecFragment& other) const;
+    bool is_sliced() const { return count != sliced_count; }
+
+    auto ToTuple() const {
+      return std::make_tuple(stride, count, slice_start, sliced_count,
+                             subfragments);
+    }
+
+    bool operator==(const IterationSpecFragment& other) const {
+      return ToTuple() == other.ToTuple();
+    }
+    template <typename H>
+    friend H AbslHashValue(H h, const IterationSpecFragment& fragment) {
+      return H::combine(std::move(h), fragment.ToTuple());
+    }
+
+    bool IsPhysicallyEquivalent(const IterationSpecFragment& other) const {
+      // Subfragments don't change the physical layout.
+      return stride == other.stride && count == other.count &&
+             slice_start == other.slice_start &&
+             sliced_count == other.sliced_count;
+    }
+
     std::string ToString() const;
   };
   // Description of complex iteration over a sequence of several strides.
@@ -55,26 +105,41 @@ class TensorIterationSpec {
   // separated into multiple fragments by other dimensions.
   using DimIterationSpec = std::vector<IterationSpecFragment>;
 
-  using StorageType = absl::flat_hash_map<int, DimIterationSpec>;
   const DimIterationSpec& operator[](const int dimension) const {
     return dim_iteration_specs_.at(dimension);
   }
   DimIterationSpec& operator[](const int dimension) {
     return dim_iteration_specs_[dimension];
   }
-  const StorageType& Storage() const { return dim_iteration_specs_; }
+  // Returns nullptr if not found.
+  const DimIterationSpec* Find(int dimension) const;
+
+  std::vector<int> GetDimensions() const;
+
   void RemoveEmptyDimensions() {
     absl::erase_if(dim_iteration_specs_,
                    [](const auto& it) { return it.second.empty(); });
   }
 
+  bool operator==(const TensorIterationSpec& other) const {
+    return dim_iteration_specs_ == other.dim_iteration_specs_;
+  }
+
+  template <typename H>
+  friend H AbslHashValue(H h, const TensorIterationSpec& spec) {
+    return H::combine(std::move(h), spec.dim_iteration_specs_);
+  }
+
   // Compares physical layouts of tensors ignoring subfragments of dimensions.
-  bool operator==(const TensorIterationSpec& other) const;
+  // Checking with this, instead of "==" allows a few more edge cases to be
+  // fused.
+  bool IsPhysicallyEquivalent(const TensorIterationSpec& other) const;
 
   std::string ToString() const;
 
  private:
-  StorageType dim_iteration_specs_;
+  // Maps dimensions to DimIterationSpecs.
+  absl::flat_hash_map<int, DimIterationSpec> dim_iteration_specs_;
 };
 
 // The details of the Triton fusion / tiling propagation are in a separate
@@ -103,35 +168,34 @@ class DimensionOrder {
   // Description of a continuous fragment of one dimension of a tensor.
   class Fragment {
    public:
-    explicit Fragment(int dst_dim_number, int64_t size)
+    explicit Fragment(int dst_dim_number, int64_t count)
         : dst_dim_number_(dst_dim_number),
-          size_(size),
+          count_(count),
           slice_start_(0),
-          slice_limit_(size) {}
+          sliced_count_(count) {}
 
     std::string ToString() const;
 
     // Label carrying the dimension number of an defining operation.
     int dst_dim_number() const { return dst_dim_number_; }
     // Total number of elements in the fragment ignoring slicing.
-    int64_t full_size() const { return size_; }
+    int64_t full_count() const { return count_; }
     // First used element.
     int64_t slice_start() const { return slice_start_; }
-    // Last used element.
-    int64_t slice_limit() const { return slice_limit_; }
-    int64_t sliced_size() const { return slice_limit_ - slice_start_; }
-    bool is_sliced() const { return full_size() != sliced_size(); }
-    void set_slice(int64_t start, int64_t limit) {
+    // Number of used elements.
+    int64_t sliced_count() const { return sliced_count_; }
+    bool is_sliced() const { return count_ != sliced_count_; }
+    void set_slice(int64_t start, int64_t count) {
       slice_start_ = start;
-      slice_limit_ = limit;
+      sliced_count_ = count;
     }
-    void set_size(int64_t size) { size_ = size; }
+    void set_count(int64_t count) { count_ = count; }
 
    private:
     const int dst_dim_number_;
-    int64_t size_;
+    int64_t count_;
     int64_t slice_start_;
-    int64_t slice_limit_;
+    int64_t sliced_count_;
   };
   using Fragments = std::vector<Fragment>;
   using FragmentOrders = absl::flat_hash_map<int, std::vector<int>>;
@@ -152,7 +216,8 @@ class DimensionOrder {
 
   // Tells that two dimension orders describe the same tensor physical layout.
   bool IsPhysicallyEquivalent(const DimensionOrder& other) const {
-    return ToTensorIterationSpec() == other.ToTensorIterationSpec();
+    return ToTensorIterationSpec().IsPhysicallyEquivalent(
+        other.ToTensorIterationSpec());
   }
 
  private:

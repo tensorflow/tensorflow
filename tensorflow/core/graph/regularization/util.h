@@ -28,7 +28,7 @@ namespace tensorflow::graph_regularization {
 uint64 ComputeHash(const GraphDef& graph_def);
 
 // Returns the suffix UID of `function_name`, returns an error if there is none.
-StatusOr<int64_t> GetSuffixUID(absl::string_view function_name);
+absl::StatusOr<int64_t> GetSuffixUID(absl::string_view function_name);
 
 }  // namespace tensorflow::graph_regularization
 

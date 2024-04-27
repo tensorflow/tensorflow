@@ -15,8 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_QUANTIZATION_STABLEHLO_CC_COMPONENT_H_
 #define TENSORFLOW_COMPILER_MLIR_QUANTIZATION_STABLEHLO_CC_COMPONENT_H_
 
+#include "absl/status/statusor.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 
 namespace mlir::quant::stablehlo {
@@ -30,7 +30,7 @@ class Component {
 
   // Runs the action to the StableHLO graph, passed by the `module_op`. `config`
   // should provide information necessary to configure the action's behavior.
-  virtual FailureOr<ModuleOp> Run(
+  virtual absl::StatusOr<ModuleOp> Run(
       ModuleOp module_op,
       const ::stablehlo::quantization::QuantizationConfig& config) = 0;
 };

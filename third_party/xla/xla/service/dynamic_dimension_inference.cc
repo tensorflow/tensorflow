@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -71,7 +71,7 @@ namespace xla {
 
 namespace {
 // Replace `narrow_comp` with a new computation with `wide_shape` as input.
-StatusOr<std::pair<HloComputation*, CallInliner::InlinedInstructionMap>>
+absl::StatusOr<std::pair<HloComputation*, CallInliner::InlinedInstructionMap>>
 WidenComputation(HloComputation* narrow_comp, const Shape& wide_shape) {
   TF_RET_CHECK(wide_shape.IsTuple());
   const Shape& narrow_shape = narrow_comp->parameter_instruction(0)->shape();
@@ -119,7 +119,7 @@ class DynamicDimensionInferenceVisitor : public DfsHloRewriteVisitor {
 
   Status DefaultAction(HloInstruction* hlo) override;
 
-  static StatusOr<bool> Run(
+  static absl::StatusOr<bool> Run(
       HloComputation* computation, HloDataflowAnalysis& dataflow_analysis,
       const DynamicParameterBinding& param_bindings,
       DynamicDimensionInference* parent,
@@ -266,8 +266,8 @@ class DynamicDimensionInferenceVisitor : public DfsHloRewriteVisitor {
   // (including uses across control flow, but only within the same thread). The
   // given `ShapeIndex` is the leaf array returned by the given instruction that
   // will be considered.
-  StatusOr<bool> RequiresPadToStatic(HloInstruction* instr,
-                                     ShapeIndex shape_index);
+  absl::StatusOr<bool> RequiresPadToStatic(HloInstruction* instr,
+                                           ShapeIndex shape_index);
 
   // Insert pad-to-static after `inst` if `inst` has dynamic dimensions in it
   // and `RequiresPadToStatic` is true for all leaves. If the instruction
@@ -485,8 +485,10 @@ Status DynamicDimensionInferenceVisitor::HandleCustomCall(HloInstruction* hlo) {
     TF_RETURN_IF_ERROR(custom_call_handler_(hlo, parent_));
   } else {
     TF_RETURN_IF_ERROR(ForEachOperandDynamicDimension(
-        hlo, [&](HloInstruction* operand, ShapeIndex index, int64_t dimension,
-                 int64_t operand_index, HloInstruction* dynamic_size) {
+        hlo,
+        [&](HloInstruction* operand, ShapeIndex index, int64_t dimension,
+            int64_t operand_index,
+            HloInstruction* dynamic_size) -> absl::Status {
           // Resize custom call should propagate dynamic batch (0) and channel
           // (3) dimensions.
           if (hlo->custom_call_target() == "SliceToDynamic" ||
@@ -565,8 +567,9 @@ Status DynamicDimensionInferenceVisitor::HandlePad(HloInstruction* hlo) {
     return OkStatus();
   }
   return ForEachOperandDynamicDimension(
-      hlo, [&](HloInstruction* operand, ShapeIndex index, int64_t dimension,
-               int64_t operand_index, HloInstruction* dynamic_size) {
+      hlo,
+      [&](HloInstruction* operand, ShapeIndex index, int64_t dimension,
+          int64_t operand_index, HloInstruction* dynamic_size) -> absl::Status {
         if (operand_index != 0) {
           return Unimplemented(
               "Dynamic dimension on padding value is not supported");
@@ -803,8 +806,9 @@ Status DynamicDimensionInferenceVisitor::HandleConvolution(
     return OkStatus();
   }
   return ForEachOperandDynamicDimension(
-      hlo, [&](HloInstruction* operand, ShapeIndex index, int64_t dimension,
-               int64_t operand_index, HloInstruction* dynamic_size) {
+      hlo,
+      [&](HloInstruction* operand, ShapeIndex index, int64_t dimension,
+          int64_t operand_index, HloInstruction* dynamic_size) -> absl::Status {
         HloInstruction* conv = hlo;
         const ConvolutionDimensionNumbers& dimension_numbers =
             conv->convolution_dimension_numbers();
@@ -1077,7 +1081,7 @@ Status DynamicDimensionInferenceVisitor::PassThroughDynamicDimension(
         const Shape& subshape = ShapeUtil::GetSubshape(hlo->shape(), index);
         auto* element = dynamic_sizes.mutable_element(index);
         element->resize(subshape.rank(), nullptr);
-        element->at(dimension) = dynamic_size;
+        (*element)[dimension] = dynamic_size;
         return OkStatus();
       }));
   dynamic_sizes.ForEachElement([&](const ShapeIndex& index, const auto& sizes) {
@@ -1415,7 +1419,7 @@ Status DynamicDimensionInferenceVisitor::HandleReshape(
       SetDynamicSizes(hlo, {}, dynamic_sizes);
       return OkStatus();
     }
-    return InternalError(
+    return Internal(
         "Need inferred dimension to be set to "
         "flatten-unflatten pair. %s",
         hlo->ToString());
@@ -1655,7 +1659,7 @@ Status DynamicDimensionInferenceVisitor::HandleReduceWindow(
               auto* leaf_dynamic_sizes =
                   dynamic_sizes.mutable_element(reduce_window_result_index);
               leaf_dynamic_sizes->resize(subshape.rank(), nullptr);
-              leaf_dynamic_sizes->at(dimension) = dynamic_size;
+              (*leaf_dynamic_sizes)[dimension] = dynamic_size;
             });
 
         return OkStatus();
@@ -1844,7 +1848,7 @@ Status DynamicDimensionInferenceVisitor::HandleGather(HloInstruction* hlo) {
               }
               ++operand_dimension;
             }
-            return InternalError("Invalid instruction: %s", hlo->ToString());
+            return Internal("Invalid instruction: %s", hlo->ToString());
           }
           return Unimplemented(
               "Detects a dynamic dimension on the data input of gather, which "
@@ -2120,7 +2124,8 @@ Status DynamicDimensionInferenceVisitor::HandleScatter(HloInstruction* hlo) {
   return ForEachOperandDynamicDimension(
       hlo,
       [&](HloInstruction* operand, ShapeIndex dynamic_index, int64_t dimension,
-          int64_t operand_index, HloInstruction* operand_dynamic_size) {
+          int64_t operand_index,
+          HloInstruction* operand_dynamic_size) -> absl::Status {
         if (operand_index == 0) {
           SetDynamicSize(hlo, {}, dimension, operand_dynamic_size);
           return OkStatus();
@@ -2392,7 +2397,7 @@ Status DynamicDimensionInferenceVisitor::ForEachDynamicDimension(
   return OkStatus();
 }
 
-StatusOr<bool> DynamicDimensionInferenceVisitor::RequiresPadToStatic(
+absl::StatusOr<bool> DynamicDimensionInferenceVisitor::RequiresPadToStatic(
     HloInstruction* instr, ShapeIndex shape_index) {
   TF_RET_CHECK(ShapeUtil::IsLeafIndex(instr->shape(), shape_index))
       << instr->shape() << " @ " << shape_index;
@@ -2669,7 +2674,7 @@ void DynamicDimensionInference::CopyMapping(
 }
 
 /* static */
-StatusOr<DynamicDimensionInference> DynamicDimensionInference::Run(
+absl::StatusOr<DynamicDimensionInference> DynamicDimensionInference::Run(
     HloModule* module, OpSupportsDynamismHandler op_supports_dynamism_handler,
     CustomCallInferenceHandler custom_call_handler,
     ShapeCheckMode shape_check_mode,

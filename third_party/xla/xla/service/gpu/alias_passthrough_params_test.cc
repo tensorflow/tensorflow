@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/service/gpu/alias_passthrough_params.h"
 
 #include "xla/tests/hlo_test_base.h"
-#include "xla/tests/test_utils.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/test.h"
 

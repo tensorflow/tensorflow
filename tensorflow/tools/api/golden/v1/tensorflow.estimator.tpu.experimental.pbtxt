@@ -1,7 +1,0 @@
-path: "tensorflow.estimator.tpu.experimental"
-tf_module {
-  member {
-    name: "EmbeddingConfigSpec"
-    mtype: "<type \'type\'>"
-  }
-}

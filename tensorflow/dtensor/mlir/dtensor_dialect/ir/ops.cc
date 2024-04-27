@@ -22,6 +22,7 @@ limitations under the License.
 #include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "mlir/IR/DialectImplementation.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/utils/string_container_utils.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/mlir/dtensor_dialect/ir/dialect.h"
@@ -117,9 +118,9 @@ Attribute DTensorDialect::parseAttribute(DialectAsmParser &parser,
   StringRef spec = parser.getFullSymbolSpec();
   Location loc = parser.getEncodedSourceLoc(parser.getNameLoc());
 
-  if (spec.startswith("mesh")) return ParseMeshAttr(getContext(), spec, loc);
+  if (spec.starts_with("mesh")) return ParseMeshAttr(getContext(), spec, loc);
 
-  if (spec.startswith("layout"))
+  if (spec.starts_with("layout"))
     return ParseLayoutAttr(getContext(), spec, loc);
 
   return (emitError(loc, "unknown DTensor attribute: " + spec), nullptr);
@@ -144,9 +145,10 @@ static void printLayoutAttr(LayoutAttr attr, DialectAsmPrinter &os) {
 void DTensorDialect::printAttribute(Attribute attr,
                                     DialectAsmPrinter &os) const {
   // Cast into correct attribute and print
-  if (auto mesh_attr = attr.dyn_cast<MeshAttr>()) printMeshAttr(mesh_attr, os);
+  if (auto mesh_attr = mlir::dyn_cast<MeshAttr>(attr))
+    printMeshAttr(mesh_attr, os);
 
-  if (auto layout_attr = attr.dyn_cast<LayoutAttr>())
+  if (auto layout_attr = mlir::dyn_cast<LayoutAttr>(attr))
     printLayoutAttr(layout_attr, os);
 }
 }  // namespace dtensor

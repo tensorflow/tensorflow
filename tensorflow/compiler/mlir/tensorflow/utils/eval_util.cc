@@ -102,7 +102,7 @@ mlir::LogicalResult EvaluateOperation(
     RETURN_FAILURE_IF_ERROR(status);
   }
 
-  VLOG(1) << "Start to evaluate node: " << node_def->DebugString();
+  VLOG(1) << "Start to evaluate node: " << *node_def;
 
   // Adds inputs to the TF operation.
   for (const auto operand : operands) {

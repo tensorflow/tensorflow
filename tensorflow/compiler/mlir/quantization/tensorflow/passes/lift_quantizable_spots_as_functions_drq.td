@@ -17,8 +17,8 @@ include "mlir/IR/OpBase.td"
 include "mlir/Dialect/Func/IR/FuncOps.td"
 include "mlir/Dialect/Arith/IR/ArithOps.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
-include "tensorflow/compiler/mlir/quantization/tensorflow/utils/lift_as_function_call_utils.td"
-include "tensorflow/compiler/mlir/quantization/tensorflow/passes/utils.td"
+include "tensorflow/compiler/mlir/quantization/common/attrs_and_constraints.td"
+include "tensorflow/compiler/mlir/quantization/common/lift_as_function_call.td"
 
 //===----------------------------------------------------------------------===//
 // Pattern rules for lifting ops as functions
@@ -52,7 +52,7 @@ def LiftDepthwiseConv : Pat<
   [(IsNotInLiftedFunc $res), (IsConstTensor $filter)], [], (addBenefit 1)>;
 
 def LiftMatMul : Pat<
-  (TF_MatMulOp:$res $a, $b, $transpose_a, $transpose_b),
+  (TF_MatMulOp:$res $a, $b, $transpose_a, $transpose_b, $grad_a, $grad_b),
   (LiftAsTFPartitionedCall<"composite_matmul_fn">
     (ArgumentList $a, $b),
     (ResultList $res),
@@ -83,7 +83,7 @@ def LiftConv3D : Pat<
   [(IsNotInLiftedFunc $res), (IsConstTensor $filter)], [], (addBenefit 1)>;
 
 def LiftBatchMatMul : Pat<
-  (TF_BatchMatMulV2Op:$res $x, $y, $adj_x, $adj_y),
+  (TF_BatchMatMulV2Op:$res $x, $y, $adj_x, $adj_y, $grad_x, $grad_y),
   (LiftAsTFPartitionedCall<"composite_batch_matmul_fn">
     (ArgumentList $x, $y),
     (ResultList $res),

@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -53,7 +53,7 @@ namespace wrap {
     static FuncPtrT loaded = []() -> FuncPtrT {                            \
       static const char *kName = TO_STR(hipSymbolName);                    \
       void *f;                                                             \
-      auto s = tsl::Env::Default() -> GetSymbolFromLibrary(                \
+      auto s = tsl::Env::Default()->GetSymbolFromLibrary(                  \
           stream_executor::internal::CachedDsoLoader::GetHipDsoHandle()    \
               .value(),                                                    \
           kName, &f);                                                      \
@@ -79,6 +79,7 @@ namespace wrap {
   __macro(hipDeviceGetName)                         \
   __macro(hipDeviceGetPCIBusId)                     \
   __macro(hipDeviceGetSharedMemConfig)              \
+  __macro(hipDeviceGetStreamPriorityRange)          \
   __macro(hipDeviceGraphMemTrim)                    \
   __macro(hipDevicePrimaryCtxGetState)              \
   __macro(hipDevicePrimaryCtxSetFlags)              \
@@ -104,17 +105,26 @@ namespace wrap {
   __macro(hipGetErrorString)                        \
   __macro(hipGraphAddKernelNode)                    \
   __macro(hipGraphAddChildGraphNode)                \
-  __macro(hipGraphAddMemcpyNode)                    \
+  __macro(hipGraphAddEmptyNode)                     \
+  __macro(hipGraphAddMemAllocNode)                  \
   __macro(hipGraphAddMemcpyNode1D)                  \
-  __macro(hipGraphExecChildGraphNodeSetParams)      \
+  __macro(hipGraphAddMemsetNode)                    \
+  __macro(hipGraphAddMemFreeNode)                   \
   __macro(hipGraphCreate)                           \
   __macro(hipGraphDebugDotPrint)                    \
   __macro(hipGraphDestroy)                          \
+  __macro(hipGraphGetNodes)                         \
+  __macro(hipGraphExecChildGraphNodeSetParams)      \
   __macro(hipGraphExecDestroy)                      \
+  __macro(hipGraphExecKernelNodeSetParams)          \
+  __macro(hipGraphExecMemcpyNodeSetParams1D)        \
+  __macro(hipGraphExecMemsetNodeSetParams)          \
   __macro(hipGraphExecUpdate)                       \
   __macro(hipGraphInstantiate)                      \
+  __macro(hipGraphMemAllocNodeGetParams)            \
   __macro(hipGraphLaunch)                           \
   __macro(hipGraphNodeGetType)                      \
+  __macro(hipGraphNodeSetEnabled)                   \
   __macro(hipHostFree)                              \
   __macro(hipHostMalloc)                            \
   __macro(hipHostRegister)                          \
@@ -145,10 +155,12 @@ namespace wrap {
   __macro(hipModuleLaunchKernel)                    \
   __macro(hipModuleLoadData)                        \
   __macro(hipModuleUnload)                          \
+  __macro(hipModuleOccupancyMaxActiveBlocksPerMultiprocessor) \
+  __macro(hipModuleOccupancyMaxPotentialBlockSize)  \
   __macro(hipPointerGetAttribute)                   \
   __macro(hipPointerGetAttributes)                  \
+  __macro(hipRuntimeGetVersion)                     \
   __macro(hipSetDevice)                             \
-  __macro(hipDeviceGetStreamPriorityRange)          \
   __macro(hipStreamAddCallback)                     \
   __macro(hipStreamBeginCapture)                    \
   __macro(hipStreamCreateWithFlags)                 \

@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/service/global_device_id.h"
 #include "xla/status_macros.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 
 namespace xla {
@@ -93,7 +94,7 @@ template <ReductionKind>
 constexpr bool always_false_v = false;
 
 template <ReductionKind reduction_kind, typename T>
-void Reduce(absl::Span<T> acc, absl::Span<absl::Span<T const> const> inputs) {
+void ReduceHelper(absl::Span<T> acc, absl::Span<T const* const> inputs) {
   // TODO(penporn): make sure this gets vectorized.
   if constexpr (reduction_kind == ReductionKind::SUM) {
     for (size_t j = 0; j < inputs.size(); ++j) {
@@ -124,6 +125,49 @@ void Reduce(absl::Span<T> acc, absl::Span<absl::Span<T const> const> inputs) {
   }
 }
 
+template <PrimitiveType PT>
+absl::Status ReduceScatter(ReductionKind reduction_kind,
+                           absl::Span<const void* const> inputs, void* output,
+                           int64_t num_elems) {
+  using T = typename primitive_util::PrimitiveTypeToNative<PT>::type;
+  T initial_value = GetInitialValue<T>(reduction_kind);
+
+  absl::Span<T> out_chunk =
+      absl::MakeSpan(reinterpret_cast<T*>(output), num_elems);
+  for (int64_t i = 0; i < num_elems; ++i) {
+    out_chunk[i] = initial_value;
+  }
+
+  absl::Span<T const* const> input_chunks(
+      reinterpret_cast<T const* const*>(inputs.data()), inputs.size());
+  switch (reduction_kind) {
+    case ReductionKind::SUM:
+      ReduceHelper<ReductionKind::SUM, T>(out_chunk, input_chunks);
+      break;
+    case ReductionKind::PRODUCT:
+      ReduceHelper<ReductionKind::PRODUCT, T>(out_chunk, input_chunks);
+      break;
+    case ReductionKind::MIN:
+      if constexpr (!is_complex_v<T>) {
+        ReduceHelper<ReductionKind::MIN, T>(out_chunk, input_chunks);
+      } else {
+        return absl::InvalidArgumentError(
+            "Min reductions not supported for complex types");
+      }
+      break;
+    case ReductionKind::MAX:
+      if constexpr (!is_complex_v<T>) {
+        ReduceHelper<ReductionKind::MAX, T>(out_chunk, input_chunks);
+      } else {
+        return absl::InvalidArgumentError(
+            "Max reductions not supported for complex types");
+      }
+      break;
+  }
+
+  return absl::OkStatus();
+}
+
 class CpuAllReduceRendezvous
     : public Rendezvous<AllReduceParticipantData, std::nullptr_t> {
  public:
@@ -146,109 +190,85 @@ class CpuAllReduceRendezvous
       return nullptr;
     }
 
+    auto bytes_per_elem = primitive_util::ByteWidth(me.primitive_type);
+    int64_t chunk_offset = start_elem * bytes_per_elem;
+    int64_t chunk_bytes = chunk_elems * bytes_per_elem;
+    void* reduce_output =
+        reinterpret_cast<char*>(me.destination_data) + chunk_offset;
+
+    std::vector<const void*> inputs;
+    inputs.reserve(world_size);
+    for (const auto& p : participants_) {
+      inputs.push_back(reinterpret_cast<const char*>(p->source_data) +
+                       chunk_offset);
+    }
+
     switch (me.primitive_type) {
       case S8:
-        TF_RETURN_IF_ERROR(DoAllReduce<S8>(me, start_elem, chunk_elems));
+        TF_RETURN_IF_ERROR(ReduceScatter<S8>(me.reduction_kind, inputs,
+                                             reduce_output, chunk_elems));
         break;
       case PRED:
       case U8:
-        TF_RETURN_IF_ERROR(DoAllReduce<U8>(me, start_elem, chunk_elems));
+        TF_RETURN_IF_ERROR(ReduceScatter<U8>(me.reduction_kind, inputs,
+                                             reduce_output, chunk_elems));
         break;
       case S16:
-        TF_RETURN_IF_ERROR(DoAllReduce<S16>(me, start_elem, chunk_elems));
+        TF_RETURN_IF_ERROR(ReduceScatter<S16>(me.reduction_kind, inputs,
+                                              reduce_output, chunk_elems));
         break;
       case U16:
-        TF_RETURN_IF_ERROR(DoAllReduce<U16>(me, start_elem, chunk_elems));
+        TF_RETURN_IF_ERROR(ReduceScatter<U16>(me.reduction_kind, inputs,
+                                              reduce_output, chunk_elems));
         break;
       case S32:
-        TF_RETURN_IF_ERROR(DoAllReduce<S32>(me, start_elem, chunk_elems));
+        TF_RETURN_IF_ERROR(ReduceScatter<S32>(me.reduction_kind, inputs,
+                                              reduce_output, chunk_elems));
         break;
       case U32:
-        TF_RETURN_IF_ERROR(DoAllReduce<U32>(me, start_elem, chunk_elems));
+        TF_RETURN_IF_ERROR(ReduceScatter<U32>(me.reduction_kind, inputs,
+                                              reduce_output, chunk_elems));
         break;
       case S64:
-        TF_RETURN_IF_ERROR(DoAllReduce<S64>(me, start_elem, chunk_elems));
+        TF_RETURN_IF_ERROR(ReduceScatter<S64>(me.reduction_kind, inputs,
+                                              reduce_output, chunk_elems));
         break;
       case U64:
-        TF_RETURN_IF_ERROR(DoAllReduce<U64>(me, start_elem, chunk_elems));
+        TF_RETURN_IF_ERROR(ReduceScatter<U64>(me.reduction_kind, inputs,
+                                              reduce_output, chunk_elems));
         break;
       case F16:
-        TF_RETURN_IF_ERROR(DoAllReduce<F16>(me, start_elem, chunk_elems));
+        TF_RETURN_IF_ERROR(ReduceScatter<F16>(me.reduction_kind, inputs,
+                                              reduce_output, chunk_elems));
         break;
       case F32:
-        TF_RETURN_IF_ERROR(DoAllReduce<F32>(me, start_elem, chunk_elems));
+        TF_RETURN_IF_ERROR(ReduceScatter<F32>(me.reduction_kind, inputs,
+                                              reduce_output, chunk_elems));
         break;
       case F64:
-        TF_RETURN_IF_ERROR(DoAllReduce<F64>(me, start_elem, chunk_elems));
+        TF_RETURN_IF_ERROR(ReduceScatter<F64>(me.reduction_kind, inputs,
+                                              reduce_output, chunk_elems));
         break;
       case C64:
-        TF_RETURN_IF_ERROR(DoAllReduce<C64>(me, start_elem, chunk_elems));
+        TF_RETURN_IF_ERROR(ReduceScatter<C64>(me.reduction_kind, inputs,
+                                              reduce_output, chunk_elems));
         break;
       case C128:
-        TF_RETURN_IF_ERROR(DoAllReduce<C128>(me, start_elem, chunk_elems));
+        TF_RETURN_IF_ERROR(ReduceScatter<C128>(me.reduction_kind, inputs,
+                                               reduce_output, chunk_elems));
         break;
       default:
         return absl::UnimplementedError("Unexpected datatype");
     }
 
-    auto bytes_per_elem = primitive_util::ByteWidth(me.primitive_type);
-    int64_t chunk_offset = start_elem * bytes_per_elem;
-    int64_t chunk_bytes = chunk_elems * bytes_per_elem;
+    // All-gather the reduced chunks.
     for (const auto& p : participants_) {
       if (p->local_rank != me.local_rank) {
-        std::memcpy(
-            reinterpret_cast<char*>(p->destination_data) + chunk_offset,
-            reinterpret_cast<const char*>(me.destination_data) + chunk_offset,
-            chunk_bytes);
+        std::memcpy(reinterpret_cast<char*>(p->destination_data) + chunk_offset,
+                    reduce_output, chunk_bytes);
       }
     }
     return nullptr;
-  }
-
-  template <PrimitiveType PT>
-  absl::Status DoAllReduce(const AllReduceParticipantData& me,
-                           int64_t start_elem, int64_t num_elems) {
-    using T = typename primitive_util::PrimitiveTypeToNative<PT>::type;
-    T initial_value = GetInitialValue<T>(me.reduction_kind);
-    T* acc = reinterpret_cast<T*>(me.destination_data);
-    for (int64_t i = start_elem; i < start_elem + num_elems; ++i) {
-      acc[i] = initial_value;
-    }
-
-    absl::Span<T> out_chunk = absl::MakeSpan(
-        reinterpret_cast<T*>(me.destination_data) + start_elem, num_elems);
-    std::vector<absl::Span<T const>> inputs;
-    inputs.reserve(participants_.size());
-    for (const auto& p : participants_) {
-      inputs.push_back(absl::Span<T const>(
-          reinterpret_cast<const T*>(p->source_data) + start_elem, num_elems));
-    }
-    switch (me.reduction_kind) {
-      case ReductionKind::SUM:
-        Reduce<ReductionKind::SUM, T>(out_chunk, inputs);
-        break;
-      case ReductionKind::PRODUCT:
-        Reduce<ReductionKind::PRODUCT, T>(out_chunk, inputs);
-        break;
-      case ReductionKind::MIN:
-        if constexpr (!is_complex_v<T>) {
-          Reduce<ReductionKind::MIN, T>(out_chunk, inputs);
-        } else {
-          return absl::InvalidArgumentError(
-              "Min reductions not supported for complex types");
-        }
-        break;
-      case ReductionKind::MAX:
-        if constexpr (!is_complex_v<T>) {
-          Reduce<ReductionKind::MAX, T>(out_chunk, inputs);
-        } else {
-          return absl::InvalidArgumentError(
-              "Max reductions not supported for complex types");
-        }
-        break;
-    }
-
-    return absl::OkStatus();
   }
 };
 
@@ -340,6 +360,147 @@ class CpuAllToAllRendezvous
   }
 };
 
+struct AllGatherParticipantData : ParticipantData {
+  AllGatherParticipantData(const RendezvousKey& rendezvous_key_p, int rank)
+      : ParticipantData(rendezvous_key_p, rank) {}
+
+  const void* source_buffer;
+  void* destination_buffer;
+  size_t chunk_size;
+
+  std::string ToString() const override {
+    return absl::StrFormat(
+        "AllGatherParticipantData{rank=%d, "
+        "devices=[%s], source_buffer=%p, "
+        "destination_buffer=%p, chunk_size=%d}",
+        local_rank,
+        absl::StrJoin(rendezvous_key.global_devices, ", ", FormatGlobalId),
+        source_buffer, destination_buffer, chunk_size);
+  }
+};
+
+class CpuAllGatherRendezvous
+    : public Rendezvous<AllGatherParticipantData, std::nullptr_t> {
+ public:
+  explicit CpuAllGatherRendezvous(const RendezvousKey& k)
+      : Rendezvous<AllGatherParticipantData, std::nullptr_t>(k) {}
+
+ protected:
+  CollectivesInterface* collectives_;
+  absl::StatusOr<std::nullptr_t> RunCollectiveOp(
+      const AllGatherParticipantData& p) override {
+    int world_size = p.rendezvous_key.global_devices.size();
+    char* out = static_cast<char*>(p.destination_buffer);
+    for (int i = 0; i < world_size; ++i, out += p.chunk_size) {
+      std::memcpy(out, participants_[i]->source_buffer, p.chunk_size);
+    }
+    return nullptr;
+  }
+};
+
+struct ReduceScatterParticipantData : ParticipantData {
+  ReduceScatterParticipantData(const RendezvousKey& rendezvous_key_p, int rank)
+      : ParticipantData(rendezvous_key_p, rank) {}
+
+  ReductionKind reduction_kind;
+  PrimitiveType element_type;
+  const void* source_buffer;
+  void* destination_buffer;
+  size_t chunk_elems;
+
+  std::string ToString() const override {
+    return absl::StrFormat(
+        "ReduceScatterParticipantData{rank=%d, "
+        "devices=[%s], source_buffer=%p, "
+        "destination_buffer=%p, chunk_elems=%d}",
+        local_rank,
+        absl::StrJoin(rendezvous_key.global_devices, ", ", FormatGlobalId),
+        source_buffer, destination_buffer, chunk_elems);
+  }
+};
+
+class CpuReduceScatterRendezvous
+    : public Rendezvous<ReduceScatterParticipantData, std::nullptr_t> {
+ public:
+  explicit CpuReduceScatterRendezvous(const RendezvousKey& k)
+      : Rendezvous<ReduceScatterParticipantData, std::nullptr_t>(k) {}
+
+ protected:
+  CollectivesInterface* collectives_;
+  absl::StatusOr<std::nullptr_t> RunCollectiveOp(
+      const ReduceScatterParticipantData& me) override {
+    auto bytes_per_elem = primitive_util::ByteWidth(me.element_type);
+    int64_t chunk_offset = me.local_rank * me.chunk_elems * bytes_per_elem;
+
+    std::vector<const void*> inputs;
+    inputs.reserve(participants_.size());
+    for (const auto& p : participants_) {
+      inputs.push_back(reinterpret_cast<const char*>(p->source_buffer) +
+                       chunk_offset);
+    }
+
+    switch (me.element_type) {
+      case S8:
+        TF_RETURN_IF_ERROR(ReduceScatter<S8>(
+            me.reduction_kind, inputs, me.destination_buffer, me.chunk_elems));
+        break;
+      case PRED:
+      case U8:
+        TF_RETURN_IF_ERROR(ReduceScatter<U8>(
+            me.reduction_kind, inputs, me.destination_buffer, me.chunk_elems));
+        break;
+      case S16:
+        TF_RETURN_IF_ERROR(ReduceScatter<S16>(
+            me.reduction_kind, inputs, me.destination_buffer, me.chunk_elems));
+        break;
+      case U16:
+        TF_RETURN_IF_ERROR(ReduceScatter<U16>(
+            me.reduction_kind, inputs, me.destination_buffer, me.chunk_elems));
+        break;
+      case S32:
+        TF_RETURN_IF_ERROR(ReduceScatter<S32>(
+            me.reduction_kind, inputs, me.destination_buffer, me.chunk_elems));
+        break;
+      case U32:
+        TF_RETURN_IF_ERROR(ReduceScatter<U32>(
+            me.reduction_kind, inputs, me.destination_buffer, me.chunk_elems));
+        break;
+      case S64:
+        TF_RETURN_IF_ERROR(ReduceScatter<S64>(
+            me.reduction_kind, inputs, me.destination_buffer, me.chunk_elems));
+        break;
+      case U64:
+        TF_RETURN_IF_ERROR(ReduceScatter<U64>(
+            me.reduction_kind, inputs, me.destination_buffer, me.chunk_elems));
+        break;
+      case F16:
+        TF_RETURN_IF_ERROR(ReduceScatter<F16>(
+            me.reduction_kind, inputs, me.destination_buffer, me.chunk_elems));
+        break;
+      case F32:
+        TF_RETURN_IF_ERROR(ReduceScatter<F32>(
+            me.reduction_kind, inputs, me.destination_buffer, me.chunk_elems));
+        break;
+      case F64:
+        TF_RETURN_IF_ERROR(ReduceScatter<F64>(
+            me.reduction_kind, inputs, me.destination_buffer, me.chunk_elems));
+        break;
+      case C64:
+        TF_RETURN_IF_ERROR(ReduceScatter<C64>(
+            me.reduction_kind, inputs, me.destination_buffer, me.chunk_elems));
+        break;
+      case C128:
+        TF_RETURN_IF_ERROR(ReduceScatter<C128>(
+            me.reduction_kind, inputs, me.destination_buffer, me.chunk_elems));
+        break;
+      default:
+        return absl::UnimplementedError("Unexpected datatype");
+    }
+
+    return nullptr;
+  }
+};
+
 }  // namespace
 
 struct InProcessCollectivesState {
@@ -349,6 +510,10 @@ struct InProcessCollectivesState {
       collective_permute_rendezvous_map;
   RefcountingHashMap<RendezvousKey, CpuAllToAllRendezvous>
       all_to_all_rendezvous_map;
+  RefcountingHashMap<RendezvousKey, CpuAllGatherRendezvous>
+      all_gather_rendezvous_map;
+  RefcountingHashMap<RendezvousKey, CpuReduceScatterRendezvous>
+      reduce_scatter_rendezvous_map;
 };
 
 InProcessCollectivesCommunicator::InProcessCollectivesCommunicator(
@@ -429,6 +594,46 @@ absl::Status InProcessCollectivesCommunicator::AllToAll(
       .status();
 }
 
+absl::Status InProcessCollectivesCommunicator::AllGather(
+    const RendezvousKey& key, size_t chunk_bytes, const void* input_buffer,
+    void* output_buffer, absl::Duration timeout) {
+  AllGatherParticipantData participant(key, rank_);
+  participant.chunk_size = chunk_bytes;
+  participant.source_buffer = input_buffer;
+  participant.destination_buffer = output_buffer;
+  auto make_cpu_rendezvous = [](const RendezvousKey& k) {
+    return std::make_unique<CpuAllGatherRendezvous>(k);
+  };
+  return CpuAllGatherRendezvous::SubmitParticipant(
+             [&] {
+               return state_->all_gather_rendezvous_map.GetOrCreateIfAbsent(
+                   key, make_cpu_rendezvous);
+             },
+             participant)
+      .status();
+}
+
+absl::Status InProcessCollectivesCommunicator::ReduceScatter(
+    const RendezvousKey& key, ReductionKind reduction_kind,
+    PrimitiveType element_type, size_t chunk_elems, const void* input_buffer,
+    void* output_buffer, absl::Duration timeout) {
+  ReduceScatterParticipantData participant(key, rank_);
+  participant.element_type = element_type;
+  participant.reduction_kind = reduction_kind;
+  participant.chunk_elems = chunk_elems;
+  participant.source_buffer = input_buffer;
+  participant.destination_buffer = output_buffer;
+  auto make_cpu_rendezvous = [](const RendezvousKey& k) {
+    return std::make_unique<CpuReduceScatterRendezvous>(k);
+  };
+  return CpuReduceScatterRendezvous::SubmitParticipant(
+             [&] {
+               return state_->reduce_scatter_rendezvous_map.GetOrCreateIfAbsent(
+                   key, make_cpu_rendezvous);
+             },
+             participant)
+      .status();
+}
 InProcessCollectives::InProcessCollectives()
     : state_(std::make_unique<InProcessCollectivesState>()) {}
 InProcessCollectives::~InProcessCollectives() = default;

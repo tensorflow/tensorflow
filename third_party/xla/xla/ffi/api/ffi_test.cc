@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,15 +20,24 @@ limitations under the License.
 #include <vector>
 
 #include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "xla/ffi/call_frame.h"
 #include "xla/ffi/ffi_api.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/status_matchers.h"
 #include "tsl/platform/test.h"
 #include "tsl/platform/test_benchmark.h"
 
 namespace xla::ffi {
+
+namespace {
+
+using ::testing::HasSubstr;
+using ::tsl::testing::StatusIs;
+
+}  // namespace
 
 TEST(FfiTest, DataTypeEnumValue) {
   // Verify that xla::PrimitiveType and xla::ffi::DataType use the same
@@ -54,6 +63,24 @@ TEST(FfiTest, DataTypeEnumValue) {
   EXPECT_EQ(encoded(PrimitiveType::BF16), encoded(DataType::BF16));
 }
 
+TEST(FfiTest, BufferBaseArgument) {
+  std::vector<float> storage(4, 0.0f);
+  se::DeviceMemoryBase memory(storage.data(), 4 * sizeof(float));
+
+  CallFrameBuilder builder;
+  builder.AddBufferArg(memory, PrimitiveType::F32, /*dims=*/{2, 2});
+  auto call_frame = builder.Build();
+
+  auto handler = Ffi::Bind().Arg<BufferBase>().To([&](auto buffer) {
+    EXPECT_EQ(buffer.data, storage.data());
+    EXPECT_EQ(buffer.dimensions.size(), 2);
+    return Error::Success();
+  });
+  auto status = Call(*handler, call_frame);
+
+  TF_ASSERT_OK(status);
+}
+
 TEST(FfiTest, BufferArgument) {
   std::vector<float> storage(4, 0.0f);
   se::DeviceMemoryBase memory(storage.data(), 4 * sizeof(float));
@@ -62,13 +89,223 @@ TEST(FfiTest, BufferArgument) {
   builder.AddBufferArg(memory, PrimitiveType::F32, /*dims=*/{2, 2});
   auto call_frame = builder.Build();
 
-  auto fn = [&](BufferBase<DataType::F32> buffer) {
-    EXPECT_EQ(buffer.data, storage.data());
-    EXPECT_EQ(buffer.dimensions.size(), 2);
+  auto handler =
+      Ffi::Bind().Arg<BufferR2<DataType::F32>>().To([&](auto buffer) {
+        EXPECT_EQ(buffer.data, storage.data());
+        EXPECT_EQ(buffer.dimensions.size(), 2);
+        return Error::Success();
+      });
+  auto status = Call(*handler, call_frame);
+
+  TF_ASSERT_OK(status);
+}
+
+TEST(FfiTest, BufferBaseResult) {
+  std::vector<float> storage(4, 0.0f);
+  se::DeviceMemoryBase memory(storage.data(), 4 * sizeof(float));
+
+  CallFrameBuilder builder;
+  builder.AddBufferRet(memory, PrimitiveType::F32, /*dims=*/{2, 2});
+  auto call_frame = builder.Build();
+
+  auto handler =
+      Ffi::Bind().Ret<BufferBase>().To([&](Result<BufferBase> buffer) {
+        EXPECT_EQ(buffer->data, storage.data());
+        EXPECT_EQ(buffer->dimensions.size(), 2);
+        return Error::Success();
+      });
+  auto status = Call(*handler, call_frame);
+
+  TF_ASSERT_OK(status);
+}
+
+TEST(FfiTest, MissingBufferArgument) {
+  CallFrameBuilder builder;
+  auto call_frame = builder.Build();
+
+  auto handler = Ffi::Bind().Arg<BufferR1<DataType::F32>>().To(
+      [](auto) { return Error::Success(); });
+  auto status = Call(*handler, call_frame);
+
+  EXPECT_THAT(status, StatusIs(absl::StatusCode::kInvalidArgument,
+                               HasSubstr("Wrong number of arguments")));
+}
+
+TEST(FfiTest, WrongRankBufferArgument) {
+  std::vector<int32_t> storage(4, 0.0);
+  se::DeviceMemoryBase memory(storage.data(), 4 * sizeof(int32_t));
+
+  CallFrameBuilder builder;
+  builder.AddBufferArg(memory, PrimitiveType::F32, /*dims=*/{2, 2});
+  auto call_frame = builder.Build();
+
+  auto handler = Ffi::Bind().Arg<BufferR1<DataType::F32>>().To(
+      [](auto) { return Error::Success(); });
+  auto status = Call(*handler, call_frame);
+
+  EXPECT_THAT(status,
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("Wrong buffer rank: expected 1 but got 2")));
+}
+
+TEST(FfiTest, WrongTypeBufferArgument) {
+  std::vector<int32_t> storage(4, 0.0);
+  se::DeviceMemoryBase memory(storage.data(), 4 * sizeof(int32_t));
+
+  CallFrameBuilder builder;
+  builder.AddBufferArg(memory, PrimitiveType::S32, /*dims=*/{2, 2});
+  auto call_frame = builder.Build();
+
+  auto handler = Ffi::Bind().Arg<BufferR2<DataType::F32>>().To(
+      [](auto) { return Error::Success(); });
+  auto status = Call(*handler, call_frame);
+
+  EXPECT_THAT(
+      status,
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("Wrong buffer dtype: expected F32 but got S32")));
+}
+
+TEST(FfiTest, AutoBinding) {
+  static constexpr char kI32[] = "i32";
+
+  auto handler = Ffi::BindTo(+[](BufferBase buffer, Attr<int32_t, kI32> foo) {
+    EXPECT_EQ(*foo, 42);
+    return Error::Success();
+  });
+
+  std::vector<float> storage(4, 0.0f);
+  se::DeviceMemoryBase memory(storage.data(), 4 * sizeof(float));
+
+  CallFrameBuilder::AttributesBuilder attrs;
+  attrs.Insert(kI32, 42);
+
+  CallFrameBuilder builder;
+  builder.AddBufferArg(memory, PrimitiveType::F32, /*dims=*/{2, 2});
+  builder.AddAttributes(attrs.Build());
+  auto call_frame = builder.Build();
+
+  auto status = Call(*handler, call_frame);
+  TF_ASSERT_OK(status);
+}
+
+TEST(FfiTest, AutoBindingResult) {
+  auto handler =
+      Ffi::BindTo(+[](Result<BufferBase> buffer) { return Error::Success(); });
+
+  CallFrameBuilder builder;
+  builder.AddBufferRet(se::DeviceMemoryBase(), PrimitiveType::F32, /*dims=*/{});
+  auto call_frame = builder.Build();
+
+  auto status = Call(*handler, call_frame);
+  TF_ASSERT_OK(status);
+}
+
+struct I32AndF32 {
+  int32_t i32;
+  float f32;
+};
+
+XLA_FFI_REGISTER_STRUCT_ATTR_DECODING(I32AndF32, StructMember<int32_t>("i32"),
+                                      StructMember<float>("f32"));
+
+TEST(FfiTest, AutoBindingStructs) {
+  auto handler = Ffi::BindTo(+[](I32AndF32 attrs) {
+    EXPECT_EQ(attrs.i32, 42);
+    EXPECT_EQ(attrs.f32, 42.0f);
+    return Error::Success();
+  });
+
+  CallFrameBuilder::AttributesBuilder attrs;
+  attrs.Insert("i32", 42);
+  attrs.Insert("f32", 42.0f);
+
+  CallFrameBuilder builder;
+  builder.AddAttributes(attrs.Build());
+  auto call_frame = builder.Build();
+
+  auto status = Call(*handler, call_frame);
+  TF_ASSERT_OK(status);
+}
+
+TEST(FfiTest, AutoBindingDictionary) {
+  auto handler = Ffi::BindTo(+[](Dictionary attrs) {
+    EXPECT_EQ(*attrs.get<int32_t>("i32"), 42);
+    EXPECT_EQ(*attrs.get<float>("f32"), 42.0f);
+    return Error::Success();
+  });
+
+  CallFrameBuilder::AttributesBuilder attrs;
+  attrs.Insert("i32", 42);
+  attrs.Insert("f32", 42.0f);
+
+  CallFrameBuilder builder;
+  builder.AddAttributes(attrs.Build());
+  auto call_frame = builder.Build();
+
+  auto status = Call(*handler, call_frame);
+  TF_ASSERT_OK(status);
+}
+
+// Use opaque struct to define a platform stream type just like platform
+// stream for GPU backend (e.g. `CUstream_st`  and `cudaStream_t`).
+struct TestStreamSt;
+using TestStream = TestStreamSt*;
+
+template <>
+struct CtxBinding<TestStream> {
+  using Ctx = PlatformStream<TestStream>;
+};
+
+TEST(FfiTest, BindingPlatformStreamInference) {
+  // We only check that it compiles.
+  (void)Ffi::BindTo(+[](TestStream stream) { return Error::Success(); });
+}
+
+TEST(FfiTest, ArrayAttr) {
+  CallFrameBuilder::AttributesBuilder attrs;
+  attrs.Insert("arr", std::vector<int32_t>({1, 2, 3, 4}));
+
+  CallFrameBuilder builder;
+  builder.AddAttributes(attrs.Build());
+  auto call_frame = builder.Build();
+
+  auto fn = [&](Span<const int32_t> arr) {
+    EXPECT_EQ(arr.size(), 4);
+    EXPECT_EQ(arr[0], 1);
+    EXPECT_EQ(arr[1], 2);
+    EXPECT_EQ(arr[2], 3);
+    EXPECT_EQ(arr[3], 4);
     return Error::Success();
   };
 
-  auto handler = Ffi::Bind().Arg<BufferBase<DataType::F32>>().To(fn);
+  auto handler = Ffi::Bind().Attr<Span<const int32_t>>("arr").To(fn);
+  auto status = Call(*handler, call_frame);
+
+  TF_ASSERT_OK(status);
+}
+
+TEST(FfiTest, PointerAttr) {
+  std::string foo = "foo";
+
+  // Test for convenience attr binding that casts i64 attribute to user-type
+  // pointers. It's up to the user to guarantee that pointer is valid.
+  auto ptr = reinterpret_cast<uintptr_t>(&foo);
+  static_assert(sizeof(ptr) == sizeof(int64_t));
+
+  CallFrameBuilder::AttributesBuilder attrs;
+  attrs.Insert("ptr", static_cast<int64_t>(ptr));
+
+  CallFrameBuilder builder;
+  builder.AddAttributes(attrs.Build());
+  auto call_frame = builder.Build();
+
+  auto fn = [&](const std::string* str) {
+    EXPECT_EQ(*str, "foo");
+    return Error::Success();
+  };
+
+  auto handler = Ffi::Bind().Attr<Pointer<std::string>>("ptr").To(fn);
   auto status = Call(*handler, call_frame);
 
   TF_ASSERT_OK(status);
@@ -90,18 +327,61 @@ static CallFrameBuilder WithBufferArgs(size_t num_args, size_t rank = 4) {
 }
 
 //===----------------------------------------------------------------------===//
+// BM_BufferBaseArgX1
+//===----------------------------------------------------------------------===//
+
+void BM_BufferBaseArgX1(benchmark::State& state) {
+  auto call_frame = WithBufferArgs(1).Build();
+
+  auto handler = Ffi::Bind().Arg<BufferBase>().To([](auto buffer) {
+    benchmark::DoNotOptimize(buffer);
+    return Error::Success();
+  });
+  for (auto _ : state) {
+    CHECK_OK(Call(*handler, call_frame));
+  }
+}
+
+BENCHMARK(BM_BufferBaseArgX1);
+
+//===----------------------------------------------------------------------===//
+// BM_BufferBaseArgX4
+//===----------------------------------------------------------------------===//
+
+void BM_BufferBaseArgX4(benchmark::State& state) {
+  auto call_frame = WithBufferArgs(4).Build();
+
+  auto handler = Ffi::Bind()
+                     .Arg<BufferBase>()
+                     .Arg<BufferBase>()
+                     .Arg<BufferBase>()
+                     .Arg<BufferBase>()
+                     .To([](auto b0, auto b1, auto b2, auto b3) {
+                       benchmark::DoNotOptimize(b0);
+                       benchmark::DoNotOptimize(b1);
+                       benchmark::DoNotOptimize(b2);
+                       benchmark::DoNotOptimize(b3);
+                       return Error::Success();
+                     });
+
+  for (auto _ : state) {
+    CHECK_OK(Call(*handler, call_frame));
+  }
+}
+
+BENCHMARK(BM_BufferBaseArgX4);
+
+//===----------------------------------------------------------------------===//
 // BM_BufferArgX1
 //===----------------------------------------------------------------------===//
 
 void BM_BufferArgX1(benchmark::State& state) {
   auto call_frame = WithBufferArgs(1).Build();
 
-  auto fn = [](BufferBase<DataType::F32> buffer) {
+  auto handler = Ffi::Bind().Arg<BufferR4<DataType::F32>>().To([](auto buffer) {
     benchmark::DoNotOptimize(buffer);
     return Error::Success();
-  };
-
-  auto handler = Ffi::Bind().Arg<BufferBase<DataType::F32>>().To(fn);
+  });
   for (auto _ : state) {
     CHECK_OK(Call(*handler, call_frame));
   }
@@ -116,21 +396,18 @@ BENCHMARK(BM_BufferArgX1);
 void BM_BufferArgX4(benchmark::State& state) {
   auto call_frame = WithBufferArgs(4).Build();
 
-  auto fn = [](BufferBase<DataType::F32> b0, BufferBase<DataType::F32> b1,
-               BufferBase<DataType::F32> b2, BufferBase<DataType::F32> b3) {
-    benchmark::DoNotOptimize(b0);
-    benchmark::DoNotOptimize(b1);
-    benchmark::DoNotOptimize(b2);
-    benchmark::DoNotOptimize(b3);
-    return Error::Success();
-  };
-
   auto handler = Ffi::Bind()
-                     .Arg<BufferBase<DataType::F32>>()
-                     .Arg<BufferBase<DataType::F32>>()
-                     .Arg<BufferBase<DataType::F32>>()
-                     .Arg<BufferBase<DataType::F32>>()
-                     .To(fn);
+                     .Arg<BufferR4<DataType::F32>>()
+                     .Arg<BufferR4<DataType::F32>>()
+                     .Arg<BufferR4<DataType::F32>>()
+                     .Arg<BufferR4<DataType::F32>>()
+                     .To([](auto b0, auto b1, auto b2, auto b3) {
+                       benchmark::DoNotOptimize(b0);
+                       benchmark::DoNotOptimize(b1);
+                       benchmark::DoNotOptimize(b2);
+                       benchmark::DoNotOptimize(b3);
+                       return Error::Success();
+                     });
 
   for (auto _ : state) {
     CHECK_OK(Call(*handler, call_frame));
@@ -167,12 +444,10 @@ void BM_TupleOfI32Attrs(benchmark::State& state) {
   builder.AddAttributes(attrs.Build());
   auto call_frame = builder.Build();
 
-  auto fn = [](TupleOfI32 tuple) {
+  auto handler = Ffi::Bind().Attrs<TupleOfI32>().To([](auto tuple) {
     benchmark::DoNotOptimize(tuple);
     return Error::Success();
-  };
-
-  auto handler = Ffi::Bind().Attrs<TupleOfI32>().To(fn);
+  });
 
   for (auto _ : state) {
     CHECK_OK(Call(*handler, call_frame));

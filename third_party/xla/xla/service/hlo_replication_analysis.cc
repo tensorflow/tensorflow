@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -98,9 +98,13 @@ HloReplicationAnalysis::DetermineHloInstructionIsReplicated(
         bool replicated_across_replicas = true;
         const int64_t num_partitions =
             hlo->GetModule()->config().num_partitions();
+        absl::flat_hash_set<int64_t> visited_partitions;
+        absl::flat_hash_set<int64_t> visited_replicas;
         for (const auto& group : hlo->replica_groups()) {
-          absl::flat_hash_set<int64_t> visited_partitions;
-          absl::flat_hash_set<int64_t> visited_replicas;
+          visited_partitions.clear();
+          visited_replicas.clear();
+          visited_replicas.reserve(group.replica_ids().size());
+          visited_partitions.reserve(group.replica_ids().size());
           for (int64_t id : group.replica_ids()) {
             int64_t rid = id / num_partitions;
             int64_t pid = id % num_partitions;
@@ -421,13 +425,13 @@ Status HloReplicationAnalysis::ComputeHloReplication() {
           if (replication) {
             // If parameter replication status has been set explicitly, use that
             // instead.
-            if (!cross_partition_spmd_ && replication->at(leaf_index)) {
+            if (!cross_partition_spmd_ && (*replication)[leaf_index]) {
               // Setting parameter replication status for replicas in
               // non cross-partition spmd mode.
               *shape_tree.mutable_element(index) =
                   HloReplication::ReplicatedOnAllDevices();
             }
-            if (cross_partition_spmd_ && !replication->at(leaf_index)) {
+            if (cross_partition_spmd_ && !(*replication)[leaf_index]) {
               // Setting paramemter replication status for partitions in
               // cross-partition spmd mode.
               *shape_tree.mutable_element(index) =
@@ -482,14 +486,14 @@ bool HloReplicationAnalysis::HloInstructionIsReplicatedAt(
   return true;
 }
 
-/* static */ StatusOr<std::unique_ptr<HloReplicationAnalysis>>
+/* static */ absl::StatusOr<std::unique_ptr<HloReplicationAnalysis>>
 HloReplicationAnalysis::Run(const HloModule* module,
                             bool cross_partition_spmd) {
   const absl::flat_hash_set<const HloInstruction*> empty;
   return Run(module, cross_partition_spmd, &empty);
 }
 
-/* static */ StatusOr<std::unique_ptr<HloReplicationAnalysis>>
+/* static */ absl::StatusOr<std::unique_ptr<HloReplicationAnalysis>>
 HloReplicationAnalysis::Run(const HloModule* module, bool cross_partition_spmd,
                             const absl::flat_hash_set<const HloInstruction*>*
                                 loops_known_with_same_iterations) {
@@ -500,7 +504,7 @@ HloReplicationAnalysis::Run(const HloModule* module, bool cross_partition_spmd,
   return analysis;
 }
 
-/* static */ StatusOr<std::unique_ptr<HloReplicationAnalysis>>
+/* static */ absl::StatusOr<std::unique_ptr<HloReplicationAnalysis>>
 HloReplicationAnalysis::RunWithPartialReplication(const HloModule* module,
                                                   bool cross_partition_spmd) {
   const absl::flat_hash_set<const HloInstruction*> empty;

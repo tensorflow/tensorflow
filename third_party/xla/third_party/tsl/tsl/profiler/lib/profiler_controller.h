@@ -38,11 +38,11 @@ class ProfilerController : public ProfilerInterface {
   explicit ProfilerController(std::unique_ptr<ProfilerInterface> profiler);
   ~ProfilerController() override;
 
-  Status Start() override;
+  absl::Status Start() override;
 
-  Status Stop() override;
+  absl::Status Stop() override;
 
-  Status CollectData(tensorflow::profiler::XSpace* space) override;
+  absl::Status CollectData(tensorflow::profiler::XSpace* space) override;
 
  private:
   enum class ProfilerState {
@@ -54,7 +54,7 @@ class ProfilerController : public ProfilerInterface {
 
   ProfilerState state_ = ProfilerState::kInit;
   std::unique_ptr<ProfilerInterface> profiler_;
-  Status status_;  // result of calls to profiler_
+  absl::Status status_;  // result of calls to profiler_
 };
 
 }  // namespace profiler

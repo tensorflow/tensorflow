@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,15 +18,19 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/log/log.h"
 #include "absl/time/time.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_query.h"
+#include "xla/service/gpu/model/gpu_collective_performance_model.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/service/gpu/model/gpu_performance_model.h"
+#include "xla/service/gpu/model/gpu_performance_model_base.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/latency_hiding_scheduler.h"
 #include "xla/stream_executor/device_description.h"
+#include "tsl/platform/status.h"
 
 namespace xla {
 namespace gpu {
@@ -52,9 +56,8 @@ LatencyEstimator::TimeCost AnalyticalLatencyEstimator::GetLatencyBetween(
 
 LatencyEstimator::TimeCost AnalyticalLatencyEstimator::NodeCost(
     const HloInstruction* instr) const {
-  const HloOpcode opcode = instr->opcode();
-  if (hlo_query::IsAsyncCollectiveStartOp(opcode, /*include_send_recv=*/true) ||
-      hlo_query::IsAsyncCollectiveDoneOp(opcode, /*include_send_recv=*/true)) {
+  if (hlo_query::IsAsyncCollectiveStartOp(instr, /*include_send_recv=*/true) ||
+      hlo_query::IsAsyncCollectiveDoneOp(instr, /*include_send_recv=*/true)) {
     return kLowCost;
   }
 

@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -58,15 +58,19 @@ class MixedTypeTest : public GpuCodegenTest,
         ->GetDeviceDescription()
         .cuda_compute_capability();
   }
+
+  DebugOptions GetDebugOptionsForTest() override {
+    DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
+    // We are testing Triton, remove cuBLAS fallback for these tests.
+    debug_options.set_xla_gpu_cublas_fallback(false);
+    // Always rewrite Gemms with Triton regardless of size.
+    debug_options.set_xla_gpu_gemm_rewrite_size_threshold(0);
+    return debug_options;
+  }
 };
 
 TEST_P(MixedTypeTest, MixedTypeDotProducesCorrectResult) {
   MixTypeParams params = GetParam();
-  if ((params.lhs_ty == BF16 || params.rhs_ty == BF16) &&
-      !GetCudaComputeCapability().IsAtLeast(
-          se::CudaComputeCapability::AMPERE)) {
-    GTEST_SKIP() << "No BF16 before Ampere.";
-  }
   const std::string hlo_string_template = R"(
 HloModule m
 
@@ -127,7 +131,9 @@ INSTANTIATE_TEST_SUITE_P(RewriteTestSuite, MixedTypeTest,
                              //  TritonRewriteTest2Params{F32, F16},
                              //  TritonRewriteTest2Params{F32, BF16},
                              MixTypeParams{S8, BF16, 24, 40, 8},
-                             MixTypeParams{S8, F16, 80, 16, 32},
+                             // Modify the case below to use k = 32 instead of
+                             // 16 once b/331362083 is fixed.
+                             MixTypeParams{S8, F16, 80, 32, 32, 1e-3, 1e-6},
                              MixTypeParams{F16, F32, 127, 3, 300, 1e-2, 1e-2},
                              MixTypeParams{F16, BF16, 544, 96, 16, 1e-3, 1e-3},
                              MixTypeParams{BF16, F32, 77, 500, 333, 3e-3, 3e-3},
@@ -140,6 +146,8 @@ class TritonTest : public GpuCodegenTest {
     DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_triton_gemm_any(true);
     debug_options.set_xla_gpu_cublas_fallback(false);
+    // Always rewrite Gemms with Triton regardless of size.
+    debug_options.set_xla_gpu_gemm_rewrite_size_threshold(0);
     return debug_options;
   }
 
@@ -191,10 +199,15 @@ ENTRY e {
   p0 = f32[15,33]{1,0} parameter(0)
   ROOT triton_gemm__ = f32[15,68]{1,0} fusion(p0, p1), kind=kCustom,
     calls=triton_gemm___computation,
-    backend_config={"kind":"__triton_gemm",
-                    "triton_gemm_config":{"block_m":"32","block_n":"32",
-                                          "block_k":"32","split_k":"1",
-                                          "num_stages":"1","num_warps":"4"}}
+    backend_config={"fusion_backend_config":{"kind":"__triton_gemm",
+                    "triton_gemm_config":
+                      {"block_m":"32",
+                       "block_n":"32",
+                       "block_k":"32",
+                       "split_k":"1",
+                       "num_stages":"1",
+                       "num_warps":"4",
+                       "num_ctas":"1"}}}
 })";
   const std::string hlo_test = absl::Substitute(
       kHloTestTemplate, primitive_util::LowercasePrimitiveTypeName(data_type),
@@ -213,11 +226,11 @@ ENTRY e {
   fusion = f32[33,68]{1,0} fusion(p1), kind=kLoop, calls=fused_computation
   gemm = (f32[15,68]{1,0}, s8[0]{0}) custom-call(p0, fusion),
     custom_call_target="__cublas$$gemm",
-    backend_config={"alpha_real":1,"beta":0,"dot_dimension_numbers":
+    backend_config={"gemm_backend_config":{"alpha_real":1,"beta":0,"dot_dimension_numbers":
       {"lhs_contracting_dimensions":["1"],"rhs_contracting_dimensions":["0"],
       "lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},
       "alpha_imag":0,"precision_config":
-      {"operand_precision":["HIGHEST","HIGHEST"]},"epilogue":"DEFAULT"}
+      {"operand_precision":["HIGHEST","HIGHEST"]},"epilogue":"DEFAULT"}}
    ROOT get-tuple-element = f32[15,68]{1,0} get-tuple-element((f32[15,68]{1,0}, s8[0]{0}) gemm), index=0
 })";
   const std::string hlo_ref = absl::Substitute(
@@ -302,10 +315,15 @@ ENTRY e {
   p2 = $0[11,63]{1,0} parameter(2)
   ROOT triton_gemm__ = f32[92,63]{1,0} fusion(p0, p1, p2), kind=kCustom,
     calls=triton_gemm___computation,
-    backend_config={"kind":"__triton_gemm",
-                    "triton_gemm_config":{"block_m":"64","block_n":"32",
-                                          "block_k":"64","split_k":"1",
-                                          "num_stages":"2","num_warps":"2"}}
+    backend_config={"fusion_backend_config":{"kind":"__triton_gemm",
+                    "triton_gemm_config":
+                      {"block_m":"64",
+                       "block_n":"32",
+                       "block_k":"64",
+                       "split_k":"1",
+                       "num_stages":"2",
+                       "num_warps":"2",
+                       "num_ctas":"1"}}}
 })";
   const std::string hlo_test = absl::Substitute(
       kHloTestTemplate, primitive_util::LowercasePrimitiveTypeName(data_type),
@@ -326,11 +344,11 @@ ENTRY e {
   fusion = f32[11,63]{1,0} fusion(p1, p2), kind=kLoop, calls=fused_computation
   gemm = (f32[92,63]{1,0}, s8[0]{0}) custom-call(p0, fusion),
     custom_call_target="__cublas$$gemm",
-    backend_config={"alpha_real":1,"beta":0,"dot_dimension_numbers":
+    backend_config={"gemm_backend_config":{"alpha_real":1,"beta":0,"dot_dimension_numbers":
       {"lhs_contracting_dimensions":["1"],"rhs_contracting_dimensions":["0"],
       "lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},
       "alpha_imag":0,"precision_config":
-      {"operand_precision":["HIGHEST","HIGHEST"]},"epilogue":"DEFAULT"}
+      {"operand_precision":["HIGHEST","HIGHEST"]},"epilogue":"DEFAULT"}}
   ROOT get-tuple-element = f32[92,63]{1,0} get-tuple-element((f32[92,63]{1,0}, s8[0]{0}) gemm), index=0
 })";
   const std::string hlo_ref = absl::Substitute(
@@ -339,7 +357,7 @@ ENTRY e {
 
   EXPECT_TRUE(RunAndCompareTwoModules(
       hlo_ref, hlo_test, ErrorSpec{/*aabs=*/tolerance, /*arel=*/tolerance},
-      /*run_hlo_passes=*/false));
+      /*run_hlo_passes=*/false, /*args_max_bits_of_precision=*/6));
 }
 
 std::vector<HloOpcode> TestedBinaryElementwise(PrimitiveType element_type) {
@@ -354,28 +372,28 @@ INSTANTIATE_TEST_SUITE_P(
     ElementwiseTestSuitePRED, BinaryElementwiseTest,
     ::testing::Combine(::testing::Values(PRED),
                        ::testing::ValuesIn(TestedBinaryElementwise(PRED)),
-                       ::testing::Values(3e-2)),
+                       ::testing::Values(0)),
     ElementwiseTestParamsToString);
 
 INSTANTIATE_TEST_SUITE_P(
     ElementwiseTestSuiteS8, BinaryElementwiseTest,
     ::testing::Combine(::testing::Values(S8),
                        ::testing::ValuesIn(TestedBinaryElementwise(S8)),
-                       ::testing::Values(3e-2)),
+                       ::testing::Values(0)),
     ElementwiseTestParamsToString);
 
 INSTANTIATE_TEST_SUITE_P(
     ElementwiseTestSuiteS16, BinaryElementwiseTest,
     ::testing::Combine(::testing::Values(S16),
                        ::testing::ValuesIn(TestedBinaryElementwise(S16)),
-                       ::testing::Values(1e-3)),
+                       ::testing::Values(0)),
     ElementwiseTestParamsToString);
 
 INSTANTIATE_TEST_SUITE_P(
     ElementwiseTestSuiteS32, BinaryElementwiseTest,
     ::testing::Combine(::testing::Values(S32),
                        ::testing::ValuesIn(TestedBinaryElementwise(S32)),
-                       ::testing::Values(1e-5)),
+                       ::testing::Values(0)),
     ElementwiseTestParamsToString);
 
 INSTANTIATE_TEST_SUITE_P(
@@ -429,10 +447,15 @@ ENTRY e {
   p2 = $0[11,63]{1,0} parameter(2)
   ROOT triton_gemm__ = f32[92,63]{1,0} fusion(p0, p1, p2), kind=kCustom,
     calls=triton_gemm___computation,
-    backend_config={"kind":"__triton_gemm",
-                    "triton_gemm_config":{"block_m":"16","block_n":"64",
-                                          "block_k":"16","split_k":"1",
-                                          "num_stages":"3","num_warps":"2"}}
+    backend_config={"fusion_backend_config":{"kind":"__triton_gemm",
+                    "triton_gemm_config":
+                      {"block_m":"16",
+                       "block_n":"64",
+                       "block_k":"16",
+                       "split_k":"1",
+                       "num_stages":"3",
+                       "num_warps":"2",
+                       "num_ctas":"1"}}}
 })";
   const std::string hlo_test = absl::Substitute(
       kHloTestTemplate, primitive_util::LowercasePrimitiveTypeName(data_type),
@@ -453,11 +476,11 @@ ENTRY e {
   fusion = f32[11,63]{1,0} fusion(p1, p2), kind=kLoop, calls=fused_computation
   gemm = (f32[92,63]{1,0}, s8[0]{0}) custom-call(p0, fusion),
     custom_call_target="__cublas$$gemm",
-    backend_config={"alpha_real":1,"beta":0,"dot_dimension_numbers":
+    backend_config={"gemm_backend_config":{"alpha_real":1,"beta":0,"dot_dimension_numbers":
       {"lhs_contracting_dimensions":["1"],"rhs_contracting_dimensions":["0"],
       "lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},
       "alpha_imag":0,"precision_config":
-      {"operand_precision":["HIGHEST","HIGHEST"]},"epilogue":"DEFAULT"}
+      {"operand_precision":["HIGHEST","HIGHEST"]},"epilogue":"DEFAULT"}}
   ROOT get-tuple-element = f32[92,63]{1,0} get-tuple-element((f32[92,63]{1,0}, s8[0]{0}) gemm), index=0
 })";
   const std::string hlo_ref = absl::Substitute(
@@ -516,28 +539,33 @@ TEST_P(SelectTest, SelectFusionExecutesCorrectly) {
 
   const std::string kHloTestTemplate = R"(
 triton_gemm___computation {
-  parameter_0 = $1[92,11]{1,0} parameter(0)
-  parameter_1 = $0[11,63]{1,0} parameter(1)
-  parameter_2 = $0[11,63]{1,0} parameter(2)
-  parameter_3 = pred[11,63]{1,0} parameter(3)
-  f1.1 = $0[11,63]{1,0} select(parameter_3, parameter_1, parameter_2)
-  c.1 = $1[11,63]{1,0} convert(f1.1)
+  parameter_0 = $1[92,13]{1,0} parameter(0)
+  parameter_1 = $0[13,63]{1,0} parameter(1)
+  parameter_2 = $0[13,63]{1,0} parameter(2)
+  parameter_3 = pred[13,63]{1,0} parameter(3)
+  f1.1 = $0[13,63]{1,0} select(parameter_3, parameter_1, parameter_2)
+  c.1 = $1[13,63]{1,0} convert(f1.1)
   ROOT _.1 = $1[92,63]{1,0} dot(parameter_0, c.1),
     lhs_contracting_dims={1}, rhs_contracting_dims={0},
     operand_precision={HIGH, HIGH}
 }
 
 ENTRY e {
-  p0 = $1[92,11]{1,0} parameter(0)
-  p1 = $0[11,63]{1,0} parameter(1)
-  p2 = $0[11,63]{1,0} parameter(2)
-  p3 = pred[11,63]{1,0} parameter(3)
+  p0 = $1[92,13]{1,0} parameter(0)
+  p1 = $0[13,63]{1,0} parameter(1)
+  p2 = $0[13,63]{1,0} parameter(2)
+  p3 = pred[13,63]{1,0} parameter(3)
   ROOT triton_gemm__ = $1[92,63]{1,0} fusion(p0, p1, p2, p3), kind=kCustom,
     calls=triton_gemm___computation,
-    backend_config={"kind":"__triton_gemm",
-                    "triton_gemm_config":{"block_m":"16","block_n":"64",
-                                          "block_k":"16","split_k":"1",
-                                          "num_stages":"3","num_warps":"2"}}
+    backend_config={"fusion_backend_config":{"kind":"__triton_gemm",
+                    "triton_gemm_config":
+                      {"block_m":"16",
+                       "block_n":"64",
+                       "block_k":"16",
+                       "split_k":"1",
+                       "num_stages":"3",
+                       "num_warps":"2",
+                       "num_ctas":"1"}}}
 })";
   const std::string hlo_test = absl::Substitute(
       kHloTestTemplate, primitive_util::LowercasePrimitiveTypeName(data_type1),
@@ -545,60 +573,36 @@ ENTRY e {
 
   const std::string kHloRefTemplate = R"(
 fused_computation {
-  p0 = $0[11,63]{1,0} parameter(0)
-  p1 = $0[11,63]{1,0} parameter(1)
-  p2 = pred[11,63]{1,0} parameter(2)
-  f.1 = $0[11,63]{1,0} select(p2, p0, p1)
-  ROOT convert.1 = $1[11,63]{1,0} convert(f.1)
+  p0 = $0[13,63]{1,0} parameter(0)
+  p1 = $0[13,63]{1,0} parameter(1)
+  p2 = pred[13,63]{1,0} parameter(2)
+  f.1 = $0[13,63]{1,0} select(p2, p0, p1)
+  ROOT convert.1 = $1[13,63]{1,0} convert(f.1)
 }
 
 ENTRY e {
-  p3 = pred[11,63]{1,0} parameter(3)
-  p2 = $0[11,63]{1,0} parameter(2)
-  p1 = $0[11,63]{1,0} parameter(1)
-  p0 = $1[92,11]{1,0} parameter(0)
-  fusion = $1[11,63]{1,0} fusion(p1, p2, p3), kind=kLoop,
+  p3 = pred[13,63]{1,0} parameter(3)
+  p2 = $0[13,63]{1,0} parameter(2)
+  p1 = $0[13,63]{1,0} parameter(1)
+  p0 = $1[92,13]{1,0} parameter(0)
+  fusion = $1[13,63]{1,0} fusion(p1, p2, p3), kind=kLoop,
     calls=fused_computation
   gemm = ($1[92,63]{1,0}, s8[0]{0}) custom-call(p0, fusion),
     custom_call_target="__cublas$$gemm",
-    backend_config={"alpha_real":1,"beta":0,"dot_dimension_numbers":
+    backend_config={"gemm_backend_config":{"alpha_real":1,"beta":0,"dot_dimension_numbers":
       {"lhs_contracting_dimensions":["1"],"rhs_contracting_dimensions":["0"],
       "lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},
       "alpha_imag":0,"precision_config":
-      {"operand_precision":["HIGHEST","HIGHEST"]},"epilogue":"DEFAULT"}
+      {"operand_precision":["HIGHEST","HIGHEST"]},"epilogue":"DEFAULT"}}
   ROOT get-tuple-element = $1[92,63]{1,0} get-tuple-element(($1[92,63]{1,0}, s8[0]{0}) gemm), index=0
 })";
   const std::string hlo_ref = absl::Substitute(
       kHloRefTemplate, primitive_util::LowercasePrimitiveTypeName(data_type1),
       primitive_util::LowercasePrimitiveTypeName(data_type2));
 
-  float tolerance;
-  switch (data_type1) {
-    case F32:
-      tolerance = 1e-6;
-      break;
-    case BF16:
-      tolerance = 1e-6;
-      break;
-    case F16:
-      tolerance = 2e-4;
-      break;
-    case PRED:
-    case S8:
-      tolerance = 3e-2;
-      break;
-    case S16:
-      tolerance = 1e-3;
-      break;
-    case S32:
-      tolerance = 1e-5;
-      break;
-    default:
-      ABSL_UNREACHABLE();
-  }
   EXPECT_TRUE(RunAndCompareTwoModules(
-      hlo_ref, hlo_test, ErrorSpec{/*aabs=*/tolerance, /*arel=*/tolerance},
-      /*run_hlo_passes=*/false));
+      hlo_ref, hlo_test, ErrorSpec{/*aabs=*/0, /*arel=*/0},
+      /*run_hlo_passes=*/false, /*args_max_bits_of_precision=*/9));
 }
 
 std::string TwoPrimitiveTypesToString(
@@ -651,10 +655,15 @@ ENTRY e {
   p1 = f32[11,63]{1,0} parameter(1)
   ROOT triton_gemm__ = f32[92,63]{1,0} fusion(p0, p1), kind=kCustom,
     calls=triton_gemm___computation,
-    backend_config={"kind":"__triton_gemm",
-                    "triton_gemm_config":{"block_m":"16","block_n":"64",
-                                          "block_k":"16","split_k":"1",
-                                          "num_stages":"3","num_warps":"2"}}
+    backend_config={"fusion_backend_config":{"kind":"__triton_gemm",
+                    "triton_gemm_config":
+                      {"block_m":"16",
+                       "block_n":"64",
+                       "block_k":"16",
+                       "split_k":"1",
+                       "num_stages":"3",
+                       "num_warps":"2",
+                       "num_ctas":"1"}}}
 })";
   const std::string hlo_test = absl::Substitute(
       kHloTestTemplate, primitive_util::LowercasePrimitiveTypeName(data_type));
@@ -675,11 +684,11 @@ ENTRY e {
     calls=fused_computation
   gemm = (f32[92,63]{1,0}, s8[0]{0}) custom-call(p0, fusion),
     custom_call_target="__cublas$$gemm",
-    backend_config={"alpha_real":1,"beta":0,"dot_dimension_numbers":
+    backend_config={"gemm_backend_config":{"alpha_real":1,"beta":0,"dot_dimension_numbers":
       {"lhs_contracting_dimensions":["1"],"rhs_contracting_dimensions":["0"],
       "lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},
       "alpha_imag":0,"precision_config":
-      {"operand_precision":["HIGHEST","HIGHEST"]},"epilogue":"DEFAULT"}
+      {"operand_precision":["HIGHEST","HIGHEST"]},"epilogue":"DEFAULT"}}
   ROOT get-tuple-element = f32[92,63]{1, 0} get-tuple-element((f32[92,63]{1, 0}, s8[0]{0}) gemm), index=0
 })";
   const std::string hlo_ref = absl::Substitute(
@@ -749,7 +758,7 @@ ENTRY e {
   p0 = $0[2,2] parameter(0)
   p1 = f32[2,2] parameter(1)
   ROOT r = f32[2,2] fusion(p0, p1), kind=kCustom, calls=t,
-    backend_config={"kind":"__triton_gemm"}
+    backend_config={"fusion_backend_config":{"kind":"__triton_gemm"}}
 })",
       primitive_util::LowercasePrimitiveTypeName(data_type1),
       primitive_util::LowercasePrimitiveTypeName(data_type2));
@@ -787,10 +796,6 @@ TEST_P(TritonSoftmaxTest, CanFuseAndEmitExactSoftmax) {
 
   if (data_type == F16) {
     GTEST_SKIP() << "Exponential op does not support F16.";
-  } else if (data_type == BF16 && !GetCudaComputeCapability().IsAtLeast(
-                                      se::CudaComputeCapability::AMPERE)) {
-    GTEST_SKIP() << R"(No BF16 before Ampere. Pre-Ampere BF16 behavior is tested
-    in CanFuseAndEmitFirstSoftmaxDiamond, and in SoftmaxRewriterTritonTest.)";
   }
 
   const std::string hlo_text_template = R"(
@@ -875,18 +880,7 @@ ENTRY main {
   const std::string hlo_text = absl::Substitute(
       hlo_text_template, primitive_util::LowercasePrimitiveTypeName(data_type));
 
-  std::string hlo_ref_template;
-  if (data_type == BF16 && !GetCudaComputeCapability().IsAtLeast(
-                               se::CudaComputeCapability::AMPERE)) {
-    hlo_ref_template = R"(
-; CHECK:    ENTRY
-; CHECK:      %[[P0:.*]] = bf16[127,125]{1,0} parameter(0)
-; CHECK:      %[[FUSED_REDUCE:.*]] = f32[127]{0} fusion(%[[P0]])
-; CHECK:      ROOT
-; CHECK-SAME: fusion(%[[P0]], %[[FUSED_REDUCE]])
-)";
-  } else {
-    hlo_ref_template = R"(
+  std::string hlo_ref_template = R"(
 ; CHECK:    ENTRY
 ; CHECK:      %[[P0:.*]] = $0[127,125]{1,0} parameter(0)
 ; CHECK:      ROOT
@@ -894,7 +888,6 @@ ENTRY main {
 ; CHECK-SAME:   kind=kCustom
 ; CHECK-SAME:   __triton_softmax
 )";
-  }
 
   const std::string hlo_ref = absl::Substitute(
       hlo_ref_template, primitive_util::LowercasePrimitiveTypeName(data_type));
@@ -919,12 +912,6 @@ ENTRY main {
 
 TEST_P(TritonSoftmaxTest, CanFuseAndEmitSoftmaxDiamondWithSmallRows) {
   PrimitiveType data_type = GetParam();
-  if (data_type == BF16 && !GetCudaComputeCapability().IsAtLeast(
-                               se::CudaComputeCapability::AMPERE)) {
-    GTEST_SKIP() << R"(No BF16 before Ampere. Pre-Ampere BF16 behavior is tested
-    in CanFuseAndEmitFirstSoftmaxDiamond, and in SoftmaxRewriterTritonTest.)";
-  }
-
   constexpr absl::string_view kHloTextTemplate = R"(
 HloModule softmax
 min_computation {
@@ -961,12 +948,6 @@ ENTRY main {
 }
 
 TEST_F(TritonSoftmaxTest, CanFuseAndEmitDiamondWithBF16Converts) {
-  if (!GetCudaComputeCapability().IsAtLeast(
-          se::CudaComputeCapability::AMPERE)) {
-    GTEST_SKIP() << R"(No BF16 before Ampere. Pre-Ampere BF16 behavior is tested
-    in CanFuseAndEmitFirstSoftmaxDiamond, and in SoftmaxRewriterTritonTest.)";
-  }
-
   const std::string hlo_text = R"(
 HloModule softmax
 max_computation {
@@ -1008,10 +989,6 @@ TEST_P(
 
   if (data_type == F16) {
     GTEST_SKIP() << "Exponential op does not support F16.";
-  } else if (data_type == BF16 && !GetCudaComputeCapability().IsAtLeast(
-                                      se::CudaComputeCapability::AMPERE)) {
-    GTEST_SKIP() << R"(No BF16 before Ampere. Pre-Ampere BF16 behavior is tested
-    in CanFuseAndEmitFirstSoftmaxDiamond, and in SoftmaxRewriterTritonTest.)";
   }
 
   const std::string hlo_text_template = R"(
@@ -1081,12 +1058,6 @@ TEST_P(TritonSoftmaxTest,
        CanFuseAndEmitDiamondWithMultipleBroadcastDimensions) {
   PrimitiveType data_type = GetParam();
 
-  if (data_type == BF16 && !GetCudaComputeCapability().IsAtLeast(
-                               se::CudaComputeCapability::AMPERE)) {
-    GTEST_SKIP() << R"(No BF16 before Ampere. Pre-Ampere BF16 behavior is tested
-    in CanFuseAndEmitFirstSoftmaxDiamond, and in SoftmaxRewriterTritonTest.)";
-  }
-
   const std::string hlo_text_template = R"(
 HloModule softmax
 max_computation {
@@ -1143,12 +1114,7 @@ TEST_P(TritonSoftmaxTest,
 
   if (data_type == F16) {
     GTEST_SKIP() << "Exponential op does not support F16.";
-  } else if (data_type == BF16 && !GetCudaComputeCapability().IsAtLeast(
-                                      se::CudaComputeCapability::AMPERE)) {
-    GTEST_SKIP() << R"(No BF16 before Ampere. Pre-Ampere BF16 behavior is tested
-    in CanFuseAndEmitFirstSoftmaxDiamond, and in SoftmaxRewriterTritonTest.)";
   }
-
   const std::string hlo_text_template = R"(
 HloModule softmax
 max_computation {
@@ -1211,12 +1177,6 @@ TEST_P(
     TritonSoftmaxTest,
     CanFuseAndEmitTwoDiamondsWithSecondDiamondProducerEqualToFirstDiamondRoot) {
   PrimitiveType data_type = GetParam();
-
-  if (data_type == BF16 && !GetCudaComputeCapability().IsAtLeast(
-                               se::CudaComputeCapability::AMPERE)) {
-    GTEST_SKIP() << R"(No BF16 before Ampere. Pre-Ampere BF16 behavior is tested
-    in CanFuseAndEmitFirstSoftmaxDiamond, and in SoftmaxRewriterTritonTest.)";
-  }
 
   const std::string hlo_text_template = R"(
 HloModule softmax
@@ -1281,12 +1241,6 @@ TEST_P(TritonSoftmaxTest,
        CanFuseAndEmitDiamondWithTrailingUnaryElementwiseAtTheRoot) {
   PrimitiveType data_type = GetParam();
 
-  if (data_type == BF16 && !GetCudaComputeCapability().IsAtLeast(
-                               se::CudaComputeCapability::AMPERE)) {
-    GTEST_SKIP() << R"(No BF16 before Ampere. Pre-Ampere BF16 behavior is tested
-    in CanFuseAndEmitFirstSoftmaxDiamond, and in SoftmaxRewriterTritonTest.)";
-  }
-
   const std::string hlo_text_template = R"(
 HloModule softmax
 max_computation {
@@ -1340,12 +1294,6 @@ ENTRY main {
 
 TEST_P(TritonSoftmaxTest, CanFuseAndEmitDiamondWithUnaryElementwisePrefix) {
   PrimitiveType data_type = GetParam();
-
-  if (data_type == BF16 && !GetCudaComputeCapability().IsAtLeast(
-                               se::CudaComputeCapability::AMPERE)) {
-    GTEST_SKIP() << R"(No BF16 before Ampere. Pre-Ampere BF16 behavior is tested
-    in CanFuseAndEmitFirstSoftmaxDiamond, and in SoftmaxRewriterTritonTest.)";
-  }
 
   const std::string hlo_text_template = R"(
 HloModule softmax
@@ -1402,12 +1350,6 @@ TEST_P(TritonSoftmaxTest,
        CanFuseAndEmitSoftmaxDiamondWithLastDimensionBitcastAfterReduce) {
   PrimitiveType data_type = GetParam();
 
-  if (data_type == BF16 && !GetCudaComputeCapability().IsAtLeast(
-                               se::CudaComputeCapability::AMPERE)) {
-    GTEST_SKIP() << R"(No BF16 before Ampere. Pre-Ampere BF16 behavior is tested
-    in CanFuseAndEmitFirstSoftmaxDiamond, and in SoftmaxRewriterTritonTest.)";
-  }
-
   const std::string hlo_text_template = R"(
 HloModule softmax
 max_computation {
@@ -1461,16 +1403,9 @@ ENTRY main {
                             ErrorSpec(/*aabs=*/tolerance, /*arel=*/tolerance)));
 }
 
-TEST_P(
-    TritonSoftmaxTest,
-    CanFuseAndEmitConvertInvolvingBF16InputIntoSoftmaxDiamondCorrectlyForAmpereAndVoltaComputeCapability) {  // NOLINT(whitespace/line_length)
+TEST_P(TritonSoftmaxTest,
+       CanFuseAndEmitConvertInvolvingBF16InputIntoSoftmaxDiamondCorrectly) {
   PrimitiveType data_type = GetParam();
-
-  if (data_type == BF16 && !GetCudaComputeCapability().IsAtLeast(
-                               se::CudaComputeCapability::AMPERE)) {
-    GTEST_SKIP() << R"(No BF16 before Ampere. Pre-Ampere BF16 behavior is tested
-    in CanFuseAndEmitFirstSoftmaxDiamond, and in SoftmaxRewriterTritonTest.)";
-  }
 
   const std::string hlo_text_template = R"(
 HloModule softmax
@@ -1491,8 +1426,7 @@ ENTRY main {
   const std::string hlo_text = absl::Substitute(
       hlo_text_template, primitive_util::LowercasePrimitiveTypeName(data_type));
 
-  if (GetCudaComputeCapability().IsAtLeast(se::CudaComputeCapability::AMPERE)) {
-    const std::string hlo_ref = R"(
+  const std::string hlo_ref = R"(
 ; CHECK:    ENTRY
 ; CHECK:      %[[P0:.*]] = bf16[127,125]{1,0} parameter(0)
 ; CHECK:      ROOT
@@ -1501,23 +1435,7 @@ ENTRY main {
 ; CHECK-SAME:   __triton_softmax
 )";
 
-    MatchOptimizedHlo(hlo_text, hlo_ref);
-  } else {
-    const std::string hlo_ref_template = R"(
-; CHECK:    ENTRY
-; CHECK:      %[[P0:.*]] = bf16[127,125]{1,0} parameter(0)
-; CHECK:      %[[CONVERT:.*]] = $0[127,125]{1,0} convert(%[[P0]])
-; CHECK:      ROOT
-; CHECK-SAME: fusion(%[[CONVERT]])
-; CHECK-SAME:   kind=kCustom
-; CHECK-SAME:   __triton_softmax
-)";
-
-    const std::string hlo_ref =
-        absl::Substitute(hlo_ref_template,
-                         primitive_util::LowercasePrimitiveTypeName(data_type));
-    MatchOptimizedHlo(hlo_text, hlo_ref);
-  }
+  MatchOptimizedHlo(hlo_text, hlo_ref);
 
   float tolerance;
   switch (data_type) {
@@ -1541,12 +1459,6 @@ TEST_P(
     TritonSoftmaxTest,
     CanFuseAndEmitBinaryElementwiseProducerIntoDiamondWhenBothOperandsAreTheSame) {  // NOLINT(whitespace/line_length)
   PrimitiveType data_type = GetParam();
-
-  if (data_type == BF16 && !GetCudaComputeCapability().IsAtLeast(
-                               se::CudaComputeCapability::AMPERE)) {
-    GTEST_SKIP() << R"(No BF16 before Ampere. Pre-Ampere BF16 behavior is tested
-    in CanFuseAndEmitFirstSoftmaxDiamond, and in SoftmaxRewriterTritonTest.)";
-  }
 
   const std::string hlo_text_template = R"(
 HloModule fusible_diamond
@@ -1604,12 +1516,6 @@ TEST_P(
     CanFuseAndEmitIntermediateBinaryElementwiseWithinDiamondWhenBothOperandsAreTheSame) {  // NOLINT(whitespace/line_length)
   PrimitiveType data_type = GetParam();
 
-  if (data_type == BF16 && !GetCudaComputeCapability().IsAtLeast(
-                               se::CudaComputeCapability::AMPERE)) {
-    GTEST_SKIP() << R"(No BF16 before Ampere. Pre-Ampere BF16 behavior is tested
-    in CanFuseAndEmitFirstSoftmaxDiamond, and in SoftmaxRewriterTritonTest.)";
-  }
-
   const std::string hlo_text_template = R"(
 HloModule fusible_diamond
 max_computation {
@@ -1666,12 +1572,6 @@ TEST_P(
     CanFuseAndEmitBinaryElementwiseWhenBothOperandsAreTheSameBetweenDiamonds) {  // NOLINT(whitespace/line_length)
   PrimitiveType data_type = GetParam();
 
-  if (data_type == BF16 && !GetCudaComputeCapability().IsAtLeast(
-                               se::CudaComputeCapability::AMPERE)) {
-    GTEST_SKIP() << R"(No BF16 before Ampere. Pre-Ampere BF16 behavior is tested
-    in CanFuseAndEmitFirstSoftmaxDiamond, and in SoftmaxRewriterTritonTest.)";
-  }
-
   const std::string hlo_text_template = R"(
 HloModule fusible_diamonds
 max_computation {
@@ -1679,22 +1579,16 @@ max_computation {
   arg_1 = $0[] parameter(1)
   ROOT maximum = $0[] maximum(arg_0, arg_1)
 }
-add_computation {
-  arg_0.1 = $0[] parameter(0)
-  arg_1.1 = $0[] parameter(1)
-  ROOT add = $0[] add(arg_0.1, arg_1.1)
-}
 ENTRY main {
   param_0 = $0[127,125]{1,0} parameter(0)
-  constant_neg_inf = $0[] constant(0)
-  reduce = $0[127]{0} reduce(param_0, constant_neg_inf), dimensions={1}, to_apply=add_computation
+  constant_neg_inf = $0[] constant(-inf)
+  reduce = $0[127]{0} reduce(param_0, constant_neg_inf), dimensions={1}, to_apply=max_computation
   broadcast = $0[127,125]{1,0} broadcast(reduce), dimensions={0}
   subtract = $0[127,125]{1,0} subtract(param_0, broadcast)
-  multiply = $0[127,125]{1,0} multiply(subtract, subtract)
-  constant_zero = $0[] constant(0)
-  second_reduce = $0[127]{0} reduce(multiply, constant_zero), dimensions={1}, to_apply=add_computation
+  add = $0[127,125]{1,0} add(subtract, subtract)
+  second_reduce = $0[127]{0} reduce(add, constant_neg_inf), dimensions={1}, to_apply=max_computation
   second_broadcast = $0[127,125]{1,0} broadcast(second_reduce), dimensions={0}
-  ROOT multiply_root = $0[127,125]{1,0} multiply(multiply, second_broadcast)
+  ROOT add_root = $0[127,125]{1,0} add(add, second_broadcast)
 }
 )";
   const std::string hlo_text = absl::Substitute(
@@ -1714,34 +1608,35 @@ ENTRY main {
 
   MatchOptimizedHlo(hlo_text, hlo_ref);
 
-  float tolerance;
+  // The precision-changing ops in the kernel above are add & subtract, meaning
+  // a value can be X*2(first add)*2(subtract)*2(second add) larger than it was
+  // originally. In order to fit this into a datatype, we do:
+  // X*2^3 <= 2^(fraction bits of the data type)
+  // 2^(max_bits_of_precision)*2^3 <= 2^(fraction bits of the data type)
+  // max_bits_of_precision = fraction_bits - 3.
+  uint max_bits_of_precision;
   switch (data_type) {
     case F32:
-      tolerance = 1e-6;
+      max_bits_of_precision = 20;
       break;
     case F16:
-      tolerance = 2e-4;
+      max_bits_of_precision = 7;
       break;
     case BF16:
-      tolerance = 2e-2;
+      max_bits_of_precision = 4;
       break;
     default:
       ABSL_UNREACHABLE();
   }
-  EXPECT_TRUE(RunAndCompare(hlo_text,
-                            ErrorSpec(/*aabs=*/tolerance, /*arel=*/tolerance)));
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec(/*aabs=*/0, /*arel=*/0),
+                            /*reference_preprocessor=*/nullptr,
+                            max_bits_of_precision));
 }
 
 TEST_P(
     TritonSoftmaxTest,
     CanFuseAndEmitBinaryElementwiseConsumerWhereBothOperandsAreTheSameIntoDiamond) {  // NOLINT(whitespace/line_length)
   PrimitiveType data_type = GetParam();
-
-  if (data_type == BF16 && !GetCudaComputeCapability().IsAtLeast(
-                               se::CudaComputeCapability::AMPERE)) {
-    GTEST_SKIP() << R"(No BF16 before Ampere. Pre-Ampere BF16 behavior is tested
-    in CanFuseAndEmitFirstSoftmaxDiamond, and in SoftmaxRewriterTritonTest.)";
-  }
 
   const std::string hlo_text_template = R"(
 HloModule fusible_diamond
@@ -1804,12 +1699,6 @@ TEST_P(
     TritonSoftmaxTest,
     CanFuseAndEmitTwoBinaryElementwiseWhereBothOperandsAreTheSameBetweenDiamonds) {  // NOLINT(whitespace/line_length)
   PrimitiveType data_type = GetParam();
-
-  if (data_type == BF16 && !GetCudaComputeCapability().IsAtLeast(
-                               se::CudaComputeCapability::AMPERE)) {
-    GTEST_SKIP() << R"(No BF16 before Ampere. Pre-Ampere BF16 behavior is tested
-    in CanFuseAndEmitFirstSoftmaxDiamond, and in SoftmaxRewriterTritonTest.)";
-  }
 
   const std::string hlo_text_template = R"(
 HloModule fusible_diamonds
@@ -1911,10 +1800,6 @@ TEST_P(TritonSoftmaxTest, CanFuseAndEmitRMSNormDiamond) {
 
   if (data_type == F16) {
     GTEST_SKIP() << "rsqrt op does not support F16.";
-  } else if (data_type == BF16 && !GetCudaComputeCapability().IsAtLeast(
-                                      se::CudaComputeCapability::AMPERE)) {
-    GTEST_SKIP() << R"(No BF16 before Ampere. Pre-Ampere BF16 behavior is tested
-    in CanFuseAndEmitFirstSoftmaxDiamond, and in SoftmaxRewriterTritonTest.)";
   }
 
   const std::string hlo_text_template = R"(
@@ -1981,12 +1866,6 @@ TEST_P(
     CanFuseAndEmitBinaryElementwiseWhereTheFirstOperandIsASplatConstantBetweenDiamonds) {  // NOLINT(whitespace/line_length)
   PrimitiveType data_type = GetParam();
 
-  if (data_type == BF16 && !GetCudaComputeCapability().IsAtLeast(
-                               se::CudaComputeCapability::AMPERE)) {
-    GTEST_SKIP() << R"(No BF16 before Ampere. Pre-Ampere BF16 behavior is tested
-    in CanFuseAndEmitFirstSoftmaxDiamond, and in SoftmaxRewriterTritonTest.)";
-  }
-
   const std::string hlo_text_template = R"(
 HloModule fusible_diamonds
 add_computation {
@@ -2049,12 +1928,6 @@ TEST_P(
     TritonSoftmaxTest,
     CanFuseAndEmitBinaryElementwiseWhereTheSecondOperandIsASplatConstantBetweenDiamonds) {  // NOLINT(whitespace/line_length)
   PrimitiveType data_type = GetParam();
-
-  if (data_type == BF16 && !GetCudaComputeCapability().IsAtLeast(
-                               se::CudaComputeCapability::AMPERE)) {
-    GTEST_SKIP() << R"(No BF16 before Ampere. Pre-Ampere BF16 behavior is tested
-    in CanFuseAndEmitFirstSoftmaxDiamond, and in SoftmaxRewriterTritonTest.)";
-  }
 
   const std::string hlo_text_template = R"(
 HloModule fusible_diamonds
@@ -2119,12 +1992,6 @@ TEST_P(
     CanFuseAndEmitBinaryElementwiseWhereTheFirstOperandIsASplatConstantWithinDiamond) {  // NOLINT(whitespace/line_length)
   PrimitiveType data_type = GetParam();
 
-  if (data_type == BF16 && !GetCudaComputeCapability().IsAtLeast(
-                               se::CudaComputeCapability::AMPERE)) {
-    GTEST_SKIP() << R"(No BF16 before Ampere. Pre-Ampere BF16 behavior is tested
-    in CanFuseAndEmitFirstSoftmaxDiamond, and in SoftmaxRewriterTritonTest.)";
-  }
-
   const std::string hlo_text_template = R"(
 HloModule fusible_diamond
 max_computation {
@@ -2184,12 +2051,6 @@ TEST_P(
     CanFuseAndEmitBinaryElementwiseConsumerWhereTheFirstOperandIsASplatConstantIntoDiamond) {  // NOLINT(whitespace/line_length)
   PrimitiveType data_type = GetParam();
 
-  if (data_type == BF16 && !GetCudaComputeCapability().IsAtLeast(
-                               se::CudaComputeCapability::AMPERE)) {
-    GTEST_SKIP() << R"(No BF16 before Ampere. Pre-Ampere BF16 behavior is tested
-    in CanFuseAndEmitFirstSoftmaxDiamond, and in SoftmaxRewriterTritonTest.)";
-  }
-
   const std::string hlo_text_template = R"(
 HloModule fusible_diamond
 add_computation {
@@ -2247,12 +2108,6 @@ TEST_P(
     TritonSoftmaxTest,
     CanFuseAndEmitBinaryElementwiseProducerWhereTheFirstOperandIsASplatConstantIntoDiamond) {  // NOLINT(whitespace/line_length)
   PrimitiveType data_type = GetParam();
-
-  if (data_type == BF16 && !GetCudaComputeCapability().IsAtLeast(
-                               se::CudaComputeCapability::AMPERE)) {
-    GTEST_SKIP() << R"(No BF16 before Ampere. Pre-Ampere BF16 behavior is tested
-    in CanFuseAndEmitFirstSoftmaxDiamond, and in SoftmaxRewriterTritonTest.)";
-  }
 
   const std::string hlo_text_template = R"(
 HloModule fusible_diamond
@@ -2312,12 +2167,6 @@ TEST_P(
     TritonSoftmaxTest,
     CanFuseAndEmitBinaryElementwiseOperationWhereOneOperandIsASharedSplatProducerIntoDiamond) {  // NOLINT(whitespace/line_length)
   PrimitiveType data_type = GetParam();
-
-  if (data_type == BF16 && !GetCudaComputeCapability().IsAtLeast(
-                               se::CudaComputeCapability::AMPERE)) {
-    GTEST_SKIP() << R"(No BF16 before Ampere. Pre-Ampere BF16 behavior is tested
-    in CanFuseAndEmitFirstSoftmaxDiamond, and in SoftmaxRewriterTritonTest.)";
-  }
 
   const std::string hlo_text_template = R"(
 HloModule nonfusible_diamond
@@ -2385,17 +2234,16 @@ ENTRY main {
 }
 )";
 
-  // Param order is arbitrary. We test that only param_1 is in the fused root
-  // instruction below.
   const std::string hlo_ref = R"(
 ; CHECK:    ENTRY
 ; CHECK-DAG:    %[[param_0:.*]] = f32[125,127]{1,0} parameter(0)
 ; CHECK-DAG:    %[[param_1:.*]] = f32[127]{0} parameter(1)
 ; CHECK:      ROOT
 ; CHECK-SAME:   f32[125,127]{1,0} fusion
-; CHECK-SAME:   %[[param_1]]
-; CHECK-SAME:   kind=kCustom
-; CHECK-SAME:   triton_softmax
+; CHECK-SAME:    %[[param_0]]
+; CHECK-SAME:    %[[param_1]]
+; CHECK-SAME:          kind=kCustom
+; CHECK-SAME:          triton_softmax
 )";
   MatchOptimizedHlo(hlo_text, hlo_ref);
 

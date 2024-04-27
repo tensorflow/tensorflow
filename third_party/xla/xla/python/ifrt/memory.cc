@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -63,12 +63,14 @@ MemoryKind CanonicalizeMemoryKind(MemoryKind memory_kind, Device* device) {
   if (memory_kind.memory_kind().has_value()) {
     return memory_kind;
   }
-  auto default_memory_space = device->default_memory_space();
-  if (default_memory_space.ok()) {
-    return MemoryKind((*default_memory_space)->memory_space_kind());
+  auto default_memory = device->DefaultMemory();
+  if (default_memory.ok()) {
+    return (*default_memory)->Kind();
   }
   return MemoryKind();
 }
+
+char Memory::ID = 0;
 
 }  // namespace ifrt
 }  // namespace xla

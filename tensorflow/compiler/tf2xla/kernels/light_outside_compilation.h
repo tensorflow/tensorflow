@@ -47,7 +47,7 @@ class LightOutsideCompilationOp : public XlaOpKernel {
 
   // Override to provide statically known bounds on output in case of dynamic
   // shapes.
-  virtual StatusOr<OutputDimensionBoundsMap> DynamicOutputDimensions(
+  virtual absl::StatusOr<OutputDimensionBoundsMap> DynamicOutputDimensions(
       const NodeDef& ndef, XlaOpKernelContext* ctx) const {
     return OutputDimensionBoundsMap{};
   }

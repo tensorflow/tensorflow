@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,7 +20,6 @@ limitations under the License.
 #include <cstdlib>
 #include <functional>
 #include <limits>
-#include <list>
 #include <memory>
 #include <optional>
 #include <string>
@@ -31,10 +30,14 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -52,11 +55,17 @@ limitations under the License.
 
 namespace xla {
 namespace {
+
+const int64_t kDefaultMemorySpace = 0;
+
 bool IsNopInstruction(const HloInstruction& hlo) {
   HloOpcode op = hlo.opcode();
   return op == HloOpcode::kGetTupleElement || op == HloOpcode::kBitcast ||
          op == HloOpcode::kConstant || op == HloOpcode::kParameter ||
-         hlo.IsEffectiveBitcast();
+         op == HloOpcode::kBroadcast || op == HloOpcode::kIota ||
+         hlo.IsEffectiveBitcast() ||
+         (op == HloOpcode::kTuple && hlo.user_count() == 1 &&
+          hlo.users().front()->opcode() == HloOpcode::kWhile);
 }
 }  // namespace
 
@@ -71,6 +80,10 @@ CanonicalAsyncOp DefaultGetCanonicalAsyncOp(const HloInstruction& hlo) {
       return {HloOpcode::kAsyncStart, HloOpcode::kAllGather};
     case HloOpcode::kCollectivePermuteStart:
       return {HloOpcode::kAsyncStart, HloOpcode::kCollectivePermute};
+    case HloOpcode::kCopyStart:
+      return {HloOpcode::kAsyncStart, HloOpcode::kCopy};
+    case HloOpcode::kCopyDone:
+      return {HloOpcode::kAsyncDone, HloOpcode::kCopy};
     case HloOpcode::kAllReduceDone:
       return {HloOpcode::kAsyncDone, HloOpcode::kAllReduce};
     case HloOpcode::kAllGatherDone:
@@ -130,7 +143,9 @@ bool AsyncTracker::IsSupportedAsyncDone(const HloInstruction& hlo) const {
       case HloOpcode::kAllToAll:
       case HloOpcode::kAllGather:
       case HloOpcode::kAllReduce:
+      case HloOpcode::kCollectiveBroadcast:
       case HloOpcode::kCollectivePermute:
+      case HloOpcode::kCopy:
       case HloOpcode::kReduceScatter:
         return true;
       default:
@@ -157,7 +172,9 @@ bool AsyncTracker::IsSupportedAsyncStart(const HloInstruction& hlo) const {
       case HloOpcode::kAllToAll:
       case HloOpcode::kAllGather:
       case HloOpcode::kAllReduce:
+      case HloOpcode::kCollectiveBroadcast:
       case HloOpcode::kCollectivePermute:
+      case HloOpcode::kCopy:
       case HloOpcode::kReduceScatter:
         return true;
       default:
@@ -167,7 +184,7 @@ bool AsyncTracker::IsSupportedAsyncStart(const HloInstruction& hlo) const {
   return false;
 }
 
-ResourcesVector AsyncTracker::GetResourcesFromInstruction(
+ResourcesVector AsyncTracker::GetResourcesFromInstructionImpl(
     const HloInstruction& hlo) const {
   CanonicalAsyncOp op = GetCanonicalAsyncOp(hlo);
   auto get_resource_for_op = [](HloOpcode op) -> ResourceType {
@@ -178,8 +195,12 @@ ResourcesVector AsyncTracker::GetResourcesFromInstruction(
         return ResourceType::kAllGather;
       case HloOpcode::kAllToAll:
         return ResourceType::kAllToAll;
+      case HloOpcode::kCollectiveBroadcast:
+        return ResourceType::kCollectiveBroadcast;
       case HloOpcode::kCollectivePermute:
         return ResourceType::kCollectivePermute;
+      case HloOpcode::kCopy:
+        return ResourceType::kCopy;
       case HloOpcode::kReduceScatter:
         return ResourceType::kReduceScatter;
       default:
@@ -242,6 +263,14 @@ ResourcesVector AsyncTracker::GetResourcesFromInstruction(
     default:
       return ResourcesVector{};
   }
+}
+
+ResourcesVector AsyncTracker::GetResourcesFromInstruction(
+    const HloInstruction& hlo) const {
+  if (!resources_cache_.contains(&hlo)) {
+    resources_cache_.insert({&hlo, GetResourcesFromInstructionImpl(hlo)});
+  }
+  return resources_cache_.at(&hlo);
 }
 
 int64_t AsyncTracker::GetNumResourcesPerInstruction(
@@ -313,8 +342,13 @@ void AsyncTracker::SetConcurrentResourceLimits(
     absl::flat_hash_map<int64_t, int64_t>& max_concurrent_resource) const {
   // Set the limits for default resources
   max_concurrent_resource[ResourceTypeToIndex(
+      ResourceType::kCollectiveBroadcast)] =
+      config_.collective_broadcast_overlap_limit;
+  max_concurrent_resource[ResourceTypeToIndex(
       ResourceType::kCollectivePermute)] =
       config_.collective_permute_overlap_limit;
+  max_concurrent_resource[ResourceTypeToIndex(ResourceType::kCopy)] =
+      config_.copy_overlap_limit;
   max_concurrent_resource[ResourceTypeToIndex(ResourceType::kAllToAll)] =
       config_.all_to_all_overlap_limit;
   max_concurrent_resource[ResourceTypeToIndex(ResourceType::kAllGather)] =
@@ -348,14 +382,20 @@ absl::string_view AsyncTracker::GetResourceName(int64_t resource_type) const {
       return "kAllGather";
     case ResourceTypeToIndex(ResourceType::kAllReduce):
       return "kAllReduce";
+    case ResourceTypeToIndex(ResourceType::kCollectiveBroadcast):
+      return "kCollectiveBroadcast";
     case ResourceTypeToIndex(ResourceType::kCollectivePermute):
       return "kCollectivePermute";
+    case ResourceTypeToIndex(ResourceType::kCopy):
+      return "kCopy";
     case ResourceTypeToIndex(ResourceType::kSendRecv):
       return "kSendRecv";
     case ResourceTypeToIndex(ResourceType::kSendHost):
       return "kSendHost";
     case ResourceTypeToIndex(ResourceType::kRecvHost):
       return "kRecvHost";
+    case ResourceTypeToIndex(ResourceType::kReduceScatter):
+      return "kReduceScatter";
     default:
       return "Not a valid default resource";
   }
@@ -403,6 +443,14 @@ AsyncTracker::GetReleasedShareableResourcesFromVector(
 // this async tracker does not know which resources are shareable.
 absl::InlinedVector<int64_t, 1>
 AsyncTracker::GetOccupiedShareableResourcesFromVector(
+    const ResourcesVector& resources) const {
+  return {};
+}
+
+// For now, only the target-defined resources have serial hazard type, so
+// this async tracker does not know which resources are serial.
+absl::InlinedVector<int64_t, 1>
+AsyncTracker::GetOccupiedSerialResourcesFromVector(
     const ResourcesVector& resources) const {
   return {};
 }
@@ -519,6 +567,10 @@ void MemoryPressureTracker::Initialize(
   if (!initial_live_buffers.empty()) {
     for (HloBuffer::Id id : initial_live_buffers) {
       auto& buffer = buffer_tracker_.GetBufferInfo(id);
+      if (buffer.value->values()[0]->shape().has_layout() &&
+          buffer.value->values()[0]->shape().layout().memory_space() != 0) {
+        continue;
+      }
       live_buffers_[buffer.value->id()] = 1;
       initial_memory_pressure_ += buffer.buffer_size;
     }
@@ -545,7 +597,11 @@ void MemoryPressureTracker::UpdateBuffers(const HloInstruction* instruction) {
   for (auto* op : instruction->operands()) {
     auto& output_values = output_buffers_[op];
     for (auto& info : output_values) {
-      if (ShouldSkipBufferAllocations(instruction, info.second)) {
+      if (ShouldSkipBufferAllocations(instruction, info.second,
+                                      info.first.first_definition) ||
+          (info.first.value->values()[0]->shape().has_layout() &&
+           info.first.value->values()[0]->shape().layout().memory_space() !=
+               kDefaultMemorySpace)) {
         continue;
       }
       if (live_buffers_[info.first.value->id()] == 0) {
@@ -561,6 +617,11 @@ void MemoryPressureTracker::UpdateBuffers(const HloInstruction* instruction) {
   CHECK(it != defined_buffers_.end());
   if (!ShouldSkipBufferReleases(instruction)) {
     for (auto& b : it->second) {
+      if (b.value->values()[0]->shape().has_layout() &&
+          b.value->values()[0]->shape().layout().memory_space() !=
+              kDefaultMemorySpace) {
+        continue;
+      }
       if (live_buffers_[b.value->id()] != 0) {
         if (b.first_definition == instruction) {
           live_memory_usage_ -= b.buffer_size;
@@ -596,7 +657,11 @@ std::pair<int64_t, int64_t> MemoryPressureTracker::MemoryPressureDifference(
     auto it = output_buffers_.find(op);
     CHECK(it != output_buffers_.end());
     for (auto& b : it->second) {
-      if (ShouldSkipBufferAllocations(instruction, b.second)) {
+      if (ShouldSkipBufferAllocations(instruction, b.second,
+                                      b.first.first_definition) ||
+          (b.first.value->values()[0]->shape().has_layout() &&
+           b.first.value->values()[0]->shape().layout().memory_space() !=
+               kDefaultMemorySpace)) {
         continue;
       }
       if (!live_buffers_[b.first.value->id()]) {
@@ -610,6 +675,11 @@ std::pair<int64_t, int64_t> MemoryPressureTracker::MemoryPressureDifference(
   // Decrease memory pressure if some buffers are released.
   if (!ShouldSkipBufferReleases(instruction)) {
     for (auto& b : it->second) {
+      if (b.value->values()[0]->shape().has_layout() &&
+          b.value->values()[0]->shape().layout().memory_space() !=
+              kDefaultMemorySpace) {
+        continue;
+      }
       if (live_buffers_[b.value->id()]) {
         if (b.first_definition == instruction) {
           increase -= b.buffer_size;
@@ -650,16 +720,17 @@ class ReadySetLt {
   DefaultSchedulerCore::CandidateResult operator()(
       DefaultSchedulerCore::ScheduleCandidate& a,
       DefaultSchedulerCore::ScheduleCandidate& b) const {
+    // Schedule according to ForceEarly.
+    if (auto value = DefaultSchedulerCore::ChooseBestCandidate(
+            a.node->GetForceEarly(), a, b.node->GetForceEarly(), b,
+            "kForceEarly")) {
+      return *value;
+    }
     // Schedule according to ForceDelay first.
     if (auto value = DefaultSchedulerCore::ChooseBestCandidate(
             !a.node->GetForceDelay(), a, !b.node->GetForceDelay(), b,
             "kForceDelay")) {
       return *value;
-    }
-    if (early_target_scheduling_rule_) {
-      if (auto value = early_target_scheduling_rule_(a, b)) {
-        return *value;
-      }
     }
     // Prioritize instructions that are NOPs as they have no memory pressure
     // issue and unlock different operations for being scheduled.
@@ -722,6 +793,11 @@ class ReadySetLt {
         return *value;
       }
     }
+    if (early_target_scheduling_rule_) {
+      if (auto value = early_target_scheduling_rule_(a, b)) {
+        return *value;
+      }
+    }
     // Some heuristic that try to prioritize unlocking "done" instructions
     // so that we can perform overlap. More fancy heuristics can be used by
     // discovering the closest "done" to every instruction and prioritize
@@ -772,6 +848,20 @@ class ReadySetLt {
             b_ready_interval < a_ready_interval, b, "kLessStall")) {
       return *value;
     }
+    if (sched_state_.config.resource_serializing) {
+      // Prioritize scheduling the instruction which has less serial-resource
+      // conflicts with the resources in flight.
+      const int64_t a_num_conflicting_resources =
+          GetNumConflictingSerialResources(a);
+      const int64_t b_num_conflicting_resources =
+          GetNumConflictingSerialResources(b);
+      if (auto value = DefaultSchedulerCore::ChooseBestCandidate(
+              a_num_conflicting_resources < b_num_conflicting_resources, a,
+              b_num_conflicting_resources < a_num_conflicting_resources, b,
+              "kLessSerialResourceConflict")) {
+        return *value;
+      }
+    }
     if (sched_state_.config.aggressive_scheduling_policies) {
       // If an instruction releasing a resource is not resource constrained and
       // has an async depth of 0, delay it as much as possible to avoid
@@ -815,8 +905,10 @@ class ReadySetLt {
         HloGraphNode::TimeCost b_cost_diff = std::abs(
             latest_ready - sched_state_.current_time - b.node->GetCost());
         if (auto value = DefaultSchedulerCore::ChooseBestCandidate(
-                a_cost_diff < b_cost_diff, a, b_cost_diff < a_cost_diff, b,
-                "kAvoidWaste")) {
+                !a.node->DoesReleaseAnyResource() && a_cost_diff < b_cost_diff,
+                a,
+                !b.node->DoesReleaseAnyResource() && b_cost_diff < a_cost_diff,
+                b, "kAvoidWaste")) {
           return *value;
         }
       }
@@ -995,15 +1087,45 @@ class ReadySetLt {
     }
     return *cand.pressure_change;
   }
+  int64_t GetNumConflictingSerialResources(
+      DefaultSchedulerCore::ScheduleCandidate& cand) const {
+    auto resources =
+        sched_state_.async_tracker->GetOccupiedSerialResourcesFromVector(
+            cand.node->GetResources());
+    int64_t num_conflicting_resources = 0;
+    for (int64_t resource : resources) {
+      if (!sched_state_.resources_in_flight.contains(resource)) continue;
+      num_conflicting_resources +=
+          sched_state_.resources_in_flight.at(resource);
+    }
+    return num_conflicting_resources;
+  }
 };
+
+enum SkipNodeReason {
+  kShouldSkipNodeFunction,
+  kExceedsOverlapLimit,
+};
+
+absl::string_view SkipNodeReasonString(SkipNodeReason reason) {
+  switch (reason) {
+    case SkipNodeReason::kShouldSkipNodeFunction:
+      return "Skipped due to kShouldSkipNodeFunction.";
+    case SkipNodeReason::kExceedsOverlapLimit:
+      return "Skipped due to kExceedsOverlapLimit.";
+  }
+}
 
 }  // namespace
 
 // Helper function to find the best node from the queues of scheduling state for
 // scheduling.
-HloGraphNode* DefaultSchedulerCore::FindAndExtractBestNodeAvailable(
+absl::StatusOr<HloGraphNode*>
+DefaultSchedulerCore::FindAndExtractBestNodeAvailable(
     DefaultSchedulerCore::SchedulingState& sched_state,
     DefaultSchedulerCore::ShouldSkipNodeFunction should_skip_node) {
+  absl::InlinedVector<std::pair<HloGraphNode*, SkipNodeReason>, 2>
+      skipped_nodes_and_reasons;
   auto scheduling_instruction_crosses_overlap_limit =
       [&sched_state](const HloInstruction& instr) {
         for (const auto& [resource, limit] :
@@ -1036,12 +1158,20 @@ HloGraphNode* DefaultSchedulerCore::FindAndExtractBestNodeAvailable(
             e = sched_state.ready_set.end();
        ready_node_it != e; ++ready_node_it) {
     if (should_skip_node && should_skip_node(*ready_node_it)) {
+      if (ready_chosen.node == nullptr) {
+        skipped_nodes_and_reasons.push_back(
+            {*ready_node_it, SkipNodeReason::kShouldSkipNodeFunction});
+      }
       continue;
     }
     // If this node would cause the max_concurrent_resource count to go beyond
     // the limit do not schedule it and pass to the next node.
     if (scheduling_instruction_crosses_overlap_limit(
             (*ready_node_it)->GetInstr())) {
+      if (ready_chosen.node == nullptr) {
+        skipped_nodes_and_reasons.push_back(
+            {*ready_node_it, SkipNodeReason::kExceedsOverlapLimit});
+      }
       continue;
     }
     ScheduleCandidate ready_candidate =
@@ -1085,7 +1215,15 @@ HloGraphNode* DefaultSchedulerCore::FindAndExtractBestNodeAvailable(
     }
   }
   if (ready_chosen.node == nullptr) {
-    return nullptr;
+    return absl::InternalError(absl::StrCat(
+        "FindAndExtractBestNodeAvailable failed to find a node to "
+        "schedule, skipped nodes: ",
+        absl::StrJoin(skipped_nodes_and_reasons, "; ",
+                      [](std::string* out, const auto& pair) {
+                        absl::StrAppend(out, pair.first->GetInstr().name(),
+                                        ": ",
+                                        SkipNodeReasonString(pair.second));
+                      })));
   }
   CHECK(chosen_it != sched_state.ready_set.end());
   std::swap(*chosen_it, sched_state.ready_set.back());
@@ -1213,7 +1351,7 @@ bool DefaultSchedulerCore::AddOccupierToResource(
   return true;
 }
 
-StatusOr<HloGraphNode::TimeCost> DefaultSchedulerCore::ScheduleNode(
+absl::StatusOr<HloGraphNode::TimeCost> DefaultSchedulerCore::ScheduleNode(
     HloGraphNode* n, DefaultSchedulerCore::SchedulingState* sched_state) const {
   // Insert the node into the sequence and mark it as scheduled.
   sched_state->new_sequence_reversed.push_back(
@@ -1631,8 +1769,9 @@ Status DefaultSchedulerCore::InitializeScheduler(const HloModule* module) {
 Status DefaultSchedulerCore::SchedulingStep(SchedulingState* sched_state) {
   // Get the first available node for scheduling that is the node that
   // satisfies our ready heuristic the best.
-  HloGraphNode* node = FindAndExtractBestNodeAvailable(
-      *sched_state, /*should_skip_node=*/nullptr);
+  TF_ASSIGN_OR_RETURN(HloGraphNode * node,
+                      FindAndExtractBestNodeAvailable(
+                          *sched_state, /*should_skip_node=*/nullptr));
   CHECK(node != nullptr);
   TF_ASSIGN_OR_RETURN(sched_state->current_time,
                       ScheduleNode(node, sched_state));
@@ -1641,7 +1780,7 @@ Status DefaultSchedulerCore::SchedulingStep(SchedulingState* sched_state) {
   return OkStatus();
 }
 
-StatusOr<std::vector<HloInstruction*>>
+absl::StatusOr<std::vector<HloInstruction*>>
 DefaultSchedulerCore::ScheduleComputation(const HloComputation* computation) {
   const HloSchedule& module_schedule = computation->parent()->schedule();
   MemoryPressureTracker memory_pressure_tracker(
@@ -1777,6 +1916,7 @@ LatencyHidingScheduler::LatencyHidingStatistics(
     kReduceScatter,
     kSend,
     kRecv,
+    kCollectiveBroadcast,
   };
   auto opcode_to_async_kind = [](HloOpcode opcode) {
     switch (opcode) {
@@ -1784,6 +1924,8 @@ LatencyHidingScheduler::LatencyHidingStatistics(
         return AsyncKind::kAllGather;
       case HloOpcode::kAllReduce:
         return AsyncKind::kAllReduce;
+      case HloOpcode::kCollectiveBroadcast:
+        return AsyncKind::kCollectiveBroadcast;
       case HloOpcode::kCollectivePermute:
         return AsyncKind::kCollectivePermute;
       case HloOpcode::kAllToAll:
@@ -1842,15 +1984,21 @@ LatencyHidingScheduler::LatencyHidingStatistics(
           .push_back({instr, current_time, curr_pos});
     } else if (async_tracker->IsSupportedAsyncDone(*instr)) {
       const HloInstruction* start_instr = instr->operand(0);
-      auto it = find_outstanding_async(start_instr);
-      const HloGraphNode& start_node = schedule_graph.GetNode(std::get<0>(*it));
-      auto edge_it = find_node_successor_edge(start_node, instr_node);
-      const double async_wasted_cycles =
-          std::max(0.0, edge_it->Latency() - (current_time - std::get<1>(*it)));
-      AsyncKind kind = opcode_to_async_kind(
-          async_tracker->GetCanonicalAsyncOp(*start_instr).inner);
-      wasted_time_per_collective[kind] += async_wasted_cycles;
-      current_time += async_wasted_cycles;
+      // TODO(b/329731042): Handle pipelined Send/Recv in while-body, which
+      // is the only situation where an async done operand is not an async
+      // start.
+      if (async_tracker->IsSupportedAsyncStart(*start_instr)) {
+        auto it = find_outstanding_async(start_instr);
+        const HloGraphNode& start_node =
+            schedule_graph.GetNode(std::get<0>(*it));
+        auto edge_it = find_node_successor_edge(start_node, instr_node);
+        const double async_wasted_cycles = std::max(
+            0.0, edge_it->Latency() - (current_time - std::get<1>(*it)));
+        AsyncKind kind = opcode_to_async_kind(
+            async_tracker->GetCanonicalAsyncOp(*start_instr).inner);
+        wasted_time_per_collective[kind] += async_wasted_cycles;
+        current_time += async_wasted_cycles;
+      }
     }
     curr_pos++;
   }
@@ -1874,6 +2022,8 @@ LatencyHidingScheduler::LatencyHidingStatistics(
       wasted_time_per_collective[AsyncKind::kAllGather],
       /*all_reduce_wasted_cycles=*/
       wasted_time_per_collective[AsyncKind::kAllReduce],
+      /*collective_broadcast_wasted_cycles=*/
+      wasted_time_per_collective[AsyncKind::kCollectiveBroadcast],
       /*collective_permute_wasted_cycles=*/
       wasted_time_per_collective[AsyncKind::kCollectivePermute],
       /*all_to_all_wasted_cycles=*/
@@ -1901,6 +2051,7 @@ std::string LatencyHidingScheduler::SchedulerStatisticsString(
   absl::StrAppend(&result, "Total wasted cycles: ",
                   sched_stats.all_gather_wasted_cycles +
                       sched_stats.all_reduce_wasted_cycles +
+                      sched_stats.collective_broadcast_wasted_cycles +
                       sched_stats.collective_permute_wasted_cycles +
                       sched_stats.all_to_all_wasted_cycles +
                       sched_stats.reduce_scatter_wasted_cycles +
@@ -1911,6 +2062,8 @@ std::string LatencyHidingScheduler::SchedulerStatisticsString(
                   sched_stats.all_reduce_wasted_cycles, "\n");
   absl::StrAppend(&result, "Wasted cycles for all-gather: ",
                   sched_stats.all_gather_wasted_cycles, "\n");
+  absl::StrAppend(&result, "Wasted cycles for collective-broadcast: ",
+                  sched_stats.collective_broadcast_wasted_cycles, "\n");
   absl::StrAppend(&result, "Wasted cycles for collective-permute: ",
                   sched_stats.collective_permute_wasted_cycles, "\n");
   absl::StrAppend(&result, "Wasted cycles for all-to-all: ",
@@ -1936,7 +2089,7 @@ void LatencyHidingScheduler::LogScheduleStatistics(
                         async_tracker_.get(), shape_size_bytes_)));
 }
 
-StatusOr<bool> LatencyHidingScheduler::Run(
+absl::StatusOr<bool> LatencyHidingScheduler::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   VLOG(5) << "Original module:";

@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -36,7 +36,7 @@ bool HloComputationDeduplicator::ContainsLargeConstants(HloComputation* comp) {
   }
   return false;
 }
-StatusOr<bool> HloComputationDeduplicator::Run(
+absl::StatusOr<bool> HloComputationDeduplicator::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   absl::flat_hash_map<std::string, HloComputation*> unique_comps;

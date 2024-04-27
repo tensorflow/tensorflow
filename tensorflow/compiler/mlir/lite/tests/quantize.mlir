@@ -49,7 +49,7 @@ func.func @NotQuantizeFloatConst() -> tensor<2x2xf32> {
   %2 = "tfl.dequantize"(%1) : (tensor<2x2x!quant.uniform<u8:f32, 7.8431372549019615E-4:128>>) -> tensor<2x2xf32>
   func.return %2 : tensor<2x2xf32>
 
-// CHECK:  %[[cst:.*]] = arith.constant dense<-1.000000e-01> : tensor<2x2xf32>
+// CHECK:  %[[cst:.*]] = "tfl.pseudo_const"(){{.*}}dense<-1.000000e-01> : tensor<2x2xf32>
 // CHECK:  return %[[cst]] : tensor<2x2xf32>
 }
 
@@ -150,7 +150,7 @@ func.func @QuantizeFullyConnected(tensor<1x224x224x3x!quant.uniform<u8:f32, 7.81
 // CHECK: %[[fc:.*]] = "tfl.fully_connected"(%arg0, %[[cst_1]], %[[cst_0]]) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"}
 // CHECK: return %[[fc]]
 
-// BLOCK: %[[cst:.*]] = arith.constant dense<-1.23697901>
+// BLOCK: %[[cst:.*]] = "tfl.pseudo_const"(){{.*}}dense<-1.23697901>
 // BLOCK: %[[dq1:.*]] = "tfl.dequantize"(%arg0)
 // BLOCK: %[[cst2:.*]] = "tfl.pseudo_qconst"() {qtype = tensor<32x12x!quant.uniform<u8<1:255>:f32, 0.021826678373682216:151>>, value = dense<-76> : tensor<32x12xi8>}
 // BLOCK: %[[dq2:.*]] = "tfl.dequantize"(%[[cst2]])
@@ -175,7 +175,7 @@ func.func @QuantizeFullyConnected4Bit(tensor<1x224x224x3x!quant.uniform<u8:f32, 
 // CHECK: %[[fc:.*]] = "tfl.fully_connected"(%arg0, %[[cst_1]], %[[cst_0]]) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"}
 // CHECK: return %[[fc]]
 
-// BLOCK: %[[cst:.*]] = arith.constant dense<-1.23697901>
+// BLOCK: %[[cst:.*]] = "tfl.pseudo_const"(){{.*}}dense<-1.23697901>
 // BLOCK: %[[dq1:.*]] = "tfl.dequantize"(%arg0)
 // BLOCK: %[[cst2:.*]] = "tfl.pseudo_qconst"() {qtype = tensor<32x12x!quant.uniform<u4<1:15>:f32, 0.39599830800000002:8>>, value = dense<-7> : tensor<32x12xi4>}
 // BLOCK: %[[dq2:.*]] = "tfl.dequantize"(%[[cst2]])

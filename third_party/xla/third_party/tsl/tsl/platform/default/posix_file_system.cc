@@ -60,14 +60,14 @@ class PosixRandomAccessFile : public RandomAccessFile {
     }
   }
 
-  Status Name(StringPiece* result) const override {
+  absl::Status Name(StringPiece* result) const override {
     *result = filename_;
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status Read(uint64 offset, size_t n, StringPiece* result,
-              char* scratch) const override {
-    Status s;
+  absl::Status Read(uint64 offset, size_t n, StringPiece* result,
+                    char* scratch) const override {
+    absl::Status s;
     char* dst = scratch;
     while (n > 0 && s.ok()) {
       // Some platforms, notably macs, throw EINVAL if pread is asked to read
@@ -85,8 +85,8 @@ class PosixRandomAccessFile : public RandomAccessFile {
         n -= r;
         offset += r;
       } else if (r == 0) {
-        s = Status(absl::StatusCode::kOutOfRange,
-                   "Read less bytes than requested");
+        s = absl::Status(absl::StatusCode::kOutOfRange,
+                         "Read less bytes than requested");
       } else if (errno == EINTR || errno == EAGAIN) {
         // Retry
       } else {
@@ -98,9 +98,9 @@ class PosixRandomAccessFile : public RandomAccessFile {
   }
 
 #if defined(TF_CORD_SUPPORT)
-  Status Read(uint64 offset, size_t n, absl::Cord* cord) const override {
+  absl::Status Read(uint64 offset, size_t n, absl::Cord* cord) const override {
     if (n == 0) {
-      return OkStatus();
+      return absl::OkStatus();
     }
     if (n < 0) {
       return errors::InvalidArgument(
@@ -115,7 +115,7 @@ class PosixRandomAccessFile : public RandomAccessFile {
     }
 
     StringPiece tmp;
-    Status s = Read(offset, n, &tmp, scratch);
+    absl::Status s = Read(offset, n, &tmp, scratch);
 
     absl::Cord tmp_cord = absl::MakeCordFromExternal(
         absl::string_view(static_cast<char*>(scratch), tmp.size()),
@@ -142,32 +142,32 @@ class PosixWritableFile : public WritableFile {
     }
   }
 
-  Status Append(StringPiece data) override {
+  absl::Status Append(StringPiece data) override {
     size_t r = fwrite(data.data(), 1, data.size(), file_);
     if (r != data.size()) {
       return IOError(filename_, errno);
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
 #if defined(TF_CORD_SUPPORT)
   // \brief Append 'cord' to the file.
-  Status Append(const absl::Cord& cord) override {
+  absl::Status Append(const absl::Cord& cord) override {
     for (const auto& chunk : cord.Chunks()) {
       size_t r = fwrite(chunk.data(), 1, chunk.size(), file_);
       if (r != chunk.size()) {
         return IOError(filename_, errno);
       }
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 #endif
 
-  Status Close() override {
+  absl::Status Close() override {
     if (file_ == nullptr) {
       return IOError(filename_, EBADF);
     }
-    Status result;
+    absl::Status result;
     if (fclose(file_) != 0) {
       result = IOError(filename_, errno);
     }
@@ -175,28 +175,28 @@ class PosixWritableFile : public WritableFile {
     return result;
   }
 
-  Status Flush() override {
+  absl::Status Flush() override {
     if (fflush(file_) != 0) {
       return IOError(filename_, errno);
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status Name(StringPiece* result) const override {
+  absl::Status Name(StringPiece* result) const override {
     *result = filename_;
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status Sync() override {
-    Status s;
+  absl::Status Sync() override {
+    absl::Status s;
     if (fflush(file_) != 0) {
       s = IOError(filename_, errno);
     }
     return s;
   }
 
-  Status Tell(int64_t* position) override {
-    Status s;
+  absl::Status Tell(int64_t* position) override {
+    absl::Status s;
     *position = ftell(file_);
 
     if (*position == -1) {
@@ -222,11 +222,11 @@ class PosixReadOnlyMemoryRegion : public ReadOnlyMemoryRegion {
   const uint64 length_;
 };
 
-Status PosixFileSystem::NewRandomAccessFile(
+absl::Status PosixFileSystem::NewRandomAccessFile(
     const string& fname, TransactionToken* token,
     std::unique_ptr<RandomAccessFile>* result) {
   string translated_fname = TranslateName(fname);
-  Status s;
+  absl::Status s;
   int fd = open(translated_fname.c_str(), O_RDONLY);
   if (fd < 0) {
     s = IOError(fname, errno);
@@ -236,11 +236,11 @@ Status PosixFileSystem::NewRandomAccessFile(
   return s;
 }
 
-Status PosixFileSystem::NewWritableFile(const string& fname,
-                                        TransactionToken* token,
-                                        std::unique_ptr<WritableFile>* result) {
+absl::Status PosixFileSystem::NewWritableFile(
+    const string& fname, TransactionToken* token,
+    std::unique_ptr<WritableFile>* result) {
   string translated_fname = TranslateName(fname);
-  Status s;
+  absl::Status s;
   FILE* f = fopen(translated_fname.c_str(), "w");
   if (f == nullptr) {
     s = IOError(fname, errno);
@@ -250,11 +250,11 @@ Status PosixFileSystem::NewWritableFile(const string& fname,
   return s;
 }
 
-Status PosixFileSystem::NewAppendableFile(
+absl::Status PosixFileSystem::NewAppendableFile(
     const string& fname, TransactionToken* token,
     std::unique_ptr<WritableFile>* result) {
   string translated_fname = TranslateName(fname);
-  Status s;
+  absl::Status s;
   FILE* f = fopen(translated_fname.c_str(), "a");
   if (f == nullptr) {
     s = IOError(fname, errno);
@@ -264,11 +264,11 @@ Status PosixFileSystem::NewAppendableFile(
   return s;
 }
 
-Status PosixFileSystem::NewReadOnlyMemoryRegionFromFile(
+absl::Status PosixFileSystem::NewReadOnlyMemoryRegionFromFile(
     const string& fname, TransactionToken* token,
     std::unique_ptr<ReadOnlyMemoryRegion>* result) {
   string translated_fname = TranslateName(fname);
-  Status s = OkStatus();
+  absl::Status s = absl::OkStatus();
   int fd = open(translated_fname.c_str(), O_RDONLY);
   if (fd < 0) {
     s = IOError(fname, errno);
@@ -289,16 +289,17 @@ Status PosixFileSystem::NewReadOnlyMemoryRegionFromFile(
   return s;
 }
 
-Status PosixFileSystem::FileExists(const string& fname,
-                                   TransactionToken* token) {
+absl::Status PosixFileSystem::FileExists(const string& fname,
+                                         TransactionToken* token) {
   if (access(TranslateName(fname).c_str(), F_OK) == 0) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   return errors::NotFound(fname, " not found");
 }
 
-Status PosixFileSystem::GetChildren(const string& dir, TransactionToken* token,
-                                    std::vector<string>* result) {
+absl::Status PosixFileSystem::GetChildren(const string& dir,
+                                          TransactionToken* token,
+                                          std::vector<string>* result) {
   string translated_dir = TranslateName(dir);
   result->clear();
   DIR* d = opendir(translated_dir.c_str());
@@ -315,25 +316,26 @@ Status PosixFileSystem::GetChildren(const string& dir, TransactionToken* token,
   if (closedir(d) < 0) {
     return IOError(dir, errno);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status PosixFileSystem::GetMatchingPaths(const string& pattern,
-                                         TransactionToken* token,
-                                         std::vector<string>* results) {
+absl::Status PosixFileSystem::GetMatchingPaths(const string& pattern,
+                                               TransactionToken* token,
+                                               std::vector<string>* results) {
   return internal::GetMatchingPaths(this, Env::Default(), pattern, results);
 }
 
-Status PosixFileSystem::DeleteFile(const string& fname,
-                                   TransactionToken* token) {
-  Status result;
+absl::Status PosixFileSystem::DeleteFile(const string& fname,
+                                         TransactionToken* token) {
+  absl::Status result;
   if (unlink(TranslateName(fname).c_str()) != 0) {
     result = IOError(fname, errno);
   }
   return result;
 }
 
-Status PosixFileSystem::CreateDir(const string& name, TransactionToken* token) {
+absl::Status PosixFileSystem::CreateDir(const string& name,
+                                        TransactionToken* token) {
   string translated = TranslateName(name);
   if (translated.empty()) {
     return errors::AlreadyExists(name);
@@ -341,20 +343,22 @@ Status PosixFileSystem::CreateDir(const string& name, TransactionToken* token) {
   if (mkdir(translated.c_str(), 0755) != 0) {
     return IOError(name, errno);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status PosixFileSystem::DeleteDir(const string& name, TransactionToken* token) {
-  Status result;
+absl::Status PosixFileSystem::DeleteDir(const string& name,
+                                        TransactionToken* token) {
+  absl::Status result;
   if (rmdir(TranslateName(name).c_str()) != 0) {
     result = IOError(name, errno);
   }
   return result;
 }
 
-Status PosixFileSystem::GetFileSize(const string& fname,
-                                    TransactionToken* token, uint64* size) {
-  Status s;
+absl::Status PosixFileSystem::GetFileSize(const string& fname,
+                                          TransactionToken* token,
+                                          uint64* size) {
+  absl::Status s;
   struct stat sbuf;
   if (stat(TranslateName(fname).c_str(), &sbuf) != 0) {
     *size = 0;
@@ -365,9 +369,9 @@ Status PosixFileSystem::GetFileSize(const string& fname,
   return s;
 }
 
-Status PosixFileSystem::Stat(const string& fname, TransactionToken* token,
-                             FileStatistics* stats) {
-  Status s;
+absl::Status PosixFileSystem::Stat(const string& fname, TransactionToken* token,
+                                   FileStatistics* stats) {
+  absl::Status s;
   struct stat sbuf;
   if (stat(TranslateName(fname).c_str(), &sbuf) != 0) {
     s = IOError(fname, errno);
@@ -379,17 +383,18 @@ Status PosixFileSystem::Stat(const string& fname, TransactionToken* token,
   return s;
 }
 
-Status PosixFileSystem::RenameFile(const string& src, const string& target,
-                                   TransactionToken* token) {
-  Status result;
+absl::Status PosixFileSystem::RenameFile(const string& src,
+                                         const string& target,
+                                         TransactionToken* token) {
+  absl::Status result;
   if (rename(TranslateName(src).c_str(), TranslateName(target).c_str()) != 0) {
     result = IOError(src, errno);
   }
   return result;
 }
 
-Status PosixFileSystem::CopyFile(const string& src, const string& target,
-                                 TransactionToken* token) {
+absl::Status PosixFileSystem::CopyFile(const string& src, const string& target,
+                                       TransactionToken* token) {
   string translated_src = TranslateName(src);
   struct stat sbuf;
   if (stat(translated_src.c_str(), &sbuf) != 0) {
@@ -438,18 +443,18 @@ Status PosixFileSystem::CopyFile(const string& src, const string& target,
     }
   }
 
-  Status result = OkStatus();
+  absl::Status result = absl::OkStatus();
   if (rc < 0) {
     result = IOError(target, errno);
   }
 
   // Keep the error code
   rc = close(target_fd);
-  if (rc < 0 && result == OkStatus()) {
+  if (rc < 0 && result == absl::OkStatus()) {
     result = IOError(target, errno);
   }
   rc = close(src_fd);
-  if (rc < 0 && result == OkStatus()) {
+  if (rc < 0 && result == absl::OkStatus()) {
     result = IOError(target, errno);
   }
 

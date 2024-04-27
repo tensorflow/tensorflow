@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The OpenXLA Authors.
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -380,6 +380,23 @@ MLIR_CAPI_EXPORTED intptr_t
 mlirMhloTypeExtensionsGetBoundsSize(MlirAttribute attr);
 MLIR_CAPI_EXPORTED int64_t
 mlirMhloTypeExtensionsGetBoundsElem(MlirAttribute attr, intptr_t pos);
+
+//
+// SparsityDescriptor
+//
+// Creates a SparseDescriptor attribute with the given sparsity configurations.
+MLIR_CAPI_EXPORTED MlirAttribute mlirMhloSparsityDescriptorGet(
+    MlirContext ctx, int64_t dimension, int64_t n, int64_t m);
+
+// Returns true if the given attribute is a SparsityDescriptor attribute.
+MLIR_CAPI_EXPORTED bool mlirMhloAttributeIsASparsityDescriptor(
+    MlirAttribute attr);
+
+// Returns the dimension and N:M sparsity configurations.
+MLIR_CAPI_EXPORTED int64_t
+mlirMhloSparsityDescriptorGetDimension(MlirAttribute attr);
+MLIR_CAPI_EXPORTED int64_t mlirMhloSparsityDescriptorGetN(MlirAttribute attr);
+MLIR_CAPI_EXPORTED int64_t mlirMhloSparsityDescriptorGetM(MlirAttribute attr);
 
 #ifdef __cplusplus
 }

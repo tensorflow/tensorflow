@@ -21,7 +21,7 @@ from typing import Iterable
 from tensorflow.core.protobuf import service_config_pb2
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.data.experimental.service import _pywrap_server_lib
-from tensorflow.python.data.experimental.service import _pywrap_utils
+from tensorflow.python.data.experimental.service import _pywrap_utils_exp
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -109,7 +109,7 @@ class DispatcherConfig(
       worker_max_concurrent_snapshots=0,
   ):
     if protocol is None:
-      protocol = _pywrap_utils.TF_DATA_DefaultProtocol()
+      protocol = _pywrap_utils_exp.TF_DATA_DefaultProtocol()
     job_gc_check_interval_ms = _get_time_or_placeholder(
         job_gc_check_interval_ms)
     job_gc_timeout_ms = _get_time_or_placeholder(job_gc_timeout_ms)
@@ -332,7 +332,7 @@ class WorkerConfig(
     if worker_address is None:
       worker_address = "localhost:%port%"
     if protocol is None:
-      protocol = _pywrap_utils.TF_DATA_DefaultProtocol()
+      protocol = _pywrap_utils_exp.TF_DATA_DefaultProtocol()
     if data_transfer_address is None:
       data_transfer_address = "localhost:%port%"
     heartbeat_interval_ms = _get_time_or_placeholder(heartbeat_interval_ms)

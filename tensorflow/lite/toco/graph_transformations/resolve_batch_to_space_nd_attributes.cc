@@ -30,29 +30,29 @@ namespace toco {
   *modified = false;
   const auto op_it = model->operators.begin() + op_index;
   if (op_it->get()->type != OperatorType::kBatchToSpaceND)
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
 
   auto* op = static_cast<BatchToSpaceNDOperator*>(op_it->get());
 
   // The attributes are resolved only when the 3 attributes (block_shape,
   // before_crops, after_crops) are all constant.
   if (!op->block_shape.empty()) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   CHECK_EQ(op->inputs.size(), 3);
   if (!IsConstantParameterArray(*model, op->inputs[1]) ||
       !IsConstantParameterArray(*model, op->inputs[2]))
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
 
   // Handle crops
   const auto& crops_array = model->GetArray(op->inputs[2]);
-  if (!crops_array.has_shape()) return ::tensorflow::OkStatus();
+  if (!crops_array.has_shape()) return absl::OkStatus();
   const std::vector<int>& crops_dims = crops_array.shape().dims();
   if (crops_dims.size() != 2) {
     // Code only handles crops of 2 dimensions. Perhaps another transformation
     // will delete this op.
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
   const std::vector<int>& crops_buffer =
       crops_array.GetBuffer<ArrayDataType::kInt32>().data;
@@ -63,7 +63,7 @@ namespace toco {
 
   // Handle block_shape
   const auto& block_shape_array = model->GetArray(op->inputs[1]);
-  if (!block_shape_array.has_shape()) return ::tensorflow::OkStatus();
+  if (!block_shape_array.has_shape()) return absl::OkStatus();
   const std::vector<int>& block_shape_dims = block_shape_array.shape().dims();
   CHECK_EQ(block_shape_dims.size(), 1);
   const std::vector<int>& block_shape_buffer =
@@ -73,7 +73,7 @@ namespace toco {
   }
 
   *modified = true;
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace toco

@@ -1,0 +1,24 @@
+op 	 {
+  name: "XlaRecvTPUEmbeddingDeduplicationDataV2"
+  output_arg {
+    name: "output"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "config"
+    type: "string"
+  }
+  attr {
+    name: "embedding_partitions"
+    type: "string"
+  }
+  attr {
+    name: "hbm_buffers_config"
+    type: "string"
+  }
+  attr {
+    name: "tpu_topology"
+    type: "string"
+  }
+  is_stateful: true
+}

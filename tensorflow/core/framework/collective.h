@@ -265,6 +265,9 @@ class CollectiveExecutorMgrInterface : public StepSequenceInterface {
   // table.
   virtual void Cleanup(int64_t step_id) = 0;
 
+  // Cleanup the entire table, removing all entries for step_ids.
+  virtual void CleanupAll() = 0;
+
   virtual ParamResolverInterface* GetParamResolver() const = 0;
 
   virtual DeviceResolverInterface* GetDeviceResolver() const = 0;

@@ -69,12 +69,12 @@ class FixedLengthRecordReader : public ReaderBase {
     // header_bytes_ is always skipped.
     TF_RETURN_IF_ERROR(buffered_inputstream_->SkipNBytes(header_bytes_));
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status OnWorkFinishedLocked() override {
     buffered_inputstream_.reset(nullptr);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status ReadLocked(tstring* key, tstring* value, bool* produced,
@@ -98,7 +98,7 @@ class FixedLengthRecordReader : public ReaderBase {
             return s;
           }
           *at_end = true;
-          return OkStatus();
+          return absl::OkStatus();
         }
       }
     }
@@ -112,7 +112,7 @@ class FixedLengthRecordReader : public ReaderBase {
         return s;
       }
       *at_end = true;
-      return OkStatus();
+      return absl::OkStatus();
     }
     lookahead_cache_.append(*value, 0, bytes_to_read);
     value->clear();
@@ -124,7 +124,7 @@ class FixedLengthRecordReader : public ReaderBase {
     *produced = true;
     ++record_number_;
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status ResetLocked() override {

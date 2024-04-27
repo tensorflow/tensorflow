@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,26 +14,30 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <string>
 #include <utility>
+#include <vector>
 
+#include <gtest/gtest.h>
 #include "absl/strings/ascii.h"
+#include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_module_group.h"
 #include "xla/service/compiler.h"
+#include "xla/service/executable.h"
 #include "xla/service/platform_util.h"
-#include "xla/stream_executor/multi_platform_manager.h"
-
-#if GOOGLE_CUDA
-#include "xla/service/gpu/nvptx_compiler.h"
-#elif TF_USE_ROCM
-#include "xla/service/gpu/amdgpu_compiler.h"
-#endif
+#include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/platform_manager.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/tests/hlo_test_base.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
 
 using GpuAotCompilationTest = HloTestBase;
 
-TEST_F(GpuAotCompilationTest, LoadExecutableFromAotCompilation) {
+TEST_F(GpuAotCompilationTest, ExportAndLoadExecutable) {
   const absl::string_view hlo_string = R"(
 HloModule Test
 
@@ -49,19 +53,15 @@ ENTRY main {
   auto name =
       absl::AsciiStrToUpper(PlatformUtil::CanonicalPlatformName("gpu").value());
   TF_ASSERT_OK_AND_ASSIGN(se::Platform * platform,
-                          se::MultiPlatformManager::PlatformWithName(name));
+                          se::PlatformManager::PlatformWithName(name));
   TF_ASSERT_OK_AND_ASSIGN(se::StreamExecutor * stream_exec,
                           platform->ExecutorForDevice(0));
 
   // Compile AOT.
   auto module_group = std::make_unique<HloModuleGroup>(std::move(module));
   AotCompilationOptions aot_options(compiler->PlatformId());
-  // ToDo: Remove after unification of AOT compiler
-  if (!aot_options.debug_options().xla_gpu_enable_xla_runtime_executable()) {
-    return;
-  }
-
   aot_options.set_executor(stream_exec);
+
   TF_ASSERT_OK_AND_ASSIGN(
       std::vector<std::unique_ptr<AotCompilationResult>> aot_results,
       compiler->CompileAheadOfTime(std::move(module_group), aot_options));
@@ -94,7 +94,7 @@ ENTRY main {
   auto name =
       absl::AsciiStrToUpper(PlatformUtil::CanonicalPlatformName("gpu").value());
   TF_ASSERT_OK_AND_ASSIGN(se::Platform * platform,
-                          se::MultiPlatformManager::PlatformWithName(name));
+                          se::PlatformManager::PlatformWithName(name));
   TF_ASSERT_OK_AND_ASSIGN(se::StreamExecutor * stream_exec,
                           platform->ExecutorForDevice(0));
 
@@ -103,11 +103,6 @@ ENTRY main {
   // Stream executor is not passed as an option.
   Compiler::TargetConfig gpu_target_config(stream_exec);
   AotCompilationOptions aot_options(compiler->PlatformId());
-  // ToDo: Remove after unification of AOT compiler
-  if (!aot_options.debug_options().xla_gpu_enable_xla_runtime_executable()) {
-    return;
-  }
-
   aot_options.set_target_config(gpu_target_config);
 
   TF_ASSERT_OK_AND_ASSIGN(

@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_UTILS_H_
 #define TENSORFLOW_CORE_DATA_UTILS_H_
 
+#include <memory>
 #include <optional>
 #include <string>
 
@@ -47,6 +48,12 @@ std::string LocalityOptimizedPath(const std::string& path);
 // based on (1) the inputs or (2) the properties of the calling trainer.
 absl::StatusOr<bool> DisableCompressionAtRuntime(
     const std::string& data_transfer_protocol, DeploymentMode deployment_mode);
+
+// Log filenames into TfDataLogger. Uses the same  TfDataFileLoggerClient at
+// every call. Thread safe.
+// TODO (shushanik) Implement streamz error reporting in case the logging is not
+// successful
+void LogFilenames(const std::vector<std::string>& files);
 
 }  // namespace data
 }  // namespace tensorflow

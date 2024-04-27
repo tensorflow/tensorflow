@@ -324,5 +324,112 @@ TEST(Concatenation, 4D_of_4) {
   }
 }
 
+TEST(Concatenation, 1D_of_5) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
+  std::random_device random_device;
+  auto rng = std::mt19937(random_device());
+  auto shape_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(2, 10), std::ref(rng));
+  const std::vector<int32_t> shape1({shape_rng()});
+  const std::vector<int32_t> shape2({shape_rng()});
+  const std::vector<int32_t> shape3({shape_rng()});
+  const std::vector<int32_t> shape4({shape_rng()});
+  const std::vector<int32_t> shape5({shape_rng()});
+
+  for (int i = -1; i < 1; i++) {
+    // clang-format off
+    ConcatenationTester()
+        .InputShapes({shape1, shape2, shape3, shape4, shape5})
+        .Axis(i)
+        .Test(TensorType_FLOAT32, xnnpack_delegate.get());
+    // clang-format on
+  }
+}
+
+TEST(Concatenation, 2D_of_5) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
+  std::random_device random_device;
+  auto rng = std::mt19937(random_device());
+  auto shape_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(2, 10), std::ref(rng));
+
+  for (int i = -2; i < 2; i++) {
+    // All dimensions must be the same, except for axis.
+    const std::vector<int32_t> shape1({shape_rng(), shape_rng()});
+    auto shape2 = SameShapeDifferentAxis(shape1, i, shape_rng());
+    auto shape3 = SameShapeDifferentAxis(shape1, i, shape_rng());
+    auto shape4 = SameShapeDifferentAxis(shape1, i, shape_rng());
+    auto shape5 = SameShapeDifferentAxis(shape1, i, shape_rng());
+
+    // clang-format off
+    ConcatenationTester()
+        .InputShapes({shape1, shape2, shape3, shape4, shape5})
+        .Axis(i)
+        .Test(TensorType_FLOAT32, xnnpack_delegate.get());
+    // clang-format on
+  }
+}
+
+TEST(Concatenation, 3D_of_5) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
+  std::random_device random_device;
+  auto rng = std::mt19937(random_device());
+  auto shape_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(2, 10), std::ref(rng));
+
+  for (int i = -3; i < 3; i++) {
+    // All dimensions must be the same, except for axis.
+    const std::vector<int32_t> shape1({shape_rng(), shape_rng(), shape_rng()});
+    auto shape2 = SameShapeDifferentAxis(shape1, i, shape_rng());
+    auto shape3 = SameShapeDifferentAxis(shape1, i, shape_rng());
+    auto shape4 = SameShapeDifferentAxis(shape1, i, shape_rng());
+    auto shape5 = SameShapeDifferentAxis(shape1, i, shape_rng());
+
+    // clang-format off
+    ConcatenationTester()
+        .InputShapes({shape1, shape2, shape3, shape4, shape5})
+        .Axis(i)
+        .Test(TensorType_FLOAT32, xnnpack_delegate.get());
+    // clang-format on
+  }
+}
+
+TEST(Concatenation, 4D_of_5) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
+  std::random_device random_device;
+  auto rng = std::mt19937(random_device());
+  auto shape_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(2, 10), std::ref(rng));
+
+  for (int i = -4; i < 4; i++) {
+    // All dimensions must be the same, except for axis.
+    const std::vector<int32_t> shape1(
+        {shape_rng(), shape_rng(), shape_rng(), shape_rng()});
+    auto shape2 = SameShapeDifferentAxis(shape1, i, shape_rng());
+    auto shape3 = SameShapeDifferentAxis(shape1, i, shape_rng());
+    auto shape4 = SameShapeDifferentAxis(shape1, i, shape_rng());
+    auto shape5 = SameShapeDifferentAxis(shape1, i, shape_rng());
+
+    // clang-format off
+    ConcatenationTester()
+        .InputShapes({shape1, shape2, shape3, shape4, shape5})
+        .Axis(i)
+        .Test(TensorType_FLOAT32, xnnpack_delegate.get());
+    // clang-format on
+  }
+}
+
 }  // namespace xnnpack
 }  // namespace tflite

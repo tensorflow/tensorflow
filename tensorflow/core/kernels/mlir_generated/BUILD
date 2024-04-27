@@ -1942,7 +1942,6 @@ gpu_kernel_library(
         "c64",
         "c128",
     ],
-    max_supported_rank = 8,
     op = "select_v2",
     tile_size = "256",
     types = [],

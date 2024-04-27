@@ -36,9 +36,9 @@ class PluginVariable {
 
   // `result_tensor` will point to the tensor possessed by the variable if
   // status is ok.
-  virtual tsl::Status GetTensor(const Tensor** result_tensor) = 0;
+  virtual absl::Status GetTensor(const Tensor** result_tensor) = 0;
 
-  virtual tsl::Status GetMutableTensor(Tensor** result_tensor) = 0;
+  virtual absl::Status GetMutableTensor(Tensor** result_tensor) = 0;
 };
 
 }  // namespace tensorflow

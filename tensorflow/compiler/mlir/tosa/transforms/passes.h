@@ -56,7 +56,6 @@ std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeTFLPass(
     ArrayRef<std::string> disabled_patterns = std::nullopt,
     ArrayRef<std::string> enabled_patterns = std::nullopt);
 
-std::unique_ptr<OperationPass<ModuleOp>> createLowerGlobalTensorsPass();
 std::unique_ptr<OperationPass<ModuleOp>> createRetainCallOnceFuncsPass();
 std::unique_ptr<OperationPass<ModuleOp>> createStripModuleMetadataPass();
 std::unique_ptr<OperationPass<func::FuncOp>> createConvertTFLUint8Pass();
@@ -80,7 +79,6 @@ std::unique_ptr<OperationPass<ModuleOp>> createLegalizeTFLStatefulPass();
 #define GEN_PASS_DECL_TOSASTRIPQUANTTYPESPASS
 #define GEN_PASS_DECL_TOSALOWERCOMPLEXTYPESPASS
 #define GEN_PASS_DECL_TOSADEQUANTIZETFLSOFTMAXPASS
-#define GEN_PASS_DECL_LOWERGLOBALTENSORS
 #define GEN_PASS_DECL_RETAINCALLONCEFUNCS
 #define GEN_PASS_DECL_STRIPFUNCTIONMETADATA
 #define GEN_PASS_DECL_STRIPMODULEMETADATA

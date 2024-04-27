@@ -13,6 +13,9 @@
 # limitations under the License.
 # ==============================================================================
 """Test base for tf.data service tests."""
+
+import os
+import shutil
 import tempfile
 
 from tensorflow.core.protobuf import service_config_pb2
@@ -429,3 +432,25 @@ class TestBase(test_base.DatasetTestBase):
   def read(self, get_next, results, count):
     for _ in range(count):
       results.append(self.evaluate(get_next()))
+
+
+class TempDir:
+  """Temporary directory for unit testing."""
+
+  def __init__(self):
+    temp_dir = tempfile.mkdtemp(dir=googletest.GetTempDir())
+    self._path = os.path.join(
+        tempfile.mkdtemp(dir=temp_dir), "tf_data_snapshot")
+
+  @property
+  def full_path(self) -> str:
+    return self._path
+
+  def __fspath__(self) -> str:
+    return self._path
+
+  def __del__(self):
+    try:
+      shutil.rmtree(self.full_path)
+    except FileNotFoundError:
+      pass

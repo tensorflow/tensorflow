@@ -29,8 +29,8 @@ limitations under the License.
 
 namespace tensorflow {
 
-StatusOr<xla::XlaOp> BroadcastTo(xla::XlaOp input,
-                                 absl::Span<int64_t const> output_dims) {
+absl::StatusOr<xla::XlaOp> BroadcastTo(xla::XlaOp input,
+                                       absl::Span<int64_t const> output_dims) {
   return xla::BroadcastTo(input, output_dims);
 }
 
@@ -51,7 +51,7 @@ Status BroadcastOpsToSame(xla::XlaOp* lhs, xla::XlaOp* rhs) {
     TF_ASSIGN_OR_RETURN(*lhs, xla::BroadcastTo(*lhs, bcast.output_shape()));
     TF_ASSIGN_OR_RETURN(*rhs, xla::BroadcastTo(*rhs, bcast.output_shape()));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

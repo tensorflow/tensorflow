@@ -102,7 +102,7 @@ Status TestCluster::MakeTestCluster(const TestClusterConfig& config,
   TF_RETURN_IF_ERROR(session->ListDevices(&ret->devices_));
 
   *out_cluster = std::move(ret);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 TestCluster::~TestCluster() {

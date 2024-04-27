@@ -84,7 +84,7 @@ Status CreateMerge(const Scope& scope, int loop_var_idx,
   TF_RETURN_IF_ERROR(builder.Finalize(scope.graph(), &merge_node));
   TF_RETURN_IF_ERROR(scope.DoShapeInference(merge_node));
   *merge_output = Output(merge_node, 0);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Creates the condition subgraph defined by `cond`.
@@ -113,7 +113,7 @@ Status CreateCond(const Scope& scope, const CondGraphBuilderFn& cond,
   // TODO(skyewm): check that raw_cond_out is scalar
 
   *output = LoopCond(scope, raw_cond_out).output;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Create the body subgraph defined by `body`. `outputs` must be non-null and
@@ -140,7 +140,7 @@ Status CreateBody(const Scope& scope, const BodyGraphBuilderFn& body,
         scope.graph()->IsValidOutputTensor(output.node(), output.index()));
     // TODO(skyewm): check output types/shapes
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -243,7 +243,7 @@ Status BuildWhileLoop(const Scope& scope, const std::vector<Output>& inputs,
       (*outputs)[i].node()->set_while_ctx(while_ctx);
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace ops

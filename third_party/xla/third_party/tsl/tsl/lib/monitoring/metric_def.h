@@ -47,7 +47,8 @@ enum class ValueType : int {
   kHistogram,
   kString,
   kBool,
-  kPercentiles
+  kPercentiles,
+  kDouble
 };
 
 // Everything in the internal namespace is implementation details. Do not depend
@@ -95,6 +96,16 @@ inline ValueType GetValueType<bool>() {
 template <>
 inline ValueType GetValueType<std::function<bool()>>() {
   return ValueType::kBool;
+}
+
+template <>
+inline ValueType GetValueType<double>() {
+  return ValueType::kDouble;
+}
+
+template <>
+inline ValueType GetValueType<std::function<double()>>() {
+  return ValueType::kDouble;
 }
 
 }  // namespace internal

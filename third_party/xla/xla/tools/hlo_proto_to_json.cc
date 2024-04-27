@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -30,19 +30,19 @@ limitations under the License.
 
 #include "xla/service/hlo.pb.h"
 #include "xla/statusor.h"
+#include "xla/tsl/util/command_line_flags.h"
 #include "xla/util.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/init_main.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/status.h"
-#include "tsl/util/command_line_flags.h"
 
 using std::string;
 
 namespace xla {
 namespace tools {
 
-StatusOr<std::string> ToJson(const tsl::protobuf::Message& message) {
+absl::StatusOr<std::string> ToJson(const tsl::protobuf::Message& message) {
   std::string json_output;
   tsl::protobuf::util::JsonPrintOptions json_options;
   json_options.add_whitespace = true;
@@ -50,8 +50,8 @@ StatusOr<std::string> ToJson(const tsl::protobuf::Message& message) {
   auto status = tsl::protobuf::util::MessageToJsonString(message, &json_output,
                                                          json_options);
   if (!status.ok()) {
-    return InternalError("MessageToJsonString failed: %s",
-                         std::string{status.message()});
+    return Internal("MessageToJsonString failed: %s",
+                    std::string{status.message()});
   }
   return json_output;
 }

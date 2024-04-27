@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -36,6 +36,7 @@ StatusOr<std::string> StreamExecutorExecutable::SerializeExecutable() const {
   proto.set_num_replicas(num_replicas_);
   proto.set_num_partitions(num_partitions_);
   proto.set_name(name_);
+  proto.set_fingerprint(fingerprint_);
   return proto.SerializeAsString();
 }
 }  // namespace xla

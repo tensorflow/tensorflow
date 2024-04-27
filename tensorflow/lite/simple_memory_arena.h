@@ -53,10 +53,15 @@ struct ArenaAllocWithUsageInterval {
   }
 };
 
+struct PointerAlignedPointerPair {
+  char* pointer;
+  char* aligned_pointer;
+};
+
 class ResizableAlignedBuffer {
  public:
   ResizableAlignedBuffer(size_t alignment, int subgraph_index)
-      : buffer_(nullptr),
+      : buffer_{nullptr, nullptr},
         data_size_(0),
         alignment_(alignment),
         subgraph_index_(subgraph_index) {
@@ -75,7 +80,7 @@ class ResizableAlignedBuffer {
   void Release();
 
   // Pointer to the data array.
-  char* GetPtr() const { return aligned_ptr_; }
+  char* GetPtr() const { return buffer_.aligned_pointer; }
   // Size of the data array. Note: the allocated memory block might be larger
   // due to excess alignment requirements.
   size_t GetSize() const { return data_size_; }
@@ -88,10 +93,9 @@ class ResizableAlignedBuffer {
   ResizableAlignedBuffer(ResizableAlignedBuffer&&) = delete;
   ResizableAlignedBuffer& operator=(ResizableAlignedBuffer&&) = delete;
 
-  char* buffer_;
+  PointerAlignedPointerPair buffer_;
   size_t data_size_;
   size_t alignment_;
-  char* aligned_ptr_;
 
   int subgraph_index_;
 };

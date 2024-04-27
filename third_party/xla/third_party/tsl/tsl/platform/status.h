@@ -26,6 +26,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/attributes.h"
+#include "absl/base/macros.h"
 #include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "absl/strings/cord.h"
@@ -45,6 +46,11 @@ limitations under the License.
 #include "tsl/platform/default/status.h"  // IWYU pragma: export
 #endif
 
+// TODO: b/323943471 - This macro should eventually be provided by Abseil.
+#ifndef ABSL_DEPRECATE_AND_INLINE
+#define ABSL_DEPRECATE_AND_INLINE()
+#endif
+
 namespace tsl {
 
 // Since April 2023, tensorflow::Status is an alias to absl::Status. The first
@@ -54,10 +60,10 @@ namespace tsl {
 //
 // Here is a set of correspondences:
 // - Use `absl::OkStatus()` instead of `tsl::OkStatus()`.
-typedef absl::Status Status;
+typedef absl::Status Status ABSL_DEPRECATE_AND_INLINE();
 
 namespace errors {
-typedef absl::StatusCode Code;
+typedef absl::StatusCode Code ABSL_DEPRECATE_AND_INLINE();
 }  // namespace errors
 namespace error {
 typedef ::tensorflow::error::Code Code;
@@ -99,17 +105,30 @@ namespace tsl {
 //
 // Returns an OK status, equivalent to a default constructed instance. Prefer
 // usage of `OkStatus()` when constructing such an OK status.
-Status OkStatus();
+ABSL_DEPRECATE_AND_INLINE() inline absl::Status OkStatus() {
+  return absl::OkStatus();
+};
 
-absl::Status FromAbslStatus(const absl::Status& s);
-absl::Status ToAbslStatus(const ::absl::Status& s);
+ABSL_DEPRECATE_AND_INLINE()
+inline absl::Status FromAbslStatus(const absl::Status& s) { return s; }
+ABSL_DEPRECATE_AND_INLINE()
+inline absl::Status ToAbslStatus(const ::absl::Status& s) { return s; }
 
 // Given `Status.message()` does not guarantee to be always backed by a
 // null-terminated string, we have this utility function when it's needed for
 // the Tensorflow C-API.
 // A more robust API would be to get both a `char*` of the beginning of the
 // string, plus the size (see e.g. `XlaCustomCallStatusSetFailure`).
-const char* NullTerminatedMessage(const Status& status);
+// NB: This Windows-only implementation is exists only to avoid a linker error.
+// Remove if this is resolved.
+#ifdef _WIN32
+const char* NullTerminatedMessage(const absl::Status& status);
+#else
+ABSL_DEPRECATE_AND_INLINE()
+inline const char* NullTerminatedMessage(const absl::Status& status) {
+  return absl::StatusMessageAsCStr(status);
+}
+#endif
 
 // TODO(b/197552541) Move this namespace to errors.h.
 namespace errors {

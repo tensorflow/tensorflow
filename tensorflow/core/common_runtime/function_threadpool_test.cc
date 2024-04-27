@@ -70,7 +70,7 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
                                tsl::core::RefCountPtr<Rendezvous>* r) {
           *r = tsl::core::RefCountPtr<Rendezvous>(
               new IntraProcessRendezvous(device_mgr));
-          return OkStatus();
+          return absl::OkStatus();
         }}));
     flr0_ = pflr_->GetFLR("/job:localhost/replica:0/task:0/cpu:0");
   }
@@ -110,7 +110,7 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
       EXPECT_GE(call_count, 1);  // Test runner is used.
     }
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status Instantiate(FunctionLibraryRuntime* flr, const string& name,
@@ -191,7 +191,7 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
       EXPECT_GE(call_count, 1);  // Test runner is used.
     }
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   FunctionLibraryRuntime* flr0_;

@@ -97,9 +97,6 @@ def default_variable_creator(next_creator=None, **kwargs):
         shape=shape)
 
 
-variable_v1.default_variable_creator = default_variable_creator
-
-
 def _to_proto_fn(v, export_scope=None):
   """Converts Variable and ResourceVariable to VariableDef for collections."""
   return v.to_proto(export_scope=export_scope)
@@ -1346,6 +1343,3 @@ class RefVariable(variable_v1.VariableV1, core.Tensor):
 # allowing instances of the class to be used as tensors.
 tensor_conversion_registry.register_tensor_conversion_function(
     RefVariable, RefVariable._TensorConversionFunction)  # pylint: disable=protected-access
-
-
-variable_v1.set_variable_from_proto_fn(RefVariable)
