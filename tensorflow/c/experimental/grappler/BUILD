@@ -15,7 +15,7 @@ package(
 cc_library(
     name = "grappler_hdrs",
     hdrs = ["grappler.h"],
-    visibility = ["//tensorflow:internal"],
+    visibility = ["//visibility:private"],
     deps = [
         "//tensorflow/c:c_api",
         "//tensorflow/c:c_api_macros",
