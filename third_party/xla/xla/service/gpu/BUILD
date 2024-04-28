@@ -4323,6 +4323,7 @@ xla_cc_test(
 cuda_library(
     name = "stream_executor_util_kernel",
     srcs = if_cuda_is_configured(["stream_executor_util_kernel.cu.cc"]),
+    deps = ["@local_config_cuda//cuda:cuda_headers"],
 )
 
 cc_library(
