@@ -19,7 +19,6 @@ limitations under the License.
 #include <string>
 
 #include "tensorflow/core/framework/op.h"
-#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/protobuf/tpu/optimization_parameters.pb.h"
 #include "tensorflow/core/tpu/tpu_embedding_optimization_parameters_utils.h"
 
