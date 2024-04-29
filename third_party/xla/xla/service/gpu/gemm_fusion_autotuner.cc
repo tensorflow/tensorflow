@@ -745,8 +745,9 @@ GemmFusionAutotunerImpl::CompileAll(
       const HloFusionInstruction* fusion = key_value.first;
       const auto& gemm_config_set = key_value.second;
 
+      VLOG(2) << "Compiling the fusion: " << fusion->name();
       for (const Config& config : gemm_config_set) {
-        VLOG(5) << "Compiling " << ToString(config);
+        VLOG(5) << "Trying configuration: " << ToString(config);
         TF_ASSIGN_OR_RETURN(
             bool has_executable,
             compile(fusion, config, gemm_config_set.size() > 1));
