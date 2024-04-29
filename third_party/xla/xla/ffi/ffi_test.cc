@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/ffi/ffi.h"
 
+#include <complex>
 #include <cstdint>
 #include <string>
 #include <string_view>
@@ -445,6 +446,25 @@ TEST(FfiTest, TypedAndRankedBufferArgument) {
     auto status = Call(*handler, call_frame);
     TF_ASSERT_OK(status);
   }
+}
+
+TEST(FfiTest, ComplexBufferArgument) {
+  std::vector<std::complex<float>> storage(4, 0.0f);
+  se::DeviceMemoryBase memory(storage.data(), 4 * sizeof(std::complex<float>));
+
+  CallFrameBuilder builder;
+  builder.AddBufferArg(memory, PrimitiveType::C64, /*dims=*/{2, 2});
+  auto call_frame = builder.Build();
+
+  auto fn = [&](BufferR2<PrimitiveType::C64> buffer) {
+    EXPECT_EQ(buffer.data.opaque(), storage.data());
+    EXPECT_EQ(buffer.dimensions.size(), 2);
+    return absl::OkStatus();
+  };
+
+  auto handler = Ffi::Bind().Arg<BufferR2<PrimitiveType::C64>>().To(fn);
+  auto status = Call(*handler, call_frame);
+  TF_ASSERT_OK(status);
 }
 
 TEST(FfiTest, WrongRankBufferArgument) {
