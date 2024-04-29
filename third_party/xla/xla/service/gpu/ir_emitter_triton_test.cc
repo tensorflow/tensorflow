@@ -1516,6 +1516,28 @@ ENTRY e {
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
+TEST_F(TritonGemmTest, PredWithBF16DotProducesCorrectResult) {
+  const std::string hlo_text = R"(
+triton_dot {
+  p0 = pred[8,640]{1,0} parameter(0)
+  cvt = bf16[8,640]{1,0} convert(pred[8,640]{1,0} p0)
+  p1 = bf16[4096,640]{1,0} parameter(1)
+  ROOT dot.10277 = bf16[8,4096]{1,0} dot(cvt, p1), lhs_contracting_dims={1}, rhs_contracting_dims={1}
+}
+
+ENTRY e {
+  p0 = pred[8,640]{1,0} parameter(0)
+  p1 = bf16[4096,640]{1,0} parameter(1)
+  ROOT dot = bf16[8,4096]{1,0} fusion(p0, p1), kind=kCustom, calls=triton_dot,
+    backend_config={"fusion_backend_config": {kind: "__triton_gemm", triton_gemm_config:
+      {"block_m":16,"block_n":32,"block_k":64,
+      "split_k":1,"num_stages":2,"num_warps":8,
+      "num_ctas":1}}}
+})";
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+}
+
 TEST_F(TritonGemmTest, NoPadding) {
   const char* hlo_text = R"(
 HloModule t
