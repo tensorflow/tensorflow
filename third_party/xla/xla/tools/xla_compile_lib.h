@@ -65,13 +65,13 @@ struct XlaCompileOptions {
     std::string symbol_repo;
     std::string symbol_id;
     std::string optimized_symbol_id;
-    bool wait_for_uploads;
+    bool wait_for_uploads = false;
   };
 
   // GPU-specific options.
   struct GpuOptions {
     std::string gpu_target_config_path;
-    bool use_attached_device;
+    bool use_attached_device = false;
     std::string autotune_results_path;
   };
 
