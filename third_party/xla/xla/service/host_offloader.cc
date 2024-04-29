@@ -755,12 +755,12 @@ absl::StatusOr<bool> HostOffloader::Run(
   // Run HloAliasAnalysis on module.
   TF_ASSIGN_OR_RETURN(alias_analysis_, HloAliasAnalysis::Run(module));
 
+  // Handle streamed parameters first.
+  TF_RETURN_IF_ERROR(HandleInputStreaming(module->entry_computation()));
+
   // Iterate over all instructions and look for XLA host offload annotations.
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
-    if (computation->IsEntryComputation()) {
-      TF_RETURN_IF_ERROR(HandleInputStreaming(computation));
-    }
     for (HloInstruction* instruction :
          computation->MakeInstructionPostOrder()) {
       if (instruction->opcode() != HloOpcode::kCustomCall) {

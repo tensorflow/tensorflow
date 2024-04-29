@@ -667,7 +667,8 @@ class IteratorContext {
  public:
   struct Params {
     explicit Params(IteratorContext* ctx)
-        : allocator_getter(ctx->allocator_getter()),
+        : accelerator_device_info(ctx->accelerator_device_info()),
+          allocator_getter(ctx->allocator_getter()),
           cancellation_manager(ctx->cancellation_manager()),
           collective_executor(ctx->collective_executor()),
           env(ctx->env()),
@@ -697,6 +698,7 @@ class IteratorContext {
       // NOTE: need reinterpret_cast because function.h forward-declares Device.
       DeviceBase* device =
           reinterpret_cast<DeviceBase*>(ctx->function_library()->device());
+      accelerator_device_info = device->tensorflow_accelerator_device_info();
       allocator_getter = [device](AllocatorAttributes attrs) {
         return device->GetAllocator(attrs);
       };
@@ -718,6 +720,9 @@ class IteratorContext {
           },
           *ctx->runner(), std::placeholders::_1);
     }
+
+    // If non-null, information about the GPU or TPU on which the op is placed.
+    const DeviceBase::AcceleratorDeviceInfo* accelerator_device_info = nullptr;
 
     // The Allocator to be used to allocate the output of an iterator.
     std::function<Allocator*(AllocatorAttributes)> allocator_getter = nullptr;
@@ -823,6 +828,10 @@ class IteratorContext {
 
   std::shared_ptr<MemoryCheckpoint::IdRegistry> id_registry() {
     return params_.id_registry;
+  }
+
+  const DeviceBase::AcceleratorDeviceInfo* accelerator_device_info() {
+    return params_.accelerator_device_info;
   }
 
   Allocator* allocator(AllocatorAttributes attrs) {
