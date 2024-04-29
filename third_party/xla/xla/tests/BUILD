@@ -1015,10 +1015,6 @@ xla_test(
 xla_test(
     name = "scatter_test",
     srcs = ["scatter_test.cc"],
-    backend_tags = {
-        # TODO(b/305008247): Re-enable once fixed.
-        "ghostfish_grm": ["broken"],
-    },
     tags = ["test_hlo_pjrt_runner"],
     deps = [
         ":client_library_test_base",
