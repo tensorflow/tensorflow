@@ -150,6 +150,12 @@ absl::StatusOr<se::gpu::CudnnGraph> HloCustomCallToCuDnnGraph(
 
     std::optional<Shape> fwd_output_shape =
         custom_call->operand(input_index++)->shape();
+    if (config.mask_type() == xla::gpu::CudnnfMHABackendConfig::PADDING ||
+        config.mask_type() ==
+            xla::gpu::CudnnfMHABackendConfig::PADDING_CAUSAL) {
+      // skip q_seqlen and kv_seqlen
+      input_index += 2;
+    }
     TF_RET_CHECK(input_index == custom_call->operand_count());
 
     int output_index = 0;

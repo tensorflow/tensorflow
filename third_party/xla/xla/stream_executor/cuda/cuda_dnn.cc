@@ -5133,6 +5133,30 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionOperationGraph(
                          .set_uid(CudnnfMHAUid::BIAS_ID));
     sdpa_options.set_bias(bias_tensor);
   }
+  // Setting actual seqlen
+  bool is_padding = mask_type == dnn::FMHAMaskKind::PADDING ||
+                    mask_type == dnn::FMHAMaskKind::PADDING_CAUSAL;
+  if (is_padding) {
+    auto q_dim = q_descriptor.GetCudnnCompatibleDimensions(true);
+    auto b = q_dim[0];
+    auto seq_q_tensor =
+        graph.tensor(Tensor_attributes()
+                         .set_name("seq_q")
+                         .set_dim({b, 1, 1, 1})
+                         .set_stride({1, 1, 1, 1})
+                         .set_uid(CudnnfMHAUid::Q_SEQLEN_ID)
+                         .set_data_type(cudnn_frontend::DataType_t::INT32));
+    auto seq_kv_tensor =
+        graph.tensor(Tensor_attributes()
+                         .set_name("seq_kv")
+                         .set_dim({b, 1, 1, 1})
+                         .set_stride({1, 1, 1, 1})
+                         .set_uid(CudnnfMHAUid::K_SEQLEN_ID)
+                         .set_data_type(cudnn_frontend::DataType_t::INT32));
+    sdpa_options.set_padding_mask(true);
+    sdpa_options.set_seq_len_q(seq_q_tensor);
+    sdpa_options.set_seq_len_kv(seq_kv_tensor);
+  }
   // Setting seed and offset
   if (use_dropout) {
     auto seed_tensor =
@@ -5307,6 +5331,30 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionBackwardOperationGraph(
                          .set_stride(bias_descriptor->GetLogicalStrides())
                          .set_uid(CudnnfMHAUid::BIAS_ID));
     sdpa_backward_options.set_bias(bias_tensor);
+  }
+  // Setting actual seqlen
+  bool is_padding = mask_type == dnn::FMHAMaskKind::PADDING ||
+                    mask_type == dnn::FMHAMaskKind::PADDING_CAUSAL;
+  if (is_padding) {
+    auto q_dim = q_desc.GetCudnnCompatibleDimensions(false);
+    auto b = q_dim[0];
+    auto seq_q_tensor =
+        graph.tensor(Tensor_attributes()
+                         .set_name("seq_q")
+                         .set_dim({b, 1, 1, 1})
+                         .set_stride({1, 1, 1, 1})
+                         .set_uid(CudnnfMHAUid::Q_SEQLEN_ID)
+                         .set_data_type(cudnn_frontend::DataType_t::INT32));
+    auto seq_kv_tensor =
+        graph.tensor(Tensor_attributes()
+                         .set_name("seq_kv")
+                         .set_dim({b, 1, 1, 1})
+                         .set_stride({1, 1, 1, 1})
+                         .set_uid(CudnnfMHAUid::K_SEQLEN_ID)
+                         .set_data_type(cudnn_frontend::DataType_t::INT32));
+    sdpa_backward_options.set_padding_mask(true);
+    sdpa_backward_options.set_seq_len_q(seq_q_tensor);
+    sdpa_backward_options.set_seq_len_kv(seq_kv_tensor);
   }
   // Setting seed and offset
   if (use_dropout) {
@@ -7167,6 +7215,14 @@ CudnnSupport::FusedMHARunnerFromDesc(
                         : std::nullopt);
   uids.emplace_back(activation_descriptor.has_value()
                         ? std::optional<CudnnfMHAUid>(CudnnfMHAUid::P_ID)
+                        : std::nullopt);
+  bool is_padding = mask_type == dnn::FMHAMaskKind::PADDING ||
+                    mask_type == dnn::FMHAMaskKind::PADDING_CAUSAL;
+  uids.emplace_back(is_padding
+                        ? std::optional<CudnnfMHAUid>(CudnnfMHAUid::Q_SEQLEN_ID)
+                        : std::nullopt);
+  uids.emplace_back(is_padding
+                        ? std::optional<CudnnfMHAUid>(CudnnfMHAUid::K_SEQLEN_ID)
                         : std::nullopt);
   TF_ASSIGN_OR_RETURN(auto runner,
                       CudnnGraphRunner<dnn::FusedMHASignature>::Create(
