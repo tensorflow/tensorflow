@@ -1,4 +1,5 @@
-op 	 {
+go/debugstr  
+op {
   name: "Abort"
   attr {
     name: "error_msg"
