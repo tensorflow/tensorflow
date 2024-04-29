@@ -880,16 +880,17 @@ size_t GetOutputSizeOfFusible(const HloInstruction& instr) {
 // Recursive helper for GetFusionRoots below.
 static void GetFusionRootsRec(const HloInstruction* root,
                               std::vector<const HloInstruction*>& out) {
-  if (root->opcode() == HloOpcode::kGetTupleElement) {
-    return GetFusionRootsRec(root->operand(0), out);
+  if (root->opcode() == HloOpcode::kGetTupleElement &&
+      root->operand(0)->opcode() == HloOpcode::kTuple) {
+    return GetFusionRootsRec(root->operand(0)->operand(root->tuple_index()),
+                             out);
+  } else if (root->opcode() == HloOpcode::kGetTupleElement) {
+    out.push_back(root->operand(0));
   } else if (root->opcode() == HloOpcode::kTuple) {
     for (int i = 0; i < root->operand_count(); i++) {
       GetFusionRootsRec(root->operand(i), out);
     }
   } else {
-    if (!out.empty() && out.back() == root) {
-      return;
-    }
     CHECK(!absl::c_linear_search(out, root))
         << "Fusion root contains instruction " << root->ToString()
         << " multiple times";
