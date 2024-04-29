@@ -61,6 +61,9 @@ TEST(FfiTest, DataTypeEnumValue) {
   EXPECT_EQ(encoded(PrimitiveType::F64), encoded(DataType::F64));
 
   EXPECT_EQ(encoded(PrimitiveType::BF16), encoded(DataType::BF16));
+
+  EXPECT_EQ(encoded(PrimitiveType::C64), encoded(DataType::C64));
+  EXPECT_EQ(encoded(PrimitiveType::C128), encoded(DataType::C128));
 }
 
 TEST(FfiTest, BufferBaseArgument) {

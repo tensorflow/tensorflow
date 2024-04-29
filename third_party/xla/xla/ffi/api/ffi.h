@@ -20,6 +20,7 @@ limitations under the License.
 #error Two different XLA FFI implementations cannot be included together
 #endif  // XLA_FFI_FFI_H_
 
+#include <complex>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
@@ -53,6 +54,8 @@ enum class DataType : uint8_t {
   F32 = XLA_FFI_DataType_F32,
   F64 = XLA_FFI_DataType_F64,
   BF16 = XLA_FFI_DataType_BF16,
+  C64 = XLA_FFI_DataType_C64,
+  C128 = XLA_FFI_DataType_C128,
 };
 
 inline std::ostream& operator<<(std::ostream& os, const DataType dtype) {
@@ -148,6 +151,8 @@ template <> struct DataTypeToNative<DataType::F16>  { using type = uint16_t; };
 template <> struct DataTypeToNative<DataType::F32>  { using type = float; };
 template <> struct DataTypeToNative<DataType::F64>  { using type = double; };
 template <> struct DataTypeToNative<DataType::BF16> { using type = uint16_t; };
+template <> struct DataTypeToNative<DataType::C64>  { using type = std::complex<float>; }; // NOLINT
+template <> struct DataTypeToNative<DataType::C128> { using type = std::complex<double>; }; // NOLINT
 // clang-format on
 
 inline constexpr size_t kDynamicRank = std::numeric_limits<size_t>::max();
