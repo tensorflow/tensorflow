@@ -374,7 +374,7 @@ tf_py_strict_test(
 
 tf_py_strict_test(
     name = "flat_map_test",
-    size = "small",
+    size = "medium",
     srcs = ["flat_map_test.py"],
     grpc_enabled = True,
     shard_count = 8,

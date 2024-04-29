@@ -360,7 +360,8 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
     }
 
     Status SaveInternal(SerializationContext* ctx,
-                        IteratorStateWriter* writer) override {
+                        IteratorStateWriter* writer) override
+        TF_LOCKS_EXCLUDED(mu_) {
       TF_RETURN_IF_ERROR(ctx->HandleCheckExternalStateStatus(
           dataset()->captured_func_->CheckExternalState()));
       mutex_lock l(mu_);
@@ -387,7 +388,12 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
     }
 
     Status RestoreInternal(IteratorContext* ctx,
-                           IteratorStateReader* reader) override {
+                           IteratorStateReader* reader) override
+        TF_LOCKS_EXCLUDED(mu_) {
+      if (ctx->restored_element_count().has_value()) {
+        return RestoreForGlobalShuffle(ctx, reader);
+      }
+
       mutex_lock l(mu_);
       input_impl_.reset();
       element_index_ = 0;
@@ -413,6 +419,46 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
         if (!static_cast<bool>(current_element_iterator_uninitialized)) {
           TF_RETURN_IF_ERROR(RestoreCurrentElementIterator(ctx, reader));
         }
+      }
+      return absl::OkStatus();
+    }
+
+    Status RestoreForGlobalShuffle(IteratorContext* ctx,
+                                   IteratorStateReader* reader)
+        TF_LOCKS_EXCLUDED(mu_) {
+      mutex_lock l(mu_);
+      element_count_ = *ctx->restored_element_count();
+      FlatMapRandomAccessHandler& random_access =
+          dataset()->random_access_handler_;
+      if (dataset_iterators_.empty()) {
+        // TODO(b/325112575): Consider moving this to `Initialize()`, which
+        // requires passing the `index_mapper` to the `IteratorContext` there.
+        TF_ASSIGN_OR_RETURN(
+            dataset_iterators_,
+            random_access.MakeInputIterators(ctx, this, prefix()));
+      }
+
+      // Counts how many elements each input dataset has produced.
+      std::vector<size_t> input_element_counts(dataset_iterators_.size(), 0);
+      for (size_t count = 0; count < element_count_; ++count) {
+        TF_ASSIGN_OR_RETURN(size_t parent_index, ctx->index_mapper()(count));
+        absl::StatusOr<size_t> dataset_index =
+            random_access.GetDatasetIndex(parent_index);
+        if (absl::IsOutOfRange(dataset_index.status())) {
+          break;
+        }
+        TF_RETURN_IF_ERROR(dataset_index.status());
+        ++input_element_counts[*dataset_index];
+      }
+
+      // Passes individual element counts to each dataset to be restored.
+      for (size_t i = 0; i < dataset_iterators_.size(); ++i) {
+        IteratorContext::Params params(ctx);
+        params.restored_element_count = input_element_counts[i];
+        IteratorContext ctx_copy(std::move(params));
+        TF_RETURN_IF_ERROR(
+            RestoreInput(&ctx_copy, reader, dataset_iterators_[i]));
+        ctx->MergeCheckpoint(ctx_copy.checkpoint());
       }
       return absl::OkStatus();
     }

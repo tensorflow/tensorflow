@@ -14,7 +14,7 @@
 # ==============================================================================
 """Tests for `tf.data.Dataset.flat_map()`."""
 import random
-from typing import Optional
+from typing import Callable, Optional
 
 from absl.testing import parameterized
 import numpy as np
@@ -496,6 +496,44 @@ class FlatMapGlobalShuffleTest(
     self.assertCountEqual(dataset_output, expected)
     self.assertNotEqual(dataset_output, expected)
     self.assertLen(dataset_output, self.evaluate(dataset.cardinality()))
+
+
+class FlatMapGlobalShuffleCheckpointTest(
+    checkpoint_test_base.CheckpointTestBase, parameterized.TestCase):
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          checkpoint_test_base.default_test_combinations(),
+          combinations.combine(
+              repetitions=[1, 2],
+              reshuffle_each_iteration=[True, False],
+              symbolic_checkpoint=[True, False])))
+  def test(
+      self,
+      verify_fn: Callable[..., None],
+      repetitions: int,
+      reshuffle_each_iteration: bool,
+      symbolic_checkpoint: bool):
+
+    def _build_dataset() -> dataset_ops.Dataset:
+      dataset = dataset_ops.Dataset.from_tensor_slices(
+          [[1, 2, 3], [4, 5, 6], [7, 8, 9]])
+      dataset = dataset.flat_map(dataset_ops.Dataset.from_tensor_slices)
+      if repetitions > 1:
+        dataset = dataset.repeat(repetitions)
+      dataset = dataset.prefetch(buffer_size=dataset_ops.AUTOTUNE)
+      dataset = global_shuffle_op._global_shuffle(
+          dataset, seed=42, reshuffle_each_iteration=reshuffle_each_iteration)
+      options = options_lib.Options()
+      options.experimental_symbolic_checkpoint = symbolic_checkpoint
+      return dataset.with_options(options)
+
+    verify_fn(
+        self,
+        _build_dataset,
+        num_outputs=9 * repetitions,
+        assert_items_equal=reshuffle_each_iteration)
 
 
 if __name__ == "__main__":
