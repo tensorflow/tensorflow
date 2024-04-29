@@ -15,29 +15,38 @@ limitations under the License.
 
 #include "xla/service/hlo_verifier.h"
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "absl/base/log_severity.h"
 #include "absl/log/scoped_mock_log.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/literal_util.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_parser.h"
 #include "xla/service/layout_assignment.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/status.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/statusor.h"
+#include "tsl/platform/test.h"
 
 namespace xla {
 namespace {
@@ -1058,13 +1067,14 @@ TEST_F(HloVerifierTest, AsyncOpComputationParamWrongType) {
   HloModule Module
 
   async_computation {
-    p = f32[2,3] parameter(0)
-    ROOT custom-call = f32[3,2] custom-call(p), custom_call_target="foo"
+    p0 = f32[2,3] parameter(0)
+    ROOT p1 = f32[3,2] parameter(1)
   }
 
   ENTRY AsyncStartAndAsyncDone {
     p0 = f32[2,3] parameter(0)
-    async-start = ((f32[3,2]), f32[3,2], u32[]) async-start(p0), calls=async_computation
+    p1 = f32[3,2] parameter(1)
+    async-start = ((f32[3,2], f32[3,2]), f32[3,2], u32[]) async-start(p0, p1), calls=async_computation
     ROOT async-done = f32[3,2] async-done(async-start), calls=async_computation
   }
   )";
@@ -1083,13 +1093,14 @@ TEST_F(HloVerifierTest, AsyncOpComputationRootWrongType) {
   HloModule Module
 
   async_computation {
-    p = f32[2,3] parameter(0)
-    ROOT custom-call = f32[3,2] custom-call(p), custom_call_target="foo"
+    p0 = f32[2,3] parameter(0)
+    ROOT p1 = f32[3,2] parameter(1)
   }
 
   ENTRY AsyncStartAndAsyncDone {
     p0 = f32[2,3] parameter(0)
-    async-start = ((f32[2,3]), f32[2,3], u32[]) async-start(p0), calls=async_computation
+    p1 = f32[3,2] parameter(1)
+    async-start = ((f32[2,3], f32[3,2]), f32[2,3], u32[]) async-start(p0, p1), calls=async_computation
     ROOT async-done = f32[3,2] async-done(async-start), calls=async_computation
   }
   )";

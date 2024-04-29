@@ -1556,6 +1556,13 @@ Status ShapeVerifier::CheckAsyncOpComputationShapes(
         "elements, found %s.",
         HloOpcodeString(async_op->opcode()), async_shape.ToString());
   }
+
+  // The semantics of an async custom call are defined by the custom call
+  // implementation, so we stop checking here.
+  if (async_op->async_wrapped_opcode() == HloOpcode::kCustomCall) {
+    return OkStatus();
+  }
+
   ProgramShape computation_shape =
       async_op->async_wrapped_computation()->ComputeProgramShape();
   Shape param_shape = ShapeUtil::MakeTupleShape(computation_shape.parameters());
