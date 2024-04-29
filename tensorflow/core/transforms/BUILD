@@ -90,7 +90,6 @@ cc_library(
         ":PDLLUtilsIncGen",
         ":utils",
         "//tensorflow/core:framework_types_hdr",
-        "//tensorflow/core/ir:Dialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
     ],
