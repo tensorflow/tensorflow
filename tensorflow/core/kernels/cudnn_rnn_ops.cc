@@ -24,32 +24,9 @@ limitations under the License.
 #include <unordered_set>
 #include <utility>
 
-#include "absl/strings/str_cat.h"
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/device_base.h"
-#include "tensorflow/core/framework/kernel_def_builder.h"
-#include "tensorflow/core/framework/op.h"
-#include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/framework/register_types.h"
-#include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/framework/tensor_shape.h"
-#include "tensorflow/core/framework/tensor_types.h"
-#include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/kernels/cast_op.h"
-#include "tensorflow/core/kernels/gpu_utils.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
-#include "tensorflow/core/lib/gtl/inlined_vector.h"
-#include "tensorflow/core/lib/hash/hash.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
-#include "tensorflow/core/platform/fingerprint.h"
-#include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/profiler/lib/scoped_annotation.h"
-#include "tensorflow/core/util/env_var.h"
-#include "tensorflow/core/util/use_cudnn.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/kernels/numeric_options_utils.h"

@@ -15,6 +15,13 @@ limitations under the License.
 
 // See docs in ../ops/ctc_ops.cc.
 
+#include "Eigen/Core"  // from @eigen_archive
+#include "tensorflow/core/framework/device_base.h"
+#include "tensorflow/core/framework/op_requires.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/status.h"
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define EIGEN_USE_GPU
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -22,12 +29,9 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/core/framework/bounds_check.h"
-#include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/util/ctc/ctc_loss_calculator.h"
 #include "tensorflow/core/util/sparse/sparse_tensor.h"
 

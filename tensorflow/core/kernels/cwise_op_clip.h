@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_CWISE_OP_CLIP_H_
 #define TENSORFLOW_CORE_KERNELS_CWISE_OP_CLIP_H_
 
+#include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/kernels/cwise_ops_common.h"
 
 namespace tensorflow {
