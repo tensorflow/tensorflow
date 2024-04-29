@@ -20,8 +20,8 @@ cc_library(
     deps = [
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
-        "//tensorflow/lite:string_util",
         "//tensorflow/lite:util",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/api:error_reporter",
         "//tensorflow/lite/core/api:op_resolver",
@@ -30,6 +30,8 @@ cc_library(
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/schema:schema_utils",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/types:optional",
+        "@flatbuffers//:runtime_cc",
     ],
 )
 
@@ -45,16 +47,17 @@ cc_test(
     ],
     deps = [
         ":verifier",
-        "//tensorflow/core:framework_lite",
         "//tensorflow/core/platform:resource_loader",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite:string",
         "//tensorflow/lite:util",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/schema:schema_conversion_utils",
         "//tensorflow/lite/schema:schema_fbs",
-        "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest_main",
         "@flatbuffers",
     ],
@@ -72,6 +75,7 @@ cc_library(
     ],
     deps = [
         "//tensorflow/lite/schema:schema_fbs",
+        "@flatbuffers//:runtime_cc",
     ],
 )
 
@@ -81,15 +85,12 @@ cc_test(
     srcs = ["verifier_internal_test.cc"],
     deps = [
         ":verifier_internal",
-        "//tensorflow/core:framework_lite",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
-        "//tensorflow/lite:util",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core:framework",
-        "//tensorflow/lite/core/api",
         "//tensorflow/lite/schema:schema_conversion_utils",
         "//tensorflow/lite/schema:schema_fbs",
-        "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest_main",
         "@flatbuffers",
     ],
