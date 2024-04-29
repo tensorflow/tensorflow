@@ -503,6 +503,28 @@ TEST(FfiTest, RemainingArgs) {
   TF_ASSERT_OK(status);
 }
 
+TEST(FfiTest, RemainingRets) {
+  std::vector<float> storage(4, 0.0f);
+  se::DeviceMemoryBase memory(storage.data(), 4 * sizeof(float));
+
+  CallFrameBuilder builder;
+  builder.AddBufferRet(memory, PrimitiveType::F32, /*dims=*/{2, 2});
+  builder.AddBufferRet(memory, PrimitiveType::F32, /*dims=*/{2, 2});
+  auto call_frame = builder.Build();
+
+  auto fn = [&](Result<BufferBase> ret, RemainingResults rets) {
+    EXPECT_EQ(rets.size(), 1);
+    EXPECT_TRUE(rets.get<BufferBase>(0).has_value());
+    EXPECT_FALSE(rets.get<BufferBase>(1).has_value());
+    return absl::OkStatus();
+  };
+
+  auto handler = Ffi::Bind().Ret<BufferBase>().RemainingResults().To(fn);
+  auto status = Call(*handler, call_frame);
+
+  TF_ASSERT_OK(status);
+}
+
 TEST(FfiTest, RunOptionsCtx) {
   auto call_frame = CallFrameBuilder().Build();
   auto* expected = reinterpret_cast<se::Stream*>(0x01234567);
