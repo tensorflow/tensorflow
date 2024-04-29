@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/reduction_utils.h"
 #include "xla/service/gpu/stream_executor_util.h"
+#include "xla/service/host_memory_offload_annotations.h"
 #include "xla/service/logical_buffer.h"
 #include "xla/shape.h"
 #include "xla/shape_layout.h"
@@ -566,6 +567,24 @@ bool GpuLayoutAssignment::PropagateReductionLayoutToOperand(
   int64_t kept_dimension_size = ShapeUtil::ElementsIn(user->shape());
   return IsUnnestedReductionFasterThanElemental(
       {/*is_row_reduction=*/true, {1, kept_dimension_size, reduction_size}});
+}
+
+bool GpuLayoutAssignment::InstructionCanChangeLayoutInstance(
+    const HloInstruction* instruction) {
+  // The host offloading custom calls will be eventually removed
+  // by the offloader, so we need to make sure that the calls do not change
+  // the layout and thus cause layout mismatches after the removal.
+  const HloCustomCallInstruction* custom_call =
+      DynCast<HloCustomCallInstruction>(instruction);
+  if (custom_call != nullptr &&
+      (custom_call->custom_call_target() ==
+           host_memory_offload_annotations::kMoveToHostCustomCallTarget ||
+       custom_call->custom_call_target() ==
+           host_memory_offload_annotations::kMoveToDeviceCustomCallTarget)) {
+    return false;
+  }
+
+  return LayoutAssignment::InstructionCanChangeLayoutInstance(instruction);
 }
 
 }  // namespace gpu
