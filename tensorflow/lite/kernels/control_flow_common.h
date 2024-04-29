@@ -160,6 +160,11 @@ TfLiteStatus DeepOrShallowCopyTensorsShapeTypeData(
   }
   return kTfLiteOk;
 }
+
+// Returns the subgraph input tensor index if the given output is also an input.
+// Otherwise returns -1.
+int OutputIsInput(int output_idx, const std::vector<int>& subgraph_inputs);
+
 }  // namespace builtin
 }  // namespace ops
 }  // namespace tflite
