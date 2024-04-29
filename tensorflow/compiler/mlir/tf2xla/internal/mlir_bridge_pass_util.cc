@@ -66,7 +66,7 @@ LogicalResult HasAttr(
     // This is not expected to happen in practice
     if (!status.ok()) {
       LOG(ERROR) << "Failed to parse " << func_name << ": "
-                 << tsl::NullTerminatedMessage(status);
+                 << absl::StatusMessageAsCStr(status);
       return failure();
     }
     if (predicate(*func_body->graph)) {
