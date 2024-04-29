@@ -78,7 +78,16 @@ class AsyncCollectiveOps : public CollectiveOpsTestE2E,
     DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
 
     // Enable or disable all async collectives based on test parameter.
-    const bool enable_async = GetParam();
+    bool enable_async = GetParam();
+    if (!enable_async) {
+      for (auto option :
+           {DebugOptions::NOOP, DebugOptions::ALLREDUCE,
+            DebugOptions::ALLGATHER, DebugOptions::REDUCESCATTER,
+            DebugOptions::COLLECTIVEBROADCAST, DebugOptions::ALLTOALL,
+            DebugOptions::COLLECTIVEPERMUTE}) {
+        debug_options.add_xla_gpu_disable_async_collectives(option);
+      }
+    }
     debug_options.add_xla_disable_hlo_passes(
         "gpu-convert-async-collectives-to-sync");
     return debug_options;
