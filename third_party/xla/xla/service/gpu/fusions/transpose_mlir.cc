@@ -130,6 +130,11 @@ MlirTransposeFusion::MlirTransposeFusion(const HloFusionAnalysis& analysis)
   }
 }
 
+/*static*/ bool MlirTransposeFusion::IsSupported(
+    const HloFusionAnalysis& analysis) {
+  return GetShMemTransposes(analysis).size() == analysis.fusion_roots().size();
+}
+
 std::optional<IndexingMap> MlirTransposeFusion::ComputeThreadIdToOutputIndexing(
     int64_t root_index, MLIRContext* mlir_context) const {
   const auto& hero = *analysis_.fusion_heroes()[root_index];

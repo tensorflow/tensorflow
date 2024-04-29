@@ -393,6 +393,30 @@ TEST_F(MlirLoopFusionTest, MinimumMaximum) {
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
 }
 
+TEST_F(MlirLoopFusionTest, TupleBitcast) {
+  auto kHloString = R"(
+    HloModule Test
+
+    fused_computation {
+      param0 = f64[8] parameter(0)
+      param1 = f64[8] parameter(1)
+
+      minimum = f64[8] minimum(param0, param1)
+      maximum = f64[8] maximum(param0, param1)
+      bc = f64[2, 4] bitcast(maximum)
+      ROOT tuple = (f64[8], f64[2,4]) tuple(minimum, bc)
+    }
+
+    ENTRY main {
+      param0 = f64[8] parameter(0)
+      param1 = f64[8] parameter(1)
+      ROOT fusion = (f64[8], f64[2,4]) fusion(param0, param1),
+        kind=kLoop, calls=fused_computation
+    }
+  )";
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

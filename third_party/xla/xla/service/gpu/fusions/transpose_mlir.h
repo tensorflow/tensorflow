@@ -58,6 +58,8 @@ class MlirTransposeFusion : public MlirFusionEmitterBase {
       int64_t root_index, int64_t hero_operand_index,
       mlir::MLIRContext* mlir_context) const override;
 
+  static bool IsSupported(const HloFusionAnalysis& analysis);
+
  protected:
   IndexingMap ComputeThreadIdToInputIndexing(
       const HloInstruction& hero, mlir::MLIRContext* mlir_context) const;

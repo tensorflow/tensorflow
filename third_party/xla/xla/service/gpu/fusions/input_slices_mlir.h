@@ -57,6 +57,10 @@ class MlirInputSlicesFusion : public MlirFusionEmitterBase {
       mlir::func::FuncOp entry_function,
       const HloFusionInstruction& fusion) const override;
 
+  std::vector<mlir_converter::EpilogueSpecification> GetEpilogues(
+      const HloFusionInstruction& fusion,
+      mlir::MLIRContext* mlir_context) const override;
+
  private:
   const HloFusionAnalysis& analysis_;
   const int unroll_factor_;
