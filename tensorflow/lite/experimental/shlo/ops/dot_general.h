@@ -4,7 +4,7 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
-    http://www.apache.org/licenses/LICENSE-2.0
+http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
@@ -21,23 +21,30 @@ limitations under the License.
 
 namespace shlo_ref {
 
+enum class PrecisionTypes {
+  DEFAULT,
+  HIGH,
+  HIGHEST,
+};
+
 class DotGeneralOp {
  public:
   struct Attributes {
-    Tensor lhs_batching_dimensions;
-    Tensor rhs_batching_dimensions;
-    Tensor lhs_contracting_dimensions;
-    Tensor rhs_contracting_dimensions;
+    absl::Span<int64_t> lhs_batching_dimensions;
+    absl::Span<int64_t> rhs_batching_dimensions;
+    absl::Span<int64_t> lhs_contracting_dimensions;
+    absl::Span<int64_t> rhs_contracting_dimensions;
+    std::array<PrecisionTypes, 2> precision_configs;
   };
   Attributes attributes;
-  std::vector<size_t> lhs_result_dims;
-  std::vector<size_t> rhs_result_dims;
-  std::vector<size_t> lhs_index;
-  std::vector<size_t> rhs_index;
-  std::vector<size_t> lhs_index_helper;
-  std::vector<size_t> rhs_index_helper;
-  std::vector<size_t> output_index;
-  std::vector<size_t> output_shape;
+  absl::InlinedVector<size_t, 6> lhs_result_dims;
+  absl::InlinedVector<size_t, 6> rhs_result_dims;
+  absl::InlinedVector<size_t, 6> lhs_index;
+  absl::InlinedVector<size_t, 6> rhs_index;
+  absl::InlinedVector<size_t, 6> lhs_index_helper;
+  absl::InlinedVector<size_t, 6> rhs_index_helper;
+  absl::InlinedVector<size_t, 6> output_index;
+  absl::InlinedVector<size_t, 6> output_shape;
 };
 
 DotGeneralOp Create(DotGeneralOp::Attributes attributes);

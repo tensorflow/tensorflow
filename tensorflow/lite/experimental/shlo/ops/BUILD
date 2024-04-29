@@ -11,6 +11,7 @@ cc_library(
     srcs = ["dot_general.cc"],
     hdrs = ["dot_general.h"],
     deps = [
+        ":util",
         "//tensorflow/lite/experimental/shlo:data_type",
         "//tensorflow/lite/experimental/shlo:dispatch",
         "//tensorflow/lite/experimental/shlo:shape",
