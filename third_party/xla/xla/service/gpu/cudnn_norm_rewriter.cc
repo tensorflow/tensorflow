@@ -1038,13 +1038,11 @@ class CudnnNormRewriterVisitor : public DfsHloRewriteVisitor {
           HloInstruction * x_reshape,
           MakeReshapeHlo(reshaped_shape, x_transpose.value_or(x.Instr())));
 
-      // Reshape the scale and bias.
-      std::vector<int64_t> reshaped_scale_dims(reshaped_dims.begin() + 1,
-                                               reshaped_dims.end());
-      // cuDNN requires tensors to have at least four dimensions.
-      while (reshaped_scale_dims.size() < 4) {
-        reshaped_scale_dims.emplace_back(1);
-      }
+      // Reshape the scale and bias. The first dimension corresponds to the
+      // non-normalization dimension of the norm input and must have size 1.
+      std::vector<int64_t> reshaped_scale_dims = reshaped_dims;
+      reshaped_scale_dims[0] = 1;
+
       Shape scale_bias_shape = ShapeUtil::MakeShape(
           scale->shape().element_type(), reshaped_scale_dims);
       TF_ASSIGN_OR_RETURN(HloInstruction * scale_reshape,
