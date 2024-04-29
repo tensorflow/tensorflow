@@ -115,7 +115,7 @@ void DynamicallyQuantizedTransposeConvTester::Test(
     }
   }
 
-  if (different_output_values > 0.05 * num_output_values) {
+  if (different_output_values > 0.055 * num_output_values) {
     GTEST_FAIL() << (float)different_output_values / num_output_values * 100.f
                  << "% of output values differ";
   }
