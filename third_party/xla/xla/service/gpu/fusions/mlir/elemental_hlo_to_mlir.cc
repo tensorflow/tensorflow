@@ -1085,16 +1085,6 @@ bool IsHloConversionSupported(const HloFusionAdaptor& fusion,
   auto cuda_compute_capability =
       std::get<se::CudaComputeCapability>(compute_capability);
 
-  if (fusion.GetRoots().size() > 1) {
-    auto first_shape = fusion.GetRoots()[0].instruction().shape();
-    for (int i = 1; i < fusion.GetRoots().size(); ++i) {
-      if (fusion.GetRoots()[i].instruction().shape().dimensions() !=
-          first_shape.dimensions()) {
-        return false;
-      }
-    }
-  }
-
   return !HloFindIf(
       fusion.GetRoots(), fusion, [=](HloInstructionAdaptor instr) {
         return !absl::c_all_of(instr.instruction().called_computations(),

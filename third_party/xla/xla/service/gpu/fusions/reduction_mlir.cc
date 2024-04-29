@@ -116,7 +116,8 @@ MlirReductionFusion::MlirReductionFusion(const HloFusionAnalysis& analysis)
 
 bool MlirReductionFusion::IsSupported(const HloFusionAnalysis& analysis) {
   auto info = ReductionInfo::Create(analysis);
-  return info.GetGroups().grouped_roots.size() == 1 && info.IsRaceFree();
+  return info.GetGroups().grouped_roots.size() == 1 && info.IsRaceFree() &&
+         !absl::c_linear_search(info.GetGroups().is_reduction_root, false);
 }
 
 std::vector<mlir_converter::EpilogueSpecification>
