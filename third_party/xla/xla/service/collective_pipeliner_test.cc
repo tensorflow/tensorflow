@@ -2227,5 +2227,85 @@ ENTRY main.3813_spmd {
   ASSERT_IS_OK(verifier.Run(module.get()).status());
 }
 
+TEST_F(CollectivePipelinerTest, PeeledCollectivePermoteHasCtrlEdgeToWhile) {
+  constexpr absl::string_view hlo_string = R"(
+HloModule module
+
+add {
+  lhs = bf16[] parameter(0)
+  rhs = bf16[] parameter(1)
+  ROOT add = bf16[] add(lhs, rhs)
+}
+
+while_cond {
+  param = (s32[], bf16[3,8,128], bf16[3,8,128]) parameter(0)
+  gte = s32[] get-tuple-element(param), index=0
+  constant.1 = s32[] constant(0)
+  ROOT cmp = pred[] compare(gte, constant.1), direction=LT
+}
+
+while_body {
+  param = (s32[], bf16[3,8,128], bf16[3,8,128]) parameter(0)
+  get-tuple-element.394 = s32[] get-tuple-element(param), index=0
+  get-tuple-element.395 = bf16[3,8,128] get-tuple-element(param), index=1
+  get-tuple-element.5 = bf16[3,8,128] get-tuple-element(param), index=2
+  constant.2557 = s32[] constant(1)
+  add.230 = s32[] add(get-tuple-element.394, constant.2557)
+  constant.2559 = s32[] constant(3)
+  subtract.139 = s32[] subtract(constant.2559, get-tuple-element.394)
+  constant.2560 = s32[] constant(-1)
+  add.231 = s32[] add(subtract.139, constant.2560)
+  constant.2561 = s32[] constant(0)
+  compare.747 = pred[] compare(add.231, constant.2561), direction=LT
+  constant.2562 = s32[] constant(2)
+  add.232 = s32[] add(subtract.139, constant.2562)
+  select.1348 = s32[] select(compare.747, add.232, add.231)
+  dynamic-slice.99 = bf16[1,8,128] dynamic-slice(get-tuple-element.5, select.1348, constant.2561, constant.2561), dynamic_slice_sizes={1,8,128}
+  collective-permute.460 = bf16[1,8,128] collective-permute(dynamic-slice.99), channel_id=137, source_target_pairs={{0,1},{2,3},{4,5},{6,7}}
+  mul = bf16[1,8,128] multiply(dynamic-slice.99, collective-permute.460)
+  rs.1 = bf16[1,1,128] reduce-scatter(mul), replica_groups={}, to_apply=add, channel_id=1, dimensions={1}
+  ag.1 = bf16[1,8,128] all-gather(rs.1), replica_groups={}, channel_id=2, dimensions={1}
+  dynamic-update-slice.35 = bf16[3,8,128] dynamic-update-slice(get-tuple-element.395, ag.1, select.1348, constant.2561, constant.2561)
+  ROOT tuple = (s32[], bf16[3,8,128], bf16[3,8,128]) tuple(add.230, dynamic-update-slice.35, get-tuple-element.5)
+}
+
+ENTRY entry {
+  c0 = s32[] constant(-3)
+  p0 = bf16[3,8,128] parameter(0)
+  cc = bf16[] constant(0)
+  tuple = (s32[], bf16[3,8,128], bf16[3,8,128]) tuple(c0, p0, p0)
+  while = (s32[], bf16[3,8,128], bf16[3,8,128]) while(tuple), condition=while_cond, body=while_body
+  ROOT gte1 = bf16[3,8,128] get-tuple-element(while), index=1
+}
+)";
+  config_.set_replica_count(1);
+  config_.set_num_partitions(8);
+  auto module = ParseAndReturnUnverifiedModule(hlo_string, config_).value();
+  EXPECT_TRUE(RunOptimizer(module.get(), /*last_run=*/true, 0,
+                           /*pipeline_use_tree=*/false,
+                           /*process_different_sized_ops=*/true,
+                           CollectivePipeliner::PipeliningDirection::kForward,
+                           IsAllGather)
+                  .value());
+  XLA_VLOG_LINES(1, module->ToString());
+  auto* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::DynamicUpdateSlice(
+                        _, op::AllGather(op::GetTupleElement(op::While())),
+                        op::GetTupleElement(), op::Constant(), op::Constant()));
+  const HloInstruction* while_instr =
+      FindInstruction(module.get(), HloOpcode::kWhile);
+  ASSERT_THAT(while_instr, ::testing::NotNull());
+  const HloInstruction* collective_permute_instr =
+      FindInstruction(module.get(), HloOpcode::kCollectivePermute);
+  ASSERT_THAT(collective_permute_instr, ::testing::NotNull());
+  // Check that 'while_instr' is a control successor of
+  // 'collective_permute_instr'.
+  EXPECT_TRUE(
+      absl::c_find_if(collective_permute_instr->control_successors(),
+                      [&while_instr](const HloInstruction* successor_instr) {
+                        return successor_instr == while_instr;
+                      }));
+}
+
 }  // namespace
 }  // namespace xla

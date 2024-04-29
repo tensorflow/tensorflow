@@ -1245,6 +1245,7 @@ Status TransformLoopForward(const WhileLoopAnalysis& loop_analysis,
 
   // Duplicate the loop body into the loop parent computation, so that the first
   // iteration happens there.
+  absl::flat_hash_set<HloInstruction*> peeled_collective_permutes;
   for (auto* instr : while_body->MakeInstructionPostOrder()) {
     if (instr == loop_parameter) {
       continue;
@@ -1268,6 +1269,9 @@ Status TransformLoopForward(const WhileLoopAnalysis& loop_analysis,
         MapNewOperands(instr->operands(), while_body_to_peeled);
     HloInstruction* cloned_instr = loop_computation->AddInstruction(
         instr->CloneWithNewOperands(instr->shape(), new_operands));
+    if (cloned_instr->opcode() == HloOpcode::kCollectivePermute) {
+      peeled_collective_permutes.insert(cloned_instr);
+    }
     TF_RETURN_IF_ERROR(
         UpdateControlDependencies(instr, cloned_instr, while_body_to_peeled));
     UpdateInstructionChannelId(cloned_instr, next_channel_id);
@@ -1345,6 +1349,13 @@ Status TransformLoopForward(const WhileLoopAnalysis& loop_analysis,
       while_loop->ReplaceAllUsesWithDifferentShape(new_while_loop));
   TF_RETURN_IF_ERROR(
       loop_computation->RemoveInstructionAndUnusedOperands(while_loop));
+  for (auto* instr : peeled_collective_permutes) {
+    // Collective permutes can be decomposed into send/recv, recv-done/send-done
+    // pairs, where send-done could be scheduled after the while loop from which
+    // it was peeled. Add a control dependency here to prevent this from
+    // happening.
+    TF_RETURN_IF_ERROR(instr->AddControlDependencyTo(new_while_loop));
+  }
   // Run WhileLoopAnalysis again on the new loop to collect the position of the
   // all-reduces in the new cloned loop as they aren't the same of the old.
   // Loop analysis should result exactly the same, because the loop is the same
