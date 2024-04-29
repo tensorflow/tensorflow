@@ -284,7 +284,7 @@ bool RecursivelyForwardPropagateDataType(GraphTransformation* transformation,
   auto it = model->operators.begin() + op_index;
   auto* op = it->get();
   if (op->type != OperatorType::kFakeQuant) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
   auto* fakequant_op = static_cast<FakeQuantOperator*>(op);
 
@@ -293,7 +293,7 @@ bool RecursivelyForwardPropagateDataType(GraphTransformation* transformation,
                                            &quantized_data_type)) {
     AddMessageF("FakeQuant op %s num_bits=%d is out of range, ignoring",
                 LogName(*op), fakequant_op->num_bits);
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
   const auto& final_minmax = *fakequant_op->minmax;
 
@@ -315,7 +315,7 @@ bool RecursivelyForwardPropagateDataType(GraphTransformation* transformation,
       RecursivelyForwardPropagateDataType(this, model, op, quantized_data_type);
 
   *modified = did_change;
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace toco
