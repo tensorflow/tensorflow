@@ -19,7 +19,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
@@ -33,6 +32,7 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/test_helpers.h"
 #include "xla/tests/hlo_test_base.h"
+#include "tsl/lib/core/status_test_util.h"
 
 namespace xla::gpu {
 namespace {
@@ -52,7 +52,7 @@ class TritonFusionNumericsVerifierTest
   std::unique_ptr<xla::HloModule> Module(absl::string_view hlo_text_template,
                                          absl::string_view type) {
     auto m = GetOptimizedModule(absl::Substitute(hlo_text_template, type));
-    EXPECT_OK(m);
+    TF_EXPECT_OK(m);
     return std::move(m.value());
   }
 
@@ -73,7 +73,7 @@ class TritonFusionNumericsVerifierTest
   AutotuneConfig CreateAutotuneConfig() {
     se::Platform* platform = PlatformUtil::GetDefaultPlatform().value();
     auto executors_or = PlatformUtil::GetStreamExecutors(platform);
-    EXPECT_OK(executors_or);
+    TF_EXPECT_OK(executors_or);
     return AutotuneConfig{DeviceConfig{executors_or->at(0), nullptr},
                           GetDebugOptionsForTest()};
   }
@@ -81,7 +81,7 @@ class TritonFusionNumericsVerifierTest
   AutotunerCompileUtil CreateAutotunerCompileUtil(AutotuneConfig& config) {
     auto opt_compile_util_or =
         AutotunerCompileUtil::Create(config, GetDebugOptionsForTest());
-    EXPECT_OK(opt_compile_util_or);
+    TF_EXPECT_OK(opt_compile_util_or);
     EXPECT_TRUE(opt_compile_util_or->has_value());
     return std::move(opt_compile_util_or->value());
   }
@@ -168,15 +168,15 @@ TEST_F(TritonFusionNumericsVerifierTest, CheckMismatch) {
   auto f16_result = triton_fusion_numerics_pass_internal::CompileAndRunFusion(
       compile_util, *fusion_f16, autotune_config, debug_options,
       /*clear_backend_config=*/false);
-  EXPECT_OK(f16_result);
+  TF_EXPECT_OK(f16_result);
 
   auto f32_result = triton_fusion_numerics_pass_internal::CompileAndRunFusion(
       compile_util, *fusion_f32, autotune_config, debug_options,
       /*clear_backend_config=*/false);
-  EXPECT_OK(f32_result);
+  TF_EXPECT_OK(f32_result);
 
   auto stream = autotune_config.GetStream();
-  EXPECT_OK(stream);
+  TF_EXPECT_OK(stream);
 
   // Intentionally compare the fusions from the different modules, triggering a
   // mismatch.
@@ -184,7 +184,7 @@ TEST_F(TritonFusionNumericsVerifierTest, CheckMismatch) {
       *f16_result, *f32_result, fusion_f16->shape(),
       fusion_f16->GetModule()->config(), *stream);
 
-  EXPECT_IS_NOT_OK(cmp);
+  EXPECT_FALSE(cmp.ok());
 }
 
 INSTANTIATE_TEST_SUITE_P(TritonFusionNumericsVerifierTestSuite,
