@@ -18,6 +18,7 @@ limitations under the License.
 #include <optional>
 #include <utility>
 
+#include "absl/strings/string_view.h"
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/test.h"
 
