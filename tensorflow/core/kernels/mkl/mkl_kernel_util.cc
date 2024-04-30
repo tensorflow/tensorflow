@@ -50,7 +50,7 @@ void MklTestingUtil::RunMklQuantizeOp(const Tensor& input,
                   .Input(max_node)
                   .Attr("T", type)
                   .Attr("mode", mode)
-                  .Attr("round_mode", "HALF_TO_EVEN")
+                  .Attr("round_mode", round_mode)
                   .Attr("_kernel", "QuantizedMklOp")
                   .Finalize(&*graph, &quantize_op));
 
