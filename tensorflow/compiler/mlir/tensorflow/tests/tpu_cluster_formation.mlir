@@ -749,115 +749,6 @@ func.func @invalid_device_type() {
 }
 
 // -----
-
-// Check non-replicated case, including expected attributes at device cluster.
-// CHECK: "tf_device.cluster"()
-// CHECK:    "tf.opA"()
-// CHECK:    "tf.opB"()
-// CHECK:    tf_device.return
-// CHECK:  })  {_replication_info = "__no_replication_cluster", _xla_compile_device_type = "TPU", allow_soft_placement = true, device_assignment = [], num_cores_per_replica = 1 : i32, step_marker_location = "", topology = "", use_spmd_for_xla_partitioning = false}
-func.func @valid_compilation_cluster_no_replication() {
-  "tf.opA"() { _xla_compile_device_type = "TPU", is_stateless = true} : () -> ()
-  "tf.opB"() { _xla_compile_device_type = "TPU", is_stateless = true} : () -> ()
-  func.return
-}
-
-// -----
-
-// Check non-replicated case, empty op device to no device in cluster.
-// CHECK: "tf_device.cluster"()
-// CHECK:    "tf.opA"()
-// CHECK:    "tf.opB"()
-// CHECK: tf_device.return
-// CHECK-NOT: device =
-// CHECK: return
-func.func @valid_compilation_cluster_no_replication_empty_op_device() {
-  "tf.opA"() { _xla_compile_device_type = "TPU", device = ""} : () -> ()
-  "tf.opB"() { _xla_compile_device_type = "TPU", device = ""} : () -> ()
-  func.return
-}
-
-
-// Check non-replicated case, including expected device attr in cluster.
-// CHECK: "tf_device.cluster"()
-// CHECK:    "tf.opA"()
-// CHECK:    "tf.opB"()
-// CHECK: device = "/device:TPU:1"
-func.func @valid_compilation_cluster_no_replication_op_device() {
-  "tf.opA"() { _xla_compile_device_type = "TPU", device = "/device:TPU:1"} : () -> ()
-  "tf.opB"() { _xla_compile_device_type = "TPU", device = "/device:TPU:1"} : () -> ()
-  func.return
-}
-
-// -----
-
-// Check conflicting device names
-// CHECK: "tf_device.cluster"()
-// CHECK:    "tf.opA"()
-// CHECK:    "tf.opB"()
-// CHECK-NOT: device =
-func.func @do_nothing_if_short_names_conflict() {
-  "tf.opA"() { _xla_compile_device_type = "TPU", device = "/replica:1/task:2/device:TPU:1"} : () -> ()
-  "tf.opB"() { _xla_compile_device_type = "TPU", device = "/replica:3/task:4/device:TPU:1"} : () -> ()
-  func.return
-}
-
-// -----
-
-// Check non-replicated case, including expected device attr in cluster.
-// CHECK: "tf_device.cluster"()
-// CHECK:    "tf.opA"()
-// CHECK:    "tf.opB"()
-// CHECK: device = "/task:0/device:TPU:1"
-func.func @valid_compilation_cluster_no_replication_op_device() {
-  "tf.opA"() { _xla_compile_device_type = "TPU", device = "/task:0/device:TPU:1"} : () -> ()
-  "tf.opB"() { _xla_compile_device_type = "TPU", device = "/device:TPU:1"} : () -> ()
-  func.return
-}
-
-// -----
-
-// Check non-replicated case, including expected device attr in cluster.
-// CHECK: "tf_device.cluster"()
-// CHECK:    "tf.opA"()
-// CHECK:    "tf.opB"()
-// CHECK: device = "/task:0/device:TPU:1"
-func.func @valid_compilation_cluster_no_replication_op_device() {
-  "tf.opA"() { _xla_compile_device_type = "TPU", device = "/device:TPU:1"} : () -> ()
-  "tf.opB"() { _xla_compile_device_type = "TPU", device = "/task:0/device:TPU:1"} : () -> ()
-  func.return
-}
-
-// -----
-
-// Check non-replicated case, empty op device to no device in cluster.
-// CHECK: "tf_device.cluster"()
-// CHECK:    "tf.opA"()
-// CHECK:    "tf.opB"()
-// CHECK: tf_device.return
-// CHECK-NOT: device =
-// CHECK: return
-func.func @valid_compilation_cluster_no_replication_op_device() {
-  "tf.opA"() { _xla_compile_device_type = "TPU", device = "/device:TPU:0"} : () -> ()
-  "tf.opB"() { _xla_compile_device_type = "TPU", device = "/task:0/device:TPU:1"} : () -> ()
-  func.return
-}
-
-// -----
-
-// Check non-replicated case, empty op device to no device in cluster.
-// CHECK: "tf_device.cluster"()
-// CHECK:    "tf.opA"()
-// CHECK:    "tf.opB"()
-// CHECK: tf_device.return
-// CHECK-NOT: device =
-// CHECK: return
-func.func @valid_compilation_cluster_no_replication_op_device() {
-  "tf.opA"() { _xla_compile_device_type = "TPU", device = "/device:CPU:0"} : () -> ()
-  func.return
-}
-
-// -----
 // expected-error@+1 {{found different '_xla_compile_device_type' attribute values (GPU,TPU) in same block which is not supported}}
 func.func @invalid_compilation_cluster_mixed_device_types() {
   "tf.opA"() { _xla_compile_device_type = "GPU", is_stateless = true} : () -> ()
@@ -1041,5 +932,18 @@ func.func @gather_nd(%arg0: tensor<*x!tf_type.resource<tensor<80xf32>>>,
   %3 = "tf.ResourceGatherNd"(%arg0, %0) {
     Tindices = i32
   } : (tensor<*x!tf_type.resource<tensor<80xf32>>>, tensor<i32>) -> tensor<1x80xf32>
+  func.return
+}
+
+// -----
+
+// Check conflicting device names
+// CHECK: "tf_device.cluster"()
+// CHECK:    "tf.opA"()
+// CHECK:    "tf.opB"()
+// CHECK-NOT: device =
+func.func @do_nothing_if_short_names_conflict() {
+  "tf.opA"() { _xla_compile_device_type = "TPU", device = "/replica:1/task:2/device:TPU:1"} : () -> ()
+  "tf.opB"() { _xla_compile_device_type = "TPU", device = "/replica:3/task:4/device:TPU:1"} : () -> ()
   func.return
 }

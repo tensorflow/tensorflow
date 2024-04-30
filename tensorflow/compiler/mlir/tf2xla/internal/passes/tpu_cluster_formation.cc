@@ -172,6 +172,86 @@ struct OpDevice {
   std::string device;
 };
 
+LogicalResult HasValidDeviceTypeAttribute(Block* block) {
+  // Use ordered set here to make error message below deterministic.
+  std::set<llvm::StringRef> device_types;
+  for (Operation& op : *block) {
+    // Collect device types which currently must be consistent per block
+    // (checked later).
+    if (auto device_type_attr =
+            op.getAttrOfType<StringAttr>(mlir::TF::kCompileDeviceTypeAttr)) {
+      // tf.StatefulPartitionedCall ops with and without
+      // _tpu_replicate attributes may exist in the same graph. Ops without
+      // the attribute but with _XlaMustCompile=true would have
+      // _xla_compile_device_type="" after
+      // CanonicalizeCompileAndReplicateAttributesPass. Skip empty value here.
+      if (!device_type_attr.getValue().empty()) {
+        device_types.insert(device_type_attr);
+      }
+    }
+  }
+
+  if (device_types.size() > 1) {
+    return block->getParentOp()->emitError()
+           << "found different '" << mlir::TF::kCompileDeviceTypeAttr
+           << "' attribute values (" << llvm::join(device_types, ",")
+           << ") in same block which is not supported";
+  }
+  return success();
+}
+
+LogicalResult HasValidDeviceAttribute(Block* block) {
+  absl::flat_hash_map<std::string, OpDevice> devices;
+  for (Operation& op : *block) {
+    auto device_attr = op.getAttrOfType<StringAttr>(kDeviceAttr);
+    if (!device_attr || device_attr.str().empty()) continue;
+    tensorflow::DeviceNameUtils::ParsedName parsed;
+    if (!tensorflow::DeviceNameUtils::ParseFullOrLocalName(device_attr.str(),
+                                                           &parsed)) {
+      op.emitWarning() << "Invalid device name " << device_attr.str();
+      return mlir::failure();
+    }
+
+    std::string device_local_name =
+        tensorflow::DeviceNameUtils::LocalName(parsed.type, parsed.id);
+
+    if (device_local_name.empty()) continue;
+
+    // It is possible that a device may be same Local Name but
+    // different fullname. Devices with same Local name are identical
+    // so they should only be added once in 'devices'.
+    // and we need the fullname which is longer since longer name has more
+    // information such as task, replica, job etc. An example fullname is
+    // "/job:foo_bar/replica:1/task:2/device:GPU:3"
+    if (devices.count(device_local_name)) {
+      std::string device1 = devices[device_local_name].device;
+      std::string device2 = device_attr.str();
+      // Is either of the two devices just a substring of the other? If
+      // not, we treat them as different devices, and we have a collision.
+      if (device1.find(device2) == std::string::npos &&
+          device2.find(device1) == std::string::npos) {
+        Operation* previous_op = devices[device_local_name].op;
+
+        LOG_FIRST_N(WARNING, 1)
+            << "Found two devices with same local name " << device_local_name
+            << " but conflicting fullname: " << device1 << " and " << device2
+            << ".";
+        LOG_FIRST_N(WARNING, 1)
+            << "Previous assignment came from op: "
+            << tensorflow::OpAsString(*previous_op)
+            << ". Current op is: " << tensorflow::OpAsString(op);
+      }
+      // Always keep the longer name.
+      if (devices[device_local_name].device.size() < device_attr.str().size()) {
+        devices[device_local_name] = {&op, device_attr.str()};
+      }
+    } else {
+      devices.insert({device_local_name, {&op, device_attr.str()}});
+    }
+  }
+  return success();
+}
+
 // Collects and clusters ops either based on `_replication_info` attribute
 // (replicated case) or using one single cluster (non-replicated case). Also
 // sets `device_type` if there is any cluster (note that the device type must be
@@ -182,29 +262,22 @@ LogicalResult CollectAndGroupClusterOps(Block* block, ClusterMap* clusters,
                                         std::string& device) {
   bool has_replicated_compiled_op = false;
   bool has_non_replicated_compiled_op = false;
-  bool has_local_device_name_collisions = false;
-  // Use ordered set here to make error message below deterministic.
-  std::set<llvm::StringRef> device_types;
-  absl::flat_hash_map<std::string, OpDevice> devices;
+
+  LogicalResult result = HasValidDeviceTypeAttribute(block);
+  if (failed(result)) return result;
+  result = HasValidDeviceAttribute(block);
+  if (failed(result)) return result;
+
   for (Operation& op : *block) {
     LogicalResult result =
         mlir::TF::HasValidCompilationAndReplicationAttributes(op);
     if (failed(result)) return result;
 
-    // Collect device types which currently must be consistent per block
-    // (checked later).
+    // Skip ops with non-TPU device type, they are handled elsewhere.
     auto device_type_attr =
         op.getAttrOfType<StringAttr>(mlir::TF::kCompileDeviceTypeAttr);
     if (device_type_attr) {
-      // Some graphs in TPU bridge may have both tf.StatefulPartitionedCall
-      // ops with and without _tpu_replicate attributes. As a result, the ops
-      // without such attribute would have _xla_compile_device_type="" after
-      // CanonicalizeCompileAndReplicateAttributesPass, if they also had
-      // _XlaMustCompile = true before the pass. We should filter out such
-      // unspecified device type here.
       if (device_type_attr.getValue().empty()) continue;
-      device_types.insert(device_type_attr);
-      // Stop here for ops with non-TPU devices, they are handled elsewhere.
       if (device_type_attr.getValue() != mlir::TF::kTpuDevice) continue;
     }
 
@@ -225,94 +298,12 @@ LogicalResult CollectAndGroupClusterOps(Block* block, ClusterMap* clusters,
       auto it = clusters->try_emplace(kNoReplicationCluster);
       it.first->getSecond().insert(&op);
     }
-    auto device_attr = op.getAttrOfType<StringAttr>(kDeviceAttr);
-    std::string device_local_name;
-    bool is_tpu_device = false;
-    if (device_attr && !device_attr.str().empty()) {
-      tensorflow::DeviceNameUtils::ParsedName parsed;
-      if (!tensorflow::DeviceNameUtils::ParseFullOrLocalName(device_attr.str(),
-                                                             &parsed)) {
-        op.emitWarning() << "Invalid device name " << device_attr.str();
-        return mlir::failure();
-      }
-
-      device_local_name =
-          tensorflow::DeviceNameUtils::LocalName(parsed.type, parsed.id);
-      is_tpu_device = parsed.type == "TPU";
-    }
-
-    // Ignore non-TPU devices when clustering.
-    if (!is_tpu_device) {
-      continue;
-    }
-
-    if (!has_replicated_compiled_op && !device_local_name.empty()) {
-      // It is possible that a device may be same Local Name but
-      // different fullname. Devices with same Local name are identical
-      // so they should only be added once in 'devices'.
-      // and we need the fullname which is longer since longer name has more
-      // information such as task, replica, job etc. An example fullname is
-      // "/job:foo_bar/replica:1/task:2/device:GPU:3"
-      if (devices.count(device_local_name)) {
-        std::string device1 = devices[device_local_name].device;
-        std::string device2 = device_attr.str();
-        // Is either of the two devices just a substring of the other? If
-        // not, we treat them as different devices, and we have a collision.
-        if (device1.find(device2) == std::string::npos &&
-            device2.find(device1) == std::string::npos) {
-          Operation* previous_op = devices[device_local_name].op;
-          has_local_device_name_collisions = true;
-
-          LOG_FIRST_N(WARNING, 1)
-              << "Found two devices with same local name " << device_local_name
-              << " but conflicting fullname: " << device1 << " and " << device2
-              << ".";
-          LOG_FIRST_N(WARNING, 1)
-              << "Previous assignment came from op: "
-              << tensorflow::OpAsString(*previous_op)
-              << ". Current op is: " << tensorflow::OpAsString(op);
-        }
-        // Always keep the longer name.
-        if (devices[device_local_name].device.size() <
-            device_attr.str().size()) {
-          devices[device_local_name] = {&op, device_attr.str()};
-        }
-      } else {
-        devices.insert({device_local_name, {&op, device_attr.str()}});
-      }
-    }
   }
   // Do some checks for unsupported cases.
   if (has_replicated_compiled_op && has_non_replicated_compiled_op) {
     return block->getParentOp()->emitError()
            << "found mixed replicated and non-replicated compiled ops in same "
               "block which is not supported";
-  }
-  if (device_types.size() > 1) {
-    return block->getParentOp()->emitError()
-           << "found different '" << mlir::TF::kCompileDeviceTypeAttr
-           << "' attribute values (" << llvm::join(device_types, ",")
-           << ") in same block which is not supported";
-  }
-  if (!has_replicated_compiled_op) {
-    if (devices.size() > 1) {
-      LOG(WARNING) << "found different devices for no replication: ";
-      for (const auto& device_names : devices) {
-        LOG(WARNING) << device_names.first << ", "
-                     << device_names.second.device;
-      }
-    } else if (has_local_device_name_collisions) {
-      LOG(WARNING) << "Not assigning device because of conflicting fullnames.";
-    } else if (devices.size() == 1 &&
-               absl::StrContains(devices.begin()->second.device, "TPU:")) {
-      device = devices.begin()->second.device;
-    }
-  }
-  if (!clusters->empty()) {
-    // Note that for size < 1 we shouldn't have any cluster while for size > 1
-    // we should have returned with an error above.
-    assert(device_types.size() == 1);
-    device_type = device_types.begin()->str();
   }
   return success();
 }

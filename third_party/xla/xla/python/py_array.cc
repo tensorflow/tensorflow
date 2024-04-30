@@ -903,6 +903,7 @@ StatusOr<nb::object> CudaArrayInterfaceToBuffer(const nb::dict& cai,
     return InvalidArgument(
         "This operation is implemented for a PjRt-compatible backend only.");
   }
+  TF_RET_CHECK(pjrt_device->IsAddressable());
   TF_ASSIGN_OR_RETURN(
       auto pjrt_buffer,
       device->client()->pjrt_client()->CreateViewOfDeviceBuffer(

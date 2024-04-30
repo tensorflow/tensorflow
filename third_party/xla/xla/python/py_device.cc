@@ -86,7 +86,7 @@ std::string_view PyDevice::device_kind() const { return device_->Kind(); }
 std::optional<int> PyDevice::local_hardware_id() const {
   // TODO(phawkins): consider supporting this for non-PJRT devices.
   ifrt::PjRtDevice* device = llvm::dyn_cast<ifrt::PjRtDevice>(device_);
-  if (device == nullptr) {
+  if (device == nullptr || !device->IsAddressable()) {
     return std::nullopt;
   }
   int local_hardware_id = device->pjrt_device()->local_hardware_id();
@@ -190,9 +190,9 @@ nb::list PyDevice::AddressableMemories() const {
 absl::StatusOr<std::optional<nb::dict>> PyDevice::MemoryStats() const {
   GlobalPyRefManager()->CollectGarbage();
   ifrt::PjRtDevice* device = llvm::dyn_cast<ifrt::PjRtDevice>(device_);
-  if (device == nullptr) {
+  if (device == nullptr || !device->IsAddressable()) {
     return xla::InvalidArgument(
-        "MemoryStats is only supported for PjRt devices.");
+        "MemoryStats is only supported for addressable PjRt devices.");
   }
   absl::StatusOr<tsl::AllocatorStats> maybe_stats =
       device->pjrt_device()->GetAllocatorStats();
@@ -228,9 +228,10 @@ absl::StatusOr<std::optional<nb::dict>> PyDevice::MemoryStats() const {
 absl::StatusOr<std::intptr_t> PyDevice::GetStreamForExternalReadyEvents()
     const {
   ifrt::PjRtDevice* device = llvm::dyn_cast<ifrt::PjRtDevice>(device_);
-  if (device == nullptr) {
+  if (device == nullptr || !device->IsAddressable()) {
     return xla::InvalidArgument(
-        "GetStreamForExternalReadyEvents is only supported for PjRt devices.");
+        "GetStreamForExternalReadyEvents is only supported for addressable "
+        "PjRt devices.");
   }
   return device->pjrt_device()->GetStreamForExternalReadyEvents();
 }

@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_PYTHON_PJRT_IFRT_PJRT_DEVICE_H_
 #define XLA_PYTHON_PJRT_IFRT_PJRT_DEVICE_H_
 
+#include <string>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -24,6 +25,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_device_description.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/pjrt_ifrt/pjrt_client.h"
 
@@ -40,24 +42,28 @@ class PjRtCompatibleDevice : public llvm::RTTIExtends<PjRtDevice, Device> {
 class PjRtDevice final
     : public llvm::RTTIExtends<PjRtDevice, PjRtCompatibleDevice> {
  public:
-  PjRtDevice(PjRtClient* client, xla::PjRtDevice* pjrt_device);
+  PjRtDevice(PjRtClient* client, DeviceId id, std::string kind,
+             std::string to_string, std::string debug_string, int process_index,
+             absl::flat_hash_map<std::string, PjRtDeviceAttribute> attributes,
+             xla::PjRtDevice* pjrt_device);
 
+  // Non-null only for addressable devices. nullptr for non-addressable devices.
   xla::PjRtDevice* pjrt_device() const override { return pjrt_device_; }
 
   // Device implementation.
 
   PjRtClient* client() const override { return client_; }
 
-  DeviceId Id() const override;
-  absl::string_view Kind() const override;
-  absl::string_view ToString() const override;
-  absl::string_view DebugString() const override;
-  bool IsAddressable() const override;
-  absl::StatusOr<Memory*> DefaultMemory() const override;
-  absl::Span<Memory* const> Memories() const override;
-  int ProcessIndex() const override;
+  DeviceId Id() const final;
+  absl::string_view Kind() const final;
+  absl::string_view ToString() const final;
+  absl::string_view DebugString() const final;
+  bool IsAddressable() const final;
+  absl::StatusOr<Memory*> DefaultMemory() const final;
+  absl::Span<Memory* const> Memories() const final;
+  int ProcessIndex() const final;
   const absl::flat_hash_map<std::string, PjRtDeviceAttribute>& Attributes()
-      const override;
+      const final;
 
   static char ID;  // NOLINT
 
@@ -65,8 +71,17 @@ class PjRtDevice final
   friend class PjRtClient;
 
   PjRtClient* client_;
-  xla::PjRtDevice* pjrt_device_;
+
+  DeviceId id_;
+  std::string kind_;
+  std::string to_string_;
+  std::string debug_string_;
+  absl::StatusOr<Memory*> default_memory_;
   std::vector<Memory*> memories_;
+  int process_index_;
+  absl::flat_hash_map<std::string, PjRtDeviceAttribute> attributes_;
+
+  xla::PjRtDevice* pjrt_device_;
 };
 
 }  // namespace ifrt
