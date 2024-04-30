@@ -221,10 +221,11 @@ tsl_cc_test(
         ":int_type",
         ":iterator_range",
         ":map_util",
-        "//tsl/platform:hash",
+        "//testing/base/public:gunit_main",
         "//tsl/platform:macros",
         "//tsl/platform:test",
         "//tsl/platform:test_main",
         "//tsl/platform:types",
+        "@com_google_absl//absl/log",
     ],
 )

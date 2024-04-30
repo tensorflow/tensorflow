@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tsl/lib/gtl/compactptrset.h"
 
-#include "tsl/platform/hash.h"
+#include "absl/log/log.h"
 #include "tsl/platform/test.h"
 #include "tsl/platform/types.h"
 

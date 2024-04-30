@@ -22,7 +22,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "tsl/platform/hash.h"
 #include "tsl/platform/test.h"
 #include "tsl/platform/types.h"
 
