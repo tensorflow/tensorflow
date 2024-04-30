@@ -35,7 +35,6 @@ limitations under the License.
 namespace tfd {
 
 namespace {
-using ::tensorflow::Env;
 using ::tfrt::Attribute;
 using ::tfrt::DType;
 using ::tfrt::EnqueueWork;
@@ -48,6 +47,7 @@ using ::tfrt::RemainingResults;
 using ::tfrt::StringHostTensor;
 using ::tfrt::TensorHandle;
 using ::tfrt::TensorMetadata;
+using ::tsl::Env;
 
 static void CreateTensorHandleWithDelayedAsyncTensor(
     RemainingArguments inputs, RemainingResults output_tensors,
