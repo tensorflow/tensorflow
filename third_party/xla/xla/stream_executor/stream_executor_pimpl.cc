@@ -57,7 +57,7 @@ namespace stream_executor {
 
 // Get per-device memory limit in bytes. Returns 0 if
 // TF_PER_DEVICE_MEMORY_LIMIT_MB environment variable is not set.
-static int64_t GetMemoryLimitBytes() {
+static int64_t GetMemoryLimitBytesFromEnvironmentVariable() {
   int64_t value;
   TF_CHECK_OK(
       tsl::ReadInt64FromEnvVar("TF_PER_DEVICE_MEMORY_LIMIT_MB", 0, &value));
@@ -65,7 +65,8 @@ static int64_t GetMemoryLimitBytes() {
 }
 
 StreamExecutor::StreamExecutor(const Platform* platform)
-    : platform_(platform), memory_limit_bytes_(GetMemoryLimitBytes()) {}
+    : platform_(platform),
+      memory_limit_bytes_(GetMemoryLimitBytesFromEnvironmentVariable()) {}
 
 const DeviceDescription& StreamExecutor::GetDeviceDescription() const {
   absl::MutexLock lock(&mu_);

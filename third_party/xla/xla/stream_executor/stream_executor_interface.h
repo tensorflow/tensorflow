@@ -64,6 +64,12 @@ class StreamExecutorInterface {
       std::optional<std::variant<StreamPriority, int>> priority =
           std::nullopt) = 0;
 
+  // Synchronously allocates an array on the device of type T with element_count
+  // elements.
+  template <typename T>
+  DeviceMemory<T> AllocateArray(uint64_t element_count,
+                                int64_t memory_space = 0);
+
   // Retrieves (loads) a kernel, if one exists.
   //
   // Parameters:
@@ -369,10 +375,29 @@ class StreamExecutorInterface {
   // Returns a stream allocated by this executor, or nullptr if not found.
   virtual Stream* FindAllocatedStream(void* device_stream) { return nullptr; }
 
+  // Returns the memory limit in bytes supported by this executor.
+  virtual int64_t GetMemoryLimitBytes() const = 0;
+
  private:
   StreamExecutorInterface(const StreamExecutorInterface&) = delete;
   void operator=(const StreamExecutorInterface&) = delete;
 };
+
+template <typename T>
+inline DeviceMemory<T> StreamExecutorInterface::AllocateArray(
+    uint64_t element_count, int64_t memory_space) {
+  uint64_t bytes = sizeof(T) * element_count;
+  auto memory_limit_bytes = GetMemoryLimitBytes();
+  if (memory_limit_bytes > 0 &&
+      static_cast<int64_t>(bytes) > memory_limit_bytes) {
+    LOG(WARNING) << "Not enough memory to allocate " << bytes << " on device "
+                 << device_ordinal()
+                 << " within provided limit.  limit=" << memory_limit_bytes
+                 << "]";
+    return DeviceMemory<T>();
+  }
+  return DeviceMemory<T>(Allocate(bytes, memory_space));
+}
 
 }  // namespace stream_executor
 

@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/statusor.h"
 #include "xla/stream_executor/host/host_platform_id.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/stream_executor_interface.h"
 #include "xla/util.h"
 #include "tsl/platform/cpu_info.h"
 #include "tsl/platform/env.h"
@@ -147,7 +148,8 @@ Backend::Backend(se::Platform* platform, Compiler* compiler,
       stream_executors_(stream_executors.begin(), stream_executors.end()) {
   // Create a memory allocator for the valid stream executors.
   memory_allocator_ = std::make_shared<se::StreamExecutorMemoryAllocator>(
-      platform, stream_executors_);
+      platform, std::vector<se::StreamExecutorInterface*>{
+                    stream_executors_.begin(), stream_executors_.end()});
   CHECK(!stream_executors_.empty())
       << "Service found no devices for backend " << platform_->Name() << '.';
 

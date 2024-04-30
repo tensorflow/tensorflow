@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/stream_executor_interface.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/status.h"
 
@@ -227,14 +228,14 @@ class StreamExecutorMemoryAllocator : public DeviceMemoryAllocator {
  public:
   // Create an allocator supporting a single device, corresponding to the passed
   // executor.
-  explicit StreamExecutorMemoryAllocator(StreamExecutor *executor);
+  explicit StreamExecutorMemoryAllocator(StreamExecutorInterface *executor);
 
   // Create an allocator supporting multiple stream executors.
   //
   // Precondition: all stream_executors have different device ordinals.
   StreamExecutorMemoryAllocator(
       const Platform *platform,
-      absl::Span<StreamExecutor *const> stream_executors);
+      absl::Span<StreamExecutorInterface *const> stream_executors);
 
   absl::StatusOr<OwningDeviceMemory> Allocate(int device_ordinal, uint64_t size,
                                               bool retry_on_failure,
@@ -252,17 +253,18 @@ class StreamExecutorMemoryAllocator : public DeviceMemoryAllocator {
   absl::StatusOr<Stream *> GetStream(int device_ordinal) override;
 
   // Gets the stream executor for given device ordinal.
-  absl::StatusOr<StreamExecutor *> GetStreamExecutor(int device_ordinal) const;
+  absl::StatusOr<StreamExecutorInterface *> GetStreamExecutor(
+      int device_ordinal) const;
 
  private:
   // Available stream executors. Each stream executor has a different device
   // ordinal.
-  std::vector<StreamExecutor *> stream_executors_;
+  std::vector<StreamExecutorInterface *> stream_executors_;
 
   absl::Mutex mutex_;
 
   // Cache of streams for GetStream.
-  std::map<int, Stream> streams_ ABSL_GUARDED_BY(mutex_);
+  std::map<int, std::unique_ptr<Stream>> streams_ ABSL_GUARDED_BY(mutex_);
 };
 
 template <typename ElemT>
