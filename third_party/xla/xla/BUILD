@@ -644,6 +644,7 @@ xla_cc_test(
         ":util",
         ":xla_data_proto_cc",
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/hash",
         "@com_google_absl//absl/random",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
