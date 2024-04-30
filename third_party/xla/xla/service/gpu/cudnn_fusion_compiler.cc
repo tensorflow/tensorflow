@@ -343,6 +343,7 @@ absl::StatusOr<std::optional<se::gpu::CudnnGraph>> HloFusionToCuDnnGraph(
             .set_dim(dimensions)
             .set_stride(strides)
             .set_data_type(*data_type)
+            .set_name(std::string(parameter.name()))
             .set_uid(se::gpu::CuDnnTensorUID(parameter.parameter_number())));
     return true;
   };
@@ -448,7 +449,9 @@ absl::StatusOr<std::optional<se::gpu::CudnnGraph>> HloFusionToCuDnnGraph(
       VLOG(3) << "Unimplemented data type: " << hlo->shape().element_type();
       return std::nullopt;
     }
-    hlo_to_cudnn[hlo]->set_data_type(data_type.value());
+    hlo_to_cudnn[hlo]
+        ->set_data_type(data_type.value())
+        .set_name(std::string(hlo->name()));
   }
   const HloInstruction* output = instructions.back();
   if (instructions.back()->shape().IsTuple()) {
