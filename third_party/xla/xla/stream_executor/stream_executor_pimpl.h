@@ -113,9 +113,6 @@ class StreamExecutor : public StreamExecutorInterface {
   // The value is cached on first use.
   const DeviceDescription& GetDeviceDescription() const;
 
-  // Returns a borrowed pointer to the underlying StreamExecutor implementation.
-  StreamExecutorInterface* implementation();
-
   // Return an allocator which delegates to this stream executor for memory
   // allocation.
   StreamExecutorMemoryAllocator* GetAllocator() { return &allocator_; }
