@@ -575,12 +575,6 @@ Status HostOffloader::MemoryOnlyOffloadInsertCopies(
           unique_buffer,
           match::CustomCall({host_memory_offload_annotations::
                                  kMoveToDeviceCustomCallTarget})));
-  if (matching_annotations.empty()) {
-    return Internal(
-        "The offloaded data (from %s) never feeds into a matching \"load\" "
-        "annotation.",
-        custom_call->name());
-  }
 
   // This fits the pattern that we're looking for. Save these annotations to
   // later insert copies around.
