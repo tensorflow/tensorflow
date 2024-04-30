@@ -771,9 +771,13 @@ def UndoBroadcastConvBiasAdd : Pat<
    (HasRankAtLeast<2> $bias),
    (IsDefinedByConv2DOp $lhs)]>;
 
-// Function to map final permutation to initial permutation
-// initial -> permutation1 -> permutation2 -> final
-def RemapPermutation: NativeCodeCall<"RemapPermutation($0, $1)">;
+// Pattern to convert a trivial transpose op to a reshape op.
+def ConvertTrivialTransposeOpToReshapeOp : Pat<
+  (TFL_TransposeOp:$transpose_op $input, (Arith_ConstantOp:$permutation $p1)),
+  (TFL_ReshapeOp $input, (Arith_ConstantOp (GetShape $transpose_op))),
+  [(IsTransposeTrivial $input, $permutation),
+   (AnyStaticShapeTensor $input),
+   (AnyStaticShapeTensor $transpose_op)]>;
 
 // Pattern to fuse redundant tanspose op
 def FoldDoubleTranspose : Pat<

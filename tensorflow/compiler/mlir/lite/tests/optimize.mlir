@@ -1640,7 +1640,7 @@ func.func @convertTrivialTransposeToReshape(%arg0: tensor<6x6x256x1xf32>) -> ten
   %0 = "tfl.transpose"(%arg0, %cst) : (tensor<6x6x256x1xf32>, tensor<4xi32>) -> tensor<1x6x6x256xf32>
   func.return %0 : tensor<1x6x6x256xf32>
 
-  // CHECK-DAG: [[CONST:.*]] = "tfl.pseudo_const"(){{.*}}dense<[1, 6, 6, 256]> : tensor<4xi32>
+  // CHECK-DAG: [[CONST:.*]] = arith.constant {{.*}}dense<[1, 6, 6, 256]> : tensor<4xi32>
   // CHECK: %[[RESULT:.*]] = "tfl.reshape"(%arg0, %[[CONST:.*]]) : (tensor<6x6x256x1xf32>, tensor<4xi32>) -> tensor<1x6x6x256xf32>
   // CHECK: return %[[RESULT]]
 }

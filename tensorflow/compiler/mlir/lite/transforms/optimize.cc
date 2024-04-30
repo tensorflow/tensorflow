@@ -380,34 +380,6 @@ TypeAttr RescaleQtype(Type input, Attribute factor) {
   return quant::RescaleQuantizedType(input, factor);
 }
 
-// Utility function to map final permutation to initial permutation
-// initial -> permutation1 -> permutation2 -> final
-DenseElementsAttr RemapPermutation(Value permutation1, Value permutation2) {
-  SmallVector<int32_t> initial_permutation;
-  DenseElementsAttr perm1_const;
-  DenseElementsAttr perm2_const;
-
-  SmallVector<int32_t> new_permutation;
-  if (matchPattern(permutation1, m_Constant(&perm1_const)) &&
-      matchPattern(permutation2, m_Constant(&perm2_const))) {
-    for (int32_t idx = 0; idx < perm1_const.getNumElements(); ++idx) {
-      initial_permutation.push_back(idx);
-    }
-    for (auto perm : perm2_const.getValues<APInt>()) {
-      new_permutation.push_back(
-          initial_permutation[perm1_const
-                                  .getValues<APInt>()[perm.getSExtValue()]
-                                  .getSExtValue()]);
-    }
-  }
-
-  return mlir::DenseElementsAttr::get(
-      RankedTensorType::get(
-          {static_cast<int>(new_permutation.size())},
-          mlir::IntegerType::get(permutation1.getContext(), 32)),
-      llvm::ArrayRef(new_permutation));
-}
-
 // Returns `true` if reducing `axes` in `input` with `keep_dims=true` results in
 // the specified `shape` and `false` otherwise.
 static bool ShapeMatchesReduceWithKeepAxes(Value input,
@@ -1920,69 +1892,6 @@ using ScalarizeSplatConstantForMul =
 using ScalarizeSplatConstantForDiv =
     ScalarizeSplatConstantForBroadcastableOps<TFL::DivOp>;
 
-struct ConvertTrivialTransposeOpToReshapeOp
-    : public OpRewritePattern<TFL::TransposeOp> {
-  using OpRewritePattern<TFL::TransposeOp>::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(TFL::TransposeOp transpose_op,
-                                PatternRewriter &rewriter) const override {
-    auto input_type = mlir::cast<ShapedType>(transpose_op.getInput().getType());
-    auto output_type =
-        mlir::cast<ShapedType>(transpose_op.getOutput().getType());
-    // It's possible to know if the transformation is safe only if the input
-    // & output shapes are fully known and permutation is a constant.
-    if (!input_type.hasStaticShape() || !output_type.hasStaticShape())
-      return failure();
-    Value perm = transpose_op.getPerm();
-    DenseElementsAttr perm_values_attr;
-    if (!matchPattern(perm, m_Constant(&perm_values_attr))) return failure();
-
-    auto input_shape = input_type.getShape();
-    SmallVector<int64_t, 8> perm_values;
-    for (const auto &dim : perm_values_attr.getValues<APInt>())
-      perm_values.push_back(dim.getSExtValue());
-
-    // This should never happen unless the input graph is malformed.
-    if (input_shape.size() != perm_values.size()) {
-      transpose_op.emitError(
-          "TransposeOP has inconsistent input and perm values.");
-    }
-
-    SmallVector<int, 8> old_major_index_ordering;
-    SmallVector<int, 8> new_major_index_ordering;
-    for (int i = 0, end = input_shape.size(); i < end; i++) {
-      if (input_shape[i] != 1) {
-        old_major_index_ordering.push_back(i);
-      }
-
-      if (input_shape[perm_values[i]] != 1) {
-        new_major_index_ordering.push_back(perm_values[i]);
-      }
-    }
-    if (old_major_index_ordering != new_major_index_ordering) {
-      return failure();
-    }
-
-    // Rewrite.
-    Location loc = transpose_op.getLoc();
-
-    SmallVector<int32_t, 8> output_shape_values;
-    for (auto dim : output_type.getShape()) {
-      output_shape_values.push_back(
-          ShapedType::isDynamic(dim) ? -1 : static_cast<int32_t>(dim));
-    }
-
-    auto new_shape = rewriter.create<TF::ConstOp>(
-        loc, GetI32ElementsAttr(output_shape_values, &rewriter));
-
-    rewriter.replaceOpWithNewOp<TFL::ReshapeOp>(
-        transpose_op, transpose_op.getOutput().getType(),
-        transpose_op.getInput(), new_shape);
-
-    return success();
-  }
-};
-
 // Remove Reshape before FullyConnected when `keep_num_dims=false` and Reshape
 // does not alter the last dimension as FullyConnected will collapse all other
 // dimensions into a single dimension. For example,
@@ -2655,9 +2564,9 @@ void OptimizePass::runOnOperation() {
       FuseFullyConnectedAndReluX<TFL::Relu1Op, kRelu1>,
       FuseBinaryOpToFollowingConv2D, FuseBinaryOpToFollowingDepthwiseConv2D,
       FuseBinaryOpToFollowingFullyConnected, FuseConv2DAndMulWithQDQs,
-      FuseDepthwiseConv2DAndMulWithQDQs, ConvertTrivialTransposeOpToReshapeOp,
-      RemoveReshapeAfterFullyConnected, RemoveReshapeBeforeFullyConnected,
-      FuseUnpackAndConcatToReshape, OptimizeTopK, FuseAddAndStridedSlice,
+      FuseDepthwiseConv2DAndMulWithQDQs, RemoveReshapeAfterFullyConnected,
+      RemoveReshapeBeforeFullyConnected, FuseUnpackAndConcatToReshape,
+      OptimizeTopK, FuseAddAndStridedSlice,
       FuseReshapeAndTransposeAroundBatchMatmul,
       FuseTransposeReshapeIntoBatchMatmul>(ctx);
   if (!this->disable_fuse_mul_and_fc_) {
