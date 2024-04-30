@@ -558,7 +558,9 @@ NB_MODULE(xla_extension, m_nb) {
       nb::arg("dlpack"), nb::arg("cpu_backend").none() = nb::none(),
       nb::arg("gpu_backend").none() = nb::none());
   m_nb.def("cuda_array_interface_to_buffer",
-           xla::ValueOrThrowWrapper(CudaArrayInterfaceToBuffer));
+           xla::ValueOrThrowWrapper(CudaArrayInterfaceToBuffer), nb::arg("cai"),
+           nb::arg("gpu_backend").none() = nb::none(),
+           nb::arg("device_id").none() = nb::none());
 
   BuildIfrtProgramsSubmodule(m_nb);
   BuildProfilerSubmodule(m_nb);

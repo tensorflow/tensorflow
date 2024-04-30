@@ -728,6 +728,7 @@ def cuda_array_interface_to_buffer(
       List[Tuple[str, str, Tuple[int, ...]]]]
     ],
     gpu_backend: Optional[Client] = ...,
+    device_id: int | None = None,
 ) -> ArrayImpl: ...
 
 

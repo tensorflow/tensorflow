@@ -401,6 +401,7 @@ cc_library(
         "@llvm-project//mlir:IR",
     ] + if_cuda([
         "@local_config_cuda//cuda:cuda_headers",
+        # TODO(b/324133505): remove this dependency after JAX OSS migrates to cuda plugin.
         "//xla/stream_executor/cuda:cuda_driver",
     ]) + if_rocm([
         "@local_config_rocm//rocm:rocm_headers",
