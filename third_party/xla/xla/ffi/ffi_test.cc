@@ -431,6 +431,7 @@ TEST(FfiTest, TypedAndRankedBufferArgument) {
 
   auto fn = [&](BufferR2<PrimitiveType::F32> buffer) {
     EXPECT_EQ(buffer.data.opaque(), storage.data());
+    EXPECT_EQ(buffer.data.ElementCount(), storage.size());
     EXPECT_EQ(buffer.dimensions.size(), 2);
     return absl::OkStatus();
   };
