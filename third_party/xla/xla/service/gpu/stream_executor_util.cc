@@ -416,15 +416,21 @@ typename std::enable_if<std::is_floating_point<T>::value,
   return std::uniform_real_distribution<T>(lhs, rhs)(*gen);
 }
 
+namespace repeat_buffer_kernel {
+void* kernel();
+}
+
 template <typename T>
 static void InitializeTypedBuffer(se::Stream* stream,
                                   se::DeviceMemoryBase buffer,
                                   int64_t* rng_state) {
   // Accesses to static variables are not locked, since the caller is already
   // in a critical section.
+
+  // Use a large prime number to fragment the accesses.
+  constexpr int host_buffer_size = 10069;
   static std::vector<T>* host_buffer = [] {
-    // Use a large prime number to fragment the accesses.
-    auto* ret = new std::vector<T>(10069);
+    auto* ret = new std::vector<T>(host_buffer_size);
     // Default-seeded random numbers.
     std::mt19937 gen;
     for (auto& element : *ret) {
@@ -447,26 +453,58 @@ static void InitializeTypedBuffer(se::Stream* stream,
     }
     return ret;
   }();
-
-  int64_t& host_index = *rng_state;
-
-  char* current_addr = static_cast<char*>(buffer.opaque());
+  // The buffer of random numbers is treated as being circular, and the seed in
+  // *rng_state is the offset in host_buffer that is copied to the zeroth index
+  // on the device. For large buffers then repeatedly copying the data from the
+  // host is expensive, so we just copy it once and use a kernel to repeat the
+  // data as needed.
   CHECK_EQ(0, buffer.size() % sizeof(T));
-  int64_t elements_left = buffer.size() / sizeof(T);
-  while (elements_left > 0) {
-    CHECK_LE(host_index, host_buffer->size());
-    if (host_buffer->size() == host_index) {
-      host_index = 0;
-    }
-    int64_t elements_copied =
-        std::min<int64_t>(host_buffer->size() - host_index, elements_left);
-    se::DeviceMemoryBase mem(current_addr, elements_copied * sizeof(T));
-    TF_CHECK_OK(stream->Memcpy(&mem, host_buffer->data() + host_index,
-                               elements_copied * sizeof(T)));
-    current_addr += elements_copied * sizeof(T);
-    elements_left -= elements_copied;
-    host_index += elements_copied;
+  int64_t elements_to_fill = buffer.size() / sizeof(T);
+  int64_t host_index = *rng_state;
+  CHECK_LT(host_index, host_buffer_size);
+  *rng_state = (*rng_state + elements_to_fill) % host_buffer_size;
+  // Copy the last part of `host_buffer` to the start of `buf` on the device
+  int64_t first_size =
+      std::min<int64_t>(host_buffer_size - host_index, elements_to_fill);
+  TF_CHECK_OK(stream->Memcpy(&buffer, host_buffer->data() + host_index,
+                             first_size * sizeof(T)));
+  elements_to_fill -= first_size;
+  if (elements_to_fill == 0) {
+    // Nothing more to do
+    return;
   }
+  // Issue a second host->device copy to transfer the rest of host_buffer
+  int64_t second_size = std::min<int64_t>(host_index, elements_to_fill);
+  CHECK_LE(first_size + second_size, host_buffer_size);
+  se::DeviceMemoryBase mem =
+      buffer.GetByteSlice(first_size * sizeof(T), second_size * sizeof(T));
+  TF_CHECK_OK(stream->Memcpy(&mem, host_buffer->data(), mem.size()));
+  elements_to_fill -= second_size;
+  if (elements_to_fill == 0) {
+    // Nothing more to do
+    return;
+  }
+#ifdef GOOGLE_CUDA
+  // Repeat the host_buffer_size elements at the start of `buf` to the end
+  CHECK_EQ(elements_to_fill, buffer.size() / sizeof(T) - host_buffer_size);
+  se::StreamExecutor* executor = stream->parent();
+  auto kernel = se::TypedKernel<se::DeviceMemoryBase, int64_t, int64_t>::Create(
+      executor, "RepeatBufferKernel", repeat_buffer_kernel::kernel());
+  if (!kernel.ok()) {
+    LOG(FATAL) << "Could not create RepeatBufferKernel";
+  }
+  // Launch the kernel with at least host_buffer_bytes threads. Each thread
+  // will read one byte of `host_buffer` from the start of `buffer`, where the
+  // Memcpy call(s) above put it, and scatter it through the rest of `buffer`.
+  constexpr int64_t host_buffer_bytes = host_buffer_size * sizeof(T);
+  constexpr int threads_per_block = 256;
+  constexpr int blocks_per_grid =
+      (host_buffer_bytes + threads_per_block - 1) / threads_per_block;
+  TF_CHECK_OK(stream->ThenLaunch(se::ThreadDim(threads_per_block, 1, 1),
+                                 se::BlockDim(blocks_per_grid, 1, 1), *kernel,
+                                 buffer, host_buffer_bytes,
+                                 static_cast<int64_t>(buffer.size())));
+#endif
 }
 
 void InitializeBuffer(se::Stream* stream, PrimitiveType buffer_type,
