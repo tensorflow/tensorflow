@@ -179,6 +179,7 @@ xla_cc_test(
         "//xla:types",
         "//xla:xla_data_proto_cc",
         "//xla/stream_executor",  # build_cleaner: keep
+        "//xla/stream_executor:device_memory_handle",
         "//xla/stream_executor:platform_manager",
         "//xla/stream_executor/gpu:gpu_init",
         "//xla/stream_executor/gpu:gpu_stream_header",

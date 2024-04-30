@@ -18,8 +18,10 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/infeed_manager.h"
+#include "xla/shape_tree.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/stream_executor/device_memory_handle.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/util.h"
 
@@ -35,14 +37,14 @@ absl::Status InfeedThunk::ExecuteOnStream(const ExecuteParams& params) {
   const BufferAllocations& buffer_allocations = *params.buffer_allocations;
 
   VLOG(2) << "Infeeding to GPU";
-  ShapeTree<se::ScopedDeviceMemory<uint8_t>> source_buffers =
+  ShapeTree<se::DeviceMemoryHandle> source_buffers =
       GetOrCreateInfeedManager(stream.parent())->BlockingGetNextDestination();
 
   size_t index = 0;
   for (auto& source : source_buffers.leaves()) {
     // Assert that the shapes are compatible.
     const ShapeIndex& shape_index = source.first;
-    se::ScopedDeviceMemory<uint8_t>& buffer = source.second;
+    se::DeviceMemoryHandle& buffer = source.second;
     const Shape& source_shape =
         ShapeUtil::GetSubshape(source_buffers.shape(), shape_index);
     TF_RET_CHECK(
@@ -54,7 +56,7 @@ absl::Status InfeedThunk::ExecuteOnStream(const ExecuteParams& params) {
     se::DeviceMemoryBase dest_address =
         buffer_allocations.GetDeviceAddress(dest_slices_[index++].slice);
     TF_RETURN_IF_ERROR(
-        stream.Memcpy(&dest_address, *buffer.ptr(), buffer.ptr()->size()));
+        stream.Memcpy(&dest_address, buffer.memory(), buffer.memory().size()));
   }
 
   // Make sure that all dest slices have been copied into.

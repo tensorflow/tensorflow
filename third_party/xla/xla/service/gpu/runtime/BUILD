@@ -709,13 +709,15 @@ cc_library(
     srcs = ["infeed_thunk.cc"],
     hdrs = ["infeed_thunk.h"],
     deps = [
+        ":thunk",
+        "//xla:shape_tree",
         "//xla:shape_util",
         "//xla:status_macros",
         "//xla:util",
         "//xla/service/gpu:buffer_allocations",
         "//xla/service/gpu:io_feed_manager",
-        "//xla/service/gpu/runtime:thunk",
         "//xla/stream_executor",
+        "//xla/stream_executor:device_memory_handle",
         "@com_google_absl//absl/status",
     ],
 )

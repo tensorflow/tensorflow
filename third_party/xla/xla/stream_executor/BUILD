@@ -176,6 +176,16 @@ cc_library(
 )
 
 cc_library(
+    name = "device_memory_handle",
+    srcs = ["device_memory_handle.cc"],
+    hdrs = ["device_memory_handle.h"],
+    deps = [
+        ":device_memory",
+        ":stream_executor_interface",
+    ],
+)
+
+cc_library(
     name = "module_spec",
     hdrs = ["module_spec.h"],
     deps = [
@@ -733,6 +743,18 @@ xla_cc_test(
         ":module_spec",
         ":scoped_module_handle",
         "@com_google_absl//absl/status",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:test_main",
+    ],
+)
+
+xla_cc_test(
+    name = "device_memory_handle_test",
+    srcs = ["device_memory_handle_test.cc"],
+    deps = [
+        ":device_memory",
+        ":device_memory_handle",
+        ":mock_stream_executor",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_main",
     ],
