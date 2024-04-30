@@ -51,8 +51,8 @@ Future<absl::StatusOr<std::shared_ptr<Resp>>> DoRpc(
   auto on_ready = [promise, has_resp,
                    get_resp](ClientSession::Response r) mutable {
     if (!r.ok()) {
-      LOG(ERROR) << "Connection to IFRT proxy server was terminated: "
-                 << r.status();
+      LOG_EVERY_N_SEC(ERROR, 10)
+          << "Connection to IFRT proxy server was terminated: " << r.status();
       promise.Set(absl::UnavailableError(
           absl::StrCat("Connection to IFRT proxy server was terminated: ",
                        r.status().ToString())));
