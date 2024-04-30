@@ -13,6 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/strings/match.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/lib/io/random_inputstream.h"
 #include "tsl/lib/io/zlib_compression_options.h"
@@ -20,8 +23,13 @@ limitations under the License.
 #include "tsl/lib/io/zlib_outputbuffer.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/file_system.h"
 #include "tsl/platform/strcat.h"
+#include "tsl/platform/stringpiece.h"
 #include "tsl/platform/test.h"
+#include "tsl/platform/tstring.h"
+#include "tsl/platform/types.h"
+#include "third_party/zlib/src/zconf.h"
 
 namespace tsl {
 namespace io {

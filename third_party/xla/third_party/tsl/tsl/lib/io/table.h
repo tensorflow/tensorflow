@@ -18,7 +18,10 @@ limitations under the License.
 
 #include <stdint.h>
 
+#include "absl/status/status.h"
 #include "tsl/lib/io/iterator.h"
+#include "tsl/platform/stringpiece.h"
+#include "tsl/platform/types.h"
 
 namespace tsl {
 
