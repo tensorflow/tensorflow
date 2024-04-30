@@ -325,9 +325,9 @@ class AsyncValuePtr {
   // use other types of callbacks to disambiguate the provenance of status.
   template <typename Waiter>
   using StatusWaiter =
-      std::enable_if_t<(!is_status_v<T> &&
-                        std::is_invocable_v<Waiter, absl::Status> &&
-                        !std::is_invocable_v<Waiter, absl::StatusOr<T*>>)>;
+      std::enable_if_t<(std::is_invocable_v<Waiter, absl::Status> &&
+                        !std::is_invocable_v<Waiter, absl::StatusOr<T*>> &&
+                        !is_status_v<T>)>;
 
   // Because AsyncValue itself is a discriminated union of absl::Status and
   // typed payload (error or value) the use of AsyncValueRef<status-like> is
