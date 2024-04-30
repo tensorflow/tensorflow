@@ -319,8 +319,12 @@ ReductionInfo ReductionInfo::Create(const HloFusionAnalysis& analysis) {
 std::optional<IndexingMap> ReductionInfo::ComputeThreadIdToOutputIndexing(
     int64_t root_index, mlir::MLIRContext* ctx) const {
   if (!groups_.is_reduction_root[root_index]) {
-    // Non-reduction roots are elementwise by definition.
-    return ComputeThreadIdToInputIndexing(root_index, 0, ctx);
+    auto map = ComposeIndexingMaps(
+        GetIndexingMapForTiling(tiling_, ctx),
+        GetBitcastMap(tiling_.GetXlaShape(),
+                      analysis_.fusion_roots()[root_index]->shape(), ctx));
+    AddGroupIdConstraint(map, root_index, ctx);
+    return map;
   }
   auto* hero = analysis_.fusion_heroes()[root_index];
 
@@ -397,11 +401,7 @@ std::optional<IndexingMap> ReductionInfo::ComputeThreadIdToOutputIndexing(
                       physical_shape, ctx));
   }();
 
-  int group_index = groups_.group_id_per_root[root_index];
-  map.AddConstraint(
-      mlir::getAffineDimExpr(KernelFusionInterface::kIndexingMapBlockIdxDims[1],
-                             ctx),
-      {group_index, group_index});
+  AddGroupIdConstraint(map, root_index, ctx);
   return map;
 }
 
@@ -414,19 +414,32 @@ std::optional<IndexingMap> ReductionInfo::ComputeThreadIdToInputIndexing(
     // We don't have indexing for the init values.
     return std::nullopt;
   }
+  if (!groups_.is_reduction_root[root_index]) {
+    return ComposeIndexingMaps(
+        *ComputeThreadIdToOutputIndexing(root_index, ctx),
+        *ComputeOutputToInputIndexing(analysis_.fusion_roots()[root_index], 0,
+                                      ctx)
+             .indexing_maps[hero_operand_index]
+             .begin());
+  }
 
   auto map = ComposeIndexingMaps(
       GetIndexingMapForTiling(tiling_, ctx),
       GetBitcastMap(tiling_.GetXlaShape(),
                     hero->operand(hero_operand_index)->shape(), ctx));
-  // Only threads with the right y block index actually do anything for this
-  // root.
+  AddGroupIdConstraint(map, root_index, ctx);
+  return map;
+}
+
+void ReductionInfo::AddGroupIdConstraint(IndexingMap& map, int64_t root_index,
+                                         mlir::MLIRContext* ctx) const {
+  // Only threads with the right y block index actually do anything for each
+  // particular root.
   int group_index = groups_.group_id_per_root[root_index];
   map.AddConstraint(
       mlir::getAffineDimExpr(KernelFusionInterface::kIndexingMapBlockIdxDims[1],
                              ctx),
       {group_index, group_index});
-  return map;
 }
 
 }  // namespace gpu

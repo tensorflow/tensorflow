@@ -76,6 +76,9 @@ class ReductionInfo {
         groups_(std::move(groups)),
         first_reduce_(first_reduce) {}
 
+  void AddGroupIdConstraint(IndexingMap& map, int64_t root_index,
+                            mlir::MLIRContext* ctx) const;
+
   const HloFusionAnalysis& analysis_;
   Tiling tiling_;
   bool is_row_reduction_;
