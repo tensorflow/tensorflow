@@ -322,6 +322,11 @@ class IndexingMap {
 
   bool IsUndefined() const { return affine_map_ == mlir::AffineMap(); }
 
+  // Removes unused dimensions from the `affine_map_` and constraints.
+  // Returns a bit vector of dimensions that were removed. If none of the
+  // dimensions were removed, returns {}.
+  llvm::SmallBitVector RemoveUnusedDimensions();
+
   // Removes unused symbols from the `affine_map_` and constraints.
   // Returns a bit vector of symbols that were removed. If none of the symbols
   // were removed, returns {}.
