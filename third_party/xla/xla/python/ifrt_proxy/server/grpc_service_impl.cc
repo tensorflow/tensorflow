@@ -122,6 +122,7 @@ namespace proxy {
         });
   }
 
+  backend->reset();  // Blocks until all response callbacks are called.
   VLOG(0) << "Finishing IFRT session " << session_id;
   return ::grpc::Status::OK;
 }

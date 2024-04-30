@@ -117,6 +117,12 @@ absl::StatusOr<std::unique_ptr<IfrtBackend>> IfrtBackend::Create(
 
 IfrtBackend::~IfrtBackend() {
   // Cancel all in-flight host callback executions.
+  {
+    absl::MutexLock lock(&host_callback_queues_mutex_);
+    for (const auto& [key, queue] : host_callback_queues_) {
+      queue->Close();
+    }
+  }
   absl::flat_hash_map<uint64_t, RemoteLoadedHostCallbackQueue::ExecutionRequest>
       host_callback_executions;
   {
