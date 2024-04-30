@@ -606,6 +606,122 @@ TEST(AutoShardingMemoryTest, OneIterationOnly) {
   EXPECT_EQ(reducer.GetReducedGroups(), expected_reduced_groups);
 }
 
+//  |                 ==>  | 55555
+//  |                 ==>  | 44444444444
+//  | 33333           ==>  | .....              Groups:
+//  | 22222222        ==>  | .....222            m[4] = m[0] + m[1]
+//  | 11111111111     ==>  | ...........         m[5] = m[2] + m[3]
+//  | 00000000000000  ==>  | ...........000
+//  +-------------->  ==>  +-------------->
+//       (time)                 (time)
+TEST(AutoShardingMemoryTest, StairsBottomLeft) {
+  const std::vector<std::pair<int64_t, int64_t>> intervals =
+      {{0, 13}, {0, 10}, {0, 7}, {0, 4}};
+
+  MemoryTermReducer reducer;
+  const auto num_terms = reducer.Reduce(/*num_lives=*/14, /*num_primitives=*/4,
+                                        Convert(intervals),
+                                        /*max_iterations=*/1);
+
+  const std::vector<std::vector<int64_t>> expected_reduced_live = {};
+  const std::vector<std::pair<int64_t, int64_t>> expected_reduced_intervals =
+      {{11, 13}, {11, -1}, {5, 7}, {5, -1}, {0, 10}, {0, 4}};
+  const std::vector<absl::btree_set<int64_t>> expected_reduced_groups =
+      {{0, 1}, {2, 3}};
+  const std::pair<int64_t, int64_t> expected_num_terms = {38, 26};
+  EXPECT_EQ(num_terms, expected_num_terms);
+  EXPECT_EQ(reducer.GetReducedLive(), expected_reduced_live);
+  EXPECT_EQ(reducer.GetReducedIntervals(), expected_reduced_intervals);
+  EXPECT_EQ(reducer.GetReducedGroups(), expected_reduced_groups);
+}
+
+//  |                 ==>  | 55555
+//  |                 ==>  | 44444444444
+//  | 33333333333333  ==>  | ...........333  Groups:
+//  | 22222222222     ==>  | ...........      m[4] = m[2] + m[3]
+//  | 11111111        ==>  | .....111         m[5] = m[0] + m[1]
+//  | 00000           ==>  | .....
+//  +-------------->  ==>  +-------------->
+//       (time)                 (time)
+TEST(AutoShardingMemoryTest, StairsTopLeft) {
+  const std::vector<std::pair<int64_t, int64_t>> intervals =
+      {{0, 4}, {0, 7}, {0, 10}, {0, 13}};
+
+  MemoryTermReducer reducer;
+  const auto num_terms = reducer.Reduce(/*num_lives=*/14, /*num_primitives=*/4,
+                                        Convert(intervals),
+                                        /*max_iterations=*/1);
+
+  const std::vector<std::vector<int64_t>> expected_reduced_live = {};
+  const std::vector<std::pair<int64_t, int64_t>> expected_reduced_intervals =
+      {{5, -1}, {5, 7}, {11, -1}, {11, 13}, {0, 10}, {0, 4}};
+  const std::vector<absl::btree_set<int64_t>> expected_reduced_groups =
+      {{2, 3}, {0, 1}};
+  const std::pair<int64_t, int64_t> expected_num_terms = {38, 26};
+  EXPECT_EQ(num_terms, expected_num_terms);
+  EXPECT_EQ(reducer.GetReducedLive(), expected_reduced_live);
+  EXPECT_EQ(reducer.GetReducedIntervals(), expected_reduced_intervals);
+  EXPECT_EQ(reducer.GetReducedGroups(), expected_reduced_groups);
+}
+
+//  |                 ==>  |          55555
+//  |                 ==>  |    44444444444
+//  | 33333333333333  ==>  | 333...........  Groups:
+//  |    22222222222  ==>  |    ...........    m[4] = m[2] + m[3]
+//  |       11111111  ==>  |       111.....    m[5] = m[0] + m[1]
+//  |          00000  ==>  |          .....
+//  +-------------->  ==>  +-------------->
+//       (time)                 (time)
+TEST(AutoShardingMemoryTest, StairsTopRight) {
+  const std::vector<std::pair<int64_t, int64_t>> intervals =
+      {{9, 13}, {6, 13}, {3, 13}, {0, 13}};
+
+  MemoryTermReducer reducer;
+  const auto num_terms = reducer.Reduce(/*num_lives=*/14, /*num_primitives=*/4,
+                                        Convert(intervals),
+                                        /*max_iterations=*/1);
+
+  const std::vector<std::vector<int64_t>> expected_reduced_live = {};
+  const std::vector<std::pair<int64_t, int64_t>> expected_reduced_intervals =
+      {{14, 8}, {6, 8}, {14, 2}, {0, 2}, {3, 13}, {9, 13}};
+  const std::vector<absl::btree_set<int64_t>> expected_reduced_groups =
+      {{2, 3}, {0, 1}};
+  const std::pair<int64_t, int64_t> expected_num_terms = {38, 26};
+  EXPECT_EQ(num_terms, expected_num_terms);
+  EXPECT_EQ(reducer.GetReducedLive(), expected_reduced_live);
+  EXPECT_EQ(reducer.GetReducedIntervals(), expected_reduced_intervals);
+  EXPECT_EQ(reducer.GetReducedGroups(), expected_reduced_groups);
+}
+
+//  |                 ==>  |          55555
+//  |                 ==>  |    44444444444
+//  |          33333  ==>  |          .....  Groups:
+//  |       22222222  ==>  |       222.....    m[4] = m[0] + m[1]
+//  |    11111111111  ==>  |    ...........    m[5] = m[2] + m[3]
+//  | 00000000000000  ==>  | 000...........
+//  +-------------->  ==>  +-------------->
+//       (time)                 (time)
+TEST(AutoShardingMemoryTest, StairsBottomRight) {
+  const std::vector<std::pair<int64_t, int64_t>> intervals =
+      {{0, 13}, {3, 13}, {6, 13}, {9, 13}};
+
+  MemoryTermReducer reducer;
+  const auto num_terms = reducer.Reduce(/*num_lives=*/14, /*num_primitives=*/4,
+                                        Convert(intervals),
+                                        /*max_iterations=*/1);
+
+  const std::vector<std::vector<int64_t>> expected_reduced_live = {};
+  const std::vector<std::pair<int64_t, int64_t>> expected_reduced_intervals =
+      {{0, 2}, {14, 2}, {6, 8}, {14, 8}, {3, 13}, {9, 13}};
+  const std::vector<absl::btree_set<int64_t>> expected_reduced_groups =
+      {{0, 1}, {2, 3}};
+  const std::pair<int64_t, int64_t> expected_num_terms = {38, 26};
+  EXPECT_EQ(num_terms, expected_num_terms);
+  EXPECT_EQ(reducer.GetReducedLive(), expected_reduced_live);
+  EXPECT_EQ(reducer.GetReducedIntervals(), expected_reduced_intervals);
+  EXPECT_EQ(reducer.GetReducedGroups(), expected_reduced_groups);
+}
+
 // clang-format on
 
 }  // namespace

@@ -38,8 +38,8 @@ using LiveIdx = int64_t;  // Indexes into the liveness range (like a time point)
 using GroupIdx = int64_t;  // Indexes into the list of groups
 
 using PrimPair = std::pair<PrimIdx, PrimIdx>;
-using LiveAndPrim = std::pair<LiveIdx, PrimIdx>;
 using Interval = std::pair<LiveIdx, LiveIdx>;
+using ActivePrim = std::pair<Interval, PrimIdx>;
 
 bool IsValid(const Interval& interval) {
   return interval.first <= interval.second;
@@ -209,24 +209,21 @@ void MemoryTermReducer::Reduce(int64_t num_lives, int64_t num_primitives,
   // A function to sweep through live points & merge large overlaps.
   auto SweepAndMerge = [&num_lives, &enter, &evict, &CalcOverlap, &CalcNumTerms,
                         &MergeIntoGroup, &UpdatePrimitive, this]() -> bool {
-    absl::btree_set<LiveAndPrim> actives;  // Active prims sorted by first value
+    absl::btree_set<ActivePrim> actives;  // Active prims sorted by interval.
     absl::btree_multimap<int64_t, PrimPair> overlaps;
     for (LiveIdx live_idx = 0; live_idx < num_lives; ++live_idx) {
       for (const PrimIdx prim_idx : enter[live_idx]) {
-        actives.insert({live_idx, prim_idx});
+        actives.insert({reduced_intervals_[prim_idx], prim_idx});
       }
       for (const PrimIdx prim_idx : evict[live_idx]) {
-        std::optional<LiveAndPrim> active;  // The active prim we overlap with.
-        auto prim =
-            actives.find({reduced_intervals_[prim_idx].first, prim_idx});
-        if (auto next = prim; ++next != actives.end()) {
-          active = *next;  // Choose a prim that started soon after we did.
-        } else if (actives.begin()->second != prim_idx) {
-          active = *actives.begin();  // Otherwise, choose the earliest prim.
-        }
-        actives.erase(prim);
-        if (!active) continue;
-        overlaps.insert({active->first - live_idx, {prim_idx, active->second}});
+        auto active = actives.find({reduced_intervals_[prim_idx], prim_idx});
+        if (++active == actives.end()) continue;  // No prims left to merge with
+        std::optional<Interval> overlap = CalcOverlap(prim_idx, active->second);
+        if (!overlap) continue;
+        overlaps.insert({-length(*overlap), {prim_idx, active->second}});
+      }
+      for (const PrimIdx prim_idx : evict[live_idx]) {
+        actives.erase({reduced_intervals_[prim_idx], prim_idx});
       }
     }
     bool changed = false;
