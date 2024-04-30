@@ -90,6 +90,7 @@ limitations under the License.
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/threadpool.h"
+#include "tsl/profiler/lib/scoped_annotation.h"
 
 // Log levels used in this file:
 // VLOG(1): Overview
@@ -636,6 +637,7 @@ GemmFusionAutotunerImpl::CompileAll(
     AutotunerCompileUtil& compile_util,
     const absl::flat_hash_map<const HloFusionInstruction*, std::vector<Config>>&
         task) {
+  tsl::profiler::ScopedAnnotation annotation("XlaAutotunerCompilation");
   absl::Mutex results_mu;
   absl::flat_hash_map<const HloFusionInstruction*,
                       std::vector<ExecutableCandidate>>
@@ -769,6 +771,10 @@ absl::StatusOr<std::vector<AutotuneResult>> GemmFusionAutotunerImpl::Profile(
   if (!stream_exec->SynchronizeAllActivity()) {
     return Internal("Failed to synchronize GPU for autotuning.");
   }
+  tsl::profiler::ScopedAnnotation annotation([&] {
+    return absl::StrFormat("XlaAutotunerMeasurement:#hlo_op=%s#",
+                           fusion.name());
+  });
   se::DeviceMemoryAllocator* allocator = config_.GetAllocator();
   std::unique_ptr<se::DeviceMemoryAllocator> owned_allocator;
   if (allocator == nullptr) {

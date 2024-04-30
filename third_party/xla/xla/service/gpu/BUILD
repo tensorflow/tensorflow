@@ -761,6 +761,7 @@ cc_library(
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/profiler/lib:scoped_annotation",
         "//xla/tsl/util/proto:proto_utils",
     ]),
 )
@@ -1549,6 +1550,7 @@ cc_library(
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/profiler/lib:scoped_annotation",
     ]),
 )
 
