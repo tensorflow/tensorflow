@@ -16,9 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_FRAMEWORK_OP_REQUIRES_H_
 #define TENSORFLOW_CORE_FRAMEWORK_OP_REQUIRES_H_
 
-#include <type_traits>
-#include <utility>
-
 #include "tensorflow/core/platform/macros.h"
 
 namespace tensorflow {
@@ -31,19 +28,15 @@ namespace tensorflow {
 //   OP_REQUIRES(context, context->num_inputs() == 2,
 //               errors::InvalidArgument("FooOp requires 2 arguments"));
 //   ...
-//   absl::Status status = SomeUncertainMethod();
+//   Status status = SomeUncertainMethod();
 //   OP_REQUIRES_OK(context, status);
-//
-//   // Or in one go:
-//   OP_REQUIRES_OK(context, SomeUncertainMethod());
 //   ...
 // }
 //
-// These macros depend on CheckNotInComputeAsync and on absl::Status, both
-// of which must be defined before invoking the macros. We specifically don't
-// include op_kernel.h or the Abseil headers from this header to reduce this
-// header's dependencies. These macros may be used with alternative
-// implementations of OpKernelContext with fewer dependencies.
+// These macros depend on CheckNotInComputeAsync, which must be defined before
+// invoking the macro. We specifically don't include op_kernel.h from this
+// header to reduce this header's dependencies. These macros may be used with
+// alternative implementations of OpKernelContext with fewer dependencies.
 
 #define OP_REQUIRES(CTX, EXP, STATUS)                     \
   do {                                                    \
@@ -54,15 +47,14 @@ namespace tensorflow {
     }                                                     \
   } while (0)
 
-#define OP_REQUIRES_OK(CTX, ...)                                        \
-  do {                                                                  \
-    if (!TF_PREDICT_TRUE(                                               \
-            ::tensorflow::op_requires_internal::OkImpl<::absl::Status>( \
-                (CTX), __FILE__, __LINE__,                              \
-                ::tensorflow::op_requires_internal::MakeStatusFromArgs< \
-                    ::absl::Status>(__VA_ARGS__)))) {                   \
-      return;                                                           \
-    }                                                                   \
+#define OP_REQUIRES_OK(CTX, ...)                             \
+  do {                                                       \
+    const ::absl::Status& _s(__VA_ARGS__);                   \
+    if (!TF_PREDICT_TRUE(_s.ok())) {                         \
+      CheckNotInComputeAsync((CTX), "OP_REQUIRES_OK_ASYNC"); \
+      (CTX)->CtxFailureWithWarning(__FILE__, __LINE__, _s);  \
+      return;                                                \
+    }                                                        \
   } while (0)
 
 #define OP_REQUIRES_OK_OR_SET_PAYLOAD(CTX, PAYLOAD_KEY, PAYLOAD_VALUE, STATUS) \
@@ -86,14 +78,14 @@ namespace tensorflow {
     }                                                  \
   } while (0)
 
-#define OP_REQUIRES_OK_ASYNC(CTX, STATUS, CALLBACK)                    \
-  do {                                                                 \
-    if (!TF_PREDICT_TRUE(                                              \
-            ::tensorflow::op_requires_internal::OkWithCallbackImpl<    \
-                ::absl::Status>((CTX), (CALLBACK), __FILE__, __LINE__, \
-                                (STATUS)))) {                          \
-      return;                                                          \
-    }                                                                  \
+#define OP_REQUIRES_OK_ASYNC(CTX, STATUS, CALLBACK)         \
+  do {                                                      \
+    const ::absl::Status& _s(STATUS);                       \
+    if (!TF_PREDICT_TRUE(_s.ok())) {                        \
+      (CTX)->CtxFailureWithWarning(__FILE__, __LINE__, _s); \
+      (CALLBACK)();                                         \
+      return;                                               \
+    }                                                       \
   } while (0)
 
 #define OP_REQUIRES_VALUE(lhs, ctx, rexpr)                                   \
@@ -106,69 +98,6 @@ namespace tensorflow {
   OP_REQUIRES_OK(ctx, statusor.status());                 \
   lhs = std::move(statusor.value())
 
-// The following are implementation details for the above macros:
-//
-// * The "Impl" functions accept values constructed by the macros, and the
-//   values are guaranteed to be alive for the duration of the function call.
-//   Passing the macro arguments through a function call is important to support
-//   macro arguments that expand to short-lived values (which could not be bound
-//   to a reference directly).
-//
-// * The MakeStatusFromArgs overload set converts a __VA_ARGS__ sequence of
-//   macro arguments into an absl::Status value, distinguishing between a
-//   glvalue if the argument (necessarily just one) already is such a value
-//   from when a temporary prvalue needs to be constructed.
-//
-// We use a template parameter S instead of the concrete type absl::Status so as
-// to not require the inclusion of the Abseil header in this file. The header
-// must be included before the macros are used.
-
-namespace op_requires_internal {
-
-template <typename S, typename Ctx>
-bool OkImpl(Ctx&& ctx, const char* file, int line, const S& s) {
-  if (!TF_PREDICT_TRUE(s.ok())) {
-    CheckNotInComputeAsync(ctx, "OP_REQUIRES_ASYNC");
-    ctx->CtxFailureWithWarning(file, line, s);
-    return false;
-  } else {
-    return true;
-  }
-}
-
-template <typename S, typename Ctx, typename Callback>
-bool OkWithCallbackImpl(Ctx&& ctx, Callback&& callback, const char* file,
-                        int line, const S& s) {
-  if (!TF_PREDICT_TRUE(s.ok())) {
-    ctx->CtxFailureWithWarning(file, line, s);
-    callback();
-    return false;
-  } else {
-    return true;
-  }
-}
-
-// The two MakeStatusFromArgs overloads allow converting a sequence of arguments
-// (from __VA_ARGS__) to an absl::Status value without unnecessary copying: if
-// the sequence of arguments is actually a single argument that's already an
-// absl::Status, then a const reference to that value is returned (by the first
-// overload), otherwise a new absl::Status object is initialized from the
-// arguments and returned (by the second overload).
-
-template <typename S, typename... Args>
-std::enable_if_t<std::is_same<void(S), void(std::decay_t<Args>...)>::value,
-                 const S&>
-MakeStatusFromArgs(Args&&... args) {
-  return std::forward<Args...>(args...);
-}
-
-template <typename S, typename... Args>
-std::enable_if_t<!std::is_same<void(S), void(std::decay_t<Args>...)>::value, S>
-MakeStatusFromArgs(Args&&... args) {
-  return S(std::forward<Args>(args)...);
-}
-
-}  // namespace op_requires_internal
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_FRAMEWORK_OP_REQUIRES_H_
