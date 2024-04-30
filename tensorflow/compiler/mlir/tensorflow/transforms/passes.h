@@ -533,10 +533,6 @@ CreateTPUResourceReadsWritesPartitioningPass();
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateTPUAnnotateDynamicShapeInputsPass();
 
-// Creates a pass that identifies XLASharding ops in launch op for TPU
-// computation.
-std::unique_ptr<OperationPass<ModuleOp>> CreateTPUShardingIdentificationPass();
-
 // Creates a pass that moves `tf.AssignVariableOp` into a
 // `tf_device.parallel_execute` region if the `tf.AssignVariableOp` is the
 // only consumer of a `tf_device.parallel_execute` result.
@@ -670,7 +666,6 @@ enum MoveTransposeDirection { kBegin, kEnd };
 #define GEN_PASS_DECL_TPUREORDERREPLICATEANDPARTITIONEDINPUTSPASS
 #define GEN_PASS_DECL_TPURESOURCEREADFORWRITEPASS
 #define GEN_PASS_DECL_TPURESOURCEREADSWRITESPARTITIONINGPASS
-#define GEN_PASS_DECL_TPUSHARDINGIDENTIFICATIONPASS
 #define GEN_PASS_DECL_TPUSPACETODEPTHPASS
 #define GEN_PASS_DECL_TPUUPDATEEMBEDDINGENQUEUEOPINPUTSPASS
 #define GEN_PASS_DECL_TPUVALIDATEINPUTSPASS

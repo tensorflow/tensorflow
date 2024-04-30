@@ -151,7 +151,8 @@ void AddReplicatedBridgeClusteringPipelinePasses(OpPassManager& pm,
   pm.addPass(mlir::TFDevice::CreateClusterOutliningPass());
   pm.addPass(mlir::TFTPU::CreateTPUResourceReadForWritePass());
   pm.addPass(mlir::TFDevice::CreateMarkInputOutputAliasesPass());
-  pm.addPass(mlir::TFTPU::CreateTPUShardingIdentificationPass());
+  pm.addPass(
+      tensorflow::tf2xla::internal::CreateTPUShardingIdentificationPass());
   pm.addNestedPass<FuncOp>(
       mlir::TFTPU::CreateTPUResourceReadsWritesPartitioningPass());
   pm.addPass(mlir::TFDevice::CreateAnnotateParameterReplicationPass());

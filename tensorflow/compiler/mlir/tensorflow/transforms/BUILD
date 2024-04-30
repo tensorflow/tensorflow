@@ -533,7 +533,6 @@ cc_library(
         "tpu_reorder_replicate_and_partitioned_inputs.cc",
         "tpu_resource_partitioning.cc",
         "tpu_resource_read_for_write.cc",
-        "tpu_sharding_identification_pass.cc",
         "tpu_space_to_depth_pass.cc",
         "tpu_update_embedding_enqueue_op_inputs.cc",
         "tpu_validate_inputs.cc",
