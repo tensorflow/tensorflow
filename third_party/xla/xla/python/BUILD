@@ -1363,13 +1363,13 @@ tsl_pybind_extension(
                 ":gpu_support",
             ],
             "//conditions:default": [],
+        }) + select({
+            ":link_gpu_plugin": [
+                ":gpu_plugin_deps",
+            ],
+            "//conditions:default": [],
         }),
-    ) + select({
-        ":link_gpu_plugin": [
-            ":gpu_plugin_deps",
-        ],
-        "//conditions:default": [],
-    }),
+    ),
 )
 
 cc_library(
