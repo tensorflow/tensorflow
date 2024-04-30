@@ -14,10 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <random>
-#include <stdexcept>
 
-#include "gtest/gtest-param-test.h"
-#include "gtest/gtest.h"
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -110,7 +107,7 @@ std::vector<bfloat16> ConvertFloatToBloat16(const std::vector<float>& data) {
   std::vector<bfloat16> out(data.size());
   size_t i = 0;
   for (auto itr = out.begin(); itr != out.end(); ++itr, ++i) {
-    *itr = bfloat16(data[i]);
+    *itr = static_cast<bfloat16>(data[i]);
   }
   return out;
 }
