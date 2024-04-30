@@ -325,7 +325,6 @@ cc_library(
         ":nb_helpers",
         ":nb_numpy",
         ":pprof_profile_builder",
-        ":py_client_gpu",
         ":py_host_callback_proto_cc",
         ":python_ref_manager",
         ":traceback",
@@ -405,7 +404,7 @@ cc_library(
         "//xla/stream_executor/cuda:cuda_driver",
     ]) + if_rocm([
         "@local_config_rocm//rocm:rocm_headers",
-    ]),
+    ]) + if_cuda_or_rocm([":py_client_gpu"]),  # TODO(b/337876408): remove after migration to plugin
 )
 
 cc_library(
@@ -445,12 +444,14 @@ cc_library(
 
 cc_library(
     name = "py_client_gpu",
-    srcs = if_cuda_or_rocm([
-        "py_client_gpu.cc",
-    ]),
-    hdrs = if_cuda_or_rocm([
-        "py_client_gpu.h",
-    ]),
+    srcs = if_google(
+        ["py_client_gpu.cc"],
+        if_cuda_or_rocm(["py_client_gpu.cc"]),
+    ),
+    hdrs = if_google(
+        ["py_client_gpu.h"],
+        if_cuda_or_rocm(["py_client_gpu.h"]),
+    ),
     compatible_with = [],
     copts = [
         "-fexceptions",
@@ -471,11 +472,10 @@ cc_library(
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:errors",
-    ] + if_cuda([
-        "@local_config_cuda//cuda:cuda_headers",
-    ]) + if_rocm([
-        "@local_config_rocm//rocm:rocm_headers",
-    ]),
+    ] + if_rocm(
+        ["@local_config_rocm//rocm:rocm_headers"],
+        ["@local_config_cuda//cuda:cuda_headers"],
+    ),
 )
 
 cc_library(
