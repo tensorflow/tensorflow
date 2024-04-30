@@ -1,30 +1,13 @@
 Auto generated patch. Do not edit or delete it, even if empty.
-diff -ruN --strip-trailing-cr a/clang/lib/Lex/Pragma.cpp b/clang/lib/Lex/Pragma.cpp
---- a/clang/lib/Lex/Pragma.cpp
-+++ b/clang/lib/Lex/Pragma.cpp
-@@ -1444,7 +1444,8 @@
-                                  .Case("once", PPCallbacks::PWS_Once)
-                                  .Case("suppress", PPCallbacks::PWS_Suppress)
-                                  .Default(-1);
--          if (SpecifierValid = (SpecifierInt != -1))
-+          SpecifierValid = SpecifierInt != -1;
-+          if (SpecifierValid)
-             Specifier =
-                 static_cast<PPCallbacks::PragmaWarningSpecifier>(SpecifierInt);
- 
 diff -ruN --strip-trailing-cr a/clang/test/CodeGenCoroutines/coro-elide-thinlto.cpp b/clang/test/CodeGenCoroutines/coro-elide-thinlto.cpp
 --- a/clang/test/CodeGenCoroutines/coro-elide-thinlto.cpp
 +++ b/clang/test/CodeGenCoroutines/coro-elide-thinlto.cpp
-@@ -2,10 +2,10 @@
- // This test is adapted from coro-elide.cpp and splits functions into two files.
- //
+@@ -4,8 +4,8 @@
  // RUN: split-file %s %t
--// RUN: %clang --target=x86_64-linux -std=c++20 -O2 -flto=thin -I %S -c %t/coro-elide-callee.cpp -o coro-elide-callee.o
--// RUN: %clang --target=x86_64-linux -std=c++20 -O2 -flto=thin -I %S -c %t/coro-elide-caller.cpp -o coro-elide-caller.o
--// RUN: llvm-lto -thinlto coro-elide-callee.o coro-elide-caller.o -o summary
--// RUN: %clang_cc1 -O2 -x ir coro-elide-caller.o -fthinlto-index=summary.thinlto.bc -emit-llvm -o - | FileCheck %s
-+// RUN: %clang --target=x86_64-linux -std=c++20 -O2 -flto=thin -I %S -c %t/coro-elide-callee.cpp -o %t/coro-elide-callee.o
-+// RUN: %clang --target=x86_64-linux -std=c++20 -O2 -flto=thin -I %S -c %t/coro-elide-caller.cpp -o %t/coro-elide-caller.o
+ // RUN: %clang --target=x86_64-linux -std=c++20 -O2 -flto=thin -I %S -c %t/coro-elide-callee.cpp -o %t/coro-elide-callee.o
+ // RUN: %clang --target=x86_64-linux -std=c++20 -O2 -flto=thin -I %S -c %t/coro-elide-caller.cpp -o %t/coro-elide-caller.o
+-// RUN: llvm-lto -thinlto %t/coro-elide-callee.o %t/coro-elide-caller.o -o summary
+-// RUN: %clang_cc1 -O2 -x ir %t/coro-elide-caller.o -fthinlto-index=summary.thinlto.bc -emit-llvm -o - | FileCheck %s
 +// RUN: llvm-lto -thinlto %t/coro-elide-callee.o %t/coro-elide-caller.o -o %t/summary
 +// RUN: %clang_cc1 -O2 -x ir %t/coro-elide-caller.o -fthinlto-index=%t/summary.thinlto.bc -emit-llvm -o - | FileCheck %s
  
