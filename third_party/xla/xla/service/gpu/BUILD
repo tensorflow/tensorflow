@@ -38,6 +38,7 @@ load("//xla/tests:build_defs.bzl", "xla_test")
 load(
     "//xla/tsl:tsl.bzl",
     "if_google",
+    "if_oss",
     "internal_visibility",
     "tsl_copts",
     "tsl_gpu_library",
@@ -651,9 +652,6 @@ xla_test(
 xla_test(
     name = "ir_emitter_triton_large_test",
     srcs = if_cuda_is_configured(["ir_emitter_triton_large_test.cc"]),
-    backend_tags = {"gpu": [
-        "requires-gpu-sm80",
-    ]},
     backends = [
         "gpu_a100",
         "gpu_h100",
@@ -1654,18 +1652,9 @@ xla_test(
 xla_test(
     name = "gemm_algorithm_picker_test",
     srcs = if_gpu_is_configured(["gemm_algorithm_picker_test.cc"]),
-    backend_tags = {
-        "gpu": [
-            "requires-gpu-nvidia",
-            "noasan",
-            "nomsan",
-            "requires-gpu-sm70-only",
-        ],
-    },
     backends = [
-        "gpu",
         "gpu_v100",
-    ],
+    ] + if_oss(["gpu"]),
     deps = [
         ":autotuner_util",
         ":backend_configs_cc",
@@ -1956,17 +1945,12 @@ cc_library(
 xla_test(
     name = "conv_algorithm_picker_test",
     srcs = if_gpu_is_configured(["conv_algorithm_picker_test.cc"]),
-    backend_tags = {
-        "gpu": [
-            "requires-gpu-nvidia",
-            "noasan",
-            "nomsan",
-            "requires-gpu-sm70-only",
-        ],
-    },
     backends = [
-        "gpu",
         "gpu_v100",
+    ] + if_oss(["gpu"]),
+    tags = [
+        "noasan",
+        "nomsan",
     ],
     deps = [
         ":autotuner_util",
@@ -4607,17 +4591,15 @@ xla_test(
     name = "cudnn_fused_conv_rewriter_test",
     srcs = ["cudnn_fused_conv_rewriter_test.cc"],
     backend_tags = {
-        "gpu": [
-            "requires-gpu-nvidia",
-            "requires-gpu-sm80-only",
+        "gpu_a100": [
             "noasan",
             "nomsan",
             "no_rocm",
         ],
     },
     backends = [
-        "gpu",
-    ],
+        "gpu_a100",
+    ] + if_oss(["gpu"]),
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     shard_count = 10,
     deps = [
