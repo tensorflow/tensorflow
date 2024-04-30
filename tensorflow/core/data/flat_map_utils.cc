@@ -17,6 +17,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <cstdlib>
+#include <deque>
 #include <memory>
 #include <string>
 #include <utility>
@@ -25,6 +26,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/synchronization/mutex.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 #include "tensorflow/core/data/captured_function.h"
 #include "tensorflow/core/framework/dataset.h"
@@ -34,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
@@ -78,6 +81,7 @@ absl::StatusOr<int64_t> FlatMapRandomAccessHandler::Cardinality() {
   if (cumulative_cardinalities_->empty()) {
     cumulative_cardinalities_ = ComputeCardinalities();
   }
+  TF_RETURN_IF_ERROR(cumulative_cardinalities_.status());
   return cumulative_cardinalities_->back();
 }
 
@@ -160,44 +164,66 @@ FlatMapRandomAccessHandler::MakeInputIterators(
   return result;
 }
 
-absl::StatusOr<std::vector<DatasetBase*>>
+absl::StatusOr<std::deque<DatasetBase*>>
 FlatMapRandomAccessHandler::MakeInputDatasets() const {
   std::unique_ptr<IteratorBase> iterator;
   TF_RETURN_IF_ERROR(input_dataset_->MakeIterator(
       ctx_.get(), /*parent=*/nullptr, "Iterator", &iterator));
 
-  std::unique_ptr<InstantiatedCapturedFunction> instantiated_map_func;
-  TF_RETURN_IF_ERROR(
-      captured_map_func_.Instantiate(ctx_.get(), &instantiated_map_func));
+  std::unique_ptr<InstantiatedCapturedFunction> map_func;
+  TF_RETURN_IF_ERROR(captured_map_func_.Instantiate(ctx_.get(), &map_func));
 
-  std::vector<DatasetBase*> input_datasets;
+  absl::Mutex mu;
+  std::deque<DatasetBase*> input_datasets;
+  absl::Status status;  // Guarded by `mu`.
+  std::vector<std::unique_ptr<tsl::Thread>> threads;
   while (true) {
     std::vector<Tensor> input_tensors;
     bool end_of_sequence = false;
     TF_RETURN_IF_ERROR(
         iterator->GetNext(ctx_.get(), &input_tensors, &end_of_sequence));
     if (end_of_sequence) {
-      return input_datasets;
+      break;
     }
 
-    std::vector<Tensor> mapped_tensors;
-    TF_RETURN_IF_ERROR(instantiated_map_func->Run(
-        ctx_.get(), std::move(input_tensors), &mapped_tensors));
-    if (!(mapped_tensors.size() == 1 &&
-          mapped_tensors[0].dtype() == DT_VARIANT &&
-          TensorShapeUtils::IsScalar(mapped_tensors[0].shape()))) {
-      return absl::InvalidArgumentError(
-          "Flat map function must return a single scalar of dtype DT_VARIANT "
-          "representing a dataset.");
-    }
-
-    DatasetBase* mapped_dataset = nullptr;
-    TF_RETURN_IF_ERROR(
-        GetDatasetFromVariantTensor(mapped_tensors[0], &mapped_dataset));
-    mapped_dataset->Ref();
-    input_datasets.push_back(mapped_dataset);
+    input_datasets.push_back(nullptr);
+    threads.push_back(ctx_->StartThread(
+        "flat_map_random_access_iterator",
+        [this, input_tensors = std::move(input_tensors), &input_datasets,
+         dataset_index = input_datasets.size() - 1, &map_func, &status, &mu]() {
+          absl::StatusOr<DatasetBase*> dataset =
+              MakeInputDataset(std::move(input_tensors), *map_func);
+          if (!dataset.ok()) {
+            absl::MutexLock l(&mu);
+            status.Update(dataset.status());
+            return;
+          }
+          input_datasets[dataset_index] = *dataset;
+        }));
   }
+  threads.clear();
+  TF_RETURN_IF_ERROR(std::move(status));
   return input_datasets;
+}
+
+absl::StatusOr<DatasetBase*> FlatMapRandomAccessHandler::MakeInputDataset(
+    std::vector<Tensor> input_tensors,
+    const InstantiatedCapturedFunction& map_func) const {
+  std::vector<Tensor> mapped_tensors;
+  TF_RETURN_IF_ERROR(
+      map_func.Run(ctx_.get(), std::move(input_tensors), &mapped_tensors));
+  if (!(mapped_tensors.size() == 1 && mapped_tensors[0].dtype() == DT_VARIANT &&
+        TensorShapeUtils::IsScalar(mapped_tensors[0].shape()))) {
+    return absl::InvalidArgumentError(
+        "Flat map function must return a single scalar of dtype DT_VARIANT "
+        "representing a dataset.");
+  }
+
+  DatasetBase* mapped_dataset = nullptr;
+  TF_RETURN_IF_ERROR(
+      GetDatasetFromVariantTensor(mapped_tensors[0], &mapped_dataset));
+  mapped_dataset->Ref();
+  return mapped_dataset;
 }
 }  // namespace data
 }  // namespace tensorflow
